@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>演算法視覺化＆C++ 編譯測試</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <nav id="top-bar">
+    <div class="menu-brand">AlgoShowMaker</div>
+    
+    <div class="menu-item">
+      <span class="menu-label">演算法範例集</span>
+      <div class="dropdown-content" id="algoListDropdown">
+        <div class="dropdown-item disabled">載入中...</div>
+      </div>
+    </div>
+
+    <div class="menu-item">
+      <span class="menu-label">畫布設定 (Canvas)</span>
+      <div class="dropdown-content">
+        <div class="dropdown-item" id="menuResetView">重置視角 (Reset View)</div>
+        <div class="dropdown-item" id="menuToggleGrid">切換格線 (Toggle Grid)</div>
+      </div>
+    </div>
+
+    <div class="menu-item">
+      <span class="menu-label">編輯器 (Editor)</span>
+      <div class="dropdown-content">
+        <div class="dropdown-item" id="menuToggleFold">摺疊/展開 draw 區塊</div>
+        <div class="dropdown-divider"></div>
+        <div class="dropdown-item" onclick="aceEditor.setFontSize(12)">字體大小: 小</div>
+        <div class="dropdown-item" onclick="aceEditor.setFontSize(14)">字體大小: 中</div>
+        <div class="dropdown-item" onclick="aceEditor.setFontSize(18)">字體大小: 大</div>
+      </div>
+    </div>
+  </nav>
+  <div id="main">
+    <!-- 左側：C++ 程式碼面板 -->
+    <div id="codePanel">
+      <header>
+        <span class="title">C++ 程式碼</span>
+        <div class="header-buttons">
+          <button id="toggleDrawBlocksBtn" class="btn-fold-draw" onclick="toggleDrawBlocks()" title="將繪畫指令收起/展開">摺疊draw</button>
+          <button id="runBtn" class="btn-run" title="編譯執行">RUN</button>
+          <button id="codeClose">✕</button>
+        </div>
+      </header>
+      <div id="codeBody">
+        <div id="editor"></div>
+      </div>
+    </div>
+
+    <div id="divider"></div>
+
+    <!-- 右側：視覺化 + 執行結果 -->
+    <div id="vizPanel">
+      <!-- 子標籤列 -->
+      <div id="subTabs">
+        <div class="subTab">
+          <button class="tab-btn active" data-tab="tab-canvas">畫布</button>
+        </div>
+        <div class="subTab">
+          <button class="tab-btn" data-tab="tab-input">輸入</button>
+        </div>
+        <div class="subTab">
+          <button class="tab-btn" data-tab="tab-output">輸出</button>
+        </div>
+        <div class="subTab">
+          <button class="tab-btn" data-tab="tab-debug">debug log</button>
+        </div>
+      </div>
+      <!-- 畫布內容 -->
+      <div id="tab-canvas" class="subContent active">
+        <div class="controls">
+          <button id="restartBtn" title="重新播放">⏮</button>
+          <button id="prevKeyFrameBtn" title="上一關鍵幀">◀◀ 上一大步</button>
+          <button id="prevBtn" title="上一步">◀ 上一步</button>
+          <button id="playToggleBtn" class="btn-playtoggle" aria-pressed="false" title="播放/暫停">▶</button>
+          <button id="nextBtn" title="下一步">下一步 ▶</button>
+          <button id="nextKeyFrameBtn" title="下一關鍵幀">下一大步 ▶▶</button>
+          <button id="finishBtn" title="跳到最後">⏭</button>
+          <button id="ttsAvBtn" class="btn-tts" title="播放聲音">🔊</button>
+          <div id="frameTimeline">
+          <!--  <div id="frameBars"></div> -->
+            <div id="frameInfo">第 0 幀 / 共 0 幀</div>
+          </div>
+          <label>速度：</label>
+          <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000"/>
+          <span id="speedValue">500ms</span>
+        </div>
+        <svg id="arraySvg"></svg>
+      </div>
+      <!-- 輸入內容 -->
+      <div id="tab-input" class="subContent">
+        <!-- 這裡是程式 stdin 用的輸入區 -->
+        <textarea id="inputArea"
+                  placeholder="請輸入程式執行時要給的輸入（stdin）..."
+                  style="flex:1; width:100%; height:100%; resize:none; font-family:monospace; padding:8px;"></textarea>
+      </div>
+
+      <!-- 輸出內容 -->
+      <div id="tab-output" class="subContent">
+        <pre id="outputArea"
+             style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未執行
+        </pre>
+      </div>
+
+      <!-- debug log 內容 -->
+      <div id="tab-debug" class="subContent">
+        <pre id="debugArea"
+             style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未有 debug 訊息
+        </pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- 載入 Ace Editor -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.11.2/ace.js"></script>
+  <!-- 底層繪圖與互動腳本 -->
+  <script src="canva.js"></script>
+  <script src="interaction.js"></script>
+  <script src="compile.js"></script>
+  <script src="tts.js"></script>
+  <script src="resolve_pos.js"></script>
+  <script src="anim_renderer.js"></script>
+  <script src="front.js"></script>
+  <script src="draw/draw_array_outerframe.js"></script>
+  <script src="draw/draw_array_hintWidget.js"></script>
+  <script src="draw/draw_array_utils.js"></script>
+  <script src="draw/draw_block.js"></script>
+  <script src="draw/draw_arrow.js"></script>
+  <script src="draw/draw_array_segment_tree.js"></script>
+  <script src="draw/draw_array_normal.js"></script>
+  <script src="draw/draw_array_heap.js"></script>
+  <script src="draw/draw_array_BIT.js"></script>
+  <script src="draw/draw_array.js"></script>
+  <script src="draw/draw_2Darray.js"></script>
+  <script src="draw/draw_text.js"></script>
+</body>
+</html>

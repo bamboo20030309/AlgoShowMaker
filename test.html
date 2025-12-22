@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>JSAV Bubble Sort Animation</title>
+
+  <!-- JSAV 样式 -->
+  <link rel="stylesheet" href="https://opendsa-server.cs.vt.edu/ODSA/lib/JSAV.css">
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    h2 { margin: 0 0 12px; }
+    .toolbar { margin: 12px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    #jsav { border: 1px solid #ccc; padding: 12px; min-height: 500px; }
+    #stats { margin-left: 8px; font-size: 14px; color: #444; }
+    #code { margin-top: 8px; }
+    input[type="text"] { width: 280px; }
+  </style>
+</head>
+<body>
+  <h2>JSAV Demo：Bubble Sort（冒泡排序）</h2>
+
+  <div class="toolbar">
+    <label>資料（逗號分隔）：</label>
+    <input id="inputData" type="text" value="9,4,6,2,8,5" />
+    <button id="btnRun">Run</button>
+    <button id="btnRandom">Randomize + Run</button>
+    <span id="stats"></span>
+  </div>
+
+  <div id="jsav"></div>
+  <div id="code"></div>
+
+  <!-- 必要函式庫（順序很重要）：jQuery 1.x → jQuery UI → Raphael → jquery.transit → JSAV -->
+  <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+  <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.3.0/raphael.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.transit/0.9.12/jquery.transit.min.js"></script>
+  <script src="https://opendsa-server.cs.vt.edu/ODSA/lib/JSAV-min.js"></script>
+
+  <script>
+    // 產生隨機整數陣列
+    function randomArray(n = 8, lo = 1, hi = 99) {
+      const a = [];
+      for (let i = 0; i < n; i++) a.push(Math.floor(Math.random() * (hi - lo + 1)) + lo);
+      return a;
+    }
+
+    // 將輸入框內容轉為數字陣列
+    function parseInput(str) {
+      return str.split(",")
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter(n => Number.isFinite(n));
+    }
+
+    function bubbleSortDemo(arrData) {
+      // 清空舊內容
+      $("#jsav").empty(); $("#code").empty(); $("#stats").text("");
+
+      // 初始化 JSAV 與陣列
+      var av = new JSAV("jsav");
+      JSAV.ext.SPEED = 250;
+      var arr = av.ds.array(arrData, { indexed: true });
+
+      // 顯示「偽程式碼」（行號 0-based）
+      var code = av.code([
+        "for i = 0 .. n-2",         // 0
+        "  for j = 0 .. n-2-i",     // 1
+        "    if A[j] > A[j+1]",     // 2
+        "      swap A[j], A[j+1]"   // 3
+      ], { element: $("#code") });
+
+      var comps = 0, swaps = 0;
+      var n = arr.size();
+
+      av.displayInit(); // 顯示初始狀態
+
+      for (var i = 0; i < n - 1; i++) {
+        code.unhighlight([1,2,3]);
+        code.highlight(0);
+        av.umsg("外層迴圈 i = " + i);
+        av.step(); // 暫停以強化動畫節奏
+
+        for (var j = 0; j < n - 1 - i; j++) {
+          code.unhighlight([2,3]);
+          code.highlight(1);
+
+          // 比較兩個元素
+          arr.unhighlight([j - 1, j]); // 清掉上一輪殘留
+          arr.highlight(j);
+          arr.highlight(j + 1);
+          av.umsg("比較 A[" + j + "] 與 A[" + (j + 1) + "]");
+          av.step();
+
+          comps++;
+          var v1 = +arr.value(j), v2 = +arr.value(j + 1);
+          if (v1 > v2) {
+            code.highlight(2);
+            av.umsg("A[" + j + "] > A[" + (j + 1) + "] ⇒ 交換");
+            av.step();
+
+            code.highlight(3);
+            arr.swap(j, j + 1); // 交換會有動畫
+            swaps++;
+            av.step();
+
+            code.unhighlight(3);
+          }
+          code.unhighlight(2);
+          arr.unhighlight(j).unhighlight(j + 1);
+        }
+
+        // 視覺提示：本輪最後一個元素已就位
+        arr.css(n - 1 - i, { "background-color": "#e8ffe8" });
+        code.unhighlight(1);
+        code.unhighlight(0);
+      }
+
+      av.umsg("完成！Comparisons: " + comps + "，Swaps: " + swaps);
+      $("#stats").text("Comparisons: " + comps + " | Swaps: " + swaps);
+
+      av.recorded(); // 生成播放控制（Play / Step / Reset）
+    }
+
+    // 綁定按鈕
+    $("#btnRun").on("click", function () {
+      const data = parseInput($("#inputData").val());
+      if (!data.length) return alert("請輸入至少一個數字（以逗號分隔）");
+      bubbleSortDemo(data);
+    });
+
+    $("#btnRandom").on("click", function () {
+      const data = randomArray(8, 1, 99);
+      $("#inputData").val(data.join(","));
+      bubbleSortDemo(data);
+    });
+
+    // 預設先跑一次
+    bubbleSortDemo(parseInput($("#inputData").val()));
+  </script>
+</body>
+</html>
