@@ -1,0 +1,9 @@
+git switch main
+git pull
+git switch -c feature/xxx
+# 寫 code
+git add . && git commit -m "xxx"
+git switch main
+git merge feature/xxx
+git push
+git branch -d feature/xxx
