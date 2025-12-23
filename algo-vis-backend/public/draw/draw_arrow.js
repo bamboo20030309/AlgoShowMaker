@@ -310,15 +310,15 @@
     const y2 = p2.y - uy * marginEnd;
 
     // 箭頭圖層掛在 viewport 裡
-    let layer = vp.querySelector('#debug-arrow-layer');
+    let layer = vp.querySelector('#arrow-layer');
     if (!layer) {
       layer = document.createElementNS(NS, 'g');
-      layer.setAttribute('id', 'debug-arrow-layer');
+      layer.setAttribute('id', 'arrow-layer');
       vp.appendChild(layer);
     }
 
     const line = document.createElementNS(NS, 'line');
-    const lineId = 'debug-arrow-' + (arrowIdCounter++);
+    const lineId = 'arrow-' + (arrowIdCounter++);
     line.setAttribute('id', lineId);
 
     line.setAttribute('x1', x1);
