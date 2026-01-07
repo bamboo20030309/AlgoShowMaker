@@ -266,7 +266,7 @@
     const uy = dy / len;
 
     const color = opt.color || 'rgba(255, 58, 58, 0.7)';
-    const width = opt.width || 4;
+    const width = Number.isNaN(parseFloat(opt.width)) ? 4  : parseFloat(opt.width);
 
     const headStart = opt.headStart || 'none';   // 'none' | 'arrow' | 'dot'
     const headEnd   = opt.headEnd   || 'arrow';  // 預設終點有箭頭

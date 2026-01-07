@@ -19,6 +19,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 1 }, { group: "BIT", index: 0 }, {  });
@@ -39,6 +40,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 2 }, { group: "BIT", index: 1 }, {  });
@@ -59,6 +61,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 3 }, { group: "BIT", index: 2 }, {  });
@@ -79,6 +82,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 4 }, { group: "BIT", index: 3 }, {  });
@@ -111,6 +115,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 5 }, { group: "BIT", index: 4 }, {  });
@@ -131,6 +136,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 6 }, { group: "BIT", index: 5 }, {  });
@@ -151,6 +157,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 7 }, { group: "BIT", index: 6 }, {  });
@@ -171,6 +178,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 8 }, { group: "BIT", index: 7 }, {  });
@@ -203,6 +211,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 9 }, { group: "BIT", index: 8 }, {  });
@@ -223,6 +232,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 10 }, { group: "BIT", index: 9 }, {  });
@@ -243,6 +253,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 11 }, { group: "BIT", index: 10 }, {  });
@@ -263,6 +274,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 12 }, { group: "BIT", index: 11 }, {  });
@@ -283,6 +295,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 13 }, { group: "BIT", index: 12 }, {  });
@@ -303,6 +316,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 14 }, { group: "BIT", index: 13 }, {  });
@@ -335,6 +349,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 15 }, { group: "BIT", index: 14 }, {  });
@@ -355,6 +370,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 16 }, { group: "BIT", index: 15 }, {  });
@@ -375,6 +391,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 17 }, { group: "BIT", index: 16 }, {  });
@@ -395,6 +412,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 18 }, { group: "BIT", index: 17 }, {  });
@@ -415,6 +433,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 19 }, { group: "BIT", index: 18 }, {  });
@@ -435,6 +454,7 @@
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" });
+                    drawArrow({ group: "num", direction: "bottom" }, { group: "heap", direction: "top" }, { color: "black" ,width: "3" });
                 }
                 if (track === 0) {
                     drawArrow({ group: "num", index: 20 }, { group: "BIT", index: 19 }, {  });
