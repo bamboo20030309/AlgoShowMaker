@@ -20,6 +20,6 @@ Thumbs.db
 #==========================
 # build outputs
 #==========================
-code_script.js
+algo-vis-backend/public/code_script.js
 dist/
 build/
