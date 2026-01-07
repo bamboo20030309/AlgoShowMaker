@@ -11,3 +11,13 @@ docker run -p 3000:3000 --rm -v "%cd%/public:/usr/src/app/public" algo-vis-backe
 
 build+run
 docker build -t algo-vis-backend . && docker run -p 3000:3000 --rm -v "%cd%/public:/usr/src/app/public" algo-vis-backend
+
+
+
+---------------新---------------
+
+開啟伺服器
+docker-compose up -d --build
+
+關掉伺服器
+docker-compose down
