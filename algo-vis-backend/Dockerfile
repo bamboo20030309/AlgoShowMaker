@@ -1,9 +1,9 @@
 # 選擇 Node.js 官方映像，並安裝 clang 編譯器
-FROM node:16
+FROM node:18
 
-# 更新 apt，安裝 clang 與 build-essential
+# 更新 apt，安裝 g++ 與 build-essential
 RUN apt-get update && \
-    apt-get install -y clang build-essential && \
+    apt-get install -y g++ build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 # 建立工作目錄
