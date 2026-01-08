@@ -283,11 +283,11 @@ int main() {
             int _k=0;
             //}
             for(int i=1;i<=n;i++)for(int j=1;j<=n;j++){
-                new_board[i][j]|=board[i-1][j  ];
-                new_board[i][j]|=board[i  ][j-1];
-                new_board[i][j]|=board[i+1][j  ];
-                new_board[i][j]|=board[i  ][j+1];
-                new_board[i][j]|=board[i  ][j  ];
+                new_board[i-1][j  ]|=board[i][j];
+                new_board[i  ][j-1]|=board[i][j];
+                new_board[i+1][j  ]|=board[i][j];
+                new_board[i  ][j+1]|=board[i][j];
+                new_board[i  ][j  ]|=board[i][j];
                 //draw{
                 vector<vector<string>> _draw_board_bit(n+2,vector<string>(n+2)),_draw_new_board_bit(n+2,vector<string>(n+2));
                 for(int i=1;i<=n;i++)for(int j=1;j<=n;j++)_draw_board_bit[i][j]=to_string(board[i][j]>>2&1)+to_string(board[i][j]>>1&1)+to_string(board[i][j]&1);
@@ -310,7 +310,7 @@ int main() {
                     {{"background",_color[5]},_draw_color[5]},
                     {{"background",_color[6]},_draw_color[6]},
                     {{"background",_color[7]},_draw_color[7]},
-                    {{"highlight"},{{i,j},{i,j-1},{i-1,j},{i,j+1},{i+1,j}}}
+                    {{"highlight"},{{i,j}}}
                 },{{1,1},{n,n}});
                 av.frame_draw("new_board",200,120,_draw_new_board_bit,{
                     {{"background",_color[0]},_draw_new_board_color[0]},
@@ -321,7 +321,7 @@ int main() {
                     {{"background",_color[5]},_draw_new_board_color[5]},
                     {{"background",_color[6]},_draw_new_board_color[6]},
                     {{"background",_color[7]},_draw_new_board_color[7]},
-                    {{"highlight"},{{i,j}}}
+                    {{"highlight"},{{i,j},{i,j-1},{i-1,j},{i,j+1},{i+1,j}}}
                 },{{1,1},{n,n}});
                 av.end_frame_draw();
                 //}
