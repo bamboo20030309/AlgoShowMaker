@@ -13,6 +13,17 @@ services:
         limits:
           cpus: '0.50'    # 限制最多用 50% CPU (依你主機核心數調整，0.5 代表半顆核心)
           memory: 512M    # 限制最多用 512MB RAM (編譯通常夠用，不夠可調成 1G)
+          # 限制行程數量 (防 Fork Bomb)
+          # 限制這個容器最多只能同時跑 64 個程式，超過就開不起來
+          pids: 64
+          
+    # 2. 安全性增強 (Security Opts)
+    # 拿掉所有 Linux 特權，讓容器更安全
+    cap_drop:
+      - ALL
+    # 如果 npm start 報錯，可能需要加回特定的，例如：
+    # cap_add:
+    #   - NET_BIND_SERVICE
 
     # 注意：這裡不需要 ports 對外暴露 3000，因為只有 Nginx 需要跟它連線
 
