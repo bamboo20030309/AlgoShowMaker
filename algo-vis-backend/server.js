@@ -321,6 +321,30 @@ app.post('/compile', (req, res) => {
   });
 });
 
+// 每小時執行一次：清理超過 1 小時前的殘留檔案
+setInterval(() => {
+    fs.readdir(TEMP_DIR, (err, files) => {
+        if (err) return;
+        const now = Date.now();
+        const ONE_HOUR = 60 * 60 * 1000;
+
+        files.forEach(file => {
+            // 只清理我們產生的暫存檔 (main_*, main_exec_*, script_*)
+            if (file.startsWith('main_') || file.startsWith('script_')) {
+                const filePath = path.join(TEMP_DIR, file);
+                fs.stat(filePath, (err, stats) => {
+                    if (err) return;
+                    // 如果檔案建立時間超過 1 小時，視為垃圾刪除
+                    if (now - stats.birthtimeMs > ONE_HOUR) {
+                        fs.unlink(filePath, () => {}); // 靜默刪除
+                        console.log(`[Auto-Clean] 刪除過期殘留檔: ${file}`);
+                    }
+                });
+            }
+        });
+    });
+}, 60 * 60 * 1000); // 1 小時檢查一次
+
 // === /api/samples 路由 ===
 app.get('/api/samples', (req, res) => {
     if (req.query.filename) {
