@@ -4,24 +4,39 @@ const path            = require('path');
 const fs              = require('fs');
 const { spawn }       = require('child_process');
 const { performance } = require('perf_hooks');
-// [修改 1] 引入 uuid 用於產生唯一檔名
+// [修改 1] 引入 uuid (改用 crypto)
 const { randomUUID: uuidv4 } = require('crypto');
+const rateLimit       = require('express-rate-limit');
 
+// 1. 先初始化 app (非常重要，必須在 app.use 之前！)
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// 2. 設定限制器
+const limiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 分鐘內
+    max: 20, // 每個 IP 最多只能送 20 次請求
+    message: { error: '請求過於頻繁，請稍後再試' }
+});
+
+// 3. 套用限制器到 /compile
+app.use('/compile', limiter);
+
+// 設定目錄路徑
 const SAMPLE_DIR = path.join(__dirname, 'tmp', 'algorithm_sample');
-// [修改 2] 確保暫存目錄存在 (用於存放動態生成的 cpp 和 exe)
+// [修改 2] 確保暫存目錄存在
 const TEMP_DIR = path.join(__dirname, 'tmp');
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR);
 }
 
-const app = express();
 let debugMessages = [];
 
-// === 限制設定 (保留原本設定) ===
+// === 限制設定 ===
 const LIMITS = {
-  TIME_MS: 5000,           // TLE: 5 秒
-  MEMORY_MB: 256,          // MLE: 256 MB (透過 ulimit -v)
-  OUTPUT_SIZE: 64 * 1024, // OLE: 64 KB (截斷輸出)
+  TIME_MS: 5000,
+  MEMORY_MB: 256,
+  OUTPUT_SIZE: 64 * 1024,
 };
 
 // 記錄 debug 訊息
@@ -33,11 +48,12 @@ function logDebug(msg, extra = {}) {
   });
 }
 
+// 設定中間件
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '5mb' }));
 
 /**
- * 讀取 Linux /proc/<pid>/status (保留原本邏輯)
+ * 讀取 Linux /proc/<pid>/status
  */
 function readProcStatus(pid) {
   try {
@@ -60,7 +76,7 @@ function readProcStatus(pid) {
 }
 
 /**
- * 記憶體輪詢取樣 (保留原本邏輯)
+ * 記憶體輪詢取樣
  */
 function startMemorySampler(childPid, intervalMs = 80) {
   let peakRssKB = 0;
@@ -91,7 +107,7 @@ function startMemorySampler(childPid, intervalMs = 80) {
   };
 }
 
-// 編譯＋執行 C++ 程式
+// === 編譯＋執行 C++ 程式 ===
 app.post('/compile', (req, res) => {
   debugMessages = []; // 每次請求重置
 
@@ -108,25 +124,24 @@ app.post('/compile', (req, res) => {
     });
   }
 
-  // [修改 3] 使用 uuid 產生唯一 ID，並將檔案放在 tmp 目錄下
+  // [修改 3] 使用 uuid 產生唯一 ID
   const uniqueId = uuidv4();
   const sourcePath = path.join(TEMP_DIR, `main_${uniqueId}.cpp`);
   const exePath    = path.join(TEMP_DIR, `main_exec_${uniqueId}`);
   const scriptPath = path.join(TEMP_DIR, `script_${uniqueId}.js`);
 
-  // [修改 4] 定義清理函式 (用於刪除暫存檔)
+  // [修改 4] 定義清理函式
   const cleanup = () => {
     try {
         if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath);
         if (fs.existsSync(exePath)) fs.unlinkSync(exePath);
         if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath);
-        // logDebug('暫存檔清理完成');
     } catch (e) {
         logDebug('清理暫存檔失敗: ' + e.message);
     }
   };
 
-  // 1. 寫入 main_{uuid}.cpp
+  // 1. 寫入 source
   try {
     fs.writeFileSync(sourcePath, code, 'utf8');
   } catch (err) {
@@ -143,14 +158,13 @@ app.post('/compile', (req, res) => {
   const compileArgs = [
     '-std=c++17',
     '-O2',
-    sourcePath,      // 輸入檔：tmp/main_{uuid}.cpp
-    '-I', TEMP_DIR,  // Include Path：確保能找到 AV.hpp (它在 tmp 下)
+    sourcePath,      
+    '-I', TEMP_DIR,  
     '-I', '/tmp',
-    '-o', exePath,   // 輸出檔：tmp/main_exec_{uuid}
+    '-o', exePath,   
   ];
 
   const compileStart = performance.now();
-  // 注意：cwd 維持在 __dirname 或 TEMP_DIR 其實沒差，因為上面路徑都是絕對路徑
   const gpp = spawn('g++', compileArgs, { cwd: __dirname });
 
   let compileErr = '';
@@ -161,7 +175,7 @@ app.post('/compile', (req, res) => {
 
     if (codeExit !== 0) {
       logDebug('編譯失敗，退出碼：' + codeExit);
-      cleanup(); // [修改] 編譯失敗也要清理
+      cleanup();
       return res.status(400).json({
         output: '',
         error: compileErr || ('編譯失敗，退出碼：' + codeExit),
@@ -174,20 +188,16 @@ app.post('/compile', (req, res) => {
 
     logDebug('編譯成功，耗時 ' + compileTime + ' ms');
 
-    // 3. 執行程式 (加上 TLE, OLE, MLE 保護)
-    
-    // [修改] 使用新的 exePath
-    // ulimit -v 單位是 KB
+    // 3. 執行程式
     const ulimitCmd = `ulimit -v ${LIMITS.MEMORY_MB * 1024} && exec "${exePath}"`;
-
     const runStart = performance.now();
 
     const child = spawn('sh', ['-c', ulimitCmd], {
-      cwd: __dirname, // 保持原本的工作目錄
+      cwd: __dirname,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
-          ...process.env, // 保留原本的環境變數
-          AV_OUTPUT_FILE: scriptPath // 告訴 C++ 寫到這裡
+          ...process.env,
+          AV_OUTPUT_FILE: scriptPath 
       }
     });
 
@@ -196,7 +206,6 @@ app.post('/compile', (req, res) => {
     let isTLE = false;
     let isOLE = false;
 
-    // 記憶體監控（保留原本邏輯）
     let memSampler = null;
     let peakMem = { peakRssKB: 0, peakHwmKB: 0, peakVmsKB: 0 };
 
@@ -206,7 +215,6 @@ app.post('/compile', (req, res) => {
       logDebug('MEM: child.pid 不存在，無法取樣記憶體');
     }
 
-    // OLE 檢查與資料收集函式 (保留原本邏輯)
     const collectOutput = (data, isStderr) => {
       if (isTLE || isOLE) return;
 
@@ -235,14 +243,12 @@ app.post('/compile', (req, res) => {
     child.stdout.on('data', (d) => collectOutput(d, false));
     child.stderr.on('data', (d) => collectOutput(d, true));
 
-    // TLE 計時器
     const tleTimer = setTimeout(() => {
       isTLE = true;
       logDebug(`TLE: 超過 ${LIMITS.TIME_MS}ms，強制終止`, { pid: child.pid });
       try { child.kill('SIGKILL'); } catch (e) {}
     }, LIMITS.TIME_MS);
 
-    // 寫入 stdin
     if (typeof input === 'string' && input.length > 0) {
       child.stdin.write(input);
     }
@@ -250,13 +256,12 @@ app.post('/compile', (req, res) => {
 
     child.on('error', (e) => {
       logDebug('執行程式 spawn 失敗：' + e.message);
-      cleanup(); // [修改] 發生錯誤要清理
+      cleanup();
     });
 
     child.on('close', (codeRun, signal) => {
       clearTimeout(tleTimer);
 
-      // 停止記憶體監控
       if (memSampler) {
         memSampler.stop();
         peakMem = memSampler.getPeak();
@@ -283,7 +288,6 @@ app.post('/compile', (req, res) => {
       // [修改 5] 執行結束，無論成功失敗都清理暫存檔
       cleanup();
 
-      // 記憶體計算 (保留原本邏輯)
       const memoryKB =
         (peakMem.peakRssKB && peakMem.peakRssKB > 0) ? peakMem.peakRssKB :
         (peakMem.peakHwmKB && peakMem.peakHwmKB > 0) ? peakMem.peakHwmKB :
@@ -314,14 +318,13 @@ app.post('/compile', (req, res) => {
         runTime,
         memoryKB,
         debug_log: debugMessages,
-        // 把讀到的 JS 內容直接傳給前端
         scriptContent: scriptContent
       });
     });
   });
 });
 
-// 每小時執行一次：清理超過 1 小時前的殘留檔案
+// 每小時執行一次：清理殘留檔案
 setInterval(() => {
     fs.readdir(TEMP_DIR, (err, files) => {
         if (err) return;
@@ -329,21 +332,19 @@ setInterval(() => {
         const ONE_HOUR = 60 * 60 * 1000;
 
         files.forEach(file => {
-            // 只清理我們產生的暫存檔 (main_*, main_exec_*, script_*)
             if (file.startsWith('main_') || file.startsWith('script_')) {
                 const filePath = path.join(TEMP_DIR, file);
                 fs.stat(filePath, (err, stats) => {
                     if (err) return;
-                    // 如果檔案建立時間超過 1 小時，視為垃圾刪除
                     if (now - stats.birthtimeMs > ONE_HOUR) {
-                        fs.unlink(filePath, () => {}); // 靜默刪除
+                        fs.unlink(filePath, () => {}); 
                         console.log(`[Auto-Clean] 刪除過期殘留檔: ${file}`);
                     }
                 });
             }
         });
     });
-}, 60 * 60 * 1000); // 1 小時檢查一次
+}, 60 * 60 * 1000); 
 
 // === /api/samples 路由 ===
 app.get('/api/samples', (req, res) => {
@@ -370,7 +371,6 @@ app.get('/api/samples', (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
