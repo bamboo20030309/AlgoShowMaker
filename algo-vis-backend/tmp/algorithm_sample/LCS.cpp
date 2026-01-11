@@ -434,21 +434,19 @@ int main() {
         for(auto&v:ans)cout<<v<<endl;
         //draw{
         av.start_frame_draw();
-        av.colored_text({ {{"這樣就找完所有的最大共同子序列了"}} },0,120);
+        av.colored_text({ {{"這樣就找完所有的最大共同子序列了\n答案是 " + AV::array_to_string(AV::to_vector(ans))}} },0,100);
         av.frame_draw("LCS",0,200,_draw_LCS,{
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(1,0,S.size()+1,0)},
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(0,1,0,T.size()+1)},
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)}
         });
-        av.frame_draw("ans",0,20,AV::to_vector(ans));
         for(auto&v:_draw_LCS_path)av.arrow(AV::relPos_to_absPos("LCS", v.f.f, v.f.s), AV::relPos_to_absPos("LCS", v.s.f, v.s.s));
-        av.key_colored_text({ {{"這樣就找完所有的最大共同子序列了"}} },0,120);
+        av.key_colored_text({ {{"這樣就找完所有的最大共同子序列了\n答案是 " + AV::array_to_string(AV::to_vector(ans))}} },0,100);
         av.key_frame_draw("LCS",0,200,_draw_LCS,{
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(1,0,S.size()+1,0)},
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(0,1,0,T.size()+1)},
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)}
         });
-        av.key_frame_draw("ans",0,20,AV::to_vector(ans));
         for(auto&v:_draw_LCS_path)av.key_arrow(AV::relPos_to_absPos("LCS", v.f.f, v.f.s), AV::relPos_to_absPos("LCS", v.s.f, v.s.s));
         av.end_frame_draw();
         //}
