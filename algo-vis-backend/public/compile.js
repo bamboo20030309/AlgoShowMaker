@@ -2,6 +2,14 @@
 // 前端：送 code ＋ input 給 /compile，並更新「輸出」與「debug log」
 
 document.getElementById('runBtn').addEventListener('click', async () => {
+  const runBtn = document.getElementById('runBtn');
+
+  // [新增] 防呆：如果已經在 loading (按鈕變暗轉圈中)，就直接忽略這次點擊
+  if (runBtn.classList.contains('loading')) return;
+
+  // [新增] 1. 開始 loading 狀態
+  runBtn.classList.add('loading');
+
   const out     = document.getElementById('outputArea');
   const dbg     = document.getElementById('debugArea');
   const inputEl = document.getElementById('inputArea');
@@ -154,7 +162,6 @@ document.getElementById('runBtn').addEventListener('click', async () => {
         }
 
         // (C) 呼叫 front.js 的函式來更新介面 (幀條碼、總幀數)
-        // 這些函式原本是在 reloadAfterRun 裡呼叫的
         if (typeof initFrameInfoFromCodeScript === 'function') {
            initFrameInfoFromCodeScript();
         }
@@ -177,6 +184,10 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     console.log(err);
     if (out) out.textContent = 'Request 失敗：\n' + err;
     if (dbg) dbg.textContent = 'Request 失敗，請確認伺服器是否有啟動。';
+  } finally {
+    // [新增] 2. 結束 loading 狀態（無論成功或失敗都會執行）
+    // 讓按鈕恢復可點擊、顏色恢復、轉圈圈消失
+    runBtn.classList.remove('loading');
   }
 
   // 執行完自動切到「輸出」分頁
@@ -184,11 +195,4 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     '.tab-btn[data-tab="tab-output"]:not([style*="display: none"])'
   );
   if (btn) activateTab(btn);
-  /*
-  // 重載動畫（重新載入 public/code_script.js）
-  if (window.reloadAfterRun)
-    window.reloadAfterRun();
-  else
-    reloadCodeScript();
-  */
 });

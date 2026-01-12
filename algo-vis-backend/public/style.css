@@ -1,42 +1,170 @@
-/* Reset */
-* { box-sizing:border-box; margin:0; padding:0; }
+/* =========================================
+   1. 全域變數與重置 (Theme Variables)
+   ========================================= */
+:root {
+  /* --- 核心色系 --- */
+  --bg-main: #1e1e1e;       /* 主視窗/程式碼背景 (深黑) */
+  --bg-panel: #252526;      /* 面板/選單背景 (稍淺的黑) */
+  --bg-header: #333333;     /* 頂部導覽列背景 */
+  --bg-hover: #505050;      /* 一般懸停顏色 */
+  
+  --border-color: #454545;  /* 邊框顏色 */
+  --text-main: #cccccc;     /* 主要文字 */
+  --text-bright: #ffffff;   /* 高亮文字 */
+  
+  /* --- 功能色 --- */
+  --primary-blue: #007acc;  /* 藍色 */
+  --hover-blue: #094771;    
+  --active-blue: #2563eb;   
+  
+  --success-green: #22c55e; /* 綠色 (演算法按鈕 / RUN) */
+  --hover-green: #16a34a;   
+  
+  --warn-orange: #f97316;   /* 橘色 */
+  --hover-orange: #ea580c;
+
+  /* --- [修改] 尺寸設定 --- */
+  --header-height: 50px;    /* 加大導覽列高度 */
+}
+
+/* 基礎 Reset */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
 body, html { 
-  width:100%; 
-  height:100%; 
-  font-family:sans-serif; 
-  overflow:hidden; 
-  background-color: #1e1e1e; /* VS Code 深色背景 */
+  width: 100%; height: 100%; 
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-main);
+  overflow: hidden; 
 }
 
-/* 兩欄佈局 */
+/* =========================================
+   2. 主佈局架構
+   ========================================= */
 #main { 
-  display:flex; 
-  width:100%; 
-  height:100%; 
+  display: flex; 
+  width: 100%; 
+  height: calc(100% - var(--header-height)); /* 扣掉變高的 header */
 }
 
-/* 頂部選單列 */
+#divider {
+  width: 4px;
+  background: #444; /* 稍微深一點讓它不突兀 */
+  cursor: col-resize;
+  z-index: 10;
+}
+
+/* =========================================
+   3. 頂部導覽列 (Top Bar)
+   ========================================= */
 #top-bar {
-  height: 30px;
-  background-color: #333333;
+  height: var(--header-height); /* 使用變數 */
+  background-color: var(--bg-header);
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  font-size: 13px;
+  padding: 0 12px;
+  font-size: 14px; /* 字體稍微大一點點 */
   user-select: none;
   z-index: 1000;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
 
 .menu-brand {
   font-weight: bold;
-  color: #007acc; /* VS Code 藍色 */
-  margin-right: 15px;
-  padding: 0 8px;
+  font-size: 1.2rem;
+  color: var(--primary-blue);
+  margin-right: 20px;
 }
 
-/* 選單項目 */
+/* --- [修改] 演算法獨立按鈕 (綠色) --- */
+.algo-btn-wrapper {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  margin-right: 10px;
+}
+
+.btn-algo-main {
+  background-color: var(--success-green);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.2s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.btn-algo-main:hover {
+  background-color: var(--hover-green); /* 深綠色 */
+}
+
+/* 當按鈕被加上 .auto-stepping class 時 (例如長按後) */
+button.auto-stepping {
+  background-color: var(--active-blue) !important; /* 變成亮藍色 */
+  border-color: var(--active-blue) !important;
+  color: white !important;
+  
+  /* 加一點內陰影，讓它看起來像是「被鎖定/按下」的狀態 */
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.2) !important;
+  
+  /* 稍微往下移一點，模擬被按住的物理感覺 */
+  transform: translateY(1px); 
+}
+
+/* Hover 狀態維持深藍色 */
+button.auto-stepping:hover {
+  background-color: #1d4ed8 !important;
+  border-color: #1e40af !important;
+}
+
+/* 下拉選單 (共用) */
+.dropdown-content {
+  display: none;
+  position: absolute;
+  top: calc(var(--header-height) - 5px); /* 緊貼導覽列 */
+  left: 0;
+  background-color: var(--bg-panel);
+  min-width: 220px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  border: 1px solid var(--border-color);
+  padding: 5px 0;
+  z-index: 2000;
+  border-radius: 4px;
+}
+
+/* Hover 顯示 */
+.algo-btn-wrapper:hover .dropdown-content,
+.menu-item:hover .dropdown-content { 
+  display: block; 
+}
+
+.dropdown-item {
+  color: var(--text-main);
+  padding: 8px 16px;
+  cursor: pointer;
+  display: block;
+  text-decoration: none;
+}
+
+.dropdown-item:hover {
+  background-color: var(--primary-blue);
+  color: white;
+}
+.dropdown-item.disabled { color: #666; cursor: default; }
+
+.dropdown-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 0;
+}
+
+/* 一般選單項目 */
 .menu-item {
   position: relative;
   height: 100%;
@@ -45,670 +173,384 @@ body, html {
 }
 
 .menu-label {
-  color: #cccccc;
-  padding: 0 10px;
+  color: var(--text-main);
+  padding: 0 12px;
   height: 100%;
   display: flex;
   align-items: center;
   cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .menu-label:hover {
-  background-color: #505050;
-  color: white;
+  background-color: var(--bg-hover);
+  color: var(--text-bright);
 }
 
-/* 下拉選單容器 */
-.dropdown-content {
-  display: none;
-  position: absolute;
-  top: 30px; /* bar height */
-  left: 0;
-  background-color: #252526;
-  min-width: 200px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-  border: 1px solid #454545;
-  padding: 4px 0;
-  z-index: 2000;
-}
-
-/* Hover 顯示下拉選單 */
-.menu-item:hover .dropdown-content {
-  display: block;
-}
-
-/* 下拉選項 */
-.dropdown-item {
-  color: #cccccc;
-  padding: 6px 16px;
-  cursor: pointer;
-  display: block;
-  text-decoration: none;
-}
-
-.dropdown-item:hover {
-  background-color: #094771; /* VS Code 選中藍 */
-  color: white;
-}
-
-.dropdown-item.disabled {
-  color: #666;
-  cursor: default;
-}
-
-.dropdown-item.disabled:hover {
-  background-color: transparent;
-}
-
-.dropdown-divider {
-  height: 1px;
-  background-color: #454545;
-  margin: 4px 0;
-}
-
-/* 左側：C++ 程式碼 */
+/* =========================================
+   4. 左側：程式碼編輯器 (Code Panel)
+   ========================================= */
 #codePanel {
-  width:40%; 
-  min-width:200px; 
-  max-width:80%;
-  border-right: none;
-  display:flex; 
-  flex-direction:column;
+  width: 40%; 
+  min-width: 200px; 
+  display: flex; 
+  flex-direction: column;
 }
 
-/* 分割線 */
-#divider {
-  width: 4px;
-  background: #ccc;
-  cursor: col-resize;
-}
-
-/* 左側 header */
+/* --- [修改] Header 背景改成跟程式碼一樣 --- */
 #codePanel header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
-  background: #f5f5f5;
   justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-main); /* 改成深黑色 (#1e1e1e) */
+  border-bottom: 1px solid var(--border-color);
+  height: 45px; /* 固定高度 */
 }
-#codePanel header .title { 
-  font-size: 1.1rem;
-  font-weight: bold;
-  flex-shrink: 0;
-}
-#codeClose {
-  margin-left: 8px;
-  background: transparent;
-  border: none;
+
+#codePanel header .header-title { 
   font-size: 1rem;
-  cursor: pointer;
-}
-#codeBody {
-  flex:1; 
-  display:flex; 
-  flex-direction:column;
-  position: relative;
-}
-#codeBody textarea {
-  flex:1; 
-  width:100%; 
-  resize:none;
-  font-family:monospace; 
-  font-size:14px;
-}
-#codeBody button {
-  margin-top:8px; 
-  padding:8px 12px;
-}
-#codeClose {
-  margin-left: 20px;
-  background: transparent;
-  border: none;
-  font-size: 1rem;
-  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-main); /* 文字改淡灰色 */
 }
 
-/* 右側：視覺化+結果 */
-#vizPanel {
-  flex:1; 
-  display:flex; 
-  flex-direction:column;
-}
+.header-buttons { display: flex; align-items: center; gap: 8px; }
 
-/* ===== 子標籤列（畫布 / 輸入 / 輸出 / debug） ===== */
+#codeBody { flex: 1; display: flex; flex-direction: column; position: relative; }
+#editor { width: 100%; height: 100%; border: none; } /* 移除邊框讓它無縫接軌 */
 
+/* =========================================
+   5. 右側：視覺化面板 (Viz Panel)
+   ========================================= */
+#vizPanel { flex: 1; display: flex; flex-direction: column; }
+
+/* 標籤列 */
 #subTabs {
   display: flex;
   align-items: flex-end;
   gap: 4px;
   padding: 0 12px;
   height: 40px;
-  background: #f3f4f6;
+  background: #f3f4f6; /* 這裡保持淺色，區隔左右兩邊 */
   border-bottom: 1px solid #d1d5db;
 }
 
-/* 每個 tab 外層只是用來排版 */
-.subTab {
-  display: flex;
-}
-
-/* 真正的 tab 按鈕 */
 .subTab .tab-btn {
   position: relative;
   margin-top: 6px;
-  padding: 6px 14px;
+  padding: 8px 16px;
   border: none;
   background: transparent;
-  color: #6b7280;
-  font-size: 0.9rem;
+  color: #666;
   font-weight: 600;
-  border-radius: 8px 8px 0 0;
+  font-size: 0.9rem;
+  border-radius: 6px 6px 0 0;
   cursor: pointer;
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.12s ease;
+  transition: all 0.2s;
 }
 
-/* 底下那條小色條（互動感） */
-.subTab .tab-btn::after {
-  content: "";
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: -2px;
-  height: 3px;
-  border-radius: 999px;
-  background: #3b82f6;
-  opacity: 0;
-  transform: scaleX(0.4);
-  transform-origin: center;
-  transition:
-    opacity 0.18s ease,
-    transform 0.18s ease;
+.subTab .tab-btn:hover { background: #e5e7eb; color: #111; }
+.subTab .tab-btn.active {
+  background: #ffffff;
+  color: var(--primary-blue);
+  border-top: 2px solid var(--primary-blue);
 }
 
-/* hover 效果：微微浮起來、顏色變深 */
-.subTab .tab-btn:hover {
-  background: #e5e7eb;
-  color: #111827;
+/* 內容區 */
+.subContent { flex: 1; display: none; flex-direction: column; overflow: auto; background: #fff; }
+.subContent.active { display: flex; }
+
+#arraySvg { flex: 1; background: #ffffff; cursor: grab; }
+#arraySvg:active { cursor: grabbing; }
+
+#outputArea, #inputArea {
+  flex: 1; width: 100%; height: 100%;
+  padding: 10px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  border: none;
+  background: #f9f9f9;
+  resize: none;
+}
+
+/* =========================================
+   6. 控制列與按鈕
+   ========================================= */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+}
+
+.controls button {
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #444;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 4px;
+  transition: all 0.2s;
+}
+
+.controls button:hover {
+  background: #f0f9ff;
+  border-color: var(--primary-blue);
+  color: var(--primary-blue);
   transform: translateY(-1px);
 }
 
-/* 被選取的 tab */
-.subTab .tab-btn.active {
-  background: #ffffff;
-  color: #111827;
-}
+/* --- 特殊按鈕 --- */
 
-/* 被選取的 tab：色條展開 */
-.subTab .tab-btn.active::after {
-  opacity: 1;
-  transform: scaleX(1);
-}
-
-/* ===== 子內容區 ===== */
-.subContent {
-  flex: 1;
-  display: none;
-  flex-direction: column;
-  overflow: auto;
-  background: #ffffff;
-}
-
-.subContent.active {
-  display: flex;
-}
-
-/* ====== 上方控制列（開始 / 暫停 / 上一步 / 下一步 / 速度） ====== */
-
-.controls {
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:8px 12px;
-  background:#f9fafb;
-  border-bottom:1px solid #e5e7eb;
-  box-shadow:0 1px 2px rgba(0,0,0,0.03);
-}
-
-/* 控制列裡的按鈕通用樣式 */
-.controls button {
-  padding:4px 10px;
-  border-radius:999px;
-  border:1px solid #d1d5db;
-  background:#ffffff;
-  font-size:0.85rem;
-  color:#374151;
-  cursor:pointer;
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  box-shadow:0 1px 1px rgba(0,0,0,0.04);
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
-    box-shadow 0.12s ease,
-    transform 0.1s ease;
-}
-
-/* hover / active 手感 */
-.controls button:hover {
-  background:#f3f4ff;
-  border-color:#6366f1;
-  box-shadow:0 2px 4px rgba(99,102,241,0.18);
-  transform:translateY(-1px);
-}
-.controls button:active {
-  transform:translateY(0);
-  box-shadow:0 1px 2px rgba(0,0,0,0.15) inset;
-}
-.controls button:focus-visible {
-  outline:2px solid #6366f1;
-  outline-offset:1px;
-}
-
-/* Start / Pause 做成比較顯眼 */
-#startBtn {
-  background:#22c55e;
-  border-color:#16a34a;
-  color:#ffffff;
-  font-weight:600;
-}
-#startBtn:hover {
-  background:#16a34a;
-  box-shadow:0 3px 6px rgba(22,163,74,0.35);
-}
-#startBtn::before {
-  font-size:0.9rem;
-}
-
-#pauseBtn {
-  background:#f97316;
-  border-color:#ea580c;
-  color:#ffffff;
-  font-weight:600;
-}
-#pauseBtn:hover {
-  background:#ea580c;
-  box-shadow:0 3px 6px rgba(234,88,12,0.35);
-}
-#pauseBtn::before {
-  font-size:0.9rem;
-}
-
-/* restart / prev / next 用 icon 補強方向感 */
-#restartBtn::before {
-  font-size:0.85rem;
-}
-#prevBtn::before {
-  font-size:0.85rem;
-}
-#nextBtn::after {
-  font-size:0.85rem;
-}
-
-/* 把速度調整區塊推到右邊 */
-.controls label {
-  margin-left:auto;
-  font-size:0.85rem;
-  color:#4b5563;
-}
-.controls input[type=range] {
-  width:150px;
-  accent-color:#6366f1;   /* 大多數瀏覽器會用這個顏色 */
-}
-.controls span#speedValue {
-  min-width:52px;
-  text-align:right;
-  font-size:0.8rem;
-  color:#4b5563;
-  font-variant-numeric:tabular-nums;
-}
-
-/* 畫布 */
-#arraySvg {
-  flex:1; 
-  background:#f9f9f9; 
-  cursor:grab;
-}
-#arraySvg:active { cursor:grabbing; }
-
-/* 執行結果 */
-#outputArea {
-  flex:1; 
-  padding:8px; 
-  background:#f5f5f5;
-  font-family:monospace; 
-  white-space:pre-wrap; 
-  overflow:auto;
-}
-
-#editor {
-  width: 100%;
-  height: 100%;
-  border: 1px solid #ccc;
-  font-size: 14pt;
-  position: absolute;
-  top: 0; 
-  right: 0; 
-  bottom: 0; 
-  left: 0;
-}
-
-#outputArea {
-  white-space: pre-wrap;
-  border: 1px solid #ccc;
-  padding: 8px;
-  height: 150px;
-  overflow: auto;
-}
-
-/* RUN 按鈕 */
+/* RUN 按鈕 (在深色背景上要顯眼) */
 #runBtn.btn-run {
-  background-color: #4CAF50;
+  background-color: var(--success-green);
   color: white;
   border: none;
-  padding: 4px 12px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
+  border-radius: 5px;
+  padding: 5px 14px;
+  font-weight: bold;
 }
-#runBtn.btn-run:hover {
-  background-color: #45a049;
+#runBtn.btn-run:hover { background-color: var(--hover-green); }
+
+/* 定義旋轉動畫 */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-/* 箭頭動畫（如果有用到） */
-@keyframes bounce {
-  0%   { transform: translateY(0); }
-  50%  { transform: translateY(-5px); }
-  100% { transform: translateY(0); }
-}
-.arrow-bounce {
-  animation: bounce 0.6s infinite;
-  transform-box: fill-box;
-  transform-origin: center;
+/* Loading 狀態下的按鈕本體 */
+#runBtn.loading {
+  background-color: #14532d !important; /* 改成深綠色 */
+  color: transparent !important;        /* 隱藏原本的 "▶ RUN" 文字 */
+  pointer-events: none;                 /* 禁止再次點擊 */
+  cursor: wait;                         /* 滑鼠變成等待漏斗 */
+  position: relative;                   /* 讓 spinner 絕對定位 */
+  transition: background-color 0.2s;
 }
 
+/* 用偽元素製作轉圈圈 Spinner */
+#runBtn.loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  
+  /* 1. 尺寸變小 (原本 18px -> 改 14px) */
+  width: 14px;
+  height: 14px;
+  
+  /* 修正置中位置 (尺寸的一半) */
+  margin-top: -9px;
+  margin-left: -9px;
+  
+  /* 2. 線條變寬 (原本 2px -> 改 3px) */
+  border: 3px solid rgba(255, 255, 255, 0.3); /* 半透明底圈 */
+  border-top-color: #ffffff;                  /* 純白頂端 */
+  
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* 摺疊按鈕 */
 .btn-fold-draw {
-  background: #64748b;           /* 初始灰藍色 */
-  color: #fff;
-  border: none;
-  border-radius: 4px;
+  background: transparent;
+  border: 1px solid #666; 
+  color: #aaa;
   padding: 4px 10px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
+  border-radius: 4px;
+  font-size: 12px;
+  
+  /* [新增] 過渡效果：讓背景、顏色、邊框變化有 0.3秒 的緩衝 */
+  transition: all 0.3s ease;
 }
 
-.btn-fold-draw:hover {
-  background: #475569;
+.btn-fold-draw:hover { 
+  border-color: var(--text-bright); 
+  color: var(--text-bright); 
 }
 
+/* 摺疊按鈕：active狀態的顏色 */
 .btn-fold-draw.active {
-  background: #16a34a;           /* 展開狀態：綠色 */
+  background-color: var(--success-green) !important;
+  color: white !important;
+  border-color: var(--success-green) !important;
+  box-shadow: 0 0 5px rgba(22, 163, 74, 0.5);
 }
 
-.header-buttons {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* === TTS 朗讀按鈕：預設維持原有白色樣式，不改顏色 === */
-.btn-tts {
-  /* 不覆蓋背景 & 邊框，讓它沿用你既有的 .controls button 預設白色 */
-  /* 只加一點過渡手感（不影響原有 hover 規則） */
-  transition: background-color 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
-}
-
-/* 播放中：底色改藍、文字白 */
-.btn-tts.active {
-  background: #2563eb !important;
-  border-color: #1d4ed8 !important;
-  color: #ffffff !important;
-}
-
-/* 播放中 + 滑過：維持藍系 hover（顏色更深），其餘 hover 動畫照舊（陰影/位移沿用原本規則） */
-.btn-tts.active:hover {
-  background: #1d4ed8 !important;
-  border-color: #1e40af !important;
-  /* 不覆蓋 box-shadow、transform，讓你既有的 .controls button:hover 效果繼續生效 */
-}
-
-/* ▶/⏸ 整合鍵：沿用你 .controls button 的基礎樣式，只做微調 */
-.btn-playtoggle {
-  min-width: 40px;
-  height: 32px;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 10px;
-  transition: background-color .18s ease, border-color .18s ease, transform .1s ease, box-shadow .12s ease;
-}
-
-/* 播放中：用藍系，和你 TTS 按鈕一致的視覺語言 */
-.btn-playtoggle.playing {
-  background: #2563eb !important;
-  border-color: #1d4ed8 !important;
-  color: #ffffff !important;
-}
-
-/* 播放中 hover：顏色加深，其他 hover 動畫（陰影、位移）沿用全域規則 */
-.btn-playtoggle.playing:hover {
-  background: #1d4ed8 !important;
-  border-color: #1e40af !important;
-}
-
-/* ★ 新增：自動步進模式（和播放鍵同樣視覺） */
-button.auto-stepping {
-  background: #2563eb !important;
-  border-color: #1d4ed8 !important;
-  color: #ffffff !important;
-}
-
-button.auto-stepping:hover {
-  background: #1d4ed8 !important;
-  border-color: #1e40af !important;
-}
-
-/* 幀條碼整體容器 */
-#frameTimeline {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-/* 只放條碼的區塊 */
-#frameBars {
-  display: flex;
-  align-items: flex-end;
-  height: 60px;          /* 整體高度 */
-  padding: 4px 6px;
-  border: 1px solid #000;
-  box-sizing: border-box;
-}
-
-/* 一個一個「幀條」 */
-#frameBars .frame-bar {
-  width: 4px;
-  margin: 0 1px;
-  background: #777;      /* 一般幀顏色 */
+/* 登入按鈕 */
+.btn-login {
+  background-color: var(--success-green);
+  color: white;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 4px;
+  font-weight: 600;
   cursor: pointer;
-  height: 24px;          /* 一般幀高度 */
-  transition: transform 0.1s, background 0.1s, height 0.1s;
+}
+.btn-login:hover { background-color: var(--hover-green); }
+
+/* 播放控制 */
+#playToggleBtn.playing { 
+  background-color: var(--active-blue); 
+  border-color: var(--active-blue); 
+  color: white; 
 }
 
-/* 關鍵幀：比較高 + 不同顏色 */
-#frameBars .frame-bar.keyframe {
-  height: 40px;
-  background: #e60012;   /* 紅色，類似你圖上的感覺 */
+/* 速度拉桿 */
+.controls label { margin-left: auto; font-size: 12px; color: #666; }
+.controls button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15) inset;
+}
+#speedSlider { width: 120px; margin: 0 8px; }
+
+/* 1. TTS 按鈕基礎樣式 */
+.btn-tts {
+  /* 繼承 .controls button 的樣式，但額外加上過渡效果 */
+  transition: all 0.2s ease !important;
 }
 
-/* 目前所在幀：外框 + 稍微放大 */
-#frameBars .frame-bar.active {
-  outline: 2px solid #000;
-  transform: translateY(-2px);
+/* 2. TTS 按鈕啟動狀態 (Active) - 藍色 */
+.btn-tts.active {
+  background-color: var(--active-blue) !important; /* 變成亮藍色 */
+  border-color: var(--active-blue) !important;
+  color: white !important;
+  
+  /* 加一點藍色光暈，讓它看起來像是在發聲 */
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.6) !important; 
+  transform: translateY(-1px); /* 微微浮起 */
 }
 
-/* 右邊顯示「第幾幀 / 總幀數」 */
-#frameInfo {
-  font-size: 14px;
-  white-space: nowrap;
+/* 3. TTS 按鈕啟動時的 Hover 狀態 */
+.btn-tts.active:hover {
+  background-color: #1d4ed8 !important; /* 深一點的藍 */
+  border-color: #1e40af !important;
 }
 
-/* 在你的 style.css 或 <style> 中加入 */
-.code-highlight-line {
-  position: absolute;
-  background-color: rgba(255, 255, 0, 0.25); /* 半透明黃色 */
-  z-index: 20;
+/* =========================================
+   7. 模態視窗與動畫
+   ========================================= */
+.modal {
+  display: none; position: fixed; z-index: 9999;
+  left: 0; top: 0; width: 100%; height: 100%;
+  background-color: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
 }
 
-/* ===== ACE Editor 螢光行高亮 ===== */
+.modal-content {
+  background-color: #fff;
+  margin: 10% auto; padding: 30px;
+  border-radius: 8px; width: 100%; max-width: 380px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  animation: slideIn 0.3s ease-out;
+  position: relative;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.close-modal {
+  position: absolute; right: 20px; top: 15px;
+  font-size: 24px; color: #999; cursor: pointer;
+}
+.close-modal:hover { color: #333; }
+
+#modalTitle { text-align: center; margin-bottom: 20px; color: #333; }
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; margin-bottom: 5px; color: #555; font-weight: 600; }
+.form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+.btn-submit {
+  width: 100%; padding: 10px;
+  background-color: var(--primary-blue); color: white;
+  border: none; border-radius: 4px;
+  font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 10px;
+}
+.btn-submit:hover { background-color: var(--hover-blue); }
+.modal-footer { margin-top: 20px; text-align: center; font-size: 0.9rem; color: #666; }
+.modal-footer a { color: var(--primary-blue); text-decoration: none; font-weight: 700; }
+
+/* ACE Editor 高亮 */
+.code-highlight-line { position: absolute; background-color: rgba(255, 255, 0, 0.2); z-index: 20; }
 .ace_marker-layer .code-highlight-line {
-  background-color: rgba(255, 255, 0, 0.35); /* 黃色螢光 */
-  position: absolute;
-  z-index: 5;
+  background-color: rgba(255, 255, 0, 0.35);
+  position: absolute; z-index: 5;
   animation: highlightBlink 0.6s ease-out;
 }
-
-/* 輕微閃爍動畫 */
 @keyframes highlightBlink {
-  0%   { background-color: rgba(255,255,0,1); }
-  40%  { background-color: rgba(255,255,0,0.6); }
+  0% { background-color: rgba(255,255,0,1); }
   100% { background-color: rgba(255,255,0,0.35); }
 }
 
-/* [新增] 登入按鈕樣式 (綠色) */
-.btn-login {
-  background-color: #22c55e; /* 綠色 */
-  color: white;
-  border: none;
-  padding: 6px 16px;
-  font-size: 0.9rem;
-  font-weight: bold;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+/* =========================================
+   8. [新增] 程式碼面板摺疊功能樣式
+   ========================================= */
+
+/* 1. 修改 C++ 標題顏色為全白 */
+#codePanel header .header-title {
+  color: #ffffff !important; /* 強制改為白色 */
 }
 
-.btn-login:hover {
-  background-color: #16a34a; /* 深綠色 */
-}
-
-/* [新增] 模態視窗 (Modal) 底層 */
-.modal {
-  display: none; /* 預設隱藏 */
-  position: fixed; 
-  z-index: 9999; /* 最上層 */
-  left: 0;
-  top: 0;
-  width: 100%; 
-  height: 100%; 
-  overflow: auto; 
-  background-color: rgba(0,0,0,0.5); /* 半透明黑底 */
-  backdrop-filter: blur(2px); /* 輕微模糊背景 */
-}
-
-/* 模態視窗內容框 */
-.modal-content {
-  background-color: #fff;
-  margin: 10% auto; /* 距頂部 10%, 水平置中 */
-  padding: 25px;
-  border: 1px solid #888;
-  width: 100%;
-  max-width: 400px; /* 最大寬度 */
-  border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+/* 2. 面板過渡動畫 */
+#codePanel {
+  transition: width 0.3s ease, min-width 0.3s ease;
+  overflow: hidden; /* 防止內容溢出 */
   position: relative;
-  font-family: 'Segoe UI', sans-serif;
-  animation: modalFadeIn 0.3s;
 }
 
-@keyframes modalFadeIn {
-  from {opacity: 0; transform: translateY(-20px);}
-  to {opacity: 1; transform: translateY(0);}
+/* 3. 摺疊狀態 (.collapsed) */
+#codePanel.collapsed {
+  width: 40px !important;    /* 縮到只剩按鈕寬度 */
+  min-width: 40px !important; /* 覆蓋原本的 min-width */
 }
 
-/* 關閉按鈕 (X) */
-.close-modal {
-  color: #aaa;
-  float: right;
-  font-size: 28px;
-  font-weight: bold;
-  cursor: pointer;
-  line-height: 20px;
+/* 摺疊時：隱藏 Header 裡大部分元素，只留切換按鈕 */
+#codePanel.collapsed header .header-title,
+#codePanel.collapsed header .header-buttons button:not(#panelToggleBtn) {
+  display: none !important;
 }
 
-.close-modal:hover,
-.close-modal:focus {
-  color: black;
-  text-decoration: none;
+/* 摺疊時：隱藏編輯器本體 */
+#codePanel.collapsed #codeBody {
+  display: none !important;
 }
 
-/* 標題與表單樣式 */
-#modalTitle {
-  margin-bottom: 20px;
-  color: #333;
-  text-align: center;
+/* 摺疊時：調整 Header 排版，讓箭頭置中 */
+#codePanel.collapsed header {
+  padding: 10px 0;
+  justify-content: center;
+  height: 100%; /* 讓它填滿高度，雖然 header 高度是固定的 */
 }
 
-.auth-form .form-group {
-  margin-bottom: 15px;
-}
-
-.auth-form label {
-  display: block;
-  margin-bottom: 5px;
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.auth-form input {
+#codePanel.collapsed header .header-buttons {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
+  justify-content: center;
 }
 
-.btn-submit {
-  width: 100%;
-  padding: 10px;
-  background-color: #007acc; /* VS Code 藍 */
-  color: white;
+/* 4. 切換按鈕樣式 (向左縮的箭頭) */
+#panelToggleBtn {
+  background: transparent;
   border: none;
-  border-radius: 4px;
-  font-size: 1rem;
+  color: #aaa;
+  font-size: 14px;
   cursor: pointer;
-  margin-top: 10px;
+  padding: 4px 8px;
+  transition: color 0.2s, transform 0.2s;
+  border-radius: 4px;
 }
 
-.btn-submit:hover {
-  background-color: #005f9e;
+#panelToggleBtn:hover {
+  color: #fff;
+  background-color: rgba(255,255,255,0.1);
 }
 
-/* 底部切換連結 */
-.modal-footer {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 0.9rem;
-  color: #666;
-}
-
-.modal-footer a {
-  color: #007acc;
-  text-decoration: none;
-  font-weight: bold;
-}
-
-.modal-footer a:hover {
-  text-decoration: underline;
+/* 摺疊時按鈕稍微放大一點，方便點擊 */
+#codePanel.collapsed #panelToggleBtn {
+  transform: scale(1.2);
+  color: var(--primary-blue);
 }

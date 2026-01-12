@@ -106,13 +106,13 @@ function toggleDrawBlocks() {
   if (isFold) {
     // 展開
     unfoldDrawBlocks();
-    btn.textContent = "摺疊draw";
+    btn.textContent = "摺疊 draw";
     btn.classList.remove("active");
     isFold = false;
   } else {
     // 摺疊
     foldDrawBlocks();
-    btn.textContent = "展開draw";
+    btn.textContent = "展開 draw";
     btn.classList.add("active");
     isFold = true;
   }
@@ -564,10 +564,6 @@ function stepWithTween(rawStepFn, duration = 300) {
   requestAnimationFrame(animate);
 }
   
-// 左側關閉按鈕
-document.getElementById('codeClose').onclick = () =>
-  document.getElementById('codePanel').style.display = 'none';
-
 // 子標籤切換
 function activateTab(btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -916,50 +912,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // === 計時器控制 ===
-  function clearTimer() {
-    if (timer) { clearInterval(timer); timer = null; }
-  }
-
-  let fast = false;
-  function startTimer() {
-    clearTimer();
-    timer = setInterval(() => {
-      if (!fast) CodeScript.next();
-      else       CodeScript.next_key_frame();
-      syncCurrentFrameFromCodeScript();
-
-      // 播完這一幀之後，看看是不是 stop 幀
-      const idx = csGetCurrentFrameIndex();
-
-      // 有 stop_frame → 自動停止播放 + 停用 auto-stepping
-      if (CodeScript.is_stop_frame && CodeScript.is_stop_frame(idx)) {
-        fast = false;
-        pause();
-        stopStepAuto(); 
-      }
-
-      // 有 faston_frame → fast=true 加快播放
-      if (CodeScript.is_faston_frame && CodeScript.is_faston_frame(idx)) {
-        fast = true;
-      }
-
-      // 有 skip_frame → 自動停止播放 + 停用 auto-stepping
-      if (CodeScript.is_skip_frame && CodeScript.is_skip_frame(idx)) {
-        gotoNextStopOrEnd();
-        pause();
-        stopStepAuto();
-      }
-
-      // 播到最後一幀（next() 已無幀可走）
-      if (idx === totalFrames - 1) {
-        fast = false;
-        pause();
-        stopStepAuto(); 
-      }
-    }, speed);
-  }
-
   // === 播放/暫停 公用函式 ===
   function play() {
     if (isPlaying) return;
@@ -977,7 +929,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function pause() {
     if (!isPlaying) return;
     isPlaying = false;
-    //clearTimer();
     // 讓所有舊的 callback（onend / setTimeout）全部失效
     TTS_RUN_ID++;
 
@@ -1495,6 +1446,41 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 若要測試成功後自動關閉視窗，可解開下面這行：
             // loginModal.style.display = "none";
+        };
+    }
+});
+
+// ==========================================
+// 程式碼面板摺疊/展開控制
+// ==========================================
+document.addEventListener('DOMContentLoaded', function() {
+    const panelBtn = document.getElementById('panelToggleBtn');
+    const codePanel = document.getElementById('codePanel');
+    
+    // 防呆：確認元素存在才執行
+    if (panelBtn && codePanel) {
+        panelBtn.onclick = function() {
+            // 1. 切換 class
+            codePanel.classList.toggle('collapsed');
+            
+            // 2. 判斷狀態更換圖示與提示
+            if (codePanel.classList.contains('collapsed')) {
+                // 摺疊狀態：顯示向右箭頭 (準備展開)
+                panelBtn.innerText = '▶';
+                panelBtn.title = "展開程式碼面板";
+            } else {
+                // 展開狀態：顯示向左箭頭 (準備摺疊)
+                panelBtn.innerText = '◀';
+                panelBtn.title = "摺疊程式碼面板";
+            }
+
+            // 3. [重要] 通知 Ace Editor 重新計算大小
+            // 因為寬度變了，如果不 resize，編輯器文字可能會被切掉或游標錯位
+            if (window.aceEditor) {
+                setTimeout(() => {
+                    window.aceEditor.resize();
+                }, 310); // 配合 CSS transition 0.3s，稍等一下再 resize
+            }
         };
     }
 });

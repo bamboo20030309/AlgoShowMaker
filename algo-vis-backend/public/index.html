@@ -40,11 +40,13 @@
     <!-- 左側：C++ 程式碼面板 -->
     <div id="codePanel">
       <header>
-        <span class="title">C++</span>
+        <span class="header-title">C++</span>
+        
         <div class="header-buttons">
-          <button id="toggleDrawBlocksBtn" class="btn-fold-draw" onclick="toggleDrawBlocks()" title="將繪畫指令收起/展開">摺疊draw</button>
-          <button id="runBtn" class="btn-run" title="編譯執行">RUN</button>
-          <button id="codeClose">✕</button>
+          <button id="toggleDrawBlocksBtn" class="btn-fold-draw" onclick="toggleDrawBlocks()" title="將繪畫指令收起/展開">摺疊 draw</button>
+          <button id="runBtn" class="btn-run" title="編譯執行">▶ RUN</button>
+          
+          <button id="panelToggleBtn" title="摺疊程式碼面板">◀</button>
         </div>
       </header>
       <div id="codeBody">
