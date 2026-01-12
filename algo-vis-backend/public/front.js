@@ -1414,3 +1414,87 @@ async function loadSampleCode(filename) {
     alert(`載入範例失敗: ${e.message}`);
   }
 }
+
+// ==========================================
+// 登入/註冊 模態視窗控制邏輯
+// ==========================================
+
+// 確保 DOM 載入完成後再執行，避免找不到元素
+document.addEventListener('DOMContentLoaded', function() {
+    const loginModal = document.getElementById("loginModal");
+    const loginBtn = document.getElementById("loginTriggerBtn");
+    const closeSpan = document.querySelector(".close-modal"); // 取得 class 為 close-modal 的元素
+    const toggleBtn = document.getElementById("toggleAuthModeBtn");
+    const modalTitle = document.getElementById("modalTitle");
+    const actionBtn = document.getElementById("authActionBtn");
+    const toggleText = document.getElementById("toggleAuthModeText");
+    const authForm = document.querySelector(".auth-form");
+
+    // 預設為登入模式
+    let isLoginMode = true;
+
+    // 1. 綁定按鈕點擊事件：打開登入視窗
+    if (loginBtn) {
+        loginBtn.onclick = function() {
+            loginModal.style.display = "block";
+        };
+    }
+
+    // 2. 綁定 X 按鈕事件：關閉視窗
+    if (closeSpan) {
+        closeSpan.onclick = function() {
+            loginModal.style.display = "none";
+        };
+    }
+
+    // 3. 綁定視窗外部點擊事件：點擊黑底區域也可以關閉
+    window.onclick = function(event) {
+        if (event.target == loginModal) {
+            loginModal.style.display = "none";
+        }
+    };
+
+    // 4. 切換 登入 / 註冊 模式
+    if (toggleBtn) {
+        toggleBtn.onclick = function(e) {
+            e.preventDefault(); // 防止連結原本的跳轉行為
+            isLoginMode = !isLoginMode;
+            
+            if(isLoginMode) {
+                // 切換回登入模式 UI
+                modalTitle.innerText = "會員登入";
+                actionBtn.innerText = "登入";
+                toggleText.innerText = "還沒有帳號？";
+                toggleBtn.innerText = "建立帳號";
+            } else {
+                // 切換為註冊模式 UI
+                modalTitle.innerText = "建立新帳號";
+                actionBtn.innerText = "註冊";
+                toggleText.innerText = "已經有帳號？";
+                toggleBtn.innerText = "直接登入";
+            }
+        };
+    }
+
+    // 5. 處理表單送出 (目前僅做前端演示，防止頁面刷新)
+    if (authForm) {
+        authForm.onsubmit = function(e) {
+            e.preventDefault(); // 阻止表單預設提交(會重整頁面)
+            
+            const usernameInput = document.getElementById("usernameInput");
+            const passwordInput = document.getElementById("passwordInput");
+            const username = usernameInput ? usernameInput.value : "";
+            
+            if (isLoginMode) {
+                console.log("執行登入動作:", username);
+                alert(`[前端演示] 正在嘗試登入帳號：${username}\n(後端 API 尚未串接)`);
+            } else {
+                console.log("執行註冊動作:", username);
+                alert(`[前端演示] 正在嘗試註冊帳號：${username}\n(後端 API 尚未串接)`);
+            }
+            
+            // 若要測試成功後自動關閉視窗，可解開下面這行：
+            // loginModal.style.display = "none";
+        };
+    }
+});

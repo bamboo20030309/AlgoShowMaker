@@ -584,3 +584,131 @@ button.auto-stepping:hover {
   40%  { background-color: rgba(255,255,0,0.6); }
   100% { background-color: rgba(255,255,0,0.35); }
 }
+
+/* [新增] 登入按鈕樣式 (綠色) */
+.btn-login {
+  background-color: #22c55e; /* 綠色 */
+  color: white;
+  border: none;
+  padding: 6px 16px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.btn-login:hover {
+  background-color: #16a34a; /* 深綠色 */
+}
+
+/* [新增] 模態視窗 (Modal) 底層 */
+.modal {
+  display: none; /* 預設隱藏 */
+  position: fixed; 
+  z-index: 9999; /* 最上層 */
+  left: 0;
+  top: 0;
+  width: 100%; 
+  height: 100%; 
+  overflow: auto; 
+  background-color: rgba(0,0,0,0.5); /* 半透明黑底 */
+  backdrop-filter: blur(2px); /* 輕微模糊背景 */
+}
+
+/* 模態視窗內容框 */
+.modal-content {
+  background-color: #fff;
+  margin: 10% auto; /* 距頂部 10%, 水平置中 */
+  padding: 25px;
+  border: 1px solid #888;
+  width: 100%;
+  max-width: 400px; /* 最大寬度 */
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  position: relative;
+  font-family: 'Segoe UI', sans-serif;
+  animation: modalFadeIn 0.3s;
+}
+
+@keyframes modalFadeIn {
+  from {opacity: 0; transform: translateY(-20px);}
+  to {opacity: 1; transform: translateY(0);}
+}
+
+/* 關閉按鈕 (X) */
+.close-modal {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+  line-height: 20px;
+}
+
+.close-modal:hover,
+.close-modal:focus {
+  color: black;
+  text-decoration: none;
+}
+
+/* 標題與表單樣式 */
+#modalTitle {
+  margin-bottom: 20px;
+  color: #333;
+  text-align: center;
+}
+
+.auth-form .form-group {
+  margin-bottom: 15px;
+}
+
+.auth-form label {
+  display: block;
+  margin-bottom: 5px;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 10px;
+  background-color: #007acc; /* VS Code 藍 */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.btn-submit:hover {
+  background-color: #005f9e;
+}
+
+/* 底部切換連結 */
+.modal-footer {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.modal-footer a {
+  color: #007acc;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.modal-footer a:hover {
+  text-decoration: underline;
+}
