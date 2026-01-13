@@ -1521,3 +1521,130 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 });
+
+// ==========================================
+//  字體縮放功能 (Ace Editor + IO 同步)
+// ==========================================
+document.addEventListener('DOMContentLoaded', function() {
+
+    // --- 1. 輸入/輸出/Debug 區塊 (同步縮放) ---
+    const ioIds = ['inputArea', 'outputArea', 'debugArea'];
+    // 找出頁面上實際存在的元素
+    const ioElements = ioIds.map(id => document.getElementById(id)).filter(el => el);
+
+    // 取得當前基礎字體大小 (以第一個存在的元素為準，預設 14px)
+    let currentIoSize = 14;
+    if (ioElements.length > 0) {
+        const style = window.getComputedStyle(ioElements[0]);
+        currentIoSize = parseFloat(style.fontSize) || 14;
+    }
+
+    // [關鍵] 統一調整所有區塊的函式
+    const setSharedIoFontSize = (delta) => {
+        currentIoSize += delta;
+        
+        // 限制範圍 (8px ~ 64px)
+        if (currentIoSize < 8) currentIoSize = 8;
+        if (currentIoSize > 64) currentIoSize = 64;
+
+        // 同時套用到 "所有" IO 區塊
+        ioElements.forEach(el => {
+            el.style.fontSize = currentIoSize + 'px';
+        });
+    };
+
+    // 為每個元素綁定事件
+    ioElements.forEach(el => {
+        // (A) 滾輪 (Ctrl + 滾輪)
+        el.addEventListener('wheel', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                // 往上滾(deltaY < 0)放大，往下滾(deltaY > 0)縮小
+                const delta = (e.deltaY < 0) ? 2 : -2;
+                setSharedIoFontSize(delta);
+            }
+        }, { passive: false });
+
+        // (B) 鍵盤 (Ctrl + +/-)
+        el.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                // 支援 = (加號鍵), +, NumPadAdd
+                if (e.key === '=' || e.key === '+' || e.key === 'Add') {
+                    e.preventDefault();
+                    setSharedIoFontSize(2);
+                } 
+                // 支援 - (減號鍵), NumPadSubtract
+                else if (e.key === '-' || e.key === 'Subtract') {
+                    e.preventDefault();
+                    setSharedIoFontSize(-2);
+                } 
+                // 支援 0 (重置)
+                else if (e.key === '0') {
+                    e.preventDefault();
+                    currentIoSize = 14;
+                    ioElements.forEach(item => item.style.fontSize = '');
+                }
+            }
+        });
+    });
+
+
+    // --- 2. Ace Editor 程式碼區塊 (修正後) ---
+    // [重要修正] 直接使用 front.js 裡的 aceEditor 變數，不要加 window.
+    if (typeof aceEditor !== 'undefined') {
+        
+        const changeAceFontSize = (delta) => {
+            // 取得目前的字體大小 (支援 px 或 pt)
+            const currentSize = parseInt(aceEditor.getFontSize()) || 14;
+            let newSize = currentSize + delta;
+            
+            if (newSize < 8) newSize = 8;
+            if (newSize > 64) newSize = 64;
+            
+            aceEditor.setFontSize(newSize);
+        };
+
+        // (A) 綁定 Ace 內建鍵盤指令
+        aceEditor.commands.addCommands([
+            {
+                name: "zoomIn",
+                bindKey: {win: "Ctrl-=", mac: "Command-="},
+                exec: () => changeAceFontSize(2)
+            },
+            {
+                name: "zoomInNumPad",
+                bindKey: {win: "Ctrl-Add", mac: "Command-Add"},
+                exec: () => changeAceFontSize(2)
+            },
+            {
+                name: "zoomOut",
+                bindKey: {win: "Ctrl--", mac: "Command--"},
+                exec: () => changeAceFontSize(-2)
+            },
+            {
+                name: "zoomOutNumPad",
+                bindKey: {win: "Ctrl-Subtract", mac: "Command-Subtract"},
+                exec: () => changeAceFontSize(-2)
+            },
+            {
+                name: "zoomReset",
+                bindKey: {win: "Ctrl-0", mac: "Command-0"},
+                exec: () => aceEditor.setFontSize(14)
+            }
+        ]);
+
+        // (B) 綁定滾輪 (Ctrl + Scroll)
+        // 使用 aceEditor.container 確保抓到正確的 DOM 元素
+        if (aceEditor.container) {
+            aceEditor.container.addEventListener('wheel', function(e) {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const delta = (e.deltaY < 0) ? 2 : -2;
+                    changeAceFontSize(delta);
+                }
+            }, { passive: false });
+        }
+    }
+});
