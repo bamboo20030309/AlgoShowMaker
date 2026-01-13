@@ -60,9 +60,10 @@ int sum(int i){
 }
 
 int main() {
-    n=16;
+    n; cin>>n;
     BIT.resize(n+1);
     num.resize(n+1);
+    for(int i=1;i<=n;i++)cin>>num[i];
 
     //draw{
     av.start_draw();
@@ -73,7 +74,7 @@ int main() {
     av.end_frame_draw();
     //}
 
-    for(int i=1;i<=n;i++) num[i]=i, build(i,num[i]);
+    for(int i=1;i<=n;i++) build(i,num[i]);
 
     //draw{
     av.start_frame_draw();

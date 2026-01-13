@@ -25,8 +25,7 @@ void build(){
     tree.assign(1<<Tdeep,0); //如果要改成min的話 0要改成LM
     lazy.assign(1<<Tdeep,0); //如果要改成min的話 0要改成LM
     sets.assign(1<<Tdeep,LM); //如果要改成min的話 0要改成LM
-//    for(int i=Tsize-n;i<Tsize;i++)cin>>tree[i];
-    for(int i=Tsize-n;i<Tsize;i++)tree[i]=Tsize-i;
+    for(int i=Tsize-n;i<Tsize;i++)cin>>tree[i];
     for(int i=Tsize-n-1;i>0;i--)tree[i]= rule(tree[i<<1],tree[i<<1|1]); //改變建樹規則要注意這
 }
 //query就放前4個值 Add就放前五個值 set就前六個Add放0  前四個放Tmask, (Tmask<<1)-1, (x|Tmask), (y|Tmask) 0(base)
@@ -43,7 +42,7 @@ int query(int l,int r,int L,int R,int now=1){ //如果要改成min的話 Add要�
         }
         av.start_frame_draw();
         av.text("找到符合大小的區段就回傳 "+to_string(tree[now]),0,-60);   
-        av.frame_draw("tree" , 0,   0,   tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2], {}, {{{now,0},""},{{now,2},""},{{now,4},""}});
+        av.frame_draw("tree" , 0,   0,   tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.key_frame_draw("tree" , 0,   0,   tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
@@ -91,8 +90,7 @@ int query(int l,int r,int L,int R,int now=1){ //如果要改成min的話 Add要�
     return sum;
 }
 int main(){
-//    int m,q,x,y,k; cin>>n>>m;
-    n=15;
+    int m,q,x,y,k; cin>>n>>m;
     build();
 
     //draw{
@@ -110,13 +108,8 @@ int main(){
     av.end_frame_draw();
     //}
     
-    vector<int> X={13,1,2,1,8,2,8}, Y={14,2,15,15,8,3,9};
-    for(int i=0;i<X.size();i++){
-        int x=X[i], y=Y[i];
-        /*
-        cin>>q>>x>>y;
-        if(q!=3)cin>>k;
-        */
+    for(int i=0;i<m;i++){
+        cin>>x>>y;
         //draw{
         _draw_segment[0].clear();
         _draw_segment[1].clear();

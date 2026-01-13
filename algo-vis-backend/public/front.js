@@ -1747,82 +1747,146 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     /**
-     * [新增] 遞迴建立選單 DOM 的函式
+     * 遞迴建立選單 DOM 的函式
      * @param {Array} items - 包含檔案或資料夾物件的陣列
      * @returns {HTMLElement} - 包含所有項目的 DocumentFragment 或容器
      */
-    // [修正] 遞迴建立選單 DOM
+    // 遞迴建立選單 DOM
     function createRecursiveMenu(items) {
         const fragment = document.createDocumentFragment();
 
-        // 1. 尋找當前層級是否有主要代碼檔
-        const codeFile = items.find(item => 
-            item.type === 'file' && /\.(cpp|c|js|py)$/i.test(item.name)
-        );
-        const parentCodePath = codeFile ? codeFile.path : null;
+        // 1. 資料分類
+        const folders = items.filter(i => i.type === 'folder');
+        const codeFiles = items.filter(i => i.type === 'file' && /\.(cpp|c|js|py)$/i.test(i.name));
+        const inputFiles = items.filter(i => i.type === 'file' && /\.txt$/i.test(i.name));
+        const otherFiles = items.filter(i => i.type === 'file' && !/\.(cpp|c|js|py|txt)$/i.test(i.name));
 
-        items.forEach(item => {
-            // === 情況 A: 資料夾 (Folder) ===
-            if (item.type === 'folder') {
-                // 1. 資料夾標題列
-                const folderDiv = document.createElement('div');
-                folderDiv.className = 'algo-item algo-folder';
+        // === 2. 渲染資料夾 ===
+        folders.forEach(item => {
+            const folderDiv = document.createElement('div');
+            folderDiv.className = 'algo-item algo-folder';
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = item.name;
+            folderDiv.appendChild(textSpan);
+
+            const subMenuDiv = document.createElement('div');
+            subMenuDiv.className = 'algo-submenu';
+            
+            if (item.children && item.children.length > 0) {
+                subMenuDiv.appendChild(createRecursiveMenu(item.children));
+            }
+
+            folderDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                folderDiv.classList.toggle('expanded');
+            });
+
+            fragment.appendChild(folderDiv);
+            fragment.appendChild(subMenuDiv);
+        });
+
+        // === 3. 渲染程式碼檔案 (並附掛測資) ===
+        codeFiles.forEach(item => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'code-wrapper';
+
+            // A. 程式檔本體
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'algo-item algo-file code-file';
+            fileDiv.textContent = item.name;
+            fileDiv.title = item.path;
+
+            fileDiv.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                await loadSampleData(item.path, null);
+            });
+
+            wrapper.appendChild(fileDiv);
+
+            // B. 篩選屬於這個程式的測資 (Strict Matching)
+            const baseName = item.name.replace(/\.(cpp|c|js|py)$/i, '');
+            
+            const relatedInputs = inputFiles.filter(inputFile => {
+                const inputName = inputFile.name;
                 
-                // 檔名
-                const textSpan = document.createElement('span');
-                textSpan.textContent = item.name;
-                folderDiv.appendChild(textSpan);
-
-                // 2. 子選單容器 (預設隱藏，不放在 folderDiv 裡面，而是放在它下面)
-                const subMenuDiv = document.createElement('div');
-                subMenuDiv.className = 'algo-submenu';
+                // 條件 1: 檔名必須以 baseName 開頭
+                if (!inputName.startsWith(baseName)) return false;
                 
-                if (item.children && item.children.length > 0) {
-                    const childNodes = createRecursiveMenu(item.children);
-                    subMenuDiv.appendChild(childNodes);
-                }
+                // 條件 2: [關鍵] 檢查前綴後的下一個字元
+                // 避免 S.cpp 抓到 Sort.txt
+                // 有效的分隔符號：底線(_)、橫線(-)、點(.)
+                const charAfter = inputName[baseName.length];
+                
+                // 如果長度剛好相等 (如 DFS.cpp 對應 DFS.txt)，charAfter 會是 '.' (txt 的點)，這是合法的
+                // 否則必須是我們認可的分隔符號
+                const validSeparators = ['.', '_', '-'];
+                
+                return validSeparators.includes(charAfter);
+            });
 
-                // 3. 綁定點擊事件：切換展開/收合
-                folderDiv.addEventListener('click', (e) => {
-                    e.stopPropagation(); // 阻止冒泡
-                    // 切換 expanded class，CSS 會負責顯示/隱藏 sibling (.algo-submenu)
-                    folderDiv.classList.toggle('expanded');
-                });
+            // C. 渲染測資列表
+            if (relatedInputs.length > 0) {
+                fileDiv.classList.add('has-inputs');
 
-                fragment.appendChild(folderDiv);
-                fragment.appendChild(subMenuDiv);
-            } 
-            // === 情況 B: 檔案 (File) ===
-            else {
-                const fileDiv = document.createElement('div');
-                fileDiv.className = 'algo-item algo-file';
-                fileDiv.textContent = item.name; 
-                fileDiv.title = item.path;
-
-                fileDiv.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-
-                    // 邏輯同前：連動載入
-                    if (/\.txt$/i.test(item.name) && parentCodePath) {
-                        await loadSampleData(parentCodePath, item.path);
-                    } else {
-                        // 如果是點擊 .cpp 或其他，就載入它自己
-                        await loadSampleData(item.path, null);
+                const inputContainer = document.createElement('div');
+                inputContainer.className = 'input-list-container';
+                
+                relatedInputs.forEach(inputFile => {
+                    let displayName = inputFile.name;
+                    
+                    // 去掉前綴顯示
+                    if (displayName.startsWith(baseName)) {
+                        displayName = displayName.substring(baseName.length);
                     }
                     
-                    // 點擊檔案後，關閉整個側邊面板 (或選擇不關閉，看你習慣)
-                    // sidePanel.classList.remove('open'); 
+                    // 去掉殘留的分隔符號
+                    displayName = displayName.replace(/^[_.-]+/, '');
+                    
+                    // 如果變空了 (例如原本是 DFS.txt)，保留原名或顯示 "Default"
+                    if (!displayName.trim()) {
+                         // 嘗試只拿掉副檔名顯示
+                         displayName = inputFile.name.replace(baseName, '').replace('.txt', '') || 'Default';
+                    }
+                    if (displayName === '.txt') displayName = 'Default';
+
+                    const inputDiv = document.createElement('div');
+                    inputDiv.className = 'input-item';
+                    inputDiv.textContent = displayName;
+                    inputDiv.title = inputFile.name;
+
+                    inputDiv.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        await loadSampleData(item.path, inputFile.path);
+                        sidePanel.classList.remove('open');
+                    });
+
+                    inputContainer.appendChild(inputDiv);
                 });
 
-                fragment.appendChild(fileDiv);
+                wrapper.appendChild(inputContainer);
             }
+
+            fragment.appendChild(wrapper);
+        });
+
+        // === 4. 渲染其他檔案 ===
+        otherFiles.forEach(item => {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'algo-item algo-file';
+            fileDiv.textContent = item.name;
+            fileDiv.addEventListener('click', async (e) => {
+                 e.stopPropagation();
+                 await loadSampleData(item.path, null);
+            });
+            fragment.appendChild(fileDiv);
         });
 
         return fragment;
     }
 
     /**
-     * [修正] 載入範例資料 (支援 Code 和 Input)
+     * 載入範例資料 (支援 Code 和 Input)
      * @param {String} codePath - 程式碼路徑 (例如 "Graph/DFS.cpp")
      * @param {String} inputPath - 測資路徑 (例如 "Graph/test1.txt")
      */

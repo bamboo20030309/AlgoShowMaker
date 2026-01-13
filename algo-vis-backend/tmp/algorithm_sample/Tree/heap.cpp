@@ -199,7 +199,9 @@ int main() {
     av.frame_draw("heap", 0, 150, heap, {}, {0}, "heap",  10, 1);
     av.end_frame_draw();
     //}
-    vector<int> Input = {10, 67, 24, 1, 5, 36, 5, 11, 24, 100};
+    int n; cin>>n;
+    vector<int> Input(n);
+    for(auto&v:Input)cin>>v;
     for (auto&v:Input) {
         heap_push(v);
     }

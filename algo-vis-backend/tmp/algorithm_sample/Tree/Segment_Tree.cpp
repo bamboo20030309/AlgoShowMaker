@@ -30,8 +30,7 @@ void build(){
     _draw_lazy_tmp.assign(1<<Tdeep,0);
     _draw_sets_tmp.assign(1<<Tdeep,LM);
     //}
-//    for(int i=Tsize-n;i<Tsize;i++)cin>>tree[i];
-    for(int i=Tsize-n;i<Tsize;i++)tree[i]=Tsize-i;
+    for(int i=Tsize-n;i<Tsize;i++)cin>>tree[i];
     for(int i=Tsize-n-1;i>0;i--)tree[i]= rule(tree[i<<1],tree[i<<1|1]); //改變建樹規則要注意這
 }
 //query就放前4個值 Add就放前五個值 set就前六個Add放0  前四個放Tmask, (Tmask<<1)-1, (x|Tmask), (y|Tmask) 0(base)
@@ -222,8 +221,7 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
     return sum;
 }
 int main(){
-//    int m,q,x,y,k; cin>>n>>m;
-    n=15;
+    int m,q,x,y,k; cin>>n>>m;
     build();
 
     //draw{
@@ -240,15 +238,10 @@ int main(){
     av.frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus} }, {1,n}, "segment_tree", 20, 1, lazy, sets);
     av.end_frame_draw();
     //}
-    
-    vector<int> Q={1,1,2,1,2,1,3}, X={13,1,2,1,8,2,8}, Y={14,2,15,15,8,3,9}, K={1,2,3,4,5,6,7};
 
-    for(int i=0;i<Q.size();i++){
-        int q=Q[i], x=X[i], y=Y[i], k=K[i];
-        /*
+    for(int i=0;i<m;i++){
         cin>>q>>x>>y;
         if(q!=3)cin>>k;
-        */
         //draw{
         _draw_lazy.clear(); for(int i=1;i<Tsize;i++) if(lazy[i]!= 0)_draw_lazy.pb(i);
         _draw_sets.clear(); for(int i=1;i<Tsize;i++) if(sets[i]!=LM)_draw_sets.pb(i);

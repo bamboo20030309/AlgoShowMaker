@@ -833,3 +833,67 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
   margin-right: 6px;
   opacity: 0.7;
 }
+
+/* 程式碼檔案的容器 (包住檔名 + 測資列表) */
+.code-wrapper {
+  /* 這裡不設 overflow，讓子選單可以撐開 */
+}
+
+/* 程式碼檔案本體 */
+.algo-item.code-file {
+  position: relative;
+  /* 加個小圖示或標記，讓使用者知道它裡面有東西 */
+}
+
+/* 當該資料夾有測資時，給程式碼檔案加個提示 (例如右邊的小箭頭) */
+.algo-item.code-file.has-inputs::after {
+  content: "▼";
+  font-size: 8px;
+  color: #bbb;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* 測資列表容器 (預設隱藏) */
+.input-list-container {
+  display: none; /* 平常看不見 */
+  background-color: #fafafa;
+  border-left: 2px solid var(--success-green); /* 左邊加條綠線做區隔 */
+  margin-left: 15px; /* 縮排 */
+}
+
+/* [關鍵互動] 滑鼠滑到 wrapper 上時，顯示測資列表 */
+.code-wrapper:hover .input-list-container {
+  display: block;
+  animation: fadeInDown 0.2s ease;
+}
+
+/* 測資項目的樣式 */
+.input-item {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+}
+
+.input-item:hover {
+  background-color: #e6fcf5;
+  color: var(--success-green);
+}
+
+.input-item::before {
+  content: "↳"; /* 子項目符號 */
+  margin-right: 6px;
+  color: #ccc;
+}
+
+/* 簡單動畫 */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

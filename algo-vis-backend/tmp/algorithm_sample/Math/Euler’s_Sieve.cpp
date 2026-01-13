@@ -100,8 +100,9 @@
         }
     } 
     int main(){
-
+        cin>>n;
         //draw{
+        _draw_itemsPerRow = sqrt(n);
         for(int i=1;i<=n;i++) _draw_focus.push_back(i);
         av.start_draw();
         av.start_frame_draw();

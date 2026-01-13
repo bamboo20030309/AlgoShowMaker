@@ -632,11 +632,3 @@ int main() {
     //}
     return 0;
 }
-/*
-sample input
-1
-3 2
-RNG
-NNN
-BNN
-*/

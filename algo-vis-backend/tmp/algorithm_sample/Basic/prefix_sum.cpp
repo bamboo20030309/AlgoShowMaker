@@ -5,9 +5,9 @@ using namespace std;
 AV av;
 
 int main() {
-    int n=20;
+    int n; cin>>n;
     vector<int> num(n),pre(n);
-    for(int i=0;i<n;i++)num[i]=i+1;
+    for(auto&v:num)cin>>v;
     //draw{
     vector<int> _draw_focus;
     av.start_draw();

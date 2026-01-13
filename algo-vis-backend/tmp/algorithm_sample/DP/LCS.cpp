@@ -456,9 +456,3 @@ int main() {
     //}
     return 0;
 }
-
-/*
-sample input
-abcdedcba
-edcbabcde
-*/
