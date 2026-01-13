@@ -1786,7 +1786,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fragment.appendChild(subMenuDiv);
         });
 
-        // === 3. 渲染程式碼檔案 (並附掛測資) ===
+        // === 3. 渲染程式碼檔案 (並嚴格匹配測資) ===
         codeFiles.forEach(item => {
             const wrapper = document.createElement('div');
             wrapper.className = 'code-wrapper';
@@ -1804,23 +1804,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
             wrapper.appendChild(fileDiv);
 
-            // B. 篩選屬於這個程式的測資 (Strict Matching)
-            const baseName = item.name.replace(/\.(cpp|c|js|py)$/i, '');
+            // B. 嚴格篩選測資
+            const baseName = item.name.replace(/\.(cpp|c|js|py)$/i, ''); // 例如: "Segment_Tree_easy"
             
             const relatedInputs = inputFiles.filter(inputFile => {
                 const inputName = inputFile.name;
                 
-                // 條件 1: 檔名必須以 baseName 開頭
+                // 1. 基本檢查：必須以 baseName 開頭
                 if (!inputName.startsWith(baseName)) return false;
                 
-                // 條件 2: [關鍵] 檢查前綴後的下一個字元
-                // 避免 S.cpp 抓到 Sort.txt
-                // 有效的分隔符號：底線(_)、橫線(-)、點(.)
+                // 2. [嚴格檢查]：前綴後的「下一個字元」必須是分隔符號
+                // 例如 Segment_Tree_easy.cpp (base: Segment_Tree_easy)
+                // 遇到 Segment_Tree_easy-test.txt -> 第 17 個字是 '-' -> 通過
+                // 遇到 Segment_Tree_easy2.txt    -> 第 17 個字是 '2' -> 失敗
+                
                 const charAfter = inputName[baseName.length];
                 
-                // 如果長度剛好相等 (如 DFS.cpp 對應 DFS.txt)，charAfter 會是 '.' (txt 的點)，這是合法的
-                // 否則必須是我們認可的分隔符號
-                const validSeparators = ['.', '_', '-'];
+                // 定義允許的分隔符號：點(.)、底線(_)、橫線(-)
+                // 如果你「只」想要橫線，就把陣列改成 ['-']
+                const validSeparators = ['-']; 
                 
                 return validSeparators.includes(charAfter);
             });
@@ -1835,20 +1837,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 relatedInputs.forEach(inputFile => {
                     let displayName = inputFile.name;
                     
-                    // 去掉前綴顯示
+                    // 去掉前綴 (BaseName)
                     if (displayName.startsWith(baseName)) {
                         displayName = displayName.substring(baseName.length);
                     }
                     
-                    // 去掉殘留的分隔符號
+                    // 去掉開頭的分隔符號 (如 -test.txt 變成 test.txt)
                     displayName = displayName.replace(/^[_.-]+/, '');
                     
-                    // 如果變空了 (例如原本是 DFS.txt)，保留原名或顯示 "Default"
-                    if (!displayName.trim()) {
-                         // 嘗試只拿掉副檔名顯示
-                         displayName = inputFile.name.replace(baseName, '').replace('.txt', '') || 'Default';
+                    // (選用) 如果你想連 .txt 都藏起來，解開下面這行
+                    // displayName = displayName.replace(/\.txt$/i, '');
+
+                    // 防呆：如果剩餘字串為空，就顯示 Default
+                    if (!displayName.trim() || displayName === '.txt') {
+                         displayName = 'Default';
                     }
-                    if (displayName === '.txt') displayName = 'Default';
 
                     const inputDiv = document.createElement('div');
                     inputDiv.className = 'input-item';
