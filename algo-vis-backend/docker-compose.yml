@@ -1,10 +1,27 @@
 version: '3'
 services:
+  # MongoDB 服務
+  mongo:
+    image: mongo:latest
+    container_name: mongodb_container
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
   # 這是你的 Node.js 程式
   backend:
     build: .
-    # [安全設定 1] 自動重啟：當機或重開機後會自動爬起來
+    # 自動重啟：當機或重開機後會自動爬起來
     restart: unless-stopped
+
+    # 唯讀
+    read_only: true
+
+    # 告訴 backend 要依賴 mongo，確保 mongo 先啟動
+    depends_on:
+      - mongo
     
     # [安全設定 2] 資源限制：防止 C++ 編譯把伺服器操爆
     # 注意：這能防止惡意程式耗盡資源導致你無法 SSH 進伺服器救火
@@ -12,11 +29,11 @@ services:
       resources:
         limits:
           cpus: '0.50'    # 限制最多用 50% CPU (依你主機核心數調整，0.5 代表半顆核心)
-          memory: 512M    # 限制最多用 512MB RAM (編譯通常夠用，不夠可調成 1G)
+          memory: 1G    # 限制最多用 1G RAM
           # 限制行程數量 (防 Fork Bomb)
-          # 限制這個容器最多只能同時跑 64 個程式，超過就開不起來
-          pids: 64
-          
+          # 限制這個容器最多只能同時跑 128 個程式，超過就開不起來
+          pids: 128
+
     # 2. 安全性增強 (Security Opts)
     # 拿掉所有 Linux 特權，讓容器更安全
     cap_drop:
@@ -29,8 +46,23 @@ services:
 
     # 讓後端容器的 /public 資料夾跟外面的 /public 資料夾同步
     # 這樣 C++ 產生的檔案才會出現在你電腦上，Nginx 才讀得到。
+
+    # 雖然上面設了唯讀，但我們必須 "開洞" 給需要寫入的地方
     volumes:
-      - ./public:/usr/src/app/public
+      # A. 前端靜態檔：設為 :ro (Read-Only)，防止被竄改
+      - ./public:/usr/src/app/public:ro
+
+      # B. 暫存編譯區：這是 server.js 唯一需要寫入的地方
+      # 我們把它掛載為一個 "tmpfs" (記憶體暫存區) 或 "一般 volume"
+      # 這樣既能寫入，重開機後資料又會自動清空，非常適合你的需求
+      - /usr/src/app/tmp
+
+    # 暫存資料夾設定 (選用，但推薦)
+    # 因為 read_only: true 會讓 /tmp 也變唯讀，導致某些 Linux 指令失效
+    # 所以我們要配給它一個暫時的寫入區
+    tmpfs:
+      - /tmp
+      - /run
 
   # 這是 Nginx 伺服器
   nginx:
@@ -47,3 +79,7 @@ services:
       - ./public:/usr/share/nginx/html
     depends_on:
       - backend
+
+# 宣告資料卷
+volumes:
+  mongo-data:

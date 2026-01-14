@@ -1,12 +1,42 @@
 // server.js
-const express         = require('express');
-const path            = require('path');
-const fs              = require('fs');
-const { spawn }       = require('child_process');
-const { performance } = require('perf_hooks');
-// [修改 1] 引入 uuid (改用 crypto)
+const express                = require('express');
+const path                   = require('path');
+const fs                     = require('fs');
+const { spawn }              = require('child_process');
+const { performance }        = require('perf_hooks');
+const mongoose               = require('mongoose');
+//引入 crypto uuid
 const { randomUUID: uuidv4 } = require('crypto');
-const rateLimit       = require('express-rate-limit');
+const rateLimit              = require('express-rate-limit');
+
+
+// 設定連線字串
+// Docker 會自動幫你把 'mongo' 解析成該容器的 IP 位址。
+const MONGO_URI = 'mongodb://mongo:27017/algo_vis_db';
+
+// 開始連線
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('MongoDB 連線成功！'))
+  .catch(err => console.error('MongoDB 連線失敗:', err));
+
+const BLACKLIST_KEYWORDS = [
+    // 1. 執行與程序控制
+    'system', 'popen', 'exec', 'fork', 'clone', 'wait', 'kill', 'raise',
+    
+    // 2. 檔案讀寫 (Stream & C-style)
+    'fstream', 'ifstream', 'ofstream', 'fstream', 
+    'fopen', 'freopen', 'fdopen', 'fflush',
+    
+    // 3. 檔案操作 (刪除、移動、權限)
+    'remove', 'rename', 'unlink', 'mkdir', 'rmdir', 'chmod', 'chown', 'stat',
+    
+    // 4. 系統與網路
+    'getenv', 'setenv', 'putenv', 'ptrace', 'socket',
+    
+    // 5. 危險標頭檔 (include)
+    '<unistd.h>', '<fcntl.h>', '<sys/', '<windows.h>', '<signal.h>'
+];
+
 
 // 1. 先初始化 app (非常重要，必須在 app.use 之前！)
 const app = express();
@@ -24,7 +54,7 @@ app.use('/compile', limiter);
 
 // 設定目錄路徑
 const SAMPLE_DIR = path.join(__dirname, 'tmp', 'algorithm_sample');
-// [修改 2] 確保暫存目錄存在
+// 確保暫存目錄存在
 const TEMP_DIR = path.join(__dirname, 'tmp');
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR);
@@ -136,13 +166,30 @@ app.post('/compile', (req, res) => {
       });
   }
 
-  // [修改 3] 使用 uuid 產生唯一 ID
+  // 關鍵字過濾
+  for (const keyword of BLACKLIST_KEYWORDS) {
+        const regex = new RegExp(keyword, 'i');
+        if (regex.test(code)) {
+            const msg = `不允許 "${keyword}" ，操作已被阻擋。`;
+            logDebug(msg);
+            return res.status(400).json({
+                output: '',
+                error: msg,
+                compileTime: null,
+                runTime: null,
+                memoryKB: null,
+                debug_log: debugMessages,
+            });
+        }
+    }
+
+  // 使用 uuid 產生唯一 ID
   const uniqueId = uuidv4();
   const sourcePath = path.join(TEMP_DIR, `main_${uniqueId}.cpp`);
   const exePath    = path.join(TEMP_DIR, `main_exec_${uniqueId}`);
   const scriptPath = path.join(TEMP_DIR, `script_${uniqueId}.js`);
 
-  // [修改 4] 定義清理函式
+  // 定義清理函式
   const cleanup = () => {
     try {
         if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath);
@@ -402,6 +449,21 @@ function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
 
     return tree;
 }
+
+// 3. 定義資料結構 (Schema) - 依照你想要的欄位
+const CodeSchema = new mongoose.Schema({
+  user_uid: { type: String, required: true },  // User UID
+  code_uid: { type: String, unique: true },    // Code UID (唯一)
+  title:    { type: String, required: true },  // 標題
+  desc:     { type: String },                  // 簡述
+  language: { type: String, default: 'cpp' },  // 程式語言
+  content:  { type: String, required: true },  // 程式碼內容
+  created_at: { type: Date, default: Date.now } // 建檔時間
+});
+
+// 4. 建立模型 (Model)
+// 以後你就用這個 'CodeModel' 來對資料庫做增刪改查
+const CodeModel = mongoose.model('Code', CodeSchema);
 
 // === /api/samples 路由 ===
 app.get('/api/samples', (req, res) => {
