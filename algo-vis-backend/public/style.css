@@ -897,3 +897,39 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
   from { opacity: 0; transform: translateY(-5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* 1. 訊息顯示區塊 */
+#authMessage {
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 14px;
+  display: none; /* 預設隱藏 */
+}
+#authMessage.success {
+  display: block;
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+#authMessage.error {
+  display: block;
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+/* 2. 登入後的按鈕狀態 (綠色) */
+.btn-login.logged-in {
+  background-color: #28a745; /* 鮮豔的綠色 */
+  color: white;
+  border: 1px solid #28a745;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.btn-login.logged-in:hover {
+  background-color: #218838; /* 深綠色 */
+  transform: translateY(-1px);
+}

@@ -612,7 +612,7 @@ let totalFrames      = 0;
 let currentFrame     = 0;       // 0-based
 let keyFrameIndices  = [];
 
-// --- 從 CodeScript 取得各種資訊（支援 snake_case / camelCase）---
+// 從 CodeScript 取得各種資訊（支援 snake_case / camelCase）---
 function csGetFrameCount() {
   if (typeof CodeScript === "undefined") return 0;
   if (typeof CodeScript.get_frame_count === "function") return CodeScript.get_frame_count();
@@ -637,7 +637,7 @@ function csGotoFrame(idx) {
   if (typeof CodeScript.set_frame === "function") return CodeScript.set_frame(idx);
 }
 
-// --- 初始化幀資訊（在 reloadCodeScript 之後呼叫）---
+// 初始化幀資訊（在 reloadCodeScript 之後呼叫）---
 function initFrameInfoFromCodeScript() {
   totalFrames     = csGetFrameCount();
   keyFrameIndices = csGetKeyFrames();
@@ -647,7 +647,7 @@ function initFrameInfoFromCodeScript() {
   updateFrameInfoText();
 }
 
-// --- 建立條碼 DOM ---
+// 建立條碼 DOM
 function buildFrameBars() {
   const barsContainer = document.getElementById("frameBars");
   if (!barsContainer) return;
@@ -672,7 +672,7 @@ function buildFrameBars() {
   updateFrameBarsVisual();
 }
 
-// --- 更新「哪一格是 active」---
+// 更新「哪一格是 active」---
 function updateFrameBarsVisual() {
   const barsContainer = document.getElementById("frameBars");
   if (!barsContainer) return;
@@ -684,7 +684,7 @@ function updateFrameBarsVisual() {
   });
 }
 
-// --- 更新「第幾幀 / 總幀數」文字 ---
+// 更新「第幾幀 / 總幀數」文字
 function updateFrameInfoText() {
   const info = document.getElementById("frameInfo");
   if (!info) return;
@@ -694,7 +694,7 @@ function updateFrameInfoText() {
   info.textContent = `第 ${now} 幀 / 共 ${total} 幀`;
 }
 
-// --- 點條碼跳到某一幀 ---
+// 點條碼跳到某一幀
 function jumpToFrame(idx) {
   csGotoFrame(idx);
   // 跳完之後從 CodeScript 重新抓當前幀
@@ -703,7 +703,7 @@ function jumpToFrame(idx) {
   updateFrameInfoText();
 }
 
-// --- 統一給外面用的「同步目前幀」函式 ---
+// 統一給外面用的「同步目前幀」函式
 // （按下一步 / 上一步 / 自動播放 都用這個）
 function syncCurrentFrameFromCodeScript() {
   currentFrame = csGetCurrentFrameIndex();
@@ -1338,83 +1338,168 @@ function initTopMenuBar() {
 
 // 確保 DOM 載入完成後再執行，避免找不到元素
 document.addEventListener('DOMContentLoaded', function() {
+    // 取得 DOM 元素
     const loginModal = document.getElementById("loginModal");
     const loginBtn = document.getElementById("loginTriggerBtn");
-    const closeSpan = document.querySelector(".close-modal"); // 取得 class 為 close-modal 的元素
+    const closeSpan = document.querySelector(".close-modal");
     const toggleBtn = document.getElementById("toggleAuthModeBtn");
     const modalTitle = document.getElementById("modalTitle");
     const actionBtn = document.getElementById("authActionBtn");
     const toggleText = document.getElementById("toggleAuthModeText");
     const authForm = document.querySelector(".auth-form");
+    
+    // 取得要隱藏/顯示的區塊
+    const formGroups = document.querySelectorAll(".form-group"); // 帳號密碼輸入框
+    const modalFooter = document.querySelector(".modal-footer"); // 切換帳號連結
 
-    // 預設為登入模式
+    // 狀態變數
     let isLoginMode = true;
+    let isLogoutMode = false; // [新增] 判斷是否為登出模式
 
-    // 1. 綁定按鈕點擊事件：打開登入視窗
-    if (loginBtn) {
-        loginBtn.onclick = function() {
-            loginModal.style.display = "block";
-        };
+    // --- [核心工具] 顯示訊息 ---
+    function showMsg(msg, type = 'error') {
+        let msgDiv = document.getElementById("authMessage");
+        if (!msgDiv && modalTitle) {
+            msgDiv = document.createElement("div");
+            msgDiv.id = "authMessage";
+            modalTitle.parentNode.insertBefore(msgDiv, modalTitle.nextSibling);
+        }
+        if (msgDiv) {
+            msgDiv.innerHTML = msg.replace(/\n/g, "<br/>"); // 支援換行
+            msgDiv.className = type; 
+            msgDiv.style.display = 'block';
+        } else {
+            alert(msg);
+        }
     }
 
-    // 2. 綁定 X 按鈕事件：關閉視窗
+    function clearMsg() {
+        const msgDiv = document.getElementById("authMessage");
+        if (msgDiv) {
+            msgDiv.style.display = 'none';
+            msgDiv.className = '';
+        }
+    }
+
+    // --- [新增] 重置介面 (根據模式顯示/隱藏輸入框) ---
+    function updateModalUI() {
+        clearMsg();
+        
+        if (isLogoutMode) {
+            // === 登出模式 ===
+            modalTitle.innerText = "登出確認";
+            actionBtn.innerText = "確定登出";
+            // 隱藏輸入框與底部連結
+            formGroups.forEach(el => el.style.display = 'none');
+            modalFooter.style.display = 'none';
+            // 顯示確認訊息
+            const currentUser = localStorage.getItem('algo_username') || '';
+            showMsg(`目前登入帳號：<b>${currentUser}</b><br>您確定要登出嗎？`, "error"); // 使用 error 樣式(紅色)比較醒目
+        } 
+        else {
+            // === 登入/註冊模式 ===
+            // 恢復顯示輸入框
+            formGroups.forEach(el => el.style.display = 'block');
+            modalFooter.style.display = 'block';
+
+            if(isLoginMode) {
+                modalTitle.innerText = "登入";
+                actionBtn.innerText = "登入";
+                toggleText.innerText = "還沒有帳號？";
+                toggleBtn.innerText = "建立帳號";
+            } else {
+                modalTitle.innerText = "建立新帳號";
+                actionBtn.innerText = "註冊";
+                toggleText.innerText = "已經有帳號？";
+                toggleBtn.innerText = "直接登入";
+            }
+        }
+    }
+
+    // --- 1. 打開視窗 (登入按鈕點擊) ---
+    // 注意：這裡我們把邏輯綁定在 window 上，讓 updateUserUI 可以呼叫它
+    window.handleLoginBtnClick = function() {
+        const storedUser = localStorage.getItem('algo_username');
+        
+        if (storedUser) {
+            // 如果已登入 -> 進入登出模式
+            isLogoutMode = true;
+        } else {
+            // 如果未登入 -> 進入登入模式
+            isLogoutMode = false;
+            isLoginMode = true;
+        }
+        
+        updateModalUI();
+        loginModal.style.display = "block";
+    };
+
+    if (loginBtn) {
+        loginBtn.onclick = window.handleLoginBtnClick;
+    }
+
+    // --- 2. 關閉視窗 ---
     if (closeSpan) {
         closeSpan.onclick = function() {
             loginModal.style.display = "none";
         };
     }
-
-    // 3. 綁定視窗外部點擊事件：點擊黑底區域也可以關閉
     window.onclick = function(event) {
         if (event.target == loginModal) {
             loginModal.style.display = "none";
         }
     };
 
-    // 4. 切換 登入 / 註冊 模式
+    // --- 3. 切換 登入/註冊 ---
     if (toggleBtn) {
         toggleBtn.onclick = function(e) {
-            e.preventDefault(); // 防止連結原本的跳轉行為
+            e.preventDefault();
             isLoginMode = !isLoginMode;
-            
-            if(isLoginMode) {
-                // 切換回登入模式 UI
-                modalTitle.innerText = "登入";
-                actionBtn.innerText = "登入";
-                toggleText.innerText = "還沒有帳號？";
-                toggleBtn.innerText = "建立帳號";
-            } else {
-                // 切換為註冊模式 UI
-                modalTitle.innerText = "建立新帳號";
-                actionBtn.innerText = "註冊";
-                toggleText.innerText = "已經有帳號？";
-                toggleBtn.innerText = "直接登入";
-            }
+            updateModalUI();
         };
     }
 
-    // 5. 處理表單送出 (目前僅做前端演示，防止頁面刷新)
-    // [修改] 處理表單送出 (串接後端 API)
+    // --- 4. 表單送出 (核心邏輯) ---
     if (authForm) {
         authForm.onsubmit = async function(e) {
-            e.preventDefault(); // 阻止表單預設提交
+            e.preventDefault();
 
+            // === A. 處理登出 ===
+            if (isLogoutMode) {
+                actionBtn.disabled = true;
+                actionBtn.innerText = "登出中...";
+                
+                // 清除資料
+                localStorage.removeItem('algo_jwt_token');
+                localStorage.removeItem('algo_username');
+                
+                showMsg("登出成功！正在重新整理頁面...", "success");
+                
+                // 1秒後重整
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+                return;
+            }
+
+            // === B. 處理 登入/註冊 ===
             const usernameInput = document.getElementById("usernameInput");
             const passwordInput = document.getElementById("passwordInput");
-            const username = usernameInput ? usernameInput.value : "";
-            const password = passwordInput ? passwordInput.value : "";
+            const username = usernameInput ? usernameInput.value.trim() : "";
+            const password = passwordInput ? passwordInput.value.trim() : "";
 
-            // 1. 準備 API 路徑
+            if (!username || !password) {
+                showMsg("請輸入帳號與密碼", "error");
+                return;
+            }
+
             const apiPath = isLoginMode ? '/api/auth/login' : '/api/auth/register';
-            
-            // 2. 顯示 loading 狀態 (選用)
-            const submitBtn = document.getElementById("authActionBtn");
-            const originalBtnText = submitBtn.innerText;
-            submitBtn.innerText = "處理中...";
-            submitBtn.disabled = true;
+            const originalBtnText = actionBtn.innerText;
+            actionBtn.innerText = "處理中...";
+            actionBtn.disabled = true;
+            clearMsg();
 
             try {
-                // 3. 發送請求給後端
                 const res = await fetch(apiPath, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1424,70 +1509,66 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await res.json();
 
                 if (!res.ok) {
-                    // 失敗：顯示後端回傳的錯誤訊息
                     throw new Error(data.error || '操作失敗');
                 }
 
-                // 4. 成功後的處理
                 if (isLoginMode) {
-                    // --- 登入成功 ---
-                    alert(`登入成功！歡迎回來，${data.username}`);
-                    
-                    // 把 JWT Token 存起來！以後發請求都要帶這張票
+                    // 登入成功
+                    showMsg(`登入成功！歡迎，${data.username}`, "success");
                     localStorage.setItem('algo_jwt_token', data.token);
                     localStorage.setItem('algo_username', data.username);
-                    
-                    // 更新 UI：例如把「登入」按鈕改成「使用者名稱」
                     updateUserUI(data.username);
-
-                    // 關閉視窗
-                    loginModal.style.display = "none";
+                    
+                    setTimeout(() => {
+                        loginModal.style.display = "none";
+                        passwordInput.value = "";
+                    }, 1000);
                 } else {
-                    // --- 註冊成功 ---
-                    alert('註冊成功！請直接登入。');
-                    // 自動切換到登入模式，方便使用者體驗
-                    document.getElementById("toggleAuthModeBtn").click();
-                    // 幫他填好帳號
-                    usernameInput.value = username;
-                    passwordInput.value = ""; 
+                    // 註冊成功
+                    showMsg('註冊成功！正在為您切換至登入頁...', "success");
+                    setTimeout(() => {
+                        isLoginMode = true; // 切換回登入
+                        updateModalUI();
+                        usernameInput.value = username;
+                        passwordInput.value = "";
+                    }, 1500);
                 }
 
             } catch (err) {
                 console.error(err);
-                alert(`錯誤: ${err.message}`);
+                showMsg(err.message, "error");
             } finally {
-                // 5. 恢復按鈕狀態
-                submitBtn.innerText = originalBtnText;
-                submitBtn.disabled = false;
+                // 如果不是登出(登出會重整)，就恢復按鈕
+                if (!isLogoutMode) {
+                    actionBtn.innerText = originalBtnText;
+                    actionBtn.disabled = false;
+                }
             }
         };
     }
+});
 
-    // 一個簡單的函式來更新介面狀態
-    function updateUserUI(username) {
-        const loginBtn = document.getElementById("loginTriggerBtn");
-        if (loginBtn && username) {
-            loginBtn.innerText = `👤 ${username}`;
-            // 你也可以在這裡移除 click 事件，改成「登出」邏輯
-            loginBtn.onclick = function() {
-                if(confirm("確定要登出嗎？")) {
-                    localStorage.removeItem('algo_jwt_token');
-                    localStorage.removeItem('algo_username');
-                    window.location.reload(); // 簡單暴力重整
-                }
-            };
-            // 標記為已登入樣式
-            loginBtn.classList.add('logged-in');
+// --- [UI 更新函式] ---
+function updateUserUI(username) {
+    const loginBtn = document.getElementById("loginTriggerBtn");
+    if (loginBtn && username) {
+        loginBtn.innerText = `👤 ${username}`;
+        loginBtn.classList.add('logged-in'); 
+        
+        // 關鍵：將點擊事件指向我們剛剛定義的 handleLoginBtnClick
+        // 這樣點擊「使用者名稱」時，就會打開模態視窗並進入「登出模式」
+        if (window.handleLoginBtnClick) {
+            loginBtn.onclick = window.handleLoginBtnClick;
         }
     }
+}
 
-    // 頁面載入時，檢查有沒有存過 Token
-    document.addEventListener('DOMContentLoaded', () => {
-        const storedUser = localStorage.getItem('algo_username');
-        if (storedUser) {
-            updateUserUI(storedUser);
-        }
-    });
+// 頁面載入檢查
+document.addEventListener('DOMContentLoaded', () => {
+    const storedUser = localStorage.getItem('algo_username');
+    if (storedUser) {
+        updateUserUI(storedUser);
+    }
 });
 
 // ==========================================
@@ -1530,7 +1611,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ==========================================
 document.addEventListener('DOMContentLoaded', function() {
 
-    // --- 1. 輸入/輸出/Debug 區塊 (同步縮放) ---
+    // 1. 輸入/輸出/Debug 區塊 (同步縮放)
     const ioIds = ['inputArea', 'outputArea', 'debugArea'];
     // 找出頁面上實際存在的元素
     const ioElements = ioIds.map(id => document.getElementById(id)).filter(el => el);
@@ -1592,7 +1673,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
 
-    // --- 2. Ace Editor 程式碼區塊 (修正後) ---
+    // 2. Ace Editor 程式碼區塊 (修正後)
     // [重要修正] 直接使用 front.js 裡的 aceEditor 變數，不要加 window.
     if (typeof aceEditor !== 'undefined') {
         
