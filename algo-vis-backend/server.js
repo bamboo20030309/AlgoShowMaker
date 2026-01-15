@@ -166,22 +166,24 @@ app.post('/compile', (req, res) => {
       });
   }
 
+  /*
   // 關鍵字過濾
   for (const keyword of BLACKLIST_KEYWORDS) {
-        const regex = new RegExp(keyword, 'i');
-        if (regex.test(code)) {
-            const msg = `不允許 "${keyword}" ，操作已被阻擋。`;
-            logDebug(msg);
-            return res.status(400).json({
-                output: '',
-                error: msg,
-                compileTime: null,
-                runTime: null,
-                memoryKB: null,
-                debug_log: debugMessages,
-            });
-        }
-    }
+      const regex = new RegExp(keyword, 'i');
+      if (regex.test(code)) {
+          const msg = `不允許 "${keyword}" ，操作已被阻擋。`;
+          logDebug(msg);
+          return res.status(400).json({
+              output: '',
+              error: msg,
+              compileTime: null,
+              runTime: null,
+              memoryKB: null,
+              debug_log: debugMessages,
+          });
+      }
+  }
+  */
 
   // 使用 uuid 產生唯一 ID
   const uniqueId = uuidv4();
@@ -247,13 +249,32 @@ app.post('/compile', (req, res) => {
 
     logDebug('編譯成功，耗時 ' + compileTime + ' ms');
 
+    // 確保 sandboxuser (UID 1000) 有權限執行這個 root 產生的檔案
+    try {
+        fs.chmodSync(exePath, 0o755); // 755 = rwxr-xr-x (所有人可讀可執行)
+    } catch (err) {
+        logDebug('權限設定失敗: ' + err.message);
+        cleanup();
+        return res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.' });
+    }
+
     // 3. 執行程式
     const ulimitCmd = `ulimit -v ${LIMITS.MEMORY_MB * 1024} && exec "${exePath}"`;
     const runStart = performance.now();
 
     const child = spawn('sh', ['-c', ulimitCmd], {
-      cwd: __dirname,
+      // 強迫程式以為自己在 /sandbox 裡
+      // 因為 /sandbox 是唯讀的，所以 system("touch file") 會失敗
+      cwd: '/sandbox',
+
+      // 降級身分 (User ID / Group ID)
+      uid: 1000, 
+      gid: 1000,
+
+      // 幫stdin stdout stderr開通道
       stdio: ['pipe', 'pipe', 'pipe'],
+
+      // 導入環境變數
       env: {
           ...process.env,
           AV_OUTPUT_FILE: scriptPath 

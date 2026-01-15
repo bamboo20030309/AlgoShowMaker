@@ -1,44 +1,54 @@
-# 1. 選擇基礎映像檔：使用 Node.js 18 (或其他你穩定的版本)
-FROM node:18
+# 1. 使用 Node.js 18 的輕量版 (slim) 作為基底
+# slim 版本比較小，但包含執行 node 所需的一切
+FROM node:18-slim
 
-# 2. 安裝系統依賴：因為是 slim 版或基礎版，可能需要手動安裝 g++
-# apt-get update: 更新套件列表
-# apt-get install -y g++: 安裝 C++ 編譯器
-# rm -rf /var/lib/apt/lists/*: 清理緩存以減小映像檔體積
+# 2. 安裝 C++ 編譯器 (g++) 和建置工具
+# 這是為了編譯使用者上傳的 .cpp 檔案
 RUN apt-get update && \
-    apt-get install -y g++ && \
+    apt-get install -y g++ build-essential python3 && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. 設定工作目錄：容器內的所有指令都會在這裡執行
+# 3. 設定工作目錄 (專案根目錄)
 WORKDIR /usr/src/app
 
-# 4. 建立非 root 使用者 (安全性關鍵步驟)
-# useradd -m: 建立使用者並建立家目錄
-# -s /bin/bash: 指定 shell
-# sandboxuser: 使用者名稱
-RUN useradd -m -s /bin/bash sandboxuser
+# ==========================================
+# 安全防護核心設置 (Sandbox Setup)
+# ==========================================
 
-# 5. 複製依賴描述檔並安裝
-# 這樣做是為了利用 Docker 快取層，若 package.json 沒變，就不會重跑 npm install
+# 建立 /sandbox 目錄
+# 這是我們要在 server.js 裡用 cwd: '/sandbox' 切換過去的地方
+RUN mkdir /sandbox
+
+# 設定權限為 555 (r-x r-x r-x)
+# 意義：所有使用者都只能讀、只能執行，絕對不能寫 (No Write)
+RUN chmod 555 /sandbox
+
+# 確保有一個 UID 為 1000 的使用者
+# Node 官方映像檔通常已經內建一個 'node' 使用者 (UID 1000)
+# 為了保險起見，我們嘗試建立 sandboxuser，如果 UID 1000 已被佔用則忽略錯誤
+RUN useradd -u 1000 -m -s /bin/bash sandboxuser || true
+
+# ==========================================
+# 專案安裝與設定
+# ==========================================
+
+# 4. 複製 package.json 並安裝依賴
+# 先做這步是為了利用 Docker Layer 快取，加速建置
 COPY package*.json ./
-RUN npm install
+RUN npm install --production
 
-# 6. 複製專案的所有程式碼到容器內
+# 5. 複製所有程式碼 (包含 server.js, public 資料夾等)
 COPY . .
 
-# 7. [權限設定] 確保 sandboxuser 擁有這個資料夾的權限
-# mkdir -p tmp: 確保 tmp 資料夾存在 (雖然你的專案裡可能有，但強制建一個比較保險)
-# chown -R sandboxuser:sandboxuser .: 將當前目錄 (/usr/src/app) 下的所有檔案擁有權轉給 sandboxuser
-# 如果不跑這行，檔案擁有者會是 root，切換使用者後 server.js 會無法讀取或寫入
+# 6. 建立 tmp 目錄並設定權限
+# 雖然 docker-compose 會掛載 tmpfs 覆蓋這裡，但預先建好並設權限是好習慣
+# 確保 UID 1000 (sandboxuser) 可以在這裡寫入編譯檔
 RUN mkdir -p tmp && \
-    chown -R sandboxuser:sandboxuser /usr/src/app
+    chown -R 1000:1000 tmp && \
+    chmod 1777 tmp
 
-# 8. 切換使用者 (從 root 切換成 sandboxuser)
-# 此行之後的所有指令 (包含 CMD) 都會以這個低權限使用者的身分執行
-USER sandboxuser
-
-# 9. 宣告容器會使用的 Port (這只是文件說明，實際要在 docker-compose 映射)
+# 7. 開放埠號 (根據你的 server.js 設定，通常是 3000 或 8080)
 EXPOSE 3000
 
-# 10. 啟動伺服器
+# 8. 啟動伺服器
 CMD ["node", "server.js"]
