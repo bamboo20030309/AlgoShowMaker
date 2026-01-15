@@ -221,6 +221,7 @@ app.post('/compile', (req, res) => {
     '-O2',
     sourcePath,      
     '-I', TEMP_DIR,  
+    '-I', path.join(__dirname, 'lib'), // 去 lib 資料夾找 AV.hpp
     '-I', '/tmp',
     '-o', exePath,   
   ];
@@ -428,7 +429,7 @@ setInterval(() => {
 
 
 
-const SAMPLES_DIR = path.join(__dirname, '/tmp/algorithm_sample');
+const SAMPLES_DIR = path.join(__dirname, '/algorithm_sample');
 
 // 遞迴讀取目錄結構
 function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
