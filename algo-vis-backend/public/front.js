@@ -1823,8 +1823,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // (C) 打開「我的程式碼」
             if(myCodesSidebar) {
-                myCodesSidebar.classList.add("active");
-                if(typeof loadMyCodes === 'function') loadMyCodes();
+                if (myCodesSidebar.classList.contains("active")) {
+                    // 1. 如果已經打開，就關閉
+                    myCodesSidebar.classList.remove("active");
+                } else {
+                    // 2. 如果沒打開，才執行原本的開啟流程
+                    
+                    // (B) 打開自己前，先強制關閉「演算法範例集」
+                    if(algoSidePanel) algoSidePanel.classList.remove("open");
+
+                    // (C) 打開「我的程式碼」並載入
+                    myCodesSidebar.classList.add("active");
+                    if(typeof loadMyCodes === 'function') loadMyCodes();
+                }
             }
         };
     }

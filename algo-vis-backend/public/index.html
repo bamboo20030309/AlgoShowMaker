@@ -12,7 +12,7 @@
     <div class="menu-brand">AlgoShowMaker</div>
     
     <div class="menu-item" id="algoSamplesBtn">
-      <span class="algo-label">演算法範例集</span>
+      <span class="menu-label">演算法範例集</span>
     </div>
 
     <div class="menu-item" id="openMyCodesBtn">
@@ -196,9 +196,13 @@
     </div>
 
     <div class="sidebar-toolbar">
-        <button id="openSaveModalBtn" style="cursor: pointer; margin-right: 8px; padding: 2px 6px;" title="儲存當前程式碼">💾 儲存</button>
-        <button id="refreshMyCodesBtn" class="btn-icon-refresh" title="重新整理">↻</button>
+        <button id="openSaveModalBtn" class="btn-save-code" title="儲存當前程式碼">
+            💾 儲存
+        </button>
+        
         <span class="sidebar-hint">點擊項目以載入</span>
+
+        <button id="refreshMyCodesBtn" class="btn-icon-refresh" style="margin-left: auto;" title="重新整理">↻</button>
     </div>
     <div id="myCodesList" class="sidebar-content">
         <p class="empty-msg">載入中...</p>
