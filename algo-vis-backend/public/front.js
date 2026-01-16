@@ -1333,12 +1333,11 @@ function initTopMenuBar() {
 }
 
 // ==========================================
-// 登入/註冊 模態視窗控制邏輯
+// 登入/註冊/登出/忘記密碼 模態視窗控制邏輯
 // ==========================================
 
-// 確保 DOM 載入完成後再執行，避免找不到元素
 document.addEventListener('DOMContentLoaded', function() {
-    // 取得 DOM 元素
+    // --- 1. 取得 DOM 元素 ---
     const loginModal = document.getElementById("loginModal");
     const loginBtn = document.getElementById("loginTriggerBtn");
     const closeSpan = document.querySelector(".close-modal");
@@ -1347,16 +1346,36 @@ document.addEventListener('DOMContentLoaded', function() {
     const actionBtn = document.getElementById("authActionBtn");
     const toggleText = document.getElementById("toggleAuthModeText");
     const authForm = document.querySelector(".auth-form");
+    const forgotBtn = document.getElementById("forgotPasswordBtn"); // 忘記密碼按鈕
     
     // 取得要隱藏/顯示的區塊
-    const formGroups = document.querySelectorAll(".form-group"); // 帳號密碼輸入框
-    const modalFooter = document.querySelector(".modal-footer"); // 切換帳號連結
+    // 假設你的 HTML 結構是 .form-group 包住 label 和 input
+    const formGroups = document.querySelectorAll(".form-group"); 
+    const modalFooter = document.querySelector(".modal-footer"); 
 
-    // 狀態變數
-    let isLoginMode = true;
-    let isLogoutMode = false; // [新增] 判斷是否為登出模式
+    // --- 2. 狀態變數 ---
+    let isLoginMode = true;   // 登入模式
+    let isLogoutMode = false; // 登出模式
+    let isForgotMode = false; // 忘記密碼模式
+    let isResetMode = false;  // 重置密碼模式
+    let currentResetToken = null;
 
-    // --- [核心工具] 顯示訊息 ---
+    // --- 3. 檢查網址是否有 reset_token (從 Email 點回來) ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const resetToken = urlParams.get('reset_token');
+
+    if (resetToken) {
+        isResetMode = true;
+        currentResetToken = resetToken;
+        
+        // 強制打開 Modal
+        loginModal.style.display = "block";
+        
+        // 清除網址參數 (美觀用，不讓使用者覺得網址很長)
+        window.history.replaceState({}, document.title, "/");
+    }
+
+    // --- 4. 核心工具：顯示訊息 ---
     function showMsg(msg, type = 'error') {
         let msgDiv = document.getElementById("authMessage");
         if (!msgDiv && modalTitle) {
@@ -1365,7 +1384,7 @@ document.addEventListener('DOMContentLoaded', function() {
             modalTitle.parentNode.insertBefore(msgDiv, modalTitle.nextSibling);
         }
         if (msgDiv) {
-            msgDiv.innerHTML = msg.replace(/\n/g, "<br/>"); // 支援換行
+            msgDiv.innerHTML = msg.replace(/\n/g, "<br/>");
             msgDiv.className = type; 
             msgDiv.style.display = 'block';
         } else {
@@ -1381,26 +1400,56 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- [新增] 重置介面 (根據模式顯示/隱藏輸入框) ---
+    // --- 5. 核心工具：更新介面 (根據四種模式切換) ---
     function updateModalUI() {
         clearMsg();
         
-        if (isLogoutMode) {
-            // === 登出模式 ===
+        // A. 先全部隱藏，下面再依模式打開
+        formGroups.forEach(el => el.style.display = 'none'); 
+        modalFooter.style.display = 'none';
+        if(forgotBtn) forgotBtn.style.display = 'none'; // 預設隱藏
+
+        if (isResetMode) {
+            // === 模式 1: 重置密碼 (輸入新密碼) ===
+            modalTitle.innerText = "重置密碼";
+            actionBtn.innerText = "確認修改";
+            
+            // 只顯示密碼框
+            const passwordGroup = document.getElementById("passwordInput").closest('.form-group');
+            if(passwordGroup) passwordGroup.style.display = 'block';
+            
+            showMsg("驗證成功！請輸入您的新密碼。", "success");
+        } 
+        else if (isForgotMode) {
+            // === 模式 2: 忘記密碼 (輸入 Email) ===
+            modalTitle.innerText = "忘記密碼";
+            actionBtn.innerText = "發送重置信";
+            
+            // 只顯示帳號(Email)框
+            const usernameGroup = document.getElementById("usernameInput").closest('.form-group');
+            if(usernameGroup) usernameGroup.style.display = 'block';
+            
+            // 顯示底部 (讓它可以切換回登入)
+            modalFooter.style.display = 'block';
+            toggleText.innerText = "";
+            toggleBtn.innerText = "回到登入";
+            
+            showMsg("請輸入註冊 Email，我們將寄送重置連結給您。", "success");
+        }
+        else if (isLogoutMode) {
+            // === 模式 3: 登出確認 ===
             modalTitle.innerText = "登出確認";
             actionBtn.innerText = "確定登出";
-            // 隱藏輸入框與底部連結
-            formGroups.forEach(el => el.style.display = 'none');
-            modalFooter.style.display = 'none';
-            // 顯示確認訊息
+            
             const currentUser = localStorage.getItem('algo_username') || '';
-            showMsg(`目前登入帳號：<b>${currentUser}</b><br>您確定要登出嗎？`, "error"); // 使用 error 樣式(紅色)比較醒目
+            showMsg(`目前登入帳號：<b>${currentUser}</b><br>您確定要登出嗎？`, "error");
         } 
         else {
-            // === 登入/註冊模式 ===
-            // 恢復顯示輸入框
+            // === 模式 4: 一般登入/註冊 ===
+            // 恢復顯示所有輸入框
             formGroups.forEach(el => el.style.display = 'block');
             modalFooter.style.display = 'block';
+            if(forgotBtn) forgotBtn.style.display = 'inline'; // 顯示忘記密碼
 
             if(isLoginMode) {
                 modalTitle.innerText = "登入";
@@ -1416,98 +1465,158 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- 1. 打開視窗 (登入按鈕點擊) ---
-    // 注意：這裡我們把邏輯綁定在 window 上，讓 updateUserUI 可以呼叫它
+    // 若因為 reset_token 而開啟，初始化 UI
+    if(isResetMode) {
+        updateModalUI();
+    }
+
+    // --- 6. 事件綁定 ---
+
+    // (A) 打開視窗 (登入按鈕點擊)
     window.handleLoginBtnClick = function() {
         const storedUser = localStorage.getItem('algo_username');
-        
         if (storedUser) {
-            // 如果已登入 -> 進入登出模式
-            isLogoutMode = true;
+            isLogoutMode = true; // 已登入 -> 變登出模式
         } else {
-            // 如果未登入 -> 進入登入模式
             isLogoutMode = false;
-            isLoginMode = true;
+            isLoginMode = true;  // 未登入 -> 變登入模式
+            isForgotMode = false;
+            isResetMode = false;
         }
-        
         updateModalUI();
         loginModal.style.display = "block";
     };
+    if (loginBtn) loginBtn.onclick = window.handleLoginBtnClick;
 
-    if (loginBtn) {
-        loginBtn.onclick = window.handleLoginBtnClick;
-    }
-
-    // --- 2. 關閉視窗 ---
+    // (B) 關閉視窗
     if (closeSpan) {
-        closeSpan.onclick = function() {
-            loginModal.style.display = "none";
-        };
+        closeSpan.onclick = function() { loginModal.style.display = "none"; };
     }
     window.onclick = function(event) {
-        if (event.target == loginModal) {
-            loginModal.style.display = "none";
-        }
+        if (event.target == loginModal) loginModal.style.display = "none";
     };
 
-    // --- 3. 切換 登入/註冊 ---
-    if (toggleBtn) {
-        toggleBtn.onclick = function(e) {
+    // (C) 忘記密碼按鈕
+    if (forgotBtn) {
+        forgotBtn.onclick = function(e) {
             e.preventDefault();
-            isLoginMode = !isLoginMode;
+            isForgotMode = true;
+            isLoginMode = false;
             updateModalUI();
         };
     }
 
-    // --- 4. 表單送出 (核心邏輯) ---
+    // (D) 切換按鈕 (建立帳號 / 回到登入)
+    if (toggleBtn) {
+        toggleBtn.onclick = function(e) {
+            e.preventDefault();
+            if (isForgotMode) {
+                // 如果在忘記密碼模式，按這個變成「取消」回到登入
+                isForgotMode = false;
+                isLoginMode = true;
+            } else {
+                // 一般切換
+                isLoginMode = !isLoginMode;
+            }
+            updateModalUI();
+        };
+    }
+
+    // --- 7. 表單送出 (核心邏輯) ---
     if (authForm) {
         authForm.onsubmit = async function(e) {
             e.preventDefault();
-
-            // === A. 處理登出 ===
-            if (isLogoutMode) {
-                actionBtn.disabled = true;
-                actionBtn.innerText = "登出中...";
-                
-                // 清除資料
-                localStorage.removeItem('algo_jwt_token');
-                localStorage.removeItem('algo_username');
-                
-                showMsg("登出成功！正在重新整理頁面...", "success");
-                
-                // 1秒後重整
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
-                return;
-            }
-
-            // === B. 處理 登入/註冊 ===
+            
+            // 取得輸入值
             const usernameInput = document.getElementById("usernameInput");
             const passwordInput = document.getElementById("passwordInput");
             const username = usernameInput ? usernameInput.value.trim() : "";
-            const password = passwordInput ? passwordInput.value.trim() : ""; 
+            const password = passwordInput ? passwordInput.value.trim() : "";
 
+            // === 狀況 1: 處理登出 ===
+            if (isLogoutMode) {
+                actionBtn.disabled = true;
+                actionBtn.innerText = "登出中...";
+                localStorage.removeItem('algo_jwt_token');
+                localStorage.removeItem('algo_username');
+                showMsg("登出成功！正在重新整理頁面...", "success");
+                setTimeout(() => window.location.reload(), 1000);
+                return;
+            }
+
+            // === 狀況 2: 處理忘記密碼 (寄信) ===
+            if (isForgotMode) {
+                if (!username) { showMsg("請輸入 Email", "error"); return; }
+                
+                actionBtn.innerText = "寄送中...";
+                actionBtn.disabled = true;
+                
+                try {
+                    const res = await fetch('/api/auth/forgot-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username })
+                    });
+                    const data = await res.json();
+                    if(!res.ok) throw new Error(data.error);
+                    
+                    showMsg(data.message, "success");
+                } catch(err) {
+                    showMsg(err.message, "error");
+                } finally {
+                    actionBtn.innerText = "發送重置信";
+                    actionBtn.disabled = false;
+                }
+                return;
+            }
+
+            // === 狀況 3: 處理重置密碼 (更新) ===
+            if (isResetMode) {
+                if (!password || password.length < 8) { showMsg("新密碼需至少 8 碼", "error"); return; }
+                
+                actionBtn.innerText = "更新中...";
+                actionBtn.disabled = true;
+                
+                try {
+                    const res = await fetch('/api/auth/reset-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: currentResetToken, newPassword: password })
+                    });
+                    const data = await res.json();
+                    if(!res.ok) throw new Error(data.error);
+                    
+                    showMsg(data.message, "success");
+                    
+                    // 成功後，切回登入畫面
+                    setTimeout(() => {
+                        isResetMode = false;
+                        currentResetToken = null;
+                        isLoginMode = true;
+                        updateModalUI();
+                        // 幫使用者填好 Email 方便登入 (假設 user 物件沒回傳 email，這裡先留空)
+                        if(passwordInput) passwordInput.value = "";
+                    }, 1500);
+                } catch(err) {
+                    showMsg(err.message, "error");
+                } finally {
+                    actionBtn.innerText = "確認修改";
+                    actionBtn.disabled = false;
+                }
+                return;
+            }
+
+            // === 狀況 4: 一般 登入 / 註冊 ===
             if (!username || !password) {
                 showMsg("請輸入帳號與密碼", "error");
                 return;
             }
 
-            // 前端預先檢查 
-            if (isLoginMode === false) { // 只有「註冊模式」才嚴格檢查，登入時隨便他打，反正錯了後端會擋
-                
-                // 檢查 Email 格式
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (!emailRegex.test(username)) {
-                    showMsg("請輸入有效的 Email 地址", "error");
-                    return; // 直接中斷，不發送請求給後端
-                }
-
-                // 檢查密碼長度
-                if (password.length < 8) {
-                    showMsg("密碼長度至少需 8 個字元", "error");
-                    return;
-                }
+            // 前端簡單驗證 (註冊時才嚴格檢查)
+            if (!isLoginMode) {
+               const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+               if (!emailRegex.test(username)) { showMsg("請輸入有效的 Email", "error"); return; }
+               if (password.length < 8) { showMsg("密碼至少需 8 碼", "error"); return; }
             }
 
             const apiPath = isLoginMode ? '/api/auth/login' : '/api/auth/register';
@@ -1524,10 +1633,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
 
                 const data = await res.json();
-
-                if (!res.ok) {
-                    throw new Error(data.error || '操作失敗');
-                }
+                if (!res.ok) throw new Error(data.error || '操作失敗');
 
                 if (isLoginMode) {
                     // 登入成功
@@ -1538,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     setTimeout(() => {
                         loginModal.style.display = "none";
-                        passwordInput.value = "";
+                        if(passwordInput) passwordInput.value = "";
                     }, 1000);
                 } else {
                     // 註冊成功
@@ -1546,8 +1652,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     setTimeout(() => {
                         isLoginMode = true; // 切換回登入
                         updateModalUI();
-                        usernameInput.value = username;
-                        passwordInput.value = "";
+                        if(usernameInput) usernameInput.value = username;
+                        if(passwordInput) passwordInput.value = "";
+                        clearMsg(); 
                     }, 1500);
                 }
 
@@ -1555,25 +1662,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error(err);
                 showMsg(err.message, "error");
             } finally {
-                // 如果不是登出(登出會重整)，就恢復按鈕
-                if (!isLogoutMode) {
-                    actionBtn.innerText = originalBtnText;
-                    actionBtn.disabled = false;
-                }
+                actionBtn.innerText = originalBtnText;
+                actionBtn.disabled = false;
             }
         };
     }
 });
 
-// UI 更新函式]
+// --- UI 更新函式 (全域) ---
 function updateUserUI(username) {
     const loginBtn = document.getElementById("loginTriggerBtn");
     if (loginBtn && username) {
-        loginBtn.innerText = `  ${username}`;
+        loginBtn.innerText = `${username}`;
         loginBtn.classList.add('logged-in'); 
         
         // 關鍵：將點擊事件指向我們剛剛定義的 handleLoginBtnClick
-        // 這樣點擊「使用者名稱」時，就會打開模態視窗並進入「登出模式」
         if (window.handleLoginBtnClick) {
             loginBtn.onclick = window.handleLoginBtnClick;
         }

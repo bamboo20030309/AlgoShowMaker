@@ -8,10 +8,10 @@ const { performance }        = require('perf_hooks');
 //引入 crypto uuid
 const { randomUUID: uuidv4 } = require('crypto');
 const rateLimit              = require('express-rate-limit');
-
-const mongoose               = require('mongoose');
-const bcrypt                 = require('bcryptjs');
-const jwt                    = require('jsonwebtoken');
+const mongoose               = require('mongoose');            //資料庫溝通套件
+const bcrypt                 = require('bcryptjs');            //密碼加密套件
+const jwt                    = require('jsonwebtoken');        //webtoken套件
+const nodemailer             = require('nodemailer');          //重置密碼email套件
 
 // 優先讀取環境變數，如果沒讀到才用後面的預設值
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key';
@@ -29,10 +29,22 @@ mongoose.connect(MONGO_URI)
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true }, // 帳號 (唯一)
     password: { type: String, required: true },               // 密碼 (加密後)
+    // 密碼重置用的 Token 與 過期時間
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
     created_at: { type: Date, default: Date.now }
 });
 
 const User = mongoose.model('User', UserSchema);
+
+// 設定 Email 寄送器 (Transporter)
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.SMTP_USER || 'your-email@gmail.com', 
+        pass: process.env.SMTP_PASS || 'your-app-password'
+    }
+});
 
 const BLACKLIST_KEYWORDS = [
     // 1. 執行與程序控制
@@ -173,6 +185,82 @@ app.post('/api/auth/login', async (req, res) => {
         );
 
         res.json({ success: true, token, username: user.username });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: '伺服器錯誤' });
+    }
+});
+
+// 忘記密碼 (寄送重置信)
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { username } = req.body;
+    
+    try {
+        const user = await User.findOne({ username });
+        if (!user) {
+            return res.status(404).json({ error: '找不到此帳號 (Email)' });
+        }
+
+        // 1. 產生 Token (有效期限 1 小時)
+        const token = uuidv4();
+        user.resetPasswordToken = token;
+        user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+        await user.save();
+
+        // 2. 建立重置連結 (假設前端跑在 localhost:3000)
+        // 使用者點這個連結會帶上 ?reset_token=xxxxx
+        // 優先讀取環境變數，如果沒設定就預設用 localhost
+        const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+        const resetLink = `${baseUrl}/?reset_token=${token}`;
+
+        // 3. 寄信
+        const mailOptions = {
+            from: 'AlgoShowMaker <no-reply@algoshowmaker.com>',
+            to: user.username, // 假設 username 就是 email
+            subject: 'AlgoShowMaker 密碼重置請求',
+            text: `您好，請點擊以下連結重置您的密碼：\n\n${resetLink}\n\n(連結 1 小時內有效，若非本人操作請忽略)`
+        };
+
+        await transporter.sendMail(mailOptions);
+        
+        res.json({ success: true, message: '重置信已寄出，請檢查您的信箱！' });
+
+    } catch (err) {
+        console.error('寄信失敗:', err);
+        res.status(500).json({ error: '寄信失敗，請稍後再試' });
+    }
+});
+
+// 重置密碼 (設定新密碼)
+app.post('/api/auth/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    try {
+        // 1. 驗證 Token 是否存在且沒過期 ($gt = greater than)
+        const user = await User.findOne({ 
+            resetPasswordToken: token, 
+            resetPasswordExpires: { $gt: Date.now() } 
+        });
+
+        if (!user) {
+            return res.status(400).json({ error: '連結無效或已過期，請重新申請' });
+        }
+
+        // 2. 更新密碼
+        if (newPassword.length < 8) {
+            return res.status(400).json({ error: '新密碼長度過短 (需 8 碼以上)' });
+        }
+        
+        user.password = await bcrypt.hash(newPassword, 10);
+        
+        // 3. 清除 Token，避免重複使用
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+        
+        await user.save();
+
+        res.json({ success: true, message: '密碼重置成功！請使用新密碼登入' });
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: '伺服器錯誤' });
