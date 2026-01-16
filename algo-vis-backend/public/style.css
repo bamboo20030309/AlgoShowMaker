@@ -1214,14 +1214,14 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 /* 1. 側邊欄本體 */
 .sidebar-panel {
   position: fixed;
-  top: 0;
+  top: var(--header-height); 
   left: 0;
-  height: 100vh;           /* 佔滿全高 */
+  height: calc(100vh - var(--header-height));
   width: 300px;            /* 側邊欄寬度 */
   background-color: var(--bg-panel); /* 使用原本的面板背景色 */
   border-right: 1px solid var(--border-color);
   box-shadow: 2px 0 10px rgba(0,0,0,0.3);
-  z-index: 2000;           /* 確保在最上層 (比編輯器高) */
+  z-index: 900;        
   
   /* 動畫關鍵：預設往左藏起來 */
   transform: translateX(-100%);

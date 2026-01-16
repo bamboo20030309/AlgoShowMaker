@@ -1676,8 +1676,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // 1. DOM 元素 (注意：myCodesModal 已被移除，改為 myCodesSidebar)
     const saveModal = document.getElementById("saveCodeModal");
     const myCodesSidebar = document.getElementById("myCodesSidebar"); // [新] 側邊欄
+    const algoSidePanel = document.getElementById("algoSidePanel");
     const openSaveBtn = document.getElementById("openSaveModalBtn");
     const openMyCodesBtn = document.getElementById("openMyCodesBtn");
+    const algoSamplesBtn = document.getElementById("algoSamplesBtn");
     const closeSaveBtn = document.getElementById("closeSaveModal");
     const closeMyCodesSidebarBtn = document.getElementById("closeMyCodesSidebar"); // [新] 側邊欄關閉紐
     const saveForm = document.getElementById("saveCodeForm");
@@ -1687,7 +1689,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- [工具] 顯示儲存視窗內的訊息 (保留不動) ---
     function showSaveMsg(msg, type = 'error') {
         const msgDiv = document.getElementById("saveMessage");
-        if (msgDiv) {
+        if (msgDiv) { 
             msgDiv.textContent = msg;
             msgDiv.className = type; 
         }
@@ -1808,17 +1810,21 @@ document.addEventListener('DOMContentLoaded', function() {
         openMyCodesBtn.onclick = function(e) {
             e.preventDefault();
             
+            // (A) 登入檢查
             if (!localStorage.getItem('algo_username')) {
-                showToast("請先登入會員", "warning");
+                if(typeof showToast === 'function') showToast("請先登入", "warning");
                 const loginBtn = document.getElementById("loginTriggerBtn");
                 if(loginBtn) loginBtn.click();
                 return;
             }
 
-            // [新邏輯] 添加 active class 讓側邊欄滑出來
+            // (B) [核心修改] 打開自己前，先強制關閉「演算法範例集」
+            if(algoSidePanel) algoSidePanel.classList.remove("open");
+
+            // (C) 打開「我的程式碼」
             if(myCodesSidebar) {
                 myCodesSidebar.classList.add("active");
-                loadMyCodes(); // 自動載入資料
+                if(typeof loadMyCodes === 'function') loadMyCodes();
             }
         };
     }
@@ -1829,6 +1835,27 @@ document.addEventListener('DOMContentLoaded', function() {
             if(myCodesSidebar) myCodesSidebar.classList.remove("active");
         };
     }
+
+    // 這段可以同時處理兩個側邊欄的關閉邏輯
+    window.addEventListener('click', function(e) {
+        // (A) 關閉「我的程式碼」
+        if (myCodesSidebar && myCodesSidebar.classList.contains("active")) {
+            if (!myCodesSidebar.contains(e.target) && 
+                e.target !== openMyCodesBtn && 
+                !openMyCodesBtn.contains(e.target)) {
+                myCodesSidebar.classList.remove("active"); 
+            }
+        }
+
+        // (B) 關閉「演算法範例集」
+        if (algoSidePanel && algoSidePanel.classList.contains("open")) {
+            if (!algoSidePanel.contains(e.target) && 
+                e.target !== algoSamplesBtn && 
+                !algoSamplesBtn.contains(e.target)) {
+                algoSidePanel.classList.remove("open");
+            }
+        }
+    });
     
     // 重新整理
     if(refreshBtn) refreshBtn.onclick = loadMyCodes;
@@ -2162,24 +2189,50 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidePanel = document.getElementById('algoSidePanel');
     const listContainer = document.getElementById('algoListContainer');
     
+    // 取得「我的程式碼」側邊欄，以便互斥關閉
+    const myCodesSidebar = document.getElementById("myCodesSidebar");
+    
     let isSamplesLoaded = false; // 避免重複 fetch
 
-    // 1. 按鈕點擊事件：切換面板開關
+    // --- [工具] 顯示全域浮動通知 (Toast) (保留不動) ---
+    function showToast(msg, type = 'info') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        toast.className = `toast-msg ${type}`;
+        toast.innerText = msg;
+        container.appendChild(toast);
+        setTimeout(() => {
+            if(container.contains(toast)) container.removeChild(toast);
+        }, 3500);
+    }
+
+    // 1. 按鈕點擊事件：切換面板開關 + 互斥邏輯 + 載入資料
     if (algoBtn && sidePanel) {
-        algoBtn.addEventListener('click', function(e) {
+        // 使用 onclick 確保覆蓋掉任何殘留的事件綁定
+        algoBtn.onclick = function(e) {
+            e.preventDefault();
             e.stopPropagation(); // 阻止事件冒泡
             
-            // 切換 open class
+            // (A) 互斥邏輯：如果正要打開，先強制關閉「我的程式碼」
+            if (!sidePanel.classList.contains('open')) {
+                if(myCodesSidebar) myCodesSidebar.classList.remove("active");
+            }
+
+            // (B) 切換 open class
             sidePanel.classList.toggle('open');
             
-            // 根據面板狀態改變按鈕外觀 (選用)
+            // (C) 載入資料：如果是打開狀態且還沒載入過
             if (sidePanel.classList.contains('open')) {
-                // 如果還沒載入過資料，就去抓
                 if (!isSamplesLoaded) {
                     fetchAlgoSamples();
                 }
             }
-        });
+        };
 
         // 點擊面板內部不要關閉
         sidePanel.addEventListener('click', function(e) {
@@ -2187,21 +2240,31 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // 點擊網頁其他地方關閉面板 (提升 UX)
-        document.addEventListener('click', function() {
-            sidePanel.classList.remove('open');
+        // 注意：這段邏輯在上方已經有寫過通用的 window click listener，
+        // 但這裡保留也無妨，或是依賴上方的通用邏輯。
+        document.addEventListener('click', function(e) {
+            // 如果點擊的不是按鈕，且面板是開的，就關閉
+            if (sidePanel.classList.contains('open') && 
+                !sidePanel.contains(e.target) && 
+                e.target !== algoBtn &&
+                !algoBtn.contains(e.target)) {
+                
+                sidePanel.classList.remove('open');
+            }
         });
     }
 
     // 2. 從後端抓取範例列表
     async function fetchAlgoSamples() {
         try {
+            listContainer.innerHTML = '<div class="loading-text">讀取中...</div>';
+
             // 呼叫後端 API
             const res = await fetch('/api/samples'); 
             
             if (!res.ok) throw new Error('無法載入範例');
             
             // 預期回傳樹狀 JSON 結構
-            // 範例: [{ name: "Sort", type: "folder", children: [...] }, { name: "test.cpp", type: "file" }]
             const data = await res.json();
             
             listContainer.innerHTML = ''; // 清空載入中...
@@ -2222,12 +2285,10 @@ document.addEventListener('DOMContentLoaded', function() {
             listContainer.innerHTML = `<div class="loading-text" style="color:red;">載入失敗<br>${err.message}</div>`;
         }
     }
+
     /**
      * 遞迴建立選單 DOM 的函式
-     * @param {Array} items - 包含檔案或資料夾物件的陣列
-     * @returns {HTMLElement} - 包含所有項目的 DocumentFragment 或容器
      */
-    // 遞迴建立選單 DOM
     function createRecursiveMenu(items) {
         const fragment = document.createDocumentFragment();
 
@@ -2276,30 +2337,20 @@ document.addEventListener('DOMContentLoaded', function() {
             fileDiv.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 await loadSampleData(item.path, null);
+                // 點擊後是否要自動收起面板？看你喜好，這裡先保留開啟
+                // sidePanel.classList.remove('open');
             });
 
             wrapper.appendChild(fileDiv);
 
             // B. 嚴格篩選測資
-            const baseName = item.name.replace(/\.(cpp|c|js|py)$/i, ''); // 例如: "Segment_Tree_easy"
+            const baseName = item.name.replace(/\.(cpp|c|js|py)$/i, ''); 
             
             const relatedInputs = inputFiles.filter(inputFile => {
                 const inputName = inputFile.name;
-                
-                // 1. 基本檢查：必須以 baseName 開頭
                 if (!inputName.startsWith(baseName)) return false;
-                
-                // 2. [嚴格檢查]：前綴後的「下一個字元」必須是分隔符號
-                // 例如 Segment_Tree_easy.cpp (base: Segment_Tree_easy)
-                // 遇到 Segment_Tree_easy-test.txt -> 第 17 個字是 '-' -> 通過
-                // 遇到 Segment_Tree_easy2.txt    -> 第 17 個字是 '2' -> 失敗
-                
                 const charAfter = inputName[baseName.length];
-                
-                // 定義允許的分隔符號：點(.)、底線(_)、橫線(-)
-                // 如果你「只」想要橫線，就把陣列改成 ['-']
                 const validSeparators = ['-']; 
-                
                 return validSeparators.includes(charAfter);
             });
 
@@ -2312,19 +2363,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 relatedInputs.forEach(inputFile => {
                     let displayName = inputFile.name;
-                    
-                    // 去掉前綴 (BaseName)
                     if (displayName.startsWith(baseName)) {
                         displayName = displayName.substring(baseName.length);
                     }
-                    
-                    // 去掉開頭的分隔符號 (如 -test.txt 變成 test.txt)
                     displayName = displayName.replace(/^[_.-]+/, '');
-                    
-                    // (選用) 如果你想連 .txt 都藏起來，解開下面這行
-                    // displayName = displayName.replace(/\.txt$/i, '');
-
-                    // 防呆：如果剩餘字串為空，就顯示 Default
                     if (!displayName.trim() || displayName === '.txt') {
                          displayName = 'Default';
                     }
@@ -2337,6 +2379,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     inputDiv.addEventListener('click', async (e) => {
                         e.stopPropagation();
                         await loadSampleData(item.path, inputFile.path);
+                        // 點選測資後，通常會希望面板收起來，方便看結果
                         sidePanel.classList.remove('open');
                     });
 
@@ -2366,10 +2409,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     /**
      * 載入範例資料 (支援 Code 和 Input)
-     * @param {String} codePath - 程式碼路徑 (例如 "Graph/DFS.cpp")
-     * @param {String} inputPath - 測資路徑 (例如 "Graph/test1.txt")
      */
     async function loadSampleData(codePath, inputPath) {
+        // [新增] 載入前先確保「我的程式碼」側邊欄是關閉的
+        if(myCodesSidebar) myCodesSidebar.classList.remove("active");
+
         try {
             // 1. 載入程式碼
             if (codePath) {
@@ -2381,7 +2425,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 if(aceEditor) {
                     aceEditor.setValue(codeText, 1);
-                    // 如果有摺疊功能，嘗試摺疊
                     if (typeof foldDrawBlocks === 'function') setTimeout(foldDrawBlocks, 100);
                 }
             }
@@ -2396,14 +2439,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 const inputText = await res.text();
                 
                 inputArea.value = inputText;
-            } else if (inputArea && !inputPath) {
-                // 如果只點了程式碼，是否要清空輸入區？看需求，這裡先不清空
-                // inputArea.value = ""; 
+            }
+
+            // 成功提示 (如果有的話)
+            if(typeof showToast === 'function') {
+                showToast("✅ 範例載入成功", "success");
             }
 
         } catch (err) {
             console.error(err);
-            alert("載入失敗: " + err.message);
+            if(typeof showToast === 'function') {
+                showToast("載入失敗: " + err.message, "error");
+            } else {
+                alert("載入失敗: " + err.message);
+            }
         }
     }
 });
