@@ -15,14 +15,9 @@
       <span class="algo-label">演算法範例集</span>
     </div>
 
-    <div class="menu-item">
-      <span class="menu-label">存取程式碼</span>
-      <div class="dropdown-content">
-        <div class="dropdown-item" id="openSaveModalBtn">💾 儲存程式碼</div>
-        <div class="dropdown-item" id="openMyCodesBtn">📂 我的程式碼</div>
-      </div>
+    <div class="menu-item" id="openMyCodesBtn">
+      <span class="menu-label">我的程式碼</span>
     </div>
-
     <div class="menu-item">
       <span class="menu-label">畫布設定</span>
       <div class="dropdown-content">
@@ -43,7 +38,6 @@
     </div>
   </nav>
   <div id="main">
-    <!-- 左側：C++ 程式碼面板 -->
     <div id="codePanel">
       <header>
         <span class="header-title">C++</span>
@@ -62,9 +56,7 @@
 
     <div id="divider"></div>
 
-    <!-- 右側：視覺化 + 執行結果 -->
     <div id="vizPanel">
-      <!-- 子標籤列 -->
       <div id="subTabs">
         <div class="subTab">
           <button class="tab-btn active" data-tab="tab-canvas">畫布</button>
@@ -82,7 +74,6 @@
            <button id="loginTriggerBtn" class="btn-login">登入</button>
         </div>
       </div>
-      <!-- 畫布內容 -->
       <div id="tab-canvas" class="subContent active">
         <div class="controls">
           <button id="restartBtn" title="重新播放">⏮</button>
@@ -94,8 +85,7 @@
           <button id="finishBtn" title="跳到最後">⏭</button>
           <button id="ttsAvBtn" class="btn-tts" title="播放聲音">🔊</button>
           <div id="frameTimeline">
-          <!--  <div id="frameBars"></div> -->
-            <div id="frameInfo">第 0 幀 / 共 0 幀</div>
+          <div id="frameInfo">第 0 幀 / 共 0 幀</div>
           </div>
           <label>速度：</label>
           <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000"/>
@@ -103,22 +93,18 @@
         </div>
         <svg id="arraySvg"></svg>
       </div>
-      <!-- 輸入內容 -->
       <div id="tab-input" class="subContent">
-        <!-- 這裡是程式 stdin 用的輸入區 -->
         <textarea id="inputArea"
                   placeholder="請輸入程式執行時要給的輸入（stdin）..."
                   style="flex:1; width:100%; height:100%; resize:none; font-family:monospace; padding:8px;"></textarea>
       </div>
 
-      <!-- 輸出內容 -->
       <div id="tab-output" class="subContent">
         <pre id="outputArea"
              style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未執行
         </pre>
       </div>
 
-      <!-- debug log 內容 -->
       <div id="tab-debug" class="subContent">
         <pre id="debugArea"
              style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未有 debug 訊息
@@ -210,10 +196,10 @@
     </div>
 
     <div class="sidebar-toolbar">
+        <button id="openSaveModalBtn" style="cursor: pointer; margin-right: 8px; padding: 2px 6px;" title="儲存當前程式碼">💾 儲存</button>
         <button id="refreshMyCodesBtn" class="btn-icon-refresh" title="重新整理">↻</button>
         <span class="sidebar-hint">點擊項目以載入</span>
     </div>
-
     <div id="myCodesList" class="sidebar-content">
         <p class="empty-msg">載入中...</p>
     </div>
