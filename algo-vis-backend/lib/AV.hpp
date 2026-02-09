@@ -309,6 +309,20 @@ public:
     template<typename T>
     void frame_draw_impl(
         const int code_line,
+        const vector<vector<T>>& matrix = {}
+    ) {
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += 
+            "draw2DArray(\'2Darray\', 0, 0," + 
+            array2D_to_string(matrix) + ");\n";
+        _content += "                }\n";
+    }
+
+    template<typename T>
+    void frame_draw_impl(
+        const int code_line,
         const string groupID,
         const int offsetX = 0,
         const int offsetY = 0,
@@ -331,6 +345,20 @@ public:
             array2D_to_string(range) + ",  " + 
             "\"" + draw_type + "\", " + 
             to_string(index) + ");\n";
+        _content += "                }\n";
+    }
+
+    template<typename T>
+    void frame_draw_impl(
+        const int code_line,
+        const vector<T>& num = {}
+    ) {
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += 
+            "drawArray(\'array\', 0, 0," + 
+            array_to_string(num) + ");\n";
         _content += "                }\n";
     }
 
@@ -377,6 +405,20 @@ public:
     template<typename T>
     void key_frame_draw_impl(
         const int code_line,
+        const vector<vector<T>>& matrix = {}
+    ) {
+        _content += "                if (track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += 
+            "draw2DArray(\'2Darray\', 0, 0," + 
+            array2D_to_string(matrix) + ");\n";
+        _content += "                }\n";
+    }
+
+    template<typename T>
+    void key_frame_draw_impl(
+        const int code_line,
         const string groupID,
         const int offsetX = 0,
         const int offsetY = 0,
@@ -401,6 +443,20 @@ public:
             to_string(index) + ");\n";
         _content += "                }\n";
         _keyFrames.push_back(_frameCount);
+    }
+
+    template<typename T>
+    void key_frame_draw_impl(
+        const int code_line,
+        const vector<T>& num = {}
+    ) {
+        _content += "                if (track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += 
+            "drawArray(\'array\', 0, 0," + 
+            array_to_string(num) + ");\n";
+        _content += "                }\n";
     }
 
     template<typename T>
@@ -452,6 +508,22 @@ public:
     template<typename T>
     void draw_impl(
         const int code_line,
+        const vector<vector<T>>& matrix = {}
+    ) {
+        _content += "            case " + to_string(_frameCount++) + ":\n";
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += 
+            "draw2DArray(\'2Darray\', 0, 0," + 
+            array2D_to_string(matrix) + ");\n";
+        _content += "                }\n";
+        _content += "                break;\n";
+    }
+
+    template<typename T>
+    void draw_impl(
+        const int code_line,
         const string groupID,
         const int offsetX = 0,
         const int offsetY = 0,
@@ -475,6 +547,22 @@ public:
             array2D_to_string(range) + ",  " + 
             "\"" + draw_type + "\", " +  
             to_string(index) + ");\n";
+        _content += "                }\n";
+        _content += "                break;\n";
+    }
+
+    template<typename T>
+    void draw_impl(
+        const int code_line,
+        const vector<T>& num = {}
+    ) {
+        _content += "            case " + to_string(_frameCount++) + ":\n";
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += 
+            "drawArray(\'array\', 0, 0," + 
+            array_to_string(num) + ");\n";
         _content += "                }\n";
         _content += "                break;\n";
     }

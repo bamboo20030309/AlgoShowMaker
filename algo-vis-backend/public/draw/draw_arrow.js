@@ -45,7 +45,7 @@
     marker = document.createElementNS(NS, 'marker');
     marker.setAttribute('id', markerId);
     marker.setAttribute('viewBox', '0 0 10 10');
-    // ★ 讓線段端點接在 marker 的「中間」(x=5)，使箭頭會向線段外側畫出去
+    // 讓線段端點接在 marker 的「中間」(x=5)，使箭頭會向線段外側畫出去
     marker.setAttribute('refX', '0');
     marker.setAttribute('refY', '5');
     marker.setAttribute('markerWidth', '3');
