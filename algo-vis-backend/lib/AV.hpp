@@ -215,28 +215,6 @@ public:
         return arr;
     }
 
-    /*
-    static string relPos_to_absPos(const string& ID) {
-        return "{ group: \"" + ID + "\", direction: \"center\" }";
-    }
-
-    static string relPos_to_absPos(const string& ID, const string& direction) {
-        return "{ group: \"" + ID + "\", direction: \"" + direction + "\" }";
-    }
-
-    static string relPos_to_absPos(const string& ID, int x) {
-        return "{ group: \"" + ID + "\", index: " + to_string(x) + " }";
-    }
-
-    static string relPos_to_absPos(const string& ID, int x, int y) {
-        return "{ group: \"" + ID + "\", row: " + to_string(x) + ", col: " + to_string(y) + " }";
-    }
-
-    static string relPos_to_absPos(int x, int y) {
-        return "{ x: " + to_string(x) + ", y: " + to_string(y) + " }";
-    }
-    */
-
     void stop(){
         if (_frameCount > 0) {
             _stopFrames.push_back(_frameCount - 1);
