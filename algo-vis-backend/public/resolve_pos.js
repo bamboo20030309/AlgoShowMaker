@@ -34,23 +34,20 @@
       const hasIndex = (spec.index !== undefined && spec.index !== null && spec.index !== -1);
       const hasRowCol = (spec.row !== undefined && spec.row !== -1);
       const anchor = spec.anchor || "center";
+
+      // 1. 嘗試查找全域 Layout 定義
+      const layoutName = spec.layout || el.getAttribute('data-layout') || 'normal';
+      const layouts = window.ArrayLayout || {};
+      const layout = layouts[layoutName];
       
       // -----------------------------------------------------
       // 一維陣列抓位置
       // -----------------------------------------------------
       if (hasIndex) {
-        // --- 這裡放入您要求的原始寫法 ---
-        const idx = spec.index;
-
-        // 1. 嘗試查找全域 Layout 定義
-        const layoutName = spec.layout || el.getAttribute('data-layout') || 'normal';
-        const layouts = window.ArrayLayout || {};
-        const layout = layouts[layoutName];
-
         if (layout && typeof layout.getPosition === 'function') {
-          // 如果 layout 有定義，就交給它算
-          calculatedPos = layout.getPosition(refId, idx, anchor);
-        } else {
+          calculatedPos = layout.getPosition(refId, spec.index, anchor);
+        }/* else {
+          console.log("2 normal");
           // 2. 沒有註冊 layout 的 fallback：用最原始的橫排算法
           const [baseX, baseY] = (el.getAttribute('data-base-offset') || '0,0').split(',').map(Number);
           const [dx, dy]       = (el.getAttribute('data-translate') || '0,0').split(',').map(Number);
@@ -65,22 +62,16 @@
             x: baseX + dx + col * box + box / 2,
             y: baseY + dy + row * box + box / 2
           };
-        }
+        }*/
       }
 
       // -----------------------------------------------------
       // 二維陣列抓位置
       // -----------------------------------------------------
       else if (hasRowCol) {
-         const [baseX, baseY] = (el.getAttribute('data-base-offset') || '0,0').split(',').map(Number);
-         const [dx, dy]       = (el.getAttribute('data-translate') || '0,0').split(',').map(Number);
-         const box = parseInt(el.getAttribute("data-box-size") || "40", 10);
-         
-         // 簡單的 2D 網格計算
-         calculatedPos = {
-           x: baseX + dx + (spec.col) * box + box / 2, // 注意: 這裡假設 col 從 0 開始
-           y: baseY + dy + (spec.row) * box + box / 2
-         };
+        if (layout && typeof layout.getPosition === 'function') {
+          calculatedPos = layout.getPosition(refId, spec.row, spec.col, anchor);
+        }
       }
 
       // -----------------------------------------------------

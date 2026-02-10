@@ -115,12 +115,33 @@
       g.setAttribute('data-translate', '0,0');
       vp.appendChild(g);
     }
+    g.setAttribute('data-layout', 'array2D');
+
+    // ========= 儲存排版資訊供 getPosition 使用 =========
+    g.setAttribute('data-index-mode', String(index));
+    g.setAttribute('data-start-r', String(startR));
+    g.setAttribute('data-start-c', String(startC));
+    g.setAttribute('data-total-rows', String(total_rows));
+    g.setAttribute('data-total-cols', String(total_cols));
+
+    // 1) 讀出拖曳偏移
+    const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
+ 
+    // 2) 把 CodeScript 本幀的位移存在 data-base-offset
+    g.setAttribute('data-base-offset', `${offsetX},${offsetY}`);
+ 
+    // 3) 合併 base + 拖曳偏移，更新 transform
+    g.setAttribute('transform',`translate(${offsetX + dx},${offsetY + dy})`);
 
     // 每幀重畫前清空內容（保留 data-translate）
     while (g.firstChild) g.removeChild(g.firstChild);
 
+
+
     window.draw_array_outerframe(g, groupID, total_rows * baseBoxSize, total_cols * baseBoxSize);  //畫外框
 
+
+    
     // ========= 畫表頭 =========
     if (draw_type === 'normal') {
         if (isIndexX) {
@@ -192,22 +213,83 @@
         }
       }
     }
-
-    // ========= 設定拖曳與基準位移 =========
-    // 讀出目前已存在的拖曳偏移（若有被使用者拖過）
-    const [dx, dy] = (g.getAttribute('data-translate') || '0,0')
-      .split(',')
-      .map(Number);
-
-    // 把這一幀的「邏輯位置」記在 data-base-offset
-    g.setAttribute('data-base-offset', `${offsetX},${offsetY}`);
-
-    // 合併 base + 拖曳偏移，更新真正的 transform
-    g.setAttribute(
-      'transform',
-      `translate(${offsetX + dx},${offsetY + dy})`
-    );
   }
+
+  function get2DArrayPosition(groupID, row, col, anchor = "center") {
+    const vp = window.getViewport && window.getViewport();
+    if (!vp) return { x: 0, y: 0 };
+
+    const g = vp.querySelector('#' + CSS.escape(groupID));
+    if (!g) return { x: 0, y: 0 };
+
+    // 1. 讀取排版資訊
+    const indexMode = parseInt(g.getAttribute('data-index-mode') || '3', 10);
+    const startR    = parseInt(g.getAttribute('data-start-r')    || '0', 10);
+    const startC    = parseInt(g.getAttribute('data-start-c')    || '0', 10);
+    const totalRows = parseInt(g.getAttribute('data-total-rows') || '1', 10);
+    const totalCols = parseInt(g.getAttribute('data-total-cols') || '1', 10);
+
+    // 計算是否顯示行列索引 (排版位移)
+    const isIndexX = indexMode % 2;               // 左側索引佔位
+    const isIndexY = (Math.floor(indexMode / 2)) % 2; // 上方索引佔位
+
+    // 2. 取得全域基準座標
+    const [baseX, baseY] = (g.getAttribute('data-base-offset') || '0,0').split(',').map(Number);
+    const [dx, dy]       = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
+    const globalX = baseX + dx;
+    const globalY = baseY + dy;
+
+    console.log("globalX, globalY:", globalX, globalY);
+
+    // 3. 計算目標方塊的位置與大小 (Local Coordinates)
+    let boxX = 0, boxY = 0, boxW = 0, boxH = 0;
+    const cellW = baseBoxSize;
+    const cellH = baseBoxSize;
+
+    // 判斷是否指定了有效的 row 和 col
+    // 注意：row/col 可以是 0，所以要用 typeof number 判斷
+    if (typeof row === 'number' && typeof col === 'number' && row !== -1 && col !== -1) {
+        // === 針對特定格子 ===
+        // 如果該格子被裁切掉 (不再 range 內)，通常還是算它的邏輯位置，
+        // 但為了視覺正確，我們通常假設使用者只會指到存在的格子。
+        
+        // 公式：(r - startR + isIndexY) * cellH
+        // 需注意：如果 row < startR，它會跑到表格上方 (這在 partial render 時是合理的相對位置)
+        boxX = (col - startC + isIndexX) * cellW;
+        boxY = (row - startR + isIndexY) * cellH;
+        boxW = cellW;
+        boxH = cellH;
+    } else {
+        // === 針對整個表格 (Bounding Box) ===
+        boxX = 0;
+        boxY = 0;
+        boxW = totalCols * cellW;
+        boxH = totalRows * cellH;
+    }
+
+    // 4. 計算錨點 (Anchor)
+    const a = (anchor || 'center').toLowerCase();
+    
+    // 計算相對於 g 原點的 local 座標
+    let localX = boxX + boxW / 2;
+    let localY = boxY + boxH / 2;
+
+    if (a.includes('left'))   localX = boxX;
+    if (a.includes('right'))  localX = boxX + boxW;
+    if (a.includes('top'))    localY = boxY;
+    if (a.includes('bottom')) localY = boxY + boxH;
+
+    return {
+        x: globalX + localX,
+        y: globalY + localY
+    };
+  }
+
+  // 註冊到一個全域 layout 表
+  window.ArrayLayout = window.ArrayLayout || {};
+  window.ArrayLayout.array2D = {
+    getPosition: get2DArrayPosition
+  };
 
   // 掛到全域
   window.draw2DArray   = draw2DArray;
