@@ -312,8 +312,8 @@
     // 1) marker（箭頭/圓點）會「畫在端點附近」
     // 2) 只要那端有 arrow/dot，就把線段端點往裡縮 ARROW_HEAD_SHRINK
     //    這樣箭頭/圓點就會落在「往裡縮一點的位置」
-    const shrinkStart = (headStart === 'arrow' || headStart === 'dot') ? ARROW_HEAD_SHRINK + (width-4)*2 : 0;
-    const shrinkEnd   = (headEnd   === 'arrow' || headEnd   === 'dot') ? ARROW_HEAD_SHRINK + (width-4)*2 : 0;
+    const shrinkStart = (headStart === 'arrow' || headStart === 'dot') ? ARROW_HEAD_SHRINK + (width-4)*3 : 0;
+    const shrinkEnd   = (headEnd   === 'arrow' || headEnd   === 'dot') ? ARROW_HEAD_SHRINK + (width-4)*3 : 0;
 
     const marginStart = baseMarginStart + shrinkStart;
     const marginEnd   = baseMarginEnd   + shrinkEnd;
