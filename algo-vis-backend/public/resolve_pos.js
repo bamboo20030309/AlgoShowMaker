@@ -33,17 +33,27 @@
       let calculatedPos = { x: 0, y: 0 };
       const hasIndex = (spec.index !== undefined && spec.index !== null && spec.index !== -1);
       const hasRowCol = (spec.row !== undefined && spec.row !== -1);
+      const hasOuterframe = !(hasIndex || hasRowCol); // 如果沒有 index/rowcol，就當作 outerframe 來處理
       const anchor = spec.anchor || "center";
 
       // 1. 嘗試查找全域 Layout 定義
       const layoutName = spec.layout || el.getAttribute('data-layout') || 'normal';
       const layouts = window.ArrayLayout || {};
       const layout = layouts[layoutName];
+
+      // -----------------------------------------------------
+      // 外框抓位置
+      // -----------------------------------------------------
+      if (hasOuterframe) {
+        if (window.getOuterframePosition && typeof window.getOuterframePosition === 'function') {
+          calculatedPos = window.getOuterframePosition(refId, anchor);
+        }
+      }
       
       // -----------------------------------------------------
       // 一維陣列抓位置
       // -----------------------------------------------------
-      if (hasIndex) {
+      else if (hasIndex) {
         if (layout && typeof layout.getPosition === 'function') {
           calculatedPos = layout.getPosition(refId, spec.index, anchor);
         }
@@ -62,6 +72,7 @@
       // 方法 D: 最通用的 BBox 計算 (整個物件)
       // -----------------------------------------------------
       else {
+        console.log("Fallback to BBox position calculation for element:", el);
         calculatedPos = getFallbackBBoxPosition(el, anchor);
       }
 

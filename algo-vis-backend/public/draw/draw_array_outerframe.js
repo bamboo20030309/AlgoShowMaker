@@ -57,10 +57,10 @@
     label.textContent = groupID;
     g.appendChild(label);
 
-    const left = frameX;
-    const top = -pad;
-    const right = frameX + frameW;
-    const bottom = -pad + (totalH + pad * 2 + nameH);
+    const left = frameX + outerframe_padding;
+    const top = -pad + outerframe_padding;
+    const right = frameX + frameW + outerframe_padding;
+    const bottom = -pad + (totalH + pad * 2 + nameH) + outerframe_padding;
     writeOuterframeBBox(g, left, top, right, bottom);
     return;
   }
@@ -73,7 +73,7 @@
   }
 
 
-  function getOuterframePosition(groupID, direction = "center") {
+  function getOuterframePosition(groupID, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return { x: 0, y: 0 };
 
@@ -93,23 +93,15 @@
     const cxLocal = (left + right) / 2;
     const cyLocal = (top + bottom) / 2;
 
-    const dir = String(direction || "center").toLowerCase();
+    const a = (anchor || 'center').toLowerCase();
 
     let xLocal = cxLocal;
     let yLocal = cyLocal;
 
-    if (dir === "up" || dir === "top") {
-      xLocal = cxLocal; yLocal = top;
-    } else if (dir === "down" || dir === "bottom") {
-      xLocal = cxLocal; yLocal = bottom;
-    } else if (dir === "left") {
-      xLocal = left;    yLocal = cyLocal;
-    } else if (dir === "right") {
-      xLocal = right;   yLocal = cyLocal;
-    } else {
-      // center / middle
-      xLocal = cxLocal; yLocal = cyLocal;
-    }
+    if (a.includes('left'))   xLocal = left;
+    if (a.includes('right'))  xLocal = right;
+    if (a.includes('top'))    yLocal = top;
+    if (a.includes('bottom')) yLocal = bottom;
 
     return { x: baseX + dx + xLocal, y: baseY + dy + yLocal };
   }
