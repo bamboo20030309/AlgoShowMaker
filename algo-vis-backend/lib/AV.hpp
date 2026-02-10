@@ -254,61 +254,53 @@ public:
 
     void text(
         const string text = "",
-        const int offsetX = 0,
-        const int offsetY = 0
+        const Pos pos
     ) {
         _content += "                if (track === 0) {\n";
         _content += "                    ";
         _content += 
             "drawText(\"" + 
             escapeJS(text) + "\"" + ", " +
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ");\n";
+            pos.toJson() + ");\n";
         _content += "                }\n";
     }
 
     void key_text(
         const string text = "",
-        const int offsetX = 0,
-        const int offsetY = 0
+        const Pos pos
     ) {
         _content += "                if (track === 1) {\n";
         _content += "                    ";
         _content += 
             "drawText(\"" + 
             escapeJS(text) + "\"" + ", " +
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ");\n";
+            pos.toJson() + ");\n";
         _content += "                }\n";
     }
 
     void colored_text(
         const vector<vector<string>> text,
-        const int offsetX = 0,
-        const int offsetY = 0
+        const Pos pos
     ) {
         _content += "                if (track === 0) {\n";
         _content += "                    ";
         _content += 
             "drawColoredText(" + 
             VVS_to_string(text) + ", " +
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ");\n";
+            pos.toJson() + ");\n";
         _content += "                }\n";
     }
 
     void key_colored_text(
         const vector<vector<string>> text,
-        const int offsetX = 0,
-        const int offsetY = 0
+        const Pos pos
     ) {
         _content += "                if (track === 1) {\n";
         _content += "                    ";
         _content += 
             "drawColoredText(" + 
             VVS_to_string(text) + ", " +
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ");\n";
+            pos.toJson() + ");\n";
         _content += "                }\n";
     }
 
@@ -450,8 +442,7 @@ public:
     void key_frame_draw_impl(
         const int code_line,
         const string groupID,
-        const int offsetX = 0,
-        const int offsetY = 0,
+        const Pos pos,
         const vector<vector<T>>& matrix = {},
         const vector<array2D_style>& style = {},
         const vector<vector<int>>& range = {},
@@ -464,8 +455,7 @@ public:
         _content += 
             "draw2DArray(\'" + 
             groupID + "\', " + 
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ", " + 
+            pos.toJson() + ", " +
             array2D_to_string(matrix) + ",  " + 
             array2Dstyle_to_object(style) + ", " + 
             array2D_to_string(range) + ",  " +
@@ -493,8 +483,7 @@ public:
     void key_frame_draw_impl(
         const int code_line,
         const string groupID,
-        const int offsetX = 0,
-        const int offsetY = 0,
+        const Pos pos,
         const vector<T>& num = {},
         const vector<array_style>& style ={},
         const vector<int>& range = {0},
@@ -513,8 +502,7 @@ public:
         _content += 
             "drawArray(\'" + 
             groupID + "\', " + 
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ", " + 
+            pos.toJson() + ", " + 
             array_to_string(num) + ",  " + 
             arraystyle_to_object(style) + ", " + 
             array_to_string(range) + ", " + 
@@ -555,8 +543,7 @@ public:
     void draw_impl(
         const int code_line,
         const string groupID,
-        const int offsetX = 0,
-        const int offsetY = 0,
+        const Pos pos,
         const vector<vector<T>>& matrix = {},
         const vector<array2D_style>& style ={},
         const vector<vector<int>>& range = {},
@@ -570,8 +557,7 @@ public:
         _content += 
             "draw2DArray(\'" + 
             groupID + "\', " + 
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ", " + 
+            pos.toJson() + ", " +
             array2D_to_string(matrix) + ",  " + 
             array2Dstyle_to_object(style) + ", " +
             array2D_to_string(range) + ",  " + 
@@ -601,8 +587,7 @@ public:
     void draw_impl(
         const int code_line,
         const string groupID,
-        const int offsetX = 0,
-        const int offsetY = 0,
+        const Pos pos,
         const vector<T>& num = {},
         const vector<array_style>& style ={},
         const vector<int>& range = {0},
@@ -622,8 +607,7 @@ public:
         _content += 
             "drawArray(\'" + 
             groupID + "\', " + 
-            to_string(offsetX) + ", " + 
-            to_string(offsetY) + ", " + 
+            pos.toJson() + ", " +
             array_to_string(num) + ",  " + 
             arraystyle_to_object(style) + ", " + 
             array_to_string(range) + ", " + 
