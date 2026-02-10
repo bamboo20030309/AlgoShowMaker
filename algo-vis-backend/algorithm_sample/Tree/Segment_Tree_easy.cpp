@@ -41,9 +41,9 @@ int query(int l,int r,int L,int R,int now=1){ //如果要改成min的話 Add要�
             }
         }
         av.start_frame_draw();
-        av.text("找到符合大小的區段就回傳 "+to_string(tree[now]),0,-60);   
-        av.frame_draw("tree" , 0,   0,   tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
-        av.key_frame_draw("tree" , 0,   0,   tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.text("找到符合大小的區段就回傳 "+to_string(tree[now]),Pos(0,-60));   
+        av.frame_draw("tree" , Pos(0,0),    tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.key_frame_draw("tree" , Pos(0,0),       tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
         return tree[now]; 
@@ -54,8 +54,8 @@ int query(int l,int r,int L,int R,int now=1){ //如果要改成min的話 Add要�
 
     //draw{
     av.start_frame_draw();
-    av.text("{從最上面一路往下遞迴:一路遞迴拆下去}\n{並且遇到中線就將它二分後拆分推下去}",0,-80);
-    av.frame_draw("tree" , 0,   0, tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+    av.text("{從最上面一路往下遞迴:一路遞迴拆下去}\n{並且遇到中線就將它二分後拆分推下去}",Pos(0,-80));
+    av.frame_draw("tree" , Pos(0,0),  tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
     av.end_frame_draw();
     //}
     //draw{
@@ -103,8 +103,8 @@ int main(){
 
     av.start_draw();
     av.start_frame_draw();
-    av.colored_text({{{"這是一顆只包含查詢功能的線段樹\n每一層皆是由底下兩層相加而來的\n最底下一行是輸入的測資\n在建樹的時候先輸入測資後再一路往上建構出來的\n而等等會展示一些測資來凸顯線段樹省時的威力\n{以下是功能的代表色}\n"}},{{"{query}   (查詢)"},"rgba(18, 221, 35, 0.7)"} },0,-240);
-    av.frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus} }, {1,n}, "segment_tree", 20, 1, lazy, sets);
+    av.colored_text({{{"這是一顆只包含查詢功能的線段樹\n每一層皆是由底下兩層相加而來的\n最底下一行是輸入的測資\n在建樹的時候先輸入測資後再一路往上建構出來的\n而等等會展示一些測資來凸顯線段樹省時的威力\n{以下是功能的代表色}\n"}},{{"{query}   (查詢)"},"rgba(18, 221, 35, 0.7)"} },Pos(0,-240));
+    av.frame_draw("tree" , Pos(0,0),    tree, {{{"focus"},_draw_focus} }, {1,n}, "segment_tree", 20, 1, lazy, sets);
     av.end_frame_draw();
     //}
     
@@ -122,9 +122,9 @@ int main(){
         _draw_seg_color="rgba(18, 221, 35, 0.7)";
         
         av.start_frame_draw();
-        av.colored_text({{{"{這個是 }"}},{{"{query 的操作}"},"rgba(18, 221, 35, 0.44)"},{{"\n現在"}},{{"搜尋區間 "+to_string(x)+"~"+to_string(y)+" 的數值"},"rgba(18, 221, 35, 0.44)"}},0,-80);
-        av.frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
-        av.key_frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.colored_text({{{"{這個是 }"}},{{"{query 的操作}"},"rgba(18, 221, 35, 0.44)"},{{"\n現在"}},{{"搜尋區間 "+to_string(x)+"~"+to_string(y)+" 的數值"},"rgba(18, 221, 35, 0.44)"}},Pos(0,-80));
+        av.frame_draw("tree" , Pos(0,0),    tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.key_frame_draw("tree" , Pos(0,0),       tree, {{{"focus"},_draw_focus} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
         int ans = query(Tmask, (Tmask<<1)-1, (x-1|Tmask), (y-1|Tmask));
@@ -132,15 +132,15 @@ int main(){
 
         //draw{
         av.start_frame_draw();
-        av.colored_text({{{"完成一次 "}},{{"query 的操作\n"},"rgba(18, 221, 35, 0.44)"},{{"區間搜尋結果 "+to_string(x)+"~"+to_string(y)+" 的數值為 "+to_string(ans)},"rgba(18, 221, 35, 0.44)"}},0,-80);
-        av.frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
-        av.key_frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.colored_text({{{"完成一次 "}},{{"query 的操作\n"},"rgba(18, 221, 35, 0.44)"},{{"區間搜尋結果 "+to_string(x)+"~"+to_string(y)+" 的數值為 "+to_string(ans)},"rgba(18, 221, 35, 0.44)"}},Pos(0,-80));
+        av.frame_draw("tree" , Pos(0,0),    tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.key_frame_draw("tree" , Pos(0,0),       tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}   
     }
     //draw{
     av.start_frame_draw();
-    av.frame_draw("tree" , 0,   0,       tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, vector<int>(), vector<int>(), vector<int>());
+    av.frame_draw("tree" , Pos(0,0),       tree, {{{"focus"},_draw_focus}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, vector<int>(), vector<int>(), vector<int>());
     av.end_frame_draw();
     av.end_draw();
     //}

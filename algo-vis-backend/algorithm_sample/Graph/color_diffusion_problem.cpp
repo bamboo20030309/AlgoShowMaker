@@ -11,8 +11,8 @@ int main() {
     vector<string> _color={"rgba(55, 55, 55, 0.7)","rgba(255, 45, 45, 0.7)","rgba(102, 250, 102, 0.7)","rgba(250, 250, 69, 0.7)","rgba(63, 120, 253, 0.7)","rgba(241, 87, 216, 0.7)","rgba(58, 221, 250, 0.7)","white"};
     av.start_draw();
     av.start_frame_draw();
-    av.colored_text({{{"{題意：}\n這是一個在每個格子塗上顏色 \n並觀察他在過了k天後的擴散情況的模擬問題 \n一開始會給很多原色 {每一天會往上下左右擴散 直到k天結束後 輸出結束狀態}"}}}, -10,-130);
-    av.frame_draw("board",0,40,vector<vector<char>>{{'R','N','G'},{'N','N','N'},{'B','N','N'}},{
+    av.colored_text({{{"{題意：}\n這是一個在每個格子塗上顏色 \n並觀察他在過了k天後的擴散情況的模擬問題 \n一開始會給很多原色 {每一天會往上下左右擴散 直到k天結束後 輸出結束狀態}"}}}, Pos(0,-130));
+    av.frame_draw("board",Pos(0,40),vector<vector<char>>{{'R','N','G'},{'N','N','N'},{'B','N','N'}},{
         {{"background",_color[0]},{{0,1},{1,0},{1,1},{1,2},{2,1},{2,2}}},
         {{"background",_color[1]},{{0,0}}},
         {{"background",_color[2]},{{0,2}}},
@@ -24,8 +24,8 @@ int main() {
     },{{0,0},{2,2}});
     av.end_frame_draw();
     av.start_frame_draw();
-    av.colored_text({{{"{題意：}\n{這是一個在每個格子塗上顏色} \n{並觀察他在過了k天後的擴散情況的模擬問題} \n{一開始會給很多原色} 每一天會往上下左右擴散 {直到k天結束後 輸出結束狀態}"}}}, -10,-130);
-    av.frame_draw("board",0,40,vector<vector<char>>{{'R','N','G'},{'N','N','N'},{'B','N','N'}},{
+    av.colored_text({{{"{題意：}\n{這是一個在每個格子塗上顏色} \n{並觀察他在過了k天後的擴散情況的模擬問題} \n{一開始會給很多原色} 每一天會往上下左右擴散 {直到k天結束後 輸出結束狀態}"}}}, Pos(0,-130));
+    av.frame_draw("board",Pos(0,40),vector<vector<char>>{{'R','N','G'},{'N','N','N'},{'B','N','N'}},{
         {{"background",_color[0]},{{1,1},{2,2}}},
         {{"background",_color[1]},{{0,0}}},
         {{"background",_color[2]},{{0,2},{1,2}}},
@@ -37,8 +37,8 @@ int main() {
     },{{0,0},{2,2}});
     av.end_frame_draw();
     av.start_frame_draw();
-    av.colored_text({{{"{題意：}\n{這是一個在每個格子塗上顏色} \n{並觀察他在過了k天後的擴散情況的模擬問題} \n{一開始會給很多原色 每一天會往上下左右擴散} 直到k天結束後 輸出結束狀態"}}}, -10,-130);
-    av.frame_draw("board",0,40,vector<vector<char>>{{'R','N','G'},{'N','N','N'},{'B','N','N'}},{
+    av.colored_text({{{"{題意：}\n{這是一個在每個格子塗上顏色} \n{並觀察他在過了k天後的擴散情況的模擬問題} \n{一開始會給很多原色 每一天會往上下左右擴散} 直到k天結束後 輸出結束狀態"}}}, Pos(0,-130));
+    av.frame_draw("board",Pos(0,40),vector<vector<char>>{{'R','N','G'},{'N','N','N'},{'B','N','N'}},{
         {{"background",_color[0]},{}},
         {{"background",_color[1]},{}},
         {{"background",_color[2]},{{1,2}}},
@@ -51,13 +51,13 @@ int main() {
     av.end_frame_draw();
 
     av.start_frame_draw();
-    av.colored_text({ {{"{思路：}\n先建立一個顏色對照表來轉換字元與數字\n透過巧妙的陣列編排能夠以 "}},{{"二進制"},"rgba(237, 255, 73, 0.46)"},{{" 的方式直接儲存顏色 \n{將0的位置定義為} "}},{{"{黑色}"},"rgba(55, 55, 55, 0.46)"}}, -10,-130);
-    av.frame_draw("color",0,0,AV::string_to_char_array(color),{},{0},"normal", 0,4);
+    av.colored_text({ {{"{思路：}\n先建立一個顏色對照表來轉換字元與數字\n透過巧妙的陣列編排能夠以 "}},{{"二進制"},"rgba(237, 255, 73, 0.46)"},{{" 的方式直接儲存顏色 \n{將0的位置定義為} "}},{{"{黑色}"},"rgba(55, 55, 55, 0.46)"}}, Pos(0,-130));
+    av.frame_draw("color",Pos(0,0),AV::string_to_char_array(color),{},{0},"normal", 0,4);
     av.end_frame_draw();
 
     av.start_frame_draw();
-    av.colored_text({ {{"{思路：}\n{先建立一個顏色對照表來轉換字元與數字}\n{透過巧妙的陣列編排能夠以 }"}},{{"{二進制}"},"rgba(237, 255, 73, 0.46)"},{{" {的方式直接儲存顏色} \n將0的位置定義為 "}},{{"黑色"},"rgba(55, 55, 55, 0.46)"}}, -10,-130);
-    av.frame_draw("color",0,0,AV::string_to_char_array(color),{
+    av.colored_text({ {{"{思路：}\n{先建立一個顏色對照表來轉換字元與數字}\n{透過巧妙的陣列編排能夠以 }"}},{{"{二進制}"},"rgba(237, 255, 73, 0.46)"},{{" {的方式直接儲存顏色} \n將0的位置定義為 "}},{{"黑色"},"rgba(55, 55, 55, 0.46)"}}, Pos(0,-130));
+    av.frame_draw("color",Pos(0,0),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}}
     },{0},"normal", 0,4);
     av.end_frame_draw();
@@ -106,8 +106,8 @@ int main() {
         {{"{沒綠色}"}},
         {{"{ , }"}},
         {{"{沒紅色}"}},
-    }, -10,-110);
-    av.frame_draw("color",0,110,AV::string_to_char_array(color),{
+    }, Pos(0,-110));
+    av.frame_draw("color",Pos(0,110),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{}},
@@ -158,8 +158,8 @@ int main() {
         {{"{沒綠色}"}},
         {{"{ , }"}},
         {{"{沒紅色}"}},
-    }, -10,-110);
-    av.frame_draw("color",0,110,AV::string_to_char_array(color),{
+    }, Pos(0,-110));
+    av.frame_draw("color",Pos(0,110),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -210,8 +210,8 @@ int main() {
         {{"沒綠色"}},
         {{" , "}},
         {{"沒紅色"}},
-    }, -10,-110);
-    av.frame_draw("color",0,110,AV::string_to_char_array(color),{
+    }, Pos(0,-110));
+    av.frame_draw("color",Pos(0,110),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -231,8 +231,8 @@ int main() {
         {{"有紅色"},"rgba(255, 45, 45, 0.46)"},
         {{" = "}},
         {{"{黃色}"},"rgba(250, 250, 69, 0.46)"},
-    }, -10,-130);
-    av.frame_draw("color",0,-40,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,-40),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -252,8 +252,8 @@ int main() {
         {{"{有紅色}"},"rgba(255, 45, 45, 0.46)"},
         {{"{ = }"}},
         {{"黃色"},"rgba(250, 250, 69, 0.46)"},
-    }, -10,-130);
-    av.frame_draw("color",0,-40,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,-40),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -273,8 +273,8 @@ int main() {
         {{"有紅色"},"rgba(255, 45, 45, 0.46)"},
         {{" = "}},
         {{"{品紅色}"},"rgba(241, 87, 216, 0.46)"},        
-    }, -10,-130);
-    av.frame_draw("color",0,-60,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,-60),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -294,8 +294,8 @@ int main() {
         {{"{有紅色}"},"rgba(255, 45, 45, 0.46)"},
         {{"{ = }"}},
         {{"品紅色"},"rgba(241, 87, 216, 0.46)"},        
-    }, -10,-130);
-    av.frame_draw("color",0,-60,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,-60),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -316,8 +316,8 @@ int main() {
         {{"沒紅色"}},
         {{" = "}},
         {{"{青色}"},"rgba(58, 221, 250, 0.46)"},
-    }, -10,-130);
-    av.frame_draw("color",0,-60,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,-60),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -338,8 +338,8 @@ int main() {
         {{"{沒紅色}"}},
         {{"{ = }"}},
         {{"青色"},"rgba(58, 221, 250, 0.46)"},
-    }, -10,-130);
-    av.frame_draw("color",0,-60,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,-60),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -362,8 +362,8 @@ int main() {
         {{"有紅色"},"rgba(255, 45, 45, 0.46)"},
         {{" = "}},
         {{"白色"},"white"}
-    }, -10,-130);
-    av.frame_draw("color",0,-40,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,-40),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -386,8 +386,8 @@ int main() {
         {{"{ = }"}},
         {{"{011}"},"rgba(250, 250, 69, 0.46)"},
         {{" )\n這樣只需要一個數字就可以分別完成三個原色的顏色擴散計算"}}
-    }, -10,-130);
-    av.frame_draw("color",0,0,AV::string_to_char_array(color),{
+    }, Pos(0,-130));
+    av.frame_draw("color",Pos(0,0),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -399,8 +399,8 @@ int main() {
     },{0},"normal", 0,4);
     av.key_colored_text( { 
         {{"利用二進制編排建立顏色表"}}
-    }, -10,-70);
-    av.key_frame_draw("color",0,0,AV::string_to_char_array(color),{
+    }, Pos(0,-70));
+    av.key_frame_draw("color",Pos(0,0),AV::string_to_char_array(color),{
         {{"background",_color[0]},{0}},
         {{"background",_color[1]},{1}},
         {{"background",_color[2]},{2}},
@@ -424,8 +424,8 @@ int main() {
         av.start_frame_draw();
         av.colored_text({
             {{"這是輸入的初始狀態也就是 {char:character} 的形式"}}
-        },0,40);
-        av.frame_draw("color",0,-80,AV::string_to_char_array(color),{
+        },Pos(0,40));
+        av.frame_draw("color",Pos(0,-80),AV::string_to_char_array(color),{
             {{"background",_color[0]},{0}},
             {{"background",_color[1]},{1}},
             {{"background",_color[2]},{2}},
@@ -435,7 +435,7 @@ int main() {
             {{"background",_color[6]},{6}},
             {{"background",_color[7]},{7}}
         },{0},"normal", 0,4);
-        av.frame_draw("board",0,120,_draw_color_char,{
+        av.frame_draw("board",Pos(0,120),_draw_color_char,{
             {{"background",_color[0]},_draw_color[0]},
             {{"background",_color[1]},_draw_color[1]},
             {{"background",_color[2]},_draw_color[2]},
@@ -454,8 +454,8 @@ int main() {
         av.start_frame_draw();
         av.colored_text({
             {{"透過 {color:顏色}表 將顏色轉成數字 { color.find(n) }"}}
-        },0,40);
-        av.frame_draw("color",0,-80,AV::string_to_char_array(color),{
+        },Pos(0,40));
+        av.frame_draw("color",Pos(0,-80),AV::string_to_char_array(color),{
             {{"background",_color[0]},{0}},
             {{"background",_color[1]},{1}},
             {{"background",_color[2]},{2}},
@@ -465,7 +465,7 @@ int main() {
             {{"background",_color[6]},{6}},
             {{"background",_color[7]},{7}}
         },{0},"normal", 0,4);
-        av.frame_draw("board",0,120,_draw_board_bit,{
+        av.frame_draw("board",Pos(0,120),_draw_board_bit,{
             {{"background",_color[0]},_draw_color[0]},
             {{"background",_color[1]},_draw_color[1]},
             {{"background",_color[2]},_draw_color[2]},
@@ -478,8 +478,8 @@ int main() {
         av.end_frame_draw();
 
         av.start_frame_draw();
-        av.text("接{著:ㄓㄜ˙}是最關鍵的地方\n開一個新表來記錄下一輪的變化狀況",0,20);
-        av.frame_draw("board",0,120,_draw_board_bit,{
+        av.text("接{著:ㄓㄜ˙}是最關鍵的地方\n開一個新表來記錄下一輪的變化狀況",Pos(0,20));
+        av.frame_draw("board",Pos(0,120),_draw_board_bit,{
             {{"background",_color[0]},_draw_color[0]},
             {{"background",_color[1]},_draw_color[1]},
             {{"background",_color[2]},_draw_color[2]},
@@ -489,7 +489,7 @@ int main() {
             {{"background",_color[6]},_draw_color[6]},
             {{"background",_color[7]},_draw_color[7]}
         },{{1,1},{n,n}});
-        av.frame_draw("new_board",200,120,vector<vector<string>> (n+2,vector<string>(n+2,"000")),{
+        av.frame_draw("new_board",Pos(200,120),vector<vector<string>> (n+2,vector<string>(n+2,"000")),{
             {{"background",_color[0]},AV::AtoB(1,1,n,n)}
         },{{1,1},{n,n}});
         av.end_frame_draw();
@@ -514,11 +514,11 @@ int main() {
                 for(int i=1;i<=n;i++)for(int j=1;j<=n;j++)_draw_color[board[i][j]].pb({i,j});
                 for(int i=1;i<=n;i++)for(int j=1;j<=n;j++)_draw_new_board_color[new_board[i][j]].pb({i,j});
                 av.start_frame_draw();
-                if(_k<1 && t>0)av.text("開啟新的一天的擴散計算",0,40);
-                else if(_k<1)  av.text("從原來的 {board:舊陣列} 將十字的部分全部 {or:或} 過來 儲存在 {new_board:新陣列}\n邊界可以透過填補一圈0 簡單解決",0,20);
-                else           av.text("{利用 or 計算}擴散{部分}",0,40);
+                if(_k<1 && t>0)av.text("開啟新的一天的擴散計算",Pos(0,40));
+                else if(_k<1)  av.text("從原來的 {board:舊陣列} 將十字的部分全部 {or:或} 過來 儲存在 {new_board:新陣列}\n邊界可以透過填補一圈0 簡單解決",Pos(0,20));
+                else           av.text("{利用 or 計算}擴散{部分}",Pos(0,40));
                 _k++;
-                av.frame_draw("board",0,120,_draw_board_bit,{
+                av.frame_draw("board",Pos(0,120),_draw_board_bit,{
                     {{"background",_color[0]},_draw_color[0]},
                     {{"background",_color[1]},_draw_color[1]},
                     {{"background",_color[2]},_draw_color[2]},
@@ -529,7 +529,7 @@ int main() {
                     {{"background",_color[7]},_draw_color[7]},
                     {{"highlight"},{{i,j}}}
                 },{{1,1},{n,n}});
-                av.frame_draw("new_board",200,120,_draw_new_board_bit,{
+                av.frame_draw("new_board",Pos(200,120),_draw_new_board_bit,{
                     {{"background",_color[0]},_draw_new_board_color[0]},
                     {{"background",_color[1]},_draw_new_board_color[1]},
                     {{"background",_color[2]},_draw_new_board_color[2]},
@@ -550,9 +550,9 @@ int main() {
             _draw_color = vector<vector<pair<int,int>>>(8);
             for(int i=1;i<=n;i++)for(int j=1;j<=n;j++)_draw_color[board[i][j]].pb({i,j});
             av.start_frame_draw();
-            if(t==0)av.text("計算完一天後將 {new_board:新陣列} 取代 {board:舊陣列}\n({注意如果直接 board=new_board}\n{ 他會去抄一個複製本給 board}\n{ 並不是常數時間的}\n{ 所以請用 board=move(new_board)}\n{ 他會直接轉移名字})",0,-50);
-            else    av.text("{計算完一天後將} {new_board:新陣列} 取代 {board:舊陣列}\n({注意如果直接 board=new_board}\n{ 他會去抄一個複製本給 board}\n{ 並不是常數時間的}\n{ 所以請用 board=move(new_board)}\n{ 他會直接轉移名字})",0,-50);
-            av.frame_draw("board",0,120,_draw_board_bit,{
+            if(t==0)av.text("計算完一天後將 {new_board:新陣列} 取代 {board:舊陣列}\n({注意如果直接 board=new_board}\n{ 他會去抄一個複製本給 board}\n{ 並不是常數時間的}\n{ 所以請用 board=move(new_board)}\n{ 他會直接轉移名字})",Pos(0,-50));
+            else    av.text("{計算完一天後將} {new_board:新陣列} 取代 {board:舊陣列}\n({注意如果直接 board=new_board}\n{ 他會去抄一個複製本給 board}\n{ 並不是常數時間的}\n{ 所以請用 board=move(new_board)}\n{ 他會直接轉移名字})",Pos(0,-50));
+            av.frame_draw("board",Pos(0,120),_draw_board_bit,{
                 {{"background",_color[0]},_draw_color[0]},
                 {{"background",_color[1]},_draw_color[1]},
                 {{"background",_color[2]},_draw_color[2]},
@@ -562,8 +562,8 @@ int main() {
                 {{"background",_color[6]},_draw_color[6]},
                 {{"background",_color[7]},_draw_color[7]}
             },{{1,1},{n,n}});
-            av.key_text("第" + to_string(t+1) + "天的擴散情況",0,40);
-            av.key_frame_draw("board",0,120,_draw_board_bit,{
+            av.key_text("第" + to_string(t+1) + "天的擴散情況",Pos(0,40));
+            av.key_frame_draw("board",Pos(0,120),_draw_board_bit,{
                 {{"background",_color[0]},_draw_color[0]},
                 {{"background",_color[1]},_draw_color[1]},
                 {{"background",_color[2]},_draw_color[2]},
@@ -582,8 +582,8 @@ int main() {
         _draw_color = vector<vector<pair<int,int>>>(8);
         for(int i=1;i<=n;i++)for(int j=1;j<=n;j++)_draw_color[board[i][j]].pb({i,j});
         av.start_frame_draw();
-        av.text("最後利用 {color:顏色}表 再將數字轉回 {char:character} 的形式輸出",0,40);
-        av.frame_draw("color",0,-80,AV::string_to_char_array(color),{
+        av.text("最後利用 {color:顏色}表 再將數字轉回 {char:character} 的形式輸出",Pos(0,40));
+        av.frame_draw("color",Pos(0,-80),AV::string_to_char_array(color),{
             {{"background",_color[0]},{0}},
             {{"background",_color[1]},{1}},
             {{"background",_color[2]},{2}},
@@ -593,7 +593,7 @@ int main() {
             {{"background",_color[6]},{6}},
             {{"background",_color[7]},{7}}
         },{0},"normal", 0,4);
-        av.frame_draw("board",0,120,_draw_color_char,{
+        av.frame_draw("board",Pos(0,120),_draw_color_char,{
             {{"background",_color[0]},_draw_color[0]},
             {{"background",_color[1]},_draw_color[1]},
             {{"background",_color[2]},_draw_color[2]},
@@ -603,8 +603,8 @@ int main() {
             {{"background",_color[6]},_draw_color[6]},
             {{"background",_color[7]},_draw_color[7]}
         },{{1,1},{n,n}});
-        av.key_text("最後利用 {color:顏色}表 再將數字轉回 {char:character} 的形式輸出",0,40);
-        av.key_frame_draw("color",0,-80,AV::string_to_char_array(color),{
+        av.key_text("最後利用 {color:顏色}表 再將數字轉回 {char:character} 的形式輸出",Pos(0,40));
+        av.key_frame_draw("color",Pos(0,-80),AV::string_to_char_array(color),{
             {{"background",_color[0]},{0}},
             {{"background",_color[1]},{1}},
             {{"background",_color[2]},{2}},
@@ -614,7 +614,7 @@ int main() {
             {{"background",_color[6]},{6}},
             {{"background",_color[7]},{7}}
         },{0},"normal", 0,4);
-        av.key_frame_draw("board",0,120,_draw_color_char,{
+        av.key_frame_draw("board",Pos(0,120),_draw_color_char,{
             {{"background",_color[0]},_draw_color[0]},
             {{"background",_color[1]},_draw_color[1]},
             {{"background",_color[2]},_draw_color[2]},

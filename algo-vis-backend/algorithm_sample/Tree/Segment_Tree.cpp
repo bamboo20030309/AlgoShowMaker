@@ -44,8 +44,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
             for(int i=1;i<Tsize;i++) if(lazy[i]!= 0) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]);
             for(int i=1;i<Tsize;i++) if(sets[i]!=LM) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]) + "," + to_string(sets[i]);
             av.start_frame_draw(); 
-            av.colored_text({{{"如果有"}},{{"modify標記"},"rgba(231, 144, 255, 0.7)"},{{" 那就將其覆蓋掉\n否則直接寫入就好"}}},0,-80);   
-            av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+            av.colored_text({{{"如果有 "}},{{"modify標記"},"rgba(231, 144, 255, 0.7)"},{{" 那就將其覆蓋掉\n否則直接寫入就好"}}},Pos(0,-80));   
+            av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
             av.end_frame_draw();
             //}
             sets[now]=Set; 		   //尾端設置sets
@@ -62,8 +62,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
                 for(int i=1;i<Tsize;i++) if(lazy[i]!= 0) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]);
                 for(int i=1;i<Tsize;i++) if(sets[i]!=LM) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]) + "," + to_string(sets[i]);
                 av.start_frame_draw(); 
-                av.colored_text({{{"因為有"}},{{"set標記"},"rgba(255, 162, 0, 0.7)"},{{"所以要將"}},{{"modify的值"},"rgba(231, 144, 255, 0.7)"},{{"直接加在"}},{{"set標記"},"rgba(255, 162, 0, 0.7)"},{{"上"}}},0,-60);   
-                av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+                av.colored_text({{{"因為有 "}},{{"set標記"},"rgba(255, 162, 0, 0.7)"},{{" 所以要將 "}},{{"modify的值"},"rgba(231, 144, 255, 0.7)"},{{" 直接加在 "}},{{"set標記"},"rgba(255, 162, 0, 0.7)"},{{" 上"}}},Pos(0,-60));   
+                av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
                 av.end_frame_draw();
                 //}
             }
@@ -87,9 +87,9 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
             }
         }
         av.start_frame_draw();
-        av.colored_text({{{"{直到區段遇到剛好符合它大小的區段後就把它}標記一下\n{同時修改維護線段樹本身的值}\n{如果是最底下的話就不需要標記直接修改線段樹的數值即可}\n"}},{{"(粉色區段的意思是儲存當前區段以下每個區段都要加上某個數值的標記   方格中的第2個數值)"},"rgba(231, 144, 255, 0.7)"},{{"\n"}},{{"(橘色區段的意思是儲存當前區段以下每個區段都要設置成某個數值的標記 方格中的第3個數值)"},"rgba(255, 162, 0, 0.7)"}},0,-140);   
-        av.frame_draw("tree" , 0,   0,   _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
-        av.key_frame_draw("tree" , 0,   0,   tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.colored_text({{{"{直到區段遇到剛好符合它大小的區段後就把它}標記一下\n{同時修改維護線段樹本身的值}\n{如果是最底下的話就不需要標記直接修改線段樹的數值即可}\n"}},{{"(粉色區段的意思是儲存當前區段以下每個區段都要加上某個數值的標記   方格中的第2個數值)"},"rgba(231, 144, 255, 0.7)"},{{"\n"}},{{"(橘色區段的意思是儲存當前區段以下每個區段都要設置成某個數值的標記 方格中的第3個數值)"},"rgba(255, 162, 0, 0.7)"}},Pos(0,-140));   
+        av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.key_frame_draw("tree" , Pos(0,0), tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
         return tree[now]; 
@@ -106,8 +106,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
         for(int i=1;i<Tsize;i++) if(lazy[i]!= 0) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]);
         for(int i=1;i<Tsize;i++) if(sets[i]!=LM) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]) + "," + to_string(sets[i]);
         av.start_frame_draw(); 
-        av.colored_text({{{"遇到當前區段有標記時必須先處理原來的標記才能在處理現在的標記\n這邊是處理當前區段已經有 "}},{{"set 標記"},"rgba(255, 162, 0, 0.7)"},{{"的情況"}}},0,-80);   
-        av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.colored_text({{{"遇到當前區段有標記時必須先處理原來的標記才能在處理現在的標記\n這邊是處理當前區段已經有 "}},{{"set 標記"},"rgba(255, 162, 0, 0.7)"},{{" 的情況"}}},Pos(0,-80));   
+        av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
 
@@ -123,8 +123,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
         for(int i=1;i<Tsize;i++) if(lazy[i]!= 0) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]);
         for(int i=1;i<Tsize;i++) if(sets[i]!=LM) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]) + "," + to_string(sets[i]);
         av.start_frame_draw();
-        av.colored_text({{{"先將原來的標記往下推之後\n如果底下有 "}},{{"modify 標記"},"rgba(231, 144, 255, 0.7)"},{{"的話\n"}},{{"set標記"},"rgba(255, 162, 0, 0.7)"},{{"會將"}},{{"modify標記"},"rgba(231, 144, 255, 0.7)"},{{"覆蓋掉\n否則直接將標記往下推就好"}}},0,-120);   
-        av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.colored_text({{{"先將原來的標記往下推之後\n如果底下有 "}},{{"modify 標記"},"rgba(231, 144, 255, 0.7)"},{{" 的話\n"}},{{"set標記"},"rgba(255, 162, 0, 0.7)"},{{" 會將" }},{{"modify標記"},"rgba(231, 144, 255, 0.7)"},{{" 覆蓋掉\n否則直接將標記往下推就好"}}},Pos(0,-120));   
+        av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
     }
@@ -137,8 +137,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
         for(int i=1;i<Tsize;i++) if(lazy[i]!= 0) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]);
         for(int i=1;i<Tsize;i++) if(sets[i]!=LM) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]) + "," + to_string(sets[i]);
         av.start_frame_draw(); 
-        av.colored_text({{{"遇到當前區段有標記時必須先處理原來的標記才能在處理現在的標記\n這邊是處理當前區段已經有 "}},{{"modify 標記"},"rgba(231, 144, 255, 0.7)"},{{"的情況"}}},0,-80);
-        av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.colored_text({{{"遇到當前區段有標記時必須先處理原來的標記才能在處理現在的標記\n這邊是處理當前區段已經有 "}},{{"modify 標記"},"rgba(231, 144, 255, 0.7)"},{{" 的情況"}}},Pos(0,-80));
+        av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
         
@@ -155,8 +155,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
         for(int i=1;i<Tsize;i++) if(lazy[i]!= 0) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]);
         for(int i=1;i<Tsize;i++) if(sets[i]!=LM) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]) + "," + to_string(sets[i]);
         av.start_frame_draw();
-        av.colored_text({{{"先將原來的標記往下推之後\n如果底下有 "}},{{"set 標記"},"rgba(255, 162, 0, 0.7)"},{{"的話\n"}},{{"modify 標記"},"rgba(231, 144, 255, 0.7)"},{{"會直接加在 "}},{{"set 標記"},"rgba(255, 162, 0, 0.7)"},{{"上\n否則直接將標記往下推就好"}}},0,-120);  
-        av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.colored_text({{{"先將原來的標記往下推之後\n如果底下有 "}},{{"set 標記"},"rgba(255, 162, 0, 0.7)"},{{" 的話\n"}},{{"modify 標記"},"rgba(231, 144, 255, 0.7)"},{{" 會直接加在 "}},{{"set 標記"},"rgba(255, 162, 0, 0.7)"},{{" 上\n否則直接將標記往下推就好"}}},Pos(0,-120));  
+        av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
     }
@@ -168,8 +168,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
     for(int i=1;i<Tsize;i++) if(lazy[i]!= 0) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]);
     for(int i=1;i<Tsize;i++) if(sets[i]!=LM) _draw_modify[i] = to_string(tree[i]) + "," + to_string(lazy[i]) + "," + to_string(sets[i]);
     av.start_frame_draw();
-    av.text("{從最上面一路往下遞迴:一路遞迴拆下去}\n{並且遇到中線就將它二分後拆分推下去}",0,-80);
-    av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+    av.text("{從最上面一路往下遞迴:一路遞迴拆下去}\n{並且遇到中線就將它二分後拆分推下去}",Pos(0,-80));
+    av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, vector<int>(), vector<int>(), _draw_segment[0], _draw_segment[1], _draw_segment[2]);
     av.end_frame_draw();
     //}
     //draw{
@@ -204,8 +204,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
     vector<string> _draw_modify = AV::array_int_to_string(tree);
     _draw_modify[now] = to_string(tree[now<<1]) + "+" + to_string(tree[now<<1|1]);
     av.start_frame_draw();
-    av.text("{一路遞迴往上}修正{回去}",0,-60);
-    av.frame_draw("tree" , 0,   0, _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+    av.text("{一路遞迴往上}修正{回去}",Pos(0,-60));
+    av.frame_draw("tree" , Pos(0,0), _draw_modify, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
     av.end_frame_draw();
     //}
 
@@ -213,8 +213,8 @@ int query(int l,int r,int L,int R,int Add=0,int Set=LM,int now=1){ //如果要�
 
     //draw{
     av.start_frame_draw();
-    av.text("{一路遞迴往上}修正{回去}",0,-60);
-    av.frame_draw("tree" , 0,   0, tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+    av.text("{一路遞迴往上}修正{回去}",Pos(0,-60));
+    av.frame_draw("tree" , Pos(0,0), tree, {{{"highlight"},{now}}, {{"focus"},_draw_focus}, {{"point"},{now}}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
     av.end_frame_draw();
     //}
 
@@ -234,8 +234,8 @@ int main(){
 
     av.start_draw();
     av.start_frame_draw();
-    av.colored_text({{{"這是一顆線段樹\n每一層皆是由底下兩層相加而來的\n最底下一行是輸入的測資\n在建樹的時候先輸入測資後再一路往上建構出來的\n而等等會展示一些測資來凸顯線段樹省時的威力\n{而最常見的線段樹操作就是}\n"}},{{"{query}   (查詢)"},"rgba(18, 221, 35, 0.7)"},{{"\n"}},{{"{modify} (全部加上某一數值)"},"rgba(231, 144, 255, 0.7)"},{{"\n"}},{{"{set}        (全部設置成某一數值)"},"rgba(255, 162, 0, 0.7)"}},0,-240);
-    av.frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus} }, {1,n}, "segment_tree", 20, 1, lazy, sets);
+    av.colored_text({{{"這是一顆線段樹\n每一層皆是由底下兩層相加而來的\n最底下一行是輸入的測資\n在建樹的時候先輸入測資後再一路往上建構出來的\n而等等會展示一些測資來凸顯線段樹省時的威力\n{而最常見的線段樹操作就是}\n"}},{{"{query}   (查詢)"},"rgba(18, 221, 35, 0.7)"},{{"\n"}},{{"{modify} (全部加上某一數值)"},"rgba(231, 144, 255, 0.7)"},{{"\n"}},{{"{set}        (全部設置成某一數值)"},"rgba(255, 162, 0, 0.7)"}},Pos(0,-240));
+    av.frame_draw("tree" , Pos(0,0),   tree, {{{"focus"},_draw_focus} }, {1,n}, "segment_tree", 20, 1, lazy, sets);
     av.end_frame_draw();
     //}
 
@@ -259,11 +259,11 @@ int main(){
         else         _draw_seg_color="rgba(18, 221, 35, 0.7)";
         
         av.start_frame_draw();
-             if(q==1) av.colored_text({{{"{這個是 }"}},{{"{modify 的操作}"},"rgba(231, 144, 255, 0.44)"},{{"\n現在要往"}},{{"區間 "+to_string(x)+"~"+to_string(y)+" 全部加上 "+to_string(k)},"rgba(231, 144, 255, 0.44)"}},0,-80);
-        else if(q==2) av.colored_text({{{"{這個是 }"}},{{"{set 的操作}"},"rgba(255, 162, 0, 0.44)"},{{"\n現在要往"}},{{"區間 "+to_string(x)+"~"+to_string(y)+" 全部設定成 "+to_string(k)},"rgba(255, 162, 0, 0.44)"}},0,-80);
-        else          av.colored_text({{{"{這個是 }"}},{{"{query 的操作}"},"rgba(18, 221, 35, 0.44)"},{{"\n現在"}},{{"搜尋區間 "+to_string(x)+"~"+to_string(y)+" 的數值"},"rgba(18, 221, 35, 0.44)"}},0,-80);
-        av.frame_draw("tree"     , 0,   0,   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
-        av.key_frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+             if(q==1) av.colored_text({{{"{這個是 }"}},{{"{modify 的操作}"},"rgba(231, 144, 255, 0.44)"},{{"\n現在要往 "}},{{"區間 "+to_string(x)+"~"+to_string(y)+" 全部加上 "+to_string(k)},"rgba(231, 144, 255, 0.44)"}},Pos(0,-80));
+        else if(q==2) av.colored_text({{{"{這個是 }"}},{{"{set 的操作}"},"rgba(255, 162, 0, 0.44)"},{{"\n現在要往 "}},{{"區間 "+to_string(x)+"~"+to_string(y)+" 全部設定成 "+to_string(k)},"rgba(255, 162, 0, 0.44)"}},Pos(0,-80));
+        else          av.colored_text({{{"{這個是 }"}},{{"{query 的操作}"},"rgba(18, 221, 35, 0.44)"},{{"\n現在 "}},{{"搜尋區間 "+to_string(x)+"~"+to_string(y)+" 的數值"},"rgba(18, 221, 35, 0.44)"}},Pos(0,-80));
+        av.frame_draw("tree"     , Pos(0,0),   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.key_frame_draw("tree" , Pos(0,0),   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}
         int ans;
@@ -273,17 +273,17 @@ int main(){
 
         //draw{
         av.start_frame_draw();
-             if(q==1) av.colored_text({{{"完成一次 "}},{{"modify 的操作"},"rgba(231, 144, 255, 0.44)"}},0,-60);
-        else if(q==2) av.colored_text({{{"完成一次 "}},{{"set 的操作"},"rgba(255, 162, 0, 0.44)"}},0,-60);
-        else          av.colored_text({{{"完成一次 "}},{{"query 的操作\n"},"rgba(18, 221, 35, 0.44)"},{{"區間搜尋結果 "+to_string(x)+"~"+to_string(y)+" 的數值為 "+to_string(ans)},"rgba(18, 221, 35, 0.44)"}},0,-80);
-        av.frame_draw("tree"     , 0,   0,   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
-        av.key_frame_draw("tree" , 0,   0,   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+             if(q==1) av.colored_text({{{"完成一次 "}},{{"modify 的操作"},"rgba(231, 144, 255, 0.44)"}},Pos(0,-60));
+        else if(q==2) av.colored_text({{{"完成一次 "}},{{"set 的操作"},"rgba(255, 162, 0, 0.44)"}},Pos(0,-60));
+        else          av.colored_text({{{"完成一次 "}},{{"query 的操作\n"},"rgba(18, 221, 35, 0.44)"},{{" 區間搜尋結果 "+to_string(x)+"~"+to_string(y)+" 的數值為 "+to_string(ans)},"rgba(18, 221, 35, 0.44)"}},Pos(0,-80));
+        av.frame_draw("tree"     , Pos(0,0),   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
+        av.key_frame_draw("tree" , Pos(0,0),   tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, _draw_segment[0], _draw_segment[1], _draw_segment[2]);
         av.end_frame_draw();
         //}   
     }
     //draw{
     av.start_frame_draw();
-    av.frame_draw("tree" , 0,   0,       tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, vector<int>(), vector<int>(), vector<int>());
+    av.frame_draw("tree" , Pos(0,0),       tree, {{{"focus"},_draw_focus}, {{"background"},_draw_lazy}, {{"background","rgba(255, 162, 0, 1)"},_draw_sets}, {{"seg_bg",_draw_seg_color},{}} }, {1,n}, "segment_tree", 20, 1, lazy, sets, vector<int>(), vector<int>(), vector<int>());
     av.end_frame_draw();
     av.end_draw();
     //}

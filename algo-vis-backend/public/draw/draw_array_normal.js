@@ -159,14 +159,14 @@
 
     // 1. 讀取佈局資訊
     const itemsPerRow = parseInt(g.getAttribute('data-items-per-row') || '1', 10);
-    const startIdx    = parseInt(g.getAttribute('data-index-start') || '0', 10);
+    const startIdx    = parseInt(g.getAttribute('data-index-start') || '0', 0);
     
     // [重要] 讀取實際行高 (因為如果有 index 標籤，行高會大於 baseBoxSize)
     // 如果沒屬性，就 fallback 回 baseBoxSize
     const rowH = parseFloat(g.getAttribute('data-row-height') || baseBoxSize);
 
     // 2. 計算相對索引 (例如 range=[5,10], 傳入 index=5, 實際要是第 0 格)
-    const localIndex = index - startIdx;
+    const localIndex = index;
     
     // 如果 index 不在範圍內，這裡暫時回傳 0,0 (或可依需求處理)
     // if (localIndex < 0) return { x: 0, y: 0 };

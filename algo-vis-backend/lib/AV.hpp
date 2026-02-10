@@ -20,6 +20,9 @@ struct Pos {
     string anchor;      // 錨點方位
 
     // 建構子 1: 絕對位置 (x, y)
+    Pos(int _x, int _y) 
+        : x((double)_x), y((double)_y), isRelative(false), index(-1), row(-1), col(-1), refId(""), anchor("") {}
+
     Pos(double _x, double _y) 
         : x(_x), y(_y), isRelative(false), index(-1), row(-1), col(-1), refId(""), anchor("") {}
 
@@ -253,7 +256,7 @@ public:
     }
 
     void text(
-        const string text = "",
+        const string text,
         const Pos pos
     ) {
         _content += "                if (track === 0) {\n";
@@ -266,7 +269,7 @@ public:
     }
 
     void key_text(
-        const string text = "",
+        const string text,
         const Pos pos
     ) {
         _content += "                if (track === 1) {\n";

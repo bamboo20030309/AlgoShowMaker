@@ -107,16 +107,18 @@ function isFullWidth(char) {
   /**
    * 在畫布上畫一個文字框
    * @param {string} content   - 要顯示的文字，可以用 \n 換行
-   * @param {number} offsetX   - 在畫布上的 X 座標
-   * @param {number} offsetY   - 在畫布上的 Y 座標
+   * @param {object} pos       - 位置規格，支援絕對位置和相對位置（參考 resolvePos）
    */
   function drawText(
     content,
-    offsetX = 0,
-    offsetY = 0
+    pos,
   ) {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return;
+
+    pos = window.resolvePos(pos);
+    const offsetX = pos.x;
+    const offsetY = pos.y;
 
     // 先把字串按行處理，得到顯示文字與 TTS 文字
     const raw        = String(content ?? "");
@@ -287,9 +289,16 @@ function isFullWidth(char) {
    *   { text: "456" } ← 其他欄位可省略
    * ]
    */
-  function drawColoredText(segments, offsetX = 0, offsetY = 0) {
+  function drawColoredText(
+    segments, 
+    pos
+  ) {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return;
+
+    pos = window.resolvePos(pos);
+    const offsetX = pos.x;
+    const offsetY = pos.y;
 
     // === TTS：以「行」為單位收集 ===
     const ttsLines = [];

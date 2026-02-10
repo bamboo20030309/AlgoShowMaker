@@ -12,15 +12,15 @@ int main() {
     //draw{
     av.start_draw();
     av.start_frame_draw();
-    av.text("這是埃篩{的演算法範例}",0,-60);
-    av.frame_draw("prime" , 0, 0,   isprime, {}, {1,n}, "normal", 10, 2);
+    av.text("這是埃篩{的演算法範例}",Pos(0,-60));
+    av.frame_draw("prime" , Pos(0,0),   isprime, {}, {1,n}, "normal", 10, 2);
     av.end_frame_draw();
     vector<int> _draw_focus;
     for(int i=1;i<=n;i++)_draw_focus.push_back(i);
     _draw_focus.erase(find(_draw_focus.begin(), _draw_focus.end(), 1));
     av.start_frame_draw();
-    av.text("先把1刪掉",0,-60);
-    av.frame_draw("prime" , 0, 0,   isprime, {{{"highlight"},{1}}, {{"focus"}, _draw_focus} }, {1,n}, "normal", 10, 2);
+    av.text("先把1刪掉",Pos(0,-60));
+    av.frame_draw("prime" , Pos(0,0),   isprime, {{{"highlight"},{1}}, {{"focus"}, _draw_focus} }, {1,n}, "normal", 10, 2);
     av.end_frame_draw();
     //}
     
@@ -28,9 +28,9 @@ int main() {
         //draw{
         int _k=0;
         av.start_frame_draw();
-        if(isprime[i])av.colored_text({ {"因為"}, {to_string(i)+"是質數", "rgba(47, 255, 82, 0.44)"}, {"所以把"+to_string(i)+"的倍數全部塗黑"}},0,-60);
-        else          av.colored_text({ {"因為"}, {to_string(i)+"不是質數", "rgba(234, 64, 64, 0.44)"}, {"所以可以直接跳過"}},0,-60);
-        av.frame_draw("prime" , 0, 0,   isprime, {{{"highlight"},{i}}, {{"focus"},_draw_focus}, {{"point"},{i}} }, {1,n}, "normal", 10, 2);
+        if(isprime[i])av.colored_text({ {"因為 "}, {to_string(i)+"是質數", "rgba(47, 255, 82, 0.44)"}, {" 所以把"+to_string(i)+"的倍數全部塗黑"}},Pos(0,-60));
+        else          av.colored_text({ {"因為 "}, {to_string(i)+"不是質數", "rgba(234, 64, 64, 0.44)"}, {" 所以可以直接跳過"}},Pos(0,-60));
+        av.frame_draw("prime" , Pos(0,0),   isprime, {{{"highlight"},{i}}, {{"focus"},_draw_focus}, {{"point"},{i}} }, {1,n}, "normal", 10, 2);
         if(isprime[i]) {
             int k=i;
             vector<int> _draw_highlight = {k};
@@ -41,8 +41,8 @@ int main() {
                 _draw_highlight.push_back(k);
                 _draw_modify.push_back(k);
             }
-            av.key_colored_text({{"因為"},{to_string(i)+"是質數", "rgba(47, 255, 82, 0.44)"},{"把"+to_string(i)+"的倍數全部塗黑"}},0,-60);
-            av.key_frame_draw("prime" , 0, 0,   isprime, {{{"highlight"},_draw_highlight}, {{"focus"},_draw_focus}, {{"point"},{i}} }, {1,n}, "normal", 10, 2);
+            av.key_colored_text({{"因為 "},{to_string(i)+"是質數", "rgba(47, 255, 82, 0.44)"},{" 把"+to_string(i)+"的倍數全部塗黑"}},Pos(0,-60));
+            av.key_frame_draw("prime" , Pos(0,0),   isprime, {{{"highlight"},_draw_highlight}, {{"focus"},_draw_focus}, {{"point"},{i}} }, {1,n}, "normal", 10, 2);
         }
         av.end_frame_draw();
         //}
@@ -58,8 +58,8 @@ int main() {
                 auto p = find(_draw_focus.begin(), _draw_focus.end(), k);
                 if(p!=_draw_focus.end()) _draw_focus.erase(p);
                 av.start_frame_draw();
-                av.colored_text({ {"塗黑 "+to_string(k)}},0,-60);
-                av.frame_draw("prime" , 0, 0,   isprime, {{{"highlight"},{i,k}}, {{"focus"},_draw_focus}, {{"point"},{i}}, {{"background"},{k} }}, {1,n}, "normal", 10, 2);
+                av.colored_text({ {"塗黑 "+to_string(k)}},Pos(0,-60));
+                av.frame_draw("prime" , Pos(0,0),   isprime, {{{"highlight"},{i,k}}, {{"focus"},_draw_focus}, {{"point"},{i}}, {{"background"},{k} }}, {1,n}, "normal", 10, 2);
                 av.end_frame_draw();
                 //}
             }
@@ -68,8 +68,8 @@ int main() {
     
     //draw{
     av.start_frame_draw();
-    av.text("{最後就完成了}",0,-60);
-    av.frame_draw("prime" , 0, 0,   isprime, { {{"focus"},_draw_focus} }, {1,n}, "normal", 10, 2);
+    av.text("{最後就完成了}",Pos(0,-60));
+    av.frame_draw("prime" , Pos(0,0),   isprime, { {{"focus"},_draw_focus} }, {1,n}, "normal", 10, 2);
     av.end_frame_draw();
     av.end_draw();
     //}
