@@ -3,7 +3,7 @@
   const NS = 'http://www.w3.org/2000/svg';
 
   // 有箭頭的那一端，固定自動縮短的距離（px）
-  const ARROW_HEAD_SHRINK = 8;
+  const ARROW_HEAD_SHRINK = 12;
 
   // 給每條箭頭一個唯一 id，用來綁 label
   let arrowIdCounter = 0;
@@ -277,19 +277,33 @@
     const startIsOuter = isOuterframeSpec(startSpec);
     const endIsOuter   = isOuterframeSpec(endSpec);
 
+    // 判斷是否為「指向格子」且「錨點為中心」
+    const isCell = (s) => (s && (s.index !== undefined || s.row !== undefined));
+    const isCenter = (s) => (!s || !s.anchor || s.anchor === 'center');
+
     // 基本 margin：沒有頭的那端可以短一點，有頭的那端預設長一點
     let baseMarginStart;
     if (opt.marginStart != null) {
       baseMarginStart = Number(opt.marginStart);
     } else {
-      baseMarginStart = (startIsOuter? 0 : 8 + width);
+      // 修改：只有在「格子」且「中心」時才預留空間 (避免擋到數字)，否則貼齊邊緣 (0)
+      if (isCell(startSpec) && isCenter(startSpec)) {
+        baseMarginStart = 8 + width;
+      } else {
+        baseMarginStart = 0;
+      }
     }
 
     let baseMarginEnd;
     if (opt.marginEnd != null) {
       baseMarginEnd = Number(opt.marginEnd);
     } else {
-      baseMarginEnd = (endIsOuter? 0 : 8 + width);
+      // 修改：同上
+      if (isCell(endSpec) && isCenter(endSpec)) {
+        baseMarginEnd = 8 + width;
+      } else {
+        baseMarginEnd = 0;
+      }
     }
 
     const extraStart = computeMarkerLen(svg, headStart, color);
