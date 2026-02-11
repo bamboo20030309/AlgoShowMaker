@@ -13,3 +13,6 @@ docker-compose down
 ```
 docker-compose logs -f backend
 ```
+
+# draw 指令
+首先一定要引入標頭檔 `#include "AV.hpp"` 並宣告 `AV av;` 這個演算法視覺化物件
