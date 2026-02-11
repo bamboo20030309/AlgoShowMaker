@@ -102,29 +102,26 @@
       const vp = window.getViewport && window.getViewport();
       if (!vp) return;
 
-      // 清除 viewport 裡的元素，但保留格線那個 rect
       const children = Array.from(vp.children);
       children.forEach(node => {
-          // ★ 這就是格線背景：在 canva.js 裡是 bg，那個 fill 是 url(#gridPattern)
           const tag = node.tagName.toLowerCase();
           const fill = node.getAttribute && node.getAttribute('fill');
+          const id = node.getAttribute('id');
 
-          if (tag === 'rect' && fill === 'url(#gridPattern)') {
-              // 這個是無限格線背景 → 不刪
-              return;
-          }
+          // 保留格線背景 AND 保留箭頭圖層 (arrow-layer)
+          if (tag === 'rect' && fill === 'url(#gridPattern)') return;
+          if (id === 'arrow-layer') return; // 讓 draw_arrow.js 自己管理
 
           vp.removeChild(node);
       });
 
-      // 若 full==true，重置畫布 transform（拖曳 / 縮放）
       if (full) {
           vp.setAttribute("transform", "");
           vp.removeAttribute("data-translate");
           vp.removeAttribute("data-scale");
       }
 
-      // 確保所有箭頭動畫狀態也一併重置
+      // 呼叫箭頭清除 (現在它會執行標記，而不是真刪除)
       if (window.clearArrows) {
           window.clearArrows();
       }

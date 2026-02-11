@@ -91,7 +91,9 @@
                     av.frame_draw(  "prime" , Pos(0,560),     prime, {{{"highlight"},{k}},     {{"focus"},_key_frame_focus}},                                                                  {0}  , "normal", _draw_itemsPerRow, 0);
                     av.frame_draw("isprime" , Pos(0,90),   isprime, {{{"highlight"},{i,i*prime[k]}}, {{"focus"},_draw_focus}, {{"point"},{i}}, {{"mark"},AV::AtoB(0,i-1)}, {{"background","rgba(255, 82, 82, 0.44)"},{i*prime[k]}} }, {1,n}, "normal", _draw_itemsPerRow, 2);
                     av.arrow(Pos("isprime",i-1), Pos("prime",k), {{"color","rgba(255, 0, 0, 0.7)"}, {"label","×"}, {"width","3"}});
-                    av.arrow(Pos("prime",k), Pos("isprime",i*prime[k]-1), {{"color","rgba(255, 62, 62, 0.7)"}, {"label","="}, {"width","3"}});
+                    if(i*prime[k]<n){
+                        av.arrow(Pos("prime",k), Pos("isprime",i*prime[k]-1), {{"color","rgba(255, 62, 62, 0.7)"}, {"label","="}, {"width","3"}});
+                    }
                     av.end_frame_draw();
                 }
                 //}
