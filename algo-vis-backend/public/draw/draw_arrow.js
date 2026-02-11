@@ -451,6 +451,8 @@
     const layer = vp.querySelector('#arrow-layer');
     if (layer) layer.innerHTML = '';
 
+    arrowIdCounter = 0;
+
     emitArrowMap.clear();
     emitAnimRunning = false;
   }
