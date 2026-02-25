@@ -30,5 +30,3 @@ git switch main
 git merge feature/xxx
 git push
 git branch -d feature/xxx
-
-123
