@@ -7,6 +7,10 @@
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
+#include <sstream>
+#include <stack>
+#include <queue>
+#include <set>
 using namespace std;
 using array_style = pair<vector<string>, vector<int>>;
 using array2D_style = pair<vector<string>, vector<pair<int,int>>>;
