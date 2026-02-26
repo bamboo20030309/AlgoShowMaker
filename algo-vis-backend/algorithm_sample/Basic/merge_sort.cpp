@@ -79,18 +79,24 @@ void perform_merge(int L, int mid, int R, int depth) {
         }
         av.frame_draw(right_id, r_pos, r_v, r_styles);
 
-        av.colored_text({{msg}}, Pos(463, 40));
+        av.colored_text({{msg}}, Pos(520, 40));
         av.end_frame_draw();
     };
     //}
 
 
     while (i < l_v.size() && j < r_v.size()) {
-        //draw{
-        draw_merging_step("左右取小", k, i, j);
-        //}
-        if (l_v[i] <= r_v[j]) merged_data[k] = l_v[i++];
-        else merged_data[k] = r_v[j++];
+        if (l_v[i] <= r_v[j]) {
+            //draw{
+            draw_merging_step("左側小取左", k, i, j);
+            //}
+            merged_data[k] = l_v[i++];
+        } else {
+            //draw{
+            draw_merging_step("右側小取右", k, i, j);
+            //}
+            merged_data[k] = r_v[j++];
+        }
         k++;
     }
     while (i < l_v.size()) {
@@ -128,31 +134,35 @@ void perform_merge(int L, int mid, int R, int depth) {
     // 畫出合併完成的穩定幀
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"區間合併完成"}}, Pos(463, 40));
+    av.colored_text({{"區間合併完成"}}, Pos(520, 40));
     av.end_frame_draw();
     //}
 }
 
-void merge_sort(int L, int R, int depth, string pid = "") {
+void merge_sort(int L, int R, int depth, string pid = "", int split_type = 0) {
+    // split_type: 0 = root, 1 = left, 2 = right
+    
     //draw{
     string my_id = "s_" + to_string(L) + "_" + to_string(R) + "_" + to_string(depth);
     vector<int> current(arr_global.begin() + L, arr_global.begin() + R + 1);
     Pos my_pos = get_node_pos(L, R, current.size(), depth);
-    //}
 
+    // 確定訊息
+    string msg = "向下分裂";
+    if (split_type == 0) msg = "開始分裂";
+    else if (split_type == 1) msg = "分裂出左半部";
+    else if (split_type == 2) msg = "分裂出右半部";
 
-    //draw{
-    // 分裂階段：同樣在分裂完成後存入歷史
+    // 存入歷史
     av.accu_store(my_id, my_pos, current, {{{"background", "white"}, AV::AtoB(0, (int)current.size() - 1)}});
     if (!pid.empty()) {
         av.accu_store_arrow(Pos(pid, "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
     }
-    //}
 
-    //draw{
+    // 顯示繪圖幀
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"向下分裂"}}, Pos(463, 40));
+    av.colored_text({{msg}}, Pos(520, 40));
     av.end_frame_draw();
     //}
 
@@ -170,15 +180,15 @@ void merge_sort(int L, int R, int depth, string pid = "") {
         //draw{
         av.start_frame_draw();
         av.accu_draw();
-        av.colored_text({{"到達遞迴底部"}}, Pos(463, 40));
+        av.colored_text({{"到底就停"}}, Pos(520, 40));
         av.end_frame_draw();
         //}
         return;
     }
 
     int mid = L + (R - L) / 2;
-    merge_sort(L, mid, depth + 1, my_id);
-    merge_sort(mid + 1, R, depth + 1, my_id);
+    merge_sort(L, mid, depth + 1, my_id, 1);
+    merge_sort(mid + 1, R, depth + 1, my_id, 2);
     perform_merge(L, mid, R, depth);
 }
 
@@ -192,7 +202,7 @@ int main() {
 
     // 開場說明
     av.start_frame_draw();
-    av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來，來達到排序的方法"}}, Pos(350, 0));
+    av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來來排序"}}, Pos(370, 0));
     av.frame_draw("num",Pos(390, 100),arr_global);
     av.end_frame_draw();
     //}
@@ -200,7 +210,7 @@ int main() {
     //draw{
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"Merge Sort 排序完成！"}}, Pos(463, 40));
+    av.colored_text({{"Merge Sort 排序完成！"}}, Pos(370, 40));
     av.end_frame_draw();
     av.end_draw();
     //}
