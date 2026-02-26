@@ -775,6 +775,50 @@ private:
     vector<int> _fastonFrames;
     vector<int> _skipFrames;
     vector<string> type = {"type","color"};
+    vector<string> _accu_history;
+
+    string _gen_text(const string& t, const Pos& p) {
+        return "drawText(\"" + escapeJS(t) + "\", " + p.toJson() + ");";
+    }
+    string _gen_colored_text(const vector<vector<string>>& v, const Pos& p) {
+        return "drawColoredText(" + VVS_to_string(v) + ", " + p.toJson() + ");";
+    }
+    string _gen_arrow(const Pos& s, const Pos& e, const vector<pair<string,string>>& st) {
+        return "drawArrow(" + s.toJson() + ", " + e.toJson() + ", { " + pair_string_to_object(st) + " });";
+    }
+    template<typename T>
+    string _gen_draw2DArray(const string& g, const Pos& p, const vector<vector<T>>& m, const vector<array2D_style>& s, const vector<vector<int>>& r, const string& t, int i) {
+        return "draw2DArray(\'" + g + "\', " + p.toJson() + ", " + array2D_to_string(m) + ", " + array2Dstyle_to_object(s) + ", " + array2D_to_string(r) + ", \"" + t + "\", " + to_string(i) + ");";
+    }
+    template<typename T>
+    string _gen_drawArray(const string& g, const Pos& p, const vector<T>& n, const vector<array_style>& s, const vector<int>& r, const string& t, int pr, int i, const vector<int>& sl, const vector<int>& ss, const vector<int>& si, const vector<int>& sf, const vector<int>& srg) {
+        return "drawArray(\'" + g + "\', " + p.toJson() + ", " + array_to_string(n) + ", " + arraystyle_to_object(s) + ", " + array_to_string(r) + ", \"" + t + "\", " + to_string(pr) + ", " + to_string(i) + ", " + array_to_string(sl) + ", " + array_to_string(ss) + ", " + array_to_string(si) + ", " + array_to_string(sf) + ", " + array_to_string(srg) + ");";
+    }
+
+public:
+    // --- Manual Accumulation System ---
+    void accu_draw() {
+        _content += "                if (track === 0) {\n";
+        for (const auto& cmd : _accu_history) {
+            _content += "                    " + cmd + "\n";
+        }
+        _content += "                }\n";
+    }
+    void accu_clear() { _accu_history.clear(); }
+
+    void accu_store(const string t, const Pos p) { _accu_history.push_back(_gen_text(t, p)); }
+    void accu_store_colored(const vector<vector<string>> v, const Pos p) { _accu_history.push_back(_gen_colored_text(v, p)); }
+    void accu_store_arrow(const Pos s, const Pos e, const vector<pair<string,string>>& st = {}) { _accu_history.push_back(_gen_arrow(s, e, st)); }
+
+    template<typename T>
+    void accu_store(const string groupID, const Pos pos, const vector<T>& num = {}, const vector<array_style>& style = {}, const vector<int>& range = {0}, const string draw_type = "normal", const int itemsPerRow = 0, const int index = 0, const vector<int>& sl = {}, const vector<int>& ss = {}, const vector<int>& si = {}, const vector<int>& sf = {}, const vector<int>& srg = {}) {
+        _accu_history.push_back(_gen_drawArray(groupID, pos, num, style, range, draw_type, itemsPerRow, index, sl, ss, si, sf, srg));
+    }
+    
+    template<typename T>
+    void accu_store_2D(const string groupID, const Pos pos, const vector<vector<T>>& matrix = {}, const vector<array2D_style>& style = {}, const vector<vector<int>>& range = {}, const string draw_type = "normal", const int index = 0) {
+        _accu_history.push_back(_gen_draw2DArray(groupID, pos, matrix, style, range, draw_type, index));
+    }
 
     string integers_to_string(const vector<int>& num){
         string tmp = "";
