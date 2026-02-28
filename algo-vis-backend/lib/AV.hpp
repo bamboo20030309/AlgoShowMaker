@@ -85,6 +85,8 @@ public:
     #define draw(...)           draw_impl(__LINE__, __VA_ARGS__)
     #define frame_draw(...)     frame_draw_impl(__LINE__, __VA_ARGS__)
     #define key_frame_draw(...) key_frame_draw_impl(__LINE__, __VA_ARGS__)
+    #define camera(...)         camera_impl(__VA_ARGS__)
+    #define auto_camera(...)    auto_camera_impl(__VA_ARGS__)
 
     //AtoB function : return a A~B increase vector
     static vector<int> AtoB(int start, int end) {
@@ -638,13 +640,21 @@ public:
         _content += "                break;\n";
     }
 
+    void camera_impl(const Pos pos, double zoom = 1.0) {
+        _content += "                window.setCameraByPos(" + pos.toJson() + ", " + to_string(zoom) + ");\n";
+    }
+
+    void auto_camera_impl(double padding = 50.0) {
+        _content += "                window.setAutoCamera(" + to_string(padding) + ");\n";
+    }
+
     void end_draw() {
         _content += "        }\n";
         _content += "    }\n";
         _content += "    let currentFrame = 0;\n";
         _content += "    const totalFrames = " + to_string(_frameCount) + ";\n";
         _content += "    const keyFrames = " + array_to_string(_keyFrames) + ";\n";
-        _content += "    const stopFrames = [" + integers_to_string(_stopFrames) + to_string(_frameCount-1) + "];\n";
+        _content += "    const stopFrames = [" + integers_to_string(_stopFrames) + (_stopFrames.empty()?"":",") + to_string(_frameCount-1) + "];\n";
         _content += "    const fastFrames = " + array_to_string(_fastFrames) + ";\n";
         _content += "    const fastonFrames = " + array_to_string(_fastonFrames) + ";\n";
         _content += "    const skipFrames = " + array_to_string(_skipFrames) + ";\n";

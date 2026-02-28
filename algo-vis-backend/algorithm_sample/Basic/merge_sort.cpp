@@ -80,6 +80,7 @@ void perform_merge(int L, int mid, int R, int depth) {
         av.frame_draw(right_id, r_pos, r_v, r_styles);
 
         av.colored_text({{msg}}, Pos(520, 40));
+        av.auto_camera();
         av.end_frame_draw();
     };
     //}
@@ -163,6 +164,7 @@ void merge_sort(int L, int R, int depth, string pid = "", int split_type = 0) {
     av.start_frame_draw();
     av.accu_draw();
     av.colored_text({{msg}}, Pos(520, 40));
+    av.auto_camera();
     av.end_frame_draw();
     //}
 
@@ -181,6 +183,7 @@ void merge_sort(int L, int R, int depth, string pid = "", int split_type = 0) {
         av.start_frame_draw();
         av.accu_draw();
         av.colored_text({{"到底就停"}}, Pos(520, 40));
+        av.auto_camera();
         av.end_frame_draw();
         //}
         return;
