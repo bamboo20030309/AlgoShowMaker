@@ -572,7 +572,15 @@ function activateTab(btn) {
   document.getElementById(btn.dataset.tab).classList.add('active');
 }
 document.querySelectorAll('.tab-btn').forEach(btn =>
-  btn.addEventListener('click', () => activateTab(btn))
+  btn.addEventListener('click', () => {
+    activateTab(btn);
+    // 切換到畫布 Tab 時，SVG 剛從隱藏狀態恢復，需重新計算並對齊鏡頭
+    if (btn.dataset.tab === 'tab-canvas') {
+      requestAnimationFrame(() => {
+        if (window.setAutoCamera) window.setAutoCamera(50, false);
+      });
+    }
+  })
 );
 document.querySelectorAll('.close-subtab').forEach(btn =>
   btn.addEventListener('click', () => {
