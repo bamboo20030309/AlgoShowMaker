@@ -7,7 +7,6 @@ AV av;
 vector<int> arr_global;
 int max_d = 0;
 //}
-
 //draw{
 // 計算位置的輔助函式
 Pos get_node_pos(int L, int R, int data_size, int y_level) {
@@ -19,7 +18,6 @@ Pos get_node_pos(int L, int R, int data_size, int y_level) {
     return Pos(draw_x, draw_y);
 }
 //}
-
 
 int get_depth(int n) { int d = 0, s = 1; while (s < n) { s *= 2; d++; } return d; }
 
@@ -85,7 +83,6 @@ void perform_merge(int L, int mid, int R, int depth) {
     };
     //}
 
-
     while (i < l_v.size() && j < r_v.size()) {
         if (l_v[i] <= r_v[j]) {
             //draw{
@@ -115,14 +112,12 @@ void perform_merge(int L, int mid, int R, int depth) {
 
     // 更新全域陣列
     for (int idx = 0; idx < k; idx++) arr_global[L + idx] = merged_data[idx];
-
     //draw{
     // 合併完全結束後，將最終結果與箭頭正式存入歷史 (存入時為乾淨白色，不帶動態樣式)
     av.accu_store(my_id, my_pos, merged_data, {{{"background", "white"}, AV::AtoB(0, (int)merged_data.size() - 1)}});
     av.accu_store_arrow(Pos(left_id, "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
     av.accu_store_arrow(Pos(right_id, "bottom"), Pos(my_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
     //}
-
     //draw{
     // 將來源子節點設為淺灰色背景並更新到歷史，表示已消耗
     Pos l_pos = get_node_pos(L, mid, l_v.size(), 2 * max_d - (depth + 1) + 1);
@@ -130,7 +125,6 @@ void perform_merge(int L, int mid, int R, int depth) {
     av.accu_store(left_id, l_pos, l_v, {{{"background", "#ccc"}, AV::AtoB(0, (int)l_v.size() - 1)}});
     av.accu_store(right_id, r_pos, r_v, {{{"background", "#ccc"}, AV::AtoB(0, (int)r_v.size() - 1)}});
     //}
-
     //draw{
     // 畫出合併完成的穩定幀
     av.start_frame_draw();
@@ -142,14 +136,13 @@ void perform_merge(int L, int mid, int R, int depth) {
 }
 
 void merge_sort(int L, int R, int depth, string pid = "", int split_type = 0) {
-    // split_type: 0 = root, 1 = left, 2 = right
-    
     //draw{
     string my_id = "s_" + to_string(L) + "_" + to_string(R) + "_" + to_string(depth);
     vector<int> current(arr_global.begin() + L, arr_global.begin() + R + 1);
     Pos my_pos = get_node_pos(L, R, current.size(), depth);
 
     // 確定訊息
+    // split_type: 0 = root, 1 = left, 2 = right
     string msg = "向下分裂";
     if (split_type == 0) msg = "開始分裂";
     else if (split_type == 1) msg = "分裂出左半部";
@@ -168,18 +161,15 @@ void merge_sort(int L, int R, int depth, string pid = "", int split_type = 0) {
     av.auto_camera();
     av.end_frame_draw();
     //}
-
     if (L >= R) {
         //draw{
         string m_id = "m_" + to_string(L) + "_" + to_string(R) + "_" + to_string(depth);
         Pos m_pos = get_node_pos(L, R, current.size(), 2 * max_d - depth + 1);
         //}
-
         //draw{
         av.accu_store(m_id, m_pos, current, {{{"background", "white"}, {0}}});
         av.accu_store_arrow(Pos(my_id, "bottom"), Pos(m_id, "top"), {{"color", "#000000ff"}, {"width", "2px"}});
         //}
-
         //draw{
         av.start_frame_draw();
         av.accu_draw();
@@ -206,7 +196,7 @@ int main() {
 
     // 開場說明
     av.start_frame_draw();
-    av.frame_draw("num",Pos(390, -200),arr_global);
+    av.frame_draw("num",Pos(390, 100),arr_global);
     av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來來排序"}}, Pos("num", "bottom", 0, 40));
     av.auto_camera(); // 初始對齊
     av.end_frame_draw();
