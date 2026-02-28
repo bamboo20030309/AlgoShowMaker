@@ -1,21 +1,21 @@
 // draw_text.js
 // 在畫布上畫出一個可拖曳的對話框文字元件
-  /**
-   * 將原始文字拆成：
-   *  - display：畫在畫布上的文字
-   *  - tts    ：給 TTS 念的文字
-   *
-   * 規則：
-   * 1. ( ... )  小括號整段不念，但仍顯示
-   * 2. {A:B}    大括號中有冒號：
-   *    - display 顯示 A
-   *    - tts     念 B
-   * 3. {xxx} 或 {沒有冒號} → 當一般文字處理
-   */
+/**
+ * 將原始文字拆成：
+ *  - display：畫在畫布上的文字
+ *  - tts    ：給 TTS 念的文字
+ *
+ * 規則：
+ * 1. ( ... )  小括號整段不念，但仍顯示
+ * 2. {A:B}    大括號中有冒號：
+ *    - display 顯示 A
+ *    - tts     念 B
+ * 3. {xxx} 或 {沒有冒號} → 當一般文字處理
+ */
 function transformTextForDisplayAndTTS(raw) {
   const s = String(raw ?? "");
   let display = "";
-  let tts     = "";
+  let tts = "";
 
   let i = 0;
   const n = s.length;
@@ -44,11 +44,11 @@ function transformTextForDisplayAndTTS(raw) {
 
         if (colonPos !== -1) {
           // 規則 2：有冒號 → display=左邊、tts=右邊
-          const left  = inner.slice(0, colonPos);
+          const left = inner.slice(0, colonPos);
           const right = inner.slice(colonPos + 1);
 
           display += left;
-          tts     += right;
+          tts += right;
         } else {
           // ★ 規則 3：沒有冒號 → display 有，但 tts 不念
           display += inner;   // 顯示大括號內文字
@@ -62,7 +62,7 @@ function transformTextForDisplayAndTTS(raw) {
 
     // 規則 4：一般字元 → display / tts 都加
     display += ch;
-    tts     += ch;
+    tts += ch;
     i++;
   }
 
@@ -96,7 +96,7 @@ function isFullWidth(char) {
 }
 
 
-;(function () {
+; (function () {
   const NS = 'http://www.w3.org/2000/svg';
   let msgCounter = 0; // 全域計數器，確保 ID 唯一
 
@@ -121,11 +121,11 @@ function isFullWidth(char) {
     const offsetY = pos.y;
 
     // 先把字串按行處理，得到顯示文字與 TTS 文字
-    const raw        = String(content ?? "");
-    const rawLines   = raw.split('\n');
+    const raw = String(content ?? "");
+    const rawLines = raw.split('\n');
 
     const displayLines = [];
-    const ttsPieces    = [];
+    const ttsPieces = [];
 
     rawLines.forEach(line => {
       const { display, tts } = transformTextForDisplayAndTTS(line);
@@ -134,7 +134,7 @@ function isFullWidth(char) {
     });
 
     const displayContent = displayLines.join('\n');
-    const ttsContent     = ttsPieces.join('。'); // 行與行之間用句號隔開也可以依喜好改
+    const ttsContent = ttsPieces.join('。'); // 行與行之間用句號隔開也可以依喜好改
 
     // 先把上一幀的所有 msg-* 氣泡清掉，確保「只存在當前這一幀」
     const oldBubbles = vp.querySelectorAll('g[id^="msg-"]');
@@ -157,24 +157,24 @@ function isFullWidth(char) {
     // 以換行符號切成多行
     const lines = displayContent.split(/\r?\n/);
 
-    const fontSize   = 14;
+    const fontSize = 14;
     const lineHeight = fontSize * 1.3;
-    const padX       = 12;
-    const padY       = 8;
+    const padX = 12;
+    const padY = 8;
 
     // 估算文字寬度（考慮全形 / 半形）
     let textWidth = 0;
     for (const line of lines) {
       let nowTextWidth = 0;
       for (const ch of line) {
-        if(ch === ' ')nowTextWidth += getTextWidth(ch)*2.37;
+        if (ch === ' ') nowTextWidth += getTextWidth(ch) * 2.37;
         else nowTextWidth += getTextWidth(ch);
       }
-      textWidth = Math.max(textWidth,nowTextWidth);
+      textWidth = Math.max(textWidth, nowTextWidth);
     }
     textWidth = Math.max(40, textWidth);
 
-    const boxWidth  = textWidth + padX * 2;
+    const boxWidth = textWidth + padX * 2;
     const boxHeight = padY * 2 + lineHeight * lines.length;
 
     // 建立陰影 filter（只建一次）
@@ -237,8 +237,8 @@ function isFullWidth(char) {
     text.setAttribute('fill', '#111827');
     text.setAttribute('font-size', fontSize);
     text.setAttribute(
-    'font-family',
-    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+      'font-family',
+      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     );
     text.setAttribute('xml:space', 'preserve');  // ★ 這行讓 SVG 保留所有空白
 
@@ -253,9 +253,11 @@ function isFullWidth(char) {
     });
     g.appendChild(text);
 
-    // 設定位置
-    g.setAttribute('data-base-offset', `${offsetX},${offsetY}`);
-    g.setAttribute('transform', `translate(${offsetX},${offsetY})`);
+    // 設定位置：以傳入的 X 座標為中心尚強往兩邊擴展
+    const finalX = offsetX - boxWidth / 2;
+    const finalY = offsetY;
+    g.setAttribute('data-base-offset', `${finalX},${finalY}`);
+    g.setAttribute('transform', `translate(${finalX},${finalY})`);
   }
 
   // 暴露到全域，給 CodeScript / 你自己的 JS 用
@@ -280,7 +282,7 @@ function isFullWidth(char) {
 
 
 
-  
+
 
   /**
    * drawColoredText
@@ -290,7 +292,7 @@ function isFullWidth(char) {
    * ]
    */
   function drawColoredText(
-    segments, 
+    segments,
     pos
   ) {
     const vp = window.getViewport && window.getViewport();
@@ -354,17 +356,17 @@ function isFullWidth(char) {
     oldBubbles.forEach(node => node.remove());
 
     if (!Array.isArray(segments)) segments = [];
-  
+
     // === 0. 先把含有 \n 的 segment 拆成多行 ===
     // lines: [ [seg, seg, ...], [seg, ...], ... ]
     const lines = [[]];
-  
+
     segments.forEach(seg => {
       if (!seg) return;
       const base = { ...seg };
       const rawText = String(seg.text ?? "");
       const parts = rawText.split('\n');
-  
+
       parts.forEach((part, idx) => {
         const cloned = { ...base, text: part };
         lines[lines.length - 1].push(cloned);
@@ -374,22 +376,22 @@ function isFullWidth(char) {
         }
       });
     });
-  
+
     // 避免全部都是空行，用 filter 清一下（保留至少一行）
     const normalizedLines = lines.filter((line, idx) => line.length > 0 || idx === 0);
-  
+
     const padX = 12;
     const padY = 8;
     const lineGap = 4;
-  
+
     let globalMaxFs = 14;
     const lineMetrics = []; // 每一行: { lineWidth, lineMaxFs, segWidths[] }
-  
+
     normalizedLines.forEach(line => {
       let lineWidth = 0;
       let lineMaxFs = 14;
       const segWidths = [];
-  
+
       line.forEach(seg => {
         const text = String(seg.text ?? "");
         const fs = Number(seg.font_size) || 14;
@@ -397,51 +399,51 @@ function isFullWidth(char) {
         globalMaxFs = Math.max(globalMaxFs, fs);
         let nowTextWidth = 0;
         for (const ch of text) {
-          if (ch === ' ')nowTextWidth += getTextWidth(ch)*1.19;
+          if (ch === ' ') nowTextWidth += getTextWidth(ch) * 1.19;
           else nowTextWidth += getTextWidth(ch);
         }
         // 半形字稍微窄一點，不要那麼巨大
         segWidths.push(nowTextWidth);
         lineWidth += nowTextWidth;
       });
-  
+
       lineMetrics.push({ lineWidth, lineMaxFs, segWidths });
     });
-  
+
     // === 2. 算整個對話框寬高 ===
     let boxWidth = 40;
     let boxHeight = padY * 2 + globalMaxFs;
-  
+
     if (normalizedLines.length > 0) {
       const maxLineWidth = Math.max(
         40,
         ...lineMetrics.map(m => m.lineWidth + padX * 2)
       );
       boxWidth = maxLineWidth;
-  
+
       let totalTextHeight = 0;
       lineMetrics.forEach((m, idx) => {
         totalTextHeight += m.lineMaxFs * 1.3;
         if (idx < lineMetrics.length - 1) totalTextHeight += lineGap;
       });
-  
+
       boxHeight = padY * 2 + totalTextHeight;
     }
-  
+
     // === 3. 準備 group / 陰影 / 對話框本體 ===
     const svg = vp.ownerSVGElement;
     if (svg && !svg.querySelector('#text-bubble-shadow')) {
       const defs =
         svg.querySelector('defs') ||
         svg.insertBefore(document.createElementNS(NS, 'defs'), svg.firstChild);
-  
+
       const filter = document.createElementNS(NS, 'filter');
       filter.setAttribute('id', 'text-bubble-shadow');
       filter.setAttribute('x', '-20%');
       filter.setAttribute('y', '-20%');
       filter.setAttribute('width', '140%');
       filter.setAttribute('height', '140%');
-  
+
       const feDrop = document.createElementNS(NS, 'feDropShadow');
       feDrop.setAttribute('dx', '0');
       feDrop.setAttribute('dy', '2');
@@ -451,19 +453,19 @@ function isFullWidth(char) {
       filter.appendChild(feDrop);
       defs.appendChild(filter);
     }
-  
+
     // 產生唯一 ID（假設你已經有 getNextMessageID）
     const groupID = typeof getNextMessageID === 'function'
       ? getNextMessageID()
       : `msg-${Date.now()}`;
-  
+
     const g = document.createElementNS(NS, 'g');
     g.setAttribute('id', groupID);
     g.classList.add('draggable-object');
     g.setAttribute('data-translate', '0,0');
     g.setAttribute('data-tts-text', ttsContent);
     vp.appendChild(g);
-  
+
     // 對話框底
     const rect = document.createElementNS(NS, 'rect');
     rect.setAttribute('x', 0);
@@ -477,7 +479,7 @@ function isFullWidth(char) {
     rect.setAttribute('stroke-width', '1.2');
     rect.setAttribute('filter', 'url(#text-bubble-shadow)');
     g.appendChild(rect);
-  
+
     // 小三角形
     const pointer = document.createElementNS(NS, 'path');
     const pw = 12;
@@ -492,18 +494,18 @@ function isFullWidth(char) {
     pointer.setAttribute('stroke', '#4b5563');
     pointer.setAttribute('stroke-width', '1.2');
     g.appendChild(pointer);
-  
+
     // === 4. 每一行逐行畫：背景 + 文字 ===
     const paddingBgX = 2;
     const paddingBgY = 2;
-  
+
     let lineTop = padY; // 每行的 top（非 baseline）
-  
+
     normalizedLines.forEach((line, lineIndex) => {
       const { lineMaxFs, segWidths } = lineMetrics[lineIndex];
-  
+
       const baselineY = lineTop + lineMaxFs; // 文字 baseline
-  
+
       // 一行一個 <text> 比較好控制
       const textNode = document.createElementNS(NS, 'text');
       textNode.setAttribute('x', padX);
@@ -514,16 +516,16 @@ function isFullWidth(char) {
         'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
       );
       g.appendChild(textNode);
-  
+
       let cursorX = padX;
-  
+
       line.forEach((seg, segIndex) => {
         const rawText = String(seg.text ?? "");
         const fs = Number(seg.font_size) || 14;
         const fg = seg.font_color || '#111827';
         const bg = seg.bg_color || null;
         const segWidth = segWidths[segIndex];
-  
+
         // 背景色：稍微比文字寬 / 高一點
         if (bg) {
           const bgRect = document.createElementNS(NS, 'rect');
@@ -539,30 +541,32 @@ function isFullWidth(char) {
           bgRect.setAttribute('ry', 2);
           g.insertBefore(bgRect, textNode); // 背景在文字下面
         }
-  
+
         // 文字 tspan（半形空白 → NBSP，避免被壓縮）
         const tspan = document.createElementNS(NS, 'tspan');
         tspan.setAttribute('x', cursorX);
         tspan.setAttribute('dy', 0);
         tspan.setAttribute('fill', fg);
         tspan.setAttribute('font-size', fs);
-  
+
         tspan.textContent = rawText.replace(/ /g, '\u00A0');
         textNode.appendChild(tspan);
-  
+
         cursorX += segWidth;
       });
-  
+
       // 下一行 top：這行高度 + 行距
       lineTop += lineMaxFs * 1.3 + lineGap;
     });
-  
-    // 設定整個 group 的外部位置
-    g.setAttribute('data-base-offset', `${offsetX},${offsetY}`);
-    g.setAttribute('transform', `translate(${offsetX},${offsetY})`);
+
+    // 設定整個 group 的外部位置：以傳入的 X 座標為中心尚強往兩邊擴展
+    const finalX = offsetX - boxWidth / 2;
+    const finalY = offsetY;
+    g.setAttribute('data-base-offset', `${finalX},${finalY}`);
+    g.setAttribute('transform', `translate(${finalX},${finalY})`);
   }
 
-  
+
   // 全域導出
   window.drawColoredText = drawColoredText;
 
