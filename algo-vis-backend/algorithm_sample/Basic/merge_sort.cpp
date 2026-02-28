@@ -136,6 +136,7 @@ void perform_merge(int L, int mid, int R, int depth) {
     av.start_frame_draw();
     av.accu_draw();
     av.colored_text({{"區間合併完成"}}, Pos(my_id, "bottom", 0, 40));
+    av.camera(Pos(my_id, "top"), 1.7); // 跟合併過程幀保持一致的鏡頭
     av.end_frame_draw();
     //}
 }
