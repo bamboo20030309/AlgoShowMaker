@@ -79,7 +79,7 @@ void perform_merge(int L, int mid, int R, int depth) {
         }
         av.frame_draw(right_id, r_pos, r_v, r_styles);
 
-        av.colored_text({{msg}}, Pos(520, 40));
+        av.colored_text({{msg}}, Pos(my_id, "bottom", 0, 40));
         av.camera(Pos(my_id, "top"), 1.7); // 關注最底下的陣列的上面錨點
         av.end_frame_draw();
     };
@@ -135,7 +135,7 @@ void perform_merge(int L, int mid, int R, int depth) {
     // 畫出合併完成的穩定幀
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"區間合併完成"}}, Pos(520, 40));
+    av.colored_text({{"區間合併完成"}}, Pos(my_id, "bottom", 0, 40));
     av.end_frame_draw();
     //}
 }
@@ -163,7 +163,7 @@ void merge_sort(int L, int R, int depth, string pid = "", int split_type = 0) {
     // 顯示繪圖幀
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{msg}}, Pos(520, 40));
+    av.colored_text({{msg}}, Pos(my_id, "bottom", 0, 40));
     av.auto_camera();
     av.end_frame_draw();
     //}
@@ -182,7 +182,7 @@ void merge_sort(int L, int R, int depth, string pid = "", int split_type = 0) {
         //draw{
         av.start_frame_draw();
         av.accu_draw();
-        av.colored_text({{"到底就停"}}, Pos(520, 40));
+        av.colored_text({{"到底就停"}}, Pos(m_id, "bottom", 0, 40));
         av.auto_camera();
         av.end_frame_draw();
         //}
@@ -205,8 +205,8 @@ int main() {
 
     // 開場說明
     av.start_frame_draw();
-    av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來來排序"}}, Pos(370, 0));
     av.frame_draw("num",Pos(390, 100),arr_global);
+    av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來來排序"}}, Pos("num", "bottom", 0, 40));
     av.auto_camera(); // 初始對齊
     av.end_frame_draw();
     //}
@@ -214,7 +214,8 @@ int main() {
     //draw{
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"Merge Sort 排序完成！"}}, Pos(370, 40));
+    string root_m_id = "m_0_" + to_string((int)arr_global.size()-1) + "_0";
+    av.colored_text({{"Merge Sort 排序完成！"}}, Pos(root_m_id, "bottom", 0, 40));
     av.auto_camera(); // 完成後查看全景
     av.end_frame_draw();
     av.end_draw();

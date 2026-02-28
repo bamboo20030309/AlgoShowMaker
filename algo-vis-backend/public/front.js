@@ -124,6 +124,33 @@ function toggleDrawBlocks() {
 // 用來記錄「所有自訂的高亮」： key = markerId, value = { lineNum, range }
 let editorMarkers = {};
 
+// 去除同一行位置的重複 marker DOM 元素，確保每個 top 位置只保留一個可見元素
+function deduplicateMarkerLayer() {
+  const layer = aceEditor && aceEditor.container && aceEditor.container.querySelector('.ace_marker-layer');
+  if (!layer) return;
+  const els = layer.querySelectorAll('.code-highlight-line');
+  const seen = new Set();
+  els.forEach(el => {
+    const top = el.style.top;
+    if (seen.has(top)) {
+      el.style.visibility = 'hidden';
+    } else {
+      seen.add(top);
+      el.style.visibility = '';
+    }
+  });
+}
+
+// 用 MutationObserver 持續監控 marker layer，每次 ACE 重繪時自動去重
+let _markerObserver = null;
+function initMarkerObserver() {
+  if (_markerObserver) return;
+  const layer = aceEditor && aceEditor.container && aceEditor.container.querySelector('.ace_marker-layer');
+  if (!layer) return;
+  _markerObserver = new MutationObserver(() => deduplicateMarkerLayer());
+  _markerObserver.observe(layer, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+}
+
 /**
  * 新增一個高亮，回傳該高亮的 markerId（你之後可以用來刪除）
  * @param {number} lineNum - 程式碼行號 (1-based)
@@ -132,12 +159,33 @@ let editorMarkers = {};
 function addEditorHighlight(lineNum) {
   if (!lineNum || lineNum < 1) return null;
 
+  // 同一行若已有 marker，直接回傳現有的 markerId，不重複疊加
+  for (const [idStr, info] of Object.entries(editorMarkers)) {
+    if (info.lineNum === lineNum) return Number(idStr);
+  }
+
   const session = aceEditor.getSession();
   const row = lineNum - 1;
   const range = new Range(row, 0, row, Infinity);
 
   const markerId = session.addMarker(range, "code-highlight-line", "fullLine");
   editorMarkers[markerId] = { lineNum, range };
+
+  // ACE 的 fullLine marker 會在 DOM 裡建立兩個元素（各層各一），
+  // 造成同一行兩層半透明疊加。在 rAF 後掃描，同 top 位置只保留第一個，其餘隱藏。
+  requestAnimationFrame(() => {
+    const markerEls = aceEditor.container.querySelectorAll('.ace_marker-layer .code-highlight-line');
+    const seenTops = new Set();
+    markerEls.forEach(el => {
+      const top = el.style.top;
+      if (seenTops.has(top)) {
+        el.style.visibility = 'hidden'; // 把多餘的疊層隱藏
+      } else {
+        seenTops.add(top);
+        el.style.visibility = '';       // 確保第一個是可見的
+      }
+    });
+  });
 
   return markerId;
 }
@@ -738,6 +786,9 @@ window.reloadAfterRun = function () {
 document.addEventListener('DOMContentLoaded', () => {
   // === 既有初始化：保留 ===
   new CanvasInteractionManager(document.getElementById('arraySvg'));
+
+  // 啟動 marker layer 去重監控，確保同一行只有一個 highlight 元素可見
+  initMarkerObserver();
 
   // === 幀條碼初始化 ===
   reloadAfterRun();
