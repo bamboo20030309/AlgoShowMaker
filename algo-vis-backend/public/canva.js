@@ -4,8 +4,11 @@
 (function () {
   const NS = 'http://www.w3.org/2000/svg';
   let svg, viewport;
-  let scale = 1, translateX = 40, translateY = 80;
+  let translateX = 0;
+  let translateY = 0;
+  let scale = 1;
   let animationId = null; // 用於追蹤正在進行的鏡頭動畫
+  let isFirstCamera = true; // 新增：用於判斷是否為首次設定鏡頭
   const GRID_SPACING = 50;  // 格線間距
   const GRID_EXTENT = 10000; // 世界座標覆蓋範圍半徑
 
@@ -135,6 +138,11 @@
   window.getViewport = () => viewport;
   window.getScale = () => scale;
 
+  window.resetCameraState = () => {
+    isFirstCamera = true;
+    stopAnimation();
+  };
+
   // ===============================================
   // 鏡頭控制 (Camera Control)
   // ===============================================
@@ -155,8 +163,21 @@
   function animateCamera(targetX, targetY, targetScale, duration = 400) {
     stopAnimation();
 
-    const startX = (svg.getBoundingClientRect().width / 2 - translateX) / scale;
-    const startY = (svg.getBoundingClientRect().height / 2 - translateY) / scale;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      // 如果 SVG 還沒佈局好，直接立即設定並回傳
+      scale = targetScale;
+      translateX = 0 - targetX * scale;
+      translateY = 0 - targetY * scale;
+      updateTransform();
+      return;
+    }
+
+    // 計算當前視圖中心的世界座標
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const startX = (centerX - translateX) / scale;
+    const startY = (centerY - translateY) / scale;
     const startScale = scale;
     const startTime = performance.now();
 
@@ -197,11 +218,25 @@
   window.setCamera = function (x, y, newScale, animate = true) {
     if (!svg || !viewport) return;
 
+    // 如果是第一次設定鏡頭，強制使用非動畫模式，避免從 (0,0) 飛入
+    if (isFirstCamera) {
+      animate = false;
+      isFirstCamera = false;
+    }
+
     if (animate) {
       animateCamera(x, y, newScale);
     } else {
       stopAnimation();
-      const rect = svg.getBoundingClientRect();
+
+      let rect = svg.getBoundingClientRect();
+      // 確保 SVG 尺寸有效，否則嘗試使用父容器尺寸
+      if (rect.width === 0 || rect.height === 0) {
+        const parent = svg.parentElement;
+        const pw = parent ? parent.clientWidth : 800;
+        const ph = parent ? parent.clientHeight : 600;
+        rect = { width: pw, height: ph };
+      }
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
 
@@ -267,7 +302,15 @@
     }
 
     // 計算合適的縮放比例
-    const rect = svg.getBoundingClientRect();
+    let rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      // 嘗試從父容器獲取尺寸
+      const parent = svg.parentElement;
+      const pw = parent ? parent.clientWidth : 800;
+      const ph = parent ? parent.clientHeight : 600;
+      rect = { width: pw, height: ph };
+    }
+
     const contentW = (maxX - minX) + padding * 2;
     const contentH = (maxY - minY) + padding * 2;
 
