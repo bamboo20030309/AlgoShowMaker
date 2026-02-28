@@ -1,4 +1,4 @@
-;(function () {
+; (function () {
   const NS = 'http://www.w3.org/2000/svg';
 
   // 有箭頭的那一端，固定自動縮短的距離（px）
@@ -223,7 +223,7 @@
       let startSpec, endSpec;
       try {
         startSpec = JSON.parse(sStr);
-        endSpec   = JSON.parse(eStr);
+        endSpec = JSON.parse(eStr);
       } catch {
         return;
       }
@@ -240,7 +240,7 @@
       const uy = dy / len;
 
       const marginStart = parseFloat(line.getAttribute('data-margin-start') || '0');
-      const marginEnd   = parseFloat(line.getAttribute('data-margin-end')   || '0');
+      const marginEnd = parseFloat(line.getAttribute('data-margin-end') || '0');
 
       const x1 = p1.x + ux * marginStart;
       const y1 = p1.y + uy * marginStart;
@@ -368,8 +368,8 @@
     const width = Number.isNaN(parseFloat(opt.width)) ? 4 : parseFloat(opt.width);
 
     const headStart = opt.headStart || 'none';  // 'none' | 'arrow' | 'dot'
-    const headEnd   = opt.headEnd   || 'arrow'; // 預設終點有箭頭
-    const animate   = !!opt.animate;            // 發射箭頭頭效果
+    const headEnd = opt.headEnd || 'arrow'; // 預設終點有箭頭
+    const animate = !!opt.animate;            // 發射箭頭頭效果
     const animColor = opt.animateColor || color;
 
     // tween 設定
@@ -384,7 +384,7 @@
 
     // 如果 spec 是 outerframe 連接點，預設不縮短（margin=0）
     const startIsOuter = isOuterframeSpec(startSpec);
-    const endIsOuter   = isOuterframeSpec(endSpec);
+    const endIsOuter = isOuterframeSpec(endSpec);
 
     // 判斷是否為「指向格子」且「錨點為中心」
     const isCell = (s) => (s && (s.index !== undefined || s.row !== undefined));
@@ -420,7 +420,7 @@
       : 0;
 
     const marginStart = baseMarginStart + shrinkStart;
-    const marginEnd   = baseMarginEnd   + shrinkEnd;
+    const marginEnd = baseMarginEnd + shrinkEnd;
 
     const x1 = p1.x + ux * marginStart;
     const y1 = p1.y + uy * marginStart;
@@ -454,7 +454,15 @@
       line.setAttribute('x2', x2);
       line.setAttribute('y2', y2);
 
+      // 出現動畫：從透明淡入（跟消失動畫 fadeMs 時間一致）
+      const fadeMs = 150;
+      line.style.opacity = '0';
+      line.style.transition = `opacity ${fadeMs}ms linear`;
       layer.appendChild(line);
+      // 加入 DOM 後的下一幀才能觸發 transition
+      requestAnimationFrame(() => {
+        line.style.opacity = '1';
+      });
     }
 
     // 這一幀有被畫到
@@ -496,9 +504,9 @@
     // 儲存 spec & margin，之後 updateArrows 可以重算
     line.setAttribute('data-bind', 'resolvePos');
     line.setAttribute('data-start-spec', JSON.stringify(startSpec));
-    line.setAttribute('data-end-spec',   JSON.stringify(endSpec));
+    line.setAttribute('data-end-spec', JSON.stringify(endSpec));
     line.setAttribute('data-margin-start', String(marginStart));
-    line.setAttribute('data-margin-end',   String(marginEnd));
+    line.setAttribute('data-margin-end', String(marginEnd));
 
     // 如果上一幀已存在 → tween 到新座標
     const fromXY = getLineXY(line);
@@ -671,8 +679,8 @@
   // ---------------------------------------
   // Export 全域函式
   // ---------------------------------------
-  window.drawArrow    = drawArrow;
+  window.drawArrow = drawArrow;
   window.updateArrows = updateArrows;
-  window.clearArrows  = clearArrows;
+  window.clearArrows = clearArrows;
 
 })();
