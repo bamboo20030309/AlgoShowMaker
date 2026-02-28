@@ -447,8 +447,20 @@ function stepWithTween(rawStepFn, duration = 300) {
     return;
   }
 
+  // ─── easing 函式（ease-out cubic）────────────────────────────────────
+  const ease = t => 1 - Math.pow(1 - t, 3);
+
   // 1. 記錄「步進前」的狀態（位置 + 顏色）
   const before = snapshotDraggablePositions();
+
+  // ─── 步進前：為即將「消失」的群組建立 ghost（暫存 clone）─────────────
+  // 先取步進前所有 id；步進後沒有的就是「消失」的 id
+  const beforeIds = new Set(Object.keys(before));
+
+  // 暫存消失元素的原始 DOM 節點（不用 clone，直接暫借）
+  // 因為 rawStepFn 執行後這些 g 元素會被移除，
+  // 所以我們先把它們取出來放進 ghostMap
+  const ghostMap = {};
 
   // 2. 真的走一步（會呼叫 renderFrame，畫出下一幀）
   rawStepFn();
@@ -456,12 +468,60 @@ function stepWithTween(rawStepFn, duration = 300) {
 
   // 3. 記錄「步進後」的狀態
   const after = snapshotDraggablePositions();
+  const afterIds = new Set(Object.keys(after));
 
-  const ids = Object.keys(after);
-  if (ids.length === 0) {
-    // 沒東西可動畫，直接結束
-    return;
+  // ─── 找出消失的 id，為它們在 vp 中插入 ghost ─────────────────────────
+  for (const id of beforeIds) {
+    if (afterIds.has(id)) continue;  // 仍然存在，不需要 ghost
+
+    // 這個 id 在步進後消失了：在新的 DOM 裡已找不到，需要重建一個 ghost
+    // 做法：克隆步進前的位置資訊，產生一個暫時的 <g> 放回 vp
+    const st = before[id];
+    if (!st) continue;
+
+    // 建一個空骨架 g（只用來做淡出動畫，不需要完整重繪）
+    const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    ghost.setAttribute('id', '__ghost__' + id);
+    ghost.setAttribute('data-ghost', '1');
+    ghost.setAttribute('transform', `translate(${st.x},${st.y})`);
+    ghost.setAttribute('opacity', '1');
+    ghost.setAttribute('pointer-events', 'none');
+
+    // 把步進前那個 id 的元素（此時 DOM 裡可能還剩舊元素）取出或 clone
+    // rawStepFn 內部會先清空 vp（clearCanvas 或 g.removeChild），
+    // 所以步進後已不存在；需要用 before 的 rectState 重建矩形
+    // 簡化做法：重建步進前的矩形作為 ghost 內容
+    const rects = Object.entries(st.rectState || {});
+    rects.forEach(([key, info]) => {
+      // key 格式: x|y|w|h|stroke|class
+      const parts = key.split('|');
+      if (parts.length < 4) return;
+      const [rx, ry, rw, rh, rstroke, rcls] = parts;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', rx || '0');
+      rect.setAttribute('y', ry || '0');
+      rect.setAttribute('width', rw || '0');
+      rect.setAttribute('height', rh || '0');
+      if (rstroke) rect.setAttribute('stroke', rstroke);
+      if (info.fill) rect.setAttribute('fill', info.fill);
+      rect.setAttribute('fill-opacity', String(info.alpha != null ? info.alpha : 1));
+      ghost.appendChild(rect);
+    });
+
+    vp.appendChild(ghost);
+    ghostMap[id] = { ghost, startState: st };
   }
+
+  // ─── 找出新出現的 id（before 沒有、after 有）─────────────────────────
+  const appearingIds = new Set();
+  for (const id of afterIds) {
+    if (!beforeIds.has(id)) appearingIds.add(id);
+  }
+
+  // ─── 動畫的 id 聯集（維持＋新出現；消失的用 ghostMap 單獨處理）───────
+  const ids = [...afterIds];
+
+  if (ids.length === 0 && Object.keys(ghostMap).length === 0) return;
 
   const startTime = performance.now();
 
@@ -469,24 +529,62 @@ function stepWithTween(rawStepFn, duration = 300) {
     let t = (now - startTime) / duration;
     if (t > 1) t = 1;
     if (t < 0) t = 0;
+    const et = ease(t);
 
+    // ─── 消失的 ghost：淡出 + 縮小 ─────────────────────────────────────
+    for (const id in ghostMap) {
+      const { ghost, startState } = ghostMap[id];
+      if (!ghost.parentNode) continue;
+
+      const alpha = 1 - et;           // 1 → 0
+      const sc = 1 - et * 0.3;     // 1 → 0.7（輕微縮小即可）
+      const cx = startState.x;
+      const cy = startState.y;
+
+      // transform-origin 要在群組自身中心，用 translate 做縮放補償
+      // 目前只縮整個群組，效果已經夠明顯
+      ghost.setAttribute('opacity', String(alpha));
+      ghost.setAttribute(
+        'transform',
+        `translate(${cx},${cy}) scale(${sc})`
+      );
+    }
+
+    // ─── 維持 / 新出現的群組 ────────────────────────────────────────────
     ids.forEach(id => {
       const endState = after[id];
-      const startState = before[id] || endState;
+      const startState = before[id] || null;
+      const isAppearing = appearingIds.has(id);
 
       const g = vp.querySelector('#' + CSS.escape(id));
       if (!g || !endState) return;
 
-      // ========= 判斷有沒有變化 =========
+      // ========= 新出現：淡入 + 由小放大 =========
+      if (isAppearing) {
+        const alpha = et;             // 0 → 1
+        const sc = 0.7 + et * 0.3; // 0.7 → 1.0
+        g.setAttribute('opacity', String(alpha));
+        g.setAttribute(
+          'transform',
+          `translate(${endState.x},${endState.y}) scale(${sc})`
+        );
+        // 完成時恢復
+        if (t >= 1) {
+          g.setAttribute('opacity', '1');
+          g.setAttribute('transform', `translate(${endState.x},${endState.y})`);
+        }
+        return;
+      }
 
-      // 位置是否變動
+      // ========= 判斷有沒有變化（維持的群組）=========
+      const fromState = startState || endState;
+
       const posChanged = (
-        startState.x !== endState.x ||
-        startState.y !== endState.y
+        fromState.x !== endState.x ||
+        fromState.y !== endState.y
       );
 
-      // 顏色是否變動（用 rectState 的 key 來比，不再看 index）
-      const beforeMap = startState.rectState || {};
+      const beforeMap = fromState.rectState || {};
       const afterMap = endState.rectState || {};
 
       const allKeys = new Set([
@@ -498,53 +596,34 @@ function stepWithTween(rawStepFn, duration = 300) {
       for (const k of allKeys) {
         const b = beforeMap[k];
         const a = afterMap[k];
-
         const bFill = b ? b.fill : '';
         const aFill = a ? a.fill : '';
         const bAlpha = b ? b.alpha : 1;
         const aAlpha = a ? a.alpha : 1;
-
-        if (bFill !== aFill || bAlpha !== aAlpha) {
-          hasColorDiff = true;
-          break;
-        }
+        if (bFill !== aFill || bAlpha !== aAlpha) { hasColorDiff = true; break; }
       }
 
-      // 完全沒變化就直接跳過
-      if (!posChanged && !hasColorDiff) {
-        return;
-      }
+      if (!posChanged && !hasColorDiff) return;
 
-      // ========= 位置補間（群組 transform） =========
-
-      const fromX = startState.x;
-      const fromY = startState.y;
+      // ─── 位置補間 ───────────────────────────────────────────────────
+      const fromX = fromState.x;
+      const fromY = fromState.y;
       const toX = endState.x;
       const toY = endState.y;
-
-      const curX = fromX + (toX - fromX) * t;
-      const curY = fromY + (toY - fromY) * t;
+      const curX = fromX + (toX - fromX) * et;
+      const curY = fromY + (toY - fromY) * et;
 
       const [baseX, baseY] = (g.getAttribute('data-base-offset') || '0,0')
         .split(',').map(Number);
-      const dx = curX - baseX;
-      const dy = curY - baseY;
-
-      g.setAttribute('data-translate', `${dx},${dy}`);
+      g.setAttribute('data-translate', `${curX - baseX},${curY - baseY}`);
       g.setAttribute('transform', `translate(${curX},${curY})`);
 
-      // ========= 顏色 + 透明度補間（每個 rect，靠 key 對應） =========
-
+      // ─── 顏色 + 透明度補間 ──────────────────────────────────────────
       const rects = Array.from(g.querySelectorAll('rect'));
-
       rects.forEach(rect => {
         const key = getRectKey(rect);
-
         const beforeInfo = beforeMap[key];
         const afterInfo = afterMap[key];
-
-        // 完全新出現的 rect：before 沒有、after 有
-        // 完全消失的 rect：before 有、after 沒有（通常下一幀就不畫了，可以忽略）
         const dst = afterInfo || beforeInfo;
         if (!dst) return;
 
@@ -553,28 +632,19 @@ function stepWithTween(rawStepFn, duration = 300) {
         const beforeAlpha = beforeInfo ? beforeInfo.alpha : 1;
         const afterAlpha = dst.alpha != null ? dst.alpha : 1;
 
-        // 完全一樣就不用補間
-        if (beforeFill === afterFill && beforeAlpha === afterAlpha) {
-          return;
-        }
+        if (beforeFill === afterFill && beforeAlpha === afterAlpha) return;
 
         const c1 = parseColorWithAlpha(beforeFill, beforeAlpha);
         const c2 = parseColorWithAlpha(afterFill, afterAlpha);
 
         if (!c1 || !c2) {
-          // 解析失敗就直接套目標狀態（避免填成空字串）
-          if (afterFill) {
-            rect.setAttribute('fill', afterFill);
-          } else if (beforeFill) {
-            rect.setAttribute('fill', beforeFill);
-          }
+          if (afterFill) rect.setAttribute('fill', afterFill);
+          else if (beforeFill) rect.setAttribute('fill', beforeFill);
           rect.setAttribute('fill-opacity', String(afterAlpha));
           return;
         }
 
-        const tColor = t; // 你要做 easing 可以改這裡，例如 1-(1-t)*(1-t)
-        const ci = lerpColorWithAlpha(c1, c2, tColor);
-
+        const ci = lerpColorWithAlpha(c1, c2, et);
         rect.setAttribute('fill', `rgb(${ci.r},${ci.g},${ci.b})`);
         rect.setAttribute('fill-opacity', String(ci.a));
       });
@@ -583,23 +653,28 @@ function stepWithTween(rawStepFn, duration = 300) {
     if (t < 1) {
       requestAnimationFrame(animate);
     } else {
-      // ========= 收尾：對齊「步進後」最終狀態 =========
+      // ─── 收尾：移除所有 ghost ──────────────────────────────────────
+      for (const id in ghostMap) {
+        const { ghost } = ghostMap[id];
+        if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      }
+
+      // ─── 收尾：對齊「步進後」最終狀態 ──────────────────────────────
       ids.forEach(id => {
         const endState = after[id];
         const g2 = vp.querySelector('#' + CSS.escape(id));
         if (!g2 || !endState) return;
 
+        // 確保 opacity 回到 1（新出現的群組可能還帶著中間值）
+        g2.setAttribute('opacity', '1');
+
         const finalMap = endState.rectState || {};
         const rects2 = Array.from(g2.querySelectorAll('rect'));
-
         rects2.forEach(rect => {
           const key = getRectKey(rect);
           const info = finalMap[key];
           if (!info) return;
-
-          if (info.fill) {
-            rect.setAttribute('fill', info.fill.trim());
-          }
+          if (info.fill) rect.setAttribute('fill', info.fill.trim());
           rect.setAttribute(
             'fill-opacity',
             String(info.alpha != null ? info.alpha : 1)

@@ -206,7 +206,7 @@ int main() {
 
     // 開場說明
     av.start_frame_draw();
-    av.frame_draw("num",Pos(390, 100),arr_global);
+    av.frame_draw("num",Pos(390, -200),arr_global);
     av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來來排序"}}, Pos("num", "bottom", 0, 40));
     av.auto_camera(); // 初始對齊
     av.end_frame_draw();

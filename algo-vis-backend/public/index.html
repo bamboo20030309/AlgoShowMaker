@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css"/>
+  <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
+
 <body>
   <nav id="top-bar">
     <div class="menu-brand">AlgoShowMaker</div>
-    
+
     <div class="menu-item" id="algoSamplesBtn">
       <span class="menu-label">演算法範例集</span>
     </div>
@@ -41,11 +43,12 @@
     <div id="codePanel">
       <header>
         <span class="header-title">C++</span>
-        
+
         <div class="header-buttons">
-          <button id="toggleDrawBlocksBtn" class="btn-fold-draw" onclick="toggleDrawBlocks()" title="將繪畫指令收起/展開">摺疊 draw</button>
+          <button id="toggleDrawBlocksBtn" class="btn-fold-draw" onclick="toggleDrawBlocks()" title="將繪畫指令收起/展開">摺疊
+            draw</button>
           <button id="runBtn" class="btn-run" title="編譯執行">▶ RUN</button>
-          
+
           <button id="panelToggleBtn" title="摺疊程式碼面板">◀</button>
         </div>
       </header>
@@ -71,7 +74,7 @@
           <button class="tab-btn" data-tab="tab-debug">debug log</button>
         </div>
         <div class="subTab" style="margin-left: auto; padding-bottom: 4px;">
-           <button id="loginTriggerBtn" class="btn-login">登入</button>
+          <button id="loginTriggerBtn" class="btn-login">登入</button>
         </div>
       </div>
       <div id="tab-canvas" class="subContent active">
@@ -85,29 +88,28 @@
           <button id="finishBtn" title="跳到最後">⏭</button>
           <button id="ttsAvBtn" class="btn-tts" title="播放聲音">🔊</button>
           <div id="frameTimeline">
-          <div id="frameInfo">第 0 幀 / 共 0 幀</div>
+            <div id="frameInfo">第 0 幀 / 共 0 幀</div>
           </div>
           <label>速度：</label>
-          <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000"/>
+          <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000" />
           <span id="speedValue">500ms</span>
         </div>
         <svg id="arraySvg"></svg>
       </div>
       <div id="tab-input" class="subContent">
-        <textarea id="inputArea"
-                  placeholder="請輸入程式執行時要給的輸入（stdin）..."
-                  style="flex:1; width:100%; height:100%; resize:none; font-family:monospace; padding:8px;"></textarea>
+        <textarea id="inputArea" placeholder="請輸入程式執行時要給的輸入（stdin）..."
+          style="flex:1; width:100%; height:100%; resize:none; font-family:monospace; padding:8px;"></textarea>
       </div>
 
       <div id="tab-output" class="subContent">
         <pre id="outputArea"
-             style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未執行
+          style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未執行
         </pre>
       </div>
 
       <div id="tab-debug" class="subContent">
         <pre id="debugArea"
-             style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未有 debug 訊息
+          style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未有 debug 訊息
         </pre>
       </div>
     </div>
@@ -116,9 +118,9 @@
   <div id="loginModal" class="modal">
     <div class="modal-content">
       <span class="close-modal">&times;</span>
-      
+
       <h2 id="modalTitle">登入</h2>
-      
+
       <form class="auth-form" onsubmit="event.preventDefault();">
         <div class="form-group">
           <label>帳號</label>
@@ -128,7 +130,7 @@
           <label>密碼</label>
           <input type="password" id="passwordInput" placeholder="請輸入密碼">
         </div>
-        
+
         <button type="submit" id="authActionBtn" class="btn-submit">登入</button>
       </form>
 
@@ -143,69 +145,69 @@
 
   <div id="algoSidePanel">
     <div class="panel-header">
-        <h3>📚 演算法範例</h3>
-        </div>
+      <h3>📚 演算法範例</h3>
+    </div>
     <div id="algoListContainer">
-        <div class="loading-text">載入中...</div>
+      <div class="loading-text">載入中...</div>
     </div>
   </div>
 
   <div id="saveCodeModal" class="modal">
     <div class="modal-content">
-        <span class="close-modal" id="closeSaveModal">&times;</span>
-        <h2 id="saveModalTitle">儲存程式碼</h2>
-        
-        <form id="saveCodeForm" class="auth-form">
-            <div class="form-group">
-                <label>專案標題</label>
-                <input type="text" id="saveTitleInput" required placeholder="給程式碼取個名字...">
-            </div>
-            
-            <div class="form-group">
-                <label>簡述 (選填)</label>
-                <input type="text" id="saveDescInput" placeholder="簡單描述功能...">
-            </div>
+      <span class="close-modal" id="closeSaveModal">&times;</span>
+      <h2 id="saveModalTitle">儲存程式碼</h2>
 
-            <div class="form-group">
-                <label>語言</label>
-                <div class="select-wrapper">
-                    <select id="saveLangSelect">
-                        <option value="cpp">C++</option>
-                        <option value="python">Python</option>
-                        <option value="java">Java</option>
-                        <option value="javascript">JavaScript</option>
-                    </select>
-                </div>
-            </div>
+      <form id="saveCodeForm" class="auth-form">
+        <div class="form-group">
+          <label>專案標題</label>
+          <input type="text" id="saveTitleInput" required placeholder="給程式碼取個名字...">
+        </div>
 
-            <div class="form-group checkbox-group">
-                <input type="checkbox" id="saveInputCheckbox">
-                <label for="saveInputCheckbox">一併儲存輸入區的測資</label>
-            </div>
+        <div class="form-group">
+          <label>簡述 (選填)</label>
+          <input type="text" id="saveDescInput" placeholder="簡單描述功能...">
+        </div>
 
-            <div id="saveMessage"></div>
+        <div class="form-group">
+          <label>語言</label>
+          <div class="select-wrapper">
+            <select id="saveLangSelect">
+              <option value="cpp">C++</option>
+              <option value="python">Python</option>
+              <option value="java">Java</option>
+              <option value="javascript">JavaScript</option>
+            </select>
+          </div>
+        </div>
 
-            <button type="submit" class="auth-btn">確認儲存</button>
-        </form>
+        <div class="form-group checkbox-group">
+          <input type="checkbox" id="saveInputCheckbox">
+          <label for="saveInputCheckbox">一併儲存輸入區的測資</label>
+        </div>
+
+        <div id="saveMessage"></div>
+
+        <button type="submit" class="auth-btn">確認儲存</button>
+      </form>
     </div>
   </div>
 
   <div id="myCodesSidebar" class="sidebar-panel">
     <div class="sidebar-header">
-        <h3>📂 我的程式碼庫</h3>
+      <h3>📂 我的程式碼庫</h3>
     </div>
 
     <div class="sidebar-toolbar">
-        <button id="openSaveModalBtn" class="btn-save-code" title="儲存當前程式碼">
-            💾 儲存
-        </button>
-        
-        <span class="sidebar-hint">點擊項目以載入</span>
+      <button id="openSaveModalBtn" class="btn-save-code" title="儲存當前程式碼">
+        💾 儲存
+      </button>
 
-        <button id="refreshMyCodesBtn" class="btn-icon-refresh" style="margin-left: auto;" title="重新整理">↻</button>
+      <span class="sidebar-hint">點擊項目以載入</span>
+
+      <button id="refreshMyCodesBtn" class="btn-icon-refresh" style="margin-left: auto;" title="重新整理">↻</button>
     </div>
     <div id="myCodesList" class="sidebar-content">
-        <p class="empty-msg">載入中...</p>
+      <p class="empty-msg">載入中...</p>
     </div>
   </div>
 
@@ -231,4 +233,5 @@
   <script src="draw/draw_2Darray.js"></script>
   <script src="draw/draw_text.js"></script>
 </body>
+
 </html>

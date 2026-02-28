@@ -147,10 +147,16 @@
   // 鏡頭控制 (Camera Control)
   // ===============================================
 
+  let delayTimeoutId = null; // 用於延遲動畫開始的計時器
+
   /**
    * 停止目前的鏡頭動畫
    */
   function stopAnimation() {
+    if (delayTimeoutId) {
+      clearTimeout(delayTimeoutId);
+      delayTimeoutId = null;
+    }
     if (animationId) {
       cancelAnimationFrame(animationId);
       animationId = null;
@@ -173,43 +179,49 @@
       return;
     }
 
-    // 計算當前視圖中心的世界座標
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    const startX = (centerX - translateX) / scale;
-    const startY = (centerY - translateY) / scale;
-    const startScale = scale;
-    const startTime = performance.now();
+    // 延遲 100ms 後開始動畫
+    delayTimeoutId = setTimeout(() => {
+      delayTimeoutId = null;
 
-    function step(currentTime) {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // 使用 Ease-out 效果
-      const ease = 1 - Math.pow(1 - progress, 3);
-
-      const currentX = startX + (targetX - startX) * ease;
-      const currentY = startY + (targetY - startY) * ease;
-      const currentScale = startScale + (targetScale - startScale) * ease;
-
-      // 更新全域狀態
-      scale = currentScale;
+      // 計算當前視圖中心的世界座標
       const rect = svg.getBoundingClientRect();
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
-      translateX = centerX - currentX * scale;
-      translateY = centerY - currentY * scale;
+      const startX = (centerX - translateX) / scale;
+      const startY = (centerY - translateY) / scale;
+      const startScale = scale;
+      const startTime = performance.now();
 
-      updateTransform();
+      function step(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
 
-      if (progress < 1) {
-        animationId = requestAnimationFrame(step);
-      } else {
-        animationId = null;
+        // 使用 Ease-out 效果
+        const ease = 1 - Math.pow(1 - progress, 3);
+
+        const currentX = startX + (targetX - startX) * ease;
+        const currentY = startY + (targetY - startY) * ease;
+        const currentScale = startScale + (targetScale - startScale) * ease;
+
+        // 更新全域狀態
+        scale = currentScale;
+        const rect = svg.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        translateX = centerX - currentX * scale;
+        translateY = centerY - currentY * scale;
+
+        updateTransform();
+
+        if (progress < 1) {
+          animationId = requestAnimationFrame(step);
+        } else {
+          animationId = null;
+        }
       }
-    }
 
-    animationId = requestAnimationFrame(step);
+      animationId = requestAnimationFrame(step);
+    }, 100);
   }
 
   /**
