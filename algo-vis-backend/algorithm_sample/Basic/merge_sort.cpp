@@ -80,7 +80,7 @@ void perform_merge(int L, int mid, int R, int depth) {
         av.frame_draw(right_id, r_pos, r_v, r_styles);
 
         av.colored_text({{msg}}, Pos(520, 40));
-        av.auto_camera();
+        av.camera(Pos(my_id, "top"), 1.7); // 關注最底下的陣列的上面錨點
         av.end_frame_draw();
     };
     //}
@@ -207,6 +207,7 @@ int main() {
     av.start_frame_draw();
     av.colored_text({{"Merge Sort (合併排序)\n透過遞迴分裂陣列，再將有序的子陣列合併起來來排序"}}, Pos(370, 0));
     av.frame_draw("num",Pos(390, 100),arr_global);
+    av.auto_camera(); // 初始對齊
     av.end_frame_draw();
     //}
     merge_sort(0, arr_global.size() - 1, 0);
@@ -214,6 +215,7 @@ int main() {
     av.start_frame_draw();
     av.accu_draw();
     av.colored_text({{"Merge Sort 排序完成！"}}, Pos(370, 40));
+    av.auto_camera(); // 完成後查看全景
     av.end_frame_draw();
     av.end_draw();
     //}
