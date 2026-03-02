@@ -6,6 +6,10 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <sstream>
+#include <stack>
+#include <queue>
+#include <set>
 #include <cstdlib>
 using namespace std;
 using array_style = pair<vector<string>, vector<int>>;
