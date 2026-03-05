@@ -12,7 +12,7 @@ void _draw_frame(const vector<int>& arr, string text, string _draw_id, Pos _draw
     // 繪製堆積結構
     av.frame_draw(_draw_id, _draw_pos, arr, {
         {{"highlight"}, _draw_highlights},
-        {{"mark"}, _draw_marks}
+        {{"background", "#CCC"}, _draw_marks}
     }, {0}, _draw_layout, 0, 1);
 
     if (_draw_id != "init" && !_draw_last_id.empty()) {
@@ -70,12 +70,12 @@ void heap_sort(vector<int>& arr, int n) {
     int _draw_y_gap = 60; // 極限緊湊垂直間距
     // 第一幀：呈現原始陣列 (Normal)
     av.start_frame_draw();
-    av.frame_draw(_draw_init_id, _draw_init_pos, arr, {}, {0}, "normal", 0, 1);
-    av.text("一開始的原始陣列 (1-based Indexing)", Pos(_draw_init_id, "bottom", 0, 40));
+    av.frame_draw(_draw_init_id, _draw_init_pos, arr, {{{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
+    av.text("Heap Sort (堆積排序 - 挑大)\n先將陣列建立成堆積，再逐一提取最大值並排序的方法", Pos(_draw_init_id, "bottom", 0, 40));
     av.auto_camera();
     av.end_frame_draw();
 
-    av.accu_store(_draw_init_id, _draw_init_pos, arr, {}, {0}, "normal", 0, 1);
+    av.accu_store(_draw_init_id, _draw_init_pos, arr, {{{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
 
     string _draw_tree_id = "tree_intro";
     Pos _draw_tree_pos(_draw_init_id, "bottom-left", 0.0, 50.0); // 綁定在左下角，y 偏移縮減
@@ -133,23 +133,29 @@ void heap_sort(vector<int>& arr, int n) {
     // 1. 堆積佈局完成影格
     av.start_frame_draw();
     av.accu_draw();
-    av.frame_draw(_draw_sort_id, _draw_sort_pos, arr, {{{"mark"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
+    av.frame_draw(_draw_sort_id, _draw_sort_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
     av.arrow(Pos(_draw_build_id, "bottom"), Pos(_draw_sort_id, "top"));
     av.text("排序階段完成", Pos(_draw_sort_id, "bottom", 0, 40));
     av.camera(Pos(_draw_sort_id, "bottom"), 1.5);
     av.end_frame_draw();
     
     // 存入累積
-    av.accu_store(_draw_sort_id, _draw_sort_pos, arr, {{{"mark"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
+    av.accu_store(_draw_sort_id, _draw_sort_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
     av.accu_store_arrow(Pos(_draw_build_id, "bottom"), Pos(_draw_sort_id, "top"));
 
     // 2. 映射回 Normal 陣列佈局 (往下拉一行)
     string _draw_final_id = "final_result";
     Pos _draw_final_pos(_draw_sort_id, "bottom-left", 0.0, (double)_draw_y_gap);
-    _draw_frame(arr, "最後重新畫回一般的陣列形狀", _draw_final_id, _draw_final_pos, _draw_sort_id, "normal", {}, AV::AtoB(1, n));
+    av.start_frame_draw();
+    av.accu_draw();
+    av.frame_draw(_draw_final_id, _draw_final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
+    av.arrow(Pos(_draw_sort_id, "bottom"), Pos(_draw_final_id, "top"));
+    av.text("最後重新畫回一般的陣列形狀", Pos(_draw_final_id, "bottom", 0, 40));
+    av.camera(Pos(_draw_final_id, "bottom"), 1.5);
+    av.end_frame_draw();
     
     // 存入累積
-    av.accu_store(_draw_final_id, _draw_final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}}, {0}, "normal", 0, 1);
+    av.accu_store(_draw_final_id, _draw_final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
     av.accu_store_arrow(Pos(_draw_sort_id, "bottom"), Pos(_draw_final_id, "top"));
 
     // 3. 最終總計畫面
