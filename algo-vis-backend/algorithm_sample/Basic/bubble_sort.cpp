@@ -19,7 +19,7 @@ int main() {
     
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"Bubble Sort (冒泡排序)\n每一輪交換完畢後，才會在下方累積出新的狀態"}}, Pos(last_id, "top", 0, -80));
+    av.colored_text({{"Bubble Sort (冒泡排序)\n透過將最大的元素一個一個往後丟，來進行排序"}}, Pos(last_id, "top", 0, -80));
     av.auto_camera();
     av.end_frame_draw();
     //}
