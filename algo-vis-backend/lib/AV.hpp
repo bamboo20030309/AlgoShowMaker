@@ -11,6 +11,7 @@
 #include <queue>
 #include <set>
 #include <cstdlib>
+#include <cmath>
 using namespace std;
 using array_style = pair<vector<string>, vector<int>>;
 using array2D_style = pair<vector<string>, vector<pair<int,int>>>;
@@ -72,6 +73,8 @@ struct Pos {
         return ss.str();
     }
 };
+
+class AV; // 前向宣告以利 TreeLayout 使用
 
 class AV {
 public:
@@ -946,6 +949,171 @@ public:
         return tmp;
     }
 
+};
+
+struct TreeLayout {
+    int degree;      // 樹的分支度 (例如 2 代表二元樹)
+    Pos root_pos;    // 根節點的基準位置
+    int max_depth;   // 最大深度，用來計算底層總寬度以確保上層置中
+    double dx;       // 底層相鄰節點之間的最小水平間距
+    double dy;       // 每層之間的垂直間距
+    std::set<pair<int,int>> nodes; // 記錄目前已經加入的所有節點
+    std::map<pair<int,int>, double> custom_x; // 儲存計算好的各種節點 x 座標
+    string prefix;   // 物件 ID 前綴
+    
+    // --- 渲染器模式所需資料 ---
+    std::map<pair<int,int>, string> vals; // 改用 string，支援 "5" 或 "3+2"
+    std::map<pair<int,int>, int> results; // 節點計算完的結果
+    std::map<pair<int,int>, string> edge_colors; // 紀錄從該節點指向父節點的線條顏色
+    typedef std::function<void(string id, Pos p, int d, int o, bool is_focus)> Renderer;
+    Renderer renderer = nullptr; 
+
+    // 遞迴路徑追蹤系統
+    int curr_d = 0;      // 當前深度
+    int curr_o = 0;      // 當前順序
+    vector<pair<int, int>> path_stack; // 備份堆疊
+
+    TreeLayout(int _degree = 2, Pos _root_pos = Pos(0,0), int _max_depth = 10, double _dx = 60.0, double _dy = 120.0, string _prefix = "tree")
+        : degree(_degree), root_pos(_root_pos), max_depth(_max_depth), dx(_dx), dy(_dy), prefix(_prefix) {
+        }
+
+    // 向下追蹤子分支
+    void push(int branch) {
+        path_stack.push_back({curr_d, curr_o});
+        curr_o = curr_o * degree + branch;
+        curr_d++;
+    }
+
+    // 回到父節點
+    void pop() {
+        if (!path_stack.empty()) {
+            curr_d = path_stack.back().first;
+            curr_o = path_stack.back().second;
+            path_stack.pop_back();
+        }
+    }
+
+    // 重繪整棵樹
+    void redraw(AV& av) {
+        if (!renderer) return; 
+        
+        std::set<pair<int,int>> active_path;
+        active_path.insert({curr_d, curr_o});
+        for(auto p : path_stack) active_path.insert(p);
+
+        for (auto node : nodes) {
+            int d = node.first, o = node.second;
+            string id = get_id(d, o);
+            Pos p = get_pos(d, o);
+            bool is_focus = (d == curr_d && o == curr_o);
+            
+            renderer(id, p, d, o, is_focus);
+            
+            if (d > 0) {
+                string pid = get_id(d - 1, o / degree);
+                string color = "black";
+                if (active_path.count({d, o}) && active_path.count({d-1, o/degree})) {
+                    color = "orange";
+                } else if (edge_colors.count({d, o})) {
+                    color = edge_colors[{d, o}];
+                }
+                av.arrow(Pos(pid, "bottom"), Pos(id, "top"), {{"color", color}});
+            }
+        }
+    }
+
+    // 統一畫圖接口 (String 版)
+    // after: 可選 callback，在 frame 關閉前執行 (用來插入 av.text 等)
+    void paint(AV& av, string val = "", int res = -1, std::function<void()> after = nullptr) {
+        int d = curr_d, o = curr_o;
+        if (nodes.find({d, o}) == nodes.end() || !val.empty()) {
+            while (d >= 0) { nodes.insert({d, o}); d--; o /= degree; }
+            if (!val.empty()) vals[{curr_d, curr_o}] = val;
+            update_layout();
+        }
+        if (res != -1) results[{curr_d, curr_o}] = res;
+
+        av.start_frame_draw();
+        av.accu_draw();
+        redraw(av);
+        if (after) after();
+        av.end_frame_draw();
+    }
+
+    // 統一畫圖接口 (Int 版)
+    void paint(AV& av, int val, int res = -1, std::function<void()> after = nullptr) {
+        if (val == -1) paint(av, string(""), res, after);
+        else paint(av, to_string(val), res, after);
+    }
+    // 核心算法：給定當前的 nodes，由下而上(Bottom-up)重新計算所有節點的相對 x 座標
+    void update_layout() {
+        if (nodes.empty()) return;
+        custom_x.clear();
+        function<pair<double, double>(int, int, double&)> calc_width = [&](int d, int o, double& start_x) -> pair<double, double> {
+            if (nodes.count({d, o}) == 0) return {start_x, start_x};
+            bool has_child = false;
+            for (int i = 0; i < degree; i++) if (nodes.count({d + 1, o * degree + i})) has_child = true;
+            if (!has_child) {
+                custom_x[{d, o}] = start_x;
+                double ml = start_x, mr = start_x; start_x += dx; return {ml, mr};
+            }
+            double leftmost = 1e9, rightmost = -1e9;
+            vector<double> centers;
+            for (int i = 0; i < degree; i++) {
+                if (nodes.count({d + 1, o * degree + i})) {
+                    auto b = calc_width(d + 1, o * degree + i, start_x);
+                    leftmost = min(leftmost, b.first); rightmost = max(rightmost, b.second);
+                    centers.push_back(custom_x[{d + 1, o * degree + i}]);
+                }
+            }
+            custom_x[{d, o}] = (centers.front() + centers.back()) / 2.0;
+            return {leftmost, rightmost};
+        };
+        double cursor = 0.0;
+        calc_width(0, 0, cursor);
+        double root_offset = custom_x[{0,0}];
+        for (auto& p : custom_x) p.second -= root_offset;
+    }
+
+    // --- 定位與識別工具 ---
+    Pos get_pos(int depth, int order) const {
+        double ox = custom_x.count({depth, order}) ? custom_x.at({depth, order}) : 0.0;
+        double oy = depth * dy;
+        Pos p = root_pos; p.x += ox; p.y += oy; return p;
+    }
+    string get_id(int d, int o) const { return prefix + "_" + to_string(d) + "_" + to_string(o); }
+    string get_parent_id(int d, int o) const { return (d > 0) ? get_id(d - 1, o / degree) : ""; }
+
+    // 萬用錨點工具：支援 "top", "bottom", "left", "right", "center" 等方位與偏移
+    Pos anchor(int d, int o, string name, double dx = 0, double dy = 0) const {
+        return Pos(get_id(d, o), name, dx, dy);
+    }
+
+    // 補足：讓 register_node 也能接收 string
+    void register_node(AV& av, string val) {
+        int d = curr_d, o = curr_o;
+        while (d >= 0) {
+            nodes.insert({d, o});
+            d--; o /= degree;
+        }
+        vals[{curr_d, curr_o}] = val;
+        update_layout();
+        redraw(av);
+    }
+
+    // 更新計算結果並重繪
+    void set_result(AV& av, int res) {
+        results[{curr_d, curr_o}] = res;
+        redraw(av);
+    }
+
+    Pos operator()(int depth, int order) const { return get_pos(depth, order); }
+    Pos operator()(int index) const {
+        if (index <= 0) return get_pos(0, 0);
+        int d = 0; long long count = 1, sum = 1;
+        while (index >= sum) { d++; count *= degree; sum += count; }
+        return get_pos(d, (int)(index - (sum - count)));
+    }
 };
 
 template<typename T>
