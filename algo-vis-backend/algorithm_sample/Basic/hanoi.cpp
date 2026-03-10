@@ -2,12 +2,12 @@
 #include "AV.hpp"
 using namespace std;
 
+int N_DISKS = 4;
 //draw{
 AV av;
 TreeLayout tree(2, Pos(500, 450), 10, 120.0, 150.0);
 map<string, deque<int>> pegs;
 bool show_intro = true;
-int N_DISKS = 4; // 全域盤子數量，用於計算佈局
 
 void draw_all_pegs() {
     int base_y    = -100;
@@ -45,7 +45,7 @@ void hanoi(int n, string from, string to, string aux) {
     }
     //}
 
-    if (n == 1) {
+    if (n==1) {
         //draw{
         int disk = pegs[from].front();
         pegs[from].pop_front();
@@ -68,8 +68,6 @@ void hanoi(int n, string from, string to, string aux) {
         av.text("解問題：\n將 " + to_string(n) + " 個盤子從 " + from + " 搬到 " + to + "\n(透過 " + aux + " 作為輔助柱子)", Pos("tree_0_0", "top", 0, -90));
     });
     //}
-
-    // 第一步：處理上面的 n-1 個障礙
     //draw{
     tree.push(0); 
     string cid1 = tree.get_id(tree.curr_d, tree.curr_o);
@@ -90,7 +88,7 @@ void hanoi(int n, string from, string to, string aux) {
     av.end_frame_draw();
     //}
 
-    hanoi(n - 1, from, aux, to);
+    hanoi(n-1, from, aux, to);
 
     //draw{
     // 從第一步返回：儲存往上的箭頭 (右偏 15，黑色，細度 2)
@@ -104,10 +102,6 @@ void hanoi(int n, string from, string to, string aux) {
     av.text("已完成上面 " + to_string(n-1) + " 個盤子的移花步驟，返回主層級。", Pos("tree_0_0", "top", 0, -90));
     av.end_frame_draw();
     tree.pop();
-    //}
-
-    // 第二步：搬動最底下的那個
-    //draw{
     int disk = pegs[from].front();
     pegs[from].pop_front();
     pegs[to].push_front(disk);
@@ -117,10 +111,6 @@ void hanoi(int n, string from, string to, string aux) {
         av.auto_camera();
         av.text("搬動底盤：\n上面盤子都移開了，最底下的盤子 " + to_string(disk) + " 自由了！\n從 " + from + " 移至最終目標 " + to, Pos("tree_0_0", "top", 0, -90));
     });
-    //}
-
-    // 第三步：搬回剛才暫存的盤子
-    //draw{
     tree.push(1);
     string cid2 = tree.get_id(tree.curr_d, tree.curr_o);
     tree.nodes.insert({tree.curr_d, tree.curr_o});
@@ -140,7 +130,7 @@ void hanoi(int n, string from, string to, string aux) {
     av.end_frame_draw();
     //}
 
-    hanoi(n - 1, aux, to, from);
+    hanoi(n-1, aux, to, from);
 
     //draw{
     // 從第三步返回：儲存往上的箭頭 (右偏 15，黑色，細度 2)
@@ -178,11 +168,11 @@ int main() {
     //}
 
     N_DISKS = 4;
+    
+    //draw{
     tree.root_pos = Pos(500, -50 + N_DISKS * 40 + 150); // 同步基準點位
     tree.show_edges = false; // 關閉預設的連線，讓自訂的進出箭頭不受干擾
-    for (int i = 1; i <= N_DISKS; i++) pegs["A"].push_back(i);
-
-    //draw{
+    for (int i=1; i<=N_DISKS;i++) pegs["A"].push_back(i);
     av.start_draw();
     //}
     hanoi(N_DISKS, "A", "C", "B");
