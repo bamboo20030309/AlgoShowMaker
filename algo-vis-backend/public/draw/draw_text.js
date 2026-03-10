@@ -136,9 +136,9 @@ function isFullWidth(char) {
     const displayContent = displayLines.join('\n');
     const ttsContent = ttsPieces.join('。'); // 行與行之間用句號隔開也可以依喜好改
 
-    // 先把上一幀的所有 msg-* 氣泡清掉，確保「只存在當前這一幀」
-    const oldBubbles = vp.querySelectorAll('g[id^="msg-"]');
-    oldBubbles.forEach(node => node.remove());
+    // [修正] 不再手動清除，由 clearCanvas 統一處理，以支援同一幀顯示多個 text
+    // const oldBubbles = vp.querySelectorAll('g[id^="msg-"]');
+    // oldBubbles.forEach(node => node.remove());
 
     // 產生唯一 ID（這一幀如果你將來想畫多個，也還是保證不重複）
     const groupID = getNextMessageID();
@@ -352,8 +352,9 @@ function isFullWidth(char) {
     // 之後畫字全部改用 processedSegments
     segments = processedSegments;
 
-    const oldBubbles = vp.querySelectorAll('g[id^="msg-"]');
-    oldBubbles.forEach(node => node.remove());
+    // [修正] 不再手動清除，由 clearCanvas 統一處理，以支援同一幀顯示多個 text
+    // const oldBubbles = vp.querySelectorAll('g[id^="msg-"]');
+    // oldBubbles.forEach(node => node.remove());
 
     if (!Array.isArray(segments)) segments = [];
 
