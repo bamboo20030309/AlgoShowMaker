@@ -972,6 +972,7 @@ struct TreeLayout {
     int curr_d = 0;      // 當前深度
     int curr_o = 0;      // 當前順序
     vector<pair<int, int>> path_stack; // 備份堆疊
+    bool show_edges = true; // 新增控制是否畫預設連線
 
     TreeLayout(int _degree = 2, Pos _root_pos = Pos(0,0), int _max_depth = 10, double _dx = 60.0, double _dy = 120.0, string _prefix = "tree")
         : degree(_degree), root_pos(_root_pos), max_depth(_max_depth), dx(_dx), dy(_dy), prefix(_prefix) {
@@ -1009,7 +1010,8 @@ struct TreeLayout {
             
             renderer(id, p, d, o, is_focus);
             
-            if (d > 0) {
+            
+            if (show_edges && d > 0) {
                 string pid = get_id(d - 1, o / degree);
                 string color = "black";
                 if (active_path.count({d, o}) && active_path.count({d-1, o/degree})) {
@@ -1017,7 +1019,7 @@ struct TreeLayout {
                 } else if (edge_colors.count({d, o})) {
                     color = edge_colors[{d, o}];
                 }
-                av.arrow(Pos(pid, "bottom"), Pos(id, "top"), {{"color", color}});
+                av.arrow(Pos(pid, "bottom"), Pos(id, "top"), {{"color", color}, {"width", "2"}});
             }
         }
     }
@@ -1034,8 +1036,8 @@ struct TreeLayout {
         if (res != -1) results[{curr_d, curr_o}] = res;
 
         av.start_frame_draw();
-        av.accu_draw();
-        redraw(av);
+        redraw(av);    // 先畫節點，讓箭頭有錨點可以抓
+        av.accu_draw(); // 再畫累積的箭頭與文字
         if (after) after();
         av.end_frame_draw();
     }
