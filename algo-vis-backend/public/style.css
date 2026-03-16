@@ -1926,6 +1926,31 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
   align-items: center;
 }
 
+/* 灰色背景圓帽 (固定在右端，藏在楔形底下) */
+.wedge-slider-bg-cap {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e4e4e4;
+  pointer-events: none;
+}
+
+/* 填色圓帽 (跟著控制點，藏在楔形底下) */
+.wedge-slider-fill-cap {
+  position: absolute;
+  top: 50%;
+  left: var(--val, 0%);
+  width: calc(16px * var(--ratio, 0));
+  height: calc(16px * var(--ratio, 0));
+  border-radius: 50%;
+  background: var(--fill-color, #ff0000);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
 .wedge-slider-bg {
   position: absolute;
   top: 0;
@@ -1933,8 +1958,7 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
   right: 0;
   bottom: 0;
   background: #e4e4e4;
-  border-radius: 8px;
-  clip-path: path('M 0 8 L 142 0 A 8 8 0 0 1 142 16 Z');
+  clip-path: path('M 0 8 L 142 0 L 142 16 Z');
   pointer-events: none;
 }
 
@@ -1956,7 +1980,7 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
   bottom: 0;
   width: 150px;
   background: #fff url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"%3E%3Cpath fill="%23ccc" d="M0 0h4v4H0zm4 4h4v4H4z"/%3E%3C/svg%3E');
-  clip-path: path('M 0 8 L 142 0 A 8 8 0 0 1 142 16 Z');
+  clip-path: path('M 0 8 L 142 0 L 142 16 Z');
 }
 
 .wedge-slider-color {
@@ -1966,7 +1990,7 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
   bottom: 0;
   width: 150px;
   background: var(--fill-color, #ff0000);
-  clip-path: path('M 0 8 L 142 0 A 8 8 0 0 1 142 16 Z');
+  clip-path: path('M 0 8 L 142 0 L 142 16 Z');
 }
 
 #drawSize {

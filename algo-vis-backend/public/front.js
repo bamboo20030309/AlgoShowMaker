@@ -2907,6 +2907,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // min 1 max 20，對應比例 0 ~ 1
         const ratio = (currentSize - 1) / 19;
         drawSizeWrapper.style.setProperty('--val', `calc(8px + ${ratio} * (100% - 16px))`);
+        drawSizeWrapper.style.setProperty('--ratio', ratio);
       }
     });
 
@@ -2915,6 +2916,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const drawSizeWrapper = document.getElementById('drawSizeWrapper');
     if (drawSizeWrapper) {
       drawSizeWrapper.style.setProperty('--val', `calc(8px + ${initRatio} * (100% - 16px))`);
+      drawSizeWrapper.style.setProperty('--ratio', initRatio);
     }
   }
 
