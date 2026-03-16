@@ -12,12 +12,16 @@ int F(int n) {
     int d = tree.curr_d;
     int o = tree.curr_o;
     
-    tree.paint(av, "F(" + to_string(n) + ")"); 
+    tree.paint(av, "F(" + to_string(n) + ")", -1, [&]{
+        if (d > 0 && o % 2 == 1) av.addEditorHighlight(39);
+        else av.addEditorHighlight(33);
+    }); 
     //}
     if (n <= 1) {
         //draw{
         tree.edge_colors[{d, o}] = "black";
         tree.paint(av, n, n, [&]{
+            av.addEditorHighlight(28);
             av.text("遇到擋板，回傳 " + to_string(n), Pos(tree.get_id(d, o), 0, "bottom", 0, 40));
         });
         //}
@@ -39,11 +43,13 @@ int F(int n) {
     int res = a + b;
     //draw{
     tree.paint(av, to_string(a) + " + " + to_string(b), -1, [&]{
+        av.addEditorHighlight(43);
         av.text("合併結果", Pos(tree.get_id(d, o), 0, "bottom", 0, 40));
     }); 
     
     tree.edge_colors[{d, o}] = "black";
     tree.paint(av, res, res, [&]{
+        av.addEditorHighlight(57);
         av.text("回傳 " + to_string(res), Pos(tree.get_id(d, o), 0, "bottom", 0, 40));
     }); 
     //}
@@ -63,7 +69,7 @@ int main() {
         
     };
     //}
-    int n; cin>>n;
+    int n=5; cin>>n;
     //draw{
     av.start_draw();
 
