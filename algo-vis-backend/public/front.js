@@ -807,11 +807,42 @@ function buildFrameBars() {
     if (keySet.has(i)) bar.classList.add("keyframe");
     bar.dataset.index = i;
 
-    bar.addEventListener("click", () => {
-      jumpToFrame(i);
-    });
+    // bar.addEventListener("click", () => {
+    //   jumpToFrame(i);
+    // });
 
     barsContainer.appendChild(bar);
+  }
+
+  const timeline = document.getElementById("frameTimeline");
+  if (timeline && !timeline.dataset.scrubBound) {
+    timeline.dataset.scrubBound = "true";
+    let isDraggingTimeline = false;
+    
+    const scrub = (e) => {
+      if (totalFrames <= 0) return;
+      const rect = timeline.getBoundingClientRect();
+      let clickX = e.clientX - rect.left;
+      clickX = Math.max(0, Math.min(clickX, rect.width));
+      const targetIdx = Math.floor((clickX / rect.width) * totalFrames);
+      const clampedIdx = Math.max(0, Math.min(targetIdx, totalFrames - 1));
+      if (clampedIdx !== currentFrame) {
+        jumpToFrame(clampedIdx);
+      }
+    };
+    
+    timeline.addEventListener("pointerdown", (e) => {
+      isDraggingTimeline = true;
+      timeline.setPointerCapture(e.pointerId);
+      scrub(e);
+    });
+    timeline.addEventListener("pointermove", (e) => {
+      if (isDraggingTimeline) scrub(e);
+    });
+    timeline.addEventListener("pointerup", (e) => {
+      isDraggingTimeline = false;
+      timeline.releasePointerCapture(e.pointerId);
+    });
   }
 
   updateFrameBarsVisual();
@@ -826,6 +857,11 @@ function updateFrameBarsVisual() {
   bars.forEach(bar => {
     const idx = Number(bar.dataset.index);
     bar.classList.toggle("active", idx === currentFrame);
+    if (idx <= currentFrame) {
+      bar.classList.add("reached");
+    } else {
+      bar.classList.remove("reached");
+    }
   });
 }
 
@@ -836,7 +872,7 @@ function updateFrameInfoText() {
 
   const now = (currentFrame || 0) + 1;  // 顯示給使用者 1-based
   const total = totalFrames || 0;
-  info.textContent = `第 ${now} 幀 / 共 ${total} 幀`;
+  info.textContent = `${now} / ${total}`;
 }
 
 // 點條碼跳到某一幀
