@@ -315,7 +315,7 @@ int main() {
     av.frame_draw(id, p, vector<string>{val}, style);
   };
   //}
-  N = 3;
+  N=3; cin>>N;
   //draw{
   tree.horizontal = true;
   tree.root_pos = Pos(100, 100 + N * 85); // 隨著 N 動態向下調整
