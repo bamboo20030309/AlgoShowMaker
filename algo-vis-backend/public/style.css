@@ -406,8 +406,16 @@ button.auto-stepping:hover {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 6px;
   transition: all 0.2s;
+}
+
+.step-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  display: block;
 }
 
 .controls button:hover {
@@ -528,6 +536,11 @@ button.auto-stepping:hover {
 }
 
 /* 播放控制 */
+.btn-playtoggle {
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
 #playToggleBtn.playing {
   background-color: var(--active-blue);
   border-color: var(--active-blue);

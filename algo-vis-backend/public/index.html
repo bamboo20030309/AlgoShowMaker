@@ -79,13 +79,31 @@
       </div>
       <div id="tab-canvas" class="subContent active">
         <div class="controls">
-          <button id="restartBtn" title="重新播放">⏮</button>
-          <button id="prevKeyFrameBtn" title="上一關鍵幀">◀◀ 上一大步</button>
-          <button id="prevBtn" title="上一步">◀ 上一步</button>
-          <button id="playToggleBtn" class="btn-playtoggle" aria-pressed="false" title="播放/暫停">▶</button>
-          <button id="nextBtn" title="下一步">下一步 ▶</button>
-          <button id="nextKeyFrameBtn" title="下一關鍵幀">下一大步 ▶▶</button>
-          <button id="finishBtn" title="跳到最後">⏭</button>
+          <button id="restartBtn" title="重新播放">
+            <svg class="step-icon" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+          <button id="prevKeyFrameBtn" title="上一關鍵幀">
+            <svg class="step-icon" viewBox="0 0 24 24"><rect x="19" y="4" width="3" height="16"/><path d="M17 4l-9 8 9 8z"/><path d="M10 4l-8 8 8 8z"/></svg>
+            上一大步
+          </button>
+          <button id="prevBtn" title="上一步">
+            <svg class="step-icon" viewBox="0 0 24 24"><rect x="19" y="4" width="3" height="16"/><path d="M16 4l-12 8 12 8z"/></svg>
+            上一步
+          </button>
+          <button id="playToggleBtn" class="btn-playtoggle" aria-pressed="false" title="播放/暫停">
+            <svg class="step-icon" viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button id="nextBtn" title="下一步">
+            下一步
+            <svg class="step-icon" viewBox="0 0 24 24"><rect x="2" y="4" width="3" height="16"/><path d="M8 4l12 8-12 8z"/></svg>
+          </button>
+          <button id="nextKeyFrameBtn" title="下一關鍵幀">
+            下一大步
+            <svg class="step-icon" viewBox="0 0 24 24"><rect x="2" y="4" width="3" height="16"/><path d="M7 4l9 8-9 8z"/><path d="M15 4l9 8-9 8z"/></svg>
+          </button>
+          <button id="finishBtn" title="跳到最後">
+            <svg class="step-icon" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
           <button id="ttsAvBtn" class="btn-tts" title="播放聲音">🔊</button>
           <div id="frameTimeline">
             <div id="frameInfo">第 0 幀 / 共 0 幀</div>
