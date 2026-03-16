@@ -151,15 +151,27 @@ function initMarkerObserver() {
   _markerObserver.observe(layer, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
 }
 
+let manualHighlightSet = false;
+
 /**
  * 新增一個高亮，回傳該高亮的 markerId（你之後可以用來刪除）
  * @param {number} lineNum - 程式碼行號 (1-based)
+ * @param {boolean} isManual - 是否為手動加入 (若是手動，則自動忽略一般加入並清除之前的)
  * @returns {number|null} markerId
  */
-function addEditorHighlight(lineNum) {
+function addEditorHighlight(lineNum, isManual = false) {
   if (!lineNum || lineNum < 1) return null;
 
-  // 同一行若已有 marker，直接回傳現有的 markerId，不重複疊加
+  if (isManual) {
+    if (!manualHighlightSet) {
+      clearAllEditorHighlights();
+      manualHighlightSet = true;
+    }
+  } else {
+    if (manualHighlightSet) return null;
+  }
+
+  // 同一行若已有 marker，直接回傳现有的 markerId，不重複疊加
   for (const [idStr, info] of Object.entries(editorMarkers)) {
     if (info.lineNum === lineNum) return Number(idStr);
   }
@@ -223,6 +235,7 @@ function removeEditorHighlight(markerId) {
  * （不會動到 currentMarkerId，那個還是給你原本的單一高亮用）
  */
 function clearAllEditorHighlights() {
+  manualHighlightSet = false;
   const session = aceEditor.getSession();
   for (const idStr of Object.keys(editorMarkers)) {
     const id = Number(idStr);

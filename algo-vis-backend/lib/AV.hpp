@@ -258,6 +258,15 @@ public:
         }
     }
 
+    void addEditorHighlight(int code_line) {
+        // 因不涉及特定 track，這裡我們直接針對所有的 track 或是當下輸出的 track
+        // 為了避免影響排版，假設統一也是放在 track === 0 或是無條件
+        // 但由於通常 key_frame / frame 是分開的，我們直接兩邊都加上或統一輸出
+        _content += "                if (track === 0 || track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ", true);\n";
+        _content += "                }\n";
+    }
+
     void start_draw() {
         _content += "(function() {\n";
         _content += "    let track = 0;\n";
@@ -826,10 +835,7 @@ public:
     void accu_draw() {
         _content += "                if (track === 0) {\n";
         for (const auto& entry : _accu_history) {
-            // 如果有記錄行號，先輸出 addEditorHighlight（front.js 那邊已經對同行號防重複）
-            if (entry.first > 0) {
-                _content += "                    addEditorHighlight(" + to_string(entry.first) + ");\n";
-            }
+            // 根據需求拔除 accu 的螢光效果
             _content += "                    " + entry.second + "\n";
         }
         _content += "                }\n";
