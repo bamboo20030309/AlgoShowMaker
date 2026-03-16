@@ -13,7 +13,7 @@ bool show_intro = true;
 
 void draw_all_pegs() {
   int base_x = -250;
-  int base_y = -100;
+  int base_y = 50;
   int rowH = 40;                   // 前端 index=0 → rowH = baseBoxSize(40)
   int floor_y = base_y + N * rowH; // 所有柱子的底部對齊線
 
