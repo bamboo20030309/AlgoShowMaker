@@ -12,6 +12,8 @@
 #include <set>
 #include <cstdlib>
 #include <cmath>
+#include <map>
+#include <functional>
 using namespace std;
 using array_style = pair<vector<string>, vector<int>>;
 using array2D_style = pair<vector<string>, vector<pair<int,int>>>;
@@ -973,9 +975,10 @@ struct TreeLayout {
     int curr_o = 0;      // 當前順序
     vector<pair<int, int>> path_stack; // 備份堆疊
     bool show_edges = true; // 新增控制是否畫預設連線
+    bool horizontal = false; // 新增：是否橫向排列
 
     TreeLayout(int _degree = 2, Pos _root_pos = Pos(0,0), int _max_depth = 10, double _dx = 60.0, double _dy = 120.0, string _prefix = "tree")
-        : degree(_degree), root_pos(_root_pos), max_depth(_max_depth), dx(_dx), dy(_dy), prefix(_prefix) {
+        : degree(_degree), root_pos(_root_pos), max_depth(_max_depth), dx(_dx), dy(_dy), prefix(_prefix), horizontal(false) {
         }
 
     // 向下追蹤子分支
@@ -1019,7 +1022,11 @@ struct TreeLayout {
                 } else if (edge_colors.count({d, o})) {
                     color = edge_colors[{d, o}];
                 }
-                av.arrow(Pos(pid, "bottom"), Pos(id, "top"), {{"color", color}, {"width", "2"}});
+                if (horizontal) {
+                    av.arrow(Pos(pid, "right"), Pos(id, "left"), {{"color", color}, {"width", "2"}});
+                } else {
+                    av.arrow(Pos(pid, "bottom"), Pos(id, "top"), {{"color", color}, {"width", "2"}});
+                }
             }
         }
     }
@@ -1079,9 +1086,17 @@ struct TreeLayout {
 
     // --- 定位與識別工具 ---
     Pos get_pos(int depth, int order) const {
-        double ox = custom_x.count({depth, order}) ? custom_x.at({depth, order}) : 0.0;
-        double oy = depth * dy;
-        Pos p = root_pos; p.x += ox; p.y += oy; return p;
+        double offset = custom_x.count({depth, order}) ? custom_x.at({depth, order}) : 0.0;
+        double level = depth * dy;
+        Pos p = root_pos;
+        if (horizontal) {
+            p.x += level;
+            p.y += offset;
+        } else {
+            p.x += offset;
+            p.y += level;
+        }
+        return p;
     }
     string get_id(int d, int o) const { return prefix + "_" + to_string(d) + "_" + to_string(o); }
     string get_parent_id(int d, int o) const { return (d > 0) ? get_id(d - 1, o / degree) : ""; }
