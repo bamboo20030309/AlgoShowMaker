@@ -109,8 +109,10 @@
             <div id="frameBars"></div>
             <div id="frameInfo">0 / 0</div>
           </div>
-          <label>速度：</label>
-          <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000" />
+          <div class="speed-slider-wrapper">
+            <div class="speed-track-wedge"></div>
+            <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000" />
+          </div>
           <span id="speedValue">500ms</span>
         </div>
         <svg id="arraySvg"></svg>

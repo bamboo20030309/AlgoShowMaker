@@ -951,8 +951,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const updateSpeedLabel = () => {
     const rate = getTtsRate();
-    // 例如顯示「語速 1.2x」
     speedValue.textContent = `語速 ${rate.toFixed(1)}x`;
+    
+    // 更新滑桿比例 CSS 變數（用於軌道填充顏色）
+    const min = parseFloat(speedSlider.min) || 1;
+    const max = parseFloat(speedSlider.max) || 2000;
+    const val = parseFloat(speedSlider.value);
+    const percentage = ((val - min) / (max - min)) * 100;
+    // 將百分比同步到包裝容器，供背景楔形條使用
+    if (speedSlider.parentElement) {
+      speedSlider.parentElement.style.setProperty('--percent', percentage + '%');
+    }
   };
   updateSpeedLabel();
 
