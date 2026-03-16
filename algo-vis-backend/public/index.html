@@ -80,29 +80,49 @@
       <div id="tab-canvas" class="subContent active">
         <div class="controls">
           <button id="restartBtn" title="重新播放">
-            <svg class="step-icon" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+            <svg class="step-icon" viewBox="0 0 24 24">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+            </svg>
           </button>
           <button id="prevKeyFrameBtn" title="上一關鍵幀">
-            <svg class="step-icon" viewBox="0 0 24 24"><rect x="19" y="4" width="3" height="16"/><path d="M17 4l-9 8 9 8z"/><path d="M10 4l-8 8 8 8z"/></svg>
+            <svg class="step-icon" viewBox="0 0 24 24">
+              <rect x="19" y="4" width="3" height="16" />
+              <path d="M17 4l-9 8 9 8z" />
+              <path d="M10 4l-8 8 8 8z" />
+            </svg>
             上一大步
           </button>
           <button id="prevBtn" title="上一步">
-            <svg class="step-icon" viewBox="0 0 24 24"><rect x="19" y="4" width="3" height="16"/><path d="M16 4l-12 8 12 8z"/></svg>
+            <svg class="step-icon" viewBox="0 0 24 24">
+              <rect x="19" y="4" width="3" height="16" />
+              <path d="M16 4l-12 8 12 8z" />
+            </svg>
             上一步
           </button>
           <button id="playToggleBtn" class="btn-playtoggle" aria-pressed="false" title="播放/暫停">
-            <svg class="step-icon" viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="step-icon" viewBox="0 0 24 24" id="playIcon">
+              <path d="M8 5v14l11-7z" />
+            </svg>
           </button>
           <button id="nextBtn" title="下一步">
             下一步
-            <svg class="step-icon" viewBox="0 0 24 24"><rect x="2" y="4" width="3" height="16"/><path d="M8 4l12 8-12 8z"/></svg>
+            <svg class="step-icon" viewBox="0 0 24 24">
+              <rect x="2" y="4" width="3" height="16" />
+              <path d="M8 4l12 8-12 8z" />
+            </svg>
           </button>
           <button id="nextKeyFrameBtn" title="下一關鍵幀">
             下一大步
-            <svg class="step-icon" viewBox="0 0 24 24"><rect x="2" y="4" width="3" height="16"/><path d="M7 4l9 8-9 8z"/><path d="M15 4l9 8-9 8z"/></svg>
+            <svg class="step-icon" viewBox="0 0 24 24">
+              <rect x="2" y="4" width="3" height="16" />
+              <path d="M7 4l9 8-9 8z" />
+              <path d="M15 4l9 8-9 8z" />
+            </svg>
           </button>
           <button id="finishBtn" title="跳到最後">
-            <svg class="step-icon" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+            <svg class="step-icon" viewBox="0 0 24 24">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
           </button>
           <button id="ttsAvBtn" class="btn-tts" title="播放聲音">🔊</button>
           <div id="frameTimeline">
@@ -115,7 +135,112 @@
           </div>
           <span id="speedValue">500ms</span>
         </div>
-        <svg id="arraySvg"></svg>
+        <div id="canvasWrapper" style="position:relative; flex:1; overflow:hidden;">
+          <svg id="arraySvg" style="width:100%; height:100%; position:absolute; top:0; left:0;"></svg>
+
+          <div id="drawingToolbar" class="drawing-toolbar">
+            <button class="draw-tool active" data-tool="none" title="滑鼠模式 (停止繪畫)">
+              <svg viewBox="0 0 24 24">
+                <path d="M7 2l12 11.2l-5.8 0.5l3.3 7.3l-2.2 1l-3.2-7.4l-4.4 3.9z" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="draw-tool" data-tool="pen" title="畫筆">
+              <svg viewBox="0 0 24 24">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor" />
+              </svg>
+            </button>
+            <button class="draw-tool" data-tool="eraser" title="橡皮擦">
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M15.14 3c-.51 0-1.02.2-1.41.59L2.59 14.73c-.78.78-.78 2.05 0 2.83L5.41 20.4c.39.39.9.59 1.41.59.51 0 1.02-.2 1.41-.59l11.14-11.14c.78-.78.78-2.05 0-2.83l-2.83-2.83c-.39-.39-.9-.59-1.4-1.4z"
+                  fill="currentColor" />
+              </svg>
+            </button>
+            <button class="draw-tool" data-tool="rect" title="方形">
+              <svg viewBox="0 0 24 24">
+                <rect x="4" y="4" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" />
+              </svg>
+            </button>
+            <button class="draw-tool" data-tool="circle" title="圓形">
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" />
+              </svg>
+            </button>
+            <button class="draw-tool" data-tool="arrow" title="箭頭">
+              <svg viewBox="0 0 24 24">
+                <path d="M4 12h14M13 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            <button class="draw-tool" data-tool="text" title="文字">
+              <svg viewBox="0 0 24 24"><text x="4" y="19" font-size="20" font-family="sans-serif" font-weight="bold"
+                  fill="currentColor">T</text></svg>
+            </button>
+            <div class="divider"></div>
+            <div id="colorSettingsContainer"
+              style="display: flex; flex-direction: column; align-items: center; width: 100%; position: relative;">
+              <!-- 顏色單選器本體與左側附屬面板 -->
+              <div style="position: relative; display: flex; align-items: center;">
+                <!-- 加回邊框讓按鈕獨立 -->
+                <button id="colorToggleBtn" title="顏色與畫筆設定"
+                  style="width: 28px; height: 28px; padding: 0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #ff0000; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2); display: block;"></button>
+
+                <div id="slidersPopup"
+                  style="display: none; flex-direction: column; align-items: stretch; gap: 12px; position: absolute; right: calc(100% + 12px); top: 50%; transform: translateY(-50%); background: white; border: 1px solid #ccc; border-radius: 8px; padding: 12px 16px; z-index: 100; cursor: default; box-shadow: -2px 2px 8px rgba(0,0,0,0.15);">
+
+                  <!-- 上方：選色器主體與數值 -->
+                  <div style="display: flex; flex-direction: column; align-items: center;">
+                    <!-- iro.js 內建選色器與透明度拉桿會被掛載在這裡 -->
+                    <div id="v3-color-picker"></div>
+                  </div>
+
+                  <!-- 粗細度橫向梯形拉桿 -->
+                  <div class="wedge-slider-wrapper" id="drawSizeWrapper"
+                    style="--val: calc(8px + 10.5% * (100% - 16px)); --fill-color: rgba(255, 0, 0, 1);">
+                    <div class="wedge-slider-bg"></div>
+                    <div class="wedge-slider-fill-container">
+                      <div class="wedge-slider-checker"></div>
+                      <div class="wedge-slider-color"></div>
+                    </div>
+                    <input type="range" id="drawSize" min="1" max="20" value="3" title="調整畫筆粗細" />
+                  </div>
+
+                  <!-- 顯示顏色資訊 -->
+                  <div
+                    style="font-size: 11px; color: #666; font-family: monospace; line-height: 1.5; padding: 4px; background: #f5f5f5; border-radius: 4px; width: 100%; box-sizing: border-box; border: 1px solid #eee; display: flex; flex-direction: column; gap: 2px;">
+                    <div id="v3-color-rgba-container" style="display: flex; justify-content: space-between;">
+                      <span>RGBA(</span>
+                      <span id="v3-val-r" style="width: 20px; text-align: right;">255</span>
+                      <span>,</span>
+                      <span id="v3-val-g" style="width: 20px; text-align: right;">0</span>
+                      <span>,</span>
+                      <span id="v3-val-b" style="width: 20px; text-align: right;">0</span>
+                      <span>,</span>
+                      <span id="v3-val-a" style="width: 24px; text-align: right;">1.00</span>
+                      <span>)</span>
+                    </div>
+                    <div id="v3-color-hsv-container" style="display: flex; justify-content: space-between;">
+                      <span>HSV&nbsp;(</span>
+                      <span id="v3-val-h" style="width: 20px; text-align: right;">0</span>
+                      <span>°,</span>
+                      <span id="v3-val-s" style="width: 20px; text-align: right;">100</span>
+                      <span>%,</span>
+                      <span id="v3-val-v" style="width: 20px; text-align: right;">100</span>
+                      <span>%)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <button id="clearDraw" title="清空畫布">
+              <svg viewBox="0 0 24 24">
+                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                  fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
       <div id="tab-input" class="subContent">
         <textarea id="inputArea" placeholder="請輸入程式執行時要給的輸入（stdin）..."
@@ -234,6 +359,8 @@
 
   <!-- 載入 Ace Editor -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.11.2/ace.js"></script>
+  <!-- 載入開源的高級選色與透明度套件 iro.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
   <!-- 底層繪圖與互動腳本 -->
   <script src="canva.js"></script>
   <script src="interaction.js"></script>

@@ -59,11 +59,24 @@
     let startX = 0, startY = 0;
 
     svg.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
+      // 判斷是否可拖曳：左鍵 (0) 要看是否為繪圖模式，右鍵 (2) 永遠允許拖曳
+      if (e.button === 0) {
+        if (window.isDrawingMode) return;
+      } else if (e.button === 2) {
+        // 右鍵允許拖曳
+      } else {
+        return; // 其他按鍵不處理
+      }
+
       stopAnimation(); // 手動操作時停止動畫
       dragging = true;
       startX = e.clientX;
       startY = e.clientY;
+    });
+
+    // 禁用 SVG 上的右鍵選單，避免干擾右鍵拖曳
+    svg.addEventListener('contextmenu', e => {
+      e.preventDefault();
     });
     svg.addEventListener('mousemove', e => {
       if (!dragging) return;
@@ -117,6 +130,7 @@
       // 保留格線背景 AND 保留箭頭圖層 (arrow-layer)
       if (tag === 'rect' && fill === 'url(#gridPattern)') return;
       if (id === 'arrow-layer') return; // 讓 draw_arrow.js 自己管理
+      if (id === 'drawingLayer') return; // 保留塗鴉層
 
       vp.removeChild(node);
     });

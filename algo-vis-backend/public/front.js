@@ -890,6 +890,7 @@ function syncCurrentFrameFromCodeScript() {
   currentFrame = csGetCurrentFrameIndex();
   updateFrameBarsVisual();
   updateFrameInfoText();
+  if (typeof clearDrawingCanvas === 'function') clearDrawingCanvas();
 }
 
 // RUN 按鈕在 compile.js 把新的 code_script.js 生出來後
@@ -2741,3 +2742,338 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 });
+
+// =========================================
+// 繪圖畫布功能 (SVG Drawing API)
+// =========================================
+let clearDrawingCanvas;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const svg = document.getElementById('arraySvg');
+  if (!svg) return;
+  const NS = 'http://www.w3.org/2000/svg';
+  
+  window.isDrawingMode = false;
+  let currentTool = 'none';
+  let isDrawing = false;
+  let startX = 0, startY = 0;
+  let currentColor = '#ff0000';
+  let currentSize = 3;
+  let currentShape = null;
+  let currentPathData = '';
+
+  // 取得或建立塗鴉圖層，確保在 viewport 的最上層
+  function getDrawingLayer() {
+    const vp = document.getElementById('viewport');
+    if (!vp) return null;
+    let dl = document.getElementById('drawingLayer');
+    if (!dl) {
+      dl = document.createElementNS(NS, 'g');
+      dl.id = 'drawingLayer';
+      vp.appendChild(dl);
+    } else {
+      vp.appendChild(dl); // 移到最上層
+    }
+    return dl;
+  }
+
+  clearDrawingCanvas = function() {
+    const dl = document.getElementById('drawingLayer');
+    if (dl) dl.innerHTML = '';
+  };
+
+  // 將滑鼠事件轉換為 viewport 內的座標
+  function getLocalCoords(e) {
+    const vp = document.getElementById('viewport');
+    if (!vp) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const globalToLocal = vp.getScreenCTM().inverse();
+    return pt.matrixTransform(globalToLocal);
+  }
+
+  // 綁定控制列工具
+  const tools = document.querySelectorAll('.drawing-toolbar .draw-tool');
+  tools.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tools.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentTool = btn.dataset.tool;
+      window.isDrawingMode = (currentTool !== 'none');
+      
+      const dl = getDrawingLayer();
+      if (!dl) return;
+
+      if (currentTool === 'none') {
+        svg.style.cursor = 'grab';
+        dl.style.pointerEvents = 'none';
+      } else {
+        dl.style.pointerEvents = 'all'; // 讓圖案可以被點擊(供橡皮擦用)
+        if (currentTool === 'text') {
+          svg.style.cursor = 'text';
+        } else {
+          svg.style.cursor = 'crosshair';
+        }
+      }
+    });
+  });
+
+  let iroPicker = null;
+  let currentColorStr = 'rgba(255, 0, 0, 1)';
+  
+  const colorToggleBtn = document.getElementById('colorToggleBtn');
+  const sizeSlider = document.getElementById('drawSize');
+  const slidersPopup = document.getElementById('slidersPopup');
+  const sizeValDisplay = document.getElementById('sizeValDisplay');
+
+  // 初始化 iro.js (網頁版高級選色器)
+  if (window.iro && document.getElementById('v3-color-picker')) {
+    iroPicker = new iro.ColorPicker("#v3-color-picker", {
+      width: 150,
+      color: currentColorStr,
+      borderWidth: 1,
+      borderColor: "#e0e0e0",
+      layout: [
+        { 
+          component: iro.ui.Box,
+        },
+        { 
+          component: iro.ui.Slider,
+          options: { sliderType: 'hue', sliderHeight: 20, handleRadius: 8 }
+        },
+        { 
+          component: iro.ui.Slider,
+          options: { sliderType: 'alpha', sliderHeight: 20, handleRadius: 8 }
+        }
+      ]
+    });
+    
+    const valR = document.getElementById('v3-val-r');
+    const valG = document.getElementById('v3-val-g');
+    const valB = document.getElementById('v3-val-b');
+    const valA = document.getElementById('v3-val-a');
+    
+    const valH = document.getElementById('v3-val-h');
+    const valS = document.getElementById('v3-val-s');
+    const valV = document.getElementById('v3-val-v');
+    
+    const drawSizeWrapper = document.getElementById('drawSizeWrapper');
+
+    iroPicker.on('color:change', function(color) {
+      currentColorStr = color.rgbaString;
+      if (colorToggleBtn) {
+        colorToggleBtn.style.backgroundColor = currentColorStr;
+      }
+      
+      if (drawSizeWrapper) {
+        drawSizeWrapper.style.setProperty('--fill-color', currentColorStr);
+      }
+      
+      if (valR) valR.textContent = color.rgba.r;
+      if (valG) valG.textContent = color.rgba.g;
+      if (valB) valB.textContent = color.rgba.b;
+      if (valA) valA.textContent = color.rgba.a.toFixed(2);
+
+      if (valH) valH.textContent = Math.round(color.hsv.h);
+      if (valS) valS.textContent = Math.round(color.hsv.s);
+      if (valV) valV.textContent = Math.round(color.hsv.v);
+    });
+  }
+
+  if (colorToggleBtn && slidersPopup) {
+    // 點擊顏色選取器時，打開拉桿選單
+    colorToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      slidersPopup.style.display = slidersPopup.style.display === 'none' ? 'flex' : 'none';
+    });
+    // 點擊畫布其他地方自動關閉彈出視窗
+    document.addEventListener('click', (e) => {
+      if (!slidersPopup.contains(e.target) && e.target !== colorToggleBtn) {
+        slidersPopup.style.display = 'none';
+      }
+    });
+  }
+  
+  function getRgbaColor() {
+    return currentColorStr;
+  }
+
+  if (sizeSlider) {
+    sizeSlider.addEventListener('input', e => {
+      currentSize = parseInt(e.target.value);
+      const drawSizeWrapper = document.getElementById('drawSizeWrapper');
+      if (drawSizeWrapper) {
+        // min 1 max 20，對應比例 0 ~ 1
+        const ratio = (currentSize - 1) / 19;
+        drawSizeWrapper.style.setProperty('--val', `calc(8px + ${ratio} * (100% - 16px))`);
+      }
+    });
+
+    // 預設初始化 (確保面板第一次打開跟目前的初始值吻合)
+    const initRatio = (parseInt(sizeSlider.value) - 1) / 19;
+    const drawSizeWrapper = document.getElementById('drawSizeWrapper');
+    if (drawSizeWrapper) {
+      drawSizeWrapper.style.setProperty('--val', `calc(8px + ${initRatio} * (100% - 16px))`);
+    }
+  }
+
+  const clearBtn = document.getElementById('clearDraw');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearDrawingCanvas);
+  }
+
+  // 畫箭頭常式，回傳一段 d string
+  function getArrowPath(fromx, fromy, tox, toy) {
+    const headlen = 10 + currentSize; 
+    const dx = tox - fromx;
+    const dy = toy - fromy;
+    const angle = Math.atan2(dy, dx);
+    const p1x = tox - headlen * Math.cos(angle - Math.PI / 6);
+    const p1y = toy - headlen * Math.sin(angle - Math.PI / 6);
+    const p2x = tox - headlen * Math.cos(angle + Math.PI / 6);
+    const p2y = toy - headlen * Math.sin(angle + Math.PI / 6);
+    return `M ${fromx} ${fromy} L ${tox} ${toy} M ${tox} ${toy} L ${p1x} ${p1y} M ${tox} ${toy} L ${p2x} ${p2y}`;
+  }
+
+  // 滑鼠繪製事件
+  svg.addEventListener('mousedown', e => {
+    if (currentTool === 'none') return;
+    if (e.button !== 0) return; // 只接受左鍵
+
+    const dl = getDrawingLayer();
+    if (!dl) return;
+    
+    // 橡皮擦：點擊繪製出來的圖形即刪除
+    if (currentTool === 'eraser') {
+      if (e.target.parentNode === dl) {
+        dl.removeChild(e.target);
+      }
+      return; 
+    }
+    
+    // 文字工具：點擊後輸入即可
+    if (currentTool === 'text') {
+      const coords = getLocalCoords(e);
+      setTimeout(() => {
+        const text = prompt("請輸入文字:");
+        if (text && text.trim() !== '') {
+          const textNode = document.createElementNS(NS, 'text');
+          textNode.setAttribute('x', coords.x);
+          textNode.setAttribute('y', coords.y);
+          textNode.setAttribute('fill', getRgbaColor());
+          textNode.setAttribute('font-size', (currentSize * 5 + 10) + 'px');
+          textNode.setAttribute('font-family', 'sans-serif');
+          textNode.setAttribute('font-weight', 'bold');
+          textNode.textContent = text;
+          dl.appendChild(textNode);
+        }
+      }, 10);
+      return;
+    }
+
+    isDrawing = true;
+    const coords = getLocalCoords(e);
+    startX = coords.x;
+    startY = coords.y;
+    
+    // 預防事件被 canva.js/interaction.js 等事件處理遮蔽
+    e.stopPropagation();
+
+    if (currentTool === 'pen') {
+      currentShape = document.createElementNS(NS, 'path');
+      currentPathData = `M ${startX} ${startY}`;
+      currentShape.setAttribute('d', currentPathData);
+      currentShape.setAttribute('fill', 'none');
+      currentShape.setAttribute('stroke', getRgbaColor());
+      currentShape.setAttribute('stroke-width', currentSize);
+      currentShape.setAttribute('stroke-linecap', 'round');
+      currentShape.setAttribute('stroke-linejoin', 'round');
+      dl.appendChild(currentShape);
+    } else if (currentTool === 'rect') {
+      currentShape = document.createElementNS(NS, 'rect');
+      currentShape.setAttribute('x', startX);
+      currentShape.setAttribute('y', startY);
+      currentShape.setAttribute('width', 0);
+      currentShape.setAttribute('height', 0);
+      currentShape.setAttribute('fill', 'none');
+      currentShape.setAttribute('stroke', getRgbaColor());
+      currentShape.setAttribute('stroke-width', currentSize);
+      dl.appendChild(currentShape);
+    } else if (currentTool === 'circle') {
+      currentShape = document.createElementNS(NS, 'ellipse');
+      currentShape.setAttribute('cx', startX);
+      currentShape.setAttribute('cy', startY);
+      currentShape.setAttribute('rx', 0);
+      currentShape.setAttribute('ry', 0);
+      currentShape.setAttribute('fill', 'none');
+      currentShape.setAttribute('stroke', getRgbaColor());
+      currentShape.setAttribute('stroke-width', currentSize);
+      dl.appendChild(currentShape);
+    } else if (currentTool === 'arrow') {
+      currentShape = document.createElementNS(NS, 'path');
+      currentShape.setAttribute('fill', 'none');
+      currentShape.setAttribute('stroke', getRgbaColor());
+      currentShape.setAttribute('stroke-width', currentSize);
+      currentShape.setAttribute('stroke-linecap', 'round');
+      currentShape.setAttribute('stroke-linejoin', 'round');
+      currentShape.setAttribute('d', getArrowPath(startX, startY, startX, startY));
+      dl.appendChild(currentShape);
+    }
+  });
+
+  window.addEventListener('mousemove', e => {
+    // 橡皮擦：按著左鍵滑過標註圖形就能刪除
+    if (currentTool === 'eraser') {
+      const dl = getDrawingLayer();
+      if (dl && e.buttons === 1 && e.target.parentNode === dl) {
+         dl.removeChild(e.target);
+      }
+      return;
+    }
+
+    if (!isDrawing || !currentShape || currentTool === 'text') return;
+    
+    // 如果在畫布上，阻止事件傳遞
+    if (e.target.closest('#arraySvg')) {
+        e.stopPropagation();
+    }
+    
+    const coords = getLocalCoords(e);
+    const x = coords.x;
+    const y = coords.y;
+    
+    if (currentTool === 'pen') {
+      currentPathData += ` L ${x} ${y}`;
+      currentShape.setAttribute('d', currentPathData);
+    } 
+    else if (currentTool === 'rect') {
+      currentShape.setAttribute('x', Math.min(x, startX));
+      currentShape.setAttribute('y', Math.min(y, startY));
+      currentShape.setAttribute('width', Math.abs(x - startX));
+      currentShape.setAttribute('height', Math.abs(y - startY));
+    } 
+    else if (currentTool === 'circle') {
+      const rx = Math.abs(x - startX) / 2;
+      const ry = Math.abs(y - startY) / 2;
+      currentShape.setAttribute('cx', Math.min(x, startX) + rx);
+      currentShape.setAttribute('cy', Math.min(y, startY) + ry);
+      currentShape.setAttribute('rx', rx);
+      currentShape.setAttribute('ry', ry);
+    } 
+    else if (currentTool === 'arrow') {
+      currentShape.setAttribute('d', getArrowPath(startX, startY, x, y));
+    }
+  });
+
+  window.addEventListener('mouseup', e => {
+    if (currentTool === 'none') return;
+    if (isDrawing) {
+       isDrawing = false;
+       currentShape = null;
+       if (e.target.closest('#arraySvg')) {
+           e.stopPropagation();
+       }
+    }
+  });
+});
