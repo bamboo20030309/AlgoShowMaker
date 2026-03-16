@@ -4,7 +4,7 @@
 using namespace std;
 
 int N = 4;
-// draw{
+//draw{
 AV av;
 TreeLayout tree(2, Pos(500, 450), 10, 80.0, 220.0);
 map<string, deque<int>> pegs;
@@ -27,14 +27,14 @@ void draw_all_pegs() {
   };
 
   draw_single_peg("A", base_x);
-  draw_single_peg("B", base_x + 250);
-  draw_single_peg("C", base_x + 500);
+  draw_single_peg("B", base_x + 150);
+  draw_single_peg("C", base_x + 300);
 }
 
 //}
 
 void hanoi(int n, string from, string to, string aux) {
-  // draw{
+  //draw{
   int d = tree.curr_d;
   int o = tree.curr_o;
   string nid = tree.get_id(d, o);
@@ -49,20 +49,23 @@ void hanoi(int n, string from, string to, string aux) {
             "ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
             ans, {}, {0}, "normal", 1);
       }
-      av.text("河內塔遞迴的核心概念：\n1. 移花 (移動底盤以上的盤子到中間)\n2. "
-              "搬動底盤 (移動底盤到右邊)\n3. 接木 (移動中間的盤子回到右邊)",
+      av.text("河內塔遞迴的核心概念\n"
+              "1. 移花：{移動底盤以上的盤子到中間}\n"
+              "{2. 搬動底盤：移動底盤到右邊}\n"
+              "{3. 接木：移動中間的盤子回到右邊}",
               Pos("tree_0_0", "top", 0, -140));
       av.auto_camera();
     });
-  }
-  //}
 
-  if (n == 1) {
-    // draw{
-    int disk = pegs[from].front();
-    pegs[from].pop_front();
-    pegs[to].push_front(disk);
-    ans.push_back(from + " → " + to);
+    // 模擬移花
+    deque<int> top_disks;
+    for (int i = 0; i < N - 1; i++) {
+      top_disks.push_back(pegs[from].front());
+      pegs[from].pop_front();
+    }
+    for (int i = N - 2; i >= 0; i--) {
+      pegs[aux].push_front(top_disks[i]);
+    }
 
     tree.paint(av, state, -1, [&] {
       draw_all_pegs();
@@ -71,17 +74,91 @@ void hanoi(int n, string from, string to, string aux) {
             "ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
             ans, {}, {0}, "normal", 1);
       }
-      av.text("{基礎情況}：n=1\n只有一個盤子，不需要找輔助位，\n直接從 " +
-                  from + " 搬到 " + to + "！",
+      av.text("{河內塔遞迴的核心概念}\n"
+              "{1. 移花：}移動底盤以上的盤子到中間\n"
+              "2. 搬動底盤：{移動底盤到右邊}\n"
+              "{3. 接木：移動中間的盤子回到右邊}",
+              Pos("tree_0_0", "top", 0, -140));
+      av.auto_camera();
+    });
+
+    // 模擬搬動底盤
+    int bottom_disk = pegs[from].front();
+    pegs[from].pop_front();
+    pegs[to].push_front(bottom_disk);
+
+    tree.paint(av, state, -1, [&] {
+      draw_all_pegs();
+      if (tree.nodes.count({N - 1, 0})) {
+        av.frame_draw(
+            "ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
+            ans, {}, {0}, "normal", 1);
+      }
+      av.text("{河內塔遞迴的核心概念}\n"
+              "{1. 移花：移動底盤以上的盤子到中間}\n"
+              "{2. 搬動底盤：}移動底盤到右邊\n"
+              "3. 接木：{移動中間的盤子回到右邊}",
+              Pos("tree_0_0", "top", 0, -140));
+      av.auto_camera();
+    });
+
+    // 模擬接木
+    for (int i = 0; i < N - 1; i++)
+      pegs[aux].pop_front();
+    for (int i = N - 2; i >= 0; i--)
+      pegs[to].push_front(top_disks[i]);
+
+    tree.paint(av, state, -1, [&] {
+      draw_all_pegs();
+      if (tree.nodes.count({N - 1, 0})) {
+        av.frame_draw(
+            "ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
+            ans, {}, {0}, "normal", 1);
+      }
+      av.text("{河內塔遞迴的核心概念}\n"
+              "{1. 移花：移動底盤以上的盤子到中間}\n"
+              "{2. 搬動底盤：移動底盤到右邊}\n"
+              "{3. 接木：}移動中間的盤子回到右邊",
+              Pos("tree_0_0", "top", 0, -140));
+      av.auto_camera();
+    });
+
+    // 復原現場以供正式遞迴使用
+    pegs[to].clear();
+    pegs[aux].clear();
+    pegs[from].clear();
+    for (int i = 1; i <= N; i++)
+      pegs[from].push_back(i);
+  }
+  //}
+
+  if (n == 1) {
+    //draw{
+    int disk = pegs[from].front();
+
+    tree.paint(av, state, -1, [&] {
+      draw_all_pegs();
+      if (tree.nodes.count({N - 1, 0})) {
+        av.frame_draw(
+            "ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
+            ans, {}, {0}, "normal", 1);
+      }
+      av.text("{基礎情況}：n=1\n只剩一個盤子，不需要找輔助位，\n直接從 " +
+                  from + " 搬到 " + to,
               Pos("tree_0_0", "top", 0, -120));
       av.auto_camera();
     });
+    
+    pegs[from].pop_front();
+    pegs[to].push_front(disk);
+    ans.push_back(from + " → " + to);
+    cout << from << " -> " << to << endl;
     tree.edge_colors[{d, o}] = "black";
     //}
     return;
   }
 
-  // draw{
+  //draw{
   tree.paint(av, state, -1, [&] {
     draw_all_pegs();
     if (tree.nodes.count({N - 1, 0})) {
@@ -94,8 +171,6 @@ void hanoi(int n, string from, string to, string aux) {
             Pos("tree_0_0", "top", 0, -120));
     av.auto_camera();
   });
-  //}
-  // draw{
   tree.push(0);
   string cid1 = tree.get_id(tree.curr_d, tree.curr_o);
   tree.nodes.insert(
@@ -118,16 +193,14 @@ void hanoi(int n, string from, string to, string aux) {
                   ans, {}, {0}, "normal", 1);
   }
   av.text("{移花}：\n為了移動上面的 " + to_string(n - 1) + " 個盤子到 " + aux +
-              "，\n又必須去遞迴計算它的移動過程...",
+              "，\n所以呼叫小弟來幫忙計算",
           Pos("tree_0_0", "top", 0, -120));
   av.auto_camera();
   av.end_frame_draw();
   //}
-
   hanoi(n - 1, from, aux, to);
-
-  // draw{
-  // 從第一步返回：儲存往上的箭頭 (下偏 15，黑色，細度 2)
+  //draw{
+  //  從第一步返回：儲存往上的箭頭 (下偏 15，黑色，細度 2)
   av.accu_store_arrow(Pos(cid1, "left", 0, 15), Pos(nid, "right", 0, 15),
                       {{"color", "black"}, {"width", "2"}});
 
@@ -140,16 +213,14 @@ void hanoi(int n, string from, string to, string aux) {
                   Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
                   ans, {}, {0}, "normal", 1);
   }
-  av.text("已完成上面 " + to_string(n - 1) + " 個盤子的移花步驟，返回主層級。",
+  av.text("小弟計算完成，將搬動 " + to_string(n - 1) + " 個盤子的結果回傳給大哥",
           Pos("tree_0_0", "top", 0, -120));
   av.auto_camera();
   av.end_frame_draw();
   tree.pop();
-  int disk = pegs[from].front();
-  pegs[from].pop_front();
-  pegs[to].push_front(disk);
-  ans.push_back(from + " → " + to);
 
+  
+  int disk = pegs[from].front();
   tree.paint(av, state, -1, [&] {
     draw_all_pegs();
     if (tree.nodes.count({N - 1, 0})) {
@@ -157,11 +228,15 @@ void hanoi(int n, string from, string to, string aux) {
                     Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
                     ans, {}, {0}, "normal", 1);
     }
-    av.text("搬動底盤：\n上面盤子都移開了，最底下的盤子 " + to_string(disk) +
+    av.text("{搬動底盤}：\n上面盤子都移開了，最底下的盤子 " + to_string(disk) +
                 " 自由了！\n從 " + from + " 移至最終目標 " + to,
             Pos("tree_0_0", "top", 0, -120));
     av.auto_camera();
   });
+  pegs[from].pop_front();
+  pegs[to].push_front(disk);
+  ans.push_back(from + " → " + to);
+
   tree.push(1);
   string cid2 = tree.get_id(tree.curr_d, tree.curr_o);
   tree.nodes.insert({tree.curr_d, tree.curr_o});
@@ -182,17 +257,15 @@ void hanoi(int n, string from, string to, string aux) {
                   Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
                   ans, {}, {0}, "normal", 1);
   }
-  av.text("{接木}：\n底盤已歸位，現在要把剛才遞迴移走的 " + to_string(n - 1) +
+  av.text("{接木}：\n底盤已經移過去，現在要把剛才移走的 " + to_string(n - 1) +
               " 個盤子，\n從暫存的 " + aux + " 搬回目標 " + to + "...",
           Pos("tree_0_0", "top", 0, -120));
   av.auto_camera();
   av.end_frame_draw();
   //}
-
   hanoi(n - 1, aux, to, from);
-
-  // draw{
-  // 從第三步返回：儲存往上的箭頭 (下偏 15，黑色，細度 2)
+  //draw{
+  //  從第三步返回：儲存往上的箭頭 (下偏 15，黑色，細度 2)
   av.accu_store_arrow(Pos(cid2, "left", 0, 15), Pos(nid, "right", 0, 15),
                       {{"color", "black"}, {"width", "2"}});
 
@@ -205,32 +278,16 @@ void hanoi(int n, string from, string to, string aux) {
                   Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
                   ans, {}, {0}, "normal", 1);
   }
-  av.text("已將 " + aux + " 暫存的盤子接木完成，返回主層級。",
+  av.text("已將 " + aux + " 暫存的盤子搬到目標，回傳給大哥。",
           Pos("tree_0_0", "top", 0, -120));
   av.auto_camera();
   av.end_frame_draw();
   tree.pop();
   //}
-
-  // draw{
-  tree.edge_colors[{d, o}] = "black";
-  tree.paint(av, state, -1, [&] {
-    draw_all_pegs();
-    if (tree.nodes.count({N - 1, 0})) {
-      av.frame_draw("ans",
-                    Pos("tree_" + to_string(N - 1) + "_0", "top right", 50, 0),
-                    ans, {}, {0}, "normal", 1);
-    }
-    av.text("問題解畢：\n" + to_string(n) +
-                " 個盤子的搬運進度已全部完成，返回上層。",
-            Pos("tree_0_0", "top", 0, -100));
-    av.auto_camera();
-  });
-  //}
 }
 
 int main() {
-  // draw{
+  //draw{
   tree.renderer = [](string id, Pos p, int d, int o, bool is_focus) {
     string val = tree.vals[{d, o}];
     bool is_done = (tree.edge_colors[{d, o}] == "black");
@@ -240,10 +297,8 @@ int main() {
     av.frame_draw(id, p, vector<string>{val}, style);
   };
   //}
-
   N = 4;
-
-  // draw{
+  //draw{
   tree.horizontal = true;
   tree.root_pos = Pos(100, 100 + N * 85); // 隨著 N 動態向下調整
   tree.show_edges = false; // 關閉預設的連線，讓自訂的進出箭頭不受干擾
@@ -252,9 +307,8 @@ int main() {
   av.start_draw();
   //}
   hanoi(N, "A", "C", "B");
-
-  // draw{
-  // 修正總結影格：同樣要先 redraw 再 accu_draw
+  //draw{
+  //  修正總結影格：同樣要先 redraw 再 accu_draw
   av.start_frame_draw();
   tree.redraw(av); // 先產生節點
   av.accu_draw();  // 才畫得出所有歷史箭頭
