@@ -818,7 +818,7 @@ function buildFrameBars() {
   if (timeline && !timeline.dataset.scrubBound) {
     timeline.dataset.scrubBound = "true";
     let isDraggingTimeline = false;
-    
+
     const scrub = (e) => {
       if (totalFrames <= 0) return;
       const rect = timeline.getBoundingClientRect();
@@ -830,7 +830,7 @@ function buildFrameBars() {
         jumpToFrame(clampedIdx);
       }
     };
-    
+
     timeline.addEventListener("pointerdown", (e) => {
       isDraggingTimeline = true;
       timeline.setPointerCapture(e.pointerId);
@@ -953,7 +953,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const updateSpeedLabel = () => {
     const rate = getTtsRate();
     speedValue.textContent = `語速 ${rate.toFixed(1)}x`;
-    
+
     // 更新滑桿比例 CSS 變數（用於軌道填充顏色）
     const min = parseFloat(speedSlider.min) || 1;
     const max = parseFloat(speedSlider.max) || 2000;
@@ -2752,7 +2752,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const svg = document.getElementById('arraySvg');
   if (!svg) return;
   const NS = 'http://www.w3.org/2000/svg';
-  
+
   window.isDrawingMode = false;
   let currentTool = 'none';
   let isDrawing = false;
@@ -2761,6 +2761,60 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentSize = 3;
   let currentShape = null;
   let currentPathData = '';
+
+  // ===== 繪圖復原/重做系統 =====
+  let undoStack = [];
+  let redoStack = [];
+  let erasedInCurrentDrag = []; // 紀錄一次橡皮擦過程中刪除的物件
+
+  function pushUndo(action) {
+    undoStack.push(action);
+    redoStack = [];
+    if (undoStack.length > 50) undoStack.shift();
+  }
+
+  function undoDraw() {
+    if (activeTextEdit) finalizeTextEdit();
+    if (undoStack.length === 0) return;
+    const action = undoStack.pop();
+    redoStack.push(action);
+
+    if (action.type === 'add') {
+      if (action.element.parentNode) action.element.remove();
+    } else if (action.type === 'removeMany') {
+      action.elements.forEach(item => {
+        const { el, parent, nextSibling } = item;
+        if (nextSibling) parent.insertBefore(el, nextSibling);
+        else parent.appendChild(el);
+      });
+    } else if (action.type === 'clear') {
+      const dl = getDrawingLayer();
+      action.elements.forEach(el => dl.appendChild(el));
+    }
+  }
+
+  function redoDraw() {
+    if (activeTextEdit) finalizeTextEdit();
+    if (redoStack.length === 0) return;
+    const action = redoStack.pop();
+    undoStack.push(action);
+
+    if (action.type === 'add') {
+      const dl = getDrawingLayer();
+      dl.appendChild(action.element);
+    } else if (action.type === 'removeMany') {
+      action.elements.forEach(item => item.el.remove());
+    } else if (action.type === 'clear') {
+      const dl = getDrawingLayer();
+      dl.innerHTML = '';
+    }
+  }
+
+  // ===== 文字即時編輯相關 =====
+  let activeTextEdit = null;
+  const hiddenTextArea = document.createElement('textarea');
+  hiddenTextArea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;';
+  document.body.appendChild(hiddenTextArea);
 
   // 取得或建立塗鴉圖層，確保在 viewport 的最上層
   function getDrawingLayer() {
@@ -2777,9 +2831,13 @@ document.addEventListener('DOMContentLoaded', () => {
     return dl;
   }
 
-  clearDrawingCanvas = function() {
+  clearDrawingCanvas = function () {
     const dl = document.getElementById('drawingLayer');
-    if (dl) dl.innerHTML = '';
+    if (dl && dl.children.length > 0) {
+      const elements = Array.from(dl.children);
+      pushUndo({ type: 'clear', elements: elements });
+      dl.innerHTML = '';
+    }
   };
 
   // 將滑鼠事件轉換為 viewport 內的座標
@@ -2801,7 +2859,8 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.classList.add('active');
       currentTool = btn.dataset.tool;
       window.isDrawingMode = (currentTool !== 'none');
-      
+      if (activeTextEdit) finalizeTextEdit();
+
       const dl = getDrawingLayer();
       if (!dl) return;
 
@@ -2819,9 +2878,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // 綁定 Undo / Redo 按鈕
+  const undoBtn = document.getElementById('undoDraw');
+  const redoBtn = document.getElementById('redoDraw');
+  if (undoBtn) undoBtn.addEventListener('click', undoDraw);
+  if (redoBtn) redoBtn.addEventListener('click', redoDraw);
+
+  // 全域快捷鍵 (Ctrl+Z, Ctrl+Y)
+  window.addEventListener('keydown', e => {
+    // 如果正在打字，且焦點在隱藏的文字區塊，則讓其原生處理文字內部的 undo
+    if (activeTextEdit && document.activeElement === hiddenTextArea) return;
+
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          redoDraw();
+        } else {
+          e.preventDefault();
+          undoDraw();
+        }
+      } else if (e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redoDraw();
+      }
+    }
+  });
+
   let iroPicker = null;
   let currentColorStr = 'rgba(255, 0, 0, 1)';
-  
+
   const colorToggleBtn = document.getElementById('colorToggleBtn');
   const sizeSlider = document.getElementById('drawSize');
   const slidersPopup = document.getElementById('slidersPopup');
@@ -2835,41 +2921,41 @@ document.addEventListener('DOMContentLoaded', () => {
       borderWidth: 1,
       borderColor: "#e0e0e0",
       layout: [
-        { 
+        {
           component: iro.ui.Box,
         },
-        { 
+        {
           component: iro.ui.Slider,
           options: { sliderType: 'hue', sliderHeight: 20, handleRadius: 8 }
         },
-        { 
+        {
           component: iro.ui.Slider,
           options: { sliderType: 'alpha', sliderHeight: 20, handleRadius: 8 }
         }
       ]
     });
-    
+
     const valR = document.getElementById('v3-val-r');
     const valG = document.getElementById('v3-val-g');
     const valB = document.getElementById('v3-val-b');
     const valA = document.getElementById('v3-val-a');
-    
+
     const valH = document.getElementById('v3-val-h');
     const valS = document.getElementById('v3-val-s');
     const valV = document.getElementById('v3-val-v');
-    
+
     const drawSizeWrapper = document.getElementById('drawSizeWrapper');
 
-    iroPicker.on('color:change', function(color) {
+    iroPicker.on('color:change', function (color) {
       currentColorStr = color.rgbaString;
       if (colorToggleBtn) {
         colorToggleBtn.style.backgroundColor = currentColorStr;
       }
-      
+
       if (drawSizeWrapper) {
         drawSizeWrapper.style.setProperty('--fill-color', currentColorStr);
       }
-      
+
       if (valR) valR.textContent = color.rgba.r;
       if (valG) valG.textContent = color.rgba.g;
       if (valB) valB.textContent = color.rgba.b;
@@ -2894,7 +2980,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  
+
   function getRgbaColor() {
     return currentColorStr;
   }
@@ -2924,10 +3010,149 @@ document.addEventListener('DOMContentLoaded', () => {
   if (clearBtn) {
     clearBtn.addEventListener('click', clearDrawingCanvas);
   }
+  // ===== 將 textarea 內容同步到 SVG (tspan 支援多行) =====
+  function syncTextContent() {
+    if (!activeTextEdit) return;
+    const { textNode, x } = activeTextEdit;
+    const lines = hiddenTextArea.value.split('\n');
+    // 清空舊內容
+    while (textNode.firstChild) textNode.removeChild(textNode.firstChild);
+    // 每行建立一個 tspan
+    lines.forEach((line, i) => {
+      const tspan = document.createElementNS(NS, 'tspan');
+      tspan.setAttribute('x', x);
+      tspan.setAttribute('dy', i === 0 ? '0' : '1.2em');
+      tspan.textContent = line || '\u200B'; // 空行用零寬空格佔位
+      textNode.appendChild(tspan);
+    });
+  }
+
+  // ===== 文字游標位置更新 (支援多行) =====
+  function updateTextCursor() {
+    if (!activeTextEdit) return;
+    const { textNode, cursorLine, fontSize, x, y } = activeTextEdit;
+
+    const pos = hiddenTextArea.selectionStart || 0;
+    const before = hiddenTextArea.value.substring(0, pos);
+    const lines = before.split('\n');
+    const lineIdx = lines.length - 1;
+    const colIdx = lines[lineIdx].length;
+
+    // X 位置：用對應 tspan 的 getSubStringLength
+    let cursorX = x;
+    const tspans = textNode.querySelectorAll('tspan');
+    if (tspans.length > lineIdx) {
+      const tspan = tspans[lineIdx];
+      try {
+        // 跳過零寬空格佔位符
+        const realText = tspan.textContent.replace(/\u200B/g, '');
+        const realLen = realText.length;
+        if (colIdx > 0 && realLen > 0) {
+          cursorX = x + tspan.getSubStringLength(0, Math.min(colIdx, realLen));
+        }
+      } catch (e) {
+        try { cursorX = x + tspan.getComputedTextLength(); } catch (e2) { }
+      }
+    }
+
+    // Y 位置：基準 y + 行索引 * 行高
+    const lineH = fontSize * 1.2;
+    const cursorY = y + lineIdx * lineH;
+
+    cursorLine.setAttribute('x1', cursorX);
+    cursorLine.setAttribute('x2', cursorX);
+    cursorLine.setAttribute('y1', cursorY - fontSize * 0.8);
+    cursorLine.setAttribute('y2', cursorY + fontSize * 0.15);
+
+    // 立即顯示 + 重置閃爍
+    cursorLine.setAttribute('opacity', '1');
+    clearInterval(activeTextEdit.blinkTimer);
+    activeTextEdit.blinkTimer = setInterval(() => {
+      const cur = cursorLine.getAttribute('opacity');
+      cursorLine.setAttribute('opacity', cur === '0' ? '1' : '0');
+    }, 530);
+    updateSelection();
+  }
+
+  // ===== 反白選取視覺化 =====
+  function updateSelection() {
+    if (!activeTextEdit || !activeTextEdit.selGroup) return;
+    const { textNode, fontSize, x, y, selGroup } = activeTextEdit;
+    // 清除舊的選取矩形
+    while (selGroup.firstChild) selGroup.removeChild(selGroup.firstChild);
+
+    const s = hiddenTextArea.selectionStart;
+    const e = hiddenTextArea.selectionEnd;
+    if (s === e) return;
+
+    const val = hiddenTextArea.value;
+    const allLines = val.split('\n');
+    const bS = val.substring(0, s).split('\n');
+    const bE = val.substring(0, e).split('\n');
+    const sLine = bS.length - 1, sCol = bS[sLine].length;
+    const eLine = bE.length - 1, eCol = bE[eLine].length;
+    const tspans = textNode.querySelectorAll('tspan');
+    const lineH = fontSize * 1.2;
+
+    for (let ln = sLine; ln <= eLine; ln++) {
+      if (ln >= tspans.length) break;
+      const tspan = tspans[ln];
+      const real = tspan.textContent.replace(/\u200B/g, '');
+      let rx = x, rw = 0;
+      try {
+        if (ln === sLine && ln === eLine) {
+          rx = sCol > 0 && real.length > 0 ? x + tspan.getSubStringLength(0, Math.min(sCol, real.length)) : x;
+          const ex = eCol > 0 && real.length > 0 ? x + tspan.getSubStringLength(0, Math.min(eCol, real.length)) : x;
+          rw = ex - rx;
+        } else if (ln === sLine) {
+          rx = sCol > 0 && real.length > 0 ? x + tspan.getSubStringLength(0, Math.min(sCol, real.length)) : x;
+          rw = (real.length > 0 ? x + tspan.getComputedTextLength() : x) - rx + fontSize * 0.3;
+        } else if (ln === eLine) {
+          rw = eCol > 0 && real.length > 0 ? tspan.getSubStringLength(0, Math.min(eCol, real.length)) : 0;
+        } else {
+          rw = real.length > 0 ? tspan.getComputedTextLength() + fontSize * 0.3 : fontSize * 0.3;
+        }
+      } catch (err) { continue; }
+      if (rw <= 0) rw = fontSize * 0.3;
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', rx);
+      rect.setAttribute('y', y + ln * lineH - fontSize * 0.8);
+      rect.setAttribute('width', rw);
+      rect.setAttribute('height', fontSize);
+      rect.setAttribute('fill', 'rgba(51,144,255,0.3)');
+      selGroup.appendChild(rect);
+    }
+  }
+
+  // ===== 完成文字編輯 =====
+  function finalizeTextEdit() {
+    if (!activeTextEdit) return;
+    const { textNode, cursorLine, blinkTimer, selGroup } = activeTextEdit;
+
+    clearInterval(blinkTimer);
+    if (cursorLine && cursorLine.parentNode) cursorLine.remove();
+    if (selGroup && selGroup.parentNode) selGroup.remove();
+
+    // 空白文字就移除 (排除零寬空格)
+    if (textNode) {
+      const clean = (textNode.textContent || '').replace(/\u200B/g, '').trim();
+      if (!clean && textNode.parentNode) {
+        textNode.remove();
+      } else if (clean) {
+        pushUndo({ type: 'add', element: textNode });
+      }
+    }
+
+    hiddenTextArea.oninput = null;
+    hiddenTextArea.onkeydown = null;
+    hiddenTextArea.onkeyup = null;
+    hiddenTextArea.value = '';
+    activeTextEdit = null;
+  }
 
   // 畫箭頭常式，回傳一段 d string
   function getArrowPath(fromx, fromy, tox, toy) {
-    const headlen = 10 + currentSize; 
+    const headlen = 10 + currentSize;
     const dx = tox - fromx;
     const dy = toy - fromy;
     const angle = Math.atan2(dy, dx);
@@ -2940,45 +3165,232 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 滑鼠繪製事件
   svg.addEventListener('mousedown', e => {
+    // 若為非左鍵（例如右鍵平移畫布）且正在編輯文字，不中斷打字
+    if (e.button !== 0 && activeTextEdit) {
+      e.preventDefault();
+      setTimeout(() => hiddenTextArea.focus(), 10);
+      return;
+    }
+
+    // 非文字工具時，若正在編輯文字就先完成
+    if (currentTool !== 'text' && activeTextEdit) finalizeTextEdit();
     if (currentTool === 'none') return;
     if (e.button !== 0) return; // 只接受左鍵
 
     const dl = getDrawingLayer();
     if (!dl) return;
-    
+
     // 橡皮擦：點擊繪製出來的圖形即刪除
     if (currentTool === 'eraser') {
       if (e.target.parentNode === dl) {
         dl.removeChild(e.target);
       }
-      return; 
-    }
-    
-    // 文字工具：點擊後輸入即可
-    if (currentTool === 'text') {
-      const coords = getLocalCoords(e);
-      setTimeout(() => {
-        const text = prompt("請輸入文字:");
-        if (text && text.trim() !== '') {
-          const textNode = document.createElementNS(NS, 'text');
-          textNode.setAttribute('x', coords.x);
-          textNode.setAttribute('y', coords.y);
-          textNode.setAttribute('fill', getRgbaColor());
-          textNode.setAttribute('font-size', (currentSize * 5 + 10) + 'px');
-          textNode.setAttribute('font-family', 'sans-serif');
-          textNode.setAttribute('font-weight', 'bold');
-          textNode.textContent = text;
-          dl.appendChild(textNode);
-        }
-      }, 10);
       return;
+    }
+
+    // 文字工具：即時在畫布上編輯 (像小畫家)
+    if (currentTool === 'text') {
+      e.stopPropagation();
+      e.preventDefault(); // 阻止瀏覽器把焦點搶到 SVG 上
+      const coords = getLocalCoords(e);
+
+      // 如果正在編輯另一段文字，先完成它
+      if (activeTextEdit) finalizeTextEdit();
+
+      const fontSize = (currentSize * 5 + 10);
+      const color = getRgbaColor();
+
+      // 建立 SVG <text> 元素
+      const textNode = document.createElementNS(NS, 'text');
+      textNode.setAttribute('x', coords.x);
+      textNode.setAttribute('y', coords.y);
+      textNode.setAttribute('fill', color);
+      textNode.setAttribute('font-size', fontSize + 'px');
+      textNode.setAttribute('font-family', 'monospace');
+      textNode.setAttribute('font-weight', 'bold');
+      textNode.textContent = '';
+      dl.appendChild(textNode);
+
+      // 建立閃爍游標 (垂直線)
+      const cursorLine = document.createElementNS(NS, 'line');
+      cursorLine.setAttribute('x1', coords.x);
+      cursorLine.setAttribute('y1', coords.y - fontSize * 0.8);
+      cursorLine.setAttribute('x2', coords.x);
+      cursorLine.setAttribute('y2', coords.y + fontSize * 0.15);
+      cursorLine.setAttribute('stroke', color);
+      cursorLine.setAttribute('stroke-width', Math.max(1, fontSize / 15));
+      dl.appendChild(cursorLine);
+
+      // 閃爍動畫
+      let cursorVisible = true;
+      const blinkTimer = setInterval(() => {
+        cursorVisible = !cursorVisible;
+        cursorLine.setAttribute('opacity', cursorVisible ? '1' : '0');
+      }, 530);
+
+      // 建立選取反白群組 (插在 text 前面，讓 rect 在文字後面)
+      const selGroup = document.createElementNS(NS, 'g');
+      dl.insertBefore(selGroup, textNode);
+
+      // 儲存編輯狀態
+      activeTextEdit = {
+        textNode, cursorLine, blinkTimer, dl, selGroup,
+        fontSize, color, x: coords.x, y: coords.y
+      };
+
+      // 聚焦隱藏 textarea (延遲確保所有 mousedown handler 都跑完)
+      hiddenTextArea.value = '';
+      setTimeout(() => hiddenTextArea.focus(), 10);
+
+      // 即時同步文字
+      hiddenTextArea.oninput = () => {
+        if (!activeTextEdit) return;
+        syncTextContent();
+        updateTextCursor();
+      };
+
+      // 按鍵處理
+      hiddenTextArea.onkeydown = (ke) => {
+        if (!activeTextEdit) return;
+        if (ke.key === 'Escape') {
+          ke.preventDefault();
+          if (activeTextEdit.textNode.parentNode)
+            activeTextEdit.textNode.remove();
+          activeTextEdit.textNode = null;
+          finalizeTextEdit();
+          return;
+        }
+
+        // 手動處理上下鍵 (支援 Shift 選取)
+        if (ke.key === 'ArrowUp' || ke.key === 'ArrowDown') {
+          ke.preventDefault();
+          const val = hiddenTextArea.value;
+          const allLines = val.split('\n');
+          const isShift = ke.shiftKey;
+          const hasSel = hiddenTextArea.selectionStart !== hiddenTextArea.selectionEnd;
+
+          // 有選取但沒按 Shift → 先 collapse 到對應端
+          if (hasSel && !isShift) {
+            const collapsePos = (ke.key === 'ArrowUp')
+              ? hiddenTextArea.selectionStart
+              : hiddenTextArea.selectionEnd;
+            hiddenTextArea.selectionStart = collapsePos;
+            hiddenTextArea.selectionEnd = collapsePos;
+            updateTextCursor();
+            return;
+          }
+
+          // 決定 anchor 與 active 端
+          const dir = hiddenTextArea.selectionDirection || 'none';
+          const anchor = isShift
+            ? ((dir === 'backward') ? hiddenTextArea.selectionEnd : hiddenTextArea.selectionStart)
+            : hiddenTextArea.selectionStart;
+          const active = isShift
+            ? ((dir === 'backward') ? hiddenTextArea.selectionStart : hiddenTextArea.selectionEnd)
+            : hiddenTextArea.selectionEnd;
+
+          const activeBefore = val.substring(0, active);
+          const aLines = activeBefore.split('\n');
+          const curLine = aLines.length - 1;
+          const curCol = aLines[curLine].length;
+
+          let targetLine;
+          if (ke.key === 'ArrowUp') targetLine = Math.max(0, curLine - 1);
+          else targetLine = Math.min(allLines.length - 1, curLine + 1);
+          if (targetLine === curLine) return;
+
+          const targetCol = Math.min(curCol, allLines[targetLine].length);
+          let newPos = 0;
+          for (let i = 0; i < targetLine; i++) newPos += allLines[i].length + 1;
+          newPos += targetCol;
+
+          if (isShift) {
+            // Shift: 保留 anchor，移動 active
+            if (newPos <= anchor) {
+              hiddenTextArea.selectionStart = newPos;
+              hiddenTextArea.selectionEnd = anchor;
+              hiddenTextArea.selectionDirection = 'backward';
+            } else {
+              hiddenTextArea.selectionStart = anchor;
+              hiddenTextArea.selectionEnd = newPos;
+              hiddenTextArea.selectionDirection = 'forward';
+            }
+          } else {
+            hiddenTextArea.selectionStart = newPos;
+            hiddenTextArea.selectionEnd = newPos;
+          }
+          updateTextCursor();
+          return;
+        }
+
+        // Home / End (手動處理，支援 Shift 選取)
+        if (ke.key === 'Home' || ke.key === 'End') {
+          ke.preventDefault();
+          const val = hiddenTextArea.value;
+          const allLines = val.split('\n');
+          const isShift = ke.shiftKey;
+
+          const dir = hiddenTextArea.selectionDirection || 'none';
+          const anchor = isShift
+            ? ((dir === 'backward') ? hiddenTextArea.selectionEnd : hiddenTextArea.selectionStart)
+            : hiddenTextArea.selectionStart;
+          const active = isShift
+            ? ((dir === 'backward') ? hiddenTextArea.selectionStart : hiddenTextArea.selectionEnd)
+            : hiddenTextArea.selectionEnd;
+
+          const aLines = val.substring(0, active).split('\n');
+          const curLine = aLines.length - 1;
+
+          // 計算行首/行尾的絕對位置
+          let lineStart = 0;
+          for (let i = 0; i < curLine; i++) lineStart += allLines[i].length + 1;
+          const lineEnd = lineStart + allLines[curLine].length;
+          const newPos = (ke.key === 'Home') ? lineStart : lineEnd;
+
+          if (isShift) {
+            if (newPos <= anchor) {
+              hiddenTextArea.selectionStart = newPos;
+              hiddenTextArea.selectionEnd = anchor;
+              hiddenTextArea.selectionDirection = 'backward';
+            } else {
+              hiddenTextArea.selectionStart = anchor;
+              hiddenTextArea.selectionEnd = newPos;
+              hiddenTextArea.selectionDirection = 'forward';
+            }
+          } else {
+            hiddenTextArea.selectionStart = newPos;
+            hiddenTextArea.selectionEnd = newPos;
+          }
+          updateTextCursor();
+          return;
+        }
+
+        // Ctrl 快捷鍵 (A/C/V/X/Z/Y) 讓 textarea 原生處理，只延遲同步
+        // 其他按鍵延遲更新
+        setTimeout(() => {
+          syncTextContent();
+          updateTextCursor();
+        }, 0);
+      };
+
+      // 按鍵放開時也更新
+      hiddenTextArea.onkeyup = () => {
+        if (!activeTextEdit) return;
+        updateTextCursor();
+      };
+
+      return;
+    }
+
+    if (currentTool === 'eraser') {
+      erasedInCurrentDrag = [];
     }
 
     isDrawing = true;
     const coords = getLocalCoords(e);
     startX = coords.x;
     startY = coords.y;
-    
+
     // 預防事件被 canva.js/interaction.js 等事件處理遮蔽
     e.stopPropagation();
 
@@ -3029,32 +3441,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentTool === 'eraser') {
       const dl = getDrawingLayer();
       if (dl && e.buttons === 1 && e.target.parentNode === dl) {
-         dl.removeChild(e.target);
+        const el = e.target;
+        erasedInCurrentDrag.push({ el: el, parent: dl, nextSibling: el.nextSibling });
+        dl.removeChild(el);
       }
       return;
     }
 
     if (!isDrawing || !currentShape || currentTool === 'text') return;
-    
+
     // 如果在畫布上，阻止事件傳遞
     if (e.target.closest('#arraySvg')) {
-        e.stopPropagation();
+      e.stopPropagation();
     }
-    
+
     const coords = getLocalCoords(e);
     const x = coords.x;
     const y = coords.y;
-    
+
     if (currentTool === 'pen') {
       currentPathData += ` L ${x} ${y}`;
       currentShape.setAttribute('d', currentPathData);
-    } 
+    }
     else if (currentTool === 'rect') {
       currentShape.setAttribute('x', Math.min(x, startX));
       currentShape.setAttribute('y', Math.min(y, startY));
       currentShape.setAttribute('width', Math.abs(x - startX));
       currentShape.setAttribute('height', Math.abs(y - startY));
-    } 
+    }
     else if (currentTool === 'circle') {
       const rx = Math.abs(x - startX) / 2;
       const ry = Math.abs(y - startY) / 2;
@@ -3062,7 +3476,7 @@ document.addEventListener('DOMContentLoaded', () => {
       currentShape.setAttribute('cy', Math.min(y, startY) + ry);
       currentShape.setAttribute('rx', rx);
       currentShape.setAttribute('ry', ry);
-    } 
+    }
     else if (currentTool === 'arrow') {
       currentShape.setAttribute('d', getArrowPath(startX, startY, x, y));
     }
@@ -3071,11 +3485,20 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('mouseup', e => {
     if (currentTool === 'none') return;
     if (isDrawing) {
-       isDrawing = false;
-       currentShape = null;
-       if (e.target.closest('#arraySvg')) {
-           e.stopPropagation();
-       }
+      isDrawing = false;
+      // 只有非橡皮擦且確實有建立物件時才紀錄
+      if (currentTool !== 'eraser' && currentShape) {
+        pushUndo({ type: 'add', element: currentShape });
+      }
+      currentShape = null;
+      if (e.target.closest('#arraySvg')) {
+        e.stopPropagation();
+      }
+    }
+    // 橡皮擦結束時，若有刪除物件則紀錄一次歷史
+    if (currentTool === 'eraser' && erasedInCurrentDrag.length > 0) {
+      pushUndo({ type: 'removeMany', elements: erasedInCurrentDrag });
+      erasedInCurrentDrag = [];
     }
   });
-});
+});

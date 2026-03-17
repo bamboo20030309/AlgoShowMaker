@@ -403,12 +403,11 @@ button.auto-stepping:hover {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 20;
 }
 
-.drawing-toolbar button.draw-tool,
-.drawing-toolbar button#clearDraw {
+.drawing-toolbar button {
   background: transparent;
   border: none;
   cursor: pointer;
@@ -715,7 +714,8 @@ button.auto-stepping:hover {
   border-radius: 2px;
   /* 楔形裁切：左細右寬 */
   clip-path: polygon(0% 45%, 100% 0%, 100% 100%, 0% 55%);
-  pointer-events: none; /* 點擊穿透到 input */
+  pointer-events: none;
+  /* 點擊穿透到 input */
   z-index: 1;
 }
 
@@ -728,7 +728,8 @@ button.auto-stepping:hover {
   cursor: pointer;
   outline: none;
   position: relative;
-  z-index: 2; /* 確保在 wedge 上方，且不會被裁剪 */
+  z-index: 2;
+  /* 確保在 wedge 上方，且不會被裁剪 */
   margin: 0;
 }
 
@@ -749,7 +750,7 @@ button.auto-stepping:hover {
   border-radius: 50%;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   /* 這裡要手動對齊中心，因為 parent 是 24px 高 */
-  margin-top: 3px; 
+  margin-top: 3px;
   border: 2px solid #fff;
   transition: transform 0.1s ease;
 }
@@ -2010,8 +2011,8 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
   -webkit-appearance: none;
   appearance: none;
   box-sizing: border-box;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   margin-top: 1px;
   background: transparent;
@@ -2021,8 +2022,8 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 
 #drawSize::-moz-range-thumb {
   box-sizing: border-box;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: transparent;
   border: 2px solid #ffffff;
