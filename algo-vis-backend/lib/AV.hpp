@@ -14,9 +14,15 @@
 #include <cmath>
 #include <map>
 #include <functional>
+#include <type_traits>
 using namespace std;
 using array_style = pair<vector<string>, vector<int>>;
 using array2D_style = pair<vector<string>, vector<pair<int,int>>>;
+
+// 類型檢查：如果是 vector<vector<T>>，則 T 會被匹配為 vector<int> 等
+// 我們要排除 1D 版本 match 到 vector 的情況
+template<typename T> struct is_vector : std::false_type {};
+template<typename T, typename A> struct is_vector<std::vector<T, A>> : std::true_type {};
 
 struct Pos {
     bool isRelative;
@@ -118,6 +124,40 @@ public:
         vector<pair<int,int>> tmp;
         for(int i=start_x;i<=end_x;i++)for(int j=start_y;j<=end_y;j++) tmp.push_back({i,j});
         return tmp;
+    }
+
+    static vector<vector<int>> to_2Darray(const vector<int>& arr, int L = -1, int R = -1, int l = -1, int r = -1) {
+        if (arr.empty()) return {};
+        if (L == -1) L = 0;
+        if (R == -1) R = (int)arr.size() - 1;
+        
+        if (l == -1 || r == -1) {
+            int max_val = 0;
+            for (int x : arr) if (x > max_val) max_val = x;
+            int high_bit = 0;
+            for (int b = 31; b >= 0; b--) {
+                if ((max_val >> b) & 1) {
+                    high_bit = b;
+                    break;
+                }
+            }
+            // 預設由最高位元 (l) 到最低位元 (r=0)
+            if (l == -1) l = high_bit;
+            if (r == -1) r = 0;
+        }
+
+        vector<vector<int>> res;
+        for (int i = L; i <= R; ++i) {
+            if (i < 0 || i >= (int)arr.size()) continue;
+            vector<int> row;
+            if (l <= r) {
+                for (int j = l; j <= r; ++j) row.push_back((arr[i] >> j) & 1);
+            } else {
+                for (int j = l; j >= r; --j) row.push_back((arr[i] >> j) & 1);
+            }
+            res.push_back(row);
+        }
+        return res;
     }
 
     static vector<char> string_to_char_array(const string& arr) {
@@ -402,7 +442,7 @@ public:
         _content += "                }\n";
     }
 
-    template<typename T>
+    template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
     void frame_draw_impl(
         const int code_line,
         const vector<T>& num = {}
@@ -418,7 +458,7 @@ public:
         _content += "                }\n";
     }
 
-    template<typename T>
+    template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
     void frame_draw_impl(
         const int code_line,
         const string groupID,
@@ -499,7 +539,7 @@ public:
         _keyFrames.push_back(_frameCount);
     }
 
-    template<typename T>
+    template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
     void key_frame_draw_impl(
         const int code_line,
         const vector<T>& num = {}
@@ -515,7 +555,7 @@ public:
         _content += "                }\n";
     }
 
-    template<typename T>
+    template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
     void key_frame_draw_impl(
         const int code_line,
         const string groupID,
@@ -605,7 +645,7 @@ public:
         _content += "                break;\n";
     }
 
-    template<typename T>
+    template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
     void draw_impl(
         const int code_line,
         const vector<T>& num = {}
@@ -623,7 +663,7 @@ public:
         _content += "                break;\n";
     }
 
-    template<typename T>
+    template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
     void draw_impl(
         const int code_line,
         const string groupID,

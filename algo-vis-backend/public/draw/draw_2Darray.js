@@ -172,24 +172,31 @@
 
     // ========= 畫每一列：左側列索引 + 內部資料 =========
     for (let r = startR; r < endR; r++) {
-      for (let c = startC; c < Math.min(endC,matrix[r].length); c++) {
+      for (let c = startC; c < Math.min(endC, matrix[r].length); c++) {
         const x = (c - startC + isIndexX) * cellW + outerframe_padding;
         const y = (r - startR + isIndexY) * cellH + outerframe_padding;
-        const value = (draw_type === 'clear') ? '' : matrix[r][c];
+        const cellValue = matrix[r][c];
+        const value = (draw_type === 'clear' || draw_type === 'binary') ? '' : cellValue;
 
-        const haveFocus        =       focus.length  > 0 ?  focus.some(([a, b]) => a === r && b === c) : true;
-        const haveBackground   =  background.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c));
-        const background_color = (background.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c)) ?.color?.trim() || "") || "rgb(231, 144, 255)";
+        const haveFocus = focus.length > 0 ? focus.some(([a, b]) => a === r && b === c) : true;
+        const haveBackground = background.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c));
+        const background_color = (background.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c))?.color?.trim() || "") || "rgb(231, 144, 255)";
 
-        let fillColor = haveFocus       ? '#fff' : '#ccc';
-            fillColor = haveBackground  ? background_color : fillColor;
+        let fillColor = haveFocus ? '#fff' : '#ccc';
+        
+        // Binary 模式下的自動配色：>=1 為黑，0 為白
+        if (draw_type === 'binary') {
+          fillColor = (cellValue >= 1) ? '#000' : '#fff';
+        }
+
+        fillColor = haveBackground ? background_color : fillColor;
 
         if (CDVS.some(([a, b]) => a === r && b === c)) {
-          const ratio = Math.min(value / Max, 1); // 限制在 0~1
-          const r = Math.round(255 * (1 - ratio) + 40 * ratio);   // 255→40
-          const g = Math.round(255 * (1 - ratio) + 183 * ratio);  // 255→183
-          const b = Math.round(255 * (1 - ratio) + 255 * ratio);  // 255→255
-          fillColor = `rgb(${r}, ${g}, ${b})`;
+          const ratio = Math.min(cellValue / Max, 1); // 限制在 0~1
+          const rv = Math.round(255 * (1 - ratio) + 40 * ratio);   // 255→40
+          const gv = Math.round(255 * (1 - ratio) + 183 * ratio);  // 255→183
+          const bv = Math.round(255 * (1 - ratio) + 255 * ratio);  // 255→255
+          fillColor = `rgb(${rv}, ${gv}, ${bv})`;
         }
 
         window.draw_block(g, x, y, value, cellW, cellH, fillColor, `block-${groupID}-${r}-${c}`);
