@@ -1011,14 +1011,16 @@ struct TreeLayout {
         active_path.insert({curr_d, curr_o});
         for(auto p : path_stack) active_path.insert(p);
 
-        for (auto node : nodes) {
-            int d = node.first, o = node.second;
+        // 使用 DFS 順序走訪 nodes，這能確保箭頭輸出的順序與 DFS 一致
+        // 同時我們為 arrow 加入 key，確保動畫過渡時能準確配對
+        std::function<void(int, int)> dfs = [&](int d, int o) {
+            if (nodes.find({d, o}) == nodes.end()) return;
+
             string id = get_id(d, o);
             Pos p = get_pos(d, o);
             bool is_focus = (d == curr_d && o == curr_o);
             
             renderer(id, p, d, o, is_focus);
-            
             
             if (show_edges && d > 0) {
                 string pid = get_id(d - 1, o / degree);
@@ -1028,13 +1030,24 @@ struct TreeLayout {
                 } else if (edge_colors.count({d, o})) {
                     color = edge_colors[{d, o}];
                 }
+
+                // 透過 key 屬性讓前端 drawArrow 能夠根據唯一的 ID 做 tween 動畫
+                vector<pair<string, string>> style = {{"color", color}, {"width", "2"}, {"key", "arrow_" + id}};
+
                 if (horizontal) {
-                    av.arrow(Pos(pid, "right"), Pos(id, "left"), {{"color", color}, {"width", "2"}});
+                    av.arrow(Pos(pid, "right"), Pos(id, "left"), style);
                 } else {
-                    av.arrow(Pos(pid, "bottom"), Pos(id, "top"), {{"color", color}, {"width", "2"}});
+                    av.arrow(Pos(pid, "bottom"), Pos(id, "top"), style);
                 }
             }
-        }
+
+            // 遞迴子節點
+            for (int i = 0; i < degree; i++) {
+                dfs(d + 1, o * degree + i);
+            }
+        };
+
+        dfs(0, 0);
     }
 
     // 統一畫圖接口 (String 版)
