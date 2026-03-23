@@ -317,6 +317,16 @@ public:
     }
     
     void start_frame_draw(){
+        // TLE 第一層：步數限制
+        if (_frameCount >= 1000) {
+            cerr << "Time Limit Exceeded: Too many frames (>1000)" << endl;
+            exit(0);
+        }
+        // TLE 第二層：腳本大小限制 (2MB)
+        if (_content.size() > 2 * 1024 * 1024) {
+            cerr << "Time Limit Exceeded: Script size exceeds 2MB limit" << endl;
+            exit(0);
+        }
         _content += "            case " + to_string(_frameCount) + ":\n";
     }
 
@@ -827,6 +837,12 @@ public:
         _content += "    });\n";
         _content += "})();\n\n";
         
+        // 最終腳本大小檢查
+        if (_content.size() > 2 * 1024 * 1024) {
+            cerr << "Time Limit Exceeded: Final script size exceeds 2MB limit" << endl;
+            exit(0);
+        }
+
         // 寫檔
         ofstream ofs(_outPath, ios::out | ios::trunc);
         if (!ofs) {
