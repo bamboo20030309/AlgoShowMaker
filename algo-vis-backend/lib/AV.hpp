@@ -317,12 +317,7 @@ public:
     }
     
     void start_frame_draw(){
-        // TLE 第一層：步數限制
-        if (_frameCount >= 1000) {
-            cerr << "Time Limit Exceeded: Too many frames (>1000)" << endl;
-            exit(0);
-        }
-        // TLE 第二層：腳本大小限制 (2MB)
+        // TLE 第一層：腳本大小限制 (2MB)
         if (_content.size() > 2 * 1024 * 1024) {
             cerr << "Time Limit Exceeded: Script size exceeds 2MB limit" << endl;
             exit(0);
@@ -956,6 +951,7 @@ public:
     
     string arrayobject_to_string(const vector<string>& style,const vector<int>& num){
         string tmp = "{";
+        vector<string> type = {"type","color"};
         for(int i=0;i<style.size();i++){
             tmp += " " + type[i] + ": \"" + style[i]+ "\",";
         }
@@ -965,6 +961,7 @@ public:
 
     string array2Dobject_to_string(const vector<string>& style,const vector<pair<int,int>>& num){
         string tmp = "{";
+        vector<string> type = {"type","color"};
         for(int i=0;i<style.size();i++){
             tmp += " " + type[i] + ": \"" + style[i]+ "\",";
         }
