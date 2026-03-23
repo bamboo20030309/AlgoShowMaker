@@ -30,7 +30,15 @@
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       dummy.setAttribute('font-size', String(mid));
-      const w = dummy.getComputedTextLength();
+      
+      let w = dummy.getComputedTextLength();
+      
+      // [修正] 如果 getComputedTextLength 回傳 0 (可能因為元素尚未渲染或在隱藏層)
+      // 則使用估計值：假設平均字元寬度為字體大小的 0.6 倍
+      if (w <= 0 && textContent.length > 0) {
+        w = textContent.length * mid * 0.6;
+      }
+
       const h = mid;
       if (w <= targetW && h <= targetH) {
         best = mid;
