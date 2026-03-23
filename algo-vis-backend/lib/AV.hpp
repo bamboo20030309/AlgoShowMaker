@@ -707,8 +707,8 @@ public:
         _content += "                window.setCameraByPos(" + pos.toJson() + ", " + to_string(zoom) + ");\n";
     }
 
-    void auto_camera_impl(double padding = 50.0) {
-        _content += "                window.setAutoCamera(" + to_string(padding) + ");\n";
+    void auto_camera_impl(double padding = 50.0, double offsetX = 30.0, double offsetY = 0.0) {
+        _content += "                window.setAutoCamera(" + to_string(padding) + ", true, " + to_string(offsetX) + ", " + to_string(offsetY) + ");\n";
     }
 
     void end_draw() {

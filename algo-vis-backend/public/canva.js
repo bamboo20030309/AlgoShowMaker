@@ -285,8 +285,11 @@
   /**
    * 自動調整鏡頭以容納所有可見物件
    * @param {number} padding 邊距 (預設 50)
+   * @param {boolean} animate 是否使用動畫
+   * @param {number} offsetX 水平偏移 (正值鏡頭右移，物體左移)
+   * @param {number} offsetY 垂直偏移
    */
-  window.setAutoCamera = function (padding = 50, animate = true) {
+  window.setAutoCamera = function (padding = 50, animate = true, offsetX = 0, offsetY = 0) {
     const vp = window.getViewport();
     if (!vp) return;
 
@@ -348,8 +351,8 @@
     if (targetScale > 2.0) targetScale = 2.0;
     if (targetScale < 0.1) targetScale = 0.1;
 
-    const midX = (minX + maxX) / 2;
-    const midY = (minY + maxY) / 2;
+    const midX = (minX + maxX) / 2 + offsetX;
+    const midY = (minY + maxY) / 2 + offsetY;
 
     window.setCamera(midX, midY, targetScale, animate);
   };

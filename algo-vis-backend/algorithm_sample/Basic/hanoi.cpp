@@ -251,6 +251,7 @@ void hanoi(int n, string from, string to, string aux) {
     pegs[from].pop_front();
     pegs[to].push_front(disk);
     ans.push_back(from + " → " + to);
+    cout << from << " -> " << to << endl;
     tree.paint(av, state, -1, [&] {
       draw_all_pegs({ {disk, bottom_color} }); // 搬完後，維持綠色
       if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
