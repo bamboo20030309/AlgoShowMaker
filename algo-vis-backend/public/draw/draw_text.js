@@ -23,44 +23,70 @@ function transformTextForDisplayAndTTS(raw) {
   while (i < n) {
     const ch = s[i];
 
-    // 規則 1：小括號 (...) → display 有，tts 不要
-    if (ch === '(') {
-      const close = s.indexOf(')', i + 1);
-      if (close !== -1) {
-        const segment = s.slice(i, close + 1);  // "( ... )"
-        display += segment;    // 保留顯示
-        // TTS 不加
-        i = close + 1;
-        continue;
-      }
-    }
+    // 規則 1 & 2 & 3：處理 (...) 與 {...}
+    if (ch === '(' || ch === '{') {
+      const open = ch;
+      const close = (ch === '(' ? ')' : '}');
+      let j = i + 1;
+      let inQuote = false;
+      let escaped = false;
 
-    // 規則 2 & 3：大括號 {...}
-    if (ch === '{') {
-      const close = s.indexOf('}', i + 1);
-      if (close !== -1) {
-        const inner = s.slice(i + 1, close); // 大括號內容
-        const colonPos = inner.indexOf(':');
-
-        if (colonPos !== -1) {
-          // 規則 2：有冒號 → display=左邊、tts=右邊
-          const left = inner.slice(0, colonPos);
-          const right = inner.slice(colonPos + 1);
-
-          display += left;
-          tts += right;
-        } else {
-          // ★ 規則 3：沒有冒號 → display 有，但 tts 不念
-          display += inner;   // 顯示大括號內文字
-          // tts 不加任何東西
+      // 往後搜尋結束符號，同時跳過雙引號內容與處理轉義字元
+      while (j < n) {
+        const c = s[j];
+        if (escaped) {
+          escaped = false;
+        } else if (c === '\\') {
+          escaped = true;
+        } else if (c === '"') {
+          inQuote = !inQuote;
+        } else if (!inQuote && c === close) {
+          break;
         }
+        j++;
+      }
 
-        i = close + 1;
+      if (j < n) {
+        if (open === '(') {
+          // 規則 1：小括號 (...) → display 有，tts 不要
+          display += s.slice(i, j + 1);
+        } else {
+          // 處理 {...}
+          const inner = s.slice(i + 1, j);
+          let colonPos = -1;
+          let subInQuote = false;
+          let subEscaped = false;
+
+          // 在大括號內容中尋找冒號，同樣需考慮引號
+          for (let k = 0; k < inner.length; k++) {
+            const c = inner[k];
+            if (subEscaped) {
+              subEscaped = false;
+            } else if (c === '\\') {
+              subEscaped = true;
+            } else if (c === '"') {
+              subInQuote = !subInQuote;
+            } else if (!subInQuote && c === ':') {
+              colonPos = k;
+              break;
+            }
+          }
+
+          if (colonPos !== -1) {
+            // 規則 2：有冒號 → display=左邊、tts=右邊
+            display += inner.slice(0, colonPos);
+            tts += inner.slice(colonPos + 1);
+          } else {
+            // 規則 3：沒有冒號 → display 有，但 tts 不念
+            display += inner;
+          }
+        }
+        i = j + 1;
         continue;
       }
     }
 
-    // 規則 4：一般字元 → display / tts 都加
+    // 一般字元
     display += ch;
     tts += ch;
     i++;
@@ -72,10 +98,11 @@ function transformTextForDisplayAndTTS(raw) {
 
 
 // 取得一段文字在某個字型下的「顯示寬度」
-function getTextWidth(text, font = '14px system-ui, -apple-system') {
+// [修正] 預設字型字串應與渲染時一致，避免寬度估算誤差
+function getTextWidth(text, fontSize = 14, fontFace = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif') {
   const canvas = getTextWidth._canvas || (getTextWidth._canvas = document.createElement('canvas'));
   const ctx = canvas.getContext('2d');
-  ctx.font = font;
+  ctx.font = `${fontSize}px ${fontFace}`;
   const metrics = ctx.measureText(text);
   return metrics.width;
 }
@@ -120,21 +147,63 @@ function isFullWidth(char) {
     const offsetX = pos.x;
     const offsetY = pos.y;
 
-    // 先把字串按行處理，得到顯示文字與 TTS 文字
+    // 採用狀態機進行全域解析，支援跨行的語法結構
+    let state = "NORMAL";
+    let inQuote = false;
+    let escaped = false;
+    const ttsLines = [[]];
+    let displayContent = "";
+
     const raw = String(content ?? "");
-    const rawLines = raw.split('\n');
+    for (let i = 0; i < raw.length; i++) {
+      const char = raw[i];
+      let triggerChange = false;
 
-    const displayLines = [];
-    const ttsPieces = [];
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inQuote = !inQuote;
+      }
 
-    rawLines.forEach(line => {
-      const { display, tts } = transformTextForDisplayAndTTS(line);
-      displayLines.push(display);
-      if (tts && tts.trim()) ttsPieces.push(tts.trim());
-    });
+      if (!inQuote && !escaped) {
+        if (state === "NORMAL") {
+          if (char === '(') { state = "IN_PARENS"; triggerChange = true; }
+          else if (char === '{') { state = "IN_BRACES_DISP"; triggerChange = true; }
+        } else if (state === "IN_PARENS") {
+          if (char === ')') { state = "NORMAL"; triggerChange = true; }
+        } else if (state === "IN_BRACES_DISP") {
+          if (char === ':') { state = "IN_BRACES_TTS"; triggerChange = true; }
+          else if (char === '}') { state = "NORMAL"; triggerChange = true; }
+        } else if (state === "IN_BRACES_TTS") {
+          if (char === '}') { state = "NORMAL"; triggerChange = true; }
+        }
+      }
 
-    const displayContent = displayLines.join('\n');
-    const ttsContent = ttsPieces.join('。'); // 行與行之間用句號隔開也可以依喜好改
+      let addToDisplay = false;
+      let addToTTS = false;
+
+      if (triggerChange) {
+        if (char === '(' || char === ')') addToDisplay = true;
+      } else {
+        if (state === "NORMAL" || state === "IN_PARENS" || state === "IN_BRACES_DISP") addToDisplay = true;
+        if (state === "NORMAL" || state === "IN_BRACES_TTS") addToTTS = true;
+      }
+
+      if (char === '\n') {
+        displayContent += '\n';
+        ttsLines.push([]);
+      } else {
+        if (addToDisplay) displayContent += char;
+        if (addToTTS) ttsLines[ttsLines.length - 1].push(char);
+      }
+    }
+
+    const ttsContent = ttsLines
+      .map(line => line.join('').trim())
+      .filter(t => t.length > 0)
+      .join('。');
 
     // [修正] 不再手動清除，由 clearCanvas 統一處理，以支援同一幀顯示多個 text
     // const oldBubbles = vp.querySelectorAll('g[id^="msg-"]');
@@ -162,14 +231,12 @@ function isFullWidth(char) {
     const padX = 12;
     const padY = 8;
 
-    // 估算文字寬度（考慮全形 / 半形）
+    // 估算文字寬度
     let textWidth = 0;
     for (const line of lines) {
-      let nowTextWidth = 0;
-      for (const ch of line) {
-        if (ch === ' ') nowTextWidth += getTextWidth(ch) * 2.37;
-        else nowTextWidth += getTextWidth(ch);
-      }
+      // 這裡要與下方 render 時的空格處理邏輯完全一致
+      const displayLine = line.replace(/ /g, '\u00A0\u00A0');
+      const nowTextWidth = getTextWidth(displayLine, fontSize);
       textWidth = Math.max(textWidth, nowTextWidth);
     }
     textWidth = Math.max(40, textWidth);
@@ -248,7 +315,8 @@ function isFullWidth(char) {
       const displayLine = line.replace(/ /g, '\u00A0\u00A0');
       tspan.setAttribute('x', padX);
       tspan.setAttribute('dy', idx === 0 ? 0 : lineHeight);
-      tspan.textContent = displayLine;
+      // 如果是空行，放一個不換行空白，確保該行有高度且能套用 dy
+      tspan.textContent = displayLine || '\u00A0';
       text.appendChild(tspan);
     });
     g.appendChild(text);
@@ -302,52 +370,69 @@ function isFullWidth(char) {
     const offsetX = pos.x;
     const offsetY = pos.y;
 
-    // === TTS：以「行」為單位收集 ===
-    const ttsLines = [];
+    // === 採用跨段落/跨行的狀態機解析器 ===
+    let state = "NORMAL"; 
+    let inQuote = false;
+    let escaped = false;
 
-    // 暫存目前這一行的 TTS 片段
-    let currentLinePieces = [];
+    const processedSegments = [];
+    const ttsLines = [[]];
 
-    // 先把 segments 裡的 text 一個個轉換
-    const processedSegments = (segments || []).map(seg => {
+    (segments || []).forEach(seg => {
       const rawText = String(seg?.text ?? "");
+      let displayInSeg = "";
 
-      // 依照換行切開（保留語意上的「行」）
-      const rawLines = rawText.split('\n');
+      for (let i = 0; i < rawText.length; i++) {
+        const char = rawText[i];
+        let triggerChange = false;
 
-      const displayLines = [];
-
-      rawLines.forEach((lineText, idx) => {
-        const { display, tts } = transformTextForDisplayAndTTS(lineText);
-
-        displayLines.push(display);
-
-        if (tts && tts.trim()) {
-          currentLinePieces.push(tts.trim());
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          inQuote = !inQuote;
         }
 
-        // 如果不是最後一行，代表「這裡換行了」
-        if (idx < rawLines.length - 1) {
-          if (currentLinePieces.length > 0) {
-            ttsLines.push(currentLinePieces.join(''));
+        if (!inQuote && !escaped) {
+          if (state === "NORMAL") {
+            if (char === '(') { state = "IN_PARENS"; triggerChange = true; }
+            else if (char === '{') { state = "IN_BRACES_DISP"; triggerChange = true; }
+          } else if (state === "IN_PARENS") {
+            if (char === ')') { state = "NORMAL"; triggerChange = true; }
+          } else if (state === "IN_BRACES_DISP") {
+            if (char === ':') { state = "IN_BRACES_TTS"; triggerChange = true; }
+            else if (char === '}') { state = "NORMAL"; triggerChange = true; }
+          } else if (state === "IN_BRACES_TTS") {
+            if (char === '}') { state = "NORMAL"; triggerChange = true; }
           }
-          currentLinePieces = [];
         }
-      });
 
-      return {
-        ...seg,
-        text: displayLines.join('\n')
-      };
+        let addToDisplay = false;
+        let addToTTS = false;
+
+        if (triggerChange) {
+          if (char === '(' || char === ')') addToDisplay = true;
+        } else {
+          if (state === "NORMAL" || state === "IN_PARENS" || state === "IN_BRACES_DISP") addToDisplay = true;
+          if (state === "NORMAL" || state === "IN_BRACES_TTS") addToTTS = true;
+        }
+
+        if (char === '\n') {
+          displayInSeg += '\n';
+          ttsLines.push([]);
+        } else {
+          if (addToDisplay) displayInSeg += char;
+          if (addToTTS) ttsLines[ttsLines.length - 1].push(char);
+        }
+      }
+      processedSegments.push({ ...seg, text: displayInSeg });
     });
 
-    // 收尾：最後一行
-    if (currentLinePieces.length > 0) {
-      ttsLines.push(currentLinePieces.join(''));
-    }
-
-    // 每一行之間自動加一句號
-    const ttsContent = ttsLines.join('。');
+    const ttsContent = ttsLines
+      .map(line => line.join('').trim())
+      .filter(t => t.length > 0)
+      .join('。');
 
     // 之後畫字全部改用 processedSegments
     segments = processedSegments;
@@ -378,8 +463,8 @@ function isFullWidth(char) {
       });
     });
 
-    // 避免全部都是空行，用 filter 清一下（保留至少一行）
-    const normalizedLines = lines.filter((line, idx) => line.length > 0 || idx === 0);
+    // 直接使用 lines，不透過 filter 過濾掉空行，以支援 \n\n
+    const normalizedLines = lines;
 
     const padX = 12;
     const padY = 8;
@@ -398,12 +483,11 @@ function isFullWidth(char) {
         const fs = Number(seg.font_size) || 14;
         lineMaxFs = Math.max(lineMaxFs, fs);
         globalMaxFs = Math.max(globalMaxFs, fs);
-        let nowTextWidth = 0;
-        for (const ch of text) {
-          if (ch === ' ') nowTextWidth += getTextWidth(ch) * 1.19;
-          else nowTextWidth += getTextWidth(ch);
-        }
-        // 半形字稍微窄一點，不要那麼巨大
+
+        // 這裡要與下方 render 時的空格處理邏輯一致
+        const displayLine = text.replace(/ /g, '\u00A0');
+        const nowTextWidth = getTextWidth(displayLine, fs);
+        
         segWidths.push(nowTextWidth);
         lineWidth += nowTextWidth;
       });
