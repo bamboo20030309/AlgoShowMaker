@@ -52,7 +52,7 @@
     label.setAttribute('y', height + pad + nameH / 2 + outerframe_padding);
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('dominant-baseline', 'middle');
-    label.setAttribute('font-size', '14');
+    label.setAttribute('font-size', fitSvgText(g, groupID, frameW, nameH));
     label.setAttribute('fill', '#333');
     label.textContent = groupID;
     g.appendChild(label);
