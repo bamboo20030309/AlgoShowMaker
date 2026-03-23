@@ -64,7 +64,7 @@ void hanoi(int n, string from, string to, string aux) {
 
   if (n > 1) {
     tree.paint(av, state, -1, [&] {
-      av.addEditorHighlight(34);
+      av.addEditorHighlight(50);
       draw_all_pegs(current_disk_colors);
       if (tree.nodes.count({N - 1, 0})) {
         av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
@@ -95,6 +95,7 @@ void hanoi(int n, string from, string to, string aux) {
     c1[n] = bottom_color; // 補上底盤顏色
     custom_colors[{d+1, o*3+0}] = node_upper_color;
     tree.paint(av, state, -1, [&] {
+        av.addEditorHighlight(50);
         draw_all_pegs(c1);
     if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n == N) {
@@ -127,6 +128,7 @@ void hanoi(int n, string from, string to, string aux) {
     c2[n] = bottom_color;                      // 底盤綠色
     custom_colors[{d+1, o*3+1}] = bottom_color;
     tree.paint(av, state, -1, [&] {
+        av.addEditorHighlight(50);
         draw_all_pegs(c2);
     if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n == N) {
@@ -161,6 +163,7 @@ void hanoi(int n, string from, string to, string aux) {
     c3[n] = bottom_color;                      // 底盤維持綠色
     custom_colors[{d+1, o*3+2}] = node_upper_color;
     tree.paint(av, state, -1, [&] {
+        av.addEditorHighlight(50);
         draw_all_pegs(c3);
     if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n == N) {
@@ -180,6 +183,8 @@ void hanoi(int n, string from, string to, string aux) {
     });
 
     tree.paint(av, state, -1, [&] {
+        av.addEditorHighlight(204);
+        av.addEditorHighlight(245);
         draw_all_pegs();
     if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n - 1 == 1) {
@@ -210,7 +215,7 @@ void hanoi(int n, string from, string to, string aux) {
     av.start_frame_draw();
     tree.redraw(av); // 依照 push(1) 後的狀態重繪，子節點會被 highlight
     av.accu_draw();
-    av.addEditorHighlight(249);
+    av.addEditorHighlight(241);
     draw_all_pegs(rc2);
     if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
     av.colored_text({
@@ -226,6 +231,7 @@ void hanoi(int n, string from, string to, string aux) {
     av.start_frame_draw();
     tree.redraw(av);
     av.accu_draw();
+    av.addEditorHighlight(241);
     draw_all_pegs(rc2); // 搬完後，維持著色
     if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
     av.auto_camera();
@@ -242,7 +248,7 @@ void hanoi(int n, string from, string to, string aux) {
   } else {
     int disk = pegs[from].front();
     tree.paint(av, state, -1, [&] {
-      av.addEditorHighlight(249);
+      av.addEditorHighlight(241);
       draw_all_pegs({ {disk, bottom_color} }); // 搬過去時將該盤子塗成綠色
       if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
       av.text("直接搬過去", Pos(nid, "top", 0, -70));
@@ -253,6 +259,7 @@ void hanoi(int n, string from, string to, string aux) {
     ans.push_back(from + " → " + to);
     cout << from << " -> " << to << endl;
     tree.paint(av, state, -1, [&] {
+      av.addEditorHighlight(241);
       draw_all_pegs({ {disk, bottom_color} }); // 搬完後，維持綠色
       if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
       av.auto_camera();

@@ -12,14 +12,14 @@ void dfs(int n, int L, int M, int R, vector<int> board) {
     av.start_frame_draw();
     // 使用 to_2Darray 把 1D 的位元數組轉成 2D 矩陣
     // 參數：L=0, R=N-1 (所有數字), l=N-1, r=0 (高位元到低位元，MSB在左)
-    av.frame_draw("board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), {}, {}, "binary", 3);
+    av.frame_draw("board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), {}, {}, "binary");
     // //}
 
     if (n == N) {
         ans++;
         // //draw{
         // 找到解的時候，用關鍵幀 (key_frame) 存起來，方便跳轉
-        av.key_frame_draw("board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), {}, {}, "binary", 3);
+        av.key_frame_draw("board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), {}, {}, "binary");
         av.end_frame_draw();
         // //}
         return;
