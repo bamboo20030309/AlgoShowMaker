@@ -162,6 +162,12 @@
         );
         break;
 
+      case 'disk':
+        window.draw_array_disk(
+          g, groupID, array, style, index_range, itemsPerRow, index
+        );
+        break;
+
       default:
         // 萬一沒傳或傳錯，就當成 normal
         window.draw_array_normal(

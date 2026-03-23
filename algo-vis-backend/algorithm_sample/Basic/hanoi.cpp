@@ -1,24 +1,22 @@
 #include "AV.hpp"
 #include <bits/stdc++.h>
-
 using namespace std;
 
 int N;
 //draw{
 AV av;
-TreeLayout tree(3, Pos(500, 450), 10, 80.0, 220.0);
+TreeLayout tree(3, Pos(500, 500), 10, 80.0, 220.0);
 map<string, deque<int>> pegs;
 vector<string> ans; // 儲存搬運記錄
 map<pair<int, int>, string> custom_colors;
 void draw_all_pegs(map<int, string> disk_colors = {}) {
-  int base_x = -250;
-  int base_y = 50;
-  int rowH = 40;                   // 前端 index=0 → rowH = baseBoxSize(40)
-  int floor_y = base_y + N * rowH; // 所有柱子的底部對齊線
+  int base_x = -150;
+  int base_y = 150;
+  int rowH = 40;
+  int pegGap = (N + 2) * rowH; // 柱子之間的垂直間距
 
-  auto draw_single_peg = [&](string peg_key, int x) {
+  auto draw_single_peg = [&](string peg_key, int y_offset) {
     int k = pegs[peg_key].size();
-    int y_start = floor_y - (max(1, k) * rowH);
     vector<int> data(pegs[peg_key].begin(), pegs[peg_key].end());
     
     vector<array_style> styles;
@@ -30,20 +28,25 @@ void draw_all_pegs(map<int, string> disk_colors = {}) {
         styles.push_back({{"background", color}, indices});
     }
 
-    av.frame_draw("Peg_" + peg_key, Pos(x, y_start), data, styles, {0}, "normal", 1);
+    int pegH = (N + 1) * rowH;
+    int baseW = 40 + (N - 1) * 20 + 20; 
+    styles.push_back({{"peg_height", to_string(pegH)}, {}});
+    styles.push_back({{"base_width", to_string(baseW)}, {}});
+
+    // 每一根柱子都有自己的 floor_y
+    int local_floor_y = base_y + y_offset + pegH;
+    av.frame_draw("Peg_" + peg_key, Pos(base_x, local_floor_y - pegH), data, styles, {0}, "disk", 1);
   };
 
-  draw_single_peg("A", base_x);
-  draw_single_peg("B", base_x + 150);
-  draw_single_peg("C", base_x + 300);
+  draw_single_peg("A", 0);
+  draw_single_peg("B", pegGap);
+  draw_single_peg("C", pegGap * 2);
 }
 
 //}
 
 void hanoi(int n, string from, string to, string aux) {
-  if (n == 0) {
-    return;
-  }
+  if(n==0)return;
   //draw{
   int d = tree.curr_d;
   int o = tree.curr_o;
@@ -64,7 +67,7 @@ void hanoi(int n, string from, string to, string aux) {
       av.addEditorHighlight(34);
       draw_all_pegs(current_disk_colors);
       if (tree.nodes.count({N - 1, 0})) {
-        av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+        av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
       }
       av.text("現在要處理將 " + to_string(n) + " 個盤子從 " + from + " 移到 " + to, Pos(nid, "top", 0, -70));
       av.auto_camera();
@@ -93,7 +96,7 @@ void hanoi(int n, string from, string to, string aux) {
     custom_colors[{d+1, o*3+0}] = node_upper_color;
     tree.paint(av, state, -1, [&] {
         draw_all_pegs(c1);
-        if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n == N) {
             av.colored_text({
                 {"河內塔遞迴的核心概念\n", "", "", ""},
@@ -125,7 +128,7 @@ void hanoi(int n, string from, string to, string aux) {
     custom_colors[{d+1, o*3+1}] = bottom_color;
     tree.paint(av, state, -1, [&] {
         draw_all_pegs(c2);
-        if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n == N) {
             av.colored_text({
                 {"{河內塔遞迴的核心概念}\n", "", "", ""},
@@ -159,7 +162,7 @@ void hanoi(int n, string from, string to, string aux) {
     custom_colors[{d+1, o*3+2}] = node_upper_color;
     tree.paint(av, state, -1, [&] {
         draw_all_pegs(c3);
-        if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n == N) {
             av.colored_text({
                 {"{河內塔遞迴的核心概念}\n", "", "", ""},
@@ -178,7 +181,7 @@ void hanoi(int n, string from, string to, string aux) {
 
     tree.paint(av, state, -1, [&] {
         draw_all_pegs();
-        if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
         if (n - 1 == 1) {
             av.text("交給小弟處理剩餘搬運", Pos(nid, "top", 0, -70));
         } else {
@@ -191,11 +194,11 @@ void hanoi(int n, string from, string to, string aux) {
   }
   
   if (n > 1) {
-    //}
     tree.push(0);
-    hanoi(n-1, from, aux, to);
+  //}
+  hanoi(n-1, from, aux, to);
+  //draw{
     tree.pop();
-    //draw{
 
     // 搬底盤
     tree.push(1); // 聚焦到「搬底盤」子節點
@@ -209,7 +212,7 @@ void hanoi(int n, string from, string to, string aux) {
     av.accu_draw();
     av.addEditorHighlight(249);
     draw_all_pegs(rc2);
-    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
     av.colored_text({
       {"{2. 搬動底盤}：\n上面盤子都移開了，將底盤 ", "", "", ""},
       {to_string(disk_base), "", "black", ""},
@@ -224,26 +227,24 @@ void hanoi(int n, string from, string to, string aux) {
     tree.redraw(av);
     av.accu_draw();
     draw_all_pegs(rc2); // 搬完後，維持著色
-    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+    if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
     av.auto_camera();
     av.end_frame_draw();
     tree.pop(); // 動作結束後恢復焦點
     //}
-    cout<<from<<" -> "<<to<<endl;
-    //draw{
-
-    //}
+  cout<<from<<" -> "<<to<<endl;
+  //draw{
     tree.push(2);
-    hanoi(n-1, aux, to, from);
+    //}
+  hanoi(n-1, aux, to, from);
+  //draw{
     tree.pop();
-    //draw{
-
   } else {
     int disk = pegs[from].front();
     tree.paint(av, state, -1, [&] {
       av.addEditorHighlight(249);
       draw_all_pegs({ {disk, bottom_color} }); // 搬過去時將該盤子塗成綠色
-      if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+      if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
       av.text("直接搬過去", Pos(nid, "top", 0, -70));
       av.auto_camera();
     });
@@ -252,13 +253,11 @@ void hanoi(int n, string from, string to, string aux) {
     ans.push_back(from + " → " + to);
     tree.paint(av, state, -1, [&] {
       draw_all_pegs({ {disk, bottom_color} }); // 搬完後，維持綠色
-      if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {}, {0}, "normal", 1);
+      if (tree.nodes.count({N - 1, 0})) av.frame_draw("ans", Pos("tree_" + to_string(N-1) + "_0", "top right", 150, 0), ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
       av.auto_camera();
     });
-    //}
-    cout<<from<<" -> "<<to<<endl;
-    //draw{
   }
+  //}
 }
 
 int main() {
@@ -279,7 +278,7 @@ int main() {
     av.frame_draw(id, p, vector<string>{val}, style);
   };
   //}
-  N=3; cin>>N;
+  N=4; cin>>N;
   //draw{
   tree.horizontal = true;
   tree.root_pos = Pos(100, 100 + N * 85); // 隨著 N 動態向下調整
@@ -308,13 +307,12 @@ int main() {
   if (tree.nodes.count({N - 1, 0})) {
     av.frame_draw("ans",
                   Pos("tree_" + to_string(N-1) + "_0", "top right", 50, 0),
-                  ans, {}, {0}, "normal", 1);
+                  ans, {{{"background", "#a5d6a7"}, AV::AtoB(0, (int)ans.size())}}, {0}, "normal", 1);
   }
   av.auto_camera();
   av.text("所有步驟執行完畢，河內塔搬運成功", Pos("tree_0_0", "top", 0, -70));
   av.end_frame_draw();
   av.end_draw();
   //}
-
   return 0;
 }
