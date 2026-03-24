@@ -3,7 +3,7 @@
 using namespace std;
 
 AV av;
-int N = 8;
+int N;
 int ans = 0;
 vector<int> board; // 全域 board
 
