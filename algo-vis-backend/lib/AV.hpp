@@ -714,7 +714,7 @@ public:
         _content += "                window.setCameraByPos(" + pos.toJson() + ", " + to_string(zoom) + ");\n";
     }
 
-    void auto_camera_impl(double zoom = 1.0, double offsetX = 30.0, double offsetY = 0.0) {
+    void auto_camera_impl(double zoom = 0.9, double offsetX = 30.0, double offsetY = 0.0) {
         _content += "                window.setAutoCamera(" + to_string(zoom) + ", true, " + to_string(offsetX) + ", " + to_string(offsetY) + ");\n";
     }
 
