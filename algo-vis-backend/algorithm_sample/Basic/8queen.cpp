@@ -5,9 +5,10 @@ using namespace std;
 AV av;
 int N = 8;
 int ans = 0;
+vector<int> board; // 全域 board
 
-void dfs(int n, int L, int M, int R, vector<int> board) {
-//draw{
+void dfs(int n, int L, int M, int R) {
+    //draw{
     // --- 1. 計算所有皇後的攻擊範圍 ---
     vector<pair<int, int>> attacked_cells;
     vector<pair<int, int>> queens;
@@ -50,63 +51,199 @@ void dfs(int n, int L, int M, int R, vector<int> board) {
     // 設定樣式：背景顏色使用半透明紅色
     vector<array2D_style> attack_style = {{{"background", "#ef9a9a"}, attacked_cells}};
 
-    // 每次進入遞迴都畫一幀，展示當前棋盤狀態
     av.start_frame_draw();
-    if (n == 0) {
-        av.text("【核心原理：L, M, R 位元遮罩】\n\n1. M (Middle): 代表垂直下方的攻擊範圍。\n2. L (Left): 代表向左下對角線的限制。傳遞時使用 (L|p)<<1。\n3. R (Right): 代表向右下對角線的限制。傳遞時使用 (R|p)>>1。\n\n透過 (L | M | R) 聯集，我們能瞬間得知下一列所有被攻擊到的位置，\n這就是為什麼位元運算版本如此高效且優雅！", Pos(500, 50));
-    }
-    // 將計算好的 attack_style 放在第 4 個參數
-    av.frame_draw("board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), attack_style, {}, "binary");
-//}
+    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), attack_style, {}, "binary");
+    //}
 
     if (n == N) {
         ans++;
-//draw{
+        //draw{
         // 找到解的時候，用關鍵幀 (key_frame) 存起來，方便跳轉
-        av.key_frame_draw("board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), attack_style, {}, "binary");
+        av.key_frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), attack_style, {}, "binary");
+        av.auto_camera();
         av.end_frame_draw();
-//}
+        //}
         return;
     }
 
-//draw{
-    if (n != N) av.end_frame_draw();
-//}
+    int P = ((1<<N)-1) & ~(L|M|R);
 
-    int P = ((1 << N) - 1) & ~(L | M | R); // 可放皇后的位置 (1代表可以放)
+    //draw{
+    av.auto_camera();
+    if (P == 0 && n < N) {
+        av.colored_text({
+            {{"{沒路了，}回溯{尋找其他解。}"}},
+        }, Pos("chess_board", "top", 0, -60));
+    }
     
+    if (n != N) av.end_frame_draw();
+    //}
+
     while (P > 0) {
-        int p = P & -P; // 取得最右邊的 1
-        P -= p;
+        int p=P&-P; // 取得最右邊的 1
+        P^=p;
         
-        // 算出這是第幾欄 (為了記錄在 board 裡)
-        int col = 0;
-        int temp = p;
-        while (temp > 1) { temp >>= 1, col++; }
-        
-        vector<int> next_board = board;
-        next_board[n] = p; // 在第 n 列標記皇后的位置
-        
-        dfs(n + 1, (L | p) << 1, M | p, (R | p) >> 1, next_board);
+        board[n]=p; // 在第 n 列標記皇后的位置 (回溯前置)
+        dfs(n+1, (L|p)<<1, M|p, (R|p)>>1);
+        board[n]=0; // 回溯：還原狀態
     }
 }
 
 int main() {
-    N = 8;
-//draw{
+    N = 8; cin>>N;
+    board.assign(N, 0); // 初始化全域 board
+    //draw{
     av.start_draw();
     
     // 開場說明帧
     av.start_frame_draw();
-    av.text("【8 皇后問題：位元運算版】\n1. 二進位壓縮：每一列只有 8 格，可用一個 8 位元整數表示。\n1 代表皇后，0 代表空位，讓計算變成極速的位元運算。\n2. 從上往下放：採用 DFS 遞迴。每一列只放一個，\n我們只需動態追蹤上方皇后的垂直與對角線影響即可。", Pos(500, 50));
+    // 範例方案：[0, 4, 7, 5, 2, 6, 1, 3] 欄位
+    // 對應 bit (MSB 在左): bit 7, 3, 0, 2, 5, 1, 6, 4
+    vector<int> sample_sol = {128, 8, 1, 4, 32, 2, 64, 16};
+    vector<pair<int, int>> sample_attacked;
+    vector<pair<int, int>> sample_queens;
+    for(int i = 0; i < N; i++) {
+        for(int b = 0; b < N; b++) {
+            if((sample_sol[i] >> b) & 1) sample_queens.push_back({i, N - 1 - b});
+        }
+    }
+    for(int r = 0; r < N; r++) {
+        for(int c = 0; c < N; c++) {
+            bool is_q = false; bool is_at = false;
+            for(auto q : sample_queens) {
+                if(q.first == r && q.second == c) { is_q = true; break; }
+                if(q.first == r || q.second == c || abs(q.first - r) == abs(q.second - c)) is_at = true;
+            }
+            if(is_at && !is_q) sample_attacked.push_back({r, c});
+        }
+    }
+    vector<array2D_style> sample_style = {{{"background", "#ef9a9a"}, sample_attacked}};
+
+    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(sample_sol, 0, N - 1, N - 1, 0), sample_style, {}, "binary");
+    av.colored_text({
+        {{"八皇后問題 (位元運算版)\n","","","20"}},
+        {{"這是一個很經典的 回溯 (backtracking) 演算法問題\n給一個 8{*:乘}8 的棋盤，問你總共有多少種皇后的擺法可以讓任意兩個皇后都不會互相攻{擊:及}?"}}
+    }, Pos("chess_board","top",0, -120));
+    
+    av.auto_camera();
     av.end_frame_draw();
-//}
+
+    // 第一幀：DFS 策略 (從上往下)
+    av.start_frame_draw();
+    // 範例：已放兩顆皇后 (0,0) 與 (1,4)
+    vector<int> partial_1 = {128, 8, 0, 0, 0, 0, 0, 0};
+    vector<pair<int, int>> q_1 = {{0, 0}, {1, 4}};
+    vector<pair<int, int>> att_1;
+    vector<pair<int, int>> legal_row2; // 第三列的合法位置
+    for(int r = 0; r < N; r++) {
+        for(int c = 0; c < N; c++) {
+            bool is_q = false; bool is_at = false;
+            for(auto& q : q_1) {
+                if(q.first == r && q.second == c) { is_q = true; break; }
+                if(q.first == r || q.second == c || abs(q.first - r) == abs(q.second - c)) is_at = true;
+            }
+            if(is_at && !is_q) att_1.push_back({r, c});
+            // 特別挑出第三列 (r=2) 且沒被攻擊的位置
+            if(r == 2 && !is_at) legal_row2.push_back({r, c});
+        }
+    }
+
+    // 樣式：紅色為攻擊，綠色為合法
+    vector<array2D_style> style_1 = {
+        {{"background", "#ef9a9a"}, att_1},
+        {{"background", "rgba(76, 175, 80, 0.46)"}, legal_row2}
+    };
+
+    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(partial_1, 0, N - 1, N - 1, 0), style_1, {}, "binary");
+    av.colored_text({
+        {{"策略一：從上往下放","","","20"}},
+        {{"\n為什麼要按順序放？\n因為八皇后規定每一列 "}},
+        {{"必須且只能"},"rgba(252, 255, 64, 0.46)"},
+        {{" 放一個皇后。\n"}},
+        {{"這使得我們可以把問題簡化，不再是隨機亂放，而是從第一列放起，再放第二列...\n"}},
+        {{"如圖所示，當我們放好了前兩列，"}},
+        {{"第三列的合法位置"},"rgba(76, 175, 80, 0.46)"},
+        {{" 就已經被縮小了。\n"}},
+        {{"這種 "}},
+        {{"逐行推進"},"rgba(252, 255, 64, 0.46)"},
+        {{" 的 DFS 方式，讓我們只需關心 "}},
+        {{"上方已經放好的皇后"},"rgba(252, 255, 64, 0.46)"},
+        {{" ，且可以減少很多不必要的搜尋，\n"}},
+        {{"將當前皇后的影響力像影子一樣往下傳遞，這就是高效解法的第一步。"}}
+    }, Pos("chess_board","top",0, -210));
+    av.auto_camera();
+    av.end_frame_draw();
+
+    // 第二幀：位元運算與狀態壓縮
+    av.start_frame_draw();
+    // 圖解一列的狀態：假設某列放了皇后在位元 7 與 3 (10001000 = 136)
+    vector<int> bit_demo = {0, 0, 136, 0, 0, 0, 0, 0};
+    vector<pair<int, int>> q_2 = {{2, 0}, {2, 4}};
+    vector<pair<int, int>> att_2;
+    for(int r = 0; r < N; r++) {
+        for(int c = 0; c < N; c++) {
+            bool is_q = false; bool is_at = false;
+            for(auto& q : q_2) {
+                if(q.first == r && q.second == c) { is_q = true; break; }
+                if(q.first == r || q.second == c || abs(q.first - r) == abs(q.second - c)) is_at = true;
+            }
+            if(is_at && !is_q) att_2.push_back({r, c});
+        }
+    }
+    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(bit_demo, 0, N - 1, N - 1, 0), {{{"background", "#ef9a9a"}, att_2}}, {}, "binary");
+    av.colored_text({
+        {{"策略二：二進位狀態壓縮","","","20"}},
+        {{"\n為什麼可以用二進位？\n因為棋盤的狀態總共就只有兩種狀態分為 有放的 和 沒放的 。\n"}},
+        {{"我們用 1 代表有放皇后，0 代表沒放皇后。\n"}},
+        {{"用 "}},
+        {{"一個數字就可以描述一列"},"rgba(252, 255, 64, 0.46)"},
+        {{" 的狀態，這個動作就稱為 "}},
+        {{"狀態壓縮"},"rgba(252, 255, 64, 0.46)"},
+        {{" 。\n"}},
+        {{"例如：{10001000:這樣子} 代表這列的第 0 與 第 4 欄有皇后。\n"}},
+        {{"\n關鍵就在這裡：\n傳統碰撞檢查需要用迴圈掃描，但在二進位下，我們可以用位元運算 ( AND / OR / NOT )\n\n"}},
+        {{"這樣做不僅能夠讓程式寫起來更簡潔，而且還可以加速不少常數時間，\n"}},
+        {{"電腦本身對於這種位元運算非常直覺，計算速度非常快。"}}
+    }, Pos("chess_board","top",0, -320));
+    av.auto_camera();
+    av.end_frame_draw();
+
+    // 第三幀：魔法般的 L, M, R 遮罩
+    av.start_frame_draw();
+    // 範例：皇后在 (1, 4)
+    vector<int> lmr_demo = {0, 8, 0, 0, 0, 0, 0, 0};
+    vector<pair<int, int>> q_lmr = {{1, 4}};
+    vector<pair<int, int>> m_cells, l_cells, r_cells;
+    for(int r = 2; r < N; r++) {
+        m_cells.push_back({r, 4});                   // 直下
+        if(4-(r-1) >= 0) l_cells.push_back({r, 4-(r-1)}); // 左下
+        if(4+(r-1) < 8) r_cells.push_back({r, 4+(r-1)});  // 右下
+    }
+    vector<array2D_style> lmr_styles = {
+        {{"background", "#bbdefb"}, m_cells}, // Middle - 藍
+        {{"background", "rgba(76, 175, 80, 0.46)"}, l_cells}, // Left - 綠
+        {{"background", "#f8bbd0"}, r_cells}  // Right - 粉
+    };
+    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(lmr_demo, 0, N - 1, N - 1, 0), lmr_styles, {}, "binary");
+    av.colored_text({
+        {{"策略三：L, M, R 的極速碰撞檢查","","","20"}},
+        {{"\n接下來是這套演算法最精妙的地方：\n我們只用三個整數就能夠追蹤所有攻擊範圍\n"}},
+        {{"{1. }"}}, {{"M (Middle)"}, "#bbdefb"}, {{"：代表 "}}, {{"垂直"}, "#bbdefb"}, {{" 方向的攻擊範圍。\n"}},
+        {{"{2. }"}}, {{"L (Left)"}, "rgba(76, 175, 80, 0.46)"}, {{"：代表 "}}, {{"左下對角線"}, "rgba(76, 175, 80, 0.46)"}, {{" 的限制。往下傳遞時會將位元 " }}, {{"左移"}, "rgba(76, 175, 80, 0.46)"}, {{"。\n"}},
+        {{"{3. }"}}, {{"R (Right)"}, "#f8bbd0"}, {{"：代表 "}}, {{"右下對角線"}, "#f8bbd0"}, {{" 的限制。往下傳遞時會將位元 "}}, {{"右移"}, "#f8bbd0"}, {{"。\n"}},
+        {{"\n這三組限制會隨{著:ㄓㄜ˙}遞迴 "}}, {{"向下傳遞"}, "rgba(252, 255, 64, 0.46)"}, {{" 給下一列使用。\n"}},
+        {{"在每一列，我們只需執行 "}}, {{"( L | M | R )"}, "rgba(252, 255, 64, 0.46)"},
+        {{" 將所有 "}}, {{"攻擊範圍取聯集"}, "rgba(252, 255, 64, 0.46)"}, {{" ，\n就能瞬間找出所有受威脅的格子，一次搞定所有檢查！"}}
+    }, Pos("chess_board","top",0, -280));
+    av.auto_camera();
+    av.end_frame_draw();
+    //}
     
-    dfs(0, 0, 0, 0, vector<int>(N, 0));
+    dfs(0, 0, 0, 0);
     
-//draw{
+    //draw{
     av.end_draw();
-//}
+    //}
     
     cout << "Total Solutions: " << ans << endl;
     return 0;
