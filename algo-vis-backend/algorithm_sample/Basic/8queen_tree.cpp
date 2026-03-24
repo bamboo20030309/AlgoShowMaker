@@ -282,7 +282,7 @@ int main() {
     av.start_frame_draw();
     av.accu_draw();
     tree.redraw(av);
-    av.auto_camera(100.0); // 縮放鏡頭讓整棵樹都能進入畫面
+    av.auto_camera(0.9); // 縮放鏡頭讓整棵樹都能進入畫面
     av.end_frame_draw();
     
     av.end_draw();
