@@ -713,7 +713,7 @@ document.querySelectorAll('.tab-btn').forEach(btn =>
     // 切換到畫布 Tab 時，SVG 剛從隱藏狀態恢復，需重新計算並對齊鏡頭
     if (btn.dataset.tab === 'tab-canvas') {
       requestAnimationFrame(() => {
-        if (window.setAutoCamera) window.setAutoCamera(50, false);
+        if (window.setAutoCamera) window.setAutoCamera(1.0, false);
       });
     }
   })
