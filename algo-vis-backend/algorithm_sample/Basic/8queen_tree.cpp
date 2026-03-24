@@ -15,15 +15,13 @@ map<pair<int,int>, vector<array2D_style>> node_styles;
 
 int N;
 int ans = 0;
+vector<int> board; // 全域 board
 
-void dfs(int n, int L, int M, int R, vector<int> board) {
+void dfs(int n, int L, int M, int R) {
     //draw{
     // 取得當前節點在樹上的位置
     int d = tree.curr_d;
     int o = tree.curr_o;
-    //}
-
-    //draw{
     // 將 1D 的位元數組轉成 2D 矩陣並存起來，給 renderer 畫圖用
     node_boards[{d, o}] = AV::to_2Darray(board, 0, N - 1, N - 1, 0);
 
@@ -44,18 +42,15 @@ void dfs(int n, int L, int M, int R, vector<int> board) {
     node_styles[{d, o}] = {{{"background", "#ef9a9a"}, attacked}};
     //}
 
-    int P = ((1 << N) - 1) & ~(L | M | R); // 可放皇后的位置 (1代表可以放)
-
-    //draw{
-    // 觸發畫圖，畫出當前的盤面節點
-    tree.paint(av, "", -1, [&]{
-        if (n == N) {
-            // 找到解了！顯示綠色文字
+    if (n == N) {
+        //draw{
+        // 觸發畫圖，畫出當前的盤面節點（找到解的情況）
+        tree.paint(av, "", -1, [&]{
             av.colored_text({
                 {{"找到解了！"}}
             }, Pos(tree.get_id(d, o), "top", 0, -60));
 
-            // 把整棵樹也畫進 key frame track，這樣跳大步時能看到完整的樹
+            // 把整棵樹也畫進 key frame track
             for (auto& kv : node_boards) {
                 int nd = kv.first.first, no = kv.first.second;
                 string kid = tree.get_id(nd, no);
@@ -68,46 +63,44 @@ void dfs(int n, int L, int M, int R, vector<int> board) {
                                  Pos(kid, "top"), {{"color", "black"}, {"width", "2"}});
                 }
             }
-            // 關鍵幀專屬文字與鏡頭
             av.key_text("找到解了！", Pos(tree.get_id(d, o), "top", 0, -60));
             av.camera(Pos(tree.get_id(d, o)), 1.2); 
-
-            // 可以把找到解的路徑標成紅色
             tree.edge_colors[{d, o}] = "red"; 
-        } else if (P == 0) {
-            // 沒路了，顯示紅色提示
+        });
+        //}
+        ans++;
+        return;
+    }
+
+    int P = ((1<<N)-1) & ~(L|M|R); // 可放皇后的位置 (1代表可以放)
+
+    //draw{
+    // 觸發畫圖，畫出當前的盤面節點（搜尋中或沒路的情況）
+    tree.paint(av, "", -1, [&]{
+        if (P == 0) {
             av.colored_text({
                 {{"沒路了，回溯"}}
             }, Pos(tree.get_id(d, o), "top", 0, -50));
         }
     });
-    //}
-
-    if (n == N) {
-        ans++;
-        return;
-    }
-
     int branch_idx = 0; // 紀錄目前往下長的是第幾個分支
-    
+    //}
     while (P > 0) {
-        int p = P & -P; // 取得最右邊的 1
-        P -= p;
+        int p=P&-P; // 取得最右邊的 1
+        P^=p;
         
-        vector<int> next_board = board;
-        next_board[n] = p; // 在第 n 列標記皇后的位置
-        
+        board[n]=p; // 在第 n 列標記皇后的位置 (全域 board)
         //draw{
         // 進入遞迴前，把樹的游標往下推一個分支
         tree.push(branch_idx);
         //}
-        dfs(n + 1, (L | p) << 1, M | p, (R | p) >> 1, next_board);
+        dfs(n+1, (L|p)<<1, M|p, (R|p)>>1);
         //draw{
         // 遞迴結束後，把游標退回父節點
         tree.pop();
-        //}
-        
         branch_idx++;
+        //}
+        board[n]=0; // 回溯：還原狀態
     }
 }
 
@@ -116,6 +109,8 @@ int main() {
     N = 4; cin>>N;
     //draw{
     tree.degree = N; // 動態更新樹的最大分支度
+    tree.dx = N * 60.0; // 根據 N 加大水平間距
+    tree.dy = N * 60.0 + 100.0; // 根據 N 加大垂直層距
     
     // 設定每個節點長什麼樣子
     tree.renderer = [](string id, Pos p, int d, int o, bool is_focus) {
@@ -128,11 +123,10 @@ int main() {
         if (is_focus) {
             av.camera(Pos(id), 1.2);
         }
+        av.addEditorHighlight(97);
     };
 
     av.start_draw();
-    //}
-    
     // ====== 開場說明帧 ======
     {
     int demo_N = 8; // 說明幀固定用 8x8 棋盤
@@ -275,14 +269,15 @@ int main() {
     } // end demo_N scope
     //}
     
-    dfs(0, 0, 0, 0, vector<int>(N, 0));
+    board.assign(N, 0); // 初始化全域 board
+    dfs(0, 0, 0, 0);
     
     //draw{
     // 結尾看整棵樹
     av.start_frame_draw();
     av.accu_draw();
     tree.redraw(av);
-    av.auto_camera(0.9); // 縮放鏡頭讓整棵樹都能進入畫面
+    av.auto_camera(); // 縮放鏡頭讓整棵樹都能進入畫面
     av.end_frame_draw();
     
     av.end_draw();
