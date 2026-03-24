@@ -549,6 +549,18 @@ app.post('/compile', (req, res) => {
       const runTime = +((performance.now() - runStart).toFixed(1));
       logDebug(`程式結束，退出碼：${codeRun}，signal：${signal}`, { codeRun, signal, peakRssKB: peakMem.peakRssKB });
 
+      // 解析 stderr 中的 [debug] 訊息與腳本超限提示，加入 debug_log
+      if (runErr) {
+        runErr.split('\n').forEach(line => {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('[debug]')) {
+            logDebug(trimmed);
+          } else if (trimmed.startsWith('Script Size Exceeded')) {
+            logDebug(trimmed);
+          }
+        });
+      }
+
       let scriptContent = '';
       try {
         if (fs.existsSync(scriptPath)) scriptContent = fs.readFileSync(scriptPath, 'utf8');
@@ -561,6 +573,7 @@ app.post('/compile', (req, res) => {
       let finalError = '';
       if (isTLE) finalError = `Time Limit Exceeded (> ${LIMITS.TIME_MS}ms)`;
       else if (isOLE) finalError = `Output Limit Exceeded (> ${LIMITS.OUTPUT_SIZE / 1024}KB)`;
+      else if (runErr && runErr.includes('Script Size Exceeded')) finalError = runErr.split('\n').find(l => l.includes('Script Size Exceeded')) || 'Script Size Exceeded';
       else if (codeRun !== 0 || signal) finalError = (runErr && runErr.trim() !== '') ? runErr : `Runtime Error`;
 
       if (forced) logDebug('強制回收：進程未能及時關閉，已先行回傳結果。');

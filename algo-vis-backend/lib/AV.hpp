@@ -317,10 +317,12 @@ public:
     }
     
     void start_frame_draw(){
-        // TLE 第一層：腳本大小限制 (2MB)
-        if (_content.size() > 2 * 1024 * 1024) {
-            cerr << "Time Limit Exceeded: Script size exceeds 2MB limit" << endl;
-            exit(0);
+        // TLE 第一層：腳本大小限制
+        if (_content.size() > 40 * 1024 * 1024) {
+            double sizeMB = _content.size() / (1024.0 * 1024.0);
+            cerr << "Script Size Exceeded: 腳本大小 " << fixed << setprecision(2) << sizeMB
+                 << " MB，超出上限 40 MB (在第 " << _frameCount << " 幀觸發)" << endl;
+            exit(1);
         }
         _content += "            case " + to_string(_frameCount) + ":\n";
     }
@@ -712,8 +714,8 @@ public:
         _content += "                window.setCameraByPos(" + pos.toJson() + ", " + to_string(zoom) + ");\n";
     }
 
-    void auto_camera_impl(double padding = 50.0, double offsetX = 30.0, double offsetY = 0.0) {
-        _content += "                window.setAutoCamera(" + to_string(padding) + ", true, " + to_string(offsetX) + ", " + to_string(offsetY) + ");\n";
+    void auto_camera_impl(double zoom = 1.0, double offsetX = 30.0, double offsetY = 0.0) {
+        _content += "                window.setAutoCamera(" + to_string(zoom) + ", true, " + to_string(offsetX) + ", " + to_string(offsetY) + ");\n";
     }
 
     void end_draw() {
@@ -833,10 +835,15 @@ public:
         _content += "})();\n\n";
         
         // 最終腳本大小檢查
-        if (_content.size() > 2 * 1024 * 1024) {
-            cerr << "Time Limit Exceeded: Final script size exceeds 2MB limit" << endl;
-            exit(0);
+        const size_t MAX_SCRIPT_SIZE = 40 * 1024 * 1024;
+        if (_content.size() > MAX_SCRIPT_SIZE) {
+            double sizeMB = _content.size() / (1024.0 * 1024.0);
+            cerr << "Script Size Exceeded: 腳本大小 " << fixed << setprecision(2) << sizeMB
+                 << " MB，超出上限 " << (MAX_SCRIPT_SIZE / 1024 / 1024) << " MB" << endl;
+            exit(1);
         }
+        cerr << "[debug] 腳本大小: " << (_content.size() / 1024) << " KB (" 
+             << fixed << setprecision(2) << (_content.size() / (1024.0 * 1024.0)) << " MB)" << endl;
 
         // 寫檔
         ofstream ofs(_outPath, ios::out | ios::trunc);
