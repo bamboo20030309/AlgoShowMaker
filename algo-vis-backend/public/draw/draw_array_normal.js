@@ -81,7 +81,7 @@
     g.setAttribute('data-index-start', String(index_range[0])); 
     g.setAttribute('data-row-height', String(rowH));
 
-    window.draw_array_outerframe(g, groupID, rows * rowH, cols * baseBoxSize);  //畫外框
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  //畫外框
 
     let index_cnt = index_range[0];
     // 1. 繪製所有節點

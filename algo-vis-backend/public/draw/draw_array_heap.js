@@ -20,7 +20,8 @@
     array,
     style,
     index_range,
-    index
+    index,
+    gap_y = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
     
@@ -64,7 +65,7 @@
     CDVS       = normalizeIndex(CDVS);
     
     const levels    = Math.ceil(Math.log2(ranged_array.length + 1));
-    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0); 
+    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; 
     const hPerLevel = rowH;
     const width     = (1 << (levels - 1));
     const totalW    = baseBoxSize * width;
@@ -78,7 +79,7 @@
     g.setAttribute('data-heap-totalW', String(totalW));
     g.setAttribute('data-box-size', String(baseBoxSize));
 
-    window.draw_array_outerframe(g, groupID, rows * rowH, cols * baseBoxSize);  //畫外框
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  //畫外框
     
     let index_cnt = index_range[0];
     // 1. 繪製所有節點

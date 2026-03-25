@@ -147,7 +147,7 @@
 
       case 'heap':
         window.draw_array_heap(
-          g, groupID, array, style, index_range, index
+          g, groupID, array, style, index_range, index, gap_y
         );
         break;
 
@@ -159,7 +159,7 @@
 
       case 'BIT':
         window.draw_array_BIT(
-          g, groupID, array, style, index_range, index
+          g, groupID, array, style, index_range, index, gap_y
         );
         break;
 

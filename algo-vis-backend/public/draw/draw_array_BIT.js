@@ -20,7 +20,8 @@
     array,
     style,
     index_range,
-    index
+    index,
+    gap_y = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
 
@@ -64,7 +65,7 @@
     CDVS       = normalizeIndex(CDVS);
 
     // 計算全陣列可能出現的最大寬度單位 (2^k)，以決定最底層為何
-    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0); 
+    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; 
     const Max_cols = Math.max(...ranged_array.map((_, j) => ((j + 1) & -(j + 1)))); 
     const rows = Math.log2(Max_cols);                                               //行高
     const cols = (array.length > 1 ? array.length - 1 : 1);                         //列寬
@@ -76,7 +77,7 @@
     g.setAttribute('data-bit-rowH', String(rowH));
     g.setAttribute('data-box-size', String(baseBoxSize));
 
-    window.draw_array_outerframe(g, groupID, outerframe_height * rowH, cols * baseBoxSize);  //畫外框
+    window.draw_array_outerframe(g, groupID, outerframe_height * rowH - (outerframe_height > 0 ? gap_y : 0), cols * baseBoxSize);  //畫外框
     
     let index_cnt = index_range[0];
     // 1. 繪製所有節點

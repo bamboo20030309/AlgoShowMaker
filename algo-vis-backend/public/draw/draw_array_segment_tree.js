@@ -112,7 +112,7 @@
     g.setAttribute('data-box-size', String(baseBoxSize));
 
     // 你原本的外框呼叫（保留不動）
-    window.draw_array_outerframe(g, groupID, rows * rowH, cols * baseBoxSize);  //畫外框
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  //畫外框
 
     const Max = Math.max(...ranged_array);
     let index_cnt = 1;
