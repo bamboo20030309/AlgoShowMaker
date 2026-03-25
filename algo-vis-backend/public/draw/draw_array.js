@@ -62,6 +62,7 @@
     draw_type = "normal",
     itemsPerRow = Infinity,
     index = 0,
+    gap_y = 0,
     segment_lazy = [],
     segment_sets = [],
     segment_index = [],
@@ -140,7 +141,7 @@
 
       case 'normal':
         window.draw_array_normal(
-          g, groupID, array, style, index_range, itemsPerRow, index
+          g, groupID, array, style, index_range, itemsPerRow, index, gap_y
         );
         break;
 
@@ -152,7 +153,7 @@
 
       case 'segment_tree':
         window.draw_array_segment_tree(
-          g, groupID, array, style, index_range, index, segment_lazy, segment_sets, segment_index, segment_left, segment_right, segmemt_font_colors, segmemt_bg_colors
+          g, groupID, array, style, index_range, index, gap_y, segment_lazy, segment_sets, segment_index, segment_left, segment_right, segmemt_font_colors, segmemt_bg_colors
         );
         break;
 
@@ -171,7 +172,7 @@
       default:
         // 萬一沒傳或傳錯，就當成 normal
         window.draw_array_normal(
-          g, groupID, array, style, index_range, itemsPerRow, index
+          g, groupID, array, style, index_range, itemsPerRow, index, gap_y
         );
     }
 

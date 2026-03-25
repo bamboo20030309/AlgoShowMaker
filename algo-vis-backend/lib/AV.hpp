@@ -477,6 +477,7 @@ public:
         const string draw_type = "normal",
         const int itemsPerRow = 0,
         const int index = 0,
+        const int gap_y = 0,
         const vector<int>& segment_lazy = {},
         const vector<int>& segment_sets = {},
         const vector<int>& segment_index = {},
@@ -496,6 +497,7 @@ public:
             "\"" + draw_type + "\", " + 
             to_string(itemsPerRow) + ", " +
             to_string(index) + ", " +
+            to_string(gap_y) + ", " +
             array_to_string(segment_lazy) + ",  " + 
             array_to_string(segment_sets) + ",  " + 
             array_to_string(segment_index) + ",  " + 
@@ -574,6 +576,7 @@ public:
         const string draw_type = "normal",
         const int itemsPerRow = 0,
         const int index = 0,
+        const int gap_y = 0,
         const vector<int>& segment_lazy = {},
         const vector<int>& segment_sets = {},
         const vector<int>& segment_index = {},
@@ -593,6 +596,7 @@ public:
             "\"" + draw_type + "\", " + 
             to_string(itemsPerRow) + ", " +
             to_string(index) + ", " +
+            to_string(gap_y) + ", " +
             array_to_string(segment_lazy) + ",  " + 
             array_to_string(segment_sets) + ",  " + 
             array_to_string(segment_index) + ",  " + 

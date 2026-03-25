@@ -14,6 +14,7 @@
    * @param {Array[2]}         index_range          - 實際顯示的索引起點（通常等於 range[0]）固定兩格 左邊界及右邊界
    * @param {number}           itemsPerRow          - 每列格數
    * @param {number}           index                - 是否顯示每格下方的索引區
+   * @param {number}           gap_y                - 每列之間的垂直間距
    */
 
   function draw_array_normal(
@@ -23,7 +24,8 @@
     style,
     index_range = [],
     itemsPerRow = Infinity,
-    index = 0
+    index = 0,
+    gap_y = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
 
@@ -66,7 +68,7 @@
     background = normalize(background);
     CDVS       = normalizeIndex(CDVS);
     
-    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0); //索引高度 有就是12 沒有就是0
+    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; //索引高度 有就是12 沒有就是0 + 間距
     if (!isFinite(itemsPerRow) || itemsPerRow < 1) itemsPerRow = ranged_array.length;
     let cols = Math.min(ranged_array.length, itemsPerRow);                              //列寬
     let rows = Math.ceil(ranged_array.length / itemsPerRow);                            //行高

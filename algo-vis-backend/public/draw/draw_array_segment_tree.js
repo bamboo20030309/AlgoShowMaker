@@ -24,6 +24,7 @@
     style,
     index_range,
     index,
+    gap_y = 0,
     segment_lazy = [],
     segment_sets = [],
     segment_index,
@@ -96,7 +97,7 @@
     CDVS       = normalizeIndex(CDVS);
 
     const levels    = Math.ceil(Math.log2(ranged_array.length + 1));
-    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0); 
+    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; 
     const hPerLevel = rowH;
     const width     = (1 << (levels - 1));       // 最底層葉子數（可能比實際節點多，用滿二的次冪）
     const totalW    = baseBoxSize * width;
