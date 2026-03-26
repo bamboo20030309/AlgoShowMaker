@@ -6,7 +6,21 @@ AV av;
 int N;
 int ans = 0;
 vector<int> board; // 全域 board
-
+//draw{
+// 將 bitmask board 轉為帶有皇后的 string 矩陣
+vector<vector<string>> to_queen_board(const vector<int>& b, int n) {
+    vector<vector<string>> res;
+    for (int i = 0; i < n; ++i) {
+        vector<string> row;
+        for (int j = n - 1; j >= 0; --j) {
+            if ((b[i] >> j) & 1) row.push_back("♛");
+            else row.push_back("");
+        }
+        res.push_back(row);
+    }
+    return res;
+}
+//}
 void dfs(int n, int L, int M, int R) {
     //draw{
     // --- 1. 計算所有皇後的攻擊範圍 ---
@@ -48,18 +62,21 @@ void dfs(int n, int L, int M, int R) {
         }
     }
     
-    // 設定樣式：背景顏色使用半透明紅色
-    vector<array2D_style> attack_style = {{{"background", "#ef9a9a"}, attacked_cells}};
+    // 設定樣式：背景顏色使用半透明紅色 (攻擊) 與 深灰色 (皇后)
+    vector<array2D_style> attack_style = {
+        {{"background", "#ef9a9a"}, attacked_cells},
+        {{"background", "#6d6d6dff"}, queens}
+    };
 
     av.start_frame_draw();
-    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), attack_style, {}, "binary");
+    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(board, N), attack_style, {}, "normal");
     //}
 
     if (n == N) {
         ans++;
         //draw{
         // 找到解的時候，用關鍵幀 (key_frame) 存起來，方便跳轉
-        av.key_frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(board, 0, N - 1, N - 1, 0), attack_style, {}, "binary");
+        av.key_frame_draw("chess_board", Pos(0, 0), to_queen_board(board, N), attack_style, {}, "normal");
         av.auto_camera();
         av.end_frame_draw();
         //}
@@ -117,9 +134,12 @@ int main() {
             if(is_at && !is_q) sample_attacked.push_back({r, c});
         }
     }
-    vector<array2D_style> sample_style = {{{"background", "#ef9a9a"}, sample_attacked}};
+    vector<array2D_style> sample_style = {
+        {{"background", "#ef9a9a"}, sample_attacked},
+        {{"background", "#6d6d6dff"}, sample_queens}
+    };
 
-    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(sample_sol, 0, N - 1, N - 1, 0), sample_style, {}, "binary");
+    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(sample_sol, N), sample_style, {}, "normal");
     av.colored_text({
         {{"八皇后問題 (位元運算版)\n","","","20"}},
         {{"這是一個很經典的 回溯 (backtracking) 演算法問題\n給一個 8{*:乘}8 的棋盤，問你總共有多少種皇后的擺法可以讓任意兩個皇后都不會互相攻{擊:及}?"}}
@@ -148,13 +168,14 @@ int main() {
         }
     }
 
-    // 樣式：紅色為攻擊，綠色為合法
+    // 樣式：紅色為攻擊，綠色為合法，深灰色為皇后
     vector<array2D_style> style_1 = {
         {{"background", "#ef9a9a"}, att_1},
-        {{"background", "rgba(76, 175, 80, 0.46)"}, legal_row2}
+        {{"background", "rgba(76, 175, 80, 0.46)"}, legal_row2},
+        {{"background", "#6d6d6dff"}, q_1}
     };
 
-    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(partial_1, 0, N - 1, N - 1, 0), style_1, {}, "binary");
+    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(partial_1, N), style_1, {}, "normal");
     av.colored_text({
         {{"策略一：從上往下放","","","20"}},
         {{"\n為什麼要按順序放？\n因為八皇后規定每一列 "}},
@@ -190,7 +211,10 @@ int main() {
             if(is_at && !is_q) att_2.push_back({r, c});
         }
     }
-    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(bit_demo, 0, N - 1, N - 1, 0), {{{"background", "#ef9a9a"}, att_2}}, {}, "binary");
+    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(bit_demo, N), {
+        {{"background", "#ef9a9a"}, att_2},
+        {{"background", "#6d6d6dff"}, q_2}
+    }, {}, "normal");
     av.colored_text({
         {{"策略二：二進位狀態壓縮","","","20"}},
         {{"\n為什麼可以用二進位？\n因為棋盤的狀態總共就只有兩種狀態分為 有放的 和 沒放的 。\n"}},
@@ -222,9 +246,10 @@ int main() {
     vector<array2D_style> lmr_styles = {
         {{"background", "#bbdefb"}, m_cells}, // Middle - 藍
         {{"background", "rgba(76, 175, 80, 0.46)"}, l_cells}, // Left - 綠
-        {{"background", "#f8bbd0"}, r_cells}  // Right - 粉
+        {{"background", "#f8bbd0"}, r_cells},  // Right - 粉
+        {{"background", "#6d6d6dff"}, q_lmr}     // Queen - 深灰
     };
-    av.frame_draw("chess_board", Pos(0, 0), AV::to_2Darray(lmr_demo, 0, N - 1, N - 1, 0), lmr_styles, {}, "binary");
+    av.frame_draw("chess_board", Pos(0, 0), to_queen_board(lmr_demo, N), lmr_styles, {}, "normal");
     av.colored_text({
         {{"策略三：L, M, R 的極速碰撞檢查","","","20"}},
         {{"\n接下來是這套演算法最精妙的地方：\n我們只用三個整數就能夠追蹤所有攻擊範圍\n"}},
