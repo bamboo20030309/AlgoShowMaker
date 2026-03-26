@@ -473,8 +473,8 @@
     line.setAttribute('stroke-width', String(width));
 
     // 虛線：保留原本功能
-    if (opt.dashArray) {
-      line.setAttribute('stroke-dasharray', String(opt.dashArray));
+    if (opt.dash) {
+      line.setAttribute('stroke-dasharray', String(opt.dash));
     } else if (opt.dashed) {
       line.setAttribute('stroke-dasharray', '6,4');
     } else {
