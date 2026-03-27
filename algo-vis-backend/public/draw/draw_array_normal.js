@@ -79,12 +79,18 @@
     g.setAttribute('data-items-per-row', String(itemsPerRow));
     g.setAttribute('data-layout', 'normal');
     g.setAttribute('data-index-start', String(index_range[0])); 
-    g.setAttribute('data-row-height', String(rowH));
+    g.setAttribute('data-row-height', String(rowH)); // 修正：存入正確的行高資訊 (包含 gap_y)
+    // 方案 1：影格預索引與標記不活躍
+    const nodeMap = new Map();
+    Array.from(g.children).forEach(child => {
+      if (child.id) nodeMap.set(child.id, child);
+      child.setAttribute('data-alive', '0');
+    });
 
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  //畫外框
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  // 畫/更新外框
 
     let index_cnt = index_range[0];
-    // 1. 繪製所有節點
+    // 1. 繪製所有節點 (O(1) 拿物件)
     ranged_array.forEach((v, i) => {
       const r = Math.floor(i / itemsPerRow),
             c = i % itemsPerRow;
@@ -99,25 +105,25 @@
           fillColor = haveBackground  ? background_color : fillColor;
 
       if (CDVS.includes(i)) {
-        const ratio = Math.min(v / Max, 1); // 限制在 0~1
-        const r = Math.round(255 * (1 - ratio) + 40 * ratio);   // 255→40
-        const g = Math.round(255 * (1 - ratio) + 183 * ratio);  // 255→183
-        const b = Math.round(255 * (1 - ratio) + 255 * ratio);  // 255→255
-        fillColor = `rgb(${r}, ${g}, ${b})`;
+        const ratio = Math.min(v / Max, 1);
+        const r_v = Math.round(255 * (1 - ratio) + 40 * ratio);
+        const g_v = Math.round(255 * (1 - ratio) + 183 * ratio);
+        const b_v = Math.round(255 * (1 - ratio) + 255 * ratio);
+        fillColor = `rgb(${r_v}, ${g_v}, ${b_v})`;
       }
 
       const array_content = (index == 2 ? index_cnt : v);
-      // 畫 array 方格
-      draw_block(g, x, y, array_content, baseBoxSize, baseBoxSize, fillColor, `cell-${groupID}-${i}`);
+      // 畫 array 方格：將 nodeMap 傳入加速
+      draw_block(g, x, y, array_content, baseBoxSize, baseBoxSize, fillColor, `cell-${groupID}-${i}`, nodeMap);
 
-      // 畫 index
+      // 畫 index 標籤：將 nodeMap 傳入加速
       if (index==1 || index>=3) {
         const lbl = index>=3 ? (index_range[0] + i).toString(2).padStart(
               index>=4 ? (index_range[0] + ranged_array.length - 1).toString(2).length : 0,
               '0'
             ) : (index_range[0] + i).toString();
         
-        draw_block(g, x, y + baseBoxSize, lbl, baseBoxSize, indexBoxH, fillColor, `cell-${groupID}-${i}-index`);
+        draw_block(g, x, y + baseBoxSize, lbl, baseBoxSize, indexBoxH, fillColor, `cell-${groupID}-${i}-index`, nodeMap);
       }
       index_cnt++;
     });
@@ -137,17 +143,31 @@
       const point_color      =      (point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "red";
       const mark_color       =       (mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "limegreen";
 
-      // 畫各式各樣的提示元件
+      // 畫各式各樣的提示元件 (使用 nodeMap 加速)
       if (window.HintWidgets){
         const indexH = (index==1 || index>=3 ? indexBoxH : 0);
-        // 高光框框（highlight）
-        if (haveHighlight)  HintWidgets.drawHighlightBox(g, x, y, baseBoxSize, baseBoxSize + indexH, highlight_color);
+        // 高光框框
+        if (haveHighlight) {
+          const hId = `highlight-${groupID}-${i}`;
+          HintWidgets.drawHighlightBox(g, x, y, baseBoxSize, baseBoxSize + indexH, highlight_color, hId, nodeMap);
+        }
+        // 紅色箭頭
+        if (havePoint) {
+          const pId = `point-${groupID}-${i}`;
+          HintWidgets.drawArrow(g, x + baseBoxSize / 2, y, point_color, pId, -20, 12, 8, nodeMap);
+        }
+        // 綠色勾勾
+        if (haveMark) {
+          const mId = `mark-${groupID}-${i}`;
+          HintWidgets.drawMark(g, x + baseBoxSize - 10, y + baseBoxSize - 10, mark_color, mId, nodeMap);
+        }
+      }
+    });
 
-        // 紅色箭頭（point）
-        if (havePoint)      HintWidgets.drawArrow(g, x + baseBoxSize / 2, y, point_color);
-
-        // 綠色勾勾（mark）
-        if (haveMark)       HintWidgets.drawMark(g, x + baseBoxSize - 10, y + baseBoxSize - 10, mark_color);
+    // 掃除：移除本影格沒被標記 alive 的舊物件
+    Array.from(g.children).forEach(child => {
+      if (child.getAttribute('data-alive') === '0') {
+        child.remove();
       }
     });
   }

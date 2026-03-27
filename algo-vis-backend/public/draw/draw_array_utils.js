@@ -59,7 +59,21 @@
     padding = 2,
     radius = 0,
     align = "middle",
+    id = null,
+    nodeMap = null
   }) {
+    // 建立或取得背景層 group (wrapper)
+    let wrapper = id ? (nodeMap ? nodeMap.get(id) : g.querySelector(`#${CSS.escape(id)}`)) : null;
+    if (!wrapper) {
+      wrapper = document.createElementNS(NS, "g");
+      if (id) wrapper.setAttribute("id", id);
+      g.appendChild(wrapper);
+    } else {
+      // 如果是既有的，清空內容以便重新繪製
+      while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
+    }
+    wrapper.setAttribute("data-alive", "1");
+
     // 建立 <text>
     const txt = document.createElementNS(NS, "text");
     txt.setAttribute("x", x);
@@ -79,19 +93,15 @@
       txt.appendChild(t);
     });
 
-    g.appendChild(txt);
-
-    // 背景層 group（讓底色矩形和文字一起移動）
-    const wrapper = document.createElementNS(NS, "g");
-    g.appendChild(wrapper);
+    // 暫時加入 DOM 以便量測
+    wrapper.appendChild(txt);
 
     // 建立背景矩形群
     const tspans = txt.querySelectorAll("tspan");
-    let xCursor = 0;
     tspans.forEach((tspan, i) => {
       const seg = parts[i];
-      const bbox = tspan.getBBox();
       if (seg.bg) {
+        const bbox = tspan.getBBox();
         const rect = document.createElementNS(NS, "rect");
         rect.setAttribute("x", bbox.x - padding);
         rect.setAttribute("y", bbox.y - padding);
@@ -99,12 +109,9 @@
         rect.setAttribute("height", bbox.height + padding * 2);
         rect.setAttribute("fill", seg.bg);
         rect.setAttribute("rx", radius);
-        wrapper.appendChild(rect);
+        wrapper.insertBefore(rect, txt); // 置於文字下方
       }
     });
-
-    // 把文字放到背景矩形上層
-    wrapper.appendChild(txt);
 
     return wrapper;
   };

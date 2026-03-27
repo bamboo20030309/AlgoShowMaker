@@ -26,8 +26,18 @@
     const frameX = -pad; 
     const frameW = totalW + pad * 2;
 
+    const left = frameX + outerframe_padding;
+    const top = -pad + outerframe_padding;
+    const right = frameX + frameW + outerframe_padding;
+    const bottom = -pad + (height + pad * 2 + nameH) + outerframe_padding;
+
     // 背景大框
-    const bg = document.createElementNS(NS, 'rect');
+    let bg = g.querySelector(':scope > .outerframe-bg');
+    if (!bg) {
+      bg = document.createElementNS(NS, 'rect');
+      bg.setAttribute('class', 'outerframe-bg');
+      g.appendChild(bg);
+    }
     bg.setAttribute('x', frameX + outerframe_padding);
     bg.setAttribute('y', -pad + outerframe_padding);
     bg.setAttribute('width', frameW);
@@ -35,19 +45,29 @@
     bg.setAttribute('fill', 'rgba(209,230,172,0.5)');
     bg.setAttribute('stroke', '#333');
     bg.setAttribute('stroke-width', '2');
-    g.appendChild(bg);
+    bg.setAttribute('data-alive', '1');
 
     // 底部名稱區
-    const nb = document.createElementNS(NS, 'rect');
+    let nb = g.querySelector(':scope > .outerframe-nb');
+    if (!nb) {
+      nb = document.createElementNS(NS, 'rect');
+      nb.setAttribute('class', 'outerframe-nb');
+      g.appendChild(nb);
+    }
     nb.setAttribute('x', frameX + outerframe_padding);
     nb.setAttribute('y', height + pad + outerframe_padding);
     nb.setAttribute('width', frameW);
     nb.setAttribute('height', nameH);
     nb.setAttribute('fill', 'none');
-    g.appendChild(nb);
+    nb.setAttribute('data-alive', '1');
 
     // 群組名稱文字
-    const label = document.createElementNS(NS, 'text');
+    let label = g.querySelector(':scope > .outerframe-label');
+    if (!label) {
+      label = document.createElementNS(NS, 'text');
+      label.setAttribute('class', 'outerframe-label');
+      g.appendChild(label);
+    }
     label.setAttribute('x', frameX + frameW / 2 + outerframe_padding);
     label.setAttribute('y', height + pad + nameH / 2 + outerframe_padding);
     label.setAttribute('text-anchor', 'middle');
@@ -55,12 +75,8 @@
     label.setAttribute('font-size', fitSvgText(g, groupID, frameW, nameH));
     label.setAttribute('fill', '#333');
     label.textContent = groupID;
-    g.appendChild(label);
+    label.setAttribute('data-alive', '1');
 
-    const left = frameX + outerframe_padding;
-    const top = -pad + outerframe_padding;
-    const right = frameX + frameW + outerframe_padding;
-    const bottom = -pad + (totalH + pad * 2 + nameH) + outerframe_padding;
     writeOuterframeBBox(g, left, top, right, bottom);
     return;
   }

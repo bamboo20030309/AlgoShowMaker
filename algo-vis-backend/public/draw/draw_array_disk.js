@@ -60,6 +60,13 @@
     g.setAttribute('data-center-x', String(centerX));
     g.setAttribute('data-bottom-y', String(bottomY));
 
+    // 方案 1：影格預索引與標記不活躍
+    const nodeMap = new Map();
+    Array.from(g.children).forEach(child => {
+      if (child.id) nodeMap.set(child.id, child);
+      child.setAttribute('data-alive', '0');
+    });
+
     // 1. 畫底座 (Base)
     let base = g.querySelector(':scope > .disk-base');
     if (!base) {
@@ -73,6 +80,7 @@
     base.setAttribute('height', 10);
     base.setAttribute('fill', '#e0e0e0');
     base.setAttribute('stroke', '#333');
+    base.setAttribute('data-alive', '1');
 
     // 2. 畫柱子 (Peg)
     let peg = g.querySelector(':scope > .disk-peg');
@@ -87,6 +95,7 @@
     peg.setAttribute('height', pegHeight);
     peg.setAttribute('fill', '#e0e0e0');
     peg.setAttribute('stroke', '#333');
+    peg.setAttribute('data-alive', '1');
 
     // 3. 畫盤子 (Disks)
     // 陣列 index 0 是最上方盤子，所以要從底部開始畫，index 越大 y 越大
@@ -107,7 +116,7 @@
       }
 
       const diskID = `cell-${groupID}-${i}`;
-      window.draw_block(g, diskX, diskY, v, diskW, rowH, background_color, diskID);
+      window.draw_block(g, diskX, diskY, v, diskW, rowH, background_color, diskID, nodeMap);
 
       // 裝飾元件
       const haveHighlight = highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
@@ -116,17 +125,27 @@
 
       if (window.HintWidgets) {
         if (haveHighlight) {
+          const hId = `highlight-${groupID}-${i}`;
           const h_color = haveHighlight.color || "red";
-          HintWidgets.drawHighlightBox(g, diskX, diskY, diskW, rowH, h_color);
+          HintWidgets.drawHighlightBox(g, diskX, diskY, diskW, rowH, h_color, hId, nodeMap);
         }
         if (havePoint) {
+          const pId = `point-${groupID}-${i}`;
           const p_color = havePoint.color || "red";
-          HintWidgets.drawArrow(g, centerX, diskY, p_color);
+          HintWidgets.drawArrow(g, centerX, diskY, p_color, pId, -20, 12, 8, nodeMap);
         }
         if (haveMark) {
+          const mId = `mark-${groupID}-${i}`;
           const m_color = haveMark.color || "limegreen";
-          HintWidgets.drawMark(g, diskX + diskW - 10, diskY + rowH - 10, m_color);
+          HintWidgets.drawMark(g, diskX + diskW - 10, diskY + rowH - 10, m_color, mId, nodeMap);
         }
+      }
+    });
+
+    // 掃除：移除本影格沒被標記 alive 的舊物件
+    Array.from(g.children).forEach(child => {
+      if (child.getAttribute('data-alive') === '0') {
+        child.remove();
       }
     });
   }

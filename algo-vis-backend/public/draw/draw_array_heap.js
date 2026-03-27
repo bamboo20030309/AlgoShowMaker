@@ -75,14 +75,21 @@
     // 把 heap 排版資訊記在 g 上，給 getPosition 用
     g.setAttribute('data-layout', 'heap');
     g.setAttribute('data-heap-levels', String(levels));
-    g.setAttribute('data-heap-rowH', String(rowH));
+    g.setAttribute('data-row-height', String(rowH)); // 統一使用 data-row-height
     g.setAttribute('data-heap-totalW', String(totalW));
     g.setAttribute('data-box-size', String(baseBoxSize));
 
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  //畫外框
+    // 方案 1：影格預索引與標記不活躍
+    const nodeMap = new Map();
+    Array.from(g.children).forEach(child => {
+      if (child.id) nodeMap.set(child.id, child);
+      child.setAttribute('data-alive', '0');
+    });
+
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  // 畫/更新外框
     
     let index_cnt = index_range[0];
-    // 1. 繪製所有節點
+    // 1. 繪製所有節點 (O(1) 拿物件)
     ranged_array.forEach((v, i) => {
       const lvl = Math.floor(Math.log2(i + 1));
       const cnt = 1 << lvl;
@@ -107,8 +114,8 @@
       }
 
       const array_content = (index == 2 ? index_cnt : v);
-      // 畫 array 方格
-      draw_block(g, x-w/2, y, array_content, w, baseBoxSize, fillColor, `cell-${groupID}-${i}`);
+      // 畫 array 方格：使用 nodeMap 加速
+      draw_block(g, x-w/2, y, array_content, w, baseBoxSize, fillColor, `cell-${groupID}-${i}`, nodeMap);
 
       // 畫 index
       if (index==1 || index>=3) {
@@ -117,7 +124,7 @@
               '0'
             ) : (index_range[0] + i).toString();
         
-        draw_block(g, x - w/2, y + baseBoxSize, lbl, w, indexBoxH, fillColor, `cell-${groupID}-${i}-index`);
+        draw_block(g, x - w/2, y + baseBoxSize, lbl, w, indexBoxH, fillColor, `cell-${groupID}-${i}-index`, nodeMap);
       }
       index_cnt++;
     });
@@ -139,17 +146,31 @@
       const point_color      =      (point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "red";
       const mark_color       =       (mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "limegreen";
 
-      // 畫各式各樣的提示元件
+      // 畫各式各樣的提示元件 (使用 nodeMap 加速)
       if (window.HintWidgets){
         const indexH = (index==1 || index>=3 ? indexBoxH : 0);
-        // 高光框框（highlight）
-        if (haveHighlight)  HintWidgets.drawHighlightBox(g, x - w/2, y, w, baseBoxSize + indexH, highlight_color);
+        // 高光框框
+        if (haveHighlight) {
+          const hId = `highlight-${groupID}-${i}`;
+          HintWidgets.drawHighlightBox(g, x - w/2, y, w, baseBoxSize + indexH, highlight_color, hId, nodeMap);
+        }
+        // 紅色箭頭
+        if (havePoint) {
+          const pId = `point-${groupID}-${i}`;
+          HintWidgets.drawArrow(g, x, y, point_color, pId, -20, 12, 8, nodeMap);
+        }
+        // 綠色勾勾
+        if (haveMark) {
+          const mId = `mark-${groupID}-${i}`;
+          HintWidgets.drawMark(g, x + w/2 - 10, y + baseBoxSize - 10, mark_color, mId, nodeMap);
+        }
+      }
+    });
 
-        // 紅色箭頭（point）
-        if (havePoint)      HintWidgets.drawArrow(g, x, y, point_color);
-
-        // 綠色勾勾（mark）
-        if (haveMark)       HintWidgets.drawMark(g, x + w/2 - 10, y + baseBoxSize - 10, mark_color);
+    // 掃除：移除本影格沒被標記 alive 的舊物件
+    Array.from(g.children).forEach(child => {
+      if (child.getAttribute('data-alive') === '0') {
+        child.remove();
       }
     });
   }
@@ -164,7 +185,7 @@
 
     // 從 g 讀回當初畫 heap 時存的排版資料
     const levels = parseInt(g.getAttribute('data-heap-levels') || '1', 10);
-    const rowH   = parseFloat(g.getAttribute('data-heap-rowH') || String(baseBoxSize));
+    const rowH   = parseFloat(g.getAttribute('data-row-height') || String(baseBoxSize));
     const totalW = parseFloat(
       g.getAttribute('data-heap-totalW') ||
       String(baseBoxSize * (1 << Math.max(0, levels - 1)))

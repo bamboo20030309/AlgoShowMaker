@@ -104,15 +104,23 @@
     const rows      = (levels == 0 ? 1 : levels);
     const cols      = (width  >  0 ? width : 1 );
 
-    // 把 heap 排版資訊記在 g 上，給 getPosition 用
-    g.setAttribute('data-layout', 'heap');
+    // 把 segment_tree 排版資訊記在 g 上，給 getPosition 用
+    g.setAttribute('data-layout', 'segment_tree'); // 修正：應為 segment_tree
     g.setAttribute('data-heap-levels', String(levels));
-    g.setAttribute('data-heap-rowH', String(rowH));
+    g.setAttribute('data-row-height', String(rowH)); // 統一使用 data-row-height
     g.setAttribute('data-heap-totalW', String(totalW));
     g.setAttribute('data-box-size', String(baseBoxSize));
 
     // 你原本的外框呼叫（保留不動）
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  //畫外框
+    // 方案 1：影格預索引與標記不活躍
+    const nodeMap = new Map();
+    Array.from(g.children).forEach(child => {
+      if (child.id) nodeMap.set(child.id, child);
+      child.setAttribute('data-alive', '0');
+    });
+
+    // 你原本的外框呼叫（保留不動）
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  // 畫/更新外框
 
     const Max = Math.max(...ranged_array);
     let index_cnt = 1;
@@ -141,15 +149,29 @@
         fillColor = `rgb(${r}, ${g}, ${b})`;
       }
 
-      const rect = document.createElementNS(NS, 'rect');
-      rect.setAttribute('x', x - w / 2);
-      rect.setAttribute('y', y);
-      rect.setAttribute('width',  w);
-      rect.setAttribute('height', baseBoxSize);
-      rect.setAttribute('fill',   fillColor);
-      rect.setAttribute('stroke', '#333');
-      rect.setAttribute('stroke-width', '1');
-      g.appendChild(rect);
+      // 建立/更新節點容器
+      const nodeID = `cell-container-${groupID}-${i}`;
+      let cellG = nodeMap.get(nodeID);
+      if (!cellG) {
+        cellG = document.createElementNS(NS, 'g');
+        cellG.setAttribute('id', nodeID);
+        g.appendChild(cellG);
+      }
+      cellG.setAttribute('data-alive', '1');
+
+      // 更新方格 rect
+      let nodeRect = cellG.querySelector(':scope > rect');
+      if (!nodeRect) {
+        nodeRect = document.createElementNS(NS, 'rect');
+        cellG.appendChild(nodeRect);
+      }
+      nodeRect.setAttribute('x', x - w / 2);
+      nodeRect.setAttribute('y', y);
+      nodeRect.setAttribute('width',  w);
+      nodeRect.setAttribute('height', baseBoxSize);
+      nodeRect.setAttribute('fill',   fillColor);
+      nodeRect.setAttribute('stroke', '#333');
+      nodeRect.setAttribute('stroke-width', '1');
 
       const lazyVal = (segment_lazy[index_cnt] !== undefined) ? segment_lazy[index_cnt] : 0;
       const setsVal = (segment_sets[index_cnt] !== undefined) ? segment_sets[index_cnt] : 2147483647;
@@ -179,51 +201,53 @@
         return match[1];
       }
       
-      let txt;
+      // 畫內容 (持久化 ID)
+      const textID = `${nodeID}-text`;
       if(CDVS.length>0){
-        txt = drawRichText(g, {
+        drawRichText(cellG, {
           x: x,
           y: y + baseBoxSize / 2,
-          fontSize: fitSvgText(g,v,w,baseBoxSize), //自動縮放字體
-          parts: [
-            { text: `${v}`}
-          ]
+          fontSize: fitSvgText(g,v,w,baseBoxSize),
+          parts: [{ text: `${v}`}],
+          id: textID, nodeMap: nodeMap
         });
       } else if(setsVal != 2147483647) {
-        txt = drawRichText(g, {
+        drawRichText(cellG, {
           x: x,
           y: y + baseBoxSize / 2,
-          fontSize: fitSvgText(g,`${v},${lazyVal},${setsVal}`,w,baseBoxSize), //自動縮放字體
+          fontSize: fitSvgText(g,`${v},${lazyVal},${setsVal}`,w,baseBoxSize),
           parts: [
             { text: `${v}`,       color: getColorFromNowColors(now_font_colors, 0, "#000"), bg: getColorFromNowColors(now_bg_colors, 0, "#ffffff00")},
             { text: `${sign}`,    color: getColorFromNowColors(now_font_colors, 1, "#000"), bg: getColorFromNowColors(now_bg_colors, 1, "#ffffff00")},
             { text: `${lazyVal}`, color: getColorFromNowColors(now_font_colors, 2, "#000"), bg: getColorFromNowColors(now_bg_colors, 2, "#ffffff00")},
             { text: `${sign}`,    color: getColorFromNowColors(now_font_colors, 3, "#000"), bg: getColorFromNowColors(now_bg_colors, 3, "#ffffff00")},
             { text: `${setsVal}`, color: getColorFromNowColors(now_font_colors, 4, "#000"), bg: getColorFromNowColors(now_bg_colors, 4, "#ffffff00")}
-          ]
+          ],
+          id: textID, nodeMap: nodeMap
         });
       } else if(lazyVal != 0) {
-        txt = drawRichText(g, {
+        drawRichText(cellG, {
           x: x,
           y: y + baseBoxSize / 2,
-          fontSize: fitSvgText(g,`${v},${lazyVal}`,w,baseBoxSize), //自動縮放字體
+          fontSize: fitSvgText(g,`${v},${lazyVal}`,w,baseBoxSize),
           parts: [
             { text: `${v}`,       color: getColorFromNowColors(now_font_colors, 0, "#000"), bg: getColorFromNowColors(now_bg_colors, 0, "#ffffff00")},
             { text: `${sign}`,    color: getColorFromNowColors(now_font_colors, 1, "#000"), bg: getColorFromNowColors(now_bg_colors, 1, "#ffffff00")},
             { text: `${lazyVal}`, color: getColorFromNowColors(now_font_colors, 2, "#000"), bg: getColorFromNowColors(now_bg_colors, 2, "#ffffff00")}
-          ]
+          ],
+          id: textID, nodeMap: nodeMap
         });
       }  else {
-          txt = drawRichText(g, {
+          drawRichText(cellG, {
           x: x,
           y: y + baseBoxSize / 2,
-          fontSize: fitSvgText(g,`${v}`,w,baseBoxSize), //自動縮放字體
+          fontSize: fitSvgText(g,`${v}`,w,baseBoxSize),
           parts: [
             { text: `${v}`,       color: getColorFromNowColors(now_font_colors, 0, "#000"), bg: getColorFromNowColors(now_bg_colors, 0, "#ffffff00")}
-          ]
+          ],
+          id: textID, nodeMap: nodeMap
         });
       }
-      g.appendChild(txt);
 
       // 畫 index
       if (index==1 || index>=3) {
@@ -232,7 +256,7 @@
               '0'
             ) : (index_range[0] + i).toString();
         
-        draw_block(g, x - w/2, y + baseBoxSize, lbl, w, indexBoxH, fillColor);
+        draw_block(g, x - w/2, y + baseBoxSize, lbl, w, indexBoxH, fillColor, `cell-${groupID}-${i}-index`, nodeMap);
       }
       index_cnt++;
     });
@@ -254,17 +278,24 @@
       const point_color      =      (point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "red";
       const mark_color       =       (mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "limegreen";
 
-      // 畫各式各樣的提示元件
+      // 畫提示元件 (使用 nodeMap 加速)
       if (window.HintWidgets){
         const indexH = (index==1 || index>=3 ? indexBoxH : 0);
-        // 高光框框（highlight）
-        if (haveHighlight)  HintWidgets.drawHighlightBox(g, x - w/2, y, w, baseBoxSize + indexH, highlight_color);
-
-        // 紅色箭頭（point）
-        if (havePoint)      HintWidgets.drawArrow(g, x, y, point_color);
-
-        // 綠色勾勾（mark）
-        if (haveMark)       HintWidgets.drawMark(g, x + w/2 - 10, y + baseBoxSize - 10, mark_color);
+        // 高光框框
+        if (haveHighlight) {
+          const hId = `highlight-${groupID}-${i}`;
+          HintWidgets.drawHighlightBox(g, x - w/2, y, w, baseBoxSize + indexH, highlight_color, hId, nodeMap);
+        }
+        // 紅色箭頭
+        if (havePoint) {
+          const pId = `point-${groupID}-${i}`;
+          HintWidgets.drawArrow(g, x, y, point_color, pId, -20, 12, 8, nodeMap);
+        }
+        // 綠色勾勾
+        if (haveMark) {
+          const mId = `mark-${groupID}-${i}`;
+          HintWidgets.drawMark(g, x + w/2 - 10, y + baseBoxSize - 10, mark_color, mId, nodeMap);
+        }
       }
     });
 
@@ -294,7 +325,7 @@
       }
 
       // 繪製單一節點內的區段（以「絕對葉子座標」指定左右端點）
-      function paintSegmentInNode(i, absL, absR){
+      function paintSegmentInNode(i, absL, absR, k){
         if (!Number.isFinite(absL) || !Number.isFinite(absR)) return;
         // 容錯：若 left > right 交換
         let L = absL, R = absR;
@@ -317,35 +348,53 @@
         const sx = geom.x0 + l * geom.w;
         const ex = geom.x0 + r * geom.w;
 
-        // 畫半透明區段
-        const seg = document.createElementNS(NS, 'rect');
-        seg.setAttribute('x', sx);
-        seg.setAttribute('y', geom.y);
-        seg.setAttribute('width',  ex - sx);
-        seg.setAttribute('height', baseBoxSize);
-        seg.setAttribute('fill',   seg_bg_color); // 黃橘半透明
-        seg.setAttribute('stroke', 'rgba(0, 0, 0, 0.9)');
-        seg.setAttribute('stroke-width', '1');
-        g.appendChild(seg);
+        // 畫半透明區段 (持久化)
+        const sID = `seg-${groupID}-${i}-${k}`;
+        let segRect = nodeMap.get(sID);
+        if (!segRect) {
+          segRect = document.createElementNS(NS, 'rect');
+          segRect.setAttribute('id', sID);
+          g.appendChild(segRect);
+        }
+        segRect.setAttribute('x', sx);
+        segRect.setAttribute('y', geom.y);
+        segRect.setAttribute('width',  ex - sx);
+        segRect.setAttribute('height', baseBoxSize);
+        segRect.setAttribute('fill',   seg_bg_color);
+        segRect.setAttribute('stroke', 'rgba(0, 0, 0, 0.9)');
+        segRect.setAttribute('stroke-width', '1');
+        segRect.setAttribute('data-alive', '1');
 
-        // 兩側端點輔助線（可視需要註解掉）
-        const lLine = document.createElementNS(NS, 'line');
+        // 兩側端點輔助線
+        const sLineLID = `seg-lineL-${groupID}-${i}-${k}`;
+        let lLine = nodeMap.get(sLineLID);
+        if(!lLine){
+          lLine = document.createElementNS(NS, 'line');
+          lLine.setAttribute('id', sLineLID);
+          g.appendChild(lLine);
+        }
         lLine.setAttribute('x1', sx);
         lLine.setAttribute('y1', geom.y);
         lLine.setAttribute('x2', sx);
         lLine.setAttribute('y2', geom.y + baseBoxSize);
         lLine.setAttribute('stroke', 'rgba(0, 0, 0, 0.9)');
         lLine.setAttribute('stroke-width', '1');
-        g.appendChild(lLine);
+        lLine.setAttribute('data-alive', '1');
 
-        const rLine = document.createElementNS(NS, 'line');
+        const sLineRID = `seg-lineR-${groupID}-${i}-${k}`;
+        let rLine = nodeMap.get(sLineRID);
+        if(!rLine){
+          rLine = document.createElementNS(NS, 'line');
+          rLine.setAttribute('id', sLineRID);
+          g.appendChild(rLine);
+        }
         rLine.setAttribute('x1', ex);
         rLine.setAttribute('y1', geom.y);
         rLine.setAttribute('x2', ex);
         rLine.setAttribute('y2', geom.y + baseBoxSize);
         rLine.setAttribute('stroke', 'rgba(0, 0, 0, 0.9)');
         rLine.setAttribute('stroke-width', '1');
-        g.appendChild(rLine);
+        rLine.setAttribute('data-alive', '1');
       }
 
       // 逐一繪製：segment_index[k] 對應 segment_left[k], segment_right[k]
@@ -353,9 +402,16 @@
         const i = sIndex[k];
         const L = segment_left?.[k];
         const R = segment_right?.[k];
-        paintSegmentInNode(i, L, R);
+        paintSegmentInNode(i, L, R, k);
       }
     })();
+
+    // 掃除：移除本影格沒被標記 alive 的舊物件
+    Array.from(g.children).forEach(child => {
+      if (child.getAttribute('data-alive') === '0') {
+        child.remove();
+      }
+    });
   }
 
   // === segment_tree 專用：由 groupID + index 算出節點中心座標 ===
@@ -366,9 +422,9 @@
     const g = vp.querySelector('#' + CSS.escape(groupID));
     if (!g) return { x: 0, y: 0 };
 
-    // 從 g 讀回當初畫 heap 時存的排版資料
+    // 從 g 讀回當初畫 segment_tree 時存的排版資料
     const levels = parseInt(g.getAttribute('data-heap-levels') || '1', 10);
-    const rowH   = parseFloat(g.getAttribute('data-heap-rowH') || String(baseBoxSize));
+    const rowH   = parseFloat(g.getAttribute('data-row-height') || String(baseBoxSize));
     const totalW = parseFloat(
       g.getAttribute('data-heap-totalW') ||
       String(baseBoxSize * (1 << Math.max(0, levels - 1)))

@@ -143,35 +143,37 @@
     // 3) 合併 base + 拖曳偏移，更新 transform
     g.setAttribute('transform',`translate(${Pos.x + dx},${Pos.y + dy})`);
 
-    // 每幀重畫前清空內容（保留 data-translate）
-    while (g.firstChild) g.removeChild(g.firstChild);
+    // 方案 1：影格預索引與標記不活躍
+    const nodeMap = new Map();
+    Array.from(g.children).forEach(child => {
+      if (child.id) nodeMap.set(child.id, child);
+      child.setAttribute('data-alive', '0');
+    });
 
-
-
-    window.draw_array_outerframe(g, groupID, total_rows * baseBoxSize, total_cols * baseBoxSize);  //畫外框
-
+    window.draw_array_outerframe(g, groupID, total_rows * baseBoxSize, total_cols * baseBoxSize);  // 畫/更新外框
 
     const headerColor = 'rgba(111, 161, 255, 0.7)';
     // ========= 畫表頭 =========
     if (draw_type === 'normal') {
         if (isIndexX) {
             for (let r = startR; r < endR; r++) {
-                const x = 0 + outerframe_padding;
+                const x = outerframe_padding;
                 const y = (r - startR + isIndexY) * cellH + outerframe_padding;
-                window.draw_block(g, x, y, r, cellW, cellH, headerColor, `block-${groupID}-${r}-index`);
+                window.draw_block(g, x, y, r, cellW, cellH, headerColor, `block-${groupID}-${r}-index`, nodeMap);
             }
         }
         if (isIndexY) {
             for (let c = startC; c < endC; c++) {
                 const x = (c - startC + isIndexX) * cellW + outerframe_padding;
-                const y = 0 + outerframe_padding;
-                window.draw_block(g, x, y, c, cellW, cellH, headerColor, `block-${groupID}-index-${c}`);
+                const y = outerframe_padding;
+                window.draw_block(g, x, y, c, cellW, cellH, headerColor, `block-${groupID}-index-${c}`, nodeMap);
             }
         }
     }
 
-    // ========= 畫每一列：左側列索引 + 內部資料 =========
+    // ========= 畫每一列：內部資料 =========
     for (let r = startR; r < endR; r++) {
+      if (!matrix[r]) continue;
       for (let c = startC; c < Math.min(endC, matrix[r].length); c++) {
         const x = (c - startC + isIndexX) * cellW + outerframe_padding;
         const y = (r - startR + isIndexY) * cellH + outerframe_padding;
@@ -184,7 +186,6 @@
 
         let fillColor = haveFocus ? '#fff' : '#ccc';
         
-        // Binary 模式下的自動配色：>=1 為黑，0 為白
         if (draw_type === 'binary') {
           fillColor = (cellValue >= 1) ? '#000' : '#fff';
         }
@@ -192,19 +193,20 @@
         fillColor = haveBackground ? background_color : fillColor;
 
         if (CDVS.some(([a, b]) => a === r && b === c)) {
-          const ratio = Math.min(cellValue / Max, 1); // 限制在 0~1
-          const rv = Math.round(255 * (1 - ratio) + 40 * ratio);   // 255→40
-          const gv = Math.round(255 * (1 - ratio) + 183 * ratio);  // 255→183
-          const bv = Math.round(255 * (1 - ratio) + 255 * ratio);  // 255→255
+          const ratio = Math.min(cellValue / Max, 1);
+          const rv = Math.round(255 * (1 - ratio) + 40 * ratio);
+          const gv = Math.round(255 * (1 - ratio) + 183 * ratio);
+          const bv = Math.round(255 * (1 - ratio) + 255 * ratio);
           fillColor = `rgb(${rv}, ${gv}, ${bv})`;
         }
 
-        window.draw_block(g, x, y, value, cellW, cellH, fillColor, `block-${groupID}-${r}-${c}`);
+        window.draw_block(g, x, y, value, cellW, cellH, fillColor, `block-${groupID}-${r}-${c}`, nodeMap);
       }
     }
 
-    // ========= 提示小元件 =========
+    // ========= 提示小元件 (使用 nodeMap 加速) =========
     for (let r = startR; r < endR; r++) {
+      if (!matrix[r]) continue;
       for (let c = startC; c < Math.min(endC,matrix[r].length); c++) {
         const x = (c - startC + isIndexX) * cellW + outerframe_padding;
         const y = (r - startR + isIndexY) * cellH + outerframe_padding;
@@ -217,19 +219,32 @@
         const point_color      =      (point.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c)) ?.color?.trim() || "") || "red";
         const mark_color       =       (mark.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c)) ?.color?.trim() || "") || "limegreen";
 
-        // 畫各式各樣的提示元件
         if (window.HintWidgets){
-          // 高光框框（highlight）
-          if (haveHighlight)  HintWidgets.drawHighlightBox(g, x, y, baseBoxSize, baseBoxSize, highlight_color);
-  
-          // 紅色箭頭（point）
-          if (havePoint)      HintWidgets.drawArrow(g, x + baseBoxSize / 2, y, point_color);
-  
-          // 綠色勾勾（mark）
-          if (haveMark)       HintWidgets.drawMark(g, x + baseBoxSize - 10, y + baseBoxSize - 10, mark_color);
+          // 高光框框
+          if (haveHighlight) {
+            const hId = `highlight-${groupID}-${r}-${c}`;
+            HintWidgets.drawHighlightBox(g, x, y, baseBoxSize, baseBoxSize, highlight_color, hId, nodeMap);
+          }
+          // 紅色箭頭
+          if (havePoint) {
+            const pId = `point-${groupID}-${r}-${c}`;
+            HintWidgets.drawArrow(g, x + baseBoxSize / 2, y, point_color, pId, -20, 12, 8, nodeMap);
+          }
+          // 綠色勾勾
+          if (haveMark) {
+            const mId = `mark-${groupID}-${r}-${c}`;
+            HintWidgets.drawMark(g, x + baseBoxSize - 10, y + baseBoxSize - 10, mark_color, mId, nodeMap);
+          }
         }
       }
     }
+
+    // 掃除：移除本影格沒被標記 alive 的舊物件
+    Array.from(g.children).forEach(child => {
+      if (child.getAttribute('data-alive') === '0') {
+        child.remove();
+      }
+    });
   }
 
   function get2DArrayPosition(groupID, row, col, anchor = "center") {

@@ -14,18 +14,21 @@
    * @param {number}      h     - 方塊高度
    * @param {string}      color - 填色
    * @param {string}      id    - (可選) 固定 ID，用來更新同一格（例如 "cell-LCS-3-4"）
+   * @param {Map}         nodeMap - (可選) 外部預索引的 Map，加速尋找
    */
-  function draw_block(g, x, y, i, w, h, color, id) {
+  function draw_block(g, x, y, i, w, h, color, id, nodeMap = null) {
 
     // 如果有 id，就「更新」同一格
     if (id != null && id !== "") {
-      // 取得/建立 cell group
-      let cellG = g.querySelector(`#${CSS.escape(String(id))}`);
+      // 優先從 nodeMap 取得，沒有才 querySelector ( fallback )
+      let cellG = nodeMap ? nodeMap.get(String(id)) : g.querySelector(`#${CSS.escape(String(id))}`);
+      
       if (!cellG) {
         cellG = document.createElementNS(NS, "g");
         cellG.setAttribute("id", String(id));
         g.appendChild(cellG);
       }
+      cellG.setAttribute("data-alive", "1"); // 標記為活著
 
       // 取得/建立 rect
       let rect = cellG.querySelector(":scope > rect");
@@ -54,9 +57,6 @@
       txt.setAttribute("x", x + w / 2);
       txt.setAttribute("y", y + h / 2);
 
-      // 這裡維持你原本 fitSvgText 的用法
-      // 注意：fitSvgText 你原本是用 g 當第一參數，這裡改成 cellG 也可以
-      // 如果你 fitSvgText 依賴 g 的某些屬性，改回 g 也行
       txt.setAttribute("font-size", fitSvgText(g, String(i), w, h));
       txt.textContent = i;
 

@@ -5,8 +5,13 @@
   /**
    * 畫紅色箭頭（point）
    */
-  function drawArrow(g, x, y, color, offsetY = -20, ah = 12, aw = 8) {
-    const arrow = document.createElementNS(NS, 'path');
+  function drawArrow(g, x, y, color, id, offsetY = -20, ah = 12, aw = 8, nodeMap = null) {
+    let arrow = nodeMap ? nodeMap.get(id) : (id ? g.querySelector(`#${CSS.escape(id)}`) : null);
+    if (!arrow) {
+      arrow = document.createElementNS(NS, 'path');
+      if (id) arrow.setAttribute('id', id);
+      g.appendChild(arrow);
+    }
 
     const ax = x;
     const ay = y + offsetY;
@@ -24,14 +29,19 @@
 
     arrow.setAttribute('fill', color);
     arrow.classList.add('arrow-bounce');
-    g.appendChild(arrow);
+    arrow.setAttribute('data-alive', '1');
   }
 
   /**
    * 畫綠色勾勾（mark）
    */
-  function drawMark(g, x, y, color) {
-    const check = document.createElementNS(NS, 'path');
+  function drawMark(g, x, y, color, id, nodeMap = null) {
+    let check = nodeMap ? nodeMap.get(id) : (id ? g.querySelector(`#${CSS.escape(id)}`) : null);
+    if (!check) {
+      check = document.createElementNS(NS, 'path');
+      if (id) check.setAttribute('id', id);
+      g.appendChild(check);
+    }
     const cx = x;
     const cy = y;
 
@@ -45,14 +55,19 @@
     check.setAttribute('stroke-width', '3');
     check.setAttribute('fill', 'none');
     check.setAttribute('stroke-linecap', 'round');
-    g.appendChild(check);
+    check.setAttribute('data-alive', '1');
   }
 
   /**
    * 畫外框高亮（例如紅框閃爍）
    */
-  function drawHighlightBox(g, x, y, w, h, color = 'red') {
-    const rect = document.createElementNS(NS, 'rect');
+  function drawHighlightBox(g, x, y, w, h, color = 'red', id, nodeMap = null) {
+    let rect = nodeMap ? nodeMap.get(id) : (id ? g.querySelector(`#${CSS.escape(id)}`) : null);
+    if (!rect) {
+      rect = document.createElementNS(NS, 'rect');
+      if (id) rect.setAttribute('id', id);
+      g.appendChild(rect);
+    }
     rect.setAttribute('x', x);
     rect.setAttribute('y', y);
     rect.setAttribute('width',  w);
@@ -61,7 +76,7 @@
     rect.setAttribute('stroke', color);
     rect.setAttribute('stroke-width', '3');
     rect.classList.add('highlight-blink');
-    g.appendChild(rect);
+    rect.setAttribute('data-alive', '1');
   }
 
   // 統一掛在一個命名空間底下
