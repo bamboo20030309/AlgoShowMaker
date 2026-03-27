@@ -29,7 +29,7 @@ void dfs(int x,int y,string now) {
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)},
             {{"highlight"},{{x+1,y+1}}}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         auto _stk_vec = AV::to_vector(_draw_stack_path);
         reverse(_stk_vec.begin(), _stk_vec.end());
@@ -65,7 +65,7 @@ void dfs(int x,int y,string now) {
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)},
             {{"highlight"},{{x+1,y+1}}}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         _draw_stack_path.push( {{x,y},{x-1,y-1}} );
         auto _stk_vec = AV::to_vector(_draw_stack_path);
@@ -89,7 +89,7 @@ void dfs(int x,int y,string now) {
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)},
             {{"highlight"},{{x+1,y+1}}}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         _draw_stack_path.push( {{x,y},{x-1,y}} );
         _draw_stack_path.push( {{x,y},{x,y-1}} );
@@ -110,7 +110,7 @@ void dfs(int x,int y,string now) {
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)},
             {{"highlight"},{{x+1,y+1}}}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         _stk_vec = AV::to_vector(_draw_stack_path);
         reverse(_stk_vec.begin(), _stk_vec.end());
@@ -134,7 +134,7 @@ void dfs(int x,int y,string now) {
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)},
             {{"highlight"},{{x+1,y+1}}}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         _draw_stack_path.push( {{x,y},{x-1,y}} );
         auto _stk_vec = AV::to_vector(_draw_stack_path);
@@ -158,7 +158,7 @@ void dfs(int x,int y,string now) {
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)},
             {{"highlight"},{{x+1,y+1}}}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         _draw_stack_path.push( {{x,y},{x,y-1}} );
         auto _stk_vec = AV::to_vector(_draw_stack_path);
@@ -460,7 +460,7 @@ int main() {
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(0,1,0,T.size()+1)},
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         av.colored_text({ {{"接下來講講如何把最長共同子序列的序列都找出{來:ㄌㄞˊ}\n先把每個是因為相同字元而取左上角值加ㄧ的格子全部畫上橋\n然後從最右下角開始回朔"}} },Pos("LCS","top",0,-100));
         
@@ -469,7 +469,7 @@ int main() {
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(0,1,0,T.size()+1)},
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)}
         });
-        if(!ans.empty())av.key_frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.key_frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.key_arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         av.key_colored_text({ {{"接下來講講如何把最長共同子序列的序列都找出{來:ㄌㄞˊ}\n先把每個是因為相同字元而取左上角值加ㄧ的格子全部畫上橋\n然後從最右下角開始回朔"}} },Pos("LCS","top",0,-100));
         av.camera(Pos("LCS", "center", 0, -20), 1.7);
@@ -484,7 +484,7 @@ int main() {
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(0,1,0,T.size()+1)},
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)}
         });
-        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         av.colored_text({ {{"這樣就找完所有的最大共同子序列了\n答案是 " + AV::array_to_string(AV::to_vector(ans))}} },Pos("LCS","top",0,-80));
         
@@ -493,7 +493,7 @@ int main() {
             {{"background","rgba(111, 161, 255, 0.7)"},AV::AtoB(0,1,0,T.size()+1)},
             {{"CDVS"},AV::AtoB(1,1,S.size()+1,T.size()+1)}
         });
-        if(!ans.empty())av.key_frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,1);
+        if(!ans.empty())av.key_frame_draw("ans",Pos("LCS","left top",-150,0),AV::to_vector(ans),{},{0},"normal",1,0);
         for(auto&v:_draw_LCS_path)av.key_arrow(Pos("LCS", v.f.f+1, v.f.s+1), Pos("LCS", v.s.f+1, v.s.s+1));
         av.key_colored_text({ {{"這樣就找完所有的最大共同子序列了\n答案是 " + AV::array_to_string(AV::to_vector(ans))}} },Pos("LCS","top",0,-80));
         av.camera(Pos("LCS", "center", 0, -20), 1.7);
