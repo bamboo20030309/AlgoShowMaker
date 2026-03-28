@@ -749,6 +749,97 @@ function reloadCodeScript(onReady) {
 
 
 // ==============================
+// 影格 DOM Snapshot 快取系統
+// ==============================
+const FrameSnapshotCache = (() => {
+  const SNAP_INTERVAL = 10;
+  const snapshots = new Map();   // key: frameIdx, value: [clonedNode...]
+
+  /** 捕捉當前畫布快照（只在 frameIdx 為 SNAP_INTERVAL 的倍數時執行） */
+  function capture(frameIdx) {
+    if (frameIdx % SNAP_INTERVAL !== 0) return;
+    if (snapshots.has(frameIdx)) return; // 已存在就不重複存
+    const vp = window.getViewport && window.getViewport();
+    if (!vp) return;
+    const nodes = Array.from(vp.children)
+      .filter(n => {
+        // 排除背景格線
+        if (n.tagName.toLowerCase() === 'rect' && n.getAttribute('fill') === 'url(#gridPattern)') return false;
+        return true;
+      })
+      .map(n => n.cloneNode(true));
+    snapshots.set(frameIdx, nodes);
+  }
+
+  /** 恢復快照：找到最接近且 <= targetIdx 的快照並還原到畫布 */
+  function restore(targetIdx) {
+    const snapIdx = Math.floor(targetIdx / SNAP_INTERVAL) * SNAP_INTERVAL;
+    if (!snapshots.has(snapIdx)) return false;
+    const vp = window.getViewport && window.getViewport();
+    if (!vp) return false;
+    // 徹底清空所有非背景子節點
+    Array.from(vp.children).forEach(child => {
+      if (child.tagName.toLowerCase() === 'rect' && child.getAttribute('fill') === 'url(#gridPattern)') return;
+      vp.removeChild(child);
+    });
+    // 克隆快照節點並附加到畫布
+    snapshots.get(snapIdx).forEach(node => vp.appendChild(node.cloneNode(true)));
+    return true;
+  }
+
+  /** 清空所有快照（編譯新腳本時呼叫） */
+  function clear() {
+    snapshots.clear();
+  }
+
+  /** 取得目前快照數量（除錯用） */
+  function size() {
+    return snapshots.size;
+  }
+
+  /** 估算快照快取的記憶體佔用 */
+  function memoryUsage() {
+    let totalBytes = 0;
+    const details = [];
+    snapshots.forEach((nodes, frameIdx) => {
+      let frameBytes = 0;
+      let nodeCount  = 0;
+      nodes.forEach(n => {
+        // 用 outerHTML 的字串長度 × 2 (UTF-16) 來粗估 DOM 記憶體
+        const html = n.outerHTML || '';
+        frameBytes += html.length * 2;
+        // 遞迴計算子節點數量
+        nodeCount += 1 + (n.querySelectorAll ? n.querySelectorAll('*').length : 0);
+      });
+      totalBytes += frameBytes;
+      details.push({ frame: frameIdx, nodes: nodeCount, bytes: frameBytes });
+    });
+
+    // 格式化輸出
+    const fmt = (b) => {
+      if (b < 1024)             return b + ' B';
+      if (b < 1024 * 1024)     return (b / 1024).toFixed(1) + ' KB';
+      return (b / 1024 / 1024).toFixed(2) + ' MB';
+    };
+
+    console.group(`📸 FrameSnapshotCache 記憶體估算 (${snapshots.size} 筆快照)`);
+    console.table(details.map(d => ({
+      '影格':     d.frame,
+      'DOM 節點': d.nodes,
+      '估算大小': fmt(d.bytes)
+    })));
+    console.log(`🔹 總計: ${fmt(totalBytes)}`);
+    console.groupEnd();
+
+    return { count: snapshots.size, totalBytes, formatted: fmt(totalBytes), details };
+  }
+
+  return { capture, restore, clear, size, memoryUsage, SNAP_INTERVAL };
+})();
+// 掛到 window 方便在 console 呼叫
+window.FrameSnapshotCache = FrameSnapshotCache;
+
+// ==============================
 // 幀條碼：狀態與工具函式
 // ==============================
 
@@ -778,12 +869,16 @@ function csGetCurrentFrameIndex() {
 
 function csGotoFrame(idx) {
   if (typeof CodeScript === "undefined") return;
+  // 快照恢復：跳轉前先嘗試還原最近的快照
+  FrameSnapshotCache.restore(idx);
   if (typeof CodeScript.goto === "function") return CodeScript.goto(idx);
   if (typeof CodeScript.set_frame === "function") return CodeScript.set_frame(idx);
 }
 
 // 初始化幀資訊（在 reloadCodeScript 之後呼叫）---
 function initFrameInfoFromCodeScript() {
+  // 清空舊的快照快取
+  FrameSnapshotCache.clear();
   totalFrames = csGetFrameCount();
   keyFrameIndices = csGetKeyFrames();
   currentFrame = csGetCurrentFrameIndex();
@@ -888,6 +983,8 @@ function jumpToFrame(idx) {
 // （按下一步 / 上一步 / 自動播放 都用這個）
 function syncCurrentFrameFromCodeScript() {
   currentFrame = csGetCurrentFrameIndex();
+  // 快照捕捉：每次影格渲染完成後自動存儲
+  FrameSnapshotCache.capture(currentFrame);
   updateFrameBarsVisual();
   updateFrameInfoText();
   if (typeof clearDrawingCanvas === 'function') clearDrawingCanvas();
