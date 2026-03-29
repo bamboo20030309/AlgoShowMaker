@@ -169,6 +169,18 @@
         );
         break;
 
+      case 'stack':
+        window.draw_array_stack(
+          g, groupID, array, style, index_range, index, gap_y
+        );
+        break;
+
+      case 'queue':
+        window.draw_array_queue(
+          g, groupID, array, style, index_range, index, gap_y
+        );
+        break;
+
       default:
         // 萬一沒傳或傳錯，就當成 normal
         window.draw_array_normal(

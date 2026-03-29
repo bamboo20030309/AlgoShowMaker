@@ -16,7 +16,9 @@
     g,
     groupID,
     height,
-    width
+    width,
+    bgColor = 'rgba(209,230,172,0.5)',
+    offsetY = 0
   ) {
     const pad = 8;
     const nameH = 24;
@@ -27,9 +29,9 @@
     const frameW = totalW + pad * 2;
 
     const left = frameX + outerframe_padding;
-    const top = -pad + outerframe_padding;
+    const top = -pad + outerframe_padding + offsetY;
     const right = frameX + frameW + outerframe_padding;
-    const bottom = -pad + (height + pad * 2 + nameH) + outerframe_padding;
+    const bottom = -pad + (height + pad * 2 + nameH) + outerframe_padding + offsetY;
 
     // 背景大框
     let bg = g.querySelector(':scope > .outerframe-bg');
@@ -39,10 +41,10 @@
       g.appendChild(bg);
     }
     bg.setAttribute('x', frameX + outerframe_padding);
-    bg.setAttribute('y', -pad + outerframe_padding);
+    bg.setAttribute('y', -pad + outerframe_padding + offsetY);
     bg.setAttribute('width', frameW);
     bg.setAttribute('height', height + pad * 2 + nameH);
-    bg.setAttribute('fill', 'rgba(209,230,172,0.5)');
+    bg.setAttribute('fill', bgColor);
     bg.setAttribute('stroke', '#333');
     bg.setAttribute('stroke-width', '2');
     bg.setAttribute('data-alive', '1');
@@ -55,7 +57,7 @@
       g.appendChild(nb);
     }
     nb.setAttribute('x', frameX + outerframe_padding);
-    nb.setAttribute('y', height + pad + outerframe_padding);
+    nb.setAttribute('y', height + pad + outerframe_padding + offsetY);
     nb.setAttribute('width', frameW);
     nb.setAttribute('height', nameH);
     nb.setAttribute('fill', 'none');
@@ -69,7 +71,7 @@
       g.appendChild(label);
     }
     label.setAttribute('x', frameX + frameW / 2 + outerframe_padding);
-    label.setAttribute('y', height + pad + nameH / 2 + outerframe_padding);
+    label.setAttribute('y', height + pad + nameH / 2 + outerframe_padding + offsetY);
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('dominant-baseline', 'middle');
     label.setAttribute('font-size', fitSvgText(g, groupID, frameW, nameH));

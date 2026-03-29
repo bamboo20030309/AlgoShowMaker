@@ -99,8 +99,12 @@ public:
     }
 
     #define draw(...)             draw_impl(__LINE__, __VA_ARGS__)
-    #define frame_draw(...)       frame_draw_impl(__LINE__, __VA_ARGS__)
-    #define key_frame_draw(...)   key_frame_draw_impl(__LINE__, __VA_ARGS__)
+    #define draw_array(groupID, pos, ...) frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
+    #define draw_2Darray(groupID, pos, ...) frame_draw_2D_impl(__LINE__, groupID, pos, __VA_ARGS__)
+    #define frame_draw(groupID, pos, ...) frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
+    #define key_frame_draw(groupID, pos, ...) key_frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
+    #define draw_stack(groupID, pos, s, ...) frame_draw_impl(__LINE__, groupID, pos, AV::stack_to_vector(s), __VA_ARGS__, "stack")
+    #define draw_queue(groupID, pos, q, ...) frame_draw_impl(__LINE__, groupID, pos, AV::queue_to_vector(q), __VA_ARGS__, "queue")
     #define camera(...)           camera_impl(__VA_ARGS__)
     #define auto_camera(...)      auto_camera_impl(__VA_ARGS__)
     // accu_store 已包含 __LINE__，當作指令儲存時自動記錄呼叫位置的行號
@@ -465,6 +469,20 @@ public:
             array_to_string(num) + ");\n";
         _content += "                }\n";
     }
+
+    // --- Stack & Queue Helper wrappers for accu_store ---
+    template<typename T>
+    void accu_stack(const int code_line, const string groupID, const Pos pos, const std::stack<T>& s, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int itemsPerRow = 0, const int index = 0, const vector<int>& sl = {}, const vector<int>& ss = {}, const vector<int>& si = {}, const vector<int>& sf = {}, const vector<int>& srg = {}) {
+        accu_store_impl(code_line, groupID, pos, AV::stack_to_vector(s), style, range, "stack", itemsPerRow, index, sl, ss, si, sf, srg);
+    }
+
+    template<typename T>
+    void accu_queue(const int code_line, const string groupID, const Pos pos, const std::queue<T>& q, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int itemsPerRow = 0, const int index = 0, const vector<int>& sl = {}, const vector<int>& ss = {}, const vector<int>& si = {}, const vector<int>& sf = {}, const vector<int>& srg = {}) {
+        accu_store_impl(code_line, groupID, pos, AV::queue_to_vector(q), style, range, "queue", itemsPerRow, index, sl, ss, si, sf, srg);
+    }
+    
+#define accu_draw_stack(groupID, pos, s, ...) accu_stack(__LINE__, groupID, pos, s, __VA_ARGS__)
+#define accu_draw_queue(groupID, pos, q, ...) accu_queue(__LINE__, groupID, pos, q, __VA_ARGS__)
 
     template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
     void frame_draw_impl(
@@ -861,6 +879,82 @@ public:
         cout << "已成功畫圖\n";
     }
 
+    // --- Type-safe Draw Overloads for stack & queue ---
+    template<typename T>
+    void draw_impl(const int code_line, const string groupID, const Pos pos, const std::stack<T>& s, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int index = 0) {
+        _content += "            case " + to_string(_frameCount++) + ":\n";
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += "drawArray(\'" + groupID + "\', " + pos.toJson() + ", " + array_to_string(AV::stack_to_vector(s)) + ", " + arraystyle_to_object(style) + ", " + array_to_string(range) + ", \"stack\", 0, " + to_string(index) + ");\n";
+        _content += "                }\n";
+        _content += "                break;\n";
+    }
+    template<typename T>
+    void draw_impl(const int code_line, const string groupID, const Pos pos, const std::queue<T>& q, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int index = 0) {
+        _content += "            case " + to_string(_frameCount++) + ":\n";
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += "drawArray(\'" + groupID + "\', " + pos.toJson() + ", " + array_to_string(AV::queue_to_vector(q)) + ", " + arraystyle_to_object(style) + ", " + array_to_string(range) + ", \"queue\", 0, " + to_string(index) + ");\n";
+        _content += "                }\n";
+        _content += "                break;\n";
+    }
+    template<typename T>
+    void frame_draw_impl(const int code_line, const string groupID, const Pos pos, const std::stack<T>& s, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int index = 0) {
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += "drawArray(\'" + groupID + "\', " + pos.toJson() + ", " + array_to_string(AV::stack_to_vector(s)) + ", " + arraystyle_to_object(style) + ", " + array_to_string(range) + ", \"stack\", 0, " + to_string(index) + ");\n";
+        _content += "                }\n";
+    }
+    template<typename T>
+    void frame_draw_impl(const int code_line, const string groupID, const Pos pos, const std::queue<T>& q, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int index = 0) {
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += "drawArray(\'" + groupID + "\', " + pos.toJson() + ", " + array_to_string(AV::queue_to_vector(q)) + ", " + arraystyle_to_object(style) + ", " + array_to_string(range) + ", \"queue\", 0, " + to_string(index) + ");\n";
+        _content += "                }\n";
+    }
+    template<typename T>
+    void key_frame_draw_impl(const int code_line, const string groupID, const Pos pos, const std::stack<T>& s, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int index = 0) {
+        _content += "                if (track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += "drawArray(\'" + groupID + "\', " + pos.toJson() + ", " + array_to_string(AV::stack_to_vector(s)) + ", " + arraystyle_to_object(style) + ", " + array_to_string(range) + ", \"stack\", 0, " + to_string(index) + ");\n";
+        _content += "                }\n";
+        _keyFrames.push_back(_frameCount);
+    }
+    template<typename T>
+    void key_frame_draw_impl(const int code_line, const string groupID, const Pos pos, const std::queue<T>& q, const vector<array_style>& style = {}, const vector<int>& range = {0}, const int index = 0) {
+        _content += "                if (track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    ";
+        _content += "drawArray(\'" + groupID + "\', " + pos.toJson() + ", " + array_to_string(AV::queue_to_vector(q)) + ", " + arraystyle_to_object(style) + ", " + array_to_string(range) + ", \"queue\", 0, " + to_string(index) + ");\n";
+        _content += "                }\n";
+        _keyFrames.push_back(_frameCount);
+    }
+
+    template<typename T>
+    static vector<T> stack_to_vector(std::stack<T> s) {
+        vector<T> v;
+        while (!s.empty()) {
+            v.insert(v.begin(), s.top()); // 底層在 index 0
+            s.pop();
+        }
+        return v;
+    }
+
+    template<typename T>
+    static vector<T> queue_to_vector(std::queue<T> q) {
+        vector<T> v;
+        while (!q.empty()) {
+            v.push_back(q.front());
+            q.pop();
+        }
+        return v;
+    }
+
 private:
     string _outPath;
     string _content;
@@ -992,7 +1086,7 @@ public:
         return tmp;
     }
 
-    string escapeJS(const string& s) {
+    static string escapeJS(const string& s) {
         string out;
         for (char c : s) {
             switch (c) {
@@ -1007,7 +1101,7 @@ public:
         return out;
     }
 
-    string VVS_to_string(const vector<vector<string>>& v){
+    static string VVS_to_string(const vector<vector<string>>& v){
         string tmp = "[";
         vector<string> board={"text","bg_color","font_color","font_size"};
         for (size_t i = 0; i < v.size(); ++i){
@@ -1021,6 +1115,8 @@ public:
         tmp += "]";
         return tmp;
     }
+
+    // --- End of AV class members (previously moved overloads to public) ---
 
 };
 
