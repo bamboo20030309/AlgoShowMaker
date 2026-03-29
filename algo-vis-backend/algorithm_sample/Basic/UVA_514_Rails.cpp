@@ -102,14 +102,12 @@ int main() {
     av.stop(); 
     // --- 教學動畫結束 ---
     //}
-
     int n; string s; 
     while(cin>>n&&n){getline(cin,s);
         while(getline(cin,s)&&s!="0"){
             vector<int> train(n);
             istringstream sin(s);
             for(auto&v:train)sin>>v;
-            
             //draw{
             vector<int> init(n); for(int i=0;i<n;i++) init[i]=i+1;
             //}
@@ -123,7 +121,6 @@ int main() {
             av.auto_camera();
             av.end_frame_draw();
             //}
-
             for(int i=1;i<=n;i++){
                 //draw{ 1. 進站前
                 av.start_frame_draw();
@@ -141,9 +138,7 @@ int main() {
                 av.auto_camera();
                 av.end_frame_draw();
                 //}
-
                 st.push(i);
-
                 //draw{ 2. 進站中
                 av.start_frame_draw();
                 av.frame_draw("init", Pos(100, 200), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n});
@@ -160,7 +155,6 @@ int main() {
                 av.auto_camera();
                 av.end_frame_draw();
                 //}
-
                 while(st.size()){
                     //draw{ 3. 比對
                     string arrowColor = (st.top() == train[now]) ? "#4CAF50" : "#F44336";
@@ -181,7 +175,6 @@ int main() {
                     av.auto_camera();
                     av.end_frame_draw();
                     //}
-
                     if(st.top() == train[now]){
                         now++;
                         st.pop();
@@ -213,7 +206,6 @@ int main() {
                         break;
                     }
                 }
-                
                 //draw{ 車站空了說明
                 if (st.empty() && i < n) {
                     av.start_frame_draw();
@@ -245,8 +237,7 @@ int main() {
                 av.stop();
                 //}
                 cout<<"No"<<endl;
-            }
-            else {
+            } else {
                 //draw{ 判定成功
                 av.start_frame_draw();
                 av.frame_draw("init", Pos(100, 200), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
