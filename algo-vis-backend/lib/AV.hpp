@@ -103,8 +103,8 @@ public:
     #define draw_2Darray(groupID, pos, ...) frame_draw_2D_impl(__LINE__, groupID, pos, __VA_ARGS__)
     #define frame_draw(groupID, pos, ...) frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
     #define key_frame_draw(groupID, pos, ...) key_frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
-    #define draw_stack(groupID, pos, s, ...) frame_draw_impl(__LINE__, groupID, pos, AV::stack_to_vector(s), __VA_ARGS__, "stack")
-    #define draw_queue(groupID, pos, q, ...) frame_draw_impl(__LINE__, groupID, pos, AV::queue_to_vector(q), __VA_ARGS__, "queue")
+    #define draw_stack(groupID, pos, s, ...) frame_draw_impl(__LINE__, groupID, pos, AV::to_vector(s), __VA_ARGS__, "stack")
+    #define draw_queue(groupID, pos, q, ...) frame_draw_impl(__LINE__, groupID, pos, AV::to_vector(q), __VA_ARGS__, "queue")
     #define camera(...)           camera_impl(__VA_ARGS__)
     #define auto_camera(...)      auto_camera_impl(__VA_ARGS__)
     // accu_store 已包含 __LINE__，當作指令儲存時自動記錄呼叫位置的行號
@@ -691,6 +691,18 @@ public:
             array_to_string(num) + ");\n";
         _content += "                }\n";
         _content += "                break;\n";
+    }
+
+    // --- 自動判別 Stack ---
+    template<typename T>
+    void draw_impl(const int code_line, const stack<T>& s) {
+        draw_impl(code_line, "stack", Pos(0,0), to_vector(s), {}, {0}, "stack");
+    }
+
+    // --- 自動判別 Queue ---
+    template<typename T>
+    void draw_impl(const int code_line, const queue<T>& q) {
+        draw_impl(code_line, "queue", Pos(0,0), to_vector(q), {}, {0}, "queue");
     }
 
     template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>
