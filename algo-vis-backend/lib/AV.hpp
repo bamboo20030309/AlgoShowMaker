@@ -317,6 +317,7 @@ public:
         _content += "    let track = 0;\n";
         _content += "    function renderFrame(f) {\n";
         _content += "        clearAllEditorHighlights();\n";
+        _content += "        if (window.resetMessageCounter) window.resetMessageCounter();\n";
         _content += "        clearCanvas();\n";
         _content += "        switch(f) {\n";
     }

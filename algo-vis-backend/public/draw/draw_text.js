@@ -131,6 +131,10 @@ function isFullWidth(char) {
     msgCounter++;
     return `msg-${msgCounter}`;
   }
+
+  window.resetMessageCounter = function() {
+    msgCounter = 0;
+  };
   /**
    * 在畫布上畫一個文字框
    * @param {string} content   - 要顯示的文字，可以用 \n 換行
