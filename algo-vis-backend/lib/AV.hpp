@@ -112,6 +112,8 @@ public:
     #define accu_store_colored(...)  accu_store_colored_impl(__LINE__, __VA_ARGS__)
     #define accu_store_arrow(...)  accu_store_arrow_impl(__LINE__, __VA_ARGS__)
     #define accu_store_2D(...)     accu_store_2D_impl(__LINE__, __VA_ARGS__)
+    #define draw_circle(circleID, pos, value, ...) draw_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
+    #define accu_store_circle(circleID, pos, value, ...) accu_store_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
 
     //AtoB function : return a A~B increase vector
     static vector<int> AtoB(int start, int end) {
@@ -995,6 +997,9 @@ private:
     string _gen_draw2DArray(const string& g, const Pos& p, const vector<vector<T>>& m, const vector<array2D_style>& s, const vector<vector<int>>& r, const string& t, int i) {
         return "draw2DArray(\'" + g + "\', " + p.toJson() + ", " + array2D_to_string(m) + ", " + array2Dstyle_to_object(s) + ", " + array2D_to_string(r) + ", \"" + t + "\", " + to_string(i) + ");";
     }
+    string _gen_drawCircle(const string& id, const Pos& p, const string& v, const vector<pair<string,string>>& s) {
+        return "drawCircle(\'" + id + "\', " + p.toJson() + ", \"" + escapeJS(v) + "\", " + styles_to_json_array(s) + ");";
+    }
     template<typename T>
     string _gen_drawArray(const string& g, const Pos& p, const vector<T>& n, const vector<array_style>& s, const vector<int>& r, const string& t, int pr, int i, const vector<int>& sl, const vector<int>& ss, const vector<int>& si, const vector<int>& sf, const vector<int>& srg) {
         return "drawArray(\'" + g + "\', " + p.toJson() + ", " + array_to_string(n) + ", " + arraystyle_to_object(s) + ", " + array_to_string(r) + ", \"" + t + "\", " + to_string(pr) + ", " + to_string(i) + ", " + array_to_string(sl) + ", " + array_to_string(ss) + ", " + array_to_string(si) + ", " + array_to_string(sf) + ", " + array_to_string(srg) + ");";
@@ -1033,6 +1038,21 @@ public:
         _accu_history.push_back({code_line, _gen_draw2DArray(groupID, pos, matrix, style, range, draw_type, index)});
     }
 
+    template<typename T>
+    void accu_store_circle_impl(const int code_line, const string id, const Pos pos, const T value, const vector<pair<string,string>>& style = {}) {
+        ostringstream oss; oss << value;
+        _accu_history.push_back({code_line, _gen_drawCircle(id, pos, oss.str(), style)});
+    }
+
+    template<typename T>
+    void draw_circle_impl(const int code_line, const string id, const Pos pos, const T value, const vector<pair<string,string>>& style = {}) {
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        ostringstream oss; oss << value;
+        _content += "                    " + _gen_drawCircle(id, pos, oss.str(), style) + "\n";
+        _content += "                }\n";
+    }
+
     string integers_to_string(const vector<int>& num){
         string tmp = "";
         for(int i=0;i<num.size();i++){
@@ -1048,6 +1068,15 @@ public:
             tmp += stylelist[i].first + ": \"" + stylelist[i].second + "\"";
         }
         return tmp;
+    }
+
+    string styles_to_json_array(const vector<pair<string,string>>& stylelist){
+        string tmp = "[";
+        for(int i=0;i<stylelist.size();i++){
+            if(i)tmp += ",";
+            tmp += "{\"type\": \"" + stylelist[i].first + "\", \"color\": \"" + stylelist[i].second + "\"}";
+        }
+        return tmp + "]";
     }
 
     string arraystyle_to_object(const vector<array_style>& stylelist){
@@ -1136,7 +1165,6 @@ public:
 struct TreeLayout {
     int degree;      // 樹的分支度 (例如 2 代表二元樹)
     Pos root_pos;    // 根節點的基準位置
-    int max_depth;   // 最大深度，用來計算底層總寬度以確保上層置中
     double dx;       // 底層相鄰節點之間的最小水平間距
     double dy;       // 每層之間的垂直間距
     std::set<pair<int,int>> nodes; // 記錄目前已經加入的所有節點
@@ -1154,11 +1182,18 @@ struct TreeLayout {
     int curr_d = 0;      // 當前深度
     int curr_o = 0;      // 當前順序
     vector<pair<int, int>> path_stack; // 備份堆疊
-    bool show_edges = true; // 新增控制是否畫預設連線
+    bool show_edges = true; // 控制是否畫預設連線
     bool horizontal = false; // 新增：是否橫向排列
+    
+    enum LayoutMode { 
+        COMPACT = 0,     // 自動收縮 (Bottom-up)
+        LEVEL_ORDER = 1, // 層序等距：x = order * dx
+        BINARY = 2,      // 完美回推：每一層格點固定由深度決定
+        INORDER = 3      // 中序等距：x 由中序走訪順序決定
+    } mode = COMPACT;
 
-    TreeLayout(int _degree = 2, Pos _root_pos = Pos(0,0), int _max_depth = 10, double _dx = 60.0, double _dy = 120.0, string _prefix = "tree")
-        : degree(_degree), root_pos(_root_pos), max_depth(_max_depth), dx(_dx), dy(_dy), prefix(_prefix), horizontal(false) {
+    TreeLayout(int _degree = 2, Pos _root_pos = Pos(0,0), double _dx = 60.0, double _dy = 120.0, string _prefix = "tree")
+        : degree(_degree), root_pos(_root_pos), dx(_dx), dy(_dy), prefix(_prefix), horizontal(false) {
         }
 
     // 向下追蹤子分支
@@ -1271,10 +1306,60 @@ struct TreeLayout {
             custom_x[{d, o}] = (centers.front() + centers.back()) / 2.0;
             return {leftmost, rightmost};
         };
-        double cursor = 0.0;
-        calc_width(0, 0, cursor);
-        double root_offset = custom_x[{0,0}];
-        for (auto& p : custom_x) p.second -= root_offset;
+
+        if (mode == COMPACT) {
+            double cursor = 0.0;
+            calc_width(0, 0, cursor);
+            double root_offset = custom_x[{0,0}];
+            for (auto& p : custom_x) p.second -= root_offset;
+        } 
+        else if (mode == LEVEL_ORDER) {
+            for (auto const& node : nodes) {
+                // 直接依據其在該層的序號 (order) 給予等距座標
+                custom_x[{node.first, node.second}] = node.second * dx;
+            }
+        }
+        else if (mode == INORDER) {
+            double cursor = 0.0;
+            std::function<void(int, int)> inorder = [&](int d, int o) {
+                if (nodes.count({d, o}) == 0) return;
+                // 分支度支援多子節點，這裡將其分為兩半來模擬中序
+                int mid = degree / 2;
+                // 左半部分
+                for (int i = 0; i < mid; i++) inorder(d + 1, o * degree + i);
+                // 自己
+                custom_x[{d, o}] = cursor;
+                cursor += dx;
+                // 右半部分
+                for (int i = mid; i < degree; i++) inorder(d + 1, o * degree + i);
+            };
+            inorder(0, 0);
+            
+            // 統一對齊：讓 Root 在 0
+            if (nodes.count({0,0})) {
+                double root_offset = custom_x[{0,0}];
+                for (auto& p : custom_x) p.second -= root_offset;
+            }
+        }
+        else if (mode == BINARY) {
+            // 先找出最大深度
+            int max_h = 0;
+            for (auto const& node : nodes) max_h = max(max_h, node.first);
+            
+            for (auto const& node : nodes) {
+                int d = node.first;
+                int o = node.second;
+                // 每個節點在底層佔據的寬度為 pow(degree, max_h - d) * dx
+                double span = pow(degree, max_h - d) * dx;
+                // 節點位於其佔據範圍的中心：(o * span) + (span / 2.0)
+                custom_x[{d, o}] = (o * span) + (span / 2.0);
+            }
+            // 統一對齊：讓 Root 在 0 (雖然 root 必在 0.5*span，但減掉後能對齊 root_pos)
+            if (nodes.count({0,0})) {
+                double root_offset = custom_x[{0,0}];
+                for (auto& p : custom_x) p.second -= root_offset;
+            }
+        }
     }
 
     // --- 定位與識別工具 ---
