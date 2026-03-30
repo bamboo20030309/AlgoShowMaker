@@ -5,7 +5,7 @@ using namespace std;
 int N;
 //draw{
 AV av;
-TreeLayout tree(3, Pos(500, 500), 10, 80.0, 220.0);
+TreeLayout tree(3, Pos(500, 500), 80.0, 220.0);
 map<string, deque<int>> pegs;
 vector<string> ans; // 儲存搬運記錄
 map<pair<int, int>, string> custom_colors;
