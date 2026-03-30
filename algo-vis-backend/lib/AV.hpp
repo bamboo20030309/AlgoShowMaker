@@ -1175,6 +1175,7 @@ struct TreeLayout {
     std::map<pair<int,int>, string> vals; // 改用 string，支援 "5" 或 "3+2"
     std::map<pair<int,int>, int> results; // 節點計算完的結果
     std::map<pair<int,int>, string> edge_colors; // 紀錄從該節點指向父節點的線條顏色
+    std::map<pair<int,int>, string> node_colors; // 紀錄個別節點的背景顏色 (例如 "red", "green")
     typedef std::function<void(string id, Pos p, int d, int o, bool is_focus)> Renderer;
     Renderer renderer = nullptr; 
 
@@ -1234,10 +1235,10 @@ struct TreeLayout {
             if (show_edges && d > 0) {
                 string pid = get_id(d - 1, o / degree);
                 string color = "black";
-                if (active_path.count({d, o}) && active_path.count({d-1, o/degree})) {
-                    color = "orange";
-                } else if (edge_colors.count({d, o})) {
+                if (edge_colors.count({d, o})) {
                     color = edge_colors[{d, o}];
+                } else if (active_path.count({d, o}) && active_path.count({d-1, o/degree})) {
+                    color = "orange";
                 }
 
                 // 透過 key 屬性讓前端 drawArrow 能夠根據唯一的 ID 做 tween 動畫
