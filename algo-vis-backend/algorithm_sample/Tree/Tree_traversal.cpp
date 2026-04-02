@@ -120,7 +120,7 @@ void traverse(Node* root, int flag) {
         av.start_frame_draw();
         draw_tree_content();
         av.text(msg, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 10));
-        av.auto_camera(0.95, 120, 40);
+        av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
     }
@@ -132,7 +132,7 @@ void traverse(Node* root, int flag) {
         tree.edge_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
         av.start_frame_draw();
         draw_tree_content();
-        av.auto_camera(0.95, 120, 40);
+        av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
         traverse(root->left, flag);
@@ -154,7 +154,7 @@ void traverse(Node* root, int flag) {
         av.start_frame_draw();
         draw_tree_content();
         av.text(msg, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 10));
-        av.auto_camera(0.95, 120, 40);
+        av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
     }
@@ -166,7 +166,7 @@ void traverse(Node* root, int flag) {
         tree.edge_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
         av.start_frame_draw();
         draw_tree_content();
-        av.auto_camera(0.95, 120, 40);
+        av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
         traverse(root->right, flag);
@@ -188,7 +188,7 @@ void traverse(Node* root, int flag) {
         av.start_frame_draw();
         draw_tree_content();
         av.text(msg, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 10));
-        av.auto_camera(0.95, 120, 40);
+        av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
     }
@@ -207,7 +207,7 @@ void levelorder(Node* root) {
     vector<array_style> q_st = { {{"highlight"}, {0}}, {{"point"}, {0}} };
     av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), q_st, {0}, "queue");
     av.text("將起始點節點加入佇列", Pos("queue", 0, "top", 0, -70));
-    av.auto_camera(0.95, 120, 40);
+    av.auto_camera(0.85, 0, 20);
     av.end_frame_draw();
     //}
     while (!q.empty()) {
@@ -218,7 +218,7 @@ void levelorder(Node* root) {
         vector<array_style> pop_st = { {{"highlight"}, {0}}, {{"point"}, {0}} };
         av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), pop_st, {0}, "queue");
         av.text("準備從{佇列:柱列}取出下一個節點來搜尋", Pos("queue", 0,"top", 0, -70));
-        av.auto_camera(0.95, 120, 40);
+        av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
         auto [node, d, o] = q.front(); q.pop();
@@ -233,7 +233,7 @@ void levelorder(Node* root) {
             av.start_frame_draw();
             draw_tree_content();
             av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), {}, {0}, "queue");
-            av.auto_camera(0.95, 120, 40);
+            av.auto_camera(0.85, 0, 20);
             av.end_frame_draw();
         }
         // 影格 2: 再將節點變綠
@@ -247,7 +247,7 @@ void levelorder(Node* root) {
         draw_tree_content(); // 輸出時要 highlight+point
         av.text(msg, Pos(tree.get_id(d, o), "bottom", 0, 10));
         av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), {}, {0}, "queue");
-        av.auto_camera(0.95, 120, 40);
+        av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
         
@@ -261,7 +261,7 @@ void levelorder(Node* root) {
             vector<array_style> q_st = {};
             av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), q_st, {0}, "queue");
             av.text("將左子節點加入佇列", Pos(tree.get_id(d + 1, o * 2), "top", 0, -50));
-            av.auto_camera(0.95, 120, 40);
+            av.auto_camera(0.85, 0, 20);
             av.end_frame_draw();
             //}
         }
@@ -275,7 +275,7 @@ void levelorder(Node* root) {
             vector<array_style> q_st = {};
             av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), q_st, {0}, "queue");
             av.text("將右子節點加入佇列", Pos(tree.get_id(d + 1, o * 2 + 1), "top", 0, -50));
-            av.auto_camera(0.95, 120, 40);
+            av.auto_camera(0.85, 0, 20);
             av.end_frame_draw();
             //}
         }
@@ -316,7 +316,7 @@ int main() {
             av.start_frame_draw();
             draw_tree_content();
             av.text(task_msg, Pos(tree.get_id(0, 0), "top", 0, -60)); // 綁定在 Root 節點上方
-            av.auto_camera(0.95, 120, 40);
+            av.auto_camera(0.85, 0, 20);
             av.end_frame_draw();
             //}
             
@@ -341,7 +341,7 @@ int main() {
             av.key_text("遍歷完成！", Pos(tree.get_id(0, 0), "top", 0, -60));
 
             av.text("遍歷完成！", Pos(tree.get_id(0, 0), "top", 0, -60));
-            av.auto_camera(0.95, 120, 40);
+            av.auto_camera(0.85, 0, 20);
             av.end_frame_draw();
             //}
         }
