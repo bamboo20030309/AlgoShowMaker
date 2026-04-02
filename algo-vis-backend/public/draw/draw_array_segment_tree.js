@@ -24,7 +24,7 @@
     style,
     index_range,
     index,
-    gap_y = 0,
+    gap = 0,
     segment_lazy = [],
     segment_sets = [],
     segment_index,
@@ -97,10 +97,10 @@
     CDVS       = normalizeIndex(CDVS);
 
     const levels    = Math.ceil(Math.log2(ranged_array.length + 1));
-    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; 
+    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap; 
     const hPerLevel = rowH;
     const width     = (1 << (levels - 1));       // 最底層葉子數（可能比實際節點多，用滿二的次冪）
-    const totalW    = baseBoxSize * width;
+    const totalW    = (baseBoxSize + gap) * width;
     const rows      = (levels == 0 ? 1 : levels);
     const cols      = (width  >  0 ? width : 1 );
 
@@ -120,7 +120,7 @@
     });
 
     // 你原本的外框呼叫（保留不動）
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  // 畫/更新外框
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap : 0), totalW);  // 畫/更新外框
 
     const Max = Math.max(...ranged_array);
     let index_cnt = 1;

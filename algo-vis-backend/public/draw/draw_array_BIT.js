@@ -1,8 +1,8 @@
 // draw_array_BiTxt.js
-;(function() {
+; (function () {
   const NS = 'http://www.w3.org/2000/svg';
   const baseBoxSize = 40;   // 每個節點方塊的基本寬度（也當作高度）
-  const indexBoxH   = 12;   // 索引區高度
+  const indexBoxH = 12;   // 索引區高度
   const outerframe_padding = 8; // 外框與內容的間距
 
   /**
@@ -21,16 +21,16 @@
     style,
     index_range,
     index,
-    gap_y = 0
+    gap = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
 
     //正規化各個陣列的索引值
-    function normalizeIndex(input){
+    function normalizeIndex(input) {
       return input = input
-               .map(i => i - index_range[0])
-               .filter(i => Number.isInteger(i) && i >= 0 && i <= index_range[1]-index_range[0]);
-    }   
+        .map(i => i - index_range[0])
+        .filter(i => Number.isInteger(i) && i >= 0 && i <= index_range[1] - index_range[0]);
+    }
 
     //正規化各個陣列的索引值
     function normalize(styleList) {
@@ -42,40 +42,41 @@
         const newiTxtem = { ...iTxtem }; // 複製物件
         if (Array.isArray(iTxtem.elements)) {
           newiTxtem.elements = iTxtem.elements
-             .map(i => i - index_range[0])
-             .filter(i => Number.isInteger(i) && i >= 0 && i <= index_range[1]-index_range[0]);
+            .map(i => i - index_range[0])
+            .filter(i => Number.isInteger(i) && i >= 0 && i <= index_range[1] - index_range[0]);
         }
         return newiTxtem;
       });
     }
 
     // 根據 style.type 分組
-    let highlight      = style.filter(s => s.type === "highlight");
-    let focus          = style.find(s => s.type === "focus")      ?.elements ?? [];
-    let point          = style.filter(s => s.type === "point");
-    let mark           = style.filter(s => s.type === "mark");
-    let background     = style.filter(s => s.type === "background");
-    let CDVS           = style.find(s => s.type === "CDVS")       ?.elements ?? [];
-    
-    highlight  = normalize(highlight);
-    focus      = normalizeIndex(focus);
-    point      = normalize(point);
-    mark       = normalize(mark);
+    let highlight = style.filter(s => s.type === "highlight");
+    let focus = style.find(s => s.type === "focus")?.elements ?? [];
+    let point = style.filter(s => s.type === "point");
+    let mark = style.filter(s => s.type === "mark");
+    let background = style.filter(s => s.type === "background");
+    let CDVS = style.find(s => s.type === "CDVS")?.elements ?? [];
+
+    highlight = normalize(highlight);
+    focus = normalizeIndex(focus);
+    point = normalize(point);
+    mark = normalize(mark);
     background = normalize(background);
-    CDVS       = normalizeIndex(CDVS);
+    CDVS = normalizeIndex(CDVS);
 
     // 計算全陣列可能出現的最大寬度單位 (2^k)，以決定最底層為何
-    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; 
-    const Max_cols = Math.max(...ranged_array.map((_, j) => ((j + 1) & -(j + 1)))); 
+    const colW = baseBoxSize + gap;  // 每個底層單位的水平步進
+    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4 ? indexBoxH : 0) + gap;
+    const Max_cols = Math.max(...ranged_array.map((_, j) => ((j + 1) & -(j + 1))));
     const rows = Math.log2(Max_cols);                                               //行高
     const cols = (array.length > 1 ? array.length - 1 : 1);                         //列寬
-    const outerframe_height = (rows > 0 ? (rows + 1) : 1);                          
+    const outerframe_height = (rows > 0 ? (rows + 1) : 1);
 
     // 把 BIT 排版資訊記在 g 上，給 getPosition 用
     g.setAttribute('data-layout', 'BIT');
     g.setAttribute('data-bit-rows', String(rows));
     g.setAttribute('data-row-height', String(rowH)); // 統一使用 data-row-height
-    g.setAttribute('data-box-size', String(baseBoxSize));
+    g.setAttribute('data-box-size', String(colW));
 
     // 方案 1：影格預索引與標記不活躍
     const nodeMap = new Map();
@@ -84,25 +85,25 @@
       child.setAttribute('data-alive', '0');
     });
 
-    window.draw_array_outerframe(g, groupID, outerframe_height * rowH - (outerframe_height > 0 ? gap_y : 0), cols * baseBoxSize);  // 畫/更新外框
-    
+    window.draw_array_outerframe(g, groupID, outerframe_height * rowH - (outerframe_height > 0 ? gap : 0), cols * colW);  // 畫/更新外框
+
     let index_cnt = index_range[0];
     // 1. 繪製所有節點
     ranged_array.forEach((v, i) => {
       const idx = i + 1;
       const widthUniTxts = idx & -idx;          // e.g. 1,2,4,8,...
       const layer = Math.log2(widthUniTxts);    // 層級 0-based
-      const w = baseBoxSize * widthUniTxts;     // 寬度 = baseBoxSize × 單位數
-      const y = (rows - layer) * rowH + outerframe_padding  ;
+      const w = colW * widthUniTxts;     // 寬度 = colW × 單位數
+      const y = (rows - layer) * rowH + outerframe_padding;
       const idxInLayer = Math.floor(i / widthUniTxts);
       const x = idxInLayer * w + outerframe_padding;
 
-      const haveFocus        =       focus.length  > 0 ?  focus.includes(i) : true;
-      const haveBackground   =  background.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
-      const background_color = (background.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "rgb(231, 144, 255)";
+      const haveFocus = focus.length > 0 ? focus.includes(i) : true;
+      const haveBackground = background.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+      const background_color = (background.findLast(m => Array.isArray(m.elements) && m.elements.includes(i))?.color?.trim() || "") || "rgb(231, 144, 255)";
 
-      let fillColor = haveFocus       ? '#fff' : '#ccc';
-          fillColor = haveBackground  ? background_color : fillColor;
+      let fillColor = haveFocus ? '#fff' : '#ccc';
+      fillColor = haveBackground ? background_color : fillColor;
 
       if (CDVS.includes(i)) {
         const ratio = Math.min(v / Max, 1); // 限制在 0~1
@@ -117,12 +118,12 @@
       draw_block(g, x, y, array_content, w, baseBoxSize, fillColor, `cell-${groupID}-${i}`, nodeMap);
 
       // 畫 index
-      if (index==1 || index>=3) {
-        const lbl = index>=3 ? (index_range[0] + i).toString(2).padStart(
-              index>=4 ? (index_range[0] + ranged_array.length - 1).toString(2).length : 0,
-              '0'
-            ) : (index_range[0] + i).toString();
-        
+      if (index == 1 || index >= 3) {
+        const lbl = index >= 3 ? (index_range[0] + i).toString(2).padStart(
+          index >= 4 ? (index_range[0] + ranged_array.length - 1).toString(2).length : 0,
+          '0'
+        ) : (index_range[0] + i).toString();
+
         draw_block(g, x, y + baseBoxSize, lbl, w, indexBoxH, fillColor, `cell-${groupID}-${i}-index`, nodeMap);
       }
       index_cnt++;
@@ -133,22 +134,22 @@
       const idx = i + 1;
       const widthUniTxts = idx & -idx;          // e.g. 1,2,4,8,...
       const layer = Math.log2(widthUniTxts);    // 層級 0-based
-      const w = baseBoxSize * widthUniTxts;     // 寬度 = baseBoxSize × 單位數
-      const y = (rows - layer) * rowH + outerframe_padding  ;
+      const w = colW * widthUniTxts;     // 寬度 = colW × 單位數
+      const y = (rows - layer) * rowH + outerframe_padding;
       const idxInLayer = Math.floor(i / widthUniTxts);
       const x = idxInLayer * w + outerframe_padding;
 
-      const haveHighlight    =   highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
-      const havePoint        =       point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
-      const haveMark         =        mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+      const haveHighlight = highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+      const havePoint = point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+      const haveMark = mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
 
-      const highlight_color  =  (highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "red";
-      const point_color      =      (point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "red";
-      const mark_color       =       (mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i)) ?.color?.trim() || "") || "limegreen";
+      const highlight_color = (highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i))?.color?.trim() || "") || "red";
+      const point_color = (point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i))?.color?.trim() || "") || "red";
+      const mark_color = (mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i))?.color?.trim() || "") || "limegreen";
 
       // 畫各式各樣的提示元件 (使用 nodeMap 加速)
-      if (window.HintWidgets){
-        const indexH = (index==1 || index>=3 ? indexBoxH : 0);
+      if (window.HintWidgets) {
+        const indexH = (index == 1 || index >= 3 ? indexBoxH : 0);
         // 高光框框
         if (haveHighlight) {
           const hId = `highlight-${groupID}-${i}`;
@@ -174,7 +175,7 @@
       }
     });
   }
-    
+
 
   // === BIT 專用：由 groupID + index 算出節點中心座標 ===
   function getBITPosition(groupID, index, anchor) {
@@ -189,15 +190,16 @@
     const rowH = parseFloat(g.getAttribute('data-row-height') || String(baseBoxSize));
 
     // index 是 ranged_array 裡的索引（0-based）
-    const i   = index | 0;
+    const i = index | 0;
     const idx = i + 1;
     if (idx <= 0) return { x: 0, y: 0 };
 
     // 與 draw_array_BIT 裡完全同一套公式
     const widthUnits = idx & -idx;                   // 1,2,4,8,...
-    const layer      = Math.log2(widthUnits);        // 第幾層（0-based）
-    const w          = baseBoxSize * widthUnits;     // 該節點方塊寬度
-    const yLocalTop  = (rows - layer) * rowH;        // 該層的 y
+    const layer = Math.log2(widthUnits);        // 第幾層（0-based）
+    const colW = parseFloat(g.getAttribute('data-box-size') || String(baseBoxSize));
+    const w = colW * widthUnits;            // 該節點方塊寬度
+    const yLocalTop = (rows - layer) * rowH;        // 該層的 y
     const idxInLayer = Math.floor(i / widthUnits);   // 此層中的第幾個
     const xLocalLeft = idxInLayer * w;               // 左上角 x
 
@@ -214,13 +216,13 @@
 
 
     const a = (anchor || 'center').toLowerCase();
-    
+
     let finalX = boxX + w / 2; // 預設 Center
     let finalY = boxY + baseBoxSize / 2; // 預設 Center
 
-    if (a.includes('left'))   finalX = boxX;
-    if (a.includes('right'))  finalX = boxX + w;
-    if (a.includes('top'))    finalY = boxY;
+    if (a.includes('left')) finalX = boxX;
+    if (a.includes('right')) finalX = boxX + w;
+    if (a.includes('top')) finalY = boxY;
     if (a.includes('bottom')) finalY = boxY + baseBoxSize;
 
     return { x: finalX, y: finalY };

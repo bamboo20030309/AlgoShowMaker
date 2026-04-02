@@ -21,7 +21,7 @@
     style,
     index_range,
     index,
-    gap_y = 0
+    gap = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
     
@@ -65,10 +65,10 @@
     CDVS       = normalizeIndex(CDVS);
     
     const levels    = Math.ceil(Math.log2(ranged_array.length + 1));
-    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; 
+    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap; 
     const hPerLevel = rowH;
     const width     = (1 << (levels - 1));
-    const totalW    = baseBoxSize * width;
+    const totalW    = (baseBoxSize + gap) * width;
     const rows      = (levels == 0 ? 1 : levels);
     const cols      = (width  >  0 ? width : 1 );
 
@@ -86,7 +86,7 @@
       child.setAttribute('data-alive', '0');
     });
 
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  // 畫/更新外框
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap : 0), totalW);  // 畫/更新外框
     
     let index_cnt = index_range[0];
     // 1. 繪製所有節點 (O(1) 拿物件)

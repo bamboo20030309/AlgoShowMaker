@@ -45,6 +45,7 @@
    * @param {string}           draw_type  // "normal" , "heap" , "segment_tree" , "BIT"
    * @param {number}           itemsPerRow
    * @param {number}           index                - 0 = element, 1 = element + index, 2 = index, 3 = element + index_bin, 4 = element + index_bin_padZero
+   * @param {number}           gap                  - 格子之間的間距
    * @param {Array}            segment_lazy         - 線段樹的lazy部分
    * @param {Array}            segment_sets         - 線段樹的sets部分
    * @param {Array}            segment_index        - 要畫區段的格子(為一段格子上色)
@@ -62,7 +63,7 @@
     draw_type = "normal",
     itemsPerRow = Infinity,
     index = 0,
-    gap_y = 0,
+    gap = 0,
     segment_lazy = [],
     segment_sets = [],
     segment_index = [],
@@ -141,25 +142,25 @@
 
       case 'normal':
         window.draw_array_normal(
-          g, groupID, array, style, index_range, itemsPerRow, index, gap_y
+          g, groupID, array, style, index_range, itemsPerRow, index, gap
         );
         break;
 
       case 'heap':
         window.draw_array_heap(
-          g, groupID, array, style, index_range, index, gap_y
+          g, groupID, array, style, index_range, index, gap
         );
         break;
 
       case 'segment_tree':
         window.draw_array_segment_tree(
-          g, groupID, array, style, index_range, index, gap_y, segment_lazy, segment_sets, segment_index, segment_left, segment_right, segmemt_font_colors, segmemt_bg_colors
+          g, groupID, array, style, index_range, index, gap, segment_lazy, segment_sets, segment_index, segment_left, segment_right, segmemt_font_colors, segmemt_bg_colors
         );
         break;
 
       case 'BIT':
         window.draw_array_BIT(
-          g, groupID, array, style, index_range, index, gap_y
+          g, groupID, array, style, index_range, index, gap
         );
         break;
 
@@ -171,20 +172,20 @@
 
       case 'stack':
         window.draw_array_stack(
-          g, groupID, array, style, index_range, index, gap_y
+          g, groupID, array, style, index_range, index, gap
         );
         break;
 
       case 'queue':
         window.draw_array_queue(
-          g, groupID, array, style, index_range, index, gap_y
+          g, groupID, array, style, index_range, index, gap
         );
         break;
 
       default:
         // 萬一沒傳或傳錯，就當成 normal
         window.draw_array_normal(
-          g, groupID, array, style, index_range, itemsPerRow, index, gap_y
+          g, groupID, array, style, index_range, itemsPerRow, index, gap
         );
     }
 

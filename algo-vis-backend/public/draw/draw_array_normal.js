@@ -14,7 +14,7 @@
    * @param {Array[2]}         index_range          - 實際顯示的索引起點（通常等於 range[0]）固定兩格 左邊界及右邊界
    * @param {number}           itemsPerRow          - 每列格數
    * @param {number}           index                - 是否顯示每格下方的索引區
-   * @param {number}           gap_y                - 每列之間的垂直間距
+   * @param {number}           gap                  - 格子之間的間距（水平與垂直皆適用）
    */
 
   function draw_array_normal(
@@ -25,7 +25,7 @@
     index_range = [],
     itemsPerRow = Infinity,
     index = 0,
-    gap_y = 0
+    gap = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
 
@@ -68,7 +68,8 @@
     background = normalize(background);
     CDVS       = normalizeIndex(CDVS);
     
-    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap_y; //索引高度 有就是12 沒有就是0 + 間距
+    const colW = baseBoxSize + gap;  // 每格水平步進（格子寬 + 間距）
+    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap; //索引高度 有就是12 沒有就是0 + 間距
     if (!isFinite(itemsPerRow) || itemsPerRow < 1) itemsPerRow = ranged_array.length;
     let cols = Math.min(ranged_array.length, itemsPerRow);                              //列寬
     let rows = Math.ceil(ranged_array.length / itemsPerRow);                            //行高
@@ -79,7 +80,8 @@
     g.setAttribute('data-items-per-row', String(itemsPerRow));
     g.setAttribute('data-layout', 'normal');
     g.setAttribute('data-index-start', String(index_range[0])); 
-    g.setAttribute('data-row-height', String(rowH)); // 修正：存入正確的行高資訊 (包含 gap_y)
+    g.setAttribute('data-row-height', String(rowH)); // 存入正確的行高資訊 (包含 gap)
+    g.setAttribute('data-col-width', String(colW));   // 存入正確的列寬資訊 (包含 gap)
     // 方案 1：影格預索引與標記不活躍
     const nodeMap = new Map();
     Array.from(g.children).forEach(child => {
@@ -87,14 +89,14 @@
       child.setAttribute('data-alive', '0');
     });
 
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap_y : 0), cols * baseBoxSize);  // 畫/更新外框
+    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap : 0), cols * colW - (cols > 0 ? gap : 0));  // 畫/更新外框
 
     let index_cnt = index_range[0];
     // 1. 繪製所有節點 (O(1) 拿物件)
     ranged_array.forEach((v, i) => {
       const r = Math.floor(i / itemsPerRow),
             c = i % itemsPerRow;
-      const x = c * baseBoxSize + outerframe_padding,
+      const x = c * colW + outerframe_padding,
             y = r * rowH + outerframe_padding;
       
       const haveFocus        =       focus.length  > 0 ?  focus.includes(i) : true;
@@ -132,7 +134,7 @@
     ranged_array.forEach((v, i) => {
       const r = Math.floor(i / itemsPerRow),
             c = i % itemsPerRow;
-      const x = c * baseBoxSize + outerframe_padding,
+      const x = c * colW + outerframe_padding,
             y = r * rowH + outerframe_padding;
 
       const haveHighlight    =   highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
@@ -200,9 +202,10 @@
     const [dx, dy]       = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
 
     // 3. 計算該格子的「左上角」座標
-    // X 軸間距固定是 baseBoxSize
-    // Y 軸間距是 rowH (包含 index 高度)
-    const boxX = baseX + dx + (col * baseBoxSize) + outerframe_padding;
+    // X 軸間距是 colW (包含 gap)
+    // Y 軸間距是 rowH (包含 index 高度 + gap)
+    const colW = parseFloat(g.getAttribute('data-col-width') || baseBoxSize);
+    const boxX = baseX + dx + (col * colW) + outerframe_padding;
     const boxY = baseY + dy + (row * rowH) + outerframe_padding;
 
     // 4. 根據 Anchor 計算最終位置
