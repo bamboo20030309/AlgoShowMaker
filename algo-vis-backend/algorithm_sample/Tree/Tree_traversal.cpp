@@ -4,8 +4,9 @@ using namespace std;
 
 //draw{
 AV av;
-TreeLayout tree(2, Pos(500, 100), 80.0, 200.0, "tree");
+TreeLayout tree("tree", 2, Pos(500, 100), 80.0, 200.0);
 bool first_visit = true; // 用於判斷是否為遍歷中的首次訪問
+vector<int> ans;         // 用於儲存遍歷結果
 
 struct Node {
     int val;
@@ -59,6 +60,9 @@ void draw_tree_content(bool show_focus = true) {
         }
     }
     if (!show_focus) tree.curr_d = old_d;
+    if (!ans.empty()) {
+        av.frame_draw("ans", Pos("tree", "bottom-left", 40, 120.0), ans, {}, {0}, "normal", 0, 0, 40);
+    }
     av.accu_draw();
 }
 //}
@@ -112,10 +116,11 @@ void traverse(Node* root, int flag) {
         first_visit = false;
 
         tree.node_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
+        ans.push_back(root->val);
         av.start_frame_draw();
         draw_tree_content();
         av.text(msg, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 10));
-        av.auto_camera(0.85);
+        av.auto_camera(0.95, 120, 40);
         av.end_frame_draw();
         //}
     }
@@ -127,7 +132,7 @@ void traverse(Node* root, int flag) {
         tree.edge_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
         av.start_frame_draw();
         draw_tree_content();
-        av.auto_camera(0.85);
+        av.auto_camera(0.95, 120, 40);
         av.end_frame_draw();
         //}
         traverse(root->left, flag);
@@ -145,10 +150,11 @@ void traverse(Node* root, int flag) {
         first_visit = false;
 
         tree.node_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
+        ans.push_back(root->val);
         av.start_frame_draw();
         draw_tree_content();
         av.text(msg, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 10));
-        av.auto_camera(0.85);
+        av.auto_camera(0.95, 120, 40);
         av.end_frame_draw();
         //}
     }
@@ -160,7 +166,7 @@ void traverse(Node* root, int flag) {
         tree.edge_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
         av.start_frame_draw();
         draw_tree_content();
-        av.auto_camera(0.85);
+        av.auto_camera(0.95, 120, 40);
         av.end_frame_draw();
         //}
         traverse(root->right, flag);
@@ -178,10 +184,11 @@ void traverse(Node* root, int flag) {
         first_visit = false;
 
         tree.node_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
+        ans.push_back(root->val);
         av.start_frame_draw();
         draw_tree_content();
         av.text(msg, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 10));
-        av.auto_camera(0.85);
+        av.auto_camera(0.95, 120, 40);
         av.end_frame_draw();
         //}
     }
@@ -191,8 +198,33 @@ void levelorder(Node* root) {
     if (!root) return;
     queue<tuple<Node*, int, int>> q;
     q.push({root, 0, 0});
+    //draw{
+    queue<int> q_val;
+    q_val.push(root->val);
+    
+    av.start_frame_draw();
+    draw_tree_content();
+    vector<array_style> q_st = { {{"highlight"}, {0}}, {{"point"}, {0}} };
+    av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), q_st, {0}, "queue");
+    av.text("將起始點節點加入佇列", Pos("queue", 0, "top", 0, -70));
+    av.auto_camera(0.95, 120, 40);
+    av.end_frame_draw();
+    //}
     while (!q.empty()) {
+        //draw{
+        av.start_frame_draw();
+        draw_tree_content(false); // 拿出來時 tree 不要 highlight+point
+        // 將 Queue 的第一個 (準備拿出來的) 格子 highlight+point
+        vector<array_style> pop_st = { {{"highlight"}, {0}}, {{"point"}, {0}} };
+        av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), pop_st, {0}, "queue");
+        av.text("準備從{佇列:柱列}取出下一個節點來搜尋", Pos("queue", 0,"top", 0, -70));
+        av.auto_camera(0.95, 120, 40);
+        av.end_frame_draw();
+        //}
         auto [node, d, o] = q.front(); q.pop();
+        //draw{
+        q_val.pop();
+        //}
         cout << node->val << " ";
         //draw{
         tree.curr_d = d; tree.curr_o = o;
@@ -200,25 +232,53 @@ void levelorder(Node* root) {
             tree.edge_colors[{d, o}] = "#a5d6a7";
             av.start_frame_draw();
             draw_tree_content();
-            av.text("層序遍歷：移動到下一層節點...", Pos(tree.get_id(d, o), "bottom", 0, 10));
-            av.auto_camera(0.85);
+            av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), {}, {0}, "queue");
+            av.auto_camera(0.95, 120, 40);
             av.end_frame_draw();
         }
         // 影格 2: 再將節點變綠
-        //draw{
-        string msg = "層序：依序輸出";
-        if (!first_visit) msg = "{層序：依序}輸出";
+        string msg = "層序：按照深度順序輸出";
+        if (!first_visit) msg = "{層序：按照深度順序}輸出";
         first_visit = false;
 
         tree.node_colors[{d, o}] = "#a5d6a7";
+        ans.push_back(node->val);
         av.start_frame_draw();
-        draw_tree_content();
+        draw_tree_content(); // 輸出時要 highlight+point
         av.text(msg, Pos(tree.get_id(d, o), "bottom", 0, 10));
-        av.auto_camera(0.85);
+        av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), {}, {0}, "queue");
+        av.auto_camera(0.95, 120, 40);
         av.end_frame_draw();
         //}
-        if (node->left) q.push({node->left, d + 1, o * 2});
-        if (node->right) q.push({node->right, d + 1, o * 2 + 1});
+        
+        if (node->left) {
+            q.push({node->left, d + 1, o * 2});
+            //draw{
+            q_val.push(node->left->val);
+            tree.edge_colors[{d + 1, o * 2}] = "#a5d6a7"; // 標記為探查中
+            av.start_frame_draw();
+            draw_tree_content();
+            vector<array_style> q_st = {};
+            av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), q_st, {0}, "queue");
+            av.text("將左子節點加入佇列", Pos(tree.get_id(d + 1, o * 2), "top", 0, -50));
+            av.auto_camera(0.95, 120, 40);
+            av.end_frame_draw();
+            //}
+        }
+        if (node->right) {
+            q.push({node->right, d + 1, o * 2 + 1});
+            //draw{
+            q_val.push(node->right->val);
+            tree.edge_colors[{d + 1, o * 2 + 1}] = "#a5d6a7"; // 標記為探查中
+            av.start_frame_draw();
+            draw_tree_content();
+            vector<array_style> q_st = {};
+            av.frame_draw("queue", Pos(tree.get_id(0, 0), "top-right", 180, 0), AV::to_vector(q_val), q_st, {0}, "queue");
+            av.text("將右子節點加入佇列", Pos(tree.get_id(d + 1, o * 2 + 1), "top", 0, -50));
+            av.auto_camera(0.95, 120, 40);
+            av.end_frame_draw();
+            //}
+        }
     }
 }
 
@@ -229,7 +289,8 @@ int main() {
         vector<array_style> st;
         if (focus) { st.push_back({{"highlight"}, {0}}); st.push_back({{"point"}, {0}}); }
         if (tree.node_colors.count({d, o})) st.push_back({{"background", tree.node_colors[{d, o}]}, {0}});
-        av.frame_draw(id, p, vector<string>{val}, st);
+        if (tree._is_key_drawing) av.key_frame_draw(id, p, vector<string>{val}, st);
+        else                      av.frame_draw(id, p, vector<string>{val}, st);
     };
     av.start_draw();
     tree.mode = TreeLayout::INORDER;
@@ -247,22 +308,23 @@ int main() {
             //draw{
             string task_msg = "";
             if (val == 0) task_msg = "現在要執行 前序遍歷 (Pre-order)";
-            else if (val == 1) task_msg = "現在要執行 中序遍歷 (In-order)";
-            else if (val == 2) task_msg = "現在要執行 後序遍歷 (Post-order)";
-            else if (val == 3) task_msg = "現在要執行 層序遍歷 (Level-order)";
+            if (val == 1) task_msg = "現在要執行 中序遍歷 (In-order)";
+            if (val == 2) task_msg = "現在要執行 後序遍歷 (Post-order)";
+            if (val == 3) task_msg = "現在要執行 層序遍歷 (Level-order)";
             
+            ans.clear();
             av.start_frame_draw();
             draw_tree_content();
             av.text(task_msg, Pos(tree.get_id(0, 0), "top", 0, -60)); // 綁定在 Root 節點上方
-            av.auto_camera(0.85);
+            av.auto_camera(0.95, 120, 40);
             av.end_frame_draw();
             //}
             
             //draw{
             first_visit = true; // 每次執行新遍歷前，重置標記
             //}
-            if (val >= 0 && val <= 2) traverse(Root, val);
-            else if (val == 3) levelorder(Root);
+            if (val <= 2) traverse(Root, val);
+            if (val == 3) levelorder(Root);
             cout << endl;
 
             //draw{
@@ -271,8 +333,15 @@ int main() {
             tree.curr_d = 0; tree.curr_o = 0;
             av.start_frame_draw();
             draw_tree_content(false);
-            av.text("遍歷完成！已清除標記", Pos(tree.get_id(0, 0), "top", 0, -60));
-            av.auto_camera(0.85);
+            // 關鍵影格：將樹、結果陣列、文字同步到 track 1
+            tree.show_edges = true;  // 暫時開啟，讓 key_redraw 畫箭頭
+            tree.key_redraw(av);
+            tree.show_edges = false; // 關回來
+            av.key_frame_draw("ans", Pos("tree", "bottom-left", 40, 120.0), ans, {}, {0}, "normal", 0, 0, 40);
+            av.key_text("遍歷完成！", Pos(tree.get_id(0, 0), "top", 0, -60));
+
+            av.text("遍歷完成！", Pos(tree.get_id(0, 0), "top", 0, -60));
+            av.auto_camera(0.95, 120, 40);
             av.end_frame_draw();
             //}
         }
