@@ -1179,7 +1179,8 @@ struct TreeLayout {
     std::map<pair<int,int>, string> edge_colors; // 紀錄從該節點指向父節點的線條顏色
     std::map<pair<int,int>, string> node_colors; // 紀錄個別節點的背景顏色 (例如 "red", "green")
     typedef std::function<void(string id, Pos p, int d, int o, bool is_focus)> Renderer;
-    Renderer renderer = nullptr; 
+    Renderer renderer = nullptr;
+    bool _is_key_drawing = false; // key_redraw 時設為 true，renderer 可讀取此旗標 
 
     // 遞迴路徑追蹤系統
     int curr_d = 0;      // 當前深度
@@ -1270,7 +1271,53 @@ struct TreeLayout {
         dfs(0, 0);
     }
 
-    // 統一畫圖接口 (String 版)
+    void key_redraw(AV& av) {
+        if (!renderer) return;
+        _is_key_drawing = true;
+
+        std::set<pair<int,int>> active_path;
+        active_path.insert({curr_d, curr_o});
+        for(auto p : path_stack) active_path.insert(p);
+
+        // 輸出整棵樹的 Meta 資訊 (track 1)
+        string meta_style = "{ \"layout\": \"tree\", \"minX\": " + to_string(root_pos.x + min_x - dx/2) +
+                            ", \"maxX\": " + to_string(root_pos.x + max_x + dx/2) +
+                            ", \"minY\": " + to_string(root_pos.y + min_y) +
+                            ", \"maxY\": " + to_string(root_pos.y + max_y + 40) + " }";
+        av._content += "                if (track === 1) { setLayoutMeta(\"" + prefix + "\", " + meta_style + "); }\n";
+
+        std::function<void(int, int)> dfs = [&](int d, int o) {
+            if (nodes.find({d, o}) == nodes.end()) return;
+
+            string id = get_id(d, o);
+            Pos p = get_pos(d, o);
+            bool is_focus = (d == curr_d && o == curr_o);
+
+            renderer(id, p, d, o, is_focus); // _is_key_drawing 已為 true
+
+            if (show_edges && d > 0) {
+                string pid = get_id(d - 1, o / degree);
+                string color = "black";
+                if (edge_colors.count({d, o})) {
+                    color = edge_colors[{d, o}];
+                } else if (active_path.count({d, o}) && active_path.count({d-1, o/degree})) {
+                    color = "orange";
+                }
+                vector<pair<string, string>> style = {{"color", color}, {"width", "2"}, {"key", "arrow_" + id}};
+                if (horizontal) {
+                    av.key_arrow(Pos(pid, "right"), Pos(id, "left"), style);
+                } else {
+                    av.key_arrow(Pos(pid, "bottom"), Pos(id, "top"), style);
+                }
+            }
+
+            for (int i = 0; i < degree; i++) {
+                dfs(d + 1, o * degree + i);
+            }
+        };
+        dfs(0, 0);
+        _is_key_drawing = false;
+    }
     // after: 可選 callback，在 frame 關閉前執行 (用來插入 av.text 等)
     void paint(AV& av, string val = "", int res = -1, std::function<void()> after = nullptr) {
         int d = curr_d, o = curr_o;
