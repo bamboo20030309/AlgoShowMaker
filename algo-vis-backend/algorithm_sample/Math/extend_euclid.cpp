@@ -4,7 +4,7 @@ using namespace std;
 
 //draw{
 AV av;
-TreeLayout tree(1, Pos(500, 100), 80.0, 100.0);
+TreeLayout tree("tree", 1, Pos(500, 100), 80.0, 100.0);
 map<pair<int, int>, string> node_vals;
 
 void update_node(int d, int o, int a, int b, string x, string y) {

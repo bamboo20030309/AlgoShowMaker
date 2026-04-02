@@ -4,7 +4,7 @@ using namespace std;
 
 //draw{
 AV av;
-TreeLayout tree(2, Pos(500, 100), 80.0, 200.0);
+TreeLayout tree("tree", 2, Pos(500, 100), 80.0, 200.0);
 bool is_key_frame = false; // 用於控制 renderer 繪製到哪條 track
 
 struct Node {

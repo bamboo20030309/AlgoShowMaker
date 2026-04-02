@@ -6,7 +6,7 @@ AV av;
 //draw{
 // 初始化 TreeLayout，分支度最大為 N (這裡預設先給 8，後面 main 會根據 N 更新)
 // 調整了 dx 跟 dy 把每個盤面的間距拉開
-TreeLayout tree(8, Pos(800, 100), 250.0, 300.0);
+TreeLayout tree("tree", 8, Pos(800, 100), 250.0, 300.0);
 
 // 用來儲存每個 (深度, 順序) 對應的 2D 盤面狀態與攻擊樣式
 map<pair<int,int>, vector<vector<string>>> node_boards;

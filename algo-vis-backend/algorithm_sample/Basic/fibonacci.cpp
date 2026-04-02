@@ -4,7 +4,7 @@ using namespace std;
 
 //draw{
 AV av;
-TreeLayout tree(2, Pos(500, 100), 80.0, 120.0);
+TreeLayout tree("tree", 2, Pos(500, 100), 80.0, 120.0);
 //}
 
 int F(int n) {

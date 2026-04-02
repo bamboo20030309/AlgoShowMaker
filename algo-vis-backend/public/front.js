@@ -1,6 +1,35 @@
 // front.js
 // 前端其餘互動：Ace 初始化、標籤切換、重載 script、動畫控制、分割線拖曳
 
+/**
+ * 設定佈局的 Meta 資訊（邊界、屬性等）
+ * @param {string} groupID 
+ * @param {object} meta 
+ */
+window.setLayoutMeta = function(groupID, meta) {
+  const vp = window.getViewport();
+  if (!vp) return;
+  let g = vp.querySelector('#' + CSS.escape(groupID));
+  if (!g) {
+    g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('id', groupID);
+    g.classList.add('layout-meta-object');
+    vp.appendChild(g);
+  }
+  
+  if (meta.layout) g.setAttribute('data-layout', meta.layout);
+  if (meta.minX !== undefined) g.setAttribute('data-outerframe-left',   meta.minX);
+  if (meta.maxX !== undefined) g.setAttribute('data-outerframe-right',  meta.maxX);
+  if (meta.minY !== undefined) g.setAttribute('data-outerframe-top',    meta.minY);
+  if (meta.maxY !== undefined) g.setAttribute('data-outerframe-bottom', meta.maxY);
+  
+  // 設置一個基準偏移量（通常為 0,0，因為 meta 座標已經包含相對偏移）
+  if (!g.hasAttribute('data-base-offset')) {
+    g.setAttribute('data-base-offset', '0,0');
+    g.setAttribute('data-translate', '0,0');
+  }
+};
+
 // 全域：TTS 是否開聲音（false=靜音，只做默默自動播放）
 let TTS_ENABLED = false;
 

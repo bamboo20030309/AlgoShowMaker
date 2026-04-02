@@ -87,6 +87,7 @@ class AV; // 前向宣告以利 TreeLayout 使用
 
 class AV {
 public:
+    friend struct TreeLayout;
     AV() : _frameCount(0) {
         // 嘗試讀取環境變數
         const char* env_p = getenv("AV_OUTPUT_FILE");
@@ -1170,6 +1171,7 @@ struct TreeLayout {
     std::set<pair<int,int>> nodes; // 記錄目前已經加入的所有節點
     std::map<pair<int,int>, double> custom_x; // 儲存計算好的各種節點 x 座標
     string prefix;   // 物件 ID 前綴
+    double min_x, max_x, min_y, max_y; // 樹的外框邊界
     
     // --- 渲染器模式所需資料 ---
     std::map<pair<int,int>, string> vals; // 改用 string，支援 "5" 或 "3+2"
@@ -1193,8 +1195,9 @@ struct TreeLayout {
         INORDER = 3      // 中序等距：x 由中序走訪順序決定
     } mode = COMPACT;
 
-    TreeLayout(int _degree = 2, Pos _root_pos = Pos(0,0), double _dx = 60.0, double _dy = 120.0, string _prefix = "tree")
-        : degree(_degree), root_pos(_root_pos), dx(_dx), dy(_dy), prefix(_prefix), horizontal(false) {
+    TreeLayout(string _prefix, int _degree = 2, Pos _root_pos = Pos(500,100), double _dx = 60.0, double _dy = 120.0)
+        : prefix(_prefix), degree(_degree), root_pos(_root_pos), dx(_dx), dy(_dy), horizontal(false),
+          min_x(0), max_x(0), min_y(0), max_y(0) {
         }
 
     // 向下追蹤子分支
@@ -1220,6 +1223,13 @@ struct TreeLayout {
         std::set<pair<int,int>> active_path;
         active_path.insert({curr_d, curr_o});
         for(auto p : path_stack) active_path.insert(p);
+
+        // 輸出整棵樹的 Meta 資訊，供 Pos(prefix) 定位使用
+        string meta_style = "{ \"layout\": \"tree\", \"minX\": " + to_string(root_pos.x + min_x - dx/2) + 
+                            ", \"maxX\": " + to_string(root_pos.x + max_x + dx/2) + 
+                            ", \"minY\": " + to_string(root_pos.y + min_y) + 
+                            ", \"maxY\": " + to_string(root_pos.y + max_y + 40) + " }";
+        av._content += "                if (track === 0) { setLayoutMeta(\"" + prefix + "\", " + meta_style + "); }\n";
 
         // 使用 DFS 順序走訪 nodes，這能確保箭頭輸出的順序與 DFS 一致
         // 同時我們為 arrow 加入 key，確保動畫過渡時能準確配對
@@ -1360,6 +1370,17 @@ struct TreeLayout {
                 double root_offset = custom_x[{0,0}];
                 for (auto& p : custom_x) p.second -= root_offset;
             }
+        }
+
+        // 更新樹的邊界資訊
+        min_x = 1e9; max_x = -1e9;
+        min_y = 1e9; max_y = -1e9;
+        for (auto const& node : nodes) {
+            Pos p = get_pos(node.first, node.second);
+            double rx = p.x - root_pos.x;
+            double ry = p.y - root_pos.y;
+            min_x = min(min_x, rx); max_x = max(max_x, rx);
+            min_y = min(min_y, ry); max_y = max(max_y, ry);
         }
     }
 
