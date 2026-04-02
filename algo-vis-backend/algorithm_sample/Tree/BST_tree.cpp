@@ -5,6 +5,7 @@ using namespace std;
 //draw{
 AV av;
 TreeLayout tree(2, Pos(500, 100), 80.0, 200.0);
+bool is_key_frame = false; // 用於控制 renderer 繪製到哪條 track
 
 struct Node {
     int val;
@@ -22,7 +23,9 @@ void sync_tree_layout(Node* root, int d = 0, int o = 0) {
     if (root->right) sync_tree_layout(root->right, d + 1, o * 2 + 1);
 }
 
-void draw_tree_content(bool highlight_root_ptr = false, bool show_focus = true, bool hide_root_arrow = false) {
+void draw_tree_content(bool highlight_root_ptr = false, bool show_focus = true, bool hide_root_arrow = false, bool is_key = false) {
+    is_key_frame = is_key; // 全局旗標轉換
+
     tree.nodes.clear();
     tree.vals.clear();
     sync_tree_layout(Root);
@@ -36,56 +39,49 @@ void draw_tree_content(bool highlight_root_ptr = false, bool show_focus = true, 
     tree.redraw(av); 
     
     // --- 手動繪製邊緣 (Edge) ---
-    // 取得當前路徑 (Highlight 路徑) 以便自動標為橘色 (模仿原版行為)
     std::set<pair<int,int>> active_path;
     active_path.insert({tree.curr_d, tree.curr_o});
     for(auto p : tree.path_stack) active_path.insert(p);
 
     for (auto const& node : tree.nodes) {
         int d = node.first, o = node.second;
-        if (d > 0) { // 有父節點
+        if (d > 0) {
             int pd = d - 1, po = o / tree.degree;
             if (tree.nodes.count({pd, po})) {
                 string color = "black";
                 string width = "2";
-                
-                // 優先權 1: 如果有自訂顏色，設為該色且加粗為 4
                 if (tree.edge_colors.count({d, o})) {
                     color = tree.edge_colors[{d, o}];
                     width = "4";
-                }
-                // 優先權 2: 如果在目前路徑上，標為橘色 (預設 active)
-                else if (active_path.count({d, o}) && active_path.count({pd, po})) {
+                } else if (active_path.count({d, o}) && active_path.count({pd, po})) {
                     color = "orange";
                 }
 
-                av.arrow(Pos(tree.get_id(pd, po), "bottom"), Pos(tree.get_id(d, o), "top"), 
-                    {{"color", color}, {"width", width}, {"key", "arrow_" + tree.get_id(d, o)}});
+                auto styles = vector<pair<string, string>>{{"color", color}, {"width", width}, {"key", "arrow_" + tree.get_id(d, o)}};
+                av.arrow(Pos(tree.get_id(pd, po), "bottom"), Pos(tree.get_id(d, o), "top"), styles);
+                if (is_key) av.key_arrow(Pos(tree.get_id(pd, po), "bottom"), Pos(tree.get_id(d, o), "top"), styles);
             }
         }
     }
     
-    // 恢復游標
     if (!show_focus) tree.curr_d = old_d;
     
-    // 全局 Root 指針盒
     vector<array_style> root_ptr_style = {{{"background","#cccccc"},{0}}};
     if (highlight_root_ptr) {
         root_ptr_style.push_back({{"highlight"}, {0}});
         root_ptr_style.push_back({{"point"}, {0}});
     }
     av.frame_draw("tree_root", Pos(500, -80), vector<string>{"Root"}, root_ptr_style);
+    if (is_key) av.key_frame_draw("tree_root", Pos(500, -80), vector<string>{"Root"}, root_ptr_style);
     
     if (Root && !hide_root_arrow) {
-        // 從指針盒下緣畫一條虛線箭頭到目前的根節點上緣
-        av.arrow(Pos("tree_root", "bottom"), Pos(tree.get_id(0, 0), "top"), {
-            {"color", "black"}, 
-            {"width", "2"}, 
-            {"dash", "10,5"}
-        });
+        auto styles = vector<pair<string, string>>{{"color", "black"}, {"width", "2"}, {"dash", "10,5"}};
+        av.arrow(Pos("tree_root", "bottom"), Pos(tree.get_id(0, 0), "top"), styles);
+        if (is_key) av.key_arrow(Pos("tree_root", "bottom"), Pos(tree.get_id(0, 0), "top"), styles);
     }
     
     av.accu_draw();
+    is_key_frame = false; // 重置旗標
 }
 
 void draw_tree(string title = "") {
@@ -194,7 +190,6 @@ bool search(Node* root, int val) {
         av.auto_camera(0.85);
         av.end_frame_draw();
         tree.node_colors.erase({tree.curr_d, tree.curr_o});
-        av.stop();
         //}
         return true;
     }
@@ -430,11 +425,11 @@ int main() {
         string val = tree.vals[{d, o}];
         vector<array_style> st;
         if (focus) { st.push_back({{"highlight"}, {0}}); st.push_back({{"point"}, {0}}); }
-        // 渲染自訂節點顏色
         if (tree.node_colors.count({d, o})) {
             st.push_back({{"background", tree.node_colors[{d, o}]}, {0}});
         }
         av.frame_draw(id, p, vector<string>{val}, st);
+        if (is_key_frame) av.key_frame_draw(id, p, vector<string>{val}, st);
     };
     av.start_draw();
     tree.show_edges = true;
@@ -486,8 +481,9 @@ int main() {
         //draw{
         // 影格：展示最終結果
         av.start_frame_draw();
-        draw_tree_content(false, false);
+        draw_tree_content(false, false, false, true);
         av.text(task_msg, Pos("tree_root", "bottom", 0, 10));
+        av.key_text(task_msg, Pos("tree_root", "bottom", 0, 10));
         av.auto_camera(0.85);
         av.end_frame_draw();
         //}
@@ -496,8 +492,9 @@ int main() {
     //draw{
     // 影格：所有操作結束 (移除 highlight)
     av.start_frame_draw();
-    draw_tree_content(false, false);
+    draw_tree_content(false, false, false, true);
     av.text("所有操作結束", Pos("tree_root", "bottom", 0, 10));
+    av.key_text("所有操作結束", Pos("tree_root", "bottom", 0, 10));
     av.auto_camera(0.85);
     av.end_frame_draw();
     
