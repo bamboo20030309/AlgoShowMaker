@@ -1,5 +1,5 @@
-#include "AV.hpp"
 #include <bits/stdc++.h>
+#include "AV.hpp"
 using namespace std;
 
 //draw{
@@ -32,7 +32,38 @@ void draw_tree_content(bool highlight_root_ptr = false, bool show_focus = true, 
     int old_d = tree.curr_d;
     if (!show_focus) tree.curr_d = -1;
     
+    tree.show_edges = false; // 關閉自動畫線，我們要在這裡手動控制寬度
     tree.redraw(av); 
+    
+    // --- 手動繪製邊緣 (Edge) ---
+    // 取得當前路徑 (Highlight 路徑) 以便自動標為橘色 (模仿原版行為)
+    std::set<pair<int,int>> active_path;
+    active_path.insert({tree.curr_d, tree.curr_o});
+    for(auto p : tree.path_stack) active_path.insert(p);
+
+    for (auto const& node : tree.nodes) {
+        int d = node.first, o = node.second;
+        if (d > 0) { // 有父節點
+            int pd = d - 1, po = o / tree.degree;
+            if (tree.nodes.count({pd, po})) {
+                string color = "black";
+                string width = "2";
+                
+                // 優先權 1: 如果有自訂顏色，設為該色且加粗為 4
+                if (tree.edge_colors.count({d, o})) {
+                    color = tree.edge_colors[{d, o}];
+                    width = "4";
+                }
+                // 優先權 2: 如果在目前路徑上，標為橘色 (預設 active)
+                else if (active_path.count({d, o}) && active_path.count({pd, po})) {
+                    color = "orange";
+                }
+
+                av.arrow(Pos(tree.get_id(pd, po), "bottom"), Pos(tree.get_id(d, o), "top"), 
+                    {{"color", color}, {"width", width}, {"key", "arrow_" + tree.get_id(d, o)}});
+            }
+        }
+    }
     
     // 恢復游標
     if (!show_focus) tree.curr_d = old_d;
@@ -200,9 +231,13 @@ bool search(Node* root, int val) {
     }
 }
 
+//draw{
+int succ_d, succ_o; // 用於跨函式傳遞繼承者的座標
+//}
 Node* find_min(Node* root) {
     if (!root) return NULL;
     //draw{
+    int d = tree.curr_d, o = tree.curr_o;
     int p_cnt = 0;
     string node_id = tree.get_id(tree.curr_d, tree.curr_o);
     //}
@@ -215,6 +250,7 @@ Node* find_min(Node* root) {
         av.end_frame_draw();
 
         tree.push(0);
+        d++; o = o * 2; // 繪圖用：同步計算地下座標
         p_cnt++;
         //}
         root = root->left;
@@ -224,29 +260,33 @@ Node* find_min(Node* root) {
     }
     
     //draw{
-    // 找到繼承者
+    // 找到繼承者時，先記下它的座標
+    succ_d = d; succ_o = o;
+    
     tree.node_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
     av.start_frame_draw();
     draw_tree_content();
     av.text("無法繼續往左走，找到右子樹最小值：" + to_string(root->val) + " (繼承者)", Pos(node_id, "bottom", 0, 10));
     av.auto_camera(0.85);
     av.end_frame_draw();
-    tree.node_colors.erase({tree.curr_d, tree.curr_o});
+    // 這裡原本有 erase，由 remove 函式接手擦除，讓過渡影格能維持綠色
 
     while(p_cnt--) tree.pop();
     //}
     return root;
 }
 
-Node* remove(Node* root, int val) {
+Node* remove(Node* root, int val, bool silent = false) {
     if (!root) {
         //draw{
-        string parent_id = (tree.curr_d > 0) ? tree.get_id(tree.curr_d - 1, tree.curr_o / 2) : "tree_root";
-        av.start_frame_draw();
-        draw_tree_content();
-        av.text("沒辦法再繼續往下走，因此找不到 " + to_string(val), Pos(parent_id, "bottom", 0, 10));
-        av.auto_camera(0.85);
-        av.end_frame_draw();
+        if (!silent) {
+            string parent_id = (tree.curr_d > 0) ? tree.get_id(tree.curr_d - 1, tree.curr_o / 2) : "tree_root";
+            av.start_frame_draw();
+            draw_tree_content();
+            av.text("沒辦法再繼續往下走，因此找不到 " + to_string(val), Pos(parent_id, "bottom", 0, 10));
+            av.auto_camera(0.85);
+            av.end_frame_draw();
+        }
         //}
         return NULL;
     }
@@ -255,44 +295,45 @@ Node* remove(Node* root, int val) {
     //}
     if (val < root->val) {
         //draw{
-        // 說明 (如同查詢)
-        av.start_frame_draw();
-        draw_tree_content();
-        av.text(to_string(val) + " < " + to_string(root->val) + "，往左走", Pos(node_id, "bottom", 0, 10));
-        av.auto_camera(0.85);
-        av.end_frame_draw();
-
+        if (!silent) {
+            av.start_frame_draw();
+            draw_tree_content();
+            av.text(to_string(val) + " < " + to_string(root->val) + "，往左走", Pos(node_id, "bottom", 0, 10));
+            av.auto_camera(0.85);
+            av.end_frame_draw();
+        }
         tree.push(0);
         //}
-        root->left = remove(root->left, val);
+        root->left = remove(root->left, val, silent);
         //draw{
         tree.pop();
         //}
     } else if (val > root->val) {
         //draw{
-        // 說明 (如同查詢)
-        av.start_frame_draw();
-        draw_tree_content();
-        av.text(to_string(val) + " > " + to_string(root->val) + "，往右走", Pos(node_id, "bottom", 0, 10));
-        av.auto_camera(0.85);
-        av.end_frame_draw();
-
+        if (!silent) {
+            av.start_frame_draw();
+            draw_tree_content();
+            av.text(to_string(val) + " > " + to_string(root->val) + "，往右走", Pos(node_id, "bottom", 0, 10));
+            av.auto_camera(0.85);
+            av.end_frame_draw();
+        }
         tree.push(1);
         //}
-        root->right = remove(root->right, val);
+        root->right = remove(root->right, val, silent);
         //draw{
         tree.pop();
         //}
     } else {
         //draw{
-        // 影格: 準備刪除 (切換為紅色彩標)
-        tree.node_colors[{tree.curr_d, tree.curr_o}] = "#ef9a9a"; 
+        if (!silent) {
+            tree.node_colors[{tree.curr_d, tree.curr_o}] = "#ef9a9a"; 
 
-        av.start_frame_draw();
-        draw_tree_content();
-        av.text("找到 " + to_string(val) + " 了！ 準備刪除", Pos(node_id, "bottom", 0, 10));
-        av.auto_camera(0.85);
-        av.end_frame_draw();
+            av.start_frame_draw();
+            draw_tree_content();
+            av.text("找到 " + to_string(val) + " 了！ 準備刪除", Pos(node_id, "bottom", 0, 10));
+            av.auto_camera(0.85);
+            av.end_frame_draw();
+        }
         //}
 
         if (!root->left || !root->right) {
@@ -332,42 +373,52 @@ Node* remove(Node* root, int val) {
         }
         
         //draw{
-        // 雙子節點情況
+        // --- 核心改寫：雙子節點刪除與跳轉優化 ---
         av.start_frame_draw();
         draw_tree_content();
         av.text("因為有兩個子節點，需要尋找右子樹最小值作為繼承者", Pos(node_id, "bottom", 0, 10));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
-        tree.push(1); 
+        tree.push(1); // 先往右走一步，準備進入 find_min
         //}
-        Node* temp = find_min(root->right);
-        int successor_val = temp->val;
+        Node* target_successor = find_min(root->right); // 找繼承者
+        int successor_val = target_successor->val;
         //draw{
-        tree.pop(); 
-        
+        tree.pop(); // 回到當前刪除目標節點位置
+
+        // --- 取代前的停留影格 (新加的) ---
         av.start_frame_draw();
         draw_tree_content();
-        av.text("取得繼承者 " + to_string(successor_val) + "，將其值覆蓋至目標節點", Pos(node_id, "bottom", 0, 10));
+        av.text("將繼承者數值取代目標節點", Pos(node_id, "bottom", 0, 10));
         av.auto_camera(0.85);
         av.end_frame_draw();
-        //}
 
+        // 取代數值影格
+        tree.node_colors[{succ_d, succ_o}] = "#ef9a9a";     // 將地下的繼承者改塗為紅色 (下一個刪除目標)
+        tree.node_colors.erase({tree.curr_d, tree.curr_o}); // 擦掉目前節點的顏色背景
+        //}
         root->val = successor_val;
         //draw{
-        tree.node_colors.erase({tree.curr_d, tree.curr_o}); // 數值已取代，恢復原節點背景色
-
         av.start_frame_draw();
         draw_tree_content();
-        av.text("現在要把剛剛的 " + to_string(successor_val) + " 刪除", Pos(node_id, "bottom", 0, 10));
+        av.text("刪除原本的繼承者", Pos(node_id, "bottom", 0, 10));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
+        // 瞬間跳轉影格
+        int old_d = tree.curr_d, old_o = tree.curr_o; // 備份正確的遞迴位置
+        tree.curr_d = succ_d; tree.curr_o = succ_o;   // 焦點瞬移到繼承者
+
+        // 恢復焦點深度，供後續遞迴邏輯管理 tree.push/pop
+        tree.curr_d = old_d; tree.curr_o = old_o;
+
+        // 執行靜默搜尋刪除 (silent=true)，它會靜默推算完路徑，直接在繼承者處執行最終刪除影格
         tree.push(1); 
         //}
-        root->right = remove(root->right, successor_val);
+        root->right = remove(root->right, successor_val, true);
         //draw{
-        tree.pop(); 
+        tree.pop();
         //}
     }
     return root;
