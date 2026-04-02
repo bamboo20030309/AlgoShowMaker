@@ -54,40 +54,7 @@
     // 畫/更新外框 (背景綠色)
     window.draw_array_outerframe(g, groupID, totalContentH, totalContentW, 'rgba(144, 238, 144, 0.25)');
 
-    // 1. 繪製元素（由左而右：index 0 在前端）
-    ranged_array.forEach((v, i) => {
-      // x 的起點要考慮側邊箭頭空間
-      const x = i * cellStepW + outerframe_padding + sideSpace;
-      const y = outerframe_padding + container_gap;
-
-      const haveBackground = background.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
-      const background_color = (haveBackground?.color?.trim() || "") || "rgba(200, 255, 200, 0.8)";
-      let fillColor = haveBackground ? background_color : '#fff';
-
-      window.draw_block(g, x, y, v, baseBoxSize, baseBoxSize, fillColor, `cell-${groupID}-${i}`, nodeMap);
-
-      if (window.HintWidgets) {
-        const haveHighlight = highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
-        const havePoint = point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
-        const haveMark = mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
-
-        const highlight_color = haveHighlight?.color?.trim() || "limegreen";
-        const point_color = havePoint?.color?.trim() || "red";
-        const mark_color = haveMark?.color?.trim() || "limegreen";
-
-        if (haveHighlight) {
-          HintWidgets.drawHighlightBox(g, x, y, baseBoxSize, baseBoxSize, highlight_color, `highlight-${groupID}-${i}`, nodeMap);
-        }
-        if (havePoint) {
-          HintWidgets.drawArrow(g, x + baseBoxSize / 2, y, point_color, `point-${groupID}-${i}`, -20, 12, 8, nodeMap);
-        }
-        if (haveMark) {
-          HintWidgets.drawMark(g, x + baseBoxSize - 10, y + baseBoxSize - 10, mark_color, `mark-${groupID}-${i}`, nodeMap);
-        }
-      }
-    });
-
-    // 2. 畫兩條綠色的平行線 (管線) -> 加深顏色、圓頭收邊、對齊箭頭
+    // 1. 畫兩條綠色的平行線 (管線) + 兩端箭頭（先畫，讓格子疊在上面）
     const qColor = "forestgreen";
     const qWidth = 3;
     const qPath1Id = `queue-upper-${groupID}`;
@@ -113,8 +80,6 @@
       g.appendChild(qPath2);
     }
 
-    // 與外框左右邊界縮小間距 (左右 4px Gap, 上下維持 padding 8px)
-    // 座標合併定義
     const uxL = outerframe_padding, uyT = outerframe_padding;
     const uxR = uxL + totalContentW;
     const uyB = uyT + totalContentH;
@@ -129,7 +94,6 @@
     qPath2.setAttribute('stroke-width', qWidth);
     qPath2.setAttribute('data-alive', '1');
 
-    // 3. 畫兩端的箭頭 (兩端皆向左)
     const popArrowId = `queue-pop-arrow-${groupID}`;
     let popArrow = nodeMap.get(popArrowId);
     if (!popArrow) {
@@ -140,7 +104,6 @@
       popArrow.setAttribute('fill', 'black');
       g.appendChild(popArrow);
     }
-    // 左邊：尖端對齊 uxL。中心在 uxL + 8 處
     popArrow.setAttribute('transform', `translate(${uxL + 8}, ${outerframe_padding + totalContentH / 2})`);
     popArrow.setAttribute('data-alive', '1');
 
@@ -154,9 +117,46 @@
       pushArrow.setAttribute('fill', 'black');
       g.appendChild(pushArrow);
     }
-    // 右邊：尾部對齊 uxR。中心在 uxR - 8 處
     pushArrow.setAttribute('transform', `translate(${uxR - 8}, ${outerframe_padding + totalContentH / 2})`);
     pushArrow.setAttribute('data-alive', '1');
+
+    // 2. 繪製元素（由左而右：index 0 在前端）
+    ranged_array.forEach((v, i) => {
+      const x = i * cellStepW + outerframe_padding + sideSpace;
+      const y = outerframe_padding + container_gap;
+
+      const haveBackground = background.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+      const background_color = (haveBackground?.color?.trim() || "") || "rgba(200, 255, 200, 0.8)";
+      let fillColor = haveBackground ? background_color : '#fff';
+
+      window.draw_block(g, x, y, v, baseBoxSize, baseBoxSize, fillColor, `cell-${groupID}-${i}`, nodeMap);
+    });
+
+    // 3. HintWidgets 獨立迴圈
+    if (window.HintWidgets) {
+      ranged_array.forEach((v, i) => {
+        const x = i * cellStepW + outerframe_padding + sideSpace;
+        const y = outerframe_padding + container_gap;
+
+        const haveHighlight = highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+        const havePoint = point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+        const haveMark = mark.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
+
+        const highlight_color = haveHighlight?.color?.trim() || "red";
+        const point_color = havePoint?.color?.trim() || "red";
+        const mark_color = haveMark?.color?.trim() || "limegreen";
+
+        if (haveHighlight) {
+          HintWidgets.drawHighlightBox(g, x, y, baseBoxSize, baseBoxSize, highlight_color, `highlight-${groupID}-${i}`, nodeMap);
+        }
+        if (havePoint) {
+          HintWidgets.drawArrow(g, x + baseBoxSize / 2, y, point_color, `point-${groupID}-${i}`, -20, 12, 8, nodeMap);
+        }
+        if (haveMark) {
+          HintWidgets.drawMark(g, x + baseBoxSize - 10, y + baseBoxSize - 10, mark_color, `mark-${groupID}-${i}`, nodeMap);
+        }
+      });
+    }
 
     Array.from(g.children).forEach(child => {
       if (child.getAttribute('data-alive') === '0') child.remove();
