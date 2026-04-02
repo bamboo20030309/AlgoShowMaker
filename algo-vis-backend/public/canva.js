@@ -299,22 +299,28 @@
 
     // 取得 viewport 下的所有子物件
     Array.from(vp.children).forEach(node => {
-      const tag = node.tagName.toLowerCase();
+      const tag = (node.tagName || "").toLowerCase();
       const fill = node.getAttribute && node.getAttribute('fill');
       const id = node.getAttribute('id');
 
-      // 排除背景格線與箭頭層
+      // 排除背景格線
       if (tag === 'rect' && fill === 'url(#gridPattern)') return;
-      if (id === 'arrow-layer') return;
+      // [優化] 不要完全排除箭頭層，否則只有箭頭在動時相機會跳回原點；僅在空層時排除
+      if (id === 'arrow-layer' && node.children.length === 0) return;
 
       try {
         const bbox = node.getBBox();
-        // 考慮到物件本身可能有 transform (例如 translate)
+        if (bbox.width === 0 && bbox.height === 0) return;
+
         let tx = 0, ty = 0;
         const transform = node.getAttribute('transform');
         if (transform) {
-          const match = /translate\s*\(\s*([+\-]?[\d\.]+)\s*[,\s]\s*([+\-]?[\d\.]+)\s*\)/.exec(transform);
-          if (match) { tx = parseFloat(match[1]); ty = parseFloat(match[2]); }
+          // 精確匹配 translate 以及可能存在的 scale 或 rotate (僅提取位移部分)
+          const transMatch = /translate\s*\(\s*([+\-]?[\d\.]+)\s*[,\s]\s*([+\-]?[\d\.]+)\s*\)/.exec(transform);
+          if (transMatch) {
+            tx = parseFloat(transMatch[1]);
+            ty = parseFloat(transMatch[2]);
+          }
         }
 
         minX = Math.min(minX, bbox.x + tx);
