@@ -153,6 +153,10 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     // 3. 處理後端直接回傳的動畫腳本 (Concurrency Fix)
     if (data.scriptContent) {
       try {
+        // (A-0) 立即清空舊的箭頭與文字框，防止殘影
+        if (window.resetArrows) window.resetArrows();
+        if (window.resetMessageCounter) window.resetMessageCounter();
+
         // (A) 使用 window.eval 確保在全域執行 (建立 CodeScript 物件)
         window.eval(data.scriptContent);
 

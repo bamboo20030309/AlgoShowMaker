@@ -677,10 +677,37 @@
   }
 
   // ---------------------------------------
+  // 硬重置：重新執行新範例時，立即同步清空所有箭頭（不做淡出動畫）
+  // ---------------------------------------
+  function resetArrows() {
+    const vp = window.getViewport && window.getViewport();
+    if (!vp) return;
+
+    const layer = vp.querySelector('#arrow-layer');
+    if (layer) {
+      // 立即清空所有子元素
+      while (layer.firstChild) layer.removeChild(layer.firstChild);
+    }
+
+    // 取消所有 tween 動畫
+    tweenRafMap.forEach((rafId) => cancelAnimationFrame(rafId));
+    tweenRafMap.clear();
+
+    // 清除 emit 動畫
+    emitArrowMap.clear();
+    emitAnimRunning = false;
+
+    // 重置計數器
+    frameAutoKeyCounter = 0;
+    arrowIdCounter = 0;
+  }
+
+  // ---------------------------------------
   // Export 全域函式
   // ---------------------------------------
   window.drawArrow = drawArrow;
   window.updateArrows = updateArrows;
   window.clearArrows = clearArrows;
+  window.resetArrows = resetArrows;
 
 })();
