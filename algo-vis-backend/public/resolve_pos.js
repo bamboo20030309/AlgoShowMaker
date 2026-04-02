@@ -22,7 +22,13 @@
       const vp = window.getViewport ? window.getViewport() : document;
       
       // 找到目標 DOM 元素 (通常是 <g>)
-      const el = vp.querySelector('#' + CSS.escape(refId));
+      let el = vp.querySelector('#' + CSS.escape(refId));
+
+      // [核心修復] 如果因為同一影格執行導致 querySelector ID 索引還沒建好，直接遍歷
+      if (!el) {
+        const fullList = Array.from(vp.children);
+        el = fullList.find(child => child.getAttribute('id') === refId);
+      }
 
       if (!el) {
         console.warn(`[resolvePos] 找不到目標物件 ID: ${refId}`);

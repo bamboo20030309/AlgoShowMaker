@@ -134,25 +134,18 @@
     g.setAttribute('data-total-rows', String(total_rows));
     g.setAttribute('data-total-cols', String(total_cols));
 
-    // 1) 讀出拖曳偏移
-    const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
- 
-    // 2) 把 CodeScript 本幀的位移存在 data-base-offset
-    g.setAttribute('data-base-offset', `${Pos.x},${Pos.y}`);
- 
-    // 3) 合併 base + 拖曳偏移，更新 transform
-    g.setAttribute('transform',`translate(${Pos.x + dx},${Pos.y + dy})`);
-
-    // 方案 1：影格預索引與標記不活躍
+    // 先設定基本的 alive 標記
     const nodeMap = new Map();
     Array.from(g.children).forEach(child => {
       if (child.id) nodeMap.set(child.id, child);
       child.setAttribute('data-alive', '0');
     });
 
-    window.draw_array_outerframe(g, groupID, total_rows * baseBoxSize, total_cols * baseBoxSize);  // 畫/更新外框
+    // 重要：先畫外框，這會設定 data-outerframe-left/right 等屬性，方便後續物件(或自己)參照
+    window.draw_array_outerframe(g, groupID, total_rows * baseBoxSize, total_cols * baseBoxSize); 
 
     const headerColor = 'rgba(111, 161, 255, 0.7)';
+    // ... 後面繼續畫內容 ...
     // ========= 畫表頭 =========
     if (draw_type === 'normal') {
         if (isIndexX) {
@@ -245,6 +238,12 @@
         child.remove();
       }
     });
+
+    // 最後：解析相對座標並應用 Transform (確保這時外框資訊已完整設定)
+    const pos = window.resolvePos(Pos);
+    const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
+    g.setAttribute('data-base-offset', `${pos.x},${pos.y}`);
+    g.setAttribute('transform', `translate(${pos.x + dx},${pos.y + dy})`);
   }
 
   function get2DArrayPosition(groupID, row, col, anchor = "center") {
@@ -255,7 +254,7 @@
     if (!g) return { x: 0, y: 0 };
 
     // 1. 讀取排版資訊
-    const indexMode = parseInt(g.getAttribute('data-index-mode') || '3', 10);
+    const indexMode = parseInt(g.getAttribute('data-index-mode') || '0', 10);
     const startR    = parseInt(g.getAttribute('data-start-r')    || '0', 10);
     const startC    = parseInt(g.getAttribute('data-start-c')    || '0', 10);
     const totalRows = parseInt(g.getAttribute('data-total-rows') || '1', 10);

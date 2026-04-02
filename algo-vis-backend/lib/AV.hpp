@@ -101,7 +101,7 @@ public:
 
     #define draw(...)             draw_impl(__LINE__, __VA_ARGS__)
     #define draw_array(groupID, pos, ...) frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
-    #define draw_2Darray(groupID, pos, ...) frame_draw_2D_impl(__LINE__, groupID, pos, __VA_ARGS__)
+    #define draw_2Darray(groupID, pos, ...) frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
     #define frame_draw(groupID, pos, ...) frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
     #define key_frame_draw(groupID, pos, ...) key_frame_draw_impl(__LINE__, groupID, pos, __VA_ARGS__)
     #define draw_stack(groupID, pos, s, ...) frame_draw_impl(__LINE__, groupID, pos, AV::to_vector(s), __VA_ARGS__, "stack")
