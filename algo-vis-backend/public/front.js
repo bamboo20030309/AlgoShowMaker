@@ -6,7 +6,7 @@
  * @param {string} groupID 
  * @param {object} meta 
  */
-window.setLayoutMeta = function(groupID, meta) {
+window.setLayoutMeta = function (groupID, meta) {
   const vp = window.getViewport();
   if (!vp) return;
   let g = vp.querySelector('#' + CSS.escape(groupID));
@@ -16,13 +16,13 @@ window.setLayoutMeta = function(groupID, meta) {
     g.classList.add('layout-meta-object');
     vp.appendChild(g);
   }
-  
+
   if (meta.layout) g.setAttribute('data-layout', meta.layout);
-  if (meta.minX !== undefined) g.setAttribute('data-outerframe-left',   meta.minX);
-  if (meta.maxX !== undefined) g.setAttribute('data-outerframe-right',  meta.maxX);
-  if (meta.minY !== undefined) g.setAttribute('data-outerframe-top',    meta.minY);
+  if (meta.minX !== undefined) g.setAttribute('data-outerframe-left', meta.minX);
+  if (meta.maxX !== undefined) g.setAttribute('data-outerframe-right', meta.maxX);
+  if (meta.minY !== undefined) g.setAttribute('data-outerframe-top', meta.minY);
   if (meta.maxY !== undefined) g.setAttribute('data-outerframe-bottom', meta.maxY);
-  
+
   // 設置一個基準偏移量（通常為 0,0，因為 meta 座標已經包含相對偏移）
   if (!g.hasAttribute('data-base-offset')) {
     g.setAttribute('data-base-offset', '0,0');
@@ -832,7 +832,7 @@ const FrameSnapshotCache = (() => {
     const details = [];
     snapshots.forEach((nodes, frameIdx) => {
       let frameBytes = 0;
-      let nodeCount  = 0;
+      let nodeCount = 0;
       nodes.forEach(n => {
         // 用 outerHTML 的字串長度 × 2 (UTF-16) 來粗估 DOM 記憶體
         const html = n.outerHTML || '';
@@ -846,14 +846,14 @@ const FrameSnapshotCache = (() => {
 
     // 格式化輸出
     const fmt = (b) => {
-      if (b < 1024)             return b + ' B';
-      if (b < 1024 * 1024)     return (b / 1024).toFixed(1) + ' KB';
+      if (b < 1024) return b + ' B';
+      if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
       return (b / 1024 / 1024).toFixed(2) + ' MB';
     };
 
     console.group(`📸 FrameSnapshotCache 記憶體估算 (${snapshots.size} 筆快照)`);
     console.table(details.map(d => ({
-      '影格':     d.frame,
+      '影格': d.frame,
       'DOM 節點': d.nodes,
       '估算大小': fmt(d.bytes)
     })));
@@ -1122,8 +1122,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof stopStepAuto === 'function') stopStepAuto();
         return;
       }
-
-      console.log(CodeScript.is_skip_frame(cur));
 
       // 1) skip_frame：跳過區段 → 直接跳到下一個停靠幀或最後，然後停播
       if (typeof CodeScript.is_skip_frame === 'function' &&
