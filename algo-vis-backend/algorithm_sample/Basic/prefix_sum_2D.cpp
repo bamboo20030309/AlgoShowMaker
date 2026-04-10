@@ -16,7 +16,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("pre", Pos(0, 0), pre, {}, {{0,0},{n,m}});
     av.frame_draw("num", Pos("pre", "top right", 100, 0), num, {}, {{0,0},{n,m}});
-    av.text("這是二維前綴和的範例：\n透過排容原理，可以快速計算出子矩陣的和。", Pos("pre", "top", 175, -90));
+    av.text("這是二維前綴和的範例\n這個方法透過排容原理，可以快速計算出子矩陣的和\n建表方式如下：", Pos("pre", "top", 175, -110));
     av.auto_camera(0.85);
     av.end_frame_draw();
 
@@ -25,24 +25,99 @@ int main() {
     const string color_upleft = "rgba(255, 80, 80, 0.6)";   // Red
     const string color_done   = "rgba(47, 255, 82, 0.4)";   // Green
 
-    // 說明公式
+    // 說明公式 (拆分為四步教學)
+    //draw{
+    int demo_i = 2, demo_j = 2;
+    vector<pair<int,int>> _demo_current = {{demo_i, demo_j}};
+    vector<pair<int,int>> _demo_up      = {{demo_i-1, demo_j}};
+    vector<pair<int,int>> _demo_left    = {{demo_i, demo_j-1}};
+    vector<pair<int,int>> _demo_upleft  = {{demo_i-1, demo_j-1}};
+
+    vector<pair<int,int>> _demo_num_up     = AV::AtoB(0, 0, demo_i-1, demo_j);
+    vector<pair<int,int>> _demo_num_left   = AV::AtoB(0, 0, demo_i, demo_j-1);
+    vector<pair<int,int>> _demo_num_upleft = AV::AtoB(0, 0, demo_i-1, demo_j-1);
+
+    // Frame 1: Up
+    av.start_frame_draw();
+    av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _demo_current}, {{ "background", color_up }, _demo_up} }, {{0,0},{n,m}});
+    av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_up }, _demo_num_up} }, {{0,0},{n,m}});
+    av.arrow(Pos("pre", demo_i-1, demo_j), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.colored_text({
+        {{"1. 加上上方的前綴和 {"}}, {{"pre["+to_string(demo_i-1)+"]["+to_string(demo_j)+"]", color_up}}, {{"}\n"}},
+        {{"它代表了右邊表格內藍色區域所有數值的總和。"}}
+    }, Pos("pre", "top", 175, -100));
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    // Frame 2: Left
+    av.start_frame_draw();
+    av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _demo_current}, {{ "background", color_up }, _demo_up}, {{ "background", color_left }, _demo_left} }, {{0,0},{n,m}});
+    av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_up }, _demo_num_up}, {{ "background", color_left }, _demo_num_left} }, {{0,0},{n,m}});
+    av.arrow(Pos("pre", demo_i-1, demo_j), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.arrow(Pos("pre", demo_i, demo_j-1), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.colored_text({
+        {{"2. 加上左方的前綴和 {"}}, {{"pre["+to_string(demo_i)+"]["+to_string(demo_j-1)+"]", color_left}}, {{"}\n"}},
+        {{"現在我們把左邊橘色區域的和也加進來。"}}
+    }, Pos("pre", "top", 175, -100));
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    // Frame 3: UpLeft
+    av.start_frame_draw();
+    av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _demo_current}, {{ "background", color_up }, _demo_up}, {{ "background", color_left }, _demo_left}, {{ "background", color_upleft }, _demo_upleft} }, {{0,0},{n,m}});
+    av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_up }, _demo_num_up}, {{ "background", color_left }, _demo_num_left}, {{ "background", color_upleft }, _demo_num_upleft} }, {{0,0},{n,m}});
+    av.arrow(Pos("pre", demo_i-1, demo_j), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.arrow(Pos("pre", demo_i, demo_j-1), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.arrow(Pos("pre", demo_i-1, demo_j-1), Pos("pre", demo_i, demo_j), {{"color", "red"}});
+    av.colored_text({
+        {{"3. 減去重疊的左上角 {"}}, {{"pre["+to_string(demo_i-1)+"]["+to_string(demo_j-1)+"]", color_upleft}}, {{"}\n"}},
+        {{"因為左上角區域在剛才兩次相加中被算了兩次，必須扣掉一次。"}}
+    }, Pos("pre", "top", 175, -100));
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    // Frame 4: Current
+    av.start_frame_draw();
+    av.frame_draw("pre", Pos(0, 0), pre, { 
+        {{ "background", color_up }, _demo_up}, 
+        {{ "background", color_left }, _demo_left}, 
+        {{ "background", color_upleft }, _demo_upleft}, 
+        {{"highlight"}, _demo_current} 
+    }, {{0,0},{n,m}});
+    av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { 
+        {{ "background", color_up }, _demo_num_up}, 
+        {{ "background", color_left }, _demo_num_left}, 
+        {{ "background", color_upleft }, _demo_num_upleft}, 
+        {{ "background", color_done }, _demo_current} 
+    }, {{0,0},{n,m}});
+    av.arrow(Pos("pre", demo_i-1, demo_j), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.arrow(Pos("pre", demo_i, demo_j-1), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.arrow(Pos("pre", demo_i-1, demo_j-1), Pos("pre", demo_i, demo_j), {{"color", "red"}});
+    av.arrow(Pos("num", demo_i, demo_j), Pos("pre", demo_i, demo_j), {{"color", "limegreen"}});
+    av.colored_text({
+        {{"4. 最後加上現在的值 {"}}, {{"num["+to_string(demo_i)+"]["+to_string(demo_j)+"]", color_done}}, {{"}\n"}},
+        {{"這樣就完成一個點的前綴和計算\n"}},
+        {{"{pre[i][j] = "}}, 
+        {{"pre[i-1][j]", color_up}}, {{" + "}}, 
+        {{"pre[i][j-1]", color_left}}, {{" - "}}, 
+        {{"pre[i-1][j-1]", color_upleft}}, {{" + "}}, 
+        {{"num[i][j]", color_done}}, {{"}"}}
+    }, Pos("pre", "top", 175, -100));
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+    // 說明建表流程開始
     av.start_frame_draw();
     av.frame_draw("pre", Pos(0, 0), pre, {}, {{0,0},{n,m}});
     av.frame_draw("num", Pos("pre", "top right", 100, 0), num, {}, {{0,0},{n,m}});
-    av.colored_text({
-        {{"二維前綴和公式{：:：現在的點：等於：上面的：加上左邊的：減去左上角的：再加原來的數}\n"}},
-        {{"{pre[i][j] = "}}, {{"num[i][j]"}, color_done}, {{"\n"}},
-        {{"            + "}}, {{"pre[i-1][j]"}, color_up}, {{"\n"}},
-        {{"            + "}}, {{"pre[i][j-1]"}, color_left}, {{"\n"}},
-        {{"            - "}}, {{"pre[i-1][j-1]"}, color_upleft}, {{"}"}}
-    }, Pos("pre", "top", 175, -140));
-    av.auto_camera(0.85);
+    av.text("接下來是實際的建表流程：", Pos("pre", "top", 175, -50));
+    av.auto_camera(0.85); 
     av.end_frame_draw();
     //}
 
     for (int i = 1; i <= n; i++) {
         for (int j = 1; j <= m; j++) {
             pre[i][j] = num[i][j] + pre[i-1][j] + pre[i][j-1] - pre[i-1][j-1];
+            
             //draw{
             vector<pair<int,int>> _draw_current = {{i, j}};
             vector<pair<int,int>> _draw_up      = {{i-1, j}};
@@ -57,47 +132,64 @@ int main() {
             vector<vector<int>> vis_pre = pre;
             vis_pre[i][j] = 0;
 
+            Pos textPos = (i <= n / 2) ? Pos("num", "top", 0, -80) : Pos("pre", "top", 175, -50);
             // Step 1: Up
             vis_pre[i][j] = pre[i-1][j];
             av.start_frame_draw();
             av.frame_draw("pre", Pos(0, 0), vis_pre, { {{"highlight"}, _draw_current}, {{ "background", color_up }, _draw_up} }, {{0,0},{n,m}});
             av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_up }, _num_up} }, {{0,0},{n,m}});
-            av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.colored_text({ {{"加上上方的前綴和 {"}}, {{"pre[" + to_string(i-1) + "][" + to_string(j) + "] = " + to_string(pre[i-1][j]) + "}", color_up}} }, Pos("pre", "top", 175, -50));
-            av.auto_camera(0.85); av.end_frame_draw();
+            if (i > n / 2) av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
+            av.colored_text({ {{"加上上方的前綴和 {"}}, {{"pre[" + to_string(i-1) + "][" + to_string(j) + "] = " + to_string(pre[i-1][j]) + "}", color_up}} }, textPos);
+            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            av.end_frame_draw();
 
             // Step 2: Left
             vis_pre[i][j] += pre[i][j-1];
             av.start_frame_draw();
             av.frame_draw("pre", Pos(0, 0), vis_pre, { {{"highlight"}, _draw_current}, {{ "background", color_up }, _draw_up}, {{ "background", color_left }, _draw_left} }, {{0,0},{n,m}});
             av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_up }, _num_up}, {{ "background", color_left }, _num_left} }, {{0,0},{n,m}});
-            av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.arrow(Pos("pre", i, j-1), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.colored_text({ {{"加上左方的前綴和 {"}}, {{"pre[" + to_string(i) + "][" + to_string(j-1) + "] = " + to_string(pre[i][j-1]) + "}", color_left}} }, Pos("pre", "top", 175, -50));
-            av.auto_camera(0.85); av.end_frame_draw();
+            if (i > n / 2) {
+                av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
+                av.arrow(Pos("pre", i, j-1), Pos("pre", i, j), {{"color", "limegreen"}});
+            }
+            av.colored_text({ {{"加上左方的前綴和 {"}}, {{"pre[" + to_string(i) + "][" + to_string(j-1) + "] = " + to_string(pre[i][j-1]) + "}", color_left}} }, textPos);
+            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            av.end_frame_draw();
 
             // Step 3: UpLeft
             vis_pre[i][j] -= pre[i-1][j-1];
             av.start_frame_draw();
             av.frame_draw("pre", Pos(0, 0), vis_pre, { {{"highlight"}, _draw_current}, {{ "background", color_up }, _draw_up}, {{ "background", color_left }, _draw_left}, {{ "background", color_upleft }, _draw_upleft} }, {{0,0},{n,m}});
             av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_up }, _num_up}, {{ "background", color_left }, _num_left}, {{ "background", color_upleft }, _num_upleft} }, {{0,0},{n,m}});
-            av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.arrow(Pos("pre", i, j-1), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.arrow(Pos("pre", i-1, j-1), Pos("pre", i, j), {{"color", "red"}});
-            av.colored_text({ {{"扣除重複區域 {"}}, {{"pre[" + to_string(i-1) + "][" + to_string(j-1) + "] = " + to_string(pre[i-1][j-1]) + "}", color_upleft}} }, Pos("pre", "top", 175, -50));
-            av.auto_camera(0.85); av.end_frame_draw();
+            if (i > n / 2) {
+                av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
+                av.arrow(Pos("pre", i, j-1), Pos("pre", i, j), {{"color", "limegreen"}});
+                av.arrow(Pos("pre", i-1, j-1), Pos("pre", i, j), {{"color", "red"}});
+            }
+            av.colored_text({ {{"扣除重複區域 {"}}, {{"pre[" + to_string(i-1) + "][" + to_string(j-1) + "] = " + to_string(pre[i-1][j-1]) + "}", color_upleft}} }, textPos);
+            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            av.end_frame_draw();
 
             // Step 4: Final
             vis_pre[i][j] += num[i][j];
             av.start_frame_draw();
+            if (j == m) {
+                av.key_frame_draw("pre", Pos(0, 0), vis_pre, { {{"highlight"}, _draw_current}, {{ "background", color_up }, _draw_up}, {{ "background", color_left }, _draw_left}, {{ "background", color_upleft }, _draw_upleft} }, {{0,0},{n,m}});
+                av.key_frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_done }, _draw_current}, {{ "background", color_up }, _num_up}, {{ "background", color_left }, _num_left}, {{ "background", color_upleft }, _num_upleft} }, {{0,0},{n,m}});
+                av.key_text("第 " + to_string(i) + " 列完成 (i=" + to_string(i) + ")", textPos);
+            } 
             av.frame_draw("pre", Pos(0, 0), vis_pre, { {{"highlight"}, _draw_current}, {{ "background", color_up }, _draw_up}, {{ "background", color_left }, _draw_left}, {{ "background", color_upleft }, _draw_upleft} }, {{0,0},{n,m}});
             av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{ "background", color_done }, _draw_current}, {{ "background", color_up }, _num_up}, {{ "background", color_left }, _num_left}, {{ "background", color_upleft }, _num_upleft} }, {{0,0},{n,m}});
-            av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.arrow(Pos("pre", i, j-1), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.arrow(Pos("pre", i-1, j-1), Pos("pre", i, j), {{"color", "red"}});
-            av.arrow(Pos("num", i, j), Pos("pre", i, j), {{"color", "limegreen"}});
-            av.colored_text({ {{"最後加上原來的數值 {"}}, {{"num[" + to_string(i) + "][" + to_string(j) + "] = " + to_string(num[i][j]) + "}", color_done}} }, Pos("pre", "top", 175, -50));
-            av.auto_camera(0.85); av.end_frame_draw();
+            if (i > n / 2) {
+                av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
+                av.arrow(Pos("pre", i, j-1), Pos("pre", i, j), {{"color", "limegreen"}});
+                av.arrow(Pos("pre", i-1, j-1), Pos("pre", i, j), {{"color", "red"}});
+                av.arrow(Pos("num", i, j), Pos("pre", i, j), {{"color", "limegreen"}});
+            }
+            av.colored_text({ {{"最後加上原來的數值 {"}}, {{"num[" + to_string(i) + "][" + to_string(j) + "] = " + to_string(num[i][j]) + "}", color_done}} }, textPos);
+            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            av.end_frame_draw();
+            
             //}
         }
     }
@@ -120,6 +212,7 @@ int main() {
 
         //draw{
         vector<pair<int,int>> _dq_p_total = {{r2, c2}}, _dq_p_up = {{r1-1, c2}}, _dq_p_left = {{r2, c1-1}}, _dq_p_corner = {{r1-1, c1-1}};
+        vector<pair<int,int>> _dq_highlight = AV::AtoB(r1, c1, r2, c2);
         vector<pair<int,int>> _num_f1, _num_f2, _num_f3_red, _num_f3_green, _num_f4;
 
         for(int r=0; r<=r2; r++) for(int c=0; c<=c2; c++) _num_f1.push_back({r,c});
@@ -130,53 +223,55 @@ int main() {
 
         // Frame Query Preview (新影格)
         av.start_frame_draw();
-        av.frame_draw("pre", Pos(0, 0), pre, {}, {{0,0},{n,m}});
-        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
+        av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _dq_highlight} }, {{0,0},{n,m}});
+        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
         av.text("查詢目標範圍：(" + to_string(r1-1) + "," + to_string(c1-1) + ") {~} (" + to_string(r2-1) + "," + to_string(c2-1) + ")", Pos("pre", "top", 175, -80));
         av.auto_camera(0.85); av.end_frame_draw();
 
         // Frame Query 1: Total (+)
         av.start_frame_draw();
-        av.frame_draw("pre", Pos(0, 0), pre, { {{"background", color_done}, _dq_p_total} }, {{0,0},{n,m}});
-        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"background", color_done}, _num_f1} }, {{0,0},{n,m}});
+        av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _dq_p_total} }, {{0,0},{n,m}});
+        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _num_f1} }, {{0,0},{n,m}});
         av.colored_text({ {{"先取大矩陣總和 {"}}, {{"pre[" + to_string(r2) + "][" + to_string(c2) + "]}", color_done}} }, Pos("pre", "top", 175, -80));
         av.auto_camera(0.85); av.end_frame_draw();
 
         // Frame Query 2: Subtract Up (-)
         av.start_frame_draw();
-        av.frame_draw("pre", Pos(0, 0), pre, { {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up} }, {{0,0},{n,m}});
-        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"background", color_done}, _num_f2} }, {{0,0},{n,m}});
+        av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up} }, {{0,0},{n,m}});
+        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _num_f2} }, {{0,0},{n,m}});
         av.colored_text({ {{"扣除上方部分 {"}}, {{"pre[" + to_string(r1-1) + "][" + to_string(c2) + "]}", color_upleft}} }, Pos("pre", "top", 175, -80));
         av.auto_camera(0.85); av.end_frame_draw();
 
         // Frame Query 3: Subtract Left (-)
         av.start_frame_draw();
-        av.frame_draw("pre", Pos(0, 0), pre, { {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up}, {{"background", color_upleft}, _dq_p_left} }, {{0,0},{n,m}});
-        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"background", color_done}, _num_f3_green}, {{"background", color_upleft}, _num_f3_red} }, {{0,0},{n,m}});
+        av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up}, {{"background", color_upleft}, _dq_p_left} }, {{0,0},{n,m}});
+        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _num_f3_green}, {{"background", color_upleft}, _num_f3_red} }, {{0,0},{n,m}});
         av.colored_text({ {{"扣除左方部分 {"}}, {{"pre[" + to_string(r2) + "][" + to_string(c1-1) + "]}", color_upleft}} }, Pos("pre", "top", 175, -80));
         av.auto_camera(0.85); av.end_frame_draw();
 
         // Frame Query 4: Add Corner (+)
         av.start_frame_draw();
-        av.frame_draw("pre", Pos(0, 0), pre, { {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up}, {{"background", color_upleft}, _dq_p_left}, {{"background", color_done}, _dq_p_corner} }, {{0,0},{n,m}});
-        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
+        av.frame_draw("pre", Pos(0, 0), pre, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up}, {{"background", color_upleft}, _dq_p_left}, {{"background", color_done}, _dq_p_corner} }, {{0,0},{n,m}});
+        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
         av.colored_text({ {{"加回多扣的左上角 {"}}, {{"pre[" + to_string(r1-1) + "][" + to_string(c1-1) + "]}", color_done}} }, Pos("pre", "top", 175, -80));
         av.auto_camera(0.85); av.end_frame_draw();
 
         // Key Frame
         av.start_frame_draw();
         av.frame_draw("pre", Pos(0, 0), pre, { 
+            {{"highlight"}, _dq_highlight},
             {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up},
             {{"background", color_upleft}, _dq_p_left}, {{"background", color_done}, _dq_p_corner} 
         }, {{0,0},{n,m}});
-        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
+        av.frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
         av.colored_text({ {{"查詢結果：{ans:答案} = " + to_string(ans)}} }, Pos("pre", "top", 175, -80));
         
         av.key_frame_draw("pre", Pos(0, 0), pre, { 
+            {{"highlight"}, _dq_highlight},
             {{"background", color_done}, _dq_p_total}, {{"background", color_upleft}, _dq_p_up},
             {{"background", color_upleft}, _dq_p_left}, {{"background", color_done}, _dq_p_corner} 
         }, {{0,0},{n,m}});
-        av.key_frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
+        av.key_frame_draw("num", Pos("pre", "top right", 100, 0), num, { {{"highlight"}, _dq_highlight}, {{"background", color_done}, _num_f4}}, {{0,0},{n,m}});
         
         av.key_text("查詢結果：{ans:答案} = " + to_string(ans), Pos("pre", "top", 175, -50));
         av.auto_camera(0.85); av.end_frame_draw();
