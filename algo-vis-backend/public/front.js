@@ -706,16 +706,17 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleBtn.classList.toggle('playing', isPlaying);
   }
 
-  // TTS 驅動的自動播放：讀完目前幀 → 決定下一步
+  // TTS 驅動的自動播放：逐行讀完目前幀 → 決定下一步
   function playFromCurrentFrameWithTTS(runId) {
     // 如果已經被暫停，或這個 callback 是舊世代，就不要做事
     if (!isPlaying || runId !== TTS_RUN_ID) return;
 
-    const content = collectMessageTextInCurrentFrame();
+    const entries = collectMessageTextInCurrentFrame();
 
     const afterSpeak = () => {
       // 再檢查一次（避免 onend 在 pause 或重新播放後才觸發）
       if (!isPlaying || runId !== TTS_RUN_ID) return;
+      clearTTSHighlight();
 
       const cur = csGetCurrentFrameIndex();
       const total = csGetFrameCount();
@@ -803,7 +804,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }, delay);
     };
 
-    if (!content) {
+    if (!entries.length) {
       fallbackDelay();
       return;
     }
@@ -817,23 +818,79 @@ document.addEventListener('DOMContentLoaded', () => {
     const volume = TTS_ENABLED ? 0.3 : 0.0;
     const rate = getTtsRate();
 
-    speakText(content, {
-      lang: 'zh-TW',
-      rate,
-      volume,
-      preferredVoiceRegex: /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i,
-      interrupt: true,
-      onend: () => {
-        // 這裡也要檢查世代
-        if (!isPlaying || runId !== TTS_RUN_ID) return;
+    // === 逐行朗讀 ===
+    let entryIdx = 0;
+    function speakNextLine() {
+      if (!isPlaying || runId !== TTS_RUN_ID) { clearTTSHighlight(); return; }
+
+      if (entryIdx >= entries.length) {
+        clearTTSHighlight();
         afterSpeak();
-      },
-      onerror: () => {
-        if (!isPlaying || runId !== TTS_RUN_ID) return;
-        fallbackDelay();
+        return;
       }
-    });
+
+      const entry = entries[entryIdx];
+      highlightTTSLine(entry.groupId, entry.lineIndex);
+
+      speakText(entry.text, {
+        lang: 'zh-TW',
+        rate,
+        volume,
+        preferredVoiceRegex: /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i,
+        interrupt: true,
+        onend: () => {
+          if (!isPlaying || runId !== TTS_RUN_ID) { clearTTSHighlight(); return; }
+          entryIdx++;
+          speakNextLine();
+        },
+        onerror: () => {
+          if (!isPlaying || runId !== TTS_RUN_ID) { clearTTSHighlight(); return; }
+          entryIdx++;
+          speakNextLine();
+        }
+      });
+    }
+    speakNextLine();
   }
+
+  // === TTS 行高亮 ===
+  function highlightTTSLine(groupId, lineIndex) {
+    clearTTSHighlight();
+    const vp = window.getViewport && window.getViewport();
+    if (!vp) return;
+    const g = vp.querySelector('#' + CSS.escape(groupId));
+    if (!g) return;
+
+    // 找到目標元素（tspan 或 text）
+    let target = null;
+    if (lineIndex >= 0) {
+      target = g.querySelector(`[data-line-index="${lineIndex}"]`);
+    }
+    if (!target) target = g.querySelector('text');
+    if (!target) return;
+
+    try {
+      const bbox = target.getBBox();
+      const hl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      hl.setAttribute('id', 'tts-line-highlight');
+      hl.setAttribute('x', bbox.x - 3);
+      hl.setAttribute('y', bbox.y - 2);
+      hl.setAttribute('width', bbox.width + 6);
+      hl.setAttribute('height', bbox.height + 4);
+      hl.setAttribute('fill', 'rgba(175, 175, 175, 0.23)');
+      hl.setAttribute('rx', 3);
+      hl.setAttribute('pointer-events', 'none');
+      // 插在 target 之前，使高亮在文字下方
+      g.insertBefore(hl, target.tagName === 'tspan' ? target.parentNode : target);
+    } catch (e) { /* getBBox 可能在元素不可見時失敗 */ }
+  }
+
+  function clearTTSHighlight() {
+    const vp = window.getViewport && window.getViewport();
+    if (!vp) return;
+    vp.querySelectorAll('#tts-line-highlight').forEach(el => el.remove());
+  }
+
 
   // === 播放/暫停 公用函式 ===
   function play() {
@@ -856,6 +913,7 @@ document.addEventListener('DOMContentLoaded', () => {
     TTS_RUN_ID++;
 
     syncPlayToggleUI();
+    clearTTSHighlight();
     try { window.speechSynthesis.cancel(); } catch { }
   }
 
@@ -1119,22 +1177,40 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  // 只收集「訊息文字」：drawText / drawColoredText 產生的文字
+  // 收集目前幀所有訊息文字，以「每行」為單位回傳陣列
+  // 回傳格式：[{ groupId, lineIndex, text }, ...]
   function collectMessageTextInCurrentFrame() {
     const vp = window.getViewport && window.getViewport();
-    if (!vp) return "";
+    if (!vp) return [];
 
     const msgGroups = vp.querySelectorAll('g[id^="msg-"]');
-    if (!msgGroups.length) return "";
+    if (!msgGroups.length) return [];
 
-    const parts = [];
+    const entries = [];
 
     msgGroups.forEach(g => {
-      const tAttr = g.getAttribute('data-tts-text');
-      parts.push(tAttr);
+      const groupId = g.id;
+      const linesJson = g.getAttribute('data-tts-lines');
+      if (linesJson) {
+        try {
+          const lines = JSON.parse(linesJson);
+          lines.forEach((text, lineIndex) => {
+            if (text && text.trim()) {
+              entries.push({ groupId, lineIndex, text: text.trim() });
+            }
+          });
+        } catch (e) { /* JSON 解析失敗，fallback */ }
+      }
+      // fallback：沒有 data-tts-lines 就用舊的 data-tts-text（整段作為一行）
+      if (!linesJson) {
+        const tAttr = g.getAttribute('data-tts-text');
+        if (tAttr && tAttr.trim()) {
+          entries.push({ groupId, lineIndex: -1, text: tAttr.trim() });
+        }
+      }
     });
 
-    return parts.join('。');
+    return entries;
   }
 
 

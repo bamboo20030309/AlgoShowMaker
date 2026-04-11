@@ -204,10 +204,8 @@ function isFullWidth(char) {
       }
     }
 
-    const ttsContent = ttsLines
-      .map(line => line.join('').trim())
-      .filter(t => t.length > 0)
-      .join('。');
+    const ttsLinesArr = ttsLines.map(line => line.join('').trim());
+    const ttsContent = ttsLinesArr.filter(t => t.length > 0).join('。');
 
     // [修正] 不再手動清除，由 clearCanvas 統一處理，以支援同一幀顯示多個 text
     // const oldBubbles = vp.querySelectorAll('g[id^="msg-"]');
@@ -222,6 +220,7 @@ function isFullWidth(char) {
     g.classList.add('draggable-object');
     g.setAttribute('data-translate', '0,0');
     g.setAttribute('data-tts-text', ttsContent);
+    g.setAttribute('data-tts-lines', JSON.stringify(ttsLinesArr));
     vp.appendChild(g);
 
     if (content == null) content = '';
@@ -315,6 +314,7 @@ function isFullWidth(char) {
 
     lines.forEach((line, idx) => {
       const tspan = document.createElementNS(NS, 'tspan');
+      tspan.setAttribute('data-line-index', idx);
       // 把一般空白換成不斷行空白，避免被 SVG 壓縮
       const displayLine = line.replace(/ /g, '\u00A0\u00A0');
       tspan.setAttribute('x', padX);
@@ -433,10 +433,8 @@ function isFullWidth(char) {
       processedSegments.push({ ...seg, text: displayInSeg });
     });
 
-    const ttsContent = ttsLines
-      .map(line => line.join('').trim())
-      .filter(t => t.length > 0)
-      .join('。');
+    const ttsLinesArr = ttsLines.map(line => line.join('').trim());
+    const ttsContent = ttsLinesArr.filter(t => t.length > 0).join('。');
 
     // 之後畫字全部改用 processedSegments
     segments = processedSegments;
@@ -553,6 +551,7 @@ function isFullWidth(char) {
     g.classList.add('draggable-object');
     g.setAttribute('data-translate', '0,0');
     g.setAttribute('data-tts-text', ttsContent);
+    g.setAttribute('data-tts-lines', JSON.stringify(ttsLinesArr));
     vp.appendChild(g);
 
     // 對話框底
@@ -597,6 +596,7 @@ function isFullWidth(char) {
 
       // 一行一個 <text> 比較好控制
       const textNode = document.createElementNS(NS, 'text');
+      textNode.setAttribute('data-line-index', lineIndex);
       textNode.setAttribute('x', padX);
       textNode.setAttribute('y', baselineY);
       textNode.setAttribute('xml:space', 'preserve');
