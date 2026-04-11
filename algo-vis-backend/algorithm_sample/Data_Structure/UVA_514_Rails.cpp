@@ -22,8 +22,8 @@ int main() {
          {{"{判斷能否透過中繼站將車廂排成目標排序，成功輸出 Yes，失敗輸出 No}"}}
         }, Pos(350, 50));
     av.frame_draw("target", Pos(100, 250), t_train, {}, {5, 5});
-    av.frame_draw("station", Pos("target", "right", 50, temp_n * 40 + 50), t_st);
-    av.frame_draw("init", Pos("target", "top right", 170, 0), vector<int>{}, {}, {0, 4});
+    av.frame_draw("station", Pos("target", "top right", 50, temp_n * 40 + 50), t_st);
+    av.frame_draw("init", Pos("target", "right", 170, 0), vector<int>{}, {}, {0, 4});
     av.auto_camera(0.65);
     av.end_frame_draw();
 
@@ -37,8 +37,8 @@ int main() {
          {{"{判斷能否透過中繼站將車廂排成目標排序，成功輸出 Yes，失敗輸出 No}"}}
         }, Pos(350, 50));
     av.frame_draw("target", Pos(100, 250), t_train, {}, {5, 5});
-    av.frame_draw("station", Pos("target", "right", 50, temp_n * 40 + 50), t_st);
-    av.frame_draw("init", Pos("target", "top right", 170, 0), t_init, {}, {0, 4});
+    av.frame_draw("station", Pos("target", "top right", 50, temp_n * 40 + 50), t_st);
+    av.frame_draw("init", Pos("target", "right", 170, 0), t_init, {}, {0, 4});
     av.auto_camera(0.65);
     av.end_frame_draw();
 
@@ -55,8 +55,8 @@ int main() {
         }, Pos(350, 50));
     // init 1~4 已處理(變灰)，5 號高亮進入中繼站
     av.frame_draw("target", Pos(100, 250), t_train, { {{"background", "#cccccc"}, AV::AtoB(0, 4)} }, {0, 4});
-    av.frame_draw("station", Pos("target", "right", 50, temp_n * 40 + 50), t_st);
-    av.frame_draw("init", Pos("target", "top right", 170, 0), t_init, { {{"background", "#cccccc"}, AV::AtoB(0, 3)}, {{"highlight"}, {4}} }, {0, 4});
+    av.frame_draw("station", Pos("target", "top right", 50, temp_n * 40 + 90), t_st);
+    av.frame_draw("init", Pos("target", "right", 170, 0), t_init, { {{"background", "#cccccc"}, AV::AtoB(0, 3)}, {{"highlight"}, {4}} }, {0, 4});
     av.arrow(Pos("init", 4, "center"), Pos("station", 4, "center"), {{"color", "#4CAF50"}, {"width", "4"}});
     av.auto_camera(0.65);
     av.end_frame_draw();
@@ -76,8 +76,8 @@ int main() {
         {{"background", "#cccccc"}, AV::AtoB(1, 4)},
         {{"highlight"}, {0}}
     }, {0, 5});
-    av.frame_draw("station", Pos("target", "right", 50, temp_n * 40 + 50), t_st, { {{"highlight"}, {4}} });
-    av.frame_draw("init", Pos("target", "top right", 170, 0), t_init, { {{"background", "#cccccc"}, AV::AtoB(0, 4)} }, {0, 5});
+    av.frame_draw("station", Pos("target", "top right", 50, temp_n * 40 + 90), t_st, { {{"highlight"}, {4}} });
+    av.frame_draw("init", Pos("target", "right", 170, 0), t_init, { {{"background", "#cccccc"}, AV::AtoB(0, 4)} }, {0, 5});
     av.arrow(Pos("station", 4, "center"), Pos("target", 0, "center"), {{"color", "#4CAF50"}, {"width", "4"}});
     av.auto_camera(0.65);
     av.end_frame_draw();
@@ -94,8 +94,8 @@ int main() {
          {{"判斷能否透過中繼站將車廂排成目標排序，成功輸出 Yes，失敗輸出 {No:no}"}}
         }, Pos(350, 50));
     av.frame_draw("target", Pos(100, 250), t_train, {{{"background", "#cccccc"}, AV::AtoB(2, 4)}}, {0, 4});
-    av.frame_draw("station", Pos("target", "right", 50, temp_n * 40 + 50), t_st);
-    av.frame_draw("init", Pos("target", "top right", 170, 0), t_init, { {{"background", "#cccccc"}, AV::AtoB(0, 4)} }, {0, 5});
+    av.frame_draw("station", Pos("target", "top right", 50, temp_n * 40 + 90), t_st);
+    av.frame_draw("init", Pos("target", "right", 170, 0), t_init, { {{"background", "#cccccc"}, AV::AtoB(0, 4)} }, {0, 5});
     av.auto_camera(0.65);
     av.end_frame_draw();
 
@@ -117,8 +117,8 @@ int main() {
                     {{"background", "#cccccc"}, AV::AtoB(now, n - 1)},
                     {{"mark"}, AV::AtoB(0, now - 1)} 
                 });
-                av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st);
-                av.frame_draw("init", Pos("target", "top right", 170, 0), init, { 
+                av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st);
+                av.frame_draw("init", Pos("target", "right", 170, 0), init, { 
                     {{"background", "#cccccc"}, AV::AtoB(0, i - 2)},
                     {{"highlight"}, {i - 1}},
                     {{"point"}, {i - 1}} 
@@ -134,11 +134,11 @@ int main() {
                     {{"background", "#cccccc"}, AV::AtoB(now, n - 1)},
                     {{"mark"}, AV::AtoB(0, now - 1)} 
                 });
-                av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st, {
+                av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st, {
                     {{"highlight"}, {(int)st.size() - 1}},
                     {{"point"}, {(int)st.size() - 1}}
                 });
-                av.frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n});
+                av.frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n});
                 av.arrow(Pos("init", i - 1, "center"), Pos("station", (int)st.size() - 1, "center"), {{"color", "#4CAF50"}, {"width", "4"}});
                 av.text("車廂 " + to_string(i) + " 進入車站", Pos("init","bottom", 0, 20));
                 av.auto_camera();
@@ -154,11 +154,11 @@ int main() {
                         {{"highlight"}, {now}},
                         {{"point"}, {now}}
                     });
-                    av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st, {
+                    av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st, {
                         {{"highlight"}, {(int)st.size() - 1}},
                         {{"point"}, {(int)st.size() - 1}}
                     });
-                    av.frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n}); 
+                    av.frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n}); 
                     av.arrow(Pos("station", (int)st.size() - 1, "center"), Pos("target", now, "center"), {{"color", arrowColor}, {"width", "4"}});
                     av.text("比對車站最外側的車廂與目標車廂是否相同", Pos("target","bottom", 0, 20));
                     av.auto_camera();
@@ -173,8 +173,8 @@ int main() {
                             {{"background", "#cccccc"}, AV::AtoB(now, n - 1)},
                             {{"mark"}, AV::AtoB(0, now - 1)} 
                         });
-                        av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st);
-                        av.frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n}); 
+                        av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st);
+                        av.frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n}); 
                         av.text("相同的話就可以出站", Pos("target","bottom", 0, 20));
                         av.auto_camera();
                         av.end_frame_draw();
@@ -186,8 +186,8 @@ int main() {
                             {{"background", "#cccccc"}, AV::AtoB(now, n - 1)},
                             {{"mark"}, AV::AtoB(0, now - 1)} 
                         });
-                        av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st);
-                        av.frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n}); 
+                        av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st);
+                        av.frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n}); 
                         av.text("不相同，這台車還不到出站的時候", Pos("target","bottom", 0, 20));
                         av.auto_camera();
                         av.end_frame_draw();
@@ -202,9 +202,9 @@ int main() {
                         {{"background", "#cccccc"}, AV::AtoB(now, n - 1)},
                         {{"mark"}, AV::AtoB(0, now - 1)} 
                     });
-                    av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st);
-                    av.frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n});
-                    av.text("車站沒車了，先去軌道拉新車", Pos("station","top", 0, -60));
+                    av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st);
+                    av.frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, i - 1)} }, {0, n});
+                    av.text("車站沒車了，先去軌道拉新車", Pos("station","top", 0, -20));
                     av.auto_camera();
                     av.end_frame_draw();
                 }
@@ -218,8 +218,8 @@ int main() {
                     {{"background", "#cccccc"}, AV::AtoB(now, n - 1)},
                     {{"mark"}, AV::AtoB(0, now - 1)} 
                 });
-                av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st);
-                av.frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
+                av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st);
+                av.frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
                 av.text("判定失敗，輸出 No", Pos("target","bottom", 0, 20));
 
                 // 關鍵影格記錄 (放在 camera 之前)
@@ -227,8 +227,8 @@ int main() {
                     {{"background", "#cccccc"}, AV::AtoB(now, n - 1)},
                     {{"mark"}, AV::AtoB(0, now - 1)} 
                 });
-                av.key_frame_draw("station", Pos("target", "right", 50, n * 40 + 50), AV::to_vector(st), { {{"highlight"}, {(int)st.size() - 1}} }, {}, "stack");
-                av.key_frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
+                av.key_frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), AV::to_vector(st), { {{"highlight"}, {(int)st.size() - 1}} }, {}, "stack");
+                av.key_frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
                 av.key_text("判定失敗，輸出 No", Pos("target","bottom", 0, 20));
 
                 av.auto_camera();
@@ -239,14 +239,14 @@ int main() {
                 //draw{ 判定成功
                 av.start_frame_draw();
                 av.frame_draw("target", Pos(100, 200), train, { {{"mark"}, AV::AtoB(0, n - 1)} });
-                av.frame_draw("station", Pos("target", "right", 50, n * 40 + 50), st);
-                av.frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
+                av.frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), st);
+                av.frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
                 av.text("判定成功，輸出 Yes", Pos("target","bottom", 0, 20));
 
                 // 關鍵影格記錄 (放在 camera 之前)
                 av.key_frame_draw("target", Pos(100, 200), train, { {{"mark"}, AV::AtoB(0, n - 1)} });
-                av.key_frame_draw("station", Pos("target", "right", 50, n * 40 + 50), AV::to_vector(st), {}, {}, "stack");
-                av.key_frame_draw("init", Pos("target", "top right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
+                av.key_frame_draw("station", Pos("target", "top right", 50, n * 40 + 90), AV::to_vector(st), {}, {}, "stack");
+                av.key_frame_draw("init", Pos("target", "right", 170, 0), init, { {{"background", "#cccccc"}, AV::AtoB(0, n - 1)} }, {0, n}); 
                 av.key_text("判定成功，輸出 Yes", Pos("target","bottom", 0, 20));
 
                 av.auto_camera();
