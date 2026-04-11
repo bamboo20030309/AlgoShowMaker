@@ -10,7 +10,8 @@
     if (spec.type === 'abs' || ((spec.x !== undefined || spec.y !== undefined) && !spec.ref)) {
       return {
         x: Number(spec.x || 0),
-        y: Number(spec.y || 0)
+        y: Number(spec.y || 0),
+        anchor: (spec.anchor || '').toLowerCase()
       };
     }
 

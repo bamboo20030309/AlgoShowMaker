@@ -195,10 +195,31 @@
     // 若有 anchor，根據物件自身尺寸做偏移
     if (pos.anchor && window.applySelfAnchorOffset) {
       try {
-        const bbox = g.getBBox();
-        const adjusted = window.applySelfAnchorOffset(baseX, baseY, bbox.width, bbox.height, pos.anchor);
-        baseX = adjusted.x;
-        baseY = adjusted.y;
+        const o_left   = parseFloat(g.getAttribute('data-outerframe-left'));
+        const o_right  = parseFloat(g.getAttribute('data-outerframe-right'));
+        const o_top    = parseFloat(g.getAttribute('data-outerframe-top'));
+        const o_bottom = parseFloat(g.getAttribute('data-outerframe-bottom'));
+
+        if (!isNaN(o_left) && !isNaN(o_right) && !isNaN(o_top) && !isNaN(o_bottom)) {
+          // 如果有 outerframe 資訊，優選使用它來計算偏移
+          const outerW = o_right - o_left;
+          const outerH = o_bottom - o_top;
+          
+          // 計算對齊偏移 (例如置中會回傳 -w/2, -h/2)
+          const adjusted = window.applySelfAnchorOffset(0, 0, outerW, outerH, pos.anchor);
+          
+          // 更新原本的 baseX, baseY。
+          // 邏輯：目標位置是在 (baseX, baseY)，我們希望 outerframe 的對齊點落在這。
+          // 所以群組的 transform 應該是 (baseX + 偏移 - outerframe的內部起點)
+          baseX = baseX + adjusted.x - o_left;
+          baseY = baseY + adjusted.y - o_top;
+        } else {
+          // 回退到 BBox (整組物件，包含 label, arrow 等)
+          const bbox = g.getBBox();
+          const adjusted = window.applySelfAnchorOffset(baseX, baseY, bbox.width, bbox.height, pos.anchor);
+          baseX = adjusted.x;
+          baseY = adjusted.y;
+        }
       } catch (e) { /* getBBox 可能失敗 */ }
     }
 
