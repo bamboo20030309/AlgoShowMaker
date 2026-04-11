@@ -1011,7 +1011,13 @@ public:
     void accu_draw() {
         _content += "                if (track === 0) {\n";
         for (const auto& entry : _accu_history) {
-            // 根據需求拔除 accu 的螢光效果
+            _content += "                    " + entry.second + "\n";
+        }
+        _content += "                }\n";
+    }
+    void key_accu_draw() {
+        _content += "                if (track === 1) {\n";
+        for (const auto& entry : _accu_history) {
             _content += "                    " + entry.second + "\n";
         }
         _content += "                }\n";
@@ -1191,9 +1197,11 @@ struct TreeLayout {
     
     enum LayoutMode { 
         COMPACT = 0,     // 自動收縮 (Bottom-up)
-        LEVEL_ORDER = 1, // 層序等距：x = order * dx
+        LEVELORDER = 1, // 層序等距：x = order * dx
         BINARY = 2,      // 完美回推：每一層格點固定由深度決定
-        INORDER = 3      // 中序等距：x 由中序走訪順序決定
+        INORDER = 3,     // 中序等距：x 由中序走訪順序決定
+        PREORDER = 4,    // 前序等距：父節點在左
+        POSTORDER = 5    // 後序等距：父節點在右
     } mode = COMPACT;
 
     TreeLayout(string _prefix, int _degree = 2, Pos _root_pos = Pos(500,100), double _dx = 60.0, double _dy = 120.0)
@@ -1371,10 +1379,31 @@ struct TreeLayout {
             double root_offset = custom_x[{0,0}];
             for (auto& p : custom_x) p.second -= root_offset;
         } 
-        else if (mode == LEVEL_ORDER) {
+        else if (mode == LEVELORDER) {
+            // 全域序列排列：下層的節點全部都在當前層的右邊
+            double global_cursor = 0.0;
+            std::map<int, std::vector<int>> levels;
             for (auto const& node : nodes) {
-                // 直接依據其在該層的序號 (order) 給予等距座標
-                custom_x[{node.first, node.second}] = node.second * dx;
+                levels[node.first].push_back(node.second);
+            }
+            
+            // 按照深度排序處理
+            std::vector<int> depths;
+            for (auto const& kv : levels) depths.push_back(kv.first);
+            std::sort(depths.begin(), depths.end());
+
+            for (int d : depths) {
+                std::vector<int>& os = levels[d];
+                std::sort(os.begin(), os.end());
+                for (int o : os) {
+                    custom_x[{d, o}] = global_cursor;
+                    global_cursor += dx; // 下一個節點必定在右邊
+                }
+            }
+            // 統一對齊：讓 Root 在 0
+            if (nodes.count({0,0})) {
+                double root_offset = custom_x[{0,0}];
+                for (auto& p : custom_x) p.second -= root_offset;
             }
         }
         else if (mode == INORDER) {
@@ -1413,6 +1442,38 @@ struct TreeLayout {
                 custom_x[{d, o}] = (o * span) + (span / 2.0);
             }
             // 統一對齊：讓 Root 在 0 (雖然 root 必在 0.5*span，但減掉後能對齊 root_pos)
+            if (nodes.count({0,0})) {
+                double root_offset = custom_x[{0,0}];
+                for (auto& p : custom_x) p.second -= root_offset;
+            }
+        }
+        else if (mode == PREORDER) {
+            double cursor = 0.0;
+            std::function<void(int, int)> preorder = [&](int d, int o) {
+                if (nodes.count({d, o}) == 0) return;
+                // 自己
+                custom_x[{d, o}] = cursor;
+                cursor += dx;
+                // 子節點
+                for (int i = 0; i < degree; i++) preorder(d + 1, o * degree + i);
+            };
+            preorder(0, 0);
+            if (nodes.count({0,0})) {
+                double root_offset = custom_x[{0,0}];
+                for (auto& p : custom_x) p.second -= root_offset;
+            }
+        }
+        else if (mode == POSTORDER) {
+            double cursor = 0.0;
+            std::function<void(int, int)> postorder = [&](int d, int o) {
+                if (nodes.count({d, o}) == 0) return;
+                // 子節點
+                for (int i = 0; i < degree; i++) postorder(d + 1, o * degree + i);
+                // 自己
+                custom_x[{d, o}] = cursor;
+                cursor += dx;
+            };
+            postorder(0, 0);
             if (nodes.count({0,0})) {
                 double root_offset = custom_x[{0,0}];
                 for (auto& p : custom_x) p.second -= root_offset;
