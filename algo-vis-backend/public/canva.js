@@ -303,32 +303,55 @@
       const fill = node.getAttribute && node.getAttribute('fill');
       const id = node.getAttribute('id');
 
-      // 排除背景格線
+      // 排除背景格線與塗鴉層
       if (tag === 'rect' && fill === 'url(#gridPattern)') return;
-      // [優化] 不要完全排除箭頭層，否則只有箭頭在動時相機會跳回原點；僅在空層時排除
-      if (id === 'arrow-layer' && node.children.length === 0) return;
+      if (id === 'drawingLayer') return;
 
-      try {
-        const bbox = node.getBBox();
-        if (bbox.width === 0 && bbox.height === 0) return;
+      // 排除箭頭層：箭頭的端點必然在已繪製物件之間，不會擴大邊界框
+      // 且箭頭有 tween 動畫，在動畫完成前座標可能是舊值，會嚴重干擾鏡頭計算
+      if (id === 'arrow-layer') return;
 
-        let tx = 0, ty = 0;
-        const transform = node.getAttribute('transform');
-        if (transform) {
-          // 精確匹配 translate 以及可能存在的 scale 或 rotate (僅提取位移部分)
-          const transMatch = /translate\s*\(\s*([+\-]?[\d\.]+)\s*[,\s]\s*([+\-]?[\d\.]+)\s*\)/.exec(transform);
-          if (transMatch) {
-            tx = parseFloat(transMatch[1]);
-            ty = parseFloat(transMatch[2]);
+      // 排除 stepWithTween 產生的 ghost 物件（正在淡出的舊物件）
+      if (node.getAttribute && node.getAttribute('data-ghost') === '1') return;
+
+      // 進階檢查：如果 node 本身是待刪除的，直接跳過
+      if (node.getAttribute && node.getAttribute('data-alive') === '0') return;
+
+      // 如果 node 是容器，遞迴檢查子物件（避免容器內的 data-alive="0" 物件被 getBBox 計入）
+      const processNode = (target, currentTX, currentTY) => {
+        try {
+          if (target.getAttribute && (target.getAttribute('data-alive') === '0' || target.style.display === 'none')) return;
+
+          // 累加當前節點的 transform 位移
+          let localTX = 0, localTY = 0;
+          const transform = target.getAttribute('transform');
+          if (transform) {
+            const transMatch = /translate\s*\(\s*([+\-]?[\d\.]+)\s*[,\s]\s*([+\-]?[\d\.]+)\s*\)/.exec(transform);
+            if (transMatch) {
+              localTX = parseFloat(transMatch[1]);
+              localTY = parseFloat(transMatch[2]);
+            }
           }
-        }
+          const totalTX = currentTX + localTX;
+          const totalTY = currentTY + localTY;
 
-        minX = Math.min(minX, bbox.x + tx);
-        minY = Math.min(minY, bbox.y + ty);
-        maxX = Math.max(maxX, bbox.x + tx + bbox.width);
-        maxY = Math.max(maxY, bbox.y + ty + bbox.height);
-        found = true;
-      } catch (e) { }
+          if (target.children.length === 0 || target.tagName.toLowerCase() === 'text' || target.tagName.toLowerCase() === 'circle') {
+            const bbox = target.getBBox();
+            if (bbox.width === 0 && bbox.height === 0) return;
+            minX = Math.min(minX, bbox.x + totalTX);
+            minY = Math.min(minY, bbox.y + totalTY);
+            maxX = Math.max(maxX, bbox.x + totalTX + bbox.width);
+            maxY = Math.max(maxY, bbox.y + totalTY + bbox.height);
+            found = true;
+          } else {
+            Array.from(target.children).forEach(child => {
+              processNode(child, totalTX, totalTY);
+            });
+          }
+        } catch (e) { }
+      };
+
+      processNode(node, 0, 0);
     });
 
     if (!found) {
