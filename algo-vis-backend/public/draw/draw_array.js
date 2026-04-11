@@ -190,15 +190,26 @@
     }
 
     const pos = window.resolvePos(Pos);
+    let baseX = pos.x, baseY = pos.y;
+
+    // 若有 anchor，根據物件自身尺寸做偏移
+    if (pos.anchor && window.applySelfAnchorOffset) {
+      try {
+        const bbox = g.getBBox();
+        const adjusted = window.applySelfAnchorOffset(baseX, baseY, bbox.width, bbox.height, pos.anchor);
+        baseX = adjusted.x;
+        baseY = adjusted.y;
+      } catch (e) { /* getBBox 可能失敗 */ }
+    }
 
     // 1) 讀出拖曳偏移
     const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
  
     // 2) 把 CodeScript 本幀的位移存在 data-base-offset
-    g.setAttribute('data-base-offset', `${pos.x},${pos.y}`);
+    g.setAttribute('data-base-offset', `${baseX},${baseY}`);
  
     // 3) 合併 base + 拖曳偏移，更新 transform
-    g.setAttribute('transform',`translate(${pos.x + dx},${pos.y + dy})`);
+    g.setAttribute('transform',`translate(${baseX + dx},${baseY + dy})`);
   }
 
   window.drawArray = drawArray;

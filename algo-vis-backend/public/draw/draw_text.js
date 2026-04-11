@@ -148,8 +148,9 @@ function isFullWidth(char) {
     if (!vp) return;
 
     pos = window.resolvePos(pos);
-    const offsetX = pos.x;
-    const offsetY = pos.y;
+    const posAnchor = pos.anchor || '';
+    let offsetX = pos.x;
+    let offsetY = pos.y;
 
     // 採用狀態機進行全域解析，支援跨行的語法結構
     let state = "NORMAL";
@@ -325,9 +326,18 @@ function isFullWidth(char) {
     });
     g.appendChild(text);
 
-    // 設定位置：以傳入的 X 座標為中心尚強往兩邊擴展
-    const finalX = offsetX - boxWidth / 2;
-    const finalY = offsetY;
+    // 根據 anchor 做自偏移（物件預設往右下延伸）
+    // drawText 原本就會把 x 置中（offsetX - boxWidth/2），這裡改用 anchor 系統
+    const totalH = boxHeight + 8; // +8 是小三角形的高度
+    let apos;
+    if (posAnchor) {
+      apos = window.applySelfAnchorOffset(offsetX, offsetY, boxWidth, totalH, posAnchor);
+    } else {
+      // 預設行為：x 置中，y 不補
+      apos = { x: offsetX - boxWidth / 2, y: offsetY };
+    }
+    const finalX = apos.x;
+    const finalY = apos.y;
     g.setAttribute('data-base-offset', `${finalX},${finalY}`);
     g.setAttribute('transform', `translate(${finalX},${finalY})`);
   }
@@ -371,8 +381,9 @@ function isFullWidth(char) {
     if (!vp) return;
 
     pos = window.resolvePos(pos);
-    const offsetX = pos.x;
-    const offsetY = pos.y;
+    const posAnchor = pos.anchor || '';
+    let offsetX = pos.x;
+    let offsetY = pos.y;
 
     // === 採用跨段落/跨行的狀態機解析器 ===
     let state = "NORMAL"; 
@@ -648,9 +659,16 @@ function isFullWidth(char) {
       lineTop += lineMaxFs * 1.3 + lineGap;
     });
 
-    // 設定整個 group 的外部位置：以傳入的 X 座標為中心尚強往兩邊擴展
-    const finalX = offsetX - boxWidth / 2;
-    const finalY = offsetY;
+    // 根據 anchor 做自偏移
+    const totalH = boxHeight + 8; // +8 是小三角形高度
+    let apos;
+    if (posAnchor) {
+      apos = window.applySelfAnchorOffset(offsetX, offsetY, boxWidth, totalH, posAnchor);
+    } else {
+      apos = { x: offsetX - boxWidth / 2, y: offsetY };
+    }
+    const finalX = apos.x;
+    const finalY = apos.y;
     g.setAttribute('data-base-offset', `${finalX},${finalY}`);
     g.setAttribute('transform', `translate(${finalX},${finalY})`);
   }

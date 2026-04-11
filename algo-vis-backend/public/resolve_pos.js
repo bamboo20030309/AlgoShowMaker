@@ -89,7 +89,8 @@
 
       return {
         x: calculatedPos.x + offX,
-        y: calculatedPos.y + offY
+        y: calculatedPos.y + offY,
+        anchor: (spec.anchor || '').toLowerCase()
       };
     }
 
@@ -150,5 +151,47 @@
 
     return { x, y };
   }
+
+  /**
+   * 根據 anchor 與物件自身尺寸，計算「自偏移」
+   * 物件預設從 (x, y) 往右下延伸，本函式將座標往回偏移使物件對齊參考點
+   *
+   * anchor 對應規則：
+   *   left      → 往左補全部寬度, 往上補一半高度
+   *   top       → 往上補全部高度, 往左補一半寬度
+   *   right     → 往上補一半高度（不補寬度，因為原本就往右延伸）
+   *   bottom    → 往左補一半寬度（不補高度，因為原本就往下延伸）
+   *   left top  → 往左補全部寬度, 往上補全部高度
+   *   center    → 往左補一半寬度, 往上補一半高度
+   *   (空字串)  → 不做任何偏移
+   */
+  window.applySelfAnchorOffset = function(x, y, w, h, anchor) {
+    if (!anchor) return { x, y };
+    const a = anchor.toLowerCase();
+
+    let ox = 0, oy = 0;
+    const hasLeft   = a.includes('left');
+    const hasRight  = a.includes('right');
+    const hasTop    = a.includes('top');
+    const hasBottom = a.includes('bottom');
+    const isCenter  = a === 'center';
+
+    if (isCenter) {
+      ox = -w / 2;
+      oy = -h / 2;
+    } else {
+      // 水平
+      if (hasLeft)        ox = -w;      // 物件在參考點左邊 → 全部往左
+      else if (!hasRight) ox = -w / 2;  // 沒有指定左右 → 水平置中
+      // hasRight 不偏移（物件自然往右延伸）
+
+      // 垂直
+      if (hasTop)          oy = -h;      // 物件在參考點上方 → 全部往上
+      else if (!hasBottom) oy = -h / 2;  // 沒有指定上下 → 垂直置中
+      // hasBottom 不偏移（物件自然往下延伸）
+    }
+
+    return { x: x + ox, y: y + oy };
+  };
 
 })();
