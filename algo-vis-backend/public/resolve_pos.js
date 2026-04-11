@@ -1,16 +1,16 @@
 // resolve_pos.js
-;(function() {
+; (function () {
 
-  window.resolvePos = function(spec) {
+  window.resolvePos = function (spec) {
     if (!spec) return { x: 0, y: 0 };
 
     // ==========================================
     // 1. 絕對位置 (Absolute)
     // ==========================================
     if (spec.type === 'abs' || ((spec.x !== undefined || spec.y !== undefined) && !spec.ref)) {
-      return { 
-        x: Number(spec.x || 0), 
-        y: Number(spec.y || 0) 
+      return {
+        x: Number(spec.x || 0),
+        y: Number(spec.y || 0)
       };
     }
 
@@ -20,7 +20,7 @@
     if (spec.type === 'rel' || spec.ref) {
       const refId = spec.ref; // 對應 C++ 的 refId (或是舊版的 group)
       const vp = window.getViewport ? window.getViewport() : document;
-      
+
       // 找到目標 DOM 元素 (通常是 <g>)
       let el = vp.querySelector('#' + CSS.escape(refId));
 
@@ -55,7 +55,7 @@
           calculatedPos = window.getOuterframePosition(refId, anchor);
         }
       }
-      
+
       // -----------------------------------------------------
       // 一維陣列抓位置
       // -----------------------------------------------------
@@ -103,7 +103,7 @@
    */
   function getFallbackBBoxPosition(el, anchor) {
     let baseX = 0, baseY = 0;
-    
+
     // 讀取 transform
     const transform = el.getAttribute('transform');
     if (transform) {
@@ -131,7 +131,7 @@
         w = r.width;
         h = r.height;
       }
-    } catch(e) {}
+    } catch (e) { }
 
     // 計算錨點
     const cx = baseX + w / 2;
@@ -144,9 +144,9 @@
     const a = (anchor || '').toLowerCase();
     let x = cx, y = cy;
 
-    if (a.includes('left'))   x = left;
-    if (a.includes('right'))  x = right;
-    if (a.includes('top'))    y = top;
+    if (a.includes('left')) x = left;
+    if (a.includes('right')) x = right;
+    if (a.includes('top')) y = top;
     if (a.includes('bottom')) y = bottom;
 
     return { x, y };
@@ -165,28 +165,31 @@
    *   center    → 往左補一半寬度, 往上補一半高度
    *   (空字串)  → 不做任何偏移
    */
-  window.applySelfAnchorOffset = function(x, y, w, h, anchor) {
+  window.applySelfAnchorOffset = function (x, y, w, h, anchor) {
     if (!anchor) return { x, y };
     const a = anchor.toLowerCase();
 
+    // 如果帶有 raw: 前綴，則不計算自補齊偏移（直接使用原始點作為左上角往右下延伸）
+    if (a.includes('raw')) return { x, y };
+
     let ox = 0, oy = 0;
-    const hasLeft   = a.includes('left');
-    const hasRight  = a.includes('right');
-    const hasTop    = a.includes('top');
+    const hasLeft = a.includes('left');
+    const hasRight = a.includes('right');
+    const hasTop = a.includes('top');
     const hasBottom = a.includes('bottom');
-    const isCenter  = a === 'center';
+    const isCenter = a === 'center';
 
     if (isCenter) {
       ox = -w / 2;
       oy = -h / 2;
     } else {
       // 水平
-      if (hasLeft)        ox = -w;      // 物件在參考點左邊 → 全部往左
+      if (hasLeft) ox = -w;      // 物件在參考點左邊 → 全部往左
       else if (!hasRight) ox = -w / 2;  // 沒有指定左右 → 水平置中
       // hasRight 不偏移（物件自然往右延伸）
 
       // 垂直
-      if (hasTop)          oy = -h;      // 物件在參考點上方 → 全部往上
+      if (hasTop) oy = -h;      // 物件在參考點上方 → 全部往上
       else if (!hasBottom) oy = -h / 2;  // 沒有指定上下 → 垂直置中
       // hasBottom 不偏移（物件自然往下延伸）
     }
