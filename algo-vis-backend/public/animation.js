@@ -90,8 +90,83 @@
     const beforeIds = new Set(Object.keys(before));
     const ghostMap = {};
 
+    const sqBefore = {};
+    vp.querySelectorAll('.draggable-object').forEach(g => {
+      const layout = g.getAttribute('data-layout');
+      if (layout !== 'stack' && layout !== 'queue') return;
+      const gId = g.id;
+      const size = parseInt(g.getAttribute('data-size') || '0', 10);
+      const [bx, by] = (g.getAttribute('data-base-offset') || '0,0').split(',').map(Number);
+      const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
+
+      // 記錄所有 cell 的文字與首尾 cell 的幾何資訊
+      const cellTexts = [];
+      const cellInfos = {};  // index -> {x,y,w,h,fill,text}
+      for (let i = 0; i < size; i++) {
+        const cellG = g.querySelector(`#cell-${CSS.escape(gId)}-${i}`);
+        if (cellG) {
+          const r = cellG.querySelector('rect');
+          const t = cellG.querySelector('text');
+          const text = t ? t.textContent : '';
+          cellTexts.push(text);
+          if (r) cellInfos[i] = { x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height'), fill: r.getAttribute('fill') || '#fff', text };
+        } else {
+          cellTexts.push('');
+        }
+      }
+      sqBefore[gId] = { layout, size, groupX: bx + dx, groupY: by + dy, cellTexts, cellInfos };
+    });
+
     rawStepFn();
     if (window.syncCurrentFrameFromCodeScript) window.syncCurrentFrameFromCodeScript();
+
+    // === Stack/Queue Push/Pop 偵測：步進後比較 ===
+    const sqPushTargets = [];  // { layout, cellG, atEnd }
+    const sqPopGhosts  = [];  // { ghost, layout, startX, startY, atEnd }
+    vp.querySelectorAll('.draggable-object').forEach(g => {
+      const layout = g.getAttribute('data-layout');
+      if (layout !== 'stack' && layout !== 'queue') return;
+      const gId = g.id;
+      const newSize = parseInt(g.getAttribute('data-size') || '0', 10);
+      const prev = sqBefore[gId];
+      if (!prev || newSize === prev.size) return;
+
+      // 偵測變化端：比較第一個 cell 的文字
+      const newFirstCellG = g.querySelector(`#cell-${CSS.escape(gId)}-0`);
+      const newFirstText = newFirstCellG ? (newFirstCellG.querySelector('text')?.textContent || '') : '';
+      const atEnd = (prev.cellTexts.length === 0 || prev.cellTexts[0] === newFirstText);
+      // atEnd=true → 變化在尾端（Stack 頂/Queue 後）; atEnd=false → 變化在首端（Stack 底/Queue 前）
+
+      if (newSize > prev.size) {
+        // === 新增元素 (Push)：找到新 cell，設定飛入動畫 ===
+        const newCellIdx = atEnd ? newSize - 1 : 0;
+        const cellG = g.querySelector(`#cell-${CSS.escape(gId)}-${newCellIdx}`);
+        if (cellG) sqPushTargets.push({ layout, cellG, atEnd });
+      } else {
+        // === 移除元素 (Pop)：用舊資訊建立 ghost ===
+        const removedIdx = atEnd ? prev.size - 1 : 0;
+        const ec = prev.cellInfos[removedIdx];
+        if (ec) {
+          const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          ghost.setAttribute('data-ghost', '1');
+          ghost.setAttribute('pointer-events', 'none');
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', ec.x); rect.setAttribute('y', ec.y);
+          rect.setAttribute('width', ec.w); rect.setAttribute('height', ec.h);
+          rect.setAttribute('fill', ec.fill); rect.setAttribute('stroke', '#333'); rect.setAttribute('stroke-width', '1');
+          ghost.appendChild(rect);
+          const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          txt.setAttribute('x', ec.x + ec.w / 2); txt.setAttribute('y', ec.y + ec.h / 2);
+          txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('dominant-baseline', 'middle');
+          txt.textContent = ec.text;
+          ghost.appendChild(txt);
+          ghost.setAttribute('transform', `translate(${prev.groupX},${prev.groupY})`);
+          vp.appendChild(ghost);
+          sqPopGhosts.push({ ghost, layout, startX: prev.groupX, startY: prev.groupY, atEnd });
+        }
+      }
+    });
+
 
     const after = snapshotDraggablePositions();
     const afterIds = new Set(Object.keys(after));
@@ -128,17 +203,45 @@
     if (ids.length === 0 && Object.keys(ghostMap).length === 0) return;
 
     const startTime = performance.now();
+    const flyDist = 80; // push/pop 飛行距離
+
     function animate(now) {
       let t = (now - startTime) / duration;
       if (t > 1) t = 1; if (t < 0) t = 0;
       const et = ease(t);
 
+      // --- 整組消失的 ghost ---
       for (const id in ghostMap) {
         const { ghost, startState } = ghostMap[id];
         if (!ghost.parentNode) continue;
         ghost.setAttribute('opacity', String(1 - et));
         ghost.setAttribute('transform', `translate(${startState.x},${startState.y}) scale(${1 - et * 0.3})`);
       }
+
+      // --- Stack/Queue Push 動畫：新 cell 飛入 ---
+      // Stack: 永遠從上方飛入（開口在頂端）
+      // Queue: atEnd(後端)→從右方飛入, !atEnd(前端)→從左方飛入
+      sqPushTargets.forEach(({ layout, cellG, atEnd }) => {
+        const offset = (1 - et) * flyDist;
+        if (layout === 'stack') {
+          cellG.setAttribute('transform', `translate(0,${-offset})`);
+        } else {
+          cellG.setAttribute('transform', `translate(${atEnd ? offset : -offset},0)`);
+        }
+        cellG.style.opacity = String(et);
+      });
+
+      // --- Stack/Queue Pop 動畫：ghost cell 飛出 ---
+      // Stack: 永遠往上方飛出（開口在頂端）
+      // Queue: atEnd(後端)→往右方飛出, !atEnd(前端)→往左方飛出
+      sqPopGhosts.forEach(({ ghost, layout, startX, startY, atEnd }) => {
+        const offset = et * flyDist;
+        let dx = 0, dy = 0;
+        if (layout === 'stack') dy = -offset;
+        if (layout === 'queue') dx = atEnd ?  offset : -offset;
+        ghost.setAttribute('opacity', String(1 - et));
+        ghost.setAttribute('transform', `translate(${startX + dx},${startY + dy})`);
+      });
 
       ids.forEach(id => {
         const endState = after[id];
@@ -187,7 +290,13 @@
 
       if (t < 1) requestAnimationFrame(animate);
       else {
+        // 清理整組 ghost
         for (const id in ghostMap) if (ghostMap[id].ghost.parentNode) ghostMap[id].ghost.parentNode.removeChild(ghostMap[id].ghost);
+        // 清理 pop ghost
+        sqPopGhosts.forEach(({ ghost }) => { if (ghost.parentNode) ghost.parentNode.removeChild(ghost); });
+        // 還原 push cell 的 transform 與 opacity
+        sqPushTargets.forEach(({ cellG }) => { cellG.removeAttribute('transform'); cellG.style.opacity = ''; });
+        // 收尾：最終狀態對齊
         ids.forEach(id => {
           const end = after[id]; const g2 = vp.querySelector('#' + CSS.escape(id));
           if (!g2 || !end) return;
