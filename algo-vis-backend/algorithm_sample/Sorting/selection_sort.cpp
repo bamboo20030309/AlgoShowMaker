@@ -22,7 +22,7 @@ int main() {
     
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"Selection Sort (選擇排序 - 選小)\n每一輪在未排序部分找最小值，並與未排序部分的第一個位置交換來排序的方法"}}, Pos(last_id, "top", 0, -80));
+    av.colored_text({{"Selection Sort (選擇排序 - 選小)\n每一輪在未排序部分找最小值，並與未排序部分的第一個位置交換來排序的方法"}}, Pos(last_id, "top", 0, -20));
     av.auto_camera();
     av.end_frame_draw();
     //}
@@ -49,7 +49,7 @@ int main() {
             av.colored_text({
                 {"檢查索引 " + to_string(j) + "，目前最小值格子的值: ", ""},
                 {to_string(arr[min_idx]), "rgba(56, 255, 56, 0.45)"}
-            }, Pos(current_id, "bottom", 0, 35));
+            }, Pos(current_id, "bottom", 0, 20));
             av.camera(Pos(current_id), 1.7);
             av.end_frame_draw();
             //}
@@ -66,7 +66,7 @@ int main() {
                     {{"background","rgba(56, 255, 56, 0.45)"}, {min_idx}}
                 }, {0}, "normal", 0, 1);
                 av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-                av.text("發現更小的值！更新目前最小值格子為索引 " + to_string(min_idx), Pos(current_id, "bottom", 0, 35));
+                av.text("發現更小的值！更新目前最小值格子為索引 " + to_string(min_idx), Pos(current_id, "bottom", 0, 20));
                 av.camera(Pos(current_id), 1.7);
                 av.end_frame_draw();
                 //}
@@ -84,7 +84,7 @@ int main() {
                 {{"background","rgba(56, 255, 56, 0.45)"}, {i}}
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text("找到未排序部分的最小值，與索引 " + to_string(i) + " 的格位交換", Pos(current_id, "bottom", 0, 35));
+            av.text("找到未排序部分的最小值，與索引 " + to_string(i) + " 的格位交換", Pos(current_id, "bottom", 0, 20));
             av.camera(Pos(current_id), 1.7);
             av.end_frame_draw();
             //}
@@ -98,7 +98,7 @@ int main() {
                 {{"background","rgba(255, 255, 56, 0.45)"}, {i}}
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text("最小值就在索引 " + to_string(i) + "，不需交換", Pos(current_id, "bottom", 0, 35));
+            av.text("最小值就在索引 " + to_string(i) + "，不需交換", Pos(current_id, "bottom", 0, 20));
             av.camera(Pos(current_id), 1.7);
             av.end_frame_draw();
             //}
@@ -117,7 +117,7 @@ int main() {
     av.start_frame_draw();
     av.accu_draw();
     av.frame_draw(last_id, last_pos, arr, {{{"mark"}, av.AtoB(0, n - 1)}}, {0}, "normal", 0, 1);
-    av.text("Selection Sort 完成！", Pos(last_id, "bottom", 0, 45));
+    av.text("Selection Sort 完成！", Pos(last_id, "bottom", 0, 20));
     av.auto_camera();
     av.end_frame_draw();
     av.end_draw();

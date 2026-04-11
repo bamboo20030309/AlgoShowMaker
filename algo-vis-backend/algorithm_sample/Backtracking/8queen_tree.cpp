@@ -65,7 +65,7 @@ void dfs(int n, int L, int M, int R) {
         tree.paint(av, "", -1, [&]{
             av.colored_text({
                 {{"找到解了！"}}
-            }, Pos(tree.get_id(d, o), "top", 0, -60));
+            }, Pos(tree.get_id(d, o), "top", 0, -20));
 
             // 把整棵樹也畫進 key frame track
             for (auto& kv : node_boards) {
@@ -80,7 +80,7 @@ void dfs(int n, int L, int M, int R) {
                                  Pos(kid, "top"), {{"color", "black"}, {"width", "2"}});
                 }
             }
-            av.key_text("找到解了！", Pos(tree.get_id(d, o), "top", 0, -60));
+            av.key_text("找到解了！", Pos(tree.get_id(d, o), "top", 0, -20));
             av.camera(Pos(tree.get_id(d, o)), 1.2); 
             tree.edge_colors[{d, o}] = "red"; 
         });
@@ -97,7 +97,7 @@ void dfs(int n, int L, int M, int R) {
         if (P == 0) {
             av.colored_text({
                 {{"沒路了，回溯"}}
-            }, Pos(tree.get_id(d, o), "top", 0, -50));
+            }, Pos(tree.get_id(d, o), "top", 0, -20));
         }
     });
     int branch_idx = 0; // 紀錄目前往下長的是第幾個分支
@@ -177,7 +177,7 @@ int main() {
     av.colored_text({
         {{"八皇后問題 (位元運算版)\n","","","20"}},
         {{"這是一個很經典的 回溯 (backtracking) 演算法問題\n給一個 8{*:乘}8 的棋盤，問你總共有多少種皇后的擺法可以讓任意兩個皇后都不會互相攻{擊:及}?"}}
-    }, Pos("chess_board","top",0, -120));
+    }, Pos("chess_board","top",0, -20));
     
     av.auto_camera();
     av.end_frame_draw();
@@ -222,7 +222,7 @@ int main() {
         {{"上方已經放好的皇后"},"rgba(252, 255, 64, 0.46)"},
         {{" ，且可以減少很多不必要的搜尋，\n"}},
         {{"將當前皇后的影響力像影子一樣往下傳遞，這就是高效解法的第一步。"}}
-    }, Pos("chess_board","top",0, -210));
+    }, Pos("chess_board","top",0, -20));
     av.auto_camera();
     av.end_frame_draw();
 
@@ -258,7 +258,7 @@ int main() {
         {{"\n關鍵就在這裡：\n傳統碰撞檢查需要用迴圈掃描，但在二進位下，我們可以用位元運算 ( AND / OR / NOT )\n\n"}},
         {{"這樣做不僅能夠讓程式寫起來更簡潔，而且還可以加速不少常數時間，\n"}},
         {{"電腦本身對於這種位元運算非常直覺，計算速度非常快。"}}
-    }, Pos("chess_board","top",0, -320));
+    }, Pos("chess_board","top",0, -20));
     av.auto_camera();
     av.end_frame_draw();
 
@@ -288,7 +288,7 @@ int main() {
         {{"\n這三組限制會隨{著:ㄓㄜ˙}遞迴 "}}, {{"向下傳遞"}, "rgba(252, 255, 64, 0.46)"}, {{" 給下一列使用。\n"}},
         {{"在每一列，我們只需執行 "}}, {{"( L | M | R )"}, "rgba(252, 255, 64, 0.46)"},
         {{" 將所有 "}}, {{"攻擊範圍取聯集"}, "rgba(252, 255, 64, 0.46)"}, {{" ，\n就能瞬間找出所有受威脅的格子，一次搞定所有檢查！"}}
-    }, Pos("chess_board","top",0, -280));
+    }, Pos("chess_board","top",0, -20));
     av.auto_camera();
     av.end_frame_draw();
     } // end demo_N scope

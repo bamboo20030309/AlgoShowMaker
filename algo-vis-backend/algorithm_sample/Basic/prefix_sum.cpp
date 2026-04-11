@@ -14,6 +14,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   num, {}, {0}, "normal", 0, 1);
     av.frame_draw("pre" , Pos(0,150),   pre, {}, {0}, "normal", 0, 1);
+    av.auto_camera();
     av.end_frame_draw();
     //}
     pre[0]=num[0];
@@ -22,6 +23,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   num, {{{"highlight"},{0}},{{"focus"},_draw_focus},{{"background","rgba(47, 255, 82, 0.44)"},{0}}}, {0}, "normal", 0, 1);
     av.frame_draw("pre" , Pos(0,150),   pre, {{{"highlight"},{0}},{{"focus"},{0}},{{"background","rgba(47, 255, 82, 0.44)"},{0}}}, {0}, "normal", 0, 1);
+    av.auto_camera();
     av.end_frame_draw();
     //}
     for(int i=1;i<n;i++){
@@ -31,6 +33,7 @@ int main() {
         av.start_frame_draw();
         av.frame_draw("num" , Pos(0,0),   num, {{{"highlight"},{i}},{{"focus"},_draw_focus},{{"background","rgba(47, 255, 82, 0.44)"},AV::AtoB(0,i)}}, {0}, "normal", 0, 1);
         av.frame_draw("pre" , Pos(0,150),   pre, {{{"highlight"},{i-1,i}},{{"focus"},{i}},{{"background","rgba(47, 255, 82, 0.44)"},{i}}}, {0}, "normal", 0, 1);
+        av.auto_camera();
         av.end_frame_draw();
         //}
     }
@@ -38,6 +41,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   num, {}, {0}, "normal", 0, 1);
     av.frame_draw("pre" , Pos(0,150),   pre, {}, {0}, "normal", 0, 1);
+    av.auto_camera();
     av.end_frame_draw();
     //}
     int L,R;
@@ -47,6 +51,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   num, {}, {0}, "normal", 0, 1);
     av.frame_draw("pre" , Pos(0,150),   pre, {}, {0}, "normal", 0, 1);
+    av.auto_camera();
     av.end_frame_draw();
     av.end_draw();
     //}

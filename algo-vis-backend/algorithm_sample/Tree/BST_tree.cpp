@@ -90,7 +90,7 @@ void draw_tree(string title = "") {
     if (title != "") {
         // 如果樹非空，將文字綁定在當前游標節點下；否則放頂端
         if (tree.nodes.count({tree.curr_d, tree.curr_o})) {
-            av.text(title, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 10));
+            av.text(title, Pos(tree.get_id(tree.curr_d, tree.curr_o), "bottom", 0, 20));
         } else {
             av.text(title, Pos(500, 10));
         }
@@ -107,15 +107,15 @@ Node* insert(Node* root, int val) {
         av.start_frame_draw();
         draw_tree_content();
         if (val == root->val) {
-            av.frame_draw("moving_val", Pos(node_id, "left top", 0, -90), vector<int>{val});
-            av.text(to_string(val) + " = " + to_string(root->val) + "，已存在相同節點，不需要再額外新增", Pos(node_id, "bottom", 0, 10));
+            av.frame_draw("moving_val", Pos(node_id, "top", 0, -20), vector<int>{val});
+            av.text(to_string(val) + " = " + to_string(root->val) + "，已存在相同節點，不需要再額外新增", Pos(node_id, "bottom", 0, 20));
         } else {
-            string side = (val > root->val) ? "top right" : "top left";
-            double offset_x = (val > root->val) ? 20.0 : -70.0;
+            string side = (val > root->val) ? "right" : "left";
+            double offset_x = (val > root->val) ? 20.0 : -20.0;
             string cmp = (val > root->val) ? " > " : " < ";
             string direction = (val > root->val) ? "，往右走" : "，往左走";
             av.frame_draw("moving_val", Pos(node_id, side, offset_x, 0), vector<int>{val});
-            av.text(to_string(val) + cmp + to_string(root->val) + direction, Pos(node_id, "bottom", 0, 10));
+            av.text(to_string(val) + cmp + to_string(root->val) + direction, Pos(node_id, "bottom", 0, 20));
         }
         av.auto_camera(0.85);
         av.end_frame_draw();
@@ -136,7 +136,7 @@ Node* insert(Node* root, int val) {
         
         draw_tree_content(); 
         av.frame_draw("moving_val", target_p, vector<int>{val}, {{{"highlight"}, {0}}, {{"point"}, {0}}});
-        av.text("找到空位！將節點 " + to_string(val) + " 放置於此點", Pos("moving_val", "bottom", 0, 10));
+        av.text("找到空位！將節點 " + to_string(val) + " 放置於此點", Pos("moving_val", "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
@@ -171,7 +171,7 @@ bool search(Node* root, int val) {
         string parent_id = (tree.curr_d > 0) ? tree.get_id(tree.curr_d - 1, tree.curr_o / 2) : "tree_root";
         av.start_frame_draw();
         draw_tree_content();
-        av.text("沒辦法再繼續往下走，因此找不到 " + to_string(val), Pos(parent_id, "bottom", 0, 10));
+        av.text("沒辦法再繼續往下走，因此找不到 " + to_string(val), Pos(parent_id, "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
         //}
@@ -186,7 +186,7 @@ bool search(Node* root, int val) {
         tree.node_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7"; // 指定綠色
         av.start_frame_draw();
         draw_tree_content();
-        av.text(to_string(val) + " = " + to_string(root->val) + "，找到了！", Pos(node_id, "bottom", 0, 10));
+        av.text(to_string(val) + " = " + to_string(root->val) + "，找到了！", Pos(node_id, "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
         tree.node_colors.erase({tree.curr_d, tree.curr_o});
@@ -200,7 +200,7 @@ bool search(Node* root, int val) {
     draw_tree_content();
     string reason = (val > root->val) ? " > " : " < ";
     string direction = (val > root->val) ? "，往右走" : "，往左走";
-    av.text(to_string(val) + reason + to_string(root->val) + direction, Pos(node_id, "bottom", 0, 10));
+    av.text(to_string(val) + reason + to_string(root->val) + direction, Pos(node_id, "bottom", 0, 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
     //}
@@ -240,7 +240,7 @@ Node* find_min(Node* root) {
         //draw{
         av.start_frame_draw();
         draw_tree_content();
-        av.text("尋找繼承者 (右子樹之最小)", Pos(node_id, "bottom", 0, 10));
+        av.text("尋找繼承者 (右子樹之最小)", Pos(node_id, "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
@@ -261,7 +261,7 @@ Node* find_min(Node* root) {
     tree.node_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
     av.start_frame_draw();
     draw_tree_content();
-    av.text("無法繼續往左走，找到右子樹最小值：" + to_string(root->val) + " (繼承者)", Pos(node_id, "bottom", 0, 10));
+    av.text("無法繼續往左走，找到右子樹最小值：" + to_string(root->val) + " (繼承者)", Pos(node_id, "bottom", 0, 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
     // 這裡原本有 erase，由 remove 函式接手擦除，讓過渡影格能維持綠色
@@ -278,7 +278,7 @@ Node* remove(Node* root, int val, bool silent = false) {
             string parent_id = (tree.curr_d > 0) ? tree.get_id(tree.curr_d - 1, tree.curr_o / 2) : "tree_root";
             av.start_frame_draw();
             draw_tree_content();
-            av.text("沒辦法再繼續往下走，因此找不到 " + to_string(val), Pos(parent_id, "bottom", 0, 10));
+            av.text("沒辦法再繼續往下走，因此找不到 " + to_string(val), Pos(parent_id, "bottom", 0, 20));
             av.auto_camera(0.85);
             av.end_frame_draw();
         }
@@ -293,7 +293,7 @@ Node* remove(Node* root, int val, bool silent = false) {
         if (!silent) {
             av.start_frame_draw();
             draw_tree_content();
-            av.text(to_string(val) + " < " + to_string(root->val) + "，往左走", Pos(node_id, "bottom", 0, 10));
+            av.text(to_string(val) + " < " + to_string(root->val) + "，往左走", Pos(node_id, "bottom", 0, 20));
             av.auto_camera(0.85);
             av.end_frame_draw();
         }
@@ -308,7 +308,7 @@ Node* remove(Node* root, int val, bool silent = false) {
         if (!silent) {
             av.start_frame_draw();
             draw_tree_content();
-            av.text(to_string(val) + " > " + to_string(root->val) + "，往右走", Pos(node_id, "bottom", 0, 10));
+            av.text(to_string(val) + " > " + to_string(root->val) + "，往右走", Pos(node_id, "bottom", 0, 20));
             av.auto_camera(0.85);
             av.end_frame_draw();
         }
@@ -325,7 +325,7 @@ Node* remove(Node* root, int val, bool silent = false) {
 
             av.start_frame_draw();
             draw_tree_content();
-            av.text("找到 " + to_string(val) + " 了！ 準備刪除", Pos(node_id, "bottom", 0, 10));
+            av.text("找到 " + to_string(val) + " 了！ 準備刪除", Pos(node_id, "bottom", 0, 20));
             av.auto_camera(0.85);
             av.end_frame_draw();
         }
@@ -338,7 +338,7 @@ Node* remove(Node* root, int val, bool silent = false) {
             if (!temp) {
                 av.start_frame_draw();
                 draw_tree_content();
-                av.text("因為是葉節點，直接刪除", Pos(node_id, "bottom", 0, 10));
+                av.text("因為是葉節點，直接刪除", Pos(node_id, "bottom", 0, 20));
                 av.auto_camera(0.85);
                 av.end_frame_draw();
             } else {
@@ -354,7 +354,7 @@ Node* remove(Node* root, int val, bool silent = false) {
                 string child_id = root->left ? tree.get_id(tree.curr_d + 1, tree.curr_o * 2) : tree.get_id(tree.curr_d + 1, tree.curr_o * 2 + 1);
                 
                 av.arrow(Pos(parent_id, "bottom"), Pos(child_id, "top"), {{"color", "red"}, {"width", "2"}});
-                av.text("因為它有一個子節點，所以要將父節點重新連向其子節點", Pos(node_id, "bottom", 0, 10));
+                av.text("因為它有一個子節點，所以要將父節點重新連向其子節點", Pos(node_id, "bottom", 0, 20));
                 
                 av.auto_camera(0.85);
                 av.end_frame_draw();
@@ -371,7 +371,7 @@ Node* remove(Node* root, int val, bool silent = false) {
         // --- 核心改寫：雙子節點刪除與跳轉優化 ---
         av.start_frame_draw();
         draw_tree_content();
-        av.text("因為有兩個子節點，需要尋找右子樹最小值作為繼承者", Pos(node_id, "bottom", 0, 10));
+        av.text("因為有兩個子節點，需要尋找右子樹最小值作為繼承者", Pos(node_id, "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
@@ -385,7 +385,7 @@ Node* remove(Node* root, int val, bool silent = false) {
         // --- 取代前的停留影格 (新加的) ---
         av.start_frame_draw();
         draw_tree_content();
-        av.text("將繼承者數值取代目標節點", Pos(node_id, "bottom", 0, 10));
+        av.text("將繼承者數值取代目標節點", Pos(node_id, "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
@@ -397,7 +397,7 @@ Node* remove(Node* root, int val, bool silent = false) {
         //draw{
         av.start_frame_draw();
         draw_tree_content();
-        av.text("刪除原本的繼承者", Pos(node_id, "bottom", 0, 10));
+        av.text("刪除原本的繼承者", Pos(node_id, "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
@@ -438,7 +438,7 @@ int main() {
     // 影格：開場說明
     av.start_frame_draw();
     draw_tree_content(false, false);
-    av.text("這是二元搜尋樹 (BST)\n功能是搜尋速度快 (平均 O(log n))，且資料會自動排序\n建構規則是 左子樹之值 < 根節點 < 右子樹之值\n能夠 新增 (1)、查詢 (2)、刪除 (3)", Pos("tree_root", "bottom", 0, 10));
+    av.text("這是二元搜尋樹 (BST)\n功能是搜尋速度快 (平均 O(log n))，且資料會自動排序\n建構規則是 左子樹之值 < 根節點 < 右子樹之值\n能夠 新增 (1)、查詢 (2)、刪除 (3)", Pos("tree_root", "bottom", 0, 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
     //}
@@ -456,7 +456,7 @@ int main() {
         av.start_frame_draw();
         draw_tree_content(true, false);
         // 說明文字統一綁定在 Root 指針方塊下方
-        av.text(task_msg, Pos("tree_root", "bottom", 0, 10));
+        av.text(task_msg, Pos("tree_root", "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
         //}
@@ -482,7 +482,7 @@ int main() {
         // 影格：展示最終結果
         av.start_frame_draw();
         draw_tree_content(false, false, false, true);
-        av.text(task_msg, Pos("tree_root", "bottom", 0, 10));
+        av.text(task_msg, Pos("tree_root", "bottom", 0, 20));
         av.key_text(task_msg, Pos("tree_root", "bottom", 0, 10));
         av.auto_camera(0.85);
         av.end_frame_draw();
@@ -493,8 +493,8 @@ int main() {
     // 影格：所有操作結束 (移除 highlight)
     av.start_frame_draw();
     draw_tree_content(false, false, false, true);
-    av.text("所有操作結束", Pos("tree_root", "bottom", 0, 10));
-    av.key_text("所有操作結束", Pos("tree_root", "bottom", 0, 10));
+    av.text("所有操作結束", Pos("tree_root", "bottom", 0, 20));
+    av.key_text("所有操作結束", Pos("tree_root", "bottom", 0, 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
     

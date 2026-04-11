@@ -19,7 +19,7 @@ int main() {
     
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"Bubble Sort (冒泡排序)\n透過將最大的元素一個一個往後丟，來進行排序"}}, Pos(last_id, "top", 0, -80));
+    av.colored_text({{"Bubble Sort (冒泡排序)\n透過將最大的元素一個一個往後丟，來進行排序"}}, Pos(last_id, "top", 0, -20));
     av.auto_camera();
     av.end_frame_draw();
     //}
@@ -43,7 +43,7 @@ int main() {
             }, {0}, "normal", 0, 1);
             // 暫時的箭頭（還沒存入紀錄）
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text("比較左右兩邊", Pos(current_id, "bottom", 0, 35));
+            av.text("比較左右兩邊", Pos(current_id, "bottom", 0, 20));
             av.camera(Pos(current_id),1.7);
             av.end_frame_draw();
             //}
@@ -57,7 +57,7 @@ int main() {
                     {{"mark"}, AV::AtoB(n - i, n - 1)}
                 }, {0}, "normal", 0, 1);
                 av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-                av.text("左比右大就左右交換", Pos(current_id, "bottom", 0, 35));
+                av.text("左比右大就左右交換", Pos(current_id, "bottom", 0, 20));
                 av.camera(Pos(current_id), 1.7);
                 av.end_frame_draw();
                 //}
@@ -70,7 +70,7 @@ int main() {
         
         av.start_frame_draw();
         av.accu_draw();
-        av.text("第" + to_string(i + 1) + "輪結束，確認位置" + to_string(n-i-1), Pos(current_id, "bottom", 0, 40));
+        av.text("第" + to_string(i + 1) + "輪結束，確認位置" + to_string(n-i-1), Pos(current_id, "bottom", 0, 20));
         av.camera(Pos(current_id), 1.7);
         av.end_frame_draw();
         
@@ -82,7 +82,7 @@ int main() {
     av.start_frame_draw();
     av.accu_draw();
     av.frame_draw(last_id, last_pos, arr, {{{"mark"}, AV::AtoB(0, n - 1)}}, {0}, "normal", 0, 1);
-    av.text("Bubble Sort 完成！", Pos(last_id, "bottom", 0, 45));
+    av.text("Bubble Sort 完成！", Pos(last_id, "bottom", 0, 20));
     av.auto_camera();
     av.end_frame_draw();
     av.end_draw();

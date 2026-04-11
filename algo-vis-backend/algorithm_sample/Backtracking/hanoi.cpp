@@ -14,7 +14,7 @@ vector<pair<string, int>> _draw_ans_links; // 紀錄樹節點與答案的連結
 void draw_ans_and_links() {
   if (!tree.nodes.count({N - 1, 0})) return;
   // 統一使用 150,0 作為 base position，並設定 gap 為 40
-  Pos ans_pos = Pos("tree_" + to_string(N - 1) + "_0", "top right", 150, 0);
+  Pos ans_pos = Pos("tree_" + to_string(N - 1) + "_0", "raw top right", 150, 0);
   av.frame_draw("ans", ans_pos, ans, {}, {0}, "normal",1 , 0, 40);
   
   for (auto const& link : _draw_ans_links) {
@@ -83,7 +83,7 @@ void hanoi(int n, string from, string to, string aux) {
       av.addEditorHighlight(50);
       draw_all_pegs(current_disk_colors);
       draw_ans_and_links();
-      av.text("現在要處理將 " + to_string(n) + " 個盤子從 " + from + " 移到 " + to, Pos(nid, "top", 0, -70));
+      av.text("現在要處理將 " + to_string(n) + " 個盤子從 " + from + " 移到 " + to, Pos(nid, "top", 0, -20));
       av.auto_camera();
     });
   }
@@ -118,12 +118,12 @@ void hanoi(int n, string from, string to, string aux) {
                 {"1. 移花：", "", "", ""}, {"移動底盤以上的盤子", disk_upper_color, "black", ""}, {" 到中間\n", "", "", ""},
                 {"{2. 搬動底盤：移動底盤到右邊}\n", "", "", ""},
                 {"{3. 接木：移動中間的盤子回到右邊}", "", "", ""}
-            }, Pos(nid, "top", 0, -130));
+            }, Pos(nid, "top", 0, -20));
         } else {
             av.colored_text({
                 {"為了解決 n=" + to_string(n) + " 的問題\n", "", "", ""},
                 {"{1. 移花：}", "", "", ""}, {"移動上面 " + to_string(n-1) + " 個盤子", disk_upper_color, "black", ""}
-            }, Pos(nid, "top", 0, -90));
+            }, Pos(nid, "top", 0, -20));
         }
         av.auto_camera();
     });
@@ -151,12 +151,12 @@ void hanoi(int n, string from, string to, string aux) {
                 {"{1. 移花：移動底盤以上的盤子到中間}\n", "", "", ""},
                 {"2. 搬動底盤：", "", "", ""}, {"移動底盤", bottom_color, "black", ""}, {" 到右邊\n", "", "", ""},
                 {"{3. 接木：移動中間的盤子回到右邊}", "", "", ""}
-            }, Pos(nid, "top", 0, -130));
+            }, Pos(nid, "top", 0, -20));
         } else {
             av.colored_text({
                 {"接下來\n", "", "", ""},
                 {"{2. 搬動底盤：}", "", "", ""}, {"移動底盤到目標", bottom_color, "black", ""}
-            }, Pos(nid, "top", 0, -90));
+            }, Pos(nid, "top", 0, -20));
         }
         av.auto_camera();
     });
@@ -186,12 +186,12 @@ void hanoi(int n, string from, string to, string aux) {
                 {"{1. 移花：移動底盤以上的盤子到中間}\n", "", "", ""},
                 {"{2. 搬動底盤：移動底盤到右邊}\n", "", "", ""},
                 {"3. 接木：", "", "", ""}, {"移動中間的盤子", disk_upper_color, "black", ""}, {" 回到右邊", "", "", ""}
-            }, Pos(nid, "top", 0, -130));
+            }, Pos(nid, "top", 0, -20));
         } else {
             av.colored_text({
                 {"最後\n", "", "", ""},
                 {"{3. 接木：}", "", "", ""}, {"將上面 " + to_string(n-1) + " 個盤子歸位", disk_upper_color, "black", ""}
-            }, Pos(nid, "top", 0, -90));
+            }, Pos(nid, "top", 0, -20));
         }
         av.auto_camera();
     });
@@ -202,9 +202,9 @@ void hanoi(int n, string from, string to, string aux) {
         draw_all_pegs();
         draw_ans_and_links();
         if (n - 1 == 1) {
-            av.text("交給小弟處理剩餘搬運", Pos(nid, "top", 0, -70));
+            av.text("交給小弟處理剩餘搬運", Pos(nid, "top", 0, -20));
         } else {
-            av.text("由於沒辦法直接搬 " + to_string(n - 1) + " 個盤子，\n所以交給小弟處理", Pos(nid, "top", 0, -90));
+            av.text("由於沒辦法直接搬 " + to_string(n - 1) + " 個盤子，\n所以交給小弟處理", Pos(nid, "top", 0, -20));
         }
         av.auto_camera();
     });
@@ -236,7 +236,7 @@ void hanoi(int n, string from, string to, string aux) {
       {"{2. 搬動底盤}：\n上面盤子都移開了，將底盤 ", "", "", ""},
       {to_string(disk_base), "", "black", ""},
       {" 移至最終目標 " + to, "", "", ""}
-    }, Pos(step2_nid, "top", 0, -90));
+    }, Pos(step2_nid, "top", 0, -20));
     av.auto_camera();
     av.end_frame_draw();
     pegs[from].pop_front();
@@ -266,7 +266,7 @@ void hanoi(int n, string from, string to, string aux) {
       av.addEditorHighlight(241);
       draw_all_pegs({ {disk, disk_upper_color}, {disk + 1, bottom_color} }); // 搬過去時顏色與假裝搬時一致
       draw_ans_and_links();
-      av.text("直接搬過去", Pos(nid, "top", 0, -70));
+      av.text("直接搬過去", Pos(nid, "top", 0, -20));
       av.auto_camera();
     });
     pegs[from].pop_front();
@@ -317,7 +317,7 @@ int main() {
   tree.redraw(av);
   av.accu_draw();
   draw_all_pegs();
-  av.text("這是河內塔的遞迴範例", Pos("tree_0_0", "top", 0, -70));
+  av.text("這是河內塔的遞迴範例", Pos("tree_0_0", "top", 0, -20));
   av.auto_camera();
   av.end_frame_draw();
   //}
@@ -330,7 +330,7 @@ int main() {
   draw_all_pegs();
   draw_ans_and_links();
   av.auto_camera();
-  av.text("所有步驟執行完畢，河內塔搬運成功", Pos("tree_0_0", "top", 0, -70));
+  av.text("所有步驟執行完畢，河內塔搬運成功", Pos("tree_0_0", "top", 0, -20));
   av.end_frame_draw();
   av.end_draw();
   //}

@@ -21,7 +21,7 @@ int main() {
     
     av.start_frame_draw();
     av.accu_draw();
-    av.colored_text({{"Insertion Sort (插入排序)\n將元素不斷與左側鄰居交換，直到鑽到正確位置"}}, Pos(last_id, "top", 0, -80));
+    av.colored_text({{"Insertion Sort (插入排序)\n將元素不斷與左側鄰居交換，直到鑽到正確位置"}}, Pos(last_id, "top", 0, -20));
     av.auto_camera(); 
     av.end_frame_draw();
 
@@ -33,7 +33,7 @@ int main() {
     av.accu_draw();
     av.frame_draw(pass1_id, pass1_pos, arr, {{{"mark"}, {0}}}, {0}, "normal", 0, 1);
     av.arrow(Pos(last_id, "bottom"), Pos(pass1_id, "top"));
-    av.text("第一個元素 " + to_string(arr[0]) + " 已在正確位置", Pos(pass1_id, "bottom", 0, 35));
+    av.text("第一個元素 " + to_string(arr[0]) + " 已在正確位置", Pos(pass1_id, "bottom", 0, 20));
     av.camera(Pos(pass1_id), 1.7);
     av.end_frame_draw();
 
@@ -68,7 +68,7 @@ int main() {
             {{"mark"}, AV::AtoB(0, i - 1)}
         }, {0}, "normal", 0, 1);
         av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-        av.text("拿到 " + to_string(moving_val) + " 準備向前插入", Pos(current_id, "bottom", 0, 35));
+        av.text("拿到 " + to_string(moving_val) + " 準備向前插入", Pos(current_id, "bottom", 0, 20));
         av.camera(Pos(current_id), 1.7);
         av.end_frame_draw();
         
@@ -97,7 +97,7 @@ int main() {
                 {{"mark"}, AV::AtoB(0, i - 1)}
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text(to_string(arr[j]) + " < " + to_string(arr[j-1]) + " 向左交換", Pos(current_id, "bottom", 0, 35));
+            av.text(to_string(arr[j]) + " < " + to_string(arr[j-1]) + " 向左交換", Pos(current_id, "bottom", 0, 20));
             av.camera(Pos(current_id), 1.7);
             av.end_frame_draw();
             //}
@@ -124,7 +124,7 @@ int main() {
                 {{"mark"}, AV::AtoB(0, i - 1)}
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text(to_string(arr[j]) + " {>=:不小於} " + to_string(arr[j-1]) + " 停止交換", Pos(current_id, "bottom", 0, 35));
+            av.text(to_string(arr[j]) + " {>=:不小於} " + to_string(arr[j-1]) + " 停止交換", Pos(current_id, "bottom", 0, 20));
             av.camera(Pos(current_id), 1.7);
             av.end_frame_draw();
         } else if (moved) {
@@ -136,7 +136,7 @@ int main() {
                 {{"mark"}, AV::AtoB(0, i - 1)}
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-            av.text("到達最左端 停止交換", Pos(current_id, "bottom", 0, 35));
+            av.text("到達最左端 停止交換", Pos(current_id, "bottom", 0, 20));
             av.camera(Pos(current_id), 1.7);
             av.end_frame_draw();
         }
@@ -148,7 +148,7 @@ int main() {
             {{"mark"}, AV::AtoB(0, i)} 
         }, {0}, "normal", 0, 1);
         av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
-        av.text("元素已插入正確位置", Pos(current_id, "bottom", 0, 35));
+        av.text("元素已插入正確位置", Pos(current_id, "bottom", 0, 20));
         av.camera(Pos(current_id), 1.7);
         av.end_frame_draw();
 
@@ -164,7 +164,7 @@ int main() {
     av.start_frame_draw();
     av.accu_draw();
     av.frame_draw(last_id, last_pos, arr, {{{"mark"}, AV::AtoB(0, n - 1)}}, {0}, "normal", 0, 1);
-    av.text("Insertion Sort 完成！", Pos(last_id, "bottom", 0, 45));
+    av.text("Insertion Sort 完成！", Pos(last_id, "bottom", 0, 20));
     av.auto_camera(); 
     av.end_frame_draw();
     av.end_draw();

@@ -16,7 +16,7 @@ void heap_push (int n) {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now}}, {{"background","rgba(47, 255, 82, 0.44)"},{now}} }, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now}}, {{"background","rgba(47, 255, 82, 0.44)"},{now}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"{現在要} "},{"新增: "+to_string(n),"rgba(47, 255, 82, 0.44)"},{" {進入 heap}\n{第一步驟}: 先將他 push 到陣列的最後"}}, Pos("num","top",0,-80));
+    av.colored_text( {{"{現在要} "},{"新增: "+to_string(n),"rgba(47, 255, 82, 0.44)"},{" {進入 heap}\n{第一步驟}: 先將他 push 到陣列的最後"}}, Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     //}
@@ -26,7 +26,7 @@ void heap_push (int n) {
             av.start_frame_draw();
             av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background","rgba(255, 82, 82, 0.44)"},{now>>1}} }, {0}, "normal", 0, 1);
             av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background","rgba(255, 82, 82, 0.44)"},{now>>1}} }, {0}, "heap" , 10, 1);
-            av.colored_text( {{"上層比下層大 "},{"不用交換","rgba(255, 82, 82, 0.44)"}}, Pos("num","top",0,-60));
+            av.colored_text( {{"上層比下層大 "},{"不用交換","rgba(255, 82, 82, 0.44)"}}, Pos("num","top",0,-20));
             av.camera(Pos("num", "bottom", 0, 60), 1.8);
             av.end_frame_draw();
             //}
@@ -36,7 +36,7 @@ void heap_push (int n) {
             av.start_frame_draw();
             av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_up_color},{now>>1}}, {{"background",_draw_down_color},{now}} }, {0}, "normal", 0, 1);
             av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_up_color},{now>>1}}, {{"background",_draw_down_color},{now}} }, {0}, "heap" , 10, 1);
-            av.colored_text( {{"上層",_draw_up_color},{" 比 "},{"下層",_draw_down_color},{" 小的時候"}}, Pos("num","top",0,-60));
+            av.colored_text( {{"上層",_draw_up_color},{" 比 "},{"下層",_draw_down_color},{" 小的時候"}}, Pos("num","top",0,-20));
             av.camera(Pos("num", "bottom", 0, 60), 1.8);
             av.end_frame_draw();
             //}
@@ -45,7 +45,7 @@ void heap_push (int n) {
             av.start_frame_draw();
             av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_down_color},{now>>1}}, {{"background",_draw_up_color},{now}} }, {0}, "normal", 0, 1);
             av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_down_color},{now>>1}}, {{"background",_draw_up_color},{now}} }, {0}, "heap" , 10, 1);
-            av.colored_text( {{"上層",_draw_down_color},{" 和 "},{"下層",_draw_up_color},{" 就上下交換"}}, Pos("num","top",0,-60));
+            av.colored_text( {{"上層",_draw_down_color},{" 和 "},{"下層",_draw_up_color},{" 就上下交換"}}, Pos("num","top",0,-20));
             av.camera(Pos("num", "bottom", 0, 60), 1.8);
             av.end_frame_draw();
             //}
@@ -59,7 +59,7 @@ int heap_top(){
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1}}, {{"background","rgba(47, 255, 82, 0.44)"},{1}} }, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1}}, {{"background","rgba(47, 255, 82, 0.44)"},{1}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"查詢 ","rgba(47, 255, 82, 0.44)"},{" heap中最大元素: "},{to_string(heap[1]),"rgba(47, 255, 82, 0.44)"} }, Pos("num","top",0,-60));
+    av.colored_text( {{"查詢 ","rgba(47, 255, 82, 0.44)"},{" heap中最大元素: "},{to_string(heap[1]),"rgba(47, 255, 82, 0.44)"} }, Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     //}
@@ -73,7 +73,7 @@ void heap_pop() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background","rgba(255, 82, 82, 0.44)"},{Size}} }, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background","rgba(255, 82, 82, 0.44)"},{Size}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"刪除 ","rgba(255, 82, 82, 0.44)"},{" heap中最大元素: "},{to_string(heap[1]),"rgba(255, 82, 82, 0.44)"} }, Pos("num","top",0,-60));
+    av.colored_text( {{"刪除 ","rgba(255, 82, 82, 0.44)"},{" heap中最大元素: "},{to_string(heap[1]),"rgba(255, 82, 82, 0.44)"} }, Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     //}
@@ -81,7 +81,7 @@ void heap_pop() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_up_color},{1}}, {{"background",_draw_down_color},{Size}} }, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_up_color},{1}}, {{"background",_draw_down_color},{Size}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"先把 "},{"最前面",_draw_up_color},{" 和 "},{"最後面",_draw_down_color},{" 交換"}}, Pos("num","top",0,-60));
+    av.colored_text( {{"先把 "},{"最前面",_draw_up_color},{" 和 "},{"最後面",_draw_down_color},{" 交換"}}, Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     //}
@@ -90,7 +90,7 @@ void heap_pop() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_down_color},{1}}, {{"background",_draw_up_color},{Size}} }, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_down_color},{1}}, {{"background",_draw_up_color},{Size}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"{先把} "},{"最前面",_draw_down_color},{" 和 "},{"最後面",_draw_up_color},{" 交換"}}, Pos("num","top",0,-60));
+    av.colored_text( {{"{先把} "},{"最前面",_draw_down_color},{" 和 "},{"最後面",_draw_up_color},{" 交換"}}, Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     //}
@@ -99,7 +99,7 @@ void heap_pop() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, { {{"focus"},{1}} }, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, { {{"focus"},{1}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"{接著}刪除掉最後面的格子"}}, Pos("num","top",0,-60));
+    av.colored_text( {{"{接著}刪除掉最後面的格子"}}, Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     //}
@@ -109,7 +109,7 @@ void heap_pop() {
         av.start_frame_draw();
         av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "normal", 0, 1);
         av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "heap",  10, 1);
-        av.colored_text( {{"看看 "},{"下層的兩個格子",_draw_down_color},{"有沒有比 "},{"上層",_draw_up_color},{" 大"}}, Pos("num","top",0,-60));
+        av.colored_text( {{"看看 "},{"下層的兩個格子",_draw_down_color},{"有沒有比 "},{"上層",_draw_up_color},{" 大"}}, Pos("num","top",0,-20));
         av.camera(Pos("num", "bottom", 0, 60), 1.8);
         av.end_frame_draw();
         //}
@@ -120,7 +120,7 @@ void heap_pop() {
                 av.start_frame_draw();
                 av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "normal", 0, 1);
                 av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"大的那個",_draw_down_color},{" 跟 "},{"上層",_draw_up_color},{" 交換"}}, Pos("num","top",0,-60));
+                av.colored_text( {{"{有的話} "},{"大的那個",_draw_down_color},{" 跟 "},{"上層",_draw_up_color},{" 交換"}}, Pos("num","top",0,-20));
                 av.camera(Pos("num", "bottom", 0, 60), 1.8);
                 av.end_frame_draw();
                 //}
@@ -129,7 +129,7 @@ void heap_pop() {
                 av.start_frame_draw();
                 av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "normal", 0, 1);
                 av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"{大的那個}",_draw_up_color},{" {跟} "},{"{上層}",_draw_down_color},{" {交換}"}}, Pos("num","top",0,-60));
+                av.colored_text( {{"{有的話} "},{"{大的那個}",_draw_up_color},{" {跟} "},{"{上層}",_draw_down_color},{" {交換}"}}, Pos("num","top",0,-20));
                 av.camera(Pos("num", "bottom", 0, 60), 1.8);
                 av.end_frame_draw();
                 //}
@@ -139,7 +139,7 @@ void heap_pop() {
                 av.start_frame_draw();
                 av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{(now<<1)+1}} }, {0}, "normal", 0, 1);
                 av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{(now<<1)+1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"大的那個",_draw_down_color},{" 跟 "},{"上層",_draw_up_color},{"交換"}}, Pos("num","top",0,-60));
+                av.colored_text( {{"{有的話} "},{"大的那個",_draw_down_color},{" 跟 "},{"上層",_draw_up_color},{"交換"}}, Pos("num","top",0,-20));
                 av.camera(Pos("num", "bottom", 0, 60), 1.8);
                 av.end_frame_draw();
                 //}
@@ -148,7 +148,7 @@ void heap_pop() {
                 av.start_frame_draw();
                 av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{(now<<1)+1}} }, {0}, "normal", 0, 1);
                 av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{(now<<1)+1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"{大的那個}",_draw_up_color},{" {跟} "},{"{上層}",_draw_down_color},{" {交換}"}}, Pos("num","top",0,-60));
+                av.colored_text( {{"{有的話} "},{"{大的那個}",_draw_up_color},{" {跟} "},{"{上層}",_draw_down_color},{" {交換}"}}, Pos("num","top",0,-20));
                 av.camera(Pos("num", "bottom", 0, 60), 1.8);
                 av.end_frame_draw();
                 //}
@@ -159,7 +159,7 @@ void heap_pop() {
             av.start_frame_draw();
             av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1,(now<<1)+1}} }, {0}, "normal", 0, 1);
             av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1,(now<<1)+1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{沒有的話}就不用交換"}}, Pos("num","top",0,-60));
+            av.colored_text( {{"{沒有的話}就不用交換"}}, Pos("num","top",0,-20));
             av.camera(Pos("num", "bottom", 0, 60), 1.8);
             av.end_frame_draw();
             //}
@@ -171,7 +171,7 @@ void heap_pop() {
         av.start_frame_draw();
         av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "normal", 0, 1);
         av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "heap",  10, 1);
-        av.colored_text( {{"看看 "},{"下層",_draw_down_color},{" 有沒有比 "},{"上層",_draw_up_color},{" 大"}}, Pos("num","top",0,-60));
+        av.colored_text( {{"看看 "},{"下層",_draw_down_color},{" 有沒有比 "},{"上層",_draw_up_color},{" 大"}}, Pos("num","top",0,-20));
         av.camera(Pos("num", "bottom", 0, 60), 1.8);
         av.end_frame_draw();
         //}
@@ -180,7 +180,7 @@ void heap_pop() {
             av.start_frame_draw();
             av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "normal", 0, 1);
             av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{因為只剩一個就直接} "},{"下層",_draw_up_color},{" 跟 "},{"上層",_draw_down_color},{" 交換"}}, Pos("num","top",0,-60));
+            av.colored_text( {{"{因為只剩一個就直接} "},{"下層",_draw_up_color},{" 跟 "},{"上層",_draw_down_color},{" 交換"}}, Pos("num","top",0,-20));
             av.camera(Pos("num", "bottom", 0, 60), 1.8);
             av.end_frame_draw();
             //}
@@ -189,7 +189,7 @@ void heap_pop() {
             av.start_frame_draw();
             av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "normal", 0, 1);
             av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{因為只剩一個就直接} "},{"{下層}",_draw_down_color},{" {跟} "},{"{上層}",_draw_up_color},{" {交換}"}}, Pos("num","top",0,-60));
+            av.colored_text( {{"{因為只剩一個就直接} "},{"{下層}",_draw_down_color},{" {跟} "},{"{上層}",_draw_up_color},{" {交換}"}}, Pos("num","top",0,-20));
             av.camera(Pos("num", "bottom", 0, 60), 1.8);
             av.end_frame_draw();
             //}
@@ -199,7 +199,7 @@ void heap_pop() {
             av.start_frame_draw();
             av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1}}, {{"focus"},{now}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1}} }, {0}, "normal", 0, 1);
             av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1}}, {{"focus"},{now}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{沒有的話}就不用交換"}}, Pos("num","top",0,-60));
+            av.colored_text( {{"{沒有的話}就不用交換"}}, Pos("num","top",0,-20));
             av.camera(Pos("num", "bottom", 0, 60), 1.8);
             av.end_frame_draw();
             //}
@@ -213,7 +213,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, {}, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, {}, {0}, "heap",  10, 1);
-    av.text("這是堆積(heap){的演算法範例}", Pos("num","top",0,-60));
+    av.text("這是堆積(heap){的演算法範例}", Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     //}
@@ -227,7 +227,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, {}, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, {}, {0}, "heap",  10, 1);
-    av.text("來看看查詢和刪除", Pos("num","top",0,-60));
+    av.text("來看看查詢和刪除", Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     av.stop();
@@ -239,7 +239,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("num" , Pos(0,0),   heap, {}, {0}, "normal", 0, 1);
     av.frame_draw("heap", Pos(0,150), heap, {}, {0}, "heap",  10, 1);
-    av.text("到這邊就完成啦", Pos("num","top",0,-60));
+    av.text("到這邊就完成啦", Pos("num","top",0,-20));
     av.camera(Pos("num", "bottom", 0, 60), 1.8);
     av.end_frame_draw();
     av.end_draw();
