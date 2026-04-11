@@ -15,150 +15,144 @@ void update_node(int d, int o, int a, int b, string x, string y) {
 
 void gcd_demo(int a, int b) {
     int start_a = a, start_b = b;
-    // Step 1: 原理說明
-    vector<vector<int>> rect(start_b, vector<int>(start_a, 0));
-    int g = __gcd(start_a, start_b);
-    vector<pair<int, int>> checked_cells;
-    for(int i=0;i<start_b;i++){
-        for(int j=0;j<start_a;j++){
-            if(((i/g)+(j/g))%2==0) {
-                rect[i][j] = 1;
-                checked_cells.push_back({i, j});
-            }
-        }
+    vector<int> bar_a = AV::AtoB(1,a);
+    vector<int> bar_b = AV::AtoB(1,b);
+
+    // --- 第一部分：長條測量的原理說明 ---
+
+    // 1. 初現與目標
+    av.start_frame_draw();
+    av.frame_draw("bar_a", Pos(500, 150), bar_a);
+    av.frame_draw("bar_b", Pos(500, 230), bar_b);
+    av.colored_text({
+        {"歐幾里得算法 (輾轉相除法)\n", "", "", "24"},
+        {"這可以用 "}, {"長條測量", "rgba(252, 255, 64, 0.46)"}, {" 的觀點來理解：\n"},
+        {"假設有兩根長度 a 和 b，你想找一個長度 g 剛好能填滿這兩根。\n"},
+        {"這個最長的單位 g，就是 {gcd(a, b):最大公因數}。"}
+    }, Pos("bar_a", "top", 0, -140));
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    // 2. 核心原理：差值不變性 (視覺化減法過程)
+    av.start_frame_draw();
+    // 定義 bar_a 的樣式：前 b 格用灰色(表示減去)，剩下的格數用藍色(表示保留)
+    vector<array_style> st_a_sub = {
+        {{"background", "#cccccc"}, AV::AtoB(0, b - 1)},       // 被減掉的部分
+        {{"background", "#a5d6a7"}, AV::AtoB(b, b + b - 1)},       // 剩下的部分 (a-b)
+        {{"background", "#ef9a9a"}, AV::AtoB(b + b, a - 1)}     
+    };
+    // bar_b 保持原樣或是用顯眼的顏色作為參考基準
+    vector<array_style> st_b_ref = {
+        {{"background", "#a5d6a7"}, AV::AtoB(0, b - 1)}        // 作為尺規的 b
+    };
+    av.frame_draw("bar_a", Pos(500, 150), bar_a, st_a_sub);
+    av.frame_draw("bar_b", Pos(500, 230), bar_b, st_b_ref);
+    av.colored_text({
+        {"利用減法來縮減問題的規模\n","","","20"},
+        {"我們可以用 "},
+        {"減法", "rgba(252, 255, 64, 0.46)"},
+        {" 來不斷縮小問題的規模\n"},
+        {"因為 {a:大的} 扣掉 {b:小的} 並不影響 gcd 的結果\n"},
+        {"所以遞迴式可以寫成 {gcd(a, b) = gcd(b, a-b):這樣}\n"},
+        {"直到 a 減不動後 就可以換人繼續減"}
+    }, Pos("bar_a", "top", 0, -160));
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    // 3. 連續減法轉取餘
+    av.start_frame_draw();
+    int q_init = a / b;
+    vector<array_style> st_mod;
+    for(int i=0; i < q_init; i++) {
+        vector<int> idx;
+        for(int j=0; j<b; j++) idx.push_back(i*b + j);
+        st_mod.push_back({{"background", (i%2==0?"#c8e6c9":"#a5d6a7")}, idx});
+    }
+    st_mod.push_back({{"background", "#ef9a9a"}, AV::AtoB(q_init * b, a - 1)}); // 標示餘數
+
+    av.frame_draw("bar_a", Pos(500, 150), bar_a, st_mod);
+    av.frame_draw("bar_b", Pos(500, 230), bar_b, {{{"background", "#c8e6c9"}, AV::AtoB(0, b - 1)}});
+    av.colored_text({
+        {"從連續減法到取餘數\n", "", "", "20"},
+        {"與其一次次減去 b，不如直接算 a 能裝下幾個 b。\n"},
+        {"扣掉所有 b 之後剩下的紅色部分，就是 "},
+        {"取餘數", "rgba(252, 255, 64, 0.46)"},
+        {" (a%b)。\n"},
+        {"然後遞迴式簡化成 {gcd(a, b) = gcd(b, a%b):這樣}\n"},
+        {"這樣就可以一次跳過中間所有的減法步驟。"}
+    }, Pos("bar_a", "top", 0, -160));
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    // --- 第二部分：實例遞迴演示 ---
+    
+    int step = 0;
+    av.start_frame_draw();
+    av.frame_draw("a", Pos(500, 150), bar_a);
+    av.frame_draw("b", Pos(500, 230), bar_b);
+    av.accu_store("gcd_" + to_string(step++), Pos("b","left bottom", 0, 20+step*60), vector<int>{a,b});
+    av.accu_draw();
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+    bar_a = AV::AtoB(1,a%b);
+
+    while(a%=b){
+                
+        av.start_frame_draw();
+        av.frame_draw("a", Pos(500, 150), bar_a);
+        av.frame_draw("b", Pos(500, 230), bar_b);
+        av.accu_draw();
+        av.frame_draw("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b});
+        av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
+        av.arrow(Pos("gcd_"+to_string(step-1), 0,"center",0,0),Pos("gcd_"+to_string(step), 0,"center",0,0));
+        av.text("取餘數", Pos("gcd_"+to_string(step),"bottom", 0 , 20));
+        av.auto_camera(0.85);
+        av.end_frame_draw();
+        bar_a = bar_b;
+        bar_b = AV::AtoB(1,a%b);
+        swap(a,b);
+        
+        av.start_frame_draw();
+        av.frame_draw("a", Pos(500, 150), bar_a);
+        av.frame_draw("b", Pos(500, 230), bar_b);
+        av.accu_store("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b});
+        av.accu_draw();
+        av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
+        av.accu_store_arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
+        av.text("左右交換往下傳", Pos("gcd_"+to_string(step),"bottom", 0 , 20));
+        av.auto_camera(0.85);
+        av.end_frame_draw();
+        bar_a = AV::AtoB(1,a%b);
+
+        step++;
     }
 
     av.start_frame_draw();
-    vector<array2D_style> chess_st = {
-        {{"background", "#c8e6c9"}, checked_cells}
-    };
-    av.frame_draw("rect", Pos(500, 150), rect, chess_st, {{0,0},{start_b-1,start_a-1}}, "clear");
-    av.colored_text({
-        {"歐幾里得算法 (輾轉相除法)\n", "", "", "20"},
-        {"在進入擴展歐幾里得之前，我們先複習最基礎的 GCD 計算方式。\n"},
-        {"這可以用 "},
-        {"長方形填滿","rgba(252, 255, 64, 0.46)"},
-        {" 的觀點來理解：\n"},
-        {"假設你有一個 a {x:成} b 的大長方形，你想用最大的正方形把它填滿且不留空隙。\n"},
-        {"那麼這個最大正方形的邊{長:常}，就是 {gcd(a, b):最大公因數}。"}
-    }, Pos("rect","top",0, -160));
+    av.frame_draw("a", Pos(500, 150), bar_a);
+    av.frame_draw("b", Pos(500, 230), bar_b);
+    av.accu_draw();
+    av.frame_draw("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b});
+    av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
+    av.arrow(Pos("gcd_"+to_string(step-1), 0,"center",0,0),Pos("gcd_"+to_string(step), 0,"center",0,0));
+    av.text("取餘數", Pos("gcd_"+to_string(step),"bottom", 0 , 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
 
-
-    rect = vector<vector<int>>(start_b, vector<int>(start_a, 0));
-    av.start_frame_draw();
-    av.frame_draw("rect", Pos(500, 150), rect, {}, {{0,0},{start_b-1,start_a-1}}, "clear");
-    av.colored_text({
-        {"{歐幾里得算法原理}\n", "", "", "20"},
-        {"在{長:常}方形中，我們不斷用較短的那一邊作為正方形邊{長:常}進行剪裁。\n"},
-        {"{每一次剪完剩下的部分，其長寬的正公因數集合都與原長方形相同。}\n"},
-        {"{遞迴關係式： gcd(a, b) = gcd(b, a % b)}\n"},
-        {"{現在讓我們觀察數字是如何變化的。}"}
-    }, Pos("rect","top",0, -160));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-
-    rect = vector<vector<int>>(start_b, vector<int>(start_a, 0));
-    av.start_frame_draw();
-    vector<array2D_style> chess_st_v2 = {
-        { {"background", "#313131ff"}, AV::AtoB(0, abs(start_b-a), start_b-1, start_a-1) }
-    };
-    av.frame_draw("rect", Pos(500, 150), rect, chess_st_v2, {{0,0},{start_b-1,start_a-1}}, "clear");
-    av.colored_text({
-        {"{歐幾里得算法原理}\n", "", "", "20"},
-        {"{在長方形中，我們不斷用較短的那一邊作為正方形邊長進行剪裁。}\n"},
-        {"每一次剪完剩下的部分{，其長寬的正公因數集合都與原長方形相同。}\n"},
-        {"{遞迴關係式： gcd(a, b) = gcd(b, a % b)}\n"},
-        {"{現在讓我們觀察數字是如何變化的。}"}
-    }, Pos("rect","top",0, -160));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-
-    rect = vector<vector<int>>(start_b, vector<int>(start_a, 0));
-    av.start_frame_draw();
-    chess_st_v2 = {
-        { {"background", "#313131ff"}, AV::AtoB(0, a%start_b, start_b-1, start_a-1) }
-    };
-    av.frame_draw("rect", Pos(500, 150), rect, chess_st_v2, {{0,0},{start_b-1,start_a-1}}, "clear");
-    av.colored_text({
-        {"{歐幾里得算法原理}\n", "", "", "20"},
-        {"{在長方形中，我們不斷用較短的那一邊作為正方形邊長進行剪裁。}\n"},
-        {"{每一次剪完剩下的部分}，其{長:常}寬的正公因數集合{都與原長方形相同。}\n"},
-        {"{遞迴關係式： gcd(a, b) = gcd(b, a % b)}\n"},
-        {"{現在讓我們觀察數字是如何變化的。}"}
-    }, Pos("rect","top",0, -160));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    
-    rect = vector<vector<int>>(start_b, vector<int>(start_a, 0));
-    av.start_frame_draw();
-    chess_st_v2 = {
-        { {"background", "#313131ff"}, AV::AtoB(0, a%start_b, start_b-1, start_a-1) },
-        { {"background", "#313131ff"}, AV::AtoB(2, 0, start_b-1, start_a-1) }
-    };
-    av.frame_draw("rect", Pos(500, 150), rect, chess_st_v2, {{0,0},{start_b-1,start_a-1}}, "clear");
-    av.colored_text({
-        {"{歐幾里得算法原理}\n", "", "", "20"},
-        {"{在長方形中，我們不斷用較短的那一邊作為正方形邊長進行剪裁。}\n"},
-        {"{每一次剪完剩下的部分，其長寬的正公因數集合}都與原長方形相同。\n"},
-        {"{遞迴關係式： gcd(a, b) = gcd(b, a % b)}\n"},
-        {"{現在讓我們觀察數字是如何變化的。}"}
-    }, Pos("rect","top",0, -160));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-
-    rect = vector<vector<int>>(start_b, vector<int>(start_a, 0));
-    av.start_frame_draw();
-    chess_st_v2 = {
-        { {"background", "#313131ff"}, AV::AtoB(0, 2, start_b-1, start_a-1) },
-        { {"background", "#313131ff"}, AV::AtoB(2, 0, start_b-1, start_a-1) },
-        { {"background","rgba(76, 175, 80, 0.4)"}, AV::AtoB(0, 0, 1, 1) }
-    };
-    av.frame_draw("rect", Pos(500, 150), rect, chess_st_v2, {{0,0},{start_b-1,start_a-1}}, "clear");
-    av.colored_text({
-        {"{歐幾里得算法原理}\n", "", "", "20"},
-        {"{在長方形中，我們不斷用較短的那一邊作為正方形邊長進行剪裁。}\n"},
-        {"{每一次剪完剩下的部分，其長寬的正公因數集合都與原長方形相同。}\n"},
-        {"遞迴關係式： {gcd(a, b) = gcd(b, a % b):a 和 b 的最大公因數 等於 b 和 a除以b的餘數 的最大公因數}\n"},
-        {"現在讓我們觀察數字是如何變化的。"}
-    }, Pos("rect","top",0, -160));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-
-    // Step 2: 實例演示
-    
-    vector<array_style> st = {{{"highlight"}, {0}}};
+    bar_a = bar_b;
+    bar_b = AV::AtoB(1,a%b);
+    swap(a,b);
 
     av.start_frame_draw();
-    av.frame_draw("gcd", Pos(500, 10), vector<int>{a,b});
+    av.frame_draw("a", Pos(500, 150), bar_a);
+    av.frame_draw("b", Pos(500, 230), bar_b);
+    av.accu_draw();
+    av.frame_draw("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b}, {{{"highlight"},{0}}});
+    av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
+    av.text("遇到 0 ，找到最大公因數 a = " + to_string(a), Pos("gcd_"+to_string(step),"bottom", 0 , 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
 
-    av.start_frame_draw();
-    av.frame_draw("gcd", Pos(500, 10), vector<int>{a,b});
-    av.frame_draw("gcd_1", Pos("gcd","left bottom",0, 50), vector<int>{b,a%b});
-    av.arrow(Pos("gcd","bottom"), Pos("gcd_1","top"), {{"color", "#000000ff"}, {"width", "2"}});
-    av.arrow(Pos("gcd",1), Pos("gcd_1",0), {{"color", "rgba(76, 175, 79, 1)"}, {"width", "2"}});
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    av.start_frame_draw();
-    av.frame_draw("gcd", Pos(500, 10), vector<int>{a,b});
-    av.frame_draw("gcd_1", Pos("gcd","left bottom",0, 50), vector<int>{b,a%b});
-    av.frame_draw("gcd_2", Pos("gcd_1","left bottom",0, 50), vector<int>{a%b,b%a%b}, st);
-    av.arrow(Pos("gcd","bottom"), Pos("gcd_1","top"), {{"color", "#000000ff"}, {"width", "2"}});
-    av.arrow(Pos("gcd_1","bottom"), Pos("gcd_2","top"), {{"color", "#000000ff"}, {"width", "2"}});
-    av.arrow(Pos("gcd",1), Pos("gcd_1",0), {{"color", "rgba(76, 175, 79, 1)"}, {"width", "2"}});
-    av.arrow(Pos("gcd_1",1), Pos("gcd_2",0), {{"color", "rgba(76, 175, 79, 1)"}, {"width", "2"}});
-    av.text("gcd = 4", Pos("gcd_2","bottom",0, 20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
+    av.accu_clear();
 
 }
 //}
@@ -258,16 +252,18 @@ int main(){
     
     //draw{
     // Step 1: 貝祖定理與目標
+    av.stop();
     av.start_frame_draw();
     av.colored_text({
         {"擴展歐幾里得算法\n", "", "", "20"},
-        {"擴展歐幾里得到底有{甚:捨}麼用? 又擴展在哪裡?\n先說結論，它可以幫助你找到 "},
+        {"擴展歐幾里得到底擴展在哪?\n他在計算 a,b 的過程中 還要去找到一對 {x,y:x y} 使得 {ax+by=gcd(a,b):a x + b y 能夠 = gcd a b}\n"},
+        {"而這個 {x,y:x y} 可以做{甚:捨}麼呢?\n先說結論，它可以幫助你找到 "},
         {"模逆元", "rgba(252, 255, 64, 0.46)"},
         {" 來計算 "},
         {"模除法", "rgba(252, 255, 64, 0.46)"},
         {" ，\n比如說可以用來計算大數的組合數"}
     }, Pos(500, 10));
-    av.auto_camera(0.85);
+    av.camera(Pos(520, 100), 1.7);
     av.end_frame_draw();
 
     av.start_frame_draw();
