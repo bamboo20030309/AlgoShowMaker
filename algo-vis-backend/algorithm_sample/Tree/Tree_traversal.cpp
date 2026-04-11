@@ -395,9 +395,7 @@ int main() {
             av.text("從根開始", Pos(tree.get_id(0, 0), "bottom", 0, 10));
             av.auto_camera(0.85, 0, 20);
             av.end_frame_draw();
-            //}
             
-            //draw{
             first_visit = true; // 每次執行新遍歷前，重置標記
             //}
             if (val <= 2) traverse(Root, val);
