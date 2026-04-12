@@ -115,6 +115,9 @@ public:
     #define accu_store_2D(...)     accu_store_2D_impl(__LINE__, __VA_ARGS__)
     #define draw_circle(circleID, pos, value, ...) draw_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
     #define accu_store_circle(circleID, pos, value, ...) accu_store_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
+    #define draw_word(text, pos)  draw_word_impl(__LINE__, text, pos)
+    #define key_draw_word(text, pos)  key_draw_word_impl(__LINE__, text, pos)
+    #define accu_store_word(text, pos) accu_store_word_impl(__LINE__, text, pos)
     #define sleep(ms)             sleep_impl(ms)
 
     //AtoB function : return a A~B increase vector
@@ -401,6 +404,20 @@ public:
         _content += endSpecJS.toJson()   + ", ";
         _content += "{ " + pair_string_to_object(style) + " }";
         _content += ");\n";
+        _content += "                }\n";
+    }
+    
+    void draw_word_impl(const int code_line, const string text, const Pos pos) {
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    drawWord(\"" + escapeJS(text) + "\", " + pos.toJson() + ");\n";
+        _content += "                }\n";
+    }
+
+    void key_draw_word_impl(const int code_line, const string text, const Pos pos) {
+        _content += "                if (track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    drawWord(\"" + escapeJS(text) + "\", " + pos.toJson() + ");\n";
         _content += "                }\n";
     }
 
@@ -994,6 +1011,9 @@ private:
     string _gen_text(const string& t, const Pos& p) {
         return "drawText(\"" + escapeJS(t) + "\", " + p.toJson() + ");";
     }
+    string _gen_word(const string& t, const Pos& p) {
+        return "drawWord(\"" + escapeJS(t) + "\", " + p.toJson() + ");";
+    }
     string _gen_colored_text(const vector<vector<string>>& v, const Pos& p) {
         return "drawColoredText(" + VVS_to_string(v) + ", " + p.toJson() + ");";
     }
@@ -1033,6 +1053,9 @@ public:
     // ─── accu_store_impl 族：实際儲入用（透過巨集帶入 __LINE__） ───
     void accu_store_impl(const int code_line, const string t, const Pos p) {
         _accu_history.push_back({code_line, _gen_text(t, p)});
+    }
+    void accu_store_word_impl(const int code_line, const string t, const Pos p) {
+        _accu_history.push_back({code_line, _gen_word(t, p)});
     }
     void accu_store_colored_impl(const int code_line, const vector<vector<string>> v, const Pos p) {
         _accu_history.push_back({code_line, _gen_colored_text(v, p)});
