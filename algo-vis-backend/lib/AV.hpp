@@ -115,6 +115,7 @@ public:
     #define accu_store_2D(...)     accu_store_2D_impl(__LINE__, __VA_ARGS__)
     #define draw_circle(circleID, pos, value, ...) draw_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
     #define accu_store_circle(circleID, pos, value, ...) accu_store_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
+    #define sleep(ms)             sleep_impl(ms)
 
     //AtoB function : return a A~B increase vector
     static vector<int> AtoB(int start, int end) {
@@ -319,6 +320,7 @@ public:
         _content += "(function() {\n";
         _content += "    let track = 0;\n";
         _content += "    function renderFrame(f) {\n";
+        _content += "        if (window.setFrameSleep) window.setFrameSleep(0);\n";
         _content += "        clearAllEditorHighlights();\n";
         _content += "        if (window.resetMessageCounter) window.resetMessageCounter();\n";
         _content += "        clearCanvas();\n";
@@ -755,6 +757,10 @@ public:
 
     void auto_camera_impl(double zoom = 0.9, double offsetX = 30.0, double offsetY = 0.0) {
         _content += "                window.setAutoCamera(" + to_string(zoom) + ", true, " + to_string(offsetX) + ", " + to_string(offsetY) + ");\n";
+    }
+
+    void sleep_impl(int ms = 1200) {
+        _content += "                if (track === 0) { if(window.setFrameSleep) window.setFrameSleep(" + to_string(ms) + "); }\n";
     }
 
     void end_draw() {

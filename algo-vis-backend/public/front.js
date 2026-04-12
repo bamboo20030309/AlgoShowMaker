@@ -473,6 +473,14 @@ const FrameSnapshotCache = (() => {
 window.FrameSnapshotCache = FrameSnapshotCache;
 
 // ==============================
+// 影格延遲 (Sleep) 系統
+// ==============================
+let currentFrameSleep = 0;
+window.setFrameSleep = function(ms) {
+  currentFrameSleep = ms;
+};
+
+// ==============================
 // 幀條碼：狀態與工具函式
 // ==============================
 
@@ -784,24 +792,30 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // 6) 正常往下一幀
-      if (fast && typeof CodeScript.next_key_frame === 'function') {
-        stepWithTween(() => CodeScript.next_key_frame());
-      } else if (typeof CodeScript.next === 'function') {
-        stepWithTween(() => CodeScript.next());
-      }
-      syncCurrentFrameFromCodeScript();
+      const extraDelay = currentFrameSleep || 0;
+      setTimeout(() => {
+        if (!isPlaying || runId !== TTS_RUN_ID) return;
+        
+        if (fast && typeof CodeScript.next_key_frame === 'function') {
+          stepWithTween(() => CodeScript.next_key_frame());
+        } else if (typeof CodeScript.next === 'function') {
+          stepWithTween(() => CodeScript.next());
+        }
+        syncCurrentFrameFromCodeScript();
 
-      // 7) 繼續自動播下一幀（用同一個 runId）
-      playFromCurrentFrameWithTTS(runId);
+        // 7) 繼續自動播下一幀（用同一個 runId）
+        playFromCurrentFrameWithTTS(runId);
+      }, extraDelay);
     };
 
     const fallbackDelay = () => {
       const delay = Math.max(60, speed || 500);
+      const extraDelay = currentFrameSleep || 0;
       setTimeout(() => {
         // timeout 到的時候也要檢查世代
         if (!isPlaying || runId !== TTS_RUN_ID) return;
         afterSpeak();
-      }, delay);
+      }, delay + extraDelay);
     };
 
     if (!entries.length) {
