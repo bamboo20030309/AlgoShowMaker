@@ -7,6 +7,8 @@ AV av;
 TreeLayout tree("tree", 1, Pos(500, 100), 80.0, 100.0);
 map<pair<int, int>, string> node_vals;
 
+int return_step = 0; // 0: 下降, 1: 拿回 x, 2: 算完 y
+
 void update_node(int d, int o, int a, int b, string x, string y) {
     string val = to_string(a) + "," + to_string(b) + "," + x + "," + y;
     node_vals[{d, o}] = val;
@@ -14,9 +16,8 @@ void update_node(int d, int o, int a, int b, string x, string y) {
 }
 
 void gcd_demo(int a, int b) {
-    int start_a = a, start_b = b;
-    vector<int> bar_a = AV::AtoB(1,a);
-    vector<int> bar_b = AV::AtoB(1,b);
+    vector<string> bar_a(a, "");
+    vector<string> bar_b(b, "");
 
     // --- 第一部分：長條測量的原理說明 ---
 
@@ -26,11 +27,12 @@ void gcd_demo(int a, int b) {
     av.frame_draw("bar_b", Pos(500, 230), bar_b);
     av.colored_text({
         {"歐幾里得算法 (輾轉相除法)\n", "", "", "24"},
-        {"這可以用 "}, {"長條測量", "rgba(252, 255, 64, 0.46)"}, {" 的觀點來理解：\n"},
-        {"假設有兩根長度 a 和 b，你想找一個長度 g 剛好能填滿這兩根。\n"},
-        {"這個最長的單位 g，就是 {gcd(a, b):最大公因數}。"}
-    }, Pos("bar_a", "top", 0, -140));
+        {"這是一個計算最大公因數的方法\n我們可以用 "}, {"{長:常}條測量", "rgba(252, 255, 64, 0.46)"}, {" 的觀點來理解\n"},
+        {"假設有兩根長度 a 和 b，你想找一個長度 g 剛好能填滿這兩根\n"},
+        {"這個最長的單位 g，就是 {gcd(a, b):最大公因數}"}
+    }, Pos("bar_a", "top", 0, -20));
     av.auto_camera(0.85);
+    av.sleep(600);
     av.end_frame_draw();
 
     // 2. 核心原理：差值不變性 (視覺化減法過程)
@@ -48,15 +50,16 @@ void gcd_demo(int a, int b) {
     av.frame_draw("bar_a", Pos(500, 150), bar_a, st_a_sub);
     av.frame_draw("bar_b", Pos(500, 230), bar_b, st_b_ref);
     av.colored_text({
-        {"利用減法來縮減問題的規模\n","","","20"},
+        {"{利用減法來縮減問題的規模}\n","","","20"},
         {"我們可以用 "},
         {"減法", "rgba(252, 255, 64, 0.46)"},
         {" 來不斷縮小問題的規模\n"},
         {"因為 {a:大的} 扣掉 {b:小的} 並不影響 gcd 的結果\n"},
-        {"所以遞迴式可以寫成 {gcd(a, b) = gcd(b, a-b):這樣}\n"},
+        {"所以遞迴式可以寫成 {gcd(a, b) = gcd(b, a-b):b和 a 減 b 的 gcd}\n"},
         {"直到 a 減不動後 就可以換人繼續減"}
-    }, Pos("bar_a", "top", 0, -160));
+    }, Pos("bar_a", "top", 0, -20));
     av.auto_camera(0.85);
+    av.sleep(900);
     av.end_frame_draw();
 
     // 3. 連續減法轉取餘
@@ -73,28 +76,30 @@ void gcd_demo(int a, int b) {
     av.frame_draw("bar_a", Pos(500, 150), bar_a, st_mod);
     av.frame_draw("bar_b", Pos(500, 230), bar_b, {{{"background", "#c8e6c9"}, AV::AtoB(0, b - 1)}});
     av.colored_text({
-        {"從連續減法到取餘數\n", "", "", "20"},
+        {"{從連續減法到取餘數}\n", "", "", "20"},
         {"與其一次次減去 b，不如直接算 a 能裝下幾個 b。\n"},
         {"扣掉所有 b 之後剩下的紅色部分，就是 "},
         {"取餘數", "rgba(252, 255, 64, 0.46)"},
         {" (a%b)。\n"},
-        {"然後遞迴式簡化成 {gcd(a, b) = gcd(b, a%b):這樣}\n"},
-        {"這樣就可以一次跳過中間所有的減法步驟。"}
-    }, Pos("bar_a", "top", 0, -160));
+        {"然後遞迴式就簡化成 {gcd(a, b) = gcd(b, a%b):b和 a 餘 b 的 gcd}\n"},
+        {"這樣就可以一次跳過中間所有的減法步驟"}
+    }, Pos("bar_a", "top", 0, -20));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     // --- 第二部分：實例遞迴演示 ---
     
-    int step = 0;
+    int step = 0, old_a=a;
     av.start_frame_draw();
     av.frame_draw("a", Pos(500, 150), bar_a);
     av.frame_draw("b", Pos(500, 230), bar_b);
-    av.accu_store("gcd_" + to_string(step++), Pos("b","left bottom", 0, 20+step*60), vector<int>{a,b});
+    av.accu_store("gcd_" + to_string(step++), Pos("b","raw left bottom", 0, 20+step*60), vector<int>{a,b});
     av.accu_draw();
+    av.text("接下來看遞迴的過程", Pos("a", "top", 0, -20));
     av.auto_camera(0.85);
     av.end_frame_draw();
-    bar_a = AV::AtoB(1,a%b);
+    bar_a = vector<string>(a % b, "");
 
     while(a%=b){
                 
@@ -102,27 +107,29 @@ void gcd_demo(int a, int b) {
         av.frame_draw("a", Pos(500, 150), bar_a);
         av.frame_draw("b", Pos(500, 230), bar_b);
         av.accu_draw();
-        av.frame_draw("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b});
+        av.frame_draw("gcd_" + to_string(step), Pos("b","raw left bottom", 0, 20+step*100), vector<int>{a,b});
         av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
         av.arrow(Pos("gcd_"+to_string(step-1), 0,"center",0,0),Pos("gcd_"+to_string(step), 0,"center",0,0));
-        av.text("取餘數", Pos("gcd_"+to_string(step),"bottom", 0 , 20));
+        av.text("先算 " + to_string(old_a) + " {/:除} " + to_string(b) + " 的餘數 = " + to_string(a%b), Pos("gcd_"+to_string(step),"bottom", 0 , 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
+        old_a=b;
         bar_a = bar_b;
-        bar_b = AV::AtoB(1,a%b);
+        bar_b = vector<string>(a % b, "");
         swap(a,b);
         
         av.start_frame_draw();
         av.frame_draw("a", Pos(500, 150), bar_a);
         av.frame_draw("b", Pos(500, 230), bar_b);
-        av.accu_store("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b});
+        av.accu_store("gcd_" + to_string(step), Pos("b","raw left bottom", 0, 20+step*100), vector<int>{a,b});
         av.accu_draw();
         av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
+        av.arrow(Pos("gcd_"+to_string(step-1), 0,"center",0,0),Pos("gcd_"+to_string(step), 1,"center",0,0));
         av.accu_store_arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
-        av.text("左右交換往下傳", Pos("gcd_"+to_string(step),"bottom", 0 , 20));
+        av.text("為了保持 a 大 b 小，把它左右交換再往下傳", Pos("gcd_"+to_string(step),"bottom", 0 , 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
-        bar_a = AV::AtoB(1,a%b);
+        bar_a = vector<string>(a % b, "");
 
         step++;
     }
@@ -131,24 +138,25 @@ void gcd_demo(int a, int b) {
     av.frame_draw("a", Pos(500, 150), bar_a);
     av.frame_draw("b", Pos(500, 230), bar_b);
     av.accu_draw();
-    av.frame_draw("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b});
+    av.frame_draw("gcd_" + to_string(step), Pos("b","raw left bottom", 0, 20+step*100), vector<int>{a,b});
     av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
     av.arrow(Pos("gcd_"+to_string(step-1), 0,"center",0,0),Pos("gcd_"+to_string(step), 0,"center",0,0));
-    av.text("取餘數", Pos("gcd_"+to_string(step),"bottom", 0 , 20));
+    av.text("先算 " + to_string(old_a) + " {/:除} " + to_string(b) + " 的餘數 = " + to_string(a%b), Pos("gcd_"+to_string(step),"bottom", 0 , 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
 
     bar_a = bar_b;
-    bar_b = AV::AtoB(1,a%b);
+    bar_b = vector<string>(a % b, "");
     swap(a,b);
 
     av.start_frame_draw();
     av.frame_draw("a", Pos(500, 150), bar_a);
     av.frame_draw("b", Pos(500, 230), bar_b);
     av.accu_draw();
-    av.frame_draw("gcd_" + to_string(step), Pos("b","left bottom", 0, 20+step*100), vector<int>{a,b}, {{{"highlight"},{0}}});
+    av.frame_draw("gcd_" + to_string(step), Pos("b","raw left bottom", 0, 20+step*100), vector<int>{a,b}, {{{"highlight"},{0}}});
     av.arrow(Pos("gcd_"+to_string(step-1),"bottom"),Pos("gcd_"+to_string(step),"top"), {{"color", "#000000ff"}, {"width", "2"}});
-    av.text("遇到 0 ，找到最大公因數 a = " + to_string(a), Pos("gcd_"+to_string(step),"bottom", 0 , 20));
+    av.arrow(Pos("gcd_"+to_string(step-1), 0,"center",0,0),Pos("gcd_"+to_string(step), 1,"center",0,0));
+    av.text("遇到 0 回傳 a，找到最大公因數 a = " + to_string(a), Pos("gcd_"+to_string(step),"bottom", 0 , 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
 
@@ -162,6 +170,15 @@ void ext_euc(int a,int b,int &x,int &y){//x,y不用放東西(code by reference)
     int d = tree.curr_d, o = tree.curr_o;
     tree.nodes.insert({d, o});
     update_node(d, o, a, b, "?", "?");
+    if (d == 0) {
+        tree.paint(av, "", -1, [&]{ 
+            av.colored_text({
+                {"我們要尋找一對 {x, y:x y} 使得\n"},
+                {to_string(a) + "{x: x} + " + to_string(b) + "{y: y} = g"}
+            }, tree.anchor(d, o, "bottom", 0, 20));
+            av.auto_camera(0.85); 
+        });
+    }
     tree.paint(av, "", -1, [&]{ 
         if (d > 0) {
             string pid = tree.get_id(d - 1, o / tree.degree);
@@ -178,9 +195,11 @@ void ext_euc(int a,int b,int &x,int &y){//x,y不用放東西(code by reference)
         //draw{ 基底階段
         update_node(d, o, a, b, to_string(x), to_string(y));
         tree.paint(av, "", -1, [&]{ 
-            av.text("到達基底\n把 x{=:設為}1, y{=:設為}0 回傳", tree.anchor(d, o, "top", 0, -80));
+            av.text("到達基底，因為 " + to_string(a) + "{x + 0y = g: x + 0 y = g}，所以 {x=1: x 直接放 1}, {y=0: y 直接放 0} 回傳\n( y 放甚麼數值都可以，但是放 0 的話算出來的 x,y 會是最小的)", tree.anchor(d, o, "bottom", 0, 20));
             av.auto_camera(0.85); 
+            av.sleep(2000);
         });
+        return_step = 2; // 基底回傳算完最後一步了
         //}
         return;
     } 
@@ -190,6 +209,7 @@ void ext_euc(int a,int b,int &x,int &y){//x,y不用放東西(code by reference)
     //}
     ext_euc(b,a%b,y,x);
     //draw{ 1. 回溯第一步：交換後的直接填入
+    return_step = 1; // 剛拿回解，正在計算 x (目前標註在第四格)
     tree.pop();
     // 此時 y 承接了 child 傳回來的 x, x 承接了 child 傳回來的 y
     // 注意：在 main 的視野裡，這層的 x 拿到的是 child 的 y
@@ -197,11 +217,24 @@ void ext_euc(int a,int b,int &x,int &y){//x,y不用放東西(code by reference)
     tree.paint(av, "", -1, [&]{ 
         string cid = tree.get_id(d + 1, o * tree.degree + 0);
         string pid = tree.get_id(d, o);
-        av.arrow(Pos(cid, 3, "top"), Pos(pid, 2, "bottom"), {{"color", "#4caf50"}, {"width", "3"}});
+        
+        // 此幀這層標記 (a, b, x, y)
+        av.draw_word("a", Pos(pid, 0, "bottom", 0, -1));
+        av.draw_word("b", Pos(pid, 1, "bottom", 0, -1));
+        av.draw_word("x", Pos(pid, 2, "bottom", 0, -1));
+        av.draw_word("y", Pos(pid, 3, "bottom", 0, -1));
+        
+        // 此幀下層標記 (b, a%b, u, v)
+        av.draw_word("b"  , Pos(cid, 0, "bottom", 0, -1));
+        av.draw_word("a%b", Pos(cid, 1, "bottom", 0, -1));
+        av.draw_word("u"  , Pos(cid, 2, "bottom", 0, -1));
+        av.draw_word("v"  , Pos(cid, 3, "bottom", 0, -1));
 
-        string msg = "回溯：下一層 f(" + to_string(b) + ", " + to_string(a%b) + ") 已計算完畢\n";
+        av.arrow(Pos(cid, 3, "top"), Pos(pid, 2, "bottom"), {{"color", "#4caf4f6c"}, {"width", "3"}});
+
+        string msg = "回溯：底下的解，已計算完畢\n";
         msg += "這層的 x 就是下一層的 v";
-        av.text(msg, tree.anchor(d, o, "top", 0, -80));
+        av.text(msg, tree.anchor(d, o, "top", 0, -45)); // 往上偏一點避免擋到文字
         av.auto_camera(0.85); 
     });
     //}
@@ -209,20 +242,35 @@ void ext_euc(int a,int b,int &x,int &y){//x,y不用放東西(code by reference)
     y-=a/b*x; 
     
     //draw{ 2. 回溯第二步：公式計算
+    return_step = 2; // 公式算完，正在計算 y (目前標註在第三格)
     update_node(d, o, a, b, to_string(x), to_string(y));
     tree.paint(av, "", -1, [&]{ 
+        string cid = tree.get_id(d + 1, o * tree.degree + 0);
+        string pid = tree.get_id(d, o);
+
+        // 此幀這層標記
+        av.draw_word("a", Pos(pid, 0, "bottom", 0, -1));
+        av.draw_word("b", Pos(pid, 1, "bottom", 0, -1));
+        av.draw_word("x", Pos(pid, 2, "bottom", 0, -1));
+        av.draw_word("y", Pos(pid, 3, "bottom", 0, -1));
+        
+        // 此幀下層標記 (b, a%b, u, v)
+        av.draw_word("b"  , Pos(cid, 0, "bottom", 0, -1));
+        av.draw_word("a%b", Pos(cid, 1, "bottom", 0, -1));
+        av.draw_word("u"  , Pos(cid, 2, "bottom", 0, -1));
+        av.draw_word("v"  , Pos(cid, 3, "bottom", 0, -1));
 
         string msg = "代入公式計算這層的 y\n";
         msg += "{y = u - (a/b) * v\n";
         msg += "y = " + to_string(y + (a/b)*x) + " - (" + to_string(a/b) + ") * " + to_string(x) + "} = " + to_string(y);
-        av.text(msg, tree.anchor(d, o, "top", 0, -80));
+        av.text(msg, tree.anchor(d, o, "top", 0, -45));
         av.auto_camera(0.85); 
     });
     //}
 } //最後算出來x為模逆元
 
 int main(){
-    int a=17,b=6,x,y;
+    int a=16,b=6,x,y;
     //draw{
     tree.renderer = [](string id, Pos p, int d, int o, bool focus) {
         string val = tree.vals[{d, o}];
@@ -236,11 +284,19 @@ int main(){
         vector<array_style> st;
         for (int i = 0; i < (int)items.size(); ++i) {
             if (items[i] != "?") st.push_back({{"background", "#e8f5e9"}, {i}});
-            else st.push_back({{"background", "#fff3e0"}, {i}});
+            else st.push_back({{"background", "#cccccc"}, {i}});
         }
         if (focus) { 
-            for (int i = 0; i < (int)items.size(); ++i) st.push_back({{"highlight"}, {i}});
-            st.push_back({{"point"}, {0}}); 
+            if (return_step == 0) {
+                st.push_back({{"highlight"}, {0}});
+                st.push_back({{"point"}, {0}}); 
+            } else if (return_step == 1) {
+                st.push_back({{"highlight"}, {2}});
+                st.push_back({{"point"}, {2}}); 
+            } else if (return_step == 2) {
+                st.push_back({{"highlight"}, {3}});
+                st.push_back({{"point"}, {3}}); 
+            }
         }
         av.frame_draw(id, p, items, st);
     };
@@ -248,7 +304,7 @@ int main(){
     gcd_demo(16, 6);
     //}
     
-    if (!(cin>>a>>b)) { a=17; b=6; }
+    if (!(cin>>a>>b)) { a=16; b=6; }
     
     //draw{
     // Step 1: 貝祖定理與目標
@@ -256,41 +312,45 @@ int main(){
     av.start_frame_draw();
     av.colored_text({
         {"擴展歐幾里得算法\n", "", "", "20"},
-        {"擴展歐幾里得到底擴展在哪?\n他在計算 a,b 的過程中 還要去找到一對 {x,y:x y} 使得 {ax+by=gcd(a,b):a x + b y 能夠 = gcd a b}\n"},
+        {"擴展歐幾里得到底擴展在哪?\n他在計算 {a,b:a b} 的過程中 還要去找到一對 {x,y:x y} 使得 {ax+by=gcd(a,b):a x + b y 能夠 = gcd a b}\n"},
         {"而這個 {x,y:x y} 可以做{甚:捨}麼呢?\n先說結論，它可以幫助你找到 "},
         {"模逆元", "rgba(252, 255, 64, 0.46)"},
         {" 來計算 "},
         {"模除法", "rgba(252, 255, 64, 0.46)"},
         {" ，\n比如說可以用來計算大數的組合數"}
     }, Pos(500, 10));
-    av.camera(Pos(520, 100), 1.7);
+    av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     av.start_frame_draw();
     av.colored_text({
         {"擴展歐幾里得算法的原理\n", "", "", "20"},
-        {"如果你手上有兩個整數 a, b，數學家告訴我們：\n一定可以找到一組整數 (x, y) 滿足 ax + by = {gcd(a, b):gcd a b}\n這組神秘的 x, y 稱為 貝祖數 ，我們今天的任務就是找出它們。\n\n"
-         "{補充}：\n為什麼算式最後{得:ㄉㄟˇ}是 gcd 呢？\n因為 a 和 b 都是 gcd 的倍數。\n所以無論你怎麼線性組合 (ax + by)，其結果只會是 gcd 的倍數\n\n例如：\n你手邊只有 4 公升與 6 公升的水桶，\n不論你怎麼裝水、倒水，你能{量:ㄌㄧㄤˊ}出的水量一定是 2 公升 (gcd) 的倍數，\n絕對不可能量出 1 公升或 3 公升這種水量。"}
+        {"如果你手上有兩個整數 {a,b: a b}，數學家告訴我們：\n一定可以找到一組整數 (x,y) 滿足 {ax + by = gcd(a,b):a x + b y = gcd a b}\n這組神秘的 {x,y: x y} 稱為 貝祖數 ，我們今天的任務就是找出它們。\n\n"
+         "{補充：}\n為什麼算式最後{得:ㄉㄟˇ}是 gcd 呢？\n因為 a 和 b 都是 gcd 的倍數。\n所以無論你怎麼線性組合 (ax + by)，其結果只會是 gcd 的倍數\n\n例如：\n你手邊只有 4 公升與 6 公升的水桶，\n不論你怎麼裝水、倒水，你能{量:ㄌㄧㄤˊ}出的水量一定是 2 公升 (gcd) 的倍數，\n絕對不可能{量:良}出 1 公升或 3 公升這種水量。"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
     
     // Step 2: 問題轉換 (由大變小)
     av.start_frame_draw();
     av.colored_text({
-        {"直接找 {a, b:a b} 的答案太難了，我們可以換個小一點的目標：\n"},
-        {"歐幾里得算法告訴我們 {gcd(a,b):a和b,的最大公因數,} = {gcd(b, a%b):,b和,a於b, 的最大公因數}\n因此我們可以假設去找 {b* u:b成u} + {(a%b)* v:,a於b,成v} {= gcd(b, a%b)} 也是等價的！"}
+        {"直接找 {a, b:a b} 的答案太難了，我們可以換個小一點的目標\n"},
+        {"歐幾里得算法告訴我們 {gcd(a,b):a和b的最大公因數} = {gcd(b, a%b):：b和a於b, 的最大公因數}\n因此我們可以假設去找 {b* u:b成u} + {(a%b)* v:：a於b：成v} {= gcd(b, a%b)} 也是等價的！"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     // Step 3: 建立橋樑 (代換連結)
     av.start_frame_draw();
     av.colored_text({
-        {"現在問題來了，我們知道 {ax + by = g:a x + b y = g,} 能夠被轉換成 {b* u + (a%b)* v = g:,b成u + ,a於b成v} \n"},
+        {"現在問題來了，我們知道 {ax + by = g:a x + b y,} 能夠被轉換成 {b* u + (a%b)* v = g:：b成u + ：a於b成v} \n"},
         {"但是你這 {x,y:x y} 和 {u,v:u v} 很明顯不一樣啊，那要怎樣才能夠拿回最原本的 {x,y:x y} 呢？\n\n\n"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep(750);
     av.end_frame_draw();
 
     av.start_frame_draw();
@@ -301,14 +361,16 @@ int main(){
         {"那不就能夠直接把原來的 {x,y:x y} 給求出來了嗎？"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep(900);
     av.end_frame_draw();
 
     // Step 4: 重新分組整理
         av.start_frame_draw();
     av.colored_text({
-        {"目標：將 {b*u + (a%b)*v = g:原本的式子}, 調整成 {a* (?) + b* (?) = g:a成問號+b成問號=g} 的形式                  \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"},
+        {"目標：將 {b*u + (a%b)*v = g:原本的式ㄗ˙}, 調整成 {a* (?) + b* (?) = g:a成問號+b成問號=g} 的形式                  \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"},
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     av.start_frame_draw();
@@ -319,6 +381,7 @@ int main(){
         {" ，這樣就可以繞過 {a%b:a於b} 的計{算:算：：：：：}\n\n\n\n\n\n\n\n\n\n\n\n\n\n"},
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     av.start_frame_draw();
@@ -340,6 +403,7 @@ int main(){
         {"\n\n\n\n\n\n\n\n\n\n\n"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
     
     av.start_frame_draw();
@@ -376,6 +440,7 @@ int main(){
         {"\n\n\n\n\n\n"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     av.start_frame_draw();
@@ -425,6 +490,7 @@ int main(){
         {"\n\n\n"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     av.start_frame_draw();
@@ -458,7 +524,7 @@ int main(){
         {"*"},
         {"v","rgba(76, 175, 80, 0.4)"},
         {" = g}\n\n"},
-        {"{再把它左右交換位置}\n"},
+        {"{再把它左右交換位置：}\n"},
         {"{a","rgba(252, 255, 64, 0.46)"},
         {"*"},
         {"v","rgba(76, 175, 80, 0.4)"},
@@ -489,6 +555,7 @@ int main(){
         {") = g}\n\n"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     av.start_frame_draw();
@@ -522,7 +589,7 @@ int main(){
         {"*"},
         {"v","rgba(76, 175, 80, 0.4)"},
         {" = g}\n\n"},
-        {"{再把它左右交換位置}\n"},
+        {"{再把它左右交換位置：}\n"},
         {"{a","rgba(252, 255, 64, 0.46)"},
         {"*"},
         {"v","rgba(76, 175, 80, 0.4)"},
@@ -535,9 +602,9 @@ int main(){
         {"*"},
         {"v","rgba(76, 175, 80, 0.4)"},
         {" = g}\n\n"},
-        {"最後把 "},
+        {"{最後把 "},
         {"b","rgba(34, 136, 219, 0.4)"},
-        {" 提出{來：:來就變成我們要的形式：：：：}\n"},
+        {" 提出來：}\n"},
         {"{a","rgba(252, 255, 64, 0.46)"},
         {"*"},
         {"v","rgba(76, 175, 80, 0.4)"},
@@ -551,9 +618,10 @@ int main(){
         {"*"},
         {"v","rgba(76, 175, 80, 0.4)"},
         {") = g\n\n}"},
-        {"兩個問號分別就是 v 和 u - (a/b)*v"}
+        {"兩個問號分別就是 v 和 {u - (a/b)*v:u 減 a 除 b 成 v}"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
 
     
@@ -569,11 +637,12 @@ int main(){
         {"v", "rgba(76, 175, 80, 0.4)", ""},
         {"  + b*( ", "", ""},
         {"u - (a/b)*v", "rgba(244, 67, 54, 0.4)", ""},
-        {" ) = gcd(b, a%b)}\n", "", ""},
+        {" )   = gcd(b, a%b)}\n", "", ""},
 
         {"這麼一來與原式對照，你會發現其實 x 就是 {v:v} 而 y 就是 {u - (a/b)*v:u減a除b成v}\n這樣子 {x,y:x y} 和 {u,v:u v} 的遞迴關係就能夠串聯起來了\n接下來是程式流程，請觀察數值是如何交換與跳轉的。", "", ""}
     }, Pos(500, 10));
     av.auto_camera(0.85);
+    av.sleep();
     av.end_frame_draw();
     //}
     
