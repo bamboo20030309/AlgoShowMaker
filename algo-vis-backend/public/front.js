@@ -476,7 +476,7 @@ window.FrameSnapshotCache = FrameSnapshotCache;
 // 影格延遲 (Sleep) 系統
 // ==============================
 let currentFrameSleep = 0;
-window.setFrameSleep = function(ms) {
+window.setFrameSleep = function (ms) {
   currentFrameSleep = ms;
 };
 
@@ -795,7 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const extraDelay = currentFrameSleep || 0;
       setTimeout(() => {
         if (!isPlaying || runId !== TTS_RUN_ID) return;
-        
+
         if (fast && typeof CodeScript.next_key_frame === 'function') {
           stepWithTween(() => CodeScript.next_key_frame());
         } else if (typeof CodeScript.next === 'function') {
