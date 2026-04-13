@@ -1,32 +1,37 @@
 #include <bits/stdc++.h>
 #include "AV.hpp"
 using namespace std;
+
 //draw{
 AV av;
 
-// 輔助繪圖函式：由外部決定 ID 與位置
-void _draw_frame(const vector<int>& arr, string text, string _draw_id, Pos _draw_pos, string _draw_last_id, string _draw_layout = "heap", const vector<int>& _draw_highlights = {}, const vector<int>& _draw_marks = {}) {
+vector<int> _draw_marks;
+string _draw_id;
+Pos    _draw_pos(0, 0);
+string _draw_last_id;
+int    _draw_y_gap = 60;
+
+// 輔助繪圖函式，包裝在 //draw 區塊內
+void _draw_frame(const vector<int>& arr, string text, string layout = "heap", const vector<int>& highlights = {}) {
     av.start_frame_draw();
     av.accu_draw();
     
-    // 繪製堆積結構
     av.frame_draw(_draw_id, _draw_pos, arr, {
-        {{"highlight"}, _draw_highlights},
+        {{"highlight"}, highlights},
         {{"background", "#CCC"}, _draw_marks}
-    }, {0}, _draw_layout, 0, 1);
+    }, {0}, layout, 0, 1);
 
     if (_draw_id != "init" && !_draw_last_id.empty()) {
         av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_id, "top"));
     }
     
     av.text(text, Pos(_draw_id, "bottom", 0, 20));
-    // 鏡頭對焦於物件底部
     av.camera(Pos(_draw_id), 1.5);
     av.end_frame_draw();
 }
 //}
 
-void heapify(vector<int>& arr, int n, int i, const vector<int>& _draw_marks, string _draw_id, Pos _draw_pos, string _draw_last_id) {
+void heapify(vector<int>& arr, int n, int i) {
     int largest = i;
     int l = 2 * i;
     int r = 2 * i + 1;
@@ -36,132 +41,133 @@ void heapify(vector<int>& arr, int n, int i, const vector<int>& _draw_marks, str
 
     if (largest != i) {
         //draw{
-        _draw_frame(arr, "因為 " + to_string(arr[i]) + " < " + to_string(arr[largest]) + " ，所以交換位置", _draw_id, _draw_pos, _draw_last_id, "heap", {i, largest}, _draw_marks);
+        _draw_frame(arr, "因為 " + to_string(arr[i]) + " < " + to_string(arr[largest]) + " ，所以交換位置", "heap", {i, largest});
         //}
         swap(arr[i], arr[largest]);
         //draw{
-        static bool _draw_first_swap_reason = true;
-        if (2 * largest <= n) { // 還有子節點，需說明向下檢查的原因
-            if (_draw_first_swap_reason) {
-                _draw_frame(arr, "因為父節點下沉後可能破壞子樹的堆積性質，所以還需要繼續向下檢查", _draw_id, _draw_pos, _draw_last_id, "heap", {i, largest}, _draw_marks);
-                _draw_first_swap_reason = false;
+        static bool first_swap_reason = true;
+        if (2 * largest <= n) {
+            if (first_swap_reason) {
+                _draw_frame(arr, "因為父節點下沉後可能破壞子樹的堆積性質，所以還需要繼續向下檢查", "heap", {i, largest});
+                first_swap_reason = false;
             } else {
-                _draw_frame(arr, "{因為父節點下沉後可能破壞子樹的堆積性質，所以還需要}繼續向下檢查", _draw_id, _draw_pos, _draw_last_id, "heap", {i, largest}, _draw_marks);
+                _draw_frame(arr, "{因為父節點下沉後可能破壞子樹的堆積性質，所以還需要}繼續向下檢查", "heap", {i, largest});
             }
         } else {
-            _draw_frame(arr, "到底了，完成交換", _draw_id, _draw_pos, _draw_last_id, "heap", {i, largest}, _draw_marks);
+            _draw_frame(arr, "到底了，完成交換", "heap", {i, largest});
         }
         //}
-        heapify(arr, n, largest, _draw_marks, _draw_id, _draw_pos, _draw_last_id);
-    } else {
-        //draw{
+        heapify(arr, n, largest);
+    } 
+    //draw{
+    else {
         if (l <= n) {
-            _draw_frame(arr, "節點 " + to_string(i) + " 已大於子節點，不需交換", _draw_id, _draw_pos, _draw_last_id, "heap", {i}, _draw_marks);
+            _draw_frame(arr, "節點 " + to_string(i) + " 已大於子節點，不需交換", "heap", {i});
         }
-        //}
     }
+    //}
 }
 
 void heap_sort(vector<int>& arr, int n) {
     //draw{
-    vector<int> _draw_marks;
-    string _draw_init_id = "init";
-    Pos _draw_init_pos(350.0, 100.0);
-    int _draw_y_gap = 60; // 極限緊湊垂直間距
+    string init_id = "init";
+    Pos init_pos(350.0, 100.0);
+    _draw_id = init_id;
+    _draw_pos = init_pos;
+
     // 第一幀：呈現原始陣列 (Normal)
     av.start_frame_draw();
-    av.frame_draw(_draw_init_id, _draw_init_pos, arr, {{{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
-    av.text("Heap Sort (堆積排序 - 挑大)\n先將陣列建立成堆積，再逐一提取最大值並排序的方法", Pos(_draw_init_id, "bottom", 0, 20));
+    av.frame_draw(init_id, init_pos, arr, {{{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
+    av.text("Heap Sort (堆積排序 - 挑大)\n先將陣列建立成堆積，再逐一提取最大值並排序的方法", Pos(init_id, "bottom", 0, 20));
     av.auto_camera();
     av.end_frame_draw();
 
-    av.accu_store(_draw_init_id, _draw_init_pos, arr, {{{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
+    av.accu_store(init_id, init_pos, arr, {{{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
 
-    string _draw_tree_id = "tree_intro";
-    Pos _draw_tree_pos(_draw_init_id, "bottom", 0.0, 50.0); // 綁定在左下角，y 偏移縮減
+    string tree_id = "tree_intro";
+    Pos tree_pos(init_id, "bottom", 0.0, 50.0);
     av.start_frame_draw();
     av.accu_draw();
-    av.frame_draw(_draw_tree_id, _draw_tree_pos, arr, {}, {0}, "heap", 10, 1);
-    av.arrow(Pos(_draw_init_id, "bottom"), Pos(_draw_tree_id, "top"));
-    av.text("為了方便看清楚陣列的關係，將它畫成樹狀圖", Pos(_draw_tree_id, "bottom", 0, 20));
-    av.camera(Pos(_draw_tree_id), 1.5);
+    av.frame_draw(tree_id, tree_pos, arr, {}, {0}, "heap", 10, 1);
+    av.arrow(Pos(init_id, "bottom"), Pos(tree_id, "top"));
+    av.text("為了方便看清楚陣列的關係，將它畫成樹狀圖", Pos(tree_id, "bottom", 0, 20));
+    av.camera(Pos(tree_id), 1.5);
     av.end_frame_draw();
 
-    av.accu_store(_draw_tree_id, _draw_tree_pos, arr, {}, {0}, "heap", 10, 1);
-    av.accu_store_arrow(Pos(_draw_init_id, "bottom"), Pos(_draw_tree_id, "top"));
+    av.accu_store(tree_id, tree_pos, arr, {}, {0}, "heap", 10, 1);
+    av.accu_store_arrow(Pos(init_id, "bottom"), Pos(tree_id, "top"));
 
     // --- 建立堆積階段 ---
-    string _draw_build_id = "build_heap";
-    Pos _draw_build_pos(_draw_tree_id, "bottom", 0.0, (double)_draw_y_gap);
+    _draw_id = "build_heap";
+    _draw_pos = Pos(tree_id, "bottom", 0.0, (double)_draw_y_gap);
+    _draw_last_id = tree_id;
 
-    _draw_frame(arr, "首先要將陣列建立成一個堆積才能開始排序，\n調整方式是從最後一個有小孩的節點開始一個一個往上調整，\n直到所有子樹都是堆積為止", _draw_build_id, _draw_build_pos, _draw_tree_id, "heap", {}, {});
+    _draw_frame(arr, "首先要將陣列建立成一個堆積才能開始排序，\n調整方式是從最後一個有小孩的節點開始一個一個往上調整，\n直到所有子樹都是堆積為止");
     //}
 
     for (int i=n/2; i>=1; i--) {
         //draw{
-        _draw_frame(arr, "準備調整以索引 " + to_string(i) + " 為首的子樹", _draw_build_id, _draw_build_pos, _draw_tree_id, "heap", {i}, _draw_marks);
+        _draw_frame(arr, "準備調整以索引 " + to_string(i) + " 為首的子樹", "heap", {i});
         //}
-        heapify(arr, n, i, _draw_marks, _draw_build_id, _draw_build_pos, _draw_tree_id);
+        heapify(arr, n, i);
     }
-    // 建堆完成
+
     //draw{
-    av.accu_store(_draw_build_id, _draw_build_pos, arr, {}, {0}, "heap", 10, 1);
-    av.accu_store_arrow(Pos(_draw_tree_id, "bottom"), Pos(_draw_build_id, "top"));
+    av.accu_store(_draw_id, _draw_pos, arr, {}, {0}, "heap", 10, 1);
+    av.accu_store_arrow(Pos(tree_id, "bottom"), Pos(_draw_id, "top"));
 
     // --- 排序階段 ---
-    string _draw_sort_id = "sorting_phase";
-    Pos _draw_sort_pos(_draw_build_id, "bottom", 0.0, (double)_draw_y_gap);
+    string build_id = _draw_id;
+    _draw_id = "sorting_phase";
+    _draw_pos = Pos(build_id, "bottom", 0.0, (double)_draw_y_gap);
+    _draw_last_id = build_id;
 
-    _draw_frame(arr, "進入排序階段，排序方法為 逐一提取堆頂的最大值，\n並將其換到最下面，同時維護堆積的性質", _draw_sort_id, _draw_sort_pos, _draw_build_id, "heap", {}, _draw_marks);
+    _draw_frame(arr, "進入排序階段，排序方法為 逐一提取堆頂的最大值，\n並將其換到最下面，同時維護堆積的性質");
     //}
 
     for (int i=n; i>1; i--) {
         //draw{
-        _draw_frame(arr, "將最大值 " + to_string(arr[1]) + " 交至目前的末端 (索引 " + to_string(i) + " 的位置)", _draw_sort_id, _draw_sort_pos, _draw_build_id, "heap", {1, i}, _draw_marks);
+        _draw_frame(arr, "將最大值 " + to_string(arr[1]) + " 交至目前的末端 (索引 " + to_string(i) + " 的位置)", "heap", {1, i});
         //}
         swap(arr[1], arr[i]);
         
         //draw{
         _draw_marks.push_back(i);
-        _draw_frame(arr, "標記 " + to_string(arr[i]) + " 已排序，並向下維護堆積", _draw_sort_id, _draw_sort_pos, _draw_build_id, "heap", {i}, _draw_marks);
+        _draw_frame(arr, "標記 " + to_string(arr[i]) + " 已排序，並向下維護堆積", "heap", {i});
         //}
-        heapify(arr, i - 1, 1, _draw_marks, _draw_sort_id, _draw_sort_pos, _draw_build_id);
+        heapify(arr, i - 1, 1);
     }
+
     //draw{
     _draw_marks.push_back(1);
     
-    // 1. 堆積佈局完成影格
     av.start_frame_draw();
     av.accu_draw();
-    av.frame_draw(_draw_sort_id, _draw_sort_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
-    av.arrow(Pos(_draw_build_id, "bottom"), Pos(_draw_sort_id, "top"));
-    av.text("排序階段完成", Pos(_draw_sort_id, "bottom", 0, 20));
-    av.camera(Pos(_draw_sort_id), 1.5);
+    av.frame_draw(_draw_id, _draw_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
+    av.arrow(Pos(build_id, "bottom"), Pos(_draw_id, "top"));
+    av.text("排序階段完成", Pos(_draw_id, "bottom", 0, 20));
+    av.camera(Pos(_draw_id), 1.5);
     av.end_frame_draw();
     
-    // 存入累積
-    av.accu_store(_draw_sort_id, _draw_sort_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
-    av.accu_store_arrow(Pos(_draw_build_id, "bottom"), Pos(_draw_sort_id, "top"));
+    av.accu_store(_draw_id, _draw_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
+    av.accu_store_arrow(Pos(build_id, "bottom"), Pos(_draw_id, "top"));
 
-    // 2. 映射回 Normal 陣列佈局 (往下拉一行)
-    string _draw_final_id = "final_result";
-    Pos _draw_final_pos(_draw_sort_id, "bottom", 0.0, (double)_draw_y_gap);
+    string final_id = "final_result";
+    Pos final_pos(_draw_id, "bottom", 0.0, (double)_draw_y_gap);
     av.start_frame_draw();
     av.accu_draw();
-    av.frame_draw(_draw_final_id, _draw_final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
-    av.arrow(Pos(_draw_sort_id, "bottom"), Pos(_draw_final_id, "top"));
-    av.text("最後重新畫回一般的陣列形狀", Pos(_draw_final_id, "bottom", 0, 20));
-    av.camera(Pos(_draw_final_id), 1.5);
+    av.frame_draw(final_id, final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
+    av.arrow(Pos(_draw_id, "bottom"), Pos(final_id, "top"));
+    av.text("最後重新畫回一般的陣列形狀", Pos(final_id, "bottom", 0, 20));
+    av.camera(Pos(final_id), 1.5);
     av.end_frame_draw();
     
-    // 存入累積
-    av.accu_store(_draw_final_id, _draw_final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
-    av.accu_store_arrow(Pos(_draw_sort_id, "bottom"), Pos(_draw_final_id, "top"));
+    av.accu_store(final_id, final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
+    av.accu_store_arrow(Pos(_draw_id, "bottom"), Pos(final_id, "top"));
 
-    // 3. 最終總計畫面
     av.start_frame_draw();
     av.accu_draw();
-    av.text("Heap Sort 完成！", Pos(_draw_init_id, "top", 0.0, -20.0));
+    av.text("Heap Sort 完成！", Pos(init_id, "top", 0.0, -20.0));
     av.auto_camera();
     av.end_frame_draw();
     //}
@@ -171,13 +177,15 @@ int main() {
     int n; cin>>n;
     vector<int> arr(n+1);
     for (int i=1; i<=n; i++) cin>>arr[i];
+
     //draw{
     av.start_draw();
     //}
+    
     heap_sort(arr, n);
+    
     //draw{
     av.end_draw();
     //}
-
     return 0;
 }

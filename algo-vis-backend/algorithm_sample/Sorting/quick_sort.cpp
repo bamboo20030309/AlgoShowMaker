@@ -1,13 +1,20 @@
 #include <bits/stdc++.h>
 #include "AV.hpp"
 using namespace std;
+
 AV av;
 
-void quick_sort(vector<int>& arr, int low, int high, string& _draw_last_id, Pos& _draw_last_pos, set<int>& _draw_sorted_indices) {
-    //draw{
-    int _draw_x_base = 350;
-    int _draw_y_gap = 110;
+// 將教學動畫用的狀態變數移至全域，使 quick_sort 參數列保持純淨
+//draw{
+string _draw_last_id = "init";
+Pos    _draw_last_pos(350, 100);
+set<int> _draw_sorted_indices;
+int    _draw_x_base = 350;
+int    _draw_y_gap = 110;
+//}
 
+void quick_sort(vector<int>& arr, int low, int high) {
+    //draw{
     // --- 剩餘一格或空區間的說明影格 ---
     if (low >= high) {
         if (low == high) {
@@ -210,8 +217,8 @@ void quick_sort(vector<int>& arr, int low, int high, string& _draw_last_id, Pos&
     _draw_last_pos = _draw_current_pos;
     //}
 
-    quick_sort(arr, low, i - 1, _draw_last_id, _draw_last_pos, _draw_sorted_indices);
-    quick_sort(arr, i + 1, high, _draw_last_id, _draw_last_pos, _draw_sorted_indices);
+    quick_sort(arr, low, i - 1);
+    quick_sort(arr, i + 1, high);
 }
 
 int main() {
@@ -221,13 +228,6 @@ int main() {
 
     //draw{
     av.start_draw();
-    int _draw_x_base = 350;
-    int _draw_y_base = 100;
-
-    string _draw_last_id = "init";
-    Pos _draw_last_pos((double)_draw_x_base, (double)_draw_y_base);
-    set<int> _draw_sorted_indices;
-
     av.accu_store(_draw_last_id, _draw_last_pos, arr, {}, {0}, "normal", 0, 1);
     
     av.start_frame_draw();
@@ -236,7 +236,9 @@ int main() {
     av.auto_camera(); 
     av.end_frame_draw();
     //}
-    quick_sort(arr, 0, n - 1, _draw_last_id, _draw_last_pos, _draw_sorted_indices);
+    
+    quick_sort(arr, 0, n - 1);
+    
     //draw{
     av.start_frame_draw();
     av.accu_draw();
