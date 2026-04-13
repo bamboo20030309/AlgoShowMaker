@@ -5,7 +5,7 @@
   const ARROW_HEAD_SHRINK = 12;
 
   // 預設 tween 時間（毫秒）
-  const DEFAULT_TWEEN_MS = 200;
+  const DEFAULT_TWEEN_MS = 300;
 
   // 給每條箭頭一個唯一 id，用來綁 label
   let arrowIdCounter = 0;
@@ -167,8 +167,10 @@
       return;
     }
 
+    const ease = t => 1 - Math.pow(1 - t, 3); // 與 animation.js 統一的 cubic-out
     const raf = (now) => {
-      const t = Math.min((now - startTime) / dur, 1);
+      const rawT = Math.min((now - startTime) / dur, 1);
+      const t = ease(rawT);
 
       const x1 = lerp(from.x1, to.x1, t);
       const y1 = lerp(from.y1, to.y1, t);
