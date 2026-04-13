@@ -17,6 +17,20 @@
 #include <functional>
 #include <type_traits>
 using namespace std;
+
+// ===== AV 視覺系統常用顏色常數 =====
+const string AV_green      = "AV_green";
+const string AV_blue       = "AV_blue";
+const string AV_red        = "AV_red";
+const string AV_yellow     = "AV_yellow";
+const string AV_orange     = "AV_orange";
+
+const string AV_node_green = "AV_node_green";
+const string AV_node_red   = "AV_node_red";
+const string AV_node_grey  = "AV_node_grey";
+const string AV_black      = "AV_black";
+const string AV_white      = "AV_white";
+
 using array_style = pair<vector<string>, vector<int>>;
 using array2D_style = pair<vector<string>, vector<pair<int,int>>>;
 
@@ -396,14 +410,11 @@ public:
     void arrow(
         const Pos startSpecJS,   // 例如 R"({ group: "BIT", index: 1 })"
         const Pos endSpecJS,     // 例如 R"({ group: "heap", index: 4 })"
-        const vector<pair<string,string>>& style = {}
+        const vector<pair<string,string>>& style = {},
+        const string manual_id = ""
     ) {
         _content += "                if (track === 0) {\n";
-        _content += "                    drawArrow(";
-        _content += startSpecJS.toJson() + ", ";
-        _content += endSpecJS.toJson()   + ", ";
-        _content += "{ " + pair_string_to_object(style) + " }";
-        _content += ");\n";
+        _content += "                    " + _gen_arrow(startSpecJS, endSpecJS, style, manual_id) + "\n";
         _content += "                }\n";
     }
     
@@ -424,14 +435,11 @@ public:
     void key_arrow(
         const Pos startSpecJS,   // 例如 R"({ group: "BIT", index: 1 })"
         const Pos endSpecJS,     // 例如 R"({ group: "heap", index: 4 })"
-        const vector<pair<string,string>>& style = {}
+        const vector<pair<string,string>>& style = {},
+        const string manual_id = ""
     ) {
         _content += "                if (track === 1) {\n";
-        _content += "                    drawArrow(";
-        _content += startSpecJS.toJson() + ", ";
-        _content += endSpecJS.toJson()   + ", ";
-        _content += "{ " + pair_string_to_object(style) + " }";
-        _content += ");\n";
+        _content += "                    " + _gen_arrow(startSpecJS, endSpecJS, style, manual_id) + "\n";
         _content += "                }\n";
     }
 
@@ -1017,8 +1025,13 @@ private:
     string _gen_colored_text(const vector<vector<string>>& v, const Pos& p) {
         return "drawColoredText(" + VVS_to_string(v) + ", " + p.toJson() + ");";
     }
-    string _gen_arrow(const Pos& s, const Pos& e, const vector<pair<string,string>>& st) {
-        return "drawArrow(" + s.toJson() + ", " + e.toJson() + ", { " + pair_string_to_object(st) + " });";
+    string _gen_arrow(const Pos& s, const Pos& e, const vector<pair<string,string>>& st, const string& manual_id = "") {
+        string opt = pair_string_to_object(st);
+        if (!manual_id.empty()) {
+            if (!opt.empty()) opt += " ,";
+            opt += "key: \"" + escapeJS(manual_id) + "\"";
+        }
+        return "drawArrow(" + s.toJson() + ", " + e.toJson() + ", { " + opt + " });";
     }
     template<typename T>
     string _gen_draw2DArray(const string& g, const Pos& p, const vector<vector<T>>& m, const vector<array2D_style>& s, const vector<vector<int>>& r, const string& t, int i) {
@@ -1060,8 +1073,8 @@ public:
     void accu_store_colored_impl(const int code_line, const vector<vector<string>> v, const Pos p) {
         _accu_history.push_back({code_line, _gen_colored_text(v, p)});
     }
-    void accu_store_arrow_impl(const int code_line, const Pos s, const Pos e, const vector<pair<string,string>>& st = {}) {
-        _accu_history.push_back({code_line, _gen_arrow(s, e, st)});
+    void accu_store_arrow_impl(const int code_line, const Pos s, const Pos e, const vector<pair<string,string>>& st = {}, const string& manual_id = "") {
+        _accu_history.push_back({code_line, _gen_arrow(s, e, st, manual_id)});
     }
 
     template<typename T>
@@ -1089,6 +1102,23 @@ public:
         _content += "                }\n";
     }
 
+    static string resolve_av_color(const string& color) {
+        static const std::map<string, string> colors = {
+            {"AV_green",      "rgba(165, 214, 167, 0.6)"},
+            {"AV_blue",       "rgba(144, 202, 249, 0.6)"},
+            {"AV_red",        "rgba(239, 154, 154, 0.6)"},
+            {"AV_yellow",     "rgba(252, 255, 64, 0.46)"},
+            {"AV_orange",     "orange"},
+            {"AV_node_green", "#e8f5e9"},
+            {"AV_node_red",   "#ef9a9a"},
+            {"AV_node_grey",  "#cccccc"},
+            {"AV_black",      "black"},
+            {"AV_white",      "white"}
+        };
+        auto it = colors.find(color);
+        return (it != colors.end()) ? it->second : color;
+    }
+
     string integers_to_string(const vector<int>& num){
         string tmp = "";
         for(int i=0;i<num.size();i++){
@@ -1101,7 +1131,11 @@ public:
         string tmp = "";
         for(int i=0;i<stylelist.size();i++){
             if(i)tmp += " ,";
-            tmp += stylelist[i].first + ": \"" + stylelist[i].second + "\"";
+            string val = stylelist[i].second;
+            if (stylelist[i].first == "color" || stylelist[i].first == "background" || stylelist[i].first == "bg_color" || stylelist[i].first == "font_color") {
+                val = resolve_av_color(val);
+            }
+            tmp += stylelist[i].first + ": \"" + escapeJS(val) + "\"";
         }
         return tmp;
     }
@@ -1110,7 +1144,8 @@ public:
         string tmp = "[";
         for(int i=0;i<stylelist.size();i++){
             if(i)tmp += ",";
-            tmp += "{\"type\": \"" + stylelist[i].first + "\", \"color\": \"" + stylelist[i].second + "\"}";
+            string val = resolve_av_color(stylelist[i].second);
+            tmp += "{\"type\": \"" + stylelist[i].first + "\", \"color\": \"" + escapeJS(val) + "\"}";
         }
         return tmp + "]";
     }
@@ -1137,7 +1172,8 @@ public:
         string tmp = "{";
         vector<string> type = {"type","color"};
         for(int i=0;i<style.size();i++){
-            tmp += " " + type[i] + ": \"" + style[i]+ "\",";
+            string val = resolve_av_color(style[i]);
+            tmp += " " + type[i] + ": \"" + escapeJS(val) + "\",";
         }
         tmp += " elements: " + array_to_string(num);
         return tmp + "}";
@@ -1186,7 +1222,10 @@ public:
             if (i) tmp += ",";
             tmp += "{" + board[0] + ": \"" + escapeJS(v[i][0]) + "\"";
             for (size_t j = 1; j < v[i].size(); ++j){
-                tmp += ", " + board[j] + ": \"" + v[i][j] + "\"";
+                string val = v[i][j];
+                // 索引 1 (bg) 和 2 (font) 需要解析顏色
+                if (j == 1 || j == 2) val = resolve_av_color(val);
+                tmp += ", " + board[j] + ": \"" + escapeJS(val) + "\"";
             }
             tmp += "}";
         }
@@ -1290,12 +1329,14 @@ struct TreeLayout {
                 }
 
                 // 透過 key 屬性讓前端 drawArrow 能夠根據唯一的 ID 做 tween 動畫
-                vector<pair<string, string>> style = {{"color", color}, {"width", "2"}, {"key", "arrow_" + id}};
+                vector<pair<string, string>> style = {{"color", color}, {"width", "2"}};
+                string dir = (o % degree == 0) ? "L" : (o % degree == 1 ? "R" : to_string(o % degree));
+                string arrow_id = prefix + "_d" + to_string(d - 1) + "-" + to_string(o / degree) + "_" + dir + "_d" + to_string(d) + "-" + to_string(o);
 
                 if (horizontal) {
-                    av.arrow(Pos(pid, "right"), Pos(id, "left"), style);
+                    av.arrow(Pos(pid, "right"), Pos(id, "left"), style, arrow_id);
                 } else {
-                    av.arrow(Pos(pid, "bottom"), Pos(id, "top"), style);
+                    av.arrow(Pos(pid, "bottom"), Pos(id, "top"), style, arrow_id);
                 }
             }
 
@@ -1340,11 +1381,13 @@ struct TreeLayout {
                 } else if (active_path.count({d, o}) && active_path.count({d-1, o/degree})) {
                     color = "orange";
                 }
-                vector<pair<string, string>> style = {{"color", color}, {"width", "2"}, {"key", "arrow_" + id}};
+                vector<pair<string, string>> style = {{"color", color}, {"width", "2"}};
+                string dir = (o % degree == 0) ? "L" : (o % degree == 1 ? "R" : to_string(o % degree));
+                string arrow_id = prefix + "_d" + to_string(d - 1) + "-" + to_string(o / degree) + "_" + dir + "_d" + to_string(d) + "-" + to_string(o);
                 if (horizontal) {
-                    av.key_arrow(Pos(pid, "right"), Pos(id, "left"), style);
+                    av.key_arrow(Pos(pid, "right"), Pos(id, "left"), style, arrow_id);
                 } else {
-                    av.key_arrow(Pos(pid, "bottom"), Pos(id, "top"), style);
+                    av.key_arrow(Pos(pid, "bottom"), Pos(id, "top"), style, arrow_id);
                 }
             }
 
