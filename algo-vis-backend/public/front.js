@@ -661,6 +661,64 @@ document.addEventListener('DOMContentLoaded', () => {
   // === 幀條碼初始化 ===
   reloadAfterRun();
 
+  // === 輸入框 (inputArea) 歷史紀錄管理 (Undo/Redo) ===
+  const inputArea = document.getElementById('inputArea');
+  if (inputArea) {
+    const historyManager = {
+      undoStack: [inputArea.value],
+      redoStack: [],
+      maxHistory: 100,
+      isApplying: false,
+      timer: null,
+
+      push(val) {
+        if (this.undoStack[this.undoStack.length - 1] === val) return;
+        this.undoStack.push(val);
+        if (this.undoStack.length > this.maxHistory) this.undoStack.shift();
+        this.redoStack = []; // 有新輸入時清空 redo
+      },
+
+      undo() {
+        if (this.undoStack.length <= 1) return;
+        this.isApplying = true;
+        this.redoStack.push(this.undoStack.pop());
+        inputArea.value = this.undoStack[this.undoStack.length - 1];
+        this.isApplying = false;
+      },
+
+      redo() {
+        if (this.redoStack.length === 0) return;
+        this.isApplying = true;
+        const val = this.redoStack.pop();
+        inputArea.value = val;
+        this.undoStack.push(val);
+        this.isApplying = false;
+      }
+    };
+
+    inputArea.addEventListener('input', () => {
+      if (historyManager.isApplying) return;
+      clearTimeout(historyManager.timer);
+      historyManager.timer = setTimeout(() => {
+        historyManager.push(inputArea.value);
+      }, 300);
+    });
+
+    inputArea.addEventListener('keydown', (e) => {
+      // 支援 Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        historyManager.undo();
+      } else if ((e.ctrlKey && e.key.toLowerCase() === 'y') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z')) {
+        e.preventDefault();
+        historyManager.redo();
+      }
+    });
+
+    // 失去焦點或按下 Enter 時立即紀錄
+    inputArea.addEventListener('blur', () => historyManager.push(inputArea.value));
+  }
+
   // === 控制狀態 ===
   let isPlaying = false;
 
