@@ -60,5 +60,9 @@ MONGO_URI=mongodb://mongo:27017/algo_vis_db
 * **檔案系統**：編譯產生的暫存檔存放在 `tmp` 目錄，該目錄掛載為 `tmpfs` 記憶體區，確保重啟後自動清空且不損毀磁碟。
 * **視覺化開發**：撰寫 C++ 腳本必須引入標頭檔 `#include "AV.hpp"` 並宣告 `AV av;` 物件，並以 `av.start_draw();` 與 `av.end_draw();` 包裹繪圖指令。
 
+
+## 七、 更新進度
+`cd AlgoShowMaker/ && git pull && cd algo-vis-backend/ && docker-compose down && docker-compose up -d --build`
 ---
-*最後更新日期：2026/03/31*
+
+*最後更新日期：2026/04/08*
