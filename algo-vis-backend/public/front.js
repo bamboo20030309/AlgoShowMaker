@@ -627,6 +627,9 @@ function jumpToFrame(idx) {
 
 // 統一給外面用的「同步目前幀」函式
 // （按下一步 / 上一步 / 自動播放 都用這個）
+// 紀錄目前這一輪「播放」是從哪一個 index 開始的
+let playSessionStartFrame = -1;
+
 function syncCurrentFrameFromCodeScript() {
   currentFrame = csGetCurrentFrameIndex();
   // 快照捕捉：每次影格渲染完成後自動存儲
@@ -634,6 +637,20 @@ function syncCurrentFrameFromCodeScript() {
   updateFrameBarsVisual();
   updateFrameInfoText();
   if (typeof clearDrawingCanvas === 'function') clearDrawingCanvas();
+
+  // 更新關鍵影格按鈕狀態 (disabled/enabled)
+  const nkBtn = document.getElementById('nextKeyFrameBtn');
+  const pkBtn = document.getElementById('prevKeyFrameBtn');
+  if (nkBtn && typeof CodeScript !== 'undefined') {
+    nkBtn.disabled = (typeof CodeScript.has_next_key === 'function') ? !CodeScript.has_next_key() : false;
+    nkBtn.style.opacity = nkBtn.disabled ? '0.5' : '1';
+    nkBtn.style.pointerEvents = nkBtn.disabled ? 'none' : 'auto';
+  }
+  if (pkBtn && typeof CodeScript !== 'undefined') {
+    pkBtn.disabled = (typeof CodeScript.has_prev_key === 'function') ? !CodeScript.has_prev_key() : false;
+    pkBtn.style.opacity = pkBtn.disabled ? '0.5' : '1';
+    pkBtn.style.pointerEvents = pkBtn.disabled ? 'none' : 'auto';
+  }
 }
 
 // RUN 按鈕在 compile.js 把新的 code_script.js 生出來後
@@ -799,24 +816,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 1) skip_frame：跳過區段 → 直接跳到下一個停靠幀或最後，然後停播
+      // 1) skip_frame：跳過區段 → 直接跳到下一個停靠幀或最後，然後念該幀內容
       if (typeof CodeScript.is_skip_frame === 'function' &&
         CodeScript.is_skip_frame(cur)) {
 
         if (typeof gotoNextStopOrEnd === 'function') {
-          gotoNextStopOrEnd();
+          gotoNextStopOrEnd(true); // 保持播放狀態
         }
 
-        fast = false;
-        isPlaying = false;
-        syncPlayToggleUI();
-        if (typeof stopStepAuto === 'function') stopStepAuto();
+        // 重新從目前跳轉後的幀開始朗讀內容，讀完後在那邊的 stop 偵測會停下來
+        playFromCurrentFrameWithTTS(runId);
         return;
       }
 
       // 2) stop_frame：停在這幀，不再往下走
+      // 修正：只有當這幀不是「本次播放的起點」時才停下來，否則會無法從 stop 點繼續播放
       if (typeof CodeScript.is_stop_frame === 'function' &&
-        CodeScript.is_stop_frame(cur)) {
+        CodeScript.is_stop_frame(cur) && cur !== playSessionStartFrame) {
 
         fast = false;
         isPlaying = false;
@@ -973,11 +989,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function play() {
     if (isPlaying) return;
     isPlaying = true;
-    fast = false;
+    fast = false; // 按下 Play 重新回到普通模式
     //startTimer();
     // 開始新的一輪 TTS 播放：+1 產生新的 runId
     TTS_RUN_ID++;
     const myRunId = TTS_RUN_ID;
+
+    // 紀錄這次播放從哪裡開始，避免「起步即止」
+    playSessionStartFrame = csGetCurrentFrameIndex();
 
     syncPlayToggleUI();
     playFromCurrentFrameWithTTS(myRunId);
@@ -1016,9 +1035,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // === 跳到「下一個停靠幀」，沒有就跳到最後 ===
-  function gotoNextStopOrEnd() {
-    stopStepAuto(); // 關掉任何 auto-stepping 模式
-    pause();        // 順便停播放（保險）
+  function gotoNextStopOrEnd(keepPlaying = false) {
+    if (!keepPlaying) {
+      stopStepAuto(); // 關掉任何 auto-stepping 模式
+      pause();        // 順便停播放（保險）
+    }
 
     const cur = csGetCurrentFrameIndex();
 
@@ -1030,10 +1051,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // 找出比目前更後面的停靠幀
         const nextStops = stops.filter(s => s > cur);
 
-        // 還有「未來停靠幀」→ 跳到最小的那個
+        // 還有「未來停靠幀」→ 找到該停靠幀之前的最後一個關鍵幀
         if (nextStops.length > 0) {
           const nextStop = Math.min(...nextStops);
-          CodeScript.goto(nextStop);
+          let target = nextStop;
+
+          if (typeof CodeScript.get_key_frames === "function") {
+            const keys = CodeScript.get_key_frames();
+            // 在 [cur, nextStop] 範圍內找最大的 key frame
+            const candidates = keys.filter(k => k >= cur && k <= nextStop);
+            if (candidates.length > 0) {
+              target = Math.max(...candidates);
+            }
+          }
+
+          CodeScript.goto(target);
           syncCurrentFrameFromCodeScript();
           return;
         }
@@ -1190,15 +1222,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 上一大步 / 下一大步：可長按切換自動模式
   bindStepButton(prevKeyBtn, () => {
-    // 如果不在第0幀，才允許往回跳 Key Frame
+    // 如果不在第0幀，且有上一個 Key Frame，才允許往回跳
     if (CodeScript && CodeScript.get_current_frame_index() > 0) {
+      if (CodeScript.has_prev_key && !CodeScript.has_prev_key()) return;
       stepWithTween(() => CodeScript.prev_key_frame(), 300);
     }
   }, -1);
 
   bindStepButton(nextKeyBtn, () => {
-    // 如果還沒到最後一幀，才允許往下跳 Key Frame
+    // 如果還沒到最後一幀，且有下一個 Key Frame，才允許往下跳
     if (CodeScript && CodeScript.get_current_frame_index() < CodeScript.get_frame_count() - 1) {
+      if (CodeScript.has_next_key && !CodeScript.has_next_key()) return;
       stepWithTween(() => CodeScript.next_key_frame(), 300);
     }
   }, +1);

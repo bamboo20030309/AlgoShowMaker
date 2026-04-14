@@ -301,9 +301,7 @@ public:
     }
 
     void stop(){
-        if (_frameCount > 0) {
-            _stopFrames.push_back(_frameCount - 1);
-        }
+        _stopFrames.push_back(_frameCount);
     }
 
     void fast(){
@@ -319,9 +317,7 @@ public:
     }
 
     void skip(){
-        if (_frameCount > 0) {
-            _skipFrames.push_back(_frameCount - 1);
-        }
+        _skipFrames.push_back(_frameCount);
     }
 
     void addEditorHighlight(int code_line) {
@@ -802,7 +798,7 @@ public:
         _content += "\n";
         _content += "    function findNextKey(frame) {\n";
         _content += "        let L = 0, R = keyFrames.length - 1;\n";
-        _content += "        let ans = (keyFrames.length > 0?keyFrames[keyFrames.length-1] : totalFrames - 1);\n";
+        _content += "        let ans = -1;\n";
         _content += "        while (L <= R) {\n";
         _content += "            const M = Math.floor((L + R) / 2);\n";
         _content += "            if (keyFrames[M] > frame) {\n";
@@ -817,7 +813,7 @@ public:
         _content += "\n";
         _content += "    function findPrevKey(frame) {\n";
         _content += "        let L = 0, R = keyFrames.length - 1;\n";
-        _content += "        let ans = (keyFrames.length > 0?keyFrames[0] : 0);\n";
+        _content += "        let ans = -1;\n";
         _content += "        while (L <= R) {\n";
         _content += "        const M = Math.floor((L + R) / 2);\n";
         _content += "            if (keyFrames[M] < frame) {\n";
@@ -847,8 +843,17 @@ public:
         _content += "        },\n";
         _content += "        next_key_frame() {\n";
         _content += "            if (keyFrames.length > 0){\n";
-        _content += "                track = 1;\n";
-        _content += "                currentFrame = findNextKey(currentFrame);\n";
+        _content += "                let nk = findNextKey(currentFrame);\n";
+        _content += "                if (nk === -1) return;\n";
+        _content += "                let ns = totalFrames - 1;\n";
+        _content += "                for (let s of stopFrames) { if (s > currentFrame) { ns = s; break; } }\n";
+        _content += "                let nsk = totalFrames - 1;\n";
+        _content += "                for (let s of skipFrames) { if (s > currentFrame) { nsk = s; break; } }\n";
+        _content += "                \n";
+        _content += "                let target = Math.min(nk, ns, nsk);\n";
+        _content += "                track = 1; // 既然是快進模式跳轉，統一使用 track 1 (關鍵影格軌道)\n";
+        _content += "\n";
+        _content += "                currentFrame = target;\n";
         _content += "                renderFrame(currentFrame);\n";
         _content += "            }\n";
         _content += "        },\n";
@@ -898,6 +903,12 @@ public:
         _content += "        },\n";
         _content += "        is_skip_frame() {\n";
         _content += "            return skipFrames.includes(currentFrame);\n";
+        _content += "        },\n";
+        _content += "        has_next_key() {\n";
+        _content += "            return findNextKey(currentFrame) !== -1;\n";
+        _content += "        },\n";
+        _content += "        has_prev_key() {\n";
+        _content += "            return findPrevKey(currentFrame) !== -1;\n";
         _content += "        }\n";
         _content += "    };\n";
         _content += "    document.addEventListener('DOMContentLoaded', () => {\n";
