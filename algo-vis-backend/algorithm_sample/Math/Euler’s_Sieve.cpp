@@ -40,6 +40,7 @@ void prime_table() {
             _key_frame_text.push_back(v);
             if(i%v==0)break;
         }
+        if(i==8)av.faston();
         if(i==20)av.skip();
         av.start_frame_draw();
         av.frame_draw    (  "prime" , Pos(0,560),     prime, {},                                                                                                                                                      {0}  , "normal", _draw_itemsPerRow, 0);
@@ -105,7 +106,6 @@ void prime_table() {
             //}
             if(i%v==0)break;
         }
-        if(i==7)av.faston();
     }
 } 
 int main(){
