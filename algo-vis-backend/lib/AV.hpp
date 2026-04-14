@@ -340,6 +340,7 @@ public:
         _content += "        if (window.setFrameSleep) window.setFrameSleep(0);\n";
         _content += "        clearAllEditorHighlights();\n";
         _content += "        if (window.resetMessageCounter) window.resetMessageCounter();\n";
+        _content += "        if (window.resetWordCounter) window.resetWordCounter();\n";
         _content += "        clearCanvas();\n";
         _content += "        switch(f) {\n";
     }

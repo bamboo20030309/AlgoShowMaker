@@ -1,5 +1,5 @@
 /* animation.js - 負責影格間的過渡動畫 (Tweening) */
-(function() {
+(function () {
   // r,g,b,a 線性補間
   function lerpColorWithAlpha(c1, c2, t) {
     return {
@@ -71,13 +71,19 @@
           alpha: r.hasAttribute('fill-opacity') ? (parseFloat(r.getAttribute('fill-opacity')) || 1) : 1
         };
       });
-      map[id] = { x: baseX + dx, y: baseY + dy, rectState };
+      map[id] = { 
+        x: baseX + dx, 
+        y: baseY + dy, 
+        rectState,
+        // 克隆所有子節點，用於消失動畫 (Ghost)
+        cloneNodes: Array.from(g.childNodes).map(n => n.cloneNode(true)) 
+      };
     });
     return map;
   }
 
   // 做一次「帶過渡動畫」的步進
-  window.stepWithTween = function(rawStepFn, duration = 300) {
+  window.stepWithTween = function (rawStepFn, duration = 300) {
     const vp = window.getViewport && window.getViewport();
     if (!vp || typeof rawStepFn !== 'function') {
       rawStepFn && rawStepFn();
@@ -122,7 +128,7 @@
 
     // === Stack/Queue Push/Pop 偵測：步進後比較 ===
     const sqPushTargets = [];  // { layout, cellG, atEnd }
-    const sqPopGhosts  = [];  // { ghost, layout, startX, startY, atEnd }
+    const sqPopGhosts = [];  // { ghost, layout, startX, startY, atEnd }
     vp.querySelectorAll('.draggable-object').forEach(g => {
       const layout = g.getAttribute('data-layout');
       if (layout !== 'stack' && layout !== 'queue') return;
@@ -181,18 +187,23 @@
       ghost.setAttribute('transform', `translate(${st.x},${st.y})`);
       ghost.setAttribute('opacity', '1');
       ghost.setAttribute('pointer-events', 'none');
-      Object.entries(st.rectState || {}).forEach(([key, info]) => {
-        const parts = key.split('|');
-        if (parts.length < 4) return;
-        const [rx, ry, rw, rh, rstroke] = parts;
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', rx || '0'); rect.setAttribute('y', ry || '0');
-        rect.setAttribute('width', rw || '0'); rect.setAttribute('height', rh || '0');
-        if (rstroke) rect.setAttribute('stroke', rstroke);
-        if (info.fill) rect.setAttribute('fill', info.fill);
-        rect.setAttribute('fill-opacity', String(info.alpha != null ? info.alpha : 1));
-        ghost.appendChild(rect);
-      });
+      if (st.cloneNodes) {
+        st.cloneNodes.forEach(node => ghost.appendChild(node.cloneNode(true)));
+      } else {
+        // 備援：原本只處理 rect 的方式
+        Object.entries(st.rectState || {}).forEach(([key, info]) => {
+          const parts = key.split('|');
+          if (parts.length < 4) return;
+          const [rx, ry, rw, rh, rstroke] = parts;
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', rx || '0'); rect.setAttribute('y', ry || '0');
+          rect.setAttribute('width', rw || '0'); rect.setAttribute('height', rh || '0');
+          if (rstroke) rect.setAttribute('stroke', rstroke);
+          if (info.fill) rect.setAttribute('fill', info.fill);
+          rect.setAttribute('fill-opacity', String(info.alpha != null ? info.alpha : 1));
+          ghost.appendChild(rect);
+        });
+      }
       vp.appendChild(ghost);
       ghostMap[id] = { ghost, startState: st };
     }
@@ -238,7 +249,7 @@
         const offset = et * flyDist;
         let dx = 0, dy = 0;
         if (layout === 'stack') dy = -offset;
-        if (layout === 'queue') dx = atEnd ?  offset : -offset;
+        if (layout === 'queue') dx = atEnd ? offset : -offset;
         ghost.setAttribute('opacity', String(1 - et));
         ghost.setAttribute('transform', `translate(${startX + dx},${startY + dy})`);
       });
@@ -266,8 +277,8 @@
 
         g.querySelectorAll('rect').forEach(rect => {
           const key = getRectKey(rect);
-          const bInfo = (fromState.rectState||{})[key];
-          const aInfo = (endState.rectState||{})[key];
+          const bInfo = (fromState.rectState || {})[key];
+          const aInfo = (endState.rectState || {})[key];
           const dst = aInfo || bInfo;
           if (!dst) return;
           const bFill = bInfo ? bInfo.fill : dst.fill;
