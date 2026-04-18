@@ -20,7 +20,7 @@ void build(int i,int x){
     av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
     av.frame_draw("BIT" , Pos(40,150),  BIT, { {{"highlight"},{i}} }, {0},    "BIT", 0, 4);
     av.text("從"+to_string(i)+"往上建", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.8);
+    av.camera(Pos("num", "bottom", 0, 60), 1.3);
     av.end_frame_draw();
     //}
     while(i<=n){
@@ -30,7 +30,7 @@ void build(int i,int x){
         av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(47, 255, 82, 0.44)"},AV::AtoB(i-(i&-i)+1,i)}}, {0}, "normal", 0, 1);
         av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"highlight"},{i}},{{"focus"},_draw_focus},{{"background","rgba(47, 255, 82, 0.44)"},{i}}}, {0},    "BIT", 0, 4);
         av.text( "{每一次}把 index 加上最小的 bit 後將" + to_string(x) + "加上去 (lowbit = i&-i)" , Pos("num","top",0,-20));
-        av.camera(Pos("num", "bottom", 0, 60), 1.8);
+        av.camera(Pos("num", "bottom", 0, 60), 1.3);
         av.end_frame_draw();
         //}
         i+=(i&-i);
@@ -54,7 +54,7 @@ int sum(int i){
         av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(47, 255, 82, 0.44)"},AV::AtoB(i-(i&-i)+1,i)}}, {0}, "normal", 0, 1);
         av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"highlight"},{i}},{{"focus"},_draw_focus},{{"background","rgba(47, 255, 82, 0.44)"},{i}}}, {0},    "BIT", 0, 4);
         av.text( "{每一次查詢就}把index減掉最小的bit後將" + to_string(BIT[i]) + "累計起來 ans=" + to_string(ans) + " (lowbit = i&-i)" , Pos("num","top",0,-20));
-        av.camera(Pos("num", "bottom", 0, 60), 1.8);
+        av.camera(Pos("num", "bottom", 0, 60), 1.3);
         av.end_frame_draw();
         //}
         i-=(i&-i);
@@ -74,7 +74,7 @@ int main() {
     av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
     av.frame_draw("BIT" , Pos(40,150),  BIT, {}, {0},    "BIT", 0, 4);
     av.text("這是 Binary Index Tree {的演算法範例}", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.8);
+    av.camera(Pos("num", "bottom", 0, 60), 1.3);
     av.end_frame_draw();
     //}
 
@@ -85,7 +85,7 @@ int main() {
     av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
     av.frame_draw("BIT" , Pos(40,150),  BIT, {}, {0},    "BIT", 0, 4);
     av.text("這樣就建完樹了", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.8);
+    av.camera(Pos("num", "bottom", 0, 60), 1.3);
     av.end_frame_draw();
     av.stop();
     //}
@@ -97,7 +97,7 @@ int main() {
     av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
     av.frame_draw("BIT" , Pos(40,150),  BIT, {}, {0},    "BIT", 0, 4);
     av.text("假設要計算" + to_string(L) + "~" + to_string(R) + "的累計值\n那就是先計算樹中1~" + to_string(R) + "的總和後再減掉1~" + to_string(L-1) + "就可以得到" + to_string(L) + "~" + to_string(R) + "的區間值了", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.8);
+    av.camera(Pos("num", "bottom", 0, 60), 1.3);
     av.end_frame_draw();
     //}
 
@@ -109,7 +109,7 @@ int main() {
     av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(41, 162, 243, 0.44)"},AV::AtoB(1,R)}}, {0}, "normal", 0, 1);
     av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"background","rgba(41, 162, 243, 0.44)"},_draw_BIT}}, {0},    "BIT", 0, 4);
     av.text("得到1~" + to_string(R) + "的總和是" + to_string(sumR) , Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.8);
+    av.camera(Pos("num", "bottom", 0, 60), 1.3);
     av.end_frame_draw();
     //}
 
@@ -121,7 +121,7 @@ int main() {
     av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(65, 215, 253, 0.44)"},AV::AtoB(1,L-1)}}, {0}, "normal", 0, 1);
     av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"background","rgba(65, 215, 253, 0.44)"},_draw_BIT}}, {0},    "BIT", 0, 4);
     av.text("得到1~" + to_string(L-1) + "的總和是" + to_string(sumL) , Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.8);
+    av.camera(Pos("num", "bottom", 0, 60), 1.3);
     av.end_frame_draw();
     //}
     //draw{
@@ -129,7 +129,7 @@ int main() {
     av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(47, 255, 82, 0.44)"},AV::AtoB(L,R)}}, {0}, "normal", 0, 1);
     av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"background","rgba(41, 162, 243, 0.44)"},_draw_R},{{"background","rgba(65, 215, 253, 0.44)"},_draw_L}}, {0},    "BIT", 0, 4);
     av.text("最後查詢結果也就是 右區間-左區間 = " + to_string(sumR) + "-" + to_string(sumL) + "=" + to_string(sumR-sumL), Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.8);
+    av.camera(Pos("num", "bottom", 0, 60), 1.3);
     av.end_frame_draw();
     av.end_draw();
     //}

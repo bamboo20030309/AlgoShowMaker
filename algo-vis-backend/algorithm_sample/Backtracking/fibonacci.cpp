@@ -65,7 +65,7 @@ int main() {
 
         
         av.frame_draw(id, p, vector<string>{val}); 
-        if(is_focus) av.camera(p, 1.3);
+        if(is_focus) av.camera(p, 0.8);
         
     };
     //}

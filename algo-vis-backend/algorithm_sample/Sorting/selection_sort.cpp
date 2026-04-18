@@ -50,7 +50,7 @@ int main() {
                 {"檢查索引 " + to_string(j) + "，目前最小值格子的值: ", ""},
                 {to_string(arr[min_idx]), "rgba(56, 255, 56, 0.45)"}
             }, Pos(current_id, "bottom", 0, 20));
-            av.camera(Pos(current_id), 1.7);
+            av.camera(Pos(current_id), 1.2);
             av.end_frame_draw();
             //}
 
@@ -67,7 +67,7 @@ int main() {
                 }, {0}, "normal", 0, 1);
                 av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
                 av.text("發現更小的值！更新目前最小值格子為索引 " + to_string(min_idx), Pos(current_id, "bottom", 0, 20));
-                av.camera(Pos(current_id), 1.7);
+                av.camera(Pos(current_id), 1.2);
                 av.end_frame_draw();
                 //}
             }
@@ -85,7 +85,7 @@ int main() {
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
             av.text("找到未排序部分的最小值，與索引 " + to_string(i) + " 的格位交換", Pos(current_id, "bottom", 0, 20));
-            av.camera(Pos(current_id), 1.7);
+            av.camera(Pos(current_id), 1.2);
             av.end_frame_draw();
             //}
         } else {
@@ -99,7 +99,7 @@ int main() {
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
             av.text("最小值就在索引 " + to_string(i) + "，不需交換", Pos(current_id, "bottom", 0, 20));
-            av.camera(Pos(current_id), 1.7);
+            av.camera(Pos(current_id), 1.2);
             av.end_frame_draw();
             //}
         }

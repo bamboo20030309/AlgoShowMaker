@@ -140,7 +140,7 @@ int main() {
             av.frame_draw("num", Pos("pre", "right", 100, 0), num, { {{ "background", color_up }, _num_up} }, {{0,0},{n,m}});
             if (i > n / 2) av.arrow(Pos("pre", i-1, j), Pos("pre", i, j), {{"color", "limegreen"}});
             av.colored_text({ {{"加上上方的前綴和 {"}}, {{"pre[" + to_string(i-1) + "][" + to_string(j) + "] = " + to_string(pre[i-1][j]) + "}", color_up}} }, textPos);
-            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            if (i <= n / 2) av.camera(Pos("num"), 2.0); else av.auto_camera(0.85); 
             av.end_frame_draw();
 
             // Step 2: Left
@@ -153,7 +153,7 @@ int main() {
                 av.arrow(Pos("pre", i, j-1), Pos("pre", i, j), {{"color", "limegreen"}});
             }
             av.colored_text({ {{"加上左方的前綴和 {"}}, {{"pre[" + to_string(i) + "][" + to_string(j-1) + "] = " + to_string(pre[i][j-1]) + "}", color_left}} }, textPos);
-            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            if (i <= n / 2) av.camera(Pos("num"), 2.0); else av.auto_camera(0.85); 
             av.end_frame_draw();
 
             // Step 3: UpLeft
@@ -167,7 +167,7 @@ int main() {
                 av.arrow(Pos("pre", i-1, j-1), Pos("pre", i, j), {{"color", "red"}});
             }
             av.colored_text({ {{"扣除重複區域 {"}}, {{"pre[" + to_string(i-1) + "][" + to_string(j-1) + "] = " + to_string(pre[i-1][j-1]) + "}", color_upleft}} }, textPos);
-            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            if (i <= n / 2) av.camera(Pos("num"), 2.0); else av.auto_camera(0.85); 
             av.end_frame_draw();
 
             // Step 4: Final
@@ -187,7 +187,7 @@ int main() {
                 av.arrow(Pos("num", i, j), Pos("pre", i, j), {{"color", "limegreen"}});
             }
             av.colored_text({ {{"最後加上原來的數值 {"}}, {{"num[" + to_string(i) + "][" + to_string(j) + "] = " + to_string(num[i][j]) + "}", color_done}} }, textPos);
-            if (i <= n / 2) av.camera(Pos("num"), 2.5); else av.auto_camera(0.85); 
+            if (i <= n / 2) av.camera(Pos("num"), 2.0); else av.auto_camera(0.85); 
             av.end_frame_draw();
             
             //}

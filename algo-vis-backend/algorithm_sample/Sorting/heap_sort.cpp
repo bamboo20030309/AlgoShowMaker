@@ -26,7 +26,7 @@ void _draw_frame(const vector<int>& arr, string text, string layout = "heap", co
     }
     
     av.text(text, Pos(_draw_id, "bottom", 0, 20));
-    av.camera(Pos(_draw_id), 1.5);
+    av.camera(Pos(_draw_id), 1.0);
     av.end_frame_draw();
 }
 //}
@@ -91,7 +91,7 @@ void heap_sort(vector<int>& arr, int n) {
     av.frame_draw(tree_id, tree_pos, arr, {}, {0}, "heap", 10, 1);
     av.arrow(Pos(init_id, "bottom"), Pos(tree_id, "top"));
     av.text("為了方便看清楚陣列的關係，將它畫成樹狀圖", Pos(tree_id, "bottom", 0, 20));
-    av.camera(Pos(tree_id), 1.5);
+    av.camera(Pos(tree_id), 1.0);
     av.end_frame_draw();
 
     av.accu_store(tree_id, tree_pos, arr, {}, {0}, "heap", 10, 1);
@@ -146,7 +146,7 @@ void heap_sort(vector<int>& arr, int n) {
     av.frame_draw(_draw_id, _draw_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
     av.arrow(Pos(build_id, "bottom"), Pos(_draw_id, "top"));
     av.text("排序階段完成", Pos(_draw_id, "bottom", 0, 20));
-    av.camera(Pos(_draw_id), 1.5);
+    av.camera(Pos(_draw_id), 1.0);
     av.end_frame_draw();
     
     av.accu_store(_draw_id, _draw_pos, arr, {{{"background", "#CCC"}, AV::AtoB(1, n)}}, {0}, "heap", 10, 1);
@@ -159,7 +159,7 @@ void heap_sort(vector<int>& arr, int n) {
     av.frame_draw(final_id, final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);
     av.arrow(Pos(_draw_id, "bottom"), Pos(final_id, "top"));
     av.text("最後重新畫回一般的陣列形狀", Pos(final_id, "bottom", 0, 20));
-    av.camera(Pos(final_id), 1.5);
+    av.camera(Pos(final_id), 1.0);
     av.end_frame_draw();
     
     av.accu_store(final_id, final_pos, arr, {{{"mark"}, AV::AtoB(1, n)}, {{"background", "#CCC"}, {0}}}, {0}, "normal", 0, 1);

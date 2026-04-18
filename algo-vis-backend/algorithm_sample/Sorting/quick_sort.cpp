@@ -30,7 +30,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
             }, {0}, "normal", 0, 1);
             av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
             av.text("範圍內僅剩元素 " + to_string(arr[low]) + "，不需再分區交換，直接視為已排序", Pos(_draw_current_id, "bottom", 0, 20));
-            av.camera(Pos(_draw_current_id), 1.7);
+            av.camera(Pos(_draw_current_id), 1.2);
             av.end_frame_draw();
 
             av.accu_store(_draw_current_id, _draw_current_pos, arr, {{{"mark"}, vector<int>(_draw_sorted_indices.begin(), _draw_sorted_indices.end())}}, {0}, "normal", 0, 1);
@@ -59,7 +59,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
     }, {0}, "normal", 0, 1);
     av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
     av.text("現在處理範圍 [" + to_string(low) + "{,:到}" + to_string(high) + "]，選取最右端 " + to_string(pivot) + " 作為基準點", Pos(_draw_current_id, "bottom", 0, 20));
-    av.camera(Pos(_draw_current_id), 1.7);
+    av.camera(Pos(_draw_current_id), 1.2);
     av.end_frame_draw();
     //}
 
@@ -82,7 +82,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
         }, {0}, "normal", 0, 1);
         av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
         av.text("比較 " + to_string(arr[j]) + (arr[j] < pivot ? " < " : " >= ") + to_string(pivot) + (arr[j] < pivot ? "" : " 不用換"), Pos(_draw_current_id, "bottom", 0, 20));
-        av.camera(Pos(_draw_current_id), 1.7);
+        av.camera(Pos(_draw_current_id), 1.2);
         av.end_frame_draw();
         //}
 
@@ -105,7 +105,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
                 }, {0}, "normal", 0, 1);
                 av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
                 av.text(to_string(arr[j]) + " 較小，換到左側區塊", Pos(_draw_current_id, "bottom", 0, 20));
-                av.camera(Pos(_draw_current_id), 1.7);
+                av.camera(Pos(_draw_current_id), 1.2);
                 av.end_frame_draw();
                 //}
                 swap(arr[i], arr[j]);
@@ -126,7 +126,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
                 }, {0}, "normal", 0, 1);
                 av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
                 av.text("交換完成", Pos(_draw_current_id, "bottom", 0, 20));
-                av.camera(Pos(_draw_current_id), 1.7);
+                av.camera(Pos(_draw_current_id), 1.2);
                 av.end_frame_draw();
                 //}
             } else {
@@ -147,7 +147,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
                 }, {0}, "normal", 0, 1);
                 av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
                 av.text(to_string(arr[j]) + " 已在正確的左側位置，不需交換", Pos(_draw_current_id, "bottom", 0, 20));
-                av.camera(Pos(_draw_current_id), 1.7);
+                av.camera(Pos(_draw_current_id), 1.2);
                 av.end_frame_draw();
                 //}
             }
@@ -172,7 +172,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
         }, {0}, "normal", 0, 1);
         av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
         av.text("分區完成，將基準點 " + to_string(pivot) + " 歸位到較大區的左邊 (索引: " + to_string(i) + ")", Pos(_draw_current_id, "bottom", 0, 20));
-        av.camera(Pos(_draw_current_id), 1.7);
+        av.camera(Pos(_draw_current_id), 1.2);
         av.end_frame_draw();
         //}
         swap(arr[i], arr[high]);
@@ -193,7 +193,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
         }, {0}, "normal", 0, 1);
         av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
         av.text("所有元素皆較小，基準點 " + to_string(pivot) + " 已在正確位置", Pos(_draw_current_id, "bottom", 0, 20));
-        av.camera(Pos(_draw_current_id), 1.7);
+        av.camera(Pos(_draw_current_id), 1.2);
         av.end_frame_draw();
         //}
     }
@@ -207,7 +207,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
     }, {0}, "normal", 0, 1);
     av.arrow(Pos(_draw_last_id, "bottom"), Pos(_draw_current_id, "top"));
     av.text("基準點已固定，繼續遞迴處理兩側", Pos(_draw_current_id, "bottom", 0, 20));
-    av.camera(Pos(_draw_current_id), 1.7);
+    av.camera(Pos(_draw_current_id), 1.2);
     av.end_frame_draw();
 
     av.accu_store(_draw_current_id, _draw_current_pos, arr, {{{"mark"}, vector<int>(_draw_sorted_indices.begin(), _draw_sorted_indices.end())}}, {0}, "normal", 0, 1);

@@ -44,7 +44,7 @@ int main() {
             // 暫時的箭頭（還沒存入紀錄）
             av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
             av.text("比較左右兩邊", Pos(current_id, "bottom", 0, 20));
-            av.camera(Pos(current_id),1.7);
+            av.camera(Pos(current_id), 1.2);
             av.end_frame_draw();
             //}
             if (arr[j] > arr[j+1]) {
@@ -58,7 +58,7 @@ int main() {
                 }, {0}, "normal", 0, 1);
                 av.arrow(Pos(last_id, "bottom"), Pos(current_id, "top"));
                 av.text("左比右大就左右交換", Pos(current_id, "bottom", 0, 20));
-                av.camera(Pos(current_id), 1.7);
+                av.camera(Pos(current_id), 1.2);
                 av.end_frame_draw();
                 //}
             }
@@ -71,7 +71,7 @@ int main() {
         av.start_frame_draw();
         av.accu_draw();
         av.text("第" + to_string(i + 1) + "輪結束，確認位置" + to_string(n-i-1), Pos(current_id, "bottom", 0, 20));
-        av.camera(Pos(current_id), 1.7);
+        av.camera(Pos(current_id), 1.2);
         av.end_frame_draw();
         
         last_id = current_id;

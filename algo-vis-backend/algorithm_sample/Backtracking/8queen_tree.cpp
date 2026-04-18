@@ -81,7 +81,7 @@ void dfs(int n, int L, int M, int R) {
                 }
             }
             av.key_text("找到解了！", Pos(tree.get_id(d, o), "top", 0, -20));
-            av.camera(Pos(tree.get_id(d, o)), 1.2); 
+            av.camera(Pos(tree.get_id(d, o)), 0.7); 
             tree.edge_colors[{d, o}] = "red"; 
         });
         //}
@@ -138,7 +138,7 @@ int main() {
         }
         // 如果是當前專注的節點，讓鏡頭跟過去（用物件 ID 定位中心）
         if (is_focus) {
-            av.camera(Pos(id), 1.2);
+            av.camera(Pos(id), 0.7);
         }
         av.addEditorHighlight(97);
     };

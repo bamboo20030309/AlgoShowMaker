@@ -77,7 +77,7 @@ void merge(int L, int mid, int R) {
         av.frame_draw(right_id, r_pos, r_v, r_styles);
 
         av.colored_text({{msg}}, Pos(my_id, "bottom", 0, 20));
-        av.camera(Pos(my_id, "top"), 1.7); 
+        av.camera(Pos(my_id, "top"), 1.2); 
         av.end_frame_draw();
     };
     //}
@@ -124,7 +124,7 @@ void merge(int L, int mid, int R) {
     av.start_frame_draw();
     av.accu_draw();
     av.colored_text({{"區間合併完成"}}, Pos(my_id, "bottom", 0, 20));
-    av.camera(Pos(my_id, "top"), 1.7); 
+    av.camera(Pos(my_id, "top"), 1.2); 
     av.end_frame_draw();
     //}
 }

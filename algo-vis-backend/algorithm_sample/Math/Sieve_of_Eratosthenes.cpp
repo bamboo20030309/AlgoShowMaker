@@ -14,7 +14,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("prime" , Pos(0,0),   isprime, {}, {1,n}, "normal", 10, 2);
     av.text("這是埃篩{的演算法範例}", Pos("prime", "top", 0, -20));
-    av.camera(Pos("prime", "center", 0, -30), 1.7);
+    av.camera(Pos("prime", "center", 0, -30), 1.2);
     av.end_frame_draw();
     vector<int> _draw_focus;
     for(int i=1;i<=n;i++)_draw_focus.push_back(i);
@@ -22,7 +22,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("prime" , Pos(0,0),   isprime, {{{"highlight"},{1}}, {{"focus"}, _draw_focus} }, {1,n}, "normal", 10, 2);
     av.text("先把1刪掉", Pos("prime", "top", 0, -20));
-    av.camera(Pos("prime", "center", 0, -30), 1.7);
+    av.camera(Pos("prime", "center", 0, -30), 1.2);
     av.end_frame_draw();
     //}
     
@@ -46,7 +46,7 @@ int main() {
             av.key_frame_draw("prime" , Pos(0,0),   isprime, {{{"highlight"},_draw_highlight}, {{"focus"},_draw_focus}, {{"point"},{i}} }, {1,n}, "normal", 10, 2);
             av.key_colored_text({{"因為 "},{to_string(i)+"是質數", "rgba(47, 255, 82, 0.44)"},{" 把"+to_string(i)+"的倍數全部塗黑"}}, Pos("prime", "top", 0, -20));
         }
-        av.camera(Pos("prime", "center", 0, -30), 1.7);
+        av.camera(Pos("prime", "center", 0, -30), 1.2);
         av.end_frame_draw();
         //}
         if(isprime[i]) {
@@ -63,7 +63,7 @@ int main() {
                 av.start_frame_draw();
                 av.frame_draw("prime" , Pos(0,0),   isprime, {{{"highlight"},{i,k}}, {{"focus"},_draw_focus}, {{"point"},{i}}, {{"background"},{k} }}, {1,n}, "normal", 10, 2);
                 av.colored_text({ {"塗黑 "+to_string(k)}}, Pos("prime", "top", 0, -20));
-                av.camera(Pos("prime", "center", 0, -30), 1.7);
+                av.camera(Pos("prime", "center", 0, -30), 1.2);
                 av.end_frame_draw();
                 //}
             }
@@ -74,7 +74,7 @@ int main() {
     av.start_frame_draw();
     av.frame_draw("prime" , Pos(0,0),   isprime, { {{"focus"},_draw_focus} }, {1,n}, "normal", 10, 2);
     av.text("{最後就完成了}", Pos("prime", "top", 0, -20));
-    av.camera(Pos("prime", "center", 0, -30), 1.7);
+    av.camera(Pos("prime", "center", 0, -30), 1.2);
     av.end_frame_draw();
     av.end_draw();
     //}
