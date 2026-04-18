@@ -6,11 +6,12 @@
   let svg, viewport;
   let translateX = 0;
   let translateY = 0;
-  let scale = 1;
-  let animationId = null; // 用於追蹤正在進行的鏡頭動畫
-  let isFirstCamera = true; // 新增：用於判斷是否為首次設定鏡頭
-  const GRID_SPACING = 50;  // 格線間距
-  const GRID_EXTENT = 10000; // 世界座標覆蓋範圍半徑
+  let scale = 1;                 // 邏輯縮放（腳本 / C++ 傳入的值）
+  let animationId = null;        // 用於追蹤正在進行的鏡頭動畫
+  let isFirstCamera = true;      // 用於判斷是否為首次設定鏡頭
+  const GRID_SPACING  = 50;      // 格線間距
+  const GRID_EXTENT   = 10000;   // 世界座標覆蓋範圍半徑
+  const REFERENCE_HEIGHT = 900;  // 基準高度：以此高度為標準，其他高度按比例換算
 
   function initCanvas() {
     svg = document.getElementById('arraySvg');
@@ -47,10 +48,25 @@
     updateTransform();
   }
 
+  /**
+   * 取得相對於基準高度的螢幕縮放係數
+   * 不同高度的螢幕會得到不同的 factor，使 scale=1.0 在任何螢幕上看起來比例一致
+   */
+  function getScreenScaleFactor() {
+    const h = document.documentElement.clientHeight || window.innerHeight;
+    if (h === 0) return 1;
+    return h / REFERENCE_HEIGHT;
+  }
+
+  /**
+   * 套用 transform：physicalScale = scale * factor
+   * translateX/Y 已經是基於 physicalScale 計算的螢幕像素值
+   */
   function updateTransform() {
+    const physicalScale = scale * getScreenScaleFactor();
     viewport.setAttribute(
       'transform',
-      `translate(${translateX},${translateY}) scale(${scale})`
+      `translate(${translateX},${translateY}) scale(${physicalScale})`
     );
   }
 
@@ -97,12 +113,20 @@
       const rect = svg.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const oldScale = scale;
-      scale *= (e.deltaY < 0 ? 1.1 : 1 / 1.1);
-      const px = (mx - translateX) / oldScale;
-      const py = (my - translateY) / oldScale;
-      translateX = mx - scale * px;
-      translateY = my - scale * py;
+
+      const factor = getScreenScaleFactor();
+      const oldPhysical = scale * factor;
+
+      // 滾輪縮放
+      const scrollScale = (e.deltaY < 0 ? 1.1 : 1 / 1.1);
+      const newPhysical = oldPhysical * scrollScale;
+      scale = newPhysical / factor; // 更新邏輯縮放
+
+      // 以滑鼠游標為中心縮放
+      const px = (mx - translateX) / oldPhysical;
+      const py = (my - translateY) / oldPhysical;
+      translateX = mx - newPhysical * px;
+      translateY = my - newPhysical * py;
       updateTransform();
     });
   }
@@ -149,8 +173,8 @@
 
   // 暴露給外部使用
   window.updateTransform = updateTransform;
-  window.getViewport = () => viewport;
-  window.getScale = () => scale;
+  window.getViewport     = () => viewport;
+  window.getScale        = () => scale * getScreenScaleFactor(); // 回傳物理縮放（供 interaction.js 等外部使用）
 
   window.resetCameraState = () => {
     isFirstCamera = true;
@@ -179,6 +203,8 @@
 
   /**
    * 平滑移動鏡頭到目標位置與縮放
+   * targetX, targetY: 世界座標
+   * targetScale: 邏輯縮放（不含 factor）
    */
   function animateCamera(targetX, targetY, targetScale, duration = 400) {
     stopAnimation();
@@ -186,9 +212,10 @@
     const rect = svg.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) {
       // 如果 SVG 還沒佈局好，直接立即設定並回傳
+      const factor = getScreenScaleFactor();
       scale = targetScale;
-      translateX = 0 - targetX * scale;
-      translateY = 0 - targetY * scale;
+      translateX = 0 - targetX * scale * factor;
+      translateY = 0 - targetY * scale * factor;
       updateTransform();
       return;
     }
@@ -197,12 +224,15 @@
     delayTimeoutId = setTimeout(() => {
       delayTimeoutId = null;
 
+      const factor = getScreenScaleFactor();
+
       // 計算當前視圖中心的世界座標
       const rect = svg.getBoundingClientRect();
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
-      const startX = (centerX - translateX) / scale;
-      const startY = (centerY - translateY) / scale;
+      const physicalScale = scale * factor;
+      const startX = (centerX - translateX) / physicalScale;
+      const startY = (centerY - translateY) / physicalScale;
       const startScale = scale;
       const startTime = performance.now();
 
@@ -213,17 +243,18 @@
         // 使用 Ease-out 效果
         const ease = 1 - Math.pow(1 - progress, 3);
 
-        const currentX = startX + (targetX - startX) * ease;
-        const currentY = startY + (targetY - startY) * ease;
+        const currentX     = startX     + (targetX     - startX)     * ease;
+        const currentY     = startY     + (targetY     - startY)     * ease;
         const currentScale = startScale + (targetScale - startScale) * ease;
 
         // 更新全域狀態
         scale = currentScale;
-        const rect = svg.getBoundingClientRect();
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-        translateX = centerX - currentX * scale;
-        translateY = centerY - currentY * scale;
+        const f  = getScreenScaleFactor();
+        const ps = scale * f;
+
+        // 使用動畫開始時取得的 center，避免每幀 getBoundingClientRect 的子像素差異造成抖動
+        translateX = centerX - currentX * ps;
+        translateY = centerY - currentY * ps;
 
         updateTransform();
 
@@ -239,7 +270,7 @@
   }
 
   /**
-   * 將鏡頭定位到世界座標 (x, y)，並設置縮放比例
+   * 將鏡頭定位到世界座標 (x, y)，並設置邏輯縮放比例
    */
   window.setCamera = function (x, y, newScale, animate = true) {
     if (!svg || !viewport) return;
@@ -267,8 +298,9 @@
       const centerY = rect.height / 2;
 
       scale = newScale;
-      translateX = centerX - x * scale;
-      translateY = centerY - y * scale;
+      const physicalScale = scale * getScreenScaleFactor();
+      translateX = centerX - x * physicalScale;
+      translateY = centerY - y * physicalScale;
 
       updateTransform();
     }
@@ -375,19 +407,44 @@
     // 避免除以零
     if (contentW <= 0 || contentH <= 0) return;
 
+    // scaleW/H 是「物理縮放」（螢幕像素 / 世界單位）
     const scaleW = rect.width / contentW;
     const scaleH = rect.height / contentH;
-    let targetScale = Math.min(scaleW, scaleH) * zoom;
+    let physicalTarget = Math.min(scaleW, scaleH) * zoom;
 
-    // 限制最大縮放比例，避免只有一個小物件時放得太大
-    if (targetScale > 2.0) targetScale = 2.0;
-    if (targetScale < 0.05) targetScale = 0.05;
+    // 限制物理縮放範圍
+    const factor = getScreenScaleFactor();
+    if (physicalTarget > 2.0 * factor)  physicalTarget = 2.0 * factor;
+    if (physicalTarget < 0.05 * factor) physicalTarget = 0.05 * factor;
 
     const midX = (minX + maxX) / 2 + offsetX;
     const midY = (minY + maxY) / 2 + offsetY;
 
-    window.setCamera(midX, midY, targetScale, animate);
+    // 轉換為邏輯縮放，傳給 setCamera
+    const logicalScale = physicalTarget / factor;
+
+    window.setCamera(midX, midY, logicalScale, animate);
   };
+
+  // 監聽視窗大小變化：重新以目前的邏輯縮放重新對齊（確保關注點不移位）
+  let lastCameraX = 0, lastCameraY = 0;
+
+  // 包裝 setCamera，紀錄最後的目標世界座標
+  const _origSetCamera = window.setCamera;
+  // 注意：此處不直接覆寫，而是在 setCamera 內部紀錄
+  const origSetCamera = window.setCamera;
+  window.setCamera = function (x, y, newScale, animate = true) {
+    lastCameraX = x;
+    lastCameraY = y;
+    origSetCamera(x, y, newScale, animate);
+  };
+
+  window.addEventListener('resize', () => {
+    if (svg && viewport) {
+      // 使用最後的目標座標與當前邏輯縮放，靜默重新對齊
+      origSetCamera(lastCameraX, lastCameraY, scale, false);
+    }
+  });
 
   document.addEventListener('DOMContentLoaded', initCanvas);
 })();
