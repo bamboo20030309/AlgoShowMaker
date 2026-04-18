@@ -410,9 +410,7 @@ public:
         const vector<pair<string,string>>& style = {},
         const string manual_id = ""
     ) {
-        _content += "                if (track === 0) {\n";
         _content += "                    " + _gen_arrow(startSpecJS, endSpecJS, style, manual_id) + "\n";
-        _content += "                }\n";
     }
     
     void draw_word_impl(const int code_line, const string text, const Pos pos) {
@@ -609,6 +607,7 @@ public:
             pos.toJson() + ", " +
             array_to_string(num) + ");\n";
         _content += "                }\n";
+        _keyFrames.push_back(_frameCount);
     }
 
     template<typename T, typename = typename enable_if<!is_vector<T>::value>::type>

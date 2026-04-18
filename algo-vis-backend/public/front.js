@@ -850,18 +850,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // 4) fast_frame：直接點一下下一大步
+      // 4) fast_frame：跳到下一個 key_frame (track = 1)
       if (typeof CodeScript.is_fast_frame === 'function' &&
         CodeScript.is_fast_frame(cur)) {
-        const Old = CodeScript.get_current_frame_index();
-        CodeScript.next_key_frame();
-        CodeScript.prev();
-        const New = CodeScript.get_current_frame_index();
-        if (Old > New) {
-          const last = CodeScript.get_frame_count() - 1;
-          stepWithTween(() => CodeScript.goto(last));
-          return;
-        }
+        stepWithTween(() => CodeScript.next_key_frame());
+        syncCurrentFrameFromCodeScript();
+        playFromCurrentFrameWithTTS(runId);
+        return;
       }
 
       // 5) faston_frame：從這幀開始改用 key_frame 模式
