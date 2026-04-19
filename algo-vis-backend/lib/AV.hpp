@@ -128,10 +128,14 @@ public:
     #define accu_store_arrow(...)  accu_store_arrow_impl(__LINE__, __VA_ARGS__)
     #define accu_store_2D(...)     accu_store_2D_impl(__LINE__, __VA_ARGS__)
     #define draw_circle(circleID, pos, value, ...) draw_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
+    #define key_draw_circle(circleID, pos, value, ...) key_draw_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
     #define accu_store_circle(circleID, pos, value, ...) accu_store_circle_impl(__LINE__, circleID, pos, value, ##__VA_ARGS__)
     #define draw_word(text, pos)  draw_word_impl(__LINE__, text, pos)
     #define key_draw_word(text, pos)  key_draw_word_impl(__LINE__, text, pos)
     #define accu_store_word(text, pos) accu_store_word_impl(__LINE__, text, pos)
+    #define draw_triangle(p1, p2, p3, value, ...) draw_triangle_impl(__LINE__, p1, p2, p3, value, ##__VA_ARGS__)
+    #define key_draw_triangle(p1, p2, p3, value, ...) key_draw_triangle_impl(__LINE__, p1, p2, p3, value, ##__VA_ARGS__)
+    #define accu_store_triangle(p1, p2, p3, value, ...) accu_store_triangle_impl(__LINE__, p1, p2, p3, value, ##__VA_ARGS__)
     #define sleep(ms)             sleep_impl(ms)
 
     //AtoB function : return a A~B increase vector
@@ -1051,6 +1055,9 @@ private:
     string _gen_drawCircle(const string& id, const Pos& p, const string& v, const vector<pair<string,string>>& s) {
         return "drawCircle(\'" + id + "\', " + p.toJson() + ", \"" + escapeJS(v) + "\", " + styles_to_json_array(s) + ");";
     }
+    string _gen_drawTriangle(const string& id, const Pos& p1, const Pos& p2, const Pos& p3, const string& v, const vector<pair<string,string>>& style = {}) {
+        return "drawTriangle(\'" + id + "\', " + p1.toJson() + ", " + p2.toJson() + ", " + p3.toJson() + ", \"" + escapeJS(v) + "\", " + styles_to_json_array(style) + ");";
+    }
     template<typename T>
     string _gen_drawArray(const string& g, const Pos& p, const vector<T>& n, const vector<array_style>& s, const vector<int>& r, const string& t, int pr, int i, const vector<int>& sl, const vector<int>& ss, const vector<int>& si, const vector<int>& sf, const vector<int>& srg) {
         return "drawArray(\'" + g + "\', " + p.toJson() + ", " + array_to_string(n) + ", " + arraystyle_to_object(s) + ", " + array_to_string(r) + ", \"" + t + "\", " + to_string(pr) + ", " + to_string(i) + ", " + array_to_string(sl) + ", " + array_to_string(ss) + ", " + array_to_string(si) + ", " + array_to_string(sf) + ", " + array_to_string(srg) + ");";
@@ -1104,6 +1111,7 @@ public:
         _accu_history.push_back({code_line, _gen_drawCircle(id, pos, oss.str(), style)});
     }
 
+    // ─── draw_circle 族 ───
     template<typename T>
     void draw_circle_impl(const int code_line, const string id, const Pos pos, const T value, const vector<pair<string,string>>& style = {}) {
         _content += "                if (track === 0) {\n";
@@ -1111,6 +1119,41 @@ public:
         ostringstream oss; oss << value;
         _content += "                    " + _gen_drawCircle(id, pos, oss.str(), style) + "\n";
         _content += "                }\n";
+    }
+    template<typename T>
+    void key_draw_circle_impl(const int code_line, const string id, const Pos pos, const T value, const vector<pair<string,string>>& style = {}) {
+        _content += "                if (track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        ostringstream oss; oss << value;
+        _content += "                    " + _gen_drawCircle(id, pos, oss.str(), style) + "\n";
+        _content += "                }\n";
+    }
+
+    // ─── draw_triangle 族 ───
+    template<typename T>
+    void draw_triangle_impl(const int code_line, const Pos& p1, const Pos& p2, const Pos& p3, const T value, const vector<pair<string,string>>& style = {}, const string& id = "") {
+        string tid = id.empty() ? ("triangle_" + to_string(code_line)) : id;
+        ostringstream oss; oss << value;
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    " + _gen_drawTriangle(tid, p1, p2, p3, oss.str(), style) + "\n";
+        _content += "                }\n";
+    }
+    template<typename T>
+    void key_draw_triangle_impl(const int code_line, const Pos& p1, const Pos& p2, const Pos& p3, const T value, const vector<pair<string,string>>& style = {}, const string& id = "") {
+        string tid = id.empty() ? ("triangle_" + to_string(code_line)) : id;
+        ostringstream oss; oss << value;
+        _content += "                if (track === 1) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    " + _gen_drawTriangle(tid, p1, p2, p3, oss.str(), style) + "\n";
+        _content += "                }\n";
+    }
+
+    template<typename T>
+    void accu_store_triangle_impl(const int code_line, const Pos& p1, const Pos& p2, const Pos& p3, const T value, const vector<pair<string,string>>& style = {}, const string& id = "") {
+        string tid = id.empty() ? ("triangle_accu_" + to_string(code_line) + "_" + to_string(_accu_history.size())) : id;
+        ostringstream oss; oss << value;
+        _accu_history.push_back({code_line, _gen_drawTriangle(tid, p1, p2, p3, oss.str(), style)});
     }
 
     static string resolve_av_color(const string& color) {

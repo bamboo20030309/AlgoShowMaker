@@ -171,6 +171,20 @@
     }
   };
 
+  /**
+   * 清理所有剩餘的 data-alive="0" 物件 (Sweep)
+   */
+  window.sweepCanvas = function() {
+    const vp = window.getViewport && window.getViewport();
+    if (!vp) return;
+    const targets = vp.querySelectorAll('.draggable-object[data-alive="0"]');
+    targets.forEach(node => {
+      // 如果是箭頭層，我們不干涉（它有自己的 Tween 管理）
+      if (node.getAttribute('id') === 'arrow-layer') return;
+      vp.removeChild(node);
+    });
+  };
+
   // 暴露給外部使用
   window.updateTransform = updateTransform;
   window.getViewport     = () => viewport;
