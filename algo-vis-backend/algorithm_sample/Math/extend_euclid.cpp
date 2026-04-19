@@ -211,61 +211,121 @@ void ext_euc(int a,int b,int &x,int &y){//x,y不用放東西(code by reference)
     //draw{ 1. 回溯第一步：交換後的直接填入
     return_step = 1; // 剛拿回解，正在計算 x (目前標註在第四格)
     tree.pop();
-    // 此時 y 承接了 child 傳回來的 x, x 承接了 child 傳回來的 y
-    // 注意：在 main 的視野裡，這層的 x 拿到的是 child 的 y
+    
     update_node(d, o, a, b, to_string(x), "?"); 
     tree.paint(av, "", -1, [&]{ 
         string cid = tree.get_id(d + 1, o * tree.degree + 0);
         string pid = tree.get_id(d, o);
         
-        // 此幀這層標記 (a, b, x, y)
+        // 取得子節點數值並解析 (用於繪圖邏輯)
+        string val_child = node_vals[{d + 1, o * tree.degree + 0}];
+        vector<string> items_child;
+        stringstream ss_child(val_child);
+        string it;
+        while (getline(ss_child, it, ',')) items_child.push_back(it);
+
+        // 此幀這層變數標記
         av.draw_word("a", Pos(pid, 0, "bottom", 0, -1));
         av.draw_word("b", Pos(pid, 1, "bottom", 0, -1));
         av.draw_word("x", Pos(pid, 2, "bottom", 0, -1));
         av.draw_word("y", Pos(pid, 3, "bottom", 0, -1));
         
-        // 此幀下層標記 (b, a%b, u, v)
+        // 此幀下層變數標記
         av.draw_word("b"  , Pos(cid, 0, "bottom", 0, -1));
         av.draw_word("a%b", Pos(cid, 1, "bottom", 0, -1));
         av.draw_word("u"  , Pos(cid, 2, "bottom", 0, -1));
         av.draw_word("v"  , Pos(cid, 3, "bottom", 0, -1));
 
-        av.arrow(Pos(cid, 3, "top"), Pos(pid, 2, "bottom"), {{"color", "#4caf4f6c"}, {"width", "3"}});
+        av.arrow(Pos(cid, 3, "top"), Pos(pid, 2, "bottom"), {{"color", "AV_green"}, {"width", "3"}});
 
-        string msg = "回溯：底下的解，已計算完畢\n";
-        msg += "這層的 x 就是下一層的 v";
-        av.text(msg, tree.anchor(d, o, "top", 0, -45)); // 往上偏一點避免擋到文字
+        av.colored_text({
+            {"回溯：底下的解，已計算完畢\n"},
+            {"這層的 "},
+            {"x", "AV_green"}, // 這裡會將 "x" 的背景塗成綠色
+            {" 就是下一層的 "},
+            {"v", "AV_green"}  // 這裡會將 "v" 的背景塗成綠色
+        }, tree.anchor(d, o, "right", 20, 0)); 
+        
         av.auto_camera(0.85); 
     });
     //}
     
     y-=a/b*x; 
     
-    //draw{ 2. 回溯第二步：公式計算
-    return_step = 2; // 公式算完，正在計算 y (目前標註在第三格)
+    //draw{ 2. 回溯第二步：公式計算 (分成四幀逐步展示)
     update_node(d, o, a, b, to_string(x), to_string(y));
-    tree.paint(av, "", -1, [&]{ 
+
+    // 共用的變數標記繪製
+    auto draw_labels = [&]() {
         string cid = tree.get_id(d + 1, o * tree.degree + 0);
         string pid = tree.get_id(d, o);
-
-        // 此幀這層標記
         av.draw_word("a", Pos(pid, 0, "bottom", 0, -1));
         av.draw_word("b", Pos(pid, 1, "bottom", 0, -1));
         av.draw_word("x", Pos(pid, 2, "bottom", 0, -1));
         av.draw_word("y", Pos(pid, 3, "bottom", 0, -1));
-        
-        // 此幀下層標記 (b, a%b, u, v)
         av.draw_word("b"  , Pos(cid, 0, "bottom", 0, -1));
         av.draw_word("a%b", Pos(cid, 1, "bottom", 0, -1));
         av.draw_word("u"  , Pos(cid, 2, "bottom", 0, -1));
         av.draw_word("v"  , Pos(cid, 3, "bottom", 0, -1));
+    };
+    Pos text_pos = Pos(tree.get_id(d, o), "right", 20, 0);
 
-        string msg = "代入公式計算這層的 y\n";
-        msg += "{y = u - (a/b) * v\n";
-        msg += "y = " + to_string(y + (a/b)*x) + " - (" + to_string(a/b) + ") * " + to_string(x) + "} = " + to_string(y);
-        av.text(msg, tree.anchor(d, o, "top", 0, -45));
-        av.auto_camera(0.85); 
+    // 幀 1: 顯示公式結構，只塗 y (綠)
+    return_step = 2;
+    tree.paint(av, "", -1, [&]{
+        draw_labels();
+        av.colored_text({
+            {"{"},
+            {"y", "AV_green"}, {" = u - (a/b) * v:這層的y就是}"}
+        }, text_pos);
+        av.auto_camera(0.85);
+        av.sleep(400);
     });
+
+    // 幀 2: 代入 u，塗 u (藍)
+    return_step = 3;
+    tree.paint(av, "", -1, [&]{
+        draw_labels();
+        av.colored_text({
+            {"{"},
+            {"y", "AV_green"}, {" = "}, {to_string(y + (a/b)*x), "AV_blue"}, {" - (a/b) * v:下層的 u}"}
+        }, text_pos);
+        av.auto_camera(0.85);
+        av.sleep(600);
+    });
+
+    // 幀 3: 代入 a/b，塗 a,b (紅)
+    return_step = 4;
+    tree.paint(av, "", -1, [&]{
+        draw_labels();
+        av.colored_text({
+            {"{"},
+            {"y", "AV_green"}, {" = "}, {to_string(y + (a/b)*x), "AV_blue"}, {" - "}, {"(" + to_string(a) + "/" + to_string(b) + ")", "AV_red"}, {" * v:減掉 a 除以 b}"}
+        }, text_pos);
+        av.auto_camera(0.85);
+        av.sleep(600);
+    });
+
+    // 幀 4: 代入 v，算出結果
+    return_step = 5;
+    tree.paint(av, "", -1, [&]{
+        draw_labels();
+        av.colored_text({
+            {"{"},
+            {"y", "AV_green"}, {" = "}, {to_string(y + (a/b)*x), "AV_blue"}, {" - "}, {"(" + to_string(a) + "/" + to_string(b) + ")", "AV_red"}, {" * "}, {to_string(x), "AV_yellow"}, {" = :呈上 v 等於}"}, {to_string(y), "AV_green"}
+        }, text_pos);
+        av.auto_camera(0.85);
+        av.sleep();
+    });
+
+    // 留存最終公式
+    vector<vector<string>> formula = {
+        {"{"},
+        {"y", "AV_green"}, {" = "}, {"u", "AV_blue"}, {" - "}, {"(a/b)", "AV_red"}, {" * "}, {"v", "AV_yellow"}, {"\n"},
+        {"y", "AV_green"}, {" = "}, {to_string(y + (a/b)*x), "AV_blue"}, {" - "}, {"(" + to_string(a) + "/" + to_string(b) + ")", "AV_red"}, {" * "}, {to_string(x), "AV_yellow"}, {" = "}, {to_string(y), "AV_green"},
+        {"}"}
+    };
+    av.accu_store_colored(formula, text_pos);
     //}
 } //最後算出來x為模逆元
 
@@ -283,9 +343,45 @@ int main(){
 
         vector<array_style> st;
         for (int i = 0; i < (int)items.size(); ++i) {
-            if (items[i] != "?") st.push_back({{"background", "#e8f5e9"}, {i}});
-            else st.push_back({{"background", "#cccccc"}, {i}});
+            if (items[i] == "?") st.push_back({{"background", "#cccccc"}, {i}});
         }
+
+        // --- 回溯階段 1 的連動背景著色 ---
+        if (return_step == 1) {
+            if (d == tree.curr_d && o == tree.curr_o) {
+                st.push_back({{"background", "AV_green"}, {2}});
+            }
+            if (d == tree.curr_d + 1 && o == tree.curr_o * tree.degree + 0) {
+                st.push_back({{"background", "AV_green"}, {3}});
+            }
+        }
+
+        // --- 回溯階段 2~5 的漸進式背景著色 ---
+        // return_step >= 2: y (綠)
+        if (return_step >= 2) {
+            if (d == tree.curr_d && o == tree.curr_o) {
+                st.push_back({{"background", "AV_green"}, {3}});
+            }
+        }
+        // return_step >= 3: + u (藍)
+        if (return_step >= 3) {
+            if (d == tree.curr_d + 1 && o == tree.curr_o * tree.degree + 0) {
+                st.push_back({{"background", "AV_blue"}, {2}});
+            }
+        }
+        // return_step >= 4: + a, b (紅)
+        if (return_step >= 4) {
+            if (d == tree.curr_d && o == tree.curr_o) {
+                st.push_back({{"background", "AV_red"}, {0, 1}});
+            }
+        }
+        // return_step >= 5: + v (黃)
+        if (return_step >= 5) {
+            if (d == tree.curr_d + 1 && o == tree.curr_o * tree.degree + 0) {
+                st.push_back({{"background", "AV_yellow"}, {3}});
+            }
+        }
+
         if (focus) { 
             if (return_step == 0) {
                 st.push_back({{"highlight"}, {0}});
@@ -293,7 +389,7 @@ int main(){
             } else if (return_step == 1) {
                 st.push_back({{"highlight"}, {2}});
                 st.push_back({{"point"}, {2}}); 
-            } else if (return_step == 2) {
+            } else if (return_step >= 2) {
                 st.push_back({{"highlight"}, {3}});
                 st.push_back({{"point"}, {3}}); 
             }
@@ -336,7 +432,7 @@ int main(){
     // Step 2: 問題轉換 (由大變小)
     av.start_frame_draw();
     av.colored_text({
-        {"直接找 {a, b:a b} 的答案太難了，我們可以換個小一點的目標\n"},
+        {"直接找 {x, y:x y} 的答案太難了，我們可以換個小一點的目標\n"},
         {"歐幾里得算法告訴我們 {gcd(a,b):a和b的最大公因數} = {gcd(b, a%b):：b和a於b, 的最大公因數}\n因此我們可以假設去找 {b* u:b成u} + {(a%b)* v:：a於b：成v} {= gcd(b, a%b)} 也是等價的！"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
@@ -646,6 +742,7 @@ int main(){
     av.end_frame_draw();
     //}
     
+    av.accu_clear();
     ext_euc(a,b,x,y);
     
     //draw{
