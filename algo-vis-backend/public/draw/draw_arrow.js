@@ -218,6 +218,10 @@
 
     const lines = vp.querySelectorAll('#arrow-layer line[data-bind="resolvePos"]');
     lines.forEach(line => {
+      // 如果箭頭已不在此幀存在（標記為待移除），則不更新其位置
+      // 防止因為目標錨點物件已在 DOM 中移除，導致 resolvePos 回傳 (0,0) 造成閃爍
+      if (line.getAttribute('data-alive') === '0') return;
+
       const sStr = line.getAttribute('data-start-spec');
       const eStr = line.getAttribute('data-end-spec');
       if (!sStr || !eStr) return;

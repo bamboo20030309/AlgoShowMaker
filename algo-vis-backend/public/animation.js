@@ -74,6 +74,7 @@
       map[id] = { 
         x: baseX + dx, 
         y: baseY + dy, 
+        layout: g.getAttribute('data-layout'),
         rectState,
         // 克隆所有子節點，用於消失動畫 (Ghost)
         cloneNodes: Array.from(g.childNodes).map(n => n.cloneNode(true)) 
@@ -226,7 +227,12 @@
         const { ghost, startState } = ghostMap[id];
         if (!ghost.parentNode) continue;
         ghost.setAttribute('opacity', String(1 - et));
-        ghost.setAttribute('transform', `translate(${startState.x},${startState.y}) scale(${1 - et * 0.3})`);
+        // 三角形原地淡出，其餘物件帶縮放
+        if (startState.layout === 'triangle') {
+          ghost.setAttribute('transform', `translate(${startState.x},${startState.y})`);
+        } else {
+          ghost.setAttribute('transform', `translate(${startState.x},${startState.y}) scale(${1 - et * 0.3})`);
+        }
       }
 
       // --- Stack/Queue Push 動畫：新 cell 飛入 ---
@@ -263,7 +269,12 @@
 
         if (isAppearing) {
           g.setAttribute('opacity', String(et));
-          g.setAttribute('transform', `translate(${endState.x},${endState.y}) scale(${0.7 + et * 0.3})`);
+          // 三角形原地淡入，其餘物件帶縮放
+          if (endState.layout === 'triangle') {
+            g.setAttribute('transform', `translate(${endState.x},${endState.y})`);
+          } else {
+            g.setAttribute('transform', `translate(${endState.x},${endState.y}) scale(${0.7 + et * 0.3})`);
+          }
           if (t >= 1) { g.setAttribute('opacity', '1'); g.setAttribute('transform', `translate(${endState.x},${endState.y})`); }
           return;
         }
