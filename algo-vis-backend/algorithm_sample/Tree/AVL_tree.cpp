@@ -743,49 +743,414 @@ int main() {
         {"AVL Tree\n", "", "", "20"},
         {"AVL Tree 是一種 "},
         {"自平衡二元搜尋樹", "AV_yellow"},
-        {"。\n"},
+        {"。\n\n"},
+        {"自平衡二元搜尋樹的概念：\n"},
+        {"只要有其中一個節點的左子樹高度與右子樹高度相差超過 1，\n"},
+        {"就判定為失衡，要透過旋轉來恢復平衡\n\n"},
+        {"實作方法：\n"},
         {"每個節點都會維護一個 "},
         {"平衡因子 (BF)", "AV_yellow"},
         {"{=:他的計算方法是：} 左子樹高度 {-:減掉} 右子樹高度。\n"},
-        {"當平衡因子超出 {[-1, 1]:-1 到 依} 的範圍時，就需要通過 "},
+        {"當平衡因子超出 {[-1, 1]:-1 到 依} 的範圍時(失衡)，就需要通過 "},
         {"旋轉", "AV_yellow"},
-        {" 操作來恢復平衡。\n\n"},
-        {"旋轉分為四種情況：\n"},
-        {"• LL 型 ： 右旋\n"},
-        {"• RR 型 ： 左旋\n"},
-        {"• LR 型 ： 先左旋再右旋\n"},
-        {"• RL 型 ： 先右旋再左旋"}
+        {" 操作來恢復平衡。"}
     }, Pos(500, 10));
     av.auto_camera(0.85);
     av.sleep();
     av.end_frame_draw();
-
-    // 定義絕對座標
-    const Pos P1(500, 150), P2L(400, 250), P2R(600, 250), P3LL(320, 350), P3LR(480, 350), P3RL(520, 350), P3RR(680, 350);
+    
+    const Pos P1(500, 150), P2L(400, 300), P2R(600, 300);
 
     auto draw_demo_node = [&](string id, string val, Pos p, string color = "AV_node_green") {
         vector<array_style> st = {{vector<string>{"background", color}, vector<int>{0}}};
         av.frame_draw(id, p, vector<string>{val}, st);
     };
 
-    // ===== LL 型 (Right Rotate) =====
+    auto draw_case_base = [&](string highlight_st = "") {
+        draw_demo_node("nA", "A", P1, "AV_node_green");
+        draw_demo_node("nB", "B", P2L);
+        draw_demo_node("nC", "C", P2R);
+        av.arrow(Pos("nA", "bottom"), Pos("nB", "top"), {{"color", "black"},{"width","2"}});
+        av.arrow(Pos("nA", "bottom"), Pos("nC", "top"), {{"color", "black"},{"width","2"}});
+
+        // 四個基礎子樹
+        string c_ll = (highlight_st == "LL" ? "AV_orange" : "AV_green");
+        string c_lr = (highlight_st == "LR" ? "AV_orange" : "AV_green");
+        string c_rl = (highlight_st == "RL" ? "AV_orange" : "AV_green");
+        string c_rr = (highlight_st == "RR" ? "AV_orange" : "AV_green");
+
+        av.draw_triangle("st_B_L", Pos("nB", "bottom", -50, 60), 100, 80, {{"background", c_ll}, {"text", "LL"}});
+        av.arrow(Pos("nB", "bottom"), Pos("st_B_L", "top"), {{"color", "black"},{"width","2"}});
+        av.draw_triangle("st_B_R", Pos("nB", "bottom", 50, 60), 100, 80, {{"background", c_lr}, {"text", "LR"}});
+        av.arrow(Pos("nB", "bottom"), Pos("st_B_R", "top"), {{"color", "black"},{"width","2"}});
+
+        av.draw_triangle("st_C_L", Pos("nC", "bottom", -50, 60), 100, 80, {{"background", c_rl}, {"text", "RL"}});
+        av.arrow(Pos("nC", "bottom"), Pos("st_C_L", "top"), {{"color", "black"},{"width","2"}});
+        av.draw_triangle("st_C_R", Pos("nC", "bottom", 50, 60), 100, 80, {{"background", c_rr}, {"text", "RR"}});
+        av.arrow(Pos("nC", "bottom"), Pos("st_C_R", "top"), {{"color", "black"},{"width","2"}});
+    };
+
+    // 1. 旋轉說明
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"},{"width","2"}});
+    
+    // 為空缺處補上三角形子樹並加上箭頭
+    // 箭頭終點直接定位到三角形頂點
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.colored_text({
+        {"為何需要旋轉?\n", "", "", "20"},
+        {"因為樹長得 "},
+        {"太歪", "AV_yellow"},
+        {" ，搜尋就會變慢。\n"},
+        {"而旋轉的目的很簡單，\n"},
+        {"就是把比較歪斜的節點 "},
+        {"提","AV_yellow"},
+        {" 上來，讓樹變矮。\n"},
+        {"樹越矮，速度就越快！"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    // 2.右旋過程
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"},{"width","2"}});
+    
+    // 為空缺處補上三角形子樹並加上箭頭
+    // 箭頭終點直接定位到三角形頂點
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.colored_text({
+        {"遇到樹偏左歪的情況，就應該右旋它\n\n"},
+        {"右旋過程：\n"},
+        {"{1. 先把左子的右子變成父節點\n"},
+        {"2. 再把左子的右子樹轉交給父節點的左子\n"},
+        {"這樣就完成右旋}"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
+    
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.colored_text({
+        {"{遇到樹偏左歪的情況，就應該右旋它\n\n"},
+        {"右旋過程：}\n"},
+        {"1. 先把左{子:ㄗˇ}的右{子:ㄗˇ}變成父節點\n"},
+        {"{2. 再把左子的右子樹轉交給父節點的左子\n"},
+        {"這樣就完成右旋}"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
+    
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.colored_text({
+        {"{遇到樹偏左歪的情況，就應該右旋它\n\n"},
+        {"右旋過程：\n"},
+        {"1. 先把左子的右子變成父節點}\n"},
+        {"2. 再把左{子:ㄗˇ}的右{子:ㄗˇ}樹轉交給父節點的左{子:ㄗˇ}\n"},
+        {"{這樣就完成右旋}"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(600, 300));
+    draw_demo_node("n20", "20", Pos(500, 150));
+    av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"},{"width","2"}});
+    
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+    
+    av.colored_text({
+        {"{遇到樹偏左歪的情況，就應該右旋它\n\n"},
+        {"右旋過程：\n"},
+        {"1. 先把左子的右子變成父節點\n"},
+        {"2. 再把左子的右子樹轉交給父節點的左子}\n"},
+        {"這樣就完成右旋"}
+    }, Pos("n20", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.sleep();
+    av.end_frame_draw();
+
+
+    // 3.左旋過程
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150));
+    draw_demo_node("n40", "40", Pos(600, 300));
+    av.arrow(Pos("n30", "bottom"), Pos("n40", "top"), {{"color", "black"},{"width","2"}});
+    
+    // 為空缺處補上三角形子樹並加上箭頭
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n40", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.colored_text({
+        {"遇到樹偏右歪的情況，就應該左旋它\n\n"},
+        {"左旋過程：\n"},
+        {"{1. 先把右子的左子變成父節點\n"},
+        {"2. 再把右子的左子樹轉交給父節點的右子\n"},
+        {"這樣就完成左旋}"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150));
+    draw_demo_node("n40", "40", Pos(600, 300));
+    av.arrow(Pos("n40", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
+    
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n40", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.colored_text({
+        {"{遇到樹偏右歪的情況，就應該左旋它\n\n"},
+        {"左旋過程：}\n"},
+        {"1. 先把右{子:ㄗˇ}的左{子:ㄗˇ}變成父節點\n"},
+        {"{2. 再把右子的左子樹轉交給父節點的右子\n"},
+        {"這樣就完成左旋}"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150));
+    draw_demo_node("n40", "40", Pos(600, 300));
+    av.arrow(Pos("n40", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
+    
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.colored_text({
+        {"{遇到樹偏右歪的情況，就應該左旋它\n\n"},
+        {"左旋過程：\n"},
+        {"1. 先把右子的左子變成父節點}\n"},
+        {"2. 再把右{子:ㄗˇ}的左{子:ㄗˇ}樹轉交給父節點的右{子:ㄗˇ}\n"},
+        {"{這樣就完成左旋}"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(400, 300));
+    draw_demo_node("n40", "40", Pos(500, 150));
+    av.arrow(Pos("n40", "bottom"), Pos("n30", "top"), {{"color", "black"},{"width","2"}});
+    
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n40_L", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
+    
+    av.colored_text({
+        {"{遇到樹偏右歪的情況，就應該左旋它\n\n"},
+        {"左旋過程：\n"},
+        {"1. 先把右子的左子變成父節點\n"},
+        {"2. 再把右子的左子樹轉交給父節點的右子}\n"},
+        {"這樣就完成左旋"}
+    }, Pos("n40", "top", 0, -20)); 
+    av.auto_camera(0.85);
+    av.sleep();
+    av.end_frame_draw();
+
+
+
+    // 新增：旋轉情況概覽影格
+    av.start_frame_draw();
+    draw_case_base();
+    av.colored_text({
+        {"失衡分為四種情況，皆為一邊比另一邊高出兩階的情況，\n"},
+        {"回復平衡的做法分別為：\n"},
+        {"• LL 型： 右旋\n"},
+        {"• RR 型： 左旋\n"},
+        {"• LR 型： 先左旋再右旋\n"},
+        {"• RL 型： 先右旋再左旋"}
+    }, Pos("nA", "top", 0, -20));
+    av.auto_camera(0.8);
+    av.sleep();
+    av.end_frame_draw();
+
+    // ===== 情況區分動態說明 =====
+    std::map<string, vector<string>> cases = {
+        {"LL", {"nA", "nB", "st_B_L", "最後落在了 A 的左{子:ㄗˇ}的左{子:ㄗˇ}樹，那他就稱為 LL 型，應該右旋"}},
+        {"LR", {"nA", "nB", "st_B_R", "最後落在了 A 的左{子:ㄗˇ}的右{子:ㄗˇ}樹，那他就稱為 LR 型，應該先左旋再右旋"}},
+        {"RL", {"nA", "nC", "st_C_L", "最後落在了 A 的右{子:ㄗˇ}的左{子:ㄗˇ}樹，那他就稱為 RL 型，應該先右旋再左旋"}},
+        {"RR", {"nA", "nC", "st_C_R", "最後落在了 A 的右{子:ㄗˇ}的右{子:ㄗˇ}樹，那他就稱為 RR 型，應該左旋"}}
+    };
+
+    for (auto const& c : cases) {
+        string type = c.first;
+        string p1_id = c.second[0], p2_id = c.second[1], p3_id = c.second[2], desc = c.second[3];
+
+        // Frame 1: 在根節點
+        av.start_frame_draw();
+        draw_case_base();
+        av.frame_draw("new_node", Pos(p1_id, "bottom", 0, 20), vector<string>{"new"}, {{{"background", "AV_orange"}, {0}}});
+        av.text("假設新節點進入 A 的{子:ㄗˇ}樹", Pos(p1_id, "top", 0, -20));
+        av.auto_camera(0.8);
+        av.end_frame_draw();
+
+        // Frame 2: 走到中間
+        av.start_frame_draw();
+        draw_case_base();
+        av.frame_draw("new_node", Pos(p2_id, "bottom", 0, 20), vector<string>{"new"}, {{{"background", "AV_orange"}, {0}}});
+        string side = (p2_id == "nB" ? "左" : "右");
+        av.text("接{著:ㄓㄜ˙}往" + side + "走進入 A 的" + side + "{子:ㄗˇ}樹", Pos(p2_id, "top", 0, -20));
+        av.auto_camera(0.8);
+        av.end_frame_draw();
+
+        // Frame 3: 進入子樹並亮起
+        av.start_frame_draw();
+        draw_case_base(type);
+        int p3_offset = (p3_id.back() == 'L' ? -50 : 50);
+        av.frame_draw("new_node", Pos(p3_id, "bottom", 0, 20), vector<string>{"new"}, {{{"background", "AV_orange"}, {0}}});
+        av.colored_text({{desc}}, Pos(p3_id, "top", 0, -20));
+        av.auto_camera(0.8);
+        av.end_frame_draw();
+    }
+
+    av.start_frame_draw();
+    draw_case_base();
+    av.colored_text({
+        {"觀察後可以得知其兩兩互相為對稱\n"},
+        {"實際上只有兩種類型\n"},
+        {"因此這邊只敘述這兩種如何翻轉\n"},
+        {"另一邊就直接全部反轉過去就好"}
+    }, Pos("nA", "top", 0, -20));
+    av.auto_camera(0.8);
+    av.sleep();
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
+    draw_demo_node("n20", "20", Pos(400, 300));
+    draw_demo_node("n10", "10", Pos(300, 450));
+    av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"},{"width","2"}});
+    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_word("bf=2", Pos("n30", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("n20", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
+    av.colored_text({
+        {"接{著:ㄓㄜ˙}是如何翻轉的部分，以下假設所有子樹高度都是一樣的"}
+    }, Pos("n30", "top", 0, -20));
+    av.auto_camera(0.8);
+    av.end_frame_draw();
+
+    // LL 型 (Right Rotate) =====
     // Frame 1: Before
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(420, 300));
-    draw_demo_node("n10", "10", Pos(340, 450));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    draw_demo_node("n10", "10", Pos(300, 450));
     av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"},{"width","2"}});
     av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"},{"width","2"}});
+    
+    // 為空缺處補上三角形子樹並加上箭頭
+    // 箭頭終點直接定位到三角形頂點
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
+
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
     av.draw_word("bf=1", Pos("n20", "right", 10, 0));
     av.draw_word("bf=0", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
     av.colored_text({
         {"LL 型 (Left-Left Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
-        {"{平衡方式：}\n對失衡節點做一次 "},
+        {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
         {"。\n"},
-        {"{右旋就是把左子提上來，自己變成右子。}"}
+        {"右旋就是把左{子:ㄗˇ}提上來，自己變成右{子:ㄗˇ}。\n\n"},
+        {"右旋過程：\n"},
+        {"{1. 先把左子的右子變成父節點\n"},
+        {"2. 再把左子的右子樹轉交給父節點的左子\n"},
+        {"這樣就是一個完整的右旋操作。}"}
     }, Pos("n30", "top", 0, -20)); 
     av.auto_camera(0.85);
     av.end_frame_draw();
@@ -793,20 +1158,80 @@ int main() {
     // Frame 2: Lifting
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(420, 300));
-    draw_demo_node("n10", "10", Pos(340, 450));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    draw_demo_node("n10", "10", Pos(300, 450));
     av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
+
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
     av.draw_word("bf=1", Pos("n20", "right", 10, 0));
     av.draw_word("bf=0", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
     av.colored_text({
         {"{LL 型 (Left-Left Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
-        {"。}\n"},
-        {"右旋就是把左{子:紫}提上來{，自己變成右子。}"}
+        {"。\n"},
+        {"右旋就是把左子提上來，自己變成右子。\n\n"},
+        {"右旋過程：}\n"},
+        {"1. 先把左{子:ㄗˇ}的右{子:ㄗˇ}變成父節點\n"},
+        {"{2. 再把左子的右子樹轉交給父節點的左子\n"},
+        {"這樣就是一個完整的右旋操作。}"}
+    }, Pos("n30", "top", 0, -20)); 
+    av.auto_camera(0.85); 
+    av.end_frame_draw();
+
+    av.start_frame_draw();
+    draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
+    draw_demo_node("n20", "20", Pos(400, 300));
+    draw_demo_node("n10", "10", Pos(300, 450));
+    av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"}, {"width", "2"}});
+    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_word("bf=2", Pos("n30", "right", 10, 0));
+    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
+    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
+    av.colored_text({
+        {"{LL 型 (Left-Left Case)\n", "", "", "20"},
+        {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
+        {"平衡方式：\n對失衡節點做一次 "},
+        {"右旋", "AV_blue"}, 
+        {"。\n"},
+        {"右旋就是把左子提上來，自己變成右子。\n\n"},
+        {"右旋過程：\n"},
+        {"1. 先把左子的右子變成父節點}\n"},
+        {"2. 再把左{子:ㄗˇ}的右{子:ㄗˇ}樹轉交給父節點的左{子:ㄗˇ}\n"},
+        {"{這樣就是一個完整的右旋操作。}"}
     }, Pos("n30", "top", 0, -20)); 
     av.auto_camera(0.85); 
     av.end_frame_draw();
@@ -814,101 +1239,74 @@ int main() {
     // Frame 3: Balanced
     av.start_frame_draw();
     draw_demo_node("n20", "20", Pos(500, 150));
-    draw_demo_node("n10", "10", Pos(420, 300));
-    draw_demo_node("n30", "30", Pos(580, 300));
+    draw_demo_node("n10", "10", Pos(400, 300));
+    draw_demo_node("n30", "30", Pos(600, 300));
     av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
+
     av.draw_word("bf=0", Pos("n30", "right", 10, 0));
     av.draw_word("bf=0", Pos("n20", "right", 10, 0));
     av.draw_word("bf=0", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
     av.colored_text({
         {"{LL 型 (Left-Left Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
         {"。\n"},
-        {"右旋就是把左子提上來，}自己變成右{子:紫}。"}
+        {"右旋就是把左子提上來，自己變成右子。\n\n"},
+        {"右旋過程：\n"},
+        {"1. 先把左子的右子變成父節點\n"},
+        {"2. 再把左子的右子樹轉交給父節點的左子\n}"},
+        {"這樣就是一個完整的右旋操作。"}
     }, Pos("n20", "top", 0, -20)); 
     av.auto_camera(0.85); 
     av.sleep(); 
     av.end_frame_draw();
 
-    // ===== RR 型 (Left Rotate) =====
-    // Frame 1: Before
-    av.start_frame_draw();
-    draw_demo_node("n10", "10", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(580, 300));
-    draw_demo_node("n30", "30", Pos(660, 450));
-    av.arrow(Pos("n10", "bottom"), Pos("n20", "top"), {{"color", "black"},{"width","2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_word("bf=-2", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=-1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.colored_text({
-        {"RR 型 (Right-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的右邊時。\n\n"},
-        {"{平衡方式：}\n對失衡節點做一次 "},
-        {"左旋", "AV_green"}, 
-        {"。\n"},
-        {"{左旋就是把右子提上來，自己變成左子。}"}
-    }, Pos("n10", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 2: Lifting
-    av.start_frame_draw();
-    draw_demo_node("n10", "10", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(580, 300));
-    draw_demo_node("n30", "30", Pos(660, 450));
-    av.arrow(Pos("n20", "top"), Pos("n10", "bottom"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.draw_word("bf=-2", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=-1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.colored_text({
-        {"{RR 型 (Right-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的右邊時。\n\n"},
-        {"平衡方式：\n對失衡節點做一次 "},
-        {"左旋", "AV_green"}, 
-        {"。}\n"},
-        {"左旋就是把右{子:紫}提上來{，自己變成左子。}"}
-    }, Pos("n10", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 3: Balanced
-    av.start_frame_draw();
-    draw_demo_node("n20", "20", Pos(500, 150));
-    draw_demo_node("n10", "10", Pos(420, 300));
-    draw_demo_node("n30", "30", Pos(580, 300));
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.colored_text({
-        {"{RR 型 (Right-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的右邊時。\n\n"},
-        {"平衡方式：\n對失衡節點做一次 "},
-        {"左旋", "AV_green"}, 
-        {"。\n"},
-        {"左旋就是把右子提上來，}自己變成左{子:紫}。"}
-    }, Pos("n20", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.sleep();
-    av.end_frame_draw();
 
     // ===== LR 型 (Left-Right Case) =====
     // Frame 1: Before Step 1
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n10", "10", Pos(340, 300));
-    draw_demo_node("n20", "20", Pos(420, 450));
+    draw_demo_node("n10", "10", Pos(300, 300));
+    draw_demo_node("n20", "20", Pos(400, 450));
     av.arrow(Pos("n30", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n10", "bottom"), Pos("n20", "top"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
     av.draw_word("bf=-1", Pos("n10", "right", 10, 0));
     av.draw_word("bf=0", Pos("n20", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    
     av.colored_text({
         {"LR 型 (Left-Right Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
@@ -926,13 +1324,30 @@ int main() {
     // Frame 2: Lifting child
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n10", "10", Pos(340, 300));
-    draw_demo_node("n20", "20", Pos(420, 450));
+    draw_demo_node("n10", "10", Pos(300, 300));
+    draw_demo_node("n20", "20", Pos(400, 450));
     av.arrow(Pos("n30", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n20", "top"), Pos("n10", "bottom"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+    
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
     av.draw_word("bf=-1", Pos("n10", "right", 10, 0));
     av.draw_word("bf=0", Pos("n20", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
@@ -950,13 +1365,30 @@ int main() {
     // Frame 3: LL State
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(420, 300));
-    draw_demo_node("n10", "10", Pos(340, 450));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    draw_demo_node("n10", "10", Pos(300, 450));
     av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+    
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
     av.draw_word("bf=0", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
@@ -974,13 +1406,30 @@ int main() {
     // Frame 4: Lifting root
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(420, 300));
-    draw_demo_node("n10", "10", Pos(340, 450));
+    draw_demo_node("n20", "20", Pos(400, 300));
+    draw_demo_node("n10", "10", Pos(300, 450));
     av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+    
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
     av.draw_word("bf=0", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
@@ -998,13 +1447,30 @@ int main() {
     // Frame 5: Final Balanced
     av.start_frame_draw();
     draw_demo_node("n20", "20", Pos(500, 150));
-    draw_demo_node("n10", "10", Pos(420, 300));
-    draw_demo_node("n30", "30", Pos(580, 300));
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
+    draw_demo_node("n10", "10", Pos(400, 300));
+    draw_demo_node("n30", "30", Pos(600, 300));
     av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
+    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
+
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n10", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
+    
+    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
     av.draw_word("bf=0", Pos("n10", "right", 10, 0));
     av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
+    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
         {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
@@ -1020,127 +1486,6 @@ int main() {
     av.sleep();
     av.end_frame_draw();
 
-    // ===== RL 型 (Right-Left Case) =====
-    // Frame 1: Before Step 1
-    av.start_frame_draw();
-    draw_demo_node("n10", "10", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n30", "30", Pos(660, 300));
-    draw_demo_node("n20", "20", Pos(580, 450));
-    av.arrow(Pos("n10", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"}, {"width", "2"}});
-    av.draw_word("bf=-2", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.colored_text({
-        {"RL 型 (Right-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的左邊時。\n\n"},
-        {"{平衡方式：\n"},
-        {"第一步：對右子做一次 "},
-        {"右旋", "AV_blue"},
-        {"，轉成 RR 型。\n"},
-        {"第二步：對失衡節點做一次 "},
-        {"左旋", "AV_green"}, 
-        {" ，轉成平衡狀態。}"}
-    }, Pos("n10", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 2: Lifting child
-    av.start_frame_draw();
-    draw_demo_node("n10", "10", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n30", "30", Pos(660, 300));
-    draw_demo_node("n20", "20", Pos(580, 450));
-    av.arrow(Pos("n10", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"}, {"width", "2"}});
-    av.draw_word("bf=-2", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.colored_text({
-        {"{RL 型 (Right-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的左邊時。\n\n"},
-        {"平衡方式：}\n"},
-        {"第一步：對右子做一次 "},
-        {"右旋", "AV_blue"},
-        {"{，轉成 RR 型。\n"},
-        {"第二步：對失衡節點做一次 "},
-        {"左旋", "AV_green"},
-        {" ，轉成平衡狀態。}"}
-    }, Pos("n10", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 3: RR State
-    av.start_frame_draw();
-    draw_demo_node("n10", "10", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(580, 300));
-    draw_demo_node("n30", "30", Pos(660, 450));
-    av.arrow(Pos("n10", "bottom"), Pos("n20", "top"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.draw_word("bf=-2", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=-1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.colored_text({
-        {"{RL 型 (Right-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的左邊時。\n\n"},
-        {"平衡方式：\n"},
-        {"第一步：對右子做一次 "},
-        {"右旋}", "AV_blue"},
-        {"，轉成 RR 型。\n"},
-        {"{第二步：對失衡節點做一次 "},
-        {"左旋", "AV_green"}, 
-        {" ，轉成平衡狀態。}"}
-    }, Pos("n10", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 4: Lifting root
-    av.start_frame_draw();
-    draw_demo_node("n10", "10", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(580, 300));
-    draw_demo_node("n30", "30", Pos(660, 450));
-    av.arrow(Pos("n20", "top"), Pos("n10", "bottom"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.draw_word("bf=-2", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=-1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.colored_text({
-        {"{RL 型 (Right-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的左邊時。\n\n"},
-        {"平衡方式：\n"},
-        {"第一步：對右子做一次 "},
-        {"右旋", "AV_blue"},
-        {"，轉成 RR 型。}\n"},
-        {"第二步：對失衡節點做一次 "},
-        {"左旋", "AV_green"}, 
-        {"{ ，轉成平衡狀態。}"}
-    }, Pos("n10", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 5: Final Balanced
-    av.start_frame_draw();
-    draw_demo_node("n20", "20", Pos(500, 150));
-    draw_demo_node("n10", "10", Pos(420, 300));
-    draw_demo_node("n30", "30", Pos(580, 300));
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.colored_text({
-        {"{RL 型 (Right-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 右子樹的左邊時。\n\n"},
-        {"平衡方式：\n"},
-        {"第一步：對右子做一次 "},
-        {"右旋", "AV_blue"},
-        {"，轉成 RR 型。\n"},
-        {"第二步：對失衡節點做一次 "},
-        {"左旋}", "AV_green"}, 
-        {" ，轉成平衡狀態。"}
-    }, Pos("n20", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.sleep();
-    av.end_frame_draw();
 
     // 正式開始
     Root = NULL;
