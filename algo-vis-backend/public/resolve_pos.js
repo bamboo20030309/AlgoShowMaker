@@ -40,23 +40,30 @@
       let calculatedPos = { x: 0, y: 0 };
       const hasIndex = (spec.index !== undefined && spec.index !== null && spec.index !== -1);
       const hasRowCol = (spec.row !== undefined && spec.row !== -1);
-      const hasOuterframe = !(hasIndex || hasRowCol); // 如果沒有 index/rowcol，就當作 outerframe 來處理
+      const isIDOnly = !(hasIndex || hasRowCol); // 單純指名 ID 的情況
       const anchor = spec.anchor || "center";
 
-      // 1. 嘗試查找全域 Layout 定義
       const layoutName = spec.layout || el.getAttribute('data-layout') || 'normal';
       const layouts = window.ArrayLayout || {};
       const layout = layouts[layoutName];
 
       // -----------------------------------------------------
-      // 外框抓位置
+      // 處理單純指名 ID 的情況 (物件層級的錨點)
       // -----------------------------------------------------
-      if (hasOuterframe) {
-        if (window.getOuterframePosition && typeof window.getOuterframePosition === 'function') {
+      if (isIDOnly) {
+        // A. 三角形專用邏輯 (用於子樹 subtree)
+        if (layoutName === 'triangle') {
+          calculatedPos = getTriangleAnchor(el, anchor);
+        }
+        // B. 陣列外框邏輯
+        else if (window.getOuterframePosition && el.hasAttribute('data-outerframe-top')) {
           calculatedPos = window.getOuterframePosition(refId, anchor);
         }
+        // C. 通用 BBox 回退
+        else {
+          calculatedPos = getFallbackBBoxPosition(el, anchor);
+        }
       }
-
       // -----------------------------------------------------
       // 一維陣列抓位置
       // -----------------------------------------------------
@@ -65,7 +72,6 @@
           calculatedPos = layout.getPosition(refId, spec.index, anchor);
         }
       }
-
       // -----------------------------------------------------
       // 二維陣列抓位置
       // -----------------------------------------------------
@@ -75,13 +81,7 @@
         }
       }
 
-      // -----------------------------------------------------
-      // 方法 D: 最通用的 BBox 計算 (整個物件)
-      // -----------------------------------------------------
-      else {
-        console.log("Fallback to BBox position calculation for element:", el);
-        calculatedPos = getFallbackBBoxPosition(el, anchor);
-      }
+      // 注意：這裡原本的 else (Fallback) 已經整合進 hasOuterframe 邏輯中了
 
       // 最後：加上使用者指定的額外偏移 (dx, dy)
       // C++ Pos 結構把偏移量存在 x/y 或 dx/dy
@@ -108,10 +108,11 @@
     // 讀取 transform
     const transform = el.getAttribute('transform');
     if (transform) {
-      const match = /translate\s*\(\s*([+\-]?[\d\.]+)\s*[,\s]\s*([+\-]?[\d\.]+)\s*\)/.exec(transform);
+      // 支援 translate(x, y) 或 translate(x y)
+      const match = /translate\s*\(\s*([+\-]?[\d\.]+)(?:[\s,]+([+\-]?[\d\.]+))?\s*\)/.exec(transform);
       if (match) {
         baseX = parseFloat(match[1]);
-        baseY = parseFloat(match[2]);
+        baseY = parseFloat(match[2] || "0");
       }
     } else {
       baseX = parseFloat(el.getAttribute('x')) || 0;
@@ -197,5 +198,50 @@
 
     return { x: x + ox, y: y + oy };
   };
+
+  /**
+   * 三角形專用的錨點計算 (通常用於 subtree)
+   */
+  function getTriangleAnchor(el, anchor) {
+    const pointsStr = el.getAttribute('data-points');
+    if (!pointsStr) return getFallbackBBoxPosition(el, anchor);
+
+    const pts = pointsStr.split(' ').map(p => {
+      const [parts_x, parts_y] = p.split(',').map(Number);
+      return { x: parts_x, y: parts_y };
+    });
+    if (pts.length < 3) return getFallbackBBoxPosition(el, anchor);
+
+    // 讀取 transform 偏移 (動畫或拖曳中)
+    let dx = 0, dy = 0;
+    const transform = el.getAttribute('transform');
+    if (transform) {
+      const match = /translate\s*\(\s*([+\-]?[\d\.]+)(?:[\s,]+([+\-]?[\d\.]+))?\s*\)/.exec(transform);
+      if (match) {
+        dx = parseFloat(match[1]);
+        dy = parseFloat(match[2] || "0");
+      }
+    }
+
+    const r1 = pts[0], r2 = pts[1], r3 = pts[2];
+    const a = (anchor || '').toLowerCase();
+
+    // 取得邊界資料以處理 left/right 語義
+    const minX = Math.min(r1.x, r2.x, r3.x);
+    const maxX = Math.max(r1.x, r2.x, r3.x);
+    const minY = Math.min(r1.y, r2.y, r3.y);
+    const maxY = Math.max(r1.y, r2.y, r3.y);
+
+    let res = { x: 0, y: 0 };
+    // 優先處理精確幾何錨點
+    if (a === 'top')      res = { x: r1.x, y: r1.y };
+    else if (a === 'bottom') res = { x: (r2.x + r3.x) / 2, y: (r2.y + r3.y) / 2 };
+    else if (a === 'left')   res = { x: minX, y: (minY + maxY) / 2 };
+    else if (a === 'right')  res = { x: maxX, y: (minY + maxY) / 2 };
+    else if (a === 'center') res = { x: (r1.x + r2.x + r3.x) / 3, y: (r1.y + r2.y + r3.y) / 3 };
+    else return getFallbackBBoxPosition(el, anchor);
+
+    return { x: res.x + dx, y: res.y + dy };
+  }
 
 })();
