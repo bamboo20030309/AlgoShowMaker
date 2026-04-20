@@ -152,7 +152,7 @@ void traverse(Node* root, int flag) {
     if (flag == 1) {
         cout << root->val << " ";
         //draw{
-        string msg = "{中序：}左邊走完再輸出";
+        string msg = "{中序：}左邊走完就輸出";
         first_visit = false;
 
         tree.node_colors[{tree.curr_d, tree.curr_o}] = "#a5d6a7";
@@ -356,7 +356,7 @@ int main() {
             }
             if (val == 1) { 
                 task_msg = "接下來要執行 中序遍歷 (In-order)";    
-                rule_msg = "中序規則：左邊走完才輸出 (左 -> 根 -> 右)\n(中序使用標準對稱佈局)"; 
+                rule_msg = "中序規則：左邊走完就輸出 (左 -> 根 -> 右)\n(中序使用標準對稱佈局)"; 
                 target_mode = TreeLayout::INORDER; 
             }
             if (val == 2) { 
