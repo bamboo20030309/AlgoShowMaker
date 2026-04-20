@@ -199,9 +199,11 @@ Node* insert(Node* root, int val) {
         tree.update_layout();
         Pos target_p = tree.get_pos(tree.curr_d, tree.curr_o);
 
-        draw_tree_content();
+        draw_tree_content(false, true, false, true);
         av.frame_draw("moving_val", target_p, vector<string>{to_string(val)}, {{{"highlight"}, {0}}, {{"point"}, {0}}});
+        av.key_frame_draw("moving_val", target_p, vector<string>{to_string(val)}, {{{"highlight"}, {0}}, {{"point"}, {0}}});
         av.text("找到空位！將節點 " + to_string(val) + " 放置於此", Pos("moving_val", "bottom", 0, 20));
+        av.key_text("找到空位！將節點 " + to_string(val) + " 放置於此", Pos("moving_val", "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
 
@@ -1099,8 +1101,8 @@ int main() {
     av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
+    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
     av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
     av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
     av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
@@ -1142,7 +1144,7 @@ int main() {
     av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
     av.colored_text({
         {"LL 型 (Left-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左{子:ㄗˇ}的左{子:ㄗˇ}樹時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
         {"。\n"},
@@ -1183,7 +1185,7 @@ int main() {
     av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
     av.colored_text({
         {"{LL 型 (Left-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左子的左子樹時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
         {"。\n"},
@@ -1223,7 +1225,7 @@ int main() {
     av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
     av.colored_text({
         {"{LL 型 (Left-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左子的左子樹時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
         {"。\n"},
@@ -1264,7 +1266,7 @@ int main() {
     av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
     av.colored_text({
         {"{LL 型 (Left-Left Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的左邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左子的左子樹時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
         {"。\n"},
@@ -1309,9 +1311,9 @@ int main() {
     
     av.colored_text({
         {"LR 型 (Left-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
-        {"{平衡方式：\n"},
-        {"第一步：對左子做一次 "},
+        {"當此輪操作的節點位於失衡節點的 左{子:ㄗˇ}的右{子:ㄗˇ}樹時。\n\n"},
+        {"平衡方式：\n"},
+        {"{第一步：對左子做一次 "},
         {"左旋","AV_green"},
         {"，轉成 LL 型。\n"},
         {"第二步：對失衡節點做一次 "},
@@ -1350,7 +1352,7 @@ int main() {
 
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左子的右子樹時。\n\n"},
         {"平衡方式：}\n"},
         {"第一步：對左子做一次 "},
         {"左旋","AV_green"},
@@ -1391,7 +1393,7 @@ int main() {
 
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左子的右子樹時。\n\n"},
         {"平衡方式：\n"},
         {"第一步：對左子做一次 "},
         {"左旋}","AV_green"},
@@ -1432,7 +1434,7 @@ int main() {
 
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左子的右子樹時。\n\n"},
         {"平衡方式：\n"},
         {"第一步：對左子做一次 "},
         {"左旋","AV_green"},
@@ -1473,7 +1475,7 @@ int main() {
 
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
-        {"當新節點插入在失衡節點的 左子樹的右邊時。\n\n"},
+        {"當此輪操作的節點位於失衡節點的 左子的右子樹時。\n\n"},
         {"平衡方式：\n"},
         {"第一步：對左子做一次 "},
         {"左旋","AV_green"},
@@ -1496,6 +1498,8 @@ int main() {
     av.key_text("接下來進入實際操作流程", Pos("tree_root", "bottom", 0, 20));
     av.auto_camera(0.85);
     av.end_frame_draw();
+    
+    int Cas=0;
     //}
 
     int op, val;
@@ -1504,12 +1508,14 @@ int main() {
         string task_msg = "";
         if (op == 1) task_msg = "現在要插入節點 " + to_string(val);
         else if (op == 3) task_msg = "現在要刪除節點 " + to_string(val);
-
+        
         av.start_frame_draw();
         draw_tree_content(true, false);
         av.text(task_msg, Pos("tree_root", "bottom", 0, 20));
         av.auto_camera(0.85);
         av.end_frame_draw();
+
+        if(Cas++>=5)av.fast();
         //}
         if (op == 1) {
             Root = insert(Root, val);
