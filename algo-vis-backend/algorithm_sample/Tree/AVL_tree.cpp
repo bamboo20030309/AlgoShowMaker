@@ -781,14 +781,14 @@ int main() {
         string c_rl = (highlight_st == "RL" ? "AV_orange" : "AV_green");
         string c_rr = (highlight_st == "RR" ? "AV_orange" : "AV_green");
 
-        av.draw_triangle("st_B_L", Pos("nB", "bottom", -50, 60), 100, 80, {{"background", c_ll}, {"text", "LL"}});
+        av.draw_triangle("st_B_L", Pos("nB", "bottom", -50, 60), 200, 80, {{"background", c_ll}, {"text", "LL"}});
         av.arrow(Pos("nB", "bottom"), Pos("st_B_L", "top"), {{"color", "black"},{"width","2"}});
-        av.draw_triangle("st_B_R", Pos("nB", "bottom", 50, 60), 100, 80, {{"background", c_lr}, {"text", "LR"}});
+        av.draw_triangle("st_B_R", Pos("nB", "bottom", 50, 60), 200, 80, {{"background", c_lr}, {"text", "LR"}});
         av.arrow(Pos("nB", "bottom"), Pos("st_B_R", "top"), {{"color", "black"},{"width","2"}});
 
-        av.draw_triangle("st_C_L", Pos("nC", "bottom", -50, 60), 100, 80, {{"background", c_rl}, {"text", "RL"}});
+        av.draw_triangle("st_C_L", Pos("nC", "bottom", -50, 60), 200, 80, {{"background", c_rl}, {"text", "RL"}});
         av.arrow(Pos("nC", "bottom"), Pos("st_C_L", "top"), {{"color", "black"},{"width","2"}});
-        av.draw_triangle("st_C_R", Pos("nC", "bottom", 50, 60), 100, 80, {{"background", c_rr}, {"text", "RR"}});
+        av.draw_triangle("st_C_R", Pos("nC", "bottom", 50, 60), 200, 80, {{"background", c_rr}, {"text", "RR"}});
         av.arrow(Pos("nC", "bottom"), Pos("st_C_R", "top"), {{"color", "black"},{"width","2"}});
     };
 
@@ -800,12 +800,12 @@ int main() {
     
     // 為空缺處補上三角形子樹並加上箭頭
     // 箭頭終點直接定位到三角形頂點
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.colored_text({
@@ -830,12 +830,12 @@ int main() {
     
     // 為空缺處補上三角形子樹並加上箭頭
     // 箭頭終點直接定位到三角形頂點
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.colored_text({
@@ -853,12 +853,12 @@ int main() {
     draw_demo_node("n20", "20", Pos(400, 300));
     av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
     
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.colored_text({
@@ -876,12 +876,12 @@ int main() {
     draw_demo_node("n20", "20", Pos(400, 300));
     av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
     
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.colored_text({
@@ -899,12 +899,12 @@ int main() {
     draw_demo_node("n20", "20", Pos(500, 150));
     av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"},{"width","2"}});
     
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
     
     av.colored_text({
@@ -926,12 +926,12 @@ int main() {
     av.arrow(Pos("n30", "bottom"), Pos("n40", "top"), {{"color", "black"},{"width","2"}});
     
     // 為空缺處補上三角形子樹並加上箭頭
-    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n40", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.colored_text({
@@ -949,12 +949,12 @@ int main() {
     draw_demo_node("n40", "40", Pos(600, 300));
     av.arrow(Pos("n40", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
     
-    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n40", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.colored_text({
@@ -972,12 +972,12 @@ int main() {
     draw_demo_node("n40", "40", Pos(600, 300));
     av.arrow(Pos("n40", "top"), Pos("n30", "bottom"), {{"color", "black"},{"width","2"}});
     
-    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_L", Pos("n40", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.colored_text({
@@ -995,12 +995,12 @@ int main() {
     draw_demo_node("n40", "40", Pos(500, 150));
     av.arrow(Pos("n40", "bottom"), Pos("n30", "top"), {{"color", "black"},{"width","2"}});
     
-    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_L", Pos("n30", "bottom", -50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_L", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n40_L", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_L", Pos("n30", "bottom", 50, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n40_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n40_R", Pos("n40", "bottom", 100, 60), 200, 80, {{"text", "子樹"}});
     av.arrow(Pos("n40", "bottom"), Pos("st_n40_R", "top"), {{"color", "black"},{"width","2"}});
     
     av.colored_text({
@@ -1033,38 +1033,19 @@ int main() {
 
     // ===== 情況區分動態說明 =====
     std::map<string, vector<string>> cases = {
-        {"LL", {"nA", "nB", "st_B_L", "最後落在了 A 的左{子:ㄗˇ}的左{子:ㄗˇ}樹，那他就稱為 LL 型，應該右旋"}},
-        {"LR", {"nA", "nB", "st_B_R", "最後落在了 A 的左{子:ㄗˇ}的右{子:ㄗˇ}樹，那他就稱為 LR 型，應該先左旋再右旋"}},
-        {"RL", {"nA", "nC", "st_C_L", "最後落在了 A 的右{子:ㄗˇ}的左{子:ㄗˇ}樹，那他就稱為 RL 型，應該先右旋再左旋"}},
-        {"RR", {"nA", "nC", "st_C_R", "最後落在了 A 的右{子:ㄗˇ}的右{子:ㄗˇ}樹，那他就稱為 RR 型，應該左旋"}}
+        {"LL", {"nA", "nB", "st_B_L", "如果更新點落在了 A 的左{子:ㄗˇ}的左{子:ㄗˇ}樹，那他就稱為 LL 型，應該右旋"}},
+        {"LR", {"nA", "nB", "st_B_R", "如果更新點落在了 A 的左{子:ㄗˇ}的右{子:ㄗˇ}樹，那他就稱為 LR 型，應該先左旋再右旋"}},
+        {"RL", {"nA", "nC", "st_C_L", "如果更新點落在了 A 的右{子:ㄗˇ}的左{子:ㄗˇ}樹，那他就稱為 RL 型，應該先右旋再左旋"}},
+        {"RR", {"nA", "nC", "st_C_R", "如果更新點落在了 A 的右{子:ㄗˇ}的右{子:ㄗˇ}樹，那他就稱為 RR 型，應該左旋"}}
     };
 
     for (auto const& c : cases) {
         string type = c.first;
         string p1_id = c.second[0], p2_id = c.second[1], p3_id = c.second[2], desc = c.second[3];
 
-        // Frame 1: 在根節點
-        av.start_frame_draw();
-        draw_case_base();
-        av.frame_draw("new_node", Pos(p1_id, "bottom", 0, 20), vector<string>{"new"}, {{{"background", "AV_orange"}, {0}}});
-        av.text("假設新節點進入 A 的{子:ㄗˇ}樹", Pos(p1_id, "top", 0, -20));
-        av.auto_camera(0.8);
-        av.end_frame_draw();
-
-        // Frame 2: 走到中間
-        av.start_frame_draw();
-        draw_case_base();
-        av.frame_draw("new_node", Pos(p2_id, "bottom", 0, 20), vector<string>{"new"}, {{{"background", "AV_orange"}, {0}}});
-        string side = (p2_id == "nB" ? "左" : "右");
-        av.text("接{著:ㄓㄜ˙}往" + side + "走進入 A 的" + side + "{子:ㄗˇ}樹", Pos(p2_id, "top", 0, -20));
-        av.auto_camera(0.8);
-        av.end_frame_draw();
-
-        // Frame 3: 進入子樹並亮起
+        // 進入子樹並亮起
         av.start_frame_draw();
         draw_case_base(type);
-        int p3_offset = (p3_id.back() == 'L' ? -50 : 50);
-        av.frame_draw("new_node", Pos(p3_id, "bottom", 0, 20), vector<string>{"new"}, {{{"background", "AV_orange"}, {0}}});
         av.colored_text({{desc}}, Pos(p3_id, "top", 0, -20));
         av.auto_camera(0.8);
         av.end_frame_draw();
@@ -1085,30 +1066,21 @@ int main() {
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
     draw_demo_node("n20", "20", Pos(400, 300));
-    draw_demo_node("n10", "10", Pos(300, 450));
     av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"},{"width","2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 200, 80, {{"text", "H-1"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -70, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R2", Pos("n20", "bottom", 70, 60), 350, 80, {{"text", "H"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 70, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
-
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
+    av.draw_word("bf=[0~1]", Pos("n20", "right", 10, 0));
     av.colored_text({
-        {"接{著:ㄓㄜ˙}是如何翻轉的部分，以下假設所有子樹高度都是一樣的"}
+        {"接{著:ㄓㄜ˙}是如何翻轉的部分，子樹高度不同的地方代表有多種可能"}
     }, Pos("n30", "top", 0, -20));
     av.auto_camera(0.8);
     av.end_frame_draw();
@@ -1118,163 +1090,57 @@ int main() {
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
     draw_demo_node("n20", "20", Pos(400, 300));
-    draw_demo_node("n10", "10", Pos(300, 450));
     av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"},{"width","2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"},{"width","2"}});
     
     // 為空缺處補上三角形子樹並加上箭頭
     // 箭頭終點直接定位到三角形頂點
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 200, 80, {{"text", "H-1"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -70, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+    av.draw_triangle("st_n20_R2", Pos("n20", "bottom", 70, 60), 350, 80, {{"text", "H"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 70, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
-
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
+    av.draw_word("bf=[0~1]", Pos("n20", "right", 10, 0));
     av.colored_text({
         {"LL 型 (Left-Left Case)\n", "", "", "20"},
         {"當此輪操作的節點位於失衡節點的 左{子:ㄗˇ}的左{子:ㄗˇ}樹時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
         {"。\n"},
-        {"右旋就是把左{子:ㄗˇ}提上來，自己變成右{子:ㄗˇ}。\n\n"},
-        {"右旋過程：\n"},
-        {"{1. 先把左子的右子變成父節點\n"},
-        {"2. 再把左子的右子樹轉交給父節點的左子\n"},
-        {"這樣就是一個完整的右旋操作。}"}
+        {"{右旋就是把左子提上來，自己變成右子。}"}
     }, Pos("n30", "top", 0, -20)); 
     av.auto_camera(0.85);
     av.end_frame_draw();
 
-    // Frame 2: Lifting
-    av.start_frame_draw();
-    draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(400, 300));
-    draw_demo_node("n10", "10", Pos(300, 450));
-    av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
-
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
-    av.colored_text({
-        {"{LL 型 (Left-Left Case)\n", "", "", "20"},
-        {"當此輪操作的節點位於失衡節點的 左子的左子樹時。\n\n"},
-        {"平衡方式：\n對失衡節點做一次 "},
-        {"右旋", "AV_blue"}, 
-        {"。\n"},
-        {"右旋就是把左子提上來，自己變成右子。\n\n"},
-        {"右旋過程：}\n"},
-        {"1. 先把左{子:ㄗˇ}的右{子:ㄗˇ}變成父節點\n"},
-        {"{2. 再把左子的右子樹轉交給父節點的左子\n"},
-        {"這樣就是一個完整的右旋操作。}"}
-    }, Pos("n30", "top", 0, -20)); 
-    av.auto_camera(0.85); 
-    av.end_frame_draw();
-
-    av.start_frame_draw();
-    draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(400, 300));
-    draw_demo_node("n10", "10", Pos(300, 450));
-    av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
-
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
-    av.colored_text({
-        {"{LL 型 (Left-Left Case)\n", "", "", "20"},
-        {"當此輪操作的節點位於失衡節點的 左子的左子樹時。\n\n"},
-        {"平衡方式：\n對失衡節點做一次 "},
-        {"右旋", "AV_blue"}, 
-        {"。\n"},
-        {"右旋就是把左子提上來，自己變成右子。\n\n"},
-        {"右旋過程：\n"},
-        {"1. 先把左子的右子變成父節點}\n"},
-        {"2. 再把左{子:ㄗˇ}的右{子:ㄗˇ}樹轉交給父節點的左{子:ㄗˇ}\n"},
-        {"{這樣就是一個完整的右旋操作。}"}
-    }, Pos("n30", "top", 0, -20)); 
-    av.auto_camera(0.85); 
-    av.end_frame_draw();
-
-    // Frame 3: Balanced
+    // Frame 2: Balanced
     av.start_frame_draw();
     draw_demo_node("n20", "20", Pos(500, 150));
-    draw_demo_node("n10", "10", Pos(400, 300));
     draw_demo_node("n30", "30", Pos(600, 300));
     av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
 
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 70, 60), 200, 80, {{"text", "H-1"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -100, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
+
+    av.draw_triangle("st_n20_R2", Pos("n30", "bottom", -70, 60), 350, 80, {{"text", "H"}});
+    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -70, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n10_R", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_R", "bottom", 0, 10));
+    av.draw_word("bf=[0~1]", Pos("n30", "right", 10, 0));
+    av.draw_word("bf=[-1~0]", Pos("n20", "right", 10, 0));
     av.colored_text({
         {"{LL 型 (Left-Left Case)\n", "", "", "20"},
         {"當此輪操作的節點位於失衡節點的 左子的左子樹時。\n\n"},
         {"平衡方式：\n對失衡節點做一次 "},
         {"右旋", "AV_blue"}, 
-        {"。\n"},
-        {"右旋就是把左子提上來，自己變成右子。\n\n"},
-        {"右旋過程：\n"},
-        {"1. 先把左子的右子變成父節點\n"},
-        {"2. 再把左子的右子樹轉交給父節點的左子\n}"},
-        {"這樣就是一個完整的右旋操作。"}
+        {"。}\n"},
+        {"右旋就是把左子提上來，自己變成右子。"},
     }, Pos("n20", "top", 0, -20)); 
     av.auto_camera(0.85); 
     av.sleep(); 
@@ -1290,71 +1156,28 @@ int main() {
     av.arrow(Pos("n30", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n10", "bottom"), Pos("n20", "top"), {{"color", "black"}, {"width", "2"}});
 
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 350, 80, {{"text", "H"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -100, 60), 350, 80, {{"text", "H"}});
     av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.draw_triangle("st_n20_L2", Pos("n20", "bottom", -50, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.draw_triangle("st_n20_R2", Pos("n20", "bottom", 50, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
 
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
     av.draw_word("bf=-1", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    av.draw_word("bf=[-1~1]", Pos("n20", "right", 10, 0));
     
     av.colored_text({
         {"LR 型 (Left-Right Case)\n", "", "", "20"},
         {"當此輪操作的節點位於失衡節點的 左{子:ㄗˇ}的右{子:ㄗˇ}樹時。\n\n"},
         {"平衡方式：\n"},
-        {"{第一步：對左子做一次 "},
-        {"左旋","AV_green"},
-        {"，轉成 LL 型。\n"},
-        {"第二步：對失衡節點做一次 "},
-        {"右旋","AV_blue"},
-        {" ，轉成平衡狀態。}"}
-    }, Pos("n30", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 2: Lifting child
-    av.start_frame_draw();
-    draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n10", "10", Pos(300, 300));
-    draw_demo_node("n20", "20", Pos(400, 450));
-    av.arrow(Pos("n30", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "top"), Pos("n10", "bottom"), {{"color", "black"}, {"width", "2"}});
-
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n20_L", Pos("n20", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n20", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
-    
-    av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=-1", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
-
-    av.colored_text({
-        {"{LR 型 (Left-Right Case)\n", "", "", "20"},
-        {"當此輪操作的節點位於失衡節點的 左子的右子樹時。\n\n"},
-        {"平衡方式：}\n"},
-        {"第一步：對左子做一次 "},
+        {"第一步：對左{子:ㄗˇ}做一次 "},
         {"左旋","AV_green"},
         {"{，轉成 LL 型。\n"},
         {"第二步：對失衡節點做一次 "},
@@ -1364,7 +1187,7 @@ int main() {
     av.auto_camera(0.85);
     av.end_frame_draw();
 
-    // Frame 3: LL State
+    // Frame 2: LL State
     av.start_frame_draw();
     draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
     draw_demo_node("n20", "20", Pos(400, 300));
@@ -1372,24 +1195,22 @@ int main() {
     av.arrow(Pos("n30", "bottom"), Pos("n20", "top"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
 
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 350, 80, {{"text", "H"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 350, 80, {{"text", "H"}});
     av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.draw_triangle("st_n20_L2", Pos("n10", "bottom", 50, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n10", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.draw_triangle("st_n20_R2", Pos("n20", "bottom", 100, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
     
     av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
+    av.draw_word("bf=[0~1]", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=[1~2]", Pos("n20", "right", 10, 0));
 
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
@@ -1398,47 +1219,6 @@ int main() {
         {"第一步：對左子做一次 "},
         {"左旋}","AV_green"},
         {"，轉成 LL 型。\n"},
-        {"{第二步：對失衡節點做一次 "},
-        {"右旋","AV_blue"},
-        {" ，轉成平衡狀態。}"}
-    }, Pos("n30", "top", 0, -20));
-    av.auto_camera(0.85);
-    av.end_frame_draw();
-
-    // Frame 4: Lifting root
-    av.start_frame_draw();
-    draw_demo_node("n30", "30", Pos(500, 150), "AV_node_red");
-    draw_demo_node("n20", "20", Pos(400, 300));
-    draw_demo_node("n10", "10", Pos(300, 450));
-    av.arrow(Pos("n20", "top"), Pos("n30", "bottom"), {{"color", "black"}, {"width", "2"}});
-    av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
-
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
-
-    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n10", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n20", "bottom", 100, 60), 100, 80, {{"text", "子樹"}});
-    av.arrow(Pos("n20", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
-    
-    av.draw_word("bf=2", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
-    av.draw_word("bf=1", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
-
-    av.colored_text({
-        {"{LR 型 (Left-Right Case)\n", "", "", "20"},
-        {"當此輪操作的節點位於失衡節點的 左子的右子樹時。\n\n"},
-        {"平衡方式：\n"},
-        {"第一步：對左子做一次 "},
-        {"左旋","AV_green"},
-        {"，轉成 LL 型。}\n"},
         {"第二步：對失衡節點做一次 "},
         {"右旋","AV_blue"},
         {"{ ，轉成平衡狀態。}"}
@@ -1446,7 +1226,7 @@ int main() {
     av.auto_camera(0.85);
     av.end_frame_draw();
 
-    // Frame 5: Final Balanced
+    // Frame 3: Final Balanced
     av.start_frame_draw();
     draw_demo_node("n20", "20", Pos(500, 150));
     draw_demo_node("n10", "10", Pos(400, 300));
@@ -1454,24 +1234,22 @@ int main() {
     av.arrow(Pos("n20", "bottom"), Pos("n30", "top"), {{"color", "black"}, {"width", "2"}});
     av.arrow(Pos("n20", "bottom"), Pos("n10", "top"), {{"color", "black"}, {"width", "2"}});
 
-    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n30_R", Pos("n30", "bottom", 50, 60), 350, 80, {{"text", "H"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n30_R", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n10_L", Pos("n10", "bottom", -50, 60), 350, 80, {{"text", "H"}});
     av.arrow(Pos("n10", "bottom"), Pos("st_n10_L", "top"), {{"color", "black"},{"width","2"}});
 
-    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_L", Pos("n10", "bottom", 50, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.draw_triangle("st_n20_L2", Pos("n10", "bottom", 50, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n10", "bottom"), Pos("st_n20_L", "top"), {{"color", "black"},{"width","2"}});
-    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 100, 80, {{"text", "子樹"}});
+    av.draw_triangle("st_n20_R", Pos("n30", "bottom", -50, 60), 350, 80, {{"text", "H"}, {"color", "AV_orange"}});
+    av.draw_triangle("st_n20_R2", Pos("n30", "bottom", -50, 60), 200, 80, {{"text", "H-1"}, {"color", "rgba(165, 214, 167, 1)"}});
     av.arrow(Pos("n30", "bottom"), Pos("st_n20_R", "top"), {{"color", "black"},{"width","2"}});
     
-    av.draw_word("bf=0", Pos("n30", "right", 10, 0));
-    av.draw_word("bf=0", Pos("n10", "right", 10, 0));
+    av.draw_word("bf=[-1~0]", Pos("n30", "right", 10, 0));
+    av.draw_word("bf=[0~1]", Pos("n10", "right", 10, 0));
     av.draw_word("bf=0", Pos("n20", "right", 10, 0));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n30_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_L", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n20_R", "bottom", 0, 10));
-    av.draw_word("bf=[-1 ~ 1]", Pos("st_n10_L", "bottom", 0, 10));
 
     av.colored_text({
         {"{LR 型 (Left-Right Case)\n", "", "", "20"},
