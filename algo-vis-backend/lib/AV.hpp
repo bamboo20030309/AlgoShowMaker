@@ -122,6 +122,14 @@ public:
     #define draw_queue(groupID, pos, q, ...) frame_draw_impl(__LINE__, groupID, pos, AV::to_vector(q), __VA_ARGS__, "queue")
     #define camera(...)           camera_impl(__VA_ARGS__)
     #define auto_camera(...)      auto_camera_impl(__VA_ARGS__)
+
+    #define text(...)             text_impl(__LINE__, __VA_ARGS__)
+    #define key_text(...)         key_text_impl(__LINE__, __VA_ARGS__)
+    #define colored_text(...)     colored_text_impl(__LINE__, __VA_ARGS__)
+    #define key_colored_text(...) key_colored_text_impl(__LINE__, __VA_ARGS__)
+    #define arrow(...)            arrow_impl(__LINE__, __VA_ARGS__)
+    #define key_arrow(...)        key_arrow_impl(__LINE__, __VA_ARGS__)
+
     // accu_store 已包含 __LINE__，當作指令儲存時自動記錄呼叫位置的行號
     #define accu_store(...)        accu_store_impl(__LINE__, __VA_ARGS__)
     #define accu_store_colored(...)  accu_store_colored_impl(__LINE__, __VA_ARGS__)
@@ -356,89 +364,87 @@ public:
         _content += "            case " + to_string(_frameCount) + ":\n";
     }
 
-    void text(
+    void text_impl(
+        const int code_line,
         const string text,
         const Pos pos
     ) {
         _content += "                if (track === 0) {\n";
-        _content += "                    ";
-        _content += 
-            "drawText(\"" + 
-            escapeJS(text) + "\"" + ", " +
-            pos.toJson() + ");\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    drawText(\"" + escapeJS(text) + "\", " + pos.toJson() + ", " + to_string(code_line) + ");\n";
         _content += "                }\n";
     }
 
-    void key_text(
+    void key_text_impl(
+        const int code_line,
         const string text,
         const Pos pos
     ) {
         _content += "                if (track === 1) {\n";
-        _content += "                    ";
-        _content += 
-            "drawText(\"" + 
-            escapeJS(text) + "\"" + ", " +
-            pos.toJson() + ");\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    drawText(\"" + escapeJS(text) + "\", " + pos.toJson() + ", " + to_string(code_line) + ");\n";
         _content += "                }\n";
     }
 
-    void colored_text(
+    void colored_text_impl(
+        const int code_line,
         const vector<vector<string>> text,
         const Pos pos
     ) {
         _content += "                if (track === 0) {\n";
-        _content += "                    ";
-        _content += 
-            "drawColoredText(" + 
-            VVS_to_string(text) + ", " +
-            pos.toJson() + ");\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    " + _gen_colored_text(text, pos, code_line) + "\n";
         _content += "                }\n";
     }
 
-    void key_colored_text(
+    void key_colored_text_impl(
+        const int code_line,
         const vector<vector<string>> text,
         const Pos pos
     ) {
         _content += "                if (track === 1) {\n";
-        _content += "                    ";
-        _content += 
-            "drawColoredText(" + 
-            VVS_to_string(text) + ", " +
-            pos.toJson() + ");\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    " + _gen_colored_text(text, pos, code_line) + "\n";
         _content += "                }\n";
     }
 
-    void arrow(
-        const Pos startSpecJS,   // 例如 R"({ group: "BIT", index: 1 })"
-        const Pos endSpecJS,     // 例如 R"({ group: "heap", index: 4 })"
+    void arrow_impl(
+        const int code_line,
+        const Pos startSpecJS,
+        const Pos endSpecJS,
         const vector<pair<string,string>>& style = {},
         const string manual_id = ""
     ) {
-        _content += "                    " + _gen_arrow(startSpecJS, endSpecJS, style, manual_id) + "\n";
+        _content += "                if (track === 0) {\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    " + _gen_arrow(startSpecJS, endSpecJS, style, manual_id, code_line) + "\n";
+        _content += "                }\n";
     }
     
     void draw_word_impl(const int code_line, const string text, const Pos pos) {
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    drawWord(\"" + escapeJS(text) + "\", " + pos.toJson() + ");\n";
+        _content += "                    drawWord(\"" + escapeJS(text) + "\", " + pos.toJson() + ", " + to_string(code_line) + ");\n";
         _content += "                }\n";
     }
 
     void key_draw_word_impl(const int code_line, const string text, const Pos pos) {
         _content += "                if (track === 1) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    drawWord(\"" + escapeJS(text) + "\", " + pos.toJson() + ");\n";
+        _content += "                    drawWord(\"" + escapeJS(text) + "\", " + pos.toJson() + ", " + to_string(code_line) + ");\n";
         _content += "                }\n";
     }
 
-    void key_arrow(
-        const Pos startSpecJS,   // 例如 R"({ group: "BIT", index: 1 })"
-        const Pos endSpecJS,     // 例如 R"({ group: "heap", index: 4 })"
+    void key_arrow_impl(
+        const int code_line,
+        const Pos startSpecJS,
+        const Pos endSpecJS,
         const vector<pair<string,string>>& style = {},
         const string manual_id = ""
     ) {
         _content += "                if (track === 1) {\n";
-        _content += "                    " + _gen_arrow(startSpecJS, endSpecJS, style, manual_id) + "\n";
+        _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
+        _content += "                    " + _gen_arrow(startSpecJS, endSpecJS, style, manual_id, code_line) + "\n";
         _content += "                }\n";
     }
 
@@ -450,11 +456,7 @@ public:
         Pos pos=Pos(0,0);
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "draw2DArray(\'array2D\', " + 
-            pos.toJson() + "," + 
-            array2D_to_string(matrix) + ");\n";
+        _content += "                    " + _gen_draw2DArray("array2D", pos, matrix, {}, {}, "normal", 0, code_line) + "\n";
         _content += "                }\n";
     }
 
@@ -471,16 +473,7 @@ public:
     ) {
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "draw2DArray(\'" + 
-            groupID + "\', " + 
-            pos.toJson() + ", " + 
-            array2D_to_string(matrix) + ",  " + 
-            array2Dstyle_to_object(style) + ", " + 
-            array2D_to_string(range) + ",  " + 
-            "\"" + draw_type + "\", " + 
-            to_string(index) + ");\n";
+        _content += "                    " + _gen_draw2DArray(groupID, pos, matrix, style, range, draw_type, index, code_line) + "\n";
         _content += "                }\n";
     }
 
@@ -492,11 +485,7 @@ public:
         Pos pos=Pos(0,0);
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "drawArray(\'array\', " + 
-            pos.toJson() + ", " + 
-            array_to_string(num) + ");\n";
+        _content += "                    " + _gen_drawArray("array", pos, num, {}, {0}, "normal", 0, 1, 0, {}, {}, {}, {}, {}, code_line) + "\n";
         _content += "                }\n";
     }
 
@@ -534,23 +523,7 @@ public:
     ) {
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "drawArray(\'" + 
-            groupID + "\', " + 
-            pos.toJson() + ", " + 
-            array_to_string(num) + ",  " + 
-            arraystyle_to_object(style) + ", " + 
-            array_to_string(range) + ", " + 
-            "\"" + draw_type + "\", " + 
-            to_string(itemsPerRow) + ", " +
-            to_string(index) + ", " +
-            to_string(gap) + ", " +
-            array_to_string(segment_lazy) + ",  " + 
-            array_to_string(segment_sets) + ",  " + 
-            array_to_string(segment_index) + ",  " + 
-            array_to_string(segment_left) + ",  " + 
-            array_to_string(segment_right) + ");\n";
+        _content += "                    " + _gen_drawArray(groupID, pos, num, style, range, draw_type, itemsPerRow, index, gap, segment_lazy, segment_sets, segment_index, segment_left, segment_right, code_line) + "\n";
         _content += "                }\n";
     }
 
@@ -562,11 +535,7 @@ public:
         Pos pos=Pos(0,0);
         _content += "                if (track === 1) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "draw2DArray(\'array2D\', " + 
-            pos.toJson() + ", " +
-            array2D_to_string(matrix) + ");\n";
+        _content += "                    " + _gen_draw2DArray("array2D", pos, matrix, {}, {}, "normal", 0, code_line) + "\n";
         _content += "                }\n";
     }
 
@@ -583,16 +552,7 @@ public:
     ) {
         _content += "                if (track === 1) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "draw2DArray(\'" + 
-            groupID + "\', " + 
-            pos.toJson() + ", " +
-            array2D_to_string(matrix) + ",  " + 
-            array2Dstyle_to_object(style) + ", " + 
-            array2D_to_string(range) + ",  " +
-            "\"" + draw_type + "\", " + 
-            to_string(index) + ");\n";
+        _content += "                    " + _gen_draw2DArray(groupID, pos, matrix, style, range, draw_type, index, code_line) + "\n";
         _content += "                }\n";
         _keyFrames.push_back(_frameCount);
     }
@@ -605,11 +565,7 @@ public:
         Pos pos=Pos(0,0);
         _content += "                if (track === 1) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "drawArray(\'array\', " + 
-            pos.toJson() + ", " +
-            array_to_string(num) + ");\n";
+        _content += "                    " + _gen_drawArray("array", pos, num, {}, {0}, "normal", 0, 1, 0, {}, {}, {}, {}, {}, code_line) + "\n";
         _content += "                }\n";
         _keyFrames.push_back(_frameCount);
     }
@@ -634,23 +590,7 @@ public:
     ) {
         _content += "                if (track === 1) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "drawArray(\'" + 
-            groupID + "\', " + 
-            pos.toJson() + ", " + 
-            array_to_string(num) + ",  " + 
-            arraystyle_to_object(style) + ", " + 
-            array_to_string(range) + ", " + 
-            "\"" + draw_type + "\", " + 
-            to_string(itemsPerRow) + ", " +
-            to_string(index) + ", " +
-            to_string(gap) + ", " +
-            array_to_string(segment_lazy) + ",  " + 
-            array_to_string(segment_sets) + ",  " + 
-            array_to_string(segment_index) + ",  " + 
-            array_to_string(segment_left) + ",  " + 
-            array_to_string(segment_right) + ");\n";
+        _content += "                    " + _gen_drawArray(groupID, pos, num, style, range, draw_type, itemsPerRow, index, gap, segment_lazy, segment_sets, segment_index, segment_left, segment_right, code_line) + "\n";
         _content += "                }\n";
         _keyFrames.push_back(_frameCount);
     }
@@ -669,11 +609,7 @@ public:
         _content += "            case " + to_string(_frameCount++) + ":\n";
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "draw2DArray(\'array2D\', " + 
-            pos.toJson() + ", " +
-            array2D_to_string(matrix) + ");\n";
+        _content += "                    " + _gen_draw2DArray("array2D", pos, matrix, {}, {}, "normal", 0, code_line) + "\n";
         _content += "                }\n";
         _content += "                break;\n";
     }
@@ -692,16 +628,7 @@ public:
         _content += "            case " + to_string(_frameCount++) + ":\n";
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "draw2DArray(\'" + 
-            groupID + "\', " + 
-            pos.toJson() + ", " +
-            array2D_to_string(matrix) + ",  " + 
-            array2Dstyle_to_object(style) + ", " +
-            array2D_to_string(range) + ",  " + 
-            "\"" + draw_type + "\", " +  
-            to_string(index) + ");\n";
+        _content += "                    " + _gen_draw2DArray(groupID, pos, matrix, style, range, draw_type, index, code_line) + "\n";
         _content += "                }\n";
         _content += "                break;\n";
     }
@@ -715,11 +642,7 @@ public:
         _content += "            case " + to_string(_frameCount++) + ":\n";
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "drawArray(\'array\', " + 
-            pos.toJson() + ", " +
-            array_to_string(num) + ");\n";
+        _content += "                    " + _gen_drawArray("array", pos, num, {}, {0}, "normal", 0, 1, 0, {}, {}, {}, {}, {}, code_line) + "\n";
         _content += "                }\n";
         _content += "                break;\n";
     }
@@ -756,22 +679,7 @@ public:
         _content += "            case " + to_string(_frameCount++) + ":\n";
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    ";
-        _content += 
-            "drawArray(\'" + 
-            groupID + "\', " + 
-            pos.toJson() + ", " +
-            array_to_string(num) + ",  " + 
-            arraystyle_to_object(style) + ", " + 
-            array_to_string(range) + ", " + 
-            "\"" + draw_type + "\", " + 
-            to_string(itemsPerRow) + ", " +
-            to_string(index) + ", " +
-            array_to_string(segment_lazy) + ",  " + 
-            array_to_string(segment_sets) + ",  " + 
-            array_to_string(segment_index) + ",  " + 
-            array_to_string(segment_left) + ",  " + 
-            array_to_string(segment_right) + ");\n";
+        _content += "                    " + _gen_drawArray(groupID, pos, num, style, range, draw_type, itemsPerRow, index, 0, segment_lazy, segment_sets, segment_index, segment_left, segment_right, code_line) + "\n";
         _content += "                }\n";
         _content += "                break;\n";
     }
@@ -1031,36 +939,36 @@ private:
     // code_line = -1 代表不高亮任何行（例如笔辟 / 筮頭 / 不需要高亮的元素）
     vector<pair<int,string>> _accu_history;
 
-    string _gen_text(const string& t, const Pos& p) {
-        return "drawText(\"" + escapeJS(t) + "\", " + p.toJson() + ");";
+    string _gen_text(const string& t, const Pos& p, int code_line = -1) {
+        return "drawText(\"" + escapeJS(t) + "\", " + p.toJson() + ", " + to_string(code_line) + ");";
     }
-    string _gen_word(const string& t, const Pos& p) {
-        return "drawWord(\"" + escapeJS(t) + "\", " + p.toJson() + ");";
+    string _gen_word(const string& t, const Pos& p, int code_line = -1) {
+        return "drawWord(\"" + escapeJS(t) + "\", " + p.toJson() + ", " + to_string(code_line) + ");";
     }
-    string _gen_colored_text(const vector<vector<string>>& v, const Pos& p) {
-        return "drawColoredText(" + VVS_to_string(v) + ", " + p.toJson() + ");";
+    string _gen_colored_text(const vector<vector<string>>& v, const Pos& p, int code_line = -1) {
+        return "drawColoredText(" + VVS_to_string(v) + ", " + p.toJson() + ", " + to_string(code_line) + ");";
     }
-    string _gen_arrow(const Pos& s, const Pos& e, const vector<pair<string,string>>& st, const string& manual_id = "") {
+    string _gen_arrow(const Pos& s, const Pos& e, const vector<pair<string,string>>& st, const string& manual_id = "", int code_line = -1) {
         string opt = pair_string_to_object(st);
         if (!manual_id.empty()) {
             if (!opt.empty()) opt += " ,";
             opt += "key: \"" + escapeJS(manual_id) + "\"";
         }
-        return "drawArrow(" + s.toJson() + ", " + e.toJson() + ", { " + opt + " });";
+        return "drawArrow(" + s.toJson() + ", " + e.toJson() + ", { " + opt + " }, " + to_string(code_line) + ");";
     }
     template<typename T>
-    string _gen_draw2DArray(const string& g, const Pos& p, const vector<vector<T>>& m, const vector<array2D_style>& s, const vector<vector<int>>& r, const string& t, int i) {
-        return "draw2DArray(\'" + g + "\', " + p.toJson() + ", " + array2D_to_string(m) + ", " + array2Dstyle_to_object(s) + ", " + array2D_to_string(r) + ", \"" + t + "\", " + to_string(i) + ");";
+    string _gen_draw2DArray(const string& g, const Pos& p, const vector<vector<T>>& m, const vector<array2D_style>& s, const vector<vector<int>>& r, const string& t, int i, int code_line = -1) {
+        return "draw2DArray(\'" + g + "\', " + p.toJson() + ", " + array2D_to_string(m) + ", " + array2Dstyle_to_object(s) + ", " + array2D_to_string(r) + ", \"" + t + "\", " + to_string(i) + ", " + to_string(code_line) + ");";
     }
-    string _gen_drawCircle(const string& id, const Pos& p, const string& v, const vector<pair<string,string>>& s) {
-        return "drawCircle(\'" + id + "\', " + p.toJson() + ", \"" + escapeJS(v) + "\", " + styles_to_json_array(s) + ");";
+    string _gen_drawCircle(const string& id, const Pos& p, const string& v, const vector<pair<string,string>>& s, int code_line = -1) {
+        return "drawCircle(\'" + id + "\', " + p.toJson() + ", \"" + escapeJS(v) + "\", " + styles_to_json_array(s) + ", " + to_string(code_line) + ");";
     }
-    string _gen_drawTriangle(const string& id, const Pos& pos, double h, double w, const vector<pair<string,string>>& style = {}) {
-        return "drawTriangle(\'" + id + "\', " + pos.toJson() + ", " + to_string(h) + ", " + to_string(w) + ", " + styles_to_json_array(style) + ");";
+    string _gen_drawTriangle(const string& id, const Pos& pos, double h, double w, const vector<pair<string,string>>& style = {}, int code_line = -1) {
+        return "drawTriangle(\'" + id + "\', " + pos.toJson() + ", " + to_string(h) + ", " + to_string(w) + ", " + styles_to_json_array(style) + ", " + to_string(code_line) + ");";
     }
     template<typename T>
-    string _gen_drawArray(const string& g, const Pos& p, const vector<T>& n, const vector<array_style>& s, const vector<int>& r, const string& t, int pr, int i, const vector<int>& sl, const vector<int>& ss, const vector<int>& si, const vector<int>& sf, const vector<int>& srg) {
-        return "drawArray(\'" + g + "\', " + p.toJson() + ", " + array_to_string(n) + ", " + arraystyle_to_object(s) + ", " + array_to_string(r) + ", \"" + t + "\", " + to_string(pr) + ", " + to_string(i) + ", " + array_to_string(sl) + ", " + array_to_string(ss) + ", " + array_to_string(si) + ", " + array_to_string(sf) + ", " + array_to_string(srg) + ");";
+    string _gen_drawArray(const string& g, const Pos& p, const vector<T>& n, const vector<array_style>& s, const vector<int>& r, const string& t, int pr, int i, int gap, const vector<int>& sl, const vector<int>& ss, const vector<int>& si, const vector<int>& sf, const vector<int>& srg, int code_line = -1) {
+        return "drawArray(\'" + g + "\', " + p.toJson() + ", " + array_to_string(n) + ", " + arraystyle_to_object(s) + ", " + array_to_string(r) + ", \"" + t + "\", " + to_string(pr) + ", " + to_string(i) + ", " + to_string(gap) + ", " + array_to_string(sl) + ", " + array_to_string(ss) + ", " + array_to_string(si) + ", " + array_to_string(sf) + ", " + array_to_string(srg) + ", " + to_string(code_line) + ");";
     }
 
 public:
@@ -1083,32 +991,32 @@ public:
 
     // ─── accu_store_impl 族：实際儲入用（透過巨集帶入 __LINE__） ───
     void accu_store_impl(const int code_line, const string t, const Pos p) {
-        _accu_history.push_back({code_line, _gen_text(t, p)});
+        _accu_history.push_back({code_line, _gen_text(t, p, code_line)});
     }
     void accu_store_word_impl(const int code_line, const string t, const Pos p) {
-        _accu_history.push_back({code_line, _gen_word(t, p)});
+        _accu_history.push_back({code_line, _gen_word(t, p, code_line)});
     }
     void accu_store_colored_impl(const int code_line, const vector<vector<string>> v, const Pos p) {
-        _accu_history.push_back({code_line, _gen_colored_text(v, p)});
+        _accu_history.push_back({code_line, _gen_colored_text(v, p, code_line)});
     }
     void accu_store_arrow_impl(const int code_line, const Pos s, const Pos e, const vector<pair<string,string>>& st = {}, const string& manual_id = "") {
-        _accu_history.push_back({code_line, _gen_arrow(s, e, st, manual_id)});
+        _accu_history.push_back({code_line, _gen_arrow(s, e, st, manual_id, code_line)});
     }
 
     template<typename T>
-    void accu_store_impl(const int code_line, const string groupID, const Pos pos, const vector<T>& num = {}, const vector<array_style>& style = {}, const vector<int>& range = {0}, const string draw_type = "normal", const int itemsPerRow = 0, const int index = 0, const vector<int>& sl = {}, const vector<int>& ss = {}, const vector<int>& si = {}, const vector<int>& sf = {}, const vector<int>& srg = {}) {
-        _accu_history.push_back({code_line, _gen_drawArray(groupID, pos, num, style, range, draw_type, itemsPerRow, index, sl, ss, si, sf, srg)});
+    void accu_store_impl(const int code_line, const string groupID, const Pos pos, const vector<T>& num = {}, const vector<array_style>& style = {}, const vector<int>& range = {0}, const string draw_type = "normal", const int itemsPerRow = 0, const int index = 0, const int gap = 0, const vector<int>& sl = {}, const vector<int>& ss = {}, const vector<int>& si = {}, const vector<int>& sf = {}, const vector<int>& srg = {}) {
+        _accu_history.push_back({code_line, _gen_drawArray(groupID, pos, num, style, range, draw_type, itemsPerRow, index, gap, sl, ss, si, sf, srg, code_line)});
     }
 
     template<typename T>
     void accu_store_2D_impl(const int code_line, const string groupID, const Pos pos, const vector<vector<T>>& matrix = {}, const vector<array2D_style>& style = {}, const vector<vector<int>>& range = {}, const string draw_type = "normal", const int index = 0) {
-        _accu_history.push_back({code_line, _gen_draw2DArray(groupID, pos, matrix, style, range, draw_type, index)});
+        _accu_history.push_back({code_line, _gen_draw2DArray(groupID, pos, matrix, style, range, draw_type, index, code_line)});
     }
 
     template<typename T>
     void accu_store_circle_impl(const int code_line, const string id, const Pos pos, const T value, const vector<pair<string,string>>& style = {}) {
         ostringstream oss; oss << value;
-        _accu_history.push_back({code_line, _gen_drawCircle(id, pos, oss.str(), style)});
+        _accu_history.push_back({code_line, _gen_drawCircle(id, pos, oss.str(), style, code_line)});
     }
 
     // ─── draw_circle 族 ───
@@ -1117,7 +1025,7 @@ public:
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
         ostringstream oss; oss << value;
-        _content += "                    " + _gen_drawCircle(id, pos, oss.str(), style) + "\n";
+        _content += "                    " + _gen_drawCircle(id, pos, oss.str(), style, code_line) + "\n";
         _content += "                }\n";
     }
     template<typename T>
@@ -1125,7 +1033,7 @@ public:
         _content += "                if (track === 1) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
         ostringstream oss; oss << value;
-        _content += "                    " + _gen_drawCircle(id, pos, oss.str(), style) + "\n";
+        _content += "                    " + _gen_drawCircle(id, pos, oss.str(), style, code_line) + "\n";
         _content += "                }\n";
     }
 
@@ -1134,20 +1042,20 @@ public:
         string tid = id.empty() ? ("triangle_" + to_string(code_line)) : id;
         _content += "                if (track === 0) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    " + _gen_drawTriangle(tid, pos, h, w, style) + "\n";
+        _content += "                    " + _gen_drawTriangle(tid, pos, h, w, style, code_line) + "\n";
         _content += "                }\n";
     }
     void key_draw_triangle_impl(const int code_line, const string& id, const Pos& pos, double h, double w, const vector<pair<string,string>>& style = {}) {
         string tid = id.empty() ? ("triangle_" + to_string(code_line)) : id;
         _content += "                if (track === 1) {\n";
         _content += "                    addEditorHighlight(" + to_string(code_line) + ");\n";
-        _content += "                    " + _gen_drawTriangle(tid, pos, h, w, style) + "\n";
+        _content += "                    " + _gen_drawTriangle(tid, pos, h, w, style, code_line) + "\n";
         _content += "                }\n";
     }
 
     void accu_store_triangle_impl(const int code_line, const string& id, const Pos& pos, double h, double w, const vector<pair<string,string>>& style = {}) {
         string tid = id.empty() ? ("triangle_accu_" + to_string(code_line) + "_" + to_string(_accu_history.size())) : id;
-        _accu_history.push_back({code_line, _gen_drawTriangle(tid, pos, h, w, style)});
+        _accu_history.push_back({code_line, _gen_drawTriangle(tid, pos, h, w, style, code_line)});
     }
 
     static string resolve_av_color(const string& color) {

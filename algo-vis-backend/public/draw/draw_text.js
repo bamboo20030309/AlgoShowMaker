@@ -143,6 +143,7 @@ function isFullWidth(char) {
   function drawText(
     content,
     pos,
+    codeLine = -1
   ) {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return;
@@ -375,7 +376,8 @@ function isFullWidth(char) {
    */
   function drawColoredText(
     segments,
-    pos
+    pos,
+    codeLine = -1
   ) {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return;

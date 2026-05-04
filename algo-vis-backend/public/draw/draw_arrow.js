@@ -350,7 +350,7 @@
   // opt.key 可自訂固定 key；不給會用 auto-序號
   // opt.tweenDuration 可自訂 tween ms（預設 300）
   // ---------------------------------------
-  function drawArrow(startSpec, endSpec, opt = {}) {
+  function drawArrow(startSpec, endSpec, opt = {}, codeLine = -1) {
     const vp = window.getViewport && window.getViewport();
     if (!vp || !window.resolvePos) return;
 

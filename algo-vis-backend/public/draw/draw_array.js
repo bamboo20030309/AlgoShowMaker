@@ -53,6 +53,7 @@
    * @param {Array}            segment_right        - 要畫區段格子的右點(絕對位置)
    * @param {Array}            segmemt_font_colors  - 要畫的格子的區段的字串顏色
    * @param {Array}            segmemt_bg_colors    - 要畫的格子的區段的字串背景顏色
+   * @param {number}           codeLine             - 原始 C++ 程式碼行號
    */
   function drawArray(
     groupID,
@@ -70,7 +71,8 @@
     segment_left  = [],
     segment_right = [],
     segmemt_font_colors = [],
-    segmemt_bg_colors = []
+    segmemt_bg_colors = [],
+    codeLine = -1
   ) {
 
     // 正規化 Array|number => Array [0, array.length)

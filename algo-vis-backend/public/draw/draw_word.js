@@ -27,7 +27,7 @@ function getTextWidthLocal(text, fontSize = 16, fontFace = 'system-ui, -apple-sy
      * @param {string} content - 文字內容
      * @param {object} posSpec - 位置規格 (Pos)
      */
-    window.drawWord = function (content, posSpec) {
+    window.drawWord = function (content, posSpec, codeLine = -1) {
         const vp = window.getViewport && window.getViewport();
         if (!vp) return;
 

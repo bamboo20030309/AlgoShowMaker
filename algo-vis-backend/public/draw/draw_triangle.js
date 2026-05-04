@@ -10,7 +10,7 @@
    * @param {number} width - 寬度
    * @param {object} style - 樣式物件
    */
-  function drawTriangle(id, pos, height, width, style = {}) {
+  function drawTriangle(id, pos, height, width, style = {}, codeLine = -1) {
     const vp = window.getViewport ? window.getViewport() : document.querySelector('#viewport');
     if (!vp) return;
 

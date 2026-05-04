@@ -9,7 +9,7 @@
    * @param {any}    value - 圓圈內顯示的內容
    * @param {vector} style - 樣式清單 [{type: "background", color: "#..."}, {type: "highlight"}]
    */
-  function drawCircle(id, pos, value, style = []) {
+  function drawCircle(id, pos, value, style = [], codeLine = -1) {
     const vp = window.getViewport ? window.getViewport() : document.querySelector('#viewport');
     if (!vp) return;
 

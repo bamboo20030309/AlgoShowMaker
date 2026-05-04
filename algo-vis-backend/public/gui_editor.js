@@ -29,11 +29,14 @@
   // Wrap drawArray
   const _origDA = window.drawArray;
   window.drawArray = function (groupID, pos, array, style, range, draw_type, itemsPerRow, index, gap) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
     if (_recording) {
       _frameRegistry[_recFrame].push({
         type: 'drawArray', groupID,
         args: Array.from(arguments),
-        codeLine: _recLine
+        codeLine: line
       });
     }
     if (_origDA) return _origDA.apply(this, arguments);
@@ -42,11 +45,14 @@
   // Wrap draw2DArray
   const _origD2A = window.draw2DArray;
   window.draw2DArray = function (groupID, pos, matrix, style, range, draw_type, index) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
     if (_recording) {
       _frameRegistry[_recFrame].push({
         type: 'draw2DArray', groupID,
         args: Array.from(arguments),
-        codeLine: _recLine
+        codeLine: line
       });
     }
     if (_origD2A) return _origD2A.apply(this, arguments);
@@ -55,11 +61,15 @@
   // Wrap drawArrow
   const _origAR = window.drawArrow;
   window.drawArrow = function (startSpec, endSpec, opt) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
+    const gid = (opt && (opt.key || opt.groupID)) ? (opt.key || opt.groupID) : null;
     if (_recording) {
       _frameRegistry[_recFrame].push({
-        type: 'drawArrow', groupID: null,
+        type: 'drawArrow', groupID: gid,
         args: Array.from(arguments),
-        codeLine: _recLine
+        codeLine: line
       });
     }
     return _origAR.apply(this, arguments);
@@ -68,11 +78,14 @@
   // Wrap drawText
   const _origDT = window.drawText;
   window.drawText = function (content, pos) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
     if (_recording) {
       _frameRegistry[_recFrame].push({
         type: 'drawText', groupID: null,
         args: Array.from(arguments),
-        codeLine: _recLine
+        codeLine: line
       });
     }
     return _origDT.apply(this, arguments);
@@ -81,11 +94,14 @@
   // Wrap drawColoredText
   const _origCT = window.drawColoredText;
   window.drawColoredText = function (segments, pos) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
     if (_recording) {
       _frameRegistry[_recFrame].push({
         type: 'drawColoredText', groupID: null,
         args: Array.from(arguments),
-        codeLine: _recLine
+        codeLine: line
       });
     }
     return _origCT.apply(this, arguments);
@@ -94,14 +110,49 @@
   // Wrap drawCircle
   const _origDC = window.drawCircle;
   window.drawCircle = function (id, pos, value, style) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
     if (_recording) {
       _frameRegistry[_recFrame].push({
         type: 'drawCircle', groupID: id,
         args: Array.from(arguments),
-        codeLine: _recLine
+        codeLine: line
       });
     }
     return _origDC.apply(this, arguments);
+  };
+
+  // Wrap drawWord
+  const _origDW = window.drawWord;
+  window.drawWord = function (content, pos) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
+    if (_recording) {
+      _frameRegistry[_recFrame].push({
+        type: 'drawWord', groupID: null,
+        args: Array.from(arguments),
+        codeLine: line
+      });
+    }
+    if (_origDW) return _origDW.apply(this, arguments);
+  };
+
+  // Wrap drawTriangle
+  const _origDTR = window.drawTriangle;
+  window.drawTriangle = function (id, pos, h, w, style) {
+    let line = _recLine;
+    const lastArg = arguments[arguments.length - 1];
+    if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
+    if (_recording) {
+      _frameRegistry[_recFrame].push({
+        type: 'drawTriangle', groupID: id,
+        args: Array.from(arguments),
+        codeLine: line
+      });
+    }
+    if (_origDTR) return _origDTR.apply(this, arguments);
   };
 
   // Hook into CodeScript rendering
@@ -163,6 +214,10 @@
     if (window.resetArrows) window.resetArrows();
     _recording = false;
 
+    // 嘗試找回目標物件 (因為 DOM node 被替換了)
+    const oldTargetId = _propTarget ? _propTarget.getAttribute('id') : null;
+    const oldArrowKey = _propTarget ? (_propTarget.getAttribute('data-arrow-key') || _propTarget.getAttribute('data-arrow-id')) : null;
+
     calls.forEach(c => {
       switch (c.type) {
         case 'drawArray': _origDA.apply(null, c.args); break;
@@ -175,6 +230,13 @@
     });
 
     if (window.sweepCanvas) window.sweepCanvas();
+
+    // 恢復目標物件引用
+    if (oldTargetId) {
+      _propTarget = document.getElementById(oldTargetId);
+    } else if (oldArrowKey) {
+      _propTarget = document.querySelector(`line[data-arrow-key="${oldArrowKey}"], line[id="${oldArrowKey}"], path[data-arrow-key="${oldArrowKey}"]`);
+    }
 
     // 重繪後 DOM 元素被替換，刷新選取狀態
     if (window._canvasInteraction && window._canvasInteraction.refreshSelection) {
@@ -247,13 +309,15 @@
 
     let html = `<div class="ctx-label">${type} — ${id}</div>`;
 
-    if (drawCall && drawCall.type === 'drawArray') {
+    if (drawCall && (drawCall.type === 'drawArray' || drawCall.type === 'draw2DArray')) {
       html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
       html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯格子樣式</div>`;
       html += `<div class="ctx-item" data-action="edit-layout"><span class="ctx-icon">📐</span>編輯繪製參數</div>`;
     } else if (drawCall && drawCall.type === 'drawCircle') {
       html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
       html += `<div class="ctx-item" data-action="edit-circle-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
+    } else if (drawCall && drawCall.type === 'drawArrow') {
+      html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
     } else {
       html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
     }
@@ -333,8 +397,11 @@
 
   function showPropPanel(section) {
     const panel = createPropPanel();
-    _propDrawCall = _ctxDrawCall;
-    _propTarget = _ctxTarget;
+    // 只有在明確從右鍵選單觸發時才更新 _propDrawCall
+    if (_ctxDrawCall) {
+      _propDrawCall = _ctxDrawCall;
+      _propTarget = _ctxTarget;
+    }
 
     if (!_propDrawCall) {
       const id = _propTarget ? _propTarget.getAttribute('id') : '?';
@@ -373,6 +440,11 @@
 
     panel.innerHTML = content;
     positionPanel(panel);
+
+    // 綁定關閉
+    const closeBtn = panel.querySelector('#prop-close-btn');
+    if (closeBtn) closeBtn.onclick = hidePropPanel;
+
     bindPropEvents(panel, dc);
   }
 
@@ -390,58 +462,87 @@
 
   // --- 位置區塊 ---
   function buildPosSection(dc) {
+    if (dc.type === 'drawArrow') {
+      return `<div class="prop-section">
+          <div class="prop-section-title">起點位置 (startSpec)</div>
+          ${buildSinglePosUI(dc.args[0], 'pos-start')}
+        </div>
+        <div class="prop-section">
+          <div class="prop-section-title">終點位置 (endSpec)</div>
+          ${buildSinglePosUI(dc.args[1], 'pos-end')}
+        </div>`;
+    }
+
     const posArg = (dc.type === 'drawArray' || dc.type === 'draw2DArray') ? dc.args[1] :
       dc.type === 'drawCircle' ? dc.args[1] :
         dc.type === 'drawText' ? dc.args[1] :
-          dc.type === 'drawColoredText' ? dc.args[1] :
-            dc.type === 'drawArrow' ? null : null;
+          dc.type === 'drawColoredText' ? dc.args[1] : null;
 
     if (!posArg) return '';
 
-    let rows = '';
-    if (posArg.type === 'rel' || posArg.ref) {
-      rows += propRow('模式', '<b>相對位置</b>', true);
-      rows += propRow('參考 ID', inputField('pos-ref', posArg.ref || ''));
+    return `<div class="prop-section">
+      <div class="prop-section-title">定位與偏移</div>
+      ${buildSinglePosUI(posArg, 'pos')}
+    </div>`;
+  }
 
-      // 處理 raw 定位偏移 (自動偏移)
-      const isRaw = (posArg.anchor || '').includes('raw');
-      const cleanAnchor = (posArg.anchor || '').replace('raw', '').trim() || 'center';
+  function buildSinglePosUI(pos, prefix = 'pos') {
+    if (!pos || typeof pos !== 'object') return propRow('原始值', `<span style="font-family:monospace;font-size:11px;">${pos}</span>`, true);
+    
+    let rows = '';
+    const isRel = (pos.type === 'rel' || pos.ref);
+
+    rows += `
+      <div class="pos-mode-tabs">
+        <div class="pos-mode-tab ${!isRel ? 'active' : ''}" data-action="set-abs" data-prefix="${prefix}">絕對位置</div>
+        <div class="pos-mode-tab ${isRel ? 'active' : ''}" data-action="set-rel" data-prefix="${prefix}">相對位置</div>
+      </div>
+    `;
+
+    if (isRel) {
+      rows += propRow('參考點 ID', inputField(`${prefix}-ref`, pos.ref || ''));
+
+      const isRaw = (pos.anchor || '').includes('raw');
+      const cleanAnchor = (pos.anchor || '').replace('raw', '').trim() || 'center';
 
       rows += propRow('自動偏移', `
         <label class="gui-switch">
-          <input type="checkbox" id="pos-raw-toggle" ${isRaw ? 'checked' : ''}>
+          <input type="checkbox" id="${prefix}-raw-toggle" ${isRaw ? 'checked' : ''}>
           <span class="gui-slider"></span>
         </label>
         <span style="font-size:10px;color:#9ca3af;margin-left:5px"> (raw 語法)</span>
       `, true);
 
-      // 錨點九宮格
-      rows += propRow('對齊點', buildAnchorGrid(cleanAnchor), true);
+      rows += propRow('對齊點', buildAnchorGrid(cleanAnchor, prefix), true);
 
-      if (posArg.index !== undefined && posArg.index !== -1) {
-        rows += propRow('格子索引', inputField('pos-index', posArg.index, 'number'));
+      const refDC = findDrawCallByGroupID(pos.ref);
+      if (refDC && refDC.type === 'draw2DArray') {
+        rows += propRow('索引 X (Col)', inputField(`${prefix}-col`, (pos.col === undefined || pos.col === -1) ? '' : pos.col, 'text'));
+        rows += propRow('索引 Y (Row)', inputField(`${prefix}-row`, (pos.row === undefined || pos.row === -1) ? '' : pos.row, 'text'));
+      } else if (refDC && refDC.type === 'drawArray') {
+        rows += propRow('格子索引', inputField(`${prefix}-index`, (pos.index === undefined || pos.index === -1) ? '' : pos.index, 'text'));
+      } else if (pos.index !== undefined && pos.index !== -1) {
+        rows += propRow('格子索引', inputField(`${prefix}-index`, pos.index, 'text'));
       }
-      rows += propRow('橫向偏移 (dx)', inputField('pos-dx', posArg.dx || posArg.x || 0, 'number'));
-      rows += propRow('縱向偏移 (dy)', inputField('pos-dy', posArg.dy || posArg.y || 0, 'number'));
-    } else {
-      rows += propRow('模式', '<b>絕對位置</b>', true);
-      rows += propRow('座標 X', inputField('pos-x', posArg.x || 0, 'number'));
-      rows += propRow('座標 Y', inputField('pos-y', posArg.y || 0, 'number'));
-    }
 
-    return `<div class="prop-section"><div class="prop-section-title">定位與偏移</div>${rows}</div>`;
+      rows += propRow('橫向偏移 (dx)', inputField(`${prefix}-dx`, pos.dx || pos.x || 0, 'number'));
+      rows += propRow('縱向偏移 (dy)', inputField(`${prefix}-dy`, pos.dy || pos.y || 0, 'number'));
+    } else {
+      rows += propRow('座標 X', inputField(`${prefix}-x`, pos.x || 0, 'number'));
+      rows += propRow('座標 Y', inputField(`${prefix}-y`, pos.y || 0, 'number'));
+    }
+    return rows;
   }
 
-  function buildAnchorGrid(activeAnchor) {
+  function buildAnchorGrid(activeAnchor, prefix = 'pos') {
     const anchors = [
-      'top left', 'top', 'top right',
-      'left', 'center', 'right',
-      'bottom left', 'bottom', 'bottom right'
+      { key: 'top left', label: '左上' }, { key: 'top', label: '上' }, { key: 'top right', label: '右上' },
+      { key: 'left', label: '左' }, { key: 'center', label: '中' }, { key: 'right', label: '右' },
+      { key: 'bottom left', label: '左下' }, { key: 'bottom', label: '下' }, { key: 'bottom right', label: '右下' }
     ];
-    let html = '<div class="anchor-grid" id="pos-anchor-grid">';
+    let html = '<div class="anchor-grid">';
     anchors.forEach(a => {
-      const isActive = a === activeAnchor;
-      html += `<div class="anchor-btn ${isActive ? 'active' : ''}" data-value="${a}" title="${a}"><div class="dot"></div></div>`;
+      html += `<div class="anchor-btn ${activeAnchor === a.key ? 'active' : ''}" data-anchor="${a.key}" data-prefix="${prefix}" title="${a.label}"><div class="dot"></div></div>`;
     });
     html += '</div>';
     return html;
@@ -545,11 +646,29 @@
   }
 
   function buildArrowStyleSection(dc) {
+    const ARROW_PROP_LABELS = {
+      color: '顏色',
+      width: '寬度',
+      dash: '虛線比例',
+      text: '標籤文字',
+      text_color: '文字顏色',
+      text_size: '文字大小',
+      text_weight: '文字粗細',
+      headStart: '起點樣式',
+      headEnd: '終點樣式',
+      marginStart: '起點間距',
+      marginEnd: '終點間距',
+      key: '參考 ID'
+    };
     const actual = getActualParams(dc);
     const styleParamStr = (actual && actual.length > 2 ? actual[2] : '').trim();
     const cppStyles = parseArrowStyleLiteral(styleParamStr);
 
-    const allArrowKeys = ['color', 'width', 'headStart', 'headEnd', 'animate', 'animateColor', 'tweenDuration', 'key'];
+    // 指定排序：color -> width -> text -> 文字相關屬性 -> 其他
+    const priorityKeys = ['color', 'width', 'text', 'text_color', 'text_size', 'text_weight'];
+    const otherKeys = ['dash', 'headStart', 'headEnd', 'marginStart', 'marginEnd', 'key'];
+    const allArrowKeys = [...priorityKeys, ...otherKeys];
+    
     const mergedStyles = [];
     allArrowKeys.forEach(k => {
       const existing = cppStyles.find(s => s.key === k);
@@ -560,24 +679,69 @@
       if (!allArrowKeys.includes(s.key)) mergedStyles.push(s);
     });
 
+    const textValue = mergedStyles.find(s => s.key === 'text')?.value || '';
+    const hasText = textValue.trim().length > 0;
+    const textRelatedKeys = ['text_color', 'text_size', 'text_weight'];
+
     let items = '';
     mergedStyles.forEach((s, i) => {
       let currentHex = '#d1d5db';
-      if (s.key === 'color' || s.key === 'animateColor') {
+      if (s.key === 'color') {
         const matchColor = AV_COLORS.find(c => s.value.includes(c.name));
         if (matchColor) currentHex = matchColor.hex;
         else if (s.value.startsWith('rgba') || s.value.startsWith('#') || ['orange', 'black', 'white', 'red'].includes(s.value)) currentHex = s.value;
       }
 
-      items += `<div class="cell-style-item arrow-style-item" style="display:flex; align-items:center; padding:6px 8px; border-bottom:1px solid #f3f4f6;" data-index="${i}" data-key="${s.key}">
+      const isTextRelated = textRelatedKeys.includes(s.key);
+
+      let displayStyle = 'display:flex;';
+      let extraClass = '';
+
+      if (isTextRelated) {
+        extraClass = 'text-related-item';
+        if (!hasText) displayStyle = 'display:none;';
+      }
+
+      let inputUI = '';
+      if (s.key === 'dash') {
+        const parts = (s.value || '').split(',').map(p => p.trim());
+        const dashSolid = parts[0] || '';
+        const dashGap = parts[1] || '';
+        inputUI = `
+          <div style="display:flex; align-items:center; justify-content:center; gap:8px; flex:1;">
+            <input class="prop-input dash-part dash-solid" style="width:40px; flex:none; font-family:monospace; font-size:11px; background:#fff; height:24px; text-align:center;" 
+                   value="${dashSolid}" placeholder="實" title="實線長度">
+            <span style="font-size:10px; color:#9ca3af;">:</span>
+            <input class="prop-input dash-part dash-gap" style="width:40px; flex:none; font-family:monospace; font-size:11px; background:#fff; height:24px; text-align:center;" 
+                   value="${dashGap}" placeholder="虛" title="間隔長度">
+          </div>
+        `;
+      } else if (s.key === 'headStart' || s.key === 'headEnd') {
+        const options = [
+          { val: 'none', lab: '無' },
+          { val: 'arrow', lab: '箭頭' },
+          { val: 'dot', lab: '圓點' }
+        ];
+        inputUI = `<select class="prop-input" style="flex:1; font-size:11px; height:24px;" data-arrow-style-idx="${i}" data-field="cpp-arrow-val">
+          ${options.map(opt => `<option value="${opt.val}" ${s.value === opt.val ? 'selected' : ''}>${opt.lab}</option>`).join('')}
+        </select>`;
+      } else if (s.key === 'color') {
+        inputUI = `<input class="prop-input" style="width:120px; flex:none; font-family:monospace; font-size:11px; background:#fff; height:24px; text-align:left;" 
+                   data-arrow-style-idx="${i}" data-field="cpp-arrow-val"
+                   value="${s.value}" title="值">`;
+      } else {
+        inputUI = `<input class="prop-input" style="flex:1; font-family:monospace; font-size:11px; background:#fff; height:24px; text-align:left;" 
+                   data-arrow-style-idx="${i}" data-field="cpp-arrow-val"
+                   value="${s.value}" title="值">`;
+      }
+
+      items += `<div class="cell-style-item arrow-style-item ${extraClass}" style="${displayStyle} align-items:center; padding:6px 8px; border-bottom:1px solid #f3f4f6;" data-index="${i}" data-key="${s.key}">
         <div class="style-item-header" style="display:flex; align-items:center; gap:8px; width:85px; flex-shrink:0;">
-          <span style="color:#ef4444; font-weight:700; font-size:11px;">${s.key}</span>
+          <span style="color:#4b5563; font-weight:700; font-size:11px;">${ARROW_PROP_LABELS[s.key] || s.key}</span>
         </div>
-        <div style="display:flex; align-items:center; gap:6px; flex:1;">
-          <input class="prop-input" style="flex:1; font-family:monospace; font-size:11px; background:#fff; height:24px; text-align:left;" 
-                 data-arrow-style-idx="${i}" data-field="cpp-arrow-val"
-                 value="${s.value}" title="值">
-          ${(s.key === 'color' || s.key === 'animateColor') ? `<div class="color-picker-btn arrow-color-picker-btn" style="width:20px; height:20px; border-radius:50%; cursor:pointer; background:${currentHex}; border:1px solid #d1d5db; flex-shrink:0;" title="選取顏色" data-idx="${i}"></div>` : ''}
+        <div style="display:flex; align-items:center; gap:6px; flex:1; padding-right:16px;">
+          ${inputUI}
+          ${(s.key === 'color') ? `<div class="color-picker-btn arrow-color-picker-btn" style="width:20px; height:20px; border-radius:50%; cursor:pointer; background:${currentHex}; border:1px solid #d1d5db; flex-shrink:0; margin-right:8px;" title="選取顏色" data-idx="${i}"></div>` : ''}
         </div>
       </div>`;
     });
@@ -901,39 +1065,116 @@
 
   // --- 綁定事件 ---
   function bindPropEvents(panel, dc) {
-    // 關閉按鈕
-    const closeBtn = panel.querySelector('#prop-close-btn');
-    if (closeBtn) closeBtn.onclick = hidePropPanel;
+    const section = _currentPropSection;
+    function bindSinglePosEvents(prefix, posArg) {
+      if (!posArg || typeof posArg !== 'object') return;
 
-    // 跳到程式碼
-    const gotoBtn = panel.querySelector('#prop-goto-code');
-    if (gotoBtn) {
-      gotoBtn.onclick = () => {
-        if (dc.codeLine >= 0 && window.aceEditor) {
-          window.aceEditor.gotoLine(dc.codeLine + 1, 0, true);
-          window.aceEditor.focus();
+      const triggerSync = () => {
+        replayCurrentFrame();
+        if (dc.type === 'drawArrow') {
+          const overrides = {};
+          if (prefix === 'pos-start') overrides.startSpecVar = posJsonToCpp(dc.args[0]);
+          if (prefix === 'pos-end') overrides.endSpecVar = posJsonToCpp(dc.args[1]);
+          syncLayoutToCpp(dc, overrides);
+        } else {
+          syncPosToCpp(dc);
         }
       };
+
+      // 模式切換 (Tabs)
+      panel.querySelectorAll(`.pos-mode-tab[data-prefix="${prefix}"]`).forEach(tab => {
+        tab.onclick = (e) => {
+          e.stopPropagation();
+          const action = tab.dataset.action;
+          if (action === 'set-abs') {
+            posArg.type = 'abs';
+            delete posArg.ref;
+            delete posArg.anchor;
+            delete posArg.dx;
+            delete posArg.dy;
+            posArg.x = posArg.x || 0;
+            posArg.y = posArg.y || 0;
+          } else {
+            posArg.type = 'rel';
+            posArg.ref = posArg.ref || '';
+            posArg.anchor = posArg.anchor || 'center';
+            posArg.dx = 0;
+            posArg.dy = 0;
+          }
+          showPropPanel(section);
+          triggerSync();
+        };
+      });
+
+      const inpX = panel.querySelector(`#${prefix}-x`);
+      const inpY = panel.querySelector(`#${prefix}-y`);
+      if (inpX) inpX.onchange = () => { posArg.x = parseFloat(inpX.value) || 0; triggerSync(); validateRequiredFields(panel); };
+      if (inpY) inpY.onchange = () => { posArg.y = parseFloat(inpY.value) || 0; triggerSync(); validateRequiredFields(panel); };
+
+      const inpRef = panel.querySelector(`#${prefix}-ref`);
+      if (inpRef) inpRef.onchange = () => { 
+        posArg.ref = inpRef.value; 
+        triggerSync(); 
+        validateRequiredFields(panel); 
+        showPropPanel(section); 
+      };
+
+      const inpIdx = panel.querySelector(`#${prefix}-index`);
+      if (inpIdx) inpIdx.onchange = () => { 
+        const v = inpIdx.value.trim();
+        posArg.index = v === '' ? -1 : (parseInt(v) || 0);
+        triggerSync(); 
+        validateRequiredFields(panel); 
+      };
+
+      const inpRow = panel.querySelector(`#${prefix}-row`);
+      const inpCol = panel.querySelector(`#${prefix}-col`);
+      if (inpRow) inpRow.onchange = () => {
+        const v = inpRow.value.trim();
+        posArg.row = v === '' ? -1 : (parseInt(v) || 0);
+        triggerSync();
+        validateRequiredFields(panel);
+      };
+      if (inpCol) inpCol.onchange = () => {
+        const v = inpCol.value.trim();
+        posArg.col = v === '' ? -1 : (parseInt(v) || 0);
+        triggerSync();
+        validateRequiredFields(panel);
+      };
+
+      const inpDX = panel.querySelector(`#${prefix}-dx`);
+      const inpDY = panel.querySelector(`#${prefix}-dy`);
+      if (inpDX) inpDX.onchange = () => { posArg.dx = parseFloat(inpDX.value) || 0; triggerSync(); validateRequiredFields(panel); };
+      if (inpDY) inpDY.onchange = () => { posArg.dy = parseFloat(inpDY.value) || 0; triggerSync(); validateRequiredFields(panel); };
+
+      const rawToggle = panel.querySelector(`#${prefix}-raw-toggle`);
+      if (rawToggle) rawToggle.onchange = () => {
+        let clean = (posArg.anchor || '').replace('raw', '').trim();
+        posArg.anchor = rawToggle.checked ? (clean + ' raw') : clean;
+        triggerSync();
+      };
+
+      panel.querySelectorAll(`.anchor-btn[data-prefix="${prefix}"]`).forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const isRaw = (posArg.anchor || '').includes('raw');
+          posArg.anchor = btn.dataset.anchor + (isRaw ? ' raw' : '');
+          showPropPanel(section);
+          triggerSync();
+        };
+      });
     }
 
-    // 位置修改
-    ['pos-x', 'pos-y', 'pos-dx', 'pos-dy', 'pos-ref', 'pos-index', 'pos-raw-toggle'].forEach(id => {
-      const el = panel.querySelector('#' + id);
-      if (!el) return;
-      el.addEventListener('change', () => {
-        applyPosChange(dc, panel);
-        validateRequiredFields(panel);
-      });
-    });
-
-    // 九宮格錨點點擊
-    panel.querySelectorAll('#pos-anchor-grid .anchor-btn').forEach(btn => {
-      btn.onclick = () => {
-        panel.querySelectorAll('#pos-anchor-grid .anchor-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        applyPosChange(dc, panel);
-      };
-    });
+    if (dc.type === 'drawArrow') {
+      bindSinglePosEvents('pos-start', dc.args[0]);
+      bindSinglePosEvents('pos-end', dc.args[1]);
+    } else {
+      const posArg = (dc.type === 'drawArray' || dc.type === 'draw2DArray') ? dc.args[1] :
+        dc.type === 'drawCircle' ? dc.args[1] :
+          dc.type === 'drawText' ? dc.args[1] :
+            dc.type === 'drawColoredText' ? dc.args[1] : null;
+      bindSinglePosEvents('pos', posArg);
+    }
 
     // 繪製參數修改
     ['prop-drawtype', 'prop-ipr', 'prop-index', 'prop-gap', 'prop-data-var', 'prop-style-var', 'prop-circle-style-var'].forEach(id => {
@@ -945,8 +1186,6 @@
         validateRequiredFields(panel);
       });
     });
-
-
 
     // 範圍滑條事件
     function bindDualSlider(axis) {
@@ -1052,8 +1291,15 @@
       const items = Array.from(panel.querySelectorAll('.arrow-style-item'));
       const activeStyles = items.map(item => {
         const key = item.dataset.key;
-        const inp = item.querySelector('input[data-field="cpp-arrow-val"]');
-        const value = inp.value.trim();
+        let value = '';
+        if (key === 'dash') {
+          const solid = item.querySelector('.dash-solid').value.trim();
+          const gap = item.querySelector('.dash-gap').value.trim();
+          value = (solid || gap) ? `${solid || '0'},${gap || '0'}` : '';
+        } else {
+          const inp = item.querySelector('input[data-field="cpp-arrow-val"]');
+          value = inp ? inp.value.trim() : '';
+        }
         return { key, value };
       }).filter(s => s.value !== '');
 
@@ -1115,21 +1361,41 @@
     });
 
     // 箭頭樣式輸入框
-    panel.querySelectorAll('input[data-field="cpp-arrow-val"]').forEach(inp => {
+    panel.querySelectorAll('input[data-field="cpp-arrow-val"], input.dash-part, select[data-field="cpp-arrow-val"]').forEach(inp => {
+      const item = inp.closest('.arrow-style-item');
+      if (!item) return;
+      const key = item.dataset.key;
+
+      // 監聽 input 事件做即時顯隱切換 (針對 text 欄位)
+      if (key === 'text') {
+        inp.addEventListener('input', () => {
+          const hasVal = inp.value.trim().length > 0;
+          panel.querySelectorAll('.text-related-item').forEach(rel => {
+            rel.style.display = hasVal ? 'flex' : 'none';
+          });
+        });
+      }
+
+      const eventType = (inp.tagName === 'SELECT') ? 'change' : 'change'; // Both change
       inp.addEventListener('change', () => {
         const newStyleLiteral = rebuildArrowStyleFromDOM();
         
         // 更新 JS 運行時狀態以立即反映在畫布
-        const key = inp.closest('.arrow-style-item').dataset.key;
+        let finalVal = inp.value.trim();
+        if (key === 'dash') {
+          const solid = item.querySelector('.dash-solid').value.trim();
+          const gap = item.querySelector('.dash-gap').value.trim();
+          finalVal = (solid || gap) ? `${solid || '0'},${gap || '0'}` : '';
+        }
+
         if (dc.args[2] && typeof dc.args[2] === 'object') {
-          dc.args[2][key] = inp.value.trim();
+          dc.args[2][key] = finalVal;
         } else if (!dc.args[2] || Array.isArray(dc.args[2])) {
-          // If it was an array (from C++ pair vector), we just build an object for JS runtime
           const newOpt = {};
           if (Array.isArray(dc.args[2])) {
             dc.args[2].forEach(p => { if (p.key) newOpt[p.key] = p.value; });
           }
-          newOpt[key] = inp.value.trim();
+          newOpt[key] = finalVal;
           dc.args[2] = newOpt;
         }
 
@@ -1146,7 +1412,7 @@
         openColorPalette(e, btn, (colorName, hex, isFinal) => {
           btn.style.background = hex;
           const inp = item.querySelector('input[data-field="cpp-arrow-val"]');
-          inp.value = colorName; // 更新 UI
+          if (inp) inp.value = colorName; // 更新 UI
 
           if (dc.args[2] && typeof dc.args[2] === 'object') {
             dc.args[2][item.dataset.key] = colorName;
@@ -1193,47 +1459,23 @@
         el.classList.remove('required-empty');
       }
     });
-  }
 
-  function applyPosChange(dc, panel) {
-    const posArgIdx = 1;
-    const pos = dc.args[posArgIdx];
-    if (!pos) return;
-
-    if (pos.type === 'rel' || pos.ref) {
-      const ref = panel.querySelector('#pos-ref');
-      const dx = panel.querySelector('#pos-dx');
-      const dy = panel.querySelector('#pos-dy');
-      const idx = panel.querySelector('#pos-index');
-      const rawToggle = panel.querySelector('#pos-raw-toggle');
-      const activeBtn = panel.querySelector('#pos-anchor-grid .anchor-btn.active');
-
-      if (ref) pos.ref = ref.value;
-
-      // 組合錨點字串 (處理 raw)
-      let anchorStr = activeBtn ? activeBtn.dataset.value : 'center';
-      if (rawToggle && rawToggle.checked) anchorStr = 'raw ' + anchorStr;
-      pos.anchor = anchorStr;
-
-      if (dx) { pos.dx = parseFloat(dx.value) || 0; pos.x = pos.dx; }
-      if (dy) { pos.dy = parseFloat(dy.value) || 0; pos.y = pos.dy; }
-      if (idx) pos.index = parseInt(idx.value);
-      if (isNaN(pos.index)) pos.index = -1;
-    } else {
-      const x = panel.querySelector('#pos-x');
-      const y = panel.querySelector('#pos-y');
-      if (x) pos.x = parseFloat(x.value) || 0;
-      if (y) pos.y = parseFloat(y.value) || 0;
-    }
-
-    // 確保所有數字欄位都是 Number 類型，避免字串拼接
-    pos.x = Number(pos.x || 0);
-    pos.y = Number(pos.y || 0);
-    if (pos.dx !== undefined) pos.dx = Number(pos.dx || 0);
-    if (pos.dy !== undefined) pos.dy = Number(pos.dy || 0);
-
-    replayCurrentFrame();
-    syncPosToCpp(dc);
+    // 額外驗證：2D 索引必須成對出現 (Row/Col)
+    ['pos', 'pos-start', 'pos-end'].forEach(prefix => {
+      const r = panel.querySelector(`#${prefix}-row`);
+      const c = panel.querySelector(`#${prefix}-col`);
+      if (r && c) {
+        const rv = r.value.trim();
+        const cv = c.value.trim();
+        if ((rv !== '' && cv === '') || (rv === '' && cv !== '')) {
+          if (rv === '') r.classList.add('required-empty');
+          if (cv === '') c.classList.add('required-empty');
+        } else {
+          r.classList.remove('required-empty');
+          c.classList.remove('required-empty');
+        }
+      }
+    });
   }
 
   function applyLayoutChange(dc, panel) {
@@ -1445,23 +1687,29 @@
     const searchCenter = dc.codeLine - 1; // 1-based → 0-based
 
     // 優先搜尋包含 groupID 的行（更嚴謹）
-    for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5]) {
+    for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7, -8, 8, -9, 9, -10, 10]) {
       const idx = searchCenter + offset;
       if (idx < 0) continue;
       const t = session.getLine(idx);
       if (!t) continue;
 
-      // 最嚴格：同時包含 groupID 和 Pos(
+      // 嚴格模式：必須包含 groupID 且包含 Pos(
       if (groupID && t.includes('"' + groupID + '"') && t.includes('Pos(')) {
+        lineIdx = idx;
+        lineText = t;
+        break;
+      }
+      // 如果是 arrow 且沒有 ID，則找包含 arrow 關鍵字且包含 Pos( 的行
+      if (!groupID && dc.type === 'drawArrow' && (t.includes('arrow') || t.includes('Arrow')) && t.includes('Pos(')) {
         lineIdx = idx;
         lineText = t;
         break;
       }
     }
 
-    // 退而求其次：只找 Pos( 的行
-    if (lineIdx === -1) {
-      for (let offset of [0, -1, 1, -2, 2]) {
+    // 次要：如果還是找不到，且沒有 groupID，則只找最近的 Pos(
+    if (lineIdx === -1 && !groupID) {
+      for (let offset of [0, -1, 1, -2, 2, -3, 3]) {
         const idx = searchCenter + offset;
         if (idx < 0) continue;
         const t = session.getLine(idx);
@@ -1505,33 +1753,36 @@
     let lineIdx = -1;
     let lineText = '';
 
+    // 根據 dc.type 限制搜尋的 C++ 函式名稱
+    const typeToFuncs = {
+      'drawArray': ['frame_draw', 'draw_array'],
+      'draw2DArray': ['draw_2Darray', 'frame_draw_2Darray'],
+      'drawArrow': ['arrow'],
+      'drawCircle': ['draw_circle'],
+      'drawText': ['draw_text'],
+      'drawColoredText': ['draw_colored_text', 'colored_text']
+    };
+    const expectedFuncs = typeToFuncs[dc.type] || ['draw', 'arrow'];
+    const funcRegex = new RegExp(`((?:key_)?(?:${expectedFuncs.join('|')}))\\s*\\(`);
+
     // 優先：同時包含繪圖函式和 groupID
-    for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5]) {
+    for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7, -8, 8, -9, 9, -10, 10]) {
       const idx = searchCenter + offset;
       if (idx < 0) continue;
       const t = session.getLine(idx);
-      if (t && (t.includes('draw') || t.includes('arrow')) && (groupID === '' || t.includes('"' + groupID + '"'))) {
+      if (!t) continue;
+      
+      const hasGroupID = (groupID === '' || t.includes('"' + groupID + '"'));
+      const hasFunc = t.match(funcRegex);
+      
+      if (hasFunc && hasGroupID) {
         lineIdx = idx;
         lineText = t;
         break;
       }
     }
 
-    // 退而求其次：只找繪圖函式
-    if (lineIdx === -1) {
-      for (let offset of [0, -1, 1, -2, 2]) {
-        const idx = searchCenter + offset;
-        if (idx < 0) continue;
-        const t = session.getLine(idx);
-        if (t && (t.includes('draw') || t.includes('arrow'))) {
-          lineIdx = idx;
-          lineText = t;
-          break;
-        }
-      }
-    }
-
-    const drawMatch = lineText ? lineText.match(/((?:key_)?(?:frame_draw|draw_2Darray|arrow|draw_array|draw_circle|draw_triangle))\s*\(/) : null;
+    const drawMatch = lineText ? lineText.match(funcRegex) : null;
     if (!drawMatch) {
       showToast(`行 ${dc.codeLine} 附近找不到對應的繪圖函式，無法回寫`, 'error');
       return;
@@ -1551,6 +1802,8 @@
     
     if (dc.type === 'drawArrow') {
       if (args.length < 2) return;
+      if (overrides.startSpecVar !== undefined) args[0] = ' ' + overrides.startSpecVar;
+      if (overrides.endSpecVar !== undefined) args[1] = ' ' + overrides.endSpecVar;
       if (overrides.styleVar !== undefined) args[2] = ' ' + overrides.styleVar;
     } else if (dc.type === 'draw2DArray') {
       const newDT = `"${dc.args[5] || 'normal'}"`;
@@ -1690,14 +1943,38 @@
 
     // 右鍵選單
     svg.addEventListener('contextmenu', (e) => {
-      const obj = e.target.closest('.draggable-object');
-      if (!obj) { hideCtxMenu(); return; }
+      let obj = e.target.closest('.draggable-object');
+      let dc = null;
+
+      if (!obj) {
+        // 檢查是否點擊到箭頭
+        const line = e.target.closest('line[data-arrow-key], path[data-arrow-key], text[data-arrow-id]');
+        if (line) {
+          obj = line;
+          const arrowKey = line.getAttribute('data-arrow-key') || line.getAttribute('data-arrow-id');
+          // 透過 DOM 順序找到對應的 drawCall
+          const layer = svg.querySelector('#arrow-layer');
+          if (layer) {
+            // text 跟 line 的對應處理：統一找 line
+            const realLine = layer.querySelector(`line[data-arrow-key="${arrowKey}"], line[id="${arrowKey}"]`);
+            if (realLine) {
+              const arrowsInDOM = Array.from(layer.querySelectorAll('line[data-arrow-key]'));
+              const arrowIdx = arrowsInDOM.indexOf(realLine);
+              const arrowCalls = getCurrentFrameDrawCalls().filter(c => c.type === 'drawArrow');
+              dc = arrowCalls[arrowIdx] || null;
+            }
+          }
+        } else {
+          hideCtxMenu();
+          return;
+        }
+      } else {
+        const id = obj.getAttribute('id');
+        dc = id ? findDrawCallByGroupID(id) : null;
+      }
 
       e.preventDefault();
       e.stopPropagation();
-
-      const id = obj.getAttribute('id');
-      const dc = id ? findDrawCallByGroupID(id) : null;
 
       // 即使沒找到 drawCall，也可以顯示基本選單
       showCtxMenu(e, obj, dc);

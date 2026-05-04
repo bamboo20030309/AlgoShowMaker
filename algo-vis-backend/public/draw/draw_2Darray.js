@@ -64,7 +64,8 @@
     style = {},
     range = {},
     draw_type = 'normal',
-    index = 0
+    index = 0,
+    codeLine = -1
   ) {
     const vp = window.getViewport();
     if (!vp) return;
