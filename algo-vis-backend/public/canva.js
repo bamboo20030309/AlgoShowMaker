@@ -79,7 +79,8 @@
       if (e.button === 0) {
         if (window.isDrawingMode) return;
       } else if (e.button === 2) {
-        // 右鍵允許拖曳
+        // 右鍵點到 draggable-object 時讓 GUI 編輯器處理
+        if (e.target.closest && e.target.closest('.draggable-object')) return;
       } else {
         return; // 其他按鍵不處理
       }
@@ -90,8 +91,9 @@
       startY = e.clientY;
     });
 
-    // 禁用 SVG 上的右鍵選單，避免干擾右鍵拖曳
+    // 禁用 SVG 上的右鍵選單，避免干擾右鍵拖曳（但在 draggable-object 上讓 GUI 編輯器接管）
     svg.addEventListener('contextmenu', e => {
+      if (e.target.closest && e.target.closest('.draggable-object')) return;
       e.preventDefault();
     });
     svg.addEventListener('mousemove', e => {

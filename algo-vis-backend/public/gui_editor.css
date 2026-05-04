@@ -1,0 +1,564 @@
+/* gui_editor.css — 畫布 GUI 編輯器樣式 */
+
+/* ========================================
+   右鍵選單
+   ======================================== */
+.gui-ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  padding: 4px 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: #1f2937;
+  user-select: none;
+}
+
+.gui-ctx-menu .ctx-item {
+  padding: 7px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background .1s;
+}
+
+.gui-ctx-menu .ctx-item:hover {
+  background: #eff6ff;
+}
+
+.gui-ctx-menu .ctx-item .ctx-icon {
+  width: 16px;
+  text-align: center;
+}
+
+.gui-ctx-menu .ctx-sep {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 4px 8px;
+}
+
+.gui-ctx-menu .ctx-label {
+  padding: 5px 16px 2px;
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+/* ========================================
+   屬性面板 (浮動)
+   ======================================== */
+.gui-prop-panel {
+  position: fixed;
+  z-index: 9998;
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .15);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.gui-prop-panel .prop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 10px 10px 0 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.gui-prop-panel .prop-header .prop-close {
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #6b7280;
+  transition: background .15s;
+}
+
+.gui-prop-panel .prop-header .prop-close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.gui-prop-panel .prop-section {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.gui-prop-panel .prop-section:last-child {
+  border-bottom: none;
+}
+
+.gui-prop-panel .prop-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #374151;
+  letter-spacing: 0;
+  margin-bottom: 12px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #3b82f6;
+  display: inline-block;
+}
+
+.gui-prop-panel .prop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.gui-prop-panel .prop-label {
+  min-width: 85px;
+  /* 增加標籤寬度以確保所有輸入框對齊 */
+  font-size: 12px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.gui-prop-panel .prop-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: 'Menlo', 'Consolas', monospace;
+  outline: none;
+  transition: border-color .15s;
+  background: #fff;
+  color: #1f2937;
+}
+
+.gui-prop-panel .prop-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, .15);
+}
+
+.gui-prop-panel select.prop-input {
+  cursor: pointer;
+}
+
+/* 顏色選擇器行 */
+.gui-prop-panel .prop-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 對應程式碼行號 */
+.gui-prop-panel .prop-code-link {
+  display: inline-block;
+  padding: 3px 10px;
+  background: #eff6ff;
+  color: #2563eb;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background .15s;
+}
+
+.gui-prop-panel .prop-code-link:hover {
+  background: #dbeafe;
+}
+
+/* ========================================
+   陣列格子樣式表 (cell style list)
+   ======================================== */
+.gui-prop-panel .cell-style-list {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 4px;
+  background: #fafafa;
+}
+
+.gui-prop-panel .cell-style-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.gui-prop-panel .cell-style-item:hover {
+  background: #f0f0f0;
+}
+
+.gui-prop-panel .cell-style-item .style-type-badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ========================================
+   錨點視覺化與 UI 元素
+   ======================================== */
+.gui-anchor-dot {
+  pointer-events: none;
+}
+
+.gui-anchor-label {
+  font-size: 9px;
+  fill: #6b7280;
+  pointer-events: none;
+  font-family: system-ui, sans-serif;
+}
+
+/* 錨點九宮格選擇器：正方形帶點 */
+.anchor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 105px;
+  margin: 8px 0;
+}
+
+.anchor-btn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border: 1.5px solid #d1d5db;
+  /* 預設灰色外框 */
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.anchor-btn .dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #9ca3af;
+  /* 預設灰色點 */
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+/* 九宮格點的定位 */
+.anchor-btn[data-value="top left"] .dot {
+  top: 2px;
+  left: 2px;
+}
+
+.anchor-btn[data-value="top"] .dot {
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.anchor-btn[data-value="top right"] .dot {
+  top: 2px;
+  right: 2px;
+}
+
+.anchor-btn[data-value="left"] .dot {
+  top: 50%;
+  left: 2px;
+  transform: translateY(-50%);
+}
+
+.anchor-btn[data-value="center"] .dot {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.anchor-btn[data-value="right"] .dot {
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+}
+
+.anchor-btn[data-value="bottom left"] .dot {
+  bottom: 2px;
+  left: 2px;
+}
+
+.anchor-btn[data-value="bottom"] .dot {
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.anchor-btn[data-value="bottom right"] .dot {
+  bottom: 2px;
+  right: 2px;
+}
+
+/* 選取狀態：亮紅色 */
+.anchor-btn.active {
+  border-color: #ef4444;
+  /* 紅色外框 */
+  background: #fef2f2;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+.anchor-btn.active .dot {
+  background: #ef4444;
+  /* 紅色點 */
+  transform: scale(1.3) translate(0, 0);
+  /* 稍微變大 */
+}
+
+/* 處理帶 transform 的點在選取時的大小 */
+.anchor-btn.active[data-value="top"] .dot {
+  transform: translateX(-50%) scale(1.3);
+}
+
+.anchor-btn.active[data-value="left"] .dot {
+  transform: translateY(-50%) scale(1.3);
+}
+
+.anchor-btn.active[data-value="center"] .dot {
+  transform: translate(-50%, -50%) scale(1.3);
+}
+
+.anchor-btn.active[data-value="right"] .dot {
+  transform: translateY(-50%) scale(1.3);
+}
+
+.anchor-btn.active[data-value="bottom"] .dot {
+  transform: translateX(-50%) scale(1.3);
+}
+
+/* 必填欄位為空時的警示 */
+.prop-input.required-empty {
+  background-color: #fff1f2 !important;
+  border-color: #fca5a5 !important;
+}
+
+.prop-input.required-empty::placeholder {
+  color: #ef4444;
+}
+
+/* Switch / Toggle (保留) */
+.gui-switch {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+}
+
+.gui-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.gui-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .2s;
+  border-radius: 18px;
+}
+
+.gui-slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .2s;
+  border-radius: 50%;
+}
+
+input:checked+.gui-slider {
+  background-color: #10b981;
+}
+
+input:checked+.gui-slider:before {
+  transform: translateX(14px);
+}
+
+/* 樣式清單圖示化 */
+.style-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  display: inline-block;
+  position: relative;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+/* highlight: 紅色粗框 */
+.style-icon.highlight {
+  border: 2px solid #ef4444;
+  background: #fef2f2;
+}
+
+/* focus: 灰色格子 + 藍色框 */
+.style-icon.focus {
+  background: #d1d5db;
+  border: 2px solid #3b82f6;
+  box-shadow: 0 0 4px rgba(59, 130, 246, 0.5);
+}
+
+/* point: 橙黃色完整箭頭 (與字顏色一致) */
+.style-icon.point {
+  border: 1px solid #d1d5db;
+}
+
+.style-icon.point::before {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 6px;
+  background: #f59e0b;
+  /* 橙黃色 */
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.style-icon.point::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid #f59e0b;
+}
+
+/* mark: 紫色打勾 (與字顏色一致) */
+.style-icon.mark {
+  border: 1.5px solid #8b5cf6;
+}
+
+.style-icon.mark::after {
+  content: "✓";
+  position: absolute;
+  font-size: 11px;
+  color: #8b5cf6;
+  /* 紫色 */
+  font-weight: bold;
+  bottom: -1px;
+  right: 1px;
+  text-shadow: 1px 1px 0 #fff;
+}
+
+/* background: 實心填色 (保留) */
+.style-icon.background {
+  background: #10b981;
+  border: none;
+}
+
+/* highlight: 紅色粗框 (保留) */
+.style-icon.highlight {
+  border: 2px solid #ef4444;
+  background: #fef2f2;
+}
+
+/* border: 虛線框 (保留) */
+.style-icon.border {
+  border: 1.5px dashed #6366f1;
+}
+
+/* 雙頭滑條容器 */
+.dual-slider-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.dual-slider-input {
+  flex: none !important;
+  /* 強制關閉彈性，防止被撐開 */
+  width: 30px !important;
+  text-align: center;
+  padding: 2px !important;
+  min-width: 30px;
+}
+
+.slider-wrapper {
+  position: relative;
+  flex: 1;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.slider-track {
+  position: absolute;
+  width: 100%;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  z-index: 1;
+}
+
+.slider-range-fill {
+  position: absolute;
+  height: 4px;
+  background: #3b82f6;
+  border-radius: 2px;
+  z-index: 2;
+}
+
+.dual-slider-range {
+  position: absolute;
+  width: 100%;
+  pointer-events: none;
+  appearance: none;
+  background: none;
+  z-index: 3;
+  margin: 0;
+}
+
+.dual-slider-range::-webkit-slider-thumb {
+  pointer-events: auto;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid #3b82f6;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.dual-slider-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border: 2px solid #3b82f6;
+  border-radius: 50%;
+  cursor: pointer;
+}

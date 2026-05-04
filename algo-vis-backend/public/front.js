@@ -670,7 +670,7 @@ window.reloadAfterRun = function () {
 // 首次載入與動畫控制
 document.addEventListener('DOMContentLoaded', () => {
   // === 既有初始化：保留 ===
-  new CanvasInteractionManager(document.getElementById('arraySvg'));
+  window._canvasInteraction = new CanvasInteractionManager(document.getElementById('arraySvg'));
 
   // 啟動 marker layer 去重監控，確保同一行只有一個 highlight 元素可見
   initMarkerObserver();
