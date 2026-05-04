@@ -36,7 +36,20 @@
         codeLine: _recLine
       });
     }
-    return _origDA.apply(this, arguments);
+    if (_origDA) return _origDA.apply(this, arguments);
+  };
+
+  // Wrap draw2DArray
+  const _origD2A = window.draw2DArray;
+  window.draw2DArray = function (groupID, pos, matrix, style, range, draw_type, index) {
+    if (_recording) {
+      _frameRegistry[_recFrame].push({
+        type: 'draw2DArray', groupID,
+        args: Array.from(arguments),
+        codeLine: _recLine
+      });
+    }
+    if (_origD2A) return _origD2A.apply(this, arguments);
   };
 
   // Wrap drawArrow
@@ -153,6 +166,7 @@
     calls.forEach(c => {
       switch (c.type) {
         case 'drawArray': _origDA.apply(null, c.args); break;
+        case 'draw2DArray': _origD2A.apply(null, c.args); break;
         case 'drawArrow': _origAR.apply(null, c.args); break;
         case 'drawText': _origDT.apply(null, c.args); break;
         case 'drawColoredText': _origCT.apply(null, c.args); break;
@@ -341,11 +355,14 @@
     if (section === 'all' || section === 'pos') {
       content += buildPosSection(dc);
     }
-    if (dc.type === 'drawArray' && (section === 'all' || section === 'style')) {
+    if ((dc.type === 'drawArray' || dc.type === 'draw2DArray') && (section === 'all' || section === 'style')) {
       content += buildArrayStyleSection(dc);
     }
-    if (dc.type === 'drawArray' && (section === 'all' || section === 'layout')) {
+    if ((dc.type === 'drawArray' || dc.type === 'draw2DArray') && (section === 'all' || section === 'layout')) {
       content += buildArrayLayoutSection(dc);
+    }
+    if (dc.type === 'drawArrow' && (section === 'all' || section === 'style')) {
+      content += buildArrowStyleSection(dc);
     }
     if (dc.type === 'drawCircle' && (section === 'all' || section === 'circle-style')) {
       content += buildCircleStyleSection(dc);
@@ -373,7 +390,7 @@
 
   // --- 位置區塊 ---
   function buildPosSection(dc) {
-    const posArg = dc.type === 'drawArray' ? dc.args[1] :
+    const posArg = (dc.type === 'drawArray' || dc.type === 'draw2DArray') ? dc.args[1] :
       dc.type === 'drawCircle' ? dc.args[1] :
         dc.type === 'drawText' ? dc.args[1] :
           dc.type === 'drawColoredText' ? dc.args[1] :
@@ -445,42 +462,49 @@
   ];
 
   function buildArrayStyleSection(dc) {
-    // 1. 從執行腳本獲取運行時數據 (數值)
     const runtimeStyles = dc.args[3] || [];
-
-    // 2. 從 C++ 原始碼獲取原始內容 (變數名)
     const actual = getActualParams(dc);
     const styleParamStr = (actual && actual[3] ? actual[3] : '').trim();
-
-    // 解析 C++ 字面量: [{type: "highlight", elements: ["pre_highlight"]}, ...]
     const cppStyles = parseCppStyleLiteral(styleParamStr);
+
+    const allArrayTypes = ['highlight', 'point', 'focus', 'mark', 'background'];
+    const mergedStyles = [];
+    allArrayTypes.forEach(t => {
+      const existing = cppStyles.find(s => s.type === t) || runtimeStyles.find(s => (s.type || (Array.isArray(s) ? s[0] : '')) === t);
+      if (existing) {
+        mergedStyles.push({
+          type: existing.type || (Array.isArray(existing) ? existing[0] : t),
+          color: existing.color || '',
+          elements: existing.elements || (Array.isArray(existing) ? existing.slice(2) : [])
+        });
+      } else {
+        mergedStyles.push({ type: t, color: '', elements: [] });
+      }
+    });
+    cppStyles.forEach(s => {
+      if (!allArrayTypes.includes(s.type)) mergedStyles.push(s);
+    });
 
     const typeBadgeColors = {
       highlight: '#ef4444', point: '#f59e0b', focus: '#3b82f6',
-      mark: '#8b5cf6', background: '#10b981', border: '#6366f1'
+      mark: '#8b5cf6', background: '#10b981'
     };
 
     let items = '';
-    const stylesToDisplay = cppStyles.length > 0 ? cppStyles : runtimeStyles;
-
-    stylesToDisplay.forEach((s, i) => {
-      const sType = s.type || (Array.isArray(s) ? s[0] : '?');
-      const sElements = s.elements || (Array.isArray(s) ? s.slice(2) : []);
+    mergedStyles.forEach((s, i) => {
+      const sType = s.type;
+      const sElements = s.elements;
       const badgeColor = typeBadgeColors[sType] || '#6b7280';
 
-      // 顏色抓取邏輯：優先從 C++ 解析出的 s.color 抓取
       let currentHex = '#d1d5db';
       const colorVal = s.color || '';
       const matchColor = AV_COLORS.find(c => colorVal.includes(c.name));
       if (matchColor) currentHex = matchColor.hex;
-      else if (colorVal.startsWith('rgba') || colorVal.startsWith('#') || colorVal === 'orange' || colorVal === 'black' || colorVal === 'white') {
-        currentHex = colorVal; // 直接支援 rgba 或標準色
-      }
+      else if (colorVal.startsWith('rgba') || colorVal.startsWith('#') || ['orange', 'black', 'white', 'red'].includes(colorVal)) currentHex = colorVal;
 
       const valText = sElements.join(', ');
 
-      // 橫向佈局：左邊是圖案與名稱，右邊是輸入框 + 顏色按鈕
-      items += `<div class="cell-style-item" style="display:flex; align-items:center; padding:6px 8px; border-bottom:1px solid #f3f4f6;" data-index="${i}">
+      items += `<div class="cell-style-item array-style-item" style="display:flex; align-items:center; padding:6px 8px; border-bottom:1px solid #f3f4f6;" data-index="${i}" data-type="${sType}" data-color="${colorVal}">
         <div class="style-item-header" style="display:flex; align-items:center; gap:8px; width:85px; flex-shrink:0;">
           <span class="style-icon ${sType}"></span>
           <span style="color:${badgeColor}; font-weight:700; font-size:11px;">${sType}</span>
@@ -496,6 +520,70 @@
 
     return `<div class="prop-section">
       <div class="prop-section-title">格子樣式參數</div>
+      <div class="cell-style-list">${items || '<div style="color:#9ca3af;padding:8px">無樣式變數</div>'}</div>
+    </div>`;
+  }
+
+  function parseArrowStyleLiteral(str) {
+    if (!str || !str.startsWith('{')) return [];
+    let content = str.trim();
+    if (content.startsWith('{') && content.endsWith('}')) {
+      content = content.substring(1, content.length - 1).trim();
+    }
+    const units = splitTopLevelArgs(content);
+    return units.map(u => {
+      u = u.trim();
+      if (!u.startsWith('{')) return null;
+      const inner = u.substring(1, u.length - 1).trim();
+      const parts = splitTopLevelArgs(inner);
+      if (parts.length < 2) return null;
+      return {
+        key: parts[0].replace(/"/g, '').trim(),
+        value: parts[1].replace(/"/g, '').trim()
+      };
+    }).filter(x => x);
+  }
+
+  function buildArrowStyleSection(dc) {
+    const actual = getActualParams(dc);
+    const styleParamStr = (actual && actual.length > 2 ? actual[2] : '').trim();
+    const cppStyles = parseArrowStyleLiteral(styleParamStr);
+
+    const allArrowKeys = ['color', 'width', 'headStart', 'headEnd', 'animate', 'animateColor', 'tweenDuration', 'key'];
+    const mergedStyles = [];
+    allArrowKeys.forEach(k => {
+      const existing = cppStyles.find(s => s.key === k);
+      if (existing) mergedStyles.push(existing);
+      else mergedStyles.push({ key: k, value: '' });
+    });
+    cppStyles.forEach(s => {
+      if (!allArrowKeys.includes(s.key)) mergedStyles.push(s);
+    });
+
+    let items = '';
+    mergedStyles.forEach((s, i) => {
+      let currentHex = '#d1d5db';
+      if (s.key === 'color' || s.key === 'animateColor') {
+        const matchColor = AV_COLORS.find(c => s.value.includes(c.name));
+        if (matchColor) currentHex = matchColor.hex;
+        else if (s.value.startsWith('rgba') || s.value.startsWith('#') || ['orange', 'black', 'white', 'red'].includes(s.value)) currentHex = s.value;
+      }
+
+      items += `<div class="cell-style-item arrow-style-item" style="display:flex; align-items:center; padding:6px 8px; border-bottom:1px solid #f3f4f6;" data-index="${i}" data-key="${s.key}">
+        <div class="style-item-header" style="display:flex; align-items:center; gap:8px; width:85px; flex-shrink:0;">
+          <span style="color:#ef4444; font-weight:700; font-size:11px;">${s.key}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; flex:1;">
+          <input class="prop-input" style="flex:1; font-family:monospace; font-size:11px; background:#fff; height:24px; text-align:left;" 
+                 data-arrow-style-idx="${i}" data-field="cpp-arrow-val"
+                 value="${s.value}" title="值">
+          ${(s.key === 'color' || s.key === 'animateColor') ? `<div class="color-picker-btn arrow-color-picker-btn" style="width:20px; height:20px; border-radius:50%; cursor:pointer; background:${currentHex}; border:1px solid #d1d5db; flex-shrink:0;" title="選取顏色" data-idx="${i}"></div>` : ''}
+        </div>
+      </div>`;
+    });
+
+    return `<div class="prop-section">
+      <div class="prop-section-title">箭頭樣式參數</div>
       <div class="cell-style-list">${items || '<div style="color:#9ca3af;padding:8px">無樣式變數</div>'}</div>
     </div>`;
   }
@@ -564,84 +652,162 @@
   // --- 陣列佈局/參數區塊 ---
   function buildArrayLayoutSection(dc) {
     const drawType = dc.args[5] || 'normal';
-    const itemsPerRow = dc.args[6] || 0;
-    const indexMode = dc.args[7] || 0;
-    const gap = dc.args[8] || 0;
+    let itemsPerRow = 0, indexMode = 0, gap = 0;
+    
+    if (dc.type === 'draw2DArray') {
+      indexMode = dc.args[6] || 0;
+    } else {
+      itemsPerRow = dc.args[6] || 0;
+      indexMode = dc.args[7] || 0;
+      gap = dc.args[8] || 0;
+    }
 
     // 從 C++ 獲取實際參數字串 (包含變數名)
     const actual = getActualParams(dc);
     const dataVar = (actual && actual.length > 2 ? actual[2] : '').trim() || '(無法抓取)';
     const rangeStr = (actual && actual.length > 4 ? actual[4] : '').trim() || '{0}';
 
-    // 解析範圍：嘗試從 {L, R} 或 {L} 中抓取數值
-    let L = 0, R = (dc.args[2] ? dc.args[2].length - 1 : 0);
-    const maxIdx = R;
+    let rangeHtml = '';
 
-    const listMatch = rangeStr.match(/\{([^}]+)\}/);
-    if (listMatch) {
-      const parts = listMatch[1].split(',').map(s => s.trim());
-      L = isNaN(parseInt(parts[0])) ? 0 : parseInt(parts[0]);
-      if (parts.length > 1) {
-        R = isNaN(parseInt(parts[1])) ? maxIdx : parseInt(parts[1]);
+    if (dc.type === 'draw2DArray') {
+      const matrix = dc.args[2] || [];
+      const rowsCount = matrix.length;
+      const colsCount = matrix.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
+      const maxRow = rowsCount > 0 ? rowsCount - 1 : 0;
+      const maxCol = colsCount > 0 ? colsCount - 1 : 0;
+      
+      let L_row = 0, L_col = 0, R_row = maxRow, R_col = maxCol;
+
+      const match2 = rangeStr.match(/\{\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}\s*,\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}\s*\}/);
+      if (match2) {
+        L_col = isNaN(parseInt(match2[1])) ? 0 : parseInt(match2[1]);
+        L_row = isNaN(parseInt(match2[2])) ? 0 : parseInt(match2[2]);
+        R_col = isNaN(parseInt(match2[3])) ? maxCol : parseInt(match2[3]);
+        R_row = isNaN(parseInt(match2[4])) ? maxRow : parseInt(match2[4]);
       } else {
-        // 只有一個值，代表從 L 到最後
-        R = maxIdx;
+        const match1 = rangeStr.match(/\{\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}\s*\}/);
+        if (match1) {
+          L_col = isNaN(parseInt(match1[1])) ? 0 : parseInt(match1[1]);
+          L_row = isNaN(parseInt(match1[2])) ? 0 : parseInt(match1[2]);
+        }
       }
+
+      rangeHtml = `
+        <div class="dual-slider-container">
+          <div style="font-size:10px; color:#6b7280; width:15px; flex-shrink:0;">X</div>
+          <input type="text" class="prop-input dual-slider-input" id="range-L-x" value="${L_col}">
+          <div class="slider-wrapper">
+            <div class="slider-track"></div>
+            <div class="slider-range-fill" id="range-fill-x"></div>
+            <input type="range" class="dual-slider-range" id="slider-L-x" min="0" max="${maxCol}" value="${L_col}">
+            <input type="range" class="dual-slider-range" id="slider-R-x" min="0" max="${maxCol}" value="${R_col}">
+          </div>
+          <input type="text" class="prop-input dual-slider-input" id="range-R-x" value="${R_col === maxCol ? '' : R_col}" placeholder="End">
+        </div>
+        <div class="dual-slider-container" style="margin-top:6px;">
+          <div style="font-size:10px; color:#6b7280; width:15px; flex-shrink:0;">Y</div>
+          <input type="text" class="prop-input dual-slider-input" id="range-L-y" value="${L_row}">
+          <div class="slider-wrapper">
+            <div class="slider-track"></div>
+            <div class="slider-range-fill" id="range-fill-y"></div>
+            <input type="range" class="dual-slider-range" id="slider-L-y" min="0" max="${maxRow}" value="${L_row}">
+            <input type="range" class="dual-slider-range" id="slider-R-y" min="0" max="${maxRow}" value="${R_row}">
+          </div>
+          <input type="text" class="prop-input dual-slider-input" id="range-R-y" value="${R_row === maxRow ? '' : R_row}" placeholder="End">
+        </div>
+      `;
+    } else {
+      let L = 0, R = (dc.args[2] ? dc.args[2].length - 1 : 0);
+      const maxIdx = R;
+
+      const listMatch = rangeStr.match(/\{([^}]+)\}/);
+      if (listMatch) {
+        const parts = listMatch[1].split(',').map(s => s.trim());
+        L = isNaN(parseInt(parts[0])) ? 0 : parseInt(parts[0]);
+        if (parts.length > 1) {
+          R = isNaN(parseInt(parts[1])) ? maxIdx : parseInt(parts[1]);
+        } else {
+          R = maxIdx;
+        }
+      }
+
+      rangeHtml = `
+        <div class="dual-slider-container">
+          <input type="text" class="prop-input dual-slider-input" id="range-L" value="${L}">
+          <div class="slider-wrapper">
+            <div class="slider-track"></div>
+            <div class="slider-range-fill" id="range-fill"></div>
+            <input type="range" class="dual-slider-range" id="slider-L" min="0" max="${maxIdx}" value="${L}">
+            <input type="range" class="dual-slider-range" id="slider-R" min="0" max="${maxIdx}" value="${R}">
+          </div>
+          <input type="text" class="prop-input dual-slider-input" id="range-R" value="${R === maxIdx ? '' : R}" placeholder="End">
+        </div>
+      `;
     }
 
-    const drawTypeOptions = ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']
-      .map(t => `<option value="${t}" ${t === drawType ? 'selected' : ''}>${t}</option>`).join('');
+    let drawTypeOptions = '';
+    if (dc.type === 'draw2DArray') {
+      drawTypeOptions = ['normal', 'clear', 'binary']
+        .map(t => `<option value="${t}" ${t === drawType ? 'selected' : ''}>${t}</option>`).join('');
+    } else {
+      drawTypeOptions = ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']
+        .map(t => `<option value="${t}" ${t === drawType ? 'selected' : ''}>${t}</option>`).join('');
+    }
 
-    const indexOptions = [
-      { v: 0, t: '0 (不顯示索引)' },
-      { v: 1, t: '1 (顯示索引)' },
-      { v: 2, t: '2 (只顯示索引)' },
-      { v: 3, t: '3 (顯示二進位索引)' },
-      { v: 4, t: '4 (顯示前導零二進位索引)' }
-    ].map(o => `<option value="${o.v}" ${Number(indexMode) === o.v ? 'selected' : ''}>${o.t}</option>`).join('');
-
-    // maxIdx 已在上方宣告過，此處直接使用
+    let indexOptions = '';
+    if (dc.type === 'draw2DArray') {
+      indexOptions = [
+        { v: 0, t: '0 (無索引)' },
+        { v: 1, t: '1 (左方索引)' },
+        { v: 2, t: '2 (上方索引)' },
+        { v: 3, t: '3 (左上方索引)' }
+      ].map(o => `<option value="${o.v}" ${Number(indexMode) === o.v ? 'selected' : ''}>${o.t}</option>`).join('');
+    } else {
+      indexOptions = [
+        { v: 0, t: '0 (不顯示索引)' },
+        { v: 1, t: '1 (顯示索引)' },
+        { v: 2, t: '2 (只顯示索引)' },
+        { v: 3, t: '3 (顯示二進位索引)' },
+        { v: 4, t: '4 (顯示前導零二進位索引)' }
+      ].map(o => `<option value="${o.v}" ${Number(indexMode) === o.v ? 'selected' : ''}>${o.t}</option>`).join('');
+    }
 
     let rows = '';
     rows += propRow('資料變數', inputField('prop-data-var', dataVar, 'text', true));
-
-    // 雙頭滑條顯示範圍
-    const rangeSliderHtml = `
-      <div class="dual-slider-container">
-        <input type="text" class="prop-input dual-slider-input" id="range-L" value="${L}">
-        <div class="slider-wrapper">
-          <div class="slider-track"></div>
-          <div class="slider-range-fill" id="range-fill"></div>
-          <input type="range" class="dual-slider-range" id="slider-L" min="0" max="${maxIdx}" value="${L}">
-          <input type="range" class="dual-slider-range" id="slider-R" min="0" max="${maxIdx}" value="${R}">
-        </div>
-        <input type="text" class="prop-input dual-slider-input" id="range-R" value="${R === maxIdx ? '' : R}" placeholder="End">
-      </div>
-    `;
-    rows += propRow('顯示範圍', rangeSliderHtml, true);
-
+    
+    if (dc.type === 'draw2DArray') {
+      const parts = rangeHtml.split('<div class="dual-slider-container" style="margin-top:6px;">');
+      if (parts.length > 1) {
+        rows += propRow('顯示範圍 (X)', parts[0], true);
+        rows += propRow('顯示範圍 (Y)', '<div class="dual-slider-container">' + parts[1], true);
+      } else {
+        rows += propRow('顯示範圍', rangeHtml, true);
+      }
+    } else {
+      rows += propRow('顯示範圍', rangeHtml, true);
+    }
     rows += propRow('繪圖模式', `<select class="prop-input" id="prop-drawtype">${drawTypeOptions}</select>`, true);
 
-    // 每行格子數量 (恢復簡潔版)
-    rows += propRow('每行格子數量', inputField('prop-ipr', itemsPerRow, 'number'));
+    if (dc.type !== 'draw2DArray') {
+      rows += propRow('每行格子數量', inputField('prop-ipr', itemsPerRow, 'number'));
+    }
 
     rows += propRow('顯示索引', `<select class="prop-input" id="prop-index">${indexOptions}</select>`, true);
-    rows += propRow('格子間距', inputField('prop-gap', gap, 'number'));
+    
+    if (dc.type !== 'draw2DArray') {
+      rows += propRow('格子間距', inputField('prop-gap', gap, 'number'));
+    }
 
     return `<div class="prop-section"><div class="prop-section-title">陣列參數</div>${rows}</div>`;
   }
 
-  /**
-   * 從 C++ 原始碼解析出當前呼叫的實際參數內容 (為了抓取變數名稱)
-   */
   function getActualParams(dc) {
     const editor = getEditor();
     if (!editor || dc.codeLine < 0) return null;
     const session = editor.getSession();
 
-    // 優先使用 groupID，若無則從第一個參數推斷 (有些 frame_draw 的 ID 是變數)
     let groupID = dc.groupID || '';
-    if (!groupID && dc.args && typeof dc.args[0] === 'string') {
+    if (!groupID && dc.args && typeof dc.args[0] === 'string' && dc.type !== 'drawArrow') {
       groupID = dc.args[0];
     }
 
@@ -649,12 +815,14 @@
     let lineText = '';
     let lineIdx = -1;
 
+    const fnRegex = /((?:key_)?(?:frame_draw|draw_2Darray|arrow|draw_array|draw_circle|draw_triangle))\s*\(/;
+
     // 優先搜尋：含有關鍵字且含有 ID
     for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5]) {
       const idx = searchCenter + offset;
       if (idx < 0) continue;
       const t = session.getLine(idx);
-      if (t && t.includes('frame_draw')) {
+      if (t && fnRegex.test(t)) {
         if (groupID === '' || t.includes('"' + groupID + '"') || t.includes(groupID)) {
           lineText = t;
           lineIdx = idx;
@@ -663,13 +831,13 @@
       }
     }
 
-    // 次優先：只要有 frame_draw 即可 (可能是 ID 被變數化了)
+    // 次優先：只要有關鍵字即可 (可能是 ID 被變數化了，或箭頭無 ID)
     if (!lineText) {
       for (let offset of [0, -1, 1, -2, 2]) {
         const idx = searchCenter + offset;
         if (idx < 0) continue;
         const t = session.getLine(idx);
-        if (t && t.includes('frame_draw')) {
+        if (t && fnRegex.test(t)) {
           lineText = t;
           lineIdx = idx;
           break;
@@ -679,7 +847,7 @@
 
     if (!lineText) return null;
 
-    const drawMatch = lineText.match(/((?:key_)?frame_draw)\s*\(/);
+    const drawMatch = lineText.match(fnRegex);
     if (!drawMatch) return null;
 
     const fnName = drawMatch[1];
@@ -781,13 +949,16 @@
 
 
     // 範圍滑條事件
-    const sL = panel.querySelector('#slider-L');
-    const sR = panel.querySelector('#slider-R');
-    const iL = panel.querySelector('#range-L');
-    const iR = panel.querySelector('#range-R');
+    function bindDualSlider(axis) {
+      const postfix = axis ? `-${axis}` : '';
+      const sL = panel.querySelector(`#slider-L${postfix}`);
+      const sR = panel.querySelector(`#slider-R${postfix}`);
+      const iL = panel.querySelector(`#range-L${postfix}`);
+      const iR = panel.querySelector(`#range-R${postfix}`);
+      const fill = panel.querySelector(`#range-fill${postfix}`);
 
-    if (sL && sR) {
-      // 僅更新 UI (滑條填滿條、文字輸入框)，不觸發 C++ 同步
+      if (!sL || !sR) return;
+
       const updateUI = () => {
         const valL = parseInt(sL.value);
         const valR = parseInt(sR.value);
@@ -796,16 +967,14 @@
         iL.value = valL;
         iR.value = (valR === max) ? '' : valR;
 
-        const fill = panel.querySelector('#range-fill');
-        const pL = (valL / max) * 100;
-        const pR = (valR / max) * 100;
+        const pL = max === 0 ? 0 : (valL / max) * 100;
+        const pR = max === 0 ? 100 : (valR / max) * 100;
         if (fill) {
           fill.style.left = pL + '%';
           fill.style.width = (pR - pL) + '%';
         }
       };
 
-      // 拖曳中：只動 UI 並動態調整 Z-index 避免卡死
       sL.addEventListener('input', () => {
         if (parseInt(sL.value) >= parseInt(sR.value)) {
           sL.value = sR.value;
@@ -839,8 +1008,8 @@
 
       // 文字輸入框：依然保持原本的 change 同步
       [iL, iR].forEach(input => input.addEventListener('change', () => {
-        sL.value = iL.value || 0;
-        sR.value = iR.value || sR.max;
+        sL.value = parseInt(iL.value) || 0;
+        sR.value = iR.value.trim() === '' ? sR.max : (parseInt(iR.value) || 0);
         updateUI();
         applyLayoutChange(dc, panel);
       }));
@@ -849,64 +1018,145 @@
       updateUI();
     }
 
+    if (dc.type === 'draw2DArray') {
+      bindDualSlider('x');
+      bindDualSlider('y');
+    } else {
+      bindDualSlider('');
+    }
+
     // 初始驗證
     validateRequiredFields(panel);
+
+    // DOM 寫回 C++ 邏輯：陣列樣式
+    function rebuildArrayStyleFromDOM() {
+      const items = Array.from(panel.querySelectorAll('.array-style-item'));
+      const activeStyles = items.map(item => {
+        const type = item.dataset.type;
+        const color = item.dataset.color || '';
+        const inp = item.querySelector('input[data-field="cpp-elements"]');
+        const elements = splitTopLevelArgs(inp.value).map(s => s.trim()).filter(s => s !== '');
+        return { type, color, elements };
+      }).filter(s => s.elements.length > 0);
+
+      if (activeStyles.length === 0) return '{}';
+
+      return '{ ' + activeStyles.map(s => {
+        const colorPart = s.color ? `, ${s.color.includes('AV_') ? s.color : '"' + s.color + '"'}` : '';
+        return `{{ "${s.type}"${colorPart} }, { ${s.elements.join(', ')} }}`;
+      }).join(', ') + ' }';
+    }
+
+    // DOM 寫回 C++ 邏輯：箭頭樣式
+    function rebuildArrowStyleFromDOM() {
+      const items = Array.from(panel.querySelectorAll('.arrow-style-item'));
+      const activeStyles = items.map(item => {
+        const key = item.dataset.key;
+        const inp = item.querySelector('input[data-field="cpp-arrow-val"]');
+        const value = inp.value.trim();
+        return { key, value };
+      }).filter(s => s.value !== '');
+
+      if (activeStyles.length === 0) return '{}';
+
+      return '{ ' + activeStyles.map(s => {
+        const valPart = s.value.includes('AV_') ? s.value : `"${s.value}"`;
+        return `{"${s.key}", ${valPart}}`;
+      }).join(', ') + ' }';
+    }
 
     // 樣式字面量修改 (回寫 C++ 變數)
     panel.querySelectorAll('input[data-field="cpp-elements"]').forEach(inp => {
       inp.addEventListener('change', () => {
-        const idx = parseInt(inp.dataset.styleIdx);
-        const actual = getActualParams(dc);
-        const styleParamStr = (actual && actual[3] ? actual[3] : '').trim();
-        const cppStyles = parseCppStyleLiteral(styleParamStr);
+        const newStyleLiteral = rebuildArrayStyleFromDOM();
+        
+        // 更新 JS 運行時狀態以立即反映在畫布
+        const items = Array.from(panel.querySelectorAll('.array-style-item'));
+        dc.args[3] = items.map(item => {
+          const type = item.dataset.type;
+          const color = item.dataset.color || '';
+          const elements = splitTopLevelArgs(item.querySelector('input[data-field="cpp-elements"]').value).map(s => s.trim()).filter(s => s !== '');
+          if (elements.length > 0) return { type, color, elements };
+          return null;
+        }).filter(x => x);
 
-        if (cppStyles[idx]) {
-          cppStyles[idx].elements = inp.value.split(',').map(s => s.trim());
-
-          // 重新組裝成 C++ 字面量: { {{"type", "color"}, {elements}}, ... }
-          const newStyleLiteral = '{ ' + cppStyles.map(s => {
-            const colorPart = s.color ? `, ${s.color.includes('AV_') ? s.color : '"' + s.color + '"'}` : '';
-            return `{{ "${s.type}"${colorPart} }, { ${s.elements.join(', ')} }}`;
-          }).join(', ') + ' }';
-
-          syncLayoutToCpp(dc, { styleVar: newStyleLiteral });
-          showToast(`樣式變數已更新`, 'success');
-        }
+        replayCurrentFrame();
+        syncLayoutToCpp(dc, { styleVar: newStyleLiteral });
+        showToast(`樣式變數已更新`, 'success');
       });
     });
 
     // 顏色按鈕點擊事件
-    panel.querySelectorAll('.color-picker-btn').forEach(btn => {
+    panel.querySelectorAll('.color-picker-btn:not(.arrow-color-picker-btn)').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const idx = parseInt(btn.dataset.idx);
+        const item = btn.closest('.array-style-item');
         openColorPalette(e, btn, (colorName, hex, isFinal) => {
-          // 1. 無論如何都先更新按鈕背景色與 JS 運行時數據 (為了即時預覽)
           btn.style.background = hex;
+          item.dataset.color = colorName;
+
+          const sType = item.dataset.type;
           const styles = dc.args[3];
-          if (styles && styles[idx]) {
-            styles[idx].color = colorName;
-            // 如果是 Array 格式也要同步 (相容舊邏輯)
-            if (Array.isArray(styles[idx])) styles[idx][1] = colorName;
-          }
-          replayCurrentFrame(); // 畫布即時重繪
-
-          // 2. 只有當 isFinal 為 true 時，才真正回寫 C++ 檔案
-          if (isFinal) {
-            // 重新從編輯器抓取最新原始碼狀態
-            const actual = getActualParams(dc);
-            const styleParamStr = (actual && actual[3] ? actual[3] : '').trim();
-            const cppStyles = parseCppStyleLiteral(styleParamStr);
-
-            if (cppStyles[idx]) {
-              cppStyles[idx].color = colorName;
-              const newStyleLiteral = '{ ' + cppStyles.map(s => {
-                const colorPart = s.color ? `, ${s.color.includes('AV_') ? s.color : '"' + s.color + '"'}` : '';
-                return `{{ "${s.type}"${colorPart} }, { ${s.elements.join(', ')} }}`;
-              }).join(', ') + ' }';
-
-              syncLayoutToCpp(dc, { styleVar: newStyleLiteral });
-              showToast(`樣式顏色已更新`, 'success');
+          if (styles) {
+            const existing = styles.find(s => (s.type || (Array.isArray(s) ? s[0] : '')) === sType);
+            if (existing) {
+              existing.color = colorName;
+              if (Array.isArray(existing)) existing[1] = colorName;
             }
+          }
+          replayCurrentFrame();
+
+          if (isFinal) {
+            const newStyleLiteral = rebuildArrayStyleFromDOM();
+            syncLayoutToCpp(dc, { styleVar: newStyleLiteral });
+            showToast(`樣式顏色已更新`, 'success');
+          }
+        });
+      });
+    });
+
+    // 箭頭樣式輸入框
+    panel.querySelectorAll('input[data-field="cpp-arrow-val"]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const newStyleLiteral = rebuildArrowStyleFromDOM();
+        
+        // 更新 JS 運行時狀態以立即反映在畫布
+        const key = inp.closest('.arrow-style-item').dataset.key;
+        if (dc.args[2] && typeof dc.args[2] === 'object') {
+          dc.args[2][key] = inp.value.trim();
+        } else if (!dc.args[2] || Array.isArray(dc.args[2])) {
+          // If it was an array (from C++ pair vector), we just build an object for JS runtime
+          const newOpt = {};
+          if (Array.isArray(dc.args[2])) {
+            dc.args[2].forEach(p => { if (p.key) newOpt[p.key] = p.value; });
+          }
+          newOpt[key] = inp.value.trim();
+          dc.args[2] = newOpt;
+        }
+
+        replayCurrentFrame();
+        syncLayoutToCpp(dc, { styleVar: newStyleLiteral });
+        showToast(`箭頭樣式變數已更新`, 'success');
+      });
+    });
+
+    // 箭頭顏色選取器
+    panel.querySelectorAll('.arrow-color-picker-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const item = btn.closest('.arrow-style-item');
+        openColorPalette(e, btn, (colorName, hex, isFinal) => {
+          btn.style.background = hex;
+          const inp = item.querySelector('input[data-field="cpp-arrow-val"]');
+          inp.value = colorName; // 更新 UI
+
+          if (dc.args[2] && typeof dc.args[2] === 'object') {
+            dc.args[2][item.dataset.key] = colorName;
+          }
+          replayCurrentFrame();
+
+          if (isFinal) {
+            const newStyleLiteral = rebuildArrowStyleFromDOM();
+            syncLayoutToCpp(dc, { styleVar: newStyleLiteral });
+            showToast(`箭頭樣式顏色已更新`, 'success');
           }
         });
       });
@@ -997,26 +1247,61 @@
     const sR = panel.querySelector('#slider-R');
 
     if (dt) dc.args[5] = dt.value;
-    if (ipr) dc.args[6] = parseInt(ipr.value) || 0;
-    if (idx) dc.args[7] = parseInt(idx.value) || 0;
-    if (gap) dc.args[8] = parseInt(gap.value) || 0;
+    if (dc.type === 'draw2DArray') {
+      if (idx) dc.args[6] = parseInt(idx.value) || 0;
+    } else {
+      if (ipr) dc.args[6] = parseInt(ipr.value) || 0;
+      if (idx) dc.args[7] = parseInt(idx.value) || 0;
+      if (gap) dc.args[8] = parseInt(gap.value) || 0;
+    }
 
     // 回寫保護
     let dataVarValue = dv ? dv.value.trim() : null;
     if (dataVarValue === '(無法抓取)' || dataVarValue === 'undefined') dataVarValue = undefined;
 
-    // 處理範圍語法 {L, R}
+    // 處理範圍語法 {L, R} 或 {{Ly, Lx}, {Ry, Rx}}
     let rangeVarValue = undefined;
-    if (iL && iR) {
-      const LVal = parseInt(iL.value) || 0;
-      const RVal = iR.value.trim() === '' ? (sR ? parseInt(sR.max) : 0) : parseInt(iR.value);
-      const max = sR ? parseInt(sR.max) : 0;
+    if (dc.type === 'draw2DArray') {
+      const iL_y = panel.querySelector('#range-L-y');
+      const iR_y = panel.querySelector('#range-R-y');
+      const sR_y = panel.querySelector('#slider-R-y');
+      const iL_x = panel.querySelector('#range-L-x');
+      const iR_x = panel.querySelector('#range-R-x');
+      const sR_x = panel.querySelector('#slider-R-x');
 
-      if (RVal >= max) {
-        // 右邊到頭了，只放一個值
-        rangeVarValue = `{${LVal}}`;
-      } else {
-        rangeVarValue = `{${LVal}, ${RVal}}`;
+      if (iL_y && iR_y && iL_x && iR_x) {
+        const Ly = parseInt(iL_y.value) || 0;
+        const maxY = sR_y ? parseInt(sR_y.max) : 0;
+        const Ry = iR_y.value.trim() === '' ? maxY : parseInt(iR_y.value);
+
+        const Lx = parseInt(iL_x.value) || 0;
+        const maxX = sR_x ? parseInt(sR_x.max) : 0;
+        const Rx = iR_x.value.trim() === '' ? maxX : parseInt(iR_x.value);
+
+        if (Ry >= maxY && Rx >= maxX && Ly === 0 && Lx === 0) {
+          rangeVarValue = `{}`; // 全部預設
+        } else if (Ry >= maxY && Rx >= maxX) {
+          rangeVarValue = `{{${Lx}, ${Ly}}}`;
+        } else {
+          rangeVarValue = `{{${Lx}, ${Ly}}, {${Rx}, ${Ry}}}`;
+        }
+        dc.args[4] = (Ry >= maxY && Rx >= maxX) ? [[Lx, Ly]] : [[Lx, Ly], [Rx, Ry]];
+      }
+    } else {
+      const iL = panel.querySelector('#range-L');
+      const iR = panel.querySelector('#range-R');
+      const sR = panel.querySelector('#slider-R');
+      if (iL && iR) {
+        const LVal = parseInt(iL.value) || 0;
+        const max = sR ? parseInt(sR.max) : 0;
+        const RVal = iR.value.trim() === '' ? max : parseInt(iR.value);
+
+        if (RVal >= max) {
+          rangeVarValue = `{${LVal}}`;
+        } else {
+          rangeVarValue = `{${LVal}, ${RVal}}`;
+        }
+        dc.args[4] = RVal >= max ? [LVal] : [LVal, RVal];
       }
     }
 
@@ -1211,7 +1496,7 @@
   function syncLayoutToCpp(dc, overrides = {}) {
     const editor = getEditor();
     if (!editor || dc.codeLine < 0) return;
-    if (dc.type !== 'drawArray') return;
+    if (!['drawArray', 'draw2DArray', 'drawArrow', 'drawCircle'].includes(dc.type)) return;
 
     const session = editor.getSession();
     const groupID = dc.groupID || '';
@@ -1220,25 +1505,25 @@
     let lineIdx = -1;
     let lineText = '';
 
-    // 優先：同時包含 frame_draw 和 groupID
+    // 優先：同時包含繪圖函式和 groupID
     for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5]) {
       const idx = searchCenter + offset;
       if (idx < 0) continue;
       const t = session.getLine(idx);
-      if (t && t.includes('frame_draw') && (groupID === '' || t.includes('"' + groupID + '"'))) {
+      if (t && (t.includes('draw') || t.includes('arrow')) && (groupID === '' || t.includes('"' + groupID + '"'))) {
         lineIdx = idx;
         lineText = t;
         break;
       }
     }
 
-    // 退而求其次：只找 frame_draw
+    // 退而求其次：只找繪圖函式
     if (lineIdx === -1) {
       for (let offset of [0, -1, 1, -2, 2]) {
         const idx = searchCenter + offset;
         if (idx < 0) continue;
         const t = session.getLine(idx);
-        if (t && t.includes('frame_draw')) {
+        if (t && (t.includes('draw') || t.includes('arrow'))) {
           lineIdx = idx;
           lineText = t;
           break;
@@ -1246,9 +1531,9 @@
       }
     }
 
-    const drawMatch = lineText ? lineText.match(/((?:key_)?frame_draw)\s*\(/) : null;
+    const drawMatch = lineText ? lineText.match(/((?:key_)?(?:frame_draw|draw_2Darray|arrow|draw_array|draw_circle|draw_triangle))\s*\(/) : null;
     if (!drawMatch) {
-      showToast(`行 ${dc.codeLine} 附近找不到 frame_draw，無法回寫`, 'error');
+      showToast(`行 ${dc.codeLine} 附近找不到對應的繪圖函式，無法回寫`, 'error');
       return;
     }
 
@@ -1263,21 +1548,56 @@
     // frame_draw 參數順序: (id, pos, data, style, range, draw_type, itemsPerRow, index, gap)
     // 索引:                  0    1    2      3     4        5           6        7     8
     const args = splitTopLevelArgs(argsStr);
-    if (args.length < 6) return; // 至少到 draw_type
+    
+    if (dc.type === 'drawArrow') {
+      if (args.length < 2) return;
+      if (overrides.styleVar !== undefined) args[2] = ' ' + overrides.styleVar;
+    } else if (dc.type === 'draw2DArray') {
+      const newDT = `"${dc.args[5] || 'normal'}"`;
+      const newIdx = String(dc.args[6] || 0);
 
-    // 更新參數
-    const newDT = `"${dc.args[5] || 'normal'}"`;
-    const newIPR = String(dc.args[6] || 0);
-    const newIdx = String(dc.args[7] || 0);
-    const newGap = String(dc.args[8] || 0);
+      while (args.length < 7) {
+        if (args.length === 3) args.push(' {}');
+        else if (args.length === 4) args.push(' {}');
+        else if (args.length === 5) args.push(' "normal"');
+        else if (args.length === 6) args.push(' 0');
+      }
 
-    if (overrides.dataVar !== undefined) args[2] = ' ' + overrides.dataVar;
-    if (overrides.styleVar !== undefined) args[3] = ' ' + overrides.styleVar;
-    if (overrides.rangeVar !== undefined) args[4] = ' ' + overrides.rangeVar;
-    if (args.length > 5) args[5] = ' ' + newDT;
-    if (args.length > 6) args[6] = ' ' + newIPR;
-    if (args.length > 7) args[7] = ' ' + newIdx;
-    if (args.length > 8) args[8] = ' ' + newGap;
+      if (overrides.dataVar !== undefined) args[2] = ' ' + overrides.dataVar;
+      if (overrides.styleVar !== undefined) args[3] = ' ' + overrides.styleVar;
+      if (overrides.rangeVar !== undefined) args[4] = ' ' + overrides.rangeVar;
+      
+      args[5] = ' ' + newDT;
+      args[6] = ' ' + newIdx;
+    } else {
+      if (dc.type !== 'drawCircle') {
+        while (args.length < 9) {
+          if (args.length === 3) args.push(' {}');
+          else if (args.length === 4) args.push(' {0}');
+          else if (args.length === 5) args.push(' "normal"');
+          else if (args.length === 6) args.push(' 0');
+          else if (args.length === 7) args.push(' 0');
+          else if (args.length === 8) args.push(' 0');
+        }
+      }
+
+      // 更新參數
+      const newDT = `"${dc.args[5] || 'normal'}"`;
+      const newIPR = String(dc.args[6] || 0);
+      const newIdx = String(dc.args[7] || 0);
+      const newGap = String(dc.args[8] || 0);
+
+      if (overrides.dataVar !== undefined) args[2] = ' ' + overrides.dataVar;
+      if (overrides.styleVar !== undefined) args[3] = ' ' + overrides.styleVar;
+      if (overrides.rangeVar !== undefined) args[4] = ' ' + overrides.rangeVar;
+      
+      if (dc.type !== 'drawCircle') {
+        args[5] = ' ' + newDT;
+        args[6] = ' ' + newIPR;
+        args[7] = ' ' + newIdx;
+        args[8] = ' ' + newGap;
+      }
+    }
 
     const newArgsStr = args.join(',');
     const newLine = lineText.substring(0, fnStart) + fnName + '(' + newArgsStr + ')' +
