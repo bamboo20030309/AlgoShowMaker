@@ -374,6 +374,20 @@ function isFullWidth(char) {
    *   { text: "456" } ← 其他欄位可省略
    * ]
    */
+  const _AV_COLOR_MAP = {
+    'AV_green': 'rgba(165, 214, 167, 0.6)',
+    'AV_blue': 'rgba(144, 202, 249, 0.6)',
+    'AV_red': 'rgba(239, 154, 154, 0.6)',
+    'AV_yellow': 'rgba(252, 255, 64, 0.46)',
+    'AV_orange': 'orange',
+    'AV_node_green': '#e8f5e9',
+    'AV_node_red': '#ef9a9a',
+    'AV_node_grey': '#cccccc',
+    'AV_black': 'black',
+    'AV_white': 'white'
+  };
+  function _resolveAVColor(c) { return (c && _AV_COLOR_MAP[c]) ? _AV_COLOR_MAP[c] : c; }
+
   function drawColoredText(
     segments,
     pos,
@@ -624,11 +638,11 @@ function isFullWidth(char) {
       line.forEach((seg, segIndex) => {
         const rawText = String(seg.text ?? "");
         const fs = Number(seg.font_size) || 14;
-        const fg = seg.font_color || '#111827';
-        const bg = seg.bg_color || null;
+        const fg = _resolveAVColor(seg.font_color) || '#111827';
+        const bg = _resolveAVColor(seg.bg_color) || null;
         const segWidth = segWidths[segIndex];
 
-        // 背景色：稍微比文字寬 / 高一點
+        // 背景色：稍微比文字寬 / 高一點，並極強制排除任何可能的外框（邊框）
         if (bg) {
           const bgRect = document.createElementNS(NS, 'rect');
           bgRect.setAttribute('x', cursorX - paddingBgX);
@@ -639,6 +653,10 @@ function isFullWidth(char) {
           bgRect.setAttribute('width', segWidth + paddingBgX * 2);
           bgRect.setAttribute('height', fs * 1.0 + paddingBgY * 2);
           bgRect.setAttribute('fill', bg);
+          bgRect.setAttribute('stroke', 'none');
+          bgRect.setAttribute('stroke-width', '0');
+          // 雙重防禦：使用 !important 行內樣式強制覆蓋任何可能的全域 CSS 邊框設定！
+          bgRect.style.cssText = 'stroke: none !important; stroke-width: 0px !important; outline: none !important; box-shadow: none !important;';
           bgRect.setAttribute('rx', 2);
           bgRect.setAttribute('ry', 2);
           g.insertBefore(bgRect, textNode); // 背景在文字下面

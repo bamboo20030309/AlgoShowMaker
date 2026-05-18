@@ -10,10 +10,12 @@
   let _recLine = -1;
   let _recording = false;
 
+  let _msgCount = 0;
   function startRecording(frame) {
     _recFrame = frame;
     _recLine = -1;
     _recording = true;
+    _msgCount = 0;
     if (!_frameRegistry[frame]) _frameRegistry[frame] = [];
     else _frameRegistry[frame].length = 0;
   }
@@ -81,9 +83,12 @@
     let line = _recLine;
     const lastArg = arguments[arguments.length - 1];
     if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
+    let gid = null;
     if (_recording) {
+      _msgCount++;
+      gid = `msg-${_msgCount}`;
       _frameRegistry[_recFrame].push({
-        type: 'drawText', groupID: null,
+        type: 'drawText', groupID: gid,
         args: Array.from(arguments),
         codeLine: line
       });
@@ -97,9 +102,12 @@
     let line = _recLine;
     const lastArg = arguments[arguments.length - 1];
     if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
+    let gid = null;
     if (_recording) {
+      _msgCount++;
+      gid = `msg-${_msgCount}`;
       _frameRegistry[_recFrame].push({
-        type: 'drawColoredText', groupID: null,
+        type: 'drawColoredText', groupID: gid,
         args: Array.from(arguments),
         codeLine: line
       });
@@ -179,6 +187,16 @@
   // ============================================================
   //  2. 工具函式
   // ============================================================
+  // 檢查是否為 Pos 位置物件
+  function isPosObject(arg) {
+    if (!arg || typeof arg !== 'object' || Array.isArray(arg)) return false;
+    if (arg.type === 'abs' || arg.type === 'rel') return true;
+    if (arg.ref !== undefined) return true;
+    if (arg.x !== undefined && arg.y !== undefined) return true;
+    if (arg.dx !== undefined || arg.dy !== undefined) return true;
+    return false;
+  }
+
   function getCurrentFrameDrawCalls() {
     if (!window.CodeScript) return [];
     const f = window.CodeScript.get_current_frame_index();
@@ -199,6 +217,10 @@
 
     // 暫停錄製以避免遞迴
     _recording = false;
+    // 重設文字 ID 計數器，確保重繪出來的 SVG 元素 ID 與 _frameRegistry 保持一致
+    if (window.resetMessageCounter) {
+      window.resetMessageCounter();
+    }
     // 完整清空畫布（包含箭頭）
     const vp = window.getViewport();
     if (vp) {
@@ -220,16 +242,39 @@
 
     calls.forEach(c => {
       switch (c.type) {
-        case 'drawArray': _origDA.apply(null, c.args); break;
-        case 'draw2DArray': _origD2A.apply(null, c.args); break;
-        case 'drawArrow': _origAR.apply(null, c.args); break;
-        case 'drawText': _origDT.apply(null, c.args); break;
-        case 'drawColoredText': _origCT.apply(null, c.args); break;
-        case 'drawCircle': _origDC.apply(null, c.args); break;
+        case 'drawArray': if (_origDA) _origDA.apply(null, c.args); break;
+        case 'draw2DArray': if (_origD2A) _origD2A.apply(null, c.args); break;
+        case 'drawArrow': if (_origAR) _origAR.apply(null, c.args); break;
+        case 'drawText': if (_origDT) _origDT.apply(null, c.args); break;
+        case 'drawColoredText': if (_origCT) _origCT.apply(null, c.args); break;
+        case 'drawCircle': if (_origDC) _origDC.apply(null, c.args); break;
+        case 'drawWord': if (_origDW) _origDW.apply(null, c.args); break;
+        case 'drawTriangle': if (_origDTR) _origDTR.apply(null, c.args); break;
       }
     });
 
     if (window.sweepCanvas) window.sweepCanvas();
+
+    // 樣式補正：針對 drawText 即時預覽自定義的文字大小、顏色與背景色
+    calls.forEach(c => {
+      if (c.type === 'drawText' && c._textSegments && c._textSegments[0]) {
+        const seg = c._textSegments[0];
+        const gNode = document.getElementById(c.groupID);
+        if (gNode) {
+          const rect = gNode.querySelector('rect');
+          const pointer = gNode.querySelector('path');
+          const text = gNode.querySelector('text');
+
+          if (rect && seg.bg_color) rect.setAttribute('fill', getRgbaOrHex(seg.bg_color));
+          if (pointer && seg.bg_color) pointer.setAttribute('fill', getRgbaOrHex(seg.bg_color));
+          if (text && seg.font_color) text.setAttribute('fill', getRgbaOrHex(seg.font_color));
+          if (text && seg.font_size) {
+            text.setAttribute('font-size', seg.font_size);
+            text.querySelectorAll('tspan').forEach(tspan => tspan.setAttribute('font-size', seg.font_size));
+          }
+        }
+      }
+    });
 
     // 恢復目標物件引用
     if (oldTargetId) {
@@ -251,18 +296,28 @@
     const dc = findDrawCallByGroupID(id);
     if (!dc) return;
 
-    const pos = dc.args[1];
-    if (!pos) return;
+    // 自動尋找第一個符合 Pos 物件的參數索引進行拖曳更新
+    let posArg = null;
+    let posIdx = -1;
+    for (let i = 0; i < dc.args.length; i++) {
+      if (isPosObject(dc.args[i])) {
+        posArg = dc.args[i];
+        posIdx = i;
+        break;
+      }
+    }
 
-    if (pos.type === 'rel' || pos.ref) {
-      pos.dx = (pos.dx || 0) + dx;
-      pos.dy = (pos.dy || 0) + dy;
+    if (!posArg) return;
+
+    if (posArg.type === 'rel' || posArg.ref) {
+      posArg.dx = (posArg.dx || 0) + dx;
+      posArg.dy = (posArg.dy || 0) + dy;
       // 同步 x, y 以相容部分邏輯
-      pos.x = pos.dx;
-      pos.y = pos.dy;
+      posArg.x = posArg.dx;
+      posArg.y = posArg.dy;
     } else {
-      pos.x = (pos.x || 0) + dx;
-      pos.y = (pos.y || 0) + dy;
+      posArg.x = (posArg.x || 0) + dx;
+      posArg.y = (posArg.y || 0) + dy;
     }
 
     // 更新介面 (如果面板開著)
@@ -271,7 +326,7 @@
     }
 
     replayCurrentFrame();
-    syncPosToCpp(dc);
+    syncPosToCpp(dc, posIdx);
   };
 
   let _currentPropSection = 'all';
@@ -309,17 +364,25 @@
 
     let html = `<div class="ctx-label">${type} — ${id}</div>`;
 
-    if (drawCall && (drawCall.type === 'drawArray' || drawCall.type === 'draw2DArray')) {
+    // 自動化顯示邏輯：只要繪圖參數含有 Pos 物件，右鍵選單就自動賦予「編輯位置」區塊
+    let hasPos = false;
+    if (drawCall && drawCall.args) {
+      hasPos = drawCall.args.some(arg => isPosObject(arg));
+    }
+
+    if (hasPos) {
       html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
+    }
+
+    if (drawCall && (drawCall.type === 'drawArray' || drawCall.type === 'draw2DArray')) {
       html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯格子樣式</div>`;
       html += `<div class="ctx-item" data-action="edit-layout"><span class="ctx-icon">📐</span>編輯繪製參數</div>`;
     } else if (drawCall && drawCall.type === 'drawCircle') {
-      html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
       html += `<div class="ctx-item" data-action="edit-circle-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
     } else if (drawCall && drawCall.type === 'drawArrow') {
       html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
-    } else {
-      html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
+    } else if (drawCall && (drawCall.type === 'drawText' || drawCall.type === 'drawColoredText')) {
+      html += `<div class="ctx-item" data-action="edit-text-style"><span class="ctx-icon">📝</span>編輯文字與樣式</div>`;
     }
 
     if (line >= 0) {
@@ -358,6 +421,7 @@
       case 'edit-style': _currentPropSection = 'style'; showPropPanel('style'); break;
       case 'edit-layout': _currentPropSection = 'layout'; showPropPanel('layout'); break;
       case 'edit-circle-style': _currentPropSection = 'circle-style'; showPropPanel('circle-style'); break;
+      case 'edit-text-style': _currentPropSection = 'text-style'; showPropPanel('text-style'); break;
       case 'show-info': _currentPropSection = 'all'; showPropPanel('all'); break;
       case 'goto-code':
         if (_ctxDrawCall && _ctxDrawCall.codeLine >= 0) {
@@ -434,6 +498,18 @@
     if (dc.type === 'drawCircle' && (section === 'all' || section === 'circle-style')) {
       content += buildCircleStyleSection(dc);
     }
+    if ((dc.type === 'drawText' || dc.type === 'drawColoredText') && (section === 'all' || section === 'text-style')) {
+      // 記錄原始文字以供回寫時進行精確的特徵對比，杜絕寫錯行！
+      if (dc && !dc._originalText) {
+        if (dc.type === 'drawText') {
+          dc._originalText = String(dc.args[0]);
+        } else if (dc.type === 'drawColoredText') {
+          const segs = Array.isArray(dc.args[0]) ? dc.args[0] : (dc._textSegments || []);
+          dc._originalText = segs.map(s => s.text).join('|');
+        }
+      }
+      content += buildTextEditSection(dc);
+    }
     if (dc.codeLine >= 0) {
       content += `<div class="prop-section"><div class="prop-code-link" id="prop-goto-code">📝 跳到程式碼 (行 ${dc.codeLine + 1})</div></div>`;
     }
@@ -460,35 +536,39 @@
     return `<div class="prop-header"><span>${title}</span><span class="prop-close" id="prop-close-btn">✕</span></div>`;
   }
 
-  // --- 位置區塊 ---
+  // --- 位置區塊 (全自動分析位置調節區塊) ---
   function buildPosSection(dc) {
-    if (dc.type === 'drawArrow') {
-      return `<div class="prop-section">
-          <div class="prop-section-title">起點位置 (startSpec)</div>
-          ${buildSinglePosUI(dc.args[0], 'pos-start')}
-        </div>
-        <div class="prop-section">
-          <div class="prop-section-title">終點位置 (endSpec)</div>
-          ${buildSinglePosUI(dc.args[1], 'pos-end')}
+    let html = '';
+    const actual = getActualParams(dc) || [];
+
+    let posCount = 0;
+    for (let i = 0; i < dc.args.length; i++) {
+      const arg = dc.args[i];
+      if (isPosObject(arg)) {
+        posCount++;
+        let paramName = `位置調整`;
+        if (dc.type === 'drawArrow') {
+          paramName = i === 0 ? '起點位置 (startSpec)' : '終點位置 (endSpec)';
+        } else if (actual[i]) {
+          const cleanArg = actual[i].trim();
+          paramName = `位置參數 ${i + 1} (${cleanArg.split('(')[0]})`;
+        } else {
+          paramName = `位置參數 ${i + 1}`;
+        }
+
+        html += `<div class="prop-section">
+          <div class="prop-section-title">${paramName}</div>
+          ${buildSinglePosUI(arg, `pos-${i}`)}
         </div>`;
+      }
     }
 
-    const posArg = (dc.type === 'drawArray' || dc.type === 'draw2DArray') ? dc.args[1] :
-      dc.type === 'drawCircle' ? dc.args[1] :
-        dc.type === 'drawText' ? dc.args[1] :
-          dc.type === 'drawColoredText' ? dc.args[1] : null;
-
-    if (!posArg) return '';
-
-    return `<div class="prop-section">
-      <div class="prop-section-title">定位與偏移</div>
-      ${buildSinglePosUI(posArg, 'pos')}
-    </div>`;
+    return html;
   }
 
   function buildSinglePosUI(pos, prefix = 'pos') {
     if (!pos || typeof pos !== 'object') return propRow('原始值', `<span style="font-family:monospace;font-size:11px;">${pos}</span>`, true);
-    
+
     let rows = '';
     const isRel = (pos.type === 'rel' || pos.ref);
 
@@ -668,7 +748,7 @@
     const priorityKeys = ['color', 'width', 'text', 'text_color', 'text_size', 'text_weight'];
     const otherKeys = ['dash', 'headStart', 'headEnd', 'marginStart', 'marginEnd', 'key'];
     const allArrowKeys = [...priorityKeys, ...otherKeys];
-    
+
     const mergedStyles = [];
     allArrowKeys.forEach(k => {
       const existing = cppStyles.find(s => s.key === k);
@@ -817,7 +897,7 @@
   function buildArrayLayoutSection(dc) {
     const drawType = dc.args[5] || 'normal';
     let itemsPerRow = 0, indexMode = 0, gap = 0;
-    
+
     if (dc.type === 'draw2DArray') {
       indexMode = dc.args[6] || 0;
     } else {
@@ -839,7 +919,7 @@
       const colsCount = matrix.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
       const maxRow = rowsCount > 0 ? rowsCount - 1 : 0;
       const maxCol = colsCount > 0 ? colsCount - 1 : 0;
-      
+
       let L_row = 0, L_col = 0, R_row = maxRow, R_col = maxCol;
 
       const match2 = rangeStr.match(/\{\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}\s*,\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}\s*\}/);
@@ -938,7 +1018,7 @@
 
     let rows = '';
     rows += propRow('資料變數', inputField('prop-data-var', dataVar, 'text', true));
-    
+
     if (dc.type === 'draw2DArray') {
       const parts = rangeHtml.split('<div class="dual-slider-container" style="margin-top:6px;">');
       if (parts.length > 1) {
@@ -957,7 +1037,7 @@
     }
 
     rows += propRow('顯示索引', `<select class="prop-input" id="prop-index">${indexOptions}</select>`, true);
-    
+
     if (dc.type !== 'draw2DArray') {
       rows += propRow('格子間距', inputField('prop-gap', gap, 'number'));
     }
@@ -1048,6 +1128,223 @@
     return `<div class="prop-section"><div class="prop-section-title">🎨 圓形樣式</div>${rows}</div>`;
   }
 
+  // --- 文字編輯區塊 ---
+  function buildTextEditSection(dc) {
+    let segments = [];
+
+    if (dc.type === 'drawText') {
+      if (!dc._textSegments) {
+        dc._textSegments = [{
+          text: dc.args[0] || '',
+          font_size: dc.args[2] || 14,
+          font_color: dc.args[3] || '#111827',
+          bg_color: dc.args[4] || '#ffffff'
+        }];
+      }
+      segments = dc._textSegments;
+    } else {
+      segments = dc.args[0] || [];
+    }
+
+    let html = `
+      <div class="prop-section">
+        <div class="prop-section-title" style="display:flex; justify-content:space-between; align-items:center; width:100%">
+          <span>📝 文字段落編輯</span>
+          ${dc.type === 'drawColoredText' ? `<button class="add-segment-btn" id="prop-add-seg" style="font-size:10px; padding:2px 8px; border-radius:4px; background:#10b981; color:#fff; border:none; cursor:pointer;">+ 新增段落</button>` : ''}
+        </div>
+        <div class="text-segments-list" style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+    `;
+
+    segments.forEach((seg, i) => {
+      let currentFontColorHex = seg.font_color || '#111827';
+      let currentBgColorHex = seg.bg_color || '#ffffff';
+
+      const matchFc = AV_COLORS.find(c => currentFontColorHex.includes(c.name));
+      if (matchFc) currentFontColorHex = matchFc.hex;
+      const matchBg = AV_COLORS.find(c => currentBgColorHex.includes(c.name));
+      if (matchBg) currentBgColorHex = matchBg.hex;
+
+      html += `
+        <div class="segment-card" data-idx="${i}" style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; background:#f9fafb; position:relative;">
+          ${dc.type === 'drawColoredText' && segments.length > 1 ? `<span class="delete-segment-btn" data-idx="${i}" style="position:absolute; right:8px; top:4px; font-size:12px; color:#ef4444; cursor:pointer;" title="刪除此段">✕</span>` : ''}
+          
+          <div class="prop-row" style="margin-bottom:6px;">
+            <span class="prop-label" style="width:50px;">段落 ${i + 1}</span>
+            <textarea class="prop-input seg-text-input" data-idx="${i}" style="flex:1; height:45px; resize:vertical; font-family:inherit; font-size:12px; padding:4px;" placeholder="請輸入文字">${seg.text || ''}</textarea>
+          </div>
+          
+          <div style="display:flex; gap:10px; align-items:center; margin-top:6px;">
+            <div style="display:flex; flex-direction:column; flex:1;">
+              <span style="font-size:10px; color:#6b7280; margin-bottom:2px;">大小</span>
+              <input type="number" class="prop-input seg-size-input" data-idx="${i}" value="${seg.font_size || 14}" style="width:100%; height:24px; font-size:11px;">
+            </div>
+            
+            <div style="display:flex; flex-direction:column; align-items:center; width:45px;">
+              <span style="font-size:10px; color:#6b7280; margin-bottom:2px;">文字色</span>
+              <div class="color-picker-btn seg-color-btn" data-idx="${i}" data-type="fc" style="width:20px; height:20px; border-radius:50%; cursor:pointer; background:${currentFontColorHex}; border:1px solid #d1d5db;" title="${seg.font_color || '點擊選取字體顏色'}"></div>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; align-items:center; width:45px;">
+              <span style="font-size:10px; color:#6b7280; margin-bottom:2px;">背景色</span>
+              <div class="color-picker-btn seg-color-btn" data-idx="${i}" data-type="bg" style="width:20px; height:20px; border-radius:50%; cursor:pointer; background:${currentBgColorHex}; border:1px solid #d1d5db;" title="${seg.bg_color || '點擊選取背景顏色'}"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+
+    return html;
+  }
+
+  function getRgbaOrHex(colorVal) {
+    if (!colorVal) return '';
+    return resolveColorHex(colorVal) || colorVal;
+  }
+
+  // 從原始 C++ 行中解析出每個 segment 的各欄位原始表達式
+  // 判斷一個字串是否是 C++ 中的變數名稱（如 _draw_up_color 或 AV_blue，而非寫死的字串或空值）
+  function isCppVar(expr) {
+    if (!expr) return false;
+    const trimmed = expr.trim();
+    if (trimmed === '""' || trimmed === "''" || trimmed === "") return false;
+    // 如果不是以單/雙引號開頭，也不是數字，那就極可能是變數
+    return !trimmed.startsWith('"') && !trimmed.startsWith("'") && isNaN(trimmed);
+  }
+
+  // 從原始 C++ 行中解析出每個 segment 的各欄位原始表達式
+  // 例如 {{"上層",_draw_up_color},{" 比 "}} → [{text:'"上層"', bg:'_draw_up_color', fc:'', fs:'', fieldCount: 2}, ...]
+  function parseOriginalCppSegments(cppArg0) {
+    if (!cppArg0) return [];
+    const trimmed = cppArg0.trim();
+    // 最外層是 { ... }，裡面是逐個 { ... } 的 segment
+    if (!trimmed.startsWith('{')) return [];
+    // 去掉最外層的 { }
+    const inner = trimmed.slice(1, -1).trim();
+    // 用 splitTopLevelArgs 拆出每個 segment（每個 segment 自身也是 {...}）
+    const segStrs = splitTopLevelArgs(inner);
+    const result = [];
+    for (const segStr of segStrs) {
+      const s = segStr.trim();
+      if (!s.startsWith('{') || !s.endsWith('}')) continue;
+      // 去掉這個 segment 的 { }
+      const segInner = s.slice(1, -1);
+      const fields = splitTopLevelArgs(segInner);
+      // fields[0]=text, fields[1]=bg_color, fields[2]=font_color, fields[3]=font_size
+      result.push({
+        text: (fields[0] || '').trim(),
+        bg:   (fields[1] || '').trim(),
+        fc:   (fields[2] || '').trim(),
+        fs:   (fields[3] || '').trim(),
+        fieldCount: fields.length
+      });
+    }
+    return result;
+  }
+
+  // 智慧合併：只替換每個 segment 的文字欄位，並百分之百保留 C++ 中的顏色/字體變數，絕不將變數覆蓋
+  function mergeTextVarPreservingVars(newTextVar, originalArg0) {
+    if (!originalArg0) return newTextVar;
+    const origTrimmed = originalArg0.trim();
+    if (!origTrimmed.startsWith('{')) return newTextVar;
+
+    const origSegs = parseOriginalCppSegments(origTrimmed);
+    if (origSegs.length === 0) return newTextVar;
+
+    const newTrimmed = newTextVar.trim();
+    if (!newTrimmed.startsWith('{')) return newTextVar;
+    const newSegs = parseOriginalCppSegments(newTrimmed);
+    if (newSegs.length === 0) return newTextVar;
+
+    // 逐個 segment 合併，即使長度有些微不同也能安全按順序對應
+    const mergedArr = newSegs.map((newSeg, idx) => {
+      const orig = origSegs[idx];
+      const textExpr = newSeg.text;
+
+      if (orig) {
+        // 如果原始段落存在：優先保留原始中的變數，沒有變數才用新的
+        const bgExpr = isCppVar(orig.bg) ? orig.bg : (orig.bg || newSeg.bg);
+        const fcExpr = isCppVar(orig.fc) ? orig.fc : (orig.fc || newSeg.fc);
+        const fsExpr = isCppVar(orig.fs) ? orig.fs : (orig.fs || newSeg.fs);
+
+        // 重點：精確保留原始 C++ 段落的欄位個數，絕不平白增加多餘的空欄位！
+        const fieldCount = orig.fieldCount || 4;
+        const parts = [textExpr];
+        if (fieldCount >= 2) parts.push(bgExpr || '""');
+        if (fieldCount >= 3) parts.push(fcExpr || '""');
+        if (fieldCount >= 4) parts.push(fsExpr || '""');
+
+        return `{${parts.join(', ')}}`;
+      } else {
+        // 新增的段落：使用全部 4 個欄位
+        return `{${textExpr}, ${newSeg.bg || '""'}, ${newSeg.fc || '""'}, ${newSeg.fs || '""' }}`;
+      }
+    });
+
+    return `{${mergedArr.join(', ')}}`;
+  }
+
+  // 負責寫回 C++ 的函式
+  function syncTextToCpp(dc) {
+    if (dc.type === 'drawText' || dc.type === 'drawColoredText') {
+      let convert = false;
+      let textVar = '';
+
+      // 智能融合 Segments 讀取來源
+      let segs = [];
+      if (dc.type === 'drawColoredText') {
+        segs = Array.isArray(dc.args[0]) ? dc.args[0] : (dc._textSegments || []);
+      } else {
+        segs = dc._textSegments || [];
+        if (segs.length === 0 && dc.args[0] !== undefined) {
+          segs = [{
+            text: String(dc.args[0]),
+            font_size: dc.args[2] || 14,
+            font_color: dc.args[3] || '#111827',
+            bg_color: dc.args[4] || '#ffffff'
+          }];
+        }
+      }
+
+      if (segs.length > 0) {
+        // 檢查是否只需純文字 (單一段落、無顏色、預設大小，且原始 dc.type 是 drawText 才能使用單一字串！)
+        if (dc.type === 'drawText' &&
+            segs.length === 1 && 
+            (!segs[0].font_color || segs[0].font_color === '#111827' || segs[0].font_color === 'black') && 
+            (!segs[0].bg_color || segs[0].bg_color === '#ffffff' || segs[0].bg_color === 'white') && 
+            (!segs[0].font_size || segs[0].font_size === 14)) {
+          let txt = segs[0].text;
+          txt = txt.replace(/\n/g, '\\n').replace(/"/g, '\\"');
+          textVar = `"${txt}"`;
+        } else {
+          convert = true;
+          const arr = segs.map(s => {
+            let bg = s.bg_color || '';
+            let fg = s.font_color || '';
+            if (bg === '#ffffff' || bg === 'white' || bg === 'transparent') bg = '';
+            if (fg === '#111827' || fg === 'black') fg = '';
+            
+            let fs = s.font_size || 14;
+            let txt = s.text.replace(/\n/g, '\\n').replace(/"/g, '\\"');
+            
+            return `{"${txt}", ${formatCppColor(bg)}, ${formatCppColor(fg)}, "${fs}"}`;
+          });
+          textVar = `{${arr.join(', ')}}`;
+        }
+      } else {
+        const rawTxt = (typeof dc.args[0] === 'string' ? dc.args[0] : '').replace(/\n/g, '\\n').replace(/"/g, '\\"');
+        textVar = `"${rawTxt}"`;
+      }
+      
+      // 注意：變數保留邏輯已移至 syncLayoutToCpp 中的 mergeTextVarPreservingVars
+      syncLayoutToCpp(dc, { textVar: textVar, convertToColored: convert });
+    }
+  }
+
   // --- 小工具 ---
   function propRow(label, valueHtml, isRaw) {
     return `<div class="prop-row"><span class="prop-label">${label}</span>${isRaw ? valueHtml : valueHtml}</div>`;
@@ -1066,19 +1363,13 @@
   // --- 綁定事件 ---
   function bindPropEvents(panel, dc) {
     const section = _currentPropSection;
-    function bindSinglePosEvents(prefix, posArg) {
+    function bindSinglePosEvents(prefix, posArg, argIdx) {
       if (!posArg || typeof posArg !== 'object') return;
 
       const triggerSync = () => {
         replayCurrentFrame();
-        if (dc.type === 'drawArrow') {
-          const overrides = {};
-          if (prefix === 'pos-start') overrides.startSpecVar = posJsonToCpp(dc.args[0]);
-          if (prefix === 'pos-end') overrides.endSpecVar = posJsonToCpp(dc.args[1]);
-          syncLayoutToCpp(dc, overrides);
-        } else {
-          syncPosToCpp(dc);
-        }
+        // 統一使用高度自動化的 syncPosToCpp
+        syncPosToCpp(dc, argIdx);
       };
 
       // 模式切換 (Tabs)
@@ -1112,19 +1403,19 @@
       if (inpY) inpY.onchange = () => { posArg.y = parseFloat(inpY.value) || 0; triggerSync(); validateRequiredFields(panel); };
 
       const inpRef = panel.querySelector(`#${prefix}-ref`);
-      if (inpRef) inpRef.onchange = () => { 
-        posArg.ref = inpRef.value; 
-        triggerSync(); 
-        validateRequiredFields(panel); 
-        showPropPanel(section); 
+      if (inpRef) inpRef.onchange = () => {
+        posArg.ref = inpRef.value;
+        triggerSync();
+        validateRequiredFields(panel);
+        showPropPanel(section);
       };
 
       const inpIdx = panel.querySelector(`#${prefix}-index`);
-      if (inpIdx) inpIdx.onchange = () => { 
+      if (inpIdx) inpIdx.onchange = () => {
         const v = inpIdx.value.trim();
         posArg.index = v === '' ? -1 : (parseInt(v) || 0);
-        triggerSync(); 
-        validateRequiredFields(panel); 
+        triggerSync();
+        validateRequiredFields(panel);
       };
 
       const inpRow = panel.querySelector(`#${prefix}-row`);
@@ -1165,15 +1456,12 @@
       });
     }
 
-    if (dc.type === 'drawArrow') {
-      bindSinglePosEvents('pos-start', dc.args[0]);
-      bindSinglePosEvents('pos-end', dc.args[1]);
-    } else {
-      const posArg = (dc.type === 'drawArray' || dc.type === 'draw2DArray') ? dc.args[1] :
-        dc.type === 'drawCircle' ? dc.args[1] :
-          dc.type === 'drawText' ? dc.args[1] :
-            dc.type === 'drawColoredText' ? dc.args[1] : null;
-      bindSinglePosEvents('pos', posArg);
+    // 自動化事件綁定：只要偵測到是 Pos 物件的參數，就動態綁定事件
+    for (let i = 0; i < dc.args.length; i++) {
+      const arg = dc.args[i];
+      if (isPosObject(arg)) {
+        bindSinglePosEvents(`pos-${i}`, arg, i);
+      }
     }
 
     // 繪製參數修改
@@ -1186,6 +1474,88 @@
         validateRequiredFields(panel);
       });
     });
+
+    // 綁定文字編輯與樣式事件
+    if (dc.type === 'drawText' || dc.type === 'drawColoredText') {
+      panel.querySelectorAll('.seg-text-input').forEach(textarea => {
+        textarea.addEventListener('change', () => {
+          const idx = parseInt(textarea.dataset.idx);
+          const segments = dc.type === 'drawText' ? dc._textSegments : dc.args[0];
+          if (segments && segments[idx]) {
+            segments[idx].text = textarea.value;
+            if (dc.type === 'drawText') {
+              dc.args[0] = textarea.value;
+            }
+            replayCurrentFrame();
+            syncTextToCpp(dc);
+          }
+        });
+      });
+
+      panel.querySelectorAll('.seg-size-input').forEach(input => {
+        input.addEventListener('change', () => {
+          const idx = parseInt(input.dataset.idx);
+          const segments = dc.type === 'drawText' ? dc._textSegments : dc.args[0];
+          if (segments && segments[idx]) {
+            segments[idx].font_size = parseInt(input.value) || 14;
+            replayCurrentFrame();
+            syncTextToCpp(dc);
+          }
+        });
+      });
+
+      panel.querySelectorAll('.seg-color-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const idx = parseInt(btn.dataset.idx);
+          const type = btn.dataset.type;
+          const segments = dc.type === 'drawText' ? dc._textSegments : dc.args[0];
+
+          openColorPalette(e, btn, (colorName, hex, isFinal) => {
+            btn.style.background = hex;
+            if (segments && segments[idx]) {
+              if (type === 'fc') segments[idx].font_color = colorName;
+              else segments[idx].bg_color = colorName;
+            }
+            replayCurrentFrame();
+            if (isFinal) {
+              syncTextToCpp(dc);
+              showToast(`文字樣式顏色已更新`, 'success');
+            }
+          });
+        });
+      });
+
+      const addBtn = panel.querySelector('#prop-add-seg');
+      if (addBtn) {
+        addBtn.onclick = () => {
+          const segments = dc.args[0] || [];
+          segments.push({
+            text: '新段落',
+            font_size: 14,
+            font_color: '#111827',
+            bg_color: '#ffffff'
+          });
+          dc.args[0] = segments;
+          showPropPanel(section);
+          replayCurrentFrame();
+          syncTextToCpp(dc);
+        };
+      }
+
+      panel.querySelectorAll('.delete-segment-btn').forEach(delBtn => {
+        delBtn.onclick = () => {
+          const idx = parseInt(delBtn.dataset.idx);
+          const segments = dc.args[0] || [];
+          if (segments.length > 1) {
+            segments.splice(idx, 1);
+            dc.args[0] = segments;
+            showPropPanel(section);
+            replayCurrentFrame();
+            syncTextToCpp(dc);
+          }
+        };
+      });
+    }
 
     // 範圍滑條事件
     function bindDualSlider(axis) {
@@ -1315,7 +1685,7 @@
     panel.querySelectorAll('input[data-field="cpp-elements"]').forEach(inp => {
       inp.addEventListener('change', () => {
         const newStyleLiteral = rebuildArrayStyleFromDOM();
-        
+
         // 更新 JS 運行時狀態以立即反映在畫布
         const items = Array.from(panel.querySelectorAll('.array-style-item'));
         dc.args[3] = items.map(item => {
@@ -1379,7 +1749,7 @@
       const eventType = (inp.tagName === 'SELECT') ? 'change' : 'change'; // Both change
       inp.addEventListener('change', () => {
         const newStyleLiteral = rebuildArrowStyleFromDOM();
-        
+
         // 更新 JS 運行時狀態以立即反映在畫布
         let finalVal = inp.value.trim();
         if (key === 'dash') {
@@ -1634,81 +2004,49 @@
   }
 
   /**
-   * 在 C++ 行中找到 Pos(...) 並替換
-   * 支援巢狀括號 (Pos 內可能有字串含括號)
+   * 同步位置修改到 C++ 程式碼 (高自動化升級版)
+   * 藉由將 C++ 行進行通用參數解析拆分，精確替換指定索引 (argIdx) 上的 Pos 參數，
+   * 完美解決了多個 Pos 參數、自定義繪圖函式，以及巢狀表示式的回寫問題。
    */
-  function replacePosInLine(line, newPosCpp) {
-    // 找到 Pos( 的位置
-    const posStart = line.indexOf('Pos(');
-    if (posStart === -1) return null;
-
-    // 從 Pos( 開始，找到對應的結尾 )
-    let depth = 0;
-    let inStr = false;
-    let strChar = '';
-    let end = -1;
-    for (let i = posStart + 3; i < line.length; i++) {
-      const c = line[i];
-      if (inStr) {
-        if (c === '\\') { i++; continue; }  // 跳過轉義
-        if (c === strChar) inStr = false;
-        continue;
-      }
-      if (c === '"' || c === "'") { inStr = true; strChar = c; continue; }
-      if (c === '(') depth++;
-      if (c === ')') {
-        depth--;
-        if (depth === 0) { end = i; break; }
-      }
-    }
-    if (end === -1) return null;
-
-    return line.substring(0, posStart) + newPosCpp + line.substring(end + 1);
-  }
-
-  /**
-   * 同步位置修改到 C++ 程式碼
-   * 用 groupID + Pos( 雙重驗證確保回寫到正確的行
-   */
-  function syncPosToCpp(dc) {
+  function syncPosToCpp(dc, argIdx = 1) {
     const editor = getEditor();
     if (!editor || dc.codeLine < 0) return;
 
-    const pos = dc.args[1];
+    const pos = dc.args[argIdx];
     const newPosCpp = posJsonToCpp(pos);
     if (!newPosCpp) return;
 
     const session = editor.getSession();
     const groupID = dc.groupID || '';
-
-    // 在 codeLine 附近搜尋包含 groupID 和 Pos( 的行
-    let lineIdx = -1;
-    let lineText = '';
     const searchCenter = dc.codeLine - 1; // 1-based → 0-based
 
-    // 優先搜尋包含 groupID 的行（更嚴謹）
+    let lineIdx = -1;
+    let lineText = '';
+
+    // 匹配任何以 draw, frame, arrow 或特定的自定義名稱命名的繪圖函式
+    const fnRegex = /((?:key_)?(?:frame_draw|draw_2Darray|arrow|draw_array|draw_circle|draw_triangle|draw_word|draw_text|draw_colored_text|[a-zA-Z0-9_]+))\s*\(/;
+
+    // 優先搜尋包含 groupID 的行（最嚴謹）
     for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7, -8, 8, -9, 9, -10, 10]) {
       const idx = searchCenter + offset;
       if (idx < 0) continue;
       const t = session.getLine(idx);
       if (!t) continue;
 
-      // 嚴格模式：必須包含 groupID 且包含 Pos(
-      if (groupID && t.includes('"' + groupID + '"') && t.includes('Pos(')) {
+      if (groupID && (t.includes('"' + groupID + '"') || t.includes(groupID)) && t.includes('Pos(')) {
         lineIdx = idx;
         lineText = t;
         break;
       }
-      // 如果是 arrow 且沒有 ID，則找包含 arrow 關鍵字且包含 Pos( 的行
-      if (!groupID && dc.type === 'drawArrow' && (t.includes('arrow') || t.includes('Arrow')) && t.includes('Pos(')) {
+      if (!groupID && t.includes('Pos(') && fnRegex.test(t)) {
         lineIdx = idx;
         lineText = t;
         break;
       }
     }
 
-    // 次要：如果還是找不到，且沒有 groupID，則只找最近的 Pos(
-    if (lineIdx === -1 && !groupID) {
+    // 次要：如果還是找不到，則只找最近包含 Pos( 的行
+    if (lineIdx === -1) {
       for (let offset of [0, -1, 1, -2, 2, -3, 3]) {
         const idx = searchCenter + offset;
         if (idx < 0) continue;
@@ -1722,15 +2060,40 @@
     }
 
     if (lineIdx === -1) {
-      showToast(`行 ${dc.codeLine} 附近找不到 "${groupID}" 的 Pos(...)，無法回寫`, 'error');
+      showToast(`行 ${dc.codeLine} 附近找不到對應的 Pos(...)，無法回寫`, 'error');
       return;
     }
 
-    const newLine = replacePosInLine(lineText, newPosCpp);
+    // 解析出函式呼叫的完整括號範圍，並替換特定參數
+    const drawMatch = lineText.match(fnRegex);
+    if (!drawMatch) return;
+
+    const fnName = drawMatch[1];
+    const fnStart = lineText.indexOf(fnName + '(');
+    if (fnStart === -1) return;
+
+    const argsStr = extractFnArgs(lineText, fnStart + fnName.length);
+    if (!argsStr) return;
+
+    const args = splitTopLevelArgs(argsStr);
+    if (args.length <= argIdx) {
+      while (args.length <= argIdx) {
+        args.push(' ');
+      }
+    }
+
+    const origArg = args[argIdx];
+    const leadingSpaces = origArg ? (origArg.match(/^\s*/)[0] || ' ') : ' ';
+    args[argIdx] = leadingSpaces + newPosCpp;
+
+    const newArgsStr = args.join(',');
+    const newLine = lineText.substring(0, fnStart) + fnName + '(' + newArgsStr + ')' +
+      lineText.substring(fnStart + fnName.length + 1 + argsStr.length + 1);
+
     if (newLine && newLine !== lineText) {
       const Range = ace.require('ace/range').Range;
       session.replace(new Range(lineIdx, 0, lineIdx, lineText.length), newLine);
-      showToast(`已回寫 "${groupID}" 位置到行 ${lineIdx + 1}`, 'success');
+      showToast(`已回寫位置到行 ${lineIdx + 1}`, 'success');
     } else if (newLine === lineText) {
       showToast(`位置未變更`, 'info');
     }
@@ -1744,41 +2107,76 @@
   function syncLayoutToCpp(dc, overrides = {}) {
     const editor = getEditor();
     if (!editor || dc.codeLine < 0) return;
-    if (!['drawArray', 'draw2DArray', 'drawArrow', 'drawCircle'].includes(dc.type)) return;
+    if (!['drawArray', 'draw2DArray', 'drawArrow', 'drawCircle', 'drawText', 'drawColoredText'].includes(dc.type)) return;
 
     const session = editor.getSession();
-    const groupID = dc.groupID || '';
+    // 強制文字型態的 groupID 為空，因為 C++ 的呼叫沒有這個 ID 參數！
+    const groupID = (dc.type === 'drawText' || dc.type === 'drawColoredText') ? '' : (dc.groupID || '');
     const searchCenter = dc.codeLine - 1;
 
     let lineIdx = -1;
     let lineText = '';
 
-    // 根據 dc.type 限制搜尋的 C++ 函式名稱
+    // 根據 dc.type 限制搜尋的 C++ 函式名稱 (分清 text 和 colored_text，防止互相誤認改錯行！)
     const typeToFuncs = {
       'drawArray': ['frame_draw', 'draw_array'],
       'draw2DArray': ['draw_2Darray', 'frame_draw_2Darray'],
       'drawArrow': ['arrow'],
       'drawCircle': ['draw_circle'],
-      'drawText': ['draw_text'],
+      'drawText': ['text'],
       'drawColoredText': ['draw_colored_text', 'colored_text']
     };
     const expectedFuncs = typeToFuncs[dc.type] || ['draw', 'arrow'];
     const funcRegex = new RegExp(`((?:key_)?(?:${expectedFuncs.join('|')}))\\s*\\(`);
 
-    // 優先：同時包含繪圖函式和 groupID
-    for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7, -8, 8, -9, 9, -10, 10]) {
-      const idx = searchCenter + offset;
-      if (idx < 0) continue;
-      const t = session.getLine(idx);
-      if (!t) continue;
-      
-      const hasGroupID = (groupID === '' || t.includes('"' + groupID + '"'));
-      const hasFunc = t.match(funcRegex);
-      
-      if (hasFunc && hasGroupID) {
-        lineIdx = idx;
-        lineText = t;
-        break;
+    // 提取原始文字的特徵字串（取前 4 個字元，排除 C++ 轉義與特殊符號），杜絕寫錯行！
+    function getOriginalTextFeature(obj) {
+      if (!obj || !obj._originalText) return null;
+      const pure = obj._originalText.replace(/\\n/g, '').replace(/[\{\}\"\'\[\]\(\)\s]/g, '').trim();
+      if (pure.length > 0) {
+        return pure.substring(0, 4);
+      }
+      return null;
+    }
+
+    const offsets = Array.from({ length: 51 }, (_, i) => i === 0 ? [0] : [-i, i]).flat();
+    const feature = getOriginalTextFeature(dc);
+
+    // 第一階段：嚴格搜尋（同時匹配函式、groupID 且包含原始文字特徵）
+    if (feature) {
+      for (let offset of offsets) {
+        const idx = searchCenter + offset;
+        if (idx < 0 || idx >= session.getLength()) continue;
+        const t = session.getLine(idx);
+        if (!t) continue;
+
+        const hasGroupID = (groupID === '' || t.includes('"' + groupID + '"'));
+        const hasFunc = t.match(funcRegex);
+
+        if (hasFunc && hasGroupID && t.includes(feature)) {
+          lineIdx = idx;
+          lineText = t;
+          break;
+        }
+      }
+    }
+
+    // 第二階段：寬鬆搜尋（如果嚴格搜尋沒找到，或者原本就沒有文字特徵）
+    if (lineIdx === -1) {
+      for (let offset of offsets) {
+        const idx = searchCenter + offset;
+        if (idx < 0 || idx >= session.getLength()) continue;
+        const t = session.getLine(idx);
+        if (!t) continue;
+
+        const hasGroupID = (groupID === '' || t.includes('"' + groupID + '"'));
+        const hasFunc = t.match(funcRegex);
+
+        if (hasFunc && hasGroupID) {
+          lineIdx = idx;
+          lineText = t;
+          break;
+        }
       }
     }
 
@@ -1789,18 +2187,68 @@
     }
 
     const fnName = drawMatch[1];
-    const fnStart = lineText.indexOf(fnName + '(');
-    if (fnStart === -1) return;
+    
+    // 找到函式呼叫的完整括號範圍，解析參數（支援跨多行繪圖函式！）
+    let argsStr = null;
+    let fullText = lineText;
+    let linesParsedCount = 1;
+    let fnStartInFull = -1;
 
-    // 找到函式呼叫的完整括號範圍，解析參數
-    const argsStr = extractFnArgs(lineText, fnStart + fnName.length);
-    if (!argsStr) return;
+    for (let offset = 0; offset < 20; offset++) {
+      const nextIdx = lineIdx + offset;
+      if (nextIdx >= session.getLength()) break;
+      if (offset > 0) {
+        fullText += '\n' + session.getLine(nextIdx);
+      }
+      
+      const fnRegexWithName = new RegExp(fnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\(');
+      const fnMatch = fullText.match(fnRegexWithName);
+      if (fnMatch) {
+        const potentialStart = fullText.indexOf(fnMatch[0]) + fnMatch[0].indexOf('(');
+        const potentialArgs = extractFnArgs(fullText, potentialStart);
+        if (potentialArgs !== null) {
+          argsStr = potentialArgs;
+          linesParsedCount = offset + 1;
+          fnStartInFull = potentialStart;
+          break;
+        }
+      }
+    }
+
+    if (argsStr === null) {
+      showToast(`行 ${dc.codeLine} 的參數解析失敗，無法回寫`, 'error');
+      return;
+    }
 
     // frame_draw 參數順序: (id, pos, data, style, range, draw_type, itemsPerRow, index, gap)
     // 索引:                  0    1    2      3     4        5           6        7     8
     const args = splitTopLevelArgs(argsStr);
-    
-    if (dc.type === 'drawArrow') {
+
+    let finalFnName = fnName;
+
+    if (dc.type === 'drawText' || dc.type === 'drawColoredText') {
+      if (args.length < 2) {
+        while (args.length < 2) args.push(' ');
+      }
+      if (overrides.textVar !== undefined) {
+        // 保留原始 C++ 中的變數名稱：將新的 textVar 與原始 args[0] 做智慧合併
+        console.log('[mergeDebug] originalArg0:', args[0]);
+        console.log('[mergeDebug] newTextVar:', overrides.textVar);
+        const merged = mergeTextVarPreservingVars(overrides.textVar, args[0]);
+        console.log('[mergeDebug] merged:', merged);
+        args[0] = ' ' + merged;
+      }
+
+      if (dc.type === 'drawText' && overrides.convertToColored) {
+        if (finalFnName.includes('text') && !finalFnName.includes('colored')) {
+          finalFnName = finalFnName.replace('text', 'colored_text');
+        } else if (!finalFnName.includes('colored_text')) {
+          finalFnName = 'colored_text';
+        }
+        dc.type = 'drawColoredText';
+        dc.args[0] = dc._textSegments;
+      }
+    } else if (dc.type === 'drawArrow') {
       if (args.length < 2) return;
       if (overrides.startSpecVar !== undefined) args[0] = ' ' + overrides.startSpecVar;
       if (overrides.endSpecVar !== undefined) args[1] = ' ' + overrides.endSpecVar;
@@ -1819,7 +2267,7 @@
       if (overrides.dataVar !== undefined) args[2] = ' ' + overrides.dataVar;
       if (overrides.styleVar !== undefined) args[3] = ' ' + overrides.styleVar;
       if (overrides.rangeVar !== undefined) args[4] = ' ' + overrides.rangeVar;
-      
+
       args[5] = ' ' + newDT;
       args[6] = ' ' + newIdx;
     } else {
@@ -1843,7 +2291,7 @@
       if (overrides.dataVar !== undefined) args[2] = ' ' + overrides.dataVar;
       if (overrides.styleVar !== undefined) args[3] = ' ' + overrides.styleVar;
       if (overrides.rangeVar !== undefined) args[4] = ' ' + overrides.rangeVar;
-      
+
       if (dc.type !== 'drawCircle') {
         args[5] = ' ' + newDT;
         args[6] = ' ' + newIPR;
@@ -1853,16 +2301,20 @@
     }
 
     const newArgsStr = args.join(',');
-    const newLine = lineText.substring(0, fnStart) + fnName + '(' + newArgsStr + ')' +
-      lineText.substring(fnStart + fnName.length + 1 + argsStr.length + 1);
+    
+    // 定位 fnStartInFull 之前的內容 (包含 av. 或是 key_ 等)，加上新函數名和參數，以及右括號之後的內容
+    const beforeCall = fullText.substring(0, fnStartInFull - fnName.length);
+    const afterCall = fullText.substring(fnStartInFull + 1 + argsStr.length + 1);
+    
+    const newLine = beforeCall + finalFnName + '(' + newArgsStr + ')' + afterCall;
 
-    if (newLine !== lineText) {
+    if (newLine !== fullText) {
       const Range = ace.require('ace/range').Range;
+      const endLineIdx = lineIdx + linesParsedCount - 1;
       session.replace(
-        new Range(lineIdx, 0, lineIdx, lineText.length),
+        new Range(lineIdx, 0, endLineIdx, session.getLine(endLineIdx).length),
         newLine
       );
-      showToast(`已回寫 "${groupID}" 參數到行 ${lineIdx + 1}`, 'success');
     }
   }
 
@@ -2052,14 +2504,19 @@
   }
 
   /**
-   * 開啟顏色選取彈窗 (升級版：支援 iro.js)
+   * 開啟顏色選擇彈窗 (iro.js)
+   * @param {Event} evt 點擊事件
+   * @param {HTMLElement} anchorBtn 觸發按鈕
+   * @param {Function} onSelect 回呼函數 (colorName, hex, isFinal)
    */
-  function openColorPalette(e, anchorBtn, onSelect) {
-    const old = document.querySelector('.color-palette-popover');
-    if (old) old.remove();
+  function openColorPalette(evt, anchorBtn, onSelect) {
+    // 移除已存在的
+    const existing = document.getElementById('gui-color-palette');
+    if (existing) existing.remove();
 
     const palette = document.createElement('div');
-    palette.className = 'color-palette-popover';
+    palette.id = 'gui-color-palette';
+    palette.className = 'gui-color-palette';
     palette.style.cssText = `
       position: absolute; background: #fff; border: 1px solid #e5e7eb;
       border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
@@ -2082,7 +2539,8 @@
         border: 1px solid rgba(0,0,0,0.1); background: ${c.hex};
       `;
       swatch.title = c.name;
-      swatch.addEventListener('click', () => {
+      swatch.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // 防止失去焦點
         onSelect(c.name, c.hex, true); // 快選按鈕：直接觸發 Final
         palette.remove();
       });
@@ -2105,6 +2563,8 @@
     pickerMount.id = 'gui-iro-picker';
     pickerMount.style.display = 'flex';
     pickerMount.style.justifyContent = 'center';
+    // 防止點擊色輪時失去焦點
+    pickerMount.addEventListener('mousedown', (e) => e.preventDefault());
     palette.appendChild(pickerMount);
 
     document.body.appendChild(palette);
@@ -2118,7 +2578,10 @@
     if (window.iro) {
       const item = anchorBtn.closest('.cell-style-item');
       const inp = item ? item.querySelector('input[data-field="cpp-elements"]') : null;
-      const initialColor = (inp && inp.value && !inp.value.includes('AV_')) ? inp.value : '#ff0000';
+      let initialColor = (inp && inp.value && !inp.value.includes('AV_')) ? inp.value : '#ff0000';
+      if (anchorBtn.dataset.initialColor && anchorBtn.dataset.initialColor !== 'transparent') {
+        initialColor = anchorBtn.dataset.initialColor;
+      }
 
       const picker = new iro.ColorPicker(pickerMount, {
         width: 150,
@@ -2134,12 +2597,12 @@
 
       picker.on('color:change', (color) => {
         // 即時預覽：isFinal = false
-        onSelect(color.rgbaString, color.rgbaString, false);
+        onSelect(color.hexString, color.hexString, false);
       });
 
       picker.on('input:end', (color) => {
         // 放開滑鼠：isFinal = true
-        onSelect(color.rgbaString, color.rgbaString, true);
+        onSelect(color.hexString, color.hexString, true);
       });
     } else {
       pickerMount.innerHTML = '<div style="font-size:10px;color:#999;text-align:center">無法載入選色器庫</div>';
@@ -2155,7 +2618,549 @@
     setTimeout(() => document.addEventListener('mousedown', closeHandler), 10);
   }
 
+  // --- 左鍵雙擊文字物件：原生 Inline Edit ---
+
+  const AV_MAP = {
+    'AV_green': 'rgba(165, 214, 167, 0.6)',
+    'AV_blue': 'rgba(144, 202, 249, 0.6)',
+    'AV_red': 'rgba(239, 154, 154, 0.6)',
+    'AV_yellow': 'rgba(252, 255, 64, 0.46)',
+    'AV_orange': 'orange',
+    'AV_node_green': '#e8f5e9',
+    'AV_node_red': '#ef9a9a',
+    'AV_node_grey': '#cccccc',
+    'AV_black': 'black',
+    'AV_white': 'white',
+    'green': 'rgba(165, 214, 167, 0.6)',
+    'blue': 'rgba(144, 202, 249, 0.6)',
+    'red': 'rgba(239, 154, 154, 0.6)',
+    'yellow': 'rgba(252, 255, 64, 0.46)',
+    'orange': 'orange',
+    'black': 'black',
+    'white': 'white'
+  };
+
+  function resolveColorHex(cName) {
+    if (!cName) return null;
+    if (AV_MAP[cName]) return AV_MAP[cName];
+    const match = AV_COLORS.find(c => cName.includes(c.name));
+    return match ? match.hex : cName;
+  }
+
+  function colorToHex(colorVal) {
+    if (!colorVal) return '';
+    if (colorVal.startsWith('#')) return colorVal;
+    if (colorVal.startsWith('rgb')) {
+      const parts = colorVal.match(/\d+/g);
+      if (parts && parts.length >= 3) {
+        const r = parseInt(parts[0]).toString(16).padStart(2, '0');
+        const g = parseInt(parts[1]).toString(16).padStart(2, '0');
+        const b = parseInt(parts[2]).toString(16).padStart(2, '0');
+        return `#${r}${g}${b}`;
+      }
+    }
+    return colorVal;
+  }
+
+  function resolveColorName(hex) {
+    if (!hex) return null;
+    const stdHex = colorToHex(hex).toLowerCase();
+    
+    // 優先反向比對 AV_MAP 裡的色彩值
+    for (let key in AV_MAP) {
+      if (key.startsWith('AV_')) {
+        const val = AV_MAP[key];
+        if (colorToHex(val).toLowerCase() === stdHex) {
+          return key;
+        }
+      }
+    }
+    
+    const match = AV_COLORS.find(c => c.hex.toLowerCase() === stdHex);
+    return match ? match.name : stdHex;
+  }
+
+  let _currentInlineWrapper = null;
+  let _currentInlineTargetObj = null;
+  let _currentInlineDC = null;
+  let _savedRange = null; // 儲存選取範圍
+
+  // 將 node 及其子節點解析成 text segments
+  function extractSegmentsFromNode(node, inheritedColor, inheritedBg, inheritedSize) {
+    let segs = [];
+    for (let n of node.childNodes) {
+      if (n.nodeType === Node.TEXT_NODE) {
+        if (n.textContent) {
+          segs.push({
+            text: n.textContent,
+            font_color: inheritedColor,
+            bg_color: inheritedBg,
+            font_size: inheritedSize
+          });
+        }
+      } else if (n.nodeType === Node.ELEMENT_NODE) {
+        let c = inheritedColor;
+        let bg = inheritedBg;
+        let fs = inheritedSize;
+
+        if (n.tagName === 'SPAN' || n.tagName === 'FONT') {
+          if (n.style.color) c = resolveColorName(n.style.color) || n.style.color;
+          else if (n.color) c = resolveColorName(n.color) || n.color;
+
+          if (n.style.backgroundColor) bg = resolveColorName(n.style.backgroundColor) || n.style.backgroundColor;
+          if (n.style.fontSize) fs = parseInt(n.style.fontSize) || fs;
+        }
+
+        if (n.tagName === 'BR') {
+          segs.push({ text: '\n', font_color: c, bg_color: bg, font_size: fs });
+        } else if (n.tagName === 'DIV' && segs.length > 0) {
+          segs.push({ text: '\n', font_color: c, bg_color: bg, font_size: fs });
+        }
+
+        segs = segs.concat(extractSegmentsFromNode(n, c, bg, fs));
+      }
+    }
+    return segs;
+  }
+
+  function formatCppColor(colorVal) {
+    if (!colorVal) return `""`;
+    return `"${colorVal}"`;
+  }
+
+
+
+  function closeNativeInlineEditor() {
+    window.isInlineEditing = false;
+    if (!_currentInlineWrapper || !_currentInlineDC) return;
+
+    const wrapper = _currentInlineWrapper;
+    const dc = _currentInlineDC;
+    const obj = _currentInlineTargetObj;
+    const editorNode = wrapper.querySelector('.gui-inline-editor');
+
+    // 解析 HTML 為 Segment
+    let rawSegments = extractSegmentsFromNode(editorNode, '#111827', 'transparent', 14);
+
+    // 合併相鄰且樣式相同的段落
+    const newSegments = [];
+    rawSegments.forEach(seg => {
+      if (newSegments.length > 0) {
+        let last = newSegments[newSegments.length - 1];
+        if (last.font_color === seg.font_color && last.bg_color === seg.bg_color && last.font_size === seg.font_size) {
+          last.text += seg.text;
+          return;
+        }
+      }
+      newSegments.push(seg);
+    });
+
+    if (newSegments.length === 0) {
+      newSegments.push({ text: ' ', font_size: 14, font_color: '#111827', bg_color: 'transparent' });
+    }
+
+    // 寫回 dc
+    dc._textSegments = newSegments;
+    if (dc.type === 'drawText') {
+      dc.args[0] = newSegments.map(s => s.text).join('');
+    } else if (dc.type === 'drawColoredText') {
+      dc.args[0] = newSegments;
+    }
+
+    // 恢復 SVG 顯示
+    if (obj) {
+      const textNodes = obj.querySelectorAll('text');
+      textNodes.forEach(n => n.style.opacity = '1');
+    }
+
+    // 移除 Toolbar 與 DOM
+    hideInlineToolbar();
+    if (wrapper._wheelHandler) {
+      document.removeEventListener('wheel', wrapper._wheelHandler);
+    }
+    wrapper.remove();
+    _currentInlineWrapper = null;
+    _currentInlineTargetObj = null;
+    _currentInlineDC = null;
+    _savedRange = null;
+
+    // 重繪與同步
+    replayCurrentFrame();
+    syncTextToCpp(dc);
+  }
+
+  // --- 手刻 Bubble Toolbar ---
+  let _inlineToolbar = null;
+
+  function showInlineToolbar(rect) {
+    const sel = window.getSelection();
+    let currentFC = '#ffffff';
+    let currentBG = 'transparent';
+    if (sel.rangeCount > 0 && !sel.isCollapsed) {
+      const range = sel.getRangeAt(0);
+      const parent = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE 
+        ? range.commonAncestorContainer 
+        : range.commonAncestorContainer.parentNode;
+      if (parent) {
+        const computed = window.getComputedStyle(parent);
+        currentFC = computed.color || '#ffffff';
+        currentBG = computed.backgroundColor || 'transparent';
+        if (currentBG === 'rgba(0, 0, 0, 0)') currentBG = 'transparent';
+      }
+    }
+
+    if (!_inlineToolbar) {
+      _inlineToolbar = document.createElement('div');
+      _inlineToolbar.className = 'gui-inline-toolbar';
+      _inlineToolbar.style.cssText = `
+        position: absolute; z-index: 10001; background: #222; color: #fff;
+        padding: 6px 12px; border-radius: 8px; display: flex; align-items: center; gap: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-family: sans-serif; font-size: 13px;
+      `;
+      // Arrow
+      const arrow = document.createElement('div');
+      arrow.style.cssText = `
+        position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
+        border-width: 5px 5px 0 5px; border-style: solid; border-color: #222 transparent transparent transparent;
+      `;
+      _inlineToolbar.appendChild(arrow);
+
+      const btnStyle = `background:none; border:none; color:#fff; cursor:pointer; font-size:14px; font-weight:bold; padding:2px 4px; border-radius:4px;`;
+
+      // 字體大小下拉選單
+      const sizeSelect = document.createElement('select');
+      sizeSelect.id = 'inline-size-select';
+      sizeSelect.style.cssText = `background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:1px 2px; font-size:11px; cursor:pointer; outline:none;`;
+      [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48].forEach(sz => {
+        const opt = document.createElement('option');
+        opt.value = sz;
+        opt.textContent = sz;
+        if (sz === 14) opt.selected = true;
+        sizeSelect.appendChild(opt);
+      });
+      sizeSelect.onmousedown = (e) => e.stopPropagation();
+      sizeSelect.onchange = (e) => {
+        e.preventDefault();
+        changeInlineStyle('size', parseInt(sizeSelect.value));
+      };
+
+      const fcBtn = document.createElement('div');
+      fcBtn.id = 'inline-fc-btn';
+      fcBtn.style.cssText = `width:16px; height:16px; border-radius:50%; background:#fff; cursor:pointer; border:1px solid #666; margin:0 4px;`;
+      fcBtn.title = "文字顏色";
+      fcBtn.onmousedown = (e) => { 
+        e.preventDefault(); 
+        e.stopPropagation(); 
+        openColorPalette(e, fcBtn, (cName, hex, isFinal) => { 
+          fcBtn.style.background = hex; 
+          fcBtn.dataset.initialColor = hex;
+          changeInlineStyle('foreColor', hex, isFinal); 
+        }); 
+      };
+
+      const bgBtn = document.createElement('div');
+      bgBtn.id = 'inline-bg-btn';
+      bgBtn.style.cssText = `width:16px; height:16px; border-radius:50%; background:transparent; cursor:pointer; border:1px dashed #aaa; margin:0 4px;`;
+      bgBtn.title = "背景顏色";
+      bgBtn.onmousedown = (e) => { 
+        e.preventDefault(); 
+        e.stopPropagation(); 
+        openColorPalette(e, bgBtn, (cName, hex, isFinal) => { 
+          bgBtn.style.background = hex; 
+          bgBtn.style.border = '1px solid #666'; 
+          bgBtn.dataset.initialColor = hex;
+          changeInlineStyle('bgColor', hex, isFinal); 
+        }); 
+      };
+
+      _inlineToolbar.appendChild(sizeSelect);
+      _inlineToolbar.appendChild(fcBtn);
+      _inlineToolbar.appendChild(bgBtn);
+      document.body.appendChild(_inlineToolbar);
+    }
+
+    // 每次顯示時動態載入選區的真實色彩樣式
+    const fcBtn = _inlineToolbar.querySelector('#inline-fc-btn');
+    const bgBtn = _inlineToolbar.querySelector('#inline-bg-btn');
+    const sizeSelElem = _inlineToolbar.querySelector('#inline-size-select');
+    if (fcBtn) {
+      fcBtn.style.background = currentFC;
+      fcBtn.dataset.initialColor = currentFC;
+    }
+    if (bgBtn) {
+      bgBtn.style.background = currentBG === 'transparent' ? '#ffffff' : currentBG;
+      bgBtn.style.border = currentBG === 'transparent' ? '1px dashed #aaa' : '1px solid #666';
+      bgBtn.dataset.initialColor = currentBG;
+    }
+    // 偵測當前選取文字的字體大小
+    if (sizeSelElem) {
+      const sel2 = window.getSelection();
+      if (sel2.rangeCount > 0 && !sel2.isCollapsed) {
+        const parent2 = sel2.getRangeAt(0).commonAncestorContainer;
+        const elem = parent2.nodeType === Node.ELEMENT_NODE ? parent2 : parent2.parentNode;
+        if (elem) {
+          const fs = parseInt(window.getComputedStyle(elem).fontSize) || 14;
+          sizeSelElem.value = fs;
+        }
+      }
+    }
+
+    _inlineToolbar.style.display = 'flex';
+    _inlineToolbar.style.top = (rect.top + window.scrollY - 45) + 'px';
+    const tbWidth = 180;
+    _inlineToolbar.style.left = (rect.left + window.scrollX + (rect.width / 2) - (tbWidth / 2)) + 'px';
+  }
+
+  function hideInlineToolbar() {
+    if (_inlineToolbar) _inlineToolbar.style.display = 'none';
+  }
+
+  function changeInlineStyle(cmd, val, isFinal = true) {
+    if (!_currentInlineWrapper) return;
+    const sel = window.getSelection();
+
+    // 如果失去焦點，嘗試從 _savedRange 恢復選取！
+    if ((!sel.rangeCount || sel.isCollapsed) && _savedRange) {
+      sel.removeAllRanges();
+      sel.addRange(_savedRange);
+    }
+
+    if (!sel.rangeCount) return;
+
+    document.execCommand('styleWithCSS', false, true);
+
+    if (cmd === 'foreColor') {
+      document.execCommand('foreColor', false, val);
+    } else if (cmd === 'bgColor') {
+      // 用 CSS backgroundColor 避免 hiliteColor 產生的框框
+      const range = sel.getRangeAt(0);
+      try {
+        const span = document.createElement('span');
+        span.style.backgroundColor = val;
+        range.surroundContents(span);
+      } catch (e) {
+        // 跨段落時改用 hiliteColor 作為後備
+        document.execCommand('hiliteColor', false, val);
+      }
+    } else if (cmd === 'size') {
+      const range = sel.getRangeAt(0);
+      try {
+        const span = document.createElement('span');
+        span.style.fontSize = val + 'px';
+        range.surroundContents(span);
+      } catch (e) {
+        showToast('無法跨段落改變字體大小，請分次選取', 'info');
+      }
+    }
+
+    // 操作完畢後，只在 isFinal=true 時重新觸發 checkSelection 更新狀態，防止拖動色輪時彈窗閃退！
+    if (isFinal) {
+      checkSelection();
+    }
+  }
+
+  function checkSelection() {
+    if (!_currentInlineWrapper) return;
+    const sel = window.getSelection();
+
+    // 如果有選取範圍，且在 editor 內，則儲存並顯示 Toolbar
+    if (sel.rangeCount > 0 && !sel.isCollapsed) {
+      const range = sel.getRangeAt(0);
+      const editorNode = _currentInlineWrapper.querySelector('.gui-inline-editor');
+      if (editorNode && editorNode.contains(range.commonAncestorContainer)) {
+        _savedRange = range.cloneRange(); // 儲存起來供按鈕使用
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0) {
+          showInlineToolbar(rect);
+          return;
+        }
+      }
+    } else {
+      // 若選取折疊（如使用者點擊了編輯器內其他字，或取消選取），清空儲存的舊選取範圍
+      _savedRange = null;
+      hideInlineToolbar();
+    }
+  }
+
+  function openNativeInlineEditor(obj, dc) {
+    window.isInlineEditing = true;
+    if (_currentInlineWrapper) {
+      if (_currentInlineTargetObj === obj) return;
+      closeNativeInlineEditor();
+    }
+
+    _currentInlineTargetObj = obj;
+    _currentInlineDC = dc;
+    _savedRange = null;
+
+    // 記錄原始文字以供回寫時進行精確的特徵對比，杜絕寫錯行！
+    if (dc && !dc._originalText) {
+      if (dc.type === 'drawText') {
+        dc._originalText = String(dc.args[0]);
+      } else if (dc.type === 'drawColoredText') {
+        const segs = Array.isArray(dc.args[0]) ? dc.args[0] : (dc._textSegments || []);
+        dc._originalText = segs.map(s => s.text).join('|');
+      }
+    }
+
+    const textNodes = obj.querySelectorAll('text');
+
+    // 動態獲取原本 SVG 文字的真實樣式，防止進入編輯器時字體大小或字型突變
+    let originFontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    let originFontSize = '14px';
+    let originFontWeight = 'normal';
+    let originLineHeight = '1.3';
+    let originColor = '#111827';
+
+    if (textNodes.length > 0) {
+      // 由於 SVG text 本身可能在 opacity:0 之前，我們先抓取其 computedStyle
+      const computed = window.getComputedStyle(textNodes[0]);
+      if (computed.fontFamily && computed.fontFamily !== 'inherit') originFontFamily = computed.fontFamily;
+      if (computed.fontSize && computed.fontSize !== 'inherit') originFontSize = computed.fontSize;
+      if (computed.fontWeight && computed.fontWeight !== 'inherit') originFontWeight = computed.fontWeight;
+      if (computed.lineHeight && computed.lineHeight !== 'normal' && computed.lineHeight !== 'inherit') originLineHeight = computed.lineHeight;
+      if (computed.color && computed.color !== 'inherit') originColor = computed.color;
+    }
+
+    textNodes.forEach(n => n.style.opacity = '0');
+
+    const tRect = textNodes.length > 0 ? textNodes[0].getBoundingClientRect() : obj.getBoundingClientRect();
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+    // 獲取當前畫布的縮放比例，將縮放效果完美同步給內聯編輯器，消除「看起來比較小」的視覺差
+    const s = (window.getScale ? window.getScale() : 1) || 1;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = (tRect.left + scrollLeft) + 'px';
+    wrapper.style.top = (tRect.top + scrollTop) + 'px';
+    wrapper.style.minWidth = '50px';
+    wrapper.style.zIndex = 10000;
+    wrapper.style.transform = `scale(${s})`;
+    wrapper.style.transformOrigin = 'top left';
+
+    const editorNode = document.createElement('div');
+    editorNode.className = 'gui-inline-editor';
+    editorNode.contentEditable = 'true';
+    editorNode.style.cssText = `
+      outline: none; white-space: pre-wrap; word-break: break-all;
+      font-family: ${originFontFamily};
+      font-size: ${originFontSize};
+      font-weight: ${originFontWeight};
+      line-height: ${originLineHeight};
+      color: ${originColor};
+      min-width: 10px; cursor: text;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    `;
+
+    let segments = [];
+    if (dc.type === 'drawColoredText') {
+      // 如果本來就是 colored_text，dc.args[0] 本身就是 segments 陣列
+      segments = Array.isArray(dc.args[0]) ? dc.args[0] : (dc._textSegments || []);
+    } else {
+      segments = dc._textSegments || [];
+      if (segments.length === 0 && dc.args[0]) {
+        segments = [{ text: dc.args[0], font_size: 14, font_color: '#111827', bg_color: '#ffffff' }];
+      }
+    }
+
+    let html = '';
+    segments.forEach(seg => {
+      const fc = resolveColorHex(seg.font_color) || '';
+      const bg = resolveColorHex(seg.bg_color) || '';
+      const fs = seg.font_size || 14;
+
+      let style = '';
+      if (fc && fc !== '#111827') style += `color:${fc};`;
+      if (bg && bg !== '#ffffff') style += `background-color:${bg};`;
+      if (fs) style += `font-size:${fs}px;`;
+
+      const txt = seg.text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+      if (style) {
+        html += `<span style="${style}">${txt}</span>`;
+      } else {
+        html += txt;
+      }
+    });
+
+    editorNode.innerHTML = html || ' ';
+    wrapper.appendChild(editorNode);
+    document.body.appendChild(wrapper);
+
+    _currentInlineWrapper = wrapper;
+    _currentInlineTargetObj = obj;
+
+    // 監聽滾輪事件：縮放時即時更新編輯器位置與大小
+    function _onWheelUpdateInlinePos() {
+      if (!_currentInlineWrapper || !_currentInlineTargetObj) return;
+      const targetTextNodes = _currentInlineTargetObj.querySelectorAll('text');
+      const newRect = targetTextNodes.length > 0 ? targetTextNodes[0].getBoundingClientRect() : _currentInlineTargetObj.getBoundingClientRect();
+      const sTop = window.pageYOffset || document.documentElement.scrollTop;
+      const sLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      const newScale = (window.getScale ? window.getScale() : 1) || 1;
+
+      _currentInlineWrapper.style.left = (newRect.left + sLeft) + 'px';
+      _currentInlineWrapper.style.top = (newRect.top + sTop) + 'px';
+      _currentInlineWrapper.style.transform = `scale(${newScale})`;
+    }
+    wrapper._wheelHandler = (e) => {
+      // 延遲一幀，等畫布縮放完成再更新位置
+      requestAnimationFrame(_onWheelUpdateInlinePos);
+    };
+    document.addEventListener('wheel', wrapper._wheelHandler, { passive: true });
+
+    document.addEventListener('selectionchange', checkSelection);
+
+    setTimeout(() => {
+      editorNode.focus();
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editorNode);
+      // 不折疊游標，保持全選狀態，這樣雙擊時能直接反白所有文字並跳出工具列
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }, 10);
+  }
+
+  // 自訂雙擊監聽 (由 interaction.js 觸發)
+  window.onObjectDoubleClick = (obj) => {
+    if (!obj) return;
+    const id = obj.getAttribute('id');
+    if (!id) return;
+
+    const dc = findDrawCallByGroupID(id);
+    if (dc && (dc.type === 'drawText' || dc.type === 'drawColoredText')) {
+      openNativeInlineEditor(obj, dc);
+      window.getSelection().removeAllRanges();
+    }
+  };
+
+  // 全域點擊監聽 (點擊空白處關閉編輯器)
+  document.addEventListener('mousedown', (e) => {
+    if (!_currentInlineWrapper) return;
+
+    const isInsideEditor = _currentInlineWrapper.contains(e.target);
+    const isInsideToolbar = _inlineToolbar && _inlineToolbar.contains(e.target);
+    const isColorPicker = e.target.closest('.gui-color-palette');
+
+    // 如果點擊了空白處 (非編輯器、非Toolbar、非選色器)
+    if (!isInsideEditor && !isInsideToolbar && !isColorPicker) {
+      document.removeEventListener('selectionchange', checkSelection);
+      closeNativeInlineEditor();
+    } else if (!isInsideEditor) {
+      // 如果點擊的是 Toolbar 或選色器，不要隱藏 toolbar！
+      // 讓事件繼續，防止 blur
+    } else {
+      // 點擊了編輯器，如果沒有選取範圍，就隱藏 toolbar
+      setTimeout(() => {
+        const sel = window.getSelection();
+        if (sel.isCollapsed) hideInlineToolbar();
+      }, 50);
+    }
+  });
+
   // 暴露 showToast 供內部使用
   window._guiToast = showToast;
-
 })();

@@ -23,7 +23,10 @@ class CanvasInteractionManager {
       window.addEventListener('pointerup',    e => this.onPointerUp(e),  false);
       window.addEventListener('pointercancel', e => this.onPointerUp(e),  false);
   
-      // 3) 插入選中樣式
+      // 3) 原生雙擊監聽器，確保左鍵兩下 100% 穩定選取與編輯
+      svg.addEventListener('dblclick', e => this.onDblClick(e), false);
+  
+      // 4) 插入選中樣式
       const style = document.createElement('style');
       style.textContent = `
         .draggable-object.selected > rect {
@@ -68,10 +71,31 @@ class CanvasInteractionManager {
       }
     }
   
+    // 原生雙擊事件處理，100% 穩定
+    onDblClick(evt) {
+      const obj = evt.target.closest('.draggable-object');
+      if (obj && this.svg.contains(obj)) {
+        // 雙擊發生時，立刻將可能已經觸發的拖曳狀態徹底中斷
+        this._pendingDrag = false;
+        this.mode = null;
+        if (window.onObjectDoubleClick) {
+          window.onObjectDoubleClick(obj);
+        }
+      }
+    }
+  
     // pointerdown：記錄起始位置，等 pointermove 確認有移動才真正啟動拖曳
     onPointerDown(evt) {
       if (evt.button !== 0) return; // 僅處理左鍵
       const obj = evt.target.closest('.draggable-object');
+      
+      // 如果目前正在進行文字內聯編輯，不允許拖曳任何物件以防止干擾選取
+      if (window.isInlineEditing) {
+        this._pendingDrag = false;
+        this.mode = null;
+        return;
+      }
+
       if (obj && this.svg.contains(obj)) {
         // 先選中物件（不管之前有沒有選中）
         if (this.selected && this.selected !== obj) {
