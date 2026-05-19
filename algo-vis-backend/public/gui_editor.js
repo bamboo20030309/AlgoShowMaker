@@ -3163,4 +3163,113 @@
 
   // 暴露 showToast 供內部使用
   window._guiToast = showToast;
+
+  // ==========================================
+  // 程式碼編輯器 (Ace Editor) 右鍵選單功能
+  // ==========================================
+  const codeEditorContainer = document.getElementById('editor');
+  if (codeEditorContainer) {
+    const codeContextMenu = document.createElement('div');
+    codeContextMenu.style.cssText = `
+      position: absolute;
+      background: #1e1e1e;
+      border: 1px solid #454545;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      border-radius: 4px;
+      padding: 4px 0;
+      min-width: 150px;
+      z-index: 10000;
+      display: none;
+      color: #d4d4d4;
+      font-family: sans-serif;
+      font-size: 13px;
+    `;
+
+    const createMenuItem = (text, onClick) => {
+      const item = document.createElement('div');
+      item.textContent = text;
+      item.style.cssText = `
+        padding: 8px 16px;
+        cursor: pointer;
+        transition: background 0.1s;
+      `;
+      item.onmouseenter = () => item.style.background = '#094771';
+      item.onmouseleave = () => item.style.background = 'transparent';
+      item.onclick = (e) => {
+        e.stopPropagation();
+        codeContextMenu.style.display = 'none';
+        onClick();
+      };
+      return item;
+    };
+
+    // 插入程式碼片段的共用函式
+    const insertCodeSnippet = (snippet) => {
+      const editor = ace.edit('editor');
+      if (!editor) return;
+      const session = editor.getSession();
+      const pos = editor.getCursorPosition();
+      
+      // 確保插入時前面有適當的縮排
+      const lineStr = session.getLine(pos.row);
+      const match = lineStr.match(/^\s*/);
+      const indent = match ? match[0] : '';
+      
+      // 若游標不在行尾，或者該行有文字，先換行
+      let prefix = '';
+      if (lineStr.trim() !== '' && pos.column > 0) {
+        prefix = '\n' + indent;
+      }
+      
+      // 處理 snippet 內部的縮排
+      const formattedSnippet = snippet.split('\n').map((line, i) => i === 0 ? line : indent + line).join('\n');
+      
+      editor.insert(prefix + formattedSnippet + '\n' + indent);
+      editor.focus();
+    };
+
+    const addFrameBtn = createMenuItem('新增一幀', () => {
+      const snippet = 
+`av.start_frame_draw();
+// 繪畫函式寫在這裡
+
+av.auto_camera();
+av.end_frame_draw();`;
+      insertCodeSnippet(snippet);
+    });
+
+    const addObjectBtn = createMenuItem('新增物件', () => {
+      const snippet = 
+`// 繪製物件（支援一維/二維陣列、queue、stack等變數）
+av.frame_draw("物件名稱", Pos(0, 0), 變數名稱);`;
+      insertCodeSnippet(snippet);
+    });
+
+    const addArrowBtn = createMenuItem('新增箭頭', () => {
+      const snippet = 
+`// 繪製箭頭
+av.arrow(Pos("起點名稱", "bottom"), Pos("終點名稱", "top"));`;
+      insertCodeSnippet(snippet);
+    });
+
+    codeContextMenu.appendChild(addFrameBtn);
+    codeContextMenu.appendChild(addObjectBtn);
+    codeContextMenu.appendChild(addArrowBtn);
+    document.body.appendChild(codeContextMenu);
+
+    codeEditorContainer.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      codeContextMenu.style.left = e.pageX + 'px';
+      codeContextMenu.style.top = e.pageY + 'px';
+      codeContextMenu.style.display = 'block';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (codeContextMenu.style.display === 'block' && !codeContextMenu.contains(e.target)) {
+        codeContextMenu.style.display = 'none';
+      }
+    });
+  }
+
 })();
