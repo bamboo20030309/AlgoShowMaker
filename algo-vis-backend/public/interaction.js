@@ -247,32 +247,77 @@ class CanvasInteractionManager {
         cursor = pt.matrixTransform(vp.getScreenCTM().inverse());
       } catch(e) {}
 
-      // 優先檢查滑鼠點擊是否在任何箭頭 (line.draggable-object) 附近
-      const lines = Array.from(this.svg.querySelectorAll('line.draggable-object'));
-      let bestLine = null;
-      let minDist = Infinity;
-
-      for (const line of lines) {
-        const x1 = parseFloat(line.getAttribute('x1') || 0);
-        const y1 = parseFloat(line.getAttribute('y1') || 0);
-        const x2 = parseFloat(line.getAttribute('x2') || 0);
-        const y2 = parseFloat(line.getAttribute('y2') || 0);
-        const dist = this.getDistanceToSegment(cursor.x, cursor.y, x1, y1, x2, y2);
-        if (dist < minDist) {
-          minDist = dist;
-          bestLine = line;
-        }
-      }
-
       const s = window.getScale ? window.getScale() : 1;
       const threshold = 15 / s;
 
       let obj = null;
-      // 點擊距離小於 threshold，優先選取箭頭
-      if (minDist < threshold && bestLine) {
-        obj = bestLine;
-      } else {
-        obj = evt.target.closest('.draggable-object');
+      this._dragType = null;
+
+      // 1. 超優先判定：如果當前已經選中了某個箭頭 (line)，優先判斷滑鼠是否點擊在該選中箭頭的起終點控制點上。
+      // 這能防止當箭頭端點與其他物件（如格子）重疊時，點擊控制點卻一直選中底下物件的問題。
+      if (this.selected && this.selected.tagName.toLowerCase() === 'line') {
+        const lineObj = this.selected;
+        const x1 = parseFloat(lineObj.getAttribute('x1') || 0);
+        const y1 = parseFloat(lineObj.getAttribute('y1') || 0);
+        const x2 = parseFloat(lineObj.getAttribute('x2') || 0);
+        const y2 = parseFloat(lineObj.getAttribute('y2') || 0);
+
+        const hasHeadStart = lineObj.hasAttribute('marker-start');
+        const hasHeadEnd = lineObj.hasAttribute('marker-end');
+        const strokeW_line = parseFloat(lineObj.getAttribute('stroke-width') || 4);
+        const shrinkStart = hasHeadStart ? (12 + (strokeW_line - 4) * 3) : 0;
+        const shrinkEnd = hasHeadEnd ? (12 + (strokeW_line - 4) * 3) : 0;
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.hypot(dx, dy);
+        let ux = 0, uy = 0;
+        if (len > 0) {
+          ux = dx / len;
+          uy = dy / len;
+        }
+
+        const tipX1 = x1 - ux * shrinkStart;
+        const tipY1 = y1 - uy * shrinkStart;
+        const tipX2 = x2 + ux * shrinkEnd;
+        const tipY2 = y2 + uy * shrinkEnd;
+
+        const distStart = Math.hypot(cursor.x - tipX1, cursor.y - tipY1);
+        const distEnd = Math.hypot(cursor.x - tipX2, cursor.y - tipY2);
+
+        if (distStart < threshold) {
+          obj = lineObj;
+          this._dragType = 'start';
+        } else if (distEnd < threshold) {
+          obj = lineObj;
+          this._dragType = 'end';
+        }
+      }
+
+      // 2. 如果沒有點擊在選中箭頭的控制點上，則進行常規物件檢測
+      if (!obj) {
+        // 優先檢查滑鼠點擊是否在 any 箭頭線段附近
+        const lines = Array.from(this.svg.querySelectorAll('line.draggable-object'));
+        let bestLine = null;
+        let minDist = Infinity;
+
+        for (const line of lines) {
+          const x1 = parseFloat(line.getAttribute('x1') || 0);
+          const y1 = parseFloat(line.getAttribute('y1') || 0);
+          const x2 = parseFloat(line.getAttribute('x2') || 0);
+          const y2 = parseFloat(line.getAttribute('y2') || 0);
+          const dist = this.getDistanceToSegment(cursor.x, cursor.y, x1, y1, x2, y2);
+          if (dist < minDist) {
+            minDist = dist;
+            bestLine = line;
+          }
+        }
+
+        if (minDist < threshold && bestLine) {
+          obj = bestLine;
+        } else {
+          obj = evt.target.closest('.draggable-object');
+        }
       }
 
       if (obj && this.svg.contains(obj)) {
@@ -285,48 +330,57 @@ class CanvasInteractionManager {
         this.updateSelectionOverlay();
 
         // 區分拖曳行為：如果是箭頭 (line)，點擊兩頭是拉單邊，點中間是整體拖曳
-        this._dragType = null;
         if (obj.tagName.toLowerCase() === 'line') {
           const x1 = parseFloat(obj.getAttribute('x1') || 0);
           const y1 = parseFloat(obj.getAttribute('y1') || 0);
           const x2 = parseFloat(obj.getAttribute('x2') || 0);
           const y2 = parseFloat(obj.getAttribute('y2') || 0);
-
-          const hasHeadStart = obj.hasAttribute('marker-start');
-          const hasHeadEnd = obj.hasAttribute('marker-end');
-          const strokeW_line = parseFloat(obj.getAttribute('stroke-width') || 4);
-          const shrinkStart = hasHeadStart ? (12 + (strokeW_line - 4) * 3) : 0;
-          const shrinkEnd = hasHeadEnd ? (12 + (strokeW_line - 4) * 3) : 0;
-
-          const dx = x2 - x1;
-          const dy = y2 - y1;
-          const len = Math.hypot(dx, dy);
-          let ux = 0, uy = 0;
-          if (len > 0) {
-            ux = dx / len;
-            uy = dy / len;
-          }
-
-          const tipX1 = x1 - ux * shrinkStart;
-          const tipY1 = y1 - uy * shrinkStart;
-          const tipX2 = x2 + ux * shrinkEnd;
-          const tipY2 = y2 + uy * shrinkEnd;
-          
-          const distStart = Math.hypot(cursor.x - tipX1, cursor.y - tipY1);
-          const distEnd = Math.hypot(cursor.x - tipX2, cursor.y - tipY2);
-          
-          if (distStart < threshold) {
-            this._dragType = 'start';
-          } else if (distEnd < threshold) {
-            this._dragType = 'end';
-          } else {
-            this._dragType = 'all';
-          }
           
           this._origX1 = x1;
           this._origY1 = y1;
           this._origX2 = x2;
           this._origY2 = y2;
+
+          // 如果在前面超優先判定中沒有確定 _dragType，這時再計算一次（針對點擊新箭頭或點擊中間）
+          if (!this._dragType) {
+            const hasHeadStart = obj.hasAttribute('marker-start');
+            const hasHeadEnd = obj.hasAttribute('marker-end');
+            const strokeW_line = parseFloat(obj.getAttribute('stroke-width') || 4);
+            const shrinkStart = hasHeadStart ? (12 + (strokeW_line - 4) * 3) : 0;
+            const shrinkEnd = hasHeadEnd ? (12 + (strokeW_line - 4) * 3) : 0;
+
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len = Math.hypot(dx, dy);
+            let ux = 0, uy = 0;
+            if (len > 0) {
+              ux = dx / len;
+              uy = dy / len;
+            }
+
+            const tipX1 = x1 - ux * shrinkStart;
+            const tipY1 = y1 - uy * shrinkStart;
+            const tipX2 = x2 + ux * shrinkEnd;
+            const tipY2 = y2 + uy * shrinkEnd;
+            
+            const distStart = Math.hypot(cursor.x - tipX1, cursor.y - tipY1);
+            const distEnd = Math.hypot(cursor.x - tipX2, cursor.y - tipY2);
+            
+            if (distStart < threshold) {
+              this._dragType = 'start';
+            } else if (distEnd < threshold) {
+              this._dragType = 'end';
+            } else {
+              this._dragType = 'all';
+            }
+          }
+
+          this._snappedSpec = null;
+          this._finalSpec = null;
+          if (this._dragType === 'start' || this._dragType === 'end') {
+            this._collectAnchors();
+            this._showAnchors();
+          }
         }
 
         // 進入「準備拖曳」模式，等 pointermove 確認
@@ -380,12 +434,82 @@ class CanvasInteractionManager {
       grp.setAttribute('data-translate', `${ntx},${nty}`);
 
       if (grp.tagName.toLowerCase() === 'line') {
-        if (this._dragType === 'start') {
-          grp.setAttribute('x1', this._origX1 + ntx);
-          grp.setAttribute('y1', this._origY1 + nty);
-        } else if (this._dragType === 'end') {
-          grp.setAttribute('x2', this._origX2 + ntx);
-          grp.setAttribute('y2', this._origY2 + nty);
+        if (this._dragType === 'start' || this._dragType === 'end') {
+          // 取得目前滑鼠在 SVG 世界座標系下的位置
+          let pt = this.svg.createSVGPoint();
+          pt.x = evt.clientX; pt.y = evt.clientY;
+          let cursor = pt;
+          const vp = window.getViewport ? window.getViewport() : this.svg;
+          try {
+            cursor = pt.matrixTransform(vp.getScreenCTM().inverse());
+          } catch(e) {}
+
+          let targetX = cursor.x;
+          let targetY = cursor.y;
+          let snapped = null;
+
+          const snapDist = 15 / s; // 15 像素以內吸附
+
+          let minDist = Infinity;
+          if (this._anchors) {
+            for (const anchor of this._anchors) {
+              const d = Math.hypot(cursor.x - anchor.x, cursor.y - anchor.y);
+              if (d < snapDist && d < minDist) {
+                minDist = d;
+                snapped = anchor;
+              }
+            }
+          }
+
+          if (snapped) {
+            targetX = snapped.x;
+            targetY = snapped.y;
+            this._snappedSpec = snapped.spec;
+            this._highlightAnchor(snapped);
+          } else {
+            this._snappedSpec = null;
+            this._highlightAnchor(null);
+          }
+
+          if (!this._snappedSpec) {
+            this._finalSpec = { type: 'abs', x: targetX, y: targetY };
+          } else {
+            this._finalSpec = this._snappedSpec;
+          }
+
+          const hasHeadStart = grp.hasAttribute('marker-start');
+          const hasHeadEnd = grp.hasAttribute('marker-end');
+          const strokeW_line = parseFloat(grp.getAttribute('stroke-width') || 4);
+          const shrinkStart = hasHeadStart ? (12 + (strokeW_line - 4) * 3) : 0;
+          const shrinkEnd = hasHeadEnd ? (12 + (strokeW_line - 4) * 3) : 0;
+
+          if (this._dragType === 'start') {
+            const x2 = parseFloat(grp.getAttribute('x2') || 0);
+            const y2 = parseFloat(grp.getAttribute('y2') || 0);
+            const dx = x2 - targetX;
+            const dy = y2 - targetY;
+            const len = Math.hypot(dx, dy);
+            let ux = 0, uy = 0;
+            if (len > 0) {
+              ux = dx / len;
+              uy = dy / len;
+            }
+            grp.setAttribute('x1', targetX + ux * shrinkStart);
+            grp.setAttribute('y1', targetY + uy * shrinkStart);
+          } else {
+            const x1 = parseFloat(grp.getAttribute('x1') || 0);
+            const y1 = parseFloat(grp.getAttribute('y1') || 0);
+            const dx = targetX - x1;
+            const dy = targetY - y1;
+            const len = Math.hypot(dx, dy);
+            let ux = 0, uy = 0;
+            if (len > 0) {
+              ux = dx / len;
+              uy = dy / len;
+            }
+            grp.setAttribute('x2', targetX - ux * shrinkEnd);
+            grp.setAttribute('y2', targetY - uy * shrinkEnd);
+          }
         } else {
           // 'all'
           grp.setAttribute('x1', this._origX1 + ntx);
@@ -413,23 +537,165 @@ class CanvasInteractionManager {
     // pointerup / pointercancel：結束拖曳並釋放 capture
     onPointerUp(evt) {
       this._pendingDrag = false; // 清除待拖曳狀態
+      this._hideAnchors();
+
       if (this.mode === 'drag') {
         const grp = this.selected;
         try { this.svg.releasePointerCapture(evt.pointerId); } catch {}
         this.mode = null;
         evt.stopPropagation();
  
-        // [新增] 拖曳結束後，通知 GUI 編輯器更新 C++
+        // 拖曳結束後，通知 GUI 編輯器更新 C++
         if (window.onObjectDragEnd && grp) {
           const id = grp.getAttribute('id');
-          const [ntx, nty] = (grp.getAttribute('data-translate') || '0,0')
-                              .split(',').map(Number);
-          // 沒有實際移動就不觸發回寫
-          if (Math.abs(ntx) > 0.01 || Math.abs(nty) > 0.01) {
-            window.onObjectDragEnd(id, ntx, nty, this._dragType);
+          if (this._dragType === 'start' || this._dragType === 'end') {
+            window.onObjectDragEnd(id, 0, 0, this._dragType, this._finalSpec);
+          } else {
+            const [ntx, nty] = (grp.getAttribute('data-translate') || '0,0')
+                                .split(',').map(Number);
+            // 沒有實際移動就不觸發回寫
+            if (Math.abs(ntx) > 0.01 || Math.abs(nty) > 0.01) {
+              window.onObjectDragEnd(id, ntx, nty, this._dragType);
+            }
           }
           grp.setAttribute('data-translate', '0,0');
         }
       }
+    }
+
+    _collectAnchors() {
+      this._anchors = [];
+      if (!this.selected) return;
+
+      const currentId = this.selected.getAttribute('id');
+      const currentArrowKey = this.selected.getAttribute('data-arrow-key');
+
+      // 找出畫面上所有符合條件的物件，排除當前選取的箭頭以及其他線段
+      const objects = Array.from(this.svg.querySelectorAll('.draggable-object')).filter(el => {
+        const id = el.getAttribute('id');
+        const arrowKey = el.getAttribute('data-arrow-key');
+        if (el === this.selected) return false;
+        if (id && id === currentId) return false;
+        if (arrowKey && arrowKey === currentArrowKey) return false;
+        if (el.tagName.toLowerCase() === 'line') return false;
+        return true;
+      });
+
+      const anchorsToTest = ['center', 'top', 'bottom', 'left', 'right', 'top left', 'top right', 'bottom left', 'bottom right'];
+
+      for (const el of objects) {
+        const refId = el.getAttribute('id');
+        if (!refId) continue;
+
+        // A. 收集物件本身的 5 個錨點
+        for (const anchor of anchorsToTest) {
+          try {
+            const pos = window.resolvePos({ type: 'rel', ref: refId, anchor });
+            if (pos && !isNaN(pos.x) && !isNaN(pos.y)) {
+              this._anchors.push({
+                x: pos.x,
+                y: pos.y,
+                spec: { type: 'rel', ref: refId, anchor }
+              });
+            }
+          } catch (e) {}
+        }
+
+        // B. 收集物件底下的子格子的錨點
+        const cells = Array.from(el.querySelectorAll('g[id^="cell-"]'));
+        for (const cell of cells) {
+          const cellId = cell.getAttribute('id');
+          if (!cellId) continue;
+
+          const prefix = "cell-" + refId + "-";
+          if (!cellId.startsWith(prefix)) continue;
+          if (cellId.endsWith('-index')) continue;
+
+          const remaining = cellId.substring(prefix.length);
+          let spec = null;
+          if (remaining.includes('-')) {
+            const parts = remaining.split('-');
+            const row = parseInt(parts[0], 10);
+            const col = parseInt(parts[1], 10);
+            if (!isNaN(row) && !isNaN(col)) {
+              spec = { type: 'rel', ref: refId, row, col };
+            }
+          } else {
+            const index = parseInt(remaining, 10);
+            if (!isNaN(index)) {
+              spec = { type: 'rel', ref: refId, index };
+            }
+          }
+
+          if (spec) {
+            for (const anchor of anchorsToTest) {
+              try {
+                const cellSpec = { ...spec, anchor };
+                const pos = window.resolvePos(cellSpec);
+                if (pos && !isNaN(pos.x) && !isNaN(pos.y)) {
+                  this._anchors.push({
+                    x: pos.x,
+                    y: pos.y,
+                    spec: cellSpec
+                  });
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      }
+    }
+
+    _showAnchors() {
+      let overlay = this.svg.querySelector('#anchor-overlay');
+      if (overlay) overlay.remove();
+
+      const vp = window.getViewport ? window.getViewport() : this.svg;
+      overlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      overlay.setAttribute('id', 'anchor-overlay');
+      overlay.setAttribute('style', 'pointer-events: none;');
+
+      const s = window.getScale ? window.getScale() : 1;
+      const dotRadius = 3.5 / s;
+      const strokeW = 1 / s;
+
+      this._anchors.forEach((anchor, idx) => {
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', anchor.x);
+        circle.setAttribute('cy', anchor.y);
+        circle.setAttribute('r', dotRadius);
+        circle.setAttribute('fill', '#ffffff');
+        circle.setAttribute('stroke', '#3d85c6');
+        circle.setAttribute('stroke-width', strokeW);
+        circle.setAttribute('id', `anchor-dot-${idx}`);
+        overlay.appendChild(circle);
+      });
+
+      vp.appendChild(overlay);
+    }
+
+    _highlightAnchor(snappedAnchor) {
+      this._anchors.forEach((anchor, idx) => {
+        const circle = this.svg.querySelector(`#anchor-dot-${idx}`);
+        if (!circle) return;
+
+        const s = window.getScale ? window.getScale() : 1;
+        if (snappedAnchor && anchor === snappedAnchor) {
+          circle.setAttribute('r', 6 / s);
+          circle.setAttribute('fill', '#ff5722');
+          circle.setAttribute('stroke', '#ffffff');
+          circle.setAttribute('stroke-width', 1.5 / s);
+        } else {
+          circle.setAttribute('r', 3.5 / s);
+          circle.setAttribute('fill', '#ffffff');
+          circle.setAttribute('stroke', '#3d85c6');
+          circle.setAttribute('stroke-width', 1 / s);
+        }
+      });
+    }
+
+    _hideAnchors() {
+      let overlay = this.svg.querySelector('#anchor-overlay');
+      if (overlay) overlay.remove();
     }
 }

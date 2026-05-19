@@ -301,7 +301,7 @@
   /**
    * 拖曳結束的回呼 (由 interaction.js 觸發)
    */
-  window.onObjectDragEnd = function (id, dx, dy, dragType) {
+  window.onObjectDragEnd = function (id, dx, dy, dragType, newPosSpec) {
     let dc = findDrawCallByGroupID(id);
     if (!dc) {
       // 嘗試處理箭頭 (其 id 形如 'arrow-X')
@@ -323,15 +323,19 @@
           if (dragType === 'end' && i !== 1) continue;
         }
 
-        if (posArg.type === 'rel' || posArg.ref) {
-          posArg.dx = (posArg.dx || 0) + dx;
-          posArg.dy = (posArg.dy || 0) + dy;
-          // 同步 x, y 以相容部分邏輯
-          posArg.x = posArg.dx;
-          posArg.y = posArg.dy;
+        if (newPosSpec) {
+          dc.args[i] = newPosSpec;
         } else {
-          posArg.x = (posArg.x || 0) + dx;
-          posArg.y = (posArg.y || 0) + dy;
+          if (posArg.type === 'rel' || posArg.ref) {
+            posArg.dx = (posArg.dx || 0) + dx;
+            posArg.dy = (posArg.dy || 0) + dy;
+            // 同步 x, y 以相容部分邏輯
+            posArg.x = posArg.dx;
+            posArg.y = posArg.dy;
+          } else {
+            posArg.x = (posArg.x || 0) + dx;
+            posArg.y = (posArg.y || 0) + dy;
+          }
         }
         updatedIndices.push(i);
       }
