@@ -459,6 +459,9 @@
       line.setAttribute('y1', y1);
       line.setAttribute('x2', x2);
       line.setAttribute('y2', y2);
+      
+      // 加入 draggable-object 讓 interaction.js 能夠捕捉拖曳
+      line.classList.add('draggable-object');
 
       // 出現動畫：從透明淡入（跟消失動畫 fadeMs 時間一致）
       const fadeMs = 150;

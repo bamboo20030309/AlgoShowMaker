@@ -11,11 +11,13 @@
   let _recording = false;
 
   let _msgCount = 0;
+  let _arrowAutoCount = 0;
   function startRecording(frame) {
     _recFrame = frame;
     _recLine = -1;
     _recording = true;
     _msgCount = 0;
+    _arrowAutoCount = 0;
     if (!_frameRegistry[frame]) _frameRegistry[frame] = [];
     else _frameRegistry[frame].length = 0;
   }
@@ -66,7 +68,9 @@
     let line = _recLine;
     const lastArg = arguments[arguments.length - 1];
     if (typeof lastArg === 'number' && lastArg > 0) line = lastArg;
-    const gid = (opt && (opt.key || opt.groupID)) ? (opt.key || opt.groupID) : null;
+    
+    const autoKey = 'auto-' + (_arrowAutoCount++);
+    const gid = (opt && (opt.key || opt.groupID)) ? (opt.key || opt.groupID) : autoKey;
     if (_recording) {
       _frameRegistry[_recFrame].push({
         type: 'drawArrow', groupID: gid,
@@ -74,7 +78,12 @@
         codeLine: line
       });
     }
-    return _origAR.apply(this, arguments);
+    
+    // 確保 opt 有 key 傳給 draw_arrow.js 內部使用
+    let newOpt = opt ? { ...opt } : {};
+    if (newOpt.key == null) newOpt.key = gid;
+    
+    return _origAR(startSpec, endSpec, newOpt, line);
   };
 
   // Wrap drawText
@@ -292,33 +301,43 @@
   /**
    * 拖曳結束的回呼 (由 interaction.js 觸發)
    */
-  window.onObjectDragEnd = function (id, dx, dy) {
-    const dc = findDrawCallByGroupID(id);
+  window.onObjectDragEnd = function (id, dx, dy, dragType) {
+    let dc = findDrawCallByGroupID(id);
+    if (!dc) {
+      // 嘗試處理箭頭 (其 id 形如 'arrow-X')
+      const node = document.getElementById(id);
+      if (node && node.getAttribute('data-arrow-key')) {
+        dc = findDrawCallByGroupID(node.getAttribute('data-arrow-key'));
+      }
+    }
     if (!dc) return;
 
-    // 自動尋找第一個符合 Pos 物件的參數索引進行拖曳更新
-    let posArg = null;
-    let posIdx = -1;
+    // 更新符合 Pos 結構的參數
+    const updatedIndices = [];
     for (let i = 0; i < dc.args.length; i++) {
-      if (isPosObject(dc.args[i])) {
-        posArg = dc.args[i];
-        posIdx = i;
-        break;
+      let posArg = dc.args[i];
+      if (isPosObject(posArg)) {
+        // 如果是箭頭，且有指定拖曳方向 (start 或 end)，只更新對應的 Pos 參數
+        if (dc.type === 'drawArrow' && dragType) {
+          if (dragType === 'start' && i !== 0) continue;
+          if (dragType === 'end' && i !== 1) continue;
+        }
+
+        if (posArg.type === 'rel' || posArg.ref) {
+          posArg.dx = (posArg.dx || 0) + dx;
+          posArg.dy = (posArg.dy || 0) + dy;
+          // 同步 x, y 以相容部分邏輯
+          posArg.x = posArg.dx;
+          posArg.y = posArg.dy;
+        } else {
+          posArg.x = (posArg.x || 0) + dx;
+          posArg.y = (posArg.y || 0) + dy;
+        }
+        updatedIndices.push(i);
       }
     }
 
-    if (!posArg) return;
-
-    if (posArg.type === 'rel' || posArg.ref) {
-      posArg.dx = (posArg.dx || 0) + dx;
-      posArg.dy = (posArg.dy || 0) + dy;
-      // 同步 x, y 以相容部分邏輯
-      posArg.x = posArg.dx;
-      posArg.y = posArg.dy;
-    } else {
-      posArg.x = (posArg.x || 0) + dx;
-      posArg.y = (posArg.y || 0) + dy;
-    }
+    if (updatedIndices.length === 0) return;
 
     // 更新介面 (如果面板開著)
     if (_propPanel && _propPanel.style.display !== 'none' && _propDrawCall === dc) {
@@ -326,7 +345,7 @@
     }
 
     replayCurrentFrame();
-    syncPosToCpp(dc, posIdx);
+    updatedIndices.forEach(idx => syncPosToCpp(dc, idx));
   };
 
   let _currentPropSection = 'all';
@@ -2023,31 +2042,74 @@
     let lineIdx = -1;
     let lineText = '';
 
-    // 匹配任何以 draw, frame, arrow 或特定的自定義名稱命名的繪圖函式
-    const fnRegex = /((?:key_)?(?:frame_draw|draw_2Darray|arrow|draw_array|draw_circle|draw_triangle|draw_word|draw_text|draw_colored_text|[a-zA-Z0-9_]+))\s*\(/;
+    // 根據 dc.type 限制搜尋的 C++ 函式名稱，防止互相誤認改錯行！
+    const typeToFuncs = {
+      'drawArray': ['frame_draw', 'draw_array', 'accu_store'],
+      'draw2DArray': ['draw_2Darray', 'frame_draw_2Darray', 'accu_store_2D'],
+      'drawArrow': ['arrow', 'accu_store_arrow'],
+      'drawCircle': ['draw_circle', 'accu_store_circle'],
+      'drawText': ['text', 'draw_word', 'accu_store_word'],
+      'drawColoredText': ['draw_colored_text', 'colored_text', 'accu_store_colored']
+    };
+    const expectedFuncs = typeToFuncs[dc.type] || ['[a-zA-Z0-9_]+'];
+    const fnRegex = new RegExp(`((?:key_)?(?:${expectedFuncs.join('|')}))\\s*\\(`);
 
-    // 優先搜尋包含 groupID 的行（最嚴謹）
-    for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7, -8, 8, -9, 9, -10, 10]) {
-      const idx = searchCenter + offset;
-      if (idx < 0) continue;
-      const t = session.getLine(idx);
-      if (!t) continue;
+    const isAutoGroupID = groupID.startsWith('auto-');
 
-      if (groupID && (t.includes('"' + groupID + '"') || t.includes(groupID)) && t.includes('Pos(')) {
-        lineIdx = idx;
-        lineText = t;
-        break;
-      }
-      if (!groupID && t.includes('Pos(') && fnRegex.test(t)) {
-        lineIdx = idx;
-        lineText = t;
-        break;
+    // 第一階段：如果是有意義的 groupID (非 auto-)，優先嚴格比對包含該 ID 的行
+    if (groupID && !isAutoGroupID) {
+      for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5]) {
+        const idx = searchCenter + offset;
+        if (idx < 0) continue;
+        const t = session.getLine(idx);
+        if (!t) continue;
+
+        if ((t.includes('"' + groupID + '"') || t.includes(groupID)) && t.includes('Pos(')) {
+          lineIdx = idx;
+          lineText = t;
+          break;
+        }
       }
     }
 
-    // 次要：如果還是找不到，則只找最近包含 Pos( 的行
+    // 第二階段：比對預期的函式名稱，且包含 Pos( (針對 arrow 這種 auto- ID 或嚴格比對失敗時)
     if (lineIdx === -1) {
-      for (let offset of [0, -1, 1, -2, 2, -3, 3]) {
+      for (let offset of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5]) {
+        const idx = searchCenter + offset;
+        if (idx < 0) continue;
+        const t = session.getLine(idx);
+        if (t && t.includes('Pos(') && fnRegex.test(t)) {
+          lineIdx = idx;
+          lineText = t;
+          break;
+        }
+      }
+    }
+
+    // 第三階段：支援跨行 (Pos( 在下一行)
+    if (lineIdx === -1) {
+      for (let offset of [0, -1, 1, -2, 2]) {
+        const idx = searchCenter + offset;
+        if (idx < 0) continue;
+        const t = session.getLine(idx);
+        if (t && fnRegex.test(t)) {
+          // 找它的下面幾行有沒有 Pos(
+          for (let down = 0; down <= 3; down++) {
+             const tDown = session.getLine(idx + down);
+             if (tDown && tDown.includes('Pos(')) {
+               lineIdx = idx + down;
+               lineText = tDown;
+               break;
+             }
+          }
+          if (lineIdx !== -1) break;
+        }
+      }
+    }
+
+    // 第四階段：最寬鬆的退回，只要有 Pos( 就好
+    if (lineIdx === -1) {
+      for (let offset of [0, -1, 1, -2, 2]) {
         const idx = searchCenter + offset;
         if (idx < 0) continue;
         const t = session.getLine(idx);
@@ -2141,6 +2203,7 @@
 
     const offsets = Array.from({ length: 51 }, (_, i) => i === 0 ? [0] : [-i, i]).flat();
     const feature = getOriginalTextFeature(dc);
+    const isAutoGroupID = groupID.startsWith('auto-');
 
     // 第一階段：嚴格搜尋（同時匹配函式、groupID 且包含原始文字特徵）
     if (feature) {
@@ -2150,7 +2213,7 @@
         const t = session.getLine(idx);
         if (!t) continue;
 
-        const hasGroupID = (groupID === '' || t.includes('"' + groupID + '"'));
+        const hasGroupID = (groupID === '' || isAutoGroupID || t.includes('"' + groupID + '"') || t.includes(groupID));
         const hasFunc = t.match(funcRegex);
 
         if (hasFunc && hasGroupID && t.includes(feature)) {
@@ -2169,7 +2232,7 @@
         const t = session.getLine(idx);
         if (!t) continue;
 
-        const hasGroupID = (groupID === '' || t.includes('"' + groupID + '"'));
+        const hasGroupID = (groupID === '' || isAutoGroupID || t.includes('"' + groupID + '"') || t.includes(groupID));
         const hasFunc = t.match(funcRegex);
 
         if (hasFunc && hasGroupID) {
