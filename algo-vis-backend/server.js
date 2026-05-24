@@ -106,6 +106,9 @@ function logDebug(msg, extra = {}) {
 }
 
 // 設定中間件
+app.use('/vendor/reveal', express.static(path.join(__dirname, 'node_modules', 'reveal.js', 'dist')));
+app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'fabric', 'dist')));
+app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaames', 'iro', 'dist')));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '5mb' }));
 

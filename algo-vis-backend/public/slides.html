@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlgoShowMaker Slides</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/vendor/reveal/reset.css" />
+  <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
+  <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
+  <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
+  <link rel="stylesheet" href="slides.css?v=fabric-editor-30" />
+</head>
+
+<body class="asm-edit-mode">
+  <aside id="editorChrome" class="editor-chrome" aria-label="投影片元件">
+    <div id="defaultToolPanel" class="sidebar-panel">
+    <button type="button" class="palette-item tool-text" draggable="true" data-tool="text" title="文字方塊">
+      <span class="tool-icon">T</span>
+      <span>文字方塊</span>
+    </button>
+
+    <div class="shape-tool">
+      <button id="shapeMenuBtn" type="button" class="palette-item tool-shape" title="圖形">
+        <span class="shape-stack" aria-hidden="true">
+          <span class="shape-circle"></span>
+          <span class="shape-triangle"></span>
+        </span>
+        <span>圖形</span>
+      </button>
+      <div id="shapeMenu" class="shape-menu" hidden>
+        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="circle" title="圓形">○</button>
+        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="triangle" title="三角形">△</button>
+      </div>
+    </div>
+
+    <button type="button" class="palette-item tool-latex" draggable="true" data-tool="latex" title="LaTeX 公式">
+      <span class="tool-icon">Σ</span>
+      <span>LaTeX</span>
+    </button>
+
+    <button type="button" class="palette-item tool-code" draggable="true" data-tool="code" title="C++ 程式碼">
+      <span class="tool-icon">{}</span>
+      <span>code</span>
+    </button>
+    </div>
+
+    <div id="latexEditorPanel" class="sidebar-panel widget-editor-panel" hidden>
+      <div class="panel-title">
+        <strong>LaTeX</strong>
+        <button id="exitLatexEditorBtn" type="button" title="退出">×</button>
+      </div>
+      <label class="field-label" for="latexFontSizeInput">字體大小</label>
+      <input id="latexFontSizeInput" type="number" min="12" max="160" value="34" />
+      <textarea id="latexEditorInput" spellcheck="false"></textarea>
+      <div class="symbol-grid" aria-label="常用符號">
+        <button type="button" data-insert="\frac{}{}">\frac</button>
+        <button type="button" data-insert="\sqrt{}">\sqrt</button>
+        <button type="button" data-insert="\sum_{i=1}^{n}">Σ</button>
+        <button type="button" data-insert="\int_{}^{}">∫</button>
+        <button type="button" data-insert="\alpha">α</button>
+        <button type="button" data-insert="\beta">β</button>
+        <button type="button" data-insert="\theta">θ</button>
+        <button type="button" data-insert="\pi">π</button>
+        <button type="button" data-insert="\leq">≤</button>
+        <button type="button" data-insert="\geq">≥</button>
+        <button type="button" data-insert="\neq">≠</button>
+        <button type="button" data-insert="\rightarrow">→</button>
+      </div>
+    </div>
+
+    <div id="codeEditorPanel" class="sidebar-panel widget-editor-panel" hidden>
+      <div class="panel-title">
+        <strong>code</strong>
+        <button id="exitCodeEditorBtn" type="button" title="退出">×</button>
+      </div>
+      <select id="codeLanguageSelect" title="程式語言">
+        <option value="cpp">C++</option>
+        <option value="c">C</option>
+        <option value="python">Python</option>
+        <option value="javascript">JavaScript</option>
+        <option value="java">Java</option>
+        <option value="plaintext">Plain text</option>
+      </select>
+      <label class="field-label" for="codeFontSizeInput">字體大小</label>
+      <input id="codeFontSizeInput" type="number" min="10" max="80" value="21" />
+      <textarea id="codeEditorInput" spellcheck="false"></textarea>
+    </div>
+  </aside>
+
+  <div class="mode-switch" aria-label="模式切換">
+    <button id="editModeBtn" type="button" class="is-active">Edit</button>
+    <button id="presentModeBtn" type="button">Present</button>
+  </div>
+
+  <div id="overviewChrome" class="overview-chrome" hidden>
+    <button id="addSlideBtn" type="button">新增投影片</button>
+    <span id="overviewHint">拖曳投影片到目標投影片的上、下、左、右；按 Delete 刪除選取投影片。</span>
+  </div>
+
+  <div id="editHint" class="edit-hint">ESC 開啟 overview，可拖曳排序投影片。</div>
+
+  <div id="objectToolbar" class="object-toolbar" hidden>
+    <select id="fontFamilySelect" title="字體">
+      <option value="Segoe UI">Segoe UI</option>
+      <option value="Noto Sans TC">Noto Sans TC</option>
+      <option value="Arial">Arial</option>
+      <option value="Georgia">Georgia</option>
+      <option value="Consolas">Consolas</option>
+    </select>
+    <input id="fontSizeInput" type="number" min="8" max="160" value="34" title="字體大小" />
+    <button id="boldBtn" type="button" title="粗體"><strong>B</strong></button>
+    <button id="italicBtn" type="button" title="斜體"><em>I</em></button>
+    <button id="underlineBtn" type="button" title="底線"><u>U</u></button>
+    <button id="strikeBtn" type="button" title="刪除線"><s>S</s></button>
+    <button id="textColorBtn" type="button" title="文字顏色">A</button>
+    <button id="bgColorBtn" type="button" title="文字背景色">▣</button>
+    <button id="shapeColorBtn" type="button" title="填色">■</button>
+    <div id="iroPopup" class="iro-popup" hidden>
+      <div id="iroPicker"></div>
+    </div>
+  </div>
+
+  <div class="reveal">
+    <div id="slidesRoot" class="slides"></div>
+  </div>
+
+  <script src="/vendor/reveal/reveal.js"></script>
+  <script src="/vendor/fabric/fabric.min.js"></script>
+  <script>
+    window.fabric = window.fabric || (typeof fabric !== 'undefined' ? fabric : null) || (window.exports && window.exports.fabric);
+    document.body.dataset.fabricBridge = window.fabric && window.fabric.Canvas ? 'ready' : 'missing';
+    document.body.dataset.fabricClasses = window.fabric ? Object.keys(window.fabric).filter(function (key) {
+      return ['Canvas', 'Textbox', 'IText', 'Text', 'Rect', 'Circle', 'Triangle'].indexOf(key) >= 0;
+    }).join(',') : '';
+  </script>
+  <script src="/vendor/reveal/plugin/notes.js"></script>
+  <script src="/vendor/reveal/plugin/search.js"></script>
+  <script src="/vendor/reveal/plugin/zoom.js"></script>
+  <script src="/vendor/reveal/plugin/math.js"></script>
+  <script>
+    window.RevealMath = window.RevealMath || (window.module && window.module.exports && window.module.exports.KaTeX ? window.module.exports : null) || (window.exports && window.exports.KaTeX ? window.exports : null);
+    document.body.dataset.mathBridge = window.RevealMath && window.RevealMath.KaTeX ? 'ready' : 'missing';
+  </script>
+  <script src="/vendor/reveal/plugin/highlight.js"></script>
+  <script>
+    window.RevealHighlight = window.RevealHighlight || (window.module && window.module.exports && window.module.exports.id === 'highlight' ? window.module.exports : null) || (window.exports && window.exports.id === 'highlight' ? window.exports : null);
+    document.body.dataset.highlightBridge = window.RevealHighlight ? 'ready' : 'missing';
+  </script>
+  <script src="/vendor/iro/iro.min.js"></script>
+  <script>
+    window.iro = window.iro || (window.module && window.module.exports && window.module.exports.ColorPicker ? window.module.exports : null) || (window.exports && window.exports.ColorPicker ? window.exports : null);
+    document.body.dataset.iroBridge = window.iro && window.iro.ColorPicker ? 'ready' : 'missing';
+  </script>
+  <script src="slides.js?v=fabric-editor-30"></script>
+</body>
+
+</html>
