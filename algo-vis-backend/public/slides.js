@@ -7,13 +7,20 @@
   const slidePositions = new Map();
   const MAX_HISTORY = 80;
 
+  function randomId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
   const defaultDeck = {
     groups: [
       {
-        id: crypto.randomUUID(),
+        id: randomId(),
         slides: [
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             canvas: {
               objects: [
                 {
@@ -58,10 +65,10 @@
         ]
       },
       {
-        id: crypto.randomUUID(),
+        id: randomId(),
         slides: [
           {
-            id: crypto.randomUUID(),
+            id: randomId(),
             canvas: {
               objects: [
                 {
@@ -183,7 +190,7 @@
 
   function createBlankSlide(title = 'New slide') {
     return {
-      id: crypto.randomUUID(),
+      id: randomId(),
       canvas: {
         objects: [
           {
@@ -206,10 +213,10 @@
   function cloneSlideForPaste(slide) {
     return {
       ...clone(slide),
-      id: crypto.randomUUID(),
+      id: randomId(),
       widgets: normalizeWidgets(slide.widgets).map(widget => ({
         ...clone(widget),
-        id: crypto.randomUUID()
+        id: randomId()
       }))
     };
   }
@@ -219,9 +226,9 @@
       raw.groups = raw.groups
         .filter(group => group && Array.isArray(group.slides) && group.slides.length)
         .map(group => ({
-          id: group.id || crypto.randomUUID(),
+          id: group.id || randomId(),
           slides: group.slides.map(slide => ({
-            id: slide.id || crypto.randomUUID(),
+            id: slide.id || randomId(),
             canvas: normalizeCanvasJson(slide.canvas),
             widgets: normalizeWidgets(slide.widgets)
           }))
@@ -232,9 +239,9 @@
     if (raw && Array.isArray(raw.slides)) {
       return {
         groups: raw.slides.map(slide => ({
-          id: crypto.randomUUID(),
+          id: randomId(),
           slides: [{
-            id: slide.id || crypto.randomUUID(),
+            id: slide.id || randomId(),
             canvas: normalizeCanvasJson(slide.canvas),
             widgets: normalizeWidgets(slide.widgets)
           }]
@@ -338,7 +345,7 @@
 
   function normalizeWidgets(widgets) {
     return Array.isArray(widgets) ? widgets.map(widget => ({
-      id: widget.id || crypto.randomUUID(),
+      id: widget.id || randomId(),
       type: widget.type === 'code' ? 'code' : 'latex',
       x: Number.isFinite(widget.x) ? widget.x : 160,
       y: Number.isFinite(widget.y) ? widget.y : 160,
@@ -755,7 +762,7 @@
     if (!slide) return;
     slide.widgets = normalizeWidgets(slide.widgets);
     const widget = {
-      id: crypto.randomUUID(),
+      id: randomId(),
       type,
       x: Math.max(24, Math.min(point.x - 120, SLIDE_W - 360)),
       y: Math.max(24, Math.min(point.y - 54, SLIDE_H - 180)),
@@ -904,7 +911,7 @@
       const offset = objectClipboard.cut ? 0 : 32;
       const pastedWidgets = objectClipboard.widgets.map(widget => ({
         ...clone(widget),
-        id: crypto.randomUUID(),
+        id: randomId(),
         x: Math.min(SLIDE_W - Math.max(20, widget.w || 20), (widget.x || 0) + offset),
         y: Math.min(SLIDE_H - Math.max(20, widget.h || 20), (widget.y || 0) + offset)
       }));
@@ -1790,7 +1797,7 @@
       currentV += 1;
     } else {
       deck.groups.splice(currentH + 1, 0, {
-        id: crypto.randomUUID(),
+        id: randomId(),
         slides: [slide]
       });
       currentH += 1;
@@ -1877,7 +1884,7 @@
 
     if (side === 'left' || side === 'right') {
       const insertAt = targetPos.h + (side === 'right' ? 1 : 0);
-      deck.groups.splice(insertAt, 0, { id: crypto.randomUUID(), slides: [moved] });
+      deck.groups.splice(insertAt, 0, { id: randomId(), slides: [moved] });
       currentH = insertAt;
       currentV = 0;
     } else {
@@ -1925,7 +1932,7 @@
     const targetPos = slidePositions.get(targetId);
     if (!targetPos) return;
     const insertAt = targetPos.h + (normalizedSide === 'right' ? 1 : 0);
-    const groups = movedSlides.map(slide => ({ id: crypto.randomUUID(), slides: [slide] }));
+    const groups = movedSlides.map(slide => ({ id: randomId(), slides: [slide] }));
     deck.groups.splice(insertAt, 0, ...groups);
     rebuildPositions();
     overviewSelectedSlideIds = new Set(movedSlides.map(slide => slide.id));
@@ -1973,7 +1980,7 @@
     if (!targetPos) return;
     const pastedSlides = slideClipboard.map(cloneSlideForPaste);
     const insertAt = targetPos.h + 1;
-    deck.groups.splice(insertAt, 0, ...pastedSlides.map(slide => ({ id: crypto.randomUUID(), slides: [slide] })));
+    deck.groups.splice(insertAt, 0, ...pastedSlides.map(slide => ({ id: randomId(), slides: [slide] })));
     rebuildPositions();
     overviewSelectedSlideIds = new Set(pastedSlides.map(slide => slide.id));
     overviewSelectedSlideId = pastedSlides[0]?.id || null;
