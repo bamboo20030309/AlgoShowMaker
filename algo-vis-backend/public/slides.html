@@ -10,15 +10,15 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=fabric-editor-30" />
+  <link rel="stylesheet" href="slides.css?v=cut-widget-1" />
 </head>
 
 <body class="asm-edit-mode">
   <aside id="editorChrome" class="editor-chrome" aria-label="投影片元件">
     <div id="defaultToolPanel" class="sidebar-panel">
-    <button type="button" class="palette-item tool-text" draggable="true" data-tool="text" title="文字方塊">
+    <button type="button" class="palette-item tool-text" draggable="true" data-tool="text" title="text">
       <span class="tool-icon">T</span>
-      <span>文字方塊</span>
+      <span>text</span>
     </button>
 
     <div class="shape-tool">
@@ -44,6 +44,13 @@
       <span class="tool-icon">{}</span>
       <span>code</span>
     </button>
+    </div>
+
+    <div id="overviewSidebarPanel" class="sidebar-panel overview-sidebar-panel" hidden>
+      <button id="overviewAddSlideBtn" type="button" class="palette-item overview-action">
+        <span class="tool-icon">+</span>
+        <span>新增投影片</span>
+      </button>
     </div>
 
     <div id="latexEditorPanel" class="sidebar-panel widget-editor-panel" hidden>
@@ -96,10 +103,16 @@
 
   <div id="overviewChrome" class="overview-chrome" hidden>
     <button id="addSlideBtn" type="button">新增投影片</button>
-    <span id="overviewHint">拖曳投影片到目標投影片的上、下、左、右；按 Delete 刪除選取投影片。</span>
+    <span id="overviewHint"></span>
   </div>
 
   <div id="editHint" class="edit-hint">ESC 開啟 overview，可拖曳排序投影片。</div>
+
+  <div id="customOverview" class="custom-overview" hidden>
+    <div id="customOverviewViewport" class="custom-overview-viewport">
+      <div id="customOverviewBoard" class="custom-overview-board"></div>
+    </div>
+  </div>
 
   <div id="objectToolbar" class="object-toolbar" hidden>
     <select id="fontFamilySelect" title="字體">
@@ -114,8 +127,12 @@
     <button id="italicBtn" type="button" title="斜體"><em>I</em></button>
     <button id="underlineBtn" type="button" title="底線"><u>U</u></button>
     <button id="strikeBtn" type="button" title="刪除線"><s>S</s></button>
+    <button id="alignLeftBtn" type="button" title="靠左"><span class="align-icon align-left-icon"></span></button>
+    <button id="alignCenterBtn" type="button" title="置中"><span class="align-icon align-center-icon"></span></button>
+    <button id="alignRightBtn" type="button" title="靠右"><span class="align-icon align-right-icon"></span></button>
+    <button id="listStyleBtn" type="button" title="項目符號 / 編號">• / 1.</button>
     <button id="textColorBtn" type="button" title="文字顏色">A</button>
-    <button id="bgColorBtn" type="button" title="文字背景色">▣</button>
+    <button id="bgColorBtn" type="button" title="文字背景色"><span class="text-bg-icon">A</span></button>
     <button id="shapeColorBtn" type="button" title="填色">■</button>
     <div id="iroPopup" class="iro-popup" hidden>
       <div id="iroPicker"></div>
@@ -125,7 +142,6 @@
   <div class="reveal">
     <div id="slidesRoot" class="slides"></div>
   </div>
-
   <script src="/vendor/reveal/reveal.js"></script>
   <script src="/vendor/fabric/fabric.min.js"></script>
   <script>
@@ -153,7 +169,7 @@
     window.iro = window.iro || (window.module && window.module.exports && window.module.exports.ColorPicker ? window.module.exports : null) || (window.exports && window.exports.ColorPicker ? window.exports : null);
     document.body.dataset.iroBridge = window.iro && window.iro.ColorPicker ? 'ready' : 'missing';
   </script>
-  <script src="slides.js?v=fabric-editor-30"></script>
+  <script src="slides.js?v=cut-widget-1"></script>
 </body>
 
 </html>
