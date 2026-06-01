@@ -2943,6 +2943,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!activeTextEdit) return;
     const { textNode, x } = activeTextEdit;
     const lines = hiddenTextArea.value.split('\n');
+    textNode.setAttribute('xml:space', 'preserve');
     // 清空舊內容
     while (textNode.firstChild) textNode.removeChild(textNode.firstChild);
     // 每行建立一個 tspan
@@ -2950,7 +2951,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const tspan = document.createElementNS(NS, 'tspan');
       tspan.setAttribute('x', x);
       tspan.setAttribute('dy', i === 0 ? '0' : '1.2em');
-      tspan.textContent = line || '\u200B'; // 空行用零寬空格佔位
+      tspan.textContent = line.replace(/ /g, '\u00A0') || '\u200B'; // 保留行尾空白，空行用零寬空格佔位
       textNode.appendChild(tspan);
     });
   }
