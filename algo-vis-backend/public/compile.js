@@ -1,4 +1,23 @@
 // compile.js
+window.asmApplyAnimationScript = function (scriptContent) {
+  if (!scriptContent) return;
+  if (window.resetArrows) window.resetArrows();
+  if (window.resetMessageCounter) window.resetMessageCounter();
+  window.eval(scriptContent);
+  if (window.CodeScript && window.CodeScript.reset) {
+    window.CodeScript.reset();
+  }
+  if (typeof initFrameInfoFromCodeScript === 'function') {
+    initFrameInfoFromCodeScript();
+  }
+  if (typeof syncCurrentFrameFromCodeScript === 'function') {
+    syncCurrentFrameFromCodeScript();
+  }
+  if (typeof csGetCurrentLine === 'function' && typeof addEditorHighlight === 'function') {
+    addEditorHighlight(csGetCurrentLine());
+  }
+};
+
 // 前端：送 code ＋ input 給 /compile，並更新「輸出」與「debug log」
 
 document.getElementById('runBtn').addEventListener('click', async () => {
@@ -153,31 +172,14 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     // 3. 處理後端直接回傳的動畫腳本 (Concurrency Fix)
     if (data.scriptContent) {
       try {
-        // (A-0) 立即清空舊的箭頭與文字框，防止殘影
-        if (window.resetArrows) window.resetArrows();
-        if (window.resetMessageCounter) window.resetMessageCounter();
-
-        // (A) 使用 window.eval 確保在全域執行 (建立 CodeScript 物件)
-        window.eval(data.scriptContent);
-
-        // (B) 重置動畫狀態
-        if (window.CodeScript && window.CodeScript.reset) {
-          window.CodeScript.reset();
-        }
-
-        // (C) 呼叫 front.js 的函式來更新介面 (幀條碼、總幀數)
-        if (typeof initFrameInfoFromCodeScript === 'function') {
-           initFrameInfoFromCodeScript();
-        }
-        if (typeof syncCurrentFrameFromCodeScript === 'function') {
-           syncCurrentFrameFromCodeScript();
-        }
-        
-        // (D) 高亮第一行程式碼
-        if (typeof csGetCurrentLine === 'function' && typeof addEditorHighlight === 'function') {
-           addEditorHighlight(csGetCurrentLine());
-        }
-
+        window.asmApplyAnimationScript(data.scriptContent);
+        window.dispatchEvent(new CustomEvent('asm:compiled-animation', {
+          detail: {
+            code: aceEditor.getValue(),
+            input: inputEl ? inputEl.value : '',
+            scriptContent: data.scriptContent
+          }
+        }));
       } catch (e) {
         console.error("動畫腳本執行失敗:", e);
         if (dbg) dbg.textContent += '\n[前端錯誤] 動畫腳本執行失敗: ' + e.message;

@@ -10,10 +10,25 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=random-id-1" />
+  <link rel="stylesheet" href="slides.css?v=random-id-14" />
 </head>
 
 <body class="asm-edit-mode">
+  <aside id="controlChrome" class="control-chrome" aria-label="控制欄">
+    <div class="mode-switch" aria-label="模式切換">
+      <button id="modeToggleBtn" type="button" title="切換至 Present 模式" aria-label="切換至 Present 模式">
+        <svg class="mode-toggle-icon mode-icon-edit" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 4h16v15H4z" />
+          <path d="M7 16l1.1-3.6 7.4-7.4 2.5 2.5-7.4 7.4zM14.2 6.3l2.5 2.5" />
+        </svg>
+        <svg class="mode-toggle-icon mode-icon-present" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 3h16v10H4zM8 7h8" />
+          <path d="M9 16h6l1 5H8zM12 13v3" />
+        </svg>
+      </button>
+    </div>
+  </aside>
+
   <aside id="editorChrome" class="editor-chrome" aria-label="投影片元件">
     <div id="defaultToolPanel" class="sidebar-panel">
     <button type="button" class="palette-item tool-text" draggable="true" data-tool="text" title="text">
@@ -44,12 +59,21 @@
       <span class="tool-icon">{}</span>
       <span>code</span>
     </button>
+
+    <button id="algorithmEditSlideBtn" type="button" class="palette-item algorithm-edit-sidebar-action" hidden>
+      <span class="tool-icon">{;}</span>
+      <span>編輯演算法動畫</span>
+    </button>
     </div>
 
     <div id="overviewSidebarPanel" class="sidebar-panel overview-sidebar-panel" hidden>
       <button id="overviewAddSlideBtn" type="button" class="palette-item overview-action">
         <span class="tool-icon">+</span>
         <span>新增投影片</span>
+      </button>
+      <button id="overviewAddAlgorithmSlideBtn" type="button" class="palette-item overview-action overview-algorithm-action">
+        <span class="tool-icon">{;}</span>
+        <span>新增演算法動畫投影片</span>
       </button>
     </div>
 
@@ -96,11 +120,6 @@
     </div>
   </aside>
 
-  <div class="mode-switch" aria-label="模式切換">
-    <button id="editModeBtn" type="button" class="is-active">Edit</button>
-    <button id="presentModeBtn" type="button">Present</button>
-  </div>
-
   <div id="overviewChrome" class="overview-chrome" hidden>
     <button id="addSlideBtn" type="button">新增投影片</button>
     <span id="overviewHint"></span>
@@ -111,6 +130,19 @@
   <div id="customOverview" class="custom-overview" hidden>
     <div id="customOverviewViewport" class="custom-overview-viewport">
       <div id="customOverviewBoard" class="custom-overview-board"></div>
+    </div>
+  </div>
+
+  <div id="algorithmEditorModal" class="algorithm-editor-modal" hidden>
+    <div class="algorithm-editor-dialog">
+      <div class="algorithm-editor-header">
+        <div>
+          <strong>演算法動畫投影片</strong>
+          <span id="algorithmEditorStatus">編譯成功後，動畫腳本會儲存在這張投影片中。</span>
+        </div>
+        <button id="saveAlgorithmEditorBtn" type="button" title="將目前腳本儲存到投影片">儲存</button>
+      </div>
+      <iframe id="algorithmEditorFrame" title="演算法動畫編輯器" src="about:blank"></iframe>
     </div>
   </div>
 
@@ -169,7 +201,7 @@
     window.iro = window.iro || (window.module && window.module.exports && window.module.exports.ColorPicker ? window.module.exports : null) || (window.exports && window.exports.ColorPicker ? window.exports : null);
     document.body.dataset.iroBridge = window.iro && window.iro.ColorPicker ? 'ready' : 'missing';
   </script>
-  <script src="slides.js?v=random-id-1"></script>
+  <script src="slides.js?v=random-id-11"></script>
 </body>
 
 </html>

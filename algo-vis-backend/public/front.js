@@ -106,13 +106,27 @@ function getDrawBlocks(session) {
 /**
  * 把所有 //draw{ ... //} 區塊摺疊起來
  */
+function updateDrawBlocksUi() {
+  const btn = document.getElementById('toggleDrawBlocksBtn');
+  if (btn) {
+    btn.textContent = isFold ? "展開 draw" : "摺疊 draw";
+    btn.classList.toggle("active", isFold);
+    btn.dataset.foldCount = String(aceEditor.getSession().getAllFolds().length);
+  }
+  const menuBtn = document.getElementById('menuToggleFold');
+  if (menuBtn) menuBtn.textContent = isFold ? "展開 draw 區塊" : "摺疊 draw 區塊";
+}
+
 function foldDrawBlocks() {
   const session = aceEditor.getSession();
+  session.getAllFolds().forEach(fold => session.removeFold(fold));
   const blocks = getDrawBlocks(session);
   blocks.forEach(range => {
     const placeholder = "<->";
     session.addFold(placeholder, range);
   });
+  isFold = blocks.length > 0;
+  updateDrawBlocksUi();
 }
 
 
@@ -123,28 +137,27 @@ function unfoldDrawBlocks() {
   const session = aceEditor.getSession();
   const folds = session.getAllFolds();
   folds.forEach(f => session.removeFold(f));
+  isFold = false;
+  updateDrawBlocksUi();
 }
 
 /**
  * 切換：有摺疊就全部展開，沒有就全部摺疊
  *（給 HTML 的按鈕 onclick 用）
  */
-let isFold = true;
+let isFold = false;
 function toggleDrawBlocks() {
-  const btn = document.getElementById('toggleDrawBlocksBtn');
-  if (isFold) {
-    // 展開
+  const session = aceEditor.getSession();
+  if (session.getAllFolds().length > 0) {
     unfoldDrawBlocks();
-    btn.textContent = "摺疊 draw";
-    btn.classList.remove("active");
-    isFold = false;
-  } else {
-    // 摺疊
-    foldDrawBlocks();
-    btn.textContent = "展開 draw";
-    btn.classList.add("active");
-    isFold = true;
+    return;
   }
+  if (!getDrawBlocks(session).length) {
+    updateDrawBlocksUi();
+    if (typeof showToast === 'function') showToast("找不到 //draw{ ... //} 區塊", "warning");
+    return;
+  }
+  foldDrawBlocks();
 }
 
 
@@ -297,13 +310,14 @@ fetch('sample_code.cpp')
     return response.text();
   })
   .then(code => {
+    if (window.__asmEmbeddedAnimationPayload) return;
     aceEditor.setValue(code, -1);
     // 一載入就自動把 //draw 區塊摺疊起來
     setTimeout(foldDrawBlocks, 0);
-    isFold = false;
   })
   .catch(err => {
     console.error(err);
+    if (window.__asmEmbeddedAnimationPayload) return;
     // 若讀檔失敗，再 fallback 回原本的初始範例
     const fallbackCode = `#include <bits/stdc++.h>
 #include "AV.hpp"
@@ -1416,6 +1430,12 @@ restrictedIds.forEach(id => {
 
 document.addEventListener('DOMContentLoaded', () => {
   initTopMenuBar();
+  const toggleDrawBlocksBtn = document.getElementById('toggleDrawBlocksBtn');
+  if (toggleDrawBlocksBtn && !toggleDrawBlocksBtn.dataset.drawFoldBound) {
+    toggleDrawBlocksBtn.dataset.drawFoldBound = 'true';
+    toggleDrawBlocksBtn.addEventListener('click', toggleDrawBlocks);
+  }
+  updateDrawBlocksUi();
   //  fetchAlgorithmSamples();
 });
 
@@ -1425,8 +1445,6 @@ function initTopMenuBar() {
   if (toggleFoldBtn) {
     toggleFoldBtn.onclick = () => {
       toggleDrawBlocks(); // 呼叫原本 front.js 裡的函式
-      // 更新文字狀態
-      toggleFoldBtn.textContent = isFold ? "展開 draw 區塊" : "摺疊 draw 區塊";
     };
   }
 

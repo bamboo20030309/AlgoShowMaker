@@ -1,0 +1,47 @@
+body.asm-embed-runtime #top-bar,
+body.asm-embed-runtime #codePanel,
+body.asm-embed-runtime #divider,
+body.asm-embed-runtime #subTabs,
+body.asm-embed-runtime #drawingToolbar,
+body.asm-embed-runtime #algoSidePanel,
+body.asm-embed-runtime #myCodesSidebar,
+body.asm-embed-runtime .gui-ctx-menu,
+body.asm-embed-runtime .gui-prop-panel {
+  display: none !important;
+}
+
+body.asm-embed-runtime #main {
+  height: 100%;
+  background: #fbfcfa;
+}
+
+body.asm-embed-runtime #vizPanel {
+  width: 100%;
+  height: 100%;
+  background: #fbfcfa;
+}
+
+body.asm-embed-runtime #tab-canvas {
+  display: flex;
+  background: #fbfcfa;
+}
+
+body.asm-embed-runtime,
+body.asm-embed-runtime #canvasWrapper,
+body.asm-embed-runtime #arraySvg {
+  background: #fbfcfa;
+}
+
+body.asm-embed-runtime .controls {
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 6px 8px;
+}
+
+body.asm-embed-runtime .controls button {
+  padding: 3px 7px;
+}
+
+body.asm-embed-runtime #frameTimeline {
+  min-width: 150px;
+}

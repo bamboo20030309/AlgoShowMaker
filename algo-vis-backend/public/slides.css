@@ -4,7 +4,11 @@
   --chrome-text: #f3f8f6;
   --accent: #1d8f83;
   --ink: #202428;
-  --sidebar-w: 176px;
+  --controlbar-w: 56px;
+  --editor-sidebar-w: 176px;
+  --sidebar-w: calc(var(--controlbar-w) + var(--editor-sidebar-w));
+  --edit-slide-frame-scale: 0.88;
+  --edit-slide-frame-inset: 6%;
   --overview-scrollbar-size: 10px;
   --overview-thumb-w: 360px;
   --overview-thumb-h: 202.5px;
@@ -47,20 +51,38 @@ button.is-active {
   background: var(--accent);
 }
 
+.control-chrome,
 .editor-chrome {
   position: fixed;
   top: 0;
+  height: 100vh;
+  background: var(--chrome-bg);
+}
+
+.control-chrome {
   left: 0;
+  z-index: 47;
+  display: flex;
+  justify-content: flex-start;
+  width: var(--controlbar-w);
+  padding: 12px 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(12, 17, 19, 0.98);
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.16);
+}
+
+.editor-chrome {
+  left: var(--controlbar-w);
   z-index: 40;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: var(--sidebar-w);
-  height: 100vh;
+  width: var(--editor-sidebar-w);
   padding: 14px 12px;
   border-right: 1px solid var(--chrome-line);
   background: var(--chrome-bg);
   box-shadow: 14px 0 42px rgba(0, 0, 0, 0.22);
+  transition: transform 320ms ease, opacity 240ms ease;
 }
 
 .sidebar-panel {
@@ -80,6 +102,46 @@ button.is-active {
 .overview-action {
   border-color: rgba(29, 143, 131, 0.55);
   background: rgba(29, 143, 131, 0.18);
+}
+
+.overview-algorithm-action {
+  min-height: 62px;
+  align-items: flex-start;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  line-height: 1.25;
+}
+
+.overview-algorithm-action .tool-icon {
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.algorithm-edit-sidebar-action {
+  min-height: 62px;
+  align-items: flex-start;
+  border-color: rgba(246, 156, 54, 0.9);
+  padding-top: 9px;
+  padding-bottom: 9px;
+  background: rgba(246, 156, 54, 0.24);
+  color: #fff5e8;
+  line-height: 1.25;
+}
+
+.algorithm-edit-sidebar-action:hover {
+  border-color: #ffc36f;
+  background: #d97819;
+}
+
+.algorithm-edit-sidebar-action[hidden] {
+  display: none;
+}
+
+.algorithm-edit-sidebar-action .tool-icon {
+  flex: 0 0 auto;
+  border-color: rgba(255, 213, 153, 0.9);
+  color: #ffd599;
+  font-size: 13px;
 }
 
 .palette-item {
@@ -228,16 +290,47 @@ button.is-active {
 }
 
 .mode-switch {
-  position: fixed;
-  top: 14px;
-  right: 16px;
-  z-index: 46;
-  display: flex;
-  gap: 8px;
-  padding: 6px;
-  border: 1px solid var(--chrome-line);
-  border-radius: 8px;
-  background: var(--chrome-bg);
+  width: 100%;
+}
+
+.mode-switch button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(29, 143, 131, 0.86);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-weight: 700;
+}
+
+.mode-switch button:hover {
+  background: #197e74;
+}
+
+.mode-toggle-icon {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+body.asm-edit-mode .mode-icon-present,
+body:not(.asm-edit-mode) .mode-icon-edit {
+  display: none;
+}
+
+body:not(.asm-edit-mode) .mode-switch button {
+  width: 40px;
+  min-width: 40px;
+  border-color: rgba(29, 143, 131, 0.7);
+  background: rgba(22, 28, 31, 0.9);
 }
 
 .overview-chrome {
@@ -395,6 +488,28 @@ body.custom-overview-open #codeEditorPanel {
 
 .custom-overview-mini .widget-edge-handle {
   display: none !important;
+}
+
+.algorithm-overview-preview {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(135deg, rgba(29, 143, 131, 0.12), rgba(255, 255, 255, 0.96)),
+    #fbfcfa;
+  color: #1f504c;
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.algorithm-overview-preview span {
+  display: block;
+  margin-top: 12px;
+  color: #416561;
+  font-size: 28px;
+  font-weight: 600;
 }
 
 .overview-event-shield {
@@ -663,13 +778,84 @@ body.custom-overview-open .reveal .controls {
 }
 
 body:not(.asm-edit-mode) .edit-hint,
-body:not(.asm-edit-mode) .editor-chrome,
 body:not(.asm-edit-mode) .object-toolbar {
   display: none;
 }
 
+body:not(.asm-edit-mode) .editor-chrome {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-100%);
+}
+
 .reveal {
   color: var(--ink);
+}
+
+body.asm-edit-mode > .reveal {
+  position: fixed;
+  inset: 0 0 0 var(--sidebar-w);
+  width: auto;
+  height: auto;
+  background: #edf2f1;
+}
+
+body:not(.asm-edit-mode) > .reveal {
+  position: fixed;
+  inset: 0 0 0 var(--controlbar-w);
+  width: auto;
+  height: auto;
+}
+
+body.mode-layout-animating:not(.custom-overview-open) > .reveal {
+  transition: inset 320ms ease;
+}
+
+body.mode-layout-animating:not(.custom-overview-open) > .reveal > .slides {
+  transition: transform 320ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-chrome,
+  .asm-slide-frame-content,
+  body.mode-layout-animating:not(.custom-overview-open) > .reveal,
+  body.mode-layout-animating:not(.custom-overview-open) > .reveal > .slides {
+    transition: none;
+  }
+}
+
+.slide-edge-add {
+  position: absolute;
+  z-index: 36;
+  display: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border: 1px solid rgba(29, 143, 131, 0.68);
+  border-radius: 50%;
+  padding: 0;
+  background: rgba(29, 143, 131, 0.26);
+  color: #16766e;
+  font-size: 29px;
+  font-weight: 300;
+  line-height: 1;
+  opacity: 0.82;
+  box-shadow: 0 8px 24px rgba(29, 143, 131, 0.2);
+  backdrop-filter: blur(4px);
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+
+.slide-edge-add:hover {
+  border-color: rgba(29, 143, 131, 0.92);
+  background: rgba(29, 143, 131, 0.76);
+  color: #ffffff;
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) .slides section.asm-slide.present > .slide-edge-add {
+  display: grid;
 }
 
 .reveal .slides {
@@ -677,12 +863,156 @@ body:not(.asm-edit-mode) .object-toolbar {
 }
 
 .reveal .slides section.asm-slide {
+  position: absolute;
   width: 1280px;
   height: 720px;
   padding: 0;
   overflow: hidden;
+  background: transparent;
+  box-shadow: none;
+}
+
+body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) .slides section.asm-slide.present {
+  overflow: visible;
+}
+
+.asm-slide-frame-content {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
   background: #fbfcfa;
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.18);
+  transform-origin: center;
+  transition: transform 320ms ease;
+}
+
+body.asm-edit-mode .asm-slide-frame-content {
+  transform: scale(var(--edit-slide-frame-scale));
+}
+
+.slide-edge-add-right {
+  right: calc(var(--edit-slide-frame-inset) - 58px);
+  top: calc(50% - 22px);
+}
+
+.slide-edge-add-bottom {
+  left: calc(50% - 22px);
+  bottom: calc(var(--edit-slide-frame-inset) - 58px);
+}
+
+.algorithm-animation-slide {
+  position: relative;
+}
+
+.algorithm-slide-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  border: 0;
+  background: #fbfcfa;
+}
+
+.algorithm-slide-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(135deg, rgba(29, 143, 131, 0.13), rgba(255, 255, 255, 0.97)),
+    #fbfcfa;
+  color: #245c57;
+  font-size: 34px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.algorithm-slide-placeholder[hidden] {
+  display: none;
+}
+
+.algorithm-slide-placeholder span {
+  display: block;
+  margin-top: 16px;
+  color: #4e716d;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.reveal.overview .algorithm-slide-frame {
+  pointer-events: none;
+}
+
+.algorithm-editor-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 160;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  background: rgba(9, 14, 16, 0.72);
+}
+
+.algorithm-editor-modal[hidden] {
+  display: none;
+}
+
+.algorithm-editor-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1840px, 99vw);
+  height: min(1120px, 98vh);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 22px 72px rgba(0, 0, 0, 0.34);
+}
+
+.algorithm-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 12px 8px 16px;
+  background: var(--chrome-bg);
+  color: var(--chrome-text);
+}
+
+.algorithm-editor-header strong,
+.algorithm-editor-header span {
+  display: block;
+}
+
+.algorithm-editor-header span {
+  margin-top: 3px;
+  color: rgba(243, 248, 246, 0.74);
+  font-size: 12px;
+}
+
+.algorithm-editor-header button {
+  min-width: 74px;
+  height: 34px;
+  padding: 0 16px;
+  border-color: rgba(246, 156, 54, 0.88);
+  background: rgba(246, 156, 54, 0.22);
+  color: #fff2dc;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.algorithm-editor-header button:hover {
+  border-color: #ffc36f;
+  background: #d97819;
+}
+
+#algorithmEditorFrame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #ffffff;
 }
 
 .reveal .slides section.asm-stack {
@@ -900,7 +1230,7 @@ body:not(.asm-edit-mode) .upper-canvas {
 
 @media (max-width: 940px) {
   :root {
-    --sidebar-w: 132px;
+    --editor-sidebar-w: 132px;
   }
 
   .palette-item span:last-child {

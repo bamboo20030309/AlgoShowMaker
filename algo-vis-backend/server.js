@@ -401,18 +401,24 @@ app.post('/compile', (req, res) => {
 
   // 使用 uuid 產生唯一 ID
   const uniqueId = uuidv4();
+  const isWindows = process.platform === 'win32';
   const sourcePath = path.join(TEMP_DIR, `main_${uniqueId}.cpp`);
-  const exePath = path.join(TEMP_DIR, `main_exec_${uniqueId}`);
+  const exePath = path.join(TEMP_DIR, `main_exec_${uniqueId}${isWindows ? '.exe' : ''}`);
   const scriptPath = path.join(TEMP_DIR, `script_${uniqueId}.js`);
 
   // 定義清理函式
-  const cleanup = () => {
-    try {
-      if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath);
-      if (fs.existsSync(exePath)) fs.unlinkSync(exePath);
-      if (fs.existsSync(scriptPath)) fs.unlinkSync(scriptPath);
-    } catch (e) {
-      logDebug('清理暫存檔失敗: ' + e.message);
+  const cleanup = (attempt = 0) => {
+    let retryNeeded = false;
+    [sourcePath, exePath, scriptPath].forEach(filePath => {
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch (e) {
+        retryNeeded = true;
+        if (attempt >= 3) logDebug('清理暫存檔失敗: ' + e.message);
+      }
+    });
+    if (retryNeeded && attempt < 3) {
+      setTimeout(() => cleanup(attempt + 1), 200);
     }
   };
 
@@ -436,9 +442,9 @@ app.post('/compile', (req, res) => {
     sourcePath,
     '-I', TEMP_DIR,
     '-I', path.join(__dirname, 'lib'), // 去 lib 資料夾找 AV.hpp
-    '-I', '/tmp',
     '-o', exePath,
   ];
+  if (!isWindows) compileArgs.splice(7, 0, '-I', '/tmp');
 
   const compileStart = performance.now();
   const gpp = spawn('g++', compileArgs, { cwd: __dirname });
@@ -464,28 +470,22 @@ app.post('/compile', (req, res) => {
 
     logDebug('編譯成功，耗時 ' + compileTime + ' ms');
 
-    // 確保 sandboxuser (UID 1000) 有權限執行這個 root 產生的檔案
-    try {
-      fs.chmodSync(exePath, 0o755); // 755 = rwxr-xr-x (所有人可讀可執行)
-    } catch (err) {
-      logDebug('權限設定失敗: ' + err.message);
-      cleanup();
-      return res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.' });
+    if (!isWindows) {
+      // 確保 sandboxuser (UID 1000) 有權限執行這個 root 產生的檔案
+      try {
+        fs.chmodSync(exePath, 0o755); // 755 = rwxr-xr-x (所有人可讀可執行)
+      } catch (err) {
+        logDebug('權限設定失敗: ' + err.message);
+        cleanup();
+        return res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.' });
+      }
     }
 
     // 3. 執行程式
     const ulimitCmd = `ulimit -v ${LIMITS.MEMORY_MB * 1024} && exec "${exePath}"`;
     const runStart = performance.now();
-
-    const child = spawn('sh', ['-c', ulimitCmd], {
-      // 強迫程式以為自己在 /sandbox 裡
-      // 因為 /sandbox 是唯讀的，所以 system("touch file") 會失敗
-      cwd: '/sandbox',
-
-      // 降級身分 (User ID / Group ID)
-      uid: 1000,
-      gid: 1000,
-
+    const runOptions = {
+      cwd: isWindows ? TEMP_DIR : '/sandbox',
       // 幫stdin stdout stderr開通道
       stdio: ['pipe', 'pipe', 'pipe'],
 
@@ -494,7 +494,15 @@ app.post('/compile', (req, res) => {
         ...process.env,
         AV_OUTPUT_FILE: scriptPath
       }
-    });
+    };
+    if (!isWindows) {
+      // Linux 正式環境使用唯讀 sandbox 並降級身分。
+      runOptions.uid = 1000;
+      runOptions.gid = 1000;
+    }
+    const child = isWindows
+      ? spawn(exePath, [], runOptions)
+      : spawn('sh', ['-c', ulimitCmd], runOptions);
 
     let runOut = '';
     let runErr = '';
@@ -504,9 +512,9 @@ app.post('/compile', (req, res) => {
     let memSampler = null;
     let peakMem = { peakRssKB: 0, peakHwmKB: 0, peakVmsKB: 0 };
 
-    if (child.pid) {
+    if (child.pid && !isWindows) {
       memSampler = startMemorySampler(child.pid, 1);
-    } else {
+    } else if (!child.pid) {
       logDebug('MEM: child.pid 不存在，無法取樣記憶體');
     }
 

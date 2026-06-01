@@ -142,6 +142,8 @@
   let objectClipboard = { fabric: [], widgets: [], cut: false };
   let history = [];
   let historyIndex = -1;
+  let editingAlgorithmSlideId = null;
+  let modeLayoutAnimationTimer = null;
 
   const slidesRoot = document.getElementById('slidesRoot');
   const overviewHScrollbar = document.getElementById('overviewHScrollbar');
@@ -179,6 +181,10 @@
   const codeLanguageSelect = document.getElementById('codeLanguageSelect');
   const latexFontSizeInput = document.getElementById('latexFontSizeInput');
   const codeFontSizeInput = document.getElementById('codeFontSizeInput');
+  const algorithmEditSlideBtn = document.getElementById('algorithmEditSlideBtn');
+  const algorithmEditorModal = document.getElementById('algorithmEditorModal');
+  const algorithmEditorFrame = document.getElementById('algorithmEditorFrame');
+  const algorithmEditorStatus = document.getElementById('algorithmEditorStatus');
 
   function f() {
     return window.fabric;
@@ -210,6 +216,16 @@
     };
   }
 
+  function createAlgorithmAnimationSlide() {
+    return {
+      id: randomId(),
+      kind: 'algorithm-animation',
+      canvas: { objects: [] },
+      widgets: [],
+      animation: normalizeAlgorithmAnimation()
+    };
+  }
+
   function cloneSlideForPaste(slide) {
     return {
       ...clone(slide),
@@ -227,11 +243,7 @@
         .filter(group => group && Array.isArray(group.slides) && group.slides.length)
         .map(group => ({
           id: group.id || randomId(),
-          slides: group.slides.map(slide => ({
-            id: slide.id || randomId(),
-            canvas: normalizeCanvasJson(slide.canvas),
-            widgets: normalizeWidgets(slide.widgets)
-          }))
+          slides: group.slides.map(normalizeSlide)
         }));
       return raw.groups.length ? raw : clone(defaultDeck);
     }
@@ -240,11 +252,7 @@
       return {
         groups: raw.slides.map(slide => ({
           id: randomId(),
-          slides: [{
-            id: slide.id || randomId(),
-            canvas: normalizeCanvasJson(slide.canvas),
-            widgets: normalizeWidgets(slide.widgets)
-          }]
+          slides: [normalizeSlide(slide)]
         }))
       };
     }
@@ -341,6 +349,28 @@
         return obj;
       })
     };
+  }
+
+  function normalizeAlgorithmAnimation(animation = {}) {
+    return {
+      code: typeof animation.code === 'string' ? animation.code : '',
+      input: typeof animation.input === 'string' ? animation.input : '',
+      scriptContent: typeof animation.scriptContent === 'string' ? animation.scriptContent : ''
+    };
+  }
+
+  function normalizeSlide(slide = {}) {
+    const normalized = {
+      ...slide,
+      id: slide.id || randomId(),
+      canvas: normalizeCanvasJson(slide.canvas),
+      widgets: normalizeWidgets(slide.widgets)
+    };
+    if (slide.kind === 'algorithm-animation') {
+      normalized.kind = 'algorithm-animation';
+      normalized.animation = normalizeAlgorithmAnimation(slide.animation);
+    }
+    return normalized;
   }
 
   function normalizeWidgets(widgets) {
@@ -486,14 +516,48 @@
     section.dataset.slideId = slide.id;
     section.dataset.h = String(h);
     section.dataset.v = String(v);
+    if (slide.kind === 'algorithm-animation') {
+      section.classList.add('algorithm-animation-slide');
+      renderAlgorithmSlide(section, slide);
+      appendSlideEdgeAddButtons(section, slide.id);
+      return section;
+    }
       section.innerHTML = `
-        <div class="fabric-host" data-slide-id="${slide.id}">
-          <canvas id="fabric-${slide.id}" width="${SLIDE_W}" height="${SLIDE_H}"></canvas>
+        <div class="asm-slide-frame-content">
+          <div class="fabric-host" data-slide-id="${slide.id}">
+            <canvas id="fabric-${slide.id}" width="${SLIDE_W}" height="${SLIDE_H}"></canvas>
+          </div>
+          <div class="widget-layer" data-slide-id="${slide.id}"></div>
         </div>
-        <div class="widget-layer" data-slide-id="${slide.id}"></div>
       `;
     renderSlideWidgets(section.querySelector('.widget-layer'), slide);
+    appendSlideEdgeAddButtons(section, slide.id);
     return section;
+  }
+
+  function renderAlgorithmSlide(section, slide) {
+    const hasScript = !!normalizeAlgorithmAnimation(slide.animation).scriptContent;
+    section.innerHTML = `
+      <div class="asm-slide-frame-content">
+        <iframe
+          class="algorithm-slide-frame"
+          data-slide-id="${slide.id}"
+          title="Algorithm animation"
+          src="${hasScript ? 'index.html?asmEmbed=runtime' : 'about:blank'}"
+          ${hasScript ? '' : 'hidden'}
+        ></iframe>
+        <div class="algorithm-slide-placeholder" ${hasScript ? 'hidden' : ''}>
+          <div>演算法動畫投影片<span>點選左側橘色按鈕輸入程式碼並編譯</span></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function appendSlideEdgeAddButtons(section, slideId) {
+    section.insertAdjacentHTML('beforeend', `
+      <button class="slide-edge-add slide-edge-add-right" type="button" data-add-slide-right="${slideId}" title="在右側新增投影片" aria-label="在右側新增投影片">+</button>
+      <button class="slide-edge-add slide-edge-add-bottom" type="button" data-add-slide-bottom="${slideId}" title="在下方新增投影片" aria-label="在下方新增投影片">+</button>
+    `);
   }
 
   function disposeCanvases() {
@@ -1018,6 +1082,7 @@
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
+    updateAlgorithmEditButton();
   }
 
   function showOverviewSidebarPanel() {
@@ -1025,6 +1090,11 @@
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = false;
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
+  }
+
+  function updateAlgorithmEditButton() {
+    if (!algorithmEditSlideBtn) return;
+    algorithmEditSlideBtn.hidden = getSlide()?.kind !== 'algorithm-animation';
   }
 
   function showWidgetEditor(widgetId) {
@@ -1134,18 +1204,40 @@
   function setEditMode(enabled) {
     if (!enabled && customOverviewOpen) closeCustomOverview();
     if (enabled && reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
+    document.body.classList.add('mode-layout-animating');
+    if (modeLayoutAnimationTimer) clearTimeout(modeLayoutAnimationTimer);
     document.body.classList.toggle('asm-edit-mode', enabled);
-    document.getElementById('editModeBtn').classList.toggle('is-active', enabled);
-    document.getElementById('presentModeBtn').classList.toggle('is-active', !enabled);
+    const modeToggleBtn = document.getElementById('modeToggleBtn');
+    const nextMode = enabled ? 'Present' : 'Edit';
+    if (modeToggleBtn) {
+      modeToggleBtn.title = `切換至 ${nextMode} 模式`;
+      modeToggleBtn.setAttribute('aria-label', `切換至 ${nextMode} 模式`);
+    }
     applyEditMode(enabled);
     if (reveal) setTimeout(() => reveal.layout(), 20);
+    modeLayoutAnimationTimer = setTimeout(() => {
+      if (reveal) reveal.layout();
+      document.body.classList.remove('mode-layout-animating');
+      modeLayoutAnimationTimer = null;
+    }, 380);
   }
 
   function bindChrome() {
-    document.getElementById('editModeBtn').addEventListener('click', () => setEditMode(true));
-    document.getElementById('presentModeBtn').addEventListener('click', () => setEditMode(false));
+    document.getElementById('modeToggleBtn').addEventListener('click', () => {
+      setEditMode(!document.body.classList.contains('asm-edit-mode'));
+    });
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
+    document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);
+    algorithmEditSlideBtn?.addEventListener('click', () => {
+      const slide = getSlide();
+      if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
+    });
+    document.getElementById('saveAlgorithmEditorBtn')?.addEventListener('click', saveAlgorithmEditor);
+    window.addEventListener('message', handleAlgorithmEmbedMessage);
+    slidesRoot.addEventListener('click', event => {
+      if (handleSlideEdgeAddClick(event)) return;
+    });
 
     shapeMenuBtn.addEventListener('click', event => {
       event.stopPropagation();
@@ -1165,12 +1257,14 @@
       item.addEventListener('click', () => {
         exitWidgetEditorIfNeeded();
         const tool = item.dataset.tool === 'shape' ? item.dataset.shape : item.dataset.tool;
-        pendingTool = pendingTool === tool ? null : tool;
+        pendingTool = null;
         updateArmedTool();
         shapeMenu.hidden = true;
-        flashHint(pendingTool ? '在投影片上點一下來放置物件。' : '已取消放置工具。');
+        addObject(tool, { x: SLIDE_W / 2, y: SLIDE_H / 2 });
+        flashHint('已在投影片中央新增範本。');
       });
     });
+
 
     document.getElementById('exitLatexEditorBtn').addEventListener('click', clearWidgetSelection);
     document.getElementById('exitCodeEditorBtn').addEventListener('click', clearWidgetSelection);
@@ -1225,7 +1319,7 @@
     const beginWidgetDrag = event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
       const widgetEl = event.target.closest && event.target.closest('.slide-widget');
-      const insideEditorUi = event.target.closest && event.target.closest('#editorChrome, #objectToolbar, .mode-switch, #overviewChrome');
+      const insideEditorUi = event.target.closest && event.target.closest('#controlChrome, #editorChrome, #objectToolbar, .mode-switch, #overviewChrome');
       if (selectedWidgetId && !widgetEl && !insideEditorUi && event.button === 0) {
         exitWidgetEditorIfNeeded();
       }
@@ -1438,6 +1532,11 @@
     });
 
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && algorithmEditorModal && !algorithmEditorModal.hidden) {
+        event.preventDefault();
+        saveAlgorithmEditor();
+        return;
+      }
       if (event.key === 'Escape' && document.body.classList.contains('asm-edit-mode')) {
         event.preventDefault();
         event.stopPropagation();
@@ -1788,10 +1887,73 @@
     return value.slice(0, 7);
   }
 
-  function addSlideNearCurrent() {
+  function getSlideById(slideId) {
+    const pos = slidePositions.get(slideId);
+    return pos && deck.groups[pos.h]?.slides[pos.v];
+  }
+
+  function sendAlgorithmAnimationToFrame(frame, slide) {
+    if (!frame?.contentWindow || !slide || slide.kind !== 'algorithm-animation') return;
+    frame.contentWindow.postMessage({
+      type: 'asm-load-animation',
+      animation: normalizeAlgorithmAnimation(slide.animation)
+    }, window.location.origin);
+  }
+
+  function handleAlgorithmEmbedMessage(event) {
+    if (event.origin !== window.location.origin || !event.data) return;
+    if (event.data.type === 'asm-embed-ready') {
+      if (event.source === algorithmEditorFrame?.contentWindow) {
+        sendAlgorithmAnimationToFrame(algorithmEditorFrame, getSlideById(editingAlgorithmSlideId));
+        return;
+      }
+      const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
+        .find(frame => frame.contentWindow === event.source);
+      if (runtimeFrame) sendAlgorithmAnimationToFrame(runtimeFrame, getSlideById(runtimeFrame.dataset.slideId));
+      return;
+    }
+    if (!['asm-animation-compiled', 'asm-save-animation'].includes(event.data.type)
+      || event.source !== algorithmEditorFrame?.contentWindow) return;
+    const slide = getSlideById(editingAlgorithmSlideId);
+    if (!slide || slide.kind !== 'algorithm-animation') return;
+    if (event.data.type === 'asm-animation-compiled') {
+      if (algorithmEditorStatus) algorithmEditorStatus.textContent = '已取得最新編譯腳本。按右上角「儲存」寫入投影片並關閉。';
+      return;
+    }
+    slide.animation = normalizeAlgorithmAnimation(event.data.animation);
+    saveDeck();
+    renderDeck();
+    closeAlgorithmEditor();
+    flashHint('已將目前演算法動畫腳本儲存到投影片。');
+  }
+
+  function openAlgorithmEditor(slideId) {
+    const slide = getSlideById(slideId);
+    if (!algorithmEditorModal || !algorithmEditorFrame || !slide || slide.kind !== 'algorithm-animation') return;
+    editingAlgorithmSlideId = slideId;
+    if (algorithmEditorStatus) algorithmEditorStatus.textContent = '編譯成功後，動畫腳本會儲存在這張投影片中。';
+    algorithmEditorModal.hidden = false;
+    algorithmEditorFrame.src = 'index.html?asmEmbed=editor';
+  }
+
+  function closeAlgorithmEditor() {
+    if (!algorithmEditorModal || !algorithmEditorFrame) return;
+    algorithmEditorModal.hidden = true;
+    algorithmEditorFrame.src = 'about:blank';
+    editingAlgorithmSlideId = null;
+  }
+
+  function saveAlgorithmEditor() {
+    if (!algorithmEditorFrame?.contentWindow || !editingAlgorithmSlideId) return;
+    if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在將目前程式碼、輸入與動畫腳本儲存到投影片...';
+    algorithmEditorFrame.contentWindow.postMessage({
+      type: 'asm-request-save-animation'
+    }, window.location.origin);
+  }
+
+  function insertSlideNearCurrent(slide) {
     const group = getGroup();
     if (!group) return;
-    const slide = createBlankSlide();
     if (group.slides.length > 1 || currentV > 0) {
       group.slides.splice(currentV + 1, 0, slide);
       currentV += 1;
@@ -1812,6 +1974,65 @@
       renderCustomOverview();
       requestAnimationFrame(() => scrollCustomOverviewSelectionIntoView());
     }
+  }
+
+  function addSlideNearCurrent() {
+    insertSlideNearCurrent(createBlankSlide());
+  }
+
+  function insertSlideRightOf(slideId, slide) {
+    const pos = slidePositions.get(slideId);
+    if (!pos) return;
+    deck.groups.splice(pos.h + 1, 0, {
+      id: randomId(),
+      slides: [slide]
+    });
+    currentH = pos.h + 1;
+    currentV = 0;
+    saveDeck();
+    renderDeck();
+    refreshCustomOverviewAfterInsert(slide.id);
+  }
+
+  function insertSlideBelow(slideId, slide) {
+    const pos = slidePositions.get(slideId);
+    const group = pos && deck.groups[pos.h];
+    if (!group) return;
+    group.slides.splice(pos.v + 1, 0, slide);
+    currentH = pos.h;
+    currentV = pos.v + 1;
+    saveDeck();
+    renderDeck();
+    refreshCustomOverviewAfterInsert(slide.id);
+  }
+
+  function refreshCustomOverviewAfterInsert(slideId) {
+    if (!customOverviewOpen) return;
+    overviewSelectedSlideId = slideId;
+    overviewSelectedSlideIds = new Set([slideId]);
+    overviewSelectionAnchorId = slideId;
+    renderCustomOverview();
+    requestAnimationFrame(() => scrollCustomOverviewSelectionIntoView());
+  }
+
+  function handleSlideEdgeAddClick(event) {
+    const rightButton = event.target.closest && event.target.closest('[data-add-slide-right]');
+    const bottomButton = event.target.closest && event.target.closest('[data-add-slide-bottom]');
+    const button = rightButton || bottomButton;
+    if (!button) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    const slideId = rightButton ? rightButton.dataset.addSlideRight : bottomButton.dataset.addSlideBottom;
+    if (rightButton) insertSlideRightOf(slideId, createBlankSlide());
+    else insertSlideBelow(slideId, createBlankSlide());
+    return true;
+  }
+
+  function addAlgorithmSlideNearCurrent() {
+    const slide = createAlgorithmAnimationSlide();
+    insertSlideNearCurrent(slide);
+    requestAnimationFrame(() => openAlgorithmEditor(slide.id));
   }
 
   function deleteOverviewSelectedSlide() {
@@ -2084,6 +2305,15 @@
 
     const mini = document.createElement('div');
     mini.className = 'custom-overview-mini';
+
+    if (slide.kind === 'algorithm-animation') {
+      const preview = document.createElement('div');
+      preview.className = 'algorithm-overview-preview';
+      preview.innerHTML = '<div>{;}<span>演算法動畫</span></div>';
+      mini.appendChild(preview);
+      thumb.appendChild(mini);
+      return thumb;
+    }
 
     const image = document.createElement('img');
     image.alt = '';
@@ -2521,6 +2751,7 @@
         '#overviewHScrollbar',
         '#overviewVScrollbar',
         '#overviewChrome',
+        '#controlChrome',
         '#editorChrome',
         '.mode-switch',
         'button',
@@ -3215,10 +3446,14 @@
     const totalWidgets = deck.groups.reduce((sum, group) => {
       return sum + group.slides.reduce((slideSum, slide) => slideSum + normalizeWidgets(slide.widgets).length, 0);
     }, 0);
+    const totalAlgorithmSlides = deck.groups.reduce((sum, group) => {
+      return sum + group.slides.filter(slide => slide.kind === 'algorithm-animation').length;
+    }, 0);
     document.body.dataset.slideCount = String(totalSlides());
     document.body.dataset.groupCount = String(deck.groups.length);
     document.body.dataset.fabricObjectCount = String(totalObjects);
     document.body.dataset.widgetCount = String(totalWidgets);
+    document.body.dataset.algorithmSlideCount = String(totalAlgorithmSlides);
     document.body.dataset.historyIndex = String(historyIndex);
     document.body.dataset.historyLength = String(history.length);
   }
@@ -3235,6 +3470,7 @@
       height: SLIDE_H,
       margin: 0.05,
       transition: 'slide',
+      scrollActivationWidth: null,
       plugins: [
         window.RevealNotes,
         window.RevealSearch,
@@ -3248,6 +3484,7 @@
         if (pointerDrag) return;
         currentH = event.indexh;
         currentV = event.indexv || 0;
+        updateAlgorithmEditButton();
       });
       bindOverviewEvents();
       setTimeout(refreshRevealWidgets, 1200);
@@ -3259,6 +3496,7 @@
   bindCustomOverview();
   bindOverviewDrag();
   renderDeck();
+  updateAlgorithmEditButton();
   saveDeck({ history: false });
   pushHistorySnapshot();
   initReveal();
