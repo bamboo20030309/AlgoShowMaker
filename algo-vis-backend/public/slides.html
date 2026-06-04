@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=random-id-14" />
+  <link rel="stylesheet" href="slides.css?v=random-id-32" />
 </head>
 
 <body class="asm-edit-mode">
@@ -37,14 +37,15 @@
     </button>
 
     <div class="shape-tool">
-      <button id="shapeMenuBtn" type="button" class="palette-item tool-shape" title="圖形">
+      <button id="shapeMenuBtn" type="button" class="palette-item tool-shape" title="Shapes">
         <span class="shape-stack" aria-hidden="true">
           <span class="shape-circle"></span>
           <span class="shape-triangle"></span>
         </span>
-        <span>圖形</span>
+        <span>shapes</span>
       </button>
       <div id="shapeMenu" class="shape-menu" hidden>
+        <button type="button" class="shape-choice shape-choice-rect" draggable="true" data-tool="shape" data-shape="rect" title="矩形">□</button>
         <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="circle" title="圓形">○</button>
         <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="triangle" title="三角形">△</button>
       </div>
@@ -116,7 +117,48 @@
       </select>
       <label class="field-label" for="codeFontSizeInput">字體大小</label>
       <input id="codeFontSizeInput" type="number" min="10" max="80" value="21" />
+      <label class="field-label" for="codeFocusLinesInput">關注的行數</label>
+      <input id="codeFocusLinesInput" type="text" placeholder="例如：1,3-5" />
+      <label class="check-field" for="codeShowLineNumbersInput">
+        <input id="codeShowLineNumbersInput" type="checkbox" />
+        <span>顯示行號</span>
+      </label>
       <textarea id="codeEditorInput" spellcheck="false"></textarea>
+    </div>
+
+    <div id="animationEditorPanel" class="sidebar-panel animation-editor-panel" hidden>
+      <div class="panel-title">
+        <strong>動畫設定</strong>
+      </div>
+      <div id="shapeEditorControls" hidden>
+        <label class="field-label" for="shapeTypeSelect">Shape</label>
+        <select id="shapeTypeSelect">
+          <option value="rect">Rectangle</option>
+          <option value="circle">Circle</option>
+          <option value="triangle">Triangle</option>
+        </select>
+      </div>
+      <label class="field-label" for="transitionIdInput">Transition ID</label>
+      <input id="transitionIdInput" type="text" placeholder="跨投影片對應 ID" />
+      <label class="check-field" for="fragmentEnabledInput">
+        <input id="fragmentEnabledInput" type="checkbox" />
+        <span>使用 Fragment 動畫</span>
+      </label>
+      <label class="field-label" for="fragmentStyleSelect">動畫效果</label>
+      <select id="fragmentStyleSelect">
+        <option value="">淡入</option>
+        <option value="fade-out">淡出</option>
+        <option value="fade-up">向上淡入</option>
+        <option value="fade-down">向下淡入</option>
+        <option value="fade-left">向左淡入</option>
+        <option value="fade-right">向右淡入</option>
+        <option value="grow">放大</option>
+        <option value="shrink">縮小</option>
+        <option value="zoom-in">縮放淡入</option>
+        <option value="current-visible">僅目前步驟顯示</option>
+      </select>
+      <label class="field-label" for="fragmentIndexInput">動畫順序</label>
+      <input id="fragmentIndexInput" type="number" min="0" placeholder="留白則自動排序" />
     </div>
   </aside>
 
@@ -165,9 +207,28 @@
     <button id="listStyleBtn" type="button" title="項目符號 / 編號">• / 1.</button>
     <button id="textColorBtn" type="button" title="文字顏色">A</button>
     <button id="bgColorBtn" type="button" title="文字背景色"><span class="text-bg-icon">A</span></button>
-    <button id="shapeColorBtn" type="button" title="填色">■</button>
+    <button id="shapeStrokeBtn" class="shape-style-btn" type="button" title="邊框顏色、粗細與圓弧度">
+      <span class="shape-corner-icon shape-stroke-icon"></span>
+    </button>
+    <button id="shapeColorBtn" class="shape-style-btn" type="button" title="底框顏色">
+      <span class="shape-corner-icon shape-fill-icon"></span>
+    </button>
     <div id="iroPopup" class="iro-popup" hidden>
       <div id="iroPicker"></div>
+      <div id="shapeStyleControls" class="shape-style-controls" hidden>
+        <label class="shape-style-label" for="shapeStrokeWidthInput">
+          <span>邊框粗細</span>
+          <output id="shapeStrokeWidthValue">4</output>
+        </label>
+        <input id="shapeStrokeWidthInput" class="shape-standard-slider" type="range" min="0" max="20" step="1" value="4" />
+        <div id="shapeCornerRadiusControls" class="shape-corner-radius-controls">
+          <label class="shape-style-label" for="shapeCornerRadiusInput">
+            <span>邊角圓弧度</span>
+            <output id="shapeCornerRadiusValue">0</output>
+          </label>
+          <input id="shapeCornerRadiusInput" class="shape-radius-slider" type="range" min="0" max="100" step="1" value="0" />
+        </div>
+      </div>
     </div>
   </div>
 
@@ -175,6 +236,26 @@
     <div id="slidesRoot" class="slides"></div>
   </div>
   <script src="/vendor/reveal/reveal.js"></script>
+  <script>
+    (function () {
+      const proto = window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype;
+      if (!proto || proto.__asmTextBaselinePatched) return;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, 'textBaseline');
+      if (!descriptor || !descriptor.get || !descriptor.set) return;
+      Object.defineProperty(proto, 'textBaseline', {
+        configurable: descriptor.configurable,
+        enumerable: descriptor.enumerable,
+        get: descriptor.get,
+        set(value) {
+          descriptor.set.call(this, value === 'alphabetical' ? 'alphabetic' : value);
+        }
+      });
+      Object.defineProperty(proto, '__asmTextBaselinePatched', {
+        value: true,
+        configurable: true
+      });
+    })();
+  </script>
   <script src="/vendor/fabric/fabric.min.js"></script>
   <script>
     window.fabric = window.fabric || (typeof fabric !== 'undefined' ? fabric : null) || (window.exports && window.exports.fabric);
@@ -201,7 +282,7 @@
     window.iro = window.iro || (window.module && window.module.exports && window.module.exports.ColorPicker ? window.module.exports : null) || (window.exports && window.exports.ColorPicker ? window.exports : null);
     document.body.dataset.iroBridge = window.iro && window.iro.ColorPicker ? 'ready' : 'missing';
   </script>
-  <script src="slides.js?v=random-id-11"></script>
+  <script src="slides.js?v=random-id-49"></script>
 </body>
 
 </html>

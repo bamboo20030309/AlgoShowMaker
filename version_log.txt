@@ -405,3 +405,17 @@ AV_V4.1 2026/06/01
 17.修正非目前投影片外溢與 Reveal.js 窄螢幕自動 scroll view 造成的切換顯示問題，overview mode 移除新增按鈕
 18.修正後續投影片使用相對定位而逐張向下偏移的問題
 19.修正畫筆文字工具輸入空白時，游標與空白不會即時顯示的問題
+-----------------------------------------------------------------------------------------------
+AV_V4.2 2026/06/04
+
+Added:
+1. Added selected-object animation settings in the slide editor sidebar, including Transition ID, fragment options, and code focus-line / line-number controls.
+2. Added shape editing controls for stroke color, stroke width, fill color, rounded corners for rectangles, and shape type switching.
+3. Added custom code auto-animate behavior so code widgets resize like a dragged frame, then scroll to the focused line.
+
+Fixed:
+1. Fixed Fabric.js CanvasTextBaseline warning by mapping the invalid "alphabetical" value to "alphabetic" before Fabric loads.
+2. Fixed code widgets disappearing or jumping when slides with animation are selected, moved, undone, or redone.
+3. Fixed code focus-line empty input handling so the code widget stays visible and all lines remain highlighted.
+4. Fixed code scrollbar styling, scrolling behavior, resize anchors, and animation clipping artifacts.
+5. Fixed shape stroke width so it stays visually consistent during resize and animation.

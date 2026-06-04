@@ -82,7 +82,14 @@ button.is-active {
   border-right: 1px solid var(--chrome-line);
   background: var(--chrome-bg);
   box-shadow: 14px 0 42px rgba(0, 0, 0, 0.22);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
   transition: transform 320ms ease, opacity 240ms ease;
+}
+
+.editor-chrome::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar-panel {
@@ -200,11 +207,57 @@ button.is-active {
   font-family: Consolas, "Fira Code", monospace;
   font-size: 13px;
   line-height: 1.35;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(80, 98, 101, 0.56) transparent;
+}
+
+.widget-editor-panel textarea::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.widget-editor-panel textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.widget-editor-panel textarea::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(80, 98, 101, 0.56);
 }
 
 .widget-editor-panel select {
   height: 34px;
   padding: 0 8px;
+}
+
+.animation-editor-panel {
+  padding-top: 10px;
+  border-top: 1px solid var(--chrome-line);
+}
+
+.animation-editor-panel input,
+.animation-editor-panel select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--chrome-line);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #ffffff;
+  color: #11191c;
+}
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--chrome-text);
+  font-size: 12px;
+}
+
+.check-field input {
+  width: 16px;
+  min-height: 16px;
+  margin: 0;
 }
 
 .symbol-grid {
@@ -287,6 +340,11 @@ button.is-active {
   padding: 0;
   font-size: 24px;
   line-height: 1;
+}
+
+.shape-choice-rect {
+  font-size: 36px;
+  padding-bottom: 10px;
 }
 
 .mode-switch {
@@ -740,20 +798,52 @@ body.custom-overview-open .reveal .controls {
   display: none;
 }
 
+.object-toolbar.is-shape #shapeStrokeBtn,
 .object-toolbar.is-shape #shapeColorBtn {
   display: grid;
   width: 34px;
   padding: 0;
 }
 
+.object-toolbar:not(.is-shape) #shapeStrokeBtn,
 .object-toolbar:not(.is-shape) #shapeColorBtn {
   display: none;
+}
+
+.shape-style-btn {
+  --shape-stroke-color: #875bc7;
+  --shape-stroke-width: 4px;
+  --shape-corner-radius: 6px;
+  --shape-fill-color: #eee7fb;
+}
+
+.shape-corner-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-left-style: solid;
+  border-top-style: solid;
+  border-top-left-radius: var(--shape-corner-radius);
+}
+
+.shape-stroke-icon {
+  border-left-width: var(--shape-stroke-width);
+  border-top-width: var(--shape-stroke-width);
+  border-color: var(--shape-stroke-color);
+}
+
+.shape-fill-icon {
+  border-left-width: 2px;
+  border-top-width: 2px;
+  border-color: #11191c;
+  background: linear-gradient(135deg, var(--shape-fill-color) 0 58%, transparent 60% 100%);
 }
 
 .iro-popup {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
+  min-width: 174px;
   padding: 10px;
   border: 1px solid var(--chrome-line);
   border-radius: 8px;
@@ -763,6 +853,43 @@ body.custom-overview-open .reveal .controls {
 
 .iro-popup[hidden] {
   display: none;
+}
+
+.shape-style-controls {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--chrome-line);
+}
+
+.shape-style-controls[hidden] {
+  display: none;
+}
+
+.shape-style-label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--chrome-text);
+  font-size: 12px;
+}
+
+.shape-corner-radius-controls {
+  display: grid;
+  gap: 7px;
+}
+
+.shape-corner-radius-controls[hidden] {
+  display: none;
+}
+
+.shape-standard-slider,
+.shape-radius-slider {
+  width: 150px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .edit-hint {
@@ -1034,6 +1161,15 @@ body.asm-edit-mode .asm-slide-frame-content {
   pointer-events: none;
 }
 
+.fabric-fragment-proxy {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
 .slide-widget {
   position: absolute;
   min-width: 20px;
@@ -1053,9 +1189,27 @@ body.asm-edit-mode .slide-widget {
   cursor: move;
 }
 
+body.asm-edit-mode .slide-widget.fragment {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
 body.asm-edit-mode .slide-widget:hover,
 body.asm-edit-mode .slide-widget.is-selected {
   border-color: #1d8f83;
+}
+
+body.asm-edit-mode .code-widget:hover,
+body.asm-edit-mode .code-widget.is-selected {
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px #1d8f83;
+}
+
+body.asm-edit-mode .latex-widget:hover,
+body.asm-edit-mode .latex-widget.is-selected {
+  border-color: transparent;
+  outline: 2px solid #1d8f83;
+  outline-offset: 6px;
 }
 
 .latex-widget {
@@ -1084,37 +1238,101 @@ body.asm-edit-mode .slide-widget.is-selected {
   min-width: 4px;
   min-height: 4px;
   padding: 0;
-  overflow: hidden;
-  background: #272822;
+  overflow: visible;
+  background: transparent;
   color: #f8f8f2;
   font-size: 21px;
   user-select: none;
+}
+
+.code-widget .code-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #272822;
+  contain: paint;
+  clip-path: inset(0);
+  isolation: isolate;
 }
 
 .code-widget pre {
   width: 100%;
   height: 100%;
   position: absolute;
+  box-sizing: border-box;
   margin: 0;
-  padding: 18px 20px;
-  overflow: auto;
+  padding: 6px 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(214, 225, 222, 0.72) transparent;
   font-size: inherit;
   user-select: none;
-  pointer-events: none;
+  pointer-events: auto;
+  overscroll-behavior: contain;
+  contain: paint;
+  clip-path: inset(0);
+  isolation: isolate;
+  background: transparent;
+}
+
+.code-widget pre::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.code-widget pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.code-widget pre::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(214, 225, 222, 0.72);
+}
+
+.code-widget pre::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.code-widget code,
+.code-widget .hljs,
+.code-widget .hljs-ln {
+  font-family: Consolas, "Fira Code", monospace;
+  user-select: none;
+  overflow: hidden !important;
+  max-height: none !important;
 }
 
 .code-widget code {
-  font-family: Consolas, "Fira Code", monospace;
-  user-select: none;
+  position: relative;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  contain: paint;
+}
+
+.code-widget.is-resizing {
+  box-shadow: inset 0 0 0 1px #1d8f83;
+}
+
+.code-widget code.asm-hide-line-numbers .hljs-ln-numbers {
+  display: none;
 }
 
 .widget-edge-handle {
   position: absolute;
   display: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
   background: #1d8f83;
-  opacity: 0.95;
+  border: 2px solid #ffffff;
+  opacity: 1;
   z-index: 4;
-  border-radius: 999px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #1d8f83;
   pointer-events: auto;
 }
 
@@ -1125,37 +1343,55 @@ body.asm-edit-mode .slide-widget.is-selected .widget-edge-handle {
 .widget-edge-handle[data-resize-edge="top"],
 .widget-edge-handle[data-resize-edge="bottom"] {
   left: 50%;
-  width: min(72px, calc(100% + 12px));
-  height: 8px;
-  min-width: 30px;
   transform: translateX(-50%);
   cursor: ns-resize;
 }
 
 .widget-edge-handle[data-resize-edge="top"] {
-  top: -4px;
+  top: -6px;
 }
 
 .widget-edge-handle[data-resize-edge="bottom"] {
-  bottom: -4px;
+  bottom: -6px;
 }
 
 .widget-edge-handle[data-resize-edge="left"],
 .widget-edge-handle[data-resize-edge="right"] {
   top: 50%;
-  width: 8px;
-  height: min(72px, calc(100% + 12px));
-  min-height: 30px;
   transform: translateY(-50%);
   cursor: ew-resize;
 }
 
 .widget-edge-handle[data-resize-edge="left"] {
-  left: -4px;
+  left: -6px;
 }
 
 .widget-edge-handle[data-resize-edge="right"] {
-  right: -4px;
+  right: -6px;
+}
+
+.widget-edge-handle[data-resize-edge="top-left"] {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+
+.widget-edge-handle[data-resize-edge="top-right"] {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.widget-edge-handle[data-resize-edge="bottom-left"] {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.widget-edge-handle[data-resize-edge="bottom-right"] {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
 }
 
 .fabric-host canvas,

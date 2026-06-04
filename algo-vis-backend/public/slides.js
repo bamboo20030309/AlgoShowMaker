@@ -6,6 +6,11 @@
   const fabricCanvases = new Map();
   const slidePositions = new Map();
   const MAX_HISTORY = 80;
+  const CODE_FOCUS_SCROLL_OFFSET = -12;
+  const CODE_AUTO_FOCUS_SCROLL_OFFSET = 30;
+  const CODE_SCROLLBAR_HIT_GUTTER = 5;
+  const FABRIC_CUSTOM_PROPS = ['transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius'];
+  const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
 
   function randomId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -113,6 +118,7 @@
 
   let deck = loadDeck();
   let reveal = null;
+  let revealReady = false;
   let currentH = 0;
   let currentV = 0;
   let pendingTool = null;
@@ -144,6 +150,8 @@
   let historyIndex = -1;
   let editingAlgorithmSlideId = null;
   let modeLayoutAnimationTimer = null;
+  let activeFabricAutoAnimation = null;
+  let activeCodeAutoAnimation = null;
 
   const slidesRoot = document.getElementById('slidesRoot');
   const overviewHScrollbar = document.getElementById('overviewHScrollbar');
@@ -167,8 +175,15 @@
   const listStyleBtn = document.getElementById('listStyleBtn');
   const textColorBtn = document.getElementById('textColorBtn');
   const bgColorBtn = document.getElementById('bgColorBtn');
+  const shapeStrokeBtn = document.getElementById('shapeStrokeBtn');
   const shapeColorBtn = document.getElementById('shapeColorBtn');
   const iroPopup = document.getElementById('iroPopup');
+  const shapeStyleControls = document.getElementById('shapeStyleControls');
+  const shapeStrokeWidthInput = document.getElementById('shapeStrokeWidthInput');
+  const shapeStrokeWidthValue = document.getElementById('shapeStrokeWidthValue');
+  const shapeCornerRadiusControls = document.getElementById('shapeCornerRadiusControls');
+  const shapeCornerRadiusInput = document.getElementById('shapeCornerRadiusInput');
+  const shapeCornerRadiusValue = document.getElementById('shapeCornerRadiusValue');
   const shapeMenu = document.getElementById('shapeMenu');
   const shapeMenuBtn = document.getElementById('shapeMenuBtn');
   const overviewChrome = document.getElementById('overviewChrome');
@@ -181,6 +196,15 @@
   const codeLanguageSelect = document.getElementById('codeLanguageSelect');
   const latexFontSizeInput = document.getElementById('latexFontSizeInput');
   const codeFontSizeInput = document.getElementById('codeFontSizeInput');
+  const codeFocusLinesInput = document.getElementById('codeFocusLinesInput');
+  const codeShowLineNumbersInput = document.getElementById('codeShowLineNumbersInput');
+  const animationEditorPanel = document.getElementById('animationEditorPanel');
+  const shapeEditorControls = document.getElementById('shapeEditorControls');
+  const shapeTypeSelect = document.getElementById('shapeTypeSelect');
+  const transitionIdInput = document.getElementById('transitionIdInput');
+  const fragmentEnabledInput = document.getElementById('fragmentEnabledInput');
+  const fragmentStyleSelect = document.getElementById('fragmentStyleSelect');
+  const fragmentIndexInput = document.getElementById('fragmentIndexInput');
   const algorithmEditSlideBtn = document.getElementById('algorithmEditSlideBtn');
   const algorithmEditorModal = document.getElementById('algorithmEditorModal');
   const algorithmEditorFrame = document.getElementById('algorithmEditorFrame');
@@ -286,14 +310,30 @@
     updateDiagnostics();
   }
 
+  function deckSlideStructure(deckState) {
+    return deckState.groups.map(group => ({
+      id: group.id,
+      slides: group.slides.map(slide => ({
+        id: slide.id,
+        kind: slide.kind || ''
+      }))
+    }));
+  }
+
+  function canRestoreDeckInPlace(previousDeck, nextDeck) {
+    return JSON.stringify(deckSlideStructure(previousDeck)) === JSON.stringify(deckSlideStructure(nextDeck));
+  }
+
   function restoreHistory(index) {
     if (index < 0 || index >= history.length) return;
     suppressHistory = true;
+    const previousDeck = deck;
     historyIndex = index;
     deck = normalizeDeck(JSON.parse(history[historyIndex]));
     clampPosition();
     saveDeck({ history: false });
-    renderDeck();
+    if (canRestoreDeckInPlace(previousDeck, deck)) restoreDeckInPlace(previousDeck);
+    else renderDeck();
     suppressHistory = false;
   }
 
@@ -340,15 +380,62 @@
         if (!obj || typeof obj.type !== 'string') return obj;
         const type = obj.type.toLowerCase();
         if (type.includes('text') && type !== 'textbox' && f()?.Textbox) {
-          return {
+          return sanitizeFabricTextBaseline({
             ...obj,
             type: 'textbox',
+            textBaseline: normalizeTextBaselineValue(obj.textBaseline),
             width: Number.isFinite(obj.width) ? Math.max(40, obj.width) : 360
-          };
+          });
         }
-        return obj;
+        return sanitizeFabricTextBaseline({
+          ...obj,
+          textBaseline: normalizeTextBaselineValue(obj.textBaseline)
+        });
       })
     };
+  }
+
+  function normalizeTextBaselineValue(value) {
+    return value === 'alphabetical' ? 'alphabetic' : value;
+  }
+
+  function sanitizeFabricTextBaseline(target) {
+    if (!target) return target;
+    if (target.textBaseline === 'alphabetical') {
+      if (target.set) target.set('textBaseline', 'alphabetic');
+      else target.textBaseline = 'alphabetic';
+    }
+    const styles = target.styles;
+    if (styles && typeof styles === 'object') {
+      Object.values(styles).forEach(lineStyles => {
+        if (!lineStyles || typeof lineStyles !== 'object') return;
+        Object.values(lineStyles).forEach(style => {
+          if (style && style.textBaseline === 'alphabetical') style.textBaseline = 'alphabetic';
+        });
+      });
+    }
+    return target;
+  }
+
+  function normalizeAnimationSettings(source = {}) {
+    return {
+      transitionId: typeof source.transitionId === 'string' ? source.transitionId : '',
+      fragmentEnabled: source.fragmentEnabled === true,
+      fragmentStyle: FRAGMENT_STYLE_CLASSES.includes(source.fragmentStyle) ? source.fragmentStyle : '',
+      fragmentIndex: Number.isFinite(Number(source.fragmentIndex)) && source.fragmentIndex !== ''
+        ? Math.max(0, Math.round(Number(source.fragmentIndex)))
+        : null
+    };
+  }
+
+  function serializeFabricCanvas(canvas) {
+    canvas.getObjects().forEach(sanitizeFabricTextBaseline);
+    const serialized = canvas.toJSON(FABRIC_CUSTOM_PROPS);
+    serialized.objects = (serialized.objects || []).map(obj => ({
+      ...sanitizeFabricTextBaseline(obj),
+      visible: true
+    }));
+    return serialized;
   }
 
   function normalizeAlgorithmAnimation(animation = {}) {
@@ -374,21 +461,30 @@
   }
 
   function normalizeWidgets(widgets) {
-    return Array.isArray(widgets) ? widgets.map(widget => ({
-      id: widget.id || randomId(),
-      type: widget.type === 'code' ? 'code' : 'latex',
-      x: Number.isFinite(widget.x) ? widget.x : 160,
-      y: Number.isFinite(widget.y) ? widget.y : 160,
-      w: Number.isFinite(widget.w) ? widget.w : (widget.type === 'code' ? 560 : 320),
-      h: Number.isFinite(widget.h) ? widget.h : (widget.type === 'code' ? 220 : 96),
-      cropX: Number.isFinite(widget.cropX) ? widget.cropX : 0,
-      cropY: Number.isFinite(widget.cropY) ? widget.cropY : 0,
-      language: typeof widget.language === 'string' ? widget.language : 'cpp',
-      fontSize: Number.isFinite(widget.fontSize) ? widget.fontSize : (widget.type === 'code' ? 21 : 34),
-      scale: Number.isFinite(widget.scale) ? widget.scale : 1,
-      manualSize: widget.manualSize === true,
-      content: typeof widget.content === 'string' ? widget.content : ''
-    })) : [];
+    return Array.isArray(widgets) ? widgets.map(widget => {
+      const type = widget.type === 'code' ? 'code' : 'latex';
+      const normalized = {
+        id: widget.id || randomId(),
+        type,
+        x: Number.isFinite(widget.x) ? widget.x : 160,
+        y: Number.isFinite(widget.y) ? widget.y : 160,
+        w: Number.isFinite(widget.w) ? widget.w : (type === 'code' ? 560 : 320),
+        h: Number.isFinite(widget.h) ? widget.h : (type === 'code' ? 220 : 96),
+        language: typeof widget.language === 'string' ? widget.language : 'cpp',
+        fontSize: Number.isFinite(widget.fontSize) ? widget.fontSize : (type === 'code' ? 21 : 34),
+        focusLines: typeof widget.focusLines === 'string' ? widget.focusLines : '',
+        showLineNumbers: widget.showLineNumbers === true,
+        scale: Number.isFinite(widget.scale) ? widget.scale : 1,
+        manualSize: widget.manualSize === true,
+        content: typeof widget.content === 'string' ? widget.content : '',
+        ...normalizeAnimationSettings(widget)
+      };
+      if (type === 'latex') {
+        normalized.cropX = Number.isFinite(widget.cropX) ? widget.cropX : 0;
+        normalized.cropY = Number.isFinite(widget.cropY) ? widget.cropY : 0;
+      }
+      return normalized;
+    }) : [];
   }
 
   function rebuildPositions() {
@@ -407,6 +503,8 @@
   }
 
   function renderDeck() {
+    finishCodeAutoAnimation();
+    finishFabricAutoAnimation();
     disposeCanvases();
     rebuildPositions();
     slidesRoot.innerHTML = '';
@@ -445,20 +543,126 @@
     }
   }
 
-  function refreshRevealWidgets() {
-    if (window.hljs) {
-      document.querySelectorAll('.code-widget pre code').forEach(block => {
-        block.removeAttribute('data-highlighted');
-        window.hljs.highlightElement(block);
-      });
+  async function restoreDeckInPlace(previousDeck) {
+    finishCodeAutoAnimation();
+    finishFabricAutoAnimation();
+    rebuildPositions();
+    const previousSlides = new Map();
+    previousDeck.groups.forEach(group => {
+      group.slides.forEach(slide => previousSlides.set(slide.id, slide));
+    });
+
+    for (const group of deck.groups) {
+      for (const slide of group.slides) {
+        const section = document.querySelector(`section.asm-slide[data-slide-id="${slide.id}"]`);
+        applySlideAutoAnimateAttributes(section, slide);
+        if (slide.kind === 'algorithm-animation') continue;
+        reconcileSlideWidgets(section?.querySelector('.widget-layer'), slide, previousSlides.get(slide.id));
+        const canvas = fabricCanvases.get(slide.id);
+        if (!canvas) continue;
+        await loadSlideCanvas(canvas, slide);
+        syncFabricFragmentProxies(slide.id, canvas);
+      }
     }
+
+    if (selectedWidgetId && !getWidget(selectedWidgetId).widget) selectedWidgetId = null;
+    applyEditMode(document.body.classList.contains('asm-edit-mode'));
+    if (reveal) {
+      syncRevealPreservingPosition();
+      reveal.layout();
+    }
+    if (selectedWidgetId) showWidgetEditor(selectedWidgetId);
+    else showDefaultPanel();
+    updateAlgorithmEditButton();
+    updateDiagnostics();
+  }
+
+  function refreshRevealWidgets() {
+    const highlightPlugin = reveal && reveal.getPlugin && reveal.getPlugin('highlight');
+    document.body.dataset.highlightApi = highlightPlugin ? Object.keys(highlightPlugin).join(',') : 'missing';
+    document.querySelectorAll('.code-widget').forEach(el => {
+      const found = getWidget(el.dataset.widgetId);
+      if (!found.widget) return;
+      paintWidgetElement(el, found.widget);
+      highlightCodeWidget(el);
+    });
+    renderMathWidgets(slidesRoot);
+    autoSizeLatexWidgets();
+    if (reveal) reveal.layout();
+  }
+
+  function refreshWidgetElement(el, widget) {
+    if (!el || !widget) return;
+    if (widget.type === 'code') {
+      paintWidgetElement(el, widget);
+      highlightCodeWidget(el);
+    } else {
+      renderMathWidgets(el);
+      autoSizeLatexWidgets();
+    }
+    if (reveal) reveal.layout();
+  }
+
+  function highlightCodeWidget(el) {
+    const code = el && el.querySelector('code');
+    if (!code) return;
+    code.removeAttribute('data-highlighted');
     const highlightPlugin = reveal && reveal.getPlugin && reveal.getPlugin('highlight');
     if (highlightPlugin && highlightPlugin.highlightBlock) {
-      document.querySelectorAll('.code-widget pre code').forEach(block => highlightPlugin.highlightBlock(block));
+      highlightPlugin.highlightBlock(code);
+    } else if (window.hljs) {
+      window.hljs.highlightElement(code);
     }
-    document.body.dataset.highlightApi = highlightPlugin ? Object.keys(highlightPlugin).join(',') : 'missing';
+    if (!el.dataset.codeAutoAnimating) {
+      const widget = getWidget(el.dataset.widgetId).widget;
+      scrollCodeWidgetToFocus(el, widget);
+      requestAnimationFrame(() => scrollCodeWidgetToFocus(el, widget));
+    }
+  }
+
+  function focusedCodeLineNumbers(focusLines, totalLines) {
+    const selected = new Set();
+    String(focusLines || '').split(',').forEach(part => {
+      const match = part.trim().match(/^(\d+)(?:-(\d+))?$/);
+      if (!match) return;
+      const start = Math.max(1, Math.min(totalLines, Number(match[1])));
+      const end = Math.max(1, Math.min(totalLines, Number(match[2] || match[1])));
+      for (let line = Math.min(start, end); line <= Math.max(start, end); line += 1) selected.add(line);
+    });
+    return Array.from(selected).sort((a, b) => a - b);
+  }
+
+  function codeFocusScrollTop(el, widget, offset = CODE_FOCUS_SCROLL_OFFSET) {
+    const pre = el?.querySelector('pre');
+    const code = pre?.querySelector('code');
+    if (!pre || !code || !widget) return 0;
+    const lines = focusedCodeLineNumbers(widget.focusLines, String(widget.content || '').split('\n').length);
+    if (!lines.length) return 0;
+    const rows = Array.from(code.querySelectorAll('.hljs-ln tr'));
+    const firstRow = rows[lines[0] - 1];
+    const lastRow = rows[lines[lines.length - 1] - 1];
+    const lineHeight = parseFloat(getComputedStyle(code).lineHeight) || (Number(widget.fontSize) || 21) * 1.2;
+    const preRect = pre.getBoundingClientRect();
+    const scaleY = pre.clientHeight ? preRect.height / pre.clientHeight : 1;
+    const top = firstRow
+      ? ((firstRow.getBoundingClientRect().top - preRect.top) / (scaleY || 1)) + pre.scrollTop
+      : (lines[0] - 1) * lineHeight;
+    const bottom = lastRow
+      ? ((lastRow.getBoundingClientRect().bottom - preRect.top) / (scaleY || 1)) + pre.scrollTop
+      : lines[lines.length - 1] * lineHeight;
+    const viewportHeight = Math.max(1, el.clientHeight);
+    return Math.max(0, Math.min(pre.scrollHeight - viewportHeight, ((top + bottom) / 2) - (viewportHeight / 2) + offset));
+  }
+
+  function scrollCodeWidgetToFocus(el, widget, behavior = 'auto') {
+    const pre = el?.querySelector('pre');
+    if (!pre || !widget) return;
+    pre.scrollTo({ top: codeFocusScrollTop(el, widget), behavior });
+  }
+
+  function renderMathWidgets(root) {
     if (window.renderMathInElement) {
-      window.renderMathInElement(slidesRoot, {
+      window.renderMathInElement(root, {
         delimiters: [
           { left: '$$', right: '$$', display: true },
           { left: '$', right: '$', display: false },
@@ -467,8 +671,6 @@
         ]
       });
     }
-    autoSizeLatexWidgets();
-    if (reveal) reveal.layout();
   }
 
   function autoSizeLatexWidgets() {
@@ -510,12 +712,52 @@
     if (changed) saveDeck({ history: false });
   }
 
+  function applyAnimationAttributes(el, source) {
+    const animation = normalizeAnimationSettings(source);
+    FRAGMENT_STYLE_CLASSES.forEach(className => el.classList.remove(className));
+    el.classList.toggle('fragment', animation.fragmentEnabled);
+    if (animation.fragmentEnabled && animation.fragmentStyle) el.classList.add(animation.fragmentStyle);
+    if (source.type === 'code' && animation.transitionId) el.dataset.codeTransition = 'true';
+    else delete el.dataset.codeTransition;
+    if (source.type !== 'code' && animation.transitionId) el.dataset.id = animation.transitionId;
+    else delete el.dataset.id;
+    if (animation.fragmentEnabled && animation.fragmentIndex !== null) {
+      el.dataset.fragmentIndex = String(animation.fragmentIndex);
+    } else {
+      delete el.dataset.fragmentIndex;
+    }
+  }
+
+  function slideUsesAutoAnimate(slide) {
+    const widgets = normalizeWidgets(slide.widgets);
+    const objects = ((slide.canvas && slide.canvas.objects) || []);
+    return [...widgets, ...objects].some(item => normalizeAnimationSettings(item).transitionId);
+  }
+
+  function applySlideAutoAnimateAttributes(section, slide) {
+    if (!section) return;
+    if (slideUsesAutoAnimate(slide)) {
+      if (!section.hasAttribute('data-auto-animate')) section.setAttribute('data-auto-animate', '');
+      section.setAttribute('data-auto-animate-unmatched', 'false');
+    } else {
+      section.removeAttribute('data-auto-animate');
+      section.removeAttribute('data-auto-animate-unmatched');
+    }
+  }
+
+  function syncSlideAutoAnimate(slide) {
+    if (!slide) return;
+    const section = document.querySelector(`section.asm-slide[data-slide-id="${slide.id}"]`);
+    applySlideAutoAnimateAttributes(section, slide);
+  }
+
   function createSlideSection(slide, h, v) {
     const section = document.createElement('section');
     section.className = 'asm-slide';
     section.dataset.slideId = slide.id;
     section.dataset.h = String(h);
     section.dataset.v = String(v);
+    applySlideAutoAnimateAttributes(section, slide);
     if (slide.kind === 'algorithm-animation') {
       section.classList.add('algorithm-animation-slide');
       renderAlgorithmSlide(section, slide);
@@ -573,6 +815,44 @@
     });
   }
 
+  function reconcileSlideWidgets(layer, slide, previousSlide) {
+    if (!layer) return;
+    const previousWidgets = new Map(normalizeWidgets(previousSlide?.widgets).map(widget => [widget.id, widget]));
+    const widgets = normalizeWidgets(slide.widgets);
+    const widgetIds = new Set(widgets.map(widget => widget.id));
+    layer.querySelectorAll('.slide-widget').forEach(el => {
+      if (!widgetIds.has(el.dataset.widgetId)) el.remove();
+    });
+    widgets.forEach(widget => {
+      let el = layer.querySelector(`.slide-widget[data-widget-id="${widget.id}"]`);
+      if (!el) {
+        el = createWidgetElement(widget);
+        layer.appendChild(el);
+        refreshWidgetElement(el, widget);
+        return;
+      }
+      syncWidgetElementInPlace(el, widget, previousWidgets.get(widget.id));
+      layer.appendChild(el);
+    });
+  }
+
+  function syncWidgetElementInPlace(el, widget, previousWidget) {
+    el.dataset.widgetType = widget.type;
+    el.dataset.manualSize = widget.manualSize ? 'true' : 'false';
+    el.style.left = `${widget.x}px`;
+    el.style.top = `${widget.y}px`;
+    el.style.width = `${widget.w}px`;
+    el.style.height = `${widget.h}px`;
+    el.style.fontSize = `${widget.fontSize}px`;
+    applyAnimationAttributes(el, widget);
+    const contentChanged = !previousWidget || [
+      'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
+    ].some(key => previousWidget[key] !== widget[key]);
+    if (contentChanged) refreshWidgetElement(el, widget);
+    else positionWidgetContent(el, widget);
+    el.classList.toggle('is-selected', el.dataset.widgetId === selectedWidgetId);
+  }
+
   function createWidgetElement(widget) {
     const el = document.createElement('div');
     el.className = `slide-widget ${widget.type}-widget`;
@@ -585,6 +865,7 @@
     el.style.width = `${widget.w}px`;
     el.style.height = `${widget.h}px`;
     el.style.fontSize = `${widget.fontSize}px`;
+    applyAnimationAttributes(el, widget);
     paintWidgetElement(el, widget);
     return el;
   }
@@ -600,8 +881,10 @@
   function paintWidgetElement(el, widget) {
     el.innerHTML = '';
     if (widget.type === 'code') {
-      el.innerHTML = `<pre class="widget-content"><code class="language-${widget.language || 'cpp'}"></code></pre>`;
-      el.querySelector('code').textContent = widget.content || defaultCode();
+      el.innerHTML = `<div class="code-frame"><pre class="widget-content"><code class="language-${widget.language || 'cpp'}"></code></pre></div>`;
+      const code = el.querySelector('code');
+      code.textContent = widget.content || defaultCode();
+      applyCodeFocusLines(code, widget.focusLines, widget.showLineNumbers);
     } else {
       const content = document.createElement('div');
       content.className = 'widget-content latex-content';
@@ -610,7 +893,8 @@
     }
     positionWidgetContent(el, widget);
     const handles = widget.type === 'code'
-      ? ['top', 'right', 'bottom', 'left'].map(edge => ['widget-edge-handle', 'resizeEdge', edge])
+      ? ['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left']
+        .map(edge => ['widget-edge-handle', 'resizeEdge', edge])
       : [];
     handles.forEach(([className, dataKey, value]) => {
       const handle = document.createElement('span');
@@ -623,14 +907,29 @@
   function positionWidgetContent(el, widget) {
     const content = el.querySelector('.widget-content');
     if (!content) return;
+    if (widget.type === 'code') {
+      const code = content.querySelector('code');
+      const frame = el.querySelector('.code-frame');
+      if (frame) {
+        frame.style.width = `${widget.w}px`;
+        frame.style.height = `${widget.h}px`;
+      }
+      content.style.left = '0px';
+      content.style.top = '0px';
+      content.style.width = `${widget.w}px`;
+      content.style.height = `${widget.h}px`;
+      content.style.transform = '';
+      if (code) {
+        code.style.left = '0px';
+        code.style.width = '100%';
+        code.style.transform = '';
+      }
+      return;
+    }
     content.style.left = `${-(widget.cropX || 0)}px`;
     content.style.top = `${-(widget.cropY || 0)}px`;
     content.style.transformOrigin = '0 0';
     content.style.transform = widget.type === 'latex' ? `scale(${widget.scale || 1})` : '';
-    if (widget.type === 'code') {
-      content.style.width = `${widget.w + (widget.cropX || 0)}px`;
-      content.style.height = `${widget.h + (widget.cropY || 0)}px`;
-    }
   }
 
   async function buildFabricCanvases() {
@@ -653,8 +952,10 @@
           });
 
           fabricCanvases.set(slide.id, canvas);
+          blockRevealNavigationWhileEditing(canvas);
           wireCanvas(canvas, slide);
           await loadSlideCanvas(canvas, slide);
+          syncFabricFragmentProxies(slide.id, canvas);
         } catch (err) {
           document.body.dataset.fabricBuild = `failed: ${err.message}`;
           console.error('Fabric canvas initialization failed', err);
@@ -683,15 +984,18 @@
   }
 
   function wireCanvas(canvas, slide) {
-    const sync = () => {
+    const sync = (event, { syncFragments = false } = {}) => {
       if (suppressCanvasSave) return;
-      slide.canvas = canvas.toJSON();
+      normalizeShapeGeometry(event && event.target, canvas);
+      slide.canvas = serializeFabricCanvas(canvas);
       saveDeck();
+      syncSlideAutoAnimate(slide);
+      if (syncFragments) syncFabricFragmentProxies(slide.id, canvas);
       updateObjectToolbar(canvas.getActiveObject(), canvas);
     };
-    canvas.on('object:added', sync);
+    canvas.on('object:added', event => sync(event, { syncFragments: true }));
     canvas.on('object:modified', sync);
-    canvas.on('object:removed', sync);
+    canvas.on('object:removed', event => sync(event, { syncFragments: true }));
     canvas.on('text:changed', sync);
     canvas.on('selection:created', e => {
       exitWidgetEditorIfNeeded();
@@ -701,9 +1005,16 @@
       exitWidgetEditorIfNeeded();
       updateObjectToolbar(e.selected && e.selected[0], canvas);
     });
-    canvas.on('selection:cleared', () => hideObjectToolbar());
-    canvas.on('object:moving', e => updateObjectToolbar(e.target, canvas));
+    canvas.on('selection:cleared', () => {
+      hideObjectToolbar();
+      if (!selectedWidgetId) showDefaultPanel();
+    });
+    canvas.on('object:moving', e => {
+      finishFabricAutoAnimation();
+      updateObjectToolbar(e.target, canvas);
+    });
     canvas.on('object:scaling', e => {
+      keepShapeStrokeUniform(e.target, canvas);
       normalizeTextBoxResize(e.target, canvas);
       updateObjectToolbar(e.target, canvas);
     });
@@ -713,11 +1024,14 @@
     canvas.on('text:editing:entered', e => updateObjectToolbar(e.target, canvas));
     canvas.on('text:editing:exited', () => {
       textSelection = null;
-      hideObjectToolbar();
+      hideObjectToolbar({ keepAnimation: true });
+      showFabricObjectEditor(canvas.getActiveObject());
     });
   }
 
   function configureObject(obj) {
+    sanitizeFabricTextBaseline(obj);
+    const animation = normalizeAnimationSettings(obj);
     obj.set({
       cornerColor: '#1d8f83',
       cornerStrokeColor: '#ffffff',
@@ -726,7 +1040,362 @@
       transparentCorners: false,
       padding: 6,
       lockScalingFlip: true,
-      objectCaching: !isTextObject(obj)
+      strokeUniform: true,
+      objectCaching: isShapeObject(obj) ? false : !isTextObject(obj),
+      noScaleCache: isShapeObject(obj) ? false : obj.noScaleCache,
+      ...animation,
+      fragmentProxyId: obj.fragmentProxyId || randomId(),
+      cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
+    });
+  }
+
+  function blockRevealNavigationWhileEditing(canvas) {
+    if (!canvas || !canvas.upperCanvasEl) return;
+    ['pointerdown', 'pointermove', 'pointerup', 'touchstart', 'touchmove', 'touchend'].forEach(type => {
+      canvas.upperCanvasEl.addEventListener(type, event => {
+        if (document.body.classList.contains('asm-edit-mode')) event.stopPropagation();
+      });
+    });
+  }
+
+  function keepShapeStrokeUniform(obj, canvas) {
+    if (!isShapeObject(obj)) return;
+    obj.set({ strokeUniform: true, objectCaching: false, noScaleCache: false });
+    obj.dirty = true;
+    if (canvas) canvas.requestRenderAll();
+  }
+
+  function normalizeShapeGeometry(obj, canvas) {
+    if (!isShapeObject(obj)) return;
+    const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
+    const scaleY = Number.isFinite(obj.scaleY) ? obj.scaleY : 1;
+    if (Math.abs(Math.abs(scaleX) - 1) < 0.001 && Math.abs(Math.abs(scaleY) - 1) < 0.001) return;
+    if (obj.type === 'circle' && Math.abs(Math.abs(scaleX) - Math.abs(scaleY)) > 0.001) return;
+    const center = obj.getCenterPoint();
+    if (obj.type === 'circle') {
+      obj.set({ radius: Math.max(2, (Number(obj.radius) || 2) * Math.abs(scaleX)) });
+    } else {
+      obj.set({
+        width: Math.max(4, (Number(obj.width) || 4) * Math.abs(scaleX)),
+        height: Math.max(4, (Number(obj.height) || 4) * Math.abs(scaleY))
+      });
+    }
+    obj.set({ scaleX: Math.sign(scaleX) || 1, scaleY: Math.sign(scaleY) || 1 });
+    obj.setPositionByOrigin(center, 'center', 'center');
+    obj.setCoords();
+    obj.dirty = true;
+    if (canvas) canvas.requestRenderAll();
+  }
+
+  function syncRevealPreservingPosition() {
+    if (!revealReady || !reveal) return;
+    const indices = reveal.getIndices ? reveal.getIndices() : { h: currentH, v: currentV };
+    reveal.sync();
+    if (!indices || !Number.isFinite(indices.h)) return;
+    const v = Number.isFinite(indices.v) ? indices.v : 0;
+    if (Number.isFinite(indices.f)) reveal.slide(indices.h, v, indices.f);
+    else reveal.slide(indices.h, v);
+  }
+
+  function fabricAnimationState(obj) {
+    const properties = [
+      'left', 'top', 'width', 'height', 'scaleX', 'scaleY', 'angle', 'opacity',
+      'strokeWidth', 'rx', 'ry', 'radius', 'fontSize'
+    ];
+    const numeric = properties.reduce((state, property) => {
+      if (Number.isFinite(Number(obj[property]))) state[property] = Number(obj[property]);
+      return state;
+    }, {});
+    const colors = ['fill', 'stroke', 'backgroundColor', 'textBackgroundColor'].reduce((state, property) => {
+      if (typeof obj[property] === 'string') state[property] = obj[property];
+      return state;
+    }, {});
+    return { numeric, colors };
+  }
+
+  function interpolateFabricColor(from, to, progress) {
+    const Fabric = f();
+    if (!Fabric?.Color || typeof from !== 'string' || typeof to !== 'string') return to;
+    const start = new Fabric.Color(from).getSource();
+    const end = new Fabric.Color(to).getSource();
+    return `rgba(${start.map((value, index) => {
+      const next = value + ((end[index] - value) * progress);
+      return index < 3 ? Math.round(next) : Math.round(next * 1000) / 1000;
+    }).join(',')})`;
+  }
+
+  function applyFabricAnimationState(obj, from, to, progress) {
+    const patch = {};
+    Object.keys(to.numeric).forEach(property => {
+      patch[property] = Number.isFinite(from.numeric[property])
+        ? from.numeric[property] + ((to.numeric[property] - from.numeric[property]) * progress)
+        : to.numeric[property];
+    });
+    Object.keys(to.colors).forEach(property => {
+      patch[property] = from.colors[property]
+        ? interpolateFabricColor(from.colors[property], to.colors[property], progress)
+        : to.colors[property];
+    });
+    obj.set(patch);
+    obj.setCoords();
+    obj.dirty = true;
+  }
+
+  function finishFabricAutoAnimation() {
+    if (!activeFabricAutoAnimation) return;
+    cancelAnimationFrame(activeFabricAutoAnimation.frame);
+    const canvases = new Set();
+    activeFabricAutoAnimation.targets.forEach(({ canvas, object, final }) => {
+      applyFabricAnimationState(object, final, final, 1);
+      canvases.add(canvas);
+    });
+    canvases.forEach(canvas => canvas.requestRenderAll());
+    activeFabricAutoAnimation = null;
+  }
+
+  function finishCodeAutoAnimation() {
+    if (!activeCodeAutoAnimation) return;
+    cancelAnimationFrame(activeCodeAutoAnimation.frame);
+    activeCodeAutoAnimation.targets.forEach(({ el, widget, finalScroll }) => {
+      setCodeAutoAnimationBox(el, widget);
+      const pre = el.querySelector('pre');
+      if (pre) {
+        pre.scrollTop = finalScroll;
+      }
+      el.style.removeProperty('visibility');
+      delete el.dataset.codeAutoAnimating;
+    });
+    activeCodeAutoAnimation = null;
+  }
+
+  function setCodeAutoAnimationBox(el, box) {
+    const keys = { left: 'x', top: 'y', width: 'w', height: 'h' };
+    ['left', 'top', 'width', 'height'].forEach(property => {
+      el.style.setProperty(property, `${box[keys[property]]}px`, 'important');
+    });
+    el.style.setProperty('transform', 'none', 'important');
+    syncCodeContentBox(el, box);
+  }
+
+  function syncCodeContentBox(el, box) {
+    if (!el?.classList?.contains('code-widget')) return;
+    const frame = el.querySelector('.code-frame');
+    const pre = el.querySelector('pre.widget-content');
+    if (frame) {
+      frame.style.width = `${box.w}px`;
+      frame.style.height = `${box.h}px`;
+    }
+    if (pre) {
+      pre.style.width = `${box.w}px`;
+      pre.style.height = `${box.h}px`;
+    }
+  }
+
+  function disableRevealCodeAnimation(el) {
+    [el, ...el.querySelectorAll('[data-auto-animate-target]')].forEach(node => {
+      node.removeAttribute('data-auto-animate-target');
+      node.style.removeProperty('transform');
+      node.style.removeProperty('transition');
+    });
+    el.style.setProperty('transform', 'none', 'important');
+    el.style.setProperty('transition', 'none', 'important');
+  }
+
+  function resetCodeWidgetRuntimeStyles(el, widget) {
+    if (!el || !widget) return;
+    disableRevealCodeAnimation(el);
+    setCodeAutoAnimationBox(el, widget);
+    positionWidgetContent(el, widget);
+  }
+
+  function measureCodeFinalScroll(el, widget) {
+    if (!el || !widget) return 0;
+    const clone = el.cloneNode(true);
+    clone.removeAttribute('data-widget-id');
+    clone.style.setProperty('position', 'absolute', 'important');
+    clone.style.setProperty('visibility', 'hidden', 'important');
+    clone.style.setProperty('pointer-events', 'none', 'important');
+    clone.style.setProperty('z-index', '-1', 'important');
+    clone.style.setProperty('transform', 'none', 'important');
+    clone.style.setProperty('left', '-10000px', 'important');
+    clone.style.setProperty('top', '-10000px', 'important');
+    document.body.appendChild(clone);
+    setCodeAutoAnimationBox(clone, widget);
+    positionWidgetContent(clone, widget);
+    const finalScroll = codeFocusScrollTop(clone, widget, CODE_AUTO_FOCUS_SCROLL_OFFSET);
+    clone.remove();
+    return finalScroll;
+  }
+
+  function animateCodeAutoTransition(event) {
+    finishCodeAutoAnimation();
+    const fromSlide = getSlideById(event?.fromSlide?.dataset.slideId);
+    const toSlide = getSlideById(event?.toSlide?.dataset.slideId);
+    if (!fromSlide || !toSlide) return;
+    const fromWidgets = new Map(normalizeWidgets(fromSlide.widgets)
+      .filter(widget => widget.type === 'code' && widget.transitionId.trim())
+      .map(widget => [widget.transitionId.trim(), widget]));
+    const targets = normalizeWidgets(toSlide.widgets).reduce((matches, widget) => {
+      const source = widget.type === 'code' && fromWidgets.get(widget.transitionId.trim());
+      const el = source && event.toSlide.querySelector(`.code-widget[data-widget-id="${widget.id}"]`);
+      if (!source || !el) return matches;
+      el.dataset.codeAutoAnimating = 'true';
+      el.style.setProperty('visibility', 'hidden', 'important');
+      disableRevealCodeAnimation(el);
+      const sourceEl = event.fromSlide.querySelector(`.code-widget[data-widget-id="${source.id}"]`);
+      resetCodeWidgetRuntimeStyles(sourceEl, source);
+      const initialScroll = sourceEl?.querySelector('pre')?.scrollTop || 0;
+      const finalScroll = measureCodeFinalScroll(el, widget);
+      setCodeAutoAnimationBox(el, source);
+      const pre = el.querySelector('pre');
+      if (pre) pre.scrollTop = initialScroll;
+      void el.offsetHeight;
+      matches.push({ el, source, widget, initialScroll, finalScroll });
+      return matches;
+    }, []);
+    document.body.dataset.codeAutoAnimateCount = String(targets.length);
+    if (!targets.length) return;
+
+    const duration = Math.max(0, Number(reveal?.getConfig?.().autoAnimateDuration) || 1) * 1000;
+    const startedAt = performance.now();
+    const animation = { frame: 0, targets };
+    activeCodeAutoAnimation = animation;
+    const tick = now => {
+      if (activeCodeAutoAnimation !== animation) return;
+      const elapsed = duration ? Math.min(1, (now - startedAt) / duration) : 1;
+      const boxProgress = Math.min(1, elapsed / 0.5);
+      const boxEased = 1 - Math.pow(1 - boxProgress, 3);
+      const scrollProgress = Math.max(0, Math.min(1, (elapsed - 0.5) / 0.5));
+      const scrollEased = Math.pow(scrollProgress, 4);
+      targets.forEach(({ el, source, widget, initialScroll, finalScroll }) => {
+        setCodeAutoAnimationBox(el, {
+          x: source.x + ((widget.x - source.x) * boxEased),
+          y: source.y + ((widget.y - source.y) * boxEased),
+          w: source.w + ((widget.w - source.w) * boxEased),
+          h: source.h + ((widget.h - source.h) * boxEased)
+        });
+        const pre = el.querySelector('pre');
+        if (pre) {
+          pre.scrollTop = initialScroll + ((finalScroll - initialScroll) * scrollEased);
+        }
+      });
+      if (elapsed < 1) animation.frame = requestAnimationFrame(tick);
+      else {
+        targets.forEach(({ el, widget, finalScroll }) => {
+          setCodeAutoAnimationBox(el, widget);
+          const pre = el.querySelector('pre');
+          if (pre) {
+            pre.scrollTop = finalScroll;
+          }
+          el.style.removeProperty('visibility');
+          delete el.dataset.codeAutoAnimating;
+        });
+        activeCodeAutoAnimation = null;
+      }
+    };
+    animation.frame = requestAnimationFrame(now => {
+      targets.forEach(({ el }) => el.style.removeProperty('visibility'));
+      tick(now);
+    });
+  }
+
+  function animateSlideAutoTransition(event) {
+    animateFabricAutoTransition(event);
+    animateCodeAutoTransition(event);
+  }
+
+  function animateFabricAutoTransition(event) {
+    finishFabricAutoAnimation();
+    const fromSlideId = event?.fromSlide?.dataset.slideId;
+    const toSlideId = event?.toSlide?.dataset.slideId;
+    const fromCanvas = fabricCanvases.get(fromSlideId);
+    const toCanvas = fabricCanvases.get(toSlideId);
+    if (!fromCanvas || !toCanvas) return;
+
+    const fromObjects = new Map();
+    fromCanvas.getObjects().forEach(obj => {
+      const id = normalizeAnimationSettings(obj).transitionId.trim();
+      if (id && !fromObjects.has(id)) fromObjects.set(id, obj);
+    });
+    const targets = toCanvas.getObjects().reduce((matches, object) => {
+      const id = normalizeAnimationSettings(object).transitionId.trim();
+      const source = id && fromObjects.get(id);
+      if (!source) return matches;
+      const initial = fabricAnimationState(source);
+      const final = fabricAnimationState(object);
+      applyFabricAnimationState(object, initial, final, 0);
+      matches.push({ canvas: toCanvas, object, initial, final });
+      return matches;
+    }, []);
+    document.body.dataset.fabricAutoAnimateCount = String(targets.length);
+    if (!targets.length) return;
+
+    const duration = Math.max(0, Number(reveal?.getConfig?.().autoAnimateDuration) || 1) * 1000;
+    const startedAt = performance.now();
+    const animation = { frame: 0, targets };
+    activeFabricAutoAnimation = animation;
+    const tick = now => {
+      if (activeFabricAutoAnimation !== animation) return;
+      const elapsed = duration ? Math.min(1, (now - startedAt) / duration) : 1;
+      const eased = 1 - Math.pow(1 - elapsed, 3);
+      targets.forEach(({ canvas, object, initial, final }) => {
+        applyFabricAnimationState(object, initial, final, eased);
+        canvas.requestRenderAll();
+      });
+      if (elapsed < 1) animation.frame = requestAnimationFrame(tick);
+      else activeFabricAutoAnimation = null;
+    };
+    animation.frame = requestAnimationFrame(tick);
+  }
+
+  function syncFabricFragmentProxies(slideId, canvas) {
+    const layer = document.querySelector(`.widget-layer[data-slide-id="${slideId}"]`);
+    if (!layer || !canvas) return;
+    const existing = new Map(Array.from(layer.querySelectorAll('.fabric-fragment-proxy'))
+      .map(proxy => [proxy.dataset.fabricProxyId, proxy]));
+    let fragmentsChanged = false;
+    canvas.getObjects().forEach(obj => {
+      configureObject(obj);
+      let proxy = existing.get(obj.fragmentProxyId);
+      if (!obj.fragmentEnabled) {
+        if (proxy) {
+          proxy.remove();
+          existing.delete(obj.fragmentProxyId);
+          fragmentsChanged = true;
+        }
+        return;
+      }
+      if (!proxy) {
+        proxy = document.createElement('span');
+        proxy.className = 'fabric-fragment-proxy';
+        layer.appendChild(proxy);
+        fragmentsChanged = true;
+      }
+      const previousIndex = proxy.dataset.fragmentIndex || '';
+      proxy.dataset.fabricProxyId = obj.fragmentProxyId;
+      applyAnimationAttributes(proxy, obj);
+      if (previousIndex !== (proxy.dataset.fragmentIndex || '')) fragmentsChanged = true;
+      existing.delete(obj.fragmentProxyId);
+    });
+    existing.forEach(proxy => {
+      proxy.remove();
+      fragmentsChanged = true;
+    });
+    if (fragmentsChanged) syncRevealPreservingPosition();
+    refreshFabricFragmentVisibility();
+  }
+
+  function refreshFabricFragmentVisibility() {
+    const editing = document.body.classList.contains('asm-edit-mode');
+    fabricCanvases.forEach((canvas, slideId) => {
+      const layer = document.querySelector(`.widget-layer[data-slide-id="${slideId}"]`);
+      const proxies = new Map(Array.from(layer?.querySelectorAll('.fabric-fragment-proxy') || [])
+        .map(proxy => [proxy.dataset.fabricProxyId, proxy]));
+      canvas.getObjects().forEach(obj => {
+        const proxy = obj.fragmentEnabled && proxies.get(obj.fragmentProxyId);
+        obj.visible = !obj.fragmentEnabled || editing || !!proxy?.classList.contains('visible');
+      });
+      canvas.requestRenderAll();
     });
   }
 
@@ -832,11 +1501,12 @@
       y: Math.max(24, Math.min(point.y - 54, SLIDE_H - 180)),
       w: type === 'code' ? 560 : 360,
       h: type === 'code' ? 230 : 104,
-      cropX: 0,
-      cropY: 0,
       language: 'cpp',
       fontSize: type === 'code' ? 21 : 34,
+      focusLines: '',
+      showLineNumbers: false,
       scale: 1,
+      ...normalizeAnimationSettings(),
       content: type === 'code' ? defaultCode() : String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`
     };
     slide.widgets.push(widget);
@@ -844,13 +1514,15 @@
     pendingTool = null;
     updateArmedTool();
     document.body.dataset.lastToolStatus = `added:${type}`;
-    renderDeck();
-    setTimeout(() => selectWidget(widget.id), 80);
+    appendWidgetsToCurrentSlide([widget]);
+    const el = document.querySelector(`.slide-widget[data-widget-id="${widget.id}"]`);
+    if (el) refreshWidgetElement(el, widget);
+    selectWidget(widget.id);
   }
 
   function createShape(shape, left, top) {
-    const fill = shape === 'triangle' ? '#fff2d8' : '#eee7fb';
-    const stroke = shape === 'triangle' ? '#b87927' : '#875bc7';
+    const fill = shape === 'triangle' ? '#fff2d8' : (shape === 'rect' ? '#dff4ef' : '#eee7fb');
+    const stroke = shape === 'triangle' ? '#b87927' : (shape === 'rect' ? '#1d8f83' : '#875bc7');
     const Fabric = f();
     if (shape === 'triangle') {
       return new Fabric.Triangle({
@@ -861,6 +1533,20 @@
         fill,
         stroke,
         strokeWidth: 4
+      });
+    }
+    if (shape === 'rect') {
+      return new Fabric.Rect({
+        left,
+        top,
+        width: 210,
+        height: 150,
+        fill,
+        stroke,
+        strokeWidth: 4,
+        rx: 12,
+        ry: 12,
+        cornerRadius: 12
       });
     }
     return new Fabric.Circle({
@@ -897,8 +1583,10 @@
     const canvas = currentFabricCanvas();
     const slide = getSlide();
     if (!canvas || !slide) return;
-    slide.canvas = canvas.toJSON();
+    slide.canvas = serializeFabricCanvas(canvas);
     saveDeck();
+    syncSlideAutoAnimate(slide);
+    syncFabricFragmentProxies(slide.id, canvas);
   }
 
   function isEditableDomTarget(event) {
@@ -934,7 +1622,7 @@
     const fabricObjects = activeFabricObjects();
     const widgetIds = selectedWidgetIdsInCurrentSlide();
     objectClipboard = {
-      fabric: fabricObjects.map(obj => obj.toObject ? obj.toObject() : clone(obj)),
+      fabric: fabricObjects.map(obj => obj.toObject ? obj.toObject(FABRIC_CUSTOM_PROPS) : clone(obj)),
       widgets: normalizeWidgets(slide?.widgets).filter(widget => widgetIds.includes(widget.id)).map(widget => clone(widget)),
       cut: false
     };
@@ -1082,7 +1770,15 @@
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
+    hideAnimationEditor();
     updateAlgorithmEditButton();
+  }
+
+  function applyCodeFocusLines(code, focusLines, showLineNumbers) {
+    const value = typeof focusLines === 'string' ? focusLines.trim() : '';
+    code.classList.toggle('asm-hide-line-numbers', !showLineNumbers);
+    if (value || showLineNumbers) code.setAttribute('data-line-numbers', value);
+    else code.removeAttribute('data-line-numbers');
   }
 
   function showOverviewSidebarPanel() {
@@ -1090,6 +1786,7 @@
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = false;
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
+    hideAnimationEditor();
   }
 
   function updateAlgorithmEditButton() {
@@ -1110,8 +1807,60 @@
     } else {
       codeLanguageSelect.value = found.widget.language || 'cpp';
       codeFontSizeInput.value = Math.round(found.widget.fontSize || 21);
+      codeFocusLinesInput.value = found.widget.focusLines || '';
+      codeShowLineNumbersInput.checked = found.widget.showLineNumbers === true;
       codeEditorInput.value = found.widget.content;
     }
+    showAnimationEditor(found.widget);
+  }
+
+  function showFabricObjectEditor(obj) {
+    if (!obj || obj.type === 'activeSelection') return;
+    defaultToolPanel.hidden = true;
+    if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
+    latexEditorPanel.hidden = true;
+    codeEditorPanel.hidden = true;
+    showAnimationEditor(obj);
+  }
+
+  function showAnimationEditor(source) {
+    if (!animationEditorPanel || !source) return;
+    const animation = normalizeAnimationSettings(source);
+    animationEditorPanel.hidden = false;
+    if (shapeEditorControls) shapeEditorControls.hidden = !isShapeObject(source);
+    if (shapeTypeSelect && isShapeObject(source)) shapeTypeSelect.value = source.type;
+    transitionIdInput.value = animation.transitionId;
+    fragmentEnabledInput.checked = animation.fragmentEnabled;
+    fragmentStyleSelect.value = animation.fragmentStyle;
+    fragmentIndexInput.value = animation.fragmentIndex === null ? '' : String(animation.fragmentIndex);
+    fragmentStyleSelect.disabled = !animation.fragmentEnabled;
+    fragmentIndexInput.disabled = !animation.fragmentEnabled;
+  }
+
+  function hideAnimationEditor() {
+    if (animationEditorPanel) animationEditorPanel.hidden = true;
+  }
+
+  function selectedFabricAnimationTarget() {
+    const canvas = currentFabricCanvas();
+    const object = canvas && canvas.getActiveObject();
+    return object && object.type !== 'activeSelection' ? { canvas, object } : {};
+  }
+
+  function updateSelectedAnimation(patch) {
+    if (selectedWidgetId) {
+      updateSelectedWidget(patch);
+      syncRevealPreservingPosition();
+      showAnimationEditor(getWidget(selectedWidgetId).widget);
+      return;
+    }
+    const target = selectedFabricAnimationTarget();
+    if (!target.canvas || !target.object) return;
+    target.object.set(patch);
+    configureObject(target.object);
+    target.canvas.requestRenderAll();
+    syncCurrentSlideCanvas();
+    showAnimationEditor(target.object);
   }
 
   function updateSelectedWidget(patch) {
@@ -1131,9 +1880,13 @@
       el.style.height = `${found.widget.h}px`;
       el.style.fontSize = `${found.widget.fontSize}px`;
       el.dataset.manualSize = found.widget.manualSize ? 'true' : 'false';
-      updateWidgetContentElement(el, found.widget);
+      applyAnimationAttributes(el, found.widget);
+      if (found.widget.type !== 'code') {
+        updateWidgetContentElement(el, found.widget);
+      }
       el.classList.add('is-selected');
-      refreshRevealWidgets();
+      syncSlideAutoAnimate(found.slide);
+      refreshWidgetElement(el, found.widget);
     }
   }
 
@@ -1147,6 +1900,7 @@
       code.removeAttribute('data-highlighted');
       code.className = `language-${widget.language || 'cpp'}`;
       code.textContent = widget.content || defaultCode();
+      applyCodeFocusLines(code, widget.focusLines, widget.showLineNumbers);
     } else {
       let content = el.querySelector('.latex-content');
       if (!content) {
@@ -1199,6 +1953,7 @@
       canvas.requestRenderAll();
     });
     if (!enabled) hideObjectToolbar();
+    refreshFabricFragmentVisibility();
   }
 
   function setEditMode(enabled) {
@@ -1222,6 +1977,25 @@
     }, 380);
   }
 
+  function clearSelectionWhenClickingOutsideSlide(event) {
+    if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing() || event.button !== 0) return;
+    const target = event.target;
+    if (!target || !target.closest) return;
+    if (target.closest('.asm-slide-frame-content, #controlChrome, #editorChrome, #objectToolbar, #overviewChrome, #customOverview, #algorithmEditorModal, .slide-edge-add')) return;
+    const canvas = currentFabricCanvas();
+    const hadFabricSelection = !!(canvas && canvas.getActiveObject());
+    if (canvas && hadFabricSelection) {
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+    }
+    if (selectedWidgetId) {
+      clearWidgetSelection();
+    } else if (hadFabricSelection) {
+      hideObjectToolbar();
+      showDefaultPanel();
+    }
+  }
+
   function bindChrome() {
     document.getElementById('modeToggleBtn').addEventListener('click', () => {
       setEditMode(!document.body.classList.contains('asm-edit-mode'));
@@ -1235,6 +2009,7 @@
     });
     document.getElementById('saveAlgorithmEditorBtn')?.addEventListener('click', saveAlgorithmEditor);
     window.addEventListener('message', handleAlgorithmEmbedMessage);
+    document.addEventListener('mousedown', clearSelectionWhenClickingOutsideSlide, true);
     slidesRoot.addEventListener('click', event => {
       if (handleSlideEdgeAddClick(event)) return;
     });
@@ -1273,6 +2048,14 @@
     codeLanguageSelect.addEventListener('change', () => updateSelectedWidget({ language: codeLanguageSelect.value }));
     latexFontSizeInput.addEventListener('input', () => updateSelectedWidget({ fontSize: Number(latexFontSizeInput.value) || 34 }));
     codeFontSizeInput.addEventListener('input', () => updateSelectedWidget({ fontSize: Number(codeFontSizeInput.value) || 21 }));
+    codeFocusLinesInput.addEventListener('input', () => updateSelectedWidget({ focusLines: codeFocusLinesInput.value }));
+    codeShowLineNumbersInput.addEventListener('change', () => updateSelectedWidget({ showLineNumbers: codeShowLineNumbersInput.checked }));
+    transitionIdInput.addEventListener('input', () => updateSelectedAnimation({ transitionId: transitionIdInput.value }));
+    fragmentEnabledInput.addEventListener('change', () => updateSelectedAnimation({ fragmentEnabled: fragmentEnabledInput.checked }));
+    fragmentStyleSelect.addEventListener('change', () => updateSelectedAnimation({ fragmentStyle: fragmentStyleSelect.value }));
+    fragmentIndexInput.addEventListener('input', () => updateSelectedAnimation({
+      fragmentIndex: fragmentIndexInput.value === '' ? null : Math.max(0, Math.round(Number(fragmentIndexInput.value) || 0))
+    }));
     document.querySelectorAll('[data-insert]').forEach(button => {
       button.addEventListener('click', () => insertAtCursor(latexEditorInput, button.dataset.insert));
     });
@@ -1293,7 +2076,11 @@
     listStyleBtn.addEventListener('click', cycleTextList);
     textColorBtn.addEventListener('click', () => openIro('text'));
     bgColorBtn.addEventListener('click', () => openIro('background'));
-    shapeColorBtn.addEventListener('click', () => openIro('shape'));
+    shapeStrokeBtn.addEventListener('click', () => openIro('shape-stroke'));
+    shapeColorBtn.addEventListener('click', () => openIro('shape-fill'));
+    shapeTypeSelect?.addEventListener('change', () => replaceSelectedShape(shapeTypeSelect.value));
+    shapeStrokeWidthInput.addEventListener('input', () => applyShapeStyle({ strokeWidth: Number(shapeStrokeWidthInput.value) || 0 }));
+    shapeCornerRadiusInput.addEventListener('input', () => applyShapeStyle({ cornerRadius: Number(shapeCornerRadiusInput.value) || 0 }));
   }
 
   function insertAtCursor(input, text) {
@@ -1310,11 +2097,21 @@
       const tool = item.dataset.tool === 'shape' ? item.dataset.shape : item.dataset.tool;
       item.classList.toggle('is-armed', tool === pendingTool);
     });
-    shapeMenuBtn.classList.toggle('is-armed', pendingTool === 'circle' || pendingTool === 'triangle');
+    shapeMenuBtn.classList.toggle('is-armed', pendingTool === 'rect' || pendingTool === 'circle' || pendingTool === 'triangle');
   }
 
   function bindSlideDrop() {
     let widgetDrag = null;
+
+    const isCodeScrollbarInteraction = (event, widgetEl) => {
+      if (!widgetEl?.classList.contains('code-widget')) return false;
+      if (event.target.closest?.('.widget-edge-handle')) return false;
+      const pre = event.target.closest?.('.code-widget pre') || widgetEl.querySelector('pre');
+      if (!pre) return false;
+      const rect = pre.getBoundingClientRect();
+      const hitsVertical = pre.scrollHeight > pre.clientHeight && event.clientX >= rect.right - CODE_SCROLLBAR_HIT_GUTTER;
+      return hitsVertical;
+    };
 
     const beginWidgetDrag = event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
@@ -1324,6 +2121,7 @@
         exitWidgetEditorIfNeeded();
       }
       if (!widgetEl || event.button !== 0 || isOverviewEditing() || widgetDrag) return;
+      if (isCodeScrollbarInteraction(event, widgetEl)) return;
       event.stopPropagation();
       event.preventDefault();
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
@@ -1337,6 +2135,10 @@
       selectWidget(widgetEl.dataset.widgetId);
       const found = getWidget(widgetEl.dataset.widgetId);
       if (!found.widget) return;
+      if (found.widget.type === 'code') {
+        finishCodeAutoAnimation();
+        resetCodeWidgetRuntimeStyles(widgetEl, found.widget);
+      }
       const edge = found.widget.type === 'code' ? (event.target.dataset.resizeEdge || inferResizeEdge(widgetEl, event)) : null;
       const layerRect = widgetEl.closest('.widget-layer').getBoundingClientRect();
       const scaleX = layerRect.width / SLIDE_W;
@@ -1351,14 +2153,13 @@
         originalY: found.widget.y,
         originalW: found.widget.w,
         originalH: found.widget.h,
-        originalCropX: found.widget.cropX || 0,
-        originalCropY: found.widget.cropY || 0,
         originalFontSize: found.widget.fontSize || (found.widget.type === 'code' ? 21 : 34),
         originalScale: found.widget.scale || 1,
         scaleX,
         scaleY,
         moved: false
       };
+      widgetEl.classList.toggle('is-resizing', !!edge);
     };
 
     function inferResizeEdge(widgetEl, event) {
@@ -1371,6 +2172,10 @@
       const nearBottom = Math.abs(y - rect.height) <= pad;
       const nearLeft = Math.abs(x) <= pad;
       const nearRight = Math.abs(x - rect.width) <= pad;
+      if (nearTop && nearLeft) return 'top-left';
+      if (nearTop && nearRight) return 'top-right';
+      if (nearBottom && nearLeft) return 'bottom-left';
+      if (nearBottom && nearRight) return 'bottom-right';
       if (nearTop && x > rect.width * 0.25 && x < rect.width * 0.75) return 'top';
       if (nearBottom && x > rect.width * 0.25 && x < rect.width * 0.75) return 'bottom';
       if (nearLeft && y > rect.height * 0.25 && y < rect.height * 0.75) return 'left';
@@ -1407,6 +2212,7 @@
         el.style.fontSize = `${found.widget.fontSize}px`;
         el.dataset.manualSize = found.widget.manualSize ? 'true' : 'false';
         positionWidgetContent(el, found.widget);
+        if (widgetDrag.mode === 'resize') void el.offsetHeight;
       }
     };
 
@@ -1419,8 +2225,8 @@
       }
       if (widgetDrag.moved) {
         saveDeck();
-        refreshRevealWidgets();
       }
+      document.querySelector(`.slide-widget[data-widget-id="${widgetDrag.widgetId}"]`)?.classList.remove('is-resizing');
       widgetDrag = null;
     };
 
@@ -1442,6 +2248,10 @@
     document.addEventListener('pointermove', event => updateWidgetDrag(event), true);
     document.addEventListener('pointerup', event => endWidgetDrag(event), true);
 
+    slidesRoot.addEventListener('wheel', event => {
+      if (event.target.closest?.('.code-widget pre')) event.stopPropagation();
+    }, { passive: true, capture: true });
+
     ['dragstart', 'selectstart'].forEach(type => {
       slidesRoot.addEventListener(type, event => {
         if (event.target.closest && event.target.closest('.slide-widget')) {
@@ -1452,29 +2262,25 @@
     });
 
     function resizeWidgetFromEdge(widget, drag, dx, dy) {
-      const minW = 4;
-      const minH = 4;
-      const maxCropX = Math.max(0, drag.originalCropX + drag.originalW - minW);
-      const maxCropY = Math.max(0, drag.originalCropY + drag.originalH - minH);
-      if (drag.edge === 'right') {
+      const minW = 40;
+      const minH = 40;
+      if (drag.edge.includes('right')) {
         widget.w = Math.max(minW, Math.min(drag.originalW + dx, SLIDE_W - widget.x));
       }
-      if (drag.edge === 'bottom') {
+      if (drag.edge.includes('bottom')) {
         widget.h = Math.max(minH, Math.min(drag.originalH + dy, SLIDE_H - widget.y));
       }
-      if (drag.edge === 'left') {
+      if (drag.edge.includes('left')) {
         const opposite = drag.originalX + drag.originalW;
         const nextX = Math.max(0, Math.min(drag.originalX + dx, opposite - minW));
         widget.x = nextX;
         widget.w = opposite - nextX;
-        widget.cropX = Math.max(0, Math.min(maxCropX, drag.originalCropX + (nextX - drag.originalX)));
       }
-      if (drag.edge === 'top') {
+      if (drag.edge.includes('top')) {
         const opposite = drag.originalY + drag.originalH;
         const nextY = Math.max(0, Math.min(drag.originalY + dy, opposite - minH));
         widget.y = nextY;
         widget.h = opposite - nextY;
-        widget.cropY = Math.max(0, Math.min(maxCropY, drag.originalCropY + (nextY - drag.originalY)));
       }
     }
 
@@ -1560,6 +2366,8 @@
         }
       }
 
+      if (isEditableDomTarget(event)) return;
+
       if (document.body.classList.contains('asm-edit-mode') && !isOverviewEditing() && (event.ctrlKey || event.metaKey) && !isEditableDomTarget(event)) {
         const canvas = currentFabricCanvas();
         if (!canvas || !isTypingInFabric(canvas)) {
@@ -1644,15 +2452,97 @@
     return {};
   }
 
-  function applyShapeColor(color) {
+  function applyShapeStyle(style) {
     const canvas = currentFabricCanvas();
     if (!canvas) return;
     const active = canvas.getActiveObject();
     if (!active || isTextObject(active) || isImageObject(active)) return;
-    active.set('fill', color);
+    const patch = { ...style };
+    if ('strokeWidth' in patch) {
+      applyInwardShapeStrokeWidth(active, patch.strokeWidth);
+      delete patch.strokeWidth;
+    }
+    if ('cornerRadius' in patch) {
+      if (active.type !== 'rect') return;
+      patch.cornerRadius = Math.max(0, Number(patch.cornerRadius) || 0);
+      patch.rx = patch.cornerRadius;
+      patch.ry = patch.cornerRadius;
+    }
+    active.set(patch);
+    active.setCoords();
     canvas.requestRenderAll();
     syncCurrentSlideCanvas();
     updateObjectToolbar(active, canvas);
+  }
+
+  function replaceSelectedShape(type) {
+    const canvas = currentFabricCanvas();
+    const active = canvas?.getActiveObject();
+    if (!canvas || !isShapeObject(active) || !['rect', 'circle', 'triangle'].includes(type) || active.type === type) return;
+    finishFabricAutoAnimation();
+    const index = canvas.getObjects().indexOf(active);
+    const center = active.getCenterPoint();
+    const width = Math.max(4, (Number(active.width) || (Number(active.radius) || 2) * 2) * Math.abs(Number(active.scaleX) || 1));
+    const height = Math.max(4, (Number(active.height) || (Number(active.radius) || 2) * 2) * Math.abs(Number(active.scaleY) || 1));
+    const replacement = createShape(type, 0, 0);
+    const animation = normalizeAnimationSettings(active);
+    replacement.set({
+      fill: active.fill,
+      stroke: active.stroke,
+      strokeWidth: Number(active.strokeWidth) || 0,
+      strokeUniform: true,
+      angle: Number(active.angle) || 0,
+      opacity: Number.isFinite(Number(active.opacity)) ? Number(active.opacity) : 1,
+      ...animation,
+      fragmentProxyId: active.fragmentProxyId || randomId()
+    });
+    if (type === 'circle') {
+      replacement.set({ radius: Math.max(2, Math.min(width, height) / 2), scaleX: 1, scaleY: 1 });
+    } else {
+      replacement.set({ width, height, scaleX: 1, scaleY: 1 });
+    }
+    if (type === 'rect') {
+      const radius = Math.max(0, Number(active.cornerRadius) || Number(active.rx) || 0);
+      replacement.set({ cornerRadius: radius, rx: radius, ry: radius });
+    }
+    configureObject(replacement);
+    replacement.setPositionByOrigin(center, 'center', 'center');
+    replacement.setCoords();
+    suppressCanvasSave = true;
+    try {
+      canvas.remove(active);
+      canvas.insertAt(replacement, index, false);
+      canvas.setActiveObject(replacement);
+    } finally {
+      suppressCanvasSave = false;
+    }
+    canvas.requestRenderAll();
+    syncCurrentSlideCanvas();
+    updateObjectToolbar(replacement, canvas);
+  }
+
+  function applyInwardShapeStrokeWidth(obj, value) {
+    const nextStrokeWidth = Math.max(0, Number(value) || 0);
+    const previousStrokeWidth = Math.max(0, Number(obj.strokeWidth) || 0);
+    const delta = nextStrokeWidth - previousStrokeWidth;
+    if (Math.abs(delta) < 0.001) return;
+    const center = obj.getCenterPoint();
+    const scaleX = Math.max(0.001, Math.abs(Number(obj.scaleX) || 1));
+    const scaleY = Math.max(0.001, Math.abs(Number(obj.scaleY) || 1));
+    if (obj.type === 'circle') {
+      const diameter = Math.max(4, (Number(obj.radius) || 2) * 2);
+      obj.set({
+        scaleX: Math.max(0.01, (diameter * scaleX - delta) / diameter),
+        scaleY: Math.max(0.01, (diameter * scaleY - delta) / diameter)
+      });
+    } else {
+      obj.set({
+        width: Math.max(4, (Number(obj.width) || 4) - delta / scaleX),
+        height: Math.max(4, (Number(obj.height) || 4) - delta / scaleY)
+      });
+    }
+    obj.set({ strokeWidth: nextStrokeWidth, strokeUniform: true });
+    obj.setPositionByOrigin(center, 'center', 'center');
   }
 
   function updateObjectToolbar(obj, canvas) {
@@ -1660,13 +2550,14 @@
       hideObjectToolbar();
       return;
     }
+    showFabricObjectEditor(obj);
     if (isImageObject(obj)) {
-      hideObjectToolbar();
+      hideObjectToolbar({ keepAnimation: true });
       return;
     }
     if (isTextObject(obj)) {
       if (!obj.isEditing || obj.selectionStart === obj.selectionEnd) {
-        hideObjectToolbar();
+        hideObjectToolbar({ keepAnimation: true });
         return;
       }
       textSelection = { object: obj, start: obj.selectionStart, end: obj.selectionEnd };
@@ -1686,7 +2577,19 @@
       alignRightBtn.classList.toggle('is-active', obj.textAlign === 'right');
       updateListButton(obj);
     } else {
-      shapeColorBtn.style.color = normalizeColor(obj.fill || '#eee7fb');
+      const strokeWidth = Number.isFinite(Number(obj.strokeWidth)) ? Number(obj.strokeWidth) : 0;
+      const cornerRadius = Number.isFinite(Number(obj.cornerRadius)) ? Number(obj.cornerRadius) : (Number(obj.rx) || 0);
+      const strokeColor = normalizeColor(obj.stroke || '#875bc7');
+      const fillColor = normalizeColor(obj.fill || '#eee7fb');
+      shapeStrokeBtn.style.setProperty('--shape-stroke-color', strokeColor);
+      shapeStrokeBtn.style.setProperty('--shape-stroke-width', `${Math.max(1, Math.min(9, strokeWidth))}px`);
+      shapeStrokeBtn.style.setProperty('--shape-corner-radius', `${Math.min(12, cornerRadius)}px`);
+      shapeColorBtn.style.setProperty('--shape-fill-color', fillColor);
+      shapeStrokeWidthInput.value = String(strokeWidth);
+      shapeStrokeWidthValue.value = String(strokeWidth);
+      shapeCornerRadiusControls.hidden = obj.type !== 'rect';
+      shapeCornerRadiusInput.value = String(cornerRadius);
+      shapeCornerRadiusValue.value = String(cornerRadius);
     }
     const rect = canvas.upperCanvasEl.getBoundingClientRect();
     const bounds = obj.getBoundingRect(true, true);
@@ -1698,9 +2601,10 @@
     objectToolbar.style.transform = 'translateX(-50%)';
   }
 
-  function hideObjectToolbar() {
+  function hideObjectToolbar({ keepAnimation = false } = {}) {
     objectToolbar.hidden = true;
     iroPopup.hidden = true;
+    if (!keepAnimation && !selectedWidgetId) hideAnimationEditor();
   }
 
   function exitWidgetEditorIfNeeded() {
@@ -1727,6 +2631,10 @@
 
   function isImageObject(obj) {
     return !!(obj && obj.type && obj.type.toLowerCase().includes('image'));
+  }
+
+  function isShapeObject(obj) {
+    return !!(obj && ['rect', 'circle', 'triangle'].includes(obj.type));
   }
 
   function getTextSelectionStyle(obj) {
@@ -1840,9 +2748,11 @@
   }
 
   function openIro(target) {
+    const shouldClose = !iroPopup.hidden && activeColorTarget === target;
     activeColorTarget = target;
-    iroPopup.hidden = !iroPopup.hidden && activeColorTarget === target;
+    iroPopup.hidden = shouldClose;
     if (iroPopup.hidden) return;
+    shapeStyleControls.hidden = activeColorTarget !== 'shape-stroke';
     if (!iroPicker) {
       iroPicker = new window.iro.ColorPicker('#iroPicker', {
         width: 150,
@@ -1857,8 +2767,10 @@
       });
       iroPicker.on('color:change', color => {
         const value = color.rgbaString;
-        if (activeColorTarget === 'shape') {
-          applyShapeColor(value);
+        if (activeColorTarget === 'shape-fill') {
+          applyShapeStyle({ fill: value });
+        } else if (activeColorTarget === 'shape-stroke') {
+          applyShapeStyle({ stroke: value });
         } else if (activeColorTarget === 'text') {
           applyTextStyle({ fill: value });
         } else {
@@ -1869,8 +2781,10 @@
     const canvas = currentFabricCanvas();
     const active = canvas && canvas.getActiveObject();
     const style = active && isTextObject(active) ? getTextSelectionStyle(active) : {};
-    const current = activeColorTarget === 'shape'
+    const current = activeColorTarget === 'shape-fill'
       ? (active?.fill || 'rgba(238, 231, 251, 1)')
+      : activeColorTarget === 'shape-stroke'
+        ? (active?.stroke || 'rgba(135, 91, 199, 1)')
       : activeColorTarget === 'text'
         ? (style.fill || active?.fill || 'rgba(31, 40, 45, 1)')
         : (style.textBackgroundColor || 'rgba(255, 255, 255, 1)');
@@ -3437,6 +4351,147 @@
     }, 1800);
   }
 
+  function debugNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
+  }
+
+  function debugPreview(value, limit = 120) {
+    if (typeof value !== 'string') return '';
+    const preview = value.replace(/\s+/g, ' ').trim();
+    return preview.length > limit ? `${preview.slice(0, limit)}...` : preview;
+  }
+
+  function debugAnimation(source = {}) {
+    const animation = normalizeAnimationSettings(source);
+    return {
+      transitionId: animation.transitionId,
+      fragmentEnabled: animation.fragmentEnabled,
+      fragmentStyle: animation.fragmentStyle,
+      fragmentIndex: animation.fragmentIndex
+    };
+  }
+
+  function debugFabricObject(savedObject, runtimeObject, index, isSelected) {
+    const source = runtimeObject || savedObject || {};
+    return {
+      index,
+      type: source.type || savedObject?.type || 'unknown',
+      textPreview: debugPreview(source.text || savedObject?.text),
+      position: {
+        left: debugNumber(source.left),
+        top: debugNumber(source.top),
+        angle: debugNumber(source.angle)
+      },
+      size: {
+        width: debugNumber(source.width),
+        height: debugNumber(source.height),
+        radius: debugNumber(source.radius),
+        scaleX: debugNumber(source.scaleX),
+        scaleY: debugNumber(source.scaleY),
+        strokeWidth: debugNumber(source.strokeWidth)
+      },
+      colors: {
+        fill: source.fill ?? null,
+        stroke: source.stroke ?? null
+      },
+      selected: !!isSelected,
+      savedVisible: savedObject ? savedObject.visible !== false : null,
+      runtimeVisible: runtimeObject ? runtimeObject.visible !== false : null,
+      fragmentProxyId: source.fragmentProxyId || savedObject?.fragmentProxyId || '',
+      animation: debugAnimation(source)
+    };
+  }
+
+  function debugWidget(widget, index, layer) {
+    const el = layer?.querySelector(`.slide-widget[data-widget-id="${widget.id}"]`);
+    const style = el && getComputedStyle(el);
+    return {
+      index,
+      id: widget.id,
+      type: widget.type,
+      position: {
+        x: debugNumber(widget.x),
+        y: debugNumber(widget.y)
+      },
+      size: {
+        width: debugNumber(widget.w),
+        height: debugNumber(widget.h),
+        fontSize: debugNumber(widget.fontSize)
+      },
+      contentPreview: debugPreview(widget.content),
+      focusLines: widget.type === 'code' ? widget.focusLines : undefined,
+      showLineNumbers: widget.type === 'code' ? widget.showLineNumbers : undefined,
+      selected: widget.id === selectedWidgetId || !!el?.classList.contains('is-selected'),
+      runtime: el ? {
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        fragmentVisible: el.classList.contains('visible')
+      } : null,
+      animation: debugAnimation(widget)
+    };
+  }
+
+  function getSelectedObjectInfo() {
+    const revealIndices = reveal && reveal.getIndices ? reveal.getIndices() : null;
+    const slide = getSlide();
+    const context = {
+      generatedAt: new Date().toISOString(),
+      chapter: currentH + 1,
+      slideInChapter: currentV + 1,
+      h: currentH,
+      v: currentV,
+      slideId: slide?.id || null,
+      revealIndices
+    };
+    if (!slide) return { context, selected: null };
+
+    if (selectedWidgetId) {
+      const widgets = normalizeWidgets(slide.widgets);
+      const index = widgets.findIndex(widget => widget.id === selectedWidgetId);
+      const widget = widgets[index];
+      const layer = document.querySelector(`.widget-layer[data-slide-id="${slide.id}"]`);
+      return {
+        context,
+        selected: widget ? {
+          kind: 'widget',
+          ...debugWidget(widget, index, layer)
+        } : null
+      };
+    }
+
+    const canvas = currentFabricCanvas();
+    const runtimeObject = canvas?.getActiveObject();
+    if (!runtimeObject || runtimeObject.type === 'activeSelection') {
+      return {
+        context,
+        selected: runtimeObject?.type === 'activeSelection'
+          ? { kind: 'fabric-active-selection', count: canvas.getActiveObjects().length }
+          : null
+      };
+    }
+    const runtimeObjects = canvas.getObjects();
+    const savedObjects = (slide.canvas && slide.canvas.objects) || [];
+    const index = runtimeObjects.indexOf(runtimeObject);
+    const savedObject = savedObjects.find(obj => obj.fragmentProxyId && obj.fragmentProxyId === runtimeObject.fragmentProxyId)
+      || savedObjects[index];
+    return {
+      context,
+      selected: {
+        kind: 'fabric',
+        ...debugFabricObject(savedObject, runtimeObject, index, true)
+      }
+    };
+  }
+
+  function logSelectedObjectInfo() {
+    return getSelectedObjectInfo();
+  }
+
+  window.asmDebugSelected = logSelectedObjectInfo;
+  window.asmDebugSelectedText = () => JSON.stringify(getSelectedObjectInfo(), null, 2);
+
   function updateDiagnostics() {
     const totalObjects = deck.groups.reduce((sum, group) => {
       return sum + group.slides.reduce((slideSum, slide) => {
@@ -3479,13 +4534,18 @@
         window.RevealMath && window.RevealMath.KaTeX
       ].filter(Boolean)
     }).then(() => {
+      revealReady = true;
       document.body.dataset.revealPlugins = Object.keys(reveal.getPlugins ? reveal.getPlugins() : {}).join(',');
       reveal.on('slidechanged', event => {
         if (pointerDrag) return;
         currentH = event.indexh;
         currentV = event.indexv || 0;
         updateAlgorithmEditButton();
+        refreshFabricFragmentVisibility();
       });
+      reveal.on('autoanimate', animateSlideAutoTransition);
+      reveal.on('fragmentshown', refreshFabricFragmentVisibility);
+      reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();
       setTimeout(refreshRevealWidgets, 1200);
     });
