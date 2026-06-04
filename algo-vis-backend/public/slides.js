@@ -6,8 +6,6 @@
   const fabricCanvases = new Map();
   const slidePositions = new Map();
   const MAX_HISTORY = 80;
-  const CODE_FOCUS_SCROLL_OFFSET = -12;
-  const CODE_AUTO_FOCUS_SCROLL_OFFSET = 30;
   const CODE_SCROLLBAR_HIT_GUTTER = 5;
   const FABRIC_CUSTOM_PROPS = ['transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius'];
   const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
@@ -632,7 +630,7 @@
     return Array.from(selected).sort((a, b) => a - b);
   }
 
-  function codeFocusScrollTop(el, widget, offset = CODE_FOCUS_SCROLL_OFFSET) {
+  function codeFocusScrollTop(el, widget) {
     const pre = el?.querySelector('pre');
     const code = pre?.querySelector('code');
     if (!pre || !code || !widget) return 0;
@@ -650,8 +648,10 @@
     const bottom = lastRow
       ? ((lastRow.getBoundingClientRect().bottom - preRect.top) / (scaleY || 1)) + pre.scrollTop
       : lines[lines.length - 1] * lineHeight;
-    const viewportHeight = Math.max(1, el.clientHeight);
-    return Math.max(0, Math.min(pre.scrollHeight - viewportHeight, ((top + bottom) / 2) - (viewportHeight / 2) + offset));
+    const viewportHeight = Math.max(1, pre.clientHeight);
+    const focusCenter = (top + bottom - 1) / 2;
+    const targetScrollTop = Math.max(0, Math.min(pre.scrollHeight - viewportHeight, focusCenter - (viewportHeight / 2)));
+    return targetScrollTop;
   }
 
   function scrollCodeWidgetToFocus(el, widget, behavior = 'auto') {
@@ -1160,7 +1160,7 @@
       setCodeAutoAnimationBox(el, widget);
       const pre = el.querySelector('pre');
       if (pre) {
-        pre.scrollTop = finalScroll;
+        pre.scrollTop = Number.isFinite(finalScroll) ? finalScroll : codeFocusScrollTop(el, widget);
       }
       el.style.removeProperty('visibility');
       delete el.dataset.codeAutoAnimating;
@@ -1208,25 +1208,6 @@
     positionWidgetContent(el, widget);
   }
 
-  function measureCodeFinalScroll(el, widget) {
-    if (!el || !widget) return 0;
-    const clone = el.cloneNode(true);
-    clone.removeAttribute('data-widget-id');
-    clone.style.setProperty('position', 'absolute', 'important');
-    clone.style.setProperty('visibility', 'hidden', 'important');
-    clone.style.setProperty('pointer-events', 'none', 'important');
-    clone.style.setProperty('z-index', '-1', 'important');
-    clone.style.setProperty('transform', 'none', 'important');
-    clone.style.setProperty('left', '-10000px', 'important');
-    clone.style.setProperty('top', '-10000px', 'important');
-    document.body.appendChild(clone);
-    setCodeAutoAnimationBox(clone, widget);
-    positionWidgetContent(clone, widget);
-    const finalScroll = codeFocusScrollTop(clone, widget, CODE_AUTO_FOCUS_SCROLL_OFFSET);
-    clone.remove();
-    return finalScroll;
-  }
-
   function animateCodeAutoTransition(event) {
     finishCodeAutoAnimation();
     const fromSlide = getSlideById(event?.fromSlide?.dataset.slideId);
@@ -1245,12 +1226,11 @@
       const sourceEl = event.fromSlide.querySelector(`.code-widget[data-widget-id="${source.id}"]`);
       resetCodeWidgetRuntimeStyles(sourceEl, source);
       const initialScroll = sourceEl?.querySelector('pre')?.scrollTop || 0;
-      const finalScroll = measureCodeFinalScroll(el, widget);
       setCodeAutoAnimationBox(el, source);
       const pre = el.querySelector('pre');
       if (pre) pre.scrollTop = initialScroll;
       void el.offsetHeight;
-      matches.push({ el, source, widget, initialScroll, finalScroll });
+      matches.push({ el, source, widget, initialScroll, finalScroll: null });
       return matches;
     }, []);
     document.body.dataset.codeAutoAnimateCount = String(targets.length);
@@ -1267,7 +1247,8 @@
       const boxEased = 1 - Math.pow(1 - boxProgress, 3);
       const scrollProgress = Math.max(0, Math.min(1, (elapsed - 0.5) / 0.5));
       const scrollEased = Math.pow(scrollProgress, 4);
-      targets.forEach(({ el, source, widget, initialScroll, finalScroll }) => {
+      targets.forEach(target => {
+        const { el, source, widget, initialScroll } = target;
         setCodeAutoAnimationBox(el, {
           x: source.x + ((widget.x - source.x) * boxEased),
           y: source.y + ((widget.y - source.y) * boxEased),
@@ -1276,6 +1257,10 @@
         });
         const pre = el.querySelector('pre');
         if (pre) {
+          if (scrollProgress > 0 && !Number.isFinite(target.finalScroll)) {
+            target.finalScroll = codeFocusScrollTop(el, widget);
+          }
+          const finalScroll = Number.isFinite(target.finalScroll) ? target.finalScroll : initialScroll;
           pre.scrollTop = initialScroll + ((finalScroll - initialScroll) * scrollEased);
         }
       });
@@ -1285,7 +1270,7 @@
           setCodeAutoAnimationBox(el, widget);
           const pre = el.querySelector('pre');
           if (pre) {
-            pre.scrollTop = finalScroll;
+            pre.scrollTop = Number.isFinite(finalScroll) ? finalScroll : codeFocusScrollTop(el, widget);
           }
           el.style.removeProperty('visibility');
           delete el.dataset.codeAutoAnimating;
@@ -2249,7 +2234,9 @@
     document.addEventListener('pointerup', event => endWidgetDrag(event), true);
 
     slidesRoot.addEventListener('wheel', event => {
-      if (event.target.closest?.('.code-widget pre')) event.stopPropagation();
+      const pre = event.target.closest?.('.code-widget pre');
+      if (!pre) return;
+      event.stopPropagation();
     }, { passive: true, capture: true });
 
     ['dragstart', 'selectstart'].forEach(type => {
