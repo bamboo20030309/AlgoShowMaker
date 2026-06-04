@@ -408,14 +408,14 @@ AV_V4.1 2026/06/01
 -----------------------------------------------------------------------------------------------
 AV_V4.2 2026/06/04
 
-Added:
-1. Added selected-object animation settings in the slide editor sidebar, including Transition ID, fragment options, and code focus-line / line-number controls.
-2. Added shape editing controls for stroke color, stroke width, fill color, rounded corners for rectangles, and shape type switching.
-3. Added custom code auto-animate behavior so code widgets resize like a dragged frame, then scroll to the focused line.
+新增:
+1. 新增選取物件後的動畫設定欄，可編輯 Transition ID、fragment 設定、code 關注行數與行號顯示。
+2. 新增 shapes 編輯功能，可調整邊框顏色、邊框粗細、底框顏色、矩形圓角與形狀類型。
+3. 新增 code 物件專用 auto-animate，讓 code 框像手動拖曳一樣放大，再捲動到關注行數。
 
-Fixed:
-1. Fixed Fabric.js CanvasTextBaseline warning by mapping the invalid "alphabetical" value to "alphabetic" before Fabric loads.
-2. Fixed code widgets disappearing or jumping when slides with animation are selected, moved, undone, or redone.
-3. Fixed code focus-line empty input handling so the code widget stays visible and all lines remain highlighted.
-4. Fixed code scrollbar styling, scrolling behavior, resize anchors, and animation clipping artifacts.
-5. Fixed shape stroke width so it stays visually consistent during resize and animation.
+修正:
+1. 修正 Fabric.js CanvasTextBaseline warning，載入 Fabric 前會把無效的 alphabetical 轉成 alphabetic。
+2. 修正有動畫時選取、移動、復原或重做 code 物件會消失或瞬移的問題。
+3. 修正 code 關注行數清空時 code 物件消失的問題，未設定關注行數時會維持所有行數亮起。
+4. 修正 code 滾輪樣式、滾動行為、resize 錨點與動畫裁切殘影問題。
+5. 修正 shape 邊框粗細在縮放與動畫期間不一致的問題。
