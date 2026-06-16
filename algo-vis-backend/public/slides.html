@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=random-id-32" />
+  <link rel="stylesheet" href="slides.css?v=random-id-39" />
 </head>
 
 <body class="asm-edit-mode">
@@ -123,20 +123,37 @@
         <input id="codeShowLineNumbersInput" type="checkbox" />
         <span>顯示行號</span>
       </label>
-      <textarea id="codeEditorInput" spellcheck="false"></textarea>
+      <button id="openCodeEditorBtn" class="code-editor-open-btn" type="button">編輯程式碼</button>
     </div>
 
     <div id="animationEditorPanel" class="sidebar-panel animation-editor-panel" hidden>
+      <div id="shapeEditorControls" class="shape-editor-controls" hidden>
+        <div class="shape-editor-title">Shape</div>
+        <div class="shape-editor-grid">
+          <button type="button" class="shape-choice shape-choice-rect" data-shape-choice="rect" title="矩形" aria-label="矩形">□</button>
+          <button type="button" class="shape-choice" data-shape-choice="circle" title="圓形" aria-label="圓形">○</button>
+          <button type="button" class="shape-choice" data-shape-choice="triangle" title="三角形" aria-label="三角形">△</button>
+        </div>
+      </div>
+      <div id="layerEditorControls" class="layer-editor-controls">
+        <div class="layer-editor-title">圖層順序</div>
+        <div class="layer-action-grid">
+          <button id="layerToTopBtn" type="button" class="layer-action-btn" title="移到最上面" aria-label="移到最上面">
+            <span class="layer-icon layer-icon-to-top" aria-hidden="true"></span>
+          </button>
+          <button id="layerUpBtn" type="button" class="layer-action-btn" title="往上移一層" aria-label="往上移一層">
+            <span class="layer-icon layer-icon-up" aria-hidden="true"></span>
+          </button>
+          <button id="layerDownBtn" type="button" class="layer-action-btn" title="往下移一層" aria-label="往下移一層">
+            <span class="layer-icon layer-icon-down" aria-hidden="true"></span>
+          </button>
+          <button id="layerToBottomBtn" type="button" class="layer-action-btn" title="移到最下面" aria-label="移到最下面">
+            <span class="layer-icon layer-icon-to-bottom" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
       <div class="panel-title">
         <strong>動畫設定</strong>
-      </div>
-      <div id="shapeEditorControls" hidden>
-        <label class="field-label" for="shapeTypeSelect">Shape</label>
-        <select id="shapeTypeSelect">
-          <option value="rect">Rectangle</option>
-          <option value="circle">Circle</option>
-          <option value="triangle">Triangle</option>
-        </select>
       </div>
       <label class="field-label" for="transitionIdInput">Transition ID</label>
       <input id="transitionIdInput" type="text" placeholder="跨投影片對應 ID" />
@@ -185,6 +202,22 @@
         <button id="saveAlgorithmEditorBtn" type="button" title="將目前腳本儲存到投影片">儲存</button>
       </div>
       <iframe id="algorithmEditorFrame" title="演算法動畫編輯器" src="about:blank"></iframe>
+    </div>
+  </div>
+
+  <div id="codeEditorModal" class="code-editor-modal" hidden>
+    <div class="code-editor-dialog">
+      <div class="code-editor-header">
+        <div>
+          <strong>編輯程式碼</strong>
+          <span id="codeEditorModalStatus">使用 ACE editor 編輯目前 code 物件</span>
+        </div>
+        <div class="code-editor-modal-actions">
+          <button id="closeCodeEditorModalBtn" type="button">取消</button>
+          <button id="saveCodeEditorModalBtn" type="button">儲存</button>
+        </div>
+      </div>
+      <div id="codeAceEditor" class="code-ace-editor"></div>
     </div>
   </div>
 
@@ -282,7 +315,12 @@
     window.iro = window.iro || (window.module && window.module.exports && window.module.exports.ColorPicker ? window.module.exports : null) || (window.exports && window.exports.ColorPicker ? window.exports : null);
     document.body.dataset.iroBridge = window.iro && window.iro.ColorPicker ? 'ready' : 'missing';
   </script>
-  <script src="slides.js?v=random-id-60"></script>
+  <script src="/vendor/ace/ace.js"></script>
+  <script>
+    if (window.ace && window.ace.config) window.ace.config.set('basePath', '/vendor/ace');
+    document.body.dataset.aceBridge = window.ace && window.ace.edit ? 'ready' : 'missing';
+  </script>
+  <script src="slides.js?v=random-id-67"></script>
 </body>
 
 </html>

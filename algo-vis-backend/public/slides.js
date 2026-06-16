@@ -7,7 +7,12 @@
   const slidePositions = new Map();
   const MAX_HISTORY = 80;
   const CODE_SCROLLBAR_HIT_GUTTER = 5;
-  const FABRIC_CUSTOM_PROPS = ['transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius'];
+  const FABRIC_LAYER_INDEX = 1000;
+  const WIDGET_LAYER_BELOW_BASE = 100;
+  const WIDGET_LAYER_ABOVE_BASE = 2000;
+  const STACK_LAYER_BASE = 100;
+  const STACK_LAYER_STEP = 10;
+  const FABRIC_CUSTOM_PROPS = ['transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius', 'layerIndex'];
   const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
 
   function randomId() {
@@ -190,15 +195,24 @@
   const latexEditorPanel = document.getElementById('latexEditorPanel');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
   const latexEditorInput = document.getElementById('latexEditorInput');
-  const codeEditorInput = document.getElementById('codeEditorInput');
+  const openCodeEditorBtn = document.getElementById('openCodeEditorBtn');
+  const codeEditorModal = document.getElementById('codeEditorModal');
+  const codeAceEditorEl = document.getElementById('codeAceEditor');
+  const codeEditorModalStatus = document.getElementById('codeEditorModalStatus');
+  const closeCodeEditorModalBtn = document.getElementById('closeCodeEditorModalBtn');
+  const saveCodeEditorModalBtn = document.getElementById('saveCodeEditorModalBtn');
   const codeLanguageSelect = document.getElementById('codeLanguageSelect');
   const latexFontSizeInput = document.getElementById('latexFontSizeInput');
   const codeFontSizeInput = document.getElementById('codeFontSizeInput');
   const codeFocusLinesInput = document.getElementById('codeFocusLinesInput');
   const codeShowLineNumbersInput = document.getElementById('codeShowLineNumbersInput');
   const animationEditorPanel = document.getElementById('animationEditorPanel');
+  const layerToTopBtn = document.getElementById('layerToTopBtn');
+  const layerUpBtn = document.getElementById('layerUpBtn');
+  const layerDownBtn = document.getElementById('layerDownBtn');
+  const layerToBottomBtn = document.getElementById('layerToBottomBtn');
   const shapeEditorControls = document.getElementById('shapeEditorControls');
-  const shapeTypeSelect = document.getElementById('shapeTypeSelect');
+  const shapeChoiceButtons = Array.from(document.querySelectorAll('[data-shape-choice]'));
   const transitionIdInput = document.getElementById('transitionIdInput');
   const fragmentEnabledInput = document.getElementById('fragmentEnabledInput');
   const fragmentStyleSelect = document.getElementById('fragmentStyleSelect');
@@ -207,6 +221,8 @@
   const algorithmEditorModal = document.getElementById('algorithmEditorModal');
   const algorithmEditorFrame = document.getElementById('algorithmEditorFrame');
   const algorithmEditorStatus = document.getElementById('algorithmEditorStatus');
+  let aceCodeEditor = null;
+  let editingCodeWidgetId = null;
 
   function f() {
     return window.fabric;
@@ -459,7 +475,7 @@
   }
 
   function normalizeWidgets(widgets) {
-    return Array.isArray(widgets) ? widgets.map(widget => {
+    return Array.isArray(widgets) ? widgets.map((widget, index) => {
       const type = widget.type === 'code' ? 'code' : 'latex';
       const normalized = {
         id: widget.id || randomId(),
@@ -474,6 +490,7 @@
         showLineNumbers: widget.showLineNumbers === true,
         scale: Number.isFinite(widget.scale) ? widget.scale : 1,
         manualSize: widget.manualSize === true,
+        layerIndex: Number.isFinite(Number(widget.layerIndex)) ? Number(widget.layerIndex) : WIDGET_LAYER_ABOVE_BASE + index,
         content: typeof widget.content === 'string' ? widget.content : '',
         ...normalizeAnimationSettings(widget)
       };
@@ -844,6 +861,7 @@
     el.style.width = `${widget.w}px`;
     el.style.height = `${widget.h}px`;
     el.style.fontSize = `${widget.fontSize}px`;
+    el.style.zIndex = String(Math.round(Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE));
     applyAnimationAttributes(el, widget);
     const contentChanged = !previousWidget || [
       'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
@@ -865,6 +883,7 @@
     el.style.width = `${widget.w}px`;
     el.style.height = `${widget.h}px`;
     el.style.fontSize = `${widget.fontSize}px`;
+    el.style.zIndex = String(Math.round(Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE));
     applyAnimationAttributes(el, widget);
     paintWidgetElement(el, widget);
     return el;
@@ -943,7 +962,7 @@
           const canvas = new Fabric.Canvas(el, {
             width: SLIDE_W,
             height: SLIDE_H,
-            backgroundColor: '#fbfcfa',
+            backgroundColor: 'rgba(0,0,0,0)',
             preserveObjectStacking: true,
             selection: true,
             stopContextMenu: true,
@@ -956,6 +975,7 @@
           wireCanvas(canvas, slide);
           await loadSlideCanvas(canvas, slide);
           syncFabricFragmentProxies(slide.id, canvas);
+          syncUnifiedLayerStyles(slide, canvas);
         } catch (err) {
           document.body.dataset.fabricBuild = `failed: ${err.message}`;
           console.error('Fabric canvas initialization failed', err);
@@ -1045,6 +1065,7 @@
       noScaleCache: isShapeObject(obj) ? false : obj.noScaleCache,
       ...animation,
       fragmentProxyId: obj.fragmentProxyId || randomId(),
+      layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
   }
@@ -1720,6 +1741,7 @@
   function clearWidgetSelection() {
     selectedWidgetId = null;
     document.querySelectorAll('.slide-widget.is-selected').forEach(el => el.classList.remove('is-selected'));
+    if (codeEditorModal && !codeEditorModal.hidden) closeCodeEditorModal();
     showDefaultPanel();
   }
 
@@ -1794,7 +1816,7 @@
       codeFontSizeInput.value = Math.round(found.widget.fontSize || 21);
       codeFocusLinesInput.value = found.widget.focusLines || '';
       codeShowLineNumbersInput.checked = found.widget.showLineNumbers === true;
-      codeEditorInput.value = found.widget.content;
+      if (codeEditorModalStatus) codeEditorModalStatus.textContent = `目前 code 物件：${found.widget.id}`;
     }
     showAnimationEditor(found.widget);
   }
@@ -1813,23 +1835,273 @@
     const animation = normalizeAnimationSettings(source);
     animationEditorPanel.hidden = false;
     if (shapeEditorControls) shapeEditorControls.hidden = !isShapeObject(source);
-    if (shapeTypeSelect && isShapeObject(source)) shapeTypeSelect.value = source.type;
+    shapeChoiceButtons.forEach(button => {
+      button.classList.toggle('is-active', isShapeObject(source) && button.dataset.shapeChoice === source.type);
+    });
     transitionIdInput.value = animation.transitionId;
     fragmentEnabledInput.checked = animation.fragmentEnabled;
     fragmentStyleSelect.value = animation.fragmentStyle;
     fragmentIndexInput.value = animation.fragmentIndex === null ? '' : String(animation.fragmentIndex);
     fragmentStyleSelect.disabled = !animation.fragmentEnabled;
     fragmentIndexInput.disabled = !animation.fragmentEnabled;
+    updateLayerControlsState();
   }
 
   function hideAnimationEditor() {
     if (animationEditorPanel) animationEditorPanel.hidden = true;
+    layerButtonList().forEach(button => { button.disabled = true; });
+  }
+
+  function aceModeForLanguage(language) {
+    return {
+      c: 'c_cpp',
+      cpp: 'c_cpp',
+      java: 'java',
+      javascript: 'javascript',
+      python: 'python',
+      plaintext: 'text'
+    }[language] || 'text';
+  }
+
+  function ensureAceCodeEditor() {
+    if (aceCodeEditor || !codeAceEditorEl || !window.ace?.edit) return aceCodeEditor;
+    codeAceEditorEl.textContent = '';
+    aceCodeEditor = window.ace.edit(codeAceEditorEl);
+    aceCodeEditor.setTheme('ace/theme/monokai');
+    aceCodeEditor.session.setUseWorker(false);
+    aceCodeEditor.setOptions({
+      fontSize: '15px',
+      showPrintMargin: false,
+      wrap: false,
+      useSoftTabs: true,
+      tabSize: 2
+    });
+    return aceCodeEditor;
+  }
+
+  function openCodeEditorModal() {
+    const found = getWidget(selectedWidgetId);
+    if (!found.widget || found.widget.type !== 'code' || !codeEditorModal) return;
+    editingCodeWidgetId = selectedWidgetId;
+    codeEditorModal.hidden = false;
+    if (codeEditorModalStatus) codeEditorModalStatus.textContent = `目前 code 物件：${found.widget.id}`;
+    const editor = ensureAceCodeEditor();
+    if (!editor) {
+      if (codeAceEditorEl) codeAceEditorEl.textContent = 'ACE editor 尚未載入，請重啟伺服器後再開啟。';
+      return;
+    }
+    editor.session.setMode(`ace/mode/${aceModeForLanguage(found.widget.language)}`);
+    editor.setValue(found.widget.content || '', -1);
+    requestAnimationFrame(() => {
+      editor.resize();
+      editor.focus();
+    });
+  }
+
+  function closeCodeEditorModal() {
+    if (codeEditorModal) codeEditorModal.hidden = true;
+    editingCodeWidgetId = null;
+  }
+
+  function saveCodeEditorModal() {
+    if (!editingCodeWidgetId || !aceCodeEditor) {
+      closeCodeEditorModal();
+      return;
+    }
+    const found = getWidget(editingCodeWidgetId);
+    if (!found.widget || found.widget.type !== 'code') {
+      closeCodeEditorModal();
+      return;
+    }
+    selectedWidgetId = editingCodeWidgetId;
+    updateSelectedWidget({ content: aceCodeEditor.getValue() });
+    showWidgetEditor(editingCodeWidgetId);
+    closeCodeEditorModal();
+  }
+
+  function layerButtonList() {
+    return [layerToTopBtn, layerUpBtn, layerDownBtn, layerToBottomBtn].filter(Boolean);
+  }
+
+  function syncWidgetLayerStyles(slide) {
+    const layer = slide && document.querySelector(`.widget-layer[data-slide-id="${slide.id}"]`);
+    if (!layer) return;
+    normalizeWidgets(slide.widgets).forEach(widget => {
+      const el = layer.querySelector(`.slide-widget[data-widget-id="${widget.id}"]`);
+      if (el) {
+        el.style.zIndex = String(Math.round(Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE));
+        layer.appendChild(el);
+      }
+    });
+  }
+
+  function syncUnifiedLayerStyles(slide, canvas = currentFabricCanvas()) {
+    if (!slide) return;
+    const entries = unifiedLayerEntries(slide, canvas);
+    const host = document.querySelector(`.fabric-host[data-slide-id="${slide.id}"]`);
+    let fabricZ = null;
+    entries.forEach((entry, index) => {
+      const z = STACK_LAYER_BASE + index * STACK_LAYER_STEP;
+      if (entry.kind === 'widget') {
+        const el = document.querySelector(`.slide-widget[data-widget-id="${entry.id}"]`);
+        if (el) el.style.zIndex = String(z);
+      } else if (entry.kind === 'fabric') {
+        fabricZ = Math.max(fabricZ ?? z, z);
+      }
+    });
+    if (host) host.style.zIndex = String(fabricZ ?? FABRIC_LAYER_INDEX);
+  }
+
+  function unifiedLayerEntries(slide, canvas = currentFabricCanvas()) {
+    if (!slide) return [];
+    const widgets = normalizeWidgets(slide.widgets);
+    const entries = widgets.map((widget, index) => ({
+      kind: 'widget',
+      id: widget.id,
+      widget,
+      originalIndex: index,
+      layerIndex: Number.isFinite(Number(widget.layerIndex)) ? Number(widget.layerIndex) : WIDGET_LAYER_ABOVE_BASE + index
+    }));
+    (canvas?.getObjects() || []).forEach((object, index) => {
+      if (!object.fragmentProxyId) object.set?.({ fragmentProxyId: randomId() });
+      entries.push({
+        kind: 'fabric',
+        id: object.fragmentProxyId,
+        object,
+        originalIndex: index,
+        layerIndex: Number.isFinite(Number(object.layerIndex)) ? Number(object.layerIndex) : FABRIC_LAYER_INDEX + index
+      });
+    });
+    return entries.sort((a, b) => (a.layerIndex - b.layerIndex) || (a.originalIndex || 0) - (b.originalIndex || 0));
+  }
+
+  function applyUnifiedLayerEntries(slide, canvas, entries) {
+    const firstFabricIndex = entries.findIndex(entry => entry.kind === 'fabric');
+    let belowWidgetCount = 0;
+    let aboveWidgetCount = 0;
+    let fabricCount = 0;
+    entries.forEach((entry, index) => {
+      if (entry.kind === 'widget') {
+        entry.widget.layerIndex = STACK_LAYER_BASE + index * STACK_LAYER_STEP;
+      } else if (entry.kind === 'fabric') {
+        entry.object.set?.({ layerIndex: STACK_LAYER_BASE + index * STACK_LAYER_STEP });
+      }
+    });
+    slide.widgets = entries.filter(entry => entry.kind === 'widget').map(entry => entry.widget);
+    syncWidgetLayerStyles(slide);
+    syncUnifiedLayerStyles(slide, canvas);
+    if (canvas) {
+      entries.filter(entry => entry.kind === 'fabric').forEach((entry, index) => {
+        if (typeof canvas.moveTo === 'function') canvas.moveTo(entry.object, index);
+        else {
+          canvas.remove(entry.object);
+          canvas.insertAt(entry.object, index, false);
+        }
+      });
+      canvas.requestRenderAll();
+    }
+  }
+
+  function selectedLayerPosition() {
+    const canvas = currentFabricCanvas();
+    if (selectedWidgetId) {
+      const found = getWidget(selectedWidgetId);
+      if (!found.slide || !found.widget) return null;
+      const entries = unifiedLayerEntries(found.slide, canvas);
+      const index = entries.findIndex(entry => entry.kind === 'widget' && entry.id === selectedWidgetId);
+      return index >= 0 ? { index, count: entries.length } : null;
+    }
+    const slide = getSlide();
+    const target = selectedFabricAnimationTarget();
+    if (!slide || !target.canvas || !target.object) return null;
+    const entries = unifiedLayerEntries(slide, target.canvas);
+    const index = entries.findIndex(entry => entry.kind === 'fabric' && entry.object === target.object);
+    return index >= 0 ? { index, count: entries.length } : null;
+  }
+
+  function updateLayerControlsState() {
+    const position = selectedLayerPosition();
+    const hasMovableSelection = !!position && position.count > 1;
+    layerButtonList().forEach(button => { button.disabled = !hasMovableSelection; });
+    if (!hasMovableSelection) return;
+    const atBottom = position.index <= 0;
+    const atTop = position.index >= position.count - 1;
+    if (layerToTopBtn) layerToTopBtn.disabled = atTop;
+    if (layerUpBtn) layerUpBtn.disabled = atTop;
+    if (layerDownBtn) layerDownBtn.disabled = atBottom;
+    if (layerToBottomBtn) layerToBottomBtn.disabled = atBottom;
   }
 
   function selectedFabricAnimationTarget() {
     const canvas = currentFabricCanvas();
     const object = canvas && canvas.getActiveObject();
     return object && object.type !== 'activeSelection' ? { canvas, object } : {};
+  }
+
+  function moveArrayItem(items, fromIndex, toIndex) {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return false;
+    const [item] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, item);
+    return true;
+  }
+
+  function targetLayerIndex(action, index, count) {
+    if (action === 'top') return count - 1;
+    if (action === 'up') return Math.min(count - 1, index + 1);
+    if (action === 'down') return Math.max(0, index - 1);
+    if (action === 'bottom') return 0;
+    return index;
+  }
+
+  function reorderWidgetLayer(action) {
+    if (!selectedWidgetId) return false;
+    const found = getWidget(selectedWidgetId);
+    if (!found.slide || !found.widget) return false;
+    const canvas = currentFabricCanvas();
+    const entries = unifiedLayerEntries(found.slide, canvas);
+    const index = entries.findIndex(entry => entry.kind === 'widget' && entry.id === selectedWidgetId);
+    const nextIndex = targetLayerIndex(action, index, entries.length);
+    if (!moveArrayItem(entries, index, nextIndex)) return false;
+    applyUnifiedLayerEntries(found.slide, canvas, entries);
+    if (canvas) found.slide.canvas = serializeFabricCanvas(canvas);
+    syncSlideAutoAnimate(found.slide);
+    saveDeck();
+    const layer = document.querySelector(`.widget-layer[data-slide-id="${found.slide.id}"]`);
+    if (layer) {
+      normalizeWidgets(found.slide.widgets).forEach(widget => {
+        const el = layer.querySelector(`.slide-widget[data-widget-id="${widget.id}"]`);
+        if (el) {
+          el.style.zIndex = String(Math.round(Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE));
+          layer.appendChild(el);
+        }
+      });
+    }
+    selectWidget(selectedWidgetId);
+    updateLayerControlsState();
+    return true;
+  }
+
+  function reorderFabricLayer(action) {
+    const target = selectedFabricAnimationTarget();
+    if (!target.canvas || !target.object) return false;
+    const slide = getSlide();
+    if (!slide) return false;
+    const entries = unifiedLayerEntries(slide, target.canvas);
+    const index = entries.findIndex(entry => entry.kind === 'fabric' && entry.object === target.object);
+    const nextIndex = targetLayerIndex(action, index, entries.length);
+    if (!moveArrayItem(entries, index, nextIndex)) return false;
+    applyUnifiedLayerEntries(slide, target.canvas, entries);
+    target.canvas.setActiveObject(target.object);
+    target.canvas.requestRenderAll();
+    syncCurrentSlideCanvas();
+    updateObjectToolbar(target.object, target.canvas);
+    updateLayerControlsState();
+    return true;
+  }
+
+  function reorderSelectedLayer(action) {
+    const moved = selectedWidgetId ? reorderWidgetLayer(action) : reorderFabricLayer(action);
+    if (moved) syncRevealPreservingPosition();
   }
 
   function updateSelectedAnimation(patch) {
@@ -1864,6 +2136,7 @@
       el.style.width = `${found.widget.w}px`;
       el.style.height = `${found.widget.h}px`;
       el.style.fontSize = `${found.widget.fontSize}px`;
+      el.style.zIndex = String(Math.round(Number(found.widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE));
       el.dataset.manualSize = found.widget.manualSize ? 'true' : 'false';
       applyAnimationAttributes(el, found.widget);
       if (found.widget.type !== 'code') {
@@ -1966,7 +2239,7 @@
     if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing() || event.button !== 0) return;
     const target = event.target;
     if (!target || !target.closest) return;
-    if (target.closest('.asm-slide-frame-content, #controlChrome, #editorChrome, #objectToolbar, #overviewChrome, #customOverview, #algorithmEditorModal, .slide-edge-add')) return;
+    if (target.closest('.asm-slide-frame-content, #controlChrome, #editorChrome, #objectToolbar, #overviewChrome, #customOverview, #algorithmEditorModal, #codeEditorModal, .slide-edge-add')) return;
     const canvas = currentFabricCanvas();
     const hadFabricSelection = !!(canvas && canvas.getActiveObject());
     if (canvas && hadFabricSelection) {
@@ -2029,12 +2302,29 @@
     document.getElementById('exitLatexEditorBtn').addEventListener('click', clearWidgetSelection);
     document.getElementById('exitCodeEditorBtn').addEventListener('click', clearWidgetSelection);
     latexEditorInput.addEventListener('input', () => updateSelectedWidget({ content: latexEditorInput.value }));
-    codeEditorInput.addEventListener('input', () => updateSelectedWidget({ content: codeEditorInput.value }));
-    codeLanguageSelect.addEventListener('change', () => updateSelectedWidget({ language: codeLanguageSelect.value }));
+    openCodeEditorBtn?.addEventListener('click', openCodeEditorModal);
+    closeCodeEditorModalBtn?.addEventListener('click', closeCodeEditorModal);
+    saveCodeEditorModalBtn?.addEventListener('click', saveCodeEditorModal);
+    codeEditorModal?.addEventListener('mousedown', event => {
+      if (event.target === codeEditorModal) closeCodeEditorModal();
+    });
+    codeEditorModal?.querySelector('.code-editor-dialog')?.addEventListener('mousedown', event => {
+      event.stopPropagation();
+    });
+    codeLanguageSelect.addEventListener('change', () => {
+      updateSelectedWidget({ language: codeLanguageSelect.value });
+      if (aceCodeEditor && codeEditorModal && !codeEditorModal.hidden && editingCodeWidgetId === selectedWidgetId) {
+        aceCodeEditor.session.setMode(`ace/mode/${aceModeForLanguage(codeLanguageSelect.value)}`);
+      }
+    });
     latexFontSizeInput.addEventListener('input', () => updateSelectedWidget({ fontSize: Number(latexFontSizeInput.value) || 34 }));
     codeFontSizeInput.addEventListener('input', () => updateSelectedWidget({ fontSize: Number(codeFontSizeInput.value) || 21 }));
     codeFocusLinesInput.addEventListener('input', () => updateSelectedWidget({ focusLines: codeFocusLinesInput.value }));
     codeShowLineNumbersInput.addEventListener('change', () => updateSelectedWidget({ showLineNumbers: codeShowLineNumbersInput.checked }));
+    layerToTopBtn?.addEventListener('click', () => reorderSelectedLayer('top'));
+    layerUpBtn?.addEventListener('click', () => reorderSelectedLayer('up'));
+    layerDownBtn?.addEventListener('click', () => reorderSelectedLayer('down'));
+    layerToBottomBtn?.addEventListener('click', () => reorderSelectedLayer('bottom'));
     transitionIdInput.addEventListener('input', () => updateSelectedAnimation({ transitionId: transitionIdInput.value }));
     fragmentEnabledInput.addEventListener('change', () => updateSelectedAnimation({ fragmentEnabled: fragmentEnabledInput.checked }));
     fragmentStyleSelect.addEventListener('change', () => updateSelectedAnimation({ fragmentStyle: fragmentStyleSelect.value }));
@@ -2063,7 +2353,9 @@
     bgColorBtn.addEventListener('click', () => openIro('background'));
     shapeStrokeBtn.addEventListener('click', () => openIro('shape-stroke'));
     shapeColorBtn.addEventListener('click', () => openIro('shape-fill'));
-    shapeTypeSelect?.addEventListener('change', () => replaceSelectedShape(shapeTypeSelect.value));
+    shapeChoiceButtons.forEach(button => {
+      button.addEventListener('click', () => replaceSelectedShape(button.dataset.shapeChoice));
+    });
     shapeStrokeWidthInput.addEventListener('input', () => applyShapeStyle({ strokeWidth: Number(shapeStrokeWidthInput.value) || 0 }));
     shapeCornerRadiusInput.addEventListener('input', () => applyShapeStyle({ cornerRadius: Number(shapeCornerRadiusInput.value) || 0 }));
   }
@@ -2100,8 +2392,11 @@
 
     const beginWidgetDrag = event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
-      const widgetEl = event.target.closest && event.target.closest('.slide-widget');
-      const insideEditorUi = event.target.closest && event.target.closest('#controlChrome, #editorChrome, #objectToolbar, .mode-switch, #overviewChrome');
+      let widgetEl = event.target.closest && event.target.closest('.slide-widget');
+      if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host') && !pointHitsFabricObject(event)) {
+        widgetEl = widgetElementAtPoint(event);
+      }
+      const insideEditorUi = event.target.closest && event.target.closest('#controlChrome, #editorChrome, #objectToolbar, #codeEditorModal, .mode-switch, #overviewChrome');
       if (selectedWidgetId && !widgetEl && !insideEditorUi && event.button === 0) {
         exitWidgetEditorIfNeeded();
       }
@@ -2272,14 +2567,25 @@
     }
 
     slidesRoot.addEventListener('dblclick', event => {
-      const widgetEl = event.target.closest('.slide-widget');
+      const widgetEl = event.target.closest('.slide-widget') || (
+        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host') && !pointHitsFabricObject(event)
+          ? widgetElementAtPoint(event)
+          : null
+      );
       if (!widgetEl || isOverviewEditing()) return;
+      event.preventDefault();
       event.stopPropagation();
       selectWidget(widgetEl.dataset.widgetId);
+      const found = getWidget(widgetEl.dataset.widgetId);
+      if (found.widget?.type === 'code') openCodeEditorModal();
     });
 
     slidesRoot.addEventListener('click', event => {
-      const widgetEl = event.target.closest('.slide-widget');
+      const widgetEl = event.target.closest('.slide-widget') || (
+        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host') && !pointHitsFabricObject(event)
+          ? widgetElementAtPoint(event)
+          : null
+      );
       if (!widgetEl || isOverviewEditing() || !document.body.classList.contains('asm-edit-mode')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2325,6 +2631,16 @@
     });
 
     document.addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && codeEditorModal && !codeEditorModal.hidden) {
+        event.preventDefault();
+        saveCodeEditorModal();
+        return;
+      }
+      if (event.key === 'Escape' && codeEditorModal && !codeEditorModal.hidden) {
+        event.preventDefault();
+        closeCodeEditorModal();
+        return;
+      }
       if (event.key === 'Escape' && algorithmEditorModal && !algorithmEditorModal.hidden) {
         event.preventDefault();
         saveAlgorithmEditor();
@@ -2583,8 +2899,10 @@
     const scaleX = rect.width / SLIDE_W;
     const scaleY = rect.height / SLIDE_H;
     objectToolbar.hidden = false;
+    const toolbarHeight = objectToolbar.offsetHeight || 44;
+    const rotationControlClearance = !isTextObject(obj) ? 56 * scaleY : 8;
     objectToolbar.style.left = `${rect.left + (bounds.left + bounds.width / 2) * scaleX}px`;
-    objectToolbar.style.top = `${Math.max(8, rect.top + bounds.top * scaleY - 48)}px`;
+    objectToolbar.style.top = `${Math.max(8, rect.top + bounds.top * scaleY - toolbarHeight - rotationControlClearance)}px`;
     objectToolbar.style.transform = 'translateX(-50%)';
   }
 
@@ -2610,6 +2928,21 @@
       const bounds = obj.getBoundingRect(true, true);
       return x >= bounds.left && x <= bounds.left + bounds.width && y >= bounds.top && y <= bounds.top + bounds.height;
     });
+  }
+
+  function widgetElementAtPoint(event) {
+    const slide = getSlide();
+    const layer = slide && document.querySelector(`.widget-layer[data-slide-id="${slide.id}"]`);
+    if (!layer) return null;
+    return Array.from(layer.querySelectorAll('.slide-widget'))
+      .filter(el => {
+        const rect = el.getBoundingClientRect();
+        return event.clientX >= rect.left
+          && event.clientX <= rect.right
+          && event.clientY >= rect.top
+          && event.clientY <= rect.bottom;
+      })
+      .sort((a, b) => (Number(getComputedStyle(b).zIndex) || 0) - (Number(getComputedStyle(a).zIndex) || 0))[0] || null;
   }
 
   function isTextObject(obj) {

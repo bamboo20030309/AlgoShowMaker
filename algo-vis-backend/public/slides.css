@@ -230,9 +230,156 @@ button.is-active {
   padding: 0 8px;
 }
 
+.code-editor-open-btn {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(29, 143, 131, 0.5);
+  border-radius: 8px;
+  background: rgba(29, 143, 131, 0.14);
+  color: var(--chrome-text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.code-editor-open-btn:hover {
+  border-color: rgba(29, 143, 131, 0.86);
+  background: rgba(29, 143, 131, 0.24);
+  color: #ffffff;
+}
+
 .animation-editor-panel {
   padding-top: 10px;
   border-top: 1px solid var(--chrome-line);
+}
+
+.shape-editor-controls {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.shape-editor-controls[hidden] {
+  display: none;
+}
+
+.shape-editor-title {
+  color: var(--chrome-text);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.shape-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.shape-editor-grid .shape-choice {
+  width: 100%;
+}
+
+.shape-editor-grid .shape-choice.is-active {
+  border-color: rgba(255, 255, 255, 0.42);
+  background: var(--accent);
+  color: var(--chrome-text);
+}
+
+.layer-editor-controls {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--chrome-line);
+}
+
+.layer-editor-title {
+  color: var(--chrome-text);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.layer-action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+}
+
+.layer-action-btn {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--chrome-text);
+  cursor: pointer;
+}
+
+.layer-action-btn:hover:not(:disabled) {
+  border-color: rgba(29, 143, 131, 0.48);
+  background: rgba(29, 143, 131, 0.12);
+  color: var(--accent);
+}
+
+.layer-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.layer-icon {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 22px;
+}
+
+.layer-icon::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 13px;
+  height: 13px;
+  border-left: 3px solid currentColor;
+  border-top: 3px solid currentColor;
+  border-radius: 2px;
+}
+
+.layer-icon-up::before,
+.layer-icon-to-top::before {
+  top: 8px;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.layer-icon-down::before,
+.layer-icon-to-bottom::before {
+  top: 2px;
+  transform: translateX(-50%) rotate(225deg);
+}
+
+.layer-icon-to-top::after,
+.layer-icon-to-bottom::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 21px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+.layer-icon-to-top::after {
+  top: 1px;
+}
+
+.layer-icon-to-bottom::after {
+  bottom: 1px;
 }
 
 .animation-editor-panel input,
@@ -1142,6 +1289,83 @@ body.asm-edit-mode .asm-slide-frame-content {
   background: #ffffff;
 }
 
+.code-editor-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 170;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(9, 14, 16, 0.72);
+}
+
+.code-editor-modal[hidden] {
+  display: none;
+}
+
+.code-editor-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1120px, 92vw);
+  height: min(760px, 86vh);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: #1f241f;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+}
+
+.code-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: #151c1f;
+  color: #ecf5f3;
+}
+
+.code-editor-header strong {
+  display: block;
+  font-size: 16px;
+}
+
+.code-editor-header span {
+  display: block;
+  margin-top: 3px;
+  color: rgba(236, 245, 243, 0.68);
+  font-size: 12px;
+}
+
+.code-editor-modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.code-editor-modal-actions button {
+  min-width: 62px;
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(29, 143, 131, 0.18);
+  color: #ecf5f3;
+  cursor: pointer;
+}
+
+.code-editor-modal-actions button:hover {
+  border-color: rgba(29, 143, 131, 0.86);
+  background: rgba(29, 143, 131, 0.34);
+}
+
+.code-ace-editor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  color: #ecf5f3;
+  font-size: 15px;
+}
+
 .reveal .slides section.asm-stack {
   padding: 0;
   background: transparent;
@@ -1150,14 +1374,15 @@ body.asm-edit-mode .asm-slide-frame-content {
 .fabric-host {
   position: absolute;
   inset: 0;
+  z-index: 1000;
   overflow: hidden;
-  background: #fbfcfa;
+  background: transparent;
 }
 
 .widget-layer {
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: auto;
   pointer-events: none;
 }
 
@@ -1208,8 +1433,17 @@ body.asm-edit-mode .code-widget.is-selected {
 body.asm-edit-mode .latex-widget:hover,
 body.asm-edit-mode .latex-widget.is-selected {
   border-color: transparent;
-  outline: 2px solid #1d8f83;
-  outline-offset: 6px;
+}
+
+body.asm-edit-mode .latex-widget:hover::after,
+body.asm-edit-mode .latex-widget.is-selected::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border: 2px solid #1d8f83;
+  border-radius: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.74);
+  pointer-events: none;
 }
 
 .latex-widget {
