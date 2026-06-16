@@ -1,0 +1,380 @@
+{
+  "format": "AlgoShowMaker.slides",
+  "version": "AV_V4.3",
+  "exportedAt": "2026-06-16T20:59:56.128Z",
+  "deck": {
+    "groups": [
+      {
+        "id": "group-1",
+        "slides": [
+          {
+            "id": "slide-2",
+            "canvas": {
+              "objects": [
+                {
+                  "type": "i-text",
+                  "left": 80,
+                  "top": 64,
+                  "width": 760,
+                  "text": "Bar Codes 題意說明",
+                  "fill": "#1f282d",
+                  "fontSize": 46,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 90,
+                  "top": 145,
+                  "width": 980,
+                  "text": "給定 n、k、m，計算 BC(n,k,m) 中有多少種條碼符號。",
+                  "fill": "#334155",
+                  "fontSize": 28,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 96,
+                  "top": 215,
+                  "width": 980,
+                  "text": "• 條碼由深色與淺色 bar 交替組成，最左邊一定是深色。\n• 每一條 bar 的寬度都是正整數個 unit。\n• 總寬度必須剛好是 n，bar 的數量必須剛好是 k。\n• 每條 bar 最多只能寬 m。\n• 輸出每組 n k m 的合法條碼數，答案保證在 signed 64-bit 內。",
+                  "fill": "#475569",
+                  "fontSize": 25,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "rect",
+                  "left": 870,
+                  "top": 122,
+                  "width": 58,
+                  "height": 90,
+                  "fill": "#111827",
+                  "stroke": "#111827",
+                  "strokeWidth": 2,
+                  "rx": 4,
+                  "ry": 4,
+                  "layerIndex": 900
+                },
+                {
+                  "type": "rect",
+                  "left": 928,
+                  "top": 122,
+                  "width": 116,
+                  "height": 90,
+                  "fill": "#e5e7eb",
+                  "stroke": "#e5e7eb",
+                  "strokeWidth": 2,
+                  "rx": 4,
+                  "ry": 4,
+                  "layerIndex": 900
+                },
+                {
+                  "type": "rect",
+                  "left": 1044,
+                  "top": 122,
+                  "width": 174,
+                  "height": 90,
+                  "fill": "#111827",
+                  "stroke": "#111827",
+                  "strokeWidth": 2,
+                  "rx": 4,
+                  "ry": 4,
+                  "layerIndex": 900
+                },
+                {
+                  "type": "rect",
+                  "left": 1218,
+                  "top": 122,
+                  "width": 58,
+                  "height": 90,
+                  "fill": "#e5e7eb",
+                  "stroke": "#e5e7eb",
+                  "strokeWidth": 2,
+                  "rx": 4,
+                  "ry": 4,
+                  "layerIndex": 900
+                },
+                {
+                  "type": "i-text",
+                  "left": 844,
+                  "top": 240,
+                  "width": 360,
+                  "text": "例：1 + 2 + 3 + 1 = 7，共 4 條 bar，所以屬於 BC(7,4,3)。",
+                  "fill": "#334155",
+                  "fontSize": 22,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 96,
+                  "top": 560,
+                  "width": 520,
+                  "text": "Sample：\n7 4 3 → 16\n7 4 2 → 4",
+                  "fill": "#0f766e",
+                  "fontSize": 28,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                }
+              ]
+            },
+            "widgets": []
+          }
+        ]
+      },
+      {
+        "id": "group-3",
+        "slides": [
+          {
+            "id": "slide-4",
+            "canvas": {
+              "objects": [
+                {
+                  "type": "i-text",
+                  "left": 80,
+                  "top": 62,
+                  "width": 880,
+                  "text": "題解：把「最後一條 bar」拆出來",
+                  "fill": "#1f282d",
+                  "fontSize": 44,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 100,
+                  "top": 145,
+                  "width": 360,
+                  "text": "狀態定義",
+                  "fill": "#0f766e",
+                  "fontSize": 30,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 120,
+                  "top": 195,
+                  "width": 850,
+                  "text": "dp[i][j]：使用 i 條 bar，總寬度剛好 j 的方法數。",
+                  "fill": "#334155",
+                  "fontSize": 27,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 100,
+                  "top": 275,
+                  "width": 360,
+                  "text": "初始化",
+                  "fill": "#0f766e",
+                  "fontSize": 30,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 120,
+                  "top": 325,
+                  "width": 950,
+                  "text": "只有 1 條 bar 時，寬度 1..m 各有 1 種：dp[1][1..m] = 1。",
+                  "fill": "#334155",
+                  "fontSize": 27,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 100,
+                  "top": 405,
+                  "width": 360,
+                  "text": "轉移",
+                  "fill": "#0f766e",
+                  "fontSize": 30,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 120,
+                  "top": 455,
+                  "width": 950,
+                  "text": "令最後一條 bar 寬度是 l，其中 1 ≤ l ≤ m。\n前面就必須用 i-1 條 bar 湊出 j-l：\ndp[i][j] += dp[i-1][j-l]",
+                  "fill": "#334155",
+                  "fontSize": 27,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "rect",
+                  "left": 810,
+                  "top": 418,
+                  "width": 360,
+                  "height": 160,
+                  "fill": "#e0f2fe",
+                  "stroke": "#0284c7",
+                  "strokeWidth": 3,
+                  "rx": 18,
+                  "ry": 18,
+                  "layerIndex": 900
+                },
+                {
+                  "type": "i-text",
+                  "left": 850,
+                  "top": 455,
+                  "width": 300,
+                  "text": "複雜度\nO(k × n × m)\n範圍 ≤ 50 可接受",
+                  "fill": "#075985",
+                  "fontSize": 30,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                }
+              ]
+            },
+            "widgets": []
+          }
+        ]
+      },
+      {
+        "id": "group-5",
+        "slides": [
+          {
+            "id": "slide-7",
+            "canvas": {
+              "objects": [
+                {
+                  "type": "i-text",
+                  "left": 72,
+                  "top": 52,
+                  "width": 750,
+                  "text": "用你的程式對照 DP 流程",
+                  "fill": "#1f282d",
+                  "fontSize": 42,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 76,
+                  "top": 128,
+                  "width": 600,
+                  "text": "你的程式中三層迴圈剛好對應：\n1. i：目前使用幾條 bar\n2. j：目前累積多少總寬度\n3. l：最後一條 bar 帶走多少寬度",
+                  "fill": "#334155",
+                  "fontSize": 25,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 76,
+                  "top": 304,
+                  "width": 620,
+                  "text": "map<int,map<int,long long>> dp 的好處：\n當 j-l <= 0 或不存在時，dp[i-1][j-l] 會被當成 0，無效狀態不會增加答案。",
+                  "fill": "#475569",
+                  "fontSize": 25,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "normal",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "i-text",
+                  "left": 76,
+                  "top": 465,
+                  "width": 600,
+                  "text": "關鍵式：\nfor l = 1..m\n  dp[i][j] += dp[i-1][j-l]",
+                  "fill": "#0f766e",
+                  "fontSize": 30,
+                  "fontFamily": "Segoe UI",
+                  "fontWeight": "bold",
+                  "styles": {},
+                  "layerIndex": 1000
+                },
+                {
+                  "type": "rect",
+                  "left": 725,
+                  "top": 102,
+                  "width": 465,
+                  "height": 470,
+                  "fill": "#1f2937",
+                  "stroke": "#111827",
+                  "strokeWidth": 3,
+                  "rx": 14,
+                  "ry": 14,
+                  "layerIndex": 900
+                }
+              ]
+            },
+            "widgets": [
+              {
+                "id": "code-6",
+                "type": "code",
+                "x": 746,
+                "y": 124,
+                "w": 410,
+                "h": 420,
+                "language": "cpp",
+                "fontSize": 16,
+                "focusLines": "5-10",
+                "showLineNumbers": true,
+                "layerIndex": 2100,
+                "content": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ //dp想法如果最長是m個 那一個大的條碼可以被拆成 ([ n ] | [ 1~m ]) 左邊剩餘n個條碼 右邊則帶走1~m個條碼(算一整塊)\n\tint n,k,m; // dp的i代表當前有幾塊 j則是代表當前的條碼數\n\twhile(cin>>n>>k>>m){ //舉例7 3 4 就是dp[4][7]=dp[3][6]+dp[3][5]+dp[3][4]+dp[3][3]\n\t\tmap<int,map<int,long long>> dp;\n\t\tfor(int i=1;i<=m;i++)dp[1][i]=1;\n\t\tfor(int i=2;i<=k;i++){\n\t\t\tfor(int j=1;j<=n;j++){\n\t\t\t\tfor(int l=1;l<=m;l++){\n\t\t\t\t\tdp[i][j]+=dp[i-1][j-l];\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tcout<<dp[k][n]<<endl;\n\t}\n\treturn 0;\n}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "group-8",
+        "slides": [
+          {
+            "id": "slide-9",
+            "kind": "algorithm-animation",
+            "canvas": {
+              "objects": []
+            },
+            "widgets": [],
+            "animation": {
+              "code": "#include <bits/stdc++.h>\nusing namespace std;\nint main(){ //dp想法如果最長是m個 那一個大的條碼可以被拆成 ([ n ] | [ 1~m ]) 左邊剩餘n個條碼 右邊則帶走1~m個條碼(算一整塊)\n\tint n,k,m; // dp的i代表當前有幾塊 j則是代表當前的條碼數\n\twhile(cin>>n>>k>>m){ //舉例7 3 4 就是dp[4][7]=dp[3][6]+dp[3][5]+dp[3][4]+dp[3][3]\n\t\tmap<int,map<int,long long>> dp;\n\t\tfor(int i=1;i<=m;i++)dp[1][i]=1;\n\t\tfor(int i=2;i<=k;i++){\n\t\t\tfor(int j=1;j<=n;j++){\n\t\t\t\tfor(int l=1;l<=m;l++){\n\t\t\t\t\tdp[i][j]+=dp[i-1][j-l];\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tcout<<dp[k][n]<<endl;\n\t}\n\treturn 0;\n}",
+              "input": "7 4 3\n7 4 2\n",
+              "scriptContent": "(function () {\n  const totalFrames = 8;\n  const keyFrames = [0, 1, 2, 3, 4, 5, 6, 7];\n  const stopFrames = [];\n  const fastFrames = [];\n  const fastonFrames = [];\n  const skipFrames = [];\n  let currentFrame = 0;\n  let track = 0;\n\n  function styles(focus = [], highlight = [], mark = [], bg = []) {\n    return [\n      { type: 'focus', elements: focus },\n      { type: 'highlight', elements: highlight, color: '#ef4444' },\n      { type: 'mark', elements: mark, color: '#22c55e' },\n      { type: 'background', elements: bg, color: '#dbeafe' }\n    ];\n  }\n\n  function drawBars(widths, active = -1) {\n    const blocks = [];\n    widths.forEach((w, i) => {\n      for (let t = 0; t < w; t++) blocks.push(i % 2 === 0 ? 1 : 0);\n    });\n    const bg = [];\n    let pos = 0;\n    widths.forEach((w, i) => {\n      if (i === active) for (let t = 0; t < w; t++) bg.push(pos + t);\n      pos += w;\n    });\n    drawArray('barcode', { type: 'abs', x: 80, y: 0, anchor: 'top-left' }, blocks, styles(bg, bg, [], bg), [0, blocks.length - 1], 'normal', 0, 1, 2, [], [], [], [], [], 4);\n    drawText('條碼寬度：' + widths.join(' + ') + ' = ' + widths.reduce((a, b) => a + b, 0), { type: 'rel', ref: 'barcode', anchor: 'raw bottom-left', dx: 0, dy: 34 }, 4);\n  }\n\n  function drawDpRow(id, y, label, values, active = -1, source = []) {\n    drawText(label, { type: 'abs', x: -40, y, anchor: 'top-left' }, 6);\n    drawArray(id, { type: 'abs', x: 95, y, anchor: 'top-left' }, values, styles([active], [active], source, [active]), [0, values.length - 1], 'normal', 0, 1, 4, [], [], [], [], [], 8);\n  }\n\n  function renderFrame(f) {\n    if (window.setFrameSleep) window.setFrameSleep(0);\n    clearAllEditorHighlights();\n    if (window.resetMessageCounter) window.resetMessageCounter();\n    if (window.resetWordCounter) window.resetWordCounter();\n    clearCanvas();\n\n    drawText('Bar Codes：用 DP 計算 BC(n,k,m)', { type: 'abs', x: -70, y: -85, anchor: 'top-left' }, 1);\n    drawText('目標範例：n=7, k=4, m=3', { type: 'abs', x: -70, y: -48, anchor: 'top-left' }, 4);\n\n    switch (f) {\n      case 0:\n        addEditorHighlight(4);\n        drawBars([1, 2, 3, 1], 0);\n        drawText('BC(7,4,3)：剛好 4 條 bar，總寬度 7，每條最多 3。', { type: 'abs', x: -70, y: 145, anchor: 'top-left' }, 4);\n        break;\n      case 1:\n        addEditorHighlight(6);\n        drawBars([1, 2, 3, 1], 2);\n        drawText('初始化：只有 1 條 bar 時，寬度 1..m 都各有 1 種。', { type: 'abs', x: -70, y: 145, anchor: 'top-left' }, 6);\n        drawDpRow('dp1', 210, 'dp[1][j]', [0, 1, 1, 1, 0, 0, 0, 0], 3, [1,2,3]);\n        break;\n      case 2:\n        addEditorHighlight(10);\n        drawText('轉移：最後一條 bar 帶走 l 單位，前面剩 j-l 單位、i-1 條。', { type: 'abs', x: -70, y: 20, anchor: 'top-left' }, 10);\n        drawText('dp[i][j] = sum(dp[i-1][j-l]), 1 <= l <= m', { type: 'abs', x: -70, y: 60, anchor: 'top-left' }, 10);\n        drawDpRow('dp1', 140, 'dp[1][j]', [0, 1, 1, 1, 0, 0, 0, 0], -1, [1,2,3]);\n        drawDpRow('dp2', 215, 'dp[2][j]', [0, 0, 1, 2, 3, 2, 1, 0], 4, [1,2,3]);\n        drawArrow({ type: 'rel', ref: 'dp1', index: 1, anchor: 'bottom', dx: 0, dy: 0 }, { type: 'rel', ref: 'dp2', index: 4, anchor: 'top', dx: 0, dy: 0 }, { color: '#2563eb', width: '2' }, 10);\n        drawArrow({ type: 'rel', ref: 'dp1', index: 2, anchor: 'bottom', dx: 0, dy: 0 }, { type: 'rel', ref: 'dp2', index: 4, anchor: 'top', dx: 0, dy: 0 }, { color: '#2563eb', width: '2' }, 10);\n        drawArrow({ type: 'rel', ref: 'dp1', index: 3, anchor: 'bottom', dx: 0, dy: 0 }, { type: 'rel', ref: 'dp2', index: 4, anchor: 'top', dx: 0, dy: 0 }, { color: '#2563eb', width: '2' }, 10);\n        break;\n      case 3:\n        addEditorHighlight(10);\n        drawText('i = 3：累積出使用 3 條 bar 的所有總寬度。', { type: 'abs', x: -70, y: 20, anchor: 'top-left' }, 10);\n        drawDpRow('dp1', 110, 'dp[1][j]', [0, 1, 1, 1, 0, 0, 0, 0], -1, []);\n        drawDpRow('dp2', 185, 'dp[2][j]', [0, 0, 1, 2, 3, 2, 1, 0], -1, []);\n        drawDpRow('dp3', 260, 'dp[3][j]', [0, 0, 0, 1, 3, 6, 7, 6], 7, [4,5,6]);\n        drawText('例如 dp[3][7] = dp[2][6]+dp[2][5]+dp[2][4] = 1+2+3 = 6', { type: 'abs', x: -70, y: 340, anchor: 'top-left' }, 10);\n        break;\n      case 4:\n        addEditorHighlight(10);\n        drawText('i = 4, j = 7：最後一條可以是 1、2、3 單位。', { type: 'abs', x: -70, y: 20, anchor: 'top-left' }, 10);\n        drawDpRow('dp3', 140, 'dp[3][j]', [0, 0, 0, 1, 3, 6, 7, 6], -1, [4,5,6]);\n        drawDpRow('dp4', 230, 'dp[4][j]', [0, 0, 0, 0, 1, 4, 10, 16], 7, []);\n        drawArrow({ type: 'rel', ref: 'dp3', index: 6, anchor: 'bottom', dx: 0, dy: 0 }, { type: 'rel', ref: 'dp4', index: 7, anchor: 'top', dx: 0, dy: 0 }, { color: '#dc2626', width: '2' }, 10);\n        drawArrow({ type: 'rel', ref: 'dp3', index: 5, anchor: 'bottom', dx: 0, dy: 0 }, { type: 'rel', ref: 'dp4', index: 7, anchor: 'top', dx: 0, dy: 0 }, { color: '#dc2626', width: '2' }, 10);\n        drawArrow({ type: 'rel', ref: 'dp3', index: 4, anchor: 'bottom', dx: 0, dy: 0 }, { type: 'rel', ref: 'dp4', index: 7, anchor: 'top', dx: 0, dy: 0 }, { color: '#dc2626', width: '2' }, 10);\n        drawText('dp[4][7] = 7 + 6 + 3 = 16', { type: 'abs', x: -70, y: 335, anchor: 'top-left' }, 13);\n        break;\n      case 5:\n        addEditorHighlight(13);\n        drawDpRow('dp4', 175, 'dp[4][j]', [0, 0, 0, 0, 1, 4, 10, 16], 7, [7]);\n        drawText('輸出答案：BC(7,4,3) 共有 16 種。', { type: 'abs', x: -70, y: 270, anchor: 'top-left' }, 13);\n        drawText('Sample 1: 7 4 3  -> 16', { type: 'abs', x: -70, y: 315, anchor: 'top-left' }, 13);\n        break;\n      case 6:\n        addEditorHighlight(10);\n        drawText('如果 m = 2，每條最多只能寬 2。', { type: 'abs', x: -70, y: 20, anchor: 'top-left' }, 10);\n        drawDpRow('m2dp1', 105, 'dp[1][j]', [0, 1, 1, 0, 0, 0, 0, 0], -1, [1,2]);\n        drawDpRow('m2dp2', 175, 'dp[2][j]', [0, 0, 1, 2, 1, 0, 0, 0], -1, []);\n        drawDpRow('m2dp3', 245, 'dp[3][j]', [0, 0, 0, 1, 3, 3, 1, 0], -1, []);\n        drawDpRow('m2dp4', 315, 'dp[4][j]', [0, 0, 0, 0, 1, 4, 6, 4], 7, [7]);\n        drawText('Sample 2: 7 4 2  -> 4', { type: 'abs', x: -70, y: 390, anchor: 'top-left' }, 13);\n        break;\n      default:\n        addEditorHighlight(10);\n        drawText('複雜度：狀態 k*n，每格枚舉 l=1..m，所以 O(k*n*m)。', { type: 'abs', x: -70, y: 80, anchor: 'top-left' }, 10);\n        drawText('資料範圍 n,k,m <= 50，答案保證放得進 signed 64-bit。', { type: 'abs', x: -70, y: 135, anchor: 'top-left' }, 13);\n        drawText('注意：map 在 j-l <= 0 時會回傳 0，剛好符合無效狀態。', { type: 'abs', x: -70, y: 190, anchor: 'top-left' }, 10);\n        break;\n    }\n    window.setAutoCamera(1.05, true, 55, 40);\n  }\n\n  function findNextKey(frame) {\n    for (const k of keyFrames) if (k > frame) return k;\n    return -1;\n  }\n  function findPrevKey(frame) {\n    let ans = -1;\n    for (const k of keyFrames) if (k < frame) ans = k;\n    return ans;\n  }\n\n  window.CodeScript = {\n    next() { track = 0; if (currentFrame < totalFrames - 1) { currentFrame++; renderFrame(currentFrame); } },\n    prev() { track = 0; if (currentFrame > 0) { currentFrame--; renderFrame(currentFrame); } },\n    next_key_frame() { const n = findNextKey(currentFrame); if (n !== -1) { track = 1; currentFrame = n; renderFrame(currentFrame); } },\n    prev_key_frame() { const p = findPrevKey(currentFrame); if (p !== -1) { track = 1; currentFrame = p; renderFrame(currentFrame); } },\n    reset() { track = 0; currentFrame = 0; renderFrame(0); },\n    goto(n) { if (n >= 0 && n < totalFrames) { track = 0; currentFrame = n; renderFrame(n); } else if (n === -1) { track = 0; currentFrame = totalFrames - 1; renderFrame(currentFrame); } },\n    get_frame_count() { return totalFrames; },\n    get_current_frame_index() { return currentFrame; },\n    get_current_line() { return [4,6,10,10,10,13,10,10][currentFrame] || 10; },\n    get_key_frames() { return keyFrames; },\n    get_stop_frames() { return stopFrames; },\n    is_stop_frame() { return stopFrames.includes(currentFrame); },\n    is_fast_frame() { return fastFrames.includes(currentFrame); },\n    is_faston_frame() { return fastonFrames.includes(currentFrame); },\n    is_skip_frame() { return skipFrames.includes(currentFrame); },\n    has_next_key() { return findNextKey(currentFrame) !== -1; },\n    has_prev_key() { return findPrevKey(currentFrame) !== -1; }\n  };\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => CodeScript.reset());\n  else CodeScript.reset();\n})();"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

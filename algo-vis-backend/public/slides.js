@@ -165,6 +165,9 @@
   const customOverview = document.getElementById('customOverview');
   const customOverviewViewport = document.getElementById('customOverviewViewport');
   const customOverviewBoard = document.getElementById('customOverviewBoard');
+  const exportDeckBtn = document.getElementById('exportDeckBtn');
+  const importDeckBtn = document.getElementById('importDeckBtn');
+  const importDeckInput = document.getElementById('importDeckInput');
   const objectToolbar = document.getElementById('objectToolbar');
   const fontFamilySelect = document.getElementById('fontFamilySelect');
   const fontSizeInput = document.getElementById('fontSizeInput');
@@ -312,6 +315,55 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(deck));
     updateDiagnostics();
     if (pushHistory && !suppressHistory) pushHistorySnapshot();
+  }
+
+  function exportDeckJson() {
+    const payload = {
+      format: 'AlgoShowMaker.slides',
+      version: 'AV_V4.3',
+      exportedAt: new Date().toISOString(),
+      deck
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    anchor.href = url;
+    anchor.download = `algoshowmaker-slides-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function importDeckJsonText(text) {
+    const parsed = JSON.parse(text);
+    const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
+    const nextDeck = normalizeDeck(importedDeck);
+    const previousDeck = deck;
+    deck = nextDeck;
+    currentH = 0;
+    currentV = 0;
+    saveDeck();
+    if (canRestoreDeckInPlace(previousDeck, deck)) restoreDeckInPlace(previousDeck);
+    else renderDeck();
+  }
+
+  function importDeckJsonFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        importDeckJsonText(String(reader.result || ''));
+        flashHint('已匯入投影片 JSON');
+      } catch (err) {
+        console.error('Failed to import deck JSON', err);
+        flashHint('匯入 JSON 失敗，請確認檔案格式');
+      } finally {
+        if (importDeckInput) importDeckInput.value = '';
+      }
+    };
+    reader.readAsText(file);
   }
 
   function pushHistorySnapshot() {
@@ -2258,6 +2310,9 @@
     document.getElementById('modeToggleBtn').addEventListener('click', () => {
       setEditMode(!document.body.classList.contains('asm-edit-mode'));
     });
+    exportDeckBtn?.addEventListener('click', exportDeckJson);
+    importDeckBtn?.addEventListener('click', () => importDeckInput?.click());
+    importDeckInput?.addEventListener('change', () => importDeckJsonFile(importDeckInput.files && importDeckInput.files[0]));
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);

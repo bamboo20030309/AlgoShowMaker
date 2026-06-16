@@ -63,12 +63,69 @@ button.is-active {
   left: 0;
   z-index: 47;
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: flex-start;
+  gap: 10px;
   width: var(--controlbar-w);
   padding: 12px 8px;
   border-right: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(12, 17, 19, 0.98);
   box-shadow: 8px 0 24px rgba(0, 0, 0, 0.16);
+}
+
+.deck-io-controls {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.deck-io-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-color: rgba(29, 143, 131, 0.7);
+  background: rgba(22, 28, 31, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.deck-io-btn:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+  background: rgba(29, 143, 131, 0.28);
+}
+
+.deck-io-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  color: #ecf5f3;
+  overflow: visible;
+}
+
+.deck-io-body,
+.deck-io-arrow {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.deck-io-body {
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.deck-io-arrow {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.deck-io-arrow-group {
+  transform: translateX(4px);
 }
 
 .editor-chrome {

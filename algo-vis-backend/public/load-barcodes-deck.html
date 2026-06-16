@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>載入 Bar Codes 投影片</title>
+  <style>
+    body {
+      display: grid;
+      min-height: 100vh;
+      margin: 0;
+      place-items: center;
+      background: #181d20;
+      color: #f3f8f6;
+      font: 18px "Segoe UI", "Noto Sans TC", Arial, sans-serif;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="status">正在載入 Bar Codes 投影片...</div>
+  <script>
+    (async () => {
+      const status = document.getElementById('status');
+      try {
+        const response = await fetch('/barcodes_dp_deck.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const deck = payload && payload.deck ? payload.deck : payload;
+        localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(deck));
+        status.textContent = '已載入，正在開啟投影片...';
+        location.replace('/slides.html');
+      } catch (err) {
+        console.error(err);
+        status.textContent = '載入失敗，請改用左側匯入 JSON 按鈕選取 barcodes_dp_deck.json。';
+      }
+    })();
+  </script>
+</body>
+
+</html>
