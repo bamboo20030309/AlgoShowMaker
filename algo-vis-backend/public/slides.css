@@ -9,6 +9,7 @@
   --sidebar-w: calc(var(--controlbar-w) + var(--editor-sidebar-w));
   --edit-slide-frame-scale: 0.88;
   --edit-slide-frame-inset: 6%;
+  --fabric-bleed: 180px;
   --overview-scrollbar-size: 10px;
   --overview-thumb-w: 360px;
   --overview-thumb-h: 202.5px;
@@ -896,8 +897,10 @@ body.custom-overview-open .reveal .controls {
 .object-toolbar button {
   display: grid;
   place-items: center;
+  width: 32px;
   min-width: 32px;
-  padding: 0 8px;
+  height: 32px;
+  padding: 0;
 }
 
 .object-toolbar button.is-active {
@@ -949,6 +952,84 @@ body.custom-overview-open .reveal .controls {
   right: 0;
 }
 
+.list-style-icon {
+  position: relative;
+  display: block;
+  width: 20px;
+  height: 24px;
+  color: currentColor;
+}
+
+.list-style-icon::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 6px 0 currentColor, 0 12px 0 currentColor;
+}
+
+#listStyleBtn[data-list-state="number"] .list-style-icon::before {
+  content: "1\A 2\A 3";
+  left: -4px;
+  top: 3px;
+  width: 9px;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: currentColor;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 6px;
+  text-align: right;
+  white-space: pre;
+}
+
+.list-style-icon::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 6px;
+  width: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  box-shadow: 0 6px 0 currentColor, 0 12px 0 currentColor;
+}
+
+.text-color-icon {
+  --text-color-current: #ef3829;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: #ffffff;
+  font-family: Arial, "Segoe UI", sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.text-color-icon::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 1px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--text-color-current);
+}
+
+#textColorBtn.is-mixed-color .text-color-icon::after {
+  background: linear-gradient(90deg, #f44336, #ff9800, #ffeb3b, #4caf50, #2196f3, #673ab7);
+}
+
 .text-bg-icon {
   position: relative;
   display: grid;
@@ -980,6 +1061,40 @@ body.custom-overview-open .reveal .controls {
   isolation: isolate;
 }
 
+.text-fill-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1;
+  color: currentColor;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1px currentColor;
+}
+
+.text-fill-icon::after {
+  content: "A";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: repeating-linear-gradient(
+    -35deg,
+    currentColor 0,
+    currentColor 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0;
+}
+
 .text-bg-icon::after {
   content: "A";
   position: relative;
@@ -993,9 +1108,7 @@ body.custom-overview-open .reveal .controls {
 .object-toolbar.is-shape #italicBtn,
 .object-toolbar.is-shape #underlineBtn,
 .object-toolbar.is-shape #strikeBtn,
-.object-toolbar.is-shape #alignLeftBtn,
-.object-toolbar.is-shape #alignCenterBtn,
-.object-toolbar.is-shape #alignRightBtn,
+.object-toolbar.is-shape #alignCycleBtn,
 .object-toolbar.is-shape #listStyleBtn,
 .object-toolbar.is-shape #textColorBtn,
 .object-toolbar.is-shape #bgColorBtn {
@@ -1207,6 +1320,15 @@ body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) .slides s
   overflow: visible;
 }
 
+body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) .slides {
+  overflow: visible;
+}
+
+body.asm-edit-mode:not(.custom-overview-open) > .reveal-viewport,
+body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) {
+  overflow: visible;
+}
+
 .asm-slide-frame-content {
   position: absolute;
   inset: 0;
@@ -1218,6 +1340,7 @@ body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) .slides s
 }
 
 body.asm-edit-mode .asm-slide-frame-content {
+  overflow: visible;
   transform: scale(var(--edit-slide-frame-scale));
 }
 
@@ -1432,7 +1555,7 @@ body.asm-edit-mode .asm-slide-frame-content {
   position: absolute;
   inset: 0;
   z-index: 1000;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
 }
 
@@ -1687,8 +1810,20 @@ body.asm-edit-mode .slide-widget.is-selected .widget-edge-handle {
 
 .fabric-host canvas,
 .fabric-host .canvas-container {
-  width: 1280px !important;
-  height: 720px !important;
+  width: calc(1280px + var(--fabric-bleed) * 2) !important;
+  height: calc(720px + var(--fabric-bleed) * 2) !important;
+  overflow: visible !important;
+}
+
+.fabric-host .canvas-container {
+  position: absolute !important;
+  left: calc(var(--fabric-bleed) * -1) !important;
+  top: calc(var(--fabric-bleed) * -1) !important;
+}
+
+.fabric-host .upper-canvas,
+.fabric-host .lower-canvas {
+  overflow: visible !important;
 }
 
 body:not(.asm-edit-mode) .upper-canvas {

@@ -3,6 +3,7 @@
   const OLD_STORAGE_KEY = 'asm_reveal_fabric_deck_v4';
   const SLIDE_W = 1280;
   const SLIDE_H = 720;
+  const FABRIC_BLEED = 180;
   const fabricCanvases = new Map();
   const slidePositions = new Map();
   const MAX_HISTORY = 80;
@@ -129,6 +130,7 @@
   let suppressHistory = false;
   let activeColorTarget = 'text';
   let iroPicker = null;
+  let pendingColorHistory = false;
   let textSelection = null;
   let selectedWidgetId = null;
   let overviewSelectedSlideId = null;
@@ -175,9 +177,7 @@
   const italicBtn = document.getElementById('italicBtn');
   const underlineBtn = document.getElementById('underlineBtn');
   const strikeBtn = document.getElementById('strikeBtn');
-  const alignLeftBtn = document.getElementById('alignLeftBtn');
-  const alignCenterBtn = document.getElementById('alignCenterBtn');
-  const alignRightBtn = document.getElementById('alignRightBtn');
+  const alignCycleBtn = document.getElementById('alignCycleBtn');
   const listStyleBtn = document.getElementById('listStyleBtn');
   const textColorBtn = document.getElementById('textColorBtn');
   const bgColorBtn = document.getElementById('bgColorBtn');
@@ -268,9 +268,16 @@
   }
 
   function cloneSlideForPaste(slide) {
+    const cloned = clone(slide);
+    const canvas = normalizeCanvasJson(cloned.canvas);
+    canvas.objects = (canvas.objects || []).map(object => ({
+      ...object,
+      fragmentProxyId: randomId()
+    }));
     return {
-      ...clone(slide),
+      ...cloned,
       id: randomId(),
+      canvas,
       widgets: normalizeWidgets(slide.widgets).map(widget => ({
         ...clone(widget),
         id: randomId()
@@ -355,10 +362,10 @@
     reader.onload = () => {
       try {
         importDeckJsonText(String(reader.result || ''));
-        flashHint('已匯入投影片 JSON');
+        flashHint('Done');
       } catch (err) {
         console.error('Failed to import deck JSON', err);
-        flashHint('匯入 JSON 失敗，請確認檔案格式');
+        flashHint('Done');
       } finally {
         if (importDeckInput) importDeckInput.value = '';
       }
@@ -591,6 +598,11 @@
       slidesRoot.appendChild(stack);
     });
 
+    deck.groups.forEach(group => {
+      group.slides.forEach(slide => {
+        if (slide.kind !== 'algorithm-animation') syncUnifiedLayerStyles(slide, null);
+      });
+    });
     buildFabricCanvases();
     applyEditMode(document.body.classList.contains('asm-edit-mode'));
 
@@ -654,7 +666,7 @@
       highlightCodeWidget(el);
     });
     renderMathWidgets(slidesRoot);
-    autoSizeLatexWidgets();
+    autoSizeLatexWidgets(slidesRoot);
     if (reveal) reveal.layout();
   }
 
@@ -665,7 +677,7 @@
       highlightCodeWidget(el);
     } else {
       renderMathWidgets(el);
-      autoSizeLatexWidgets();
+      autoSizeLatexWidgets(el);
     }
     if (reveal) reveal.layout();
   }
@@ -729,7 +741,86 @@
     pre.scrollTo({ top: codeFocusScrollTop(el, widget), behavior });
   }
 
+  function normalizeLatexSource(source = '') {
+    return String(source || '')
+      .replace(/(^|[^\\])\/([a-zA-Z]+)/g, '$1\\$2')
+      .trim();
+  }
+
+  function stripLatexDelimiters(source = '') {
+    const text = normalizeLatexSource(source);
+    const displayMatch = text.match(/^\\\[([\s\S]*)\\\]$/) || text.match(/^\$\$([\s\S]*)\$\$$/);
+    const inlineMatch = text.match(/^\\\(([\s\S]*)\\\)$/) || text.match(/^\$([\s\S]*)\$$/);
+    return (displayMatch || inlineMatch)?.[1] || text;
+  }
+
+  function latexToPlainText(source = '') {
+    return stripLatexDelimiters(source)
+      .replace(/\\leq\b/g, '\u2264')
+      .replace(/\\geq\b/g, '\u2265')
+      .replace(/\\neq\b/g, '\u2260')
+      .replace(/\\times\b/g, '\u00d7')
+      .replace(/\\cdot\b/g, '\u00b7')
+      .replace(/\\rightarrow\b/g, '\u2192')
+      .replace(/\\leftarrow\b/g, '\u2190')
+      .replace(/\\alpha\b/g, '\u03b1')
+      .replace(/\\beta\b/g, '\u03b2')
+      .replace(/\\gamma\b/g, '\u03b3')
+      .replace(/\\theta\b/g, '\u03b8')
+      .replace(/\\pi\b/g, '\u03c0')
+      .replace(/\\sum\b/g, '\u03a3')
+      .replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '$1/$2')
+      .replace(/[{}]/g, '')
+      .replace(/\\/g, '');
+  }
+
   function renderMathWidgets(root) {
+    const elements = [
+      ...(root?.matches?.('.latex-content') ? [root] : []),
+      ...Array.from(root?.querySelectorAll?.('.latex-content') || [])
+    ].filter(el => {
+      const source = normalizeLatexSource(el.dataset.latexSource || el.textContent || '');
+      el.dataset.latexSource = source;
+      return el.dataset.latexRenderedSource !== source;
+    });
+    elements.forEach(el => {
+      el.textContent = el.dataset.latexSource || '';
+    });
+    if (!elements.length) return;
+    if (window.katex?.render) {
+      elements.forEach(el => {
+        try {
+          window.katex.render(stripLatexDelimiters(el.dataset.latexSource), el, { throwOnError: false });
+          el.dataset.latexRenderedSource = el.dataset.latexSource;
+          el.dataset.latexRenderedEngine = 'katex';
+        } catch (err) {
+          console.warn('KaTeX render failed', err);
+          el.textContent = latexToPlainText(el.dataset.latexSource);
+          el.dataset.latexRenderedSource = el.dataset.latexSource;
+          el.dataset.latexRenderedEngine = 'plain';
+        }
+      });
+      return;
+    }
+    if (window.MathJax?.typesetPromise) {
+      window.MathJax.typesetPromise(elements.length ? elements : [root]).then(() => {
+        elements.forEach(el => {
+          if ((el.textContent || '').trim() === (el.dataset.latexSource || '').trim()) {
+            el.textContent = latexToPlainText(el.dataset.latexSource);
+          }
+          el.dataset.latexRenderedSource = el.dataset.latexSource;
+          el.dataset.latexRenderedEngine = 'mathjax';
+        });
+      }).catch(err => {
+        console.warn('MathJax render failed', err);
+        elements.forEach(el => {
+          el.textContent = latexToPlainText(el.dataset.latexSource);
+          el.dataset.latexRenderedSource = el.dataset.latexSource;
+          el.dataset.latexRenderedEngine = 'plain';
+        });
+      });
+      return;
+    }
     if (window.renderMathInElement) {
       window.renderMathInElement(root, {
         delimiters: [
@@ -739,12 +830,29 @@
           { left: '\\[', right: '\\]', display: true }
         ]
       });
+      elements.forEach(el => {
+        if (!el.querySelector('.katex') && (el.textContent || '').trim() === (el.dataset.latexSource || '').trim()) {
+          el.textContent = latexToPlainText(el.dataset.latexSource);
+        }
+        el.dataset.latexRenderedSource = el.dataset.latexSource;
+        el.dataset.latexRenderedEngine = 'auto-render';
+      });
+      return;
     }
+    elements.forEach(el => {
+      el.textContent = latexToPlainText(el.dataset.latexSource);
+      el.dataset.latexRenderedSource = el.dataset.latexSource;
+      el.dataset.latexRenderedEngine = 'plain';
+    });
   }
 
-  function autoSizeLatexWidgets() {
+  function autoSizeLatexWidgets(root = document) {
     let changed = false;
-    document.querySelectorAll('.latex-widget').forEach(el => {
+    const widgets = [
+      ...(root?.matches?.('.latex-widget') ? [root] : []),
+      ...Array.from(root?.querySelectorAll?.('.latex-widget') || [])
+    ];
+    widgets.forEach(el => {
       if (!slidesRoot.contains(el)) return;
       const content = el.querySelector('.latex-content');
       const rendered = content && (content.querySelector('.katex') || content);
@@ -842,6 +950,7 @@
         </div>
       `;
     renderSlideWidgets(section.querySelector('.widget-layer'), slide);
+    syncUnifiedLayerStyles(slide, null);
     appendSlideEdgeAddButtons(section, slide.id);
     return section;
   }
@@ -866,8 +975,8 @@
 
   function appendSlideEdgeAddButtons(section, slideId) {
     section.insertAdjacentHTML('beforeend', `
-      <button class="slide-edge-add slide-edge-add-right" type="button" data-add-slide-right="${slideId}" title="在右側新增投影片" aria-label="在右側新增投影片">+</button>
-      <button class="slide-edge-add slide-edge-add-bottom" type="button" data-add-slide-bottom="${slideId}" title="在下方新增投影片" aria-label="在下方新增投影片">+</button>
+      <button class="slide-edge-add slide-edge-add-right" type="button" data-add-slide-right="${slideId}" title="向右新增投影片" aria-label="向右新增投影片">+</button>
+      <button class="slide-edge-add slide-edge-add-bottom" type="button" data-add-slide-bottom="${slideId}" title="向下新增投影片" aria-label="向下新增投影片">+</button>
     `);
   }
 
@@ -959,7 +1068,9 @@
     } else {
       const content = document.createElement('div');
       content.className = 'widget-content latex-content';
-      content.textContent = widget.content || String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`;
+      const latexSource = normalizeLatexSource(widget.content || String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`);
+      content.dataset.latexSource = latexSource;
+      content.textContent = latexSource;
       el.appendChild(content);
     }
     positionWidgetContent(el, widget);
@@ -1005,6 +1116,7 @@
 
   async function buildFabricCanvases() {
     document.body.dataset.fabricBuild = 'starting';
+    patchFabricTextCompositionUnderline();
     for (const group of deck.groups) {
       for (const slide of group.slides) {
         const el = document.getElementById(`fabric-${slide.id}`);
@@ -1012,8 +1124,8 @@
         try {
           const Fabric = f();
           const canvas = new Fabric.Canvas(el, {
-            width: SLIDE_W,
-            height: SLIDE_H,
+            width: SLIDE_W + FABRIC_BLEED * 2,
+            height: SLIDE_H + FABRIC_BLEED * 2,
             backgroundColor: 'rgba(0,0,0,0)',
             preserveObjectStacking: true,
             selection: true,
@@ -1039,12 +1151,70 @@
     updateDiagnostics();
   }
 
+  function patchFabricTextCompositionUnderline() {
+    const Fabric = f();
+    const proto = Fabric?.IText?.prototype;
+    if (!proto || proto.__asmCompositionUnderlinePatched || typeof proto.renderSelection !== 'function') return;
+    const original = proto.renderSelection;
+    proto.renderSelection = function (boundaries, ctx) {
+      if (!this.inCompositionMode) return original.call(this, boundaries, ctx);
+      try {
+        const textareaStart = this.hiddenTextarea?.selectionStart ?? this.selectionStart ?? 0;
+        const textareaEnd = this.hiddenTextarea?.selectionEnd ?? this.selectionEnd ?? textareaStart;
+        const compositionStart = Number.isFinite(Number(this.compositionStart)) ? Number(this.compositionStart) : textareaStart;
+        const compositionEnd = Number.isFinite(Number(this.compositionEnd)) ? Number(this.compositionEnd) : textareaEnd;
+        const selectionStart = Math.min(compositionStart, compositionEnd, textareaStart, textareaEnd);
+        let selectionEnd = Math.max(compositionStart, compositionEnd, textareaStart, textareaEnd);
+        if (selectionEnd <= selectionStart) selectionEnd = Math.min((this.text || '').length, selectionStart + 1);
+        const start = this.get2DCursorLocation(selectionStart);
+        const end = this.get2DCursorLocation(selectionEnd);
+        const startLine = start.lineIndex;
+        const endLine = end.lineIndex;
+        let topOffset = boundaries.topOffset;
+        ctx.save();
+        ctx.strokeStyle = this.compositionColor || '#1d8f83';
+        ctx.lineWidth = Math.max(1, 1 / ((this.scaleX || 1) * (this.canvas?.getZoom?.() || 1)));
+        ctx.setLineDash([1, 2]);
+        for (let i = startLine; i <= endLine; i++) {
+          const lineOffset = this._getLineLeftOffset(i) || 0;
+          const lineHeight = this.getHeightOfLine(i);
+          const startChar = i === startLine ? Math.max(0, start.charIndex) : 0;
+          const endChar = i === endLine ? Math.max(0, end.charIndex) : (this.__charBounds[i]?.length || 0);
+          const lineBounds = this.__charBounds[i] || [];
+          const first = lineBounds[startChar] || lineBounds[0];
+          const last = endChar > 0 ? lineBounds[endChar - 1] : first;
+          if (first && last) {
+            let x1 = boundaries.left + lineOffset + first.left;
+            let x2 = boundaries.left + lineOffset + last.left + last.width;
+            if (this.direction === 'rtl') {
+              const width = x2 - x1;
+              x1 = this.width - x1 - width;
+              x2 = x1 + width;
+            }
+            const y = boundaries.top + topOffset + lineHeight;
+            ctx.beginPath();
+            ctx.moveTo(x1, y);
+            ctx.lineTo(x2, y);
+            ctx.stroke();
+          }
+          topOffset += lineHeight;
+        }
+        ctx.restore();
+      } catch (err) {
+        ctx.restore?.();
+        return original.call(this, boundaries, ctx);
+      }
+    };
+    Object.defineProperty(proto, '__asmCompositionUnderlinePatched', { value: true });
+  }
+
   async function loadSlideCanvas(canvas, slide) {
     const json = normalizeCanvasJson(slide.canvas);
     suppressCanvasSave = true;
     try {
       await new Promise(resolve => {
         canvas.loadFromJSON(json, () => {
+          canvas.setViewportTransform([1, 0, 0, 1, FABRIC_BLEED, FABRIC_BLEED]);
           canvas.getObjects().forEach(configureObject);
           canvas.renderAll();
           resolve();
@@ -1081,8 +1251,18 @@
       hideObjectToolbar();
       if (!selectedWidgetId) showDefaultPanel();
     });
+    canvas.on('mouse:down', e => {
+      if (e.target) {
+        e.target.__asmMoveOrigin = {
+          left: e.target.left || 0,
+          top: e.target.top || 0
+        };
+        e.target.__asmShiftLockAxis = null;
+      }
+    });
     canvas.on('object:moving', e => {
       finishFabricAutoAnimation();
+      constrainFabricMoveWithShift(e);
       updateObjectToolbar(e.target, canvas);
     });
     canvas.on('object:scaling', e => {
@@ -1091,13 +1271,50 @@
       updateObjectToolbar(e.target, canvas);
     });
     canvas.on('object:rotating', e => updateObjectToolbar(e.target, canvas));
-    canvas.on('mouse:up', () => updateObjectToolbar(canvas.getActiveObject(), canvas));
+    canvas.on('mouse:up', () => {
+      canvas.getObjects().forEach(obj => {
+        obj.__asmMoveOrigin = null;
+        obj.__asmShiftLockAxis = null;
+      });
+      updateObjectToolbar(canvas.getActiveObject(), canvas);
+    });
     canvas.on('text:selection:changed', e => updateObjectToolbar(e.target, canvas));
-    canvas.on('text:editing:entered', e => updateObjectToolbar(e.target, canvas));
+    canvas.on('text:editing:entered', e => {
+      if (e.target) {
+        e.target.set?.({
+          hasBorders: true,
+          hasControls: true,
+          cornerSize: 8,
+          touchCornerSize: 14,
+          padding: 0,
+          cursorDelay: 500,
+          cursorDuration: 1,
+          compositionColor: '#1d8f83'
+        });
+        e.target.setCoords?.();
+      }
+      updateObjectToolbar(e.target, canvas);
+      canvas.requestRenderAll();
+    });
     canvas.on('text:editing:exited', () => {
       textSelection = null;
       hideObjectToolbar({ keepAnimation: true });
       showFabricObjectEditor(canvas.getActiveObject());
+    });
+    canvas.on('after:render', () => drawEditingTextControls(canvas));
+  }
+
+  function drawEditingTextControls(canvas) {
+    const obj = canvas?.getActiveObject?.();
+    if (!obj || !isTextObject(obj) || !obj.isEditing || typeof obj._renderControls !== 'function') return;
+    const ctx = canvas.contextTop;
+    if (!ctx) return;
+    obj._renderControls(ctx, {
+      hasBorders: true,
+      hasControls: true,
+      cornerColor: obj.cornerColor,
+      cornerStrokeColor: obj.cornerStrokeColor,
+      borderColor: obj.borderColor
     });
   }
 
@@ -1110,9 +1327,14 @@
       borderColor: '#1d8f83',
       cornerStyle: 'circle',
       transparentCorners: false,
-      padding: 6,
+      cornerSize: 8,
+      touchCornerSize: 14,
+      padding: 0,
       lockScalingFlip: true,
       strokeUniform: true,
+      cursorDelay: 500,
+      cursorDuration: 1,
+      compositionColor: '#1d8f83',
       objectCaching: isShapeObject(obj) ? false : !isTextObject(obj),
       noScaleCache: isShapeObject(obj) ? false : obj.noScaleCache,
       ...animation,
@@ -1136,6 +1358,26 @@
     obj.set({ strokeUniform: true, objectCaching: false, noScaleCache: false });
     obj.dirty = true;
     if (canvas) canvas.requestRenderAll();
+  }
+
+  function constrainFabricMoveWithShift(event) {
+    const obj = event?.target;
+    if (!obj || !event?.e?.shiftKey) {
+      if (obj) obj.__asmShiftLockAxis = null;
+      return;
+    }
+    const origin = obj.__asmMoveOrigin || {
+      left: obj.left || 0,
+      top: obj.top || 0
+    };
+    const dx = (obj.left || 0) - origin.left;
+    const dy = (obj.top || 0) - origin.top;
+    if (!obj.__asmShiftLockAxis && Math.abs(dx) + Math.abs(dy) >= 2) {
+      obj.__asmShiftLockAxis = Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+    }
+    if (obj.__asmShiftLockAxis === 'horizontal') obj.set('top', origin.top);
+    if (obj.__asmShiftLockAxis === 'vertical') obj.set('left', origin.left);
+    obj.setCoords();
   }
 
   function normalizeShapeGeometry(obj, canvas) {
@@ -1637,12 +1879,12 @@
     img.src = src;
   }
 
-  function syncCurrentSlideCanvas() {
+  function syncCurrentSlideCanvas({ history = true } = {}) {
     const canvas = currentFabricCanvas();
     const slide = getSlide();
     if (!canvas || !slide) return;
     slide.canvas = serializeFabricCanvas(canvas);
-    saveDeck();
+    saveDeck({ history });
     syncSlideAutoAnimate(slide);
     syncFabricFragmentProxies(slide.id, canvas);
   }
@@ -1698,13 +1940,10 @@
     if (!slide || (!objectClipboard.fabric.length && !objectClipboard.widgets.length)) return;
     if (canvas && objectClipboard.fabric.length) {
       const objects = await enlivenFabricObjects(objectClipboard.fabric);
-      const offset = objectClipboard.cut ? 0 : 32;
       objects.forEach(obj => {
+        obj.set?.({ fragmentProxyId: randomId() });
         configureObject(obj);
-        obj.set({
-          left: (obj.left || 0) + offset,
-          top: (obj.top || 0) + offset
-        });
+        obj.setCoords?.();
         canvas.add(obj);
       });
       if (objects.length === 1) {
@@ -1718,12 +1957,9 @@
     }
     if (objectClipboard.widgets.length) {
       slide.widgets = normalizeWidgets(slide.widgets);
-      const offset = objectClipboard.cut ? 0 : 32;
       const pastedWidgets = objectClipboard.widgets.map(widget => ({
         ...clone(widget),
-        id: randomId(),
-        x: Math.min(SLIDE_W - Math.max(20, widget.w || 20), (widget.x || 0) + offset),
-        y: Math.min(SLIDE_H - Math.max(20, widget.h || 20), (widget.y || 0) + offset)
+        id: randomId()
       }));
       slide.widgets.push(...pastedWidgets);
       selectedWidgetId = pastedWidgets.length === 1 ? pastedWidgets[0].id : null;
@@ -1868,7 +2104,7 @@
       codeFontSizeInput.value = Math.round(found.widget.fontSize || 21);
       codeFocusLinesInput.value = found.widget.focusLines || '';
       codeShowLineNumbersInput.checked = found.widget.showLineNumbers === true;
-      if (codeEditorModalStatus) codeEditorModalStatus.textContent = `目前 code 物件：${found.widget.id}`;
+      if (codeEditorModalStatus) codeEditorModalStatus.textContent = `Editing code widget ${found.widget.id}`;
     }
     showAnimationEditor(found.widget);
   }
@@ -1936,10 +2172,10 @@
     if (!found.widget || found.widget.type !== 'code' || !codeEditorModal) return;
     editingCodeWidgetId = selectedWidgetId;
     codeEditorModal.hidden = false;
-    if (codeEditorModalStatus) codeEditorModalStatus.textContent = `目前 code 物件：${found.widget.id}`;
+    if (codeEditorModalStatus) codeEditorModalStatus.textContent = `Editing code widget ${found.widget.id}`;
     const editor = ensureAceCodeEditor();
     if (!editor) {
-      if (codeAceEditorEl) codeAceEditorEl.textContent = 'ACE editor 尚未載入，請重啟伺服器後再開啟。';
+      if (codeAceEditorEl) codeAceEditorEl.textContent = 'ACE editor is not loaded. Try again.';
       return;
     }
     editor.session.setMode(`ace/mode/${aceModeForLanguage(found.widget.language)}`);
@@ -2001,7 +2237,7 @@
         fabricZ = Math.max(fabricZ ?? z, z);
       }
     });
-    if (host) host.style.zIndex = String(fabricZ ?? FABRIC_LAYER_INDEX);
+    if (host) host.style.zIndex = String(fabricZ ?? 0);
   }
 
   function unifiedLayerEntries(slide, canvas = currentFabricCanvas()) {
@@ -2014,12 +2250,17 @@
       originalIndex: index,
       layerIndex: Number.isFinite(Number(widget.layerIndex)) ? Number(widget.layerIndex) : WIDGET_LAYER_ABOVE_BASE + index
     }));
-    (canvas?.getObjects() || []).forEach((object, index) => {
-      if (!object.fragmentProxyId) object.set?.({ fragmentProxyId: randomId() });
+    const fabricObjects = canvas?.getObjects?.() || normalizeCanvasJson(slide.canvas).objects || [];
+    fabricObjects.forEach((object, index) => {
+      if (!object.fragmentProxyId) {
+        if (object.set) object.set({ fragmentProxyId: randomId() });
+        else object.fragmentProxyId = randomId();
+      }
       entries.push({
         kind: 'fabric',
         id: object.fragmentProxyId,
-        object,
+        object: object.set ? object : null,
+        savedObject: object.set ? null : object,
         originalIndex: index,
         layerIndex: Number.isFinite(Number(object.layerIndex)) ? Number(object.layerIndex) : FABRIC_LAYER_INDEX + index
       });
@@ -2217,7 +2458,9 @@
         paintWidgetElement(el, widget);
         return;
       }
-      content.textContent = widget.content || String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`;
+      const latexSource = normalizeLatexSource(widget.content || String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`);
+      content.dataset.latexSource = latexSource;
+      content.textContent = latexSource;
     }
     positionWidgetContent(el, widget);
   }
@@ -2275,8 +2518,8 @@
     const modeToggleBtn = document.getElementById('modeToggleBtn');
     const nextMode = enabled ? 'Present' : 'Edit';
     if (modeToggleBtn) {
-      modeToggleBtn.title = `切換至 ${nextMode} 模式`;
-      modeToggleBtn.setAttribute('aria-label', `切換至 ${nextMode} 模式`);
+      modeToggleBtn.title = `切換到 ${nextMode} 模式`;
+      modeToggleBtn.setAttribute('aria-label', `切換到 ${nextMode} 模式`);
     }
     applyEditMode(enabled);
     if (reveal) setTimeout(() => reveal.layout(), 20);
@@ -2291,7 +2534,7 @@
     if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing() || event.button !== 0) return;
     const target = event.target;
     if (!target || !target.closest) return;
-    if (target.closest('.asm-slide-frame-content, #controlChrome, #editorChrome, #objectToolbar, #overviewChrome, #customOverview, #algorithmEditorModal, #codeEditorModal, .slide-edge-add')) return;
+    if (target.closest('.asm-slide-frame-content, #controlChrome, #editorChrome, #objectToolbar, #iroPopup, #overviewChrome, #customOverview, #algorithmEditorModal, #codeEditorModal, .slide-edge-add')) return;
     const canvas = currentFabricCanvas();
     const hadFabricSelection = !!(canvas && canvas.getActiveObject());
     if (canvas && hadFabricSelection) {
@@ -2323,6 +2566,13 @@
     document.getElementById('saveAlgorithmEditorBtn')?.addEventListener('click', saveAlgorithmEditor);
     window.addEventListener('message', handleAlgorithmEmbedMessage);
     document.addEventListener('mousedown', clearSelectionWhenClickingOutsideSlide, true);
+    document.addEventListener('mousedown', event => {
+      if (iroPopup.hidden) return;
+      const target = event.target;
+      if (target.closest?.('#iroPopup, #textColorBtn, #bgColorBtn, #shapeStrokeBtn, #shapeColorBtn')) return;
+      iroPopup.hidden = true;
+      commitPendingColorHistory();
+    });
     slidesRoot.addEventListener('click', event => {
       if (handleSlideEdgeAddClick(event)) return;
     });
@@ -2349,7 +2599,7 @@
         updateArmedTool();
         shapeMenu.hidden = true;
         addObject(tool, { x: SLIDE_W / 2, y: SLIDE_H / 2 });
-        flashHint('已在投影片中央新增範本。');
+        flashHint('Done');
       });
     });
 
@@ -2400,9 +2650,7 @@
     italicBtn.addEventListener('click', () => toggleTextStyle('fontStyle', 'italic', 'normal'));
     underlineBtn.addEventListener('click', () => toggleTextStyle('underline', true, false));
     strikeBtn.addEventListener('click', () => toggleTextStyle('linethrough', true, false));
-    alignLeftBtn.addEventListener('click', () => applyTextObjectStyle({ textAlign: 'left' }));
-    alignCenterBtn.addEventListener('click', () => applyTextObjectStyle({ textAlign: 'center' }));
-    alignRightBtn.addEventListener('click', () => applyTextObjectStyle({ textAlign: 'right' }));
+    alignCycleBtn.addEventListener('click', cycleTextAlign);
     listStyleBtn.addEventListener('click', cycleTextList);
     textColorBtn.addEventListener('click', () => openIro('text'));
     bgColorBtn.addEventListener('click', () => openIro('background'));
@@ -2411,8 +2659,14 @@
     shapeChoiceButtons.forEach(button => {
       button.addEventListener('click', () => replaceSelectedShape(button.dataset.shapeChoice));
     });
-    shapeStrokeWidthInput.addEventListener('input', () => applyShapeStyle({ strokeWidth: Number(shapeStrokeWidthInput.value) || 0 }));
-    shapeCornerRadiusInput.addEventListener('input', () => applyShapeStyle({ cornerRadius: Number(shapeCornerRadiusInput.value) || 0 }));
+    shapeStrokeWidthInput.addEventListener('input', () => {
+      pendingColorHistory = true;
+      applyShapeStyle({ strokeWidth: Number(shapeStrokeWidthInput.value) || 0 }, { history: false });
+    });
+    shapeCornerRadiusInput.addEventListener('input', () => {
+      pendingColorHistory = true;
+      applyShapeStyle({ cornerRadius: Number(shapeCornerRadiusInput.value) || 0 }, { history: false });
+    });
   }
 
   function insertAtCursor(input, text) {
@@ -2448,8 +2702,9 @@
     const beginWidgetDrag = event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
       let widgetEl = event.target.closest && event.target.closest('.slide-widget');
-      if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host') && !pointHitsFabricObject(event)) {
-        widgetEl = widgetElementAtPoint(event);
+      if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) {
+        widgetEl = widgetClaimableThroughCanvas(event);
+        if (!widgetEl && fabricObjectAtPoint(event)) return;
       }
       const insideEditorUi = event.target.closest && event.target.closest('#controlChrome, #editorChrome, #objectToolbar, #codeEditorModal, .mode-switch, #overviewChrome');
       if (selectedWidgetId && !widgetEl && !insideEditorUi && event.button === 0) {
@@ -2490,6 +2745,7 @@
         originalH: found.widget.h,
         originalFontSize: found.widget.fontSize || (found.widget.type === 'code' ? 21 : 34),
         originalScale: found.widget.scale || 1,
+        shiftLockAxis: null,
         scaleX,
         scaleY,
         moved: false
@@ -2535,8 +2791,19 @@
       if (widgetDrag.mode === 'resize') {
         resizeWidgetFromEdge(found.widget, widgetDrag, dx, dy);
       } else {
-        found.widget.x = Math.max(0, Math.min(widgetDrag.originalX + dx, SLIDE_W - found.widget.w));
-        found.widget.y = Math.max(0, Math.min(widgetDrag.originalY + dy, SLIDE_H - found.widget.h));
+        let moveX = dx;
+        let moveY = dy;
+        if (event.shiftKey) {
+          if (!widgetDrag.shiftLockAxis && Math.abs(dx) + Math.abs(dy) >= 2) {
+            widgetDrag.shiftLockAxis = Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+          }
+          if (widgetDrag.shiftLockAxis === 'horizontal') moveY = 0;
+          if (widgetDrag.shiftLockAxis === 'vertical') moveX = 0;
+        } else {
+          widgetDrag.shiftLockAxis = null;
+        }
+        found.widget.x = widgetDrag.originalX + moveX;
+        found.widget.y = widgetDrag.originalY + moveY;
       }
       const el = document.querySelector(`.slide-widget[data-widget-id="${widgetDrag.widgetId}"]`);
       if (el) {
@@ -2623,8 +2890,8 @@
 
     slidesRoot.addEventListener('dblclick', event => {
       const widgetEl = event.target.closest('.slide-widget') || (
-        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host') && !pointHitsFabricObject(event)
-          ? widgetElementAtPoint(event)
+        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')
+          ? widgetClaimableThroughCanvas(event)
           : null
       );
       if (!widgetEl || isOverviewEditing()) return;
@@ -2637,8 +2904,8 @@
 
     slidesRoot.addEventListener('click', event => {
       const widgetEl = event.target.closest('.slide-widget') || (
-        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host') && !pointHitsFabricObject(event)
-          ? widgetElementAtPoint(event)
+        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')
+          ? widgetClaimableThroughCanvas(event)
           : null
       );
       if (!widgetEl || isOverviewEditing() || !document.body.classList.contains('asm-edit-mode')) return;
@@ -2800,9 +3067,18 @@
   function getTextTarget() {
     const canvas = currentFabricCanvas();
     const active = canvas && canvas.getActiveObject();
-    if (active && isTextObject(active) && active.selectionStart !== active.selectionEnd) {
-      textSelection = { object: active, start: active.selectionStart, end: active.selectionEnd };
-      return { canvas, object: active, start: active.selectionStart, end: active.selectionEnd };
+    if (active && isTextObject(active)) {
+      const start = Number(active.selectionStart) || 0;
+      const end = Number(active.selectionEnd) || start;
+      if (start !== end) {
+        textSelection = { object: active, start, end };
+        return { canvas, object: active, start, end };
+      }
+      if (active.isEditing) {
+        const line = lineRangeAtCursor(active, start);
+        textSelection = { object: active, start: line.start, end: line.end, objectStyle: line.start === line.end };
+        return { canvas, object: active, start: line.start, end: line.end, objectStyle: line.start === line.end };
+      }
     }
     if (canvas && textSelection && textSelection.object && canvas.getObjects().includes(textSelection.object)) {
       return { canvas, object: textSelection.object, start: textSelection.start, end: textSelection.end };
@@ -2810,7 +3086,7 @@
     return {};
   }
 
-  function applyShapeStyle(style) {
+  function applyShapeStyle(style, { history = true } = {}) {
     const canvas = currentFabricCanvas();
     if (!canvas) return;
     const active = canvas.getActiveObject();
@@ -2829,7 +3105,7 @@
     active.set(patch);
     active.setCoords();
     canvas.requestRenderAll();
-    syncCurrentSlideCanvas();
+    syncCurrentSlideCanvas({ history });
     updateObjectToolbar(active, canvas);
   }
 
@@ -2914,11 +3190,14 @@
       return;
     }
     if (isTextObject(obj)) {
-      if (!obj.isEditing || obj.selectionStart === obj.selectionEnd) {
-        hideObjectToolbar({ keepAnimation: true });
-        return;
+      if (obj.isEditing && obj.selectionStart !== obj.selectionEnd) {
+        textSelection = { object: obj, start: obj.selectionStart, end: obj.selectionEnd };
+      } else if (obj.isEditing) {
+        const line = lineRangeAtCursor(obj, obj.selectionStart);
+        textSelection = { object: obj, start: line.start, end: line.end, objectStyle: line.start === line.end };
+      } else {
+        textSelection = null;
       }
-      textSelection = { object: obj, start: obj.selectionStart, end: obj.selectionEnd };
     }
 
     objectToolbar.classList.toggle('is-shape', !isTextObject(obj));
@@ -2930,10 +3209,9 @@
       italicBtn.classList.toggle('is-active', (style.fontStyle || obj.fontStyle) === 'italic');
       underlineBtn.classList.toggle('is-active', !!(style.underline ?? obj.underline));
       strikeBtn.classList.toggle('is-active', !!(style.linethrough ?? obj.linethrough));
-      alignLeftBtn.classList.toggle('is-active', (obj.textAlign || 'left') === 'left');
-      alignCenterBtn.classList.toggle('is-active', obj.textAlign === 'center');
-      alignRightBtn.classList.toggle('is-active', obj.textAlign === 'right');
+      updateAlignButton(obj.textAlign || 'left');
       updateListButton(obj);
+      updateTextColorButton(obj);
     } else {
       const strokeWidth = Number.isFinite(Number(obj.strokeWidth)) ? Number(obj.strokeWidth) : 0;
       const cornerRadius = Number.isFinite(Number(obj.cornerRadius)) ? Number(obj.cornerRadius) : (Number(obj.rx) || 0);
@@ -2949,19 +3227,26 @@
       shapeCornerRadiusInput.value = String(cornerRadius);
       shapeCornerRadiusValue.value = String(cornerRadius);
     }
-    const rect = canvas.upperCanvasEl.getBoundingClientRect();
+    const rect = fabricSlideRect(canvas);
     const bounds = obj.getBoundingRect(true, true);
     const scaleX = rect.width / SLIDE_W;
     const scaleY = rect.height / SLIDE_H;
     objectToolbar.hidden = false;
     const toolbarHeight = objectToolbar.offsetHeight || 44;
-    const rotationControlClearance = !isTextObject(obj) ? 56 * scaleY : 8;
+    const rotationControlClearance = 56 * scaleY;
     objectToolbar.style.left = `${rect.left + (bounds.left + bounds.width / 2) * scaleX}px`;
     objectToolbar.style.top = `${Math.max(8, rect.top + bounds.top * scaleY - toolbarHeight - rotationControlClearance)}px`;
     objectToolbar.style.transform = 'translateX(-50%)';
   }
 
+  function commitPendingColorHistory() {
+    if (!pendingColorHistory) return;
+    pendingColorHistory = false;
+    pushHistorySnapshot();
+  }
+
   function hideObjectToolbar({ keepAnimation = false } = {}) {
+    commitPendingColorHistory();
     objectToolbar.hidden = true;
     iroPopup.hidden = true;
     if (!keepAnimation && !selectedWidgetId) hideAnimationEditor();
@@ -2973,16 +3258,43 @@
   }
 
   function pointHitsFabricObject(event) {
+    return !!fabricObjectAtPoint(event);
+  }
+
+  function fabricObjectAtPoint(event) {
     const canvas = currentFabricCanvas();
-    if (!canvas || !canvas.upperCanvasEl) return false;
-    const rect = canvas.upperCanvasEl.getBoundingClientRect();
+    if (!canvas || !canvas.upperCanvasEl) return null;
+    if (typeof canvas.findTarget === 'function') {
+      const target = canvas.findTarget(event, false);
+      if (target && target.visible !== false) return target;
+    }
+    return fabricObjectBoundsAtPoint(event, canvas);
+  }
+
+  function fabricObjectBoundsAtPoint(event, canvas = currentFabricCanvas()) {
+    if (!canvas) return null;
+    const rect = fabricSlideRect(canvas);
+    if (!rect) return null;
     const x = ((event.clientX - rect.left) / rect.width) * SLIDE_W;
     const y = ((event.clientY - rect.top) / rect.height) * SLIDE_H;
-    return canvas.getObjects().some(obj => {
+    return canvas.getObjects().slice().reverse().find(obj => {
       if (!obj.visible) return false;
       const bounds = obj.getBoundingRect(true, true);
       return x >= bounds.left && x <= bounds.left + bounds.width && y >= bounds.top && y <= bounds.top + bounds.height;
-    });
+    }) || null;
+  }
+
+  function widgetZIndex(el) {
+    return Number(getComputedStyle(el).zIndex) || 0;
+  }
+
+  function fabricSlideRect(canvas = currentFabricCanvas()) {
+    const host = canvas?.upperCanvasEl?.closest?.('.fabric-host');
+    return (host || canvas?.upperCanvasEl)?.getBoundingClientRect();
+  }
+
+  function fabricZIndex(obj) {
+    return Number.isFinite(Number(obj?.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX;
   }
 
   function widgetElementAtPoint(event) {
@@ -2997,7 +3309,23 @@
           && event.clientY >= rect.top
           && event.clientY <= rect.bottom;
       })
-      .sort((a, b) => (Number(getComputedStyle(b).zIndex) || 0) - (Number(getComputedStyle(a).zIndex) || 0))[0] || null;
+      .sort((a, b) => widgetZIndex(b) - widgetZIndex(a))[0] || null;
+  }
+
+  function topWidgetAboveFabricAtPoint(event) {
+    const widgetHit = widgetElementAtPoint(event);
+    if (!widgetHit) return null;
+    const fabricHit = fabricObjectAtPoint(event);
+    return !fabricHit || widgetZIndex(widgetHit) > fabricZIndex(fabricHit) ? widgetHit : null;
+  }
+
+  function widgetClaimableThroughCanvas(event) {
+    if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing()) return null;
+    if (!event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) return null;
+    const widgetHit = widgetElementAtPoint(event);
+    if (!widgetHit) return null;
+    const fabricHit = fabricObjectBoundsAtPoint(event);
+    return !fabricHit || widgetZIndex(widgetHit) >= fabricZIndex(fabricHit) ? widgetHit : null;
   }
 
   function isTextObject(obj) {
@@ -3013,25 +3341,32 @@
   }
 
   function getTextSelectionStyle(obj) {
-    if (!obj || !obj.getSelectionStyles || obj.selectionStart === obj.selectionEnd) return {};
-    return obj.getSelectionStyles(obj.selectionStart, obj.selectionEnd)[0] || {};
+    const target = getTextTarget();
+    if (target.object === obj) return getTextStyleForRange(obj, target.start, target.end);
+    const start = Number(obj?.selectionStart) || 0;
+    const end = Number(obj?.selectionEnd) || start;
+    return getTextStyleForRange(obj, start, end);
   }
 
-  function applyTextStyle(style) {
+  function applyTextStyle(style, { history = true } = {}) {
     const target = getTextTarget();
-    if (!target.canvas || !target.object || target.start === target.end) return;
-    if (target.object.setSelectionStyles) {
+    if (!target.canvas || !target.object) return;
+    if (target.objectStyle || target.start === target.end) {
+      target.object.set(style);
+    } else if (target.object.setSelectionStyles) {
       target.object.setSelectionStyles(style, target.start, target.end);
     }
+    target.object.dirty = true;
+    target.object.setCoords();
     target.canvas.requestRenderAll();
-    syncCurrentSlideCanvas();
+    syncCurrentSlideCanvas({ history });
     updateObjectToolbar(target.object, target.canvas);
   }
 
   function toggleTextStyle(key, onValue, offValue) {
     const target = getTextTarget();
-    if (!target.object || target.start === target.end) return;
-    const style = getTextSelectionStyle(target.object);
+    if (!target.object) return;
+    const style = getTextStyleForRange(target.object, target.start, target.end);
     const current = style[key] ?? target.object[key];
     applyTextStyle({ [key]: current === onValue ? offValue : onValue });
   }
@@ -3046,14 +3381,32 @@
     return {};
   }
 
-  function applyTextObjectStyle(style) {
+  function applyTextObjectStyle(style, { history = true } = {}) {
     const target = activeTextObject();
     if (!target.canvas || !target.object) return;
     target.object.set(style);
     target.object.setCoords();
     target.canvas.requestRenderAll();
-    syncCurrentSlideCanvas();
+    syncCurrentSlideCanvas({ history });
     updateObjectToolbar(target.object, target.canvas);
+  }
+
+  function cycleTextAlign() {
+    const target = activeTextObject();
+    if (!target.object) return;
+    const order = ['left', 'center', 'right'];
+    const current = target.object.textAlign || 'left';
+    const next = order[(order.indexOf(current) + 1) % order.length] || 'left';
+    applyTextObjectStyle({ textAlign: next });
+  }
+
+  function updateAlignButton(align = 'left') {
+    const icon = alignCycleBtn?.querySelector('.align-icon');
+    if (!icon) return;
+    icon.classList.remove('align-left-icon', 'align-center-icon', 'align-right-icon');
+    icon.classList.add(`align-${align}-icon`);
+    alignCycleBtn.dataset.align = align;
+    alignCycleBtn.classList.toggle('is-active', align !== 'left');
   }
 
   function lineRanges(text) {
@@ -3065,8 +3418,23 @@
     });
   }
 
+  function lineRangeAtCursor(obj, cursor = 0) {
+    const text = typeof obj?.text === 'string' ? obj.text : '';
+    const position = Math.max(0, Math.min(text.length, Number(cursor) || 0));
+    return lineRanges(text).find(line => position >= line.start && position <= line.end) || { text: '', start: position, end: position };
+  }
+
+  function getTextStyleForRange(obj, start = 0, end = start) {
+    if (!obj || !obj.getSelectionStyles) return {};
+    const textLength = typeof obj.text === 'string' ? obj.text.length : 0;
+    if (end > start) return obj.getSelectionStyles(start, end)[0] || {};
+    if (!textLength) return {};
+    const probe = Math.max(0, Math.min(textLength - 1, start));
+    return obj.getSelectionStyles(probe, probe + 1)[0] || {};
+  }
+
   function selectedLineIndexes(obj, start = obj?.selectionStart, end = obj?.selectionEnd) {
-    if (!obj || typeof obj.text !== 'string' || start === end) return [];
+    if (!obj || typeof obj.text !== 'string') return [];
     return lineRanges(obj.text)
       .map((line, index) => ({ line, index }))
       .filter(({ line }) => line.end > start && line.start < end && line.text.trim().length)
@@ -3074,14 +3442,17 @@
   }
 
   function listMarkerPattern(kind = 'any') {
-    if (kind === 'bullet') return /^•(?:\s|\u00a0)+/;
+    if (kind === 'bullet') return /^\u2022(?:\s|\u00a0)+/;
     if (kind === 'number') return /^\d+\.(?:\s|\u00a0)+/;
-    return /^(?:•|\d+\.)(?:\s|\u00a0)+/;
+    return /^(?:\u2022|\d+\.)(?:\s|\u00a0)+/;
   }
 
   function textListState(obj) {
     if (!obj || typeof obj.text !== 'string') return 'none';
-    const indexes = selectedLineIndexes(obj);
+    const target = getTextTarget();
+    const indexes = target.object === obj
+      ? selectedLineIndexes(obj, target.start, target.end)
+      : selectedLineIndexes(obj);
     if (!indexes.length) return 'none';
     const allLines = obj.text.split('\n');
     const lines = indexes.map(index => allLines[index]).filter(line => line.trim().length);
@@ -3093,8 +3464,41 @@
 
   function updateListButton(obj) {
     const state = textListState(obj);
-    listStyleBtn.textContent = state === 'bullet' ? '1.' : (state === 'number' ? '×' : '•');
+    listStyleBtn.dataset.listState = state;
+    listStyleBtn.title = state === 'bullet'
+      ? '\u76ee\u524d\u662f\u9805\u76ee\u7b26\u865f\uff0c\u9ede\u64ca\u5207\u63db\u6210\u7de8\u865f'
+      : (state === 'number' ? '\u76ee\u524d\u662f\u7de8\u865f\uff0c\u9ede\u64ca\u53d6\u6d88\u6e05\u55ae' : '\u5207\u63db\u9805\u76ee\u7b26\u865f / \u7de8\u865f');
     listStyleBtn.classList.toggle('is-active', state !== 'none');
+  }
+
+  function updateTextColorButton(obj) {
+    if (!textColorBtn || !obj) return;
+    const colors = textFillColorsForTarget(obj);
+    const icon = textColorBtn.querySelector('.text-color-icon');
+    textColorBtn.classList.toggle('is-mixed-color', colors.length > 1);
+    icon?.style.setProperty('--text-color-current', colors.length === 1 ? colors[0] : '#ef3829');
+  }
+
+  function textFillColorsForTarget(obj) {
+    if (!obj || !obj.getSelectionStyles) return [normalizeColor(obj?.fill || '#1f282d')];
+    const start = Number(obj.selectionStart) || 0;
+    const end = Number(obj.selectionEnd) || start;
+    if (start !== end) {
+      const colors = new Set();
+      const styles = obj.getSelectionStyles(start, end) || [];
+      styles.forEach(style => colors.add(normalizeColor(style.fill || obj.fill || '#1f282d')));
+      if (!colors.size) colors.add(normalizeColor(obj.fill || '#1f282d'));
+      return Array.from(colors);
+    }
+    return [textFillColorAtCursor(obj, start)];
+  }
+
+  function textFillColorAtCursor(obj, cursor = 0) {
+    const textLength = typeof obj.text === 'string' ? obj.text.length : 0;
+    if (!textLength) return normalizeColor(obj.fill || '#1f282d');
+    const probe = Math.max(0, Math.min(textLength - 1, cursor - 1));
+    const style = obj.getSelectionStyles?.(probe, probe + 1)?.[0] || {};
+    return normalizeColor(style.fill || obj.fill || '#1f282d');
   }
 
   function cycleTextList() {
@@ -3109,7 +3513,7 @@
       const clean = line.replace(listMarkerPattern(), '');
       if (kind === 'none') return clean;
       const selectedNumber = Array.from(selectedIndexes).filter(item => item <= index).length;
-      return kind === 'number' ? `${selectedNumber}.\u00a0${clean}` : `•\u00a0${clean}`;
+      return kind === 'number' ? `${selectedNumber}.\u00a0${clean}` : `\u2022\u00a0${clean}`;
     });
     target.object.text = nextLines.join('\n');
     if (target.object.initDimensions) target.object.initDimensions();
@@ -3126,7 +3530,10 @@
     const shouldClose = !iroPopup.hidden && activeColorTarget === target;
     activeColorTarget = target;
     iroPopup.hidden = shouldClose;
-    if (iroPopup.hidden) return;
+    if (iroPopup.hidden) {
+      commitPendingColorHistory();
+      return;
+    }
     shapeStyleControls.hidden = activeColorTarget !== 'shape-stroke';
     if (!iroPicker) {
       iroPicker = new window.iro.ColorPicker('#iroPicker', {
@@ -3142,14 +3549,15 @@
       });
       iroPicker.on('color:change', color => {
         const value = color.rgbaString;
+        pendingColorHistory = true;
         if (activeColorTarget === 'shape-fill') {
-          applyShapeStyle({ fill: value });
+          applyShapeStyle({ fill: value }, { history: false });
         } else if (activeColorTarget === 'shape-stroke') {
-          applyShapeStyle({ stroke: value });
+          applyShapeStyle({ stroke: value }, { history: false });
         } else if (activeColorTarget === 'text') {
-          applyTextStyle({ fill: value });
+          applyTextStyle({ fill: value }, { history: false });
         } else {
-          applyTextStyle({ textBackgroundColor: value });
+          applyTextStyle({ textBackgroundColor: value }, { history: false });
         }
       });
     }
@@ -3206,21 +3614,21 @@
     const slide = getSlideById(editingAlgorithmSlideId);
     if (!slide || slide.kind !== 'algorithm-animation') return;
     if (event.data.type === 'asm-animation-compiled') {
-      if (algorithmEditorStatus) algorithmEditorStatus.textContent = '已取得最新編譯腳本。按右上角「儲存」寫入投影片並關閉。';
+      if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
       return;
     }
     slide.animation = normalizeAlgorithmAnimation(event.data.animation);
     saveDeck();
     renderDeck();
     closeAlgorithmEditor();
-    flashHint('已將目前演算法動畫腳本儲存到投影片。');
+    flashHint('Done');
   }
 
   function openAlgorithmEditor(slideId) {
     const slide = getSlideById(slideId);
     if (!algorithmEditorModal || !algorithmEditorFrame || !slide || slide.kind !== 'algorithm-animation') return;
     editingAlgorithmSlideId = slideId;
-    if (algorithmEditorStatus) algorithmEditorStatus.textContent = '編譯成功後，動畫腳本會儲存在這張投影片中。';
+    if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
     algorithmEditorModal.hidden = false;
     algorithmEditorFrame.src = 'index.html?asmEmbed=editor';
   }
@@ -3234,7 +3642,7 @@
 
   function saveAlgorithmEditor() {
     if (!algorithmEditorFrame?.contentWindow || !editingAlgorithmSlideId) return;
-    if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在將目前程式碼、輸入與動畫腳本儲存到投影片...';
+    if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
     algorithmEditorFrame.contentWindow.postMessage({
       type: 'asm-request-save-animation'
     }, window.location.origin);
@@ -3598,7 +4006,7 @@
     if (slide.kind === 'algorithm-animation') {
       const preview = document.createElement('div');
       preview.className = 'algorithm-overview-preview';
-      preview.innerHTML = '<div>{;}<span>演算法動畫</span></div>';
+      preview.innerHTML = '<div>{;}<span>Algorithm</span></div>';
       mini.appendChild(preview);
       thumb.appendChild(mini);
       return thumb;
@@ -3698,7 +4106,7 @@
       if (!document.body.classList.contains('asm-edit-mode')) return;
       overviewChrome.hidden = false;
       hideObjectToolbar();
-      flashHint('拖曳投影片到目標的上、下、左、右來排序。');
+      flashHint('Done');
       fabricCanvases.forEach(canvas => {
         canvas.skipTargetFind = true;
         canvas.discardActiveObject();
@@ -4719,10 +5127,10 @@
 
   function flashHint(text) {
     const hint = document.getElementById('editHint');
-    hint.textContent = text;
+    hint.textContent = 'ESC closes overview; drag slides to reorder.';
     clearTimeout(flashHint.timer);
     flashHint.timer = setTimeout(() => {
-      hint.textContent = 'ESC 開啟 overview，可拖曳排序投影片。';
+      hint.textContent = 'ESC closes overview; drag slides to reorder.';
     }, 1800);
   }
 
@@ -4901,6 +5309,12 @@
       margin: 0.05,
       transition: 'slide',
       scrollActivationWidth: null,
+      keyboard: {
+        37: () => reveal.left(),
+        38: () => reveal.up(),
+        39: () => reveal.right(),
+        40: () => reveal.down()
+      },
       plugins: [
         window.RevealNotes,
         window.RevealSearch,
