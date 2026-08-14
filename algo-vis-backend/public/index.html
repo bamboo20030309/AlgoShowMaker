@@ -3,411 +3,189 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AlgoShowMaker 個人投影片工作區" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="slides-embed.css?v=random-id-3" />
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="home.css?v=4" />
 </head>
 
 <body>
-  <nav id="top-bar">
-    <div class="menu-brand">AlgoShowMaker</div>
-
-    <div class="menu-item" id="algoSamplesBtn">
-      <span class="menu-label">演算法範例集</span>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="AlgoShowMaker 首頁">
+      <span class="brand-mark">A</span>
+      <span>AlgoShowMaker</span>
+    </a>
+    <nav class="header-nav" aria-label="主要導覽">
+      <a class="nav-link is-active" href="/">投影片</a>
+      <a class="nav-link" href="/algorithm.html">演算法動畫</a>
+    </nav>
+    <div id="accountArea" class="account-area" hidden>
+      <span id="accountName" class="account-name"></span>
+      <button id="logoutBtn" class="quiet-btn" type="button">登出</button>
     </div>
+  </header>
 
-    <div class="menu-item" id="openMyCodesBtn">
-      <span class="menu-label">我的程式碼</span>
-    </div>
-    <div class="menu-item">
-      <span class="menu-label">畫布設定</span>
-      <div class="dropdown-content">
-        <div class="dropdown-item" id="menuResetView">重置視角</div>
-        <div class="dropdown-item" id="menuToggleGrid">切換格線</div>
-      </div>
-    </div>
-
-    <div class="menu-item">
-      <span class="menu-label">編輯器</span>
-      <div class="dropdown-content">
-        <div class="dropdown-item" id="menuToggleFold">摺疊/展開 draw 區塊</div>
-        <div class="dropdown-divider"></div>
-        <div class="dropdown-item" onclick="aceEditor.setFontSize(12)">字體大小: 小</div>
-        <div class="dropdown-item" onclick="aceEditor.setFontSize(16)">字體大小: 中</div>
-        <div class="dropdown-item" onclick="aceEditor.setFontSize(20)">字體大小: 大</div>
-      </div>
-    </div>
-  </nav>
-  <div id="main">
-    <div id="codePanel">
-      <header>
-        <span class="header-title">C++</span>
-
-        <div class="header-buttons">
-          <button id="toggleDrawBlocksBtn" class="btn-fold-draw" type="button" title="將繪畫指令收起/展開">摺疊
-            draw</button>
-          <button id="runBtn" class="btn-run" title="編譯執行">▶ RUN</button>
-
-          <button id="panelToggleBtn" title="摺疊程式碼面板">◀</button>
+  <main>
+    <section id="guestView" class="guest-view">
+      <div class="guest-preview" aria-hidden="true">
+        <div class="preview-heading">
+          <span class="preview-kicker">你的工作區</span>
+          <strong>投影片都在同一個地方</strong>
+          <p>登入後可以從任何裝置繼續編輯。</p>
         </div>
-      </header>
-      <div id="codeBody">
-        <div id="editor"></div>
-      </div>
-    </div>
-
-    <div id="divider"></div>
-
-    <div id="vizPanel">
-      <div id="subTabs">
-        <div class="subTab">
-          <button class="tab-btn active" data-tab="tab-canvas">畫布</button>
-        </div>
-        <div class="subTab">
-          <button class="tab-btn" data-tab="tab-input">輸入</button>
-        </div>
-        <div class="subTab">
-          <button class="tab-btn" data-tab="tab-output">輸出</button>
-        </div>
-        <div class="subTab">
-          <button class="tab-btn" data-tab="tab-debug">debug log</button>
-        </div>
-        <div class="subTab" style="margin-left: auto; padding-bottom: 4px;">
-          <button id="loginTriggerBtn" class="btn-login">登入</button>
-        </div>
-      </div>
-      <div id="tab-canvas" class="subContent active">
-        <div class="controls">
-          <button id="restartBtn" title="重新播放">
-            <svg class="step-icon" viewBox="0 0 24 24">
-              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-            </svg>
-          </button>
-          <button id="prevKeyFrameBtn" title="上一關鍵幀">
-            <svg class="step-icon" viewBox="0 0 24 24">
-              <rect x="19" y="4" width="3" height="16" />
-              <path d="M17 4l-9 8 9 8z" />
-              <path d="M10 4l-8 8 8 8z" />
-            </svg>
-            上一大步
-          </button>
-          <button id="prevBtn" title="上一步">
-            <svg class="step-icon" viewBox="0 0 24 24">
-              <rect x="19" y="4" width="3" height="16" />
-              <path d="M16 4l-12 8 12 8z" />
-            </svg>
-            上一步
-          </button>
-          <button id="playToggleBtn" class="btn-playtoggle" aria-pressed="false" title="播放/暫停">
-            <svg class="step-icon" viewBox="0 0 24 24" id="playIcon">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </button>
-          <button id="nextBtn" title="下一步">
-            下一步
-            <svg class="step-icon" viewBox="0 0 24 24">
-              <rect x="2" y="4" width="3" height="16" />
-              <path d="M8 4l12 8-12 8z" />
-            </svg>
-          </button>
-          <button id="nextKeyFrameBtn" title="下一關鍵幀">
-            下一大步
-            <svg class="step-icon" viewBox="0 0 24 24">
-              <rect x="2" y="4" width="3" height="16" />
-              <path d="M7 4l9 8-9 8z" />
-              <path d="M15 4l9 8-9 8z" />
-            </svg>
-          </button>
-          <button id="finishBtn" title="跳到最後">
-            <svg class="step-icon" viewBox="0 0 24 24">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-            </svg>
-          </button>
-          <button id="ttsAvBtn" class="btn-tts" title="播放聲音">🔊</button>
-          <div id="frameTimeline">
-            <div id="frameBars"></div>
-            <div id="frameInfo">0 / 0</div>
-          </div>
-          <div class="speed-slider-wrapper">
-            <div class="speed-track-wedge"></div>
-            <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000" />
-          </div>
-          <span id="speedValue">500ms</span>
-        </div>
-        <div id="canvasWrapper" style="position:relative; flex:1; overflow:hidden;">
-          <svg id="arraySvg" style="width:100%; height:100%; position:absolute; top:0; left:0;"></svg>
-
-          <div id="drawingToolbar" class="drawing-toolbar">
-            <button class="draw-tool active" data-tool="none" title="滑鼠模式 (停止繪畫)">
-              <svg viewBox="0 0 24 24">
-                <path d="M7 2l12 11.2l-5.8 0.5l3.3 7.3l-2.2 1l-3.2-7.4l-4.4 3.9z" fill="currentColor" />
-              </svg>
-            </button>
-            <button class="draw-tool" data-tool="pen" title="畫筆">
-              <svg viewBox="0 0 24 24">
-                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" fill="currentColor" />
-              </svg>
-            </button>
-            <button class="draw-tool" data-tool="eraser" title="橡皮擦">
-              <svg viewBox="0 0 24 24">
-                <path
-                  d="M15.14 3c-.51 0-1.02.2-1.41.59L2.59 14.73c-.78.78-.78 2.05 0 2.83L5.41 20.4c.39.39.9.59 1.41.59.51 0 1.02-.2 1.41-.59l11.14-11.14c.78-.78.78-2.05 0-2.83l-2.83-2.83c-.39-.39-.9-.59-1.4-1.4z"
-                  fill="currentColor" />
-              </svg>
-            </button>
-            <button class="draw-tool" data-tool="rect" title="方形">
-              <svg viewBox="0 0 24 24">
-                <rect x="4" y="4" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" />
-              </svg>
-            </button>
-            <button class="draw-tool" data-tool="circle" title="圓形">
-              <svg viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2" />
-              </svg>
-            </button>
-            <button class="draw-tool" data-tool="arrow" title="箭頭">
-              <svg viewBox="0 0 24 24">
-                <path d="M4 12h14M13 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </button>
-            <button class="draw-tool" data-tool="text" title="文字">
-              <svg viewBox="0 0 24 24"><text x="4" y="19" font-size="20" font-family="sans-serif" font-weight="bold"
-                  fill="currentColor">T</text></svg>
-            </button>
-            <div class="divider"></div>
-            <div id="colorSettingsContainer"
-              style="display: flex; flex-direction: column; align-items: center; width: 100%; position: relative;">
-              <!-- 顏色單選器本體與左側附屬面板 -->
-              <div style="position: relative; display: flex; align-items: center;">
-                <!-- 加回邊框讓按鈕獨立 -->
-                <button id="colorToggleBtn" title="顏色與畫筆設定"
-                  style="width: 28px; height: 28px; padding: 0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #ff0000; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2); display: block;"></button>
-
-                <div id="slidersPopup"
-                  style="display: none; flex-direction: column; align-items: stretch; gap: 12px; position: absolute; right: calc(100% + 12px); top: 50%; transform: translateY(-50%); background: white; border: 1px solid #ccc; border-radius: 8px; padding: 12px 16px; z-index: 100; cursor: default; box-shadow: -2px 2px 8px rgba(0,0,0,0.15);">
-
-                  <!-- 上方：選色器主體與數值 -->
-                  <div style="display: flex; flex-direction: column; align-items: center;">
-                    <!-- iro.js 內建選色器與透明度拉桿會被掛載在這裡 -->
-                    <div id="v3-color-picker"></div>
-                  </div>
-
-                  <!-- 粗細度橫向梯形拉桿 -->
-                  <div class="wedge-slider-wrapper" id="drawSizeWrapper"
-                    style="--val: calc(8px + 10.5% * (100% - 16px)); --fill-color: rgba(255, 0, 0, 1); --ratio: 0.105;">
-                    <div class="wedge-slider-bg-cap"></div>
-                    <div class="wedge-slider-fill-cap"></div>
-                    <div class="wedge-slider-bg"></div>
-                    <div class="wedge-slider-fill-container">
-                      <div class="wedge-slider-checker"></div>
-                      <div class="wedge-slider-color"></div>
-                    </div>
-                    <input type="range" id="drawSize" min="1" max="20" value="3" title="調整畫筆粗細" />
-                  </div>
-
-                  <!-- 顯示顏色資訊 -->
-                  <div
-                    style="font-size: 11px; color: #666; font-family: monospace; line-height: 1.5; padding: 4px; background: #f5f5f5; border-radius: 4px; width: 100%; box-sizing: border-box; border: 1px solid #eee; display: flex; flex-direction: column; gap: 2px;">
-                    <div id="v3-color-rgba-container" style="display: flex; justify-content: space-between;">
-                      <span>RGBA(</span>
-                      <span id="v3-val-r" style="width: 20px; text-align: right;">255</span>
-                      <span>,</span>
-                      <span id="v3-val-g" style="width: 20px; text-align: right;">0</span>
-                      <span>,</span>
-                      <span id="v3-val-b" style="width: 20px; text-align: right;">0</span>
-                      <span>,</span>
-                      <span id="v3-val-a" style="width: 24px; text-align: right;">1.00</span>
-                      <span>)</span>
-                    </div>
-                    <div id="v3-color-hsv-container" style="display: flex; justify-content: space-between;">
-                      <span>HSV&nbsp;(</span>
-                      <span id="v3-val-h" style="width: 20px; text-align: right;">0</span>
-                      <span>°,</span>
-                      <span id="v3-val-s" style="width: 20px; text-align: right;">100</span>
-                      <span>%,</span>
-                      <span id="v3-val-v" style="width: 20px; text-align: right;">100</span>
-                      <span>%)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <div class="preview-library">
+          <article class="sample-deck sample-deck-main">
+            <div class="sample-slide">
+              <span class="sample-title-line"></span>
+              <span class="sample-code-line line-long"></span>
+              <span class="sample-code-line"></span>
+              <span class="sample-code-line line-short"></span>
+              <span class="sample-accent"></span>
             </div>
-            <div class="divider"></div>
-            <button id="undoDraw" title="返回上一步 (Ctrl+Z)">
-              <svg viewBox="0 0 24 24">
-                <path
-                  d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7V18h11l-4.4-4.4c1.21-.99 2.73-1.6 4.4-1.6 3.03 0 5.6 2.01 6.4 4.79l2.4-.78C20.6 11.99 16.94 8 12.5 8z"
-                  fill="currentColor" />
-              </svg>
-            </button>
-            <button id="redoDraw" title="回到下一步 (Ctrl+Y)">
-              <svg viewBox="0 0 24 24">
-                <path
-                  d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.44 0-8.1 3.99-9.3 8.01l2.4.78c.8-2.78 3.37-4.79 6.4-4.79 1.67 0 3.19.61 4.4 1.6L11 18h11V7l-3.6 3.6z"
-                  fill="currentColor" />
-              </svg>
-            </button>
-            <button id="clearDraw" title="清空畫布">
-              <svg viewBox="0 0 24 24">
-                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
-                  fill="currentColor" />
-              </svg>
-            </button>
+            <strong>動態規劃教學</strong>
+            <span>12 張投影片</span>
+          </article>
+          <article class="sample-deck">
+            <div class="sample-slide sample-slide-alt">
+              <span class="sample-node node-one"></span>
+              <span class="sample-node node-two"></span>
+              <span class="sample-node node-three"></span>
+            </div>
+            <strong>圖論演算法</strong>
+            <span>8 張投影片</span>
+          </article>
+        </div>
+      </div>
+
+      <section class="auth-panel" aria-labelledby="authTitle">
+        <div class="auth-heading">
+          <span class="eyebrow">個人工作區</span>
+          <h1 id="authTitle">登入 AlgoShowMaker</h1>
+          <p id="authSubtitle">開啟你的投影片，繼續上次的編輯。</p>
+        </div>
+
+        <div id="authTabs" class="auth-tabs" role="tablist" aria-label="登入方式">
+          <button id="loginTab" class="auth-tab is-active" type="button" role="tab" aria-selected="true">登入</button>
+          <button id="registerTab" class="auth-tab" type="button" role="tab" aria-selected="false">建立帳號</button>
+        </div>
+
+        <form id="authForm" class="auth-form">
+          <label for="emailInput">Email</label>
+          <input id="emailInput" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />
+
+          <div id="passwordField" class="password-field">
+            <label for="passwordInput">密碼</label>
+            <div class="input-with-action">
+              <input id="passwordInput" name="password" type="password" autocomplete="current-password" placeholder="至少 8 個字元" required />
+              <button id="togglePasswordBtn" class="input-icon-btn" type="button" aria-label="顯示密碼" title="顯示密碼">顯示</button>
+            </div>
           </div>
-        </div>
-      </div>
-      <div id="tab-input" class="subContent">
-        <textarea id="inputArea" placeholder="請輸入程式執行時要給的輸入（stdin）..."
-          style="flex:1; width:100%; height:100%; resize:none; font-family:monospace; padding:8px;"></textarea>
-      </div>
 
-      <div id="tab-output" class="subContent">
-        <pre id="outputArea"
-          style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未執行
-        </pre>
-      </div>
-
-      <div id="tab-debug" class="subContent">
-        <pre id="debugArea"
-          style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未有 debug 訊息
-        </pre>
-      </div>
-    </div>
-  </div>
-
-  <div id="loginModal" class="modal">
-    <div class="modal-content">
-      <span class="close-modal">&times;</span>
-
-      <h2 id="modalTitle">登入</h2>
-
-      <form class="auth-form" onsubmit="event.preventDefault();">
-        <div class="form-group">
-          <label>帳號</label>
-          <input type="text" id="usernameInput" placeholder="請輸入電子郵件">
-        </div>
-        <div class="form-group">
-          <label>密碼</label>
-          <input type="password" id="passwordInput" placeholder="請輸入密碼">
-        </div>
-
-        <button type="submit" id="authActionBtn" class="btn-submit">登入</button>
-      </form>
-
-      <div class="modal-footer">
-        <span id="toggleAuthModeText">還沒有帳號？</span>
-        <a href="#" id="toggleAuthModeBtn">建立帳號</a>
-        <span style="margin: 0 8px; color: #ccc;">|</span>
-        <a href="#" id="forgotPasswordBtn" style="color: #666;">忘記密碼？</a>
-      </div>
-    </div>
-  </div>
-
-  <div id="algoSidePanel">
-    <div class="panel-header">
-      <h3>📚 演算法範例</h3>
-    </div>
-    <div id="algoListContainer">
-      <div class="loading-text">載入中...</div>
-    </div>
-  </div>
-
-  <div id="saveCodeModal" class="modal">
-    <div class="modal-content">
-      <span class="close-modal" id="closeSaveModal">&times;</span>
-      <h2 id="saveModalTitle">儲存程式碼</h2>
-
-      <form id="saveCodeForm" class="auth-form">
-        <div class="form-group">
-          <label>專案標題</label>
-          <input type="text" id="saveTitleInput" required placeholder="給程式碼取個名字...">
-        </div>
-
-        <div class="form-group">
-          <label>簡述 (選填)</label>
-          <input type="text" id="saveDescInput" placeholder="簡單描述功能...">
-        </div>
-
-        <div class="form-group">
-          <label>語言</label>
-          <div class="select-wrapper">
-            <select id="saveLangSelect">
-              <option value="cpp">C++</option>
-              <option value="python">Python</option>
-              <option value="java">Java</option>
-              <option value="javascript">JavaScript</option>
-            </select>
+          <div id="confirmPasswordField" class="password-field" hidden>
+            <label for="confirmPasswordInput">確認密碼</label>
+            <input id="confirmPasswordInput" name="confirmPassword" type="password" autocomplete="new-password" placeholder="再次輸入密碼" />
           </div>
+
+          <div id="authMessage" class="form-message" role="status" aria-live="polite"></div>
+          <button id="authSubmitBtn" class="primary-btn auth-submit" type="submit">登入</button>
+        </form>
+
+        <button id="forgotPasswordBtn" class="text-btn" type="button">忘記密碼？</button>
+        <button id="backToLoginBtn" class="text-btn" type="button" hidden>返回登入</button>
+      </section>
+    </section>
+
+    <section id="dashboardView" class="dashboard-view" hidden>
+      <aside class="workspace-sidebar">
+        <div>
+          <span class="sidebar-label">工作區</span>
+          <button class="sidebar-item is-active" type="button">
+            <span class="sidebar-icon">▤</span>
+            我的投影片
+          </button>
+          <a class="sidebar-item" href="/algorithm.html">
+            <span class="sidebar-icon">▶</span>
+            演算法動畫
+          </a>
+        </div>
+        <div class="storage-note">
+          <span class="status-dot"></span>
+          已啟用雲端儲存
+        </div>
+      </aside>
+
+      <div class="library">
+        <div class="library-heading">
+          <div>
+            <span class="eyebrow">投影片工作區</span>
+            <h1>我的投影片</h1>
+          </div>
+          <button id="createDeckBtn" class="primary-btn create-btn" type="button">
+            <span aria-hidden="true">＋</span>
+            新增投影片
+          </button>
         </div>
 
-        <div class="form-group checkbox-group">
-          <input type="checkbox" id="saveInputCheckbox">
-          <label for="saveInputCheckbox">一併儲存輸入區的測資</label>
+        <div class="library-toolbar">
+          <label class="search-field" for="searchInput">
+            <span aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="搜尋投影片" autocomplete="off" />
+          </label>
+          <span id="deckCount" class="deck-count"></span>
         </div>
 
-        <div id="saveMessage"></div>
+        <div id="libraryMessage" class="library-message" role="status" aria-live="polite"></div>
+        <div id="deckGrid" class="deck-grid"></div>
 
-        <button type="submit" class="auth-btn">確認儲存</button>
-      </form>
-    </div>
-  </div>
+        <div id="emptyState" class="empty-state" hidden>
+          <div class="empty-preview" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <h2>開始製作第一份投影片</h2>
+          <p>新增後會自動儲存到你的帳號。</p>
+          <button id="emptyCreateBtn" class="primary-btn" type="button">新增投影片</button>
+        </div>
+      </div>
+    </section>
+  </main>
 
-  <div id="myCodesSidebar" class="sidebar-panel">
-    <div class="sidebar-header">
-      <h3>📂 我的程式碼庫</h3>
-    </div>
+  <dialog id="deckDialog" class="deck-dialog">
+    <form id="deckDialogForm" method="dialog">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">投影片設定</span>
+          <h2>重新命名</h2>
+        </div>
+        <button id="closeDeckDialogBtn" class="icon-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <label for="deckTitleInput">名稱</label>
+      <input id="deckTitleInput" type="text" maxlength="120" required />
+      <div id="deckDialogMessage" class="form-message" role="status"></div>
+      <div class="dialog-actions">
+        <button id="deleteDeckBtn" class="danger-btn" type="button">刪除</button>
+        <span class="dialog-spacer"></span>
+        <button id="cancelDeckDialogBtn" class="quiet-btn" type="button">取消</button>
+        <button class="primary-btn" type="submit">儲存名稱</button>
+      </div>
+    </form>
+  </dialog>
 
-    <div class="sidebar-toolbar">
-      <button id="openSaveModalBtn" class="btn-save-code" title="儲存當前程式碼">
-        💾 儲存
-      </button>
-
-      <span class="sidebar-hint">點擊項目以載入</span>
-
-      <button id="refreshMyCodesBtn" class="btn-icon-refresh" style="margin-left: auto;" title="重新整理">↻</button>
-    </div>
-    <div id="myCodesList" class="sidebar-content">
-      <p class="empty-msg">載入中...</p>
-    </div>
-  </div>
-
-  <!-- 載入 Ace Editor -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.11.2/ace.js"></script>
-  <!-- 載入開源的高級選色與透明度套件 iro.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
-  <!-- 底層繪圖與互動腳本 -->
-  <script src="canva.js"></script>
-  <script src="interaction.js"></script>
-  <script src="compile.js"></script>
-  <script src="tts.js"></script>
-  <script src="resolve_pos.js"></script>
-  <script src="animation.js"></script>
-  <script src="front.js?v=random-id-2"></script>
-  <script src="draw/draw_array_outerframe.js"></script>
-  <script src="draw/draw_array_hintWidget.js"></script>
+  <script src="/vendor/fabric/fabric.min.js"></script>
   <script src="draw/draw_array_utils.js"></script>
   <script src="draw/draw_block.js"></script>
-  <script src="draw/draw_arrow.js"></script>
-  <script src="draw/draw_array_segment_tree.js"></script>
+  <script src="draw/draw_array_outerframe.js"></script>
+  <script src="draw/draw_array_hintWidget.js"></script>
   <script src="draw/draw_array_normal.js"></script>
   <script src="draw/draw_array_heap.js"></script>
+  <script src="draw/draw_array_segment_tree.js"></script>
   <script src="draw/draw_array_BIT.js"></script>
   <script src="draw/draw_array_disk.js"></script>
   <script src="draw/draw_array_stack.js"></script>
   <script src="draw/draw_array_queue.js"></script>
-  <script src="draw/draw_array.js"></script>
-  <script src="draw/draw_2Darray.js"></script>
-  <script src="draw/draw_circle.js"></script>
-  <script src="draw/draw_triangle.js"></script>
-  <script src="draw/draw_word.js"></script>
-  <script src="draw/draw_text.js"></script>
-  <!-- GUI 編輯器 -->
-  <link rel="stylesheet" href="gui_editor.css" />
-  <script src="gui_editor.js"></script>
-  <script src="slides-embed.js?v=random-id-3"></script>
+  <script src="slide-structures.js?v=6"></script>
+  <script src="deck-thumbnail.js?v=2"></script>
+  <script src="home.js?v=4"></script>
 </body>
 
 </html>

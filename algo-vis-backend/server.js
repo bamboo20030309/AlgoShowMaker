@@ -12,6 +12,8 @@ const mongoose = require('mongoose');            //資料庫溝通套件
 const bcrypt = require('bcryptjs');            //密碼加密套件
 const jwt = require('jsonwebtoken');        //webtoken套件
 const nodemailer = require('nodemailer');          //重置密碼email套件
+const { analyzeSource, findFrameDirectives, instrumentSource } = require('./trace-instrumenter');
+const TraceViewSource = require('./public/trace-view-source');
 
 // 優先讀取環境變數，如果沒讀到才用後面的預設值
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key';
@@ -36,6 +38,46 @@ const UserSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', UserSchema);
+
+const SlideDeckSchema = new mongoose.Schema({
+  user_uid: { type: String, required: true, index: true },
+  deck_uid: { type: String, required: true, unique: true },
+  title: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 120,
+    default: '未命名投影片'
+  },
+  deck: { type: mongoose.Schema.Types.Mixed, required: true },
+  cover_thumbnail: { type: String, default: '' },
+  slide_count: { type: Number, default: 0 },
+  share_mode: {
+    type: String,
+    enum: ['private', 'view', 'edit'],
+    default: 'private'
+  },
+  share_view_token: {
+    type: String,
+    unique: true,
+    sparse: true,
+    select: false
+  },
+  share_edit_token: {
+    type: String,
+    unique: true,
+    sparse: true,
+    select: false
+  },
+  format: { type: String, default: 'AlgoShowMaker.slides' },
+  version: { type: String, default: 'AV_V4.3' },
+  created_at: { type: Date, default: Date.now },
+  updated_at: { type: Date, default: Date.now }
+});
+
+SlideDeckSchema.index({ user_uid: 1, updated_at: -1 });
+
+const SlideDeck = mongoose.model('SlideDeck', SlideDeckSchema);
 
 // 設定 Email 寄送器 (Transporter)
 const transporter = nodemailer.createTransport({
@@ -112,6 +154,39 @@ app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaa
 app.use('/vendor/ace', express.static(path.join(__dirname, 'node_modules', 'ace-builds', 'src-min-noconflict')));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '5mb' }));
+
+app.post('/trace/analyze', limiter, (req, res) => {
+  const code = req.body?.code;
+  if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
+  if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  try {
+    const analysis = analyzeSource(code);
+    const frameDirectives = findFrameDirectives(code, analysis);
+    res.json({
+      success: true,
+      frameDirectives: frameDirectives.map(directive => ({
+        line: directive.line,
+        name: directive.name || '',
+        objectId: directive.objectId || '',
+        names: directive.names,
+        variableIds: directive.variables.map(variable => variable.id),
+        bindings: directive.bindings || []
+      })),
+      variables: analysis.variables.map(variable => ({
+        id: variable.id,
+        name: variable.name,
+        cppType: variable.type,
+        kind: variable.kind,
+        line: variable.line,
+        functionName: variable.functionName,
+        supported: variable.supported
+      }))
+    });
+  } catch (err) {
+    console.error('Failed to analyze trace source:', err);
+    res.status(400).json({ error: `無法分析 C++ 程式碼：${err.message}` });
+  }
+});
 
 // ==========================================
 // 會員系統 API
@@ -297,6 +372,284 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
   });
 });
 
+function countDeckSlides(deck) {
+  if (!deck || !Array.isArray(deck.groups)) return 0;
+  return deck.groups.reduce((total, group) => {
+    return total + (Array.isArray(group?.slides) ? group.slides.length : 0);
+  }, 0);
+}
+
+function cleanDeckTitle(title) {
+  const value = String(title || '').trim();
+  return value.slice(0, 120) || '未命名投影片';
+}
+
+function cleanCoverThumbnail(value) {
+  if (typeof value !== 'string') return '';
+  const thumbnail = value.trim();
+  if (!/^data:image\/(?:jpeg|png|webp);base64,/i.test(thumbnail)) return '';
+  return thumbnail.length <= 500000 ? thumbnail : '';
+}
+
+// List metadata only. The large Fabric canvas payload is fetched when a deck is opened.
+app.get('/api/slides', authenticateToken, async (req, res) => {
+  try {
+    const slides = await SlideDeck.find({ user_uid: req.user.id })
+      .select('deck_uid title cover_thumbnail slide_count format version created_at updated_at')
+      .sort({ updated_at: -1 })
+      .lean();
+    res.json({ success: true, slides });
+  } catch (err) {
+    console.error('Failed to list slide decks:', err);
+    res.status(500).json({ error: '無法讀取投影片，請稍後再試' });
+  }
+});
+
+app.post('/api/slides', authenticateToken, async (req, res) => {
+  const body = req.body || {};
+  const deck = body.deck && typeof body.deck === 'object'
+    ? body.deck
+    : { groups: [] };
+
+  try {
+    const slideDeck = await SlideDeck.create({
+      user_uid: req.user.id,
+      deck_uid: uuidv4(),
+      title: cleanDeckTitle(body.title),
+      deck,
+      cover_thumbnail: cleanCoverThumbnail(body.cover_thumbnail),
+      slide_count: countDeckSlides(deck)
+    });
+
+    res.status(201).json({
+      success: true,
+      slide: {
+        deck_uid: slideDeck.deck_uid,
+        title: slideDeck.title,
+        slide_count: slideDeck.slide_count,
+        created_at: slideDeck.created_at,
+        updated_at: slideDeck.updated_at
+      }
+    });
+  } catch (err) {
+    console.error('Failed to create slide deck:', err);
+    res.status(500).json({ error: '無法建立投影片，請稍後再試' });
+  }
+});
+
+function shareResponse(slide) {
+  return {
+    mode: slide.share_mode || 'private',
+    view_token: slide.share_view_token || null,
+    edit_token: slide.share_edit_token || null
+  };
+}
+
+app.get('/api/slides/:deck_uid/share', authenticateToken, async (req, res) => {
+  try {
+    const slide = await SlideDeck.findOne({
+      deck_uid: req.params.deck_uid,
+      user_uid: req.user.id
+    }).select('share_mode +share_view_token +share_edit_token');
+
+    if (!slide) {
+      return res.status(404).json({ error: '找不到這份投影片' });
+    }
+
+    res.json({ success: true, share: shareResponse(slide) });
+  } catch (err) {
+    console.error('Failed to get slide sharing settings:', err);
+    res.status(500).json({ error: '無法讀取分享設定，請稍後再試' });
+  }
+});
+
+app.put('/api/slides/:deck_uid/share', authenticateToken, async (req, res) => {
+  const mode = String(req.body?.mode || '');
+  if (!['private', 'view', 'edit'].includes(mode)) {
+    return res.status(400).json({ error: '分享權限設定無效' });
+  }
+
+  try {
+    const slide = await SlideDeck.findOne({
+      deck_uid: req.params.deck_uid,
+      user_uid: req.user.id
+    }).select('share_mode +share_view_token +share_edit_token');
+
+    if (!slide) {
+      return res.status(404).json({ error: '找不到這份投影片' });
+    }
+
+    slide.share_mode = mode;
+    if (mode === 'private') {
+      slide.share_view_token = undefined;
+      slide.share_edit_token = undefined;
+    } else if (mode === 'view') {
+      slide.share_view_token = slide.share_view_token || uuidv4();
+      slide.share_edit_token = undefined;
+    } else {
+      slide.share_view_token = slide.share_view_token || uuidv4();
+      slide.share_edit_token = slide.share_edit_token || uuidv4();
+    }
+    await slide.save();
+
+    res.json({ success: true, share: shareResponse(slide) });
+  } catch (err) {
+    console.error('Failed to update slide sharing settings:', err);
+    res.status(500).json({ error: '無法更新分享設定，請稍後再試' });
+  }
+});
+
+app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
+  try {
+    const slide = await SlideDeck.findOne({
+      deck_uid: req.params.deck_uid,
+      user_uid: req.user.id
+    }).lean();
+
+    if (!slide) {
+      return res.status(404).json({ error: '找不到這份投影片' });
+    }
+
+    res.json({ success: true, slide });
+  } catch (err) {
+    console.error('Failed to get slide deck:', err);
+    res.status(500).json({ error: '無法讀取投影片，請稍後再試' });
+  }
+});
+
+app.put('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
+  const body = req.body || {};
+  const updates = {};
+  let contentChanged = false;
+
+  if (Object.prototype.hasOwnProperty.call(body, 'title')) {
+    updates.title = cleanDeckTitle(body.title);
+    contentChanged = true;
+  }
+  if (body.deck && typeof body.deck === 'object') {
+    updates.deck = body.deck;
+    updates.slide_count = countDeckSlides(body.deck);
+    contentChanged = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'cover_thumbnail')) {
+    updates.cover_thumbnail = cleanCoverThumbnail(body.cover_thumbnail);
+  }
+  if (contentChanged) updates.updated_at = new Date();
+
+  try {
+    const slide = await SlideDeck.findOneAndUpdate(
+      { deck_uid: req.params.deck_uid, user_uid: req.user.id },
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('deck_uid title cover_thumbnail slide_count format version created_at updated_at');
+
+    if (!slide) {
+      return res.status(404).json({ error: '找不到這份投影片' });
+    }
+
+    res.json({ success: true, slide });
+  } catch (err) {
+    console.error('Failed to update slide deck:', err);
+    res.status(500).json({ error: '無法儲存投影片，請稍後再試' });
+  }
+});
+
+app.get('/api/shared-slides/:share_token', async (req, res) => {
+  try {
+    const token = req.params.share_token;
+    const slide = await SlideDeck.findOne({
+      $or: [
+        { share_view_token: token },
+        { share_edit_token: token }
+      ]
+    }).select('title deck cover_thumbnail slide_count updated_at share_mode +share_view_token +share_edit_token');
+
+    const canView = slide
+      && slide.share_view_token === token
+      && ['view', 'edit'].includes(slide.share_mode);
+    const canEdit = slide
+      && slide.share_edit_token === token
+      && slide.share_mode === 'edit';
+
+    if (!canView && !canEdit) {
+      return res.status(404).json({ error: '分享連結無效或已停止分享' });
+    }
+
+    res.json({
+      success: true,
+      slide: {
+        title: slide.title,
+        deck: slide.deck,
+        cover_thumbnail: slide.cover_thumbnail,
+        slide_count: slide.slide_count,
+        updated_at: slide.updated_at
+      },
+      access: canEdit ? 'edit' : 'view'
+    });
+  } catch (err) {
+    console.error('Failed to get shared slide deck:', err);
+    res.status(500).json({ error: '無法讀取分享的投影片，請稍後再試' });
+  }
+});
+
+app.put('/api/shared-slides/:share_token', async (req, res) => {
+  const body = req.body || {};
+  const updates = {};
+
+  if (Object.prototype.hasOwnProperty.call(body, 'title')) {
+    updates.title = cleanDeckTitle(body.title);
+  }
+  if (body.deck && typeof body.deck === 'object') {
+    updates.deck = body.deck;
+    updates.slide_count = countDeckSlides(body.deck);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'cover_thumbnail')) {
+    updates.cover_thumbnail = cleanCoverThumbnail(body.cover_thumbnail);
+  }
+  if (!Object.keys(updates).length) {
+    return res.status(400).json({ error: '沒有可儲存的內容' });
+  }
+  updates.updated_at = new Date();
+
+  try {
+    const slide = await SlideDeck.findOneAndUpdate(
+      {
+        share_edit_token: req.params.share_token,
+        share_mode: 'edit'
+      },
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('title slide_count updated_at');
+
+    if (!slide) {
+      return res.status(403).json({ error: '這個分享連結沒有編輯權限' });
+    }
+
+    res.json({ success: true, slide });
+  } catch (err) {
+    console.error('Failed to update shared slide deck:', err);
+    res.status(500).json({ error: '無法儲存分享的投影片，請稍後再試' });
+  }
+});
+
+app.delete('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
+  try {
+    const slide = await SlideDeck.findOneAndDelete({
+      deck_uid: req.params.deck_uid,
+      user_uid: req.user.id
+    });
+
+    if (!slide) {
+      return res.status(404).json({ error: '找不到這份投影片' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete slide deck:', err);
+    res.status(500).json({ error: '無法刪除投影片，請稍後再試' });
+  }
+});
+
 /**
  * 讀取 Linux /proc/<pid>/status
  */
@@ -352,11 +705,333 @@ function startMemorySampler(childPid, intervalMs = 80) {
   };
 }
 
+function defaultTraceRenderer(kind) {
+  if (kind === 'matrix') return 'original-matrix';
+  if (kind === 'stack') return 'original-stack';
+  if (kind === 'queue') return 'original-queue';
+  if (['sequence', 'set', 'map'].includes(kind)) return 'original-array';
+  if (kind === 'scalar' || kind === 'string') return 'original-cell';
+  if (kind === 'node-graph') return 'graph';
+  if (kind === 'coordinate-system') return 'coordinate-system';
+  return 'object';
+}
+
+function autoSliceTraceFrames(frames) {
+  if (frames.length <= 2) return frames;
+  return frames.filter((frame, index) => {
+    if (index === 0 || index === frames.length - 1) return true;
+    const hasWatchedEvent = (frame.events || []).some(event =>
+      (event.targets || []).some(target => !!target.variableId));
+    if (hasWatchedEvent) return true;
+    return JSON.stringify(frames[index - 1]?.state || {}) !== JSON.stringify(frame.state || {});
+  });
+}
+
+function materializeKeepSnapshots(frames) {
+  const snapshots = [];
+  const activeSnapshotIds = [];
+  const counts = new Map();
+  const materializedFrames = frames.map((frame, frameIndex) => {
+    let keepLastFocus = false;
+    (frame.events || []).filter(event => event.type === 'keep').forEach(event => {
+      if (event.mode === 'last') {
+        const previousFrame = frames[frameIndex - 1];
+        if (!previousFrame) return;
+        const count = (counts.get('$frame') || 0) + 1;
+        counts.set('$frame', count);
+        const id = `snapshot:frame:${count}`;
+        const label = String(event.label || `Frame ${frameIndex}`).trim() || `Frame ${frameIndex}`;
+        snapshots.push({
+          id,
+          kind: 'frame',
+          createdFrameId: frame.id,
+          sourceFrameId: previousFrame.id,
+          label,
+          frame: {
+            ...JSON.parse(JSON.stringify(previousFrame)),
+            events: (previousFrame.events || []).filter(item => item.type !== 'keep'),
+            snapshotIds: []
+          }
+        });
+        activeSnapshotIds.push(id);
+        keepLastFocus = true;
+        return;
+      }
+      const target = (event.targets || []).find(item => item.variableId);
+      const variableId = target?.variableId;
+      const entry = variableId ? frame.state?.[variableId] : null;
+      const capturedData = event.payload?.data;
+      if (!variableId || (!entry && capturedData == null)) return;
+      const count = (counts.get(variableId) || 0) + 1;
+      counts.set(variableId, count);
+      const id = `snapshot:${variableId}:${count}`;
+      const labelBase = String(event.label || event.name || entry.name || 'Snapshot').trim() || 'Snapshot';
+      snapshots.push({
+        id,
+        sourceVariableId: variableId,
+        createdFrameId: frame.id,
+        label: `${labelBase} ${count}`,
+        data: JSON.parse(JSON.stringify(capturedData ?? entry.data))
+      });
+      activeSnapshotIds.push(id);
+    });
+    return {
+      ...frame,
+      events: (frame.events || []).filter(event => event.type !== 'keep'),
+      snapshotIds: [...activeSnapshotIds],
+      keepLastFocus
+    };
+  });
+  return { frames: materializedFrames, snapshots };
+}
+
+const FIXED_EVENT_KINDS = new Set(['sequence', 'stack', 'queue', 'set']);
+const FIXED_ACCESS_EVENTS = new Set(['read', 'write', 'swap']);
+
+function traceScalarValue(data) {
+  if (!data || typeof data !== 'object') return data;
+  return Object.prototype.hasOwnProperty.call(data, 'value') ? data.value : data;
+}
+
+function resolveTraceIndexExpression(frame, expression) {
+  const source = String(expression ?? '').trim();
+  if (!source) return null;
+  const tokens = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    if (/\s/.test(source[cursor])) {
+      cursor += 1;
+      continue;
+    }
+    const number = source.slice(cursor).match(/^\d+(?:\.\d+)?/);
+    if (number) {
+      tokens.push({ type: 'number', value: number[0] });
+      cursor += number[0].length;
+      continue;
+    }
+    const identifier = source.slice(cursor).match(/^[A-Za-z_]\w*/);
+    if (identifier) {
+      tokens.push({ type: 'identifier', value: identifier[0] });
+      cursor += identifier[0].length;
+      continue;
+    }
+    if ('+-*/%()'.includes(source[cursor])) {
+      tokens.push({ type: 'operator', value: source[cursor] });
+      cursor += 1;
+      continue;
+    }
+    return null;
+  }
+
+  let position = 0;
+  const invalid = Symbol('invalid-trace-index');
+  const peek = value => tokens[position]?.value === value;
+  const consume = value => {
+    if (value && !peek(value)) return null;
+    return tokens[position++] || null;
+  };
+
+  function parsePrimary() {
+    if (peek('(')) {
+      consume('(');
+      const value = parseAdditive();
+      if (value === invalid || !consume(')')) return invalid;
+      return value;
+    }
+    const token = tokens[position];
+    if (!token) return invalid;
+    if (token.type === 'number') {
+      position += 1;
+      return Number(token.value);
+    }
+    if (token.type !== 'identifier') return invalid;
+    position += 1;
+    const match = Object.entries(frame.state || {}).find(([, entry]) => entry?.name === token.value);
+    if (!match) return invalid;
+    return traceScalarValue(match[1]?.data);
+  }
+
+  function parseUnary() {
+    if (peek('+')) {
+      consume('+');
+      return Number(parseUnary());
+    }
+    if (peek('-')) {
+      consume('-');
+      return -Number(parseUnary());
+    }
+    return parsePrimary();
+  }
+
+  function parseMultiplicative() {
+    let value = parseUnary();
+    while (peek('*') || peek('/') || peek('%')) {
+      const operator = consume().value;
+      const right = parseUnary();
+      if (value === invalid || right === invalid) return invalid;
+      if (operator === '*') value = Number(value) * Number(right);
+      else if (operator === '/') value = Number(value) / Number(right);
+      else value = Number(value) % Number(right);
+    }
+    return value;
+  }
+
+  function parseAdditive() {
+    let value = parseMultiplicative();
+    while (peek('+') || peek('-')) {
+      const operator = consume().value;
+      const right = parseMultiplicative();
+      if (value === invalid || right === invalid) return invalid;
+      value = operator === '+' ? Number(value) + Number(right) : Number(value) - Number(right);
+    }
+    return value;
+  }
+
+  const value = parseAdditive();
+  if (value === invalid || position !== tokens.length || !Number.isInteger(Number(value))) return null;
+  return Number(value);
+}
+
+function appendFixedEvents(frames, variables = []) {
+  if (!Array.isArray(frames) || frames.length < 2) return frames;
+  const variableKinds = new Map(variables.map(variable => [variable.id, variable.kind]));
+  const accesses = new Map();
+
+  frames.forEach((frame, frameIndex) => {
+    (frame.events || []).filter(event => FIXED_ACCESS_EVENTS.has(event.type)).forEach(event => {
+      (event.targets || []).forEach(target => {
+        const variableId = target.variableId;
+        const entry = frame.state?.[variableId];
+        const data = entry?.data;
+        const kind = variableKinds.get(variableId) || data?.kind;
+        if (!variableId || !FIXED_EVENT_KINDS.has(kind) || !Array.isArray(data?.items)) return;
+        const index = resolveTraceIndexExpression(frame, target.indexExpression);
+        if (index == null || index < 0 || index >= data.items.length) return;
+        const key = `${variableId}#${index}`;
+        const access = accesses.get(key) || {
+          variableId,
+          variableName: entry.name || variableId,
+          index,
+          wasRead: false,
+          lastAccessFrameIndex: frameIndex
+        };
+        access.wasRead ||= event.type === 'read';
+        access.lastAccessFrameIndex = frameIndex;
+        accesses.set(key, access);
+      });
+    });
+  });
+
+  accesses.forEach(access => {
+    if (!access.wasRead) return;
+    // A cell is only fixed after its final access has completed. When another
+    // visible frame exists, place the event there so it never overlaps the
+    // read/write/swap that touched the cell for the last time.
+    const fixedFrameIndex = Math.min(access.lastAccessFrameIndex + 1, frames.length - 1);
+    const frame = frames[fixedFrameIndex];
+    const indexExpression = String(access.index);
+    const signature = `fixed:${access.variableId}:${indexExpression}`;
+    frame.events ||= [];
+    if (frame.events.some(event => event.type === 'fixed' && event.signature === signature)) return;
+    frame.events.push({
+      id: signature,
+      type: 'fixed',
+      signature,
+      line: Number(frame.source?.line) || 0,
+      targets: [{
+        role: 'target',
+        variableId: access.variableId,
+        expression: `${access.variableName}[${indexExpression}]`,
+        indexExpression
+      }]
+    });
+  });
+
+  return frames;
+}
+
+function readTraceDocument(tracePath, variables, traceRequest = {}) {
+  if (!fs.existsSync(tracePath)) return null;
+  const stat = fs.statSync(tracePath);
+  if (stat.size > 20 * 1024 * 1024) throw new Error('追蹤資料超過 20MB 上限');
+  const records = fs.readFileSync(tracePath, 'utf8')
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map(line => JSON.parse(line));
+  const allFrames = records.filter(record => record.record === 'frame');
+  const frameDirectives = Array.isArray(traceRequest.frameDirectives)
+    ? traceRequest.frameDirectives
+    : [];
+  const directiveByStatementId = new Map(frameDirectives.map((directive, index) => {
+    const functionName = directive.functionName || 'global';
+    const statementId = `manual-frame:${functionName}:${directive.line}:${directive.index ?? index}`;
+    return [statementId, directive];
+  }));
+  const tracedFrames = allFrames.map(frame => {
+    const directive = directiveByStatementId.get(frame.source?.statementId);
+    return {
+      ...frame,
+      source: {
+        ...(frame.source || {}),
+        directiveName: directive?.name || '',
+        objectId: directive?.objectId || '',
+        primaryVariableId: directive?.variableIds?.[0] || ''
+      },
+      bindings: Array.isArray(directive?.bindings) ? directive.bindings : []
+    };
+  });
+  const sliceMode = traceRequest.sliceMode === 'manual'
+    ? 'manual'
+    : traceRequest.sliceMode === 'full' ? 'full' : 'auto';
+  const slicedFrames = sliceMode === 'auto' ? autoSliceTraceFrames(tracedFrames) : tracedFrames;
+  // A frame snapshot must be created after derived events are complete. This
+  // keeps fixed marks and every event-driven visual state in @keep last.
+  const framesWithFixedEvents = appendFixedEvents(slicedFrames, variables);
+  const keepSnapshots = materializeKeepSnapshots(framesWithFixedEvents);
+  const asmView = traceRequest.asmView && typeof traceRequest.asmView === 'object' ? traceRequest.asmView : {};
+  const requestedSkins = {
+    ...(traceRequest.skins && typeof traceRequest.skins === 'object' ? traceRequest.skins : {}),
+    ...(asmView.skins && typeof asmView.skins === 'object' ? asmView.skins : {})
+  };
+  const variableMap = {};
+  const skins = {};
+  for (const variable of variables) {
+    variableMap[variable.id] = {
+      id: variable.id,
+      name: variable.name,
+      cppType: variable.type,
+      kind: variable.kind,
+      line: variable.line,
+      functionName: variable.functionName
+    };
+    skins[variable.id] = {
+      renderer: requestedSkins[variable.id]?.renderer || defaultTraceRenderer(variable.kind),
+      options: requestedSkins[variable.id]?.options || {}
+    };
+  }
+  return {
+    schemaVersion: '1.0',
+    generatedAt: new Date().toISOString(),
+    sliceMode,
+    variables: variableMap,
+    frames: keepSnapshots.frames,
+    snapshots: keepSnapshots.snapshots,
+    skins,
+    rules: Array.isArray(asmView.rules)
+      ? asmView.rules
+      : Array.isArray(traceRequest.rules) ? traceRequest.rules : [],
+    studio: asmView.studio && typeof asmView.studio === 'object' ? asmView.studio : {},
+    asmView,
+    frameDirectives
+  };
+}
+
 // === 編譯＋執行 C++ 程式 ===
 app.post('/compile', (req, res) => {
   debugMessages = []; // 每次請求重置
 
-  const { code, input } = req.body || {};
+  const { code, input, trace } = req.body || {};
+  let traceEnabled = trace?.enabled === true;
 
   if (typeof code !== 'string') {
     return res.status(400).json({
@@ -379,6 +1054,47 @@ app.post('/compile', (req, res) => {
       memoryKB: null,
       debug_log: debugMessages,
     });
+  }
+
+  let sourceCode = code;
+  let traceVariables = [];
+  let traceFrameDirectives = [];
+  let traceSliceMode = trace?.sliceMode;
+  let traceWarning = '';
+  let asmView = null;
+  try {
+    asmView = TraceViewSource.parse(code);
+  } catch (error) {
+    traceWarning = error.message;
+  }
+  if (traceEnabled) {
+    try {
+      const instrumented = instrumentSource(code, Array.isArray(trace.watches) ? trace.watches : []);
+      sourceCode = instrumented.code;
+      traceVariables = instrumented.variables;
+      traceFrameDirectives = instrumented.frameDirectives.map((directive, index) => ({
+        line: directive.line,
+        name: directive.name || '',
+        objectId: directive.objectId || '',
+        names: directive.names,
+        variableIds: directive.variables.map(variable => variable.id),
+        functionName: directive.functionName || directive.variables[0]?.functionName || 'global',
+        index: directive.index ?? index,
+        bindings: directive.bindings || []
+      }));
+      if (instrumented.frameDirectives.length) traceSliceMode = 'manual';
+      logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);
+    } catch (err) {
+      // Trace analysis must not prevent the original program from running.
+      // Fall back to the normal compiler path when the parser cannot rewrite
+      // an otherwise valid C++ source file.
+      traceEnabled = false;
+      sourceCode = code;
+      traceVariables = [];
+      traceFrameDirectives = [];
+      traceWarning = `追蹤分析未完成，已使用一般執行：${err.message}`;
+      logDebug(traceWarning);
+    }
   }
 
   /*
@@ -406,11 +1122,12 @@ app.post('/compile', (req, res) => {
   const sourcePath = path.join(TEMP_DIR, `main_${uniqueId}.cpp`);
   const exePath = path.join(TEMP_DIR, `main_exec_${uniqueId}${isWindows ? '.exe' : ''}`);
   const scriptPath = path.join(TEMP_DIR, `script_${uniqueId}.js`);
+  const tracePath = path.join(TEMP_DIR, `trace_${uniqueId}.jsonl`);
 
   // 定義清理函式
   const cleanup = (attempt = 0) => {
     let retryNeeded = false;
-    [sourcePath, exePath, scriptPath].forEach(filePath => {
+    [sourcePath, exePath, scriptPath, tracePath].forEach(filePath => {
       try {
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       } catch (e) {
@@ -425,7 +1142,7 @@ app.post('/compile', (req, res) => {
 
   // 1. 寫入 source
   try {
-    fs.writeFileSync(sourcePath, code, 'utf8');
+    fs.writeFileSync(sourcePath, sourceCode, 'utf8');
   } catch (err) {
     cleanup();
     return res.status(500).json({
@@ -438,8 +1155,8 @@ app.post('/compile', (req, res) => {
 
   // 2. 編譯
   const compileArgs = [
-    '-std=c++17',
-    '-O2',
+    isWindows ? '-std=c++1z' : '-std=c++17',
+    traceEnabled ? '-O0' : '-O2',
     sourcePath,
     '-I', TEMP_DIR,
     '-I', path.join(__dirname, 'lib'), // 去 lib 資料夾找 AV.hpp
@@ -493,7 +1210,9 @@ app.post('/compile', (req, res) => {
       // 導入環境變數
       env: {
         ...process.env,
-        AV_OUTPUT_FILE: scriptPath
+        AV_OUTPUT_FILE: scriptPath,
+        ASM_TRACE_FILE: tracePath,
+        ASM_TRACE_MAX_FRAMES: '5000'
       }
     };
     if (!isWindows) {
@@ -574,9 +1293,24 @@ app.post('/compile', (req, res) => {
       }
 
       let scriptContent = '';
+      let traceDocument = null;
       try {
         if (fs.existsSync(scriptPath)) scriptContent = fs.readFileSync(scriptPath, 'utf8');
       } catch (err) { logDebug('讀取動畫腳本失敗: ' + err.message); }
+
+      if (traceEnabled) {
+        try {
+          traceDocument = readTraceDocument(tracePath, traceVariables, {
+            ...trace,
+            sliceMode: traceSliceMode,
+            frameDirectives: traceFrameDirectives,
+            asmView
+          });
+        } catch (err) {
+          logDebug('Failed to read trace output: ' + err.message);
+          runErr += `\nTrace Error: ${err.message}`;
+        }
+      }
 
       cleanup();
 
@@ -593,11 +1327,13 @@ app.post('/compile', (req, res) => {
       res.json({
         output: runOut,
         error: finalError,
+        traceWarning,
         compileTime,
         runTime,
         memoryKB,
         debug_log: debugMessages,
-        scriptContent: scriptContent
+        scriptContent: scriptContent,
+        traceDocument
       });
     };
 

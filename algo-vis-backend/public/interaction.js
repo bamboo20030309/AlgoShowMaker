@@ -10,6 +10,7 @@ class CanvasInteractionManager {
   
       // 1) 點擊切換選取／取消
       svg.addEventListener('click', e => this.onClick(e), false);
+      svg.addEventListener('pointerdown', e => this.onTraceSelectionPointerDown(e), true);
   
       // 2) Pointer 事件處理拖曳
       svg.addEventListener('pointerdown',  e => this.onPointerDown(e),  false);
@@ -25,7 +26,7 @@ class CanvasInteractionManager {
       // 4) 插入選中樣式 (箭頭不再使用簡單虛線外框，改由 SVG 控制點繪製，這樣更容易對齊且精緻)
       const style = document.createElement('style');
       style.textContent = `
-        .draggable-object.selected > rect {
+        .draggable-object.selected:not(.asm-trace-selectable) > rect {
           stroke: #3d85c6;
           stroke-width: 2px;
         }
@@ -50,10 +51,21 @@ class CanvasInteractionManager {
         }
       };
       setupViewportObserver();
+
+      window.addEventListener('asm:trace-rendered', () => {
+        if (this.selected) requestAnimationFrame(() => this.refreshSelection());
+      });
     }
   
     // 點擊事件：點空白處取消選取（選中邏輯在 onPointerDown 處理）
     onClick(evt) {
+      if (this._isTraceStudio()) {
+        const capturedKey = this._capturedTraceSelectionKey;
+        if (capturedKey && this.selected?.dataset.traceObjectKey === capturedKey) return;
+        const hitTarget = document.elementFromPoint(evt.clientX, evt.clientY) || evt.target;
+        const traceObject = hitTarget.closest?.('.asm-trace-selectable[data-trace-object-key]');
+        if (traceObject && this.svg.contains(traceObject)) return;
+      }
       // 藉由相同的滑鼠位置判斷是否有點到物件，若無則取消選取
       const pt = this.svg.createSVGPoint();
       pt.x = evt.clientX; pt.y = evt.clientY;
@@ -85,7 +97,7 @@ class CanvasInteractionManager {
       if (minDist < threshold && bestLine) {
         clickedObj = bestLine;
       } else {
-        clickedObj = evt.target.closest('.draggable-object');
+        clickedObj = this._candidateFromTarget(evt.target);
       }
 
       if (!clickedObj || !this.svg.contains(clickedObj)) {
@@ -104,14 +116,57 @@ class CanvasInteractionManager {
         this.selected = null;
       }
       this.updateSelectionOverlay();
+      if (this._isTraceStudio()) {
+        window.dispatchEvent(new CustomEvent('asm:trace-object-selected', { detail: { key: '' } }));
+      }
     }
 
-    // 重繪後 DOM 元素會被替換，用 ID 重新綁定選取
+    onTraceSelectionPointerDown(evt) {
+      this._capturedTraceSelectionKey = '';
+      if (evt.button !== 0 || !this._isTraceStudio()) return;
+      let bindingHandle = evt.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor]');
+      if (!bindingHandle) {
+        const visibleHandle = this.svg.querySelector('[data-trace-binding-handle]');
+        const rect = visibleHandle?.getBoundingClientRect();
+        if (rect && evt.clientX >= rect.left - 3 && evt.clientX <= rect.right + 3
+          && evt.clientY >= rect.top - 3 && evt.clientY <= rect.bottom + 3) {
+          bindingHandle = visibleHandle;
+        }
+      }
+      if (bindingHandle) {
+        const started = this._startTraceBinding(
+          evt,
+          bindingHandle.dataset.traceSourceKey,
+          bindingHandle.dataset.traceSourceAnchor || 'top'
+        );
+        if (started) evt.stopImmediatePropagation();
+        return;
+      }
+      const object = evt.target.closest?.('.asm-trace-selectable[data-trace-object-key]');
+      if (!object || !this.svg.contains(object)) return;
+      if (this.selected && this.selected !== object) this.selected.classList.remove('selected');
+      this.selected = object;
+      object.classList.add('selected');
+      this._capturedTraceSelectionKey = object.dataset.traceObjectKey || '';
+      this.updateSelectionOverlay();
+      window.dispatchEvent(new CustomEvent('asm:trace-object-selected', {
+        detail: { key: object.dataset.traceObjectKey || '' }
+      }));
+    }
+
+    // 重繪後 DOM 元素會被替換，Trace 物件優先用穩定 key 重新綁定選取。
     refreshSelection() {
       if (!this.selected) return;
+      const traceKey = this.selected.dataset.traceObjectKey;
       const id = this.selected.getAttribute('id');
-      if (!id) { this.selected = null; this.updateSelectionOverlay(); return; }
-      const newEl = this.svg.querySelector('#' + CSS.escape(id) + '.draggable-object');
+      let newEl = null;
+      if (traceKey && this._isTraceStudio()) {
+        newEl = this.svg.querySelector(
+          `.asm-trace-selectable[data-trace-object-key="${CSS.escape(traceKey)}"]`
+        );
+      } else if (id) {
+        newEl = this.svg.querySelector('#' + CSS.escape(id) + '.draggable-object');
+      }
       if (newEl) {
         this.selected = newEl;
         newEl.classList.add('selected');
@@ -123,7 +178,7 @@ class CanvasInteractionManager {
   
     // 原生雙擊事件處理，100% 穩定
     onDblClick(evt) {
-      const obj = evt.target.closest('.draggable-object');
+      const obj = this._candidateFromTarget(evt.target);
       if (obj && this.svg.contains(obj)) {
         // 雙擊發生時，立刻將可能已經觸發的拖曳狀態徹底中斷
         this._pendingDrag = false;
@@ -153,6 +208,10 @@ class CanvasInteractionManager {
       if (!this.selected) return;
 
       const grp = this.selected;
+      if (this._isTraceStudio() && grp.dataset.traceObjectKey) {
+        this._drawTraceSelectionOverlay(grp);
+        return;
+      }
       if (grp.tagName.toLowerCase() === 'line') {
         const vp = window.getViewport ? window.getViewport() : this.svg;
         overlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -230,9 +289,15 @@ class CanvasInteractionManager {
     // pointerdown：記錄起始位置，等 pointermove 確認有移動才真正啟動拖曳
     onPointerDown(evt) {
       if (evt.button !== 0) return; // 僅處理左鍵
+
+      const bindingHandle = evt.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor]');
+      if (bindingHandle && this._isTraceStudio()) {
+        const sourceKey = bindingHandle.dataset.traceSourceKey;
+        if (this._startTraceBinding(evt, sourceKey, bindingHandle.dataset.traceSourceAnchor || 'top')) return;
+      }
       
       // 如果目前正在進行文字內聯編輯，不允許拖曳 any 物件以防止干擾選取
-      if (window.isInlineEditing) {
+      if (window.isInlineEditing && !this._isTraceStudio()) {
         this._pendingDrag = false;
         this.mode = null;
         return;
@@ -316,7 +381,7 @@ class CanvasInteractionManager {
         if (minDist < threshold && bestLine) {
           obj = bestLine;
         } else {
-          obj = evt.target.closest('.draggable-object');
+          obj = this._candidateFromTarget(evt.target);
         }
       }
 
@@ -328,6 +393,13 @@ class CanvasInteractionManager {
         this.selected = obj;
         obj.classList.add('selected');
         this.updateSelectionOverlay();
+
+        if (this._isTraceStudio() && obj.dataset.traceObjectKey
+            && obj.dataset.traceMovable !== '1') {
+          this._pendingDrag = false;
+          this.mode = null;
+          return;
+        }
 
         // 區分拖曳行為：如果是箭頭 (line)，點擊兩頭是拉單邊，點中間是整體拖曳
         if (obj.tagName.toLowerCase() === 'line') {
@@ -389,6 +461,12 @@ class CanvasInteractionManager {
         this.mode = null;
         this.last = { x: evt.clientX, y: evt.clientY };
         this._downPos = { x: evt.clientX, y: evt.clientY };
+        this._dragStart = { x: evt.clientX, y: evt.clientY };
+        this._dragTotal = { x: 0, y: 0 };
+        this._traceBaseTransform = obj.getAttribute('transform') || '';
+        if (this._isTraceStudio() && obj.dataset.traceObjectKey && obj.tagName.toLowerCase() !== 'line') {
+          this._prepareTraceAlignment(obj);
+        }
         evt.stopPropagation();
         evt.preventDefault();
       } else {
@@ -399,6 +477,10 @@ class CanvasInteractionManager {
   
     // pointermove：先偵測是否要升級為拖曳，再處理物件位移
     onPointerMove(evt) {
+      if (this.mode === 'binding') {
+        this._moveTraceBinding(evt);
+        return;
+      }
       // 從 pendingDrag 升級為真正的 drag
       if (this._pendingDrag && !this.mode) {
         const dx = evt.clientX - this._downPos.x;
@@ -429,7 +511,29 @@ class CanvasInteractionManager {
       const grp = this.selected;
       const [tx, ty] = (grp.getAttribute('data-translate') || '0,0')
                         .split(',').map(Number);
-      const ntx = tx + wx, nty = ty + wy;
+      let ntx = tx + wx, nty = ty + wy;
+      const traceDrag = this._isTraceStudio() && this.selected?.dataset.traceObjectKey
+        && this.selected.tagName.toLowerCase() !== 'line';
+      if (traceDrag) {
+        ntx = (evt.clientX - this._dragStart.x) / s;
+        nty = (evt.clientY - this._dragStart.y) / s;
+        if (evt.shiftKey) {
+          if (Math.abs(ntx) >= Math.abs(nty)) nty = 0;
+          else ntx = 0;
+        }
+        if (!evt.ctrlKey) {
+          const snapped = this._snapTraceDrag(ntx, nty);
+          ntx = snapped.x;
+          nty = snapped.y;
+        } else {
+          this._showAlignmentGuides(null, null);
+        }
+      }
+      if (this._isTraceStudio() && this.selected?.tagName.toLowerCase() === 'line'
+          && this._dragType === 'all' && evt.shiftKey) {
+        if (Math.abs(ntx) >= Math.abs(nty)) nty = 0;
+        else ntx = 0;
+      }
       
       grp.setAttribute('data-translate', `${ntx},${nty}`);
 
@@ -451,7 +555,7 @@ class CanvasInteractionManager {
           const snapDist = 15 / s; // 15 像素以內吸附
 
           let minDist = Infinity;
-          if (this._anchors) {
+          if (this._anchors && !evt.ctrlKey) {
             for (const anchor of this._anchors) {
               const d = Math.hypot(cursor.x - anchor.x, cursor.y - anchor.y);
               if (d < snapDist && d < minDist) {
@@ -517,9 +621,18 @@ class CanvasInteractionManager {
           grp.setAttribute('x2', this._origX2 + ntx);
           grp.setAttribute('y2', this._origY2 + nty);
         }
+        if (this._isTraceStudio() && grp.dataset.traceObjectKey && this._dragType === 'all') {
+          window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
+        }
         this.updateSelectionOverlay();
       } else {
         // 讀 base-offset
+        if (traceDrag) {
+          grp.setAttribute('transform', `${this._traceBaseTransform} translate(${ntx},${nty})`.trim());
+          window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
+          this.updateSelectionOverlay();
+          return;
+        }
         const [bx, by] = (grp.getAttribute('data-base-offset') || '0,0')
                           .split(',').map(Number);
         // 合併後設定 transform
@@ -538,6 +651,28 @@ class CanvasInteractionManager {
     onPointerUp(evt) {
       this._pendingDrag = false; // 清除待拖曳狀態
       this._hideAnchors();
+      this._showAlignmentGuides(null, null);
+
+      if (this.mode === 'binding') {
+        try { this.svg.releasePointerCapture(evt.pointerId); } catch {}
+        this.mode = null;
+        evt.stopPropagation();
+        if (this._bindingSnapped) {
+          window.ASMTraceStudio?.bindPosition?.(
+            this._bindingSourceKey,
+            this._bindingSourceAnchor,
+            this._bindingSnapped.key,
+            this._bindingSnapped.anchor
+          );
+        } else if (this._bindingMoved) {
+          window.ASMTraceStudio?.unbindPosition?.(this._bindingSourceKey);
+        }
+        this._bindingSnapped = null;
+        this._bindingHoverKey = null;
+        this._bindingSourceKey = null;
+        this._bindingSourceAnchor = null;
+        return;
+      }
 
       if (this.mode === 'drag') {
         const grp = this.selected;
@@ -560,7 +695,294 @@ class CanvasInteractionManager {
           }
           grp.setAttribute('data-translate', '0,0');
         }
+        window.ASMTraceStudio?.endBoundObjectDrag?.();
       }
+    }
+
+    _isTraceStudio() {
+      return document.body.classList.contains('asm-trace-studio-open');
+    }
+
+    _startTraceBinding(evt, sourceKey, sourceAnchor = 'top') {
+      if (!sourceKey || this.selected?.dataset.traceObjectKey !== sourceKey) return false;
+      this.mode = 'binding';
+      this._pendingDrag = false;
+      this._dragPointerId = evt.pointerId;
+      this._bindingSourceKey = sourceKey;
+      this._bindingSourceAnchor = sourceAnchor;
+      this._bindingMoved = false;
+      this._bindingDown = { x: evt.clientX, y: evt.clientY };
+      this._bindingHoverKey = null;
+      this._collectTraceAnchors(sourceKey);
+      try { this.svg.setPointerCapture(evt.pointerId); } catch {}
+      evt.preventDefault();
+      evt.stopPropagation();
+      return true;
+    }
+
+    _candidateFromTarget(target) {
+      if (!target?.closest) return null;
+      if (this._isTraceStudio()) {
+        const part = target.closest('.asm-trace-selectable[data-trace-object-key]');
+        if (part && this.svg.contains(part)) return part;
+      }
+      return target.closest('.draggable-object');
+    }
+
+    _elementBoundsInViewport(element) {
+      const vp = window.getViewport ? window.getViewport() : this.svg;
+      try {
+        const box = element.getBBox();
+        const matrix = vp.getScreenCTM().inverse().multiply(element.getScreenCTM());
+        const corners = [
+          [box.x, box.y], [box.x + box.width, box.y],
+          [box.x, box.y + box.height], [box.x + box.width, box.y + box.height]
+        ].map(([x, y]) => {
+          const point = this.svg.createSVGPoint();
+          point.x = x;
+          point.y = y;
+          return point.matrixTransform(matrix);
+        });
+        const left = Math.min(...corners.map(point => point.x));
+        const top = Math.min(...corners.map(point => point.y));
+        const right = Math.max(...corners.map(point => point.x));
+        const bottom = Math.max(...corners.map(point => point.y));
+        return { left, top, right, bottom, width: right - left, height: bottom - top };
+      } catch (error) {
+        return null;
+      }
+    }
+
+    _anchorFromBounds(bounds, anchor = 'center') {
+      const name = String(anchor || 'center').toLowerCase();
+      let x = (bounds.left + bounds.right) / 2;
+      let y = (bounds.top + bounds.bottom) / 2;
+      if (name.includes('left')) x = bounds.left;
+      if (name.includes('right')) x = bounds.right;
+      if (name.includes('top')) y = bounds.top;
+      if (name.includes('bottom')) y = bounds.bottom;
+      return { x, y };
+    }
+
+    _drawTraceSelectionOverlay(element) {
+      const bounds = this._elementBoundsInViewport(element);
+      if (!bounds) return;
+      const vp = window.getViewport ? window.getViewport() : this.svg;
+      const s = window.getScale ? window.getScale() : 1;
+      const key = element.dataset.traceObjectKey;
+      const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      overlay.id = 'selection-overlay';
+      overlay.setAttribute('class', 'trace-selection-overlay');
+      overlay.setAttribute('style', 'pointer-events:visiblePainted');
+
+      const box = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      box.setAttribute('x', bounds.left);
+      box.setAttribute('y', bounds.top);
+      box.setAttribute('width', Math.max(1, bounds.width));
+      box.setAttribute('height', Math.max(1, bounds.height));
+      box.setAttribute('fill', 'none');
+      box.setAttribute('stroke', '#3d85c6');
+      box.setAttribute('stroke-width', 2 / s);
+      box.setAttribute('pointer-events', 'none');
+      overlay.appendChild(box);
+
+      if (element.dataset.traceMovable !== '1') {
+        vp.appendChild(overlay);
+        return;
+      }
+
+      const top = this._anchorFromBounds(bounds, 'top');
+      const handleY = bounds.top - 28 / s;
+      const binding = window.ASMTraceStudio?.getBinding?.(key);
+      const boundTarget = binding?.targetKey
+        ? window.ASMTraceRenderers?.currentAnchorForKey?.(
+          binding.targetKey,
+          binding.targetAnchor || 'center',
+          true
+        )
+        : null;
+      const sourcePoint = binding
+        ? this._anchorFromBounds(bounds, binding.sourceAnchor || 'top')
+        : top;
+      const handlePoint = boundTarget || { x: top.x, y: handleY };
+      const connector = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      connector.id = 'trace-binding-preview-line';
+      connector.setAttribute('x1', sourcePoint.x);
+      connector.setAttribute('y1', sourcePoint.y);
+      connector.setAttribute('x2', handlePoint.x);
+      connector.setAttribute('y2', handlePoint.y);
+      connector.setAttribute('stroke', boundTarget ? '#1d8f83' : '#3d85c6');
+      connector.setAttribute('stroke-width', 2.4 / s);
+      connector.setAttribute('stroke-linecap', 'round');
+      connector.setAttribute('pointer-events', 'none');
+      overlay.appendChild(connector);
+
+      const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      handle.setAttribute('cx', handlePoint.x);
+      handle.setAttribute('cy', handlePoint.y);
+      handle.setAttribute('r', 6.5 / s);
+      handle.setAttribute('fill', boundTarget ? '#1d8f83' : '#3d85c6');
+      handle.setAttribute('stroke', '#ffffff');
+      handle.setAttribute('stroke-width', 1.8 / s);
+      handle.setAttribute('style', 'pointer-events:all;cursor:crosshair');
+      handle.dataset.traceBindingHandle = '1';
+      handle.dataset.traceSourceAnchor = 'top';
+      handle.dataset.traceSourceKey = key;
+      handle.addEventListener('pointerdown', event => {
+        this._startTraceBinding(event, key, 'top');
+      });
+      overlay.appendChild(handle);
+
+      vp.appendChild(overlay);
+    }
+
+    _collectTraceAnchors(sourceKey) {
+      this._anchors = [];
+      const sourceElement = this.selected;
+      const anchorNames = ['center', 'top', 'bottom', 'left', 'right', 'top left', 'top right', 'bottom left', 'bottom right'];
+      const traceElements = new Map(Array.from(this.svg.querySelectorAll('[data-trace-object-key]'))
+        .map(element => [element.dataset.traceObjectKey, element]));
+      (window.ASMTraceRenderers?.currentObjectKeys?.() || []).forEach(key => {
+        if (key === sourceKey || key.endsWith(':label') || key.endsWith(':index')) return;
+        const targetElement = traceElements.get(key);
+        if (sourceElement && targetElement && sourceElement.contains(targetElement)) return;
+        const actualBounds = targetElement ? this._elementBoundsInViewport(targetElement) : null;
+        const placement = actualBounds ? null : window.ASMTraceRenderers?.currentPlacement?.(key, true);
+        if (!actualBounds && !placement) return;
+        const bounds = actualBounds || {
+          left: placement.x, top: placement.y,
+          right: placement.x + placement.width,
+          bottom: placement.y + placement.height
+        };
+        anchorNames.forEach(anchor => {
+          const point = this._anchorFromBounds(bounds, anchor);
+          this._anchors.push({ ...point, key, anchor, spec: { key, anchor } });
+        });
+      });
+    }
+
+    _moveTraceBinding(evt) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      const vp = window.getViewport ? window.getViewport() : this.svg;
+      const point = this.svg.createSVGPoint();
+      point.x = evt.clientX;
+      point.y = evt.clientY;
+      let cursor = point;
+      try { cursor = point.matrixTransform(vp.getScreenCTM().inverse()); } catch {}
+      this._bindingMoved = this._bindingMoved
+        || Math.hypot(evt.clientX - this._bindingDown.x, evt.clientY - this._bindingDown.y) > 3;
+      const s = window.getScale ? window.getScale() : 1;
+      let best = null;
+      let distance = 15 / s;
+      if (!evt.ctrlKey) {
+        const candidate = document.elementsFromPoint(evt.clientX, evt.clientY)
+          .map(hit => hit?.closest?.('.asm-trace-selectable[data-trace-object-key]'))
+          .find(element => {
+            const key = element?.dataset?.traceObjectKey || '';
+            return element
+              && this.svg.contains(element)
+              && key !== this._bindingSourceKey
+              && !key.endsWith(':label')
+              && !key.endsWith(':index')
+              && !element.closest('#selection-overlay');
+          }) || null;
+        const hoveredKey = candidate?.dataset.traceObjectKey || null;
+        if (hoveredKey !== this._bindingHoverKey) {
+          this._bindingHoverKey = hoveredKey;
+          if (hoveredKey) this._showAnchors(hoveredKey);
+          else this._hideAnchors();
+        }
+        if (hoveredKey) distance = Infinity;
+        (this._anchors || []).filter(anchor => anchor.key === hoveredKey).forEach(anchor => {
+          const next = Math.hypot(cursor.x - anchor.x, cursor.y - anchor.y);
+          if (next < distance) {
+            distance = next;
+            best = anchor;
+          }
+        });
+      } else {
+        this._bindingHoverKey = null;
+        this._hideAnchors();
+      }
+      this._bindingSnapped = best;
+      this._highlightAnchor(best);
+      const line = this.svg.querySelector('#trace-binding-preview-line');
+      const handle = this.svg.querySelector('[data-trace-binding-handle]');
+      const endpoint = best || cursor;
+      if (line) {
+        line.setAttribute('x2', endpoint.x);
+        line.setAttribute('y2', endpoint.y);
+        line.setAttribute('stroke', best ? '#1d8f83' : '#3d85c6');
+      }
+      if (handle) {
+        handle.setAttribute('cx', endpoint.x);
+        handle.setAttribute('cy', endpoint.y);
+        handle.setAttribute('fill', best ? '#1d8f83' : '#3d85c6');
+      }
+    }
+
+    _prepareTraceAlignment(element) {
+      this._traceInitialBounds = this._elementBoundsInViewport(element);
+      this._traceAlignmentTargets = Array.from(this.svg.querySelectorAll('.asm-trace-selectable[data-trace-object-key]'))
+        .filter(target => target !== element && !element.contains(target) && !target.contains(element))
+        .map(target => this._elementBoundsInViewport(target))
+        .filter(Boolean);
+    }
+
+    _snapTraceDrag(dx, dy) {
+      const initial = this._traceInitialBounds;
+      if (!initial) return { x: dx, y: dy };
+      const s = window.getScale ? window.getScale() : 1;
+      const threshold = 7 / s;
+      const movingX = [initial.left + dx, (initial.left + initial.right) / 2 + dx, initial.right + dx];
+      const movingY = [initial.top + dy, (initial.top + initial.bottom) / 2 + dy, initial.bottom + dy];
+      let bestX = null;
+      let bestY = null;
+      (this._traceAlignmentTargets || []).forEach(target => {
+        const xs = [target.left, (target.left + target.right) / 2, target.right];
+        const ys = [target.top, (target.top + target.bottom) / 2, target.bottom];
+        movingX.forEach(value => xs.forEach(candidate => {
+          const distance = Math.abs(candidate - value);
+          if (distance <= threshold && (!bestX || distance < bestX.distance)) {
+            bestX = { distance, correction: candidate - value, guide: candidate };
+          }
+        }));
+        movingY.forEach(value => ys.forEach(candidate => {
+          const distance = Math.abs(candidate - value);
+          if (distance <= threshold && (!bestY || distance < bestY.distance)) {
+            bestY = { distance, correction: candidate - value, guide: candidate };
+          }
+        }));
+      });
+      this._showAlignmentGuides(bestX?.guide, bestY?.guide);
+      return { x: dx + (bestX?.correction || 0), y: dy + (bestY?.correction || 0) };
+    }
+
+    _showAlignmentGuides(x, y) {
+      this.svg.querySelector('#trace-alignment-guides')?.remove();
+      if (x == null && y == null) return;
+      const vp = window.getViewport ? window.getViewport() : this.svg;
+      const bounds = window.ASMTraceRenderers?.currentBounds?.() || { left: -1000, top: -1000, right: 3000, bottom: 2000 };
+      const s = window.getScale ? window.getScale() : 1;
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      group.id = 'trace-alignment-guides';
+      group.setAttribute('pointer-events', 'none');
+      if (x != null) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x); line.setAttribute('x2', x);
+        line.setAttribute('y1', bounds.top - 80); line.setAttribute('y2', bounds.bottom + 80);
+        line.setAttribute('stroke', '#e34f7a'); line.setAttribute('stroke-width', 1 / s);
+        group.appendChild(line);
+      }
+      if (y != null) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('y1', y); line.setAttribute('y2', y);
+        line.setAttribute('x1', bounds.left - 80); line.setAttribute('x2', bounds.right + 80);
+        line.setAttribute('stroke', '#e34f7a'); line.setAttribute('stroke-width', 1 / s);
+        group.appendChild(line);
+      }
+      vp.appendChild(group);
     }
 
     _collectAnchors() {
@@ -646,7 +1068,7 @@ class CanvasInteractionManager {
       }
     }
 
-    _showAnchors() {
+    _showAnchors(targetKey = null) {
       let overlay = this.svg.querySelector('#anchor-overlay');
       if (overlay) overlay.remove();
 
@@ -656,10 +1078,11 @@ class CanvasInteractionManager {
       overlay.setAttribute('style', 'pointer-events: none;');
 
       const s = window.getScale ? window.getScale() : 1;
-      const dotRadius = 3.5 / s;
-      const strokeW = 1 / s;
+      const dotRadius = 4.25 / s;
+      const strokeW = 1.25 / s;
 
       this._anchors.forEach((anchor, idx) => {
+        if (targetKey && anchor.key !== targetKey) return;
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', anchor.x);
         circle.setAttribute('cy', anchor.y);
@@ -681,15 +1104,15 @@ class CanvasInteractionManager {
 
         const s = window.getScale ? window.getScale() : 1;
         if (snappedAnchor && anchor === snappedAnchor) {
-          circle.setAttribute('r', 6 / s);
+          circle.setAttribute('r', 7 / s);
           circle.setAttribute('fill', '#ff5722');
           circle.setAttribute('stroke', '#ffffff');
           circle.setAttribute('stroke-width', 1.5 / s);
         } else {
-          circle.setAttribute('r', 3.5 / s);
+          circle.setAttribute('r', 4.25 / s);
           circle.setAttribute('fill', '#ffffff');
           circle.setAttribute('stroke', '#3d85c6');
-          circle.setAttribute('stroke-width', 1 / s);
+          circle.setAttribute('stroke-width', 1.25 / s);
         }
       });
     }
@@ -698,4 +1121,10 @@ class CanvasInteractionManager {
       let overlay = this.svg.querySelector('#anchor-overlay');
       if (overlay) overlay.remove();
     }
+}
+
+window.CanvasInteractionManager = CanvasInteractionManager;
+const interactionSvg = document.getElementById('arraySvg');
+if (interactionSvg) {
+  window._canvasInteraction ||= new CanvasInteractionManager(interactionSvg);
 }

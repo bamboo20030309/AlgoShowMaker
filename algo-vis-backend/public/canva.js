@@ -78,6 +78,10 @@
       // 判斷是否可拖曳：左鍵 (0) 要看是否為繪圖模式，右鍵 (2) 永遠允許拖曳
       if (e.button === 0) {
         if (window.isDrawingMode) return;
+        if (document.body.classList.contains('asm-trace-studio-open')
+          && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
+          return;
+        }
       } else if (e.button === 2) {
         // 右鍵點到 draggable-object 時讓 GUI 編輯器處理
         if (e.target.closest && e.target.closest('.draggable-object')) return;
@@ -191,6 +195,25 @@
   window.updateTransform = updateTransform;
   window.getViewport     = () => viewport;
   window.getScale        = () => scale * getScreenScaleFactor(); // 回傳物理縮放（供 interaction.js 等外部使用）
+  window.getCameraViewport = function (requestedScale = scale) {
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const factor = getScreenScaleFactor();
+    const currentPhysical = Math.max(0.0001, scale * factor);
+    const nextScale = Math.max(0.05, Number(requestedScale) || scale);
+    return {
+      centerX: (rect.width / 2 - translateX) / currentPhysical,
+      centerY: (rect.height / 2 - translateY) / currentPhysical,
+      width: rect.width / (nextScale * factor),
+      height: rect.height / (nextScale * factor),
+      scale: nextScale,
+      aspect: rect.height > 0 ? rect.width / rect.height : 16 / 9
+    };
+  };
+  window.cameraScaleForViewportWidth = function (worldWidth) {
+    if (!svg || !(Number(worldWidth) > 0)) return scale;
+    return svg.getBoundingClientRect().width / (Number(worldWidth) * getScreenScaleFactor());
+  };
 
   window.resetCameraState = () => {
     isFirstCamera = true;
@@ -288,7 +311,7 @@
   /**
    * 將鏡頭定位到世界座標 (x, y)，並設置邏輯縮放比例
    */
-  window.setCamera = function (x, y, newScale, animate = true) {
+  window.setCamera = function (x, y, newScale, animate = true, duration = 400) {
     if (!svg || !viewport) return;
 
     // 如果是第一次設定鏡頭，強制使用非動畫模式，避免從 (0,0) 飛入
@@ -298,7 +321,7 @@
     }
 
     if (animate) {
-      animateCamera(x, y, newScale);
+      animateCamera(x, y, newScale, duration);
     } else {
       stopAnimation();
 
@@ -337,7 +360,7 @@
    * @param {number} offsetX 水平偏移 (正值鏡頭右移，物體左移)
    * @param {number} offsetY 垂直偏移
    */
-  window.setAutoCamera = function (zoom = 1.0, animate = true, offsetX = 0, offsetY = 0) {
+  window.setAutoCamera = function (zoom = 1.0, animate = true, offsetX = 0, offsetY = 0, duration = 400) {
     const vp = window.getViewport();
     if (!vp) return;
 
@@ -354,6 +377,7 @@
       // 排除背景格線與塗鴉層
       if (tag === 'rect' && fill === 'url(#gridPattern)') return;
       if (id === 'drawingLayer') return;
+      if (id === 'trace-camera-frame-overlay') return;
 
       // 排除箭頭層：箭頭的端點必然在已繪製物件之間，不會擴大邊界框
       // 且箭頭有 tween 動畫，在動畫完成前座標可能是舊值，會嚴重干擾鏡頭計算
@@ -424,8 +448,11 @@
     if (contentW <= 0 || contentH <= 0) return;
 
     // scaleW/H 是「物理縮放」（螢幕像素 / 世界單位）
-    const scaleW = rect.width / contentW;
-    const scaleH = rect.height / contentH;
+    const padding = 48;
+    const availableWidth = Math.max(1, rect.width - padding * 2);
+    const availableHeight = Math.max(1, rect.height - padding * 2);
+    const scaleW = availableWidth / contentW;
+    const scaleH = availableHeight / contentH;
     let physicalTarget = Math.min(scaleW, scaleH) * zoom;
 
     // 限制物理縮放範圍
@@ -439,8 +466,21 @@
     // 轉換為邏輯縮放，傳給 setCamera
     const logicalScale = physicalTarget / factor;
 
-    window.setCamera(midX, midY, logicalScale, animate);
+    const target = {
+      centerX: midX,
+      centerY: midY,
+      scale: logicalScale,
+      width: rect.width / physicalTarget,
+      height: rect.height / physicalTarget,
+      aspect: rect.height > 0 ? rect.width / rect.height : 16 / 9,
+      padding
+    };
+
+    window.setCamera(midX, midY, logicalScale, animate, duration);
+    return target;
   };
+
+  window.getAutoCameraPadding = () => 48;
 
   // 監聽視窗大小變化：重新以目前的邏輯縮放重新對齊（確保關注點不移位）
   let lastCameraX = 0, lastCameraY = 0;
@@ -449,10 +489,10 @@
   const _origSetCamera = window.setCamera;
   // 注意：此處不直接覆寫，而是在 setCamera 內部紀錄
   const origSetCamera = window.setCamera;
-  window.setCamera = function (x, y, newScale, animate = true) {
+  window.setCamera = function (x, y, newScale, animate = true, duration = 400) {
     lastCameraX = x;
     lastCameraY = y;
-    origSetCamera(x, y, newScale, animate);
+    origSetCamera(x, y, newScale, animate, duration);
   };
 
   window.addEventListener('resize', () => {

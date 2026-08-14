@@ -2858,6 +2858,7 @@
 
   // --- 手刻 Bubble Toolbar ---
   let _inlineToolbar = null;
+  let _inlineSizeSpan = null;
 
   function showInlineToolbar(rect) {
     const sel = window.getSelection();
@@ -2895,20 +2896,39 @@
       const btnStyle = `background:none; border:none; color:#fff; cursor:pointer; font-size:14px; font-weight:bold; padding:2px 4px; border-radius:4px;`;
 
       // 字體大小下拉選單
-      const sizeSelect = document.createElement('select');
+      const sizeSelect = document.createElement('div');
       sizeSelect.id = 'inline-size-select';
-      sizeSelect.style.cssText = `background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:1px 2px; font-size:11px; cursor:pointer; outline:none;`;
-      [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48].forEach(sz => {
-        const opt = document.createElement('option');
-        opt.value = sz;
-        opt.textContent = sz;
-        if (sz === 14) opt.selected = true;
-        sizeSelect.appendChild(opt);
-      });
-      sizeSelect.onmousedown = (e) => e.stopPropagation();
-      sizeSelect.onchange = (e) => {
+      sizeSelect.dataset.value = '14';
+      sizeSelect.textContent = '14 px';
+      sizeSelect.title = 'Drag left or right to change font size';
+      sizeSelect.style.cssText = `min-width:42px; height:22px; display:flex; align-items:center; justify-content:center; background:#333; color:#fff; border:1px solid #555; border-radius:4px; padding:0 5px; font-size:11px; cursor:ew-resize; user-select:none; outline:none;`;
+      sizeSelect.onpointerdown = (e) => {
+        if (e.button !== 0) return;
         e.preventDefault();
-        changeInlineStyle('size', parseInt(sizeSelect.value));
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startValue = parseInt(sizeSelect.dataset.value, 10) || 14;
+        let latest = startValue;
+        let moved = false;
+        const move = event => {
+          const delta = Math.round((event.clientX - startX) / 3);
+          const next = Math.max(8, Math.min(144, startValue + delta));
+          if (next === latest) return;
+          latest = next;
+          moved = true;
+          sizeSelect.dataset.value = String(next);
+          sizeSelect.textContent = `${next} px`;
+          changeInlineStyle('size', next, false);
+        };
+        const up = () => {
+          document.removeEventListener('pointermove', move, true);
+          document.removeEventListener('pointerup', up, true);
+          document.removeEventListener('pointercancel', up, true);
+          if (moved) changeInlineStyle('size', latest, true);
+        };
+        document.addEventListener('pointermove', move, true);
+        document.addEventListener('pointerup', up, true);
+        document.addEventListener('pointercancel', up, true);
       };
 
       const fcBtn = document.createElement('div');
@@ -2967,7 +2987,8 @@
         const elem = parent2.nodeType === Node.ELEMENT_NODE ? parent2 : parent2.parentNode;
         if (elem) {
           const fs = parseInt(window.getComputedStyle(elem).fontSize) || 14;
-          sizeSelElem.value = fs;
+          sizeSelElem.dataset.value = String(fs);
+          sizeSelElem.textContent = `${fs} px`;
         }
       }
     }
@@ -3010,13 +3031,19 @@
         document.execCommand('hiliteColor', false, val);
       }
     } else if (cmd === 'size') {
-      const range = sel.getRangeAt(0);
-      try {
-        const span = document.createElement('span');
-        span.style.fontSize = val + 'px';
-        range.surroundContents(span);
-      } catch (e) {
-        showToast('無法跨段落改變字體大小，請分次選取', 'info');
+      if (_inlineSizeSpan) {
+        _inlineSizeSpan.style.fontSize = val + 'px';
+        if (isFinal) _inlineSizeSpan = null;
+      } else {
+        const range = sel.getRangeAt(0);
+        try {
+          const span = document.createElement('span');
+          span.style.fontSize = val + 'px';
+          range.surroundContents(span);
+          if (!isFinal) _inlineSizeSpan = span;
+        } catch (e) {
+          showToast('無法跨段落改變字體大小，請分次選取', 'info');
+        }
       }
     }
 

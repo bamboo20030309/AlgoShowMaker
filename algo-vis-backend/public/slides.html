@@ -10,10 +10,16 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=random-id-54" />
+  <link rel="stylesheet" href="slides.css?v=random-id-87" />
 </head>
 
 <body class="asm-edit-mode">
+  <a class="chrome-home-link" href="/" title="返回我的投影片" aria-label="返回我的投影片">
+    <svg class="chrome-home-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 10.8 12 3l9 7.8"></path>
+      <path d="M5.5 9.5V21h13V9.5M9.5 21v-7h5v7"></path>
+    </svg>
+  </a>
   <aside id="controlChrome" class="control-chrome" aria-label="控制欄">
     <div class="mode-switch" aria-label="模式切換">
       <button id="modeToggleBtn" type="button" title="切換至 Present 模式" aria-label="切換至 Present 模式">
@@ -27,7 +33,10 @@
         </svg>
       </button>
     </div>
-    <div class="deck-io-controls" aria-label="投影片 JSON">
+    <div class="deck-io-controls" aria-label="Slide controls">
+      <button id="ttsPanelToggleBtn" class="deck-io-btn tts-control-toggle" type="button" title="開啟或關閉 TTS" aria-label="開啟或關閉 TTS" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h10v2H4zm0 5h10v2H4zm0 5h7v2H4zm13-5.4v4.8l4 2.3V7.3z"></path></svg>
+      </button>
       <button id="exportDeckBtn" class="deck-io-btn deck-export-btn" type="button" title="下載投影片 JSON" aria-label="下載投影片 JSON">
         <svg class="deck-io-icon deck-export-icon" viewBox="0 0 32 32" aria-hidden="true">
           <path class="deck-io-body" d="M6 11h12l4 5v11H6z" />
@@ -48,15 +57,53 @@
           </g>
         </svg>
       </button>
+      <button id="shareDeckBtn" class="deck-io-btn" type="button" title="分享投影片" aria-label="分享投影片" hidden>
+        <svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="18" cy="5" r="2.5"></circle>
+          <circle cx="6" cy="12" r="2.5"></circle>
+          <circle cx="18" cy="19" r="2.5"></circle>
+          <path d="M8.2 10.8l7.6-4.5M8.2 13.2l7.6 4.5"></path>
+        </svg>
+      </button>
       <input id="importDeckInput" type="file" accept="application/json,.json" hidden />
+    </div>
+    <div class="slide-zoom-controls" role="toolbar" aria-label="Slide zoom">
+      <button id="slideZoomOutBtn" type="button" title="Zoom out" aria-label="Zoom out">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path></svg>
+      </button>
+      <output id="slideZoomValue" aria-live="polite">100%</output>
+      <button id="slideZoomInBtn" type="button" title="Zoom in" aria-label="Zoom in">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      </button>
+      <button id="slideZoomResetBtn" type="button" title="Reset zoom" aria-label="Reset zoom">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8V5h3M19 8V5h-3M5 16v3h3M19 16v3h-3"></path></svg>
+      </button>
     </div>
   </aside>
 
+  <div id="sharedAccessBadge" class="shared-access-badge" hidden></div>
+
   <aside id="editorChrome" class="editor-chrome" aria-label="投影片元件">
+    <div class="deck-cloud-meta">
+      <div id="cloudSaveStatus" class="cloud-save-status" role="status" aria-live="polite">
+        <span class="cloud-status-dot"></span>
+        <span class="cloud-status-text">本機草稿</span>
+      </div>
+    </div>
     <div id="defaultToolPanel" class="sidebar-panel">
     <button type="button" class="palette-item tool-text" draggable="true" data-tool="text" title="text">
       <span class="tool-icon">T</span>
       <span>text</span>
+    </button>
+
+    <button type="button" class="palette-item tool-latex" draggable="true" data-tool="latex" title="LaTeX 公式">
+      <span class="tool-icon">Σ</span>
+      <span>LaTeX</span>
+    </button>
+
+    <button type="button" class="palette-item tool-code" draggable="true" data-tool="code" title="C++ 程式碼">
+      <span class="tool-icon">{}</span>
+      <span>code</span>
     </button>
 
     <div class="shape-tool">
@@ -68,21 +115,54 @@
         <span>shapes</span>
       </button>
       <div id="shapeMenu" class="shape-menu" hidden>
-        <button type="button" class="shape-choice shape-choice-rect" draggable="true" data-tool="shape" data-shape="rect" title="矩形">□</button>
-        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="circle" title="圓形">○</button>
-        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="triangle" title="三角形">△</button>
+        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="rect" title="Rectangle" aria-label="Rectangle"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16"></rect></svg></button>
+        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="circle" title="Circle" aria-label="Circle"><svg class="shape-choice-icon shape-choice-icon-circle" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle></svg></button>
+        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="triangle" title="Triangle" aria-label="Triangle"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z"></path></svg></button>
+        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="line" title="Line" aria-label="Line"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"></path></svg></button>
+        <button type="button" class="shape-choice" draggable="true" data-tool="shape" data-shape="arrow" title="Arrow" aria-label="Arrow"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h17M14 5l7 7-7 7"></path></svg></button>
       </div>
     </div>
 
-    <button type="button" class="palette-item tool-latex" draggable="true" data-tool="latex" title="LaTeX 公式">
-      <span class="tool-icon">Σ</span>
-      <span>LaTeX</span>
-    </button>
-
-    <button type="button" class="palette-item tool-code" draggable="true" data-tool="code" title="C++ 程式碼">
-      <span class="tool-icon">{}</span>
-      <span>code</span>
-    </button>
+    <div class="structure-tool">
+      <button id="structureMenuBtn" type="button" class="palette-item tool-structure icon-tooltip" title="Structure" aria-label="Structure" data-tooltip="Structure">
+        <svg class="structure-palette-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="2.5" y="8" width="5" height="8"></rect>
+          <rect x="9.5" y="8" width="5" height="8"></rect>
+          <rect x="16.5" y="8" width="5" height="8"></rect>
+          <path d="M5 5h14"></path>
+        </svg>
+        <span>Structure</span>
+      </button>
+      <div id="structureMenu" class="structure-menu structure-icon-menu" aria-label="Structure" hidden>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="normal" title="Array" aria-label="Array" data-tooltip="Array">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="6" height="10"></rect><rect x="9" y="7" width="6" height="10"></rect><rect x="16" y="7" width="6" height="10"></rect></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="matrix" title="2D Array" aria-label="2D Array" data-tooltip="2D Array">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8"></rect><rect x="13" y="3" width="8" height="8"></rect><rect x="3" y="13" width="8" height="8"></rect><rect x="13" y="13" width="8" height="8"></rect></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="binary_tree" title="Tree" aria-label="Tree" data-tooltip="Tree">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v4M6 14v-3h12v3"></path><circle cx="12" cy="4" r="3"></circle><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="18" r="3"></circle></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="heap" title="Heap" aria-label="Heap" data-tooltip="Heap">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v3M7 13v-3h10v3"></path><rect x="9" y="2" width="6" height="5"></rect><rect x="4" y="13" width="6" height="5"></rect><rect x="14" y="13" width="6" height="5"></rect><path d="M3 21h18"></path></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="segment_tree" title="Segment Tree" aria-label="Segment Tree" data-tooltip="Segment Tree">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="5"></rect><rect x="2" y="16" width="8" height="5"></rect><rect x="14" y="16" width="8" height="5"></rect><path d="M12 7v4M6 16v-5h12v5"></path></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="BIT" title="Binary Indexed Tree" aria-label="Binary Indexed Tree" data-tooltip="Binary Indexed Tree">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="15" width="4" height="6"></rect><rect x="7" y="10" width="6" height="11"></rect><rect x="14" y="3" width="8" height="18"></rect><path d="M4 15l6-5 8-7"></path></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="stack" title="Stack" aria-label="Stack" data-tooltip="Stack">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="15" width="12" height="5"></rect><rect x="6" y="9" width="12" height="5"></rect><rect x="6" y="3" width="12" height="5"></rect></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="queue" title="Queue" aria-label="Queue" data-tooltip="Queue">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12h3M20 12h3M2 12l2-2M2 12l2 2M22 12l-2-2M22 12l-2 2"></path><rect x="5" y="7" width="4" height="10"></rect><rect x="10" y="7" width="4" height="10"></rect><rect x="15" y="7" width="4" height="10"></rect></svg>
+        </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="disk" title="Disk" aria-label="Disk" data-tooltip="Disk">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v18M3 21h18"></path><rect x="8" y="5" width="8" height="4"></rect><rect x="6" y="10" width="12" height="4"></rect><rect x="4" y="15" width="16" height="4"></rect></svg>
+        </button>
+      </div>
+    </div>
 
     <button id="algorithmEditSlideBtn" type="button" class="palette-item algorithm-edit-sidebar-action" hidden>
       <span class="tool-icon">{;}</span>
@@ -149,13 +229,133 @@
       <button id="openCodeEditorBtn" class="code-editor-open-btn" type="button">編輯程式碼</button>
     </div>
 
+    <div id="structureEditorPanel" class="sidebar-panel widget-editor-panel structure-editor-panel" hidden>
+      <div class="panel-title">
+        <strong>Structure</strong>
+        <button id="exitStructureEditorBtn" type="button" title="Close" aria-label="Close">×</button>
+      </div>
+
+      <label class="field-label" for="structureModeSelect">結構模式</label>
+      <select id="structureModeSelect">
+        <option value="normal">Array</option>
+        <option value="matrix">2D Array</option>
+        <option value="binary_tree">Tree</option>
+        <option value="heap">Heap</option>
+        <option value="segment_tree">Segment Tree</option>
+        <option value="BIT">Binary Indexed Tree</option>
+        <option value="disk">Disk</option>
+        <option value="stack">Stack</option>
+        <option value="queue">Queue</option>
+      </select>
+
+      <div id="structureTreeControls" class="structure-tree-controls" hidden>
+        <label>
+          <span>樹排列方式</span>
+          <select id="structureTreeLayoutSelect">
+            <option value="compact">自動緊湊</option>
+            <option value="levelorder">層序等距</option>
+            <option value="binary">完整二元樹</option>
+            <option value="inorder">中序排列</option>
+            <option value="preorder">前序排列</option>
+            <option value="postorder">後序排列</option>
+          </select>
+        </label>
+        <label>
+          <span>排列方向</span>
+          <select id="structureTreeDirectionSelect">
+            <option value="vertical">垂直</option>
+            <option value="horizontal">水平</option>
+          </select>
+        </label>
+        <label>
+          <span>箭頭顏色</span>
+          <button id="structureTreeArrowColorInput" class="structure-color-button" type="button" data-color="#333333" title="選擇箭頭顏色" aria-label="選擇箭頭顏色"><span></span></button>
+        </label>
+      </div>
+
+      <div class="structure-field-grid">
+        <label>
+          <span>索引顯示</span>
+          <select id="structureIndexModeSelect">
+            <option value="0">只顯示元素</option>
+            <option value="1">元素＋索引</option>
+            <option value="2">只顯示索引</option>
+            <option value="3">二進位索引</option>
+            <option value="4">補零二進位索引</option>
+          </select>
+        </label>
+        <label>
+          <span>每列數量</span>
+          <input id="structureItemsPerRowInput" type="number" min="0" max="30" value="0" />
+        </label>
+        <label>
+          <span>格子間距</span>
+          <input id="structureGapInput" type="number" min="0" max="40" value="0" />
+        </label>
+      </div>
+
+      <div id="structureFrameBackgroundControls" class="structure-frame-background-controls">
+        <div class="structure-section-title">Array 外框背景</div>
+        <label class="structure-background-toggle">
+          <input id="structureFrameBackgroundEnabledInput" type="checkbox" checked />
+          <span>顯示背景</span>
+          <button id="structureFrameBackgroundColorInput" class="structure-color-button" type="button" data-color="#d1e6ac" title="選擇背景顏色" aria-label="選擇背景顏色"><span></span></button>
+        </label>
+      </div>
+
+      <div class="structure-section-title">元素樣式</div>
+      <div class="structure-style-list">
+        <label data-structure-style="highlight">
+          <span class="structure-style-icon style-icon highlight" aria-hidden="true"></span>
+          <span>Highlight</span>
+          <input id="structureHighlightIndicesInput" type="text" placeholder="例如 1,3-5" />
+          <button id="structureHighlightColorInput" class="structure-color-button" type="button" data-color="#ef4444" title="選擇 Highlight 顏色" aria-label="選擇 Highlight 顏色"><span></span></button>
+        </label>
+        <label data-structure-style="focus">
+          <span class="structure-style-icon style-icon focus" aria-hidden="true"></span>
+          <span>Focus</span>
+          <input id="structureFocusIndicesInput" type="text" placeholder="索引" />
+          <button id="structureFocusColorInput" class="structure-color-button" type="button" data-color="#3b82f6" title="選擇 Focus 顏色" aria-label="選擇 Focus 顏色"><span></span></button>
+        </label>
+        <label data-structure-style="point">
+          <span class="structure-style-icon style-icon point" aria-hidden="true"></span>
+          <span>Point</span>
+          <input id="structurePointIndicesInput" type="text" placeholder="索引" />
+          <button id="structurePointColorInput" class="structure-color-button" type="button" data-color="#f59e0b" title="選擇 Point 顏色" aria-label="選擇 Point 顏色"><span></span></button>
+        </label>
+        <label data-structure-style="mark">
+          <span class="structure-style-icon style-icon mark" aria-hidden="true"></span>
+          <span>Mark</span>
+          <input id="structureMarkIndicesInput" type="text" placeholder="索引" />
+          <button id="structureMarkColorInput" class="structure-color-button" type="button" data-color="#8b5cf6" title="選擇 Mark 顏色" aria-label="選擇 Mark 顏色"><span></span></button>
+        </label>
+        <label data-structure-style="background">
+          <span class="structure-style-icon style-icon background" aria-hidden="true"></span>
+          <span>Background</span>
+          <input id="structureBackgroundIndicesInput" type="text" placeholder="索引，留空即不套用" />
+          <button id="structureBackgroundColorInput" class="structure-color-button" type="button" data-color="#10b981" title="選擇 Background 顏色" aria-label="選擇 Background 顏色"><span></span></button>
+        </label>
+      </div>
+      <div class="structure-legacy-fields" hidden>
+        <select id="structureIndexBaseSelect"><option value="0">0</option><option value="1">1</option></select>
+        <input id="structureCellSizeInput" type="number" value="58" />
+        <input id="structureFontSizeInput" type="number" value="18" />
+        <input id="structureBaseFillInput" type="color" value="#f8fbfa" />
+        <input id="structureBorderColorInput" type="color" value="#344247" />
+        <input id="structureTextColorInput" type="color" value="#1f282d" />
+        <input id="structureLineColorInput" type="color" value="#66767b" />
+      </div>
+    </div>
+
     <div id="animationEditorPanel" class="sidebar-panel animation-editor-panel" hidden>
       <div id="shapeEditorControls" class="shape-editor-controls" hidden>
         <div class="shape-editor-title">Shape</div>
         <div class="shape-editor-grid">
-          <button type="button" class="shape-choice shape-choice-rect" data-shape-choice="rect" title="矩形" aria-label="矩形">□</button>
-          <button type="button" class="shape-choice" data-shape-choice="circle" title="圓形" aria-label="圓形">○</button>
-          <button type="button" class="shape-choice" data-shape-choice="triangle" title="三角形" aria-label="三角形">△</button>
+          <button type="button" class="shape-choice" data-shape-choice="rect" title="Rectangle" aria-label="Rectangle"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16"></rect></svg></button>
+          <button type="button" class="shape-choice" data-shape-choice="circle" title="Circle" aria-label="Circle"><svg class="shape-choice-icon shape-choice-icon-circle" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle></svg></button>
+          <button type="button" class="shape-choice" data-shape-choice="triangle" title="Triangle" aria-label="Triangle"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z"></path></svg></button>
+          <button type="button" class="shape-choice" data-shape-choice="line" title="Line" aria-label="Line"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"></path></svg></button>
+          <button type="button" class="shape-choice" data-shape-choice="arrow" title="Arrow" aria-label="Arrow"><svg class="shape-choice-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h17M14 5l7 7-7 7"></path></svg></button>
         </div>
       </div>
       <div id="layerEditorControls" class="layer-editor-controls">
@@ -200,6 +400,43 @@
       <label class="field-label" for="fragmentIndexInput">動畫順序</label>
       <input id="fragmentIndexInput" type="number" min="0" placeholder="留白則自動排序" />
     </div>
+
+    <div id="ttsTransport" class="sidebar-panel tts-transport" role="region" aria-label="TTS 控制" data-state="idle" data-expanded="false" hidden>
+      <div class="panel-title tts-sidebar-title">
+        <div>
+          <strong>TTS</strong>
+          <span id="ttsScriptSource" class="tts-script-source">0 個文字物件</span>
+        </div>
+        <button id="ttsPanelCloseBtn" type="button" title="關閉 TTS" aria-label="關閉 TTS">×</button>
+      </div>
+      <div class="tts-transport-controls" role="toolbar" aria-label="TTS 播放控制">
+        <button id="ttsPlayPauseBtn" type="button" title="播放或暫停" aria-label="播放或暫停">
+          <svg class="tts-play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+          <svg class="tts-pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"></path></svg>
+        </button>
+        <button id="ttsStopBtn" type="button" title="停止播放" aria-label="停止播放" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z"></path></svg>
+        </button>
+        <button id="ttsAddCarrierBtn" type="button" title="新增空白 TTS 文字" aria-label="新增空白 TTS 文字">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+        <span id="ttsPlaybackStatus" class="tts-playback-status" role="status" aria-live="polite">就緒</span>
+      </div>
+      <label class="tts-slider-control" for="ttsRateInput" title="語速">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16a7 7 0 1 1 14 0M12 13l4-4M4 19h16"></path></svg>
+        <input id="ttsRateInput" class="tts-standard-slider" type="range" min="0.5" max="2" step="0.1" value="1.2" aria-label="語速" />
+        <output id="ttsRateValue" for="ttsRateInput">1.2x</output>
+      </label>
+      <label class="tts-slider-control" for="ttsVolumeInput" title="音量">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6L8 10zm12-1a5 5 0 0 1 0 6m2-9a9 9 0 0 1 0 12"></path></svg>
+        <input id="ttsVolumeInput" class="tts-standard-slider" type="range" min="0" max="1" step="0.05" value="0.3" aria-label="音量" />
+        <output id="ttsVolumeValue" for="ttsVolumeInput">30%</output>
+      </label>
+      <div id="ttsScriptShell" class="tts-script-shell">
+        <div id="ttsObjectOrderList" class="tts-object-order-list" role="list" aria-label="TTS 文字物件朗讀順序"></div>
+      </div>
+    </div>
+
   </aside>
 
   <div id="overviewChrome" class="overview-chrome" hidden>
@@ -244,11 +481,60 @@
     </div>
   </div>
 
+  <dialog id="shareDialog" class="share-dialog">
+    <form id="shareForm">
+      <div class="share-dialog-header">
+        <div>
+          <span class="share-eyebrow">分享設定</span>
+          <h2>分享這份投影片</h2>
+        </div>
+        <button id="closeShareDialogBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+
+      <fieldset class="share-mode-options">
+        <legend>連結權限</legend>
+        <label>
+          <input type="radio" name="shareMode" value="private" checked />
+          <span><strong>不分享</strong><small>只有你能開啟</small></span>
+        </label>
+        <label>
+          <input type="radio" name="shareMode" value="view" />
+          <span><strong>僅可觀賞</strong><small>其他人可播放，但不能修改</small></span>
+        </label>
+        <label>
+          <input type="radio" name="shareMode" value="edit" />
+          <span><strong>可編輯</strong><small>另外產生可修改內容的連結</small></span>
+        </label>
+      </fieldset>
+
+      <div id="shareLinks" class="share-links" hidden>
+        <label for="viewShareUrl">觀賞連結</label>
+        <div class="share-url-row">
+          <input id="viewShareUrl" type="text" readonly />
+          <button id="copyViewShareUrlBtn" type="button">複製</button>
+        </div>
+        <div id="editShareLinkGroup" hidden>
+          <label for="editShareUrl">編輯連結</label>
+          <div class="share-url-row">
+            <input id="editShareUrl" type="text" readonly />
+            <button id="copyEditShareUrlBtn" type="button">複製</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="shareDialogStatus" class="share-dialog-status" role="status" aria-live="polite"></div>
+      <div class="share-dialog-actions">
+        <button id="cancelShareDialogBtn" type="button">取消</button>
+        <button id="saveShareSettingsBtn" class="share-save-btn" type="submit">套用設定</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="objectToolbar" class="object-toolbar" hidden>
     <select id="fontFamilySelect" title="字體">
+      <option value="Arial">Arial</option>
       <option value="Segoe UI">Segoe UI</option>
       <option value="Noto Sans TC">Noto Sans TC</option>
-      <option value="Arial">Arial</option>
       <option value="Georgia">Georgia</option>
       <option value="Consolas">Consolas</option>
     </select>
@@ -261,6 +547,9 @@
     <button id="listStyleBtn" type="button" title="項目符號 / 編號"><span class="list-style-icon" aria-hidden="true"></span></button>
     <button id="textColorBtn" type="button" title="文字顏色"><span class="text-color-icon" aria-hidden="true">A</span></button>
     <button id="bgColorBtn" type="button" title="文字背景色"><span class="text-bg-icon">A</span></button>
+    <button id="ttsObjectBtn" type="button" title="編輯 TTS 台詞" aria-label="編輯 TTS 台詞">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M4 10h8M4 14h6M16 9v6m0 0a3 3 0 1 0 3 3m-3-3a3 3 0 0 1 3 3"></path></svg>
+    </button>
     <button id="shapeStrokeBtn" class="shape-style-btn" type="button" title="邊框顏色、粗細與圓弧度">
       <span class="shape-corner-icon shape-stroke-icon"></span>
     </button>
@@ -282,10 +571,61 @@
           </label>
           <input id="shapeCornerRadiusInput" class="shape-radius-slider" type="range" min="0" max="100" step="1" value="0" />
         </div>
+        <div id="shapeArrowControls" class="shape-arrow-controls" hidden>
+          <label class="shape-style-label" for="shapeArrowSizeInput">
+            <span>Arrow size</span>
+            <output id="shapeArrowSizeValue">24</output>
+          </label>
+          <input id="shapeArrowSizeInput" class="shape-standard-slider" type="range" min="6" max="80" step="1" value="24" />
+          <label class="shape-style-label" for="shapeArrowStyleSelect">
+            <span>Arrowhead</span>
+          </label>
+          <select id="shapeArrowStyleSelect" class="shape-arrow-style-select">
+            <option value="open">Open</option>
+            <option value="triangle">Triangle</option>
+            <option value="diamond">Diamond</option>
+            <option value="circle">Circle</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
 
+  <div id="ttsObjectEditorPopover" class="tts-object-editor-popover" role="dialog" aria-label="物件 TTS 台詞" hidden>
+    <div class="tts-object-editor-header">
+      <div>
+        <strong id="ttsObjectEditorTitle">TTS 台詞</strong>
+        <span id="ttsObjectEditorMode">跟隨物件文字</span>
+      </div>
+      <div class="tts-object-editor-actions">
+        <button id="ttsObjectMuteBtn" class="tts-object-mute-btn" type="button" title="不念這個 TTS" aria-label="不念這個 TTS" aria-pressed="false">
+          <svg class="tts-audible-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4zm12-1a5 5 0 0 1 0 6m2-9a9 9 0 0 1 0 12"></path></svg>
+          <svg class="tts-muted-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4zm12-1 5 6m0-6-5 6"></path></svg>
+        </button>
+        <button id="ttsObjectResetBtn" type="button" title="重新使用物件文字" aria-label="重新使用物件文字">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6"></path></svg>
+        </button>
+        <button id="ttsObjectEditorCloseBtn" type="button" title="關閉台詞編輯" aria-label="關閉台詞編輯">×</button>
+      </div>
+    </div>
+    <textarea id="ttsObjectScriptInput" placeholder="輸入此物件的台詞，可用 {文字:讀音} 修改讀音" aria-label="物件 TTS 台詞"></textarea>
+  </div>
+
+  <div id="alignmentToolbar" class="alignment-toolbar" role="toolbar" aria-label="物件對齊" hidden>
+    <button type="button" data-align-action="left" title="靠左對齊" aria-label="靠左對齊"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v18M7 7h10v4H7zM7 14h14v4H7z"/></svg></button>
+    <button type="button" data-align-action="center" title="水平置中" aria-label="水平置中"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M7 7h10v4H7zM5 14h14v4H5z"/></svg></button>
+    <button type="button" data-align-action="right" title="靠右對齊" aria-label="靠右對齊"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 3v18M7 7h10v4H7zM3 14h14v4H3z"/></svg></button>
+    <span class="alignment-divider" aria-hidden="true"></span>
+    <button type="button" data-align-action="top" title="靠上對齊" aria-label="靠上對齊"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18M7 7v10h4V7zM14 7v14h4V7z"/></svg></button>
+    <button type="button" data-align-action="middle" title="垂直置中" aria-label="垂直置中"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18M7 7v10h4V7zM14 5v14h4V5z"/></svg></button>
+    <button type="button" data-align-action="bottom" title="靠下對齊" aria-label="靠下對齊"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M7 7v10h4V7zM14 3v14h4V3z"/></svg></button>
+    <span class="alignment-divider" aria-hidden="true"></span>
+    <button type="button" data-align-action="distribute-horizontal" title="水平等距分布" aria-label="水平等距分布"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4v16M21 4v16M6 9h4v6H6zM14 9h4v6h-4z"/></svg></button>
+    <button type="button" data-align-action="distribute-vertical" title="垂直等距分布" aria-label="垂直等距分布"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16M4 21h16M9 6h6v4H9zM9 14h6v4H9z"/></svg></button>
+  </div>
+
+  <div id="snapGuideLayer" class="snap-guide-layer" aria-hidden="true" hidden></div>
+  <div id="structureContextMenu" class="structure-context-menu" role="menu" aria-label="Structure actions" hidden></div>
   <div class="reveal">
     <div id="slidesRoot" class="slides"></div>
   </div>
@@ -320,7 +660,6 @@
   </script>
   <script src="/vendor/reveal/plugin/notes.js"></script>
   <script src="/vendor/reveal/plugin/search.js"></script>
-  <script src="/vendor/reveal/plugin/zoom.js"></script>
   <script src="/vendor/reveal/plugin/math.js"></script>
   <script>
     window.RevealMath = window.RevealMath || (window.module && window.module.exports && window.module.exports.KaTeX ? window.module.exports : null) || (window.exports && window.exports.KaTeX ? window.exports : null);
@@ -341,7 +680,21 @@
     if (window.ace && window.ace.config) window.ace.config.set('basePath', '/vendor/ace');
     document.body.dataset.aceBridge = window.ace && window.ace.edit ? 'ready' : 'missing';
   </script>
-  <script src="slides.js?v=random-id-75"></script>
+  <script src="draw/draw_array_utils.js"></script>
+  <script src="draw/draw_block.js"></script>
+  <script src="draw/draw_array_outerframe.js"></script>
+  <script src="draw/draw_array_hintWidget.js"></script>
+  <script src="draw/draw_array_normal.js"></script>
+  <script src="draw/draw_array_heap.js"></script>
+  <script src="draw/draw_array_segment_tree.js"></script>
+  <script src="draw/draw_array_BIT.js"></script>
+  <script src="draw/draw_array_disk.js"></script>
+  <script src="draw/draw_array_stack.js"></script>
+  <script src="draw/draw_array_queue.js"></script>
+  <script src="slide-structures.js?v=10"></script>
+  <script src="deck-thumbnail.js?v=3"></script>
+  <script src="tts.js?v=2"></script>
+  <script src="slides.js?v=random-id-127"></script>
 </body>
 
 </html>

@@ -85,6 +85,13 @@
 
   // 做一次「帶過渡動畫」的步進
   window.stepWithTween = function (rawStepFn, duration = 300) {
+    if (window.ASMTracePlayer?.isActive?.()) {
+      return rawStepFn ? rawStepFn() : Promise.resolve();
+    }
+    const cssRate = Number(getComputedStyle(document.documentElement)
+      .getPropertyValue('--asm-animation-playback-rate'));
+    const playbackRate = Math.max(0.25, Math.min(4, Number(window.asmGetAnimationPlaybackRate?.()) || cssRate || 1));
+    duration = Math.max(1, (Number(duration) || 300) / playbackRate);
     const vp = window.getViewport && window.getViewport();
     if (!vp || typeof rawStepFn !== 'function') {
       rawStepFn && rawStepFn();

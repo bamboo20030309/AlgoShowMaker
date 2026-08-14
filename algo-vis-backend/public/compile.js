@@ -81,13 +81,27 @@ document.getElementById('runBtn').addEventListener('click', async () => {
 
   try {
     const t0 = performance.now();
+    const sourceCode = aceEditor.getValue();
+    let traceConfig = { enabled: true, sliceMode: 'auto', watches: [], skins: {}, rules: [] };
+    let traceAnalyzeWarning = '';
+    try {
+      traceConfig = window.ASMTraceEditor
+        ? await window.ASMTraceEditor.getCompileConfig(sourceCode)
+        : traceConfig;
+    } catch (error) {
+      // Keep normal execution available when source analysis cannot understand
+      // a valid C++ construct. The compiler remains the source of truth.
+      traceConfig = { enabled: false };
+      traceAnalyzeWarning = `追蹤分析未完成，先使用一般執行：${error.message}`;
+    }
 
     const res = await fetch('/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        code: aceEditor.getValue(),              // 保留原本欄位名 code
-        input: inputEl ? inputEl.value : ''      // stdin
+        code: sourceCode,                         // 保留原本欄位名 code
+        input: inputEl ? inputEl.value : '',      // stdin
+        trace: traceConfig
       })
     });
 
@@ -107,6 +121,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     const runTime     = data.runTime;
     const memoryKB    = data.memoryKB;
     const debug_log   = data.debug_log;
+    const traceWarning = [traceAnalyzeWarning, data.traceWarning].filter(Boolean).join('\n');
 
     // 統一判定（TLE / OLE / MLE / RE / OK）
     const judge = judgeResult(data);
@@ -155,6 +170,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       }
 
       header += '\n';
+      if (traceWarning) header += `${traceWarning}\n`;
       dbg.textContent = header;
 
       if (Array.isArray(debug_log) && debug_log.length > 0) {
@@ -169,13 +185,36 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       }
     }
 
-    // 3. 處理後端直接回傳的動畫腳本 (Concurrency Fix)
-    if (data.scriptContent) {
+    // 3. Trace mode returns data; legacy mode returns an animation script.
+    if (data.traceDocument) {
+      try {
+        const traceDocument = window.ASMTraceEditor
+          ? window.ASMTraceEditor.applyTraceDocument(data.traceDocument)
+          : window.asmApplyTraceDocument(data.traceDocument);
+        const traceSettings = window.ASMTraceEditor?.snapshot?.() || {};
+        window.dispatchEvent(new CustomEvent('asm:compiled-animation', {
+          detail: {
+            mode: 'trace',
+            code: sourceCode,
+            input: inputEl ? inputEl.value : '',
+            sliceMode: traceSettings.sliceMode || traceDocument?.sliceMode || 'auto',
+            watches: traceSettings.watches || [],
+            skins: traceDocument?.skins || traceSettings.skins || {},
+            rules: traceDocument?.rules || traceSettings.rules || [],
+            traceDocument
+          }
+        }));
+      } catch (e) {
+        console.error('Failed to render trace:', e);
+        if (dbg) dbg.textContent += '\n[Trace] Failed to render trace: ' + e.message;
+      }
+    } else if (data.scriptContent) {
       try {
         window.asmApplyAnimationScript(data.scriptContent);
         window.dispatchEvent(new CustomEvent('asm:compiled-animation', {
           detail: {
-            code: aceEditor.getValue(),
+            mode: 'legacy',
+            code: sourceCode,
             input: inputEl ? inputEl.value : '',
             scriptContent: data.scriptContent
           }

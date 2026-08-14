@@ -6,6 +6,8 @@ dist/
 build/
 algo-vis-backend/tmp/
 .env
+algo-vis-backend/server.out.log
+algo-vis-backend/server.err.log
 
 # =========================
 # IDE / Editor

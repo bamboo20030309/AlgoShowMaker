@@ -662,7 +662,7 @@ button.auto-stepping:hover {
 }
 
 .frame-bar.reached.keyframe {
-  background-color: #ff5252;
+  background-color: #61e15b;
   /* 關鍵幀紅色 */
 }
 

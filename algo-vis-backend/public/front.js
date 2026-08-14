@@ -48,6 +48,49 @@ aceEditor.setOptions({
   showPrintMargin: false
 });
 
+window.asmGetSourceCode = () => aceEditor.getValue();
+window.asmEnsureFrameDirectiveName = function (lineNumber, requestedName) {
+  const row = Math.max(0, Number(lineNumber) - 1);
+  const session = aceEditor.getSession();
+  const line = session.getLine(row);
+  const existing = line.match(/^\s*\/\/\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*:\s*@frame\b/);
+  if (existing) return existing[1];
+  if (!/^\s*\/\/\s*@frame\b/.test(line)) return '';
+  const used = new Set([...aceEditor.getValue().matchAll(/^\s*\/\/\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*:\s*@frame\b/gm)]
+    .map(match => match[1]));
+  const base = String(requestedName || `view.${row + 1}`).replace(/[^A-Za-z0-9_.-]/g, '-') || `view.${row + 1}`;
+  let name = base;
+  let suffix = 2;
+  while (used.has(name)) name = `${base}.${suffix++}`;
+  const next = line.replace(/^(\s*\/\/\s*)@frame\b/, `$1${name}: @frame`);
+  session.replace(new Range(row, 0, row, line.length), next);
+  return name;
+};
+window.asmWriteViewSettings = function (settings) {
+  if (!window.ASMTraceViewSource?.upsert) return false;
+  const source = aceEditor.getValue();
+  const next = window.ASMTraceViewSource.upsert(source, settings);
+  if (next === source) return false;
+  const oldBlock = window.ASMTraceViewSource.findBlock(source);
+  const newBlock = window.ASMTraceViewSource.findBlock(next);
+  const session = aceEditor.getSession();
+  const document = session.getDocument();
+  const selection = aceEditor.getSelectionRange();
+  const scrollTop = session.getScrollTop();
+  if (oldBlock && newBlock) {
+    const start = document.indexToPosition(oldBlock.start, 0);
+    const end = document.indexToPosition(oldBlock.end, 0);
+    session.replace(new Range(start.row, start.column, end.row, end.column), newBlock.text);
+  } else {
+    const end = document.indexToPosition(source.length, 0);
+    const separator = !source ? '' : source.endsWith('\n\n') ? '' : source.endsWith('\n') ? '\n' : '\n\n';
+    session.insert(end, `${separator}${newBlock.text}\n`);
+  }
+  aceEditor.selection.setSelectionRange(selection, false);
+  session.setScrollTop(scrollTop);
+  return true;
+};
+
 // ====== 專門摺疊 //draw{ ... //} 區塊 ======
 const Range = ace.require("ace/range").Range;
 
@@ -684,7 +727,7 @@ window.reloadAfterRun = function () {
 // 首次載入與動畫控制
 document.addEventListener('DOMContentLoaded', () => {
   // === 既有初始化：保留 ===
-  window._canvasInteraction = new CanvasInteractionManager(document.getElementById('arraySvg'));
+  window._canvasInteraction ||= new window.CanvasInteractionManager(document.getElementById('arraySvg'));
 
   // 啟動 marker layer 去重監控，確保同一行只有一個 highlight 元素可見
   initMarkerObserver();
@@ -766,6 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // === 速度 ===
   let speed = +speedSlider.value;
+  const AUTO_PLAY_IDLE_SCALE = 0.3;
 
   // 把滑桿的值映射成 TTS rate（0.5x ~ 2.0x）
   function getTtsRate() {
@@ -784,6 +828,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const updateSpeedLabel = () => {
     const rate = getTtsRate();
+    window.asmAnimationPlaybackRate = rate;
+    window.asmGetAnimationPlaybackRate = () => Number(window.asmAnimationPlaybackRate) || 1;
+    document.documentElement.style.setProperty('--asm-animation-playback-rate', String(rate));
+    document.documentElement.style.setProperty('--asm-trace-lift-duration', `${340 / rate}ms`);
+    document.documentElement.style.setProperty('--asm-trace-pulse-duration', `${400 / rate}ms`);
+    document.documentElement.style.setProperty('--asm-trace-fade-duration', `${440 / rate}ms`);
     speedValue.textContent = `語速 ${rate.toFixed(1)}x`;
 
     // 更新滑桿比例 CSS 變數（用於軌道填充顏色）
@@ -814,6 +864,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!isPlaying || runId !== TTS_RUN_ID) return;
 
     const entries = collectMessageTextInCurrentFrame();
+
+    const continueAfterTransition = transition => {
+      Promise.resolve(transition).then(() => {
+        if (!isPlaying || runId !== TTS_RUN_ID) return;
+        syncCurrentFrameFromCodeScript();
+        playFromCurrentFrameWithTTS(runId);
+      });
+    };
 
     const afterSpeak = () => {
       // 再檢查一次（避免 onend 在 pause 或重新播放後才觸發）
@@ -867,9 +925,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // 4) fast_frame：跳到下一個 key_frame (track = 1)
       if (typeof CodeScript.is_fast_frame === 'function' &&
         CodeScript.is_fast_frame(cur)) {
-        stepWithTween(() => CodeScript.next_key_frame());
-        syncCurrentFrameFromCodeScript();
-        playFromCurrentFrameWithTTS(runId);
+        continueAfterTransition(stepWithTween(() => CodeScript.next_key_frame()));
         return;
       }
 
@@ -884,20 +940,20 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => {
         if (!isPlaying || runId !== TTS_RUN_ID) return;
 
+        let transition = Promise.resolve();
         if (fast && typeof CodeScript.next_key_frame === 'function') {
-          stepWithTween(() => CodeScript.next_key_frame());
+          transition = stepWithTween(() => CodeScript.next_key_frame());
         } else if (typeof CodeScript.next === 'function') {
-          stepWithTween(() => CodeScript.next());
+          transition = stepWithTween(() => CodeScript.next());
         }
-        syncCurrentFrameFromCodeScript();
+        continueAfterTransition(transition);
 
         // 7) 繼續自動播下一幀（用同一個 runId）
-        playFromCurrentFrameWithTTS(runId);
       }, extraDelay);
     };
 
     const fallbackDelay = () => {
-      const delay = Math.max(60, speed || 500);
+      const delay = Math.max(40, Math.round((speed || 500) * AUTO_PLAY_IDLE_SCALE));
       const extraDelay = currentFrameSleep || 0;
       setTimeout(() => {
         // timeout 到的時候也要檢查世代
@@ -1430,12 +1486,6 @@ restrictedIds.forEach(id => {
 
 document.addEventListener('DOMContentLoaded', () => {
   initTopMenuBar();
-  const toggleDrawBlocksBtn = document.getElementById('toggleDrawBlocksBtn');
-  if (toggleDrawBlocksBtn && !toggleDrawBlocksBtn.dataset.drawFoldBound) {
-    toggleDrawBlocksBtn.dataset.drawFoldBound = 'true';
-    toggleDrawBlocksBtn.addEventListener('click', toggleDrawBlocks);
-  }
-  updateDrawBlocksUi();
   //  fetchAlgorithmSamples();
 });
 
@@ -1493,6 +1543,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const authForm = document.querySelector(".auth-form");
   const forgotBtn = document.getElementById("forgotPasswordBtn"); // 忘記密碼按鈕
 
+  if (loginModal) {
   // 取得要隱藏/顯示的區塊
   // 假設你的 HTML 結構是 .form-group 包住 label 和 input
   const formGroups = loginModal.querySelectorAll(".form-group");
@@ -1826,6 +1877,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }
     };
+  }
+
   }
 
   // ==========================================

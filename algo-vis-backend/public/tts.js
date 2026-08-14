@@ -166,4 +166,6 @@
   window.stopSpeak = stopSpeak;
   window.getTTSSupported = getTTSSupported;
   window.getVoices = getVoices;
+  window.waitForTTSVoices = waitForVoices;
+  window.pickBestTTSVoice = pickBestVoice;
 })();
