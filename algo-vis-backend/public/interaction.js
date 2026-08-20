@@ -202,8 +202,10 @@ class CanvasInteractionManager {
 
     // 動態更新選取輔助框/控制點 (對齊更方便，視覺效果類似 Draw.io)
     updateSelectionOverlay() {
+      this._restoreTraceBindingLayer();
       let overlay = this.svg.querySelector('#selection-overlay');
       if (overlay) overlay.remove();
+      this.svg.querySelector('#trace-binding-preview-underlay')?.remove();
 
       if (!this.selected) return;
 
@@ -753,6 +755,58 @@ class CanvasInteractionManager {
       }
     }
 
+    _restoreTraceBindingLayer() {
+      const state = this._traceBindingLayerState;
+      this._traceBindingLayerState = null;
+      if (!state?.element?.isConnected || !state?.parent?.isConnected) return;
+      if (state.element.parentNode !== state.parent) return;
+      const before = state.nextSibling?.parentNode === state.parent ? state.nextSibling : null;
+      state.parent.insertBefore(state.element, before);
+    }
+
+    _placeTraceBindingLine(connector, element, viewport) {
+      const sceneRoot = element.closest?.('.asm-trace-root, #asm-trace-root') || viewport;
+      let selectedLayer = element;
+      while (selectedLayer.parentNode && selectedLayer.parentNode !== sceneRoot) {
+        selectedLayer = selectedLayer.parentNode;
+      }
+      const parent = selectedLayer.parentNode === sceneRoot ? sceneRoot : viewport;
+      const underlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      underlay.id = 'trace-binding-preview-underlay';
+      underlay.setAttribute('pointer-events', 'none');
+      if (parent !== viewport) {
+        try {
+          const matrix = parent.getScreenCTM().inverse().multiply(viewport.getScreenCTM());
+          const convert = (x, y) => {
+            const point = this.svg.createSVGPoint();
+            point.x = Number(x) || 0;
+            point.y = Number(y) || 0;
+            return point.matrixTransform(matrix);
+          };
+          const start = convert(connector.getAttribute('x1'), connector.getAttribute('y1'));
+          const end = convert(connector.getAttribute('x2'), connector.getAttribute('y2'));
+          connector.setAttribute('x1', start.x);
+          connector.setAttribute('y1', start.y);
+          connector.setAttribute('x2', end.x);
+          connector.setAttribute('y2', end.y);
+        } catch (error) {
+          // Keep viewport coordinates if the browser cannot provide an SVG transform matrix.
+        }
+      }
+      underlay.appendChild(connector);
+      if (selectedLayer.parentNode === parent) {
+        this._traceBindingLayerState = {
+          element: selectedLayer,
+          parent,
+          nextSibling: selectedLayer.nextSibling
+        };
+        parent.appendChild(underlay);
+        parent.appendChild(selectedLayer);
+      } else {
+        parent.appendChild(underlay);
+      }
+    }
+
     _anchorFromBounds(bounds, anchor = 'center') {
       const name = String(anchor || 'center').toLowerCase();
       let x = (bounds.left + bounds.right) / 2;
@@ -786,14 +840,14 @@ class CanvasInteractionManager {
       box.setAttribute('pointer-events', 'none');
       overlay.appendChild(box);
 
-      if (element.dataset.traceMovable !== '1') {
+      const binding = window.ASMTraceStudio?.getBinding?.(key);
+      if (element.dataset.traceMovable !== '1' && !binding?.semanticText) {
         vp.appendChild(overlay);
         return;
       }
 
       const top = this._anchorFromBounds(bounds, 'top');
       const handleY = bounds.top - 28 / s;
-      const binding = window.ASMTraceStudio?.getBinding?.(key);
       const boundTarget = binding?.targetKey
         ? window.ASMTraceRenderers?.currentAnchorForKey?.(
           binding.targetKey,
@@ -801,8 +855,9 @@ class CanvasInteractionManager {
           true
         )
         : null;
+      const sourceAnchor = binding?.semanticText ? 'center' : (binding?.sourceAnchor || 'top');
       const sourcePoint = binding
-        ? this._anchorFromBounds(bounds, binding.sourceAnchor || 'top')
+        ? this._anchorFromBounds(bounds, sourceAnchor)
         : top;
       const handlePoint = boundTarget || { x: top.x, y: handleY };
       const connector = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -815,7 +870,7 @@ class CanvasInteractionManager {
       connector.setAttribute('stroke-width', 2.4 / s);
       connector.setAttribute('stroke-linecap', 'round');
       connector.setAttribute('pointer-events', 'none');
-      overlay.appendChild(connector);
+      this._placeTraceBindingLine(connector, element, vp);
 
       const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       handle.setAttribute('cx', handlePoint.x);
@@ -826,10 +881,10 @@ class CanvasInteractionManager {
       handle.setAttribute('stroke-width', 1.8 / s);
       handle.setAttribute('style', 'pointer-events:all;cursor:crosshair');
       handle.dataset.traceBindingHandle = '1';
-      handle.dataset.traceSourceAnchor = 'top';
+      handle.dataset.traceSourceAnchor = binding?.semanticText ? 'center' : 'top';
       handle.dataset.traceSourceKey = key;
       handle.addEventListener('pointerdown', event => {
-        this._startTraceBinding(event, key, 'top');
+        this._startTraceBinding(event, key, binding?.semanticText ? 'center' : 'top');
       });
       overlay.appendChild(handle);
 
@@ -911,8 +966,21 @@ class CanvasInteractionManager {
       const handle = this.svg.querySelector('[data-trace-binding-handle]');
       const endpoint = best || cursor;
       if (line) {
-        line.setAttribute('x2', endpoint.x);
-        line.setAttribute('y2', endpoint.y);
+        let lineEndpoint = endpoint;
+        const lineSpace = line.parentNode;
+        if (lineSpace && lineSpace !== vp) {
+          try {
+            const matrix = lineSpace.getScreenCTM().inverse().multiply(vp.getScreenCTM());
+            const converted = this.svg.createSVGPoint();
+            converted.x = endpoint.x;
+            converted.y = endpoint.y;
+            lineEndpoint = converted.matrixTransform(matrix);
+          } catch (error) {
+            // Both points remain in viewport coordinates when SVG matrices are unavailable.
+          }
+        }
+        line.setAttribute('x2', lineEndpoint.x);
+        line.setAttribute('y2', lineEndpoint.y);
         line.setAttribute('stroke', best ? '#1d8f83' : '#3d85c6');
       }
       if (handle) {

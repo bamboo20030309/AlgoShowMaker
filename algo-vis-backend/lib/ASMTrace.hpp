@@ -195,12 +195,15 @@ encode_value(const T& value) { return encode_opaque(value); }
 struct NamedValue {
   std::string id;
   std::string name;
+  std::string identity;
   std::string json;
 };
 
 template <typename T>
 NamedValue named(const char* id, const char* name, const T& value) {
-  return NamedValue{ id ? id : "", name ? name : "", encode_value(value) };
+  std::ostringstream address;
+  address << static_cast<const void*>(&value);
+  return NamedValue{ id ? id : "", name ? name : "", address.str(), encode_value(value) };
 }
 
 class Recorder {
@@ -220,8 +223,10 @@ class Recorder {
   void add_event(const std::string& type, int line, const std::string& signature,
                  const std::string& fields = std::string()) {
     if (!enabled_ || frame_id_ >= max_frames_) return;
+    const int execution_order = event_id_++;
     std::ostringstream event;
-    event << "{\"id\":" << quoted(std::string("event-") + std::to_string(event_id_++))
+    event << "{\"id\":" << quoted(std::string("event-") + std::to_string(execution_order))
+          << ",\"order\":" << execution_order
           << ",\"type\":" << quoted(type)
           << ",\"signature\":" << quoted(signature)
           << ",\"line\":" << line;
@@ -244,6 +249,7 @@ class Recorder {
     for (std::size_t index = 0; index < state.size(); ++index) {
       if (index) output_ << ',';
       output_ << quoted(state[index].id) << ":{\"name\":" << quoted(state[index].name)
+              << ",\"identity\":" << quoted(state[index].identity)
               << ",\"data\":" << state[index].json << '}';
     }
     output_ << "},\"events\":[";
@@ -271,11 +277,14 @@ inline Recorder& recorder() {
 }
 
 inline std::string target_json(const char* role, const char* variable_id,
-                               const char* expression, const char* index_expression) {
-  return std::string("{\"role\":") + quoted(role ? role : "target")
+                               const char* expression, const char* index_expression,
+                               bool has_resolved_index = false, long long resolved_index = 0) {
+  std::string result = std::string("{\"role\":") + quoted(role ? role : "target")
     + ",\"variableId\":" + quoted(variable_id ? variable_id : "")
     + ",\"expression\":" + quoted(expression ? expression : "")
-    + ",\"indexExpression\":" + quoted(index_expression ? index_expression : "") + '}';
+    + ",\"indexExpression\":" + quoted(index_expression ? index_expression : "");
+  if (has_resolved_index) result += ",\"resolvedIndex\":" + std::to_string(resolved_index);
+  return result + '}';
 }
 
 template <typename T>
@@ -311,6 +320,30 @@ void event_declare(int line, const char* signature, const char* variable_id,
       + ",\"targets\":[" + target_json("target", variable_id, name, "") + ']');
 }
 
+inline void event_declare_uninitialized(int line, const char* signature, const char* variable_id,
+                                        const char* name, const char* kind) {
+  recorder().add_event("declare", line, signature ? signature : "",
+    std::string("\"name\":") + quoted(name ? name : "")
+      + ",\"kind\":" + quoted(kind ? kind : "object")
+      + ",\"payload\":{\"value\":null}"
+      + ",\"targets\":[" + target_json("target", variable_id, name, "") + ']');
+}
+
+template <typename T>
+void event_initialized_assign(int line, const char* signature,
+                              const char* target_id, const char* target_expression, const char* target_index,
+                              const char* source_id, const char* source_expression, const char* source_index,
+                              const char* expression, const T& value) {
+  const std::string encoded = encode_value(value);
+  recorder().add_event("assign", line, signature ? signature : "",
+    std::string("\"operation\":\"=\"")
+      + ",\"animate\":true"
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":null,\"after\":" + encoded + ",\"source\":" + encoded + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index)
+      + ',' + target_json("source", source_id, source_expression, source_index) + ']');
+}
+
 template <typename F>
 bool event_condition(int line, const char* signature, const char* condition_kind, F evaluate) {
   const bool result = evaluate();
@@ -332,15 +365,33 @@ void event_write(int line, const char* signature, const char* variable_id,
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
+void event_update(int line, const char* signature, const char* variable_id,
+                   const char* expression, const char* index_expression,
+                   const char* operation, BeforeFactory before_factory,
+                   F action, AfterFactory after_factory, bool animate = true) {
+  const std::string before = encode_value(before_factory());
+  action();
+  const std::string after = encode_value(after_factory());
+  recorder().add_event("write", line, signature ? signature : "",
+    std::string("\"operation\":") + quoted(operation ? operation : "")
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"update\":true"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + after + "}"
+      + ",\"targets\":[" + target_json("target", variable_id, expression, index_expression) + ']');
+}
+
+template <typename BeforeFactory, typename F, typename AfterFactory>
 void event_assign(int line, const char* signature,
-                  const char* target_id, const char* target_expression, const char* target_index,
-                  const char* source_id, const char* source_expression, const char* source_index,
-                  const char* expression, BeforeFactory before_factory, F action, AfterFactory after_factory) {
+                   const char* target_id, const char* target_expression, const char* target_index,
+                   const char* source_id, const char* source_expression, const char* source_index,
+                   const char* expression, BeforeFactory before_factory, F action, AfterFactory after_factory,
+                   bool animate = true) {
   const std::string before = encode_value(before_factory());
   action();
   const std::string after = encode_value(after_factory());
   recorder().add_event("assign", line, signature ? signature : "",
     std::string("\"operation\":\"=\"")
+      + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + after + "}"
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index)
@@ -350,7 +401,9 @@ void event_assign(int line, const char* signature,
 template <typename LeftFactory, typename RightFactory, typename Compare>
 bool event_compare(int line, const char* signature,
                    const char* left_id, const char* left_expression, const char* left_index,
+                   bool left_has_resolved_index, long long left_resolved_index,
                    const char* right_id, const char* right_expression, const char* right_index,
+                   bool right_has_resolved_index, long long right_resolved_index,
                    const char* operation, LeftFactory left_factory, RightFactory right_factory, Compare compare) {
   auto&& left = left_factory();
   auto&& right = right_factory();
@@ -359,20 +412,26 @@ bool event_compare(int line, const char* signature,
     std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"result\":" + (result ? "true" : "false")
       + ",\"payload\":{\"left\":" + encode_value(left) + ",\"right\":" + encode_value(right) + "}"
-      + ",\"targets\":[" + target_json("left", left_id, left_expression, left_index)
-      + ',' + target_json("right", right_id, right_expression, right_index) + ']');
+      + ",\"targets\":[" + target_json("left", left_id, left_expression, left_index,
+          left_has_resolved_index, left_resolved_index)
+      + ',' + target_json("right", right_id, right_expression, right_index,
+          right_has_resolved_index, right_resolved_index) + ']');
   return result;
 }
 
 template <typename F>
 void event_swap(int line, const char* signature,
-                const char* left_id, const char* left_expression, const char* left_index,
-                const char* right_id, const char* right_expression, const char* right_index,
-                F action) {
+                 const char* left_id, const char* left_expression, const char* left_index,
+                 bool left_has_resolved_index, long long left_resolved_index,
+                 const char* right_id, const char* right_expression, const char* right_index,
+                 bool right_has_resolved_index, long long right_resolved_index,
+                 F action) {
   action();
   recorder().add_event("swap", line, signature ? signature : "",
-    std::string("\"targets\":[") + target_json("left", left_id, left_expression, left_index)
-      + ',' + target_json("right", right_id, right_expression, right_index) + ']');
+    std::string("\"targets\":[") + target_json("left", left_id, left_expression, left_index,
+        left_has_resolved_index, left_resolved_index)
+      + ',' + target_json("right", right_id, right_expression, right_index,
+        right_has_resolved_index, right_resolved_index) + ']');
 }
 
 inline void event_call(int line, const char* signature, const char* callee, const char* expression) {

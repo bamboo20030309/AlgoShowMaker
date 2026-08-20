@@ -18,6 +18,7 @@ body.asm-trace-studio-open #divider {
 }
 
 body.asm-trace-studio-open #vizPanel {
+  position: relative;
   width: auto !important;
   min-width: 0;
   border-left: 1px solid #465158;
@@ -341,6 +342,126 @@ body.asm-trace-camera-framing #arraySvg {
   border-radius: 1px;
 }
 
+.trace-studio-event-dot.is-disabled {
+  opacity: 0.28;
+}
+
+.trace-studio-frame-events {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  overflow-y: auto;
+}
+
+.trace-studio-frame-event {
+  min-width: 0;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 18px 4px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #465158;
+  border-radius: 4px;
+  background: #1f2529;
+}
+
+.trace-studio-frame-event-order {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #536068;
+  border-radius: 2px;
+  color: #b8c2c6;
+  font: 700 10px/1 Arial, sans-serif;
+}
+
+.trace-studio-frame-event.is-disabled {
+  opacity: 0.58;
+}
+
+.trace-studio-frame-event-swatch {
+  width: 4px;
+  align-self: stretch;
+  border-radius: 1px;
+}
+
+.trace-studio-frame-event-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.trace-studio-frame-event-copy strong,
+.trace-studio-frame-event-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-studio-frame-event-copy strong {
+  color: #e4eaec;
+  font-size: 12px;
+}
+
+.trace-studio-frame-event-copy small {
+  color: #9facb2;
+  font-size: 10px;
+}
+
+.trace-studio-event-switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  display: block;
+  cursor: pointer;
+}
+
+.trace-studio-event-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.trace-studio-event-switch span {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #65737a;
+  border-radius: 9px;
+  background: #30393e;
+}
+
+.trace-studio-event-switch span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #c7d0d3;
+  transition: transform 120ms ease;
+}
+
+.trace-studio-event-switch input:checked + span {
+  border-color: #58b6aa;
+  background: #1d8f83;
+}
+
+.trace-studio-event-switch input:checked + span::after {
+  transform: translateX(14px);
+  background: #ffffff;
+}
+
+.trace-studio-event-switch input:focus-visible + span {
+  outline: 2px solid #73d0c4;
+  outline-offset: 2px;
+}
+
 .trace-studio-event-animations {
   display: grid;
   gap: 5px;
@@ -391,7 +512,23 @@ body.asm-trace-camera-framing #arraySvg {
 }
 
 .trace-studio-inspector {
+  overflow: hidden;
+}
+
+.trace-studio-inspector-panel {
+  min-height: 0;
+  flex: 1;
   overflow-y: auto;
+}
+
+.trace-studio-events-panel {
+  display: flex;
+  overflow: hidden;
+}
+
+.trace-studio-events-panel .trace-studio-section {
+  min-height: 0;
+  flex: 1;
 }
 
 .trace-studio-inspector-head {
@@ -404,6 +541,75 @@ body.asm-trace-camera-framing #arraySvg {
 .trace-studio-inspector-head span {
   color: #9facb2;
   font-size: 12px;
+}
+
+.trace-studio-inspector-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 7px 8px;
+  border-bottom: 1px solid #3a4348;
+  background: #252b2f;
+}
+
+.trace-studio-inspector-toolbar.has-object {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.trace-studio-inspector-tool {
+  position: relative;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 7px;
+  border: 1px solid #465158;
+  border-radius: 4px;
+  background: #30383d;
+  color: #b9c3c7;
+  font: 12px Arial, sans-serif;
+}
+
+.trace-studio-inspector-tool:hover:not(:disabled),
+.trace-studio-inspector-tool.is-active {
+  border-color: #58b6aa;
+  background: #354447;
+  color: #73d0c4;
+}
+
+.trace-studio-inspector-tool:disabled {
+  color: #657178;
+  opacity: 0.55;
+  cursor: default;
+}
+
+.trace-studio-inspector-tool[hidden] {
+  display: none !important;
+}
+
+.trace-studio-inspector-tool-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.trace-studio-inspector-tool-count {
+  min-width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #1d8f83;
+  color: #ffffff;
+  font: 700 9px/1 Arial, sans-serif;
+  font-style: normal;
+}
+
+.trace-studio-inspector-tool-count[hidden],
+.trace-studio-inspector-panel[hidden] {
+  display: none;
 }
 
 .trace-studio-section {
@@ -639,13 +845,176 @@ body.asm-trace-camera-framing #arraySvg {
   padding: 0;
 }
 
-.trace-studio-variable-style-fields {
+.trace-studio-variable-style-fields,
+.trace-studio-object-color-fields,
+.trace-studio-text-style-fields {
   display: grid;
   gap: 8px;
 }
 
-.trace-studio-variable-style-fields[hidden] {
+.trace-studio-variable-style-fields[hidden],
+.trace-studio-object-color-fields[hidden],
+.trace-studio-text-style-fields[hidden] {
   display: none;
+}
+
+.trace-studio-text-format-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.trace-studio-text-icon-button {
+  position: relative;
+  width: 31px;
+  min-width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid #536068;
+  border-radius: 3px;
+  background: #1f2529;
+  color: #dfe5e7;
+  font: 700 13px Arial, sans-serif;
+  cursor: pointer;
+}
+
+.trace-studio-text-icon-button:hover,
+.trace-studio-text-icon-button.is-active {
+  border-color: #58b6aa;
+  background: #354447;
+  color: #73d0c4;
+}
+
+.trace-studio-text-icon-button.is-italic {
+  font-style: italic;
+}
+
+.trace-studio-text-icon-button.is-underline {
+  text-decoration: underline;
+}
+
+.trace-studio-text-icon-button.is-strike {
+  text-decoration: line-through;
+}
+
+.trace-studio-text-icon-button.trace-color-control {
+  width: 31px;
+  min-width: 31px;
+  padding: 0;
+  grid-template-columns: 1fr;
+  gap: 0;
+  text-align: center;
+}
+
+.trace-studio-text-icon-button .trace-color-value {
+  display: none;
+}
+
+.trace-studio-text-icon-button .trace-color-swatch {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 3px;
+  width: auto;
+  height: 3px;
+  border: 0;
+  border-radius: 0;
+}
+
+.trace-studio-text-color-glyph {
+  line-height: 1;
+}
+
+.trace-studio-text-background-glyph {
+  position: relative;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  color: currentColor;
+  font-size: 0;
+  line-height: 1;
+  isolation: isolate;
+}
+
+.trace-studio-text-background-glyph::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 3px,
+    currentColor 3px,
+    currentColor 4px
+  );
+  opacity: 0.65;
+}
+
+.trace-studio-text-background-glyph::after {
+  content: "A";
+  position: relative;
+  z-index: 1;
+  font-size: 13px;
+}
+
+.trace-studio-text-icon-button.is-background-color .trace-color-swatch {
+  display: none;
+}
+
+.trace-studio-event-gap-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 7px;
+}
+
+.trace-studio-event-gap-value {
+  color: #b9c4c8;
+  font: 11px Arial, sans-serif;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trace-studio-font-size-control {
+  position: relative;
+}
+
+.trace-studio-font-size-popover {
+  position: absolute;
+  z-index: 80;
+  top: 36px;
+  right: 0;
+  width: 170px;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #59676e;
+  border-radius: 3px;
+  background: #20262a;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+}
+
+.trace-studio-font-size-popover[hidden] {
+  display: none;
+}
+
+.trace-studio-font-size-popover input[type="range"] {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  accent-color: #1d8f83;
+}
+
+.asm-trace-text-character-selection {
+  fill: rgba(91, 174, 255, 0.44);
+  stroke: none;
+  pointer-events: none;
 }
 
 .trace-studio-field select,
@@ -657,6 +1026,34 @@ body.asm-trace-camera-framing #arraySvg {
   border-radius: 3px;
   background: #1f2529;
   color: #eef2f3;
+}
+
+.trace-studio-field input.trace-studio-event-gap-range {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: #1d8f83;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.trace-studio-event-gap-range::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 0;
+  background: #111719;
+}
+
+.trace-studio-event-gap-range::-webkit-slider-thumb {
+  width: 10px;
+  height: 18px;
+  margin-top: -5px;
+  border: 1px solid #84cfc5;
+  border-radius: 1px;
+  background: #1d8f83;
+  -webkit-appearance: none;
 }
 
 .trace-color-control {

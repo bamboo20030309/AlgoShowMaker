@@ -17,8 +17,35 @@
   let styleEditor;
   let objectFillColor;
   let objectStrokeColor;
+  let objectColorFields;
+  let textStyleFields;
+  let textColor;
+  let textBackgroundColor;
+  let textBackgroundEnabled;
+  let textFontSize;
+  let textFontSizeButton;
+  let textBold;
+  let textItalic;
+  let textUnderline;
+  let textStrike;
+  let activeTextStyleKeys = [];
+  let textSelectionRange = null;
+  let textSelectionDrag = null;
   let variableStyleFields;
   let scopeSelect;
+  let eventGapRange;
+  let eventGapValue;
+  let inspectorMode = 'events';
+  let inspectorToolbar;
+  let inspectorEventButton;
+  let inspectorEventCount;
+  let inspectorCameraButton;
+  let inspectorObjectButton;
+  let inspectorEventsPanel;
+  let inspectorCameraPanel;
+  let inspectorObjectPanel;
+  let frameEventsEditor;
+  let frameEventsList;
   let arrowFrom;
   let arrowTo;
   let arrowColor;
@@ -73,12 +100,14 @@
   let canvasShortcutMenu = null;
   let cameraFrameState = null;
   let cameraFrameDismiss = null;
+  let cameraFrameAutoCloseTimer = null;
   let styleDraftId = '';
   let cameraDraftId = '';
   let autoSaveTimer = null;
-  let sourceSaveTimer = null;
+  let pendingAutoSave = null;
   let suppressAutoSave = false;
   let liveBindingDrag = null;
+  let textStylePreviewFrame = 0;
 
   function el(name, className, text) {
     const node = document.createElement(name);
@@ -126,6 +155,9 @@
     trace.studio.bindings ||= {};
     trace.studio.visibility ||= {};
     trace.studio.objectStyles ||= {};
+    trace.studio.eventStates ||= {};
+    trace.studio.eventInstructionStates ||= {};
+    trace.studio.eventSettings ||= { gapMs: 500, defaultEnabled: {}, timelineTypes: {} };
     trace.studio.objects = Array.isArray(trace.studio.objects) ? trace.studio.objects : [];
     trace.studio.arrows = Array.isArray(trace.studio.arrows) ? trace.studio.arrows : [];
     trace.studio.cameraRules = Array.isArray(trace.studio.cameraRules) ? trace.studio.cameraRules : [];
@@ -139,6 +171,7 @@
       delete next.easing;
       return next;
     });
+    window.ASMTraceEvents?.applyEnabledStates?.(trace);
   }
 
   function editableSnapshot() {
@@ -160,13 +193,14 @@
   function recordHistory() {
     if (restoringHistory || !trace) return;
     const snapshot = editableSnapshot();
-    if (history[historyIndex] === snapshot) return;
-    history.splice(historyIndex + 1);
-    history.push(snapshot);
-    if (history.length > 100) history.shift();
-    historyIndex = history.length - 1;
-    updateHistoryButtons();
-    scheduleSourceSave();
+    if (history[historyIndex] !== snapshot) {
+      history.splice(historyIndex + 1);
+      history.push(snapshot);
+      if (history.length > 100) history.shift();
+      historyIndex = history.length - 1;
+      updateHistoryButtons();
+    }
+    writeSourceSettings();
   }
 
   function restoreHistory(nextIndex) {
@@ -188,7 +222,7 @@
     applyCameraForFrame(currentIndex, true);
     restoringHistory = false;
     updateHistoryButtons();
-    scheduleSourceSave();
+    writeSourceSettings();
   }
 
   function undo() { restoreHistory(historyIndex - 1); }
@@ -233,8 +267,167 @@
     return ids.length ? ids : [trace.frames[currentIndex].id];
   }
 
+  function frameObjectKey(frame, variableId) {
+    const source = frame?.source || {};
+    if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
+    return variableId;
+  }
+
+  function segmentKeyForRuntimeIdentity(frame, wantedIdentity) {
+    if (!frame || !wantedIdentity) return '';
+    const ordinals = new Map();
+    for (const [descriptorIndex, descriptor] of (frame.segments || []).entries()) {
+      const variableId = descriptor?.targetVariableId;
+      const entry = frame.state?.[variableId];
+      if (!variableId || !entry) continue;
+      const targetKey = frameObjectKey(frame, variableId);
+      const identityBase = String(entry.identity || targetKey);
+      const ordinal = ordinals.get(identityBase) || 0;
+      ordinals.set(identityBase, ordinal + 1);
+      const runtimeIdentity = descriptor.named
+        ? `segment:named:${descriptor.id}`
+        : `segment:${identityBase}:${ordinal}`;
+      if (runtimeIdentity === wantedIdentity) {
+        return `segment:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
+      }
+    }
+    return '';
+  }
+
+  function objectStyleKeyForFrame(frameId) {
+    if (!String(activeObjectKey).startsWith('segment:')) return activeObjectKey;
+    const rendered = document.querySelector(
+      `#arraySvg [data-trace-object-key="${CSS.escape(activeObjectKey)}"]`
+    );
+    const runtimeIdentity = rendered?.dataset?.traceRuntimeIdentity || '';
+    if (!runtimeIdentity) return activeObjectKey;
+    const frame = trace?.frames?.find(item => item.id === frameId);
+    return segmentKeyForRuntimeIdentity(frame, runtimeIdentity);
+  }
+
   function frameBinding(frameId, key) {
-    return trace?.studio?.bindings?.[frameId]?.[key] || null;
+    const rootKey = String(key || '').match(/^(text:[^:]+)/)?.[1] || key;
+    const stored = trace?.studio?.bindings?.[frameId]?.[rootKey]
+      || trace?.studio?.bindings?.[frameId]?.[key];
+    if (stored) return stored;
+    const frame = trace?.frames?.find(item => item.id === frameId);
+    const textId = String(rootKey || '').match(/^text:(.+)$/)?.[1];
+    const descriptor = textId
+      ? frame?.texts?.find(item => String(item.id) === textId)
+      : null;
+    const objectBinding = !descriptor
+      ? (frame?.objectBindings || []).find(item => {
+        const sourceKey = frame?.source?.objectId
+          && frame.source.primaryVariableId === item.sourceVariableId
+          ? frame.source.objectId
+          : item.sourceVariableId;
+        return sourceKey === rootKey;
+      })
+      : null;
+    const binding = descriptor?.binding || objectBinding;
+    if (!binding) return null;
+    const indexExpression = (binding.indexExpressions || []).join(',');
+    const resolvedIndices = (binding.indexExpressions || []).map(expression => (
+      window.ASMTraceRules?.resolveExpression?.(trace, frame, expression)
+    ));
+    const resolvedIndex = resolvedIndices.length && resolvedIndices.every(value => Number.isInteger(Number(value)))
+      ? resolvedIndices.map(Number).join(',')
+      : indexExpression;
+    return {
+      semanticText: Boolean(descriptor),
+      semanticDirective: Boolean(objectBinding),
+      descriptorLine: descriptor?.line || frame?.source?.line || 0,
+      targetKey: binding.canvas
+        ? '$canvas'
+        : `${binding.targetVariableId}${resolvedIndex ? `#${resolvedIndex}` : ''}`,
+      sourceAnchor: objectBinding
+        ? ([
+          String(binding.anchor || '').includes('top') ? 'bottom' : String(binding.anchor || '').includes('bottom') ? 'top' : '',
+          String(binding.anchor || '').includes('left') ? 'right' : String(binding.anchor || '').includes('right') ? 'left' : ''
+        ].filter(Boolean).join('-') || 'center')
+        : 'center',
+      targetAnchor: binding.anchor || 'center',
+      targetExpression: binding.targetExpression,
+      dx: (objectBinding
+        ? (String(binding.anchor || '').includes('left') ? -8 : String(binding.anchor || '').includes('right') ? 8 : 0)
+        : 0) + (Number(binding.offsetX) || 0),
+      dy: (objectBinding
+        ? (String(binding.anchor || '').includes('top') ? -8 : String(binding.anchor || '').includes('bottom') ? 8 : 0)
+        : 0) + (Number(binding.offsetY) || 0),
+      mode: 'relative'
+    };
+  }
+
+  function textObjectKey(key) {
+    return String(key || '').match(/^(text:[^:]+)/)?.[1] || '';
+  }
+
+  function textDescriptorForKey(key, frame = trace?.frames?.[currentIndex]) {
+    const id = textObjectKey(key).slice(5);
+    return id ? frame?.texts?.find(item => String(item.id) === id) || null : null;
+  }
+
+  function textDirectiveLine(descriptor) {
+    const explicit = Number(descriptor?.line);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    return Number(String(descriptor?.id || '').match(/^line-(\d+)$/)?.[1]) || 0;
+  }
+
+  function bindSemanticText(sourceKey, targetKey, targetAnchor) {
+    const descriptor = textDescriptorForKey(sourceKey);
+    if (!descriptor || targetKey === '$canvas') return false;
+    const targetId = bindingTargetVariableId(targetKey);
+    const targetVariable = trace?.variables?.[targetId];
+    if (!targetVariable) return false;
+    const indexExpression = String(targetKey).match(/#([^:]+)/)?.[1] || '';
+    const targetExpression = `${targetVariable.name || targetId}${indexExpression ? `[${indexExpression}]` : ''}`;
+    const anchor = String(targetAnchor || 'center').replace(/\s+/g, '-').toLowerCase();
+    const sourcePlacement = window.ASMTraceRenderers?.currentPlacement?.(textObjectKey(sourceKey), false);
+    const targetPlacement = window.ASMTraceRenderers?.currentPlacement?.(targetKey, false);
+    const targetPoint = window.ASMTraceRenderers?.anchorPoint?.(targetPlacement, anchor);
+    let offsetX = 0;
+    let offsetY = 0;
+    if (sourcePlacement && targetPoint) {
+      const gap = 8;
+      let desiredX = targetPoint.x - sourcePlacement.width / 2;
+      let desiredY = targetPoint.y - sourcePlacement.height / 2;
+      if (anchor.includes('left')) desiredX = targetPoint.x - sourcePlacement.width - gap;
+      if (anchor.includes('right')) desiredX = targetPoint.x + gap;
+      if (anchor.includes('top')) desiredY = targetPoint.y - sourcePlacement.height - gap;
+      if (anchor.includes('bottom')) desiredY = targetPoint.y + gap;
+      offsetX = Math.round((sourcePlacement.x - desiredX) * 100) / 100;
+      offsetY = Math.round((sourcePlacement.y - desiredY) * 100) / 100;
+    }
+    const nextBinding = {
+      type: 'semantic',
+      targetExpression,
+      targetName: targetVariable.name || targetId,
+      targetVariableId: targetId,
+      indexExpressions: indexExpression ? [indexExpression] : [],
+      anchor,
+      offsetX,
+      offsetY,
+      canvas: false
+    };
+    trace.frames.forEach(frame => {
+      (frame.texts || []).forEach(text => {
+        if (Number(text.line) === Number(descriptor.line) && String(text.id) === String(descriptor.id)) {
+          text.binding = { ...nextBinding };
+        }
+      });
+    });
+    window.asmUpdateTextDirectiveBinding?.(textDirectiveLine(descriptor), nextBinding);
+    activeBinding = {
+      sourceKey: textObjectKey(sourceKey),
+      targetKey,
+      binding: frameBinding(trace.frames[currentIndex]?.id, textObjectKey(sourceKey))
+    };
+    recordHistory();
+    renderPlayerFrame(currentIndex, { animatePositions: false });
+    renderRail();
+    renderSelection();
+    renderBindingEditor();
+    return true;
   }
 
   function traceElementsByKey(container) {
@@ -309,6 +502,16 @@
   function objectDisplayName(key) {
     if (!key) return '';
     if (trace?.variables?.[key]) return trace.variables[key].name || key;
+    if (key.startsWith('text:')) {
+      const selectedSegment = textSegmentForKey(key);
+      if (selectedSegment?.kind === 'expression') return `變數 ${selectedSegment.source || `\${${selectedSegment.expression}}`}`;
+      if (selectedSegment) return selectedSegment.text?.trim() || '文字片段';
+      const descriptor = trace?.frames?.[currentIndex]?.texts?.find(text => `text:${text.id}` === key);
+      const label = (descriptor?.segments || []).map(segment => (
+        segment.kind === 'expression' ? segment.source || `\${${segment.expression}}` : segment.text || ''
+      )).join('').trim();
+      return label || '文字';
+    }
     const studioObject = key.startsWith('studio:')
       ? trace?.studio?.objects?.find(object => `studio:${object.id}` === key)
       : null;
@@ -326,12 +529,223 @@
     return variable.name || variableId;
   }
 
+  function textSegmentForKey(key) {
+    const match = String(key || '').match(/^text:([^:]+):segment:([^:]+)(?::range:\d+-\d+)?$/);
+    if (!match) return null;
+    const descriptor = trace?.frames?.[currentIndex]?.texts?.find(text => String(text.id) === match[1]);
+    return descriptor?.segments?.find(segment => String(segment.segmentId) === match[2]) || null;
+  }
+
+  function textSelectionData(key = activeObjectKey) {
+    const match = String(key || '').match(/^text:([^:]+):segment:/);
+    if (!match) return null;
+    const frame = trace?.frames?.[currentIndex];
+    const descriptor = frame?.texts?.find(text => String(text.id) === match[1]);
+    if (!descriptor) return null;
+    let cursor = 0;
+    const segments = (descriptor.segments || []).map((segment, index) => {
+      const raw = segment.kind === 'expression'
+        ? window.ASMTraceRules.resolveExpression(trace, frame, segment.expression)
+        : segment.text;
+      const source = raw == null ? '' : String(raw);
+      const parsed = window.parseTTSMarkup?.(source) || { display: source };
+      const display = String(parsed.display ?? '');
+      const item = {
+        segment,
+        display,
+        start: cursor,
+        end: cursor + display.length,
+        baseKey: `text:${descriptor.id}:segment:${segment.segmentId || index}`,
+        rangeSafe: segment.kind !== 'expression' && !/[{}]/.test(source)
+      };
+      cursor = item.end;
+      return item;
+    });
+    return { descriptor, segments, value: segments.map(segment => segment.display).join('') };
+  }
+
+  function updateTextSelectionKeys(start, end) {
+    const data = textSelectionData();
+    if (!data) return;
+    start = Math.max(0, Math.min(data.value.length, Number(start) || 0));
+    end = Math.max(0, Math.min(data.value.length, Number(end) || 0));
+    if (end < start) [start, end] = [end, start];
+    textSelectionRange = { objectKey: textObjectKey(activeObjectKey), start, end };
+    if (end <= start) {
+      activeTextStyleKeys = [activeObjectKey];
+      renderTextSelectionHighlight();
+      return;
+    }
+    activeTextStyleKeys = data.segments.flatMap(item => {
+      const overlapStart = Math.max(start, item.start);
+      const overlapEnd = Math.min(end, item.end);
+      if (overlapEnd <= overlapStart) return [];
+      if (!item.rangeSafe || (overlapStart === item.start && overlapEnd === item.end)) return [item.baseKey];
+      return [`${item.baseKey}:range:${overlapStart - item.start}-${overlapEnd - item.start}`];
+    });
+    if (!activeTextStyleKeys.length) activeTextStyleKeys = [activeObjectKey];
+    renderTextSelectionHighlight();
+  }
+
+  function textCharacterCount(text) {
+    try {
+      if (typeof text.getNumberOfChars === 'function') return text.getNumberOfChars();
+    } catch {}
+    return String(text?.textContent || '').length;
+  }
+
+  function textCharacterExtent(text, index) {
+    try {
+      if (typeof text.getExtentOfChar === 'function') return text.getExtentOfChar(index);
+    } catch {}
+    const value = String(text?.textContent || '');
+    const style = getComputedStyle(text);
+    const fontSize = parseFloat(style.fontSize) || Number(text.getAttribute('font-size')) || 10;
+    const canvas = textCharacterExtent.canvas ||= document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.font = `${style.fontStyle || 'normal'} ${style.fontWeight || 'normal'} ${fontSize}px ${style.fontFamily || 'Arial'}`;
+    const before = context.measureText(value.slice(0, index)).width;
+    const glyph = context.measureText(value.slice(index, index + 1));
+    const x = (Number(text.getAttribute('x')) || 0) + before;
+    const baseline = Number(text.getAttribute('y')) || fontSize;
+    const ascent = glyph.actualBoundingBoxAscent || fontSize * 0.8;
+    const descent = glyph.actualBoundingBoxDescent || fontSize * 0.2;
+    return { x, y: baseline - ascent, width: Math.max(1, glyph.width), height: ascent + descent };
+  }
+
+  function textCharacterBounds(text, index) {
+    try {
+      const extent = textCharacterExtent(text, index);
+      if (!extent) return null;
+      const matrix = text.getScreenCTM();
+      if (!matrix) return null;
+      const corners = [
+        [extent.x, extent.y],
+        [extent.x + extent.width, extent.y],
+        [extent.x, extent.y + extent.height],
+        [extent.x + extent.width, extent.y + extent.height]
+      ].map(([x, y]) => new DOMPoint(x, y).matrixTransform(matrix));
+      const left = Math.min(...corners.map(point => point.x));
+      const top = Math.min(...corners.map(point => point.y));
+      const right = Math.max(...corners.map(point => point.x));
+      const bottom = Math.max(...corners.map(point => point.y));
+      return { extent, left, top, right, bottom };
+    } catch {
+      return null;
+    }
+  }
+
+  function textCharacterAt(clientX, clientY, objectKey = textObjectKey(activeObjectKey)) {
+    const canvas = document.getElementById('arraySvg');
+    const object = objectKey
+      ? canvas?.querySelector?.(`[data-trace-object-key="${CSS.escape(objectKey)}"]`)
+      : null;
+    const data = textSelectionData();
+    if (!object || !data) return null;
+    let best = null;
+    object.querySelectorAll('.asm-trace-text-segment-value').forEach(text => {
+      const group = text.closest('[data-trace-text-base-key]');
+      const item = data.segments.find(segment => segment.baseKey === group?.dataset.traceTextBaseKey);
+      if (!item) return;
+      const sourceStart = Number(group.dataset.traceTextSourceStart) || 0;
+      for (let index = 0; index < textCharacterCount(text); index += 1) {
+        const bounds = textCharacterBounds(text, index);
+        if (!bounds) continue;
+        const dx = clientX < bounds.left ? bounds.left - clientX : clientX > bounds.right ? clientX - bounds.right : 0;
+        const dy = clientY < bounds.top ? bounds.top - clientY : clientY > bounds.bottom ? clientY - bounds.bottom : 0;
+        const distance = Math.hypot(dx, dy);
+        const globalIndex = item.rangeSafe ? item.start + sourceStart + index : item.start;
+        const rangeEnd = item.rangeSafe ? globalIndex + 1 : item.end;
+        if (!best || distance < best.distance) best = { globalIndex, rangeEnd, item, distance };
+      }
+    });
+    return best;
+  }
+
+  function renderTextSelectionHighlight() {
+    const canvas = document.getElementById('arraySvg');
+    canvas?.querySelectorAll('.asm-trace-text-character-selection').forEach(element => element.remove());
+    const range = textSelectionRange;
+    if (!range || range.end <= range.start || range.objectKey !== textObjectKey(activeObjectKey)) return;
+    const object = canvas?.querySelector?.(`[data-trace-object-key="${CSS.escape(range.objectKey)}"]`);
+    const data = textSelectionData();
+    if (!object || !data) return;
+    object.querySelectorAll('.asm-trace-text-segment-value').forEach(text => {
+      const group = text.closest('[data-trace-text-base-key]');
+      const item = data.segments.find(segment => segment.baseKey === group?.dataset.traceTextBaseKey);
+      if (!item) return;
+      const sourceStart = Number(group.dataset.traceTextSourceStart) || 0;
+      for (let index = 0; index < textCharacterCount(text); index += 1) {
+        const globalIndex = item.rangeSafe ? item.start + sourceStart + index : item.start;
+        const selected = item.rangeSafe
+          ? globalIndex >= range.start && globalIndex < range.end
+          : item.end > range.start && item.start < range.end;
+        if (!selected) continue;
+        const extent = textCharacterExtent(text, index);
+        if (!extent) continue;
+        const highlight = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        highlight.setAttribute('class', 'asm-trace-text-character-selection');
+        highlight.setAttribute('x', extent.x - 0.5);
+        highlight.setAttribute('y', extent.y);
+        highlight.setAttribute('width', Math.max(1, extent.width + 1));
+        highlight.setAttribute('height', Math.max(1, extent.height));
+        highlight.setAttribute('rx', '1');
+        text.parentNode.insertBefore(highlight, text);
+      }
+    });
+  }
+
+  function beginTextSelection(event) {
+    if (event.button !== 0 || !trace || !document.body.classList.contains('asm-trace-studio-open')) return;
+    const segment = event.target.closest?.('[data-trace-text-base-key]');
+    const object = segment?.closest?.('.asm-trace-text-object');
+    if (!segment || !object) return;
+    const key = segment.dataset.traceObjectKey || segment.dataset.traceTextBaseKey;
+    setActiveObjectKey(key);
+    setActiveBindingForKey(key);
+    const hit = textCharacterAt(event.clientX, event.clientY, object.dataset.traceObjectKey);
+    if (!hit) return;
+    textSelectionDrag = {
+      pointerId: event.pointerId,
+      objectKey: object.dataset.traceObjectKey,
+      start: hit.globalIndex,
+      startEnd: hit.rangeEnd
+    };
+    updateTextSelectionKeys(hit.globalIndex, hit.rangeEnd);
+    renderStyleEditor();
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch {}
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  function moveTextSelection(event) {
+    if (!textSelectionDrag || event.pointerId !== textSelectionDrag.pointerId) return;
+    const hit = textCharacterAt(event.clientX, event.clientY, textSelectionDrag.objectKey);
+    if (!hit) return;
+    const start = Math.min(textSelectionDrag.start, hit.globalIndex);
+    const end = Math.max(textSelectionDrag.startEnd, hit.rangeEnd);
+    updateTextSelectionKeys(start, end);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  function endTextSelection(event) {
+    if (!textSelectionDrag || event.pointerId !== textSelectionDrag.pointerId) return;
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch {}
+    textSelectionDrag = null;
+    renderStyleEditor();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
   function objectVisibility(frameId, key) {
     return trace?.studio?.visibility?.[frameId]?.[key] === 'hidden' ? 'hidden' : 'visible';
   }
 
   function renderObjectStateEditor() {
     if (!objectStateEditor) return;
+    objectStateEditor.hidden = !activeObjectKey;
     if (!activeObjectKey) {
       objectStateEmpty.hidden = false;
       objectStateCard.hidden = true;
@@ -353,6 +767,7 @@
 
   function renderTransitionEditor() {
     if (!transitionEditor) return;
+    transitionEditor.hidden = !activeObjectKey;
     const frame = trace?.frames?.[currentIndex];
     const previousFrame = trace?.frames?.[currentIndex - 1];
     if (!activeObjectKey || !frame || !previousFrame) {
@@ -411,14 +826,26 @@
   }
 
   function setActiveObjectKey(key) {
+    const hadActiveObject = Boolean(activeObjectKey);
+    const previousTextObject = textObjectKey(activeObjectKey);
     activeObjectKey = key || '';
+    if (previousTextObject !== textObjectKey(activeObjectKey)) textSelectionRange = null;
+    activeTextStyleKeys = textSegmentForKey(activeObjectKey) ? [activeObjectKey] : [];
+    if (activeObjectKey) inspectorMode = 'object';
+    else if (hadActiveObject && inspectorMode === 'object') {
+      inspectorMode = inspectorEventsForFrame().length ? 'events' : 'camera';
+    }
     renderObjectStateEditor();
     renderTransitionEditor();
     renderStyleEditor();
+    renderTextSelectionHighlight();
+    renderInspectorNavigation();
   }
 
   function renderStyleEditor() {
     if (!styleEditor) return;
+    const textSegment = textSegmentForKey(activeObjectKey);
+    const isTextSegment = Boolean(textSegment);
     styleEditor.hidden = !activeObjectKey;
     if (!activeObjectKey) return;
     const variableId = bindingTargetVariableId(activeObjectKey);
@@ -428,10 +855,41 @@
       const indexMatch = String(activeObjectKey).match(/#([^:]+)/);
       if (targetIndex && document.activeElement !== targetIndex) targetIndex.value = indexMatch?.[1] || '';
     }
-    if (variableStyleFields) variableStyleFields.hidden = !variable;
+    if (objectColorFields) objectColorFields.hidden = isTextSegment;
+    if (textStyleFields) textStyleFields.hidden = !isTextSegment;
+    if (variableStyleFields) variableStyleFields.hidden = !variable || isTextSegment;
     const frameId = trace?.frames?.[currentIndex]?.id;
-    const stored = trace?.studio?.objectStyles?.[frameId]?.[activeObjectKey] || {};
+    const styleKey = isTextSegment && activeTextStyleKeys.length ? activeTextStyleKeys[0] : activeObjectKey;
+    const stored = trace?.studio?.objectStyles?.[frameId]?.[styleKey] || {};
     const rendered = document.querySelector(`#arraySvg [data-trace-object-key="${CSS.escape(activeObjectKey)}"]`);
+    if (isTextSegment) {
+      const renderedText = rendered?.querySelector?.('.asm-trace-text-segment-value');
+      const renderedBackground = rendered?.querySelector?.('.asm-trace-text-segment-background');
+      const background = stored.background || renderedBackground?.getAttribute?.('fill') || 'none';
+      if (textColor && document.activeElement !== textColor) {
+        textColor.value = stored.textColor || renderedText?.getAttribute?.('fill') || '#111827';
+      }
+      if (textBackgroundEnabled) textBackgroundEnabled.checked = background !== 'none' && background !== 'rgba(0,0,0,0)';
+      if (textBackgroundColor && document.activeElement !== textBackgroundColor && textBackgroundEnabled?.checked) {
+        textBackgroundColor.value = background;
+      }
+      if (textFontSize && document.activeElement !== textFontSize) {
+        textFontSize.value = String(Math.round(Number(stored.fontSize)
+          || Number(renderedText?.getAttribute?.('font-size')) || 10));
+      }
+      if (textBold) textBold.classList.toggle('is-active', stored.bold === true
+        || renderedText?.getAttribute?.('font-weight') === 'bold');
+      if (textItalic) textItalic.classList.toggle('is-active', stored.italic === true
+        || renderedText?.getAttribute?.('font-style') === 'italic');
+      if (textUnderline) textUnderline.classList.toggle('is-active', stored.underline === true
+        || String(renderedText?.getAttribute?.('text-decoration')).includes('underline'));
+      if (textStrike) textStrike.classList.toggle('is-active', stored.strike === true
+        || String(renderedText?.getAttribute?.('text-decoration')).includes('line-through'));
+      if (textBackgroundEnabled) textBackgroundColor?.classList.toggle('is-active', textBackgroundEnabled.checked);
+      if (textFontSizeButton) textFontSizeButton.title = `字體大小 ${textFontSize?.value || 10}px`;
+      requestAnimationFrame(renderTextSelectionHighlight);
+      return;
+    }
     const fillNode = rendered?.matches?.('text')
       ? rendered
       : rendered?.querySelector?.('rect[fill]:not([fill="none"]), circle[fill]:not([fill="none"]), polygon[fill]:not([fill="none"]), text');
@@ -446,16 +904,71 @@
     }
   }
 
-  function saveObjectColors() {
+  function writeObjectColors() {
     if (!trace || !activeObjectKey || !objectFillColor || !objectStrokeColor) return;
     frameIdsForScope().forEach(frameId => {
+      const styleKey = objectStyleKeyForFrame(frameId);
+      if (!styleKey) return;
       trace.studio.objectStyles[frameId] ||= {};
-      trace.studio.objectStyles[frameId][activeObjectKey] = {
+      trace.studio.objectStyles[frameId][styleKey] = {
         fill: objectFillColor.value,
         stroke: objectStrokeColor.value
       };
     });
+    return true;
+  }
+
+  function previewStudioStyle(renderTextHighlight = false) {
+    if (textStylePreviewFrame) return;
+    textStylePreviewFrame = requestAnimationFrame(() => {
+      textStylePreviewFrame = 0;
+      renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+      renderSelection();
+      scheduleThumbnailSync();
+      if (renderTextHighlight) requestAnimationFrame(renderTextSelectionHighlight);
+    });
+  }
+
+  function previewObjectColors() {
+    if (!writeObjectColors()) return;
+    previewStudioStyle();
+  }
+
+  function saveObjectColors() {
+    if (!writeObjectColors()) return;
     commitStudio();
+  }
+
+  function writeTextSegmentStyle() {
+    if (!trace || !textSegmentForKey(activeObjectKey) || !textColor || !textFontSize) return;
+    const keys = activeTextStyleKeys.length ? activeTextStyleKeys : [activeObjectKey];
+    frameIdsForScope().forEach(frameId => {
+      trace.studio.objectStyles[frameId] ||= {};
+      keys.forEach(key => {
+        trace.studio.objectStyles[frameId][key] = {
+          ...(trace.studio.objectStyles[frameId][key] || {}),
+          textColor: textColor.value,
+          background: textBackgroundEnabled?.checked ? textBackgroundColor.value : 'none',
+          fontSize: Math.max(8, Math.min(72, Number(textFontSize.value) || 10)),
+          bold: textBold?.classList.contains('is-active') === true,
+          italic: textItalic?.classList.contains('is-active') === true,
+          underline: textUnderline?.classList.contains('is-active') === true,
+          strike: textStrike?.classList.contains('is-active') === true
+        };
+      });
+    });
+    return true;
+  }
+
+  function previewTextSegmentStyle() {
+    if (!writeTextSegmentStyle()) return;
+    previewStudioStyle(true);
+  }
+
+  function saveTextSegmentStyle() {
+    if (!writeTextSegmentStyle()) return;
+    commitStudio();
+    requestAnimationFrame(renderTextSelectionHighlight);
   }
 
   function setObjectVisibility(state) {
@@ -539,6 +1052,7 @@
     if (!markerShapeEditor) return;
     const active = activeValueBinding();
     const visible = Boolean(active);
+    markerShapeEditor.hidden = !visible;
     markerShapeEmpty.hidden = Boolean(visible);
     markerShapeCard.hidden = !visible;
     if (!visible) return;
@@ -555,6 +1069,7 @@
       : null;
     const sourceKey = activeBinding?.sourceKey;
     const targetKey = binding?.targetKey || activeBinding?.targetKey;
+    bindingEditor.hidden = !sourceKey;
     if (!sourceKey) {
       bindingEmpty.hidden = false;
       bindingCard.hidden = true;
@@ -767,6 +1282,7 @@
 
   function bindPosition(sourceKey, sourceAnchor, targetKey, targetAnchor) {
     if (!trace || !sourceKey || !targetKey || sourceKey === targetKey) return false;
+    if (textDescriptorForKey(sourceKey)) return bindSemanticText(sourceKey, targetKey, targetAnchor);
     const sourcePoint = sourceAnchor || 'top';
     const targetPoint = targetAnchor || 'center';
     const targetId = bindingTargetVariableId(targetKey);
@@ -829,6 +1345,24 @@
 
   function unbindPosition(sourceKey) {
     if (!trace || !sourceKey) return false;
+    const textDescriptor = textDescriptorForKey(sourceKey);
+    if (textDescriptor?.binding) {
+      trace.frames.forEach(frame => {
+        (frame.texts || []).forEach(text => {
+          if (Number(text.line) === Number(textDescriptor.line) && String(text.id) === String(textDescriptor.id)) {
+            text.binding = null;
+          }
+        });
+      });
+      window.asmUpdateTextDirectiveBinding?.(textDirectiveLine(textDescriptor), null);
+      activeBinding = null;
+      recordHistory();
+      renderPlayerFrame(currentIndex, { animatePositions: false });
+      renderRail();
+      renderSelection();
+      renderBindingEditor();
+      return true;
+    }
     const currentPlacement = window.ASMTraceRenderers?.currentPlacement?.(sourceKey, false);
     const sourceElement = document.querySelector(`#arraySvg [data-trace-object-key="${CSS.escape(sourceKey)}"]`);
     let absolutePosition = currentPlacement;
@@ -884,6 +1418,16 @@
       return remainingFrameIds.length ? [{ ...existing, frameIds: remainingFrameIds }] : [];
     });
     trace.studio.cameraRules.push(rule);
+  }
+
+  function sameCameraFrameScope(rule, frameIds) {
+    const allFrameIds = trace.frames.map(frame => frame.id);
+    const existingIds = Array.isArray(rule?.frameIds) && rule.frameIds.length
+      ? rule.frameIds
+      : allFrameIds;
+    const requested = new Set(frameIds || []);
+    return existingIds.length === requested.size
+      && existingIds.every(frameId => requested.has(frameId));
   }
 
   function syncCameraFrameToAutoTarget(target) {
@@ -943,7 +1487,14 @@
         );
         return;
       }
-      const target = window.setAutoCamera?.(
+      const target = window.ASMTraceRenderers?.fitCurrentObjectsCamera?.(
+        Number(rule?.zoom) || 0.92,
+        animateCamera,
+        cameraDuration,
+        (Number(rule?.offsetX) || 0) + followX,
+        (Number(rule?.offsetY) || 0) + followY,
+        true
+      ) || window.setAutoCamera?.(
         Number(rule?.zoom) || 0.92,
         animateCamera,
         (Number(rule?.offsetX) || 0) + followX,
@@ -962,15 +1513,167 @@
 
   function eventDots(frame) {
     const dots = el('span', 'trace-studio-event-dots');
-    const visible = (frame.events || []).filter(event => window.ASMTraceEvents?.showTag(event.type) !== false);
-    const events = [...new Map(visible.map(event => [event.signature || event.type, event])).values()];
+    const ordered = window.ASMTraceEvents?.ordered?.(frame.events || []) || frame.events || [];
+    const visible = ordered.filter(event => (
+      event.enabled !== false
+      && window.ASMTraceEvents?.showTag(event.type, trace) !== false
+    ));
+    const uniqueEvents = new Map();
+    visible.forEach(event => {
+      const key = event.signature || event.type;
+      const existing = uniqueEvents.get(key);
+      // When equivalent events share a tag, keep an active one in preference to
+      // an automatically disabled one.
+      if (!existing || (existing.autoAnimationDisabled === true && event.autoAnimationDisabled !== true)) {
+        uniqueEvents.set(key, event);
+      }
+    });
+    const events = [...uniqueEvents.values()];
     events.forEach(event => {
       const dot = el('i', 'trace-studio-event-dot');
       dot.style.background = eventColorFor(event);
-      dot.title = EVENT_LABELS[event.type] || event.type;
+      const label = EVENT_LABELS[event.type] || event.type;
+      const autoDisabled = event.autoAnimationDisabled === true;
+      dot.title = autoDisabled
+        ? `${label}（需要的變數未顯示，動畫已自動關閉）`
+        : label;
+      dot.classList.toggle('is-disabled', autoDisabled);
       dots.append(dot);
     });
     return dots;
+  }
+
+  function eventSummary(event) {
+    const targets = event?.targets || [];
+    const expression = target => target?.expression
+      || (target?.variableId && target?.indexExpression
+        ? `${variableName(target.variableId)}[${target.indexExpression}]`
+        : variableName(target?.variableId));
+    if (event?.type === 'compare') {
+      return `${expression(targets[0])} ${event.operation || '?'} ${expression(targets[1])}`.trim();
+    }
+    if (event?.type === 'swap') return `${expression(targets[0])} ↔ ${expression(targets[1])}`.trim();
+    if (event?.type === 'assign') {
+      if (event.expression) return String(event.expression).trim();
+      return `${expression(targets.find(target => target.role === 'target') || targets[0])} = ${expression(targets.find(target => target.role === 'source') || targets[1])}`.trim();
+    }
+    if (event?.type === 'write') {
+      const target = expression(targets[0]);
+      const operation = String(event.operation || '').trim();
+      const compactTarget = String(target || '').replace(/\s+/g, '');
+      const compactOperation = operation.replace(/\s+/g, '');
+      if (operation && compactTarget && compactOperation.includes(compactTarget)) return operation;
+      return `${target} ${operation}`.trim();
+    }
+    if (event?.type === 'fixed') return expression(targets[0]);
+    if (event?.type === 'condition') return event.conditionKind || '條件判斷';
+    if (event?.type === 'call') return event.expression || event.callee || '';
+    if (event?.type === 'function-enter' || event?.type === 'function-exit') return event.function || '';
+    return expression(targets[0]) || event?.expression || '';
+  }
+
+  function setInstructionEventEnabled(event, enabled) {
+    if (!trace || !event) return;
+    const key = window.ASMTraceEvents?.instructionKey?.(event) || event.signature || event.type;
+    trace.studio.eventInstructionStates[key] = Boolean(enabled);
+    window.ASMTraceEvents?.applyEnabledStates?.(trace);
+    recordHistory();
+    renderFrameEventsEditor();
+    renderRail();
+    renderTimeline();
+    renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+  }
+
+  function setEventGap(value, save = true) {
+    if (!trace) return;
+    ensureStudioData();
+    const gapMs = Math.max(0, Math.min(2000, Number(value) || 0));
+    trace.studio.eventSettings.gapMs = gapMs;
+    if (eventGapRange) {
+      eventGapRange.value = String(gapMs);
+      eventGapRange.title = `間隔時間 ${gapMs} ms`;
+    }
+    if (eventGapValue) eventGapValue.textContent = `${gapMs} ms`;
+    if (!save) return;
+    window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
+      detail: { document: trace }
+    }));
+  }
+
+  function renderFrameEventsEditor() {
+    if (!frameEventsEditor || !frameEventsList) return;
+    const frame = trace?.frames?.[currentIndex];
+    const events = frame?.events || [];
+    const inspectorEvents = inspectorEventsForFrame(frame);
+    frameEventsEditor.hidden = false;
+    frameEventsList.replaceChildren();
+    if (!inspectorEvents.length) {
+      frameEventsList.append(el('div', 'trace-studio-empty', '本幀沒有事件'));
+    }
+    inspectorEvents.forEach(({ event, index }, orderedIndex) => {
+      const row = el('div', 'trace-studio-frame-event');
+      const autoDisabled = event.autoAnimationDisabled === true;
+      row.classList.toggle('is-disabled', event.enabled === false || autoDisabled);
+      const sequence = el('span', 'trace-studio-frame-event-order', String(orderedIndex + 1));
+      sequence.title = `第 ${orderedIndex + 1} 個事件`;
+      const swatch = el('i', 'trace-studio-frame-event-swatch');
+      swatch.style.background = eventColorFor(event);
+      const copy = el('span', 'trace-studio-frame-event-copy');
+      copy.append(el('strong', '', EVENT_LABELS[event.type] || event.type));
+      const summary = eventSummary(event);
+      if (summary) copy.append(el('small', '', summary));
+      const toggle = el('label', 'trace-studio-event-switch');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = event.enabled !== false && !autoDisabled;
+      input.disabled = autoDisabled;
+      input.setAttribute('aria-label', `${EVENT_LABELS[event.type] || event.type}事件`);
+      input.title = autoDisabled
+        ? '事件需要的變數未顯示，當幀動畫已自動關閉'
+        : (input.checked ? '關閉此指令的所有事件動畫' : '開啟此指令的所有事件動畫');
+      input.addEventListener('change', () => setInstructionEventEnabled(event, input.checked));
+      toggle.append(input, el('span'));
+      row.append(sequence, swatch, copy, toggle);
+      frameEventsList.append(row);
+    });
+    renderInspectorNavigation();
+  }
+
+  function inspectorEventsForFrame(frame = trace?.frames?.[currentIndex]) {
+    const events = frame?.events || [];
+    const ordered = window.ASMTraceEvents?.orderedEntries?.(events)
+      || events.map((event, index) => ({ event, index }));
+    return ordered
+      .filter(({ event }) => window.ASMTraceEvents?.showTag?.(event.type, trace) !== false);
+  }
+
+  function setInspectorMode(mode) {
+    if (mode === 'object' && !activeObjectKey) return;
+    inspectorMode = mode;
+    renderInspectorNavigation();
+  }
+
+  function renderInspectorNavigation() {
+    if (!inspectorToolbar) return;
+    const eventCount = inspectorEventsForFrame().length;
+    if (inspectorMode === 'object' && !activeObjectKey) inspectorMode = eventCount ? 'events' : 'camera';
+    inspectorEventButton.disabled = false;
+    inspectorEventCount.textContent = String(eventCount);
+    inspectorEventCount.hidden = !eventCount;
+    inspectorObjectButton.hidden = !activeObjectKey;
+    inspectorToolbar.classList.toggle('has-object', Boolean(activeObjectKey));
+    [
+      [inspectorEventButton, 'events'],
+      [inspectorCameraButton, 'camera'],
+      [inspectorObjectButton, 'object']
+    ].forEach(([button, mode]) => {
+      const active = inspectorMode === mode;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    inspectorEventsPanel.hidden = inspectorMode !== 'events';
+    inspectorCameraPanel.hidden = inspectorMode !== 'camera';
+    inspectorObjectPanel.hidden = inspectorMode !== 'object' || !activeObjectKey;
   }
 
   function selectFrame(index, event = {}) {
@@ -990,6 +1693,9 @@
       selectionAnchor = next;
     }
     currentIndex = next;
+    if (!activeObjectKey && inspectorMode === 'object') {
+      inspectorMode = inspectorEventsForFrame(trace.frames[next]).length ? 'events' : 'camera';
+    }
     renderPlayerFrame(next);
     renderSelection();
   }
@@ -1100,6 +1806,7 @@
       cameraZoomValue.textContent = `${zoom.toFixed(2)}x`;
       cameraDraftId = rule?.id || '';
     }
+    renderFrameEventsEditor();
     renderTransitionEditor();
   }
 
@@ -1131,18 +1838,37 @@
   function scheduleAutoSave(callback, delay = 260) {
     if (suppressAutoSave) return;
     clearTimeout(autoSaveTimer);
-    autoSaveTimer = setTimeout(callback, delay);
-  }
-
-  function scheduleSourceSave(delay = 220) {
-    if (!trace || restoringHistory || !window.asmWriteViewSettings || !window.ASMTraceViewSource?.fromTrace) return;
-    clearTimeout(sourceSaveTimer);
-    sourceSaveTimer = setTimeout(() => {
-      window.asmWriteViewSettings(window.ASMTraceViewSource.fromTrace(trace));
+    pendingAutoSave = callback;
+    autoSaveTimer = setTimeout(() => {
+      const save = pendingAutoSave;
+      autoSaveTimer = null;
+      pendingAutoSave = null;
+      save?.();
     }, delay);
   }
 
-  function saveStyleRule() {
+  function flushAutoSave() {
+    if (!pendingAutoSave) return false;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+    const save = pendingAutoSave;
+    pendingAutoSave = null;
+    save();
+    return true;
+  }
+
+  function cancelAutoSave() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+    pendingAutoSave = null;
+  }
+
+  function writeSourceSettings() {
+    if (!trace || restoringHistory || !window.asmWriteViewSettings || !window.ASMTraceViewSource?.fromTrace) return;
+    return window.asmWriteViewSettings(window.ASMTraceViewSource.fromTrace(trace));
+  }
+
+  function writeStyleRule() {
     if (!targetVariable?.value || !styleType?.value) return;
     styleDraftId ||= `studio-style-${Date.now().toString(36)}`;
     const rule = {
@@ -1160,6 +1886,16 @@
     const index = trace.rules.findIndex(item => item.id === styleDraftId);
     if (index >= 0) trace.rules[index] = rule;
     else trace.rules.push(rule);
+    return true;
+  }
+
+  function previewStyleRule() {
+    if (!writeStyleRule()) return;
+    previewStudioStyle();
+  }
+
+  function saveStyleRule() {
+    if (!writeStyleRule()) return;
     commitRules();
   }
 
@@ -1281,11 +2017,15 @@
 
   function saveCameraRule(immediate = false) {
     if (!trace || (cameraFrameState && !cameraAutoCapture?.checked)) return;
-    cameraDraftId ||= `camera-${Date.now().toString(36)}`;
+    const frameIds = frameIdsForScope();
+    const draftRule = trace.studio.cameraRules.find(rule => rule.id === cameraDraftId);
+    if (!draftRule || !sameCameraFrameScope(draftRule, frameIds)) {
+      cameraDraftId = `camera-${Date.now().toString(36)}`;
+    }
     const rule = {
       id: cameraDraftId,
       name: '鏡頭設定',
-      frameIds: frameIdsForScope(),
+      frameIds,
       condition: activeCondition(),
       zoom: Number(cameraZoom.value) || 0.92,
       offsetX: 0,
@@ -1299,7 +2039,7 @@
   }
 
   function saveCameraAutoCapture() {
-    clearTimeout(autoSaveTimer);
+    cancelAutoSave();
     if (cameraFrameState) {
       cameraFrameState.autoCapture = cameraAutoCapture.checked;
       if (!cameraFrameState.autoCapture) {
@@ -1348,6 +2088,31 @@
       }
     });
     return { point: best ? { x: best.x, y: best.y } : point, anchor: best };
+  }
+
+  function savedCameraAnchor(rule) {
+    const binding = rule?.binding;
+    if (!binding?.targetKey) return null;
+    const key = window.ASMTraceRenderers?.cameraObjectKey?.(binding.targetKey);
+    if (!key) return null;
+    const anchor = binding.targetAnchor || 'center';
+    const point = window.ASMTraceRenderers?.currentAnchorForKey?.(key, anchor, true);
+    return point ? { ...point, key, anchor } : null;
+  }
+
+  function clearCameraFrameAutoClose() {
+    clearTimeout(cameraFrameAutoCloseTimer);
+    cameraFrameAutoCloseTimer = null;
+  }
+
+  function scheduleCameraFrameAutoClose() {
+    clearCameraFrameAutoClose();
+    if (!cameraFrameState || cameraFrameState.dragging) return;
+    cameraFrameAutoCloseTimer = setTimeout(() => {
+      cameraFrameAutoCloseTimer = null;
+      if (!cameraFrameState || cameraFrameState.dragging) return;
+      closeCameraFrame(true);
+    }, 1500);
   }
 
   function renderCameraFrame() {
@@ -1400,8 +2165,9 @@
     });
     if (state.snapped) {
       overlay.append(traceSvg('circle', {
-        cx: state.snapped.x, cy: state.snapped.y, r: 12 / scale,
-        fill: 'none', stroke: '#1d8f83', 'stroke-width': 2 / scale,
+        cx: state.snapped.x, cy: state.snapped.y, r: 10 / scale,
+        fill: '#1d8f83', stroke: '#ffffff', 'stroke-width': 2 / scale,
+        'data-camera-bound-anchor': '1',
         'pointer-events': 'none'
       }));
     }
@@ -1413,10 +2179,12 @@
 
   function finishCameraFrameDrag(event) {
     if (!cameraFrameState?.dragging) return;
+    const shouldSave = cameraFrameState.hasMoved;
     cameraFrameState.dragging = null;
     window.removeEventListener('pointermove', moveCameraFrame, true);
     window.removeEventListener('pointerup', finishCameraFrameDrag, true);
     try { document.getElementById('arraySvg')?.releasePointerCapture(event.pointerId); } catch {}
+    if (shouldSave) scheduleCameraFrameAutoClose();
   }
 
   function moveCameraFrame(event) {
@@ -1471,10 +2239,10 @@
     if (!cursor) return;
     event.preventDefault();
     event.stopPropagation();
+    clearCameraFrameAutoClose();
     cameraFrameState.dragging = event.target.closest?.('[data-camera-resize]') ? 'resize' : 'move';
     cameraFrameState.startPointer = cursor;
     cameraFrameState.startCenter = { x: cameraFrameState.centerX, y: cameraFrameState.centerY };
-    cameraFrameState.snapped = null;
     cameraFrameState.hasMoved = false;
     window.addEventListener('pointermove', moveCameraFrame, true);
     window.addEventListener('pointerup', finishCameraFrameDrag, true);
@@ -1484,6 +2252,7 @@
   function closeCameraFrame(save = true) {
     const state = cameraFrameState;
     if (!state) return;
+    clearCameraFrameAutoClose();
     window.removeEventListener('pointermove', moveCameraFrame, true);
     window.removeEventListener('pointerup', finishCameraFrameDrag, true);
     if (cameraFrameDismiss) document.removeEventListener('pointerdown', cameraFrameDismiss, true);
@@ -1493,9 +2262,14 @@
     cameraFrameButton?.classList.remove('is-active');
     cameraFrameState = null;
     if (!save || !trace) return;
+    saveCameraFrameState(state);
+  }
+
+  function saveCameraFrameState(state) {
+    if (!state || !trace) return false;
     if (state.autoCapture) {
       cameraAutoCapture.checked = true;
-      return;
+      return false;
     }
     cameraAutoCapture.checked = false;
     cameraZoom.value = String(state.zoom);
@@ -1523,6 +2297,7 @@
     });
     commitStudio();
     applyCameraForFrame(currentIndex, true);
+    return true;
   }
 
   function openCameraFrame() {
@@ -1531,24 +2306,32 @@
       return;
     }
     const viewport = window.getCameraViewport?.();
-    const zoom = Number(viewport?.scale) || Number(cameraZoom.value) || 0.92;
     const activeRule = cameraRuleForFrame(trace.frames[currentIndex]);
+    const zoom = activeRule?.manualFrame
+      ? Number(activeRule.zoom) || Number(viewport?.scale) || 0.92
+      : Number(viewport?.scale) || Number(cameraZoom.value) || 0.92;
+    const dimensions = window.getCameraViewport?.(zoom) || viewport;
+    const snapped = savedCameraAnchor(activeRule);
     const autoCapture = activeRule?.autoCapture !== false;
-    const autoZoom = activeRule?.autoCapture === false ? 0.92 : Number(activeRule?.zoom) || 0.92;
+    const autoZoom = Number(activeRule?.zoom) || zoom;
     const bounds = window.ASMTraceRenderers?.currentBounds?.();
     if (!viewport && !bounds) return;
     cameraAutoCapture.checked = autoCapture;
     cameraZoom.value = String(zoom);
     cameraZoomValue.textContent = `${zoom.toFixed(2)}x`;
     cameraFrameState = {
-      centerX: viewport?.centerX ?? bounds.centerX,
-      centerY: viewport?.centerY ?? bounds.centerY,
-      width: viewport?.width || 800 / zoom,
-      height: viewport?.height || 450 / zoom,
-      aspect: viewport?.aspect || 16 / 9,
+      centerX: snapped
+        ? snapped.x + (Number(activeRule.binding?.dx) || 0)
+        : Number.isFinite(Number(activeRule?.centerX)) ? Number(activeRule.centerX) : viewport?.centerX ?? bounds.centerX,
+      centerY: snapped
+        ? snapped.y + (Number(activeRule.binding?.dy) || 0)
+        : Number.isFinite(Number(activeRule?.centerY)) ? Number(activeRule.centerY) : viewport?.centerY ?? bounds.centerY,
+      width: dimensions?.width || 800 / zoom,
+      height: dimensions?.height || 450 / zoom,
+      aspect: dimensions?.aspect || 16 / 9,
       zoom,
       autoZoom,
-      snapped: null,
+      snapped,
       dragging: null,
       hasMoved: false,
       autoCapture
@@ -1688,6 +2471,25 @@
     header.append(selectionLabel);
     inspector.append(header);
 
+    inspectorToolbar = el('nav', 'trace-studio-inspector-toolbar');
+    inspectorToolbar.setAttribute('aria-label', '右欄功能');
+    const toolbarButton = (mode, icon, label, title) => {
+      const button = el('button', 'trace-studio-inspector-tool');
+      button.type = 'button';
+      button.title = title;
+      button.setAttribute('aria-label', label);
+      button.append(el('span', 'trace-studio-inspector-tool-icon', icon), el('span', '', label));
+      button.addEventListener('click', () => setInspectorMode(mode));
+      return button;
+    };
+    inspectorCameraButton = toolbarButton('camera', '▣', '鏡頭', '鏡頭設定');
+    inspectorEventButton = toolbarButton('events', '●', '事件', '本幀事件');
+    inspectorEventCount = el('i', 'trace-studio-inspector-tool-count', '0');
+    inspectorEventButton.append(inspectorEventCount);
+    inspectorObjectButton = toolbarButton('object', '◇', '物件', '選取物件設定');
+    inspectorToolbar.append(inspectorCameraButton, inspectorEventButton, inspectorObjectButton);
+    inspector.append(inspectorToolbar);
+
     scopeSelect = document.createElement('select');
     scopeSelect.append(
       option('directive', '目前指令'),
@@ -1696,6 +2498,36 @@
       option('all', '所有幀')
     );
     inspector.append(field('作用時間線', scopeSelect));
+    eventGapRange = document.createElement('input');
+    eventGapRange.type = 'range';
+    eventGapRange.className = 'trace-studio-event-gap-range';
+    eventGapRange.min = '0';
+    eventGapRange.max = '2000';
+    eventGapRange.step = '10';
+    eventGapRange.value = String(trace?.studio?.eventSettings?.gapMs ?? 500);
+    eventGapRange.title = `間隔時間 ${eventGapRange.value} ms`;
+    eventGapValue = el('output', 'trace-studio-event-gap-value', `${eventGapRange.value} ms`);
+    const eventGapControl = el('div', 'trace-studio-event-gap-control');
+    eventGapControl.append(eventGapRange, eventGapValue);
+    eventGapRange.addEventListener('input', () => {
+      setEventGap(eventGapRange.value, false);
+      window.dispatchEvent(new CustomEvent('asm:trace-event-gap-input', {
+        detail: { document: trace, gapMs: Number(eventGapRange.value) || 0 }
+      }));
+    });
+    eventGapRange.addEventListener('change', () => setEventGap(eventGapRange.value, true));
+    inspector.append(field('間隔時間', eventGapControl));
+
+    inspectorEventsPanel = el('div', 'trace-studio-inspector-panel trace-studio-events-panel');
+    inspectorCameraPanel = el('div', 'trace-studio-inspector-panel');
+    inspectorObjectPanel = el('div', 'trace-studio-inspector-panel');
+    inspector.append(inspectorEventsPanel, inspectorCameraPanel, inspectorObjectPanel);
+
+    frameEventsEditor = section('本幀事件');
+    frameEventsList = el('div', 'trace-studio-frame-events');
+    frameEventsEditor.append(frameEventsList);
+    inspectorEventsPanel.append(frameEventsEditor);
+    renderFrameEventsEditor();
 
     objectStateEditor = section('物件狀態');
     objectStateEmpty = el('div', 'trace-studio-object-state-empty', '選取物件以設定顯示狀態');
@@ -1706,7 +2538,7 @@
     objectStateSelect.addEventListener('change', () => setObjectVisibility(objectStateSelect.value));
     objectStateCard.append(objectStateName, field('狀態', objectStateSelect));
     objectStateEditor.append(objectStateEmpty, objectStateCard);
-    inspector.append(objectStateEditor);
+    inspectorObjectPanel.append(objectStateEditor);
     renderObjectStateEditor();
 
     transitionEditor = section('幀間動畫');
@@ -1739,7 +2571,7 @@
     );
     transitionCard.append(transitionRelation, transitionHint, transitionControls);
     transitionEditor.append(transitionEmpty, transitionCard);
-    inspector.append(transitionEditor);
+    inspectorObjectPanel.append(transitionEditor);
     renderTransitionEditor();
 
     bindingEditor = section('位置綁定');
@@ -1756,7 +2588,7 @@
     bindingIndexExpression.addEventListener('blur', setBindingIndexExpression);
     bindingCard.append(bindingRelation, bindingIndexField);
     bindingEditor.append(bindingEmpty, bindingCard);
-    inspector.append(bindingEditor);
+    inspectorObjectPanel.append(bindingEditor);
     renderBindingEditor();
 
     markerShapeEditor = section('註標形狀');
@@ -1777,60 +2609,102 @@
     });
     markerShapeCard.append(markerShapeButtons);
     markerShapeEditor.append(markerShapeEmpty, markerShapeCard);
-    inspector.append(markerShapeEditor);
+    inspectorObjectPanel.append(markerShapeEditor);
     renderMarkerShapeEditor();
-
-    const tracking = section('變數追蹤');
-    trackingSource = document.createElement('select');
-    trackingTarget = document.createElement('select');
-    trackingEffect = document.createElement('select');
-    trackingEffect.append(
-      option('marker', '位置標記'),
-      option('highlight', '元素填色'),
-      option('text', '追蹤文字')
-    );
-    trackingIndexExpression = document.createElement('input');
-    trackingIndexExpression.type = 'text';
-    trackingIndexExpression.placeholder = '例如 i 或 i+1';
-    trackingText = document.createElement('input');
-    trackingText.type = 'text';
-    trackingText.placeholder = '標記文字';
-    trackingAnchor = document.createElement('select');
-    trackingAnchor.append(
-      option('top', '上方'), option('bottom', '下方'), option('left', '左側'),
-      option('right', '右側'), option('center', '中央')
-    );
-    const trackingTextField = field('標記文字', trackingText);
-    const syncTrackingEffectFields = () => {
-      trackingTextField.hidden = !['marker', 'text'].includes(trackingEffect.value);
-    };
-    const saveTracking = () => scheduleAutoSave(saveTrackingEffect);
-    trackingSource.addEventListener('change', () => { syncTrackingDefaults(true); saveTracking(); });
-    trackingTarget.addEventListener('change', () => { syncTrackingDefaults(true); saveTracking(); });
-    trackingEffect.addEventListener('change', () => {
-      syncTrackingDefaults(true);
-      syncTrackingEffectFields();
-      saveTracking();
-    });
-    trackingAnchor.addEventListener('change', saveTracking);
-    trackingIndexExpression.addEventListener('change', saveTracking);
-    trackingIndexExpression.addEventListener('blur', saveTracking);
-    trackingText.addEventListener('change', saveTracking);
-    trackingText.addEventListener('blur', saveTracking);
-    tracking.append(
-      field('追蹤變數', trackingSource), field('套用物件', trackingTarget),
-      field('效果', trackingEffect), field('元素位置', trackingIndexExpression),
-      trackingTextField, field('對齊位置', trackingAnchor)
-    );
-    syncTrackingEffectFields();
-    inspector.append(tracking);
 
     styleEditor = section('物件與樣式');
     objectFillColor = colorControl('#ffffff', '物件填色');
     objectStrokeColor = colorControl('#59656b', '物件邊框顏色');
-    const saveObjectColor = () => scheduleAutoSave(saveObjectColors);
-    objectFillColor.addEventListener('input', saveObjectColor);
-    objectStrokeColor.addEventListener('input', saveObjectColor);
+    objectFillColor.addEventListener('input', previewObjectColors);
+    objectStrokeColor.addEventListener('input', previewObjectColors);
+    objectFillColor.addEventListener('change', saveObjectColors);
+    objectStrokeColor.addEventListener('change', saveObjectColors);
+    objectColorFields = el('div', 'trace-studio-object-color-fields');
+    objectColorFields.append(
+      field('物件填色', objectFillColor),
+      field('物件邊框', objectStrokeColor)
+    );
+    textColor = colorControl('#111827', '文字顏色');
+    textColor.classList.add('trace-studio-text-icon-button', 'is-text-color');
+    textColor.setAttribute('aria-label', '文字顏色');
+    textColor.prepend(el('span', 'trace-studio-text-color-glyph', 'A'));
+    textBackgroundColor = colorControl('#dbeafe', '文字背景顏色');
+    textBackgroundColor.classList.add('trace-studio-text-icon-button', 'is-background-color');
+    textBackgroundColor.setAttribute('aria-label', '文字背景顏色');
+    textBackgroundColor.prepend(el('span', 'trace-studio-text-background-glyph'));
+    textBackgroundEnabled = document.createElement('input');
+    textBackgroundEnabled.type = 'checkbox';
+    textBackgroundEnabled.hidden = true;
+    textFontSize = document.createElement('input');
+    textFontSize.type = 'range';
+    textFontSize.min = '8';
+    textFontSize.max = '72';
+    textFontSize.step = '1';
+    textFontSize.value = '10';
+    const saveTextStyle = () => {
+      previewTextSegmentStyle();
+      scheduleAutoSave(saveTextSegmentStyle);
+    };
+    textColor.addEventListener('input', previewTextSegmentStyle);
+    textColor.addEventListener('change', saveTextSegmentStyle);
+    textBackgroundColor.addEventListener('input', () => {
+      textBackgroundEnabled.checked = true;
+      textBackgroundColor.classList.add('is-active');
+      previewTextSegmentStyle();
+    });
+    textBackgroundColor.addEventListener('change', () => {
+      textBackgroundEnabled.checked = true;
+      textBackgroundColor.classList.add('is-active');
+      saveTextSegmentStyle();
+    });
+    textBackgroundEnabled.addEventListener('change', saveTextStyle);
+    textFontSize.addEventListener('input', () => {
+      textFontSizeButton.title = `字體大小 ${textFontSize.value}px`;
+      saveTextStyle();
+    });
+    textFontSize.addEventListener('change', saveTextStyle);
+    const textFormatButtons = el('div', 'trace-studio-text-format-buttons');
+    const formatButton = (label, title, className = '', togglesStyle = true) => {
+      const button = el('button', `trace-studio-text-icon-button ${className}`.trim(), label);
+      button.type = 'button';
+      button.title = title;
+      button.setAttribute('aria-label', title);
+      if (togglesStyle) {
+        button.addEventListener('click', () => {
+          button.classList.toggle('is-active');
+          saveTextSegmentStyle();
+        });
+      }
+      textFormatButtons.append(button);
+      return button;
+    };
+    textFontSizeButton = formatButton('A↕', '字體大小 10px', 'is-font-size', false);
+    const fontSizePopover = el('div', 'trace-studio-font-size-popover');
+    fontSizePopover.hidden = true;
+    fontSizePopover.append(textFontSize);
+    const fontSizeControl = el('div', 'trace-studio-font-size-control');
+    fontSizeControl.append(textFontSizeButton, fontSizePopover);
+    textFontSizeButton.addEventListener('click', event => {
+      event.stopPropagation();
+      fontSizePopover.hidden = !fontSizePopover.hidden;
+    });
+    document.addEventListener('pointerdown', event => {
+      if (!fontSizePopover.hidden && !fontSizeControl.contains(event.target)) fontSizePopover.hidden = true;
+    }, true);
+    textBold = formatButton('B', '粗體', 'is-bold');
+    textItalic = formatButton('I', '斜體', 'is-italic');
+    textUnderline = formatButton('U', '底線', 'is-underline');
+    textStrike = formatButton('S', '橫線', 'is-strike');
+    const clearBackground = formatButton('⊘', '移除文字背景', 'is-clear-background', false);
+    clearBackground.addEventListener('click', () => {
+      textBackgroundEnabled.checked = false;
+      textBackgroundColor.classList.remove('is-active');
+      saveTextSegmentStyle();
+    });
+    textFormatButtons.prepend(textColor, textBackgroundColor, fontSizeControl, textBackgroundEnabled);
+    textFormatButtons.append(clearBackground);
+    textStyleFields = el('div', 'trace-studio-text-style-fields');
+    textStyleFields.append(textFormatButtons);
     targetVariable = document.createElement('select');
     targetIndex = document.createElement('input');
     targetIndex.type = 'text';
@@ -1870,7 +2744,8 @@
     targetVariable.addEventListener('change', () => { styleDraftId = ''; saveStyle(); });
     targetIndex.addEventListener('change', saveStyle);
     targetIndex.addEventListener('blur', saveStyle);
-    styleColor.addEventListener('input', saveStyle);
+    styleColor.addEventListener('input', previewStyleRule);
+    styleColor.addEventListener('change', saveStyleRule);
     refreshStyleChoices();
     variableStyleFields = el('div', 'trace-studio-variable-style-fields');
     variableStyleFields.append(
@@ -1878,12 +2753,12 @@
       field('樣式', styleChoices), field('樣式顏色', styleColor)
     );
     styleEditor.append(
-      field('物件填色', objectFillColor),
-      field('物件邊框', objectStrokeColor),
+      objectColorFields,
+      textStyleFields,
       variableStyleFields
     );
     styleEditor.hidden = true;
-    inspector.append(styleEditor);
+    inspectorObjectPanel.append(styleEditor);
 
     const camera = section('鏡頭');
     camera.dataset.traceCameraControls = '1';
@@ -1898,6 +2773,7 @@
       const zoom = Number(cameraZoom.value);
       cameraZoomValue.textContent = `${zoom.toFixed(2)}x`;
       if (cameraFrameState) {
+        clearCameraFrameAutoClose();
         const dimensions = window.getCameraViewport?.(zoom);
         cameraFrameState.zoom = zoom;
         if (dimensions) {
@@ -1913,7 +2789,10 @@
     cameraAutoCapture = document.createElement('input');
     cameraAutoCapture.type = 'checkbox';
     cameraAutoCapture.checked = true;
-    cameraZoom.addEventListener('change', () => scheduleAutoSave(saveCameraRule));
+    cameraZoom.addEventListener('change', () => {
+      if (cameraFrameState) scheduleCameraFrameAutoClose();
+      else scheduleAutoSave(saveCameraRule);
+    });
     cameraAutoCapture.addEventListener('change', saveCameraAutoCapture);
     cameraFrameButton = el('button', 'trace-studio-secondary trace-studio-camera-frame-button', '▣ 鏡頭範圍');
     cameraFrameButton.type = 'button';
@@ -1922,12 +2801,13 @@
     camera.append(
       field('縮放', zoomRow), field('自動捕捉', cameraAutoCapture), cameraFrameButton
     );
-    inspector.append(camera);
+    inspectorCameraPanel.append(camera);
 
     const effects = section('已建立效果');
     effectsList = el('div', 'trace-studio-effects');
     effects.append(effectsList);
-    inspector.append(effects);
+    inspectorObjectPanel.append(effects);
+    renderInspectorNavigation();
     return inspector;
   }
 
@@ -2003,7 +2883,9 @@
   function closeStudio() {
     endBoundObjectDrag();
     closeCanvasShortcutMenu();
-    closeCameraFrame(false);
+    flushAutoSave();
+    closeCameraFrame(true);
+    writeSourceSettings();
     document.body.classList.remove('asm-trace-studio-open');
     activeObjectKey = '';
     renderPlayerFrame(currentIndex, { animatePositions: false });
@@ -2047,6 +2929,10 @@
     vizPanel.append(timeline);
 
     const canvas = document.getElementById('arraySvg');
+    canvas?.addEventListener('pointerdown', beginTextSelection, true);
+    canvas?.addEventListener('pointermove', moveTextSelection, true);
+    canvas?.addEventListener('pointerup', endTextSelection, true);
+    canvas?.addEventListener('pointercancel', endTextSelection, true);
     canvas?.addEventListener('click', event => {
       const object = event.target.closest('[data-trace-variable]');
       if (!object?.dataset.traceVariable) return;
@@ -2082,6 +2968,7 @@
     currentIndex = Math.max(0, window.ASMTracePlayer?.getCurrentFrame?.() || 0);
     activeBinding = null;
     activeObjectKey = '';
+    inspectorMode = inspectorEventsForFrame(trace.frames[currentIndex]).length ? 'events' : 'camera';
     selectedFrames = new Set([trace.frames[currentIndex].id]);
     scopeSelect.value = window.ASMTraceViewSource?.directiveName?.(trace.frames[currentIndex])
       || String(trace.frames[currentIndex]?.source?.statementId || '').startsWith('manual-frame:')
@@ -2179,6 +3066,10 @@
     if (!document.body.classList.contains('asm-trace-studio-open')) return;
     const next = Math.max(0, Math.min(trace.frames.length - 1, Number(event.detail.index) || 0));
     currentIndex = next;
+    if (textObjectKey(activeObjectKey) && !textSegmentForKey(activeObjectKey)) {
+      setActiveObjectKey('');
+      activeBinding = null;
+    }
     if (studioRenderDepth === 0) {
       selectedFrames = new Set([trace.frames[next].id]);
       selectionAnchor = next;
@@ -2195,6 +3086,28 @@
     renderRail();
     renderTimeline();
     renderSelection();
+  });
+
+  window.addEventListener('asm:trace-event-settings-changed', event => {
+    if (!trace || event.detail?.document !== trace) return;
+    setEventGap(trace.studio?.eventSettings?.gapMs ?? 500, false);
+    renderFrameEventsEditor();
+    renderRail();
+    renderTimeline();
+    renderInspectorNavigation();
+  });
+
+  window.addEventListener('asm:trace-event-availability-changed', event => {
+    if (!trace || event.detail?.document !== trace) return;
+    renderFrameEventsEditor();
+    renderRail();
+    renderTimeline();
+    renderInspectorNavigation();
+  });
+
+  window.addEventListener('asm:trace-event-gap-input', event => {
+    if (!trace || event.detail?.document !== trace) return;
+    setEventGap(event.detail?.gapMs ?? 500, false);
   });
 
   window.addEventListener('asm:trace-object-selected', event => {
@@ -2219,10 +3132,19 @@
   window.ASMTraceStudio = {
     open,
     close: closeStudio,
+    refresh() {
+      if (!trace || !document.body.classList.contains('asm-trace-studio-open')) return;
+      renderRail();
+      renderTimeline();
+      renderSelection();
+      renderFrameEventsEditor();
+      renderInspectorNavigation();
+    },
     bindPosition,
     unbindPosition,
     moveBoundObjects,
     endBoundObjectDrag,
+    flushSourceSettings: writeSourceSettings,
     getBinding: key => frameBinding(trace?.frames?.[currentIndex]?.id, key),
     getBindings: () => trace?.studio?.bindings || {}
   };

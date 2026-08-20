@@ -30,6 +30,30 @@
     return clone(data);
   }
 
+  function applyFrameConditions(document) {
+    if (!window.ASMTraceRules?.expressionMatches) return document;
+    const accepted = [];
+    let pendingEvents = [];
+    (document.frames || []).forEach(frame => {
+      const events = [...pendingEvents, ...(frame.events || [])]
+        .sort((left, right) => Number(left?.order) - Number(right?.order));
+      const candidate = { ...frame, events };
+      const evaluationDocument = { ...document, frames: [...accepted, candidate] };
+      if (window.ASMTraceRules.expressionMatches(
+        evaluationDocument,
+        candidate,
+        candidate.source?.when
+      )) {
+        accepted.push(candidate);
+        pendingEvents = [];
+      } else {
+        pendingEvents = events;
+      }
+    });
+    document.frames = accepted;
+    return document;
+  }
+
   function normalizeTraceDocument(source = {}) {
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
@@ -37,10 +61,22 @@
       source: frame.source && typeof frame.source === 'object' ? clone(frame.source) : {},
       state: Object.fromEntries(Object.entries(frame.state || {}).map(([id, entry]) => [id, {
         name: entry?.name || variables[id]?.name || id,
+        identity: String(entry?.identity || ''),
         data: normalizeData(entry?.data)
       }])),
       events: Array.isArray(frame.events) ? clone(frame.events) : [],
       bindings: Array.isArray(frame.bindings) ? clone(frame.bindings) : [],
+      objectBindings: Array.isArray(frame.objectBindings) ? clone(frame.objectBindings) : [],
+      renderers: frame.renderers && typeof frame.renderers === 'object' ? clone(frame.renderers) : {},
+      rendererOptions: frame.rendererOptions && typeof frame.rendererOptions === 'object'
+        ? clone(frame.rendererOptions)
+        : {},
+      captureOnlyVariableIds: Array.isArray(frame.captureOnlyVariableIds)
+        ? clone(frame.captureOnlyVariableIds)
+        : [],
+      texts: Array.isArray(frame.texts) ? clone(frame.texts) : [],
+      styles: Array.isArray(frame.styles) ? clone(frame.styles) : [],
+      segments: Array.isArray(frame.segments) ? clone(frame.segments) : [],
       snapshotIds: Array.isArray(frame.snapshotIds) ? clone(frame.snapshotIds) : [],
       keepLastFocus: frame.keepLastFocus === true
     })) : [];
@@ -63,6 +99,8 @@
     if (normalized.asmView && window.ASMTraceViewSource?.applyToTrace) {
       window.ASMTraceViewSource.applyToTrace(normalized, normalized.asmView);
     }
+    applyFrameConditions(normalized);
+    window.ASMTraceEvents?.applyEnabledStates?.(normalized);
     return normalized;
   }
 
@@ -112,6 +150,7 @@
   window.ASMTraceModel = {
     clone,
     normalizeData,
+    applyFrameConditions,
     normalizeTraceDocument,
     scalarValue,
     diffFrame

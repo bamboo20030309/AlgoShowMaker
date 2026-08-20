@@ -215,6 +215,56 @@
     return svg.getBoundingClientRect().width / (Number(worldWidth) * getScreenScaleFactor());
   };
 
+  const AUTO_CAMERA_PADDING = Object.freeze({ horizontal: 30, vertical: 20 });
+
+  window.getAutoCameraPadding = () => ({ ...AUTO_CAMERA_PADDING });
+
+  window.resolveAutoCameraTarget = function (bounds, preferredScale = scale, offsetX = 0, offsetY = 0, rectOverride = null) {
+    const contentWidth = Number(bounds?.width);
+    const contentHeight = Number(bounds?.height);
+    if (!(contentWidth > 0) || !(contentHeight > 0)) return null;
+
+    let rect = rectOverride || svg?.getBoundingClientRect?.();
+    if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) {
+      const parent = svg?.parentElement;
+      rect = {
+        width: parent?.clientWidth || 800,
+        height: parent?.clientHeight || 600
+      };
+    }
+
+    const factor = getScreenScaleFactor();
+    const availableWidth = Math.max(1, Number(rect.width) - AUTO_CAMERA_PADDING.horizontal * 2);
+    const availableHeight = Math.max(1, Number(rect.height) - AUTO_CAMERA_PADDING.vertical * 2);
+    const maximumFitScale = Math.min(
+      availableWidth / contentWidth,
+      availableHeight / contentHeight
+    ) / Math.max(0.0001, factor);
+    const requestedScale = Math.min(4, Math.max(0.05, Number(preferredScale) || scale || 2));
+    const requestedFits = requestedScale <= maximumFitScale + 0.0001;
+    const targetScale = requestedFits
+      ? requestedScale
+      : Math.max(0.05, Math.min(4, maximumFitScale));
+    const physicalScale = targetScale * factor;
+    const left = Number(bounds.left ?? bounds.x) || 0;
+    const top = Number(bounds.top ?? bounds.y) || 0;
+    const right = Number.isFinite(Number(bounds.right)) ? Number(bounds.right) : left + contentWidth;
+    const bottom = Number.isFinite(Number(bounds.bottom)) ? Number(bounds.bottom) : top + contentHeight;
+
+    return {
+      centerX: (left + right) / 2 + (Number(offsetX) || 0),
+      centerY: (top + bottom) / 2 + (Number(offsetY) || 0),
+      scale: targetScale,
+      width: Number(rect.width) / physicalScale,
+      height: Number(rect.height) / physicalScale,
+      aspect: Number(rect.height) > 0 ? Number(rect.width) / Number(rect.height) : 16 / 9,
+      paddingX: AUTO_CAMERA_PADDING.horizontal,
+      paddingY: AUTO_CAMERA_PADDING.vertical,
+      maximumFitScale,
+      preservedScale: requestedFits
+    };
+  };
+
   window.resetCameraState = () => {
     isFirstCamera = true;
     stopAnimation();
@@ -355,7 +405,7 @@
 
   /**
    * 自動調整鏡頭以容納所有可見物件
-   * @param {number} zoom 縮放倍率 (1.0 = 剛好容納, >1 放大, <1 縮小)
+   * @param {number} zoom 優先保留的原始縮放倍率
    * @param {boolean} animate 是否使用動畫
    * @param {number} offsetX 水平偏移 (正值鏡頭右移，物體左移)
    * @param {number} offsetY 垂直偏移
@@ -431,7 +481,7 @@
       return;
     }
 
-    // 計算合適的縮放比例
+    // 先保留原縮放；原縮放放不下時，改用仍可完整容納物件的最大倍率。
     let rect = svg.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) {
       // 嘗試從父容器獲取尺寸
@@ -441,46 +491,19 @@
       rect = { width: pw, height: ph };
     }
 
-    const contentW = (maxX - minX);
-    const contentH = (maxY - minY);
+    const target = window.resolveAutoCameraTarget({
+      left: minX,
+      top: minY,
+      right: maxX,
+      bottom: maxY,
+      width: maxX - minX,
+      height: maxY - minY
+    }, zoom, offsetX, offsetY, rect);
+    if (!target) return;
 
-    // 避免除以零
-    if (contentW <= 0 || contentH <= 0) return;
-
-    // scaleW/H 是「物理縮放」（螢幕像素 / 世界單位）
-    const padding = 48;
-    const availableWidth = Math.max(1, rect.width - padding * 2);
-    const availableHeight = Math.max(1, rect.height - padding * 2);
-    const scaleW = availableWidth / contentW;
-    const scaleH = availableHeight / contentH;
-    let physicalTarget = Math.min(scaleW, scaleH) * zoom;
-
-    // 限制物理縮放範圍
-    const factor = getScreenScaleFactor();
-    if (physicalTarget > 2.0 * factor)  physicalTarget = 2.0 * factor;
-    if (physicalTarget < 0.05 * factor) physicalTarget = 0.05 * factor;
-
-    const midX = (minX + maxX) / 2 + offsetX;
-    const midY = (minY + maxY) / 2 + offsetY;
-
-    // 轉換為邏輯縮放，傳給 setCamera
-    const logicalScale = physicalTarget / factor;
-
-    const target = {
-      centerX: midX,
-      centerY: midY,
-      scale: logicalScale,
-      width: rect.width / physicalTarget,
-      height: rect.height / physicalTarget,
-      aspect: rect.height > 0 ? rect.width / rect.height : 16 / 9,
-      padding
-    };
-
-    window.setCamera(midX, midY, logicalScale, animate, duration);
+    window.setCamera(target.centerX, target.centerY, target.scale, animate, duration);
     return target;
   };
-
-  window.getAutoCameraPadding = () => 48;
 
   // 監聽視窗大小變化：重新以目前的邏輯縮放重新對齊（確保關注點不移位）
   let lastCameraX = 0, lastCameraY = 0;

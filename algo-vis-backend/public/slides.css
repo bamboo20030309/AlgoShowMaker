@@ -17,10 +17,6 @@
   --overview-thumb-scale: 0.28125;
 }
 
-body.structure-editor-active {
-  --editor-sidebar-w: 270px;
-}
-
 body {
   --sidebar-w: calc(var(--controlbar-w) + var(--editor-sidebar-w));
 }
@@ -924,7 +920,7 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal {
 
 .structure-style-list label {
   display: grid;
-  grid-template-columns: 22px 68px minmax(0, 1fr) 34px;
+  grid-template-columns: 22px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 7px;
   min-height: 36px;

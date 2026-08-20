@@ -892,8 +892,8 @@
   }
 
   function applyTtsPronunciations(text) {
-    return String(text || '')
-      .replace(/\{([^{}:]+):([^{}]+)\}/g, (match, written, spoken) => spoken.trim())
+    const parsed = window.parseTTSMarkup?.(text);
+    return String(parsed ? parsed.speech : text || '')
       .replace(/\[([^\[\]:]+):([^\[\]]+)\]/g, (match, written, spoken) => spoken.trim());
   }
 
@@ -1541,13 +1541,18 @@
   }
 
   function preferredTtsVoice() {
+    const profile = window.getAlgoShowMakerTTSProfile?.();
+    if (profile?.voice) return profile.voice;
     if (typeof window.pickBestTTSVoice === 'function') {
       return window.pickBestTTSVoice({
         lang: 'zh-TW',
         preferredVoiceRegex: /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i
       });
     }
-    const voices = window.speechSynthesis?.getVoices?.() || [];
+    const voices = (window.speechSynthesis?.getVoices?.() || []).filter(voice => (
+      String(voice.name || '').trim().toLowerCase()
+        !== 'microsoft hanhan - chinese (traditional, taiwan)'
+    ));
     const naturalVoice = /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i;
     return voices.find(voice => /^zh[-_]TW$/i.test(voice.lang || '')
         && naturalVoice.test(voice.name || '')
@@ -1608,28 +1613,52 @@
     }
 
     highlightTtsSegment(segment);
-    const utterance = new SpeechSynthesisUtterance(segment.text);
     const settings = normalizeTtsSettings(deck.ttsSettings);
+    const finishSegment = () => {
+      if (!ttsPlayback.active || session !== ttsPlayback.session) return;
+      ttsPlayback.utterance = null;
+      ttsPlayback.segmentIndex += 1;
+      runTtsSegment(session);
+    };
+    const failSegment = event => {
+      if (!ttsPlayback.active || session !== ttsPlayback.session) return;
+      if (event.error === 'canceled' || event.error === 'interrupted') return;
+      finishSegment();
+    };
+    setTtsStatus('朗讀中', 'playing');
+    if (typeof window.speakText === 'function') {
+      ttsPlayback.utterance = { pending: true };
+      Promise.resolve(window.speakText(segment.text, {
+        lang: 'zh-TW',
+        rate: settings.rate,
+        pitch: 1,
+        volume: settings.volume,
+        interrupt: false,
+        requireUserGesture: false,
+        onend: finishSegment,
+        onerror: failSegment
+      })).then(utterance => {
+        if (!ttsPlayback.active || session !== ttsPlayback.session) return;
+        if (!utterance) {
+          finishSegment();
+          return;
+        }
+        ttsPlayback.utterance = utterance;
+        if (ttsPlayback.paused) window.speechSynthesis.pause();
+      }).catch(failSegment);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(segment.text);
     const voice = preferredTtsVoice();
     if (voice) utterance.voice = voice;
     utterance.lang = voice?.lang || 'zh-TW';
     utterance.rate = settings.rate;
+    utterance.pitch = 1;
     utterance.volume = settings.volume;
-    utterance.onend = () => {
-      if (!ttsPlayback.active || session !== ttsPlayback.session) return;
-      ttsPlayback.utterance = null;
-      ttsPlayback.segmentIndex += 1;
-      runTtsSegment(session);
-    };
-    utterance.onerror = event => {
-      if (!ttsPlayback.active || session !== ttsPlayback.session) return;
-      if (event.error === 'canceled' || event.error === 'interrupted') return;
-      ttsPlayback.utterance = null;
-      ttsPlayback.segmentIndex += 1;
-      runTtsSegment(session);
-    };
+    utterance.onend = finishSegment;
+    utterance.onerror = failSegment;
     ttsPlayback.utterance = utterance;
-    setTtsStatus('朗讀中', 'playing');
     window.speechSynthesis.speak(utterance);
   }
 
@@ -2571,7 +2600,7 @@
           class="algorithm-slide-frame"
           data-slide-id="${slide.id}"
           title="Algorithm animation"
-          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-9' : 'about:blank'}"
+          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-10' : 'about:blank'}"
           ${hasScript ? '' : 'hidden'}
         ></iframe>
         <div class="algorithm-slide-placeholder" ${hasScript ? 'hidden' : ''}>
@@ -6325,8 +6354,11 @@
       }
       if (!widgetEl || event.button !== 0 || isOverviewEditing() || widgetDrag) return;
       if (isCodeScrollbarInteraction(event, widgetEl)) return;
-      if (widgetEl.classList.contains('structure-widget')
-        && event.target.closest?.('[data-structure-item-index], .structure-inline-value-input')) return;
+      if (widgetEl.classList.contains('structure-widget')) {
+        if (event.target.closest?.('.structure-inline-value-input')) return;
+        if (widgetEl.classList.contains('is-selected')
+          && event.target.closest?.('[data-structure-item-index]')) return;
+      }
       if (event.shiftKey) return;
       event.stopPropagation();
       event.preventDefault();

@@ -10,7 +10,7 @@
  * 2. {A:B}    大括號中有冒號：
  *    - display 顯示 A
  *    - tts     念 B
- * 3. {xxx} 或 {沒有冒號} → 當一般文字處理
+ * 3. {xxx} 或 {沒有冒號}：畫面顯示 xxx，但 TTS 不朗讀
  */
 function transformTextForDisplayAndTTS(raw) {
   const s = String(raw ?? "");

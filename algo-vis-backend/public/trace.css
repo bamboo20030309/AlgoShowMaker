@@ -71,6 +71,113 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
   opacity: 1;
 }
 
+.trace-event-settings-panel {
+  position: fixed;
+  z-index: 1400;
+  width: 350px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-color, #465158);
+  border-radius: 4px;
+  background: var(--bg-panel, #252b2f);
+  color: #e5ebed;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.34);
+  font: 12px Arial, sans-serif;
+}
+
+.trace-event-settings-panel[hidden] {
+  display: none;
+}
+
+.trace-event-settings-panel > header,
+.trace-event-settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 86px;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-event-settings-panel > header {
+  padding: 10px 12px;
+  border-bottom: 1px solid #3a4348;
+  color: #9facb2;
+  text-align: center;
+}
+
+.trace-event-settings-panel > header strong {
+  color: #f1f5f6;
+  text-align: left;
+}
+
+.trace-event-settings-list {
+  max-height: 340px;
+  overflow: auto;
+}
+
+.trace-event-settings-row {
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid #343c41;
+}
+
+.trace-event-settings-row strong::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  background: var(--event-color);
+}
+
+.trace-event-settings-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  justify-self: center;
+  accent-color: #1d8f83;
+}
+
+.trace-event-settings-gap {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px;
+}
+
+.trace-event-gap-value {
+  color: #b9c4c8;
+  font: 11px Arial, sans-serif;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trace-event-settings-gap input {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: #1d8f83;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.trace-event-settings-gap input::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 0;
+  background: #111719;
+}
+
+.trace-event-settings-gap input::-webkit-slider-thumb {
+  width: 10px;
+  height: 18px;
+  margin-top: -5px;
+  border: 1px solid #84cfc5;
+  border-radius: 1px;
+  background: #1d8f83;
+  -webkit-appearance: none;
+}
+
 .trace-setup-panel {
   position: absolute;
   z-index: 90;

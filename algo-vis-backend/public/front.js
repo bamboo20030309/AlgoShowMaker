@@ -36,6 +36,7 @@ let TTS_ENABLED = false;
 // 全域：目前這一輪 TTS 播放的「世代編號」
 // 每次按播放就 +1，pause 時也 +1 讓舊 callback 全失效
 let TTS_RUN_ID = 0;
+let TTS_HIGHLIGHT_REQUEST = 0;
 
 
 // 初始化 Ace
@@ -47,6 +48,88 @@ aceEditor.setOptions({
   wrap: true,
   showPrintMargin: false
 });
+
+// 保留目前正在編輯的程式碼，避免重新整理後被預設範例覆蓋。
+const ALGORITHM_DRAFT_STORAGE_VERSION = 2;
+const ALGORITHM_DRAFT_SAVE_DELAY = 450;
+const algorithmDraftMode = new URLSearchParams(window.location.search).get('asmEmbed') || 'standalone';
+const ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:${algorithmDraftMode}`;
+let algorithmDraftSaveTimer = null;
+let algorithmDraftRestored = false;
+let algorithmDraftApplying = false;
+let algorithmEditorChangedSinceStartup = false;
+
+function readAlgorithmDraft() {
+  try {
+    const raw = localStorage.getItem(ALGORITHM_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw);
+    if (draft?.version !== ALGORITHM_DRAFT_STORAGE_VERSION || typeof draft.code !== 'string') return null;
+    return draft;
+  } catch (error) {
+    console.warn('無法讀取演算法草稿', error);
+    return null;
+  }
+}
+
+function saveAlgorithmDraft() {
+  clearTimeout(algorithmDraftSaveTimer);
+  algorithmDraftSaveTimer = null;
+  const code = aceEditor.getValue();
+  const input = document.getElementById('inputArea')?.value || '';
+  if (code.trim() === '// 讀取中...') return false;
+  try {
+    const cursor = aceEditor.getCursorPosition();
+    localStorage.setItem(ALGORITHM_DRAFT_STORAGE_KEY, JSON.stringify({
+      version: ALGORITHM_DRAFT_STORAGE_VERSION,
+      code,
+      input,
+      cursor: { row: cursor.row, column: cursor.column },
+      scrollTop: aceEditor.session.getScrollTop(),
+      updatedAt: Date.now()
+    }));
+    return true;
+  } catch (error) {
+    console.warn('無法暫存演算法草稿', error);
+    return false;
+  }
+}
+
+function scheduleAlgorithmDraftSave(editorChanged = false) {
+  if (algorithmDraftApplying) return;
+  if (editorChanged) algorithmEditorChangedSinceStartup = true;
+  clearTimeout(algorithmDraftSaveTimer);
+  algorithmDraftSaveTimer = setTimeout(saveAlgorithmDraft, ALGORITHM_DRAFT_SAVE_DELAY);
+}
+
+function restoreAlgorithmDraft() {
+  const draft = readAlgorithmDraft();
+  if (!draft) return false;
+  algorithmDraftApplying = true;
+  aceEditor.setValue(draft.code, -1);
+  if (draft.cursor && Number.isInteger(draft.cursor.row) && Number.isInteger(draft.cursor.column)) {
+    aceEditor.moveCursorTo(draft.cursor.row, draft.cursor.column);
+    aceEditor.clearSelection();
+  }
+  if (Number.isFinite(draft.scrollTop)) aceEditor.session.setScrollTop(draft.scrollTop);
+  const inputArea = document.getElementById('inputArea');
+  if (inputArea && typeof draft.input === 'string') inputArea.value = draft.input;
+  algorithmDraftApplying = false;
+  algorithmDraftRestored = true;
+  return true;
+}
+
+aceEditor.session.on('change', () => scheduleAlgorithmDraftSave(true));
+restoreAlgorithmDraft();
+window.addEventListener('pagehide', saveAlgorithmDraft);
+window.addEventListener('beforeunload', saveAlgorithmDraft);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveAlgorithmDraft();
+});
+window.ASMAlgorithmDraft = {
+  save: saveAlgorithmDraft,
+  restored: () => algorithmDraftRestored
+};
 
 window.asmGetSourceCode = () => aceEditor.getValue();
 window.asmEnsureFrameDirectiveName = function (lineNumber, requestedName) {
@@ -88,6 +171,41 @@ window.asmWriteViewSettings = function (settings) {
   }
   aceEditor.selection.setSelectionRange(selection, false);
   session.setScrollTop(scrollTop);
+  return true;
+};
+
+window.asmUpdateTextDirectiveBinding = function (lineNumber, binding) {
+  const session = aceEditor.getSession();
+  const requestedRow = Math.max(0, Number(lineNumber) - 1);
+  const isTextDirective = line => /^\s*\/\/\s*@text\b/i.test(line);
+  let row = requestedRow;
+  let line = session.getLine(row);
+  if (!isTextDirective(line)) {
+    const candidates = [];
+    for (let index = 0; index < session.getLength(); index += 1) {
+      if (isTextDirective(session.getLine(index))) candidates.push(index);
+    }
+    if (!candidates.length) return false;
+    row = candidates.sort((left, right) => (
+      Math.abs(left - requestedRow) - Math.abs(right - requestedRow)
+    ))[0];
+    line = session.getLine(row);
+  }
+  const atPattern = /\s+at\s+.+?\.(?:top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right)(?=\s+(?:offset|as|when)\b|\s*$)/i;
+  const offsetPattern = /\s+offset\s*\(\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*\)(?=\s+(?:at|as|when)\b|\s*$)/i;
+  let next = line.replace(atPattern, '').replace(offsetPattern, '');
+  if (binding?.targetExpression && binding?.anchor) {
+    const offsetX = Number(binding.offsetX) || 0;
+    const offsetY = Number(binding.offsetY) || 0;
+    const offset = offsetX || offsetY ? ` offset(${offsetX},${offsetY})` : '';
+    const modifier = ` at ${binding.targetExpression}.${String(binding.anchor).replace(/\s+/g, '-').toLowerCase()}${offset}`;
+    const aliasIndex = next.search(/\s+as\s+[A-Za-z_][A-Za-z0-9_.-]*\s*$/i);
+    next = aliasIndex >= 0
+      ? `${next.slice(0, aliasIndex).trimEnd()}${modifier}${next.slice(aliasIndex)}`
+      : `${next.trimEnd()}${modifier}`;
+  }
+  if (next === line) return false;
+  session.replace(new Range(row, 0, row, line.length), next);
   return true;
 };
 
@@ -353,14 +471,14 @@ fetch('sample_code.cpp')
     return response.text();
   })
   .then(code => {
-    if (window.__asmEmbeddedAnimationPayload) return;
+    if (window.__asmEmbeddedAnimationPayload || algorithmDraftRestored || algorithmEditorChangedSinceStartup) return;
     aceEditor.setValue(code, -1);
     // 一載入就自動把 //draw 區塊摺疊起來
     setTimeout(foldDrawBlocks, 0);
   })
   .catch(err => {
     console.error(err);
-    if (window.__asmEmbeddedAnimationPayload) return;
+    if (window.__asmEmbeddedAnimationPayload || algorithmDraftRestored || algorithmEditorChangedSinceStartup) return;
     // 若讀檔失敗，再 fallback 回原本的初始範例
     const fallbackCode = `#include <bits/stdc++.h>
 #include "AV.hpp"
@@ -410,6 +528,9 @@ document.querySelectorAll('.tab-btn').forEach(btn =>
       requestAnimationFrame(() => {
         if (window.setAutoCamera) window.setAutoCamera(1.0, false);
       });
+    }
+    if (btn.dataset.tab === 'tab-syntax-tree') {
+      window.ASMSyntaxTree?.ensureCurrent?.(aceEditor.getValue());
     }
   })
 );
@@ -758,6 +879,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.redoStack.push(this.undoStack.pop());
         inputArea.value = this.undoStack[this.undoStack.length - 1];
         this.isApplying = false;
+        scheduleAlgorithmDraftSave();
       },
 
       redo() {
@@ -767,10 +889,12 @@ document.addEventListener('DOMContentLoaded', () => {
         inputArea.value = val;
         this.undoStack.push(val);
         this.isApplying = false;
+        scheduleAlgorithmDraftSave();
       }
     };
 
     inputArea.addEventListener('input', () => {
+      scheduleAlgorithmDraftSave();
       if (historyManager.isApplying) return;
       clearTimeout(historyManager.timer);
       historyManager.timer = setTimeout(() => {
@@ -790,7 +914,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 失去焦點或按下 Enter 時立即紀錄
-    inputArea.addEventListener('blur', () => historyManager.push(inputArea.value));
+    inputArea.addEventListener('blur', () => {
+      historyManager.push(inputArea.value);
+      saveAlgorithmDraft();
+    });
   }
 
   // === 控制狀態 ===
@@ -809,7 +936,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // === 速度 ===
   let speed = +speedSlider.value;
-  const AUTO_PLAY_IDLE_SCALE = 0.3;
 
   // 把滑桿的值映射成 TTS rate（0.5x ~ 2.0x）
   function getTtsRate() {
@@ -823,7 +949,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const minRate = 0.5;
     const maxRate = 2.0;
-    return minRate + inv * (maxRate - minRate);
+    const mappedRate = minRate + inv * (maxRate - minRate);
+    return Math.round(mappedRate * 10) / 10;
   }
 
   const updateSpeedLabel = () => {
@@ -859,21 +986,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // TTS 驅動的自動播放：逐行讀完目前幀 → 決定下一步
-  function playFromCurrentFrameWithTTS(runId) {
+  function playFromCurrentFrameWithTTS(runId, incomingTransition = null) {
     // 如果已經被暫停，或這個 callback 是舊世代，就不要做事
     if (!isPlaying || runId !== TTS_RUN_ID) return;
 
+    const transitionReady = Promise.resolve(incomingTransition).catch(() => {});
     const entries = collectMessageTextInCurrentFrame();
 
-    const continueAfterTransition = transition => {
-      Promise.resolve(transition).then(() => {
-        if (!isPlaying || runId !== TTS_RUN_ID) return;
-        syncCurrentFrameFromCodeScript();
-        playFromCurrentFrameWithTTS(runId);
-      });
-    };
-
-    const afterSpeak = () => {
+    const advanceAfterReady = () => {
       // 再檢查一次（避免 onend 在 pause 或重新播放後才觸發）
       if (!isPlaying || runId !== TTS_RUN_ID) return;
       clearTTSHighlight();
@@ -888,16 +1008,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const configuredInterval = Number(
+        window.ASMTracePlayer?.getDocument?.()?.studio?.eventSettings?.gapMs
+      );
+      const eventInterval = Number.isFinite(configuredInterval)
+        ? Math.max(0, Math.min(2000, configuredInterval))
+        : 500;
+      const scheduleNextFrame = callback => setTimeout(() => {
+        if (!isPlaying || runId !== TTS_RUN_ID) return;
+        callback();
+      }, eventInterval + (currentFrameSleep || 0));
+
       // 1) skip_frame：跳過區段 → 直接跳到下一個停靠幀或最後，然後念該幀內容
       if (typeof CodeScript.is_skip_frame === 'function' &&
         CodeScript.is_skip_frame(cur)) {
 
         if (typeof gotoNextStopOrEnd === 'function') {
-          gotoNextStopOrEnd(true); // 保持播放狀態
+          scheduleNextFrame(() => {
+            const transition = gotoNextStopOrEnd(true); // 保持播放狀態
+            playFromCurrentFrameWithTTS(runId, transition);
+          });
         }
-
-        // 重新從目前跳轉後的幀開始朗讀內容，讀完後在那邊的 stop 偵測會停下來
-        playFromCurrentFrameWithTTS(runId);
         return;
       }
 
@@ -925,7 +1056,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // 4) fast_frame：跳到下一個 key_frame (track = 1)
       if (typeof CodeScript.is_fast_frame === 'function' &&
         CodeScript.is_fast_frame(cur)) {
-        continueAfterTransition(stepWithTween(() => CodeScript.next_key_frame()));
+        scheduleNextFrame(() => {
+          const transition = stepWithTween(() => CodeScript.next_key_frame());
+          syncCurrentFrameFromCodeScript();
+          playFromCurrentFrameWithTTS(runId, transition);
+        });
         return;
       }
 
@@ -936,30 +1071,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // 6) 正常往下一幀
-      const extraDelay = currentFrameSleep || 0;
-      setTimeout(() => {
-        if (!isPlaying || runId !== TTS_RUN_ID) return;
-
+      scheduleNextFrame(() => {
         let transition = Promise.resolve();
         if (fast && typeof CodeScript.next_key_frame === 'function') {
           transition = stepWithTween(() => CodeScript.next_key_frame());
         } else if (typeof CodeScript.next === 'function') {
           transition = stepWithTween(() => CodeScript.next());
         }
-        continueAfterTransition(transition);
+        syncCurrentFrameFromCodeScript();
+        playFromCurrentFrameWithTTS(runId, transition);
+      });
+    };
 
-        // 7) 繼續自動播下一幀（用同一個 runId）
-      }, extraDelay);
+    const afterSpeak = () => {
+      if (!isPlaying || runId !== TTS_RUN_ID) return;
+      transitionReady.then(() => {
+        if (!isPlaying || runId !== TTS_RUN_ID) return;
+        advanceAfterReady();
+      });
     };
 
     const fallbackDelay = () => {
-      const delay = Math.max(40, Math.round((speed || 500) * AUTO_PLAY_IDLE_SCALE));
-      const extraDelay = currentFrameSleep || 0;
-      setTimeout(() => {
-        // timeout 到的時候也要檢查世代
+      queueMicrotask(() => {
         if (!isPlaying || runId !== TTS_RUN_ID) return;
         afterSpeak();
-      }, delay + extraDelay);
+      });
     };
 
     if (!entries.length) {
@@ -975,6 +1111,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const volume = TTS_ENABLED ? 0.3 : 0.0;
     const rate = getTtsRate();
+    const ttsProfile = window.getAlgoShowMakerTTSProfile?.({ rate, volume }) || {
+      lang: 'zh-TW', rate, volume, pitch: 1,
+      preferredVoiceRegex: /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i
+    };
 
     // === 逐行朗讀 ===
     let entryIdx = 0;
@@ -988,13 +1128,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const entry = entries[entryIdx];
-      highlightTTSLine(entry.groupId, entry.lineIndex);
+      scheduleTTSHighlight(entry.groupId, entry.lineIndex, runId);
 
       speakText(entry.text, {
-        lang: 'zh-TW',
-        rate,
-        volume,
-        preferredVoiceRegex: /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i,
+        lang: ttsProfile.lang,
+        voiceName: ttsProfile.voiceName,
+        rate: ttsProfile.rate,
+        pitch: ttsProfile.pitch,
+        volume: ttsProfile.volume,
+        preferredVoiceRegex: ttsProfile.preferredVoiceRegex,
         interrupt: true,
         onend: () => {
           if (!isPlaying || runId !== TTS_RUN_ID) { clearTTSHighlight(); return; }
@@ -1012,6 +1154,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // === TTS 行高亮 ===
+  function scheduleTTSHighlight(groupId, lineIndex, runId) {
+    clearTTSHighlight();
+    const requestId = TTS_HIGHLIGHT_REQUEST;
+    const waitForEntrance = () => {
+      if (requestId !== TTS_HIGHLIGHT_REQUEST || !isPlaying || runId !== TTS_RUN_ID) return;
+      const vp = window.getViewport && window.getViewport();
+      const group = vp?.querySelector?.('#' + CSS.escape(groupId));
+      const motion = group?.querySelector?.(':scope > .asm-trace-motion');
+      if (motion?.dataset?.traceAppearing === '1') {
+        requestAnimationFrame(waitForEntrance);
+        return;
+      }
+      highlightTTSLine(groupId, lineIndex);
+    };
+    waitForEntrance();
+  }
+
   function highlightTTSLine(groupId, lineIndex) {
     clearTTSHighlight();
     const vp = window.getViewport && window.getViewport();
@@ -1038,12 +1197,18 @@ document.addEventListener('DOMContentLoaded', () => {
       hl.setAttribute('fill', 'rgba(175, 175, 175, 0.23)');
       hl.setAttribute('rx', 3);
       hl.setAttribute('pointer-events', 'none');
-      // 插在 target 之前，使高亮在文字下方
-      g.insertBefore(hl, target.tagName === 'tspan' ? target.parentNode : target);
+      // 群組的 getBBox 是群組自己的座標；反白也放進同一群組，避免遺漏 transform。
+      if (target.tagName.toLowerCase() === 'g') {
+        target.insertBefore(hl, target.firstChild);
+      } else {
+        const textNode = target.tagName === 'tspan' ? target.parentNode : target;
+        textNode.parentNode?.insertBefore(hl, textNode);
+      }
     } catch (e) { /* getBBox 可能在元素不可見時失敗 */ }
   }
 
   function clearTTSHighlight() {
+    TTS_HIGHLIGHT_REQUEST += 1;
     const vp = window.getViewport && window.getViewport();
     if (!vp) return;
     vp.querySelectorAll('#tts-line-highlight').forEach(el => el.remove());
@@ -1130,16 +1295,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
 
-          CodeScript.goto(target);
+          const transition = CodeScript.goto(target);
           syncCurrentFrameFromCodeScript();
-          return;
+          return transition;
         }
       }
     }
 
     // 否則 → 沒有下一個 stop，跳到最後一個 frame
-    CodeScript.goto(-1);
+    const transition = CodeScript.goto(-1);
     syncCurrentFrameFromCodeScript();
+    return transition;
   }
 
   // === 全域：目前是否有「自動連續步進」在跑 ===
@@ -1147,6 +1313,7 @@ document.addEventListener('DOMContentLoaded', () => {
     activeBtn: null,
     intervalId: null,
     stepFn: null,
+    running: false,
     direction: 0,   // +1 往後, -1 往前, 0 不管方向
   };
 
@@ -1155,6 +1322,7 @@ document.addEventListener('DOMContentLoaded', () => {
       clearInterval(stepAuto.intervalId);
       stepAuto.intervalId = null;
     }
+    stepAuto.running = false;
     if (stepAuto.activeBtn) {
       stepAuto.activeBtn.classList.remove('auto-stepping');
       stepAuto.activeBtn = null;
@@ -1172,10 +1340,12 @@ document.addEventListener('DOMContentLoaded', () => {
     stepAuto.direction = direction;
     btn.classList.add('auto-stepping');
 
-    stepAuto.intervalId = setInterval(() => {
+    stepAuto.intervalId = setInterval(async () => {
+      if (stepAuto.running) return;
+      stepAuto.running = true;
       const before = csGetCurrentFrameIndex();
 
-      stepFn();                       // 走一步
+      await Promise.resolve(stepFn());
       syncCurrentFrameFromCodeScript();
 
       const after = csGetCurrentFrameIndex();
@@ -1206,6 +1376,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (needStop) {
         stopStepAuto(); // 會清 interval + 把按鈕 auto-stepping 樣式拿掉
       }
+      stepAuto.running = false;
     }, speed);
   }
 
@@ -1290,7 +1461,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 如果不在第0幀，且有上一個 Key Frame，才允許往回跳
     if (CodeScript && CodeScript.get_current_frame_index() > 0) {
       if (CodeScript.has_prev_key && !CodeScript.has_prev_key()) return;
-      stepWithTween(() => CodeScript.prev_key_frame(), 300);
+      return stepWithTween(() => CodeScript.prev_key_frame(), 300);
     }
   }, -1);
 
@@ -1298,7 +1469,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 如果還沒到最後一幀，且有下一個 Key Frame，才允許往下跳
     if (CodeScript && CodeScript.get_current_frame_index() < CodeScript.get_frame_count() - 1) {
       if (CodeScript.has_next_key && !CodeScript.has_next_key()) return;
-      stepWithTween(() => CodeScript.next_key_frame(), 300);
+      return stepWithTween(() => CodeScript.next_key_frame(), 300);
     }
   }, +1);
 
@@ -1306,14 +1477,14 @@ document.addEventListener('DOMContentLoaded', () => {
   bindStepButton(prevBtn, () => {
     // 如果不在第0幀，才允許上一步
     if (CodeScript && CodeScript.get_current_frame_index() > 0) {
-      stepWithTween(() => CodeScript.prev(), 300);
+      return stepWithTween(() => CodeScript.prev(), 300);
     }
   }, -1);
 
   bindStepButton(nextBtn, () => {
     // 如果還沒到最後一幀，才允許下一步
     if (CodeScript && CodeScript.get_current_frame_index() < CodeScript.get_frame_count() - 1) {
-      stepWithTween(() => CodeScript.next(), 300);
+      return stepWithTween(() => CodeScript.next(), 300);
     }
   }, +1);
 
@@ -1839,6 +2010,7 @@ document.addEventListener('DOMContentLoaded', function () {
           showMsg(`登入成功！歡迎，${data.username}`, "success");
           localStorage.setItem('algo_jwt_token', data.token);
           localStorage.setItem('algo_username', data.username);
+          window.dispatchEvent(new CustomEvent('asm:auth-changed'));
           updateUserUI(data.username);
 
           setTimeout(() => {
@@ -2212,6 +2384,7 @@ document.addEventListener('DOMContentLoaded', function () {
           inputArea.value = "";
         }
       }
+      saveAlgorithmDraft();
 
       // 成功提示
       showToast(`✅ 已載入：${targetCode.title}`, "success");
@@ -2706,6 +2879,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const inputText = await res.text();
 
         inputArea.value = inputText;
+        saveAlgorithmDraft();
       }
 
       // 成功提示 (如果有的話)

@@ -6,6 +6,43 @@
     "SpeechSynthesisUtterance" in window;
 
   let cachedVoices = [];
+  const ALGOSHOW_TTS_VOICE_REGEX = /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i;
+  const DISABLED_TTS_VOICE_NAMES = new Set([
+    'microsoft hanhan - chinese (traditional, taiwan)'
+  ]);
+
+  function parseTTSMarkup(value) {
+    const source = String(value ?? "");
+    let display = "";
+    let speech = "";
+    let cursor = 0;
+    while (cursor < source.length) {
+      if (source[cursor] !== "{") {
+        display += source[cursor];
+        speech += source[cursor];
+        cursor += 1;
+        continue;
+      }
+      const end = source.indexOf("}", cursor + 1);
+      if (end < 0) {
+        display += source[cursor];
+        speech += source[cursor];
+        cursor += 1;
+        continue;
+      }
+      const inner = source.slice(cursor + 1, end);
+      const separator = inner.indexOf(":");
+      if (separator >= 0) {
+        display += inner.slice(0, separator);
+        speech += inner.slice(separator + 1);
+      } else {
+        display += inner;
+      }
+      cursor = end + 1;
+    }
+    return { display, speech };
+  }
+
   function refreshVoices() {
     if (!hasAPI) return [];
     cachedVoices = window.speechSynthesis.getVoices() || [];
@@ -32,14 +69,17 @@
   function pickBestVoice({ lang = "zh-TW", preferredVoiceRegex } = {}) {
     const voices = cachedVoices.length ? cachedVoices : refreshVoices();
     if (!voices.length) return null;
+    const selectableVoices = voices.filter(voice => (
+      !DISABLED_TTS_VOICE_NAMES.has(String(voice.name || '').trim().toLowerCase())
+    ));
+    if (!selectableVoices.length) return null;
 
     // 預設偏好：Microsoft 線上自然語音（名稱常含 Natural / Neural），且為非本機(localService=false)
     const defaultRegex =
       preferredVoiceRegex ||
-      /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i;
-
+      ALGOSHOW_TTS_VOICE_REGEX;
     // 1) 自然語音 + 語言相符 + 線上 voice
-    let best = voices.find(
+    let best = selectableVoices.find(
       v =>
         v.lang &&
         v.lang.toLowerCase().startsWith(lang.toLowerCase()) &&
@@ -49,25 +89,25 @@
     if (best) return best;
 
     // 2) 自然語音 + 線上，不強制 lang
-    best = voices.find(
+    best = selectableVoices.find(
       v => defaultRegex.test(v.name || "") && v.localService === false
     );
     if (best) return best;
 
-    // 3) 同語系 zh-* 的任何 voice
-    best = voices.find(
+    // 3) 同語系 zh-* 的任何線上 voice
+    best = selectableVoices.find(
       v => v.lang && /^zh/i.test(v.lang) && v.localService === false
     );
     if (best) return best;
 
     // 4) 同語言 lang 的任何 voice（含本機）
-    best = voices.find(
+    best = selectableVoices.find(
       v => v.lang && v.lang.toLowerCase().startsWith(lang.toLowerCase())
     );
     if (best) return best;
 
     // 5) 退而求其次：任一 voice
-    return voices[0] || null;
+    return selectableVoices[0] || null;
   }
 
   /**
@@ -111,31 +151,35 @@
     // 確保 voices 取得
     await waitForVoices();
 
-    const utter = new SpeechSynthesisUtterance(String(text ?? ""));
-    utter.lang = lang;
-    utter.rate = rate;
-    utter.pitch = pitch;
-    utter.volume = volume;
-
-    // 指定 voice（優先 voiceName，其次自動挑選自然語音）
-    if (voiceName) {
-      const v = (cachedVoices.length ? cachedVoices : refreshVoices())
-        .find(v => v.name === voiceName);
-      if (v) utter.voice = v;
-    } else {
-      const best = pickBestVoice({ lang, preferredVoiceRegex });
-      if (best) utter.voice = best;
-    }
-
-    if (typeof onstart === "function") utter.onstart = onstart;
-    if (typeof onend   === "function") utter.onend   = onend;
-    if (typeof onerror === "function") utter.onerror = onerror;
+    const source = String(text ?? '');
+    if (!source) return null;
+    const availableVoices = cachedVoices.length ? cachedVoices : refreshVoices();
+    const utterance = new SpeechSynthesisUtterance(source);
+    const namedVoice = voiceName
+      ? availableVoices.find(voice => voice.name === voiceName)
+      : null;
+    const voice = namedVoice || pickBestVoice({
+      lang,
+      preferredVoiceRegex: preferredVoiceRegex || ALGOSHOW_TTS_VOICE_REGEX
+    });
+    if (voice) utterance.voice = voice;
+    utterance.lang = voice?.lang || lang;
+    utterance.rate = rate;
+    utterance.pitch = pitch;
+    utterance.volume = volume;
+    if (typeof onstart === 'function') utterance.onstart = onstart;
+    if (typeof onend === 'function') utterance.onend = onend;
+    if (typeof onerror === 'function') utterance.onerror = onerror;
+    const voiceLabel = utterance.voice?.name || `browser-default (${utterance.lang})`;
+    document.documentElement.dataset.asmTtsVoice = voiceLabel;
+    document.documentElement.dataset.asmTtsVoices = voiceLabel;
+    document.documentElement.dataset.asmTtsLanguages = utterance.lang;
 
     if (interrupt) {
       try { window.speechSynthesis.cancel(); } catch {}
     }
-    window.speechSynthesis.speak(utter);
-    return utter;
+    window.speechSynthesis.speak(utterance);
+    return utterance;
   }
 
   function stopSpeak() {
@@ -149,6 +193,26 @@
 
   function getVoices() {
     return hasAPI ? (cachedVoices.length ? cachedVoices : refreshVoices()) : [];
+  }
+
+  function getAlgoShowMakerTTSProfile(settings = {}) {
+    const rate = Number(settings.rate);
+    const volume = Number(settings.volume);
+    const lang = String(settings.lang || 'zh-TW');
+    const preferredVoiceRegex = settings.preferredVoiceRegex || ALGOSHOW_TTS_VOICE_REGEX;
+    const voice = pickBestVoice({
+      lang,
+      preferredVoiceRegex
+    });
+    return {
+      voice,
+      voiceName: voice?.name,
+      lang: voice?.lang || lang,
+      rate: Math.min(2, Math.max(0.5, Number.isFinite(rate) ? rate : 1.2)),
+      volume: Math.min(1, Math.max(0, Number.isFinite(volume) ? volume : 0.3)),
+      pitch: 1,
+      preferredVoiceRegex
+    };
   }
 
   // 粗略判斷：是否已有使用者互動（點擊、鍵盤、觸控）
@@ -168,4 +232,6 @@
   window.getVoices = getVoices;
   window.waitForTTSVoices = waitForVoices;
   window.pickBestTTSVoice = pickBestVoice;
+  window.getAlgoShowMakerTTSProfile = getAlgoShowMakerTTSProfile;
+  window.parseTTSMarkup = parseTTSMarkup;
 })();

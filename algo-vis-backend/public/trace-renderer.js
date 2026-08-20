@@ -25,8 +25,12 @@
 
   function applyHighlight(element, highlight = {}) {
     const color = highlight.color || highlight.fill || highlight.stroke;
-    if (highlight.styleType === 'background' && color) element.setAttribute('fill', color);
-    else if (highlight.styleType && color) element.setAttribute('stroke', color);
+    const typed = highlight.styleTypes || {};
+    const background = typed.background || (highlight.styleType === 'background' ? color : '');
+    const stroke = typed.highlight || typed.focus
+      || (highlight.styleType && highlight.styleType !== 'background' ? color : '');
+    if (background) element.setAttribute('fill', background);
+    if (stroke) element.setAttribute('stroke', stroke);
     if (highlight.fill) element.setAttribute('fill', highlight.fill);
     if (highlight.stroke) element.setAttribute('stroke', highlight.stroke);
     if (highlight.animation) element.classList.add(highlight.animation);
@@ -44,12 +48,19 @@
       if (highlight.fixedMark) {
         styles.push({ type: 'mark', color: highlight.fixedMark, elements: valid });
       }
-      if (highlight.styleType && highlight.color) {
+      const typedStyles = highlight.styleTypes || {};
+      Object.entries(typedStyles).forEach(([type, color]) => {
+        if (color) styles.push({ type, color, elements: valid });
+      });
+      if (!Object.keys(typedStyles).length && highlight.styleType && highlight.color) {
         styles.push({ type: highlight.styleType, color: highlight.color, elements: valid });
-        return;
       }
-      if (highlight.fill) styles.push({ type: 'background', color: highlight.fill, elements: valid });
-      if (highlight.stroke) styles.push({ type: 'highlight', color: highlight.stroke, elements: valid });
+      if (highlight.fill && !typedStyles.background) {
+        styles.push({ type: 'background', color: highlight.fill, elements: valid });
+      }
+      if (highlight.stroke && !typedStyles.highlight) {
+        styles.push({ type: 'highlight', color: highlight.stroke, elements: valid });
+      }
     });
     return styles;
   }
@@ -111,14 +122,30 @@
     return [displayValue(entry.data)];
   }
 
+  function isScalarRenderer(variable, rendererName) {
+    return rendererName === 'original-cell'
+      || ['scalar', 'string'].includes(variable?.kind);
+  }
+
+  function removeScalarIndexLabels(content, variable, rendererName) {
+    if (!isScalarRenderer(variable, rendererName)) return;
+    content.querySelectorAll('[id$="-index"], [data-trace-index-label]').forEach(label => label.remove());
+  }
+
   function renderOriginal(group, entry, context) {
     if (typeof window.draw_array_normal !== 'function') {
       return Array.isArray(entry.data?.items) ? renderSequence(group, entry, context) : renderScalar(group, entry, context);
     }
     const id = `${context.idPrefix || 'trace-original'}-${context.variableId.replace(/[^A-Za-z0-9_-]/g, '-')}`;
-    const gap = Number.isFinite(Number(context.skin?.options?.gap)) ? Number(context.skin.options.gap) : 0;
-    const indexMode = context.skin?.options?.showIndex === false ? 0 : 1;
+    const rendererOptions = context.skin?.options || {};
+    const gap = Number.isFinite(Number(rendererOptions.gap)) ? Number(rendererOptions.gap) : 0;
     const requested = context.rendererName || 'original-array';
+    const isScalarCell = isScalarRenderer(context.variable, requested);
+    const configuredShowIndex = rendererOptions.showIndex;
+    const configuredIndexMode = Number(rendererOptions.indexMode);
+    const indexMode = isScalarCell ? 0 : Number.isFinite(configuredIndexMode)
+      ? Math.max(0, Math.min(4, Math.trunc(configuredIndexMode)))
+      : (configuredShowIndex === false ? 0 : 1);
     const isMatrix = requested === 'original-matrix' || context.variable.kind === 'matrix';
     let values = originalValues(entry);
     let itemsPerRow = Infinity;
@@ -129,34 +156,57 @@
       itemsPerRow = columns;
     }
     if (!values.length) values = [''];
-    const range = [0, values.length - 1];
+    const configuredColumns = Number(rendererOptions.columns);
+    if (Number.isFinite(configuredColumns) && configuredColumns > 0) {
+      itemsPerRow = Math.max(1, Math.trunc(configuredColumns));
+    }
+    const configuredRange = Array.isArray(rendererOptions.range) ? rendererOptions.range : [];
+    const rangeStart = Number.isFinite(Number(configuredRange[0]))
+      ? Math.max(0, Math.min(values.length, Math.trunc(Number(configuredRange[0]))))
+      : 0;
+    const rangeEndExclusive = Number.isFinite(Number(configuredRange[1]))
+      ? Math.max(rangeStart, Math.min(values.length, Math.trunc(Number(configuredRange[1]))))
+      : values.length;
+    const range = [rangeStart, rangeEndExclusive - 1];
+    const visibleCount = Math.max(0, rangeEndExclusive - rangeStart);
     const styles = originalStyles(context.highlights, values.length);
     const mode = requested.replace(/^original-/, '');
-    if (mode === 'stack' && typeof window.draw_array_stack === 'function') {
+    if (mode === 'heap' && typeof window.draw_array_heap === 'function') {
+      window.draw_array_heap(group, id, values, styles, range, indexMode, gap);
+    } else if (mode === 'segment-tree' && typeof window.draw_array_segment_tree === 'function') {
+      window.draw_array_segment_tree(group, id, values, styles, range, indexMode, gap, [], [], [], [], [], [], []);
+    } else if (mode === 'bit' && typeof window.draw_array_BIT === 'function') {
+      window.draw_array_BIT(group, id, values, styles, range, indexMode, gap);
+    } else if (mode === 'disk' && typeof window.draw_array_disk === 'function') {
+      window.draw_array_disk(group, id, values, styles, range, itemsPerRow, indexMode);
+    } else if (mode === 'stack' && typeof window.draw_array_stack === 'function') {
       window.draw_array_stack(group, id, values, styles, range, indexMode, gap);
     } else if (mode === 'queue' && typeof window.draw_array_queue === 'function') {
       window.draw_array_queue(group, id, values, styles, range, indexMode, gap);
     } else {
       window.draw_array_normal(group, id, values, styles, range, itemsPerRow, indexMode, gap);
     }
-    values.forEach((value, index) => {
-      const cell = group.querySelector(`#${CSS.escape(`cell-${id}-${index}`)}`);
+    group.setAttribute('data-trace-range-start', String(rangeStart));
+    group.setAttribute('data-trace-range-end', String(rangeEndExclusive));
+    removeScalarIndexLabels(group, context.variable, requested);
+    Array.from({ length: visibleCount }, (_, localIndex) => rangeStart + localIndex).forEach((logicalIndex, localIndex) => {
+      const cell = group.querySelector(`#${CSS.escape(`cell-${id}-${localIndex}`)}`);
       const cellKey = isMatrix
-        ? `${context.variableId}#${Math.floor(index / itemsPerRow)},${index % itemsPerRow}`
-        : `${context.variableId}#${index}`;
+        ? `${context.variableId}#${Math.floor(logicalIndex / itemsPerRow)},${logicalIndex % itemsPerRow}`
+        : `${context.variableId}#${logicalIndex}`;
       if (cell) {
-        cell.setAttribute('data-trace-index', String(index));
+        cell.setAttribute('data-trace-index', String(logicalIndex));
         markSelectable(cell, cellKey, context, context.variableId);
       }
       ['highlight', 'point', 'mark'].forEach(kind => {
-        const hint = group.querySelector(`#${CSS.escape(`${kind}-${id}-${index}`)}`);
+        const hint = group.querySelector(`#${CSS.escape(`${kind}-${id}-${localIndex}`)}`);
         if (!hint) return;
         hint.setAttribute('data-trace-attached-to', cellKey);
         hint.setAttribute('data-trace-attachment-kind', kind);
       });
-      const indexLabel = group.querySelector(`#${CSS.escape(`cell-${id}-${index}-index`)}`);
+      const indexLabel = group.querySelector(`#${CSS.escape(`cell-${id}-${localIndex}-index`)}`);
       if (indexLabel) {
-        indexLabel.setAttribute('data-trace-index-label', String(index));
+        indexLabel.setAttribute('data-trace-index-label', String(logicalIndex));
         markSelectable(indexLabel, `${cellKey}:index`, context, context.variableId);
       }
     });
@@ -167,7 +217,7 @@
       label.setAttribute('font-weight', 'bold');
       markSelectable(label, `${context.variableId}:label`, context, context.variableId);
     });
-    return originalBoundsHeight(group, isMatrix ? Math.max(78, Math.ceil(values.length / itemsPerRow) * 52 + 24) : 78);
+    return originalBoundsHeight(group, isMatrix ? Math.max(78, Math.ceil(visibleCount / itemsPerRow) * 52 + 24) : 78);
   }
 
   function renderSequence(group, entry, context) {
@@ -321,6 +371,19 @@
     return positions;
   }
 
+  function objectMotionPositions(rootSvg, fallbackPositions) {
+    const positions = new Map(fallbackPositions || objectPositions(rootSvg));
+    rootSvg.querySelectorAll(
+      '#asm-trace-root [data-trace-object-key][data-trace-position-space="origin"]'
+    ).forEach(object => {
+      const x = Number(object.getAttribute('data-trace-position-x'));
+      const y = Number(object.getAttribute('data-trace-position-y'));
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      positions.set(object.dataset.traceObjectKey, { x, y });
+    });
+    return positions;
+  }
+
   function captureTopLevelObjects(rootSvg) {
     const root = rootSvg.querySelector('#asm-trace-root');
     const captured = new Map();
@@ -349,6 +412,27 @@
     clone.querySelectorAll('[data-trace-binding-handle], [data-trace-anchor]').forEach(control => control.remove());
     [clone, ...clone.querySelectorAll('[id]')].forEach(node => node.removeAttribute?.('id'));
     return clone.innerHTML.replace(/\s+/g, ' ').trim();
+  }
+
+  function capturedKeysByRuntimeIdentity(captured) {
+    const keys = new Map();
+    captured?.forEach?.((element, key) => {
+      const identity = element?.dataset?.traceRuntimeIdentity || '';
+      if (identity && !keys.has(identity)) keys.set(identity, key);
+    });
+    return keys;
+  }
+
+  function capturedObjectFor(captured, element, requestedKey, identityKeys) {
+    if (requestedKey && captured?.has?.(requestedKey)) {
+      return { key: requestedKey, element: captured.get(requestedKey) };
+    }
+    const identity = element?.dataset?.traceRuntimeIdentity || '';
+    const aliasKey = identity ? identityKeys.get(identity) : '';
+    return {
+      key: aliasKey || requestedKey || '',
+      element: aliasKey ? captured.get(aliasKey) : null
+    };
   }
 
   function animationAttributes(plan) {
@@ -448,6 +532,7 @@
 
   function animateChangedObjects(captured, elements, options) {
     if (options.animatePositions === false || !captured?.size) return;
+    const identityKeys = capturedKeysByRuntimeIdentity(captured);
     elements.forEach((element, key) => {
       const plan = transitionForKey(options, key);
       if (plan?.requestedMode !== 'auto' || !plan.sourceExists || Number(plan.duration) <= 0) return;
@@ -455,8 +540,14 @@
         event.type === 'swap' && (event.targets || []).some(target => target.variableId === key)
       ));
       if (hasDedicatedSwap) return;
-      const previous = captured.get(plan.sourceKey || key);
+      const previousMatch = capturedObjectFor(
+        captured, element, plan.sourceKey || key, identityKeys
+      );
+      const previous = previousMatch.element;
       if (!previous || transitionVisualSignature(previous) === transitionVisualSignature(element)) return;
+      const currentIdentity = element.dataset.traceRuntimeIdentity || '';
+      const previousIdentity = previous.dataset.traceRuntimeIdentity || '';
+      if (currentIdentity && currentIdentity === previousIdentity) return;
       const motion = element.querySelector(':scope > .asm-trace-motion') || element;
       if (motion.querySelector(':scope > animate[attributeName="opacity"]')) return;
       animateOpacity(motion, plan, 0.35, 1);
@@ -466,9 +557,13 @@
   function animateRemovedObjects(root, captured, elements, document, options) {
     if (options.animatePositions === false || !captured?.size) return;
     const consumed = new Set();
+    const identityKeys = capturedKeysByRuntimeIdentity(captured);
     elements.forEach((element, key) => {
       const plan = transitionForKey(options, key);
       if (plan?.sourceKey) consumed.add(plan.sourceKey);
+      const identity = element?.dataset?.traceRuntimeIdentity || '';
+      const aliasKey = identity ? identityKeys.get(identity) : '';
+      if (aliasKey) consumed.add(aliasKey);
     });
     const defaults = window.ASMTraceTransitions?.defaults?.(document) || {
       duration: 360, easing: 'smooth'
@@ -667,6 +762,35 @@
     return placements.get(targetObjectKey) || null;
   }
 
+  function ensureLinearIndexPlacement(frame, variableId, index, itemCount, placements) {
+    if (!Number.isInteger(index) || !Number.isInteger(itemCount) || itemCount < 1) return null;
+    const objectKey = objectKeyForVariable(frame, variableId);
+    const key = `${objectKey}#${index}`;
+    if (placements.has(key)) return placements.get(key);
+
+    const edgeIndex = index < 0 ? 0 : itemCount - 1;
+    const neighbourIndex = index < 0 ? Math.min(1, itemCount - 1) : Math.max(0, itemCount - 2);
+    const edge = placements.get(`${objectKey}#${edgeIndex}`);
+    const neighbour = placements.get(`${objectKey}#${neighbourIndex}`);
+    if (!edge) return null;
+
+    let stepX = Number(edge.width) || 0;
+    let stepY = 0;
+    if (neighbour && neighbourIndex !== edgeIndex) {
+      const indexDelta = edgeIndex - neighbourIndex;
+      stepX = ((Number(edge.x) || 0) - (Number(neighbour.x) || 0)) / indexDelta;
+      stepY = ((Number(edge.y) || 0) - (Number(neighbour.y) || 0)) / indexDelta;
+    }
+    const distance = index - edgeIndex;
+    const virtualPlacement = {
+      ...edge,
+      x: (Number(edge.x) || 0) + stepX * distance,
+      y: (Number(edge.y) || 0) + stepY * distance
+    };
+    placements.set(key, virtualPlacement);
+    return virtualPlacement;
+  }
+
   function anchorPoint(placement, anchor = 'center') {
     if (!placement) return null;
     const normalized = String(anchor || 'center').toLowerCase();
@@ -732,6 +856,145 @@
         element.dataset.tracePositionX = String(baseX + box.x + shift.x);
         element.dataset.tracePositionY = String(baseY + box.y + shift.y);
       }
+    });
+  }
+
+  function renderFrameSegments(root, document, frame, placements, elements, options = {}) {
+    const segmentOrdinals = new Map();
+    (frame.segments || []).forEach((descriptor, descriptorIndex) => {
+      if (!window.ASMTraceRules?.expressionMatches?.(document, frame, descriptor?.when)) return;
+      const variableId = descriptor?.targetVariableId;
+      const entry = frame.state?.[variableId];
+      const items = entry?.data?.items;
+      if (!variableId || !Array.isArray(items)) return;
+
+      const targetKey = objectKeyForVariable(frame, variableId);
+      const rendererName = frame.renderers?.[variableId]
+        || document.skins?.[variableId]?.renderer
+        || document.variables?.[variableId]?.kind
+        || entry.data?.kind;
+      if (rendererName && rendererName !== 'original-array' && rendererName !== 'sequence') return;
+
+      const start = Number(window.ASMTraceRules.resolveExpression(
+        document, frame, descriptor.startExpression
+      ));
+      const end = Number(window.ASMTraceRules.resolveExpression(
+        document, frame, descriptor.endExpression
+      ));
+      const endExclusive = end + (descriptor.endInclusive ? 1 : 0);
+      if (!Number.isInteger(start) || !Number.isInteger(end)
+        || start < 0 || endExclusive < start || endExclusive > items.length) return;
+
+      const cells = items.map((_, index) => placements.get(`${targetKey}#${index}`) || null);
+      const renderedCells = cells.filter(Boolean);
+      if (!renderedCells.length) return;
+      const targetPlacement = placements.get(targetKey);
+      if (!targetPlacement) return;
+      const targetElement = elements.get(targetKey);
+      const outerframe = targetElement?.matches?.('[data-outerframe-top][data-outerframe-bottom]')
+        ? targetElement
+        : targetElement?.querySelector?.('[data-outerframe-top][data-outerframe-bottom]');
+      const outerframeLocalTop = Number(outerframe?.getAttribute?.('data-outerframe-top'));
+      const outerframeLocalBottom = Number(outerframe?.getAttribute?.('data-outerframe-bottom'));
+      const targetOriginY = Number(targetElement?.dataset?.tracePositionY);
+      const hasStableOuterframe = Number.isFinite(targetOriginY)
+        && Number.isFinite(outerframeLocalTop)
+        && Number.isFinite(outerframeLocalBottom)
+        && outerframeLocalBottom > outerframeLocalTop;
+      const boundaryX = index => {
+        if (cells[index]) return Number(cells[index].x) || 0;
+        if (index === items.length && cells[index - 1]) {
+          return (Number(cells[index - 1].x) || 0) + (Number(cells[index - 1].width) || 0);
+        }
+        return null;
+      };
+      const left = boundaryX(start);
+      const right = boundaryX(endExclusive);
+      if (!Number.isFinite(left) || !Number.isFinite(right) || right < left) return;
+
+      // Segment height follows the array frame only. Object bounds may include
+      // transient marks, pointers, or highlights and therefore vary per frame.
+      const outerframeTop = hasStableOuterframe
+        ? targetOriginY + outerframeLocalTop
+        : Number(targetPlacement.y) || 0;
+      const outerframeBottom = hasStableOuterframe
+        ? targetOriginY + outerframeLocalBottom
+        : outerframeTop + (Number(targetPlacement.height) || 0);
+      const top = outerframeTop - 60;
+      const bottom = outerframeBottom + 20;
+      const arrowY = top + 5;
+      const width = right - left;
+      const key = `segment:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
+      const identityBase = String(entry.identity || targetKey);
+      const ordinal = segmentOrdinals.get(identityBase) || 0;
+      segmentOrdinals.set(identityBase, ordinal + 1);
+      const runtimeIdentity = descriptor.named
+        ? `segment:named:${descriptor.id}`
+        : `segment:${identityBase}:${ordinal}`;
+      const stroke = '#000000';
+      const strokeWidth = 2;
+      const object = markSelectable(svg('g', {
+        class: 'asm-trace-object asm-trace-segment',
+        'data-trace-object-key': key,
+        'data-trace-object-id': key,
+        'data-trace-bound': '1',
+        'data-trace-binding-target': targetKey,
+        'data-trace-segment-target': targetKey,
+        'data-trace-runtime-identity': runtimeIdentity,
+        'data-trace-render-position': `${left},${top}`,
+        'data-trace-segment-left': left,
+        'data-trace-segment-right': right,
+        'data-trace-segment-top': top,
+        'data-trace-segment-bottom': bottom,
+        'data-trace-segment-arrow-y': arrowY,
+        'stroke-opacity': 0.5,
+        'pointer-events': 'visiblePainted'
+      }), key, { ...options, movable: false });
+      object.append(
+        svg('line', { 'data-trace-segment-role': 'left-boundary', x1: left, y1: top, x2: left, y2: bottom, stroke, 'stroke-width': strokeWidth }),
+        svg('line', { 'data-trace-segment-role': 'right-boundary', x1: right, y1: top, x2: right, y2: bottom, stroke, 'stroke-width': strokeWidth })
+      );
+      if (width > 0) {
+        const head = Math.min(6, Math.max(2, width / 3));
+        const arrowLeft = Math.min(right, left + strokeWidth / 2);
+        const arrowRight = Math.max(arrowLeft, right - strokeWidth / 2);
+        object.append(
+          svg('line', {
+            'data-trace-segment-role': 'width-line',
+            x1: arrowLeft, y1: arrowY, x2: arrowRight, y2: arrowY,
+            stroke, 'stroke-width': strokeWidth, 'stroke-dasharray': '6 4'
+          }),
+          svg('path', {
+            'data-trace-segment-role': 'left-head',
+            d: `M ${arrowLeft + head} ${arrowY - 4} L ${arrowLeft} ${arrowY} L ${arrowLeft + head} ${arrowY + 4}`,
+            fill: 'none', stroke, 'stroke-width': strokeWidth, 'stroke-linejoin': 'miter'
+          }),
+          svg('path', {
+            'data-trace-segment-role': 'right-head',
+            d: `M ${arrowRight - head} ${arrowY - 4} L ${arrowRight} ${arrowY} L ${arrowRight - head} ${arrowY + 4}`,
+            fill: 'none', stroke, 'stroke-width': strokeWidth, 'stroke-linejoin': 'miter'
+          })
+        );
+      }
+      if (descriptor.showWidth) {
+        object.append(svg('text', {
+          'data-trace-segment-role': 'width-label',
+          x: left + width / 2,
+          y: arrowY - 7,
+          'text-anchor': 'middle',
+          'font-family': 'Arial',
+          'font-size': 12,
+          fill: '#000000'
+        }, String(Math.max(0, endExclusive - start))));
+      }
+      root.append(object);
+      placements.set(key, {
+        x: left,
+        y: descriptor.showWidth ? arrowY - 21 : top,
+        width: Math.max(1, width),
+        height: bottom - (descriptor.showWidth ? arrowY - 21 : top)
+      });
+      elements.set(key, object);
     });
   }
 
@@ -818,7 +1081,36 @@
   }
 
   function applyBindings(document, frame, placements, elements) {
-    const bindings = document.studio?.bindings?.[frame.id] || {};
+    const directiveBindings = {};
+    (frame.objectBindings || []).forEach(binding => {
+      if (!binding?.sourceVariableId) return;
+      const sourceKey = objectKeyForVariable(frame, binding.sourceVariableId);
+      const targetKey = binding.canvas
+        ? '$canvas'
+        : resolvedTargetKey(document, frame, {
+          variableId: binding.targetVariableId,
+          indexExpression: (binding.indexExpressions || []).join(',')
+        });
+      if (!sourceKey || !targetKey) return;
+      const anchor = String(binding.anchor || 'center').toLowerCase();
+      const vertical = anchor.includes('top') ? 'bottom' : anchor.includes('bottom') ? 'top' : '';
+      const horizontal = anchor.includes('left') ? 'right' : anchor.includes('right') ? 'left' : '';
+      directiveBindings[sourceKey] = {
+        targetKey,
+        sourceAnchor: [vertical, horizontal].filter(Boolean).join('-') || 'center',
+        targetAnchor: anchor,
+        dx: (anchor.includes('left') ? -8 : anchor.includes('right') ? 8 : 0)
+          + (Number(binding.offsetX) || 0),
+        dy: (anchor.includes('top') ? -8 : anchor.includes('bottom') ? 8 : 0)
+          + (Number(binding.offsetY) || 0),
+        semanticDirective: true,
+        targetExpression: binding.targetExpression || ''
+      };
+    });
+    const bindings = {
+      ...directiveBindings,
+      ...(document.studio?.bindings?.[frame.id] || {})
+    };
     const applied = new Set();
     const applying = new Set();
 
@@ -830,7 +1122,9 @@
       applying.add(key);
       applyOne(binding.targetKey);
       const sourcePlacement = placements.get(key);
-      const targetPlacement = placements.get(binding.targetKey);
+      const targetPlacement = binding.targetKey === '$canvas'
+        ? { x: 0, y: 0, width: 1100, height: 620 }
+        : placements.get(binding.targetKey);
       if (sourcePlacement && targetPlacement && binding.targetKey !== key) {
         const sourcePoint = anchorPoint(sourcePlacement, binding.sourceAnchor || 'top');
         const targetPoint = anchorPoint(targetPlacement, binding.targetAnchor || 'center');
@@ -871,11 +1165,17 @@
 
   function animateSwapEvents(document, frame, placements, elements, enabled) {
     if (!enabled || eventAnimation('swap') !== 'swap') return;
-    (frame.events || []).filter(event => event.type === 'swap').forEach(event => {
+    (frame.events || []).filter(event => (
+      event.type === 'swap'
+      && event.enabled !== false
+      && event.autoAnimationDisabled !== true
+    )).forEach(event => {
       const targets = (event.targets || []).filter(target => target.variableId && target.indexExpression);
       if (targets.length < 2 || targets[0].variableId !== targets[1].variableId) return;
       const indices = targets.slice(0, 2).map(target => {
-        const value = window.ASMTraceRules.resolveExpression(document, frame, target.indexExpression);
+        const value = target.resolvedIndex != null && Number.isInteger(Number(target.resolvedIndex))
+          ? target.resolvedIndex
+          : window.ASMTraceRules.resolveExpression(document, frame, target.indexExpression);
         return value == null ? NaN : Number(value);
       });
       if (indices.some(index => !Number.isInteger(index)) || indices[0] === indices[1]) return;
@@ -906,7 +1206,11 @@
     const currentIndex = document.frames?.findIndex(item => item.id === frame?.id) ?? -1;
     if (currentIndex < 0) return;
     document.frames.slice(0, currentIndex + 1).forEach(sourceFrame => {
-      (sourceFrame.events || []).filter(event => event.type === 'fixed').forEach(event => {
+      (sourceFrame.events || []).filter(event => (
+        event.type === 'fixed'
+        && event.enabled !== false
+        && event.autoAnimationDisabled !== true
+      )).forEach(event => {
         (event.targets || []).forEach(target => {
           if (!target.variableId || target.indexExpression == null) return;
           const index = Number(window.ASMTraceRules.resolveExpression(document, frame, target.indexExpression));
@@ -924,7 +1228,11 @@
   function delayedCurrentFixedMarks(root, document, frame, enabled) {
     if (!enabled) return [];
     const targetKeys = new Set();
-    (frame.events || []).filter(event => event.type === 'fixed').forEach(event => {
+    (frame.events || []).filter(event => (
+      event.type === 'fixed'
+      && event.enabled !== false
+      && event.autoAnimationDisabled !== true
+    )).forEach(event => {
       (event.targets || []).forEach(target => {
         if (!target.variableId || target.indexExpression == null) return;
         const index = Number(window.ASMTraceRules.resolveExpression(document, frame, target.indexExpression));
@@ -957,7 +1265,7 @@
       fade: 'trace-fade'
     };
     (frame.events || []).forEach(event => {
-      if (event.animate === false) return;
+      if (event.enabled === false || event.autoAnimationDisabled === true) return;
       const animation = eventAnimation(event.type);
       if (event.type === 'swap' && animation === 'swap') return;
       const className = animationClasses[animation];
@@ -973,6 +1281,276 @@
         const element = elements.get(key) || elements.get(target.variableId);
         element?.classList.add(className);
       });
+    });
+  }
+
+  const TRACE_TEXT_COLORS = Object.freeze({
+    AV_green: 'rgba(165, 214, 167, 0.6)',
+    AV_blue: 'rgba(144, 202, 249, 0.6)',
+    AV_red: 'rgba(239, 154, 154, 0.6)',
+    AV_yellow: 'rgba(252, 255, 64, 0.46)',
+    AV_orange: 'orange',
+    AV_node_green: '#e8f5e9',
+    AV_node_red: '#ef9a9a',
+    AV_node_grey: '#cccccc',
+    AV_black: '#111827',
+    AV_white: '#ffffff'
+  });
+
+  function traceTextColor(value, fallback = '') {
+    return TRACE_TEXT_COLORS[value] || value || fallback;
+  }
+
+  function traceTextMarkup(value) {
+    return window.parseTTSMarkup?.(value) || { display: String(value ?? ''), speech: String(value ?? '') };
+  }
+
+  function styledTextPieces(document, frame, objectKey, segment, segmentIndex, resolvedText) {
+    const baseKey = `${objectKey}:segment:${segment?.segmentId || segmentIndex}`;
+    const styles = document.studio?.objectStyles?.[frame.id] || {};
+    const baseStyle = styles[baseKey] || {};
+    if (segment?.kind === 'expression' || /[{}]/.test(resolvedText)) {
+      return [{ text: resolvedText, segmentKey: baseKey, baseKey, sourceStart: 0, sourceEnd: resolvedText.length, storedStyle: baseStyle }];
+    }
+    const escaped = baseKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`^${escaped}:range:(\\d+)-(\\d+)$`);
+    const ranges = Object.entries(styles).map(([key, style]) => {
+      const match = key.match(pattern);
+      if (!match) return null;
+      return {
+        key,
+        start: Math.max(0, Math.min(resolvedText.length, Number(match[1]) || 0)),
+        end: Math.max(0, Math.min(resolvedText.length, Number(match[2]) || 0)),
+        style
+      };
+    }).filter(range => range && range.end > range.start);
+    if (!ranges.length) {
+      return [{ text: resolvedText, segmentKey: baseKey, baseKey, sourceStart: 0, sourceEnd: resolvedText.length, storedStyle: baseStyle }];
+    }
+    const boundaries = [...new Set([0, resolvedText.length, ...ranges.flatMap(range => [range.start, range.end])])]
+      .sort((left, right) => left - right);
+    return boundaries.slice(0, -1).map((start, index) => {
+      const end = boundaries[index + 1];
+      const covering = ranges.filter(range => range.start <= start && end <= range.end).at(-1);
+      return {
+        text: resolvedText.slice(start, end),
+        segmentKey: covering?.key || baseKey,
+        baseKey,
+        sourceStart: start,
+        sourceEnd: end,
+        storedStyle: { ...baseStyle, ...(covering?.style || {}) }
+      };
+    });
+  }
+
+  function renderFrameTexts(root, document, frame, startY, placements, elements, options = {}) {
+    let y = startY;
+    const textLayer = svg('g', { class: 'asm-trace-text-layer' });
+    root.append(textLayer);
+    (frame.texts || []).forEach((descriptor, descriptorIndex) => {
+      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when)) return;
+      const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
+      const rawSegments = Array.isArray(descriptor.segments) ? descriptor.segments : [];
+      const lines = [[]];
+      rawSegments.forEach((segment, segmentIndex) => {
+        const expressionValue = segment?.kind === 'expression'
+          ? window.ASMTraceRules.resolveExpression(document, frame, segment.expression)
+          : segment?.kind === 'template'
+            ? String(segment.text || '').replace(/\$\{([^{}]+)\}/g, (_, expression) => {
+              const value = window.ASMTraceRules.resolveExpression(document, frame, expression.trim());
+              return value == null ? '' : String(value);
+            })
+            : segment?.text;
+        const resolvedText = expressionValue == null ? '' : String(expressionValue);
+        styledTextPieces(document, frame, key, segment, segmentIndex, resolvedText).forEach(piece => {
+          piece.text.split('\n').forEach((part, partIndex, parts) => {
+            const parsed = traceTextMarkup(part);
+            const storedStyle = piece.storedStyle;
+            lines.at(-1).push({
+              ...segment,
+              ...piece,
+              segmentIndex,
+              display: parsed.display,
+              speech: parsed.speech,
+              textColor: storedStyle.textColor || traceTextColor(segment?.color, '#111827'),
+              background: Object.hasOwn(storedStyle, 'background')
+                ? storedStyle.background
+                : traceTextColor(segment?.background, 'none'),
+              fontSize: Math.max(8, Number(storedStyle.fontSize) || Number(segment?.fontSize) || 10),
+              bold: Object.hasOwn(storedStyle, 'bold') ? storedStyle.bold === true : segment?.bold === true
+            });
+            if (partIndex < parts.length - 1) lines.push([]);
+          });
+        });
+      });
+      const lineHeight = lines.map(line => Math.max(12, ...line.map(segment => segment.fontSize * 1.25)));
+      const measureText = (value, fontSize, bold) => {
+        const canvas = renderFrameTexts.measureCanvas ||= window.document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) return Array.from(value).length * fontSize * 0.58;
+        context.font = `${bold ? 'bold ' : ''}${fontSize}px Arial`;
+        return context.measureText(value).width;
+      };
+      const widths = lines.map(line => line.reduce((sum, segment) => (
+        sum + measureText(segment.display, segment.fontSize, segment.bold)
+      ), 0));
+      const padX = 6;
+      const padY = 4;
+      const lineGap = 2;
+      const boxWidth = Math.max(28, ...widths) + padX * 2;
+      const boxHeight = lineHeight.reduce((sum, height) => sum + height, 0)
+        + Math.max(0, lines.length - 1) * lineGap + padY * 2;
+      const position = studioPosition(document, frame, key);
+      const baseX = position.x;
+      const baseY = position.absolute ? position.y : y + position.y;
+      const object = markSelectable(svg('g', {
+        id: `msg-${options.idPrefix || 'trace'}-text-${String(descriptor.id || descriptorIndex).replace(/[^A-Za-z0-9_-]/g, '-')}`,
+        class: 'asm-trace-object draggable-object asm-trace-text-object',
+        transform: `translate(${baseX}, ${baseY})`,
+        'data-base-offset': `${baseX},${baseY}`,
+        'data-translate': '0,0',
+        'data-trace-object-key': key,
+        'data-trace-object-id': key,
+        'data-trace-text-id': descriptor.id || '',
+        'data-tts-lines': JSON.stringify(lines.map(line => line.map(segment => segment.speech).join('').trim()))
+      }), key, { ...options, movable: true });
+      object.dataset.tracePositionApplied = '1';
+      object.dataset.tracePositionSpace = 'origin';
+      object.dataset.tracePositionX = String(baseX);
+      object.dataset.tracePositionY = String(baseY);
+      const motion = svg('g', { class: 'asm-trace-motion' });
+      const background = svg('rect', {
+        x: 0, y: 0, width: boxWidth, height: boxHeight, rx: 6,
+        fill: '#ffffff', stroke: '#4b5563', 'stroke-width': 1.2
+      });
+      motion.append(background);
+      let lineTop = padY;
+      lines.forEach((line, lineIndex) => {
+        const lineGroup = svg('g', {
+          transform: `translate(0, ${lineTop})`,
+          'data-line-index': lineIndex,
+          'data-trace-text-line': '1'
+        });
+        let cursorX = padX;
+        line.forEach(segment => {
+          const segmentWidth = measureText(segment.display, segment.fontSize, segment.bold);
+          if (!segment.display) return;
+          const segmentGroup = svg('g', {
+            transform: `translate(${cursorX}, 0)`,
+            'data-trace-object-key': segment.segmentKey,
+            'data-trace-parent-key': key,
+            'data-trace-movable': '0',
+            'data-trace-text-segment': segment.kind || 'literal',
+            'data-trace-text-expression': segment.kind === 'expression' ? segment.source || `\${${segment.expression}}` : '',
+            'data-trace-text-segment-id': segment.segmentId || String(segment.segmentIndex),
+            'data-trace-text-base-key': segment.baseKey || segment.segmentKey,
+            'data-trace-text-source-start': segment.sourceStart ?? 0,
+            'data-trace-text-source-end': segment.sourceEnd ?? segment.display.length
+          });
+          segmentGroup.append(svg('rect', {
+            class: 'asm-trace-text-segment-background',
+            x: -2,
+            y: 0,
+            width: Math.max(4, segmentWidth + 4),
+            height: lineHeight[lineIndex],
+            rx: 2,
+            fill: segment.background && segment.background !== 'none' ? segment.background : 'rgba(0,0,0,0)',
+            stroke: 'none',
+            'pointer-events': 'all'
+          }));
+          segmentGroup.append(svg('text', {
+            class: 'asm-trace-text-segment-value',
+            x: 0,
+            y: lineHeight[lineIndex] * 0.78,
+            'font-size': segment.fontSize,
+            'font-weight': segment.bold ? 'bold' : 'normal',
+            'font-style': segment.storedStyle?.italic === true ? 'italic' : 'normal',
+            'text-decoration': [
+              segment.storedStyle?.underline === true ? 'underline' : '',
+              segment.storedStyle?.strike === true ? 'line-through' : ''
+            ].filter(Boolean).join(' ') || 'none',
+            'font-family': 'Arial',
+            fill: segment.textColor,
+            'xml:space': 'preserve',
+            style: 'white-space:pre'
+          }, segment.display));
+          lineGroup.append(segmentGroup);
+          placements.set(segment.segmentKey, {
+            x: baseX + cursorX - 2,
+            y: baseY + lineTop,
+            width: Math.max(4, segmentWidth + 4),
+            height: lineHeight[lineIndex]
+          });
+          elements.set(segment.segmentKey, segmentGroup);
+          cursorX += segmentWidth;
+        });
+        motion.append(lineGroup);
+        lineTop += lineHeight[lineIndex] + lineGap;
+      });
+      const pointerX = boxWidth / 2;
+      motion.append(svg('path', {
+        d: `M ${pointerX - 4} ${boxHeight} L ${pointerX} ${boxHeight + 5} L ${pointerX + 4} ${boxHeight} Z`,
+        fill: '#ffffff', stroke: '#4b5563', 'stroke-width': 1.2
+      }));
+      object.append(motion);
+      textLayer.append(object);
+      animateObjectPosition(motion, options, key, { x: baseX, y: baseY });
+      placements.set(key, { x: baseX, y: baseY, width: boxWidth, height: boxHeight + 5 });
+      elements.set(key, object);
+      y += boxHeight + 28;
+    });
+    if (!textLayer.childElementCount) textLayer.remove();
+    return y;
+  }
+
+  function applySemanticTextBindings(document, frame, placements, elements) {
+    const canvas = { x: 0, y: 0, width: 1100, height: 620 };
+    (frame.texts || []).forEach((descriptor, descriptorIndex) => {
+      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when)) return;
+      const binding = descriptor?.binding;
+      if (!binding) return;
+      const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
+      const source = elements.get(key);
+      const sourcePlacement = placements.get(key);
+      if (!source || !sourcePlacement) return;
+      const indexExpression = (binding.indexExpressions || []).join(',');
+      const target = binding.canvas
+        ? canvas
+        : targetPlacement(document, frame, placements, {
+          variableId: binding.targetVariableId,
+          indexExpression
+        });
+      if (!target) {
+        source.setAttribute('display', 'none');
+        source.dataset.traceBindingUnavailable = '1';
+        return;
+      }
+      const anchor = String(binding.anchor || 'center').toLowerCase();
+      const point = anchorPoint(target, anchor);
+      const gap = 8;
+      let desiredX = point.x - sourcePlacement.width / 2;
+      let desiredY = point.y - sourcePlacement.height / 2;
+      if (anchor.includes('left')) desiredX = point.x - sourcePlacement.width - gap;
+      if (anchor.includes('right')) desiredX = point.x + gap;
+      if (anchor.includes('top')) desiredY = point.y - sourcePlacement.height - gap;
+      if (anchor.includes('bottom')) desiredY = point.y + gap;
+      desiredX += Number(binding.offsetX) || 0;
+      desiredY += Number(binding.offsetY) || 0;
+      const dx = desiredX - sourcePlacement.x;
+      const dy = desiredY - sourcePlacement.y;
+      translatedTransform(source, dx, dy);
+      shiftPlacementTree(source, dx, dy, placements, elements);
+      source.parentElement?.append(source);
+      source.dataset.traceBound = '1';
+      source.dataset.traceBindingTarget = binding.canvas
+        ? 'canvas'
+        : resolvedTargetKey(document, frame, {
+          variableId: binding.targetVariableId,
+          indexExpression
+        });
+      source.dataset.traceSemanticBinding = '1';
+      source.dataset.traceBindingAnchor = binding.anchor || 'center';
+      source.dataset.traceBindingLine = String(descriptor.line || '');
     });
   }
 
@@ -1006,6 +1584,15 @@
       object.dataset.tracePositionY = String(position.y);
       if (studioObject.sourceVariableId) {
         object.dataset.traceSourceVariableId = studioObject.sourceVariableId;
+      }
+      const sourceVariableIds = Array.isArray(studioObject.sourceVariableIds)
+        ? studioObject.sourceVariableIds.filter(Boolean)
+        : studioObject.sourceVariableId ? [studioObject.sourceVariableId] : [];
+      if (sourceVariableIds.length) {
+        object.dataset.traceSourceVariableIds = JSON.stringify([...new Set(sourceVariableIds)]);
+      }
+      if (studioObject.indexExpression) {
+        object.dataset.traceMarkerIndexExpression = studioObject.indexExpression;
       }
       const boundTargetKey = resolvedTargetKey(document, frame, studioObject.target);
       if (boundTargetKey) object.dataset.traceBindingTarget = boundTargetKey;
@@ -1050,7 +1637,9 @@
           const arrowTop = labelBottom;
           const halfLabelWidth = labelWidth / 2;
           // Aim at the cell center while keeping every rendered arrow the same length.
-          const aimX = (pointerTarget?.x ?? target.x) - target.x - offsetX;
+          const aimX = (pointerTarget?.x ?? target.x)
+            + (Number(studioObject.pointerTargetOffsetX) || 0)
+            - target.x - offsetX;
           const aimY = (pointerTarget?.y ?? target.y) - target.y - offsetY;
           const directionX = aimX;
           const directionY = aimY - arrowTop;
@@ -1072,6 +1661,7 @@
           const headRightY = headBaseY - perpendicularY * headHalfWidth;
           motion.append(
             svg('rect', {
+              class: 'trace-variable-marker-label-box',
               x: -labelWidth / 2,
               y: labelTop,
               width: labelWidth,
@@ -1083,6 +1673,7 @@
               'stroke-width': borderWidth
             }),
             svg('text', {
+              class: 'trace-variable-marker-label-text',
               x: 0, y: labelTop + labelHeight / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial', 'font-size': fontSize,
               'font-weight': 'bold', fill: studioObject.textColor || '#1f282d'
             }, label)
@@ -1097,6 +1688,9 @@
             'stroke-linejoin': 'miter'
           }));
           motion.append(point);
+          object.dataset.traceMarkerBaseCellWidth = String(
+            Math.max(1, Number(studioObject.baseCellWidth) || 40)
+          );
           const boxLeft = Math.min(-halfLabelWidth, pointerX, headLeftX, headRightX);
           const boxTop = Math.min(labelTop, pointerY, headLeftY, headRightY);
           const boxRight = Math.max(halfLabelWidth, pointerX, headLeftX, headRightX);
@@ -1143,6 +1737,11 @@
         );
         box = { x: -width / 2, y: -28, width, height: 31 };
       }
+      if (studioObject.type === 'variable-marker') {
+        object.dataset.traceMarkerPopupX = String(baseX);
+        object.dataset.traceMarkerPopupY = String(baseY + box.y);
+        object.dataset.traceMarkerSortKey = String(studioObject.markerSortKey || studioObject.text || '');
+      }
       root.append(object);
       animateObjectPosition(motion, options, key, { x: baseX, y: baseY });
       placements.set(key, { x: baseX + box.x, y: baseY + box.y, width: box.width, height: box.height });
@@ -1157,30 +1756,56 @@
     const pending = [];
 
     bindings.forEach((binding, index) => {
-      const sourceEntry = frame.state?.[binding.sourceVariableId];
       const targetEntry = frame.state?.[binding.targetVariableId];
       const targetItems = Array.isArray(targetEntry?.data?.items) ? targetEntry.data.items : [];
       const targetKind = targetEntry?.data?.kind;
       const indexExpression = binding.indexExpression || binding.sourceName;
-      const indexValue = Number(window.ASMTraceRules.resolveExpression(document, frame, indexExpression));
+      const resolvedIndexValue = Number(
+        window.ASMTraceRules.resolveExpression(document, frame, indexExpression)
+      );
+      const hasIndexValue = Number.isInteger(resolvedIndexValue);
+      const indexValue = hasIndexValue ? resolvedIndexValue : -1;
       if (binding.mode !== 'index'
         || !targetEntry
         || targetKind === 'matrix'
-        || !Number.isInteger(indexValue)
-        || indexValue < 0
-        || indexValue >= targetItems.length) return;
+        || !targetItems.length) return;
+      if (!ensureLinearIndexPlacement(
+        frame,
+        binding.targetVariableId,
+        indexValue,
+        targetItems.length,
+        placements
+      )) return;
 
       const label = binding.indexExpression
         || binding.sourceName
         || document.variables?.[binding.sourceVariableId]?.name
         || 'index';
+      const targetObjectKey = objectKeyForVariable(frame, binding.targetVariableId);
+      const targetKey = `${targetObjectKey}#${indexValue}`;
+      const targetPlacement = placements.get(targetKey);
+      const targetElement = elements.get(targetKey);
+      const baseCellWidth = Number(
+        targetElement?.closest?.('[data-layout]')?.getAttribute?.('data-box-size')
+      ) || 40;
       pending.push({
         id: `auto-frame-binding-${binding.sourceVariableId}-${binding.targetVariableId}-${index}`,
         type: 'variable-marker',
         sourceVariableId: binding.sourceVariableId,
+        sourceVariableIds: binding.sourceVariableIds || [binding.sourceVariableId],
         targetVariableId: binding.targetVariableId,
+        targetObjectKey,
+        targetRuntimeIdentity: targetEntry?.identity || '',
+        targetPlacement,
+        baseCellWidth,
         indexValue,
+        unresolvedIndex: !hasIndexValue,
         label,
+        markerSortKey: binding.sourceName
+          || document.variables?.[binding.sourceVariableId]?.name
+          || label,
+        markerSortExpression: indexExpression,
+        indexExpression,
         labelWidth: 18,
         target: {
           variableId: binding.targetVariableId,
@@ -1201,21 +1826,49 @@
 
     const groups = new Map();
     pending.forEach(item => {
-      const groupKey = `${item.targetVariableId}#${item.indexValue}`;
+      const target = item.targetPlacement;
+      const groupKey = target
+        ? [target.x, target.y, target.width, target.height]
+          .map(value => Math.round((Number(value) || 0) * 10) / 10)
+          .join(':')
+        : `${item.targetRuntimeIdentity || item.targetObjectKey || item.targetVariableId}#${item.indexValue}`;
       if (!groups.has(groupKey)) groups.set(groupKey, []);
       groups.get(groupKey).push(item);
     });
 
     const objects = [];
     groups.forEach(group => {
+      const orderedGroup = [...group].sort((left, right) => {
+        const byVariable = String(left.markerSortKey || '').localeCompare(
+          String(right.markerSortKey || ''), 'en', { numeric: true, sensitivity: 'base' }
+        );
+        if (byVariable) return byVariable;
+        const byExpression = String(left.markerSortExpression || '').localeCompare(
+          String(right.markerSortExpression || ''), 'en', { numeric: true, sensitivity: 'base' }
+        );
+        return byExpression || String(left.id).localeCompare(String(right.id));
+      });
       const gap = 8;
-      const totalWidth = group.reduce((total, item) => total + item.labelWidth, 0)
-        + Math.max(0, group.length - 1) * gap;
+      const totalWidth = orderedGroup.reduce((total, item) => total + item.labelWidth, 0)
+        + Math.max(0, orderedGroup.length - 1) * gap;
+      const targetPlacement = orderedGroup[0].targetPlacement || placements.get(
+        `${orderedGroup[0].targetObjectKey}#${orderedGroup[0].indexValue}`
+      );
+      const targetWidth = Math.max(0, Number(targetPlacement?.width) || 0);
+      const baseCellWidth = Math.max(1, Number(orderedGroup[0].baseCellWidth) || 40);
+      const keepArrowsVertical = orderedGroup.length > 1
+        && targetWidth >= baseCellWidth * 2 - 0.5;
       let cursor = -totalWidth / 2;
-      group.forEach(item => {
+      orderedGroup.forEach(item => {
         item.offsetX = cursor + item.labelWidth / 2;
+        item.pointerTargetOffsetX = keepArrowsVertical ? item.offsetX : 0;
         cursor += item.labelWidth + gap;
-        const { targetVariableId, indexValue, labelWidth, label, ...object } = item;
+        const {
+          targetVariableId, targetObjectKey, targetRuntimeIdentity,
+          targetPlacement: ignoredTargetPlacement,
+          indexValue, unresolvedIndex, labelWidth, label, markerSortExpression, ...object
+        } = item;
+        if (unresolvedIndex) object.markerUnresolved = true;
         objects.push(object);
       });
     });
@@ -1389,8 +2042,13 @@
       const sourceVariable = document.variables?.[snapshot.sourceVariableId] || {};
       const variable = { ...sourceVariable, id: snapshotId, name: snapshot.label || sourceVariable.name || 'Snapshot' };
       const entry = { name: variable.name, data: snapshot.data };
-      const skin = document.skins?.[snapshot.sourceVariableId] || {};
-      const rendererName = skin.renderer || variable.kind || entry.data?.kind || 'object';
+      const baseSkin = document.skins?.[snapshot.sourceVariableId] || {};
+      const skin = {
+        ...baseSkin,
+        options: { ...(baseSkin.options || {}), ...(snapshot.rendererOptions || {}) }
+      };
+      const rendererName = snapshot.renderer
+        || skin.renderer || variable.kind || entry.data?.kind || 'object';
       const renderer = renderers.get(rendererName) || renderers.get(entry.data?.kind) || renderObject;
       const position = studioPosition(document, frame, snapshotId);
       const baseX = position.x;
@@ -1419,6 +2077,7 @@
         highlights: {}, diff: [],
         idPrefix: `${options.idPrefix || 'trace'}-snapshot`, interactive: options.interactive
       });
+      removeScalarIndexLabels(content, variable, rendererName);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
         const labelY = Math.max(Number(height) || 0, contentBox.y + contentBox.height) + 20;
@@ -1466,6 +2125,7 @@
     const hiddenVariables = new Set((document.studio?.objects || [])
       .filter(object => object.hideSource && object.sourceVariableId && studioObjectVisible(object, frame))
       .map(object => object.sourceVariableId));
+    (frame.captureOnlyVariableIds || []).forEach(variableId => hiddenVariables.add(variableId));
     (frame.bindings || []).forEach(binding => {
       if (binding.mode !== 'index') return;
       const sourceVariableIds = binding.sourceVariableIds || [binding.sourceVariableId];
@@ -1478,8 +2138,14 @@
       const objectKey = objectKeyForVariable(frame, variableId);
       if (!entry || hiddenVariables.has(variableId)
         || (!editingVisibility && visibilityStates[objectKey] === 'hidden')) return;
-      const skin = document.skins?.[variableId] || {};
-      const rendererName = skin.renderer || variable.kind || entry.data?.kind || 'object';
+      const baseSkin = document.skins?.[variableId] || {};
+      const frameOptions = frame.rendererOptions?.[variableId] || {};
+      const skin = {
+        ...baseSkin,
+        options: { ...(baseSkin.options || {}), ...frameOptions }
+      };
+      const rendererName = frame.renderers?.[variableId]
+        || skin.renderer || variable.kind || entry.data?.kind || 'object';
       const renderer = renderers.get(rendererName) || renderers.get(entry.data?.kind) || renderObject;
       const position = studioPosition(document, frame, objectKey);
       const baseX = position.x;
@@ -1492,7 +2158,10 @@
         'data-translate': '0,0',
         'data-trace-variable': variableId,
         'data-trace-object-key': objectKey,
-        'data-trace-object-id': objectKey
+        'data-trace-object-id': objectKey,
+        'data-trace-runtime-identity': ['sequence', 'matrix', 'map', 'set', 'object'].includes(entry.data?.kind)
+          ? entry.identity || ''
+          : ''
       }), objectKey, { ...options, movable: true });
       object.dataset.tracePositionApplied = '1';
       object.dataset.tracePositionSpace = 'origin';
@@ -1508,6 +2177,7 @@
         highlights: highlights[variableId] || {}, diff,
         idPrefix: `${idPrefix}-original`, interactive: options.interactive
       });
+      removeScalarIndexLabels(content, variable, rendererName);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
         const labelY = Math.max(Number(height) || 0, contentBox.y + contentBox.height) + 20;
@@ -1536,6 +2206,9 @@
       collectElementPlacements(motion, baseX, baseY, placements, elements);
       y += Math.max(76, Number(height) || 76) + 28;
     });
+    renderFrameSegments(root, document, frame, placements, elements, options);
+    y = renderFrameTexts(root, document, frame, y, placements, elements, options);
+    applySemanticTextBindings(document, frame, placements, elements);
     y = renderDecorations(root, document, frame, y, placements, elements, options);
     renderStudioObjects(root, document, frame, placements, elements, options);
     renderFrameBindings(root, document, frame, placements, elements, options);
@@ -1545,6 +2218,11 @@
     renderKeepLastArrows(rootSvg, root, document, frame, placements, elements, keepNodes, options);
     applyObjectColorStyles(document, frame, elements);
     applyVisibilityStates(document, frame, elements);
+    window.ASMTraceFrameTween?.updateEventAvailability?.(
+      document, frame, placements, elements
+    );
+    const textLayer = root.querySelector(':scope > .asm-trace-text-layer');
+    if (textLayer) root.append(textLayer);
     const transitionEventFrame = Number(options.direction) < 0 && previousFrame ? previousFrame : frame;
     const eventAnimationsEnabled = options.interactive !== false && options.animateEvents !== false;
     animateSwapEvents(document, transitionEventFrame, placements, elements,
@@ -1560,6 +2238,7 @@
     if (!rootSvg || !frame) return Promise.resolve();
     window.ASMTraceFrameTween?.cancel?.();
     const previousPositions = objectPositions(rootSvg);
+    const previousMotionPositions = objectMotionPositions(rootSvg, previousPositions);
     const previousObjects = captureTopLevelObjects(rootSvg);
     const sourceKeys = new Set(previousPositions.keys());
     const transitionForKey = key => previousFrame
@@ -1582,7 +2261,7 @@
       transitionForKey,
       direction: options.direction,
       animatePositions: useFrameTween ? false : options.animatePositions !== false,
-      animateEvents: options.animateEvents !== false
+      animateEvents: useFrameTween ? false : options.animateEvents !== false
     });
     const delayedMarks = delayedCurrentFixedMarks(result.root, document, frame, useFrameTween);
     let transition = Promise.resolve();
@@ -1595,7 +2274,7 @@
         eventFrame: Number(options.direction) < 0 ? previousFrame : frame,
         direction: options.direction,
         previousFrame,
-        previousPlacements: previousPositions,
+        previousPlacements: previousMotionPositions,
         currentPlacements: result.placements,
         previousObjects,
         currentElements: result.elements,
@@ -1653,18 +2332,29 @@
   function autoCameraView(bounds, zoom = 0.92, offsetX = 0, offsetY = 0) {
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
     const canvas = mainCameraSize();
-    const padding = Number(window.getAutoCameraPadding?.()) || 48;
-    const availableWidth = Math.max(1, canvas.width - padding * 2);
-    const availableHeight = Math.max(1, canvas.height - padding * 2);
-    const physicalScale = Math.max(0.0001, Math.min(
+    const sharedTarget = window.resolveAutoCameraTarget?.(bounds, zoom, offsetX, offsetY, canvas);
+    if (sharedTarget) return sharedTarget;
+    const padding = window.getAutoCameraPadding?.() || { horizontal: 30, vertical: 20 };
+    const paddingX = Number(padding.horizontal) || 30;
+    const paddingY = Number(padding.vertical) || 20;
+    const availableWidth = Math.max(1, canvas.width - paddingX * 2);
+    const availableHeight = Math.max(1, canvas.height - paddingY * 2);
+    const maximumFitScale = Math.min(
       availableWidth / bounds.width,
       availableHeight / bounds.height
-    ) * (Number(zoom) || 0.92));
+    );
+    const preferredScale = Math.max(0.05, Number(zoom) || 0.92);
+    const targetScale = preferredScale <= maximumFitScale + 0.0001
+      ? preferredScale
+      : Math.max(0.05, Math.min(4, maximumFitScale));
     return {
       centerX: (bounds.left + bounds.right) / 2 + (Number(offsetX) || 0),
       centerY: (bounds.top + bounds.bottom) / 2 + (Number(offsetY) || 0),
-      width: canvas.width / physicalScale,
-      height: canvas.height / physicalScale
+      width: canvas.width / targetScale,
+      height: canvas.height / targetScale,
+      scale: targetScale,
+      paddingX,
+      paddingY
     };
   }
 
@@ -1838,6 +2528,10 @@
   register('original-array', renderOriginal);
   register('original-matrix', renderOriginal);
   register('original-cell', renderOriginal);
+  register('original-heap', renderOriginal);
+  register('original-segment-tree', renderOriginal);
+  register('original-bit', renderOriginal);
+  register('original-disk', renderOriginal);
   register('original-stack', renderOriginal);
   register('original-queue', renderOriginal);
 
@@ -1867,11 +2561,18 @@
     };
   }
 
-  function fitCurrentObjectsCamera(zoom = 0.92, animate = true, duration = 520, offsetX = 0, offsetY = 0) {
-    const bounds = currentBounds({ includeSnapshots: false });
+  function fitCurrentObjectsCamera(
+    zoom = 0.92,
+    animate = true,
+    duration = 520,
+    offsetX = 0,
+    offsetY = 0,
+    includeSnapshots = true
+  ) {
+    const bounds = currentBounds({ includeSnapshots });
     const view = autoCameraView(bounds, zoom, offsetX, offsetY);
     if (!view) return null;
-    const scale = window.cameraScaleForViewportWidth?.(view.width);
+    const scale = Number(view.scale) || window.cameraScaleForViewportWidth?.(view.width);
     if (!Number.isFinite(Number(scale))) return null;
     window.setCamera?.(view.centerX, view.centerY, Number(scale), animate, duration);
     return { ...view, scale: Number(scale) };
@@ -1901,7 +2602,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-88';
   window.ASMTraceRenderers = {
+    build: 'trace-88',
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, cameraObjectKey, frameAnchorForKey, anchorPoint,

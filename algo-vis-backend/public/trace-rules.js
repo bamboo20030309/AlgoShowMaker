@@ -35,7 +35,106 @@
     return undefined;
   }
 
-  function resolveExpression(document, frame, expression) {
+  const TEMPORAL_FUNCTIONS = new Set(['before', 'prev', 'changed', 'assigned']);
+  const MUTATION_EVENTS = new Set(['write', 'assign', 'swap']);
+
+  function previousFrame(document, frame) {
+    const index = document?.frames?.findIndex(candidate => candidate === frame || candidate.id === frame?.id) ?? -1;
+    return index > 0 ? document.frames[index - 1] : null;
+  }
+
+  function scalarData(value) {
+    return window.ASMTraceModel.scalarValue(value);
+  }
+
+  function targetReference(document, frame, expression, locals = {}) {
+    const source = String(expression || '').replace(/\s+/g, '');
+    const base = source.match(/^([A-Za-z_]\w*)/)?.[1] || '';
+    if (!base) return null;
+    const found = variableEntry(document, frame, base);
+    if (!found) return null;
+    let cursor = base.length;
+    const indices = [];
+    while (cursor < source.length) {
+      if (source[cursor] !== '[') return null;
+      let depth = 1;
+      let end = cursor + 1;
+      while (end < source.length && depth) {
+        if (source[end] === '[') depth += 1;
+        else if (source[end] === ']') depth -= 1;
+        end += 1;
+      }
+      if (depth) return null;
+      const indexExpression = source.slice(cursor + 1, end - 1);
+      const index = Number(resolveExpression(document, frame, indexExpression, locals));
+      if (!Number.isInteger(index)) return null;
+      indices.push(index);
+      cursor = end;
+    }
+    return { variableId: found.id, indices };
+  }
+
+  function eventTargetIndex(document, frame, target) {
+    const captured = Number(target?.resolvedIndex);
+    if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
+      && Number.isInteger(captured)) return [captured];
+    const expression = String(target?.indexExpression || '').trim();
+    if (!expression) return [];
+    const indices = expression.split(',').map(part => Number(resolveExpression(document, frame, part.trim())));
+    return indices.every(Number.isInteger) ? indices : null;
+  }
+
+  function matchingMutationEvents(document, frame, reference) {
+    if (!reference) return [];
+    return (frame?.events || []).filter(event => {
+      if (!MUTATION_EVENTS.has(event.type)) return false;
+      return (event.targets || []).some(target => {
+        if (target.variableId !== reference.variableId) return false;
+        if (event.type !== 'swap' && target.role && target.role !== 'target') return false;
+        if (!reference.indices.length) return true;
+        const indices = eventTargetIndex(document, frame, target);
+        return Array.isArray(indices)
+          && indices.length === reference.indices.length
+          && indices.every((index, position) => index === reference.indices[position]);
+      });
+    }).sort((left, right) => Number(left.order) - Number(right.order));
+  }
+
+  function temporalValue(document, frame, name, expression, locals = {}) {
+    const currentValue = () => resolveExpression(document, frame, expression, locals);
+    const priorFrame = previousFrame(document, frame);
+    if (name === 'prev') {
+      return priorFrame ? resolveExpression(document, priorFrame, expression, locals) : null;
+    }
+
+    const reference = targetReference(document, frame, expression, locals);
+    const mutations = matchingMutationEvents(document, frame, reference);
+    if (name === 'assigned') return mutations.length > 0;
+    if (name === 'changed') {
+      if (!mutations.length) return false;
+      return mutations.some(event => {
+        const payload = event?.payload || {};
+        if (Object.prototype.hasOwnProperty.call(payload, 'before')
+          && Object.prototype.hasOwnProperty.call(payload, 'after')) {
+          return JSON.stringify(scalarData(payload.before)) !== JSON.stringify(scalarData(payload.after));
+        }
+        if (!priorFrame) return true;
+        const before = resolveExpression(document, priorFrame, expression, locals);
+        return JSON.stringify(before) !== JSON.stringify(currentValue());
+      });
+    }
+    if (name === 'before') {
+      const latest = mutations.at(-1);
+      if (latest && Object.prototype.hasOwnProperty.call(latest?.payload || {}, 'before')) {
+        return scalarData(latest.payload.before);
+      }
+      if (latest && priorFrame) return resolveExpression(document, priorFrame, expression, locals);
+      return currentValue();
+    }
+    return null;
+  }
+
+  function resolveExpression(document, frame, expression, locals = {}) {
     const source = String(expression ?? '').trim();
     if (!source) return null;
     const tokens = [];
@@ -53,11 +152,20 @@
       }
       const identifier = source.slice(cursor).match(/^[A-Za-z_]\w*/);
       if (identifier) {
-        tokens.push({ type: 'identifier', value: identifier[0] });
+        const logicalOperator = { and: '&&', or: '||' }[identifier[0]] || '';
+        tokens.push(logicalOperator
+          ? { type: 'operator', value: logicalOperator }
+          : { type: 'identifier', value: identifier[0] });
         cursor += identifier[0].length;
         continue;
       }
-      if ('+-*/%()[].'.includes(source[cursor])) {
+      const compoundOperator = source.slice(cursor).match(/^(?:&&|\|\||==|!=|<=|>=)/);
+      if (compoundOperator) {
+        tokens.push({ type: 'operator', value: compoundOperator[0] });
+        cursor += compoundOperator[0].length;
+        continue;
+      }
+      if ('+-*/%()[].<>!'.includes(source[cursor])) {
         tokens.push({ type: 'operator', value: source[cursor] });
         cursor += 1;
         continue;
@@ -76,7 +184,7 @@
     function parsePrimary() {
       if (peek('(')) {
         consume('(');
-        const value = parseAdditive();
+        const value = parseLogicalOr();
         if (value === invalid || !consume(')')) return invalid;
         return value;
       }
@@ -88,6 +196,23 @@
       }
       if (token.type !== 'identifier') return invalid;
       position += 1;
+      if (token.value === 'true') return true;
+      if (token.value === 'false') return false;
+      if (TEMPORAL_FUNCTIONS.has(token.value) && peek('(')) {
+        consume('(');
+        const argumentStart = position;
+        let depth = 1;
+        while (position < tokens.length && depth > 0) {
+          if (tokens[position].value === '(') depth += 1;
+          else if (tokens[position].value === ')') depth -= 1;
+          if (depth > 0) position += 1;
+        }
+        if (depth !== 0 || position <= argumentStart) return invalid;
+        const argument = tokens.slice(argumentStart, position).map(item => item.value).join('');
+        position += 1;
+        return temporalValue(document, frame, token.value, argument, locals);
+      }
+      if (Object.prototype.hasOwnProperty.call(locals, token.value)) return locals[token.value];
       const found = variableEntry(document, frame, token.value);
       if (!found) return invalid;
       let data = found.entry?.data;
@@ -100,8 +225,13 @@
       }
       if (peek('.')) {
         consume('.');
-        if (tokens[position]?.type !== 'identifier' || tokens[position]?.value !== 'length') return invalid;
+        if (tokens[position]?.type !== 'identifier'
+          || !['length', 'size'].includes(tokens[position]?.value)) return invalid;
         position += 1;
+        if (peek('(')) {
+          consume('(');
+          if (!consume(')')) return invalid;
+        }
         if (Array.isArray(data?.items)) return data.items.length;
         if (Array.isArray(data)) return data.length;
         return invalid;
@@ -117,6 +247,11 @@
       if (peek('-')) {
         consume('-');
         return -Number(parseUnary());
+      }
+      if (peek('!')) {
+        consume('!');
+        const value = parseUnary();
+        return value === invalid ? invalid : !Boolean(value);
       }
       return parsePrimary();
     }
@@ -145,9 +280,141 @@
       return value;
     }
 
-    const value = parseAdditive();
-    if (value === invalid || position !== tokens.length || !Number.isFinite(Number(value))) return null;
+    function comparable(left, right) {
+      const leftNumber = Number(left);
+      const rightNumber = Number(right);
+      const numeric = left !== '' && right !== ''
+        && Number.isFinite(leftNumber) && Number.isFinite(rightNumber);
+      return numeric
+        ? { left: leftNumber, right: rightNumber }
+        : { left: String(left ?? ''), right: String(right ?? '') };
+    }
+
+    function parseRelational() {
+      let value = parseAdditive();
+      while (peek('<') || peek('<=') || peek('>') || peek('>=')) {
+        const operator = consume().value;
+        const right = parseAdditive();
+        if (value === invalid || right === invalid) return invalid;
+        const pair = comparable(value, right);
+        if (operator === '<') value = pair.left < pair.right;
+        else if (operator === '<=') value = pair.left <= pair.right;
+        else if (operator === '>') value = pair.left > pair.right;
+        else value = pair.left >= pair.right;
+      }
+      return value;
+    }
+
+    function parseEquality() {
+      let value = parseRelational();
+      while (peek('==') || peek('!=')) {
+        const operator = consume().value;
+        const right = parseRelational();
+        if (value === invalid || right === invalid) return invalid;
+        const pair = comparable(value, right);
+        value = operator === '==' ? pair.left === pair.right : pair.left !== pair.right;
+      }
+      return value;
+    }
+
+    function parseLogicalAnd() {
+      let value = parseEquality();
+      while (peek('&&')) {
+        consume('&&');
+        const right = parseEquality();
+        if (value === invalid || right === invalid) return invalid;
+        value = Boolean(value) && Boolean(right);
+      }
+      return value;
+    }
+
+    function parseLogicalOr() {
+      let value = parseLogicalAnd();
+      while (peek('||')) {
+        consume('||');
+        const right = parseLogicalAnd();
+        if (value === invalid || right === invalid) return invalid;
+        value = Boolean(value) || Boolean(right);
+      }
+      return value;
+    }
+
+    const value = parseLogicalOr();
+    if (value === invalid || position !== tokens.length) return null;
     return value;
+  }
+
+  function expressionMatches(document, frame, condition, locals = {}) {
+    if (!condition) return true;
+    const expression = typeof condition === 'string' ? condition : condition.expression;
+    if (!String(expression || '').trim()) return true;
+    const value = resolveExpression(document, frame, expression, locals);
+    return value != null && Boolean(value);
+  }
+
+  function comparisonSnapshotForCondition(document, frame, condition) {
+    const identifiers = new Set(condition?.identifiers || []);
+    if (!identifiers.size) return null;
+    const comparisons = (frame?.events || []).filter(event => event?.type === 'compare')
+      .sort((left, right) => Number(left.order) - Number(right.order));
+    const relevant = comparisons.filter(event => {
+      const eventIdentifiers = new Set();
+      const targetVariableNames = new Set();
+      (event.targets || []).forEach(target => {
+        const variableName = document.variables?.[target.variableId]?.name;
+        if (variableName) targetVariableNames.add(variableName);
+        const expression = `${target.expression || ''} ${target.indexExpression || ''}`;
+        (expression.match(/[A-Za-z_]\w*/g) || []).forEach(name => eventIdentifiers.add(name));
+      });
+      return targetVariableNames.size >= 2
+        && [...targetVariableNames].every(name => identifiers.has(name))
+        && [...identifiers].every(name => eventIdentifiers.has(name));
+    }).at(-1);
+    if (!relevant) return null;
+
+    const state = { ...(frame.state || {}) };
+    const cloneData = data => {
+      if (!data || typeof data !== 'object') return data;
+      if (Array.isArray(data)) return data.map(cloneData);
+      return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, cloneData(value)]));
+    };
+    const payloadForTarget = target => {
+      if (target.role === 'left') return relevant.payload?.left;
+      if (target.role === 'right') return relevant.payload?.right;
+      return null;
+    };
+    (relevant.targets || []).forEach(target => {
+      const entry = state[target.variableId];
+      const payload = payloadForTarget(target);
+      if (!entry || payload == null) return;
+      const resolvedIndex = Number(target.resolvedIndex);
+      if (Number.isInteger(resolvedIndex) && Array.isArray(entry.data?.items)) {
+        const items = entry.data.items.map(cloneData);
+        if (resolvedIndex >= 0 && resolvedIndex < items.length) items[resolvedIndex] = cloneData(payload);
+        state[target.variableId] = { ...entry, data: { ...entry.data, items } };
+      } else {
+        state[target.variableId] = { ...entry, data: cloneData(payload) };
+      }
+
+      const indexName = String(target.indexExpression || '').trim();
+      if (!/^[A-Za-z_]\w*$/.test(indexName) || !Number.isInteger(resolvedIndex)) return;
+      const indexVariableId = Object.keys(state).find(variableId => (
+        document.variables?.[variableId]?.name === indexName
+      ));
+      if (!indexVariableId) return;
+      const indexEntry = state[indexVariableId];
+      state[indexVariableId] = {
+        ...indexEntry,
+        data: { kind: 'scalar', value: resolvedIndex }
+      };
+    });
+    return { ...frame, state };
+  }
+
+  function textExpressionMatches(document, frame, condition) {
+    if (!condition) return true;
+    const comparisonFrame = comparisonSnapshotForCondition(document, frame, condition);
+    return expressionMatches(document, comparisonFrame || frame, condition);
   }
 
   function conditionMatches(frame, condition) {
@@ -183,6 +450,9 @@
   }
 
   function resolveIndex(target, frame) {
+    const capturedIndex = Number(target?.resolvedIndex);
+    if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
+      && Number.isInteger(capturedIndex)) return capturedIndex;
     const expression = String(target?.indexExpression || '').replace(/\s+/g, '');
     if (!expression) return null;
     if (/^-?\d+$/.test(expression)) return Number(expression);
@@ -198,6 +468,22 @@
     if (expression == null || String(expression).trim() === '') return null;
     const resolved = Number(resolveExpression(document, frame, expression));
     return Number.isInteger(resolved) ? resolved : null;
+  }
+
+  function mergeHighlightStyle(current = {}, style = {}, extra = {}) {
+    const next = { ...current, ...style, ...extra };
+    const styleType = String(style?.styleType || '').trim();
+    const color = style?.color;
+    if (styleType && color) {
+      next.styleTypes = {
+        ...(current.styleTypes || {}),
+        ...(style.styleTypes || {}),
+        [styleType]: color
+      };
+    } else if (style?.styleTypes) {
+      next.styleTypes = { ...(current.styleTypes || {}), ...style.styleTypes };
+    }
+    return next;
   }
 
   function evaluate(document, frame) {
@@ -216,16 +502,63 @@
             const index = resolveIndex(target, frame);
             const key = index == null ? '$object' : String(index);
             highlights[target.variableId] ||= {};
-            highlights[target.variableId][key] = {
-              ...(highlights[target.variableId][key] || {}),
-              ...(action.style || {}),
+            highlights[target.variableId][key] = mergeHighlightStyle(
+              highlights[target.variableId][key],
+              action.style || {},
+              {
               animation: action.animation || highlights[target.variableId][key]?.animation || '',
               eventType: event.type,
               eventId: event.id
-            };
+              }
+            );
           }
         }
       }
+    }
+    const styleColors = {
+      AV_green: 'rgba(165, 214, 167, 0.6)',
+      AV_blue: 'rgba(144, 202, 249, 0.6)',
+      AV_red: 'rgba(239, 154, 154, 0.6)',
+      AV_yellow: 'rgba(252, 255, 64, 0.46)',
+      AV_orange: 'orange',
+      AV_node_green: '#e8f5e9',
+      AV_node_red: '#ef9a9a',
+      AV_node_grey: '#cccccc',
+      AV_black: '#111827',
+      AV_white: '#ffffff'
+    };
+    for (const style of frame?.styles || []) {
+      const variableId = style.targetVariableId;
+      const entry = frame?.state?.[variableId];
+      if (!variableId || !entry) continue;
+      const items = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
+      let indices = items.map((_, index) => index);
+      if (style.selector?.type === 'index') {
+        const index = Number(resolveExpression(document, frame, style.selector.indexExpression));
+        indices = Number.isInteger(index) ? [index] : [];
+      } else if (style.selector?.type === 'range') {
+        const start = Number(resolveExpression(document, frame, style.selector.startExpression));
+        const end = Number(resolveExpression(document, frame, style.selector.endExpression));
+        if (!Number.isInteger(start) || !Number.isInteger(end)) indices = [];
+        else {
+          const stop = end + (style.selector.endInclusive ? 1 : 0);
+          indices = indices.filter(index => index >= start && index < stop);
+        }
+      }
+      indices.forEach(index => {
+        if (index < 0 || index >= items.length) return;
+        const value = window.ASMTraceModel.scalarValue(items[index]);
+        if (!expressionMatches(document, frame, style.when, { value, index })) return;
+        const variableHighlights = highlights[variableId] ||= {};
+        variableHighlights[String(index)] = mergeHighlightStyle(
+          variableHighlights[String(index)],
+          {
+            styleType: style.styleType,
+            color: styleColors[style.color] || style.color
+          },
+          { sourceStyleId: style.id || '' }
+        );
+      });
     }
     // Explicit Studio styles are applied after event highlights so the user's
     // cross-frame choices remain visible on read/write/compare frames.
@@ -238,19 +571,23 @@
           ? String(targetIndex)
           : '$object';
         const variableHighlights = highlights[action.targetVariableId] ||= {};
-        variableHighlights[key] = {
-          ...(variableHighlights[key] || {}),
-          ...(action.style || {}),
+        variableHighlights[key] = mergeHighlightStyle(
+          variableHighlights[key],
+          action.style || {},
+          {
           animation: action.animation || variableHighlights[key]?.animation || ''
-        };
+          }
+        );
         if (key === '$object') {
           Object.keys(variableHighlights).forEach(index => {
             if (index === '$object') return;
-            variableHighlights[index] = {
-              ...variableHighlights[index],
-              ...(action.style || {}),
+            variableHighlights[index] = mergeHighlightStyle(
+              variableHighlights[index],
+              action.style || {},
+              {
               animation: action.animation || variableHighlights[index]?.animation || ''
-            };
+              }
+            );
           });
         }
       }
@@ -281,6 +618,9 @@
     conditionMatches,
     variableEntry,
     resolveExpression,
+    temporalValue,
+    expressionMatches,
+    textExpressionMatches,
     resolveTargetIndex,
     resolveIndex,
     evaluate,

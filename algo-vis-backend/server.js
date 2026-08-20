@@ -12,7 +12,7 @@ const mongoose = require('mongoose');            //資料庫溝通套件
 const bcrypt = require('bcryptjs');            //密碼加密套件
 const jwt = require('jsonwebtoken');        //webtoken套件
 const nodemailer = require('nodemailer');          //重置密碼email套件
-const { analyzeSource, findFrameDirectives, instrumentSource } = require('./trace-instrumenter');
+const { analyzeSource, buildSyntaxTree, findFrameDirectives, instrumentSource } = require('./trace-instrumenter');
 const TraceViewSource = require('./public/trace-view-source');
 
 // 優先讀取環境變數，如果沒讀到才用後面的預設值
@@ -34,6 +34,7 @@ const UserSchema = new mongoose.Schema({
   // 密碼重置用的 Token 與 過期時間
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
+  preferences: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   created_at: { type: Date, default: Date.now }
 });
 
@@ -170,7 +171,15 @@ app.post('/trace/analyze', limiter, (req, res) => {
         objectId: directive.objectId || '',
         names: directive.names,
         variableIds: directive.variables.map(variable => variable.id),
-        bindings: directive.bindings || []
+        captureOnlyVariableIds: directive.captureOnlyVariableIds || [],
+        bindings: directive.bindings || [],
+        objectBinding: directive.objectBinding || null,
+        renderer: directive.renderer || '',
+        rendererOptions: directive.rendererOptions || {},
+        when: directive.when || null,
+        texts: directive.texts || [],
+        styles: directive.styles || [],
+        segments: directive.segments || []
       })),
       variables: analysis.variables.map(variable => ({
         id: variable.id,
@@ -185,6 +194,17 @@ app.post('/trace/analyze', limiter, (req, res) => {
   } catch (err) {
     console.error('Failed to analyze trace source:', err);
     res.status(400).json({ error: `無法分析 C++ 程式碼：${err.message}` });
+  }
+});
+
+app.post('/syntax-tree', limiter, (req, res) => {
+  const code = req.body?.code;
+  if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
+  if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  try {
+    res.json({ success: true, ...buildSyntaxTree(code) });
+  } catch (error) {
+    res.status(400).json({ error: error.message || '無法建立語法樹' });
   }
 });
 
@@ -370,6 +390,52 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
     message: '驗證成功',
     user: req.user
   });
+});
+
+const EVENT_SETTING_TYPES = [
+  'declare', 'read', 'write', 'assign', 'compare', 'condition', 'swap', 'fixed',
+  'call', 'function-enter', 'function-exit'
+];
+const DEFAULT_EVENT_GAP_MS = 500;
+
+function cleanEventSettings(value = {}) {
+  const cleanFlags = source => Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
+    typeof source?.[type] === 'boolean' ? [[type, source[type]]] : []
+  )));
+  return {
+    gapMs: Number.isFinite(Number(value.gapMs))
+      ? Math.max(0, Math.min(2000, Number(value.gapMs)))
+      : DEFAULT_EVENT_GAP_MS,
+    defaultEnabled: cleanFlags(value.defaultEnabled),
+    timelineTypes: cleanFlags(value.timelineTypes)
+  };
+}
+
+app.get('/api/user/preferences/event-settings', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findOne({ _id: req.user.id }).select('preferences').lean();
+    if (!user) return res.status(404).json({ error: '找不到使用者' });
+    res.json({ success: true, eventSettings: cleanEventSettings(user.preferences?.eventSettings || { gapMs: DEFAULT_EVENT_GAP_MS }) });
+  } catch (err) {
+    console.error('Failed to load event settings:', err);
+    res.status(500).json({ error: '無法讀取事件設定' });
+  }
+});
+
+app.put('/api/user/preferences/event-settings', authenticateToken, async (req, res) => {
+  const eventSettings = cleanEventSettings(req.body?.eventSettings || {});
+  try {
+    const user = await User.findOneAndUpdate(
+      { _id: req.user.id },
+      { $set: { 'preferences.eventSettings': eventSettings } },
+      { new: true }
+    ).select('_id');
+    if (!user) return res.status(404).json({ error: '找不到使用者' });
+    res.json({ success: true, eventSettings });
+  } catch (err) {
+    console.error('Failed to save event settings:', err);
+    res.status(500).json({ error: '無法儲存事件設定' });
+  }
 });
 
 function countDeckSlides(deck) {
@@ -731,6 +797,19 @@ function materializeKeepSnapshots(frames) {
   const snapshots = [];
   const activeSnapshotIds = [];
   const counts = new Map();
+  function variableRenderState(frame, variableId, identity = '') {
+    if (!frame) return null;
+    let sourceVariableId = frame.state?.[variableId] ? variableId : '';
+    if (!sourceVariableId && identity) {
+      sourceVariableId = Object.entries(frame.state || {})
+        .find(([, entry]) => String(entry?.identity || '') === String(identity))?.[0] || '';
+    }
+    if (!sourceVariableId) return null;
+    return {
+      renderer: String(frame.renderers?.[sourceVariableId] || ''),
+      rendererOptions: JSON.parse(JSON.stringify(frame.rendererOptions?.[sourceVariableId] || {}))
+    };
+  }
   const materializedFrames = frames.map((frame, frameIndex) => {
     let keepLastFocus = false;
     (frame.events || []).filter(event => event.type === 'keep').forEach(event => {
@@ -749,7 +828,10 @@ function materializeKeepSnapshots(frames) {
           label,
           frame: {
             ...JSON.parse(JSON.stringify(previousFrame)),
+            renderers: JSON.parse(JSON.stringify(previousFrame.renderers || {})),
+            rendererOptions: JSON.parse(JSON.stringify(previousFrame.rendererOptions || {})),
             events: (previousFrame.events || []).filter(item => item.type !== 'keep'),
+            texts: [],
             snapshotIds: []
           }
         });
@@ -762,6 +844,10 @@ function materializeKeepSnapshots(frames) {
       const entry = variableId ? frame.state?.[variableId] : null;
       const capturedData = event.payload?.data;
       if (!variableId || (!entry && capturedData == null)) return;
+      const identity = String(entry?.identity || '');
+      const renderState = variableRenderState(frames[frameIndex - 1], variableId, identity)
+        || variableRenderState(frame, variableId, identity)
+        || { renderer: '', rendererOptions: {} };
       const count = (counts.get(variableId) || 0) + 1;
       counts.set(variableId, count);
       const id = `snapshot:${variableId}:${count}`;
@@ -771,7 +857,9 @@ function materializeKeepSnapshots(frames) {
         sourceVariableId: variableId,
         createdFrameId: frame.id,
         label: `${labelBase} ${count}`,
-        data: JSON.parse(JSON.stringify(capturedData ?? entry.data))
+        data: JSON.parse(JSON.stringify(capturedData ?? entry.data)),
+        renderer: renderState.renderer,
+        rendererOptions: renderState.rendererOptions
       });
       activeSnapshotIds.push(id);
     });
@@ -786,7 +874,7 @@ function materializeKeepSnapshots(frames) {
 }
 
 const FIXED_EVENT_KINDS = new Set(['sequence', 'stack', 'queue', 'set']);
-const FIXED_ACCESS_EVENTS = new Set(['read', 'write', 'swap']);
+const FIXED_ACCESS_EVENTS = new Set(['read', 'write', 'assign', 'swap']);
 
 function traceScalarValue(data) {
   if (!data || typeof data !== 'object') return data;
@@ -892,6 +980,31 @@ function resolveTraceIndexExpression(frame, expression) {
   return Number(value);
 }
 
+function resolveFrameRendererOptions(frame, directive) {
+  const source = directive?.rendererOptions;
+  if (!source || typeof source !== 'object') return {};
+  const options = {};
+
+  if (source.range) {
+    const start = resolveTraceIndexExpression(frame, source.range.startExpression);
+    const end = resolveTraceIndexExpression(frame, source.range.endExpression);
+    if (start != null && end != null) options.range = [start, end + 1];
+  }
+  if (source.columns) {
+    const columns = resolveTraceIndexExpression(frame, source.columns.expression);
+    if (columns != null && columns > 0) options.columns = columns;
+  }
+  if (source.labels) {
+    const format = source.labels.indexFormat || 'none';
+    if (source.labels.showValue === false && format === 'decimal') options.indexMode = 2;
+    else if (format === 'decimal') options.indexMode = 1;
+    else if (format === 'binary') options.indexMode = 3;
+    else if (format === 'binary-padded') options.indexMode = 4;
+    else options.indexMode = 0;
+  }
+  return options;
+}
+
 function appendFixedEvents(frames, variables = []) {
   if (!Array.isArray(frames) || frames.length < 2) return frames;
   const variableKinds = new Map(variables.map(variable => [variable.id, variable.kind]));
@@ -912,22 +1025,25 @@ function appendFixedEvents(frames, variables = []) {
           variableId,
           variableName: entry.name || variableId,
           index,
-          wasRead: false,
-          lastAccessFrameIndex: frameIndex
+          lastAccessFrameIndex: frameIndex,
+          lastEventId: event.id || '',
+          lastEventOrder: Number(event.order) || 0
         };
-        access.wasRead ||= event.type === 'read';
         access.lastAccessFrameIndex = frameIndex;
+        access.lastEventId = event.id || access.lastEventId;
+        access.lastEventOrder = Number.isFinite(Number(event.order))
+          ? Number(event.order)
+          : access.lastEventOrder;
         accesses.set(key, access);
       });
     });
   });
 
   accesses.forEach(access => {
-    if (!access.wasRead) return;
-    // A cell is only fixed after its final access has completed. When another
-    // visible frame exists, place the event there so it never overlaps the
-    // read/write/swap that touched the cell for the last time.
-    const fixedFrameIndex = Math.min(access.lastAccessFrameIndex + 1, frames.length - 1);
+    // The complete trace proves that this is the final touch. Keep the fixed
+    // event in that frame so the renderer can reveal it after the frame's
+    // read/write/assign/swap animation, instead of leaking into the next step.
+    const fixedFrameIndex = access.lastAccessFrameIndex;
     const frame = frames[fixedFrameIndex];
     const indexExpression = String(access.index);
     const signature = `fixed:${access.variableId}:${indexExpression}`;
@@ -938,6 +1054,9 @@ function appendFixedEvents(frames, variables = []) {
       type: 'fixed',
       signature,
       line: Number(frame.source?.line) || 0,
+      order: access.lastEventOrder + 0.001,
+      phase: 'after',
+      afterEventId: access.lastEventId,
       targets: [{
         role: 'target',
         variableId: access.variableId,
@@ -969,15 +1088,31 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   }));
   const tracedFrames = allFrames.map(frame => {
     const directive = directiveByStatementId.get(frame.source?.statementId);
+    const primaryVariableId = directive?.variableIds?.[0] || '';
+    const resolvedRendererOptions = resolveFrameRendererOptions(frame, directive);
     return {
       ...frame,
       source: {
         ...(frame.source || {}),
         directiveName: directive?.name || '',
         objectId: directive?.objectId || '',
-        primaryVariableId: directive?.variableIds?.[0] || ''
+        primaryVariableId: directive?.variableIds?.[0] || '',
+        when: directive?.when || null
       },
-      bindings: Array.isArray(directive?.bindings) ? directive.bindings : []
+      bindings: Array.isArray(directive?.bindings) ? directive.bindings : [],
+      objectBindings: directive?.objectBinding ? [directive.objectBinding] : [],
+      renderers: directive?.renderer && directive?.variableIds?.[0]
+        ? { [directive.variableIds[0]]: directive.renderer }
+        : {},
+      rendererOptions: primaryVariableId && Object.keys(resolvedRendererOptions).length
+        ? { [primaryVariableId]: resolvedRendererOptions }
+        : {},
+      captureOnlyVariableIds: Array.isArray(directive?.captureOnlyVariableIds)
+        ? directive.captureOnlyVariableIds
+        : [],
+      texts: Array.isArray(directive?.texts) ? directive.texts : [],
+      styles: Array.isArray(directive?.styles) ? directive.styles : [],
+      segments: Array.isArray(directive?.segments) ? directive.segments : []
     };
   });
   const sliceMode = traceRequest.sliceMode === 'manual'
@@ -1078,9 +1213,17 @@ app.post('/compile', (req, res) => {
         objectId: directive.objectId || '',
         names: directive.names,
         variableIds: directive.variables.map(variable => variable.id),
+        captureOnlyVariableIds: directive.captureOnlyVariableIds || [],
         functionName: directive.functionName || directive.variables[0]?.functionName || 'global',
         index: directive.index ?? index,
-        bindings: directive.bindings || []
+        bindings: directive.bindings || [],
+        objectBinding: directive.objectBinding || null,
+        renderer: directive.renderer || '',
+        rendererOptions: directive.rendererOptions || {},
+        when: directive.when || null,
+        texts: directive.texts || [],
+        styles: directive.styles || [],
+        segments: directive.segments || []
       }));
       if (instrumented.frameDirectives.length) traceSliceMode = 'manual';
       logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);

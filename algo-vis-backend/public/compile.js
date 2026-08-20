@@ -22,6 +22,7 @@ window.asmApplyAnimationScript = function (scriptContent) {
 
 document.getElementById('runBtn').addEventListener('click', async () => {
   const runBtn = document.getElementById('runBtn');
+  let showDebugAfterRun = false;
 
   // [新增] 防呆：如果已經在 loading (按鈕變暗轉圈中)，就直接忽略這次點擊
   if (runBtn.classList.contains('loading')) return;
@@ -32,6 +33,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const out     = document.getElementById('outputArea');
   const dbg     = document.getElementById('debugArea');
   const inputEl = document.getElementById('inputArea');
+  window.ASMAlgorithmDraft?.save?.();
 
   if (out) out.textContent = '編譯執行中⋯⋯';
   if (dbg) dbg.textContent = '等待 debug 訊息⋯⋯';
@@ -82,6 +84,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   try {
     const t0 = performance.now();
     const sourceCode = aceEditor.getValue();
+    window.ASMSyntaxTree?.refresh?.(sourceCode);
     let traceConfig = { enabled: true, sliceMode: 'auto', watches: [], skins: {}, rules: [] };
     let traceAnalyzeWarning = '';
     try {
@@ -93,6 +96,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       // a valid C++ construct. The compiler remains the source of truth.
       traceConfig = { enabled: false };
       traceAnalyzeWarning = `追蹤分析未完成，先使用一般執行：${error.message}`;
+      showDebugAfterRun = true;
     }
 
     const res = await fetch('/compile', {
@@ -122,6 +126,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     const memoryKB    = data.memoryKB;
     const debug_log   = data.debug_log;
     const traceWarning = [traceAnalyzeWarning, data.traceWarning].filter(Boolean).join('\n');
+    if (traceWarning) showDebugAfterRun = true;
 
     // 統一判定（TLE / OLE / MLE / RE / OK）
     const judge = judgeResult(data);
@@ -207,6 +212,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       } catch (e) {
         console.error('Failed to render trace:', e);
         if (dbg) dbg.textContent += '\n[Trace] Failed to render trace: ' + e.message;
+        showDebugAfterRun = true;
       }
     } else if (data.scriptContent) {
       try {
@@ -229,15 +235,16 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     console.log(err);
     if (out) out.textContent = 'Request 失敗：\n' + err;
     if (dbg) dbg.textContent = 'Request 失敗，請確認伺服器是否有啟動。';
+    showDebugAfterRun = true;
   } finally {
     // [新增] 2. 結束 loading 狀態（無論成功或失敗都會執行）
     // 讓按鈕恢復可點擊、顏色恢復、轉圈圈消失
     runBtn.classList.remove('loading');
   }
 
-  // 執行完自動切到「輸出」分頁
+  // 追蹤失敗時優先讓使用者看到原因；正常執行則維持輸出分頁。
   const btn = document.querySelector(
-    '.tab-btn[data-tab="tab-output"]:not([style*="display: none"])'
+    `.tab-btn[data-tab="${showDebugAfterRun ? 'tab-debug' : 'tab-output'}"]:not([style*="display: none"])`
   );
   if (btn) activateTab(btn);
 });

@@ -2,13 +2,16 @@
   let popup = null;
   let picker = null;
   let activeControl = null;
+  let activeDirty = false;
+  let syncingPicker = false;
 
   function normalizeColor(value) {
     const color = String(value || '').trim();
-    if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+    if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) return color.toLowerCase();
     if (/^#[0-9a-f]{3}$/i.test(color)) {
       return `#${color.slice(1).split('').map(character => character + character).join('')}`.toLowerCase();
     }
+    if (/^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+(?:\s*,\s*[\d.]+\s*)?\)$/i.test(color)) return color;
     return '#ffffff';
   }
 
@@ -18,6 +21,20 @@
     control.style.setProperty('--trace-picker-color', color);
     control.querySelector('.trace-color-value').textContent = color;
     if (emit) control.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function commitActiveControl() {
+    if (!activeControl || !activeDirty) return false;
+    activeDirty = false;
+    activeControl.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function closePopup() {
+    if (!popup || popup.hidden) return;
+    commitActiveControl();
+    popup.hidden = true;
+    activeControl = null;
   }
 
   function ensurePicker() {
@@ -35,28 +52,35 @@
       color: '#ffffff',
       layout: [
         { component: window.iro.ui.Box },
-        { component: window.iro.ui.Slider, options: { sliderType: 'hue', sliderHeight: 18, handleRadius: 7 } }
+        { component: window.iro.ui.Slider, options: { sliderType: 'hue', sliderHeight: 18, handleRadius: 7 } },
+        { component: window.iro.ui.Slider, options: { sliderType: 'alpha', sliderHeight: 18, handleRadius: 7 } }
       ]
     });
     picker.on('color:change', color => {
-      if (activeControl) updateControl(activeControl, color.hexString, true);
+      if (!activeControl || syncingPicker) return;
+      activeDirty = true;
+      updateControl(activeControl, color.alpha < 1 ? color.rgbaString : color.hexString, true);
     });
+    picker.on('input:end', commitActiveControl);
+    popup.addEventListener('pointerup', () => queueMicrotask(commitActiveControl), true);
     return true;
   }
 
   function open(control) {
     if (!ensurePicker()) return;
     if (!popup.hidden && activeControl === control) {
-      popup.hidden = true;
-      activeControl = null;
+      closePopup();
       return;
     }
+    commitActiveControl();
     activeControl = control;
-    picker.color.set(control.value);
+    activeDirty = false;
+    syncingPicker = true;
+    try { picker.color.set(control.value); } finally { syncingPicker = false; }
     popup.hidden = false;
     const rect = control.getBoundingClientRect();
     const width = 230;
-    const height = 270;
+    const height = 315;
     popup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
     popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - height - 8))}px`;
   }
@@ -84,9 +108,10 @@
 
   document.addEventListener('pointerdown', event => {
     if (!popup || popup.hidden || event.target.closest('.trace-iro-popup, .trace-color-control')) return;
-    popup.hidden = true;
-    activeControl = null;
+    closePopup();
   }, true);
+
+  window.addEventListener('blur', commitActiveControl);
 
   window.ASMTraceColorPicker = { create };
 })();

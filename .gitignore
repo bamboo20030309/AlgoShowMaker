@@ -8,6 +8,8 @@ algo-vis-backend/tmp/
 .env
 algo-vis-backend/server.out.log
 algo-vis-backend/server.err.log
+algo-vis-backend/.server.stdout.log
+algo-vis-backend/.server.stderr.log
 
 # =========================
 # IDE / Editor

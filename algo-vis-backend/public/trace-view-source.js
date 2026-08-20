@@ -221,12 +221,12 @@
   function fromTrace(trace) {
     const frames = trace?.frames || [];
     const studio = clone(trace?.studio || {});
-    ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults'].forEach(key => {
+    ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings'].forEach(key => {
       delete studio[key];
     });
     studio.transitions = sanitizeTransitions(studio.transitions);
     const frameMaps = {};
-    ['positions', 'bindings', 'visibility', 'objectStyles'].forEach(key => {
+    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
       if (studio[key] && Object.keys(studio[key]).length) frameMaps[key] = encodeFrameMap(studio[key], frames);
       delete studio[key];
     });
@@ -248,13 +248,13 @@
     }
     if (settings.studio && typeof settings.studio === 'object') {
       const studio = decodeScopes(clone(settings.studio), frames);
-      ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults'].forEach(key => {
+      ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings'].forEach(key => {
         delete studio[key];
       });
       studio.transitions = sanitizeTransitions(studio.transitions);
       const frameMaps = studio.frameMaps || {};
       delete studio.frameMaps;
-      ['positions', 'bindings', 'visibility', 'objectStyles'].forEach(key => {
+      ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
         if (frameMaps[key]) studio[key] = decodeFrameMap(frameMaps[key], frames);
       });
       trace.studio = studio;

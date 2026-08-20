@@ -58,7 +58,8 @@
           animate,
           duration,
           Number(rule?.offsetX) || 0,
-          Number(rule?.offsetY) || 0
+          Number(rule?.offsetY) || 0,
+          true
         );
         if (fitted) return;
       }
@@ -78,6 +79,15 @@
         );
         return;
       }
+      const fitted = window.ASMTraceRenderers?.fitCurrentObjectsCamera?.(
+        Number(rule?.zoom) || 0.92,
+        animate,
+        duration,
+        (Number(rule?.offsetX) || 0) + followX,
+        (Number(rule?.offsetY) || 0) + followY,
+        true
+      );
+      if (fitted) return;
       window.setAutoCamera?.(
         Number(rule?.zoom) || 0.92,
         animate,

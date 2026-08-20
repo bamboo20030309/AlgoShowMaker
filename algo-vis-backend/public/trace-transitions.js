@@ -39,11 +39,51 @@
     )).at(-1) || null;
   }
 
+  function objectKeyForVariable(frame, variableId) {
+    const source = frame?.source || {};
+    if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
+    return variableId;
+  }
+
+  function stateObjectMatch(frame, requestedKey) {
+    const key = String(requestedKey || '');
+    let best = null;
+    Object.entries(frame?.state || {}).forEach(([variableId, entry]) => {
+      const objectKey = objectKeyForVariable(frame, variableId);
+      if (
+        key !== objectKey
+        && !key.startsWith(`${objectKey}#`)
+        && !key.startsWith(`${objectKey}:`)
+      ) return;
+      if (!best || objectKey.length > best.objectKey.length) {
+        best = { variableId, objectKey, entry };
+      }
+    });
+    return best;
+  }
+
+  function runtimeSourceAlias(fromFrame, toFrame, targetKey, sourceKeys) {
+    if (!sourceKeys?.has) return '';
+    const target = stateObjectMatch(toFrame, targetKey);
+    const identity = String(target?.entry?.identity || '');
+    if (!target || !identity) return '';
+    const suffix = String(targetKey).slice(target.objectKey.length);
+    for (const [variableId, entry] of Object.entries(fromFrame?.state || {})) {
+      if (String(entry?.identity || '') !== identity) continue;
+      const candidate = `${objectKeyForVariable(fromFrame, variableId)}${suffix}`;
+      if (sourceKeys.has(candidate)) return candidate;
+    }
+    return '';
+  }
+
   function resolve(document, fromFrame, toFrame, targetKey, sourceKeys = null) {
     const base = defaults(document);
     const rule = explicitRule(document, fromFrame, toFrame, targetKey);
     const requestedMode = rule?.mode === 'instant' ? 'instant' : base.mode;
-    const sourceKey = String(rule?.sourceKey || targetKey || '');
+    let sourceKey = String(rule?.sourceKey || targetKey || '');
+    if (!rule && sourceKeys?.has && !sourceKeys.has(sourceKey)) {
+      sourceKey = runtimeSourceAlias(fromFrame, toFrame, targetKey, sourceKeys) || sourceKey;
+    }
     const sourceExists = sourceKeys?.has ? sourceKeys.has(sourceKey) : true;
     let mode = requestedMode;
     if (mode === 'auto') mode = sourceExists ? 'move' : 'lift';
@@ -83,6 +123,7 @@
     defaults,
     rules,
     explicitRule,
+    runtimeSourceAlias,
     resolve,
     timing,
     hasCustomTransition,

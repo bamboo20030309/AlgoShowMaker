@@ -5,10 +5,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css?v=frame-green-1" />
+  <link rel="stylesheet" href="style.css?v=syntax-2" />
   <link rel="stylesheet" href="slides-embed.css?v=random-id-5" />
-  <link rel="stylesheet" href="trace.css?v=trace-11" />
-  <link rel="stylesheet" href="trace-studio.css?v=trace-28" />
+  <link rel="stylesheet" href="trace.css?v=trace-14" />
+  <link rel="stylesheet" href="trace-studio.css?v=trace-39" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 
@@ -38,6 +38,9 @@
     </div>
     <button id="editAnimationBtn" class="top-action-button" type="button" title="開啟動畫編輯器" disabled>
       編輯動畫
+    </button>
+    <button id="eventSettingsBtn" class="top-action-button" type="button" title="設定事件顯示與動畫預設" disabled>
+      事件設定
     </button>
   </nav>
   <div id="main">
@@ -71,6 +74,9 @@
         </div>
         <div class="subTab">
           <button class="tab-btn" data-tab="tab-debug">除錯記錄</button>
+        </div>
+        <div class="subTab">
+          <button class="tab-btn" data-tab="tab-syntax-tree">語法樹</button>
         </div>
       </div>
       <div id="tab-canvas" class="subContent active">
@@ -270,6 +276,13 @@
           style="flex:1; width:100%; height:100%; padding:8px; white-space:pre-wrap; overflow:auto; background:#f5f5f5;">尚未有 debug 訊息
         </pre>
       </div>
+
+      <div id="tab-syntax-tree" class="subContent">
+        <div id="syntaxTreeViewport">
+          <svg id="syntaxTreeSvg" role="img" aria-label="目前程式語法樹"></svg>
+          <div id="syntaxTreeStatus">尚未產生語法樹</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -286,24 +299,25 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.11.2/ace.js"></script>
   <!-- 載入開源的高級選色與透明度套件 iro.js -->
   <script src="vendor/iro/iro.min.js"></script>
-  <script src="trace-events.js?v=trace-9"></script>
-  <script src="trace-color-picker.js?v=trace-4"></script>
+  <script src="trace-events.js?v=trace-18"></script>
+  <script src="trace-color-picker.js?v=trace-6"></script>
   <!-- 底層繪圖與互動腳本 -->
-  <script src="canva.js?v=trace-6"></script>
-  <script src="interaction.js?v=trace-30"></script>
-  <script src="trace-view-source.js?v=trace-6"></script>
-  <script src="trace-model.js?v=trace-5"></script>
-  <script src="trace-rules.js?v=trace-2"></script>
-  <script src="trace-transitions.js?v=trace-4"></script>
-  <script src="trace-frame-tween.js?v=trace-20"></script>
-  <script src="trace-renderer.js?v=trace-66"></script>
-  <script src="trace-player.js?v=trace-13"></script>
-  <script src="trace-editor.js?v=trace-6"></script>
-  <script src="compile.js"></script>
-  <script src="tts.js"></script>
+  <script src="canva.js?v=trace-9"></script>
+  <script src="interaction.js?v=trace-37"></script>
+  <script src="trace-view-source.js?v=trace-8"></script>
+  <script src="trace-model.js?v=trace-15"></script>
+  <script src="trace-rules.js?v=trace-9"></script>
+  <script src="trace-transitions.js?v=trace-5"></script>
+  <script src="trace-frame-tween.js?v=trace-94"></script>
+  <script src="trace-renderer.js?v=trace-115"></script>
+  <script src="trace-player.js?v=trace-15"></script>
+  <script src="trace-editor.js?v=trace-12"></script>
+  <script src="syntax-tree.js?v=syntax-2"></script>
+  <script src="compile.js?v=syntax-3"></script>
+  <script src="tts.js?v=10"></script>
   <script src="resolve_pos.js"></script>
   <script src="animation.js?v=trace-5"></script>
-  <script src="front.js?v=random-id-8"></script>
+  <script src="front.js?v=random-id-28"></script>
   <script src="draw/draw_array_outerframe.js"></script>
   <script src="draw/draw_array_hintWidget.js"></script>
   <script src="draw/draw_array_utils.js"></script>
@@ -321,11 +335,11 @@
   <script src="draw/draw_circle.js"></script>
   <script src="draw/draw_triangle.js"></script>
   <script src="draw/draw_word.js"></script>
-  <script src="draw/draw_text.js"></script>
+  <script src="draw/draw_text.js?v=2"></script>
   <!-- GUI 編輯器 -->
   <link rel="stylesheet" href="gui_editor.css" />
   <script src="gui_editor.js?v=trace-2"></script>
-  <script src="trace-studio.js?v=trace-48"></script>
+  <script src="trace-studio.js?v=trace-81"></script>
   <script src="slides-embed.js?v=random-id-3"></script>
 </body>
 
