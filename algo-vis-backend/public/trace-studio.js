@@ -52,10 +52,13 @@
   let inspectorEventsPanel;
   let inspectorCameraPanel;
   let inspectorObjectPanel;
+  let codePanelSelectionActive = false;
+  let codePanelSettingsSection;
   let frameEventsEditor;
   let frameEventsList;
   let frameFixedEditor;
   let frameFixedList;
+  let activeEventCodeGroupId = '';
   let arrowFrom;
   let arrowTo;
   let arrowColor;
@@ -64,6 +67,8 @@
   let cameraZoomValue;
   let cameraAutoCapture;
   let cameraFrameButton;
+  let codePanelFontSize;
+  let codePanelFontSizeValue;
   let trackingSource;
   let trackingTarget;
   let trackingEffect;
@@ -175,6 +180,9 @@
         typeof trace.studio.eventSettings.defaultEnabled.fixed === 'boolean'
           ? trace.studio.eventSettings.defaultEnabled.fixed
           : true;
+    }
+    if (typeof trace.studio.eventSettings.autoLoopBoundaryEnabled !== 'boolean') {
+      trace.studio.eventSettings.autoLoopBoundaryEnabled = false;
     }
     delete trace.studio.eventSettings.defaultEnabled.fixed;
     delete trace.studio.eventSettings.timelineTypes.fixed;
@@ -304,7 +312,9 @@
       const entry = frame.state?.[variableId];
       if (!variableId || !entry) continue;
       const targetKey = frameObjectKey(frame, variableId);
-      const identityBase = String(entry.identity || targetKey);
+      const identityBase = window.ASMTraceRenderers?.runtimeIdentityToken?.(
+        entry.identity, targetKey
+      ) || String(targetKey);
       const ordinal = ordinals.get(identityBase) || 0;
       ordinals.set(identityBase, ordinal + 1);
       const runtimeIdentity = descriptor.named
@@ -874,6 +884,7 @@
     const hadActiveObject = Boolean(activeObjectKey);
     const previousTextObject = textObjectKey(activeObjectKey);
     activeObjectKey = key || '';
+    if (activeObjectKey) codePanelSelectionActive = false;
     if (previousTextObject !== textObjectKey(activeObjectKey)) textSelectionRange = null;
     activeTextStyleKeys = textSegmentForKey(activeObjectKey) ? [activeObjectKey] : [];
     if (activeObjectKey) inspectorMode = 'object';
@@ -1496,9 +1507,16 @@
   }
 
   function eventColorFor(event) {
+    if (event?.loopBoundary === true) return '#d0a01a';
     return window.ASMTraceEvents?.color?.(event.type)
       || DEFAULT_EVENT_COLORS[event.type]
       || '#65737a';
+  }
+
+  function eventLabel(event) {
+    return event?.loopBoundary === true
+      ? '迴圈邊界'
+      : (EVENT_LABELS[event?.type] || event?.type || '事件');
   }
 
   function eventDots(frame) {
@@ -1522,7 +1540,7 @@
     events.forEach(event => {
       const dot = el('i', 'trace-studio-event-dot');
       dot.style.background = eventColorFor(event);
-      const label = EVENT_LABELS[event.type] || event.type;
+      const label = eventLabel(event);
       const autoDisabled = event.autoAnimationDisabled === true;
       dot.title = label;
       dot.classList.toggle('is-disabled', autoDisabled);
@@ -1554,14 +1572,169 @@
       return `${target} ${operation}`.trim();
     }
     if (event?.type === 'fixed') return targets.map(expression).filter(Boolean).join('、');
-    if (event?.type === 'condition') return event.conditionKind || '條件判斷';
+    if (event?.type === 'condition') {
+      return String(event.source?.text || event.expression || event.conditionKind || '條件判斷').trim();
+    }
+    if (event?.type === 'scope-exit' || event?.type === 'visual-exit') {
+      const name = String(event.name || expression(targets[0]) || event.expression || '').trim();
+      return name ? `${name} 退場` : '物件退場';
+    }
+    if (event?.type === 'declare') {
+      return String(event.source?.text || expression(targets[0]) || event.expression || '').trim();
+    }
     if (event?.type === 'call') return event.expression || event.callee || '';
     if (event?.type === 'function-enter' || event?.type === 'function-exit') return event.function || '';
     return expression(targets[0]) || event?.expression || '';
   }
 
+  function eventDisplayText(event, sourceText = '') {
+    if (event?.type === 'scope-exit' || event?.type === 'visual-exit') return eventSummary(event);
+    const text = String(sourceText || event?.source?.text || eventSummary(event) || '').trim();
+    if (event?.type === 'declare' && event?.parameterDeclaration === true && text) {
+      return /;\s*$/.test(text) ? text : `${text};`;
+    }
+    return text;
+  }
+
+  function eventCodeStatusTitle(group) {
+    const state = group?.enabled ? '已開啟' : '已關閉';
+    const action = group?.enabled ? '點擊可關閉' : '點擊可開啟';
+    if (group.availability === 'missing-target') return `${state}；目標未顯示，${action}`;
+    if (group.availability === 'unrenderable') return `${state}；無可呈現動畫，${action}`;
+    if (!group?.enabled) return '已關閉；點擊後開啟這個指令的所有事件動畫';
+    return '已開啟；點擊後關閉這個指令的所有事件動畫';
+  }
+
+  function setEventCodeHover(groupToken, active) {
+    if (!frameEventsList || !groupToken) return;
+    frameEventsList.querySelectorAll('.trace-studio-event-code-button').forEach(node => {
+      const candidates = String(node.dataset.eventCandidates || '').split(' ');
+      node.classList.toggle('is-hovered', active && candidates.includes(groupToken));
+    });
+  }
+
+  function syncActiveEventCode(groupId = activeEventCodeGroupId, reveal = false) {
+    if (!frameEventsList) return;
+    frameEventsList.querySelectorAll('.trace-studio-event-code-button').forEach(node => {
+      node.classList.toggle('is-playing', Boolean(groupId) && node.dataset.eventGroupId === groupId);
+    });
+    if (!reveal || !groupId) return;
+    const active = [...frameEventsList.querySelectorAll('.trace-studio-event-code-button')]
+      .find(node => node.dataset.eventGroupId === groupId);
+    active?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  function configureEventCodeButton(node, primary, candidates, groupTokens) {
+    const groupToken = groupTokens.get(primary.id);
+    node.classList.add('trace-studio-event-code-button');
+    node.classList.toggle('is-enabled', primary.enabled);
+    node.classList.toggle('is-current', primary.current);
+    node.classList.toggle('is-available', primary.availability === 'available');
+    node.classList.toggle('is-missing-target', primary.availability === 'missing-target');
+    node.classList.toggle('is-unrenderable', primary.availability === 'unrenderable');
+    node.dataset.eventGroupId = primary.id;
+    node.dataset.eventGroupToken = groupToken;
+    node.dataset.eventCandidates = candidates.map(group => groupTokens.get(group.id)).filter(Boolean).join(' ');
+    node.setAttribute('role', 'button');
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('aria-pressed', String(primary.enabled));
+    node.setAttribute('aria-label', `${primary.label}：${eventDisplayText(primary.event)}`);
+    node.title = eventCodeStatusTitle(primary);
+    const toggle = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      setInstructionEventEnabled(primary.event, !primary.enabled);
+    };
+    node.addEventListener('click', toggle);
+    node.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') toggle(event);
+    });
+    node.addEventListener('pointerenter', () => setEventCodeHover(groupToken, true));
+    node.addEventListener('pointerleave', () => setEventCodeHover(groupToken, false));
+  }
+
+  function eventOutlineContextKind(item) {
+    if (item.type === 'FunctionDefinition') return '函式';
+    if (item.type === 'ForStatement') return 'for';
+    if (item.type === 'IfStatement') return 'if';
+    if (item.type === 'WhileStatement') return 'while';
+    if (item.type === 'DoStatement') return 'do';
+    if (item.type === 'SwitchStatement') return 'switch';
+    return '區塊';
+  }
+
+  function renderEventOutlineButton(group, groupTokens, sourceText = '') {
+    const button = el('button', 'trace-studio-event-code-button');
+    button.type = 'button';
+    const marker = el('span', 'trace-studio-event-code-marker');
+    marker.style.background = eventColorFor(group.event);
+    const label = el('span', 'trace-studio-event-code-type', group.label);
+    const text = eventDisplayText(group.event, sourceText) || group.label;
+    button.append(marker, label, el('code', 'trace-studio-event-code-text', text));
+    configureEventCodeButton(button, group, [group], groupTokens);
+    return button;
+  }
+
+  function renderEventOutlineItem(item, groupTokens) {
+    if (item.kind === 'context') {
+      const context = el('div', 'trace-studio-event-context');
+      context.dataset.contextType = item.type || '';
+      const header = el('div', 'trace-studio-event-context-header');
+      if (item.type === 'FunctionDefinition' && item.headerGroup) {
+        header.classList.add('has-event');
+        const functionButton = renderEventOutlineButton(
+          item.headerGroup, groupTokens, item.label || item.headerGroup.event?.source?.text
+        );
+        functionButton.classList.add('trace-studio-event-function-button');
+        header.append(functionButton);
+      } else {
+        header.append(
+          el('span', 'trace-studio-event-context-kind', eventOutlineContextKind(item)),
+          el('code', 'trace-studio-event-context-code', item.label || eventOutlineContextKind(item))
+        );
+      }
+      const children = el('div', 'trace-studio-event-context-children');
+      item.children.forEach(child => children.append(renderEventOutlineItem(child, groupTokens)));
+      const close = el('div', 'trace-studio-event-context-close', '}');
+      context.append(header, children, close);
+      return context;
+    }
+
+    return renderEventOutlineButton(item.group, groupTokens);
+  }
+
+  function renderEventCodeEditor(frame) {
+    const previousScrollTop = frameEventsList.scrollTop;
+    frameEventsList.replaceChildren();
+    const plan = window.ASMTraceEventCodeTree?.buildOutline?.(trace, frame);
+    if (!plan?.items?.length) {
+      frameEventsList.append(el('div', 'trace-studio-empty', '目前沒有可設定的程式碼事件'));
+      return;
+    }
+    const groupTokens = new Map(plan.groups.map((group, index) => [group.id, `g${index}`]));
+    const outline = el('div', 'trace-studio-event-outline');
+    plan.items.forEach(item => outline.append(renderEventOutlineItem(item, groupTokens)));
+    frameEventsList.append(outline);
+    frameEventsList.scrollTop = previousScrollTop;
+    syncActiveEventCode(activeEventCodeGroupId, false);
+  }
+
   function setInstructionEventEnabled(event, enabled) {
     if (!trace || !event) return;
+    if (event.loopBoundary === true) {
+      trace.studio.eventSettings ||= {};
+      trace.studio.eventSettings.autoLoopBoundaryEnabled = Boolean(enabled);
+      window.ASMTraceEvents?.applyEnabledStates?.(trace);
+      recordHistory();
+      renderFrameEventsEditor();
+      renderRail();
+      renderTimeline();
+      renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+      window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
+        detail: { document: trace }
+      }));
+      return;
+    }
     const key = window.ASMTraceEvents?.instructionKey?.(event) || event.signature || event.type;
     const canonical = window.ASMTraceEvents?.canonicalInstructionKey;
     if (canonical) {
@@ -1614,46 +1787,9 @@
   function renderFrameEventsEditor() {
     if (!frameEventsEditor || !frameEventsList || !frameFixedEditor || !frameFixedList) return;
     const frame = trace?.frames?.[currentIndex];
-    const events = frame?.events || [];
-    const inspectorEvents = inspectorEventsForFrame(frame);
     frameEventsEditor.hidden = false;
-    frameEventsList.replaceChildren();
     frameFixedList.replaceChildren();
-    if (!inspectorEvents.length) {
-      frameEventsList.append(el('div', 'trace-studio-empty', '本幀沒有事件'));
-    }
-    inspectorEvents.forEach(({ event, index }, orderedIndex) => {
-      const row = el('div', 'trace-studio-frame-event');
-      const autoDisabled = event.autoAnimationDisabled === true;
-      const control = window.ASMTraceEvents?.controlState?.(event)
-        || { checked: event.enabled !== false, available: !autoDisabled };
-      const availability = window.ASMTraceEvents?.availabilityKind?.(event)
-        || (autoDisabled ? 'missing-target' : 'available');
-      row.classList.toggle('is-disabled', !control.checked);
-      row.classList.toggle('is-unavailable', !control.available);
-      row.classList.toggle('is-missing-target', availability === 'missing-target');
-      row.classList.toggle('is-unrenderable', availability === 'unrenderable');
-      const sequence = el('span', 'trace-studio-frame-event-order', String(orderedIndex + 1));
-      sequence.title = `第 ${orderedIndex + 1} 個事件`;
-      const swatch = el('i', 'trace-studio-frame-event-swatch');
-      swatch.style.background = eventColorFor(event);
-      const copy = el('span', 'trace-studio-frame-event-copy');
-      copy.append(el('strong', '', EVENT_LABELS[event.type] || event.type));
-      const summary = eventSummary(event);
-      if (summary) copy.append(el('small', '', summary));
-      const toggle = el('label', 'trace-studio-event-switch');
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = control.checked;
-      input.setAttribute('aria-label', `${EVENT_LABELS[event.type] || event.type}事件`);
-      input.title = input.checked
-        ? '關閉此指令的所有事件動畫'
-        : '開啟此指令的所有事件動畫';
-      input.addEventListener('change', () => setInstructionEventEnabled(event, input.checked));
-      toggle.append(input, el('span'));
-      row.append(sequence, swatch, copy, toggle);
-      frameEventsList.append(row);
-    });
+    renderEventCodeEditor(frame);
     const fixedEvents = fixedEventsForFrame(frame);
     if (!fixedEvents.length) {
       frameFixedList.append(el('div', 'trace-studio-empty', '本幀沒有新增固定格子'));
@@ -1685,8 +1821,7 @@
     const ordered = window.ASMTraceEvents?.orderedEntries?.(events)
       || events.map((event, index) => ({ event, index }));
     return ordered
-      .filter(({ event }) => window.ASMTraceEvents?.showInspector?.(event, trace) !== false)
-      .filter(({ event }) => window.ASMTraceEvents?.showTag?.(event.type, trace) !== false);
+      .filter(({ event }) => window.ASMTraceEvents?.showInspector?.(event, trace) !== false);
   }
 
   function fixedEventsForFrame(frame = trace?.frames?.[currentIndex]) {
@@ -1701,7 +1836,7 @@
   }
 
   function setInspectorMode(mode) {
-    if (mode === 'object' && !activeObjectKey) return;
+    if (mode === 'object' && !activeObjectKey && !codePanelSelectionActive) return;
     inspectorMode = mode;
     renderInspectorNavigation();
   }
@@ -1709,14 +1844,15 @@
   function renderInspectorNavigation() {
     if (!inspectorToolbar) return;
     const eventCount = inspectorEventsForFrame().length;
-    if (inspectorMode === 'object' && !activeObjectKey) {
+    const hasObjectInspector = Boolean(activeObjectKey || codePanelSelectionActive);
+    if (inspectorMode === 'object' && !hasObjectInspector) {
       inspectorMode = hasEventInspectorContent() ? 'events' : 'camera';
     }
     inspectorEventButton.disabled = false;
     inspectorEventCount.textContent = String(eventCount);
     inspectorEventCount.hidden = !eventCount;
-    inspectorObjectButton.hidden = !activeObjectKey;
-    inspectorToolbar.classList.toggle('has-object', Boolean(activeObjectKey));
+    inspectorObjectButton.hidden = !hasObjectInspector;
+    inspectorToolbar.classList.toggle('has-object', hasObjectInspector);
     [
       [inspectorEventButton, 'events'],
       [inspectorCameraButton, 'camera'],
@@ -1728,7 +1864,8 @@
     });
     inspectorEventsPanel.hidden = inspectorMode !== 'events';
     inspectorCameraPanel.hidden = inspectorMode !== 'camera';
-    inspectorObjectPanel.hidden = inspectorMode !== 'object' || !activeObjectKey;
+    inspectorObjectPanel.hidden = inspectorMode !== 'object' || !hasObjectInspector;
+    inspectorObjectPanel.classList.toggle('is-code-panel-selection', codePanelSelectionActive);
   }
 
   function selectFrame(index, event = {}) {
@@ -2075,6 +2212,11 @@
       cameraZoom.value = String(zoom);
       cameraZoomValue.textContent = `${zoom.toFixed(2)}x`;
       cameraDraftId = rule?.id || '';
+    }
+    if (codePanelFontSize && codePanelFontSizeValue) {
+      const size = window.ASMTraceCodePresenter?.normalizeFontSize?.(trace?.studio?.codePanelFontSize) || 14;
+      codePanelFontSize.value = String(size);
+      codePanelFontSizeValue.textContent = `${size}px`;
     }
     renderFrameEventsEditor();
     renderTransitionEditor();
@@ -2753,7 +2895,7 @@
       return button;
     };
     inspectorCameraButton = toolbarButton('camera', '▣', '鏡頭', '鏡頭設定');
-    inspectorEventButton = toolbarButton('events', '●', '事件', '本幀事件');
+    inspectorEventButton = toolbarButton('events', '●', '事件', '事件程式碼');
     inspectorEventCount = el('i', 'trace-studio-inspector-tool-count', '0');
     inspectorEventButton.append(inspectorEventCount);
     inspectorObjectButton = toolbarButton('object', '◇', '物件', '選取物件設定');
@@ -2767,7 +2909,9 @@
       option('forward', '目前指令之後'),
       option('all', '所有幀')
     );
-    inspector.append(field('作用時間線', scopeSelect));
+    // Event-code buttons are instruction-bound, so the old timeline scope
+    // selector no longer belongs in the right event inspector. Keep this
+    // detached selector as the canvas shortcut menu's bulk-edit state.
     eventGapRange = document.createElement('input');
     eventGapRange.type = 'range';
     eventGapRange.className = 'trace-studio-event-gap-range';
@@ -2793,7 +2937,7 @@
     inspectorObjectPanel = el('div', 'trace-studio-inspector-panel');
     inspector.append(inspectorEventsPanel, inspectorCameraPanel, inspectorObjectPanel);
 
-    frameEventsEditor = section('本幀事件');
+    frameEventsEditor = section('事件程式碼');
     frameEventsEditor.classList.add('trace-studio-frame-events-section');
     frameEventsList = el('div', 'trace-studio-frame-events');
     frameEventsEditor.append(frameEventsList);
@@ -3076,7 +3220,33 @@
     camera.append(
       field('縮放', zoomRow), field('自動捕捉', cameraAutoCapture), cameraFrameButton
     );
+    const codePanel = section('程式碼片段');
+    codePanel.dataset.traceCodeControls = '1';
+    codePanelSettingsSection = codePanel;
+    codePanelFontSize = document.createElement('input');
+    codePanelFontSize.type = 'range';
+    codePanelFontSize.min = '8';
+    codePanelFontSize.max = '32';
+    codePanelFontSize.step = '1';
+    const savedCodeFontSize = window.ASMTraceCodePresenter?.normalizeFontSize?.(
+      trace?.studio?.codePanelFontSize
+    ) || 14;
+    codePanelFontSize.value = String(savedCodeFontSize);
+    codePanelFontSizeValue = el('output', 'trace-studio-range-value', `${savedCodeFontSize}px`);
+    const codeFontSizeRow = el('div', 'trace-studio-range-row');
+    codeFontSizeRow.append(codePanelFontSize, codePanelFontSizeValue);
+    codePanelFontSize.addEventListener('input', () => {
+      const size = window.ASMTraceCodePresenter?.normalizeFontSize?.(codePanelFontSize.value)
+        || Number(codePanelFontSize.value) || 14;
+      trace.studio ||= {};
+      trace.studio.codePanelFontSize = size;
+      codePanelFontSizeValue.textContent = `${size}px`;
+      window.ASMTraceCodePresenter?.applyPresentationSettings?.(trace);
+    });
+    codePanelFontSize.addEventListener('change', recordHistory);
+    codePanel.append(field('字體大小', codeFontSizeRow));
     inspectorCameraPanel.append(camera);
+    inspectorObjectPanel.append(codePanel);
 
     const effects = section('已建立效果');
     effectsList = el('div', 'trace-studio-effects');
@@ -3164,8 +3334,10 @@
     flushAutoSave();
     closeCameraFrame(true);
     writeSourceSettings();
+    window.ASMTraceCodePresenter?.clearSelection?.();
     document.body.classList.remove('asm-trace-studio-open');
     activeObjectKey = '';
+    codePanelSelectionActive = false;
     renderPlayerFrame(currentIndex, { animatePositions: false });
   }
 
@@ -3250,6 +3422,7 @@
     currentIndex = Math.max(0, window.ASMTracePlayer?.getCurrentFrame?.() || 0);
     activeBinding = null;
     activeObjectKey = '';
+    codePanelSelectionActive = false;
     inspectorMode = hasEventInspectorContent(trace.frames[currentIndex]) ? 'events' : 'camera';
     selectedFrames = new Set([trace.frames[currentIndex].id]);
     scopeSelect.value = window.ASMTraceViewSource?.directiveName?.(trace.frames[currentIndex])
@@ -3379,6 +3552,36 @@
     renderInspectorNavigation();
   });
 
+  window.addEventListener('asm:trace-active-event', event => {
+    if (!trace || event.detail?.document !== trace
+      || !document.body.classList.contains('asm-trace-studio-open')) return;
+    const groupId = window.ASMTraceEventCodeTree?.eventGroupId?.(event.detail?.event);
+    if (!groupId) return;
+    if (event.detail?.phase === 'start') {
+      activeEventCodeGroupId = groupId;
+      syncActiveEventCode(groupId, true);
+      return;
+    }
+    if (activeEventCodeGroupId === groupId) {
+      activeEventCodeGroupId = '';
+      syncActiveEventCode('', false);
+    }
+  });
+
+  window.addEventListener('asm:trace-code-panel-selected', event => {
+    if (!trace || event.detail?.document !== trace
+      || !document.body.classList.contains('asm-trace-studio-open')) return;
+    activeObjectKey = '';
+    activeBinding = null;
+    codePanelSelectionActive = true;
+    inspectorMode = 'object';
+    renderObjectStateEditor();
+    renderTransitionEditor();
+    renderStyleEditor();
+    renderInspectorNavigation();
+    codePanelSettingsSection?.scrollIntoView?.({ block: 'nearest' });
+  });
+
   window.addEventListener('asm:trace-event-availability-changed', event => {
     if (!trace || event.detail?.document !== trace
       || !document.body.classList.contains('asm-trace-studio-open')) return;
@@ -3396,6 +3599,7 @@
   window.addEventListener('asm:trace-object-selected', event => {
     if (!trace || !document.body.classList.contains('asm-trace-studio-open')) return;
     const key = event.detail?.key || '';
+    codePanelSelectionActive = false;
     setActiveObjectKey(key);
     setActiveBindingForKey(key);
   });

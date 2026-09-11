@@ -5,6 +5,8 @@
   document.body.classList.add(`asm-embed-${mode}`);
   const normalize = window.ASMAlgorithmAnimation.normalize;
   let currentAnimation = normalize();
+  let runtimeVisible = mode !== 'runtime';
+  let runtimeGeometryRequest = 0;
 
   function settleAnimationVisuals() {
     // Event tweens use temporary SVG layers (moving values, comparison cards,
@@ -30,6 +32,35 @@
     window.requestAnimationFrame(() => window.requestAnimationFrame(notify));
   }
 
+  function prepareRuntimeGeometry() {
+    if (mode !== 'runtime' || !runtimeVisible || !currentAnimation.traceDocument?.frames?.length) {
+      return Promise.resolve(false);
+    }
+    const request = ++runtimeGeometryRequest;
+    return new Promise(resolve => {
+      const run = () => Promise.resolve(window.ASMTracePlayer?.rebaseCurrentFrame?.({
+        confirmVisible: true
+      })).then(ready => {
+        if (request !== runtimeGeometryRequest || !ready) return resolve(false);
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'asm-animation-geometry-ready',
+            mode
+          }, window.location.origin);
+        }
+        resolve(true);
+      }).catch(error => {
+        console.error('Algorithm slide geometry preparation failed', error);
+        resolve(false);
+      });
+      if (typeof window.requestAnimationFrame !== 'function') {
+        setTimeout(run, 0);
+        return;
+      }
+      window.requestAnimationFrame(() => window.requestAnimationFrame(run));
+    });
+  }
+
   function snapshotAnimation() {
     window.ASMTraceStudio?.flushSourceSettings?.();
     const input = document.getElementById('inputArea');
@@ -50,6 +81,24 @@
     };
   }
 
+  function refreshOutdatedEditorTrace(animation) {
+    if (mode !== 'editor' || !animation.traceDocument?.frames?.length) return null;
+    const status = window.ASMTraceProvenance?.status?.(
+      animation.traceDocument,
+      animation.code,
+      animation.input
+    );
+    if (status?.kind !== 'outdated') return null;
+    const runButton = document.getElementById('runBtn');
+    if (!runButton || runButton.classList.contains('loading')) return null;
+    window.__asmMigrateTraceSettingsOnNextRun = true;
+    return new Promise(resolve => {
+      const finish = () => resolve(true);
+      window.addEventListener('asm:compile-finished', finish, { once: true });
+      runButton.click();
+    });
+  }
+
   function applyAnimation(animation = {}) {
     settleAnimationVisuals();
     currentAnimation = normalize(animation);
@@ -63,7 +112,7 @@
     window.ASMTraceEditor?.loadAnimation?.(currentAnimation);
     if (currentAnimation.traceDocument?.frames?.length) {
       if (!window.ASMTraceEditor) window.asmApplyTraceDocument?.(currentAnimation.traceDocument);
-      return;
+      return refreshOutdatedEditorTrace(currentAnimation);
     }
     if (currentAnimation.scriptContent && typeof window.asmApplyAnimationScript === 'function') {
       window.asmApplyAnimationScript(currentAnimation.scriptContent);
@@ -73,8 +122,20 @@
   window.addEventListener('message', event => {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-load-animation') {
-      applyAnimation(event.data.animation);
-      notifyAnimationApplied();
+      const refresh = applyAnimation(event.data.animation);
+      const applied = refresh && typeof refresh.finally === 'function'
+        ? refresh.finally(notifyAnimationApplied)
+        : (notifyAnimationApplied(), Promise.resolve());
+      if (mode === 'runtime' && runtimeVisible) Promise.resolve(applied).then(prepareRuntimeGeometry);
+      return;
+    }
+    if (event.data.type === 'asm-runtime-visibility' && mode === 'runtime') {
+      runtimeVisible = event.data.visible === true;
+      if (!runtimeVisible) {
+        runtimeGeometryRequest += 1;
+        return;
+      }
+      prepareRuntimeGeometry();
       return;
     }
     if (event.data.type === 'asm-request-save-animation' && mode === 'editor' && window.parent !== window) {

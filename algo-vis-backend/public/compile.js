@@ -194,9 +194,18 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     // 3. Trace mode returns data; legacy mode returns an animation script.
     if (data.traceDocument) {
       try {
+        const incomingTraceDocument = {
+          ...data.traceDocument,
+          sourceCode: typeof data.traceDocument.sourceCode === 'string'
+            && data.traceDocument.sourceCode
+            ? data.traceDocument.sourceCode
+            : sourceCode
+        };
+        const migrateCurrentSettings = window.__asmMigrateTraceSettingsOnNextRun === true;
+        window.__asmMigrateTraceSettingsOnNextRun = false;
         const traceDocument = window.ASMTraceEditor
-          ? window.ASMTraceEditor.applyTraceDocument(data.traceDocument)
-          : window.asmApplyTraceDocument(data.traceDocument);
+          ? window.ASMTraceEditor.applyTraceDocument(incomingTraceDocument, { migrateCurrentSettings })
+          : window.asmApplyTraceDocument(incomingTraceDocument);
         const traceSettings = window.ASMTraceEditor?.snapshot?.() || {};
         const savedTraceDocument = traceSettings.traceDocument || traceDocument;
         window.dispatchEvent(new CustomEvent('asm:compiled-animation', {
@@ -242,6 +251,8 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     // [新增] 2. 結束 loading 狀態（無論成功或失敗都會執行）
     // 讓按鈕恢復可點擊、顏色恢復、轉圈圈消失
     runBtn.classList.remove('loading');
+    window.__asmMigrateTraceSettingsOnNextRun = false;
+    window.dispatchEvent(new CustomEvent('asm:compile-finished'));
   }
 
   // 追蹤失敗時優先讓使用者看到原因；正常執行則維持輸出分頁。

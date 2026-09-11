@@ -21,6 +21,7 @@ function fixture() {
     rules: [],
     studio: {
       codePanelPosition: { x: 0.36, y: 0.18 },
+      codePanelFontSize: 18,
       positions: {
         'frame-0': { arr: { x: 10, y: 20 } },
         'deleted-frame': { arr: { x: 900, y: 900 } }
@@ -59,6 +60,7 @@ test('save-time view normalization removes stale/default data without mutating t
   assert.equal(settings.studio.arrows, undefined);
   assert.equal(settings.studio.transitions, undefined);
   assert.deepEqual(settings.studio.codePanelPosition, { x: 0.36, y: 0.18 });
+  assert.equal(settings.studio.codePanelFontSize, 18);
   assert.deepEqual(settings.studio.frameMaps.positions, [{
     sourceSelectors: [{ kind: 'manual-frame', functionName: 'main', directiveKey: 'manual-frame:first:0' }],
     value: { arr: { x: 10, y: 20 } }
@@ -301,6 +303,7 @@ test('old verbose settings still load, while the next saved trace snapshot is co
     'assign:main:i++': true
   });
   assert.deepEqual(compact.studio.codePanelPosition, { x: 0.36, y: 0.18 });
+  assert.equal(compact.studio.codePanelFontSize, 18);
   compact.studio.positions['frame-0'].arr.x = 999;
   assert.equal(trace.studio.positions['frame-0'].arr.x, 10, 'saved trace must not share mutable state');
 });

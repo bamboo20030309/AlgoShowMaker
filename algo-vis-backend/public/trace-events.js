@@ -1,11 +1,16 @@
 (function () {
   const definitions = [
-    { type: 'declare', label: '宣告', color: '#25824d', enabledByDefault: false, timelineByDefault: false },
+    { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
+    { type: 'scope-exit', label: '作用域結束／物件退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
+    { type: 'visual-exit', label: '手動物件退場', color: '#9a6448', enabledByDefault: true, timelineByDefault: true },
     { type: 'read', label: '讀取', color: '#3976b8', enabledByDefault: false, timelineByDefault: false },
     { type: 'write', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'assign', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
-    { type: 'condition', label: '條件', color: '#7b61a8', enabledByDefault: false, timelineByDefault: false },
+    // Whole-condition results are internal playback metadata. Comparisons are
+    // the user-controllable events; this record only resolves final true/false
+    // code coloring and must not appear as another event or setting.
+    { type: 'condition', label: '條件', color: '#7b61a8', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },
     { type: 'fixed', label: '自動固定', color: '#4caf50', category: 'state', enabledByDefault: true, timelineByDefault: false },
     { type: 'call', label: '呼叫', color: '#65737a', enabledByDefault: false, timelineByDefault: false },
@@ -14,22 +19,32 @@
   ];
   const byType = Object.fromEntries(definitions.map(definition => [definition.type, definition]));
   const animations = Object.freeze({
-    declare: 'none',
+    // Declaration and scope exit form one controllable visual lifetime. When
+    // their switches are disabled the frame jumps directly to the resulting
+    // visible/absent state without an entrance/exit animation.
+    declare: 'declare',
+    'scope-exit': 'exit',
+    'visual-exit': 'exit',
     read: 'none',
     write: 'assign',
     assign: 'assign',
     compare: 'compare',
-    condition: 'pulse',
+    condition: 'none',
     swap: 'swap',
     fixed: 'none',
     call: 'none',
-    'function-enter': 'none',
+    // Function entry is a code-only event. It highlights the function header
+    // in playback order without inventing a canvas target animation.
+    'function-enter': 'code',
     'function-exit': 'none'
   });
   // Availability is frame-specific, while saved instruction switches may apply
   // to many frames. Keep explicit user intent out of the serialized event data
   // so an unavailable occurrence does not permanently disable its instruction.
   const explicitEnabledStates = new WeakSet();
+  function cloneValue(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
 
   function baseEventKey(event = {}) {
     if (event.signature) return String(event.signature);
@@ -100,12 +115,199 @@
     }).sort((left, right) => left.order - right.order || left.index - right.index);
   }
 
+  function forContext(event = {}) {
+    const source = event?.source;
+    const from = Number(source?.from);
+    const to = Number(source?.to);
+    return (Array.isArray(source?.contexts) ? source.contexts : [])
+      .filter(context => context?.type === 'ForStatement')
+      .filter(context => !Number.isFinite(from) || !Number.isFinite(to)
+        || (Number(context.from) <= from && Number(context.to) >= to))
+      .sort((left, right) => (
+        (Number(left.to) - Number(left.from)) - (Number(right.to) - Number(right.from))
+      ))[0] || null;
+  }
+
+  function forContextKey(context = {}) {
+    return [
+      context.functionName || '',
+      Number(context.from),
+      Number(context.to),
+      Number(context.headerFrom),
+      Number(context.headerTo)
+    ].join(':');
+  }
+
+  function eventForContextKey(event = {}) {
+    const context = forContext(event);
+    return context ? forContextKey(context) : '';
+  }
+
+  // A classic for loop evaluates its update expression once more before the
+  // condition becomes false. Visually that final i++/j++ and the following
+  // failed condition are one loop-boundary operation. Keep the captured
+  // runtime metadata, but mark that entire operation so one setting can omit
+  // its motion and code highlighting without affecting ordinary iterations.
+  function rebuildLoopBoundaryEvents(document) {
+    const entries = (document?.frames || []).flatMap((frame, frameIndex) => (
+      orderedEntries(frame?.events || []).map(entry => ({ ...entry, frame, frameIndex }))
+    )).sort((left, right) => (
+      left.order - right.order || left.frameIndex - right.frameIndex || left.index - right.index
+    ));
+    entries.forEach(({ event }) => {
+      delete event.loopBoundary;
+      delete event.loopBoundaryCondition;
+      delete event.loopBoundaryConditionId;
+      delete event.loopBoundarySuppressed;
+    });
+    entries.forEach((entry, terminalIndex) => {
+      const condition = entry.event;
+      if (condition?.type !== 'condition'
+        || condition.conditionKind !== 'ForStatement'
+        || condition.result !== false) return;
+      const context = forContext(condition);
+      if (!context) return;
+      const contextKey = forContextKey(context);
+      const conditionTo = Number(context.conditionTo);
+      const conditionFrom = Number(context.conditionFrom);
+      const headerTo = Number(context.headerTo);
+      if (!Number.isFinite(conditionFrom)
+        || !Number.isFinite(conditionTo)
+        || !Number.isFinite(headerTo)) return;
+      condition.loopBoundaryCondition = true;
+      condition.loopBoundaryConditionId = String(condition.id || '');
+      let previousConditionIndex = -1;
+      for (let cursor = terminalIndex - 1; cursor >= 0; cursor -= 1) {
+        const previous = entries[cursor].event;
+        if (previous?.type !== 'condition' || previous.conditionKind !== 'ForStatement') continue;
+        if (eventForContextKey(previous) !== contextKey) continue;
+        previousConditionIndex = cursor;
+        break;
+      }
+      entries.slice(previousConditionIndex + 1, terminalIndex).forEach(({ event }) => {
+        if (!['assign', 'write'].includes(event?.type)) return;
+        if (eventForContextKey(event) !== contextKey) return;
+        const from = Number(event.source?.from);
+        const to = Number(event.source?.to);
+        if (!Number.isFinite(from) || !Number.isFinite(to)
+          || from < conditionTo || to > headerTo) return;
+        event.loopBoundary = true;
+        event.loopBoundaryConditionId = String(condition.id || '');
+      });
+      // Reads and comparisons that build the final false result have their own
+      // runtime records. They must be suppressed with the condition itself or
+      // the code presenter can still reconstruct and color the boundary check.
+      entries.slice(previousConditionIndex + 1, terminalIndex + 1).forEach(({ event }) => {
+        if (eventForContextKey(event) !== contextKey) return;
+        const from = Number(event.source?.from);
+        const to = Number(event.source?.to);
+        if (!Number.isFinite(from) || !Number.isFinite(to)
+          || from < conditionFrom || to > conditionTo) return;
+        event.loopBoundaryCondition = true;
+        event.loopBoundaryConditionId = String(condition.id || '');
+      });
+    });
+    return document;
+  }
+
   function eventSettings(document) {
     return document?.studio?.eventSettings || {};
   }
 
+  function boundaryMutationTargets(event = {}) {
+    const targets = (event.targets || []).filter(target => target?.variableId);
+    const explicit = targets.filter(target => target.role === 'target');
+    return explicit.length ? explicit : targets.slice(0, 1);
+  }
+
+  function applyBoundaryValue(frame, target, value) {
+    const entry = frame?.state?.[target?.variableId];
+    if (!entry || value == null) return;
+    const resolvedIndex = Number(target.resolvedIndex);
+    const items = entry.data?.items;
+    if (Number.isInteger(resolvedIndex) && Array.isArray(items)) {
+      if (resolvedIndex >= 0 && resolvedIndex < items.length) {
+        items[resolvedIndex] = cloneValue(value);
+      }
+      return;
+    }
+    entry.data = cloneValue(value);
+  }
+
+  function keepSnapshotFrame(document, snapshot) {
+    if (snapshot?.kind !== 'frame' || !snapshot.frame) return snapshot?.frame || null;
+    const framesById = new Map((document?.frames || []).map(frame => [frame.id, frame]));
+    const sourceFrame = framesById.get(snapshot.sourceFrameId);
+    const captureOrder = Number(snapshot.frame.captureOrder);
+    const keepOrder = Number(snapshot.keepOrder);
+    const boundaryEvents = orderedEntries(sourceFrame?.events || [])
+      .filter(entry => (
+        (!Number.isFinite(captureOrder) || entry.order > captureOrder)
+        && (!Number.isFinite(keepOrder) || entry.order < keepOrder)
+      ))
+      .map(entry => entry.event)
+      .filter(event => event?.type === 'scope-exit' || event?.type === 'visual-exit' || (
+        event?.loopBoundary === true
+        && event.enabled === true
+        && event.loopBoundarySuppressed !== true
+      ));
+    if (!boundaryEvents.length) return snapshot.frame;
+    const effectiveFrame = {
+      ...snapshot.frame,
+      state: Object.fromEntries(Object.entries(snapshot.frame.state || {}).map(([variableId, entry]) => [
+        variableId,
+        { ...entry, data: cloneValue(entry?.data) }
+      ])),
+      bindings: cloneValue(snapshot.frame.bindings || []),
+      objectBindings: cloneValue(snapshot.frame.objectBindings || []),
+      renderers: cloneValue(snapshot.frame.renderers || {}),
+      rendererOptions: cloneValue(snapshot.frame.rendererOptions || {}),
+      captureOnlyVariableIds: cloneValue(snapshot.frame.captureOnlyVariableIds || []),
+      styles: cloneValue(snapshot.frame.styles || []),
+      segments: cloneValue(snapshot.frame.segments || [])
+    };
+    boundaryEvents.forEach(event => {
+      if (event?.type === 'scope-exit' || event?.type === 'visual-exit') {
+        (event.targets || []).forEach(target => {
+          const variableId = String(target?.variableId || '');
+          const lifetime = String(target?.lifetimeIdentity || event.lifetimeIdentity || '');
+          const entry = effectiveFrame.state?.[variableId];
+          if (!entry || (lifetime && String(entry.lifetime || '') !== lifetime)) return;
+          delete effectiveFrame.state[variableId];
+          delete effectiveFrame.renderers[variableId];
+          delete effectiveFrame.rendererOptions[variableId];
+          effectiveFrame.captureOnlyVariableIds = effectiveFrame.captureOnlyVariableIds
+            .filter(id => id !== variableId);
+          effectiveFrame.bindings = effectiveFrame.bindings.filter(binding => (
+            binding?.targetVariableId !== variableId
+            && binding?.sourceVariableId !== variableId
+            && !(binding?.sourceVariableIds || []).includes(variableId)
+          ));
+          effectiveFrame.objectBindings = effectiveFrame.objectBindings.filter(binding => (
+            binding?.targetVariableId !== variableId
+            && binding?.sourceVariableId !== variableId
+            && !(binding?.sourceVariableIds || []).includes(variableId)
+          ));
+          effectiveFrame.styles = effectiveFrame.styles
+            .filter(style => style?.targetVariableId !== variableId);
+          effectiveFrame.segments = effectiveFrame.segments
+            .filter(segment => segment?.targetVariableId !== variableId);
+        });
+        return;
+      }
+      boundaryMutationTargets(event).forEach(target => (
+        applyBoundaryValue(effectiveFrame, target, event.payload?.after)
+      ));
+    });
+    return effectiveFrame;
+  }
+
   function defaultEnabled(event = {}, document = null) {
     if (event.animate === false) return false;
+    if (byType[event.type]?.internal === true) return false;
+    if (event.loopBoundary === true) {
+      return eventSettings(document).autoLoopBoundaryEnabled === true;
+    }
     if (event.type === 'compare' && (event.targets || []).some(target => !target?.variableId)) return false;
     if (event.type === 'fixed') {
       const settings = eventSettings(document);
@@ -197,6 +399,7 @@
       frame.events.push({
         id: signature,
         type: 'fixed',
+        sceneGeneration: Number(frame.sceneGeneration) || 0,
         signature,
         autoFixed: true,
         stateChange: true,
@@ -208,6 +411,7 @@
         afterEventId: lastAccess.lastEventId,
         targets: group.map(access => ({
           role: 'target',
+          sceneGeneration: Number(frame.sceneGeneration) || 0,
           variableId: access.variableId,
           runtimeIdentity: access.runtimeIdentity,
           expression: `${access.variableName}[${access.index}]`,
@@ -224,12 +428,35 @@
   }
 
   function applyEnabledStates(document) {
+    rebuildLoopBoundaryEvents(document);
     const eventStates = document?.studio?.eventStates || {};
     const instructionStates = document?.studio?.eventInstructionStates || {};
+    const settings = eventSettings(document);
+    if (settings.defaultEnabled) delete settings.defaultEnabled.condition;
+    if (settings.timelineTypes) delete settings.timelineTypes.condition;
+    Object.keys(instructionStates).forEach(key => {
+      if (canonicalInstructionKey(key).startsWith('condition:')) delete instructionStates[key];
+    });
+    Object.values(eventStates).forEach(states => {
+      Object.keys(states || {}).forEach(key => {
+        if (canonicalInstructionKey(key).startsWith('condition:')) delete states[key];
+      });
+    });
     (document?.frames || []).forEach(frame => {
       const frameStates = eventStates[frame.id] || {};
       (frame.events || []).forEach((event, index) => {
         const key = eventKey(frame.events, index);
+        if (event.loopBoundaryCondition === true) {
+          event.loopBoundarySuppressed = settings.autoLoopBoundaryEnabled !== true;
+        } else {
+          delete event.loopBoundarySuppressed;
+        }
+        if (event.loopBoundary === true) {
+          explicitEnabledStates.delete(event);
+          event.enabled = settings.autoLoopBoundaryEnabled === true;
+          event.loopBoundarySuppressed = event.enabled !== true;
+          return;
+        }
         if (event.type === 'fixed') {
           const hasFrameState = Object.prototype.hasOwnProperty.call(frameStates, key);
           if (hasFrameState) explicitEnabledStates.add(event);
@@ -271,6 +498,27 @@
       : 'missing-target';
   }
 
+  function showTag(type, document = null) {
+    if (type === 'fixed') return false;
+    if (byType[type]?.internal === true) return false;
+    const configured = eventSettings(document).timelineTypes?.[type];
+    if (typeof configured === 'boolean') return configured;
+    return byType[type]?.timelineByDefault === true;
+  }
+
+  function isForHeaderEvent(event = {}) {
+    if (!['declare', 'assign', 'compare'].includes(event.type)) return false;
+    const source = event.source;
+    if (!Number.isFinite(Number(source?.from)) || !Number.isFinite(Number(source?.to))) return false;
+    return (source.contexts || []).some(context => (
+      context?.type === 'ForStatement'
+      && Number.isFinite(Number(context.headerFrom))
+      && Number.isFinite(Number(context.headerTo))
+      && Number(source.from) >= Number(context.headerFrom)
+      && Number(source.to) <= Number(context.headerTo)
+    ));
+  }
+
   window.ASMTraceEvents = {
     definitions,
     labels: Object.fromEntries(definitions.map(definition => [definition.type, definition.label])),
@@ -294,17 +542,24 @@
     },
     defaultEnabled,
     rebuildAutoFixedEvents,
+    rebuildLoopBoundaryEvents,
+    keepSnapshotFrame,
     applyEnabledStates,
     controlState,
     availabilityKind,
-    showTag(type, document = null) {
-      if (type === 'fixed') return false;
-      const configured = eventSettings(document).timelineTypes?.[type];
-      if (typeof configured === 'boolean') return configured;
-      return byType[type]?.timelineByDefault === true;
-    },
-    showInspector(event = {}) {
-      return event.type !== 'fixed';
+    showTag,
+    showInspector(event = {}, document = null) {
+      if (event.type === 'fixed') return false;
+      if (event.loopBoundarySuppressed === true) return false;
+      if (byType[event.type]?.internal === true) return false;
+      // The function definition is the root control in Trace Studio's event
+      // outline. Keep its entry record selectable there even though it stays
+      // hidden from the compact bottom timeline by default.
+      if (event.type === 'function-enter') return true;
+      // Keep classic for controls editable in the right inspector even when
+      // their broad event type is hidden from the compact bottom timeline.
+      // Other hidden reads/conditions stay compact instead of flooding it.
+      return showTag(event.type, document) || isForHeaderEvent(event);
     }
   };
 })();

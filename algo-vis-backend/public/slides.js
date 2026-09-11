@@ -522,7 +522,17 @@
 
   function saveDeck({ history: pushHistory = true, cloud = true } = {}) {
     const serializedDeck = JSON.stringify(deck);
-    localStorage.setItem(STORAGE_KEY, serializedDeck);
+    const localSave = window.ASMSlideStorage?.save?.(localStorage, {
+      storageKey: STORAGE_KEY,
+      legacyKey: OLD_STORAGE_KEY,
+      serializedDeck
+    }) || { saved: false, error: new Error('Slide storage helper is unavailable') };
+    document.body.dataset.localDeckSave = localSave.saved ? 'saved' : 'failed';
+    document.body.dataset.localDeckChars = String(serializedDeck.length);
+    if (!localSave.saved) {
+      console.warn('Failed to save local deck; cloud save will continue', localSave.error);
+      if (!canSaveRemoteDeck()) setCloudStatus('error', '本機儲存空間不足');
+    }
     updateDiagnostics();
     if (pushHistory && !suppressHistory) pushHistorySnapshot(serializedDeck);
     if (cloud) scheduleCloudSave();
@@ -532,6 +542,7 @@
         syncTtsEditor();
       });
     }
+    return localSave.saved;
   }
 
   function authToken() {
@@ -2584,10 +2595,10 @@
     section.innerHTML = `
       <div class="asm-slide-frame-content">
         <iframe
-          class="algorithm-slide-frame"
+          class="algorithm-slide-frame${hasScript ? ' is-loading' : ''}"
           data-slide-id="${slide.id}"
           title="Algorithm animation"
-          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-32' : 'about:blank'}"
+          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-36' : 'about:blank'}"
           ${hasScript ? '' : 'hidden'}
         ></iframe>
         <div class="algorithm-slide-placeholder" ${hasScript ? 'hidden' : ''}>
@@ -7464,6 +7475,28 @@
     }, window.location.origin);
   }
 
+  function algorithmFrameIsCurrent(frame) {
+    const section = frame?.closest?.('section.asm-slide');
+    if (!section) return false;
+    if (revealReady && reveal?.getCurrentSlide) return reveal.getCurrentSlide() === section;
+    const position = slidePositions.get(frame.dataset.slideId);
+    return Boolean(position && position.h === currentH && position.v === currentV);
+  }
+
+  function sendAlgorithmFrameVisibility(frame, visible = algorithmFrameIsCurrent(frame)) {
+    if (!frame?.contentWindow || frame.hidden || !frame.getAttribute('src')?.includes('asmEmbed=runtime')) return;
+    frame.contentWindow.postMessage({
+      type: 'asm-runtime-visibility',
+      visible: visible === true
+    }, window.location.origin);
+  }
+
+  function syncAlgorithmFrameVisibility() {
+    document.querySelectorAll('.algorithm-slide-frame').forEach(frame => {
+      sendAlgorithmFrameVisibility(frame);
+    });
+  }
+
   function refreshAlgorithmSlideInPlace(slide) {
     if (!slide || slide.kind !== 'algorithm-animation') return;
     const section = document.querySelector(`section.asm-slide[data-slide-id="${slide.id}"]`);
@@ -7477,11 +7510,13 @@
     placeholder.hidden = hasAnimation;
 
     if (!hasAnimation) {
+      frame.classList.remove('is-loading');
       if (frame.getAttribute('src') !== 'about:blank') frame.src = 'about:blank';
       return;
     }
 
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-32';
+    frame.classList.add('is-loading');
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-36';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -7491,6 +7526,7 @@
     // rebuilding the whole deck and prevents old/new animation layers from
     // briefly being visible at the same time.
     sendAlgorithmAnimationToFrame(frame, slide, animation);
+    sendAlgorithmFrameVisibility(frame);
     if (reveal) reveal.layout();
   }
 
@@ -7501,6 +7537,24 @@
         algorithmEditorModal?.classList.remove('is-loading');
         if (algorithmEditorStatus) algorithmEditorStatus.textContent = '動畫已載入。';
       }
+      if (event.data.mode === 'runtime') {
+        const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
+          .find(frame => frame.contentWindow === event.source);
+        const slide = runtimeFrame ? getSlideById(runtimeFrame.dataset.slideId) : null;
+        if (!slide?.animation?.traceDocument?.frames?.length) {
+          runtimeFrame?.classList.remove('is-loading');
+        } else {
+          sendAlgorithmFrameVisibility(runtimeFrame);
+        }
+      }
+      return;
+    }
+    if (event.data.type === 'asm-animation-geometry-ready' && event.data.mode === 'runtime') {
+      const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
+        .find(frame => frame.contentWindow === event.source);
+      if (runtimeFrame && algorithmFrameIsCurrent(runtimeFrame)) {
+        runtimeFrame.classList.remove('is-loading');
+      }
       return;
     }
     if (event.data.type === 'asm-embed-ready') {
@@ -7510,7 +7564,10 @@
       }
       const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
         .find(frame => frame.contentWindow === event.source);
-      if (runtimeFrame) sendAlgorithmAnimationToFrame(runtimeFrame, getSlideById(runtimeFrame.dataset.slideId));
+      if (runtimeFrame) {
+        sendAlgorithmAnimationToFrame(runtimeFrame, getSlideById(runtimeFrame.dataset.slideId));
+        sendAlgorithmFrameVisibility(runtimeFrame);
+      }
       return;
     }
     if (!['asm-animation-compiled', 'asm-save-animation'].includes(event.data.type)
@@ -7535,7 +7592,7 @@
     if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在載入動畫…';
     algorithmEditorModal.classList.add('is-loading');
     algorithmEditorModal.hidden = false;
-    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-32';
+    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-36';
   }
 
   function closeAlgorithmEditor() {
@@ -9287,11 +9344,13 @@
         updateAlgorithmEditButton();
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
+        syncAlgorithmFrameVisibility();
       });
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('fragmentshown', refreshFabricFragmentVisibility);
       reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();
+      syncAlgorithmFrameVisibility();
       setTimeout(refreshRevealWidgets, 1200);
     });
   }

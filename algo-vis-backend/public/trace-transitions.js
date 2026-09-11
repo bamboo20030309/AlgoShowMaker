@@ -81,11 +81,23 @@
     const rule = explicitRule(document, fromFrame, toFrame, targetKey);
     const requestedMode = rule?.mode === 'instant' ? 'instant' : base.mode;
     let sourceKey = String(rule?.sourceKey || targetKey || '');
-    if (!rule && sourceKeys?.has && !sourceKeys.has(sourceKey)) {
+    const fromGeneration = Number(fromFrame?.sceneGeneration);
+    const toGeneration = Number(toFrame?.sceneGeneration);
+    const crossesKeepBoundary = !rule
+      && Number.isFinite(fromGeneration)
+      && Number.isFinite(toGeneration)
+      && fromGeneration !== toGeneration
+      && Boolean(stateObjectMatch(toFrame, targetKey));
+    // @keep creates a retained old scene and a new live scene. Do not let an
+    // equal variable/object key silently reconnect those generations; the
+    // retained copy owns the outgoing motion while the new live object starts
+    // at its authored position.
+    if (crossesKeepBoundary) sourceKey = '';
+    if (!rule && !crossesKeepBoundary && sourceKeys?.has && !sourceKeys.has(sourceKey)) {
       sourceKey = runtimeSourceAlias(fromFrame, toFrame, targetKey, sourceKeys) || sourceKey;
     }
     const sourceExists = sourceKeys?.has ? sourceKeys.has(sourceKey) : true;
-    let mode = requestedMode;
+    let mode = crossesKeepBoundary ? 'instant' : requestedMode;
     if (mode === 'auto') mode = sourceExists ? 'move' : 'lift';
     return {
       id: rule?.id || '',

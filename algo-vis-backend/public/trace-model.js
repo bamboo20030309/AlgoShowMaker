@@ -97,10 +97,14 @@
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
       id: frame.id || `frame-${index}`,
+      sceneGeneration: Number.isFinite(Number(frame.sceneGeneration))
+        ? Number(frame.sceneGeneration)
+        : 0,
       source: frame.source && typeof frame.source === 'object' ? clone(frame.source) : {},
       state: Object.fromEntries(Object.entries(frame.state || {}).map(([id, entry]) => [id, {
         name: entry?.name || variables[id]?.name || id,
         identity: String(entry?.identity || ''),
+        lifetime: String(entry?.lifetime || ''),
         data: normalizeData(entry?.data)
       }])),
       events: Array.isArray(frame.events) ? clone(frame.events) : [],
@@ -123,6 +127,8 @@
       schemaVersion: source.schemaVersion || '1.0',
       generatedAt: source.generatedAt || '',
       sourceCode: typeof source.sourceCode === 'string' ? source.sourceCode : '',
+      sourceDeclarations: Array.isArray(source.sourceDeclarations) ? clone(source.sourceDeclarations) : [],
+      sourceStructure: Array.isArray(source.sourceStructure) ? clone(source.sourceStructure) : [],
       provenance: source.provenance && typeof source.provenance === 'object' ? clone(source.provenance) : null,
       sliceMode: source.sliceMode === 'manual' ? 'manual' : source.sliceMode === 'full' ? 'full' : 'auto',
       variables,

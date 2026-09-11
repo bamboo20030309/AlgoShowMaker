@@ -349,10 +349,145 @@ body.asm-trace-camera-framing #arraySvg {
 .trace-studio-frame-events {
   min-height: 0;
   flex: 1;
-  display: grid;
-  align-content: start;
-  gap: 5px;
+  display: block;
   overflow-y: auto;
+}
+
+.trace-studio-event-outline {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #3f4851;
+  border-radius: 5px;
+  background: #0d1014;
+  color: #e7edf2;
+  font: 12px/1.45 Consolas, "Courier New", monospace;
+}
+
+.trace-studio-event-context {
+  min-width: 0;
+}
+
+.trace-studio-event-context + .trace-studio-event-context,
+.trace-studio-event-code-button + .trace-studio-event-context {
+  margin-top: 7px;
+}
+
+.trace-studio-event-context-header {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 4px 5px;
+  color: #d7e0e7;
+}
+
+.trace-studio-event-context-header.has-event {
+  padding: 0;
+}
+
+.trace-studio-event-function-button {
+  background: #1b2128;
+}
+
+.trace-studio-event-context-kind {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid #46515b;
+  border-radius: 3px;
+  color: #8fa0ac;
+  font: 700 9px/1.4 Arial, sans-serif;
+  letter-spacing: .03em;
+}
+
+.trace-studio-event-context-code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #cbd5df;
+  font: inherit;
+}
+
+.trace-studio-event-context-children {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  margin-left: 9px;
+  padding: 2px 0 3px 9px;
+  border-left: 1px solid #303841;
+}
+
+.trace-studio-event-context-close {
+  height: 17px;
+  padding-left: 5px;
+  color: #66747f;
+  user-select: none;
+}
+
+.trace-studio-event-code-button {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 4px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px;
+  border: 1px solid #343d45;
+  border-radius: 4px;
+  background: #171c21;
+  color: #dce5ec;
+  text-align: left;
+  cursor: pointer;
+  outline: 0;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.trace-studio-event-code-marker {
+  align-self: stretch;
+  min-height: 16px;
+  border-radius: 2px;
+}
+
+.trace-studio-event-code-type {
+  color: #99a8b3;
+  font: 700 10px/1.35 Arial, sans-serif;
+  white-space: nowrap;
+}
+
+.trace-studio-event-code-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font: 12px/1.45 Consolas, "Courier New", monospace;
+}
+
+.trace-studio-event-code-button.is-enabled.is-available {
+  border-color: #3e7650;
+  background: #173323;
+}
+
+.trace-studio-event-code-button.is-enabled.is-missing-target {
+  border-color: #8b711e;
+  background: #3c3213;
+}
+
+.trace-studio-event-code-button.is-enabled.is-unrenderable {
+  border-color: #8c4141;
+  background: #3d1d20;
+}
+
+.trace-studio-event-code-button.is-current {
+  box-shadow: inset 4px 0 #60a5fa, inset 14px 0 18px -18px rgba(96, 165, 250, 0.95);
+}
+
+.trace-studio-event-code-button.is-hovered,
+.trace-studio-event-code-button:hover,
+.trace-studio-event-code-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(83, 145, 232, 0.9);
+  z-index: 1;
+}
+
+.trace-studio-event-code-button.is-playing {
+  z-index: 2;
+  box-shadow: inset 4px 0 #60a5fa, 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.9);
 }
 
 .trace-studio-frame-event {
@@ -670,6 +805,10 @@ body.asm-trace-camera-framing #arraySvg {
 .trace-studio-inspector-tool-count[hidden],
 .trace-studio-inspector-panel[hidden] {
   display: none;
+}
+
+.trace-studio-inspector-panel.is-code-panel-selection > .trace-studio-section:not([data-trace-code-controls]) {
+  display: none !important;
 }
 
 .trace-studio-section {

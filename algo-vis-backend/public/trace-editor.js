@@ -18,7 +18,7 @@
   const embedMode = new URLSearchParams(window.location.search).get('asmEmbed');
 
   const EVENT_SETTING_TYPES = [
-    'declare', 'read', 'write', 'assign', 'compare', 'condition', 'swap',
+    'declare', 'scope-exit', 'read', 'write', 'assign', 'compare', 'swap',
     'call', 'function-enter', 'function-exit'
   ];
   const DEFAULT_EVENT_GAP_MS = 500;
@@ -34,6 +34,7 @@
       autoFixedEnabled: typeof value.autoFixedEnabled === 'boolean'
         ? value.autoFixedEnabled
         : (typeof value.defaultEnabled?.fixed === 'boolean' ? value.defaultEnabled.fixed : true),
+      autoLoopBoundaryEnabled: value.autoLoopBoundaryEnabled === true,
       defaultEnabled: cleanFlags(value.defaultEnabled),
       timelineTypes: cleanFlags(value.timelineTypes)
     };
@@ -151,8 +152,13 @@
         ? settings.defaultEnabled.fixed
         : true;
     }
+    if (typeof settings.autoLoopBoundaryEnabled !== 'boolean') {
+      settings.autoLoopBoundaryEnabled = false;
+    }
     delete settings.defaultEnabled.fixed;
     delete settings.timelineTypes.fixed;
+    delete settings.defaultEnabled.condition;
+    delete settings.timelineTypes.condition;
     if (!Number.isFinite(Number(settings.gapMs))) settings.gapMs = DEFAULT_EVENT_GAP_MS;
     return settings;
   }
@@ -180,7 +186,9 @@
       && renderedEventSettingsFingerprint === fingerprint
       && list.childElementCount) return;
     list.replaceChildren();
-    window.ASMTraceEvents.definitions.filter(definition => definition.category !== 'state').forEach(definition => {
+    window.ASMTraceEvents.definitions.filter(definition => (
+      definition.category !== 'state' && definition.internal !== true
+    )).forEach(definition => {
       const row = document.createElement('div');
       row.className = 'trace-event-settings-row';
       const name = document.createElement('strong');
@@ -211,6 +219,8 @@
     });
     const autoFixed = eventSettingsPanel.querySelector('.trace-auto-fixed-toggle');
     autoFixed.checked = settings.autoFixedEnabled !== false;
+    const autoLoopBoundary = eventSettingsPanel.querySelector('.trace-auto-loop-boundary-toggle');
+    autoLoopBoundary.checked = settings.autoLoopBoundaryEnabled === true;
     const gap = eventSettingsPanel.querySelector('.trace-event-gap');
     gap.value = String(settings.gapMs);
     gap.title = `間隔時間 ${settings.gapMs} ms`;
@@ -244,6 +254,23 @@
       saveEventSettings();
     });
     autoFixedRow.append(autoFixedCopy, autoFixed);
+    const autoLoopBoundaryRow = document.createElement('label');
+    autoLoopBoundaryRow.className = 'trace-auto-loop-boundary-settings';
+    const autoLoopBoundaryCopy = document.createElement('span');
+    const autoLoopBoundaryTitle = document.createElement('strong');
+    autoLoopBoundaryTitle.textContent = '迴圈邊界事件';
+    const autoLoopBoundaryHint = document.createElement('small');
+    autoLoopBoundaryHint.textContent = '顯示終止迴圈前最後一次 i++／j++ 與 false 判斷；關閉時視為沒有這些事件';
+    autoLoopBoundaryCopy.append(autoLoopBoundaryTitle, autoLoopBoundaryHint);
+    const autoLoopBoundary = document.createElement('input');
+    autoLoopBoundary.className = 'trace-auto-loop-boundary-toggle';
+    autoLoopBoundary.type = 'checkbox';
+    autoLoopBoundary.title = '顯示迴圈邊界更新事件';
+    autoLoopBoundary.addEventListener('change', () => {
+      ensureEventSettings().autoLoopBoundaryEnabled = autoLoopBoundary.checked;
+      saveEventSettings();
+    });
+    autoLoopBoundaryRow.append(autoLoopBoundaryCopy, autoLoopBoundary);
     const gapRow = document.createElement('label');
     gapRow.className = 'trace-event-settings-gap';
     gapRow.append(document.createTextNode('間隔時間'));
@@ -266,7 +293,7 @@
     const gapValue = document.createElement('output');
     gapValue.className = 'trace-event-gap-value';
     gapRow.append(gap, gapValue);
-    panel.append(head, list, autoFixedRow, gapRow);
+    panel.append(head, list, autoFixedRow, autoLoopBoundaryRow, gapRow);
     document.body.append(panel);
     return panel;
   }
@@ -315,17 +342,30 @@
   }
 
   function applyTraceDocument(trace, options = {}) {
-    const skins = Object.fromEntries(Object.entries(trace.skins || {}).map(([variableId, skin]) => [variableId, {
+    let preparedTrace = trace;
+    if (options.migrateCurrentSettings && currentTrace
+      && window.ASMTraceViewSource?.fromTrace
+      && window.ASMTraceViewSource?.applyToTrace) {
+      // Recompiling an old saved slide creates new frame IDs. Convert the
+      // existing Studio state to source selectors first, then resolve those
+      // selectors against the new trace so cameras, objects, positions and
+      // instruction switches survive the migration.
+      const migratedSettings = window.ASMTraceViewSource.fromTrace(currentTrace);
+      preparedTrace = window.ASMTraceModel.normalizeTraceDocument(trace);
+      window.ASMTraceViewSource.applyToTrace(preparedTrace, migratedSettings);
+      preparedTrace.viewSettingsApplied = true;
+    }
+    const skins = Object.fromEntries(Object.entries(preparedTrace.skins || {}).map(([variableId, skin]) => [variableId, {
       ...skin,
-      renderer: originalRendererName(skin?.renderer, trace.variables?.[variableId])
+      renderer: originalRendererName(skin?.renderer, preparedTrace.variables?.[variableId])
     }]));
 
-    const incomingStudio = trace.studio && Object.keys(trace.studio).length
-      ? { ...trace.studio }
+    const incomingStudio = preparedTrace.studio && Object.keys(preparedTrace.studio).length
+      ? { ...preparedTrace.studio }
       : { ...(currentTrace?.studio || {}) };
     useSavedEventSettings = Boolean(options.preserveEventSettings && incomingStudio.eventSettings);
     if (!useSavedEventSettings) delete incomingStudio.eventSettings;
-    currentTrace = window.ASMTraceModel.normalizeTraceDocument({ ...trace, skins, studio: incomingStudio });
+    currentTrace = window.ASMTraceModel.normalizeTraceDocument({ ...preparedTrace, skins, studio: incomingStudio });
     applyAccountEventSettings();
     currentTrace = window.asmApplyTraceDocument(currentTrace);
     mode = 'trace';

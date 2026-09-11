@@ -98,6 +98,31 @@ html {
   margin-right: 20px;
 }
 
+.top-github-link {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-left: auto;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-main);
+  text-decoration: none;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.top-github-link svg {
+  width: 23px;
+  height: 23px;
+  fill: currentColor;
+}
+
+.top-github-link:hover {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
 /* --- [修改] 演算法獨立按鈕 (綠色) --- */
 .algo-btn-wrapper {
   position: relative;
@@ -360,6 +385,35 @@ button.auto-stepping:hover {
 
 .subContent.active {
   display: flex;
+}
+
+.animation-debug-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #dfe3e8;
+  background: #f7f8fa;
+}
+
+.animation-debug-toolbar button {
+  padding: 5px 10px;
+  border: 1px solid #b8c0ca;
+  border-radius: 5px;
+  background: #fff;
+  color: #26313d;
+  cursor: pointer;
+}
+
+.animation-debug-toolbar button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+#animationDebugStatus {
+  color: #59636e;
+  font-size: 12px;
 }
 
 #tab-syntax-tree {

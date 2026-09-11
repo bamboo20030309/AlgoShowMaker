@@ -766,9 +766,18 @@ function parseDirectiveModifiers(payload, line, directiveName) {
 function parseKeepModifiers(payload, line) {
   const source = String(payload || '').trim();
   const positions = topLevelModifierPositions(source);
-  if (!positions.length) return { payload: source, label: '', binding: null, preserveStyle: true };
+  if (!positions.length) {
+    return {
+      payload: source,
+      label: '',
+      binding: null,
+      placementOffset: null,
+      preserveStyle: true,
+      when: null
+    };
+  }
 
-  const allowed = new Set(['as', 'at', 'offset', 'without']);
+  const allowed = new Set(['as', 'at', 'offset', 'without', 'when']);
   const unsupported = positions.find(position => !allowed.has(position.name));
   if (unsupported) {
     throw new Error(`第 ${line} 行的 @keep 不支援 ${unsupported.name}`);
@@ -815,9 +824,11 @@ function parseKeepModifiers(payload, line) {
   const binding = values.has('at')
     ? parseAtBinding(values.get('at'), line, '@keep', offsetX, offsetY)
     : null;
-  if (values.has('offset') && !binding) {
-    throw new Error(`第 ${line} 行的 @keep 使用 offset 時必須同時指定 at`);
-  }
+  // Without `at`, offset moves the retained object from the position it had
+  // immediately before @keep instead of replacing that source placement.
+  const placementOffset = values.has('offset') && !binding
+    ? { x: offsetX, y: offsetY }
+    : null;
   let preserveStyle = true;
   if (values.has('without')) {
     const feature = values.get('without').trim().toLowerCase();
@@ -826,7 +837,21 @@ function parseKeepModifiers(payload, line) {
     }
     preserveStyle = false;
   }
-  return { payload: base, label, binding, preserveStyle };
+  let when = null;
+  if (values.has('when')) {
+    const expression = values.get('when');
+    const parsed = parseConditionExpression(expression);
+    if (!parsed.valid) throw new Error(`第 ${line} 行的 @keep 條件無效：${expression}`);
+    if ((parsed.temporalFunctions || []).length) {
+      throw new Error(`第 ${line} 行的 @keep when 暫不支援跨幀函式：${parsed.temporalFunctions.join(', ')}`);
+    }
+    when = {
+      expression,
+      identifiers: parsed.identifiers,
+      temporalFunctions: []
+    };
+  }
+  return { payload: base, label, binding, placementOffset, preserveStyle, when };
 }
 
 function parseFrameSpec(raw) {
@@ -1484,7 +1509,9 @@ function findKeepDirectives(source, suppliedAnalysis = null) {
             mode: 'last',
             label: modifiers.label,
             binding: modifiers.binding,
+            placementOffset: modifiers.placementOffset,
             preserveStyle: modifiers.preserveStyle,
+            when: modifiers.when,
             functionName: enclosing?.functionName || 'global',
             variable: null
           });
@@ -1508,9 +1535,58 @@ function findKeepDirectives(source, suppliedAnalysis = null) {
           name,
           label: modifiers.label,
           binding: modifiers.binding,
+          placementOffset: modifiers.placementOffset,
           preserveStyle: modifiers.preserveStyle,
+          when: modifiers.when,
           functionName: variable.functionName || 'global',
           variable
+        });
+      }
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  }
+
+  visit(analysis.tree.topNode);
+  return directives;
+}
+
+function findExitDirectives(source, suppliedAnalysis = null) {
+  const analysis = suppliedAnalysis || analyzeSource(source);
+  const directives = [];
+
+  function resolveVariable(name, position) {
+    return analysis.variables
+      .filter(variable => variable.name === name
+        && variable.declarationTo <= position
+        && variable.scopeFrom <= position
+        && position < variable.scopeTo)
+      .sort((left, right) => (left.scopeTo - left.scopeFrom) - (right.scopeTo - right.scopeFrom))[0] || null;
+  }
+
+  function visit(node) {
+    if (node.name === 'LineComment') {
+      const text = source.slice(node.from, node.to);
+      if (/^\/\/\s*@exit\b/i.test(text)) {
+        const line = analysis.lineAt(node.from);
+        const payload = text.replace(/^\/\/\s*@exit\b/i, '').trim();
+        const split = splitTopLevel(payload);
+        if (!split.valid || !split.parts.length || split.parts.some(part => !part)) {
+          throw new Error(`第 ${line} 行的 @exit 語法無效`);
+        }
+        const variables = split.parts.map(name => {
+          if (!/^[A-Za-z_]\w*$/.test(name)) {
+            throw new Error(`第 ${line} 行的 @exit 目標格式無效：${name}`);
+          }
+          const variable = resolveVariable(name, node.from);
+          if (!variable) throw new Error(`第 ${line} 行的 @exit 找不到可見變數：${name}`);
+          return variable;
+        });
+        directives.push({
+          from: node.from,
+          to: node.to,
+          line,
+          functionName: variables[0]?.functionName || 'global',
+          variables
         });
       }
     }
@@ -1525,6 +1601,7 @@ function instrumentSource(source, watchIds = []) {
   const analysis = analyzeSource(source);
   const frameDirectives = findFrameDirectives(source, analysis);
   const keepDirectives = findKeepDirectives(source, analysis);
+  const exitDirectives = findExitDirectives(source, analysis);
   const manualFrames = frameDirectives.length > 0;
   const selectedIds = new Set((watchIds || []).map(item => typeof item === 'string' ? item : item.id));
   frameDirectives.forEach(directive => directive.variables.forEach(variable => selectedIds.add(variable.id)));
@@ -1542,6 +1619,9 @@ function instrumentSource(source, watchIds = []) {
         if (variable?.id) selectedIds.add(variable.id);
       });
     });
+  });
+  exitDirectives.forEach(directive => {
+    directive.variables.forEach(variable => selectedIds.add(variable.id));
   });
   // Manual frames control what is drawn, not what can be resolved by events.
   // Keep every visible variable in the captured state and hide the extras.
@@ -1602,6 +1682,12 @@ function instrumentSource(source, watchIds = []) {
     functionName: directive.functionName || directive.variable?.functionName || 'global'
   }));
   const keepDirectiveByPosition = new Map(indexedKeepDirectives.map(directive => [directive.from, directive]));
+  const indexedExitDirectives = exitDirectives.map((directive, index) => ({
+    ...directive,
+    index,
+    functionName: directive.functionName || directive.variables[0]?.functionName || 'global'
+  }));
+  const exitDirectiveByPosition = new Map(indexedExitDirectives.map(directive => [directive.from, directive]));
   const eventSources = {};
 
   function sourcePoint(offset) {
@@ -1611,31 +1697,113 @@ function instrumentSource(source, watchIds = []) {
     return { line, column: safeOffset - lineStart + 1 };
   }
 
+  const sourceContextTypes = new Set([
+    'FunctionDefinition', 'ForStatement', 'IfStatement', 'WhileStatement',
+    'DoStatement', 'SwitchStatement'
+  ]);
+
+  function topLevelForSeparators(node) {
+    if (node?.name !== 'ForStatement') return [];
+    const children = childrenOf(node);
+    const open = children.find(child => child.name === '(');
+    const close = [...children].reverse().find(child => child.name === ')');
+    if (!open || !close || close.from <= open.to) return [];
+    const separators = [];
+    let round = 0;
+    let square = 0;
+    let curly = 0;
+    let quote = '';
+    let escaped = false;
+    for (let cursor = open.to; cursor < close.from; cursor += 1) {
+      const character = source[cursor];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === quote) quote = '';
+        continue;
+      }
+      if (character === '"' || character === "'") {
+        quote = character;
+        continue;
+      }
+      if (character === '(') round += 1;
+      else if (character === ')') round = Math.max(0, round - 1);
+      else if (character === '[') square += 1;
+      else if (character === ']') square = Math.max(0, square - 1);
+      else if (character === '{') curly += 1;
+      else if (character === '}') curly = Math.max(0, curly - 1);
+      else if (character === ';' && !round && !square && !curly) separators.push(cursor);
+    }
+    return separators;
+  }
+
+  function forCondition(node) {
+    const separators = topLevelForSeparators(node);
+    if (separators.length < 2) return null;
+    let from = separators[0] + 1;
+    let to = separators[1];
+    while (from < to && /\s/.test(source[from])) from += 1;
+    while (to > from && /\s/.test(source[to - 1])) to -= 1;
+    if (to <= from) return null;
+    const expressionNode = childrenOf(node).find(child => child.from <= from && child.to >= to)
+      || childrenOf(node).find(child => child.from >= from && child.to <= to);
+    return { from, to, node: expressionNode || null };
+  }
+
+  function directCondition(node) {
+    if (node?.name === 'ForStatement') return forCondition(node);
+    const clause = childrenOf(node).find(child => child.name === 'ConditionClause');
+    if (!clause) return null;
+    const expressionNode = childrenOf(clause).find(child => !['(', ')'].includes(child.name));
+    return expressionNode
+      ? { from: expressionNode.from, to: expressionNode.to, node: expressionNode }
+      : null;
+  }
+
+  function describeSourceContext(node) {
+    const children = childrenOf(node);
+    const body = children.find(child => child.name === 'CompoundStatement')
+      || [...children].reverse().find(child => child.name.endsWith('Statement') && child !== node);
+    const headerTo = body ? body.from : node.to;
+    const condition = directCondition(node);
+    const structuralLines = new Set();
+    const addLine = offset => structuralLines.add(analysis.lineAt(Math.max(node.from, offset)));
+    addLine(node.from);
+    children.forEach(child => {
+      if (child.name === 'else') addLine(child.from);
+      if (child.name !== 'CompoundStatement') return;
+      addLine(child.from);
+      addLine(Math.max(child.from, child.to - 1));
+    });
+    return {
+      type: node.name,
+      functionName: functionNameAt(node),
+      from: node.from,
+      to: node.to,
+      headerFrom: node.from,
+      headerTo: Math.max(node.from, headerTo),
+      conditionFrom: condition?.from ?? null,
+      conditionTo: condition?.to ?? null,
+      structuralLines: [...structuralLines].sort((left, right) => left - right),
+      openLine: analysis.lineAt(node.from),
+      closeLine: analysis.lineAt(Math.max(node.from, node.to - 1))
+    };
+  }
+
   function sourceContexts(node) {
     const contexts = [];
-    const supported = new Set([
-      'FunctionDefinition', 'ForStatement', 'IfStatement', 'WhileStatement',
-      'DoStatement', 'SwitchStatement'
-    ]);
     for (let current = node?.parent; current; current = current.parent) {
-      if (!supported.has(current.name)) continue;
-      const children = childrenOf(current);
-      const body = children.find(child => child.name === 'CompoundStatement')
-        || [...children].reverse().find(child => child.name.endsWith('Statement') && child !== current);
-      const headerTo = body ? body.from : current.to;
-      contexts.push({
-        type: current.name,
-        functionName: functionNameAt(current),
-        from: current.from,
-        to: current.to,
-        headerFrom: current.from,
-        headerTo: Math.max(current.from, headerTo),
-        openLine: analysis.lineAt(current.from),
-        closeLine: analysis.lineAt(Math.max(current.from, current.to - 1))
-      });
+      if (!sourceContextTypes.has(current.name)) continue;
+      contexts.push(describeSourceContext(current));
     }
     return contexts.reverse();
   }
+
+  const sourceStructure = [];
+  (function collectSourceStructure(node) {
+    if (sourceContextTypes.has(node.name)) sourceStructure.push(describeSourceContext(node));
+    for (let child = node.firstChild; child; child = child.nextSibling) collectSourceStructure(child);
+  })(analysis.tree.topNode);
 
   function recordEventSource(eventSignature, node, from = node?.from, to = node?.to, force = false) {
     const signatureText = String(eventSignature || '');
@@ -1745,11 +1913,25 @@ function instrumentSource(source, watchIds = []) {
   function keepOperationCall(node, directive) {
     const functionName = functionNameAt(node);
     const statementId = `manual-keep:${functionName}:${directive.line}:${directive.index}`;
+    let operation;
     if (directive.mode === 'last') {
-      return `::asm_trace::event_keep_last(${directive.line}, ${cppString(statementId)}, ${cppString(directive.label)}, ${directive.preserveStyle !== false ? 'true' : 'false'});`;
+      operation = `::asm_trace::event_keep_last(${directive.line}, ${cppString(statementId)}, ${cppString(directive.label)}, ${directive.preserveStyle !== false ? 'true' : 'false'});`;
+    } else {
+      const variable = directive.variable;
+      operation = `::asm_trace::event_keep(${directive.line}, ${cppString(statementId)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(directive.label)}, (${variable.name}), ${directive.preserveStyle !== false ? 'true' : 'false'});`;
     }
-    const variable = directive.variable;
-    return `::asm_trace::event_keep(${directive.line}, ${cppString(statementId)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(directive.label)}, (${variable.name}), ${directive.preserveStyle !== false ? 'true' : 'false'});`;
+    return directive.when?.expression
+      ? `if (static_cast<bool>(${directive.when.expression})) { ${operation} }`
+      : operation;
+  }
+
+  function exitOperationCall(node, directive) {
+    const functionName = functionNameAt(node);
+    return directive.variables.map(variable => {
+      const eventSignature = `visual-exit:${functionName}:${directive.line}:${variable.name}`;
+      recordEventSource(eventSignature, node, node.from, node.to, true);
+      return `::asm_trace::event_visual_exit(${directive.line}, ${cppString(eventSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`;
+    }).join('\n');
   }
 
   function targetArgs(target) {
@@ -1809,18 +1991,33 @@ function instrumentSource(source, watchIds = []) {
     return selected
       .filter(variable => variable.declarationKind === 'local' && variable.declarationFrom === node.from)
       .flatMap(variable => {
+        const scopeExitSignature = `scope-exit:${variable.functionName}:${analysis.lineAt(Math.max(variable.scopeFrom, variable.scopeTo - 1))}:${variable.name}`;
+        recordEventSource(
+          scopeExitSignature,
+          node,
+          Math.max(variable.scopeFrom, variable.scopeTo - 1),
+          variable.scopeTo,
+          true
+        );
+        const lifetimeGuard = `::asm_trace::VariableScopeExit __asm_scope_exit_${variable.nameFrom}(${analysis.lineAt(Math.max(variable.scopeFrom, variable.scopeTo - 1))}, ${cppString(scopeExitSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`;
         const declarator = childrenOf(node).find(child => child.name === 'InitDeclarator'
           && variable.nameFrom >= child.from && variable.nameFrom < child.to);
         if (!declarator) {
           const eventSignature = `declare:${variable.functionName}:${variable.line}:${variable.name}`;
           recordEventSource(eventSignature, node, variable.declarationFrom, variable.declarationTo);
           return [
-            `::asm_trace::event_declare_uninitialized(${variable.line}, ${cppString(eventSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)});`
+            lifetimeGuard,
+            `::asm_trace::event_declare_uninitialized(${variable.line}, ${cppString(eventSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`
           ];
         }
         const declareSignature = `declare:${variable.functionName}:${variable.line}:${variable.name}`;
-        recordEventSource(declareSignature, declarator, node.from, node.to);
+        // A declaration with an initializer represents two separate runtime
+        // facts. Keep the declaration source limited to its type and name so
+        // `int i = 0` is presented as `declare: int i`, followed by the
+        // initialized assignment source `i = 0` below.
+        recordEventSource(declareSignature, declarator, node.from, variable.nameTo);
         const events = [
+          lifetimeGuard,
           `::asm_trace::event_declare(${variable.line}, ${cppString(declareSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`
         ];
         const declaratorChildren = childrenOf(declarator);
@@ -1834,7 +2031,7 @@ function instrumentSource(source, watchIds = []) {
         recordEventSource(assignSignature, declarator, variable.nameFrom, initializer.to);
         const target = { variableId: variable.id, expression: variable.name, indexExpression: '' };
         events.push(
-          `::asm_trace::event_initialized_assign(${variable.line}, ${cppString(assignSignature)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(assignment)}, (${variable.name}));`
+          `::asm_trace::event_initialized_assign(${variable.line}, ${cppString(assignSignature)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(assignment)}, (${variable.name}), ${node.parent?.name === 'ForStatement' ? 'true' : 'false'});`
         );
         return events;
       })
@@ -1847,36 +2044,111 @@ function instrumentSource(source, watchIds = []) {
         && variable.functionName === functionName
         && variable.scopeFrom === bodyNode.from)
       .map(variable => {
-        const eventSignature = `declare:${variable.functionName}:${variable.line}:${variable.name}`;
-        recordEventSource(eventSignature, bodyNode, variable.nameFrom, variable.nameTo);
-        return `::asm_trace::event_declare(${variable.line}, ${cppString(eventSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`;
+        const declareSignature = `declare:${variable.functionName}:${variable.line}:${variable.name}`;
+        const scopeExitLine = analysis.lineAt(Math.max(variable.scopeFrom, variable.scopeTo - 1));
+        const scopeExitSignature = `scope-exit:${variable.functionName}:${scopeExitLine}:${variable.name}`;
+        // A function parameter already exists when the activation begins. It
+        // is one declaration/entrance event carrying the passed value, not a
+        // source-level initialized declaration. Only an actual declaration
+        // such as `int n = 0` is split into declaration plus assignment.
+        recordEventSource(
+          declareSignature, bodyNode, variable.declarationFrom, variable.nameTo
+        );
+        recordEventSource(
+          scopeExitSignature,
+          bodyNode,
+          Math.max(variable.scopeFrom, variable.scopeTo - 1),
+          variable.scopeTo,
+          true
+        );
+        return `::asm_trace::VariableScopeExit __asm_scope_exit_${variable.nameFrom}(${scopeExitLine}, ${cppString(scopeExitSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));\n::asm_trace::event_declare(${variable.line}, ${cppString(declareSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}), true);`;
       })
       .join('\n');
   }
 
+  function inputInitializationMarks(node) {
+    const text = source.slice(node.from, node.to);
+    if (!/(?:^|\W)(?:std\s*::\s*)?cin\s*>>/.test(text)) return '';
+    const calls = [];
+    const seen = new Set();
+    for (const match of text.matchAll(/>>\s*([A-Za-z_]\w*)/g)) {
+      const name = match[1];
+      const relative = Number(match.index) + match[0].lastIndexOf(name);
+      const watch = watchAt(name, node.from + Math.max(0, relative));
+      if (!watch || seen.has(watch.id)) continue;
+      seen.add(watch.id);
+      calls.push(`::asm_trace::mark_initialized(${cppString(watch.id)}, (${name}));`);
+    }
+    return calls.join('\n');
+  }
+
   function rebuild(node, context = {}) {
     const children = childrenOf(node);
+    const forInitializer = node.name === 'ForStatement'
+      ? children.find(child => child.name === 'Declaration' && isForHeaderExpression(child))
+      : null;
+    const forInitializationEvents = forInitializer
+      && context.rewrittenForInitializerFrom !== node.from
+      ? declarationEvents(forInitializer)
+      : '';
     const forHeaderExpression = isForHeaderExpression(node);
+    const enclosingForCondition = node.parent?.name === 'ForStatement'
+      ? forCondition(node.parent)
+      : null;
+    const forHeaderCondition = Boolean(enclosingForCondition
+      && enclosingForCondition.from === node.from
+      && enclosingForCondition.to === node.to
+      && (!enclosingForCondition.node || enclosingForCondition.node.name === node.name));
     const forHeaderWrite = forHeaderExpression
       && (node.name === 'AssignmentExpression' || node.name === 'UpdateExpression');
     const inheritedSuppression = context.suppressEvents === true
       && !(forHeaderWrite && context.suppressForHeaderEvents === true);
-    const suppressEvents = inheritedSuppression || (forHeaderExpression && !forHeaderWrite);
-    const nestedContext = suppressEvents || forHeaderWrite
+    const suppressEvents = inheritedSuppression || (forHeaderExpression
+      && !forHeaderWrite
+      && !forHeaderCondition
+      && context.allowForConditionEvents !== true);
+    const nestedContext = forHeaderCondition
+      ? { ...context, suppressEvents: false, allowForConditionEvents: true }
+      : (suppressEvents || forHeaderWrite
       ? {
         ...context,
         suppressEvents: true,
         suppressForHeaderEvents: context.suppressForHeaderEvents === true || forHeaderExpression
       }
-      : context;
+      : context);
     let rendered;
 
-    if (node.name === 'LineComment' && directiveByPosition.has(node.from)) {
+    if (node.name === 'ForStatement' && forInitializer && forInitializationEvents
+      && context.rewrittenForInitializerFrom !== node.from) {
+      // A declaration cannot be followed by trace statements inside a C++ for
+      // header. Move it into an equivalent surrounding scope, emit its normal
+      // declaration/initialized-assignment events, then leave an empty for
+      // initializer. This preserves loop scope and continue/break behavior.
+      const initializer = source.slice(forInitializer.from, forInitializer.to);
+      const loop = rebuild(node, {
+        ...context,
+        rewrittenForInitializerFrom: node.from,
+        omittedForInitializerFrom: forInitializer.from,
+        omittedForInitializerTo: forInitializer.to
+      });
+      rendered = `{
+${initializer}
+${forInitializationEvents}
+${loop}
+}`;
+    } else if (node.name === 'Declaration'
+      && context.omittedForInitializerFrom === node.from
+      && context.omittedForInitializerTo === node.to) {
+      rendered = ';';
+    } else if (node.name === 'LineComment' && directiveByPosition.has(node.from)) {
       const directive = directiveByPosition.get(node.from);
       rendered = `${source.slice(node.from, node.to)}\n${directiveCaptureCall(node, directive)}`;
     } else if (node.name === 'LineComment' && keepDirectiveByPosition.has(node.from)) {
       const directive = keepDirectiveByPosition.get(node.from);
       rendered = `${source.slice(node.from, node.to)}\n${keepOperationCall(node, directive)}`;
+    } else if (node.name === 'LineComment' && exitDirectiveByPosition.has(node.from)) {
+      const directive = exitDirectiveByPosition.get(node.from);
+      rendered = `${source.slice(node.from, node.to)}\n${exitOperationCall(node, directive)}`;
     } else if (node.name === 'Identifier') {
       const text = source.slice(node.from, node.to);
       const watch = watchAt(text, node.from);
@@ -1942,7 +2214,10 @@ function instrumentSource(source, watchIds = []) {
           && assignmentOperator === '='
           && node.parent?.name === 'ExpressionStatement';
         if (animatedAssignment || (forHeaderWrite && node.name === 'AssignmentExpression' && assignmentOperator === '=')) {
-          rendered = `::asm_trace::event_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); })`;
+          const forInitializerAssignment = Boolean(forHeaderWrite
+            && enclosingForCondition
+            && node.to <= enclosingForCondition.from);
+          rendered = `::asm_trace::event_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
         } else if (node.name === 'UpdateExpression') {
           const update = `::asm_trace::event_update(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(target)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); })`;
           rendered = forHeaderWrite
@@ -1955,6 +2230,7 @@ function instrumentSource(source, watchIds = []) {
         rendered = expression;
       }
     } else if (node.name === 'BinaryExpression') {
+      const comparisonContext = forHeaderCondition ? nestedContext : context;
       const operatorNode = children.find(child => child.name === 'CompareOp'
         && COMPARISON_OPERATORS.has(source.slice(child.from, child.to)));
       if (!suppressEvents && operatorNode && containsSelectedReference(node)) {
@@ -1966,10 +2242,10 @@ function instrumentSource(source, watchIds = []) {
         if (logicalTail) {
           // Lezer groups `a && b > c` as `(a && b) > c`. Keep the original
           // C++ precedence by attaching the comparison event only to `b > c`.
-          const prefix = rebuildPrefix(leftNode, logicalTail.operand.from, context);
-          rendered = `${prefix}${comparisonEvent(logicalTail.operand, rightNode, operator, context, node)}`;
+          const prefix = rebuildPrefix(leftNode, logicalTail.operand.from, comparisonContext);
+          rendered = `${prefix}${comparisonEvent(logicalTail.operand, rightNode, operator, comparisonContext, node)}`;
         } else {
-          rendered = comparisonEvent(leftNode, rightNode, operator, context, node);
+          rendered = comparisonEvent(leftNode, rightNode, operator, comparisonContext, node);
         }
       }
     } else if (node.name === 'CallExpression') {
@@ -1996,7 +2272,7 @@ function instrumentSource(source, watchIds = []) {
       } else if (/(?:^|::)swap$/.test(callee) && node.parent?.name === 'ExpressionStatement' && args.length >= 2) {
         const leftTarget = targetDescriptor(args[0]);
         const rightTarget = targetDescriptor(args[1]);
-        rendered = `::asm_trace::event_swap(${analysis.lineAt(node.from)}, ${cppString(signature('swap', node))}, ${indexedTargetArgs(leftTarget)}, ${indexedTargetArgs(rightTarget)}, [&](){ ${expression}; })`;
+        rendered = `::asm_trace::event_swap(${analysis.lineAt(node.from)}, ${cppString(signature('swap', node))}, ${indexedTargetArgs(leftTarget)}, ${indexedTargetArgs(rightTarget)}, [&]()->decltype(auto){ return (${source.slice(args[0].from, args[0].to)}); }, [&]()->decltype(auto){ return (${source.slice(args[1].from, args[1].to)}); }, [&](){ ${expression}; })`;
       } else if (mutationTarget?.variableId && MUTATING_METHODS.has(method)
         && node.parent?.name === 'ExpressionStatement') {
         rendered = `::asm_trace::event_write(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(mutationTarget)}, ${cppString(method)}, [&](){ ${expression}; })`;
@@ -2015,6 +2291,12 @@ function instrumentSource(source, watchIds = []) {
       }
       parts.push(source.slice(cursor, node.to));
       rendered = parts.join('');
+    }
+
+    if (forHeaderCondition && !inheritedSuppression) {
+      const eventSignature = signature('condition', node);
+      recordEventSource(eventSignature, node, node.from, node.to, true);
+      rendered = `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, "ForStatement", [&](){ return static_cast<bool>(${rendered}); }))`;
     }
 
     if (node.name === 'CompoundStatement' && node.parent?.name === 'FunctionDefinition') {
@@ -2041,8 +2323,11 @@ function instrumentSource(source, watchIds = []) {
       rendered = `{\n::asm_trace::event_function(${analysis.lineAt(node.from)}, ${cppString(signature('function-return', node))}, ${cppString(fn)}, false);\n${returnCapture}${rendered}\n}`;
     } else if (CHECKPOINT_NODES.has(node.name) && node.parent?.name === 'CompoundStatement') {
       const declarations = node.name === 'Declaration' ? declarationEvents(node) : '';
+      const inputInitializations = node.name === 'ExpressionStatement'
+        ? inputInitializationMarks(node)
+        : '';
       const checkpoint = manualFrames ? '' : captureCall(node);
-      rendered = `${rendered}\n${declarations ? `${declarations}\n` : ''}${checkpoint}`;
+      rendered = `${rendered}\n${inputInitializations ? `${inputInitializations}\n` : ''}${declarations ? `${declarations}\n` : ''}${checkpoint}`;
     }
 
     return rendered;
@@ -2053,8 +2338,20 @@ function instrumentSource(source, watchIds = []) {
     code: instrumented,
     variables: selected,
     allVariables: analysis.variables,
+    sourceDeclarations: analysis.variables.map(variable => ({
+      name: variable.name,
+      from: variable.declarationFrom,
+      to: variable.declarationTo,
+      line: variable.line,
+      functionName: variable.functionName,
+      declarationKind: variable.declarationKind,
+      scopeFrom: variable.scopeFrom,
+      scopeTo: variable.scopeTo
+    })),
+    sourceStructure,
     frameDirectives: indexedFrameDirectives,
     keepDirectives: indexedKeepDirectives,
+    exitDirectives: indexedExitDirectives,
     eventSources
   };
 }
@@ -2064,6 +2361,7 @@ module.exports = {
   buildSyntaxTree,
   findFrameDirectives,
   findKeepDirectives,
+  findExitDirectives,
   instrumentSource,
   inferKind
 };

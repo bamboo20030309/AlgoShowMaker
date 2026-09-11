@@ -196,14 +196,58 @@ struct NamedValue {
   std::string id;
   std::string name;
   std::string identity;
+  std::string lifetime;
   std::string json;
 };
+
+inline std::unordered_map<std::string, std::vector<std::string>>& active_lifetimes() {
+  static std::unordered_map<std::string, std::vector<std::string>> values;
+  return values;
+}
+
+inline std::unordered_set<std::string>& uninitialized_variable_keys() {
+  static std::unordered_set<std::string> values;
+  return values;
+}
+
+inline unsigned long long& lifetime_counter() {
+  static unsigned long long value = 0;
+  return value;
+}
+
+template <typename T>
+std::string lifetime_key(const char* variable_id, const T& value) {
+  std::ostringstream address;
+  address << static_cast<const void*>(&value);
+  return std::string(variable_id ? variable_id : "") + '\x1f' + address.str();
+}
+
+template <typename T>
+std::string current_lifetime(const char* variable_id, const T& value) {
+  const auto key = lifetime_key(variable_id, value);
+  const auto found = active_lifetimes().find(key);
+  return found == active_lifetimes().end() || found->second.empty()
+    ? std::string()
+    : found->second.back();
+}
+
+template <typename T>
+void mark_initialized(const char* variable_id, const T& value) {
+  uninitialized_variable_keys().erase(lifetime_key(variable_id, value));
+}
 
 template <typename T>
 NamedValue named(const char* id, const char* name, const T& value) {
   std::ostringstream address;
   address << static_cast<const void*>(&value);
-  return NamedValue{ id ? id : "", name ? name : "", address.str(), encode_value(value) };
+  const std::string lifetime = current_lifetime(id, value);
+  const bool uninitialized = uninitialized_variable_keys().find(lifetime_key(id, value))
+    != uninitialized_variable_keys().end();
+  return NamedValue{
+    id ? id : "", name ? name : "", address.str(),
+    lifetime,
+    uninitialized ? std::string("{\"kind\":\"scalar\",\"value\":\"\"}") : encode_value(value)
+  };
 }
 
 class Recorder {
@@ -250,6 +294,7 @@ class Recorder {
       if (index) output_ << ',';
       output_ << quoted(state[index].id) << ":{\"name\":" << quoted(state[index].name)
               << ",\"identity\":" << quoted(state[index].identity)
+              << ",\"lifetime\":" << quoted(state[index].lifetime)
               << ",\"data\":" << state[index].json << '}';
     }
     output_ << "},\"events\":[";
@@ -275,6 +320,58 @@ inline Recorder& recorder() {
   static Recorder instance;
   return instance;
 }
+
+class VariableScopeExit {
+ public:
+  template <typename T>
+  VariableScopeExit(int line, const char* signature, const char* variable_id,
+                    const char* name, const char* kind, const T& value)
+      : line_(line), signature_(signature ? signature : ""),
+        variable_id_(variable_id ? variable_id : ""), name_(name ? name : ""),
+        kind_(kind ? kind : "object"), key_(lifetime_key(variable_id, value)), active_(true) {
+    lifetime_ = std::string("lifetime-") + std::to_string(lifetime_counter()++);
+    active_lifetimes()[key_].push_back(lifetime_);
+  }
+
+  VariableScopeExit(const VariableScopeExit&) = delete;
+  VariableScopeExit& operator=(const VariableScopeExit&) = delete;
+
+  ~VariableScopeExit() {
+    if (!active_) return;
+    recorder().add_event("scope-exit", line_, signature_,
+      std::string("\"name\":") + ::asm_trace::quoted(name_)
+        + ",\"kind\":" + ::asm_trace::quoted(kind_)
+        + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime_)
+        + ",\"targets\":[" + target_json_with_lifetime() + ']');
+    uninitialized_variable_keys().erase(key_);
+    auto found = active_lifetimes().find(key_);
+    if (found == active_lifetimes().end()) return;
+    auto& values = found->second;
+    for (auto it = values.end(); it != values.begin();) {
+      --it;
+      if (*it != lifetime_) continue;
+      values.erase(it);
+      break;
+    }
+    if (values.empty()) active_lifetimes().erase(found);
+  }
+
+ private:
+  std::string target_json_with_lifetime() const {
+    return std::string("{\"role\":\"target\",\"variableId\":") + ::asm_trace::quoted(variable_id_)
+      + ",\"expression\":" + ::asm_trace::quoted(name_)
+      + ",\"indexExpression\":\"\",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime_) + '}';
+  }
+
+  int line_;
+  std::string signature_;
+  std::string variable_id_;
+  std::string name_;
+  std::string kind_;
+  std::string key_;
+  std::string lifetime_;
+  bool active_;
+};
 
 inline std::string target_json(const char* role, const char* variable_id,
                                const char* expression, const char* index_expression,
@@ -309,6 +406,21 @@ inline void event_keep_last(int line, const char* signature, const char* label,
       + ",\"targets\":[]");
 }
 
+template <typename T>
+inline void event_visual_exit(int line, const char* signature, const char* variable_id,
+                              const char* name, const char* kind, const T& value) {
+  const std::string lifetime = current_lifetime(variable_id, value);
+  std::string target = target_json("target", variable_id, name, "");
+  target.insert(target.size() - 1,
+    std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
+  recorder().add_event("visual-exit", line, signature ? signature : "",
+    std::string("\"name\":") + quoted(name ? name : "")
+      + ",\"kind\":" + quoted(kind ? kind : "object")
+      + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
+      + ",\"manualVisualExit\":true"
+      + ",\"targets\":[" + target + ']');
+}
+
 inline void event_read(int line, const char* signature, const char* variable_id,
                        const char* expression, const char* index_expression) {
   recorder().add_event("read", line, signature ? signature : "",
@@ -317,21 +429,35 @@ inline void event_read(int line, const char* signature, const char* variable_id,
 
 template <typename T>
 void event_declare(int line, const char* signature, const char* variable_id,
-                   const char* name, const char* kind, const T& value) {
+                   const char* name, const char* kind, const T& value,
+                   bool parameter_declaration = false) {
+  const std::string lifetime = current_lifetime(variable_id, value);
+  std::string target = target_json("target", variable_id, name, "");
+  target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
   recorder().add_event("declare", line, signature ? signature : "",
     std::string("\"name\":") + quoted(name ? name : "")
       + ",\"kind\":" + quoted(kind ? kind : "object")
+      + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
+      + (parameter_declaration ? ",\"parameterDeclaration\":true" : "")
       + ",\"payload\":{\"value\":" + encode_value(value) + "}"
-      + ",\"targets\":[" + target_json("target", variable_id, name, "") + ']');
+      + ",\"targets\":[" + target + ']');
 }
 
-inline void event_declare_uninitialized(int line, const char* signature, const char* variable_id,
-                                        const char* name, const char* kind) {
+template <typename T>
+void event_declare_uninitialized(int line, const char* signature, const char* variable_id,
+                                 const char* name, const char* kind, const T& value) {
+  const std::string lifetime = current_lifetime(variable_id, value);
+  if (std::string(kind ? kind : "") == "scalar") {
+    uninitialized_variable_keys().insert(lifetime_key(variable_id, value));
+  }
+  std::string target = target_json("target", variable_id, name, "");
+  target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
   recorder().add_event("declare", line, signature ? signature : "",
     std::string("\"name\":") + quoted(name ? name : "")
       + ",\"kind\":" + quoted(kind ? kind : "object")
+      + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
       + ",\"payload\":{\"value\":null}"
-      + ",\"targets\":[" + target_json("target", variable_id, name, "") + ']');
+      + ",\"targets\":[" + target + ']');
 }
 
 template <typename T>
@@ -340,15 +466,25 @@ void event_initialized_assign(int line, const char* signature,
                               bool target_has_resolved_index, long long target_resolved_index,
                               const char* source_id, const char* source_expression, const char* source_index,
                               bool source_has_resolved_index, long long source_resolved_index,
-                              const char* expression, const T& value) {
+                              const char* expression, const T& value,
+                              bool for_initializer = false,
+                              bool parameter_initializer = false) {
+  mark_initialized(target_id, value);
   const std::string encoded = encode_value(value);
+  const std::string lifetime = current_lifetime(target_id, value);
+  std::string target = target_json("target", target_id, target_expression, target_index,
+    target_has_resolved_index, target_resolved_index);
+  target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
   recorder().add_event("assign", line, signature ? signature : "",
     std::string("\"operation\":\"=\"")
       + ",\"animate\":true"
+      + ",\"declarationInitializer\":true"
+      + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
+      + ",\"parameterInitializer\":" + (parameter_initializer ? "true" : "false")
+      + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
       + ",\"expression\":" + quoted(expression ? expression : "")
       + ",\"payload\":{\"before\":null,\"after\":" + encoded + ",\"source\":" + encoded + "}"
-      + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
-          target_has_resolved_index, target_resolved_index)
+      + ",\"targets\":[" + target
       + ',' + target_json("source", source_id, source_expression, source_index,
           source_has_resolved_index, source_resolved_index) + ']');
 }
@@ -383,7 +519,9 @@ void event_update(int line, const char* signature, const char* variable_id,
                    F action, AfterFactory after_factory, bool animate = true) {
   const std::string before = encode_value(before_factory());
   action();
-  const std::string after = encode_value(after_factory());
+  auto&& after_value = after_factory();
+  mark_initialized(variable_id, after_value);
+  const std::string after = encode_value(after_value);
   recorder().add_event("write", line, signature ? signature : "",
     std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"animate\":" + (animate ? "true" : "false")
@@ -400,13 +538,16 @@ void event_assign(int line, const char* signature,
                    const char* source_id, const char* source_expression, const char* source_index,
                    bool source_has_resolved_index, long long source_resolved_index,
                    const char* expression, BeforeFactory before_factory, F action, AfterFactory after_factory,
-                   bool animate = true) {
+                   bool animate = true, bool for_initializer = false) {
   const std::string before = encode_value(before_factory());
   action();
-  const std::string after = encode_value(after_factory());
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
   recorder().add_event("assign", line, signature ? signature : "",
     std::string("\"operation\":\"=\"")
       + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + after + "}"
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
@@ -436,16 +577,24 @@ bool event_compare(int line, const char* signature,
   return result;
 }
 
-template <typename F>
+template <typename LeftFactory, typename RightFactory, typename F>
 void event_swap(int line, const char* signature,
                  const char* left_id, const char* left_expression, const char* left_index,
                  bool left_has_resolved_index, long long left_resolved_index,
                  const char* right_id, const char* right_expression, const char* right_index,
                  bool right_has_resolved_index, long long right_resolved_index,
-                 F action) {
+                 LeftFactory left_factory, RightFactory right_factory, F action) {
+  auto&& left = left_factory();
+  auto&& right = right_factory();
+  const std::string left_before = encode_value(left);
+  const std::string right_before = encode_value(right);
   action();
   recorder().add_event("swap", line, signature ? signature : "",
-    std::string("\"targets\":[") + target_json("left", left_id, left_expression, left_index,
+    std::string("\"payload\":{\"leftBefore\":") + left_before
+      + ",\"rightBefore\":" + right_before
+      + ",\"leftAfter\":" + encode_value(left)
+      + ",\"rightAfter\":" + encode_value(right) + "}"
+      + ",\"targets\":[" + target_json("left", left_id, left_expression, left_index,
         left_has_resolved_index, left_resolved_index)
       + ',' + target_json("right", right_id, right_expression, right_index,
         right_has_resolved_index, right_resolved_index) + ']');

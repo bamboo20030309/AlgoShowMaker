@@ -135,7 +135,8 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
   accent-color: #1d8f83;
 }
 
-.trace-auto-fixed-settings {
+.trace-auto-fixed-settings,
+.trace-auto-loop-boundary-settings {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
@@ -146,28 +147,45 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
   background: #222a27;
 }
 
-.trace-auto-fixed-settings > span {
+.trace-auto-fixed-settings > span,
+.trace-auto-loop-boundary-settings > span {
   min-width: 0;
   display: grid;
   gap: 3px;
 }
 
-.trace-auto-fixed-settings strong {
+.trace-auto-fixed-settings strong,
+.trace-auto-loop-boundary-settings strong {
   color: #8bd48e;
   font-size: 12px;
 }
 
-.trace-auto-fixed-settings small {
+.trace-auto-fixed-settings small,
+.trace-auto-loop-boundary-settings small {
   color: #9facb2;
   font-size: 10px;
   line-height: 1.35;
 }
 
-.trace-auto-fixed-settings input {
+.trace-auto-fixed-settings input,
+.trace-auto-loop-boundary-settings input {
   width: 16px;
   height: 16px;
   justify-self: center;
   accent-color: #4caf50;
+}
+
+.trace-auto-loop-boundary-settings {
+  border-top-width: 0;
+  background: #2b2921;
+}
+
+.trace-auto-loop-boundary-settings strong {
+  color: #e4bd4c;
+}
+
+.trace-auto-loop-boundary-settings input {
+  accent-color: #d0a01a;
 }
 
 .trace-event-settings-gap {
@@ -575,16 +593,21 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   border-radius: 0;
   box-shadow: none;
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-x pan-y;
   user-select: none;
   font-family: Consolas, "Cascadia Code", "Noto Sans Mono", monospace;
-  font-size: clamp(11px, 0.95vw, 14px);
+  font-size: 14px;
   line-height: 1.58;
 }
 
 .asm-trace-code-panel.is-dragging {
   z-index: 12;
   cursor: grabbing;
+}
+
+.asm-trace-code-panel.selected .asm-trace-code-body {
+  outline: 2px solid #3d85c6;
+  outline-offset: 3px;
 }
 
 .asm-trace-code-panel[hidden] {
@@ -610,7 +633,41 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   max-width: 100%;
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 420ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 460ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.asm-trace-code-page.is-transition-preparing {
+  transition: none;
+}
+
+.asm-trace-code-page.is-transition-scrolling {
+  transition: transform 460ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.asm-trace-code-page.is-transition-expanded .asm-trace-code-line.is-transition-entering {
+  min-height: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 460ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 180ms ease;
+}
+
+.asm-trace-code-page.is-transition-expanded.is-transition-scrolling .asm-trace-code-line.is-transition-entering {
+  max-height: 1.58em;
+  opacity: 1;
+}
+
+.asm-trace-code-page.is-transition-expanded .asm-trace-code-line.is-transition-leaving {
+  min-height: 0;
+  max-height: 1.58em;
+  overflow: hidden;
+  opacity: 1;
+  transition: max-height 460ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 180ms ease 220ms;
+}
+
+.asm-trace-code-page.is-transition-expanded.is-transition-scrolling .asm-trace-code-line.is-transition-leaving {
+  max-height: 0;
+  opacity: 0;
 }
 
 .asm-trace-code-page.is-leaving {
@@ -620,23 +677,19 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
 }
 
 .asm-trace-code-page.is-entering.from-below {
-  opacity: 0;
-  transform: translateY(30px);
+  transform: translateY(var(--asm-code-scroll-distance, 64px));
 }
 
 .asm-trace-code-page.is-entering.from-above {
-  opacity: 0;
-  transform: translateY(-30px);
+  transform: translateY(calc(var(--asm-code-scroll-distance, 64px) * -1));
 }
 
 .asm-trace-code-page.is-leaving.to-above.has-left {
-  opacity: 0;
-  transform: translateY(-30px);
+  transform: translateY(calc(var(--asm-code-scroll-distance, 64px) * -1));
 }
 
 .asm-trace-code-page.is-leaving.to-below.has-left {
-  opacity: 0;
-  transform: translateY(30px);
+  transform: translateY(var(--asm-code-scroll-distance, 64px));
 }
 
 .asm-trace-code-fragment-divider,
@@ -667,6 +720,8 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   font: inherit;
   text-overflow: clip;
   white-space: pre;
+  cursor: text;
+  user-select: text;
 }
 
 .asm-trace-code-event-span {
@@ -678,9 +733,21 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
 
 .asm-trace-code-event-span.is-complete:not(.is-active) {
   background: rgba(100, 116, 139, 0.18);
+  border-radius: 0;
 }
 
-.ace-tm .asm-trace-code-event-span.is-active {
+.asm-trace-code-event-span.is-condition-true:not(.is-active) {
+  background: rgba(165, 214, 167, 0.6);
+  border-radius: 0;
+}
+
+.asm-trace-code-event-span.is-condition-false:not(.is-active) {
+  background: rgba(239, 154, 154, 0.6);
+  border-radius: 0;
+}
+
+.ace-tm .asm-trace-code-event-span.is-active,
+.ace-tm .asm-trace-code-event-span.is-condition-pending {
   background-color: rgba(255, 214, 10, 0.48);
   border-radius: 0;
   box-shadow: inset 0 -2px 0 rgba(217, 164, 0, 0.72);
@@ -703,7 +770,6 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
     left: 8px;
     top: 12px;
     max-width: min(56%, 360px);
-    font-size: 10px;
   }
 }
 

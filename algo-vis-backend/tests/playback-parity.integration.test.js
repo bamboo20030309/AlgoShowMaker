@@ -4,13 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { compile, load } = require('./helpers/compile');
+const provenance = require('../public/trace-provenance');
 const fixture = require('./fixtures/sorting.json');
 const plain = value => JSON.parse(JSON.stringify(value));
 
 // Real model/editor/player/camera/Studio routing. Only SVG and UI edges are spies;
 // this checks playback contracts, not visual pixel equality.
 function surface(mode, rate) {
-  const callbacks = new Map(), timers = new Map(), renders = [], cameras = [];
+  const callbacks = new Map(), timers = new Map(), timerDelays = [], renders = [], cameras = [];
   const canvas = {};
   let serial = 0, studioOpen = mode === 'studio', resizeCallback = null;
   const promise = Promise.resolve();
@@ -22,7 +23,12 @@ function surface(mode, rate) {
       body: { classList: { contains: () => studioOpen } } },
     getComputedStyle: () => ({ getPropertyValue: () => rate }),
     ResizeObserver: class { constructor(callback) { resizeCallback = callback; } observe() {} },
-    setTimeout: fn => { const id = ++serial; timers.set(id, fn); return id; },
+    setTimeout: (fn, delay = 0) => {
+      const id = ++serial;
+      timerDelays.push(Number(delay) || 0);
+      timers.set(id, fn);
+      return id;
+    },
     clearTimeout: id => timers.delete(id), requestAnimationFrame: fn => fn(),
     addEventListener(type, fn) { const list = callbacks.get(type) || []; list.push(fn); callbacks.set(type, list); },
     dispatchEvent(event) { for (const fn of callbacks.get(event.type) || []) fn(event); },
@@ -54,7 +60,7 @@ function surface(mode, rate) {
     vm.runInContext(source, c);
     c.ASMTraceStudio.open = () => {};
   }
-  return { c, cameras, renders, promise,
+  return { c, cameras, renders, promise, timerDelays,
     resize(width, height) { resizeCallback?.([{ target: canvas, contentRect: { width, height } }]); },
     flush() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); },
     load(animation) {
@@ -65,6 +71,50 @@ function surface(mode, rate) {
     }
   };
 }
+
+test('a changed code layout delays renderer phases and the shared camera by 500ms', () => {
+  const s = surface('algorithm', 1);
+  s.load({
+    mode: 'trace',
+    code: '',
+    input: '',
+    traceDocument: {
+      frames: [{ id: 'frame-0', state: {} }, { id: 'frame-1', state: {} }],
+      studio: { cameraRules: [] }
+    }
+  });
+  s.c.ASMTraceCodePresenter = { transitionDelay: () => 500 };
+  s.renders.length = 0;
+  s.timerDelays.length = 0;
+  s.c.CodeScript.next();
+  assert.equal(s.renders[0].options.initialDelayMs, 500);
+  assert.equal(s.renders[0].options.cameraTransitionDurationMs, 520);
+  assert.ok(s.timerDelays.includes(500), 'the shared camera must wait for the code transition');
+});
+
+test('a keep phase starts the shared camera with retained and live layout motion', () => {
+  const s = surface('algorithm', 1);
+  s.load({
+    mode: 'trace',
+    code: '',
+    input: '',
+    traceDocument: {
+      frames: [{ id: 'frame-0', state: {} }, { id: 'frame-keep', state: {} }],
+      studio: { cameraRules: [] }
+    }
+  });
+  const transition = Promise.resolve();
+  transition.playbackPlan = {
+    phases: [
+      { id: 'keep-transition', startMs: 0, durationMs: 520 },
+      { id: 'frame-transition', startMs: 0, durationMs: 520 }
+    ]
+  };
+  s.c.ASMTraceRenderers.renderFrame = () => transition;
+  s.timerDelays.length = 0;
+  s.c.CodeScript.next();
+  assert.ok(s.timerDelays.includes(0), 'camera motion must be part of the keep layout settlement');
+});
 
 for (const name of ['bubble', 'insertion']) test(`${name}: save/reopen routes identical frames, events and camera across three surfaces`, async () => {
   const code = fs.readFileSync(path.join(__dirname, 'fixtures', name + '.cpp'), 'utf8');
@@ -77,7 +127,7 @@ for (const name of ['bubble', 'insertion']) test(`${name}: save/reopen routes id
     const surfaces = ['algorithm', 'studio', 'runtime'].map(mode => surface(mode, rate));
     for (const s of surfaces) {
       s.load(saved);
-      assert.equal(s.c.ASMTracePlayer.getDocument().provenance.engineVersion, 1);
+      assert.equal(s.c.ASMTracePlayer.getDocument().provenance.engineVersion, provenance.ENGINE_VERSION);
       // Sequential forward playback, then previous and jump/replay paths.
       for (let i = 1; i < trace.frames.length; i++) {
         const completion = s.c.CodeScript.next();

@@ -1,9 +1,11 @@
 // One command; owns only its isolated server, never stops the user's server.
 const { spawn, spawnSync } = require('node:child_process');
+const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const root = path.resolve(__dirname, '..');
+const REGRESSION_JWT_SECRET = randomBytes(32).toString('base64url');
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit', windowsHide: true });
   if (result.error) throw result.error;
@@ -26,7 +28,12 @@ async function main() {
   });
   const server = spawn(process.execPath, ['server.js'], {
     cwd: root,
-    env: { ...process.env, PORT: String(port), ASM_REGRESSION: '1' },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      ASM_REGRESSION: '1',
+      JWT_SECRET: REGRESSION_JWT_SECRET
+    },
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -50,7 +57,14 @@ async function main() {
     // Async child keeps draining server output during integration tests.
     await new Promise((resolve, reject) => {
       const tests = spawn(process.execPath, ['--test', '--test-concurrency=1', ...files], {
-        cwd: root, env: { ...process.env, ASM_TEST_BASE_URL: url }, stdio: 'inherit', windowsHide: true
+        cwd: root,
+        env: {
+          ...process.env,
+          ASM_TEST_BASE_URL: url,
+          JWT_SECRET: REGRESSION_JWT_SECRET
+        },
+        stdio: 'inherit',
+        windowsHide: true
       });
       tests.on('error', reject);
       tests.on('exit', code => code === 0 ? resolve() : reject(new Error('Regression tests failed')));

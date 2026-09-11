@@ -16,12 +16,21 @@
     const rate = Math.max(0.25, Math.min(4, Number(window.asmGetAnimationPlaybackRate?.()) || cssRate || 1));
     return Math.max(1, (Number(value) || 520) / rate);
   }
+  function transitionFor(trace, frame, previousFrame = null) {
+    return previousFrame
+      ? window.ASMTraceTransitions?.resolve?.(trace, previousFrame, frame, '$camera', new Set(['$camera']))
+      : null;
+  }
+  function transitionDuration(trace, frame, previousFrame = null, animate = Boolean(previousFrame)) {
+    if (!frame || !previousFrame || !animate) return 0;
+    const transition = transitionFor(trace, frame, previousFrame);
+    if (transition?.mode === 'instant') return 0;
+    return Math.max(0, Number(transition?.duration) || 520);
+  }
   function apply(trace, frame, previousFrame = null, animate = Boolean(previousFrame)) {
     if (!frame) return;
     const rule = ruleForFrame(trace, frame);
-    const transition = previousFrame
-      ? window.ASMTraceTransitions?.resolve?.(trace, previousFrame, frame, '$camera', new Set(['$camera']))
-      : null;
+    const transition = transitionFor(trace, frame, previousFrame);
     const moving = animate && transition?.mode !== 'instant';
     const ms = duration(transition?.duration);
     const renderer = window.ASMTraceRenderers;
@@ -53,5 +62,5 @@
     return renderer?.fitCurrentObjectsCamera?.(zoom, moving, ms, dx, dy, true)
       || window.setAutoCamera?.(zoom, moving, dx, dy, ms);
   }
-  window.ASMTraceCamera = { apply, ruleForFrame };
+  window.ASMTraceCamera = { apply, ruleForFrame, transitionDuration };
 })();

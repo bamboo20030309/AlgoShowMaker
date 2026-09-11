@@ -5,6 +5,8 @@
   let viewportResizeFrame = null;
   let viewportObserver = null;
   let viewportSize = '';
+  let viewportGeometryReady = false;
+  let runtimeVisibilityConfirmed = false;
   let activePlaybackPlan = null;
   let lastPlaybackPlan = null;
 
@@ -12,13 +14,13 @@
     return document?.frames?.length || 0;
   }
 
-  function applyPlaybackCamera(frame, previousFrame = null) {
+  function applyPlaybackCamera(frame, previousFrame = null, delayMs = 0) {
     clearTimeout(cameraTimer);
     if (!frame || window.document.body.classList.contains('asm-trace-studio-open')) return;
     cameraTimer = setTimeout(() => {
       if (document?.frames?.[currentFrame]?.id !== frame.id) return;
       window.ASMTraceCamera.apply(document, frame, previousFrame);
-    }, 0);
+    }, Math.max(0, Number(delayMs) || 0));
   }
 
   function refreshViewportCamera() {
@@ -29,7 +31,38 @@
       window.ASMTraceStudio.refreshViewport();
       return;
     }
+    if (isRuntimeEmbed() && runtimeVisibilityConfirmed) {
+      rebaseCurrentFrame().catch(error => console.error('Trace viewport rebase failed', error));
+      return;
+    }
     window.ASMTraceCamera?.apply?.(document, document.frames[currentFrame], null, false);
+  }
+
+  function isRuntimeEmbed() {
+    return window.document.body.classList.contains('asm-embed-runtime');
+  }
+
+  function rebaseCurrentFrame(options = {}) {
+    if (!document?.frames?.length) return Promise.resolve(false);
+    const canvas = window.document.getElementById('arraySvg');
+    const rect = canvas?.getBoundingClientRect?.();
+    if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) return Promise.resolve(false);
+    if (options.confirmVisible) runtimeVisibilityConfirmed = true;
+    window.ASMTraceFrameTween?.cancel?.();
+    const frame = document.frames[currentFrame];
+    const transition = window.ASMTraceRenderers.renderFrame(document, frame, null, {
+      animateEvents: false,
+      animatePositions: false,
+      viewportRebase: true
+    });
+    return Promise.resolve(transition).then(() => {
+      viewportGeometryReady = true;
+      window.ASMTraceCamera?.apply?.(document, frame, null, false);
+      window.dispatchEvent(new CustomEvent('asm:trace-geometry-ready', {
+        detail: { document, frame, index: currentFrame }
+      }));
+      return true;
+    });
   }
 
   function scheduleViewportCameraRefresh() {
@@ -63,11 +96,19 @@
     const previous = (options.forceTransition || next !== fromIndex) ? document.frames[fromIndex] : null;
     currentFrame = next;
     const frame = document.frames[currentFrame];
+    const codeTransitionDelayMs = Math.max(0, Number(
+      window.ASMTraceCodePresenter?.transitionDelay?.(document, frame)
+    ) || 0);
+    const cameraTransitionDurationMs = Math.max(0, Number(
+      window.ASMTraceCamera?.transitionDuration?.(document, frame, previous || null)
+    ) || 0);
     const transition = window.ASMTraceRenderers.renderFrame(document, frame, previous || null, {
       ...options,
       fromIndex,
       toIndex: currentFrame,
-      direction
+      direction,
+      initialDelayMs: codeTransitionDelayMs,
+      cameraTransitionDurationMs
     });
     const playbackPlan = transition?.playbackPlan || null;
     if (playbackPlan) {
@@ -86,10 +127,14 @@
         previousFrame: previous || null,
         index: currentFrame,
         fromIndex,
-        direction
+        direction,
+        plan: playbackPlan
       }
     }));
-    applyPlaybackCamera(frame, previous || null);
+    const cameraDelayMs = playbackPlan?.phases?.find(phase => phase.id === 'keep-transition')?.startMs
+      ?? playbackPlan?.phases?.find(phase => phase.id === 'frame-transition')?.startMs
+      ?? codeTransitionDelayMs;
+    applyPlaybackCamera(frame, previous || null, cameraDelayMs);
     if (typeof window.syncCurrentFrameFromCodeScript === 'function') window.syncCurrentFrameFromCodeScript();
     if (typeof window.clearAllEditorHighlights === 'function') window.clearAllEditorHighlights();
     if (typeof window.addEditorHighlight === 'function' && Number(frame.source?.line) > 0) {
@@ -141,6 +186,8 @@
     lastPlaybackPlan = null;
     document = window.ASMTraceModel.normalizeTraceDocument(source);
     currentFrame = 0;
+    viewportGeometryReady = !isRuntimeEmbed();
+    runtimeVisibilityConfirmed = !isRuntimeEmbed();
     observeViewportSize();
     installCodeScript();
     if (frameCount()) render(0, { animateEvents: false, animatePositions: false });
@@ -177,11 +224,13 @@
     apply,
     render,
     previewTransition,
+    rebaseCurrentFrame,
     setRules,
     setSkins,
     isActive: () => Boolean(document?.frames?.length),
     getDocument: () => document,
     getCurrentFrame: () => currentFrame,
+    isViewportGeometryReady: () => viewportGeometryReady,
     getActivePlaybackPlan: () => activePlaybackPlan,
     getLastPlaybackPlan: () => lastPlaybackPlan
   };

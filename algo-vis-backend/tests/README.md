@@ -12,10 +12,17 @@ npm run regression
 改寫投影片或產生 server log 檔。此指令不包含瀏覽器目視驗收。
 已有新版開發伺服器時也可執行 npm test（預設 localhost:3000）。
 
+## 動畫實錄回歸
+
+演算法編輯器「除錯記錄」頁籤的「記錄全部幀」會透過實際 `CodeScript` 播放路徑依序等待每幀完成，並記錄 `playbackPlan`、實際事件起訖、SVG DOM 幾何與樣式、鏡頭、程式碼片段及高亮。完整 JSON 可作為問題附件或基準，CSV 則適合人工逐列檢查。
+
+比較基準時應使用 `ASMTraceDebugRecorder.compare(expected, actual)`，不要直接比對整份 JSON。記錄時間和瀏覽器像素可能有微小差異；比較器會嚴格檢查事件順序、排程結構、物件存在性與程式碼狀態，並以可設定誤差比對時間和幾何。
+
 ## 固定案例
 
 - fixtures/bubble.cpp：後置 @frame、j++、比較、交換、@keep last。
 - fixtures/insertion.cpp：key 取值、右移、j--、回填。
+- keep-directives：`@keep` 的來源位置／綁定繼承、`offset` 單獨微調、手動位置覆蓋與樣式保存。
 - 共用 fixtures/sorting.json：6 個元素，輸入 5 7 2 1 9 4；結果 1 2 4 5 7 9。
 - assignment-indices：事件發生時的索引、不可重複執行索引函式。
 - unresolved-markers：array/heap/stack 的未知指標、range、越界與取得有效值。

@@ -12,12 +12,17 @@ const mongoose = require('mongoose');            //資料庫溝通套件
 const bcrypt = require('bcryptjs');            //密碼加密套件
 const jwt = require('jsonwebtoken');        //webtoken套件
 const nodemailer = require('nodemailer');          //重置密碼email套件
+const {
+  JWT_SIGN_OPTIONS,
+  JWT_VERIFY_OPTIONS,
+  loadJwtSecret
+} = require('./jwt-config');
 const { analyzeSource, buildSyntaxTree, findFrameDirectives, instrumentSource } = require('./trace-instrumenter');
 const TraceViewSource = require('./public/trace-view-source');
 const TraceProvenance = require('./public/trace-provenance');
 
-// 優先讀取環境變數，如果沒讀到才用後面的預設值
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key';
+// JWT 密鑰必須由部署環境提供；缺少或使用公開預設值時直接停止啟動。
+const JWT_SECRET = loadJwtSecret();
 
 // 設定連線字串
 // Docker 會自動幫你把 'mongo' 解析成該容器的 IP 位址。
@@ -282,7 +287,7 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign(
       { id: user._id, username: user.username },
       JWT_SECRET,
-      { expiresIn: '1d' }
+      JWT_SIGN_OPTIONS
     );
 
     res.json({ success: true, token, username: user.username });
@@ -377,7 +382,7 @@ const authenticateToken = (req, res, next) => {
 
   if (!token) return res.status(401).json({ error: '請先登入' });
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS, (err, user) => {
     if (err) return res.status(403).json({ error: '憑證無效或過期' });
 
     // 驗證成功，把用戶資料掛在 req 上，後面的路由就可以用了
@@ -395,7 +400,7 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 });
 
 const EVENT_SETTING_TYPES = [
-  'declare', 'read', 'write', 'assign', 'compare', 'condition', 'swap',
+  'declare', 'scope-exit', 'visual-exit', 'read', 'write', 'assign', 'compare', 'swap',
   'call', 'function-enter', 'function-exit'
 ];
 const DEFAULT_EVENT_GAP_MS = 500;
@@ -411,6 +416,7 @@ function cleanEventSettings(value = {}) {
     autoFixedEnabled: typeof value.autoFixedEnabled === 'boolean'
       ? value.autoFixedEnabled
       : (typeof value.defaultEnabled?.fixed === 'boolean' ? value.defaultEnabled.fixed : true),
+    autoLoopBoundaryEnabled: value.autoLoopBoundaryEnabled === true,
     defaultEnabled: cleanFlags(value.defaultEnabled),
     timelineTypes: cleanFlags(value.timelineTypes)
   };
@@ -798,10 +804,184 @@ function autoSliceTraceFrames(frames) {
   });
 }
 
+function assignKeepBoundaryEvents(frames) {
+  if (!Array.isArray(frames) || frames.length < 2) return frames;
+  // Preserve the last runtime event that had already happened when each
+  // visible frame was captured. Events moved onto the outgoing frame below
+  // happened after that capture and before @keep, so @keep last must fold
+  // their completed state into the retained copy without replaying older
+  // events that the captured state already contains.
+  frames.forEach(frame => {
+    const orders = (frame.events || [])
+      .map(event => Number(event?.order))
+      .filter(Number.isFinite);
+    frame.captureOrder = orders.length ? Math.max(...orders) : -1;
+  });
+  for (let frameIndex = 1; frameIndex < frames.length; frameIndex += 1) {
+    const frame = frames[frameIndex];
+    const ordered = [...(frame.events || [])].sort((left, right) => (
+      (Number(left?.order) || 0) - (Number(right?.order) || 0)
+    ));
+    const keepOrders = ordered
+      .filter(event => event?.type === 'keep')
+      .map(event => Number(event.order))
+      .filter(Number.isFinite);
+    if (!keepOrders.length) continue;
+
+    // A manual @exit immediately before @keep is explicitly a pre-keep
+    // visual action. A natural scope-exit immediately after @keep can be
+    // folded across the boundary only while no observable event intervenes.
+    // Keep the original numeric order for diagnostics and tag the visual
+    // phase instead of falsifying runtime execution order.
+    ordered.forEach((event, eventIndex) => {
+      if (event?.type !== 'keep') return;
+      const keepOrder = Number(event.order);
+      for (let cursor = eventIndex - 1; cursor >= 0; cursor -= 1) {
+        const candidate = ordered[cursor];
+        if (candidate?.type !== 'visual-exit') break;
+        candidate.preKeepExit = true;
+        candidate.preKeepOrder = keepOrder;
+      }
+      for (let cursor = eventIndex + 1; cursor < ordered.length; cursor += 1) {
+        const candidate = ordered[cursor];
+        if (candidate?.type !== 'scope-exit') break;
+        candidate.preKeepExit = true;
+        candidate.preKeepOrder = keepOrder;
+        candidate.absorbedAfterKeep = true;
+      }
+    });
+
+    const boundaryOrder = Math.max(...keepOrders);
+    const outgoingEvents = ordered.filter(event => (
+      event?.type !== 'keep'
+      && event?.preKeepExit !== true
+      && Number.isFinite(Number(event?.order))
+      && Number(event.order) < boundaryOrder
+    ));
+    if (!outgoingEvents.length) continue;
+    const outgoingSet = new Set(outgoingEvents);
+    const previousFrame = frames[frameIndex - 1];
+    previousFrame.events = [...(previousFrame.events || []), ...outgoingEvents]
+      .sort((left, right) => (
+        (Number(left?.order) || 0) - (Number(right?.order) || 0)
+      ));
+    frame.events = ordered.filter(event => !outgoingSet.has(event));
+  }
+  return frames;
+}
+
+function cloneTraceValue(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function mutationTargets(event = {}) {
+  const targets = (event.targets || []).filter(target => target?.variableId);
+  const explicit = targets.filter(target => target.role === 'target');
+  return explicit.length ? explicit : targets.slice(0, 1);
+}
+
+function applyKeepMutation(frame, target, value) {
+  const entry = frame?.state?.[target?.variableId];
+  if (!entry || value == null) return;
+  const resolvedIndex = Number(target.resolvedIndex);
+  const items = entry.data?.items;
+  if (Number.isInteger(resolvedIndex) && Array.isArray(items)) {
+    if (resolvedIndex >= 0 && resolvedIndex < items.length) {
+      items[resolvedIndex] = cloneTraceValue(value);
+    }
+    return;
+  }
+  entry.data = cloneTraceValue(value);
+}
+
+function removeExitedKeepObject(frame, event = {}) {
+  (event.targets || []).forEach(target => {
+    const variableId = String(target?.variableId || '');
+    if (!variableId) return;
+    const lifetime = String(target?.lifetimeIdentity || event.lifetimeIdentity || '');
+    const entry = frame.state?.[variableId];
+    if (!entry || (lifetime && String(entry.lifetime || '') !== lifetime)) return;
+    delete frame.state[variableId];
+    delete frame.renderers?.[variableId];
+    delete frame.rendererOptions?.[variableId];
+    frame.captureOnlyVariableIds = (frame.captureOnlyVariableIds || [])
+      .filter(id => id !== variableId);
+    frame.bindings = (frame.bindings || []).filter(binding => (
+      binding?.targetVariableId !== variableId
+      && binding?.sourceVariableId !== variableId
+      && !(binding?.sourceVariableIds || []).includes(variableId)
+    ));
+    frame.objectBindings = (frame.objectBindings || []).filter(binding => (
+      binding?.targetVariableId !== variableId
+      && binding?.sourceVariableId !== variableId
+      && !(binding?.sourceVariableIds || []).includes(variableId)
+    ));
+    frame.styles = (frame.styles || []).filter(style => style?.targetVariableId !== variableId);
+    frame.segments = (frame.segments || []).filter(segment => segment?.targetVariableId !== variableId);
+  });
+}
+
+function materializeKeepFrameState(sourceFrame, keepOrder, pendingEvents = []) {
+  const frame = cloneTraceValue(sourceFrame);
+  const captureOrder = Number(sourceFrame?.captureOrder);
+  const upperOrder = Number(keepOrder);
+  const ordinaryBoundaryEvents = [...(sourceFrame?.events || [])]
+    .filter(event => {
+      const order = Number(event?.order);
+      return Number.isFinite(order)
+        && (!Number.isFinite(captureOrder) || order > captureOrder)
+        && (!Number.isFinite(upperOrder) || order < upperOrder);
+    });
+  const preKeepExits = (pendingEvents || []).filter(event => (
+    event?.preKeepExit === true
+    && Number(event?.preKeepOrder) === upperOrder
+    && (event?.type === 'scope-exit' || event?.type === 'visual-exit')
+  ));
+  const boundaryEvents = [...new Set([...ordinaryBoundaryEvents, ...preKeepExits])]
+    .sort((left, right) => Number(left.order) - Number(right.order));
+  boundaryEvents.forEach(event => {
+    // Loop-boundary events are a user-selectable synthetic view. Their value
+    // is applied later by trace-events.js only when that setting is enabled.
+    if (event?.loopBoundary === true) return;
+    if (event?.type === 'scope-exit' || event?.type === 'visual-exit') {
+      removeExitedKeepObject(frame, event);
+      return;
+    }
+    if (event?.type === 'declare') {
+      const target = (event.targets || []).find(item => item?.variableId);
+      if (!target) return;
+      const declaredValue = event.payload?.value == null
+        ? { kind: event.kind || 'scalar', value: '' }
+        : cloneTraceValue(event.payload.value);
+      frame.state[target.variableId] = {
+        name: event.name || target.expression || target.variableId,
+        identity: '',
+        lifetime: event.lifetimeIdentity || target.lifetimeIdentity || '',
+        data: declaredValue
+      };
+      return;
+    }
+    if (event?.type === 'swap') {
+      const left = (event.targets || []).find(target => target.role === 'left');
+      const right = (event.targets || []).find(target => target.role === 'right');
+      applyKeepMutation(frame, left, event.payload?.leftAfter);
+      applyKeepMutation(frame, right, event.payload?.rightAfter);
+      return;
+    }
+    if (event?.type === 'assign' || event?.type === 'write') {
+      mutationTargets(event).forEach(target => (
+        applyKeepMutation(frame, target, event.payload?.after)
+      ));
+    }
+  });
+  return frame;
+}
+
 function materializeKeepSnapshots(frames) {
   const snapshots = [];
   const activeSnapshotIds = [];
   const counts = new Map();
+  let sceneGeneration = 0;
   const usedObjectIds = new Set(frames.flatMap(frame => [
     ...Object.keys(frame.state || {}),
     String(frame.source?.objectId || '').trim()
@@ -839,12 +1019,26 @@ function materializeKeepSnapshots(frames) {
         .map(style => JSON.parse(JSON.stringify(style)))
     };
   }
+  function eventsForGeneration(events, generation, preKeepGeneration = generation) {
+    return (events || []).filter(event => event?.type !== 'keep').map(event => ({
+      ...event,
+      sceneGeneration: event?.preKeepExit === true ? preKeepGeneration : generation,
+      targets: (event.targets || []).map(target => ({
+        ...target,
+        sceneGeneration: event?.preKeepExit === true ? preKeepGeneration : generation
+      }))
+    }));
+  }
   const materializedFrames = frames.map((frame, frameIndex) => {
+    const keepEvents = (frame.events || []).filter(event => event.type === 'keep');
+    const snapshotGeneration = sceneGeneration;
+    const liveGeneration = keepEvents.length ? sceneGeneration + 1 : sceneGeneration;
     let keepLastFocus = false;
-    (frame.events || []).filter(event => event.type === 'keep').forEach(event => {
+    keepEvents.forEach(event => {
       if (event.mode === 'last') {
         const previousFrame = frames[frameIndex - 1];
         if (!previousFrame) return;
+        const retainedFrame = materializeKeepFrameState(previousFrame, event.order, frame.events);
         const preserveStyle = event.preserveStyle !== false;
         const count = (counts.get('$frame') || 0) + 1;
         counts.set('$frame', count);
@@ -857,14 +1051,21 @@ function materializeKeepSnapshots(frames) {
           createdFrameId: frame.id,
           sourceFrameId: previousFrame.id,
           label: objectId,
+          preserveStyle,
+          keepOrder: Number(event.order),
+          sceneGeneration: snapshotGeneration,
           binding: event.binding ? JSON.parse(JSON.stringify(event.binding)) : null,
+          placementOffset: event.placementOffset
+            ? JSON.parse(JSON.stringify(event.placementOffset))
+            : null,
           frame: {
-            ...JSON.parse(JSON.stringify(previousFrame)),
-            renderers: JSON.parse(JSON.stringify(previousFrame.renderers || {})),
-            rendererOptions: JSON.parse(JSON.stringify(previousFrame.rendererOptions || {})),
-            events: (previousFrame.events || []).filter(item => item.type !== 'keep'),
+            ...retainedFrame,
+            sceneGeneration: snapshotGeneration,
+            renderers: JSON.parse(JSON.stringify(retainedFrame.renderers || {})),
+            rendererOptions: JSON.parse(JSON.stringify(retainedFrame.rendererOptions || {})),
+            events: eventsForGeneration(retainedFrame.events, snapshotGeneration),
             texts: [],
-            styles: preserveStyle ? JSON.parse(JSON.stringify(previousFrame.styles || [])) : [],
+            styles: preserveStyle ? JSON.parse(JSON.stringify(retainedFrame.styles || [])) : [],
             snapshotIds: []
           }
         });
@@ -894,9 +1095,14 @@ function materializeKeepSnapshots(frames) {
         sourceFrameId: renderState.frameId,
         createdFrameId: frame.id,
         label: objectId,
+        preserveStyle,
+        sceneGeneration: snapshotGeneration,
         binding: event.binding
           ? JSON.parse(JSON.stringify(event.binding))
           : renderState.binding,
+        placementOffset: event.placementOffset
+          ? JSON.parse(JSON.stringify(event.placementOffset))
+          : null,
         data: JSON.parse(JSON.stringify(capturedData ?? entry.data)),
         renderer: renderState.renderer,
         rendererOptions: renderState.rendererOptions,
@@ -904,9 +1110,11 @@ function materializeKeepSnapshots(frames) {
       });
       activeSnapshotIds.push(id);
     });
+    sceneGeneration = liveGeneration;
     return {
       ...frame,
-      events: (frame.events || []).filter(event => event.type !== 'keep'),
+      sceneGeneration: liveGeneration,
+      events: eventsForGeneration(frame.events, liveGeneration, snapshotGeneration),
       snapshotIds: [...activeSnapshotIds],
       keepLastFocus
     };
@@ -1173,9 +1381,19 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
       const enriched = source ? { ...event, source: JSON.parse(JSON.stringify(source)) } : event;
       if (event.type !== 'keep') return enriched;
       const directive = keepDirectiveByStatementId.get(enriched.signature);
-      return directive?.binding
-        ? { ...enriched, binding: JSON.parse(JSON.stringify(directive.binding)) }
-        : enriched;
+      if (!directive) return enriched;
+      return {
+        ...enriched,
+        ...(directive.binding
+          ? { binding: JSON.parse(JSON.stringify(directive.binding)) }
+          : {}),
+        ...(directive.placementOffset
+          ? { placementOffset: JSON.parse(JSON.stringify(directive.placementOffset)) }
+          : {}),
+        ...(directive.when
+          ? { when: JSON.parse(JSON.stringify(directive.when)) }
+          : {})
+      };
     })
   }));
   const frameDirectives = Array.isArray(traceRequest.frameDirectives)
@@ -1222,6 +1440,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
     ? 'manual'
     : traceRequest.sliceMode === 'full' ? 'full' : 'auto';
   const slicedFrames = sliceMode === 'auto' ? autoSliceTraceFrames(tracedFrames) : tracedFrames;
+  assignKeepBoundaryEvents(slicedFrames);
   // A frame snapshot must be created after derived events are complete. This
   // keeps fixed marks and every event-driven visual state in @keep last.
   const framesWithFixedEvents = appendFixedEvents(slicedFrames, variables);
@@ -1251,6 +1470,12 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
     schemaVersion: '1.0',
     generatedAt: new Date().toISOString(),
     sourceCode: typeof traceRequest.sourceCode === 'string' ? traceRequest.sourceCode : '',
+    sourceDeclarations: Array.isArray(traceRequest.sourceDeclarations)
+      ? JSON.parse(JSON.stringify(traceRequest.sourceDeclarations))
+      : [],
+    sourceStructure: Array.isArray(traceRequest.sourceStructure)
+      ? JSON.parse(JSON.stringify(traceRequest.sourceStructure))
+      : [],
     sliceMode,
     variables: variableMap,
     frames: keepSnapshots.frames,
@@ -1300,6 +1525,8 @@ app.post('/compile', (req, res) => {
   let traceFrameDirectives = [];
   let traceKeepDirectives = [];
   let traceEventSources = {};
+  let traceSourceDeclarations = [];
+  let traceSourceStructure = [];
   let traceSliceMode = trace?.sliceMode;
   let traceWarning = '';
   let asmView = null;
@@ -1339,10 +1566,18 @@ app.post('/compile', (req, res) => {
         mode: directive.mode,
         label: directive.label || '',
         binding: directive.binding || null,
+        placementOffset: directive.placementOffset || null,
+        when: directive.when || null,
         functionName: directive.functionName || directive.variable?.functionName || 'global',
         index: directive.index ?? index
       }));
       traceEventSources = instrumented.eventSources || {};
+      traceSourceDeclarations = Array.isArray(instrumented.sourceDeclarations)
+        ? instrumented.sourceDeclarations
+        : [];
+      traceSourceStructure = Array.isArray(instrumented.sourceStructure)
+        ? instrumented.sourceStructure
+        : [];
       if (instrumented.frameDirectives.length) traceSliceMode = 'manual';
       logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);
     } catch (err) {
@@ -1355,6 +1590,8 @@ app.post('/compile', (req, res) => {
       traceFrameDirectives = [];
       traceKeepDirectives = [];
       traceEventSources = {};
+      traceSourceDeclarations = [];
+      traceSourceStructure = [];
       traceWarning = `追蹤分析未完成，已使用一般執行：${err.message}`;
       logDebug(traceWarning);
     }
@@ -1570,6 +1807,8 @@ app.post('/compile', (req, res) => {
             frameDirectives: traceFrameDirectives,
             keepDirectives: traceKeepDirectives,
             eventSources: traceEventSources,
+            sourceDeclarations: traceSourceDeclarations,
+            sourceStructure: traceSourceStructure,
             asmView
           });
         } catch (err) {

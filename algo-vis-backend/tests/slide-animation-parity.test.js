@@ -13,7 +13,7 @@ function context(mode = 'editor') {
     URLSearchParams, setTimeout() {}, clearTimeout() {},
     requestAnimationFrame(callback) { callback(); return 1; },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
-    dispatchEvent() {},
+    dispatchEvent(event) { listeners.get(event?.type)?.(event); },
     location: { origin: 'http://localhost:3000', search: `?asmEmbed=${mode}` },
     localStorage: { getItem: () => '' },
     document: { addEventListener() {}, body: { classList: { add() {} } },
@@ -35,7 +35,8 @@ function savedTrace() {
     skins: { arr: { renderer: 'original-stack' } }, rules: [{ id: 'new-rule' }],
     studio: { positions: { 'frame-0': { arr: { x: 80, y: 120 } } },
       cameraRules: [{ id: 'new-camera', zoom: 2 }], eventInstructionStates: { 'j++': true },
-      eventSettings: { gapMs: 740, defaultEnabled: { write: true }, timelineTypes: { write: true } } },
+      eventSettings: { gapMs: 740, autoLoopBoundaryEnabled: true,
+        defaultEnabled: { write: true }, timelineTypes: { write: true } } },
     asmView: { version: 1, rules: [], skins: { arr: { renderer: 'original-array' } },
       studio: { cameraRules: [{ id: 'old-camera', zoom: 0.5 }], eventInstructionStates: { 'j++': false } } }
   };
@@ -47,10 +48,11 @@ test('normalization applies source view once, preserving later Studio edits and 
   assert.equal(first.studio.cameraRules[0].id, 'old-camera', 'fresh compile imports source view');
   first.studio.cameraRules[0].id = 'edited-camera';
   first.studio.eventInstructionStates['j++'] = true;
-  first.studio.eventSettings = { gapMs: 740 };
+  first.studio.eventSettings = { gapMs: 740, autoLoopBoundaryEnabled: true };
   const reloaded = c.ASMTraceModel.normalizeTraceDocument(first);
   assert.equal(reloaded.studio.cameraRules[0].id, 'edited-camera');
   assert.equal(reloaded.studio.eventSettings.gapMs, 740);
+  assert.equal(reloaded.studio.eventSettings.autoLoopBoundaryEnabled, true);
   assert.equal(reloaded.frames[0].events[0].enabled, true);
 });
 
@@ -67,6 +69,7 @@ test('old saved trace wins over its original asm-view and stale top-level copies
   assert.equal(results[0].skins.arr.renderer, 'original-stack');
   assert.equal(results[0].rules[0].id, 'new-rule');
   assert.equal(results[0].studio.eventSettings.gapMs, 740);
+  assert.equal(results[0].studio.eventSettings.autoLoopBoundaryEnabled, true);
   assert.equal(results[0].frames[0].events[0].enabled, true);
   assert.equal(original.viewSettingsApplied, undefined, 'do not mutate stored deck during loading');
 });
@@ -152,6 +155,68 @@ test('trace loading never runs the cached legacy script, but legacy-only animati
   send({ type: 'asm-load-animation', animation: { mode: 'legacy', scriptContent: 'legacy();' } });
   assert.equal(scripts, 1); assert.equal(arrowResets, 2);
   assert.equal(messages.filter(message => message.type === 'asm-animation-applied').length, 2);
+});
+
+test('slide runtime rebases the visible frame before reporting geometry ready', async () => {
+  const { c, send, messages } = context('runtime');
+  let rebaseCalls = 0;
+  c.ASMTraceEditor = { loadAnimation() {} };
+  c.ASMTracePlayer = {
+    rebaseCurrentFrame(options) {
+      rebaseCalls++;
+      assert.equal(options.confirmVisible, true);
+      return Promise.resolve(true);
+    }
+  };
+  c.load('slides-embed.js');
+  send({ type: 'asm-load-animation', animation: { traceDocument: savedTrace() } });
+  assert.equal(rebaseCalls, 0, 'hidden Reveal slides must not establish transition geometry');
+  send({ type: 'asm-runtime-visibility', visible: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(rebaseCalls, 1);
+  assert.equal(messages.filter(message => message.type === 'asm-animation-geometry-ready').length, 1);
+});
+
+test('the slide editor recompiles an outdated saved trace and migrates its Studio settings', async () => {
+  const { c, send, messages, input } = context('editor');
+  const code = 'int main() { for (int i = 0; i < 2; i++) {} }';
+  const oldTrace = savedTrace();
+  oldTrace.sourceCode = code;
+  oldTrace.provenance = {
+    engineVersion: 1,
+    formatVersion: 1,
+    sourceFingerprint: 'old',
+    inputFingerprint: 'old'
+  };
+  c.ASMTraceProvenance = {
+    status(trace, loadedCode, loadedInput) {
+      assert.equal(trace.frames.length, oldTrace.frames.length);
+      assert.equal(loadedCode, code);
+      assert.equal(loadedInput, 'fixture input');
+      return { kind: 'outdated' };
+    }
+  };
+  let clicked = 0;
+  let migrationRequested = false;
+  const runButton = {
+    classList: { contains: () => false },
+    click() {
+      clicked++;
+      migrationRequested = c.__asmMigrateTraceSettingsOnNextRun === true;
+      c.dispatchEvent(new c.CustomEvent('asm:compile-finished'));
+    }
+  };
+  c.document.getElementById = id => id === 'inputArea' ? input : id === 'runBtn' ? runButton : null;
+  c.ASMTraceEditor = { loadAnimation() {} };
+  c.load('slides-embed.js');
+  send({ type: 'asm-load-animation', animation: {
+    mode: 'trace', code, input: 'fixture input', traceDocument: oldTrace
+  } });
+  await Promise.resolve();
+  assert.equal(clicked, 1);
+  assert.equal(migrationRequested, true);
+  assert.equal(messages.filter(message => message.type === 'asm-animation-applied').length, 1,
+    'the parent reveals the editor only after the automatic refresh finishes');
 });
 
 test('saving flushes pending edits before capturing both code and playback data', () => {

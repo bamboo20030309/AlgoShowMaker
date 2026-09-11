@@ -5,6 +5,7 @@ class CanvasInteractionManager {
     constructor(svg) {
       this.svg = svg;
       this.selected = null;     // 當前選中的 .draggable-object
+      this.externalSelected = null; // SVG 外、但共用相同選取生命週期的物件
       this.mode     = null;     // 'drag' 或 null
       this.last     = { x: 0, y: 0 };
   
@@ -113,11 +114,38 @@ class CanvasInteractionManager {
       }
     }
   
+    clearExternalSelection(element = null) {
+      if (!this.externalSelected
+        || (element && this.externalSelected !== element)) return false;
+      this.externalSelected.classList.remove('selected', 'is-selected');
+      this.externalSelected = null;
+      return true;
+    }
+
+    selectExternal(element) {
+      if (!element) return false;
+      if (this.selected) {
+        this.selected.classList.remove('selected');
+        this.selected = null;
+        this.updateSelectionOverlay();
+        if (this._isTraceStudio()) {
+          window.dispatchEvent(new CustomEvent('asm:trace-object-selected', {
+            detail: { key: '' }
+          }));
+        }
+      }
+      if (this.externalSelected !== element) this.clearExternalSelection();
+      this.externalSelected = element;
+      element.classList.add('selected');
+      return true;
+    }
+
     clearSelection() {
       if (this.selected) {
         this.selected.classList.remove('selected');
         this.selected = null;
       }
+      this.clearExternalSelection();
       this.updateSelectionOverlay();
       if (this._isTraceStudio()) {
         window.dispatchEvent(new CustomEvent('asm:trace-object-selected', { detail: { key: '' } }));
@@ -147,6 +175,7 @@ class CanvasInteractionManager {
       }
       const object = evt.target.closest?.('.asm-trace-selectable[data-trace-object-key]');
       if (!object || !this.svg.contains(object)) return;
+      this.clearExternalSelection();
       if (this.selected && this.selected !== object) this.selected.classList.remove('selected');
       this.selected = object;
       object.classList.add('selected');
@@ -391,6 +420,7 @@ class CanvasInteractionManager {
       }
 
       if (obj && this.svg.contains(obj)) {
+        this.clearExternalSelection();
         // 先選中物件（不管之前有沒有選中）
         if (this.selected && this.selected !== obj) {
           this.selected.classList.remove('selected');

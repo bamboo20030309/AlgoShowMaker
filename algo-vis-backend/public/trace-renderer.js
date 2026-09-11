@@ -1,6 +1,9 @@
 (function () {
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const TRACE_ROOT_OFFSET = { x: 90, y: 80 };
+  // Automatic @keep rows use one explicit edge-to-edge gap. Manually placed
+  // snapshots bypass this stack and keep their authored coordinates.
+  const KEEP_SNAPSHOT_GAP = 50;
   const renderers = new Map();
   let currentScene = null;
 
@@ -97,6 +100,16 @@
 
   function safeKey(value) {
     return String(value || 'object').replace(/[^A-Za-z0-9_-]/g, '-');
+  }
+
+  function runtimeIdentityToken(identity, fallback = 'object') {
+    const source = String(identity || fallback || 'object');
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index += 1) {
+      hash ^= source.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `runtime-${(hash >>> 0).toString(36)}`;
   }
 
   function markSelectable(element, key, context = {}, parentKey = '') {
@@ -404,16 +417,51 @@
   function snapshotStudioPosition(document, frame, snapshot) {
     const positions = document.studio?.positions?.[frame.id] || {};
     const objectKey = snapshotObjectKey(snapshot);
-    const key = Object.prototype.hasOwnProperty.call(positions, objectKey)
-      ? objectKey
-      : snapshot.id;
-    return studioPosition(document, frame, key);
+    const hasObjectPosition = Object.prototype.hasOwnProperty.call(positions, objectKey);
+    const hasSnapshotPosition = Object.prototype.hasOwnProperty.call(positions, snapshot.id);
+    if (hasObjectPosition || hasSnapshotPosition) {
+      return {
+        ...studioPosition(document, frame, hasObjectPosition ? objectKey : snapshot.id),
+        explicit: true
+      };
+    }
+
+    const offsetX = Number(snapshot?.placementOffset?.x) || 0;
+    const offsetY = Number(snapshot?.placementOffset?.y) || 0;
+    if (snapshot?.kind !== 'frame' && snapshot?.sourceFrameId && snapshot?.sourceVariableId) {
+      const sourceFrame = document.frames?.find(item => item.id === snapshot.sourceFrameId);
+      const sourceKey = objectKeyForVariable(sourceFrame, snapshot.sourceVariableId);
+      const sourcePositions = document.studio?.positions?.[sourceFrame?.id] || {};
+      const inheritedKey = Object.prototype.hasOwnProperty.call(sourcePositions, sourceKey)
+        ? sourceKey
+        : snapshot.sourceVariableId;
+      const inherited = studioPosition(document, sourceFrame || {}, inheritedKey);
+      return {
+        x: inherited.x + offsetX,
+        y: inherited.y + offsetY,
+        absolute: inherited.absolute,
+        explicit: false
+      };
+    }
+    return { x: offsetX, y: offsetY, absolute: false, explicit: false };
   }
 
   function objectKeyForVariable(frame, variableId) {
     const source = frame?.source || {};
     if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
     return variableId;
+  }
+
+  function snapshotAutomaticBinding(document, snapshot) {
+    if (!snapshot) return null;
+    if (snapshot.kind !== 'frame' && snapshot.sourceFrameId && snapshot.sourceVariableId) {
+      const sourceFrame = document.frames?.find(item => item.id === snapshot.sourceFrameId);
+      const sourceKey = objectKeyForVariable(sourceFrame, snapshot.sourceVariableId);
+      const inherited = document.studio?.bindings?.[sourceFrame?.id]?.[sourceKey]
+        || document.studio?.bindings?.[sourceFrame?.id]?.[snapshot.sourceVariableId];
+      if (inherited) return { ...inherited };
+    }
+    return snapshot.binding ? { ...snapshot.binding } : null;
   }
 
   function objectPositions(rootSvg) {
@@ -431,11 +479,15 @@
   function objectMotionPositions(rootSvg, fallbackPositions) {
     const positions = new Map(fallbackPositions || objectPositions(rootSvg));
     rootSvg.querySelectorAll(
-      '#asm-trace-root [data-trace-object-key][data-trace-position-space="origin"]'
+      '#asm-trace-root [data-trace-object-key][data-trace-position-space]'
     ).forEach(object => {
       const x = Number(object.getAttribute('data-trace-position-x'));
       const y = Number(object.getAttribute('data-trace-position-y'));
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      // Child cells use measured bounds while top-level objects use their
+      // transform origin. Both are valid motion coordinates. Ignoring the
+      // bounds form made a freshly reloaded first transition treat every cell
+      // as (0, 0), so the array appeared to expand from its outerframe corner.
       positions.set(object.dataset.traceObjectKey, { x, y });
     });
     return positions;
@@ -448,6 +500,10 @@
     root.querySelectorAll('[data-trace-object-key]').forEach(element => {
       const parentObject = element.parentElement?.closest?.('[data-trace-object-key]');
       if (parentObject && root.contains(parentObject)) return;
+      // Capture the top-level @text object so it can fade out. Text segments
+      // remain children of that object and must not become duplicate ghosts.
+      if (element.closest?.('.asm-trace-text-layer')
+        && !element.classList.contains('asm-trace-text-object')) return;
       const key = element.dataset.traceObjectKey;
       if (!key || captured.has(key)) return;
       const clone = element.cloneNode(true);
@@ -525,6 +581,11 @@
     startSvgAnimation(animation);
   }
 
+  function isArrayLifecycleElement(element) {
+    return Boolean(element?.matches?.('[data-trace-lifecycle-kind="array"]')
+      || element?.closest?.('[data-trace-lifecycle-kind="array"]'));
+  }
+
   function animatePosition(motion, previous, current, enabled, plan = null, additive = false) {
     if (!enabled || !plan || plan.mode === 'instant' || Number(plan.duration) <= 0) return;
     if (plan.mode === 'fade') {
@@ -532,6 +593,10 @@
       return;
     }
     if (!previous || plan.mode === 'lift') {
+      if (isArrayLifecycleElement(motion)) {
+        animateOpacity(motion, plan);
+        return;
+      }
       const attributes = {
         attributeName: 'transform',
         type: 'translate',
@@ -633,14 +698,16 @@
         attributeName: 'opacity', from: 1, to: 0,
         ...animationAttributes(plan)
       });
-      const lift = svg('animateTransform', {
-        attributeName: 'transform', type: 'translate', additive: 'sum',
-        from: '0 0', to: '0 -15',
-        ...animationAttributes(plan)
-      });
-      ghost.append(animation, lift);
+      ghost.append(animation);
+      if (!isArrayLifecycleElement(ghost)) {
+        ghost.append(svg('animateTransform', {
+          attributeName: 'transform', type: 'translate', additive: 'sum',
+          from: '0 0', to: '0 -15',
+          ...animationAttributes(plan)
+        }));
+      }
       startSvgAnimation(animation);
-      startSvgAnimation(lift);
+      ghost.querySelectorAll(':scope > animateTransform').forEach(startSvgAnimation);
       window.setTimeout(() => ghost.remove(), Number(plan.duration) + 80);
     });
   }
@@ -1046,7 +1113,7 @@
       const arrowY = top + 5;
       const width = right - left;
       const key = `segment:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
-      const identityBase = String(entry.identity || targetKey);
+      const identityBase = runtimeIdentityToken(entry.identity, targetKey);
       const ordinal = segmentOrdinals.get(identityBase) || 0;
       segmentOrdinals.set(identityBase, ordinal + 1);
       const runtimeIdentity = descriptor.named
@@ -1129,7 +1196,15 @@
       if (element !== source && !source.contains(element)) return;
       const placement = placements.get(key);
       if (!placement) return;
-      placements.set(key, { ...placement, x: placement.x + dx, y: placement.y + dy });
+      const shifted = { ...placement, x: placement.x + dx, y: placement.y + dy };
+      placements.set(key, shifted);
+      // A parent binding is applied after child cells are measured. Keep the
+      // published child motion coordinates aligned with their shifted
+      // placements so the first tween after reload cannot read stale points.
+      if (element?.dataset?.tracePositionSpace === 'bounds') {
+        element.dataset.tracePositionX = String(shifted.x);
+        element.dataset.tracePositionY = String(shifted.y);
+      }
     });
   }
 
@@ -1211,8 +1286,9 @@
       ...(frame.objectBindings || []),
       ...(frame.snapshotIds || []).map(id => {
         const snapshot = snapshotsById.get(id);
-        return snapshot?.binding
-          ? { ...snapshot.binding, sourceObjectKey: snapshotObjectKey(snapshot) }
+        const binding = snapshotAutomaticBinding(document, snapshot);
+        return binding
+          ? { ...binding, sourceObjectKey: snapshotObjectKey(snapshot) }
           : null;
       }).filter(Boolean)
     ];
@@ -1788,6 +1864,9 @@
       if (studioObject.sourceVisualContinuityKey) {
         object.dataset.traceVisualContinuityKey = studioObject.sourceVisualContinuityKey;
       }
+      if (studioObject.sourceSnapshotOwner) {
+        object.dataset.traceSnapshotOwner = studioObject.sourceSnapshotOwner;
+      }
       const sourceVariableIds = Array.isArray(studioObject.sourceVariableIds)
         ? studioObject.sourceVariableIds.filter(Boolean)
         : studioObject.sourceVariableId ? [studioObject.sourceVariableId] : [];
@@ -1958,6 +2037,75 @@
     });
   }
 
+  function relativeMarkerOffset(expression, baseName) {
+    const base = String(baseName || '').trim();
+    let source = String(expression || '').replace(/\s+/g, '');
+    if (!base || !source) return null;
+    while (source.startsWith('(') && source.endsWith(')')) {
+      let depth = 0;
+      let wraps = true;
+      for (let index = 0; index < source.length; index += 1) {
+        if (source[index] === '(') depth += 1;
+        else if (source[index] === ')') depth -= 1;
+        if (depth === 0 && index < source.length - 1) {
+          wraps = false;
+          break;
+        }
+      }
+      if (!wraps || depth !== 0) break;
+      source = source.slice(1, -1);
+    }
+    if (source === base) return 0;
+    if (!source.startsWith(base)) return null;
+    const suffix = source.slice(base.length);
+    if (!suffix || !/^(?:[+-]\d+)+$/.test(suffix)) return null;
+    return [...suffix.matchAll(/([+-])(\d+)/g)].reduce((total, match) => (
+      total + (match[1] === '-' ? -1 : 1) * Number(match[2])
+    ), 0);
+  }
+
+  function unresolvedRelativeLayout(group, targetPlacement, baseCellWidth, gap) {
+    if (group.length < 2 || !targetPlacement) return null;
+    const relative = group.map(item => ({
+      item,
+      base: String(item.relativeMarkerBase || ''),
+      offset: Number(item.relativeMarkerOffset)
+    }));
+    const base = relative[0]?.base;
+    if (!base || relative.some(entry => (
+      entry.base !== base || !Number.isInteger(entry.offset)
+    ))) return null;
+
+    const slots = new Map();
+    relative.forEach(entry => {
+      if (!slots.has(entry.offset)) slots.set(entry.offset, []);
+      slots.get(entry.offset).push(entry.item);
+    });
+    const centers = new Map();
+    slots.forEach((items, offset) => {
+      const ordered = [...items].sort((left, right) => String(left.id).localeCompare(String(right.id)));
+      const slotWidth = ordered.reduce((total, item) => total + item.labelWidth, 0)
+        + Math.max(0, ordered.length - 1) * gap;
+      let cursor = offset * baseCellWidth - slotWidth / 2;
+      ordered.forEach(item => {
+        centers.set(item, cursor + item.labelWidth / 2);
+        cursor += item.labelWidth + gap;
+      });
+    });
+    const rightEdge = Math.max(...relative.map(({ item }) => (
+      centers.get(item) + item.labelWidth / 2
+    )));
+    const targetCenter = targetPlacement.x + targetPlacement.width / 2;
+    const shift = targetPlacement.x - gap - rightEdge;
+    return {
+      markerPlacement: targetPlacement,
+      offsets: new Map(relative.map(({ item }) => [
+        item,
+        centers.get(item) + shift - targetCenter
+      ]))
+    };
+  }
+
   function renderFrameBindings(root, document, frame, placements, elements, options = {}) {
     const bindings = Array.isArray(frame.bindings) ? frame.bindings : [];
     if (!bindings.length) return;
@@ -1969,6 +2117,7 @@
       const targetItems = Array.isArray(targetEntry?.data?.items) ? targetEntry.data.items : [];
       const targetKind = targetEntry?.data?.kind;
       const indexExpression = binding.indexExpression || binding.sourceName;
+      const relativeIndexOffset = relativeMarkerOffset(indexExpression, binding.sourceName);
       const rawIndexValue = window.ASMTraceRules.resolveExpression(document, frame, indexExpression);
       const resolvedIndexValue = rawIndexValue == null ? NaN : Number(rawIndexValue);
       const hasIndexValue = Number.isInteger(resolvedIndexValue);
@@ -1999,7 +2148,9 @@
       const baseCellWidth = Number(
         targetElement?.closest?.('[data-layout]')?.getAttribute?.('data-box-size')
       ) || 40;
+      const snapshotOwner = String(options.snapshotOwner || '');
       const visualContinuityBase = [
+        ...(snapshotOwner ? ['snapshot', snapshotOwner] : []),
         'auto-marker',
         binding.sourceVariableId,
         binding.targetVariableId,
@@ -2008,11 +2159,13 @@
       const visualContinuityOrdinal = visualContinuityOrdinals.get(visualContinuityBase) || 0;
       visualContinuityOrdinals.set(visualContinuityBase, visualContinuityOrdinal + 1);
       pending.push({
-        id: `auto-frame-binding-${binding.sourceVariableId}-${binding.targetVariableId}-${index}`,
+        id: `${snapshotOwner ? `${snapshotOwner}:` : ''}auto-frame-binding-${binding.sourceVariableId}-${binding.targetVariableId}-${index}`,
         type: 'variable-marker',
         sourceVariableId: binding.sourceVariableId,
         sourceVariableIds: binding.sourceVariableIds || [binding.sourceVariableId],
-        sourceRuntimeIdentity: frame.state?.[binding.sourceVariableId]?.identity || '',
+        sourceSnapshotOwner: snapshotOwner,
+        sourceRuntimeIdentity: frame.state?.[binding.sourceVariableId]?.lifetime
+          || frame.state?.[binding.sourceVariableId]?.identity || '',
         // Runtime identity still distinguishes recursive stack activations for
         // event snapshots. This stable role key is only for visual continuity,
         // so the same automatic marker moves instead of re-entering on every call.
@@ -2029,6 +2182,8 @@
           || document.variables?.[binding.sourceVariableId]?.name
           || label,
         markerSortExpression: indexExpression,
+        relativeMarkerBase: relativeIndexOffset == null ? '' : binding.sourceName,
+        relativeMarkerOffset: relativeIndexOffset,
         indexExpression,
         labelWidth: 18,
         target: {
@@ -2083,23 +2238,28 @@
       const targetWidth = Math.max(0, Number(targetPlacement?.width) || 0);
       const baseCellWidth = Math.max(1, Number(orderedGroup[0].baseCellWidth) || 40);
       const unresolved = orderedGroup[0].unresolvedIndex;
+      const relativeLayout = unresolved
+        ? unresolvedRelativeLayout(orderedGroup, targetPlacement, baseCellWidth, gap)
+        : null;
       // Move the entire group horizontally, preserving the reference cell's
       // top/center anchors. The rightmost label ends 8px before its left edge.
-      const markerPlacement = unresolved ? {
+      const markerPlacement = relativeLayout?.markerPlacement || (unresolved ? {
         ...targetPlacement,
         x: targetPlacement.x - gap - totalWidth / 2 - targetPlacement.width / 2
-      } : null;
+      } : null);
       const keepArrowsVertical = orderedGroup.length > 1
         && targetWidth >= baseCellWidth * 2 - 0.5;
       let cursor = -totalWidth / 2;
       orderedGroup.forEach(item => {
-        item.offsetX = cursor + item.labelWidth / 2;
-        item.pointerTargetOffsetX = keepArrowsVertical ? item.offsetX : 0;
+        item.offsetX = relativeLayout?.offsets.get(item) ?? (cursor + item.labelWidth / 2);
+        item.pointerTargetOffsetX = relativeLayout ? item.offsetX
+          : keepArrowsVertical ? item.offsetX : 0;
         cursor += item.labelWidth + gap;
         const {
           targetVariableId, targetObjectKey, targetRuntimeIdentity,
           targetPlacement: ignoredTargetPlacement,
-          indexValue, unresolvedIndex, labelWidth, label, markerSortExpression, ...object
+          indexValue, unresolvedIndex, labelWidth, label, markerSortExpression,
+          relativeMarkerBase, relativeMarkerOffset, ...object
         } = item;
         if (unresolvedIndex) {
           object.markerUnresolved = true;
@@ -2112,6 +2272,45 @@
     });
 
     if (objects.length) renderStudioObjects(root, document, frame, placements, elements, options, objects);
+  }
+
+  function applyCompletedScopeExits(frame, elements, deferLifecycleEvents = false) {
+    if (deferLifecycleEvents) return;
+    (frame?.events || []).filter(event => (
+      (event?.type === 'scope-exit' || event?.type === 'visual-exit')
+      && event.enabled !== false
+      && event.autoAnimationDisabled !== true
+    )).forEach(event => {
+      (event.targets || []).forEach(target => {
+        const variableId = String(target?.variableId || '');
+        const lifetime = String(target?.lifetimeIdentity || event.lifetimeIdentity || '');
+        const targetGeneration = Number(target?.sceneGeneration ?? event?.sceneGeneration);
+        elements?.forEach?.(element => {
+          if (element?.dataset?.traceSnapshotOwner
+            || element?.closest?.('[data-trace-snapshot]')) return;
+          let matches = String(element?.dataset?.traceVariable || '') === variableId;
+          if (element?.dataset?.traceSourceVariableId) {
+            let sourceIds = [];
+            try {
+              sourceIds = JSON.parse(element.dataset.traceSourceVariableIds || '[]');
+            } catch {
+              sourceIds = [element.dataset.traceSourceVariableId];
+            }
+            matches = sourceIds.includes(variableId);
+            if (matches && lifetime) {
+              matches = String(element.dataset.traceRuntimeIdentity || '') === lifetime;
+            }
+          } else if (matches && lifetime) {
+            matches = String(element?.dataset?.traceRuntimeLifetime || '') === lifetime;
+          }
+          const visualGeneration = Number(element?.dataset?.traceSceneGeneration);
+          if (matches && Number.isFinite(targetGeneration) && Number.isFinite(visualGeneration)) {
+            matches = targetGeneration === visualGeneration;
+          }
+          if (matches) element.setAttribute?.('display', 'none');
+        });
+      });
+    });
   }
 
   function renderStudioArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
@@ -2228,7 +2427,11 @@
       if (snapshot.kind === 'frame' && snapshot.frame) {
         const position = snapshotStudioPosition(document, frame, snapshot);
         const baseX = position.x;
-        const baseY = position.absolute ? position.y : y + position.y;
+        // Keep the live portion of the source frame in the same layout row it
+        // occupied before @keep. An explicitly dragged snapshot remains a
+        // standalone group and therefore keeps the legacy absolute behavior.
+        const sourceLayoutY = position.explicit ? 0 : y;
+        const baseY = position.y;
         const object = markSelectable(svg('g', {
           id: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`,
           class: 'asm-trace-object asm-trace-snapshot asm-trace-frame-snapshot',
@@ -2236,6 +2439,7 @@
           'data-base-offset': `${baseX},${baseY}`,
           'data-translate': '0,0',
           'data-trace-snapshot': snapshotId,
+          'data-trace-scene-generation': String(snapshot.sceneGeneration ?? snapshot.frame.sceneGeneration ?? 0),
           'data-trace-object-key': objectKey,
           'data-trace-object-id': objectKey
         }), objectKey, { ...options, movable: true });
@@ -2249,7 +2453,9 @@
         object.append(motion);
         root.append(object);
         const sourceIndex = document.frames?.findIndex(item => item.id === snapshot.sourceFrameId) ?? -1;
-        const frozenFrame = { ...snapshot.frame, snapshotIds: [] };
+        const effectiveSnapshotFrame = window.ASMTraceEvents?.keepSnapshotFrame?.(document, snapshot)
+          || snapshot.frame;
+        const frozenFrame = { ...effectiveSnapshotFrame, snapshotIds: [] };
         const frozenScene = renderScene(
           root.ownerSVGElement,
           content,
@@ -2260,7 +2466,9 @@
             idPrefix: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`,
             interactive: false,
             animatePositions: false,
-            transform: ''
+            transform: '',
+            snapshotOwner: objectKey,
+            initialY: sourceLayoutY
           }
         );
         const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: 100 });
@@ -2289,7 +2497,7 @@
             }
           });
         });
-        y += Math.max(76, contentBox.height) + 28;
+        y += Math.max(76, contentBox.height) + KEEP_SNAPSHOT_GAP;
         return;
       }
       const sourceVariable = document.variables?.[snapshot.sourceVariableId] || {};
@@ -2323,6 +2531,7 @@
         'data-translate': '0,0',
         'data-trace-variable': objectKey,
         'data-trace-snapshot': snapshotId,
+        'data-trace-scene-generation': String(snapshot.sceneGeneration ?? 0),
         'data-trace-object-key': objectKey,
         'data-trace-object-id': objectKey
       }), objectKey, { ...options, movable: true });
@@ -2378,7 +2587,7 @@
           height: contentBox.height
         }
       });
-      y += Math.max(76, Number(height) || 76) + 28;
+      y += Math.max(76, Number(height) || 76) + KEEP_SNAPSHOT_GAP;
     });
     return y;
   }
@@ -2406,7 +2615,16 @@
       sourceVariableIds.filter(Boolean).forEach(variableId => hiddenVariables.add(variableId));
     });
     const keepNodes = [];
-    let y = renderSnapshots(root, document, frame, 0, placements, elements, options, keepNodes);
+    let y = renderSnapshots(
+      root,
+      document,
+      frame,
+      Number(options.initialY) || 0,
+      placements,
+      elements,
+      options,
+      keepNodes
+    );
     Object.entries(document.variables || {}).forEach(([variableId, variable]) => {
       const entry = frame.state?.[variableId];
       const objectKey = objectKeyForVariable(frame, variableId);
@@ -2421,6 +2639,9 @@
       const rendererName = frame.renderers?.[variableId]
         || skin.renderer || variable.kind || entry.data?.kind || 'object';
       const renderer = renderers.get(rendererName) || renderers.get(entry.data?.kind) || renderObject;
+      const lifecycleKind = ['sequence', 'matrix', 'stack', 'queue'].includes(
+        String(variable.kind || entry.data?.kind || '')
+      ) ? 'array' : 'object';
       const position = studioPosition(document, frame, objectKey);
       const baseX = position.x;
       const baseY = position.absolute ? position.y : y + position.y;
@@ -2433,8 +2654,10 @@
         'data-trace-variable': variableId,
         'data-trace-object-key': objectKey,
         'data-trace-object-id': objectKey,
+        'data-trace-lifecycle-kind': lifecycleKind,
+        'data-trace-runtime-lifetime': entry.lifetime || '',
         'data-trace-runtime-identity': ['sequence', 'matrix', 'map', 'set', 'object'].includes(entry.data?.kind)
-          ? entry.identity || ''
+          ? runtimeIdentityToken(entry.identity, objectKey)
           : ''
       }), objectKey, { ...options, movable: true });
       object.dataset.tracePositionApplied = '1';
@@ -2494,11 +2717,24 @@
     applyStoredPartPositions(document, frame, placements, elements);
     applyBindings(document, frame, placements, elements);
     renderKeepLastArrows(rootSvg, root, document, frame, placements, elements, keepNodes, options);
+    const sceneGeneration = String(Number(frame.sceneGeneration) || 0);
+    root.dataset.traceSceneGeneration = sceneGeneration;
+    elements.forEach(element => {
+      if (!element?.dataset) return;
+      const retained = Boolean(element.dataset.traceSnapshot
+        || element.dataset.traceSnapshotOwner
+        || element.closest?.('[data-trace-snapshot]'));
+      if (retained && !options.snapshotOwner) return;
+      element.dataset.traceSceneGeneration = sceneGeneration;
+    });
     applyObjectColorStyles(document, frame, elements);
     applyVisibilityStates(document, frame, elements);
-    window.ASMTraceFrameTween?.updateEventAvailability?.(
-      document, frame, placements, elements
-    );
+    if (options.interactive !== false) {
+      window.ASMTraceFrameTween?.updateEventAvailability?.(
+        document, frame, placements, elements, options.availabilityPreviousObjects ?? null
+      );
+    }
+    applyCompletedScopeExits(frame, elements, options.deferLifecycleEvents === true);
     const textLayer = root.querySelector(':scope > .asm-trace-text-layer');
     if (textLayer) root.append(textLayer);
     const transitionEventFrame = Number(options.direction) < 0 && previousFrame ? previousFrame : frame;
@@ -2539,7 +2775,11 @@
       transitionForKey,
       direction: options.direction,
       animatePositions: useFrameTween ? false : options.animatePositions !== false,
-      animateEvents: useFrameTween ? false : options.animateEvents !== false
+      animateEvents: useFrameTween ? false : options.animateEvents !== false,
+      deferLifecycleEvents: useFrameTween,
+      // Use the same current/previous visual pair for the initial inspector
+      // status and the playback timeline so diagnostic colors do not flicker.
+      availabilityPreviousObjects: previousFrame ? previousObjects : null
     });
     const delayedMarks = delayedCurrentFixedMarks(result.root, document, frame, useFrameTween);
     let transition = Promise.resolve();
@@ -2557,7 +2797,9 @@
         previousObjects,
         currentElements: result.elements,
         transitionForKey,
-        duration: defaults.duration
+        duration: defaults.duration,
+        initialDelayMs: options.initialDelayMs,
+        cameraTransitionDurationMs: options.cameraTransitionDurationMs
       });
     } else if (previousFrame) {
       const transitionOptions = {
@@ -2860,7 +3102,9 @@
     includeSnapshots = true
   ) {
     const bounds = currentBounds({ includeSnapshots });
-    const view = autoCameraView(bounds, zoom, offsetX, offsetY);
+    // Code belongs to a separate presentation layer; object auto capture must
+    // not reserve a large blank inset for the HTML code panel.
+    const view = autoCameraView(bounds, zoom, offsetX, offsetY, false);
     if (!view) return null;
     const scale = Number(view.scale) || window.cameraScaleForViewportWidth?.(view.width);
     if (!Number.isFinite(Number(scale))) return null;
@@ -2894,12 +3138,13 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-136';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-152';
   window.ASMTraceRenderers = {
-    build: 'trace-136',
+    build: 'trace-152',
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, cameraObjectKey, frameAnchorForKey, anchorPoint,
-    refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement
+    refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,
+    runtimeIdentityToken
   };
 })();

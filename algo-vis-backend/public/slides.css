@@ -196,6 +196,32 @@ button.is-active {
   line-height: 1;
 }
 
+.chrome-github-link {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(22, 28, 31, 0.9);
+  color: var(--chrome-text);
+  text-decoration: none;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.chrome-github-link svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.chrome-github-link:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+  background: var(--accent);
+}
+
 .tts-control-toggle svg {
   width: 25px;
   height: 25px;
@@ -249,7 +275,8 @@ button.is-active {
 
 body.shared-view-only .control-chrome,
 body.shared-view-only .editor-chrome,
-body.shared-view-only .chrome-home-link {
+body.shared-view-only .chrome-home-link,
+body.shared-view-only .chrome-github-link {
   display: none;
 }
 
@@ -2718,6 +2745,10 @@ body:not(.asm-edit-mode) .asm-slide-frame-content {
   max-height: 100% !important;
   border: 0;
   background: #fbfcfa;
+}
+
+.algorithm-slide-frame.is-loading {
+  visibility: hidden;
 }
 
 .algorithm-slide-placeholder {
