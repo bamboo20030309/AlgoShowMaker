@@ -15,7 +15,7 @@ function eventApi() {
 test('initial event animation and timeline defaults match the Event Settings panel', () => {
   const api = eventApi();
   const enabled = new Set([
-    'declare', 'scope-exit', 'visual-exit', 'write', 'assign', 'compare', 'swap'
+    'declare', 'scope-exit', 'visual-exit', 'write', 'assign', 'sequence-operation', 'compare', 'swap'
   ]);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
   api.definitions.forEach(definition => {

@@ -145,6 +145,13 @@
         animation: snapshotAnimation()
       }, window.location.origin);
     }
+    if (event.data.type === 'asm-request-export-animation-snapshot' && mode === 'editor' && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'asm-export-animation-snapshot',
+        requestId: event.data.requestId,
+        animation: snapshotAnimation()
+      }, window.location.origin);
+    }
   });
 
   window.addEventListener('asm:compiled-animation', event => {

@@ -118,7 +118,7 @@
       const haveBackground = background.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
       let background_color = haveFocus ? '#fff' : dimColor;
       if (haveBackground && haveBackground.color && haveBackground.color.trim() !== "") {
-        background_color = haveBackground.color.trim();
+        background_color = haveBackground.color?.trim() || background_color;
       }
 
       const diskID = `cell-${groupID}-${i}`;

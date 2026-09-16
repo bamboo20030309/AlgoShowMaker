@@ -181,6 +181,7 @@
   let history = [];
   let historyIndex = -1;
   let editingAlgorithmSlideId = null;
+  let pendingAlgorithmExportSnapshot = null;
   let modeLayoutAnimationTimer = null;
   let activeFabricAutoAnimation = null;
   let activeCodeAutoAnimation = null;
@@ -234,6 +235,16 @@
   const exportDeckBtn = document.getElementById('exportDeckBtn');
   const importDeckBtn = document.getElementById('importDeckBtn');
   const importDeckInput = document.getElementById('importDeckInput');
+  const deckCacheBtn = document.getElementById('deckCacheBtn');
+  const deckCacheDialog = document.getElementById('deckCacheDialog');
+  const deckCacheLimitInput = document.getElementById('deckCacheLimitInput');
+  const deckCacheStatus = document.getElementById('deckCacheStatus');
+  const deckTransferErrorDialog = document.getElementById('deckTransferErrorDialog');
+  const deckTransferErrorText = document.getElementById('deckTransferErrorText');
+  const deckTransferRetryBtn = document.getElementById('deckTransferRetryBtn');
+  const deckExportWarningDialog = document.getElementById('deckExportWarningDialog');
+  let pendingExportWarningResolve = null;
+  let failedImportFile = null;
   const shareDeckBtn = document.getElementById('shareDeckBtn');
   const sharedAccessBadge = document.getElementById('sharedAccessBadge');
   const shareDialog = document.getElementById('shareDialog');
@@ -662,11 +673,14 @@
         setCloudStatus('error', '編輯權限已關閉');
         return;
       }
-      if (!response.ok) throw new Error(data.error || 'Failed to save deck');
+      if (!response.ok) {
+        if (response.status === 413) throw new Error('投影片資料超過 8 MB，請縮小後再儲存');
+        throw new Error(data.error || 'Failed to save deck');
+      }
       setCloudStatus('saved', '已儲存');
     } catch (err) {
       console.error('Failed to save cloud deck', err);
-      setCloudStatus('error', '儲存失敗');
+      setCloudStatus('error', err?.message || '儲存失敗');
     } finally {
       cloudSaveInFlight = false;
       if (cloudSaveQueued) {
@@ -790,23 +804,66 @@
     }
   }
 
-  function exportDeckJson() {
-    const payload = {
-      format: 'AlgoShowMaker.slides',
-      version: 'AV_V4.3',
-      exportedAt: new Date().toISOString(),
-      deck
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    const stamp = new Date().toISOString().slice(0, 10);
-    anchor.href = url;
-    anchor.download = `algoshowmaker-slides-${stamp}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+  function editorAnimationExportSnapshot() {
+    if (!editingAlgorithmSlideId || algorithmEditorModal?.hidden) return Promise.resolve(null);
+    if (!algorithmEditorFrame?.contentWindow) {
+      return Promise.reject(new Error('演算法編輯視窗尚未載入，請稍後再匯出。'));
+    }
+    const requestId = randomId();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAlgorithmExportSnapshot = null;
+        reject(new Error('演算法編輯器未回傳最新快照；請先儲存或關閉編輯視窗。'));
+      }, 10000);
+      const slideId = editingAlgorithmSlideId;
+      pendingAlgorithmExportSnapshot = {
+        requestId, source: algorithmEditorFrame.contentWindow, slideId,
+        resolve(animation) { clearTimeout(timer); pendingAlgorithmExportSnapshot = null;
+          resolve({ slideId, animation }); }
+      };
+      algorithmEditorFrame.contentWindow.postMessage({
+        type: 'asm-request-export-animation-snapshot', requestId
+      }, window.location.origin);
+    });
+  }
+
+  function confirmCompactExport() {
+    if (!deckExportWarningDialog) throw new Error('缺少精簡匯出限制提示。');
+    return new Promise(resolve => {
+      pendingExportWarningResolve = resolve;
+      deckExportWarningDialog.showModal();
+    });
+  }
+
+  function finishCompactExportWarning(accepted) {
+    const resolve = pendingExportWarningResolve;
+    pendingExportWarningResolve = null;
+    if (deckExportWarningDialog?.open) deckExportWarningDialog.close();
+    resolve?.(accepted);
+  }
+
+  async function exportDeckJson() {
+    if (exportDeckBtn?.disabled) return;
+    exportDeckBtn.disabled = true;
+    try {
+      const draft = await editorAnimationExportSnapshot();
+      const projected = await window.ASMDeck.project(deck, draft);
+      if (projected.cacheSeeds.length && !await confirmCompactExport()) return;
+      const blob = await window.ASMDeck.encode(projected);
+      // Reuse the already-loaded result locally without putting a second trace in the archive.
+      for (const seed of projected.cacheSeeds) await window.ASMDeck.cachePut(seed.key, seed.trace);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `algoshowmaker-slides-${new Date().toISOString().slice(0, 10)}.asmdeck`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (error) {
+      console.error('Failed to export compact deck', error);
+      showDeckTransferError(`無法匯出投影片：${error.message}`);
+    } finally { exportDeckBtn.disabled = false; }
   }
 
   function importDeckJsonText(text) {
@@ -822,21 +879,47 @@
     else renderDeck();
   }
 
-  function importDeckJsonFile(file) {
+  async function importDeckJsonFile(file) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        importDeckJsonText(String(reader.result || ''));
-        flashHint('Done');
-      } catch (err) {
-        console.error('Failed to import deck JSON', err);
-        flashHint('Done');
-      } finally {
-        if (importDeckInput) importDeckInput.value = '';
+    try {
+      if (/\.asmdeck$/i.test(file.name)) {
+        const packageData = await window.ASMDeck.decode(file);
+        const importStats = { exact: 0, base: 0, run: 0 };
+        const reconstructed = await window.ASMDeck.rebuildDeck(packageData.deck, slide => {
+          setCloudStatus('saving', `正在重建演算法投影片 ${slide.id}…`);
+        }, (_slide, kind) => {
+          importStats[kind] += 1;
+        });
+        document.body.dataset.asmdeckLastImportStats = JSON.stringify(importStats);
+        const nextDeck = normalizeDeck(reconstructed);
+        const previousDeck = deck;
+        deck = nextDeck;
+        if (!saveDeck({ history: false, cloud: false })) {
+          deck = previousDeck;
+          throw new Error('本機儲存空間不足，重建結果未替換目前投影片。請先釋出空間後重試。');
+        }
+        currentH = 0; currentV = 0;
+        saveDeck();
+        renderDeck();
+        if (!deckUid) setCloudStatus('local', '精簡投影片已匯入');
+      } else {
+        importDeckJsonText(await file.text());
       }
-    };
-    reader.readAsText(file);
+      flashHint('Done');
+      failedImportFile = null;
+    } catch (error) {
+      console.error('Failed to import deck', error);
+      setCloudStatus('error', `匯入失敗：${error.message}`);
+      failedImportFile = file;
+      showDeckTransferError(`匯入失敗：${error.message} 目前投影片沒有被替換。`, file);
+    } finally { if (importDeckInput) importDeckInput.value = ''; }
+  }
+
+  function showDeckTransferError(message, retryFile = null) {
+    if (!deckTransferErrorDialog || !deckTransferErrorText) return;
+    deckTransferErrorText.textContent = message;
+    deckTransferRetryBtn.hidden = !retryFile;
+    if (!deckTransferErrorDialog.open) deckTransferErrorDialog.showModal();
   }
 
   function pushHistorySnapshot(snapshot = JSON.stringify(deck)) {
@@ -881,6 +964,31 @@
   function undo() {
     commitPendingColorHistory();
     restoreHistory(historyIndex - 1);
+  }
+
+  function manageTraceCache() {
+    if (!deckCacheDialog || !deckCacheLimitInput) return;
+    deckCacheLimitInput.value = String(window.ASMDeck.cacheLimitMB());
+    deckCacheStatus.textContent = '';
+    deckCacheDialog.showModal();
+  }
+
+  async function saveTraceCacheLimit() {
+    try {
+      window.ASMDeck.setCacheLimitMB(deckCacheLimitInput.value);
+      await window.ASMDeck.trimCache();
+      deckCacheStatus.textContent = '快取容量上限已更新。';
+    } catch (error) { deckCacheStatus.textContent = error.message; }
+  }
+
+  async function clearTraceCache() {
+    const button = document.getElementById('deckCacheClearBtn');
+    if (button) button.disabled = true;
+    try {
+      await window.ASMDeck.clearCache();
+      deckCacheStatus.textContent = '快取已清除；下次載入精簡檔可能需要重新 RUN。';
+    } catch (error) { deckCacheStatus.textContent = `清除失敗：${error.message}`; }
+    finally { if (button) button.disabled = false; }
   }
 
   function redo() {
@@ -5991,6 +6099,19 @@
     exportDeckBtn?.addEventListener('click', exportDeckJson);
     importDeckBtn?.addEventListener('click', () => importDeckInput?.click());
     importDeckInput?.addEventListener('change', () => importDeckJsonFile(importDeckInput.files && importDeckInput.files[0]));
+    deckCacheBtn?.addEventListener('click', manageTraceCache);
+    document.getElementById('deckCacheSaveBtn')?.addEventListener('click', saveTraceCacheLimit);
+    document.getElementById('deckCacheClearBtn')?.addEventListener('click', clearTraceCache);
+    document.getElementById('deckCacheCloseBtn')?.addEventListener('click', () => deckCacheDialog?.close());
+    deckTransferRetryBtn?.addEventListener('click', () => {
+      const file = failedImportFile;
+      deckTransferErrorDialog?.close();
+      if (file) importDeckJsonFile(file);
+    });
+    document.getElementById('deckTransferCloseBtn')?.addEventListener('click', () => deckTransferErrorDialog?.close());
+    document.getElementById('deckExportContinueBtn')?.addEventListener('click', () => finishCompactExportWarning(true));
+    document.getElementById('deckExportCancelBtn')?.addEventListener('click', () => finishCompactExportWarning(false));
+    deckExportWarningDialog?.addEventListener('close', () => finishCompactExportWarning(false));
     shareDeckBtn?.addEventListener('click', openShareDialog);
     closeShareDialogBtn?.addEventListener('click', closeShareDialog);
     cancelShareDialogBtn?.addEventListener('click', closeShareDialog);
@@ -7532,6 +7653,12 @@
 
   function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
+    if (event.data.type === 'asm-export-animation-snapshot'
+      && event.source === pendingAlgorithmExportSnapshot?.source
+      && event.data.requestId === pendingAlgorithmExportSnapshot.requestId) {
+      pendingAlgorithmExportSnapshot.resolve(event.data.animation);
+      return;
+    }
     if (event.data.type === 'asm-animation-applied') {
       if (event.source === algorithmEditorFrame?.contentWindow && event.data.mode === 'editor') {
         algorithmEditorModal?.classList.remove('is-loading');

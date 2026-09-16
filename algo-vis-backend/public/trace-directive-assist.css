@@ -1,0 +1,92 @@
+.asm-directive-assist {
+  position: fixed;
+  z-index: 12000;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(430px, calc(100vh - 16px));
+  overflow: auto;
+  color: #e8edf6;
+  background: #20242c;
+  border: 1px solid #596678;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
+  font: 13px/1.45 system-ui, sans-serif;
+}
+
+.asm-directive-assist[hidden] { display: none; }
+.asm-directive-assist[data-mode="suggestions"] {
+  width: min(580px, calc(100vw - 16px));
+  display: grid;
+  grid-template-columns: minmax(290px, 1fr) minmax(210px, .8fr);
+}
+.asm-directive-assist[data-mode="suggestions"] .asm-directive-title { grid-column: 1 / -1; }
+.asm-directive-assist[data-mode="suggestions"] .asm-directive-preview {
+  border-top: 0;
+  border-left: 1px solid #414b58;
+}
+.asm-directive-title {
+  padding: 9px 12px;
+  color: #dce6f4;
+  border-bottom: 1px solid #414b58;
+}
+.asm-directive-list { max-height: 265px; overflow-y: auto; }
+.asm-directive-choice {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 12px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.asm-directive-choice strong { color: #9bd0ff; }
+.asm-directive-choice span { color: #bac6d7; }
+.asm-directive-choice[aria-selected="true"] { background: #204d71; }
+.asm-directive-preview {
+  padding: 8px 12px;
+  color: #aab8ca;
+  border-top: 1px solid #414b58;
+}
+.asm-directive-preview code {
+  display: block;
+  margin-top: 4px;
+  color: #f1f5fb;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.asm-directive-tiers { display: flex; gap: 5px; padding: 10px 12px 0; }
+.asm-directive-tiers button,
+.asm-directive-insert {
+  padding: 5px 10px;
+  color: #e8edf6;
+  background: #384453;
+  border: 1px solid #65758b;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.asm-directive-tiers button[aria-pressed="true"],
+.asm-directive-insert { background: #25699b; }
+.asm-directive-assist p { margin: 8px 12px; color: #c6d1df; }
+.asm-directive-assist pre {
+  margin: 8px 12px;
+  padding: 10px;
+  max-height: 195px;
+  overflow: auto;
+  color: #f1f5fb;
+  background: #111820;
+  border-radius: 5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.asm-directive-insert { margin: 0 12px 12px; }
+
+@media (max-width: 600px) {
+  .asm-directive-assist[data-mode="suggestions"] { display: block; }
+  .asm-directive-assist[data-mode="suggestions"] .asm-directive-preview {
+    border-left: 0;
+    border-top: 1px solid #414b58;
+  }
+}

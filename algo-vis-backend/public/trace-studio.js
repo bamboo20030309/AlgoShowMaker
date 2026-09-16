@@ -25,6 +25,8 @@
   let styleEditor;
   let objectFillColor;
   let objectStrokeColor;
+  let objectFontSize;
+  let objectFontSizeValue;
   let objectColorFields;
   let textStyleFields;
   let textColor;
@@ -63,6 +65,7 @@
   let arrowTo;
   let arrowColor;
   let effectsList;
+  let effectsSection;
   let cameraZoom;
   let cameraZoomValue;
   let cameraAutoCapture;
@@ -300,6 +303,7 @@
 
   function frameObjectKey(frame, variableId) {
     const source = frame?.source || {};
+    if (source.objectIds?.[variableId]) return source.objectIds[variableId];
     if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
     return variableId;
   }
@@ -540,6 +544,7 @@
       liveTransform(element, liveBindingDrag.dx, liveBindingDrag.dy, 'traceLiveBindingBaseTransform');
       element.dataset.traceLiveBindingTranslate = `${liveBindingDrag.dx},${liveBindingDrag.dy}`;
     });
+    window.ASMTraceRenderers?.refreshArrows?.();
   }
 
   function endBoundObjectDrag() {
@@ -589,6 +594,13 @@
     if (!match) return null;
     const descriptor = trace?.frames?.[currentIndex]?.texts?.find(text => String(text.id) === match[1]);
     return descriptor?.segments?.find(segment => String(segment.segmentId) === match[2]) || null;
+  }
+
+  function textSelectionExists(key) {
+    const objectKey = textObjectKey(key);
+    if (!objectKey || !textDescriptorForKey(key)) return false;
+    // A whole text bubble is selectable too; it is not a missing segment.
+    return key === objectKey || Boolean(textSegmentForKey(key));
   }
 
   function textSelectionData(key = activeObjectKey) {
@@ -894,6 +906,7 @@
     renderObjectStateEditor();
     renderTransitionEditor();
     renderStyleEditor();
+    renderEffects();
     renderTextSelectionHighlight();
     renderInspectorNavigation();
   }
@@ -958,18 +971,30 @@
     if (objectStrokeColor && document.activeElement !== objectStrokeColor) {
       objectStrokeColor.value = stored.stroke || strokeNode?.getAttribute?.('stroke') || '#59656b';
     }
+    const renderedText = rendered?.matches?.('text')
+      ? rendered
+      : rendered?.querySelector?.('text');
+    const renderedFontSize = Number.parseFloat(renderedText?.getAttribute?.('font-size'));
+    const nextFontSize = Number(stored.fontSize) || renderedFontSize || 14;
+    if (objectFontSize && document.activeElement !== objectFontSize) {
+      objectFontSize.value = String(Math.max(6, Math.min(96, Math.round(nextFontSize))));
+    }
+    if (objectFontSizeValue) objectFontSizeValue.textContent = `${objectFontSize?.value || 14}px`;
   }
 
-  function writeObjectColors() {
-    if (!trace || !activeObjectKey || !objectFillColor || !objectStrokeColor) return;
+  function writeObjectColors({ colors = true, fontSize = true } = {}) {
+    if (!trace || !activeObjectKey || !objectFillColor || !objectStrokeColor || !objectFontSize) return;
     frameIdsForScope().forEach(frameId => {
       const styleKey = objectStyleKeyForFrame(frameId);
       if (!styleKey) return;
       trace.studio.objectStyles[frameId] ||= {};
-      trace.studio.objectStyles[frameId][styleKey] = {
-        fill: objectFillColor.value,
-        stroke: objectStrokeColor.value
-      };
+      const next = { ...(trace.studio.objectStyles[frameId][styleKey] || {}) };
+      if (colors) {
+        next.fill = objectFillColor.value;
+        next.stroke = objectStrokeColor.value;
+      }
+      if (fontSize) next.fontSize = Math.max(6, Math.min(96, Number(objectFontSize.value) || 14));
+      trace.studio.objectStyles[frameId][styleKey] = next;
     });
     return true;
   }
@@ -986,12 +1011,22 @@
   }
 
   function previewObjectColors() {
-    if (!writeObjectColors()) return;
+    if (!writeObjectColors({ fontSize: false })) return;
     previewStudioStyle();
   }
 
   function saveObjectColors() {
-    if (!writeObjectColors()) return;
+    if (!writeObjectColors({ fontSize: false })) return;
+    commitStudio();
+  }
+
+  function previewObjectFontSize() {
+    if (!writeObjectColors({ colors: false })) return;
+    previewStudioStyle();
+  }
+
+  function saveObjectFontSize() {
+    if (!writeObjectColors({ colors: false })) return;
     commitStudio();
   }
 
@@ -1516,6 +1551,8 @@
   function eventLabel(event) {
     return event?.loopBoundary === true
       ? '迴圈邊界'
+      : event?.type === 'sequence-operation'
+        ? String(event.operation || '陣列操作')
       : (EVENT_LABELS[event?.type] || event?.type || '事件');
   }
 
@@ -1556,6 +1593,7 @@
         ? `${variableName(target.variableId)}[${target.indexExpression}]`
         : variableName(target?.variableId));
     if (event?.type === 'compare') {
+      if (event.comparisonKind === 'truthy') return expression(targets[0]);
       return `${expression(targets[0])} ${event.operation || '?'} ${expression(targets[1])}`.trim();
     }
     if (event?.type === 'swap') return `${expression(targets[0])} ↔ ${expression(targets[1])}`.trim();
@@ -1570,6 +1608,9 @@
       const compactOperation = operation.replace(/\s+/g, '');
       if (operation && compactTarget && compactOperation.includes(compactTarget)) return operation;
       return `${target} ${operation}`.trim();
+    }
+    if (event?.type === 'sequence-operation') {
+      return `${expression(targets[0])}.${event.operation || 'operation'}()`;
     }
     if (event?.type === 'fixed') return targets.map(expression).filter(Boolean).join('、');
     if (event?.type === 'condition') {
@@ -2277,7 +2318,15 @@
 
   function writeSourceSettings() {
     if (!trace || restoringHistory || !window.asmWriteViewSettings || !window.ASMTraceViewSource?.fromTrace) return;
-    return window.asmWriteViewSettings(window.ASMTraceViewSource.fromTrace(trace));
+    // A manual edit (including deletion) of @asm-view is newer than Studio's
+    // last write. Saving must not silently recreate the removed settings.
+    if (window.ASMTraceEditor?.sourceViewWasEdited?.()) return false;
+    const settings = window.ASMTraceViewSource.fromTrace(trace);
+    const source = window.asmGetSourceCode?.() || '';
+    if (!window.ASMTraceViewSource.findBlock(source)
+      && !settings.rules?.length && !Object.keys(settings.skins || {}).length
+      && !Object.keys(settings.studio || {}).length) return false;
+    return window.asmWriteViewSettings(settings);
   }
 
   function writeStyleRule() {
@@ -2777,9 +2826,17 @@
   }
 
   function renderEffects() {
+    if (!effectsList || !effectsSection) return;
     effectsList.replaceChildren();
+    effectsSection.hidden = !activeObjectKey || codePanelSelectionActive;
+    if (effectsSection.hidden) return;
+    const activeVariableId = bindingTargetVariableId(activeObjectKey);
     const studioRules = (trace.rules || []).filter(rule => String(rule.id).startsWith('studio-'));
-    studioRules.forEach(rule => {
+    studioRules.filter(rule => (
+      rule.objectKey === activeObjectKey
+      || rule.target?.objectKey === activeObjectKey
+      || (activeVariableId && rule.target?.variableId === activeVariableId)
+    )).forEach(rule => {
       const row = el('div', 'trace-studio-effect-row');
       row.append(el('span', '', rule.name || '跨幀規則'));
       const remove = el('button', '', '×');
@@ -2792,7 +2849,7 @@
       row.append(remove);
       effectsList.append(row);
     });
-    trace.studio.objects.forEach(object => {
+    trace.studio.objects.filter(object => `studio:${object.id}` === activeObjectKey).forEach(object => {
       const row = el('div', 'trace-studio-effect-row');
       const targetName = variableName(object.target?.variableId);
       const index = object.target?.indexExpression ? `[${object.target.indexExpression}]` : '';
@@ -2808,7 +2865,12 @@
       row.append(remove);
       effectsList.append(row);
     });
-    trace.studio.arrows.forEach(arrow => {
+    trace.studio.arrows.filter(arrow => activeVariableId && (
+      arrow.fromVariableId === activeVariableId
+      || arrow.toVariableId === activeVariableId
+      || arrow.from?.variableId === activeVariableId
+      || arrow.to?.variableId === activeVariableId
+    )).forEach(arrow => {
       const row = el('div', 'trace-studio-effect-row');
       const from = trace.variables[arrow.fromVariableId]?.name || '?';
       const to = trace.variables[arrow.toVariableId]?.name || '?';
@@ -2825,7 +2887,14 @@
       row.append(remove);
       effectsList.append(row);
     });
-    trace.studio.cameraRules.forEach(rule => {
+    trace.studio.cameraRules.filter(rule => (
+      rule.target?.objectKey === activeObjectKey
+      || rule.binding?.targetKey === activeObjectKey
+      || (activeVariableId && (
+        rule.target?.variableId === activeVariableId
+        || rule.binding?.targetVariable?.id === activeVariableId
+      ))
+    )).forEach(rule => {
       const row = el('div', 'trace-studio-effect-row');
       const target = rule.target?.variableId
         ? ` → ${variableName(rule.target.variableId)}${rule.target.indexExpression ? `[${rule.target.indexExpression}]` : ''}`
@@ -2843,7 +2912,9 @@
       row.append(remove);
       effectsList.append(row);
     });
-    trace.studio.transitions.forEach(rule => {
+    trace.studio.transitions.filter(rule => (
+      rule.objectKey === activeObjectKey || rule.sourceKey === activeObjectKey
+    )).forEach(rule => {
       const row = el('div', 'trace-studio-effect-row');
       const frameCount = Array.isArray(rule.frameIds) ? rule.frameIds.length : 1;
       const animationLabel = rule.mode === 'instant' ? '不做動畫' : '自動動畫';
@@ -2860,7 +2931,7 @@
       row.append(remove);
       effectsList.append(row);
     });
-    if (!effectsList.children.length) effectsList.append(el('div', 'trace-studio-empty', '尚未建立跨幀效果'));
+    if (!effectsList.children.length) effectsList.append(el('div', 'trace-studio-empty', '此物件尚未建立效果'));
   }
 
   function field(label, control) {
@@ -2949,6 +3020,7 @@
     renderFrameEventsEditor();
 
     objectStateEditor = section('物件狀態');
+    objectStateEditor.dataset.traceObjectControls = '1';
     objectStateEmpty = el('div', 'trace-studio-object-state-empty', '選取物件以設定顯示狀態');
     objectStateCard = el('div', 'trace-studio-object-state-card');
     objectStateName = el('strong', 'trace-studio-object-state-name', '');
@@ -2961,6 +3033,7 @@
     renderObjectStateEditor();
 
     transitionEditor = section('幀間動畫');
+    transitionEditor.dataset.traceObjectControls = '1';
     transitionEmpty = el('div', 'trace-studio-transition-empty', '選取物件以設定幀間動畫');
     transitionCard = el('div', 'trace-studio-transition-card');
     transitionRelation = el('strong', 'trace-studio-transition-relation', '');
@@ -2994,6 +3067,7 @@
     renderTransitionEditor();
 
     bindingEditor = section('位置綁定');
+    bindingEditor.dataset.traceObjectControls = '1';
     bindingEmpty = el('div', 'trace-studio-binding-empty', '選取物件，拖曳上方綁定點到目標物件');
     bindingCard = el('div', 'trace-studio-binding-card');
     bindingRelation = el('strong', 'trace-studio-binding-relation', '');
@@ -3011,6 +3085,7 @@
     renderBindingEditor();
 
     markerShapeEditor = section('註標形狀');
+    markerShapeEditor.dataset.traceObjectControls = '1';
     markerShapeEmpty = el('div', 'trace-studio-marker-shape-empty', '定位到陣列後可選擇註標形狀');
     markerShapeCard = el('div', 'trace-studio-marker-shape-card');
     markerShapeButtons = el('div', 'trace-studio-marker-shapes');
@@ -3032,16 +3107,33 @@
     renderMarkerShapeEditor();
 
     styleEditor = section('物件與樣式');
+    styleEditor.dataset.traceObjectControls = '1';
     objectFillColor = colorControl('#ffffff', '物件填色');
     objectStrokeColor = colorControl('#59656b', '物件邊框顏色');
+    objectFontSize = document.createElement('input');
+    objectFontSize.type = 'range';
+    objectFontSize.min = '6';
+    objectFontSize.max = '96';
+    objectFontSize.step = '1';
+    objectFontSize.value = '14';
+    objectFontSize.setAttribute('aria-label', '物件文字大小');
+    objectFontSizeValue = el('output', 'trace-studio-range-value', '14px');
+    const objectFontSizeRow = el('div', 'trace-studio-range-row');
+    objectFontSizeRow.append(objectFontSize, objectFontSizeValue);
     objectFillColor.addEventListener('input', previewObjectColors);
     objectStrokeColor.addEventListener('input', previewObjectColors);
+    objectFontSize.addEventListener('input', () => {
+      objectFontSizeValue.textContent = `${objectFontSize.value}px`;
+      previewObjectFontSize();
+    });
     objectFillColor.addEventListener('change', saveObjectColors);
     objectStrokeColor.addEventListener('change', saveObjectColors);
+    objectFontSize.addEventListener('change', saveObjectFontSize);
     objectColorFields = el('div', 'trace-studio-object-color-fields');
     objectColorFields.append(
       field('物件填色', objectFillColor),
-      field('物件邊框', objectStrokeColor)
+      field('物件邊框', objectStrokeColor),
+      field('文字大小', objectFontSizeRow)
     );
     textColor = colorControl('#111827', '文字顏色');
     textColor.classList.add('trace-studio-text-icon-button', 'is-text-color');
@@ -3248,7 +3340,9 @@
     inspectorCameraPanel.append(camera);
     inspectorObjectPanel.append(codePanel);
 
-    const effects = section('已建立效果');
+    const effects = section('此物件已建立效果');
+    effects.dataset.traceObjectControls = '1';
+    effectsSection = effects;
     effectsList = el('div', 'trace-studio-effects');
     effects.append(effectsList);
     inspectorObjectPanel.append(effects);
@@ -3521,7 +3615,7 @@
     if (!document.body.classList.contains('asm-trace-studio-open')) return;
     const next = Math.max(0, Math.min(trace.frames.length - 1, Number(event.detail.index) || 0));
     currentIndex = next;
-    if (textObjectKey(activeObjectKey) && !textSegmentForKey(activeObjectKey)) {
+    if (textObjectKey(activeObjectKey) && !textSelectionExists(activeObjectKey)) {
       setActiveObjectKey('');
       activeBinding = null;
     }

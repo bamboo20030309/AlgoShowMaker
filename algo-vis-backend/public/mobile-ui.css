@@ -1,0 +1,420 @@
+.asm-mobile-dock {
+  display: none;
+}
+
+.asm-mobile-extra-tab {
+  display: none;
+}
+
+@media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
+  :root {
+    --asm-mobile-header-h: 44px;
+    --asm-mobile-dock-h: 54px;
+    --asm-mobile-player-h: 54px;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    overscroll-behavior: none;
+  }
+
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  .asm-mobile-dock {
+    position: fixed;
+    z-index: 1400;
+    right: 8px;
+    bottom: max(6px, env(safe-area-inset-bottom));
+    left: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 48px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    padding: 4px;
+    background: rgba(24, 29, 32, 0.94);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(12px);
+  }
+
+  .asm-mobile-dock button {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    min-height: 40px;
+    border: 0;
+    border-radius: 9px;
+    padding: 3px 6px;
+    background: transparent;
+    color: #e8eeee;
+    font: 12px/1.1 Arial, "Noto Sans TC", sans-serif;
+  }
+
+  .asm-mobile-dock button[aria-pressed="true"] {
+    background: #1d8f83;
+    color: #fff;
+  }
+
+  /* Algorithm editor / player */
+  body:has(#arraySvg) #top-bar {
+    height: var(--asm-mobile-header-h);
+    padding: 0 8px;
+  }
+
+  body:has(#arraySvg) #top-bar .menu-brand {
+    margin-right: auto;
+    font-size: 16px;
+  }
+
+  body:has(#arraySvg) #top-bar .menu-item,
+  body:has(#arraySvg) #top-bar #editAnimationBtn,
+  body:has(#arraySvg) #top-bar #eventSettingsBtn,
+  body:has(#arraySvg) #top-bar .top-github-link {
+    display: none;
+  }
+
+  body:has(#arraySvg) #main {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: calc(100dvh - var(--asm-mobile-header-h));
+  }
+
+  body:has(#arraySvg) #divider,
+  body:has(#arraySvg) #subTabs,
+  body:has(#arraySvg) #drawingToolbar,
+  body:has(#arraySvg) .animation-debug-toolbar {
+    display: none;
+  }
+
+  body:has(#arraySvg) #vizPanel {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  body:has(#arraySvg) #tab-canvas {
+    min-width: 0;
+    padding-bottom: calc(var(--asm-mobile-dock-h) + env(safe-area-inset-bottom));
+  }
+
+  body:has(#arraySvg) #canvasWrapper {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  body:has(#arraySvg) .controls {
+    order: 2;
+    z-index: 30;
+    min-height: var(--asm-mobile-player-h);
+    gap: 6px;
+    border-top: 1px solid #d8dde1;
+    border-bottom: 0;
+    padding: 5px 8px;
+    overflow: hidden;
+  }
+
+  body:has(#arraySvg) .controls button {
+    min-width: 42px;
+    min-height: 42px;
+    padding: 4px 8px;
+  }
+
+  body:has(#arraySvg) .controls #restartBtn,
+  body:has(#arraySvg) .controls #prevKeyFrameBtn,
+  body:has(#arraySvg) .controls #nextKeyFrameBtn,
+  body:has(#arraySvg) .controls #finishBtn,
+  body:has(#arraySvg) .controls #ttsAvBtn,
+  body:has(#arraySvg) .controls .speed-slider-wrapper,
+  body:has(#arraySvg) .controls #speedValue {
+    display: none;
+  }
+
+  body:has(#arraySvg) .controls #prevBtn,
+  body:has(#arraySvg) .controls #nextBtn {
+    width: 44px;
+    overflow: hidden;
+    color: transparent;
+    gap: 0;
+  }
+
+  body:has(#arraySvg) .controls #prevBtn svg,
+  body:has(#arraySvg) .controls #nextBtn svg {
+    flex: 0 0 auto;
+    color: #444;
+  }
+
+  body:has(#arraySvg) #frameTimeline {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  body:has(#arraySvg) #codePanel {
+    position: fixed;
+    z-index: 1320;
+    inset: var(--asm-mobile-header-h) 0 calc(var(--asm-mobile-dock-h) + 12px + env(safe-area-inset-bottom)) 0;
+    display: none;
+    width: auto !important;
+    min-width: 0;
+    background: #1e1e1e;
+  }
+
+  body.asm-mobile-code-open:has(#arraySvg) #codePanel {
+    display: flex;
+  }
+
+  body.asm-mobile-code-open:has(#arraySvg) #codePanel.collapsed {
+    width: auto !important;
+  }
+
+  body.asm-mobile-code-open:has(#arraySvg) #codePanel.collapsed #codeBody,
+  body.asm-mobile-code-open:has(#arraySvg) #codePanel.collapsed .header-title,
+  body.asm-mobile-code-open:has(#arraySvg) #codePanel.collapsed .header-buttons button {
+    display: flex;
+  }
+
+  body:has(#arraySvg) #codePanel header {
+    gap: 6px;
+    padding-inline: 8px;
+  }
+
+  body:has(#arraySvg) #codePanel .header-buttons {
+    gap: 5px;
+  }
+
+  body.asm-mobile-ui:has(#arraySvg) #editor .asm-mobile-code-input {
+    position: absolute;
+    z-index: 30;
+    inset: 0;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+    padding: 10px 12px;
+    overflow: auto;
+    resize: none;
+    outline: none;
+    background: #272822;
+    color: #f8f8f2;
+    caret-color: #fff;
+    font: 18px/1.45 Consolas, "Courier New", monospace;
+    tab-size: 4;
+    white-space: pre-wrap;
+    overflow-wrap: normal;
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+    touch-action: auto;
+  }
+
+  body.asm-mobile-ui:has(#arraySvg) #editor .asm-mobile-code-input[hidden] {
+    display: none;
+  }
+
+  body.asm-mobile-more-open:has(#arraySvg) #subTabs {
+    position: fixed;
+    z-index: 1360;
+    top: calc(var(--asm-mobile-header-h) + 6px);
+    right: 8px;
+    left: 8px;
+    display: flex;
+    height: auto;
+    align-items: stretch;
+    gap: 2px;
+    border: 1px solid #cad1d7;
+    border-radius: 10px;
+    padding: 5px;
+    overflow-x: auto;
+    background: rgba(247, 249, 250, 0.97);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  body.asm-mobile-more-open:has(#arraySvg) #subTabs .tab-btn {
+    min-height: 40px;
+    margin: 0;
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+
+  body.asm-mobile-more-open:has(#arraySvg) #subTabs .asm-mobile-extra-tab {
+    display: block;
+  }
+
+  body:has(#arraySvg) #algoSidePanel {
+    top: var(--asm-mobile-header-h);
+    bottom: calc(var(--asm-mobile-dock-h) + env(safe-area-inset-bottom));
+    width: min(88vw, 340px);
+  }
+
+  body:has(#arraySvg) .asm-mobile-algorithm-dock {
+    bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  body:has(#arraySvg):not(.asm-trace-studio-open) .asm-mobile-studio-only,
+  body.asm-trace-studio-open:has(#arraySvg) .asm-mobile-standard-only {
+    display: none;
+  }
+
+  /* Trace Studio becomes one canvas with optional frame/property drawers. */
+  body.asm-trace-studio-open:has(#arraySvg) #main {
+    display: block;
+  }
+
+  body.asm-trace-studio-open:has(#arraySvg) #vizPanel {
+    inset: 0 0 calc(var(--asm-mobile-dock-h) + env(safe-area-inset-bottom)) 0;
+    border: 0;
+  }
+
+  body.asm-trace-studio-open:has(#arraySvg) .trace-studio-rail,
+  body.asm-trace-studio-open:has(#arraySvg) .trace-studio-inspector {
+    position: fixed;
+    z-index: 1330;
+    top: var(--asm-mobile-header-h);
+    right: 0;
+    bottom: calc(var(--asm-mobile-dock-h) + 12px + env(safe-area-inset-bottom));
+    left: 0;
+    display: none;
+    width: auto;
+    height: auto;
+  }
+
+  body.asm-mobile-studio-rail-open.asm-trace-studio-open:has(#arraySvg) .trace-studio-rail,
+  body.asm-mobile-studio-inspector-open.asm-trace-studio-open:has(#arraySvg) .trace-studio-inspector {
+    display: flex;
+  }
+
+  body.asm-trace-studio-open:has(#arraySvg) .trace-studio-timeline {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    max-height: 84px;
+  }
+
+  body.asm-trace-studio-open:has(#arraySvg) #tab-canvas {
+    padding-bottom: 84px;
+  }
+
+  /* Slides editor: canvas first, tools live in bottom sheets. */
+  body:has(#slidesRoot) {
+    padding-bottom: calc(var(--asm-mobile-dock-h) + env(safe-area-inset-bottom));
+  }
+
+  body:has(#slidesRoot) .chrome-home-link {
+    top: 6px;
+    left: 6px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+
+  body:has(#slidesRoot) > .reveal,
+  body.asm-edit-mode:has(#slidesRoot) > .reveal,
+  body:not(.asm-edit-mode):has(#slidesRoot) > .reveal {
+    inset: 0 0 calc(var(--asm-mobile-dock-h) + env(safe-area-inset-bottom)) 0;
+  }
+
+  body:has(#slidesRoot) .control-chrome,
+  body:has(#slidesRoot) .editor-chrome {
+    position: fixed;
+    z-index: 1300;
+    top: auto;
+    right: 6px;
+    bottom: calc(var(--asm-mobile-dock-h) + 12px + env(safe-area-inset-bottom));
+    left: 6px;
+    display: none;
+    width: auto;
+    height: auto;
+    max-height: 56dvh;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 14px;
+    padding: 10px;
+    overflow: auto;
+    opacity: 1;
+    transform: none;
+    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.38);
+  }
+
+  body.asm-mobile-slide-controls-open:has(#slidesRoot) .control-chrome,
+  body.asm-mobile-slide-tools-open.asm-edit-mode:has(#slidesRoot) .editor-chrome {
+    display: flex;
+  }
+
+  body:has(#slidesRoot) .control-chrome {
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: center;
+  }
+
+  body:has(#slidesRoot) .control-chrome .mode-switch,
+  body:has(#slidesRoot) .control-chrome .slide-zoom-controls {
+    display: flex;
+    width: auto;
+    margin: 0;
+  }
+
+  body:has(#slidesRoot) .control-chrome .deck-io-controls {
+    display: flex;
+    width: auto;
+  }
+
+  body:has(#slidesRoot) .editor-chrome {
+    flex-direction: column;
+    background: rgba(22, 28, 31, 0.98);
+  }
+
+  body:has(#slidesRoot) .editor-chrome .palette-item {
+    min-height: 44px;
+  }
+
+  body:has(#slidesRoot) .object-toolbar,
+  body:has(#slidesRoot) .alignment-toolbar {
+    right: 8px !important;
+    bottom: calc(var(--asm-mobile-dock-h) + 14px + env(safe-area-inset-bottom)) !important;
+    left: 8px !important;
+    top: auto !important;
+    width: auto;
+    max-width: none;
+    overflow-x: auto;
+  }
+
+  body:has(#slidesRoot) .edit-hint,
+  body:has(#slidesRoot) .slide-edge-add {
+    display: none !important;
+  }
+
+  body:has(#slidesRoot) .asm-mobile-slides-dock {
+    z-index: 1450;
+  }
+
+  body:not(.asm-edit-mode):has(#slidesRoot) .asm-mobile-slide-edit-only {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .asm-mobile-dock button {
+    font-size: 11px;
+    padding-inline: 3px;
+  }
+
+  body:has(#arraySvg) .controls {
+    gap: 3px;
+    padding-inline: 5px;
+  }
+
+  body:has(#arraySvg) .controls #frameInfo {
+    font-size: 10px;
+  }
+}

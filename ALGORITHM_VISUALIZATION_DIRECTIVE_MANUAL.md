@@ -5,7 +5,7 @@
 
 - 文件語言：繁體中文
 - 適用介面：演算法編輯器、Trace Studio、演算法投影片編輯器與投影片播放介面
-- 最後核對日期：2026/09/12
+- 最後核對日期：2026/09/16
 
 > 本手冊介紹 `// @frame` 這套追蹤語法。它和直接呼叫 `AV.hpp` 的傳統 `av.draw(...)`
 > 繪圖 API 是兩套不同入口；使用追蹤語法時，不需要自行呼叫 `av.start_draw()`。
@@ -17,19 +17,23 @@
 3. [語法支援總表](#語法支援總表)
 4. [共用修飾詞](#共用修飾詞)
 5. [`@frame`：建立動畫幀](#frame建立動畫幀)
-6. [`@keep`：保留畫面狀態](#keep保留畫面狀態)
-7. [`@exit`：提早讓物件退場](#exit提早讓物件退場)
-8. [`@text`：加入說明文字](#text加入說明文字)
-9. [`@style`：設定格子樣式](#style設定格子樣式)
-10. [`@segment`：標示連續區間](#segment標示連續區間)
-11. [`render` 與 `with`：選擇資料結構畫法](#render-與-with選擇資料結構畫法)
-12. [`at` 與 `offset`：相對定位](#at-與-offset相對定位)
-13. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
-14. [完整使用案例](#完整使用案例)
-15. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
-16. [程式碼片段與條件著色](#程式碼片段與條件著色)
-17. [常見錯誤與限制](#常見錯誤與限制)
-18. [文件維護規則](#文件維護規則)
+6. [`@preset` 與 `@frame use`：重用視圖設定](#preset-與-frame-use重用視圖設定)
+7. [`@keep`：保留畫面狀態](#keep保留畫面狀態)
+8. [`@layout recursion`：遞迴樹排版](#layout-recursion遞迴樹排版)
+9. [`@exit`：提早讓物件退場](#exit提早讓物件退場)
+10. [`@text`：加入說明文字](#text加入說明文字)
+11. [`@style`：設定格子樣式](#style設定格子樣式)
+12. [`@segment`：標示連續區間](#segment標示連續區間)
+13. [`@arrow`：連接視覺物件](#arrow連接視覺物件)
+14. [`@place`：放置同幀物件](#place放置同幀物件)
+15. [`render` 與 `with`：選擇資料結構畫法](#render-與-with選擇資料結構畫法)
+16. [`at` 與 `offset`：相對定位](#at-與-offset相對定位)
+17. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
+18. [完整使用案例](#完整使用案例)
+19. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
+20. [程式碼片段與條件著色](#程式碼片段與條件著色)
+21. [常見錯誤與限制](#常見錯誤與限制)
+22. [文件維護規則](#文件維護規則)
 
 ## 五分鐘快速入門
 
@@ -73,6 +77,12 @@ int main() {
 - `highlight` 會框出目前格子。
 - `${i}` 會替換成該幀的實際數值。
 
+### 編輯器指令提示與範例
+
+在演算法編輯器輸入 `// @`，會出現貼著游標的指令選單；在已有指令的那一行按 `Ctrl+Space`，可查看下一層可接的 `render`、`with`、`at`、`as`、`when` 等修飾詞，以及附屬的 `@object`、`@style`、`@text` 等指令。方向鍵選項、`Tab` 插入、`Esc` 關閉。選項旁會說明用途，選中後可預覽將插入的程式碼。
+
+在指令行按桌面右鍵，可查看「最小／常用／完整」三種範例；切換範例只更新預覽，按「插入這個範例」才會替換該行。一般 C++ 行與手機長按仍使用原生複製、貼上選單。舊的 `av.start_frame_draw()` 等右鍵快捷項已移除，不要把它們和這份 `// @` 指令系統混用。
+
 ## 核心觀念
 
 ### 指令就是執行點
@@ -89,7 +99,7 @@ arr[i] = key;
 
 ### 附屬指令套用到前一個 `@frame`
 
-`@text`、`@style`、`@segment` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
+`@text`、`@style`、`@segment`、`@place`、`@arrow` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
 建議緊接著書寫，避免日後移動程式碼時造成誤解。
 
 ```cpp
@@ -117,11 +127,17 @@ arr[i] = key;
 | 指令 | 用途 | `as` | `at` | `offset` | `when` | `render` | `with` | `without style` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `@frame` | 擷取一個動畫幀 | 支援 | 支援 | 支援 | 支援 | 支援 | 支援 | 不支援 |
+| `@frame use NAME[,NAME...]` | 擷取一幀並依序展開多個具名視圖預設 | 只支援幀語意名稱 | 透過後續 `@object` 覆寫 | 透過後續 `@object` 覆寫 | 支援 | 透過 `@object` | 透過 `@object` | 不支援 |
+| `@preset`／`@endpreset` | 壓縮並重用同一組幀繪圖指令 | 不支援 | 透過內部指令 | 透過內部指令 | 透過內部繪圖指令 | 透過內部 `@object` | 透過內部 `@object` | 不支援 |
+| `@object` | 將另一個獨立設定的物件加入緊接的 `@frame` | 支援 | 支援 | 支援 | 不支援 | 支援 | 支援 | 不支援 |
 | `@keep` | 保留變數或上一幀 | 支援 | 支援 | 支援 | 支援目前值條件 | 不支援 | 不支援 | 支援 |
+| `@layout` | 宣告或設定具名遞迴樹排版 | 宣告時必須使用 | 宣告時支援 | 宣告時支援 | 不支援 | 不支援 | 專用設定語法 | 不支援 |
 | `@exit` | 提早讓一或多個可見變數退場 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
 | `@text` | 加入說明文字與 TTS | 支援 | 支援 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@style` | 套用格子樣式 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 僅 `showWidth` | 不支援 |
+| `@place` | 將已顯示物件綁到另一物件的錨點 | 不支援 | 必須指定 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
+| `@arrow` | 連接兩個視覺目標 | 支援 | 端點各自指定 | 端點各自支援 | 支援 | 不支援 | 專用樣式修飾詞 | 不支援 |
 
 建議的修飾詞排列方式是：
 
@@ -142,6 +158,7 @@ arr[i] = key;
 | `render` | 選擇資料結構畫法 | `render heap` |
 | `with` | 傳入 renderer 選項 | `with range(1,n), labels(value,index)` |
 | `without style` | `@keep` 保留資料但不保存當下樣式 | `@keep arr as plain without style` |
+| `in` | 把 live `@frame` 或 `@keep` 快照加入具名遞迴排版 | `@frame arr in quick_tree`、`@keep last as part in quick_tree` |
 
 ### ID 命名規則
 
@@ -181,6 +198,39 @@ arr[i] = key;
 // @frame arr[i,j],key
 // @frame arr[i+1,j-1],pivot
 ```
+
+### 同一幀顯示多個獨立設定的物件
+
+需要讓同一幀的不同物件使用各自的畫法、範圍、標籤或位置時，可以先用空白
+`@frame` 建立時間點，再以連續的 `@object` 加入物件：
+
+```cpp
+// @frame
+// @object isprime with range(0,n-1), columns(10), labels(index) at canvas.top offset(0,80)
+// @object prime with columns(10), labels(value) at isprime.bottom offset(0,60)
+```
+
+若整幀只在條件成立時出現，可以把 `when` 寫在空白 `@frame`，物件仍各自保留設定：
+
+```cpp
+// @frame when i%v==0
+// @object isprime[i] with range(1,n), columns(10), labels(index)
+// @object prime with columns(10), labels(value)
+// @place prime.top-left at isprime.bottom-left offset(0,60)
+```
+
+條件在執行到 `@frame` 時判斷；為假時不產生該幀，也不套用其附屬的物件、
+樣式、文字或箭頭。`when` 中引用但未顯示的 C++ 變數會供條件判斷捕捉，
+不會因此變成畫布上的物件。
+
+所有緊接的 `@object` 只產生同一幀。每個物件的 `as`、`at`、`offset`、`render` 與
+`with` 分別解析，不會套用到其他物件。`at` 所引用的同幀物件會在所有物件完成
+繪製後依相依順序定位，因此後面的 `prime` 可以直接綁定前面的 `isprime`。
+
+`@object` 和前一行之間只能有空白；若中間已有 C++ 敘述，必須重新建立 `@frame`。
+空白 `@frame` 至少要緊接一個 `@object`。整幀的 `when` 寫在 `@frame`，
+不能寫在 `@object`；`in` 也不能寫在 `@object`，需要遞迴排版時沿用單行主要
+`@frame ... in ...`。
 
 `arr[i,j]` 顯示一份 `arr`，並建立 `i`、`j` 兩個陣列指標。索引支援運算式，
 因此也可以使用 `arr[i*2]`、`arr[2*i+1]`。
@@ -226,6 +276,90 @@ arr[i] = key;
 ```
 
 一般條件會直接避免產生不需要的幀；跨幀函式的行為請參考 [`when`](#when條件與跨幀判斷)。
+
+## `@preset` 與 `@frame use`：重用視圖設定
+
+反覆使用相同的物件畫法、範圍、標籤與相對位置時，可先定義具名視圖：
+
+```cpp
+// @preset sieve_view
+// @object isprime with range(1,n), columns(10), labels(index)
+// @object prime with columns(10), labels(value)
+// @place prime.top-left at isprime.bottom-left offset(0,60)
+// @segment isprime[1:i] as active_range
+// @style isprime[1:n] focus when value == 1
+// @text "正在檢查第 ${i} 格" as sieve_note at isprime.top
+// @arrow from prime[0] to isprime[i] as "sieve_link" color AV_green
+// @camera focus isprime[i] zoom(1.6) offset(0,20)
+// @endpreset
+
+for (int i=2; i<=n; i++) {
+    // @frame use sieve_view
+    // @style isprime[i] highlight
+}
+```
+
+`@preset` 只定義設定，不產生動畫幀。每次程式執行到 `@frame use sieve_view`，才在**該使用位置**
+解析 `n`、`i` 等 C++ 變數並建立一幀；定義時不會把變數值凍結。若整幀只在條件成立時擷取，
+可寫 `// @frame use sieve_view when i <= n`。
+
+預設區塊必須以 `@endpreset` 結束，至少包含一個 `@` 指令。preset 定義層不再維護指令白名單，
+而是原樣保存每一條設定，再由 `@object`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、
+`@camera` 等各自的解析器於 `@frame use` 位置展開。這讓之後新增的幀設定不必再次修改 preset
+的允許清單。變數與 `when` 仍在使用位置解析，不會在 preset 定義時執行。
+
+`@keep`、`@exit`、`@frame` 等流程型指令即使出現在 preset 中，也只會保留為該幀的附屬描述，
+不會由 preset 擅自建立快照、退場或額外幀；需要流程效果時仍應寫在實際執行位置。`@layout`
+仍建議在全域宣告一次。預設 ID 不可重複，使用不存在的 ID 會報錯。
+
+一幀可用逗號依序套用多個預設；樣式或定位專用預設不必包含 `@object`，但所有預設展開後
+該幀至少要有一個物件。後面的預設會覆寫前面相同主要物件的 `@object`、相同來源與錨點的
+`@place`、相同目標／範圍／種類的 `@style`，以及使用相同 `as` ID 的 `@segment`、`@text`、
+`@arrow`；其餘項目合併保留。當幀直接寫的具名指令再覆寫 preset 的同 ID 項目。逗號兩側
+空白可省略，同一 preset ID 不可在一幀內重複套用：
+
+```cpp
+// @preset sieve_colors
+// @style isprime[i] highlight AV_green
+// @endpreset
+
+// @frame use sieve_view, sieve_colors when i <= n
+```
+
+這一幀沿用 `sieve_view` 的物件與位置，並讓 `sieve_colors` 的強調色覆寫原樣式；`i`、`n`
+仍在每次執行該幀時重新求值。
+
+使用預設後，可在該幀下面追加單幀設定。針對**同一個主要物件**的 `@object` 會取代其預設物件設定；
+來源物件與來源錨點相同的 `@place` 會取代預設定位；目標、選取範圍與樣式種類相同的 `@style`
+會取代預設樣式。其他預設項目保留：
+
+```cpp
+// @frame use sieve_view
+// @object prime with columns(5), labels(value)
+// @place prime.top-left at isprime.bottom-left offset(0,80)
+// @style isprime[i] highlight AV_green
+```
+
+這會只把 `prime` 改為每列五格、間距改成 80px，並覆蓋同目標的強調顏色；
+`isprime` 的範圍與索引標籤仍沿用預設。`@object` 必須緊接 `@frame use` 或另一個 `@object`；
+`@place`、`@style`、`@segment`、`@text`、`@arrow`、`@camera` 則沿用一般附屬指令規則。
+此語法只保存「如何呈現」，不保存事件開關或主動執行動畫流程。
+
+### `@camera`：幀附屬鏡頭
+
+```cpp
+// @camera auto
+// @camera auto zoom(0.9) offset(0,20)
+// @camera focus arr zoom(1.6)
+// @camera focus arr[i].top zoom(2) offset(0,-30) when i >= 0
+```
+
+- `auto`：自動容納目前畫面物件。
+- `focus TARGET`：將目標置於鏡頭中心；未寫錨點時預設 `center`。
+- `zoom(...)`：設定倍率，範圍 `0.05`～`4`。
+- `offset(x,y)`：在鏡頭中心加入像素位移。
+- `when`：條件成立時才採用這條鏡頭設定。
+- 優先序為「Trace Studio 的幀覆寫 → 本幀／preset 的 `@camera` → Studio 全域鏡頭 → 自動鏡頭」。
 
 ## `@keep`：保留畫面狀態
 
@@ -319,6 +453,92 @@ Trace Studio 拖曳後的 X/Y 位置，以及 Studio 建立的位置綁定。`@k
 它不會畫出實體框，也不包含 keep 之間的箭頭或被隱藏的快照。適合把新物件排在整組歷史結果下方，
 避免只綁定某一個高度可能改變的快照。
 
+## `@layout recursion`：遞迴樹排版
+
+`@layout recursion` 會宣告一個具名排版。`@frame ... in 排版ID` 先把尚未 keep 的 live 物件
+綁到目前遞迴 activation 的節點；`@keep ... in 排版ID` 再把該次 activation 保存成正式節點。
+系統依實際呼叫關係連接父節點、兄弟順序與父子箭頭。
+
+### 最小寫法
+
+```cpp
+// @layout recursion as "quick_tree" at canvas.top offset(0,80)
+// @layout quick_tree direction top-down
+```
+
+每一條設定都必須把目標 ID 寫清楚。正確寫法是 `// @layout quick_tree direction top-down`；
+不能省略 ID 寫成 `// @layout direction top-down`，也不能靠上一行隱含指定。
+
+在遞迴函式中用 `in` 加入節點：
+
+```cpp
+void quick_sort(vector<int>& arr, int low, int high) {
+    if (low >= high) return;
+
+    // @frame arr with range(low,high) in quick_tree
+    // @keep last as "partition" in quick_tree
+
+    // ...partition...
+    quick_sort(arr, low, pivot - 1);
+    quick_sort(arr, pivot + 1, high);
+}
+```
+
+`@frame arr ... in quick_tree`、`@keep arr ... in quick_tree` 與 `@keep last ... in quick_tree` 都支援。
+`@frame ... in` 不可和 `at` 同時使用：前者代表由遞迴排版決定位置，後者代表明確的個別定位。
+相同 `as` 名稱仍使用
+`partition`、`partition_1`、`partition_2` 的穩定命名規則。
+
+### 預設設定
+
+只寫宣告而沒有其他設定時，等同於：
+
+```cpp
+// @layout recursion as "quick_tree" at canvas.top offset(0,80)
+// @layout quick_tree mode compact
+// @layout quick_tree direction top-down
+// @layout quick_tree align center
+// @layout quick_tree sibling-gap 40
+// @layout quick_tree level-gap 100
+// @layout quick_tree degree 2
+// @layout quick_tree edges on
+```
+
+若宣告時省略 `at`，根位置也預設為 `canvas.top offset(0,80)`。
+`edges on` 會自動為每組 runtime 父子節點建立與 `AV.hpp` 樹排版一致的黑色 2px 箭頭。預設 `top-down` 時從父節點
+`bottom` 指向子節點 `top`；其他方向會對稱改用 `top → bottom`、`right → left` 或
+`left → right`，端點直接使用物件 outerframe 的語意錨點。
+
+### 可用設定
+
+| 設定 | 可用值 | 意義 |
+| --- | --- | --- |
+| `direction` | `top-down`、`bottom-up`、`left-right`、`right-left` | 子節點向下、向上、向右或向左生長 |
+| `mode` / `order` | `compact`、`levelorder`、`binary`、`preorder`、`inorder`、`postorder` | 選擇樹節點在交叉軸上的排列方式 |
+| `align` | `start`、`center`、`end` | 將整棵樹的起點、中心或終點對齊宣告的錨點 |
+| `sibling-gap` | 正數像素 | 同層相鄰節點間距，預設 40 |
+| `level-gap` | 正數像素 | 父子層之間的額外間距，預設 100 |
+| `degree` | 正整數 | `binary` 模式的每個節點槽位數，預設 2 |
+| `edges` | `on`、`off` | 顯示或隱藏黑色 2px 父子箭頭，預設開啟 |
+| `reset` | 無值 | 將上述排列設定恢復預設，保留名稱與根錨點 |
+
+六種 mode 沿用 `AV.hpp` 樹排版的概念：`compact` 依節點實際外框緊密排列；
+`levelorder` 逐層排列；`binary` 保留完整 k 元樹槽位；`preorder`、`inorder`、`postorder`
+依指定走訪順序配置節點，同時保留實際遞迴深度。
+
+### 定位優先順序
+
+排版會在 SVG 物件完成量測後、文字／箭頭／鏡頭與縮圖定位前執行，因此不同高度的 array、heap
+或其他 draw type 會使用真實外框。位置優先順序為：
+
+1. Trace Studio 對該快照的逐幀手動位置。
+2. 該條 `@keep` 自己的 `at` 定位。
+3. 所屬 `@layout recursion`。
+4. 一般 keep 自動排列。
+
+`@keep ... in quick_tree offset(x,y)` 可在自動樹位置上微調單一節點。若同時寫 `at`，則該節點
+退出自動樹定位、改用自己的明確位置，但仍保留在同一排版的父子關係與連線中。
+
 ## `@exit`：提早讓物件退場
 
 `@exit` 只結束指定變數的視覺呈現，不會改變真正的 C++ 作用域或數值：
@@ -408,7 +628,7 @@ Trace Studio 拖曳後的 X/Y 位置，以及 Studio 建立的位置綁定。`@k
 ### 基本格式
 
 ```cpp
-// @style 目標 樣式類型 顏色 [as ID] [when 條件]
+// @style 目標 樣式類型 [顏色] [as ID] [when 條件]
 ```
 
 支援五種樣式：
@@ -449,15 +669,19 @@ Trace Studio 拖曳後的 X/Y 位置，以及 Studio 建立的位置綁定。`@k
 同一組方括號只能使用一種右端點規則。上例以 `]` 結尾，所以其中所有範圍都包含右端點；
 若整組以 `)` 結尾，所有範圍都不包含右端點。
 
-### `focus` 的預設顏色
+### 省略顏色時的預設值
 
-`focus` 是唯一可以省略顏色的樣式，省略時預設使用 `AV_grey`：
+五種樣式都能省略顏色：
 
 ```cpp
+// @style arr[0] background
+// @style arr[1] highlight
+// @style arr[2] mark
+// @style arr[3] point
 // @style arr[1:i] focus
 ```
 
-意思是凸顯 `arr[1...i]`，其餘格子以灰色弱化。指定其他顏色時，該顏色會成為非焦點區的弱化色。
+`highlight`、`point` 使用 draw 系統的紅色，`mark` 使用綠色，`focus` 使用 `AV_grey` 灰色。`background` 沿用當前畫法的預設背景色；一般陣列與 heap 為紫色，stack、queue 等畫法各自使用原本的預設色。指定顏色時仍完全採用指定值。`focus` 是凸顯指定片段、將其餘格子弱化的效果。
 
 ### 使用 `value` 和 `index`
 
@@ -470,6 +694,18 @@ Trace Studio 拖曳後的 X/Y 位置，以及 Studio 建立的位置綁定。`@k
 ```
 
 條件會對選取範圍內的每一格分別計算。
+
+C++ 範圍迴圈（`ForRangeLoop`）標頭宣告的變數也能在迴圈內的指令中使用，例如：
+
+```cpp
+for (auto& v : prime) {
+    // @frame isprime
+    // @style isprime[i*v] highlight red
+    isprime[i*v] = 0;
+}
+```
+
+`v` 會隨每次迭代取得當下的值；離開這個迴圈後就不能再用 `v` 作為指令運算式。
 
 ### 顏色格式
 
@@ -506,6 +742,89 @@ Trace Studio 拖曳後的 X/Y 位置，以及 Studio 建立的位置綁定。`@k
 ```
 
 `showWidth(true)` 顯示區段寬度資訊；`@segment` 的 `with` 目前只支援 `showWidth(true|false)`。
+
+## `@arrow`：連接視覺物件
+
+`@arrow` 把兩個語意目標連起來，並附屬到它上方最近的 `@frame`。它和 Trace Studio 箭頭、遞迴 layout 自動箭頭共用 Arrow Model，實際線段邊距與箭頭頭部沿用原本 `drawArrow` 的幾何邏輯。
+
+```cpp
+// @frame arr[i,j]
+// @arrow from arr[i].bottom to arr[j].top as "compare_link"
+```
+
+### 端點與錨點
+
+`from` 和 `to` 都必須指定。每個端點依序解析 C++ 變數、`@keep as` 物件 ID、Trace Studio 自訂物件 ID，最後也可使用 `canvas`。省略錨點時預設為 `center`；也可明寫 `top`、`bottom`、`left`、`right` 等錨點，以及個別 `offset(x,y)`：
+
+```cpp
+// @arrow from arr[i].bottom offset(0,8) to saved_heap.top offset(0,-8)
+// @arrow from arr[1] to arr[12]  // 兩端都預設指向格子中心
+// @arrow from grid[row][col].right to arr[i].left
+// @arrow from note.right to canvas.left as "note_link"
+```
+
+一維陣列使用 `arr[index]`，二維陣列使用 C++ 習慣的 `grid[row][column]`。兩者都可使用
+九個錨點：`top-left`、`top`、`top-right`、`left`、`center`、`right`、`bottom-left`、
+`bottom`、`bottom-right`。索引端點會指向實際格子；未寫索引時指向物件外框。若當幀
+找不到任一端點，該箭頭不會繪製，也不會把不存在的物件冒充成可見動畫目標。
+
+每個可指向的格子都會向共用 Arrow Model 註冊目標資料，包括穩定 key、顯示標籤、
+物件 ID、維度索引與種類。例如 `arr[3]` 的標籤是 `arr[3]`，`grid[1][2]` 的標籤是
+`grid[1][2]`。Trace Studio 或之後新增的 renderer 可直接列舉這份目標資料；新的畫法只要
+註冊它的可指向節點，不需要在箭頭系統中新增一批物件類型特例。
+
+### 樣式選項
+
+```cpp
+// @arrow from arr[i].bottom to arr[j].top as "move_link" color AV_red width 3 head both line curve dash 6,4 when i != j
+```
+
+| 修飾詞 | 預設值 | 支援內容 |
+| --- | --- | --- |
+| `as` | 依原始碼行號產生 | 穩定箭頭 ID；建議需要跨幀對應時明確命名 |
+| `color` | `black` | `AV_*`、CSS 色名、Hex、`rgb/rgba/hsl/hsla` |
+| `width` | `2` | 大於 0 的線寬 |
+| `head` | `end` | `start`、`end`、`both`、`none` |
+| `line` | `straight` | `straight`、`curve` |
+| `dash` | 無 | 例如 `6,4` |
+| `when` | 無 | 條件為真才顯示；請放在整條指令最後 |
+
+同 ID 的箭頭可由播放層穩定對應；layout 自動產生的父子箭頭預設使用 AV.hpp／`drawArrow` 的黑色、線寬與單向箭頭樣式，不需要另外撰寫 `@arrow`。
+
+## `@place`：放置同幀物件
+
+`@place` 將最近一個 `@frame` 已經顯示的來源物件，綁到另一個物件的語意錨點。它只改變位置，不會建立 keep 快照，也不會把來源加入 recursion layout 的父子節點。
+
+```cpp
+// @frame arr[i],pivot with range(low,high) in quick_tree
+// @place pivot at arr.right
+// @place pivot.left at arr.right offset(16,0)
+```
+
+第一種寫法會依目標方向自動選擇相對的來源錨點，因此 `at arr.right` 會以 `pivot.left` 貼向 `arr.right`，兩者預設保留 8px 間距。第二種寫法明確指定來源錨點，使用外框對外框的精確定位；`offset(16,0)` 代表兩個外框相距 16px，不再額外加 8px。
+
+若要將兩個陣列上下排列，讓外框左界對齊、外框間距為 60px：
+
+```cpp
+// @frame
+// @object isprime with range(0,n-1), columns(10), labels(index)
+// @object prime with columns(10), labels(value)
+// @place prime.top-left at isprime.bottom-left offset(0,60)
+```
+
+完整格式：
+
+```text
+// @place SOURCE[.ANCHOR] at TARGET.ANCHOR [offset(X,Y)] [when CONDITION]
+```
+
+- `SOURCE` 必須是前一個 `@frame` 已顯示的 C++ 物件，或可解析的 keep／Trace Studio 物件 ID。
+- `TARGET` 依序解析 C++ 變數、keep ID、Trace Studio ID 與 `canvas`；亦可定位到 `arr[i].right` 之類的格子錨點。
+- `ANCHOR` 支援 `top-left`、`top`、`top-right`、`left`、`center`、`right`、`bottom-left`、`bottom`、`bottom-right`。
+- `when` 為假時只略過該位置綁定，不會隱藏來源物件。
+- Trace Studio 的明確位置／綁定仍具有較高優先權。
+
+多物件的 `@frame arr[i],pivot ... in quick_tree` 只以第一個主要物件 `arr` 代表遞迴節點；`i` 是 `arr` 的指標，`pivot` 是可由 `@place` 獨立安排的次要物件。
 
 ## `render` 與 `with`：選擇資料結構畫法
 
@@ -643,6 +962,14 @@ bottom-left  bottom  bottom-right
 // @frame arr at canvas.top offset(0,120)
 ```
 
+若主物件沒有 `at`、Trace Studio 自訂位置／綁定或具名 layout，系統預設將它視為：
+
+```cpp
+// @frame arr at canvas.top offset(0,80)
+```
+
+因此主物件會水平置中在畫布頂部基準；同一幀其餘自動排列物件仍保留原本相對間距。任何明確定位都優先於此預設值。
+
 若只需要整體置中，優先使用：
 
 ```cpp
@@ -683,6 +1010,7 @@ bottom-left  bottom  bottom-right
 | `before(expr)` | 本幀最後一次相關寫入事件之前的值；無寫入時使用目前值 |
 | `changed(expr)` | 本幀是否有事件真的改變該目標的值 |
 | `assigned(expr)` | 本幀是否有 assign、write 或 swap 事件寫入該目標 |
+| `iteration.last(name)` | 目前函式／遞迴執行個體中，對應變數這次生命週期最後實際走到的值 |
 
 範例：
 
@@ -691,6 +1019,16 @@ bottom-left  bottom  bottom-right
 // @style arr[i] highlight AV_yellow when assigned(arr[i])
 // @text "交換前是 ${before(arr[i])}" at arr.bottom when changed(arr[i])
 ```
+
+`iteration.last(name)` 是播放前由完整 trace 建立的繪圖衍生值，不會重新 RUN、產生事件、建立畫布物件或修改 C++ 狀態。若目前幀位於區域變數宣告之前，系統會使用同一函式／遞迴執行個體中緊接著的那次生命週期；進入變數作用域後則固定使用當次生命週期，避免下一輪同名變數互相污染。
+
+例如線性篩在進入內層迴圈前，尚不知道 `j` 最後走到哪裡，但仍可標出本輪實際能相乘的 `prime` 區段：
+
+```cpp
+// @style prime[0:iteration.last(j)] focus when i * value <= n
+```
+
+`iteration.last(j)` 包含實際執行過的最後一次 `j`；搭配 `i * value <= n` 可排除只用來觸發乘積越界 `break` 的最後一格。
 
 `prev` 比較相鄰動畫幀；`before`、`changed`、`assigned` 則會檢查當幀捕捉到的事件。
 
@@ -727,6 +1065,7 @@ for (int i = 0; i < n - 1; i++) {
 
 - `arr[j,j+1]` 建立兩個指標。
 - swap 和 compare 事件依實際 order 播放。
+- 若承載 swap 的陣列／資料結構在前後幀之間同時改變畫布位置，會先完成整個物件的位置補間，再開始第一個 swap；格子的交換軌跡只處理物件內部的相對位移。
 - `@keep last` 保存每輪最後畫面；重複名稱會得到 `round_1`、`round_2`。
 
 ### 插入排序：取出 key、右移與回填
@@ -996,6 +1335,13 @@ if (i < n && arr[i] > key) {
 
 ## 常見錯誤與限制
 
+### 在 Trace Studio 調整文字大小
+
+選取文字物件外框後，在右側「物件與樣式 → 文字大小」拖曳滑桿，可等比例調整整個文字框。
+選取文字內的片段時，則使用片段的字體與格式控制。拖曳時即時預覽，放開後儲存；
+同一幀重畫不會取消文字物件或片段的選取，也不會因此關閉物件設定面板。
+切換到不含該文字物件／片段的幀時，才會清除該選取。
+
 ### `@style`、`@text` 或 `@segment` 前面沒有 `@frame`
 
 錯誤：
@@ -1064,12 +1410,6 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 條件只能引用該指令位置仍在 C++ 作用域內的變數。離開區塊後，即使另一個同名變數存在，
 也不會自動當作同一個 runtime identity。
 
-### `@layout` 尚未實作
-
-目前跨幀排版使用 `at`、`offset`、命名 keep，以及虛擬 `keep` 聯集。
-持久化 `@layout` 語法仍在 `LAYOUT_DIRECTIVE_ROADMAP.md` 中保留，等 tree、graph 或其他
-可變高度 draw type 出現更多共同需求後再實作。
-
 ## 文件維護規則
 
 之後每次新增或調整視覺化語法，至少同步更新：
@@ -1085,6 +1425,10 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 
 | 日期 | 基準 | 內容 |
 | --- | --- | --- |
+| 2026/09/16 | `AV_V4.7` | 整理多行物件、preset、camera、arrow、iteration 摘要與 `.asmdeck` 使用說明；補充文字物件大小與片段格式的分工，以及同幀預覽保留選取的操作規則。 |
+| 2026/09/14 | 工作樹 | 新增 `@place` 同幀物件定位；多物件 recursion frame 僅由第一個主要物件建立節點，次要物件可用來源／目標錨點獨立貼附。 |
+| 2026/09/13 | 工作樹 | `@frame ... in` 可將 keep 前的 live 物件綁定到目前遞迴節點；父子箭頭改用實際 outerframe 錨點並對齊 `AV.hpp` 的黑色 2px 樣式。 |
+| 2026/09/12 | 工作樹 | 實作具名 `@layout recursion`、明確目標設定與 `@keep ... in`；加入遞迴 activation 父子 identity、四向生長、六種樹排列、真實 SVG 外框間距及父子箭頭。 |
 | 2026/09/12 | `AV_V4.6` | 播放層完成正向事件 checkpoint、生命週期與指標排程；`@keep` 快照改為接手來源 live 物件的實測幾何與可見狀態，不再觸發一般退場、額外淡入或殘影。投影片 iframe 會等可見 viewport 後重新基準化目前幀，修正首次下一步的子格錯誤起點。 |
 | 2026/09/12 | `AV_V4.6` | 補齊 AST 程式碼片段、Trace Studio 巢狀事件結構、動畫除錯記錄、儲存正規化、JWT 設定檢查，以及三介面播放／儲存一致性回歸案例。 |
 | 2026/09/10 | 工作樹 | 陣列生命週期統一改為原地淡入／淡出；跨幀新增、作用域退場與一般移除皆不再套用上下位移。 |

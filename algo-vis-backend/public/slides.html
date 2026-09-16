@@ -10,7 +10,8 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=random-id-92" />
+  <link rel="stylesheet" href="slides.css?v=random-id-93" />
+  <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
 </head>
 
 <body class="asm-edit-mode">
@@ -37,7 +38,7 @@
       <button id="ttsPanelToggleBtn" class="deck-io-btn tts-control-toggle" type="button" title="開啟或關閉 TTS" aria-label="開啟或關閉 TTS" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h10v2H4zm0 5h10v2H4zm0 5h7v2H4zm13-5.4v4.8l4 2.3V7.3z"></path></svg>
       </button>
-      <button id="exportDeckBtn" class="deck-io-btn deck-export-btn" type="button" title="下載投影片 JSON" aria-label="下載投影片 JSON">
+      <button id="exportDeckBtn" class="deck-io-btn deck-export-btn" type="button" title="下載精簡壓縮投影片 .asmdeck" aria-label="下載精簡壓縮投影片 .asmdeck">
         <svg class="deck-io-icon deck-export-icon" viewBox="0 0 32 32" aria-hidden="true">
           <path class="deck-io-body" d="M6 11h12l4 5v11H6z" />
           <circle class="deck-io-body" cx="14" cy="20" r="2.3" />
@@ -47,7 +48,7 @@
           </g>
         </svg>
       </button>
-      <button id="importDeckBtn" class="deck-io-btn deck-import-btn" type="button" title="匯入投影片 JSON" aria-label="匯入投影片 JSON">
+      <button id="importDeckBtn" class="deck-io-btn deck-import-btn" type="button" title="匯入 .asmdeck 或舊 JSON 投影片" aria-label="匯入 .asmdeck 或舊 JSON 投影片">
         <svg class="deck-io-icon deck-import-icon" viewBox="0 0 32 32" aria-hidden="true">
           <path class="deck-io-body" d="M6 11h12l4 5v11H6z" />
           <circle class="deck-io-body" cx="14" cy="20" r="2.3" />
@@ -55,6 +56,12 @@
             <path class="deck-io-arrow" d="M29 4.5c-4.4 0-7 2.8-7 7" />
             <path class="deck-io-arrow" d="M19.8 9.8l2.2 2.2 2.2-2.2" />
           </g>
+        </svg>
+      </button>
+      <button id="deckCacheBtn" class="deck-io-btn" type="button" title="設定／清除動畫快取" aria-label="設定／清除動畫快取">
+        <svg class="deck-io-icon" viewBox="0 0 32 32" aria-hidden="true">
+          <ellipse cx="16" cy="8" rx="10" ry="4" fill="none" stroke="currentColor" stroke-width="2" />
+          <path d="M6 8v15c0 5 20 5 20 0V8M6 15c0 5 20 5 20 0" fill="none" stroke="currentColor" stroke-width="2" />
         </svg>
       </button>
       <button id="shareDeckBtn" class="deck-io-btn" type="button" title="分享投影片" aria-label="分享投影片" hidden>
@@ -65,7 +72,7 @@
           <path d="M8.2 10.8l7.6-4.5M8.2 13.2l7.6 4.5"></path>
         </svg>
       </button>
-      <input id="importDeckInput" type="file" accept="application/json,.json" hidden />
+      <input id="importDeckInput" type="file" accept=".asmdeck,.json,application/json,application/octet-stream" hidden />
     </div>
     <div class="slide-zoom-controls" role="toolbar" aria-label="Slide zoom">
       <button id="slideZoomOutBtn" type="button" title="Zoom out" aria-label="Zoom out">
@@ -482,6 +489,37 @@
     </div>
   </div>
 
+  <dialog id="deckCacheDialog" class="deck-cache-dialog" aria-label="動畫快取設定">
+    <h2>動畫快取</h2>
+    <p>快取只加快精簡檔重新載入；清除不影響目前或已儲存的投影片。</p>
+    <label for="deckCacheLimitInput">容量上限（8–512 MB）</label>
+    <input id="deckCacheLimitInput" type="number" min="8" max="512" step="1" />
+    <div id="deckCacheStatus" role="status" aria-live="polite"></div>
+    <div class="deck-cache-actions">
+      <button id="deckCacheClearBtn" type="button">清除快取</button>
+      <button id="deckCacheSaveBtn" type="button">儲存上限</button>
+      <button id="deckCacheCloseBtn" type="button">關閉</button>
+    </div>
+  </dialog>
+
+  <dialog id="deckTransferErrorDialog" class="deck-cache-dialog" aria-label="投影片檔案錯誤">
+    <h2>投影片檔案無法處理</h2>
+    <p id="deckTransferErrorText" role="alert"></p>
+    <div class="deck-cache-actions">
+      <button id="deckTransferRetryBtn" type="button">重試匯入</button>
+      <button id="deckTransferCloseBtn" type="button">關閉</button>
+    </div>
+  </dialog>
+
+  <dialog id="deckExportWarningDialog" class="deck-cache-dialog" aria-label="精簡匯出限制">
+    <h2>精簡檔的重建限制</h2>
+    <p>此檔不包含動畫執行結果。換電腦、清除快取或離線時可能需要重新 RUN；隨機值、時間或外部資料可能造成結果不同。</p>
+    <div class="deck-cache-actions">
+      <button id="deckExportCancelBtn" type="button">取消</button>
+      <button id="deckExportContinueBtn" type="button">繼續匯出</button>
+    </div>
+  </dialog>
+
   <dialog id="shareDialog" class="share-dialog">
     <form id="shareForm">
       <div class="share-dialog-header">
@@ -689,7 +727,7 @@
   <script src="draw/draw_array_heap.js?v=focus-2"></script>
   <script src="draw/draw_array_segment_tree.js?v=focus-2"></script>
   <script src="draw/draw_array_BIT.js?v=focus-2"></script>
-  <script src="draw/draw_array_disk.js?v=focus-2"></script>
+  <script src="draw/draw_array_disk.js?v=focus-3"></script>
   <script src="draw/draw_array_stack.js?v=focus-2"></script>
   <script src="draw/draw_array_queue.js?v=focus-2"></script>
   <script src="slide-structures.js?v=10"></script>
@@ -697,7 +735,12 @@
   <script src="slides-storage.js?v=1"></script>
   <script src="tts.js?v=10"></script>
   <script src="algorithm-animation.js?v=animation-2"></script>
-  <script src="slides.js?v=random-id-163"></script>
+  <script src="trace-view-source.js?v=trace-14"></script>
+  <script src="trace-model.js?v=trace-27"></script>
+  <script src="trace-provenance.js?v=trace-5"></script>
+  <script src="asmdeck.js?v=3"></script>
+  <script src="slides.js?v=random-id-170"></script>
+  <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 
 </html>

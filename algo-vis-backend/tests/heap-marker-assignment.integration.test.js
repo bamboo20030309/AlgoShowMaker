@@ -2,6 +2,25 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compile } = require('./helpers/compile');
 
+test('a first marker assignment reserves motion time even at the captured destination', async () => {
+  const { window } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int main() { vector<int> arr = {1}; // @frame arr
+}`);
+  const event = { id: 'move-largest', order: 1, type: 'assign', enabled: true,
+    targets: [{ role: 'target', variableId: 'largest' }],
+    payload: { before: { kind: 'scalar', value: 4 }, after: { kind: 'scalar', value: 8 } } };
+  const marker = { dataset: { traceSourceVariableId: 'largest', traceBindingTarget: 'arr#8' } };
+  const placements = new Map([['marker-largest', { x: 80, y: 0, width: 18, height: 18 }]]);
+  const slots = window.ASMTraceFrameTween.buildEventTimeline(
+    { variables: { largest: { name: 'largest' } } },
+    { id: 'frame-motion', events: [event], state: {} }, 1, 520,
+    placements, placements, new Map([['marker-largest', marker]])
+  );
+  assert.equal(slots.length, 1);
+  assert.equal(slots[0].end - slots[0].motionStart, 520);
+});
+
 test('largest = l/r moves the largest marker without rendering l or r', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;

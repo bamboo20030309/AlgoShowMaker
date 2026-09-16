@@ -77,7 +77,11 @@
       const events = [...pendingEvents, ...(frame.events || [])]
         .sort((left, right) => Number(left?.order) - Number(right?.order));
       const candidate = { ...frame, events };
-      const evaluationDocument = { ...document, frames: [...accepted, candidate] };
+      const evaluationDocument = {
+        ...document,
+        iterationSummaries: document.iterationSummaries,
+        frames: [...accepted, candidate]
+      };
       if (window.ASMTraceRules.expressionMatches(
         evaluationDocument,
         candidate,
@@ -91,6 +95,91 @@
     });
     document.frames = accepted;
     return document;
+  }
+
+  function iterationActivationKey(frame) {
+    const source = frame?.source || {};
+    return String(source.recursionActivationId
+      || `${source.function || ''}:${source.recursionParentActivationId || ''}`);
+  }
+
+  function buildIterationSummaries(document) {
+    const frames = document?.frames || [];
+    const summaries = Object.fromEntries(frames.map(frame => [String(frame.id || ''), {
+      last: {},
+      details: {}
+    }]));
+    const contextFrames = new Map();
+    const groups = new Map();
+
+    frames.forEach((frame, frameIndex) => {
+      const activation = iterationActivationKey(frame);
+      if (!contextFrames.has(activation)) contextFrames.set(activation, []);
+      contextFrames.get(activation).push(frameIndex);
+      Object.entries(frame.state || {}).forEach(([variableId, entry]) => {
+        const name = String(entry?.name || document?.variables?.[variableId]?.name || '');
+        if (!name) return;
+        const value = scalarValue(entry?.data);
+        if (value != null && typeof value === 'object') return;
+        const lifetime = String(entry?.lifetime || '');
+        const contextName = `${activation}\u0000${name}`;
+        const groupKey = `${contextName}\u0000${variableId}\u0000${lifetime || variableId}`;
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, {
+            activation, name, variableId, lifetime,
+            declarationLine: Number(document?.variables?.[variableId]?.line) || 0,
+            first: frameIndex, last: frameIndex, lastValue: value
+          });
+        } else {
+          const group = groups.get(groupKey);
+          group.first = Math.min(group.first, frameIndex);
+          group.last = Math.max(group.last, frameIndex);
+          group.lastValue = value;
+        }
+      });
+    });
+
+    const groupsByContextName = new Map();
+    groups.forEach(group => {
+      const key = `${group.activation}\u0000${group.name}`;
+      if (!groupsByContextName.has(key)) groupsByContextName.set(key, []);
+      groupsByContextName.get(key).push(group);
+    });
+    groupsByContextName.forEach((candidates, contextName) => {
+      candidates.sort((left, right) => left.first - right.first || left.last - right.last);
+      const separator = contextName.indexOf('\u0000');
+      const activation = contextName.slice(0, separator);
+      const name = contextName.slice(separator + 1);
+      (contextFrames.get(activation) || []).forEach(frameIndex => {
+        const frame = frames[frameIndex];
+        const active = candidates.find(group => {
+          const entry = frame.state?.[group.variableId];
+          if (!entry) return false;
+          return !group.lifetime || String(entry.lifetime || '') === group.lifetime;
+        });
+        const upcoming = candidates.find(group => group.first >= frameIndex);
+        const previous = [...candidates].reverse().find(group => group.last <= frameIndex);
+        const frameLine = Number(frame?.source?.line) || 0;
+        const declarationLine = Number((upcoming || previous)?.declarationLine) || 0;
+        // A frame located before the declaration belongs to the upcoming loop
+        // lifetime. A frame located after the loop belongs to the lifetime that
+        // just completed, even if another iteration will declare the same name.
+        const selected = active
+          || ((frameLine && declarationLine && frameLine < declarationLine)
+            ? (upcoming || previous)
+            : (previous || upcoming));
+        if (!selected) return;
+        const summary = summaries[String(frame.id || '')];
+        summary.last[name] = selected.lastValue;
+        summary.details[name] = {
+          variableId: selected.variableId,
+          lifetime: selected.lifetime,
+          firstFrameId: String(frames[selected.first]?.id || ''),
+          lastFrameId: String(frames[selected.last]?.id || '')
+        };
+      });
+    });
+    return summaries;
   }
 
   function normalizeTraceDocument(source = {}) {
@@ -120,6 +209,8 @@
       texts: Array.isArray(frame.texts) ? clone(frame.texts) : [],
       styles: Array.isArray(frame.styles) ? clone(frame.styles) : [],
       segments: Array.isArray(frame.segments) ? clone(frame.segments) : [],
+      arrows: Array.isArray(frame.arrows) ? clone(frame.arrows) : [],
+      camera: frame.camera && typeof frame.camera === 'object' ? clone(frame.camera) : null,
       snapshotIds: Array.isArray(frame.snapshotIds) ? clone(frame.snapshotIds) : [],
       keepLastFocus: frame.keepLastFocus === true
     })) : [];
@@ -137,12 +228,19 @@
         ...clone(snapshot),
         data: normalizeData(snapshot?.data)
       })) : [],
+      layouts: Array.isArray(source.layouts) ? clone(source.layouts) : [],
       skins: source.skins && typeof source.skins === 'object' ? clone(source.skins) : {},
       rules: Array.isArray(source.rules) ? clone(source.rules) : [],
       frameDirectives: Array.isArray(source.frameDirectives) ? clone(source.frameDirectives) : [],
       studio: source.studio && typeof source.studio === 'object' ? clone(source.studio) : {},
       asmView: source.asmView && typeof source.asmView === 'object' ? clone(source.asmView) : null
     };
+    Object.defineProperty(normalized, 'iterationSummaries', {
+      value: buildIterationSummaries(normalized),
+      writable: true,
+      configurable: true,
+      enumerable: false
+    });
     if (!source.viewSettingsApplied && normalized.asmView && window.ASMTraceViewSource?.applyToTrace) {
       window.ASMTraceViewSource.applyToTrace(normalized, normalized.asmView);
     }
@@ -208,6 +306,7 @@
     canonicalRenderer,
     normalizeSkins,
     applyFrameConditions,
+    buildIterationSummaries,
     normalizeTraceDocument,
     scalarValue,
     diffFrame

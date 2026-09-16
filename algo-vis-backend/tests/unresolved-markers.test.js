@@ -168,6 +168,44 @@ test('recursive automatic markers keep visual continuity without merging runtime
   ), true);
 });
 
+test('a moved swap container settles before its swap event can start', () => {
+  const element = {
+    dataset: { traceObjectKey: 'arr', traceRuntimeIdentity: 'runtime-arr' }
+  };
+  const previous = {
+    dataset: { traceObjectKey: 'arr', traceRuntimeIdentity: 'runtime-arr' }
+  };
+  const eventFrame = {
+    id: 'moved-swap-frame',
+    events: [{
+      id: 'swap-1', type: 'swap', order: 1, enabled: true,
+      targets: [
+        { variableId: 'arr', indexExpression: '0', resolvedIndex: 0 },
+        { variableId: 'arr', indexExpression: '1', resolvedIndex: 1 }
+      ]
+    }]
+  };
+  const steps = context.window.ASMTraceFrameTween.swapContainerPlacementTransitionSteps({
+    eventFrame,
+    previousPlacements: new Map([['arr', { x: 80, y: 60, width: 120, height: 70 }]]),
+    currentPlacements: new Map([['arr', { x: 300, y: 180, width: 120, height: 70 }]]),
+    previousObjects: new Map([['arr', previous]]),
+    currentElements: new Map([['arr', element]]),
+    transitionForKey: () => ({ mode: 'move', sourceKey: 'arr', duration: 520 }),
+    duration: 520
+  });
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].subtype, 'swap-container-settle');
+  assert.equal(steps[0].durationMs, 520);
+  assert.deepEqual(JSON.parse(JSON.stringify(steps[0].from)), { x: 80, y: 60 });
+  assert.deepEqual(JSON.parse(JSON.stringify(steps[0].to)), { x: 300, y: 180 });
+  const preEvent = context.window.ASMTraceFrameTween.createPlaybackPlan({
+    frame: eventFrame, direction: 1, transitionSteps: steps, eventTimeline: []
+  });
+  assert.equal(preEvent.preEventDurationMs, 520,
+    'the second timeline pass starts swap only after the container movement');
+});
+
 test('text and marker lifecycles use distinct shared motion profiles', () => {
   const {
     visualLifecycleKind: kind,
@@ -234,6 +272,40 @@ test('keep snapshots use an in-place lifecycle profile', () => {
     context.window.ASMTraceFrameTween.visualLifecycleOffsetY('keep-snapshot', 'enter', 0.5),
     0
   );
+  assert.equal(
+    context.window.ASMTraceFrameTween.shouldAnimateObjectEntrance({
+      keepSnapshotMember: true,
+      declarationSlot: { start: 0 },
+      hasPrevious: false
+    }),
+    false,
+    'keep snapshots never receive an entrance animation, even without a handoff source'
+  );
+  assert.equal(
+    context.window.ASMTraceFrameTween.shouldAnimateObjectEntrance({
+      retainedSnapshot: true,
+      sceneBoundaryEntrance: true,
+      hasPrevious: false
+    }),
+    false,
+    'an existing keep snapshot remains visible across a function scene boundary'
+  );
+});
+
+test('new nested cells inherit a continuous container move', () => {
+  const delta = context.window.ASMTraceFrameTween.relativeMotionDelta(
+    { x: 0, y: 24 },
+    { x: -180, y: -90 },
+    { inheritParentMotion: true }
+  );
+  assert.deepEqual({ ...delta }, { x: 0, y: 0 },
+    'a child without an alias must not cancel its moving parent transform');
+  const swapDelta = context.window.ASMTraceFrameTween.relativeMotionDelta(
+    { x: 40, y: -90 },
+    { x: -180, y: -90 }
+  );
+  assert.deepEqual({ ...swapDelta }, { x: 220, y: 0 },
+    'independently matched cells retain their own relative movement');
 });
 
 test('an outgoing live object retained by a new keep snapshot never receives generic removal', () => {
@@ -906,6 +978,136 @@ test('one multi-target @exit batch finishes in parallel before keep appears', ()
   assert.equal(exitPhase.steps[1].startMs, 500);
   assert.equal(keepPhase.startMs, 720);
   assert.equal(keepPhase.steps[0].subtype, 'in-place-fade');
+});
+
+test('consecutive scope-exit events keep separate rows but leave in one parallel batch', () => {
+  const exitContext = vm.createContext({
+    window: { dispatchEvent() {} },
+    document: { documentElement: { dataset: {} } },
+    queueMicrotask(callback) { callback(); },
+    CustomEvent: function CustomEvent() {}
+  });
+  exitContext.window.ASMTraceEvents = {
+    ordered: events => events,
+    animation: type => type === 'scope-exit' ? 'exit' : type === 'assign' ? 'assign' : 'none'
+  };
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+    exitContext
+  );
+  const target = name => ({
+    variableId: name,
+    lifetimeIdentity: `life-${name}`,
+    sceneGeneration: 0
+  });
+  const exits = ['left', 'right'].map((name, index) => ({
+    id: `scope-exit-${name}`,
+    type: 'scope-exit',
+    order: index + 1,
+    enabled: true,
+    source: { from: 80, to: 90 },
+    targets: [target(name)]
+  }));
+  const marker = name => ({
+    dataset: {
+      traceSourceVariableId: name,
+      traceSourceVariableIds: JSON.stringify([name]),
+      traceRuntimeIdentity: `life-${name}`,
+      traceSceneGeneration: '0',
+      traceLifecycleKind: 'marker'
+    },
+    querySelectorAll: () => []
+  });
+  const elements = new Map([
+    ['left#0', marker('left')],
+    ['right#0', marker('right')]
+  ]);
+  const placements = new Map([
+    ['left#0', { x: 0, y: 0, width: 40, height: 40 }],
+    ['right#0', { x: 40, y: 0, width: 40, height: 40 }]
+  ]);
+  const traceDocument = {
+    variables: {
+      left: { name: 'left', kind: 'scalar' },
+      right: { name: 'right', kind: 'scalar' }
+    },
+    studio: { eventIntervalMs: 500 }
+  };
+  const timeline = exitContext.window.ASMTraceFrameTween.buildEventTimeline(
+    traceDocument,
+    { id: 'parallel-scope-exits', events: exits, state: {} },
+    1, 520, placements, placements, elements, 300, elements
+  );
+
+  assert.equal(timeline.length, 2, 'both exit events remain independently editable');
+  assert.equal(timeline[0].event.id, 'scope-exit-left');
+  assert.equal(timeline[1].event.id, 'scope-exit-right');
+  assert.equal(timeline[0].start, timeline[1].start,
+    'consecutive exits must begin together');
+  assert.equal(timeline[0].end, timeline[1].end,
+    'the parallel exit batch must finish together when durations match');
+  assert.equal(timeline[1].exitBatchStart, timeline[0].start);
+});
+
+test('a visible event between exits preserves runtime order and starts a new exit batch', () => {
+  const orderedContext = vm.createContext({
+    window: { dispatchEvent() {} },
+    document: { documentElement: { dataset: {} } },
+    queueMicrotask(callback) { callback(); },
+    CustomEvent: function CustomEvent() {}
+  });
+  orderedContext.window.ASMTraceEvents = {
+    ordered: events => events,
+    animation: type => type === 'scope-exit' ? 'exit' : type === 'assign' ? 'assign' : 'none'
+  };
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'),
+    orderedContext
+  );
+  const visual = name => ({
+    dataset: {
+      traceSourceVariableId: name,
+      traceSourceVariableIds: JSON.stringify([name]),
+      traceRuntimeIdentity: `life-${name}`,
+      traceSceneGeneration: '0'
+    },
+    querySelectorAll: () => []
+  });
+  const elements = new Map([
+    ['a#0', visual('a')], ['b#0', visual('b')], ['value#0', visual('value')]
+  ]);
+  const placements = new Map([...elements.keys()].map((key, index) => [
+    key, { x: index * 40, y: 0, width: 40, height: 40 }
+  ]));
+  const exit = (name, order) => ({
+    id: `exit-${name}`, type: 'scope-exit', order, enabled: true,
+    targets: [{
+      variableId: name, lifetimeIdentity: `life-${name}`, sceneGeneration: 0
+    }]
+  });
+  const assign = {
+    id: 'assign-value', type: 'assign', order: 2, enabled: true,
+    targets: [{ role: 'target', variableId: 'value' }],
+    payload: { before: 0, after: 1 }
+  };
+  const timeline = orderedContext.window.ASMTraceFrameTween.buildEventTimeline(
+    {
+      variables: {
+        a: { name: 'a', kind: 'scalar' },
+        b: { name: 'b', kind: 'scalar' },
+        value: { name: 'value', kind: 'scalar' }
+      },
+      studio: { eventIntervalMs: 100 }
+    },
+    { id: 'ordered-exits', events: [exit('a', 1), assign, exit('b', 3)], state: {} },
+    1, 520, placements, placements, elements, 0, elements
+  );
+
+  assert.equal(timeline.length, 3);
+  assert.ok(timeline[0].end < timeline[1].start);
+  assert.ok(timeline[1].end < timeline[2].start);
+  assert.notEqual(timeline[0].start, timeline[2].start,
+    'exit batches must not jump across another visible event');
 });
 
 test('forward replay checkpoints isolate every mutation from later frame state', () => {

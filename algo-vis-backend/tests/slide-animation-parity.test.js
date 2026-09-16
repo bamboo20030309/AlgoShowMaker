@@ -74,6 +74,91 @@ test('old saved trace wins over its original asm-view and stale top-level copies
   assert.equal(original.viewSettingsApplied, undefined, 'do not mutate stored deck during loading');
 });
 
+test('a fresh RUN with no source view does not inherit earlier Studio positions or rules', async () => {
+  const { c } = context();
+  c.load('trace-editor.js');
+  const old = savedTrace();
+  old.viewSettingsApplied = true;
+  c.ASMTraceEditor.applyTraceDocument(old);
+  const fresh = { ...old, rules: [], skins: {}, studio: {}, asmView: null,
+    sourceCode: 'int main() {}', viewSettingsApplied: true };
+  c.aceEditor.value = fresh.sourceCode;
+  c.ASMTraceEditor.applyTraceDocument(fresh);
+  const result = plain(c.ASMTraceEditor.snapshot().traceDocument);
+  assert.deepEqual(result.rules, []);
+  assert.deepEqual(result.studio.positions || {}, {});
+  assert.deepEqual(result.studio.cameraRules || [], []);
+  assert.deepEqual(result.studio.eventInstructionStates || {}, {});
+  assert.deepEqual(result.skins, {});
+});
+
+test('removing or clearing @asm-view before save resets stored presentation instead of restoring it', () => {
+  const oldView = `/* @asm-view\n{"version":1,"rules":[{"id":"old-rule"}],"studio":{"positions":{"frame-0":{"arr":{"x":80,"y":120}}},"cameraRules":[{"id":"old-camera","zoom":2}]}}\n@asm-view */`;
+  for (const nextView of ['', '/* @asm-view\n{"version":1,"studio":{}}\n@asm-view */']) {
+    const { c } = context();
+    c.load('trace-editor.js');
+    const old = savedTrace();
+    old.sourceCode = `int main() {}\n${oldView}`;
+    old.viewSettingsApplied = true;
+    c.aceEditor.value = old.sourceCode;
+    c.ASMTraceEditor.applyTraceDocument(old);
+    c.aceEditor.value = `int main() {}\n${nextView}`;
+    assert.equal(c.ASMTraceEditor.sourceViewWasEdited(), true);
+    const saved = plain(c.ASMTraceEditor.snapshot().traceDocument);
+    assert.deepEqual(saved.rules, []);
+    assert.deepEqual(saved.studio.positions || {}, {});
+    assert.deepEqual(saved.studio.cameraRules || [], []);
+    assert.deepEqual(saved.skins, {});
+  }
+});
+
+test('a saved slide whose code removed its old view block loads without stale presentation', () => {
+  const old = savedTrace();
+  old.sourceCode = 'int main() {}\n/* @asm-view\n{"version":1,"studio":{"cameraRules":[{"id":"old-camera","zoom":2}]}}\n@asm-view */';
+  old.viewSettingsApplied = true;
+  const code = 'int main() {}';
+  const results = ['editor', 'runtime'].map(mode => {
+    const { c } = context(mode);
+    c.load('trace-editor.js');
+    c.aceEditor.value = code;
+    c.ASMTraceEditor.loadAnimation({ mode: 'trace', code, traceDocument: old });
+    const saved = plain(c.ASMTraceEditor.snapshot().traceDocument);
+    return { cameras: saved.studio.cameraRules || [], positions: saved.studio.positions || {}, rules: saved.rules };
+  });
+  assert.deepEqual(results, [
+    { cameras: [], positions: {}, rules: [] },
+    { cameras: [], positions: {}, rules: [] }
+  ]);
+});
+
+test('a saved slide keeps Studio edits when its newer view block agrees with the saved trace', () => {
+  const { c } = context();
+  c.load('trace-editor.js');
+  const old = savedTrace();
+  old.sourceCode = 'int main() {}\n/* @asm-view\n{"version":1,"studio":{}}\n@asm-view */';
+  old.viewSettingsApplied = true;
+  const code = `int main() {}\n${c.ASMTraceViewSource.format(c.ASMTraceViewSource.fromTrace(old))}`;
+  c.aceEditor.value = code;
+  c.ASMTraceEditor.loadAnimation({ mode: 'trace', code, traceDocument: old });
+  const saved = plain(c.ASMTraceEditor.snapshot().traceDocument);
+  assert.equal(saved.studio.cameraRules[0].id, 'new-camera');
+  assert.equal(saved.studio.eventSettings.gapMs, 740);
+  assert.equal(saved.rules[0].id, 'new-rule');
+});
+
+test('the next compile config takes rules only from the current source view', async () => {
+  const { c } = context();
+  c.fetch = async () => ({ ok: true, json: async () => ({ variables: [], frameDirectives: [] }) });
+  c.load('trace-editor.js');
+  const old = savedTrace();
+  old.viewSettingsApplied = true;
+  c.ASMTraceEditor.applyTraceDocument(old);
+  const bare = await c.ASMTraceEditor.getCompileConfig('int main() {}');
+  assert.deepEqual(plain(bare.rules), []);
+  const withRule = await c.ASMTraceEditor.getCompileConfig('int main() {}\n/* @asm-view\n{"rules":[{"id":"current"}]}\n@asm-view */');
+  assert.deepEqual(plain(withRule.rules), [{ id: 'current' }]);
+});
+
 test('editor and slide runtime recover the generation source for the shared code presenter', () => {
   const trace = savedTrace();
   delete trace.sourceCode;

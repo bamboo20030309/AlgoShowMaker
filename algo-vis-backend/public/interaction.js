@@ -659,12 +659,14 @@ class CanvasInteractionManager {
         if (this._isTraceStudio() && grp.dataset.traceObjectKey && this._dragType === 'all') {
           window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
         }
+        window.ASMTraceRenderers?.refreshArrows?.();
         this.updateSelectionOverlay();
       } else {
         // 讀 base-offset
         if (traceDrag) {
           grp.setAttribute('transform', `${this._traceBaseTransform} translate(${ntx},${nty})`.trim());
           window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
+          window.ASMTraceRenderers?.refreshArrows?.();
           this.updateSelectionOverlay();
           return;
         }

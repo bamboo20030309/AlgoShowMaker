@@ -161,3 +161,16 @@ test('relative targets settle before text, segment, marker and arrow layout', ()
   assert.ok(segments < semanticText && semanticText < finalBinding,
     'semantic text uses settled targets while the final pass keeps Studio bindings authoritative');
 });
+
+test('the unpositioned primary object defaults to canvas.top offset(0,80)', () => {
+  const rendererSource = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8');
+  const context = vm.createContext({ window: {}, document: { documentElement: { dataset: {} } } });
+  vm.runInContext(rendererSource, context);
+  const delta = context.window.ASMTraceRenderers.defaultLiveObjectPlacementDelta({
+    x: 100, y: 20, width: 200, height: 80
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(delta)), { x: 350, y: -28 });
+  assert.equal(100 + delta.x + 200 / 2, 550, 'the object is centered on canvas.top');
+  assert.equal(20 + delta.y + 80, 72,
+    'offset(0,80) retains the normal 8px semantic anchor gap');
+});

@@ -200,6 +200,8 @@ struct NamedValue {
   std::string json;
 };
 
+inline std::string current_activation_source_json();
+
 inline std::unordered_map<std::string, std::vector<std::string>>& active_lifetimes() {
   static std::unordered_map<std::string, std::vector<std::string>> values;
   return values;
@@ -288,7 +290,8 @@ class Recorder {
             << ",\"source\":{\"line\":" << line
             << ",\"function\":" << quoted(function_name ? function_name : "")
             << ",\"statementId\":" << quoted(statement_id ? statement_id : "")
-            << ",\"statementKind\":" << quoted(statement_kind ? statement_kind : "") << "}"
+            << ",\"statementKind\":" << quoted(statement_kind ? statement_kind : "")
+            << current_activation_source_json() << "}"
             << ",\"state\":{";
     for (std::size_t index = 0; index < state.size(); ++index) {
       if (index) output_ << ',';
@@ -319,6 +322,134 @@ class Recorder {
 inline Recorder& recorder() {
   static Recorder instance;
   return instance;
+}
+
+struct FunctionActivationFrame {
+  std::string function_name;
+  std::string activation_id;
+  std::string parent_activation_id;
+  std::vector<std::string> ancestor_activation_ids;
+  int recursion_depth;
+  int sibling_index;
+  int root_index;
+  int next_recursive_child;
+};
+
+inline std::vector<FunctionActivationFrame>& function_activation_stack() {
+  static std::vector<FunctionActivationFrame> stack;
+  return stack;
+}
+
+inline unsigned long long& function_activation_counter() {
+  static unsigned long long value = 0;
+  return value;
+}
+
+inline std::unordered_map<std::string, int>& function_root_counters() {
+  static std::unordered_map<std::string, int> values;
+  return values;
+}
+
+inline std::string current_activation_source_json() {
+  const auto& stack = function_activation_stack();
+  if (stack.empty()) return std::string();
+  const FunctionActivationFrame& frame = stack.back();
+  std::ostringstream ancestors;
+  ancestors << '[';
+  for (std::size_t index = 0; index < frame.ancestor_activation_ids.size(); ++index) {
+    if (index) ancestors << ',';
+    ancestors << quoted(frame.ancestor_activation_ids[index]);
+  }
+  ancestors << ']';
+  return std::string(",\"recursionFunction\":") + quoted(frame.function_name)
+    + ",\"recursionActivationId\":" + quoted(frame.activation_id)
+    + ",\"recursionParentActivationId\":" + quoted(frame.parent_activation_id)
+    + ",\"recursionAncestorActivationIds\":" + ancestors.str()
+    + ",\"recursionDepth\":" + std::to_string(frame.recursion_depth)
+    + ",\"recursionSiblingIndex\":" + std::to_string(frame.sibling_index)
+    + ",\"recursionRootIndex\":" + std::to_string(frame.root_index);
+}
+
+class FunctionActivation {
+ public:
+  explicit FunctionActivation(const char* function_name) : active_(true) {
+    const std::string name = function_name ? function_name : "global";
+    auto& stack = function_activation_stack();
+    int parent_index = -1;
+    for (int index = static_cast<int>(stack.size()) - 1; index >= 0; --index) {
+      if (stack[static_cast<std::size_t>(index)].function_name == name) {
+        parent_index = index;
+        break;
+      }
+    }
+
+    FunctionActivationFrame frame;
+    frame.function_name = name;
+    frame.activation_id = std::string("activation-")
+      + std::to_string(function_activation_counter()++);
+    frame.next_recursive_child = 0;
+    if (parent_index >= 0) {
+      FunctionActivationFrame& parent = stack[static_cast<std::size_t>(parent_index)];
+      frame.parent_activation_id = parent.activation_id;
+      frame.ancestor_activation_ids = parent.ancestor_activation_ids;
+      frame.ancestor_activation_ids.push_back(parent.activation_id);
+      frame.recursion_depth = parent.recursion_depth + 1;
+      frame.sibling_index = parent.next_recursive_child++;
+      frame.root_index = parent.root_index;
+    } else {
+      frame.parent_activation_id.clear();
+      frame.ancestor_activation_ids.clear();
+      frame.recursion_depth = 0;
+      frame.sibling_index = 0;
+      frame.root_index = function_root_counters()[name]++;
+    }
+    activation_id_ = frame.activation_id;
+    stack.push_back(frame);
+  }
+
+  FunctionActivation(const FunctionActivation&) = delete;
+  FunctionActivation& operator=(const FunctionActivation&) = delete;
+
+  ~FunctionActivation() {
+    if (!active_) return;
+    auto& stack = function_activation_stack();
+    if (!stack.empty() && stack.back().activation_id == activation_id_) {
+      stack.pop_back();
+      return;
+    }
+    for (auto it = stack.end(); it != stack.begin();) {
+      --it;
+      if (it->activation_id != activation_id_) continue;
+      stack.erase(it);
+      break;
+    }
+  }
+
+ private:
+  std::string activation_id_;
+  bool active_;
+};
+
+inline std::string recursion_layout_context_json(const char* layout_id) {
+  if (!layout_id || !*layout_id) return std::string();
+  const auto& stack = function_activation_stack();
+  if (stack.empty()) return std::string();
+  const FunctionActivationFrame& frame = stack.back();
+  std::ostringstream ancestors;
+  ancestors << '[';
+  for (std::size_t index = 0; index < frame.ancestor_activation_ids.size(); ++index) {
+    if (index) ancestors << ',';
+    ancestors << quoted(frame.ancestor_activation_ids[index]);
+  }
+  ancestors << ']';
+  return std::string(",\"layoutId\":") + quoted(layout_id)
+    + ",\"recursionFunction\":" + quoted(frame.function_name)
+    + ",\"recursionActivationId\":" + quoted(frame.activation_id)
+    + ",\"recursionParentActivationId\":" + quoted(frame.parent_activation_id)
+    + ",\"recursionAncestorActivationIds\":" + ancestors.str()
+    + ",\"recursionDepth\":" + std::to_string(frame.recursion_depth)
+    + ",\"recursionSiblingIndex\":" + std::to_string(frame.sibling_index)
+    + ",\"recursionRootIndex\":" + std::to_string(frame.root_index);
 }
 
 class VariableScopeExit {
@@ -387,22 +518,24 @@ inline std::string target_json(const char* role, const char* variable_id,
 template <typename T>
 inline void event_keep(int line, const char* signature, const char* variable_id,
                        const char* name, const char* label, const T& value,
-                       bool preserve_style = true) {
+                       bool preserve_style = true, const char* layout_id = "") {
   recorder().add_event("keep", line, signature ? signature : "",
     std::string("\"name\":") + quoted(name ? name : "")
       + ",\"label\":" + quoted(label ? label : "")
       + ",\"mode\":\"variable\""
       + ",\"preserveStyle\":" + (preserve_style ? "true" : "false")
+      + recursion_layout_context_json(layout_id)
       + ",\"payload\":{\"data\":" + encode_value(value) + "}"
       + ",\"targets\":[" + target_json("source", variable_id, name, "") + ']');
 }
 
 inline void event_keep_last(int line, const char* signature, const char* label,
-                            bool preserve_style = true) {
+                            bool preserve_style = true, const char* layout_id = "") {
   recorder().add_event("keep", line, signature ? signature : "",
     std::string("\"label\":") + quoted(label ? label : "")
       + ",\"mode\":\"last\""
       + ",\"preserveStyle\":" + (preserve_style ? "true" : "false")
+      + recursion_layout_context_json(layout_id)
       + ",\"targets\":[]");
 }
 
@@ -511,6 +644,28 @@ void event_write(int line, const char* signature, const char* variable_id,
           has_resolved_index, resolved_index) + ']');
 }
 
+template <typename Collection, typename F>
+void event_sequence_operation(int line, const char* signature,
+                              const char* variable_id, const char* expression,
+                              const char* operation, Collection& collection, F action) {
+  const std::size_t before_size = collection.size();
+  const std::string before_front = before_size ? encode_value(collection.front()) : "null";
+  const std::string before_back = before_size ? encode_value(collection.back()) : "null";
+  action();
+  const std::size_t after_size = collection.size();
+  const std::string after_front = after_size ? encode_value(collection.front()) : "null";
+  const std::string after_back = after_size ? encode_value(collection.back()) : "null";
+  recorder().add_event("sequence-operation", line, signature ? signature : "",
+    std::string("\"operation\":") + quoted(operation ? operation : "")
+      + ",\"payload\":{\"beforeSize\":" + std::to_string(before_size)
+      + ",\"afterSize\":" + std::to_string(after_size)
+      + ",\"beforeFront\":" + before_front
+      + ",\"beforeBack\":" + before_back
+      + ",\"afterFront\":" + after_front
+      + ",\"afterBack\":" + after_back + "}"
+      + ",\"targets\":[" + target_json("target", variable_id, expression, "") + ']');
+}
+
 template <typename BeforeFactory, typename F, typename AfterFactory>
 void event_update(int line, const char* signature, const char* variable_id,
                    const char* expression, const char* index_expression,
@@ -556,6 +711,52 @@ void event_assign(int line, const char* signature,
           source_has_resolved_index, source_resolved_index) + ']');
 }
 
+// An assignment used as the right-hand side of another assignment must
+// preserve its expression value while still recording its own earlier event.
+template <typename Action, typename Record>
+auto assign_expr_action(Action action, Record record, std::true_type)
+    -> decltype(action()) {
+  auto&& result = action();
+  record();
+  return result;
+}
+
+template <typename Action, typename Record>
+auto assign_expr_action(Action action, Record record, std::false_type)
+    -> decltype(action()) {
+  auto result = action();
+  record();
+  return result;
+}
+
+template <typename BeforeFactory, typename F, typename AfterFactory>
+decltype(auto) event_assign_expr(int line, const char* signature,
+                   const char* target_id, const char* target_expression, const char* target_index,
+                   bool target_has_resolved_index, long long target_resolved_index,
+                   const char* source_id, const char* source_expression, const char* source_index,
+                   bool source_has_resolved_index, long long source_resolved_index,
+                   const char* expression, BeforeFactory before_factory, F action, AfterFactory after_factory,
+                   bool animate = true, bool for_initializer = false) {
+  const std::string before = encode_value(before_factory());
+  auto record_after = [&]() {
+    auto&& after_value = after_factory();
+    mark_initialized(target_id, after_value);
+    const std::string after = encode_value(after_value);
+    recorder().add_event("assign", line, signature ? signature : "",
+      std::string("\"operation\":\"=\"")
+        + ",\"animate\":" + (animate ? "true" : "false")
+        + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
+        + ",\"expression\":" + quoted(expression ? expression : "")
+        + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + after + "}"
+        + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
+            target_has_resolved_index, target_resolved_index)
+        + ',' + target_json("source", source_id, source_expression, source_index,
+            source_has_resolved_index, source_resolved_index) + ']');
+  };
+  return assign_expr_action(action, record_after,
+    typename std::is_reference<decltype(action())>::type{});
+}
+
 template <typename LeftFactory, typename RightFactory, typename Compare>
 bool event_compare(int line, const char* signature,
                    const char* left_id, const char* left_expression, const char* left_index,
@@ -574,6 +775,24 @@ bool event_compare(int line, const char* signature,
           left_has_resolved_index, left_resolved_index)
       + ',' + target_json("right", right_id, right_expression, right_index,
           right_has_resolved_index, right_resolved_index) + ']');
+  return result;
+}
+
+template <typename ValueFactory>
+bool event_truthy_compare(int line, const char* signature,
+                          const char* variable_id, const char* expression,
+                          const char* index_expression,
+                          bool has_resolved_index, long long resolved_index,
+                          ValueFactory evaluate) {
+  auto&& value = evaluate();
+  const bool result = static_cast<bool>(value);
+  recorder().add_event("compare", line, signature ? signature : "",
+    std::string("\"comparisonKind\":\"truthy\"")
+      + ",\"operation\":\"truthy\""
+      + ",\"result\":" + (result ? "true" : "false")
+      + ",\"payload\":{\"value\":" + encode_value(value) + "}"
+      + ",\"targets\":[" + target_json("value", variable_id, expression,
+          index_expression, has_resolved_index, resolved_index) + ']');
   return result;
 }
 

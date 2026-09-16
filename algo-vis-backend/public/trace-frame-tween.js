@@ -8,12 +8,36 @@
     false: 'rgb(239, 154, 154)'
   });
   const COMPARE_TIMING = Object.freeze({ popup: 180, wait: 400, size: 300, result: 420, reset: 260 });
+  const COMPARE_DURATION = Object.values(COMPARE_TIMING).reduce((sum, value) => sum + value, 0);
+  const COMPARE_SCALE_DELTA = 0.14;
   const ASSIGN_TIMING = Object.freeze({ frame: 160, valueHold: 500, drop: 500, hold: 500, exit: 100 });
   const GENERIC_EVENT_DURATION = Object.freeze({ lift: 340, pulse: 400, fade: 440, code: 400 });
   const APPEAR_TIMING = Object.freeze({ duration: 220, offsetY: -16 });
   const MARKER_REFLOW_TIMING = Object.freeze({ duration: 180, entranceDelay: 80 });
   const EXIT_OFFSET_Y = -16;
   const EVENT_CODE_PROMPT_DURATION = 400;
+  const SEQUENCE_TIMING = Object.freeze({ duration: 440, travel: 48 });
+
+  function sequenceEdge(operation) {
+    return /(?:_front|^push_front$|^pop_front$)/.test(String(operation || ''))
+      ? 'front' : 'back';
+  }
+
+  function sequenceCellKeys(document, frame, event, inserted = true) {
+    const target = (event?.targets || []).find(item => item.role === 'target')
+      || event?.targets?.[0];
+    if (!target?.variableId) return [];
+    const before = Number(event?.payload?.beforeSize);
+    const after = Number(event?.payload?.afterSize);
+    if (!Number.isInteger(before) || !Number.isInteger(after)
+      || before < 0 || after < 0) return [];
+    const delta = inserted ? after - before : before - after;
+    if (delta <= 0) return [];
+    const first = sequenceEdge(event.operation) === 'front'
+      ? 0 : (inserted ? before : after);
+    const objectKey = eventTargetKey(document, frame, target);
+    return Array.from({ length: delta }, (_, offset) => `${objectKey}#${first + offset}`);
+  }
 
   function visualLifecycleKind(element) {
     if (element?.matches?.('.asm-trace-text-object')
@@ -71,12 +95,26 @@
     const context = parseColor.context
       || (parseColor.context = document.createElement('canvas').getContext('2d'));
     if (!context) return null;
-    context.fillStyle = '#000000';
+    // Canvas retains its previous fillStyle when given an invalid SVG paint
+    // such as "none". Probe with two distinct sentinels so an unreadable
+    // paint cannot silently become black during a style transition.
+    context.fillStyle = '#010203';
     context.fillStyle = source;
-    if (context.fillStyle === source || context.fillStyle.startsWith('#') || context.fillStyle.startsWith('rgb')) {
-      return parseColor(context.fillStyle, alpha);
-    }
-    return null;
+    const first = context.fillStyle;
+    context.fillStyle = '#040506';
+    context.fillStyle = source;
+    const second = context.fillStyle;
+    return first === second ? parseColor(first, alpha) : null;
+  }
+
+  function paintTransitionColors(before, after) {
+    const fromNone = String(before?.fill || '').trim().toLowerCase() === 'none';
+    const toNone = String(after?.fill || '').trim().toLowerCase() === 'none';
+    const from = fromNone ? null : parseColor(before?.fill, before?.opacity);
+    const to = toNone ? null : parseColor(after?.fill, after?.opacity);
+    if (fromNone && to) return [{ ...to, a: 0 }, to];
+    if (toNone && from) return [from, { ...from, a: 0 }];
+    return from && to ? [from, to] : null;
   }
 
   function interpolateColor(from, to, t) {
@@ -364,6 +402,59 @@
         visualContinuityKey: continuityKey,
         from: { x: before.x, y: before.y },
         to: { x: after.x, y: after.y },
+        durationMs: Math.max(1, Number(transition.duration) || Number(duration) || 520),
+        easing: String(transition.easing || 'smooth'),
+        blocking: true,
+        enabled: true,
+        source: 'automatic'
+      });
+    });
+    return steps;
+  }
+
+  function swapContainerPlacementTransitionSteps({
+    eventFrame, previousPlacements, currentPlacements,
+    previousObjects, currentElements, transitionForKey, duration = 520
+  } = {}) {
+    const containerKeys = new Set();
+    orderedEvents(eventFrame).filter(event => (
+      event?.type === 'swap'
+      && event.enabled !== false
+      && event.autoAnimationDisabled !== true
+    )).forEach(event => {
+      (event.targets || []).forEach(target => {
+        if (!target?.variableId) return;
+        containerKeys.add(objectKeyForVariable(eventFrame, target.variableId));
+      });
+    });
+    if (!containerKeys.size) return [];
+
+    const identityKeys = previousKeysByRuntimeIdentity(previousObjects);
+    const steps = [];
+    containerKeys.forEach(key => {
+      const element = currentElements?.get?.(key);
+      const current = currentPlacements?.get?.(key);
+      if (!element || !current) return;
+      const transition = transitionForKey?.(key) || {};
+      const requestedSourceKey = transition.sourceKey || key;
+      const sourceKey = previousAliasKey(
+        requestedSourceKey, key, element, previousPlacements, identityKeys
+      );
+      const previous = previousPlacements?.get?.(sourceKey);
+      if (!previous) return;
+      const mode = transition.requestedMode || transition.mode || 'move';
+      if (mode === 'instant' || mode === 'fade') return;
+      const dx = (Number(previous.x) || 0) - (Number(current.x) || 0);
+      const dy = (Number(previous.y) || 0) - (Number(current.y) || 0);
+      if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return;
+      steps.push({
+        id: `swap-container-settle:${key}`,
+        kind: 'object-transition',
+        subtype: 'swap-container-settle',
+        targetKey: key,
+        sourceKey,
+        from: { x: Number(previous.x) || 0, y: Number(previous.y) || 0 },
+        to: { x: Number(current.x) || 0, y: Number(current.y) || 0 },
         durationMs: Math.max(1, Number(transition.duration) || Number(duration) || 520),
         easing: String(transition.easing || 'smooth'),
         blocking: true,
@@ -689,6 +780,68 @@
     const x = Number(element.getAttribute('data-trace-position-x'));
     const y = Number(element.getAttribute('data-trace-position-y'));
     return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : fallback;
+  }
+
+  function relativeMotionDelta(own, parent, options = {}) {
+    if (options.lockToTarget || options.inheritParentMotion) return { x: 0, y: 0 };
+    return {
+      x: (Number(own?.x) || 0) - (Number(parent?.x) || 0),
+      y: (Number(own?.y) || 0) - (Number(parent?.y) || 0)
+    };
+  }
+
+  function outerframeGeometryLabel(element) {
+    return Boolean(element?.classList?.contains('outerframe-label')
+      && [...(element.parentElement?.children || [])].some(child => (
+        child.classList?.contains('outerframe-bg')
+      )));
+  }
+
+  function indexLabelGrowthCandidate(entry, previousPlacements, previousObjects) {
+    if (!entry?.element?.hasAttribute?.('data-trace-index-label')
+      || entry.previous || entry.keepSnapshotMember || entry.sceneBoundaryEntrance) return false;
+    const cellKey = String(entry.key || '').replace(/:index$/, '');
+    if (cellKey === entry.key || !previousPlacements?.has?.(cellKey)) return false;
+    const previousCell = previousVisualElement(previousObjects, cellKey);
+    return Boolean(previousCell && sameSceneGeneration(entry.element, previousCell));
+  }
+
+  function indexLabelGrowthGeometry(element) {
+    const children = [...(element?.children || [])];
+    const rect = children.find(child => child.localName === 'rect');
+    const text = children.find(child => child.localName === 'text');
+    const height = Number(rect?.getAttribute('height'));
+    if (!rect || !Number.isFinite(height) || height <= 0) return null;
+    return { rect, text, height, textOpacity: text?.getAttribute('opacity') ?? null };
+  }
+
+  function applyIndexLabelGrowth(geometry, progress) {
+    if (!geometry) return;
+    const revealed = clamp01(progress);
+    // Keep the rectangle's top edge at the cell bottom. The index text stays
+    // at its final size and only appears once the small box has grown enough.
+    geometry.rect.setAttribute('height', String(geometry.height * revealed));
+    if (!geometry.text) return;
+    if (revealed >= 1) {
+      if (geometry.textOpacity == null) geometry.text.removeAttribute('opacity');
+      else geometry.text.setAttribute('opacity', geometry.textOpacity);
+      return;
+    }
+    const baseOpacity = geometry.textOpacity == null ? 1 : Number(geometry.textOpacity);
+    geometry.text.setAttribute('opacity', String(
+      (Number.isFinite(baseOpacity) ? baseOpacity : 1) * clamp01((revealed - 0.35) / 0.65)
+    ));
+  }
+
+  function shouldAnimateObjectEntrance(options = {}) {
+    // A @keep snapshot is already-visible history. It may move from the live
+    // object's position into a layout slot, but it must never be introduced
+    // as a newly-created visual.
+    if (options.keepSnapshotMember || options.retainedSnapshot) return false;
+    if (options.declarationSlot) return true;
+    if (options.sceneBoundaryEntrance) return true;
+    if (options.declarationKnown) return false;
+    return options.hasPrevious !== true || options.enteringMarker === true;
   }
 
   function previousKeysByRuntimeIdentity(previousObjects) {
@@ -1136,6 +1289,28 @@
         targetMutation(targets[1], event.payload?.rightBefore, event.payload?.rightAfter)
       ];
     }
+    if (event?.type === 'sequence-operation' && targets[0]?.variableId) {
+      const before = Number(event.payload?.beforeSize);
+      const after = Number(event.payload?.afterSize);
+      if (!Number.isInteger(before) || !Number.isInteger(after)
+        || Math.abs(after - before) !== 1) return [];
+      const index = sequenceEdge(event.operation) === 'front'
+        ? 0 : Math.min(before, after);
+      const target = {
+        ...targets[0], indexExpression: String(index), resolvedIndex: index
+      };
+      return after > before ? [
+        targetMutation(target, false, true, 'presence'),
+        targetMutation(target, null, event.payload?.[
+          sequenceEdge(event.operation) === 'front' ? 'afterFront' : 'afterBack'
+        ])
+      ] : [
+        targetMutation(target, true, false, 'presence'),
+        targetMutation(target, event.payload?.[
+          sequenceEdge(event.operation) === 'front' ? 'beforeFront' : 'beforeBack'
+        ], null)
+      ];
+    }
     if (event?.type === 'declare') {
       const target = targets.find(item => item?.role === 'target') || targets[0];
       const initializedLater = target && orderedEvents(eventFrame).some(candidate => {
@@ -1175,6 +1350,7 @@
         + (slot.markerAssignment ? ASSIGN_TIMING.valueHold : 0)
         + ASSIGN_TIMING.drop;
     }
+    if (slot.animation === 'sequence') return Number(slot.start) || 0;
     return Number(slot.end) || Number(slot.start) || 0;
   }
 
@@ -1445,17 +1621,133 @@
   }
 
   function appendBelowTextLayer(root, element) {
-    const textLayer = root.querySelector?.(':scope > .asm-trace-text-layer');
+    const textLayer = root.querySelector?.(
+      ':scope > .asm-trace-text-layer, :scope > .asm-trace-foreground-arrows'
+    );
     root.insertBefore(element, textLayer || null);
     return element;
   }
 
   function appendBelowTraceIndicators(root, element) {
     const foreground = root.querySelector?.(
-      ':scope > .asm-trace-bound-object, :scope > .asm-trace-text-layer'
+      ':scope > .asm-trace-bound-object, :scope > .asm-trace-text-layer, :scope > .asm-trace-foreground-arrows'
     );
     root.insertBefore(element, foreground || null);
     return element;
+  }
+
+  function createAnimationEffectLayer(root) {
+    let layer = [...root.children].find(node => node.classList?.contains('asm-trace-animation-effect-layer'));
+    if (!layer) layer = createSvg('g', {
+      class: 'asm-trace-animation-effect-layer',
+      'data-trace-animation-effect-layer': '1'
+    });
+    const style = [...root.children].find(node => node.classList?.contains('asm-trace-style-layer'));
+    const arrows = [...root.children].find(node => node.classList?.contains('asm-trace-foreground-arrows'));
+    root.insertBefore(layer, style || arrows || null);
+    const initialChildren = new Set(root.children);
+    const promoted = new Map();
+    const infrastructure = node => node === layer || node.matches?.(
+      '.asm-trace-style-layer, .asm-trace-pointer-layer, .asm-trace-background-arrows, '
+      + '.asm-trace-foreground-arrows, .asm-trace-text-layer'
+    );
+    const topVisual = element => {
+      let node = element;
+      while (node?.parentNode && node.parentNode !== root && node.parentNode !== layer) {
+        node = node.parentNode;
+      }
+      return node && (node.parentNode === root || node.parentNode === layer)
+        && !infrastructure(node) ? node : null;
+    };
+    const directlyAnimatedVisual = element => {
+      if (!element || infrastructure(element)) return null;
+      if (element.closest?.('.asm-trace-pointer-layer')) return null;
+      const cell = element.matches?.('[data-trace-index]')
+        ? element : element.closest?.('[data-trace-index]');
+      if (cell && root.contains(cell)) return cell;
+      return topVisual(element);
+    };
+    const parentTransformInRoot = parent => {
+      try {
+        const rootMatrix = root.getScreenCTM?.();
+        const parentMatrix = parent?.getScreenCTM?.();
+        if (!rootMatrix || !parentMatrix) return '';
+        const matrix = rootMatrix.inverse().multiply(parentMatrix);
+        return `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`;
+      } catch {
+        return '';
+      }
+    };
+    const restore = (node, record) => {
+      if (record.placeholder.parentNode === record.parent) {
+        if (record.wrapper && node.parentNode === record.wrapper) {
+          record.parent.insertBefore(node, record.placeholder);
+        } else if (!record.wrapper && node.parentNode === layer) {
+          record.parent.insertBefore(node, record.placeholder);
+        }
+      }
+      record.wrapper?.remove();
+      record.placeholder.remove();
+      promoted.delete(node);
+    };
+    return {
+      layer,
+      sync(elements = []) {
+        const desired = new Set();
+        for (const element of elements) {
+          const node = directlyAnimatedVisual(element);
+          if (node) desired.add(node);
+        }
+        // The renderer has finished before this controller is created. New
+        // root-level children are transient event/transition visuals.
+        [...root.children].forEach(node => {
+          if (!initialChildren.has(node) && !infrastructure(node)) desired.add(node);
+        });
+        promoted.forEach((record, node) => {
+          if (record.runtime && node.isConnected) desired.add(node);
+        });
+        desired.forEach(node => {
+          if (promoted.has(node)) return;
+          const parent = node.parentNode;
+          if (!parent || parent === layer || infrastructure(node)) return;
+          const placeholder = parent === root
+            ? document.createComment('asm-trace-animation-effect-order')
+            : createSvg('g', {
+              class: 'asm-trace-animation-cell-placeholder',
+              display: 'none',
+              'aria-hidden': 'true'
+            });
+          parent.insertBefore(placeholder, node);
+          if (parent === root) {
+            layer.append(node);
+            promoted.set(node, {
+              parent, placeholder, wrapper: null,
+              runtime: !initialChildren.has(node)
+            });
+            return;
+          }
+          // Move only the directly animated cell. A wrapper carries the
+          // parent-to-root transform so the cell does not jump when detached
+          // from its array/container; outerframe, name and sibling cells stay
+          // in the ordinary object layer.
+          const wrapper = createSvg('g', {
+            class: 'asm-trace-animation-cell-host',
+            'pointer-events': 'none'
+          });
+          const transform = parentTransformInRoot(parent);
+          if (transform) wrapper.setAttribute('transform', transform);
+          layer.append(wrapper);
+          wrapper.append(node);
+          promoted.set(node, { parent, placeholder, wrapper, runtime: false });
+        });
+        [...promoted].forEach(([node, record]) => {
+          if (!desired.has(node) || !node.isConnected) restore(node, record);
+        });
+      },
+      clear() {
+        [...promoted].forEach(([node, record]) => restore(node, record));
+      }
+    };
   }
 
   function elementBoundsInRoot(element, root) {
@@ -1553,7 +1845,9 @@
     const left = operands[0].numericValue;
     const right = operands[1].numericValue;
     if (!Number.isFinite(left) || !Number.isFinite(right) || left === right) return [1, 1];
-    return left > right ? [1.14, 0.86] : [0.86, 1.14];
+    return left > right
+      ? [1 + COMPARE_SCALE_DELTA, 1 - COMPARE_SCALE_DELTA]
+      : [1 - COMPARE_SCALE_DELTA, 1 + COMPARE_SCALE_DELTA];
   }
 
   function addHighlight(element, color) {
@@ -1572,6 +1866,10 @@
       'pointer-events': 'none'
     });
     element.append(highlight);
+    // The same non-blinking result frame is used for single-value if reads
+    // and ordinary compare results. It must follow the *presented* cell and
+    // stay above objects even while that cell is scaled or lifted.
+    window.ASMTraceRenderers?.attachStyleVisual?.(highlight, element, 'highlight');
     return highlight;
   }
 
@@ -1664,13 +1962,17 @@
 
   function assignableTargetText(operand) {
     if (!operand || operand.marker) return null;
-    return operand.element.matches?.('text')
+    const text = operand.element.matches?.('text')
       ? operand.element
       : operand.element.querySelector?.('text');
+    return text?.dataset?.traceContentRole === 'index' ? null : text;
   }
 
   function createAssignmentTransfer(root, sourceOperand, targetOperand, value, sourceVisual = null) {
     if (!sourceOperand || !targetOperand || sourceOperand.marker || targetOperand.marker) return null;
+    // An index-only cell is not a visual representation of its data value.
+    // Transferring a clone of it would animate the index instead of the value.
+    if (sourceOperand.element.querySelector?.('text[data-trace-content-role="index"]')) return null;
     if (sourceOperand.visualKey === targetOperand.visualKey) return null;
     if (sourceOperand.element.closest?.('[data-trace-visibility="hidden"]')
       || targetOperand.element.closest?.('[data-trace-visibility="hidden"]')) return null;
@@ -1744,8 +2046,11 @@
     };
   }
 
-  function prepareForwardValues(options, replayPlan) {
+  function prepareForwardValues(options, replayPlan, eventFrame) {
     const tracks = [];
+    const conditionalBackgroundVariables = new Set((eventFrame?.styles || [])
+      .filter(style => style.styleType === 'background' && style.when)
+      .map(style => style.targetVariableId));
     (replayPlan?.visualValueTracks || replayPlan?.valueTracks || [])
       .filter(track => track.kind === 'value').forEach(track => {
       const values = [
@@ -1765,32 +2070,199 @@
         ? element
         : element.querySelector?.('text');
       if (!targetText) return;
-      tracks.push({ ...track, targetText, applied: Symbol('unapplied') });
+      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
+      const cell = element.closest?.('[data-trace-index]') || element;
+      const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const index = Number(cell.dataset?.traceIndex);
+      const styleRect = conditionalBackgroundVariables.has(variableId)
+        && Number.isInteger(index)
+        ? cell.querySelector?.(':scope > rect') || null
+        : null;
+      tracks.push({ ...track, targetText: fixedIndex ? null : targetText,
+        targetCell: fixedIndex ? element : null, variableId, index, styleRect,
+        applied: Symbol('unapplied'), currentValue: track.initial });
     });
+    const styleTargets = tracks.filter(track => track.styleRect);
+    // Value cells are visual nodes that may swap positions. Their index labels
+    // stay at logical array indices, so labels must replay the logical value
+    // tracks rather than inheriting the moving node's value.
+    const indexTracks = [];
+    (replayPlan?.valueTracks || []).filter(track => track.kind === 'value')
+      .forEach(track => {
+        const cell = options.currentElements?.get?.(track.key);
+        const logicalIndex = Number(cell?.dataset?.traceIndex);
+        const label = options.currentElements?.get?.(`${track.key}:index`)
+          || (Number.isInteger(logicalIndex)
+            ? cell?.parentElement?.querySelector?.(`[data-trace-index-label="${logicalIndex}"]`)
+            : null);
+        const variableId = label?.closest?.('[data-trace-variable]')?.dataset?.traceVariable
+          || cell?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+        const index = Number(label?.getAttribute?.('data-trace-index-label')
+          ?? label?.dataset?.traceIndexLabel ?? cell?.dataset?.traceIndex);
+        const rect = label?.querySelector?.(':scope > rect') || null;
+        if (!rect || !conditionalBackgroundVariables.has(variableId)
+          || !Number.isInteger(index)) return;
+        indexTracks.push({ ...track, variableId, index, rect,
+          applied: Symbol('unapplied'), currentValue: track.initial });
+      });
+    // A conditional rule can style a whole range even when an event mutates
+    // only one cell. Keep every visible cell and its index box in the same
+    // style checkpoint so unrelated cells cannot repaint early.
+    const seenStyleRects = new Set(styleTargets.map(track => track.styleRect));
+    const seenIndexRects = new Set(indexTracks.map(track => track.rect));
+    options.currentElements?.forEach?.((element, key) => {
+      const isIndexLabel = element?.hasAttribute?.('data-trace-index-label') === true;
+      const index = Number(isIndexLabel
+        ? element.getAttribute('data-trace-index-label') : element?.dataset?.traceIndex);
+      const variableId = element?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      if (!conditionalBackgroundVariables.has(variableId) || !Number.isInteger(index)) return;
+      const rect = element.querySelector?.(':scope > rect');
+      if (!rect) return;
+      const target = { key, variableId, index, currentValue: null };
+      if (isIndexLabel) {
+        if (!seenIndexRects.has(rect)) {
+          indexTracks.push({ ...target, rect, steps: [], applied: Symbol('unapplied') });
+          seenIndexRects.add(rect);
+        }
+      } else if (!seenStyleRects.has(rect)) {
+        styleTargets.push({ ...target, styleRect: rect });
+        seenStyleRects.add(rect);
+      }
+    });
+    // The previous SVG is the authoritative style checkpoint: it includes
+    // user edits and index-label paint, not merely the previous frame's rules.
+    // Destination-frame rules must not be evaluated until a value commits.
+    const hasPreviousStyleCheckpoint = Boolean(options.previousObjects?.size);
+    const initialStylePaints = new Map();
+    const initialVisualSources = new Map(Object.entries(
+      replayPlan?.checkpoints?.find(checkpoint => checkpoint.visualBindingsBefore)
+        ?.visualBindingsBefore || {}
+    ).map(([logicalKey, visualKey]) => [visualKey, logicalKey]));
+    const previousPaint = (key, rect) => {
+      const previous = options.previousObjects?.get?.(key)
+        || previousVisualElement(options.previousObjects, key);
+      const previousRect = previous?.querySelector?.(':scope > rect') || null;
+      return previousRect ? {
+        fill: previousRect.getAttribute?.('fill') || '#ffffff',
+        opacity: previousRect.getAttribute?.('fill-opacity') || '1'
+      } : {
+        fill: rect.getAttribute?.('fill') || '#ffffff',
+        opacity: rect.getAttribute?.('fill-opacity') || '1'
+      };
+    };
+    styleTargets.forEach(track => {
+      initialStylePaints.set(track.styleRect, previousPaint(
+        initialVisualSources.get(track.key) || track.key, track.styleRect
+      ));
+    });
+    indexTracks.forEach(track => {
+      const indexKey = String(track.key).endsWith(':index')
+        ? String(track.key)
+        : `${track.key}:index`;
+      initialStylePaints.set(track.rect, previousPaint(indexKey, track.rect));
+    });
+    let stylePaints = initialStylePaints;
+    let stylesDirty = !hasPreviousStyleCheckpoint;
+    const refreshStyles = () => {
+      if (!stylesDirty) return;
+      stylesDirty = false;
+      const evaluateTracks = source => {
+        const presentedValues = new Map();
+        source.forEach(track => {
+          if (!track.variableId || !Number.isInteger(track.index)
+            || track.currentValue == null) return;
+          if (!presentedValues.has(track.variableId)) {
+            presentedValues.set(track.variableId, new Map());
+          }
+          presentedValues.get(track.variableId).set(track.index, track.currentValue);
+        });
+        return window.ASMTraceRules.evaluate(options.document, eventFrame, {
+          presentedValues
+        });
+      };
+      const visualHighlights = styleTargets.length ? evaluateTracks(tracks) : {};
+      const indexHighlights = indexTracks.length ? evaluateTracks(indexTracks) : {};
+      stylePaints = new Map([
+        ...styleTargets.map(track => {
+          const highlight = visualHighlights[track.variableId]?.[String(track.index)] || {};
+          return [track.styleRect, {
+            fill: highlight.styleTypes?.background || highlight.fill || '#ffffff',
+            opacity: '1'
+          }];
+        }),
+        ...indexTracks.map(track => {
+          const highlight = indexHighlights[track.variableId]?.[String(track.index)] || {};
+          return [track.rect, {
+            fill: highlight.styleTypes?.background || highlight.fill || '#ffffff',
+            opacity: '1'
+          }];
+        })
+      ]);
+    };
     const apply = (track, value) => {
       const displayed = displayEventValue(value);
       if (track.applied === displayed) return;
       track.applied = displayed;
-      track.targetText.textContent = displayed;
+      track.currentValue = value;
+      if (styleTargets.length || indexTracks.length) stylesDirty = true;
+      if (track.targetCell) track.targetCell.dataset.traceDataValue = displayed;
+      else track.targetText.textContent = displayed;
     };
     const update = elapsed => {
-      tracks.forEach(track => {
+      [...tracks, ...indexTracks].forEach(track => {
         let value = track.initial;
         track.steps.forEach(step => {
           if (step.mode === 'ignored' || elapsed < Number(step.commitMs)) return;
           value = step.after;
         });
-        apply(track, value);
+        if (track.rect) {
+          const displayed = displayEventValue(value);
+          if (track.applied === displayed) return;
+          track.applied = displayed;
+          track.currentValue = value;
+          stylesDirty = true;
+        } else {
+          apply(track, value);
+        }
       });
     };
     update(0);
+    const instantStyleCommit = [...tracks, ...indexTracks].some(track => (
+      track.steps.some(step => step.mode !== 'ignored'
+        && Number(step.commitMs) <= 0
+        && displayEventValue(step.before) !== displayEventValue(step.after))
+    ));
+    if (hasPreviousStyleCheckpoint && !instantStyleCommit) {
+      stylesDirty = false;
+      stylePaints = initialStylePaints;
+    }
     return {
       update,
-      finish() {
-        tracks.forEach(track => {
-          const committed = track.steps.filter(step => step.mode !== 'ignored');
-          apply(track, committed.length ? committed.at(-1).after : track.initial);
+      applyStyles() {
+        refreshStyles();
+        stylePaints.forEach((paint, rect) => {
+          rect.setAttribute('fill', paint.fill);
+          rect.setAttribute('fill-opacity', paint.opacity);
         });
+      },
+      finish() {
+        [...tracks, ...indexTracks].forEach(track => {
+          const committed = track.steps.filter(step => step.mode !== 'ignored');
+          const value = committed.length ? committed.at(-1).after : track.initial;
+          if (track.rect) {
+            const displayed = displayEventValue(value);
+            if (track.applied !== displayed) {
+              track.applied = displayed;
+              track.currentValue = value;
+              stylesDirty = true;
+            }
+          } else {
+            apply(track, value);
+          }
+        });
+        // A frame may change style rules without mutating a value. Commit the
+        // destination style only after the complete event sequence has ended.
+        stylesDirty = true;
       }
     };
   }
@@ -1807,6 +2279,11 @@
       placements, elements, visualKeyForSource
     );
     if (!operand) return null;
+    // Older saved traces recorded container methods as a generic write. A
+    // collection has no assignable scalar text: its first <text> is usually
+    // the outerframe name, so never replace that label with an event value.
+    if (!target.indexExpression && !Number.isInteger(target.resolvedIndex)
+      && operand.element.querySelector?.('.outerframe-bg')) return null;
     const rawDelta = appearingKeys?.has?.(operand.visualKey)
       ? { x: 0, y: 0 }
       : (rawDeltas?.get?.(operand.visualKey) || { x: 0, y: 0 });
@@ -2256,6 +2733,44 @@
         this.adjustments.clear();
         this.logicalAdjustments.clear();
       }
+    };
+  }
+
+  function createTruthyCompareEffect(event, traceDocument, eventFrame, placements, elements,
+    visualKeyForSource) {
+    const target = event?.targets?.[0];
+    const operand = target && eventOperand(traceDocument, eventFrame, target,
+      event?.payload?.value, placements, elements, visualKeyForSource);
+    // A single-value condition has no second operand to meet. Enlarge its
+    // visible cell in place and color the result border from the captured
+    // truth value; the cell's pointers follow the presented geometry.
+    const color = COMPARE_COLORS[String(event?.result === true)];
+    const highlight = operand ? addHighlight(operand.element, color) : null;
+    const adjustments = new Map();
+    if (highlight) {
+      highlight.classList.add('asm-trace-truthy-highlight');
+      highlight.setAttribute('opacity', '0');
+    }
+    return {
+      adjustments,
+      logicalAdjustments: new Map(),
+      update(elapsed) {
+        if (!highlight) return;
+        const waitEnd = COMPARE_TIMING.popup + COMPARE_TIMING.wait;
+        const resultEnd = waitEnd + COMPARE_TIMING.size + COMPARE_TIMING.result;
+        const reveal = easeOutCubic(clamp01(elapsed / COMPARE_TIMING.popup));
+        const size = elapsed < waitEnd ? 0
+          : easeOutCubic(clamp01((elapsed - waitEnd) / COMPARE_TIMING.size));
+        const reset = elapsed < resultEnd ? 0
+          : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
+        const stay = 1 - reset;
+        highlight.setAttribute('opacity', String(reveal * stay));
+        adjustments.set(operand.visualKey, {
+          x: 0, y: 0, scale: 1 + COMPARE_SCALE_DELTA * size * stay
+        });
+        if (elapsed >= COMPARE_DURATION) this.remove();
+      },
+      remove() { highlight?.remove(); adjustments.clear(); }
     };
   }
 
@@ -3017,11 +3532,31 @@
           element,
           ...(element?.querySelectorAll?.('[data-trace-source-variable-id], [data-trace-variable]') || [])
         ];
-        if (!candidates.some(candidate => visualMatchesScopeExitTarget(candidate, target))) return;
-        matches.push({ topKey, element, target });
+        const visual = candidates.find(candidate => visualMatchesScopeExitTarget(candidate, target));
+        if (!visual) return;
+        matches.push({ topKey, element, visual, target });
       });
     });
     return matches;
+  }
+
+  function scopeExitVisualContinues(previousVisual, currentElements) {
+    if (!previousVisual || retainedSnapshotVisual(previousVisual)) return false;
+    let found = false;
+    currentElements?.forEach?.(element => {
+      if (found || !element || element.isConnected === false) return;
+      const candidates = [
+        element,
+        ...(element.querySelectorAll?.(
+          '[data-trace-source-variable-id], [data-trace-variable]'
+        ) || [])
+      ];
+      found = candidates.some(candidate => (
+        !retainedSnapshotVisual(candidate)
+        && sameRuntimeVisual(candidate, previousVisual)
+      ));
+    });
+    return found;
   }
 
   function hasCurrentScopeExitVisual(target, currentElements) {
@@ -3274,6 +3809,19 @@
       )].some(key => placements?.has?.(key) && elements?.has?.(key));
     }
     if (animation === 'position') return Boolean(markerForMotionSlot({ animation, event }, elements));
+    if (animation === 'sequence') {
+      const target = targets.find(item => item.role === 'target') || targets[0];
+      const key = target ? eventTargetKey(traceDocument, eventFrame, target) : '';
+      if (!key || !placements?.has?.(key) || !elements?.has?.(key)
+        || retainedSnapshotVisual(elements.get(key))) return false;
+      const before = Number(event?.payload?.beforeSize);
+      const after = Number(event?.payload?.afterSize);
+      if (after > before) return sequenceCellKeys(traceDocument, eventFrame, event)
+        .every(cellKey => elements?.has?.(cellKey));
+      if (before > after) return sequenceCellKeys(traceDocument, eventFrame, event, false)
+        .every(cellKey => Boolean(previousVisualElement(previousObjects, cellKey)));
+      return true;
+    }
     const visible = target => Boolean(eventOperand(
       traceDocument,
       eventFrame,
@@ -3304,6 +3852,9 @@
       }
       return variableTargets.every(visible);
     }
+    if (animation === 'compare' && event?.comparisonKind === 'truthy') {
+      return targets.length === 1 && visible(targets[0]);
+    }
     if (animation === 'compare' || animation === 'swap') {
       return targets.length >= 2 && targets.slice(0, 2).every(visible);
     }
@@ -3324,7 +3875,7 @@
   }
 
   function eventAnimationIsRenderable(animation) {
-    return ['declare', 'exit', 'position', 'assign', 'compare', 'swap', 'fixed'].includes(animation)
+    return ['declare', 'exit', 'position', 'assign', 'compare', 'swap', 'fixed', 'sequence'].includes(animation)
       || Boolean(GENERIC_EVENT_DURATION[animation]);
   }
 
@@ -3363,6 +3914,9 @@
     if (animation === 'assign') {
       const target = targets.find(item => item?.role === 'target') || targets[0];
       return Boolean(target?.variableId);
+    }
+    if (animation === 'compare' && event?.comparisonKind === 'truthy') {
+      return targets.length === 1 && Boolean(targets[0]?.variableId);
     }
     if (animation === 'compare' || animation === 'swap') {
       return targets.length >= 2 && targets.slice(0, 2).every(target => target?.variableId);
@@ -3432,7 +3986,6 @@
     previousObjects = null, eventFilter = null
   ) {
     if (Number(direction) < 0) return [];
-    const compareDuration = Object.values(COMPARE_TIMING).reduce((sum, value) => sum + value, 0);
     const slots = [];
     const seenMarkerAssignments = new Set();
     let cursor = Math.max(0, Number(initialDelay) || 0);
@@ -3515,6 +4068,8 @@
           : null;
         const markerMovesWithinFrame = Boolean(markerAssignment && (
           seenMarkerAssignments.has(markerAssignment.key)
+          || (event?.payload?.before != null && event?.payload?.after != null
+            && displayEventValue(event.payload.before) !== displayEventValue(event.payload.after))
           || Math.abs(Number(markerDelta?.x) || 0) > 0.1
           || Math.abs(Number(markerDelta?.y) || 0) > 0.1
         ));
@@ -3523,8 +4078,11 @@
         duration = effectDuration
           + (!standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
-      if (event.type === 'compare' && animation === 'compare') duration = compareDuration;
+      if (event.type === 'compare' && animation === 'compare') {
+        duration = COMPARE_DURATION;
+      }
       if (event.type === 'swap' && animation === 'swap') duration = swapDuration;
+      if (animation === 'sequence') duration = SEQUENCE_TIMING.duration;
       if (!duration && GENERIC_EVENT_DURATION[animation]) duration = GENERIC_EVENT_DURATION[animation];
       if (!duration) return;
       const preKeepBatchKey = event?.type === 'visual-exit'
@@ -3538,8 +4096,15 @@
           ].join('|')
         : '';
       const previousSlot = slots[slots.length - 1] || null;
+      // Consecutive enabled exits describe one observable scope boundary. Keep
+      // every source event as an independent, editable timeline item, but run
+      // their visual departures as one parallel batch. A non-exit event ends
+      // the batch so runtime ordering is never crossed.
+      const parallelExitBatch = animation === 'exit'
+        && previousSlot?.animation === 'exit';
       const parallelWithPrevious = Boolean(
-        preKeepBatchKey && previousSlot?.preKeepBatchKey === preKeepBatchKey
+        parallelExitBatch
+        || (preKeepBatchKey && previousSlot?.preKeepBatchKey === preKeepBatchKey)
       );
       if (slots.length && !parallelWithPrevious) cursor += eventGap(traceDocument);
       const targetsEntering = [...eventTargetVisualKeys(
@@ -3571,13 +4136,56 @@
         reflowStart: animation === 'exit' && markerExit
           ? visualStart + APPEAR_TIMING.duration : 0,
         markerAssignment: Boolean(markerAssignment), duration, end: visualStart + duration,
-        preKeepBatchKey
+        preKeepBatchKey,
+        exitBatchStart: parallelExitBatch
+          ? Number(previousSlot?.exitBatchStart ?? previousSlot?.visualStart ?? visualStart)
+          : (animation === 'exit' ? visualStart : null)
       });
       cursor = parallelWithPrevious
         ? Math.max(cursor, visualStart + duration)
         : visualStart + duration;
     });
     return slots;
+  }
+
+  function enabledExitBarrierEnd(eventTimeline = [], minimum = 0) {
+    return (eventTimeline || []).reduce((end, slot) => {
+      if (slot?.animation !== 'exit') return end;
+      return Math.max(end, Number(slot.end) || 0);
+    }, Math.max(0, Number(minimum) || 0));
+  }
+
+  function frameSceneBoundaryChanged(previousFrame, frame) {
+    if (!previousFrame || !frame) return false;
+    const previousActivation = String(
+      previousFrame.source?.recursionActivationId || ''
+    );
+    const currentActivation = String(frame.source?.recursionActivationId || '');
+    if (previousActivation && currentActivation) {
+      return previousActivation !== currentActivation;
+    }
+    return String(previousFrame.source?.function || '')
+      !== String(frame.source?.function || '');
+  }
+
+  function sameRuntimeVisual(current, previous) {
+    if (!current || !previous) return false;
+    const currentIdentity = String(current.dataset?.traceRuntimeIdentity || '');
+    const previousIdentity = String(previous.dataset?.traceRuntimeIdentity || '');
+    if (currentIdentity && previousIdentity) {
+      return currentIdentity === previousIdentity;
+    }
+    const currentLifetime = String(current.dataset?.traceRuntimeLifetime || '');
+    const previousLifetime = String(previous.dataset?.traceRuntimeLifetime || '');
+    return Boolean(
+      currentLifetime
+      && previousLifetime
+      && currentLifetime === previousLifetime
+    );
+  }
+
+  function needsSceneBoundaryEntrance(sceneChanged, current, previous) {
+    return Boolean(sceneChanged && !sameRuntimeVisual(current, previous));
   }
 
   function eventMotionDelays(traceDocument, eventFrame, eventTimeline, placements, elements) {
@@ -3656,6 +4264,82 @@
     };
   }
 
+  function createSequenceOperationEffect(
+    slot, traceDocument, eventFrame, placements, elements, previousObjects
+  ) {
+    const event = slot.event;
+    const target = (event?.targets || []).find(item => item.role === 'target')
+      || event?.targets?.[0];
+    const topKey = target ? eventTargetKey(traceDocument, eventFrame, target) : '';
+    const currentTop = elements?.get?.(topKey);
+    const content = currentTop?.querySelector?.('.outerframe-bg')?.parentElement;
+    const before = Number(event?.payload?.beforeSize);
+    const after = Number(event?.payload?.afterSize);
+    const direction = sequenceEdge(event.operation) === 'front' ? -1 : 1;
+    const inserted = after > before
+      ? sequenceCellKeys(traceDocument, eventFrame, event) : [];
+    const removed = before > after
+      ? sequenceCellKeys(traceDocument, eventFrame, event, false) : [];
+    const adjustments = new Map();
+    const opacities = new Map();
+    const ghosts = [];
+
+    if (content && removed.length) {
+      removed.forEach(cellKey => {
+        const oldCell = previousVisualElement(previousObjects, cellKey);
+        if (!oldCell) return;
+        const wrapper = createSvg('g', {
+          class: 'asm-trace-sequence-ghost', 'pointer-events': 'none', opacity: 0
+        });
+        const cell = oldCell.cloneNode(true);
+        const indexLabel = previousVisualElement(previousObjects, `${cellKey}:index`);
+        [cell, ...(indexLabel ? [indexLabel.cloneNode(true)] : [])].forEach(clone => {
+          removeAnimationNodes(clone);
+          [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')]
+            .forEach(node => {
+              node.removeAttribute('id');
+              node.removeAttribute('data-trace-object-key');
+            });
+          wrapper.append(clone);
+        });
+        content.append(wrapper);
+        ghosts.push({ wrapper, cellKey });
+      });
+    }
+
+    return {
+      adjustments, opacities,
+      update(elapsed) {
+        const progress = easeOutCubic(clamp01(elapsed / Math.max(1, slot.duration)));
+        adjustments.clear();
+        opacities.clear();
+        inserted.forEach(cellKey => {
+          [cellKey, `${cellKey}:index`].forEach(key => {
+            if (!elements?.has?.(key)) return;
+            adjustments.set(key, {
+              x: direction * SEQUENCE_TIMING.travel * (1 - progress), y: 0, scale: 1
+            });
+            opacities.set(key, progress);
+          });
+        });
+        ghosts.forEach(({ wrapper }) => {
+          wrapper.setAttribute('transform', `translate(${direction * SEQUENCE_TIMING.travel * progress}, 0)`);
+          wrapper.setAttribute('opacity', String(1 - progress));
+        });
+        if (!inserted.length && !removed.length && topKey) {
+          adjustments.set(topKey, {
+            x: 0, y: 0, scale: 1 + 0.035 * Math.sin(Math.PI * progress)
+          });
+        }
+      },
+      remove() {
+        adjustments.clear();
+        opacities.clear();
+        ghosts.forEach(({ wrapper }) => wrapper.remove());
+      }
+    };
+  }
+
   function eventSequence(options, eventFrame, eventTimeline) {
     const logicalEvents = orderedEvents(eventFrame)
       .filter(event => event?.loopBoundarySuppressed !== true);
@@ -3663,7 +4347,7 @@
     const replayPlan = options.forwardReplayPlan || createForwardReplayPlan(
       options.document, eventFrame, eventTimeline, options.direction
     );
-    const forwardValues = prepareForwardValues(options, replayPlan);
+    const forwardValues = prepareForwardValues(options, replayPlan, eventFrame);
     const markerMotion = markerAssignmentMotion(
       options.document, eventFrame, eventTimeline,
       options.currentPlacements, options.currentElements, options.markerEntries,
@@ -3675,9 +4359,16 @@
       }
     );
     const combinedAdjustments = new Map();
+    const sequenceEffects = new Map(eventTimeline.filter(slot => (
+      slot.animation === 'sequence'
+    )).map(slot => [slot, createSequenceOperationEffect(
+      slot, options.document, eventFrame,
+      options.currentPlacements, options.currentElements, options.previousObjects
+    )]));
     let activeSlot = null;
     let activeEffect = null;
     let activeEffectStarted = false;
+    let activeAnimatedElements = [];
     let finished = false;
     let announcementsReady = false;
     queueMicrotask(() => { announcementsReady = true; });
@@ -3715,6 +4406,12 @@
         || options.visualKeyForSource?.(key)
         || key;
       if (slot.type === 'compare') {
+        if (slot.event?.comparisonKind === 'truthy') {
+          return createTruthyCompareEffect(
+            slot.event, options.document, eventFrame,
+            options.currentPlacements, options.currentElements, visualKeyAtEvent
+          );
+        }
         const markerPositionAtCompare = operand => {
           const liveAdjustment = markerMotion.adjustments.get(operand.visualKey);
           if (liveAdjustment) return liveAdjustment;
@@ -3735,6 +4432,7 @@
           options.appearingKeys, options.previousObjects, visualKeyAtEvent
         );
       }
+      if (slot.animation === 'sequence') return sequenceEffects.get(slot) || null;
       if (GENERIC_EVENT_DURATION[slot.animation]) {
         return createGenericEventEffect(
           slot, options.document, eventFrame,
@@ -3743,11 +4441,22 @@
       }
       return null;
     }
+    function animatedElementsFor(slot) {
+      const checkpoint = replayPlan.checkpoints.find(item => item.event === slot.event);
+      const visualKeyAtEvent = key => checkpoint?.visualBindingsBefore?.[key]
+        || options.visualKeyForSource?.(key) || key;
+      return (slot.event?.targets || []).map(target => eventOperand(
+        options.document, eventFrame, target, null,
+        options.currentPlacements, options.currentElements, visualKeyAtEvent
+      )?.element).filter(Boolean);
+    }
     return {
       get adjustments() { return combinedAdjustments; },
+      get animatedElements() { return activeAnimatedElements; },
       get markerArrowStates() { return markerMotion.arrowStates; },
       get markerTargets() { return markerMotion.committedTargets; },
       get opacities() { return activeEffect?.opacities || new Map(); },
+      applyStyles() { forwardValues.applyStyles(); },
       syncPositions() { activeEffect?.syncPosition?.(); },
       update(elapsed) {
         markerMotion.update(elapsed);
@@ -3762,6 +4471,7 @@
           activeSlot = slot;
           activeEffect = null;
           activeEffectStarted = false;
+          activeAnimatedElements = [];
           if (slot) {
             completeLogicalEventsBefore(slot.event?.order);
             options.root.dataset.traceActiveEventId = String(slot.event?.id || '');
@@ -3779,6 +4489,7 @@
         if (slot && !activeEffectStarted && elapsed >= Number(slot.visualStart ?? slot.start)) {
           activeEffectStarted = true;
           activeEffect = effectFor(slot);
+          if (activeEffect) activeAnimatedElements = animatedElementsFor(slot);
         }
         if (slot && activeEffect) activeEffect.update(Math.max(0, elapsed - (slot.effectStart ?? slot.start)));
         // The DOM is rendered from the destination frame, but visible values
@@ -3809,8 +4520,10 @@
         if (announcementsReady) announceCompletion();
         else queueMicrotask(announceCompletion);
         activeEffect?.remove?.();
+        sequenceEffects.forEach(effect => effect.remove());
         activeEffect = null;
         activeEffectStarted = false;
+        activeAnimatedElements = [];
         activeSlot = null;
         if (Number(options.direction) >= 0) markerMotion.finish();
         else markerMotion.reset();
@@ -3875,6 +4588,77 @@
       arrowY: Number(element.dataset.traceSegmentArrowY)
     };
     return Object.values(geometry).every(Number.isFinite) ? geometry : null;
+  }
+
+  function outerframeGeometry(element) {
+    const background = element?.querySelector?.('.outerframe-bg');
+    const group = background?.parentElement;
+    if (!group || !background) return null;
+    const directChild = className => [...group.children].find(child => (
+      child.classList?.contains(className)
+    )) || null;
+    const numberAttribute = (node, name) => Number(node?.getAttribute?.(name));
+    const rectGeometry = node => node ? {
+      x: numberAttribute(node, 'x'), y: numberAttribute(node, 'y'),
+      width: numberAttribute(node, 'width'), height: numberAttribute(node, 'height')
+    } : null;
+    const backgroundBox = rectGeometry(background);
+    if (!backgroundBox || !Object.values(backgroundBox).every(Number.isFinite)
+      || backgroundBox.width <= 0 || backgroundBox.height <= 0) return null;
+    const nameBox = rectGeometry(directChild('outerframe-nb'));
+    const label = directChild('outerframe-label');
+    const labelPosition = label ? {
+      x: numberAttribute(label, 'x'), y: numberAttribute(label, 'y')
+    } : null;
+    const bounds = ['left', 'top', 'right', 'bottom'].map(edge => (
+      numberAttribute(group, `data-outerframe-${edge}`)
+    ));
+    return {
+      group, background, backgroundBox,
+      nameBox: nameBox && Object.values(nameBox).every(Number.isFinite) ? nameBox : null,
+      labelPosition: labelPosition && Object.values(labelPosition).every(Number.isFinite)
+        ? labelPosition : null,
+      bounds: bounds.every(Number.isFinite) ? bounds : null
+    };
+  }
+
+  function outerframeGeometryChanged(before, after) {
+    if (!before || !after) return false;
+    const values = geometry => [
+      geometry.backgroundBox, geometry.nameBox, geometry.labelPosition, geometry.bounds
+    ].map(part => part == null ? null : Array.isArray(part)
+      ? part : Object.values(part));
+    return JSON.stringify(values(before)) !== JSON.stringify(values(after));
+  }
+
+  function applyOuterframeGeometry(current, previous, progress) {
+    if (!current || !previous) return;
+    const interpolate = (from, to) => from + (to - from) * progress;
+    const setBox = (element, before, after) => {
+      if (!element || !before || !after) return;
+      ['x', 'y', 'width', 'height'].forEach(name => {
+        element.setAttribute(name, String(interpolate(before[name], after[name])));
+      });
+    };
+    setBox(current.background, previous.backgroundBox, current.backgroundBox);
+    const directChild = className => [...current.group.children].find(child => (
+      child.classList?.contains(className)
+    )) || null;
+    setBox(directChild('outerframe-nb'),
+      previous.nameBox, current.nameBox);
+    const label = directChild('outerframe-label');
+    if (label && previous.labelPosition && current.labelPosition) {
+      ['x', 'y'].forEach(name => label.setAttribute(name, String(interpolate(
+        previous.labelPosition[name], current.labelPosition[name]
+      ))));
+    }
+    if (previous.bounds && current.bounds) {
+      ['left', 'top', 'right', 'bottom'].forEach((edge, index) => {
+        current.group.setAttribute(`data-outerframe-${edge}`, String(interpolate(
+          previous.bounds[index], current.bounds[index]
+        )));
+      });
+    }
   }
 
   function applySegmentGeometry(element, geometry) {
@@ -3961,10 +4745,12 @@
     const initialDelay = Math.max(0, Number(options.initialDelayMs) || 0);
     if (!duration) return Promise.resolve();
     const runId = ++activeRun;
+    const animationEffectLayer = createAnimationEffectLayer(root);
     let resolveRun = null;
     const completion = new Promise(resolve => { resolveRun = resolve; });
     const finishRun = () => {
       if (!resolveRun) return;
+      animationEffectLayer.clear();
       const resolve = resolveRun;
       resolveRun = null;
       if (finishActiveRun === finishRun) finishActiveRun = null;
@@ -4101,6 +4887,15 @@
       duration,
       eventControlledKeys
     });
+    transitionSteps.push(...swapContainerPlacementTransitionSteps({
+      eventFrame,
+      previousPlacements,
+      currentPlacements,
+      previousObjects,
+      currentElements,
+      transitionForKey,
+      duration
+    }));
     if (markerReflowDuration > 0) {
       transitionSteps.push({
         id: 'marker-group-reflow',
@@ -4180,6 +4975,12 @@
     const frameTransitionStart = Number(
       playbackPlan.phases.find(phase => phase.id === 'frame-transition')?.startMs
     ) || initialDelay;
+    // A destination scene is rendered before playback begins, but it must not
+    // become visible while enabled exits from the previous function/recursive
+    // scene are still running. Disabled and unavailable exits never enter the
+    // event timeline, so they add no delay.
+    const sceneEntranceStart = enabledExitBarrierEnd(eventTimeline, frameTransitionStart);
+    const functionSceneChanged = frameSceneBoundaryChanged(options.previousFrame, frame);
     root.dataset.tracePlaybackPlanId = playbackPlan.id;
     root.dataset.tracePlaybackPhase = playbackPhaseAt(playbackPlan, 0);
     const previousIdentityKeys = previousKeysByRuntimeIdentity(previousObjects);
@@ -4187,6 +4988,22 @@
       traceDocument, eventFrame, eventTimeline,
       currentElements, previousObjects, previousIdentityKeys
     );
+    const sequenceEntrances = new Map();
+    const sequenceResizeSlots = new Map();
+    eventTimeline.filter(slot => slot.animation === 'sequence').forEach(slot => {
+      sequenceCellKeys(traceDocument, eventFrame, slot.event).forEach(cellKey => {
+        sequenceEntrances.set(cellKey, slot);
+        sequenceEntrances.set(`${cellKey}:index`, slot);
+      });
+      const before = Number(slot.event?.payload?.beforeSize);
+      const after = Number(slot.event?.payload?.afterSize);
+      const target = (slot.event?.targets || []).find(item => item.role === 'target')
+        || slot.event?.targets?.[0];
+      if (before === after || !target?.variableId) return;
+      const key = eventTargetKey(traceDocument, eventFrame, target);
+      if (!sequenceResizeSlots.has(key)) sequenceResizeSlots.set(key, []);
+      sequenceResizeSlots.get(key).push(slot);
+    });
     const swapMap = swapSources(traceDocument, eventFrame, eventTimeline);
     const motionDelays = eventMotionDelays(
       traceDocument, eventFrame, eventTimeline, currentPlacements, currentElements
@@ -4200,6 +5017,9 @@
     const attachmentsByKey = new Map();
 
     root.querySelectorAll('[data-trace-attached-to]').forEach(element => {
+      // Style decorations have their own presented-matrix layer. Wrapping
+      // them here would apply the cell motion a second time.
+      if (element.closest('.asm-trace-style-layer')) return;
       const key = element.getAttribute('data-trace-attached-to') || '';
       if (!key) return;
       if (!attachmentsByKey.has(key)) attachmentsByKey.set(key, []);
@@ -4208,6 +5028,9 @@
 
     currentElements.forEach((element, key) => {
       if (!element?.isConnected) return;
+      // Retention connectors are persistent infrastructure, not entering or
+      // exiting visual objects. Their endpoints are updated by the renderer.
+      if (element.classList?.contains('asm-trace-keep-arrow')) return;
       const currentPlacement = currentPlacements.get(key);
       if (!currentPlacement) return;
       const current = motionPosition(element, currentPlacement);
@@ -4224,6 +5047,7 @@
       const topKey = topLevelKey(element, root);
       const topElement = currentElements.get(topKey) || element;
       const keepSnapshotMember = belongsToEnteringKeep(element, topKey);
+      const retainedSnapshot = retainedSnapshotVisual(element);
       const keepTransition = keepSnapshotMember && key === topKey;
       const keepHandoffSourceKey = keepTransition ? keepHandoffSources.get(topKey) || '' : '';
       const sourceKey = previousAliasKey(
@@ -4245,7 +5069,16 @@
       // old runtime object's already-visible DOM.
       const generationChanged = candidatePreviousVisual
         && !keepSnapshotMember
+        && !retainedSnapshot
         && !sameSceneGeneration(element, candidatePreviousVisual);
+      const sceneActivationChanged = key === topKey
+        && !keepSnapshotMember
+        && !retainedSnapshot
+        && needsSceneBoundaryEntrance(
+          functionSceneChanged,
+          topElement,
+          candidatePreviousVisual
+        );
       const previous = redeclaredMarkerKeys.has(key) || activationChanged || generationChanged
         ? null
         : (useMarkerContinuation
@@ -4272,9 +5105,9 @@
       }
       entries.push({
         key, sourceKey, element, current, previous, plan, mode, topKey,
-        keepTransition, keepSnapshotMember,
+        keepTransition, keepSnapshotMember, retainedSnapshot,
         keepHandoff: Boolean(keepHandoffSourceKey && previous),
-        sceneBoundaryEntrance: generationChanged,
+        sceneBoundaryEntrance: generationChanged || sceneActivationChanged,
         lifecycleKind: keepTransition ? 'keep-snapshot' : visualLifecycleKind(element),
         markerContinuation: useMarkerContinuation ? markerContinuation : null,
         declarationReflow: declarationReflowSchedule.get(key) || null,
@@ -4292,18 +5125,37 @@
       });
     });
 
+    const entriesByKey = new Map(entries.map(entry => [entry.key, entry]));
     entries.forEach(entry => {
+      entry.isIndexLabel = entry.element?.hasAttribute?.('data-trace-index-label') === true;
+      entry.indexLabelEntrance = indexLabelGrowthCandidate(
+        entry, previousPlacements, previousObjects
+      );
       const parentKey = parentObjectKey(entry.element, root);
       const own = rawDeltas.get(entry.key) || { x: 0, y: 0 };
       const parent = rawDeltas.get(parentKey) || { x: 0, y: 0 };
       const declarationDirect = declarationSchedule.declaredKeys.has(entry.key)
         && !declarationSchedule.slotsByKey.has(entry.key);
-      entry.dx = declarationDirect || (entry.keepSnapshotMember && !entry.keepHandoff)
-        ? 0
-        : own.x - parent.x;
-      entry.dy = declarationDirect || (entry.keepSnapshotMember && !entry.keepHandoff)
-        ? 0
-        : own.y - parent.y;
+      const topEntry = entriesByKey.get(entry.topKey);
+      // Reference parameters can give the same container a new source key in
+      // another function/recursion. The top-level runtime identity still
+      // proves continuity, but a nested cell may have no independently keyed
+      // previous placement. In that case it must inherit the container motion
+      // instead of applying an inverse delta that leaves the cell behind.
+      const inheritParentMotion = entry.key !== entry.topKey
+        && !entry.previous
+        && Boolean(topEntry?.previous);
+      const relativeDelta = relativeMotionDelta(own, parent, {
+        // The name already receives x/y interpolation from the outerframe
+        // geometry. A second child motion would move it twice while the
+        // background and name area only move once.
+        lockToTarget: outerframeGeometryLabel(entry.element)
+          || entry.isIndexLabel
+          || declarationDirect || (entry.keepSnapshotMember && !entry.keepHandoff),
+        inheritParentMotion
+      });
+      entry.dx = relativeDelta.x;
+      entry.dy = relativeDelta.y;
       entry.target = entry.key === entry.topKey
         ? entry.element.querySelector(':scope > .asm-trace-motion') || entry.element
         : entry.element;
@@ -4317,13 +5169,24 @@
       const declarationKnown = declarationSchedule.declaredKeys.has(entry.key)
         || declarationSchedule.declaredKeys.has(entry.topKey);
       entry.declarationOwned = declarationKnown;
-      entry.appearing = entry.keepSnapshotMember
-        ? entry.keepTransition && !entry.keepHandoff
-        : declarationSlot
-        ? true
-        : declarationKnown
-          ? entry.sceneBoundaryEntrance
-          : !entry.previous || enteringMarkerKeys.has(entry.key);
+      // A bottom index decoration is anchored to its own data cell. If that
+      // cell already exists, reveal the box downward from the cell edge; if
+      // the whole array is new, ride its entrance instead of flying in from
+      // a generic offset that can belong to another wrapped row.
+      entry.appearing = entry.indexLabelEntrance || (!entry.isIndexLabel
+        && shouldAnimateObjectEntrance({
+        keepSnapshotMember: entry.keepSnapshotMember,
+        retainedSnapshot: entry.retainedSnapshot,
+        declarationSlot,
+        declarationKnown,
+        sceneBoundaryEntrance: entry.sceneBoundaryEntrance,
+        hasPrevious: Boolean(entry.previous),
+        enteringMarker: enteringMarkerKeys.has(entry.key)
+      }));
+      const sequenceEntrance = !entry.previous && !entry.keepSnapshotMember
+        && !entry.retainedSnapshot
+        ? sequenceEntrances.get(entry.key) || null : null;
+      if (sequenceEntrance) entry.appearing = true;
       // A new ordinary object (including @text) belongs to the visual phase,
       // so it must remain hidden while the code panel is changing. Markers use
       // their dedicated entrance phase after keep/layout settlement. Objects
@@ -4336,10 +5199,11 @@
         ? (Number(declarationSlot.start) || 0)
           + (Number(declarationSlot.declarationEntranceDelay) || 0)
         : entry.sceneBoundaryEntrance
-          ? frameTransitionStart
+          ? sceneEntranceStart
         : enteringMarkerKeys.has(entry.key)
           ? playbackPlan.phases.find(phase => phase.id === 'object-entrance').startMs
           : frameTransitionStart;
+      if (sequenceEntrance) entry.appearanceStart = Number(sequenceEntrance.start) || 0;
       entry.declarationEntrance = Boolean(declarationSlot);
       if (entry.appearing) entry.target.dataset.traceAppearing = '1';
       entry.attachedVisuals = (attachmentsByKey.get(entry.key) || [])
@@ -4352,9 +5216,12 @@
         entry.compareCenter = { x: 0, y: 0 };
       }
       entry.rects = [...entry.element.querySelectorAll('rect')];
-      // A retained snapshot is a new immutable visual domain. Its cells and
-      // styles must already be the captured final state while the whole group
-      // fades in; never interpolate them from the outgoing live object.
+      entry.indexLabelGeometry = entry.indexLabelEntrance
+        ? indexLabelGrowthGeometry(entry.element) : null;
+      // A retained snapshot is an immutable visual domain. Its cells and
+      // styles must already be the captured final state while the group moves
+      // into its layout slot; never fade it in or interpolate its styling from
+      // the outgoing live object.
       const previousTop = entry.keepSnapshotMember
         ? null
         : previousObjects?.get(entry.topKey);
@@ -4369,11 +5236,32 @@
       entry.previousVisual = previousVisual;
       entry.previousSegmentGeometry = segmentGeometry(previousVisual);
       entry.currentSegmentGeometry = segmentGeometry(entry.element);
+      // The outerframe is part of the same moving array as its cells. Keep
+      // its authored final geometry separately because each tick rewrites the
+      // live SVG attributes while the child cells follow their own deltas.
+      entry.currentOuterframeGeometry = entry.key === entry.topKey
+        ? outerframeGeometry(entry.element) : null;
+      const resizeSlots = sequenceResizeSlots.get(entry.key) || [];
+      entry.outerframeResizeSlot = resizeSlots.length === 1 ? resizeSlots[0] : null;
+      entry.previousOuterframeGeometry = entry.currentOuterframeGeometry
+        && entry.previous && !entry.keepSnapshotMember
+        ? outerframeGeometry(previousVisual) : null;
       entry.visualCommit = visualCommits.get(entry.key) || null;
       entry.previousRectStates = previousVisual
         ? alignedRectStates(previousVisual, entry.element, entry.topKey)
         : (previousTop ? rectStates(previousTop, entry.topKey) : new Map());
       entry.currentRectStates = rectStates(entry.element, entry.topKey);
+      entry.geometryTransition = outerframeGeometryChanged(
+        entry.previousOuterframeGeometry, entry.currentOuterframeGeometry
+      ) || (entry.previousSegmentGeometry && entry.currentSegmentGeometry
+        && Object.keys(entry.currentSegmentGeometry).some(key => (
+          Math.abs(entry.currentSegmentGeometry[key] - entry.previousSegmentGeometry[key]) > 0.01
+        )));
+      entry.repaintTransition = !entry.visualCommit
+        && [...entry.currentRectStates].some(([key, after]) => {
+          const before = entry.previousRectStates.get(key);
+          return before && (before.fill !== after.fill || before.opacity !== after.opacity);
+        });
       entry.markerLabelBox = entry.element.querySelector('.trace-variable-marker-label-box');
       entry.markerLabelText = entry.element.querySelector('.trace-variable-marker-label-text');
       entry.markerPointPath = entry.element.querySelector('.trace-variable-marker-point path');
@@ -4458,6 +5346,12 @@
         // Let the current tween entry handle the exit and reserve ghosts for
         // lifetimes that are genuinely absent from the newly rendered scene.
         if (hasCurrentScopeExitVisual(match.target, currentElements)) return;
+        // Reference parameters receive a fresh C++ lifetime in every function
+        // or recursive activation even when they still refer to the exact same
+        // container.  The binding leaves scope, but the visual object does not:
+        // cloning the old top-level array here would draw it on top of the new
+        // activation until the exit slot completes.
+        if (scopeExitVisualContinues(match.visual, currentElements)) return;
         const identity = [
           match.topKey,
           match.target?.variableId,
@@ -4497,6 +5391,7 @@
       // A disabled exit applies the final absent state immediately; it must
       // not fall back to the generic cross-frame lift/fade.
       if (scopeExitControlledKeys.has(key)) return;
+      if (clone.classList?.contains('asm-trace-keep-arrow')) return;
       if (currentTopKeys.has(key)
         || heapResizeStages.heldPreviousKeys.has(key)) return;
       removeAnimationNodes(clone);
@@ -4542,7 +5437,10 @@
           || duration
       );
       const normalEnd = entry.motionDelay + localDuration;
-      return Math.max(end, normalEnd);
+      const appearanceEnd = entry.appearing
+        ? entry.appearanceStart + Math.min(APPEAR_TIMING.duration, localDuration)
+        : 0;
+      return Math.max(end, normalEnd, appearanceEnd);
     }, duration);
     const totalDuration = Math.max(
       eventTimelineDuration,
@@ -4649,6 +5547,24 @@
           exitProgress
         });
       });
+      // The effect layer is reserved for direct event participants. Ordinary
+      // frame movement, outerframe resizing and repainting stay in the normal
+      // object layer; promoting every transitioning entry can lift a whole
+      // container and then its cells, changing child order and z-order.
+      const animatedVisuals = [];
+      nestedLifecycleVisuals.forEach(({ element, declarationSlot, exitSlot }) => {
+        const entranceStart = (Number(declarationSlot?.start) || 0)
+          + (Number(declarationSlot?.declarationEntranceDelay) || 0);
+        const exitStart = Number(exitSlot?.start) || 0;
+        if ((declarationSlot && elapsed >= entranceStart
+            && elapsed < entranceStart + APPEAR_TIMING.duration)
+          || (exitSlot && elapsed >= exitStart
+            && elapsed < exitStart + (Number(exitSlot.exitDuration) || APPEAR_TIMING.duration))) {
+          animatedVisuals.push(element);
+        }
+      });
+      animatedVisuals.push(...(events?.animatedElements || []));
+      animationEffectLayer.sync(animatedVisuals);
       entries.forEach(entry => {
         const state = motionStates.get(entry.key);
         const adjustedX = state.x;
@@ -4662,6 +5578,19 @@
           ? `translate(${pivot.x}, ${pivot.y}) scale(${scale}) translate(${-pivot.x}, ${-pivot.y})`
           : '';
         entry.target.setAttribute('transform', [translate, entry.baseTransform, scaleTransform].filter(Boolean).join(' '));
+        applyIndexLabelGrowth(entry.indexLabelGeometry, state.appearEased);
+        if (entry.previousOuterframeGeometry) {
+          const resizeSlot = entry.outerframeResizeSlot;
+          const geometryProgress = resizeSlot
+            ? easeOutCubic(clamp01((elapsed - Number(resizeSlot.start))
+              / Math.max(1, Number(resizeSlot.duration))))
+            : state.localEased;
+          applyOuterframeGeometry(
+            entry.currentOuterframeGeometry,
+            entry.previousOuterframeGeometry,
+            geometryProgress
+          );
+        }
         entry.attachedVisuals.forEach(attachment => {
           attachment.wrapper.setAttribute('transform', [translate, scaleTransform].filter(Boolean).join(' '));
         });
@@ -4706,14 +5635,18 @@
             return;
           }
           if (before.fill === after.fill && before.opacity === after.opacity) return;
-          const fromColor = parseColor(before.fill, before.opacity);
-          const toColor = parseColor(after.fill, after.opacity);
-          if (!fromColor || !toColor) return;
+          const colors = paintTransitionColors(before, after);
+          if (!colors) {
+            applyRectState(rect, state.localEased < 1 ? before : after);
+            return;
+          }
+          const [fromColor, toColor] = colors;
           const color = interpolateColor(fromColor, toColor, state.localEased);
           rect.setAttribute('fill', `rgb(${color.r},${color.g},${color.b})`);
           rect.setAttribute('fill-opacity', String(color.a));
         });
       });
+      events?.applyStyles?.();
       // Some draw types expose automatic markers only as nested DOM visuals.
       // Compose their declaration and exit phases just like ordinary entries;
       // otherwise a newly declared marker is already visible behind the old
@@ -4749,6 +5682,9 @@
         else element.removeAttribute('transform');
       });
       events?.syncPositions?.();
+      // Endpoints use the SVG positions produced by this tick, not a second
+      // independent tween which would lag behind the moving objects.
+      window.ASMTraceRenderers?.refreshArrows?.();
 
       ghosts.forEach(({
         wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep
@@ -4789,6 +5725,7 @@
       events?.finish?.();
       entries.forEach(entry => {
         delete entry.target.dataset.traceAppearing;
+        applyIndexLabelGrowth(entry.indexLabelGeometry, 1);
         const markerAdjustment = entry.markerPointPath
           ? events?.adjustments?.get?.(entry.key)
           : null;
@@ -4841,6 +5778,10 @@
         if (entry.currentSegmentGeometry) {
           applySegmentGeometry(entry.element, entry.currentSegmentGeometry);
         }
+        if (entry.currentOuterframeGeometry) {
+          applyOuterframeGeometry(entry.currentOuterframeGeometry,
+            entry.currentOuterframeGeometry, 1);
+        }
         if (entry.markerPointPath) {
           const committedArrowState = commitMarker
             ? events?.markerArrowStates?.get?.(entry.key)
@@ -4865,6 +5806,7 @@
       });
       ghosts.forEach(({ wrapper }) => wrapper.remove());
       heapResizeStages.finish();
+      window.ASMTraceRenderers?.refreshArrows?.();
       markerEntrancesByFrame.delete(frame.id);
       delete root.dataset.tracePlaybackPhase;
       finishRun();
@@ -4882,7 +5824,8 @@
       + '.asm-trace-compare-marker-popup, .asm-trace-assign-marker-popup, '
       + '.asm-trace-assign-falling-value, .asm-trace-assign-transfer, '
       + '.asm-trace-compare-self-clone, .asm-trace-transition-ghost-motion, '
-      + '.asm-trace-transition-ghost, .asm-trace-heap-resize-ghost'
+      + '.asm-trace-transition-ghost, .asm-trace-heap-resize-ghost, '
+      + '.asm-trace-sequence-ghost'
     ).forEach(element => element.remove());
     document.querySelectorAll('[data-trace-heap-resize-current]').forEach(wrapper => {
       const heap = wrapper.querySelector(':scope > [data-layout="heap"]');
@@ -4898,15 +5841,19 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-160';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-192';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-160', play, cancel, updateEventAvailability,
-    createPlaybackPlan, recursiveMarkerTransitionSteps,
-    buildEventTimeline, declarationVisualSchedule, exitMarkerReflowSchedule,
+    build: 'trace-192', play, cancel, updateEventAvailability,
+    createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
+    buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
+    sameRuntimeVisual, needsSceneBoundaryEntrance,
+    scopeExitVisualContinues,
+    declarationVisualSchedule, exitMarkerReflowSchedule,
     isForInitializerAssignment,
     isDeclarationInitializerAssignment, markerTargetBeforeFrameEvents,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
+    relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
     createForwardReplayPlan, prepareForwardValues
   };
 })();

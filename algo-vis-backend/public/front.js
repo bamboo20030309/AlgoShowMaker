@@ -53,7 +53,10 @@ aceEditor.setOptions({
 const ALGORITHM_DRAFT_STORAGE_VERSION = 2;
 const ALGORITHM_DRAFT_SAVE_DELAY = 450;
 const algorithmDraftMode = new URLSearchParams(window.location.search).get('asmEmbed') || 'standalone';
-const ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:${algorithmDraftMode}`;
+const algorithmDraftPage = encodeURIComponent(window.location.pathname || '/algorithm.html');
+const ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:page:${algorithmDraftPage}:${algorithmDraftMode}`;
+const LEGACY_ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:${algorithmDraftMode}`;
+const ALGORITHM_DRAFT_MIGRATION_KEY = `${ALGORITHM_DRAFT_STORAGE_KEY}:legacy-migrated`;
 let algorithmDraftSaveTimer = null;
 let algorithmDraftRestored = false;
 let algorithmDraftApplying = false;
@@ -61,7 +64,29 @@ let algorithmEditorChangedSinceStartup = false;
 
 function readAlgorithmDraft() {
   try {
-    const raw = localStorage.getItem(ALGORITHM_DRAFT_STORAGE_KEY);
+    let raw = sessionStorage.getItem(ALGORITHM_DRAFT_STORAGE_KEY);
+    // The former localStorage draft was shared by every tab. Import a legacy
+    // revision only once, but allow an older still-open tab to save a newer
+    // revision on pagehide and import that revision when it reloads.
+    if (!raw) {
+      const legacy = localStorage.getItem(LEGACY_ALGORITHM_DRAFT_STORAGE_KEY);
+      if (legacy) {
+        const candidate = JSON.parse(legacy);
+        const migratedRevision = Number(localStorage.getItem(ALGORITHM_DRAFT_MIGRATION_KEY)) || 0;
+        const legacyRevision = Number(candidate?.updatedAt) || 0;
+        if (candidate?.version === ALGORITHM_DRAFT_STORAGE_VERSION
+          && typeof candidate.code === 'string'
+          && (!migratedRevision || legacyRevision > migratedRevision)) {
+          sessionStorage.setItem(ALGORITHM_DRAFT_STORAGE_KEY, legacy);
+          try {
+            localStorage.setItem(ALGORITHM_DRAFT_MIGRATION_KEY, String(legacyRevision || Date.now()));
+          } catch (error) {
+            console.warn('無法記錄演算法草稿移轉狀態', error);
+          }
+          raw = legacy;
+        }
+      }
+    }
     if (!raw) return null;
     const draft = JSON.parse(raw);
     if (draft?.version !== ALGORITHM_DRAFT_STORAGE_VERSION || typeof draft.code !== 'string') return null;
@@ -80,7 +105,7 @@ function saveAlgorithmDraft() {
   if (code.trim() === '// 讀取中...') return false;
   try {
     const cursor = aceEditor.getCursorPosition();
-    localStorage.setItem(ALGORITHM_DRAFT_STORAGE_KEY, JSON.stringify({
+    sessionStorage.setItem(ALGORITHM_DRAFT_STORAGE_KEY, JSON.stringify({
       version: ALGORITHM_DRAFT_STORAGE_VERSION,
       code,
       input,
@@ -171,6 +196,7 @@ window.asmWriteViewSettings = function (settings) {
   }
   aceEditor.selection.setSelectionRange(selection, false);
   session.setScrollTop(scrollTop);
+  window.ASMTraceEditor?.noteSourceViewWritten?.();
   return true;
 };
 

@@ -131,11 +131,38 @@
     if (!layer) {
       layer = document.createElementNS(NS, 'g');
       layer.setAttribute('id', 'arrow-layer');
+      layer.setAttribute('data-trace-arrow-layer', 'foreground');
       vp.appendChild(layer);
     } else {
       vp.appendChild(layer);
     }
     return layer;
+  }
+
+  function presentedPoint(spec, vp) {
+    if (!spec?.ref && !spec?.group) {
+      const point = window.resolvePos?.(spec);
+      return point && [point.x, point.y].every(Number.isFinite) ? point : null;
+    }
+    const ref = String(spec.ref || spec.group);
+    let element = vp.querySelector(`#${CSS.escape(ref)}`);
+    if (!element) return null;
+    if (spec.index !== undefined && spec.index !== -1) {
+      element = element.querySelector(`#${CSS.escape(`cell-${ref}-${spec.index}`)}`);
+    } else if (spec.row !== undefined && spec.row !== -1) {
+      element = element.querySelector(`#${CSS.escape(`cell-${ref}-${spec.row}-${spec.col}`)}`);
+    }
+    if (!element) return null;
+    const bounds = window.ASMArrowModel?.presentedBounds?.(element, vp,
+      spec.index === undefined && spec.row === undefined);
+    if (!bounds) return null;
+    const anchor = String(spec.anchor || 'center').toLowerCase();
+    return {
+      x: (anchor.includes('left') ? bounds.x : anchor.includes('right') ? bounds.x + bounds.width : bounds.x + bounds.width / 2)
+        + (Number(spec.dx ?? spec.x) || 0),
+      y: (anchor.includes('top') ? bounds.y : anchor.includes('bottom') ? bounds.y + bounds.height : bounds.y + bounds.height / 2)
+        + (Number(spec.dy ?? spec.y) || 0)
+    };
   }
 
   // ---------------------------------------
@@ -234,13 +261,18 @@
         return;
       }
 
-      const p1 = window.resolvePos(startSpec);
-      const p2 = window.resolvePos(endSpec);
+      const p1 = presentedPoint(startSpec, vp);
+      const p2 = presentedPoint(endSpec, vp);
+      if (!p1 || !p2) {
+        line.setAttribute('display', 'none');
+        return;
+      }
 
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const len = Math.hypot(dx, dy);
-      if (len === 0) return;
+      if (!(len > 0)) { line.setAttribute('display', 'none'); return; }
+      line.removeAttribute('display');
 
       const ux = dx / len;
       const uy = dy / len;
@@ -359,8 +391,9 @@
 
     const layer = ensureArrowLayer(vp);
 
-    const p1 = window.resolvePos(startSpec);
-    const p2 = window.resolvePos(endSpec);
+    const p1 = presentedPoint(startSpec, vp);
+    const p2 = presentedPoint(endSpec, vp);
+    if (!p1 || !p2) return;
 
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
@@ -379,59 +412,54 @@
     const animColor = opt.animateColor || color;
 
     // tween 設定
-    const tweenMs = (typeof opt.tweenDuration === 'number')
-      ? Math.max(0, opt.tweenDuration | 0)
-      : DEFAULT_TWEEN_MS;
+    const tweenMs = 0; // Bound arrows follow the presented objects in the same tick.
 
     // arrow key（配對同一條箭頭用）
     const arrowKey = (opt.key != null)
       ? String(opt.key)
       : ('auto-' + (frameAutoKeyCounter++));
-
-    // 如果 spec 是 outerframe 連接點，預設不縮短（margin=0）
-    const startIsOuter = isOuterframeSpec(startSpec);
-    const endIsOuter = isOuterframeSpec(endSpec);
-
-    // 判斷是否為「指向格子」且「錨點為中心」
-    const isCell = (s) => (s && (s.index !== undefined || s.row !== undefined));
-    const isCenter = (s) => (!s || !s.anchor || s.anchor === 'center');
-
-    // 基本 margin：沒有頭的那端可以短一點，有頭的那端預設長一點
-    let baseMarginStart;
-    if (opt.marginStart != null) {
-      baseMarginStart = Number(opt.marginStart);
-    } else {
-      if (startIsOuter) baseMarginStart = 0;
-      else if (isCell(startSpec) && isCenter(startSpec)) baseMarginStart = 8 + width;
-      else baseMarginStart = 0;
-    }
-
-    let baseMarginEnd;
-    if (opt.marginEnd != null) {
-      baseMarginEnd = Number(opt.marginEnd);
-    } else {
-      if (endIsOuter) baseMarginEnd = 0;
-      else if (isCell(endSpec) && isCenter(endSpec)) baseMarginEnd = 8 + width;
-      else baseMarginEnd = 0;
-    }
+    const arrowModel = window.ASMArrowModel?.normalize?.({
+      id: arrowKey, source: 'draw', layer: opt.layer || 'foreground',
+      from: startSpec, to: endSpec,
+      style: { ...opt, color, width, headStart, headEnd, tweenDuration: tweenMs }
+    });
 
     computeMarkerLen(svg, headStart, color);
     computeMarkerLen(svg, headEnd, color);
-
-    const shrinkStart = (headStart === 'arrow' || headStart === 'dot')
-      ? ARROW_HEAD_SHRINK + (width - 4) * 3
-      : 0;
-    const shrinkEnd = (headEnd === 'arrow' || headEnd === 'dot')
-      ? ARROW_HEAD_SHRINK + (width - 4) * 3
-      : 0;
-
-    const marginStart = baseMarginStart + shrinkStart;
-    const marginEnd = baseMarginEnd + shrinkEnd;
-
-    const x1 = p1.x + ux * marginStart;
-    const y1 = p1.y + uy * marginStart;
-    const x2 = p2.x - ux * marginEnd;
-    const y2 = p2.y - uy * marginEnd;
+    let sharedGeometry = window.ASMArrowModel?.geometry?.(
+      p1,
+      p2,
+      { ...startSpec, outerframe: isOuterframeSpec(startSpec) },
+      { ...endSpec, outerframe: isOuterframeSpec(endSpec) },
+      { ...opt, color, width, headStart, headEnd }
+    );
+    // Compatibility fallback for pages that load draw_arrow.js without the
+    // shared trace arrow model.
+    if (!sharedGeometry) {
+      const isCell = spec => spec && (spec.index !== undefined || spec.row !== undefined);
+      const isCenter = spec => !spec || !spec.anchor || spec.anchor === 'center';
+      const baseStart = opt.marginStart != null
+        ? Number(opt.marginStart) || 0
+        : isOuterframeSpec(startSpec) ? 0 : isCell(startSpec) && isCenter(startSpec) ? 8 + width : 0;
+      const baseEnd = opt.marginEnd != null
+        ? Number(opt.marginEnd) || 0
+        : isOuterframeSpec(endSpec) ? 0 : isCell(endSpec) && isCenter(endSpec) ? 8 + width : 0;
+      const marginStart = baseStart + (headStart === 'none' ? 0 : ARROW_HEAD_SHRINK + (width - 4) * 3);
+      const marginEnd = baseEnd + (headEnd === 'none' ? 0 : ARROW_HEAD_SHRINK + (width - 4) * 3);
+      sharedGeometry = {
+        marginStart, marginEnd,
+        x1: p1.x + ux * marginStart,
+        y1: p1.y + uy * marginStart,
+        x2: p2.x - ux * marginEnd,
+        y2: p2.y - uy * marginEnd
+      };
+    }
+    const marginStart = sharedGeometry.marginStart;
+    const marginEnd = sharedGeometry.marginEnd;
+    const x1 = sharedGeometry.x1;
+    const y1 = sharedGeometry.y1;
+    const x2 = sharedGeometry.x2;
+    const y2 = sharedGeometry.y2;
 
     // ====== 嘗試找到上一幀同 key 的 line（做 tween）======
     let line = layer.querySelector('line[data-arrow-key="' + CSS.escape(arrowKey) + '"]') || null;
@@ -453,6 +481,7 @@
       const lineId = 'arrow-' + (arrowIdCounter++);
       line.setAttribute('id', lineId);
       line.setAttribute('data-arrow-key', arrowKey);
+      line.setAttribute('data-trace-arrow-model', JSON.stringify(arrowModel || {}));
 
       // 初始先放在目標位置（或你想要也可以放在同點）
       line.setAttribute('x1', x1);
@@ -476,6 +505,8 @@
 
     // 這一幀有被畫到
     line.setAttribute('data-alive', '1');
+    line.removeAttribute('display');
+    if (arrowModel) line.setAttribute('data-trace-arrow-model', JSON.stringify(arrowModel));
 
     // 基本屬性（每幀刷新，避免上一幀殘留）
     line.setAttribute('stroke', color);

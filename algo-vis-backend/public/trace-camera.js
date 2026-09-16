@@ -1,6 +1,6 @@
 (function () {
   function ruleForFrame(trace, frame) {
-    return (trace?.studio?.cameraRules || []).filter(rule => {
+    const matchingStudioRules = (trace?.studio?.cameraRules || []).filter(rule => {
       const hasFrameScope = Boolean(rule.frameIds?.length || rule.allFrames
         || rule.directiveNames || rule.frameSelectors || rule.sourceSelectors || rule.sourceFrameSelectors);
       const frameIds = rule.frameIds?.length
@@ -8,7 +8,18 @@
         : window.ASMTraceViewSource?.frameIdsForDescriptor?.(rule, trace?.frames || []);
       if (hasFrameScope && !frameIds?.includes(frame.id)) return false;
       return window.ASMTraceRules?.conditionMatches?.(frame, rule.condition) !== false;
-    }).at(-1) || null;
+    });
+    const frameOverride = matchingStudioRules.filter(rule => (
+      rule.allFrames !== true
+      && Boolean(rule.frameIds?.length || rule.directiveNames
+        || rule.frameSelectors || rule.sourceSelectors || rule.sourceFrameSelectors)
+    )).at(-1);
+    if (frameOverride) return frameOverride;
+    if (frame?.camera
+      && window.ASMTraceRules?.conditionMatches?.(frame, frame.camera.condition) !== false) {
+      return frame.camera;
+    }
+    return matchingStudioRules.at(-1) || null;
   }
   function duration(value) {
     const cssRate = Number(getComputedStyle(window.document.documentElement)

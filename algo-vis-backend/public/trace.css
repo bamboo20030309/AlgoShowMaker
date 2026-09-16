@@ -662,34 +662,13 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   max-height: 1.58em;
   overflow: hidden;
   opacity: 1;
-  transition: max-height 460ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 180ms ease 220ms;
+  transition: opacity 180ms ease 220ms;
 }
 
 .asm-trace-code-page.is-transition-expanded.is-transition-scrolling .asm-trace-code-line.is-transition-leaving {
-  max-height: 0;
+  /* Keep its space until the target line has scrolled into place. */
+  max-height: 1.58em;
   opacity: 0;
-}
-
-.asm-trace-code-page.is-leaving {
-  position: absolute;
-  inset: 9px 12px auto;
-  pointer-events: none;
-}
-
-.asm-trace-code-page.is-entering.from-below {
-  transform: translateY(var(--asm-code-scroll-distance, 64px));
-}
-
-.asm-trace-code-page.is-entering.from-above {
-  transform: translateY(calc(var(--asm-code-scroll-distance, 64px) * -1));
-}
-
-.asm-trace-code-page.is-leaving.to-above.has-left {
-  transform: translateY(calc(var(--asm-code-scroll-distance, 64px) * -1));
-}
-
-.asm-trace-code-page.is-leaving.to-below.has-left {
-  transform: translateY(var(--asm-code-scroll-distance, 64px));
 }
 
 .asm-trace-code-fragment-divider,

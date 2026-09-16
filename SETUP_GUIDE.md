@@ -36,6 +36,9 @@ PORT=3000
 # 其中 "mongo" 是 docker-compose.yml 裡定義的服務名稱
 MONGO_URI=mongodb://mongo:27017/algo_vis_db
 ```
+Docker Compose 會在 backend 容器內明確將 `MONGO_URI` 覆寫為
+`mongodb://mongo:27017/algo_vis_db`。即使本機開發用 `.env` 指向 `localhost`，容器仍會透過
+Compose service 名稱 `mongo` 連線。Docker 映像使用 Node.js 22，以符合 Mongoose 9 的 runtime 要求。
 ## 三、 啟動伺服器
 1. **修正相容性問題**：若伺服器 CPU 不支援 AVX，請將 `docker-compose.yml` 中的 `image: mongo:latest` 改為 `image: mongo:4.4`。若 Docker 版本過舊導致 `pids` 報錯，請註解掉 `pids: 128` 這一行。
 2. **執行啟動指令**：在 `algo-vis-backend` 目錄下執行 `docker-compose up -d --build`。
@@ -57,7 +60,8 @@ MONGO_URI=mongodb://mongo:27017/algo_vis_db
 ## 六、 安全與技術機制說明
 * **沙箱環境 (Sandbox)**：後端會在 `/sandbox` 目錄執行使用者程式碼，該目錄設為唯讀權限 `555` 以防止惡意修改。
 * **資源限制**：透過 Docker 限制後端容器使用最多 0.5 CPU 與 1G 記憶體，防止 Fork Bomb 或資源耗盡。
-* **檔案系統**：編譯產生的暫存檔存放在 `tmp` 目錄，該目錄掛載為 `tmpfs` 記憶體區，確保重啟後自動清空且不損毀磁碟。
+* **請求大小**：Nginx 的 `client_max_body_size` 與 Express JSON body 上限皆為 8 MB。修改其中一層時必須同步修改另一層，否則較小的一層會先拒絕投影片儲存請求。
+* **檔案系統**：編譯產生的暫存檔存放在 `tmp` 目錄，該目錄掛載為 64 MB 的 `tmpfs` 記憶體區，確保重啟後自動清空且不損毀磁碟。Linux 執行器另由與 sandboxuser 相同 UID 的 GNU `timeout` 管理硬性逾時，避免 Node 在缺少 `CAP_KILL` 時無法回收殘留程式，造成已刪除檔案仍占滿 tmpfs。若 `df -h /usr/src/app/tmp` 顯示 100%，先重啟 backend 釋放空間，再從 debug log 檢查 `SIGKILL` 失敗原因。
 * **視覺化開發**：撰寫 C++ 腳本必須引入標頭檔 `#include "AV.hpp"` 並宣告 `AV av;` 物件，並以 `av.start_draw();` 與 `av.end_draw();` 包裹繪圖指令。
 
 
@@ -65,4 +69,4 @@ MONGO_URI=mongodb://mongo:27017/algo_vis_db
 `cd AlgoShowMaker/ && git pull && cd algo-vis-backend/ && docker-compose down && docker-compose up -d --build`
 ---
 
-*最後更新日期：2026/04/08*
+*最後更新日期：2026/09/12*

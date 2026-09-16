@@ -134,6 +134,14 @@
     return null;
   }
 
+  function iterationLastValue(document, frame, variableName) {
+    const frameId = String(frame?.id || '');
+    const name = String(variableName || '').trim();
+    if (!frameId || !name) return null;
+    const summary = document?.iterationSummaries?.[frameId]?.last?.[name];
+    return summary == null ? null : summary;
+  }
+
   function resolveExpression(document, frame, expression, locals = {}) {
     const source = String(expression ?? '').trim();
     if (!source) return null;
@@ -198,6 +206,16 @@
       position += 1;
       if (token.value === 'true') return true;
       if (token.value === 'false') return false;
+      if (token.value === 'iteration' && peek('.')) {
+        consume('.');
+        const method = consume();
+        if (method?.type !== 'identifier' || method.value !== 'last' || !consume('(')) {
+          return invalid;
+        }
+        const variable = consume();
+        if (variable?.type !== 'identifier' || !consume(')')) return invalid;
+        return iterationLastValue(document, frame, variable.value);
+      }
       if (TEMPORAL_FUNCTIONS.has(token.value) && peek('(')) {
         consume('(');
         const argumentStart = position;
@@ -474,7 +492,9 @@
     const next = { ...current, ...style, ...extra };
     const styleType = String(style?.styleType || '').trim();
     const color = style?.color;
-    if (styleType && color) {
+    // Empty color means the renderer's own default. Preserve the style type
+    // so the draw layer can still create its background/hint decoration.
+    if (styleType && color !== undefined && color !== null) {
       next.styleTypes = {
         ...(current.styleTypes || {}),
         ...(style.styleTypes || {}),
@@ -499,7 +519,7 @@
     return next;
   }
 
-  function evaluate(document, frame) {
+  function evaluate(document, frame, options = {}) {
     const highlights = {};
     const rules = [...DEFAULT_RULES, ...(Array.isArray(document?.rules) ? document.rules : [])];
     for (const event of frame?.events || []) {
@@ -567,7 +587,10 @@
       const indices = [...new Set(selectors.flatMap(selectorIndices))];
       indices.forEach(index => {
         if (index < 0 || index >= items.length) return;
-        const value = window.ASMTraceModel.scalarValue(items[index]);
+        const presentedValues = options.presentedValues?.get?.(variableId);
+        const value = presentedValues?.has?.(index)
+          ? window.ASMTraceModel.scalarValue(presentedValues.get(index))
+          : window.ASMTraceModel.scalarValue(items[index]);
         if (!expressionMatches(document, frame, style.when, { value, index })) return;
         const variableHighlights = highlights[variableId] ||= {};
         variableHighlights[String(index)] = mergeHighlightStyle(
@@ -637,7 +660,7 @@
     frameMatches,
     conditionMatches,
     variableEntry,
-    resolveExpression,
+    resolveExpression, iterationLastValue,
     temporalValue,
     expressionMatches,
     textExpressionMatches,

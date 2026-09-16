@@ -16,6 +16,10 @@ services:
     # 載入環境變數檔案
     env_file:
       - .env
+    # 容器內的 localhost 是 backend 自己；Mongo 必須使用 Compose service 名稱。
+    environment:
+      MONGO_URI: mongodb://mongo:27017/algo_vis_db
+      TRUST_PROXY_HOPS: 1
     # 自動重啟：當機或重開機後會自動爬起來
     restart: unless-stopped
 

@@ -575,6 +575,80 @@ test('a disabled comparison leaves its code visible without any event highlight'
     'turning the comparison back on restores its final condition color');
 });
 
+test('a condition cannot color code when a comparison slice is disabled or absent', () => {
+  const presenterContext = { window: { addEventListener() {} } };
+  presenterContext.window.window = presenterContext.window;
+  vm.createContext(presenterContext.window);
+  vm.runInContext(fs.readFileSync(
+    path.join(__dirname, '../public/trace-code-presenter.js'), 'utf8'
+  ), presenterContext.window);
+  const presenter = presenterContext.window.ASMTraceCodePresenter;
+  const first = {
+    id: 'if-first', type: 'compare', order: 1, enabled: true,
+    source: { from: 10, to: 15 }
+  };
+  const second = {
+    id: 'if-second', type: 'compare', order: 2, enabled: false,
+    source: { from: 19, to: 24 }
+  };
+  const condition = {
+    id: 'if-condition', type: 'condition', conditionKind: 'IfStatement',
+    order: 3, result: true, source: { from: 10, to: 24 }
+  };
+  const events = new Map([first, second, condition].map(event => [event.id, event]));
+  const completed = new Set(events.keys());
+  let state = presenter.visualStateForIds([condition.id], events, completed, completed, '');
+  assert.equal(state.conditionResult, undefined,
+    'an unchecked comparison must not color the whole if condition');
+  second.enabled = true;
+  state = presenter.visualStateForIds([condition.id], events, completed, completed, '');
+  assert.equal(state.conditionResult, true);
+  state = presenter.visualStateForIds([condition.id],
+    new Map([[condition.id, condition]]), completed, completed, '');
+  assert.equal(state.conditionResult, undefined,
+    'internal condition metadata alone must not create a code highlight');
+});
+
+test('for condition result has no color unless every comparison slice is checked', () => {
+  const presenterContext = { window: { addEventListener() {} } };
+  presenterContext.window.window = presenterContext.window;
+  vm.createContext(presenterContext.window);
+  vm.runInContext(fs.readFileSync(
+    path.join(__dirname, '../public/trace-code-presenter.js'), 'utf8'
+  ), presenterContext.window);
+  const presenter = presenterContext.window.ASMTraceCodePresenter;
+  const first = {
+    id: 'for-compare-first', type: 'compare', order: 1, enabled: true,
+    source: { from: 10, to: 15 }
+  };
+  const second = {
+    id: 'for-compare-second', type: 'compare', order: 2, enabled: false,
+    source: { from: 19, to: 24 }
+  };
+  const condition = {
+    id: 'for-condition', type: 'condition', conditionKind: 'ForStatement',
+    order: 3, result: false, source: { from: 10, to: 24 }
+  };
+  const ids = [first.id, second.id, condition.id];
+  const completed = new Set(ids);
+  const events = new Map(ids.map(id => [id, { [first.id]: first,
+    [second.id]: second, [condition.id]: condition }[id]]));
+  let state = presenter.visualStateForIds(ids, events, completed, completed, '');
+  assert.equal(state.conditionResult, undefined,
+    'one checked slice must not color the entire unselected for condition');
+  second.enabled = true;
+  state = presenter.visualStateForIds(ids, events, completed, completed, '');
+  assert.equal(state.conditionResult, false);
+  first.enabled = false;
+  second.enabled = false;
+  state = presenter.visualStateForIds(ids, events, completed, completed, '');
+  assert.equal(state.conditionResult, undefined);
+  state = presenter.visualStateForIds([condition.id],
+    new Map([[condition.id, condition]]), completed, completed, '');
+  assert.equal(state.conditionResult, undefined,
+    'a for condition without a checked comparison must not fall back to coloring itself');
+});
+
 test('saved code font size follows the 1600x900 canvas viewport in every surface', () => {
   const presenterContext = { window: { addEventListener() {}, innerHeight: 900 } };
   presenterContext.window.window = presenterContext.window;
@@ -727,6 +801,134 @@ test('same-subtree transitions expand only lines that either adjacent frame disp
   );
   assert.deepEqual([...fragment.transitionEnteringLines], [5]);
   assert.deepEqual([...fragment.transitionLeavingLines], [1]);
+});
+
+test('cross-subtree code jumps scroll one source document without flying old and new pages', () => {
+  const presenterContext = { window: { addEventListener() {} } };
+  presenterContext.window.window = presenterContext.window;
+  vm.createContext(presenterContext.window);
+  vm.runInContext(fs.readFileSync(
+    path.join(__dirname, '../public/trace-code-presenter.js'), 'utf8'
+  ), presenterContext.window);
+  const line = number => ({ kind: 'line', number, text: `line ${number}`, segments: [] });
+  const previous = {
+    fragments: [{ functionName: 'first', subtreeKey: 'FunctionDefinition:0:100',
+      focusLine: 2, items: [line(1), line(2)] }]
+  };
+  const next = {
+    fragments: [{ functionName: 'second', subtreeKey: 'FunctionDefinition:100:200',
+      focusLine: 12, items: [line(11), line(12)] }]
+  };
+  const transition = presenterContext.window.ASMTraceCodePresenter.transitionPlan(previous, next);
+  assert.equal(transition.fragments.length, 2);
+  assert.deepEqual([...transition.fragments.map(fragment => fragment.functionName)], ['first', 'second']);
+  assert.deepEqual([...transition.fragments[0].transitionLeavingLines], [1, 2]);
+  assert.deepEqual([...transition.fragments[1].transitionEnteringLines], [11, 12]);
+  const code = fs.readFileSync(path.join(__dirname, '../public/trace-code-presenter.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../public/trace.css'), 'utf8');
+  assert.match(code, /if \(showExpandedTransition\(nextPage, nextPlan, syntaxLines, previous, nextFocusLine\)\) return/);
+  assert.doesNotMatch(code, /previous\.classList\.add\('is-leaving'/);
+  assert.doesNotMatch(css, /\.asm-trace-code-page\.is-leaving/);
+});
+
+test('code jumps actually move the expanded page to the next focus line', () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<!doctype html><div id="canvasWrapper"><svg id="arraySvg"></svg></div>', {
+    url: 'http://localhost/', runScripts: 'outside-only'
+  });
+  const { window } = dom;
+  const wrapper = window.document.getElementById('canvasWrapper');
+  Object.defineProperty(wrapper, 'clientWidth', { configurable: true, get: () => 1000 });
+  Object.defineProperty(wrapper, 'clientHeight', { configurable: true, get: () => 500 });
+  Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', {
+    configurable: true,
+    get() { return this.classList.contains('asm-trace-code-panel') ? 100 : 0; }
+  });
+  Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get() {
+      if (!this.classList.contains('asm-trace-code-panel')) return 0;
+      return this.querySelector('.asm-trace-code-page.is-transition-expanded') ? 200 : 50;
+    }
+  });
+  const frames = [];
+  const timers = [];
+  window.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+  window.setTimeout = callback => { timers.push(callback); return timers.length; };
+  window.clearTimeout = () => {};
+  window.matchMedia = () => ({ matches: false });
+  const line = number => ({ kind: 'line', number, text: `line ${number}`, segments: [] });
+  const first = { id: 'first', events: [] };
+  const second = { id: 'second', events: [] };
+  const third = { id: 'third', events: [] };
+  const fragment = (functionName, firstLine, secondLine, focusLine) => ({
+    functionName, subtreeKey: `FunctionDefinition:${functionName}`,
+    focusLine, items: [line(firstLine), line(secondLine)]
+  });
+  const plans = {
+    first: { sourceCode: 'test', layoutKey: 'L1,L2', focusLine: 2,
+      fragments: [fragment('first', 1, 2, 2)] },
+    second: { sourceCode: 'test', layoutKey: 'L11,L12', focusLine: 12,
+      fragments: [fragment('second', 11, 12, 12)] },
+    third: { sourceCode: 'test', layoutKey: 'L11,L12', focusLine: 11,
+      fragments: [fragment('second', 11, 12, 11)] }
+  };
+  window.ASMTraceCodeModel = {
+    planFrame: (_trace, frame) => plans[frame.id],
+    tokenizeSource: () => new Map(),
+    mergeSyntaxSegments: item => [{ text: item.text, eventIds: [] }]
+  };
+  const transformY = element => Number(/translateY\((-?[\d.]+)px\)/.exec(
+    element.style.transform || ''
+  )?.[1] || 0);
+  const rect = top => ({ top, bottom: top + 20, left: 0, right: 200,
+    width: 200, height: 20, x: 0, y: top });
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.classList.contains('asm-trace-code-body')) return rect(100);
+    if (this.classList.contains('asm-trace-code-page')) return rect(100 + transformY(this));
+    if (this.classList.contains('asm-trace-code-line')) {
+      const page = this.closest('.asm-trace-code-page');
+      const before = [...page.querySelectorAll('.asm-trace-code-line')].slice(0,
+        [...page.querySelectorAll('.asm-trace-code-line')].indexOf(this));
+      const height = item => item.classList.contains('is-transition-entering')
+        && !page.classList.contains('is-transition-scrolling') ? 0 : 20;
+      return rect(100 + transformY(page) + before.reduce((sum, item) => sum + height(item), 0));
+    }
+    return rect(100);
+  };
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-code-presenter.js'), 'utf8'));
+  const presenter = window.ASMTraceCodePresenter;
+  const trace = { studio: { codePanelPosition: { x: 0.052, y: 0.3671 } }, sourceCode: 'test' };
+  presenter.renderFrame(trace, first);
+  const panel = window.document.getElementById('traceCodePanel');
+  const stableTop = panel.style.top;
+  const body = window.document.querySelector('.asm-trace-code-body');
+  assert.equal(presenter.transitionDelay(trace, second), 500);
+  presenter.renderFrame(trace, second);
+  const expanded = body.querySelector('.asm-trace-code-page.is-transition-expanded');
+  assert.ok(expanded && body.classList.contains('is-code-scrolling'));
+  const expandedStart = transformY(expanded);
+  frames.splice(0).forEach(callback => callback());
+  assert.equal(panel.style.top, stableTop,
+    'temporary code expansion must not move the authored panel position');
+  assert.notEqual(transformY(expanded), expandedStart,
+    'the target line must produce a measurable nonzero scroll distance');
+  const targetY = expanded.querySelector('[data-source-line="12"]').getBoundingClientRect().top;
+  timers.at(-1)();
+  assert.equal(panel.style.top, stableTop,
+    'collapsing the snippet must keep the panel at its original height');
+  assert.equal(body.querySelector('[data-source-line="12"]').getBoundingClientRect().top, targetY,
+    'collapsing the old source must not move the destination line again');
+  assert.equal(presenter.transitionDelay(trace, third), 500,
+    'an offscreen focus line must scroll even when the layout key is unchanged');
+  presenter.renderFrame(trace, third);
+  assert.equal(panel.style.top, stableTop,
+    'later frame changes must not re-normalize position from fragment height');
+  const sameLayoutPage = body.querySelector('.asm-trace-code-page.is-transition-expanded');
+  const sameLayoutStart = transformY(sameLayoutPage);
+  frames.splice(0).forEach(callback => callback());
+  assert.notEqual(transformY(sameLayoutPage), sameLayoutStart);
+  dom.window.close();
 });
 
 test('a single omitted algorithm line stays visible instead of becoming an ellipsis', () => {
@@ -1003,4 +1205,60 @@ int main() {
       }))
     }, 'legacy');
   });
+});
+
+test('one frame shows a recursive function source only once across scope exit and swap clusters', async () => {
+  const source = `#include <bits/stdc++.h>
+using namespace std;
+int n;
+void quick_sort(vector<int>& arr, int low, int high) {
+  if (low >= high) return;
+  int pivot = arr[high];
+  int i = low;
+  // @frame arr[i],pivot
+  // @segment arr[low:high]
+  for (int j=low; j<high; j++) {
+    if (arr[j] < pivot) {
+      if (i != j) swap(arr[i], arr[j]);
+      i++;
+    }
+    // @frame arr[i,j],pivot
+    // @segment arr[low:high]
+  }
+  if (i != high) swap(arr[i], arr[high]);
+  // @frame arr[i,high],pivot
+  // @segment arr[low:high]
+  quick_sort(arr, low, i - 1);
+  quick_sort(arr, i + 1, high);
+}
+int main() {
+  cin>>n;
+  vector<int> arr(n);
+  for (int i=0; i<n; i++) cin>>arr[i];
+  // @frame arr
+  quick_sort(arr, 0, n - 1);
+  // @frame arr
+  return 0;
+}`;
+  const { trace, context } = await compile(source, '6\n5 7 2 1 9 4\n');
+  load(context, 'trace-code-model.js');
+  const frame = trace.frames[17];
+  assert.ok(frame, 'the Quick Sort fixture must reach frame 18');
+  const scopeExit = frame.events.find(event => event.type === 'scope-exit');
+  const swap = frame.events.find(event => event.type === 'swap');
+  assert.ok(scopeExit && swap, 'frame 18 must contain both separated runtime clusters');
+  assert.ok(Number(scopeExit.order) < Number(swap.order));
+  const plan = context.ASMTraceCodeModel.planFrame(trace, frame);
+  const functionFragments = plan.fragments.filter(fragment => fragment.functionName === 'quick_sort');
+  assert.equal(functionFragments.length, 1,
+    'separate control clusters must not repeat the complete quick_sort source');
+  const fragment = functionFragments[0];
+  assert.ok(fragment.eventIds.includes(scopeExit.id));
+  assert.ok(fragment.eventIds.includes(swap.id));
+  const lines = fragment.items.filter(item => item.kind === 'line');
+  assert.equal(new Set(lines.map(item => item.number)).size, lines.length);
+  assert.ok(lines.some(item => item.segments.some(segment => segment.eventIds.includes(scopeExit.id))));
+  assert.ok(lines.some(item => item.segments.some(segment => segment.eventIds.includes(swap.id))));
+  assert.ok(frame.events.every((event, index) => index === 0
+    || Number(frame.events[index - 1].order) <= Number(event.order)));
 });

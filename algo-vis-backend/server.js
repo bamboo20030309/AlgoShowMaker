@@ -17,7 +17,13 @@ const {
   JWT_VERIFY_OPTIONS,
   loadJwtSecret
 } = require('./jwt-config');
-const { analyzeSource, buildSyntaxTree, findFrameDirectives, instrumentSource } = require('./trace-instrumenter');
+const {
+  analyzeSource,
+  buildSyntaxTree,
+  findFrameDirectives,
+  findLayoutDirectives,
+  instrumentSource
+} = require('./trace-instrumenter');
 const TraceViewSource = require('./public/trace-view-source');
 const TraceProvenance = require('./public/trace-provenance');
 
@@ -116,6 +122,11 @@ const BLACKLIST_KEYWORDS = [
 
 // 1. 先初始化 app (非常重要，必須在 app.use 之前！)
 const app = express();
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+  // Docker 部署只有一層 Nginx；讓限流器使用代理提供的真實客戶端 IP。
+  app.set('trust proxy', trustProxyHops);
+}
 const PORT = process.env.PORT || 3000;
 
 // 2. 設定限制器
@@ -144,6 +155,7 @@ const LIMITS = {
   TIME_MS: 5000,
   MEMORY_MB: 256,
   OUTPUT_SIZE: 64 * 1024,
+  HTTP_JSON_SIZE: '8mb',
 };
 
 // 記錄 debug 訊息
@@ -161,7 +173,13 @@ app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'f
 app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaames', 'iro', 'dist')));
 app.use('/vendor/ace', express.static(path.join(__dirname, 'node_modules', 'ace-builds', 'src-min-noconflict')));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: LIMITS.HTTP_JSON_SIZE }));
+app.use((err, req, res, next) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: '請求內容超過 8 MB 上限' });
+  }
+  return next(err);
+});
 
 app.post('/trace/analyze', limiter, (req, res) => {
   const code = req.body?.code;
@@ -170,23 +188,42 @@ app.post('/trace/analyze', limiter, (req, res) => {
   try {
     const analysis = analyzeSource(code);
     const frameDirectives = findFrameDirectives(code, analysis);
+    const layoutDirectives = findLayoutDirectives(code, analysis);
     res.json({
       success: true,
+      layouts: layoutDirectives,
       frameDirectives: frameDirectives.map(directive => ({
         line: directive.line,
         name: directive.name || '',
         objectId: directive.objectId || '',
+        layoutId: directive.layoutId || '',
         names: directive.names,
         variableIds: directive.variables.map(variable => variable.id),
         captureOnlyVariableIds: directive.captureOnlyVariableIds || [],
         bindings: directive.bindings || [],
         objectBinding: directive.objectBinding || null,
+        placeBindings: directive.placeBindings || [],
         renderer: directive.renderer || '',
         rendererOptions: directive.rendererOptions || {},
+        objects: (directive.objects || []).map(object => ({
+          line: object.line,
+          frameSpec: object.frameSpec || '',
+          objectId: object.objectId || '',
+          layoutId: object.layoutId || '',
+          primaryVariableId: object.primaryVariableId || '',
+          primaryName: object.primaryName || '',
+          displayVariableIds: object.displayVariableIds || [],
+          renderer: object.renderer || '',
+          rendererOptions: object.rendererOptions || {},
+          objectBinding: object.objectBinding || null
+        })),
         when: directive.when || null,
         texts: directive.texts || [],
         styles: directive.styles || [],
-        segments: directive.segments || []
+        segments: directive.segments || [],
+        arrows: directive.arrows || [],
+        camera: directive.camera || null,
+        presetDirectives: directive.presetDirectives || []
       })),
       variables: analysis.variables.map(variable => ({
         id: variable.id,
@@ -1052,6 +1089,14 @@ function materializeKeepSnapshots(frames) {
           sourceFrameId: previousFrame.id,
           label: objectId,
           preserveStyle,
+          layoutId: String(event.layoutId || ''),
+          recursionFunction: String(event.recursionFunction || ''),
+          recursionActivationId: String(event.recursionActivationId || ''),
+          recursionParentActivationId: String(event.recursionParentActivationId || ''),
+          recursionAncestorActivationIds: cloneTraceValue(event.recursionAncestorActivationIds || []),
+          recursionDepth: Number(event.recursionDepth) || 0,
+          recursionSiblingIndex: Number(event.recursionSiblingIndex) || 0,
+          recursionRootIndex: Number(event.recursionRootIndex) || 0,
           keepOrder: Number(event.order),
           sceneGeneration: snapshotGeneration,
           binding: event.binding ? JSON.parse(JSON.stringify(event.binding)) : null,
@@ -1096,10 +1141,20 @@ function materializeKeepSnapshots(frames) {
         createdFrameId: frame.id,
         label: objectId,
         preserveStyle,
+        layoutId: String(event.layoutId || ''),
+        recursionFunction: String(event.recursionFunction || ''),
+        recursionActivationId: String(event.recursionActivationId || ''),
+        recursionParentActivationId: String(event.recursionParentActivationId || ''),
+        recursionAncestorActivationIds: cloneTraceValue(event.recursionAncestorActivationIds || []),
+        recursionDepth: Number(event.recursionDepth) || 0,
+        recursionSiblingIndex: Number(event.recursionSiblingIndex) || 0,
+        recursionRootIndex: Number(event.recursionRootIndex) || 0,
         sceneGeneration: snapshotGeneration,
         binding: event.binding
           ? JSON.parse(JSON.stringify(event.binding))
-          : renderState.binding,
+          : event.layoutId
+            ? null
+            : renderState.binding,
         placementOffset: event.placementOffset
           ? JSON.parse(JSON.stringify(event.placementOffset))
           : null,
@@ -1118,6 +1173,31 @@ function materializeKeepSnapshots(frames) {
       snapshotIds: [...activeSnapshotIds],
       keepLastFocus
     };
+  });
+  const latestByActivation = new Map();
+  snapshots.forEach(snapshot => {
+    if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
+    const activationKey = `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`;
+    let parentSnapshotId = latestByActivation.get(activationKey)?.id || '';
+    if (!parentSnapshotId) {
+      const ancestors = Array.isArray(snapshot.recursionAncestorActivationIds)
+        ? [...snapshot.recursionAncestorActivationIds].reverse()
+        : [];
+      const parent = ancestors.map(activationId => (
+        latestByActivation.get(`${snapshot.layoutId}\u0000${activationId}`)
+      )).find(Boolean);
+      parentSnapshotId = parent?.id || '';
+    }
+    snapshot.layoutNode = {
+      layoutId: snapshot.layoutId,
+      nodeId: snapshot.id,
+      parentSnapshotId,
+      activationId: snapshot.recursionActivationId,
+      depth: snapshot.recursionDepth,
+      siblingIndex: snapshot.recursionSiblingIndex,
+      rootIndex: snapshot.recursionRootIndex
+    };
+    latestByActivation.set(activationKey, snapshot);
   });
   return { frames: materializedFrames, snapshots };
 }
@@ -1392,7 +1472,8 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
           : {}),
         ...(directive.when
           ? { when: JSON.parse(JSON.stringify(directive.when)) }
-          : {})
+          : {}),
+        ...(directive.layoutId ? { layoutId: directive.layoutId } : {})
       };
     })
   }));
@@ -1406,8 +1487,32 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   }));
   const tracedFrames = allFrames.map(frame => {
     const directive = directiveByStatementId.get(frame.source?.statementId);
-    const primaryVariableId = directive?.variableIds?.[0] || '';
-    const resolvedRendererOptions = resolveFrameRendererOptions(frame, directive);
+    const objectDirectives = Array.isArray(directive?.objects) && directive.objects.length
+      ? directive.objects
+      : (directive?.variableIds?.[0] ? [{
+        objectId: directive.objectId || '',
+        layoutId: directive.layoutId || '',
+        primaryVariableId: directive.variableIds[0],
+        renderer: directive.renderer || '',
+        rendererOptions: directive.rendererOptions || {},
+        objectBinding: directive.objectBinding || null
+      }] : []);
+    const primaryObject = objectDirectives[0] || null;
+    const primaryVariableId = primaryObject?.primaryVariableId || '';
+    const renderers = Object.fromEntries(objectDirectives
+      .filter(object => object.primaryVariableId && object.renderer)
+      .map(object => [object.primaryVariableId, object.renderer]));
+    const rendererOptions = Object.fromEntries(objectDirectives.map(object => [
+      object.primaryVariableId,
+      resolveFrameRendererOptions(frame, object)
+    ]).filter(([variableId, options]) => variableId && Object.keys(options).length));
+    const objectBindings = objectDirectives.map(object => object.objectBinding).filter(Boolean);
+    const objectIds = Object.fromEntries(objectDirectives
+      .filter(object => object.primaryVariableId && object.objectId)
+      .map(object => [object.primaryVariableId, object.objectId]));
+    const layoutIds = Object.fromEntries(objectDirectives
+      .filter(object => object.primaryVariableId && object.layoutId)
+      .map(object => [object.primaryVariableId, object.layoutId]));
     return {
       ...frame,
       source: {
@@ -1416,24 +1521,28 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
         directiveKey: directive?.sourceKey || '',
         logicalDirectiveKey: directive?.logicalSourceKey || '',
         directiveKeyAliases: directive?.sourceKeyAliases || [],
-        objectId: directive?.objectId || '',
-        primaryVariableId: directive?.variableIds?.[0] || '',
+        objectId: primaryObject?.objectId || '',
+        objectIds,
+        layoutId: primaryObject?.layoutId || '',
+        layoutIds,
+        primaryVariableId,
         when: directive?.when || null
       },
       bindings: Array.isArray(directive?.bindings) ? directive.bindings : [],
-      objectBindings: directive?.objectBinding ? [directive.objectBinding] : [],
-      renderers: directive?.renderer && directive?.variableIds?.[0]
-        ? { [directive.variableIds[0]]: directive.renderer }
-        : {},
-      rendererOptions: primaryVariableId && Object.keys(resolvedRendererOptions).length
-        ? { [primaryVariableId]: resolvedRendererOptions }
-        : {},
+      objectBindings: [
+        ...objectBindings,
+        ...(Array.isArray(directive?.placeBindings) ? directive.placeBindings : [])
+      ],
+      renderers,
+      rendererOptions,
       captureOnlyVariableIds: Array.isArray(directive?.captureOnlyVariableIds)
         ? directive.captureOnlyVariableIds
         : [],
       texts: Array.isArray(directive?.texts) ? directive.texts : [],
       styles: Array.isArray(directive?.styles) ? directive.styles : [],
-      segments: Array.isArray(directive?.segments) ? directive.segments : []
+      segments: Array.isArray(directive?.segments) ? directive.segments : [],
+      arrows: Array.isArray(directive?.arrows) ? directive.arrows : [],
+      camera: directive?.camera || null
     };
   });
   const sliceMode = traceRequest.sliceMode === 'manual'
@@ -1486,7 +1595,10 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
       : Array.isArray(traceRequest.rules) ? traceRequest.rules : [],
     studio: asmView.studio && typeof asmView.studio === 'object' ? asmView.studio : {},
     asmView,
-    frameDirectives
+    frameDirectives,
+    layouts: Array.isArray(traceRequest.layoutDirectives)
+      ? JSON.parse(JSON.stringify(traceRequest.layoutDirectives))
+      : []
   };
 }
 
@@ -1524,6 +1636,7 @@ app.post('/compile', (req, res) => {
   let traceVariables = [];
   let traceFrameDirectives = [];
   let traceKeepDirectives = [];
+  let traceLayoutDirectives = [];
   let traceEventSources = {};
   let traceSourceDeclarations = [];
   let traceSourceStructure = [];
@@ -1544,6 +1657,7 @@ app.post('/compile', (req, res) => {
         line: directive.line,
         name: directive.name || '',
         objectId: directive.objectId || '',
+        layoutId: directive.layoutId || '',
         sourceKey: directive.sourceKey || '',
         logicalSourceKey: directive.logicalSourceKey || '',
         sourceKeyAliases: directive.sourceKeyAliases || [],
@@ -1554,23 +1668,43 @@ app.post('/compile', (req, res) => {
         index: directive.index ?? index,
         bindings: directive.bindings || [],
         objectBinding: directive.objectBinding || null,
+        placeBindings: directive.placeBindings || [],
         renderer: directive.renderer || '',
         rendererOptions: directive.rendererOptions || {},
+        objects: (directive.objects || []).map(object => ({
+          line: object.line,
+          frameSpec: object.frameSpec || '',
+          objectId: object.objectId || '',
+          layoutId: object.layoutId || '',
+          primaryVariableId: object.primaryVariableId || '',
+          primaryName: object.primaryName || '',
+          displayVariableIds: object.displayVariableIds || [],
+          renderer: object.renderer || '',
+          rendererOptions: object.rendererOptions || {},
+          objectBinding: object.objectBinding || null
+        })),
         when: directive.when || null,
         texts: directive.texts || [],
         styles: directive.styles || [],
-        segments: directive.segments || []
+        segments: directive.segments || [],
+        arrows: directive.arrows || [],
+        camera: directive.camera || null,
+        presetDirectives: directive.presetDirectives || []
       }));
       traceKeepDirectives = instrumented.keepDirectives.map((directive, index) => ({
         line: directive.line,
         mode: directive.mode,
         label: directive.label || '',
+        layoutId: directive.layoutId || '',
         binding: directive.binding || null,
         placementOffset: directive.placementOffset || null,
         when: directive.when || null,
         functionName: directive.functionName || directive.variable?.functionName || 'global',
         index: directive.index ?? index
       }));
+      traceLayoutDirectives = Array.isArray(instrumented.layoutDirectives)
+        ? JSON.parse(JSON.stringify(instrumented.layoutDirectives))
+        : [];
       traceEventSources = instrumented.eventSources || {};
       traceSourceDeclarations = Array.isArray(instrumented.sourceDeclarations)
         ? instrumented.sourceDeclarations
@@ -1589,6 +1723,7 @@ app.post('/compile', (req, res) => {
       traceVariables = [];
       traceFrameDirectives = [];
       traceKeepDirectives = [];
+      traceLayoutDirectives = [];
       traceEventSources = {};
       traceSourceDeclarations = [];
       traceSourceStructure = [];
@@ -1700,7 +1835,16 @@ app.post('/compile', (req, res) => {
     }
 
     // 3. 執行程式
-    const ulimitCmd = `ulimit -v ${LIMITS.MEMORY_MB * 1024} && exec "${exePath}"`;
+    // Node 以 root 啟動、執行檔則降級成 sandboxuser。容器沒有 CAP_KILL 時，
+    // Node 無法保證能跨 UID 終止逾時程式，因此 Linux 額外使用同 UID 的
+    // GNU timeout 當硬性 watchdog。略晚於應用層 TLE，讓前者先記錄原因，
+    // watchdog 再確保整個執行程序群組確實被回收。
+    const hardTimeoutMs = LIMITS.TIME_MS + 250;
+    const hardTimeoutSeconds = `${(hardTimeoutMs / 1000).toFixed(3)}s`;
+    const executableCommand = isWindows
+      ? `"${exePath}"`
+      : `timeout --signal=TERM --kill-after=1s ${hardTimeoutSeconds} "${exePath}"`;
+    const ulimitCmd = `ulimit -v ${LIMITS.MEMORY_MB * 1024} && exec ${executableCommand}`;
     const runStart = performance.now();
     const runOptions = {
       cwd: isWindows ? TEMP_DIR : '/sandbox',
@@ -1723,6 +1867,10 @@ app.post('/compile', (req, res) => {
     const child = isWindows
       ? spawn(exePath, [], runOptions)
       : spawn('sh', ['-c', ulimitCmd], runOptions);
+
+    if (!isWindows) {
+      logDebug(`執行 watchdog 已啟動，硬性上限 ${hardTimeoutMs}ms`, { pid: child.pid });
+    }
 
     let runOut = '';
     let runErr = '';
@@ -1756,7 +1904,15 @@ app.post('/compile', (req, res) => {
         else runOut += msg;
 
         logDebug('OLE: 輸出超過限制，強制終止');
-        try { child.kill('SIGKILL'); } catch (e) { }
+        try {
+          const sent = child.kill('SIGKILL');
+          if (!sent) logDebug('OLE: SIGKILL 未成功送出，等待外部 watchdog 回收', { pid: child.pid });
+        } catch (error) {
+          logDebug(`OLE: SIGKILL 送出失敗，等待外部 watchdog 回收: ${error.message}`, {
+            pid: child.pid,
+            code: error.code || ''
+          });
+        }
       } else {
         if (isStderr) runErr += chunk;
         else runOut += chunk;
@@ -1806,6 +1962,7 @@ app.post('/compile', (req, res) => {
             sliceMode: traceSliceMode,
             frameDirectives: traceFrameDirectives,
             keepDirectives: traceKeepDirectives,
+            layoutDirectives: traceLayoutDirectives,
             eventSources: traceEventSources,
             sourceDeclarations: traceSourceDeclarations,
             sourceStructure: traceSourceStructure,
@@ -1848,12 +2005,18 @@ app.post('/compile', (req, res) => {
       isTLE = true;
       logDebug(`TLE: 超過 ${LIMITS.TIME_MS}ms，強制終止`, { pid: child.pid });
       try {
-        child.kill('SIGKILL');
+        const sent = child.kill('SIGKILL');
+        if (!sent) logDebug('TLE: SIGKILL 未成功送出，等待外部 watchdog 回收', { pid: child.pid });
         // 在 Windows 下 sh 可能不會殺掉 exec 出後的進程，故增加這層保險
         if (process.platform === 'win32' && child.pid) {
           spawn('taskkill', ['/F', '/T', '/PID', child.pid]);
         }
-      } catch (e) { }
+      } catch (error) {
+        logDebug(`TLE: SIGKILL 送出失敗，等待外部 watchdog 回收: ${error.message}`, {
+          pid: child.pid,
+          code: error.code || ''
+        });
+      }
 
       // [核心修正]：超時 1 秒後若 process.on('close') 仍然沒反應，強迫回傳 
       setTimeout(() => { if (!hasResponded) sendResponse(null, 'SIGKILL', true); }, 1000);
@@ -1866,6 +2029,16 @@ app.post('/compile', (req, res) => {
 
     child.on('error', (e) => {
       logDebug('執行程式 spawn 失敗：' + e.message);
+      // child.kill() 對不同 UID 的 sandbox 程序可能觸發 EPERM error 事件；
+      // 此時同 UID 的外部 watchdog 仍在運作，不能提前 cleanup／回應，
+      // 否則 timeout 來不及 wait() 回收子程序而留下 zombie。
+      if ((isTLE || isOLE) && e.code === 'EPERM' && !isWindows) {
+        logDebug('直接終止權限不足，等待外部 watchdog 完成終止與 wait 回收', {
+          pid: child.pid,
+          code: e.code
+        });
+        return;
+      }
       if (!hasResponded) sendResponse(null, null);
     });
 

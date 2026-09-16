@@ -18,6 +18,7 @@
   let dragState = null;
   let viewportObserver = null;
   let observedViewport = null;
+  let appliedPositionKey = null;
   const eventNodes = new Map();
   const CODE_TRANSITION_MS = 500;
   const CODE_SCROLL_MS = 460;
@@ -107,8 +108,16 @@
     panel.style.top = `${clamp(top, 8, Math.max(8, wrapper.clientHeight - panel.offsetHeight - 8))}px`;
   }
 
+  function storedPositionKey(trace = currentDocument) {
+    const saved = trace?.studio?.codePanelPosition;
+    return Number.isFinite(Number(saved?.x)) && Number.isFinite(Number(saved?.y))
+      ? `${Number(saved.x)}:${Number(saved.y)}`
+      : 'default';
+  }
+
   function applyStoredPosition() {
     if (!panel || panel.hidden) return;
+    appliedPositionKey = storedPositionKey();
     const wrapper = panel.parentElement;
     const saved = currentDocument?.studio?.codePanelPosition;
     if (!wrapper || !Number.isFinite(Number(saved?.x)) || !Number.isFinite(Number(saved?.y))) {
@@ -130,6 +139,7 @@
       x: Math.round(clamp(panel.offsetLeft / availableX, 0, 1) * 10000) / 10000,
       y: Math.round(clamp(panel.offsetTop / availableY, 0, 1) * 10000) / 10000
     };
+    appliedPositionKey = storedPositionKey();
   }
 
   function finishDrag(event) {
@@ -294,9 +304,14 @@
     });
   }
 
+  function comparisonCanPlay(event) {
+    return event?.type === 'compare' && event.enabled !== false
+      && event.autoAnimationDisabled !== true;
+  }
+
   function conditionCodeHighlightEnabled(condition, events = currentEvents) {
     const conditionRange = sourceRange(condition);
-    if (!conditionRange) return true;
+    if (!conditionRange) return false;
     const comparisons = [...events.values()].filter(event => {
       if (event?.type !== 'compare') return false;
       const compareRange = sourceRange(event);
@@ -304,17 +319,21 @@
         && compareRange.from >= conditionRange.from
         && compareRange.to <= conditionRange.to;
     });
-    return !comparisons.length || comparisons.some(event => event.enabled !== false);
+    // A whole-condition result is internal metadata, not an independent
+    // highlight control. Only color it after every comparison slice that
+    // produced the result is enabled; otherwise an unchecked slice can still
+    // paint the entire if/for expression through its condition event.
+    return comparisons.length > 0 && comparisons.every(comparisonCanPlay);
   }
 
   function visualStateForIds(ids, events = currentEvents, started = startedEventIds,
     completed = completedEventIds, activeId = activeEventId) {
     const candidates = ids.map(id => events.get(id)).filter(Boolean);
     const disabledComparisonOnSegment = candidates.some(event => (
-      event.type === 'compare' && event.enabled === false
+      event.type === 'compare' && !comparisonCanPlay(event)
     ));
     const linked = candidates.filter(event => {
-      if (event.type === 'compare') return event.enabled !== false;
+      if (event.type === 'compare') return comparisonCanPlay(event);
       if (event.type !== 'condition') return true;
       return !disabledComparisonOnSegment && conditionCodeHighlightEnabled(event, events);
     });
@@ -359,7 +378,10 @@
       node.classList.remove('is-active-first', 'is-active-last');
     });
     const activeByLine = new Map();
-    (eventNodes.get(activeEventId) || []).forEach(node => {
+    const activeEvent = currentEvents.get(activeEventId);
+    const activeNodes = activeEvent?.type === 'compare' && !comparisonCanPlay(activeEvent)
+      ? [] : eventNodes.get(activeEventId) || [];
+    activeNodes.forEach(node => {
       const line = node.closest('.asm-trace-code-line');
       if (!line) return;
       if (!activeByLine.has(line)) activeByLine.set(line, []);
@@ -375,6 +397,7 @@
   function setActiveEvent(eventId = '', phase = 'start') {
     const id = String(eventId || '');
     const event = currentEvents.get(id);
+    if (event?.type === 'compare' && !comparisonCanPlay(event)) return;
     if (phase === 'start' && id) startedEventIds.add(id);
     if ((phase === 'end' || phase === 'complete') && id
       && (event?.type === 'condition' || scheduledEventIds.has(id))) completedEventIds.add(id);
@@ -473,19 +496,39 @@
   function selectiveTransitionPlan(previousPlan, nextPlan) {
     const available = new Map();
     (previousPlan?.fragments || []).forEach(fragment => {
-      const key = String(fragment?.subtreeKey || '');
+      const key = `${fragment?.functionName || ''}|${fragment?.subtreeKey || ''}`;
       if (!available.has(key)) available.set(key, []);
       available.get(key).push(fragment);
     });
+    const fragments = (nextPlan?.fragments || []).map(fragment => {
+      const matches = available.get(`${fragment?.functionName || ''}|${fragment?.subtreeKey || ''}`) || [];
+      const previousFragment = matches.shift() || null;
+      return previousFragment
+        ? selectiveTransitionFragment(previousFragment, fragment)
+        : {
+          ...fragment,
+          expandedItems: fragment.items || [],
+          transitionEnteringLines: [...lineItems(fragment.items).keys()],
+          transitionLeavingLines: []
+        };
+    });
+    // Keep the old-only source in the same scrolling document until the new
+    // focus is reached. Slide code widgets likewise scroll one stable code
+    // surface rather than sending a separate old widget off screen.
+    available.forEach(matches => matches.forEach(fragment => fragments.push({
+      ...fragment,
+      expandedItems: fragment.items || [],
+      transitionEnteringLines: [],
+      transitionLeavingLines: [...lineItems(fragment.items).keys()]
+    })));
+    fragments.sort((left, right) => {
+      const firstLine = fragment => Math.min(...[...lineItems(fragment.items).keys(),
+        Number(fragment.focusLine)].filter(Number.isFinite));
+      return firstLine(left) - firstLine(right);
+    });
     return {
       ...nextPlan,
-      fragments: (nextPlan?.fragments || []).map(fragment => {
-        const matches = available.get(String(fragment?.subtreeKey || '')) || [];
-        const previousFragment = matches.shift() || null;
-        return previousFragment
-          ? selectiveTransitionFragment(previousFragment, fragment)
-          : fragment;
-      })
+      fragments
     };
   }
 
@@ -500,19 +543,79 @@
     const nextAnchor = expandedPage.querySelector(`[data-source-line="${nextFocusLine}"]`);
     if (!previousAnchor || !nextAnchor) return false;
 
-    transitionFinalPage = nextPage;
     expandedPage.classList.add('is-transition-preparing');
-    body.classList.add('is-switching', 'is-code-scrolling');
+    body.classList.add('is-switching');
     body.replaceChildren(expandedPage);
-    const initialOffset = oldAnchorY - (previousAnchor.getBoundingClientRect().top - body.getBoundingClientRect().top);
+    const expandedBodyTop = body.getBoundingClientRect().top;
+    const previousAnchorY = previousAnchor.getBoundingClientRect().top - expandedBodyTop;
+    const initialOffset = oldAnchorY - previousAnchorY;
+    const measuredPage = expandedPage.cloneNode(true);
+    measuredPage.classList.add('is-transition-scrolling');
+    measuredPage.style.position = 'absolute';
+    measuredPage.style.top = '0';
+    measuredPage.style.left = '0';
+    measuredPage.style.visibility = 'hidden';
+    measuredPage.style.transition = 'none';
+    measuredPage.querySelectorAll('.is-transition-entering').forEach(line => {
+      line.style.transition = 'none';
+      line.style.maxHeight = '1.58em';
+    });
+    measuredPage.querySelectorAll('.is-transition-leaving').forEach(line => {
+      line.style.transition = 'none';
+      line.style.maxHeight = '1.58em';
+    });
+    body.append(measuredPage);
+    const measuredAnchor = measuredPage.querySelector(`[data-source-line="${nextFocusLine}"]`);
+    const targetAnchorY = measuredAnchor?.getBoundingClientRect().top - body.getBoundingClientRect().top;
+    measuredPage.remove();
+    if (!Number.isFinite(targetAnchorY)) {
+      body.classList.remove('is-switching');
+      return false;
+    }
+    // Measure the destination in its final, collapsed layout. Keeping this
+    // offset after the expanded page is removed prevents a last-frame jump.
+    nextPage.style.position = 'absolute';
+    nextPage.style.top = '0';
+    nextPage.style.left = '0';
+    nextPage.style.visibility = 'hidden';
+    body.append(nextPage);
+    const finalAnchor = nextPage.querySelector(`[data-source-line="${nextFocusLine}"]`);
+    const finalAnchorY = finalAnchor?.getBoundingClientRect().top - body.getBoundingClientRect().top;
+    const finalPageHeight = nextPage.getBoundingClientRect().height;
+    nextPage.remove();
+    nextPage.style.removeProperty('position');
+    nextPage.style.removeProperty('top');
+    nextPage.style.removeProperty('left');
+    nextPage.style.removeProperty('visibility');
+    if (!Number.isFinite(finalAnchorY)) {
+      body.classList.remove('is-switching');
+      return false;
+    }
+    // The previous focus can sit below the new page's visible height. Park
+    // the new focus near the top of the viewport instead of clipping it.
+    const viewportHeight = Math.min(body.getBoundingClientRect().height, finalPageHeight + 18);
+    const destinationY = Math.min(finalAnchorY, Math.max(12, viewportHeight * 0.32));
+    const targetOffset = destinationY - targetAnchorY;
+    nextPage.style.transform = `translateY(${destinationY - finalAnchorY}px)`;
+    transitionFinalPage = nextPage;
+    if (Math.abs(targetOffset - initialOffset) >= 1) body.classList.add('is-code-scrolling');
     expandedPage.style.transform = `translateY(${initialOffset}px)`;
     requestAnimationFrame(() => {
       expandedPage.classList.remove('is-transition-preparing');
       expandedPage.classList.add('is-transition-scrolling');
-      expandedPage.style.transform = 'translateY(0)';
+      expandedPage.style.transform = `translateY(${targetOffset}px)`;
     });
     scheduleTransition(finishPageTransition, CODE_TRANSITION_MS);
     return true;
+  }
+
+  function focusNeedsScroll(nextFocusLine) {
+    if (!body || !nextFocusLine) return false;
+    const anchor = body.querySelector(`.asm-trace-code-page [data-source-line="${nextFocusLine}"]`);
+    if (!anchor) return false;
+    const viewport = body.getBoundingClientRect();
+    const target = anchor.getBoundingClientRect();
+    return target.top < viewport.top || target.bottom > viewport.bottom;
   }
 
   function showPage(nextPage, nextPlan, syntaxLines, animate) {
@@ -520,31 +623,19 @@
     const previous = body.querySelector('.asm-trace-code-page:not(.is-leaving)');
     const nextFocusLine = planFocusLine(nextPlan);
     const sameLayout = Boolean(currentPlan?.layoutKey && currentPlan.layoutKey === nextPlan.layoutKey);
-    if (!previous || !animate || sameLayout
+    const sameFocus = currentFocusLine === nextFocusLine;
+    const unchangedViewport = sameLayout && (sameFocus || !focusNeedsScroll(nextFocusLine));
+    if (!previous || !animate || unchangedViewport
       || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+      if (previous && animate && unchangedViewport) {
+        nextPage.style.transform = previous.style.transform;
+      }
       body.replaceChildren(nextPage);
       return;
     }
-    if (currentPlan?.subtreeKey && currentPlan.subtreeKey === nextPlan.subtreeKey
-      && showExpandedTransition(nextPage, nextPlan, syntaxLines, previous, nextFocusLine)) return;
-    const movesDown = nextFocusLine >= currentFocusLine;
-    previous.classList.add('is-leaving', movesDown ? 'to-above' : 'to-below');
-    nextPage.classList.add('is-entering', movesDown ? 'from-below' : 'from-above');
-    body.classList.add('is-switching');
-    body.append(nextPage);
-    const scrollDistance = Math.max(
-      48,
-      Math.min(260, Math.max(previous.offsetHeight, nextPage.offsetHeight) + 18)
-    );
-    previous.style.setProperty('--asm-code-scroll-distance', `${scrollDistance}px`);
-    nextPage.style.setProperty('--asm-code-scroll-distance', `${scrollDistance}px`);
-    void nextPage.offsetHeight;
-    requestAnimationFrame(() => {
-      previous.classList.add('has-left');
-      nextPage.classList.remove('is-entering');
-    });
-    transitionFinalPage = nextPage;
-    scheduleTransition(finishPageTransition, CODE_TRANSITION_MS);
+    if (showExpandedTransition(nextPage, nextPlan, syntaxLines, previous, nextFocusLine)) return;
+    // A frame with no measurable source anchor has nothing to scroll toward.
+    body.replaceChildren(nextPage);
   }
 
   function playbackEventIds(plan) {
@@ -559,13 +650,16 @@
     if (currentDocument !== trace || !currentFrame || currentFrame.id === frame.id) return 0;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return 0;
     const nextPlan = window.ASMTraceCodeModel.planFrame(trace, frame);
-    return currentPlan?.layoutKey && currentPlan.layoutKey !== nextPlan.layoutKey
+    return currentPlan?.layoutKey && (currentPlan.layoutKey !== nextPlan.layoutKey
+      || (currentFocusLine !== planFocusLine(nextPlan)
+        && focusNeedsScroll(planFocusLine(nextPlan))))
       ? CODE_TRANSITION_MS
       : 0;
   }
 
   function renderFrame(trace, frame, playbackPlan = null) {
     ensurePanel();
+    const wasPanelHidden = panel?.hidden !== false;
     const animate = Boolean(currentDocument === trace && currentFrame && currentFrame.id !== frame?.id && !dragState);
     const previousDocument = currentDocument;
     currentDocument = trace;
@@ -595,7 +689,13 @@
     panel.closest('#canvasWrapper')?.classList.toggle('has-trace-code-panel', fragments.length > 0);
     applyEventClasses();
     if (previousDocument !== trace) panel.style.removeProperty('will-change');
-    requestAnimationFrame(applyStoredPosition);
+    // The scrolling page temporarily expands before it collapses. Reapplying
+    // a position normalized by the panel's *remaining* space during that
+    // interval moves the whole code panel when only its contents should move.
+    // Keep its pixel position across frames; recalculate on initial display,
+    // an authored position change, or a viewport resize instead.
+    if (!panel.hidden && (previousDocument !== trace || wasPanelHidden
+      || appliedPositionKey !== storedPositionKey(trace))) applyStoredPosition();
     const liveEvent = document.querySelector('[data-trace-active-event-id]')?.dataset?.traceActiveEventId || '';
     if (liveEvent) setActiveEvent(liveEvent, 'start');
   }
@@ -629,6 +729,14 @@
   window.addEventListener('asm:trace-active-event', event => {
     if (event.detail?.document !== currentDocument || event.detail?.frame !== currentFrame) return;
     setActiveEvent(event.detail?.event?.id || '', event.detail?.phase || 'start');
+  });
+
+  window.addEventListener('asm:trace-event-availability-changed', event => {
+    if (event.detail?.document !== currentDocument
+      || event.detail?.frameId !== currentFrame?.id) return;
+    // Availability is measured from the rendered canvas after renderFrame.
+    // Refresh in the same frame so a canceled comparison cannot color code.
+    applyEventClasses();
   });
 
   window.addEventListener('asm:trace-playback-plan-complete', event => {

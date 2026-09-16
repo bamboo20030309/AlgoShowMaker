@@ -15,6 +15,7 @@
   let renderedEventSettingsTrace = null;
   let renderedEventSettingsFingerprint = '';
   let useSavedEventSettings = false;
+  let sourceViewBaseline = null;
   const embedMode = new URLSearchParams(window.location.search).get('asmEmbed');
 
   const EVENT_SETTING_TYPES = [
@@ -22,6 +23,58 @@
     'call', 'function-enter', 'function-exit'
   ];
   const DEFAULT_EVENT_GAP_MS = 500;
+
+  function editorSource() {
+    if (typeof window.asmGetSourceCode === 'function') return window.asmGetSourceCode();
+    return typeof aceEditor !== 'undefined' ? aceEditor.getValue() : '';
+  }
+
+  function sourceViewBlock(source) {
+    return window.ASMTraceViewSource?.findBlock?.(source)?.text || null;
+  }
+
+  function sourceViewWasEdited() {
+    return Boolean(currentTrace && sourceViewBlock(editorSource()) !== sourceViewBaseline);
+  }
+
+  function canonicalSettings(value) {
+    if (Array.isArray(value)) return value.map(canonicalSettings);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.keys(value).sort()
+      .map(key => [key, canonicalSettings(value[key])]));
+  }
+
+  function sourceMatchesTracePresentation(trace, source) {
+    try {
+      const sourceSettings = window.ASMTraceViewSource?.parse?.(source);
+      if (!sourceSettings) return false;
+      const storedSettings = window.ASMTraceViewSource?.fromTrace?.(trace);
+      return JSON.stringify(canonicalSettings(sourceSettings))
+        === JSON.stringify(canonicalSettings(storedSettings));
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function presentationFromSource(trace, source) {
+    // Frame data is still the last RUN result, but presentation settings are
+    // authoritative in the current source. Never inherit deleted rules,
+    // skins, positions, cameras or event switches from the previous trace.
+    const fresh = window.ASMTraceModel.normalizeTraceDocument({
+      ...trace, rules: [], skins: {}, studio: {}, asmView: null,
+      viewSettingsApplied: true
+    });
+    let settings = null;
+    try {
+      settings = window.ASMTraceViewSource?.parse?.(source) || null;
+    } catch (error) {
+      console.warn(error.message);
+    }
+    if (settings) window.ASMTraceViewSource.applyToTrace(fresh, settings);
+    fresh.asmView = settings;
+    fresh.viewSettingsApplied = true;
+    return fresh;
+  }
 
   function cleanEventSettings(value = {}) {
     const cleanFlags = source => Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
@@ -337,13 +390,19 @@
       sliceMode,
       watches: watches.map(variable => variable.id),
       skins,
-      rules: currentTrace?.rules || []
+      rules: window.ASMTraceViewSource?.parse?.(code)?.rules || []
     };
   }
 
   function applyTraceDocument(trace, options = {}) {
     let preparedTrace = trace;
-    if (options.migrateCurrentSettings && currentTrace
+    const source = editorSource();
+    const sourceViewChangedOnLoad = Boolean(sourceViewBlock(trace?.sourceCode)
+      && sourceViewBlock(trace.sourceCode) !== sourceViewBlock(source)
+      && !sourceMatchesTracePresentation(trace, source));
+    if (sourceViewChangedOnLoad) preparedTrace = presentationFromSource(trace, source);
+    if (options.migrateCurrentSettings && !sourceViewWasEdited()
+      && !sourceViewChangedOnLoad && currentTrace
       && window.ASMTraceViewSource?.fromTrace
       && window.ASMTraceViewSource?.applyToTrace) {
       // Recompiling an old saved slide creates new frame IDs. Convert the
@@ -360,14 +419,13 @@
       renderer: originalRendererName(skin?.renderer, preparedTrace.variables?.[variableId])
     }]));
 
-    const incomingStudio = preparedTrace.studio && Object.keys(preparedTrace.studio).length
-      ? { ...preparedTrace.studio }
-      : { ...(currentTrace?.studio || {}) };
+    const incomingStudio = { ...(preparedTrace.studio || {}) };
     useSavedEventSettings = Boolean(options.preserveEventSettings && incomingStudio.eventSettings);
     if (!useSavedEventSettings) delete incomingStudio.eventSettings;
     currentTrace = window.ASMTraceModel.normalizeTraceDocument({ ...preparedTrace, skins, studio: incomingStudio });
     applyAccountEventSettings();
     currentTrace = window.asmApplyTraceDocument(currentTrace);
+    sourceViewBaseline = sourceViewBlock(source);
     mode = 'trace';
     sliceMode = currentTrace.sliceMode === 'manual' ? 'manual' : 'auto';
     updateStudioButton();
@@ -395,6 +453,7 @@
       }, { preserveEventSettings: true });
     } else {
       currentTrace = null;
+      sourceViewBaseline = null;
       updateStudioButton();
     }
     window.dispatchEvent(new CustomEvent('asm:trace-loaded'));
@@ -402,7 +461,9 @@
 
   function snapshot() {
     const traceVariables = currentTrace?.variables || {};
-    const savedTrace = window.ASMTraceViewSource?.compactTraceForSave?.(currentTrace) || currentTrace;
+    const snapshotTrace = sourceViewWasEdited()
+      ? presentationFromSource(currentTrace, editorSource()) : currentTrace;
+    const savedTrace = window.ASMTraceViewSource?.compactTraceForSave?.(snapshotTrace) || snapshotTrace;
     const watches = Object.entries(traceVariables).map(([id, variable]) => ({
       id,
       name: variable.name,
@@ -483,6 +544,8 @@
     getCompileConfig,
     applyTraceDocument,
     loadAnimation,
+    sourceViewWasEdited,
+    noteSourceViewWritten: () => { sourceViewBaseline = sourceViewBlock(editorSource()); },
     snapshot
   };
 })();

@@ -811,6 +811,10 @@ body.asm-trace-camera-framing #arraySvg {
   display: none !important;
 }
 
+.trace-studio-inspector-panel:not(.is-code-panel-selection) > [data-trace-code-controls] {
+  display: none !important;
+}
+
 .trace-studio-section {
   display: flex;
   flex-direction: column;

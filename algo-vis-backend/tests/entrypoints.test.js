@@ -26,56 +26,68 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-23'));
+  assert.ok(html.includes('trace-model.js?v=trace-27'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
-  assert.ok(html.includes('trace-code-model.js?v=code-19'));
+  assert.ok(html.includes('trace-code-model.js?v=code-21'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
-  assert.ok(html.includes('trace-code-presenter.js?v=code-18'));
+  assert.ok(html.includes('trace-code-presenter.js?v=code-25'));
   assert.ok(html.includes('trace-view-source.js?v=trace-14'));
-  assert.ok(html.includes('trace-editor.js?v=trace-22'));
+  assert.ok(html.includes('trace-editor.js?v=trace-23'));
   assert.ok(html.includes('compile.js?v=syntax-7'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=freshness-2'));
+  assert.ok(html.includes('style.css?v=freshness-4'));
   const slides = read('slides.html');
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=random-id-163'));
+  assert.ok(slides.includes('slides.js?v=random-id-170'));
   for (const surface of [html, slides, legacy]) {
     assert.ok(surface.includes('href="https://github.com/bamboo20030309/AlgoShowMaker"'));
     assert.ok(surface.includes('target="_blank"'));
     assert.ok(surface.includes('rel="noopener noreferrer"'));
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
-  assert.ok(slides.includes('slides.css?v=random-id-92'));
+  assert.ok(slides.includes('slides.css?v=random-id-93'));
+  for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
+    assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
+  }
+  assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
+  assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
   assert.ok(legacy.includes('home.css?v=5'));
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(html.includes('trace-renderer.js?v=trace-152'));
-  assert.ok(read('trace-renderer.js').includes("build: 'trace-152'"));
-  assert.ok(read('trace-renderer.js').includes("asmTraceRendererBuild = 'trace-152'"));
-  assert.ok(html.includes('trace-rules.js?v=trace-12'));
+  assert.ok(html.includes('trace-arrow-model.js?v=arrow-3'));
+  assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
+  assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
+  assert.ok(read('draw/draw_arrow.js').includes('window.ASMArrowModel?.geometry'));
+  const rendererBuild = html.match(/trace-renderer\.js\?v=(trace-\d+)/)?.[1];
+  assert.ok(rendererBuild);
+  assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
+  assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
+  assert.ok(html.includes('trace-rules.js?v=trace-15'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
-    assert.ok(html.includes(`draw/draw_array_${name}.js?v=focus-2`));
-    assert.ok(slides.includes(`draw/draw_array_${name}.js?v=focus-2`));
-    assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=focus-2`));
+    const version = name === 'disk' ? 'focus-3' : 'focus-2';
+    assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
+    assert.ok(slides.includes(`draw/draw_array_${name}.js?v=${version}`));
+    assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
   assert.ok(html.includes('draw/draw_2Darray.js?v=focus-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-43'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-161'));
-  assert.ok(read('trace-frame-tween.js').includes("build: 'trace-160'"));
-  assert.ok(read('trace-frame-tween.js').includes("asmTraceFrameTweenBuild = 'trace-160'"));
-  assert.ok(html.includes('trace-camera.js?v=trace-3'));
+  assert.ok(html.includes('trace-events.js?v=trace-44'));
+  const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
+  assert.ok(tweenBuild);
+  assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
+  assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
+  assert.ok(html.includes('trace-camera.js?v=trace-4'));
   assert.ok(html.includes('trace-player.js?v=trace-24'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-5'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-109'));
-  assert.ok(html.includes('front.js?v=random-id-29'));
+  assert.ok(html.includes('trace-studio.js?v=trace-115'));
+  assert.ok(html.includes('front.js?v=random-id-33'));
   assert.ok(html.includes('slides-embed.js?v=trace-9'));
   assert.ok(html.includes('trace-provenance.js?v=trace-5'));
-  assert.ok(html.includes('trace.css?v=trace-31'));
+  assert.ok(html.includes('trace.css?v=trace-33'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';
   assert.match(codeHighlight, /background-color:\s*rgba\(255,\s*214,\s*10,\s*0\.48\)/);
   assert.doesNotMatch(codeHighlight, /(?:^|[;\s])color\s*:/,
@@ -97,7 +109,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(read('interaction.js'), /selectExternal\(element\)/);
   assert.match(read('interaction.js'), /clearExternalSelection\(element = null\)/);
   assert.match(read('trace.css'), /\.asm-trace-code-panel\.selected \.asm-trace-code-body/);
-  assert.ok(html.includes('interaction.js?v=trace-39'));
+  assert.ok(html.includes('interaction.js?v=trace-40'));
   assert.match(read('trace-code-presenter.js'), /currentPlan\.layoutKey === nextPlan\.layoutKey/);
   assert.match(read('trace-code-presenter.js'), /is-transition-preparing/);
   assert.match(read('trace-code-presenter.js'), /playbackEventIds/);
@@ -115,7 +127,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     'completed nested event spans must form one continuous background band');
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
   assert.ok(html.includes('draw/draw_array.js?v=trace-2'));
-  assert.ok(html.includes('trace-studio.css?v=trace-50'));
+  assert.ok(html.includes('trace-studio.css?v=trace-51'));
   assert.doesNotMatch(read('trace-studio.js'), /inspector\.append\(field\('作用時間線'/,
     'the obsolete event timeline scope selector is absent from the right sidebar');
   assert.match(read('trace-studio.css'), /\.trace-studio-event-code-button\.is-current\s*\{[^}]*inset 4px 0 #60a5fa/s,
@@ -153,8 +165,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     'frame-authored text must be captured once for its shared fade-out lifecycle');
   assert.match(read('trace-frame-tween.js'), /entry\.appearanceStart\s*=\s*entry\.keepTransition[\s\S]*?frameTransitionStart[\s\S]*?declarationSlot[\s\S]*?enteringMarkerKeys/,
     'new frame objects must remain hidden until code and pre-keep exits have finished');
-  assert.match(read('trace-frame-tween.js'), /entry\.appearing\s*=\s*entry\.keepSnapshotMember[\s\S]*?entry\.keepTransition[\s\S]*?declarationSlot[\s\S]*?declarationKnown[\s\S]*?entry\.sceneBoundaryEntrance/,
-    'disabled declarations are direct except when a keep boundary must introduce the new live scene');
+  assert.match(read('trace-frame-tween.js'), /if \(options\.keepSnapshotMember \|\| options\.retainedSnapshot\) return false/,
+    'every retained keep object remains visible without an entrance animation');
   assert.match(read('trace-frame-tween.js'), /keepHandoffSources[\s\S]*?entry\.keepSnapshotMember\s*&&\s*!entry\.keepHandoff/,
     'a retained keep snapshot takes ownership of the prior live geometry without re-entering');
   assert.match(read('trace-frame-tween.js'), /entry\.declarationEntrance\s*&&\s*entry\.lifecycleKind\s*!==\s*'marker'/,

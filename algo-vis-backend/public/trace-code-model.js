@@ -128,7 +128,7 @@
       if (/\/\*\s*@asm-view\b/i.test(text)) asmView = true;
       if (asmView) hidden.add(line.number);
       if (/@asm-view\s*\*\//i.test(text)) asmView = false;
-      if (/^\s*\/\/.*@(?:frame|keep|text|style|segment|layout|asm(?:[-\w]*)?)\b/i.test(text)) {
+      if (/^\s*\/\/.*@(?:frame|object|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|asm(?:[-\w]*)?)\b/i.test(text)) {
         hidden.add(line.number);
       }
       if (!String(displayLines.get(line.number) || '').trim()) hidden.add(line.number);
@@ -980,16 +980,38 @@
     if (!sources.length && !hasRuntimeCodeEvents) {
       sources = setupSources({ ...document, sourceStructure }, frame, lines, hidden, displayLines);
     }
-    const fragments = clusterSources(sources)
-      .map(cluster => fragmentForCluster(
-        cluster,
-        lines,
-        hidden,
-        displayLines,
-        document.sourceDeclarations,
-        displayedContainerNames(document, frame)
-      ))
-      .filter(fragment => fragment.items.length);
+    const excludedDeclarationNames = displayedContainerNames(document, frame);
+    const fragmentGroups = [];
+    const groupBySourceTree = new Map();
+    clusterSources(sources).forEach(cluster => {
+      const fragment = fragmentForCluster(
+        cluster, lines, hidden, displayLines,
+        document.sourceDeclarations, excludedDeclarationNames
+      );
+      if (!fragment.items.length) return;
+      // A scope exit and later compare/swap can have different outer control
+      // contexts yet both expand to the same FunctionDefinition. Show that
+      // physical source tree once, while retaining every runtime event ID on
+      // its original source span for ordered highlighting.
+      const key = `${fragment.functionName}|${fragment.subtreeKey}`;
+      const existing = groupBySourceTree.get(key);
+      if (!existing) {
+        const group = { sources: [...cluster], fragment };
+        fragmentGroups.push(group);
+        groupBySourceTree.set(key, group);
+        return;
+      }
+      existing.sources.push(...cluster);
+      existing.sources.sort((left, right) => (
+        Number(left.event?.order) - Number(right.event?.order)
+        || Number(left.from) - Number(right.from)
+      ));
+      existing.fragment = fragmentForCluster(
+        existing.sources, lines, hidden, displayLines,
+        document.sourceDeclarations, excludedDeclarationNames
+      );
+    });
+    const fragments = fragmentGroups.map(group => group.fragment);
     return {
       frameId: frame.id || '',
       sourceCode: source,

@@ -1,6 +1,6 @@
-# 1. 使用 Node.js 18 的輕量版 (slim) 作為基底
+# 1. 使用 Node.js 22 的輕量版 (slim) 作為基底；Mongoose 9 需要 Node 20.19 以上
 # slim 版本比較小，但包含執行 node 所需的一切
-FROM node:18-slim
+FROM node:22-slim
 
 # 2. 安裝 C++ 編譯器 (g++) 和建置工具
 # 這是為了編譯使用者上傳的 .cpp 檔案

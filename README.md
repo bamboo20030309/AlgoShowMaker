@@ -3,17 +3,26 @@
 AlgoShowMaker 是以 C++ 程式執行結果為核心的演算法視覺化與投影片製作工具。使用者可以在原始碼中加入少量註解指令，將變數、資料結構、程式事件、鏡頭、文字與 TTS 整理成可播放、可編輯的動畫，再嵌入投影片。
 
 - 預設介面與文件語言：繁體中文
-- 目前開發基準：AV_V4.6，持續開發中
+- 目前開發基準：AV_V4.7，持續開發中
 - 專案首頁：[GitHub](https://github.com/bamboo20030309/AlgoShowMaker)
-- 最後整理日期：2026/09/12
+- 最後整理日期：2026/09/16
 
 ## 版本日誌
+
+### AV_V4.7 — 2026/09/16
+
+- 新增多行 `@frame`／`@object`、`@place`、共用 `@arrow`、`@camera`、多個 `use` preset 與 `iteration.last(...)` 繪圖衍生值；完整語法與案例見使用手冊。
+- 投影片新匯出使用精簡壓縮 `.asmdeck`，包含原始碼、輸入、編輯設定與去重素材，不包含可重建的 trace 結果；匯入優先使用本地快取，未命中才 RUN，舊 JSON 仍可匯入。
+- 完善手機介面與原生程式碼輸入、空陣列／未初始化數值、外框補間、索引標籤與背景色同步，以及 style／箭頭／指標的獨立呈現層。
+- 修正 heap 指標賦值位移時間不足、keep 箭頭重播入退場，以及拖曳文字大小時整個文字物件誤取消選取的問題。
+- 發布前自動檢查與瀏覽器驗收各自記錄；自動測試通過不等於所有介面與動畫均已目視驗收。
 
 ### AV_V4.6 — 2026/09/12
 
 - 播放層改用正向事件 checkpoint：依 runtime `order` 提交宣告、賦值、交換、指標移動與退場，關閉事件仍正確提交狀態，避免後段結果提前污染前段動畫。
 - 補齊變數生命週期、迴圈標頭與邊界事件、指標入退場／讓位、未初始化空格、文字與陣列淡入淡出，以及程式碼先提示、視覺物件再回應的排程。
 - `@keep` 新增 `when`、`at`、原位 `offset`、style 保存、穩定命名、虛擬 `keep` 聯集與獨立快照 identity；快照交接改為接手來源物件的實測位置，不再套用一般物件退場或額外淡入殘影。
+- 新增具名 `@layout recursion` 與 `@keep ... in`：可依實際遞迴 activation 自動建立父子樹，支援四向生長、六種樹排列、間距、對齊、分支度與父子箭頭設定。
 - 程式碼片段改由 C++ AST 擷取，支援 ACE C++ 著色、事件片段背景高亮、複合條件短路結果、平滑捲動、拖曳與字級設定；Trace Studio 右欄改為黑底巢狀事件程式碼結構。
 - 演算法編輯器、Trace Studio、投影片編輯器與投影片播放共用相同 trace／renderer／tween 設定；投影片內嵌播放器會等實際 viewport 幾何可用後重新基準化目前幀，修正首次下一步格子由外框左上角擠出的問題。
 - 新增瀏覽器動畫除錯記錄、投影片儲存正規化、JWT secret 啟動檢查、GitHub 入口，以及冒泡、插入、heap、播放一致性與儲存再開啟等回歸案例。
@@ -34,6 +43,15 @@ AlgoShowMaker 是以 C++ 程式執行結果為核心的演算法視覺化與投�
 | 投影片編輯器 | <http://localhost:3000/slides.html> | 編輯一般投影片並嵌入演算法動畫 |
 
 演算法編輯器、Trace Studio 和演算法投影片共用相同的追蹤資料與播放規則。修改跨幀動畫、事件、鏡頭或儲存格式時，三個介面都必須維持一致。
+
+### 手機介面
+
+- 寬度不超過 760px，或窄螢幕觸控裝置不超過 900px 時，會啟用獨立手機介面；桌面版配置不受影響。
+- 演算法頁以畫布與精簡播放列為主，程式碼、輸入、輸出、語法樹、範例、動畫編輯和事件設定透過底部工作列切換。
+- 手機版 C++ 編輯器在 ACE 上方使用同步的原生文字輸入層，讓 iOS／Android（包含內建 WebView）可長按選取、複製、剪下與貼上；內容即時寫回 ACE 與本機草稿，桌面版 ACE 操作維持不變。
+- Trace Studio 在手機上改為單一畫布，幀列表與屬性檢查器使用全寬抽屜，不再強行顯示三欄。
+- 投影片頁預設收起控制欄與元件欄；「元件」和「控制」由底部工作列開啟為 bottom sheet，播放模式仍由 Reveal.js 保持固定 1280×720 邏輯畫布並自動縮放。
+- 所有手機按鈕至少保留約 40–44px 觸控範圍，並使用 `100dvh` 與 safe-area 避免瀏覽器網址列和 iPhone 底部區域遮住操作。
 
 ## 快速啟動
 
@@ -128,11 +146,16 @@ int main() {
 | 指令 | 用途 | 範例 |
 | --- | --- | --- |
 | `@frame` | 擷取執行狀態並建立一幀 | `// @frame arr[i,j],key` |
+| `@preset`／`@frame use` | 壓縮並重用整組幀繪圖設定 | `// @frame use sieve_view, sieve_colors` |
 | `@keep` | 依條件保留變數或上一幀畫面 | `// @keep last as round when i > 0` |
+| `@layout` | 宣告並設定具名遞迴排版 | `// @layout recursion as "quick_tree" at canvas.top offset(0,80)` |
 | `@exit` | 提早讓指定變數的視覺呈現退場 | `// @exit min_idx` |
 | `@text` | 顯示動態說明文字與 TTS | `// @text "i = ${i}" at arr.bottom when i >= 0` |
 | `@style` | 套用背景、框線、point、mark 或 focus | `// @style arr[i,i*2:i*2+1] highlight red` |
 | `@segment` | 標示一段連續範圍 | `// @segment arr[low:high]` |
+| `@place` | 將同幀已顯示物件綁到語意錨點 | `// @place pivot at arr.right offset(16,0)` |
+| `@arrow` | 以語意錨點連接格子、變數、keep 或 Studio 物件 | `// @arrow from arr[i].bottom to arr[j].top as "move"` |
+| `@camera` | 為目前幀設定自動鏡頭或相對目標 | `// @camera focus arr[i] zoom(1.6)` |
 
 常用修飾詞：
 
@@ -143,15 +166,38 @@ int main() {
 - `render`：切換資料結構畫法，例如 `render heap`。
 - `with`：傳入 `range(...)`、`columns(...)`、`labels(...)` 等 renderer 選項。
 - `without style`：讓 `@keep` 保留資料但不保存當下樣式。
+- `in`：把 live `@frame` 或 `@keep` 快照加入已宣告的具名排版，例如 `@frame arr in quick_tree`、`@keep last in quick_tree`。
 
-條件支援 `&&`、`||`、`and`、`or`，以及 `previous(...)`、`changed(...)` 等跨幀判斷。`@style` 可混合單點與區間，例如：
+`@preset` 會原樣保存所有 `@` 設定，並由各指令解析器在 `@frame use` 的位置展開；目前包含
+`@object`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、`@camera`。它只壓縮幀設定，
+不主動執行 `@keep`、`@exit`、`@frame` 等流程動作；這些仍寫在實際執行位置。
+
+箭頭使用共用 Arrow Model；`@arrow`、Trace Studio 箭頭及遞迴 layout 箭頭共享同一套端點、邊距、箭頭頭部與顏色邏輯，底層沿用原本 `drawArrow` 的幾何比例。完整選項請參考[演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md#arrow連接視覺物件)。
+
+條件支援 `&&`、`||`、`and`、`or`，以及 `previous(...)`、`changed(...)` 等跨幀判斷。繪圖運算式也可使用 `iteration.last(j)`，從已完成的 trace 取得目前函式／遞迴執行個體中，這次 `j` 生命週期最後走到的值；它不會產生事件、物件或重新執行 C++。`@style` 可混合單點與區間，例如：
 
 ```cpp
 // @style arr[i,i*2:i*2+1] highlight red
 // @style arr[1:i-1,n:n] focus
+// @style prime[0:iteration.last(j)] focus when i * value <= n
 ```
 
 `@keep as` 第一次使用名稱時不加編號；重複名稱依序使用 `_1`、`_2`。所有 keep 物件的外框可透過虛擬聯集 `keep.top`、`keep.bottom` 等錨點定位。keep 預設保留來源的相對定位、Studio 位置／綁定與自動排版高度；所有未手動定位的 keep 列，預設垂直間距為 50px。明確的 `offset` 或 Studio 拖曳位置仍優先。若只想從原位置調整，可寫 `// @keep last offset(0,-24)`，正 Y 向下、負 Y 向上。
+
+遞迴分裂畫面可先宣告具名排版，再把每次遞迴要留下的快照加入該排版：
+
+```cpp
+// @layout recursion as "quick_tree" at canvas.top offset(0,80)
+// @layout quick_tree direction top-down
+
+// 寫在遞迴函式內
+// @frame arr in quick_tree
+// @keep last as "partition" in quick_tree
+```
+
+`@frame ... in quick_tree` 會先把尚未 keep 的目前 `arr` 綁到這次遞迴 activation 的節點位置；隨後的 `@keep ... in quick_tree` 會在相同位置接手。未另外設定時採 `compact`、`top-down`、置中、兄弟間距 40px、層級間距 100px、二分支，以及與 `AV.hpp` 樹排版一致的黑色 2px 父子箭頭。預設箭頭由父節點 `bottom` 指向子節點實際 outerframe 的 `top`。每條設定都必須明確寫出排版 ID，例如 `// @layout quick_tree mode inorder`，避免設定誤套到其他排版。
+
+同一個 `@frame` 顯示多個物件時，只有第一個主要物件會成為 recursion layout 節點。例如 `// @frame arr[i],pivot with range(low,high) in quick_tree` 由 `arr` 代表該節點，`i` 是附著在陣列上的指標，`pivot` 是獨立物件。可在下一行寫 `// @place pivot at arr.right offset(16,0)`，把 `pivot` 左側貼到 `arr` 右側；若要明確指定來源錨點可寫 `// @place pivot.left at arr.right offset(16,0)`。
 
 完整語法、條件、定位、renderer 選項、冒泡／插入／快速／堆積排序案例與常見錯誤，請閱讀 [演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。
 
@@ -175,6 +221,7 @@ C++ 原始碼
 - 共用播放層會為每幀建立正向重播 checkpoint：從第一筆事件的 `before` 狀態開始，依 runtime `order` 將 assign、write、swap、宣告與退場提交到各自的 `commitMs`，不再從幀最終 DOM 倒推早期畫面。指標位置與格子數值共用這份 checkpoint；除錯記錄也會保存同一份狀態轉移表。
 - 關閉或缺少動畫目標的事件仍保留 runtime 狀態變化，但以零動畫時間在原執行順序提交；關閉的宣告／退場直接呈現其完成狀態。被關閉的迴圈邊界則是 `ignored`，完全不進入播放或後續邏輯狀態。
 - swap 的邏輯格子與承載數值的視覺節點分開追蹤：數值會跟著節點移動，不會在交換前後被目的格 ID 重寫。宣告初始化會先播放物件入場，初始化值直到配對的賦值 checkpoint 才出現；尚未取得索引值的新指標則先加入物件左側的 unresolved 群組並觸發既有指標讓位，再於賦值事件移到實際索引。
+- 未使用 `at`、Trace Studio 位置或 layout 的主物件，預設以 `canvas.top offset(0,80)` 為放置基準；同一幀的其他自動排列物件會保留原本相對間距。若 swap 所在物件在幀間改變位置，播放層會先完成物件位置補間，再依 runtime order 播放交換，避免格子一邊換畫布位置一邊交換。
 - 尚未賦值的 scalar 仍會建立物件外框，但格子內容保持空白，不讀取未初始化的 C++ 記憶體；一般賦值、`++`／`--` 或 `cin >> variable` 後才顯示實際值。
 - 每個已開啟、可呈現且具有原始碼範圍的事件，會先高亮對應程式碼 400 ms，再開始物件動畫；程式碼提示與物件回應屬於同一筆正式排程。沒有程式碼範圍的事件不額外等待，關閉或無法播放的事件不占提示時間。
 - 按下下一步時，上一幀不再使用的文字會立即在原位淡出，不等待程式碼跳轉、keep 或版面移動完成；新一幀文字仍依自己的呈現階段淡入。
@@ -217,6 +264,7 @@ C++ 原始碼
 - 無需移動時不重播入場或位移；需要切換區段時只展開下一幀將顯示的新行，再滾動並收合上一幀不再需要的行。
 - Trace Studio 縮圖採可見區域優先、閒置預載與快取重用，避免一次同步繪製所有幀。
 - 程式碼或輸入變更但尚未 RUN 時，狀態點為紅色；動畫與程式一致時為綠色。
+- 手動刪除或清空原始碼底部的 `@asm-view` 後，下一次 RUN 會以目前原始碼重建規則、皮膚、事件開關、物件位置與鏡頭，不沿用上一份動畫的設定；儲存或離開 Studio 也不會把被刪除的舊設定偷偷寫回。帳號層級的事件預設偏好仍獨立保留。
 
 ## 傳統 `AV.hpp` 繪圖 API
 
@@ -248,6 +296,23 @@ int main() {
 | `algo-vis-backend/public/slides.*` | 投影片編輯與演算法動畫嵌入 |
 | `algo-vis-backend/tests/` | 單元、整合與介面一致性測試 |
 | `algo-vis-backend/scripts/regression.js` | 統一回歸檢查入口 |
+
+Linux Docker 執行使用者 C++ 時，同時套用 5 秒應用層 TLE 與同 UID 的 GNU `timeout` 硬性 watchdog；即使容器未授予 `CAP_KILL`，逾時程序仍會被回收。終止訊號失敗會寫入 debug log，不再靜默忽略。
+
+投影片雲端儲存的單次 HTTP JSON 請求上限為 8 MB；Docker 部署的 Nginx 與 Node.js／Express 使用相同上限。接近上限時應先移除未使用的媒體與重複動畫資料，而不是繼續放大請求限制。
+新匯出一律是精簡壓縮的 `.asmdeck`：它只從獨立快照保存投影片、按雜湊去重的畫布圖片、C++ 原始碼／輸入、`@asm-view` 與額外播放設定，不包含可重建的逐幀 trace。匯出不會修改編輯中的 deck、已載入動畫或日常本機／雲端儲存。舊 `.json` 檔仍可匯入，但不再提供完整 JSON 匯出。
+
+匯入 `.asmdeck` 會驗證版本、內容與素材雜湊，先讀 IndexedDB trace 快取；完整命中不 RUN，同程式／輸入的基礎 trace 命中只重套 Studio 設定，否則每張動畫 RUN 一次。工具列的快取按鈕可設定 8–512 MB 上限或清除快取；清除不影響已載入和已儲存的 deck。換電腦、離線或清除快取後可能需要重新 RUN，隨機、時間及外部資料可能無法重現上次結果。程式／輸入尚未 RUN，或舊動畫缺少可重建原始碼時，必須先 RUN／遷移，否則匯出會拒絕。
+
+### 縮小投影片資料的建議順序
+
+1. 儲存前顯示整份投影片與各頁的序列化大小，先找出最大的頁面與物件。
+2. 縮圖只作為快取，不存入每張投影片；封面優先使用 WebP 並限制解析度。
+3. 日常儲存的圖片與音訊外部資產化仍是後續工作；本次僅在 `.asmdeck` 匯出快照中去重畫布圖片。
+4. 日常本機／雲端儲存仍保留完整 trace；精簡重建與 IndexedDB 快取目前只用於 `.asmdeck` 匯出／匯入。
+5. 延伸既有儲存前正規化，清除預設值、失效規則、未引用物件及重複的跨幀設定。
+
+Gzip/Brotli 可以縮短傳輸時間，但不會降低 MongoDB 文件與瀏覽器本機儲存實際占用，因此應在資料去重與外部資產化之後再加入。
 
 ## 測試與基本檢查
 
@@ -297,9 +362,9 @@ JSON 是診斷與回歸基準的主要格式；CSV 是依「時間點 × 畫面�
 功能完成不只包含程式碼，也包含對應文件。後續修改時依下列規則同步更新：
 
 - 新增或改變對外功能、主要介面、啟動方式、架構或測試指令：更新本 README。
-- 新增或改變 `@frame`、`@keep`、`@text`、`@style`、`@segment`、`at`、`as`、`when`、renderer 或條件語法：更新 [演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。
+- 新增或改變 `@frame`、`@keep`、`@text`、`@style`、`@segment`、`@arrow`、`at`、`as`、`when`、renderer 或條件語法：更新 [演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。
 - 改變部署、環境變數、JWT、MongoDB、SMTP 或 Docker 流程：更新 [伺服器架設與維護手冊](SETUP_GUIDE.md)。
-- 尚未實作但已確認的排版方向：記錄於 [排版指令規劃](LAYOUT_DIRECTIVE_ROADMAP.md)，不要在使用手冊中標示為可用。
+- 遞迴排版的已實作範圍與後續一般化方向記錄於 [排版指令規劃](LAYOUT_DIRECTIVE_ROADMAP.md)。
 - 每次文件變更更新「最後整理／核對日期」，並避免記錄容易失效的硬編碼快取版本或測試數量。
 
 ## 授權

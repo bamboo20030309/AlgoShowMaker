@@ -6,6 +6,7 @@
     { type: 'read', label: '讀取', color: '#3976b8', enabledByDefault: false, timelineByDefault: false },
     { type: 'write', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'assign', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     // Whole-condition results are internal playback metadata. Comparisons are
     // the user-controllable events; this record only resolves final true/false
@@ -28,6 +29,7 @@
     read: 'none',
     write: 'assign',
     assign: 'assign',
+    'sequence-operation': 'sequence',
     compare: 'compare',
     condition: 'none',
     swap: 'swap',
