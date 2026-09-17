@@ -3596,3 +3596,23 @@ body:not(.asm-edit-mode) .upper-canvas {
 }
 body:not(.asm-edit-mode) .slide-order-toggle,
 body.shared-view-only .slide-order-toggle { display: none; }
+
+body:not(.asm-edit-mode) > .tts-transport[data-expanded="true"] {
+  left: calc(var(--controlbar-w) + 14px); right: auto; top: 14px;
+  width: min(320px, calc(100vw - var(--controlbar-w) - 28px));
+  max-height: calc(100dvh - 80px); overflow: auto;
+}
+body:not(.asm-edit-mode) > .tts-transport #ttsScriptShell,
+body:not(.asm-edit-mode) > .tts-transport #ttsScriptSource,
+body:not(.asm-edit-mode) > .tts-transport #ttsAddCarrierBtn { display: none; }
+body:not(.asm-edit-mode) > .tts-transport .tts-slider-control output { display: inline; }
+body.shared-view-only .control-chrome { display: flex; padding-top: 64px; }
+body.shared-view-only .chrome-home-link { display: grid; }
+body.shared-view-only .mode-switch,
+body.shared-view-only #importDeckBtn,
+body.shared-view-only #exportDeckBtn,
+body.shared-view-only #shareDeckBtn { display: none; }
+body.shared-view-only .shared-access-badge { left: auto; right: 14px; }
+body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--controlbar-w); }
+
+.deck-file-drop-active { outline: 3px solid #55b9f3; outline-offset: 3px; background: #1d8f83 !important; }
