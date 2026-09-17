@@ -420,6 +420,11 @@
   });
 
   async function initialize() {
+    if (new URLSearchParams(location.search).get('examples') === '1') {
+      document.body.classList.add('examples-view');
+      showGuest();
+      return;
+    }
     const resetMode = new URLSearchParams(location.search).has('reset_token');
     if (resetMode) {
       showGuest();

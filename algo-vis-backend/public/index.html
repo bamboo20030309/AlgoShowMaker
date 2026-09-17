@@ -7,7 +7,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=6" />
+  <link rel="stylesheet" href="home.css?v=7" />
 </head>
 
 <body>
@@ -36,6 +36,7 @@
     <section id="guestView" class="guest-view">
       <section class="guest-gallery" aria-labelledby="galleryTitle">
         <span class="eyebrow">公開投影片</span>
+        <a class="gallery-workspace-link" href="/">返回投影片工作區</a>
         <h1 id="galleryTitle">演算法投影片</h1>
         <p class="gallery-intro">從分類挑選演算法，點開投影片即可觀賞，不需登入。</p>
         <nav id="galleryCategories" class="gallery-categories" aria-label="演算法分類"></nav>
@@ -47,7 +48,7 @@
           <span id="galleryCount" class="deck-count"></span>
         </div>
         <p id="galleryMessage" class="library-message" role="status" aria-live="polite"></p>
-        <div id="galleryGrid" class="deck-grid"></div>
+        <div id="galleryGrid" class="gallery-folders"></div>
       </section>
       <section class="auth-panel" aria-labelledby="authTitle">
         <div class="auth-heading">
@@ -95,6 +96,7 @@
             <span class="sidebar-icon">▤</span>
             我的投影片
           </button>
+          <a class="sidebar-item" href="/?examples=1"><span class="sidebar-icon" aria-hidden="true">▤</span>範例投影片</a>
           <a class="sidebar-item" href="/algorithm.html">
             <span class="sidebar-icon">▶</span>
             演算法動畫
@@ -112,6 +114,7 @@
             <span class="eyebrow">投影片工作區</span>
             <h1>我的投影片</h1>
           </div>
+          <a class="examples-workspace-entry" href="/?examples=1">範例投影片</a>
           <button id="createDeckBtn" class="primary-btn create-btn" type="button">
             <span aria-hidden="true">＋</span>
             新增投影片
@@ -178,8 +181,8 @@
   <script src="deck-thumbnail.js?v=2"></script>
   <script src="trace-provenance.js?v=1"></script>
   <script src="asmdeck.js?v=1"></script>
-  <script src="guest-gallery.js?v=1"></script>
-  <script src="home.js?v=4"></script>
+  <script src="guest-gallery.js?v=2"></script>
+  <script src="home.js?v=5"></script>
 </body>
 
 </html>

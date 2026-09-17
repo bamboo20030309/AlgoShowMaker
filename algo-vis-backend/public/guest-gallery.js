@@ -9,7 +9,7 @@
   const count = document.getElementById('galleryCount');
   const nav = document.getElementById('galleryCategories');
   let decks = [];
-  let selected = '';
+  const expanded = new Map();
   let ready = false;
   const thumbnails = new Map();
 
@@ -38,50 +38,75 @@
   function render() {
     if (!ready) return;
     const query = search.value.trim().toLocaleLowerCase();
-    const visible = decks.filter(entry => (!selected || entry.category === selected)
-      && entry.title.toLocaleLowerCase().includes(query));
+    const visible = decks.filter(entry => entry.title.toLocaleLowerCase().includes(query));
     count.textContent = `共 ${visible.length} 份`;
-    message.textContent = visible.length ? '' : query ? '找不到符合搜尋的投影片。' : '這個分類尚未收錄投影片。';
+    message.textContent = visible.length || !query ? '' : '找不到符合搜尋的投影片。';
     grid.replaceChildren();
-    for (const entry of visible) {
-      const card = document.createElement('article');
-      card.className = 'deck-card';
-      const link = document.createElement('a');
-      link.className = 'deck-open';
-      link.href = `/slides.html?sample=${encodeURIComponent(entry.id)}`;
-      link.setAttribute('aria-label', `觀賞 ${entry.title}`);
-      const preview = document.createElement('div');
-      preview.className = 'deck-preview';
-      const loading = document.createElement('span');
-      loading.className = 'gallery-cover-status';
-      loading.textContent = '正在載入縮圖…';
-      preview.append(loading);
-      const info = document.createElement('div');
-      info.className = 'deck-info';
-      const title = document.createElement('strong');
-      title.className = 'deck-title';
-      title.textContent = entry.title;
-      const meta = document.createElement('span');
-      meta.className = 'deck-meta';
-      meta.textContent = `${categories[entry.category]} · 免登入觀賞`;
-      info.append(title, meta);
-      link.append(preview, info);
-      card.append(link);
-      grid.append(card);
-      showCover(entry, preview);
+    for (const [category, label] of Object.entries(categories)) {
+      const entries = visible.filter(entry => entry.category === category);
+      if (query && !entries.length) continue;
+      const section = document.createElement('details');
+      section.className = 'gallery-folder';
+      section.id = `sample-category-${category}`;
+      section.open = query ? true : expanded.get(category) !== false;
+      const heading = document.createElement('summary');
+      heading.textContent = `${label}（${entries.length}）`;
+      section.append(heading);
+      section.addEventListener('toggle', () => expanded.set(category, section.open));
+      const cards = document.createElement('div');
+      cards.className = 'deck-grid gallery-folder-cards';
+      section.append(cards);
+      if (!entries.length) {
+        const empty = document.createElement('p');
+        empty.className = 'gallery-folder-empty';
+        empty.textContent = '尚未收錄投影片';
+        section.append(empty);
+      }
+      grid.append(section);
+      for (const entry of entries) {
+        const card = document.createElement('article');
+        card.className = 'deck-card';
+        const link = document.createElement('a');
+        link.className = 'deck-open';
+        link.href = `/slides.html?sample=${encodeURIComponent(entry.id)}`;
+        link.setAttribute('aria-label', `觀賞 ${entry.title}`);
+        const preview = document.createElement('div');
+        preview.className = 'deck-preview';
+        const loading = document.createElement('span');
+        loading.className = 'gallery-cover-status';
+        loading.textContent = '正在載入縮圖…';
+        preview.append(loading);
+        const info = document.createElement('div');
+        info.className = 'deck-info';
+        const title = document.createElement('strong');
+        title.className = 'deck-title';
+        title.textContent = entry.title;
+        const meta = document.createElement('span');
+        meta.className = 'deck-meta';
+        meta.textContent = `${categories[entry.category]} · 免登入觀賞`;
+        info.append(title, meta);
+        link.append(preview, info);
+        card.append(link);
+        cards.append(card);
+        showCover(entry, preview);
+        }
     }
   }
 
-  for (const [id, label] of [['', '全部'], ...Object.entries(categories)]) {
+  for (const [id, label] of Object.entries(categories)) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'gallery-category';
     button.textContent = label;
-    button.setAttribute('aria-pressed', String(id === selected));
+    button.setAttribute('aria-controls', `sample-category-${id}`);
     button.addEventListener('click', () => {
-      selected = id;
+      if (search.value) { search.value = ''; render(); }
+      const section = document.getElementById(`sample-category-${id}`);
+      if (!section) return;
+      section.open = true;
+      expanded.set(id, true);
       for (const item of nav.children) item.setAttribute('aria-pressed', String(item === button));
-      render();
+      section.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
     });
     nav.append(button);
   }
