@@ -1,0 +1,100 @@
+(() => {
+  const categories = {
+    Basic: '基礎', Sorting: '排序', Data_Structure: '資料結構',
+    Tree: '樹', Graph: '圖論', DP: '動態規劃', Backtracking: '回溯', Math: '數學'
+  };
+  const grid = document.getElementById('galleryGrid');
+  const message = document.getElementById('galleryMessage');
+  const search = document.getElementById('gallerySearch');
+  const count = document.getElementById('galleryCount');
+  const nav = document.getElementById('galleryCategories');
+  let decks = [];
+  let selected = '';
+  let ready = false;
+  const thumbnails = new Map();
+
+  async function showCover(entry, preview) {
+    try {
+      if (!thumbnails.has(entry.id)) thumbnails.set(entry.id, (async () => {
+        const response = await fetch(entry.archive);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const archive = await window.ASMDeck.decode(await response.blob());
+        return window.AlgoDeckThumbnail.create(archive.deck);
+      })());
+      const src = await thumbnails.get(entry.id);
+      const image = document.createElement('img');
+      image.className = 'deck-cover-image';
+      image.alt = '';
+      image.src = src;
+      preview.replaceChildren(image);
+      preview.classList.add('has-cover');
+    } catch (error) {
+      thumbnails.delete(entry.id);
+      preview.textContent = '縮圖暫時無法載入，點選開啟投影片';
+      console.warn('Public deck thumbnail failed', error);
+    }
+  }
+
+  function render() {
+    if (!ready) return;
+    const query = search.value.trim().toLocaleLowerCase();
+    const visible = decks.filter(entry => (!selected || entry.category === selected)
+      && entry.title.toLocaleLowerCase().includes(query));
+    count.textContent = `共 ${visible.length} 份`;
+    message.textContent = visible.length ? '' : query ? '找不到符合搜尋的投影片。' : '這個分類尚未收錄投影片。';
+    grid.replaceChildren();
+    for (const entry of visible) {
+      const card = document.createElement('article');
+      card.className = 'deck-card';
+      const link = document.createElement('a');
+      link.className = 'deck-open';
+      link.href = `/slides.html?sample=${encodeURIComponent(entry.id)}`;
+      link.setAttribute('aria-label', `觀賞 ${entry.title}`);
+      const preview = document.createElement('div');
+      preview.className = 'deck-preview';
+      const loading = document.createElement('span');
+      loading.className = 'gallery-cover-status';
+      loading.textContent = '正在載入縮圖…';
+      preview.append(loading);
+      const info = document.createElement('div');
+      info.className = 'deck-info';
+      const title = document.createElement('strong');
+      title.className = 'deck-title';
+      title.textContent = entry.title;
+      const meta = document.createElement('span');
+      meta.className = 'deck-meta';
+      meta.textContent = `${categories[entry.category]} · 免登入觀賞`;
+      info.append(title, meta);
+      link.append(preview, info);
+      card.append(link);
+      grid.append(card);
+      showCover(entry, preview);
+    }
+  }
+
+  for (const [id, label] of [['', '全部'], ...Object.entries(categories)]) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'gallery-category';
+    button.textContent = label;
+    button.setAttribute('aria-pressed', String(id === selected));
+    button.addEventListener('click', () => {
+      selected = id;
+      for (const item of nav.children) item.setAttribute('aria-pressed', String(item === button));
+      render();
+    });
+    nav.append(button);
+  }
+  search.addEventListener('input', render);
+  message.textContent = '正在載入公開投影片…';
+  fetch('/guest-decks.json').then(async response => {
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const catalog = await response.json();
+    decks = catalog.decks;
+    ready = true;
+    render();
+  }).catch(error => {
+    message.textContent = '公開投影片載入失敗，請重新整理後再試。';
+    console.warn('Public gallery failed', error);
+  });
+})();

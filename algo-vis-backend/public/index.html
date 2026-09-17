@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="AlgoShowMaker 個人投影片工作區" />
+  <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=5" />
+  <link rel="stylesheet" href="home.css?v=6" />
 </head>
 
 <body>
@@ -34,36 +34,21 @@
 
   <main>
     <section id="guestView" class="guest-view">
-      <div class="guest-preview" aria-hidden="true">
-        <div class="preview-heading">
-          <span class="preview-kicker">你的工作區</span>
-          <strong>投影片都在同一個地方</strong>
-          <p>登入後可以從任何裝置繼續編輯。</p>
+      <section class="guest-gallery" aria-labelledby="galleryTitle">
+        <span class="eyebrow">公開投影片</span>
+        <h1 id="galleryTitle">演算法投影片</h1>
+        <p class="gallery-intro">從分類挑選演算法，點開投影片即可觀賞，不需登入。</p>
+        <nav id="galleryCategories" class="gallery-categories" aria-label="演算法分類"></nav>
+        <div class="library-toolbar">
+          <label class="search-field" for="gallerySearch">
+            <span aria-hidden="true">⌕</span>
+            <input id="gallerySearch" type="search" placeholder="搜尋演算法投影片" autocomplete="off" />
+          </label>
+          <span id="galleryCount" class="deck-count"></span>
         </div>
-        <div class="preview-library">
-          <article class="sample-deck sample-deck-main">
-            <div class="sample-slide">
-              <span class="sample-title-line"></span>
-              <span class="sample-code-line line-long"></span>
-              <span class="sample-code-line"></span>
-              <span class="sample-code-line line-short"></span>
-              <span class="sample-accent"></span>
-            </div>
-            <strong>動態規劃教學</strong>
-            <span>12 張投影片</span>
-          </article>
-          <article class="sample-deck">
-            <div class="sample-slide sample-slide-alt">
-              <span class="sample-node node-one"></span>
-              <span class="sample-node node-two"></span>
-              <span class="sample-node node-three"></span>
-            </div>
-            <strong>圖論演算法</strong>
-            <span>8 張投影片</span>
-          </article>
-        </div>
-      </div>
-
+        <p id="galleryMessage" class="library-message" role="status" aria-live="polite"></p>
+        <div id="galleryGrid" class="deck-grid"></div>
+      </section>
       <section class="auth-panel" aria-labelledby="authTitle">
         <div class="auth-heading">
           <span class="eyebrow">個人工作區</span>
@@ -191,6 +176,9 @@
   <script src="draw/draw_array_queue.js?v=focus-2"></script>
   <script src="slide-structures.js?v=6"></script>
   <script src="deck-thumbnail.js?v=2"></script>
+  <script src="trace-provenance.js?v=1"></script>
+  <script src="asmdeck.js?v=1"></script>
+  <script src="guest-gallery.js?v=1"></script>
   <script src="home.js?v=4"></script>
 </body>
 
