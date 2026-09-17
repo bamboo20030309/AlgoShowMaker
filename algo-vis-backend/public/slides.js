@@ -2857,6 +2857,47 @@
     content.style.transform = widget.type === 'latex' ? `scale(${widget.scale || 1})` : '';
   }
 
+  let fabricResolutionFrame = 0;
+  let fabricResolutionTimer = null;
+
+  function configureFabricResolution(canvas) {
+    // Per-canvas backing density: keep Fabric logical coordinates and global DPR intact.
+    canvas.__asmRasterScale = Math.max(1, window.devicePixelRatio || 1);
+    canvas.getRetinaScaling = function () { return this.enableRetinaScaling ? this.__asmRasterScale : 1; };
+    canvas._isRetinaScaling = function () { return this.enableRetinaScaling && this.__asmRasterScale > 1; };
+    canvas._initRetinaScaling = function () {
+      const scale = this.getRetinaScaling();
+      this.__initRetinaScaling(scale, this.lowerCanvasEl, this.contextContainer);
+      if (this.upperCanvasEl) this.__initRetinaScaling(scale, this.upperCanvasEl, this.contextTop);
+    };
+  }
+
+  function refreshFabricResolution() {
+    if (!revealReady) return;
+    const active = currentFabricCanvas();
+    for (const canvas of fabricCanvases.values()) {
+      const rect = canvas.lowerCanvasEl.getBoundingClientRect();
+      const displayScale = rect.width / canvas.width;
+      const required = canvas === active ? Math.max(1, displayScale * (window.devicePixelRatio || 1)) : 1;
+      // At most 32 million pixels per backing canvas; only the visible slide is dense.
+      const limit = Math.min(8192 / canvas.width, 8192 / canvas.height,
+        Math.sqrt(32000000 / (canvas.width * canvas.height)));
+      const scale = Math.min(limit, Math.ceil(required * 4) / 4);
+      if (Math.abs(canvas.getRetinaScaling() - scale) < 0.01) continue;
+      canvas.__asmRasterScale = scale;
+      canvas.setDimensions({ width: canvas.width, height: canvas.height });
+      canvas.lowerCanvasEl.dataset.rasterScale = String(scale);
+      canvas.requestRenderAll();
+    }
+  }
+
+  function scheduleFabricResolution() {
+    cancelAnimationFrame(fabricResolutionFrame);
+    fabricResolutionFrame = requestAnimationFrame(refreshFabricResolution);
+    clearTimeout(fabricResolutionTimer);
+    // Mode and zoom transforms animate for 320ms; redraw again at their final size.
+    fabricResolutionTimer = setTimeout(refreshFabricResolution, 400);
+  }
   async function buildFabricCanvases(buildGeneration = fabricBuildGeneration) {
     if (buildGeneration !== fabricBuildGeneration) return;
     document.body.dataset.fabricBuild = 'starting';
@@ -2880,6 +2921,7 @@
             uniScaleKey: 'shiftKey'
           });
 
+          configureFabricResolution(canvas);
           fabricCanvases.set(slide.id, canvas);
           blockRevealNavigationWhileEditing(canvas);
           wireCanvas(canvas, slide);
@@ -2900,6 +2942,7 @@
       }
     }
     if (buildGeneration !== fabricBuildGeneration) return;
+    scheduleFabricResolution();
     document.body.dataset.fabricBuild = `ready:${fabricCanvases.size}`;
     updateDiagnostics();
   }
@@ -5956,6 +5999,7 @@
     if (slideZoomInBtn) slideZoomInBtn.disabled = slideViewportZoom >= SLIDE_ZOOM_MAX;
     if (slideZoomResetBtn) slideZoomResetBtn.disabled = Math.abs(slideViewportZoom - 1) < 0.001;
     clearSnapGuides();
+    scheduleFabricResolution();
     requestAnimationFrame(() => {
       const canvas = currentFabricCanvas();
       if (canvas?.getActiveObject()) updateObjectToolbar(canvas.getActiveObject(), canvas);
@@ -5996,6 +6040,7 @@
   }
 
   function applyEditMode(enabled) {
+    scheduleFabricResolution();
     const host = enabled ? document.getElementById('editorChrome') : document.body;
     if (ttsTransport && ttsTransport.parentElement !== host) host.appendChild(ttsTransport);
     fabricCanvases.forEach(canvas => {
@@ -9439,17 +9484,22 @@
       ].filter(Boolean)
     }).then(() => {
       revealReady = true;
+      scheduleFabricResolution();
+      reveal.on('resize', scheduleFabricResolution);
+      window.addEventListener('resize', scheduleFabricResolution);
       document.body.dataset.revealPlugins = Object.keys(reveal.getPlugins ? reveal.getPlugins() : {}).join(',');
       reveal.on('slidechanged', event => {
         if (pointerDrag) return;
         currentH = event.indexh;
         currentV = event.indexv || 0;
+        scheduleFabricResolution();
         updateAlgorithmEditButton();
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
         syncAlgorithmFrameVisibility();
       });
       reveal.on('autoanimate', animateSlideAutoTransition);
+      reveal.on('overviewhidden', scheduleFabricResolution);
       reveal.on('fragmentshown', refreshFabricFragmentVisibility);
       reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();
