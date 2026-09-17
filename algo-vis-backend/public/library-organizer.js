@@ -12,6 +12,27 @@
     const folderSubmit = document.getElementById('submitFolderBtn');
     const folderClose = document.getElementById('closeFolderDialogBtn');
     const folderCancel = document.getElementById('cancelFolderDialogBtn');
+    let editingFolderId = null, deletingFolderId = null;
+    const deleteDialog = document.getElementById('deleteFolderDialog');
+    const deleteForm = document.getElementById('deleteFolderForm');
+    const deleteMessage = document.getElementById('deleteFolderMessage');
+    const deleteSubmit = document.getElementById('deleteFolderSubmit');
+    for (const id of ['closeDeleteFolderBtn', 'cancelDeleteFolderBtn']) document.getElementById(id).addEventListener('click', () => { if (!saving) deleteDialog.close(); });
+    deleteDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+    function openDeleteFolder(folder) {
+      if (!ready || saving) return;
+      deletingFolderId = folder.id; deleteMessage.textContent = '';
+      document.getElementById('deleteFolderName').textContent = `確定要移除「${folder.title}」嗎？`;
+      deleteDialog.showModal(); document.getElementById('cancelDeleteFolderBtn').focus();
+    }
+    deleteForm.addEventListener('submit', async event => {
+      event.preventDefault(); if (!ready || saving || !deletingFolderId) return;
+      deleteForm.querySelectorAll('button').forEach(button => { button.disabled = true; });
+      deleteSubmit.textContent = '正在移除…'; deleteMessage.textContent = '';
+      const success = await change(ASMLibraryLayout.removeFolder(layout, deletingFolderId));
+      deleteForm.querySelectorAll('button').forEach(button => { button.disabled = false; }); deleteSubmit.textContent = '移除資料夾';
+      if (success) deleteDialog.close(); else deleteMessage.textContent = message.textContent;
+    });
     const categoryDialog = document.getElementById('categoryDialog');
     const categoryForm = document.getElementById('categoryForm');
     const categoryChoices = document.getElementById('categoryChoices');
@@ -113,11 +134,17 @@
     container.addEventListener('click', event => {
       if (event.detail && performance.now() < suppressClickUntil) { suppressClickUntil = 0; event.preventDefault(); event.stopImmediatePropagation(); }
     }, true);
-    createButton.addEventListener('click', () => {
+    function openFolderDialog(folder = null) {
       if (!ready || saving) return;
+      editingFolderId = folder?.id || null;
       folderForm.reset(); folderInput.setCustomValidity(''); folderMessage.textContent = '';
+      folderInput.value = folder?.title || '';
+      document.getElementById('folderDialogTitle').textContent = folder ? '重新命名資料夾' : '新增資料夾';
+      folderSubmit.textContent = folder ? '儲存名稱' : '建立資料夾';
       folderDialog.showModal(); folderInput.focus();
-    });
+      if (folder) folderInput.select();
+    }
+    createButton.addEventListener('click', () => openFolderDialog());
     folderInput.addEventListener('input', () => { folderInput.setCustomValidity(''); folderMessage.textContent = ''; });
     folderClose.addEventListener('click', () => { if (!saving) folderDialog.close(); });
     folderCancel.addEventListener('click', () => { if (!saving) folderDialog.close(); });
@@ -129,13 +156,16 @@
       if (!title || title.length > 80) {
         folderInput.setCustomValidity('請輸入 1 至 80 個字的資料夾名稱。'); folderInput.reportValidity(); return;
       }
-      if (layout.folders.length >= 200) { folderMessage.textContent = '最多建立 200 個資料夾。'; return; }
-      const id = 'folder-' + Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2, '0')).join('');
+      if (!editingFolderId && layout.folders.length >= 200) { folderMessage.textContent = '最多建立 200 個資料夾。'; return; }
+      const id = editingFolderId || 'folder-' + Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2, '0')).join('');
+      const next = editingFolderId
+        ? { ...layout, folders: layout.folders.map(folder => folder.id === editingFolderId ? { ...folder, title } : folder) }
+        : { ...layout, folders: [...layout.folders, { id, title, deckIds: [] }] };
       for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = true;
-      folderSubmit.textContent = '正在建立…'; folderMessage.textContent = '';
-      const success = await change({ ...layout, folders: [...layout.folders, { id, title, deckIds: [] }] });
+      folderSubmit.textContent = '正在儲存…'; folderMessage.textContent = '';
+      const success = await change(next);
       for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = false;
-      folderSubmit.textContent = '建立資料夾';
+      folderSubmit.textContent = editingFolderId ? '儲存名稱' : '建立資料夾';
       if (success) folderDialog.close();
       else { folderMessage.textContent = message.textContent; folderInput.focus(); }
     });
@@ -157,8 +187,8 @@
         if (folder.id) {
           const tools = document.createElement('span'); tools.className = 'library-folder-tools';
           for (const [label, action] of [
-            ['重新命名', () => { const title = prompt('資料夾名稱（最多 80 個字）', folder.title); if (!title?.trim()) return; if (title.trim().length > 80) { status('資料夾名稱最多 80 個字。'); return; } change({ ...layout, folders: layout.folders.map(item => item.id === folder.id ? { ...item, title: title.trim() } : item) }); }],
-            ['移除資料夾', () => { if (confirm(`移除「${folder.title}」？投影片會保留其他分類；沒有其他分類的會移回未分類，不會刪除投影片。`)) change(ASMLibraryLayout.removeFolder(layout, folder.id)); }]
+            ['重新命名', () => openFolderDialog(folder)],
+            ['移除資料夾', () => openDeleteFolder(folder)]
           ]) {
             const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-btn'; button.title = label; button.setAttribute('aria-label', label);
             button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${label === '重新命名' ? '<path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/>' : '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'}</svg>`;

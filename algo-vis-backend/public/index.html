@@ -188,6 +188,23 @@
     </form>
   </dialog>
 
+  <dialog id="deleteFolderDialog" class="deck-dialog" aria-labelledby="deleteFolderTitle">
+    <form id="deleteFolderForm">
+      <div class="dialog-heading">
+        <div><span class="eyebrow">投影片整理</span><h2 id="deleteFolderTitle">移除資料夾</h2></div>
+        <button id="closeDeleteFolderBtn" class="icon-btn" type="button" aria-label="關閉">×</button>
+      </div>
+      <p id="deleteFolderName"></p>
+      <p class="category-help">只會移除資料夾，不會刪除投影片。投影片會保留其他分類；沒有其他分類的會移回未分類。</p>
+      <div id="deleteFolderMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelDeleteFolderBtn" class="quiet-btn" type="button">取消</button>
+        <button id="deleteFolderSubmit" class="danger-btn" type="submit">移除資料夾</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="categoryDialog" class="deck-dialog" aria-labelledby="categoryTitle">
     <form id="categoryForm">
       <div class="dialog-heading">
@@ -225,7 +242,7 @@
   <script src="guest-gallery.js?v=3"></script>
   <script src="deck-file-drop.js?v=1"></script>
   <script src="library-layout.js?v=2"></script>
-  <script src="library-organizer.js?v=6"></script>
+  <script src="library-organizer.js?v=7"></script>
   <script src="home.js?v=library-folders-7"></script>
 </body>
 
