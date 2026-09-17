@@ -3596,3 +3596,19 @@ body:not(.asm-edit-mode) .upper-canvas {
 }
 body:not(.asm-edit-mode) .slide-order-toggle,
 body.shared-view-only .slide-order-toggle { display: none; }
+
+.viewer-tts-toggle {
+  position: fixed; top: 14px; right: 14px; z-index: 98;
+  padding: 9px 12px; border: 1px solid #59656a; border-radius: 6px;
+  background: #252c30; color: #fff; cursor: pointer;
+}
+body.asm-edit-mode .viewer-tts-toggle { display: none; }
+.viewer-tts-toggle:focus-visible { outline: 2px solid #55b9f3; outline-offset: 3px; }
+body:not(.asm-edit-mode) > .tts-transport[data-expanded="true"] {
+  left: auto; right: 14px; top: 58px;
+  width: min(320px, calc(100vw - 28px)); max-height: calc(100dvh - 80px); overflow: auto;
+}
+body:not(.asm-edit-mode) > .tts-transport #ttsScriptShell,
+body:not(.asm-edit-mode) > .tts-transport #ttsScriptSource,
+body:not(.asm-edit-mode) > .tts-transport #ttsAddCarrierBtn { display: none; }
+body:not(.asm-edit-mode) > .tts-transport .tts-slider-control output { display: inline; }

@@ -1155,7 +1155,7 @@
       volume: ttsVolumeInput?.value
     });
     syncTtsSettingsControls();
-    saveDeck({ history });
+    if (sharedAccess !== 'view') saveDeck({ history });
   }
 
   function syncTtsEditor() {
@@ -1314,6 +1314,10 @@
   }
 
   function showOnlyTtsSidebar() {
+    if (!document.body.classList.contains('asm-edit-mode')) {
+      if (ttsTransport) { document.body.appendChild(ttsTransport); ttsTransport.hidden = false; }
+      return;
+    }
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
@@ -1407,6 +1411,9 @@
       ttsPanelToggleBtn.classList.toggle('is-active', isExpanded);
       ttsPanelToggleBtn.setAttribute('aria-pressed', String(isExpanded));
     }
+    const viewerToggle = document.getElementById('viewerTtsToggleBtn');
+    viewerToggle?.setAttribute('aria-expanded', String(isExpanded));
+    viewerToggle?.setAttribute('aria-label', isExpanded ? '收合 TTS 控制' : '展開 TTS 控制');
     if (!isExpanded) {
       if (ttsTransport) ttsTransport.hidden = true;
       stopTtsPlayback();
@@ -5976,6 +5983,8 @@
   }
 
   function applyEditMode(enabled) {
+    const host = enabled ? document.getElementById('editorChrome') : document.body;
+    if (ttsTransport && ttsTransport.parentElement !== host) host.appendChild(ttsTransport);
     fabricCanvases.forEach(canvas => {
       canvas.selection = enabled;
       canvas.skipTargetFind = !enabled;
@@ -6062,6 +6071,7 @@
     ttsPanelToggleBtn?.addEventListener('click', () => {
       setTtsPanelExpanded(ttsTransport?.dataset.expanded !== 'true');
     });
+    document.getElementById('viewerTtsToggleBtn')?.addEventListener('click', () => setTtsPanelExpanded(!ttsPanelIsExpanded()));
     ttsPanelCloseBtn?.addEventListener('click', () => setTtsPanelExpanded(false));
     ttsObjectBtn?.addEventListener('click', openSelectedTextTts);
     ttsObjectEditorCloseBtn?.addEventListener('click', closeTtsObjectEditor);
