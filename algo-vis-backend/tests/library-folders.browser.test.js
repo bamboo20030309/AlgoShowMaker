@@ -19,6 +19,7 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     const Layout = require('../public/library-layout');
     const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5yQAAAAASUVORK5CYII=';
     let decks = ['a', 'b', 'c'].map((id, i) => ({ deck_uid: id, title: ['Alpha', 'Beta', 'Gamma'][i], cover_thumbnail: pixel, updated_at: '2026-09-18', slide_count: 1 }));
+    decks[2].cover_thumbnail = null;
     let layout = { folders: [], unfiled: ['a', 'b', 'c'] }, failSave = false;
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -26,6 +27,8 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     await page.addInitScript(() => localStorage.setItem('algo_jwt_token', 'fixture'));
     await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture' } } }));
     await page.route('**/api/slides', route => route.fulfill({ json: { slides: decks } }));
+    await page.route('**/deck-thumbnail.js?*', route => route.fulfill({ contentType: 'application/javascript', body: `window.AlgoDeckThumbnail = { create: async () => { await new Promise(resolve => setTimeout(resolve, 200)); return ${JSON.stringify(pixel)}; } };` }));
+    await page.route('**/api/slides/c', route => route.fulfill({ json: { slide: { ...decks[2], deck: {} } } }));
     await page.route('**/api/slides/a', route => {
       if (route.request().method() === 'PUT') decks.find(deck => deck.deck_uid === 'a').title = route.request().postDataJSON().title;
       return route.fulfill({ json: { slide: decks.find(deck => deck.deck_uid === 'a') } });
@@ -47,6 +50,8 @@ test('workspace folders persist drag ordering, support mobile controls and recov
       if (!failSave) await saved();
     }
     await page.goto(base); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+    await page.waitForSelector('[data-deck-id="c"] .deck-cover-image');
+    assert.equal(await page.locator('[data-deck-id="c"] .deck-cover-image').evaluate(el => el.draggable), false);
     const borders = () => page.locator('.gallery-folder:visible').first().evaluate(el => { const style = getComputedStyle(el); return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.borderRadius]; });
     assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
     await page.locator('#createFolderBtn').click();
@@ -78,7 +83,7 @@ test('workspace folders persist drag ordering, support mobile controls and recov
       ['a', '.deck-meta', ['a', 'c', 'b']],
       ['c', '.deck-title', ['c', 'a', 'b']],
       ['a', '', ['a', 'c', 'b']],
-      ['c', '.deck-preview', ['c', 'a', 'b']],
+      ['c', '.deck-cover-image', ['c', 'a', 'b']],
       ['a', '.deck-settings', ['a', 'c', 'b']],
       ['c', '.library-drag-handle', ['c', 'a', 'b']]
     ]) {
