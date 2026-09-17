@@ -12,6 +12,12 @@ test('library reconciles deleted/new decks and preserves user ordering', () => {
   assert.deepEqual(source.folders[0].deckIds, ['b', 'gone']);
   assert.throws(() => Layout.validate({ folders: [{ id: 'f', title: 'F', deckIds: ['a'] }], unfiled: ['a'] }));
   assert.throws(() => Layout.validate({ folders: [{ id: '../bad', title: 'F', deckIds: [] }], unfiled: [] }));
+  const multiple = Layout.assign({ folders: [{ id: 'x', title: 'X', deckIds: ['b', 'a'] }, { id: 'y', title: 'Y', deckIds: ['b'] }], unfiled: [] }, 'a', ['x', 'y']);
+  assert.deepEqual(multiple.folders.map(folder => folder.deckIds), [['b', 'a'], ['b', 'a']]);
+  assert.deepEqual(Layout.move(multiple, 'a', 'x', 'b', 'x').folders.map(folder => folder.deckIds), [['a', 'b'], ['b', 'a']]);
+  assert.deepEqual(Layout.move(multiple, 'a', 'y', 'a', 'x').folders.map(folder => folder.deckIds), [['b'], ['b', 'a']]);
+  assert.deepEqual(Layout.removeFolder(multiple, 'x'), { folders: [{ id: 'y', title: 'Y', deckIds: ['b', 'a'] }], unfiled: [] });
+  assert.throws(() => Layout.validate({ folders: [{ id: 'x', title: 'X', deckIds: ['a', 'a'] }], unfiled: [] }));
 });
 
 test('library API persists only the signed-in account setting and rejects foreign decks', async () => {
@@ -38,6 +44,10 @@ test('library API persists only the signed-in account setting and rejects foreig
     const layout = { folders: [{ id: 'math', title: '數學', deckIds: ['b', 'a'] }], unfiled: [] };
     assert.equal((await request('owner', layout)).status, 200);
     assert.deepEqual((await request('owner')).body.layout, layout);
+    const multi = { folders: [...layout.folders, { id: 'graph', title: '圖論', deckIds: ['a'] }], unfiled: [] };
+    assert.equal((await request('owner', multi)).status, 200);
+    assert.deepEqual((await request('owner')).body.layout, multi);
+    assert.equal((await request('owner', layout)).status, 200);
     assert.deepEqual(users.owner.preferences.eventSettings, { speed: 2 });
     assert.deepEqual((await request('other')).body.layout.unfiled, ['foreign']);
     assert.equal((await request('owner', { folders: [], unfiled: ['foreign'] })).status, 400);

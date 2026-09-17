@@ -39,18 +39,56 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     const cards = folder => page.locator(`.library-folder[data-folder-id="${folder}"] .deck-card`);
     const order = folder => cards(folder).evaluateAll(items => items.map(item => item.dataset.deckId));
     const saved = () => page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent === '資料夾與排序已儲存' && !document.querySelector('#createFolderBtn').disabled);
+    async function assignCategories(id, ids) {
+      await page.locator(`[data-deck-id="${id}"] .library-categories-button`).first().click();
+      for (const input of await page.locator('#categoryChoices input').all()) await input.setChecked(ids.includes(await input.getAttribute('value')));
+      await page.locator('#categoryForm button[type="submit"]').click();
+      if (!failSave) await saved();
+    }
     await page.goto(base); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
     const borders = () => page.locator('.gallery-folder:visible').first().evaluate(el => { const style = getComputedStyle(el); return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.borderRadius]; });
     assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
-    page.once('dialog', dialog => dialog.accept('數學'));
-    await page.locator('#createFolderBtn').click(); await saved();
+    await page.locator('#createFolderBtn').click();
+    assert.equal(await page.locator('#folderTitleInput').evaluate(el => el === document.activeElement), true);
+    await page.locator('#cancelFolderDialogBtn').click(); assert.equal(layout.folders.length, 0);
+    await page.locator('#createFolderBtn').click(); await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
+    await page.locator('#createFolderBtn').click(); await page.locator('#folderTitleInput').fill('   '); await page.locator('#submitFolderBtn').click();
+    assert.equal(layout.folders.length, 0); assert.equal(await page.locator('#folderTitleInput').evaluate(el => el.validity.valid), false);
+    await page.locator('#folderTitleInput').fill('數學'); failSave = true; await page.locator('#submitFolderBtn').click();
+    await page.waitForFunction(() => document.querySelector('#folderDialogMessage').textContent.includes('儲存失敗'));
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), true); assert.equal(await page.locator('#folderTitleInput').inputValue(), '數學');
+    failSave = false;
+    fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+    await page.screenshot({ path: path.join(root, 'test-results/create-folder-dialog.png') });
+    await page.locator('#folderTitleInput').fill('數學'); await page.keyboard.press('Enter'); await saved();
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
     const folder = layout.folders[0].id;
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"] summary .icon-btn svg`).count(), 2);
+    const headerLayout = await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).evaluate(el => ({ titleRight: el.querySelector('.library-folder-title').getBoundingClientRect().right, toolsLeft: el.querySelector('.library-folder-tools').getBoundingClientRect().left }));
+    assert.ok(headerLayout.toolsLeft >= headerLayout.titleRight);
     // Actual pointer dragging on the dedicated handle reorders the existing cards.
     const from = await page.locator('[data-deck-id="c"] .library-drag-handle').boundingBox();
     const to = await page.locator('[data-deck-id="a"] .deck-preview').boundingBox();
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 }); await page.mouse.up(); await saved();
     assert.deepEqual(await order(''), ['c', 'a', 'b']);
+    for (const [id, area, expected] of [
+      ['a', '.deck-meta', ['a', 'c', 'b']],
+      ['c', '.deck-title', ['c', 'a', 'b']],
+      ['a', '', ['a', 'c', 'b']],
+      ['c', '.deck-preview', ['c', 'a', 'b']],
+      ['a', '.deck-settings', ['a', 'c', 'b']],
+      ['c', '.library-drag-handle', ['c', 'a', 'b']]
+    ]) {
+      const source = await page.locator(`[data-deck-id="${id}"]${area ? ' ' + area : ''}`).boundingBox();
+      const target = await page.locator(`[data-deck-id="${id === 'a' ? 'c' : 'a'}"] .deck-preview`).boundingBox();
+      await page.mouse.move(source.x + source.width / 2, area ? source.y + source.height / 2 : source.y + source.height - 3);
+      await page.mouse.down(); await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 }); await page.mouse.up(); await saved();
+      assert.deepEqual(await order(''), expected);
+      assert.equal(await page.locator('#deckDialog').evaluate(el => el.open), false);
+      assert.equal(page.url(), base + '/');
+    }
     async function nativeDrop(id, selector) {
       await page.evaluate(({ id, selector }) => {
         const transfer = new DataTransfer();
@@ -71,24 +109,59 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     assert.deepEqual(await order(folder), ['b', 'a']);
     await page.locator('#searchInput').fill('Alpha'); assert.equal(await page.locator('#deckGrid .deck-card').count(), 1);
     assert.equal(await page.locator('#deckGrid .deck-card').getAttribute('data-deck-id'), 'a'); await page.locator('#searchInput').fill('');
-    await page.locator('[data-deck-id="a"] select').selectOption(''); await saved();
+    await assignCategories('a', []);
     assert.deepEqual(await order(''), ['c', 'a']);
     await page.locator('button[aria-label="Alpha 往前"]').click(); await saved(); assert.deepEqual(await order(''), ['a', 'c']);
     failSave = true;
-    await page.locator('[data-deck-id="a"] select').selectOption(folder);
+    await assignCategories('a', [folder]);
     await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('已恢復原排序'));
     assert.deepEqual(await order(''), ['a', 'c']); failSave = false;
+    await page.locator('#cancelCategoryBtn').click();
+    await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).isVisible(), true);
     page.once('dialog', dialog => dialog.accept('演算法'));
-    await page.locator(`.library-folder[data-folder-id="${folder}"] button`, { hasText: '重新命名' }).click(); await saved();
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).click(); await saved();
     assert.equal(layout.folders[0].title, '演算法');
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
+    await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    await page.locator('[data-deck-id="c"] select').selectOption(folder); await saved();
+    await page.locator('#createFolderBtn').click();
+    const modalBounds = await page.locator('#folderDialog').boundingBox();
+    assert.ok(modalBounds.x >= 0 && modalBounds.x + modalBounds.width <= 390);
+    await page.screenshot({ path: path.join(root, 'test-results/create-folder-dialog-mobile.png') });
+    await page.locator('#cancelFolderDialogBtn').click();
+    await assignCategories('c', [folder]);
     assert.deepEqual(await order(folder), ['b', 'c']);
     const imageDir = path.join(root, 'test-results'); fs.mkdirSync(imageDir, { recursive: true });
     await page.screenshot({ path: path.join(imageDir, 'library-folders-mobile.png'), fullPage: true });
+    async function createCategory(title) {
+      await page.locator('#createFolderBtn').click(); await page.locator('#folderTitleInput').fill(title); await page.locator('#submitFolderBtn').click(); await saved();
+      return layout.folders.find(item => item.title === title).id;
+    }
+    const second = await createCategory('圖論'), third = await createCategory('樹');
+    await assignCategories('b', [folder, second]);
+    assert.equal(await page.locator('#deckGrid [data-deck-id="b"]').count(), 2);
+    await page.locator('[data-deck-id="b"] .library-categories-button').first().click();
+    assert.equal(await page.locator('#categoryChoices input:checked').count(), 2);
+    await page.screenshot({ path: path.join(imageDir, 'multi-category-dialog-mobile.png') });
+    await page.locator('#cancelCategoryBtn').click();
+    assert.deepEqual(await order(''), ['a']);
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: 'Beta 往後', exact: true }).click(); await saved();
+    assert.deepEqual(await order(folder), ['c', 'b']); assert.deepEqual(await order(second), ['b']);
+    await nativeDrop('b', `.library-folder[data-folder-id="${third}"] summary`);
+    assert.deepEqual(await order(folder), ['c']); assert.deepEqual(await order(second), ['b']); assert.deepEqual(await order(third), ['b']);
+    await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+    assert.equal(await page.locator('#deckGrid [data-deck-id="b"]').count(), 2);
     page.once('dialog', dialog => dialog.accept());
-    await page.locator(`.library-folder[data-folder-id="${folder}"] button`, { hasText: '移除資料夾' }).click(); await saved();
+    await page.locator(`.library-folder[data-folder-id="${third}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await saved();
+    assert.deepEqual(await order(second), ['b']); assert.deepEqual(await order(''), ['a']);
+    await assignCategories('b', []);
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator(`.library-folder[data-folder-id="${second}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await saved();
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await saved();
     assert.deepEqual(await order(''), ['a', 'b', 'c']); assert.equal(layout.folders.length, 0);
     decks = [decks[2], decks[1], decks[0], { ...decks[0], deck_uid: 'd', title: 'New deck' }];
     await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
@@ -101,9 +174,16 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     assert.equal(await page.locator('#createDeckBtn').isVisible(), true);
     await page.route('**/slides.html?deck=a', route => route.fulfill({ contentType: 'text/html', body: '<html><body>Fixture editor</body></html>' }));
     await page.locator('[data-deck-id="a"] .deck-open').click(); await page.waitForURL(base + '/slides.html?deck=a');
-    await page.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [] } }));
+    await page.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [
+      { id: 'multi', title: 'Multi category', categories: ['Tree', 'Graph', 'Tree'], archive: '/fixture-multi.asmdeck' },
+      { id: 'legacy', title: 'Legacy category', category: 'Basic', archive: '/fixture-legacy.asmdeck' }
+    ] } }));
     await page.goto(base + '/?examples=1'); await page.waitForSelector('.gallery-folder');
     assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
+    assert.equal(await page.locator('#sample-category-Tree .deck-card').count(), 1);
+    assert.equal(await page.locator('#sample-category-Graph .deck-card').count(), 1);
+    assert.equal(await page.locator('#sample-category-Basic .deck-card').count(), 1);
+    assert.equal(await page.locator('#galleryCount').textContent(), '共 2 份');
     await page.screenshot({ path: path.join(imageDir, 'sample-folder-dividers-mobile.png'), fullPage: true });
     assert.deepEqual(errors, []);
   } finally { if (browser) await browser.close(); server.kill(); }

@@ -2521,6 +2521,25 @@
     pre.scrollTo({ top: codeFocusScrollTop(el, widget), behavior });
   }
 
+  let codeFocusEntryFrame = 0;
+  function scheduleCurrentSlideCodeFocus() {
+    cancelAnimationFrame(codeFocusEntryFrame);
+    // Wait for slide visibility/layout and autoanimate to claim its targets.
+    codeFocusEntryFrame = requestAnimationFrame(() => {
+      codeFocusEntryFrame = requestAnimationFrame(() => {
+        codeFocusEntryFrame = 0;
+        if (!revealReady || reveal.isOverview() || isOverviewEditing()) return;
+        reveal.getCurrentSlide()?.querySelectorAll('.code-widget').forEach(el => {
+          if (el.dataset.codeAutoAnimating) return;
+          const widget = getWidget(el.dataset.widgetId).widget;
+          if (!widget || !focusedCodeLineNumbers(widget.focusLines, String(widget.content || '').split('\n').length).length) return;
+          if (!el.querySelector('pre')?.clientHeight) return;
+          scrollCodeWidgetToFocus(el, widget);
+        });
+      });
+    });
+  }
+
   function normalizeLatexSource(source = '') {
     return String(source || '')
       .replace(/(^|[^\\])\/([a-zA-Z]+)/g, '$1\\$2')
@@ -2978,6 +2997,7 @@
     if (buildGeneration !== fabricBuildGeneration) return;
     document.body.dataset.fabricBuild = 'starting';
     patchFabricTextCompositionUnderline();
+    patchFabricTextCursorBlink();
     for (const group of deck.groups) {
       for (const slide of group.slides) {
         if (buildGeneration !== fabricBuildGeneration) return;
@@ -3021,6 +3041,27 @@
     scheduleFabricResolution();
     document.body.dataset.fabricBuild = `ready:${fabricCanvases.size}`;
     updateDiagnostics();
+  }
+
+  function patchFabricTextCursorBlink() {
+    const proto = f()?.IText?.prototype;
+    if (!proto || proto.__asmCursorBlinkPatched) return;
+    proto._animateCursor = function (obj, targetOpacity, duration, completeMethod) {
+      let timer;
+      const state = { isAborted: false, abort() { this.isAborted = true; clearTimeout(timer); } };
+      obj._currentCursorOpacity = targetOpacity ? 1 : 0;
+      if (obj.canvas && obj.selectionStart === obj.selectionEnd) obj.renderCursorOrSelection();
+      timer = setTimeout(() => { if (!state.isAborted && obj.isEditing) obj[completeMethod](); }, 500);
+      return state;
+    };
+    proto._onTickComplete = function () {
+      this._currentTickCompleteState = this._animateCursor(this, 0, 500, '_tick');
+    };
+    proto.initDelayedCursor = function () {
+      this.abortCursorAnimation();
+      this._tick();
+    };
+    proto.__asmCursorBlinkPatched = true;
   }
 
   function patchFabricTextCompositionUnderline() {
@@ -3186,7 +3227,7 @@
           touchCornerSize: 14,
           padding: 0,
           cursorDelay: 500,
-          cursorDuration: 1,
+          cursorDuration: 500,
           compositionColor: '#1d8f83'
         });
         e.target.setCoords?.();
@@ -3437,7 +3478,7 @@
       lockScalingFlip: true,
       strokeUniform: true,
       cursorDelay: 500,
-      cursorDuration: 1,
+      cursorDuration: 500,
       compositionColor: '#1d8f83',
       objectCaching: isShapeObject(obj) ? false : !isTextObject(obj),
       noScaleCache: isShapeObject(obj) ? false : obj.noScaleCache,
@@ -9600,6 +9641,7 @@
       ].filter(Boolean)
     }).then(() => {
       revealReady = true;
+      scheduleCurrentSlideCodeFocus();
       scheduleFabricResolution();
       reveal.on('resize', scheduleFabricResolution);
       window.addEventListener('resize', scheduleFabricResolution);
@@ -9609,6 +9651,7 @@
         currentH = event.indexh;
         currentV = event.indexv || 0;
         scheduleFabricResolution();
+        scheduleCurrentSlideCodeFocus();
         updateAlgorithmEditButton();
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
@@ -9616,6 +9659,8 @@
       });
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('overviewhidden', scheduleFabricResolution);
+      reveal.on('slidetransitionend', scheduleCurrentSlideCodeFocus);
+      reveal.on('overviewhidden', scheduleCurrentSlideCodeFocus);
       reveal.on('fragmentshown', refreshFabricFragmentVisibility);
       reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();

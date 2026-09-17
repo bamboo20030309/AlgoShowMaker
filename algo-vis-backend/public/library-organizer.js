@@ -4,15 +4,55 @@
     let layout = { folders: [], unfiled: [] }, decks = [], query = '', ready = false, saving = false;
     const expanded = new Map();
     let dragging = null, pointer = null, highlighted = null;
+    let suppressClickUntil = 0;
+    const folderDialog = document.getElementById('folderDialog');
+    const folderForm = document.getElementById('folderDialogForm');
+    const folderInput = document.getElementById('folderTitleInput');
+    const folderMessage = document.getElementById('folderDialogMessage');
+    const folderSubmit = document.getElementById('submitFolderBtn');
+    const folderClose = document.getElementById('closeFolderDialogBtn');
+    const folderCancel = document.getElementById('cancelFolderDialogBtn');
+    const categoryDialog = document.getElementById('categoryDialog');
+    const categoryForm = document.getElementById('categoryForm');
+    const categoryChoices = document.getElementById('categoryChoices');
+    const categoryMessage = document.getElementById('categoryMessage');
+    let categoryDeckId = null;
+    for (const id of ['closeCategoryBtn', 'cancelCategoryBtn']) document.getElementById(id).addEventListener('click', () => { if (!saving) categoryDialog.close(); });
+    categoryDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+    categoryForm.addEventListener('submit', async event => {
+      event.preventDefault(); if (saving || !ready || !categoryDeckId) return;
+      const selected = [...categoryChoices.querySelectorAll('input:checked')].map(input => input.value);
+      let next;
+      try { next = ASMLibraryLayout.assign(layout, categoryDeckId, selected); }
+      catch (error) { categoryMessage.textContent = error.message; return; }
+      categoryForm.querySelectorAll('button, input').forEach(control => { control.disabled = true; });
+      categoryMessage.textContent = '正在儲存分類…';
+      const success = await change(next);
+      categoryForm.querySelectorAll('button, input').forEach(control => { control.disabled = false; });
+      if (success) categoryDialog.close(); else categoryMessage.textContent = message.textContent;
+    });
+    function openCategories(deck) {
+      if (!ready || saving) return;
+      categoryDeckId = deck.deck_uid; categoryChoices.replaceChildren(); categoryMessage.textContent = '';
+      document.getElementById('categoryDeckName').textContent = deck.title;
+      layout.folders.forEach(folder => {
+        const label = document.createElement('label'); label.className = 'category-choice';
+        const input = document.createElement('input'); input.type = 'checkbox'; input.value = folder.id; input.checked = folder.deckIds.includes(deck.deck_uid);
+        const text = document.createElement('span'); text.textContent = folder.title; label.append(input, text); categoryChoices.append(label);
+      });
+      if (!layout.folders.length) categoryMessage.textContent = '請先新增資料夾，即可選擇多個分類。';
+      categoryDialog.showModal();
+    }
     function status(text, error = false) { message.textContent = text; message.classList.toggle('is-success', !error); }
     async function change(next) {
-      if (!ready || saving) return;
+      if (!ready || saving) return false;
       const previous = layout;
       saving = true; layout = next; render(); status('正在儲存資料夾與排序…');
       try {
         layout = (await api('/api/slide-library', { method: 'PUT', body: JSON.stringify({ layout }) })).layout;
         status('資料夾與排序已儲存');
-      } catch (error) { layout = previous; status(`儲存失敗：${error.message}；已恢復原排序。`, true); }
+        return true;
+      } catch (error) { layout = previous; status(`儲存失敗：${error.message}；已恢復原排序。`, true); return false; }
       finally { saving = false; render(); }
     }
     function clearHighlight() { highlighted?.classList.remove('library-drop-target'); highlighted = null; }
@@ -25,9 +65,9 @@
     function highlight(target) {
       clearHighlight(); highlighted = target?.element; highlighted?.classList.add('library-drop-target');
     }
-    function drop(id, target) {
+    function drop(id, target, source) {
       clearHighlight();
-      if (id && target && ready && !saving) change(ASMLibraryLayout.move(layout, id, target.folder, target.before));
+      if (id && target && ready && !saving) change(ASMLibraryLayout.move(layout, id, target.folder, target.before, source));
     }
     container.addEventListener('dragover', event => {
       if (!dragging || !event.dataTransfer?.types.includes(MIME)) return;
@@ -35,38 +75,69 @@
     });
     container.addEventListener('drop', event => {
       if (!dragging || !event.dataTransfer?.types.includes(MIME)) return;
-      event.preventDefault(); drop(dragging, targetAt(event.target)); dragging = null;
+      event.preventDefault(); drop(dragging.id, targetAt(event.target), dragging.source); dragging = null;
     });
     container.addEventListener('dragend', () => { dragging = null; clearHighlight(); });
-    // The handle also supports touch/pen without relying on native HTML drag events.
+    // Start a drag from the whole card, while allowing a normal click on its buttons.
     container.addEventListener('pointerdown', event => {
-      const handle = event.target.closest('.library-drag-handle');
-      if (!handle || event.button !== 0 || !ready || saving) return;
-      event.preventDefault(); handle.setPointerCapture(event.pointerId);
-      pointer = { id: handle.closest('.deck-card').dataset.deckId, x: event.clientX, y: event.clientY, moved: false, handle };
+      suppressClickUntil = 0;
+      const card = event.target.closest('.deck-card[data-deck-id]');
+      if (!card || event.target.closest('select, input, textarea') || event.button !== 0 || !ready || saving) return;
+      pointer = { id: card.dataset.deckId, source: card.closest('.library-folder').dataset.folderId, x: event.clientX, y: event.clientY, moved: false, card, pointerId: event.pointerId };
     });
     container.addEventListener('pointermove', event => {
-      if (!pointer) return;
-      if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 6) pointer.moved = true;
+      if (!pointer || event.pointerId !== pointer.pointerId) return;
+      if (!pointer.moved && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 6) {
+        pointer.moved = true; pointer.card.setPointerCapture(event.pointerId);
+        pointer.card.classList.add('library-drag-source');
+      }
       if (!pointer.moved) return;
+      event.preventDefault();
       highlight(targetAt(document.elementFromPoint(event.clientX, event.clientY)));
       if (event.clientY < 80) window.scrollBy(0, -18);
       else if (event.clientY > innerHeight - 80) window.scrollBy(0, 18);
     });
     container.addEventListener('pointerup', event => {
-      if (!pointer) return;
+      if (!pointer || event.pointerId !== pointer.pointerId) return;
       const active = pointer; pointer = null;
-      if (active.moved) drop(active.id, targetAt(document.elementFromPoint(event.clientX, event.clientY)));
+      active.card.classList.remove('library-drag-source');
+      if (active.moved) {
+        event.preventDefault(); suppressClickUntil = performance.now() + 250;
+        drop(active.id, targetAt(document.elementFromPoint(event.clientX, event.clientY)), active.source);
+      }
       clearHighlight();
     });
-    container.addEventListener('pointercancel', () => { pointer = null; clearHighlight(); });
+    function cancelPointer() { pointer?.card.classList.remove('library-drag-source'); pointer = null; clearHighlight(); }
+    container.addEventListener('pointercancel', cancelPointer);
+    container.addEventListener('lostpointercapture', cancelPointer);
+    container.addEventListener('click', event => {
+      if (event.detail && performance.now() < suppressClickUntil) { suppressClickUntil = 0; event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
     createButton.addEventListener('click', () => {
       if (!ready || saving) return;
-      const title = prompt('資料夾名稱（最多 80 個字）');
-      if (!title?.trim()) return;
-      if (title.trim().length > 80 || layout.folders.length >= 200) { status('資料夾名稱最多 80 個字，最多建立 200 個資料夾。', true); return; }
+      folderForm.reset(); folderInput.setCustomValidity(''); folderMessage.textContent = '';
+      folderDialog.showModal(); folderInput.focus();
+    });
+    folderInput.addEventListener('input', () => { folderInput.setCustomValidity(''); folderMessage.textContent = ''; });
+    folderClose.addEventListener('click', () => { if (!saving) folderDialog.close(); });
+    folderCancel.addEventListener('click', () => { if (!saving) folderDialog.close(); });
+    folderDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+    folderForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!ready || saving) return;
+      const title = folderInput.value.trim();
+      if (!title || title.length > 80) {
+        folderInput.setCustomValidity('請輸入 1 至 80 個字的資料夾名稱。'); folderInput.reportValidity(); return;
+      }
+      if (layout.folders.length >= 200) { folderMessage.textContent = '最多建立 200 個資料夾。'; return; }
       const id = 'folder-' + Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2, '0')).join('');
-      change({ ...layout, folders: [...layout.folders, { id, title: title.trim(), deckIds: [] }] });
+      for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = true;
+      folderSubmit.textContent = '正在建立…'; folderMessage.textContent = '';
+      const success = await change({ ...layout, folders: [...layout.folders, { id, title, deckIds: [] }] });
+      for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = false;
+      folderSubmit.textContent = '建立資料夾';
+      if (success) folderDialog.close();
+      else { folderMessage.textContent = message.textContent; folderInput.focus(); }
     });
     function render() {
       layout = ASMLibraryLayout.reconcile(layout, decks.map(deck => deck.deck_uid));
@@ -80,30 +151,37 @@
         section.open = query ? true : expanded.get(folder.id) !== false;
         section.hidden = Boolean(query) && matches.length === 0;
         section.addEventListener('toggle', () => { if (!query && section.isConnected) expanded.set(folder.id, section.open); });
-        const summary = document.createElement('summary'); summary.textContent = `${folder.title}（${matches.length}）`;
+        const summary = document.createElement('summary');
+        const heading = document.createElement('span'); heading.className = 'library-folder-title'; heading.textContent = `${folder.title}（${matches.length}）`; summary.append(heading);
         const cards = document.createElement('div'); cards.className = 'deck-grid gallery-folder-cards';
         if (folder.id) {
-          const tools = document.createElement('div'); tools.className = 'library-folder-tools';
+          const tools = document.createElement('span'); tools.className = 'library-folder-tools';
           for (const [label, action] of [
             ['重新命名', () => { const title = prompt('資料夾名稱（最多 80 個字）', folder.title); if (!title?.trim()) return; if (title.trim().length > 80) { status('資料夾名稱最多 80 個字。'); return; } change({ ...layout, folders: layout.folders.map(item => item.id === folder.id ? { ...item, title: title.trim() } : item) }); }],
-            ['移除資料夾', () => { if (confirm(`移除「${folder.title}」？裡面的投影片會移回未分類，不會刪除投影片。`)) change({ folders: layout.folders.filter(item => item.id !== folder.id), unfiled: [...layout.unfiled, ...folder.deckIds] }); }]
-          ]) { const button = document.createElement('button'); button.type = 'button'; button.className = 'quiet-btn'; button.textContent = label; button.disabled = !ready || saving; button.addEventListener('click', action); tools.append(button); }
-          section.append(summary, tools, cards);
+            ['移除資料夾', () => { if (confirm(`移除「${folder.title}」？投影片會保留其他分類；沒有其他分類的會移回未分類，不會刪除投影片。`)) change(ASMLibraryLayout.removeFolder(layout, folder.id)); }]
+          ]) {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-btn'; button.title = label; button.setAttribute('aria-label', label);
+            button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${label === '重新命名' ? '<path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/>' : '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'}</svg>`;
+            button.disabled = !ready || saving;
+            button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); action(); }); tools.append(button);
+          }
+          summary.append(tools); section.append(summary, cards);
         } else section.append(summary, cards);
         if (!matches.length) { const empty = document.createElement('p'); empty.className = 'gallery-folder-empty'; empty.textContent = '將投影片拖到這裡，或使用縮圖下方的資料夾選單。'; section.append(empty); }
         for (const deck of matches) {
           const card = createCard(deck); card.dataset.deckId = deck.deck_uid; card.draggable = ready && !saving;
-          card.addEventListener('dragstart', event => { if (!ready || saving) { event.preventDefault(); return; } dragging = deck.deck_uid; event.dataTransfer.setData(MIME, dragging); event.dataTransfer.effectAllowed = 'move'; });
+          card.querySelectorAll('img').forEach(image => { image.draggable = false; });
+          card.addEventListener('dragstart', event => { if (pointer || !ready || saving) { event.preventDefault(); return; } dragging = { id: deck.deck_uid, source: folder.id }; event.dataTransfer.setData(MIME, deck.deck_uid); event.dataTransfer.effectAllowed = 'move'; });
           const controls = document.createElement('div'); controls.className = 'library-card-controls';
           const handle = document.createElement('button'); handle.type = 'button'; handle.className = 'library-drag-handle'; handle.textContent = '⠿'; handle.title = '拖曳至另一張投影片前方排序，或拖入資料夾'; handle.setAttribute('aria-label', `拖曳 ${deck.title}`); handle.disabled = !ready || saving;
-          const select = document.createElement('select'); select.setAttribute('aria-label', `${deck.title} 的資料夾`);
-          folders.forEach(item => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.title; select.append(option); }); select.value = folder.id; select.disabled = !ready || saving;
-          select.addEventListener('change', () => change(ASMLibraryLayout.move(layout, deck.deck_uid, select.value)));
-          controls.append(handle, select);
+          const categoriesButton = document.createElement('button'); categoriesButton.type = 'button'; categoriesButton.className = 'quiet-btn library-categories-button'; categoriesButton.setAttribute('aria-label', `${deck.title} 的分類`);
+          const memberships = layout.folders.filter(item => item.deckIds.includes(deck.deck_uid));
+          categoriesButton.textContent = memberships.length ? `分類（${memberships.length}）` : '選擇分類'; categoriesButton.title = memberships.map(item => item.title).join('、') || '未分類'; categoriesButton.disabled = !ready || saving;
+          categoriesButton.addEventListener('click', () => openCategories(deck)); controls.append(handle, categoriesButton);
           const index = folder.deckIds.indexOf(deck.deck_uid);
           for (const [label, delta] of [['往前', -1], ['往後', 1]]) {
             const button = document.createElement('button'); button.type = 'button'; button.className = 'library-order-button'; button.textContent = delta < 0 ? '↑' : '↓'; button.setAttribute('aria-label', `${deck.title} ${label}`); button.disabled = !ready || saving || index + delta < 0 || index + delta >= folder.deckIds.length;
-            button.addEventListener('click', () => change(ASMLibraryLayout.move(layout, deck.deck_uid, folder.id, folder.deckIds[index + (delta < 0 ? -1 : 2)] || null))); controls.append(button);
+            button.addEventListener('click', () => change(ASMLibraryLayout.move(layout, deck.deck_uid, folder.id, folder.deckIds[index + (delta < 0 ? -1 : 2)] || null, folder.id))); controls.append(button);
           }
           card.append(controls); cards.append(card);
         }
@@ -115,7 +193,7 @@
     return {
       async load(items) {
         ready = false; decks = items; layout = { folders: [], unfiled: [] }; status('正在讀取資料夾…');
-        try { layout = (await api('/api/slide-library')).layout; ready = true; status('拖曳縮圖可排序；拖入資料夾可分類。'); }
+        try { layout = (await api('/api/slide-library')).layout; ready = true; status(''); }
         catch (error) { status(`無法讀取資料夾：${error.message}。請重新整理後再試。`, true); }
       },
       render(items, search = '') { decks = items; query = search; render(); }

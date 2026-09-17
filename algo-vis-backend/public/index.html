@@ -7,7 +7,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=library-folders-10" />
+  <link rel="stylesheet" href="home.css?v=multi-category-14" />
 </head>
 
 <body>
@@ -168,6 +168,44 @@
     </form>
   </dialog>
 
+  <dialog id="folderDialog" class="deck-dialog" aria-labelledby="folderDialogTitle">
+    <form id="folderDialogForm">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">投影片整理</span>
+          <h2 id="folderDialogTitle">新增資料夾</h2>
+        </div>
+        <button id="closeFolderDialogBtn" class="icon-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <label for="folderTitleInput">資料夾名稱</label>
+      <input id="folderTitleInput" type="text" maxlength="80" required placeholder="例如：排序演算法" />
+      <div id="folderDialogMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelFolderDialogBtn" class="quiet-btn" type="button">取消</button>
+        <button id="submitFolderBtn" class="primary-btn" type="submit">建立資料夾</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="categoryDialog" class="deck-dialog" aria-labelledby="categoryTitle">
+    <form id="categoryForm">
+      <div class="dialog-heading">
+        <div><span class="eyebrow">投影片整理</span><h2 id="categoryTitle">選擇分類</h2></div>
+        <button id="closeCategoryBtn" class="icon-btn" type="button" aria-label="關閉">×</button>
+      </div>
+      <p id="categoryDeckName"></p>
+      <p class="category-help">可以選擇多個分類；未勾選時列入未分類。</p>
+      <fieldset id="categoryChoices" aria-label="投影片分類"></fieldset>
+      <div id="categoryMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelCategoryBtn" class="quiet-btn" type="button">取消</button>
+        <button class="primary-btn" type="submit">儲存分類</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/vendor/fabric/fabric.min.js"></script>
   <script src="draw/draw_array_utils.js"></script>
   <script src="draw/draw_block.js"></script>
@@ -184,10 +222,10 @@
   <script src="deck-thumbnail.js?v=2"></script>
   <script src="trace-provenance.js?v=1"></script>
   <script src="asmdeck.js?v=1"></script>
-  <script src="guest-gallery.js?v=2"></script>
+  <script src="guest-gallery.js?v=3"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="library-layout.js?v=1"></script>
-  <script src="library-organizer.js?v=1"></script>
+  <script src="library-layout.js?v=2"></script>
+  <script src="library-organizer.js?v=6"></script>
   <script src="home.js?v=library-folders-7"></script>
 </body>
 

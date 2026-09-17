@@ -396,11 +396,21 @@ input:focus-visible {
 }
 
 .auth-panel {
-  align-self: center;
+  position: sticky;
+  top: var(--header-h);
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  height: calc(100vh - var(--header-h));
+  height: calc(100dvh - var(--header-h));
+  overflow-y: auto;
   width: min(440px, 100%);
   margin: 0 auto;
   padding: 48px clamp(28px, 5vw, 56px);
 }
+
+.auth-panel > * { flex-shrink: 0; }
 
 .auth-heading h1,
 .library-heading h1,
@@ -958,8 +968,13 @@ input:focus-visible {
   }
 
   .auth-panel {
-    padding-top: 42px;
-    padding-bottom: 54px;
+    grid-row: 1;
+    position: static;
+    height: auto;
+    min-height: calc(100dvh - var(--header-h));
+    overflow: visible;
+    padding-top: 48px;
+    padding-bottom: 48px;
   }
 
   .dashboard-view {
@@ -1077,12 +1092,27 @@ body.examples-view .gallery-workspace-link { display: block; margin-top: 12px; c
 .gallery-folder-cards { padding: 20px; margin: 0; }
 .gallery-folder-empty { padding: 0 20px 16px; color: var(--text-muted); }
 .library-folder-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; position: sticky; top: var(--header-h); padding: 12px 0; background: var(--bg-main, #fff); z-index: 2; }
-.library-folder-tools { display: flex; gap: 8px; padding: 12px 20px 0; }
+.library-folder summary { display: flex; align-items: center; gap: 10px; list-style: none; }
+.library-folder summary::-webkit-details-marker { display: none; }
+.library-folder summary::before { content: '▸'; flex-shrink: 0; }
+.library-folder[open] > summary::before { content: '▾'; }
+.library-folder-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.library-folder-tools { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.library-folder-tools .icon-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.library-folder-tools .icon-btn:hover { color: var(--text-bright); }
 .library-card-controls { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; }
+.library-categories-button { flex: 1; min-width: 0; }
+.category-help { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+#categoryChoices { border: 0; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+#categoryChoices .category-choice { display: flex; align-items: center; gap: 12px; padding: 12px 0; margin: 0; overflow-wrap: anywhere; }
+#categoryChoices input { width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; flex-shrink: 0; accent-color: var(--blue); }
 .library-card-controls select { flex: 1; min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-panel); color: var(--text-bright); }
 .library-drag-handle, .library-order-button { border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-bright); border-radius: 4px; min-width: 30px; min-height: 32px; cursor: pointer; }
 .library-drag-handle { touch-action: none; cursor: grab; font-size: 22px; }
 .library-drag-handle:active { cursor: grabbing; }
+.library-folder .deck-card { user-select: none; }
+.library-folder .deck-card, .library-folder .deck-open, .library-folder .deck-title-button { cursor: grab; }
+.library-drag-source { opacity: .55; cursor: grabbing; }
 .library-card-controls button:disabled { opacity: .4; cursor: default; }
 .library-drop-target { outline: 3px solid var(--blue); outline-offset: 3px; }
 .library-folder.library-drop-target { outline: none; border-top: 3px solid var(--blue); }
