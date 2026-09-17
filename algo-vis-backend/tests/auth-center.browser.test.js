@@ -20,6 +20,11 @@ test('auth panel centers in the visible viewport independently of the sample lis
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [] } }));
     await page.goto(base); await page.waitForSelector('.gallery-folder');
+    const brand = await page.locator('img.brand-mark').evaluate(el => ({ src: el.src, loaded: el.complete && el.naturalWidth > 0, width: el.width, height: el.height, background: getComputedStyle(el).backgroundColor, border: getComputedStyle(el).borderWidth }));
+    assert.equal(brand.src, await page.locator('link[rel="icon"]').evaluate(el => el.href));
+    assert.equal(brand.loaded, true);
+    assert.equal(brand.width, 28); assert.equal(brand.height, 28);
+    assert.equal(brand.background, 'rgba(0, 0, 0, 0)'); assert.equal(brand.border, '0px');
     await page.locator('.guest-gallery').evaluate(el => el.style.minHeight = '5000px');
     async function bounds() {
       return page.locator('.auth-panel').evaluate(el => {
