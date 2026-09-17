@@ -7481,6 +7481,12 @@
     target.object.dirty = true;
     target.object.selectionStart = target.start;
     target.object.selectionEnd = Math.min(target.object.text.length, target.end + (target.object.text.length - lines.join('\n').length));
+    // Native input must use the same text after a toolbar list change;
+    // otherwise the next edit replaces the new markers with stale content.
+    if (target.object.isEditing && target.object.hiddenTextarea) {
+      target.object.hiddenTextarea.value = target.object.text;
+      target.object._updateTextarea();
+    }
     target.object.setCoords();
     target.canvas.requestRenderAll();
     syncCurrentSlideCanvas();
