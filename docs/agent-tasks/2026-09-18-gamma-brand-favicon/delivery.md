@@ -36,13 +36,10 @@
 - home.css快取版本需整合協調。
 - push沿用前次自動審核拒絕：外部目的地與完整payload授權不明確，可能涉及私人程式碼；未重試。
 
-## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式commit與diff：待填
-- 差異審查與必要重跑結果：待填
-- 合併commit：待填
-- 完整regression：未執行
-- 演算法投影片實際驗證：未執行
-- 未完成或环境阻塞：push授權待確認
-- 本機服務重啟：未執行，由主代理負責
-- Push／公開部署：未push、未部署
+## 主代理核實與整合（2026-09-18）
+- 狀態：已核實並合併 intergration。
+- 受測／合併 commit：eafa8a09c4ca960301b369ffcbdafaefe97abdea。
+- 差異審查、6 項相關驗證、服務核對與未驗證範圍：見 [本輪整合紀錄](../2026-09-18-folder-dialog-thumbnail-integration.md)。
+- 完整 regression／演算法大驗證：依非動畫修改範圍未執行。
+- 本機服務：3100 已重啟，PID 29956；main 未變動。
+- Push：依使用者授權推送 origin/intergration，結果以主代理最終回報為準；未部署或發布 release。
