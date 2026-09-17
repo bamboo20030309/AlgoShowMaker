@@ -49,6 +49,7 @@ test('external deck files drop onto import and add controls, workspace creates a
     assert.equal(await page.locator('section.asm-slide[data-slide-id="denied-1"]').count(), 0);
     let created = 0, saved = null; const resources = new Map();
     await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture' } } }));
+    await page.route('**/api/slide-library', route => route.fulfill({ json: { layout: { folders: [], unfiled: [] } } }));
     await page.route('**/api/slides', route => {
       if (route.request().method() === 'POST') { created++; return route.fulfill({ json: { slide: { deck_uid: 'dropped-deck' } } }); }
       return route.fulfill({ json: { slides: [] } });

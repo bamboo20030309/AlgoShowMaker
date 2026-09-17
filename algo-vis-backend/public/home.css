@@ -1072,10 +1072,20 @@ body.examples-view .gallery-workspace-link { display: block; margin-top: 12px; c
 .examples-workspace-entry { padding: 10px 14px; color: var(--text-bright); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; }
 .gallery-categories { position: sticky; top: var(--header-h); z-index: 10; padding: 12px 0; background: var(--bg-main); }
 .gallery-folders { display: flex; flex-direction: column; gap: 18px; }
-.gallery-folder { border: 1px solid var(--border); border-radius: 7px; scroll-margin-top: calc(var(--header-h) + 140px); }
-.gallery-folder summary { padding: 16px; font-weight: bold; color: var(--text-bright); cursor: pointer; background: var(--bg-panel); }
+.gallery-folder { border: 0; border-top: 1px solid var(--border); border-radius: 0; scroll-margin-top: calc(var(--header-h) + 140px); }
+.gallery-folder summary { padding: 16px 0; font-weight: bold; color: var(--text-bright); cursor: pointer; background: transparent; }
 .gallery-folder-cards { padding: 20px; margin: 0; }
 .gallery-folder-empty { padding: 0 20px 16px; color: var(--text-muted); }
+.library-folder-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; position: sticky; top: var(--header-h); padding: 12px 0; background: var(--bg-main, #fff); z-index: 2; }
+.library-folder-tools { display: flex; gap: 8px; padding: 12px 20px 0; }
+.library-card-controls { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; }
+.library-card-controls select { flex: 1; min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-panel); color: var(--text-bright); }
+.library-drag-handle, .library-order-button { border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-bright); border-radius: 4px; min-width: 30px; min-height: 32px; cursor: pointer; }
+.library-drag-handle { touch-action: none; cursor: grab; font-size: 22px; }
+.library-drag-handle:active { cursor: grabbing; }
+.library-card-controls button:disabled { opacity: .4; cursor: default; }
+.library-drop-target { outline: 3px solid var(--blue); outline-offset: 3px; }
+.library-folder.library-drop-target { outline: none; border-top: 3px solid var(--blue); }
 .gallery-folder:has(.gallery-folder-empty) .gallery-folder-cards { padding: 0; }
 @media (max-width: 620px) {
   .library-heading { flex-wrap: wrap; }

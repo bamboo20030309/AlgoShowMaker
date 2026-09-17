@@ -512,6 +512,8 @@ function cleanCoverThumbnail(value) {
 }
 
 // List metadata only. The large Fabric canvas payload is fetched when a deck is opened.
+require('./slide-library')(app, { authenticateToken, User, SlideDeck });
+
 app.get('/api/slides', authenticateToken, async (req, res) => {
   try {
     const slides = await SlideDeck.find({ user_uid: req.user.id })
