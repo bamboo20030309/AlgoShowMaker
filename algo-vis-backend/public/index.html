@@ -7,7 +7,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=multi-category-14" />
+  <link rel="stylesheet" href="home.css?v=workspace-return-15" />
 </head>
 
 <body>
@@ -36,7 +36,10 @@
     <section id="guestView" class="guest-view">
       <section class="guest-gallery" aria-labelledby="galleryTitle">
         <span class="eyebrow">公開投影片</span>
-        <a class="gallery-workspace-link" href="/">返回投影片工作區</a>
+        <a class="gallery-workspace-link quiet-btn" href="/">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h18" /></svg>
+          <span>返回投影片工作區</span>
+        </a>
         <h1 id="galleryTitle">演算法投影片</h1>
         <p class="gallery-intro">從分類挑選演算法，點開投影片即可觀賞，不需登入。</p>
         <nav id="galleryCategories" class="gallery-categories" aria-label="演算法分類"></nav>

@@ -45,6 +45,11 @@ test('auth panel centers in the visible viewport independently of the sample lis
     await page.goto(base + '/?examples=1');
     assert.equal(await page.locator('.auth-panel').isVisible(), false);
     assert.equal(await page.locator('.guest-gallery').evaluate(el => el.getBoundingClientRect().top), 52);
+    const workspaceReturn = page.getByRole('link', { name: '返回投影片工作區' });
+    assert.equal(await workspaceReturn.getAttribute('href'), '/');
+    assert.equal(await workspaceReturn.locator('svg').count(), 1);
+    assert.equal(await workspaceReturn.evaluate(el => getComputedStyle(el).display), 'inline-flex');
+    assert.ok((await workspaceReturn.boundingBox()).height >= 36);
     assert.deepEqual(errors, []);
   } finally { if (browser) await browser.close(); server.kill(); }
 });

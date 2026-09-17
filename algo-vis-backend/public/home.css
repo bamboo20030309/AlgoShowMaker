@@ -1083,7 +1083,7 @@ body.examples-view .guest-view { grid-template-columns: 1fr; }
 body.examples-view .auth-panel { display: none; }
 body.examples-view .guest-gallery { border-right: 0; max-width: 1440px; width: 100%; margin: 0 auto; }
 .gallery-workspace-link { display: none; }
-body.examples-view .gallery-workspace-link { display: block; margin-top: 12px; color: #55b9f3; }
+body.examples-view .gallery-workspace-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; text-decoration: none; }
 .examples-workspace-entry { padding: 10px 14px; color: var(--text-bright); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; }
 .gallery-categories { position: sticky; top: var(--header-h); z-index: 10; padding: 12px 0; background: var(--bg-main); }
 .gallery-folders { display: flex; flex-direction: column; gap: 18px; }
