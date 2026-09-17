@@ -3112,6 +3112,21 @@
         textarea?.addEventListener('beforeinput', rememberEditingTextSelection);
         textarea?.addEventListener('compositionstart', rememberEditingTextSelection, true);
         textarea?.addEventListener('compositionend', () => sync({ target: e.target }));
+        commitPendingColorHistory();
+        // Import JSON can omit Fabric defaults and generated object IDs. The
+        // first text edit serializes every sibling too. Canonicalize the current
+        // baseline before typing so those initialization changes are not mistaken
+        // for another user's operation when comparing text history snapshots.
+        const currentSlide = deck.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+        if (currentSlide && historyIndex >= 0) {
+          const baseline = JSON.parse(history[historyIndex]);
+          const baselineSlide = baseline.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+          if (baselineSlide) {
+            currentSlide.canvas = serializeFabricCanvas(canvas);
+            baselineSlide.canvas = clone(currentSlide.canvas);
+            history[historyIndex] = JSON.stringify(baseline);
+          }
+        }
         rememberEditingTextSelection();
       }
       updateObjectToolbar(e.target, canvas);
