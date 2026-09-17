@@ -168,6 +168,26 @@
     </form>
   </dialog>
 
+  <dialog id="folderDialog" class="deck-dialog" aria-labelledby="folderDialogTitle">
+    <form id="folderDialogForm">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">投影片整理</span>
+          <h2 id="folderDialogTitle">新增資料夾</h2>
+        </div>
+        <button id="closeFolderDialogBtn" class="icon-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <label for="folderTitleInput">資料夾名稱</label>
+      <input id="folderTitleInput" type="text" maxlength="80" required placeholder="例如：排序演算法" />
+      <div id="folderDialogMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelFolderDialogBtn" class="quiet-btn" type="button">取消</button>
+        <button id="submitFolderBtn" class="primary-btn" type="submit">建立資料夾</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/vendor/fabric/fabric.min.js"></script>
   <script src="draw/draw_array_utils.js"></script>
   <script src="draw/draw_block.js"></script>
@@ -187,7 +207,7 @@
   <script src="guest-gallery.js?v=2"></script>
   <script src="deck-file-drop.js?v=1"></script>
   <script src="library-layout.js?v=1"></script>
-  <script src="library-organizer.js?v=1"></script>
+  <script src="library-organizer.js?v=2"></script>
   <script src="home.js?v=library-folders-7"></script>
 </body>
 

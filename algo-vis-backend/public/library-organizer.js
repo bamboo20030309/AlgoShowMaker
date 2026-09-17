@@ -4,15 +4,23 @@
     let layout = { folders: [], unfiled: [] }, decks = [], query = '', ready = false, saving = false;
     const expanded = new Map();
     let dragging = null, pointer = null, highlighted = null;
+    const folderDialog = document.getElementById('folderDialog');
+    const folderForm = document.getElementById('folderDialogForm');
+    const folderInput = document.getElementById('folderTitleInput');
+    const folderMessage = document.getElementById('folderDialogMessage');
+    const folderSubmit = document.getElementById('submitFolderBtn');
+    const folderClose = document.getElementById('closeFolderDialogBtn');
+    const folderCancel = document.getElementById('cancelFolderDialogBtn');
     function status(text, error = false) { message.textContent = text; message.classList.toggle('is-success', !error); }
     async function change(next) {
-      if (!ready || saving) return;
+      if (!ready || saving) return false;
       const previous = layout;
       saving = true; layout = next; render(); status('正在儲存資料夾與排序…');
       try {
         layout = (await api('/api/slide-library', { method: 'PUT', body: JSON.stringify({ layout }) })).layout;
         status('資料夾與排序已儲存');
-      } catch (error) { layout = previous; status(`儲存失敗：${error.message}；已恢復原排序。`, true); }
+        return true;
+      } catch (error) { layout = previous; status(`儲存失敗：${error.message}；已恢復原排序。`, true); return false; }
       finally { saving = false; render(); }
     }
     function clearHighlight() { highlighted?.classList.remove('library-drop-target'); highlighted = null; }
@@ -62,11 +70,29 @@
     container.addEventListener('pointercancel', () => { pointer = null; clearHighlight(); });
     createButton.addEventListener('click', () => {
       if (!ready || saving) return;
-      const title = prompt('資料夾名稱（最多 80 個字）');
-      if (!title?.trim()) return;
-      if (title.trim().length > 80 || layout.folders.length >= 200) { status('資料夾名稱最多 80 個字，最多建立 200 個資料夾。', true); return; }
+      folderForm.reset(); folderInput.setCustomValidity(''); folderMessage.textContent = '';
+      folderDialog.showModal(); folderInput.focus();
+    });
+    folderInput.addEventListener('input', () => { folderInput.setCustomValidity(''); folderMessage.textContent = ''; });
+    folderClose.addEventListener('click', () => { if (!saving) folderDialog.close(); });
+    folderCancel.addEventListener('click', () => { if (!saving) folderDialog.close(); });
+    folderDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+    folderForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!ready || saving) return;
+      const title = folderInput.value.trim();
+      if (!title || title.length > 80) {
+        folderInput.setCustomValidity('請輸入 1 至 80 個字的資料夾名稱。'); folderInput.reportValidity(); return;
+      }
+      if (layout.folders.length >= 200) { folderMessage.textContent = '最多建立 200 個資料夾。'; return; }
       const id = 'folder-' + Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2, '0')).join('');
-      change({ ...layout, folders: [...layout.folders, { id, title: title.trim(), deckIds: [] }] });
+      for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = true;
+      folderSubmit.textContent = '正在建立…'; folderMessage.textContent = '';
+      const success = await change({ ...layout, folders: [...layout.folders, { id, title, deckIds: [] }] });
+      for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = false;
+      folderSubmit.textContent = '建立資料夾';
+      if (success) folderDialog.close();
+      else { folderMessage.textContent = message.textContent; folderInput.focus(); }
     });
     function render() {
       layout = ASMLibraryLayout.reconcile(layout, decks.map(deck => deck.deck_uid));

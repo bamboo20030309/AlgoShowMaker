@@ -42,8 +42,21 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     await page.goto(base); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
     const borders = () => page.locator('.gallery-folder:visible').first().evaluate(el => { const style = getComputedStyle(el); return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.borderRadius]; });
     assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
-    page.once('dialog', dialog => dialog.accept('數學'));
-    await page.locator('#createFolderBtn').click(); await saved();
+    await page.locator('#createFolderBtn').click();
+    assert.equal(await page.locator('#folderTitleInput').evaluate(el => el === document.activeElement), true);
+    await page.locator('#cancelFolderDialogBtn').click(); assert.equal(layout.folders.length, 0);
+    await page.locator('#createFolderBtn').click(); await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
+    await page.locator('#createFolderBtn').click(); await page.locator('#folderTitleInput').fill('   '); await page.locator('#submitFolderBtn').click();
+    assert.equal(layout.folders.length, 0); assert.equal(await page.locator('#folderTitleInput').evaluate(el => el.validity.valid), false);
+    await page.locator('#folderTitleInput').fill('數學'); failSave = true; await page.locator('#submitFolderBtn').click();
+    await page.waitForFunction(() => document.querySelector('#folderDialogMessage').textContent.includes('儲存失敗'));
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), true); assert.equal(await page.locator('#folderTitleInput').inputValue(), '數學');
+    failSave = false;
+    fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+    await page.screenshot({ path: path.join(root, 'test-results/create-folder-dialog.png') });
+    await page.locator('#folderTitleInput').fill('數學'); await page.keyboard.press('Enter'); await saved();
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
     const folder = layout.folders[0].id;
     // Actual pointer dragging on the dedicated handle reorders the existing cards.
     const from = await page.locator('[data-deck-id="c"] .library-drag-handle').boundingBox();
@@ -83,6 +96,11 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     assert.equal(layout.folders[0].title, '演算法');
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.locator('#createFolderBtn').click();
+    const modalBounds = await page.locator('#folderDialog').boundingBox();
+    assert.ok(modalBounds.x >= 0 && modalBounds.x + modalBounds.width <= 390);
+    await page.screenshot({ path: path.join(root, 'test-results/create-folder-dialog-mobile.png') });
+    await page.locator('#cancelFolderDialogBtn').click();
     await page.locator('[data-deck-id="c"] select').selectOption(folder); await saved();
     assert.deepEqual(await order(folder), ['b', 'c']);
     const imageDir = path.join(root, 'test-results'); fs.mkdirSync(imageDir, { recursive: true });
