@@ -4138,7 +4138,7 @@
           left,
           top,
           width: 360,
-          fontSize: 34,
+          fontSize: 18,
           fontFamily: DEFAULT_FONT_FAMILY,
           fontWeight: 'bold',
           fill: '#1f282d',
@@ -6404,7 +6404,7 @@
     });
 
     fontFamilySelect.addEventListener('change', () => applyTextStyle({ fontFamily: fontFamilySelect.value }));
-    fontSizeInput.addEventListener('input', () => applyTextStyle({ fontSize: Number(fontSizeInput.value) || 34 }));
+    fontSizeInput.addEventListener('input', () => applyTextStyle({ fontSize: Number(fontSizeInput.value) || 18 }));
     boldBtn.addEventListener('click', () => toggleTextStyle('fontWeight', 'bold', 'normal'));
     italicBtn.addEventListener('click', () => toggleTextStyle('fontStyle', 'italic', 'normal'));
     underlineBtn.addEventListener('click', () => toggleTextStyle('underline', true, false));
@@ -7159,7 +7159,7 @@
     if (isTextObject(obj)) {
       const style = getTextSelectionStyle(obj);
       fontFamilySelect.value = style.fontFamily || obj.fontFamily || DEFAULT_FONT_FAMILY;
-      fontSizeInput.value = Math.round(style.fontSize || obj.fontSize || 34);
+      fontSizeInput.value = Math.round(style.fontSize || obj.fontSize || 18);
       boldBtn.classList.toggle('is-active', (style.fontWeight || obj.fontWeight) === 'bold');
       italicBtn.classList.toggle('is-active', (style.fontStyle || obj.fontStyle) === 'italic');
       underlineBtn.classList.toggle('is-active', !!(style.underline ?? obj.underline));
