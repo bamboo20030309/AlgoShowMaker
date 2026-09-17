@@ -1,6 +1,8 @@
 # gamma-tts 交付驗證紀錄
 
 ## 交付資訊
+
+主代理更新：已合併本機 main，本次 V1 整合核實通過。合併 commit、重跑結果、服務與限制見 [Gamma 後續整合紀錄](../2026-09-18-gamma-followup-integration.md)。下方保留原子代理交付時的狀態。
 - 狀態：小驗證通過，待主代理核實。
 - 分支：codex/2026-09-18-gamma
 - 基準：22785acbc19e9e362183d57fdd1f63d36ba12bbb
