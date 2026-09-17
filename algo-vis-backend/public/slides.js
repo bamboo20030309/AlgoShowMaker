@@ -3,8 +3,9 @@
   const OLD_STORAGE_KEY = 'asm_reveal_fabric_deck_v4';
   const TOKEN_KEY = 'algo_jwt_token';
   const urlParams = new URLSearchParams(window.location.search);
-  const deckUid = urlParams.get('deck');
-  const shareToken = urlParams.get('share');
+  const sampleId = urlParams.get('sample');
+  const deckUid = sampleId ? null : urlParams.get('deck');
+  const shareToken = sampleId ? 'sample:' + sampleId : urlParams.get('share');
   const SLIDE_W = 1280;
   const SLIDE_H = 720;
   const FABRIC_BLEED = 180;
@@ -586,6 +587,25 @@
   }
 
   async function loadCloudDeck() {
+    if (sampleId) {
+      setCloudStatus('loading', '正在載入公開投影片…');
+      const catalogResponse = await fetch('/guest-decks.json');
+      if (!catalogResponse.ok) throw new Error('公開投影片清單載入失敗');
+      const catalog = await catalogResponse.json();
+      const entry = catalog.decks.find(item => item.id === sampleId);
+      if (!entry) throw new Error('找不到指定的公開投影片');
+      const response = await fetch(entry.archive);
+      if (!response.ok) throw new Error('公開投影片載入失敗');
+      const archive = await window.ASMDeck.decode(await response.blob());
+      const reconstructed = await window.ASMDeck.rebuildDeck(archive.deck);
+      deck = normalizeDeck(reconstructed);
+      cloudDeckTitle = entry.title;
+      sharedAccess = 'view';
+      applySharedAccessUi();
+      document.title = `${entry.title} - AlgoShowMaker`;
+      setCloudStatus('saved', '公開投影片・僅供觀賞');
+      return;
+    }
     if (!deckUid && !shareToken) {
       setCloudStatus('local', '本機草稿');
       return;
