@@ -1101,6 +1101,11 @@ body.examples-view .gallery-workspace-link { display: block; margin-top: 12px; c
 .library-folder-tools .icon-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .library-folder-tools .icon-btn:hover { color: var(--text-bright); }
 .library-card-controls { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; }
+.library-categories-button { flex: 1; min-width: 0; }
+.category-help { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+#categoryChoices { border: 0; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+#categoryChoices .category-choice { display: flex; align-items: center; gap: 12px; padding: 12px 0; margin: 0; overflow-wrap: anywhere; }
+#categoryChoices input { width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; flex-shrink: 0; accent-color: var(--blue); }
 .library-card-controls select { flex: 1; min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-panel); color: var(--text-bright); }
 .library-drag-handle, .library-order-button { border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-bright); border-radius: 4px; min-width: 30px; min-height: 32px; cursor: pointer; }
 .library-drag-handle { touch-action: none; cursor: grab; font-size: 22px; }
