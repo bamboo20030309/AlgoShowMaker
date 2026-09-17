@@ -418,3 +418,19 @@
     font-size: 10px;
   }
 }
+
+@media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
+  body.shared-view-only:has(#slidesRoot) .control-chrome {
+    top: 0; bottom: 0; left: 0; right: auto;
+    display: flex; flex-flow: column nowrap; justify-content: flex-start;
+    width: var(--controlbar-w); height: 100dvh; max-height: none;
+    padding: 60px 6px 12px; border-radius: 0;
+  }
+  body.shared-view-only:has(#slidesRoot) .control-chrome .mode-switch { display: none; }
+  body.shared-view-only:has(#slidesRoot) .control-chrome .deck-io-controls,
+  body.shared-view-only:has(#slidesRoot) .control-chrome .slide-zoom-controls { flex-direction: column; }
+  body.shared-view-only:has(#slidesRoot) .chrome-home-link { display: grid; z-index: 1401; }
+  body.shared-view-only:has(#slidesRoot) > .reveal { inset: 0 0 0 var(--controlbar-w); }
+  body.shared-view-only:has(#slidesRoot) .asm-mobile-dock { display: none; }
+  body.shared-view-only:has(#slidesRoot) > .tts-transport { z-index: 1402; }
+}

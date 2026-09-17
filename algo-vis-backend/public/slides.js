@@ -1411,7 +1411,7 @@
       ttsPanelToggleBtn.classList.toggle('is-active', isExpanded);
       ttsPanelToggleBtn.setAttribute('aria-pressed', String(isExpanded));
     }
-    const viewerToggle = document.getElementById('viewerTtsToggleBtn');
+    const viewerToggle = ttsPanelToggleBtn;
     viewerToggle?.setAttribute('aria-expanded', String(isExpanded));
     viewerToggle?.setAttribute('aria-label', isExpanded ? '收合 TTS 控制' : '展開 TTS 控制');
     if (!isExpanded) {
@@ -6071,7 +6071,6 @@
     ttsPanelToggleBtn?.addEventListener('click', () => {
       setTtsPanelExpanded(ttsTransport?.dataset.expanded !== 'true');
     });
-    document.getElementById('viewerTtsToggleBtn')?.addEventListener('click', () => setTtsPanelExpanded(!ttsPanelIsExpanded()));
     ttsPanelCloseBtn?.addEventListener('click', () => setTtsPanelExpanded(false));
     ttsObjectBtn?.addEventListener('click', openSelectedTextTts);
     ttsObjectEditorCloseBtn?.addEventListener('click', closeTtsObjectEditor);

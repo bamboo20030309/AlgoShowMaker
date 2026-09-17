@@ -10,8 +10,8 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=viewer-tts-99" />
-  <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
+  <link rel="stylesheet" href="slides.css?v=viewer-sidebar-100" />
+  <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
 </head>
 
 <body class="asm-edit-mode">
@@ -44,7 +44,7 @@
           <path class="slide-order-arrow" d="M6 13v10M1 18h10M4.5 14.5 6 13l1.5 1.5M4.5 21.5 6 23l1.5-1.5M2.5 16.5 1 18l1.5 1.5M9.5 16.5 11 18l-1.5 1.5" />
         </svg>
       </button>
-      <button id="ttsPanelToggleBtn" class="deck-io-btn tts-control-toggle" type="button" title="開啟或關閉 TTS" aria-label="開啟或關閉 TTS" aria-pressed="false">
+      <button id="ttsPanelToggleBtn" class="deck-io-btn tts-control-toggle" type="button" title="開啟或關閉 TTS" aria-label="開啟或關閉 TTS" aria-pressed="false" aria-expanded="false" aria-controls="ttsTransport">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h10v2H4zm0 5h10v2H4zm0 5h7v2H4zm13-5.4v4.8l4 2.3V7.3z"></path></svg>
       </button>
       <button id="exportDeckBtn" class="deck-io-btn deck-export-btn" type="button" title="下載精簡壓縮投影片 .asmdeck" aria-label="下載精簡壓縮投影片 .asmdeck">
@@ -97,7 +97,6 @@
     </a>
   </aside>
 
-  <button id="viewerTtsToggleBtn" class="viewer-tts-toggle" type="button" aria-label="展開 TTS 控制" aria-expanded="false" aria-controls="ttsTransport" title="TTS 朗讀">TTS</button>
   <div id="sharedAccessBadge" class="shared-access-badge" hidden></div>
 
   <aside id="editorChrome" class="editor-chrome" aria-label="投影片元件">
@@ -714,7 +713,7 @@
   <script src="trace-model.js?v=trace-27"></script>
   <script src="trace-provenance.js?v=trace-5"></script>
   <script src="asmdeck.js?v=5"></script>
-  <script src="slides.js?v=viewer-tts-180"></script>
+  <script src="slides.js?v=viewer-sidebar-181"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 
