@@ -2338,6 +2338,8 @@
     } else if (widget.type === 'structure') {
       paintStructureWidget(el, widget);
     } else {
+      // In-place import/history restore must refresh the source before rendering.
+      paintWidgetElement(el, widget);
       renderMathWidgets(el);
       autoSizeLatexWidgets(el);
     }
