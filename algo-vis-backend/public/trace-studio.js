@@ -1638,6 +1638,9 @@
   }
 
   function eventCodeStatusTitle(group) {
+    if (typeof group?.event?.directiveAnimationControl === 'boolean') {
+      return `本幀由 @events 指令${group.event.directiveAnimationControl ? '開啟' : '關閉'}；請修改來源指令`;
+    }
     const state = group?.enabled ? '已開啟' : '已關閉';
     const action = group?.enabled ? '點擊可關閉' : '點擊可開啟';
     if (group.availability === 'missing-target') return `${state}；目標未顯示，${action}`;
@@ -1679,11 +1682,13 @@
     node.setAttribute('role', 'button');
     node.setAttribute('tabindex', '0');
     node.setAttribute('aria-pressed', String(primary.enabled));
+    node.setAttribute('aria-disabled', String(typeof primary.event.directiveAnimationControl === 'boolean'));
     node.setAttribute('aria-label', `${primary.label}：${eventDisplayText(primary.event)}`);
     node.title = eventCodeStatusTitle(primary);
     const toggle = event => {
       event.preventDefault();
       event.stopPropagation();
+      if (typeof primary.event.directiveAnimationControl === 'boolean') return;
       setInstructionEventEnabled(primary.event, !primary.enabled);
     };
     node.addEventListener('click', toggle);
@@ -1847,8 +1852,10 @@
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.checked = event.enabled !== false;
+      input.disabled = typeof event.directiveAnimationControl === 'boolean';
       input.setAttribute('aria-label', '本幀自動固定格子');
       input.title = input.checked ? '隱藏本幀固定標記' : '顯示本幀固定標記';
+      if (input.disabled) input.title = '本幀由 @events 指令控制；請修改來源指令';
       input.addEventListener('change', () => setFrameFixedEnabled(frame, event, index, input.checked));
       toggle.append(input, el('span'));
       row.append(icon, copy, toggle);

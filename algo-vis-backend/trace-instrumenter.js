@@ -342,6 +342,20 @@ function framePresetNames(frame, analysis) {
   ];
 }
 
+// Continuations are ordinary consecutive comments, never C++ statements or
+// another @ directive. Both direct and preset arrows use the same payload.
+function arrowCommentPayload(source, node, initial) {
+  let payload = initial;
+  let end = node.to;
+  while (true) {
+    const next = source.slice(end).match(/^\r?\n[ \t]*\/\/[ \t]+((?:from|to|as|color|width|head|line|dash|when)\b[^\r\n]*)/i);
+    if (!next) break;
+    payload += ' ' + next[1].trim();
+    end += next[0].length;
+  }
+  return { payload, end };
+}
+
 function findPresetDirectives(source, analysis) {
   const definitions = new Map();
   const ranges = [];
@@ -350,6 +364,7 @@ function findPresetDirectives(source, analysis) {
 
   function visit(node) {
     if (node.name === 'LineComment') {
+      if (node.from < continuationEnd) return;
       const text = source.slice(node.from, node.to);
       const line = analysis.lineAt(node.from);
       const defaultsStart = text.match(/^\/\/\s*@defaults\b\s*(.*?)\s*$/i);
@@ -385,11 +400,15 @@ function findPresetDirectives(source, analysis) {
         }
         const directive = text.match(/^\/\/\s*@([A-Za-z_-]+)\b\s*(.*?)\s*$/);
         if (!directive) throw new Error(`第 ${line} 行的 @preset 內容必須是 @ 指令`);
-        if (open.name === '@defaults' && !['camera', 'place', 'style', 'object', 'text', 'segment', 'arrow'].includes(directive[1].toLowerCase())) {
+        if (open.name === '@defaults' && !['camera', 'place', 'style', 'object', 'text', 'segment', 'arrow', 'events'].includes(directive[1].toLowerCase())) {
           throw new Error(`第 ${line} 行的 @defaults 只支援呈現指令，不支援 @${directive[1]}`);
         }
-        open.directives.push({ name: directive[1].toLowerCase(), payload: directive[2], line });
-        continuationEnd = node.to;
+        const name = directive[1].toLowerCase();
+        const collected = name === 'arrow'
+          ? arrowCommentPayload(source, node, directive[2])
+          : { payload: directive[2], end: node.to };
+        open.directives.push({ name, payload: collected.payload, line });
+        continuationEnd = collected.end;
       }
     }
     for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
@@ -1731,14 +1750,41 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
   const directives = [];
+  let continuationEnd = -1;
 
   function visit(node) {
     if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+      if (node.from < continuationEnd) return;
       const text = source.slice(node.from, node.to);
       const match = text.match(/^\/\/\s*@arrow\b\s*(.*?)\s*$/i);
       if (match) {
         const line = analysis.lineAt(node.from);
-        const payload = match[1].trim();
+        const collected = arrowCommentPayload(source, node, match[1].trim());
+        continuationEnd = collected.end;
+        const originalPayload = collected.payload;
+        let payload = originalPayload;
+        let batch = null;
+        if (/^for\b/i.test(payload)) {
+          const loop = payload.match(/^for\s+([A-Za-z_]\w*)\s+in\s+(.+?)\s*\.\.\s*(.+?)\s+from\s+/i);
+          if (!loop) throw new Error(`第 ${line} 行的 @arrow for 格式應為 for k in start..end [step expression] from ... to ...`);
+          if (['iteration', 'before', 'prev', 'changed', 'assigned', 'true', 'false', 'and', 'or'].includes(loop[1])) {
+            throw new Error(`第 ${line} 行的 @arrow for 繪圖索引不能使用保留名稱：${loop[1]}`);
+          }
+          const endAndStep = loop[3].match(/^(.*?)(?:\s+step\s+(.+))?$/i);
+          batch = { variable: loop[1], startExpression: loop[2].trim(),
+            endExpression: endAndStep[1].trim(), stepExpression: endAndStep[2]?.trim() || '1' };
+          for (const expression of [batch.startExpression, batch.endExpression, batch.stepExpression]) {
+            const parsed = parseFrameExpression(expression);
+            if (!parsed.valid || parsed.identifiers.includes(batch.variable)) {
+              throw new Error(`第 ${line} 行的 @arrow for 範圍無效或引用繪圖索引：${expression}`);
+            }
+          }
+          if (/^[+-]?\d+(?:\.\d+)?$/.test(batch.stepExpression)
+            && (!Number.isSafeInteger(Number(batch.stepExpression)) || Number(batch.stepExpression) === 0)) {
+            throw new Error(`第 ${line} 行的 @arrow step 必須是非零整數`);
+          }
+          payload = 'from ' + payload.slice(loop[0].length);
+        }
         const detectedPositions = topLevelModifierPositions(payload, ARROW_MODIFIERS);
         // `when` owns the rest of the line.  A condition may legitimately use
         // identifiers such as `width` or `color`; do not reinterpret those as
@@ -1765,7 +1811,7 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
         let owner = node.parent;
         while (owner && owner.name !== 'FunctionDefinition') owner = owner.parent;
         const ownerName = owner ? functionInfo(owner, source).name : 'global';
-        const signature = stableSourceHash(`${ownerName}:${payload}`);
+        const signature = stableSourceHash(`${ownerName}:${originalPayload}`);
         const occurrence = directives.filter(item => item.signature === signature).length;
         const id = values.has('as')
           ? parseQuotedDirectiveId(values.get('as'), line, '@arrow as')
@@ -1813,7 +1859,8 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
           fromTarget: parseArrowTarget(values.get('from'), line, 'from'),
           toTarget: parseArrowTarget(values.get('to'), line, 'to'),
           style: { color, width, head, line: lineStyle, dash },
-          when
+          when,
+          batch
         });
       }
     }
@@ -1867,6 +1914,7 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
     if (!targetFrame) throw new Error(`第 ${arrow.line} 行的 @arrow 前面找不到可套用的 @frame`);
     const captureIdentifier = (name, endpointTarget = null) => {
       if (!name) return null;
+      if (name === arrow.batch?.variable && !endpointTarget) return true;
       const variable = resolveVariable(name, arrow.from);
       if (!variable) return null;
       const alreadyCaptured = targetFrame.variables.some(existing => existing.id === variable.id);
@@ -1892,6 +1940,13 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
         throw new Error(`第 ${arrow.line} 行的 @arrow 找不到條件變數：${name}`);
       }
     });
+    if (arrow.batch) {
+      for (const expression of [arrow.batch.startExpression, arrow.batch.endExpression, arrow.batch.stepExpression]) {
+        (parseFrameExpression(expression).identifiers || []).forEach(name => {
+          if (!captureIdentifier(name)) throw new Error(`第 ${arrow.line} 行的 @arrow for 找不到範圍變數：${name}`);
+        });
+      }
+    }
     // Preset/default entries are presentation defaults, not a second arrow.
     // Resolve their established priority before checking actual duplicates.
     targetFrame.arrows = targetFrame.arrows.filter(existing => !existing.presetName || existing.id !== arrow.id);
@@ -1907,9 +1962,76 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
       to: arrow.toTarget,
       style: arrow.style,
       when: arrow.when,
+      batch: arrow.batch,
       line: arrow.line,
       presetName: arrow.presetName || ''
     });
+  });
+}
+
+const EVENT_CONTROL_TYPES = new Set(['declare', 'scope-exit', 'visual-exit', 'read', 'write',
+  'assign', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'function-enter', 'function-exit']);
+
+function findEventControlDirectives(source, suppliedAnalysis = null) {
+  const analysis = suppliedAnalysis || analyzeSource(source);
+  if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
+  const controls = [];
+  function visit(node) {
+    if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+      const text = source.slice(node.from, node.to);
+      if (/^\/\/\s*@events\b/i.test(text)) {
+        const line = analysis.lineAt(node.from);
+        const match = text.match(/^\/\/\s*@events\s+(?:(.*?)\s+)?animate\s+(on|off)(?:\s+when\s+(.+?))?\s*$/i);
+        if (!match) throw new Error(`第 ${line} 行的 @events 格式應為 [種類列表] animate on/off [when 條件]`);
+        const types = (match[1] || 'all').split(',').map(type => type.trim().toLowerCase());
+        if (types.some(type => type !== 'all' && !EVENT_CONTROL_TYPES.has(type))
+          || (types.includes('all') && types.length !== 1)) {
+          throw new Error(`第 ${line} 行的 @events 事件種類無效：${match[1]}`);
+        }
+        let when = null;
+        if (match[3]) {
+          const parsed = parseConditionExpression(match[3]);
+          if (!parsed.valid) throw new Error(`第 ${line} 行的 @events 條件無效：${match[3]}`);
+          when = { expression: match[3], identifiers: parsed.identifiers,
+            temporalFunctions: parsed.temporalFunctions || [] };
+        }
+        controls.push({ from: node.from, line, types: [...new Set(types)], animate: match[2].toLowerCase() === 'on', when });
+      }
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  }
+  visit(analysis.tree.topNode);
+  return controls;
+}
+
+function attachEventControlDirectives(source, analysis, frames) {
+  frames.forEach(frame => { frame.eventControls = []; });
+  const controls = findEventControlDirectives(source, analysis);
+  frames.forEach(frame => {
+    const entries = framePresetNames(frame, analysis).flatMap(name =>
+      analysis.presetDefinitions?.get(name)?.directives.filter(item => item.name === 'events') || []);
+    entries.forEach((item, index) => {
+      const text = '// @events ' + item.payload;
+      const parsed = findEventControlDirectives(text, { tree: parser.parse(text),
+        lineAt: () => item.line, presetDefinitions: new Map(), presetRanges: [] })[0];
+      controls.push({ ...parsed, from: frame.from + (index + 1) / (entries.length + 1) });
+    });
+  });
+  controls.sort((a, b) => a.from - b.from).forEach(control => {
+    const frame = frames.filter(frame => frame.from < control.from).at(-1);
+    if (!frame) throw new Error(`第 ${control.line} 行的 @events 前面找不到可套用的 @frame`);
+    for (const name of control.when?.identifiers || []) {
+      const variable = analysis.variables.filter(variable => variable.name === name
+        && variable.declarationTo <= frame.from && variable.scopeFrom <= frame.from && frame.from < variable.scopeTo)
+        .sort((a, b) => (a.scopeTo - a.scopeFrom) - (b.scopeTo - b.scopeFrom))[0];
+      if (!variable) throw new Error(`第 ${control.line} 行的 @events 找不到條件變數：${name}`);
+      if (!frame.variables.some(item => item.id === variable.id)) {
+        frame.variables.push(variable);
+        frame.captureOnlyVariableIds ||= [];
+        frame.captureOnlyVariableIds.push(variable.id);
+      }
+    }
+    frame.eventControls.push({ types: control.types, animate: control.animate, when: control.when, line: control.line });
   });
 }
 
@@ -2494,6 +2616,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
   attachSegmentDirectives(source, analysis, directives);
   attachPlaceDirectives(source, analysis, directives);
   attachArrowDirectives(source, analysis, directives);
+  attachEventControlDirectives(source, analysis, directives);
   attachCameraDirectives(source, analysis, directives);
   return directives;
 }
@@ -3434,6 +3557,7 @@ module.exports = {
   findKeepDirectives,
   findLayoutDirectives,
   findArrowDirectives,
+  findEventControlDirectives,
   findPlaceDirectives,
   findExitDirectives,
   instrumentSource,

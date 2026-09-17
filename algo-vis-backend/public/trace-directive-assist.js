@@ -58,7 +58,12 @@
       '// @place pivot at arr.right offset(16,0)',
       '// @frame arr,pivot\n// @place pivot at arr.right offset(16,0)\n// @text "基準值" at pivot.bottom'
     ] },
-    { id: 'arrow', label: '@arrow', effect: '連接兩個物件或格子；未寫錨點時預設 center', code: '// @arrow from arr[0] to arr[1]', examples: [
+    { id: 'events', label: '@events', effect: '控制本幀事件動畫；資料與事件記錄仍保留', code: '// @events animate off', examples: [
+      '// @frame arr\n// @events animate off',
+      '// @frame arr\n// @events compare,read animate off when i > 7'
+    ] },
+    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；for 可按範圍展開多支箭頭', code: '// @arrow from arr[0] to arr[1]', examples: [
+      '// @arrow for k in 0..n-1 step 2 from arr[0].bottom to arr[k].top as "links"',
       '// @arrow from arr[0] to arr[1]',
       '// @arrow from isprime[1] to isprime[12]',
       '// @frame arr[i,j]\n// @arrow from arr[i].bottom to arr[j].top\n// @text "從左到右" at arr.bottom'

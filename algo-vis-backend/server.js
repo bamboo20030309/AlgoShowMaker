@@ -228,6 +228,7 @@ app.post('/trace/analyze', limiter, (req, res) => {
         styles: directive.styles || [],
         segments: directive.segments || [],
         arrows: directive.arrows || [],
+        eventControls: directive.eventControls || [],
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       })),
@@ -1599,6 +1600,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
       styles: Array.isArray(directive?.styles) ? directive.styles : [],
       segments: Array.isArray(directive?.segments) ? directive.segments : [],
       arrows: Array.isArray(directive?.arrows) ? directive.arrows : [],
+      eventControls: Array.isArray(directive?.eventControls) ? directive.eventControls : [],
       camera: directive?.camera || null
     };
   });
@@ -1745,6 +1747,7 @@ app.post('/compile', (req, res) => {
         styles: directive.styles || [],
         segments: directive.segments || [],
         arrows: directive.arrows || [],
+        eventControls: directive.eventControls || [],
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       }));
