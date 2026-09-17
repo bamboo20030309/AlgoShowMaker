@@ -396,11 +396,21 @@ input:focus-visible {
 }
 
 .auth-panel {
-  align-self: center;
+  position: sticky;
+  top: var(--header-h);
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  height: calc(100vh - var(--header-h));
+  height: calc(100dvh - var(--header-h));
+  overflow-y: auto;
   width: min(440px, 100%);
   margin: 0 auto;
   padding: 48px clamp(28px, 5vw, 56px);
 }
+
+.auth-panel > * { flex-shrink: 0; }
 
 .auth-heading h1,
 .library-heading h1,
@@ -958,8 +968,13 @@ input:focus-visible {
   }
 
   .auth-panel {
-    padding-top: 42px;
-    padding-bottom: 54px;
+    grid-row: 1;
+    position: static;
+    height: auto;
+    min-height: calc(100dvh - var(--header-h));
+    overflow: visible;
+    padding-top: 48px;
+    padding-bottom: 48px;
   }
 
   .dashboard-view {
