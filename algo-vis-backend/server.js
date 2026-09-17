@@ -27,6 +27,7 @@ const {
 const TraceViewSource = require('./public/trace-view-source');
 const TraceProvenance = require('./public/trace-provenance');
 const SlideStorage = require('./public/slides-storage');
+const CloudContent = require('./cloud-content');
 
 // JWT 密鑰必須由部署環境提供；缺少或使用公開預設值時直接停止啟動。
 const JWT_SECRET = loadJwtSecret();
@@ -66,6 +67,8 @@ const SlideDeckSchema = new mongoose.Schema({
   deck: { type: mongoose.Schema.Types.Mixed, required: true },
   trace_references: { type: mongoose.Schema.Types.Mixed, default: () => [] },
   trace_results: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  cloud_snapshot: { type: String, default: '' },
+  resource_keys: { type: [String], default: () => [] },
   cover_thumbnail: { type: String, default: '' },
   slide_count: { type: Number, default: 0 },
   share_mode: {
@@ -616,7 +619,12 @@ app.put('/api/slides/:deck_uid/share', authenticateToken, async (req, res) => {
   }
 });
 
-function restoreSlideDeck(slide) {
+async function restoreSlideDeck(slide) {
+  if (slide.cloud_snapshot) {
+    const restored = await cloudContent.restore(slide);
+    slide.trace_keys = restored.record.references.map(ref => ref.key);
+    return restored.deck;
+  }
   return SlideStorage.hydrate({ deck: slide.deck, references: slide.trace_references || [],
     traces: slide.trace_results || {} });
 }
@@ -625,6 +633,7 @@ async function prepareTraceSave(body, query, updates) {
   if (!body.deck || typeof body.deck !== 'object') return {};
   const previous = await SlideDeck.findOne(query).lean();
   if (!previous) return null;
+  if (previous.cloud_snapshot) throw Object.assign(new Error('請重新整理頁面以使用分批儲存'), { status: 409 });
   // A simultaneous editor cannot delete a result referenced by this snapshot.
   query.updated_at = previous.updated_at;
   const owned = previous.trace_references?.length
@@ -660,9 +669,11 @@ app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
     }
 
     slide.trace_keys = Object.keys(slide.trace_results || {});
-    slide.deck = restoreSlideDeck(slide);
+    slide.deck = await restoreSlideDeck(slide);
     delete slide.trace_results;
     delete slide.trace_references;
+    delete slide.cloud_snapshot;
+    delete slide.resource_keys;
     res.json({ success: true, slide });
   } catch (err) {
     console.error('Failed to get slide deck:', err);
@@ -718,7 +729,7 @@ app.get('/api/shared-slides/:share_token', async (req, res) => {
         { share_view_token: token },
         { share_edit_token: token }
       ]
-    }).select('title deck trace_references trace_results cover_thumbnail slide_count updated_at share_mode +share_view_token +share_edit_token');
+    }).select('deck_uid title deck cloud_snapshot resource_keys trace_references trace_results cover_thumbnail slide_count updated_at share_mode +share_view_token +share_edit_token');
 
     const canView = slide
       && slide.share_view_token === token
@@ -735,8 +746,8 @@ app.get('/api/shared-slides/:share_token', async (req, res) => {
       success: true,
       slide: {
         title: slide.title,
-        deck: restoreSlideDeck(slide),
-        trace_keys: Object.keys(slide.trace_results || {}),
+        deck: await restoreSlideDeck(slide),
+        trace_keys: slide.trace_keys || Object.keys(slide.trace_results || {}),
         cover_thumbnail: slide.cover_thumbnail,
         slide_count: slide.slide_count,
         updated_at: slide.updated_at
@@ -800,12 +811,15 @@ app.delete('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '找不到這份投影片' });
     }
 
+    await cloudContent.remove(slide.deck_uid).catch(error => console.error('Deferred deck resource cleanup:', error.message));
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete slide deck:', err);
     res.status(500).json({ error: '無法刪除投影片，請稍後再試' });
   }
 });
+
+const cloudContent = CloudContent.register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, cleanCoverThumbnail);
 
 /**
  * 讀取 Linux /proc/<pid>/status

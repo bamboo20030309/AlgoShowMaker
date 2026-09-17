@@ -239,5 +239,5 @@
     return { saveDeck, loadDeck };
   }
 
-  return { isQuotaExceeded, save, create, project, hydrate, merge };
+  return { isQuotaExceeded, save, create, project, hydrate, merge, digest, canonical };
 });

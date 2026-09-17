@@ -33,6 +33,20 @@ async function runAnimationBrowser(baseURL) {
   const results = [];
   try {
     try {
+      results.push(await require('./cloud-storage-browser').runCloudStorageBrowser(browser, baseURL, output));
+    } catch (error) {
+      failures.push('cloud-storage-browser');
+      results.push({ label: 'cloud-storage-browser', pass: false, firstViolation: error.message });
+      console.log(`FAIL cloud-storage-browser: ${error.message}`);
+    }
+    try {
+      results.push(await require('./slide-order-browser').runSlideOrderBrowser(browser, baseURL, output));
+    } catch (error) {
+      failures.push('slide-order-toggle');
+      results.push({ label: 'slide-order-toggle', pass: false, firstViolation: error.message });
+      console.log(`FAIL slide-order-toggle: ${error.message}`);
+    }
+    try {
       results.push(await require('./deck-import-browser').runDeckImportBrowser(browser, baseURL, output));
     } catch (error) {
       failures.push('deck-import-repair');

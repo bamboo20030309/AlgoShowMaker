@@ -16,10 +16,13 @@ test('Nginx and Express accept the same 8 MB request size', () => {
   assert.match(nginx, /client_max_body_size\s+8m\s*;/);
 });
 
-test('slide editor reports an actionable 8 MB save error', () => {
+test('slide editor uses chunked cloud saves and preserves actionable server errors', () => {
   const slides = read(path.join('public', 'slides.js'));
-  assert.match(slides, /response\.status === 413/);
-  assert.match(slides, /投影片資料超過 8 MB/);
+  const cloud = read(path.join('public', 'slides-cloud.js'));
+  assert.match(slides, /ASMSlideCloud\.save\(snapshot/);
+  assert.match(cloud, /256 \* 1024/);
+  assert.match(cloud, /new Error\(data\.error \|\|/);
+  assert.doesNotMatch(slides, /投影片資料超過 8 MB/);
   assert.match(slides, /setCloudStatus\('error', err\?\.message \|\| '儲存失敗'\)/);
 });
 

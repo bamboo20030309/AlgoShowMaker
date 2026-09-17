@@ -59,7 +59,9 @@ Compose service 名稱 `mongo` 連線。Docker 映像使用 Node.js 22，以符�
 
 ### 2026/09/17：動畫結果分離儲存的部署注意事項
 
-新版前端會傳送精簡 deck、動畫參照與新增結果；backend 在 MongoDB 同一份文件內分開保存 `trace_references`、`trace_results`，讀取時還原完整動畫。必須同步更新前端與 backend，不能只替換 public 後沿用舊後端。舊文件仍可讀，下一次儲存才遷移；不需要刪除資料庫、清除資料卷或重新 RUN。
+新版前端先按內容雜湊分塊上傳完整動畫、素材與設定快照，再提交小型快照 ID；backend 在 MongoDB 獨立的 SlideResourceChunk 集合保存內容，deck 只保存 cloud_snapshot／resource_keys。全部驗證成功後才切換引用，成功後回收無引用舊結果，失敗保留原 deck。必須同步更新 public、server.js 與 cloud-content.js，不能只換前端。舊文件仍可讀，下一次儲存才遷移；不需要刪除資料庫、清除資料卷或重新 RUN。
+
+單次 HTTP 請求仍限制 8 MB；新儲存分塊為 256 Ki 字元，單資源保護上限 128 MB、deck 總容量 512 MB，暫存容許兩倍容量。未引用上傳閒置 48 小時後每小時回收，現有引用不受此期限影響。部署使用單 backend 程序，提交及回收按 deck 序列化；若擴充多 replica，須先換成分散式鎖／交易協調。讀取仍完整還原 deck，後續可優化懶載入。
 
 只更新應用服務時，可執行 `docker compose up -d --build --no-deps backend`，然後 `docker compose restart nginx`。不要執行 `down -v`。完成後確認 `/slides.html`、`/algorithm.html` 回應正常，以及 backend 可連線 MongoDB；雲端還需驗證儲存、重開與分享播放。
 

@@ -20,6 +20,7 @@ Windows 預設使用已安裝的 Microsoft Edge；其他環境先執行 `npx pla
 此 iframe 驗證不取代完整的 slides.html 匯入、雲端儲存及手機目視驗收。
 
 報告保存在 `test-results/animation/<時間>/`，包含 summary、逐幀實錄與截圖，預設不提交 Git。
+`slide-order-toggle` 使用獨立草稿驗證左側排序按鈕、Esc 狀態同步、空白鍵、返回所選投影片、實際拖曳排序及儲存後重開；不修改使用者投影片。
 重疊僅檢查事件開始／結束與幀的定點；動畫作用中的交叉不算違規，不改變指標交換路徑。
 keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
 每次更新都應執行；失敗則查看第一個違規時間點、追查修正並重跑，不能只更換基準。
@@ -136,6 +137,12 @@ fingerprint 是變更偵測，不是安全驗證；忽略原始碼行尾格式�
 `arrow-identity` 三介面案例量測同 ID 改綁的中間端點、顏色及線寬、未知名箭頭唯一候選的自動配對，以及綁定未變時跟隨格子不延遲。`arrow-identity.test.js` 檢查空白行／preset 順序穩定性、ID 衝突、候選歧義和遞迴呼叫隔離。
 
 統一瀏覽器驗證會執行 `deck-import-repair`：實際匯入含第 5 行錯置 `@camera` 的 `.asmdeck`，確認其他投影片及原始碼／輸入／設定完整保留；未 RUN 即儲存、重載後仍可編輯。修正後實際 RUN，再驗證設定還原、前後步進、兩種速度播放與 Studio 縮圖／事件，最後保存正常 trace。正常保存會將還原設定寫進 `@asm-view`，因此以演算法正文及還原設定分別核對，而非要求附加區塊也與修正前字串相同。
+
+## 大型雲端儲存
+
+`node --test tests/cloud-content.test.js tests/slide-cloud-storage.test.js` 檢查分塊／續傳、未修改原 deck、替換回收、提交失敗保留、跨 deck 拒絕及中斷暫存回收。
+統一瀏覽器驗證額外執行 `cloud-storage-browser`：實際 RUN 後附加 9 MB 測試資料，再由編輯頁拖曳排序觸發真實自動儲存，核對請求小於 8 MB、動畫完整保留與重開不 RUN。此案例攔截雲端 API，用真實儲存核心驗證，不寫正式資料。
+手動執行 `node scripts/cloud-storage-mongo.js` 可使用 MONGO_URI 做真實 Mongo／HTTP 驗證；僅建立隨機命名 `asm_cloud_regression_*` 資料庫，結束自行刪除，核對 >8 MB、去重、分享編輯與跨使用者拒絕、替換回收及失敗安全。
 
 ## 遞迴角色接續驗證
 

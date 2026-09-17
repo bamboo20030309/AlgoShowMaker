@@ -20,7 +20,7 @@ function routes(previous) {
     }
   };
   const source = fs.readFileSync(require.resolve('../server.js'), 'utf8');
-  vm.runInNewContext(source.slice(source.indexOf('function restoreSlideDeck('),
+  vm.runInNewContext(source.slice(source.indexOf('async function restoreSlideDeck('),
     source.indexOf("app.delete('/api/slides/:deck_uid'")), {
     app, SlideDeck, SlideStorage, authenticateToken() {},
     cleanDeckTitle: value => value, countDeckSlides: deck => deck.groups.flatMap(g => g.slides).length,

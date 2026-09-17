@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=random-id-93" />
+  <link rel="stylesheet" href="slides.css?v=random-id-98" />
   <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
 </head>
 
@@ -35,6 +35,15 @@
       </button>
     </div>
     <div class="deck-io-controls" aria-label="Slide controls">
+      <button id="slideOrderToggleBtn" type="button" class="deck-io-btn slide-order-toggle" aria-pressed="false"
+        aria-controls="customOverview" aria-label="調整投影片順序" title="調整投影片順序">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="2" y="2" width="8" height="8" rx="1.4" />
+          <rect x="14" y="2" width="8" height="8" rx="1.4" />
+          <rect x="14" y="14" width="8" height="8" rx="1.4" />
+          <path class="slide-order-arrow" d="M6 13v10M1 18h10M4.5 14.5 6 13l1.5 1.5M4.5 21.5 6 23l1.5-1.5M2.5 16.5 1 18l1.5 1.5M9.5 16.5 11 18l-1.5 1.5" />
+        </svg>
+      </button>
       <button id="ttsPanelToggleBtn" class="deck-io-btn tts-control-toggle" type="button" title="開啟或關閉 TTS" aria-label="開啟或關閉 TTS" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h10v2H4zm0 5h10v2H4zm0 5h7v2H4zm13-5.4v4.8l4 2.3V7.3z"></path></svg>
       </button>
@@ -56,12 +65,6 @@
             <path class="deck-io-arrow" d="M29 4.5c-4.4 0-7 2.8-7 7" />
             <path class="deck-io-arrow" d="M19.8 9.8l2.2 2.2 2.2-2.2" />
           </g>
-        </svg>
-      </button>
-      <button id="deckCacheBtn" class="deck-io-btn" type="button" title="設定／清除動畫快取" aria-label="設定／清除動畫快取">
-        <svg class="deck-io-icon" viewBox="0 0 32 32" aria-hidden="true">
-          <ellipse cx="16" cy="8" rx="10" ry="4" fill="none" stroke="currentColor" stroke-width="2" />
-          <path d="M6 8v15c0 5 20 5 20 0V8M6 15c0 5 20 5 20 0" fill="none" stroke="currentColor" stroke-width="2" />
         </svg>
       </button>
       <button id="shareDeckBtn" class="deck-io-btn" type="button" title="分享投影片" aria-label="分享投影片" hidden>
@@ -489,18 +492,6 @@
     </div>
   </div>
 
-  <dialog id="deckCacheDialog" class="deck-cache-dialog" aria-label="動畫快取設定">
-    <h2>動畫快取</h2>
-    <p>快取只加快精簡檔重新載入；清除不影響目前或已儲存的投影片。</p>
-    <label for="deckCacheLimitInput">容量上限（8–512 MB）</label>
-    <input id="deckCacheLimitInput" type="number" min="8" max="512" step="1" />
-    <div id="deckCacheStatus" role="status" aria-live="polite"></div>
-    <div class="deck-cache-actions">
-      <button id="deckCacheClearBtn" type="button">清除快取</button>
-      <button id="deckCacheSaveBtn" type="button">儲存上限</button>
-      <button id="deckCacheCloseBtn" type="button">關閉</button>
-    </div>
-  </dialog>
 
   <dialog id="shareDialog" class="share-dialog">
     <form id="shareForm">
@@ -714,14 +705,15 @@
   <script src="draw/draw_array_queue.js?v=focus-2"></script>
   <script src="slide-structures.js?v=10"></script>
   <script src="deck-thumbnail.js?v=3"></script>
-  <script src="slides-storage.js?v=4"></script>
+  <script src="slides-storage.js?v=5"></script>
+  <script src="slides-cloud.js?v=1"></script>
   <script src="tts.js?v=10"></script>
   <script src="algorithm-animation.js?v=animation-3"></script>
   <script src="trace-view-source.js?v=trace-14"></script>
   <script src="trace-model.js?v=trace-27"></script>
   <script src="trace-provenance.js?v=trace-5"></script>
   <script src="asmdeck.js?v=5"></script>
-  <script src="slides.js?v=random-id-174"></script>
+  <script src="slides.js?v=random-id-177"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

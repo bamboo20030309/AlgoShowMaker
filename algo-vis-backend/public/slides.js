@@ -239,10 +239,6 @@
   const exportDeckBtn = document.getElementById('exportDeckBtn');
   const importDeckBtn = document.getElementById('importDeckBtn');
   const importDeckInput = document.getElementById('importDeckInput');
-  const deckCacheBtn = document.getElementById('deckCacheBtn');
-  const deckCacheDialog = document.getElementById('deckCacheDialog');
-  const deckCacheLimitInput = document.getElementById('deckCacheLimitInput');
-  const deckCacheStatus = document.getElementById('deckCacheStatus');
   const shareDeckBtn = document.getElementById('shareDeckBtn');
   const sharedAccessBadge = document.getElementById('sharedAccessBadge');
   const shareDialog = document.getElementById('shareDialog');
@@ -319,6 +315,7 @@
   const editorChrome = document.getElementById('editorChrome');
   const overviewChrome = document.getElementById('overviewChrome');
   const defaultToolPanel = document.getElementById('defaultToolPanel');
+  const slideOrderToggleBtn = document.getElementById('slideOrderToggleBtn');
   const overviewSidebarPanel = document.getElementById('overviewSidebarPanel');
   const latexEditorPanel = document.getElementById('latexEditorPanel');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
@@ -615,7 +612,6 @@
     }
 
     deck = normalizeDeck(data.slide.deck);
-    cloudTraceKeys = new Set(data.slide.trace_keys || []);
     cloudDeckTitle = data.slide.title || '未命名投影片';
     sharedAccess = shareToken ? data.access : null;
     cloudDeckReady = true;
@@ -632,7 +628,6 @@
     cloudSaveTimer = setTimeout(syncDeckToCloud, 900);
   }
 
-  let cloudTraceKeys = new Set();
   async function syncDeckToCloud() {
     if (!canSaveRemoteDeck() || !cloudDeckReady) return;
     if (cloudSaveInFlight) {
@@ -644,44 +639,20 @@
     cloudSaveQueued = false;
     setCloudStatus('saving', '儲存中...');
     try {
-      const projected = await ASMSlideStorage.project(deck);
-      const traceDelta = Object.fromEntries(Object.entries(projected.traces)
-        .filter(([key]) => !cloudTraceKeys.has(key)));
+      const snapshot = JSON.parse(JSON.stringify(deck));
       const coverThumbnail = window.AlgoDeckThumbnail
         ? await window.AlgoDeckThumbnail.create(deck)
         : '';
       const headers = { 'Content-Type': 'application/json' };
       if (deckUid) headers.Authorization = `Bearer ${authToken()}`;
-      const response = await fetch(remoteDeckEndpoint(), {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          title: cloudDeckTitle,
-          deck: projected.deck,
-          trace_storage: { references: projected.references, traces: traceDelta },
-          cover_thumbnail: coverThumbnail
-        })
+      await ASMSlideCloud.save(snapshot, {
+        endpoint: remoteDeckEndpoint(), headers, fetch: window.fetch.bind(window),
+        storage: ASMSlideStorage, title: cloudDeckTitle, cover_thumbnail: coverThumbnail
       });
-      const data = await response.json().catch(() => ({}));
-      if (deckUid && (response.status === 401 || response.status === 403)) {
-        cloudDeckReady = false;
-        setCloudStatus('error', '登入已過期');
-        return;
-      }
-      if (shareToken && response.status === 403) {
-        cloudDeckReady = false;
-        setCloudStatus('error', '編輯權限已關閉');
-        return;
-      }
-      if (!response.ok) {
-        if (response.status === 400 || response.status === 409) cloudTraceKeys.clear();
-        if (response.status === 413) throw new Error('投影片資料超過 8 MB，請縮小後再儲存');
-        throw new Error(data.error || 'Failed to save deck');
-      }
-      cloudTraceKeys = new Set(Object.keys(projected.traces));
       setCloudStatus('saved', '已儲存');
     } catch (err) {
       console.error('Failed to save cloud deck', err);
+      if (err?.status === 401 || err?.status === 403) cloudDeckReady = false;
       setCloudStatus('error', err?.message || '儲存失敗');
     } finally {
       cloudSaveInFlight = false;
@@ -940,31 +911,6 @@
   function undo() {
     commitPendingColorHistory();
     restoreHistory(historyIndex - 1);
-  }
-
-  function manageTraceCache() {
-    if (!deckCacheDialog || !deckCacheLimitInput) return;
-    deckCacheLimitInput.value = String(window.ASMDeck.cacheLimitMB());
-    deckCacheStatus.textContent = '';
-    deckCacheDialog.showModal();
-  }
-
-  async function saveTraceCacheLimit() {
-    try {
-      window.ASMDeck.setCacheLimitMB(deckCacheLimitInput.value);
-      await window.ASMDeck.trimCache();
-      deckCacheStatus.textContent = '快取容量上限已更新。';
-    } catch (error) { deckCacheStatus.textContent = error.message; }
-  }
-
-  async function clearTraceCache() {
-    const button = document.getElementById('deckCacheClearBtn');
-    if (button) button.disabled = true;
-    try {
-      await window.ASMDeck.clearCache();
-      deckCacheStatus.textContent = '快取已清除；下次載入精簡檔可能需要重新 RUN。';
-    } catch (error) { deckCacheStatus.textContent = `清除失敗：${error.message}`; }
-    finally { if (button) button.disabled = false; }
   }
 
   function redo() {
@@ -6079,10 +6025,6 @@
     exportDeckBtn?.addEventListener('click', exportDeckJson);
     importDeckBtn?.addEventListener('click', () => importDeckInput?.click());
     importDeckInput?.addEventListener('change', () => importDeckJsonFile(importDeckInput.files && importDeckInput.files[0]));
-    deckCacheBtn?.addEventListener('click', manageTraceCache);
-    document.getElementById('deckCacheSaveBtn')?.addEventListener('click', saveTraceCacheLimit);
-    document.getElementById('deckCacheClearBtn')?.addEventListener('click', clearTraceCache);
-    document.getElementById('deckCacheCloseBtn')?.addEventListener('click', () => deckCacheDialog?.close());
     shareDeckBtn?.addEventListener('click', openShareDialog);
     closeShareDialogBtn?.addEventListener('click', closeShareDialog);
     cancelShareDialogBtn?.addEventListener('click', closeShareDialog);
@@ -8022,6 +7964,7 @@
     if (!customOverview || customOverviewOpen || !document.body.classList.contains('asm-edit-mode')) return;
     if (reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
     customOverviewOpen = true;
+    syncSlideOrderToggle();
     overviewSelectedSlideId = getSlide()?.id || overviewSelectedSlideId;
     overviewSelectedSlideIds = new Set([overviewSelectedSlideId].filter(Boolean));
     overviewSelectionAnchorId = overviewSelectedSlideId;
@@ -8047,6 +7990,7 @@
       currentV = pos.v;
     }
     customOverviewOpen = false;
+    syncSlideOrderToggle();
     customOverviewDrag = null;
     clearDropPreview();
     clearCustomOverviewDragGhost();
@@ -8242,7 +8186,24 @@
     });
   }
 
+  function syncSlideOrderToggle() {
+    if (!slideOrderToggleBtn) return;
+    slideOrderToggleBtn.setAttribute('aria-pressed', String(customOverviewOpen));
+    slideOrderToggleBtn.classList.toggle('is-armed', customOverviewOpen);
+    slideOrderToggleBtn.title = customOverviewOpen ? '返回投影片編輯' : '調整投影片順序';
+    slideOrderToggleBtn.setAttribute('aria-label', customOverviewOpen ? '返回投影片編輯' : '調整投影片順序');
+  }
+
   function bindCustomOverview() {
+    slideOrderToggleBtn?.addEventListener('keydown', event => {
+      // Keep native button activation; Reveal must not consume Space/Enter.
+      if (event.key === ' ' || event.key === 'Enter') event.stopPropagation();
+    });
+    slideOrderToggleBtn?.addEventListener('click', () => {
+      if (sharedAccess === 'view' || !document.body.classList.contains('asm-edit-mode')) return;
+      if (customOverviewOpen) closeCustomOverview();
+      else openCustomOverview();
+    });
     customOverviewViewport?.addEventListener('wheel', event => {
       if (!customOverviewOpen) return;
       event.preventDefault();

@@ -42,15 +42,19 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('style.css?v=freshness-4'));
   const slides = read('slides.html');
   const legacy = read('index.html');
-  assert.ok(slides.includes('slides-storage.js?v=4'));
-  assert.ok(slides.includes('slides.js?v=random-id-174'));
+  assert.ok(slides.includes('slides-storage.js?v=5'));
+  assert.ok(slides.includes('slides-cloud.js?v=1'));
+  assert.ok(slides.includes('slides.js?v=random-id-177'));
+  assert.ok(slides.includes('id="slideOrderToggleBtn"'));
+  assert.ok(!slides.includes('id="deckCacheBtn"'));
+  assert.ok(!slides.includes('id="deckCacheDialog"'));
   for (const surface of [html, slides, legacy]) {
     assert.ok(surface.includes('href="https://github.com/bamboo20030309/AlgoShowMaker"'));
     assert.ok(surface.includes('target="_blank"'));
     assert.ok(surface.includes('rel="noopener noreferrer"'));
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
-  assert.ok(slides.includes('slides.css?v=random-id-93'));
+  assert.ok(slides.includes('slides.css?v=random-id-98'));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
   }
