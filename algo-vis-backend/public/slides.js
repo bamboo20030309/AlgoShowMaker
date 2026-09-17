@@ -184,6 +184,7 @@
   let objectClipboard = { fabric: [], widgets: [], cut: false };
   let history = [];
   let historyIndex = -1;
+  let historyTextSelections = [];
   let editingAlgorithmSlideId = null;
   let pendingAlgorithmExportSnapshot = null;
   let modeLayoutAnimationTimer = null;
@@ -875,10 +876,83 @@
     pendingColorHistory = false;
     if (history[historyIndex] === snapshot) return;
     history = history.slice(0, historyIndex + 1);
+    historyTextSelections = historyTextSelections.slice(0, historyIndex + 1);
     history.push(snapshot);
-    if (history.length > MAX_HISTORY) history.shift();
+    historyTextSelections.push(null);
+    if (history.length > MAX_HISTORY) {
+      history.shift();
+      historyTextSelections.shift();
+    }
     historyIndex = history.length - 1;
+    rememberEditingTextSelection();
     updateDiagnostics();
+  }
+
+  function rememberEditingTextSelection() {
+    const canvas = currentFabricCanvas();
+    const object = canvas?.getActiveObject();
+    const slide = getSlide();
+    if (!slide || !object?.isEditing || object.inCompositionMode || historyIndex < 0) return;
+    historyTextSelections[historyIndex] = {
+      slideId: slide.id,
+      objectIndex: canvas.getObjects().indexOf(object),
+      start: object.selectionStart,
+      end: object.selectionEnd
+    };
+  }
+
+  function restoreEditingTextHistory(index) {
+    const canvas = currentFabricCanvas();
+    const object = canvas?.getActiveObject();
+    const slide = getSlide();
+    if (!slide || !object?.isEditing || object.inCompositionMode) return false;
+    const objectIndex = canvas.getObjects().indexOf(object);
+    const nextDeck = JSON.parse(history[index]);
+    const nextSlide = nextDeck.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+    const savedObject = nextSlide?.canvas?.objects?.[objectIndex];
+    if (!savedObject || savedObject.type !== object.type || typeof savedObject.text !== 'string') return false;
+    // Only restore in place when the rest of the deck is identical. Other
+    // operations (including deleting this text object) use ordinary deck undo.
+    const comparison = clone(nextDeck);
+    const comparisonSlide = comparison.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+    const currentDeck = JSON.parse(history[historyIndex]);
+    const currentSlide = currentDeck.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+    comparisonSlide.canvas.objects[objectIndex] = clone(currentSlide.canvas.objects[objectIndex]);
+    // Narration lazily fills an omitted default order without creating history.
+    // Compare its effective order, retaining meaningful user ordering changes.
+    const effectiveTtsOrder = item => {
+      const keys = item.canvas.objects.filter(entry => isTextObject(entry) && !entry.ttsMuted)
+        .sort((a, b) => a.top - b.top || a.left - b.left).map(entry => `fabric:${entry.ttsObjectId}`);
+      const order = (item.ttsOrder || []).filter((key, position, entries) => keys.includes(key) && entries.indexOf(key) === position);
+      keys.forEach(key => { if (!order.includes(key)) order.push(key); });
+      return order;
+    };
+    comparisonSlide.ttsOrder = effectiveTtsOrder(comparisonSlide);
+    currentSlide.ttsOrder = effectiveTtsOrder(currentSlide);
+    if (JSON.stringify(comparison) !== JSON.stringify(currentDeck)) return false;
+
+    const selection = historyTextSelections[index];
+    object.set(clone(savedObject));
+    object.initDimensions();
+    object.setCoords();
+    const length = object._text.length;
+    const matchingSelection = selection?.slideId === slide.id && selection.objectIndex === objectIndex;
+    object.selectionStart = Math.min(length, matchingSelection ? selection.start : object.selectionStart);
+    object.selectionEnd = Math.min(length, matchingSelection ? selection.end : object.selectionEnd);
+    object.hiddenTextarea.value = object.text;
+    object._updateTextarea();
+    object.hiddenTextarea.focus({ preventScroll: true });
+    object.dirty = true;
+    object.restartCursorIfNeeded();
+    canvas.requestRenderAll();
+    slide.canvas = clone(nextSlide.canvas);
+    historyIndex = index;
+    saveDeck({ history: false });
+    syncSlideAutoAnimate(slide);
+    syncFabricFragmentProxies(slide.id, canvas);
+    updateObjectToolbar(object, canvas);
+    syncTtsEditor();
+    return true;
   }
 
   function deckSlideStructure(deckState) {
@@ -897,6 +971,7 @@
 
   function restoreHistory(index) {
     if (index < 0 || index >= history.length) return;
+    if (restoreEditingTextHistory(index)) return;
     suppressHistory = true;
     const previousDeck = deck;
     historyIndex = index;
@@ -2941,11 +3016,13 @@
   function wireCanvas(canvas, slide) {
     const sync = (event, { syncFragments = false } = {}) => {
       if (suppressCanvasSave) return;
+      const currentSlide = deck.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+      if (!currentSlide) return;
       normalizeShapeGeometry(event && event.target, canvas);
-      slide.canvas = serializeFabricCanvas(canvas);
-      saveDeck();
-      syncSlideAutoAnimate(slide);
-      if (syncFragments) syncFabricFragmentProxies(slide.id, canvas);
+      currentSlide.canvas = serializeFabricCanvas(canvas);
+      saveDeck({ history: !event?.target?.inCompositionMode });
+      syncSlideAutoAnimate(currentSlide);
+      if (syncFragments) syncFabricFragmentProxies(currentSlide.id, canvas);
       updateObjectToolbar(canvas.getActiveObject(), canvas);
     };
     canvas.on('object:added', event => sync(event, { syncFragments: true }));
@@ -3029,6 +3106,28 @@
           compositionColor: '#1d8f83'
         });
         e.target.setCoords?.();
+        const textarea = e.target.hiddenTextarea;
+        // beforeinput observes the selection being replaced, whereas changed
+        // observes the new caret. Keep both alongside the existing deck history.
+        textarea?.addEventListener('beforeinput', rememberEditingTextSelection);
+        textarea?.addEventListener('compositionstart', rememberEditingTextSelection, true);
+        textarea?.addEventListener('compositionend', () => sync({ target: e.target }));
+        commitPendingColorHistory();
+        // Import JSON can omit Fabric defaults and generated object IDs. The
+        // first text edit serializes every sibling too. Canonicalize the current
+        // baseline before typing so those initialization changes are not mistaken
+        // for another user's operation when comparing text history snapshots.
+        const currentSlide = deck.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+        if (currentSlide && historyIndex >= 0) {
+          const baseline = JSON.parse(history[historyIndex]);
+          const baselineSlide = baseline.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
+          if (baselineSlide) {
+            currentSlide.canvas = serializeFabricCanvas(canvas);
+            baselineSlide.canvas = clone(currentSlide.canvas);
+            history[historyIndex] = JSON.stringify(baseline);
+          }
+        }
+        rememberEditingTextSelection();
       }
       updateObjectToolbar(e.target, canvas);
       canvas.requestRenderAll();
@@ -6800,6 +6899,16 @@
         }
       }
 
+      const editingText = currentFabricCanvas()?.getActiveObject();
+      const isFabricTextarea = editingText?.isEditing && event.target === editingText.hiddenTextarea;
+      const historyKey = (event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase());
+      if (isFabricTextarea && historyKey) {
+        if (event.isComposing || editingText.inCompositionMode || event.keyCode === 229) return;
+        event.preventDefault();
+        if (event.key.toLowerCase() === 'y' || event.shiftKey) redo();
+        else undo();
+        return;
+      }
       if (isEditableDomTarget(event)) return;
 
       if (document.body.classList.contains('asm-edit-mode') && !isOverviewEditing() && (event.ctrlKey || event.metaKey) && !isEditableDomTarget(event)) {

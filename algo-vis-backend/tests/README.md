@@ -1,6 +1,15 @@
 # AlgoShowMaker 回歸驗收
 
-在 algo-vis-backend 執行：
+## 驗證分工（2026-09-18 更新）
+
+開始前讀取專案根目錄的 [子代理驗證分級通知.md](../../子代理驗證分級通知.md)，依 V0～V3 分級與 A～M 分類選擇驗證。
+非動畫的前端／投影片修改不啟動演算法驗證集；只做必要的局部確認與直接相關的小測試。
+開發／子代理不得執行全套測試、廣泛排序整合或大規模動畫入口。下方所有完整 regression、animation 與 `ASM_ANIMATION_CASES` 指令僅供主代理使用，不代表每次修改都要執行。
+整合測試使用代理自己的隔離服務與 `ASM_TEST_BASE_URL`，不使用使用者的 localhost:3000。
+
+## 主代理完整回歸入口
+
+由主代理在需要完整驗證時於 algo-vis-backend 執行：
 
 ```sh
 npm run regression
@@ -12,7 +21,7 @@ npm run regression
 改寫投影片或產生 server log 檔。測試完成後會接著執行無頭瀏覽器實際動畫驗證。
 Windows 預設使用已安裝的 Microsoft Edge；其他環境先執行 `npx playwright install chromium`。
 可用 `ASM_BROWSER_CHANNEL` 指定瀏覽器。瀏覽器缺少或無法啟動時會失敗，不會跳過。
-已有新版開發伺服器時也可執行 npm test（預設 localhost:3000）。
+全套小測試可由主代理使用 npm test，但應設定 ASM_TEST_BASE_URL 指向獨立測試服務。
 
 單獨重跑實際動畫：`npm run regression:animation`（同樣自動啟動隔離服務）。
 使用冒泡、插入、選擇、Heap、遞迴 Quick Sort，
@@ -23,7 +32,7 @@ Windows 預設使用已安裝的 Microsoft Edge；其他環境先執行 `npx pla
 `slide-order-toggle` 使用獨立草稿驗證左側排序按鈕、Esc 狀態同步、空白鍵、返回所選投影片、實際拖曳排序及儲存後重開；不修改使用者投影片。
 重疊僅檢查事件開始／結束與幀的定點；動畫作用中的交叉不算違規，不改變指標交換路徑。
 keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
-每次更新都應執行；失敗則查看第一個違規時間點、追查修正並重跑，不能只更換基準。
+依整合影響範圍由主代理決定執行；失敗則查看第一個違規時間點、追查修正並重跑，不能只更換基準。
 
 ### 持久動畫結果儲存驗證
 
