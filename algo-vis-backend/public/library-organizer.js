@@ -4,6 +4,7 @@
     let layout = { folders: [], unfiled: [] }, decks = [], query = '', ready = false, saving = false;
     const expanded = new Map();
     let dragging = null, pointer = null, highlighted = null;
+    let suppressClickUntil = 0;
     const folderDialog = document.getElementById('folderDialog');
     const folderForm = document.getElementById('folderDialogForm');
     const folderInput = document.getElementById('folderTitleInput');
@@ -46,28 +47,41 @@
       event.preventDefault(); drop(dragging, targetAt(event.target)); dragging = null;
     });
     container.addEventListener('dragend', () => { dragging = null; clearHighlight(); });
-    // The handle also supports touch/pen without relying on native HTML drag events.
+    // Start a drag from the whole card, while allowing a normal click on its buttons.
     container.addEventListener('pointerdown', event => {
-      const handle = event.target.closest('.library-drag-handle');
-      if (!handle || event.button !== 0 || !ready || saving) return;
-      event.preventDefault(); handle.setPointerCapture(event.pointerId);
-      pointer = { id: handle.closest('.deck-card').dataset.deckId, x: event.clientX, y: event.clientY, moved: false, handle };
+      suppressClickUntil = 0;
+      const card = event.target.closest('.deck-card[data-deck-id]');
+      if (!card || event.target.closest('select, input, textarea') || event.button !== 0 || !ready || saving) return;
+      pointer = { id: card.dataset.deckId, x: event.clientX, y: event.clientY, moved: false, card, pointerId: event.pointerId };
     });
     container.addEventListener('pointermove', event => {
-      if (!pointer) return;
-      if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 6) pointer.moved = true;
+      if (!pointer || event.pointerId !== pointer.pointerId) return;
+      if (!pointer.moved && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 6) {
+        pointer.moved = true; pointer.card.setPointerCapture(event.pointerId);
+        pointer.card.classList.add('library-drag-source');
+      }
       if (!pointer.moved) return;
+      event.preventDefault();
       highlight(targetAt(document.elementFromPoint(event.clientX, event.clientY)));
       if (event.clientY < 80) window.scrollBy(0, -18);
       else if (event.clientY > innerHeight - 80) window.scrollBy(0, 18);
     });
     container.addEventListener('pointerup', event => {
-      if (!pointer) return;
+      if (!pointer || event.pointerId !== pointer.pointerId) return;
       const active = pointer; pointer = null;
-      if (active.moved) drop(active.id, targetAt(document.elementFromPoint(event.clientX, event.clientY)));
+      active.card.classList.remove('library-drag-source');
+      if (active.moved) {
+        event.preventDefault(); suppressClickUntil = performance.now() + 250;
+        drop(active.id, targetAt(document.elementFromPoint(event.clientX, event.clientY)));
+      }
       clearHighlight();
     });
-    container.addEventListener('pointercancel', () => { pointer = null; clearHighlight(); });
+    function cancelPointer() { pointer?.card.classList.remove('library-drag-source'); pointer = null; clearHighlight(); }
+    container.addEventListener('pointercancel', cancelPointer);
+    container.addEventListener('lostpointercapture', cancelPointer);
+    container.addEventListener('click', event => {
+      if (event.detail && performance.now() < suppressClickUntil) { suppressClickUntil = 0; event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
     createButton.addEventListener('click', () => {
       if (!ready || saving) return;
       folderForm.reset(); folderInput.setCustomValidity(''); folderMessage.textContent = '';
@@ -119,7 +133,8 @@
         if (!matches.length) { const empty = document.createElement('p'); empty.className = 'gallery-folder-empty'; empty.textContent = '將投影片拖到這裡，或使用縮圖下方的資料夾選單。'; section.append(empty); }
         for (const deck of matches) {
           const card = createCard(deck); card.dataset.deckId = deck.deck_uid; card.draggable = ready && !saving;
-          card.addEventListener('dragstart', event => { if (!ready || saving) { event.preventDefault(); return; } dragging = deck.deck_uid; event.dataTransfer.setData(MIME, dragging); event.dataTransfer.effectAllowed = 'move'; });
+          card.querySelectorAll('img').forEach(image => { image.draggable = false; });
+          card.addEventListener('dragstart', event => { if (pointer || !ready || saving) { event.preventDefault(); return; } dragging = deck.deck_uid; event.dataTransfer.setData(MIME, dragging); event.dataTransfer.effectAllowed = 'move'; });
           const controls = document.createElement('div'); controls.className = 'library-card-controls';
           const handle = document.createElement('button'); handle.type = 'button'; handle.className = 'library-drag-handle'; handle.textContent = '⠿'; handle.title = '拖曳至另一張投影片前方排序，或拖入資料夾'; handle.setAttribute('aria-label', `拖曳 ${deck.title}`); handle.disabled = !ready || saving;
           const select = document.createElement('select'); select.setAttribute('aria-label', `${deck.title} 的資料夾`);

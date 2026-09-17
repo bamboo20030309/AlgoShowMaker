@@ -64,6 +64,22 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 }); await page.mouse.up(); await saved();
     assert.deepEqual(await order(''), ['c', 'a', 'b']);
+    for (const [id, area, expected] of [
+      ['a', '.deck-meta', ['a', 'c', 'b']],
+      ['c', '.deck-title', ['c', 'a', 'b']],
+      ['a', '', ['a', 'c', 'b']],
+      ['c', '.deck-preview', ['c', 'a', 'b']],
+      ['a', '.deck-settings', ['a', 'c', 'b']],
+      ['c', '.library-drag-handle', ['c', 'a', 'b']]
+    ]) {
+      const source = await page.locator(`[data-deck-id="${id}"]${area ? ' ' + area : ''}`).boundingBox();
+      const target = await page.locator(`[data-deck-id="${id === 'a' ? 'c' : 'a'}"] .deck-preview`).boundingBox();
+      await page.mouse.move(source.x + source.width / 2, area ? source.y + source.height / 2 : source.y + source.height - 3);
+      await page.mouse.down(); await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 }); await page.mouse.up(); await saved();
+      assert.deepEqual(await order(''), expected);
+      assert.equal(await page.locator('#deckDialog').evaluate(el => el.open), false);
+      assert.equal(page.url(), base + '/');
+    }
     async function nativeDrop(id, selector) {
       await page.evaluate(({ id, selector }) => {
         const transfer = new DataTransfer();

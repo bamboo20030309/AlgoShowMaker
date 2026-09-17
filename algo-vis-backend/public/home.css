@@ -1098,6 +1098,9 @@ body.examples-view .gallery-workspace-link { display: block; margin-top: 12px; c
 .library-drag-handle, .library-order-button { border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-bright); border-radius: 4px; min-width: 30px; min-height: 32px; cursor: pointer; }
 .library-drag-handle { touch-action: none; cursor: grab; font-size: 22px; }
 .library-drag-handle:active { cursor: grabbing; }
+.library-folder .deck-card { user-select: none; }
+.library-folder .deck-card, .library-folder .deck-open, .library-folder .deck-title-button { cursor: grab; }
+.library-drag-source { opacity: .55; cursor: grabbing; }
 .library-card-controls button:disabled { opacity: .4; cursor: default; }
 .library-drop-target { outline: 3px solid var(--blue); outline-offset: 3px; }
 .library-folder.library-drop-target { outline: none; border-top: 3px solid var(--blue); }
