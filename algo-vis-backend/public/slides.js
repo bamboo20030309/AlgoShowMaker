@@ -2922,6 +2922,7 @@
     if (buildGeneration !== fabricBuildGeneration) return;
     document.body.dataset.fabricBuild = 'starting';
     patchFabricTextCompositionUnderline();
+    patchFabricTextCursorBlink();
     for (const group of deck.groups) {
       for (const slide of group.slides) {
         if (buildGeneration !== fabricBuildGeneration) return;
@@ -2965,6 +2966,27 @@
     scheduleFabricResolution();
     document.body.dataset.fabricBuild = `ready:${fabricCanvases.size}`;
     updateDiagnostics();
+  }
+
+  function patchFabricTextCursorBlink() {
+    const proto = f()?.IText?.prototype;
+    if (!proto || proto.__asmCursorBlinkPatched) return;
+    proto._animateCursor = function (obj, targetOpacity, duration, completeMethod) {
+      let timer;
+      const state = { isAborted: false, abort() { this.isAborted = true; clearTimeout(timer); } };
+      obj._currentCursorOpacity = targetOpacity ? 1 : 0;
+      if (obj.canvas && obj.selectionStart === obj.selectionEnd) obj.renderCursorOrSelection();
+      timer = setTimeout(() => { if (!state.isAborted && obj.isEditing) obj[completeMethod](); }, 500);
+      return state;
+    };
+    proto._onTickComplete = function () {
+      this._currentTickCompleteState = this._animateCursor(this, 0, 500, '_tick');
+    };
+    proto.initDelayedCursor = function () {
+      this.abortCursorAnimation();
+      this._tick();
+    };
+    proto.__asmCursorBlinkPatched = true;
   }
 
   function patchFabricTextCompositionUnderline() {
@@ -3128,7 +3150,7 @@
           touchCornerSize: 14,
           padding: 0,
           cursorDelay: 500,
-          cursorDuration: 1,
+          cursorDuration: 500,
           compositionColor: '#1d8f83'
         });
         e.target.setCoords?.();
@@ -3357,7 +3379,7 @@
       lockScalingFlip: true,
       strokeUniform: true,
       cursorDelay: 500,
-      cursorDuration: 1,
+      cursorDuration: 500,
       compositionColor: '#1d8f83',
       objectCaching: isShapeObject(obj) ? false : !isTextObject(obj),
       noScaleCache: isShapeObject(obj) ? false : obj.noScaleCache,
