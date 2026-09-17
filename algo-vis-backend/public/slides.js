@@ -840,7 +840,8 @@
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `algoshowmaker-slides-${new Date().toISOString().slice(0, 10)}.asmdeck`;
+      const filename = cloudDeckTitle.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '') || '未命名投影片';
+      anchor.download = `${/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(filename) ? '_' : ''}${filename}.asmdeck`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
