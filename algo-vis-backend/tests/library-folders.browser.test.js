@@ -58,6 +58,9 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     await page.locator('#folderTitleInput').fill('數學'); await page.keyboard.press('Enter'); await saved();
     assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
     const folder = layout.folders[0].id;
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"] summary .icon-btn svg`).count(), 2);
+    const headerLayout = await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).evaluate(el => ({ titleRight: el.querySelector('.library-folder-title').getBoundingClientRect().right, toolsLeft: el.querySelector('.library-folder-tools').getBoundingClientRect().left }));
+    assert.ok(headerLayout.toolsLeft >= headerLayout.titleRight);
     // Actual pointer dragging on the dedicated handle reorders the existing cards.
     const from = await page.locator('[data-deck-id="c"] .library-drag-handle').boundingBox();
     const to = await page.locator('[data-deck-id="a"] .deck-preview').boundingBox();
@@ -107,9 +110,14 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     await page.locator('[data-deck-id="a"] select').selectOption(folder);
     await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('已恢復原排序'));
     assert.deepEqual(await order(''), ['a', 'c']); failSave = false;
+    await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).isVisible(), true);
     page.once('dialog', dialog => dialog.accept('演算法'));
-    await page.locator(`.library-folder[data-folder-id="${folder}"] button`, { hasText: '重新命名' }).click(); await saved();
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).click(); await saved();
     assert.equal(layout.folders[0].title, '演算法');
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
+    await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.locator('#createFolderBtn').click();
@@ -122,7 +130,7 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     const imageDir = path.join(root, 'test-results'); fs.mkdirSync(imageDir, { recursive: true });
     await page.screenshot({ path: path.join(imageDir, 'library-folders-mobile.png'), fullPage: true });
     page.once('dialog', dialog => dialog.accept());
-    await page.locator(`.library-folder[data-folder-id="${folder}"] button`, { hasText: '移除資料夾' }).click(); await saved();
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await saved();
     assert.deepEqual(await order(''), ['a', 'b', 'c']); assert.equal(layout.folders.length, 0);
     decks = [decks[2], decks[1], decks[0], { ...decks[0], deck_uid: 'd', title: 'New deck' }];
     await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);

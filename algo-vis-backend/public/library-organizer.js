@@ -120,15 +120,21 @@
         section.open = query ? true : expanded.get(folder.id) !== false;
         section.hidden = Boolean(query) && matches.length === 0;
         section.addEventListener('toggle', () => { if (!query && section.isConnected) expanded.set(folder.id, section.open); });
-        const summary = document.createElement('summary'); summary.textContent = `${folder.title}（${matches.length}）`;
+        const summary = document.createElement('summary');
+        const heading = document.createElement('span'); heading.className = 'library-folder-title'; heading.textContent = `${folder.title}（${matches.length}）`; summary.append(heading);
         const cards = document.createElement('div'); cards.className = 'deck-grid gallery-folder-cards';
         if (folder.id) {
-          const tools = document.createElement('div'); tools.className = 'library-folder-tools';
+          const tools = document.createElement('span'); tools.className = 'library-folder-tools';
           for (const [label, action] of [
             ['重新命名', () => { const title = prompt('資料夾名稱（最多 80 個字）', folder.title); if (!title?.trim()) return; if (title.trim().length > 80) { status('資料夾名稱最多 80 個字。'); return; } change({ ...layout, folders: layout.folders.map(item => item.id === folder.id ? { ...item, title: title.trim() } : item) }); }],
             ['移除資料夾', () => { if (confirm(`移除「${folder.title}」？裡面的投影片會移回未分類，不會刪除投影片。`)) change({ folders: layout.folders.filter(item => item.id !== folder.id), unfiled: [...layout.unfiled, ...folder.deckIds] }); }]
-          ]) { const button = document.createElement('button'); button.type = 'button'; button.className = 'quiet-btn'; button.textContent = label; button.disabled = !ready || saving; button.addEventListener('click', action); tools.append(button); }
-          section.append(summary, tools, cards);
+          ]) {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-btn'; button.title = label; button.setAttribute('aria-label', label);
+            button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${label === '重新命名' ? '<path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/>' : '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'}</svg>`;
+            button.disabled = !ready || saving;
+            button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); action(); }); tools.append(button);
+          }
+          summary.append(tools); section.append(summary, cards);
         } else section.append(summary, cards);
         if (!matches.length) { const empty = document.createElement('p'); empty.className = 'gallery-folder-empty'; empty.textContent = '將投影片拖到這裡，或使用縮圖下方的資料夾選單。'; section.append(empty); }
         for (const deck of matches) {
