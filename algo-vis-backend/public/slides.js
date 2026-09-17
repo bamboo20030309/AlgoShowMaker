@@ -2446,6 +2446,25 @@
     pre.scrollTo({ top: codeFocusScrollTop(el, widget), behavior });
   }
 
+  let codeFocusEntryFrame = 0;
+  function scheduleCurrentSlideCodeFocus() {
+    cancelAnimationFrame(codeFocusEntryFrame);
+    // Wait for slide visibility/layout and autoanimate to claim its targets.
+    codeFocusEntryFrame = requestAnimationFrame(() => {
+      codeFocusEntryFrame = requestAnimationFrame(() => {
+        codeFocusEntryFrame = 0;
+        if (!revealReady || reveal.isOverview() || isOverviewEditing()) return;
+        reveal.getCurrentSlide()?.querySelectorAll('.code-widget').forEach(el => {
+          if (el.dataset.codeAutoAnimating) return;
+          const widget = getWidget(el.dataset.widgetId).widget;
+          if (!widget || !focusedCodeLineNumbers(widget.focusLines, String(widget.content || '').split('\n').length).length) return;
+          if (!el.querySelector('pre')?.clientHeight) return;
+          scrollCodeWidgetToFocus(el, widget);
+        });
+      });
+    });
+  }
+
   function normalizeLatexSource(source = '') {
     return String(source || '')
       .replace(/(^|[^\\])\/([a-zA-Z]+)/g, '$1\\$2')
@@ -9491,6 +9510,7 @@
       ].filter(Boolean)
     }).then(() => {
       revealReady = true;
+      scheduleCurrentSlideCodeFocus();
       scheduleFabricResolution();
       reveal.on('resize', scheduleFabricResolution);
       window.addEventListener('resize', scheduleFabricResolution);
@@ -9500,6 +9520,7 @@
         currentH = event.indexh;
         currentV = event.indexv || 0;
         scheduleFabricResolution();
+        scheduleCurrentSlideCodeFocus();
         updateAlgorithmEditButton();
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
@@ -9507,6 +9528,8 @@
       });
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('overviewhidden', scheduleFabricResolution);
+      reveal.on('slidetransitionend', scheduleCurrentSlideCodeFocus);
+      reveal.on('overviewhidden', scheduleCurrentSlideCodeFocus);
       reveal.on('fragmentshown', refreshFabricFragmentVisibility);
       reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();
