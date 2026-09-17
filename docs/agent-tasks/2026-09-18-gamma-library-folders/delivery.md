@@ -1,6 +1,8 @@
 # gamma-library-folders 交付驗證紀錄
 
 ## 交付資訊
+
+主代理更新：已合併 intergration，本次 V1 核實通過並重啟 3100。最新合併、驗證與限制見 [資料夾整合紀錄](../2026-09-18-library-folders-integration.md)。下方保留原交付時狀態；尚未合併 main。
 - 狀態：小驗證通過，待主代理核實
 - 分支：codex/2026-09-18-gamma
 - 共同基準 commit：81d6b423a9ff5a4709d24613b522804d6d050f3e
