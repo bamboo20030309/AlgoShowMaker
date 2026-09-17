@@ -19,6 +19,9 @@ function walk(dir) {
   });
 }
 async function main() {
+  if (process.argv.includes('--animation-only') && process.argv.includes('--tests-only')) {
+    throw new Error('不能同時略過測試與動畫驗證');
+  }
   for (const file of walk(root)) run(process.execPath, ['--check', file]);
   run('git', ['diff', '--check']);
   const port = await new Promise((resolve, reject) => {
@@ -55,7 +58,9 @@ async function main() {
     if (!ready) throw new Error('Test server did not start: ' + diagnostic);
     const files = fs.readdirSync(path.join(root, 'tests')).filter(f => f.endsWith('.test.js')).map(f => 'tests/' + f);
     // Async child keeps draining server output during integration tests.
-    await new Promise((resolve, reject) => {
+    if (!process.argv.includes('--animation-only')) await new Promise((resolve, reject) => {
+      fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+      const transcript = fs.createWriteStream(path.join(root, 'test-results/regression.tap'));
       const tests = spawn(process.execPath, ['--test', '--test-concurrency=1', ...files], {
         cwd: root,
         env: {
@@ -63,13 +68,21 @@ async function main() {
           ASM_TEST_BASE_URL: url,
           JWT_SECRET: REGRESSION_JWT_SECRET
         },
-        stdio: 'inherit',
+        stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
       });
+      tests.stdout.on('data', chunk => { transcript.write(chunk); process.stdout.write(chunk); });
+      tests.stderr.on('data', chunk => { transcript.write(chunk); process.stderr.write(chunk); });
       tests.on('error', reject);
-      tests.on('exit', code => code === 0 ? resolve() : reject(new Error('Regression tests failed')));
+      tests.on('close', code => { transcript.end();
+        code === 0 ? resolve() : reject(new Error('Regression tests failed; see test-results/regression.tap')); });
     });
-    console.log('自動回歸通過。瀏覽器目視驗收步驟：tests/README.md');
+    if (!process.argv.includes('--tests-only')) await require('./animation-browser').runAnimationBrowser(url);
+    console.log(process.argv.includes('--tests-only')
+      ? '單元／整合測試通過；本次未執行瀏覽器驗證。'
+      : process.argv.includes('--animation-only')
+        ? '實際動畫驗證通過；本次未重跑單元／整合測試。'
+        : '測試與實際動畫驗證通過。額外目視驗收步驟：tests/README.md');
   } finally {
     stop();
     process.removeListener('exit', stop);

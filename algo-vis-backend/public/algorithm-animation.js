@@ -19,8 +19,8 @@
       }
     }
     const sliceMode = traceDocument?.sliceMode || animation.sliceMode;
-    const skins = traceDocument?.skins ?? animation.skins;
-    const rules = traceDocument?.rules ?? animation.rules;
+    const skins = traceDocument?.skins ?? animation.skins ?? animation.rebuild?.view?.skins;
+    const rules = traceDocument?.rules ?? animation.rules ?? animation.rebuild?.view?.rules;
     return {
       mode: hasTrace || animation.mode === 'trace' ? 'trace' : 'legacy',
       code: typeof animation.code === 'string' ? animation.code : '',
@@ -30,7 +30,9 @@
       watches: Array.isArray(animation.watches) ? clone(animation.watches) : [],
       skins: skins && typeof skins === 'object' ? clone(skins) : {},
       rules: Array.isArray(rules) ? clone(rules) : [],
-      traceDocument
+      traceDocument,
+      ...(animation.rebuild ? { rebuild: clone(animation.rebuild) } : {}),
+      ...(typeof animation.rebuildError === 'string' ? { rebuildError: animation.rebuildError } : {})
     };
   }
 

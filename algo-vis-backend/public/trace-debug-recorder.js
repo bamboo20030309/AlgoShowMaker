@@ -118,6 +118,22 @@
     const parent = element?.parentElement?.closest?.('[data-trace-object-key]');
     let computed = null;
     try { computed = root?.getComputedStyle?.(element) || null; } catch {}
+    const labelCandidate = element?.querySelector?.(':scope > .trace-variable-marker-motion > .trace-variable-marker-label-box')
+      || element?.querySelector?.('.trace-variable-marker-label-box');
+    const label = labelCandidate?.closest?.('[data-trace-object-key]') === element
+      ? labelCandidate : null;
+    const valueText = element?.querySelector?.('text[data-trace-value-text]')
+      || (element?.dataset?.traceIndex != null ? element.querySelector?.('text') : null);
+    // Opacity can be applied to an inner motion wrapper, not the selectable
+    // outer group. Measure the actual painted label/cell and all its ancestors.
+    let effectiveOpacity = 1;
+    const paintNode = label || valueText || element?.querySelector?.(SVG_PRIMITIVES) || element;
+    for (let ancestor = paintNode; ancestor; ancestor = ancestor.parentElement) {
+      const style = root?.getComputedStyle?.(ancestor);
+      if (style?.display === 'none' || style?.visibility === 'hidden') effectiveOpacity = 0;
+      effectiveOpacity *= Number(style?.opacity || 1);
+      if (ancestor === canvasElement()) break;
+    }
     const state = {
       key: String(element?.dataset?.traceObjectKey || ''),
       occurrence: index,
@@ -127,6 +143,15 @@
       runtimeLifetime: String(element?.dataset?.traceRuntimeLifetime || ''),
       bindingTarget: String(element?.dataset?.traceBindingTarget || ''),
       text: textValue(element?.textContent),
+      effectiveOpacity: round(effectiveOpacity, 5),
+      retained: Boolean(element?.closest?.('[data-trace-snapshot]'))
+        || element?.classList?.contains?.('asm-trace-keep-arrow') === true,
+      retainedKey: element?.closest?.('[data-trace-snapshot]')
+        ? `${element.closest('[data-trace-snapshot]').dataset.traceSnapshot}/${element.dataset.traceObjectKey}`
+        : element?.classList?.contains?.('asm-trace-keep-arrow') ? String(element.dataset.traceObjectKey) : '',
+      markerLabel: label ? rectangle(label, canvasRect) : null,
+      displayValue: valueText && valueText.dataset?.traceContentRole !== 'index'
+        ? textValue(valueText.textContent) : null,
       screen: rectangle(element, canvasRect),
       attributes: relevantAttributes(element, [
         'transform', 'opacity', 'display', 'visibility', 'data-base-offset',
@@ -199,6 +224,7 @@
       size: rect ? { width: round(rect.width), height: round(rect.height) } : null,
       playbackPlanId: String(rootElement?.dataset?.tracePlaybackPlanId || ''),
       playbackPhase: String(rootElement?.dataset?.tracePlaybackPhase || ''),
+      playbackElapsedMs: Number(rootElement?.dataset?.traceDebugElapsedMs) || 0,
       activeEventId: String(rootElement?.dataset?.traceActiveEventId || ''),
       activeEventType: String(rootElement?.dataset?.traceActiveEventType || ''),
       camera: cameraState(),
@@ -633,9 +659,12 @@
       await root.CodeScript.reset();
       await afterPaint();
       mark('frame-0-settled');
+      let frameIndex = 0;
       while (root.CodeScript.has_next_key?.()) {
+        mark(`frame-${frameIndex}-before`);
         await root.CodeScript.next();
         await afterPaint();
+        mark(`frame-${++frameIndex}-settled`);
       }
       return stop();
     } catch (error) {

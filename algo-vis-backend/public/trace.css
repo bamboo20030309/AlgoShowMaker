@@ -499,6 +499,16 @@ body.asm-trace-studio-open .asm-trace-object.selected {
   animation: blink-stroke 1s infinite;
 }
 
+/* Playback only: do not transition transforms (hints must not lag cells),
+   visibility, or stroke-opacity (owned by the uninterrupted blink clock). */
+.asm-trace-style-paint {
+  transition: fill 180ms ease, stroke 180ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asm-trace-style-paint { transition: none; }
+}
+
 @keyframes arrow-bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
@@ -596,7 +606,7 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   touch-action: pan-x pan-y;
   user-select: none;
   font-family: Consolas, "Cascadia Code", "Noto Sans Mono", monospace;
-  font-size: 14px;
+  font-size: 20px;
   line-height: 1.58;
 }
 
@@ -622,7 +632,7 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   padding: 9px 12px;
   overflow: hidden;
   color: #1f2328;
-  background: rgba(255, 255, 255, 0.84);
+  background: transparent;
   border-radius: 5px;
   box-shadow: none;
 }

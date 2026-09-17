@@ -16,6 +16,8 @@
   let renderedEventSettingsFingerprint = '';
   let useSavedEventSettings = false;
   let sourceViewBaseline = null;
+  let pendingAnimation = null;
+  let pendingViewBaseline = null;
   const embedMode = new URLSearchParams(window.location.search).get('asmEmbed');
 
   const EVENT_SETTING_TYPES = [
@@ -397,6 +399,18 @@
   function applyTraceDocument(trace, options = {}) {
     let preparedTrace = trace;
     const source = editorSource();
+    const pending = pendingAnimation?.rebuild;
+    if (pending) {
+      preparedTrace = window.ASMTraceModel.normalizeTraceDocument(trace);
+      // Keep imported settings until the first successful RUN. A user's
+      // explicit edit/removal of @asm-view remains authoritative.
+      if (sourceViewBlock(source) === pendingViewBaseline) {
+        window.ASMTraceViewSource?.applyToTrace?.(preparedTrace, pending.view);
+      }
+      preparedTrace.studio ||= {};
+      Object.assign(preparedTrace.studio, JSON.parse(JSON.stringify(pending.globals || {})));
+      options = { ...options, preserveEventSettings: true };
+    }
     const sourceViewChangedOnLoad = Boolean(sourceViewBlock(trace?.sourceCode)
       && sourceViewBlock(trace.sourceCode) !== sourceViewBlock(source)
       && !sourceMatchesTracePresentation(trace, source));
@@ -425,6 +439,8 @@
     currentTrace = window.ASMTraceModel.normalizeTraceDocument({ ...preparedTrace, skins, studio: incomingStudio });
     applyAccountEventSettings();
     currentTrace = window.asmApplyTraceDocument(currentTrace);
+    pendingAnimation = null;
+    pendingViewBaseline = null;
     sourceViewBaseline = sourceViewBlock(source);
     mode = 'trace';
     sliceMode = currentTrace.sliceMode === 'manual' ? 'manual' : 'auto';
@@ -442,6 +458,8 @@
 
   function loadAnimation(animation = {}) {
     animation = window.ASMAlgorithmAnimation.normalize(animation);
+    pendingAnimation = animation.rebuild && !animation.traceDocument?.frames?.length ? animation : null;
+    pendingViewBaseline = pendingAnimation ? sourceViewBlock(editorSource()) : null;
     mode = animation.mode === 'trace' || animation.traceDocument ? 'trace' : 'manual';
     sliceMode = animation.sliceMode === 'manual' ? 'manual' : animation.sliceMode === 'full' ? 'full' : 'auto';
     if (animation.traceDocument?.frames?.length) {
@@ -473,10 +491,14 @@
     return {
       mode,
       sliceMode,
-      watches,
-      skins: savedTrace?.skins || {},
-      rules: savedTrace?.rules || [],
-      traceDocument: savedTrace
+      watches: pendingAnimation?.watches || watches,
+      skins: savedTrace?.skins || pendingAnimation?.skins || {},
+      rules: savedTrace?.rules || pendingAnimation?.rules || [],
+      traceDocument: savedTrace,
+      ...(pendingAnimation ? {
+        rebuild: JSON.parse(JSON.stringify(pendingAnimation.rebuild)),
+        rebuildError: pendingAnimation.rebuildError
+      } : {})
     };
   }
 

@@ -64,7 +64,7 @@
     const bounds = focus ? renderer?.currentBounds?.() : null;
     const dx = (Number(rule?.offsetX) || 0) + (focus && bounds ? focus.x - bounds.centerX : 0);
     const dy = (Number(rule?.offsetY) || 0) + (focus && bounds ? focus.y - bounds.centerY : 0);
-    if (rule?.autoCapture === false) {
+    if (rule?.autoCapture === false && (!rule.target || focus)) {
       const view = window.getCameraViewport?.(zoom);
       window.setCamera?.((focus?.x ?? view?.centerX ?? 0) + (Number(rule.offsetX) || 0),
         (focus?.y ?? view?.centerY ?? 0) + (Number(rule.offsetY) || 0), zoom, moving, ms);

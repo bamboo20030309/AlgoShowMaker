@@ -14,7 +14,7 @@
     { type: 'condition', label: '條件', color: '#7b61a8', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },
     { type: 'fixed', label: '自動固定', color: '#4caf50', category: 'state', enabledByDefault: true, timelineByDefault: false },
-    { type: 'call', label: '呼叫', color: '#65737a', enabledByDefault: false, timelineByDefault: false },
+    { type: 'call', label: '呼叫函式', color: '#65737a', enabledByDefault: false, timelineByDefault: false },
     { type: 'function-enter', label: '進入函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false },
     { type: 'function-exit', label: '離開函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false }
   ];
@@ -34,7 +34,7 @@
     condition: 'none',
     swap: 'swap',
     fixed: 'none',
-    call: 'none',
+    call: 'code',
     // Function entry is a code-only event. It highlights the function header
     // in playback order without inventing a canvas target animation.
     'function-enter': 'code',
@@ -557,7 +557,7 @@
       // The function definition is the root control in Trace Studio's event
       // outline. Keep its entry record selectable there even though it stays
       // hidden from the compact bottom timeline by default.
-      if (event.type === 'function-enter') return true;
+      if (['function-enter', 'call'].includes(event.type)) return true;
       // Keep classic for controls editable in the right inspector even when
       // their broad event type is hidden from the compact bottom timeline.
       // Other hidden reads/conditions stay compact instead of flooding it.

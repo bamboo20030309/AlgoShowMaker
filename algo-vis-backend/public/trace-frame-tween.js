@@ -1022,6 +1022,18 @@
       const ghostCells = descriptor.indices.map(index => (
         ghostCellStates.get(index)?.cell
       ));
+      // Current swap cells represent the incoming values; the visible ghost
+      // cells still carry their source indices. Decorations must follow those
+      // visible cells rather than disappear with the hidden current heap.
+      const stylePresentationCells = new Map();
+      currentCellsByIndex.forEach((cell, index) => {
+        const swapIndex = descriptor.indices.indexOf(index);
+        const sourceIndex = swapIndex < 0 ? index : descriptor.indices[1 - swapIndex];
+        const presentationCell = ghostCellStates.get(sourceIndex)?.cell;
+        if (!presentationCell) return;
+        stylePresentationCells.set(cell, presentationCell);
+        cell._asmStylePresentationCell = presentationCell;
+      });
       const cellBoxes = ghostCells.map(cell => svgBox(cell));
       const targetCellBoxes = descriptor.currentCells
         .map((cell, index, cells) => (
@@ -1178,11 +1190,16 @@
             element.setAttribute('transform', [baseTransform, counterScale].filter(Boolean).join(' '));
           });
           const finished = swapProgress >= 1;
+          stylePresentationCells.forEach((presentationCell, cell) => {
+            if (finished) delete cell._asmStylePresentationCell;
+            else cell._asmStylePresentationCell = presentationCell;
+          });
           this.ghost.setAttribute('opacity', finished ? '0' : '1');
           this.resizeWrapper.setAttribute('opacity', finished ? '1' : '0');
           this.resizeWrapper.removeAttribute('transform');
         },
         remove() {
+          stylePresentationCells.forEach((_, cell) => { delete cell._asmStylePresentationCell; });
           this.presentationOverlay?.remove();
           this.ghost.remove();
           if (this.resizeWrapper?.parentNode && this.currentHeap) {
@@ -1432,6 +1449,7 @@
         eventOrder: Number(event?.order),
         mode,
         startMs: slot ? Number(slot.promptStart ?? slot.start) || 0 : commitMs,
+        animationStartMs: slot ? Number(slot.start) || 0 : commitMs,
         commitMs,
         beforeState,
         afterState: Object.fromEntries(currentState),
@@ -1869,7 +1887,7 @@
     // The same non-blinking result frame is used for single-value if reads
     // and ordinary compare results. It must follow the *presented* cell and
     // stay above objects even while that cell is scaled or lifted.
-    window.ASMTraceRenderers?.attachStyleVisual?.(highlight, element, 'highlight');
+    window.ASMTraceRenderers?.attachStyleVisual?.(highlight, element, 'compare');
     return highlight;
   }
 
@@ -2048,8 +2066,10 @@
 
   function prepareForwardValues(options, replayPlan, eventFrame) {
     const tracks = [];
-    const conditionalBackgroundVariables = new Set((eventFrame?.styles || [])
-      .filter(style => style.styleType === 'background' && style.when)
+    const previousStyleFrame = options.previousFrame || eventFrame;
+    const conditionalStyleVariables = new Set([
+      ...(eventFrame?.styles || []), ...(previousStyleFrame?.styles || [])
+    ]
       .map(style => style.targetVariableId));
     (replayPlan?.visualValueTracks || replayPlan?.valueTracks || [])
       .filter(track => track.kind === 'value').forEach(track => {
@@ -2074,7 +2094,7 @@
       const cell = element.closest?.('[data-trace-index]') || element;
       const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
       const index = Number(cell.dataset?.traceIndex);
-      const styleRect = conditionalBackgroundVariables.has(variableId)
+      const styleRect = conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
         ? cell.querySelector?.(':scope > rect') || null
         : null;
@@ -2100,14 +2120,14 @@
         const index = Number(label?.getAttribute?.('data-trace-index-label')
           ?? label?.dataset?.traceIndexLabel ?? cell?.dataset?.traceIndex);
         const rect = label?.querySelector?.(':scope > rect') || null;
-        if (!rect || !conditionalBackgroundVariables.has(variableId)
+        if (!rect || !conditionalStyleVariables.has(variableId)
           || !Number.isInteger(index)) return;
         indexTracks.push({ ...track, variableId, index, rect,
           applied: Symbol('unapplied'), currentValue: track.initial });
       });
     // A conditional rule can style a whole range even when an event mutates
-    // only one cell. Keep every visible cell and its index box in the same
-    // style checkpoint so unrelated cells cannot repaint early.
+    // only one cell. Evaluate every visible cell and its index box against
+    // the same currently presented state, including unchanged cells.
     const seenStyleRects = new Set(styleTargets.map(track => track.styleRect));
     const seenIndexRects = new Set(indexTracks.map(track => track.rect));
     options.currentElements?.forEach?.((element, key) => {
@@ -2115,7 +2135,7 @@
       const index = Number(isIndexLabel
         ? element.getAttribute('data-trace-index-label') : element?.dataset?.traceIndex);
       const variableId = element?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
-      if (!conditionalBackgroundVariables.has(variableId) || !Number.isInteger(index)) return;
+      if (!conditionalStyleVariables.has(variableId) || !Number.isInteger(index)) return;
       const rect = element.querySelector?.(':scope > rect');
       if (!rect) return;
       const target = { key, variableId, index, currentValue: null };
@@ -2129,71 +2149,64 @@
         seenStyleRects.add(rect);
       }
     });
-    // The previous SVG is the authoritative style checkpoint: it includes
-    // user edits and index-label paint, not merely the previous frame's rules.
-    // Destination-frame rules must not be evaluated until a value commits.
-    const hasPreviousStyleCheckpoint = Boolean(options.previousObjects?.size);
-    const initialStylePaints = new Map();
-    const initialVisualSources = new Map(Object.entries(
-      replayPlan?.checkpoints?.find(checkpoint => checkpoint.visualBindingsBefore)
-        ?.visualBindingsBefore || {}
-    ).map(([logicalKey, visualKey]) => [visualKey, logicalKey]));
-    const previousPaint = (key, rect) => {
+    let stylePaints = new Map();
+    let stylesDirty = true;
+    let evaluatedHighlights = {};
+    let styleElapsed = 0;
+    // Only animated swaps defer paint. Other frame-authored styles retain
+    // their entry-time semantics; disabled swaps have no animation barrier.
+    const swapPaintStarts = new Map();
+    (replayPlan?.checkpoints || []).forEach(checkpoint => {
+      if (checkpoint.eventType !== 'swap' || checkpoint.mode !== 'animated') return;
+      checkpoint.mutations.filter(mutation => mutation.kind === 'value').forEach(mutation => {
+        const start = Number(checkpoint.animationStartMs ?? checkpoint.startMs) || 0;
+        for (const key of [mutation.visualKey || mutation.key, `${mutation.key}:index`]) {
+          if (!swapPaintStarts.has(key)) swapPaintStarts.set(key, start);
+        }
+      });
+    });
+    const initialBindings = (replayPlan?.checkpoints || [])
+      .find(checkpoint => checkpoint.visualBindingsBefore)?.visualBindingsBefore || {};
+    const initialPaints = new Map();
+    const previousPaint = (track, isIndex, fallback) => {
+      if (initialPaints.has(track)) return initialPaints.get(track);
+      let key = isIndex
+        ? (String(track.key).endsWith(':index') ? track.key : `${track.key}:index`)
+        : track.key;
+      if (!isIndex && swapPaintStarts.has(key)) {
+        key = Object.keys(initialBindings).find(source => initialBindings[source] === key) || key;
+      }
       const previous = options.previousObjects?.get?.(key)
-        || previousVisualElement(options.previousObjects, key);
-      const previousRect = previous?.querySelector?.(':scope > rect') || null;
-      return previousRect ? {
-        fill: previousRect.getAttribute?.('fill') || '#ffffff',
-        opacity: previousRect.getAttribute?.('fill-opacity') || '1'
-      } : {
-        fill: rect.getAttribute?.('fill') || '#ffffff',
-        opacity: rect.getAttribute?.('fill-opacity') || '1'
-      };
+        || (typeof CSS !== 'undefined' ? previousVisualElement(options.previousObjects, key || '') : null);
+      const rect = previous?.querySelector?.(':scope > rect');
+      const paint = { fill: rect?.getAttribute('fill') || fallback.fill,
+        opacity: rect?.getAttribute('fill-opacity') || fallback.opacity };
+      initialPaints.set(track, paint);
+      return paint;
     };
-    styleTargets.forEach(track => {
-      initialStylePaints.set(track.styleRect, previousPaint(
-        initialVisualSources.get(track.key) || track.key, track.styleRect
-      ));
-    });
-    indexTracks.forEach(track => {
-      const indexKey = String(track.key).endsWith(':index')
-        ? String(track.key)
-        : `${track.key}:index`;
-      initialStylePaints.set(track.rect, previousPaint(indexKey, track.rect));
-    });
-    let stylePaints = initialStylePaints;
-    let stylesDirty = !hasPreviousStyleCheckpoint;
     const refreshStyles = () => {
       if (!stylesDirty) return;
       stylesDirty = false;
-      const evaluateTracks = source => {
-        const presentedValues = new Map();
-        source.forEach(track => {
-          if (!track.variableId || !Number.isInteger(track.index)
-            || track.currentValue == null) return;
-          if (!presentedValues.has(track.variableId)) {
-            presentedValues.set(track.variableId, new Map());
-          }
-          presentedValues.get(track.variableId).set(track.index, track.currentValue);
-        });
-        return window.ASMTraceRules.evaluate(options.document, eventFrame, {
-          presentedValues
-        });
-      };
-      const visualHighlights = styleTargets.length ? evaluateTracks(tracks) : {};
-      const indexHighlights = indexTracks.length ? evaluateTracks(indexTracks) : {};
+      // Match the original renderer: evaluate the new frame before events.
+      const visualHighlights = (styleTargets.length || indexTracks.length)
+        ? window.ASMTraceRules.evaluate(options.document, eventFrame) : {};
+      const indexHighlights = visualHighlights;
+      evaluatedHighlights = visualHighlights;
+      const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
+        ? highlight.styleTypes.background || 'rgb(231, 144, 255)'
+        : highlight.fill || '#ffffff';
       stylePaints = new Map([
         ...styleTargets.map(track => {
-          const highlight = visualHighlights[track.variableId]?.[String(track.index)] || {};
+          const highlight = visualHighlights[track.variableId]?.[String(track.styleIndex ?? track.index)] || {};
           return [track.styleRect, {
-            fill: highlight.styleTypes?.background || highlight.fill || '#ffffff',
+            fill: backgroundPaint(highlight),
             opacity: '1'
           }];
         }),
         ...indexTracks.map(track => {
           const highlight = indexHighlights[track.variableId]?.[String(track.index)] || {};
           return [track.rect, {
-            fill: highlight.styleTypes?.background || highlight.fill || '#ffffff',
+            fill: backgroundPaint(highlight),
             opacity: '1'
           }];
         })
@@ -2209,6 +2222,8 @@
       else track.targetText.textContent = displayed;
     };
     const update = elapsed => {
+      styleElapsed = Number(elapsed) || 0;
+      // Numeric commits remain ordered; style is independent of these commits.
       [...tracks, ...indexTracks].forEach(track => {
         let value = track.initial;
         track.steps.forEach(step => {
@@ -2227,25 +2242,68 @@
       });
     };
     update(0);
-    const instantStyleCommit = [...tracks, ...indexTracks].some(track => (
-      track.steps.some(step => step.mode !== 'ignored'
-        && Number(step.commitMs) <= 0
-        && displayEventValue(step.before) !== displayEventValue(step.after))
-    ));
-    if (hasPreviousStyleCheckpoint && !instantStyleCommit) {
-      stylesDirty = false;
-      stylePaints = initialStylePaints;
-    }
     return {
       update,
+      ownsPaint(rect) {
+        return seenStyleRects.has(rect) || seenIndexRects.has(rect);
+      },
       applyStyles() {
         refreshStyles();
         stylePaints.forEach((paint, rect) => {
+          const track = styleTargets.find(item => item.styleRect === rect)
+            || indexTracks.find(item => item.rect === rect);
+          const isIndex = indexTracks.includes(track);
+          const key = isIndex
+            ? (String(track?.key).endsWith(':index') ? track.key : `${track?.key}:index`)
+            : track?.key;
+          const initial = previousPaint(track, isIndex, paint);
+          const held = styleElapsed < (swapPaintStarts.get(key) ?? 0);
+          if (held) paint = initial;
+          // Establish the replay's initial paint immediately; only subsequent
+          // changes transition. Geometry continues on the cell's own tick.
+          if (rect.classList && !rect.classList.contains('asm-trace-style-paint')) {
+            // Start the color transition at entry, not at numeric completion.
+            // A freshly inserted rect already has the destination color.
+            // Establish the source without accidentally starting a reverse
+            // transition, then enable the shared 180ms transition once.
+            rect.style.transition = 'none';
+            rect.setAttribute('fill', initial.fill);
+            rect.setAttribute('fill-opacity', initial.opacity);
+            rect.classList.add('asm-trace-style-paint');
+            window.getComputedStyle(rect).fill;
+            rect.style.removeProperty('transition');
+            window.getComputedStyle(rect).fill;
+          }
           rect.setAttribute('fill', paint.fill);
           rect.setAttribute('fill-opacity', paint.opacity);
         });
+        const focusColors = new Map();
+        Object.entries(evaluatedHighlights).forEach(([id, highlights]) => {
+          Object.values(highlights).forEach(highlight => {
+            if (Object.hasOwn(highlight.styleTypes || {}, 'focus')) {
+              focusColors.set(id, highlight.styleTypes.focus || '#ccc');
+            }
+          });
+        });
+        styleTargets.forEach(track => {
+          const highlight = evaluatedHighlights[track.variableId]?.[String(track.styleIndex ?? track.index)] || {};
+          const focused = Object.hasOwn(highlight.styleTypes || {}, 'focus');
+          if (styleElapsed >= (swapPaintStarts.get(track.key) ?? 0)
+            && focusColors.has(track.variableId) && !focused
+            && !Object.hasOwn(highlight.styleTypes || {}, 'background')) {
+            track.styleRect.setAttribute('fill', focusColors.get(track.variableId));
+            const label = indexTracks.find(item => item.variableId === track.variableId
+              && item.index === (track.styleIndex ?? track.index));
+            label?.rect.setAttribute('fill', focusColors.get(track.variableId));
+          }
+          window.ASMTraceRenderers?.updatePresentedHints?.(
+            options.currentElements?.get?.(track.key), highlight, track.key
+          );
+        });
       },
       finish() {
+        styleElapsed = Infinity;
+
         [...tracks, ...indexTracks].forEach(track => {
           const committed = track.steps.filter(step => step.mode !== 'ignored');
           const value = committed.length ? committed.at(-1).after : track.initial;
@@ -2260,8 +2318,7 @@
             apply(track, value);
           }
         });
-        // A frame may change style rules without mutating a value. Commit the
-        // destination style only after the complete event sequence has ended.
+        // Numeric completion does not gate destination-frame styles.
         stylesDirty = true;
       }
     };
@@ -2512,9 +2569,27 @@
     };
   }
 
+  function markerTargetAtCheckpoint(traceDocument, eventFrame, element, checkpoint) {
+    const target = String(element?.dataset?.traceBindingTarget || '');
+    const parts = markerTargetParts(target);
+    const expression = String(element?.dataset?.traceMarkerIndexExpression || '');
+    if (!parts || !expression || !checkpoint?.beforeState) return target;
+    const locals = {};
+    markerSourceVariableIds(element).forEach(variableId => {
+      const key = eventTargetKey(traceDocument, eventFrame, { variableId });
+      const stateKey = `value:${key}`;
+      if (!Object.prototype.hasOwnProperty.call(checkpoint.beforeState, stateKey)) return;
+      const name = traceDocument?.variables?.[variableId]?.name;
+      if (name) locals[name] = displayEventValue(checkpoint.beforeState[stateKey]);
+    });
+    const raw = window.ASMTraceRules?.resolveExpression?.(traceDocument, eventFrame, expression, locals);
+    const index = raw == null || raw === '' ? NaN : Number(raw);
+    return Number.isInteger(index) ? `${parts.prefix}#${index}` : `unresolved:${parts.prefix}`;
+  }
+
   function createCompareEffect(
     root, event, traceDocument, eventFrame, placements, elements,
-    visualKeyForSource, positionAdjustments
+    visualKeyForSource, positionAdjustments, bindingTargetForMarker
   ) {
     const color = COMPARE_COLORS[String(event?.result === true)];
     const values = [event?.payload?.left, event?.payload?.right];
@@ -2557,7 +2632,8 @@
     let attachedTop = Infinity;
     elements?.forEach?.((element, key) => {
       if (!element?.dataset?.traceSourceVariableId) return;
-      if (!operands.some(operand => operand.logicalKey === element.dataset.traceBindingTarget)) return;
+      const targetKey = bindingTargetForMarker?.(element) ?? element.dataset.traceBindingTarget;
+      if (!operands.some(operand => operand.logicalKey === targetKey)) return;
       const point = comparisonPoint(placements, key);
       if (!point) return;
       const adjustment = typeof positionAdjustments === 'function'
@@ -2713,7 +2789,7 @@
         });
         selfSplit?.update(lift, equalityComparison ? contactProgress : size, stay);
         elements?.forEach?.((element, key) => {
-          const targetKey = element?.dataset?.traceBindingTarget;
+          const targetKey = bindingTargetForMarker?.(element) ?? element?.dataset?.traceBindingTarget;
           if (!targetKey || !this.logicalAdjustments.has(targetKey)) return;
           const target = this.logicalAdjustments.get(targetKey);
           this.adjustments.set(key, { x: target.x, y: target.y, scale: 1 });
@@ -3054,7 +3130,7 @@
   }
 
   function markersForMotionSlot(slot, elements) {
-    if (!['assign', 'position'].includes(slot.animation)) return [];
+    if (!['assign', 'position', 'declare'].includes(slot.animation)) return [];
     const targets = slot.event?.targets || [];
     const variableIds = new Set(targets
       .filter(target => target?.role !== 'source')
@@ -3200,6 +3276,7 @@
     };
     const initializedMarkers = new Set();
     logicalMotionSlots.forEach(({ slot, markers }) => {
+      if (slot.animation === 'declare') return;
       markers.forEach(marker => {
         const item = metadata.get(marker.key);
         if (item?.previousTarget || item?.previousUnresolvedTarget) return;
@@ -3212,6 +3289,13 @@
         initializedMarkers.add(marker.key);
       });
     });
+
+    // Hidden declarations do not occupy a slot yet. Their insertion must
+    // reflow the peers that exist at that execution point, not last frame.
+    logicalMotionSlots.filter(({ slot }) => slot.animation === 'declare')
+      .forEach(({ slot, markers }) => markers.forEach(marker => {
+        if (!slot.continuingVisualKeys?.has(marker.key)) initialState.delete(marker.key);
+      }));
 
     const positionsForState = state => {
       const groups = new Map();
@@ -3354,9 +3438,13 @@
       });
     }
 
+    const initializedAtDeclaration = new Set();
     logicalMotionSlots.forEach(({ slot, markers }, slotIndex) => {
       let beforeStateChanged = false;
       markers.forEach(marker => {
+        if (slot.animation === 'declare') return;
+        if (initializedAtDeclaration.has(marker.key)
+          && displayEventValue(slot.event?.payload?.before) === '') return;
         const item = metadata.get(marker.key);
         const beforeTarget = markerTargetForEvent(item, slot, 'before');
         if (beforeTarget && state.get(marker.key) !== beforeTarget) {
@@ -3368,13 +3456,28 @@
       const nextState = new Map(state);
       markers.forEach(marker => {
         const item = metadata.get(marker.key);
-        const afterTarget = markerTargetForEvent(item, slot, 'after');
+        const afterTarget = slot.animation === 'declare'
+          ? markerTargetBeforeFrameEvents(traceDocument, eventFrame, elements.get(marker.key))
+          : markerTargetForEvent(item, slot, 'after');
         if (afterTarget) nextState.set(marker.key, afterTarget);
       });
       const nextPositions = positionsForState(nextState);
-      const start = Number(slot.motionStart ?? slot.start) || 0;
+      const start = Number(slot.animation === 'declare' ? slot.visualStart ?? slot.start : slot.motionStart ?? slot.start) || 0;
       const instant = slot.logicalOnly === true;
-      const end = instant ? start : Math.max(start + 1, Number(slot.end) || start + 1);
+      const end = instant ? start : slot.animation === 'declare'
+        ? start + MARKER_REFLOW_TIMING.duration
+        : Math.max(start + 1, Number(slot.end) || start + 1);
+      if (slot.animation === 'declare') markers.forEach(marker => {
+        if (slot.continuingVisualKeys?.has(marker.key)) initializedAtDeclaration.add(marker.key);
+        const point = nextPositions.get(marker.key);
+        if (point && !currentPositions.has(marker.key)) {
+          if (!String(nextState.get(marker.key)).startsWith('unresolved:')) {
+            initializedAtDeclaration.add(marker.key);
+          }
+          initialPositions.set(marker.key, { ...point });
+          currentPositions.set(marker.key, { ...point });
+        }
+      });
       metadata.forEach((unused, key) => {
         addStep(
           key, start, end, currentPositions.get(key), nextPositions.get(key),
@@ -3540,8 +3643,12 @@
     return matches;
   }
 
-  function scopeExitVisualContinues(previousVisual, currentElements) {
+  function scopeExitVisualContinues(previousVisual, currentElements, event = null) {
     if (!previousVisual || retainedSnapshotVisual(previousVisual)) return false;
+    // Explicit visual exits end the old presentation even when the C++
+    // variable remains alive. Only natural scope exits may preserve a shared
+    // reference/container visual across function activations.
+    if (event?.type === 'visual-exit' || event?.manualVisualExit === true) return false;
     let found = false;
     currentElements?.forEach?.(element => {
       if (found || !element || element.isConnected === false) return;
@@ -3639,20 +3746,72 @@
     return { clone, visual };
   }
 
+  function recursiveRoleContinuations(traceDocument, previousFrame, frame, previousObjects, elements) {
+    const matches = new Map();
+    const previousSource = previousFrame?.source || {};
+    const source = frame?.source || {};
+    const beforeId = String(previousSource.recursionActivationId || '');
+    const afterId = String(source.recursionActivationId || '');
+    if (!beforeId || !afterId || beforeId === afterId
+      || !source.function || source.function !== previousSource.function) return matches;
+    const parents = new Map((traceDocument?.frames || []).map(item => [
+      String(item.source?.recursionActivationId || ''),
+      String(item.source?.recursionParentActivationId || '')
+    ]));
+    parents.set(beforeId, String(previousSource.recursionParentActivationId || ''));
+    parents.set(afterId, String(source.recursionParentActivationId || ''));
+    const ancestor = (parent, child) => {
+      const visited = new Set();
+      while (child && !visited.has(child)) {
+        if (child === parent) return true;
+        visited.add(child);
+        child = parents.get(child);
+      }
+      return false;
+    };
+    if (!ancestor(beforeId, afterId) && !ancestor(afterId, beforeId)) return matches;
+    elements?.forEach?.((element, key) => {
+      if (retainedSnapshotVisual(element)) return;
+      const variableId = String(element.dataset?.traceSourceVariableId
+        || element.dataset?.traceVariable || '');
+      const variable = traceDocument?.variables?.[variableId];
+      if (!variableId || variable?.functionName !== source.function) return;
+      let match = null;
+      if (element.dataset?.traceSourceVariableId) {
+        match = previousVisualByContinuity(previousObjects,
+          String(element.dataset.traceVisualContinuityKey || ''), key, element);
+      } else {
+        const previous = previousVisualElement(previousObjects, key);
+        if (previous?.dataset?.traceVariable === variableId
+          && sameSceneGeneration(element, previous)) match = { key, element: previous };
+      }
+      if (!match || match.element.getAttribute?.('opacity') === '0'
+        || match.element.getAttribute?.('display') === 'none') return;
+      // Explicit presentation exits and keep cuts are never recursive handoffs.
+      if (orderedEvents(frame).some(event => (event.type === 'visual-exit'
+        || event.manualVisualExit === true) && (event.targets || []).some(target => (
+          visualMatchesScopeExitTarget(match.element, target)
+        )))) return;
+      matches.set(key, match);
+    });
+    return matches;
+  }
+
   function declarationVisualSchedule(
-    traceDocument, eventFrame, eventTimeline, placements, elements
+    traceDocument, eventFrame, eventTimeline, placements, elements, continuingKeys = new Set()
   ) {
     const declaredKeys = new Set();
     const slotsByKey = new Map();
     orderedEvents(eventFrame).filter(event => event?.type === 'declare').forEach(event => {
       eventTargetVisualKeys(
         traceDocument, eventFrame, event, placements, elements
-      ).forEach(key => declaredKeys.add(key));
+      ).forEach(key => { if (!continuingKeys.has(key)) declaredKeys.add(key); });
     });
     (eventTimeline || []).filter(slot => slot?.animation === 'declare').forEach(slot => {
       eventTargetVisualKeys(
         traceDocument, eventFrame, slot.event, placements, elements
       ).forEach(key => {
+        if (continuingKeys.has(key)) return;
         declaredKeys.add(key);
         if (!slotsByKey.has(key)) slotsByKey.set(key, slot);
       });
@@ -3669,6 +3828,8 @@
     if (!entering?.dataset?.traceSourceVariableId) return peers;
     const target = markerTargetBeforeFrameEvents(traceDocument, eventFrame, entering);
     if (!target) return peers;
+    const enteringDeclaration = orderedEvents(eventFrame).find(event => event.type === 'declare'
+      && (event.targets || []).some(item => markerMatchesEventTarget(entering, item)));
     currentElements?.forEach?.((element, key) => {
       if (key === enteringKey || !element?.dataset?.traceSourceVariableId) return;
       const continuation = markerContinuationFor(
@@ -3682,6 +3843,11 @@
         if (parts) peerTarget = `unresolved:${parts.prefix}`;
       }
       if (peerTarget !== target) return;
+      const earlierDeclaration = enteringDeclaration && orderedEvents(eventFrame).some(event => (
+        event.type === 'declare' && Number(event.order) < Number(enteringDeclaration.order)
+        && (event.targets || []).some(item => markerMatchesEventTarget(element, item))
+      ));
+      if (earlierDeclaration) { peers.push(key); return; }
       if (!target.startsWith('unresolved:')
         && String(previousVisual?.dataset?.traceBindingTarget || '') !== target) return;
       const before = continuation?.placement || previousPlacements?.get?.(key);
@@ -3885,7 +4051,7 @@
     // Keep them in the formal schedule when scalar values are intentionally not
     // drawn, without relaxing canvas-target checks for ordinary events.
     if (event?.type === 'condition') return true;
-    if (event?.type === 'function-enter') {
+    if (['function-enter', 'call'].includes(event?.type)) {
       return Number.isFinite(Number(event?.source?.from))
         && Number.isFinite(Number(event?.source?.to));
     }
@@ -4422,7 +4588,8 @@
         return createCompareEffect(
           options.root, slot.event, options.document, eventFrame,
           options.currentPlacements, options.currentElements, visualKeyAtEvent,
-          markerPositionAtCompare
+          markerPositionAtCompare,
+          element => markerTargetAtCheckpoint(options.document, eventFrame, element, checkpoint)
         );
       }
       if (slot.animation === 'assign') {
@@ -4457,6 +4624,7 @@
       get markerTargets() { return markerMotion.committedTargets; },
       get opacities() { return activeEffect?.opacities || new Map(); },
       applyStyles() { forwardValues.applyStyles(); },
+      ownsPaint(rect) { return forwardValues.ownsPaint(rect); },
       syncPositions() { activeEffect?.syncPosition?.(); },
       update(elapsed) {
         markerMotion.update(elapsed);
@@ -4746,11 +4914,42 @@
     if (!duration) return Promise.resolve();
     const runId = ++activeRun;
     const animationEffectLayer = createAnimationEffectLayer(root);
+    const arrowRecord = (element, key) => {
+      try { return { ...JSON.parse(element.dataset.traceArrowIdentity), element, key }; }
+      catch { return null; }
+    };
+    const oldArrows = [...(previousObjects || new Map())].map(([key, element]) => arrowRecord(element, key)).filter(Boolean);
+    const newArrows = [...root.querySelectorAll('[data-trace-arrow-identity]')]
+      .map(element => arrowRecord(element, element.dataset.traceObjectKey)).filter(Boolean);
+    const arrowPairs = window.ASMArrowModel?.pair?.(oldArrows, newArrows) || new Map();
+    const pairedArrowKeys = new Set([...arrowPairs.values()].map(record => record.key));
+    newArrows.forEach(record => {
+      const previous = arrowPairs.get(record)?.element;
+      record.element._asmArrowTween = previous ? { previous, progress: 0,
+        targetColor: record.element.getAttribute('stroke'),
+        targetWidth: Number(record.element.getAttribute('stroke-width')), color: (before, after, progress) => {
+          const from = parseColor(before), to = parseColor(after);
+          if (!from || !to) return progress < 1 ? before : after;
+          const paint = interpolateColor(from, to, progress);
+          return `rgba(${paint.r},${paint.g},${paint.b},${paint.a})`;
+        } } : null;
+      record.element.setAttribute('opacity', previous ? '1' : '0');
+    });
     let resolveRun = null;
     const completion = new Promise(resolve => { resolveRun = resolve; });
     const finishRun = () => {
       if (!resolveRun) return;
       animationEffectLayer.clear();
+      newArrows.forEach(({ element }) => {
+        const tween = element._asmArrowTween;
+        if (tween) {
+          element.setAttribute('stroke', tween.targetColor);
+          element.setAttribute('stroke-width', tween.targetWidth);
+        }
+        delete element._asmArrowTween;
+        element.removeAttribute('opacity');
+      });
+      window.ASMTraceRenderers?.refreshArrows?.();
       const resolve = resolveRun;
       resolveRun = null;
       if (finishActiveRun === finishRun) finishActiveRun = null;
@@ -4802,15 +5001,22 @@
         ? rememberedEntrance.keys
         : []
     );
+    const recursiveContinuations = recursiveRoleContinuations(
+      traceDocument, options.previousFrame, frame, previousObjects, currentElements
+    );
+    const continuingKeys = new Set(recursiveContinuations.keys());
+    currentElements.forEach((element, key) => {
+      if (continuingKeys.has(topLevelKey(element, root))) continuingKeys.add(key);
+    });
     const declaredVisualKeys = declarationVisualSchedule(
-      traceDocument, eventFrame, [], currentPlacements, currentElements
+      traceDocument, eventFrame, [], currentPlacements, currentElements, continuingKeys
     ).declaredKeys;
     const markerContinuations = new Map();
     const redeclaredMarkerKeys = new Set();
     let detectedMarkerEntrance = false;
     currentElements.forEach((element, key) => {
       if (!element?.dataset?.traceSourceVariableId) return;
-      const redeclared = markerDeclaredInFrame(eventFrame, element);
+      const redeclared = markerDeclaredInFrame(eventFrame, element) && !continuingKeys.has(key);
       if (redeclared) {
         redeclaredMarkerKeys.add(key);
         // Definition-enabled markers enter at their declaration event. With
@@ -4822,7 +5028,7 @@
         element, key, previousPlacements, previousObjects
       );
       if (continuation && !redeclared) markerContinuations.set(key, continuation);
-      if (!redeclared && markerNeedsEntrance({
+      if (!redeclared && !continuingKeys.has(key) && markerNeedsEntrance({
         element,
         key,
         previousPlacements,
@@ -4927,8 +5133,9 @@
       previousObjects, event => event?.preKeepExit !== true
     );
     const eventTimeline = [...preKeepEventTimeline, ...regularEventTimeline];
+    eventTimeline.forEach(slot => { slot.continuingVisualKeys = continuingKeys; });
     const declarationSchedule = declarationVisualSchedule(
-      traceDocument, eventFrame, eventTimeline, currentPlacements, currentElements
+      traceDocument, eventFrame, eventTimeline, currentPlacements, currentElements, continuingKeys
     );
     const declarationReflowSchedule = declarationMarkerReflowSchedule({
       traceDocument,
@@ -5031,6 +5238,7 @@
       // Retention connectors are persistent infrastructure, not entering or
       // exiting visual objects. Their endpoints are updated by the renderer.
       if (element.classList?.contains('asm-trace-keep-arrow')) return;
+      if (element.hasAttribute?.('data-trace-arrow-identity')) return;
       const currentPlacement = currentPlacements.get(key);
       if (!currentPlacement) return;
       const current = motionPosition(element, currentPlacement);
@@ -5074,6 +5282,7 @@
       const sceneActivationChanged = key === topKey
         && !keepSnapshotMember
         && !retainedSnapshot
+        && !continuingKeys.has(key)
         && needsSceneBoundaryEntrance(
           functionSceneChanged,
           topElement,
@@ -5314,6 +5523,7 @@
         if (markerEntryElements.some(marker => marker.contains?.(element))) return;
         const declarationSlot = eventTimeline.find(slot => (
           slot.animation === 'declare'
+          && !continuingKeys.has(String(element.dataset?.traceObjectKey || ''))
           && (slot.event?.targets || []).some(target => (
             visualMatchesScopeExitTarget(element, target)
           ))
@@ -5338,6 +5548,8 @@
     const previousExitIdentities = new Set();
     eventTimeline.filter(slot => slot.animation === 'exit').forEach(slot => {
       scopeExitVisualMatches(slot.event, previousObjects).forEach(match => {
+        if (slot.event?.type !== 'visual-exit' && !slot.event?.manualVisualExit
+          && [...recursiveContinuations.values()].some(item => item.element === match.visual)) return;
         // A frame directive can capture a marker before the loop-local value
         // reaches its scope exit. In that case the current scene already owns
         // the exact lifetime that must fade out. Cloning the previous scene as
@@ -5351,7 +5563,7 @@
         // container.  The binding leaves scope, but the visual object does not:
         // cloning the old top-level array here would draw it on top of the new
         // activation until the exit slot completes.
-        if (scopeExitVisualContinues(match.visual, currentElements)) return;
+        if (scopeExitVisualContinues(match.visual, currentElements, slot.event)) return;
         const identity = [
           match.topKey,
           match.target?.variableId,
@@ -5392,6 +5604,7 @@
       // not fall back to the generic cross-frame lift/fade.
       if (scopeExitControlledKeys.has(key)) return;
       if (clone.classList?.contains('asm-trace-keep-arrow')) return;
+      if (pairedArrowKeys.has(key)) return;
       if (currentTopKeys.has(key)
         || heapResizeStages.heldPreviousKeys.has(key)) return;
       removeAnimationNodes(clone);
@@ -5462,6 +5675,9 @@
       }
       if (wallDelta > 0) animationElapsed += wallDelta * animationPlaybackRate();
       elapsed = codeTransitionElapsed + animationElapsed;
+      if (window.ASMTraceDebugRecorder?.isRecording?.()) {
+        root.dataset.traceDebugElapsedMs = String(elapsed);
+      }
       const playbackPhase = playbackPhaseAt(playbackPlan, elapsed);
       if (playbackPhase) root.dataset.tracePlaybackPhase = playbackPhase;
       else delete root.dataset.tracePlaybackPhase;
@@ -5626,6 +5842,9 @@
         }
 
         entry.rects.forEach((rect, index) => {
+          // A rect must have one paint writer. Style owns value/index colors;
+          // ordinal parent-rect interpolation must not overwrite those colors.
+          if (events?.ownsPaint?.(rect)) return;
           const key = rectKey(rect, index);
           const before = entry.previousRectStates.get(key);
           const after = entry.currentRectStates.get(key);
@@ -5682,6 +5901,11 @@
         else element.removeAttribute('transform');
       });
       events?.syncPositions?.();
+      const arrowProgress = easeOutCubic(clamp01((elapsed - initialDelay) / duration));
+      newArrows.forEach(({ element }) => {
+        if (element._asmArrowTween) element._asmArrowTween.progress = arrowProgress;
+        element.setAttribute('opacity', element._asmArrowTween ? '1' : String(arrowProgress));
+      });
       // Endpoints use the SVG positions produced by this tick, not a second
       // independent tween which would lag behind the moving objects.
       window.ASMTraceRenderers?.refreshArrows?.();
@@ -5723,6 +5947,7 @@
       }
 
       events?.finish?.();
+      events?.applyStyles?.();
       entries.forEach(entry => {
         delete entry.target.dataset.traceAppearing;
         applyIndexLabelGrowth(entry.indexLabelGeometry, 1);
@@ -5809,7 +6034,19 @@
       window.ASMTraceRenderers?.refreshArrows?.();
       markerEntrancesByFrame.delete(frame.id);
       delete root.dataset.tracePlaybackPhase;
-      finishRun();
+      // CSS paint transitions are presentation only, but are still part of
+      // playback completion. Never wait on the infinite blink/bounce loops.
+      root.getBoundingClientRect();
+      const paintTransitions = (root.getAnimations?.({ subtree: true }) || [])
+        .filter(animation => ['fill', 'stroke'].includes(animation.transitionProperty)
+          && animation.playState !== 'finished');
+      Promise.allSettled(paintTransitions.map(animation => animation.finished)).then(() => {
+        if (runId !== activeRun) return;
+        root.querySelectorAll('.asm-trace-style-paint').forEach(element => {
+          element.classList.remove('asm-trace-style-paint');
+        });
+        finishRun();
+      });
     }
     tick(previousTick);
     completion.playbackPlan = playbackPlan;
@@ -5819,6 +6056,12 @@
   function cancel() {
     activeRun += 1;
     finishActiveRun?.();
+    document.querySelectorAll('.asm-trace-style-paint').forEach(element => {
+      element.classList.remove('asm-trace-style-paint');
+    });
+    document.querySelectorAll('[data-trace-index]').forEach(cell => {
+      delete cell._asmStylePresentationCell;
+    });
     document.querySelectorAll(
       '.asm-trace-compare-highlight, .asm-trace-compare-operator, '
       + '.asm-trace-compare-marker-popup, .asm-trace-assign-marker-popup, '
@@ -5841,17 +6084,17 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-192';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-210';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-192', play, cancel, updateEventAvailability,
+    build: 'trace-210', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
     scopeExitVisualContinues,
-    declarationVisualSchedule, exitMarkerReflowSchedule,
+    declarationVisualSchedule, recursiveRoleContinuations, exitMarkerReflowSchedule,
     isForInitializerAssignment,
-    isDeclarationInitializerAssignment, markerTargetBeforeFrameEvents,
+    isDeclarationInitializerAssignment, markerTargetBeforeFrameEvents, markerTargetAtCheckpoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
     createForwardReplayPlan, prepareForwardValues

@@ -42,6 +42,30 @@ function savedTrace() {
   };
 }
 
+for (const changedView of [false, true]) {
+  test(`pending import settings survive save and first RUN (edited view: ${changedView})`, () => {
+    const { c } = context();
+    c.load('trace-editor.js');
+    const block = '\n/* @asm-view\n{"version":1,"rules":[],"skins":{},"studio":{}}\n@asm-view */';
+    c.aceEditor.value = 'int main() {}' + block;
+    const pending = { mode: 'trace', code: c.aceEditor.value, input: '6', rebuildError: 'bad directive',
+      rebuild: { view: { version: 1, rules: [], skins: {}, studio: {
+        cameraRules: [{ id: 'pending-camera', allFrames: true, zoom: 1.4 }]
+      } }, globals: { eventSettings: { gapMs: 720, autoFixedEnabled: false } } } };
+    c.ASMTraceEditor.loadAnimation(pending);
+    assert.deepEqual(plain(c.ASMTraceEditor.snapshot().rebuild), pending.rebuild);
+    assert.equal(c.ASMTraceEditor.snapshot().rebuildError, 'bad directive');
+    if (changedView) c.aceEditor.value = 'int main() {}';
+    c.ASMTraceEditor.applyTraceDocument({ ...savedTrace(), sourceCode: c.aceEditor.value });
+    const snapshot = plain(c.ASMTraceEditor.snapshot());
+    assert.equal(snapshot.rebuild, undefined);
+    assert.equal(snapshot.rebuildError, undefined);
+    assert.equal(snapshot.traceDocument.studio.eventSettings.gapMs, 720);
+    assert.equal(snapshot.traceDocument.studio.cameraRules.some(rule => rule.id === 'pending-camera'), !changedView,
+      'deleting/editing source view must not restore deleted imported presentation');
+  });
+}
+
 test('normalization applies source view once, preserving later Studio edits and event settings', () => {
   const { c } = context();
   const first = c.ASMTraceModel.normalizeTraceDocument(savedTrace());

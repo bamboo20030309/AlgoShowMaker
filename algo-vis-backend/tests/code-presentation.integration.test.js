@@ -6,6 +6,13 @@ const vm = require('node:vm');
 const { compile, load } = require('./helpers/compile');
 const { analyzeSource, instrumentSource } = require('../trace-instrumenter');
 
+test('code snippet body is fully transparent without removing event highlight backgrounds', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../public/trace.css'), 'utf8');
+  const body = css.match(/\.asm-trace-code-body\.ace-tm\s*\{([^}]+)\}/)[1];
+  assert.match(body, /background:\s*transparent\s*;/);
+  assert.match(css, /\.asm-trace-code-event-span[^}]+background:/s);
+});
+
 test('runtime events retain exact source spans for expression-level code highlighting', async () => {
   const source = `#include <bits/stdc++.h>
 using namespace std;
@@ -600,6 +607,16 @@ test('a condition cannot color code when a comparison slice is disabled or absen
   let state = presenter.visualStateForIds([condition.id], events, completed, completed, '');
   assert.equal(state.conditionResult, undefined,
     'an unchecked comparison must not color the whole if condition');
+  first.result = true;
+  state = presenter.visualStateForIds([first.id, condition.id], events, completed, completed, '');
+  assert.equal(state.conditionResult, true, 'a checked comparison slice retains its true result');
+  first.result = false;
+  state = presenter.visualStateForIds([first.id, condition.id], events, completed, completed, '');
+  assert.equal(state.conditionResult, false, 'a checked comparison slice retains its false result');
+  state = presenter.visualStateForIds([second.id, condition.id], events, completed, completed, '');
+  assert.equal(state.conditionResult, undefined, 'unchecked slices remain uncolored');
+  state = presenter.visualStateForIds([first.id, condition.id], events, new Set(), new Set(), '');
+  assert.equal(state.conditionResult, undefined, 'a result cannot appear before its comparison completes');
   second.enabled = true;
   state = presenter.visualStateForIds([condition.id], events, completed, completed, '');
   assert.equal(state.conditionResult, true);
@@ -658,7 +675,8 @@ test('saved code font size follows the 1600x900 canvas viewport in every surface
     path.join(__dirname, '../public/trace-code-presenter.js'), 'utf8'
   ), presenterContext.window);
   const presenter = presenterContext.window.ASMTraceCodePresenter;
-  assert.equal(presenter.normalizeFontSize(undefined), 14);
+  assert.equal(presenter.normalizeFontSize(undefined), 20);
+  assert.equal(presenter.normalizeFontSize(14), 14);
   assert.equal(presenter.normalizeFontSize(4), 8);
   assert.equal(presenter.normalizeFontSize(80), 32);
   assert.equal(presenter.scaledFontSize(18, 900), 18);
@@ -963,6 +981,25 @@ test('a single omitted algorithm line stays visible instead of becoming an ellip
   assert.ok(!items.some(item => item.kind === 'ellipsis'));
 });
 
+test('call-only recursive context retains just the call without caller braces or declarations', () => {
+  const source = 'void walk(int i) {\n  int unused = 1;\n  if (i > 0) {\n    walk(i - 1);\n  }\n}';
+  const context = { window: {} };
+  context.window = context;
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-code-model.js'), 'utf8'), context);
+  const from = source.indexOf('walk(i - 1)');
+  const plan = context.ASMTraceCodeModel.planFrame({ sourceCode: source }, {
+    id: 'call-only', events: [{ id: 'call', type: 'call', source: {
+      functionName: 'walk', from, to: from + 'walk(i - 1)'.length, line: 4, endLine: 4
+    } }]
+  });
+  assert.equal(plan.fragments.length, 1);
+  for (const key of ['items', 'expandedItems']) {
+    assert.equal(plan.fragments[0][key].length, 1);
+    assert.equal(plan.fragments[0][key][0].text.trim(), 'walk(i - 1);');
+  }
+});
+
 test('recursive snippets retain the function header, recursive call and closing brace', () => {
   const source = `void walk(vector<int>& arr, int i) {
   if (i >= 0) {
@@ -1075,7 +1112,7 @@ test('code transitions use one continuous wheel-like scroll interval', () => {
   assert.match(css,
     /\.asm-trace-code-page\.is-transition-scrolling\s*\{[^}]*transform 460ms cubic-bezier\(0\.25, 0\.1, 0\.25, 1\)/s);
   assert.match(css,
-    /is-transition-scrolling \.asm-trace-code-line\.is-transition-leaving\s*\{[^}]*max-height:\s*0/s);
+    /is-transition-scrolling \.asm-trace-code-line\.is-transition-leaving\s*\{[^}]*max-height:\s*1\.58em;[^}]*opacity:\s*0/s);
   assert.doesNotMatch(css, /translateY\((?:-)?30px\)/,
     'cross-subtree changes must scroll by measured content distance instead of a short fade nudge');
 });
@@ -1253,11 +1290,11 @@ int main() {
   assert.equal(functionFragments.length, 1,
     'separate control clusters must not repeat the complete quick_sort source');
   const fragment = functionFragments[0];
-  assert.ok(fragment.eventIds.includes(scopeExit.id));
+  assert.ok(!fragment.eventIds.includes(scopeExit.id), 'exit animations do not take code space');
   assert.ok(fragment.eventIds.includes(swap.id));
   const lines = fragment.items.filter(item => item.kind === 'line');
   assert.equal(new Set(lines.map(item => item.number)).size, lines.length);
-  assert.ok(lines.some(item => item.segments.some(segment => segment.eventIds.includes(scopeExit.id))));
+  assert.ok(!lines.some(item => item.segments.some(segment => segment.eventIds.includes(scopeExit.id))));
   assert.ok(lines.some(item => item.segments.some(segment => segment.eventIds.includes(swap.id))));
   assert.ok(frame.events.every((event, index) => index === 0
     || Number(frame.events[index - 1].order) <= Number(event.order)));

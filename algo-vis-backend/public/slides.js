@@ -141,7 +141,11 @@
     ]
   };
 
-  let deck = loadDeck();
+  const DRAFT_KEY = deckUid ? `${STORAGE_KEY}:deck:${deckUid}`
+    : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
+  const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
+  let deck = normalizeDeck(clone(defaultDeck));
+  let localSaveRevision = 0;
   let reveal = null;
   let revealReady = false;
   let currentH = 0;
@@ -239,12 +243,6 @@
   const deckCacheDialog = document.getElementById('deckCacheDialog');
   const deckCacheLimitInput = document.getElementById('deckCacheLimitInput');
   const deckCacheStatus = document.getElementById('deckCacheStatus');
-  const deckTransferErrorDialog = document.getElementById('deckTransferErrorDialog');
-  const deckTransferErrorText = document.getElementById('deckTransferErrorText');
-  const deckTransferRetryBtn = document.getElementById('deckTransferRetryBtn');
-  const deckExportWarningDialog = document.getElementById('deckExportWarningDialog');
-  let pendingExportWarningResolve = null;
-  let failedImportFile = null;
   const shareDeckBtn = document.getElementById('shareDeckBtn');
   const sharedAccessBadge = document.getElementById('sharedAccessBadge');
   const shareDialog = document.getElementById('shareDialog');
@@ -521,29 +519,25 @@
     return clone(defaultDeck);
   }
 
-  function loadDeck() {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(OLD_STORAGE_KEY);
-      if (saved) return normalizeDeck(JSON.parse(saved));
-    } catch (err) {
-      console.warn('Failed to load deck', err);
-    }
-    return normalizeDeck(clone(defaultDeck));
-  }
-
   function saveDeck({ history: pushHistory = true, cloud = true } = {}) {
     const serializedDeck = JSON.stringify(deck);
-    const localSave = window.ASMSlideStorage?.save?.(localStorage, {
-      storageKey: STORAGE_KEY,
-      legacyKey: OLD_STORAGE_KEY,
-      serializedDeck
-    }) || { saved: false, error: new Error('Slide storage helper is unavailable') };
-    document.body.dataset.localDeckSave = localSave.saved ? 'saved' : 'failed';
+    const revision = ++localSaveRevision;
+    document.body.dataset.localDeckSave = 'pending';
     document.body.dataset.localDeckChars = String(serializedDeck.length);
-    if (!localSave.saved) {
-      console.warn('Failed to save local deck; cloud save will continue', localSave.error);
-      if (!canSaveRemoteDeck()) setCloudStatus('error', '本機儲存空間不足');
-    }
+    const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck).then(() => {
+      if (revision === localSaveRevision) {
+        document.body.dataset.localDeckSave = 'saved';
+        if (!deckUid && !shareToken) setCloudStatus('saved', '本機已儲存');
+      }
+      return true;
+    }).catch(error => {
+      console.warn('Failed to save IndexedDB draft; cloud save will continue', error);
+      if (revision === localSaveRevision) {
+        document.body.dataset.localDeckSave = 'failed';
+        if (!canSaveRemoteDeck()) setCloudStatus('error', `本機儲存失敗：${error.message}`);
+      }
+      return false;
+    });
     updateDiagnostics();
     if (pushHistory && !suppressHistory) pushHistorySnapshot(serializedDeck);
     if (cloud) scheduleCloudSave();
@@ -553,7 +547,7 @@
         syncTtsEditor();
       });
     }
-    return localSave.saved;
+    return localSave;
   }
 
   function authToken() {
@@ -621,6 +615,7 @@
     }
 
     deck = normalizeDeck(data.slide.deck);
+    cloudTraceKeys = new Set(data.slide.trace_keys || []);
     cloudDeckTitle = data.slide.title || '未命名投影片';
     sharedAccess = shareToken ? data.access : null;
     cloudDeckReady = true;
@@ -637,6 +632,7 @@
     cloudSaveTimer = setTimeout(syncDeckToCloud, 900);
   }
 
+  let cloudTraceKeys = new Set();
   async function syncDeckToCloud() {
     if (!canSaveRemoteDeck() || !cloudDeckReady) return;
     if (cloudSaveInFlight) {
@@ -648,6 +644,9 @@
     cloudSaveQueued = false;
     setCloudStatus('saving', '儲存中...');
     try {
+      const projected = await ASMSlideStorage.project(deck);
+      const traceDelta = Object.fromEntries(Object.entries(projected.traces)
+        .filter(([key]) => !cloudTraceKeys.has(key)));
       const coverThumbnail = window.AlgoDeckThumbnail
         ? await window.AlgoDeckThumbnail.create(deck)
         : '';
@@ -658,7 +657,8 @@
         headers,
         body: JSON.stringify({
           title: cloudDeckTitle,
-          deck,
+          deck: projected.deck,
+          trace_storage: { references: projected.references, traces: traceDelta },
           cover_thumbnail: coverThumbnail
         })
       });
@@ -674,9 +674,11 @@
         return;
       }
       if (!response.ok) {
+        if (response.status === 400 || response.status === 409) cloudTraceKeys.clear();
         if (response.status === 413) throw new Error('投影片資料超過 8 MB，請縮小後再儲存');
         throw new Error(data.error || 'Failed to save deck');
       }
+      cloudTraceKeys = new Set(Object.keys(projected.traces));
       setCloudStatus('saved', '已儲存');
     } catch (err) {
       console.error('Failed to save cloud deck', err);
@@ -827,28 +829,12 @@
     });
   }
 
-  function confirmCompactExport() {
-    if (!deckExportWarningDialog) throw new Error('缺少精簡匯出限制提示。');
-    return new Promise(resolve => {
-      pendingExportWarningResolve = resolve;
-      deckExportWarningDialog.showModal();
-    });
-  }
-
-  function finishCompactExportWarning(accepted) {
-    const resolve = pendingExportWarningResolve;
-    pendingExportWarningResolve = null;
-    if (deckExportWarningDialog?.open) deckExportWarningDialog.close();
-    resolve?.(accepted);
-  }
-
   async function exportDeckJson() {
     if (exportDeckBtn?.disabled) return;
     exportDeckBtn.disabled = true;
     try {
       const draft = await editorAnimationExportSnapshot();
       const projected = await window.ASMDeck.project(deck, draft);
-      if (projected.cacheSeeds.length && !await confirmCompactExport()) return;
       const blob = await window.ASMDeck.encode(projected);
       // Reuse the already-loaded result locally without putting a second trace in the archive.
       for (const seed of projected.cacheSeeds) await window.ASMDeck.cachePut(seed.key, seed.trace);
@@ -862,14 +848,15 @@
       setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (error) {
       console.error('Failed to export compact deck', error);
-      showDeckTransferError(`無法匯出投影片：${error.message}`);
+      setCloudStatus('error', `無法匯出投影片：${error.message}`);
     } finally { exportDeckBtn.disabled = false; }
   }
 
-  function importDeckJsonText(text) {
+  async function importDeckJsonText(text) {
     const parsed = JSON.parse(text);
     const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
     const nextDeck = normalizeDeck(importedDeck);
+    await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck));
     const previousDeck = deck;
     deck = nextDeck;
     currentH = 0;
@@ -884,7 +871,7 @@
     try {
       if (/\.asmdeck$/i.test(file.name)) {
         const packageData = await window.ASMDeck.decode(file);
-        const importStats = { exact: 0, base: 0, run: 0 };
+        const importStats = { exact: 0, base: 0, run: 0, pending: 0 };
         const reconstructed = await window.ASMDeck.rebuildDeck(packageData.deck, slide => {
           setCloudStatus('saving', `正在重建演算法投影片 ${slide.id}…`);
         }, (_slide, kind) => {
@@ -893,33 +880,22 @@
         document.body.dataset.asmdeckLastImportStats = JSON.stringify(importStats);
         const nextDeck = normalizeDeck(reconstructed);
         const previousDeck = deck;
+        await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck));
         deck = nextDeck;
-        if (!saveDeck({ history: false, cloud: false })) {
-          deck = previousDeck;
-          throw new Error('本機儲存空間不足，重建結果未替換目前投影片。請先釋出空間後重試。');
-        }
         currentH = 0; currentV = 0;
         saveDeck();
         renderDeck();
-        if (!deckUid) setCloudStatus('local', '精簡投影片已匯入');
+        if (!deckUid) setCloudStatus('local', importStats.pending
+          ? `投影片已匯入；${importStats.pending} 張動畫請修正程式後 RUN`
+          : '精簡投影片已匯入');
       } else {
-        importDeckJsonText(await file.text());
+        await importDeckJsonText(await file.text());
       }
       flashHint('Done');
-      failedImportFile = null;
     } catch (error) {
       console.error('Failed to import deck', error);
       setCloudStatus('error', `匯入失敗：${error.message}`);
-      failedImportFile = file;
-      showDeckTransferError(`匯入失敗：${error.message} 目前投影片沒有被替換。`, file);
     } finally { if (importDeckInput) importDeckInput.value = ''; }
-  }
-
-  function showDeckTransferError(message, retryFile = null) {
-    if (!deckTransferErrorDialog || !deckTransferErrorText) return;
-    deckTransferErrorText.textContent = message;
-    deckTransferRetryBtn.hidden = !retryFile;
-    if (!deckTransferErrorDialog.open) deckTransferErrorDialog.showModal();
   }
 
   function pushHistorySnapshot(snapshot = JSON.stringify(deck)) {
@@ -2341,6 +2317,7 @@
         }
       }, 40);
     }
+    updateAlgorithmEditButton();
   }
 
   function refreshCustomOverviewAfterFabricBuild({ scroll = false } = {}) {
@@ -2714,6 +2691,9 @@
         </div>
       </div>
     `;
+    if (animation.rebuildError) {
+      section.querySelector('.algorithm-slide-placeholder span').textContent = '原始資料已匯入，請編輯程式並 RUN';
+    }
   }
 
   function appendSlideEdgeAddButtons(section, slideId) {
@@ -6103,15 +6083,6 @@
     document.getElementById('deckCacheSaveBtn')?.addEventListener('click', saveTraceCacheLimit);
     document.getElementById('deckCacheClearBtn')?.addEventListener('click', clearTraceCache);
     document.getElementById('deckCacheCloseBtn')?.addEventListener('click', () => deckCacheDialog?.close());
-    deckTransferRetryBtn?.addEventListener('click', () => {
-      const file = failedImportFile;
-      deckTransferErrorDialog?.close();
-      if (file) importDeckJsonFile(file);
-    });
-    document.getElementById('deckTransferCloseBtn')?.addEventListener('click', () => deckTransferErrorDialog?.close());
-    document.getElementById('deckExportContinueBtn')?.addEventListener('click', () => finishCompactExportWarning(true));
-    document.getElementById('deckExportCancelBtn')?.addEventListener('click', () => finishCompactExportWarning(false));
-    deckExportWarningDialog?.addEventListener('close', () => finishCompactExportWarning(false));
     shareDeckBtn?.addEventListener('click', openShareDialog);
     closeShareDialogBtn?.addEventListener('click', closeShareDialog);
     cancelShareDialogBtn?.addEventListener('click', closeShareDialog);
@@ -9483,22 +9454,26 @@
   }
 
   async function bootstrap() {
+    try {
+      const localDeck = await draftStore.loadDeck(DRAFT_KEY,
+        !deckUid && !shareToken ? [STORAGE_KEY, OLD_STORAGE_KEY] : []);
+      if (localDeck) deck = normalizeDeck(localDeck);
+      await loadCloudDeck();
+    } catch (err) {
+      console.error('Cloud deck initialization failed', err);
+      setCloudStatus('error', `載入失敗：${err.message}`);
+      // Never overwrite an unreadable or unmigrated draft with a default deck.
+      return;
+    }
+
     bindChrome();
     bindSlideDrop();
     bindCustomOverview();
     bindOverviewDrag();
     window.addEventListener('beforeunload', () => stopTtsPlayback());
-
-    try {
-      await loadCloudDeck();
-    } catch (err) {
-      console.error('Cloud deck initialization failed', err);
-      if (deckUid || shareToken) return;
-    }
-
     renderDeck();
     updateAlgorithmEditButton();
-    saveDeck({ history: false, cloud: false });
+    await saveDeck({ history: false, cloud: false });
     pushHistorySnapshot();
     initReveal();
   }

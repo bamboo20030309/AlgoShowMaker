@@ -204,7 +204,30 @@
     };
   }
 
+  // IDs describe a visual role; endpoints describe its binding on this frame.
+  // Legacy documents without identity metadata are matched by exact ID only.
+  function pair(previous = [], current = []) {
+    const matches = new Map(), used = new Set();
+    const compatible = (a, b) => a.source === b.source
+      && (a.explicitId && b.explicitId || a.scope === b.scope);
+    current.forEach(b => {
+      const candidates = previous.filter(a => !used.has(a) && a.id === b.id && compatible(a, b));
+      if (candidates.length === 1) { matches.set(b, candidates[0]); used.add(candidates[0]); }
+    });
+    const family = a => JSON.stringify([a.source, a.scope,
+      a.fromObject, a.toObject, a.line, a.headStart, a.headEnd]);
+    current.filter(b => !matches.has(b) && b.explicitId === false).forEach(b => {
+      const candidates = previous.filter(a => !used.has(a) && a.explicitId === false && family(a) === family(b));
+      const peers = current.filter(a => !matches.has(a) && a.explicitId === false && family(a) === family(b));
+      if (candidates.length === 1 && peers.length === 1) {
+        matches.set(b, candidates[0]); used.add(candidates[0]);
+      }
+    });
+    return matches;
+  }
+
   return {
+    pair,
     HEAD_SHRINK,
     COLORS,
     color,

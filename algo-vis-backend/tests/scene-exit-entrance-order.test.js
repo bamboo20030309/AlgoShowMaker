@@ -23,6 +23,40 @@ function loadTween() {
   return context.window.ASMTraceFrameTween;
 }
 
+test('recursive roles match declarations, ancestry and visual domain, never names alone', () => {
+  const tween = loadTween();
+  const frame = (id, parent, fn = 'visit') => ({ source: {
+    function: fn, recursionActivationId: id, recursionParentActivationId: parent
+  }, events: [] });
+  const parent = frame('parent', 'main');
+  const child = frame('child', 'parent');
+  const sibling = frame('sibling', 'parent');
+  const visual = (variable, generation = '0', opacity = '1') => ({
+    dataset: { traceVariable: variable, traceSceneGeneration: generation },
+    getAttribute(name) { return name === 'opacity' ? opacity : null; },
+    matches() { return false; }, closest() { return null; }
+  });
+  const variable = 'visit:i@40';
+  const before = visual(variable);
+  const after = visual(variable);
+  const document = { variables: { [variable]: { name: 'i', functionName: 'visit' } },
+    frames: [parent, child, sibling] };
+  const previous = new Map([[variable, before]]);
+  const current = new Map([[variable, after]]);
+  const matches = (from, to, objects = previous, elements = current) =>
+    tween.recursiveRoleContinuations(document, from, to, objects, elements);
+  assert.equal(matches(parent, child).size, 1, 'descent preserves the role');
+  assert.equal(matches(child, parent).size, 1, 'return restores the parent role');
+  assert.equal(matches(child, sibling).size, 0, 'siblings do not share a lifetime');
+  assert.equal(matches(frame('main', '', 'main'), child).size, 0, 'outer same name is distinct');
+  assert.equal(matches(parent, child, new Map([[variable, visual('visit:i@80')]])).size, 0,
+    'same function/name at another declaration is distinct');
+  assert.equal(matches(parent, child, previous,
+    new Map([[variable, visual(variable, '1')]])).size, 0, 'keep cuts the domain');
+  assert.equal(matches(parent, child, new Map([[variable, visual(variable, '0', '0')]])).size, 0,
+    'an absent visual must enter again');
+});
+
 test('scene entrance waits for every enabled exit slot', () => {
   const tween = loadTween();
   const timeline = [
@@ -118,6 +152,19 @@ test('a recursive reference parameter scope exit does not clone the continuing c
   assert.equal(tween.scopeExitVisualContinues(
     previousArray, new Map([['current-array', currentArray]])
   ), true, 'the same underlying vector must remain one continuous visual');
+  assert.equal(tween.scopeExitVisualContinues(
+    previousArray, new Map([['current-array', currentArray]]),
+    { type: 'scope-exit' }
+  ), true, 'natural reference exits retain the underlying vector');
+  assert.equal(tween.scopeExitVisualContinues(
+    previousArray, new Map([['current-array', currentArray]]),
+    { type: 'visual-exit', manualVisualExit: true }
+  ), false, 'explicit exits cannot be suppressed by container continuity');
+  const oldI = visual({ traceSourceVariableId: 'main:i', traceRuntimeIdentity: 'lifetime-i' });
+  const newI = visual({ traceSourceVariableId: 'main:i', traceRuntimeIdentity: 'lifetime-i' });
+  assert.equal(tween.scopeExitVisualContinues(
+    oldI, new Map([['new-i', newI]]), { type: 'visual-exit', manualVisualExit: true }
+  ), false, 'explicit exits must remove the old pointer even when for i remains alive');
   assert.equal(tween.scopeExitVisualContinues(
     previousLocal, new Map([['current-local', currentLocal]])
   ), false, 'a recursive local with a new lifetime must still leave and enter');

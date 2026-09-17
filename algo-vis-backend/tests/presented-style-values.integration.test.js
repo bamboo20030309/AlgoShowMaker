@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compile } = require('./helpers/compile');
 
-test('value-dependent background uses presented swap values instead of the destination frame', async () => {
+test('value-dependent background uses destination state before swap value commit', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 void quick_sort(vector<int>& arr, int low, int high) {
@@ -80,16 +80,21 @@ int main() {
     }]
   }, frame);
   replay.applyStyles();
-  assert.equal(attributes.get('fill'), before[String(left)].styleTypes.background);
+  assert.equal(replay.ownsPaint(rect), true);
+  assert.equal(replay.ownsPaint({}), false);
+  assert.equal(attributes.get('fill'), after[String(left)].styleTypes.background);
   replay.update(299);
   replay.applyStyles();
-  assert.equal(attributes.get('fill'), before[String(left)].styleTypes.background);
+  assert.equal(attributes.get('fill'), after[String(left)].styleTypes.background);
   replay.update(300);
+  replay.applyStyles();
+  assert.equal(attributes.get('fill'), after[String(left)].styleTypes.background);
+  replay.finish();
   replay.applyStyles();
   assert.equal(attributes.get('fill'), after[String(left)].styleTypes.background);
 });
 
-test('swap keeps index-label backgrounds on logical values until the swap commits', async () => {
+test('swap retains source paint until actual motion, not code prompt, begins', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -105,7 +110,7 @@ int main() {
   const swap = frame.events.find(event => event.type === 'swap');
   assert.ok(swap);
   const plan = window.ASMTraceFrameTween.createForwardReplayPlan(trace, frame, [
-    { event: swap, animation: 'swap', start: 0, end: 500 }
+    { event: swap, animation: 'swap', promptStart: 0, start: 200, end: 700 }
   ]);
   const arrId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr');
   const paints = new Map();
@@ -162,29 +167,50 @@ int main() {
   const after = window.ASMTraceRules.evaluate(trace, frame)[arrId];
 
   replay.applyStyles();
-  assert.equal(paints.get('index:0:fill'), before['0'].styleTypes.background);
-  assert.equal(paints.get('index:1:fill'), before['1'].styleTypes.background);
-  assert.equal(paints.get('cell:0:fill'), before['1'].styleTypes.background);
-  assert.equal(paints.get('cell:1:fill'), before['0'].styleTypes.background);
-  assert.equal(paints.get('cell:0:fill'), paints.get('index:1:fill'),
+  assert.equal(paints.get('index:0:fill'), 'rgba(239, 154, 154, 0.6)');
+  assert.equal(paints.get('index:1:fill'), 'rgba(165, 214, 167, 0.6)');
+  assert.equal(paints.get('cell:0:fill'), 'rgba(165, 214, 167, 0.6)',
+    'incoming visual cell must retain its source slot paint');
+  assert.equal(paints.get('cell:1:fill'), 'rgba(239, 154, 154, 0.6)');
+  replay.update(199);
+  replay.applyStyles();
+  assert.equal(paints.get('index:0:fill'), 'rgba(239, 154, 154, 0.6)');
+  replay.update(200);
+  replay.applyStyles();
+  assert.equal(paints.get('index:0:fill'), after['0'].styleTypes.background);
+  assert.equal(paints.get('index:1:fill'), after['1'].styleTypes.background);
+  assert.equal(paints.get('cell:0:fill'), after['0'].styleTypes.background);
+  assert.equal(paints.get('cell:1:fill'), after['1'].styleTypes.background);
+  assert.equal(paints.get('cell:0:fill'), paints.get('index:0:fill'),
     'the value cell must share the background of the index box at its presented position');
-  assert.equal(paints.get('cell:1:fill'), paints.get('index:0:fill'),
+  assert.equal(paints.get('cell:1:fill'), paints.get('index:1:fill'),
     'both halves of a presented array slot must repaint in the same checkpoint');
-  assert.notEqual(paints.get('cell:0:fill'), paints.get('index:0:fill'),
-    'the incoming value cell must not recolor the stationary index prematurely');
+  assert.equal(paints.get('cell:0:fill'), paints.get('index:0:fill'),
+    'destination styles are applied without waiting for numeric commits');
   replay.update(499);
   replay.applyStyles();
-  assert.equal(paints.get('index:0:fill'), before['0'].styleTypes.background);
-  assert.equal(paints.get('index:1:fill'), before['1'].styleTypes.background);
+  assert.equal(paints.get('index:0:fill'), after['0'].styleTypes.background);
+  assert.equal(paints.get('index:1:fill'), after['1'].styleTypes.background);
   replay.update(500);
+  replay.applyStyles();
+  assert.equal(paints.get('index:0:fill'), after['0'].styleTypes.background);
+  assert.equal(paints.get('index:1:fill'), after['1'].styleTypes.background);
+  replay.finish();
   replay.applyStyles();
   assert.equal(paints.get('index:0:fill'), after['0'].styleTypes.background);
   assert.equal(paints.get('index:1:fill'), after['1'].styleTypes.background);
   assert.equal(paints.get('index:0:fill'), paints.get('cell:0:fill'));
   assert.equal(paints.get('index:1:fill'), paints.get('cell:1:fill'));
+  const instant = window.ASMTraceFrameTween.prepareForwardValues({
+    document: trace, currentElements: elements, previousObjects
+  }, window.ASMTraceFrameTween.createForwardReplayPlan(trace, frame, []), frame);
+  instant.applyStyles();
+  assert.equal(paints.get('cell:0:fill'), after['0'].styleTypes.background,
+    'a swap with no animation slot must not defer paint');
+  assert.equal(paints.get('index:0:fill'), after['0'].styleTypes.background);
 });
 
-test('forward style checkpoint keeps the actually presented paint until assignment commits', async () => {
+test('multiple animated and disabled assignments do not gate destination style', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -261,13 +287,13 @@ int main() {
     }]
   }, frame);
   replay.applyStyles();
-  assert.equal(paint.get('fill'), '#ef9a9a');
-  assert.equal(paint.get('fill-opacity'), '0.58');
-  assert.equal(otherPaint.get('fill'), '#ef9a9a');
+  assert.equal(paint.get('fill'), 'rgba(165, 214, 167, 0.6)');
+  assert.equal(paint.get('fill-opacity'), '1');
+  assert.equal(otherPaint.get('fill'), 'rgba(165, 214, 167, 0.6)');
   replay.update(299);
   replay.applyStyles();
-  assert.equal(paint.get('fill'), '#ef9a9a');
-  assert.equal(otherPaint.get('fill'), '#ef9a9a');
+  assert.equal(paint.get('fill'), 'rgba(165, 214, 167, 0.6)');
+  assert.equal(otherPaint.get('fill'), 'rgba(165, 214, 167, 0.6)');
   replay.update(300);
   replay.applyStyles();
   assert.equal(text.textContent, '1');
@@ -279,10 +305,13 @@ int main() {
   replay.update(500);
   replay.applyStyles();
   assert.equal(text.textContent, '6');
-  assert.equal(paint.get('fill'), '#ffffff');
+  assert.equal(paint.get('fill'), 'rgba(165, 214, 167, 0.6)');
+  replay.finish();
+  replay.applyStyles();
+  assert.equal(paint.get('fill'), 'rgba(165, 214, 167, 0.6)');
 });
 
-test('index and value boxes keep one previous checkpoint until a dependent scalar commits', async () => {
+test('key-dependent paint and hints use destination state at frame entry', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -293,10 +322,17 @@ int main() {
   // @frame arr,key
   // @style arr[0] background AV_green when value < key
   // @style arr[0] background AV_red when value >= key
+  // @style arr[0] highlight when value < key
+  // @style arr[0] point when value < key
+  // @style arr[0] mark when value < key
 }`);
   const frame = trace.frames[1];
   const arrId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr');
   const keyId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'key');
+  let presentedHints = {};
+  window.ASMTraceRenderers = {
+    updatePresentedHints(cell, highlight) { presentedHints = highlight.styleTypes || {}; }
+  };
   const paints = new Map();
   const makeRect = prefix => ({
     getAttribute(name) {
@@ -370,14 +406,20 @@ int main() {
   }, frame);
 
   replay.applyStyles();
-  assert.equal(paints.get('value:fill'), '#ef9a9a');
-  assert.equal(paints.get('index:fill'), '#ef9a9a');
+  assert.equal(paints.get('value:fill'), 'rgba(239, 154, 154, 0.6)');
+  assert.equal(paints.get('index:fill'), 'rgba(239, 154, 154, 0.6)');
+  for (const kind of ['highlight', 'point', 'mark']) assert.equal(Object.hasOwn(presentedHints, kind), false);
   replay.update(299);
   replay.applyStyles();
-  assert.equal(paints.get('value:fill'), '#ef9a9a');
-  assert.equal(paints.get('index:fill'), '#ef9a9a');
+  assert.equal(paints.get('value:fill'), 'rgba(239, 154, 154, 0.6)');
+  assert.equal(paints.get('index:fill'), 'rgba(239, 154, 154, 0.6)');
   replay.update(300);
   replay.applyStyles();
   assert.equal(paints.get('value:fill'), paints.get('index:fill'));
-  assert.notEqual(paints.get('value:fill'), '#ef9a9a');
+  assert.equal(paints.get('value:fill'), 'rgba(239, 154, 154, 0.6)');
+  for (const kind of ['highlight', 'point', 'mark']) assert.equal(Object.hasOwn(presentedHints, kind), false);
+  replay.finish();
+  replay.applyStyles();
+  assert.equal(paints.get('value:fill'), 'rgba(239, 154, 154, 0.6)');
+  for (const kind of ['highlight', 'point', 'mark']) assert.equal(Object.hasOwn(presentedHints, kind), false);
 });

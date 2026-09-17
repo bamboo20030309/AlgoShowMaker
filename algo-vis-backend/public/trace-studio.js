@@ -2255,7 +2255,7 @@
       cameraDraftId = rule?.id || '';
     }
     if (codePanelFontSize && codePanelFontSizeValue) {
-      const size = window.ASMTraceCodePresenter?.normalizeFontSize?.(trace?.studio?.codePanelFontSize) || 14;
+      const size = window.ASMTraceCodePresenter?.normalizeFontSize?.(trace?.studio?.codePanelFontSize) || 20;
       codePanelFontSize.value = String(size);
       codePanelFontSizeValue.textContent = `${size}px`;
     }
@@ -3322,14 +3322,14 @@
     codePanelFontSize.step = '1';
     const savedCodeFontSize = window.ASMTraceCodePresenter?.normalizeFontSize?.(
       trace?.studio?.codePanelFontSize
-    ) || 14;
+    ) || 20;
     codePanelFontSize.value = String(savedCodeFontSize);
     codePanelFontSizeValue = el('output', 'trace-studio-range-value', `${savedCodeFontSize}px`);
     const codeFontSizeRow = el('div', 'trace-studio-range-row');
     codeFontSizeRow.append(codePanelFontSize, codePanelFontSizeValue);
     codePanelFontSize.addEventListener('input', () => {
       const size = window.ASMTraceCodePresenter?.normalizeFontSize?.(codePanelFontSize.value)
-        || Number(codePanelFontSize.value) || 14;
+        || Number(codePanelFontSize.value) || 20;
       trace.studio ||= {};
       trace.studio.codePanelFontSize = size;
       codePanelFontSizeValue.textContent = `${size}px`;

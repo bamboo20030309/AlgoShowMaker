@@ -1062,9 +1062,12 @@
         ? window.ASMArrowModel.geometry(start, end, fromTarget, toTarget, arrow.style)
         : { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
       if (!geometry) return;
+      const activation = String(frame.source?.recursionActivationId || frame.source?.function || '');
+      const runtimeId = arrow.source === 'directive' && arrow.explicitId === false && activation
+        ? `${arrow.id}@${activation}` : arrow.id;
       const key = arrow.source === 'studio'
         ? `arrow:${arrow.id}`
-        : `arrow:${arrow.source}:${arrow.id}`;
+        : `arrow:${arrow.source}:${runtimeId}`;
       const attributes = {
         id: `trace-arrow-${safeKey(`${arrow.source}-${arrow.id}`)}`,
         class: input.className || 'asm-trace-arrow',
@@ -1072,6 +1075,14 @@
         'stroke-width': arrow.style.width,
         fill: 'none',
         'data-trace-arrow': arrow.id,
+        'data-trace-arrow-runtime-id': runtimeId,
+        'data-trace-arrow-name': arrow.displayName || arrow.id,
+        'data-trace-arrow-identity': JSON.stringify({ id: arrow.id, source: arrow.source,
+          explicitId: arrow.explicitId ?? (arrow.source === 'studio' ? true : undefined),
+          scope: arrow.source === 'directive' ? activation : '',
+          fromObject: arrow.from.variableId || arrow.from.objectKey || arrow.from.targetName,
+          toObject: arrow.to.variableId || arrow.to.objectKey || arrow.to.targetName,
+          line: arrow.style.line, headStart: arrow.style.headStart, headEnd: arrow.style.headEnd }),
         'data-trace-arrow-source': arrow.source,
         'data-trace-arrow-layer': arrow.layer,
         'data-trace-arrow-from-key': resolvedTargetKey(document, frame, arrow.from, placements),
@@ -1145,11 +1156,11 @@
       }
       const startAnchor = anchorPoint(fromBox, arrow.dataset.traceArrowFromAnchor);
       const endAnchor = anchorPoint(toBox, arrow.dataset.traceArrowToAnchor);
-      const start = {
+      let start = {
         x: startAnchor.x + Number(arrow.dataset.traceArrowFromDx || 0),
         y: startAnchor.y + Number(arrow.dataset.traceArrowFromDy || 0)
       };
-      const end = {
+      let end = {
         x: endAnchor.x + Number(arrow.dataset.traceArrowToDx || 0),
         y: endAnchor.y + Number(arrow.dataset.traceArrowToDy || 0)
       };
@@ -1158,6 +1169,38 @@
         headStart: arrow.dataset.traceArrowHeadStart,
         headEnd: arrow.dataset.traceArrowHeadEnd
       };
+      const tween = arrow._asmArrowTween;
+      if (tween) {
+        const progress = tween.progress;
+        const oldPoint = (role, fallback) => {
+          const key = tween.previous.dataset[`traceArrow${role}Key`];
+          const oldElement = elements.get(key);
+          const oldBox = model.presentedBounds(oldElement, root,
+            tween.previous.dataset[`traceArrow${role}Cell`] !== 'true');
+          if (oldBox) {
+            const point = anchorPoint(oldBox, tween.previous.dataset[`traceArrow${role}Anchor`]);
+            return { x: point.x + Number(tween.previous.dataset[`traceArrow${role}Dx`] || 0),
+              y: point.y + Number(tween.previous.dataset[`traceArrow${role}Dy`] || 0) };
+          }
+          const x = Number(tween.previous.dataset[`traceArrow${role}X`]);
+          const y = Number(tween.previous.dataset[`traceArrow${role}Y`]);
+          return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : fallback;
+        };
+        const sameBinding = role => ['Key', 'Anchor', 'Dx', 'Dy'].every(field =>
+          tween.previous.dataset[`traceArrow${role}${field}`] === arrow.dataset[`traceArrow${role}${field}`]);
+        const blend = (old, target) => ({ x: old.x + (target.x - old.x) * progress,
+          y: old.y + (target.y - old.y) * progress });
+        if (!sameBinding('From')) start = blend(oldPoint('From', start), start);
+        if (!sameBinding('To')) end = blend(oldPoint('To', end), end);
+        arrow.setAttribute('stroke', tween.color(tween.previous.getAttribute('stroke'), tween.targetColor, progress));
+        style.width = Number(tween.previous.getAttribute('stroke-width'))
+          + (tween.targetWidth - Number(tween.previous.getAttribute('stroke-width'))) * progress;
+        arrow.setAttribute('stroke-width', style.width);
+      }
+      arrow.dataset.traceArrowFromX = String(start.x);
+      arrow.dataset.traceArrowFromY = String(start.y);
+      arrow.dataset.traceArrowToX = String(end.x);
+      arrow.dataset.traceArrowToY = String(end.y);
       const geometry = model.geometry(start, end,
         { anchor: arrow.dataset.traceArrowFromAnchor, outerframe: !fromCell, indexExpression: fromCell ? 'cell' : '' },
         { anchor: arrow.dataset.traceArrowToAnchor, outerframe: !toCell, indexExpression: toCell ? 'cell' : '' }, style);
@@ -1212,11 +1255,18 @@
     const wrapper = svg('g', { class: 'asm-trace-style-decoration', 'pointer-events': 'none' });
     wrapper._asmStyleCell = cell;
     wrapper._asmStyleBasis = basis;
-    if (kind === 'highlight' && visual.tagName?.toLowerCase() === 'rect') {
+    if (['highlight', 'compare'].includes(kind) && visual.tagName?.toLowerCase() === 'rect') {
       const rect = [...cell.children].find(child => child.tagName?.toLowerCase() === 'rect');
       if (rect) {
         const number = (element, name) => Number(element.getAttribute(name)) || 0;
         wrapper._asmStyleRect = rect;
+        const key = cell.getAttribute('data-trace-object-key');
+        const index = cell.getAttribute('data-trace-index');
+        const indexCell = kind !== 'highlight' ? null : currentScene?.elements?.get?.(`${key}:index`)
+          || (index !== null ? [...(cell.parentElement?.children || [])]
+            .find(child => child.getAttribute('data-trace-index-label') === index) : null);
+        wrapper._asmStyleIndexRect = [...(indexCell?.children || [])]
+          .find(child => child.tagName?.toLowerCase() === 'rect');
         wrapper._asmStyleInsets = {
           left: number(visual, 'x') - number(rect, 'x'),
           top: number(visual, 'y') - number(rect, 'y'),
@@ -1230,6 +1280,49 @@
     return true;
   }
 
+  function updatePresentedHints(cell, highlight, key) {
+    const root = cell?.closest?.('#asm-trace-root');
+    const rect = cell?.querySelector?.(':scope > rect');
+    if (!root || !rect || !window.HintWidgets) return;
+    root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
+      if (visual.getAttribute('data-trace-attached-to') === key
+        && !visual._asmLiveHint) visual.setAttribute('display', 'none');
+    });
+    const hints = cell._asmPresentedHints ||= new Map();
+    const types = { ...(highlight?.fixedMark ? { mark: highlight.fixedMark } : {}), ...(highlight?.styleTypes || {}) };
+    const number = name => Number(rect.getAttribute(name)) || 0;
+    const x = number('x'), y = number('y'), width = number('width'), height = number('height');
+    ['highlight', 'point', 'mark'].forEach(kind => {
+      let visual = hints.get(kind);
+      if (!Object.hasOwn(types, kind)) {
+        visual?.setAttribute('display', 'none');
+        return;
+      }
+      const color = types[kind] || (kind === 'mark' ? 'limegreen' : 'red');
+      if (!visual) {
+        const group = svg('g');
+        cell.append(group);
+        const indexRect = currentScene?.elements?.get?.(`${key}:index`)?.querySelector?.(':scope > rect');
+        const indexHeight = Number(indexRect?.getAttribute('height')) || 0;
+        if (kind === 'highlight') window.HintWidgets.drawHighlightBox(group, x, y, width, height + indexHeight, color);
+        if (kind === 'point') window.HintWidgets.drawArrow(group, x + width / 2, y, color);
+        if (kind === 'mark') window.HintWidgets.drawMark(group, x + width - 10, y + height - 10, color);
+        visual = group.firstElementChild;
+        if (visual) {
+          visual._asmLiveHint = true;
+          attachStyleVisual(root, visual, cell, kind);
+          hints.set(kind, visual);
+        }
+        group.remove();
+      }
+      visual?.removeAttribute('display');
+      visual?.setAttribute(kind === 'point' ? 'fill' : 'stroke', color);
+      // Reuse the existing hint node and its shared-clock animation. Only
+      // paint interpolates; positions always follow the actual cell geometry.
+      visual?.classList.add('asm-trace-style-paint');
+    });
+  }
+
   function refreshPresentedStyles(root) {
     const layer = [...(root?.children || [])].find(child => child.classList?.contains('asm-trace-style-layer'));
     const rootMatrix = root?.getScreenCTM?.();
@@ -1238,7 +1331,8 @@
     try { inverse = rootMatrix.inverse(); } catch { return; }
     [...layer.children].forEach(wrapper => {
       if (!wrapper.firstElementChild) { wrapper.remove(); return; }
-      const cell = wrapper._asmStyleCell;
+      const sourceCell = wrapper._asmStyleCell;
+      const cell = sourceCell?._asmStylePresentationCell || sourceCell;
       const basis = wrapper._asmStyleBasis;
       if (!cell?.isConnected || !root.contains(cell) || !basis) {
         wrapper.setAttribute('display', 'none');
@@ -1259,7 +1353,8 @@
       if (hidden) wrapper.setAttribute('display', 'none');
       else wrapper.removeAttribute('display');
       wrapper.setAttribute('opacity', String(opacity));
-      const rect = wrapper._asmStyleRect;
+      const rect = cell !== sourceCell ? [...cell.children]
+        .find(child => child.tagName?.toLowerCase() === 'rect') : wrapper._asmStyleRect;
       const insets = wrapper._asmStyleInsets;
       const visual = wrapper.firstElementChild;
       if (rect?.isConnected && insets && visual) {
@@ -1267,7 +1362,9 @@
         visual.setAttribute('x', String(number('x') + insets.left));
         visual.setAttribute('y', String(number('y') + insets.top));
         visual.setAttribute('width', String(Math.max(0, number('width') + insets.right - insets.left)));
-        visual.setAttribute('height', String(Math.max(0, number('height') + insets.bottom - insets.top)));
+        const indexHeight = Number(wrapper._asmStyleIndexRect?.getAttribute('height')) || 0;
+        visual.setAttribute('height', String(Math.max(0, number('height')
+          + Math.max(insets.bottom, indexHeight) - insets.top)));
       }
     });
   }
@@ -1687,7 +1784,7 @@
     };
   }
 
-  function applyDefaultLiveObjectPlacement(document, frame, placements, elements, liveObjectKeys) {
+  function applyDefaultLiveObjectPlacement(document, frame, placements, elements, liveObjectKeys, initialY = 0) {
     const keys = [...new Set(liveObjectKeys || [])].filter(key => (
       placements.has(key) && elements.has(key)
     ));
@@ -1706,6 +1803,10 @@
     if (explicitlyPositioned || explicitlyBound) return null;
 
     const delta = defaultLiveObjectPlacementDelta(placements.get(primaryKey));
+    // Keep the horizontal default, but never reset an automatically stacked
+    // live row to canvas.top. Frozen frame snapshots have no snapshotIds:
+    // preserve their allocated row through initialY instead.
+    if (delta) delta.y = frame?.snapshotIds?.length ? 0 : delta.y + (Number(initialY) || 0);
     if (!delta || (Math.abs(delta.x) < 0.01 && Math.abs(delta.y) < 0.01)) return delta;
     keys.forEach(key => {
       const element = elements.get(key);
@@ -3633,7 +3734,7 @@
       collectElementPlacements(motion, baseX, baseY, placements, elements);
       y += Math.max(76, Number(height) || 76) + 28;
     });
-    applyDefaultLiveObjectPlacement(document, frame, placements, elements, liveObjectKeys);
+    applyDefaultLiveObjectPlacement(document, frame, placements, elements, liveObjectKeys, options.initialY);
     // Resolve frame/keep/Studio object placement before drawing anything that
     // is anchored to those objects. Otherwise @text, segments, arrows, and
     // automatic markers read the pre-offset coordinates from placements.
@@ -4145,9 +4246,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-180';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-186';
   window.ASMTraceRenderers = {
-    build: 'trace-180',
+    build: 'trace-186', updatePresentedHints,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

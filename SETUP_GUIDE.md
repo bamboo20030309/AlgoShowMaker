@@ -57,6 +57,14 @@ Compose service 名稱 `mongo` 連線。Docker 映像使用 Node.js 22，以符�
 1. **回到專案根目錄拉取更新**：執行 `cd ~/AlgoShowMaker` 並執行 `git pull`。
 2. **重新編譯並啟動**：回到 `cd algo-vis-backend` 目錄並再次執行 `docker-compose up -d --build`。
 
+### 2026/09/17：動畫結果分離儲存的部署注意事項
+
+新版前端會傳送精簡 deck、動畫參照與新增結果；backend 在 MongoDB 同一份文件內分開保存 `trace_references`、`trace_results`，讀取時還原完整動畫。必須同步更新前端與 backend，不能只替換 public 後沿用舊後端。舊文件仍可讀，下一次儲存才遷移；不需要刪除資料庫、清除資料卷或重新 RUN。
+
+只更新應用服務時，可執行 `docker compose up -d --build --no-deps backend`，然後 `docker compose restart nginx`。不要執行 `down -v`。完成後確認 `/slides.html`、`/algorithm.html` 回應正常，以及 backend 可連線 MongoDB；雲端還需驗證儲存、重開與分享播放。
+
+建置使用 `.dockerignore` 排除本機 node_modules、暫存、測試報告、日誌與 `.env`；依賴由 Linux 映像內安裝，環境設定由 Compose 的 `env_file` 在啟動時傳入，不複製進映像。
+
 ## 六、 安全與技術機制說明
 * **沙箱環境 (Sandbox)**：後端會在 `/sandbox` 目錄執行使用者程式碼，該目錄設為唯讀權限 `555` 以防止惡意修改。
 * **資源限制**：透過 Docker 限制後端容器使用最多 0.5 CPU 與 1G 記憶體，防止 Fork Bomb 或資源耗盡。

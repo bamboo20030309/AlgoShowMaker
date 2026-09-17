@@ -9,8 +9,66 @@ npm run regression
 需要 Node.js、已安裝 npm dependencies、Git，以及 server.js 使用的 C++ 編譯器。
 指令檢查專案 JavaScript 語法、git diff --check，啟動獨立連接埠的臨時伺服器，
 執行所有 tests/*.test.js，結束後關閉自己啟動的伺服器。不會停止 localhost:3000、
-改寫投影片或產生 server log 檔。此指令不包含瀏覽器目視驗收。
+改寫投影片或產生 server log 檔。測試完成後會接著執行無頭瀏覽器實際動畫驗證。
+Windows 預設使用已安裝的 Microsoft Edge；其他環境先執行 `npx playwright install chromium`。
+可用 `ASM_BROWSER_CHANNEL` 指定瀏覽器。瀏覽器缺少或無法啟動時會失敗，不會跳過。
 已有新版開發伺服器時也可執行 npm test（預設 localhost:3000）。
+
+單獨重跑實際動畫：`npm run regression:animation`（同樣自動啟動隔離服務）。
+使用冒泡、插入、選擇、Heap、遞迴 Quick Sort，
+走實際 RUN 與 `CodeScript` 播放，另外透過投影片的同源 iframe 載入協定驗證 editor/runtime。
+此 iframe 驗證不取代完整的 slides.html 匯入、雲端儲存及手機目視驗收。
+
+報告保存在 `test-results/animation/<時間>/`，包含 summary、逐幀實錄與截圖，預設不提交 Git。
+重疊僅檢查事件開始／結束與幀的定點；動畫作用中的交叉不算違規，不改變指標交換路徑。
+keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
+每次更新都應執行；失敗則查看第一個違規時間點、追查修正並重跑，不能只更換基準。
+
+### 持久動畫結果儲存驗證
+
+先執行 `node --test tests/slide-storage.test.js tests/slide-cloud-storage.test.js`：檢查內容雜湊去重、獨立 Studio 設定、跨草稿參照回收、交易失敗保留舊資料，以及雲端增量結果與分享讀取。雲端路由測試使用替代資料庫，不等同實機 MongoDB 驗收。公開 HTTP 的 SHA-256 相容性亦有固定測試。
+
+`deck-import-repair` 瀏覽器案例另檢查成功 RUN 並儲存後重新載入，完整 trace 與事件間隔保持一致，且不發出分析／編譯請求。最後用 `ASM_ANIMATION_CASES=selection` 執行 `npm run regression`，核對三介面定點、步進、自動播放與 Studio 同步；不提交產生的報告與截圖。
+
+### 全域預設驗證項目
+
+`defaults-directives.test.js` 檢查每幀展開、preset／當幀覆寫、作用域、刪除後不殘留及拒絕流程動作，
+並透過實際編譯確認 camera 與 style 進入共用 trace。`defaults` 固定小案例驗證三個介面的實際交換播放。
+可先跑 `node --test --test-name-pattern='defaults apply|removing defaults|defaults resolve|defaults reject' tests/defaults-directives.test.js` 的解析項目；
+整合項目與瀏覽器使用隔離服務，可用 `ASM_ANIMATION_CASES=defaults` 執行 `npm run regression`。
+
+### 呼叫函式固定驗證
+
+`function-call` 固定案例另驗證呼叫先於被呼叫函式進入，無畫布目標仍可排程，
+三介面呼叫片段塗灰而非黃色提示。`report.callCodeChecks` 必須取得實際呼叫通知樣本。
+
+### style 入幀套用驗證
+
+`insertion-style-labels` 使用 `6 / 1 8 7 2 6 5`，完整 RUN 後只播放前六幀。
+逐次 requestAnimationFrame 檢查 arr[5] 的 index 保持白色，以及每格 value／index 的實際 computed fill
+進度一致；必須取得真正 CSS fill transition 樣本，不能用兩邊一起瞬間換色通過。
+報告 `labelPaintChecks` 包含樣本數、過渡樣本與第一批違規。此檢查不涉及動畫中物件重疊。
+
+沿用 `style-frame-completion` 案例名稱，但驗證已改成入幀套用：同一幀連續賦值兩次，
+實際事件播放中的 value／index 背景必須已是新幀最終色，不因中途 key 提交而切換。
+`report.styleCompletionChecks`（保留既有欄位名稱）必須有動畫樣本且沒有等待到幀末才套用。
+單元／整合案例另外確認關閉的賦值及 highlight／point／mark 不以事件提交作為 style 時間屏障。
+
+`quick-style-swap` 使用 `6 / 5 7 2 1 9 4`，完整 RUN 後播放前五幀。
+三介面逐次量測第 4→5 幀：交換開始前保留來源格子填色，交換中必須取得 CSS fill transition 樣本。
+`report.swapPaintChecks` 記錄保色樣本、變色樣本及違規；小型整合測試另確認程式碼提示時間不是交換起跑時間，關閉交換不等待。
+
+### highlight 固定驗證
+
+`highlight-swap` 案例預設包含在 `npm run regression`，並驗證三個介面：
+
+- style highlight 完整包含 value＋index，不漏框或多算高度。
+- 一般陣列／heap 交換期間逐次量測實際 SVG：框不消失，位置與寬度跟隨移動、縮放的格子；必須取得移動、縮放及 heap 副本路徑樣本，沒有樣本不能通過。
+- 閃爍使用全域節奏；同一框在移動、縮放時 animationDelay／動畫起點不重設、播放時間不倒退。單元測試另驗證重建框會加入當下全域相位。
+- 比較事件框只包數值格的規則另外驗證，不與 style highlight 混用。
+- 顏色過渡必須取得原生 SVG fill／stroke transition 的中間進度樣本；自動播放等待有限變色動畫，但不等待無限閃爍。
+
+可先跑 `node --test tests/style-layer.test.js tests/presentation-hints.test.js`，再以 `ASM_ANIMATION_CASES=highlight-swap` 執行完整回歸。各介面報告的 `report.highlightChecks` 包含樣本數與第一批違規資料。
 
 ## 動畫實錄回歸
 
@@ -72,3 +130,15 @@ fingerprint 是變更偵測，不是安全驗證；忽略原始碼行尾格式�
   未宣稱 console 完全通過，也未用猜測性修改隱藏此錯誤。
 - 三介面畫布尺寸不同，驗收以事件/狀態/物件與鏡頭規則一致為準，
   不要求編輯工具、留白與螢幕像素完全相同。尚未涵蓋所有 draw type 的目視驗收。
+
+## 匯入後修正驗證
+
+`arrow-identity` 三介面案例量測同 ID 改綁的中間端點、顏色及線寬、未知名箭頭唯一候選的自動配對，以及綁定未變時跟隨格子不延遲。`arrow-identity.test.js` 檢查空白行／preset 順序穩定性、ID 衝突、候選歧義和遞迴呼叫隔離。
+
+統一瀏覽器驗證會執行 `deck-import-repair`：實際匯入含第 5 行錯置 `@camera` 的 `.asmdeck`，確認其他投影片及原始碼／輸入／設定完整保留；未 RUN 即儲存、重載後仍可編輯。修正後實際 RUN，再驗證設定還原、前後步進、兩種速度播放與 Studio 縮圖／事件，最後保存正常 trace。正常保存會將還原設定寫進 `@asm-view`，因此以演算法正文及還原設定分別核對，而非要求附加區塊也與修正前字串相同。
+
+## 遞迴角色接續驗證
+
+`recursive-roles` 固定案例包含外層同名指標、遞迴指標與一般數值、深入和返回。
+三介面實際 RUN 驗證連續角色不被標記為入場，且指標和數值都有接續樣本；沒有樣本即失敗。
+`scene-exit-entrance-order.test.js` 另驗證不同宣告位置、兄弟呼叫、keep 分界與已消失角色不接續。

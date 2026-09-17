@@ -1797,12 +1797,30 @@ test('same-cell reflow finishes before a later i++ marker movement', () => {
     'j recenters as i leaves its cell');
 });
 
-test('compare marker followers use the original rendered binding rule', () => {
+test('compare marker followers use the event checkpoint rather than the final rendered binding', () => {
   const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8');
   assert.doesNotMatch(source, /function markerMatchesCompareOperand\(/);
   assert.doesNotMatch(source, /markerMotion\.targetStates/);
   assert.match(source,
-    /const targetKey = element\?\.dataset\?\.traceBindingTarget;[\s\S]*?this\.logicalAdjustments\.has\(targetKey\)/);
+    /const targetKey = bindingTargetForMarker\?\.\(element\) \?\? element\?\.dataset\?\.traceBindingTarget;[\s\S]*?this\.logicalAdjustments\.has\(targetKey\)/);
+});
+
+test('j and j+1 follow their comparison-time cells before a later j--', () => {
+  const doc = { variables: { j: { name: 'j', kind: 'scalar' } } };
+  const frame = { state: {} };
+  const checkpoint = { beforeState: { 'value:j#0': { kind: 'scalar', value: 2 } } };
+  const marker = expression => ({ dataset: {
+    traceBindingTarget: expression === 'j' ? 'arr#1' : 'arr#2',
+    traceSourceVariableId: 'j', traceMarkerIndexExpression: expression
+  } });
+  const originalRules = context.window.ASMTraceRules;
+  context.window.ASMTraceRules = { resolveExpression: (doc, frame, expression, locals) => (
+    Number(locals.j) + (expression === 'j+1' ? 1 : 0)
+  ) };
+  try {
+    assert.equal(context.window.ASMTraceFrameTween.markerTargetAtCheckpoint(doc, frame, marker('j'), checkpoint), 'arr#2');
+    assert.equal(context.window.ASMTraceFrameTween.markerTargetAtCheckpoint(doc, frame, marker('j+1'), checkpoint), 'arr#3');
+  } finally { context.window.ASMTraceRules = originalRules; }
 });
 
 test('a disabled marker assignment still updates logical position after earlier comparisons', () => {
@@ -1982,4 +2000,49 @@ test('a second unknown marker stays parked until its own assignment', () => {
   assert.equal(motion.arrowStates.get('j').x, 63);
   motion.update(500);
   assert.equal(motion.arrowStates.get('j').x, 220);
+});
+test('a later same-frame declaration makes room before its initializer moves away', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {', 'window.ASMTraceFrameTween = { markerAssignmentMotion,');
+  const c = vm.createContext({ window: { ASMTraceRules: {
+    resolveExpression: (doc, frame, expression, locals) => locals[expression]
+  } }, document: { documentElement: { dataset: {} } } });
+  vm.runInContext(source, c);
+  const marker = (name, index, x) => ({
+    dataset: { traceBindingTarget: `arr#${index}`, traceSourceVariableId: name,
+      traceMarkerIndexExpression: name, traceMarkerSortKey: name },
+    getAttribute: key => key === 'transform' ? `translate(${x},80)` : null
+  });
+  const i = marker('i', 4, 180), largest = marker('largest', 9, 380);
+  const event = (type, order, name, before, after) => ({ type, order,
+    targets: [{ variableId: name, role: 'target' }],
+    payload: { before: { kind: 'scalar', value: before }, after: { kind: 'scalar', value: after } }
+  });
+  const di = event('declare', 1, 'i'), dl = event('declare', 2, 'largest');
+  const init = event('assign', 3, 'largest', '', 4), move = event('assign', 4, 'largest', 4, 9);
+  init.declarationInitializer = true;
+  const slots = [
+    { event: di, animation: 'declare', start: 0, end: 220 },
+    { event: dl, animation: 'declare', start: 300, end: 520 },
+    { event: init, animation: 'assign', start: 600, motionStart: 600, end: 900 },
+    { event: move, animation: 'assign', start: 1000, motionStart: 1000, end: 1400 }
+  ];
+  const motion = c.window.ASMTraceFrameTween.markerAssignmentMotion(
+    { variables: { i: { name: 'i' }, largest: { name: 'largest' } } },
+    { events: [di, dl, init, move] }, slots,
+    new Map([[ 'arr#4', { x: 160, y: 80, width: 40, height: 40 } ],
+      [ 'arr#9', { x: 360, y: 80, width: 40, height: 40 } ]]),
+    new Map([['i', i], ['largest', largest]]),
+    [i, largest].map(element => ({ key: element.dataset.traceSourceVariableId, element,
+      markerPointPath: {}, markerLabelBox: { getAttribute: () => '18' } }))
+  );
+  motion.update(290);
+  assert.equal(motion.adjustments.get('i')?.x || 0, 0);
+  motion.update(500);
+  const ix = 180 + (motion.adjustments.get('i')?.x || 0);
+  const lx = 380 + (motion.adjustments.get('largest')?.x || 0);
+  assert.ok(lx - ix >= 26, `declaration peers overlap: ${ix}, ${lx}`);
+  motion.update(700);
+  assert.equal(180 + (motion.adjustments.get('i')?.x || 0), ix,
+    'the initializer must not reset the declaration layout to an unresolved target');
 });

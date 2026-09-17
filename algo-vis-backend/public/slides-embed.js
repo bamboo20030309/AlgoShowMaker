@@ -77,7 +77,9 @@
       watches: traceSettings.watches || currentAnimation.watches || [],
       skins: traceSettings.skins || currentAnimation.skins || {},
       rules: traceSettings.rules || currentAnimation.rules || [],
-      traceDocument: traceSettings.traceDocument || currentAnimation.traceDocument || null
+      traceDocument: traceSettings.traceDocument || currentAnimation.traceDocument || null,
+      ...(traceSettings.rebuild ? { rebuild: traceSettings.rebuild,
+        rebuildError: traceSettings.rebuildError } : {})
     };
   }
 

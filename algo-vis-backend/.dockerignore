@@ -1,0 +1,10 @@
+node_modules
+tmp
+test-results
+.env
+.env.*
+*.log
+.server.*
+.git
+tests
+scripts

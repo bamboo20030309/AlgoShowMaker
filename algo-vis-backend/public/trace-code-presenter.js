@@ -24,7 +24,7 @@
   const CODE_SCROLL_MS = 460;
   const CODE_PANEL_REFERENCE_WIDTH = 1600;
   const CODE_PANEL_REFERENCE_HEIGHT = 900;
-  const DEFAULT_CODE_PANEL_FONT_SIZE = 14;
+  const DEFAULT_CODE_PANEL_FONT_SIZE = 20;
   const MIN_CODE_PANEL_FONT_SIZE = 8;
   const MAX_CODE_PANEL_FONT_SIZE = 32;
 
@@ -334,6 +334,7 @@
     ));
     const linked = candidates.filter(event => {
       if (event.type === 'compare') return comparisonCanPlay(event);
+      if (event.type === 'call') return event.enabled !== false && event.autoAnimationDisabled !== true;
       if (event.type !== 'condition') return true;
       return !disabledComparisonOnSegment && conditionCodeHighlightEnabled(event, events);
     });
@@ -354,12 +355,31 @@
       && conditionContainsComparison(activeEvent, events);
     const active = Boolean(activeId) && linkedIds.has(String(activeId))
       && !suppressWholeConditionPulse;
+    // Calling a function is a code-only breadcrumb: turn the call grey in
+    // execution order, without the yellow pulse used by canvas responses.
+    const activeCall = active && activeEvent?.type === 'call';
+    // A split condition can contain unchecked slices. Those slices must not
+    // prevent a checked, completed comparison from retaining its own result.
+    // Restrict the fallback to one source range so it cannot paint a union of
+    // multiple comparisons as though the whole condition were enabled.
+    const comparisonRanges = new Set(candidates.filter(event => event.type === 'compare')
+      .map(event => {
+        const range = sourceRange(event);
+        return range ? `${range.from}:${range.to}` : String(event.id || '');
+      }));
+    const completedComparison = !disabledComparisonOnSegment && comparisonRanges.size === 1
+      ? linked.filter(event => event.type === 'compare'
+        && completed.has(String(event.id)) && typeof event.result === 'boolean')
+        .sort((left, right) => Number(left.order) - Number(right.order)).at(-1)
+      : null;
+    const conditionResult = condition?.result
+      ?? (!pendingComparison ? completedComparison?.result : undefined);
     return {
-      active,
-      pending: pendingComparison,
-      complete: !condition && !pendingComparison
-        && [...linkedIds].some(id => completed.has(id)),
-      conditionResult: condition?.result
+      active: active && !activeCall,
+      pending: !activeCall && pendingComparison,
+      complete: activeCall || (conditionResult == null && !pendingComparison
+        && [...linkedIds].some(id => completed.has(id))),
+      conditionResult: activeCall ? undefined : conditionResult
     };
   }
 
@@ -593,10 +613,14 @@
     }
     // The previous focus can sit below the new page's visible height. Park
     // the new focus near the top of the viewport instead of clipping it.
-    const viewportHeight = Math.min(body.getBoundingClientRect().height, finalPageHeight + 18);
+    const maximumHeight = parseFloat(window.getComputedStyle?.(body)?.maxHeight);
+    const viewportHeight = Math.min(Number.isFinite(maximumHeight) ? maximumHeight
+      : body.getBoundingClientRect().height, finalPageHeight + 18);
     const destinationY = Math.min(finalAnchorY, Math.max(12, viewportHeight * 0.32));
-    const targetOffset = destinationY - targetAnchorY;
-    nextPage.style.transform = `translateY(${destinationY - finalAnchorY}px)`;
+    const finalOffset = boundedScrollOffset(finalPageHeight + 18, viewportHeight,
+      destinationY - finalAnchorY);
+    const targetOffset = finalAnchorY + finalOffset - targetAnchorY;
+    nextPage.style.transform = `translateY(${finalOffset}px)`;
     transitionFinalPage = nextPage;
     if (Math.abs(targetOffset - initialOffset) >= 1) body.classList.add('is-code-scrolling');
     expandedPage.style.transform = `translateY(${initialOffset}px)`;
@@ -607,6 +631,10 @@
     });
     scheduleTransition(finishPageTransition, CODE_TRANSITION_MS);
     return true;
+  }
+
+  function boundedScrollOffset(contentHeight, viewportHeight, proposedOffset) {
+    return Math.max(Math.min(0, viewportHeight - contentHeight), Math.min(0, proposedOffset));
   }
 
   function focusNeedsScroll(nextFocusLine) {
@@ -758,6 +786,7 @@
     safeInsetLeft,
     normalizeFontSize,
     scaledFontSize,
+    boundedScrollOffset,
     scrollDuration: CODE_SCROLL_MS,
     applyPresentationSettings,
     clearSelection,

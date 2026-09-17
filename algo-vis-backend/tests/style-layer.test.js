@@ -73,3 +73,70 @@ test('style decorations paint between objects and arrows and follow a scaled, re
   window.ASMTraceRenderers.refreshArrows();
   assert.equal(layer.childElementCount, 0);
 });
+
+test('highlight includes the index row and follows the visible swap cell until it is restored', () => {
+  const dom = new JSDOM(`<!doctype html><svg><g id="asm-trace-root">
+    <g id="object"><g id="cell" data-trace-index="0"><rect width="40" height="30"/></g>
+      <g data-trace-index-label="0"><rect height="18"/></g>
+      <rect id="hint" width="40" height="30" class="highlight-blink"/>
+    </g>
+    <g id="ghost"><rect x="100" y="20" width="50" height="30"/></g>
+  </g></svg>`, { runScripts: 'outside-only' });
+  const { window } = dom;
+  const root = window.document.getElementById('asm-trace-root');
+  const object = window.document.getElementById('object');
+  const cell = window.document.getElementById('cell');
+  const ghost = window.document.getElementById('ghost');
+  const hint = window.document.getElementById('hint');
+  root.getScreenCTM = object.getScreenCTM = cell.getScreenCTM = () => new Matrix();
+  ghost.getScreenCTM = () => new Matrix(1.5, 0, 0, 1.5, 60, 40);
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8'));
+  assert.equal(window.ASMTraceRenderers.attachStyleVisual(hint, cell, 'highlight'), true);
+  window.ASMTraceRenderers.refreshArrows();
+  assert.equal(hint.getAttribute('height'), '48');
+
+  cell.setAttribute('opacity', '0');
+  cell._asmStylePresentationCell = ghost;
+  window.ASMTraceRenderers.refreshArrows();
+  const wrapper = hint.parentElement;
+  assert.equal(wrapper.getAttribute('opacity'), '1');
+  assert.equal(wrapper.getAttribute('transform'), 'matrix(1.5 0 0 1.5 60 40)');
+  assert.equal(hint.getAttribute('x'), '100');
+  assert.equal(hint.getAttribute('width'), '50');
+  assert.equal(hint.getAttribute('height'), '48');
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'));
+  window.ASMTraceFrameTween.cancel();
+  assert.equal(cell._asmStylePresentationCell, undefined);
+  cell.removeAttribute('opacity');
+  ghost.remove();
+  window.ASMTraceRenderers.refreshArrows();
+  assert.equal(wrapper.getAttribute('opacity'), '1');
+  assert.equal(hint.getAttribute('x'), '0');
+  assert.equal(hint.getAttribute('width'), '40');
+  assert.equal(hint.getAttribute('height'), '48');
+});
+
+test('compare frame only surrounds the value cell, while style highlight also surrounds the index', () => {
+  const dom = new JSDOM(`<!doctype html><svg><g id="asm-trace-root">
+    <g id="object"><g id="cell" data-trace-index="0"><rect width="40" height="30"/></g>
+      <g data-trace-index-label="0"><rect height="18"/></g>
+      <rect id="style" width="40" height="30" class="highlight-blink"/>
+    </g></g></svg>`, { runScripts: 'outside-only' });
+  const { window } = dom;
+  const root = window.document.getElementById('asm-trace-root');
+  const object = window.document.getElementById('object');
+  const cell = window.document.getElementById('cell');
+  let matrix = new Matrix();
+  root.getScreenCTM = object.getScreenCTM = () => new Matrix();
+  cell.getScreenCTM = () => matrix;
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8'));
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {', 'window.ASMTraceFrameTween = { addHighlight,'));
+  window.ASMTraceRenderers.attachStyleVisual(window.document.getElementById('style'), cell, 'highlight');
+  const compare = window.ASMTraceFrameTween.addHighlight(cell, 'green');
+  matrix = new Matrix(1.2, 0, 0, 1.2, 0, -20);
+  window.ASMTraceRenderers.refreshArrows();
+  assert.equal(compare.getAttribute('height'), '30');
+  assert.equal(compare.parentElement.getAttribute('transform'), 'matrix(1.2 0 0 1.2 0 -20)');
+  assert.equal(window.document.getElementById('style').getAttribute('height'), '48');
+});

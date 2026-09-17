@@ -26,6 +26,7 @@ const {
 } = require('./trace-instrumenter');
 const TraceViewSource = require('./public/trace-view-source');
 const TraceProvenance = require('./public/trace-provenance');
+const SlideStorage = require('./public/slides-storage');
 
 // JWT 密鑰必須由部署環境提供；缺少或使用公開預設值時直接停止啟動。
 const JWT_SECRET = loadJwtSecret();
@@ -63,6 +64,8 @@ const SlideDeckSchema = new mongoose.Schema({
     default: '未命名投影片'
   },
   deck: { type: mongoose.Schema.Types.Mixed, required: true },
+  trace_references: { type: mongoose.Schema.Types.Mixed, default: () => [] },
+  trace_results: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   cover_thumbnail: { type: String, default: '' },
   slide_count: { type: Number, default: 0 },
   share_mode: {
@@ -613,6 +616,38 @@ app.put('/api/slides/:deck_uid/share', authenticateToken, async (req, res) => {
   }
 });
 
+function restoreSlideDeck(slide) {
+  return SlideStorage.hydrate({ deck: slide.deck, references: slide.trace_references || [],
+    traces: slide.trace_results || {} });
+}
+
+async function prepareTraceSave(body, query, updates) {
+  if (!body.deck || typeof body.deck !== 'object') return {};
+  const previous = await SlideDeck.findOne(query).lean();
+  if (!previous) return null;
+  // A simultaneous editor cannot delete a result referenced by this snapshot.
+  query.updated_at = previous.updated_at;
+  const owned = previous.trace_references?.length
+    ? { traces: previous.trace_results || {} }
+    : await SlideStorage.project(previous.deck);
+  const incoming = body.trace_storage
+    ? { deck: body.deck, references: body.trace_storage.references, traces: body.trace_storage.traces }
+    : await SlideStorage.project(body.deck);
+  let complete;
+  try { complete = await SlideStorage.merge(incoming, owned); }
+  catch (error) { error.status = 400; throw error; }
+  updates.deck = complete.deck;
+  updates.trace_references = complete.references;
+  for (const [key, trace] of Object.entries(complete.traces)) {
+    if (!Object.hasOwn(previous.trace_results || {}, key)) updates[`trace_results.${key}`] = trace;
+  }
+  const unset = {};
+  for (const key of Object.keys(previous.trace_results || {})) {
+    if (!Object.hasOwn(complete.traces, key)) unset[`trace_results.${key}`] = '';
+  }
+  return unset;
+}
+
 app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
   try {
     const slide = await SlideDeck.findOne({
@@ -624,6 +659,10 @@ app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '找不到這份投影片' });
     }
 
+    slide.trace_keys = Object.keys(slide.trace_results || {});
+    slide.deck = restoreSlideDeck(slide);
+    delete slide.trace_results;
+    delete slide.trace_references;
     res.json({ success: true, slide });
   } catch (err) {
     console.error('Failed to get slide deck:', err);
@@ -651,20 +690,23 @@ app.put('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
   if (contentChanged) updates.updated_at = new Date();
 
   try {
+    const query = { deck_uid: req.params.deck_uid, user_uid: req.user.id };
+    const unset = await prepareTraceSave(body, query, updates);
+    if (unset === null) return res.status(404).json({ error: '找不到這份投影片' });
     const slide = await SlideDeck.findOneAndUpdate(
-      { deck_uid: req.params.deck_uid, user_uid: req.user.id },
-      { $set: updates },
+      query,
+      { $set: updates, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
       { new: true, runValidators: true }
     ).select('deck_uid title cover_thumbnail slide_count format version created_at updated_at');
 
     if (!slide) {
-      return res.status(404).json({ error: '找不到這份投影片' });
+      return res.status(409).json({ error: '投影片已由另一個編輯頁面更新，請重新儲存' });
     }
 
     res.json({ success: true, slide });
   } catch (err) {
     console.error('Failed to update slide deck:', err);
-    res.status(500).json({ error: '無法儲存投影片，請稍後再試' });
+    res.status(err.status || 500).json({ error: err.status ? err.message : '無法儲存投影片，請稍後再試' });
   }
 });
 
@@ -676,7 +718,7 @@ app.get('/api/shared-slides/:share_token', async (req, res) => {
         { share_view_token: token },
         { share_edit_token: token }
       ]
-    }).select('title deck cover_thumbnail slide_count updated_at share_mode +share_view_token +share_edit_token');
+    }).select('title deck trace_references trace_results cover_thumbnail slide_count updated_at share_mode +share_view_token +share_edit_token');
 
     const canView = slide
       && slide.share_view_token === token
@@ -693,7 +735,8 @@ app.get('/api/shared-slides/:share_token', async (req, res) => {
       success: true,
       slide: {
         title: slide.title,
-        deck: slide.deck,
+        deck: restoreSlideDeck(slide),
+        trace_keys: Object.keys(slide.trace_results || {}),
         cover_thumbnail: slide.cover_thumbnail,
         slide_count: slide.slide_count,
         updated_at: slide.updated_at
@@ -726,23 +769,23 @@ app.put('/api/shared-slides/:share_token', async (req, res) => {
   updates.updated_at = new Date();
 
   try {
+    const query = { share_edit_token: req.params.share_token, share_mode: 'edit' };
+    const unset = await prepareTraceSave(body, query, updates);
+    if (unset === null) return res.status(403).json({ error: '這個分享連結沒有編輯權限' });
     const slide = await SlideDeck.findOneAndUpdate(
-      {
-        share_edit_token: req.params.share_token,
-        share_mode: 'edit'
-      },
-      { $set: updates },
+      query,
+      { $set: updates, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
       { new: true, runValidators: true }
     ).select('title slide_count updated_at');
 
     if (!slide) {
-      return res.status(403).json({ error: '這個分享連結沒有編輯權限' });
+      return res.status(409).json({ error: '投影片已更新或編輯權限已變更，請重新載入' });
     }
 
     res.json({ success: true, slide });
   } catch (err) {
     console.error('Failed to update shared slide deck:', err);
-    res.status(500).json({ error: '無法儲存分享的投影片，請稍後再試' });
+    res.status(err.status || 500).json({ error: err.status ? err.message : '無法儲存分享的投影片，請稍後再試' });
   }
 });
 

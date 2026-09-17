@@ -183,6 +183,7 @@
 
     let position = 0;
     const invalid = Symbol('invalid-expression');
+    const knownValue = value => value == null ? invalid : value;
     const peek = value => tokens[position]?.value === value;
     const consume = value => {
       if (value && !peek(value)) return null;
@@ -214,7 +215,7 @@
         }
         const variable = consume();
         if (variable?.type !== 'identifier' || !consume(')')) return invalid;
-        return iterationLastValue(document, frame, variable.value);
+        return knownValue(iterationLastValue(document, frame, variable.value));
       }
       if (TEMPORAL_FUNCTIONS.has(token.value) && peek('(')) {
         consume('(');
@@ -228,9 +229,9 @@
         if (depth !== 0 || position <= argumentStart) return invalid;
         const argument = tokens.slice(argumentStart, position).map(item => item.value).join('');
         position += 1;
-        return temporalValue(document, frame, token.value, argument, locals);
+        return knownValue(temporalValue(document, frame, token.value, argument, locals));
       }
-      if (Object.prototype.hasOwnProperty.call(locals, token.value)) return locals[token.value];
+      if (Object.prototype.hasOwnProperty.call(locals, token.value)) return knownValue(locals[token.value]);
       const found = variableEntry(document, frame, token.value);
       if (!found) return invalid;
       let data = found.entry?.data;
@@ -254,17 +255,19 @@
         if (Array.isArray(data)) return data.length;
         return invalid;
       }
-      return window.ASMTraceModel.scalarValue(data);
+      return knownValue(window.ASMTraceModel.scalarValue(data));
     }
 
     function parseUnary() {
       if (peek('+')) {
         consume('+');
-        return Number(parseUnary());
+        const value = parseUnary();
+        return value === invalid ? invalid : Number(value);
       }
       if (peek('-')) {
         consume('-');
-        return -Number(parseUnary());
+        const value = parseUnary();
+        return value === invalid ? invalid : -Number(value);
       }
       if (peek('!')) {
         consume('!');
@@ -569,12 +572,17 @@
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
         if (selector?.type === 'index') {
-          const index = Number(resolveExpression(document, frame, selector.indexExpression));
+          const value = resolveExpression(document, frame, selector.indexExpression);
+          if (value == null) return [];
+          const index = Number(value);
           return Number.isInteger(index) ? [index] : [];
         }
         if (selector?.type === 'range') {
-          const start = Number(resolveExpression(document, frame, selector.startExpression));
-          const end = Number(resolveExpression(document, frame, selector.endExpression));
+          const startValue = resolveExpression(document, frame, selector.startExpression);
+          const endValue = resolveExpression(document, frame, selector.endExpression);
+          if (startValue == null || endValue == null) return [];
+          const start = Number(startValue);
+          const end = Number(endValue);
           if (!Number.isInteger(start) || !Number.isInteger(end)) return [];
           const stop = end + (selector.endInclusive ? 1 : 0);
           return allIndices.filter(index => index >= start && index < stop);

@@ -335,6 +335,13 @@ function presetContains(analysis, position) {
   return (analysis.presetRanges || []).some(range => range.from <= position && position < range.to);
 }
 
+function framePresetNames(frame, analysis) {
+  return [
+    ...(analysis.presetDefinitions?.has('@defaults') ? ['@defaults'] : []),
+    ...(frame.presetNames || (frame.presetName ? [frame.presetName] : []))
+  ];
+}
+
 function findPresetDirectives(source, analysis) {
   const definitions = new Map();
   const ranges = [];
@@ -345,18 +352,24 @@ function findPresetDirectives(source, analysis) {
     if (node.name === 'LineComment') {
       const text = source.slice(node.from, node.to);
       const line = analysis.lineAt(node.from);
-      const start = text.match(/^\/\/\s*@preset\b\s*(.*?)\s*$/i);
-      const end = text.match(/^\/\/\s*@endpreset\b\s*(.*?)\s*$/i);
+      const defaultsStart = text.match(/^\/\/\s*@defaults\b\s*(.*?)\s*$/i);
+      const defaultsEnd = text.match(/^\/\/\s*@enddefaults\b\s*(.*?)\s*$/i);
+      const start = defaultsStart || text.match(/^\/\/\s*@preset\b\s*(.*?)\s*$/i);
+      const end = defaultsEnd || text.match(/^\/\/\s*@endpreset\b\s*(.*?)\s*$/i);
       if (start) {
         if (open) throw new Error(`第 ${line} 行的 @preset 不可巢狀`);
-        const name = start[1];
-        if (!/^[A-Za-z_]\w*$/.test(name)) throw new Error(`第 ${line} 行的 @preset 名稱無效：${name}`);
+        if (defaultsStart && start[1]) throw new Error(`第 ${line} 行的 @defaults 不接受參數`);
+        const name = defaultsStart ? '@defaults' : start[1];
+        if (!defaultsStart && !/^[A-Za-z_]\w*$/.test(name)) throw new Error(`第 ${line} 行的 @preset 名稱無效：${name}`);
         if (definitions.has(name)) throw new Error(`第 ${line} 行的 @preset 名稱重複：${name}`);
         open = { name, from: node.from, line, directives: [] };
         continuationEnd = node.to;
       } else if (end) {
         if (end[1]) throw new Error(`第 ${line} 行的 @endpreset 不接受參數`);
         if (!open) throw new Error(`第 ${line} 行的 @endpreset 前面沒有 @preset`);
+        if (Boolean(defaultsEnd) !== (open.name === '@defaults')) {
+          throw new Error(`第 ${line} 行的預設區塊結束指令不相符`);
+        }
         if (!/^\s*$/.test(source.slice(continuationEnd, node.from))) {
           throw new Error(`第 ${line} 行的 @preset 只能包含連續的指令`);
         }
@@ -372,6 +385,9 @@ function findPresetDirectives(source, analysis) {
         }
         const directive = text.match(/^\/\/\s*@([A-Za-z_-]+)\b\s*(.*?)\s*$/);
         if (!directive) throw new Error(`第 ${line} 行的 @preset 內容必須是 @ 指令`);
+        if (open.name === '@defaults' && !['camera', 'place', 'style', 'object', 'text', 'segment', 'arrow'].includes(directive[1].toLowerCase())) {
+          throw new Error(`第 ${line} 行的 @defaults 只支援呈現指令，不支援 @${directive[1]}`);
+        }
         open.directives.push({ name: directive[1].toLowerCase(), payload: directive[2], line });
         continuationEnd = node.to;
       }
@@ -1321,7 +1337,7 @@ function attachTextDirectives(source, analysis, frameDirectives) {
 
   const texts = textDirectivesForSource(source, analysis);
   frames.forEach(frame => {
-    const presetTexts = (frame.presetNames || (frame.presetName ? [frame.presetName] : []))
+    const presetTexts = framePresetNames(frame, analysis)
       .flatMap(name => analysis.presetDefinitions?.get(name)?.directives
         .filter(item => item.name === 'text').map(item => ({ ...item, presetName: name })) || []);
     presetTexts.forEach((item, index) => {
@@ -1499,7 +1515,7 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
 
   const styles = styleDirectivesForSource(source, analysis);
   frames.forEach(frame => {
-    const presetStyles = (frame.presetNames || (frame.presetName ? [frame.presetName] : []))
+    const presetStyles = framePresetNames(frame, analysis)
       .flatMap(name => analysis.presetDefinitions?.get(name)?.directives
         .filter(item => item.name === 'style').map(item => ({ ...item, presetName: name })) || []);
     presetStyles.forEach((item, index) => {
@@ -1632,7 +1648,7 @@ function attachSegmentDirectives(source, analysis, frameDirectives) {
 
   const segments = segmentDirectivesForSource(source, analysis);
   frames.forEach(frame => {
-    const presetSegments = (frame.presetNames || (frame.presetName ? [frame.presetName] : []))
+    const presetSegments = framePresetNames(frame, analysis)
       .flatMap(name => analysis.presetDefinitions?.get(name)?.directives
         .filter(item => item.name === 'segment').map(item => ({ ...item, presetName: name })) || []);
     presetSegments.forEach((item, index) => {
@@ -1746,9 +1762,14 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
         });
         if (!values.has('to')) throw new Error(`第 ${line} 行的 @arrow 缺少 to 端點`);
 
+        let owner = node.parent;
+        while (owner && owner.name !== 'FunctionDefinition') owner = owner.parent;
+        const ownerName = owner ? functionInfo(owner, source).name : 'global';
+        const signature = stableSourceHash(`${ownerName}:${payload}`);
+        const occurrence = directives.filter(item => item.signature === signature).length;
         const id = values.has('as')
           ? parseQuotedDirectiveId(values.get('as'), line, '@arrow as')
-          : `arrow-line-${line}`;
+          : `arrow-${signature}-${occurrence}`;
         const color = String(values.get('color') || 'black').trim();
         if (!/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
           throw new Error(`第 ${line} 行的 @arrow 顏色無效：${color}`);
@@ -1785,6 +1806,9 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
           to: node.to,
           line,
           id,
+          signature,
+          explicitId: values.has('as'),
+          displayName: values.has('as') ? id : `arrow_${directives.length + 1}`,
           source: 'directive',
           fromTarget: parseArrowTarget(values.get('from'), line, 'from'),
           toTarget: parseArrowTarget(values.get('to'), line, 'to'),
@@ -1818,7 +1842,7 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
 
   const arrows = findArrowDirectives(source, analysis);
   frames.forEach(frame => {
-    const presetArrows = (frame.presetNames || (frame.presetName ? [frame.presetName] : []))
+    const presetArrows = framePresetNames(frame, analysis)
       .flatMap(name => analysis.presetDefinitions?.get(name)?.directives
         .filter(item => item.name === 'arrow').map(item => ({ ...item, presetName: name })) || []);
     presetArrows.forEach((item, index) => {
@@ -1828,13 +1852,13 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
         presetDefinitions: new Map(), presetRanges: []
       })[0];
       const position = frame.from + (index + 1) / (presetArrows.length + 1);
-      const generatedId = parsed.id === `arrow-line-${item.line}`;
+      const generatedId = !parsed.explicitId;
       arrows.push({
         ...parsed,
         from: position,
         to: position,
         presetName: item.presetName,
-        id: generatedId ? `preset-${item.presetName}-arrow-${item.line}` : parsed.id
+        id: generatedId ? `preset-${item.presetName}-${parsed.id}-${presetArrows.slice(0, index).filter(previous => previous.presetName === item.presetName && previous.payload === item.payload).length}` : parsed.id
       });
     });
   });
@@ -1868,9 +1892,16 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
         throw new Error(`第 ${arrow.line} 行的 @arrow 找不到條件變數：${name}`);
       }
     });
+    // Preset/default entries are presentation defaults, not a second arrow.
+    // Resolve their established priority before checking actual duplicates.
     targetFrame.arrows = targetFrame.arrows.filter(existing => !existing.presetName || existing.id !== arrow.id);
+    if (targetFrame.arrows.some(existing => existing.id === arrow.id)) {
+      throw new Error(`第 ${arrow.line} 行的 @arrow ID 重複：${arrow.id}；同一幀不能使用相同 ID`);
+    }
     targetFrame.arrows.push({
       id: arrow.id,
+      explicitId: arrow.explicitId,
+      displayName: arrow.displayName,
       source: arrow.source,
       from: arrow.fromTarget,
       to: arrow.toTarget,
@@ -1982,7 +2013,7 @@ function attachPlaceDirectives(source, analysis, frameDirectives) {
 
   const places = findPlaceDirectives(source, analysis);
   frames.forEach(frame => {
-    const presetPlaces = (frame.presetNames || (frame.presetName ? [frame.presetName] : []))
+    const presetPlaces = framePresetNames(frame, analysis)
       .flatMap(name => analysis.presetDefinitions?.get(name)?.directives
         .filter(item => item.name === 'place').map(item => ({ ...item, presetName: name })) || []);
     presetPlaces.forEach((item, index) => {
@@ -2141,7 +2172,7 @@ function attachCameraDirectives(source, analysis, frameDirectives) {
   const frames = [...frameDirectives].sort((left, right) => left.from - right.from);
   frames.forEach(frame => {
     frame.camera = null;
-    frame.presetDirectives = (frame.presetNames || (frame.presetName ? [frame.presetName] : []))
+    frame.presetDirectives = framePresetNames(frame, analysis)
       .flatMap(name => (analysis.presetDefinitions?.get(name)?.directives || []).map(item => ({
         presetName: name,
         name: item.name,
@@ -2403,8 +2434,8 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
           objectBinding: null, bindings: [], objects: [],
           presetName: presetNames[0] || '', presetNames
         };
-        if (use) {
-          presetNames.forEach(name => {
+        {
+          framePresetNames(directive, analysis).forEach(name => {
             const preset = analysis.presetDefinitions.get(name);
             if (!preset) throw new Error(`第 ${line} 行的 @frame use 找不到預設：${name}`);
             preset.directives.filter(item => item.name === 'object').forEach(item => {
@@ -2413,7 +2444,8 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
               appendFrameObject(directive, object, true);
             });
           });
-        } else if (modifiers.payload) appendFrameObject(directive, parseFrameObject(node, match[2], '@frame'));
+        }
+        if (!use && modifiers.payload) appendFrameObject(directive, parseFrameObject(node, match[2], '@frame'), true);
         directives.push(directive);
         openFrame = directive;
         continuationEnd = node.to;

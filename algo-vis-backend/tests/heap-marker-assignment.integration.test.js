@@ -1,6 +1,31 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compile } = require('./helpers/compile');
+const fs = require('node:fs');
+const path = require('node:path');
+
+test('insertion frame 7 to 8 uses j before decrement for comparison followers', async () => {
+  const { trace, window } = await compile(
+    fs.readFileSync(path.join(__dirname, 'fixtures/insertion-compare.cpp'), 'utf8'),
+    '6\n1 8 7 2 6 5\n'
+  );
+  const frame = trace.frames[7];
+  const compare = frame.events.find(event => event.type === 'compare'
+    && event.source?.text === 'arr[j] > key');
+  assert.ok(compare);
+  assert.equal(compare.targets[0].resolvedIndex, 2);
+  const decrement = frame.events.find(event => event.type === 'write');
+  assert.ok(decrement.order > compare.order, 'j-- must follow comparison');
+  const j = decrement.targets[0].variableId;
+  const checkpoint = window.ASMTraceFrameTween.createForwardReplayPlan(trace, frame)
+    .checkpoints.find(item => item.event === compare);
+  const marker = expression => ({ dataset: {
+    traceBindingTarget: expression === 'j' ? 'arr#1' : 'arr#2',
+    traceSourceVariableId: j, traceMarkerIndexExpression: expression
+  } });
+  assert.equal(window.ASMTraceFrameTween.markerTargetAtCheckpoint(trace, frame, marker('j'), checkpoint), 'arr#2');
+  assert.equal(window.ASMTraceFrameTween.markerTargetAtCheckpoint(trace, frame, marker('j+1'), checkpoint), 'arr#3');
+});
 
 test('a first marker assignment reserves motion time even at the captured destination', async () => {
   const { window } = await compile(`#include <bits/stdc++.h>
@@ -224,7 +249,8 @@ int main() {
     id: slot.event.id, animation: slot.animation, start: slot.start, end: slot.end
   })), [
     { id: 'declare-j', animation: 'declare', start: 500, end: 720 },
-    { id: 'declare-i', animation: 'declare', start: 770, end: 990 }
+    // The earlier j now counts as a peer, so i joins 80ms after reflow starts.
+    { id: 'declare-i', animation: 'declare', start: 770, end: 1070 }
   ]);
   let schedule = window.ASMTraceFrameTween.declarationVisualSchedule(
     document, frame, timeline, placements, elements

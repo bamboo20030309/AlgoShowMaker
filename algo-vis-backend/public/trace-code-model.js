@@ -1,5 +1,6 @@
 (function () {
-  const NON_CODE_EVENT_TYPES = new Set(['fixed', 'keep']);
+  const EXIT_EVENT_TYPES = new Set(['scope-exit', 'visual-exit', 'function-exit']);
+  const NON_CODE_EVENT_TYPES = new Set(['fixed', 'keep', ...EXIT_EVENT_TYPES]);
   const CONTROL_CONTEXT_TYPES = new Set([
     'ForStatement', 'IfStatement', 'WhileStatement', 'DoStatement', 'SwitchStatement'
   ]);
@@ -128,7 +129,7 @@
       if (/\/\*\s*@asm-view\b/i.test(text)) asmView = true;
       if (asmView) hidden.add(line.number);
       if (/@asm-view\s*\*\//i.test(text)) asmView = false;
-      if (/^\s*\/\/.*@(?:frame|object|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|asm(?:[-\w]*)?)\b/i.test(text)) {
+      if (/^\s*\/\/.*@(?:frame|object|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|defaults|enddefaults|camera|asm(?:[-\w]*)?)\b/i.test(text)) {
         hidden.add(line.number);
       }
       if (!String(displayLines.get(line.number) || '').trim()) hidden.add(line.number);
@@ -781,10 +782,12 @@
     const omittedAlgorithmLines = (from, to) => from <= to
       ? lines.slice(from - 1, to).filter(line => !hidden.has(line.number) && line.text.trim())
       : [];
-    const appendGap = (from, to) => {
+    // Only fill a single omitted line between selected lines. Filling the
+    // leading/trailing gap can expose unrelated code that has not executed.
+    const appendGap = (from, to, betweenRelatedLines = false) => {
       const omitted = omittedAlgorithmLines(from, to);
       const insideSubtree = from >= limit.start && to <= limit.end;
-      if (omitted.length === 1 && insideSubtree) {
+      if (omitted.length === 1 && insideSubtree && betweenRelatedLines) {
         items.push(lineItem(omitted[0].number, cluster, lines, displayLines));
       } else if (omitted.length > 1 && items.at(-1)?.kind !== 'ellipsis') {
         items.push({ kind: 'ellipsis' });
@@ -795,7 +798,7 @@
     if (numbers.length) appendGap(limit.start, numbers[0] - 1);
     numbers.forEach((number, index) => {
       const previous = numbers[index - 1];
-      if (previous && number > previous + 1) appendGap(previous + 1, number - 1);
+      if (previous && number > previous + 1) appendGap(previous + 1, number - 1, true);
       items.push(lineItem(number, cluster, lines, displayLines));
     });
     if (numbers.length) appendGap(numbers.at(-1) + 1, limit.end);
@@ -812,6 +815,27 @@
         if (!hidden.has(line)) selected.add(line);
       }
     });
+    // A call-only context is a breadcrumb, not an executing function body.
+    // Keep argument reads on the call span, but do not expand caller loops,
+    // declarations or closing braces. Mixed clusters still show the function.
+    const callOnly = Boolean(cluster[0]?.functionName)
+      && cluster[0].functionName !== 'main'
+      && cluster.some(source => source.event?.type === 'call')
+      && cluster.every(source => ['call', 'read'].includes(source.event?.type));
+    if (callOnly) {
+      const context = completeFunctionContext(cluster);
+      const numbers = [...selected].filter(number => lines[number - 1]
+        && !hidden.has(number)).sort((a, b) => a - b);
+      const items = numbers.map(number => lineItem(number, cluster, lines, displayLines));
+      return normalizeFragmentIndent({
+        functionName: String(cluster[0]?.functionName || ''),
+        eventIds: [...new Set(cluster.map(source => source.event?.id).filter(Boolean))],
+        focusLine: numbers[0],
+        subtreeKey: context ? `${context.type}:${context.from}:${context.to}`
+          : `call-lines:${numbers.join(',')}`,
+        items, expandedItems: items
+      });
+    }
     addContextLines(selected, cluster, lines, hidden);
     // A loop is the unit readers use to understand repeated execution. Keep
     // its complete body visible instead of turning individual loop lines into
@@ -977,7 +1001,9 @@
     const hasRuntimeCodeEvents = frameEvents.some(event => (
       event && !NON_CODE_EVENT_TYPES.has(event.type)
     ));
-    if (!sources.length && !hasRuntimeCodeEvents) {
+    // Exit-only frames must not fall back to unrelated input/declaration code.
+    const hasExitEvents = frameEvents.some(event => EXIT_EVENT_TYPES.has(event?.type));
+    if (!sources.length && !hasRuntimeCodeEvents && !hasExitEvents) {
       sources = setupSources({ ...document, sourceStructure }, frame, lines, hidden, displayLines);
     }
     const excludedDeclarationNames = displayedContainerNames(document, frame);

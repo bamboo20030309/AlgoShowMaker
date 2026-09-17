@@ -174,3 +174,29 @@ test('the unpositioned primary object defaults to canvas.top offset(0,80)', () =
   assert.equal(20 + delta.y + 80, 72,
     'offset(0,80) retains the normal 8px semantic anchor gap');
 });
+
+test('keep rows retain vertical stacking, horizontal centering and explicit placement', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8');
+  const start = source.indexOf('  function defaultLiveObjectPlacementDelta(');
+  const end = source.indexOf('  function applyStoredPartPositions(', start);
+  const context = vm.createContext({
+    DEFAULT_LIVE_OBJECT_BINDING: { offsetY: 80 },
+    objectKeyForVariable: (_frame, id) => id,
+    translatedTransform: (element, x, y) => { element.delta = { x, y }; },
+    shiftPlacementTree: () => {}
+  });
+  vm.runInContext(source.slice(start, end), context);
+  const run = (snapshotIds, initialY = 0, positions = {}) => {
+    const frame = { id: 'f', snapshotIds, source: { primaryVariableId: 'arr' } };
+    const element = { dataset: { traceVariable: 'arr' } };
+    context.applyDefaultLiveObjectPlacement(
+      { studio: { positions: { f: positions } } }, frame,
+      new Map([['arr', { x: 100, y: 146, width: 200, height: 80 }]]),
+      new Map([['arr', element]]), ['arr'], initialY
+    );
+    return element;
+  };
+  assert.deepEqual(JSON.parse(JSON.stringify(run(['keep-1']).delta)), { x: 350, y: 0 });
+  assert.deepEqual(JSON.parse(JSON.stringify(run([], 126).delta)), { x: 350, y: -28 });
+  assert.equal(run(['keep-1'], 0, { arr: { x: 10, y: 20 } }).delta, undefined);
+});

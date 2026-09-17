@@ -63,6 +63,15 @@ test('every point and highlight joins one shared wall-clock phase', () => {
   context.window.HintWidgets.drawHighlightBox(group, 0, 0, 40, 40, 'red', 'highlight-a', null, 'style-highlight-a');
   assert.equal(group.children[2].style.animationDelay, '-900ms');
   assert.equal(group.children[2].classList.contains('highlight-blink'), true);
+  const highlight = group.children[2];
+  now = 1150;
+  context.window.HintWidgets.drawHighlightBox(group, 80, 20, 60, 48, 'green', 'highlight-a', null, 'style-highlight-a');
+  assert.equal(group.children[2], highlight);
+  assert.equal(highlight.style.animationDelay, '-900ms', 'moving/resizing/recoloring does not restart highlight');
+  assert.equal(highlight.getAttribute('height'), '48');
+  const rebuiltHighlights = element('g');
+  context.window.HintWidgets.drawHighlightBox(rebuiltHighlights, 80, 20, 60, 48, 'green', 'highlight-rebuilt', null, 'style-highlight-a');
+  assert.equal(rebuiltHighlights.children[0].style.animationDelay, '-150ms', 'rebuilt highlight joins the current global phase');
 });
 
 test('every array SVG root receives point and highlight animation definitions', () => {
@@ -77,6 +86,8 @@ test('every array SVG root receives point and highlight animation definitions', 
   );
   assert.match(traceCss, /\.arrow-bounce\s*\{[\s\S]*?animation:\s*arrow-bounce 1s infinite ease-in-out/);
   assert.match(traceCss, /\.highlight-blink\s*\{[\s\S]*?animation:\s*blink-stroke 1s infinite/);
+  assert.match(traceCss, /\.asm-trace-style-paint\s*\{\s*transition: fill 180ms ease, stroke 180ms ease;/);
+  assert.match(traceCss, /prefers-reduced-motion: reduce/);
 
   const tweenSource = fs.readFileSync(
     path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'
@@ -84,4 +95,6 @@ test('every array SVG root receives point and highlight animation definitions', 
   assert.match(tweenSource, /function syncPresentationHints\(/);
   assert.match(tweenSource, /syncPresentationHints\(overlay\)/);
   assert.match(tweenSource, /syncPresentationHints\(clone\)/);
+  assert.match(tweenSource, /Promise\.allSettled\(paintTransitions\.map\(animation => animation\.finished\)\)/,
+    'playback waits for finite paint transitions, not infinite hint loops');
 });

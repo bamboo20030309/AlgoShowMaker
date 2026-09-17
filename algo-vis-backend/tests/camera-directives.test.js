@@ -5,6 +5,21 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { findFrameDirectives } = require('../trace-instrumenter');
 
+test('an unresolved focus target uses automatic capture instead of the previous center', () => {
+  let automatic = 0;
+  const window = {
+    document: { documentElement: {} },
+    ASMTraceRules: { conditionMatches: () => true },
+    ASMTraceRenderers: { currentAnchor: () => null, fitCurrentObjectsCamera: () => { automatic++; return true; } },
+    setCamera: () => assert.fail('missing target must not reuse the previous viewport center')
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/trace-camera.js'), 'utf8'), {
+    window, getComputedStyle: () => ({ getPropertyValue: () => '' })
+  });
+  window.ASMTraceCamera.apply({}, { id: 'frame-1', camera: { autoCapture: false, target: { objectKey: 'missing' }, zoom: 2 } });
+  assert.equal(automatic, 1);
+});
+
 test('@camera auto and focus attach to a frame with semantic center defaults', () => {
   const source = `#include <bits/stdc++.h>
 using namespace std;

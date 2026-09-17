@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 algo-vis-backend/tmp/
+algo-vis-backend/test-results/
 .env
 algo-vis-backend/server.out.log
 algo-vis-backend/server.err.log

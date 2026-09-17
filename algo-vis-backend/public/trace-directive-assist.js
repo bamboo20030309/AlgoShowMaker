@@ -6,6 +6,11 @@
   if (!editor) return;
 
   const commands = [
+    { id: 'defaults', label: '@defaults', effect: '全域呈現預設：每幀自動套用；當幀指令與 preset 可覆寫', code: '// @defaults\n// @camera auto\n// @enddefaults', examples: [
+      '// @defaults\n// @camera focus arr offset(0,20) zoom(2.0)\n// @enddefaults',
+      '// @defaults\n// @camera auto\n// @enddefaults'
+    ] },
+    { id: 'enddefaults', label: '@enddefaults', effect: '結束全域呈現預設區塊', code: '// @enddefaults', examples: ['// @defaults\n// @camera auto\n// @enddefaults'] },
     { id: 'frame', label: '@frame', effect: '擷取此刻的動畫幀並選擇要顯示的變數', code: '// @frame arr', examples: [
       '// @frame arr',
       '// @frame arr[i,j],key\n// @style arr[i] highlight',
