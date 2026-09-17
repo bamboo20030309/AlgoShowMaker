@@ -7,7 +7,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=drop-import-8" />
+  <link rel="stylesheet" href="home.css?v=library-folders-10" />
 </head>
 
 <body>
@@ -127,10 +127,13 @@
             <input id="searchInput" type="search" placeholder="搜尋投影片" autocomplete="off" />
           </label>
           <span id="deckCount" class="deck-count"></span>
+          <button id="createFolderBtn" class="quiet-btn" type="button" disabled>＋ 新增資料夾</button>
         </div>
 
         <div id="libraryMessage" class="library-message" role="status" aria-live="polite"></div>
-        <div id="deckGrid" class="deck-grid"></div>
+        <div id="libraryLayoutMessage" class="library-message" role="status" aria-live="polite"></div>
+        <nav id="libraryFolderNav" class="library-folder-nav" aria-label="投影片資料夾"></nav>
+        <div id="deckGrid" class="gallery-folders"></div>
 
         <div id="emptyState" class="empty-state" hidden>
           <div class="empty-preview" aria-hidden="true">
@@ -183,7 +186,9 @@
   <script src="asmdeck.js?v=1"></script>
   <script src="guest-gallery.js?v=2"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="home.js?v=drop-import-6"></script>
+  <script src="library-layout.js?v=1"></script>
+  <script src="library-organizer.js?v=1"></script>
+  <script src="home.js?v=library-folders-7"></script>
 </body>
 
 </html>
