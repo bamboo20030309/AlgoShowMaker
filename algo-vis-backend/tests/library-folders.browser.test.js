@@ -19,12 +19,16 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     const Layout = require('../public/library-layout');
     const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5yQAAAAASUVORK5CYII=';
     let decks = ['a', 'b', 'c'].map((id, i) => ({ deck_uid: id, title: ['Alpha', 'Beta', 'Gamma'][i], cover_thumbnail: pixel, updated_at: '2026-09-18', slide_count: 1 }));
+    decks[2].cover_thumbnail = null;
     let layout = { folders: [], unfiled: ['a', 'b', 'c'] }, failSave = false;
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
+    page.on('dialog', async dialog => { errors.push('Unexpected native dialog: ' + dialog.type()); await dialog.dismiss(); });
     await page.addInitScript(() => localStorage.setItem('algo_jwt_token', 'fixture'));
     await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture' } } }));
     await page.route('**/api/slides', route => route.fulfill({ json: { slides: decks } }));
+    await page.route('**/deck-thumbnail.js?*', route => route.fulfill({ contentType: 'application/javascript', body: `window.AlgoDeckThumbnail = { create: async () => { await new Promise(resolve => setTimeout(resolve, 200)); return ${JSON.stringify(pixel)}; } };` }));
+    await page.route('**/api/slides/c', route => route.fulfill({ json: { slide: { ...decks[2], deck: {} } } }));
     await page.route('**/api/slides/a', route => {
       if (route.request().method() === 'PUT') decks.find(deck => deck.deck_uid === 'a').title = route.request().postDataJSON().title;
       return route.fulfill({ json: { slide: decks.find(deck => deck.deck_uid === 'a') } });
@@ -46,6 +50,8 @@ test('workspace folders persist drag ordering, support mobile controls and recov
       if (!failSave) await saved();
     }
     await page.goto(base); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+    await page.waitForSelector('[data-deck-id="c"] .deck-cover-image');
+    assert.equal(await page.locator('[data-deck-id="c"] .deck-cover-image').evaluate(el => el.draggable), false);
     const borders = () => page.locator('.gallery-folder:visible').first().evaluate(el => { const style = getComputedStyle(el); return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.borderRadius]; });
     assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
     await page.locator('#createFolderBtn').click();
@@ -77,7 +83,7 @@ test('workspace folders persist drag ordering, support mobile controls and recov
       ['a', '.deck-meta', ['a', 'c', 'b']],
       ['c', '.deck-title', ['c', 'a', 'b']],
       ['a', '', ['a', 'c', 'b']],
-      ['c', '.deck-preview', ['c', 'a', 'b']],
+      ['c', '.deck-cover-image', ['c', 'a', 'b']],
       ['a', '.deck-settings', ['a', 'c', 'b']],
       ['c', '.library-drag-handle', ['c', 'a', 'b']]
     ]) {
@@ -120,8 +126,13 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
     assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
     assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).isVisible(), true);
-    page.once('dialog', dialog => dialog.accept('演算法'));
-    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).click(); await saved();
+    const rename = () => page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).click();
+    await rename(); assert.equal(await page.locator('#folderTitleInput').inputValue(), '數學');
+    await page.locator('#cancelFolderDialogBtn').click(); assert.equal(layout.folders[0].title, '數學');
+    await rename(); await page.locator('#folderTitleInput').fill('演算法'); failSave = true;
+    await page.locator('#submitFolderBtn').click(); await page.waitForFunction(() => document.querySelector('#folderDialogMessage').textContent.includes('儲存失敗'));
+    assert.equal(layout.folders[0].title, '數學'); assert.equal(await page.locator('#folderTitleInput').inputValue(), '演算法');
+    failSave = false; await page.keyboard.press('Enter'); await saved();
     assert.equal(layout.folders[0].title, '演算法');
     assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
     await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
@@ -154,14 +165,20 @@ test('workspace folders persist drag ordering, support mobile controls and recov
     assert.deepEqual(await order(folder), ['c']); assert.deepEqual(await order(second), ['b']); assert.deepEqual(await order(third), ['b']);
     await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
     assert.equal(await page.locator('#deckGrid [data-deck-id="b"]').count(), 2);
-    page.once('dialog', dialog => dialog.accept());
-    await page.locator(`.library-folder[data-folder-id="${third}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await saved();
+    const removeThird = () => page.locator(`.library-folder[data-folder-id="${third}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click();
+    await removeThird(); assert.ok((await page.locator('#deleteFolderName').textContent()).includes('樹'));
+    assert.equal(await page.locator('#cancelDeleteFolderBtn').evaluate(el => el === document.activeElement), true);
+    await page.locator('#cancelDeleteFolderBtn').click(); assert.equal(layout.folders.length, 3);
+    await removeThird(); await page.keyboard.press('Escape'); assert.equal(layout.folders.length, 3);
+    await removeThird(); failSave = true; await page.locator('#deleteFolderSubmit').click();
+    await page.waitForFunction(() => document.querySelector('#deleteFolderMessage').textContent.includes('儲存失敗'));
+    assert.equal(layout.folders.length, 3); assert.equal(await page.locator('#deleteFolderDialog').evaluate(el => el.open), true);
+    await page.screenshot({ path: path.join(imageDir, 'delete-folder-dialog-mobile.png') });
+    failSave = false; await page.locator('#deleteFolderSubmit').click(); await saved();
     assert.deepEqual(await order(second), ['b']); assert.deepEqual(await order(''), ['a']);
     await assignCategories('b', []);
-    page.once('dialog', dialog => dialog.accept());
-    await page.locator(`.library-folder[data-folder-id="${second}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await saved();
-    page.once('dialog', dialog => dialog.accept());
-    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await saved();
+    await page.locator(`.library-folder[data-folder-id="${second}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await page.locator('#deleteFolderSubmit').click(); await saved();
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await page.locator('#deleteFolderSubmit').click(); await saved();
     assert.deepEqual(await order(''), ['a', 'b', 'c']); assert.equal(layout.folders.length, 0);
     decks = [decks[2], decks[1], decks[0], { ...decks[0], deck_uid: 'd', title: 'New deck' }];
     await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);

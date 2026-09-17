@@ -239,6 +239,7 @@
       image = document.createElement('img');
       image.className = 'deck-cover-image';
       image.alt = '';
+      image.draggable = false;
       image.decoding = 'async';
       preview.prepend(image);
     }
