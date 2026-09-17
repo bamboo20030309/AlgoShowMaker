@@ -3614,3 +3614,5 @@ body.shared-view-only #exportDeckBtn,
 body.shared-view-only #shareDeckBtn { display: none; }
 body.shared-view-only .shared-access-badge { left: auto; right: 14px; }
 body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--controlbar-w); }
+
+.deck-file-drop-active { outline: 3px solid #55b9f3; outline-offset: 3px; background: #1d8f83 !important; }

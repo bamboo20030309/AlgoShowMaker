@@ -5,6 +5,7 @@
   const urlParams = new URLSearchParams(window.location.search);
   const sampleId = urlParams.get('sample');
   const deckUid = sampleId ? null : urlParams.get('deck');
+  let pendingWorkspaceImport = urlParams.get('importFile');
   const shareToken = sampleId ? 'sample:' + sampleId : urlParams.get('share');
   const SLIDE_W = 1280;
   const SLIDE_H = 720;
@@ -669,6 +670,13 @@
         endpoint: remoteDeckEndpoint(), headers, fetch: window.fetch.bind(window),
         storage: ASMSlideStorage, title: cloudDeckTitle, cover_thumbnail: coverThumbnail
       });
+      if (pendingWorkspaceImport) {
+        await window.ASMDeckFileDrop.remove(pendingWorkspaceImport);
+        const cleanUrl = new URL(location.href);
+        cleanUrl.searchParams.delete('importFile');
+        window.history.replaceState({}, '', cleanUrl);
+        pendingWorkspaceImport = null;
+      }
       setCloudStatus('saved', '已儲存');
     } catch (err) {
       console.error('Failed to save cloud deck', err);
@@ -857,9 +865,12 @@
     else renderDeck();
   }
 
+  let deckImportInProgress = false;
   async function importDeckJsonFile(file) {
-    if (!file) return;
+    if (!file || sharedAccess === 'view' || deckImportInProgress) return false;
+    deckImportInProgress = true;
     try {
+      await window.ASMDeckFileDrop.validate(file);
       if (/\.asmdeck$/i.test(file.name)) {
         const packageData = await window.ASMDeck.decode(file);
         const importStats = { exact: 0, base: 0, run: 0, pending: 0 };
@@ -883,10 +894,12 @@
         await importDeckJsonText(await file.text());
       }
       flashHint('Done');
+      return true;
     } catch (error) {
       console.error('Failed to import deck', error);
       setCloudStatus('error', `匯入失敗：${error.message}`);
-    } finally { if (importDeckInput) importDeckInput.value = ''; }
+      return false;
+    } finally { deckImportInProgress = false; if (importDeckInput) importDeckInput.value = ''; }
   }
 
   function pushHistorySnapshot(snapshot = JSON.stringify(deck)) {
@@ -9451,6 +9464,12 @@
         !deckUid && !shareToken ? [STORAGE_KEY, OLD_STORAGE_KEY] : []);
       if (localDeck) deck = normalizeDeck(localDeck);
       await loadCloudDeck();
+      const importId = pendingWorkspaceImport;
+      if (importId && deckUid) {
+        const file = await window.ASMDeckFileDrop.get(importId);
+        if (!file) throw new Error('待匯入的檔案不存在，請從工作區重新拖入');
+        if (!await importDeckJsonFile(file)) throw new Error('投影片匯入未完成，請重試');
+      }
     } catch (err) {
       console.error('Cloud deck initialization failed', err);
       setCloudStatus('error', `載入失敗：${err.message}`);
@@ -9460,6 +9479,12 @@
 
     bindChrome();
     bindSlideDrop();
+    window.ASMDeckFileDrop.bind({
+      selector: '#importDeckBtn, #addSlideBtn, #overviewAddSlideBtn, .slide-edge-add',
+      allowed: () => sharedAccess !== 'view',
+      onFile: importDeckJsonFile,
+      onError: error => setCloudStatus('error', `匯入失敗：${error.message}`)
+    });
     bindCustomOverview();
     bindOverviewDrag();
     window.addEventListener('beforeunload', () => stopTtsPlayback());

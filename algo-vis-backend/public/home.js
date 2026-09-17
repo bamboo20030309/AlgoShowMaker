@@ -360,6 +360,33 @@
     }
   }
 
+  async function createDeckFromFile(file) {
+    const importId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), value => value.toString(16).padStart(2, '0')).join('');
+    createDeckBtn.disabled = true;
+    emptyCreateBtn.disabled = true;
+    setMessage(libraryMessage, '正在準備匯入投影片…');
+    try {
+      await window.ASMDeckFileDrop.put(importId, file);
+      const data = await api('/api/slides', {
+        method: 'POST', body: JSON.stringify({ title: file.name.replace(/\.(asmdeck|json)$/i, '') })
+      });
+      location.href = `/slides.html?deck=${encodeURIComponent(data.slide.deck_uid)}&importFile=${encodeURIComponent(importId)}`;
+    } catch (error) {
+      await window.ASMDeckFileDrop.remove(importId).catch(() => {});
+      setMessage(libraryMessage, `匯入失敗：${error.message}`);
+      createDeckBtn.disabled = false;
+      emptyCreateBtn.disabled = false;
+    }
+  }
+
+  window.ASMDeckFileDrop.bind({
+    selector: '#createDeckBtn, #emptyCreateBtn',
+    allowed: () => !dashboardView.hidden && Boolean(state.user),
+    onFile: createDeckFromFile,
+    onError: error => setMessage(libraryMessage, `匯入失敗：${error.message}`)
+  });
+
   function openDeck(deckUid) {
     location.href = `/slides.html?deck=${encodeURIComponent(deckUid)}`;
   }
