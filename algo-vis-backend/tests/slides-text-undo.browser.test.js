@@ -58,7 +58,9 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     const payload = { format: 'AlgoShowMaker.slides', version: 'AV_V4.3', deck: {
       groups: [{ id: 'text-group', slides: [{ id: 'text-slide', canvas: { version: '5.3.0', objects: [
         { type: 'textbox', left: 150, top: 200, width: 650, text: 'Alpha beta', fontSize: 48, fontFamily: 'Arial',
-          fill: '#111111', styles: { 0: { 6: { fill: '#ff0000', fontWeight: 'bold' }, 7: { fill: '#ff0000', fontWeight: 'bold' } } } }
+          fill: '#111111', styles: { 0: { 6: { fill: '#ff0000', fontWeight: 'bold' }, 7: { fill: '#ff0000', fontWeight: 'bold' } } } },
+        { type: 'textbox', left: 150, top: 350, width: 650, text: 'Unedited sibling', fontSize: 48, fill: '#112233' },
+        { type: 'rect', left: 900, top: 350, width: 100, height: 100, fill: '#445566' }
       ] }, widgets: [], ttsScript: '', ttsOrder: [] }] }], ttsSettings: { rate: 1, volume: .3 }
     } };
     await page.locator('#importDeckInput').setInputFiles({ name: 'text.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(payload)) });
@@ -92,9 +94,13 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
       assert.equal(actual.start, start); assert.equal(actual.end, end);
       assert.equal(actual.editing, true); assert.equal(actual.sameObject, true);
       assert.equal(actual.sameTextarea, true); assert.equal(actual.focused, true);
+      assert.deepEqual(await page.evaluate(() => testCanvas.getObjects().slice(1).map(o => o.toObject())), siblingsBeforeEditing);
       return actual;
     }
+    const siblingsBeforeEditing = await page.evaluate(() => testCanvas.getObjects().slice(1).map(o => o.toObject()));
+    const historyBeforeEditing = await page.locator('body').getAttribute('data-history-index');
     await beginEditing();
+    assert.equal(await page.locator('body').getAttribute('data-history-index'), historyBeforeEditing);
     await select(6, 10);
     const originalStyles = await page.evaluate(() => JSON.parse(JSON.stringify(testCanvas.getActiveObject().styles)));
     await page.keyboard.insertText('gamma');
@@ -205,7 +211,7 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     await state('Alpha gamma!😀 persisted', 23);
     await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
     await page.reload();
-    await page.waitForFunction(() => document.body.dataset.fabricObjectCount === '1');
+    await page.waitForFunction(() => document.body.dataset.fabricObjectCount === '3');
     await page.evaluate(() => {
       const original = fabric.Canvas.prototype.loadFromJSON;
       fabric.Canvas.prototype.loadFromJSON = function(...args) { window.testCanvas = this; return original.apply(this, args); };
