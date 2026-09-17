@@ -1,6 +1,7 @@
 # gamma-code-focus 交付驗證紀錄
 
 ## 交付資訊
+- 主代理核實：已合併 intergration，受測程式 68b3cc847c7104c1f33cfeba56e8ee477e2be289；詳見 [整合驗證紀錄](../2026-09-18-library-category-focus-integration.md)。
 - 狀態：小驗證通過，待主代理核實
 - 分支：codex/2026-09-18-gamma
 - 共同基準 commit：6168bd8b989632643c06c673a75d3f177f3634ac
