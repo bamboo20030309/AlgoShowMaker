@@ -193,7 +193,7 @@
     return {
       async load(items) {
         ready = false; decks = items; layout = { folders: [], unfiled: [] }; status('正在讀取資料夾…');
-        try { layout = (await api('/api/slide-library')).layout; ready = true; status('拖曳縮圖可排序；拖入資料夾可分類。'); }
+        try { layout = (await api('/api/slide-library')).layout; ready = true; status(''); }
         catch (error) { status(`無法讀取資料夾：${error.message}。請重新整理後再試。`, true); }
       },
       render(items, search = '') { decks = items; query = search; render(); }

@@ -61,8 +61,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
   assert.ok(legacy.includes('home.css?v=multi-category-14'));
-  assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=5'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=5') < legacy.indexOf('home.js?v=library-folders-7'));
+  assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=6'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=6') < legacy.indexOf('home.js?v=library-folders-7'));
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
   assert.ok(html.includes('trace-arrow-model.js?v=arrow-4'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
