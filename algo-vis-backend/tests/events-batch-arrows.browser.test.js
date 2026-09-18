@@ -62,5 +62,29 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     assert.deepEqual(result.repeated.arrows,result.nine.arrows);
     assert.deepEqual(result.reloaded.arrows,result.nine.arrows,'JSON round trip retains controls and batch description');
     assert.deepEqual(errors,[]);
+    const traceDocument = await page.evaluate(() => JSON.parse(JSON.stringify(ASMTracePlayer.getDocument())));
+    const slides = await browser.newPage({ viewport: { width:1440,height:1000 } });
+    slides.on('pageerror', error => errors.push(error.message));
+    await slides.addInitScript(deck => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(deck)), {
+      groups: [{ id:'embedded-group', slides: [{ id:'embedded-sieve', kind:'algorithm-animation',
+        animation:{ mode:'trace', code, traceDocument }, canvas:{objects:[]}, widgets:[] }] }]
+    });
+    await slides.goto(base+'/slides.html');
+    await slides.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length);
+    const runtime = slides.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
+    assert.ok(runtime, 'actual algorithm slide runtime iframe loaded');
+    const embedded = await runtime.evaluate(async () => {
+      const player=ASMTracePlayer, doc=player.getDocument();
+      const iId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='i');
+      const index=doc.frames.findIndex(frame=>frame.eventControls.length && frame.state[iId]?.data.value===9);
+      if(index<0) throw Error('embedded compact frame missing');
+      await player.render(index);
+      return { arrows:[...document.querySelectorAll('#arraySvg [data-trace-arrow-source="directive"]')].map(node=>({
+        id:node.dataset.traceArrow, from:node.dataset.traceArrowFromKey, to:node.dataset.traceArrowToKey })),
+        steps:player.getLastPlaybackPlan()?.phases.find(phase=>phase.id==='trace-events')?.steps.length || 0 };
+    });
+    assert.deepEqual(embedded.arrows,result.nine.arrows,'slide iframe preserves batch arrow identities and targets');
+    assert.equal(embedded.steps,0,'slide iframe honors compact frame event controls');
+    assert.deepEqual(errors,[]);
   } finally { await browser.close(); }
 });
