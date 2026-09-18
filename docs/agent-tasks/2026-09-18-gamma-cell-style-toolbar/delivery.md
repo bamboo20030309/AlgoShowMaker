@@ -59,3 +59,9 @@
 - 未完成或環境阻塞：無環境阻塞，待整合核實
 - 本機服務重啟：未執行，由主代理負責
 - Push／公開部署：按既有授權推送，未部署
+
+## 本輪主代理核實（2026-09-18）
+- 已核實並合併 intergration；受測版本 eecb30951584ed8daaee5fb3470fc9cb2afd02e1。
+- 28 項相關測試通過，含實際多樣式投影片 iframe；[本輪完整核實](../2026-09-18-style-list-toolbar-integration.md)。
+- 3100 已啟動最新版本，PID 27260；main 未合併，3000 當前不可連線。
+- 依授權推送 origin/intergration，結果以最終回報為準；未部署或 release。

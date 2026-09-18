@@ -53,3 +53,20 @@
 - 依授權推送 origin/intergration，結果以主代理最終回報為準；未部署或 release。
 
 
+## 批次推送補記
+- 本次涵蓋4603a68d81db2da71fb6e8b6958d02475b9127be之後至153bd979f8d51a2d276b1d8313ae436d9a02fbba的16項提交，含游標閃爍、提示移除、資料夾對話框、返回按鈕、品牌圖示、縮圖拖曳及structure註標與選色。
+- 前述交付文件中的未push／待授權記錄為當時狀態，以本補記為最新推送結果；小驗證結果不等於整合驗收。
+
+## 白色預設修訂交付（2026-09-18）
+- 狀態：小驗證通過，待主代理核實。
+- 共同基準：800a357bbf5d30001fa8653215bc2f8426862ab1。
+- 程式commit：7fbc3808e28578a46c9b69e326cdcaee9a0e34f0；測試時為相同未提交程式diff。
+- 行為：新物件及缺少annotationColor資料預設#ffffff，選色按鈕／圖示同步；明確儲存的顏色保留。
+- 層級與分類：V1，A/B/C；一般投影片預設與保存，不涉及演算法動畫。
+- 指令／環境：本worktree/algo-vis-backend執行node --test tests/structure-annotations.browser.test.js tests/entrypoints.test.js；隨機埠ASM_REGRESSION、合成deck、獨立Edge、既有CDN依賴。
+- 結果：2通過、0失敗、0skip、exit code 0；初始未指定色箭頭stroke=#ffffff，改色與重開保存通過。
+- node --check public/slides.js、public/slide-structures.js及git diff --check皆exit code 0。
+- 證據：提交測試程式，本機structure-annotations.png不提交。
+- 未執行完整回歸、演算法驗證集及專項undo/redo；按影響範圍由主代理整合核實。
+- 依既有明確授權將本次程式、測試與任務／交付文件推送至bamboo20030309/AlgoShowMaker之codex/2026-09-18-gamma。
+- 使用者詢問多格不同style：各style索引欄指定各自元素，可組合不同style；同類style共用顏色，同類每格獨立色尚無介面。
