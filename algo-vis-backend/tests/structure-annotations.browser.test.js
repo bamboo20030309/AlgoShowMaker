@@ -39,6 +39,31 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(geometry, true);
     await page.locator('#structureAnnotationIndicesInput').fill(''); assert.deepEqual(await annotations(), []);
     await page.locator('#structureAnnotationIndicesInput').fill('1,3');
+    await page.locator('#structureAnnotationTextInput').fill('i');
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'i');
+    async function selectCell(index) {
+      await object.locator(`[data-structure-item-index="${index}"] > text`).click();
+      await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar');
+    }
+    await selectCell(0);
+    const toolbar = page.locator('#structureContextMenu');
+    await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
+    assert.equal(await page.locator('#structureHighlightIndicesInput').inputValue(), '0');
+    await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).click();
+    assert.deepEqual(await annotations(), ['0', '1', '3']);
+    await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).click();
+    assert.deepEqual(await annotations(), ['1', '3']);
+    await selectCell(2); await toolbar.getByRole('button', { name: 'Mark', exact: true }).click();
+    assert.equal(await page.locator('#structureMarkIndicesInput').inputValue(), '2');
+    await selectCell(1); await toolbar.getByRole('textbox', { name: '此格註標文字' }).fill('left'); await page.keyboard.press('Enter');
+    await selectCell(3); await toolbar.getByRole('textbox', { name: '此格註標文字' }).fill('right'); await page.keyboard.press('Enter');
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'left');
+    assert.equal(await object.locator('[data-structure-annotation-index="3"] text').textContent(), 'right');
+    const toolbarBox = await toolbar.boundingBox();
+    const cellBox = await object.locator('[data-structure-item-index="3"] > rect').boundingBox();
+    assert.ok(toolbarBox.y + toolbarBox.height < cellBox.y);
+    fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+    await page.screenshot({ path: path.join(root, 'test-results/structure-cell-toolbar.png') });
     assert.equal(await page.locator('[data-structure-style="annotation"] svg rect').count(), 1);
     await page.locator('#structureAnnotationColorInput').click();
     await page.locator('#iroPicker .IroBox').first().click({ position: { x: 110, y: 35 } });
@@ -51,6 +76,9 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.deepEqual(await annotations(), ['1', '3']);
     const saved = await page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].widgets[0]);
     assert.equal(saved.annotationIndices, '1,3');
+    assert.equal(saved.annotationText, 'i');
+    assert.deepEqual(saved.annotationLabels, { 1: 'left', 3: 'right' });
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'left');
     assert.equal(saved.annotationColor, annotationColor);
     assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), annotationColor);
     const custom = await page.evaluate(widget => {

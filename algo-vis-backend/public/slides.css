@@ -3602,6 +3602,11 @@ body:not(.asm-edit-mode) > .tts-transport[data-expanded="true"] {
   width: min(320px, calc(100vw - var(--controlbar-w) - 28px));
   max-height: calc(100dvh - 80px); overflow: auto;
 }
+
+.structure-context-menu.structure-cell-style-toolbar { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.structure-cell-style-toolbar button { display: flex; align-items: center; justify-content: center; width: 30px; height: 34px; padding: 3px; }
+.structure-cell-style-toolbar button[aria-pressed="true"] { background: #3b626c; outline: 1px solid #75c7d6; }
+.structure-cell-style-toolbar input { width: 90px; min-width: 0; }
 body:not(.asm-edit-mode) > .tts-transport #ttsScriptShell,
 body:not(.asm-edit-mode) > .tts-transport #ttsScriptSource,
 body:not(.asm-edit-mode) > .tts-transport #ttsAddCarrierBtn { display: none; }

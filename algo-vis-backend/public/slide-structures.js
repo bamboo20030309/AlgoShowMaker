@@ -613,11 +613,12 @@
       const marker = element('g', { 'data-structure-annotation-index': actualIndex, 'pointer-events': 'none' });
       cell.appendChild(marker);
       // Reuse the existing structure cell renderer for the animation-style label box.
-      window.draw_block(marker, x - 9, y - 40, actualIndex, 18, 18, '#bfe8f7', `annotation-${actualIndex}`);
+      const label = widget.annotationLabels?.[actualIndex] || widget.annotationText || String(actualIndex);
+      window.draw_block(marker, x - 9, y - 40, label, 18, 18, '#bfe8f7', `annotation-${actualIndex}`);
       marker.querySelector('rect')?.setAttribute('fill-opacity', '0.58');
       marker.querySelector('rect')?.setAttribute('stroke', widget.annotationColor || '#ffffff');
       const text = marker.querySelector('text');
-      if (text) { text.setAttribute('font-size', '8'); text.setAttribute('font-weight', 'bold'); }
+      if (text) { text.setAttribute('font-size', String(Math.max(4, Math.min(8, 14 / (Array.from(label).length * 0.62))))); text.setAttribute('font-weight', 'bold'); }
       marker.appendChild(element('path', {
         d: `M ${x} ${y - 22} L ${x} ${y - 2} M ${x - 3} ${y - 8} L ${x} ${y - 2} L ${x + 3} ${y - 8}`,
         fill: 'none', stroke: widget.annotationColor || '#ffffff', 'stroke-width': 1,
