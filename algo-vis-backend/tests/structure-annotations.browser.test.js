@@ -38,11 +38,20 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(geometry, true);
     await page.locator('#structureAnnotationIndicesInput').fill(''); assert.deepEqual(await annotations(), []);
     await page.locator('#structureAnnotationIndicesInput').fill('1,3');
+    assert.equal(await page.locator('[data-structure-style="annotation"] svg rect').count(), 1);
+    await page.locator('#structureAnnotationColorInput').click();
+    await page.locator('#iroPicker .IroBox').first().click({ position: { x: 110, y: 35 } });
+    const annotationColor = await page.locator('#structureAnnotationColorInput').getAttribute('data-color');
+    assert.notEqual(annotationColor, '#333333');
+    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), annotationColor);
+    await page.locator('#structureAnnotationColorInput').click();
     await page.locator('#modeToggleBtn').click(); await page.waitForTimeout(600);
     await page.reload(); await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready'));
     assert.deepEqual(await annotations(), ['1', '3']);
     const saved = await page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].widgets[0]);
     assert.equal(saved.annotationIndices, '1,3');
+    assert.equal(saved.annotationColor, annotationColor);
+    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), annotationColor);
     const custom = await page.evaluate(widget => {
       const svg = AlgoStructureRenderer.createSvg({ ...widget, highlightColor: '#123456', highlightIndices: '0' });
       return svg.querySelector('.highlight-blink').getAttribute('stroke');

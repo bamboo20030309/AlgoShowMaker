@@ -353,6 +353,7 @@
   const structureHighlightColorInput = document.getElementById('structureHighlightColorInput');
   const structureHighlightIndicesInput = document.getElementById('structureHighlightIndicesInput');
   const structureAnnotationIndicesInput = document.getElementById('structureAnnotationIndicesInput');
+  const structureAnnotationColorInput = document.getElementById('structureAnnotationColorInput');
   const structureFocusColorInput = document.getElementById('structureFocusColorInput');
   const structureFocusIndicesInput = document.getElementById('structureFocusIndicesInput');
   const structurePointColorInput = document.getElementById('structurePointColorInput');
@@ -365,6 +366,7 @@
   const structureFrameBackgroundEnabledInput = document.getElementById('structureFrameBackgroundEnabledInput');
   const structureFrameBackgroundColorInput = document.getElementById('structureFrameBackgroundColorInput');
   const structureColorBindings = [
+    { target: 'structure-annotation', button: structureAnnotationColorInput, field: 'annotationColor', style: 'annotation' },
     { target: 'structure-tree-arrow', button: structureTreeArrowColorInput, field: 'treeArrowColor' },
     { target: 'structure-frame-background', button: structureFrameBackgroundColorInput, field: 'frameBackgroundColor' },
     { target: 'structure-highlight', button: structureHighlightColorInput, field: 'highlightColor', style: 'highlight' },
@@ -2216,6 +2218,7 @@
           treeRendererVersion: 3,
           structureFrameVersion: Number(widget.structureFrameVersion) || 0,
           annotationIndices: typeof widget.annotationIndices === 'string' ? widget.annotationIndices : '',
+          annotationColor: widget.annotationColor || '#333333',
           highlightIndices: typeof widget.highlightIndices === 'string' ? widget.highlightIndices : '',
           focusIndices: typeof widget.focusIndices === 'string' ? widget.focusIndices : '',
           pointIndices: typeof widget.pointIndices === 'string' ? widget.pointIndices : '',
@@ -2765,7 +2768,7 @@
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
-      'annotationIndices',
+      'annotationIndices', 'annotationColor',
       'frameBackgroundEnabled', 'frameBackgroundColor', 'treeLayout', 'treeArrowColor',
       'treeData', 'structureFrameVersion',
       'w', 'h'
@@ -4272,6 +4275,7 @@
         treeRendererVersion: 3,
         structureFrameVersion: 4,
         annotationIndices: '',
+        annotationColor: '#333333',
         highlightIndices: '',
         focusIndices: '',
         pointIndices: '',
@@ -5213,6 +5217,8 @@
     setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ff0000');
     structureHighlightIndicesInput.value = widget.highlightIndices || '';
     structureAnnotationIndicesInput.value = widget.annotationIndices || '';
+    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#333333');
+    syncStructureStyleIcon('annotation', widget.annotationColor || '#333333');
     setStructureColorButton(structureFocusColorInput, widget.focusColor || '#808080');
     structureFocusIndicesInput.value = widget.focusIndices || '';
     setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
