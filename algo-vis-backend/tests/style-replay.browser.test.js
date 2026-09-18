@@ -55,6 +55,47 @@ test('sieve frame styles follow forward, backward and repeated playback',{timeou
       assert.deepEqual(state.targets,expected.targets);
       assert.equal(state.steps,0);
     }
+    const traceDocument=await page.evaluate(()=>JSON.parse(JSON.stringify(ASMTracePlayer.getDocument())));
+    const slides=await browser.newPage({viewport:{width:1440,height:1000}});
+    slides.on('pageerror',error=>errors.push(error.message));
+    await slides.addInitScript(deck=>localStorage.setItem('asm_reveal_fabric_deck_v5',JSON.stringify(deck)),{groups:[{id:'replay-group',slides:[{id:'replay-slide',kind:'algorithm-animation',animation:{mode:'trace',code,input:'30',traceDocument},canvas:{objects:[]},widgets:[]}]}]});
+    await slides.goto(base+'/slides.html');
+    await slides.waitForFunction(()=>document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length);
+    const runtime=slides.frames().find(frame=>frame.url().includes('asmEmbed=runtime'));
+    assert.ok(runtime,'actual slide runtime loaded');
+    const embedded=await runtime.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const ids=Object.keys(doc.variables).filter(id=>['isprime','prime'].includes(doc.variables[id].name));
+      const iId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='i');
+      const indices=[8,9].map(i=>doc.frames.findIndex(f=>f.eventControls.length && f.state[iId]?.data.value===i));
+      if(indices.some(index=>index<0))throw Error('compact frames missing');
+      const read=()=>({
+        cells:[...document.querySelectorAll('#arraySvg [data-trace-arrow-target-key]')]
+          .filter(node=>ids.some(id=>node.getAttribute('data-trace-arrow-target-key').startsWith(id+'#')) && node.matches('[data-trace-index]'))
+          .map(cell=>({key:cell.getAttribute('data-trace-arrow-target-key'),fill:cell.querySelector(':scope > rect')?.getAttribute('fill'),
+            highlight:[...document.querySelectorAll('#arraySvg .asm-trace-style-decoration')].some(wrapper=>wrapper._asmStyleCell===cell && wrapper.getAttribute('display')!=='none'
+              && wrapper.firstElementChild?.getAttribute('display')!=='none' && wrapper.firstElementChild?.classList.contains('highlight-blink'))}))
+          .sort((a,b)=>a.key.localeCompare(b.key)),
+        targets:[...document.querySelectorAll('#arraySvg [data-trace-arrow-source="directive"]')].map(node=>node.dataset.traceArrowToKey.split('#').at(-1)),
+        steps:player.getLastPlaybackPlan()?.phases.find(phase=>phase.id==='trace-events')?.steps.length||0
+      });
+      const expected=[];
+      window.__asmReplayRead=read;
+      for(const index of indices){await player.render(index,{animatePositions:false,animateEvents:false});expected.push(read());}
+      await player.render(indices[0],{animatePositions:false,animateEvents:false});
+      await window.CodeScript.next();const forward=read();
+      await window.CodeScript.prev();const backward=read();
+      await window.CodeScript.next();const repeated=read();
+      player.apply(JSON.parse(JSON.stringify(doc)));
+      await player.render(indices[1],{animatePositions:false,animateEvents:false});
+      await window.CodeScript.prev();const reloadedBackward=read();
+      return {expected,forward,backward,repeated,reloadedBackward};
+    });
+    assert.deepEqual(embedded.backward.cells,result.expected[0].cells,'slide backward styles match destination');
+    assert.deepEqual(embedded.reloadedBackward.cells,result.expected[0].cells,'slide reloaded backward styles match destination');
+    assert.deepEqual(embedded.forward.cells,result.expected[1].cells,'slide forward styles match destination');
+    assert.deepEqual(embedded.backward.targets,['16']);
+    assert.equal(embedded.backward.steps,0);
     // Stop this isolated deck at i=9, so autoplay exercises only the affected pair.
     for(const speed of [500,1500]){
       const last=await page.evaluate(async speed=>{
