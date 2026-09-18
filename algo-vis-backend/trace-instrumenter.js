@@ -400,7 +400,7 @@ function findPresetDirectives(source, analysis) {
         }
         const directive = text.match(/^\/\/\s*@([A-Za-z_-]+)\b\s*(.*?)\s*$/);
         if (!directive) throw new Error(`第 ${line} 行的 @preset 內容必須是 @ 指令`);
-        if (open.name === '@defaults' && !['camera', 'place', 'style', 'object', 'text', 'segment', 'arrow', 'events', 'for', 'endfor'].includes(directive[1].toLowerCase())) {
+        if (open.name === '@defaults' && !['camera', 'place', 'style', 'object', 'text', 'segment', 'arrow', 'events', 'automark', 'for', 'endfor'].includes(directive[1].toLowerCase())) {
           throw new Error(`第 ${line} 行的 @defaults 只支援呈現指令，不支援 @${directive[1]}`);
         }
         const name = directive[1].toLowerCase();
@@ -2184,6 +2184,56 @@ function attachEventControlDirectives(source, analysis, frames) {
   });
 }
 
+function attachAutoMarkDirectives(source, analysis, frames) {
+  frames.forEach(frame => { frame.autoMarkVariableIds = null; });
+  const controls = [];
+  const parse = (payload, line, from) => {
+    const value = payload.trim();
+    const names = value === 'none' ? [] : value.split(',').map(name => name.trim());
+    if (names.some(name => !/^[A-Za-z_]\w*$/.test(name) || name === 'none')
+      || new Set(names).size !== names.length) {
+      throw new Error(`第 ${line} 行的 @automark 格式應為陣列名稱列表或 none，不接受重複名稱`);
+    }
+    return { from, line, names };
+  };
+  function visit(node) {
+    if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+      const match = source.slice(node.from, node.to).match(/^\/\/\s*@automark\b\s*(.*?)\s*$/i);
+      if (match) controls.push(parse(match[1], analysis.lineAt(node.from), node.from));
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  }
+  visit(analysis.tree.topNode);
+  frames.forEach(frame => {
+    const entries = framePresetNames(frame, analysis).flatMap(name =>
+      analysis.presetDefinitions?.get(name)?.directives.filter(item => item.name === 'automark') || []);
+    entries.forEach((item, index) => controls.push(parse(item.payload, item.line,
+      frame.from + (index + 1) / (entries.length + 1))));
+  });
+  controls.sort((a, b) => a.from - b.from).forEach(control => {
+    const frame = frames.filter(frame => frame.from < control.from).at(-1);
+    if (!frame) throw new Error(`第 ${control.line} 行的 @automark 前面找不到可套用的 @frame`);
+    const variables = control.names.map(name => {
+      const variable = analysis.variables.filter(variable => variable.name === name
+        && variable.declarationTo <= frame.from && variable.scopeFrom <= frame.from && frame.from < variable.scopeTo)
+        .sort((a, b) => (a.scopeTo - a.scopeFrom) - (b.scopeTo - b.scopeFrom))[0];
+      if (!variable) throw new Error(`第 ${control.line} 行的 @automark 找不到可見變數：${name}`);
+      if (!['sequence', 'stack', 'queue', 'set'].includes(variable.kind)) {
+        throw new Error(`第 ${control.line} 行的 @automark 只支援一維陣列或序列容器：${name}`);
+      }
+      return variable;
+    });
+    frame.autoMarkVariableIds = variables.map(variable => variable.id);
+    variables.forEach(variable => {
+      if (!frame.variables.some(item => item.id === variable.id)) {
+        frame.variables.push(variable);
+        frame.captureOnlyVariableIds ||= [];
+        frame.captureOnlyVariableIds.push(variable.id);
+      }
+    });
+  });
+}
+
 function parsePlaceSource(value, line) {
   const raw = String(value || '').trim();
   const match = raw.match(/^([A-Za-z_][A-Za-z0-9_.-]*?)(?:\.(top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right))?$/i);
@@ -2767,6 +2817,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
   attachPlaceDirectives(source, analysis, directives);
   attachArrowDirectives(source, analysis, directives);
   attachEventControlDirectives(source, analysis, directives);
+  attachAutoMarkDirectives(source, analysis, directives);
   attachCameraDirectives(source, analysis, directives);
   return directives;
 }

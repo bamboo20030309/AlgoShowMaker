@@ -229,6 +229,7 @@ app.post('/trace/analyze', limiter, (req, res) => {
         segments: directive.segments || [],
         arrows: directive.arrows || [],
         eventControls: directive.eventControls || [],
+        autoMarkVariableIds: directive.autoMarkVariableIds,
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       })),
@@ -1601,6 +1602,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
       segments: Array.isArray(directive?.segments) ? directive.segments : [],
       arrows: Array.isArray(directive?.arrows) ? directive.arrows : [],
       eventControls: Array.isArray(directive?.eventControls) ? directive.eventControls : [],
+      autoMarkVariableIds: Array.isArray(directive?.autoMarkVariableIds) ? directive.autoMarkVariableIds : null,
       camera: directive?.camera || null
     };
   });
@@ -1749,6 +1751,7 @@ app.post('/compile', (req, res) => {
         segments: directive.segments || [],
         arrows: directive.arrows || [],
         eventControls: directive.eventControls || [],
+        autoMarkVariableIds: directive.autoMarkVariableIds,
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       }));

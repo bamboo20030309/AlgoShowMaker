@@ -249,6 +249,7 @@
       segments: Array.isArray(frame.segments) ? clone(frame.segments) : [],
       arrows: Array.isArray(frame.arrows) ? clone(frame.arrows) : [],
       eventControls: Array.isArray(frame.eventControls) ? clone(frame.eventControls) : [],
+      autoMarkVariableIds: Array.isArray(frame.autoMarkVariableIds) ? clone(frame.autoMarkVariableIds) : null,
       camera: frame.camera && typeof frame.camera === 'object' ? clone(frame.camera) : null,
       snapshotIds: Array.isArray(frame.snapshotIds) ? clone(frame.snapshotIds) : [],
       keepLastFocus: frame.keepLastFocus === true

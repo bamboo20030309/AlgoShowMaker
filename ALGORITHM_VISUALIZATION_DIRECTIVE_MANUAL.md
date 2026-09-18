@@ -100,7 +100,7 @@ arr[i] = key;
 
 ### 附屬指令套用到前一個 `@frame`
 
-`@text`、`@style`、`@segment`、`@place`、`@arrow`、`@events` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
+`@text`、`@style`、`@segment`、`@place`、`@arrow`、`@events`、`@automark` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
 建議緊接著書寫，避免日後移動程式碼時造成誤解。
 
 ```cpp
@@ -141,6 +141,7 @@ arr[i] = key;
 | `@place` | 將已顯示物件綁到另一物件的錨點 | 不支援 | 必須指定 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@arrow` | 連接兩個視覺目標 | 支援 | 端點各自指定 | 端點各自支援 | 支援 | 不支援 | 專用樣式修飾詞 | 不支援 |
 | `@events` | 控制本幀全部或指定種類事件動畫 | 不支援 | 不支援 | 不支援 | 支援（幀擷取狀態） | 不支援 | 不支援 | 不支援 |
+| `@automark` | 選擇本幀顯示自動固定標記的陣列 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
 
 建議的修飾詞排列方式是：
 
@@ -291,7 +292,7 @@ arr[i] = key;
 ```
 
 或使用 `// @camera auto`，讓每幀自動捕捉。區塊支援 `@camera`、`@object`、`@place`、
-`@style`、`@segment`、`@text`、`@arrow`、`@events`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
+`@style`、`@segment`、`@text`、`@arrow`、`@events`、`@automark`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
 一份程式只定義一個 defaults 區塊，不可巢狀，必須以 `@enddefaults` 結束。
 
 每幀在當前作用域重新解析變數與運算式；遞迴參數 `arr` 會指向該次呼叫的陣列，
@@ -1494,6 +1495,39 @@ for (int i = 0; i < n; i++) {
 
 固定標記在一般播放、回看與編輯動畫使用相同的累積狀態，不會因條件style更新而消失。
 當幀新增的固定標記在轉場完成後顯示，先前幀的固定標記持續保留。
+
+#### `@automark`：指定顯示自動固定的陣列
+
+```cpp
+// @frame isprime,prime
+// @automark isprime
+
+// @frame isprime,prime
+// @automark isprime,prime
+
+// @frame isprime,prime
+// @automark none
+```
+
+第一幀只在isprime顯示自動固定；第二幀允許兩個陣列；第三幀隱藏所有自動固定標記。
+它只選擇顯示對象，不改最後存取分析、事件記錄或手動 `@style ... mark`；
+也不強制啟用全域／本幀設定已關閉的自動固定。未寫指令的下一幀沿用既有設定，不繼承上一幀白名單。
+
+可以放進preset或defaults：先套用defaults，再依use順序套用preset，最後套用本地指令；
+同一層有多條時最後一條生效。
+
+```cpp
+// @preset sieve_view
+// @object isprime
+// @object prime
+// @automark isprime
+// @endpreset
+```
+
+名稱須在使用該幀的位置可見，支援現有自動固定可處理的一維陣列與序列容器；
+若指定未顯示的陣列，只捕捉資料，不會替它新增畫面物件。
+同一個runtime物件的參照別名會一起匹配。空列表、重複／不可見名稱或不支援型別會報錯；
+目前不接受格子範圍、when或其他修飾詞。`none` 是保留字，單獨使用表示空白名單。
 
 ### 三個介面的一致性
 

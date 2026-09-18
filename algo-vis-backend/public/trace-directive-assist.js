@@ -64,6 +64,11 @@
       '// @frame arr\n// @events animate off',
       '// @frame arr\n// @events compare,read animate off when i > 7'
     ] },
+    { id: 'automark', label: '@automark', effect: '選擇本幀顯示自動固定標記的陣列；none 隱藏全部', code: '// @automark arr', examples: [
+      '// @frame isprime,prime\n// @automark isprime',
+      '// @automark isprime,prime',
+      '// @automark none'
+    ] },
     { id: 'for', label: '@for', effect: '讓 style、arrow、text 共用繪圖索引；以 @endfor 結束', code: '// @for j', examples: [
       '// @for j\n// @style arr[j] highlight\n// @endfor',
       '// @for j in "sieve_loop"\n// @style prime[j] highlight\n// @arrow from prime[j] to isprime[i*prime[j]]\n// @endfor',
@@ -101,6 +106,7 @@
       ['in', 'in', '把畫面加入具名遞迴排版', ' in quick_tree'],
       ['object', '@object', '在這一幀加入另一個獨立設定的物件', '\n// @object prime'],
       ['style', '@style', '為格子加上視覺樣式', '\n// @style arr[i] highlight'],
+      ['automark', '@automark', '選擇顯示自動固定的陣列', '\n// @automark arr'],
       ['text', '@text', '加入說明文字', '\n// @text "正在檢查" at arr.bottom'],
       ['segment', '@segment', '標示陣列區間', '\n// @segment arr[low:high]'],
       ['arrow', '@arrow', '連接畫面上的兩個目標', '\n// @arrow from arr[0] to arr[1]'],
@@ -115,7 +121,8 @@
     preset: [
       ['object', '@object', '加入預設顯示物件', '\n// @object isprime with columns(10), labels(index)'],
       ['place', '@place', '加入預設物件位置', '\n// @place prime.top-left at isprime.bottom-left offset(0,60)'],
-      ['style', '@style', '加入預設樣式', '\n// @style isprime[i] highlight']
+      ['style', '@style', '加入預設樣式', '\n// @style isprime[i] highlight'],
+      ['automark', '@automark', '選擇預設自動固定陣列', '\n// @automark isprime']
     ],
     keep: [
       ['as', 'as', '指定保留物件 ID', ' as "round"'],

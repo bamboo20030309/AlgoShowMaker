@@ -2475,7 +2475,19 @@
     return frame?.state?.[target?.variableId] ? [target.variableId] : [];
   }
 
+  function autoMarkAllowedIds(frame) {
+    if (!Array.isArray(frame?.autoMarkVariableIds)) return null;
+    const allowedIds = new Set(frame.autoMarkVariableIds);
+    const allowedIdentities = new Set((frame?.autoMarkVariableIds || [])
+      .map(id => frame.state?.[id]?.identity).filter(Boolean));
+    Object.entries(frame?.state || {}).forEach(([id, entry]) => {
+      if (allowedIdentities.has(entry.identity)) allowedIds.add(id);
+    });
+    return allowedIds;
+  }
+
   function applyFixedEventStyles(document, frame, highlights) {
+    const allowedIds = autoMarkAllowedIds(frame);
     // @keep last renders a cloned frame. Match by stable frame ID instead of
     // object identity so accumulated marks are retained inside the snapshot.
     const currentIndex = document.frames?.findIndex(item => item.id === frame?.id) ?? -1;
@@ -2493,6 +2505,7 @@
           const index = fixedTargetIndex(document, sourceFrame, target);
           if (index == null) return;
           fixedTargetVariableIds(frame, sourceFrame, event, target).forEach(variableId => {
+            if (allowedIds && !allowedIds.has(variableId)) return;
             highlights[variableId] ||= {};
             highlights[variableId][String(index)] = {
               ...(highlights[variableId][String(index)] || {}),
@@ -2512,6 +2525,7 @@
 
   function delayedCurrentFixedMarks(root, document, frame, enabled) {
     if (!enabled) return [];
+    const allowedIds = autoMarkAllowedIds(frame);
     const targetKeys = new Set();
     (frame.events || []).filter(event => (
       event.type === 'fixed'
@@ -2522,6 +2536,7 @@
         const index = fixedTargetIndex(document, frame, target);
         if (index == null) return;
         fixedTargetVariableIds(frame, frame, event, target).forEach(variableId => {
+          if (allowedIds && !allowedIds.has(variableId)) return;
           targetKeys.add(`${objectKeyForVariable(frame, variableId)}#${index}`);
         });
       });
@@ -4272,9 +4287,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-192';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-193';
   window.ASMTraceRenderers = {
-    build: 'trace-192', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-193', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

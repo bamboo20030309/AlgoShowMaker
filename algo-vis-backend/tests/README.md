@@ -20,6 +20,8 @@
 
 自動固定切幀專項為 `auto-fixed-playback.browser.test.js`，使用 `fixtures/auto-fixed-playback.cpp` 比較有條件style的靜態／動畫繪圖、前進／後退、當幀標記揭露時機、開Studio前後與JSON重載，另確認關閉自動固定後手動mark仍可見。需設定隔離 `ASM_TEST_BASE_URL`。
 
+`@automark`專項為 `automark.test.js`／`automark.browser.test.js`及 `fixtures/automark.cpp`：單／多陣列、none、defaults／preset／本地覆寫、格式錯誤、舊trace相容、runtime別名、事件保留與當幀SVG呈現；瀏覽器核對前進／後退／Studio／JSON重載和手動mark獨立。兩檔的compile／瀏覽器案例需設定隔離 `ASM_TEST_BASE_URL`。
+
 由主代理在需要完整驗證時於 algo-vis-backend 執行：
 
 逗號樣式專項為 `style-list.test.js`（五種樣式、預設色、共用顏色／條件、ID、preset 覆寫、區塊與錯誤格式）及 `style-list.browser.test.js`（實際 SVG 的高亮框與 point 同時可見，條件過濾與 JSON 重載）。編譯及瀏覽器驗證需設定 `ASM_TEST_BASE_URL` 指向獨立服務。
