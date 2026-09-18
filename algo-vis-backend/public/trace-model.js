@@ -256,6 +256,7 @@
     const normalized = {
       schemaVersion: source.schemaVersion || '1.0',
       generatedAt: source.generatedAt || '',
+      loopRecords: Array.isArray(source.loopRecords) ? clone(source.loopRecords) : [],
       sourceCode: typeof source.sourceCode === 'string' ? source.sourceCode : '',
       sourceDeclarations: Array.isArray(source.sourceDeclarations) ? clone(source.sourceDeclarations) : [],
       sourceStructure: Array.isArray(source.sourceStructure) ? clone(source.sourceStructure) : [],
@@ -339,7 +340,84 @@
     return changes;
   }
 
+  function loopSamples(document, frame, batch) {
+    const records = document.loopRecords || [];
+    const context = frame.source?.loopContext || [];
+    const active = context.find(item => item.loopId === batch.loopId);
+    const parents = batch.parentLoopIds || [];
+    const activation = frame.source?.recursionActivationId || '';
+    const candidates = records.filter(record => record.phase === 'start' && record.loopId === batch.loopId
+      && (record.recursionActivationId || '') === activation
+      && parents.every(id => {
+        const left = context.find(item => item.loopId === id);
+        const right = record.loopContext?.find(item => item.loopId === id);
+        return left && right && left.instanceId === right.instanceId && left.ordinal === right.ordinal;
+      }));
+    const position = frame.source?.tracePosition;
+    const selected = active ? candidates.find(record => record.instanceId === active.instanceId)
+      : batch.position === 'before' ? candidates.find(record => record.position > position)
+      : candidates.filter(record => record.position < position).at(-1);
+    if (!selected) throw new Error(`第 ${batch.line || '?'} 行的 @arrow for 無法對應目前回合的迴圈；請將幀放在該迴圈所在的外層回合內`);
+    return records.filter(record => record.phase === 'entry' && record.instanceId === selected.instanceId).map(record => {
+      const value = scalarValue(record.values?.[batch.variable]);
+      if (!Number.isSafeInteger(value)) throw new Error(`@arrow for ${batch.variable} 的本體入口值必須是安全整數`);
+      return { value, ordinal: record.ordinal, instanceId: selected.instanceId };
+    });
+  }
+
+  function drawingDirectives(document, frame, field) {
+    const output = [];
+    for (const item of frame?.[field] || []) {
+      if (!item.drawLoops?.length) { output.push(item); continue; }
+      const fail = message => { throw new Error(`第 ${item.line || '?'} 行的 @for ${message}`); };
+      let contexts = [{ locals: {}, path: '' }];
+      for (const scope of item.drawLoops) {
+        const next = [];
+        for (const context of contexts) {
+          let samples;
+          if (scope.kind === 'loop') samples = loopSamples(document, frame, scope);
+          else {
+            const values = [scope.startExpression, scope.endExpression, scope.stepExpression || '1']
+              .map(expression => window.ASMTraceRules.resolveExpression(document, frame, expression, context.locals));
+            if (values.some(value => !Number.isSafeInteger(value)) || !values[2]) fail('範圍與步長必須為安全整數，且 step 不可為零');
+            const [start, end, step] = values;
+            const count = step > 0 && start > end || step < 0 && start < end ? 0 : Math.floor((end - start) / step) + 1;
+            if (!Number.isSafeInteger(count) || count > 2048) fail('展開數量超過 2048 次');
+            samples = Array.from({ length: count }, (_, ordinal) => ({ value: start + ordinal * step }));
+          }
+          if (samples.length + next.length > 2048) fail('展開數量超過 2048 次');
+          for (const sample of samples) next.push({ locals: { ...context.locals, [scope.variable]: sample.value },
+            path: context.path + `/${scope.id}~${sample.instanceId || ''}[${sample.instanceId ? sample.ordinal : sample.value}]` });
+        }
+        contexts = next;
+      }
+      for (const { locals, path } of contexts) {
+        const resolveIndices = endpoint => {
+          if (!endpoint) return endpoint;
+          const expressions = endpoint.indexExpressions || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
+          const values = expressions.map(expression => window.ASMTraceRules.resolveExpression(document, frame, expression, locals));
+          if (values.some(value => !Number.isSafeInteger(value))) fail('端點索引無法解析為安全整數');
+          return { ...endpoint, indexExpressions: values.map(String), indexExpression: values.join(',') };
+        };
+        const expanded = { ...item, id: `${item.id}@${path}`, drawLoops: [], drawLocals: locals,
+          drawCandidateCount: contexts.length, drawSourceId: item.id };
+        if (field === 'texts') {
+          if (!window.ASMTraceRules.textExpressionMatches(document, frame, item.when, locals)) continue;
+          expanded.binding = resolveIndices(item.binding);
+        }
+        if (field === 'arrows' && !item.batch) {
+          if (!window.ASMTraceRules.expressionMatches(document, frame, item.when, locals)) continue;
+          expanded.from = resolveIndices(item.from); expanded.to = resolveIndices(item.to); expanded.when = null;
+        }
+        output.push(expanded);
+      }
+    }
+    return output;
+  }
+
   window.ASMTraceModel = {
+    drawingDirectives,
+    loopSamples,
     clone,
     normalizeData,
     defaultRenderer,

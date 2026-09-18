@@ -432,10 +432,13 @@
     return { ...frame, state };
   }
 
-  function textExpressionMatches(document, frame, condition) {
+  function textExpressionMatches(document, frame, condition, locals = {}) {
     if (!condition) return true;
+    // Drawing-loop conditions belong to this authored frame and its local
+    // entry values. Earlier folded compare events must not replace them.
+    if (Object.keys(locals).length) return expressionMatches(document, frame, condition, locals);
     const comparisonFrame = comparisonSnapshotForCondition(document, frame, condition);
-    return expressionMatches(document, comparisonFrame || frame, condition);
+    return expressionMatches(document, comparisonFrame || frame, condition, locals);
   }
 
   function conditionMatches(frame, condition) {
@@ -564,7 +567,7 @@
       AV_black: '#111827',
       AV_white: '#ffffff'
     };
-    for (const style of frame?.styles || []) {
+    for (const style of window.ASMTraceModel?.drawingDirectives?.(document, frame, 'styles') || frame?.styles || []) {
       const variableId = style.targetVariableId;
       const entry = frame?.state?.[variableId];
       if (!variableId || !entry) continue;
@@ -572,14 +575,14 @@
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
         if (selector?.type === 'index') {
-          const value = resolveExpression(document, frame, selector.indexExpression);
+          const value = resolveExpression(document, frame, selector.indexExpression, style.drawLocals);
           if (value == null) return [];
           const index = Number(value);
           return Number.isInteger(index) ? [index] : [];
         }
         if (selector?.type === 'range') {
-          const startValue = resolveExpression(document, frame, selector.startExpression);
-          const endValue = resolveExpression(document, frame, selector.endExpression);
+          const startValue = resolveExpression(document, frame, selector.startExpression, style.drawLocals);
+          const endValue = resolveExpression(document, frame, selector.endExpression, style.drawLocals);
           if (startValue == null || endValue == null) return [];
           const start = Number(startValue);
           const end = Number(endValue);
@@ -599,7 +602,7 @@
         const value = presentedValues?.has?.(index)
           ? window.ASMTraceModel.scalarValue(presentedValues.get(index))
           : window.ASMTraceModel.scalarValue(items[index]);
-        if (!expressionMatches(document, frame, style.when, { value, index })) return;
+        if (!expressionMatches(document, frame, style.when, { ...style.drawLocals, value, index })) return;
         const variableHighlights = highlights[variableId] ||= {};
         variableHighlights[String(index)] = mergeHighlightStyle(
           variableHighlights[String(index)],

@@ -793,7 +793,7 @@ for (auto& v : prime) {
 
 ```cpp
 // @frame source,target
-// @arrow for k in 0..n-1 step 2
+// @arrow for k in [0:n-1] step 2
 //   from source[k].bottom to target[k].top
 //   as "links" color AV_green when k != 0
 ```
@@ -802,7 +802,7 @@ for (auto& v : prime) {
 `from`、`to`、`as`、`color`、`width`、`head`、`line`、`dash` 或 `when`；
 不能跨越 C++ 敘述或另一個 `@` 指令。`when` 仍位於指令最後。
 
-- `start..end` 包含兩端；`step` 預設為 1，支援負步長。方向與範圍不合時產生零支箭頭。
+- `[start:end]` 包含兩端，與樣式區間寫法一致；`step` 預設為 1，支援負步長。方向與範圍不合時產生零支箭頭。舊的 `start..end` 已移除，請改用方括號與冒號。
 - 起點、終點、步長可用既有運算式、陣列長度及 `iteration.last(...)`，必須解析為安全整數，步長不可為零。
 - `k` 是這條箭頭內的繪圖索引，在端點索引與 `when` 中使用，不修改同名 C++ 變數、不執行 C++ 迴圈、不新增 runtime 事件；範圍本身不可引用 `k`。
 - 子箭頭 ID 如 `links[0]`、`links[2]`，依索引穩定對應；同幀展開後 ID 衝突會報錯。
@@ -814,7 +814,7 @@ for (auto& v : prime) {
 ```cpp
 // @frame isprime[i],prime when i > 7
 // @events animate off
-// @arrow for k in 0..iteration.last(j)
+// @arrow for k in [0:iteration.last(j)]
 //   from prime[k].bottom to isprime[i*prime[k]].top
 //   as "sieve_links" when i*prime[k] <= n
 ```
@@ -822,6 +822,73 @@ for (auto& v : prime) {
 範圍由使用者指定；`iteration.last(j)` 提供這次迴圈最後位置，條件排除只觸發越界
 `break` 的格子。詳細幀不再擷取時，既有 scalar 事件仍可供該衍生值求值，不需新增繪圖幀。
 可執行完整範例：`algo-vis-backend/tests/fixtures/events-batch-sieve.cpp`。
+
+#### 直接使用實際迴圈值
+
+不必手動指定範圍，以下兩種寫法都使用指定變數在每次**進入本體**時的實際值：
+
+```cpp
+// @frame source,target
+// @arrow for j from source[j].bottom to target[j].top
+for(int j=0;j<n;j++){ /* 演算法 */ }
+```
+
+`for j` 在同一區塊及包住此幀的迴圈中尋找使用 `j` 的候選；只有一個時才自動對應。
+若上下兩個迴圈都使用 `j`，會報歧義錯誤，使用 `@loop as` 命名並明確指名：
+
+```cpp
+// @frame isprime[i],prime when i > 7
+// @events animate off
+// @arrow for j in "sieve_loop"
+//   from prime[j].bottom to isprime[i*prime[j]].top
+//   as "sieve_links" when i*prime[j] <= n
+// @loop as "sieve_loop"
+for(int j=0;j<prime.size();j++){
+  if(i*prime[j]>n) break;
+  isprime[i*prime[j]]=0;
+  // 詳細幀可在這裡加上 when i<=7
+  if(i%prime[j]==0) break;
+}
+```
+
+- `@loop as "名稱"` 必須緊接在 `for`、`while` 或 `do` 之前，名稱不可重複。
+- 幀可放在迴圈前、本體內或迴圈後：前面引用接下來的執行回合，後面引用剛結束的回合；外層迴圈與函式／遞迴呼叫分開對應，不合併其他回合。
+- trace 完成後才展開箭頭，演算法只執行一次。額外紀錄是內部入口資料，不是可播放事件，也不產生自動摘要。
+- `for`／`while` 最後一次條件為假不記值；`do while` 至少記第一次入口。`break` 所在的入口會保留，`continue` 也不丟失入口。
+- 保留重複值；子箭頭 ID 使用實際回合與入口序號，因此同一個 `j` 值出現多次不衝突。不是推算連續整數區間。
+- 變數必須在本體入口可見，且入口值須為安全整數。本體裡才宣告的變數無法使用；空迴圈展開零支箭頭。
+- 幀需位於該迴圈相同的外層回合中；無法對應目前回合時明確報錯。端點与條件除繪圖索引外，仍使用幀當下的狀態。
+- 每條指令仍限制 2048 個候選，沿用條件、preset、多行與共用箭頭模型。
+
+可執行線篩範例：`algo-vis-backend/tests/fixtures/loop-batch-sieve.cpp`，將 i>7 的濃縮幀放在內層迴圈前。
+
+#### 共用繪圖迴圈：@for／@endfor
+
+讓同一幀的 `@style`、`@arrow`、`@text` 共用繪圖索引，不需每條指令各自對應迴圈：
+
+```cpp
+// @frame use sieve_view_i,camera when i>7
+// @events animate off
+// @for j in "sieve_loop"
+//   @style prime[j] highlight when i*prime[j]<=n
+//   @style isprime[i*prime[j]] background AV_green when i*prime[j]<=n
+//   @arrow from prime[j].bottom to isprime[i*prime[j]].top
+//     as "links" when i*prime[j]<=n
+//   @text "j=${j}" at prime[j].bottom offset(0,20) when i*prime[j]<=n
+// @endfor
+// @loop as "sieve_loop"
+for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
+```
+
+- 三種開頭：`@for j` 自動對應唯一迴圈；`@for j in "名稱"` 具名對應；`@for k in [start:end] [step expression]` 手動範圍。沿用前／內／後引用與實際入口值規則。
+- 區塊附屬上方的幀，只接受連續的 `//` 繪圖指令及說明註解，不可穿插 C++、`@frame`、`@events`、`@keep`、`@camera` 等其他指令。用 `@endfor` 結束，不接受參數；缺少或多餘結束指令會報錯。
+- 可以放在 preset／defaults；也可巢狀使用不同索引，內層手動範圍可讀取外層索引。不可重複索引名稱，`value`／`index` 保留給樣式條件；區塊外不保留繪圖索引。
+- `@style` 的單點／範圍選擇器與條件、`@text` 的運算式／條件／格子定位、`@arrow` 的端點／條件都能使用索引。其餘變數讀取本幀狀態；區塊文字條件不套用先前 compare 事件的快照。
+- 重複入口可產生多個不同 ID 的箭頭／文字；樣式對相同格子合併，沿用既有覆寫順序。重載仍保留區塊描述與相同子 ID。
+- 不新增幀、不更改 C++ 變數、不重跑演算法。只有實際迴圈引用才使用內部入口紀錄；純手動範圍不插入 LoopScope。
+- 每條指令的巢狀組合限制 2048 個候選，不截斷；區塊內另用 `@arrow for` 時也受組合限制，請使用不同索引並縮小範圍。空範圍／空迴圈產生零個子指令。
+
+完整範例：`algo-vis-backend/tests/fixtures/drawing-loop-sieve.cpp`。
 
 `@arrow` 把兩個語意目標連起來，並附屬到它上方最近的 `@frame`。它和 Trace Studio 箭頭、遞迴 layout 自動箭頭共用 Arrow Model，實際線段邊距與箭頭頭部沿用原本 `drawArrow` 的幾何邏輯。
 

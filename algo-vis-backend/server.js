@@ -1639,6 +1639,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   return {
     schemaVersion: '1.0',
     generatedAt: new Date().toISOString(),
+    loopRecords: records.filter(record => record.record === 'loop'),
     sourceCode: typeof traceRequest.sourceCode === 'string' ? traceRequest.sourceCode : '',
     sourceDeclarations: Array.isArray(traceRequest.sourceDeclarations)
       ? JSON.parse(JSON.stringify(traceRequest.sourceDeclarations))
