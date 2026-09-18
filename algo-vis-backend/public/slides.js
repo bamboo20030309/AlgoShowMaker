@@ -2218,7 +2218,7 @@
           treeRendererVersion: 3,
           structureFrameVersion: Number(widget.structureFrameVersion) || 0,
           annotationIndices: typeof widget.annotationIndices === 'string' ? widget.annotationIndices : '',
-          annotationColor: widget.annotationColor || '#333333',
+          annotationColor: widget.annotationColor || '#ffffff',
           highlightIndices: typeof widget.highlightIndices === 'string' ? widget.highlightIndices : '',
           focusIndices: typeof widget.focusIndices === 'string' ? widget.focusIndices : '',
           pointIndices: typeof widget.pointIndices === 'string' ? widget.pointIndices : '',
@@ -4275,7 +4275,7 @@
         treeRendererVersion: 3,
         structureFrameVersion: 4,
         annotationIndices: '',
-        annotationColor: '#333333',
+        annotationColor: '#ffffff',
         highlightIndices: '',
         focusIndices: '',
         pointIndices: '',
@@ -5217,8 +5217,8 @@
     setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ff0000');
     structureHighlightIndicesInput.value = widget.highlightIndices || '';
     structureAnnotationIndicesInput.value = widget.annotationIndices || '';
-    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#333333');
-    syncStructureStyleIcon('annotation', widget.annotationColor || '#333333');
+    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#ffffff');
+    syncStructureStyleIcon('annotation', widget.annotationColor || '#ffffff');
     setStructureColorButton(structureFocusColorInput, widget.focusColor || '#808080');
     structureFocusIndicesInput.value = widget.focusIndices || '';
     setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
