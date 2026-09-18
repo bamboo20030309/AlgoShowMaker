@@ -3378,8 +3378,16 @@
 
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
     const arrows = Array.isArray(frame.arrows) ? frame.arrows : [];
+    const expanded = arrows.flatMap(arrow => !arrow.batch ? [arrow] : window.ASMArrowModel.expandBatch(arrow,
+      (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, locals),
+      (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, locals)));
+    const ids = new Set();
+    expanded.forEach(arrow => {
+      if (ids.has(arrow.id)) throw new Error(`本幀 @arrow 展開後 ID 重複：${arrow.id}`);
+      ids.add(arrow.id);
+    });
     renderArrowModels(rootSvg, root, document, frame, placements, elements,
-      arrows.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
+      expanded.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
   }
 
   function renderDecorations(root, document, frame, startY, placements, elements, options = {}) {
@@ -4246,9 +4254,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-186';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-187';
   window.ASMTraceRenderers = {
-    build: 'trace-186', updatePresentedHints,
+    build: 'trace-187', updatePresentedHints,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

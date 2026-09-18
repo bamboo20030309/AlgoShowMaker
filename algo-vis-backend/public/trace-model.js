@@ -139,6 +139,44 @@
       });
     });
 
+    // A conditional @frame may capture no state inside a later loop lifetime.
+    // Recover just those uncaptured lifetimes from existing scalar events.
+    // Keep snapshot-based values for captured lifetimes (including "last body
+    // index" rather than the terminal i++ value).
+    const activeEventGroups = new Map();
+    frames.forEach((frame, frameIndex) => {
+      const activation = iterationActivationKey(frame);
+      [...(frame.events || [])].sort((a,b) => Number(a.order)-Number(b.order)).forEach(event => {
+        const target = (event.targets || []).find(target => target.role === 'target');
+        const variableId = target?.variableId;
+        const variable = document.variables?.[variableId];
+        if (!variableId || !variable || !['scalar', 'string'].includes(variable.kind)
+          || target.indexExpression) return;
+        if (variable.functionName && frame.source?.function
+          && variable.functionName !== frame.source.function) return;
+        const activeKey = `${activation}\u0000${variableId}`;
+        if (event.type === 'declare') {
+          const lifetime = String(target.lifetimeIdentity || '');
+          const key = `${activation}\u0000${variable.name}\u0000${variableId}\u0000${lifetime || variableId}`;
+          if (!groups.has(key)) {
+            groups.set(key, { activation, name: variable.name, variableId, lifetime,
+              declarationLine: Number(variable.line) || 0,
+              first: frameIndex, last: frameIndex,
+              lastValue: scalarValue(event.payload?.value), eventOnly: true });
+          }
+          activeEventGroups.set(activeKey, groups.get(key));
+        }
+        const group = activeEventGroups.get(activeKey);
+        if (!group?.eventOnly) return;
+        group.last = frameIndex;
+        if (['assign','write'].includes(event.type) && event.payload?.after) {
+          const value = scalarValue(event.loopBoundary ? event.payload.before : event.payload.after);
+          if (value != null && typeof value !== 'object') group.lastValue = value;
+        }
+        if (event.type === 'scope-exit') activeEventGroups.delete(activeKey);
+      });
+    });
+
     const groupsByContextName = new Map();
     groups.forEach(group => {
       const key = `${group.activation}\u0000${group.name}`;
@@ -210,6 +248,7 @@
       styles: Array.isArray(frame.styles) ? clone(frame.styles) : [],
       segments: Array.isArray(frame.segments) ? clone(frame.segments) : [],
       arrows: Array.isArray(frame.arrows) ? clone(frame.arrows) : [],
+      eventControls: Array.isArray(frame.eventControls) ? clone(frame.eventControls) : [],
       camera: frame.camera && typeof frame.camera === 'object' ? clone(frame.camera) : null,
       snapshotIds: Array.isArray(frame.snapshotIds) ? clone(frame.snapshotIds) : [],
       keepLastFocus: frame.keepLastFocus === true
@@ -235,6 +274,7 @@
       studio: source.studio && typeof source.studio === 'object' ? clone(source.studio) : {},
       asmView: source.asmView && typeof source.asmView === 'object' ? clone(source.asmView) : null
     };
+    window.ASMTraceEvents?.rebuildLoopBoundaryEvents?.(normalized);
     Object.defineProperty(normalized, 'iterationSummaries', {
       value: buildIterationSummaries(normalized),
       writable: true,

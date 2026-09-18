@@ -5,7 +5,7 @@
 
 - 文件語言：繁體中文
 - 適用介面：演算法編輯器、Trace Studio、演算法投影片編輯器與投影片播放介面
-- 最後核對日期：2026/09/17
+- 最後核對日期：2026/09/18
 
 > 本手冊介紹 `// @frame` 這套追蹤語法。它和直接呼叫 `AV.hpp` 的傳統 `av.draw(...)`
 > 繪圖 API 是兩套不同入口；使用追蹤語法時，不需要自行呼叫 `av.start_draw()`。
@@ -31,6 +31,7 @@
 17. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
 18. [完整使用案例](#完整使用案例)
 19. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
+    - [`@events`：每幀事件動畫控制](#events每幀事件動畫控制)
 20. [程式碼片段與條件著色](#程式碼片段與條件著色)
 21. [常見錯誤與限制](#常見錯誤與限制)
 22. [文件維護規則](#文件維護規則)
@@ -99,7 +100,7 @@ arr[i] = key;
 
 ### 附屬指令套用到前一個 `@frame`
 
-`@text`、`@style`、`@segment`、`@place`、`@arrow` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
+`@text`、`@style`、`@segment`、`@place`、`@arrow`、`@events` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
 建議緊接著書寫，避免日後移動程式碼時造成誤解。
 
 ```cpp
@@ -139,6 +140,7 @@ arr[i] = key;
 | `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 僅 `showWidth` | 不支援 |
 | `@place` | 將已顯示物件綁到另一物件的錨點 | 不支援 | 必須指定 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@arrow` | 連接兩個視覺目標 | 支援 | 端點各自指定 | 端點各自支援 | 支援 | 不支援 | 專用樣式修飾詞 | 不支援 |
+| `@events` | 控制本幀全部或指定種類事件動畫 | 不支援 | 不支援 | 不支援 | 支援（幀擷取狀態） | 不支援 | 不支援 | 不支援 |
 
 建議的修飾詞排列方式是：
 
@@ -289,7 +291,7 @@ arr[i] = key;
 ```
 
 或使用 `// @camera auto`，讓每幀自動捕捉。區塊支援 `@camera`、`@object`、`@place`、
-`@style`、`@segment`、`@text`、`@arrow`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
+`@style`、`@segment`、`@text`、`@arrow`、`@events`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
 一份程式只定義一個 defaults 區塊，不可巢狀，必須以 `@enddefaults` 結束。
 
 每幀在當前作用域重新解析變數與運算式；遞迴參數 `arr` 會指向該次呼叫的陣列，
@@ -787,6 +789,40 @@ for (auto& v : prime) {
 
 ## `@arrow`：連接視覺物件
 
+### 批次箭頭：使用者指定的繪圖迴圈
+
+```cpp
+// @frame source,target
+// @arrow for k in 0..n-1 step 2
+//   from source[k].bottom to target[k].top
+//   as "links" color AV_green when k != 0
+```
+
+也可以整條寫在一行。多行延續需使用連續的普通 `//` 註解，開頭為
+`from`、`to`、`as`、`color`、`width`、`head`、`line`、`dash` 或 `when`；
+不能跨越 C++ 敘述或另一個 `@` 指令。`when` 仍位於指令最後。
+
+- `start..end` 包含兩端；`step` 預設為 1，支援負步長。方向與範圍不合時產生零支箭頭。
+- 起點、終點、步長可用既有運算式、陣列長度及 `iteration.last(...)`，必須解析為安全整數，步長不可為零。
+- `k` 是這條箭頭內的繪圖索引，在端點索引與 `when` 中使用，不修改同名 C++ 變數、不執行 C++ 迴圈、不新增 runtime 事件；範圍本身不可引用 `k`。
+- 子箭頭 ID 如 `links[0]`、`links[2]`，依索引穩定對應；同幀展開後 ID 衝突會報錯。
+- 每條批次指令最多展開 2048 個候選；超量、無法解析範圍或索引會明確報錯，不截斷。不存在的畫面端點仍依原箭頭規則隱藏。
+- 可放在 `@preset`／`@defaults` 中，沿用具名箭頭覆寫規則。
+
+使用者自行編寫線篩濃縮幀，可以放在內層 `j` 迴圈結束後：
+
+```cpp
+// @frame isprime[i],prime when i > 7
+// @events animate off
+// @arrow for k in 0..iteration.last(j)
+//   from prime[k].bottom to isprime[i*prime[k]].top
+//   as "sieve_links" when i*prime[k] <= n
+```
+
+範圍由使用者指定；`iteration.last(j)` 提供這次迴圈最後位置，條件排除只觸發越界
+`break` 的格子。詳細幀不再擷取時，既有 scalar 事件仍可供該衍生值求值，不需新增繪圖幀。
+可執行完整範例：`algo-vis-backend/tests/fixtures/events-batch-sieve.cpp`。
+
 `@arrow` 把兩個語意目標連起來，並附屬到它上方最近的 `@frame`。它和 Trace Studio 箭頭、遞迴 layout 自動箭頭共用 Arrow Model，實際線段邊距與箭頭頭部沿用原本 `drawArrow` 的幾何邏輯。
 
 ```cpp
@@ -1246,6 +1282,35 @@ vector<vector<int>> grid(rows, vector<int>(cols));
 ```
 
 ## 事件動畫與 Trace Studio
+
+### `@events`：每幀事件動畫控制
+
+```cpp
+// @frame arr
+// @events animate off
+
+// @frame arr
+// @events compare,read animate off when i > 7
+// @events write animate on when i <= 7
+```
+
+語法為 `@events [種類列表] animate on|off [when 條件]`。省略種類等同 `all`。
+支援 `declare`、`scope-exit`、`visual-exit`、`read`、`write`、`assign`、
+`sequence-operation`、`compare`、`swap`、`fixed`、`call`、`function-enter`、
+`function-exit`。內部 `condition` 不提供控制，`all animate on` 也不開啟它。
+
+規則只附屬上方最近的 `@frame`，影響該幀所涵蓋的事件，**不是從此切換全域播放模式**。
+略過詳細幀而累積到此幀的事件，也在此幀套用規則。`when` 使用該幀擷取的狀態求值，
+不成立保持原設定；若需要事件發生當下的條件，應在對應位置擷取另一幀。
+条件無法解析會報錯，不默認通過或關閉。
+
+`off` 不刪除事件、執行資料或修改演算法結果；只是直接呈現結果，不排該類事件動畫。
+框架的換幀、版面、鏡頭及使用者箭頭呈現仍沿用原設定。`fixed` 關閉時該幀不顯示自動固定標記。
+
+支援 `@preset`／`@defaults`：預設先套用，再由所用 preset 由左至右套用，最後套用當幀規則。
+同一事件以最後符合條件的規則為準，來源指令優先於 Studio 已保存的事件開關。
+Studio 對受來源控制的事件標示 `@events` 原因並停用直接切換；修改來源指令後 RUN。
+未寫 `@events` 的幀維持原本事件設定與操作。
 
 追蹤器目前會辨識下列事件：
 

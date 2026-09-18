@@ -9,6 +9,11 @@
 
 ## 主代理完整回歸入口
 
+事件控制與批次箭頭新增專項：`events-batch-arrows.test.js`（語法、條件、展開、線篩編譯與疏幀衍生值）、
+`events-batch-arrows.browser.test.js`（真實 SVG、事件排程與 JSON 重載）。
+兩者需先設定 `ASM_TEST_BASE_URL` 指向獨立測試服務，瀏覽器檔不回落到使用者開發服務。
+範例輸入為 `fixtures/events-batch-sieve.cpp`。
+
 由主代理在需要完整驗證時於 algo-vis-backend 執行：
 
 ```sh

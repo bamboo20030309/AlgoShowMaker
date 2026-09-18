@@ -446,7 +446,14 @@
     });
     (document?.frames || []).forEach(frame => {
       const frameStates = eventStates[frame.id] || {};
+      const controls = (frame.eventControls || []).filter(control => {
+        if (!control.when) return true;
+        const value = window.ASMTraceRules.resolveExpression(document, frame, control.when.expression);
+        if (value == null) throw new Error(`第 ${control.line || '?'} 行的 @events 條件無法解析：${control.when.expression}`);
+        return Boolean(value);
+      });
       (frame.events || []).forEach((event, index) => {
+        delete event.directiveAnimationControl;
         const key = eventKey(frame.events, index);
         if (event.loopBoundaryCondition === true) {
           event.loopBoundarySuppressed = settings.autoLoopBoundaryEnabled !== true;
@@ -478,6 +485,25 @@
           : hasFrameState
             ? frameStates[key] !== false
             : defaultEnabled(event, document);
+      });
+      // Source controls describe this frame, after saved Studio defaults. They
+      // do not remove metadata or mutate captured values. Internal condition
+      // records remain internal even under "all animate on".
+      (frame.events || []).forEach(event => {
+        if (byType[event.type]?.internal) {
+          if (event.loopBoundaryCondition === true) controls.forEach(control => {
+            if (control.types.includes('all')) event.loopBoundarySuppressed = !control.animate;
+          });
+          return;
+        }
+        controls.forEach(control => {
+          if (!control.types.includes('all') && !control.types.includes(event.type)) return;
+          event.enabled = control.animate && event.animate !== false;
+          event.directiveAnimationControl = control.animate;
+          if (event.loopBoundary === true || event.loopBoundaryCondition === true) {
+            event.loopBoundarySuppressed = !event.enabled;
+          }
+        });
       });
     });
     return document;
