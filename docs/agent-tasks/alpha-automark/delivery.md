@@ -48,8 +48,18 @@
 ## 剩餘事項與合併注意
 - 未驗證：演算法投影片嵌入與asmdeck匯出／匯入、公開Docker、遠端資料庫。
 - 已知限制：只接受目前固定分析支援的一維陣列與序列容器；none為保留字。不新增型別的最後存取分析。
-- 相依與衝突：共享server／model／renderer與入口cache；主代理需帶入alpha此前陣列文字、箭頭及固定切幀修正。main尚未整合，後端須整合並重啟才可使用新來源語法。
+- 相依與衝突：共享server／model／renderer與入口cache；主代理需帶入alpha此前陣列文字、箭頭及固定切幀修正。main尚未整合，main服務須整合並重啟才可使用新來源語法；alpha的3101已於下述補充核實中重啟。
 - 未merge或重啟主要開發服務，依既定分工由主代理完成。
+
+## 補充：使用者授權重啟alpha的3101
+- 日期：2026-09-18；服務版本c2790d5751b12175b2bb6514dd03b3ea2acdd7ef中的程式（程式commit92950b65fc63a2cc30e7cfbc65de888409c784f0），後續只有文件修改。
+- 已確認原因：3101的renderer HTTP內容SHA-256與alpha工作目錄完全相同，前端model32／rules18／renderer193已更新；PID4420常駐Node的parser仍是舊版。同一個POST /trace/analyze請求回400，報prime[0:iteration.last(j)]運算式無效。
+- 使用者最新指示：明確要求重啟3101並於每次程式更新後重啟，覆蓋此前對alpha服務不重啟的預設；不改主代理負責main整合的分工。
+- 動作：重新核對3101 listener為單一PID4420且node.exe指令含server.js，只停止此PID；从本alpha worktree的algo-vis-backend啟動node server.js，PORT=3101，沿用既有.env（不更換JWT或資料庫設定），隱藏背景視窗，stdout／stderr留在忽略的test-results。
+- 結果：新PID13504監聽3101；原樣兩行@text（含TTS及prime切片）加@automark isprime的POST分析回200／error null，frame含兩段文字與正確autoMarkVariableIds；前端renderer hash仍與alpha相同。
+- 重跑：在3101 POST /trace/analyze送入兩條使用者文字指令、isprime／prime／i宣告與內層j迴圈，確認HTTP200且frame.texts長度2；依@automark的選擇確認分析欄位。無需啟動完整回歸。
+- 本機證據：test-results/alpha-3101-probe.cjs、alpha-3101-dev.stdout.log／stderr.log未提交，可能被清理。3101服務依使用者要求保留運作，沒有停止3000或其他服務。
+- 後續：AGENTS.md與task已記錄alpha每次程式更新後重啟3101並核對分析版本，避免前端更新但後端快取舊模組。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
