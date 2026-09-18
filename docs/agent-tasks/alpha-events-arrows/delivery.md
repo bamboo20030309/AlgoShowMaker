@@ -5,10 +5,10 @@
 - 分支：codex/2026-09-18-alpha-events-arrows
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-alpha-events-arrows
 - 共同基準 commit：ddfe5b6081261a05b437a61a546861151d4618e5
-- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；本轮擴充 32ead62f5897bd59abcc7086e77ba14107042a85。
+- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；最新共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：本輪程式 commit 32ead62f5897bd59abcc7086e77ba14107042a85 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- Push：最新程式 commit 0829ad1ac7adf19197b22a96a5a6b9248b466346 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
 ## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
@@ -114,6 +114,43 @@ node --test --test-concurrency=1 tests/events-batch-arrows.test.js tests/events-
 - 初期失敗：C++ ADL 選到 std::quoted 造成編譯失敗，已明確限定 asm_trace::quoted；第二個瀏覽器 RUN 時編輯器收起，改為重新開啟測試頁再實際 RUN。保留原 SVG／資料斷言並重跑通過。
 - 未驗證：公開 Docker、遠端 DB、投影片嵌入介面。主代理需核實整合差異，補投影片嵌入的線篩詳／濃縮幀定點，合併後重啟主要服務；本代理未 merge 或操作主要服務。
 - 合併注意：新增內部欄位 loopRecords、source.loopContext／tracePosition 與 batch.kind=loop；舊 trace 無新欄位可正常播放。共用 trace 模組及入口快取需要協調其他分支差異。
+
+## 最新擴充：共用 @for／@endfor 繪圖區塊
+- 狀態：小驗證通過，待主代理核實。
+- 驗證版本：0829ad1ac7adf19197b22a96a5a6b9248b466346 的程式差異；驗證時 HEAD 為 822a9d6ef4b91a7ff83a5caddd643c5d2227c637 加上已完整提交的修改，之後只更新交付文件。驗證日期2026-09-18。
+- 設計依據：使用者同意共用繪圖區塊，不加入完整 C++ for；style／arrow／text 共用入口值、具名對應或明確區間。現有 @arrow for 保留。
+- 解析與捕捉：drawLoops 保留區塊描述，支援 preset／defaults 及巢狀不同索引。只為實際迴圈引用建立入口紀錄；手動範圍不插入 LoopScope。區塊局部索引不捕捉為 C++ 變數、不洩漏至區塊外。
+- 展開與呈現：model 產生 drawLocals／穩定子 ID，Rules 評估樣式選擇器與 value/index 條件，renderer 共用原箭頭及文字元件，文字格子定位與運算式也使用局部值。重复樣式合併到相同格子，不產生多個樣式物件。
+- 文字條件：區塊文字用本幀狀態與入口值；避免舊 compare 快照混入前一回合。區塊外原有文字条件行為保留。
+- Studio 相容：展開 ID 不新增冒號分隔符，查找文字／片段與 binding 時使用展開描述；重綁／解除仍回寫原始共用指令，來源 ID 保留。真實 Studio 能選取第二個文字運算式並顯示格式控制。
+- 邊界與限制：只支援連續的 // style／arrow／text／巢狀 for；其他指令與 C++ 敘述、未配對 endfor、重複／保留索引會報錯。巢狀及 inline @arrow for 組合候選限制2048，不截斷。
+- 文件與快取：README、手冊、測試說明及 task 更新；指令助手新增 for／endfor。model=30、rules=17、arrow=7、renderer=189、directive=11、studio=119，入口斷言同步。
+- 與 task.md 差異：無。
+
+| 最新驗收條件 | 驗證方式與結果 | 判定 |
+|---|---|---|
+| 共用 style／arrow／text 資料 | 具名線篩編譯：同一 j=0,1 同時控制 prime[0,1]、合數18/27、文字格子0/1；最終質數保持正確 | 通過 |
+| 手動範圍、局部值與巢狀 | 解析及真實 C++：k／q 外內層範圍、樣式 value/index、文字6個、箭頭3支；純範圍不插入 LoopScope；外層讀 C++ j 不受內層索引遮蔽影響 | 通過 |
+| 重複入口與上限 | style-only while 保留3,3,3與不同子 ID；超過2048及組合展開超量報錯 | 通過 |
+| 區塊邊界與非法內容 | 缺少／多餘 endfor、C++、frame/events/keep/camera、重複索引與同名 inline batch 報錯；區塊外文字沒有局部索引 | 通過 |
+| 實際 SVG 與重載 | Edge RUN 的 i=9：兩支箭頭至18/27、兩個背景色 rgba(165,214,167,0.6)、prime0/1可見紅色高亮外框、j=0/j=1文字綁定0/1；events steps=0；JSON重載一致 | 通過 |
+| Studio 文字元件 | 真實 open Studio：兩個文字的 getBinding 對應格子0/1；點選第二個運算式片段後文字格式控制顯示，無 pageerror | 通過 |
+
+### 最新小驗證與重跑
+- 分級：V2，E/F/J，加上 A 的入口／提示及最小文字選取確認；未執行完整 regression 或大規模演算法驗證。
+- 執行目錄：本 worktree 的 algo-vis-backend；沿用上方隔離環境及 ASM_TEST_BASE_URL 設定。
+- 測試資料：tests/fixtures/drawing-loop-sieve.cpp，另保留前兩輪的兩個線篩 fixture。
+- 完整測試命令：
+
+```powershell
+node --test --test-concurrency=1 tests/drawing-loops.test.js tests/events-batch-arrows.test.js tests/events-batch-arrows.browser.test.js tests/preset-directives.test.js tests/style-layer.test.js tests/text-object-bindings.test.js tests/entrypoints.test.js tests/directive-assist.test.js
+```
+
+- 本機 runner：node test-results/alpha-events-validation.cjs，自動啟停獨立埠52851與 headless Edge。最終44 tests／44 pass／0 fail／0 skip，36.10秒，exit0；13個JS語法檢查與 git diff --check 均exit0，另核對最新 model/studio 語法exit0。
+- 證據：提交的專項測試與 fixture；本機 test-results/alpha-drawing-validation.output、alpha-events-validation.tap 及 server.log 未提交，可能被重跑覆蓋或清理。debug trace 只留本機 test-results，不含私人素材。
+- 初期失敗：區塊文字條件採到舊 compare 快照，修正為本幀局部值；高亮測試原本查舊附件屬性，改為查實際前景外框與所屬格子、紅色 stroke 及非零寬度；新增 Studio 查找支援後同步快取斷言。沒有降低背景色、文字內容、箭頭數、事件排程或可見高亮斷言。
+- 未驗證：公開 Docker、遠端資料庫、投影片嵌入介面。主代理需補嵌入線篩共用区塊定點驗證；未合併、未重啟主要服務，隔離測試服務與瀏覽器已停止。
+- 合併注意：此輪新增 drawLoops 描述與呈現時的 drawLocals／drawSourceId／drawCandidateCount；新 helper 不改原始 frame 指令，舊 trace 沒有 drawLoops 時保持原行為。需協調共用 model／rules／renderer／studio 及入口快取差異。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
