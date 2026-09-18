@@ -26,7 +26,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-29'));
+  assert.ok(html.includes('trace-model.js?v=trace-30'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-25'));
@@ -62,7 +62,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
   assert.ok(legacy.includes('home.css?v=drop-import-8'));
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(html.includes('trace-arrow-model.js?v=arrow-6'));
+  assert.ok(html.includes('trace-arrow-model.js?v=arrow-7'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
   assert.ok(read('draw/draw_arrow.js').includes('window.ASMArrowModel?.geometry'));
@@ -70,7 +70,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-16'));
+  assert.ok(html.includes('trace-rules.js?v=trace-17'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'disk' ? 'focus-3' : 'focus-2';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
@@ -87,7 +87,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-24'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-6'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-118'));
+  assert.ok(html.includes('trace-studio.js?v=trace-119'));
   assert.ok(html.includes('front.js?v=random-id-33'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
   assert.ok(html.includes('trace-provenance.js?v=trace-5'));

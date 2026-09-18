@@ -2616,8 +2616,8 @@
     let y = startY;
     const textLayer = svg('g', { class: 'asm-trace-text-layer' });
     root.append(textLayer);
-    (frame.texts || []).forEach((descriptor, descriptorIndex) => {
-      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when)) return;
+    (window.ASMTraceModel?.drawingDirectives?.(document, frame, 'texts') || frame.texts || []).forEach((descriptor, descriptorIndex) => {
+      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when, descriptor.drawLocals)) return;
       const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
       const rawSegments = Array.isArray(descriptor.segments) ? descriptor.segments : [];
       const authoredBaseFontSize = Math.max(8,
@@ -2625,10 +2625,10 @@
       const lines = [[]];
       rawSegments.forEach((segment, segmentIndex) => {
         const expressionValue = segment?.kind === 'expression'
-          ? window.ASMTraceRules.resolveExpression(document, frame, segment.expression)
+          ? window.ASMTraceRules.resolveExpression(document, frame, segment.expression, descriptor.drawLocals)
           : segment?.kind === 'template'
             ? String(segment.text || '').replace(/\$\{([^{}]+)\}/g, (_, expression) => {
-              const value = window.ASMTraceRules.resolveExpression(document, frame, expression.trim());
+              const value = window.ASMTraceRules.resolveExpression(document, frame, expression.trim(), descriptor.drawLocals);
               return value == null ? '' : String(value);
             })
             : segment?.text;
@@ -2799,8 +2799,8 @@
 
   function applySemanticTextBindings(document, frame, placements, elements) {
     const canvas = { x: 0, y: 0, width: 1100, height: 620 };
-    (frame.texts || []).forEach((descriptor, descriptorIndex) => {
-      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when)) return;
+    (window.ASMTraceModel?.drawingDirectives?.(document, frame, 'texts') || frame.texts || []).forEach((descriptor, descriptorIndex) => {
+      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when, descriptor.drawLocals)) return;
       const binding = descriptor?.binding;
       if (!binding) return;
       const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
@@ -3377,10 +3377,10 @@
   }
 
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
-    const arrows = Array.isArray(frame.arrows) ? frame.arrows : [];
+    const arrows = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
     const expanded = arrows.flatMap(arrow => !arrow.batch ? [arrow] : window.ASMArrowModel.expandBatch(arrow,
-      (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, locals),
-      (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, locals),
+      (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, { ...arrow.drawLocals, ...locals }),
+      (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, { ...arrow.drawLocals, ...locals }),
       batch => window.ASMTraceModel.loopSamples(document, frame, batch)));
     const ids = new Set();
     expanded.forEach(arrow => {
@@ -4255,9 +4255,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-188';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-189';
   window.ASMTraceRenderers = {
-    build: 'trace-188', updatePresentedHints,
+    build: 'trace-189', updatePresentedHints,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

@@ -862,6 +862,34 @@ for(int j=0;j<prime.size();j++){
 
 可執行線篩範例：`algo-vis-backend/tests/fixtures/loop-batch-sieve.cpp`，將 i>7 的濃縮幀放在內層迴圈前。
 
+#### 共用繪圖迴圈：@for／@endfor
+
+讓同一幀的 `@style`、`@arrow`、`@text` 共用繪圖索引，不需每條指令各自對應迴圈：
+
+```cpp
+// @frame use sieve_view_i,camera when i>7
+// @events animate off
+// @for j in "sieve_loop"
+//   @style prime[j] highlight when i*prime[j]<=n
+//   @style isprime[i*prime[j]] background AV_green when i*prime[j]<=n
+//   @arrow from prime[j].bottom to isprime[i*prime[j]].top
+//     as "links" when i*prime[j]<=n
+//   @text "j=${j}" at prime[j].bottom offset(0,20) when i*prime[j]<=n
+// @endfor
+// @loop as "sieve_loop"
+for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
+```
+
+- 三種開頭：`@for j` 自動對應唯一迴圈；`@for j in "名稱"` 具名對應；`@for k in [start:end] [step expression]` 手動範圍。沿用前／內／後引用與實際入口值規則。
+- 區塊附屬上方的幀，只接受連續的 `//` 繪圖指令及說明註解，不可穿插 C++、`@frame`、`@events`、`@keep`、`@camera` 等其他指令。用 `@endfor` 結束，不接受參數；缺少或多餘結束指令會報錯。
+- 可以放在 preset／defaults；也可巢狀使用不同索引，內層手動範圍可讀取外層索引。不可重複索引名稱，`value`／`index` 保留給樣式條件；區塊外不保留繪圖索引。
+- `@style` 的單點／範圍選擇器與條件、`@text` 的運算式／條件／格子定位、`@arrow` 的端點／條件都能使用索引。其餘變數讀取本幀狀態；區塊文字條件不套用先前 compare 事件的快照。
+- 重複入口可產生多個不同 ID 的箭頭／文字；樣式對相同格子合併，沿用既有覆寫順序。重載仍保留區塊描述與相同子 ID。
+- 不新增幀、不更改 C++ 變數、不重跑演算法。只有實際迴圈引用才使用內部入口紀錄；純手動範圍不插入 LoopScope。
+- 每條指令的巢狀組合限制 2048 個候選，不截斷；區塊內另用 `@arrow for` 時也受組合限制，請使用不同索引並縮小範圍。空範圍／空迴圈產生零個子指令。
+
+完整範例：`algo-vis-backend/tests/fixtures/drawing-loop-sieve.cpp`。
+
 `@arrow` 把兩個語意目標連起來，並附屬到它上方最近的 `@frame`。它和 Trace Studio 箭頭、遞迴 layout 自動箭頭共用 Arrow Model，實際線段邊距與箭頭頭部沿用原本 `drawArrow` 的幾何邏輯。
 
 ```cpp

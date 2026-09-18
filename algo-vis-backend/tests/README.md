@@ -14,6 +14,8 @@
 兩者需先設定 `ASM_TEST_BASE_URL` 指向獨立測試服務，瀏覽器檔不回落到使用者開發服務。
 範例輸入為 `fixtures/events-batch-sieve.cpp`（明確 `[start:end]` 範圍）與 `fixtures/loop-batch-sieve.cpp`（內層迴圈前的具名濃縮幀）。專項另覆蓋 for／while／do while 入口值、break／continue、零次與重複值、前／內／後引用、具名消歧義、函式／遞迴回合隔離。瀏覽器只驗證線篩 i=8／9 定點與重載，未執行完整演算法集。
 
+共用繪圖區塊專項為 `drawing-loops.test.js`：局部索引、區塊邊界／錯誤、preset、樣式與文字定位、重複入口、巢狀範圍與組合上限。`fixtures/drawing-loop-sieve.cpp` 用同一個 j 展開 style、arrow、text；`events-batch-arrows.browser.test.js` 額外核對 i=9 的實際背景色、高亮外框、文字內容／定位、箭頭目標、事件排程及 JSON 重載。
+
 由主代理在需要完整驗證時於 algo-vis-backend 執行：
 
 ```sh

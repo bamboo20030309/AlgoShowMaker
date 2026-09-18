@@ -84,6 +84,50 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     assert.ok(loops.states.every(state=>state.steps===0));
     assert.equal(new Set(loops.states[1].arrows.map(arrow=>arrow.id)).size,2);
     assert.deepEqual(loops.reloaded,loops.states[1]);
+    const drawingCode=fs.readFileSync(path.join(__dirname,'fixtures/drawing-loop-sieve.cpp'),'utf8');
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
+    await page.evaluate(code=>ace.edit('editor').setValue(code,-1),drawingCode);
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,drawingCode,{timeout:30000});
+    const drawing=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const iId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='i');
+      const index=doc.frames.findIndex(frame=>frame.eventControls.length && frame.state[iId]?.data.value===9);
+      const primeId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='prime');
+      const isprimeId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='isprime');
+      const read=()=>({
+        arrows:[...document.querySelectorAll('#arraySvg [data-trace-arrow-source="directive"]')].map(node=>({id:node.dataset.traceArrow,to:node.dataset.traceArrowToKey})),
+        texts:[...document.querySelectorAll('#arraySvg [data-trace-text-id]')].map(node=>({id:node.dataset.traceTextId,text:node.textContent,target:node.dataset.traceBindingTarget,hidden:node.getAttribute('display')})),
+        backgrounds:[18,27].map(index=>document.querySelector(`#arraySvg [data-trace-arrow-target-key="${isprimeId}#${index}"] rect`)?.getAttribute('fill')),
+        highlighted:[0,1].map(index=>[...document.querySelectorAll('#arraySvg .asm-trace-style-decoration')].some(wrapper=>
+          wrapper._asmStyleCell?.getAttribute('data-trace-arrow-target-key')===`${primeId}#${index}`
+          && wrapper.getAttribute('display')!=='none' && wrapper.firstElementChild?.tagName.toLowerCase()==='rect'
+          && wrapper.firstElementChild.getAttribute('stroke')==='red' && wrapper.firstElementChild.getBBox().width>0)),
+        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.length || 0
+      });
+      await player.render(index);
+      const original=read();
+      player.apply(JSON.parse(JSON.stringify(doc)));
+      await player.render(index);
+      return {original,reloaded:read()};
+    });
+    assert.deepEqual(drawing.original.arrows.map(arrow=>arrow.to.split('#').at(-1)),['18','27']);
+    assert.deepEqual(drawing.original.texts.map(text=>text.text),['j=0','j=1']);
+    assert.deepEqual(drawing.original.texts.map(text=>text.target.split('#').at(-1)),['0','1']);
+    assert.ok(drawing.original.texts.every(text=>text.hidden!=='none'));
+    assert.deepEqual(drawing.original.backgrounds,['rgba(165, 214, 167, 0.6)','rgba(165, 214, 167, 0.6)']);
+    assert.deepEqual(drawing.original.highlighted,[true,true]);
+    assert.equal(drawing.original.steps,0);
+    assert.deepEqual(drawing.reloaded,drawing.original);
+    await page.evaluate(()=>window.ASMTraceStudio.open());
+    const bindings=await page.evaluate(ids=>ids.map(id=>window.ASMTraceStudio.getBinding('text:'+id)?.targetKey),drawing.original.texts.map(text=>text.id));
+    assert.deepEqual(bindings.map(key=>key.split('#').at(-1)),['0','1']);
+    await page.locator('#arraySvg [data-trace-text-id] [data-trace-text-segment="expression"]').nth(1).click();
+    await page.waitForFunction(()=>{
+      const fields=document.querySelector('.trace-studio-text-style-fields');
+      return fields && !fields.hidden;
+    });
     assert.deepEqual(errors,[]);
   } finally { await browser.close(); }
 });

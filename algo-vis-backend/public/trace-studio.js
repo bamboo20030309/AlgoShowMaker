@@ -342,6 +342,10 @@
     return segmentKeyForRuntimeIdentity(frame, runtimeIdentity);
   }
 
+  function frameTexts(frame) {
+    return window.ASMTraceModel?.drawingDirectives?.(trace, frame, 'texts') || frame?.texts || [];
+  }
+
   function frameBinding(frameId, key) {
     const rootKey = String(key || '').match(/^(text:[^:]+)/)?.[1] || key;
     const stored = trace?.studio?.bindings?.[frameId]?.[rootKey]
@@ -350,7 +354,7 @@
     const frame = trace?.frames?.find(item => item.id === frameId);
     const textId = String(rootKey || '').match(/^text:(.+)$/)?.[1];
     const descriptor = textId
-      ? frame?.texts?.find(item => String(item.id) === textId)
+      ? frameTexts(frame).find(item => String(item.id) === textId)
       : null;
     const objectBinding = !descriptor
       ? (frame?.objectBindings || []).find(item => {
@@ -410,7 +414,7 @@
 
   function textDescriptorForKey(key, frame = trace?.frames?.[currentIndex]) {
     const id = textObjectKey(key).slice(5);
-    return id ? frame?.texts?.find(item => String(item.id) === id) || null : null;
+    return id ? frameTexts(frame).find(item => String(item.id) === id) || null : null;
   }
 
   function textDirectiveLine(descriptor) {
@@ -466,7 +470,7 @@
     };
     trace.frames.forEach(frame => {
       (frame.texts || []).forEach(text => {
-        if (Number(text.line) === Number(descriptor.line) && String(text.id) === String(descriptor.id)) {
+        if (Number(text.line) === Number(descriptor.line) && String(text.id) === String(descriptor.drawSourceId || descriptor.id)) {
           text.binding = { ...nextBinding };
         }
       });
@@ -566,7 +570,7 @@
       const selectedSegment = textSegmentForKey(key);
       if (selectedSegment?.kind === 'expression') return `變數 ${selectedSegment.source || `\${${selectedSegment.expression}}`}`;
       if (selectedSegment) return selectedSegment.text?.trim() || '文字片段';
-      const descriptor = trace?.frames?.[currentIndex]?.texts?.find(text => `text:${text.id}` === key);
+      const descriptor = frameTexts(trace?.frames?.[currentIndex]).find(text => `text:${text.id}` === key);
       const label = (descriptor?.segments || []).map(segment => (
         segment.kind === 'expression' ? segment.source || `\${${segment.expression}}` : segment.text || ''
       )).join('').trim();
@@ -592,7 +596,7 @@
   function textSegmentForKey(key) {
     const match = String(key || '').match(/^text:([^:]+):segment:([^:]+)(?::range:\d+-\d+)?$/);
     if (!match) return null;
-    const descriptor = trace?.frames?.[currentIndex]?.texts?.find(text => String(text.id) === match[1]);
+    const descriptor = frameTexts(trace?.frames?.[currentIndex]).find(text => String(text.id) === match[1]);
     return descriptor?.segments?.find(segment => String(segment.segmentId) === match[2]) || null;
   }
 
@@ -607,12 +611,12 @@
     const match = String(key || '').match(/^text:([^:]+):segment:/);
     if (!match) return null;
     const frame = trace?.frames?.[currentIndex];
-    const descriptor = frame?.texts?.find(text => String(text.id) === match[1]);
+    const descriptor = frameTexts(frame).find(text => String(text.id) === match[1]);
     if (!descriptor) return null;
     let cursor = 0;
     const segments = (descriptor.segments || []).map((segment, index) => {
       const raw = segment.kind === 'expression'
-        ? window.ASMTraceRules.resolveExpression(trace, frame, segment.expression)
+        ? window.ASMTraceRules.resolveExpression(trace, frame, segment.expression, descriptor.drawLocals)
         : segment.text;
       const source = raw == null ? '' : String(raw);
       const parsed = window.parseTTSMarkup?.(source) || { display: source };
@@ -1440,7 +1444,7 @@
     if (textDescriptor?.binding) {
       trace.frames.forEach(frame => {
         (frame.texts || []).forEach(text => {
-          if (Number(text.line) === Number(textDescriptor.line) && String(text.id) === String(textDescriptor.id)) {
+          if (Number(text.line) === Number(textDescriptor.line) && String(text.id) === String(textDescriptor.drawSourceId || textDescriptor.id)) {
             text.binding = null;
           }
         });

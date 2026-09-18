@@ -62,6 +62,12 @@
       '// @frame arr\n// @events animate off',
       '// @frame arr\n// @events compare,read animate off when i > 7'
     ] },
+    { id: 'for', label: '@for', effect: '讓 style、arrow、text 共用繪圖索引；以 @endfor 結束', code: '// @for j', examples: [
+      '// @for j\n// @style arr[j] highlight\n// @endfor',
+      '// @for j in "sieve_loop"\n// @style prime[j] highlight\n// @arrow from prime[j] to isprime[i*prime[j]]\n// @endfor',
+      '// @for k in [0:n-1] step 2\n// @text "${k}" at arr[k].top\n// @endfor'
+    ] },
+    { id: 'endfor', label: '@endfor', effect: '結束目前的繪圖迴圈區塊', code: '// @endfor', examples: ['// @endfor'] },
     { id: 'loop', label: '@loop', effect: '替緊接的 for、while 或 do 迴圈命名', code: '// @loop as "sieve_loop"', examples: [
       '// @loop as "sieve_loop"\nfor(int j=0;j<n;j++){ }',
       '// @loop as "scan"\nwhile(j<n){j++;}'

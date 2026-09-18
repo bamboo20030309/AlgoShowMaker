@@ -236,6 +236,7 @@
       : condition?.identifiers || String(condition?.expression || '').match(/[A-Za-z_]\w*/g) || [];
     if (condition && !identifiers.includes(batch.variable) && !matches(condition, {})) return [];
     const fail = message => { throw new Error(`第 ${arrow.line || '?'} 行的 @arrow for ${message}`); };
+    const limit = Math.floor(2048 / (arrow.drawCandidateCount || 1));
     let samples;
     if (batch.kind === 'loop') {
       if (!loopSamples) fail('缺少迴圈執行資料');
@@ -250,10 +251,10 @@
       if (!step) fail('step 必須是非零整數');
       if ((step > 0 && start > end) || (step < 0 && start < end)) return [];
       const count = Math.floor((end - start) / step) + 1;
-      if (!Number.isSafeInteger(count) || count > 2048) fail('展開數量超過 2048 支，請縮小範圍');
+      if (!Number.isSafeInteger(count) || count > limit) fail('組合展開數量超過 2048 支，請縮小範圍');
       samples = Array.from({ length: count }, (_, offset) => ({ value: start + offset * step }));
     }
-    if (samples.length > 2048) fail('展開數量超過 2048 支，請縮小範圍');
+    if (samples.length > limit) fail('組合展開數量超過 2048 支，請縮小範圍');
     const result = [];
     for (const sample of samples) {
       const value = sample.value;
