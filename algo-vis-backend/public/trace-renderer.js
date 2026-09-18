@@ -2621,7 +2621,7 @@
       const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
       const rawSegments = Array.isArray(descriptor.segments) ? descriptor.segments : [];
       const authoredBaseFontSize = Math.max(8,
-        Number(rawSegments.find(segment => Number(segment?.fontSize) > 0)?.fontSize) || 10);
+        Number(rawSegments.find(segment => Number(segment?.fontSize) > 0)?.fontSize) || 14);
       const lines = [[]];
       rawSegments.forEach((segment, segmentIndex) => {
         const expressionValue = segment?.kind === 'expression'
@@ -2647,7 +2647,7 @@
               background: Object.hasOwn(storedStyle, 'background')
                 ? storedStyle.background
                 : traceTextColor(segment?.background, 'none'),
-              fontSize: Math.max(8, Number(storedStyle.fontSize) || Number(segment?.fontSize) || 10),
+              fontSize: Math.max(8, Number(storedStyle.fontSize) || Number(segment?.fontSize) || 14),
               bold: Object.hasOwn(storedStyle, 'bold') ? storedStyle.bold === true : segment?.bold === true
             });
             if (partIndex < parts.length - 1) lines.push([]);
@@ -4255,9 +4255,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-189';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-190';
   window.ASMTraceRenderers = {
-    build: 'trace-189', updatePresentedHints,
+    build: 'trace-190', updatePresentedHints,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
