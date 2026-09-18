@@ -5,10 +5,10 @@
 - 分支：codex/2026-09-18-alpha-events-arrows
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-alpha-events-arrows
 - 共同基準 commit：ddfe5b6081261a05b437a61a546861151d4618e5
-- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad；最新箭頭 identity 1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22。
+- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad；箭頭 identity 1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22；最新文字預設 b4166453905cbbc539db9bf31082faef24b93edd。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：最新程式 commit 1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- Push：最新程式 commit b4166453905cbbc539db9bf31082faef24b93edd 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
 ## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
@@ -243,6 +243,29 @@ node --test --test-concurrency=1 tests/drawing-arrow-animation.browser.test.js t
 - 本機runner：node test-results/alpha-arrow-animation-validation.cjs，埠63700；9 tests／9 pass／0 fail／0 skip，15.99秒，exit0。4個JS語法與git diff --check exit0，測試服務與瀏覽器已停止。
 - 證據：提交的專項與fixture；test-results/alpha-arrow-animation-validation.output／tap／server.log只留本機、未提交，可能被重跑覆蓋或清理。修正前失敗精確顯示 j=0 的 loop-instance-7／8 不同 ID，保留角色相等、中間座標、opacity及style paint所有斷言，未放寬行為。
 - 未驗證與合併注意：嵌入投影片／Studio、公開Docker／遠端資料庫未驗證；主代理補同一組批次箭頭在投影片嵌入的單次切換。此輪僅改呈現時箭頭子ID，不增加runtime資料；需協調共用model與入口cache。main未整合alpha，未merge、未重啟主要服務。
+
+## 最新修改：@text 預設字級統一14px
+- 狀態：局部驗證通過，待主代理核實。
+- 驗證版本：b4166453905cbbc539db9bf31082faef24b93edd；驗證時HEAD是40227382fe90e13f8633faf60d36314d17c40d43加上已提交的程式差異，後續只有交付文件修訂。日期2026-09-18。
+- 設計依據／調查：JSON樣式物件在parser已預設14，但普通字串沒有fontSize，renderer與Studio仍fallback10；依使用者要求統一為14。
+- 修改：renderer的authoredBaseFontSize與segment字級fallback14；Studio的字元量測、文字選取顯示／儲存fallback、初始slider與提示均14。明確指定的字级按原優先序保留，整體氣泡沿原字形量測／縮放規則計算。
+- 修改檔案：trace-renderer.js、trace-studio.js、algorithm.html（renderer190／studio120）、entrypoints.test.js。README與task更新；手冊已有預設14的表格，不需改動；無Release／版本發布。
+- 與task.md差異：無。此輪是V1文字呈現／設定，不執行演算法驗證集。
+
+| 最新驗收條件 | 實際結果 | 判定 |
+|---|---|---|
+| 普通與JSON預設14 | 真實Edge SVG普通兩行的font-size皆14，computed CSS皆14px；JSON預設同樣14，氣泡非零尺寸 | 通過 |
+| Studio預設同步 | 真實開啟Studio、點選普通文字片段，slider為14，按鈕title為字體大小14px | 通過 |
+| 自訂保留 | 明確segment10及Studio物件20的SVG／computed CSS仍為10／20px；既有物件整體氣泡縮放／選取小測試通過 | 通過 |
+
+### 局部確認與重跑
+- 分級：V1 A。5個既有字級／入口小測試加1個本機最小瀏覽器確認，共6 pass／0 fail／0 skip，3.20秒，exit0。3個JS語法與git diff --check exit0。
+- 執行目錄：本worktree的algo-vis-backend；既有測試命令：node --test tests/object-inspector-font-size.test.js tests/entrypoints.test.js。
+- 本機runner：node test-results/alpha-text-font-validation.cjs；隔離埠56917、headless Edge。本機alpha-text-font.browser.cjs只做parser及手動提供trace的SVG／Studio確認，沒有RUN C++、沒有呼叫/compile、沒有執行線篩／排序。服務與瀏覽器已停止。
+- 最小輸入：普通字串含換行；JSON未指定fontSize的片段；fontSize:10片段；普通字串加Studio objectStyles fontSize:20。空variables/state的一個font-frame，直接ASMTracePlayer.apply後render0。實測SVG字級為[14,14]／[14]／[10]／[20]，氣泡高度為50／30.5／25.5／43.57px，無pageerror。
+- 手動重跑：在隔離algorithm.html提供上述一幀trace，查看各.asm-trace-text-segment-value的font-size及computed fontSize，再開啟Studio點選預設片段，確認.trace-studio-font-size-popover input為14。自訂物件樣式key為text:stored，分段自訂fontSize10，預設片段不設fontSize；JSON片段由findFrameDirectives解析取得預設14。
+- 證據：既有字級／入口測試；本機test-results/alpha-text-font-validation.output／tap／server.log及browser.cjs未提交，可能被覆蓋或清理。未為低影響預設值新增永久測試。
+- 未驗證：投影片嵌入、公開Docker、遠端資料庫；main尚未整合alpha，待主代理核實並重啟主要服務。本次未merge／未重啟主要服務。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
