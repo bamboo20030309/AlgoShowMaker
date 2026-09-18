@@ -5,10 +5,10 @@
 - 分支：codex/2026-09-18-alpha-events-arrows
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-alpha-events-arrows
 - 共同基準 commit：ddfe5b6081261a05b437a61a546861151d4618e5
-- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；最新共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346。
+- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；最新逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：最新程式 commit 0829ad1ac7adf19197b22a96a5a6b9248b466346 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- Push：最新程式 commit 00a3cc61586eda2227f5f57030d541e537a54277 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
 ## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
@@ -152,11 +152,47 @@ node --test --test-concurrency=1 tests/drawing-loops.test.js tests/events-batch-
 - 未驗證：公開 Docker、遠端資料庫、投影片嵌入介面。主代理需補嵌入線篩共用区塊定點驗證；未合併、未重啟主要服務，隔離測試服務與瀏覽器已停止。
 - 合併注意：此輪新增 drawLoops 描述與呈現時的 drawLocals／drawSourceId／drawCandidateCount；新 helper 不改原始 frame 指令，舊 trace 沒有 drawLoops 時保持原行為。需協調共用 model／rules／renderer／studio 及入口快取差異。
 
-## 主代理核實與整合（2026-09-18 最新一輪）
-- 狀態：已核實並合併 intergration。
-- 完整受測版本：6aff1646283fe82d9d1e8342029d6f5838db6c9d；合併程式：bf26de154a67008e2b160d91f4e6a7faec9cd15a。
-- 72 項相關驗證及實際繪圖區塊投影片 iframe 定點通過；詳見 [本輪整合核實](../2026-09-18-drawing-loops-color-integration.md)。
-- 前輪核實：[事件與結構整合](../2026-09-18-events-structure-integration.md)。
-- 完整 regression／大演算法集未執行；其他未驗證項目見整合核實。
-- 3100 重啟 PID 71180，main／Docker 不變。
-- 依授權推送 origin/intergration，結果以主代理最終回報為準；未部署或 release。
+## 最新擴充：逗號多樣式
+- 狀態：小驗證通過，待主代理核實。
+- 驗證版本：00a3cc61586eda2227f5f57030d541e537a54277 的完整程式差異；驗證時 HEAD 為 4d8551bf152880031b30f5bfbd60487ed5b0495e 加上已提交的修改，之後只有交付文件修訂。日期2026-09-18。
+- 設計依據：使用者要求一行 @style isprime[i] highlight,point；不改既有繪圖元件。
+- 修改：instrumenter 將列表展開為原有單樣式描述；同一目標的多種類型由原 Rules／renderer 合併。五種類型均可組合，共用顏色與 when；未指定顏色時保留每種預設色。preset／defaults 按類型保留原覆寫優先序。
+- ID 與限制：多種類型追加 :樣式類型，單樣式 ID 保持原樣。空列表項、未知類型及重複類型報錯；rgba 等顏色內的逗號不視為樣式分隔。
+- 修改檔案：trace-instrumenter.js、trace-directive-assist.js、algorithm.html（directive 快取12）；新增 style-list.test.js、style-list.browser.test.js。README、指令手冊、測試說明及 task 更新，版本／公開發布不適用。
+- 與 task.md 差異：無。
+
+| 最新驗收條件 | 驗證方式與實際結果 | 判定 |
+|---|---|---|
+| 五種類型、預設色、共用條件／顏色及 ID | parser 精確比對三種類型與 focus 灰色、rgba 顏色、混合選取及單樣式原 ID | 通過 |
+| defaults／preset 分類覆寫 | 後續 highlight 改紅，point 藍色、background／focus 綠色仍保留，4 個 ID 各自獨立 | 通過 |
+| 區塊與條件 | 真實 C++ 編譯 @for k in [0:2]，value<3 只讓格子0/1同時有 highlight／point，格子2沒有樣式；JSON重載一致 | 通過 |
+| 錯誤格式 | 尾逗號、連續逗號、未知／重複名稱明確報錯 | 通過 |
+| 實際 SVG | Edge 真實 RUN：isprime[1]及區塊條件選中的[2]同時有可見紅色高亮框及跳動 point，格子0/3皆沒有；JSON重載一致，無 pageerror | 通過 |
+
+### 小驗證與重跑
+- 分級：V2 E；必要 A 入口快取／提示。沒有執行完整 regression、全部 tests 或大規模動畫驗證。
+- 執行目錄：本 worktree 的 algo-vis-backend。環境沿用隔離 runner：ASM_REGRESSION=1、獨立 JWT、MONGO_URI 指向本機不可用埠1，不連遠端資料庫；ASM_TEST_BASE_URL 指向獨立隨機埠。瀏覽器為 headless Edge，不使用使用者分頁。
+- fixture：新增測試內嵌的最小 C++，沒有私人投影片或資料。
+- 完整命令（先設定 ASM_TEST_BASE_URL 指向已啟動的隔離服務）：
+
+```powershell
+node --test --test-concurrency=1 tests/style-list.test.js tests/style-list.browser.test.js tests/style-segments.integration.test.js tests/preset-directives.test.js tests/entrypoints.test.js tests/directive-assist.test.js
+```
+
+- 實際 runner：node test-results/alpha-style-list-validation.cjs；獨立埠51193。最終26 tests／26 pass／0 fail／0 skip，16.89秒，exit0；4個 JS 語法檢查與 git diff --check exit0。測試服務及瀏覽器已停止。
+- 證據：提交的測試；本機 test-results/alpha-style-list-validation.output、alpha-events-validation.tap、alpha-events-validation.server.log 未提交，會被後續重跑覆蓋或清理。
+- 初期失敗：兩個新增 fixture 誤用了 style 的引號 ID 及 frame use 寫法，改為既有 as combined 與 preset 內 @object／@frame use；一次縮排整理差異檢查發現範圍過大，恢復無關縮排後重跑，最終完整差異僅本次功能。未放寬任何行為或可見性斷言。
+- 未驗證／合併注意：公開 Docker、遠端資料庫、投影片嵌入介面未驗證；主代理需核實同格多樣式在嵌入投影片的呈現。未合併、未重啟主要服务；此輪沒有 model／runtime／renderer 契約變更，需協調 instrumenter 與指令助手快取差異。
+
+## 主代理核實與整合（由主代理填寫）
+- 狀態：尚未核實
+- 核實的程式 commit 與 diff 範圍：
+- 差異審查與必要重跑結果：
+- 合併 commit：
+- 完整 regression：本次未執行；整合後由主代理按差異決定範圍。
+- 演算法投影片實際驗證：
+- 未完成或環境阻塞：
+- 本機服務重啟：
+- Push／公開部署狀態：
+
+前次核實：[共用繪圖迴圈整合](../2026-09-18-drawing-loops-color-integration.md)。

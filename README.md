@@ -166,7 +166,7 @@ int main() {
 | `@layout` | 宣告並設定具名遞迴排版 | `// @layout recursion as "quick_tree" at canvas.top offset(0,80)` |
 | `@exit` | 提早讓指定變數的視覺呈現退場 | `// @exit min_idx` |
 | `@text` | 顯示動態說明文字與 TTS | `// @text "i = ${i}" at arr.bottom when i >= 0` |
-| `@style` | 套用背景、框線、point、mark 或 focus | `// @style arr[i,i*2:i*2+1] highlight red` |
+| `@style` | 套用背景、框線、point、mark 或 focus；逗號可組合樣式 | `// @style arr[i,i*2:i*2+1] highlight,point red` |
 | `@segment` | 標示一段連續範圍 | `// @segment arr[low:high]` |
 | `@place` | 將同幀已顯示物件綁到語意錨點 | `// @place pivot at arr.right offset(16,0)` |
 | `@arrow` | 以語意錨點連接格子、變數、keep 或 Studio 物件 | `// @arrow from arr[i].bottom to arr[j].top as "move"` |

@@ -1489,30 +1489,33 @@ function styleDirectivesForSource(source, analysis) {
         if (modifiers.binding) throw new Error(`第 ${line} 行的 @style 不支援 at，請把 at 寫在物件指令上`);
         if (modifiers.renderer) throw new Error(`第 ${line} 行的 @style 不支援 render`);
         if (Object.keys(modifiers.rendererOptions || {}).length) throw new Error(`第 ${line} 行的 @style 不支援 with`);
-        const styleMatch = modifiers.payload.match(/^(.*?)\s+(highlight|focus|mark|point|background)(?:\s+(.+))?$/i);
+        const styleMatch = modifiers.payload.match(/^(.*?)\s+((?:highlight|focus|mark|point|background)(?:\s*,\s*[A-Za-z_]\w*)*)(?:\s+(.+))?$/i);
         if (!styleMatch) {
-          throw new Error(`第 ${line} 行的 @style 格式應為：目標 樣式 [顏色]`);
+          throw new Error(`第 ${line} 行的 @style 格式應為：目標 樣式[,樣式...] [顏色]`);
         }
-        const styleType = styleMatch[2].toLowerCase();
-        const specifiedColor = String(styleMatch[3] || '').trim();
-        const color = specifiedColor || (styleType === 'focus' ? 'AV_grey' : '');
-        if (!TRACE_STYLE_TYPES.has(styleType)) {
-          throw new Error(`第 ${line} 行的 @style 樣式無效：${styleType}`);
+        const styleTypes = styleMatch[2].split(',').map(type => type.trim().toLowerCase());
+        if (new Set(styleTypes).size !== styleTypes.length) throw new Error(`第 ${line} 行的 @style 樣式不可重複`);
+        for (const styleType of styleTypes) {
+          const specifiedColor = String(styleMatch[3] || '').trim();
+          const color = specifiedColor || (styleType === 'focus' ? 'AV_grey' : '');
+          if (!TRACE_STYLE_TYPES.has(styleType)) {
+            throw new Error(`第 ${line} 行的 @style 樣式無效：${styleType}`);
+          }
+          if (color && !/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
+            throw new Error(`第 ${line} 行的 @style 顏色無效：${color}`);
+          }
+          directives.push({
+            from: node.from,
+            to: node.to,
+            line,
+            id: (modifiers.objectId || `style-line-${line}`) + (styleTypes.length > 1 ? `:${styleType}` : ''),
+            drawLoops: drawingScopesAt(source, analysis, node.from),
+            ...parseStyleTarget(styleMatch[1], line),
+            styleType,
+            color,
+            when: modifiers.when
+          });
         }
-        if (color && !/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
-          throw new Error(`第 ${line} 行的 @style 顏色無效：${color}`);
-        }
-        directives.push({
-          from: node.from,
-          to: node.to,
-          line,
-          id: modifiers.objectId || `style-line-${line}`,
-          drawLoops: drawingScopesAt(source, analysis, node.from),
-          ...parseStyleTarget(styleMatch[1], line),
-          styleType,
-          color,
-          when: modifiers.when
-        });
       }
     }
     for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
@@ -1545,12 +1548,12 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
         .filter(item => item.name === 'style').map(item => ({ ...item, presetName: name })) || []);
     presetStyles.forEach((item, index) => {
       const text = `// @style ${item.payload}`;
-      const parsed = styleDirectivesForSource(text, {
+      const parsedStyles = styleDirectivesForSource(text, {
         tree: parser.parse(text), lineAt: () => item.line
-      })[0];
+      });
       const position = frame.from + (index + 1) / (presetStyles.length + 1);
-      styles.push({ ...parsed, from: position, to: position, presetName: item.presetName, drawLoops: item.drawLoops || [],
-        id: `preset-${item.presetName}-${item.line}` });
+      parsedStyles.forEach(parsed => styles.push({ ...parsed, from: position, to: position, presetName: item.presetName, drawLoops: item.drawLoops || [],
+        id: `preset-${item.presetName}-${item.line}` + (parsedStyles.length > 1 ? `:${parsed.styleType}` : '') }));
     });
   });
   styles.sort((left, right) => left.from - right.from).forEach(style => {
