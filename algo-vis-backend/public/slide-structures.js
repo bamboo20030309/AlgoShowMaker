@@ -615,11 +615,12 @@
       // Reuse the existing structure cell renderer for the animation-style label box.
       window.draw_block(marker, x - 9, y - 40, actualIndex, 18, 18, '#bfe8f7', `annotation-${actualIndex}`);
       marker.querySelector('rect')?.setAttribute('fill-opacity', '0.58');
+      marker.querySelector('rect')?.setAttribute('stroke', widget.annotationColor || '#333333');
       const text = marker.querySelector('text');
       if (text) { text.setAttribute('font-size', '8'); text.setAttribute('font-weight', 'bold'); }
       marker.appendChild(element('path', {
         d: `M ${x} ${y - 22} L ${x} ${y - 2} M ${x - 3} ${y - 8} L ${x} ${y - 2} L ${x + 3} ${y - 8}`,
-        fill: 'none', stroke: '#333', 'stroke-width': 1,
+        fill: 'none', stroke: widget.annotationColor || '#333333', 'stroke-width': 1,
         'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
       }));
     });

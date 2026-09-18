@@ -44,7 +44,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=parallel-merge-189'));
+  assert.ok(slides.includes('slides.js?v=parallel-merge-190'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
   assert.ok(!slides.includes('id="deckCacheDialog"'));
