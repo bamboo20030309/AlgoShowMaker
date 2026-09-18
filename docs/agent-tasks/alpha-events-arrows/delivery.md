@@ -233,3 +233,9 @@ node --test --test-concurrency=1 tests/style-replay.browser.test.js tests/presen
 - 28 項相關測試通過，含實際多樣式投影片 iframe；[本輪完整核實](../2026-09-18-style-list-toolbar-integration.md)。
 - 3100 已啟動最新版本，PID 27260；main 未合併，3000 當前不可連線。
 - 依授權推送 origin/intergration，結果以最終回報為準；未部署或 release。
+
+## 目的幀回放主代理核實（2026-09-18）
+- 已合併 intergration；受測版本0ff5287e511817ee3592aa725609d833018ac995。
+- 9項相關驗證通過，含實際投影片iframe返回；[完整核實紀錄](../2026-09-18-replay-preview-integration.md)。
+- 3100已重啟PID24068，三代理預覽已啟動；main未合併。
+- 依授權push origin/intergration，結果以最終回報為準；未發布release。
