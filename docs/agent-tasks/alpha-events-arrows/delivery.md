@@ -5,10 +5,10 @@
 - 分支：codex/2026-09-18-alpha-events-arrows
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-alpha-events-arrows
 - 共同基準 commit：ddfe5b6081261a05b437a61a546861151d4618e5
-- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；最新回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad。
+- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad；最新箭頭 identity 1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：最新程式 commit a8b91a207ca259fd279653a0fb74b668c3bbf4ad 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- Push：最新程式 commit 1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
 ## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
@@ -214,6 +214,35 @@ node --test --test-concurrency=1 tests/style-replay.browser.test.js tests/presen
 - 實際 runner：node test-results/alpha-style-replay-validation.cjs，独立埠51303；9 tests／9 pass／0 fail／0 skip，21.16秒，exit0。2個JS語法檢查及git diff --check exit0；測試服務與瀏覽器已停止。
 - 證據：已提交 fixture／瀏覽器專項；本機 test-results/alpha-style-replay-validation.output、alpha-style-replay-validation.tap／server.log 未提交，可能被重跑覆蓋或清理。最早異常為往回 transition 完成後的高亮集合比對，沒有檢查或更改動畫交叉路徑。
 - 未驗證與合併注意：嵌入投影片／Studio、公開 Docker、遠端資料庫未驗證；主代理按影響補同一線篩在嵌入介面的上一幀確認。主要 main 尚未整合 alpha，本次不 merge 或重啟主要服務；需協調共用 tween 與入口快取差異。
+
+## 最新修正：共用區塊箭頭動畫與事件開關
+- 狀態：小驗證通過，待主代理核實。
+- 驗證版本：1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22；驗證時 HEAD 為 9c4d612fc28a772f3c672409393185be66446df3 加上已提交的完整程式差異，後續只修改交付文件。日期2026-09-18。
+- 根因與證據：@events 本身只控制 runtime 事件，不會停用 frame tween。共用 @for 展開的箭頭子 ID 卻含 loop-instance，i=8與9的同一 j=0 得到不同 ID；1支改2支時，保守的 ArrowModel family 配對也不能選出唯一對象，因此失去端點位移。新增／移除箭頭原有淡入／淡出並未被事件開關直接取消。
+- 修正方式：箭頭繪圖槽改以來源 scope／靜態 loop ID／入口序號識別，跨 runtime 回合保持角色；手動範圍仍按值區分。其他 style／text ID 保持原樣，loopRecords／drawLocals 仍依原 instance 隔離，不改演算法資料、runtime 或 ArrowModel 幾何與路徑。
+- 修改檔案：trace-model.js、algorithm.html與slides.html（model cache31）、drawing-loops.test.js及entrypoints.test.js；新增 drawing-arrow-animation.browser.test.js。README、指令手冊、測試說明及task更新，Release／公開部署不適用。
+- 與 task.md 差異：無。
+
+| 最新驗收條件 | 實際驗證與結果 | 判定 |
+|---|---|---|
+| 跨回合角色配對 | 編譯具名線篩區塊：i=8／9的 j=0 ID 相同，j=1獨立；JSON重載ID一致 | 通過 |
+| SVG端點位移 | headless Edge，i=8到9的j=0由16移至18，i=9到10由18移至20；配對存在、progress介於0和1，實際x2/y2有同時異於起點與終點的中間值 | 通過 |
+| 出入場 | 新j=1箭頭有0與1之間的可見opacity；移除j=1有淡出ghost及中間opacity，切換完成後只剩j=0到20 | 通過 |
+| 事件與style分開 | 同一trace分別設 all animate off/on，兩者都有上述動畫。off的事件steps=0，on的steps>0；off仍取樣到SVG內fill/stroke paint transition正在播放 | 通過 |
+| 重載 | JSON重載後i=8到9仍配對位移，箭頭到18/27，steps=0 | 通過 |
+
+### 小驗證與重跑
+- 分級：V2 E/H/J與必要A快取；只挑4個直接相關檔案，未執行完整regression或整套動畫集。
+- 目錄／環境：本worktree的algo-vis-backend；ASM_TEST_BASE_URL指向獨立服務，Mongo指本機不可用埠1，headless Edge不操作使用者分頁。fixture沿用 tests/fixtures/style-replay-sieve.cpp，輸入30；browser只取樣8/9/10之間局部切換。
+- 完整命令（先設定 ASM_TEST_BASE_URL 指向已啟動隔離服務）：
+
+```powershell
+node --test --test-concurrency=1 tests/drawing-arrow-animation.browser.test.js tests/drawing-loops.test.js tests/arrow-identity.test.js tests/entrypoints.test.js
+```
+
+- 本機runner：node test-results/alpha-arrow-animation-validation.cjs，埠63700；9 tests／9 pass／0 fail／0 skip，15.99秒，exit0。4個JS語法與git diff --check exit0，測試服務與瀏覽器已停止。
+- 證據：提交的專項與fixture；test-results/alpha-arrow-animation-validation.output／tap／server.log只留本機、未提交，可能被重跑覆蓋或清理。修正前失敗精確顯示 j=0 的 loop-instance-7／8 不同 ID，保留角色相等、中間座標、opacity及style paint所有斷言，未放寬行為。
+- 未驗證與合併注意：嵌入投影片／Studio、公開Docker／遠端資料庫未驗證；主代理補同一組批次箭頭在投影片嵌入的單次切換。此輪僅改呈現時箭頭子ID，不增加runtime資料；需協調共用model與入口cache。main未整合alpha，未merge、未重啟主要服務。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
