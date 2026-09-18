@@ -22,6 +22,8 @@
 
 回放樣式專項 `style-replay.browser.test.js` 使用 `fixtures/style-replay-sieve.cpp`，只比較線篩 i=8／9 的實際 SVG：往前／往後、再次播放、JSON 重載及兩種速度的單次 autoplay；高亮、focus 填色與箭頭必須符合目的幀，事件關閉仍保留原資料。設定 `ASM_TEST_BASE_URL` 指向隔離服務，不播放整套演算法。
 
+`drawing-arrow-animation.browser.test.js` 取樣同一 fixture 的 i=8／9／10：同一繪圖槽的箭頭 ID 必須跨回合保留，既有箭頭的實際 SVG 端點移動，新增／移除箭頭淡入／淡出。分別開啟／關閉 runtime 事件，關閉時仍取樣到 style 填色過渡；JSON重載仍能位移。僅播放這些定點之間的局部切換。
+
 ```sh
 npm run regression
 ```

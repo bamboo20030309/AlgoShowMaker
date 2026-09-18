@@ -370,7 +370,7 @@
     for (const item of frame?.[field] || []) {
       if (!item.drawLoops?.length) { output.push(item); continue; }
       const fail = message => { throw new Error(`第 ${item.line || '?'} 行的 @for ${message}`); };
-      let contexts = [{ locals: {}, path: '' }];
+      let contexts = [{ locals: {}, path: '', rolePath: '' }];
       for (const scope of item.drawLoops) {
         const next = [];
         for (const context of contexts) {
@@ -387,11 +387,14 @@
           }
           if (samples.length + next.length > 2048) fail('展開數量超過 2048 次');
           for (const sample of samples) next.push({ locals: { ...context.locals, [scope.variable]: sample.value },
-            path: context.path + `/${scope.id}~${sample.instanceId || ''}[${sample.instanceId ? sample.ordinal : sample.value}]` });
+            path: context.path + `/${scope.id}~${sample.instanceId || ''}[${sample.instanceId ? sample.ordinal : sample.value}]`,
+            // An arrow's visual slot persists across invocations of the same
+            // source loop. Runtime instance IDs identify data, not arrow roles.
+            rolePath: context.rolePath + `/${scope.id}~${scope.loopId || ''}[${sample.instanceId ? sample.ordinal : sample.value}]` });
         }
         contexts = next;
       }
-      for (const { locals, path } of contexts) {
+      for (const { locals, path, rolePath } of contexts) {
         const resolveIndices = endpoint => {
           if (!endpoint) return endpoint;
           const expressions = endpoint.indexExpressions || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
@@ -399,7 +402,7 @@
           if (values.some(value => !Number.isSafeInteger(value))) fail('端點索引無法解析為安全整數');
           return { ...endpoint, indexExpressions: values.map(String), indexExpression: values.join(',') };
         };
-        const expanded = { ...item, id: `${item.id}@${path}`, drawLoops: [], drawLocals: locals,
+        const expanded = { ...item, id: `${item.id}@${field === 'arrows' ? rolePath : path}`, drawLoops: [], drawLocals: locals,
           drawCandidateCount: contexts.length, drawSourceId: item.id };
         if (field === 'texts') {
           if (!window.ASMTraceRules.textExpressionMatches(document, frame, item.when, locals)) continue;
