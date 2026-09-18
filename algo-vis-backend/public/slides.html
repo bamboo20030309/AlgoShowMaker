@@ -324,27 +324,34 @@
         <label data-structure-style="highlight">
           <span class="structure-style-icon style-icon highlight" role="img" title="Highlight" aria-label="Highlight"></span>
           <input id="structureHighlightIndicesInput" type="text" placeholder="例如 1,3-5" aria-label="Highlight 索引" />
-          <button id="structureHighlightColorInput" class="structure-color-button" type="button" data-color="#ef4444" title="選擇 Highlight 顏色" aria-label="選擇 Highlight 顏色"><span></span></button>
+          <button id="structureHighlightColorInput" class="structure-color-button" type="button" data-color="#ff0000" title="選擇 Highlight 顏色" aria-label="選擇 Highlight 顏色"><span></span></button>
         </label>
         <label data-structure-style="focus">
           <span class="structure-style-icon style-icon focus" role="img" title="Focus" aria-label="Focus"></span>
           <input id="structureFocusIndicesInput" type="text" placeholder="索引" aria-label="Focus 索引" />
-          <button id="structureFocusColorInput" class="structure-color-button" type="button" data-color="#3b82f6" title="選擇 Focus 顏色" aria-label="選擇 Focus 顏色"><span></span></button>
+          <button id="structureFocusColorInput" class="structure-color-button" type="button" data-color="#808080" title="選擇 Focus 顏色" aria-label="選擇 Focus 顏色"><span></span></button>
         </label>
         <label data-structure-style="point">
           <span class="structure-style-icon style-icon point" role="img" title="Point" aria-label="Point"></span>
           <input id="structurePointIndicesInput" type="text" placeholder="索引" aria-label="Point 索引" />
-          <button id="structurePointColorInput" class="structure-color-button" type="button" data-color="#f59e0b" title="選擇 Point 顏色" aria-label="選擇 Point 顏色"><span></span></button>
+          <button id="structurePointColorInput" class="structure-color-button" type="button" data-color="#ff0000" title="選擇 Point 顏色" aria-label="選擇 Point 顏色"><span></span></button>
         </label>
         <label data-structure-style="mark">
           <span class="structure-style-icon style-icon mark" role="img" title="Mark" aria-label="Mark"></span>
           <input id="structureMarkIndicesInput" type="text" placeholder="索引" aria-label="Mark 索引" />
-          <button id="structureMarkColorInput" class="structure-color-button" type="button" data-color="#8b5cf6" title="選擇 Mark 顏色" aria-label="選擇 Mark 顏色"><span></span></button>
+          <button id="structureMarkColorInput" class="structure-color-button" type="button" data-color="#22c55e" title="選擇 Mark 顏色" aria-label="選擇 Mark 顏色"><span></span></button>
         </label>
         <label data-structure-style="background">
           <span class="structure-style-icon style-icon background" role="img" title="Background" aria-label="Background"></span>
           <input id="structureBackgroundIndicesInput" type="text" placeholder="索引，留空即不套用" aria-label="Background 索引" />
           <button id="structureBackgroundColorInput" class="structure-color-button" type="button" data-color="#10b981" title="選擇 Background 顏色" aria-label="選擇 Background 顏色"><span></span></button>
+        </label>
+      </div>
+      <div class="structure-section-title">註標箭頭</div>
+      <div class="structure-style-list">
+        <label>
+          <svg width="22" height="30" viewBox="0 0 22 30" role="img" aria-label="註標箭頭與格子"><rect x="6" y="1" width="10" height="8" fill="#bfe8f7" stroke="currentColor"/><path d="M11 9v10m-3-4 3 4 3-4" fill="none" stroke="currentColor"/><rect x="3" y="21" width="16" height="8" fill="none" stroke="currentColor"/></svg>
+          <input id="structureAnnotationIndicesInput" type="text" placeholder="例如 1,3-5" aria-label="註標箭頭索引" />
         </label>
       </div>
       <div class="structure-legacy-fields" hidden>
@@ -703,7 +710,7 @@
   <script src="draw/draw_array_disk.js?v=focus-3"></script>
   <script src="draw/draw_array_stack.js?v=focus-2"></script>
   <script src="draw/draw_array_queue.js?v=focus-2"></script>
-  <script src="slide-structures.js?v=10"></script>
+  <script src="slide-structures.js?v=11"></script>
   <script src="deck-thumbnail.js?v=3"></script>
   <script src="slides-storage.js?v=5"></script>
   <script src="slides-cloud.js?v=1"></script>
@@ -714,7 +721,7 @@
   <script src="trace-provenance.js?v=trace-5"></script>
   <script src="asmdeck.js?v=5"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="slides.js?v=cursor-blink-187"></script>
+  <script src="slides.js?v=structure-annotations-188"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

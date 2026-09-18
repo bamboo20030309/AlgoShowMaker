@@ -1,0 +1,67 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
+const { randomBytes } = require('node:crypto');
+const net = require('node:net');
+const path = require('node:path');
+const fs = require('node:fs');
+const { chromium } = require('playwright');
+
+test('structure annotations follow indices, persist and retain custom colors', { timeout: 120000 }, async () => {
+  const root = path.resolve(__dirname, '..');
+  const port = await new Promise(resolve => { const probe = net.createServer(); probe.listen(0, '127.0.0.1', () => { const p = probe.address().port; probe.close(() => resolve(p)); }); });
+  const server = spawn(process.execPath, ['server.js'], { cwd: root, env: { ...process.env, PORT: String(port), ASM_REGRESSION: '1', JWT_SECRET: randomBytes(32).toString('hex') }, windowsHide: true, stdio: 'ignore' });
+  let browser;
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    for (let i = 0; i < 80; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(resolve => setTimeout(resolve, 200)); }
+    browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+    const widget = { id: 'structure', type: 'structure', structureMode: 'normal', content: '10,20,30,40', annotationIndices: '1', x: 180, y: 140, w: 600, h: 260 };
+    const deck = { groups: [{ id: 'g1', slides: [{ id: 's1', canvas: { objects: [] }, widgets: [widget] }] }] };
+    const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    const errors = []; page.on('pageerror', error => errors.push(error.stack || error.message));
+    await page.addInitScript(deck => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(deck)), deck);
+    await page.goto(base + '/slides.html');
+    await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    const object = page.locator('[data-widget-id="structure"]');
+    const annotations = () => object.locator('[data-structure-annotation-index]').evaluateAll(items => items.map(item => item.dataset.structureAnnotationIndex));
+    assert.deepEqual(await annotations(), ['1']);
+    await object.click();
+    if (!(await page.locator('#structureAnnotationIndicesInput').isVisible())) { await page.locator('#modeToggleBtn').click(); await object.click(); }
+    for (const [name, color] of [['Highlight', '#ff0000'], ['Focus', '#808080'], ['Point', '#ff0000'], ['Mark', '#22c55e']]) assert.equal(await page.locator(`#structure${name}ColorInput`).getAttribute('data-color'), color);
+    await page.locator('#structureAnnotationIndicesInput').fill('0,2-3,99');
+    assert.deepEqual(await annotations(), ['0', '2', '3']);
+    const geometry = await object.locator('svg').evaluate(svg => {
+      const view = svg.viewBox.baseVal;
+      return [...svg.querySelectorAll('[data-structure-annotation-index]')].every(marker => { const box = marker.getBBox(); return box.y >= view.y && box.y + box.height <= view.y + view.height; });
+    });
+    assert.equal(geometry, true);
+    await page.locator('#structureAnnotationIndicesInput').fill(''); assert.deepEqual(await annotations(), []);
+    await page.locator('#structureAnnotationIndicesInput').fill('1,3');
+    await page.locator('#modeToggleBtn').click(); await page.waitForTimeout(600);
+    await page.reload(); await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready'));
+    assert.deepEqual(await annotations(), ['1', '3']);
+    const saved = await page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].widgets[0]);
+    assert.equal(saved.annotationIndices, '1,3');
+    const custom = await page.evaluate(widget => {
+      const svg = AlgoStructureRenderer.createSvg({ ...widget, highlightColor: '#123456', highlightIndices: '0' });
+      return svg.querySelector('.highlight-blink').getAttribute('stroke');
+    }, widget);
+    assert.equal(custom, '#123456');
+    fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+    await page.screenshot({ path: path.join(root, 'test-results/structure-annotations.png') });
+    const canvasDraw = await page.evaluate(async widget => {
+      const svg = AlgoStructureRenderer.createSvg(widget);
+      const parsed = new DOMParser().parseFromString(new XMLSerializer().serializeToString(svg), 'image/svg+xml');
+      await AlgoStructureRenderer.drawCanvas(document.createElement('canvas').getContext('2d'), widget);
+      return !parsed.querySelector('parsererror');
+    }, widget);
+    assert.equal(canvasDraw, true);
+    const otherModes = await page.evaluate(widget => ['matrix', 'binary_tree', 'heap'].map(structureMode => {
+      const svg = AlgoStructureRenderer.createSvg({ ...widget, structureMode, content: structureMode === 'matrix' ? '10,20;30,40' : '10,20,30,40', annotationIndices: '2' });
+      return [...svg.querySelectorAll('[data-structure-annotation-index]')].map(item => item.dataset.structureAnnotationIndex);
+    }), widget);
+    assert.deepEqual(otherModes, [['2'], ['2'], ['2']]);
+    assert.deepEqual(errors, []);
+  } finally { if (browser) await browser.close(); server.kill(); }
+});
