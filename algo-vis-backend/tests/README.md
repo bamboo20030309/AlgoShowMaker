@@ -20,6 +20,8 @@
 
 逗號樣式專項為 `style-list.test.js`（五種樣式、預設色、共用顏色／條件、ID、preset 覆寫、區塊與錯誤格式）及 `style-list.browser.test.js`（實際 SVG 的高亮框與 point 同時可見，條件過濾與 JSON 重載）。編譯及瀏覽器驗證需設定 `ASM_TEST_BASE_URL` 指向獨立服務。
 
+回放樣式專項 `style-replay.browser.test.js` 使用 `fixtures/style-replay-sieve.cpp`，只比較線篩 i=8／9 的實際 SVG：往前／往後、再次播放、JSON 重載及兩種速度的單次 autoplay；高亮、focus 填色與箭頭必須符合目的幀，事件關閉仍保留原資料。設定 `ASM_TEST_BASE_URL` 指向隔離服務，不播放整套演算法。
+
 ```sh
 npm run regression
 ```
