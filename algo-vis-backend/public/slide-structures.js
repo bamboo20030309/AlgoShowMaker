@@ -85,10 +85,10 @@
       elements: parseIndices(source, length)
     });
     return {
-      highlight: entry('highlight', widget.highlightColor || '#ef4444', widget.highlightIndices),
-      focus: entry('focus', widget.focusColor || '#3b82f6', widget.focusIndices),
-      point: entry('point', widget.pointColor || '#f59e0b', widget.pointIndices),
-      mark: entry('mark', widget.markColor || '#8b5cf6', widget.markIndices),
+      highlight: entry('highlight', widget.highlightColor || '#ff0000', widget.highlightIndices),
+      focus: entry('focus', widget.focusColor || '#808080', widget.focusIndices),
+      point: entry('point', widget.pointColor || '#ff0000', widget.pointIndices),
+      mark: entry('mark', widget.markColor || '#22c55e', widget.markIndices),
       background: entry('background', widget.backgroundColor || '#10b981', widget.backgroundIndices)
     };
   }
@@ -571,8 +571,9 @@
 
   function paddedBounds(group, mode, widget) {
     const bounds = originalBounds(group, mode);
-    const edgePadding = 3;
-    const pointPadding = parseIndices(widget.pointIndices, valuesFromContent(widget.content).length).length ? 28 : edgePadding;
+    const edgePadding = group.querySelector('[data-structure-annotation-index]') ? 10 : 3;
+    const pointPadding = group.querySelector('[data-structure-annotation-index]') ? 44
+      : (parseIndices(widget.pointIndices, valuesFromContent(widget.content).length).length ? 28 : edgePadding);
     return {
       left: bounds.left - edgePadding,
       top: bounds.top - pointPadding,
@@ -592,7 +593,36 @@
     const values = valuesFromContent(widget.content);
     if (mode === 'binary_tree') drawTree(group, widget, values);
     else drawWithOriginalRenderer(group, { ...widget, structureMode: mode }, values);
+    addAnnotations(group, widget);
     return { svg, group, mode, bounds: paddedBounds(group, mode, widget) };
+  }
+
+  function addAnnotations(group, widget) {
+    const cells = [...group.querySelectorAll('[data-structure-item-index]')];
+    const length = Math.max(0, ...cells.map(cell => Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex) + 1));
+    const selected = new Set(parseIndices(widget.annotationIndices, length));
+    cells.forEach(cell => {
+      const index = Number(cell.dataset.structureItemIndex);
+      const treeIndex = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex);
+      const actualIndex = Number.isFinite(treeIndex) ? treeIndex : index;
+      if (!selected.has(actualIndex)) return;
+      const rect = cell.querySelector(':scope > rect');
+      if (!rect) return;
+      const x = Number(rect.getAttribute('x')) + Number(rect.getAttribute('width')) / 2;
+      const y = Number(rect.getAttribute('y'));
+      const marker = element('g', { 'data-structure-annotation-index': actualIndex, 'pointer-events': 'none' });
+      cell.appendChild(marker);
+      // Reuse the existing structure cell renderer for the animation-style label box.
+      window.draw_block(marker, x - 9, y - 40, actualIndex, 18, 18, '#bfe8f7', `annotation-${actualIndex}`);
+      marker.querySelector('rect')?.setAttribute('fill-opacity', '0.58');
+      const text = marker.querySelector('text');
+      if (text) { text.setAttribute('font-size', '8'); text.setAttribute('font-weight', 'bold'); }
+      marker.appendChild(element('path', {
+        d: `M ${x} ${y - 22} L ${x} ${y - 2} M ${x - 3} ${y - 8} L ${x} ${y - 2} L ${x + 3} ${y - 8}`,
+        fill: 'none', stroke: '#333', 'stroke-width': 1,
+        'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
+      }));
+    });
   }
 
   function getNaturalSize(widget) {

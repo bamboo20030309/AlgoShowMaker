@@ -353,6 +353,7 @@
   const structureLineColorInput = document.getElementById('structureLineColorInput');
   const structureHighlightColorInput = document.getElementById('structureHighlightColorInput');
   const structureHighlightIndicesInput = document.getElementById('structureHighlightIndicesInput');
+  const structureAnnotationIndicesInput = document.getElementById('structureAnnotationIndicesInput');
   const structureFocusColorInput = document.getElementById('structureFocusColorInput');
   const structureFocusIndicesInput = document.getElementById('structureFocusIndicesInput');
   const structurePointColorInput = document.getElementById('structurePointColorInput');
@@ -2265,10 +2266,10 @@
           borderColor: widget.borderColor || '#344247',
           textColor: widget.textColor || '#1f282d',
           lineColor: widget.lineColor || '#66767b',
-          highlightColor: widget.highlightColor || '#ef4444',
-          focusColor: widget.focusColor || '#3b82f6',
-          pointColor: widget.pointColor || '#f59e0b',
-          markColor: widget.markColor || '#8b5cf6',
+          highlightColor: widget.highlightColor || '#ff0000',
+          focusColor: widget.focusColor || '#808080',
+          pointColor: widget.pointColor || '#ff0000',
+          markColor: widget.markColor || '#22c55e',
           backgroundColor: widget.backgroundColor || '#10b981',
           frameBackgroundEnabled: widget.frameBackgroundEnabled !== false,
           frameBackgroundColor: !widget.frameBackgroundColor || widget.frameBackgroundColor === '#d1e6ac'
@@ -2289,6 +2290,7 @@
             : (widget.treeArrowColor || '#333333'),
           treeRendererVersion: 3,
           structureFrameVersion: Number(widget.structureFrameVersion) || 0,
+          annotationIndices: typeof widget.annotationIndices === 'string' ? widget.annotationIndices : '',
           highlightIndices: typeof widget.highlightIndices === 'string' ? widget.highlightIndices : '',
           focusIndices: typeof widget.focusIndices === 'string' ? widget.focusIndices : '',
           pointIndices: typeof widget.pointIndices === 'string' ? widget.pointIndices : '',
@@ -2838,6 +2840,7 @@
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
+      'annotationIndices',
       'frameBackgroundEnabled', 'frameBackgroundColor', 'treeLayout', 'treeArrowColor',
       'treeData', 'structureFrameVersion',
       'w', 'h'
@@ -4355,10 +4358,10 @@
         borderColor: '#344247',
         textColor: '#1f282d',
         lineColor: '#66767b',
-        highlightColor: '#ef4444',
-        focusColor: '#3b82f6',
-        pointColor: '#f59e0b',
-        markColor: '#8b5cf6',
+        highlightColor: '#ff0000',
+        focusColor: '#808080',
+        pointColor: '#ff0000',
+        markColor: '#22c55e',
         backgroundColor: '#10b981',
         frameBackgroundEnabled: true,
         frameBackgroundColor: DEFAULT_STRUCTURE_FRAME_BACKGROUND,
@@ -4367,6 +4370,7 @@
         treeArrowColor: '#333333',
         treeRendererVersion: 3,
         structureFrameVersion: 4,
+        annotationIndices: '',
         highlightIndices: '',
         focusIndices: '',
         pointIndices: '',
@@ -5305,22 +5309,23 @@
     structureBorderColorInput.value = widget.borderColor || '#344247';
     structureTextColorInput.value = widget.textColor || '#1f282d';
     structureLineColorInput.value = widget.lineColor || '#66767b';
-    setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ef4444');
+    setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ff0000');
     structureHighlightIndicesInput.value = widget.highlightIndices || '';
-    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#3b82f6');
+    structureAnnotationIndicesInput.value = widget.annotationIndices || '';
+    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#808080');
     structureFocusIndicesInput.value = widget.focusIndices || '';
-    setStructureColorButton(structurePointColorInput, widget.pointColor || '#f59e0b');
+    setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
     structurePointIndicesInput.value = widget.pointIndices || '';
-    setStructureColorButton(structureMarkColorInput, widget.markColor || '#8b5cf6');
+    setStructureColorButton(structureMarkColorInput, widget.markColor || '#22c55e');
     structureMarkIndicesInput.value = widget.markIndices || '';
     setStructureColorButton(structureBackgroundColorInput, widget.backgroundColor || '#10b981');
     structureBackgroundIndicesInput.value = widget.backgroundIndices || '';
     if (structureFrameBackgroundEnabledInput) structureFrameBackgroundEnabledInput.checked = widget.frameBackgroundEnabled !== false;
     setStructureColorButton(structureFrameBackgroundColorInput, widget.frameBackgroundColor || DEFAULT_STRUCTURE_FRAME_BACKGROUND);
-    syncStructureStyleIcon('highlight', widget.highlightColor || '#ef4444');
-    syncStructureStyleIcon('focus', widget.focusColor || '#3b82f6');
-    syncStructureStyleIcon('point', widget.pointColor || '#f59e0b');
-    syncStructureStyleIcon('mark', widget.markColor || '#8b5cf6');
+    syncStructureStyleIcon('highlight', widget.highlightColor || '#ff0000');
+    syncStructureStyleIcon('focus', widget.focusColor || '#808080');
+    syncStructureStyleIcon('point', widget.pointColor || '#ff0000');
+    syncStructureStyleIcon('mark', widget.markColor || '#22c55e');
     syncStructureStyleIcon('background', widget.backgroundColor || '#10b981');
     syncStructureEditorVisibility(widget);
   }
@@ -6484,6 +6489,7 @@
     structureTextColorInput?.addEventListener('input', () => updateSelectedStructure({ textColor: structureTextColorInput.value }));
     structureLineColorInput?.addEventListener('input', () => updateSelectedStructure({ lineColor: structureLineColorInput.value }));
     structureHighlightIndicesInput?.addEventListener('input', () => updateSelectedStructure({ highlightIndices: structureHighlightIndicesInput.value }));
+    structureAnnotationIndicesInput?.addEventListener('input', () => updateSelectedStructure({ annotationIndices: structureAnnotationIndicesInput.value }));
     structureFocusIndicesInput?.addEventListener('input', () => updateSelectedStructure({ focusIndices: structureFocusIndicesInput.value }));
     structurePointIndicesInput?.addEventListener('input', () => updateSelectedStructure({ pointIndices: structurePointIndicesInput.value }));
     structureMarkIndicesInput?.addEventListener('input', () => updateSelectedStructure({ markIndices: structureMarkIndicesInput.value }));
