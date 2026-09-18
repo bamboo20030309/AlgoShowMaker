@@ -12,7 +12,7 @@ AlgoShowMaker 是以 C++ 程式執行結果為核心的演算法視覺化與投�
 ### AV_V4.7 開發更新 — 2026/09/18
 
 - 新增 `@events [種類列表] animate on/off [when 條件]`，可在使用者自行編寫的濃縮幀略過事件動畫，保留計算結果與 trace 記錄。
-- `@arrow for k in start..end [step expression] from ... to ...` 支援單行／多行批次繪圖、條件與 `iteration.last(...)`；沒有詳細幀的迴圈也能從既有事件取得最後位置。語法與線篩案例見[使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。
+- `@arrow for k in [start:end] [step expression] from ... to ...` 支援單行／多行批次繪圖；`for j` 或 `for j in "loop_name"` 直接使用實際迴圈入口值，支援 `@loop as` 命名、for／while／do while、迴圈前後引用與重複值。語法與線篩案例見[使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。
 
 ### AV_V4.7 — 2026/09/16
 

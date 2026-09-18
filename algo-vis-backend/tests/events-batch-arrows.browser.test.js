@@ -61,6 +61,29 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     }
     assert.deepEqual(result.repeated.arrows,result.nine.arrows);
     assert.deepEqual(result.reloaded.arrows,result.nine.arrows,'JSON round trip retains controls and batch description');
+    const loopCode=fs.readFileSync(path.join(__dirname,'fixtures/loop-batch-sieve.cpp'),'utf8');
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
+    await page.evaluate(code=>ace.edit('editor').setValue(code,-1),loopCode);
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,loopCode,{timeout:30000});
+    const loops=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const iId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='i');
+      const indices=[8,9].map(i=>doc.frames.findIndex(frame=>frame.eventControls.length && frame.state[iId]?.data.value===i));
+      const read=()=>({arrows:[...document.querySelectorAll('#arraySvg [data-trace-arrow-source="directive"]')].map(node=>({id:node.dataset.traceArrow,to:node.dataset.traceArrowToKey})),
+        steps:player.getLastPlaybackPlan()?.phases.find(p=>p.id==='trace-events')?.steps.length || 0});
+      const states=[];
+      for(const index of indices){await player.render(index);states.push(read());}
+      player.apply(JSON.parse(JSON.stringify(doc)));
+      await player.render(indices[1]);
+      return {states,reloaded:read()};
+    });
+    assert.deepEqual(loops.states.map(state=>state.arrows.length),[1,2]);
+    assert.deepEqual(loops.states[1].arrows.map(arrow=>arrow.to.split('#').at(-1)),['18','27']);
+    assert.ok(loops.states.every(state=>state.steps===0));
+    assert.equal(new Set(loops.states[1].arrows.map(arrow=>arrow.id)).size,2);
+    assert.deepEqual(loops.reloaded,loops.states[1]);
     assert.deepEqual(errors,[]);
   } finally { await browser.close(); }
 });

@@ -1746,6 +1746,50 @@ function parseArrowTarget(raw, line, role) {
   }
 }
 
+function blockAt(root, position) {
+  let result = null;
+  function visit(node) {
+    if (node.from <= position && position < node.to) {
+      if (node.name === 'CompoundStatement') result = node;
+      childrenOf(node).forEach(visit);
+    }
+  }
+  visit(root);
+  return result;
+}
+
+function sourceLoops(source, analysis) {
+  if (analysis.arrowLoops) return analysis.arrowLoops;
+  const loops = [];
+  const aliasesDeclared = [];
+  function visit(node, parents = []) {
+    let next = parents;
+    if (node.name === 'LineComment' && /^\/\/\s*@loop\b/.test(source.slice(node.from, node.to))) {
+      const alias = source.slice(node.from, node.to).match(/^\/\/\s*@loop\s+as\s+"([^"]+)"\s*$/);
+      if (!alias) throw new Error(`第 ${analysis.lineAt(node.from)} 行的 @loop 格式應為 as "loop_name"`);
+      aliasesDeclared.push(alias[1]);
+    }
+    if (['ForStatement', 'WhileStatement', 'DoStatement'].includes(node.name)) {
+      const body = childrenOf(node).findLast(child => child.name === 'CompoundStatement' || /Statement$/.test(child.name));
+      const prefix = source.slice(0, node.from).match(/\/\/\s*@loop\s+as\s+"([^"]+)"\s*$/);
+      const loop = { node, from: node.from, to: node.to, bodyFrom: body.from, bodyTo: body.to,
+        id: `loop-${node.from}`, alias: prefix?.[1] || '',
+        blockFrom: blockAt(analysis.tree.topNode, node.from)?.from,
+        parentLoopIds: parents.map(item => item.id),
+        identifiers: (node.name === 'ForStatement' ? source.slice(node.from, body.from)
+          : source.slice(node.from, node.to)).match(/[A-Za-z_]\w*/g) || [] };
+      loops.push(loop); next = [...parents, loop];
+    }
+    childrenOf(node).forEach(child => visit(child, next));
+  }
+  visit(analysis.tree.topNode);
+  const aliases = loops.filter(loop => loop.alias).map(loop => loop.alias);
+  if (new Set(aliases).size !== aliases.length) throw new Error('@loop as 名稱重複，請使用不同名稱');
+  if (aliasesDeclared.length !== aliases.length) throw new Error('@loop as 必須緊接在 for、while 或 do 迴圈之前');
+  analysis.arrowLoops = loops;
+  return loops;
+}
+
 function findArrowDirectives(source, suppliedAnalysis = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
@@ -1765,15 +1809,17 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
         let payload = originalPayload;
         let batch = null;
         if (/^for\b/i.test(payload)) {
-          const loop = payload.match(/^for\s+([A-Za-z_]\w*)\s+in\s+(.+?)\s*\.\.\s*(.+?)\s+from\s+/i);
-          if (!loop) throw new Error(`第 ${line} 行的 @arrow for 格式應為 for k in start..end [step expression] from ... to ...`);
+          const loop = payload.match(/^for\s+([A-Za-z_]\w*)(?:\s+in\s+(\[.+\](?:\s+step\s+.+?)?|"[^"]+"))?\s+from\s+/i);
+          if (!loop) throw new Error(`第 ${line} 行的 @arrow for 格式應為 for k in [start:end] [step expression]、for j 或 for j in "loop_name" from ... to ...`);
           if (['iteration', 'before', 'prev', 'changed', 'assigned', 'true', 'false', 'and', 'or'].includes(loop[1])) {
             throw new Error(`第 ${line} 行的 @arrow for 繪圖索引不能使用保留名稱：${loop[1]}`);
           }
-          const endAndStep = loop[3].match(/^(.*?)(?:\s+step\s+(.+))?$/i);
-          batch = { variable: loop[1], startExpression: loop[2].trim(),
-            endExpression: endAndStep[1].trim(), stepExpression: endAndStep[2]?.trim() || '1' };
-          for (const expression of [batch.startExpression, batch.endExpression, batch.stepExpression]) {
+          const range = loop[2]?.match(/^\[(.+?):(.+?)\](?:\s+step\s+(.+))?$/i);
+          if (loop[2]?.startsWith('[') && !range) throw new Error(`第 ${line} 行的 @arrow for 範圍格式應為 [start:end]`);
+          batch = range ? { variable: loop[1], startExpression: range[1].trim(),
+            endExpression: range[2].trim(), stepExpression: range[3]?.trim() || '1' }
+            : { kind: 'loop', variable: loop[1], loopName: loop[2] ? JSON.parse(loop[2]) : '' };
+          for (const expression of batch.kind === 'loop' ? [] : [batch.startExpression, batch.endExpression, batch.stepExpression]) {
             const parsed = parseFrameExpression(expression);
             if (!parsed.valid || parsed.identifiers.includes(batch.variable)) {
               throw new Error(`第 ${line} 行的 @arrow for 範圍無效或引用繪圖索引：${expression}`);
@@ -1940,7 +1986,19 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
         throw new Error(`第 ${arrow.line} 行的 @arrow 找不到條件變數：${name}`);
       }
     });
-    if (arrow.batch) {
+    if (arrow.batch?.kind === 'loop') {
+      const loops = sourceLoops(source, analysis);
+      const frameBlock = blockAt(analysis.tree.topNode, targetFrame.from);
+      const candidates = loops.filter(loop => arrow.batch.loopName
+        ? loop.alias === arrow.batch.loopName
+        : (loop.blockFrom === frameBlock?.from || loop.from < targetFrame.from && targetFrame.from < loop.to)
+          && loop.identifiers.includes(arrow.batch.variable));
+      if (candidates.length !== 1) throw new Error(`第 ${arrow.line} 行的 @arrow for 迴圈${candidates.length ? '有歧義，請使用 in "loop_name" 指名' : '不存在或無法對應'}`);
+      const loop = candidates[0];
+      if (!resolveVariable(arrow.batch.variable, loop.bodyFrom + 1)) throw new Error(`第 ${arrow.line} 行的 @arrow for 變數 ${arrow.batch.variable} 必須在迴圈本體入口可見`);
+      arrow.batch = { ...arrow.batch, loopId: loop.id, parentLoopIds: loop.parentLoopIds, line: arrow.line,
+        position: targetFrame.from < loop.from ? 'before' : targetFrame.from >= loop.to ? 'after' : 'inside' };
+    } else if (arrow.batch) {
       for (const expression of [arrow.batch.startExpression, arrow.batch.endExpression, arrow.batch.stepExpression]) {
         (parseFrameExpression(expression).identifiers || []).forEach(name => {
           if (!captureIdentifier(name)) throw new Error(`第 ${arrow.line} 行的 @arrow for 找不到範圍變數：${name}`);
@@ -2754,6 +2812,16 @@ function findExitDirectives(source, suppliedAnalysis = null) {
 function instrumentSource(source, watchIds = []) {
   const analysis = analyzeSource(source);
   const frameDirectives = findFrameDirectives(source, analysis);
+  const arrowLoops = sourceLoops(source, analysis);
+  const sampledLoops = new Map();
+  frameDirectives.forEach(frame => frame.arrows.forEach(arrow => {
+    if (arrow.batch?.kind !== 'loop') return;
+    for (const id of [...arrow.batch.parentLoopIds, arrow.batch.loopId]) {
+      if (!sampledLoops.has(id)) sampledLoops.set(id, new Set());
+    }
+    sampledLoops.get(arrow.batch.loopId).add(arrow.batch.variable);
+  }));
+  const trackedLoops = arrowLoops.filter(loop => sampledLoops.has(loop.id));
   const layoutDirectives = findLayoutDirectives(source, analysis);
   const layoutIds = new Set(layoutDirectives.map(layout => layout.id));
   frameDirectives.forEach(directive => {
@@ -3523,6 +3591,17 @@ ${loop}
       rendered = `${rendered}\n${inputInitializations ? `${inputInitializations}\n` : ''}${declarations ? `${declarations}\n` : ''}${checkpoint}`;
     }
 
+    const bodyLoop = trackedLoops.find(loop => loop.bodyFrom === node.from && loop.bodyTo === node.to);
+    if (bodyLoop) {
+      const samples = [...sampledLoops.get(bodyLoop.id)].map(name => `::asm_trace::named(${cppString(name)}, ${cppString(name)}, ${name})`);
+      const entry = `__asm_loop_${bodyLoop.from}.enter(${samples.join(', ')});`;
+      rendered = node.name === 'CompoundStatement'
+        ? rendered.replace('{', `{\n${entry}\n`) : `{\n${entry}\n${rendered}\n}`;
+    }
+    const ownLoop = trackedLoops.find(loop => loop.from === node.from && loop.to === node.to);
+    if (ownLoop && context.rewrittenForInitializerFrom !== node.from) {
+      rendered = `{\n::asm_trace::LoopScope __asm_loop_${node.from}(${cppString(ownLoop.id)});\n${rendered}\n}`;
+    }
     return rendered;
   }
 

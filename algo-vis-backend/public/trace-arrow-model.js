@@ -228,7 +228,7 @@
 
   // Expand only presentation descriptions. The caller supplies the existing
   // safe trace expression resolver; no C++ loop or runtime event is generated.
-  function expandBatch(arrow, resolve, matches = () => true) {
+  function expandBatch(arrow, resolve, matches = () => true, loopSamples = null) {
     if (!arrow.batch) return [arrow];
     const batch = arrow.batch;
     const condition = arrow.when || arrow.condition;
@@ -236,19 +236,27 @@
       : condition?.identifiers || String(condition?.expression || '').match(/[A-Za-z_]\w*/g) || [];
     if (condition && !identifiers.includes(batch.variable) && !matches(condition, {})) return [];
     const fail = message => { throw new Error(`第 ${arrow.line || '?'} 行的 @arrow for ${message}`); };
-    const values = [batch.startExpression, batch.endExpression, batch.stepExpression || '1']
-      .map(expression => resolve(expression, {}));
-    if (values.some(value => value == null || !Number.isSafeInteger(value))) {
-      fail('範圍與步長必須能解析為安全整數');
+    let samples;
+    if (batch.kind === 'loop') {
+      if (!loopSamples) fail('缺少迴圈執行資料');
+      samples = loopSamples(batch);
+    } else {
+      const values = [batch.startExpression, batch.endExpression, batch.stepExpression || '1']
+        .map(expression => resolve(expression, {}));
+      if (values.some(value => value == null || !Number.isSafeInteger(value))) {
+        fail('範圍與步長必須能解析為安全整數');
+      }
+      const [start, end, step] = values;
+      if (!step) fail('step 必須是非零整數');
+      if ((step > 0 && start > end) || (step < 0 && start < end)) return [];
+      const count = Math.floor((end - start) / step) + 1;
+      if (!Number.isSafeInteger(count) || count > 2048) fail('展開數量超過 2048 支，請縮小範圍');
+      samples = Array.from({ length: count }, (_, offset) => ({ value: start + offset * step }));
     }
-    const [start, end, step] = values;
-    if (!step) fail('step 必須是非零整數');
-    if ((step > 0 && start > end) || (step < 0 && start < end)) return [];
-    const count = Math.floor((end - start) / step) + 1;
-    if (!Number.isSafeInteger(count) || count > 2048) fail('展開數量超過 2048 支，請縮小範圍');
+    if (samples.length > 2048) fail('展開數量超過 2048 支，請縮小範圍');
     const result = [];
-    for (let offset = 0; offset < count; offset += 1) {
-      const value = start + offset * step;
+    for (const sample of samples) {
+      const value = sample.value;
       const locals = { [batch.variable]: value };
       if (!matches(condition, locals)) continue;
       const target = endpoint => {
@@ -258,7 +266,7 @@
         if (resolved.some(index => index == null || !Number.isSafeInteger(index))) fail(`索引無法解析（${batch.variable}=${value}）`);
         return { ...endpoint, indexExpressions: resolved.map(String), indexExpression: resolved.join(',') };
       };
-      result.push({ ...arrow, id: `${arrow.id}[${value}]`,
+      result.push({ ...arrow, id: sample.instanceId ? `${arrow.id}@${sample.instanceId}[${sample.ordinal}]` : `${arrow.id}[${value}]`,
         displayName: `${arrow.displayName || arrow.id}[${value}]`,
         from: target(arrow.from), to: target(arrow.to),
         batch: null, when: null, condition: null });

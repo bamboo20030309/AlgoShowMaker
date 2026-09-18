@@ -201,6 +201,8 @@ struct NamedValue {
 };
 
 inline std::string current_activation_source_json();
+inline std::string current_loop_source_json();
+inline unsigned long long& trace_position() { static unsigned long long value = 0; return value; }
 
 inline std::unordered_map<std::string, std::vector<std::string>>& active_lifetimes() {
   static std::unordered_map<std::string, std::vector<std::string>> values;
@@ -265,6 +267,11 @@ class Recorder {
   }
 
   bool enabled() const { return enabled_; }
+  void loop_record(const std::string& fields) {
+    if (!enabled_ || frame_id_ >= max_frames_) return;
+    output_ << "{\"record\":\"loop\",\"position\":" << trace_position()++ << ',' << fields << "}\n";
+    output_.flush();
+  }
 
   void add_event(const std::string& type, int line, const std::string& signature,
                  const std::string& fields = std::string()) {
@@ -291,7 +298,8 @@ class Recorder {
             << ",\"function\":" << quoted(function_name ? function_name : "")
             << ",\"statementId\":" << quoted(statement_id ? statement_id : "")
             << ",\"statementKind\":" << quoted(statement_kind ? statement_kind : "")
-            << current_activation_source_json() << "}"
+            << current_activation_source_json() << current_loop_source_json()
+            << ",\"tracePosition\":" << trace_position()++ << "}"
             << ",\"state\":{";
     for (std::size_t index = 0; index < state.size(); ++index) {
       if (index) output_ << ',';
@@ -349,6 +357,42 @@ inline std::unordered_map<std::string, int>& function_root_counters() {
   static std::unordered_map<std::string, int> values;
   return values;
 }
+
+struct LoopContext { std::string id; std::string instance; int ordinal; };
+inline std::vector<LoopContext>& loop_stack() { static std::vector<LoopContext> stack; return stack; }
+inline std::string current_loop_source_json() {
+  std::ostringstream json;
+  json << ",\"loopContext\":[";
+  for (std::size_t i = 0; i < loop_stack().size(); ++i) {
+    if (i) json << ',';
+    const auto& loop = loop_stack()[i];
+    json << "{\"loopId\":" << ::asm_trace::quoted(loop.id) << ",\"instanceId\":" << ::asm_trace::quoted(loop.instance)
+         << ",\"ordinal\":" << loop.ordinal << '}';
+  }
+  json << ']'; return json.str();
+}
+class LoopScope {
+ public:
+  explicit LoopScope(const char* id) {
+    static unsigned long long counter = 0;
+    LoopContext loop{ id, "loop-instance-" + std::to_string(counter++), -1 };
+    recorder().loop_record(std::string("\"phase\":\"start\",\"loopId\":") + ::asm_trace::quoted(loop.id)
+      + ",\"instanceId\":" + ::asm_trace::quoted(loop.instance) + current_activation_source_json() + current_loop_source_json());
+    loop_stack().push_back(loop);
+  }
+  template<typename... Values> void enter(const Values&... values) {
+    auto& loop = loop_stack().back(); ++loop.ordinal;
+    std::vector<NamedValue> samples{values...};
+    std::ostringstream json;
+    json << "\"phase\":\"entry\",\"instanceId\":" << ::asm_trace::quoted(loop.instance) << ",\"ordinal\":" << loop.ordinal << ",\"values\":{";
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+      if (i) json << ',';
+      json << ::asm_trace::quoted(samples[i].name) << ':' << samples[i].json;
+    }
+    json << '}'; recorder().loop_record(json.str());
+  }
+  ~LoopScope() { loop_stack().pop_back(); }
+};
 
 inline std::string current_activation_source_json() {
   const auto& stack = function_activation_stack();

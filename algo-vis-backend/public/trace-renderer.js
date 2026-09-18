@@ -3380,7 +3380,8 @@
     const arrows = Array.isArray(frame.arrows) ? frame.arrows : [];
     const expanded = arrows.flatMap(arrow => !arrow.batch ? [arrow] : window.ASMArrowModel.expandBatch(arrow,
       (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, locals),
-      (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, locals)));
+      (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, locals),
+      batch => window.ASMTraceModel.loopSamples(document, frame, batch)));
     const ids = new Set();
     expanded.forEach(arrow => {
       if (ids.has(arrow.id)) throw new Error(`本幀 @arrow 展開後 ID 重複：${arrow.id}`);
@@ -4254,9 +4255,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-187';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-188';
   window.ASMTraceRenderers = {
-    build: 'trace-187', updatePresentedHints,
+    build: 'trace-188', updatePresentedHints,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

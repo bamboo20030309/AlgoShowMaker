@@ -256,6 +256,7 @@
     const normalized = {
       schemaVersion: source.schemaVersion || '1.0',
       generatedAt: source.generatedAt || '',
+      loopRecords: Array.isArray(source.loopRecords) ? clone(source.loopRecords) : [],
       sourceCode: typeof source.sourceCode === 'string' ? source.sourceCode : '',
       sourceDeclarations: Array.isArray(source.sourceDeclarations) ? clone(source.sourceDeclarations) : [],
       sourceStructure: Array.isArray(source.sourceStructure) ? clone(source.sourceStructure) : [],
@@ -339,7 +340,33 @@
     return changes;
   }
 
+  function loopSamples(document, frame, batch) {
+    const records = document.loopRecords || [];
+    const context = frame.source?.loopContext || [];
+    const active = context.find(item => item.loopId === batch.loopId);
+    const parents = batch.parentLoopIds || [];
+    const activation = frame.source?.recursionActivationId || '';
+    const candidates = records.filter(record => record.phase === 'start' && record.loopId === batch.loopId
+      && (record.recursionActivationId || '') === activation
+      && parents.every(id => {
+        const left = context.find(item => item.loopId === id);
+        const right = record.loopContext?.find(item => item.loopId === id);
+        return left && right && left.instanceId === right.instanceId && left.ordinal === right.ordinal;
+      }));
+    const position = frame.source?.tracePosition;
+    const selected = active ? candidates.find(record => record.instanceId === active.instanceId)
+      : batch.position === 'before' ? candidates.find(record => record.position > position)
+      : candidates.filter(record => record.position < position).at(-1);
+    if (!selected) throw new Error(`第 ${batch.line || '?'} 行的 @arrow for 無法對應目前回合的迴圈；請將幀放在該迴圈所在的外層回合內`);
+    return records.filter(record => record.phase === 'entry' && record.instanceId === selected.instanceId).map(record => {
+      const value = scalarValue(record.values?.[batch.variable]);
+      if (!Number.isSafeInteger(value)) throw new Error(`@arrow for ${batch.variable} 的本體入口值必須是安全整數`);
+      return { value, ordinal: record.ordinal, instanceId: selected.instanceId };
+    });
+  }
+
   window.ASMTraceModel = {
+    loopSamples,
     clone,
     normalizeData,
     defaultRenderer,

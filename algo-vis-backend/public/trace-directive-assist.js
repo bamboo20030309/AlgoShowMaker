@@ -62,8 +62,14 @@
       '// @frame arr\n// @events animate off',
       '// @frame arr\n// @events compare,read animate off when i > 7'
     ] },
-    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；for 可按範圍展開多支箭頭', code: '// @arrow from arr[0] to arr[1]', examples: [
-      '// @arrow for k in 0..n-1 step 2 from arr[0].bottom to arr[k].top as "links"',
+    { id: 'loop', label: '@loop', effect: '替緊接的 for、while 或 do 迴圈命名', code: '// @loop as "sieve_loop"', examples: [
+      '// @loop as "sieve_loop"\nfor(int j=0;j<n;j++){ }',
+      '// @loop as "scan"\nwhile(j<n){j++;}'
+    ] },
+    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；for 可按範圍或實際迴圈值展開多支箭頭', code: '// @arrow from arr[0] to arr[1]', examples: [
+      '// @arrow for k in [0:n-1] step 2 from arr[0].bottom to arr[k].top as "links"',
+      '// @arrow for j from arr[0] to arr[j]',
+      '// @arrow for j in "sieve_loop" from prime[j] to isprime[i*prime[j]]',
       '// @arrow from arr[0] to arr[1]',
       '// @arrow from isprime[1] to isprime[12]',
       '// @frame arr[i,j]\n// @arrow from arr[i].bottom to arr[j].top\n// @text "從左到右" at arr.bottom'

@@ -6,9 +6,9 @@ using namespace std;
 // @object prime with labels(value)
 // @place prime.top-left at isprime.bottom-left offset(0,60)
 // @events animate off
-// @arrow for k in [0:iteration.last(j)]
-//   from prime[k].top to isprime[i*prime[k]].bottom
-//   as "sieve_links" color AV_green when i*prime[k] <= n
+// @arrow for j in "sieve_loop"
+//   from prime[j].top to isprime[i*prime[j]].bottom
+//   as "sieve_links" color AV_green when i*prime[j] <= n
 // @endpreset
 
 int main() {
@@ -18,13 +18,14 @@ int main() {
   // @frame isprime,prime
   for(int i=2;i<=n;i++) {
     if(isprime[i]) prime.push_back(i);
+    // @frame use compact_sieve when i>7
+    // @loop as "sieve_loop"
     for(int j=0;j<prime.size();j++) {
       if(i*prime[j]>n) break;
       isprime[i*prime[j]]=0;
       // @frame isprime[i],prime when i<=7
       if(i%prime[j]==0) break;
     }
-    // @frame use compact_sieve when i>7
   }
   // @frame isprime,prime
   return 0;
