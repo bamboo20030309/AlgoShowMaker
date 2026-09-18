@@ -5,12 +5,12 @@
 - 分支：codex/2026-09-18-alpha-events-arrows
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-alpha-events-arrows
 - 共同基準 commit：ddfe5b6081261a05b437a61a546861151d4618e5
-- 程式修正 commit：a3a3da918e5db7d15ac36231ab00fbd5bded24e2
+- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；本轮擴充 32ead62f5897bd59abcc7086e77ba14107042a85。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：程式 commit 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- Push：本輪程式 commit 32ead62f5897bd59abcc7086e77ba14107042a85 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
-## 根因與修改
+## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
 - @events [種類列表] animate on/off [when 條件]：附屬最近的 @frame，按該幀狀態求值；控制該幀涵蓋的事件呈現，不刪除事件、資料或計算結果。來源規則優先於已保存的 Studio 開關，同類最後符合條件的規則生效。
 - @arrow for k in start..end [step expression] from ... to ...：使用局部繪圖索引，不改 C++ 狀態；支援單行及連續註解多行、包含兩端的範圍、負步長、巢狀陣列索引、每支箭頭 when 與穩定子 ID。2048 候選上限與無效範圍明確報錯，不截斷。
@@ -21,7 +21,7 @@
 - 修改檔案用途：trace-instrumenter.js（解析／依賴）、server.js（trace 映射）、trace-model.js（欄位及疏幀衍生值）、trace-events.js（每幀事件控制）、trace-arrow-model.js（批次展開）、trace-renderer.js（共用箭頭繪製）、trace-studio.js（來源控制提示）、trace-directive-assist.js（語法提示）、兩個入口 HTML（快取）、專項測試及 fixture（證據）。
 - README／使用手冊／tests README 已更新；task.md 的相依調整已記錄，沒有新增自動摘要功能。
 
-## 驗收條件對照
+## 初版驗收條件對照
 | 條件 | 驗證方式 | 實際結果 | 判定 |
 |---|---|---|---|
 | 每幀事件規則、条件及資料保留 | parser／model 狀態斷言 | i=7、8、9 條件與無規則幀互不洩漏，payload/state 保留，再套用一致 | 通過 |
@@ -33,7 +33,7 @@
 | 回看與 JSON 重載 | 真實 render 前後定點與 JSON round trip | 子箭頭 ID、起終點完全相同，規則與展開描述保留 | 通過 |
 | 舊箭頭／事件／preset | 直接相關既有測試 | 既有案例全部通過 | 通過 |
 
-## 驗證分級與選擇
+## 初版驗證分級與選擇
 - 層級：V2。
 - 分類：E（指令／箭頭）、F（iteration.last）、J（事件設定）；入口及指令助手使用 A 直接相關檢查。
 - 選擇依據：只驗證此次改動的解析、展開、事件開關、疏幀衍生值及最小線篩畫面；沒有执行全部測試或廣泛排序。
@@ -82,6 +82,38 @@ node --test --test-concurrency=1 tests/events-batch-arrows.test.js tests/events-
 - 合併後需重啟主開發服務；Docker backend 若整合此 parser/server 變更，需重建 backend image 再重啟，僅重啟不足以載入新 server／instrumenter。public 是既有 bind mount。
 - 共用欄位 frame.eventControls、arrow.batch；多代理修改相同 trace 模組或快取版本時需核對行為與版本。
 - 公開 Docker、遠端 DB、演算法投影片嵌入介面未驗證，不能用本次隔離 Windows SVG 結果代替。
+
+## 本輪擴充：冒號區間與實際迴圈值
+- 驗證版本：32ead62f5897bd59abcc7086e77ba14107042a85 的程式差異；驗證時為 f6fe2a176a59d4d2fa7595637992a53795c29eb1 加上已提交的修改，後續只有 task/delivery 狀態文件修訂。驗證日期 2026-09-18。
+- 狀態：小驗證通過，待主代理核實；沒有宣稱整合驗收完成。
+- 需求依據：使用者確認將 .. 改成 [:]，新增 for j 與 for j in "loop_name"；有歧義時直接命名，不使用距離猜測。
+- 明確範圍為 [start:end]，包含兩端、可加 step；舊 .. 與缺少冒號會明確報新語法錯誤。
+- @loop as "名稱" 緊接 for／while／do，名稱唯一；具名批次指定它，自動寫法只接受同區塊及包含此幀的唯一候選。
+- lib/ASMTrace.hpp 的 LoopScope 以 RAII 隔離實際呼叫，在本體入口記值，支援外層迴圈回合、函式／遞迴 activation。只為引用的迴圈及其祖先插入紀錄；額外 loop records 不是可播放事件、不重跑 C++。
+- server 保留 loopRecords；model 與 renderer 在完整 trace 上對應前／內／後的實際回合。入口值不推算為連續區間，重複值使用回合／序號區分 ID，JSON 重載仍一致。
+- for／while 終止的假條件不產生入口，do 至少一次；break／continue 的入口保留，空迴圈零支。安全整數與 2048 候選限制沿用，不截斷。
+- 端點與條件除繪圖索引外，仍採幀當下的狀態；變數需在本體入口可見，幀須位於相同外層回合。無法匹配時報錯。
+- 文件：README、指令手冊、測試說明及 task 更新；助手新增 @loop 與兩種實際迴圈寫法。快取 model=29、arrow=6、renderer=188、directive=10，入口同步。
+- 與 task.md 差異：無。
+
+| 本輪驗收條件 | 驗證方式與實際結果 | 判定 |
+|---|---|---|
+| [:] 區間與動態步長／端點 | parser 與既有展開案例，含 prime[0]、降序、空區間與無效舊語法 | 通過 |
+| 自動與具名消歧義 | 上下兩個 j 報歧義；second 指名唯一，未知／重複名稱與入口不可見報錯 | 通過 |
+| for／while／do 入口值 | 實際 C++：break 包含 4,5,6；continue 保留入口；while 重複 3,3,3；do false 一次；while false 零次 | 通過 |
+| 前／內／後與回合隔離 | 外層 i=1,2,3 的前後結果分別 1,2,3 支；active loop 全部入口；遞迴及重複函式呼叫結果 3,2,1,2,1 支 | 通過 |
+| 迴圈前的線篩濃縮幀 | 編譯及真實 Edge SVG：i=8 目標16一支，i=9 目標18/27兩支；濃縮 events steps=0，JSON 重載一致；最終質數正確 | 通過 |
+| 既有箭頭／事件／preset 與稀疏幀 | 同一直接相關測試清單，既有契約與實際明確區間 SVG 未退化 | 通過 |
+
+### 本輪小驗證與重跑
+- 分級：V2，E/F/J 及 A 的直接相關項目；未執行完整 regression 或大規模演算法驗證。
+- 執行目錄與重跑：同上小驗證命令及相同 8 個測試檔，設定 ASM_TEST_BASE_URL 指向隔離服務。新增輸入 tests/fixtures/loop-batch-sieve.cpp；原明確區間 fixture 已改為冒號語法。
+- 本機 runner：node test-results/alpha-events-validation.cjs；隔離隨機埠51409、獨立 headless Edge、測試 JWT secret、故意不可連的獨立 Mongo URI。runner finally 停止服務、測試 finally 關閉瀏覽器。
+- 實際結果：54 tests／54 pass／0 fail／0 skip，36.18秒，exit 0；11 個 JS 語法檢查與 git diff --check 均 exit 0。
+- 證據：可提交測試／兩個 fixture；本機 test-results/alpha-loop-validation.output、alpha-events-validation.tap 與 server.log 未提交，可能被本機清理或之後重跑覆蓋。
+- 初期失敗：C++ ADL 選到 std::quoted 造成編譯失敗，已明確限定 asm_trace::quoted；第二個瀏覽器 RUN 時編輯器收起，改為重新開啟測試頁再實際 RUN。保留原 SVG／資料斷言並重跑通過。
+- 未驗證：公開 Docker、遠端 DB、投影片嵌入介面。主代理需核實整合差異，補投影片嵌入的線篩詳／濃縮幀定點，合併後重啟主要服務；本代理未 merge 或操作主要服務。
+- 合併注意：新增內部欄位 loopRecords、source.loopContext／tracePosition 與 batch.kind=loop；舊 trace 無新欄位可正常播放。共用 trace 模組及入口快取需要協調其他分支差異。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
