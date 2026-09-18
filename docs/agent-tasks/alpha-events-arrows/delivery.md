@@ -316,3 +316,9 @@ node --test --test-concurrency=1 tests/drawing-arrow-animation.browser.test.js t
 - 9項相關驗證通過，含實際投影片iframe返回；[完整核實紀錄](../2026-09-18-replay-preview-integration.md)。
 - 3100已重啟PID24068，三代理預覽已啟動；main未合併。
 - 依授權push origin/intergration，結果以最終回報為準；未發布release。
+
+## 最新主代理核實（2026-09-18）
+- 已核實合併intergration；受測版本58c15f71c5408400489b1a0c7186599825741fa4。
+- 49個不同相關案例通過，含真正投影片iframe；初期fixture失敗與重跑詳見[核實紀錄](../2026-09-18-automark-text-integration.md)。
+- 3100已重啟PID15136，其他四個埠均HTTP200；main未合併。
+- 依授權push origin/intergration，結果以最終回報為準；未release或部署。

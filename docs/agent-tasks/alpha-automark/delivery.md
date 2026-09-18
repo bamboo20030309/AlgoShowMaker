@@ -71,3 +71,9 @@
 - 未完成或環境阻塞：
 - 本機服務重啟：
 - Push／公開部署狀態：
+
+## 最新主代理核實（2026-09-18）
+- 已核實合併intergration；受測版本58c15f71c5408400489b1a0c7186599825741fa4。
+- 49個不同相關案例通過，含真正投影片iframe；初期fixture失敗與重跑詳見[核實紀錄](../2026-09-18-automark-text-integration.md)。
+- 3100已重啟PID15136，其他四個埠均HTTP200；main未合併。
+- 依授權push origin/intergration，結果以最終回報為準；未release或部署。
