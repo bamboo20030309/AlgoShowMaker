@@ -134,7 +134,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     slides.on('pageerror', error => errors.push(error.message));
     await slides.addInitScript(deck => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(deck)), {
       groups: [{ id:'embedded-group', slides: [{ id:'embedded-sieve', kind:'algorithm-animation',
-        animation:{ mode:'trace', code, traceDocument }, canvas:{objects:[]}, widgets:[] }] }]
+        animation:{ mode:'trace', code:drawingCode, traceDocument }, canvas:{objects:[]}, widgets:[] }] }]
     });
     await slides.goto(base+'/slides.html');
     await slides.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length);
@@ -146,11 +146,16 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
       const index=doc.frames.findIndex(frame=>frame.eventControls.length && frame.state[iId]?.data.value===9);
       if(index<0) throw Error('embedded compact frame missing');
       await player.render(index);
+      const isprimeId=Object.keys(doc.variables).find(id=>doc.variables[id].name==='isprime');
       return { arrows:[...document.querySelectorAll('#arraySvg [data-trace-arrow-source="directive"]')].map(node=>({
-        id:node.dataset.traceArrow, from:node.dataset.traceArrowFromKey, to:node.dataset.traceArrowToKey })),
+        id:node.dataset.traceArrow, to:node.dataset.traceArrowToKey })),
+        texts:[...document.querySelectorAll('#arraySvg [data-trace-text-id]')].map(node=>({id:node.dataset.traceTextId,text:node.textContent,target:node.dataset.traceBindingTarget,hidden:node.getAttribute('display')})),
+        backgrounds:[18,27].map(index=>document.querySelector(`#arraySvg [data-trace-arrow-target-key="${isprimeId}#${index}"] rect`)?.getAttribute('fill')),
         steps:player.getLastPlaybackPlan()?.phases.find(phase=>phase.id==='trace-events')?.steps.length || 0 };
     });
-    assert.deepEqual(embedded.arrows,result.nine.arrows,'slide iframe preserves batch arrow identities and targets');
+    assert.deepEqual(embedded.arrows,drawing.original.arrows,'slide iframe preserves drawing-loop arrow identities and targets');
+    assert.deepEqual(embedded.texts,drawing.original.texts,'slide iframe preserves local text values and bindings');
+    assert.deepEqual(embedded.backgrounds,drawing.original.backgrounds,'slide iframe preserves drawing-loop styles');
     assert.equal(embedded.steps,0,'slide iframe honors compact frame event controls');
     assert.deepEqual(errors,[]);
   } finally { await browser.close(); }
