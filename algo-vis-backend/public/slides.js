@@ -355,6 +355,7 @@
   const structureHighlightIndicesInput = document.getElementById('structureHighlightIndicesInput');
   const structureAnnotationIndicesInput = document.getElementById('structureAnnotationIndicesInput');
   const structureAnnotationColorInput = document.getElementById('structureAnnotationColorInput');
+  const structureAnnotationTextInput = document.getElementById('structureAnnotationTextInput');
   const structureFocusColorInput = document.getElementById('structureFocusColorInput');
   const structureFocusIndicesInput = document.getElementById('structureFocusIndicesInput');
   const structurePointColorInput = document.getElementById('structurePointColorInput');
@@ -2293,7 +2294,9 @@
           treeRendererVersion: 3,
           structureFrameVersion: Number(widget.structureFrameVersion) || 0,
           annotationIndices: typeof widget.annotationIndices === 'string' ? widget.annotationIndices : '',
-          annotationColor: widget.annotationColor || '#333333',
+          annotationColor: widget.annotationColor || '#ffffff',
+          annotationText: typeof widget.annotationText === 'string' ? widget.annotationText.slice(0, 80) : '',
+          annotationLabels: Object.fromEntries(Object.entries(widget.annotationLabels || {}).filter(([key, value]) => /^\d+$/.test(key) && typeof value === 'string').map(([key, value]) => [key, value.slice(0, 80)])),
           highlightIndices: typeof widget.highlightIndices === 'string' ? widget.highlightIndices : '',
           focusIndices: typeof widget.focusIndices === 'string' ? widget.focusIndices : '',
           pointIndices: typeof widget.pointIndices === 'string' ? widget.pointIndices : '',
@@ -2844,6 +2847,7 @@
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
       'annotationIndices', 'annotationColor',
+      'annotationText', 'annotationLabels',
       'frameBackgroundEnabled', 'frameBackgroundColor', 'treeLayout', 'treeArrowColor',
       'treeData', 'structureFrameVersion',
       'w', 'h'
@@ -4374,7 +4378,9 @@
         treeRendererVersion: 3,
         structureFrameVersion: 4,
         annotationIndices: '',
-        annotationColor: '#333333',
+        annotationColor: '#ffffff',
+        annotationText: '',
+        annotationLabels: {},
         highlightIndices: '',
         focusIndices: '',
         pointIndices: '',
@@ -5316,8 +5322,9 @@
     setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ff0000');
     structureHighlightIndicesInput.value = widget.highlightIndices || '';
     structureAnnotationIndicesInput.value = widget.annotationIndices || '';
-    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#333333');
-    syncStructureStyleIcon('annotation', widget.annotationColor || '#333333');
+    structureAnnotationTextInput.value = widget.annotationText || '';
+    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#ffffff');
+    syncStructureStyleIcon('annotation', widget.annotationColor || '#ffffff');
     setStructureColorButton(structureFocusColorInput, widget.focusColor || '#808080');
     structureFocusIndicesInput.value = widget.focusIndices || '';
     setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
@@ -5432,6 +5439,7 @@
   }
 
   function clearStructureCellSelection({ closeEditor = true } = {}) {
+    hideStructureContextMenu();
     if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
     structureCellClickTimer = null;
     document.querySelectorAll('.is-structure-cell-selected').forEach(cell => {
@@ -5487,6 +5495,7 @@
 
   function openStructureInlineEditor(widgetEl, cell) {
     if (!document.body.classList.contains('asm-edit-mode')) return false;
+    hideStructureContextMenu();
     const details = structureCellContext(widgetEl, cell);
     if (!details) return false;
     if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
@@ -5528,6 +5537,50 @@
     return button;
   }
 
+  function openStructureStyleToolbar(widgetId) {
+    const widgetEl = document.querySelector(`section.present .structure-widget[data-widget-id="${CSS.escape(widgetId)}"]`);
+    const cell = structureCellForKey(widgetEl, selectedStructureCell?.key);
+    const found = getWidget(widgetId);
+    if (!cell || !found.widget || !document.body.classList.contains('asm-edit-mode')) return;
+    const index = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex);
+    if (!Number.isInteger(index)) return;
+    structureContextMenu.replaceChildren();
+    activeStructureContext = null;
+    structureContextMenu.classList.add('structure-cell-style-toolbar');
+    for (const [type, label] of [['highlight', 'Highlight'], ['focus', 'Focus'], ['point', 'Point'], ['mark', 'Mark'], ['background', 'Background'], ['annotation', '註標箭頭']]) {
+      const indices = new Set(window.AlgoStructureRenderer.parseIndices(found.widget[`${type}Indices`]));
+      const button = document.createElement('button');
+      button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
+      button.setAttribute('aria-pressed', String(indices.has(index)));
+      const icon = structureEditorPanel.querySelector(`[data-structure-style="${type}"] .structure-style-icon`);
+      if (icon) { const clone = icon.cloneNode(true); clone.removeAttribute('role'); clone.setAttribute('aria-hidden', 'true'); button.appendChild(clone); }
+      button.addEventListener('click', () => {
+        if (indices.has(index)) indices.delete(index); else indices.add(index);
+        updateSelectedStructure({ [`${type}Indices`]: [...indices].sort((a, b) => a - b).join(',') });
+        populateStructureEditor(getWidget(widgetId).widget);
+        openStructureStyleToolbar(widgetId);
+      });
+      structureContextMenu.appendChild(button);
+    }
+    if (window.AlgoStructureRenderer.parseIndices(found.widget.annotationIndices).includes(index)) {
+      const input = document.createElement('input');
+      input.type = 'text'; input.maxLength = 80; input.placeholder = '註標文字';
+      input.setAttribute('aria-label', '此格註標文字');
+      input.value = found.widget.annotationLabels?.[index] || '';
+      input.addEventListener('input', () => {
+        const labels = { ...getWidget(widgetId).widget.annotationLabels };
+        if (input.value) labels[index] = input.value; else delete labels[index];
+        updateSelectedStructure({ annotationLabels: labels });
+      });
+      input.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
+      structureContextMenu.appendChild(input);
+    }
+    const rect = (cell.querySelector(':scope > rect') || cell).getBoundingClientRect();
+    structureContextMenu.hidden = false;
+    const menu = structureContextMenu.getBoundingClientRect();
+    positionStructureContextMenu(rect.left + rect.width / 2 - menu.width / 2, rect.top - menu.height - 8);
+  }
+
   function positionStructureContextMenu(clientX, clientY) {
     const margin = 8;
     structureContextMenu.hidden = false;
@@ -5558,6 +5611,7 @@
     event.stopPropagation();
     selectWidget(found.widget.id);
     selectStructureCell(widgetEl, editableCell);
+    structureContextMenu.classList.remove('structure-cell-style-toolbar');
     structureContextMenu.replaceChildren();
     if (mode === 'binary_tree') {
       const nodeId = details.context.nodeId;
@@ -6212,6 +6266,7 @@
   }
 
   function setEditMode(enabled) {
+    hideStructureContextMenu();
     if (!enabled && customOverviewOpen) closeCustomOverview();
     if (enabled && reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
     document.body.classList.add('mode-layout-animating');
@@ -6496,6 +6551,7 @@
     structureLineColorInput?.addEventListener('input', () => updateSelectedStructure({ lineColor: structureLineColorInput.value }));
     structureHighlightIndicesInput?.addEventListener('input', () => updateSelectedStructure({ highlightIndices: structureHighlightIndicesInput.value }));
     structureAnnotationIndicesInput?.addEventListener('input', () => updateSelectedStructure({ annotationIndices: structureAnnotationIndicesInput.value }));
+    structureAnnotationTextInput?.addEventListener('input', () => updateSelectedStructure({ annotationText: structureAnnotationTextInput.value }));
     structureFocusIndicesInput?.addEventListener('input', () => updateSelectedStructure({ focusIndices: structureFocusIndicesInput.value }));
     structurePointIndicesInput?.addEventListener('input', () => updateSelectedStructure({ pointIndices: structurePointIndicesInput.value }));
     structureMarkIndicesInput?.addEventListener('input', () => updateSelectedStructure({ markIndices: structureMarkIndicesInput.value }));
@@ -6947,6 +7003,7 @@
           structureCellClickTimer = null;
           if (activeStructureInlineEditor || selectedStructureCell?.widgetId !== widgetId) return;
           selectWidget(widgetId);
+          openStructureStyleToolbar(widgetId);
         }, 220);
         return;
       }
@@ -9660,6 +9717,7 @@
       document.body.dataset.revealPlugins = Object.keys(reveal.getPlugins ? reveal.getPlugins() : {}).join(',');
       reveal.on('slidechanged', event => {
         if (pointerDrag) return;
+        hideStructureContextMenu();
         currentH = event.indexh;
         currentV = event.indexv || 0;
         scheduleFabricResolution();
