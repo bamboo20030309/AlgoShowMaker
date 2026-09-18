@@ -43,17 +43,11 @@
 - 共用slides.js及快取需協調。
 - 2026-09-18：使用者明確同意將本分支所有程式、測試與任務／交付文件推送到 bamboo20030309/AlgoShowMaker；原push阻塞已解除。
 
-## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式commit與diff：待填
-- 差異審查與必要重跑結果：待填
-- 合併commit：待填
-- 完整regression：未執行
-- 演算法投影片實際驗證：未執行
-- 未完成或環境阻塞：push阻塞已解除；仍待主代理整合核實。
-- 本機服務重啟：未執行，由主代理負責
-- Push／公開部署：已push至 https://github.com/bamboo20030309/AlgoShowMaker.git 的 codex/2026-09-18-gamma，遠端已核對為153bd979f8d51a2d276b1d8313ae436d9a02fbba；未部署。
-
-## 批次推送補記
-- 本次涵蓋4603a68d81db2da71fb6e8b6958d02475b9127be之後至153bd979f8d51a2d276b1d8313ae436d9a02fbba的16項提交，含游標閃爍、提示移除、資料夾對話框、返回按鈕、品牌圖示、縮圖拖曳及structure註標與選色。
-- 前述交付文件中的未push／待授權記錄為當時狀態，以本補記為最新推送結果；小驗證結果不等於整合驗收。
+## 主代理核實與整合（2026-09-18 最新一輪）
+- 狀態：已核實並合併 intergration。
+- 完整受測版本：6aff1646283fe82d9d1e8342029d6f5838db6c9d；合併程式：bf26de154a67008e2b160d91f4e6a7faec9cd15a。
+- 72 項相關驗證及實際繪圖區塊投影片 iframe 定點通過；詳見 [本輪整合核實](../2026-09-18-drawing-loops-color-integration.md)。
+- 前輪核實：[事件與結構整合](../2026-09-18-events-structure-integration.md)。
+- 完整 regression／大演算法集未執行；其他未驗證項目見整合核實。
+- 3100 重啟 PID 71180，main／Docker 不變。
+- 依授權推送 origin/intergration，結果以主代理最終回報為準；未部署或 release。

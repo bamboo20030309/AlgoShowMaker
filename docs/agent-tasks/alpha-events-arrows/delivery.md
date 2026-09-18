@@ -152,15 +152,11 @@ node --test --test-concurrency=1 tests/drawing-loops.test.js tests/events-batch-
 - 未驗證：公開 Docker、遠端資料庫、投影片嵌入介面。主代理需補嵌入線篩共用区塊定點驗證；未合併、未重啟主要服務，隔離測試服務與瀏覽器已停止。
 - 合併注意：此輪新增 drawLoops 描述與呈現時的 drawLocals／drawSourceId／drawCandidateCount；新 helper 不改原始 frame 指令，舊 trace 沒有 drawLoops 時保持原行為。需協調共用 model／rules／renderer／studio 及入口快取差異。
 
-## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：本次未執行；整合後由主代理按差異決定範圍。
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
-
-前次主代理核實：[每幀事件與結構整合紀錄](../2026-09-18-events-structure-integration.md)。
+## 主代理核實與整合（2026-09-18 最新一輪）
+- 狀態：已核實並合併 intergration。
+- 完整受測版本：6aff1646283fe82d9d1e8342029d6f5838db6c9d；合併程式：bf26de154a67008e2b160d91f4e6a7faec9cd15a。
+- 72 項相關驗證及實際繪圖區塊投影片 iframe 定點通過；詳見 [本輪整合核實](../2026-09-18-drawing-loops-color-integration.md)。
+- 前輪核實：[事件與結構整合](../2026-09-18-events-structure-integration.md)。
+- 完整 regression／大演算法集未執行；其他未驗證項目見整合核實。
+- 3100 重啟 PID 71180，main／Docker 不變。
+- 依授權推送 origin/intergration，結果以主代理最終回報為準；未部署或 release。
