@@ -43,6 +43,11 @@
   const closeDeckDialogBtn = document.getElementById('closeDeckDialogBtn');
   const cancelDeckDialogBtn = document.getElementById('cancelDeckDialogBtn');
   const deleteDeckBtn = document.getElementById('deleteDeckBtn');
+  const organizer = window.ASMLibraryOrganizer({
+    container: deckGrid, nav: document.getElementById('libraryFolderNav'),
+    createButton: document.getElementById('createFolderBtn'),
+    message: document.getElementById('libraryLayoutMessage'), api, createCard: createDeckCard
+  });
 
   function token() {
     return localStorage.getItem(TOKEN_KEY);
@@ -234,6 +239,7 @@
       image = document.createElement('img');
       image.className = 'deck-cover-image';
       image.alt = '';
+      image.draggable = false;
       image.decoding = 'async';
       preview.prepend(image);
     }
@@ -275,7 +281,10 @@
       setMessage(libraryMessage);
     }
 
-    decks.forEach(deck => {
+    organizer.render(state.decks, query);
+  }
+
+  function createDeckCard(deck) {
       const card = document.createElement('article');
       card.className = 'deck-card';
 
@@ -323,8 +332,7 @@
 
       info.append(copy, settings);
       card.append(openButton, info);
-      deckGrid.appendChild(card);
-    });
+      return card;
   }
 
   async function loadDecks() {
@@ -332,6 +340,7 @@
     try {
       const data = await api('/api/slides');
       state.decks = data.slides || [];
+      await organizer.load(state.decks);
       renderDecks();
     } catch (error) {
       if (error.status === 401 || error.status === 403) {

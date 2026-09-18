@@ -342,6 +342,10 @@
     return segmentKeyForRuntimeIdentity(frame, runtimeIdentity);
   }
 
+  function frameTexts(frame) {
+    return window.ASMTraceModel?.drawingDirectives?.(trace, frame, 'texts') || frame?.texts || [];
+  }
+
   function frameBinding(frameId, key) {
     const rootKey = String(key || '').match(/^(text:[^:]+)/)?.[1] || key;
     const stored = trace?.studio?.bindings?.[frameId]?.[rootKey]
@@ -350,7 +354,7 @@
     const frame = trace?.frames?.find(item => item.id === frameId);
     const textId = String(rootKey || '').match(/^text:(.+)$/)?.[1];
     const descriptor = textId
-      ? frame?.texts?.find(item => String(item.id) === textId)
+      ? frameTexts(frame).find(item => String(item.id) === textId)
       : null;
     const objectBinding = !descriptor
       ? (frame?.objectBindings || []).find(item => {
@@ -410,7 +414,7 @@
 
   function textDescriptorForKey(key, frame = trace?.frames?.[currentIndex]) {
     const id = textObjectKey(key).slice(5);
-    return id ? frame?.texts?.find(item => String(item.id) === id) || null : null;
+    return id ? frameTexts(frame).find(item => String(item.id) === id) || null : null;
   }
 
   function textDirectiveLine(descriptor) {
@@ -466,7 +470,7 @@
     };
     trace.frames.forEach(frame => {
       (frame.texts || []).forEach(text => {
-        if (Number(text.line) === Number(descriptor.line) && String(text.id) === String(descriptor.id)) {
+        if (Number(text.line) === Number(descriptor.line) && String(text.id) === String(descriptor.drawSourceId || descriptor.id)) {
           text.binding = { ...nextBinding };
         }
       });
@@ -566,7 +570,7 @@
       const selectedSegment = textSegmentForKey(key);
       if (selectedSegment?.kind === 'expression') return `變數 ${selectedSegment.source || `\${${selectedSegment.expression}}`}`;
       if (selectedSegment) return selectedSegment.text?.trim() || '文字片段';
-      const descriptor = trace?.frames?.[currentIndex]?.texts?.find(text => `text:${text.id}` === key);
+      const descriptor = frameTexts(trace?.frames?.[currentIndex]).find(text => `text:${text.id}` === key);
       const label = (descriptor?.segments || []).map(segment => (
         segment.kind === 'expression' ? segment.source || `\${${segment.expression}}` : segment.text || ''
       )).join('').trim();
@@ -592,7 +596,7 @@
   function textSegmentForKey(key) {
     const match = String(key || '').match(/^text:([^:]+):segment:([^:]+)(?::range:\d+-\d+)?$/);
     if (!match) return null;
-    const descriptor = trace?.frames?.[currentIndex]?.texts?.find(text => String(text.id) === match[1]);
+    const descriptor = frameTexts(trace?.frames?.[currentIndex]).find(text => String(text.id) === match[1]);
     return descriptor?.segments?.find(segment => String(segment.segmentId) === match[2]) || null;
   }
 
@@ -607,12 +611,12 @@
     const match = String(key || '').match(/^text:([^:]+):segment:/);
     if (!match) return null;
     const frame = trace?.frames?.[currentIndex];
-    const descriptor = frame?.texts?.find(text => String(text.id) === match[1]);
+    const descriptor = frameTexts(frame).find(text => String(text.id) === match[1]);
     if (!descriptor) return null;
     let cursor = 0;
     const segments = (descriptor.segments || []).map((segment, index) => {
       const raw = segment.kind === 'expression'
-        ? window.ASMTraceRules.resolveExpression(trace, frame, segment.expression)
+        ? window.ASMTraceRules.resolveExpression(trace, frame, segment.expression, descriptor.drawLocals)
         : segment.text;
       const source = raw == null ? '' : String(raw);
       const parsed = window.parseTTSMarkup?.(source) || { display: source };
@@ -667,7 +671,7 @@
     } catch {}
     const value = String(text?.textContent || '');
     const style = getComputedStyle(text);
-    const fontSize = parseFloat(style.fontSize) || Number(text.getAttribute('font-size')) || 10;
+    const fontSize = parseFloat(style.fontSize) || Number(text.getAttribute('font-size')) || 14;
     const canvas = textCharacterExtent.canvas ||= document.createElement('canvas');
     const context = canvas.getContext('2d');
     if (!context) return null;
@@ -944,7 +948,7 @@
       }
       if (textFontSize && document.activeElement !== textFontSize) {
         textFontSize.value = String(Math.round(Number(stored.fontSize)
-          || Number(renderedText?.getAttribute?.('font-size')) || 10));
+          || Number(renderedText?.getAttribute?.('font-size')) || 14));
       }
       if (textBold) textBold.classList.toggle('is-active', stored.bold === true
         || renderedText?.getAttribute?.('font-weight') === 'bold');
@@ -955,7 +959,7 @@
       if (textStrike) textStrike.classList.toggle('is-active', stored.strike === true
         || String(renderedText?.getAttribute?.('text-decoration')).includes('line-through'));
       if (textBackgroundEnabled) textBackgroundColor?.classList.toggle('is-active', textBackgroundEnabled.checked);
-      if (textFontSizeButton) textFontSizeButton.title = `字體大小 ${textFontSize?.value || 10}px`;
+      if (textFontSizeButton) textFontSizeButton.title = `字體大小 ${textFontSize?.value || 14}px`;
       requestAnimationFrame(renderTextSelectionHighlight);
       return;
     }
@@ -1040,7 +1044,7 @@
           ...(trace.studio.objectStyles[frameId][key] || {}),
           textColor: textColor.value,
           background: textBackgroundEnabled?.checked ? textBackgroundColor.value : 'none',
-          fontSize: Math.max(8, Math.min(72, Number(textFontSize.value) || 10)),
+          fontSize: Math.max(8, Math.min(72, Number(textFontSize.value) || 14)),
           bold: textBold?.classList.contains('is-active') === true,
           italic: textItalic?.classList.contains('is-active') === true,
           underline: textUnderline?.classList.contains('is-active') === true,
@@ -1440,7 +1444,7 @@
     if (textDescriptor?.binding) {
       trace.frames.forEach(frame => {
         (frame.texts || []).forEach(text => {
-          if (Number(text.line) === Number(textDescriptor.line) && String(text.id) === String(textDescriptor.id)) {
+          if (Number(text.line) === Number(textDescriptor.line) && String(text.id) === String(textDescriptor.drawSourceId || textDescriptor.id)) {
             text.binding = null;
           }
         });
@@ -1638,6 +1642,9 @@
   }
 
   function eventCodeStatusTitle(group) {
+    if (typeof group?.event?.directiveAnimationControl === 'boolean') {
+      return `本幀由 @events 指令${group.event.directiveAnimationControl ? '開啟' : '關閉'}；請修改來源指令`;
+    }
     const state = group?.enabled ? '已開啟' : '已關閉';
     const action = group?.enabled ? '點擊可關閉' : '點擊可開啟';
     if (group.availability === 'missing-target') return `${state}；目標未顯示，${action}`;
@@ -1679,11 +1686,13 @@
     node.setAttribute('role', 'button');
     node.setAttribute('tabindex', '0');
     node.setAttribute('aria-pressed', String(primary.enabled));
+    node.setAttribute('aria-disabled', String(typeof primary.event.directiveAnimationControl === 'boolean'));
     node.setAttribute('aria-label', `${primary.label}：${eventDisplayText(primary.event)}`);
     node.title = eventCodeStatusTitle(primary);
     const toggle = event => {
       event.preventDefault();
       event.stopPropagation();
+      if (typeof primary.event.directiveAnimationControl === 'boolean') return;
       setInstructionEventEnabled(primary.event, !primary.enabled);
     };
     node.addEventListener('click', toggle);
@@ -1847,8 +1856,10 @@
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.checked = event.enabled !== false;
+      input.disabled = typeof event.directiveAnimationControl === 'boolean';
       input.setAttribute('aria-label', '本幀自動固定格子');
       input.title = input.checked ? '隱藏本幀固定標記' : '顯示本幀固定標記';
+      if (input.disabled) input.title = '本幀由 @events 指令控制；請修改來源指令';
       input.addEventListener('change', () => setFrameFixedEnabled(frame, event, index, input.checked));
       toggle.append(input, el('span'));
       row.append(icon, copy, toggle);
@@ -3151,7 +3162,7 @@
     textFontSize.min = '8';
     textFontSize.max = '72';
     textFontSize.step = '1';
-    textFontSize.value = '10';
+    textFontSize.value = '14';
     const saveTextStyle = () => {
       previewTextSegmentStyle();
       scheduleAutoSave(saveTextSegmentStyle);
@@ -3189,7 +3200,7 @@
       textFormatButtons.append(button);
       return button;
     };
-    textFontSizeButton = formatButton('A↕', '字體大小 10px', 'is-font-size', false);
+    textFontSizeButton = formatButton('A↕', '字體大小 14px', 'is-font-size', false);
     const fontSizePopover = el('div', 'trace-studio-font-size-popover');
     fontSizePopover.hidden = true;
     fontSizePopover.append(textFontSize);

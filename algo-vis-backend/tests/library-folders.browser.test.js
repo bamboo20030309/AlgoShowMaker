@@ -1,0 +1,207 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
+const { randomBytes } = require('node:crypto');
+const net = require('node:net');
+const path = require('node:path');
+const fs = require('node:fs');
+const { chromium } = require('playwright');
+
+test('workspace folders persist drag ordering, support mobile controls and recover failed saves', { timeout: 120000 }, async () => {
+  const root = path.resolve(__dirname, '..');
+  const port = await new Promise(resolve => { const probe = net.createServer(); probe.listen(0, '127.0.0.1', () => { const p = probe.address().port; probe.close(() => resolve(p)); }); });
+  const server = spawn(process.execPath, ['server.js'], { cwd: root, env: { ...process.env, PORT: String(port), ASM_REGRESSION: '1', JWT_SECRET: randomBytes(32).toString('hex') }, windowsHide: true, stdio: 'ignore' });
+  let browser;
+  try {
+    const base = `http://127.0.0.1:${port}`;
+    for (let i = 0; i < 80; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(resolve => setTimeout(resolve, 200)); }
+    browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+    const Layout = require('../public/library-layout');
+    const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5yQAAAAASUVORK5CYII=';
+    let decks = ['a', 'b', 'c'].map((id, i) => ({ deck_uid: id, title: ['Alpha', 'Beta', 'Gamma'][i], cover_thumbnail: pixel, updated_at: '2026-09-18', slide_count: 1 }));
+    decks[2].cover_thumbnail = null;
+    let layout = { folders: [], unfiled: ['a', 'b', 'c'] }, failSave = false;
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    page.on('dialog', async dialog => { errors.push('Unexpected native dialog: ' + dialog.type()); await dialog.dismiss(); });
+    await page.addInitScript(() => localStorage.setItem('algo_jwt_token', 'fixture'));
+    await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture' } } }));
+    await page.route('**/api/slides', route => route.fulfill({ json: { slides: decks } }));
+    await page.route('**/deck-thumbnail.js?*', route => route.fulfill({ contentType: 'application/javascript', body: `window.AlgoDeckThumbnail = { create: async () => { await new Promise(resolve => setTimeout(resolve, 200)); return ${JSON.stringify(pixel)}; } };` }));
+    await page.route('**/api/slides/c', route => route.fulfill({ json: { slide: { ...decks[2], deck: {} } } }));
+    await page.route('**/api/slides/a', route => {
+      if (route.request().method() === 'PUT') decks.find(deck => deck.deck_uid === 'a').title = route.request().postDataJSON().title;
+      return route.fulfill({ json: { slide: decks.find(deck => deck.deck_uid === 'a') } });
+    });
+    await page.route('**/api/slide-library', route => {
+      if (route.request().method() === 'PUT') {
+        if (failSave) return route.fulfill({ status: 500, json: { error: 'fixture save failure' } });
+        layout = Layout.validate(route.request().postDataJSON().layout);
+      }
+      return route.fulfill({ json: { layout } });
+    });
+    const cards = folder => page.locator(`.library-folder[data-folder-id="${folder}"] .deck-card`);
+    const order = folder => cards(folder).evaluateAll(items => items.map(item => item.dataset.deckId));
+    const saved = () => page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent === '資料夾與排序已儲存' && !document.querySelector('#createFolderBtn').disabled);
+    async function assignCategories(id, ids) {
+      await page.locator(`[data-deck-id="${id}"] .library-categories-button`).first().click();
+      for (const input of await page.locator('#categoryChoices input').all()) await input.setChecked(ids.includes(await input.getAttribute('value')));
+      await page.locator('#categoryForm button[type="submit"]').click();
+      if (!failSave) await saved();
+    }
+    await page.goto(base); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+    await page.waitForSelector('[data-deck-id="c"] .deck-cover-image');
+    assert.equal(await page.locator('[data-deck-id="c"] .deck-cover-image').evaluate(el => el.draggable), false);
+    const borders = () => page.locator('.gallery-folder:visible').first().evaluate(el => { const style = getComputedStyle(el); return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.borderRadius]; });
+    assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
+    await page.locator('#createFolderBtn').click();
+    assert.equal(await page.locator('#folderTitleInput').evaluate(el => el === document.activeElement), true);
+    await page.locator('#cancelFolderDialogBtn').click(); assert.equal(layout.folders.length, 0);
+    await page.locator('#createFolderBtn').click(); await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
+    await page.locator('#createFolderBtn').click(); await page.locator('#folderTitleInput').fill('   '); await page.locator('#submitFolderBtn').click();
+    assert.equal(layout.folders.length, 0); assert.equal(await page.locator('#folderTitleInput').evaluate(el => el.validity.valid), false);
+    await page.locator('#folderTitleInput').fill('數學'); failSave = true; await page.locator('#submitFolderBtn').click();
+    await page.waitForFunction(() => document.querySelector('#folderDialogMessage').textContent.includes('儲存失敗'));
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), true); assert.equal(await page.locator('#folderTitleInput').inputValue(), '數學');
+    failSave = false;
+    fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+    await page.screenshot({ path: path.join(root, 'test-results/create-folder-dialog.png') });
+    await page.locator('#folderTitleInput').fill('數學'); await page.keyboard.press('Enter'); await saved();
+    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
+    const folder = layout.folders[0].id;
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"] summary .icon-btn svg`).count(), 2);
+    const headerLayout = await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).evaluate(el => ({ titleRight: el.querySelector('.library-folder-title').getBoundingClientRect().right, toolsLeft: el.querySelector('.library-folder-tools').getBoundingClientRect().left }));
+    assert.ok(headerLayout.toolsLeft >= headerLayout.titleRight);
+    // Actual pointer dragging on the dedicated handle reorders the existing cards.
+    const from = await page.locator('[data-deck-id="c"] .library-drag-handle').boundingBox();
+    const to = await page.locator('[data-deck-id="a"] .deck-preview').boundingBox();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 }); await page.mouse.up(); await saved();
+    assert.deepEqual(await order(''), ['c', 'a', 'b']);
+    for (const [id, area, expected] of [
+      ['a', '.deck-meta', ['a', 'c', 'b']],
+      ['c', '.deck-title', ['c', 'a', 'b']],
+      ['a', '', ['a', 'c', 'b']],
+      ['c', '.deck-cover-image', ['c', 'a', 'b']],
+      ['a', '.deck-settings', ['a', 'c', 'b']],
+      ['c', '.library-drag-handle', ['c', 'a', 'b']]
+    ]) {
+      const source = await page.locator(`[data-deck-id="${id}"]${area ? ' ' + area : ''}`).boundingBox();
+      const target = await page.locator(`[data-deck-id="${id === 'a' ? 'c' : 'a'}"] .deck-preview`).boundingBox();
+      await page.mouse.move(source.x + source.width / 2, area ? source.y + source.height / 2 : source.y + source.height - 3);
+      await page.mouse.down(); await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 }); await page.mouse.up(); await saved();
+      assert.deepEqual(await order(''), expected);
+      assert.equal(await page.locator('#deckDialog').evaluate(el => el.open), false);
+      assert.equal(page.url(), base + '/');
+    }
+    async function nativeDrop(id, selector) {
+      await page.evaluate(({ id, selector }) => {
+        const transfer = new DataTransfer();
+        document.querySelector(`[data-deck-id="${id}"]`).dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        const target = document.querySelector(selector);
+        target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      }, { id, selector }); await saved();
+    }
+    await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
+    await nativeDrop('a', `.library-folder[data-folder-id="${folder}"] summary`);
+    assert.deepEqual(layout.folders[0].deckIds, ['a']);
+    await page.locator('#libraryFolderNav button', { hasText: '數學' }).click();
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), true);
+    await nativeDrop('b', `[data-deck-id="a"] .deck-preview`);
+    assert.deepEqual(await order(folder), ['b', 'a']);
+    await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+    assert.deepEqual(await order(folder), ['b', 'a']);
+    await page.locator('#searchInput').fill('Alpha'); assert.equal(await page.locator('#deckGrid .deck-card').count(), 1);
+    assert.equal(await page.locator('#deckGrid .deck-card').getAttribute('data-deck-id'), 'a'); await page.locator('#searchInput').fill('');
+    await assignCategories('a', []);
+    assert.deepEqual(await order(''), ['c', 'a']);
+    await page.locator('button[aria-label="Alpha 往前"]').click(); await saved(); assert.deepEqual(await order(''), ['a', 'c']);
+    failSave = true;
+    await assignCategories('a', [folder]);
+    await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('已恢復原排序'));
+    assert.deepEqual(await order(''), ['a', 'c']); failSave = false;
+    await page.locator('#cancelCategoryBtn').click();
+    await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).isVisible(), true);
+    const rename = () => page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).click();
+    await rename(); assert.equal(await page.locator('#folderTitleInput').inputValue(), '數學');
+    await page.locator('#cancelFolderDialogBtn').click(); assert.equal(layout.folders[0].title, '數學');
+    await rename(); await page.locator('#folderTitleInput').fill('演算法'); failSave = true;
+    await page.locator('#submitFolderBtn').click(); await page.waitForFunction(() => document.querySelector('#folderDialogMessage').textContent.includes('儲存失敗'));
+    assert.equal(layout.folders[0].title, '數學'); assert.equal(await page.locator('#folderTitleInput').inputValue(), '演算法');
+    failSave = false; await page.keyboard.press('Enter'); await saved();
+    assert.equal(layout.folders[0].title, '演算法');
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), false);
+    await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.locator('#createFolderBtn').click();
+    const modalBounds = await page.locator('#folderDialog').boundingBox();
+    assert.ok(modalBounds.x >= 0 && modalBounds.x + modalBounds.width <= 390);
+    await page.screenshot({ path: path.join(root, 'test-results/create-folder-dialog-mobile.png') });
+    await page.locator('#cancelFolderDialogBtn').click();
+    await assignCategories('c', [folder]);
+    assert.deepEqual(await order(folder), ['b', 'c']);
+    const imageDir = path.join(root, 'test-results'); fs.mkdirSync(imageDir, { recursive: true });
+    await page.screenshot({ path: path.join(imageDir, 'library-folders-mobile.png'), fullPage: true });
+    async function createCategory(title) {
+      await page.locator('#createFolderBtn').click(); await page.locator('#folderTitleInput').fill(title); await page.locator('#submitFolderBtn').click(); await saved();
+      return layout.folders.find(item => item.title === title).id;
+    }
+    const second = await createCategory('圖論'), third = await createCategory('樹');
+    await assignCategories('b', [folder, second]);
+    assert.equal(await page.locator('#deckGrid [data-deck-id="b"]').count(), 2);
+    await page.locator('[data-deck-id="b"] .library-categories-button').first().click();
+    assert.equal(await page.locator('#categoryChoices input:checked').count(), 2);
+    await page.screenshot({ path: path.join(imageDir, 'multi-category-dialog-mobile.png') });
+    await page.locator('#cancelCategoryBtn').click();
+    assert.deepEqual(await order(''), ['a']);
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: 'Beta 往後', exact: true }).click(); await saved();
+    assert.deepEqual(await order(folder), ['c', 'b']); assert.deepEqual(await order(second), ['b']);
+    await nativeDrop('b', `.library-folder[data-folder-id="${third}"] summary`);
+    assert.deepEqual(await order(folder), ['c']); assert.deepEqual(await order(second), ['b']); assert.deepEqual(await order(third), ['b']);
+    await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+    assert.equal(await page.locator('#deckGrid [data-deck-id="b"]').count(), 2);
+    const removeThird = () => page.locator(`.library-folder[data-folder-id="${third}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click();
+    await removeThird(); assert.ok((await page.locator('#deleteFolderName').textContent()).includes('樹'));
+    assert.equal(await page.locator('#cancelDeleteFolderBtn').evaluate(el => el === document.activeElement), true);
+    await page.locator('#cancelDeleteFolderBtn').click(); assert.equal(layout.folders.length, 3);
+    await removeThird(); await page.keyboard.press('Escape'); assert.equal(layout.folders.length, 3);
+    await removeThird(); failSave = true; await page.locator('#deleteFolderSubmit').click();
+    await page.waitForFunction(() => document.querySelector('#deleteFolderMessage').textContent.includes('儲存失敗'));
+    assert.equal(layout.folders.length, 3); assert.equal(await page.locator('#deleteFolderDialog').evaluate(el => el.open), true);
+    await page.screenshot({ path: path.join(imageDir, 'delete-folder-dialog-mobile.png') });
+    failSave = false; await page.locator('#deleteFolderSubmit').click(); await saved();
+    assert.deepEqual(await order(second), ['b']); assert.deepEqual(await order(''), ['a']);
+    await assignCategories('b', []);
+    await page.locator(`.library-folder[data-folder-id="${second}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await page.locator('#deleteFolderSubmit').click(); await saved();
+    await page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click(); await page.locator('#deleteFolderSubmit').click(); await saved();
+    assert.deepEqual(await order(''), ['a', 'b', 'c']); assert.equal(layout.folders.length, 0);
+    decks = [decks[2], decks[1], decks[0], { ...decks[0], deck_uid: 'd', title: 'New deck' }];
+    await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+    assert.deepEqual(await order(''), ['a', 'b', 'c', 'd']);
+    decks = decks.filter(deck => deck.deck_uid !== 'd');
+    // The rename route below finds the deck by id after changing metadata order.
+    await page.locator('[data-deck-id="a"] .deck-title').click(); await page.locator('#deckTitleInput').fill('Renamed');
+    await page.locator('#deckDialogForm button[type="submit"]').click(); await page.waitForSelector('#deckDialog:not([open])', { state: 'attached' });
+    assert.equal(await page.locator('[data-deck-id="a"] .deck-title').textContent(), 'Renamed');
+    assert.equal(await page.locator('#createDeckBtn').isVisible(), true);
+    await page.route('**/slides.html?deck=a', route => route.fulfill({ contentType: 'text/html', body: '<html><body>Fixture editor</body></html>' }));
+    await page.locator('[data-deck-id="a"] .deck-open').click(); await page.waitForURL(base + '/slides.html?deck=a');
+    await page.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [
+      { id: 'multi', title: 'Multi category', categories: ['Tree', 'Graph', 'Tree'], archive: '/fixture-multi.asmdeck' },
+      { id: 'legacy', title: 'Legacy category', category: 'Basic', archive: '/fixture-legacy.asmdeck' }
+    ] } }));
+    await page.goto(base + '/?examples=1'); await page.waitForSelector('.gallery-folder');
+    assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
+    assert.equal(await page.locator('#sample-category-Tree .deck-card').count(), 1);
+    assert.equal(await page.locator('#sample-category-Graph .deck-card').count(), 1);
+    assert.equal(await page.locator('#sample-category-Basic .deck-card').count(), 1);
+    assert.equal(await page.locator('#galleryCount').textContent(), '共 2 份');
+    await page.screenshot({ path: path.join(imageDir, 'sample-folder-dividers-mobile.png'), fullPage: true });
+    assert.deepEqual(errors, []);
+  } finally { if (browser) await browser.close(); server.kill(); }
+});

@@ -2066,9 +2066,12 @@
 
   function prepareForwardValues(options, replayPlan, eventFrame) {
     const tracks = [];
+    // Reverse playback replays the outgoing frame's events, but authored
+    // styles always belong to the scene currently displayed at the destination.
+    const styleFrame = options.frame || eventFrame;
     const previousStyleFrame = options.previousFrame || eventFrame;
     const conditionalStyleVariables = new Set([
-      ...(eventFrame?.styles || []), ...(previousStyleFrame?.styles || [])
+      ...(styleFrame?.styles || []), ...(previousStyleFrame?.styles || [])
     ]
       .map(style => style.targetVariableId));
     (replayPlan?.visualValueTracks || replayPlan?.valueTracks || [])
@@ -2189,7 +2192,8 @@
       stylesDirty = false;
       // Match the original renderer: evaluate the new frame before events.
       const visualHighlights = (styleTargets.length || indexTracks.length)
-        ? window.ASMTraceRules.evaluate(options.document, eventFrame) : {};
+        ? (window.ASMTraceRenderers?.evaluateFrameHighlights?.(options.document, styleFrame)
+          || window.ASMTraceRules.evaluate(options.document, styleFrame)) : {};
       const indexHighlights = visualHighlights;
       evaluatedHighlights = visualHighlights;
       const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
@@ -6084,10 +6088,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-210';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-212';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-210', play, cancel, updateEventAvailability,
+    build: 'trace-212', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

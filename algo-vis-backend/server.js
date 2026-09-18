@@ -228,6 +228,8 @@ app.post('/trace/analyze', limiter, (req, res) => {
         styles: directive.styles || [],
         segments: directive.segments || [],
         arrows: directive.arrows || [],
+        eventControls: directive.eventControls || [],
+        autoMarkVariableIds: directive.autoMarkVariableIds,
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       })),
@@ -512,6 +514,8 @@ function cleanCoverThumbnail(value) {
 }
 
 // List metadata only. The large Fabric canvas payload is fetched when a deck is opened.
+require('./slide-library')(app, { authenticateToken, User, SlideDeck });
+
 app.get('/api/slides', authenticateToken, async (req, res) => {
   try {
     const slides = await SlideDeck.find({ user_uid: req.user.id })
@@ -1599,6 +1603,8 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
       styles: Array.isArray(directive?.styles) ? directive.styles : [],
       segments: Array.isArray(directive?.segments) ? directive.segments : [],
       arrows: Array.isArray(directive?.arrows) ? directive.arrows : [],
+      eventControls: Array.isArray(directive?.eventControls) ? directive.eventControls : [],
+      autoMarkVariableIds: Array.isArray(directive?.autoMarkVariableIds) ? directive.autoMarkVariableIds : null,
       camera: directive?.camera || null
     };
   });
@@ -1635,6 +1641,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   return {
     schemaVersion: '1.0',
     generatedAt: new Date().toISOString(),
+    loopRecords: records.filter(record => record.record === 'loop'),
     sourceCode: typeof traceRequest.sourceCode === 'string' ? traceRequest.sourceCode : '',
     sourceDeclarations: Array.isArray(traceRequest.sourceDeclarations)
       ? JSON.parse(JSON.stringify(traceRequest.sourceDeclarations))
@@ -1745,6 +1752,8 @@ app.post('/compile', (req, res) => {
         styles: directive.styles || [],
         segments: directive.segments || [],
         arrows: directive.arrows || [],
+        eventControls: directive.eventControls || [],
+        autoMarkVariableIds: directive.autoMarkVariableIds,
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       }));

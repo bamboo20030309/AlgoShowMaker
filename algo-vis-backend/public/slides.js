@@ -353,6 +353,9 @@
   const structureLineColorInput = document.getElementById('structureLineColorInput');
   const structureHighlightColorInput = document.getElementById('structureHighlightColorInput');
   const structureHighlightIndicesInput = document.getElementById('structureHighlightIndicesInput');
+  const structureAnnotationIndicesInput = document.getElementById('structureAnnotationIndicesInput');
+  const structureAnnotationColorInput = document.getElementById('structureAnnotationColorInput');
+  const structureAnnotationTextInput = document.getElementById('structureAnnotationTextInput');
   const structureFocusColorInput = document.getElementById('structureFocusColorInput');
   const structureFocusIndicesInput = document.getElementById('structureFocusIndicesInput');
   const structurePointColorInput = document.getElementById('structurePointColorInput');
@@ -365,6 +368,7 @@
   const structureFrameBackgroundEnabledInput = document.getElementById('structureFrameBackgroundEnabledInput');
   const structureFrameBackgroundColorInput = document.getElementById('structureFrameBackgroundColorInput');
   const structureColorBindings = [
+    { target: 'structure-annotation', button: structureAnnotationColorInput, field: 'annotationColor', style: 'annotation' },
     { target: 'structure-tree-arrow', button: structureTreeArrowColorInput, field: 'treeArrowColor' },
     { target: 'structure-frame-background', button: structureFrameBackgroundColorInput, field: 'frameBackgroundColor' },
     { target: 'structure-highlight', button: structureHighlightColorInput, field: 'highlightColor', style: 'highlight' },
@@ -2265,10 +2269,10 @@
           borderColor: widget.borderColor || '#344247',
           textColor: widget.textColor || '#1f282d',
           lineColor: widget.lineColor || '#66767b',
-          highlightColor: widget.highlightColor || '#ef4444',
-          focusColor: widget.focusColor || '#3b82f6',
-          pointColor: widget.pointColor || '#f59e0b',
-          markColor: widget.markColor || '#8b5cf6',
+          highlightColor: widget.highlightColor || '#ff0000',
+          focusColor: widget.focusColor || '#808080',
+          pointColor: widget.pointColor || '#ff0000',
+          markColor: widget.markColor || '#22c55e',
           backgroundColor: widget.backgroundColor || '#10b981',
           frameBackgroundEnabled: widget.frameBackgroundEnabled !== false,
           frameBackgroundColor: !widget.frameBackgroundColor || widget.frameBackgroundColor === '#d1e6ac'
@@ -2289,6 +2293,10 @@
             : (widget.treeArrowColor || '#333333'),
           treeRendererVersion: 3,
           structureFrameVersion: Number(widget.structureFrameVersion) || 0,
+          annotationIndices: typeof widget.annotationIndices === 'string' ? widget.annotationIndices : '',
+          annotationColor: widget.annotationColor || '#ffffff',
+          annotationText: typeof widget.annotationText === 'string' ? widget.annotationText.slice(0, 80) : '',
+          annotationLabels: Object.fromEntries(Object.entries(widget.annotationLabels || {}).filter(([key, value]) => /^\d+$/.test(key) && typeof value === 'string').map(([key, value]) => [key, value.slice(0, 80)])),
           highlightIndices: typeof widget.highlightIndices === 'string' ? widget.highlightIndices : '',
           focusIndices: typeof widget.focusIndices === 'string' ? widget.focusIndices : '',
           pointIndices: typeof widget.pointIndices === 'string' ? widget.pointIndices : '',
@@ -2519,6 +2527,25 @@
     const pre = el?.querySelector('pre');
     if (!pre || !widget) return;
     pre.scrollTo({ top: codeFocusScrollTop(el, widget), behavior });
+  }
+
+  let codeFocusEntryFrame = 0;
+  function scheduleCurrentSlideCodeFocus() {
+    cancelAnimationFrame(codeFocusEntryFrame);
+    // Wait for slide visibility/layout and autoanimate to claim its targets.
+    codeFocusEntryFrame = requestAnimationFrame(() => {
+      codeFocusEntryFrame = requestAnimationFrame(() => {
+        codeFocusEntryFrame = 0;
+        if (!revealReady || reveal.isOverview() || isOverviewEditing()) return;
+        reveal.getCurrentSlide()?.querySelectorAll('.code-widget').forEach(el => {
+          if (el.dataset.codeAutoAnimating) return;
+          const widget = getWidget(el.dataset.widgetId).widget;
+          if (!widget || !focusedCodeLineNumbers(widget.focusLines, String(widget.content || '').split('\n').length).length) return;
+          if (!el.querySelector('pre')?.clientHeight) return;
+          scrollCodeWidgetToFocus(el, widget);
+        });
+      });
+    });
   }
 
   function normalizeLatexSource(source = '') {
@@ -2819,6 +2846,8 @@
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
+      'annotationIndices', 'annotationColor',
+      'annotationText', 'annotationLabels',
       'frameBackgroundEnabled', 'frameBackgroundColor', 'treeLayout', 'treeArrowColor',
       'treeData', 'structureFrameVersion',
       'w', 'h'
@@ -2978,6 +3007,7 @@
     if (buildGeneration !== fabricBuildGeneration) return;
     document.body.dataset.fabricBuild = 'starting';
     patchFabricTextCompositionUnderline();
+    patchFabricTextCursorBlink();
     for (const group of deck.groups) {
       for (const slide of group.slides) {
         if (buildGeneration !== fabricBuildGeneration) return;
@@ -3021,6 +3051,27 @@
     scheduleFabricResolution();
     document.body.dataset.fabricBuild = `ready:${fabricCanvases.size}`;
     updateDiagnostics();
+  }
+
+  function patchFabricTextCursorBlink() {
+    const proto = f()?.IText?.prototype;
+    if (!proto || proto.__asmCursorBlinkPatched) return;
+    proto._animateCursor = function (obj, targetOpacity, duration, completeMethod) {
+      let timer;
+      const state = { isAborted: false, abort() { this.isAborted = true; clearTimeout(timer); } };
+      obj._currentCursorOpacity = targetOpacity ? 1 : 0;
+      if (obj.canvas && obj.selectionStart === obj.selectionEnd) obj.renderCursorOrSelection();
+      timer = setTimeout(() => { if (!state.isAborted && obj.isEditing) obj[completeMethod](); }, 500);
+      return state;
+    };
+    proto._onTickComplete = function () {
+      this._currentTickCompleteState = this._animateCursor(this, 0, 500, '_tick');
+    };
+    proto.initDelayedCursor = function () {
+      this.abortCursorAnimation();
+      this._tick();
+    };
+    proto.__asmCursorBlinkPatched = true;
   }
 
   function patchFabricTextCompositionUnderline() {
@@ -3186,7 +3237,7 @@
           touchCornerSize: 14,
           padding: 0,
           cursorDelay: 500,
-          cursorDuration: 1,
+          cursorDuration: 500,
           compositionColor: '#1d8f83'
         });
         e.target.setCoords?.();
@@ -3437,7 +3488,7 @@
       lockScalingFlip: true,
       strokeUniform: true,
       cursorDelay: 500,
-      cursorDuration: 1,
+      cursorDuration: 500,
       compositionColor: '#1d8f83',
       objectCaching: isShapeObject(obj) ? false : !isTextObject(obj),
       noScaleCache: isShapeObject(obj) ? false : obj.noScaleCache,
@@ -4314,10 +4365,10 @@
         borderColor: '#344247',
         textColor: '#1f282d',
         lineColor: '#66767b',
-        highlightColor: '#ef4444',
-        focusColor: '#3b82f6',
-        pointColor: '#f59e0b',
-        markColor: '#8b5cf6',
+        highlightColor: '#ff0000',
+        focusColor: '#808080',
+        pointColor: '#ff0000',
+        markColor: '#22c55e',
         backgroundColor: '#10b981',
         frameBackgroundEnabled: true,
         frameBackgroundColor: DEFAULT_STRUCTURE_FRAME_BACKGROUND,
@@ -4326,6 +4377,10 @@
         treeArrowColor: '#333333',
         treeRendererVersion: 3,
         structureFrameVersion: 4,
+        annotationIndices: '',
+        annotationColor: '#ffffff',
+        annotationText: '',
+        annotationLabels: {},
         highlightIndices: '',
         focusIndices: '',
         pointIndices: '',
@@ -5264,22 +5319,26 @@
     structureBorderColorInput.value = widget.borderColor || '#344247';
     structureTextColorInput.value = widget.textColor || '#1f282d';
     structureLineColorInput.value = widget.lineColor || '#66767b';
-    setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ef4444');
+    setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ff0000');
     structureHighlightIndicesInput.value = widget.highlightIndices || '';
-    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#3b82f6');
+    structureAnnotationIndicesInput.value = widget.annotationIndices || '';
+    structureAnnotationTextInput.value = widget.annotationText || '';
+    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#ffffff');
+    syncStructureStyleIcon('annotation', widget.annotationColor || '#ffffff');
+    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#808080');
     structureFocusIndicesInput.value = widget.focusIndices || '';
-    setStructureColorButton(structurePointColorInput, widget.pointColor || '#f59e0b');
+    setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
     structurePointIndicesInput.value = widget.pointIndices || '';
-    setStructureColorButton(structureMarkColorInput, widget.markColor || '#8b5cf6');
+    setStructureColorButton(structureMarkColorInput, widget.markColor || '#22c55e');
     structureMarkIndicesInput.value = widget.markIndices || '';
     setStructureColorButton(structureBackgroundColorInput, widget.backgroundColor || '#10b981');
     structureBackgroundIndicesInput.value = widget.backgroundIndices || '';
     if (structureFrameBackgroundEnabledInput) structureFrameBackgroundEnabledInput.checked = widget.frameBackgroundEnabled !== false;
     setStructureColorButton(structureFrameBackgroundColorInput, widget.frameBackgroundColor || DEFAULT_STRUCTURE_FRAME_BACKGROUND);
-    syncStructureStyleIcon('highlight', widget.highlightColor || '#ef4444');
-    syncStructureStyleIcon('focus', widget.focusColor || '#3b82f6');
-    syncStructureStyleIcon('point', widget.pointColor || '#f59e0b');
-    syncStructureStyleIcon('mark', widget.markColor || '#8b5cf6');
+    syncStructureStyleIcon('highlight', widget.highlightColor || '#ff0000');
+    syncStructureStyleIcon('focus', widget.focusColor || '#808080');
+    syncStructureStyleIcon('point', widget.pointColor || '#ff0000');
+    syncStructureStyleIcon('mark', widget.markColor || '#22c55e');
     syncStructureStyleIcon('background', widget.backgroundColor || '#10b981');
     syncStructureEditorVisibility(widget);
   }
@@ -5380,6 +5439,7 @@
   }
 
   function clearStructureCellSelection({ closeEditor = true } = {}) {
+    hideStructureContextMenu();
     if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
     structureCellClickTimer = null;
     document.querySelectorAll('.is-structure-cell-selected').forEach(cell => {
@@ -5435,6 +5495,7 @@
 
   function openStructureInlineEditor(widgetEl, cell) {
     if (!document.body.classList.contains('asm-edit-mode')) return false;
+    hideStructureContextMenu();
     const details = structureCellContext(widgetEl, cell);
     if (!details) return false;
     if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
@@ -5476,6 +5537,50 @@
     return button;
   }
 
+  function openStructureStyleToolbar(widgetId) {
+    const widgetEl = document.querySelector(`section.present .structure-widget[data-widget-id="${CSS.escape(widgetId)}"]`);
+    const cell = structureCellForKey(widgetEl, selectedStructureCell?.key);
+    const found = getWidget(widgetId);
+    if (!cell || !found.widget || !document.body.classList.contains('asm-edit-mode')) return;
+    const index = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex);
+    if (!Number.isInteger(index)) return;
+    structureContextMenu.replaceChildren();
+    activeStructureContext = null;
+    structureContextMenu.classList.add('structure-cell-style-toolbar');
+    for (const [type, label] of [['highlight', 'Highlight'], ['focus', 'Focus'], ['point', 'Point'], ['mark', 'Mark'], ['background', 'Background'], ['annotation', '註標箭頭']]) {
+      const indices = new Set(window.AlgoStructureRenderer.parseIndices(found.widget[`${type}Indices`]));
+      const button = document.createElement('button');
+      button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
+      button.setAttribute('aria-pressed', String(indices.has(index)));
+      const icon = structureEditorPanel.querySelector(`[data-structure-style="${type}"] .structure-style-icon`);
+      if (icon) { const clone = icon.cloneNode(true); clone.removeAttribute('role'); clone.setAttribute('aria-hidden', 'true'); button.appendChild(clone); }
+      button.addEventListener('click', () => {
+        if (indices.has(index)) indices.delete(index); else indices.add(index);
+        updateSelectedStructure({ [`${type}Indices`]: [...indices].sort((a, b) => a - b).join(',') });
+        populateStructureEditor(getWidget(widgetId).widget);
+        openStructureStyleToolbar(widgetId);
+      });
+      structureContextMenu.appendChild(button);
+    }
+    if (window.AlgoStructureRenderer.parseIndices(found.widget.annotationIndices).includes(index)) {
+      const input = document.createElement('input');
+      input.type = 'text'; input.maxLength = 80; input.placeholder = '註標文字';
+      input.setAttribute('aria-label', '此格註標文字');
+      input.value = found.widget.annotationLabels?.[index] || '';
+      input.addEventListener('input', () => {
+        const labels = { ...getWidget(widgetId).widget.annotationLabels };
+        if (input.value) labels[index] = input.value; else delete labels[index];
+        updateSelectedStructure({ annotationLabels: labels });
+      });
+      input.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
+      structureContextMenu.appendChild(input);
+    }
+    const rect = (cell.querySelector(':scope > rect') || cell).getBoundingClientRect();
+    structureContextMenu.hidden = false;
+    const menu = structureContextMenu.getBoundingClientRect();
+    positionStructureContextMenu(rect.left + rect.width / 2 - menu.width / 2, rect.top - menu.height - 8);
+  }
+
   function positionStructureContextMenu(clientX, clientY) {
     const margin = 8;
     structureContextMenu.hidden = false;
@@ -5506,6 +5611,7 @@
     event.stopPropagation();
     selectWidget(found.widget.id);
     selectStructureCell(widgetEl, editableCell);
+    structureContextMenu.classList.remove('structure-cell-style-toolbar');
     structureContextMenu.replaceChildren();
     if (mode === 'binary_tree') {
       const nodeId = details.context.nodeId;
@@ -6160,6 +6266,7 @@
   }
 
   function setEditMode(enabled) {
+    hideStructureContextMenu();
     if (!enabled && customOverviewOpen) closeCustomOverview();
     if (enabled && reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
     document.body.classList.add('mode-layout-animating');
@@ -6443,6 +6550,8 @@
     structureTextColorInput?.addEventListener('input', () => updateSelectedStructure({ textColor: structureTextColorInput.value }));
     structureLineColorInput?.addEventListener('input', () => updateSelectedStructure({ lineColor: structureLineColorInput.value }));
     structureHighlightIndicesInput?.addEventListener('input', () => updateSelectedStructure({ highlightIndices: structureHighlightIndicesInput.value }));
+    structureAnnotationIndicesInput?.addEventListener('input', () => updateSelectedStructure({ annotationIndices: structureAnnotationIndicesInput.value }));
+    structureAnnotationTextInput?.addEventListener('input', () => updateSelectedStructure({ annotationText: structureAnnotationTextInput.value }));
     structureFocusIndicesInput?.addEventListener('input', () => updateSelectedStructure({ focusIndices: structureFocusIndicesInput.value }));
     structurePointIndicesInput?.addEventListener('input', () => updateSelectedStructure({ pointIndices: structurePointIndicesInput.value }));
     structureMarkIndicesInput?.addEventListener('input', () => updateSelectedStructure({ markIndices: structureMarkIndicesInput.value }));
@@ -6894,6 +7003,7 @@
           structureCellClickTimer = null;
           if (activeStructureInlineEditor || selectedStructureCell?.widgetId !== widgetId) return;
           selectWidget(widgetId);
+          openStructureStyleToolbar(widgetId);
         }, 220);
         return;
       }
@@ -9600,15 +9710,18 @@
       ].filter(Boolean)
     }).then(() => {
       revealReady = true;
+      scheduleCurrentSlideCodeFocus();
       scheduleFabricResolution();
       reveal.on('resize', scheduleFabricResolution);
       window.addEventListener('resize', scheduleFabricResolution);
       document.body.dataset.revealPlugins = Object.keys(reveal.getPlugins ? reveal.getPlugins() : {}).join(',');
       reveal.on('slidechanged', event => {
         if (pointerDrag) return;
+        hideStructureContextMenu();
         currentH = event.indexh;
         currentV = event.indexv || 0;
         scheduleFabricResolution();
+        scheduleCurrentSlideCodeFocus();
         updateAlgorithmEditButton();
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
@@ -9616,6 +9729,8 @@
       });
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('overviewhidden', scheduleFabricResolution);
+      reveal.on('slidetransitionend', scheduleCurrentSlideCodeFocus);
+      reveal.on('overviewhidden', scheduleCurrentSlideCodeFocus);
       reveal.on('fragmentshown', refreshFabricFragmentVisibility);
       reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();

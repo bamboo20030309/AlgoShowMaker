@@ -12,6 +12,9 @@
   const expanded = new Map();
   let ready = false;
   const thumbnails = new Map();
+  function entryCategories(entry) {
+    return [...new Set((Array.isArray(entry.categories) ? entry.categories : [entry.category]).filter(id => Object.hasOwn(categories, id)))];
+  }
 
   async function showCover(entry, preview) {
     try {
@@ -43,7 +46,7 @@
     message.textContent = visible.length || !query ? '' : '找不到符合搜尋的投影片。';
     grid.replaceChildren();
     for (const [category, label] of Object.entries(categories)) {
-      const entries = visible.filter(entry => entry.category === category);
+      const entries = visible.filter(entry => entryCategories(entry).includes(category));
       if (query && !entries.length) continue;
       const section = document.createElement('details');
       section.className = 'gallery-folder';
@@ -83,7 +86,7 @@
         title.textContent = entry.title;
         const meta = document.createElement('span');
         meta.className = 'deck-meta';
-        meta.textContent = `${categories[entry.category]} · 免登入觀賞`;
+        meta.textContent = `${entryCategories(entry).map(id => categories[id]).join(' · ')} · 免登入觀賞`;
         info.append(title, meta);
         link.append(preview, info);
         card.append(link);

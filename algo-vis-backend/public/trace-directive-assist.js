@@ -39,6 +39,8 @@
     ] },
     { id: 'style', label: '@style', effect: '為陣列格子設定背景、強調、焦點或指標', code: '// @style arr[i] highlight', examples: [
       '// @style arr[i] highlight',
+      '// @style arr[i] highlight,point',
+      '// @style arr[i] highlight,point AV_green when value>0',
       '// @style arr[0:i] background AV_green when value < key',
       '// @style arr[i,i*2:i*2+1] highlight AV_red\n// @style arr[1:n] focus when n < Size',
       '// @style prime[0:iteration.last(j)] focus when i * value <= n'
@@ -58,7 +60,29 @@
       '// @place pivot at arr.right offset(16,0)',
       '// @frame arr,pivot\n// @place pivot at arr.right offset(16,0)\n// @text "基準值" at pivot.bottom'
     ] },
-    { id: 'arrow', label: '@arrow', effect: '連接兩個物件或格子；未寫錨點時預設 center', code: '// @arrow from arr[0] to arr[1]', examples: [
+    { id: 'events', label: '@events', effect: '控制本幀事件動畫；資料與事件記錄仍保留', code: '// @events animate off', examples: [
+      '// @frame arr\n// @events animate off',
+      '// @frame arr\n// @events compare,read animate off when i > 7'
+    ] },
+    { id: 'automark', label: '@automark', effect: '選擇本幀顯示自動固定標記的陣列；none 隱藏全部', code: '// @automark arr', examples: [
+      '// @frame isprime,prime\n// @automark isprime',
+      '// @automark isprime,prime',
+      '// @automark none'
+    ] },
+    { id: 'for', label: '@for', effect: '讓 style、arrow、text 共用繪圖索引；以 @endfor 結束', code: '// @for j', examples: [
+      '// @for j\n// @style arr[j] highlight\n// @endfor',
+      '// @for j in "sieve_loop"\n// @style prime[j] highlight\n// @arrow from prime[j] to isprime[i*prime[j]]\n// @endfor',
+      '// @for k in [0:n-1] step 2\n// @text "${k}" at arr[k].top\n// @endfor'
+    ] },
+    { id: 'endfor', label: '@endfor', effect: '結束目前的繪圖迴圈區塊', code: '// @endfor', examples: ['// @endfor'] },
+    { id: 'loop', label: '@loop', effect: '替緊接的 for、while 或 do 迴圈命名', code: '// @loop as "sieve_loop"', examples: [
+      '// @loop as "sieve_loop"\nfor(int j=0;j<n;j++){ }',
+      '// @loop as "scan"\nwhile(j<n){j++;}'
+    ] },
+    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；for 可按範圍或實際迴圈值展開多支箭頭', code: '// @arrow from arr[0] to arr[1]', examples: [
+      '// @arrow for k in [0:n-1] step 2 from arr[0].bottom to arr[k].top as "links"',
+      '// @arrow for j from arr[0] to arr[j]',
+      '// @arrow for j in "sieve_loop" from prime[j] to isprime[i*prime[j]]',
       '// @arrow from arr[0] to arr[1]',
       '// @arrow from isprime[1] to isprime[12]',
       '// @frame arr[i,j]\n// @arrow from arr[i].bottom to arr[j].top\n// @text "從左到右" at arr.bottom'
@@ -82,6 +106,7 @@
       ['in', 'in', '把畫面加入具名遞迴排版', ' in quick_tree'],
       ['object', '@object', '在這一幀加入另一個獨立設定的物件', '\n// @object prime'],
       ['style', '@style', '為格子加上視覺樣式', '\n// @style arr[i] highlight'],
+      ['automark', '@automark', '選擇顯示自動固定的陣列', '\n// @automark arr'],
       ['text', '@text', '加入說明文字', '\n// @text "正在檢查" at arr.bottom'],
       ['segment', '@segment', '標示陣列區間', '\n// @segment arr[low:high]'],
       ['arrow', '@arrow', '連接畫面上的兩個目標', '\n// @arrow from arr[0] to arr[1]'],
@@ -96,7 +121,8 @@
     preset: [
       ['object', '@object', '加入預設顯示物件', '\n// @object isprime with columns(10), labels(index)'],
       ['place', '@place', '加入預設物件位置', '\n// @place prime.top-left at isprime.bottom-left offset(0,60)'],
-      ['style', '@style', '加入預設樣式', '\n// @style isprime[i] highlight']
+      ['style', '@style', '加入預設樣式', '\n// @style isprime[i] highlight'],
+      ['automark', '@automark', '選擇預設自動固定陣列', '\n// @automark isprime']
     ],
     keep: [
       ['as', 'as', '指定保留物件 ID', ' as "round"'],

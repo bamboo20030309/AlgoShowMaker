@@ -1284,9 +1284,17 @@
     const root = cell?.closest?.('#asm-trace-root');
     const rect = cell?.querySelector?.(':scope > rect');
     if (!root || !rect || !window.HintWidgets) return;
+    // Automatic fixed marks are persistent state. Reuse their renderer nodes
+    // so the current frame's completion delay remains authoritative.
+    const preserveFixedMark = highlight?.fixedMark
+      && !Object.hasOwn(highlight?.styleTypes || {}, 'mark');
+    const fixedVisuals = preserveFixedMark
+      ? [...root.querySelectorAll('[data-trace-attachment-kind="mark"]')]
+        .filter(visual => visual.getAttribute('data-trace-attached-to') === key && !visual._asmLiveHint)
+      : [];
     root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
       if (visual.getAttribute('data-trace-attached-to') === key
-        && !visual._asmLiveHint) visual.setAttribute('display', 'none');
+        && !visual._asmLiveHint && !fixedVisuals.includes(visual)) visual.setAttribute('display', 'none');
     });
     const hints = cell._asmPresentedHints ||= new Map();
     const types = { ...(highlight?.fixedMark ? { mark: highlight.fixedMark } : {}), ...(highlight?.styleTypes || {}) };
@@ -1294,6 +1302,11 @@
     const x = number('x'), y = number('y'), width = number('width'), height = number('height');
     ['highlight', 'point', 'mark'].forEach(kind => {
       let visual = hints.get(kind);
+      if (kind === 'mark' && fixedVisuals.length) {
+        visual?.setAttribute('display', 'none');
+        fixedVisuals.forEach(fixed => fixed.removeAttribute('display'));
+        return;
+      }
       if (!Object.hasOwn(types, kind)) {
         visual?.setAttribute('display', 'none');
         return;
@@ -2462,7 +2475,19 @@
     return frame?.state?.[target?.variableId] ? [target.variableId] : [];
   }
 
+  function autoMarkAllowedIds(frame) {
+    if (!Array.isArray(frame?.autoMarkVariableIds)) return null;
+    const allowedIds = new Set(frame.autoMarkVariableIds);
+    const allowedIdentities = new Set((frame?.autoMarkVariableIds || [])
+      .map(id => frame.state?.[id]?.identity).filter(Boolean));
+    Object.entries(frame?.state || {}).forEach(([id, entry]) => {
+      if (allowedIdentities.has(entry.identity)) allowedIds.add(id);
+    });
+    return allowedIds;
+  }
+
   function applyFixedEventStyles(document, frame, highlights) {
+    const allowedIds = autoMarkAllowedIds(frame);
     // @keep last renders a cloned frame. Match by stable frame ID instead of
     // object identity so accumulated marks are retained inside the snapshot.
     const currentIndex = document.frames?.findIndex(item => item.id === frame?.id) ?? -1;
@@ -2480,6 +2505,7 @@
           const index = fixedTargetIndex(document, sourceFrame, target);
           if (index == null) return;
           fixedTargetVariableIds(frame, sourceFrame, event, target).forEach(variableId => {
+            if (allowedIds && !allowedIds.has(variableId)) return;
             highlights[variableId] ||= {};
             highlights[variableId][String(index)] = {
               ...(highlights[variableId][String(index)] || {}),
@@ -2491,8 +2517,15 @@
     });
   }
 
+  function evaluateFrameHighlights(document, frame) {
+    const highlights = window.ASMTraceRules.evaluate(document, frame);
+    applyFixedEventStyles(document, frame, highlights);
+    return highlights;
+  }
+
   function delayedCurrentFixedMarks(root, document, frame, enabled) {
     if (!enabled) return [];
+    const allowedIds = autoMarkAllowedIds(frame);
     const targetKeys = new Set();
     (frame.events || []).filter(event => (
       event.type === 'fixed'
@@ -2503,6 +2536,7 @@
         const index = fixedTargetIndex(document, frame, target);
         if (index == null) return;
         fixedTargetVariableIds(frame, frame, event, target).forEach(variableId => {
+          if (allowedIds && !allowedIds.has(variableId)) return;
           targetKeys.add(`${objectKeyForVariable(frame, variableId)}#${index}`);
         });
       });
@@ -2616,20 +2650,19 @@
     let y = startY;
     const textLayer = svg('g', { class: 'asm-trace-text-layer' });
     root.append(textLayer);
-    (frame.texts || []).forEach((descriptor, descriptorIndex) => {
-      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when)) return;
+    (window.ASMTraceModel?.drawingDirectives?.(document, frame, 'texts') || frame.texts || []).forEach((descriptor, descriptorIndex) => {
+      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when, descriptor.drawLocals)) return;
       const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
       const rawSegments = Array.isArray(descriptor.segments) ? descriptor.segments : [];
       const authoredBaseFontSize = Math.max(8,
-        Number(rawSegments.find(segment => Number(segment?.fontSize) > 0)?.fontSize) || 10);
+        Number(rawSegments.find(segment => Number(segment?.fontSize) > 0)?.fontSize) || 14);
       const lines = [[]];
       rawSegments.forEach((segment, segmentIndex) => {
         const expressionValue = segment?.kind === 'expression'
-          ? window.ASMTraceRules.resolveExpression(document, frame, segment.expression)
+          ? window.ASMTraceRules.resolveTextExpression(document, frame, segment.expression, descriptor.drawLocals)
           : segment?.kind === 'template'
             ? String(segment.text || '').replace(/\$\{([^{}]+)\}/g, (_, expression) => {
-              const value = window.ASMTraceRules.resolveExpression(document, frame, expression.trim());
-              return value == null ? '' : String(value);
+              return window.ASMTraceRules.resolveTextExpression(document, frame, expression.trim(), descriptor.drawLocals);
             })
             : segment?.text;
         const resolvedText = expressionValue == null ? '' : String(expressionValue);
@@ -2647,7 +2680,7 @@
               background: Object.hasOwn(storedStyle, 'background')
                 ? storedStyle.background
                 : traceTextColor(segment?.background, 'none'),
-              fontSize: Math.max(8, Number(storedStyle.fontSize) || Number(segment?.fontSize) || 10),
+              fontSize: Math.max(8, Number(storedStyle.fontSize) || Number(segment?.fontSize) || 14),
               bold: Object.hasOwn(storedStyle, 'bold') ? storedStyle.bold === true : segment?.bold === true
             });
             if (partIndex < parts.length - 1) lines.push([]);
@@ -2799,8 +2832,8 @@
 
   function applySemanticTextBindings(document, frame, placements, elements) {
     const canvas = { x: 0, y: 0, width: 1100, height: 620 };
-    (frame.texts || []).forEach((descriptor, descriptorIndex) => {
-      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when)) return;
+    (window.ASMTraceModel?.drawingDirectives?.(document, frame, 'texts') || frame.texts || []).forEach((descriptor, descriptorIndex) => {
+      if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when, descriptor.drawLocals)) return;
       const binding = descriptor?.binding;
       if (!binding) return;
       const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
@@ -3377,9 +3410,18 @@
   }
 
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
-    const arrows = Array.isArray(frame.arrows) ? frame.arrows : [];
+    const arrows = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
+    const expanded = arrows.flatMap(arrow => !arrow.batch ? [arrow] : window.ASMArrowModel.expandBatch(arrow,
+      (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, { ...arrow.drawLocals, ...locals }),
+      (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, { ...arrow.drawLocals, ...locals }),
+      batch => window.ASMTraceModel.loopSamples(document, frame, batch)));
+    const ids = new Set();
+    expanded.forEach(arrow => {
+      if (ids.has(arrow.id)) throw new Error(`本幀 @arrow 展開後 ID 重複：${arrow.id}`);
+      ids.add(arrow.id);
+    });
     renderArrowModels(rootSvg, root, document, frame, placements, elements,
-      arrows.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
+      expanded.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
   }
 
   function renderDecorations(root, document, frame, startY, placements, elements, options = {}) {
@@ -3627,8 +3669,7 @@
     if (options.rootId) rootAttributes.id = options.rootId;
     const root = svg('g', rootAttributes);
     parent.append(root);
-    const highlights = window.ASMTraceRules.evaluate(document, frame);
-    applyFixedEventStyles(document, frame, highlights);
+    const highlights = evaluateFrameHighlights(document, frame);
     const diff = window.ASMTraceModel.diffFrame(previousFrame, frame);
     const placements = new Map();
     const elements = new Map();
@@ -4246,9 +4287,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-186';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-193';
   window.ASMTraceRenderers = {
-    build: 'trace-186', updatePresentedHints,
+    build: 'trace-193', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

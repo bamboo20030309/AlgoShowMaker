@@ -5,7 +5,7 @@
 
 - 文件語言：繁體中文
 - 適用介面：演算法編輯器、Trace Studio、演算法投影片編輯器與投影片播放介面
-- 最後核對日期：2026/09/17
+- 最後核對日期：2026/09/18
 
 > 本手冊介紹 `// @frame` 這套追蹤語法。它和直接呼叫 `AV.hpp` 的傳統 `av.draw(...)`
 > 繪圖 API 是兩套不同入口；使用追蹤語法時，不需要自行呼叫 `av.start_draw()`。
@@ -31,6 +31,7 @@
 17. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
 18. [完整使用案例](#完整使用案例)
 19. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
+    - [`@events`：每幀事件動畫控制](#events每幀事件動畫控制)
 20. [程式碼片段與條件著色](#程式碼片段與條件著色)
 21. [常見錯誤與限制](#常見錯誤與限制)
 22. [文件維護規則](#文件維護規則)
@@ -99,7 +100,7 @@ arr[i] = key;
 
 ### 附屬指令套用到前一個 `@frame`
 
-`@text`、`@style`、`@segment`、`@place`、`@arrow` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
+`@text`、`@style`、`@segment`、`@place`、`@arrow`、`@events`、`@automark` 會附加到原始碼中位於它們上方、距離最近的 `@frame`。
 建議緊接著書寫，避免日後移動程式碼時造成誤解。
 
 ```cpp
@@ -139,6 +140,8 @@ arr[i] = key;
 | `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 僅 `showWidth` | 不支援 |
 | `@place` | 將已顯示物件綁到另一物件的錨點 | 不支援 | 必須指定 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@arrow` | 連接兩個視覺目標 | 支援 | 端點各自指定 | 端點各自支援 | 支援 | 不支援 | 專用樣式修飾詞 | 不支援 |
+| `@events` | 控制本幀全部或指定種類事件動畫 | 不支援 | 不支援 | 不支援 | 支援（幀擷取狀態） | 不支援 | 不支援 | 不支援 |
+| `@automark` | 選擇本幀顯示自動固定標記的陣列 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
 
 建議的修飾詞排列方式是：
 
@@ -289,7 +292,7 @@ arr[i] = key;
 ```
 
 或使用 `// @camera auto`，讓每幀自動捕捉。區塊支援 `@camera`、`@object`、`@place`、
-`@style`、`@segment`、`@text`、`@arrow`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
+`@style`、`@segment`、`@text`、`@arrow`、`@events`、`@automark`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
 一份程式只定義一個 defaults 區塊，不可巢狀，必須以 `@enddefaults` 結束。
 
 每幀在當前作用域重新解析變數與運算式；遞迴參數 `arr` 會指向該次呼叫的陣列，
@@ -606,6 +609,21 @@ void quick_sort(vector<int>& arr, int low, int high) {
 
 `${...}` 支援與索引運算式相同的安全運算語法，所需變數會自動捕捉。
 
+陣列或 vector 可直接展開成文字，不必在 C++ 中另外組字串：
+
+```cpp
+// @text "${i}*${prime}" at isprime.top
+// @text "${prime[0:iteration.last(j)]}" at isprime.top
+// @text "${prime[1:2]}" at isprime.top
+```
+
+若 i=11、prime={2,3,5,7}，第一行顯示 `11*[2,3,5,7]`；第三行顯示 `[3,5]`。
+範圍包含起點與終點，並以目前幀的陣列快照求值；`[:]` 取全部、`[:終點]` 從0開始、
+`[起點:]` 取到最後。超出陣列的範圍只取實際存在的元素，反向或無交集範圍顯示 `[]`；
+端點必須是可解析的整數，無法求值時保留既有空文字行為。空陣列顯示 `[]`，
+巢狀陣列保留中括號，字串元素加上雙引號。JSON樣式文字、TTS模板及 @for 局部索引同樣支援。
+`iteration.last(j)` 沿用既有迴圈生命週期判定；此語法不改變它選擇迴圈的規則。
+
 ### 命名文字物件
 
 ```cpp
@@ -662,7 +680,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
 ### 基本格式
 
 ```cpp
-// @style 目標 樣式類型 [顏色] [as ID] [when 條件]
+// @style 目標 樣式[,樣式...] [顏色] [as ID] [when 條件]
 ```
 
 支援五種樣式：
@@ -676,6 +694,20 @@ void quick_sort(vector<int>& arr, int low, int high) {
 | `focus` | 保留指定片段正常顯示，將其他格子以指定顏色弱化 |
 
 所有 `point` 與 `highlight` 共用同一套系統時間節奏；畫布更新、切換幀或產生縮圖時不會各自重新起跳。
+
+### 一次套用多個樣式
+
+樣式名稱用逗號分隔，逗號前後可以留空白：
+
+```cpp
+// @style isprime[i] highlight,point
+// @style isprime[i] highlight,point AV_green when isprime[i]==1
+// @style arr[0:2,4] background,mark rgba(13, 102, 13, 0.8)
+```
+
+同一行的樣式共用目標、顏色與 `when` 條件；省略顏色時，各樣式保留自己的預設色。例如 `highlight,focus` 的框仍為紅色，其餘格子則以灰色弱化。若要指定不同顏色，分成多行撰寫。
+
+此寫法也能用於 `@defaults`、`@preset` 及 `@for` 區塊。覆寫按樣式類型分別處理，例如後續單獨修改 `highlight` 不會移除同一行的 `point`。空樣式、未知名稱及重複名稱會報錯。使用 `as group` 時，多樣式分別取得 `group:highlight`、`group:point` 等 ID；單樣式的 ID 保持原樣。
 
 陣列同時顯示 value 與 index 時，`highlight` 框會包含兩格的完整高度；交換、移動或縮放期間仍跟隨當下顯示的格子，不會因交換暫用格子副本而消失。
 
@@ -786,6 +818,108 @@ for (auto& v : prime) {
 `showWidth(true)` 顯示區段寬度資訊；`@segment` 的 `with` 目前只支援 `showWidth(true|false)`。
 
 ## `@arrow`：連接視覺物件
+
+### 批次箭頭：使用者指定的繪圖迴圈
+
+```cpp
+// @frame source,target
+// @arrow for k in [0:n-1] step 2
+//   from source[k].bottom to target[k].top
+//   as "links" color AV_green when k != 0
+```
+
+也可以整條寫在一行。多行延續需使用連續的普通 `//` 註解，開頭為
+`from`、`to`、`as`、`color`、`width`、`head`、`line`、`dash` 或 `when`；
+不能跨越 C++ 敘述或另一個 `@` 指令。`when` 仍位於指令最後。
+
+- `[start:end]` 包含兩端，與樣式區間寫法一致；`step` 預設為 1，支援負步長。方向與範圍不合時產生零支箭頭。舊的 `start..end` 已移除，請改用方括號與冒號。
+- 起點、終點、步長可用既有運算式、陣列長度及 `iteration.last(...)`，必須解析為安全整數，步長不可為零。
+- `k` 是這條箭頭內的繪圖索引，在端點索引與 `when` 中使用，不修改同名 C++ 變數、不執行 C++ 迴圈、不新增 runtime 事件；範圍本身不可引用 `k`。
+- 子箭頭 ID 如 `links[0]`、`links[2]`，依索引穩定對應；同幀展開後 ID 衝突會報錯。
+- 每條批次指令最多展開 2048 個候選；超量、無法解析範圍或索引會明確報錯，不截斷。不存在的畫面端點仍依原箭頭規則隱藏。
+- 可放在 `@preset`／`@defaults` 中，沿用具名箭頭覆寫規則。
+
+使用者自行編寫線篩濃縮幀，可以放在內層 `j` 迴圈結束後：
+
+```cpp
+// @frame isprime[i],prime when i > 7
+// @events animate off
+// @arrow for k in [0:iteration.last(j)]
+//   from prime[k].bottom to isprime[i*prime[k]].top
+//   as "sieve_links" when i*prime[k] <= n
+```
+
+範圍由使用者指定；`iteration.last(j)` 提供這次迴圈最後位置，條件排除只觸發越界
+`break` 的格子。詳細幀不再擷取時，既有 scalar 事件仍可供該衍生值求值，不需新增繪圖幀。
+可執行完整範例：`algo-vis-backend/tests/fixtures/events-batch-sieve.cpp`。
+
+#### 直接使用實際迴圈值
+
+不必手動指定範圍，以下兩種寫法都使用指定變數在每次**進入本體**時的實際值：
+
+```cpp
+// @frame source,target
+// @arrow for j from source[j].bottom to target[j].top
+for(int j=0;j<n;j++){ /* 演算法 */ }
+```
+
+`for j` 在同一區塊及包住此幀的迴圈中尋找使用 `j` 的候選；只有一個時才自動對應。
+若上下兩個迴圈都使用 `j`，會報歧義錯誤，使用 `@loop as` 命名並明確指名：
+
+```cpp
+// @frame isprime[i],prime when i > 7
+// @events animate off
+// @arrow for j in "sieve_loop"
+//   from prime[j].bottom to isprime[i*prime[j]].top
+//   as "sieve_links" when i*prime[j] <= n
+// @loop as "sieve_loop"
+for(int j=0;j<prime.size();j++){
+  if(i*prime[j]>n) break;
+  isprime[i*prime[j]]=0;
+  // 詳細幀可在這裡加上 when i<=7
+  if(i%prime[j]==0) break;
+}
+```
+
+- `@loop as "名稱"` 必須緊接在 `for`、`while` 或 `do` 之前，名稱不可重複。
+- 幀可放在迴圈前、本體內或迴圈後：前面引用接下來的執行回合，後面引用剛結束的回合；外層迴圈與函式／遞迴呼叫分開對應，不合併其他回合。
+- trace 完成後才展開箭頭，演算法只執行一次。額外紀錄是內部入口資料，不是可播放事件，也不產生自動摘要。
+- `for`／`while` 最後一次條件為假不記值；`do while` 至少記第一次入口。`break` 所在的入口會保留，`continue` 也不丟失入口。
+- 保留重複值；子箭頭 ID 使用實際回合與入口序號，因此同一個 `j` 值出現多次不衝突。不是推算連續整數區間。
+- 變數必須在本體入口可見，且入口值須為安全整數。本體裡才宣告的變數無法使用；空迴圈展開零支箭頭。
+- 幀需位於該迴圈相同的外層回合中；無法對應目前回合時明確報錯。端點与條件除繪圖索引外，仍使用幀當下的狀態。
+- 每條指令仍限制 2048 個候選，沿用條件、preset、多行與共用箭頭模型。
+
+可執行線篩範例：`algo-vis-backend/tests/fixtures/loop-batch-sieve.cpp`，將 i>7 的濃縮幀放在內層迴圈前。
+
+#### 共用繪圖迴圈：@for／@endfor
+
+讓同一幀的 `@style`、`@arrow`、`@text` 共用繪圖索引，不需每條指令各自對應迴圈：
+
+```cpp
+// @frame use sieve_view_i,camera when i>7
+// @events animate off
+// @for j in "sieve_loop"
+//   @style prime[j] highlight when i*prime[j]<=n
+//   @style isprime[i*prime[j]] background AV_green when i*prime[j]<=n
+//   @arrow from prime[j].bottom to isprime[i*prime[j]].top
+//     as "links" when i*prime[j]<=n
+//   @text "j=${j}" at prime[j].bottom offset(0,20) when i*prime[j]<=n
+// @endfor
+// @loop as "sieve_loop"
+for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
+```
+
+- 三種開頭：`@for j` 自動對應唯一迴圈；`@for j in "名稱"` 具名對應；`@for k in [start:end] [step expression]` 手動範圍。沿用前／內／後引用與實際入口值規則。
+- 區塊附屬上方的幀，只接受連續的 `//` 繪圖指令及說明註解，不可穿插 C++、`@frame`、`@events`、`@keep`、`@camera` 等其他指令。用 `@endfor` 結束，不接受參數；缺少或多餘結束指令會報錯。
+- 可以放在 preset／defaults；也可巢狀使用不同索引，內層手動範圍可讀取外層索引。不可重複索引名稱，`value`／`index` 保留給樣式條件；區塊外不保留繪圖索引。
+- `@style` 的單點／範圍選擇器與條件、`@text` 的運算式／條件／格子定位、`@arrow` 的端點／條件都能使用索引。其餘變數讀取本幀狀態；區塊文字條件不套用先前 compare 事件的快照。
+- 重複入口可產生多個不同 ID 的箭頭／文字；樣式對相同格子合併，沿用既有覆寫順序。重載仍保留區塊描述與相同子 ID。
+- 區塊箭頭以來源迴圈及本體入口序號區分繪圖槽，跨外層回合保持相同 ID；同一槽的端點改變時會位移，新增／移除槽則淡入／淡出。入口值重複仍使用不同序號，runtime 回合資料保持隔離。手動範圍則按索引值區分。
+- 不新增幀、不更改 C++ 變數、不重跑演算法。只有實際迴圈引用才使用內部入口紀錄；純手動範圍不插入 LoopScope。
+- 每條指令的巢狀組合限制 2048 個候選，不截斷；區塊內另用 `@arrow for` 時也受組合限制，請使用不同索引並縮小範圍。空範圍／空迴圈產生零個子指令。
+
+完整範例：`algo-vis-backend/tests/fixtures/drawing-loop-sieve.cpp`。
 
 `@arrow` 把兩個語意目標連起來，並附屬到它上方最近的 `@frame`。它和 Trace Studio 箭頭、遞迴 layout 自動箭頭共用 Arrow Model，實際線段邊距與箭頭頭部沿用原本 `drawArrow` 的幾何邏輯。
 
@@ -1247,6 +1381,38 @@ vector<vector<int>> grid(rows, vector<int>(cols));
 
 ## 事件動畫與 Trace Studio
 
+### `@events`：每幀事件動畫控制
+
+```cpp
+// @frame arr
+// @events animate off
+
+// @frame arr
+// @events compare,read animate off when i > 7
+// @events write animate on when i <= 7
+```
+
+語法為 `@events [種類列表] animate on|off [when 條件]`。省略種類等同 `all`。
+支援 `declare`、`scope-exit`、`visual-exit`、`read`、`write`、`assign`、
+`sequence-operation`、`compare`、`swap`、`fixed`、`call`、`function-enter`、
+`function-exit`。內部 `condition` 不提供控制，`all animate on` 也不開啟它。
+
+規則只附屬上方最近的 `@frame`，影響該幀所涵蓋的事件，**不是從此切換全域播放模式**。
+略過詳細幀而累積到此幀的事件，也在此幀套用規則。`when` 使用該幀擷取的狀態求值，
+不成立保持原設定；若需要事件發生當下的條件，應在對應位置擷取另一幀。
+条件無法解析會報錯，不默認通過或關閉。
+
+`off` 不刪除事件、執行資料或修改演算法結果；只是直接呈現結果，不排該類事件動畫。
+框架的換幀、版面、鏡頭及使用者箭頭呈現仍沿用原設定。
+省略種類或指定 `all` 的 `animate on/off` 不改變 `fixed`：自動固定是持續狀態，仍依全域／當幀固定開關與 `@automark` 顯示。
+明確指定 `@events fixed animate off/on` 的舊來源維持相容；關閉時該幀不顯示新自動固定標記。
+指令箭頭的出入場／端點位移、style 填色／框線過渡及 blink／bounce 動畫不受此事件開關影響。
+
+支援 `@preset`／`@defaults`：預設先套用，再由所用 preset 由左至右套用，最後套用當幀規則。
+同一事件以最後符合條件的規則為準，來源指令優先於 Studio 已保存的事件開關。
+Studio 對受來源控制的事件標示 `@events` 原因並停用直接切換；修改來源指令後 RUN。
+未寫 `@events` 的幀維持原本事件設定與操作。
+
 追蹤器目前會辨識下列事件：
 
 | 事件 | 初始預設動畫 | 初始預設開啟 |
@@ -1328,6 +1494,42 @@ for (int i = 0; i < n; i++) {
 
 自動固定不是一般逐一播放事件，而是系統依 runtime identity 分析某個格子最後一次被存取的位置。
 只有確認後續不再使用的格子才會標記，並在右側事件區的下方獨立控制。
+
+固定標記在一般播放、回看與編輯動畫使用相同的累積狀態，不會因條件style更新而消失。
+當幀新增的固定標記在轉場完成後顯示，先前幀的固定標記持續保留。
+
+#### `@automark`：指定顯示自動固定的陣列
+
+```cpp
+// @frame isprime,prime
+// @automark isprime
+
+// @frame isprime,prime
+// @automark isprime,prime
+
+// @frame isprime,prime
+// @automark none
+```
+
+第一幀只在isprime顯示自動固定；第二幀允許兩個陣列；第三幀隱藏所有自動固定標記。
+它只選擇顯示對象，不改最後存取分析、事件記錄或手動 `@style ... mark`；
+也不強制啟用全域／本幀設定已關閉的自動固定。未寫指令的下一幀沿用既有設定，不繼承上一幀白名單。
+
+可以放進preset或defaults：先套用defaults，再依use順序套用preset，最後套用本地指令；
+同一層有多條時最後一條生效。
+
+```cpp
+// @preset sieve_view
+// @object isprime
+// @object prime
+// @automark isprime
+// @endpreset
+```
+
+名稱須在使用該幀的位置可見，支援現有自動固定可處理的一維陣列與序列容器；
+若指定未顯示的陣列，只捕捉資料，不會替它新增畫面物件。
+同一個runtime物件的參照別名會一起匹配。空列表、重複／不可見名稱或不支援型別會報錯；
+目前不接受格子範圍、when或其他修飾詞。`none` 是保留字，單獨使用表示空白名單。
 
 ### 三個介面的一致性
 

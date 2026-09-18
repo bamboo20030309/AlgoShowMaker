@@ -1,1 +1,52 @@
-{"decks":[{"id":"linear-sieve","title":"線性篩（Euler’s Sieve）","category":"Math","archive":"/guest-decks/linear-sieve.asmdeck"}]}
+{
+  "decks": [
+    {
+      "id": "quick-sort",
+      "title": "快速排序",
+      "categories": [
+        "Sorting"
+      ],
+      "archive": "/guest-decks/quick-sort.asmdeck"
+    },
+    {
+      "id": "bubble-sort",
+      "title": "冒泡排序",
+      "categories": [
+        "Sorting"
+      ],
+      "archive": "/guest-decks/bubble-sort.asmdeck"
+    },
+    {
+      "id": "selection-sort",
+      "title": "選擇排序",
+      "categories": [
+        "Sorting"
+      ],
+      "archive": "/guest-decks/selection-sort.asmdeck"
+    },
+    {
+      "id": "insertion-sort",
+      "title": "插入排序",
+      "categories": [
+        "Sorting"
+      ],
+      "archive": "/guest-decks/insertion-sort.asmdeck"
+    },
+    {
+      "id": "heap-sort",
+      "title": "堆積排序",
+      "categories": [
+        "Sorting"
+      ],
+      "archive": "/guest-decks/heap-sort.asmdeck"
+    },
+    {
+      "id": "linear-sieve",
+      "title": "線篩 (Linear-Sieve)",
+      "categories": [
+        "Math"
+      ],
+      "archive": "/guest-decks/linear-sieve.asmdeck"
+    }
+  ]
+}

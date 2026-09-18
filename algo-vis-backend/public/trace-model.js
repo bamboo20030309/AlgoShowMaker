@@ -139,6 +139,44 @@
       });
     });
 
+    // A conditional @frame may capture no state inside a later loop lifetime.
+    // Recover just those uncaptured lifetimes from existing scalar events.
+    // Keep snapshot-based values for captured lifetimes (including "last body
+    // index" rather than the terminal i++ value).
+    const activeEventGroups = new Map();
+    frames.forEach((frame, frameIndex) => {
+      const activation = iterationActivationKey(frame);
+      [...(frame.events || [])].sort((a,b) => Number(a.order)-Number(b.order)).forEach(event => {
+        const target = (event.targets || []).find(target => target.role === 'target');
+        const variableId = target?.variableId;
+        const variable = document.variables?.[variableId];
+        if (!variableId || !variable || !['scalar', 'string'].includes(variable.kind)
+          || target.indexExpression) return;
+        if (variable.functionName && frame.source?.function
+          && variable.functionName !== frame.source.function) return;
+        const activeKey = `${activation}\u0000${variableId}`;
+        if (event.type === 'declare') {
+          const lifetime = String(target.lifetimeIdentity || '');
+          const key = `${activation}\u0000${variable.name}\u0000${variableId}\u0000${lifetime || variableId}`;
+          if (!groups.has(key)) {
+            groups.set(key, { activation, name: variable.name, variableId, lifetime,
+              declarationLine: Number(variable.line) || 0,
+              first: frameIndex, last: frameIndex,
+              lastValue: scalarValue(event.payload?.value), eventOnly: true });
+          }
+          activeEventGroups.set(activeKey, groups.get(key));
+        }
+        const group = activeEventGroups.get(activeKey);
+        if (!group?.eventOnly) return;
+        group.last = frameIndex;
+        if (['assign','write'].includes(event.type) && event.payload?.after) {
+          const value = scalarValue(event.loopBoundary ? event.payload.before : event.payload.after);
+          if (value != null && typeof value !== 'object') group.lastValue = value;
+        }
+        if (event.type === 'scope-exit') activeEventGroups.delete(activeKey);
+      });
+    });
+
     const groupsByContextName = new Map();
     groups.forEach(group => {
       const key = `${group.activation}\u0000${group.name}`;
@@ -210,6 +248,8 @@
       styles: Array.isArray(frame.styles) ? clone(frame.styles) : [],
       segments: Array.isArray(frame.segments) ? clone(frame.segments) : [],
       arrows: Array.isArray(frame.arrows) ? clone(frame.arrows) : [],
+      eventControls: Array.isArray(frame.eventControls) ? clone(frame.eventControls) : [],
+      autoMarkVariableIds: Array.isArray(frame.autoMarkVariableIds) ? clone(frame.autoMarkVariableIds) : null,
       camera: frame.camera && typeof frame.camera === 'object' ? clone(frame.camera) : null,
       snapshotIds: Array.isArray(frame.snapshotIds) ? clone(frame.snapshotIds) : [],
       keepLastFocus: frame.keepLastFocus === true
@@ -217,6 +257,7 @@
     const normalized = {
       schemaVersion: source.schemaVersion || '1.0',
       generatedAt: source.generatedAt || '',
+      loopRecords: Array.isArray(source.loopRecords) ? clone(source.loopRecords) : [],
       sourceCode: typeof source.sourceCode === 'string' ? source.sourceCode : '',
       sourceDeclarations: Array.isArray(source.sourceDeclarations) ? clone(source.sourceDeclarations) : [],
       sourceStructure: Array.isArray(source.sourceStructure) ? clone(source.sourceStructure) : [],
@@ -235,6 +276,7 @@
       studio: source.studio && typeof source.studio === 'object' ? clone(source.studio) : {},
       asmView: source.asmView && typeof source.asmView === 'object' ? clone(source.asmView) : null
     };
+    window.ASMTraceEvents?.rebuildLoopBoundaryEvents?.(normalized);
     Object.defineProperty(normalized, 'iterationSummaries', {
       value: buildIterationSummaries(normalized),
       writable: true,
@@ -299,7 +341,87 @@
     return changes;
   }
 
+  function loopSamples(document, frame, batch) {
+    const records = document.loopRecords || [];
+    const context = frame.source?.loopContext || [];
+    const active = context.find(item => item.loopId === batch.loopId);
+    const parents = batch.parentLoopIds || [];
+    const activation = frame.source?.recursionActivationId || '';
+    const candidates = records.filter(record => record.phase === 'start' && record.loopId === batch.loopId
+      && (record.recursionActivationId || '') === activation
+      && parents.every(id => {
+        const left = context.find(item => item.loopId === id);
+        const right = record.loopContext?.find(item => item.loopId === id);
+        return left && right && left.instanceId === right.instanceId && left.ordinal === right.ordinal;
+      }));
+    const position = frame.source?.tracePosition;
+    const selected = active ? candidates.find(record => record.instanceId === active.instanceId)
+      : batch.position === 'before' ? candidates.find(record => record.position > position)
+      : candidates.filter(record => record.position < position).at(-1);
+    if (!selected) throw new Error(`第 ${batch.line || '?'} 行的 @arrow for 無法對應目前回合的迴圈；請將幀放在該迴圈所在的外層回合內`);
+    return records.filter(record => record.phase === 'entry' && record.instanceId === selected.instanceId).map(record => {
+      const value = scalarValue(record.values?.[batch.variable]);
+      if (!Number.isSafeInteger(value)) throw new Error(`@arrow for ${batch.variable} 的本體入口值必須是安全整數`);
+      return { value, ordinal: record.ordinal, instanceId: selected.instanceId };
+    });
+  }
+
+  function drawingDirectives(document, frame, field) {
+    const output = [];
+    for (const item of frame?.[field] || []) {
+      if (!item.drawLoops?.length) { output.push(item); continue; }
+      const fail = message => { throw new Error(`第 ${item.line || '?'} 行的 @for ${message}`); };
+      let contexts = [{ locals: {}, path: '', rolePath: '' }];
+      for (const scope of item.drawLoops) {
+        const next = [];
+        for (const context of contexts) {
+          let samples;
+          if (scope.kind === 'loop') samples = loopSamples(document, frame, scope);
+          else {
+            const values = [scope.startExpression, scope.endExpression, scope.stepExpression || '1']
+              .map(expression => window.ASMTraceRules.resolveExpression(document, frame, expression, context.locals));
+            if (values.some(value => !Number.isSafeInteger(value)) || !values[2]) fail('範圍與步長必須為安全整數，且 step 不可為零');
+            const [start, end, step] = values;
+            const count = step > 0 && start > end || step < 0 && start < end ? 0 : Math.floor((end - start) / step) + 1;
+            if (!Number.isSafeInteger(count) || count > 2048) fail('展開數量超過 2048 次');
+            samples = Array.from({ length: count }, (_, ordinal) => ({ value: start + ordinal * step }));
+          }
+          if (samples.length + next.length > 2048) fail('展開數量超過 2048 次');
+          for (const sample of samples) next.push({ locals: { ...context.locals, [scope.variable]: sample.value },
+            path: context.path + `/${scope.id}~${sample.instanceId || ''}[${sample.instanceId ? sample.ordinal : sample.value}]`,
+            // An arrow's visual slot persists across invocations of the same
+            // source loop. Runtime instance IDs identify data, not arrow roles.
+            rolePath: context.rolePath + `/${scope.id}~${scope.loopId || ''}[${sample.instanceId ? sample.ordinal : sample.value}]` });
+        }
+        contexts = next;
+      }
+      for (const { locals, path, rolePath } of contexts) {
+        const resolveIndices = endpoint => {
+          if (!endpoint) return endpoint;
+          const expressions = endpoint.indexExpressions || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
+          const values = expressions.map(expression => window.ASMTraceRules.resolveExpression(document, frame, expression, locals));
+          if (values.some(value => !Number.isSafeInteger(value))) fail('端點索引無法解析為安全整數');
+          return { ...endpoint, indexExpressions: values.map(String), indexExpression: values.join(',') };
+        };
+        const expanded = { ...item, id: `${item.id}@${field === 'arrows' ? rolePath : path}`, drawLoops: [], drawLocals: locals,
+          drawCandidateCount: contexts.length, drawSourceId: item.id };
+        if (field === 'texts') {
+          if (!window.ASMTraceRules.textExpressionMatches(document, frame, item.when, locals)) continue;
+          expanded.binding = resolveIndices(item.binding);
+        }
+        if (field === 'arrows' && !item.batch) {
+          if (!window.ASMTraceRules.expressionMatches(document, frame, item.when, locals)) continue;
+          expanded.from = resolveIndices(item.from); expanded.to = resolveIndices(item.to); expanded.when = null;
+        }
+        output.push(expanded);
+      }
+    }
+    return output;
+  }
+
   window.ASMTraceModel = {
+    drawingDirectives,
+    loopSamples,
     clone,
     normalizeData,
     defaultRenderer,

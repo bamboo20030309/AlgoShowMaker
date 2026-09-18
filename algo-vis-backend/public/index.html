@@ -7,13 +7,13 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=drop-import-8" />
+  <link rel="stylesheet" href="home.css?v=brand-favicon-16" />
 </head>
 
 <body>
   <header class="app-header">
     <a class="brand" href="/" aria-label="AlgoShowMaker 首頁">
-      <span class="brand-mark">A</span>
+      <img class="brand-mark" src="favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
       <span>AlgoShowMaker</span>
     </a>
     <nav class="header-nav" aria-label="主要導覽">
@@ -36,7 +36,10 @@
     <section id="guestView" class="guest-view">
       <section class="guest-gallery" aria-labelledby="galleryTitle">
         <span class="eyebrow">公開投影片</span>
-        <a class="gallery-workspace-link" href="/">返回投影片工作區</a>
+        <a class="gallery-workspace-link quiet-btn" href="/">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h18" /></svg>
+          <span>返回投影片工作區</span>
+        </a>
         <h1 id="galleryTitle">演算法投影片</h1>
         <p class="gallery-intro">從分類挑選演算法，點開投影片即可觀賞，不需登入。</p>
         <nav id="galleryCategories" class="gallery-categories" aria-label="演算法分類"></nav>
@@ -127,10 +130,13 @@
             <input id="searchInput" type="search" placeholder="搜尋投影片" autocomplete="off" />
           </label>
           <span id="deckCount" class="deck-count"></span>
+          <button id="createFolderBtn" class="quiet-btn" type="button" disabled>＋ 新增資料夾</button>
         </div>
 
         <div id="libraryMessage" class="library-message" role="status" aria-live="polite"></div>
-        <div id="deckGrid" class="deck-grid"></div>
+        <div id="libraryLayoutMessage" class="library-message" role="status" aria-live="polite"></div>
+        <nav id="libraryFolderNav" class="library-folder-nav" aria-label="投影片資料夾"></nav>
+        <div id="deckGrid" class="gallery-folders"></div>
 
         <div id="emptyState" class="empty-state" hidden>
           <div class="empty-preview" aria-hidden="true">
@@ -165,6 +171,61 @@
     </form>
   </dialog>
 
+  <dialog id="folderDialog" class="deck-dialog" aria-labelledby="folderDialogTitle">
+    <form id="folderDialogForm">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">投影片整理</span>
+          <h2 id="folderDialogTitle">新增資料夾</h2>
+        </div>
+        <button id="closeFolderDialogBtn" class="icon-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <label for="folderTitleInput">資料夾名稱</label>
+      <input id="folderTitleInput" type="text" maxlength="80" required placeholder="例如：排序演算法" />
+      <div id="folderDialogMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelFolderDialogBtn" class="quiet-btn" type="button">取消</button>
+        <button id="submitFolderBtn" class="primary-btn" type="submit">建立資料夾</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="deleteFolderDialog" class="deck-dialog" aria-labelledby="deleteFolderTitle">
+    <form id="deleteFolderForm">
+      <div class="dialog-heading">
+        <div><span class="eyebrow">投影片整理</span><h2 id="deleteFolderTitle">移除資料夾</h2></div>
+        <button id="closeDeleteFolderBtn" class="icon-btn" type="button" aria-label="關閉">×</button>
+      </div>
+      <p id="deleteFolderName"></p>
+      <p class="category-help">只會移除資料夾，不會刪除投影片。投影片會保留其他分類；沒有其他分類的會移回未分類。</p>
+      <div id="deleteFolderMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelDeleteFolderBtn" class="quiet-btn" type="button">取消</button>
+        <button id="deleteFolderSubmit" class="danger-btn" type="submit">移除資料夾</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="categoryDialog" class="deck-dialog" aria-labelledby="categoryTitle">
+    <form id="categoryForm">
+      <div class="dialog-heading">
+        <div><span class="eyebrow">投影片整理</span><h2 id="categoryTitle">選擇分類</h2></div>
+        <button id="closeCategoryBtn" class="icon-btn" type="button" aria-label="關閉">×</button>
+      </div>
+      <p id="categoryDeckName"></p>
+      <p class="category-help">可以選擇多個分類；未勾選時列入未分類。</p>
+      <fieldset id="categoryChoices" aria-label="投影片分類"></fieldset>
+      <div id="categoryMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelCategoryBtn" class="quiet-btn" type="button">取消</button>
+        <button class="primary-btn" type="submit">儲存分類</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/vendor/fabric/fabric.min.js"></script>
   <script src="draw/draw_array_utils.js"></script>
   <script src="draw/draw_block.js"></script>
@@ -181,9 +242,11 @@
   <script src="deck-thumbnail.js?v=2"></script>
   <script src="trace-provenance.js?v=1"></script>
   <script src="asmdeck.js?v=1"></script>
-  <script src="guest-gallery.js?v=2"></script>
+  <script src="guest-gallery.js?v=3"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="home.js?v=drop-import-6"></script>
+  <script src="library-layout.js?v=2"></script>
+  <script src="library-organizer.js?v=7"></script>
+  <script src="home.js?v=thumbnail-drag-8"></script>
 </body>
 
 </html>

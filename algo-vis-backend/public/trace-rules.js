@@ -142,7 +142,7 @@
     return summary == null ? null : summary;
   }
 
-  function resolveExpression(document, frame, expression, locals = {}) {
+  function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
     const source = String(expression ?? '').trim();
     if (!source) return null;
     const tokens = [];
@@ -173,7 +173,7 @@
         cursor += compoundOperator[0].length;
         continue;
       }
-      if ('+-*/%()[].<>!'.includes(source[cursor])) {
+      if ('+-*/%()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
         tokens.push({ type: 'operator', value: source[cursor] });
         cursor += 1;
         continue;
@@ -237,9 +237,21 @@
       let data = found.entry?.data;
       while (peek('[')) {
         consume('[');
-        const index = parseAdditive();
-        if (index === invalid || !consume(']') || !Number.isInteger(Number(index))) return invalid;
-        data = itemAt(data, Number(index));
+        const index = allowTextSlices && peek(':') ? 0 : parseAdditive();
+        if (index === invalid || !Number.isInteger(Number(index))) return invalid;
+        if (allowTextSlices && peek(':')) {
+          consume(':');
+          const items = Array.isArray(data) ? data : data?.items;
+          if (!Array.isArray(items)) return invalid;
+          const end = peek(']') ? items.length - 1 : parseAdditive();
+          if (end === invalid || !Number.isInteger(Number(end))) return invalid;
+          const startIndex = Math.max(0, Number(index));
+          const endIndex = Math.min(items.length - 1, Number(end));
+          data = { kind: 'sequence', items: startIndex > endIndex ? [] : items.slice(startIndex, endIndex + 1) };
+        } else {
+          data = itemAt(data, Number(index));
+        }
+        if (!consume(']')) return invalid;
         if (data == null) return invalid;
       }
       if (peek('.')) {
@@ -365,6 +377,20 @@
     return value;
   }
 
+  function formatTextValue(value, arrayItem = false) {
+    const items = Array.isArray(value) ? value : value?.items;
+    if (Array.isArray(items)) {
+      return '[' + items.map(item => formatTextValue(item, true)).join(',') + ']';
+    }
+    const scalar = window.ASMTraceModel.scalarValue(value);
+    if (scalar == null) return '';
+    return arrayItem && typeof scalar === 'string' ? JSON.stringify(scalar) : String(scalar);
+  }
+
+  function resolveTextExpression(document, frame, expression, locals = {}) {
+    return formatTextValue(resolveExpression(document, frame, expression, locals, true));
+  }
+
   function expressionMatches(document, frame, condition, locals = {}) {
     if (!condition) return true;
     const expression = typeof condition === 'string' ? condition : condition.expression;
@@ -432,10 +458,13 @@
     return { ...frame, state };
   }
 
-  function textExpressionMatches(document, frame, condition) {
+  function textExpressionMatches(document, frame, condition, locals = {}) {
     if (!condition) return true;
+    // Drawing-loop conditions belong to this authored frame and its local
+    // entry values. Earlier folded compare events must not replace them.
+    if (Object.keys(locals).length) return expressionMatches(document, frame, condition, locals);
     const comparisonFrame = comparisonSnapshotForCondition(document, frame, condition);
-    return expressionMatches(document, comparisonFrame || frame, condition);
+    return expressionMatches(document, comparisonFrame || frame, condition, locals);
   }
 
   function conditionMatches(frame, condition) {
@@ -564,7 +593,7 @@
       AV_black: '#111827',
       AV_white: '#ffffff'
     };
-    for (const style of frame?.styles || []) {
+    for (const style of window.ASMTraceModel?.drawingDirectives?.(document, frame, 'styles') || frame?.styles || []) {
       const variableId = style.targetVariableId;
       const entry = frame?.state?.[variableId];
       if (!variableId || !entry) continue;
@@ -572,14 +601,14 @@
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
         if (selector?.type === 'index') {
-          const value = resolveExpression(document, frame, selector.indexExpression);
+          const value = resolveExpression(document, frame, selector.indexExpression, style.drawLocals);
           if (value == null) return [];
           const index = Number(value);
           return Number.isInteger(index) ? [index] : [];
         }
         if (selector?.type === 'range') {
-          const startValue = resolveExpression(document, frame, selector.startExpression);
-          const endValue = resolveExpression(document, frame, selector.endExpression);
+          const startValue = resolveExpression(document, frame, selector.startExpression, style.drawLocals);
+          const endValue = resolveExpression(document, frame, selector.endExpression, style.drawLocals);
           if (startValue == null || endValue == null) return [];
           const start = Number(startValue);
           const end = Number(endValue);
@@ -599,7 +628,7 @@
         const value = presentedValues?.has?.(index)
           ? window.ASMTraceModel.scalarValue(presentedValues.get(index))
           : window.ASMTraceModel.scalarValue(items[index]);
-        if (!expressionMatches(document, frame, style.when, { value, index })) return;
+        if (!expressionMatches(document, frame, style.when, { ...style.drawLocals, value, index })) return;
         const variableHighlights = highlights[variableId] ||= {};
         variableHighlights[String(index)] = mergeHighlightStyle(
           variableHighlights[String(index)],
@@ -668,7 +697,7 @@
     frameMatches,
     conditionMatches,
     variableEntry,
-    resolveExpression, iterationLastValue,
+    resolveExpression, resolveTextExpression, iterationLastValue,
     temporalValue,
     expressionMatches,
     textExpressionMatches,

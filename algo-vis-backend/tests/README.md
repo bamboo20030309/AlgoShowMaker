@@ -9,7 +9,28 @@
 
 ## 主代理完整回歸入口
 
+事件控制與批次箭頭新增專項：`events-batch-arrows.test.js`（語法、條件、展開、線篩編譯與疏幀衍生值）、
+`events-batch-arrows.browser.test.js`（真實 SVG、事件排程與 JSON 重載）。
+兩者需先設定 `ASM_TEST_BASE_URL` 指向獨立測試服務，瀏覽器檔不回落到使用者開發服務。
+範例輸入為 `fixtures/events-batch-sieve.cpp`（明確 `[start:end]` 範圍）與 `fixtures/loop-batch-sieve.cpp`（內層迴圈前的具名濃縮幀）。專項另覆蓋 for／while／do while 入口值、break／continue、零次與重複值、前／內／後引用、具名消歧義、函式／遞迴回合隔離。瀏覽器只驗證線篩 i=8／9 定點與重載，未執行完整演算法集。
+
+共用繪圖區塊專項為 `drawing-loops.test.js`：局部索引、區塊邊界／錯誤、preset、樣式與文字定位、重複入口、巢狀範圍與組合上限。`fixtures/drawing-loop-sieve.cpp` 用同一個 j 展開 style、arrow、text；`events-batch-arrows.browser.test.js` 額外核對 i=9 的實際背景色、高亮外框、文字內容／定位、箭頭目標、事件排程及 JSON 重載。
+
+文字陣列專項為 `text-arrays.test.js` 與 `text-arrays.browser.test.js`，使用 `fixtures/text-arrays.cpp` 核對整個陣列、包含兩端的範圍、端點省略與邊界、空／巢狀／字串陣列、preset／@for局部索引、iteration.last(j)、快照回看及JSON重載。瀏覽器檔透過隔離服務RUN，檢查SVG、TTS與Studio；兩檔需設定 `ASM_TEST_BASE_URL`，不要使用主要服務。
+
+自動固定切幀專項為 `auto-fixed-playback.browser.test.js`，使用 `fixtures/auto-fixed-playback.cpp` 比較有條件style的靜態／動畫繪圖、前進／後退、當幀標記揭露時機、開Studio前後與JSON重載，另確認關閉自動固定後手動mark仍可見。需設定隔離 `ASM_TEST_BASE_URL`。
+
+`@automark`專項為 `automark.test.js`／`automark.browser.test.js`及 `fixtures/automark.cpp`：單／多陣列、none、defaults／preset／本地覆寫、格式錯誤、舊trace相容、runtime別名、事件保留與當幀SVG呈現；瀏覽器核對前進／後退／Studio／JSON重載和手動mark獨立。兩檔的compile／瀏覽器案例需設定隔離 `ASM_TEST_BASE_URL`。
+
 由主代理在需要完整驗證時於 algo-vis-backend 執行：
+
+`events-fixed-state.test.js`／`events-fixed-state.browser.test.js` 使用 `fixtures/automark-events-sieve.cpp`、輸入30，核對內層迴圈後的濃縮幀 i=8／9 自動固定、全域／當幀固定開關、明確fixed規則、零事件動畫steps、回看／JSON重載／Studio的實際SVG。需設定隔離 `ASM_TEST_BASE_URL`；搭配直接相關的 `drawing-arrow-animation.browser.test.js` 確認箭頭與style過渡保留。
+
+逗號樣式專項為 `style-list.test.js`（五種樣式、預設色、共用顏色／條件、ID、preset 覆寫、區塊與錯誤格式）及 `style-list.browser.test.js`（實際 SVG 的高亮框與 point 同時可見，條件過濾與 JSON 重載）。編譯及瀏覽器驗證需設定 `ASM_TEST_BASE_URL` 指向獨立服務。
+
+回放樣式專項 `style-replay.browser.test.js` 使用 `fixtures/style-replay-sieve.cpp`，只比較線篩 i=8／9 的實際 SVG：往前／往後、再次播放、JSON 重載及兩種速度的單次 autoplay；高亮、focus 填色與箭頭必須符合目的幀，事件關閉仍保留原資料。設定 `ASM_TEST_BASE_URL` 指向隔離服務，不播放整套演算法。
+
+`drawing-arrow-animation.browser.test.js` 取樣同一 fixture 的 i=8／9／10：同一繪圖槽的箭頭 ID 必須跨回合保留，既有箭頭的實際 SVG 端點移動，新增／移除箭頭淡入／淡出。分別開啟／關閉 runtime 事件，關閉時仍取樣到 style 填色過渡；JSON重載仍能位移。僅播放這些定點之間的局部切換。
 
 ```sh
 npm run regression
