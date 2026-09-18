@@ -12,9 +12,20 @@
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
   <link rel="stylesheet" href="slides.css?v=cell-style-102" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
+  <link rel="preload" href="/vendor/katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/vendor/katex/fonts/KaTeX_Math-Italic.woff2" as="font" type="font/woff2" crossorigin />
+  <script src="/vendor/katex/katex.min.js?v=0.16.22"></script>
+  <script src="/vendor/katex/auto-render.min.js?v=0.16.22"></script>
 </head>
 
 <body class="asm-edit-mode">
+  <script>
+    if (new URLSearchParams(window.location.search).has('sample')) {
+      document.body.classList.remove('asm-edit-mode');
+      document.body.classList.add('shared-view-only');
+    }
+  </script>
   <a class="chrome-home-link" href="/" title="返回我的投影片" aria-label="返回我的投影片">
     <svg class="chrome-home-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M3 10.8 12 3l9 7.8"></path>
@@ -724,7 +735,7 @@
   <script src="trace-provenance.js?v=trace-5"></script>
   <script src="asmdeck.js?v=5"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="slides.js?v=cell-style-191"></script>
+  <script src="slides.js?v=sample-math-load-192"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

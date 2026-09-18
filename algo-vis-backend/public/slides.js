@@ -2827,6 +2827,7 @@
       content.dataset.latexSource = latexSource;
       content.textContent = latexSource;
       el.appendChild(content);
+      renderMathWidgets(content);
     }
     positionWidgetContent(el, widget);
     const handles = widget.type === 'code' || widget.type === 'structure'
@@ -9576,6 +9577,23 @@
 
   function initReveal() {
     reveal = window.Reveal;
+    const localMathPlugin = {
+      id: 'katex',
+      init(instance) {
+        instance.on('ready', () => {
+          window.renderMathInElement?.(instance.getSlidesElement(), {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '$', right: '$', display: false },
+              { left: '\\(', right: '\\)', display: false },
+              { left: '\\[', right: '\\]', display: true }
+            ],
+            ignoredClasses: ['latex-content']
+          });
+          instance.layout();
+        });
+      }
+    };
     reveal.initialize({
       hash: false,
       controls: true,
@@ -9597,7 +9615,7 @@
         window.RevealNotes,
         window.RevealSearch,
         window.RevealHighlight,
-        window.RevealMath && window.RevealMath.KaTeX
+        window.katex && localMathPlugin
       ].filter(Boolean)
     }).then(() => {
       revealReady = true;
@@ -9626,7 +9644,11 @@
       reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();
       syncAlgorithmFrameVisibility();
-      setTimeout(refreshRevealWidgets, 1200);
+      refreshRevealWidgets();
+      document.fonts?.ready.then(() => {
+        autoSizeLatexWidgets(slidesRoot);
+        reveal.layout();
+      });
     });
   }
 
