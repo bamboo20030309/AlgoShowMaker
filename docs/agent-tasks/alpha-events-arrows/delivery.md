@@ -83,13 +83,10 @@ node --test --test-concurrency=1 tests/events-batch-arrows.test.js tests/events-
 - 共用欄位 frame.eventControls、arrow.batch；多代理修改相同 trace 模組或快取版本時需核對行為與版本。
 - 公開 Docker、遠端 DB、演算法投影片嵌入介面未驗證，不能用本次隔離 Windows SVG 結果代替。
 
-## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：本次未執行；整合後由主代理按差異決定範圍。
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+## 主代理核實與整合（2026-09-18）
+- 狀態：已核實並合併 intergration。
+- 完整受測程式：5a358dfa30c96879fa510d8a00cd1c8085feb287；合併後程式：2763b0922b72ca3e05024b82cc3d5c72fc38df94。
+- 審查、52 項相關驗證、實際演算法投影片 iframe 定點、剩餘範圍：詳見 [整合驗證紀錄](../2026-09-18-events-structure-integration.md)。
+- 完整 regression／廣泛排序：未執行，依影響範圍使用上述專項。
+- 3100 已重啟，PID 41728；main 與 Docker 保持不變。
+- Push：依使用者授權推送 origin/intergration，以主代理最終遠端核對結果為準；未部署或 release。
