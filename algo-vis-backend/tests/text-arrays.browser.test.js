@@ -54,6 +54,40 @@ test('array text interpolation renders in SVG, TTS, Studio and after snapshot re
     assert.equal(result.reload.completed.text, '[2,3,5]');
     const rowTexts = Object.entries(result.reload).filter(([id]) => id.startsWith('row')).map(([, value]) => value.text);
     assert.deepEqual(rowTexts.sort(), ['[2,3]', '[5,7]']);
+
+    const embeddedSource=await page.evaluate(()=>JSON.parse(JSON.stringify(ASMTracePlayer.getDocument())));
+    const slidePage=await browser.newPage({viewport:{width:1440,height:1000}});
+    slidePage.on('pageerror',error=>errors.push(error.message));
+    await slidePage.addInitScript(deck=>localStorage.setItem('asm_reveal_fabric_deck_v5',JSON.stringify(deck)),{groups:[{id:'embed-group',slides:[{id:'embed-slide',kind:'algorithm-animation',animation:{mode:'trace',code:embeddedSource.sourceCode,traceDocument:embeddedSource},canvas:{objects:[]},widgets:[]}]}]});
+    await slidePage.goto(base+'/slides.html');
+    await slidePage.waitForFunction(()=>document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length);
+    const runtime=slidePage.frames().find(frame=>frame.url().includes('asmEmbed=runtime'));
+    assert.ok(runtime,'actual algorithm slide iframe loaded');
+    const embedded=await runtime.evaluate(async () => {
+      const player = window.ASMTracePlayer, original = JSON.parse(JSON.stringify(player.getDocument()));
+      const read = () => Object.fromEntries([...document.querySelectorAll('#asm-trace-root [data-trace-text-id]')]
+        .filter(node => !node.closest('.asm-trace-transition-ghost-motion'))
+        .map(node => [node.dataset.traceTextId, {
+          text: [...node.querySelectorAll('.asm-trace-text-segment-value')].map(segment => segment.textContent).join(''),
+          speech: JSON.parse(node.getAttribute('data-tts-lines') || '[]').join(''),
+          fonts: [...node.querySelectorAll('.asm-trace-text-segment-value')].map(segment => segment.getAttribute('font-size'))
+        }]));
+      const render = async index => { await player.render(index, { animatePositions: false, animateEvents: false }); return read(); };
+      const first = await render(0);
+      const last = await render(original.frames.length - 1);
+      const back = await render(0);
+      const indices = original.frames.map((frame, index) => frame.texts.some(text => text.id === 'completed') ? index : -1).filter(index => index >= 0);
+      const completed = [];
+      for (const index of indices) completed.push(await render(index));
+      player.apply(JSON.parse(JSON.stringify(original)));
+      const reload = await render(indices[1]);
+      await window.ASMTraceStudio.open();
+      await player.render(0, { animatePositions: false, animateEvents: false });
+      const studio = read();
+      return { first, last, back, completed, reload, studio };
+    });
+    assert.deepEqual(embedded.first,result.first,'embedded array text, fonts and TTS match');
+    assert.deepEqual(embedded.completed,result.completed,'embedded slices preserve loop snapshots');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
