@@ -8,7 +8,8 @@
 - 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad；箭頭 identity 1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22；最新文字預設 b4166453905cbbc539db9bf31082faef24b93edd。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：最新程式 commit b4166453905cbbc539db9bf31082faef24b93edd 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- 最新程式修正 commit：243d062a0d7de58ce9fef092d11017123f5c97e3（文字陣列展開；前述commit為歷史交付）。
+- Push：最新程式 commit 243d062a0d7de58ce9fef092d11017123f5c97e3 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
 ## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
@@ -266,6 +267,30 @@ node --test --test-concurrency=1 tests/drawing-arrow-animation.browser.test.js t
 - 手動重跑：在隔離algorithm.html提供上述一幀trace，查看各.asm-trace-text-segment-value的font-size及computed fontSize，再開啟Studio點選預設片段，確認.trace-studio-font-size-popover input為14。自訂物件樣式key為text:stored，分段自訂fontSize10，預設片段不設fontSize；JSON片段由findFrameDirectives解析取得預設14。
 - 證據：既有字級／入口測試；本機test-results/alpha-text-font-validation.output／tap／server.log及browser.cjs未提交，可能被覆蓋或清理。未為低影響預設值新增永久測試。
 - 未驗證：投影片嵌入、公開Docker、遠端資料庫；main尚未整合alpha，待主代理核實並重啟主要服務。本次未merge／未重啟主要服務。
+
+## 最新修改：文字直接展開陣列與範圍
+- 狀態：小驗證通過，待主代理核實。
+- 驗證版本：243d062a0d7de58ce9fef092d11017123f5c97e3；執行時HEAD為336e773a273fb03bb08d51a769abb827713bac71加上已提交至此commit的程式差異。驗證後只修改task與交付文件，沒有額外程式修改。日期2026-09-18。
+- 設計依據：使用者希望直接在@text變數插值放入n個元素的陣列，不需用C++另外組字串。原本整體陣列會經String轉成[object Object]，parser不接受冒號範圍。
+- 修改：文字專用模式接受包含兩端的陣列範圍；遞迴格式化整個／空／巢狀陣列，字串元素加JSON引號。省略端點、裁切超出部分與反向空範圍支援，端點不可解析或不是整數則沿用空文字行為。依目前幀快照求值，不改原資料；非文字resolveExpression預設仍不接受範圍。
+- 修改檔案：trace-instrumenter.js（文字解析／捕捉依賴）；trace-rules.js（文字範圍求值／格式化）；trace-renderer.js（普通／JSON／TTS模板接入）；algorithm.html／entrypoints.test.js（rules18／renderer191快取同步）；兩個text-arrays測試與fixtures/text-arrays.cpp（可重跑證據）；README／使用手冊／tests README／task（使用方式与驗證記錄）。無Release或公開發布。
+- 與task.md差異：無；iteration.last(j)沿用既有生命週期選擇，不新增具名查詢語法。
+
+| 最新驗收條件 | 驗證方式與實際結果 | 判定 |
+|---|---|---|
+| 整體／範圍／空與巢狀陣列 | 求值與真實SVG顯示11*[2,3,5,7]、[3,5]、[]、[[2,3],[5,7]]；C陣列與字串vector也正確 | 通過 |
+| 端點、preset與局部索引 | parser捕捉陣列及lo/hi；省略／超出／反向／無效端點依規則；具@for局部k的matrix[k][:]顯示[2,3]與[5,7] | 通過 |
+| iteration.last與快照／重載 | 真實C++外層2/3回合顯示[2,3]與[2,3,5]；push_back後顯示完整新陣列，回到第一幀維持舊陣列，JSON重載相同 | 通過 |
+| JSON／TTS／Studio與既有行為 | JSON樣式保留18px，TTS顯示11*[2,3,5,7]並朗讀質數清單[3,5]；Studio畫面一致、無pageerror，scalar與既有文字綁定小測試通過 | 通過 |
+
+### 小驗證與重跑
+- 分級：V2 E/F，A只驗證入口快取；沒有改動畫排程，不執行大規模演算法驗證。
+- 執行目錄：本worktree的algo-vis-backend；命令：node --test --test-concurrency=1 tests/text-arrays.test.js tests/text-arrays.browser.test.js tests/text-object-bindings.test.js tests/entrypoints.test.js。
+- 環境：先啟動自己的隨機埠隔離服務，PORT=62191、ASM_REGRESSION=1、隨機JWT secret（不輸出），測試端ASM_TEST_BASE_URL=http://127.0.0.1:62191。獨立headless Edge；MONGO_URI指向127.0.0.1:1隔離測試資料庫，本次路徑不依賴Mongo；不代表遠端資料庫通過。重跑需重新選未占用埠。
+- fixture／操作：tests/fixtures/text-arrays.cpp；browser專項在新分頁Ace設定fixture後RUN，依序render第一幀、末幀、回第一幀、兩個外層completed幀，再JSON重載與開啟Studio；檢查實際SVG文字、字級、data-tts-lines及pageerror。compile helper經/trace/analyze與/compile核對trace事件order及求值。
+- 結果：15 tests／15 pass／0 fail／0 skip，7.43秒，exit0。trace-instrumenter、trace-rules、trace-renderer、text-arrays兩測試與entrypoints共6個node --check通過，git diff --check通過。隔離服務與瀏覽器已停止。
+- 證據：提交的fixture及專項測試；本機test-results/alpha-text-arrays-validation.cjs／tap／server.log未提交，可能被清理或覆蓋。
+- 剩餘：main未整合alpha；投影片嵌入與公開Docker未驗證。主代理核實後補同一文字陣列範例在演算法投影片的呈現與TTS，按整合範圍決定驗證；此輪未merge或重啟主要服務。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
