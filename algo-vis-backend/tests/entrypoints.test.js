@@ -78,7 +78,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
   assert.ok(html.includes('draw/draw_2Darray.js?v=focus-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-46'));
+  assert.ok(html.includes('trace-events.js?v=trace-47'));
   const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
