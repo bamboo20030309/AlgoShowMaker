@@ -18,6 +18,8 @@
 
 由主代理在需要完整驗證時於 algo-vis-backend 執行：
 
+逗號樣式專項為 `style-list.test.js`（五種樣式、預設色、共用顏色／條件、ID、preset 覆寫、區塊與錯誤格式）及 `style-list.browser.test.js`（實際 SVG 的高亮框與 point 同時可見，條件過濾與 JSON 重載）。編譯及瀏覽器驗證需設定 `ASM_TEST_BASE_URL` 指向獨立服務。
+
 ```sh
 npm run regression
 ```

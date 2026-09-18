@@ -39,6 +39,8 @@
     ] },
     { id: 'style', label: '@style', effect: '為陣列格子設定背景、強調、焦點或指標', code: '// @style arr[i] highlight', examples: [
       '// @style arr[i] highlight',
+      '// @style arr[i] highlight,point',
+      '// @style arr[i] highlight,point AV_green when value>0',
       '// @style arr[0:i] background AV_green when value < key',
       '// @style arr[i,i*2:i*2+1] highlight AV_red\n// @style arr[1:n] focus when n < Size',
       '// @style prime[0:iteration.last(j)] focus when i * value <= n'

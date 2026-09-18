@@ -19,6 +19,7 @@
 - 已確認的新語法：明確範圍改為 [start:end]，包含兩端；for j 自動對應唯一迴圈，for j in "loop_name" 明確指名 @loop as 命名的迴圈。有歧義時報錯，不按距離猜測。
 - 合理假設：@events [種類列表] animate on/off [when 條件] 附屬最近的 @frame；條件用該幀擷取狀態求值。三種批次箭頭均支援單行／多行、局部繪圖索引與條件。
 - 本輪已確認：使用者採用共用 @for／@endfor 繪圖區塊，讓 style、arrow、text 共用迴圈資料；不新增完整 C++ for 語法。既有 @arrow for 保留。
+- 最新確認：@style 可用逗號一次指定多個樣式，如 highlight,point；沿用既有共用顏色與條件，省略顏色時各樣式維持原預設色。
 
 ## 重現與調查
 - 功能新增不適用；已確認 parser、server trace 映射、model 正規化、event 開關與共用 Arrow Model 路徑。
@@ -28,6 +29,7 @@
 - trace-instrumenter.js、lib/ASMTrace.hpp、server.js、trace-model.js、trace-rules.js、trace-events.js、trace-arrow-model.js、trace-renderer.js；指令提示與入口快取按實際需要更新。
 - 共用介面：新增 frame.eventControls、arrow.batch、drawLoops；呈現展開使用 drawLocals；舊 trace 未包含欄位時保持原行為。
 - 依賴任務：無。
+- 逗號樣式邊界：只在 instrumenter 展開既有 style 描述，沿用既有 Rules／renderer 合併與繪製；更新提示、入口快取及使用手冊，不改 runtime。
 
 ## 驗收條件
 - [x] 每幀事件控制不洩漏至其他幀；條件不成立保留原設定，資料結果與事件記錄仍存在。
@@ -43,6 +45,8 @@
 - [x] 共用區塊的 style、arrow、text 使用同一個實際入口值；手動範圍、唯一自動對應及具名對應均可使用。
 - [x] 區塊索引不洩漏、不改 C++；preset 及巢狀不同索引可用，邊界／非法指令／組合超量有明確錯誤。
 - [x] 實際 SVG 確認 i=9 的 prime[0,1] 高亮、合數18/27背景色、文字 j=0/j=1 綁定格子0/1，重載一致且不排事件動畫。
+- [x] 逗號樣式支援五種類型、共用顏色／條件、preset 分類覆寫與 @for；無效列表報錯且單樣式 ID 不變。
+- [x] 實際 SVG 確認同格 highlight 與 point 同時可見，未選中格沒有裝飾，條件過濾與 JSON 重載一致。
 
 ## 驗證計畫
 - V2：E（指令／箭頭）、J（事件設定）、F（迴圈衍生值）。
@@ -57,3 +61,5 @@
 - 2026-09-18：新版 54 個針對性案例通過；前置線篩濃縮幀已實際 RUN／SVG／事件排程與 JSON 重載驗證。
 - 2026-09-18：使用者確認共用繪圖迴圈區塊；沿用本分支補充 scope 解析、style/text/arrow 局部值及最小真實 SVG 驗證。
 - 2026-09-18：共用區塊 44 個針對性案例與真實 SVG 通過，保留 V2 小驗證範圍；主代理整合驗收仍待核實。
+- 2026-09-18：依使用者要求加入逗號多樣式；只執行 V2 E 與必要 A 入口／提示及最小 SVG 驗證，不擴大到整個演算法集。
+- 2026-09-18：逗號樣式 26 個針對性案例與實際 SVG／JSON 重載通過，4 個 JS 語法檢查及差異檢查通過，待主代理核實。

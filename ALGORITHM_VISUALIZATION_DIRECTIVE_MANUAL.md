@@ -664,7 +664,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
 ### 基本格式
 
 ```cpp
-// @style 目標 樣式類型 [顏色] [as ID] [when 條件]
+// @style 目標 樣式[,樣式...] [顏色] [as ID] [when 條件]
 ```
 
 支援五種樣式：
@@ -678,6 +678,20 @@ void quick_sort(vector<int>& arr, int low, int high) {
 | `focus` | 保留指定片段正常顯示，將其他格子以指定顏色弱化 |
 
 所有 `point` 與 `highlight` 共用同一套系統時間節奏；畫布更新、切換幀或產生縮圖時不會各自重新起跳。
+
+### 一次套用多個樣式
+
+樣式名稱用逗號分隔，逗號前後可以留空白：
+
+```cpp
+// @style isprime[i] highlight,point
+// @style isprime[i] highlight,point AV_green when isprime[i]==1
+// @style arr[0:2,4] background,mark rgba(13, 102, 13, 0.8)
+```
+
+同一行的樣式共用目標、顏色與 `when` 條件；省略顏色時，各樣式保留自己的預設色。例如 `highlight,focus` 的框仍為紅色，其餘格子則以灰色弱化。若要指定不同顏色，分成多行撰寫。
+
+此寫法也能用於 `@defaults`、`@preset` 及 `@for` 區塊。覆寫按樣式類型分別處理，例如後續單獨修改 `highlight` 不會移除同一行的 `point`。空樣式、未知名稱及重複名稱會報錯。使用 `as group` 時，多樣式分別取得 `group:highlight`、`group:point` 等 ID；單樣式的 ID 保持原樣。
 
 陣列同時顯示 value 與 index 時，`highlight` 框會包含兩格的完整高度；交換、移動或縮放期間仍跟隨當下顯示的格子，不會因交換暫用格子副本而消失。
 
