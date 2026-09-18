@@ -13,7 +13,7 @@ test('post-loop compact sieve preserves automatic marks while skipping runtime a
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(() => window.ace && window.ASMTracePlayer);
-    const code = fs.readFileSync(path.join(__dirname,'fixtures/automark-events-sieve.cpp'),'utf8');
+    const code = fs.readFileSync(path.join(__dirname,'fixtures/automark-events-sieve.cpp'),'utf8').replace(/\r\n?/g,'\n');
     await page.evaluate(code => {ace.edit('editor').setValue(code,-1);document.querySelector('#inputArea').value='30';},code);
     await page.click('#runBtn');
     await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
