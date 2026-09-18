@@ -5,10 +5,10 @@
 - 分支：codex/2026-09-18-alpha-events-arrows
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-alpha-events-arrows
 - 共同基準 commit：ddfe5b6081261a05b437a61a546861151d4618e5
-- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；最新逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277。
+- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；最新回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：最新程式 commit 00a3cc61586eda2227f5f57030d541e537a54277 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- Push：最新程式 commit a8b91a207ca259fd279653a0fb74b668c3bbf4ad 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
 ## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
@@ -183,6 +183,37 @@ node --test --test-concurrency=1 tests/style-list.test.js tests/style-list.brows
 - 證據：提交的測試；本機 test-results/alpha-style-list-validation.output、alpha-events-validation.tap、alpha-events-validation.server.log 未提交，會被後續重跑覆蓋或清理。
 - 初期失敗：兩個新增 fixture 誤用了 style 的引號 ID 及 frame use 寫法，改為既有 as combined 與 preset 內 @object／@frame use；一次縮排整理差異檢查發現範圍過大，恢復無關縮排後重跑，最終完整差異僅本次功能。未放寬任何行為或可見性斷言。
 - 未驗證／合併注意：公開 Docker、遠端資料庫、投影片嵌入介面未驗證；主代理需核實同格多樣式在嵌入投影片的呈現。未合併、未重啟主要服务；此輪沒有 model／runtime／renderer 契約變更，需協調 instrumenter 與指令助手快取差異。
+
+## 最新修正：回放 style 停在离開的幀
+- 狀態：小驗證通過，待主代理核實；未宣稱整合完成。
+- 驗證版本：a8b91a207ca259fd279653a0fb74b668c3bbf4ad 的完整程式差異；驗證時 HEAD 是 5066ca9fa892f3b655e3243ff843b5519e681fcb 加上已提交修改，之後只有交付文件修訂。日期2026-09-18。
+- 已確認根因：renderFrame 在往回播放時，目的場景為 i=8，eventFrame 則是要倒播的 i=9。prepareForwardValues 卻用 eventFrame 更新 style，覆蓋了 renderer 已畫好的 i=8 樣式。解析、loopRecords 及箭頭本身正確，錯誤發生在動畫層更新裝飾。
+- 最小重現：新增 fixture 的 n=30，先切至濃縮幀 i=8，再 CodeScript.next 到9，再 CodeScript.prev 回8。切換完成後箭頭已到16，但高亮仍在9/18/27，應為8/16。修正前 browser 專項精確重現此失敗，未放寬斷言。
+- 修正方式：樣式變數集合及 Rules.evaluate 改用 options.frame（目的幀），沒有提供 frame 的獨立 helper 呼叫仍 fallback eventFrame；事件數值及 checkpoint 倒播來源維持原順序。沒有修改線篩演算法、箭頭路徑或條件語法。
+- 修改檔案：public/trace-frame-tween.js、algorithm.html（tween build/cache211）、tests/style-replay.browser.test.js、tests/fixtures/style-replay-sieve.cpp；README、測試說明及 task 更新。未發布版本／Release。
+- 與 task.md 差異：無。使用者沒有補充「回放」操作方向，已實際重現往回方向並涵蓋相關往前／再次播放；沒有把未回答當成同意。
+
+| 最新驗收條件 | 驗證方式與實際結果 | 判定 |
+|---|---|---|
+| 目的幀高亮正確 | 真實 Edge SVG：i=8 為8/16，i=9為9/18/27；CodeScript 往前、往後、再次往前的所有可見格子高亮及 fill 都與目的幀靜態呈現完全相同 | 通過 |
+| focus、箭頭與事件保留 | 比對全部 isprime／prime SVG 格子的 fill，包括 focus；往回箭頭目標16、往前18/27，關閉細節事件的 steps=0 | 通過 |
+| JSON 重載 | 重載完整 trace 後從9回8，同樣全部格子／高亮／箭頭符合目的幀 | 通過 |
+| 單次自動播放 | 隔離文件終點限定於i=9，從i=8按實際播放按鈕；speedSlider=500及1500均到9並停止，高亮／focus填色／箭頭與靜態幀一致 | 通過 |
+| 既有樣式及入口 | presented-style-values 的4個直接相關案例、style-layer的3個及entrypoints的1個通過；沒有 pageerror | 通過 |
+
+### 小驗證與重跑
+- 分級：V2 H/J，加上 A 入口快取；只選4個直接相關檔案，未執行完整 regression 或整套演算法。
+- 執行目錄：本 worktree 的 algo-vis-backend；沿用前節的独立服務／本機不可用 Mongo 埠／ASM_TEST_BASE_URL／headless Edge 設定，不操作使用者分頁或投影片。
+- fixture：tests/fixtures/style-replay-sieve.cpp，沿用使用者 preset、@for、and 條件及 eventInstructionStates，僅縮排與程式空白不同；輸入30。全程只觀察8/9定點與兩次單步自動播放，不逐幀播放其他算法。
+- 完整命令（先設定 ASM_TEST_BASE_URL 指向隔離服務）：
+
+```powershell
+node --test --test-concurrency=1 tests/style-replay.browser.test.js tests/presented-style-values.integration.test.js tests/style-layer.test.js tests/entrypoints.test.js
+```
+
+- 實際 runner：node test-results/alpha-style-replay-validation.cjs，独立埠51303；9 tests／9 pass／0 fail／0 skip，21.16秒，exit0。2個JS語法檢查及git diff --check exit0；測試服務與瀏覽器已停止。
+- 證據：已提交 fixture／瀏覽器專項；本機 test-results/alpha-style-replay-validation.output、alpha-style-replay-validation.tap／server.log 未提交，可能被重跑覆蓋或清理。最早異常為往回 transition 完成後的高亮集合比對，沒有檢查或更改動畫交叉路徑。
+- 未驗證與合併注意：嵌入投影片／Studio、公開 Docker、遠端資料庫未驗證；主代理按影響補同一線篩在嵌入介面的上一幀確認。主要 main 尚未整合 alpha，本次不 merge 或重啟主要服務；需協調共用 tween 與入口快取差異。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
