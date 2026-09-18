@@ -2192,7 +2192,8 @@
       stylesDirty = false;
       // Match the original renderer: evaluate the new frame before events.
       const visualHighlights = (styleTargets.length || indexTracks.length)
-        ? window.ASMTraceRules.evaluate(options.document, styleFrame) : {};
+        ? (window.ASMTraceRenderers?.evaluateFrameHighlights?.(options.document, styleFrame)
+          || window.ASMTraceRules.evaluate(options.document, styleFrame)) : {};
       const indexHighlights = visualHighlights;
       evaluatedHighlights = visualHighlights;
       const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
@@ -6087,10 +6088,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-211';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-212';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-211', play, cancel, updateEventAvailability,
+    build: 'trace-212', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

@@ -18,6 +18,8 @@
 
 文字陣列專項為 `text-arrays.test.js` 與 `text-arrays.browser.test.js`，使用 `fixtures/text-arrays.cpp` 核對整個陣列、包含兩端的範圍、端點省略與邊界、空／巢狀／字串陣列、preset／@for局部索引、iteration.last(j)、快照回看及JSON重載。瀏覽器檔透過隔離服務RUN，檢查SVG、TTS與Studio；兩檔需設定 `ASM_TEST_BASE_URL`，不要使用主要服務。
 
+自動固定切幀專項為 `auto-fixed-playback.browser.test.js`，使用 `fixtures/auto-fixed-playback.cpp` 比較有條件style的靜態／動畫繪圖、前進／後退、當幀標記揭露時機、開Studio前後與JSON重載，另確認關閉自動固定後手動mark仍可見。需設定隔離 `ASM_TEST_BASE_URL`。
+
 由主代理在需要完整驗證時於 algo-vis-backend 執行：
 
 逗號樣式專項為 `style-list.test.js`（五種樣式、預設色、共用顏色／條件、ID、preset 覆寫、區塊與錯誤格式）及 `style-list.browser.test.js`（實際 SVG 的高亮框與 point 同時可見，條件過濾與 JSON 重載）。編譯及瀏覽器驗證需設定 `ASM_TEST_BASE_URL` 指向獨立服務。

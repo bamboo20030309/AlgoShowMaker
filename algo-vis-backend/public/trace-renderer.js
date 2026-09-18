@@ -1284,9 +1284,17 @@
     const root = cell?.closest?.('#asm-trace-root');
     const rect = cell?.querySelector?.(':scope > rect');
     if (!root || !rect || !window.HintWidgets) return;
+    // Automatic fixed marks are persistent state. Reuse their renderer nodes
+    // so the current frame's completion delay remains authoritative.
+    const preserveFixedMark = highlight?.fixedMark
+      && !Object.hasOwn(highlight?.styleTypes || {}, 'mark');
+    const fixedVisuals = preserveFixedMark
+      ? [...root.querySelectorAll('[data-trace-attachment-kind="mark"]')]
+        .filter(visual => visual.getAttribute('data-trace-attached-to') === key && !visual._asmLiveHint)
+      : [];
     root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
       if (visual.getAttribute('data-trace-attached-to') === key
-        && !visual._asmLiveHint) visual.setAttribute('display', 'none');
+        && !visual._asmLiveHint && !fixedVisuals.includes(visual)) visual.setAttribute('display', 'none');
     });
     const hints = cell._asmPresentedHints ||= new Map();
     const types = { ...(highlight?.fixedMark ? { mark: highlight.fixedMark } : {}), ...(highlight?.styleTypes || {}) };
@@ -1294,6 +1302,11 @@
     const x = number('x'), y = number('y'), width = number('width'), height = number('height');
     ['highlight', 'point', 'mark'].forEach(kind => {
       let visual = hints.get(kind);
+      if (kind === 'mark' && fixedVisuals.length) {
+        visual?.setAttribute('display', 'none');
+        fixedVisuals.forEach(fixed => fixed.removeAttribute('display'));
+        return;
+      }
       if (!Object.hasOwn(types, kind)) {
         visual?.setAttribute('display', 'none');
         return;
@@ -2491,6 +2504,12 @@
     });
   }
 
+  function evaluateFrameHighlights(document, frame) {
+    const highlights = window.ASMTraceRules.evaluate(document, frame);
+    applyFixedEventStyles(document, frame, highlights);
+    return highlights;
+  }
+
   function delayedCurrentFixedMarks(root, document, frame, enabled) {
     if (!enabled) return [];
     const targetKeys = new Set();
@@ -3635,8 +3654,7 @@
     if (options.rootId) rootAttributes.id = options.rootId;
     const root = svg('g', rootAttributes);
     parent.append(root);
-    const highlights = window.ASMTraceRules.evaluate(document, frame);
-    applyFixedEventStyles(document, frame, highlights);
+    const highlights = evaluateFrameHighlights(document, frame);
     const diff = window.ASMTraceModel.diffFrame(previousFrame, frame);
     const placements = new Map();
     const elements = new Map();
@@ -4254,9 +4272,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-191';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-192';
   window.ASMTraceRenderers = {
-    build: 'trace-191', updatePresentedHints,
+    build: 'trace-192', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
