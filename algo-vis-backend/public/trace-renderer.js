@@ -2625,11 +2625,10 @@
       const lines = [[]];
       rawSegments.forEach((segment, segmentIndex) => {
         const expressionValue = segment?.kind === 'expression'
-          ? window.ASMTraceRules.resolveExpression(document, frame, segment.expression, descriptor.drawLocals)
+          ? window.ASMTraceRules.resolveTextExpression(document, frame, segment.expression, descriptor.drawLocals)
           : segment?.kind === 'template'
             ? String(segment.text || '').replace(/\$\{([^{}]+)\}/g, (_, expression) => {
-              const value = window.ASMTraceRules.resolveExpression(document, frame, expression.trim(), descriptor.drawLocals);
-              return value == null ? '' : String(value);
+              return window.ASMTraceRules.resolveTextExpression(document, frame, expression.trim(), descriptor.drawLocals);
             })
             : segment?.text;
         const resolvedText = expressionValue == null ? '' : String(expressionValue);
@@ -4255,9 +4254,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-190';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-191';
   window.ASMTraceRenderers = {
-    build: 'trace-190', updatePresentedHints,
+    build: 'trace-191', updatePresentedHints,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

@@ -16,6 +16,8 @@
 
 共用繪圖區塊專項為 `drawing-loops.test.js`：局部索引、區塊邊界／錯誤、preset、樣式與文字定位、重複入口、巢狀範圍與組合上限。`fixtures/drawing-loop-sieve.cpp` 用同一個 j 展開 style、arrow、text；`events-batch-arrows.browser.test.js` 額外核對 i=9 的實際背景色、高亮外框、文字內容／定位、箭頭目標、事件排程及 JSON 重載。
 
+文字陣列專項為 `text-arrays.test.js` 與 `text-arrays.browser.test.js`，使用 `fixtures/text-arrays.cpp` 核對整個陣列、包含兩端的範圍、端點省略與邊界、空／巢狀／字串陣列、preset／@for局部索引、iteration.last(j)、快照回看及JSON重載。瀏覽器檔透過隔離服務RUN，檢查SVG、TTS與Studio；兩檔需設定 `ASM_TEST_BASE_URL`，不要使用主要服務。
+
 由主代理在需要完整驗證時於 algo-vis-backend 執行：
 
 逗號樣式專項為 `style-list.test.js`（五種樣式、預設色、共用顏色／條件、ID、preset 覆寫、區塊與錯誤格式）及 `style-list.browser.test.js`（實際 SVG 的高亮框與 point 同時可見，條件過濾與 JSON 重載）。編譯及瀏覽器驗證需設定 `ASM_TEST_BASE_URL` 指向獨立服務。

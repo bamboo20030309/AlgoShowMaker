@@ -142,7 +142,7 @@
     return summary == null ? null : summary;
   }
 
-  function resolveExpression(document, frame, expression, locals = {}) {
+  function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
     const source = String(expression ?? '').trim();
     if (!source) return null;
     const tokens = [];
@@ -173,7 +173,7 @@
         cursor += compoundOperator[0].length;
         continue;
       }
-      if ('+-*/%()[].<>!'.includes(source[cursor])) {
+      if ('+-*/%()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
         tokens.push({ type: 'operator', value: source[cursor] });
         cursor += 1;
         continue;
@@ -237,9 +237,21 @@
       let data = found.entry?.data;
       while (peek('[')) {
         consume('[');
-        const index = parseAdditive();
-        if (index === invalid || !consume(']') || !Number.isInteger(Number(index))) return invalid;
-        data = itemAt(data, Number(index));
+        const index = allowTextSlices && peek(':') ? 0 : parseAdditive();
+        if (index === invalid || !Number.isInteger(Number(index))) return invalid;
+        if (allowTextSlices && peek(':')) {
+          consume(':');
+          const items = Array.isArray(data) ? data : data?.items;
+          if (!Array.isArray(items)) return invalid;
+          const end = peek(']') ? items.length - 1 : parseAdditive();
+          if (end === invalid || !Number.isInteger(Number(end))) return invalid;
+          const startIndex = Math.max(0, Number(index));
+          const endIndex = Math.min(items.length - 1, Number(end));
+          data = { kind: 'sequence', items: startIndex > endIndex ? [] : items.slice(startIndex, endIndex + 1) };
+        } else {
+          data = itemAt(data, Number(index));
+        }
+        if (!consume(']')) return invalid;
         if (data == null) return invalid;
       }
       if (peek('.')) {
@@ -363,6 +375,20 @@
     const value = parseLogicalOr();
     if (value === invalid || position !== tokens.length) return null;
     return value;
+  }
+
+  function formatTextValue(value, arrayItem = false) {
+    const items = Array.isArray(value) ? value : value?.items;
+    if (Array.isArray(items)) {
+      return '[' + items.map(item => formatTextValue(item, true)).join(',') + ']';
+    }
+    const scalar = window.ASMTraceModel.scalarValue(value);
+    if (scalar == null) return '';
+    return arrayItem && typeof scalar === 'string' ? JSON.stringify(scalar) : String(scalar);
+  }
+
+  function resolveTextExpression(document, frame, expression, locals = {}) {
+    return formatTextValue(resolveExpression(document, frame, expression, locals, true));
   }
 
   function expressionMatches(document, frame, condition, locals = {}) {
@@ -671,7 +697,7 @@
     frameMatches,
     conditionMatches,
     variableEntry,
-    resolveExpression, iterationLastValue,
+    resolveExpression, resolveTextExpression, iterationLastValue,
     temporalValue,
     expressionMatches,
     textExpressionMatches,

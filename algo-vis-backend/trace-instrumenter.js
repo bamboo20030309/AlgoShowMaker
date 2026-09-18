@@ -428,7 +428,7 @@ function cppString(value) {
 
 const TEMPORAL_TRACE_FUNCTIONS = new Set(['before', 'prev', 'changed', 'assigned']);
 
-function parseTraceExpression(expression, allowCondition = false) {
+function parseTraceExpression(expression, allowCondition = false, allowTextSlices = false) {
   const source = String(expression || '').trim();
   const tokens = [];
   const temporalFunctions = [];
@@ -463,7 +463,7 @@ function parseTraceExpression(expression, allowCondition = false) {
       cursor += compoundOperator[0].length;
       continue;
     }
-    if ('+-*/%()[].<>!'.includes(source[cursor])) {
+    if ('+-*/%()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
       tokens.push({ type: 'operator', value: source[cursor] });
       cursor += 1;
       continue;
@@ -516,7 +516,12 @@ function parseTraceExpression(expression, allowCondition = false) {
     position += 1;
     while (peek('[')) {
       consume('[');
-      if (!parseAdditive() || !consume(']')) return false;
+      if (!(allowTextSlices && peek(':')) && !parseAdditive()) return false;
+      if (allowTextSlices && peek(':')) {
+        consume(':');
+        if (!peek(']') && !parseAdditive()) return false;
+      }
+      if (!consume(']')) return false;
     }
     if (peek('.')) {
       consume('.');
@@ -1233,7 +1238,7 @@ function normalizeTextSegments(value, line) {
     if (hasTtsMarkup && templateMatches.length) {
       const expressions = templateMatches.map(match => {
         const expression = match[1].trim();
-        const parsed = parseFrameExpression(expression);
+        const parsed = parseTraceExpression(expression, false, true);
         if (!expression || !parsed.valid) {
           throw new Error(`第 ${line} 行的 @text 變數運算式無效：${match[0]}`);
         }
@@ -1267,7 +1272,7 @@ function normalizeTextSegments(value, line) {
         });
       }
       const expression = match[1].trim();
-      const parsed = parseFrameExpression(expression);
+      const parsed = parseTraceExpression(expression, false, true);
       if (!expression || !parsed.valid) {
         throw new Error(`第 ${line} 行的 @text 變數運算式無效：${match[0]}`);
       }

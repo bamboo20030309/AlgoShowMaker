@@ -70,7 +70,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-17'));
+  assert.ok(html.includes('trace-rules.js?v=trace-18'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'disk' ? 'focus-3' : 'focus-2';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
