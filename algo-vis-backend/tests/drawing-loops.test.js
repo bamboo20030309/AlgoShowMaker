@@ -51,6 +51,9 @@ test('compiled named block shares actual entries across styles, arrows and text,
   const frame=compact[1];
   const arrows=window.ASMTraceModel.drawingDirectives(trace,frame,'arrows');
   assert.deepEqual(Array.from(arrows,arrow=>arrow.to.indexExpression),['18','27']);
+  const earlierArrows=window.ASMTraceModel.drawingDirectives(trace,compact[0],'arrows');
+  assert.equal(arrows[0].id,earlierArrows[0].id,'the same arrow slot persists when loop invocation and arrow count change');
+  assert.notEqual(arrows[0].id,arrows[1].id,'different entry slots keep distinct arrow identities');
   const highlights=window.ASMTraceRules.evaluate(trace,frame);
   assert.deepEqual(Object.keys(highlights[prime]),['0','1']);
   assert.deepEqual(Object.keys(highlights[isprime]),['18','27']);

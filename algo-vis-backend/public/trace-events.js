@@ -498,6 +498,10 @@
         }
         controls.forEach(control => {
           if (!control.types.includes('all') && !control.types.includes(event.type)) return;
+          // Fixed is persistent state with no timed animation. Broad animation
+          // controls preserve its global/frame switch; explicit fixed rules
+          // retain their existing meaning for saved sources.
+          if (event.type === 'fixed' && !control.types.includes('fixed')) return;
           event.enabled = control.animate && event.animate !== false;
           event.directiveAnimationControl = control.animate;
           if (event.loopBoundary === true || event.loopBoundaryCondition === true) {

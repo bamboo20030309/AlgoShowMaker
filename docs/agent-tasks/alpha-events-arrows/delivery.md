@@ -5,10 +5,11 @@
 - 分支：codex/2026-09-18-alpha-events-arrows
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-alpha-events-arrows
 - 共同基準 commit：ddfe5b6081261a05b437a61a546861151d4618e5
-- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；最新回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad。
+- 程式修正 commit：初版 a3a3da918e5db7d15ac36231ab00fbd5bded24e2；冒號／迴圈值 32ead62f5897bd59abcc7086e77ba14107042a85；共用區塊 0829ad1ac7adf19197b22a96a5a6b9248b466346；逗號樣式 00a3cc61586eda2227f5f57030d541e537a54277；回放樣式 a8b91a207ca259fd279653a0fb74b668c3bbf4ad；箭頭 identity 1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22；最新文字預設 b4166453905cbbc539db9bf31082faef24b93edd。
 - 驗證版本：基準加本次程式差異；該差異完整提交至上述程式 commit，後續只修改交付文件，沒有額外程式修改。
 - 驗證日期：2026-09-18
-- Push：最新程式 commit a8b91a207ca259fd279653a0fb74b668c3bbf4ad 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
+- 最新程式修正 commit：243d062a0d7de58ce9fef092d11017123f5c97e3（文字陣列展開；前述commit為歷史交付）。
+- Push：最新程式 commit 243d062a0d7de58ce9fef092d11017123f5c97e3 已推送 origin/codex/2026-09-18-alpha-events-arrows，git ls-remote 核對 SHA 完全相同；本交付文件另行提交並推送。
 
 ## 初版根因與修改（a3a3da9 的歷史紀錄，.. 語法由本輪取代）
 - 功能新增依據：使用者自行編寫詳細／濃縮幀，不要求系統自動摘要，也不要求 fast/faston。
@@ -214,6 +215,82 @@ node --test --test-concurrency=1 tests/style-replay.browser.test.js tests/presen
 - 實際 runner：node test-results/alpha-style-replay-validation.cjs，独立埠51303；9 tests／9 pass／0 fail／0 skip，21.16秒，exit0。2個JS語法檢查及git diff --check exit0；測試服務與瀏覽器已停止。
 - 證據：已提交 fixture／瀏覽器專項；本機 test-results/alpha-style-replay-validation.output、alpha-style-replay-validation.tap／server.log 未提交，可能被重跑覆蓋或清理。最早異常為往回 transition 完成後的高亮集合比對，沒有檢查或更改動畫交叉路徑。
 - 未驗證與合併注意：嵌入投影片／Studio、公開 Docker、遠端資料庫未驗證；主代理按影響補同一線篩在嵌入介面的上一幀確認。主要 main 尚未整合 alpha，本次不 merge 或重啟主要服務；需協調共用 tween 與入口快取差異。
+
+## 最新修正：共用區塊箭頭動畫與事件開關
+- 狀態：小驗證通過，待主代理核實。
+- 驗證版本：1a8742aaf4ca9f21e8a1464823f317a6ff4f8b22；驗證時 HEAD 為 9c4d612fc28a772f3c672409393185be66446df3 加上已提交的完整程式差異，後續只修改交付文件。日期2026-09-18。
+- 根因與證據：@events 本身只控制 runtime 事件，不會停用 frame tween。共用 @for 展開的箭頭子 ID 卻含 loop-instance，i=8與9的同一 j=0 得到不同 ID；1支改2支時，保守的 ArrowModel family 配對也不能選出唯一對象，因此失去端點位移。新增／移除箭頭原有淡入／淡出並未被事件開關直接取消。
+- 修正方式：箭頭繪圖槽改以來源 scope／靜態 loop ID／入口序號識別，跨 runtime 回合保持角色；手動範圍仍按值區分。其他 style／text ID 保持原樣，loopRecords／drawLocals 仍依原 instance 隔離，不改演算法資料、runtime 或 ArrowModel 幾何與路徑。
+- 修改檔案：trace-model.js、algorithm.html與slides.html（model cache31）、drawing-loops.test.js及entrypoints.test.js；新增 drawing-arrow-animation.browser.test.js。README、指令手冊、測試說明及task更新，Release／公開部署不適用。
+- 與 task.md 差異：無。
+
+| 最新驗收條件 | 實際驗證與結果 | 判定 |
+|---|---|---|
+| 跨回合角色配對 | 編譯具名線篩區塊：i=8／9的 j=0 ID 相同，j=1獨立；JSON重載ID一致 | 通過 |
+| SVG端點位移 | headless Edge，i=8到9的j=0由16移至18，i=9到10由18移至20；配對存在、progress介於0和1，實際x2/y2有同時異於起點與終點的中間值 | 通過 |
+| 出入場 | 新j=1箭頭有0與1之間的可見opacity；移除j=1有淡出ghost及中間opacity，切換完成後只剩j=0到20 | 通過 |
+| 事件與style分開 | 同一trace分別設 all animate off/on，兩者都有上述動畫。off的事件steps=0，on的steps>0；off仍取樣到SVG內fill/stroke paint transition正在播放 | 通過 |
+| 重載 | JSON重載後i=8到9仍配對位移，箭頭到18/27，steps=0 | 通過 |
+
+### 小驗證與重跑
+- 分級：V2 E/H/J與必要A快取；只挑4個直接相關檔案，未執行完整regression或整套動畫集。
+- 目錄／環境：本worktree的algo-vis-backend；ASM_TEST_BASE_URL指向獨立服務，Mongo指本機不可用埠1，headless Edge不操作使用者分頁。fixture沿用 tests/fixtures/style-replay-sieve.cpp，輸入30；browser只取樣8/9/10之間局部切換。
+- 完整命令（先設定 ASM_TEST_BASE_URL 指向已啟動隔離服務）：
+
+```powershell
+node --test --test-concurrency=1 tests/drawing-arrow-animation.browser.test.js tests/drawing-loops.test.js tests/arrow-identity.test.js tests/entrypoints.test.js
+```
+
+- 本機runner：node test-results/alpha-arrow-animation-validation.cjs，埠63700；9 tests／9 pass／0 fail／0 skip，15.99秒，exit0。4個JS語法與git diff --check exit0，測試服務與瀏覽器已停止。
+- 證據：提交的專項與fixture；test-results/alpha-arrow-animation-validation.output／tap／server.log只留本機、未提交，可能被重跑覆蓋或清理。修正前失敗精確顯示 j=0 的 loop-instance-7／8 不同 ID，保留角色相等、中間座標、opacity及style paint所有斷言，未放寬行為。
+- 未驗證與合併注意：嵌入投影片／Studio、公開Docker／遠端資料庫未驗證；主代理補同一組批次箭頭在投影片嵌入的單次切換。此輪僅改呈現時箭頭子ID，不增加runtime資料；需協調共用model與入口cache。main未整合alpha，未merge、未重啟主要服務。
+
+## 最新修改：@text 預設字級統一14px
+- 狀態：局部驗證通過，待主代理核實。
+- 驗證版本：b4166453905cbbc539db9bf31082faef24b93edd；驗證時HEAD是40227382fe90e13f8633faf60d36314d17c40d43加上已提交的程式差異，後續只有交付文件修訂。日期2026-09-18。
+- 設計依據／調查：JSON樣式物件在parser已預設14，但普通字串沒有fontSize，renderer與Studio仍fallback10；依使用者要求統一為14。
+- 修改：renderer的authoredBaseFontSize與segment字級fallback14；Studio的字元量測、文字選取顯示／儲存fallback、初始slider與提示均14。明確指定的字级按原優先序保留，整體氣泡沿原字形量測／縮放規則計算。
+- 修改檔案：trace-renderer.js、trace-studio.js、algorithm.html（renderer190／studio120）、entrypoints.test.js。README與task更新；手冊已有預設14的表格，不需改動；無Release／版本發布。
+- 與task.md差異：無。此輪是V1文字呈現／設定，不執行演算法驗證集。
+
+| 最新驗收條件 | 實際結果 | 判定 |
+|---|---|---|
+| 普通與JSON預設14 | 真實Edge SVG普通兩行的font-size皆14，computed CSS皆14px；JSON預設同樣14，氣泡非零尺寸 | 通過 |
+| Studio預設同步 | 真實開啟Studio、點選普通文字片段，slider為14，按鈕title為字體大小14px | 通過 |
+| 自訂保留 | 明確segment10及Studio物件20的SVG／computed CSS仍為10／20px；既有物件整體氣泡縮放／選取小測試通過 | 通過 |
+
+### 局部確認與重跑
+- 分級：V1 A。5個既有字級／入口小測試加1個本機最小瀏覽器確認，共6 pass／0 fail／0 skip，3.20秒，exit0。3個JS語法與git diff --check exit0。
+- 執行目錄：本worktree的algo-vis-backend；既有測試命令：node --test tests/object-inspector-font-size.test.js tests/entrypoints.test.js。
+- 本機runner：node test-results/alpha-text-font-validation.cjs；隔離埠56917、headless Edge。本機alpha-text-font.browser.cjs只做parser及手動提供trace的SVG／Studio確認，沒有RUN C++、沒有呼叫/compile、沒有執行線篩／排序。服務與瀏覽器已停止。
+- 最小輸入：普通字串含換行；JSON未指定fontSize的片段；fontSize:10片段；普通字串加Studio objectStyles fontSize:20。空variables/state的一個font-frame，直接ASMTracePlayer.apply後render0。實測SVG字級為[14,14]／[14]／[10]／[20]，氣泡高度為50／30.5／25.5／43.57px，無pageerror。
+- 手動重跑：在隔離algorithm.html提供上述一幀trace，查看各.asm-trace-text-segment-value的font-size及computed fontSize，再開啟Studio點選預設片段，確認.trace-studio-font-size-popover input為14。自訂物件樣式key為text:stored，分段自訂fontSize10，預設片段不設fontSize；JSON片段由findFrameDirectives解析取得預設14。
+- 證據：既有字級／入口測試；本機test-results/alpha-text-font-validation.output／tap／server.log及browser.cjs未提交，可能被覆蓋或清理。未為低影響預設值新增永久測試。
+- 未驗證：投影片嵌入、公開Docker、遠端資料庫；main尚未整合alpha，待主代理核實並重啟主要服務。本次未merge／未重啟主要服務。
+
+## 最新修改：文字直接展開陣列與範圍
+- 狀態：小驗證通過，待主代理核實。
+- 驗證版本：243d062a0d7de58ce9fef092d11017123f5c97e3；執行時HEAD為336e773a273fb03bb08d51a769abb827713bac71加上已提交至此commit的程式差異。驗證後只修改task與交付文件，沒有額外程式修改。日期2026-09-18。
+- 設計依據：使用者希望直接在@text變數插值放入n個元素的陣列，不需用C++另外組字串。原本整體陣列會經String轉成[object Object]，parser不接受冒號範圍。
+- 修改：文字專用模式接受包含兩端的陣列範圍；遞迴格式化整個／空／巢狀陣列，字串元素加JSON引號。省略端點、裁切超出部分與反向空範圍支援，端點不可解析或不是整數則沿用空文字行為。依目前幀快照求值，不改原資料；非文字resolveExpression預設仍不接受範圍。
+- 修改檔案：trace-instrumenter.js（文字解析／捕捉依賴）；trace-rules.js（文字範圍求值／格式化）；trace-renderer.js（普通／JSON／TTS模板接入）；algorithm.html／entrypoints.test.js（rules18／renderer191快取同步）；兩個text-arrays測試與fixtures/text-arrays.cpp（可重跑證據）；README／使用手冊／tests README／task（使用方式与驗證記錄）。無Release或公開發布。
+- 與task.md差異：無；iteration.last(j)沿用既有生命週期選擇，不新增具名查詢語法。
+
+| 最新驗收條件 | 驗證方式與實際結果 | 判定 |
+|---|---|---|
+| 整體／範圍／空與巢狀陣列 | 求值與真實SVG顯示11*[2,3,5,7]、[3,5]、[]、[[2,3],[5,7]]；C陣列與字串vector也正確 | 通過 |
+| 端點、preset與局部索引 | parser捕捉陣列及lo/hi；省略／超出／反向／無效端點依規則；具@for局部k的matrix[k][:]顯示[2,3]與[5,7] | 通過 |
+| iteration.last與快照／重載 | 真實C++外層2/3回合顯示[2,3]與[2,3,5]；push_back後顯示完整新陣列，回到第一幀維持舊陣列，JSON重載相同 | 通過 |
+| JSON／TTS／Studio與既有行為 | JSON樣式保留18px，TTS顯示11*[2,3,5,7]並朗讀質數清單[3,5]；Studio畫面一致、無pageerror，scalar與既有文字綁定小測試通過 | 通過 |
+
+### 小驗證與重跑
+- 分級：V2 E/F，A只驗證入口快取；沒有改動畫排程，不執行大規模演算法驗證。
+- 執行目錄：本worktree的algo-vis-backend；命令：node --test --test-concurrency=1 tests/text-arrays.test.js tests/text-arrays.browser.test.js tests/text-object-bindings.test.js tests/entrypoints.test.js。
+- 環境：先啟動自己的隨機埠隔離服務，PORT=62191、ASM_REGRESSION=1、隨機JWT secret（不輸出），測試端ASM_TEST_BASE_URL=http://127.0.0.1:62191。獨立headless Edge；MONGO_URI指向127.0.0.1:1隔離測試資料庫，本次路徑不依賴Mongo；不代表遠端資料庫通過。重跑需重新選未占用埠。
+- fixture／操作：tests/fixtures/text-arrays.cpp；browser專項在新分頁Ace設定fixture後RUN，依序render第一幀、末幀、回第一幀、兩個外層completed幀，再JSON重載與開啟Studio；檢查實際SVG文字、字級、data-tts-lines及pageerror。compile helper經/trace/analyze與/compile核對trace事件order及求值。
+- 結果：15 tests／15 pass／0 fail／0 skip，7.43秒，exit0。trace-instrumenter、trace-rules、trace-renderer、text-arrays兩測試與entrypoints共6個node --check通過，git diff --check通過。隔離服務與瀏覽器已停止。
+- 證據：提交的fixture及專項測試；本機test-results/alpha-text-arrays-validation.cjs／tap／server.log未提交，可能被清理或覆蓋。
+- 剩餘：main未整合alpha；投影片嵌入與公開Docker未驗證。主代理核實後補同一文字陣列範例在演算法投影片的呈現與TTS，按整合範圍決定驗證；此輪未merge或重啟主要服務。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實

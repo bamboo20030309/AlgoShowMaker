@@ -671,7 +671,7 @@
     } catch {}
     const value = String(text?.textContent || '');
     const style = getComputedStyle(text);
-    const fontSize = parseFloat(style.fontSize) || Number(text.getAttribute('font-size')) || 10;
+    const fontSize = parseFloat(style.fontSize) || Number(text.getAttribute('font-size')) || 14;
     const canvas = textCharacterExtent.canvas ||= document.createElement('canvas');
     const context = canvas.getContext('2d');
     if (!context) return null;
@@ -948,7 +948,7 @@
       }
       if (textFontSize && document.activeElement !== textFontSize) {
         textFontSize.value = String(Math.round(Number(stored.fontSize)
-          || Number(renderedText?.getAttribute?.('font-size')) || 10));
+          || Number(renderedText?.getAttribute?.('font-size')) || 14));
       }
       if (textBold) textBold.classList.toggle('is-active', stored.bold === true
         || renderedText?.getAttribute?.('font-weight') === 'bold');
@@ -959,7 +959,7 @@
       if (textStrike) textStrike.classList.toggle('is-active', stored.strike === true
         || String(renderedText?.getAttribute?.('text-decoration')).includes('line-through'));
       if (textBackgroundEnabled) textBackgroundColor?.classList.toggle('is-active', textBackgroundEnabled.checked);
-      if (textFontSizeButton) textFontSizeButton.title = `字體大小 ${textFontSize?.value || 10}px`;
+      if (textFontSizeButton) textFontSizeButton.title = `字體大小 ${textFontSize?.value || 14}px`;
       requestAnimationFrame(renderTextSelectionHighlight);
       return;
     }
@@ -1044,7 +1044,7 @@
           ...(trace.studio.objectStyles[frameId][key] || {}),
           textColor: textColor.value,
           background: textBackgroundEnabled?.checked ? textBackgroundColor.value : 'none',
-          fontSize: Math.max(8, Math.min(72, Number(textFontSize.value) || 10)),
+          fontSize: Math.max(8, Math.min(72, Number(textFontSize.value) || 14)),
           bold: textBold?.classList.contains('is-active') === true,
           italic: textItalic?.classList.contains('is-active') === true,
           underline: textUnderline?.classList.contains('is-active') === true,
@@ -3162,7 +3162,7 @@
     textFontSize.min = '8';
     textFontSize.max = '72';
     textFontSize.step = '1';
-    textFontSize.value = '10';
+    textFontSize.value = '14';
     const saveTextStyle = () => {
       previewTextSegmentStyle();
       scheduleAutoSave(saveTextSegmentStyle);
@@ -3200,7 +3200,7 @@
       textFormatButtons.append(button);
       return button;
     };
-    textFontSizeButton = formatButton('A↕', '字體大小 10px', 'is-font-size', false);
+    textFontSizeButton = formatButton('A↕', '字體大小 14px', 'is-font-size', false);
     const fontSizePopover = el('div', 'trace-studio-font-size-popover');
     fontSizePopover.hidden = true;
     fontSizePopover.append(textFontSize);
