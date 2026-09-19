@@ -24,9 +24,11 @@ async function runSample(name) {
 test('Segment_Tree_easy uses heap directives and preserves query output', async()=>{
   const {code,result,trace}=await runSample('Segment_Tree_easy');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_/);
-  assert.match(code,/@frame tree render heap/);
+  assert.match(code,/@preset query_view[\s\S]*@object tree render heap[\s\S]*@object sum render cell/);
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
   assert.match(code,/with split\(now,after\)/);
+  assert.match(code,/sum \+= tree\[now\]/);
+  assert.doesNotMatch(code,/左右結果合併|tree\[now\] = rule/);
   assert.doesNotMatch(code,/@style tree\[now\] (?:highlight,point|highlight)\s+AV_/);
   assert.equal(result.output.trim().replace(/\r\n?/g,'\n'),'27\n3\n119\n120\n8\n5\n17');
   assert.ok(trace.frames.some(frame=>Object.values(frame.renderers||{}).includes('original-heap')));

@@ -8,11 +8,17 @@ using namespace std;
 #define Hbit(X) (32-__builtin_clzll(X))
 
 vector<int> tree, lazy, sets;
-int Tmask, Tsize, Tdeep, n;
+int Tmask, Tsize, Tdeep, n, sum = 0;
 
 // @defaults
-// @camera focus tree offset(0,70) zoom(1.15)
+// @camera focus tree offset(0,35) zoom(1.05)
 // @enddefaults
+
+// @preset query_view
+// @object tree render heap with range(1,Tsize-1)
+// @object sum render cell
+// @place sum.top at tree.bottom offset(0,45)
+// @endpreset
 
 int rule(int a, int b) { return a + b; }
 
@@ -27,44 +33,41 @@ void build() {
 }
 
 // 保留原本的特殊葉節點排列：根區間是 [Tmask, 2*Tmask-1]。
-int query(int l, int r, int L, int R, int now) {
-    // @frame tree render heap with range(1,Tsize-1)
+void query(int l, int r, int L, int R, int now) {
+    // @frame use query_view
     // @style tree[now] highlight,point
     // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)
     // @text "節點 ${now} 代表目前區間；另一側尚待處理的區段也會保留" at tree.top offset(0,-20)
     if (L <= l && r <= R) {
-        // @frame tree render heap with range(1,Tsize-1)
+        sum += tree[now];
+        // @frame use query_view
         // @style tree[now] highlight,point
-        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)
-        // @text "整段都在查詢範圍內，直接回傳 ${tree[now]}" at tree.top offset(0,-20)
-        return tree[now];
+        // @style sum highlight
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after)
+        // @text "整段命中，將 ${tree[now]} 加入 sum；目前 sum = ${sum}" at tree.top offset(0,-20)
+        return;
     }
-    int m = (l + r) >> 1, M = r - m, sum = 0;
-    if (L <= m) sum = rule(sum, query(l, m, L, R, now << 1));
-    if (R > m) sum = rule(sum, query(m + 1, r, L, R, now << 1 | 1));
-    tree[now] = rule(tree[now << 1], tree[now << 1 | 1]);
-    // @frame tree render heap with range(1,Tsize-1)
-    // @style tree[now] highlight
-    // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after)
-    // @text "左右結果合併後，目前查詢值為 ${sum}" at tree.top offset(0,-20)
-    return sum;
+    int m = (l + r) >> 1;
+    if (L <= m) query(l, m, L, R, now << 1);
+    if (R > m) query(m + 1, r, L, R, now << 1 | 1);
 }
 
 int main() {
     int m, q, x, y, k;
     cin >> n >> m;
     build();
-    // @frame tree render heap with range(1,Tsize-1)
+    // @frame use query_view
     // @text "線段樹由葉節點往上合併；這個版本只示範區間查詢" at tree.top offset(0,-20)
-    // @keep tree as "built_tree"
     for (int i = 0; i < m; i++) {
         cin >> x >> y;
-        // @frame tree render heap with range(1,Tsize-1)
+        sum = 0;
+        // @frame use query_view
         // @segment tree[1][x-1:y-1] color AV_green as active_range
         // @text "查詢第 ${x} 到第 ${y} 個輸入值" at tree.top offset(0,-20)
-        int ans = query(Tmask, (Tmask << 1) - 1, (x - 1 | Tmask), (y - 1 | Tmask), 1);
-        cout << ans << endl;
-        // @frame tree render heap with range(1,Tsize-1)
-        // @text "這次區間查詢的答案是 ${ans}" at tree.top offset(0,-20)
+        query(Tmask, (Tmask << 1) - 1, (x - 1 | Tmask), (y - 1 | Tmask), 1);
+        cout << sum << endl;
+        // @frame use query_view
+        // @style sum highlight
+        // @text "所有命中區段都已加入，這次查詢答案是 ${sum}" at tree.top offset(0,-20)
     }
 }

@@ -4776,6 +4776,37 @@
     return Object.values(geometry).every(Number.isFinite) ? geometry : null;
   }
 
+  function heapSplitSegmentRect(element) {
+    const candidate = element?.classList?.contains('asm-trace-heap-cell-segment')
+      ? element
+      : element?.querySelector?.('.asm-trace-heap-cell-segment');
+    return candidate?.dataset?.traceSegmentSplit ? candidate : null;
+  }
+
+  function heapSplitSegmentGeometry(element) {
+    const rect = heapSplitSegmentRect(element);
+    if (!rect) return null;
+    const geometry = {
+      rect,
+      y: Number(rect.getAttribute('y')),
+      height: Number(rect.getAttribute('height'))
+    };
+    return Number.isFinite(geometry.y) && Number.isFinite(geometry.height)
+      && geometry.height > 0 ? geometry : null;
+  }
+
+  function applyHeapSplitVerticalFade(geometry, progress, phase) {
+    if (!geometry?.rect) return;
+    const amount = clamp01(progress);
+    if (phase === 'exit') {
+      geometry.rect.setAttribute('y', String(geometry.y + geometry.height * amount));
+      geometry.rect.setAttribute('height', String(geometry.height * (1 - amount)));
+      return;
+    }
+    geometry.rect.setAttribute('y', String(geometry.y));
+    geometry.rect.setAttribute('height', String(geometry.height * amount));
+  }
+
   function outerframeGeometry(element) {
     const background = element?.querySelector?.('.outerframe-bg');
     const group = background?.parentElement;
@@ -5461,6 +5492,8 @@
         ? null
         : candidatePreviousVisual;
       entry.previousVisual = previousVisual;
+      entry.heapSplitEntrance = !previousVisual
+        ? heapSplitSegmentGeometry(entry.element) : null;
       entry.previousSegmentGeometry = segmentGeometry(previousVisual);
       entry.currentSegmentGeometry = segmentGeometry(entry.element);
       // The outerframe is part of the same moving array as its cells. Keep
@@ -5641,7 +5674,8 @@
         wrapper,
         scopeExitSlot: null,
         lifecycleKind: visualLifecycleKind(clone),
-        retainedByEnteringKeep
+        retainedByEnteringKeep,
+        heapSplitExit: heapSplitSegmentGeometry(clone)
       });
     });
 
@@ -5743,6 +5777,7 @@
             ? 0
             : visualLifecycleOffsetY(entry.lifecycleKind, 'enter', appearEased);
         }
+        if (entry.heapSplitEntrance) dx = dy = 0;
         if (entry.previousSegmentGeometry && entry.currentSegmentGeometry) {
           dx = 0;
           dy = 0;
@@ -5891,6 +5926,9 @@
           rect.setAttribute('fill', `rgb(${color.r},${color.g},${color.b})`);
           rect.setAttribute('fill-opacity', String(color.a));
         });
+        if (entry.heapSplitEntrance) {
+          applyHeapSplitVerticalFade(entry.heapSplitEntrance, state.appearEased, 'enter');
+        }
       });
       events?.applyStyles?.();
       // Some draw types expose automatic markers only as nested DOM visuals.
@@ -5938,7 +5976,8 @@
       window.ASMTraceRenderers?.refreshArrows?.();
 
       ghosts.forEach(({
-        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep
+        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep,
+        heapSplitExit
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -5951,9 +5990,11 @@
               / Math.max(1, Number(scopeExitSlot.exitDuration) || APPEAR_TIMING.duration)
           ));
           ghost.setAttribute('opacity', String(1 - ghostProgress));
-          const offsetY = visualLifecycleOffsetY(lifecycleKind, 'exit', ghostProgress);
+          const offsetY = heapSplitExit ? 0
+            : visualLifecycleOffsetY(lifecycleKind, 'exit', ghostProgress);
           if (Math.abs(offsetY) > 0.01) ghost.setAttribute('transform', `translate(0, ${offsetY})`);
           else ghost.removeAttribute('transform');
+          applyHeapSplitVerticalFade(heapSplitExit, ghostProgress, 'exit');
           return;
         }
         const removalStart = removedVisualStartMs(
@@ -5963,9 +6004,11 @@
           Math.max(0, elapsed - removalStart) / APPEAR_TIMING.duration
         ));
         ghost.setAttribute('opacity', String(1 - ghostProgress));
-        const offsetY = visualLifecycleOffsetY(lifecycleKind, 'removed', ghostProgress);
+        const offsetY = heapSplitExit ? 0
+          : visualLifecycleOffsetY(lifecycleKind, 'removed', ghostProgress);
         if (Math.abs(offsetY) > 0.01) ghost.setAttribute('transform', `translate(0, ${offsetY})`);
         else ghost.removeAttribute('transform');
+        applyHeapSplitVerticalFade(heapSplitExit, ghostProgress, 'exit');
       });
 
       if (elapsed < totalDuration) {
@@ -6111,10 +6154,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-213';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-214';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-213', play, cancel, updateEventAvailability,
+    build: 'trace-214', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

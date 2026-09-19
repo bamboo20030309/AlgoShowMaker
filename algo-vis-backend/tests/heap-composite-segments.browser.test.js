@@ -66,6 +66,25 @@ test('heap fields and local segments render at root and child coordinates', {tim
           phase:rect.dataset.traceSegmentSplit,identity:rect.dataset.traceRuntimeIdentity
         })).sort((a,b)=>a.node-b.node));
       }
+      await player.render(treeFrames[3].index,{animatePositions:false,animateEvents:false});
+      const splitSamples=[];
+      let splitSettled=false;
+      const splitTransition=player.render(treeFrames[4].index).finally(()=>{splitSettled=true;});
+      for(let count=0;count<180&&!splitSettled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const root=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1)?.closest('#asm-trace-root');
+        const entering=root?.querySelector('.asm-trace-heap-cell-segment[data-trace-segment-node="4"]');
+        const exiting=[...(root?.querySelectorAll('.asm-trace-transition-ghost .asm-trace-heap-cell-segment')||[])]
+          .find(rect=>rect.dataset.traceSegmentNode==='2');
+        splitSamples.push({
+          entering:entering?{y:+entering.getAttribute('y'),height:+entering.getAttribute('height')}:null,
+          exiting:exiting?{y:+exiting.getAttribute('y'),height:+exiting.getAttribute('height')}:null
+        });
+      }
+      await splitTransition;
+      const splitRoot=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1).closest('#asm-trace-root');
+      const splitFinal=splitRoot.querySelector('.asm-trace-heap-cell-segment[data-trace-segment-node="4"]');
+      const splitTransitionState={samples:splitSamples,finalHeight:+splitFinal.getAttribute('height')};
       player.apply(JSON.parse(JSON.stringify(doc)));
       const reload=await readTree(treeFrames[1].index);
       await player.render(indices.pairs,{animatePositions:false,animateEvents:false});
@@ -75,7 +94,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
       const tuples=[...document.querySelector(`[data-trace-variable="${byName.tuples}"]`).querySelectorAll('[data-trace-index]')]
         .filter(node=>!node.hasAttribute('data-trace-index-label')).map(node=>node.querySelector(':scope > text')?.textContent).filter(Boolean);
       await player.render(indices.arr,{animatePositions:false,animateEvents:false});
-      return {first,second,third,frontiers,samples,reload,pairs,tuples,legacy:document.querySelectorAll('.asm-trace-segment').length};
+      return {first,second,third,frontiers,samples,splitTransitionState,reload,pairs,tuples,legacy:document.querySelectorAll('.asm-trace-segment').length};
     });
     assert.deepEqual(result.first.texts,['15','7,3','8,8','4,2,9']);
     assert.equal(result.first.root.length,2);
@@ -103,6 +122,15 @@ test('heap fields and local segments render at root and child coordinates', {tim
     ]);
     assert.equal(result.frontiers[0][1].identity,result.frontiers[1][0].identity);
     assert.equal(result.frontiers[1][0].identity,result.frontiers[2][0].identity);
+    assert.ok(result.splitTransitionState.samples.some(sample=>(
+      sample.entering&&sample.entering.height>0
+        &&sample.entering.height<result.splitTransitionState.finalHeight
+    )),'new child segment reveals from its top edge downward');
+    assert.ok(result.splitTransitionState.samples.some(sample=>(
+      sample.exiting&&sample.exiting.y>0
+        &&sample.exiting.height>0
+        &&sample.exiting.height<result.splitTransitionState.finalHeight
+    )),'removed parent segment erases from its top edge downward');
     assert.deepEqual(result.reload,result.second);
     assert.deepEqual(result.pairs,['5','0 / 5']);
     assert.deepEqual(result.tuples,['1,0,3','0,0,0']);
@@ -111,7 +139,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
   } finally {await browser.close();}
 });
 
-test('segment tree accepted node keeps its local segment visible', {timeout:60000}, async () => {
+test('segment tree descends with segments, removes accepted pieces and accumulates sum', {timeout:60000}, async () => {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -131,6 +159,7 @@ test('segment tree accepted node keeps its local segment visible', {timeout:6000
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
+      const sumId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='sum');
       const queryFrames=doc.frames.map((frame,index)=>({frame,index})).filter(({frame})=>frame.segments?.length);
       const now=frame=>Number(window.ASMTraceRules.resolveExpression(doc,frame,'now'));
       const deepest=Math.max(...queryFrames.map(({frame})=>now(frame)).filter(Number.isFinite));
@@ -144,17 +173,21 @@ test('segment tree accepted node keeps its local segment visible', {timeout:6000
       await player.render(accepted.index,{animatePositions:false,animateEvents:false});
       const tree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
       const scene=tree.closest('#asm-trace-root');
+      const sum=scene.querySelector(`[data-trace-variable="${sumId}"]`);
+      const sumCell=sum?.querySelector('[data-trace-index="0"]');
       return {
         deepest,
         animatedVisible,
         segments:[...scene.querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>(+rect.dataset.traceSegmentNode)),
-        styleLayer:Boolean(scene.querySelector('.asm-trace-style-layer .asm-trace-heap-cell-segment'))
+        sum:sumCell?.querySelector(':scope > text')?.textContent,
+        sumBelowTree:Number(sum?.dataset?.tracePositionY)>Number(tree?.dataset?.tracePositionY)
       };
     });
     assert.equal(result.deepest,14);
     assert.equal(result.animatedVisible,true);
-    assert.deepEqual(result.segments,[14]);
-    assert.equal(result.styleLayer,true);
+    assert.deepEqual(result.segments,[]);
+    assert.equal(result.sum,'27');
+    assert.equal(result.sumBelowTree,true);
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
 });
