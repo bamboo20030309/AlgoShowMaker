@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-19-alpha-segment-tree
 - 共同基準 commit：61a4baade9b06b5e50d0c7a24683e937db9c7112
-- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a
-- 驗證時的 HEAD 與未提交修改：1f9a95f0e516ad97e4f9a9baae894375b21eeb8a；程式驗證完成時僅有本交付文件的commit欄位更新
+- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c
+- 驗證時的 HEAD 與未提交修改：0158b1c6ea2c481d21c9499ea19c54b03d2b773c；程式驗證完成時僅有本交付文件的commit與服務欄位更新
 - 驗證日期：2026-09-19
 
 ## 根因與修改
@@ -52,7 +52,7 @@
 - 執行目錄與必要環境設定：本任務 worktree 的 algo-vis-backend，PORT=3101。
 - 完整操作：以 served trace-renderer.js 的 SHA-256 核對 worktree，POST /trace/analyze 分析 fields／hide／雙層 segment 最小程式，再讀取 algorithm.html cache 版本。
 - 預期結果：來源 hash 相符；fields=tree,lazy,sets、cellRange=true、color=AV_green；新前端版本可見。
-- 實際結果與 exit code：修正後停止已核對的舊PID 62184並由本任務worktree重啟為PID 59828；HTTP 200、served renderer與worktree SHA-256相符；renderer trace-196、tween trace-213、model trace-33、directive assist directive-15；重啟後命中節點segment瀏覽器專項1/1通過。
+- 實際結果與 exit code：本輪先停止已核對的PID 59828，再由本任務worktree重啟為PID 64892；HTTP 200、served renderer與worktree SHA-256相符；renderer trace-197、tween trace-213、model trace-33、directive assist directive-15；重啟後第三幀動畫／命中節點segment瀏覽器專項1/1通過。
 - 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
 
 ### Segment Tree查詢segment消失專項
