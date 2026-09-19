@@ -442,6 +442,19 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
   assert.equal(window.ASMTraceFrameTween.markerLifetimeActiveAtEvent(
     frame, frame.events[3], newMarker
   ), true);
+
+  const labelAttributes = { x: '-9', y: '-40', width: '18', height: '18' };
+  const labelBox = { getAttribute: name => labelAttributes[name] ?? null };
+  const marker = { querySelector: selector => (
+    selector === '.trace-variable-marker-label-box' ? labelBox : null
+  ) };
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(window.ASMTraceFrameTween.detachedMarkerPopupPoint(
+      { x: 100, y: 200, width: 40, height: 40 }, marker
+    ))),
+    { x: 120, y: 160, width: 40, height: 40 },
+    'a detached assignment reuses the authored label offset from its bound cell'
+  );
 });
 
 test('container replay never overwrites an array outerframe label', async () => {

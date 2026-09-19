@@ -1899,6 +1899,20 @@
       || markerCellElement(operand);
   }
 
+  function detachedMarkerPopupPoint(bindingPoint, markerElement) {
+    if (!bindingPoint) return null;
+    const labelBox = markerPopupAnchorElement({ marker: true, element: markerElement });
+    const labelOffsetY = Number(labelBox?.getAttribute?.('y'));
+    return {
+      ...bindingPoint,
+      x: bindingPoint.x + bindingPoint.width / 2,
+      // Marker label boxes are authored relative to the bound cell anchor.
+      // Reuse that exact offset so a detached lifetime lands where its live
+      // label did, without counting the label/arrow height a second time.
+      y: bindingPoint.y + (Number.isFinite(labelOffsetY) ? labelOffsetY : -40)
+    };
+  }
+
   function markerAssignmentStart(visible, current, delta) {
     const visualValue = Number(visible);
     const currentValue = Number(current);
@@ -2464,22 +2478,7 @@
         width: bindingBounds.width, height: bindingBounds.height
       } : comparisonPoint(placements, bindingTarget);
       if (bindingPoint) {
-        let priorMarkerHeight = 40;
-        try {
-          const priorMarkerBounds = operand.element?.getBBox?.();
-          if (Number(priorMarkerBounds?.height) > 0) {
-            priorMarkerHeight = Number(priorMarkerBounds.height);
-          }
-        } catch {
-          // Detached SVG clones may not expose a measurable box.
-        }
-        operand.point = {
-          ...bindingPoint,
-          x: bindingPoint.x + bindingPoint.width / 2,
-          // Keep the previous lifetime's assignment value above the marker
-          // that now occupies this cell instead of letting it pass underneath.
-          y: bindingPoint.y - priorMarkerHeight - 6
-        };
+        operand.point = detachedMarkerPopupPoint(bindingPoint, operand.element);
       }
     }
     const markerAnchor = liveMarker ? operand.element : null;
@@ -6269,7 +6268,7 @@
     declarationVisualSchedule, recursiveRoleContinuations, exitMarkerReflowSchedule,
     isForInitializerAssignment,
     isDeclarationInitializerAssignment, markerTargetBeforeFrameEvents, markerTargetAtCheckpoint,
-    markerLifetimeActiveAtEvent,
+    markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
     createForwardReplayPlan, prepareForwardValues
