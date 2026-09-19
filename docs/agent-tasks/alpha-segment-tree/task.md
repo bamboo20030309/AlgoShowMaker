@@ -9,8 +9,8 @@
 
 ## 問題與預期結果
 - 情境與操作：新版指令目前只能讓heap呈現單一來源值，既有@segment只表示一般陣列範圍；兩個線段樹範例仍依賴AV.hpp及舊繪圖資料。
-- 目前行為：原始功能無法直接合併tree／lazy／sets同索引，也無法在heap節點格內依局部範圍著色；後續實際播放另發現`sum += tree[now]`會令sum暫時變空，且全域sum跨遞迴幀反覆入退場。
-- 使用者希望的結果：新增fields／hide／separator、pair／tuple單格格式及雙層@segment，並以新語法改寫兩個範例；`+=`應讓來源格內數字移至目的數字位置後提交結果，全域純量跨幀保持同一物件。
+- 目前行為：原始功能無法直接合併tree／lazy／sets同索引，也無法在heap節點格內依局部範圍著色；後續實際播放另發現`sum += tree[now]`會令sum暫時變空，且全域sum跨遞迴幀反覆入退場。自動固定與迴圈邊界選項只保存為帳號偏好，`@asm-view`會丟棄它們，重新RUN後無法維持單一檔案的選擇。
+- 使用者希望的結果：新增fields／hide／separator、pair／tuple單格格式及雙層@segment，並以新語法改寫兩個範例；`+=`應讓來源格內數字移至目的數字位置後提交結果，全域純量跨幀保持同一物件；自動固定與迴圈邊界設定應跟著程式設定檔保存。
 - 本次範圍與必要限制：三種結構統一使用既有render heap；不新增標準線段樹renderer；保留特殊線段樹演算法、儲存與輸出；不修改已完成的heap.cpp；point／highlight使用預設樣式；遞迴下降時顯示目前與尚待處理的segment，命中後移除完成區段，回溯不建立幀；格內segment歸入style顯示層。
 
 ## 需求確認
@@ -43,6 +43,7 @@
 - [x] 一般播放套用同格highlight／point時不會清除segment；第三幀、倒退及重播皆維持正確顯示。
 - [x] 既有@segment arr[L:R]與heap既有行為不變。
 - [x] Segment_Tree_easy.cpp與Segment_Tree.cpp移除AV.hpp及舊繪圖資料，保留演算法及輸出，能以sample input編譯產生trace。
+- [x] 自動固定與迴圈邊界事件寫入`@asm-view`，重新RUN及重載後維持；舊檔未設定時仍沿用帳號預設。
 
 ## 驗證計畫
 - 開發代理小驗證：V2 E/F/H/J，新增parser／model／renderer局部專項；隔離服務與headless瀏覽器只跑最小fixture及兩個範例sample input；C++原輸出對照改寫前版本。
@@ -58,3 +59,4 @@
 - 2026-09-19：重現第三幀僅在一般播放消失；根因是presented hint更新會隱藏同格所有attached視覺，誤包含style layer segment。清理範圍改為highlight／point／mark並新增實際動畫路徑驗證。
 - 2026-09-20：依使用者修正展示流程：Segment_Tree_easy移除所有回溯幀，完整命中後直接移除該segment並累加tree下方的sum；split segment新增由上往下淡入／淡出動畫。
 - 2026-09-20：修正複合賦值缺少before／after與來源target造成sum空白；可見來源到目的改為純數字移動。純量加入runtime identity，避免全域sum跨函式／遞迴幀反覆入退場；具副作用目的索引維持單次求值路徑。
+- 2026-09-20：依使用者要求將自動固定與迴圈邊界事件改為檔案級設定；`@asm-view`只保存這兩個選項，其餘事件偏好仍由帳號設定提供，舊檔維持相容。
