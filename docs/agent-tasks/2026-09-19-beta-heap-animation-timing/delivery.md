@@ -82,7 +82,7 @@
 - 分類：F、G、H。
 - 選擇依據：修改 sequence runtime、marker lifetime、style layer 與實際 SVG 幾何。
 - 執行的測試檔／名稱篩選：outerframe/style/index-label/sequence 完整檔、heap marker lifetime 名稱篩選。
-- 驗證環境與隔離服務：beta worktree、3102、獨立 headless Edge；3102 已從 beta worktree 重啟為 PID 67000，`algorithm.html` HTTP 200。
+- 驗證環境與隔離服務：beta worktree、3102、獨立 headless Edge；3102 已從 beta worktree 重啟為 PID 11156，`algorithm.html` HTTP 200。
 - 驗證版本、完整指令、結果與證據：最新程式內容對應 c7a1888d72c48ac16b7623540fcd7a90a6d20e41；`node --check public/trace-frame-tween.js`、outerframe 5 案與 sequence integration 2 案通過；反向 edge effect 與 highlight 的實際畫面結果如上。先前 sequence integration 未指定服務位址與樣式整合 rate limit 的環境失敗，均已依正確隔離服務重跑通過。
 - 未執行的驗證及原因：依使用者指示及分級規則，未執行完整 regression、全部 tests 或廣泛排序整合。
 - 需要主代理做的 V3 驗證：無；整合時重看 heap 第 4→5 幀、跨層擴展／內縮與第 13→14 幀 scope exit 即可。
