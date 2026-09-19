@@ -3632,25 +3632,40 @@
       currentPositions = nextPositions;
     });
 
-    // The destination scene no longer contains the exiting marker, but its
-    // peer must retain the previous offset and keep pointing at the cell
-    // centre until that exit completes. Move both the peer and its arrow only
-    // during the subsequent close-gap phase.
+    // The destination scene no longer contains the exiting marker. Patch the
+    // peer's last arrival before the exit so it lands in the temporary
+    // two-marker layout, then close the gap while the old marker exits.
     frameReflow.exitReflows?.forEach?.((reflow, key) => {
       const item = metadata.get(key);
-      const from = initialPositions.get(key);
-      const to = settledFramePositions.get(key) || (item ? {
+      if (!item) return;
+      const targetGeometry = markerTargetGeometry(
+        String(reflow?.target || item.currentTarget), placements
+      );
+      const settled = {
         x: item.finalBase.x,
         y: item.finalBase.y,
-        targetX: from?.targetX ?? item.finalBase.x,
-        targetY: from?.targetY ?? item.finalBase.y
-      } : null);
-      if (!from || !to) return;
+        targetX: targetGeometry?.x ?? item.finalBase.x,
+        targetY: targetGeometry
+          ? targetGeometry.y + targetGeometry.height / 2
+          : item.finalBase.y
+      };
+      const hold = {
+        ...settled,
+        x: settled.x + (Number(reflow?.holdOffsetX) || 0)
+      };
       const start = Math.max(0, Number(reflow?.start) || 0);
       const end = start + Math.max(
         1, Number(reflow?.duration) || MARKER_REFLOW_TIMING.duration
       );
-      addStep(key, start, end, from, to, state.get(key), state.get(key));
+      const track = tracks.get(key) || [];
+      const arrival = [...track].reverse().find(step => (
+        Number(step.end) <= start
+        && (!Number(reflow?.arrivalEnd)
+          || Math.abs(Number(step.end) - Number(reflow.arrivalEnd)) < 1)
+      ));
+      if (arrival) arrival.to = { ...hold };
+      else initialPositions.set(key, { ...hold });
+      addStep(key, start, end, hold, settled, reflow?.target, reflow?.target);
       tracks.get(key)?.sort((left, right) => left.start - right.start || left.end - right.end);
     });
 
@@ -4054,27 +4069,87 @@
           if (target) exitingTargets.add(target);
         });
       });
-      currentElements?.forEach?.((element, key) => {
-        if (!element?.dataset?.traceSourceVariableId) return;
-        if ((slot.event?.targets || []).some(target => markerMatchesEventTarget(element, target))) return;
-        const previous = previousVisualForEntry(element, previousObjects, key);
-        const previousTarget = String(previous?.dataset?.traceBindingTarget || '');
-        if (!previousTarget || !exitingTargets.has(previousTarget)) return;
-        const before = previousPlacements?.get?.(key);
-        const after = currentPlacements?.get?.(key);
-        if (!before || !after) return;
-        const moved = Math.abs((Number(before.x) || 0) - (Number(after.x) || 0)) > 0.1
-          || Math.abs((Number(before.y) || 0) - (Number(after.y) || 0)) > 0.1;
-        if (!moved) return;
-        const start = Number(slot.reflowStart) || Number(slot.end) || 0;
-        const existing = schedule.get(key);
-        if (!existing || start < Number(existing.start)) {
-          schedule.set(key, {
-            start,
-            duration: MARKER_REFLOW_TIMING.duration,
-            eventId: String(slot.event?.id || '')
-          });
-        }
+      exitingTargets.forEach(exitingTarget => {
+        const exitMatches = [previousObjects, currentElements].flatMap(elements => (
+          scopeExitVisualMatches(slot.event, elements)
+        ));
+        const exitingMarker = exitMatches.flatMap(match => [
+          match.element,
+          ...(match.element?.querySelectorAll?.('[data-trace-source-variable-id]') || [])
+        ]).find(candidate => (
+          String(candidate?.dataset?.traceBindingTarget || '') === exitingTarget
+          && (slot.event?.targets || []).some(target => markerMatchesEventTarget(candidate, target))
+        ));
+        if (!exitingMarker) return;
+
+        const peers = [];
+        currentElements?.forEach?.((element, key) => {
+          if (!element?.dataset?.traceSourceVariableId) return;
+          if ((slot.event?.targets || []).some(target => markerMatchesEventTarget(element, target))) return;
+          const previous = previousVisualForEntry(element, previousObjects, key);
+          const previousTarget = String(previous?.dataset?.traceBindingTarget || '');
+          const currentTarget = String(element.dataset.traceBindingTarget || '');
+          if (previousTarget !== exitingTarget && currentTarget !== exitingTarget) return;
+          if (!currentPlacements?.has?.(key)) return;
+          peers.push({ key, element, target: currentTarget || previousTarget });
+        });
+        if (!peers.length) return;
+        const targetGeometry = markerTargetGeometry(exitingTarget, currentPlacements);
+        if (!targetGeometry) return;
+
+        const participants = [
+          ...peers.map(peer => ({ ...peer, exiting: false })),
+          { key: '__exiting__', element: exitingMarker, exiting: true }
+        ].map(item => ({
+          ...item,
+          width: Number(item.element.querySelector?.('.trace-variable-marker-label-box')
+            ?.getAttribute?.('width')) || 18,
+          sortKey: String(item.element.dataset?.traceMarkerSortKey
+            || item.element.dataset?.traceMarkerIndexExpression
+            || item.element.dataset?.traceSourceVariableId
+            || item.key)
+        })).sort((left, right) => (
+          left.sortKey.localeCompare(right.sortKey, 'en', { numeric: true, sensitivity: 'base' })
+          || left.key.localeCompare(right.key)
+        ));
+        const gap = 8;
+        const totalWidth = participants.reduce((sum, item) => sum + item.width, 0)
+          + Math.max(0, participants.length - 1) * gap;
+        let cursor = -totalWidth / 2;
+        const offsets = new Map();
+        participants.forEach(item => {
+          offsets.set(item.key, cursor + item.width / 2);
+          cursor += item.width + gap;
+        });
+        const exitingBase = elementTranslation(exitingMarker);
+        const exitingOffsetX = targetGeometry.x
+          + (Number(offsets.get('__exiting__')) || 0)
+          - (Number(exitingBase?.x) || targetGeometry.x);
+        const start = Number(slot.reflowStart ?? slot.visualStart ?? slot.start) || 0;
+        const duration = Math.max(1, Number(slot.exitDuration) || APPEAR_TIMING.duration);
+        peers.forEach(peer => {
+          const sourceIds = markerSourceVariableIds(peer.element);
+          const arrival = (eventTimeline || []).filter(candidate => (
+            ['assign', 'position'].includes(candidate?.animation)
+            && Number(candidate.end) <= start
+            && (candidate.event?.targets || []).some(target => (
+              target?.role !== 'source' && sourceIds.includes(target?.variableId)
+            ))
+          )).at(-1);
+          const existing = schedule.get(peer.key);
+          if (!existing || start < Number(existing.start)) {
+            schedule.set(peer.key, {
+              start,
+              duration,
+              eventId: String(slot.event?.id || ''),
+              target: exitingTarget,
+              holdOffsetX: Number(offsets.get(peer.key)) || 0,
+              ghostOffsetX: exitingOffsetX,
+              arrivalStart: Number(arrival?.motionStart ?? arrival?.start) || 0,
+              arrivalEnd: Number(arrival?.end) || 0
+            });
+          }
+        });
       });
     });
     return schedule;
@@ -4359,8 +4434,9 @@
         markerExit = markerExitNeedsReflow(
           event, elements, previousPlacements, currentPlacements, previousObjects
         );
-        duration = APPEAR_TIMING.duration
-          + (markerExit ? MARKER_REFLOW_TIMING.duration : 0);
+        duration = markerExit
+          ? Math.max(APPEAR_TIMING.duration, MARKER_REFLOW_TIMING.duration)
+          : APPEAR_TIMING.duration;
       }
       if (animation === 'assign') {
         const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
@@ -4446,7 +4522,7 @@
         markerExit,
         exitDuration: animation === 'exit' ? APPEAR_TIMING.duration : 0,
         reflowStart: animation === 'exit' && markerExit
-          ? visualStart + APPEAR_TIMING.duration : 0,
+          ? visualStart : 0,
         markerAssignment: Boolean(markerAssignment), duration, end: visualStart + duration,
         preKeepBatchKey,
         exitBatchStart: parallelExitBatch
@@ -5759,10 +5835,14 @@
         });
         wrapper.append(isolated.clone);
         root.prepend(wrapper);
+        const exitReflow = [...exitReflowSchedule.values()].find(reflow => (
+          String(reflow?.eventId || '') === String(slot.event?.id || '')
+        )) || null;
         previousExitGhosts.push({
           wrapper,
           scopeExitSlot: slot,
-          lifecycleKind: visualLifecycleKind(isolated.visual)
+          lifecycleKind: visualLifecycleKind(isolated.visual),
+          exitReflow
         });
       });
     });
@@ -6084,7 +6164,7 @@
       window.ASMTraceRenderers?.refreshArrows?.();
 
       ghosts.forEach(({
-        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep
+        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep, exitReflow
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -6098,7 +6178,16 @@
           ));
           ghost.setAttribute('opacity', String(1 - ghostProgress));
           const offsetY = visualLifecycleOffsetY(lifecycleKind, 'exit', ghostProgress);
-          if (Math.abs(offsetY) > 0.01) ghost.setAttribute('transform', `translate(0, ${offsetY})`);
+          const holdOffsetX = Number(exitReflow?.ghostOffsetX) || 0;
+          const arrivalStart = Number(exitReflow?.arrivalStart) || 0;
+          const arrivalEnd = Number(exitReflow?.arrivalEnd) || arrivalStart;
+          const arrivalProgress = elapsed < arrivalStart ? 0
+            : arrivalEnd <= arrivalStart ? 1
+            : easeOutCubic(clamp01((elapsed - arrivalStart) / (arrivalEnd - arrivalStart)));
+          const offsetX = holdOffsetX * arrivalProgress * (1 - ghostProgress);
+          if (Math.abs(offsetX) > 0.01 || Math.abs(offsetY) > 0.01) {
+            ghost.setAttribute('transform', `translate(${offsetX}, ${offsetY})`);
+          }
           else ghost.removeAttribute('transform');
           return;
         }
