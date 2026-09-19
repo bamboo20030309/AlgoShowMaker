@@ -233,6 +233,8 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       'compound += moves only the value text, not the source cell rectangle');
     assert.ok(transferSamples.some(sample=>sample.sumValue==='0'),
       `sum retains its old value until the incoming number lands: ${JSON.stringify(transferSamples)}`);
+    assert.equal(transferSamples.some(sample=>sample.sumValue==='27'),false,
+      'the moving number disappears in the same animation update that commits the destination value');
     const distances=transferSamples.map(sample=>sample.transferDistance).filter(Number.isFinite);
     assert.ok(Math.max(...distances)>Math.min(...distances)+20,
       'the copied number travels from the tree cell to the sum value');

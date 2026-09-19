@@ -2532,7 +2532,14 @@
           fallingText.setAttribute('opacity', String(dropProgress < 1 ? clamp01(dropProgress * 4) : 0));
         }
         transfer?.update(dropProgress, 1 - exit);
-        if (dropProgress >= 1) landValue();
+        if (dropProgress >= 1) {
+          landValue();
+          // A compound value transfer represents the source number being
+          // absorbed by the destination. Remove it in the same update that
+          // commits the result instead of leaving a duplicate over the target
+          // throughout the generic assignment hold phase.
+          if (event?.compound === true) transfer?.remove();
+        }
       },
       remove() {
         landValue();
@@ -6185,10 +6192,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-215';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-216';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-215', play, cancel, updateEventAvailability,
+    build: 'trace-216', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
