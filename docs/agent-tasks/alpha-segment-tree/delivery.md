@@ -43,6 +43,14 @@
 - 實際結果與 exit code：6/6 通過，全部 exit code 0。
 - 證據位置：執行輸出只保留於本次代理工作階段。
 
+### Alpha 3101 預覽服務
+- 目的與對應條件：確認更新後的 alpha 服務確實來自本任務 worktree，且新 parser 與前端檔案已載入。
+- 執行目錄與必要環境設定：本任務 worktree 的 algo-vis-backend，PORT=3101。
+- 完整操作：以 served trace-renderer.js 的 SHA-256 核對 worktree，POST /trace/analyze 分析 fields／hide／雙層 segment 最小程式，再讀取 algorithm.html cache 版本。
+- 預期結果：來源 hash 相符；fields=tree,lazy,sets、cellRange=true、color=AV_green；新前端版本可見。
+- 實際結果與 exit code：PID 56812；來源 hash 相符；analyze 通過；renderer trace-194、tween trace-213、model trace-33、directive assist directive-14。
+- 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
+
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
 - 已知問題或風險：hide 的 LM／INT_MAX 對應目前以 32 位 int 最大值格式化；若未來支援自訂巨集值，需在 trace metadata 加入常數求值。
