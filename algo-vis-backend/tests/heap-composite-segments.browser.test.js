@@ -110,3 +110,43 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
 });
+
+test('segment tree accepted node keeps its local segment visible', {timeout:60000}, async () => {
+  const base=process.env.ASM_TEST_BASE_URL;
+  assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree_easy.cpp'),'utf8')
+      .replace(/\r\n?/g,'\n').replace('    // @keep tree as "built_tree"\n','');
+    await page.evaluate(code=>{
+      ace.edit('editor').setValue(code,-1);
+      document.querySelector('#inputArea').value='15 1\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15\n13 14\n';
+    },code);
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    const result=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
+      const queryFrames=doc.frames.map((frame,index)=>({frame,index})).filter(({frame})=>frame.segments?.length);
+      const now=frame=>Number(window.ASMTraceRules.resolveExpression(doc,frame,'now'));
+      const deepest=Math.max(...queryFrames.map(({frame})=>now(frame)).filter(Number.isFinite));
+      const accepted=queryFrames.filter(({frame})=>now(frame)===deepest).at(-1);
+      await player.render(accepted.index,{animatePositions:false,animateEvents:false});
+      const tree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
+      const scene=tree.closest('#asm-trace-root');
+      return {
+        deepest,
+        segments:[...scene.querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>(+rect.dataset.traceSegmentNode)),
+        styleLayer:Boolean(scene.querySelector('.asm-trace-style-layer .asm-trace-heap-cell-segment'))
+      };
+    });
+    assert.equal(result.deepest,14);
+    assert.deepEqual(result.segments,[14]);
+    assert.equal(result.styleLayer,true);
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});

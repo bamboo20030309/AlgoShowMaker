@@ -51,9 +51,9 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         // @style tree[now] highlight,point
         // @style lazy[1:Tsize-1] background AV_blue when value != 0
         // @style sets[1:Tsize-1] background AV_orange when value != 2147483647
-        // @segment tree[1][L-Tmask:R-Tmask] color AV_blue as active_range with split(now,after) when Add != 0
-        // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now,after) when Set != 2147483647
-        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after) when Add == 0 and Set == 2147483647
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_blue as active_range with split(now) when Add != 0
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now) when Set != 2147483647
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now) when Add == 0 and Set == 2147483647
         // @text "整段命中；格內依序顯示 tree、lazy、sets，目前值為 ${tree[now]}" at tree.top offset(0,-20)
         return tree[now];
     }

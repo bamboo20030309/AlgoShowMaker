@@ -35,7 +35,7 @@ int query(int l, int r, int L, int R, int now) {
     if (L <= l && r <= R) {
         // @frame tree render heap with range(1,Tsize-1)
         // @style tree[now] highlight,point
-        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after)
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)
         // @text "整段都在查詢範圍內，直接回傳 ${tree[now]}" at tree.top offset(0,-20)
         return tree[now];
     }
