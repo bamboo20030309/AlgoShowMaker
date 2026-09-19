@@ -134,23 +134,36 @@ test('heap cell follows its outerframe origin while sequence width opens to the 
   const beforeRect = window.document.createElementNS(namespace, 'rect');
   [['x', 20], ['y', 8], ['width', 40], ['height', 40]]
     .forEach(([name, value]) => beforeRect.setAttribute(name, String(value)));
-  previous.append(beforeRect);
+  const beforeText = window.document.createElementNS(namespace, 'text');
+  [['x', 40], ['y', 28], ['font-size', 12]]
+    .forEach(([name, value]) => beforeText.setAttribute(name, String(value)));
+  previous.append(beforeRect, beforeText);
   const current = window.document.createElementNS(namespace, 'g');
   const afterRect = window.document.createElementNS(namespace, 'rect');
   [['x', 0], ['y', 8], ['width', 80], ['height', 40]]
     .forEach(([name, value]) => afterRect.setAttribute(name, String(value)));
-  current.append(afterRect);
+  const afterText = window.document.createElementNS(namespace, 'text');
+  [['x', 40], ['y', 28], ['font-size', 16]]
+    .forEach(([name, value]) => afterText.setAttribute(name, String(value)));
+  current.append(afterRect, afterText);
 
   const geometry = window.ASMTraceFrameTween.alignedDirectRectGeometry(previous, current);
   window.ASMTraceFrameTween.applyLeftAnchoredRectGeometry(geometry, 0);
   assert.equal(Number(afterRect.getAttribute('width')), 40);
   assert.equal(Number(afterRect.getAttribute('x')), 0);
+  assert.equal(Number(afterText.getAttribute('x')), 20);
+  assert.equal(Number(afterText.getAttribute('y')), 28);
+  assert.equal(Number(afterText.getAttribute('font-size')), 12);
 
   window.ASMTraceFrameTween.applyLeftAnchoredRectGeometry(geometry, 0.5);
   assert.equal(Number(afterRect.getAttribute('width')), 60);
   assert.equal(Number(afterRect.getAttribute('x')), 0);
+  assert.equal(Number(afterText.getAttribute('x')), 30);
+  assert.equal(Number(afterText.getAttribute('font-size')), 14);
 
   window.ASMTraceFrameTween.applyLeftAnchoredRectGeometry(geometry, 1);
   assert.equal(Number(afterRect.getAttribute('width')), 80);
   assert.equal(Number(afterRect.getAttribute('x')), 0);
+  assert.equal(Number(afterText.getAttribute('x')), 40);
+  assert.equal(Number(afterText.getAttribute('font-size')), 16);
 });

@@ -747,8 +747,16 @@
     const targetRects = [...(target?.children || [])].filter(child => (
       child?.tagName?.toLowerCase?.() === 'rect'
     ));
+    const sourceTexts = [...(source?.children || [])].filter(child => (
+      child?.tagName?.toLowerCase?.() === 'text'
+    ));
+    const targetTexts = [...(target?.children || [])].filter(child => (
+      child?.tagName?.toLowerCase?.() === 'text'
+    ));
     return targetRects.map((rect, index) => {
       const previous = sourceRects[index];
+      const text = targetTexts[index] || null;
+      const previousText = sourceTexts[index] || null;
       const number = (element, attribute) => Number(element?.getAttribute?.(attribute));
       const after = {
         x: number(rect, 'x'), y: number(rect, 'y'),
@@ -761,13 +769,21 @@
       if (!previous || [...Object.values(before), ...Object.values(after)].some(value => (
         !Number.isFinite(value)
       ))) return null;
-      return { rect, before, after };
+      const beforeFontSize = number(previousText, 'font-size');
+      const afterFontSize = number(text, 'font-size');
+      return {
+        rect, text, before, after,
+        beforeFontSize: Number.isFinite(beforeFontSize) ? beforeFontSize : null,
+        afterFontSize: Number.isFinite(afterFontSize) ? afterFontSize : null
+      };
     }).filter(Boolean);
   }
 
   function applyLeftAnchoredRectGeometry(geometry, progress) {
     const t = clamp01(progress);
-    (geometry || []).forEach(({ rect, before, after }) => {
+    (geometry || []).forEach(({
+      rect, text, before, after, beforeFontSize, afterFontSize
+    }) => {
       const width = before.width + (after.width - before.width) * t;
       const height = before.height + (after.height - before.height) * t;
       // The container translation already carries the old left edge into the
@@ -777,6 +793,14 @@
       rect.setAttribute('y', String(after.y));
       rect.setAttribute('width', String(width));
       rect.setAttribute('height', String(height));
+      if (!text) return;
+      text.setAttribute('x', String(after.x + width / 2));
+      text.setAttribute('y', String(after.y + height / 2));
+      if (beforeFontSize !== null && afterFontSize !== null) {
+        text.setAttribute('font-size', String(
+          beforeFontSize + (afterFontSize - beforeFontSize) * t
+        ));
+      }
     });
   }
 
@@ -5501,7 +5525,7 @@
         // geometry. A second child motion would move it twice while the
         // background and name area only move once.
         lockToTarget: outerframeGeometryLabel(entry.element)
-          || entry.isIndexLabel
+          || (entry.isIndexLabel && !entry.sequenceGeometrySlot)
           || declarationDirect || (entry.keepSnapshotMember && !entry.keepHandoff),
         inheritParentMotion
       });
