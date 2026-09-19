@@ -9,7 +9,7 @@
 
 ## 問題與預期結果
 - 情境與操作：執行 `algorithm_sample/Tree/heap.cpp`，觀察第二次插入所形成的第 4 幀到第 5 幀動畫。
-- 目前行為：目標 heap 在 `push_back` 前已採用新層級寬度；先前只延後 rect 寬度後，value/index 文字與部分 index 位置仍會提早跳到目標幾何。一般 highlight 曾被縮成只框 value；前一輪 `now = parent` 的賦值框會落到 `now` 指標下方。
+- 目前行為：目標 heap 在 `push_back` 前已採用新層級寬度；先前只延後 rect 寬度後，value/index 文字與部分 index 位置仍會提早跳到目標幾何。一般 highlight 曾被縮成只框 value；舊 lifetime 的 `now = parent` 賦值框先後因近似高度計算而偏低或偏高。
 - 使用者希望的結果：新格正式加入前，既有 value 框、index 框及框內數字都維持原位與原尺寸；outerframe 擴張時，完整格子才同步向右延伸，數字移到新中心；一般 highlight 包含 index，只有比較動畫框 value；`now = parent` 賦值框位於 `now` 指標上方。
 - 本次範圍與必要限制：修正 heap 繪圖與共用 trace tween；不改 heap 範例內容；只做 V2 專項小驗證，不跑完整 regression。
 
@@ -45,3 +45,4 @@
 - 2026-09-19：實際重現確認 highlight 的共用 style layer 也會補回 index 高度，因此同步修正 normal／heap／segment tree／BIT 的值格 highlight 契約。
 - 2026-09-19：依使用者更正，一般 highlight 恢復包含 index，compare highlight 維持 value-only；heap resize 改為左緣隨 outerframe、向右擴張，並將舊 lifetime 賦值框移至 `now` 指標上方。
 - 2026-09-19：依使用者補充，resize 前須保留完整舊格，而非只保留 rect 寬度；將 value/index 的 rect、文字中心與字級統一綁到 outerframe resize slot。
+- 2026-09-19：依使用者回報賦值框偏高，移除「完整 marker 高度再加間距」的近似值，改用 marker 標籤框實際 `y` offset 重建 detached lifetime 的錨點。
