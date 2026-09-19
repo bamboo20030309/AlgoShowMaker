@@ -11,7 +11,7 @@
 - 情境與操作：新版指令目前只能讓heap呈現單一來源值，既有@segment只表示一般陣列範圍；兩個線段樹範例仍依賴AV.hpp及舊繪圖資料。
 - 目前行為：無法直接合併tree／lazy／sets同索引，也無法在heap節點格內依局部範圍著色。
 - 使用者希望的結果：新增fields／hide／separator、pair／tuple單格格式及雙層@segment，並以新語法改寫兩個範例。
-- 本次範圍與必要限制：三種結構統一使用既有render heap；不新增標準線段樹renderer；保留特殊線段樹演算法、儲存與輸出；不修改已完成的heap.cpp；point／highlight使用預設樣式；遞迴分裂後仍顯示尚待處理的另一側segment；格內segment歸入style顯示層。
+- 本次範圍與必要限制：三種結構統一使用既有render heap；不新增標準線段樹renderer；保留特殊線段樹演算法、儲存與輸出；不修改已完成的heap.cpp；point／highlight使用預設樣式；遞迴下降時顯示目前與尚待處理的segment，命中後移除完成區段，回溯不建立幀；格內segment歸入style顯示層。
 
 ## 需求確認
 - 已確認：fields保留各來源身分與事件；hide逐幀按欄位判斷；separator預設逗點；segment局部端點包含、裁切、L>R隱藏、後者在上；as提供穩定身分；when與既有單層@segment相容。
@@ -34,7 +34,9 @@
 - [x] pair／tuple每元素一格，預設保留零並支援pair成員hide。
 - [x] heap根／子節點格內segment依局部範圍著色，裁切、空範圍、多層、重疊、when及as正常。
 - [x] split(cursor)顯示目前遞迴節點與待處理右側前沿，split(cursor,after)排除已完成節點；point／highlight不指定自訂色。
-- [x] 查詢整段命中的展示幀仍保留目前節點segment；只有回溯／合併幀使用after排除已完成節點。
+- [x] Segment_Tree_easy只在下降與命中時建立幀；命中後以split(now,after)移除完成區段，回溯不再建立幀。
+- [x] split產生的新segment由頂端向下淡入，完成segment由頂端向下淡出；事件動畫開關不會停用這些style動畫。
+- [x] Segment_Tree_easy在tree下方顯示sum，完整命中時把tree[now]累加至sum，輸出與原演算法相同。
 - [x] 格內segment位於style顯示層、跟隨綁定格子且保留具名幾何轉場，不受事件動畫層控制。
 - [x] 一般播放套用同格highlight／point時不會清除segment；第三幀、倒退及重播皆維持正確顯示。
 - [x] 既有@segment arr[L:R]與heap既有行為不變。
@@ -52,3 +54,4 @@
 - 2026-09-19：依使用者補充將格內segment移至style顯示層；實際SVG確認不再嵌在cell內，圖層位於物件與前景箭頭之間，具名區段插值仍通過。
 - 2026-09-19：依實際Segment Tree播放回報修正整段命中幀誤用split(now,after)造成單一路徑segment消失；命中幀改用split(now)，after只保留於回溯／合併幀。
 - 2026-09-19：重現第三幀僅在一般播放消失；根因是presented hint更新會隱藏同格所有attached視覺，誤包含style layer segment。清理範圍改為highlight／point／mark並新增實際動畫路徑驗證。
+- 2026-09-20：依使用者修正展示流程：Segment_Tree_easy移除所有回溯幀，完整命中後直接移除該segment並累加tree下方的sum；split segment新增由上往下淡入／淡出動畫。
