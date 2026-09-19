@@ -37,7 +37,7 @@
 - [x] Segment_Tree_easy只在下降與命中時建立幀；命中後以split(now,after)移除完成區段，回溯不再建立幀。
 - [x] split產生的新segment由頂端向下淡入，完成segment由頂端向下淡出；事件動畫開關不會停用這些style動畫。
 - [x] Segment_Tree_easy在tree下方顯示sum，完整命中時把tree[now]累加至sum，輸出與原演算法相同。
-- [x] `sum += tree[now]`事件播放時sum維持舊值且不變空；只複製tree[now]的數字移向sum數字位置，抵達後提交新值。
+- [x] `sum += tree[now]`事件播放時sum維持舊值且不變空；只複製tree[now]的數字移向sum數字位置，抵達時提交新值並立即移除移動數字，不在目的地停留。
 - [x] 全域sum跨main／query及不同遞迴activation沿用runtime身分，不重播整格入退場。
 - [x] 格內segment位於style顯示層、跟隨綁定格子且保留具名幾何轉場，不受事件動畫層控制。
 - [x] 一般播放套用同格highlight／point時不會清除segment；第三幀、倒退及重播皆維持正確顯示。
@@ -60,3 +60,4 @@
 - 2026-09-20：依使用者修正展示流程：Segment_Tree_easy移除所有回溯幀，完整命中後直接移除該segment並累加tree下方的sum；split segment新增由上往下淡入／淡出動畫。
 - 2026-09-20：修正複合賦值缺少before／after與來源target造成sum空白；可見來源到目的改為純數字移動。純量加入runtime identity，避免全域sum跨函式／遞迴幀反覆入退場；具副作用目的索引維持單次求值路徑。
 - 2026-09-20：依使用者要求將自動固定與迴圈邊界事件改為檔案級設定；`@asm-view`只保存這兩個選項，其餘事件偏好仍由帳號設定提供，舊檔維持相容。
+- 2026-09-20：依使用者回饋移除複合賦值數字抵達目的地後的停留；抵達、結果提交與轉場複本移除改為同一動畫更新。
