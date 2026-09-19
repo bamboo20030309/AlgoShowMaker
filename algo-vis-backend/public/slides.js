@@ -3092,7 +3092,7 @@
     canvas.on('text:changed', sync);
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
-      exitWidgetEditorIfNeeded();
+      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -3100,7 +3100,7 @@
     });
     canvas.on('selection:updated', e => {
       if (canvas.__asmSerializingSelection) return;
-      exitWidgetEditorIfNeeded();
+      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -3114,6 +3114,16 @@
       clearSnapGuides();
     });
     canvas.on('mouse:down', e => {
+      if (!e.target && document.body.classList.contains('asm-edit-mode')) {
+        const start = marqueePointForCanvas(canvas, e.e);
+        if (start) canvas.__asmWidgetMarquee = {
+          start,
+          end: start,
+          additive: !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey)
+        };
+      } else {
+        canvas.__asmWidgetMarquee = null;
+      }
       if (e.target) {
         e.target.__asmMoveOrigin = {
           left: e.target.left || 0,
@@ -3141,7 +3151,13 @@
       clearSnapGuides();
       updateObjectToolbar(e.target, canvas);
     });
-    canvas.on('mouse:up', () => {
+    canvas.on('mouse:up', e => {
+      const widgetMarquee = canvas.__asmWidgetMarquee;
+      canvas.__asmWidgetMarquee = null;
+      if (widgetMarquee) {
+        widgetMarquee.end = marqueePointForCanvas(canvas, e.e) || widgetMarquee.start;
+        applyWidgetMarqueeSelection(canvas, slide, widgetMarquee);
+      }
       if (canvas.__asmInteractionDirty) {
         canvas.__asmInteractionDirty = false;
         sync({ target: canvas.getActiveObject() });
@@ -5130,6 +5146,42 @@
     if (selectedWidgetId && !selectedIds.includes(selectedWidgetId)) selectedIds.push(selectedWidgetId);
     const existingIds = new Set(normalizeWidgets(slide.widgets).map(widget => widget.id));
     return selectedIds.filter(id => existingIds.has(id));
+  }
+
+  function marqueePointForCanvas(canvas, nativeEvent) {
+    const host = canvas?.upperCanvasEl?.closest?.('.fabric-host');
+    const rect = host?.getBoundingClientRect?.();
+    if (!rect || !rect.width || !rect.height || !nativeEvent) return null;
+    return {
+      x: ((nativeEvent.clientX - rect.left) / rect.width) * SLIDE_W,
+      y: ((nativeEvent.clientY - rect.top) / rect.height) * SLIDE_H
+    };
+  }
+
+  function applyWidgetMarqueeSelection(canvas, slide, marquee) {
+    if (!marquee?.start || !marquee.end) return;
+    const left = Math.min(marquee.start.x, marquee.end.x);
+    const top = Math.min(marquee.start.y, marquee.end.y);
+    const right = Math.max(marquee.start.x, marquee.end.x);
+    const bottom = Math.max(marquee.start.y, marquee.end.y);
+    if (right - left < 4 && bottom - top < 4) return;
+    const layer = document.querySelector(`.widget-layer[data-slide-id="${CSS.escape(slide.id)}"]`);
+    if (!layer) return;
+    if (!marquee.additive) {
+      layer.querySelectorAll('.slide-widget.is-selected').forEach(el => el.classList.remove('is-selected'));
+      selectedWidgetId = null;
+    }
+    normalizeWidgets(slide.widgets).forEach(widget => {
+      const intersects = widget.x < right && widget.x + widget.w > left
+        && widget.y < bottom && widget.y + widget.h > top;
+      if (!intersects) return;
+      layer.querySelector(`.slide-widget[data-widget-id="${CSS.escape(widget.id)}"]`)?.classList.add('is-selected');
+    });
+    const ids = selectedWidgetIdsInCurrentSlide();
+    selectedWidgetId = ids.length === 1 && activeFabricObjects().length === 0 ? ids[0] : null;
+    if (selectedWidgetId) showWidgetEditor(selectedWidgetId);
+    else showDefaultPanel();
+    updateAlignmentToolbar();
   }
 
   function selectAllCurrentWidgets() {
