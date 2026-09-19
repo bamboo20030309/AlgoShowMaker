@@ -72,6 +72,30 @@ test('save-time view normalization removes stale/default data without mutating t
   });
 });
 
+test('file view settings keep automatic fixed marks and loop boundary events only', () => {
+  const trace = fixture();
+  trace.studio.eventSettings = {
+    gapMs: 840,
+    autoFixedEnabled: false,
+    autoLoopBoundaryEnabled: true,
+    defaultEnabled: { assign: false },
+    timelineTypes: { compare: true }
+  };
+  const settings = viewSource.fromTrace(trace);
+  assert.deepEqual(settings.studio.eventSettings, {
+    autoFixedEnabled: false,
+    autoLoopBoundaryEnabled: true
+  });
+
+  const loaded = fixture();
+  loaded.studio = {};
+  viewSource.applyToTrace(loaded, settings);
+  assert.deepEqual(loaded.studio.eventSettings, {
+    autoFixedEnabled: false,
+    autoLoopBoundaryEnabled: true
+  });
+});
+
 test('camera scope and variable anchor survive inserted frames and shifted declarations', () => {
   const original = {
     variables: {

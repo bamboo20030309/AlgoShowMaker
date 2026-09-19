@@ -15,6 +15,7 @@
   let renderedEventSettingsTrace = null;
   let renderedEventSettingsFingerprint = '';
   let useSavedEventSettings = false;
+  let sourceEventSettingOverrides = {};
   let sourceViewBaseline = null;
   let pendingAnimation = null;
   let pendingViewBaseline = null;
@@ -95,10 +96,19 @@
     };
   }
 
+  function documentEventSettings(value = {}) {
+    return Object.fromEntries(['autoFixedEnabled', 'autoLoopBoundaryEnabled'].flatMap(key => (
+      typeof value?.[key] === 'boolean' ? [[key, value[key]]] : []
+    )));
+  }
+
   function applyAccountEventSettings() {
     if (!currentTrace || useSavedEventSettings) return;
     currentTrace.studio ||= {};
-    currentTrace.studio.eventSettings = cleanEventSettings(accountEventSettings || { gapMs: DEFAULT_EVENT_GAP_MS });
+    currentTrace.studio.eventSettings = {
+      ...cleanEventSettings(accountEventSettings || { gapMs: DEFAULT_EVENT_GAP_MS }),
+      ...sourceEventSettingOverrides
+    };
     window.ASMTraceEvents?.applyEnabledStates?.(currentTrace);
   }
 
@@ -218,7 +228,13 @@
     return settings;
   }
 
-  function saveEventSettings() {
+  function writeDocumentEventSettings() {
+    if (!currentTrace || sourceViewWasEdited()
+      || !window.asmWriteViewSettings || !window.ASMTraceViewSource?.fromTrace) return false;
+    return window.asmWriteViewSettings(window.ASMTraceViewSource.fromTrace(currentTrace));
+  }
+
+  function saveEventSettings(options = {}) {
     if (!currentTrace) return;
     window.ASMTraceEvents?.applyEnabledStates?.(currentTrace);
     window.ASMTracePlayer?.render?.(window.ASMTracePlayer.getCurrentFrame?.() || 0, {
@@ -229,6 +245,7 @@
     window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', {
       detail: { document: currentTrace }
     }));
+    if (options.persistDocument === true) writeDocumentEventSettings();
     scheduleAccountEventSettingsSave();
   }
 
@@ -306,7 +323,8 @@
     autoFixed.title = '顯示自動固定格子';
     autoFixed.addEventListener('change', () => {
       ensureEventSettings().autoFixedEnabled = autoFixed.checked;
-      saveEventSettings();
+      sourceEventSettingOverrides.autoFixedEnabled = autoFixed.checked;
+      saveEventSettings({ persistDocument: true });
     });
     autoFixedRow.append(autoFixedCopy, autoFixed);
     const autoLoopBoundaryRow = document.createElement('label');
@@ -323,7 +341,8 @@
     autoLoopBoundary.title = '顯示迴圈邊界更新事件';
     autoLoopBoundary.addEventListener('change', () => {
       ensureEventSettings().autoLoopBoundaryEnabled = autoLoopBoundary.checked;
-      saveEventSettings();
+      sourceEventSettingOverrides.autoLoopBoundaryEnabled = autoLoopBoundary.checked;
+      saveEventSettings({ persistDocument: true });
     });
     autoLoopBoundaryRow.append(autoLoopBoundaryCopy, autoLoopBoundary);
     const gapRow = document.createElement('label');
@@ -435,6 +454,9 @@
 
     const incomingStudio = { ...(preparedTrace.studio || {}) };
     useSavedEventSettings = Boolean(options.preserveEventSettings && incomingStudio.eventSettings);
+    sourceEventSettingOverrides = useSavedEventSettings
+      ? {}
+      : documentEventSettings(incomingStudio.eventSettings);
     if (!useSavedEventSettings) delete incomingStudio.eventSettings;
     currentTrace = window.ASMTraceModel.normalizeTraceDocument({ ...preparedTrace, skins, studio: incomingStudio });
     applyAccountEventSettings();

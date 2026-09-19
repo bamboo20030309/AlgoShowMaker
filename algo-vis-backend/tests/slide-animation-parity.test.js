@@ -116,6 +116,24 @@ test('a fresh RUN with no source view does not inherit earlier Studio positions 
   assert.deepEqual(result.skins, {});
 });
 
+test('a fresh RUN keeps file-level automatic event settings over account defaults', () => {
+  const { c } = context();
+  c.load('trace-editor.js');
+  const fresh = savedTrace();
+  fresh.viewSettingsApplied = true;
+  fresh.studio = {
+    eventSettings: {
+      autoFixedEnabled: false,
+      autoLoopBoundaryEnabled: true
+    }
+  };
+  c.ASMTraceEditor.applyTraceDocument(fresh);
+  const settings = plain(c.ASMTraceEditor.snapshot().traceDocument.studio.eventSettings);
+  assert.equal(settings.autoFixedEnabled, false);
+  assert.equal(settings.autoLoopBoundaryEnabled, true);
+  assert.equal(settings.gapMs, 500, 'other event preferences continue to use the account default');
+});
+
 test('removing or clearing @asm-view before save resets stored presentation instead of restoring it', () => {
   const oldView = `/* @asm-view\n{"version":1,"rules":[{"id":"old-rule"}],"studio":{"positions":{"frame-0":{"arr":{"x":80,"y":120}}},"cameraRules":[{"id":"old-camera","zoom":2}]}}\n@asm-view */`;
   for (const nextView of ['', '/* @asm-view\n{"version":1,"studio":{}}\n@asm-view */']) {
