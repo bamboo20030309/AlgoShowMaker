@@ -5540,12 +5540,16 @@
         : { x: 0, y: 24 };
       rawDeltas.set(key, raw);
       const topResizeSlots = sequenceResizeSlots.get(topKey) || [];
-      const sequenceGeometrySlot = key !== topKey && previous
+      // A heap level change moves the container origin as well as its cells.
+      // Hold both at the previous geometry until the sequence resize starts,
+      // then let the container, outerframe, cells and labels settle together.
+      const sequenceMotionSlot = previous
         && topResizeSlots.length === 1
         && Boolean(heapLayoutElement(topElement))
-        && Boolean(element.closest?.('[data-layout="heap"]'))
+        && (key === topKey || Boolean(element.closest?.('[data-layout="heap"]')))
         ? topResizeSlots[0]
         : null;
+      const sequenceGeometrySlot = key !== topKey ? sequenceMotionSlot : null;
       if (topKey === key) {
         currentTopKeys.add(key);
         if (sourceKey) currentTopKeys.add(sourceKey);
@@ -5560,11 +5564,12 @@
         declarationReflow: declarationReflowSchedule.get(key) || null,
         exitReflow: exitReflowSchedule.get(key) || null,
         markerGroupReflow: markerReflowKeys.has(key),
+        sequenceMotionSlot,
         sequenceGeometrySlot,
         // A marker that only shifts aside for an entering peer must move at
         // frame start even when a later event also references that marker.
-        motionDelay: sequenceGeometrySlot
-          ? Math.max(Number(sequenceGeometrySlot.start) || 0, frameTransitionStart)
+        motionDelay: sequenceMotionSlot
+          ? Math.max(Number(sequenceMotionSlot.start) || 0, frameTransitionStart)
           : declarationReflowSchedule.has(key)
           ? Number(declarationReflowSchedule.get(key)?.start) || 0
           : exitReflowSchedule.has(key)
@@ -5891,7 +5896,7 @@
     const motionDuration = entries.reduce((end, entry) => {
       const localDuration = Math.max(
           1,
-          Number(entry.sequenceGeometrySlot?.duration)
+          Number(entry.sequenceMotionSlot?.duration)
           || Number(entry.declarationReflow?.duration)
           || Number(entry.exitReflow?.duration)
           || (entry.markerGroupReflow ? markerReflowDuration : 0)
@@ -5945,7 +5950,7 @@
         const motionElapsed = Math.max(0, elapsed - entry.motionDelay);
         const localDuration = Math.max(
           1,
-          Number(entry.sequenceGeometrySlot?.duration)
+          Number(entry.sequenceMotionSlot?.duration)
             || Number(entry.declarationReflow?.duration)
             || Number(entry.exitReflow?.duration)
             || (entry.markerGroupReflow ? markerReflowDuration : 0)
