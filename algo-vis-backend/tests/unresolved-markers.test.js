@@ -1651,20 +1651,24 @@ test('marker event motion preserves same-cell reflow and a peer entrance', () =>
     'i reaches its allocated side before frame events');
 });
 
-test('a marker exit finishes before its same-cell peers close the gap', () => {
+test('a marker exit and its same-cell peer close-gap motion start together', () => {
   const oldMarker = (variableId, lifetime, x) => ({
     dataset: {
       traceBindingTarget: 'arr#0',
       traceSourceVariableId: variableId,
-      traceRuntimeIdentity: lifetime
+      traceRuntimeIdentity: lifetime,
+      traceMarkerSortKey: variableId
     },
     closest: () => null,
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: name => name === 'width' ? '18' : null }
+      : null,
     querySelectorAll: () => [],
     getAttribute: name => name === 'transform' ? `translate(${x},8)` : null
   });
   const currentI = oldMarker('i', 'life-i', 20);
   const previousI = oldMarker('i', 'life-i', 7);
-  const previousJ = oldMarker('j', 'life-j', 33);
+  const previousJ = oldMarker('j', 'life-j', 20);
   const exit = {
     id: 'exit-j', type: 'scope-exit',
     targets: [{ variableId: 'j', lifetimeIdentity: 'life-j' }]
@@ -1672,18 +1676,22 @@ test('a marker exit finishes before its same-cell peers close the gap', () => {
   const schedule = context.window.ASMTraceFrameTween.exitMarkerReflowSchedule({
     eventTimeline: [{
       event: exit, animation: 'exit', markerExit: true,
-      start: 0, exitDuration: 220, reflowStart: 220, end: 400
+      start: 0, visualStart: 0, exitDuration: 220, reflowStart: 0, end: 220
     }],
     currentElements: new Map([['marker-i', currentI]]),
     previousPlacements: new Map([['marker-i', { x: 7, y: 8 }]]),
-    currentPlacements: new Map([['marker-i', { x: 20, y: 8 }]]),
+    currentPlacements: new Map([
+      ['arr#0', { x: 0, y: 8, width: 40, height: 40 }],
+      ['marker-i', { x: 20, y: 8 }]
+    ]),
     previousObjects: new Map([
       ['marker-i', previousI], ['marker-j', previousJ]
     ])
   });
   assert.deepEqual(JSON.parse(JSON.stringify(schedule.get('marker-i'))), {
-    start: 220, duration: 180, eventId: 'exit-j'
-  }, 'the remaining marker waits for the exiting marker to lift and fade first');
+    start: 0, duration: 220, eventId: 'exit-j', target: 'arr#0',
+    holdOffsetX: -13, ghostOffsetX: 13, arrivalStart: 0, arrivalEnd: 0
+  }, 'the peer keeps the two-marker offset until the exit starts');
 
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
@@ -1717,17 +1725,129 @@ test('a marker exit finishes before its same-cell peers close the gap', () => {
     }],
     { keys: new Set(), duration: 0, exitReflows: schedule }
   );
-  motion.update(219);
-  assert.equal(motion.arrowStates.get('marker-i').x, 33);
+  motion.update(0);
+  assert.equal(motion.arrowStates.get('marker-i').x, 7);
   assert.equal(motion.arrowStates.get('marker-i').targetX, 20,
-    'the waiting peer stays offset while its arrow keeps pointing to the cell centre');
-  motion.update(310);
-  assert.ok(motion.arrowStates.get('marker-i').x > 20
-    && motion.arrowStates.get('marker-i').x < 33,
-  'the label and arrow close the gap together after the old marker exits');
-  motion.update(400);
+    'the waiting peer stays offset while its arrow points to the cell centre');
+  motion.update(110);
+  assert.ok(motion.arrowStates.get('marker-i').x > 7
+    && motion.arrowStates.get('marker-i').x < 20,
+  'the label and arrow close the gap while the old marker exits');
+  motion.update(220);
   assert.equal(motion.arrowStates.get('marker-i').x, 20);
   assert.equal(motion.arrowStates.get('marker-i').targetX, 20);
+});
+
+test('a new marker lifetime does not make room for the preceding lifetime exit', () => {
+  const marker = (lifetime, target, x) => ({
+    dataset: {
+      traceBindingTarget: target,
+      traceSourceVariableId: 'now',
+      traceRuntimeIdentity: lifetime,
+      traceVisualContinuityKey: 'heap-push:now',
+      traceMarkerSortKey: 'now'
+    },
+    closest: () => null,
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: name => name === 'width' ? '18' : null }
+      : null,
+    querySelectorAll: () => [],
+    getAttribute: name => name === 'transform' ? `translate(${x},8)` : null
+  });
+  const current = marker('now@new', 'heap#2', 60);
+  const previous = marker('now@old', 'heap#1', 20);
+  const exit = {
+    id: 'exit-old-now', type: 'scope-exit',
+    targets: [{ variableId: 'now', lifetimeIdentity: 'now@old' }]
+  };
+  const schedule = context.window.ASMTraceFrameTween.exitMarkerReflowSchedule({
+    eventTimeline: [{
+      event: exit, animation: 'exit', markerExit: true,
+      start: 100, visualStart: 100, exitDuration: 220, reflowStart: 100, end: 320
+    }],
+    currentElements: new Map([['marker-now', current]]),
+    currentPlacements: new Map([
+      ['heap#1', { x: 20, y: 8, width: 40, height: 40 }],
+      ['heap#2', { x: 60, y: 48, width: 40, height: 40 }],
+      ['marker-now', { x: 60, y: 48 }]
+    ]),
+    previousObjects: new Map([['marker-now', previous]])
+  });
+  assert.equal(schedule.size, 0);
+});
+
+test('an exiting heap marker assignment uses the full parent node displacement', () => {
+  context.window.ASMTraceRules = {
+    resolveExpression: (document, frame, expression, locals) => locals[expression]
+  };
+  const visual = {
+    dataset: {
+      traceBindingTarget: 'heap#2',
+      traceSourceVariableId: 'now',
+      traceRuntimeIdentity: 'now@old',
+      traceMarkerIndexExpression: 'now'
+    }
+  };
+  const assignment = {
+    id: 'assign-now-parent', type: 'assign', order: 10,
+    payload: { before: 2, after: 1 },
+    targets: [{ variableId: 'now', lifetimeIdentity: 'now@old', role: 'target' }]
+  };
+  const slot = { event: assignment, animation: 'assign', start: 100, motionStart: 220, end: 520 };
+  const exitSlot = { event: {}, animation: 'exit', start: 600 };
+  const schedule = context.window.ASMTraceFrameTween.previousMarkerAssignmentSchedule({
+    traceDocument: { variables: { now: { name: 'now' } } },
+    eventFrame: { events: [assignment] },
+    eventTimeline: [slot, exitSlot],
+    visual,
+    placements: new Map([
+      ['heap#1', { x: 100, y: 40, width: 40, height: 40 }],
+      ['heap#2', { x: 60, y: 120, width: 40, height: 40 }]
+    ]),
+    exitSlot
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(schedule)), [{
+    start: 220, end: 520,
+    from: { x: 0, y: 0 }, to: { x: 40, y: -80 },
+    fromTarget: 'heap#2', toTarget: 'heap#1'
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    context.window.ASMTraceFrameTween.previousMarkerAssignmentOffset(schedule, 520)
+  )), { x: 40, y: -80 });
+});
+
+test('an exiting marker makes room for a marker that remains on its destination cell', () => {
+  const visual = (name, target) => ({
+    dataset: {
+      traceBindingTarget: target,
+      traceSourceVariableId: name,
+      traceMarkerSortKey: name
+    },
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: attribute => attribute === 'width' ? '18' : null }
+      : null
+  });
+  const mover = {
+    visual: visual('now', 'heap#2'),
+    scopeExitSlot: { start: 800 },
+    assignmentSchedule: [{
+      start: 200, end: 500,
+      from: { x: 0, y: 0 }, to: { x: 40, y: -80 },
+      fromTarget: 'heap#2', toTarget: 'heap#1'
+    }]
+  };
+  const parent = {
+    visual: visual('parent', 'heap#1'),
+    scopeExitSlot: { start: 800 },
+    assignmentSchedule: []
+  };
+  context.window.ASMTraceFrameTween.applyPreviousMarkerAssignmentReflows([mover, parent]);
+  assert.equal(mover.assignmentSchedule[0].to.x, 27,
+    'the arriving marker lands on its allocated side of the shared cell');
+  assert.deepEqual(JSON.parse(JSON.stringify(parent.assignmentPeerSchedule)), [{
+    start: 200, end: 500,
+    from: { x: 0, y: 0 }, to: { x: 13, y: 0 }
+  }], 'the existing marker makes room while the arriving marker moves');
 });
 
 test('same-cell reflow finishes before a later i++ marker movement', () => {

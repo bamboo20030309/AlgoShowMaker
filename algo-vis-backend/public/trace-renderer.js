@@ -3541,8 +3541,7 @@
         ...targetPlacement,
         x: targetPlacement.x - gap - totalWidth / 2 - targetPlacement.width / 2
       } : null);
-      const keepArrowsVertical = orderedGroup.length > 1
-        && targetWidth >= baseCellWidth * 2 - 0.5;
+      const keepArrowsVertical = targetWidth > baseCellWidth + 0.5;
       let cursor = -totalWidth / 2;
       orderedGroup.forEach(item => {
         item.offsetX = relativeLayout?.offsets.get(item) ?? (cursor + item.labelWidth / 2);
