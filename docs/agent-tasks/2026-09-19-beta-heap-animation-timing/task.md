@@ -8,9 +8,9 @@
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-beta
 
 ## 問題與預期結果
-- 情境與操作：執行 `algorithm_sample/Tree/heap.cpp`，觀察第二次插入所形成的第 4 幀到第 5 幀動畫。
-- 目前行為：目標 heap 在 `push_back` 前已採用新層級寬度；先前只延後 rect 寬度後，value/index 文字與部分 index 位置仍會提早跳到目標幾何。一般 highlight 曾被縮成只框 value；舊 lifetime 的 `now = parent` 賦值框先後因近似高度計算而偏低或偏高。
-- 使用者希望的結果：新格正式加入前，既有 value 框、index 框及框內數字都維持原位與原尺寸；outerframe 擴張時，完整格子才同步向右延伸，數字移到新中心；一般 highlight 包含 index，只有比較動畫框 value；`now = parent` 賦值框位於 `now` 指標上方。
+- 情境與操作：執行 `algorithm_sample/Tree/heap.cpp`，觀察第二次插入所形成的第 4 幀到第 5 幀，以及第 13 幀到第 14 幀的指標生命週期動畫。
+- 目前行為：目標 heap 在 `push_back` 前已採用新層級寬度；先前只延後 rect 寬度後，value/index 文字與部分 index 位置仍會提早跳到目標幾何。一般 highlight 曾被縮成只框 value；舊 lifetime 的 `now = parent` 賦值框先後因近似高度計算而偏低或偏高。第 13→14 幀的舊 `parent` 雖尚未實際退場，排版已提早釋放其位置，導致移入同一格的 `now` 與它重疊。
+- 使用者希望的結果：新格正式加入前，既有 value 框、index 框及框內數字都維持原位與原尺寸；outerframe 擴張時，完整格子才同步向右延伸，數字移到新中心；一般 highlight 包含 index，只有比較動畫框 value；`now = parent` 賦值框位於 `now` 指標上方。即將離開 scope 的 `parent` 在退場開始前仍須參與同格讓位，退場開始時才與 `now` 回填空位同步動畫。
 - 本次範圍與必要限制：修正 heap 繪圖與共用 trace tween；不改 heap 範例內容；只做 V2 專項小驗證，不跑完整 regression。
 
 ## 需求確認
@@ -21,7 +21,7 @@
 ## 重現與調查
 - 最小操作步驟或 fixture：以既有 heap sample input 編譯範例，跳至第 4 幀後播放到第 5 幀並記錄 SVG 幾何與事件時間。
 - 重現狀態：已重現。
-- 已確認事實：序列事件順序正確，但只有 outerframe 延後 resize；heap 節點仍使用目標幀寬度。舊 `now` 的 assign 缺少 lifetime，依 variable id 誤選了同幀稍後宣告的新 lifetime。
+- 已確認事實：序列事件順序正確，但只有 outerframe 延後 resize；heap 節點仍使用目標幀寬度。舊 `now` 的 assign 缺少 lifetime，依 variable id 誤選了同幀稍後宣告的新 lifetime。第 13→14 幀先執行 `now = parent`，稍後才有舊 `parent` 的 scope exit；原本的退場 reflow 只看 `now` 的前一個 target，因此漏掉它已移入即將退場 target 的情況。
 - 尚待調查：無。
 
 ## 修改邊界與依賴
@@ -33,6 +33,7 @@
 - [x] 跨層 `push_back` sequence slot 前，既有 value、index 與其中數字維持前一幀幾何；擴張時兩種框與文字跟 outerframe 同步向右展開並移到新中心。
 - [x] `labels(value,index)` 下的一般 heap highlight 包含 40px value 與 12px index；比較動畫 highlight 只包含 value。
 - [x] `now = parent` 使用舊 `now` lifetime 的位置，賦值框位於可見 `now` 指標上方；下一輪 `now = heapSize` 不受前一 lifetime 汙染。
+- [x] 第 13→14 幀的舊 `parent` 在 scope exit 開始前持續保留同格排版空間，`now` 不與它重疊；scope exit 開始時，`parent` 退場與 `now` 回填同時開始。
 - [x] 既有 declaration initializer、sequence、outerframe 與 style layer 專項測試仍通過。
 
 ## 驗證計畫
@@ -46,3 +47,4 @@
 - 2026-09-19：依使用者更正，一般 highlight 恢復包含 index，compare highlight 維持 value-only；heap resize 改為左緣隨 outerframe、向右擴張，並將舊 lifetime 賦值框移至 `now` 指標上方。
 - 2026-09-19：依使用者補充，resize 前須保留完整舊格，而非只保留 rect 寬度；將 value/index 的 rect、文字中心與字級統一綁到 outerframe resize slot。
 - 2026-09-19：依使用者回報賦值框偏高，移除「完整 marker 高度再加間距」的近似值，改用 marker 標籤框實際 `y` offset 重建 detached lifetime 的錨點。
+- 2026-09-20：依使用者回報第 13→14 幀重疊，讓即將退場的 marker 在退場前繼續參與同格排版；退場開始時同步執行淡出／上移與剩餘 marker 回填。
