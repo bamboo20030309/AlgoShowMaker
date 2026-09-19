@@ -115,12 +115,12 @@
 - 主代理需補驗證的情境：合併後以 Segment_Tree_easy 與 Segment_Tree 各實際播放數個根／子節點幀，確認複合文字、樣式與局部色塊；再依動畫影響範圍執行整合驗證。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：已核實並整合至 `intergration`
+- 核實的程式 commit 與 diff 範圍：Alpha `34f734a` 至 `138e320`，包含複合欄位、格內 segment、compound transfer、範例與事件設定保存
+- 差異審查與必要重跑結果：聯合 V2 專項 135/135 通過；修正整合時發現的 keep snapshot frame 作用域錯誤後，複合 Heap／Segment Tree／樣式專項 9/9 通過
+- 合併 commit：`a82f5ef`；整合期修正：`7d62aec`
+- 完整 regression：未執行全部案例；依影響範圍執行 Heap 動畫案例
+- 演算法投影片實際驗證：Segment Tree 瀏覽器案例通過；Heap algorithm/editor/runtime 分別取得 473／475／476 個有效動畫取樣並通過
+- 未完成或環境阻塞：無
+- 本機服務重啟：3100 由主代理於紀錄提交後重啟核實
+- Push／公開部署狀態：推送 `origin/intergration`；未合併 main、未發布

@@ -94,12 +94,12 @@
 - 主代理需補驗證的情境：heap 跨層擴展、內縮與第 13→14 幀 scope exit 整合畫面。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：已核實並整合至 `intergration`
+- 核實的程式 commit 與 diff 範圍：Beta `554dadc` 至 `e7cc4d4` 的 Heap resize、marker lifetime、正反向 sequence 與 style 還原
+- 差異審查與必要重跑結果：與 Alpha 共用 tween／renderer 契約已合併；聯合 V2 專項 135/135、修正後直接專項 9/9 通過
+- 合併 commit：`239a7b7`；整合期修正：`7d62aec`
+- 完整 regression：未執行全部案例；執行 Heap animation-only 與其三個共用前置案例
+- 演算法投影片實際驗證：Heap algorithm/editor/runtime 分別 473／475／476 個取樣通過，三介面無違規
+- 未完成或環境阻塞：無
+- 本機服務重啟：3100 由主代理於紀錄提交後重啟核實
+- Push／公開部署狀態：推送 `origin/intergration`；未合併 main、未發布

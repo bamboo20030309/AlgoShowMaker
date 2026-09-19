@@ -61,12 +61,12 @@
 - 本機服務重啟：3102 目前可回傳新 heap 範例且 `algorithm.html` 為 HTTP 200；嘗試重啟時，自動審查因無法從作業系統取得既有 PID 的工作目錄而拒絕停止該程序，所以未重啟既有 3102 服務。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：已核實並整合至 `intergration`
+- 核實的程式 commit 與 diff 範圍：Beta `2950085`／`3373b8e` 的 Heap 指令式範例重寫
+- 差異審查與必要重跑結果：範例輸出與 Heap 三介面動畫均通過
+- 合併 commit：`239a7b7`
+- 完整 regression：未執行全部案例；執行 Heap animation-only
+- 演算法投影片實際驗證：algorithm/editor/runtime 三介面通過，合計 1424 個動畫取樣
+- 未完成或環境阻塞：無
+- 本機服務重啟：3100 由主代理於紀錄提交後重啟核實
+- Push／公開部署狀態：推送 `origin/intergration`；未合併 main、未發布
