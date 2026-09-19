@@ -278,6 +278,18 @@
     return studio;
   }
 
+  function documentEventSettings(value) {
+    if (!isObject(value)) return null;
+    const result = {};
+    if (typeof value.autoFixedEnabled === 'boolean') {
+      result.autoFixedEnabled = value.autoFixedEnabled;
+    }
+    if (typeof value.autoLoopBoundaryEnabled === 'boolean') {
+      result.autoLoopBoundaryEnabled = value.autoLoopBoundaryEnabled;
+    }
+    return Object.keys(result).length ? result : null;
+  }
+
   function findBlock(source) {
     const text = String(source || '');
     const match = BLOCK_PATTERN.exec(text);
@@ -544,9 +556,11 @@
   function fromTrace(trace) {
     const frames = trace?.frames || [];
     const studio = clone(trace?.studio || {});
+    const savedEventSettings = documentEventSettings(studio.eventSettings);
     ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings'].forEach(key => {
       delete studio[key];
     });
+    if (savedEventSettings) studio.eventSettings = savedEventSettings;
     studio.transitions = sanitizeTransitions(studio.transitions);
     studio.eventInstructionStates = compactInstructionStates(studio.eventInstructionStates);
     studio.objects = dedupeById(studio.objects);
@@ -607,9 +621,11 @@
     }
     if (settings.studio && typeof settings.studio === 'object') {
       const studio = decodeScopes(clone(settings.studio), frames);
+      const savedEventSettings = documentEventSettings(studio.eventSettings);
       ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings'].forEach(key => {
         delete studio[key];
       });
+      if (savedEventSettings) studio.eventSettings = savedEventSettings;
       studio.transitions = sanitizeTransitions(studio.transitions);
       const frameMaps = studio.frameMaps || {};
       delete studio.frameMaps;

@@ -26,6 +26,8 @@
 
 `events-fixed-state.test.js`／`events-fixed-state.browser.test.js` 使用 `fixtures/automark-events-sieve.cpp`、輸入30，核對內層迴圈後的濃縮幀 i=8／9 自動固定、全域／當幀固定開關、明確fixed規則、零事件動畫steps、回看／JSON重載／Studio的實際SVG。需設定隔離 `ASM_TEST_BASE_URL`；搭配直接相關的 `drawing-arrow-animation.browser.test.js` 確認箭頭與style過渡保留。
 
+Heap複合格與格內區段專項為`heap-composite-segments.test.js`／`heap-composite-segments.browser.test.js`及`fixtures/heap-composite-segments.cpp`：fields來源、hide、separator、pair／tuple、根與子節點局部座標、裁切／重疊、`split(cursor[,after])`遞迴前沿、格內segment由上往下入退場、既有單層segment與實際SVG。`segment-tree-samples.test.js`以兩份sample input核對新版範例不含AV.hpp舊繪圖程式，並確認輸出與特殊線段樹邏輯不變；easy範例另確認沒有回溯幀，命中值累加至tree下方的sum。三檔需設定隔離`ASM_TEST_BASE_URL`。
+
 逗號樣式專項為 `style-list.test.js`（五種樣式、預設色、共用顏色／條件、ID、preset 覆寫、區塊與錯誤格式）及 `style-list.browser.test.js`（實際 SVG 的高亮框與 point 同時可見，條件過濾與 JSON 重載）。編譯及瀏覽器驗證需設定 `ASM_TEST_BASE_URL` 指向獨立服務。
 
 回放樣式專項 `style-replay.browser.test.js` 使用 `fixtures/style-replay-sieve.cpp`，只比較線篩 i=8／9 的實際 SVG：往前／往後、再次播放、JSON 重載及兩種速度的單次 autoplay；高亮、focus 填色與箭頭必須符合目的幀，事件關閉仍保留原資料。設定 `ASM_TEST_BASE_URL` 指向隔離服務，不播放整套演算法。
@@ -113,7 +115,7 @@ keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
 - fixtures/insertion.cpp：key 取值、右移、j--、回填。
 - keep-directives：`@keep` 的來源位置／綁定繼承、`offset` 單獨微調、手動位置覆蓋與樣式保存。
 - 共用 fixtures/sorting.json：6 個元素，輸入 5 7 2 1 9 4；結果 1 2 4 5 7 9。
-- assignment-indices：事件發生時的索引、不可重複執行索引函式。
+- assignment-indices：事件發生時的索引、不可重複執行索引函式，以及`sum += tree[now]`的before／after與可見來源格資料。
 - unresolved-markers：array/heap/stack 的未知指標、range、越界與取得有效值。
 - heap-marker-assignment：`largest = l/r` 可直接用事件快照移動 largest，
   不要求 l/r 有自己的畫面物件；真正缺少目的指標時仍略過。

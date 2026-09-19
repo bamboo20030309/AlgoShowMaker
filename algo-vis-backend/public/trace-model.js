@@ -9,6 +9,9 @@
     if (['sequence', 'matrix', 'stack', 'queue', 'set'].includes(kind)) {
       return { ...data, kind, items: Array.isArray(data.items) ? data.items.map(normalizeData) : [] };
     }
+    if (kind === 'pair' || kind === 'tuple') {
+      return { ...data, kind, items: Array.isArray(data.items) ? data.items.map(normalizeData) : [] };
+    }
     if (kind === 'map') {
       return {
         ...data,

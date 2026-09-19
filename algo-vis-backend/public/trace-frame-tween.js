@@ -145,7 +145,11 @@
         strokeOpacity: rect.getAttribute('stroke-opacity'),
         strokeWidth: rect.getAttribute('stroke-width'),
         rx: rect.getAttribute('rx'),
-        ry: rect.getAttribute('ry')
+        ry: rect.getAttribute('ry'),
+        x: Number(rect.getAttribute('x')),
+        y: Number(rect.getAttribute('y')),
+        width: Number(rect.getAttribute('width')),
+        height: Number(rect.getAttribute('height'))
       });
     });
     return states;
@@ -721,8 +725,14 @@
     const states = new Map();
     const sourceRects = [...(source?.querySelectorAll?.('rect') || [])];
     const targetRects = [...(target?.querySelectorAll?.('rect') || [])];
+    const sourceByStableKey = new Map();
+    sourceRects.forEach(rect => {
+      const stableKey = rect.getAttribute('data-av-key');
+      if (stableKey) sourceByStableKey.set(stableKey, rect);
+    });
     targetRects.forEach((rect, index) => {
-      const sourceRect = sourceRects[index];
+      const stableKey = rect.getAttribute('data-av-key');
+      const sourceRect = (stableKey && sourceByStableKey.get(stableKey)) || sourceRects[index];
       if (!sourceRect) return;
       const opacity = sourceRect.hasAttribute('fill-opacity')
         ? Number(sourceRect.getAttribute('fill-opacity'))
@@ -734,7 +744,11 @@
         strokeOpacity: sourceRect.getAttribute('stroke-opacity'),
         strokeWidth: sourceRect.getAttribute('stroke-width'),
         rx: sourceRect.getAttribute('rx'),
-        ry: sourceRect.getAttribute('ry')
+        ry: sourceRect.getAttribute('ry'),
+        x: Number(sourceRect.getAttribute('x')),
+        y: Number(sourceRect.getAttribute('y')),
+        width: Number(sourceRect.getAttribute('width')),
+        height: Number(sourceRect.getAttribute('height'))
       });
     });
     return states;
@@ -1293,7 +1307,8 @@
       before,
       after
     });
-    if ((event?.type === 'assign' || (event?.type === 'write' && event?.update === true))
+    if ((event?.type === 'assign'
+      || (event?.type === 'write' && (event?.update === true || event?.compound === true)))
       && Object.prototype.hasOwnProperty.call(event?.payload || {}, 'after')) {
       const target = targets.find(item => item?.role === 'target') || targets[0];
       return target ? [targetMutation(
@@ -1986,24 +2001,34 @@
     return text?.dataset?.traceContentRole === 'index' ? null : text;
   }
 
-  function createAssignmentTransfer(root, sourceOperand, targetOperand, value, sourceVisual = null) {
+  function createAssignmentTransfer(
+    root, sourceOperand, targetOperand, value, sourceVisual = null, options = {}
+  ) {
     if (!sourceOperand || !targetOperand || sourceOperand.marker || targetOperand.marker) return null;
+    const valueOnly = options.valueOnly === true;
     // An index-only cell is not a visual representation of its data value.
     // Transferring a clone of it would animate the index instead of the value.
-    if (sourceOperand.element.querySelector?.('text[data-trace-content-role="index"]')) return null;
+    if (!valueOnly
+      && sourceOperand.element.querySelector?.('text[data-trace-content-role="index"]')) return null;
     if (sourceOperand.visualKey === targetOperand.visualKey) return null;
     if (sourceOperand.element.closest?.('[data-trace-visibility="hidden"]')
       || targetOperand.element.closest?.('[data-trace-visibility="hidden"]')) return null;
 
+    const sourceElement = valueOnly
+      ? assignableTargetText({ element: sourceOperand.element })
+      : (sourceVisual || sourceOperand.element);
+    const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
+    if (!sourceElement || (valueOnly && !targetElement)) return null;
+
     let box;
     try {
-      box = sourceOperand.element.getBBox();
+      box = sourceElement.getBBox();
     } catch (error) {
       return null;
     }
     if (!(box?.width > 0) || !(box?.height > 0)) return null;
 
-    const clone = (sourceVisual || sourceOperand.element).cloneNode(true);
+    const clone = sourceElement.cloneNode(true);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
       node.removeAttribute?.('data-trace-object-key');
@@ -2012,29 +2037,45 @@
     clone.classList.remove('selected', 'draggable-object', 'asm-trace-selectable');
     removeAnimationNodes(clone);
     const cloneText = clone.matches?.('text') ? clone : clone.querySelector?.('text');
-    if (cloneText) cloneText.textContent = displayEventValue(value);
+    if (cloneText && value != null) cloneText.textContent = displayEventValue(value);
 
+    const sourceBounds = valueOnly ? elementBoundsInRoot(sourceElement, root) : null;
+    const targetBounds = valueOnly ? elementBoundsInRoot(targetElement, root) : null;
+    if (valueOnly && (!sourceBounds || !targetBounds)) return null;
     const group = createSvg('g', {
-      class: 'asm-trace-assign-transfer',
+      class: `asm-trace-assign-transfer${valueOnly ? ' asm-trace-assign-transfer-value' : ''}`,
       'pointer-events': 'none'
     });
     group.append(clone);
     appendBelowTextLayer(root, group);
-
-    const sourceCenter = {
+    const sourceCenter = valueOnly ? {
+      x: sourceBounds.x + sourceBounds.width / 2,
+      y: sourceBounds.y + sourceBounds.height / 2
+    } : {
       x: sourceOperand.point.x,
       y: sourceOperand.point.y + sourceOperand.point.height / 2
     };
-    const targetCenter = {
+    const targetCenter = valueOnly ? {
+      x: targetBounds.x + targetBounds.width / 2,
+      y: targetBounds.y + targetBounds.height / 2
+    } : {
       x: targetOperand.point.x,
       y: targetOperand.point.y + targetOperand.point.height / 2
     };
     const boxCenter = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    const sourceScale = {
+    const sourceScale = valueOnly ? {
+      x: sourceBounds.width / box.width,
+      y: sourceBounds.height / box.height
+    } : {
       x: sourceOperand.point.width / box.width,
       y: sourceOperand.point.height / box.height
     };
-    const targetScale = {
+    const targetTextScale = valueOnly
+      ? targetBounds.height / Math.max(1, box.height) : null;
+    const targetScale = valueOnly ? {
+      x: targetTextScale,
+      y: targetTextScale
+    } : {
       x: targetOperand.point.width / box.width,
       y: targetOperand.point.height / box.height
     };
@@ -2366,7 +2407,8 @@
         : Number(carrierDelta.y) || 0);
     const beforeValue = displayEventValue(event?.payload?.before);
     const afterValue = displayEventValue(event?.payload?.after);
-    const sourceValue = event?.payload?.source ?? event?.payload?.after;
+    const sourceValue = Object.prototype.hasOwnProperty.call(event?.payload || {}, 'source')
+      ? event.payload.source : null;
     const sourceLabel = String(source?.expression || afterValue || '').trim();
     const sourceOperand = source
       ? eventOperand(
@@ -2413,7 +2455,8 @@
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
       transfer = createAssignmentTransfer(
-        root, sourceOperand, operand, sourceValue, previousSourceVisual
+        root, sourceOperand, operand, sourceValue, previousSourceVisual,
+        { valueOnly: event?.compound === true }
       );
       if (!transfer) {
         const targetY = y + operand.point.height / 2;
@@ -2489,7 +2532,14 @@
           fallingText.setAttribute('opacity', String(dropProgress < 1 ? clamp01(dropProgress * 4) : 0));
         }
         transfer?.update(dropProgress, 1 - exit);
-        if (dropProgress >= 1) landValue();
+        if (dropProgress >= 1) {
+          landValue();
+          // A compound value transfer represents the source number being
+          // absorbed by the destination. Remove it in the same update that
+          // commits the result instead of leaving a duplicate over the target
+          // throughout the generic assignment hold phase.
+          if (event?.compound === true) transfer?.remove();
+        }
       },
       remove() {
         landValue();
@@ -4038,7 +4088,8 @@
     // not make the switch look off after the renderer has already drawn it.
     if (event?.type === 'fixed') return 'fixed';
     const positionOnly = updateTargetsMarker(event, elements);
-    const standaloneUpdate = event?.type === 'write' && event?.update === true && !positionOnly;
+    const standaloneUpdate = event?.type === 'write'
+      && (event?.update === true || event?.compound === true) && !positionOnly;
     return positionOnly
       ? 'position'
       : (standaloneUpdate ? 'assign' : eventAnimation(null, event.type));
@@ -4184,7 +4235,8 @@
     ));
     enabledEvents.forEach(event => {
       const positionOnly = updateTargetsMarker(event, elements);
-      const standaloneUpdate = event?.type === 'write' && event?.update === true && !positionOnly;
+      const standaloneUpdate = event?.type === 'write'
+        && (event?.update === true || event?.compound === true) && !positionOnly;
       const animation = positionOnly
         ? 'position'
         : (standaloneUpdate ? 'assign' : eventAnimation(traceDocument, event.type));
@@ -4760,6 +4812,37 @@
       arrowY: Number(element.dataset.traceSegmentArrowY)
     };
     return Object.values(geometry).every(Number.isFinite) ? geometry : null;
+  }
+
+  function heapSplitSegmentRect(element) {
+    const candidate = element?.classList?.contains('asm-trace-heap-cell-segment')
+      ? element
+      : element?.querySelector?.('.asm-trace-heap-cell-segment');
+    return candidate?.dataset?.traceSegmentSplit ? candidate : null;
+  }
+
+  function heapSplitSegmentGeometry(element) {
+    const rect = heapSplitSegmentRect(element);
+    if (!rect) return null;
+    const geometry = {
+      rect,
+      y: Number(rect.getAttribute('y')),
+      height: Number(rect.getAttribute('height'))
+    };
+    return Number.isFinite(geometry.y) && Number.isFinite(geometry.height)
+      && geometry.height > 0 ? geometry : null;
+  }
+
+  function applyHeapSplitVerticalFade(geometry, progress, phase) {
+    if (!geometry?.rect) return;
+    const amount = clamp01(progress);
+    if (phase === 'exit') {
+      geometry.rect.setAttribute('y', String(geometry.y + geometry.height * amount));
+      geometry.rect.setAttribute('height', String(geometry.height * (1 - amount)));
+      return;
+    }
+    geometry.rect.setAttribute('y', String(geometry.y));
+    geometry.rect.setAttribute('height', String(geometry.height * amount));
   }
 
   function outerframeGeometry(element) {
@@ -5447,6 +5530,8 @@
         ? null
         : candidatePreviousVisual;
       entry.previousVisual = previousVisual;
+      entry.heapSplitEntrance = !previousVisual
+        ? heapSplitSegmentGeometry(entry.element) : null;
       entry.previousSegmentGeometry = segmentGeometry(previousVisual);
       entry.currentSegmentGeometry = segmentGeometry(entry.element);
       // The outerframe is part of the same moving array as its cells. Keep
@@ -5627,7 +5712,8 @@
         wrapper,
         scopeExitSlot: null,
         lifecycleKind: visualLifecycleKind(clone),
-        retainedByEnteringKeep
+        retainedByEnteringKeep,
+        heapSplitExit: heapSplitSegmentGeometry(clone)
       });
     });
 
@@ -5729,6 +5815,7 @@
             ? 0
             : visualLifecycleOffsetY(entry.lifecycleKind, 'enter', appearEased);
         }
+        if (entry.heapSplitEntrance) dx = dy = 0;
         if (entry.previousSegmentGeometry && entry.currentSegmentGeometry) {
           dx = 0;
           dy = 0;
@@ -5846,13 +5933,22 @@
         }
 
         entry.rects.forEach((rect, index) => {
-          // A rect must have one paint writer. Style owns value/index colors;
-          // ordinal parent-rect interpolation must not overwrite those colors.
-          if (events?.ownsPaint?.(rect)) return;
           const key = rectKey(rect, index);
           const before = entry.previousRectStates.get(key);
           const after = entry.currentRectStates.get(key);
           if (!before || !after) return;
+          if (rect.classList.contains('asm-trace-heap-cell-segment')) {
+            for (const attribute of ['x','y','width','height']) {
+              if (!Number.isFinite(before[attribute]) || !Number.isFinite(after[attribute])) continue;
+              rect.setAttribute(attribute, String(
+                before[attribute] + (after[attribute] - before[attribute]) * state.localEased
+              ));
+            }
+          }
+          // A rect must have one paint writer. Style owns value/index colors;
+          // ordinal parent-rect interpolation must not overwrite those colors.
+          // Heap cell segments still interpolate geometry above before yielding paint.
+          if (events?.ownsPaint?.(rect)) return;
           if (entry.visualCommit) {
             applyRectState(rect, elapsed < entry.visualCommit.time ? before : after);
             return;
@@ -5868,6 +5964,9 @@
           rect.setAttribute('fill', `rgb(${color.r},${color.g},${color.b})`);
           rect.setAttribute('fill-opacity', String(color.a));
         });
+        if (entry.heapSplitEntrance) {
+          applyHeapSplitVerticalFade(entry.heapSplitEntrance, state.appearEased, 'enter');
+        }
       });
       events?.applyStyles?.();
       // Some draw types expose automatic markers only as nested DOM visuals.
@@ -5915,7 +6014,8 @@
       window.ASMTraceRenderers?.refreshArrows?.();
 
       ghosts.forEach(({
-        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep
+        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep,
+        heapSplitExit
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -5928,9 +6028,11 @@
               / Math.max(1, Number(scopeExitSlot.exitDuration) || APPEAR_TIMING.duration)
           ));
           ghost.setAttribute('opacity', String(1 - ghostProgress));
-          const offsetY = visualLifecycleOffsetY(lifecycleKind, 'exit', ghostProgress);
+          const offsetY = heapSplitExit ? 0
+            : visualLifecycleOffsetY(lifecycleKind, 'exit', ghostProgress);
           if (Math.abs(offsetY) > 0.01) ghost.setAttribute('transform', `translate(0, ${offsetY})`);
           else ghost.removeAttribute('transform');
+          applyHeapSplitVerticalFade(heapSplitExit, ghostProgress, 'exit');
           return;
         }
         const removalStart = removedVisualStartMs(
@@ -5940,9 +6042,11 @@
           Math.max(0, elapsed - removalStart) / APPEAR_TIMING.duration
         ));
         ghost.setAttribute('opacity', String(1 - ghostProgress));
-        const offsetY = visualLifecycleOffsetY(lifecycleKind, 'removed', ghostProgress);
+        const offsetY = heapSplitExit ? 0
+          : visualLifecycleOffsetY(lifecycleKind, 'removed', ghostProgress);
         if (Math.abs(offsetY) > 0.01) ghost.setAttribute('transform', `translate(0, ${offsetY})`);
         else ghost.removeAttribute('transform');
+        applyHeapSplitVerticalFade(heapSplitExit, ghostProgress, 'exit');
       });
 
       if (elapsed < totalDuration) {
@@ -6088,10 +6192,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-212';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-216';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-212', play, cancel, updateEventAvailability,
+    build: 'trace-216', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

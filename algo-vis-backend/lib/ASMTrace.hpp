@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stack>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <typeinfo>
 #include <unordered_map>
@@ -96,6 +97,8 @@ template <typename T, std::size_t N>
 std::string encode_value(const T (&value)[N]);
 template <typename A, typename B>
 std::string encode_value(const std::pair<A, B>& value);
+template <typename... T>
+std::string encode_value(const std::tuple<T...>& value);
 
 template <typename Iterator>
 std::string encode_sequence(Iterator begin, Iterator end, const char* kind = "sequence") {
@@ -135,6 +138,21 @@ std::string encode_value(const std::unordered_set<T, Hash, Equal, Alloc>& value)
 template <typename A, typename B>
 std::string encode_value(const std::pair<A, B>& value) {
   return std::string("{\"kind\":\"pair\",\"items\":[") + encode_value(value.first) + ',' + encode_value(value.second) + "]}";
+}
+
+template <typename Tuple, std::size_t... I>
+std::string encode_tuple(const Tuple& value, std::index_sequence<I...>) {
+  std::ostringstream out;
+  out << "{\"kind\":\"tuple\",\"items\":[";
+  std::size_t index = 0;
+  ((out << (index++ ? "," : "") << encode_value(std::get<I>(value))), ...);
+  out << "]}";
+  return out.str();
+}
+
+template <typename... T>
+std::string encode_value(const std::tuple<T...>& value) {
+  return encode_tuple(value, std::index_sequence_for<T...>{});
 }
 
 template <typename Iterator>
@@ -728,6 +746,34 @@ void event_update(int line, const char* signature, const char* variable_id,
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + after + "}"
       + ",\"targets\":[" + target_json("target", variable_id, expression, index_expression,
           has_resolved_index, resolved_index) + ']');
+}
+
+template <typename BeforeFactory, typename F, typename AfterFactory>
+void event_compound_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* source_id, const char* source_expression, const char* source_index,
+    bool source_has_resolved_index, long long source_resolved_index,
+    const char* expression, BeforeFactory before_factory, F action,
+    AfterFactory after_factory, bool animate = true) {
+  const std::string before = encode_value(before_factory());
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  recorder().add_event("write", line, signature ? signature : "",
+    std::string("\"operation\":") + quoted(expression ? expression : "")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"compound\":true"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"targets\":[" + target_json(
+          "target", target_id, target_expression, target_index,
+          target_has_resolved_index, target_resolved_index)
+      + ',' + target_json(
+          "source", source_id, source_expression, source_index,
+          source_has_resolved_index, source_resolved_index) + ']');
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>

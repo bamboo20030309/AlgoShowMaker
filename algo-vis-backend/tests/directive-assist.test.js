@@ -31,4 +31,5 @@ test('directive assistant supplies keyboard navigation, examples, and native con
   assert.match(source, /event\.button !== 2 \|\| window\.matchMedia/);
   assert.match(source, /if \(!byId\[id\]\) return;/);
   assert.doesNotMatch(source, /av\.start_frame_draw\(\)|av\.frame_draw\(/);
+  assert.match(source, /with split\(now\)/);
 });
