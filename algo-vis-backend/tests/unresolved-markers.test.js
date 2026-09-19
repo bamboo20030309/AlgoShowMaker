@@ -1738,6 +1738,84 @@ test('a marker exit and its same-cell peer close-gap motion start together', () 
   assert.equal(motion.arrowStates.get('marker-i').targetX, 20);
 });
 
+test('a new marker lifetime does not make room for the preceding lifetime exit', () => {
+  const marker = (lifetime, target, x) => ({
+    dataset: {
+      traceBindingTarget: target,
+      traceSourceVariableId: 'now',
+      traceRuntimeIdentity: lifetime,
+      traceVisualContinuityKey: 'heap-push:now',
+      traceMarkerSortKey: 'now'
+    },
+    closest: () => null,
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: name => name === 'width' ? '18' : null }
+      : null,
+    querySelectorAll: () => [],
+    getAttribute: name => name === 'transform' ? `translate(${x},8)` : null
+  });
+  const current = marker('now@new', 'heap#2', 60);
+  const previous = marker('now@old', 'heap#1', 20);
+  const exit = {
+    id: 'exit-old-now', type: 'scope-exit',
+    targets: [{ variableId: 'now', lifetimeIdentity: 'now@old' }]
+  };
+  const schedule = context.window.ASMTraceFrameTween.exitMarkerReflowSchedule({
+    eventTimeline: [{
+      event: exit, animation: 'exit', markerExit: true,
+      start: 100, visualStart: 100, exitDuration: 220, reflowStart: 100, end: 320
+    }],
+    currentElements: new Map([['marker-now', current]]),
+    currentPlacements: new Map([
+      ['heap#1', { x: 20, y: 8, width: 40, height: 40 }],
+      ['heap#2', { x: 60, y: 48, width: 40, height: 40 }],
+      ['marker-now', { x: 60, y: 48 }]
+    ]),
+    previousObjects: new Map([['marker-now', previous]])
+  });
+  assert.equal(schedule.size, 0);
+});
+
+test('an exiting heap marker assignment uses the full parent node displacement', () => {
+  context.window.ASMTraceRules = {
+    resolveExpression: (document, frame, expression, locals) => locals[expression]
+  };
+  const visual = {
+    dataset: {
+      traceBindingTarget: 'heap#2',
+      traceSourceVariableId: 'now',
+      traceRuntimeIdentity: 'now@old',
+      traceMarkerIndexExpression: 'now'
+    }
+  };
+  const assignment = {
+    id: 'assign-now-parent', type: 'assign', order: 10,
+    payload: { before: 2, after: 1 },
+    targets: [{ variableId: 'now', lifetimeIdentity: 'now@old', role: 'target' }]
+  };
+  const slot = { event: assignment, animation: 'assign', start: 100, motionStart: 220, end: 520 };
+  const exitSlot = { event: {}, animation: 'exit', start: 600 };
+  const schedule = context.window.ASMTraceFrameTween.previousMarkerAssignmentSchedule({
+    traceDocument: { variables: { now: { name: 'now' } } },
+    eventFrame: { events: [assignment] },
+    eventTimeline: [slot, exitSlot],
+    visual,
+    placements: new Map([
+      ['heap#1', { x: 100, y: 40, width: 40, height: 40 }],
+      ['heap#2', { x: 60, y: 120, width: 40, height: 40 }]
+    ]),
+    exitSlot
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(schedule)), [{
+    start: 220, end: 520,
+    from: { x: 0, y: 0 }, to: { x: 40, y: -80 },
+    fromTarget: 'heap#2', toTarget: 'heap#1'
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    context.window.ASMTraceFrameTween.previousMarkerAssignmentOffset(schedule, 520)
+  )), { x: 40, y: -80 });
+});
+
 test('same-cell reflow finishes before a later i++ marker movement', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',

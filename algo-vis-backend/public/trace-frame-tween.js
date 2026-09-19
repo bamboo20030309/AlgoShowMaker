@@ -2759,6 +2759,7 @@
       ? Math.max(8, operands[0].point.width / 2)
       : 0;
     const highlights = [];
+    const suspendedHighlights = [];
     const popups = new Map();
     const promotedElements = promoteCompareElements(operands);
     const selfSplit = selfCompare && !operands[0].marker
@@ -2797,6 +2798,21 @@
     }
 
     function showResult() {
+      if (!suspendedHighlights.length) {
+        const cells = new Set(operands.filter(operand => !operand.marker).map(operand => operand.element));
+        const authored = new Set();
+        cells.forEach(cell => {
+          cell?.querySelectorAll?.('.highlight-blink').forEach(visual => authored.add(visual));
+        });
+        root.querySelectorAll?.('.asm-trace-style-decoration').forEach(wrapper => {
+          if (!cells.has(wrapper._asmStyleCell)) return;
+          wrapper.querySelectorAll?.('.highlight-blink').forEach(visual => authored.add(visual));
+        });
+        authored.forEach(visual => {
+          suspendedHighlights.push({ visual, visibility: visual.style.visibility });
+          visual.style.visibility = 'hidden';
+        });
+      }
       if (!highlights.length) {
         if (selfSplit) {
           selfSplit.clones.forEach(item => {
@@ -2941,6 +2957,10 @@
         popups.forEach(popup => popup.group.remove());
         selfSplit?.remove();
         promotedElements.remove();
+        suspendedHighlights.forEach(({ visual, visibility }) => {
+          visual.style.visibility = visibility;
+        });
+        suspendedHighlights.length = 0;
         highlights.length = 0;
         expression = null;
         popups.clear();
@@ -4086,7 +4106,15 @@
         currentElements?.forEach?.((element, key) => {
           if (!element?.dataset?.traceSourceVariableId) return;
           if ((slot.event?.targets || []).some(target => markerMatchesEventTarget(element, target))) return;
-          const previous = previousVisualForEntry(element, previousObjects, key);
+          const candidatePrevious = previousVisualForEntry(element, previousObjects, key);
+          // A new loop activation can reuse the same authored marker key while
+          // the preceding activation is still fading out. They are separate
+          // markers, so the old binding must not make the new one "make room".
+          const currentIdentity = String(element.dataset.traceRuntimeIdentity || '');
+          const previousIdentity = String(candidatePrevious?.dataset?.traceRuntimeIdentity || '');
+          const previous = currentIdentity && previousIdentity && currentIdentity !== previousIdentity
+            ? null
+            : candidatePrevious;
           const previousTarget = String(previous?.dataset?.traceBindingTarget || '');
           const currentTarget = String(element.dataset.traceBindingTarget || '');
           if (previousTarget !== exitingTarget && currentTarget !== exitingTarget) return;
@@ -4172,6 +4200,77 @@
       previousObjects
     });
     return probe.size > 0;
+  }
+
+  function previousMarkerAssignmentSchedule({
+    traceDocument, eventFrame, eventTimeline, visual, placements, exitSlot
+  } = {}) {
+    if (!visual?.dataset?.traceSourceVariableId) return [];
+    const binding = markerTargetParts(String(visual.dataset.traceBindingTarget || ''));
+    if (!binding) return [];
+    const variableIds = markerSourceVariableIds(visual);
+    const expression = String(
+      visual.dataset.traceMarkerIndexExpression
+      || visual.dataset.traceMarkerSortKey
+      || ''
+    );
+    if (!expression) return [];
+    const resolveTarget = (slot, phase) => {
+      const target = (slot.event?.targets || []).find(candidate => (
+        candidate?.role !== 'source'
+        && variableIds.includes(candidate?.variableId)
+        && markerMatchesEventTarget(visual, candidate)
+        && markerLifetimeActiveAtEvent(eventFrame, slot.event, visual)
+      ));
+      if (!target) return '';
+      const value = displayEventValue(slot.event?.payload?.[phase]);
+      if (value === '') return '';
+      const variableName = traceDocument?.variables?.[target.variableId]?.name;
+      const locals = variableName ? { [variableName]: value } : {};
+      const resolved = Number(window.ASMTraceRules?.resolveExpression?.(
+        traceDocument, eventFrame, expression, locals
+      ));
+      return Number.isInteger(resolved) ? `${binding.prefix}#${resolved}` : '';
+    };
+    let offset = { x: 0, y: 0 };
+    const steps = [];
+    (eventTimeline || []).filter(slot => (
+      ['assign', 'position'].includes(slot?.animation)
+      && Number(slot.start) < Number(exitSlot?.start ?? Infinity)
+    )).forEach(slot => {
+      const fromTarget = resolveTarget(slot, 'before');
+      const toTarget = resolveTarget(slot, 'after');
+      const from = markerTargetGeometry(fromTarget, placements);
+      const to = markerTargetGeometry(toTarget, placements);
+      if (!from || !to) return;
+      const next = {
+        x: offset.x + to.x - from.x,
+        y: offset.y + to.y - from.y
+      };
+      const start = Number(slot.motionStart ?? slot.start) || 0;
+      const end = Math.max(start + 1, Number(slot.end) || start + 1);
+      steps.push({ start, end, from: { ...offset }, to: next, fromTarget, toTarget });
+      offset = next;
+    });
+    return steps;
+  }
+
+  function previousMarkerAssignmentOffset(schedule, elapsed) {
+    let point = { x: 0, y: 0 };
+    for (const step of schedule || []) {
+      if (elapsed < step.start) break;
+      if (elapsed < step.end) {
+        const progress = easeOutCubic(clamp01(
+          (elapsed - step.start) / Math.max(1, step.end - step.start)
+        ));
+        return {
+          x: step.from.x + (step.to.x - step.from.x) * progress,
+          y: step.from.y + (step.to.y - step.from.y) * progress
+        };
+      }
+      point = step.to;
+    }
+    return point;
   }
 
   function eventHasVisibleAnimationTargets(
@@ -5843,11 +5942,20 @@
         const exitReflow = [...exitReflowSchedule.values()].find(reflow => (
           String(reflow?.eventId || '') === String(slot.event?.id || '')
         )) || null;
+        const assignmentSchedule = previousMarkerAssignmentSchedule({
+          traceDocument: options.document,
+          eventFrame,
+          eventTimeline,
+          visual: match.visual,
+          placements: options.currentPlacements,
+          exitSlot: slot
+        });
         previousExitGhosts.push({
           wrapper,
           scopeExitSlot: slot,
           lifecycleKind: visualLifecycleKind(isolated.visual),
-          exitReflow
+          exitReflow,
+          assignmentSchedule
         });
       });
     });
@@ -6169,7 +6277,8 @@
       window.ASMTraceRenderers?.refreshArrows?.();
 
       ghosts.forEach(({
-        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep, exitReflow
+        wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep, exitReflow,
+        assignmentSchedule
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -6189,9 +6298,11 @@
           const arrivalProgress = elapsed < arrivalStart ? 0
             : arrivalEnd <= arrivalStart ? 1
             : easeOutCubic(clamp01((elapsed - arrivalStart) / (arrivalEnd - arrivalStart)));
-          const offsetX = holdOffsetX * arrivalProgress * (1 - ghostProgress);
-          if (Math.abs(offsetX) > 0.01 || Math.abs(offsetY) > 0.01) {
-            ghost.setAttribute('transform', `translate(${offsetX}, ${offsetY})`);
+          const assignmentOffset = previousMarkerAssignmentOffset(assignmentSchedule, elapsed);
+          const offsetX = assignmentOffset.x + holdOffsetX * arrivalProgress * (1 - ghostProgress);
+          const combinedOffsetY = assignmentOffset.y + offsetY;
+          if (Math.abs(offsetX) > 0.01 || Math.abs(combinedOffsetY) > 0.01) {
+            ghost.setAttribute('transform', `translate(${offsetX}, ${combinedOffsetY})`);
           }
           else ghost.removeAttribute('transform');
           return;
@@ -6360,6 +6471,7 @@
     sameRuntimeVisual, needsSceneBoundaryEntrance,
     scopeExitVisualContinues,
     declarationVisualSchedule, recursiveRoleContinuations, exitMarkerReflowSchedule,
+    previousMarkerAssignmentSchedule, previousMarkerAssignmentOffset,
     isForInitializerAssignment,
     isDeclarationInitializerAssignment, markerTargetBeforeFrameEvents, markerTargetAtCheckpoint,
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
