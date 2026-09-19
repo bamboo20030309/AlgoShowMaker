@@ -21,7 +21,7 @@
 ## 重現與調查
 - 最小操作步驟或 fixture：以既有 heap sample input 編譯範例，跳至第 4 幀後播放到第 5 幀並記錄 SVG 幾何與事件時間。
 - 重現狀態：已重現。
-- 已確認事實：序列事件順序正確，但只有 outerframe 延後 resize；heap 節點仍使用目標幀寬度。舊 `now` 的 assign 缺少 lifetime，依 variable id 誤選了同幀稍後宣告的新 lifetime。第 13→14 幀先執行 `now = parent`，稍後才有舊 `parent` 的 scope exit；原本的退場 reflow 只看 `now` 的前一個 target，因此漏掉它已移入即將退場 target 的情況。內縮跨層時，子格已綁定 sequence slot，但 top-level heap 容器仍從 frame transition 起點開始移向目標 origin，造成整組格子早於 outerframe 移動。
+- 已確認事實：序列事件順序正確，但只有 outerframe 延後 resize；heap 節點仍使用目標幀寬度。舊 `now` 的 assign 缺少 lifetime，依 variable id 誤選了同幀稍後宣告的新 lifetime。第 13→14 幀先執行 `now = parent`，稍後才有舊 `parent` 的 scope exit；原本的退場 reflow 只看 `now` 的前一個 target，因此漏掉它已移入即將退場 target 的情況。內縮跨層時，子格已綁定 sequence slot，但 top-level heap 容器仍從 frame transition 起點開始移向目標 origin，造成整組格子早於 outerframe 移動。反向 sequence 起初又因目的幀缺少正向新增格，被 availability 檢查誤判為無可畫目標而移除，實際只剩一般跨幀插值。
 - 尚待調查：無。
 
 ## 修改邊界與依賴
@@ -39,7 +39,7 @@
 - [x] 第 1→2 幀的新舊 `now` 不產生跨 lifetime 讓位；第 4→5 幀舊 `now` 從子節點完整移到父節點，新 `now` 入場箭頭維持朝下。
 - [x] 比較格一開始抬起時即暫停一般 highlight；第 4→5 幀的舊 `now` 移到仍可見的 `parent` 前完成雙方讓位；寬於單格的 heap 節點在讓位期間仍使用垂直箭頭。
 - [x] `pop_back` 的移除格在 sequence 動畫開始時仍可見，並與向外移動同步淡出。
-- [x] 按上一步反向經過 heap 跨層擴張／內縮時，outerframe、格子、index 與數字使用同一個 sequence resize 時段。
+- [x] 按上一步反向經過 heap 跨層擴張／內縮時，outerframe、格子、index 與數字使用同一個 sequence resize 時段；反向 push 的移除格同步外移淡出，反向 pop 的補回格同步移入淡入。
 - [x] 第 38 幀回到第 37 幀後，來源幀的單格 highlight 不殘留，最終樣式與直接開啟第 37 幀一致。
 - [x] 既有 declaration initializer、sequence、outerframe 與 style layer 專項測試仍通過。
 
@@ -59,3 +59,4 @@
 - 2026-09-20：依使用者回報補充分離 compare 與一般 highlight；阻止不同 runtime lifetime 參與同格退場 reflow，並讓前一幀 ghost marker 依 heap 目標節點的完整二維幾何執行賦值位移。
 - 2026-09-20：依使用者補充，將一般 highlight 的停用點提前到比較格抬起；讓尚未退場的 ghost markers 在賦值移入同格時同步讓位；寬格讓位箭頭保持垂直；`pop_back` 舊格從完全可見狀態同步執行位移與淡出。
 - 2026-09-20：依使用者回報補上上一步的反向 heap resize 時序，並修正反向播放使用來源幀重算樣式而殘留 highlight 的問題。
+- 2026-09-20：再次重現確認反向 sequence 曾被正向 availability 檢查刪除；改由來源事件建立反向專用 slot，完整倒轉 edge cell 的移動與透明度效果。
