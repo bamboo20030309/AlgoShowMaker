@@ -749,6 +749,34 @@ void event_update(int line, const char* signature, const char* variable_id,
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
+void event_compound_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* source_id, const char* source_expression, const char* source_index,
+    bool source_has_resolved_index, long long source_resolved_index,
+    const char* expression, BeforeFactory before_factory, F action,
+    AfterFactory after_factory, bool animate = true) {
+  const std::string before = encode_value(before_factory());
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  recorder().add_event("write", line, signature ? signature : "",
+    std::string("\"operation\":") + quoted(expression ? expression : "")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"compound\":true"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"targets\":[" + target_json(
+          "target", target_id, target_expression, target_index,
+          target_has_resolved_index, target_resolved_index)
+      + ',' + target_json(
+          "source", source_id, source_expression, source_index,
+          source_has_resolved_index, source_resolved_index) + ']');
+}
+
+template <typename BeforeFactory, typename F, typename AfterFactory>
 void event_assign(int line, const char* signature,
                    const char* target_id, const char* target_expression, const char* target_index,
                    bool target_has_resolved_index, long long target_resolved_index,

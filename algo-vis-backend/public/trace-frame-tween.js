@@ -1307,7 +1307,8 @@
       before,
       after
     });
-    if ((event?.type === 'assign' || (event?.type === 'write' && event?.update === true))
+    if ((event?.type === 'assign'
+      || (event?.type === 'write' && (event?.update === true || event?.compound === true)))
       && Object.prototype.hasOwnProperty.call(event?.payload || {}, 'after')) {
       const target = targets.find(item => item?.role === 'target') || targets[0];
       return target ? [targetMutation(
@@ -2000,24 +2001,34 @@
     return text?.dataset?.traceContentRole === 'index' ? null : text;
   }
 
-  function createAssignmentTransfer(root, sourceOperand, targetOperand, value, sourceVisual = null) {
+  function createAssignmentTransfer(
+    root, sourceOperand, targetOperand, value, sourceVisual = null, options = {}
+  ) {
     if (!sourceOperand || !targetOperand || sourceOperand.marker || targetOperand.marker) return null;
+    const valueOnly = options.valueOnly === true;
     // An index-only cell is not a visual representation of its data value.
     // Transferring a clone of it would animate the index instead of the value.
-    if (sourceOperand.element.querySelector?.('text[data-trace-content-role="index"]')) return null;
+    if (!valueOnly
+      && sourceOperand.element.querySelector?.('text[data-trace-content-role="index"]')) return null;
     if (sourceOperand.visualKey === targetOperand.visualKey) return null;
     if (sourceOperand.element.closest?.('[data-trace-visibility="hidden"]')
       || targetOperand.element.closest?.('[data-trace-visibility="hidden"]')) return null;
 
+    const sourceElement = valueOnly
+      ? assignableTargetText({ element: sourceOperand.element })
+      : (sourceVisual || sourceOperand.element);
+    const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
+    if (!sourceElement || (valueOnly && !targetElement)) return null;
+
     let box;
     try {
-      box = sourceOperand.element.getBBox();
+      box = sourceElement.getBBox();
     } catch (error) {
       return null;
     }
     if (!(box?.width > 0) || !(box?.height > 0)) return null;
 
-    const clone = (sourceVisual || sourceOperand.element).cloneNode(true);
+    const clone = sourceElement.cloneNode(true);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
       node.removeAttribute?.('data-trace-object-key');
@@ -2026,29 +2037,45 @@
     clone.classList.remove('selected', 'draggable-object', 'asm-trace-selectable');
     removeAnimationNodes(clone);
     const cloneText = clone.matches?.('text') ? clone : clone.querySelector?.('text');
-    if (cloneText) cloneText.textContent = displayEventValue(value);
+    if (cloneText && value != null) cloneText.textContent = displayEventValue(value);
 
+    const sourceBounds = valueOnly ? elementBoundsInRoot(sourceElement, root) : null;
+    const targetBounds = valueOnly ? elementBoundsInRoot(targetElement, root) : null;
+    if (valueOnly && (!sourceBounds || !targetBounds)) return null;
     const group = createSvg('g', {
-      class: 'asm-trace-assign-transfer',
+      class: `asm-trace-assign-transfer${valueOnly ? ' asm-trace-assign-transfer-value' : ''}`,
       'pointer-events': 'none'
     });
     group.append(clone);
     appendBelowTextLayer(root, group);
-
-    const sourceCenter = {
+    const sourceCenter = valueOnly ? {
+      x: sourceBounds.x + sourceBounds.width / 2,
+      y: sourceBounds.y + sourceBounds.height / 2
+    } : {
       x: sourceOperand.point.x,
       y: sourceOperand.point.y + sourceOperand.point.height / 2
     };
-    const targetCenter = {
+    const targetCenter = valueOnly ? {
+      x: targetBounds.x + targetBounds.width / 2,
+      y: targetBounds.y + targetBounds.height / 2
+    } : {
       x: targetOperand.point.x,
       y: targetOperand.point.y + targetOperand.point.height / 2
     };
     const boxCenter = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    const sourceScale = {
+    const sourceScale = valueOnly ? {
+      x: sourceBounds.width / box.width,
+      y: sourceBounds.height / box.height
+    } : {
       x: sourceOperand.point.width / box.width,
       y: sourceOperand.point.height / box.height
     };
-    const targetScale = {
+    const targetTextScale = valueOnly
+      ? targetBounds.height / Math.max(1, box.height) : null;
+    const targetScale = valueOnly ? {
+      x: targetTextScale,
+      y: targetTextScale
+    } : {
       x: targetOperand.point.width / box.width,
       y: targetOperand.point.height / box.height
     };
@@ -2380,7 +2407,8 @@
         : Number(carrierDelta.y) || 0);
     const beforeValue = displayEventValue(event?.payload?.before);
     const afterValue = displayEventValue(event?.payload?.after);
-    const sourceValue = event?.payload?.source ?? event?.payload?.after;
+    const sourceValue = Object.prototype.hasOwnProperty.call(event?.payload || {}, 'source')
+      ? event.payload.source : null;
     const sourceLabel = String(source?.expression || afterValue || '').trim();
     const sourceOperand = source
       ? eventOperand(
@@ -2427,7 +2455,8 @@
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
       transfer = createAssignmentTransfer(
-        root, sourceOperand, operand, sourceValue, previousSourceVisual
+        root, sourceOperand, operand, sourceValue, previousSourceVisual,
+        { valueOnly: event?.compound === true }
       );
       if (!transfer) {
         const targetY = y + operand.point.height / 2;
@@ -4052,7 +4081,8 @@
     // not make the switch look off after the renderer has already drawn it.
     if (event?.type === 'fixed') return 'fixed';
     const positionOnly = updateTargetsMarker(event, elements);
-    const standaloneUpdate = event?.type === 'write' && event?.update === true && !positionOnly;
+    const standaloneUpdate = event?.type === 'write'
+      && (event?.update === true || event?.compound === true) && !positionOnly;
     return positionOnly
       ? 'position'
       : (standaloneUpdate ? 'assign' : eventAnimation(null, event.type));
@@ -4198,7 +4228,8 @@
     ));
     enabledEvents.forEach(event => {
       const positionOnly = updateTargetsMarker(event, elements);
-      const standaloneUpdate = event?.type === 'write' && event?.update === true && !positionOnly;
+      const standaloneUpdate = event?.type === 'write'
+        && (event?.update === true || event?.compound === true) && !positionOnly;
       const animation = positionOnly
         ? 'position'
         : (standaloneUpdate ? 'assign' : eventAnimation(traceDocument, event.type));
@@ -6154,10 +6185,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-214';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-215';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-214', play, cancel, updateEventAvailability,
+    build: 'trace-215', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

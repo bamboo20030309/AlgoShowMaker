@@ -3408,12 +3408,17 @@ function instrumentSource(source, watchIds = []) {
     return `${cppString(target.variableId)}, ${cppString(target.expression)}, ${cppString(target.indexExpression)}`;
   }
 
+  function canCaptureIndexExpression(indexExpression) {
+    const expression = String(indexExpression || '').trim();
+    return Boolean(expression)
+      && /^[A-Za-z0-9_+\-*/%()\s]+$/.test(expression)
+      && !/(?:\+\+|--)/.test(expression)
+      && !/[A-Za-z0-9_)]\s*\(/.test(expression);
+  }
+
   function indexedTargetArgs(target) {
     const indexExpression = String(target.indexExpression || '').trim();
-    const canCaptureIndex = indexExpression
-      && /^[A-Za-z0-9_+\-*/%()\s]+$/.test(indexExpression)
-      && !/(?:\+\+|--)/.test(indexExpression)
-      && !/[A-Za-z0-9_)]\s*\(/.test(indexExpression);
+    const canCaptureIndex = canCaptureIndexExpression(indexExpression);
     const resolvedIndex = canCaptureIndex
       ? `static_cast<long long>(${indexExpression})`
       : '0LL';
@@ -3701,6 +3706,9 @@ ${loop}
       if (target.variableId && standalone && !suppressEvents) {
         const sourceExpression = compactExpression(source.slice(node.from, node.to));
         const targetAccess = compactExpression(source.slice(targetNode.from, targetNode.to));
+        const repeatableCompoundTarget = targetNode?.name === 'Identifier'
+          || (targetNode?.name === 'SubscriptExpression'
+            && canCaptureIndexExpression(target.indexExpression));
         const animatedAssignment = node.name === 'AssignmentExpression'
           && assignmentOperator === '='
           && (node.parent?.name === 'ExpressionStatement' || chainedAssignment);
@@ -3712,6 +3720,8 @@ ${loop}
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
           rendered = `::asm_trace::${chainedAssignment ? 'event_assign_expr' : 'event_assign'}(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+        } else if (node.name === 'AssignmentExpression' && repeatableCompoundTarget) {
+          rendered = `::asm_trace::event_compound_assign(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); }, true)`;
         } else if (node.name === 'UpdateExpression') {
           const update = `::asm_trace::event_update(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(target)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); })`;
           rendered = forHeaderWrite

@@ -164,12 +164,44 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       const now=frame=>Number(window.ASMTraceRules.resolveExpression(doc,frame,'now'));
       const deepest=Math.max(...queryFrames.map(({frame})=>now(frame)).filter(Number.isFinite));
       const accepted=queryFrames.filter(({frame})=>now(frame)===deepest).at(-1);
+      const compound=doc.frames.map((frame,index)=>({frame,index})).find(({frame})=>(frame.events||[])
+        .some(event=>event.compound===true&&event.targets?.some(target=>target.variableId===sumId)));
       const entry=queryFrames.find(({frame})=>now(frame)===1);
       await player.render(entry.index-1,{animatePositions:false,animateEvents:false});
       await player.render(entry.index);
       const animatedTree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
       const animatedSegment=animatedTree.closest('#asm-trace-root').querySelector('.asm-trace-heap-cell-segment');
       const animatedVisible=Boolean(animatedSegment&&getComputedStyle(animatedSegment).display!=='none');
+      await player.render(compound.index-1,{animatePositions:false,animateEvents:false});
+      const beforeScene=document.querySelector('#asm-trace-root');
+      const beforeSum=beforeScene.querySelector(`[data-trace-variable="${sumId}"]`);
+      const beforeSumIdentity=beforeSum?.dataset.traceRuntimeIdentity;
+      const compoundSamples=[];
+      let compoundSettled=false;
+      const compoundTransition=player.render(compound.index).finally(()=>{compoundSettled=true;});
+      for(let count=0;count<180&&!compoundSettled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const currentScene=document.querySelector('#asm-trace-root');
+        const currentSum=currentScene.querySelector(`[data-trace-variable="${sumId}"]`);
+        const currentSumText=currentScene.querySelector(
+          `[data-trace-object-key="${CSS.escape(`${sumId}#0`)}"] > text`
+        );
+        const transfer=currentScene.querySelector('.asm-trace-assign-transfer-value');
+        const transferText=transfer?.querySelector('text');
+        const transferBox=transferText?.getBoundingClientRect();
+        const targetBox=currentSumText?.getBoundingClientRect();
+        compoundSamples.push({
+          sumValue:currentSumText?.textContent,
+          sumOpacity:Number(getComputedStyle(currentSum).opacity),
+          transferValue:transferText?.textContent,
+          transferRects:transfer?.querySelectorAll('rect').length||0,
+          transferDistance:transferBox&&targetBox?Math.hypot(
+            transferBox.x+transferBox.width/2-targetBox.x-targetBox.width/2,
+            transferBox.y+transferBox.height/2-targetBox.y-targetBox.height/2
+          ):null
+        });
+      }
+      await compoundTransition;
       await player.render(accepted.index,{animatePositions:false,animateEvents:false});
       const tree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
       const scene=tree.closest('#asm-trace-root');
@@ -178,6 +210,9 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       return {
         deepest,
         animatedVisible,
+        beforeSumIdentity,
+        afterSumIdentity:sum?.dataset.traceRuntimeIdentity,
+        compoundSamples,
         segments:[...scene.querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>(+rect.dataset.traceSegmentNode)),
         sum:sumCell?.querySelector(':scope > text')?.textContent,
         sumBelowTree:Number(sum?.dataset?.tracePositionY)>Number(tree?.dataset?.tracePositionY)
@@ -185,6 +220,22 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
     });
     assert.equal(result.deepest,14);
     assert.equal(result.animatedVisible,true);
+    assert.ok(result.beforeSumIdentity);
+    assert.equal(result.afterSumIdentity,result.beforeSumIdentity);
+    assert.ok(result.compoundSamples.length>0);
+    assert.ok(result.compoundSamples.every(sample=>sample.sumValue!==''),
+      'sum never becomes blank while += is playing');
+    assert.ok(result.compoundSamples.every(sample=>sample.sumOpacity>0.99),
+      'the global sum cell does not replay an entrance or exit');
+    const transferSamples=result.compoundSamples.filter(sample=>sample.transferValue==='27');
+    assert.ok(transferSamples.length>0,'tree[now] value is copied into a moving text transfer');
+    assert.ok(transferSamples.every(sample=>sample.transferRects===0),
+      'compound += moves only the value text, not the source cell rectangle');
+    assert.ok(transferSamples.some(sample=>sample.sumValue==='0'),
+      `sum retains its old value until the incoming number lands: ${JSON.stringify(transferSamples)}`);
+    const distances=transferSamples.map(sample=>sample.transferDistance).filter(Number.isFinite);
+    assert.ok(Math.max(...distances)>Math.min(...distances)+20,
+      'the copied number travels from the tree cell to the sum value');
     assert.deepEqual(result.segments,[]);
     assert.equal(result.sum,'27');
     assert.equal(result.sumBelowTree,true);

@@ -3955,7 +3955,9 @@
         'data-trace-runtime-lifetime': entry.lifetime || '',
         'data-trace-runtime-identity': ['sequence', 'matrix', 'map', 'set', 'object'].includes(entry.data?.kind)
           ? runtimeIdentityToken(entry.identity, objectKey)
-          : ''
+          : ['scalar', 'string'].includes(entry.data?.kind) && (entry.lifetime || entry.identity)
+            ? runtimeIdentityToken(entry.lifetime || entry.identity, objectKey)
+            : ''
       }), objectKey, { ...options, movable: true });
       object.dataset.tracePositionApplied = '1';
       object.dataset.tracePositionSpace = 'origin';
@@ -4518,9 +4520,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-197';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-198';
   window.ASMTraceRenderers = {
-    build: 'trace-197', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-198', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
