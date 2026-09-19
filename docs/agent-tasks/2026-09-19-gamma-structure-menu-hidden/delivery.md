@@ -57,12 +57,12 @@
 - 主代理需補驗證的情境：使用指定 deck 重新整理後確認黑點消失，點選 Array／Heap 格子確認工具列正常。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：已核實並整合至 `intergration`
+- 核實的程式 commit 與 diff 範圍：Gamma `0879ef7`／`fe937ab` 的空工具列隱藏規則
+- 差異審查與必要重跑結果：整合版 Structure 註標與入口專項均通過，hidden computed display 為 none
+- 合併 commit：`21a244d`
+- 完整 regression：未執行；V1 非動畫修改
+- 演算法投影片實際驗證：未執行
+- 未完成或環境阻塞：無
+- 本機服務重啟：3100 於整合提交後重啟核實
+- Push／公開部署狀態：推送 `origin/intergration`；未合併 main、未部署
