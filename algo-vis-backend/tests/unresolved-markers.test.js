@@ -1816,6 +1816,40 @@ test('an exiting heap marker assignment uses the full parent node displacement',
   )), { x: 40, y: -80 });
 });
 
+test('an exiting marker makes room for a marker that remains on its destination cell', () => {
+  const visual = (name, target) => ({
+    dataset: {
+      traceBindingTarget: target,
+      traceSourceVariableId: name,
+      traceMarkerSortKey: name
+    },
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: attribute => attribute === 'width' ? '18' : null }
+      : null
+  });
+  const mover = {
+    visual: visual('now', 'heap#2'),
+    scopeExitSlot: { start: 800 },
+    assignmentSchedule: [{
+      start: 200, end: 500,
+      from: { x: 0, y: 0 }, to: { x: 40, y: -80 },
+      fromTarget: 'heap#2', toTarget: 'heap#1'
+    }]
+  };
+  const parent = {
+    visual: visual('parent', 'heap#1'),
+    scopeExitSlot: { start: 800 },
+    assignmentSchedule: []
+  };
+  context.window.ASMTraceFrameTween.applyPreviousMarkerAssignmentReflows([mover, parent]);
+  assert.equal(mover.assignmentSchedule[0].to.x, 27,
+    'the arriving marker lands on its allocated side of the shared cell');
+  assert.deepEqual(JSON.parse(JSON.stringify(parent.assignmentPeerSchedule)), [{
+    start: 200, end: 500,
+    from: { x: 0, y: 0 }, to: { x: 13, y: 0 }
+  }], 'the existing marker makes room while the arriving marker moves');
+});
+
 test('same-cell reflow finishes before a later i++ marker movement', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',

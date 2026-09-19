@@ -2797,7 +2797,7 @@
       });
     }
 
-    function showResult() {
+    function suspendAuthoredHighlights() {
       if (!suspendedHighlights.length) {
         const cells = new Set(operands.filter(operand => !operand.marker).map(operand => operand.element));
         const authored = new Set();
@@ -2813,6 +2813,9 @@
           visual.style.visibility = 'hidden';
         });
       }
+    }
+
+    function showResult() {
       if (!highlights.length) {
         if (selfSplit) {
           selfSplit.clones.forEach(item => {
@@ -2892,6 +2895,7 @@
         const resetEnd = resultEnd + COMPARE_TIMING.reset;
         const popupReveal = easeOutCubic(clamp01(elapsed / COMPARE_TIMING.popup));
         const lift = popupReveal;
+        if (lift > 0) suspendAuthoredHighlights();
         const size = elapsed < waitEnd
           ? 0
           : easeOutCubic(clamp01((elapsed - waitEnd) / COMPARE_TIMING.size));
@@ -3528,8 +3532,7 @@
         const gap = 8;
         const totalWidth = group.reduce((sum, item) => sum + item.labelWidth, 0)
           + Math.max(0, group.length - 1) * gap;
-        const keepArrowsVertical = group.length > 1
-          && target.width >= group[0].baseCellWidth * 2 - 0.5;
+        const keepArrowsVertical = target.width > group[0].baseCellWidth + 0.5;
         let cursor = -totalWidth / 2;
         group.forEach(item => {
           const offsetX = cursor + item.labelWidth / 2;
@@ -3664,14 +3667,19 @@
       const settled = {
         x: item.finalBase.x,
         y: item.finalBase.y,
-        targetX: targetGeometry?.x ?? item.finalBase.x,
+        targetX: targetGeometry?.width > item.baseCellWidth + 0.5
+          ? item.finalBase.x
+          : targetGeometry?.x ?? item.finalBase.x,
         targetY: targetGeometry
           ? targetGeometry.y + targetGeometry.height / 2
           : item.finalBase.y
       };
       const hold = {
         ...settled,
-        x: settled.x + (Number(reflow?.holdOffsetX) || 0)
+        x: settled.x + (Number(reflow?.holdOffsetX) || 0),
+        targetX: targetGeometry?.width > item.baseCellWidth + 0.5
+          ? settled.targetX + (Number(reflow?.holdOffsetX) || 0)
+          : settled.targetX
       };
       const start = Math.max(0, Number(reflow?.start) || 0);
       const end = start + Math.max(
@@ -4273,6 +4281,50 @@
     return point;
   }
 
+  function applyPreviousMarkerAssignmentReflows(ghosts) {
+    const markerWidth = ghost => Number(ghost.visual?.querySelector?.(
+      '.trace-variable-marker-label-box'
+    )?.getAttribute?.('width')) || 18;
+    const sortKey = ghost => String(
+      ghost.visual?.dataset?.traceMarkerSortKey
+      || ghost.visual?.dataset?.traceMarkerIndexExpression
+      || ghost.visual?.dataset?.traceSourceVariableId
+      || ''
+    );
+    (ghosts || []).forEach(mover => {
+      (mover.assignmentSchedule || []).forEach(step => {
+        const peers = ghosts.filter(peer => (
+          peer !== mover
+          && String(peer.visual?.dataset?.traceBindingTarget || '') === step.toTarget
+          && Number(peer.scopeExitSlot?.start ?? Infinity) >= Number(step.end)
+        ));
+        if (!peers.length) return;
+        const participants = [mover, ...peers].sort((left, right) => (
+          sortKey(left).localeCompare(sortKey(right), 'en', { numeric: true, sensitivity: 'base' })
+        ));
+        const gap = 8;
+        const totalWidth = participants.reduce((sum, item) => sum + markerWidth(item), 0)
+          + Math.max(0, participants.length - 1) * gap;
+        let cursor = -totalWidth / 2;
+        const offsets = new Map();
+        participants.forEach(item => {
+          offsets.set(item, cursor + markerWidth(item) / 2);
+          cursor += markerWidth(item) + gap;
+        });
+        step.to.x += Number(offsets.get(mover)) || 0;
+        peers.forEach(peer => {
+          peer.assignmentPeerSchedule ||= [];
+          peer.assignmentPeerSchedule.push({
+            start: step.start,
+            end: step.end,
+            from: { x: 0, y: 0 },
+            to: { x: Number(offsets.get(peer)) || 0, y: 0 }
+          });
+        });
+      });
+    });
+  }
+
   function eventHasVisibleAnimationTargets(
     traceDocument, eventFrame, event, animation, placements, elements, previousObjects = null
   ) {
@@ -4776,7 +4828,7 @@
         const oldCell = previousVisualElement(previousObjects, cellKey);
         if (!oldCell) return;
         const wrapper = createSvg('g', {
-          class: 'asm-trace-sequence-ghost', 'pointer-events': 'none', opacity: 0
+          class: 'asm-trace-sequence-ghost', 'pointer-events': 'none', opacity: 1
         });
         const cell = oldCell.cloneNode(true);
         const indexLabel = previousVisualElement(previousObjects, `${cellKey}:index`);
@@ -5952,6 +6004,7 @@
         });
         previousExitGhosts.push({
           wrapper,
+          visual: match.visual,
           scopeExitSlot: slot,
           lifecycleKind: visualLifecycleKind(isolated.visual),
           exitReflow,
@@ -5959,6 +6012,7 @@
         });
       });
     });
+    applyPreviousMarkerAssignmentReflows(previousExitGhosts);
     const ghosts = [...previousExitGhosts];
     previousObjects?.forEach((clone, key) => {
       // A disabled exit applies the final absent state immediately; it must
@@ -6278,7 +6332,7 @@
 
       ghosts.forEach(({
         wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep, exitReflow,
-        assignmentSchedule
+        assignmentSchedule, assignmentPeerSchedule
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -6299,8 +6353,10 @@
             : arrivalEnd <= arrivalStart ? 1
             : easeOutCubic(clamp01((elapsed - arrivalStart) / (arrivalEnd - arrivalStart)));
           const assignmentOffset = previousMarkerAssignmentOffset(assignmentSchedule, elapsed);
-          const offsetX = assignmentOffset.x + holdOffsetX * arrivalProgress * (1 - ghostProgress);
-          const combinedOffsetY = assignmentOffset.y + offsetY;
+          const peerOffset = previousMarkerAssignmentOffset(assignmentPeerSchedule, elapsed);
+          const offsetX = assignmentOffset.x + peerOffset.x
+            + holdOffsetX * arrivalProgress * (1 - ghostProgress);
+          const combinedOffsetY = assignmentOffset.y + peerOffset.y + offsetY;
           if (Math.abs(offsetX) > 0.01 || Math.abs(combinedOffsetY) > 0.01) {
             ghost.setAttribute('transform', `translate(${offsetX}, ${combinedOffsetY})`);
           }
@@ -6472,6 +6528,7 @@
     scopeExitVisualContinues,
     declarationVisualSchedule, recursiveRoleContinuations, exitMarkerReflowSchedule,
     previousMarkerAssignmentSchedule, previousMarkerAssignmentOffset,
+    applyPreviousMarkerAssignmentReflows,
     isForInitializerAssignment,
     isDeclarationInitializerAssignment, markerTargetBeforeFrameEvents, markerTargetAtCheckpoint,
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
