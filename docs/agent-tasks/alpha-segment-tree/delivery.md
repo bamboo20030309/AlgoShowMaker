@@ -51,7 +51,7 @@
 - 執行目錄與必要環境設定：本任務 worktree 的 algo-vis-backend，PORT=3101。
 - 完整操作：以 served trace-renderer.js 的 SHA-256 核對 worktree，POST /trace/analyze 分析 fields／hide／雙層 segment 最小程式，再讀取 algorithm.html cache 版本。
 - 預期結果：來源 hash 相符；fields=tree,lazy,sets、cellRange=true、color=AV_green；新前端版本可見。
-- 實際結果與 exit code：PID 62184；來源 hash 相符；renderer trace-196、tween trace-213、model trace-33、directive assist directive-15；另直接以3101重跑格內segment瀏覽器專項1/1通過。
+- 實際結果與 exit code：修正後停止已核對的舊PID 62184並由本任務worktree重啟為PID 59828；HTTP 200、served renderer與worktree SHA-256相符；renderer trace-196、tween trace-213、model trace-33、directive assist directive-15；重啟後命中節點segment瀏覽器專項1/1通過。
 - 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
 
 ### Segment Tree查詢segment消失專項
