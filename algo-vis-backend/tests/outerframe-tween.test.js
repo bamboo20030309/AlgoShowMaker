@@ -10,7 +10,7 @@ function setup() {
   });
   const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
-      'window.ASMTraceFrameTween = { outerframeGeometry, applyOuterframeGeometry, parseColor, paintTransitionColors, relativeMotionDelta, outerframeGeometryLabel, alignedDirectRectGeometry, applyCenteredRectGeometry,');
+      'window.ASMTraceFrameTween = { outerframeGeometry, applyOuterframeGeometry, parseColor, paintTransitionColors, relativeMotionDelta, outerframeGeometryLabel, alignedDirectRectGeometry, applyLeftAnchoredRectGeometry,');
   dom.window.eval(source);
   return dom.window;
 }
@@ -127,7 +127,7 @@ test('outerframe label inherits parent motion while its x/y follows frame geomet
   assert.equal(Number(current.label.getAttribute('y')), 85);
 });
 
-test('heap cell width stays at previous geometry until its sequence resize advances', () => {
+test('heap cell follows its outerframe origin while sequence width opens to the right', () => {
   const window = setup();
   const namespace = 'http://www.w3.org/2000/svg';
   const previous = window.document.createElementNS(namespace, 'g');
@@ -142,15 +142,15 @@ test('heap cell width stays at previous geometry until its sequence resize advan
   current.append(afterRect);
 
   const geometry = window.ASMTraceFrameTween.alignedDirectRectGeometry(previous, current);
-  window.ASMTraceFrameTween.applyCenteredRectGeometry(geometry, 0);
+  window.ASMTraceFrameTween.applyLeftAnchoredRectGeometry(geometry, 0);
   assert.equal(Number(afterRect.getAttribute('width')), 40);
-  assert.equal(Number(afterRect.getAttribute('x')), 20);
+  assert.equal(Number(afterRect.getAttribute('x')), 0);
 
-  window.ASMTraceFrameTween.applyCenteredRectGeometry(geometry, 0.5);
+  window.ASMTraceFrameTween.applyLeftAnchoredRectGeometry(geometry, 0.5);
   assert.equal(Number(afterRect.getAttribute('width')), 60);
-  assert.equal(Number(afterRect.getAttribute('x')), 10);
+  assert.equal(Number(afterRect.getAttribute('x')), 0);
 
-  window.ASMTraceFrameTween.applyCenteredRectGeometry(geometry, 1);
+  window.ASMTraceFrameTween.applyLeftAnchoredRectGeometry(geometry, 1);
   assert.equal(Number(afterRect.getAttribute('width')), 80);
   assert.equal(Number(afterRect.getAttribute('x')), 0);
 });

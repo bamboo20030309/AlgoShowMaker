@@ -765,15 +765,16 @@
     }).filter(Boolean);
   }
 
-  function applyCenteredRectGeometry(geometry, progress) {
+  function applyLeftAnchoredRectGeometry(geometry, progress) {
     const t = clamp01(progress);
     (geometry || []).forEach(({ rect, before, after }) => {
       const width = before.width + (after.width - before.width) * t;
       const height = before.height + (after.height - before.height) * t;
-      const centerX = after.x + after.width / 2;
-      const centerY = after.y + after.height / 2;
-      rect.setAttribute('x', String(centerX - width / 2));
-      rect.setAttribute('y', String(centerY - height / 2));
+      // The container translation already carries the old left edge into the
+      // resized layout. Keep the authored target origin fixed so the cell
+      // follows the outerframe while its new width opens to the right.
+      rect.setAttribute('x', String(after.x));
+      rect.setAttribute('y', String(after.y));
       rect.setAttribute('width', String(width));
       rect.setAttribute('height', String(height));
     });
@@ -2439,10 +2440,21 @@
         width: bindingBounds.width, height: bindingBounds.height
       } : comparisonPoint(placements, bindingTarget);
       if (bindingPoint) {
+        let priorMarkerHeight = 40;
+        try {
+          const priorMarkerBounds = operand.element?.getBBox?.();
+          if (Number(priorMarkerBounds?.height) > 0) {
+            priorMarkerHeight = Number(priorMarkerBounds.height);
+          }
+        } catch {
+          // Detached SVG clones may not expose a measurable box.
+        }
         operand.point = {
           ...bindingPoint,
           x: bindingPoint.x + bindingPoint.width / 2,
-          y: bindingPoint.y
+          // Keep the previous lifetime's assignment value above the marker
+          // that now occupies this cell instead of letting it pass underneath.
+          y: bindingPoint.y - priorMarkerHeight - 6
         };
       }
     }
@@ -5930,7 +5942,7 @@
           : '';
         entry.target.setAttribute('transform', [translate, entry.baseTransform, scaleTransform].filter(Boolean).join(' '));
         if (entry.sequenceRectGeometry?.length) {
-          applyCenteredRectGeometry(entry.sequenceRectGeometry, state.localEased);
+          applyLeftAnchoredRectGeometry(entry.sequenceRectGeometry, state.localEased);
         }
         applyIndexLabelGrowth(entry.indexLabelGeometry, state.appearEased);
         if (entry.previousOuterframeGeometry) {

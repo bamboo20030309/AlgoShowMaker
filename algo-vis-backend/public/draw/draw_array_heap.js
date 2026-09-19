@@ -151,11 +151,11 @@
 
       // 畫各式各樣的提示元件 (使用 nodeMap 加速)
       if (window.HintWidgets){
+        const indexH = (index==1 || index>=3 ? indexBoxH : 0);
         // 高光框框
         if (haveHighlight) {
           const hId = `highlight-${groupID}-${i}`;
-          // 索引是節點的座標標籤，不屬於被比較的資料值。
-          HintWidgets.drawHighlightBox(g, x - w/2, y, w, baseBoxSize, highlight_color, hId, nodeMap);
+          HintWidgets.drawHighlightBox(g, x - w/2, y, w, baseBoxSize + indexH, highlight_color, hId, nodeMap);
         }
         // 紅色箭頭
         if (havePoint) {
