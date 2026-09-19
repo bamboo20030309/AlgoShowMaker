@@ -18,12 +18,52 @@
     return element;
   }
 
-  function displayValue(data) {
+  function displayValue(data, separator = ',') {
     if (!data || typeof data !== 'object') return String(data ?? '');
     if (Object.prototype.hasOwnProperty.call(data, 'value')) return String(data.value ?? '');
     if (data.kind === 'reference') return data.address || 'null';
-    if (data.kind === 'pair') return (data.items || []).map(displayValue).join(', ');
+    if (data.kind === 'pair' || data.kind === 'tuple') {
+      return (data.items || []).map(item => displayValue(item, separator)).join(separator);
+    }
     return data.label || data.type || data.kind || '';
+  }
+
+  function hiddenValueToken(raw) {
+    const source = String(raw ?? '').trim();
+    const constants = { LM: 2147483647, INT_MAX: 2147483647, INT_MIN: -2147483648 };
+    if (Object.prototype.hasOwnProperty.call(constants, source)) return String(constants[source]);
+    if (/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(source)) return String(Number(source));
+    if (/^(?:true|false)$/i.test(source)) return source.toLowerCase();
+    try { return source.startsWith('"') ? String(JSON.parse(source)) : source.match(/^'([^']*)'$/s)?.[1] ?? source; }
+    catch { return source; }
+  }
+
+  function hiddenField(options, field, data) {
+    const entry = options?.hide?.entries?.find(item => item.field === field);
+    return Boolean(entry && displayValue(data, options.separator ?? ',') === hiddenValueToken(entry.value));
+  }
+
+  function formattedItem(data, options = {}) {
+    const separator = Object.prototype.hasOwnProperty.call(options, 'separator') ? options.separator : ',';
+    if (data?.kind !== 'pair' && data?.kind !== 'tuple') return displayValue(data, separator);
+    const names = data.kind === 'pair'
+      ? ['first', 'second']
+      : (data.items || []).map((_, index) => String(index));
+    return (data.items || []).flatMap((item, index) => (
+      hiddenField(options, names[index], item) ? [] : [displayValue(item, separator)]
+    )).join(separator);
+  }
+
+  function mergeHighlights(target, source) {
+    Object.entries(source || {}).forEach(([key, value]) => {
+      const previous = target[key] || {};
+      target[key] = {
+        ...previous, ...value,
+        styleTypes: { ...(previous.styleTypes || {}), ...(value?.styleTypes || {}) },
+        sourceStyleIds: { ...(previous.sourceStyleIds || {}), ...(value?.sourceStyleIds || {}) }
+      };
+    });
+    return target;
   }
 
   function applyHighlight(element, highlight = {}) {
@@ -136,12 +176,12 @@
     return element;
   }
 
-  function originalValues(entry) {
+  function originalValues(entry, options = {}) {
     if (entry.data?.kind === 'map') {
       return (entry.data.entries || []).map(item => `${displayValue(item.key)}: ${displayValue(item.value)}`);
     }
-    if (Array.isArray(entry.data?.items)) return entry.data.items.map(displayValue);
-    return [displayValue(entry.data)];
+    if (Array.isArray(entry.data?.items)) return entry.data.items.map(item => formattedItem(item, options));
+    return [formattedItem(entry.data, options)];
   }
 
   function isScalarRenderer(variable, rendererName) {
@@ -169,7 +209,27 @@
       ? Math.max(0, Math.min(4, Math.trunc(configuredIndexMode)))
       : (configuredShowIndex === false ? 0 : 1);
     const isMatrix = requested === 'original-matrix' || context.variable.kind === 'matrix';
-    let values = originalValues(entry);
+    const fieldSpec = rendererOptions.fields;
+    const fieldSources = Array.isArray(fieldSpec?.variableIds) && context.frame
+      ? fieldSpec.variableIds.map((variableId, index) => ({
+        variableId,
+        name: fieldSpec.names?.[index] || context.document?.variables?.[variableId]?.name || variableId,
+        entry: context.frame.state?.[variableId]
+      }))
+      : [];
+    const separator = Object.prototype.hasOwnProperty.call(rendererOptions, 'separator')
+      ? rendererOptions.separator : ',';
+    let fieldParts = [];
+    let values;
+    if (fieldSources.length) {
+      const itemCount = Math.max(0, ...fieldSources.map(source => source.entry?.data?.items?.length || 0));
+      fieldParts = Array.from({ length: itemCount }, (_, index) => fieldSources.flatMap(source => {
+        const item = source.entry?.data?.items?.[index];
+        if (item == null || hiddenField(rendererOptions, source.name, item)) return [];
+        return [{ variableId: source.variableId, text: formattedItem(item, rendererOptions) }];
+      }));
+      values = fieldParts.map(parts => parts.map(part => part.text).join(separator));
+    } else values = originalValues(entry, rendererOptions);
     let itemsPerRow = Infinity;
     if (isMatrix) {
       const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
@@ -190,7 +250,9 @@
       : values.length;
     const range = [rangeStart, rangeEndExclusive - 1];
     const visibleCount = Math.max(0, rangeEndExclusive - rangeStart);
-    const styles = originalStyles(context.highlights, values.length);
+    const combinedHighlights = { ...(context.highlights || {}) };
+    fieldSources.forEach(source => mergeHighlights(combinedHighlights, context.allHighlights?.[source.variableId]));
+    const styles = originalStyles(combinedHighlights, values.length);
     const mode = requested.replace(/^original-/, '');
     // An empty sequence still has a one-cell-wide outerframe, but no cell.
     // Do not route it through layout renderers that assume a first element.
@@ -228,6 +290,29 @@
         const contentText = cell.querySelector(':scope > text');
         if (contentText) {
           contentText.setAttribute('data-trace-content-role', indexMode === 2 ? 'index' : 'value');
+          if (fieldParts[logicalIndex]?.length && indexMode !== 2) {
+            contentText.textContent = '';
+            fieldParts[logicalIndex].forEach((part, partIndex) => {
+              if (partIndex) contentText.append(svg('tspan', { 'data-trace-field-separator': '1' }, separator));
+              const fieldKey = `${objectKeyForVariable(context.frame, part.variableId)}#${logicalIndex}`;
+              const fieldText = svg('tspan', {
+                'data-trace-field-variable': part.variableId,
+                'data-trace-index': logicalIndex
+              }, part.text);
+              if (part.variableId !== fieldSources[0]?.variableId) {
+                markSelectable(fieldText, fieldKey, context, context.variableId);
+              }
+              contentText.append(fieldText);
+              if (part.variableId !== fieldSources[0]?.variableId) {
+                markArrowTarget(fieldText, {
+                  key: fieldKey,
+                  objectKey: objectKeyForVariable(context.frame, part.variableId),
+                  objectLabel: context.document?.variables?.[part.variableId]?.name || part.variableId,
+                  indices: [logicalIndex], kind: 'array-cell-field'
+                });
+              }
+            });
+          }
         }
         markSelectable(cell, cellKey, context, context.variableId);
         const indices = isMatrix
@@ -1621,6 +1706,62 @@
         || document.skins?.[variableId]?.renderer
         || document.variables?.[variableId]?.kind
         || entry.data?.kind;
+      if (descriptor.cellRange) {
+        if (rendererName !== 'original-heap') return;
+        const nodeIndex = Number(window.ASMTraceRules.resolveExpression(
+          document, frame, descriptor.cellExpression
+        ));
+        const rawStart = Number(window.ASMTraceRules.resolveExpression(
+          document, frame, descriptor.startExpression
+        ));
+        const rawEnd = Number(window.ASMTraceRules.resolveExpression(
+          document, frame, descriptor.endExpression
+        ));
+        if (![nodeIndex, rawStart, rawEnd].every(Number.isInteger) || rawStart > rawEnd) return;
+        const targetKey = objectKeyForVariable(frame, variableId);
+        const cell = elements.get(`${targetKey}#${nodeIndex}`);
+        const heap = elements.get(targetKey);
+        const rangeStart = Number(heap?.querySelector?.('[data-trace-range-start]')?.dataset?.traceRangeStart
+          ?? heap?.dataset?.traceRangeStart ?? 0);
+        const localIndex = nodeIndex - rangeStart;
+        const levels = Number(heap?.querySelector?.('[data-heap-levels]')?.getAttribute?.('data-heap-levels')
+          ?? heap?.getAttribute?.('data-heap-levels'));
+        if (!cell || localIndex < 0 || !Number.isInteger(levels) || levels < 1) return;
+        const depth = Math.floor(Math.log2(localIndex + 1));
+        const sectionCount = 2 ** Math.max(0, levels - depth - 1);
+        const start = Math.max(0, rawStart);
+        const end = Math.min(sectionCount - 1, rawEnd);
+        if (start > end) return;
+        const baseRect = cell.querySelector(':scope > rect');
+        const text = cell.querySelector(':scope > text');
+        if (!baseRect) return;
+        const x = Number(baseRect.getAttribute('x')) || 0;
+        const y = Number(baseRect.getAttribute('y')) || 0;
+        const width = Number(baseRect.getAttribute('width')) || 0;
+        const height = Number(baseRect.getAttribute('height')) || 0;
+        if (!(width > 0 && height > 0)) return;
+        const identity = descriptor.named ? descriptor.id : `${descriptor.id || descriptorIndex}`;
+        const key = `heap-segment:${identity}`;
+        const overlay = svg('rect', {
+          class: 'asm-trace-heap-cell-segment',
+          x: x + width * start / sectionCount,
+          y,
+          width: width * (end - start + 1) / sectionCount,
+          height,
+          fill: traceTextColor(descriptor.color, 'rgba(165, 214, 167, 0.6)'),
+          stroke: 'none',
+          'pointer-events': 'none',
+          'data-av-key': key,
+          'data-trace-segment-id': descriptor.id || '',
+          'data-trace-runtime-identity': descriptor.named ? `segment:named:${descriptor.id}` : key,
+          'data-trace-segment-node': nodeIndex,
+          'data-trace-segment-start': start,
+          'data-trace-segment-end': end,
+          'data-trace-segment-count': sectionCount
+        });
+        cell.insertBefore(overlay, text || null);
+        return;
+      }
       if (rendererName && rendererName !== 'original-array' && rendererName !== 'sequence') return;
 
       const start = Number(window.ASMTraceRules.resolveExpression(
@@ -3616,6 +3757,7 @@
       let height = renderer(content, entry, {
         variable, variableId: objectKey, skin, rendererName,
         highlights: snapshotHighlights, diff: [],
+        document, frame: frozenFrame, allHighlights: snapshotHighlights,
         idPrefix: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`, interactive: options.interactive
       });
       removeScalarIndexLabels(content, variable, rendererName);
@@ -3743,6 +3885,7 @@
       let height = renderer(content, entry, {
         variable, variableId: objectKey, skin, rendererName,
         highlights: highlights[variableId] || {}, diff,
+        document, frame, allHighlights: highlights,
         idPrefix: `${idPrefix}-original`, interactive: options.interactive
       });
       removeScalarIndexLabels(content, variable, rendererName);
@@ -4287,9 +4430,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-193';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-194';
   window.ASMTraceRenderers = {
-    build: 'trace-193', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-194', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

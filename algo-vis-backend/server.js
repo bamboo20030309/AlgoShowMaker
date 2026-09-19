@@ -1392,6 +1392,20 @@ function resolveFrameRendererOptions(frame, directive) {
     else if (format === 'binary-padded') options.indexMode = 4;
     else options.indexMode = 0;
   }
+  if (source.fields) {
+    options.fields = {
+      names: Array.isArray(source.fields.names) ? [...source.fields.names] : [],
+      variableIds: Array.isArray(source.fields.variableIds) ? [...source.fields.variableIds] : []
+    };
+  }
+  if (source.hide) {
+    options.hide = {
+      entries: Array.isArray(source.hide.entries)
+        ? source.hide.entries.map(entry => ({ field: entry.field, value: entry.value }))
+        : []
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'separator')) options.separator = source.separator;
   return options;
 }
 

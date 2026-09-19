@@ -817,6 +817,20 @@ for (auto& v : prime) {
 
 `showWidth(true)` 顯示區段寬度資訊；`@segment` 的 `with` 目前只支援 `showWidth(true|false)`。
 
+### Heap 格子內部區段
+
+雙層索引把色塊畫在一個 heap 節點格內，與上面的普通陣列區間語法分開：
+
+```cpp
+// @frame tree render heap with range(1,Tsize-1)
+// @segment tree[now][L:R] color AV_green as active_range when L <= R
+```
+
+第一層 `tree[now]` 選擇節點，第二層 `[L:R]` 使用該節點自己的局部座標，左右端都包含。
+renderer依節點層級把格子切成 `2^k` 段；根節點涵蓋8個最小區段時合法座標為0～7，下一層為0～3。
+`L > R` 不顯示；負數及超過末端的範圍會裁切。多個色塊依來源順序疊放，後寫的在上層。
+`as` 在相鄰幀提供穩定身分，格子、端點與寬度改變時可配對轉場。
+
 ## `@arrow`：連接視覺物件
 
 ### 批次箭頭：使用者指定的繪圖迴圈
@@ -1059,6 +1073,20 @@ int displaySize = arr.size() - 1;
 ```
 
 設定矩陣或平面排列使用的欄數。參數可使用安全算術運算式。
+
+### `fields(...)`、`hide(...)` 與 `separator(...)`
+
+```cpp
+// @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+// @frame tree render heap with fields(tree,lazy,sets), separator(" / ")
+```
+
+`fields` 把多個陣列的同一索引合併到主要物件的一格中；每個陣列仍保留自己的變數身分、狀態與事件。
+`hide` 必須明確寫欄位和值，每幀重新判定；被隱藏的欄位不留下空位或多餘分隔符號。
+分隔符號預設為逗點，只有需要其他符號時才寫 `separator`。第一個field必須是`@frame`的主要物件。
+
+`pair`與`tuple`本身仍是一個元素，因此`vector<pair<...>>`及`vector<tuple<...>>`每個元素只畫一格。
+成員預設以同一separator連接且保留零；pair可用`hide(first=value,second=value)`隱藏指定成員。
 
 ### `labels(...)`
 

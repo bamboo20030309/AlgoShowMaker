@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stack>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <typeinfo>
 #include <unordered_map>
@@ -96,6 +97,8 @@ template <typename T, std::size_t N>
 std::string encode_value(const T (&value)[N]);
 template <typename A, typename B>
 std::string encode_value(const std::pair<A, B>& value);
+template <typename... T>
+std::string encode_value(const std::tuple<T...>& value);
 
 template <typename Iterator>
 std::string encode_sequence(Iterator begin, Iterator end, const char* kind = "sequence") {
@@ -135,6 +138,21 @@ std::string encode_value(const std::unordered_set<T, Hash, Equal, Alloc>& value)
 template <typename A, typename B>
 std::string encode_value(const std::pair<A, B>& value) {
   return std::string("{\"kind\":\"pair\",\"items\":[") + encode_value(value.first) + ',' + encode_value(value.second) + "]}";
+}
+
+template <typename Tuple, std::size_t... I>
+std::string encode_tuple(const Tuple& value, std::index_sequence<I...>) {
+  std::ostringstream out;
+  out << "{\"kind\":\"tuple\",\"items\":[";
+  std::size_t index = 0;
+  ((out << (index++ ? "," : "") << encode_value(std::get<I>(value))), ...);
+  out << "]}";
+  return out.str();
+}
+
+template <typename... T>
+std::string encode_value(const std::tuple<T...>& value) {
+  return encode_tuple(value, std::index_sequence_for<T...>{});
 }
 
 template <typename Iterator>

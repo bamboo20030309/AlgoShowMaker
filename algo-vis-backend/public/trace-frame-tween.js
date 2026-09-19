@@ -145,7 +145,11 @@
         strokeOpacity: rect.getAttribute('stroke-opacity'),
         strokeWidth: rect.getAttribute('stroke-width'),
         rx: rect.getAttribute('rx'),
-        ry: rect.getAttribute('ry')
+        ry: rect.getAttribute('ry'),
+        x: Number(rect.getAttribute('x')),
+        y: Number(rect.getAttribute('y')),
+        width: Number(rect.getAttribute('width')),
+        height: Number(rect.getAttribute('height'))
       });
     });
     return states;
@@ -721,8 +725,14 @@
     const states = new Map();
     const sourceRects = [...(source?.querySelectorAll?.('rect') || [])];
     const targetRects = [...(target?.querySelectorAll?.('rect') || [])];
+    const sourceByStableKey = new Map();
+    sourceRects.forEach(rect => {
+      const stableKey = rect.getAttribute('data-av-key');
+      if (stableKey) sourceByStableKey.set(stableKey, rect);
+    });
     targetRects.forEach((rect, index) => {
-      const sourceRect = sourceRects[index];
+      const stableKey = rect.getAttribute('data-av-key');
+      const sourceRect = (stableKey && sourceByStableKey.get(stableKey)) || sourceRects[index];
       if (!sourceRect) return;
       const opacity = sourceRect.hasAttribute('fill-opacity')
         ? Number(sourceRect.getAttribute('fill-opacity'))
@@ -734,7 +744,11 @@
         strokeOpacity: sourceRect.getAttribute('stroke-opacity'),
         strokeWidth: sourceRect.getAttribute('stroke-width'),
         rx: sourceRect.getAttribute('rx'),
-        ry: sourceRect.getAttribute('ry')
+        ry: sourceRect.getAttribute('ry'),
+        x: Number(sourceRect.getAttribute('x')),
+        y: Number(sourceRect.getAttribute('y')),
+        width: Number(sourceRect.getAttribute('width')),
+        height: Number(sourceRect.getAttribute('height'))
       });
     });
     return states;
@@ -5846,13 +5860,22 @@
         }
 
         entry.rects.forEach((rect, index) => {
-          // A rect must have one paint writer. Style owns value/index colors;
-          // ordinal parent-rect interpolation must not overwrite those colors.
-          if (events?.ownsPaint?.(rect)) return;
           const key = rectKey(rect, index);
           const before = entry.previousRectStates.get(key);
           const after = entry.currentRectStates.get(key);
           if (!before || !after) return;
+          if (rect.classList.contains('asm-trace-heap-cell-segment')) {
+            for (const attribute of ['x','y','width','height']) {
+              if (!Number.isFinite(before[attribute]) || !Number.isFinite(after[attribute])) continue;
+              rect.setAttribute(attribute, String(
+                before[attribute] + (after[attribute] - before[attribute]) * state.localEased
+              ));
+            }
+          }
+          // A rect must have one paint writer. Style owns value/index colors;
+          // ordinal parent-rect interpolation must not overwrite those colors.
+          // Heap cell segments still interpolate geometry above before yielding paint.
+          if (events?.ownsPaint?.(rect)) return;
           if (entry.visualCommit) {
             applyRectState(rect, elapsed < entry.visualCommit.time ? before : after);
             return;
@@ -6088,10 +6111,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-212';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-213';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-212', play, cancel, updateEventAvailability,
+    build: 'trace-213', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
