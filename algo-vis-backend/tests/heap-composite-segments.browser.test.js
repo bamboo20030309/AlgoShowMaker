@@ -26,16 +26,21 @@ test('heap fields and local segments render at root and child coordinates', {tim
       const readTree=async index=>{
         await player.render(index,{animatePositions:false,animateEvents:false});
         const root=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+        const scene=root.closest('#asm-trace-root');
         const cell=indexValue=>root.querySelector(`[data-trace-index="${indexValue}"]`);
-        const seg=node=>[...cell(node).querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>({
+        const seg=node=>[...scene.querySelectorAll(`.asm-trace-heap-cell-segment[data-trace-segment-node="${node}"]`)].map(rect=>({
           id:rect.dataset.traceSegmentId,start:+rect.dataset.traceSegmentStart,end:+rect.dataset.traceSegmentEnd,
           identity:rect.dataset.traceRuntimeIdentity,count:+rect.dataset.traceSegmentCount,
-          width:+rect.getAttribute('width'),base:+cell(node).querySelector(':scope > rect').getAttribute('width')
+          width:+rect.getAttribute('width'),base:+cell(node).querySelector(':scope > rect').getAttribute('width'),
+          styleLayer:Boolean(rect.closest('.asm-trace-style-layer')),nestedInCell:cell(node).contains(rect)
         }));
+        const children=[...scene.children];
         return {
           texts:[1,2,3,4].map(i=>cell(i).querySelector(':scope > text').textContent),
           fills:[2,3].map(i=>cell(i).querySelector(':scope > rect').getAttribute('fill')),
-          root:seg(1),child:seg(2),empty:seg(3)
+          root:seg(1),child:seg(2),empty:seg(3),
+          styleBeforeArrows:children.findIndex(node=>node.classList.contains('asm-trace-style-layer'))
+            < children.findIndex(node=>node.classList.contains('asm-trace-foreground-arrows'))
         };
       };
       const first=await readTree(treeFrames[0].index),second=await readTree(treeFrames[1].index);
@@ -46,7 +51,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
       for(let count=0;count<180&&!settled;count++){
         await new Promise(resolve=>requestAnimationFrame(resolve));
         const root=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
-        const rect=root?.querySelector('[data-trace-segment-id="full"]');
+        const rect=root?.closest('#asm-trace-root')?.querySelector('[data-trace-segment-id="full"]');
         if(rect)samples.push({x:+rect.getAttribute('x'),width:+rect.getAttribute('width')});
       }
       await transition;
@@ -55,7 +60,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
       for(const item of treeFrames.slice(3,6)){
         await player.render(item.index,{animatePositions:false,animateEvents:false});
         const root=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
-        frontiers.push([...root.querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>({
+        frontiers.push([...root.closest('#asm-trace-root').querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>({
           node:+rect.dataset.traceSegmentNode,start:+rect.dataset.traceSegmentStart,
           end:+rect.dataset.traceSegmentEnd,count:+rect.dataset.traceSegmentCount,
           phase:rect.dataset.traceSegmentSplit,identity:rect.dataset.traceRuntimeIdentity
@@ -78,6 +83,8 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.equal(result.first.root[0].width,result.first.root[0].base);
     assert.deepEqual(result.first.child.map(item=>[item.start,item.end,item.count]),[[2,3,4]]);
     assert.equal(result.first.child[0].width,result.first.child[0].base/2);
+    assert.ok([...result.first.root,...result.first.child].every(item=>item.styleLayer&&!item.nestedInCell));
+    assert.equal(result.first.styleBeforeArrows,true);
     assert.deepEqual(result.first.empty,[]);
     assert.deepEqual(result.first.fills,['rgba(144, 202, 249, 0.6)','orange']);
     assert.equal(result.second.texts[0],'15 / 6');

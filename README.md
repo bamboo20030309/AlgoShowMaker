@@ -278,7 +278,7 @@ C++ 原始碼
 - 修正含style的幀切換時自動固定勾勾消失、開啟編輯動畫才恢復；切幀與靜態繪圖共用累積固定狀態，新固定標記仍等轉場完成後顯示。
 - 新增 `@automark isprime`／`@automark isprime,prime`／`@automark none`，指定本幀自動固定標記的顯示對象；preset／defaults可共用，未指定沿用既有設定，最後存取分析與手動mark保持獨立。
 - 修正濃縮幀的 `@events animate off` 誤關自動固定；一般事件動畫開關保留固定狀態與其他繪圖動畫，`all animate on` 也不覆寫固定設定。
-- `render heap` 新增 `fields(...)`、逐幀 `hide(field=value)`、`separator(...)`、pair／tuple單格格式，以及 `@segment tree[node][L:R] color ...` 格內區段；`with split(now)`可保留遞迴分裂後尚待處理的另一側。線段樹範例已移除AV.hpp舊繪圖程式並保留原演算法。
+- `render heap` 新增 `fields(...)`、逐幀 `hide(field=value)`、`separator(...)`、pair／tuple單格格式，以及style顯示層中的 `@segment tree[node][L:R] color ...` 格內區段；`with split(now)`可保留遞迴分裂後尚待處理的另一側。線段樹範例已移除AV.hpp舊繪圖程式並保留原演算法。
 - 擷取會由當幀事件向上找到最外層的 `for`、`while` 或 `if`；迴圈一律顯示完整內容與結尾大括號，聯集子樹之外的程式碼隱藏為省略號。省略區段若只剩一行可執行程式碼，會直接顯示該行，不再以 `…` 代替。
 - 當事件位於 `main` 以外的函式時，程式碼片段會顯示該函式的完整內容，包括函式宣告、所有可執行程式與結尾大括號；註解與繪圖指令仍會隱藏。同一函式內的幀沿用相同函式子樹，不會因事件落在不同分支或遞迴層級而反覆切換片段。
 - 首幀沒有事件時，會由畫面上的變數反查宣告、輸入和必要的初始化迴圈。一般註解、繪圖指令與非演算法樣板程式碼預設不顯示。

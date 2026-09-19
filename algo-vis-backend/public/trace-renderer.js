@@ -1337,7 +1337,10 @@
       layer = svg('g', { class: 'asm-trace-style-layer', 'data-trace-style-layer': 'foreground', 'pointer-events': 'none' });
       root.insertBefore(layer, [...root.children].find(child => child.classList?.contains('asm-trace-foreground-arrows')) || null);
     }
-    const wrapper = svg('g', { class: 'asm-trace-style-decoration', 'pointer-events': 'none' });
+    const wrapper = svg('g', {
+      class: `asm-trace-style-decoration${kind ? ` asm-trace-style-${kind}` : ''}`,
+      'pointer-events': 'none'
+    });
     wrapper._asmStyleCell = cell;
     wrapper._asmStyleBasis = basis;
     if (['highlight', 'compare'].includes(kind) && visual.tagName?.toLowerCase() === 'rect') {
@@ -1472,7 +1475,7 @@
       if (visual.closest('.asm-trace-style-layer')) return;
       const kind = visual.getAttribute('data-trace-attachment-kind') || '';
       const cell = elements.get(visual.getAttribute('data-trace-attached-to'));
-      if (cell && ['highlight', 'point', 'mark'].includes(kind)) {
+      if (cell && ['highlight', 'point', 'mark', 'segment'].includes(kind)) {
         attachStyleVisual(root, visual, cell, kind);
       }
     });
@@ -1800,7 +1803,7 @@
             ? `heap-segment:${identity}:${nodeIndex}`
             : `heap-segment:${identity}`;
           const overlay = svg('rect', {
-            class: 'asm-trace-heap-cell-segment',
+            class: 'asm-trace-heap-cell-segment asm-trace-style-paint',
             x: x + width * start / sectionCount,
             y,
             width: width * (end - start + 1) / sectionCount,
@@ -1820,6 +1823,23 @@
             'data-trace-segment-split': descriptor.split?.phase || ''
           });
           cell.insertBefore(overlay, text || null);
+          overlay.setAttribute('data-trace-attached-to', `${targetKey}#${nodeIndex}`);
+          overlay.setAttribute('data-trace-attachment-kind', 'segment');
+          if (attachStyleVisual(root, overlay, cell, 'segment')) {
+            const wrapper = overlay.parentElement;
+            const styleKey = `style:${key}`;
+            const cellPlacement = placements.get(`${targetKey}#${nodeIndex}`);
+            wrapper.dataset.traceObjectKey = styleKey;
+            wrapper.dataset.traceRuntimeIdentity = descriptor.named
+              ? `segment:named:${descriptor.id}:${nodeIndex}`
+              : key;
+            wrapper.dataset.traceInternalStyle = 'segment';
+            if (cellPlacement) {
+              wrapper.dataset.traceRenderPosition = `${cellPlacement.x},${cellPlacement.y}`;
+              placements.set(styleKey, { ...cellPlacement });
+            }
+            elements.set(styleKey, wrapper);
+          }
         });
         return;
       }
@@ -4462,7 +4482,11 @@
   }
 
   function currentObjectKeys() {
-    return currentScene?.placements ? [...currentScene.placements.keys()] : [];
+    return currentScene?.placements
+      ? [...currentScene.placements.keys()].filter(key => (
+        !currentScene.elements?.get?.(key)?.dataset?.traceInternalStyle
+      ))
+      : [];
   }
 
   function currentArrowTargets() {
@@ -4491,9 +4515,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-195';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-196';
   window.ASMTraceRenderers = {
-    build: 'trace-195', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-196', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
