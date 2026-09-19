@@ -3810,9 +3810,11 @@
       const snapshotStyleFrame = sourceFrame && Array.isArray(snapshot.styles)
         ? { ...sourceFrame, events: [], styles: snapshot.styles }
         : null;
-      const snapshotHighlights = snapshotStyleFrame
-        ? window.ASMTraceRules.evaluate({ ...document, rules: [] }, snapshotStyleFrame)[snapshot.sourceVariableId] || {}
+      const snapshotAllHighlights = snapshotStyleFrame
+        ? window.ASMTraceRules.evaluate({ ...document, rules: [] }, snapshotStyleFrame)
         : {};
+      const snapshotHighlights = snapshotAllHighlights[snapshot.sourceVariableId] || {};
+      const snapshotRenderFrame = snapshotStyleFrame || sourceFrame || frame;
       const position = snapshotStudioPosition(document, frame, snapshot);
       const baseX = position.x;
       const baseY = position.absolute ? position.y : y + position.y;
@@ -3840,7 +3842,7 @@
       let height = renderer(content, entry, {
         variable, variableId: objectKey, skin, rendererName,
         highlights: snapshotHighlights, diff: [],
-        document, frame: frozenFrame, allHighlights: snapshotHighlights,
+        document, frame: snapshotRenderFrame, allHighlights: snapshotAllHighlights,
         idPrefix: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`, interactive: options.interactive
       });
       removeScalarIndexLabels(content, variable, rendererName);

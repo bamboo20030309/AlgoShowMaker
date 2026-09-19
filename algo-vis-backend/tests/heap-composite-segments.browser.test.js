@@ -4,6 +4,40 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
+test('kept heap snapshots render through every frame', {timeout:60000}, async () => {
+  const base=process.env.ASM_TEST_BASE_URL;
+  assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    const code=fs.readFileSync(path.join(__dirname,'fixtures/heap.cpp'),'utf8').replace(/\r\n?/g,'\n');
+    await page.evaluate(code=>{
+      ace.edit('editor').setValue(code,-1);
+      document.getElementById('inputArea').value='4\n4 1 3 2\n';
+    },code);
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    const result=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      for(let index=0;index<doc.frames.length;index++){
+        await player.render(index,{animatePositions:false,animateEvents:false});
+      }
+      return {
+        frameCount:doc.frames.length,
+        snapshotCount:doc.snapshots?.length||0,
+        visibleSnapshotFrames:doc.frames.filter(frame=>frame.snapshotIds?.length).length
+      };
+    });
+    assert.ok(result.frameCount>1);
+    assert.ok(result.snapshotCount>0);
+    assert.ok(result.visibleSnapshotFrames>0);
+    assert.deepEqual(errors,[]);
+  } finally { await browser.close(); }
+});
+
 test('heap fields and local segments render at root and child coordinates', {timeout:60000}, async () => {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
