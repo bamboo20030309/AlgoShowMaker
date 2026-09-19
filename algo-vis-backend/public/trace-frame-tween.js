@@ -4521,15 +4521,17 @@
   function buildEventTimeline(
     traceDocument, eventFrame, direction, swapDuration,
     previousPlacements, currentPlacements, elements, initialDelay = 0,
-    previousObjects = null, eventFilter = null
+    previousObjects = null, eventFilter = null, timelineOptions = {}
   ) {
     if (Number(direction) < 0) return [];
     const slots = [];
     const seenMarkerAssignments = new Set();
     let cursor = Math.max(0, Number(initialDelay) || 0);
-    updateEventAvailability(
-      traceDocument, eventFrame, currentPlacements, elements, previousObjects
-    );
+    if (timelineOptions.skipAvailability !== true) {
+      updateEventAvailability(
+        traceDocument, eventFrame, currentPlacements, elements, previousObjects
+      );
+    }
     const exitIdentity = target => [
       String(target?.variableId || ''),
       String(target?.lifetimeIdentity || ''),
@@ -4543,7 +4545,8 @@
     )).flatMap(event => (event.targets || []).map(exitIdentity)));
     const enabledEvents = ordered.filter(event => (
       event.type !== 'condition'
-      && event.enabled !== false && event.autoAnimationDisabled !== true
+      && event.enabled !== false
+      && (timelineOptions.ignoreAutoDisabled === true || event.autoAnimationDisabled !== true)
       && !(event.type === 'scope-exit' && event.absorbedAfterKeep === true
         && (event.targets || []).some(target => (
           manualPreKeepExitIdentities.has(exitIdentity(target))
@@ -4693,9 +4696,9 @@
     previousObjects = null
   ) {
     if (Number(direction) >= 0) return [];
-    // Backward navigation does not replay runtime effects, but heap geometry
-    // still needs the outgoing push/pop slot. This timing-only timeline keeps
-    // the old cells, labels and outerframe fixed until one shared resize phase.
+    // Backward navigation does not replay unrelated runtime effects, but heap
+    // geometry and the inserted/removed edge cell still need the outgoing
+    // push/pop slot and its inverse presentation.
     return buildEventTimeline(
       traceDocument, eventFrame, 1, swapDuration,
       previousPlacements, currentPlacements, elements, initialDelay,
@@ -4704,8 +4707,8 @@
         const before = Number(event?.payload?.beforeSize);
         const after = Number(event?.payload?.afterSize);
         return Number.isFinite(before) && Number.isFinite(after) && before !== after;
-      }
-    ).map(slot => ({ ...slot, timingOnly: true }));
+      }, { skipAvailability: true, ignoreAutoDisabled: true }
+    ).map(slot => ({ ...slot, reverseSequence: true }));
   }
 
   function enabledExitBarrierEnd(eventTimeline = [], minimum = 0) {
@@ -4825,7 +4828,7 @@
   }
 
   function createSequenceOperationEffect(
-    slot, traceDocument, eventFrame, placements, elements, previousObjects
+    slot, traceDocument, eventFrame, placements, elements, previousObjects, reverse = false
   ) {
     const event = slot.event;
     const target = (event?.targets || []).find(item => item.role === 'target')
@@ -4836,10 +4839,12 @@
     const before = Number(event?.payload?.beforeSize);
     const after = Number(event?.payload?.afterSize);
     const direction = sequenceEdge(event.operation) === 'front' ? -1 : 1;
-    const inserted = after > before
-      ? sequenceCellKeys(traceDocument, eventFrame, event) : [];
-    const removed = before > after
-      ? sequenceCellKeys(traceDocument, eventFrame, event, false) : [];
+    const inserted = reverse
+      ? (before > after ? sequenceCellKeys(traceDocument, eventFrame, event, false) : [])
+      : (after > before ? sequenceCellKeys(traceDocument, eventFrame, event) : []);
+    const removed = reverse
+      ? (after > before ? sequenceCellKeys(traceDocument, eventFrame, event) : [])
+      : (before > after ? sequenceCellKeys(traceDocument, eventFrame, event, false) : []);
     const adjustments = new Map();
     const opacities = new Map();
     const ghosts = [];
@@ -4928,7 +4933,8 @@
       slot.animation === 'sequence'
     )).map(slot => [slot, createSequenceOperationEffect(
       slot, options.document, eventFrame,
-      options.currentPlacements, options.currentElements, options.previousObjects
+      options.currentPlacements, options.currentElements, options.previousObjects,
+      Number(options.direction) < 0
     )]));
     let activeSlot = null;
     let activeEffect = null;
@@ -5597,6 +5603,11 @@
     );
     const sequenceGeometryTimeline = Number(options.direction) < 0
       ? reverseSequenceGeometryTimeline : eventTimeline;
+    // Reverse navigation plays only the inverse sequence edge effect. Other
+    // runtime events remain disabled, while push/pop still retain the same
+    // travel, opacity and resize phase as forward playback.
+    const playbackEventTimeline = Number(options.direction) < 0
+      ? reverseSequenceGeometryTimeline : eventTimeline;
     // A destination scene is rendered before playback begins, but it must not
     // become visible while enabled exits from the previous function/recursive
     // scene are still running. Disabled and unavailable exits never enter the
@@ -5612,8 +5623,11 @@
     );
     const sequenceEntrances = new Map();
     const sequenceResizeSlots = new Map();
-    eventTimeline.filter(slot => slot.animation === 'sequence').forEach(slot => {
-      sequenceCellKeys(traceDocument, eventFrame, slot.event).forEach(cellKey => {
+    playbackEventTimeline.filter(slot => slot.animation === 'sequence').forEach(slot => {
+      const insertedKeys = Number(options.direction) < 0
+        ? sequenceCellKeys(traceDocument, eventFrame, slot.event, false)
+        : sequenceCellKeys(traceDocument, eventFrame, slot.event);
+      insertedKeys.forEach(cellKey => {
         sequenceEntrances.set(cellKey, slot);
         sequenceEntrances.set(`${cellKey}:index`, slot);
       });
@@ -6088,8 +6102,10 @@
       appearingKeys,
       forwardReplayPlan,
       visualKeyForSource: key => visualKeyBySource.get(key) || key
-    }, eventFrame, eventTimeline);
-    const eventTimelineDuration = eventTimeline.reduce((end, slot) => Math.max(end, slot.end), 0);
+    }, eventFrame, playbackEventTimeline);
+    const eventTimelineDuration = playbackEventTimeline.reduce(
+      (end, slot) => Math.max(end, slot.end), 0
+    );
     const motionDuration = entries.reduce((end, entry) => {
       const localDuration = Math.max(
           1,

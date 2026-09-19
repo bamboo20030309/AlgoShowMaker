@@ -51,5 +51,14 @@ test('sequence operation switch suppresses its slot without removing runtime met
     trace, frame, 1, 520, placements, placements, elements, 0, new Map()
   );
   assert.ok(!disabled.some(slot => slot.event === push));
+  push.enabled = true;
+  push.autoAnimationDisabled = true;
+  const reversePresentation = window.ASMTraceFrameTween.buildEventTimeline(
+    trace, frame, 1, 520, placements, placements, elements, 0, new Map(),
+    event => event.type === 'sequence-operation',
+    { skipAvailability: true, ignoreAutoDisabled: true }
+  );
+  assert.ok(reversePresentation.some(slot => slot.event === push),
+    'reverse playback retains the outgoing sequence slot when its destination cell is absent');
   assert.ok(frame.events.includes(push));
 });
