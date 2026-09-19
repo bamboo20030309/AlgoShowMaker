@@ -342,6 +342,8 @@
   const structureTreeArrowColorInput = document.getElementById('structureTreeArrowColorInput');
   const structureIndexModeSelect = document.getElementById('structureIndexModeSelect');
   const structureIndexBaseSelect = document.getElementById('structureIndexBaseSelect');
+  const structureLengthControl = document.getElementById('structureLengthControl');
+  const structureLengthInput = document.getElementById('structureLengthInput');
   const structureItemsPerRowInput = document.getElementById('structureItemsPerRowInput');
   const structureGapInput = document.getElementById('structureGapInput');
   const structureCellSizeInput = document.getElementById('structureCellSizeInput');
@@ -2080,7 +2082,7 @@
     const nodes = values.flatMap((value, index) => present[index]
       ? [{ id: `node-${index}`, value: String(value) }]
       : []);
-    if (!nodes.length) nodes.push({ id: 'node-0', value: 'Root' });
+    if (!nodes.length) nodes.push({ id: 'node-0', value: '0' });
     const nodeIds = new Set(nodes.map(node => node.id));
     const rootId = nodes[0].id;
     const edges = [];
@@ -4251,7 +4253,7 @@
       content: type === 'code'
         ? defaultCode()
         : (isStructure
-          ? (normalizedStructureMode === 'matrix' ? '1, 2, 3\n4, 5, 6' : '8, 3, 12, 1, 6, 10, 14')
+          ? (normalizedStructureMode === 'matrix' ? '0, 0, 0\n0, 0, 0' : '0, 0, 0, 0, 0, 0, 0')
           : String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`)
     };
     if (isStructure) {
@@ -5188,6 +5190,7 @@
   function syncStructureEditorVisibility(widget) {
     const mode = widget?.structureMode || 'normal';
     if (structureTreeControls) structureTreeControls.hidden = mode !== 'binary_tree';
+    if (structureLengthControl) structureLengthControl.hidden = ['matrix', 'binary_tree'].includes(mode);
     if (structureFrameBackgroundControls) structureFrameBackgroundControls.hidden = !['normal', 'matrix'].includes(mode);
     if (structureFrameBackgroundColorInput && structureFrameBackgroundEnabledInput) {
       structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
@@ -5213,6 +5216,7 @@
     setStructureColorButton(structureTreeArrowColorInput, widget.treeArrowColor || '#333333');
     structureIndexModeSelect.value = String(widget.indexMode ?? 0);
     structureIndexBaseSelect.value = String(widget.indexBase ?? 0);
+    if (structureLengthInput) structureLengthInput.value = String(Math.max(1, linearStructureValues(widget.content).length));
     structureItemsPerRowInput.value = String(widget.itemsPerRow ?? 0);
     structureGapInput.value = String(widget.gap ?? 0);
     structureCellSizeInput.value = String(widget.cellSize ?? 58);
@@ -5261,6 +5265,19 @@
     }, { history });
   }
 
+  function updateSelectedStructureLength(rawLength) {
+    const found = getWidget(selectedWidgetId);
+    if (!found.widget || found.widget.type !== 'structure') return;
+    const mode = found.widget.structureMode || 'normal';
+    if (['matrix', 'binary_tree'].includes(mode)) return;
+    const length = Math.max(1, Math.min(100, Math.round(Number(rawLength) || 1)));
+    const values = linearStructureValues(found.widget.content);
+    while (values.length < length) values.push('0');
+    values.length = length;
+    updateSelectedStructure({ content: values.join(', ') });
+    if (structureLengthInput) structureLengthInput.value = String(length);
+  }
+
   function hideStructureContextMenu() {
     if (!structureContextMenu) return;
     structureContextMenu.hidden = true;
@@ -5307,9 +5324,7 @@
       };
     }
     const displayedIndex = Math.max(0, Number(cell.dataset.structureItemIndex) || 0);
-    const itemIndex = ['heap', 'segment_tree', 'BIT'].includes(mode)
-      ? Math.max(0, displayedIndex - 1)
-      : displayedIndex;
+    const itemIndex = displayedIndex;
     return {
       widget: found.widget,
       cell,
@@ -5562,7 +5577,7 @@
     } else if (action === 'tree-add') {
       const childEdges = treeData.edges.filter(edge => edge.from === node.id);
       const id = randomId();
-      treeData.nodes.push({ id, value: '1' });
+      treeData.nodes.push({ id, value: '0' });
       treeData.edges.push({
         from: node.id,
         to: id,
@@ -5594,15 +5609,15 @@
     if (action === 'matrix-save') {
       rows[row][column] = context.value;
     } else if (action === 'matrix-row-before' || action === 'matrix-row-after') {
-      rows.splice(row + (action === 'matrix-row-after' ? 1 : 0), 0, Array(columns).fill('1'));
+      rows.splice(row + (action === 'matrix-row-after' ? 1 : 0), 0, Array(columns).fill('0'));
     } else if (action === 'matrix-column-before' || action === 'matrix-column-after') {
       const insertAt = column + (action === 'matrix-column-after' ? 1 : 0);
-      rows.forEach(item => item.splice(insertAt, 0, '1'));
+      rows.forEach(item => item.splice(insertAt, 0, '0'));
     } else if (action === 'matrix-row-delete') {
-      if (rows.length === 1) rows[0] = Array(columns).fill('');
+      if (rows.length === 1) rows[0] = Array(columns).fill('0');
       else rows.splice(row, 1);
     } else if (action === 'matrix-column-delete') {
-      if (columns === 1) rows.forEach(item => { item[0] = ''; });
+      if (columns === 1) rows.forEach(item => { item[0] = '0'; });
       else rows.forEach(item => item.splice(column, 1));
     } else {
       return;
@@ -5613,14 +5628,14 @@
 
   function applyItemContextAction(action, context, widget) {
     const values = linearStructureValues(widget.content);
-    if (!values.length) values.push('');
+    if (!values.length) values.push('0');
     const index = Math.min(context.itemIndex, values.length - 1);
     if (action === 'item-save') {
       values[index] = context.value;
     } else if (action === 'item-before' || action === 'item-after') {
-      values.splice(index + (action === 'item-after' ? 1 : 0), 0, '1');
+      values.splice(index + (action === 'item-after' ? 1 : 0), 0, '0');
     } else if (action === 'item-delete') {
-      if (values.length === 1) values[0] = '';
+      if (values.length === 1) values[0] = '0';
       else values.splice(index, 1);
     } else {
       return;
@@ -6443,6 +6458,7 @@
     }));
     structureIndexModeSelect?.addEventListener('change', () => updateSelectedStructure({ indexMode: Number(structureIndexModeSelect.value) }));
     structureIndexBaseSelect?.addEventListener('change', () => updateSelectedStructure({ indexBase: Number(structureIndexBaseSelect.value) }));
+    structureLengthInput?.addEventListener('change', () => updateSelectedStructureLength(structureLengthInput.value));
     structureItemsPerRowInput?.addEventListener('input', () => updateSelectedStructure({ itemsPerRow: Math.max(0, Number(structureItemsPerRowInput.value) || 0) }));
     structureGapInput?.addEventListener('input', () => updateSelectedStructure({ gap: Math.max(0, Number(structureGapInput.value) || 0) }));
     structureCellSizeInput?.addEventListener('input', () => updateSelectedStructure({ cellSize: Math.max(18, Number(structureCellSizeInput.value) || 18) }));
