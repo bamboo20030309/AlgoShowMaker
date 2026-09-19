@@ -111,6 +111,7 @@
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
 - 已知問題或風險：hide 的 LM／INT_MAX 對應目前以 32 位 int 最大值格式化；若未來支援自訂巨集值，需在 trace metadata 加入常數求值。
 - 相依與衝突注意：修改 parser、renderer、tween、入口 cache 與兩個範例；合併時需保留 integration 上這些共用檔案的後續版本號。heap.cpp 未修改。
+- 分支推送：已依使用者確認推送至`origin/codex/2026-09-19-alpha-segment-tree`，並以`git ls-remote`核對遠端HEAD。
 - 主代理需補驗證的情境：合併後以 Segment_Tree_easy 與 Segment_Tree 各實際播放數個根／子節點幀，確認複合文字、樣式與局部色塊；再依動畫影響範圍執行整合驗證。
 
 ## 主代理核實與整合（由主代理填寫）
