@@ -54,7 +54,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(surface.includes('rel="noopener noreferrer"'));
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
-  assert.ok(slides.includes('slides.css?v=selection-overlay-103'));
+  assert.ok(slides.includes('slides.css?v=structure-menu-hidden-104'));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
   }
