@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-19-alpha-segment-tree
 - 共同基準 commit：61a4baade9b06b5e50d0c7a24683e937db9c7112
-- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2
-- 驗證時的 HEAD 與未提交修改：736cf91dba7d7b8695e635a71e2f93ebecec03e2；程式驗證完成時僅有本交付文件更新
+- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2
+- 驗證時的 HEAD 與未提交修改：1a18710eaa7a429159e555ad6b2099e6ebadb8f2；程式驗證完成時僅有本交付文件更新
 - 驗證日期：2026-09-20
 
 ## 根因與修改
@@ -13,6 +13,8 @@
 - 修正方式與行為變化：新增 fields／hide／separator 解析、runtime 保存及 heap 同格組合；pair／tuple 以單格格式化；新增雙層 @segment 的局部座標、裁切、重疊、色彩及具名轉場；with split(cursor[,after])依遞迴路徑保留尚待處理的另一側；格內segment掛載到style顯示層並跟隨來源cell；保留舊單層 @segment。兩個 Segment Tree 範例改用 render heap 與新指令。
 - 最終查詢展示方式：依使用者確認，Segment_Tree_easy只呈現向下遍歷。進入節點使用split(now)，整段命中並累加sum後使用split(now,after)移除完成區段；遞迴返回不建立幀，因此segment不會回來。sum以獨立cell放在tree下方。
 - split轉場：新segment固定在格內並由頂端向下展開，完成segment由頂端向下擦除；它仍屬style顯示層，不受事件動畫開關控制。
+- `+=`空白根因與修正：compound assignment原本記為缺少payload與source target的一般write，賦值動畫因before／after皆空而清空目的文字，也無法定位tree[now]。instrumenter／runtime現保存目的before／after與可見來源target；播放器保留sum舊值，僅複製來源數字文字移動，落地後提交結果。具有副作用的目的索引不啟用此擷取，避免重複求值。
+- sum反覆入退場根因與修正：renderer只替容器保存runtime identity，純量在main與不同query activation間被scene boundary誤判為新物件。純量與字串現在以lifetime優先、位址後備建立身分，全域sum可跨幀延續。
 - 第三幀播放根因與修正：trace與靜態SVG皆有segment，但一般播放套用同格highlight／point時，updatePresentedHints原本會隱藏該格所有data-trace-attached-to視覺，將新歸入style layer的segment一併設為display:none。清理範圍已限縮為highlight／point／mark，segment保持獨立可見。
 - 修改檔案及用途：trace-instrumenter.js／server.js 定義與保存語法；ASMTrace.hpp／trace-model.js 處理 tuple；trace-renderer.js／trace-frame-tween.js 繪製與轉場；Segment_Tree_easy.cpp／Segment_Tree.cpp 改寫範例；HTML cache、指令提示、手冊、README 與直接相關測試同步更新。
 - README／版本紀錄／使用說明更新：README 與 ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md 已加入新語法及行為；tests/README.md 記錄專項測試。
@@ -29,6 +31,9 @@
 | 兩個範例移除舊繪圖且保留結果 | /trace/analyze、/compile 與 sample input | 無 AV.hpp、AV av、frame_draw、key_frame_draw、colored_text、_draw_*；point／highlight未指定顏色；輸出分別為 27/3/119/120/8/5/17 與 12 | 通過 |
 | 只呈現向下查詢並累加sum | Segment_Tree_easy以15個葉值查詢13～14，實際動畫播放與逐幀檢查 | now下探至14；命中幀移除完成segment；無回溯幀；sum在tree下方顯示27 | 通過 |
 | split垂直入退場 | headless Edge逐個requestAnimationFrame取樣新子segment與離場父segment幾何 | 入場高度由0增加且y固定；退場y向下移且高度縮小；最終幾何正確 | 通過 |
+| `sum += tree[now]`數字移動與提交 | 實際Segment_Tree_easy動畫逐requestAnimationFrame取樣 | transfer只有文字27、沒有rect；sum在落地前保持0且從未空白，落地後為27；移動距離確實縮短 | 通過 |
+| 全域sum跨遞迴幀延續 | 比對前後runtime identity與動畫期間opacity | main／query前後身分相同，所有樣本opacity為1，未重播入退場 | 通過 |
+| compound assignment不重複副作用索引 | 編譯執行`arr[nextIndex()] += 2` | nextIndex只呼叫一次，arr[0]由3變5 | 通過 |
 
 ## 小驗證與重跑方式
 ### Parser、runtime、renderer、瀏覽器與範例專項
@@ -54,7 +59,7 @@
 - 執行目錄與必要環境設定：本任務 worktree 的 algo-vis-backend，PORT=3101。
 - 完整操作：以 served trace-renderer.js 的 SHA-256 核對 worktree，POST /trace/analyze 分析 fields／hide／雙層 segment 最小程式，再讀取 algorithm.html cache 版本。
 - 預期結果：來源 hash 相符；fields=tree,lazy,sets、cellRange=true、color=AV_green；新前端版本可見。
-- 實際結果與 exit code：2026-09-20先以served檔案SHA-256核對既有3101 PID 64892來自本任務worktree，再只停止該程序並重啟為PID 20636。HTTP 200、served tween與worktree SHA-256相符；renderer trace-197、tween trace-214、model trace-33、directive assist directive-15；重啟後heap／easy實際動畫與兩範例輸出專項4/4通過。
+- 實際結果與 exit code：2026-09-20最新程式提交後停止已核對的alpha PID 8776，再由本任務worktree重啟為PID 44768。HTTP 200、served tween／renderer與worktree SHA-256相符；renderer trace-198、tween trace-215、model trace-33、directive assist directive-15；重啟後compound索引與heap／easy瀏覽器專項7/7通過。
 - 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
 
 ### Segment Tree查詢segment消失專項
@@ -82,6 +87,15 @@
 - 預期結果：四項直接相關案例通過；入退場取得中間幾何；命中後無segment、sum=27且位於tree下方；輸出不變。
 - 實際結果與 exit code：4/4通過，exit code 0；語法與diff檢查通過。
 - 證據位置：測試檔、範例與手冊已納入程式commit 736cf91dba7d7b8695e635a71e2f93ebecec03e2；執行輸出只保留於本次代理工作階段。
+
+### Compound +=數字移動與全域sum身分專項
+- 目的與對應條件：確認`sum += tree[now]`具備before／after與來源格；動畫只搬移數字、sum不空白且落地後提交；全域sum不因跨遞迴activation重播入退場；副作用索引不重複執行。
+- 執行目錄與必要環境設定：algo-vis-backend；ASM_TEST_BASE_URL=http://127.0.0.1:3101。
+- 測試資料／fixture：Segment_Tree_easy.cpp的15個葉值、查詢13～14；另以`arr[nextIndex()] += 2`最小程式驗證求值次數。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --check trace-instrumenter.js; node --check public/trace-renderer.js; node --check public/trace-frame-tween.js; node --test --test-concurrency=1 tests/assignment-indices.integration.test.js tests/heap-composite-segments.browser.test.js tests/segment-tree-samples.test.js; git diff --check`
+- 預期結果：trace資料、求值安全、實際數字轉場、sum持續身分與兩範例輸出全部通過。
+- 實際結果與 exit code：完整相關組合9/9通過；最後程式調整及3101重啟後直接受影響組合7/7通過；語法、served hash與diff檢查通過。
+- 證據位置：測試與手冊納入程式commit 1a18710eaa7a429159e555ad6b2099e6ebadb8f2；執行輸出只保留於本次代理工作階段。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
