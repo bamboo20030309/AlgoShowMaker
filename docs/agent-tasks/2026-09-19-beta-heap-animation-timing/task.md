@@ -8,9 +8,9 @@
 - Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-beta
 
 ## 問題與預期結果
-- 情境與操作：執行 `algorithm_sample/Tree/heap.cpp`，觀察第 1→2 幀、第 4→5 幀，以及第 13→14 幀的指標生命週期動畫與比較 highlight。
+- 情境與操作：執行 `algorithm_sample/Tree/heap.cpp`，觀察第 1→2 幀、第 4→5 幀、第 13→14 幀，以及按「上一步」時的 heap 尺寸與 highlight 還原。
 - 目前行為：目標 heap 在 `push_back` 前已採用新層級寬度；先前只延後 rect 寬度後，value/index 文字與部分 index 位置仍會提早跳到目標幾何。一般 highlight 曾被縮成只框 value；舊 lifetime 的 `now = parent` 賦值框先後因近似高度計算而偏低或偏高。第 13→14 幀的舊 `parent` 雖尚未實際退場，排版已提早釋放其位置，導致移入同一格的 `now` 與它重疊。heap 內縮時，最外層容器又沿用一般跨幀時序而提早移動，早於 outerframe 的 sequence resize。
-- 使用者希望的結果：新格正式加入前，既有 value 框、index 框及框內數字都維持原位與原尺寸；outerframe 擴張時，完整格子才同步向右延伸，數字移到新中心；內縮時也要在 outerframe 開始縮小前保留所有剩餘格子與數字的位置，之後與 outerframe 同步收縮到新位置；一般 highlight 包含 index，compare highlight 啟動時暫停一般 highlight，且 compare 只框 value；不同 lifetime 的 `now` 不互相觸發讓位；舊 `now = parent` 依 heap 父子節點的完整 x/y 幾何移動；新 `now` 入場箭頭朝下。
+- 使用者希望的結果：新格正式加入前，既有 value 框、index 框及框內數字都維持原位與原尺寸；outerframe 擴張時，完整格子才同步向右延伸，數字移到新中心；內縮時也要在 outerframe 開始縮小前保留所有剩餘格子與數字的位置，之後與 outerframe 同步收縮到新位置；按上一步時，擴張與內縮的反向也沿用同一套同步時序；回到上一幀後只保留上一幀應有的 highlight。一般 highlight 包含 index，compare highlight 啟動時暫停一般 highlight，且 compare 只框 value；不同 lifetime 的 `now` 不互相觸發讓位；舊 `now = parent` 依 heap 父子節點的完整 x/y 幾何移動；新 `now` 入場箭頭朝下。
 - 本次範圍與必要限制：修正 heap 繪圖與共用 trace tween；不改 heap 範例內容；只做 V2 專項小驗證，不跑完整 regression。
 
 ## 需求確認
@@ -39,6 +39,8 @@
 - [x] 第 1→2 幀的新舊 `now` 不產生跨 lifetime 讓位；第 4→5 幀舊 `now` 從子節點完整移到父節點，新 `now` 入場箭頭維持朝下。
 - [x] 比較格一開始抬起時即暫停一般 highlight；第 4→5 幀的舊 `now` 移到仍可見的 `parent` 前完成雙方讓位；寬於單格的 heap 節點在讓位期間仍使用垂直箭頭。
 - [x] `pop_back` 的移除格在 sequence 動畫開始時仍可見，並與向外移動同步淡出。
+- [x] 按上一步反向經過 heap 跨層擴張／內縮時，outerframe、格子、index 與數字使用同一個 sequence resize 時段。
+- [x] 第 38 幀回到第 37 幀後，來源幀的單格 highlight 不殘留，最終樣式與直接開啟第 37 幀一致。
 - [x] 既有 declaration initializer、sequence、outerframe 與 style layer 專項測試仍通過。
 
 ## 驗證計畫
@@ -56,3 +58,4 @@
 - 2026-09-20：依使用者回報內縮仍沿用舊時序，將 top-level heap 容器移動也綁定 sequence resize slot，使 outerframe、所有剩餘格子、index 與數字同時開始收縮。
 - 2026-09-20：依使用者回報補充分離 compare 與一般 highlight；阻止不同 runtime lifetime 參與同格退場 reflow，並讓前一幀 ghost marker 依 heap 目標節點的完整二維幾何執行賦值位移。
 - 2026-09-20：依使用者補充，將一般 highlight 的停用點提前到比較格抬起；讓尚未退場的 ghost markers 在賦值移入同格時同步讓位；寬格讓位箭頭保持垂直；`pop_back` 舊格從完全可見狀態同步執行位移與淡出。
+- 2026-09-20：依使用者回報補上上一步的反向 heap resize 時序，並修正反向播放使用來源幀重算樣式而殘留 highlight 的問題。
