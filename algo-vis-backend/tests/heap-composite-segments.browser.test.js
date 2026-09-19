@@ -135,16 +135,24 @@ test('segment tree accepted node keeps its local segment visible', {timeout:6000
       const now=frame=>Number(window.ASMTraceRules.resolveExpression(doc,frame,'now'));
       const deepest=Math.max(...queryFrames.map(({frame})=>now(frame)).filter(Number.isFinite));
       const accepted=queryFrames.filter(({frame})=>now(frame)===deepest).at(-1);
+      const entry=queryFrames.find(({frame})=>now(frame)===1);
+      await player.render(entry.index-1,{animatePositions:false,animateEvents:false});
+      await player.render(entry.index);
+      const animatedTree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
+      const animatedSegment=animatedTree.closest('#asm-trace-root').querySelector('.asm-trace-heap-cell-segment');
+      const animatedVisible=Boolean(animatedSegment&&getComputedStyle(animatedSegment).display!=='none');
       await player.render(accepted.index,{animatePositions:false,animateEvents:false});
       const tree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
       const scene=tree.closest('#asm-trace-root');
       return {
         deepest,
+        animatedVisible,
         segments:[...scene.querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>(+rect.dataset.traceSegmentNode)),
         styleLayer:Boolean(scene.querySelector('.asm-trace-style-layer .asm-trace-heap-cell-segment'))
       };
     });
     assert.equal(result.deepest,14);
+    assert.equal(result.animatedVisible,true);
     assert.deepEqual(result.segments,[14]);
     assert.equal(result.styleLayer,true);
     assert.deepEqual(errors,[]);

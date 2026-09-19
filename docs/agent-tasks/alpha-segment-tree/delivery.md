@@ -12,6 +12,7 @@
 - 設計依據：既有 frame renderer options 只處理 range／columns／labels，trace model 尚未正規化 pair／tuple，heap renderer 每格只讀主要陣列；既有 @segment parser 只接受單層陣列範圍，轉場矩形也未插值格內色塊幾何。
 - 修正方式與行為變化：新增 fields／hide／separator 解析、runtime 保存及 heap 同格組合；pair／tuple 以單格格式化；新增雙層 @segment 的局部座標、裁切、重疊、色彩及具名轉場；with split(cursor[,after])依遞迴路徑保留尚待處理的另一側；格內segment掛載到style顯示層並跟隨來源cell；保留舊單層 @segment。兩個 Segment Tree 範例改用 render heap 與新指令。
 - 後續播放問題與修正：renderer在向下幀已有正確segment，消失來自範例在「整段命中」幀使用split(now,after)，after會排除剛完成的now；若查詢只走單一路徑就沒有其他片段可畫。兩個範例的命中幀改用split(now)，回溯／合併幀才保留after。
+- 第三幀播放根因與修正：trace與靜態SVG皆有segment，但一般播放套用同格highlight／point時，updatePresentedHints原本會隱藏該格所有data-trace-attached-to視覺，將新歸入style layer的segment一併設為display:none。清理範圍已限縮為highlight／point／mark，segment保持獨立可見。
 - 修改檔案及用途：trace-instrumenter.js／server.js 定義與保存語法；ASMTrace.hpp／trace-model.js 處理 tuple；trace-renderer.js／trace-frame-tween.js 繪製與轉場；Segment_Tree_easy.cpp／Segment_Tree.cpp 改寫範例；HTML cache、指令提示、手冊、README 與直接相關測試同步更新。
 - README／版本紀錄／使用說明更新：README 與 ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md 已加入新語法及行為；tests/README.md 記錄專項測試。
 - 與 task.md 的差異：query 的預設參數改由呼叫端明確傳入，因目前變數分析不會把具有預設值的參數提供給幀指令；傳入值與原預設值相同，演算法結果不變。依使用者後續補充加入split遞迴前沿，並讓point／highlight沿用預設樣式。
@@ -25,7 +26,7 @@
 | 格內 segment 顯示層 | headless Edge 檢查SVG父層、cell從屬與圖層順序 | 所有格內segment位於asm-trace-style-layer、不再嵌在cell，style層位於物件上方及前景箭頭下方；具名幾何插值仍通過 | 通過 |
 | 舊 @segment 相容 | style-segments 與 fixture 單層範圍 | arr[1:2] 仍產生既有區段；原 style／segment 專項通過 | 通過 |
 | 兩個範例移除舊繪圖且保留結果 | /trace/analyze、/compile 與 sample input | 無 AV.hpp、AV av、frame_draw、key_frame_draw、colored_text、_draw_*；point／highlight未指定顏色；輸出分別為 27/3/119/120/8/5/17 與 12 | 通過 |
-| 向下查詢與整段命中保留segment | Segment_Tree_easy以15個葉值查詢13～14，實際逐幀檢查style layer | now依序下探至14；入口與整段命中兩幀均保留tree[14]格內segment，未因after排除而消失 | 通過 |
+| 向下查詢與整段命中保留segment | Segment_Tree_easy以15個葉值查詢13～14，實際動畫播放及逐幀檢查style layer | 第三幀一般播放套用highlight／point後segment仍可見；now下探至14時入口與整段命中兩幀也保留格內segment | 通過 |
 
 ## 小驗證與重跑方式
 ### Parser、runtime、renderer、瀏覽器與範例專項
@@ -62,6 +63,14 @@
 - 預期結果：既有heap segment行為、實際範例命中幀及兩範例輸出均通過。
 - 實際結果與 exit code：4/4通過，exit code 0；diff無空白錯誤。
 - 證據位置：新增的瀏覽器案例與範例已納入分支；執行輸出只保留於本次代理工作階段。
+
+### 第三幀動畫與style清理專項
+- 目的與對應條件：確認一般播放套用highlight／point時，不會將同格segment誤設為display:none；同時核對既有style前進、倒退及重播。
+- 執行目錄與必要環境設定：algo-vis-backend；ASM_TEST_BASE_URL=http://127.0.0.1:3101。
+- 完整指令：`node --check public/trace-renderer.js; node --check tests/heap-composite-segments.browser.test.js; $env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 tests/heap-composite-segments.browser.test.js tests/style-replay.browser.test.js tests/entrypoints.test.js; git diff --check`
+- 預期結果：第三幀segment保持可見，原style重播與入口版本檢查正常。
+- 實際結果與 exit code：4/4通過，exit code 0；語法與diff檢查通過。
+- 證據位置：瀏覽器案例已直接檢查動畫後computed display；執行輸出只保留於本次代理工作階段。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。

@@ -36,6 +36,7 @@
 - [x] split(cursor)顯示目前遞迴節點與待處理右側前沿，split(cursor,after)排除已完成節點；point／highlight不指定自訂色。
 - [x] 查詢整段命中的展示幀仍保留目前節點segment；只有回溯／合併幀使用after排除已完成節點。
 - [x] 格內segment位於style顯示層、跟隨綁定格子且保留具名幾何轉場，不受事件動畫層控制。
+- [x] 一般播放套用同格highlight／point時不會清除segment；第三幀、倒退及重播皆維持正確顯示。
 - [x] 既有@segment arr[L:R]與heap既有行為不變。
 - [x] Segment_Tree_easy.cpp與Segment_Tree.cpp移除AV.hpp及舊繪圖資料，保留演算法及輸出，能以sample input編譯產生trace。
 
@@ -50,3 +51,4 @@
 - 2026-09-19：依使用者補充新增with split(cursor[,after])遞迴前沿，並將Segment Tree範例的point／highlight改回預設樣式；相關31項小驗證通過。
 - 2026-09-19：依使用者補充將格內segment移至style顯示層；實際SVG確認不再嵌在cell內，圖層位於物件與前景箭頭之間，具名區段插值仍通過。
 - 2026-09-19：依實際Segment Tree播放回報修正整段命中幀誤用split(now,after)造成單一路徑segment消失；命中幀改用split(now)，after只保留於回溯／合併幀。
+- 2026-09-19：重現第三幀僅在一般播放消失；根因是presented hint更新會隱藏同格所有attached視覺，誤包含style layer segment。清理範圍改為highlight／point／mark並新增實際動畫路徑驗證。

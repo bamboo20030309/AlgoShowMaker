@@ -1381,6 +1381,9 @@
         .filter(visual => visual.getAttribute('data-trace-attached-to') === key && !visual._asmLiveHint)
       : [];
     root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
+      if (!['highlight', 'point', 'mark'].includes(
+        visual.getAttribute('data-trace-attachment-kind') || ''
+      )) return;
       if (visual.getAttribute('data-trace-attached-to') === key
         && !visual._asmLiveHint && !fixedVisuals.includes(visual)) visual.setAttribute('display', 'none');
     });
@@ -4515,9 +4518,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-196';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-197';
   window.ASMTraceRenderers = {
-    build: 'trace-196', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-197', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
