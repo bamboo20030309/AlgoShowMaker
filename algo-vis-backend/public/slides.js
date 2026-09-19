@@ -2684,6 +2684,10 @@
             <canvas id="fabric-${slide.id}" width="${SLIDE_W}" height="${SLIDE_H}"></canvas>
           </div>
           <div class="widget-layer" data-slide-id="${slide.id}"></div>
+          <div class="asm-selection-overlay-layer" data-slide-id="${slide.id}" aria-hidden="true">
+            <div class="asm-marquee-selection-box" hidden></div>
+            <div class="asm-structure-cell-selection-box" hidden></div>
+          </div>
         </div>
       `;
     renderSlideWidgets(section.querySelector('.widget-layer'), slide);
@@ -2949,6 +2953,8 @@
             backgroundColor: 'rgba(0,0,0,0)',
             preserveObjectStacking: true,
             selection: true,
+            selectionColor: 'rgba(0, 0, 0, 0)',
+            selectionBorderColor: 'rgba(0, 0, 0, 0)',
             targetFindTolerance: 8,
             stopContextMenu: true,
             uniformScaling: false,
@@ -3121,8 +3127,10 @@
           end: start,
           additive: !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey)
         };
+        updateMarqueeSelectionOverlay(slide.id, start, start);
       } else {
         canvas.__asmWidgetMarquee = null;
+        hideMarqueeSelectionOverlay(slide.id);
       }
       if (e.target) {
         e.target.__asmMoveOrigin = {
@@ -3138,6 +3146,13 @@
       constrainFabricMoveWithShift(e);
       applyFabricObjectSnap(e, canvas);
       updateObjectToolbar(e.target, canvas);
+    });
+    canvas.on('mouse:move', e => {
+      if (!canvas.__asmWidgetMarquee) return;
+      const end = marqueePointForCanvas(canvas, e.e);
+      if (!end) return;
+      canvas.__asmWidgetMarquee.end = end;
+      updateMarqueeSelectionOverlay(slide.id, canvas.__asmWidgetMarquee.start, end);
     });
     canvas.on('object:scaling', e => {
       canvas.__asmInteractionDirty = true;
@@ -3158,6 +3173,7 @@
         widgetMarquee.end = marqueePointForCanvas(canvas, e.e) || widgetMarquee.start;
         applyWidgetMarqueeSelection(canvas, slide, widgetMarquee);
       }
+      hideMarqueeSelectionOverlay(slide.id);
       if (canvas.__asmInteractionDirty) {
         canvas.__asmInteractionDirty = false;
         sync({ target: canvas.getActiveObject() });
@@ -5158,13 +5174,40 @@
     };
   }
 
+  function selectionOverlayElement(slideId, selector) {
+    return document.querySelector(`.asm-selection-overlay-layer[data-slide-id="${CSS.escape(slideId)}"] ${selector}`);
+  }
+
+  function updateMarqueeSelectionOverlay(slideId, start, end) {
+    const box = selectionOverlayElement(slideId, '.asm-marquee-selection-box');
+    if (!box || !start || !end) return;
+    const left = Math.min(start.x, end.x);
+    const top = Math.min(start.y, end.y);
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+    box.style.width = `${Math.abs(end.x - start.x)}px`;
+    box.style.height = `${Math.abs(end.y - start.y)}px`;
+    box.hidden = false;
+  }
+
+  function hideMarqueeSelectionOverlay(slideId) {
+    const box = selectionOverlayElement(slideId, '.asm-marquee-selection-box');
+    if (box) box.hidden = true;
+  }
+
   function applyWidgetMarqueeSelection(canvas, slide, marquee) {
     if (!marquee?.start || !marquee.end) return;
     const left = Math.min(marquee.start.x, marquee.end.x);
     const top = Math.min(marquee.start.y, marquee.end.y);
     const right = Math.max(marquee.start.x, marquee.end.x);
     const bottom = Math.max(marquee.start.y, marquee.end.y);
-    if (right - left < 4 && bottom - top < 4) return;
+    if (right - left < 4 && bottom - top < 4) {
+      if (!marquee.additive) {
+        clearWidgetSelection();
+        clearStructureCellSelection();
+      }
+      return;
+    }
     const layer = document.querySelector(`.widget-layer[data-slide-id="${CSS.escape(slide.id)}"]`);
     if (!layer) return;
     if (!marquee.additive) {
@@ -5404,7 +5447,37 @@
 
   function restoreStructureCellSelection(widgetEl) {
     if (!selectedStructureCell || selectedStructureCell.widgetId !== widgetEl?.dataset.widgetId) return;
-    structureCellForKey(widgetEl, selectedStructureCell.key)?.classList.add('is-structure-cell-selected');
+    const cell = structureCellForKey(widgetEl, selectedStructureCell.key);
+    cell?.classList.add('is-structure-cell-selected');
+    updateStructureCellSelectionOverlay(widgetEl, cell);
+  }
+
+  function hideStructureCellSelectionOverlay() {
+    document.querySelectorAll('.asm-structure-cell-selection-box').forEach(box => { box.hidden = true; });
+  }
+
+  function updateStructureCellSelectionOverlay(widgetEl, cell) {
+    const slideId = widgetEl?.closest?.('.asm-slide')?.dataset.slideId;
+    const frame = widgetEl?.closest?.('.asm-slide-frame-content');
+    const target = cell?.querySelector?.(':scope > rect:first-of-type') || cell;
+    const box = slideId && selectionOverlayElement(slideId, '.asm-structure-cell-selection-box');
+    if (!frame || !target || !box) {
+      hideStructureCellSelectionOverlay();
+      return;
+    }
+    const frameRect = frame.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    if (!frameRect.width || !frameRect.height || !targetRect.width || !targetRect.height) {
+      hideStructureCellSelectionOverlay();
+      return;
+    }
+    const scaleX = SLIDE_W / frameRect.width;
+    const scaleY = SLIDE_H / frameRect.height;
+    box.style.left = `${(targetRect.left - frameRect.left) * scaleX}px`;
+    box.style.top = `${(targetRect.top - frameRect.top) * scaleY}px`;
+    box.style.width = `${targetRect.width * scaleX}px`;
+    box.style.height = `${targetRect.height * scaleY}px`;
+    box.hidden = false;
   }
 
   function clearStructureCellSelection({ closeEditor = true } = {}) {
@@ -5414,6 +5487,7 @@
     document.querySelectorAll('.is-structure-cell-selected').forEach(cell => {
       cell.classList.remove('is-structure-cell-selected');
     });
+    hideStructureCellSelectionOverlay();
     selectedStructureCell = null;
     if (closeEditor) closeStructureInlineEditor(true);
   }
@@ -5426,6 +5500,7 @@
     });
     selectedStructureCell = { widgetId: details.widget.id, key: details.key };
     details.cell.classList.add('is-structure-cell-selected');
+    updateStructureCellSelectionOverlay(widgetEl, details.cell);
     return details;
   }
 

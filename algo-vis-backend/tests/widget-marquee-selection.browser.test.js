@@ -32,7 +32,8 @@ test('marquee selection includes LaTeX and code widgets', { timeout: 120000 }, a
     const widgets = [
       { id: 'latex', type: 'latex', content: String.raw`\(a^2+b^2=c^2\)`, x: 200, y: 180, w: 250, h: 100 },
       { id: 'code', type: 'code', content: 'return 0;', language: 'cpp', x: 550, y: 220, w: 360, h: 200 },
-      { id: 'outside', type: 'latex', content: String.raw`\(x\)`, x: 1050, y: 560, w: 120, h: 80 }
+      { id: 'outside', type: 'latex', content: String.raw`\(x\)`, x: 1050, y: 560, w: 120, h: 80 },
+      { id: 'array', type: 'structure', structureMode: 'normal', content: '1, 2, 3', x: 980, y: 140, w: 260, h: 180 }
     ];
     const deck = { groups: [{ id: 'g1', slides: [{
       id: 's1',
@@ -57,13 +58,41 @@ test('marquee selection includes LaTeX and code widgets', { timeout: 120000 }, a
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     await page.mouse.move(end.x, end.y, { steps: 12 });
+    const marquee = page.locator('.asm-marquee-selection-box');
+    assert.equal(await marquee.isVisible(), true);
+    assert.equal(await marquee.evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(147, 197, 253, 0.22)');
     await page.mouse.up();
 
     await page.waitForFunction(() => document.querySelectorAll('.slide-widget.is-selected').length === 2);
+    assert.equal(await marquee.isVisible(), false);
     assert.equal(await page.locator('[data-widget-id="latex"]').evaluate(el => el.classList.contains('is-selected')), true);
     assert.equal(await page.locator('[data-widget-id="code"]').evaluate(el => el.classList.contains('is-selected')), true);
     assert.equal(await page.locator('[data-widget-id="outside"]').evaluate(el => el.classList.contains('is-selected')), false);
     assert.equal(await page.locator('#alignmentToolbar').isVisible(), true);
+
+    const blank = point(1180, 80);
+    await page.mouse.click(blank.x, blank.y);
+    await page.waitForFunction(() => document.querySelectorAll('.slide-widget.is-selected').length === 0);
+    assert.equal(await page.locator('#alignmentToolbar').isVisible(), false);
+
+    await page.locator('[data-widget-id="array"]').click({ position: { x: 4, y: 4 } });
+    await page.locator('[data-widget-id="array"] [data-structure-item-index="0"] text').click();
+    const cellSelection = page.locator('.asm-structure-cell-selection-box');
+    const cellVisibility = await cellSelection.evaluate(el => ({ hidden: el.hidden, cssDisplay: getComputedStyle(el).display, style: el.getAttribute('style') }));
+    assert.equal(await cellSelection.isVisible(), true, JSON.stringify(cellVisibility));
+    const overlayState = await cellSelection.evaluate(el => ({
+      background: getComputedStyle(el).backgroundColor,
+      overlayZ: Number(getComputedStyle(el.parentElement).zIndex),
+      maxObjectZ: Math.max(
+        Number(getComputedStyle(document.querySelector('.fabric-host')).zIndex) || 0,
+        ...[...document.querySelectorAll('.slide-widget')].map(item => Number(getComputedStyle(item).zIndex) || 0)
+      )
+    }));
+    assert.equal(overlayState.background, 'rgba(147, 197, 253, 0.16)');
+    assert.ok(overlayState.overlayZ > overlayState.maxObjectZ);
+    await page.mouse.click(blank.x, blank.y);
+    assert.equal(await cellSelection.isVisible(), false);
+    assert.equal(await page.locator('.slide-widget.is-selected').count(), 0);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
