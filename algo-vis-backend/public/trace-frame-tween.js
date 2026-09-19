@@ -2171,11 +2171,11 @@
     };
   }
 
-  function prepareForwardValues(options, replayPlan, eventFrame) {
+  function prepareForwardValues(options, replayPlan, eventFrame, styleFrame = eventFrame) {
     const tracks = [];
     const previousStyleFrame = options.previousFrame || eventFrame;
     const conditionalStyleVariables = new Set([
-      ...(eventFrame?.styles || []), ...(previousStyleFrame?.styles || [])
+      ...(styleFrame?.styles || []), ...(previousStyleFrame?.styles || [])
     ]
       .map(style => style.targetVariableId));
     (replayPlan?.visualValueTracks || replayPlan?.valueTracks || [])
@@ -2296,7 +2296,7 @@
       stylesDirty = false;
       // Match the original renderer: evaluate the new frame before events.
       const visualHighlights = (styleTargets.length || indexTracks.length)
-        ? window.ASMTraceRules.evaluate(options.document, eventFrame) : {};
+        ? window.ASMTraceRules.evaluate(options.document, styleFrame) : {};
       const indexHighlights = visualHighlights;
       evaluatedHighlights = visualHighlights;
       const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
@@ -4687,6 +4687,27 @@
     return slots;
   }
 
+  function buildReverseSequenceGeometryTimeline(
+    traceDocument, eventFrame, direction, swapDuration,
+    previousPlacements, currentPlacements, elements, initialDelay = 0,
+    previousObjects = null
+  ) {
+    if (Number(direction) >= 0) return [];
+    // Backward navigation does not replay runtime effects, but heap geometry
+    // still needs the outgoing push/pop slot. This timing-only timeline keeps
+    // the old cells, labels and outerframe fixed until one shared resize phase.
+    return buildEventTimeline(
+      traceDocument, eventFrame, 1, swapDuration,
+      previousPlacements, currentPlacements, elements, initialDelay,
+      previousObjects, event => {
+        if (eventAnimation(traceDocument, event?.type) !== 'sequence') return false;
+        const before = Number(event?.payload?.beforeSize);
+        const after = Number(event?.payload?.afterSize);
+        return Number.isFinite(before) && Number.isFinite(after) && before !== after;
+      }
+    ).map(slot => ({ ...slot, timingOnly: true }));
+  }
+
   function enabledExitBarrierEnd(eventTimeline = [], minimum = 0) {
     return (eventTimeline || []).reduce((end, slot) => {
       if (slot?.animation !== 'exit') return end;
@@ -4886,7 +4907,12 @@
     const replayPlan = options.forwardReplayPlan || createForwardReplayPlan(
       options.document, eventFrame, eventTimeline, options.direction
     );
-    const forwardValues = prepareForwardValues(options, replayPlan, eventFrame);
+    // A backward step uses the outgoing frame only to identify transition
+    // events. Persistent styles belong to the destination frame; evaluating
+    // them against the outgoing frame would recreate highlights that should
+    // disappear after stepping back.
+    const styleFrame = Number(options.direction) < 0 ? options.frame : eventFrame;
+    const forwardValues = prepareForwardValues(options, replayPlan, eventFrame, styleFrame);
     const markerMotion = markerAssignmentMotion(
       options.document, eventFrame, eventTimeline,
       options.currentPlacements, options.currentElements, options.markerEntries,
@@ -5564,6 +5590,13 @@
     const frameTransitionStart = Number(
       playbackPlan.phases.find(phase => phase.id === 'frame-transition')?.startMs
     ) || initialDelay;
+    const reverseSequenceGeometryTimeline = buildReverseSequenceGeometryTimeline(
+      traceDocument, eventFrame, options.direction, duration,
+      previousPlacements, currentPlacements, currentElements,
+      frameTransitionStart, previousObjects
+    );
+    const sequenceGeometryTimeline = Number(options.direction) < 0
+      ? reverseSequenceGeometryTimeline : eventTimeline;
     // A destination scene is rendered before playback begins, but it must not
     // become visible while enabled exits from the previous function/recursive
     // scene are still running. Disabled and unavailable exits never enter the
@@ -5584,6 +5617,8 @@
         sequenceEntrances.set(cellKey, slot);
         sequenceEntrances.set(`${cellKey}:index`, slot);
       });
+    });
+    sequenceGeometryTimeline.filter(slot => slot.animation === 'sequence').forEach(slot => {
       const before = Number(slot.event?.payload?.beforeSize);
       const after = Number(slot.event?.payload?.afterSize);
       const target = (slot.event?.targets || []).find(item => item.role === 'target')
