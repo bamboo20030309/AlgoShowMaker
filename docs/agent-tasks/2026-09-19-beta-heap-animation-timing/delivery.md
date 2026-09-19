@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-18-beta
 - 共同基準 commit：fa278c87b3d7fedef11b0b2af4f3fc8b3a0994e4
-- 程式修正 commit：554dadc83315a467ab933958e60bdc0aa653f14f、8f15971ecab4c2a42b267ffb16d686fe30ba6973、8e32ac867b14cea6d8b17862effd3641f48886d5、7bb6ee1806f5cc0673dad25cc6326047de3e1f47、c6bd42abf235392f42d39cbb95369b33960469f9、0d1a9ebdd03ac85b1d94955c82bc20cf42aa9467、5c331e9048c352835574762e8744734353a7ebff
-- 驗證時的 HEAD 與未提交修改：HEAD 5c331e9048c352835574762e8744734353a7ebff；僅本交付文件更新尚未提交
+- 程式修正 commit：554dadc83315a467ab933958e60bdc0aa653f14f、8f15971ecab4c2a42b267ffb16d686fe30ba6973、8e32ac867b14cea6d8b17862effd3641f48886d5、7bb6ee1806f5cc0673dad25cc6326047de3e1f47、c6bd42abf235392f42d39cbb95369b33960469f9、0d1a9ebdd03ac85b1d94955c82bc20cf42aa9467、5c331e9048c352835574762e8744734353a7ebff、e059ebf271203d42d1f451e12dc8af6bf755cb4b
+- 驗證時的 HEAD 與未提交修改：HEAD e059ebf271203d42d1f451e12dc8af6bf755cb4b；僅本交付文件更新尚未提交
 - 驗證日期：2026-09-20
 
 ## 根因與修改
@@ -25,6 +25,8 @@
 | heap 跨層內縮時序 | 隔離瀏覽器播放 8→7 個可見節點的 `pop_back`，逐 50ms 擷取 outerframe、value/index 格與文字 | sequence resize 前所有幾何保持不變；outerframe、value、index 與文字在同一個 455.28ms 取樣點開始變化，並一起抵達新幾何 | 通過 |
 | compare highlight 暫停一般 highlight | 隔離瀏覽器播放 frame 1→2 的 event-57 compare | 兩個一般 highlight 在 compare result 可見期間皆為 `visibility:hidden`，兩個 compare highlight 可見；事件結束後一般 highlight 恢復 | 通過 |
 | `now` lifetime、heap 位移與箭頭 | 隔離瀏覽器播放 frame 0→1 與 3→4，逐幀擷取 marker bounds、path 與 ghost transform | 0→1 無水平讓位；3→4 新 `now` 箭頭自入場起為垂直向下；舊 `now` 由 `(748,384)` 平移到父節點 `(767,336)`，完整位移約 `(20,-52)` | 通過 |
+| 比較抬起、ghost 讓位與寬格箭頭 | 重啟後以獨立 Edge 播放 frame 1→2、3→4、12→13 | 比較格第一次 y 座標變動時四個一般 highlight 均已 hidden；舊 `now` 與 `parent` 中心距約 23.9px；寬格 `now` 的 230 個取樣均為垂直箭頭 | 通過 |
+| `pop_back` 移除同步淡出 | 播放 frame 57→58 並擷取 sequence ghost opacity/transform | 移除格以 opacity 1 原位開始，之後隨向外位移連續淡至約 0.00035，沒有先消失再出現 | 通過 |
 | 相關既有行為 | resize/style、index label、lifetime 與 sequence 專項測試 | 13 通過、0 失敗、0 skipped | 通過 |
 
 ## 小驗證與重跑方式
@@ -69,13 +71,13 @@
 - 分類：F、G、H。
 - 選擇依據：修改 sequence runtime、marker lifetime、style layer 與實際 SVG 幾何。
 - 執行的測試檔／名稱篩選：outerframe/style/index-label/sequence 完整檔、heap marker lifetime 名稱篩選。
-- 驗證環境與隔離服務：beta worktree、3102、獨立 headless Edge。
-- 驗證版本、完整指令、結果與證據：程式內容對應 5c331e9048c352835574762e8744734353a7ebff；結果如上。
+- 驗證環境與隔離服務：beta worktree、3102、獨立 headless Edge；3102 已從 beta worktree 重啟為 PID 46252，`algorithm.html` HTTP 200。
+- 驗證版本、完整指令、結果與證據：程式內容對應 e059ebf271203d42d1f451e12dc8af6bf755cb4b；`node --check public/trace-frame-tween.js`、`node --check public/trace-renderer.js`、55 個 marker 單元案例與 2 個 sequence integration 案例通過；實際畫面結果如上。sequence integration 第一次未指定服務位址而向未啟動的 3000 連線，2 案為環境失敗；設定 `ASM_TEST_BASE_URL=http://127.0.0.1:3102` 後重跑 2 案通過。
 - 未執行的驗證及原因：依使用者指示及分級規則，未執行完整 regression、全部 tests 或廣泛排序整合。
 - 需要主代理做的 V3 驗證：無；整合時重看 heap 第 4→5 幀、跨層擴展／內縮與第 13→14 幀 scope exit 即可。
 
 ## 剩餘事項與合併注意
-- 未驗證項目及原因：未驗證所有 array layout 的實際瀏覽器畫面；共用 style layer 契約已有單元測試，heap 已做實際畫面。未重啟 3102，因服務直接提供 worktree 靜態檔且本輪未能安全核對其 PID 來源。
+- 未驗證項目及原因：未驗證所有 array layout 的實際瀏覽器畫面；共用 style layer 契約已有單元測試，heap 已做實際畫面。
 - 已知問題或風險：共用 `trace-frame-tween.js` 與 `trace-renderer.js` 可能和其他代理修改重疊。
 - 相依與衝突注意：`trace-frame-tween.js` 為共用動畫 runtime，主代理合併時需留意同檔變更。
 - 主代理需補驗證的情境：heap 跨層擴展、內縮與第 13→14 幀 scope exit 整合畫面。

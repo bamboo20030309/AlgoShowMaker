@@ -37,6 +37,8 @@
 - [x] heap 跨層內縮時，outerframe resize 開始前，剩餘 value/index 格與數字保持前一幀位置；resize 開始後，容器、outerframe、格子與數字同步移到新幾何。
 - [x] compare highlight 可見期間，一般 highlight 暫時隱藏，compare 結束後恢復。
 - [x] 第 1→2 幀的新舊 `now` 不產生跨 lifetime 讓位；第 4→5 幀舊 `now` 從子節點完整移到父節點，新 `now` 入場箭頭維持朝下。
+- [x] 比較格一開始抬起時即暫停一般 highlight；第 4→5 幀的舊 `now` 移到仍可見的 `parent` 前完成雙方讓位；寬於單格的 heap 節點在讓位期間仍使用垂直箭頭。
+- [x] `pop_back` 的移除格在 sequence 動畫開始時仍可見，並與向外移動同步淡出。
 - [x] 既有 declaration initializer、sequence、outerframe 與 style layer 專項測試仍通過。
 
 ## 驗證計畫
@@ -53,3 +55,4 @@
 - 2026-09-20：依使用者回報第 13→14 幀重疊，讓即將退場的 marker 在退場前繼續參與同格排版；退場開始時同步執行淡出／上移與剩餘 marker 回填。
 - 2026-09-20：依使用者回報內縮仍沿用舊時序，將 top-level heap 容器移動也綁定 sequence resize slot，使 outerframe、所有剩餘格子、index 與數字同時開始收縮。
 - 2026-09-20：依使用者回報補充分離 compare 與一般 highlight；阻止不同 runtime lifetime 參與同格退場 reflow，並讓前一幀 ghost marker 依 heap 目標節點的完整二維幾何執行賦值位移。
+- 2026-09-20：依使用者補充，將一般 highlight 的停用點提前到比較格抬起；讓尚未退場的 ghost markers 在賦值移入同格時同步讓位；寬格讓位箭頭保持垂直；`pop_back` 舊格從完全可見狀態同步執行位移與淡出。
