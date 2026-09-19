@@ -51,6 +51,16 @@ test('heap fields and local segments render at root and child coordinates', {tim
       }
       await transition;
       const third=await readTree(treeFrames[2].index);
+      const frontiers=[];
+      for(const item of treeFrames.slice(3,6)){
+        await player.render(item.index,{animatePositions:false,animateEvents:false});
+        const root=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+        frontiers.push([...root.querySelectorAll('.asm-trace-heap-cell-segment')].map(rect=>({
+          node:+rect.dataset.traceSegmentNode,start:+rect.dataset.traceSegmentStart,
+          end:+rect.dataset.traceSegmentEnd,count:+rect.dataset.traceSegmentCount,
+          phase:rect.dataset.traceSegmentSplit,identity:rect.dataset.traceRuntimeIdentity
+        })).sort((a,b)=>a.node-b.node));
+      }
       player.apply(JSON.parse(JSON.stringify(doc)));
       const reload=await readTree(treeFrames[1].index);
       await player.render(indices.pairs,{animatePositions:false,animateEvents:false});
@@ -60,7 +70,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
       const tuples=[...document.querySelector(`[data-trace-variable="${byName.tuples}"]`).querySelectorAll('[data-trace-index]')]
         .filter(node=>!node.hasAttribute('data-trace-index-label')).map(node=>node.querySelector(':scope > text')?.textContent).filter(Boolean);
       await player.render(indices.arr,{animatePositions:false,animateEvents:false});
-      return {first,second,third,samples,reload,pairs,tuples,legacy:document.querySelectorAll('.asm-trace-segment').length};
+      return {first,second,third,frontiers,samples,reload,pairs,tuples,legacy:document.querySelectorAll('.asm-trace-segment').length};
     });
     assert.deepEqual(result.first.texts,['15','7,3','8,8','4,2,9']);
     assert.equal(result.first.root.length,2);
@@ -77,6 +87,15 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.deepEqual(result.third.root.map(item=>[item.start,item.end,item.count]),[[1,6,8]]);
     assert.ok(result.samples.some(sample=>sample.x>8&&sample.x<48&&sample.width>240&&sample.width<320),
       'named segment interpolates its local x and width');
+    assert.deepEqual(result.frontiers.map(items=>items.map(({node,start,end,count,phase})=>(
+      [node,start,end,count,phase]
+    ))), [
+      [[2,1,3,4,'before'],[3,0,2,4,'before']],
+      [[3,0,2,4,'before'],[4,1,1,2,'before'],[5,0,1,2,'before']],
+      [[3,0,2,4,'after'],[5,0,1,2,'after']]
+    ]);
+    assert.equal(result.frontiers[0][1].identity,result.frontiers[1][0].identity);
+    assert.equal(result.frontiers[1][0].identity,result.frontiers[2][0].identity);
     assert.deepEqual(result.reload,result.second);
     assert.deepEqual(result.pairs,['5','0 / 5']);
     assert.deepEqual(result.tuples,['1,0,3','0,0,0']);

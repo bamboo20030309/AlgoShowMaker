@@ -55,6 +55,7 @@
       '// @segment arr[low:high]',
       '// @segment arr[low:high] when low <= high',
       '// @segment tree[now][L:R] color AV_green as active_range when L <= R',
+      '// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)',
       '// @frame arr[i]\n// @segment arr[low:high]\n// @text "處理目前區間" at arr.bottom'
     ] },
     { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件', code: '// @place pivot at arr.right offset(16,0)', examples: [

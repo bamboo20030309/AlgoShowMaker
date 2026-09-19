@@ -26,6 +26,17 @@ int main() {
     // @frame tree render heap with range(1,15), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
     // @segment tree[1][1:6] color AV_green as full
 
+    int cursor = 2;
+    // @frame tree render heap with range(1,15)
+    // @segment tree[1][1:6] color AV_green as frontier with split(cursor)
+
+    cursor = 4;
+    // @frame tree render heap with range(1,15)
+    // @segment tree[1][1:6] color AV_green as frontier with split(cursor)
+
+    // @frame tree render heap with range(1,15)
+    // @segment tree[1][1:6] color AV_green as frontier with split(cursor,after)
+
     vector<pair<int,int>> pairs = {{5,0},{0,5}};
     // @frame pairs with hide(second=0), separator(" / ")
 

@@ -25,7 +25,7 @@ test('double segment selectors coexist with the existing array range selector', 
   const result = instrumentSource(source);
   const segments = result.frameDirectives.flatMap(frame => frame.segments || []);
   const internal = segments.filter(segment => segment.cellRange);
-  assert.equal(internal.length, 6);
+  assert.equal(internal.length, 9);
   assert.deepEqual(internal.slice(0,3).map(segment => ({
     cell:segment.cellExpression,start:segment.startExpression,end:segment.endExpression,
     color:segment.color,named:segment.named
@@ -39,6 +39,23 @@ test('double segment selectors coexist with the existing array range selector', 
   assert.equal(legacy.startExpression, '1');
   assert.equal(legacy.endExpression, '2');
   assert.equal(legacy.endInclusive, true);
+  const frontier = internal.filter(segment => segment.id === 'frontier');
+  assert.equal(frontier.length, 3);
+  assert.deepEqual(frontier.map(segment => ({
+    cursor:segment.split.cursorExpression,phase:segment.split.phase
+  })), [
+    {cursor:'cursor',phase:'before'},
+    {cursor:'cursor',phase:'before'},
+    {cursor:'cursor',phase:'after'}
+  ]);
+  assert.throws(
+    ()=>findFrameDirectives(source.replace('@segment arr[1:2]','@segment arr[1:2] with split(cursor)')),
+    /split 只支援 heap 格子內部區段/
+  );
+  assert.throws(
+    ()=>findFrameDirectives(source.replace('with split(cursor)','with split(cursor,done)')),
+    /split 必須是 split\(cursor\) 或 split\(cursor,after\)/
+  );
 });
 
 test('runtime keeps fields separate and serializes pair and tuple elements without flattening cells', async () => {

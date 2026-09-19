@@ -11,7 +11,7 @@
 - 情境與操作：新版指令目前只能讓heap呈現單一來源值，既有@segment只表示一般陣列範圍；兩個線段樹範例仍依賴AV.hpp及舊繪圖資料。
 - 目前行為：無法直接合併tree／lazy／sets同索引，也無法在heap節點格內依局部範圍著色。
 - 使用者希望的結果：新增fields／hide／separator、pair／tuple單格格式及雙層@segment，並以新語法改寫兩個範例。
-- 本次範圍與必要限制：三種結構統一使用既有render heap；不新增標準線段樹renderer；保留特殊線段樹演算法、儲存與輸出；不修改已完成的heap.cpp。
+- 本次範圍與必要限制：三種結構統一使用既有render heap；不新增標準線段樹renderer；保留特殊線段樹演算法、儲存與輸出；不修改已完成的heap.cpp；point／highlight使用預設樣式；遞迴分裂後仍顯示尚待處理的另一側segment。
 
 ## 需求確認
 - 已確認：fields保留各來源身分與事件；hide逐幀按欄位判斷；separator預設逗點；segment局部端點包含、裁切、L>R隱藏、後者在上；as提供穩定身分；when與既有單層@segment相容。
@@ -33,6 +33,7 @@
 - [x] fields同格顯示、預設／自訂separator及逐幀hide正確，更新事件仍屬各原變數。
 - [x] pair／tuple每元素一格，預設保留零並支援pair成員hide。
 - [x] heap根／子節點格內segment依局部範圍著色，裁切、空範圍、多層、重疊、when及as正常。
+- [x] split(cursor)顯示目前遞迴節點與待處理右側前沿，split(cursor,after)排除已完成節點；point／highlight不指定自訂色。
 - [x] 既有@segment arr[L:R]與heap既有行為不變。
 - [x] Segment_Tree_easy.cpp與Segment_Tree.cpp移除AV.hpp及舊繪圖資料，保留演算法及輸出，能以sample input編譯產生trace。
 
@@ -44,3 +45,4 @@
 ## 變更紀錄
 - 2026-09-19：依使用者完整規格建立初始任務定義，基準為intergration 61a4baa。
 - 2026-09-19：完成parser、trace model、renderer、轉場與兩個範例改寫；31項直接相關小驗證通過，待主代理核實。
+- 2026-09-19：依使用者補充新增with split(cursor[,after])遞迴前沿，並將Segment Tree範例的point／highlight改回預設樣式；相關31項小驗證通過。

@@ -137,7 +137,7 @@ arr[i] = key;
 | `@exit` | 提早讓一或多個可見變數退場 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
 | `@text` | 加入說明文字與 TTS | 支援 | 支援 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@style` | 套用格子樣式 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 不支援 | 不支援 |
-| `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 僅 `showWidth` | 不支援 |
+| `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | `showWidth`、heap格內區段的`split` | 不支援 |
 | `@place` | 將已顯示物件綁到另一物件的錨點 | 不支援 | 必須指定 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@arrow` | 連接兩個視覺目標 | 支援 | 端點各自指定 | 端點各自支援 | 支援 | 不支援 | 專用樣式修飾詞 | 不支援 |
 | `@events` | 控制本幀全部或指定種類事件動畫 | 不支援 | 不支援 | 不支援 | 支援（幀擷取狀態） | 不支援 | 不支援 | 不支援 |
@@ -815,7 +815,7 @@ for (auto& v : prime) {
 // @segment arr[low:high] with showWidth(true)
 ```
 
-`showWidth(true)` 顯示區段寬度資訊；`@segment` 的 `with` 目前只支援 `showWidth(true|false)`。
+`showWidth(true)` 顯示一般陣列區段的寬度資訊；heap格內區段另支援下節的`split(cursor[,after])`。
 
 ### Heap 格子內部區段
 
@@ -830,6 +830,18 @@ for (auto& v : prime) {
 renderer依節點層級把格子切成 `2^k` 段；根節點涵蓋8個最小區段時合法座標為0～7，下一層為0～3。
 `L > R` 不顯示；負數及超過末端的範圍會裁切。多個色塊依來源順序疊放，後寫的在上層。
 `as` 在相鄰幀提供穩定身分，格子、端點與寬度改變時可配對轉場。
+
+遞迴線段樹若要保留已分裂但尚未處理的另一側，可從根節點描述完整查詢範圍，再指定目前遞迴游標：
+
+```cpp
+// 進入節點：顯示目前節點及祖先留下、尚待處理的右側前沿
+// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)
+
+// 完成節點：移除目前節點，只保留尚待處理的另一側
+// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after)
+```
+
+`split(cursor)`依根節點到cursor的路徑建立遞迴前沿；往左遞迴時，與查詢範圍相交的右子節點會繼續顯示，往右遞迴時已完成的左側不會重新出現。`split(cursor,after)`表示cursor代表的節點已完成。這可取代舊版手動維護`_draw_segment`陣列。
 
 ## `@arrow`：連接視覺物件
 

@@ -748,6 +748,24 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
+    if (name === 'split') {
+      if (args.parts.length < 1 || args.parts.length > 2) {
+        throw new Error(`第 ${line} 行的 ${directiveName} split 必須是 split(cursor) 或 split(cursor,after)`);
+      }
+      const cursorExpression = args.parts[0];
+      const parsed = parseFrameExpression(cursorExpression);
+      const phase = (args.parts[1] || 'before').toLowerCase();
+      if (!parsed.valid || !['before', 'after'].includes(phase)) {
+        throw new Error(`第 ${line} 行的 ${directiveName} split 必須是 split(cursor) 或 split(cursor,after)`);
+      }
+      options.split = {
+        cursorExpression,
+        phase,
+        identifiers: parsed.identifiers || []
+      };
+      continue;
+    }
+
     if (name === 'fields') {
       if (args.parts.length < 2 || args.parts.some(field => !/^[A-Za-z_]\w*$/.test(field))) {
         throw new Error(`第 ${line} 行的 ${directiveName} fields 必須列出至少兩個變數`);
@@ -1672,7 +1690,7 @@ function segmentDirectivesForSource(source, analysis) {
         if (modifiers.binding) throw new Error(`第 ${line} 行的 @segment 會自動綁定陣列，不支援 at`);
         if (modifiers.renderer) throw new Error(`第 ${line} 行的 @segment 不支援 render`);
         const unsupportedOptions = Object.keys(modifiers.rendererOptions || {})
-          .filter(name => name !== 'showWidth');
+          .filter(name => name !== 'showWidth' && name !== 'split');
         if (unsupportedOptions.length) {
           throw new Error(`第 ${line} 行的 @segment 不支援 with ${unsupportedOptions[0]}`);
         }
@@ -1680,6 +1698,9 @@ function segmentDirectivesForSource(source, analysis) {
         const range = cellRange || modifiers.payload.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*:\s*(.*?)\s*(\)|\])$/);
         if (!range) {
           throw new Error(`第 ${line} 行的 @segment 格式應為：arr[start:end) 或 tree[node][start:end]`);
+        }
+        if (!cellRange && modifiers.rendererOptions?.split) {
+          throw new Error(`第 ${line} 行的 @segment split 只支援 heap 格子內部區段`);
         }
         const cellExpression = cellRange ? range[2].trim() : '';
         const startExpression = (cellRange ? range[3] : range[2]).trim() || '0';
@@ -1704,6 +1725,7 @@ function segmentDirectivesForSource(source, analysis) {
           endInclusive: cellRange ? true : range[4] === ']',
           color: modifiers.color || '',
           showWidth: modifiers.rendererOptions?.showWidth === true,
+          split: modifiers.rendererOptions?.split || null,
           when: modifiers.when
         });
       }
@@ -1779,6 +1801,7 @@ function attachSegmentDirectives(source, analysis, frameDirectives) {
     [segment.cellExpression, segment.startExpression, segment.endExpression].filter(Boolean).forEach(expression => {
       (parseFrameExpression(expression).identifiers || []).forEach(name => ensureCaptured(name));
     });
+    (segment.split?.identifiers || []).forEach(name => ensureCaptured(name));
     (segment.when?.identifiers || []).forEach(name => ensureCaptured(name));
     segment.targetVariableId = targetVariable.id;
     target.segments = target.segments.filter(existing => !existing.presetName || existing.id !== segment.id);

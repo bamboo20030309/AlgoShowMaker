@@ -1708,7 +1708,7 @@
         || entry.data?.kind;
       if (descriptor.cellRange) {
         if (rendererName !== 'original-heap') return;
-        const nodeIndex = Number(window.ASMTraceRules.resolveExpression(
+        const rootNode = Number(window.ASMTraceRules.resolveExpression(
           document, frame, descriptor.cellExpression
         ));
         const rawStart = Number(window.ASMTraceRules.resolveExpression(
@@ -1717,49 +1717,110 @@
         const rawEnd = Number(window.ASMTraceRules.resolveExpression(
           document, frame, descriptor.endExpression
         ));
-        if (![nodeIndex, rawStart, rawEnd].every(Number.isInteger) || rawStart > rawEnd) return;
+        if (![rootNode, rawStart, rawEnd].every(Number.isInteger) || rawStart > rawEnd) return;
         const targetKey = objectKeyForVariable(frame, variableId);
-        const cell = elements.get(`${targetKey}#${nodeIndex}`);
         const heap = elements.get(targetKey);
         const rangeStart = Number(heap?.querySelector?.('[data-trace-range-start]')?.dataset?.traceRangeStart
           ?? heap?.dataset?.traceRangeStart ?? 0);
-        const localIndex = nodeIndex - rangeStart;
         const levels = Number(heap?.querySelector?.('[data-heap-levels]')?.getAttribute?.('data-heap-levels')
           ?? heap?.getAttribute?.('data-heap-levels'));
-        if (!cell || localIndex < 0 || !Number.isInteger(levels) || levels < 1) return;
-        const depth = Math.floor(Math.log2(localIndex + 1));
-        const sectionCount = 2 ** Math.max(0, levels - depth - 1);
-        const start = Math.max(0, rawStart);
-        const end = Math.min(sectionCount - 1, rawEnd);
-        if (start > end) return;
-        const baseRect = cell.querySelector(':scope > rect');
-        const text = cell.querySelector(':scope > text');
-        if (!baseRect) return;
-        const x = Number(baseRect.getAttribute('x')) || 0;
-        const y = Number(baseRect.getAttribute('y')) || 0;
-        const width = Number(baseRect.getAttribute('width')) || 0;
-        const height = Number(baseRect.getAttribute('height')) || 0;
-        if (!(width > 0 && height > 0)) return;
-        const identity = descriptor.named ? descriptor.id : `${descriptor.id || descriptorIndex}`;
-        const key = `heap-segment:${identity}`;
-        const overlay = svg('rect', {
-          class: 'asm-trace-heap-cell-segment',
-          x: x + width * start / sectionCount,
-          y,
-          width: width * (end - start + 1) / sectionCount,
-          height,
-          fill: traceTextColor(descriptor.color, 'rgba(165, 214, 167, 0.6)'),
-          stroke: 'none',
-          'pointer-events': 'none',
-          'data-av-key': key,
-          'data-trace-segment-id': descriptor.id || '',
-          'data-trace-runtime-identity': descriptor.named ? `segment:named:${descriptor.id}` : key,
-          'data-trace-segment-node': nodeIndex,
-          'data-trace-segment-start': start,
-          'data-trace-segment-end': end,
-          'data-trace-segment-count': sectionCount
+        if (!Number.isInteger(levels) || levels < 1) return;
+
+        const sectionCountForNode = nodeIndex => {
+          const localIndex = nodeIndex - rangeStart;
+          if (localIndex < 0) return 0;
+          const depth = Math.floor(Math.log2(localIndex + 1));
+          return 2 ** Math.max(0, levels - depth - 1);
+        };
+        const rootSectionCount = sectionCountForNode(rootNode);
+        if (!rootSectionCount) return;
+        const ranges = [];
+        const addRange = (nodeIndex, start, end) => {
+          const sectionCount = sectionCountForNode(nodeIndex);
+          const clippedStart = Math.max(0, start);
+          const clippedEnd = Math.min(sectionCount - 1, end);
+          if (sectionCount && clippedStart <= clippedEnd) {
+            ranges.push({ nodeIndex, start: clippedStart, end: clippedEnd, sectionCount });
+          }
+        };
+
+        if (descriptor.split) {
+          const cursor = Number(window.ASMTraceRules.resolveExpression(
+            document, frame, descriptor.split.cursorExpression
+          ));
+          if (!Number.isInteger(cursor)) return;
+          const path = [];
+          let ancestor = cursor;
+          while (ancestor > rootNode) {
+            path.unshift(ancestor);
+            ancestor = Math.floor(ancestor / 2);
+          }
+          if (ancestor !== rootNode) return;
+          const queryStart = Math.max(0, rawStart);
+          const queryEnd = Math.min(rootSectionCount - 1, rawEnd);
+          if (queryStart > queryEnd) return;
+          let currentNode = rootNode;
+          let intervalStart = 0;
+          let intervalCount = rootSectionCount;
+          for (const child of path) {
+            const half = intervalCount / 2;
+            if (!Number.isInteger(half) || half < 1) return;
+            if (child === currentNode * 2) {
+              const siblingStart = intervalStart + half;
+              const overlapStart = Math.max(queryStart, siblingStart);
+              const overlapEnd = Math.min(queryEnd, siblingStart + half - 1);
+              addRange(currentNode * 2 + 1, overlapStart - siblingStart, overlapEnd - siblingStart);
+            } else if (child === currentNode * 2 + 1) {
+              intervalStart += half;
+            } else return;
+            currentNode = child;
+            intervalCount = half;
+          }
+          if (descriptor.split.phase !== 'after') {
+            const overlapStart = Math.max(queryStart, intervalStart);
+            const overlapEnd = Math.min(queryEnd, intervalStart + intervalCount - 1);
+            addRange(cursor, overlapStart - intervalStart, overlapEnd - intervalStart);
+          }
+        } else {
+          addRange(rootNode, rawStart, rawEnd);
+        }
+
+        ranges.forEach(({ nodeIndex, start, end, sectionCount }) => {
+          const cell = elements.get(`${targetKey}#${nodeIndex}`);
+          const baseRect = cell?.querySelector?.(':scope > rect');
+          const text = cell?.querySelector?.(':scope > text');
+          if (!cell || !baseRect) return;
+          const x = Number(baseRect.getAttribute('x')) || 0;
+          const y = Number(baseRect.getAttribute('y')) || 0;
+          const width = Number(baseRect.getAttribute('width')) || 0;
+          const height = Number(baseRect.getAttribute('height')) || 0;
+          if (!(width > 0 && height > 0)) return;
+          const identity = descriptor.named ? descriptor.id : `${descriptor.id || descriptorIndex}`;
+          const key = descriptor.split
+            ? `heap-segment:${identity}:${nodeIndex}`
+            : `heap-segment:${identity}`;
+          const overlay = svg('rect', {
+            class: 'asm-trace-heap-cell-segment',
+            x: x + width * start / sectionCount,
+            y,
+            width: width * (end - start + 1) / sectionCount,
+            height,
+            fill: traceTextColor(descriptor.color, 'rgba(165, 214, 167, 0.6)'),
+            stroke: 'none',
+            'pointer-events': 'none',
+            'data-av-key': key,
+            'data-trace-segment-id': descriptor.id || '',
+            'data-trace-runtime-identity': descriptor.named
+              ? `segment:named:${descriptor.id}:${nodeIndex}`
+              : key,
+            'data-trace-segment-node': nodeIndex,
+            'data-trace-segment-start': start,
+            'data-trace-segment-end': end,
+            'data-trace-segment-count': sectionCount,
+            'data-trace-segment-split': descriptor.split?.phase || ''
+          });
+          cell.insertBefore(overlay, text || null);
         });
-        cell.insertBefore(overlay, text || null);
         return;
       }
       if (rendererName && rendererName !== 'original-array' && rendererName !== 'sequence') return;
@@ -4430,9 +4491,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-194';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-195';
   window.ASMTraceRenderers = {
-    build: 'trace-194', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-195', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
