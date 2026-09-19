@@ -9,8 +9,8 @@
 
 ## 問題與預期結果
 - 情境與操作：執行 `algorithm_sample/Tree/heap.cpp`，觀察第二次插入所形成的第 4 幀到第 5 幀動畫。
-- 目前行為：目標 heap 在 `push_back` 前已採用新層級寬度，第一次修正又讓舊格以中心向兩側擴張；一般 highlight 被縮成只框 value；前一輪 `now = parent` 的賦值框會落到 `now` 指標下方。
-- 使用者希望的結果：新格正式加入前，既有格維持原位與原寬；擴張時既有格左緣跟著 outerframe、寬度向右展開；一般 highlight 包含 index，只有比較動畫框 value；`now = parent` 賦值框位於 `now` 指標上方。
+- 目前行為：目標 heap 在 `push_back` 前已採用新層級寬度；先前只延後 rect 寬度後，value/index 文字與部分 index 位置仍會提早跳到目標幾何。一般 highlight 曾被縮成只框 value；前一輪 `now = parent` 的賦值框會落到 `now` 指標下方。
+- 使用者希望的結果：新格正式加入前，既有 value 框、index 框及框內數字都維持原位與原尺寸；outerframe 擴張時，完整格子才同步向右延伸，數字移到新中心；一般 highlight 包含 index，只有比較動畫框 value；`now = parent` 賦值框位於 `now` 指標上方。
 - 本次範圍與必要限制：修正 heap 繪圖與共用 trace tween；不改 heap 範例內容；只做 V2 專項小驗證，不跑完整 regression。
 
 ## 需求確認
@@ -30,7 +30,7 @@
 - 依賴任務：無。
 
 ## 驗收條件
-- [x] 跨層 `push_back` sequence slot 前，既有 heap 節點維持前一幀寬度；擴張時 value 格左緣與 outerframe 同步，寬度向右展開。
+- [x] 跨層 `push_back` sequence slot 前，既有 value、index 與其中數字維持前一幀幾何；擴張時兩種框與文字跟 outerframe 同步向右展開並移到新中心。
 - [x] `labels(value,index)` 下的一般 heap highlight 包含 40px value 與 12px index；比較動畫 highlight 只包含 value。
 - [x] `now = parent` 使用舊 `now` lifetime 的位置，賦值框位於可見 `now` 指標上方；下一輪 `now = heapSize` 不受前一 lifetime 汙染。
 - [x] 既有 declaration initializer、sequence、outerframe 與 style layer 專項測試仍通過。
@@ -44,3 +44,4 @@
 - 2026-09-19：依使用者回報建立初始定義；範圍限定為 heap 跨幀幾何、highlight 與 marker lifetime。
 - 2026-09-19：實際重現確認 highlight 的共用 style layer 也會補回 index 高度，因此同步修正 normal／heap／segment tree／BIT 的值格 highlight 契約。
 - 2026-09-19：依使用者更正，一般 highlight 恢復包含 index，compare highlight 維持 value-only；heap resize 改為左緣隨 outerframe、向右擴張，並將舊 lifetime 賦值框移至 `now` 指標上方。
+- 2026-09-19：依使用者補充，resize 前須保留完整舊格，而非只保留 rect 寬度；將 value/index 的 rect、文字中心與字級統一綁到 outerframe resize slot。
