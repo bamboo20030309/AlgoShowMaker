@@ -30,5 +30,6 @@
 
 ## 服務與推送
 
-- 3100 整合服務：待紀錄提交後重啟並核對資源。
-- `origin/intergration`：待服務核實後推送。
+- 3100 整合服務：從本 worktree 啟動為 PID 13656；algorithm、slides、renderer、tween、model、view-source 均為 HTTP 200，SHA-256 與磁碟檔案一致。
+- 其他預覽：3101、3102 為 HTTP 200；3000、3103 原先即未啟動，本輪未操作。
+- `origin/intergration`：依既有授權於服務核實後推送；未合併 `main`、未發布。
