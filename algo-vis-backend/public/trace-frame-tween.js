@@ -740,6 +740,45 @@
     return states;
   }
 
+  function alignedDirectRectGeometry(source, target) {
+    const sourceRects = [...(source?.children || [])].filter(child => (
+      child?.tagName?.toLowerCase?.() === 'rect'
+    ));
+    const targetRects = [...(target?.children || [])].filter(child => (
+      child?.tagName?.toLowerCase?.() === 'rect'
+    ));
+    return targetRects.map((rect, index) => {
+      const previous = sourceRects[index];
+      const number = (element, attribute) => Number(element?.getAttribute?.(attribute));
+      const after = {
+        x: number(rect, 'x'), y: number(rect, 'y'),
+        width: number(rect, 'width'), height: number(rect, 'height')
+      };
+      const before = {
+        x: number(previous, 'x'), y: number(previous, 'y'),
+        width: number(previous, 'width'), height: number(previous, 'height')
+      };
+      if (!previous || [...Object.values(before), ...Object.values(after)].some(value => (
+        !Number.isFinite(value)
+      ))) return null;
+      return { rect, before, after };
+    }).filter(Boolean);
+  }
+
+  function applyCenteredRectGeometry(geometry, progress) {
+    const t = clamp01(progress);
+    (geometry || []).forEach(({ rect, before, after }) => {
+      const width = before.width + (after.width - before.width) * t;
+      const height = before.height + (after.height - before.height) * t;
+      const centerX = after.x + after.width / 2;
+      const centerY = after.y + after.height / 2;
+      rect.setAttribute('x', String(centerX - width / 2));
+      rect.setAttribute('y', String(centerY - height / 2));
+      rect.setAttribute('width', String(width));
+      rect.setAttribute('height', String(height));
+    });
+  }
+
   function applyRectState(rect, state) {
     if (!rect || !state) return;
     if (state.fill) rect.setAttribute('fill', state.fill);
@@ -1551,25 +1590,54 @@
     };
   }
 
-  function markerVisualKey(elements, target) {
+  function markerLifetimeActiveAtEvent(eventFrame, event, element) {
+    const variableId = String(element?.dataset?.traceSourceVariableId || '');
+    const lifetime = String(element?.dataset?.traceRuntimeIdentity || '');
+    if (!variableId || !lifetime || !event) return true;
+    const eventOrder = Number(event.order);
+    if (!Number.isFinite(eventOrder)) return true;
+    let declaredAt = -Infinity;
+    let exitedAt = Infinity;
+    orderedEvents(eventFrame).forEach(candidate => {
+      const order = Number(candidate?.order);
+      if (!Number.isFinite(order)) return;
+      (candidate.targets || []).forEach(target => {
+        if (String(target?.variableId || '') !== variableId
+          || String(target?.lifetimeIdentity || '') !== lifetime) return;
+        if (candidate.type === 'declare') declaredAt = Math.max(declaredAt, order);
+        if (candidate.type === 'scope-exit' || candidate.type === 'visual-exit') {
+          exitedAt = Math.min(exitedAt, order);
+        }
+      });
+    });
+    return eventOrder >= declaredAt && eventOrder < exitedAt;
+  }
+
+  function markerVisualKey(elements, target, eventFrame = null, event = null) {
     for (const [key, element] of elements || []) {
       // A retained @keep marker can carry the same source variable id as the
       // live marker. It is playback history, not a target for current events.
       // Match the full lifetime and scene generation so a stale snapshot can
       // never make a missing live object look available.
-      if (markerMatchesEventTarget(element, target)) return key;
+      if (markerMatchesEventTarget(element, target)
+        && markerLifetimeActiveAtEvent(eventFrame, event, element)) return key;
     }
     return '';
   }
 
-  function eventOperand(traceDocument, eventFrame, target, value, placements, elements, visualKeyForSource) {
+  function eventOperand(
+    traceDocument, eventFrame, target, value, placements, elements, visualKeyForSource,
+    event = null
+  ) {
     const logicalKey = eventTargetKey(traceDocument, eventFrame, target);
     let visualKey = typeof visualKeyForSource === 'function' ? visualKeyForSource(logicalKey) : logicalKey;
     let element = elements?.get?.(visualKey) || elements?.get?.(logicalKey);
     const directTargetMatches = !retainedSnapshotVisual(element)
-      && (!element?.dataset?.traceSourceVariableId || markerMatchesEventTarget(element, target));
+      && (!element?.dataset?.traceSourceVariableId
+        || (markerMatchesEventTarget(element, target)
+          && markerLifetimeActiveAtEvent(eventFrame, event, element)));
     if (!element || !directTargetMatches) {
-      const matchingMarkerKey = markerVisualKey(elements, target);
+      const matchingMarkerKey = markerVisualKey(elements, target, eventFrame, event);
       visualKey = matchingMarkerKey || visualKey;
       element = matchingMarkerKey ? elements?.get?.(matchingMarkerKey) : null;
     }
@@ -2326,14 +2394,14 @@
 
   function createAssignEffect(
     root, event, traceDocument, eventFrame, placements, elements,
-    rawDeltas, appearingKeys, previousObjects, visualKeyForSource
+    rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
     const source = (event?.targets || []).find(item => item.role === 'source');
     if (!target) return null;
     const operand = eventOperand(
       traceDocument, eventFrame, target, event?.payload?.after,
-      placements, elements, visualKeyForSource
+      placements, elements, visualKeyForSource, event
     );
     if (!operand) return null;
     // Older saved traces recorded container methods as a generic write. A
@@ -2345,7 +2413,43 @@
       ? { x: 0, y: 0 }
       : (rawDeltas?.get?.(operand.visualKey) || { x: 0, y: 0 });
     const carrierDelta = operand.visualKey !== operand.logicalKey ? rawDelta : { x: 0, y: 0 };
-    const markerBounds = operand.marker ? elementBoundsInRoot(markerPopupAnchorElement(operand), root) : null;
+    // A marker from the preceding scene can still own an early event in this
+    // frame. Its saved clone is detached, so its CTM is not a usable anchor;
+    // the captured previous placement already is in the root coordinate space.
+    const operandLifetime = String(operand.element?.dataset?.traceRuntimeIdentity || '');
+    const exitsLaterInFrame = operand.marker && operandLifetime && orderedEvents(eventFrame).some(candidate => (
+      ['scope-exit', 'visual-exit'].includes(candidate?.type)
+      && Number(candidate?.order) > Number(event?.order)
+      && (candidate.targets || []).some(item => (
+        String(item?.lifetimeIdentity || '') === operandLifetime
+      ))
+    ));
+    const liveMarker = liveElements?.get?.(operand.visualKey) === operand.element
+      && !exitsLaterInFrame;
+    if (operand.marker && !liveMarker) {
+      const bindingTarget = String(operand.element?.dataset?.traceBindingTarget || '');
+      const bindingElement = liveElements?.get?.(bindingTarget)
+        || elements?.get?.(bindingTarget)
+        || (bindingTarget && typeof CSS !== 'undefined'
+          ? root.querySelector(`[data-trace-object-key="${CSS.escape(bindingTarget)}"]`)
+          : null);
+      const bindingBounds = elementBoundsInRoot(bindingElement, root);
+      const bindingPoint = bindingBounds ? {
+        x: bindingBounds.x, y: bindingBounds.y,
+        width: bindingBounds.width, height: bindingBounds.height
+      } : comparisonPoint(placements, bindingTarget);
+      if (bindingPoint) {
+        operand.point = {
+          ...bindingPoint,
+          x: bindingPoint.x + bindingPoint.width / 2,
+          y: bindingPoint.y
+        };
+      }
+    }
+    const markerAnchor = liveMarker ? operand.element : null;
+    const markerBounds = markerAnchor
+      ? elementBoundsInRoot(markerPopupAnchorElement({ ...operand, element: markerAnchor }), root)
+      : null;
     let x = markerBounds
       ? markerAssignmentStart(
         markerBounds.x + markerBounds.width / 2,
@@ -2367,7 +2471,7 @@
     const sourceOperand = source
       ? eventOperand(
         traceDocument, eventFrame, source, sourceValue,
-        placements, elements, visualKeyForSource
+        placements, elements, visualKeyForSource, event
       )
       : null;
     const previousSourceVisual = sourceOperand
@@ -2442,7 +2546,7 @@
 
     return {
       syncPosition() {
-        if (!popup) return;
+        if (!popup || !liveMarker) return;
         const visibleBounds = elementBoundsInRoot(markerPopupAnchorElement(operand), root);
         if (!visibleBounds) return;
         x = visibleBounds.x + visibleBounds.width / 2;
@@ -2896,7 +3000,7 @@
     );
   }
 
-  function updateTargetsMarker(event, elements) {
+  function updateTargetsMarker(event, elements, eventFrame = null, previousObjects = null) {
     // A declaration initializer in a for header is a pointer-position event,
     // just like ++/--. Use semantic trace/AST metadata instead of matching the
     // source spelling, so old saved traces and all three playback surfaces
@@ -2906,7 +3010,7 @@
     // briefly parking the new marker beside the array first.
     if (isForInitializerAssignment(event)) return true;
     if (isDeclarationInitializerAssignment(event)) {
-      return Boolean(assignmentTargetMarker(event, elements));
+      return Boolean(assignmentTargetMarker(event, elements, eventFrame, previousObjects));
     }
     if (event?.type !== 'write' || event.update !== true) return false;
     for (const [, element] of elements || []) {
@@ -2970,12 +3074,14 @@
     ));
   }
 
-  function assignmentTargetMarker(event, elements) {
+  function assignmentTargetMarker(event, elements, eventFrame = null, previousObjects = null) {
     if (event?.type !== 'assign') return null;
     const target = (event.targets || []).find(item => item.role === 'target') || event.targets?.[0];
     if (!target?.variableId) return null;
-    for (const [key, element] of elements || []) {
-      if (markerMatchesEventTarget(element, target)) {
+    const domains = previousObjects ? [elements, previousObjects] : [elements];
+    for (const domain of domains) for (const [key, element] of domain || []) {
+      if (markerMatchesEventTarget(element, target)
+        && markerLifetimeActiveAtEvent(eventFrame, event, element)) {
         return { key, element, target };
       }
     }
@@ -3129,7 +3235,7 @@
     return markersForMotionSlot(slot, elements)[0] || null;
   }
 
-  function markersForMotionSlot(slot, elements) {
+  function markersForMotionSlot(slot, elements, eventFrame = null) {
     if (!['assign', 'position', 'declare'].includes(slot.animation)) return [];
     const targets = slot.event?.targets || [];
     const variableIds = new Set(targets
@@ -3140,6 +3246,7 @@
     for (const [key, element] of elements || []) {
       const target = targets.find(item => (
         item?.role !== 'source' && markerMatchesEventTarget(element, item)
+          && markerLifetimeActiveAtEvent(eventFrame, slot.event, element)
       ));
       if (!target || !variableIds.has(target.variableId)) continue;
       markers.push({ key, element, target });
@@ -3147,7 +3254,7 @@
     return markers;
   }
 
-  function markersForLogicalEvent(event, elements) {
+  function markersForLogicalEvent(event, elements, eventFrame = null) {
     if (!['assign', 'write'].includes(event?.type)) return [];
     const targets = event?.targets || [];
     const markers = [];
@@ -3156,6 +3263,7 @@
         item?.role !== 'source'
         && eventMutatesVariable(event, item?.variableId)
         && markerMatchesEventTarget(element, item)
+        && markerLifetimeActiveAtEvent(eventFrame, event, element)
       ));
       if (target) markers.push({ key, element, target });
     }
@@ -3238,8 +3346,8 @@
         logicalOnly: true
       };
       const markers = visibleSlot
-        ? markersForMotionSlot(slot, elements)
-        : markersForLogicalEvent(event, elements);
+        ? markersForMotionSlot(slot, elements, eventFrame)
+        : markersForLogicalEvent(event, elements, eventFrame);
       if (visibleSlot) logicalCursor = Math.max(logicalCursor, Number(visibleSlot.end) || 0);
       return {
         slot,
@@ -4007,9 +4115,12 @@
         event?.payload?.after,
         placements,
         elements,
-        key => key
+        key => key,
+        event
       ) : null;
-      if (!targetOperand) return false;
+      if (!targetOperand) {
+        return Boolean(assignmentTargetMarker(event, new Map(), eventFrame, previousObjects));
+      }
       // An index marker assignment (for example largest = l) is fully
       // determined by the captured before/after/source values. The source
       // scalar does not need its own box or pointer on the canvas.
@@ -4028,12 +4139,12 @@
     return variableTargets.length > 0 && variableTargets.every(visible);
   }
 
-  function eventAvailabilityAnimation(event, elements) {
+  function eventAvailabilityAnimation(event, elements, eventFrame = null, previousObjects = null) {
     // "fixed" is rendered as a persistent cell mark rather than a timed
     // animation. Treat it as its own renderable event so availability does
     // not make the switch look off after the renderer has already drawn it.
     if (event?.type === 'fixed') return 'fixed';
-    const positionOnly = updateTargetsMarker(event, elements);
+    const positionOnly = updateTargetsMarker(event, elements, eventFrame, previousObjects);
     const standaloneUpdate = event?.type === 'write' && event?.update === true && !positionOnly;
     return positionOnly
       ? 'position'
@@ -4111,7 +4222,7 @@
         changed = true;
         return;
       }
-      const animation = eventAvailabilityAnimation(event, elements);
+      const animation = eventAvailabilityAnimation(event, elements, eventFrame, previousObjects);
       const codeRenderable = eventUsesCodePanelTarget(event);
       const animationRenderable = eventAnimationIsRenderable(animation);
       const hasCanvasTargetDefinition = animation !== 'code'
@@ -4179,7 +4290,7 @@
       && (!eventFilter || eventFilter(event))
     ));
     enabledEvents.forEach(event => {
-      const positionOnly = updateTargetsMarker(event, elements);
+      const positionOnly = updateTargetsMarker(event, elements, eventFrame, previousObjects);
       const standaloneUpdate = event?.type === 'write' && event?.update === true && !positionOnly;
       const animation = positionOnly
         ? 'position'
@@ -4228,7 +4339,7 @@
           Math.abs((Number(before.x) || 0) - (Number(after.x) || 0)) > 0.1
           || Math.abs((Number(before.y) || 0) - (Number(after.y) || 0)) > 0.1
         ));
-        markerAssignment = assignmentTargetMarker(event, elements);
+        markerAssignment = assignmentTargetMarker(event, elements, eventFrame, previousObjects);
         const markerDelta = markerAssignment
           ? markerTargetDelta(markerAssignment, event?.payload?.after, currentPlacements)
           : null;
@@ -4593,10 +4704,19 @@
         );
       }
       if (slot.animation === 'assign') {
+        const assignmentElements = new Map([
+          ...(options.previousObjects || new Map()),
+          ...(options.currentElements || new Map())
+        ]);
+        const assignmentPlacements = new Map([
+          ...(options.previousPlacements || new Map()),
+          ...(options.currentPlacements || new Map())
+        ]);
         return createAssignEffect(
           options.root, slot.event, options.document, eventFrame,
-          options.currentPlacements, options.currentElements, options.rawDeltas,
-          options.appearingKeys, options.previousObjects, visualKeyAtEvent
+          assignmentPlacements, assignmentElements, options.rawDeltas,
+          options.appearingKeys, options.previousObjects, visualKeyAtEvent,
+          options.currentElements
         );
       }
       if (slot.animation === 'sequence') return sequenceEffects.get(slot) || null;
@@ -4614,7 +4734,7 @@
         || options.visualKeyForSource?.(key) || key;
       return (slot.event?.targets || []).map(target => eventOperand(
         options.document, eventFrame, target, null,
-        options.currentPlacements, options.currentElements, visualKeyAtEvent
+        options.currentPlacements, options.currentElements, visualKeyAtEvent, slot.event
       )?.element).filter(Boolean);
     }
     return {
@@ -5067,7 +5187,7 @@
     // still changes the runtime marker state, so it must not be mistaken for a
     // recursive/frame-level transition to the frame-final position.
     orderedEvents(eventFrame).forEach(event => {
-      markersForLogicalEvent(event, currentElements).forEach(marker => {
+      markersForLogicalEvent(event, currentElements, eventFrame).forEach(marker => {
         eventControlledKeys.add(marker.key);
       });
     });
@@ -5308,6 +5428,13 @@
         }
         : { x: 0, y: 24 };
       rawDeltas.set(key, raw);
+      const topResizeSlots = sequenceResizeSlots.get(topKey) || [];
+      const sequenceGeometrySlot = key !== topKey && previous
+        && topResizeSlots.length === 1
+        && Boolean(heapLayoutElement(topElement))
+        && Boolean(element.closest?.('[data-layout="heap"]'))
+        ? topResizeSlots[0]
+        : null;
       if (topKey === key) {
         currentTopKeys.add(key);
         if (sourceKey) currentTopKeys.add(sourceKey);
@@ -5322,9 +5449,12 @@
         declarationReflow: declarationReflowSchedule.get(key) || null,
         exitReflow: exitReflowSchedule.get(key) || null,
         markerGroupReflow: markerReflowKeys.has(key),
+        sequenceGeometrySlot,
         // A marker that only shifts aside for an entering peer must move at
         // frame start even when a later event also references that marker.
-        motionDelay: declarationReflowSchedule.has(key)
+        motionDelay: sequenceGeometrySlot
+          ? Math.max(Number(sequenceGeometrySlot.start) || 0, frameTransitionStart)
+          : declarationReflowSchedule.has(key)
           ? Number(declarationReflowSchedule.get(key)?.start) || 0
           : exitReflowSchedule.has(key)
             ? Number(exitReflowSchedule.get(key)?.start) || 0
@@ -5443,6 +5573,9 @@
         ? null
         : candidatePreviousVisual;
       entry.previousVisual = previousVisual;
+      entry.sequenceRectGeometry = entry.sequenceGeometrySlot && previousVisual
+        ? alignedDirectRectGeometry(previousVisual, entry.element)
+        : [];
       entry.previousSegmentGeometry = segmentGeometry(previousVisual);
       entry.currentSegmentGeometry = segmentGeometry(entry.element);
       // The outerframe is part of the same moving array as its cells. Keep
@@ -5643,7 +5776,8 @@
     const motionDuration = entries.reduce((end, entry) => {
       const localDuration = Math.max(
           1,
-          Number(entry.declarationReflow?.duration)
+          Number(entry.sequenceGeometrySlot?.duration)
+          || Number(entry.declarationReflow?.duration)
           || Number(entry.exitReflow?.duration)
           || (entry.markerGroupReflow ? markerReflowDuration : 0)
           || Number(entry.plan?.duration)
@@ -5696,7 +5830,8 @@
         const motionElapsed = Math.max(0, elapsed - entry.motionDelay);
         const localDuration = Math.max(
           1,
-          Number(entry.declarationReflow?.duration)
+          Number(entry.sequenceGeometrySlot?.duration)
+            || Number(entry.declarationReflow?.duration)
             || Number(entry.exitReflow?.duration)
             || (entry.markerGroupReflow ? markerReflowDuration : 0)
             || Number(entry.plan?.duration)
@@ -5794,6 +5929,9 @@
           ? `translate(${pivot.x}, ${pivot.y}) scale(${scale}) translate(${-pivot.x}, ${-pivot.y})`
           : '';
         entry.target.setAttribute('transform', [translate, entry.baseTransform, scaleTransform].filter(Boolean).join(' '));
+        if (entry.sequenceRectGeometry?.length) {
+          applyCenteredRectGeometry(entry.sequenceRectGeometry, state.localEased);
+        }
         applyIndexLabelGrowth(entry.indexLabelGeometry, state.appearEased);
         if (entry.previousOuterframeGeometry) {
           const resizeSlot = entry.outerframeResizeSlot;
@@ -6095,6 +6233,7 @@
     declarationVisualSchedule, recursiveRoleContinuations, exitMarkerReflowSchedule,
     isForInitializerAssignment,
     isDeclarationInitializerAssignment, markerTargetBeforeFrameEvents, markerTargetAtCheckpoint,
+    markerLifetimeActiveAtEvent,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
     createForwardReplayPlan, prepareForwardValues

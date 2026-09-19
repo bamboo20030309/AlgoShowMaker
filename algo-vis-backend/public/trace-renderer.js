@@ -1260,13 +1260,6 @@
       if (rect) {
         const number = (element, name) => Number(element.getAttribute(name)) || 0;
         wrapper._asmStyleRect = rect;
-        const key = cell.getAttribute('data-trace-object-key');
-        const index = cell.getAttribute('data-trace-index');
-        const indexCell = kind !== 'highlight' ? null : currentScene?.elements?.get?.(`${key}:index`)
-          || (index !== null ? [...(cell.parentElement?.children || [])]
-            .find(child => child.getAttribute('data-trace-index-label') === index) : null);
-        wrapper._asmStyleIndexRect = [...(indexCell?.children || [])]
-          .find(child => child.tagName?.toLowerCase() === 'rect');
         wrapper._asmStyleInsets = {
           left: number(visual, 'x') - number(rect, 'x'),
           top: number(visual, 'y') - number(rect, 'y'),
@@ -1302,9 +1295,7 @@
       if (!visual) {
         const group = svg('g');
         cell.append(group);
-        const indexRect = currentScene?.elements?.get?.(`${key}:index`)?.querySelector?.(':scope > rect');
-        const indexHeight = Number(indexRect?.getAttribute('height')) || 0;
-        if (kind === 'highlight') window.HintWidgets.drawHighlightBox(group, x, y, width, height + indexHeight, color);
+        if (kind === 'highlight') window.HintWidgets.drawHighlightBox(group, x, y, width, height, color);
         if (kind === 'point') window.HintWidgets.drawArrow(group, x + width / 2, y, color);
         if (kind === 'mark') window.HintWidgets.drawMark(group, x + width - 10, y + height - 10, color);
         visual = group.firstElementChild;
@@ -1362,9 +1353,8 @@
         visual.setAttribute('x', String(number('x') + insets.left));
         visual.setAttribute('y', String(number('y') + insets.top));
         visual.setAttribute('width', String(Math.max(0, number('width') + insets.right - insets.left)));
-        const indexHeight = Number(wrapper._asmStyleIndexRect?.getAttribute('height')) || 0;
         visual.setAttribute('height', String(Math.max(0, number('height')
-          + Math.max(insets.bottom, indexHeight) - insets.top)));
+          + insets.bottom - insets.top)));
       }
     });
   }
