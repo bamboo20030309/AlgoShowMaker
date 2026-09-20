@@ -23,7 +23,7 @@
 - 融合與segment邊界：lazy／sets維持tree同格文字欄位，0與LM依hide省略；非預設欄位以條件`background`直接著色同一tree格子。當次modify／set的可分裂`@segment`仍獨立呈現。
 - 視覺去重：移除`@style ... segment`語法、renderer狀態segment物件與相關助理選項；長期狀態回到原有background機制，不再維護第二套segment身分與生命週期。
 - 顯示優先級：撤回格內style子層修改；獨立`@segment`恢復位於物件上方、前景箭頭下方的共用style layer，原本split入退場與具名幾何轉場保留。
-- 狀態背景與色盤：`AV_magenta`維持`rgba(231,144,255,0.65)`；`AV_orange`維持`rgba(255,183,77,0.65)`，lazy／sets條件失效時背景會隨下一幀重新計算而移除。
+- 狀態背景與色盤：操作segment使用的`AV_magenta`維持`rgba(231,144,255,0.65)`，`AV_orange`維持`rgba(255,183,77,0.65)`；lazy／sets背景分別使用同RGB的不透明`rgb(231,144,255)`與`rgb(255,183,77)`，條件失效時隨下一幀重新計算而移除。
 - 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
 - 舊trace同步：capture-only屬於已保存的frame資料，單純重整仍會播放舊結果。ENGINE_VERSION提升至6，trace-provenance快取提升至trace-7，投影片runtime/editor提升至trace-runtime-39；開啟舊動畫編輯時自動重建並可儲存替換。
 - 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。

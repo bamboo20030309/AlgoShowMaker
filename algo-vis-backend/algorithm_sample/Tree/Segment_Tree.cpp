@@ -18,8 +18,8 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @object tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
 // @object answer render cell
 // @place answer.top at tree.bottom offset(0,45)
-// @style lazy[1:Tsize-1] background AV_magenta when value != 0
-// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
+// @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
+// @style sets[1:Tsize-1] background rgb(255,183,77) when value != 2147483647
 // @endpreset
 
 // 遞迴操作期間用 now 作為 tree 的實際陣列指標。
@@ -27,8 +27,8 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @object tree[now] render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
 // @object answer render cell
 // @place answer.top at tree.bottom offset(0,45)
-// @style lazy[1:Tsize-1] background AV_magenta when value != 0
-// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
+// @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
+// @style sets[1:Tsize-1] background rgb(255,183,77) when value != 2147483647
 // @endpreset
 
 void build() {
@@ -89,7 +89,7 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         sets[now] = LM;
         // @frame use operation_pointer_view
         // @style tree[now,now*2,now*2+1] highlight
-        // @style sets[now*2,now*2+1] background AV_orange
+        // @style sets[now*2,now*2+1] background rgb(255,183,77)
         // @text "先把節點 ${now} 的 set 標記下推；它會覆蓋兩個子節點原本的 add 標記" at tree.top offset(0,-20)
     }
     if (lazy[now] != 0) {
@@ -104,8 +104,8 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         lazy[now] = 0;
         // @frame use operation_pointer_view
         // @style tree[now,now*2,now*2+1] highlight
-        // @style lazy[now*2,now*2+1] background AV_magenta when value != 0
-        // @style sets[now*2,now*2+1] background AV_orange when value != 2147483647
+        // @style lazy[now*2,now*2+1] background rgb(231,144,255) when value != 0
+        // @style sets[now*2,now*2+1] background rgb(255,183,77) when value != 2147483647
         // @text "把節點 ${now} 的 add 標記下推；若子節點已有 set，就直接加在 set 上" at tree.top offset(0,-20)
     }
 

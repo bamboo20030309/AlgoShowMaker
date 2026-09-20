@@ -369,10 +369,10 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
       const markedNodes=frame=>{
         const result=[];
         (frame.state[byName.lazy]?.data?.items||[]).forEach((item,node)=>{
-          if(scalar(item)!==0)result.push({node,color:'rgba(231, 144, 255, 0.65)'});
+          if(scalar(item)!==0)result.push({node,color:'rgb(231,144,255)'});
         });
         (frame.state[byName.sets]?.data?.items||[]).forEach((item,node)=>{
-          if(scalar(item)!==2147483647)result.push({node,color:'rgba(255, 183, 77, 0.65)'});
+          if(scalar(item)!==2147483647)result.push({node,color:'rgb(255,183,77)'});
         });
         return result;
       };

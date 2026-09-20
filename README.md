@@ -195,7 +195,7 @@ int main() {
 // @style arr[i,i*2:i*2+1] highlight red
 // @style arr[1:i-1,n:n] focus
 // @style prime[0:iteration.last(j)] focus when i * value <= n
-// @style lazy[1:Tsize-1] background AV_magenta when value != 0
+// @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
 ```
 
 `background`會在每幀依條件重新套用，適合呈現lazy／set等長期狀態；條件失效時背景自然移除。需要顯示當次操作的局部範圍或遞迴分裂時，使用`@segment tree[node][L:R]`。

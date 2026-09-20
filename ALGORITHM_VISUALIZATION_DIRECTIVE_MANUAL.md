@@ -696,8 +696,8 @@ void quick_sort(vector<int>& arr, int low, int high) {
 長期狀態直接使用`background`；renderer會在每幀重新判斷條件。用於`fields(tree,lazy,sets)`的附加欄位時，背景套在相同索引的tree格內，不會建立獨立lazy／sets物件：
 
 ```cpp
-// @style lazy[1:Tsize-1] background AV_magenta when value != 0
-// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
+// @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
+// @style sets[1:Tsize-1] background rgb(255,183,77) when value != 2147483647
 ```
 
 需要依局部端點切開、分裂或顯示當次操作範圍時，使用獨立的`@segment tree[node][L:R]`指令。
