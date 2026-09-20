@@ -13,6 +13,7 @@
   const ASSIGN_TIMING = Object.freeze({ frame: 160, valueHold: 500, drop: 500, hold: 500, exit: 100 });
   const GENERIC_EVENT_DURATION = Object.freeze({ lift: 340, pulse: 400, fade: 440, code: 400 });
   const APPEAR_TIMING = Object.freeze({ duration: 220, offsetY: -16 });
+  const HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION = 320;
   const MARKER_REFLOW_TIMING = Object.freeze({ duration: 180, entranceDelay: 80 });
   const EXIT_OFFSET_Y = -16;
   const EVENT_CODE_PROMPT_DURATION = 400;
@@ -4838,43 +4839,49 @@
       && geometry.height > 0 ? geometry : null;
   }
 
-  function heapSplitBackgroundHandoff(element, currentElements) {
+  function heapSplitBackgroundHandoff(element, currentElements, previousObjects) {
     const segment = heapSplitSegmentRect(element);
     const cellKey = segment?.getAttribute?.('data-trace-attached-to') || '';
     const cell = cellKey ? currentElements?.get?.(cellKey) : null;
     const valueRect = cell?.querySelector?.(':scope > rect') || null;
     if (!segment || !valueRect) return null;
     const segmentPaint = parseColor(segment.getAttribute('fill'));
-    const paintFor = rect => {
+    const paintFor = (rect, previousRect) => {
       if (!rect || !segmentPaint) return null;
       const backgroundPaint = parseColor(
         rect.getAttribute('fill'), Number(rect.getAttribute('fill-opacity') || 1)
       );
+      const previousPaint = parseColor(
+        previousRect?.getAttribute?.('fill'),
+        Number(previousRect?.getAttribute?.('fill-opacity') || 1)
+      );
       if (!backgroundPaint || backgroundPaint.a < 0.999
+        || !previousPaint
         || segmentPaint.r !== backgroundPaint.r
         || segmentPaint.g !== backgroundPaint.g
         || segmentPaint.b !== backgroundPaint.b) return null;
-      return {
-        rect,
-        fill: rect.getAttribute('fill'),
-        opacity: rect.getAttribute('fill-opacity') || '1'
-      };
+      return { rect, from: previousPaint, to: backgroundPaint };
     };
-    const valuePaint = paintFor(valueRect);
+    const valuePaint = paintFor(valueRect,
+      previousVisualElement(previousObjects, cellKey)?.querySelector?.(':scope > rect'));
     if (!valuePaint) return null;
     const indexRect = currentElements?.get?.(`${cellKey}:index`)
       ?.querySelector?.(':scope > rect') || null;
-    return [valuePaint, paintFor(indexRect)].filter(Boolean);
+    const previousIndexRect = previousVisualElement(previousObjects, `${cellKey}:index`)
+      ?.querySelector?.(':scope > rect') || null;
+    return [valuePaint, paintFor(indexRect, previousIndexRect)].filter(Boolean);
   }
 
-  function commitHeapSplitBackgroundHandoff(handoff) {
+  function applyHeapSplitBackgroundHandoff(handoff, progress) {
+    const eased = easeOutCubic(clamp01(progress));
     (handoff || []).forEach(paint => {
       const rect = paint?.rect;
       if (!rect?.isConnected) return;
+      const color = interpolateColor(paint.from, paint.to, eased);
       const transition = rect.style.transition;
       rect.style.transition = 'none';
-      rect.setAttribute('fill', paint.fill);
-      rect.setAttribute('fill-opacity', paint.opacity);
+      rect.setAttribute('fill', `rgb(${color.r},${color.g},${color.b})`);
+      rect.setAttribute('fill-opacity', String(color.a));
       window.getComputedStyle(rect).fill;
       if (transition) rect.style.transition = transition;
       else rect.style.removeProperty('transition');
@@ -5765,7 +5772,7 @@
         retainedByEnteringKeep,
         heapSplitExit,
         backgroundHandoff: heapSplitExit
-          ? heapSplitBackgroundHandoff(clone, currentElements) : null
+          ? heapSplitBackgroundHandoff(clone, currentElements, previousObjects) : null
       });
     });
 
@@ -5797,9 +5804,18 @@
         : 0;
       return Math.max(end, normalEnd, appearanceEnd);
     }, duration);
+    const backgroundHandoffDuration = ghosts.reduce((end, ghost) => {
+      if (!ghost.backgroundHandoff) return end;
+      const start = removedVisualStartMs(
+        ghost.lifecycleKind, initialDelay, keepSettlementDuration
+      );
+      return Math.max(end, start + HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION
+        + APPEAR_TIMING.duration);
+    }, 0);
     const totalDuration = Math.max(
       eventTimelineDuration,
       motionDuration,
+      backgroundHandoffDuration,
       playbackPlan.totalDurationMs
     );
     let previousTick = performance.now();
@@ -6022,11 +6038,16 @@
       });
       events?.applyStyles?.();
       // A split operation segment can hand its color to a persistent opaque
-      // background on the same cell. Commit that destination paint beneath
-      // the ghost before its top-to-bottom exit starts, so the handoff never
-      // exposes the previous white cell between the two visual states.
-      ghosts.forEach(({ backgroundHandoff }) => {
-        commitHeapSplitBackgroundHandoff(backgroundHandoff);
+      // background on the same cell. Tween value and index together beneath
+      // the full segment, then begin its top-to-bottom exit after the paint
+      // transition completes so the previous white cell is never exposed.
+      ghosts.forEach(({ backgroundHandoff, lifecycleKind }) => {
+        if (!backgroundHandoff) return;
+        const start = removedVisualStartMs(
+          lifecycleKind, initialDelay, keepSettlementDuration
+        );
+        applyHeapSplitBackgroundHandoff(backgroundHandoff,
+          (elapsed - start) / HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION);
       });
       // Some draw types expose automatic markers only as nested DOM visuals.
       // Compose their declaration and exit phases just like ordinary entries;
@@ -6074,7 +6095,7 @@
 
       ghosts.forEach(({
         wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep,
-        heapSplitExit
+        heapSplitExit, backgroundHandoff
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -6096,7 +6117,7 @@
         }
         const removalStart = removedVisualStartMs(
           lifecycleKind, initialDelay, keepSettlementDuration
-        );
+        ) + (backgroundHandoff ? HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION : 0);
         const ghostProgress = easeOutCubic(clamp01(
           Math.max(0, elapsed - removalStart) / APPEAR_TIMING.duration
         ));
@@ -6251,10 +6272,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-219';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-220';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-219', play, cancel, updateEventAvailability,
+    build: 'trace-220', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

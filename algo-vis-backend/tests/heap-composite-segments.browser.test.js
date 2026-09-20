@@ -453,8 +453,14 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     });
     assert.equal(result.buildFrames,0);
     assert.ok(result.operationSegments>0);
-    const exiting=result.handoffSamples.filter(sample=>sample.segmentHeight>0);
-    assert.ok(exiting.some(sample=>sample.segmentHeight<40),JSON.stringify(result.handoffSamples));
+    assert.ok(result.handoffSamples.every(sample=>sample.background===sample.indexBackground),
+      JSON.stringify(result.handoffSamples));
+    assert.ok(result.handoffSamples.some(sample=>sample.segmentHeight===40
+      &&sample.background!=='rgb(255,255,255)'
+      &&sample.background!==result.handoffColor),JSON.stringify(result.handoffSamples));
+    const exiting=result.handoffSamples.filter(sample=>sample.segmentHeight>0
+      &&sample.segmentHeight<40);
+    assert.ok(exiting.length>0,JSON.stringify(result.handoffSamples));
     assert.ok(exiting.every(sample=>sample.background===result.handoffColor
       &&sample.indexBackground===result.handoffColor),
       JSON.stringify(result.handoffSamples));
