@@ -1284,16 +1284,23 @@
     const root = cell?.closest?.('#asm-trace-root');
     const rect = cell?.querySelector?.(':scope > rect');
     if (!root || !rect || !window.HintWidgets) return;
+    const authoredHints = new Map();
     root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
-      if (visual.getAttribute('data-trace-attached-to') === key
-        && !visual._asmLiveHint) visual.setAttribute('display', 'none');
+      if (visual.getAttribute('data-trace-attached-to') !== key || visual._asmLiveHint) return;
+      const kind = visual.getAttribute('data-trace-attachment-kind') || '';
+      if (kind && !authoredHints.has(kind)) authoredHints.set(kind, visual);
+      else visual.setAttribute('display', 'none');
     });
     const hints = cell._asmPresentedHints ||= new Map();
     const types = { ...(highlight?.fixedMark ? { mark: highlight.fixedMark } : {}), ...(highlight?.styleTypes || {}) };
     const number = name => Number(rect.getAttribute(name)) || 0;
     const x = number('x'), y = number('y'), width = number('width'), height = number('height');
     ['highlight', 'point', 'mark'].forEach(kind => {
-      let visual = hints.get(kind);
+      let visual = hints.get(kind) || authoredHints.get(kind);
+      if (visual && !hints.has(kind)) {
+        visual._asmLiveHint = true;
+        hints.set(kind, visual);
+      }
       if (!Object.hasOwn(types, kind)) {
         visual?.setAttribute('display', 'none');
         return;
@@ -4316,9 +4323,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-187';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-188';
   window.ASMTraceRenderers = {
-    build: 'trace-187', updatePresentedHints, applyFixedEventStyles,
+    build: 'trace-188', updatePresentedHints, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
