@@ -78,6 +78,7 @@
 - 實際結果與 exit code：2026-09-20動畫拆分後，停止已核對的alpha PID 4668並重啟為PID 4472。HTTP 200；重啟後範例3/3與兩個獨立動畫瀏覽器案例2/2通過。
 - 操作segment範圍更正後：停止已核對的alpha PID 4568並從本worktree重啟為PID 60412；HTTP 200。`/trace/analyze`解析7個frame、9個操作segment描述、0個狀態型segment；3101瀏覽器專項1/1通過。
 - 複合欄位可見性修正後：停止已核對的alpha PID 60412並從本worktree重啟為PID 34600；HTTP 200。3101實際瀏覽器專項1/1通過，lazy／sets獨立SVG物件數均為0。
+- Trace重建版本更新後：停止已核對的alpha PID 34600並從本worktree重啟為PID 59724；HTTP 200，slides入口為parallel-merge-199，ENGINE_VERSION=6；3101實際瀏覽器專項1/1通過。
 - 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
 
 ### Segment Tree查詢segment消失專項
