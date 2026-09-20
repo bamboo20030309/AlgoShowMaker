@@ -1401,11 +1401,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return stableFrameStep(forwardBurst.targetFrame).finally(syncCurrentFrameFromCodeScript);
     }
 
-    const generation = forwardBurst.generation;
-    forwardBurst.queue = forwardBurst.queue.then(() => {
-      if (generation !== forwardBurst.generation) return undefined;
-      return animatedStepFn();
-    }).then(() => {
+    // Each input must reach the player immediately. The player cancels an
+    // unfinished transition, settles its destination frame, and starts the
+    // requested next transition; queueing here would make the click wait for
+    // the obsolete animation instead.
+    forwardBurst.queue = Promise.resolve(animatedStepFn()).then(() => {
       syncCurrentFrameFromCodeScript();
     });
     return forwardBurst.queue;

@@ -165,8 +165,17 @@
 
   function nextKey(direction) {
     const next = currentFrame + direction;
-    if (next >= 0 && next < frameCount()) return render(next);
-    return Promise.resolve();
+    if (next < 0 || next >= frameCount()) return Promise.resolve();
+    if (direction > 0 && activePlaybackPlan) {
+      const settledFrame = currentFrame;
+      // A forward input during playback first commits the current destination
+      // frame without animation, then starts the following frame from that
+      // stable geometry. This keeps one input equal to one forward step while
+      // never waiting for an obsolete animation to finish.
+      renderStable(settledFrame, { interruptedPlayback: true });
+      return render(settledFrame + 1, { fromIndex: settledFrame });
+    }
+    return render(next);
   }
 
   function installCodeScript() {

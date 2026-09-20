@@ -38,6 +38,27 @@ test('rapid next and previous use stable-frame navigation at the confirmed thres
           studio: { eventSettings: { gapMs: 0 } }
         });
       });
+      const immediateCalls = await page.evaluate(async () => {
+        window.ASMPlaybackNavigation.cancelForwardBurst();
+        let resolveFirst;
+        const firstTransition = new Promise(resolve => { resolveFirst = resolve; });
+        let calls = 0;
+        window.ASMPlaybackNavigation.requestForwardStep(() => {
+          calls += 1;
+          return firstTransition;
+        });
+        window.ASMPlaybackNavigation.requestForwardStep(() => {
+          calls += 1;
+          return Promise.resolve();
+        });
+        await Promise.resolve();
+        resolveFirst();
+        await Promise.resolve();
+        window.ASMPlaybackNavigation.cancelForwardBurst();
+        return calls;
+      });
+      assert.equal(immediateCalls, 2,
+        'a second input reaches the player without waiting for the first transition');
       await page.evaluate(() => {
         const button = document.getElementById('nextBtn');
         for (let index = 0; index < 3; index += 1) {
