@@ -56,6 +56,7 @@
 - [x] `AV_orange`改為半透明橘色，新增`AV_magenta = rgba(231,144,255,0.65)`，解析、renderer、文字、箭頭、GUI及舊AV色盤一致。
 - [x] Segment Tree查詢／操作幀以`now`陣列指標指向`tree[now]`，建樹幀以`i`指標指向`tree[i]`；不再繪製無名稱point，原highlight、segment與二元加法數字移動仍正常。
 - [x] 遞迴回朔期間，條件仍成立的lazy／sets背景不得退回白色；複合tree格子的value與index維持同色。
+- [x] 完整Segment Tree在set／lazy下推幀持續顯示目前與待處理的split segment；回朔幀排除剛完成子樹，但保留祖先層尚待處理的segment，不出現空白幀。
 
 ## 驗證計畫
 - 開發代理小驗證：V2 E/F/H/J，新增parser／model／renderer局部專項；隔離服務與headless瀏覽器只跑最小fixture及兩個範例sample input；C++原輸出對照改寫前版本。
@@ -93,3 +94,4 @@
 - 2026-09-21：檢查完整Segment Tree第5至第6幀後確認，操作segment先退場而持續background較晚提交，造成短暫白色空檔；調整同RGB半透明segment到不透明background的交接順序，先完成底層background漸變再播放segment退場。
 - 2026-09-21：依使用者補充，同格index label的background必須與value同步且保留塗色過渡；交接現在以320ms同步插值value與index兩個背景，完成後再播放segment退場。
 - 2026-09-21：依使用者提供的七筆完整操作重現回朔背景短暫消失；轉場重播現在依`fields(tree,lazy,sets)`合併條件樣式，持續成立的lazy／sets背景與index不再退白。
+- 2026-09-21：依使用者回報第26與29幀暫存segment消失，補齊完整範例的set／lazy下推幀`split(now)`與回朔幀`split(now,after)`；前者保留目前區塊，後者只排除完成子樹並保留祖先待處理區塊。

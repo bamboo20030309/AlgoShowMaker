@@ -8,7 +8,8 @@
 - 本次追加程式修正 commit：1236ab967bb63ae4e9c7d8408d7573736a95cd2b
 - Background過渡動畫修正 commit：a345c712293a984f2d44c6aa3dd41671693ec1f8
 - 回朔複合背景修正 commit：e25b13f568a04859bc6e2375001192b0bf2c46fd
-- 驗證時的 HEAD 與未提交修改：e25b13f568a04859bc6e2375001192b0bf2c46fd；程式驗證完成後僅更新交付文件
+- 暫存segment持續性修正 commit：5af9c14ce5661dfe3b7be2412115bb6d4bca3aec
+- 驗證時的 HEAD 與未提交修改：5af9c14ce5661dfe3b7be2412115bb6d4bca3aec；程式驗證完成後僅更新交付文件
 - 驗證日期：2026-09-21
 
 ## 根因與修改
@@ -26,6 +27,7 @@
 - 融合與segment邊界：lazy／sets維持tree同格文字欄位，0與LM依hide省略；非預設欄位以條件`background`直接著色同一tree格子。當次modify／set的可分裂`@segment`仍獨立呈現。
 - 視覺去重：移除`@style ... segment`語法、renderer狀態segment物件與相關助理選項；長期狀態回到原有background機制，不再維護第二套segment身分與生命週期。
 - 回朔背景消失根因與修正：事件轉場原先只以實際繪製物件`tree`查詢樣式，沒有像renderer一樣合併`fields(tree,lazy,sets)`的來源規則，因此回朔會把持續成立的lazy／sets背景暫時寫成白色。轉場現在辨識複合欄位來源並以相同覆蓋順序合併highlight，value與index共同維持正確背景。
+- 暫存segment消失根因與修正：完整範例的set／lazy下推幀與父節點回朔幀沒有重述具名`active_range`，因此這些幀會把仍待處理的segment視為退場。下推幀新增`split(now)`，回朔幀新增`split(now,after)`；第26幀保留節點3、5、8、9，第29幀保留節點3、5、9。
 - 顯示優先級：撤回格內style子層修改；獨立`@segment`恢復位於物件上方、前景箭頭下方的共用style layer，原本split入退場與具名幾何轉場保留。
 - 狀態背景與色盤：操作segment使用的`AV_magenta`維持`rgba(231,144,255,0.65)`，`AV_orange`維持`rgba(255,183,77,0.65)`；lazy／sets背景分別使用同RGB的不透明`rgb(231,144,255)`與`rgb(255,183,77)`，條件失效時隨下一幀重新計算而移除。
 - 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
@@ -243,6 +245,16 @@
 - 實際結果與exit code：瀏覽器逐幀專項1/1、一般style重播1/1、範例3/3、入口1/1及語法檢查通過，exit code均為0；回朔幀tree[14]等持續標記在全部取樣中保持目標RGB，value與index同步。
 - 3101重啟核實：停止已核對的alpha PID 10496，從同一worktree重啟為PID 19872；HTTP 200，入口載入trace-frame-tween `trace-221`。
 - 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；依使用者指示及V2分級只做受影響的小驗證。
+
+### 完整Segment Tree暫存segment持續性專項
+- 目的與對應條件：重現完整Segment Tree第26幀下推與第29幀回朔時暫存segment整批消失；確認仍待處理區塊在靜態畫面及整段轉場中持續存在。
+- 執行目錄與必要環境設定：algo-vis-backend；alpha 3101服務與獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp與Segment_Tree-sample_input.txt；使用15個初值及七筆modify／set／query操作。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests\segment-tree-samples.test.js`；`node --test --test-name-pattern='full segment tree sample merges' tests\heap-composite-segments.browser.test.js`；`node --check tests\segment-tree-samples.test.js; node --check tests\heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：第26幀持續顯示節點3、5、8、9；第29幀持續顯示節點3、5、9；轉場逐幀取樣都不缺少上述節點；範例輸出仍為12。
+- 實際結果與exit code：範例3/3、完整範例瀏覽器專項1/1、兩個測試檔語法檢查與差異檢查全部通過，exit code均為0；第26與29幀的靜態節點集合及每個requestAnimationFrame取樣皆符合預期。
+- 3101重啟核實：停止已核對的alpha PID 19872，從同一worktree重啟為PID 43660；HTTP 200。重啟後範例3/3與完整範例瀏覽器專項1/1再次通過。
+- 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；依使用者指示及V2分級只跑直接相關案例。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
