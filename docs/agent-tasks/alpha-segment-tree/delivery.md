@@ -216,6 +216,7 @@
 - 完整指令：`node --test tests/style-layer.test.js tests/pointer-layer.test.js tests/animation-effect-layer.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 --test-name-pattern='heap fields and local segments' tests/heap-composite-segments.browser.test.js`；`node --test --test-concurrency=1 --test-name-pattern='full segment tree sample keeps' tests/heap-composite-segments.browser.test.js`；`node --test tests/segment-tree-samples.test.js`；`node --test tests/entrypoints.test.js`；`git diff --check`。
 - 預期結果：樣式／指標層6/6、兩個瀏覽器專項各1/1、範例3/3與入口1/1通過；欄位文字位於segment之後，狀態／當前順序及split垂直入退場不變。
 - 實際結果與exit code：全部通過，exit code均為0。曾有一次範例指令因漏設`ASM_TEST_BASE_URL`在測試前置檢查即停止；補上3101網址後3/3通過，未視為功能結果。
+- 3101重啟核實：停止已核對屬於alpha worktree的PID 42432，從同一backend重啟為PID 23496；HTTP 200且入口載入trace-200。重啟後三個範例3/3、實際SVG層級與split轉場專項1/1通過。
 - 證據位置：trace-renderer.js、style-layer.test.js、pointer-layer.test.js及heap-composite-segments.browser.test.js；程式commit 766f84af2f6cca234488d66f8489061240643c63。
 
 ## 剩餘事項與合併注意
