@@ -4,13 +4,13 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-18-beta
 - 共同基準 commit：d411440cc479e6b6f71f7a3e520023f2197b943c
-- 程式修正 commit：6f7acdb49859b88d27528b9f06a432514976d53e
-- 驗證時的 HEAD 與未提交修改：`6f7acdb49859b88d27528b9f06a432514976d53e`；建立本文件前程式工作樹無未提交修改
+- 程式修正 commit：`6f7acdb49859b88d27528b9f06a432514976d53e`、`29aa32d92cf5768fdbc57d58035b513ee09f6ff5`
+- 驗證時的 HEAD 與未提交修改：`29aa32d92cf5768fdbc57d58035b513ee09f6ff5`；程式工作樹無未提交修改，僅本交付文件後續更新
 - 驗證日期：2026-09-20
 
 ## 根因與修改
-- 已確認根因與證據：上一幀仍把目的幀與來源幀送入 tween，因此會建構反向幾何；連續下一步沒有排隊與明確門檻；marker group 以名稱排序；assignment 讓來源與目的群組在整段 motion 同時重排；reference parameter 使用不同 variable id，導致同一實體被判定為新 visual；背景分頁恢復後會把隱藏時間計入動畫。
-- 修正方式與行為變化：新增穩定幀導覽入口；上一幀、時間線、快轉與隱藏期間導航皆取消動畫後直接重建；500ms 內第 3 次下一步切為逐次穩定幀快轉；按住按鈕或方向鍵使用語速間隔 repeat；marker 依宣告順序排列，來源立即回填、目的於剩餘一個 18px 標籤寬度時讓位；跨格箭頭抵達後才切換目的規則；局部 reference alias 沿用 visual 並只改名，全域 alias 同幀保留兩個 marker；動畫與 TTS 隨分頁可見性一起暫停。
+- 已確認根因與證據：上一幀仍把目的幀與來源幀送入 tween，因此會建構反向幾何；連續下一步沒有排隊與明確門檻；marker group 以名稱排序；assignment 讓來源與目的群組在整段 motion 同時重排；reference parameter 使用不同 variable id，導致同一實體被判定為新 visual；背景分頁恢復後會把隱藏時間計入動畫。後續 heap 案例另確認遞迴 `int i` 雖視為角色延續，仍套用宣告 marker 的 180ms 位移排程，且目的格讓位仍使用接近一個標籤寬度的舊 D04 規則。
+- 修正方式與行為變化：新增穩定幀導覽入口；上一幀、時間線、快轉與隱藏期間導航皆取消動畫後直接重建；500ms 內第 3 次下一步切為逐次穩定幀快轉；按住按鈕或方向鍵使用語速間隔 repeat；marker 依宣告順序排列，來源立即回填，目的格從移動開始同步讓位；宣告事件延續 marker 且有實際位移時採 520ms，無位移維持 180ms；跨格箭頭抵達後才切換目的規則；局部 reference alias 沿用 visual 並只改名，全域 alias 同幀保留兩個 marker；動畫與 TTS 隨分頁可見性一起暫停。
 - 修改檔案及用途：`trace-renderer.js`（marker 排版、alias 與全域 alias）、`trace-frame-tween.js`（讓位時機、箭頭、opacity、隱藏暫停）、`trace-player.js`（穩定幀導覽）、`front.js`（連點與長按／方向鍵快轉）、`tts.js`（分頁暫停／恢復）、三個 focused test 檔與任務文件。
 - README／版本紀錄／使用說明更新：不適用；本次為既有播放與 marker 規則修正，任務定義與交付紀錄已收錄操作語意。
 - 與 task.md 的差異：無。
@@ -19,7 +19,8 @@
 | task.md 條件 | 驗證方式 | 實際結果 | 判定 |
 |---|---|---|---|
 | 固定 marker 排列、寬格及虛擬格箭頭 | `unresolved-markers.test.js` | 宣告順序、8px 單排、alias、虛擬格與箭頭案例通過 | 通過 |
-| 來源立即回填、目的接近時讓位、抵達切換 | `unresolved-markers.test.js` 新增 motion checkpoint | 來源 180ms reflow；目的只在剩餘 18px 路徑內重排；跨格箭頭保留來源規則 | 通過 |
+| 來源立即回填、目的從起步同步讓位、抵達切換 | `unresolved-markers.test.js` motion checkpoint | 來源立即回填；目的 peer 在移動開始後已進入重排，並與移動 marker 同時完成；跨格箭頭保留來源規則 | 通過 |
+| 宣告延續 marker 的位移時間 | `unresolved-markers.test.js` timeline 與 motion checkpoint；指定 heap 輸入的隔離 Edge | 有實際位移為 520ms；180ms 時仍在途中；原地宣告排程維持 180ms；第 17 幀 `event-405` 實際為 520ms | 通過 |
 | resize 與事件順序 | `outerframe-tween.test.js`、`sequence-operations.integration.test.js` | outerframe、格子、文字與 sequence push/pop 局部案例通過 | 通過 |
 | 上一步、時間線與返回後重播 | `trace-player-navigation.test.js`、隔離瀏覽器 | 上一步／goto 無 previous frame、動畫關閉；下一步仍傳入來源幀 | 通過 |
 | 500ms／3 次與長按 repeat | `playback-navigation.browser.test.js` | 三次輸入恰好到第 3 幀；第三次為穩定幀；方向鍵長按產生穩定幀 repeat | 通過 |
@@ -42,8 +43,27 @@
 - 測試資料／fixture：測試內建 synthetic frame／marker geometry。
 - 完整指令或操作步驟：`node --test tests/unresolved-markers.test.js`
 - 預期結果：全部通過。
-- 實際結果與 exit code（適用時）：59/59 通過，exit code 0。
+- 實際結果與 exit code（適用時）：60/60 通過，exit code 0。
 - 證據位置：`algo-vis-backend/tests/unresolved-markers.test.js`。
+
+### 指定 heap 第 16→17 幀
+- 目的與對應條件：核實使用者提供程式與輸入中，遞迴參數 `int i` 從 `heap[2]` 延續至 `heap[4]` 的宣告位移時間。
+- 執行目錄與必要環境設定：beta `3102` 服務、headless Edge，前端 build `trace-211`。
+- 測試資料／fixture：使用者提供的 heap 程式；輸入 `10` 與 `5 7 2 1 9 4 11 15 8 6`。
+- 完整指令或操作步驟：以 `/trace/analyze`、`/compile` 產生 trace，載入 `algorithm.html`，穩定跳至第 16 幀後執行下一步，讀取第 17 幀 playback plan 的 `event-405`。
+- 預期結果：宣告延續 marker 有跨格位移，visual duration 為 520ms。
+- 實際結果與 exit code（適用時）：`event-405` visual duration 520ms，總事件時間含 code prompt 為 920ms；exit code 0。
+- 證據位置：本機命令摘要；未提交大型 trace 或瀏覽器產物。
+
+## 驗證分級與選擇
+- 層級：V2。
+- 分類：G（指標／生命週期／排程），另以 A 的入口測試核對快取版本。
+- 選擇依據：修改 marker 位移排程、目的格讓位起點與宣告延續時間。
+- 執行的測試檔／名稱篩選：`tests/unresolved-markers.test.js` 全檔；`tests/entrypoints.test.js`。
+- 驗證環境與隔離服務：beta worktree、3102、headless Edge；未操作使用者分頁。
+- 驗證版本、完整指令、結果與證據：程式 commit `29aa32d92cf5768fdbc57d58035b513ee09f6ff5`；`node --check public/trace-frame-tween.js`、`node --test tests/unresolved-markers.test.js`（60/60）、`node --test tests/entrypoints.test.js`（1/1）、`git diff --check` 均通過。
+- 未執行的驗證及原因：依驗證分級不執行完整 regression、全部 tests 或大規模演算法動畫。
+- 需要主代理做的 V3 驗證：整合後實際播放 heap 第 16→17 幀，觀察 `i` 的 520ms 位移與目的格從起步同步讓位。
 
 ### sequence、outerframe 與穩定幀導覽
 - 目的與對應條件：驗證 J、L、M 的 push/pop、outerframe 及穩定幀入口。
