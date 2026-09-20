@@ -40,7 +40,7 @@
 - [x] `sum += tree[now]`事件播放時sum維持舊值且不變空；只複製tree[now]的數字移向sum數字位置，抵達時提交新值並立即移除移動數字，不在目的地停留。
 - [x] 全域sum跨main／query及不同遞迴activation沿用runtime身分，不重播整格入退場。
 - [x] 格內segment位於style顯示層、跟隨綁定格子且保留具名幾何轉場，不受事件動畫層控制。
-- [x] segment位於格子底色之上、欄位數字與陣列指標之下；同格的長期狀態segment在當前操作segment之下，且split入退場動畫維持正常。
+- [x] 獨立`@segment`恢復原本位於物件上方、前景箭頭下方的style layer；split入退場動畫維持正常。
 - [x] 一般播放套用同格highlight／point時不會清除segment；第三幀、倒退及重播皆維持正確顯示。
 - [x] 既有@segment arr[L:R]與heap既有行為不變。
 - [x] Segment_Tree_easy.cpp與Segment_Tree.cpp移除AV.hpp及舊繪圖資料，保留演算法及輸出，能以sample input編譯產生trace。
@@ -52,7 +52,7 @@
 - [x] 完整`Segment_Tree.cpp`以新指令重寫：建樹不建立動畫幀；操作階段以fields／hide在tree格內顯示lazy與set，並呈現segment下降分裂、命中移除、query累加answer及回溯父節點加總。
 - [x] 完整範例保留原本特殊葉節點配置、lazy優先規則、set覆蓋規則及sample輸出；回溯幀不重新顯示已完成segment。
 - [x] 完整範例以`range(1,Tsize-1)`裁掉未使用的補零節點；modify segment為紫色，set segment為橘色。
-- [x] lazy／sets作為tree格子內的附加文字欄位，預設值以`hide(lazy=0,sets=LM)`隱藏；非預設標記以`@style ... segment color ...`在同一tree格內顯示整段狀態色塊，跨幀保留至實際標記被清除或下推。當次modify／set操作仍使用可分裂的`@segment`顯示。
+- [x] lazy／sets作為tree格子內的附加文字欄位，預設值以`hide(lazy=0,sets=LM)`隱藏；非預設標記以`background AV_magenta／AV_orange`直接套在同一tree格子。當次modify／set操作仍使用可分裂的`@segment`顯示。
 - [x] `AV_orange`改為半透明橘色，新增`AV_magenta = rgba(231,144,255,0.65)`，解析、renderer、文字、箭頭、GUI及舊AV色盤一致。
 - [x] Segment Tree查詢／操作幀以`now`陣列指標指向`tree[now]`，建樹幀以`i`指標指向`tree[i]`；不再繪製無名稱point，原highlight、segment與二元加法數字移動仍正常。
 
@@ -87,3 +87,4 @@
 - 2026-09-21：依使用者更新需求新增`segment` style：lazy／sets非預設值在tree同索引格保存整段色塊，資料標記未變時沿用穩定身分，下推後父色塊移除並由子節點狀態接續；當次操作的`@segment`維持局部分裂且顯示在狀態色塊上層。同步新增AV_magenta並將AV_orange改為半透明橘色。
 - 2026-09-21：依使用者要求將Segment Tree範例的無名稱point改為真正的陣列指標；查詢／操作使用now，建樹使用i，並保留highlight及既有數字加總動畫。
 - 2026-09-21：依使用者確認調整segment與格子內容優先級；segment改為格子內的style子層，數字及指標保持在上方，並補回巢狀style物件的跨幀擷取以維持split退場動畫。
+- 2026-09-21：依使用者更正撤回上一項顯示優先級修改；移除與background重疊的`@style ... segment`，lazy／sets長期狀態改回條件background，獨立`@segment`維持操作區段用途。
