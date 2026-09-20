@@ -59,6 +59,7 @@ test('segment tree binary addition remains animated inside an algorithm slide', 
     ));
     const runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
     assert.ok(runtime, 'algorithm slide runtime iframe loaded');
+    assert.match(runtime.url(), /v=trace-runtime-37/);
     const result = await runtime.evaluate(async () => {
       const player = window.ASMTracePlayer;
       const doc = player.getDocument();
@@ -66,7 +67,7 @@ test('segment tree binary addition remains animated inside an algorithm slide', 
       const parentFrames = doc.frames.map((frame, index) => ({ frame, index }))
         .filter(({ frame }) => frame.source?.function === 'build'
           && (frame.arrows || []).length === 2);
-      const parent = parentFrames[1] || parentFrames[0];
+      const parent = parentFrames[0];
       const event = parent.frame.events.find(item => item.binaryOperation === '+');
       const target = event?.targets?.find(item => item.role === 'target')?.resolvedIndex;
       await player.render(parent.index - 1, { animatePositions: false, animateEvents: false });
@@ -82,7 +83,8 @@ test('segment tree binary addition remains animated inside an algorithm slide', 
         const transfers = [...scene.querySelectorAll('.asm-trace-assign-transfer-value')];
         samples.push({
           targetValue: targetText?.textContent,
-          transferValues: transfers.map(item => item.querySelector('text')?.textContent).sort()
+          transferValues: transfers.map(item => item.querySelector('text')?.textContent).sort(),
+          segmentCount: scene.querySelectorAll('.asm-trace-heap-cell-segment').length
         });
       }
       await transition;
@@ -100,15 +102,16 @@ test('segment tree binary addition remains animated inside an algorithm slide', 
     });
     assert.equal(result.build, 'trace-217');
     assert.deepEqual(result.event?.targets, [
-      ['target', 14], ['source-left', 28], ['source-right', 29]
+      ['target', 15], ['source-left', 30], ['source-right', 31]
     ]);
     assert.equal(result.event?.binaryOperation, '+');
     assert.notEqual(result.event?.disabled, true);
     assert.ok(result.playbackDurationMs >= 1000, JSON.stringify(result));
     assert.ok(result.samples.some(sample => (
-      JSON.stringify(sample.transferValues) === JSON.stringify(['13', '14'])
+      JSON.stringify(sample.transferValues) === JSON.stringify(['0', '15'])
         && sample.targetValue === '0'
     )), JSON.stringify(result));
+    assert.ok(result.samples.every(sample => sample.segmentCount === 0), JSON.stringify(result));
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
