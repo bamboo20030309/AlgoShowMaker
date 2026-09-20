@@ -1373,31 +1373,22 @@
     const root = cell?.closest?.('#asm-trace-root');
     const rect = cell?.querySelector?.(':scope > rect');
     if (!root || !rect || !window.HintWidgets) return;
-    // Automatic fixed marks are persistent state. Reuse their renderer nodes
-    // so the current frame's completion delay remains authoritative.
-    const preserveFixedMark = highlight?.fixedMark
-      && !Object.hasOwn(highlight?.styleTypes || {}, 'mark');
-    const fixedVisuals = preserveFixedMark
-      ? [...root.querySelectorAll('[data-trace-attachment-kind="mark"]')]
-        .filter(visual => visual.getAttribute('data-trace-attached-to') === key && !visual._asmLiveHint)
-      : [];
+    const authoredHints = new Map();
     root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
-      if (!['highlight', 'point', 'mark'].includes(
-        visual.getAttribute('data-trace-attachment-kind') || ''
-      )) return;
-      if (visual.getAttribute('data-trace-attached-to') === key
-        && !visual._asmLiveHint && !fixedVisuals.includes(visual)) visual.setAttribute('display', 'none');
+      if (visual.getAttribute('data-trace-attached-to') !== key || visual._asmLiveHint) return;
+      const kind = visual.getAttribute('data-trace-attachment-kind') || '';
+      if (kind && !authoredHints.has(kind)) authoredHints.set(kind, visual);
+      else visual.setAttribute('display', 'none');
     });
     const hints = cell._asmPresentedHints ||= new Map();
     const types = { ...(highlight?.fixedMark ? { mark: highlight.fixedMark } : {}), ...(highlight?.styleTypes || {}) };
     const number = name => Number(rect.getAttribute(name)) || 0;
     const x = number('x'), y = number('y'), width = number('width'), height = number('height');
     ['highlight', 'point', 'mark'].forEach(kind => {
-      let visual = hints.get(kind);
-      if (kind === 'mark' && fixedVisuals.length) {
-        visual?.setAttribute('display', 'none');
-        fixedVisuals.forEach(fixed => fixed.removeAttribute('display'));
-        return;
+      let visual = hints.get(kind) || authoredHints.get(kind);
+      if (visual && !hints.has(kind)) {
+        visual._asmLiveHint = true;
+        hints.set(kind, visual);
       }
       if (!Object.hasOwn(types, kind)) {
         visual?.setAttribute('display', 'none');
@@ -1415,6 +1406,8 @@
         visual = group.firstElementChild;
         if (visual) {
           visual._asmLiveHint = true;
+          visual.setAttribute('data-trace-attached-to', key);
+          visual.setAttribute('data-trace-attachment-kind', kind);
           attachStyleVisual(root, visual, cell, kind);
           hints.set(kind, visual);
         }
@@ -3160,6 +3153,12 @@
       if (studioObject.sourceVisualContinuityKey) {
         object.dataset.traceVisualContinuityKey = studioObject.sourceVisualContinuityKey;
       }
+      if (studioObject.sourceAliasContinuityKey) {
+        object.dataset.traceMarkerAliasContinuityKey = studioObject.sourceAliasContinuityKey;
+      }
+      if (studioObject.sourceReferenceAlias) {
+        object.dataset.traceMarkerReferenceAlias = '1';
+      }
       if (studioObject.sourceSnapshotOwner) {
         object.dataset.traceSnapshotOwner = studioObject.sourceSnapshotOwner;
       }
@@ -3324,6 +3323,10 @@
         object.dataset.traceMarkerPopupX = String(baseX);
         object.dataset.traceMarkerPopupY = String(baseY + box.y);
         object.dataset.traceMarkerSortKey = String(studioObject.markerSortKey || studioObject.text || '');
+        object.dataset.traceMarkerSortOrder = String(
+          Number.isFinite(Number(studioObject.markerSortOrder))
+            ? Number(studioObject.markerSortOrder) : 0
+        );
       }
       root.append(object);
       animateObjectPosition(motion, options, key, { x: baseX, y: baseY });
@@ -3379,7 +3382,10 @@
     });
     const centers = new Map();
     slots.forEach((items, offset) => {
-      const ordered = [...items].sort((left, right) => String(left.id).localeCompare(String(right.id)));
+      const ordered = [...items].sort((left, right) => (
+        Number(left.markerSortOrder) - Number(right.markerSortOrder)
+        || String(left.id).localeCompare(String(right.id))
+      ));
       const slotWidth = ordered.reduce((total, item) => total + item.labelWidth, 0)
         + Math.max(0, ordered.length - 1) * gap;
       let cursor = offset * baseCellWidth - slotWidth / 2;
@@ -3403,8 +3409,39 @@
   }
 
   function renderFrameBindings(root, document, frame, placements, elements, options = {}) {
-    const bindings = Array.isArray(frame.bindings) ? frame.bindings : [];
-    if (!bindings.length) return;
+    const authoredBindings = Array.isArray(frame.bindings) ? frame.bindings : [];
+    if (!authoredBindings.length) return;
+    const bindings = [];
+    const authoredSourceIds = new Set(authoredBindings.map(binding => binding.sourceVariableId));
+    authoredBindings.forEach(binding => {
+      const sourceVariable = document.variables?.[binding.sourceVariableId] || {};
+      const sourceEntry = frame.state?.[binding.sourceVariableId];
+      const referenceAlias = /&/.test(String(sourceVariable.cppType || ''));
+      const globalAliases = referenceAlias && sourceEntry?.identity
+        ? Object.entries(frame.state || {}).filter(([variableId, entry]) => (
+          variableId !== binding.sourceVariableId
+          && entry?.identity === sourceEntry.identity
+          && document.variables?.[variableId]?.functionName === 'global'
+          && document.variables?.[variableId]?.kind === 'scalar'
+        ))
+        : [];
+      const sourceVariableIds = [...new Set([
+        ...(binding.sourceVariableIds || [binding.sourceVariableId]),
+        ...globalAliases.map(([variableId]) => variableId)
+      ].filter(Boolean))];
+      globalAliases.forEach(([variableId]) => {
+        if (authoredSourceIds.has(variableId)) return;
+        const variable = document.variables[variableId];
+        bindings.push({
+          ...binding,
+          sourceVariableId: variableId,
+          sourceVariableIds,
+          sourceName: variable.name,
+          indexExpression: variable.name
+        });
+      });
+      bindings.push({ ...binding, sourceVariableIds });
+    });
     const pending = [];
     const visualContinuityOrdinals = new Map();
 
@@ -3454,6 +3491,20 @@
       ].join(':');
       const visualContinuityOrdinal = visualContinuityOrdinals.get(visualContinuityBase) || 0;
       visualContinuityOrdinals.set(visualContinuityBase, visualContinuityOrdinal + 1);
+      const sourceVariable = document.variables?.[binding.sourceVariableId] || {};
+      const sourceIdentity = String(frame.state?.[binding.sourceVariableId]?.identity || '');
+      const targetIdentity = String(targetEntry?.identity || '');
+      const escapedSourceName = String(binding.sourceName || '')
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const normalizedExpression = escapedSourceName
+        ? String(indexExpression).replace(new RegExp(`\\b${escapedSourceName}\\b`, 'g'), '$source')
+        : String(indexExpression);
+      const aliasContinuityBase = sourceIdentity && targetIdentity
+        ? [
+          ...(snapshotOwner ? ['snapshot', snapshotOwner] : []),
+          'auto-marker-alias', sourceIdentity, targetIdentity, normalizedExpression
+        ].join(':')
+        : '';
       pending.push({
         id: `${snapshotOwner ? `${snapshotOwner}:` : ''}auto-frame-binding-${binding.sourceVariableId}-${binding.targetVariableId}-${index}`,
         type: 'variable-marker',
@@ -3466,6 +3517,8 @@
         // event snapshots. This stable role key is only for visual continuity,
         // so the same automatic marker moves instead of re-entering on every call.
         sourceVisualContinuityKey: `${visualContinuityBase}:${visualContinuityOrdinal}`,
+        sourceAliasContinuityKey: aliasContinuityBase,
+        sourceReferenceAlias: /&/.test(String(sourceVariable.cppType || '')),
         targetVariableId: binding.targetVariableId,
         targetObjectKey,
         targetRuntimeIdentity: targetEntry?.identity || '',
@@ -3474,6 +3527,7 @@
         indexValue,
         unresolvedIndex: !hasIndexValue,
         label,
+        markerSortOrder: index,
         markerSortKey: binding.sourceName
           || document.variables?.[binding.sourceVariableId]?.name
           || label,
@@ -3499,6 +3553,20 @@
       });
     });
 
+    const aliasCounts = new Map();
+    pending.forEach(item => {
+      if (!item.sourceAliasContinuityKey) return;
+      aliasCounts.set(item.sourceAliasContinuityKey,
+        (aliasCounts.get(item.sourceAliasContinuityKey) || 0) + 1);
+    });
+    pending.forEach(item => {
+      // A global and a reference parameter intentionally remain two markers
+      // when both are present in the same frame.
+      if ((aliasCounts.get(item.sourceAliasContinuityKey) || 0) > 1) {
+        item.sourceAliasContinuityKey = '';
+      }
+    });
+
     const groups = new Map();
     pending.forEach(item => {
       const target = item.targetPlacement;
@@ -3516,14 +3584,8 @@
     const objects = [];
     groups.forEach(group => {
       const orderedGroup = [...group].sort((left, right) => {
-        const byVariable = String(left.markerSortKey || '').localeCompare(
-          String(right.markerSortKey || ''), 'en', { numeric: true, sensitivity: 'base' }
-        );
-        if (byVariable) return byVariable;
-        const byExpression = String(left.markerSortExpression || '').localeCompare(
-          String(right.markerSortExpression || ''), 'en', { numeric: true, sensitivity: 'base' }
-        );
-        return byExpression || String(left.id).localeCompare(String(right.id));
+        const byDeclaration = Number(left.markerSortOrder) - Number(right.markerSortOrder);
+        return byDeclaration || String(left.id).localeCompare(String(right.id));
       });
       const gap = 8;
       const totalWidth = orderedGroup.reduce((total, item) => total + item.labelWidth, 0)
@@ -4523,9 +4585,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-201';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-202';
   window.ASMTraceRenderers = {
-    build: 'trace-201', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-202', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
