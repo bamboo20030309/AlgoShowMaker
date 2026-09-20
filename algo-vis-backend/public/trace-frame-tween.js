@@ -3789,15 +3789,18 @@
             point = {
               x,
               y,
-              // A cross-cell marker adopts the destination arrow direction as
-              // soon as movement starts. The label and destination peers then
-              // move together while the arrow keeps that destination-relative
-              // direction for the whole trip.
+              // A cross-cell marker turns continuously from the source arrow
+              // direction to the destination direction while its label moves.
+              // Destination peers still start making room at departure.
               targetX: changingTarget
-                ? x + (step.to.targetX - step.to.x)
+                ? x + (step.from.targetX - step.from.x)
+                  + ((step.to.targetX - step.to.x)
+                    - (step.from.targetX - step.from.x)) * progress
                 : step.from.targetX + (step.to.targetX - step.from.targetX) * progress,
               targetY: changingTarget
-                ? y + (step.to.targetY - step.to.y)
+                ? y + (step.from.targetY - step.from.y)
+                  + ((step.to.targetY - step.to.y)
+                    - (step.from.targetY - step.from.y)) * progress
                 : step.from.targetY + (step.to.targetY - step.from.targetY) * progress
             };
             break;
@@ -6674,10 +6677,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-212';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-213';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-212', play, cancel, updateEventAvailability,
+    build: 'trace-213', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

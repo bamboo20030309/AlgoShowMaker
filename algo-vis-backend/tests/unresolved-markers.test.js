@@ -2079,9 +2079,13 @@ test('destination peers make room as soon as an arriving marker starts moving', 
   const liveJ = () => 73 + motion.adjustments.get('marker-j').x;
   motion.update(0);
   const startingArrow = motion.arrowStates.get('marker-i');
-  assert.equal(startingArrow.targetX - startingArrow.x, 13,
-    'the moving marker adopts its destination arrow direction at departure');
+  assert.equal(startingArrow.targetX - startingArrow.x, 0,
+    'the moving marker retains its source arrow direction at departure');
   motion.update(150);
+  const turningArrow = motion.arrowStates.get('marker-i');
+  assert.ok(turningArrow.targetX - turningArrow.x > 0
+    && turningArrow.targetX - turningArrow.x < 13,
+  'the moving marker turns continuously toward its destination direction');
   assert.ok(liveJ() > 60 && liveJ() < 73,
     'destination peer starts making room with the arriving marker');
   motion.update(520);
