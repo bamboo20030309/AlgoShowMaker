@@ -220,6 +220,16 @@
 - 不透明背景核實：程式commit 6accf3f3ffc3b88842422b7639cdfbf60fa6c582將lazy／sets背景改為相同RGB的不透明版本；範例3/3與融合背景SVG 1/1通過。停止alpha PID 34724並從同一backend重啟為PID 69164，HTTP 200；重啟後融合背景SVG再次1/1通過。
 - 證據位置：trace-renderer.js、style-layer.test.js、pointer-layer.test.js及heap-composite-segments.browser.test.js；程式commit cd17b89d0f6292e2ee05717417c0882038146abc。
 
+### Segment退場與持續background交接專項
+- 目的與對應條件：確認完整Segment Tree第5至第6幀由半透明modify segment交接至同色不透明lazy background時，不會在兩者之間露出白色格子。
+- 執行目錄與必要環境設定：algo-vis-backend；重啟後alpha服務http://127.0.0.1:3101，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp及Segment_Tree-sample_input.txt；第5幀為tree[14]上的半透明紫色segment，第6幀為lazy=1的不透明紫色background。
+- 完整指令：`node --check public/trace-frame-tween.js; node --check tests/heap-composite-segments.browser.test.js; node --test tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-name-pattern='full segment tree sample merges' tests/heap-composite-segments.browser.test.js`；`git diff --check`。
+- 預期結果：下一幀background與退場segment為相同RGB且background不透明時，background先在底層提交；segment維持原本由上往下退場，所有segment仍可見的取樣點都不出現白色背景。
+- 實際結果與exit code：語法、入口與瀏覽器專項全部通過，exit code均為0；逐幀取樣確認tree[14]先顯示`rgb(231,144,255)`不透明背景，半透明segment再由40高度縮至0，沒有白色空檔；數值同幀更新為`29,1`。
+- 3101重啟核實：停止本輪啟動且已核對的alpha PID 39808，從同一backend重啟為PID 2468；HTTP 200，入口載入trace-frame-tween `trace-218`。
+- 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；本次依V2分級只驗證受影響的Segment Tree轉場與入口版本。
+
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
 - 已知問題或風險：hide 的 LM／INT_MAX 對應目前以 32 位 int 最大值格式化；若未來支援自訂巨集值，需在 trace metadata 加入常數求值。二元加法的雙來源動畫目前限直接的可見純量或安全索引格；巢狀算式、函式呼叫或帶副作用索引沿用一般賦值動畫。

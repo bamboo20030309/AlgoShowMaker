@@ -4838,6 +4838,40 @@
       && geometry.height > 0 ? geometry : null;
   }
 
+  function heapSplitBackgroundHandoff(element, currentElements) {
+    const segment = heapSplitSegmentRect(element);
+    const cellKey = segment?.getAttribute?.('data-trace-attached-to') || '';
+    const cell = cellKey ? currentElements?.get?.(cellKey) : null;
+    const rect = cell?.querySelector?.(':scope > rect') || null;
+    if (!segment || !rect) return null;
+    const segmentPaint = parseColor(segment.getAttribute('fill'));
+    const backgroundPaint = parseColor(
+      rect.getAttribute('fill'), Number(rect.getAttribute('fill-opacity') || 1)
+    );
+    if (!segmentPaint || !backgroundPaint || backgroundPaint.a < 0.999
+      || segmentPaint.r !== backgroundPaint.r
+      || segmentPaint.g !== backgroundPaint.g
+      || segmentPaint.b !== backgroundPaint.b) return null;
+    return {
+      rect,
+      fill: rect.getAttribute('fill'),
+      opacity: rect.getAttribute('fill-opacity') || '1'
+    };
+  }
+
+  function commitHeapSplitBackgroundHandoff(handoff) {
+    const rect = handoff?.rect;
+    if (!rect?.isConnected) return;
+    const transition = rect.style.transition;
+    rect.style.transition = 'none';
+    rect.setAttribute('fill', handoff.fill);
+    rect.setAttribute('fill-opacity', handoff.opacity);
+    window.getComputedStyle(rect).fill;
+    if (transition) rect.style.transition = transition;
+    else rect.style.removeProperty('transition');
+    window.getComputedStyle(rect).fill;
+  }
+
   function applyHeapSplitVerticalFade(geometry, progress, phase) {
     if (!geometry?.rect) return;
     const amount = clamp01(progress);
@@ -5713,12 +5747,15 @@
       const retainedByEnteringKeep = previousVisualRetainedByEnteringKeep(
         key, clone, enteringKeepSourceKeys, enteringKeepRuntimeIdentities
       );
+      const heapSplitExit = heapSplitSegmentGeometry(clone);
       ghosts.push({
         wrapper,
         scopeExitSlot: null,
         lifecycleKind: visualLifecycleKind(clone),
         retainedByEnteringKeep,
-        heapSplitExit: heapSplitSegmentGeometry(clone)
+        heapSplitExit,
+        backgroundHandoff: heapSplitExit
+          ? heapSplitBackgroundHandoff(clone, currentElements) : null
       });
     });
 
@@ -5974,6 +6011,13 @@
         }
       });
       events?.applyStyles?.();
+      // A split operation segment can hand its color to a persistent opaque
+      // background on the same cell. Commit that destination paint beneath
+      // the ghost before its top-to-bottom exit starts, so the handoff never
+      // exposes the previous white cell between the two visual states.
+      ghosts.forEach(({ backgroundHandoff }) => {
+        commitHeapSplitBackgroundHandoff(backgroundHandoff);
+      });
       // Some draw types expose automatic markers only as nested DOM visuals.
       // Compose their declaration and exit phases just like ordinary entries;
       // otherwise a newly declared marker is already visible behind the old
@@ -6197,10 +6241,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-217';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-218';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-217', play, cancel, updateEventAvailability,
+    build: 'trace-218', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

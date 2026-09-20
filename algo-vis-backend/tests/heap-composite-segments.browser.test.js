@@ -384,8 +384,30 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
       const unwind=indexed.find(({frame,index})=>index>lazyTagged.index
         &&frame.source?.function==='query'&&(frame.arrows||[]).length===2
         &&markedNodes(frame).length>0);
+      const handoff=indexed.find(({frame,index})=>index>0
+        &&(doc.frames[index-1].segments||[]).some(segment=>segment.split?.phase==='before')
+        &&(frame.segments||[]).some(segment=>segment.split?.phase==='after')
+        &&markedNodes(frame).length>0);
       await player.render(operation.index,{animatePositions:false,animateEvents:false});
       const operationSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
+      const handoffMark=markedNodes(handoff.frame)[0];
+      await player.render(handoff.index-1,{animatePositions:false,animateEvents:false});
+      const handoffSamples=[];
+      let handoffSettled=false;
+      const handoffTransition=player.render(handoff.index).finally(()=>{handoffSettled=true;});
+      for(let count=0;count<180&&!handoffSettled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const currentTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+        const segment=currentTree?.closest('#asm-trace-root')?.querySelector(
+          `.asm-trace-heap-cell-segment[data-trace-segment-node="${handoffMark.node}"]`
+        );
+        const rect=currentTree?.querySelector(`[data-trace-index="${handoffMark.node}"] > rect`);
+        handoffSamples.push({
+          segmentHeight:segment?Number(segment.getAttribute('height')):0,
+          background:rect?getComputedStyle(rect).fill.replace(/\s+/g,''):''
+        });
+      }
+      await handoffTransition;
       const readBackgrounds=async item=>{
         await player.render(item.index,{animatePositions:false,animateEvents:false});
         const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
@@ -422,12 +444,17 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
       return {
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
         operationSegments,lazyBackgrounds,setBackgrounds,unwindBackgrounds,
+        handoffSamples,handoffColor:handoffMark.color,
         stateSegments:document.querySelectorAll('#asm-trace-root .asm-trace-state-segment').length,
         compositeTexts,separateFields,unwindSegments,pointerLabel,pointStyleCount,answer
       };
     });
     assert.equal(result.buildFrames,0);
     assert.ok(result.operationSegments>0);
+    const exiting=result.handoffSamples.filter(sample=>sample.segmentHeight>0);
+    assert.ok(exiting.some(sample=>sample.segmentHeight<40),JSON.stringify(result.handoffSamples));
+    assert.ok(exiting.every(sample=>sample.background===result.handoffColor),
+      JSON.stringify(result.handoffSamples));
     assert.ok(result.lazyBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
     assert.ok(result.setBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
     assert.ok(result.unwindBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
