@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-19-alpha-segment-tree
 - 共同基準 commit：61a4baade9b06b5e50d0c7a24683e937db9c7112
-- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a、f618e1ed7a0a0caa1b0d68771b848f93e7adef3f、6c3688075082ac1580bca25857658787589a569a、eb1337540fab4926089d2e0de409fd3e0a0bfc49、a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c、7a9f9032a96cadbc8b27c279340d2ca8e8fb275e
-- 驗證時的 HEAD 與未提交修改：7a9f9032a96cadbc8b27c279340d2ca8e8fb275e；程式驗證完成時僅有文件更新
+- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a、f618e1ed7a0a0caa1b0d68771b848f93e7adef3f、6c3688075082ac1580bca25857658787589a569a、eb1337540fab4926089d2e0de409fd3e0a0bfc49、a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c、7a9f9032a96cadbc8b27c279340d2ca8e8fb275e、a712fc56e3b3a25aa68a82548e44e88666e6f122
+- 驗證時的 HEAD 與未提交修改：a712fc56e3b3a25aa68a82548e44e88666e6f122；程式驗證完成時僅有交付文件更新
 - 驗證日期：2026-09-20
 
 ## 根因與修改
@@ -19,6 +19,7 @@
 - 設定保存根因與修正：`trace-view-source`原本明確移除整個`eventSettings`，新trace又會套用帳號偏好，因此自動固定與迴圈邊界無法跟著程式。現在`@asm-view`只序列化`autoFixedEnabled`與`autoLoopBoundaryEnabled`，載入時以它們覆寫帳號預設；事件間隔與各事件類型偏好維持帳號層級。
 - 建構／查詢拆分：`Segment_Tree_easy_build.cpp`獨立提供建構動畫，從初始樹、15筆輸入、15個父節點加總到根節點完成共32幀；`Segment_Tree_easy.cpp`先無幀建樹，第一幀直接顯示完整樹並只播放查詢下降、segment分裂及sum累加。兩份範例各有sample input。
 - 二元加法動畫：instrumenter辨識`target = left + right`，在左右運算元為可見純量或安全索引格時保存兩個來源target；播放器建立兩個純文字transfer並以相同進度移向目的值，落地時同幀移除兩者並提交結果。Segment_Tree_easy的父節點建構改為`tree[i] = tree[left] + tree[right]`以使用此行為；演算法與輸出不變。
+- 完整Segment Tree範例：`Segment_Tree.cpp`改為完整31節點heap；建樹逐筆顯示15個輸入並以15個雙來源加法幀建立父節點。add／set／query共用fields／hide與原三陣列事件，segment只在下降時split並在命中時以after移除；回溯只顯示父節點加總。query命中值另累加到tree下方answer，但函式回傳與輸出維持原演算法。
 - 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。
 - 3101既有頁面未同步：服務重啟不會替已開啟的瀏覽器iframe重新載入JavaScript，且前次修正未同步提升投影片runtime URL版本，因此既有頁面仍可保留舊播放器。slides.js提升至parallel-merge-197，runtime/editor iframe提升至trace-runtime-37；重新載入投影片頁面後會明確取得新版。
 - 重整後仍舊的根因與修正：投影片保存完整traceDocument，重新整理只會重播保存結果。二元加法新增`binaryOperation`與兩個來源target時漏增ENGINE_VERSION，造成同程式／輸入的舊trace被誤判為current。ENGINE_VERSION現為5；編輯器載入version 4時會自動RUN並遷移Studio設定，使用者儲存後主投影片取得包含新事件的trace。入口同步提升至parallel-merge-198、trace-runtime-38及trace-provenance-6。
@@ -151,6 +152,15 @@
 - 預期結果：投影片與演算法頁各1個建樹播放案例通過；入口版本與JavaScript語法正常。
 - 實際結果與exit code：舊trace重建、儲存及第16幀投影片1/1，演算法頁1/1，過期trace編輯器遷移1/1，provenance／入口6/6通過，exit code均為0；停止已核對的3101 PID 64696並從本worktree重啟為PID 54924，HTTP 200，投影片入口為parallel-merge-198、iframe為trace-runtime-38、trace引擎版本為5。
 - 證據位置：tests/binary-addition-slide.browser.test.js、tests/provenance.test.js及程式commit a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c、7a9f9032a96cadbc8b27c279340d2ca8e8fb275e；執行輸出只保留於本次代理工作階段。
+
+### 完整Segment Tree新版範例專項
+- 目的與對應條件：確認既有完整Segment Tree可直接使用新版renderer指令播放建樹、lazy／set、區間分裂、query累加及回溯加總，且原演算法輸出不變。
+- 執行目錄與必要環境設定：algo-vis-backend；隔離服務http://localhost:3198與獨立headless Edge。驗證後停止隔離PID 57680，再重啟alpha 3101為PID 67964。
+- 測試資料／fixture：Segment_Tree.cpp及Segment_Tree-sample_input.txt（15個輸入、七筆add／set／query操作）。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://localhost:3198'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js`；`node --test --test-concurrency=1 --test-name-pattern="full segment tree sample" tests/heap-composite-segments.browser.test.js`；`node --check tests/segment-tree-samples.test.js; node --check tests/heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：建樹32幀及15個雙箭頭父節點幀；完整heap範圍1～31；fields／hide顯示原三陣列；操作segment可見；回溯幀segment為0；最終answer與輸出皆為12。
+- 實際結果與exit code：範例3/3、完整範例瀏覽器1/1通過，exit code均為0；trace共155幀，建樹32幀／15個雙箭頭幀，操作時可見複合欄位與segment，全部33個回溯加總幀均無segment，最終answer及stdout皆為12。3101重啟後HTTP 200，`/trace/analyze`解析11個frame指令。
+- 證據位置：Segment_Tree.cpp、tests/segment-tree-samples.test.js、tests/heap-composite-segments.browser.test.js，納入程式commit a712fc56e3b3a25aa68a82548e44e88666e6f122；執行輸出只保留於本次代理工作階段。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
