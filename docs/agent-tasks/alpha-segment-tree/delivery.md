@@ -216,6 +216,7 @@
 - 完整指令：`node --test tests/style-layer.test.js tests/pointer-layer.test.js tests/animation-effect-layer.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 --test-name-pattern='heap fields and local segments' tests/heap-composite-segments.browser.test.js`；`git diff --check`。
 - 預期結果：樣式／指標層5/5、SVG segment專項1/1通過；segment不嵌在cell內，位於style layer且split垂直入退場不變。
 - 實際結果與exit code：全部通過，exit code均為0。
+- 3101重啟核實：停止已核對屬於alpha worktree的PID 23496，從同一backend重啟為PID 34724；HTTP 200，renderer為trace-201、provenance入口為trace-9。重啟後`@style segment`負向分析回傳HTTP 400，範例3/3、獨立segment SVG 1/1及融合背景SVG 1/1通過。
 - 證據位置：trace-renderer.js、style-layer.test.js、pointer-layer.test.js及heap-composite-segments.browser.test.js；程式commit cd17b89d0f6292e2ee05717417c0882038146abc。
 
 ## 剩餘事項與合併注意
