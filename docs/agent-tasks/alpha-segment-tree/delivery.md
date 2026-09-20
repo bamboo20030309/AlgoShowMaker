@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-19-alpha-segment-tree
 - 共同基準 commit：61a4baade9b06b5e50d0c7a24683e937db9c7112
-- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a
-- 驗證時的 HEAD 與未提交修改：bf26ba00c7e50de08f4172e575df409c898e4f8a；程式驗證完成時僅有本交付文件更新
+- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a、f618e1ed7a0a0caa1b0d68771b848f93e7adef3f
+- 驗證時的 HEAD 與未提交修改：f618e1ed7a0a0caa1b0d68771b848f93e7adef3f；程式驗證完成時僅有本交付文件更新
 - 驗證日期：2026-09-20
 
 ## 根因與修改
@@ -17,6 +17,7 @@
 - sum反覆入退場根因與修正：renderer只替容器保存runtime identity，純量在main與不同query activation間被scene boundary誤判為新物件。純量與字串現在以lifetime優先、位址後備建立身分，全域sum可跨幀延續。
 - 第三幀播放根因與修正：trace與靜態SVG皆有segment，但一般播放套用同格highlight／point時，updatePresentedHints原本會隱藏該格所有data-trace-attached-to視覺，將新歸入style layer的segment一併設為display:none。清理範圍已限縮為highlight／point／mark，segment保持獨立可見。
 - 設定保存根因與修正：`trace-view-source`原本明確移除整個`eventSettings`，新trace又會套用帳號偏好，因此自動固定與迴圈邊界無法跟著程式。現在`@asm-view`只序列化`autoFixedEnabled`與`autoLoopBoundaryEnabled`，載入時以它們覆寫帳號預設；事件間隔與各事件類型偏好維持帳號層級。
+- 建樹展示：Segment_Tree_easy新增build_view。每筆輸入後顯示並highlight對應葉節點；由下往上計算時，左右子節點使用預設point、父節點使用預設highlight，兩條具名箭頭連向父節點並顯示實際加法。建樹畫面顯示完整Tcapacity以呈現特殊排列的補零葉節點，查詢畫面仍使用原本Tsize範圍。
 - 修改檔案及用途：trace-instrumenter.js／server.js 定義與保存語法；ASMTrace.hpp／trace-model.js 處理 tuple；trace-renderer.js／trace-frame-tween.js 繪製與轉場；Segment_Tree_easy.cpp／Segment_Tree.cpp 改寫範例；HTML cache、指令提示、手冊、README 與直接相關測試同步更新。
 - README／版本紀錄／使用說明更新：README 與 ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md 已加入新語法及行為；tests/README.md 記錄專項測試。
 - 與 task.md 的差異：query 的預設參數改由呼叫端明確傳入，因目前變數分析不會把具有預設值的參數提供給幀指令；傳入值與原預設值相同，演算法結果不變。依使用者後續補充加入split遞迴前沿，並讓point／highlight沿用預設樣式。
@@ -36,6 +37,7 @@
 | 全域sum跨遞迴幀延續 | 比對前後runtime identity與動畫期間opacity | main／query前後身分相同，所有樣本opacity為1，未重播入退場 | 通過 |
 | compound assignment不重複副作用索引 | 編譯執行`arr[nextIndex()] += 2` | nextIndex只呼叫一次，arr[0]由3變5 | 通過 |
 | 自動事件設定跟隨檔案 | UI切換兩個選項、檢查`@asm-view`並重新RUN | 寫入false／true；重新RUN後trace仍為false／true，其他事件偏好沿用帳號預設 | 通過 |
+| Segment_Tree_easy建樹過程 | sample input編譯、trace幀數及headless Edge實際SVG | 15個輸入幀、15個父節點相加幀；父節點幀顯示兩條箭頭與算式，七筆查詢輸出不變 | 通過 |
 
 ## 小驗證與重跑方式
 ### Parser、runtime、renderer、瀏覽器與範例專項
@@ -61,7 +63,7 @@
 - 執行目錄與必要環境設定：本任務 worktree 的 algo-vis-backend，PORT=3101。
 - 完整操作：以 served trace-renderer.js 的 SHA-256 核對 worktree，POST /trace/analyze 分析 fields／hide／雙層 segment 最小程式，再讀取 algorithm.html cache 版本。
 - 預期結果：來源 hash 相符；fields=tree,lazy,sets、cellRange=true、color=AV_green；新前端版本可見。
-- 實際結果與 exit code：2026-09-20複合賦值落地更新後，停止已核對的alpha PID 11636並重啟為PID 25916。HTTP 200，frame tween trace-216；重啟後heap／Segment Tree實際瀏覽器專項2/2通過。
+- 實際結果與 exit code：2026-09-20建樹範例更新後，停止已核對的alpha PID 25916並重啟為PID 70512。HTTP 200；重啟後範例與實際瀏覽器專項4/4通過。
 - 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
 
 ### Segment Tree查詢segment消失專項
@@ -107,12 +109,21 @@
 - 實際結果與 exit code：單元與整合32/32通過；headless UI 1/1通過；JavaScript語法與diff檢查通過，exit code均為0。
 - 證據位置：tests/event-settings-source.browser.test.js、tests/view-source-compaction.test.js及tests/slide-animation-parity.test.js，納入程式commit 235f7ca4e3e13607cfb057258f8093c3589056f3。
 
+### Segment_Tree_easy建樹展示專項
+- 目的與對應條件：確認葉節點依輸入順序逐筆呈現，父節點依原演算法由下往上逐一相加，左右來源及算式在實際畫面可見。
+- 執行目錄與必要環境設定：algo-vis-backend；ASM_TEST_BASE_URL=http://127.0.0.1:3101，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree_easy.cpp與原sample input（n=15、值1～15、七筆查詢）。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js tests/heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：15個輸入幀、15個父節點相加幀；每個父節點trace具兩條箭頭；實際SVG顯示兩條具名箭頭及算式文字；查詢輸出不變。
+- 實際結果與 exit code：3101重啟後4/4通過，exit code 0；輸出仍為27／3／119／120／8／5／17。
+- 證據位置：範例與測試納入程式commit f618e1ed7a0a0caa1b0d68771b848f93e7adef3f；執行輸出只保留於本次代理工作階段。
+
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
 - 已知問題或風險：hide 的 LM／INT_MAX 對應目前以 32 位 int 最大值格式化；若未來支援自訂巨集值，需在 trace metadata 加入常數求值。
 - 相依與衝突注意：修改 parser、renderer、tween、入口 cache 與兩個範例；合併時需保留 integration 上這些共用檔案的後續版本號。heap.cpp 未修改。
 - 分支推送：已依使用者確認推送至`origin/codex/2026-09-19-alpha-segment-tree`，並以`git ls-remote`核對遠端HEAD。
-- 主代理需補驗證的情境：合併後以 Segment_Tree_easy 與 Segment_Tree 各實際播放數個根／子節點幀，確認複合文字、樣式與局部色塊；再依動畫影響範圍執行整合驗證。
+- 主代理需補驗證的情境：合併後以 Segment_Tree_easy 實際播放一個葉節點輸入幀、一個父節點相加幀與數個查詢幀，並以 Segment_Tree 確認複合文字、樣式與局部色塊；再依動畫影響範圍執行整合驗證。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
