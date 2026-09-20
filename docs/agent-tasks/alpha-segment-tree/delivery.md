@@ -7,7 +7,8 @@
 - 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a、f618e1ed7a0a0caa1b0d68771b848f93e7adef3f、6c3688075082ac1580bca25857658787589a569a、eb1337540fab4926089d2e0de409fd3e0a0bfc49、a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c、7a9f9032a96cadbc8b27c279340d2ca8e8fb275e、a712fc56e3b3a25aa68a82548e44e88666e6f122、63b78d12a4108511396a4767589bd86b9ae28bfd、8e0329c708a0ae4d13f7b24cce61c32e5efc4f98、09da3d9b4c58f0c87fe36b740aa6d0bca8c9ddca、9e8527d6d10b7bec06c9a39d71d497999d0035a2、3a7f27d939421ddbcd10361ba8d4606566e46c5b、753016cd4510b6b05eb5424fc195127b323cc6e9、9c3d570ae82267f3d9a69536d540055318507be7、766f84a0d7439466dab9ffdb57fa64ebc512b31f、cd17b89d0f6292e2ee05717417c0882038146abc、6accf3f3ffc3b88842422b7639cdfbf60fa6c582、0d9e279bf3187f471aa370cadeb8c9b357a53ecb
 - 本次追加程式修正 commit：1236ab967bb63ae4e9c7d8408d7573736a95cd2b
 - Background過渡動畫修正 commit：a345c712293a984f2d44c6aa3dd41671693ec1f8
-- 驗證時的 HEAD 與未提交修改：a345c712293a984f2d44c6aa3dd41671693ec1f8；程式驗證完成後僅更新交付文件
+- 回朔複合背景修正 commit：e25b13f568a04859bc6e2375001192b0bf2c46fd
+- 驗證時的 HEAD 與未提交修改：e25b13f568a04859bc6e2375001192b0bf2c46fd；程式驗證完成後僅更新交付文件
 - 驗證日期：2026-09-21
 
 ## 根因與修改
@@ -24,6 +25,7 @@
 - 完整Segment Tree範例：`Segment_Tree.cpp`靜默完成建樹，第一幀直接進入操作。tree以`range(1,Tsize-1)`裁去未使用補零節點，並用fields／hide在同格顯示原本的tree／lazy／sets；modify與set segment分別使用紫色及橘色。segment只在下降時split並在命中時以after移除；回溯只顯示父節點加總。query命中值另累加到tree下方answer，但函式回傳與輸出維持原演算法。
 - 融合與segment邊界：lazy／sets維持tree同格文字欄位，0與LM依hide省略；非預設欄位以條件`background`直接著色同一tree格子。當次modify／set的可分裂`@segment`仍獨立呈現。
 - 視覺去重：移除`@style ... segment`語法、renderer狀態segment物件與相關助理選項；長期狀態回到原有background機制，不再維護第二套segment身分與生命週期。
+- 回朔背景消失根因與修正：事件轉場原先只以實際繪製物件`tree`查詢樣式，沒有像renderer一樣合併`fields(tree,lazy,sets)`的來源規則，因此回朔會把持續成立的lazy／sets背景暫時寫成白色。轉場現在辨識複合欄位來源並以相同覆蓋順序合併highlight，value與index共同維持正確背景。
 - 顯示優先級：撤回格內style子層修改；獨立`@segment`恢復位於物件上方、前景箭頭下方的共用style layer，原本split入退場與具名幾何轉場保留。
 - 狀態背景與色盤：操作segment使用的`AV_magenta`維持`rgba(231,144,255,0.65)`，`AV_orange`維持`rgba(255,183,77,0.65)`；lazy／sets背景分別使用同RGB的不透明`rgb(231,144,255)`與`rgb(255,183,77)`，條件失效時隨下一幀重新計算而移除。
 - 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
@@ -231,6 +233,16 @@
 - 實際結果與exit code：語法、入口與瀏覽器專項全部通過，exit code均為0；逐幀取樣確認tree[14]的value與index全程同色，先經過白色與`rgb(231,144,255)`之間的中間色，完成320ms漸變後半透明segment才由40高度縮至0；數值同幀更新為`29,1`。
 - 3101重啟核實：先停止本輪啟動且已核對的alpha PID 39808並重啟為PID 2468；index同步修正後重啟為PID 23964；過渡動畫調整期間依序重啟為PID 10400、42504，最終重啟為PID 10496。HTTP 200，入口載入trace-frame-tween `trace-220`。
 - 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；本次依V2分級只驗證受影響的Segment Tree轉場與入口版本。
+
+### 遞迴回朔複合background持續性專項
+- 目的與對應條件：重現完整Segment Tree遞迴回朔時，條件仍成立的lazy／sets背景短暫退回白色；確認複合欄位value與index在整段轉場維持原色。
+- 執行目錄與必要環境設定：algo-vis-backend；重啟後alpha服務http://127.0.0.1:3101，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp與Segment_Tree-sample_input.txt；輸入為15個初值及使用者提供的七筆modify／set／query操作。
+- 完整指令：`node --check public/trace-frame-tween.js; node --check tests/heap-composite-segments.browser.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-name-pattern='full segment tree sample merges' tests/heap-composite-segments.browser.test.js`；`node --test tests/style-replay.browser.test.js`；`node --test tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests/segment-tree-samples.test.js`；`git diff --check`。
+- 預期結果：回朔動畫的每次取樣中，持續成立的紫色／橘色background不退白，value與index同色；既有segment交接、一般style重播及三個Segment Tree範例仍通過。
+- 實際結果與exit code：瀏覽器逐幀專項1/1、一般style重播1/1、範例3/3、入口1/1及語法檢查通過，exit code均為0；回朔幀tree[14]等持續標記在全部取樣中保持目標RGB，value與index同步。
+- 3101重啟核實：停止已核對的alpha PID 10496，從同一worktree重啟為PID 19872；HTTP 200，入口載入trace-frame-tween `trace-221`。
+- 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；依使用者指示及V2分級只做受影響的小驗證。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
