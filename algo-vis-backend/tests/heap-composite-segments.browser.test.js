@@ -32,15 +32,16 @@ test('heap fields and local segments render at root and child coordinates', {tim
           id:rect.dataset.traceSegmentId,start:+rect.dataset.traceSegmentStart,end:+rect.dataset.traceSegmentEnd,
           identity:rect.dataset.traceRuntimeIdentity,count:+rect.dataset.traceSegmentCount,
           width:+rect.getAttribute('width'),base:+cell(node).querySelector(':scope > rect').getAttribute('width'),
-          styleLayer:Boolean(rect.closest('.asm-trace-style-layer')),nestedInCell:cell(node).contains(rect)
+          styleLayer:Boolean(rect.closest('.asm-trace-style-layer')),nestedInCell:cell(node).contains(rect),
+          belowText:Boolean(rect.closest('.asm-trace-segment-layer')
+            &&(rect.closest('.asm-trace-segment-layer').compareDocumentPosition(
+              cell(node).querySelector(':scope > text')
+            )&Node.DOCUMENT_POSITION_FOLLOWING))
         }));
-        const children=[...scene.children];
         return {
           texts:[1,2,3,4].map(i=>cell(i).querySelector(':scope > text').textContent),
           fills:[2,3].map(i=>cell(i).querySelector(':scope > rect').getAttribute('fill')),
-          root:seg(1),child:seg(2),empty:seg(3),
-          styleBeforeArrows:children.findIndex(node=>node.classList.contains('asm-trace-style-layer'))
-            < children.findIndex(node=>node.classList.contains('asm-trace-foreground-arrows'))
+          root:seg(1),child:seg(2),empty:seg(3)
         };
       };
       const first=await readTree(treeFrames[0].index),second=await readTree(treeFrames[1].index);
@@ -74,7 +75,10 @@ test('heap fields and local segments render at root and child coordinates', {tim
         await new Promise(resolve=>requestAnimationFrame(resolve));
         const root=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1)?.closest('#asm-trace-root');
         const entering=root?.querySelector('.asm-trace-heap-cell-segment[data-trace-segment-node="4"]');
-        const exiting=[...(root?.querySelectorAll('.asm-trace-transition-ghost .asm-trace-heap-cell-segment')||[])]
+        const exiting=[...(root?.querySelectorAll(
+          '.asm-trace-transition-ghost.asm-trace-heap-cell-segment, '
+            +'.asm-trace-transition-ghost .asm-trace-heap-cell-segment'
+        )||[])]
           .find(rect=>rect.dataset.traceSegmentNode==='2');
         splitSamples.push({
           entering:entering?{y:+entering.getAttribute('y'),height:+entering.getAttribute('height')}:null,
@@ -102,8 +106,9 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.equal(result.first.root[0].width,result.first.root[0].base);
     assert.deepEqual(result.first.child.map(item=>[item.start,item.end,item.count]),[[2,3,4]]);
     assert.equal(result.first.child[0].width,result.first.child[0].base/2);
-    assert.ok([...result.first.root,...result.first.child].every(item=>item.styleLayer&&!item.nestedInCell));
-    assert.equal(result.first.styleBeforeArrows,true);
+    assert.ok([...result.first.root,...result.first.child].every(item=>(
+      item.styleLayer&&item.nestedInCell&&item.belowText
+    )));
     assert.deepEqual(result.first.empty,[]);
     assert.deepEqual(result.first.fills,['rgba(144, 202, 249, 0.6)','rgba(255, 183, 77, 0.65)']);
     assert.equal(result.second.texts[0],'15 / 6');
@@ -130,7 +135,9 @@ test('heap fields and local segments render at root and child coordinates', {tim
       sample.exiting&&sample.exiting.y>0
         &&sample.exiting.height>0
         &&sample.exiting.height<result.splitTransitionState.finalHeight
-    )),'removed parent segment erases from its top edge downward');
+    )),`removed parent segment erases from its top edge downward: ${JSON.stringify(
+      result.splitTransitionState.samples.filter(sample=>sample.exiting).slice(0,12)
+    )}`);
     assert.deepEqual(result.reload,result.second);
     assert.deepEqual(result.pairs,['5','0 / 5']);
     assert.deepEqual(result.tuples,['1,0,3','0,0,0']);
@@ -436,6 +443,10 @@ test('full segment tree sample keeps lazy and set style segments until their mar
       const segmentOrder=[...document.querySelectorAll(
         '#asm-trace-root .asm-trace-style-layer .asm-trace-heap-cell-segment'
       )].map(rect=>rect.classList.contains('asm-trace-state-segment')?'state':'active');
+      const segmentCellOrders=[...document.querySelectorAll(
+        '#asm-trace-root .asm-trace-segment-layer'
+      )].map(layer=>[...layer.querySelectorAll('.asm-trace-heap-cell-segment')]
+        .map(rect=>rect.classList.contains('asm-trace-state-segment')?'state':'active'));
       await player.render(unwind.index,{animatePositions:false,animateEvents:false});
       const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
       const pointerLabel=document.querySelector(
@@ -451,7 +462,7 @@ test('full segment tree sample keeps lazy and set style segments until their mar
       return {
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
         operationSegments,storedSegments,compositeTexts,separateFields,
-        persistentIdentities:[persistentBefore,persistentAfter],pushState,segmentOrder,
+        persistentIdentities:[persistentBefore,persistentAfter],pushState,segmentOrder,segmentCellOrders,
         unwindSegments,pointerLabel,pointStyleCount,answer
       };
     });
@@ -469,8 +480,10 @@ test('full segment tree sample keeps lazy and set style segments until their mar
       'pushing a stored marker removes the parent segment and creates child segments');
     assert.ok(result.segmentOrder.indexOf('state')>=0&&result.segmentOrder.indexOf('active')>=0,
       JSON.stringify(result.segmentOrder));
-    assert.ok(result.segmentOrder.indexOf('state')<result.segmentOrder.lastIndexOf('active'),
-      'stored state segments stay below the current operation segment');
+    assert.ok(result.segmentCellOrders.every(order=>(
+      !order.includes('state')||!order.includes('active')
+        ||order.lastIndexOf('state')<order.indexOf('active')
+    )),'stored state segments stay below the current operation segment in each cell');
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
     assert.deepEqual(result.separateFields,{lazy:0,sets:0});
     assert.ok(result.unwindSegments>0,'pending lazy/set markers remain visible during unrelated unwind frames');

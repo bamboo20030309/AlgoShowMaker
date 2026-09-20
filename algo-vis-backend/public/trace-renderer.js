@@ -666,7 +666,8 @@
     if (!root) return captured;
     root.querySelectorAll('[data-trace-object-key]').forEach(element => {
       const parentObject = element.parentElement?.closest?.('[data-trace-object-key]');
-      if (parentObject && root.contains(parentObject)) return;
+      const internalSegment = element.dataset.traceInternalStyle === 'segment';
+      if (parentObject && root.contains(parentObject) && !internalSegment) return;
       // Capture the top-level @text object so it can fade out. Text segments
       // remain children of that object and must not become duplicate ghosts.
       if (element.closest?.('.asm-trace-text-layer')
@@ -674,6 +675,19 @@
       const key = element.dataset.traceObjectKey;
       if (!key || captured.has(key)) return;
       const clone = element.cloneNode(true);
+      if (internalSegment) {
+        try {
+          const rootMatrix = root.getScreenCTM?.();
+          const elementMatrix = element.getScreenCTM?.();
+          if (rootMatrix && elementMatrix) {
+            const matrix = rootMatrix.inverse().multiply(elementMatrix);
+            clone.setAttribute('transform', `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`);
+          }
+        } catch (error) {
+          // The clone keeps its authored local geometry if the host cannot
+          // expose an SVG matrix (for example a detached test document).
+        }
+      }
       clone.querySelectorAll('animate, animateTransform, animateMotion').forEach(animation => animation.remove());
       [clone, ...clone.querySelectorAll('[id]')].forEach(node => node.removeAttribute?.('id'));
       clone.removeAttribute('data-trace-object-key');
@@ -1364,11 +1378,38 @@
     root.append(foreground);
   }
 
-  // Decorations are painted above objects, but below foreground arrows. Keep
-  // their authored draw-system geometry in cell-local coordinates; a cell's
-  // presented matrix (including event lift/scale) is the only motion source.
+  // Hints are painted above objects. Segments use a cell-local style sublayer
+  // between the cell background and its content, so coverage remains visible
+  // without obscuring field values or index text.
   function attachStyleVisual(root, visual, cell, kind = '') {
     if (!root?.contains(visual) || !root.contains(cell) || !cell?.getScreenCTM) return false;
+    if (kind === 'segment') {
+      let layer = [...cell.children].find(child => child.classList?.contains('asm-trace-segment-layer'));
+      if (!layer) {
+        layer = svg('g', {
+          class: 'asm-trace-style-layer asm-trace-segment-layer',
+          'data-trace-style-layer': 'segment',
+          'pointer-events': 'none'
+        });
+        const baseRect = [...cell.children].find(child => child.tagName?.toLowerCase() === 'rect');
+        cell.insertBefore(layer, baseRect?.nextSibling || cell.firstChild);
+      }
+      const wrapper = svg('g', {
+        class: 'asm-trace-style-decoration asm-trace-style-segment',
+        'pointer-events': 'none'
+      });
+      wrapper._asmStyleCell = cell;
+      wrapper.append(visual);
+      const activeSegment = [...layer.children].find(child => (
+        child.querySelector?.('.asm-trace-heap-cell-segment:not(.asm-trace-state-segment)')
+      ));
+      if (visual.classList?.contains('asm-trace-state-segment') && activeSegment) {
+        layer.insertBefore(wrapper, activeSegment);
+      } else {
+        layer.append(wrapper);
+      }
+      return true;
+    }
     const parent = visual.parentElement;
     const cellMatrix = cell.getScreenCTM();
     const parentMatrix = parent?.getScreenCTM?.();
@@ -4585,9 +4626,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-199';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-200';
   window.ASMTraceRenderers = {
-    build: 'trace-199', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-200', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
