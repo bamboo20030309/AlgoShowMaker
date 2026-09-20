@@ -48,8 +48,9 @@
 - [x] `Segment_Tree_easy_build`只包含完整建構動畫；`Segment_Tree_easy`從完整樹開始只播放查詢，兩者各自具有可直接RUN的輸入與結束幀。
 - [x] 建樹動畫放入投影片後，即使iframe剛完成顯示便切換父節點幀，左右來源數字仍完整移向目的格，不被延遲的畫面重排取消。
 - [x] 自動固定與迴圈邊界事件寫入`@asm-view`，重新RUN及重載後維持；舊檔未設定時仍沿用帳號預設。
-- [x] 完整`Segment_Tree.cpp`以新指令重寫：逐筆輸入葉節點、左右子節點相加建樹、fields／hide顯示lazy與set、segment下降分裂與命中移除、query累加answer及回溯父節點加總皆可直接播放。
+- [x] 完整`Segment_Tree.cpp`以新指令重寫：建樹不建立動畫幀；操作階段以fields／hide在tree格內顯示lazy與set，並呈現segment下降分裂、命中移除、query累加answer及回溯父節點加總。
 - [x] 完整範例保留原本特殊葉節點配置、lazy優先規則、set覆蓋規則及sample輸出；回溯幀不重新顯示已完成segment。
+- [x] 完整範例以`range(1,Tsize-1)`裁掉未使用的補零節點；modify segment為紫色，set segment為橘色。
 
 ## 驗證計畫
 - 開發代理小驗證：V2 E/F/H/J，新增parser／model／renderer局部專項；隔離服務與headless瀏覽器只跑最小fixture及兩個範例sample input；C++原輸出對照改寫前版本。
@@ -74,3 +75,4 @@
 - 2026-09-20：依使用者再次以第16幀回報，確認新開iframe不存在格內segment且補零來源動畫正常；將投影片主程式與runtime/editor iframe快取版本一併更新，避免既有頁面繼續載入修正前播放器。
 - 2026-09-20：使用者重整後仍看到舊結果；確認投影片保存的是修正前trace，且新增二元加法事件時漏增trace引擎版本。引擎版本提升至5，讓編輯動畫時自動重新RUN並在儲存後替換舊trace。
 - 2026-09-20：依使用者要求再次完整改寫既有Segment_Tree範例；建樹沿用easy版的逐筆輸入與雙來源相加，操作階段使用完整heap、複合欄位、lazy／set顏色、下降split、命中after移除及query answer，回溯只保留父節點加總動畫。
+- 2026-09-20：依使用者修正完整範例展示：移除建樹動畫，tree／lazy／sets仍融合顯示；範圍改為1至Tsize-1以裁去多餘零節點，modify／set segment分別使用紫色／橘色。

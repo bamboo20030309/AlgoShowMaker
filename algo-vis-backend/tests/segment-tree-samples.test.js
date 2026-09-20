@@ -62,11 +62,11 @@ test('Segment_Tree_easy_build is a complete standalone construction animation', 
 test('Segment_Tree uses original arrays as fields and preserves lazy/set algorithm output', async()=>{
   const {code,result,trace}=await runSample('Segment_Tree');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_modify|_draw_segment/);
-  assert.match(code,/fields\(tree,lazy,sets\), hide\(lazy=0,sets=LM\)/);
+  assert.match(code,/fields\(tree,lazy,sets\), hide\(lazy=0,\s*sets=LM\)/);
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
   assert.match(code,/with split\(now,after\)/);
   assert.match(code,/answer \+= tree\[now\]/);
-  assert.match(code,/tree\[i\] = tree\[left\] \+ tree\[right\]/);
+  assert.doesNotMatch(code,/@preset build_view|讀入第/);
   assert.equal(result.output.trim(),'12');
   const treeId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='tree');
   const answerId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='answer');
@@ -75,13 +75,10 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   assert.deepEqual(JSON.parse(JSON.stringify(options.hide.entries)),[
     {field:'lazy',value:'0'},{field:'sets',value:'LM'}
   ]);
-  assert.deepEqual(JSON.parse(JSON.stringify(options.range)),[1,32],
-    'the complete 31-node heap stays visible, including the padding leaf');
+  assert.deepEqual(JSON.parse(JSON.stringify(options.range)),[1,31],
+    'range stops before the unused padding leaf');
   const buildFrames=trace.frames.filter(frame=>frame.source?.function==='build');
-  assert.equal(buildFrames.length,32,
-    'the full sample includes initial allocation, 15 inputs, 15 parent sums and completion');
-  assert.equal(buildFrames.filter(frame=>(frame.arrows||[]).length===2).length,15,
-    'every parent is built from both visible child cells');
+  assert.equal(buildFrames.length,0,'the full sample starts after silent tree construction');
   const returnFrames=trace.frames.filter(frame=>frame.source?.function==='query'
     && (frame.arrows||[]).length===2);
   assert.ok(returnFrames.length>0,'recursive returns animate parent recomputation');

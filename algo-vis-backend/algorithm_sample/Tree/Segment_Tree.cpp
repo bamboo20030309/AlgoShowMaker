@@ -7,59 +7,31 @@ using namespace std;
 #define Hbit(X) (32-__builtin_clzll(X))
 
 vector<int> tree, lazy, sets;
-int Tmask, Tsize, Tdeep, Tcapacity, n, answer = 0;
+int Tmask, Tsize, Tdeep, n, answer = 0;
 
 // @defaults
 // @camera focus tree offset(0,40) zoom(1.02)
 // @enddefaults
 
-// 建樹時也顯示完整的 heap 容量，讓最右側補零葉節點參與父節點加總動畫。
-// @preset build_view
-// @object tree render heap with range(1,Tcapacity), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
-// @style lazy[1:Tcapacity] background rgba(231,144,255,0.65) when value != 0
-// @style sets[1:Tcapacity] background AV_orange when value != 2147483647
-// @endpreset
-
 // 操作時在樹下方顯示 query 已累加的答案。
 // @preset operation_view
-// @object tree render heap with range(1,Tcapacity), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+// @object tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
 // @object answer render cell
 // @place answer.top at tree.bottom offset(0,45)
-// @style lazy[1:Tcapacity] background rgba(231,144,255,0.65) when value != 0
-// @style sets[1:Tcapacity] background AV_orange when value != 2147483647
+// @style lazy[1:Tsize-1] background rgba(231,144,255,0.65) when value != 0
+// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
 // @endpreset
 
 void build() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
-    Tcapacity = (1 << Tdeep) - 1;
-    tree.assign(Tcapacity + 1, 0);
-    lazy.assign(Tcapacity + 1, 0);
-    sets.assign(Tcapacity + 1, LM);
+    tree.assign(1 << Tdeep, 0);
+    lazy.assign(1 << Tdeep, 0);
+    sets.assign(1 << Tdeep, LM);
 
-    // @frame use build_view
-    // @events animate off
-    // @text "先建立完整的 heap；每格依序保留 tree、lazy、sets 三個來源" at tree.top offset(0,-20)
+    for (int i = Tsize - n; i < Tsize; i++) cin >> tree[i];
 
-    for (int i = Tsize - n; i < Tsize; i++) {
-        cin >> tree[i];
-        // @frame use build_view
-        // @style tree[i] highlight
-        // @text "讀入第 ${i-(Tsize-n)+1} 個值 ${tree[i]}，放到葉節點 tree[${i}]" at tree.top offset(0,-20)
-    }
-
-    for (int i = Tsize - n - 1; i > 0; i--) {
-        int left = i << 1, right = i << 1 | 1;
-        tree[i] = tree[left] + tree[right];
-        // @frame use build_view
-        // @style tree[i] highlight,point
-        // @arrow from tree[left] to tree[i] as "left_child_sum"
-        // @arrow from tree[right] to tree[i] as "right_child_sum"
-        // @text "左右子節點 ${tree[left]} + ${tree[right]} = ${tree[i]}，得到 tree[${i}]" at tree.top offset(0,-20)
-    }
-
-    // @frame use build_view
-    // @style tree[1] highlight
-    // @text "建樹完成；之後紫色欄位表示 add 標記，橘色欄位表示 set 標記" at tree.top offset(0,-20)
+    for (int i = Tsize - n - 1; i > 0; i--)
+        tree[i] = tree[i << 1] + tree[i << 1 | 1];
 }
 
 // 保留原本的特殊葉節點排列與 lazy／set 優先關係。
@@ -94,7 +66,7 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         // @segment tree[1][L-Tmask:R-Tmask] color rgba(231,144,255,0.65) as active_range with split(now,after) when Add != 0
         // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now,after) when Set != 2147483647
         // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after) when Add == 0 and Set == 2147483647
-        // @text "整段命中，將 add ${Add} 寫入 lazy；目前 tree[${now}] = ${tree[now]}" at tree.top offset(0,-20) when Add != 0
+        // @text "整段命中，將 modify ${Add} 寫入 lazy；目前 tree[${now}] = ${tree[now]}" at tree.top offset(0,-20) when Add != 0
         // @text "整段命中，用 ${Set} 覆蓋此區段；目前 tree[${now}] = ${tree[now]}" at tree.top offset(0,-20) when Set != 2147483647
         // @text "整段命中，將 ${tree[now]} 加入 answer；目前 answer = ${answer}" at tree.top offset(0,-20) when Add == 0 and Set == 2147483647
         return tree[now];
@@ -156,7 +128,7 @@ int main() {
         // @segment tree[1][x-1:y-1] color rgba(231,144,255,0.65) as active_range when q == 1
         // @segment tree[1][x-1:y-1] color AV_orange as active_range when q == 2
         // @segment tree[1][x-1:y-1] color AV_green as active_range when q == 3
-        // @text "區間加值：將第 ${x} 到第 ${y} 個值都加上 ${k}" at tree.top offset(0,-20) when q == 1
+        // @text "modify：將第 ${x} 到第 ${y} 個值都加上 ${k}" at tree.top offset(0,-20) when q == 1
         // @text "區間設定：將第 ${x} 到第 ${y} 個值都設成 ${k}" at tree.top offset(0,-20) when q == 2
         // @text "區間查詢：計算第 ${x} 到第 ${y} 個值的總和" at tree.top offset(0,-20) when q == 3
 
@@ -171,7 +143,7 @@ int main() {
         // @frame use operation_view
         // @style tree[1] highlight when q != 3
         // @style answer highlight when q == 3
-        // @text "區間加值完成；紫色欄位保留尚未下推的 add 標記" at tree.top offset(0,-20) when q == 1
+        // @text "modify 完成；紫色欄位保留尚未下推的 lazy 標記" at tree.top offset(0,-20) when q == 1
         // @text "區間設定完成；橘色欄位保留尚未下推的 set 標記" at tree.top offset(0,-20) when q == 2
         // @text "區間查詢完成，答案是 ${answer}" at tree.top offset(0,-20) when q == 3
     }
