@@ -22,6 +22,7 @@
 - 完整Segment Tree範例：`Segment_Tree.cpp`靜默完成建樹，第一幀直接進入操作。tree以`range(1,Tsize-1)`裁去未使用補零節點，並用fields／hide在同格顯示原本的tree／lazy／sets；modify與set segment分別使用紫色及橘色。segment只在下降時split並在命中時以after移除；回溯只顯示父節點加總。query命中值另累加到tree下方answer，但函式回傳與輸出維持原演算法。
 - 融合與segment邊界：lazy／sets僅作為tree同格文字欄位，0與LM依hide省略，不另由欄位狀態生成色塊。紫色／橘色segment分別只代表當次modify／set操作範圍，沿下降split並在命中後移除。
 - 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
+- 舊trace同步：capture-only屬於已保存的frame資料，單純重整仍會播放舊結果。ENGINE_VERSION提升至6，trace-provenance快取提升至trace-7，投影片runtime/editor提升至trace-runtime-39；開啟舊動畫編輯時自動重建並可儲存替換。
 - 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。
 - 3101既有頁面未同步：服務重啟不會替已開啟的瀏覽器iframe重新載入JavaScript，且前次修正未同步提升投影片runtime URL版本，因此既有頁面仍可保留舊播放器。slides.js提升至parallel-merge-197，runtime/editor iframe提升至trace-runtime-37；重新載入投影片頁面後會明確取得新版。
 - 重整後仍舊的根因與修正：投影片保存完整traceDocument，重新整理只會重播保存結果。二元加法新增`binaryOperation`與兩個來源target時漏增ENGINE_VERSION，造成同程式／輸入的舊trace被誤判為current。ENGINE_VERSION現為5；編輯器載入version 4時會自動RUN並遷移Studio設定，使用者儲存後主投影片取得包含新事件的trace。入口同步提升至parallel-merge-198、trace-runtime-38及trace-provenance-6。
@@ -175,6 +176,14 @@
 - 預期結果：範例3/3與瀏覽器專項1/1通過；複合欄位文字與操作segment可見，回溯segment為0，輸出仍為12。
 - 實際結果與exit code：範例3/3、瀏覽器專項1/1、語法檢查通過，exit code均為0；capture-only保留lazy／sets，實際SVG獨立lazy／sets物件數均為0。
 - 證據位置：Segment_Tree.cpp與兩個直接相關測試；執行輸出只保留於本次代理工作階段。
+
+### 舊trace自動重建專項
+- 目的與對應條件：確保保存於投影片的舊capture-only資料不會在重整後繼續顯示獨立lazy／sets。
+- 執行目錄與必要環境設定：algo-vis-backend；隔離服務http://127.0.0.1:3199與獨立headless Edge。
+- 完整指令：`node --test tests/provenance.test.js tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3199'; node --test --test-concurrency=1 tests/binary-addition-slide.browser.test.js`。
+- 預期結果：舊引擎版本判定outdated，編輯器自動RUN為engineVersion 6並保存回runtime；入口載入新版cache key。
+- 實際結果與exit code：provenance／入口6/6、舊投影片重建瀏覽器1/1通過，exit code均為0。
+- 證據位置：trace-provenance.js、三個HTML入口、slides.js及直接相關測試。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。

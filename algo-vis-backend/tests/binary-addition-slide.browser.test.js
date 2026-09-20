@@ -63,7 +63,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     ));
     let runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
     assert.ok(runtime, 'algorithm slide runtime iframe loaded');
-    assert.match(runtime.url(), /v=trace-runtime-38/);
+    assert.match(runtime.url(), /v=trace-runtime-39/);
     assert.equal(await runtime.evaluate(() => (
       window.ASMTracePlayer.getDocument().frames.some(frame => (
         (frame.events || []).some(event => event.binaryOperation === '+')
@@ -73,7 +73,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     await slidePage.waitForFunction(() => (
       !document.getElementById('algorithmEditorModal').hidden
       && document.getElementById('algorithmEditorFrame')?.contentWindow?.ASMTracePlayer
-        ?.getDocument?.()?.provenance?.engineVersion === 5
+        ?.getDocument?.()?.provenance?.engineVersion === 6
     ), null, { timeout: 30000 });
     const editor = slidePage.frames().find(frame => frame.url().includes('asmEmbed=editor'));
     assert.ok(editor, 'algorithm slide editor iframe loaded');
@@ -87,7 +87,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     await slidePage.waitForFunction(() => {
       const player = document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer;
       const documentTrace = player?.getDocument?.();
-      return documentTrace?.provenance?.engineVersion === 5
+      return documentTrace?.provenance?.engineVersion === 6
         && documentTrace.frames.some(frame => (
           (frame.events || []).some(event => event.binaryOperation === '+')
         ));

@@ -79,3 +79,4 @@
 - 2026-09-20：依使用者修正完整範例展示：移除建樹動畫，tree／lazy／sets仍融合顯示；範圍改為1至Tsize-1以裁去多餘零節點，modify／set segment分別使用紫色／橘色。
 - 2026-09-20：依使用者確認融合定義：lazy／sets只進入tree格子文字，不額外生成色塊；移除誤加的欄位狀態segment，保留當次modify／set操作範圍segment。
 - 2026-09-20：重現lazy／sets仍以獨立陣列顯示；原因是欄位上的`@style`解除capture-only。改為複合欄位style只合併到主要tree格子，不建立獨立物件。
+- 2026-09-20：capture-only契約變更需重建既有trace；追蹤引擎版本提升至6並更新投影片iframe快取版本，使舊投影片進入編輯時自動RUN。

@@ -13,7 +13,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(sources.indexOf('trace-camera.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(sources.indexOf('algorithm-animation.js') < sources.indexOf('trace-editor.js'));
   for (const mode of ['runtime', 'editor']) {
-    assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-38'));
+    assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-39'));
   }
   assert.ok(read('front.js').includes("if (!new URLSearchParams(window.location.search).has('asmEmbed'))"),
     'embedded animation surfaces wait for the parent payload instead of painting the bundled sample');
@@ -45,7 +45,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=parallel-merge-198'));
+  assert.ok(slides.includes('slides.js?v=parallel-merge-199'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
   assert.ok(!slides.includes('id="deckCacheDialog"'));
@@ -93,7 +93,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-studio.js?v=trace-120'));
   assert.ok(html.includes('front.js?v=random-id-33'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
-  assert.ok(html.includes('trace-provenance.js?v=trace-6'));
+  assert.ok(html.includes('trace-provenance.js?v=trace-7'));
   assert.ok(html.includes('trace.css?v=trace-36'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';
   assert.match(codeHighlight, /background-color:\s*rgba\(255,\s*214,\s*10,\s*0\.48\)/);
