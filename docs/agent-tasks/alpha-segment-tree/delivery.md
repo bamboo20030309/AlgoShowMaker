@@ -21,6 +21,7 @@
 - 二元加法動畫：instrumenter辨識`target = left + right`，在左右運算元為可見純量或安全索引格時保存兩個來源target；播放器建立兩個純文字transfer並以相同進度移向目的值，落地時同幀移除兩者並提交結果。Segment_Tree_easy的父節點建構改為`tree[i] = tree[left] + tree[right]`以使用此行為；演算法與輸出不變。
 - 完整Segment Tree範例：`Segment_Tree.cpp`靜默完成建樹，第一幀直接進入操作。tree以`range(1,Tsize-1)`裁去未使用補零節點，並用fields／hide在同格顯示原本的tree／lazy／sets；modify與set segment分別使用紫色及橘色。segment只在下降時split並在命中時以after移除；回溯只顯示父節點加總。query命中值另累加到tree下方answer，但函式回傳與輸出維持原演算法。
 - 融合與segment邊界：lazy／sets僅作為tree同格文字欄位，0與LM依hide省略，不另由欄位狀態生成色塊。紫色／橘色segment分別只代表當次modify／set操作範圍，沿下降split並在命中後移除。
+- 視覺去重：移除operation_view內對全部非預設lazy／sets套用的常駐background；融合欄位只顯示文字，紫色／橘色只由當次modify／set操作segment呈現。下推步驟中的局部highlight保留，用於指出本幀受影響的子節點。
 - 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
 - 舊trace同步：capture-only屬於已保存的frame資料，單純重整仍會播放舊結果。ENGINE_VERSION提升至6，trace-provenance快取提升至trace-7，投影片runtime/editor提升至trace-runtime-39；開啟舊動畫編輯時自動重建並可儲存替換。
 - 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。

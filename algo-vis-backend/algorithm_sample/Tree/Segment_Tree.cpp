@@ -18,8 +18,6 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @object tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
 // @object answer render cell
 // @place answer.top at tree.bottom offset(0,45)
-// @style lazy[1:Tsize-1] background rgba(231,144,255,0.65) when value != 0
-// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
 // @endpreset
 
 void build() {
