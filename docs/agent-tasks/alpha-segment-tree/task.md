@@ -78,3 +78,4 @@
 - 2026-09-20：依使用者要求再次完整改寫既有Segment_Tree範例；建樹沿用easy版的逐筆輸入與雙來源相加，操作階段使用完整heap、複合欄位、lazy／set顏色、下降split、命中after移除及query answer，回溯只保留父節點加總動畫。
 - 2026-09-20：依使用者修正完整範例展示：移除建樹動畫，tree／lazy／sets仍融合顯示；範圍改為1至Tsize-1以裁去多餘零節點，modify／set segment分別使用紫色／橘色。
 - 2026-09-20：依使用者確認融合定義：lazy／sets只進入tree格子文字，不額外生成色塊；移除誤加的欄位狀態segment，保留當次modify／set操作範圍segment。
+- 2026-09-20：重現lazy／sets仍以獨立陣列顯示；原因是欄位上的`@style`解除capture-only。改為複合欄位style只合併到主要tree格子，不建立獨立物件。

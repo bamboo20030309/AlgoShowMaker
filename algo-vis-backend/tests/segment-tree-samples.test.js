@@ -69,6 +69,8 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   assert.doesNotMatch(code,/@preset build_view|讀入第/);
   assert.equal(result.output.trim(),'12');
   const treeId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='tree');
+  const lazyId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='lazy');
+  const setsId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='sets');
   const answerId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='answer');
   const options=trace.frames.map(frame=>frame.rendererOptions?.[treeId]).find(value=>value?.fields);
   assert.deepEqual(JSON.parse(JSON.stringify(options.fields.names)),['tree','lazy','sets']);
@@ -77,6 +79,9 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(options.range)),[1,31],
     'range stops before the unused padding leaf');
+  assert.ok(trace.frames.every(frame=>(frame.captureOnlyVariableIds||[]).includes(lazyId)
+      &&(frame.captureOnlyVariableIds||[]).includes(setsId)),
+    'composite lazy and sets fields remain capture-only even when styled');
   const buildFrames=trace.frames.filter(frame=>frame.source?.function==='build');
   assert.equal(buildFrames.length,0,'the full sample starts after silent tree construction');
   const returnFrames=trace.frames.filter(frame=>frame.source?.function==='query'

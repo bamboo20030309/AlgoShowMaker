@@ -358,6 +358,10 @@ test('full segment tree sample shows lazy fields and unwinds without segments', 
       const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
       const compositeTexts=[...tree.querySelectorAll('[data-trace-index] > text:not([data-trace-content-role="index"])')]
         .map(node=>node.textContent);
+      const separateFields={
+        lazy:document.querySelectorAll(`[data-trace-variable="${byName.lazy}"]`).length,
+        sets:document.querySelectorAll(`[data-trace-variable="${byName.sets}"]`).length
+      };
       await player.render(unwind.index,{animatePositions:false,animateEvents:false});
       const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
       await player.render(doc.frames.length-1,{animatePositions:false,animateEvents:false});
@@ -366,12 +370,13 @@ test('full segment tree sample shows lazy fields and unwinds without segments', 
       )].at(-1)?.textContent;
       return {
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
-        operationSegments,compositeTexts,unwindSegments,answer
+        operationSegments,compositeTexts,separateFields,unwindSegments,answer
       };
     });
     assert.equal(result.buildFrames,0);
     assert.ok(result.operationSegments>0);
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
+    assert.deepEqual(result.separateFields,{lazy:0,sets:0});
     assert.equal(result.unwindSegments,0);
     assert.equal(result.answer,'12');
     assert.deepEqual(errors,[]);

@@ -21,6 +21,7 @@
 - 二元加法動畫：instrumenter辨識`target = left + right`，在左右運算元為可見純量或安全索引格時保存兩個來源target；播放器建立兩個純文字transfer並以相同進度移向目的值，落地時同幀移除兩者並提交結果。Segment_Tree_easy的父節點建構改為`tree[i] = tree[left] + tree[right]`以使用此行為；演算法與輸出不變。
 - 完整Segment Tree範例：`Segment_Tree.cpp`靜默完成建樹，第一幀直接進入操作。tree以`range(1,Tsize-1)`裁去未使用補零節點，並用fields／hide在同格顯示原本的tree／lazy／sets；modify與set segment分別使用紫色及橘色。segment只在下降時split並在命中時以after移除；回溯只顯示父節點加總。query命中值另累加到tree下方answer，但函式回傳與輸出維持原演算法。
 - 融合與segment邊界：lazy／sets僅作為tree同格文字欄位，0與LM依hide省略，不另由欄位狀態生成色塊。紫色／橘色segment分別只代表當次modify／set操作範圍，沿下降split並在命中後移除。
+- 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
 - 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。
 - 3101既有頁面未同步：服務重啟不會替已開啟的瀏覽器iframe重新載入JavaScript，且前次修正未同步提升投影片runtime URL版本，因此既有頁面仍可保留舊播放器。slides.js提升至parallel-merge-197，runtime/editor iframe提升至trace-runtime-37；重新載入投影片頁面後會明確取得新版。
 - 重整後仍舊的根因與修正：投影片保存完整traceDocument，重新整理只會重播保存結果。二元加法新增`binaryOperation`與兩個來源target時漏增ENGINE_VERSION，造成同程式／輸入的舊trace被誤判為current。ENGINE_VERSION現為5；編輯器載入version 4時會自動RUN並遷移Studio設定，使用者儲存後主投影片取得包含新事件的trace。入口同步提升至parallel-merge-198、trace-runtime-38及trace-provenance-6。
@@ -47,7 +48,7 @@
 | 二元加法雙來源動畫 | 純量／陣列trace事件與Segment_Tree_easy逐requestAnimationFrame取樣 | `total=a+b`與`tree[parent]=tree[left]+tree[right]`皆保存左右來源；13與14同步移向tree[14]，目的值保持0直到落地，同一更新移除兩個transfer並顯示27 | 通過 |
 | 投影片內的二元加法動畫 | 將使用者建樹程式編譯後存入獨立投影片deck，iframe剛完成幾何準備便切到第16幀第一個父節點 | runtime為trace-runtime-38；播放計畫維持1660ms；15與補零來源0的純文字transfer可取樣，抵達前tree[15]仍為0；實際heap-cell-segment數量始終為0 | 通過 |
 | 舊投影片trace自動重建與儲存同步 | 將同程式trace改為engineVersion 4並移除全部binaryOperation事件，開啟編輯動畫後儲存 | 編輯器自動重建為engineVersion 5並恢復二元加法事件；儲存後runtime取得新版，第16幀15與0的轉場正常且segment數量為0 | 通過 |
-| lazy／sets融合與操作segment分離 | 完整Segment Tree trace及headless Edge實際SVG | 非預設lazy／sets顯示於tree同格文字；操作幀有紫色／橘色segment，回溯幀無segment；未從欄位狀態額外生成色塊 | 通過 |
+| lazy／sets融合與操作segment分離 | 完整Segment Tree trace及headless Edge實際SVG | 非預設lazy／sets顯示於tree同格文字；獨立lazy／sets物件數皆為0；操作幀有紫色／橘色segment，回溯幀無segment | 通過 |
 
 ## 小驗證與重跑方式
 ### Parser、runtime、renderer、瀏覽器與範例專項
@@ -171,7 +172,7 @@
 - 測試資料／fixture：Segment_Tree.cpp及Segment_Tree-sample_input.txt。
 - 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3199'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js`；`node --test --test-concurrency=1 --test-name-pattern='full segment tree sample shows lazy fields' tests/heap-composite-segments.browser.test.js`；`node --check trace-instrumenter.js; node --check public/trace-renderer.js; git diff --check`。
 - 預期結果：範例3/3與瀏覽器專項1/1通過；複合欄位文字與操作segment可見，回溯segment為0，輸出仍為12。
-- 實際結果與exit code：範例3/3、瀏覽器專項1/1、語法檢查通過，exit code均為0。
+- 實際結果與exit code：範例3/3、瀏覽器專項1/1、語法檢查通過，exit code均為0；capture-only保留lazy／sets，實際SVG獨立lazy／sets物件數均為0。
 - 證據位置：Segment_Tree.cpp與兩個直接相關測試；執行輸出只保留於本次代理工作階段。
 
 ## 剩餘事項與合併注意

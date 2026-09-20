@@ -1631,6 +1631,9 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     prepareDrawing(source, analysis, style, target);
     const targetVariable = resolveVariable(style.targetName, style.from);
     if (!targetVariable) throw new Error(`第 ${style.line} 行的 @style 找不到目標變數：${style.targetName}`);
+    const compositeFieldIds = new Set((target.objects || []).flatMap(object => (
+      object.rendererOptions?.fields?.variableIds?.slice(1) || []
+    )));
 
     const ensureCaptured = (name, visible = false) => {
       if (!name || TRACE_STYLE_LOCALS.has(name) || drawingLocal(style, name) && !visible) return;
@@ -1639,9 +1642,10 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
       const alreadyCaptured = target.variables.some(existing => existing.id === variable.id);
       if (!alreadyCaptured) target.variables.push(variable);
       if (!target.names.includes(name)) target.names.push(name);
-      if (visible) {
+      if (visible && !compositeFieldIds.has(variable.id)) {
         target.captureOnlyVariableIds = target.captureOnlyVariableIds.filter(id => id !== variable.id);
-      } else if (!alreadyCaptured && !target.captureOnlyVariableIds.includes(variable.id)) {
+      } else if ((!alreadyCaptured || compositeFieldIds.has(variable.id))
+        && !target.captureOnlyVariableIds.includes(variable.id)) {
         target.captureOnlyVariableIds.push(variable.id);
       }
     };
