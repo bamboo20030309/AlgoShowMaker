@@ -473,7 +473,15 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         await new Promise(resolve=>requestAnimationFrame(resolve));
         const currentTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
         persistentUnwindMarks.forEach(mark=>{
-          const rect=currentTree?.querySelector(`[data-trace-index="${mark.node}"] > rect`);
+          const treeKey=currentTree?.dataset?.traceObjectKey;
+          const root=currentTree?.closest('#asm-trace-root');
+          // Direct event participants temporarily move into the animation
+          // effect layer. Follow the stable cell key so the assertion samples
+          // the visible cell while it is promoted out of the tree group.
+          const rect=currentTree?.querySelector(`[data-trace-index="${mark.node}"] > rect`)
+            ||(treeKey?root?.querySelector(
+              `[data-trace-object-key="${CSS.escape(`${treeKey}#${mark.node}`)}"] > rect`
+            ):null);
           const indexRect=currentTree?.querySelector(`[data-trace-index-label="${mark.node}"] > rect`);
           unwindSamples.push({
             node:mark.node,
@@ -557,8 +565,10 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     assert.ok(result.setBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
     assert.ok(result.unwindBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
     assert.ok(result.unwindSamples.length>0,JSON.stringify(result));
-    assert.ok(result.unwindSamples.every(sample=>sample.background===sample.expected
-      &&sample.indexBackground===sample.expected),JSON.stringify(result.unwindSamples));
+    const unwindMismatches=result.unwindSamples.filter(sample=>(
+      sample.background!==sample.expected||sample.indexBackground!==sample.expected
+    ));
+    assert.deepEqual(unwindMismatches,[]);
     assert.equal(result.stateSegments,0);
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
     assert.deepEqual(result.separateFields,{lazy:0,sets:0});

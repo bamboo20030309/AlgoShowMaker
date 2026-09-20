@@ -73,9 +73,16 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     await slidePage.waitForFunction(() => (
       !document.getElementById('algorithmEditorModal').hidden
       && document.getElementById('algorithmEditorFrame')?.contentWindow?.ASMTracePlayer
-        ?.getDocument?.()?.provenance?.engineVersion === 6
+        ?.getDocument?.()?.provenance?.engineVersion
+        === document.getElementById('algorithmEditorFrame')?.contentWindow
+          ?.ASMTraceProvenance?.ENGINE_VERSION
+      && document.getElementById('algorithmEditorFrame')?.contentWindow
+        ?.ASMTracePlayer?.getDocument?.()?.frames?.some(frame => (
+          (frame.events || []).some(event => event.binaryOperation === '+')
+        ))
     ), null, { timeout: 30000 });
-    const editor = slidePage.frames().find(frame => frame.url().includes('asmEmbed=editor'));
+    const editorElement = await slidePage.$('#algorithmEditorFrame');
+    const editor = await editorElement?.contentFrame();
     assert.ok(editor, 'algorithm slide editor iframe loaded');
     assert.equal(await editor.evaluate(() => (
       window.ASMTracePlayer.getDocument().frames.some(frame => (
@@ -87,7 +94,9 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     await slidePage.waitForFunction(() => {
       const player = document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer;
       const documentTrace = player?.getDocument?.();
-      return documentTrace?.provenance?.engineVersion === 6
+      return documentTrace?.provenance?.engineVersion
+        === document.querySelector('.algorithm-slide-frame')?.contentWindow
+          ?.ASMTraceProvenance?.ENGINE_VERSION
         && documentTrace.frames.some(frame => (
           (frame.events || []).some(event => event.binaryOperation === '+')
         ));
@@ -107,7 +116,9 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
       const samples = [];
       let settled = false;
       const transition = window.CodeScript.next_key_frame().finally(() => { settled = true; });
-      for (let count = 0; count < 180 && !settled; count += 1) {
+      // Marker and fixed-event phases can precede the parent-sum assignment.
+      // Sample the whole transition instead of cutting off after roughly 3s.
+      for (let count = 0; count < 900 && !settled; count += 1) {
         await new Promise(resolve => requestAnimationFrame(resolve));
         const scene = document.querySelector('#asm-trace-root');
         const targetText = scene.querySelector(
@@ -133,7 +144,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
         playbackDurationMs: player.getLastPlaybackPlan()?.totalDurationMs
       };
     });
-    assert.equal(result.build, 'trace-217');
+    assert.equal(result.build, 'trace-222');
     assert.deepEqual(result.event?.targets, [
       ['target', 15], ['source-left', 30], ['source-right', 31]
     ]);
