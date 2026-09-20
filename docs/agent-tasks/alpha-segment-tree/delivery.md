@@ -74,6 +74,7 @@
 - 完整操作：以 served trace-renderer.js 的 SHA-256 核對 worktree，POST /trace/analyze 分析 fields／hide／雙層 segment 最小程式，再讀取 algorithm.html cache 版本。
 - 預期結果：來源 hash 相符；fields=tree,lazy,sets、cellRange=true、color=AV_green；新前端版本可見。
 - 實際結果與 exit code：2026-09-20動畫拆分後，停止已核對的alpha PID 4668並重啟為PID 4472。HTTP 200；重啟後範例3/3與兩個獨立動畫瀏覽器案例2/2通過。
+- 持續segment更新後：停止已核對的舊alpha PID 53472，從本worktree重啟為PID 4568；HTTP 200。`/trace/analyze`解析7個frame、14個狀態型segment描述（來源lazy／sets），served renderer含dynamicCells支援；3101瀏覽器專項1/1通過。
 - 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
 
 ### Segment Tree查詢segment消失專項
