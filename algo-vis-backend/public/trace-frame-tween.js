@@ -2310,6 +2310,7 @@
     const initialBindings = (replayPlan?.checkpoints || [])
       .find(checkpoint => checkpoint.visualBindingsBefore)?.visualBindingsBefore || {};
     const initialPaints = new Map();
+    const previousIdentityKeys = previousKeysByRuntimeIdentity(options.previousObjects);
     const previousPaint = (track, isIndex, fallback) => {
       if (initialPaints.has(track)) return initialPaints.get(track);
       let key = isIndex
@@ -2318,8 +2319,25 @@
       if (!isIndex && swapPaintStarts.has(key)) {
         key = Object.keys(initialBindings).find(source => initialBindings[source] === key) || key;
       }
-      const previous = options.previousObjects?.get?.(key)
-        || (typeof CSS !== 'undefined' ? previousVisualElement(options.previousObjects, key || '') : null);
+      const currentElement = options.currentElements?.get?.(track.key)
+        || options.currentElements?.get?.(String(track.key).replace(/:index$/, ''));
+      const currentTop = currentElement?.closest?.('.asm-trace-object') || currentElement;
+      const currentTopKey = String(currentTop?.dataset?.traceObjectKey || '');
+      const sourceKey = previousAliasKey(
+        key,
+        currentTopKey,
+        currentTop,
+        options.previousPlacements,
+        previousIdentityKeys
+      );
+      // Reference parameters give one container a different variable key in
+      // each function. Resolve the previous paint through the container's
+      // runtime identity so unchanged focus/background styling does not restart
+      // from the default white color at a function boundary.
+      const previous = options.previousObjects?.get?.(sourceKey)
+        || (typeof CSS !== 'undefined'
+          ? previousVisualElement(options.previousObjects, sourceKey || key || '')
+          : null);
       const rect = previous?.querySelector?.(':scope > rect');
       const paint = { fill: rect?.getAttribute('fill') || fallback.fill,
         opacity: rect?.getAttribute('fill-opacity') || fallback.opacity };
@@ -6677,10 +6695,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-213';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-214';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-213', play, cancel, updateEventAvailability,
+    build: 'trace-214', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
