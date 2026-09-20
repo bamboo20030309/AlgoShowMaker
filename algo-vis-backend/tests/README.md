@@ -115,7 +115,7 @@ keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
 - fixtures/insertion.cpp：key 取值、右移、j--、回填。
 - keep-directives：`@keep` 的來源位置／綁定繼承、`offset` 單獨微調、手動位置覆蓋與樣式保存。
 - 共用 fixtures/sorting.json：6 個元素，輸入 5 7 2 1 9 4；結果 1 2 4 5 7 9。
-- assignment-indices：事件發生時的索引、不可重複執行索引函式，以及`sum += tree[now]`的before／after與可見來源格資料。
+- assignment-indices：事件發生時的索引、不可重複執行索引函式、`sum += tree[now]`的before／after與來源格，以及`total = a + b`／`tree[parent] = tree[left] + tree[right]`的雙來源資料。
 - unresolved-markers：array/heap/stack 的未知指標、range、越界與取得有效值。
 - heap-marker-assignment：`largest = l/r` 可直接用事件快照移動 largest，
   不要求 l/r 有自己的畫面物件；真正缺少目的指標時仍略過。
