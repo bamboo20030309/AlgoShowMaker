@@ -1,22 +1,16 @@
-// Segment_Tree_easy Sample
+// Segment_Tree_easy Query Sample
 #include <bits/stdc++.h>
 using namespace std;
 
-#define pb push_back
 #define int int
-#define LM INT_MAX
 #define Hbit(X) (32-__builtin_clzll(X))
 
-vector<int> tree, lazy, sets;
+vector<int> tree;
 int Tmask, Tsize, Tdeep, Tcapacity, n, sum = 0;
 
 // @defaults
 // @camera focus tree offset(0,35) zoom(1.05)
 // @enddefaults
-
-// @preset build_view
-// @object tree render heap with range(1,Tcapacity)
-// @endpreset
 
 // @preset query_view
 // @object tree render heap with range(1,Tsize-1)
@@ -24,30 +18,14 @@ int Tmask, Tsize, Tdeep, Tcapacity, n, sum = 0;
 // @place sum.top at tree.bottom offset(0,45)
 // @endpreset
 
-int rule(int a, int b) { return a + b; }
-
-void build() {
+// 先完成資料建構，不在查詢動畫中逐步播放。
+void build_tree() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
     Tcapacity = (1 << Tdeep) - 1;
     tree.assign(Tcapacity + 1, 0);
-    lazy.assign(Tcapacity + 1, 0);
-    sets.assign(Tcapacity + 1, LM);
-    for (int i = Tsize - n; i < Tsize; i++) {
-        cin >> tree[i];
-        // @frame use build_view
-        // @style tree[i] highlight
-        // @text "讀入第 ${i-(Tsize-n)+1} 個值 ${tree[i]}，放到葉節點 tree[${i}]" at tree.top offset(0,-20)
-    }
-    for (int i = Tsize - n - 1; i > 0; i--) {
-        int left = i << 1, right = i << 1 | 1;
-        tree[i] = tree[left] + tree[right];
-        // @frame use build_view
-        // @style tree[i] highlight
-        // @style tree[left,right] point
-        // @arrow from tree[left] to tree[i] as "left_child_sum"
-        // @arrow from tree[right] to tree[i] as "right_child_sum"
-        // @text "左右子節點 ${tree[left]} + ${tree[right]} = ${tree[i]}\n因此得到 tree[${i}]" at tree.top offset(0,-20)
-    }
+    for (int i = Tsize - n; i < Tsize; i++) cin >> tree[i];
+    for (int i = Tsize - n - 1; i > 0; i--)
+        tree[i] = tree[i << 1] + tree[i << 1 | 1];
 }
 
 // 保留原本的特殊葉節點排列：根區間是 [Tmask, 2*Tmask-1]。
@@ -71,11 +49,14 @@ void query(int l, int r, int L, int R, int now) {
 }
 
 int main() {
-    int m, q, x, y, k;
+    int m, x, y;
     cin >> n >> m;
-    build();
+    build_tree();
+
     // @frame use query_view
-    // @text "所有父節點都已由左右子節點相加完成，接著開始區間查詢" at tree.top offset(0,-20)
+    // @events animate off
+    // @text "線段樹已建構完成，接著只播放區間查詢" at tree.top offset(0,-20)
+
     for (int i = 0; i < m; i++) {
         cin >> x >> y;
         sum = 0;

@@ -139,7 +139,88 @@ test('heap fields and local segments render at root and child coordinates', {tim
   } finally {await browser.close();}
 });
 
-test('segment tree descends with segments, removes accepted pieces and accumulates sum', {timeout:60000}, async () => {
+test('standalone segment tree build animates every input and parent sum', {timeout:60000}, async () => {
+  const base=process.env.ASM_TEST_BASE_URL;
+  assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree_easy_build.cpp'),'utf8')
+      .replace(/\r\n?/g,'\n');
+    await page.evaluate(code=>{
+      ace.edit('editor').setValue(code,-1);
+      document.querySelector('#inputArea').value='15\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15\n';
+    },code);
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    const result=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
+      const buildFrames=doc.frames.map((frame,index)=>({frame,index}))
+        .filter(({frame})=>frame.source?.function==='build');
+      const firstInput=buildFrames[1];
+      const parentBuilds=buildFrames.filter(({frame})=>(frame.arrows||[]).length===2);
+      const parentBuild=parentBuilds[1]||parentBuilds[0];
+      await player.render(firstInput.index,{animatePositions:false,animateEvents:false});
+      const firstInputText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
+      const parentText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      const arrowCount=document.querySelectorAll('#asm-trace-root .asm-trace-arrow').length;
+      const binaryEvent=(parentBuild.frame.events||[]).find(event=>event.binaryOperation==='+');
+      const binaryTarget=binaryEvent?.targets?.find(target=>target.role==='target')?.resolvedIndex;
+      await player.render(parentBuild.index-1,{animatePositions:false,animateEvents:false});
+      const samples=[];
+      let settled=false;
+      const transition=player.render(parentBuild.index).finally(()=>{settled=true;});
+      for(let count=0;count<180&&!settled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const scene=document.querySelector('#asm-trace-root');
+        const targetText=scene.querySelector(
+          `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
+        )?.querySelector('text:not([data-trace-content-role="index"])');
+        const transfers=[...scene.querySelectorAll('.asm-trace-assign-transfer-value')];
+        samples.push({
+          targetValue:targetText?.textContent,
+          transferValues:transfers.map(item=>item.querySelector('text')?.textContent).sort(),
+          transferRects:transfers.reduce((sum,item)=>sum+item.querySelectorAll('rect').length,0)
+        });
+      }
+      await transition;
+      const binaryFinal=document.querySelector('#asm-trace-root')?.querySelector(
+        `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
+      )?.querySelector('text:not([data-trace-content-role="index"])')?.textContent;
+      const finalFrame=buildFrames.at(-1);
+      await player.render(finalFrame.index,{animatePositions:false,animateEvents:false});
+      const finalText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      return {
+        frameCount:buildFrames.length,
+        firstInputText,parentText,arrowCount,
+        binaryEvent:{operation:binaryEvent?.binaryOperation,target:binaryTarget},
+        samples,binaryFinal,finalText,
+        queryFrames:doc.frames.filter(frame=>frame.source?.function==='query').length
+      };
+    });
+    assert.equal(result.frameCount,32);
+    assert.match(result.firstInputText,/讀入第 1 個值 1/);
+    assert.match(result.parentText,/左右子節點/);
+    assert.equal(result.arrowCount,2);
+    assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
+    const transfers=result.samples.filter(sample=>sample.transferValues.length===2);
+    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])));
+    assert.ok(transfers.every(sample=>sample.transferRects===0));
+    assert.ok(transfers.some(sample=>sample.targetValue==='0'));
+    assert.equal(transfers.some(sample=>sample.targetValue==='27'),false);
+    assert.equal(result.binaryFinal,'27');
+    assert.match(result.finalText,/根節點的值是 120/);
+    assert.equal(result.queryFrames,0);
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});
+
+test('standalone segment tree query descends, removes accepted pieces and accumulates sum', {timeout:60000}, async () => {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -160,42 +241,6 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
       const sumId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='sum');
-      const buildFrames=doc.frames.map((frame,index)=>({frame,index}))
-        .filter(({frame})=>frame.source?.function==='build');
-      const leafBuild=buildFrames[0];
-      const parentBuilds=buildFrames.filter(({frame})=>(frame.arrows||[]).length===2);
-      const parentBuild=parentBuilds[1]||parentBuilds[0];
-      await player.render(leafBuild.index,{animatePositions:false,animateEvents:false});
-      const leafBuildText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
-      await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
-      const parentBuildText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
-      const parentBuildArrowNodes=[...document.querySelectorAll('#asm-trace-root .asm-trace-arrow')]
-        .map(arrow=>({id:arrow.dataset.traceArrow,name:arrow.dataset.traceArrowName}));
-      const binaryEvent=(parentBuild.frame.events||[]).find(event=>event.binaryOperation==='+');
-      const binaryTarget=binaryEvent?.targets?.find(target=>target.role==='target')?.resolvedIndex;
-      await player.render(parentBuild.index-1,{animatePositions:false,animateEvents:false});
-      const binarySamples=[];
-      let binarySettled=false;
-      const binaryTransition=player.render(parentBuild.index).finally(()=>{binarySettled=true;});
-      for(let count=0;count<180&&!binarySettled;count++){
-        await new Promise(resolve=>requestAnimationFrame(resolve));
-        const scene=document.querySelector('#asm-trace-root');
-        const targetText=scene.querySelector(
-          `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
-        )
-          ?.querySelector('text:not([data-trace-content-role="index"])');
-        const transfers=[...scene.querySelectorAll('.asm-trace-assign-transfer-value')];
-        binarySamples.push({
-          targetValue:targetText?.textContent,
-          transferValues:transfers.map(item=>item.querySelector('text')?.textContent).sort(),
-          transferRects:transfers.reduce((sum,item)=>sum+item.querySelectorAll('rect').length,0)
-        });
-      }
-      await binaryTransition;
-      const binaryFinal=document.querySelector('#asm-trace-root')?.querySelector(
-        `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
-      )
-        ?.querySelector('text:not([data-trace-content-role="index"])')?.textContent;
       const queryFrames=doc.frames.map((frame,index)=>({frame,index})).filter(({frame})=>frame.segments?.length);
       const now=frame=>Number(window.ASMTraceRules.resolveExpression(doc,frame,'now'));
       const deepest=Math.max(...queryFrames.map(({frame})=>now(frame)).filter(Number.isFinite));
@@ -244,13 +289,6 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       const sum=scene.querySelector(`[data-trace-variable="${sumId}"]`);
       const sumCell=sum?.querySelector('[data-trace-index="0"]');
       return {
-        leafBuildText,
-        parentBuildText,
-        parentBuildArrowTrace:parentBuild.frame.arrows,
-        parentBuildArrowNodes,
-        binaryEvent:{operation:binaryEvent?.binaryOperation,target:binaryTarget},
-        binarySamples,
-        binaryFinal,
         deepest,
         animatedVisible,
         beforeSumIdentity,
@@ -261,21 +299,6 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
         sumBelowTree:Number(sum?.dataset?.tracePositionY)>Number(tree?.dataset?.tracePositionY)
       };
     });
-    assert.match(result.leafBuildText,/讀入第 1 個值 1/);
-    assert.match(result.parentBuildText,/左右子節點/);
-    assert.equal(result.parentBuildArrowNodes.length,2,
-      JSON.stringify({trace:result.parentBuildArrowTrace,dom:result.parentBuildArrowNodes}));
-    assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
-    const binaryTransferSamples=result.binarySamples.filter(sample=>sample.transferValues.length===2);
-    assert.ok(binaryTransferSamples.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])),
-      `both child values move toward their parent: ${JSON.stringify(binaryTransferSamples)}`);
-    assert.ok(binaryTransferSamples.every(sample=>sample.transferRects===0),
-      'binary addition moves only the two value texts');
-    assert.ok(binaryTransferSamples.some(sample=>sample.targetValue==='0'),
-      `the parent retains its old value while both child values are moving: ${JSON.stringify(binaryTransferSamples)}`);
-    assert.equal(binaryTransferSamples.some(sample=>sample.targetValue==='27'),false,
-      'both moving values disappear in the same update that commits the parent value');
-    assert.equal(result.binaryFinal,'27');
     assert.equal(result.deepest,14);
     assert.equal(result.animatedVisible,true);
     assert.ok(result.beforeSumIdentity);
