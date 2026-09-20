@@ -832,6 +832,15 @@ renderer依節點層級把格子切成 `2^k` 段；根節點涵蓋8個最小區�
 `as` 在相鄰幀提供穩定身分，格子、端點與寬度改變時可配對轉場。
 格內segment屬於style顯示層：它跟隨所綁定格子的移動與顯示狀態，位於資料物件上方、前景箭頭下方，且不受事件動畫開關控制。
 
+若色塊代表heap節點內仍保留的欄位狀態，可讓renderer依同索引的來源陣列自動產生整格區段：
+
+```cpp
+// @segment tree[*][full] from lazy color rgba(231,144,255,0.65) as pending_modify when value != 0
+// @segment tree[*][full] from sets color AV_orange as pending_set when value != 2147483647
+```
+
+`tree[*]`檢查目前顯示的每個heap節點，`[full]`使用該節點自己的完整局部區段；`value`是`from`欄位在相同索引的值。只要條件仍成立，色塊便在後續幀保留；程式下推並清除父節點欄位後，父節點色塊才消失，子節點若取得標記則顯示自己的色塊。
+
 遞迴線段樹若要保留已分裂但尚未處理的另一側，可從根節點描述完整查詢範圍，再指定目前遞迴游標：
 
 ```cpp

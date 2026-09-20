@@ -56,6 +56,7 @@
       '// @segment arr[low:high] when low <= high',
       '// @segment tree[now][L:R] color AV_green as active_range when L <= R',
       '// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)',
+      '// @segment tree[*][full] from lazy color rgba(231,144,255,0.65) as pending_modify when value != 0',
       '// @frame arr[i]\n// @segment arr[low:high]\n// @text "處理目前區間" at arr.bottom'
     ] },
     { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件', code: '// @place pivot at arr.right offset(16,0)', examples: [
@@ -147,7 +148,10 @@
       ['offset', 'offset', '在錨點上加入位移', ' offset(0,20)'],
       ['when', 'when', '條件成立才顯示文字', ' when i >= 0']
     ],
-    segment: [['when', 'when', '只在條件成立時標示區間', ' when low <= high']],
+    segment: [
+      ['from', 'from', '依指定欄位的每個索引產生完整 heap 格子區段', ' from lazy'],
+      ['when', 'when', '只在條件成立時標示區間', ' when low <= high']
+    ],
     place: [['offset', 'offset', '在錨點上加入位移', ' offset(16,0)'], ['when', 'when', '條件成立才放置', ' when i >= 0']],
     arrow: [['as', 'as', '為箭頭命名', ' as "relation"'], ['when', 'when', '條件成立才顯示箭頭', ' when i >= 0']],
     layout: [

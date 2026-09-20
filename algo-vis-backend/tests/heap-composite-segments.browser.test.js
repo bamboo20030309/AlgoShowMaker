@@ -326,7 +326,7 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
   } finally {await browser.close();}
 });
 
-test('full segment tree sample shows lazy fields and unwinds without segments', {timeout:60000}, async () => {
+test('full segment tree sample shows persistent lazy fields and removes completed operation ranges', {timeout:60000}, async () => {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -358,20 +358,37 @@ test('full segment tree sample shows lazy fields and unwinds without segments', 
       const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
       const compositeTexts=[...tree.querySelectorAll('[data-trace-index] > text:not([data-trace-content-role="index"])')]
         .map(node=>node.textContent);
+      const persistentSegments=[...tree.closest('#asm-trace-root').querySelectorAll(
+        '.asm-trace-heap-cell-segment[data-trace-segment-id="pending_modify"],'
+        +'.asm-trace-heap-cell-segment[data-trace-segment-id="pending_set"]'
+      )].map(rect=>({
+        id:rect.dataset.traceSegmentId,
+        node:+rect.dataset.traceSegmentNode,
+        start:+rect.dataset.traceSegmentStart,
+        end:+rect.dataset.traceSegmentEnd,
+        count:+rect.dataset.traceSegmentCount,
+        fill:rect.getAttribute('fill')
+      }));
       await player.render(unwind.index,{animatePositions:false,animateEvents:false});
-      const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
+      const unwindSegments=document.querySelectorAll(
+        '#asm-trace-root .asm-trace-heap-cell-segment[data-trace-segment-id="active_range"]'
+      ).length;
       await player.render(doc.frames.length-1,{animatePositions:false,animateEvents:false});
       const answer=[...document.querySelectorAll(
         `[data-trace-object-key="${CSS.escape(`${byName.answer}#0`)}"] > text`
       )].at(-1)?.textContent;
       return {
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
-        operationSegments,compositeTexts,unwindSegments,answer
+        operationSegments,compositeTexts,persistentSegments,unwindSegments,answer
       };
     });
     assert.equal(result.buildFrames,0);
     assert.ok(result.operationSegments>0);
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
+    assert.ok(result.persistentSegments.length>0,JSON.stringify(result));
+    assert.ok(result.persistentSegments.every(segment=>(
+      segment.start===0&&segment.end===segment.count-1
+    )),JSON.stringify(result.persistentSegments));
     assert.equal(result.unwindSegments,0);
     assert.equal(result.answer,'12');
     assert.deepEqual(errors,[]);
