@@ -105,7 +105,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.ok([...result.first.root,...result.first.child].every(item=>item.styleLayer&&!item.nestedInCell));
     assert.equal(result.first.styleBeforeArrows,true);
     assert.deepEqual(result.first.empty,[]);
-    assert.deepEqual(result.first.fills,['rgba(144, 202, 249, 0.6)','orange']);
+    assert.deepEqual(result.first.fills,['rgba(144, 202, 249, 0.6)','rgba(255, 183, 77, 0.65)']);
     assert.equal(result.second.texts[0],'15 / 6');
     assert.deepEqual(result.second.root.map(item=>[item.start,item.end,item.count]),[[0,7,8]]);
     assert.equal(result.first.root[0].identity,result.second.root[0].identity);
@@ -326,7 +326,7 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
   } finally {await browser.close();}
 });
 
-test('full segment tree sample shows lazy fields and unwinds without segments', {timeout:60000}, async () => {
+test('full segment tree sample keeps lazy and set style segments until their markers are pushed', {timeout:60000}, async () => {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -348,20 +348,77 @@ test('full segment tree sample shows lazy fields and unwinds without segments', 
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const byName=Object.fromEntries(Object.entries(doc.variables).map(([id,value])=>[value.name,id]));
       const indexed=doc.frames.map((frame,index)=>({frame,index}));
+      const scalar=item=>Number(window.ASMTraceModel.scalarValue(item));
+      const markerMap=frame=>{
+        const markers=new Map();
+        (frame.state[byName.lazy]?.data?.items||[]).forEach((item,node)=>{
+          const value=scalar(item); if(value!==0) markers.set(node,`lazy:${value}`);
+        });
+        (frame.state[byName.sets]?.data?.items||[]).forEach((item,node)=>{
+          const value=scalar(item); if(value!==2147483647) markers.set(node,`set:${value}`);
+        });
+        return markers;
+      };
       const operation=indexed.find(({frame})=>frame.source?.function==='main'&&(frame.segments||[]).length>0);
       const tagged=indexed.find(({frame})=>Object.values(frame.state[byName.lazy]?.data?.items||{})
         .some(item=>Number(item.value)!==0));
       const unwind=indexed.find(({frame})=>frame.source?.function==='query'&&(frame.arrows||[]).length===2);
+      const mixed=indexed.find(({frame})=>frame.source?.function==='main'&&(frame.segments||[]).some(segment=>(
+        window.ASMTraceRules.expressionMatches(doc,frame,segment.when)
+      ))&&markerMap(frame).size>0);
+      const persistent=indexed.slice(1).map(current=>({previous:indexed[current.index-1],current})).find(pair=>{
+        const before=markerMap(pair.previous.frame),after=markerMap(pair.current.frame);
+        return [...before].some(([node,value])=>after.get(node)===value);
+      });
+      const pushed=indexed.slice(1).map(current=>({previous:indexed[current.index-1],current})).find(pair=>{
+        const before=markerMap(pair.previous.frame),after=markerMap(pair.current.frame);
+        return [...before.keys()].some(node=>node>0&&!after.has(node)
+          &&(after.has(node*2)||after.has(node*2+1)));
+      });
       await player.render(operation.index,{animatePositions:false,animateEvents:false});
       const operationSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
       await player.render(tagged.index,{animatePositions:false,animateEvents:false});
       const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+      const storedSegments=[...document.querySelectorAll('#asm-trace-root .asm-trace-state-segment')].map(rect=>({
+        node:+rect.dataset.traceSegmentNode,
+        start:+rect.dataset.traceSegmentStart,
+        end:+rect.dataset.traceSegmentEnd,
+        count:+rect.dataset.traceSegmentCount,
+        fill:rect.getAttribute('fill')
+      }));
       const compositeTexts=[...tree.querySelectorAll('[data-trace-index] > text:not([data-trace-content-role="index"])')]
         .map(node=>node.textContent);
       const separateFields={
         lazy:document.querySelectorAll(`[data-trace-variable="${byName.lazy}"]`).length,
         sets:document.querySelectorAll(`[data-trace-variable="${byName.sets}"]`).length
       };
+      const persistentNode=[...markerMap(persistent.previous.frame)].find(([node,value])=>(
+        markerMap(persistent.current.frame).get(node)===value
+      ))[0];
+      await player.render(persistent.previous.index,{animatePositions:false,animateEvents:false});
+      const persistentBefore=document.querySelector(
+        `#asm-trace-root .asm-trace-state-segment[data-trace-segment-node="${persistentNode}"]`
+      )?.dataset.traceRuntimeIdentity;
+      await player.render(persistent.current.index,{animatePositions:false,animateEvents:false});
+      const persistentAfter=document.querySelector(
+        `#asm-trace-root .asm-trace-state-segment[data-trace-segment-node="${persistentNode}"]`
+      )?.dataset.traceRuntimeIdentity;
+      const pushedNode=[...markerMap(pushed.previous.frame).keys()].find(node=>node>0
+        &&!markerMap(pushed.current.frame).has(node)
+        &&(markerMap(pushed.current.frame).has(node*2)||markerMap(pushed.current.frame).has(node*2+1)));
+      await player.render(pushed.current.index,{animatePositions:false,animateEvents:false});
+      const pushState={
+        parent:Boolean(document.querySelector(
+          `#asm-trace-root .asm-trace-state-segment[data-trace-segment-node="${pushedNode}"]`
+        )),
+        children:[pushedNode*2,pushedNode*2+1].filter(node=>document.querySelector(
+          `#asm-trace-root .asm-trace-state-segment[data-trace-segment-node="${node}"]`
+        ))
+      };
+      await player.render(mixed.index,{animatePositions:false,animateEvents:false});
+      const segmentOrder=[...document.querySelectorAll(
+        '#asm-trace-root .asm-trace-style-layer .asm-trace-heap-cell-segment'
+      )].map(rect=>rect.classList.contains('asm-trace-state-segment')?'state':'active');
       await player.render(unwind.index,{animatePositions:false,animateEvents:false});
       const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
       await player.render(doc.frames.length-1,{animatePositions:false,animateEvents:false});
@@ -370,14 +427,30 @@ test('full segment tree sample shows lazy fields and unwinds without segments', 
       )].at(-1)?.textContent;
       return {
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
-        operationSegments,compositeTexts,separateFields,unwindSegments,answer
+        operationSegments,storedSegments,compositeTexts,separateFields,
+        persistentIdentities:[persistentBefore,persistentAfter],pushState,segmentOrder,
+        unwindSegments,answer
       };
     });
     assert.equal(result.buildFrames,0);
     assert.ok(result.operationSegments>0);
+    assert.ok(result.storedSegments.length>0,JSON.stringify(result));
+    assert.ok(result.storedSegments.every(segment=>segment.start===0&&segment.end===segment.count-1),
+      JSON.stringify(result.storedSegments));
+    assert.ok(result.storedSegments.some(segment=>segment.fill==='rgba(231, 144, 255, 0.65)'));
+    assert.ok(result.persistentIdentities[0]);
+    assert.equal(result.persistentIdentities[1],result.persistentIdentities[0],
+      'an unchanged stored marker keeps the same visual identity across frames');
+    assert.equal(result.pushState.parent,false);
+    assert.ok(result.pushState.children.length>0,
+      'pushing a stored marker removes the parent segment and creates child segments');
+    assert.ok(result.segmentOrder.indexOf('state')>=0&&result.segmentOrder.indexOf('active')>=0,
+      JSON.stringify(result.segmentOrder));
+    assert.ok(result.segmentOrder.indexOf('state')<result.segmentOrder.lastIndexOf('active'),
+      'stored state segments stay below the current operation segment');
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
     assert.deepEqual(result.separateFields,{lazy:0,sets:0});
-    assert.equal(result.unwindSegments,0);
+    assert.ok(result.unwindSegments>0,'pending lazy/set markers remain visible during unrelated unwind frames');
     assert.equal(result.answer,'12');
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}

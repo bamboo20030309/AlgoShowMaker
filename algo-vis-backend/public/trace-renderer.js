@@ -73,7 +73,7 @@
       || (highlight.styleType === 'background' ? color || 'rgb(231, 144, 255)' : '');
     const stroke = typed.highlight || (Object.hasOwn(typed, 'highlight') ? 'red' : '')
       || typed.focus || (Object.hasOwn(typed, 'focus') ? '#ccc' : '')
-      || (highlight.styleType && highlight.styleType !== 'background' ? color : '');
+      || (highlight.styleType && !['background', 'segment'].includes(highlight.styleType) ? color : '');
     if (background) element.setAttribute('fill', background);
     if (stroke) element.setAttribute('stroke', stroke);
     if (highlight.fill) element.setAttribute('fill', highlight.fill);
@@ -94,7 +94,7 @@
         styles.push({ type: 'mark', color: highlight.fixedMark, elements: valid });
       }
       const typedStyles = highlight.styleTypes || {};
-      Object.entries(typedStyles).forEach(([type, color]) => {
+      Object.entries(typedStyles).filter(([type]) => type !== 'segment').forEach(([type, color]) => {
         styles.push({ type, color, elements: valid });
       });
       if (!Object.keys(typedStyles).length && highlight.styleType && highlight.color !== undefined) {
@@ -325,6 +325,49 @@
           indices,
           kind: isMatrix ? 'matrix-cell' : 'array-cell'
         });
+        const highlight = combinedHighlights[String(logicalIndex)]
+          || combinedHighlights.$object
+          || {};
+        if (Object.hasOwn(highlight.styleTypes || {}, 'segment')) {
+          const baseRect = cell.querySelector(':scope > rect');
+          const text = cell.querySelector(':scope > text');
+          if (baseRect) {
+            const number = name => Number(baseRect.getAttribute(name)) || 0;
+            const sourceIdentity = String(
+              highlight.sourceStyleIds?.segment
+              || highlight.sourceStyleId
+              || `${context.variableId}:segment`
+            );
+            const identity = `style-segment:${sourceIdentity}:${logicalIndex}`;
+            const levels = Math.max(1, Number(group.getAttribute('data-heap-levels')) || 1);
+            const localIndex = logicalIndex - rangeStart;
+            const depth = localIndex >= 0 ? Math.floor(Math.log2(localIndex + 1)) : 0;
+            const sectionCount = requested === 'original-heap'
+              ? 2 ** Math.max(0, levels - depth - 1)
+              : 1;
+            const overlay = svg('rect', {
+              class: 'asm-trace-heap-cell-segment asm-trace-style-paint asm-trace-state-segment',
+              x: number('x'),
+              y: number('y'),
+              width: number('width'),
+              height: number('height'),
+              fill: highlight.styleTypes.segment || 'rgba(231, 144, 255, 0.65)',
+              stroke: 'none',
+              'pointer-events': 'none',
+              'data-av-key': identity,
+              'data-trace-segment-id': sourceIdentity,
+              'data-trace-runtime-identity': identity,
+              'data-trace-segment-node': logicalIndex,
+              'data-trace-segment-start': 0,
+              'data-trace-segment-end': Math.max(0, sectionCount - 1),
+              'data-trace-segment-count': sectionCount,
+              'data-trace-segment-state': 'style'
+            });
+            overlay.setAttribute('data-trace-attached-to', cellKey);
+            overlay.setAttribute('data-trace-attachment-kind', 'segment');
+            cell.insertBefore(overlay, text || null);
+          }
+        }
       }
       ['highlight', 'point', 'mark'].forEach(kind => {
         const hint = group.querySelector(`#${CSS.escape(`${kind}-${id}-${localIndex}`)}`);
@@ -1473,13 +1516,34 @@
     });
   }
 
-  function settleStyleLayer(root, elements) {
+  function settleStyleLayer(root, elements, placements) {
     root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
       if (visual.closest('.asm-trace-style-layer')) return;
       const kind = visual.getAttribute('data-trace-attachment-kind') || '';
       const cell = elements.get(visual.getAttribute('data-trace-attached-to'));
       if (cell && ['highlight', 'point', 'mark', 'segment'].includes(kind)) {
-        attachStyleVisual(root, visual, cell, kind);
+        if (attachStyleVisual(root, visual, cell, kind) && kind === 'segment') {
+          const rawKey = visual.getAttribute('data-av-key') || visual.dataset.traceRuntimeIdentity;
+          if (rawKey) {
+            const styleKey = `style:${rawKey}`;
+            const wrapper = visual.parentElement;
+            const cellKey = visual.getAttribute('data-trace-attached-to');
+            const cellPlacement = placements?.get?.(cellKey);
+            wrapper.dataset.traceObjectKey = styleKey;
+            wrapper.dataset.traceRuntimeIdentity = visual.dataset.traceRuntimeIdentity || rawKey;
+            wrapper.dataset.traceInternalStyle = 'segment';
+            const activeSegment = [...(wrapper.parentElement?.children || [])].find(child => (
+              child !== wrapper
+              && child.querySelector?.('.asm-trace-heap-cell-segment:not(.asm-trace-state-segment)')
+            ));
+            if (activeSegment) wrapper.parentElement.insertBefore(wrapper, activeSegment);
+            if (cellPlacement) {
+              wrapper.dataset.traceRenderPosition = `${cellPlacement.x},${cellPlacement.y}`;
+              placements.set(styleKey, { ...cellPlacement });
+            }
+            elements.set(styleKey, wrapper);
+          }
+        }
       }
     });
     const layer = [...root.children].find(child => child.classList?.contains('asm-trace-style-layer'));
@@ -2816,7 +2880,8 @@
     AV_blue: 'rgba(144, 202, 249, 0.6)',
     AV_red: 'rgba(239, 154, 154, 0.6)',
     AV_yellow: 'rgba(252, 255, 64, 0.46)',
-    AV_orange: 'orange',
+    AV_orange: 'rgba(255, 183, 77, 0.65)',
+    AV_magenta: 'rgba(231, 144, 255, 0.65)',
     AV_node_green: '#e8f5e9',
     AV_node_red: '#ef9a9a',
     AV_grey: '#cccccc',
@@ -4053,7 +4118,7 @@
       eventAnimationsEnabled);
     animatePartPositions(placements, elements, options);
     settleArrowLayers(root);
-    settleStyleLayer(root, elements);
+    settleStyleLayer(root, elements, placements);
     settleAnimationEffectLayer(root);
     settlePointerLayer(root);
     refreshPresentedArrows(root, elements);
@@ -4520,9 +4585,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-198';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-199';
   window.ASMTraceRenderers = {
-    build: 'trace-198', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-199', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

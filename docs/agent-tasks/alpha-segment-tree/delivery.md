@@ -20,8 +20,9 @@
 - 建構／查詢拆分：`Segment_Tree_easy_build.cpp`獨立提供建構動畫，從初始樹、15筆輸入、15個父節點加總到根節點完成共32幀；`Segment_Tree_easy.cpp`先無幀建樹，第一幀直接顯示完整樹並只播放查詢下降、segment分裂及sum累加。兩份範例各有sample input。
 - 二元加法動畫：instrumenter辨識`target = left + right`，在左右運算元為可見純量或安全索引格時保存兩個來源target；播放器建立兩個純文字transfer並以相同進度移向目的值，落地時同幀移除兩者並提交結果。Segment_Tree_easy的父節點建構改為`tree[i] = tree[left] + tree[right]`以使用此行為；演算法與輸出不變。
 - 完整Segment Tree範例：`Segment_Tree.cpp`靜默完成建樹，第一幀直接進入操作。tree以`range(1,Tsize-1)`裁去未使用補零節點，並用fields／hide在同格顯示原本的tree／lazy／sets；modify與set segment分別使用紫色及橘色。segment只在下降時split並在命中時以after移除；回溯只顯示父節點加總。query命中值另累加到tree下方answer，但函式回傳與輸出維持原演算法。
-- 融合與segment邊界：lazy／sets僅作為tree同格文字欄位，0與LM依hide省略，不另由欄位狀態生成色塊。紫色／橘色segment分別只代表當次modify／set操作範圍，沿下降split並在命中後移除。
-- 視覺去重：移除operation_view內對全部非預設lazy／sets套用的常駐background；融合欄位只顯示文字，紫色／橘色只由當次modify／set操作segment呈現。下推步驟中的局部highlight保留，用於指出本幀受影響的子節點。
+- 融合與segment邊界：lazy／sets維持tree同格文字欄位，0與LM依hide省略；新增`@style ... segment color ...`後，非預設欄位會在同一tree格內生成整段狀態色塊。狀態值未變時沿用穩定身分，標記下推或清除時才從父節點移除；當次modify／set的可分裂segment仍獨立呈現並位於狀態色塊上層。
+- 視覺去重：移除operation_view內對全部非預設lazy／sets套用的常駐background；融合欄位文字不再改變整格底色。後續新增的segment style只建立格內整段色塊，與當次modify／set操作segment分層呈現；下推步驟中的局部highlight保留，用於指出本幀受影響的子節點。
+- 狀態segment與色盤：依後續需求以segment style取代常駐background；它覆蓋格子的完整內部區段，不使用split。`AV_magenta`定義為`rgba(231,144,255,0.65)`；`AV_orange`改為`rgba(255,183,77,0.65)`，並同步所有新舊繪圖入口與GUI色盤。
 - 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
 - 舊trace同步：capture-only屬於已保存的frame資料，單純重整仍會播放舊結果。ENGINE_VERSION提升至6，trace-provenance快取提升至trace-7，投影片runtime/editor提升至trace-runtime-39；開啟舊動畫編輯時自動重建並可儲存替換。
 - 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。
@@ -187,6 +188,15 @@
 - 預期結果：舊引擎版本判定outdated，編輯器自動RUN為engineVersion 6並保存回runtime；入口載入新版cache key。
 - 實際結果與exit code：provenance／入口6/6、舊投影片重建瀏覽器1/1通過，exit code均為0。
 - 證據位置：trace-provenance.js、三個HTML入口、slides.js及直接相關測試。
+
+### Segment style持續狀態與色盤專項
+- 目的與對應條件：確認`@style ... segment color ...`可作用於複合欄位，在tree同索引格繪製完整區段，資料未變時維持身分，下推後移除父色塊並建立子色塊；當次操作segment位於狀態色塊上層。同步確認AV_magenta與半透明AV_orange。
+- 執行目錄與必要環境設定：algo-vis-backend；alpha worktree隔離服務http://127.0.0.1:3199，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp、Segment_Tree-sample_input.txt及heap-composite-segments fixture。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3199'; node --test tests/style-list.test.js; node --test tests/segment-tree-samples.test.js; node --test --test-name-pattern='heap fields and local segments' tests/heap-composite-segments.browser.test.js; node --test --test-name-pattern='full segment tree sample keeps' tests/heap-composite-segments.browser.test.js; node --test tests/entrypoints.test.js; git diff --check`。
+- 預期結果：parser／色盤5/5、範例3/3、兩個SVG瀏覽器專項各1/1、入口1/1通過；長期segment覆蓋完整局部範圍並跨幀保持身分，父標記下推後只保留子節點狀態。
+- 實際結果與exit code：全部通過，exit code均為0；Segment Tree輸出仍為12，lazy／sets仍為capture-only，當次操作segment與長期狀態segment同時存在時圖層順序正確。
+- 證據位置：trace-instrumenter.js、trace-renderer.js、Segment_Tree.cpp、tests/style-list.test.js及tests/heap-composite-segments.browser.test.js。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。

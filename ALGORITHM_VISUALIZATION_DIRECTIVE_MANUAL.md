@@ -671,7 +671,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
 
 ## `@style`：設定格子樣式
 
-播放時，background／focus 的填色及 highlight／point／mark 的顏色以 180ms 平滑過渡；value 與 index 填色使用相同時機與速度，位移補間不另外覆寫 style 的顏色。
+播放時，background／focus／segment 的填色及 highlight／point／mark 的顏色以 180ms 平滑過渡；value 與 index 填色使用相同時機與速度，位移補間不另外覆寫 style 的顏色。
 進入新幀時就以該幀最終狀態套用 style，不等待比較、賦值或交換動畫完成。
 框與提示的位置沿用格子的同一段位移／縮放動畫，不另外延遲追趕，閃爍節奏不重啟。
 自動播放等待最後的變色完成；Studio 手動拖曳維持即時更新。
@@ -683,7 +683,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
 // @style 目標 樣式[,樣式...] [顏色] [as ID] [when 條件]
 ```
 
-支援五種樣式：
+支援六種樣式：
 
 | 類型 | 效果 |
 | --- | --- |
@@ -692,6 +692,16 @@ void quick_sort(vector<int>& arr, int low, int high) {
 | `mark` | 在格子上顯示勾選標記 |
 | `background` | 直接設定格子背景色 |
 | `focus` | 保留指定片段正常顯示，將其他格子以指定顏色弱化 |
+| `segment` | 在格子內的style層覆蓋整段色塊；資料條件持續成立時跨幀保留 |
+
+`segment`可沿用一般顏色位置，也可明確寫`color`：
+
+```cpp
+// @style lazy[1:Tsize-1] segment AV_magenta when value != 0
+// @style sets[1:Tsize-1] segment color AV_orange when value != 2147483647
+```
+
+它永遠覆蓋目標格子的完整內部範圍，不會像`@segment tree[node][L:R]`依局部端點切開。用於`fields(tree,lazy,sets)`的附加欄位時，色塊畫在相同索引的tree格內，不會建立獨立lazy／sets物件。相同style與索引在條件持續成立時沿用穩定身分；條件失效才退場。當次操作的`@segment`位於狀態segment上層。
 
 所有 `point` 與 `highlight` 共用同一套系統時間節奏；畫布更新、切換幀或產生縮圖時不會各自重新起跳。
 
@@ -743,7 +753,7 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 
 ### 省略顏色時的預設值
 
-五種樣式都能省略顏色：
+六種樣式都能省略顏色：
 
 ```cpp
 // @style arr[0] background
@@ -751,9 +761,10 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 // @style arr[2] mark
 // @style arr[3] point
 // @style arr[1:i] focus
+// @style arr[4] segment
 ```
 
-`highlight`、`point` 使用 draw 系統的紅色，`mark` 使用綠色，`focus` 使用 `AV_grey` 灰色。`background` 沿用當前畫法的預設背景色；一般陣列與 heap 為紫色，stack、queue 等畫法各自使用原本的預設色。指定顏色時仍完全採用指定值。`focus` 是凸顯指定片段、將其餘格子弱化的效果。
+`highlight`、`point` 使用 draw 系統的紅色，`mark` 使用綠色，`focus` 使用 `AV_grey` 灰色，`segment`使用`AV_magenta`。`background` 沿用當前畫法的預設背景色；一般陣列與 heap 為紫色，stack、queue 等畫法各自使用原本的預設色。指定顏色時仍完全採用指定值。`focus` 是凸顯指定片段、將其餘格子弱化的效果。
 
 ### 使用 `value` 和 `index`
 
@@ -767,7 +778,7 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 
 條件會對選取範圍內的每一格分別計算。
 
-style 還原為入幀套用：background／focus／highlight／point／mark 在進入新幀時依該幀最終 `value`、`index` 與變數狀態求值，不等待事件提交或整幀結束，也不再依中途顯示數值重新求值。已開啟交換動畫的格子填色是例外：交換開始前維持來源格子的舊色，實際交換起跑才啟動 180ms 變色，顏色跟隨移動中的格子；固定的 index 框也在相同時點啟動變色。關閉交換動畫不等待。其他 style 仍可能先於賦值反映新幀結果。數值與事件仍按原本 runtime order 播放；style 跟隨格子移動與縮放，value／index 背景使用同一份幀規則。`highlight`、`point` 等提示沿用全域閃爍／跳動節奏，不因換幀重啟。Studio 靜態預覽與三個播放介面採相同規則。
+style 還原為入幀套用：background／focus／highlight／point／mark／segment 在進入新幀時依該幀最終 `value`、`index` 與變數狀態求值，不等待事件提交或整幀結束，也不再依中途顯示數值重新求值。已開啟交換動畫的格子填色是例外：交換開始前維持來源格子的舊色，實際交換起跑才啟動 180ms 變色，顏色跟隨移動中的格子；固定的 index 框也在相同時點啟動變色。關閉交換動畫不等待。其他 style 仍可能先於賦值反映新幀結果。數值與事件仍按原本 runtime order 播放；style 跟隨格子移動與縮放，value／index 背景使用同一份幀規則。`highlight`、`point` 等提示沿用全域閃爍／跳動節奏，不因換幀重啟。Studio 靜態預覽與三個播放介面採相同規則。
 
 C++ 範圍迴圈（`ForRangeLoop`）標頭宣告的變數也能在迴圈內的指令中使用，例如：
 
@@ -786,7 +797,7 @@ for (auto& v : prime) {
 支援：
 
 - AlgoShowMaker 色名，例如 `AV_red`、`AV_green`、`AV_blue`、`AV_yellow`、
-  `AV_orange`、`AV_grey`、`AV_black`、`AV_white`。
+  `AV_orange`、`AV_magenta`、`AV_grey`、`AV_black`、`AV_white`。其中`AV_orange`為`rgba(255,183,77,0.65)`，`AV_magenta`為`rgba(231,144,255,0.65)`。
 - CSS 色名，例如 `red`、`orange`。
 - Hex，例如 `#ff0000`、`#ff000080`。
 - `rgb(...)`、`rgba(...)`、`hsl(...)`、`hsla(...)`。

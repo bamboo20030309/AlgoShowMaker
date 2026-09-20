@@ -1494,7 +1494,7 @@ function attachTextDirectives(source, analysis, frameDirectives) {
   });
 }
 
-const TRACE_STYLE_TYPES = new Set(['highlight', 'focus', 'mark', 'point', 'background']);
+const TRACE_STYLE_TYPES = new Set(['highlight', 'focus', 'mark', 'point', 'background', 'segment']);
 const TRACE_STYLE_LOCALS = new Set(['value', 'index']);
 
 function parseStyleTarget(raw, line) {
@@ -1558,15 +1558,16 @@ function styleDirectivesForSource(source, analysis) {
         if (modifiers.binding) throw new Error(`第 ${line} 行的 @style 不支援 at，請把 at 寫在物件指令上`);
         if (modifiers.renderer) throw new Error(`第 ${line} 行的 @style 不支援 render`);
         if (Object.keys(modifiers.rendererOptions || {}).length) throw new Error(`第 ${line} 行的 @style 不支援 with`);
-        const styleMatch = modifiers.payload.match(/^(.*?)\s+((?:highlight|focus|mark|point|background)(?:\s*,\s*[A-Za-z_]\w*)*)(?:\s+(.+))?$/i);
+        const styleMatch = modifiers.payload.match(/^(.*?)\s+((?:highlight|focus|mark|point|background|segment)(?:\s*,\s*[A-Za-z_]\w*)*)(?:\s+(.+))?$/i);
         if (!styleMatch) {
           throw new Error(`第 ${line} 行的 @style 格式應為：目標 樣式[,樣式...] [顏色]`);
         }
         const styleTypes = styleMatch[2].split(',').map(type => type.trim().toLowerCase());
         if (new Set(styleTypes).size !== styleTypes.length) throw new Error(`第 ${line} 行的 @style 樣式不可重複`);
         for (const styleType of styleTypes) {
-          const specifiedColor = String(styleMatch[3] || '').trim();
-          const color = specifiedColor || (styleType === 'focus' ? 'AV_grey' : '');
+          const specifiedColor = String(styleMatch[3] || '').trim().replace(/^color\s+/i, '');
+          const color = specifiedColor || (styleType === 'focus'
+            ? 'AV_grey' : styleType === 'segment' ? 'AV_magenta' : '');
           if (!TRACE_STYLE_TYPES.has(styleType)) {
             throw new Error(`第 ${line} 行的 @style 樣式無效：${styleType}`);
           }

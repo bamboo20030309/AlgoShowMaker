@@ -51,7 +51,8 @@
 - [x] 完整`Segment_Tree.cpp`以新指令重寫：建樹不建立動畫幀；操作階段以fields／hide在tree格內顯示lazy與set，並呈現segment下降分裂、命中移除、query累加answer及回溯父節點加總。
 - [x] 完整範例保留原本特殊葉節點配置、lazy優先規則、set覆蓋規則及sample輸出；回溯幀不重新顯示已完成segment。
 - [x] 完整範例以`range(1,Tsize-1)`裁掉未使用的補零節點；modify segment為紫色，set segment為橘色。
-- [x] lazy／sets只作為tree格子內的附加文字欄位，預設值以`hide(lazy=0,sets=LM)`隱藏；不由欄位狀態額外產生segment，紫色／橘色segment只呈現當次modify／set操作範圍。
+- [x] lazy／sets作為tree格子內的附加文字欄位，預設值以`hide(lazy=0,sets=LM)`隱藏；非預設標記以`@style ... segment color ...`在同一tree格內顯示整段狀態色塊，跨幀保留至實際標記被清除或下推。當次modify／set操作仍使用可分裂的`@segment`顯示。
+- [x] `AV_orange`改為半透明橘色，新增`AV_magenta = rgba(231,144,255,0.65)`，解析、renderer、文字、箭頭、GUI及舊AV色盤一致。
 
 ## 驗證計畫
 - 開發代理小驗證：V2 E/F/H/J，新增parser／model／renderer局部專項；隔離服務與headless瀏覽器只跑最小fixture及兩個範例sample input；C++原輸出對照改寫前版本。
@@ -81,3 +82,4 @@
 - 2026-09-20：重現lazy／sets仍以獨立陣列顯示；原因是欄位上的`@style`解除capture-only。改為複合欄位style只合併到主要tree格子，不建立獨立物件。
 - 2026-09-20：capture-only契約變更需重建既有trace；追蹤引擎版本提升至6並更新投影片iframe快取版本，使舊投影片進入編輯時自動RUN。
 - 2026-09-20：依使用者確認移除operation_view中對全部非預設lazy／sets欄位的常駐背景樣式；紫色／橘色由當次modify／set segment表達，欄位只保留文字。
+- 2026-09-21：依使用者更新需求新增`segment` style：lazy／sets非預設值在tree同索引格保存整段色塊，資料標記未變時沿用穩定身分，下推後父色塊移除並由子節點狀態接續；當次操作的`@segment`維持局部分裂且顯示在狀態色塊上層。同步新增AV_magenta並將AV_orange改為半透明橘色。

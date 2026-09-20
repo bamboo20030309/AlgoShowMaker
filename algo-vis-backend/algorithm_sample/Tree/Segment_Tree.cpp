@@ -18,6 +18,8 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @object tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
 // @object answer render cell
 // @place answer.top at tree.bottom offset(0,45)
+// @style lazy[1:Tsize-1] segment color AV_magenta when value != 0
+// @style sets[1:Tsize-1] segment color AV_orange when value != 2147483647
 // @endpreset
 
 void build() {
@@ -37,7 +39,7 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
     // segment 只在下降時分裂；同一時間保留另一側尚待處理的區段。
     // @frame use operation_view
     // @style tree[now] highlight,point
-    // @segment tree[1][L-Tmask:R-Tmask] color rgba(231,144,255,0.65) as active_range with split(now) when Add != 0
+    // @segment tree[1][L-Tmask:R-Tmask] color AV_magenta as active_range with split(now) when Add != 0
     // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now) when Set != 2147483647
     // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now) when Add == 0 and Set == 2147483647
     // @text "下降到節點 ${now}，檢查它與操作範圍的重疊" at tree.top offset(0,-20)
@@ -61,7 +63,7 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         // @frame use operation_view
         // @style tree[now] highlight,point
         // @style answer highlight when Add == 0 and Set == 2147483647
-        // @segment tree[1][L-Tmask:R-Tmask] color rgba(231,144,255,0.65) as active_range with split(now,after) when Add != 0
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_magenta as active_range with split(now,after) when Add != 0
         // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now,after) when Set != 2147483647
         // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after) when Add == 0 and Set == 2147483647
         // @text "整段命中，將 modify ${Add} 寫入 lazy；目前 tree[${now}] = ${tree[now]}" at tree.top offset(0,-20) when Add != 0
@@ -93,7 +95,7 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         lazy[now] = 0;
         // @frame use operation_view
         // @style tree[now,now*2,now*2+1] highlight
-        // @style lazy[now*2,now*2+1] background rgba(231,144,255,0.65) when value != 0
+        // @style lazy[now*2,now*2+1] background AV_magenta when value != 0
         // @style sets[now*2,now*2+1] background AV_orange when value != 2147483647
         // @text "把節點 ${now} 的 add 標記下推；若子節點已有 set，就直接加在 set 上" at tree.top offset(0,-20)
     }
@@ -123,7 +125,7 @@ int main() {
         answer = 0;
 
         // @frame use operation_view
-        // @segment tree[1][x-1:y-1] color rgba(231,144,255,0.65) as active_range when q == 1
+        // @segment tree[1][x-1:y-1] color AV_magenta as active_range when q == 1
         // @segment tree[1][x-1:y-1] color AV_orange as active_range when q == 2
         // @segment tree[1][x-1:y-1] color AV_green as active_range when q == 3
         // @text "modify：將第 ${x} 到第 ${y} 個值都加上 ${k}" at tree.top offset(0,-20) when q == 1
