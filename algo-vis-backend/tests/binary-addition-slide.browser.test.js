@@ -1,0 +1,116 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { chromium } = require('playwright');
+
+test('segment tree binary addition remains animated inside an algorithm slide', { timeout: 60000 }, async () => {
+  const base = process.env.ASM_TEST_BASE_URL;
+  assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+  });
+  try {
+    const errors = [];
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`${base}/algorithm.html`);
+    await page.waitForFunction(() => window.ace && window.ASMTracePlayer);
+    const code = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_easy_build.cpp'), 'utf8'
+    ).replace(/\r\n?/g, '\n').replace(
+      '// @camera focus tree offset(0,35) zoom(1.05)',
+      '// @style tree[1:Tsize-1] focus\n// @camera focus tree offset(0,35) zoom(1.05)'
+    );
+    const input = '15\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15\n';
+    await page.evaluate(({ code, input }) => {
+      ace.edit('editor').setValue(code, -1);
+      document.querySelector('#inputArea').value = input;
+    }, { code, input });
+    await page.click('#runBtn');
+    await page.waitForFunction(
+      source => window.ASMTracePlayer.getDocument()?.sourceCode === source,
+      code,
+      { timeout: 30000 }
+    );
+    const traceDocument = await page.evaluate(() => JSON.parse(JSON.stringify(
+      window.ASMTracePlayer.getDocument()
+    )));
+    const slidePage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    slidePage.on('pageerror', error => errors.push(error.message));
+    await slidePage.addInitScript(({ code, input, traceDocument }) => {
+      localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify({
+        groups: [{
+          id: 'binary-addition-group',
+          slides: [{
+            id: 'binary-addition-slide',
+            kind: 'algorithm-animation',
+            animation: { mode: 'trace', code, input, traceDocument },
+            canvas: { objects: [] }, widgets: []
+          }]
+        }]
+      }));
+    }, { code, input, traceDocument });
+    await slidePage.goto(`${base}/slides.html`);
+    await slidePage.waitForFunction(() => (
+      document.querySelector('.algorithm-slide-frame')?.contentWindow
+        ?.ASMTracePlayer?.isViewportGeometryReady?.()
+    ));
+    const runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
+    assert.ok(runtime, 'algorithm slide runtime iframe loaded');
+    const result = await runtime.evaluate(async () => {
+      const player = window.ASMTracePlayer;
+      const doc = player.getDocument();
+      const treeId = Object.keys(doc.variables).find(id => doc.variables[id]?.name === 'tree');
+      const parentFrames = doc.frames.map((frame, index) => ({ frame, index }))
+        .filter(({ frame }) => frame.source?.function === 'build'
+          && (frame.arrows || []).length === 2);
+      const parent = parentFrames[1] || parentFrames[0];
+      const event = parent.frame.events.find(item => item.binaryOperation === '+');
+      const target = event?.targets?.find(item => item.role === 'target')?.resolvedIndex;
+      await player.render(parent.index - 1, { animatePositions: false, animateEvents: false });
+      const samples = [];
+      let settled = false;
+      const transition = window.CodeScript.next_key_frame().finally(() => { settled = true; });
+      for (let count = 0; count < 180 && !settled; count += 1) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const scene = document.querySelector('#asm-trace-root');
+        const targetText = scene.querySelector(
+          `[data-trace-object-key="${CSS.escape(`${treeId}#${target}`)}"]`
+        )?.querySelector('text:not([data-trace-content-role="index"])');
+        const transfers = [...scene.querySelectorAll('.asm-trace-assign-transfer-value')];
+        samples.push({
+          targetValue: targetText?.textContent,
+          transferValues: transfers.map(item => item.querySelector('text')?.textContent).sort()
+        });
+      }
+      await transition;
+      return {
+        build: window.ASMTraceFrameTween.build,
+        event: event ? {
+          binaryOperation: event.binaryOperation,
+          disabled: event.autoAnimationDisabled,
+          enabled: event.enabled,
+          targets: event.targets.map(item => [item.role, item.resolvedIndex])
+        } : null,
+        samples,
+        playbackDurationMs: player.getLastPlaybackPlan()?.totalDurationMs
+      };
+    });
+    assert.equal(result.build, 'trace-217');
+    assert.deepEqual(result.event?.targets, [
+      ['target', 14], ['source-left', 28], ['source-right', 29]
+    ]);
+    assert.equal(result.event?.binaryOperation, '+');
+    assert.notEqual(result.event?.disabled, true);
+    assert.ok(result.playbackDurationMs >= 1000, JSON.stringify(result));
+    assert.ok(result.samples.some(sample => (
+      JSON.stringify(sample.transferValues) === JSON.stringify(['13', '14'])
+        && sample.targetValue === '0'
+    )), JSON.stringify(result));
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});

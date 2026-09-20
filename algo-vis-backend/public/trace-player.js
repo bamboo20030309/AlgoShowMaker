@@ -9,6 +9,7 @@
   let runtimeVisibilityConfirmed = false;
   let activePlaybackPlan = null;
   let lastPlaybackPlan = null;
+  let viewportRebasePendingAfterPlayback = false;
 
   function frameCount() {
     return document?.frames?.length || 0;
@@ -44,10 +45,19 @@
 
   function rebaseCurrentFrame(options = {}) {
     if (!document?.frames?.length) return Promise.resolve(false);
+    if (options.confirmVisible) runtimeVisibilityConfirmed = true;
+    // The runtime iframe can report a delayed ResizeObserver update just after
+    // it becomes visible. Re-rendering here would cancel a frame tween that
+    // the presenter has already started, so defer the geometry rebase until
+    // that tween has settled.
+    if (activePlaybackPlan) {
+      viewportRebasePendingAfterPlayback = true;
+      return Promise.resolve(true);
+    }
     const canvas = window.document.getElementById('arraySvg');
     const rect = canvas?.getBoundingClientRect?.();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) return Promise.resolve(false);
-    if (options.confirmVisible) runtimeVisibilityConfirmed = true;
+    viewportRebasePendingAfterPlayback = false;
     window.ASMTraceFrameTween?.cancel?.();
     const frame = document.frames[currentFrame];
     const transition = window.ASMTraceRenderers.renderFrame(document, frame, null, {
@@ -147,6 +157,7 @@
       window.dispatchEvent(new CustomEvent('asm:trace-playback-plan-complete', {
         detail: { document, frame, plan: playbackPlan }
       }));
+      if (viewportRebasePendingAfterPlayback) scheduleViewportCameraRefresh();
     });
     trackedTransition.playbackPlan = playbackPlan;
     return trackedTransition;
@@ -184,6 +195,7 @@
     clearTimeout(cameraTimer);
     activePlaybackPlan = null;
     lastPlaybackPlan = null;
+    viewportRebasePendingAfterPlayback = false;
     document = window.ASMTraceModel.normalizeTraceDocument(source);
     currentFrame = 0;
     viewportGeometryReady = !isRuntimeEmbed();

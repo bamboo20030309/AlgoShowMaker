@@ -87,7 +87,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
   assert.ok(html.includes('trace-camera.js?v=trace-5'));
-  assert.ok(html.includes('trace-player.js?v=trace-24'));
+  assert.ok(html.includes('trace-player.js?v=trace-25'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-6'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
   assert.ok(html.includes('trace-studio.js?v=trace-120'));
