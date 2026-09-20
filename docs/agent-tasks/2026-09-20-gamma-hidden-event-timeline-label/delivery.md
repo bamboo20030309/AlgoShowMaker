@@ -57,12 +57,12 @@
 - 主代理需補驗證的情境：在有隱藏事件的實際 Trace Studio 時間線確認標籤消失；重新啟用事件時確認標籤恢復。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：已核實並整合至 `intergration`。
+- 核實的程式 commit 與 diff 範圍：Gamma 至 `65164c4`；核對事件時間線共用判斷、Studio 使用點與入口快取版。
+- 差異審查與必要重跑結果：`event-defaults.test.js` 的隱藏／停用／不可呈現標籤案例與聯合集合均通過；聯集合計 123/123。
+- 合併 commit：`1e3b956`。
+- 完整 regression：未執行全部測試；本輪限定 Heap 動畫回歸三介面通過。
+- 演算法投影片實際驗證：Heap algorithm／editor／runtime 分別 548／543／548 samples 通過。
+- 未完成或環境阻塞：無。
+- 本機服務重啟：`intergration` 3100 已重啟為 PID 65064，Studio `trace-121`，HTTP 200。
+- Push／公開部署狀態：本輪將推送 `origin/intergration`；未合併 main、未部署公開主機。

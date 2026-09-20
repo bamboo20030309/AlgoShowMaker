@@ -264,12 +264,12 @@
 - 主代理需補驗證的情境：合併後分別以 Segment_Tree_easy_build 播放一個葉節點與父節點雙來源加法幀，再以 Segment_Tree_easy 播放數個查詢幀；並以 Segment_Tree 確認複合文字、樣式與局部色塊，再依動畫影響範圍執行整合驗證。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：已核實並整合至 `intergration`
-- 核實的程式 commit 與 diff 範圍：Alpha `34f734a` 至 `138e320`，包含複合欄位、格內 segment、compound transfer、範例與事件設定保存
-- 差異審查與必要重跑結果：聯合 V2 專項 135/135 通過；修正整合時發現的 keep snapshot frame 作用域錯誤後，複合 Heap／Segment Tree／樣式專項 9/9 通過
-- 合併 commit：`a82f5ef`；整合期修正：`7d62aec`
-- 完整 regression：未執行全部案例；依影響範圍執行 Heap 動畫案例
-- 演算法投影片實際驗證：Segment Tree 瀏覽器案例通過；Heap algorithm/editor/runtime 分別取得 473／475／476 個有效動畫取樣並通過
-- 未完成或環境阻塞：無
-- 本機服務重啟：3100 由主代理於紀錄提交後重啟核實
-- Push／公開部署狀態：推送 `origin/intergration`；未合併 main、未發布
+- 狀態：已核實並整合至 `intergration`。
+- 核實的程式 commit 與 diff 範圍：Alpha 至 `cfe74f0`；涵蓋三個 Segment Tree 範例、複合欄位、背景、segment、具名指標、二元加法事件及投影片舊 trace 重建。
+- 差異審查與必要重跑結果：聯合集合 16 檔、123/123 通過；其中 Segment Tree 三個實際瀏覽器案例與三個範例皆通過。
+- 合併 commit：`e7e78b2`；整合測試修正 `0acd11a`。
+- 完整 regression：未執行全部測試；主代理限定執行 Heap 動畫回歸，algorithm 548、editor 543、runtime 548 samples 全通過。
+- 演算法投影片實際驗證：舊 trace 重建、父節點二來源加法動畫、完整 Segment Tree 背景／segment 連續性通過。
+- 未完成或環境阻塞：無。
+- 本機服務重啟：`intergration` 3100 已重啟為 PID 65064；algorithm、slides 與 `/trace/analyze` 均為 HTTP 200。
+- Push／公開部署狀態：本輪將推送 `origin/intergration`；未合併 main、未部署公開主機。

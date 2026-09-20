@@ -103,12 +103,12 @@
 - 主代理需補驗證的情境：實際 heap 範例逐幀檢查 push/pop、compare→assign、scope exit；局部 reference alias 進出函式；整合版 500ms 三連點、時間線跳轉與 hidden tab 恢復。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：beta 3102 已由開發代理重啟為 PID 50920，HTTP 200，並確認 `trace-frame-tween.js?v=trace-215`、`trace-renderer.js?v=trace-188`、`trace-player.js?v=trace-25`、`front.js?v=random-id-34`；整合服務仍由主代理處理。
-- Push／公開部署狀態：本輪程式與文件提交將 push 至 `origin/codex/2026-09-18-beta`；未部署。
+- 狀態：已核實並整合至 `intergration`。
+- 核實的程式 commit 與 diff 範圍：Beta 至 `0fd27db`；涵蓋穩定幀導覽、連續下一步、marker 排版／讓位、reference alias 樣式、fixed mark 及隱藏分頁。
+- 差異審查與必要重跑結果：播放、alias、style、sequence、outerframe 與 marker 聯合集合納入 16 檔，合計 123/123 通過。
+- 合併 commit：`d57bad5`；整合測試修正 `0acd11a`。
+- 完整 regression：未執行全部測試；主代理限定 Heap 動畫回歸的 algorithm 548、editor 543、runtime 548 samples 全通過，前置 cloud storage、slide order、deck import repair 亦通過。
+- 演算法投影片實際驗證：Heap 三介面動畫與 reference alias／swap fixed mark 瀏覽器專項通過。
+- 未完成或環境阻塞：無。
+- 本機服務重啟：`intergration` 3100 已重啟為 PID 65064；tween `trace-222`、renderer `trace-202`、front `random-id-34`，HTTP 200。
+- Push／公開部署狀態：本輪將推送 `origin/intergration`；未合併 main、未部署公開主機。

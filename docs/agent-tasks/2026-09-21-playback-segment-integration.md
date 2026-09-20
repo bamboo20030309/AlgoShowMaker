@@ -37,5 +37,5 @@
 ## 服務與發布
 
 - 本輪只更新 `intergration`，不合併 `main`。
-- 驗證完成後重啟 3100，並核對 HTTP、trace 分析與前端快取版本。
+- 驗證完成後已重啟 3100 為 PID 65064；algorithm、slides 與 /trace/analyze 均為 HTTP 200，並核對 tween trace-222、renderer trace-202、Studio trace-121、front random-id-34。
 - 推送 `origin/intergration`；不建立 release、不部署公開主機。
