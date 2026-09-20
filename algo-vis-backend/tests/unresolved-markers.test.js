@@ -2033,7 +2033,7 @@ test('same-cell reflow finishes before a later i++ marker movement', () => {
     'the source peer starts immediately and finishes the shared reflow timing');
 });
 
-test('destination peers wait until an arriving marker is one label width away', () => {
+test('destination peers make room as soon as an arriving marker starts moving', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerAssignmentMotion,');
@@ -2078,12 +2078,93 @@ test('destination peers wait until an arriving marker is one label width away', 
   );
   const liveJ = () => 73 + motion.adjustments.get('marker-j').x;
   motion.update(150);
-  assert.equal(liveJ(), 60, 'destination peer does not make room early');
-  motion.update(400);
   assert.ok(liveJ() > 60 && liveJ() < 73,
-    'destination peer begins making room near the arriving marker');
+    'destination peer starts making room with the arriving marker');
   motion.update(520);
   assert.equal(liveJ(), 73, 'destination peer finishes reflow when the marker arrives');
+});
+
+test('a moving declaration continuation uses the standard cross-cell duration', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { markerAssignmentMotion,');
+  const c = vm.createContext({
+    window: {
+      ASMTraceRules: { resolveExpression: (doc, frame, expression, locals) => (
+        Number(locals[expression])
+      ) },
+      ASMTraceEvents: {
+        animation: type => type === 'declare' ? 'declare' : 'none',
+        ordered: events => [...events].sort((left, right) => left.order - right.order)
+      }
+    },
+    document: { documentElement: { dataset: {} } },
+    requestAnimationFrame() {}, cancelAnimationFrame() {}, performance: { now: () => 0 },
+    CustomEvent: class CustomEvent {}, queueMicrotask() {}
+  });
+  vm.runInContext(source, c);
+  const tween = c.window.ASMTraceFrameTween;
+  const visual = (identity, target, x) => ({
+    dataset: {
+      traceObjectKey: 'marker-i',
+      traceBindingTarget: target,
+      traceSourceVariableId: 'i',
+      traceMarkerIndexExpression: 'i',
+      traceMarkerSortKey: 'i',
+      traceMarkerBaseCellWidth: '40',
+      traceRuntimeIdentity: identity,
+      traceVisualContinuityKey: 'heapify:i:arr'
+    },
+    getAttribute: name => name === 'transform' ? `translate(${x},8)` : null
+  });
+  const previous = visual('parent-i', 'arr#0', 20);
+  const current = visual('child-i', 'arr#1', 60);
+  const declaration = {
+    id: 'declare-child-i', type: 'declare', order: 1, name: 'i',
+    targets: [{ variableId: 'i', role: 'target' }]
+  };
+  const previousPlacements = new Map([['marker-i', { x: 20, y: 8 }]]);
+  const currentPlacements = new Map([
+    ['marker-i', { x: 60, y: 8 }],
+    ['arr#0', { x: 0, y: 8, width: 40, height: 40 }],
+    ['arr#1', { x: 40, y: 8, width: 40, height: 40 }]
+  ]);
+  const elements = new Map([['marker-i', current]]);
+  const slots = tween.buildEventTimeline(
+    { variables: { i: { name: 'i' } } },
+    { events: [declaration] }, 1, 520,
+    previousPlacements, currentPlacements, elements, 0,
+    new Map([['marker-i', previous]]), null,
+    { continuingKeys: new Set(['marker-i']), skipAvailability: true }
+  );
+  assert.equal(slots[0].duration, 520);
+  assert.equal(slots[0].declarationMarkerMotionDuration, 520);
+  slots[0].continuingVisualKeys = new Set(['marker-i']);
+
+  const motion = tween.markerAssignmentMotion(
+    { variables: { i: { name: 'i' } } },
+    { events: [declaration] }, slots, currentPlacements, elements,
+    [{
+      key: 'marker-i', element: current, previousVisual: previous,
+      markerPointPath: {}, markerLabelBox: { getAttribute: () => '18' }
+    }]
+  );
+  const liveX = () => 60 + motion.adjustments.get('marker-i').x;
+  motion.update(180);
+  assert.ok(liveX() > 20 && liveX() < 60,
+    'the declaration continuation is still moving after the old 180ms duration');
+  motion.update(520);
+  assert.equal(liveX(), 60);
+
+  const stationarySlots = tween.buildEventTimeline(
+    { variables: { i: { name: 'i' } } },
+    { events: [declaration] }, 1, 520,
+    new Map([['marker-i', { x: 60, y: 8 }]]), currentPlacements, elements, 0,
+    new Map([['marker-i', visual('parent-i', 'arr#1', 60)]]), null,
+    { continuingKeys: new Set(['marker-i']), skipAvailability: true }
+  );
+  assert.equal(stationarySlots[0].duration, 220);
+  assert.equal(stationarySlots[0].declarationMarkerMotionDuration, 180);
 });
 
 test('compare marker followers use the event checkpoint rather than the final rendered binding', () => {

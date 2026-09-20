@@ -3665,7 +3665,10 @@
       const start = Number(slot.animation === 'declare' ? slot.visualStart ?? slot.start : slot.motionStart ?? slot.start) || 0;
       const instant = slot.logicalOnly === true;
       const end = instant ? start : slot.animation === 'declare'
-        ? start + MARKER_REFLOW_TIMING.duration
+        ? start + Math.max(
+          MARKER_REFLOW_TIMING.duration,
+          Number(slot.declarationMarkerMotionDuration) || 0
+        )
         : Math.max(start + 1, Number(slot.end) || start + 1);
       if (slot.animation === 'declare') markers.forEach(marker => {
         if (slot.continuingVisualKeys?.has(marker.key)) initializedAtDeclaration.add(marker.key);
@@ -3680,19 +3683,13 @@
       });
       const movingKeys = new Set(markers.map(marker => marker.key));
       const sourceTargets = new Set(markers.map(marker => state.get(marker.key)).filter(Boolean));
-      const destinationStarts = new Map();
+      const movingDestinations = new Set();
       markers.forEach(marker => {
         const from = currentPositions.get(marker.key);
         const to = nextPositions.get(marker.key);
         const destination = nextState.get(marker.key);
         if (!from || !to || !destination || destination === state.get(marker.key)) return;
-        const distance = Math.hypot(to.x - from.x, to.y - from.y);
-        const threshold = Math.max(1, Number(metadata.get(marker.key)?.labelWidth) || 18);
-        const ratio = distance > threshold ? (distance - threshold) / distance : 0;
-        const destinationStart = start + (end - start) * ratio;
-        const previous = destinationStarts.get(destination);
-        destinationStarts.set(destination, previous == null
-          ? destinationStart : Math.min(previous, destinationStart));
+        movingDestinations.add(destination);
       });
       metadata.forEach((unused, key) => {
         let stepStart = start;
@@ -3700,10 +3697,10 @@
         if (!movingKeys.has(key)) {
           const currentTarget = state.get(key);
           const nextTarget = nextState.get(key);
-          if (destinationStarts.has(nextTarget) && !sourceTargets.has(currentTarget)) {
-            // Destination peers keep their place until the incoming marker is
-            // one marker square away, then make room as it arrives.
-            stepStart = destinationStarts.get(nextTarget);
+          if (movingDestinations.has(nextTarget) && !sourceTargets.has(currentTarget)) {
+            // Destination peers start making room as soon as the incoming
+            // marker starts moving, so both motions finish together.
+            stepStart = start;
           } else if (sourceTargets.has(currentTarget) && currentTarget === nextTarget) {
             // The source group fills the vacated place as soon as movement
             // starts. Reflow uses the shared marker timing instead of waiting
@@ -4640,6 +4637,7 @@
       let duration = 0;
       let effectDuration = 0;
       let markerAssignment = null;
+      let declarationMarkerMotionDuration = 0;
       if (positionOnly) duration = swapDuration;
       let declarationEntranceDelay = 0;
       if (animation === 'declare') {
@@ -4659,7 +4657,24 @@
           }).length > 0
         ));
         declarationEntranceDelay = makesRoom ? MARKER_REFLOW_TIMING.entranceDelay : 0;
-        duration = APPEAR_TIMING.duration + declarationEntranceDelay;
+        const movingContinuation = declarationKeys.some(key => {
+          if (!timelineOptions.continuingKeys?.has?.(key)) return false;
+          const continuation = markerContinuationFor(
+            elements?.get?.(key), key, previousPlacements, previousObjects
+          );
+          const before = continuation?.placement || previousPlacements?.get?.(key);
+          const after = currentPlacements?.get?.(key);
+          return Boolean(before && after && (
+            Math.abs((Number(before.x) || 0) - (Number(after.x) || 0)) > 0.1
+            || Math.abs((Number(before.y) || 0) - (Number(after.y) || 0)) > 0.1
+          ));
+        });
+        duration = Math.max(
+          APPEAR_TIMING.duration + declarationEntranceDelay,
+          movingContinuation ? swapDuration : 0
+        );
+        declarationMarkerMotionDuration = movingContinuation
+          ? swapDuration : MARKER_REFLOW_TIMING.duration;
       }
       let markerExit = false;
       if (animation === 'exit') {
@@ -4751,6 +4766,9 @@
         promptStart, codePromptDuration, visualStart, start: visualStart,
         effectStart, motionStart, effectDuration,
         declarationEntranceDelay,
+        declarationMarkerMotionDuration: animation === 'declare'
+          ? declarationMarkerMotionDuration || MARKER_REFLOW_TIMING.duration
+          : 0,
         markerExit,
         exitDuration: animation === 'exit' ? APPEAR_TIMING.duration : 0,
         reflowStart: animation === 'exit' && markerExit
@@ -5544,12 +5562,14 @@
     const preKeepEventTimeline = buildEventTimeline(
       traceDocument, eventFrame, options.direction, duration,
       previousPlacements, currentPlacements, currentElements,
-      initialDelay, previousObjects, event => event?.preKeepExit === true
+      initialDelay, previousObjects, event => event?.preKeepExit === true,
+      { continuingKeys }
     );
     const provisionalRegularTimeline = buildEventTimeline(
       traceDocument, eventFrame, options.direction, duration,
       previousPlacements, currentPlacements, currentElements,
-      0, previousObjects, event => event?.preKeepExit !== true
+      0, previousObjects, event => event?.preKeepExit !== true,
+      { continuingKeys }
     );
     const provisionalEventTimeline = [...preKeepEventTimeline, ...provisionalRegularTimeline];
     const eventControlledKeys = new Set(eventMotionDelays(
@@ -5622,7 +5642,8 @@
       traceDocument, eventFrame, options.direction, duration,
       previousPlacements, currentPlacements, currentElements,
       Math.max(preEventPlan.preEventDurationMs, markerReflowDuration),
-      previousObjects, event => event?.preKeepExit !== true
+      previousObjects, event => event?.preKeepExit !== true,
+      { continuingKeys }
     );
     const eventTimeline = [...preKeepEventTimeline, ...regularEventTimeline];
     eventTimeline.forEach(slot => { slot.continuingVisualKeys = continuingKeys; });
@@ -6653,10 +6674,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-210';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-211';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-210', play, cancel, updateEventAvailability,
+    build: 'trace-211', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
