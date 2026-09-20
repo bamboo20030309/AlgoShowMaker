@@ -166,7 +166,7 @@ int main() {
 | `@layout` | 宣告並設定具名遞迴排版 | `// @layout recursion as "quick_tree" at canvas.top offset(0,80)` |
 | `@exit` | 提早讓指定變數的視覺呈現退場 | `// @exit min_idx` |
 | `@text` | 顯示動態說明文字與 TTS | `// @text "i = ${i}" at arr.bottom when i >= 0` |
-| `@style` | 套用背景、框線、point、mark 或 focus；逗號可組合樣式 | `// @style arr[i,i*2:i*2+1] highlight,point red` |
+| `@style` | 套用背景、框線、point、mark或focus；逗號可組合樣式 | `// @style arr[i,i*2:i*2+1] highlight,point red` |
 | `@segment` | 標示一段連續範圍 | `// @segment arr[low:high]` |
 | `@place` | 將同幀已顯示物件綁到語意錨點 | `// @place pivot at arr.right offset(16,0)` |
 | `@arrow` | 以語意錨點連接格子、變數、keep 或 Studio 物件 | `// @arrow from arr[i].bottom to arr[j].top as "move"` |
@@ -195,7 +195,10 @@ int main() {
 // @style arr[i,i*2:i*2+1] highlight red
 // @style arr[1:i-1,n:n] focus
 // @style prime[0:iteration.last(j)] focus when i * value <= n
+// @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
 ```
+
+`background`會在每幀依條件重新套用，適合呈現lazy／set等長期狀態；條件失效時背景自然移除。需要顯示當次操作的局部範圍或遞迴分裂時，使用`@segment tree[node][L:R]`。
 
 `@keep as` 第一次使用名稱時不加編號；重複名稱依序使用 `_1`、`_2`。所有 keep 物件的外框可透過虛擬聯集 `keep.top`、`keep.bottom` 等錨點定位。keep 預設保留來源的相對定位、Studio 位置／綁定與自動排版高度；所有未手動定位的 keep 列，預設垂直間距為 50px。明確的 `offset` 或 Studio 拖曳位置仍優先。若只想從原位置調整，可寫 `// @keep last offset(0,-24)`，正 Y 向下、負 Y 向上。
 
@@ -280,7 +283,8 @@ C++ 原始碼
 - 修正濃縮幀的 `@events animate off` 誤關自動固定；一般事件動畫開關保留固定狀態與其他繪圖動畫，`all animate on` 也不覆寫固定設定。
 - 「自動固定」與「迴圈邊界事件」會寫入目前程式的 `@asm-view`，重新 RUN 與投影片重載後仍保留；事件間隔及一般事件類型偏好維持帳號設定。
 - 複合賦值的可見來源數字抵達目的值時會立即消失並提交結果，不在目的地額外停留。
-- `render heap` 新增 `fields(...)`、逐幀 `hide(field=value)`、`separator(...)`、pair／tuple單格格式，以及style顯示層中的 `@segment tree[node][L:R] color ...` 格內區段；`with split(now)`可保留遞迴分裂後尚待處理的另一側。線段樹範例已移除AV.hpp舊繪圖程式並保留原演算法。
+- `target = a + b`及`tree[parent] = tree[left] + tree[right]`會讓兩個可見來源的數字同步移向目的格；抵達時兩個移動數字立即消失，目的格在同一個動畫更新中顯示加總結果。無法安全定位兩個來源時沿用一般賦值動畫。
+- `render heap` 新增 `fields(...)`、逐幀 `hide(field=value)`、`separator(...)`、pair／tuple單格格式，以及style顯示層中的 `@segment tree[node][L:R] color ...` 格內區段；`with split(now)`可保留遞迴分裂後尚待處理的另一側。線段樹範例已移除AV.hpp舊繪圖程式並保留原演算法；`Segment_Tree_easy_build`完整播放輸入與由下往上的建樹，`Segment_Tree_easy`則從已建好的樹開始，只播放查詢與sum累加。
 - 擷取會由當幀事件向上找到最外層的 `for`、`while` 或 `if`；迴圈一律顯示完整內容與結尾大括號，聯集子樹之外的程式碼隱藏為省略號。省略區段若只剩一行可執行程式碼，會直接顯示該行，不再以 `…` 代替。
 - 當事件位於 `main` 以外的函式時，程式碼片段會顯示該函式的完整內容，包括函式宣告、所有可執行程式與結尾大括號；註解與繪圖指令仍會隱藏。同一函式內的幀沿用相同函式子樹，不會因事件落在不同分支或遞迴層級而反覆切換片段。
 - 首幀沒有事件時，會由畫面上的變數反查宣告、輸入和必要的初始化迴圈。一般註解、繪圖指令與非演算法樣板程式碼預設不顯示。

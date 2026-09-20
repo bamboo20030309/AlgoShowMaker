@@ -1,14 +1,12 @@
-// Segment_Tree_easy Sample
+// Segment_Tree_easy Query Sample
 #include <bits/stdc++.h>
 using namespace std;
 
-#define pb push_back
 #define int int
-#define LM INT_MAX
 #define Hbit(X) (32-__builtin_clzll(X))
 
-vector<int> tree, lazy, sets;
-int Tmask, Tsize, Tdeep, n, sum = 0;
+vector<int> tree;
+int Tmask, Tsize, Tdeep, Tcapacity, n, sum = 0;
 
 // @defaults
 // @camera focus tree offset(0,35) zoom(1.05)
@@ -20,28 +18,33 @@ int Tmask, Tsize, Tdeep, n, sum = 0;
 // @place sum.top at tree.bottom offset(0,45)
 // @endpreset
 
-int rule(int a, int b) { return a + b; }
+// 遞迴查詢期間用 now 作為 tree 的實際陣列指標。
+// @preset query_pointer_view
+// @object tree[now] render heap with range(1,Tsize-1)
+// @object sum render cell
+// @place sum.top at tree.bottom offset(0,45)
+// @endpreset
 
-void build() {
+// 先完成資料建構，不在查詢動畫中逐步播放。
+void build_tree() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
-    tree.assign(1 << Tdeep, 0);
-    lazy.assign(1 << Tdeep, 0);
-    sets.assign(1 << Tdeep, LM);
+    Tcapacity = (1 << Tdeep) - 1;
+    tree.assign(Tcapacity + 1, 0);
     for (int i = Tsize - n; i < Tsize; i++) cin >> tree[i];
     for (int i = Tsize - n - 1; i > 0; i--)
-        tree[i] = rule(tree[i << 1], tree[i << 1 | 1]);
+        tree[i] = tree[i << 1] + tree[i << 1 | 1];
 }
 
 // 保留原本的特殊葉節點排列：根區間是 [Tmask, 2*Tmask-1]。
 void query(int l, int r, int L, int R, int now) {
-    // @frame use query_view
-    // @style tree[now] highlight,point
+    // @frame use query_pointer_view
+    // @style tree[now] highlight
     // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)
     // @text "節點 ${now} 代表目前區間；另一側尚待處理的區段也會保留" at tree.top offset(0,-20)
     if (L <= l && r <= R) {
         sum += tree[now];
-        // @frame use query_view
-        // @style tree[now] highlight,point
+        // @frame use query_pointer_view
+        // @style tree[now] highlight
         // @style sum highlight
         // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after)
         // @text "整段命中，將 ${tree[now]} 加入 sum；目前 sum = ${sum}" at tree.top offset(0,-20)
@@ -53,11 +56,14 @@ void query(int l, int r, int L, int R, int now) {
 }
 
 int main() {
-    int m, q, x, y, k;
+    int m, x, y;
     cin >> n >> m;
-    build();
+    build_tree();
+
     // @frame use query_view
-    // @text "線段樹由葉節點往上合併；這個版本只示範區間查詢" at tree.top offset(0,-20)
+    // @events animate off
+    // @text "線段樹已建構完成，接著只播放區間查詢" at tree.top offset(0,-20)
+
     for (int i = 0; i < m; i++) {
         cin >> x >> y;
         sum = 0;

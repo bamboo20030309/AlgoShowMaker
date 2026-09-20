@@ -671,7 +671,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
 
 ## `@style`：設定格子樣式
 
-播放時，background／focus 的填色及 highlight／point／mark 的顏色以 180ms 平滑過渡；value 與 index 填色使用相同時機與速度，位移補間不另外覆寫 style 的顏色。
+播放時，background／focus／segment 的填色及 highlight／point／mark 的顏色以 180ms 平滑過渡；value 與 index 填色使用相同時機與速度，位移補間不另外覆寫 style 的顏色。
 進入新幀時就以該幀最終狀態套用 style，不等待比較、賦值或交換動畫完成。
 框與提示的位置沿用格子的同一段位移／縮放動畫，不另外延遲追趕，閃爍節奏不重啟。
 自動播放等待最後的變色完成；Studio 手動拖曳維持即時更新。
@@ -692,6 +692,15 @@ void quick_sort(vector<int>& arr, int low, int high) {
 | `mark` | 在格子上顯示勾選標記 |
 | `background` | 直接設定格子背景色 |
 | `focus` | 保留指定片段正常顯示，將其他格子以指定顏色弱化 |
+
+長期狀態直接使用`background`；renderer會在每幀重新判斷條件。用於`fields(tree,lazy,sets)`的附加欄位時，背景套在相同索引的tree格內，不會建立獨立lazy／sets物件：
+
+```cpp
+// @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
+// @style sets[1:Tsize-1] background rgb(255,183,77) when value != 2147483647
+```
+
+需要依局部端點切開、分裂或顯示當次操作範圍時，使用獨立的`@segment tree[node][L:R]`指令。
 
 所有 `point` 與 `highlight` 共用同一套系統時間節奏；畫布更新、切換幀或產生縮圖時不會各自重新起跳。
 
@@ -767,7 +776,7 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 
 條件會對選取範圍內的每一格分別計算。
 
-style 還原為入幀套用：background／focus／highlight／point／mark 在進入新幀時依該幀最終 `value`、`index` 與變數狀態求值，不等待事件提交或整幀結束，也不再依中途顯示數值重新求值。已開啟交換動畫的格子填色是例外：交換開始前維持來源格子的舊色，實際交換起跑才啟動 180ms 變色，顏色跟隨移動中的格子；固定的 index 框也在相同時點啟動變色。關閉交換動畫不等待。其他 style 仍可能先於賦值反映新幀結果。數值與事件仍按原本 runtime order 播放；style 跟隨格子移動與縮放，value／index 背景使用同一份幀規則。`highlight`、`point` 等提示沿用全域閃爍／跳動節奏，不因換幀重啟。Studio 靜態預覽與三個播放介面採相同規則。
+style 還原為入幀套用：background／focus／highlight／point／mark／segment 在進入新幀時依該幀最終 `value`、`index` 與變數狀態求值，不等待事件提交或整幀結束，也不再依中途顯示數值重新求值。已開啟交換動畫的格子填色是例外：交換開始前維持來源格子的舊色，實際交換起跑才啟動 180ms 變色，顏色跟隨移動中的格子；固定的 index 框也在相同時點啟動變色。關閉交換動畫不等待。其他 style 仍可能先於賦值反映新幀結果。數值與事件仍按原本 runtime order 播放；style 跟隨格子移動與縮放，value／index 背景使用同一份幀規則。`highlight`、`point` 等提示沿用全域閃爍／跳動節奏，不因換幀重啟。Studio 靜態預覽與三個播放介面採相同規則。
 
 C++ 範圍迴圈（`ForRangeLoop`）標頭宣告的變數也能在迴圈內的指令中使用，例如：
 
@@ -786,7 +795,7 @@ for (auto& v : prime) {
 支援：
 
 - AlgoShowMaker 色名，例如 `AV_red`、`AV_green`、`AV_blue`、`AV_yellow`、
-  `AV_orange`、`AV_grey`、`AV_black`、`AV_white`。
+  `AV_orange`、`AV_magenta`、`AV_grey`、`AV_black`、`AV_white`。其中`AV_orange`為`rgba(255,183,77,0.65)`，`AV_magenta`為`rgba(231,144,255,0.65)`。
 - CSS 色名，例如 `red`、`orange`。
 - Hex，例如 `#ff0000`、`#ff000080`。
 - `rgb(...)`、`rgba(...)`、`hsl(...)`、`hsla(...)`。
@@ -1472,6 +1481,10 @@ Studio 對受來源控制的事件標示 `@events` 原因並停用直接切換�
 | 進入／離開函式 | 無 | 關閉 |
 
 複合賦值若來源與目的都能對應到可見格子，例如`sum += tree[now]`，會保留`sum`的舊值，將`tree[now]`格內的數字平移到`sum`的數字位置，抵達時提交新值並在同一個動畫更新中立即移除移動數字，不會停留在目的地。移動的是文字值，不包含來源格子的框線。全域純量在不同函式與遞迴幀之間沿用同一個runtime身分，因此只在第一次顯示時入場，不會因切換activation反覆淡入、淡出。含有副作用的目的索引（例如`arr[nextIndex()] += 2`）不會為了動畫重複求值；無法安全建立來源到目的動畫時會直接提交結果。
+
+二元加法賦值若兩側都是可見的純量或安全索引格，例如`total = a + b`或`tree[parent] = tree[left] + tree[right]`，會保留目的格舊值，將左右兩個來源的數字同步移向目的數字位置。兩個數字抵達時立即移除，目的格在同一個動畫更新中改成加總結果；來源格框線不會跟著移動。索引只接受不含函式呼叫、遞增或遞減的安全運算式，避免為了動畫重複執行副作用；其他運算式沿用一般賦值動畫。
+
+線段樹easy教學分成兩個可獨立RUN的範例。`algorithm_sample/Tree/Segment_Tree_easy_build.cpp`從初始化、逐筆輸入、父節點加總一路播放到根節點完成；`algorithm_sample/Tree/Segment_Tree_easy.cpp`先在無教學幀的初始化階段完成建樹，第一幀直接顯示完整樹，之後只播放查詢下降、segment分裂與sum累加。兩份範例各有自己的sample input。
 
 「呼叫函式」依實際執行順序，在呼叫發生時將該段程式碼塗灰，並保留灰色痕跡；
 不播放黃色提示、放大、位移或入退場動畫。可從事件設定或 Studio 呼叫按鈕關閉，

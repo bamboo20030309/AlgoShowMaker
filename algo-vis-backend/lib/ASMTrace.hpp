@@ -801,6 +801,38 @@ void event_assign(int line, const char* signature,
           source_has_resolved_index, source_resolved_index) + ']');
 }
 
+template <typename BeforeFactory, typename F, typename AfterFactory>
+void event_binary_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* left_id, const char* left_expression, const char* left_index,
+    bool left_has_resolved_index, long long left_resolved_index,
+    const char* right_id, const char* right_expression, const char* right_index,
+    bool right_has_resolved_index, long long right_resolved_index,
+    const char* operation, const char* expression,
+    BeforeFactory before_factory, F action, AfterFactory after_factory,
+    bool animate = true, bool for_initializer = false) {
+  const std::string before = encode_value(before_factory());
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  recorder().add_event("assign", line, signature ? signature : "",
+    std::string("\"operation\":\"=\"")
+      + ",\"binaryOperation\":" + quoted(operation ? operation : "")
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
+          target_has_resolved_index, target_resolved_index)
+      + ',' + target_json("source-left", left_id, left_expression, left_index,
+          left_has_resolved_index, left_resolved_index)
+      + ',' + target_json("source-right", right_id, right_expression, right_index,
+          right_has_resolved_index, right_resolved_index) + ']');
+}
+
 // An assignment used as the right-hand side of another assignment must
 // preserve its expression value while still recording its own earlier event.
 template <typename Action, typename Record>

@@ -28,3 +28,8 @@ test('old, future, incomplete and unknown-format traces warn without mutation', 
   }
   assert.equal(api.status(null, '', '').kind, 'empty');
 });
+test('the previous engine generation is outdated after segment style was removed', () => {
+  const previous = trace();
+  previous.provenance.engineVersion = 7;
+  assert.equal(api.status(previous, 'int x = 1;\n', '1\n').kind, 'outdated');
+});

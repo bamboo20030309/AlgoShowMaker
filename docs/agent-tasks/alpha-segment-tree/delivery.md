@@ -4,9 +4,13 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-19-alpha-segment-tree
 - 共同基準 commit：61a4baade9b06b5e50d0c7a24683e937db9c7112
-- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a
-- 驗證時的 HEAD 與未提交修改：bf26ba00c7e50de08f4172e575df409c898e4f8a；程式驗證完成時僅有本交付文件更新
-- 驗證日期：2026-09-20
+- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a、f618e1ed7a0a0caa1b0d68771b848f93e7adef3f、6c3688075082ac1580bca25857658787589a569a、eb1337540fab4926089d2e0de409fd3e0a0bfc49、a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c、7a9f9032a96cadbc8b27c279340d2ca8e8fb275e、a712fc56e3b3a25aa68a82548e44e88666e6f122、63b78d12a4108511396a4767589bd86b9ae28bfd、8e0329c708a0ae4d13f7b24cce61c32e5efc4f98、09da3d9b4c58f0c87fe36b740aa6d0bca8c9ddca、9e8527d6d10b7bec06c9a39d71d497999d0035a2、3a7f27d939421ddbcd10361ba8d4606566e46c5b、753016cd4510b6b05eb5424fc195127b323cc6e9、9c3d570ae82267f3d9a69536d540055318507be7、766f84a0d7439466dab9ffdb57fa64ebc512b31f、cd17b89d0f6292e2ee05717417c0882038146abc、6accf3f3ffc3b88842422b7639cdfbf60fa6c582、0d9e279bf3187f471aa370cadeb8c9b357a53ecb
+- 本次追加程式修正 commit：1236ab967bb63ae4e9c7d8408d7573736a95cd2b
+- Background過渡動畫修正 commit：a345c712293a984f2d44c6aa3dd41671693ec1f8
+- 回朔複合背景修正 commit：e25b13f568a04859bc6e2375001192b0bf2c46fd
+- 暫存segment持續性修正 commit：5af9c14ce5661dfe3b7be2412115bb6d4bca3aec
+- 驗證時的 HEAD 與未提交修改：5af9c14ce5661dfe3b7be2412115bb6d4bca3aec；程式驗證完成後僅更新交付文件
+- 驗證日期：2026-09-21
 
 ## 根因與修改
 - 設計依據：既有 frame renderer options 只處理 range／columns／labels，trace model 尚未正規化 pair／tuple，heap renderer 每格只讀主要陣列；既有 @segment parser 只接受單層陣列範圍，轉場矩形也未插值格內色塊幾何。
@@ -17,6 +21,20 @@
 - sum反覆入退場根因與修正：renderer只替容器保存runtime identity，純量在main與不同query activation間被scene boundary誤判為新物件。純量與字串現在以lifetime優先、位址後備建立身分，全域sum可跨幀延續。
 - 第三幀播放根因與修正：trace與靜態SVG皆有segment，但一般播放套用同格highlight／point時，updatePresentedHints原本會隱藏該格所有data-trace-attached-to視覺，將新歸入style layer的segment一併設為display:none。清理範圍已限縮為highlight／point／mark，segment保持獨立可見。
 - 設定保存根因與修正：`trace-view-source`原本明確移除整個`eventSettings`，新trace又會套用帳號偏好，因此自動固定與迴圈邊界無法跟著程式。現在`@asm-view`只序列化`autoFixedEnabled`與`autoLoopBoundaryEnabled`，載入時以它們覆寫帳號預設；事件間隔與各事件類型偏好維持帳號層級。
+- 建構／查詢拆分：`Segment_Tree_easy_build.cpp`獨立提供建構動畫，從初始樹、15筆輸入、15個父節點加總到根節點完成共32幀；`Segment_Tree_easy.cpp`先無幀建樹，第一幀直接顯示完整樹並只播放查詢下降、segment分裂及sum累加。兩份範例各有sample input。
+- 二元加法動畫：instrumenter辨識`target = left + right`，在左右運算元為可見純量或安全索引格時保存兩個來源target；播放器建立兩個純文字transfer並以相同進度移向目的值，落地時同幀移除兩者並提交結果。Segment_Tree_easy的父節點建構改為`tree[i] = tree[left] + tree[right]`以使用此行為；演算法與輸出不變。
+- 完整Segment Tree範例：`Segment_Tree.cpp`靜默完成建樹，第一幀直接進入操作。tree以`range(1,Tsize-1)`裁去未使用補零節點，並用fields／hide在同格顯示原本的tree／lazy／sets；modify與set segment分別使用紫色及橘色。segment只在下降時split並在命中時以after移除；回溯只顯示父節點加總。query命中值另累加到tree下方answer，但函式回傳與輸出維持原演算法。
+- 融合與segment邊界：lazy／sets維持tree同格文字欄位，0與LM依hide省略；非預設欄位以條件`background`直接著色同一tree格子。當次modify／set的可分裂`@segment`仍獨立呈現。
+- 視覺去重：移除`@style ... segment`語法、renderer狀態segment物件與相關助理選項；長期狀態回到原有background機制，不再維護第二套segment身分與生命週期。
+- 回朔背景消失根因與修正：事件轉場原先只以實際繪製物件`tree`查詢樣式，沒有像renderer一樣合併`fields(tree,lazy,sets)`的來源規則，因此回朔會把持續成立的lazy／sets背景暫時寫成白色。轉場現在辨識複合欄位來源並以相同覆蓋順序合併highlight，value與index共同維持正確背景。
+- 暫存segment消失根因與修正：完整範例的set／lazy下推幀與父節點回朔幀沒有重述具名`active_range`，因此這些幀會把仍待處理的segment視為退場。下推幀新增`split(now)`，回朔幀新增`split(now,after)`；第26幀保留節點3、5、8、9，第29幀保留節點3、5、9。
+- 顯示優先級：撤回格內style子層修改；獨立`@segment`恢復位於物件上方、前景箭頭下方的共用style layer，原本split入退場與具名幾何轉場保留。
+- 狀態背景與色盤：操作segment使用的`AV_magenta`維持`rgba(231,144,255,0.65)`，`AV_orange`維持`rgba(255,183,77,0.65)`；lazy／sets背景分別使用同RGB的不透明`rgb(231,144,255)`與`rgb(255,183,77)`，條件失效時隨下一幀重新計算而移除。
+- 獨立lazy／sets物件根因與修正：fields原先已把附加欄位標成capture-only，但`@style lazy[...]`與`@style sets[...]`會把style目標重新設為可見，因此畫面同時出現複合tree與兩個獨立陣列。style綁定現在辨識非主要複合欄位，保留capture-only並把樣式合併到tree同索引格。
+- 舊trace同步：capture-only屬於已保存的frame資料，單純重整仍會播放舊結果。ENGINE_VERSION提升至6，trace-provenance快取提升至trace-7，投影片runtime/editor提升至trace-runtime-39；開啟舊動畫編輯時自動重建並可儲存替換。
+- 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。
+- 3101既有頁面未同步：服務重啟不會替已開啟的瀏覽器iframe重新載入JavaScript，且前次修正未同步提升投影片runtime URL版本，因此既有頁面仍可保留舊播放器。slides.js提升至parallel-merge-197，runtime/editor iframe提升至trace-runtime-37；重新載入投影片頁面後會明確取得新版。
+- 重整後仍舊的根因與修正：投影片保存完整traceDocument，重新整理只會重播保存結果。二元加法新增`binaryOperation`與兩個來源target時漏增ENGINE_VERSION，造成同程式／輸入的舊trace被誤判為current。ENGINE_VERSION現為5；編輯器載入version 4時會自動RUN並遷移Studio設定，使用者儲存後主投影片取得包含新事件的trace。入口同步提升至parallel-merge-198、trace-runtime-38及trace-provenance-6。
 - 修改檔案及用途：trace-instrumenter.js／server.js 定義與保存語法；ASMTrace.hpp／trace-model.js 處理 tuple；trace-renderer.js／trace-frame-tween.js 繪製與轉場；Segment_Tree_easy.cpp／Segment_Tree.cpp 改寫範例；HTML cache、指令提示、手冊、README 與直接相關測試同步更新。
 - README／版本紀錄／使用說明更新：README 與 ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md 已加入新語法及行為；tests/README.md 記錄專項測試。
 - 與 task.md 的差異：query 的預設參數改由呼叫端明確傳入，因目前變數分析不會把具有預設值的參數提供給幀指令；傳入值與原預設值相同，演算法結果不變。依使用者後續補充加入split遞迴前沿，並讓point／highlight沿用預設樣式。
@@ -27,7 +45,7 @@
 | fields、separator、hide 與原變數事件 | parser/runtime 專項及 headless Edge 實際 SVG | 15／7,3／8,8／4,2,9 正確；自訂分隔與逐幀更新正確；lazy／sets 仍有各自 assign 事件與 style | 通過 |
 | pair／tuple 單格與 pair 成員 hide | runtime 資料與實際 SVG | pair 顯示 5、0 / 5；tuple 顯示 1,0,3、0,0,0，未展開格數 | 通過 |
 | heap 格內 segment 行為 | 根與子節點 SVG 幾何、裁切、空範圍、多色塊、具名轉場及split前沿 | 根 8 段、子節點 4 段；完整／中段／右半段正確；反向範圍隱藏；as 身分與幾何插值正確；往左遞迴時保留一至兩層待處理右側，after只排除已完成節點 | 通過 |
-| 格內 segment 顯示層 | headless Edge 檢查SVG父層、cell從屬與圖層順序 | 所有格內segment位於asm-trace-style-layer、不再嵌在cell，style層位於物件上方及前景箭頭下方；具名幾何插值仍通過 | 通過 |
+| 格內 segment 顯示層 | headless Edge 檢查SVG父層、cell從屬與圖層順序 | 獨立@segment恢復到頂層asm-trace-style-layer，位於物件上方與前景箭頭下方；具名幾何及split入退場仍通過 | 通過 |
 | 舊 @segment 相容 | style-segments 與 fixture 單層範圍 | arr[1:2] 仍產生既有區段；原 style／segment 專項通過 | 通過 |
 | 兩個範例移除舊繪圖且保留結果 | /trace/analyze、/compile 與 sample input | 無 AV.hpp、AV av、frame_draw、key_frame_draw、colored_text、_draw_*；point／highlight未指定顏色；輸出分別為 27/3/119/120/8/5/17 與 12 | 通過 |
 | 只呈現向下查詢並累加sum | Segment_Tree_easy以15個葉值查詢13～14，實際動畫播放與逐幀檢查 | now下探至14；命中幀移除完成segment；無回溯幀；sum在tree下方顯示27 | 通過 |
@@ -36,6 +54,11 @@
 | 全域sum跨遞迴幀延續 | 比對前後runtime identity與動畫期間opacity | main／query前後身分相同，所有樣本opacity為1，未重播入退場 | 通過 |
 | compound assignment不重複副作用索引 | 編譯執行`arr[nextIndex()] += 2` | nextIndex只呼叫一次，arr[0]由3變5 | 通過 |
 | 自動事件設定跟隨檔案 | UI切換兩個選項、檢查`@asm-view`並重新RUN | 寫入false／true；重新RUN後trace仍為false／true，其他事件偏好沿用帳號預設 | 通過 |
+| easy建構與查詢獨立動畫 | 兩份sample input編譯、trace來源與headless Edge實際播放 | 建構版32幀且無query幀；查詢版無建構幀／箭頭，七筆輸出不變；兩段皆可獨立RUN | 通過 |
+| 二元加法雙來源動畫 | 純量／陣列trace事件與Segment_Tree_easy逐requestAnimationFrame取樣 | `total=a+b`與`tree[parent]=tree[left]+tree[right]`皆保存左右來源；13與14同步移向tree[14]，目的值保持0直到落地，同一更新移除兩個transfer並顯示27 | 通過 |
+| 投影片內的二元加法動畫 | 將使用者建樹程式編譯後存入獨立投影片deck，iframe剛完成幾何準備便切到第16幀第一個父節點 | runtime為trace-runtime-38；播放計畫維持1660ms；15與補零來源0的純文字transfer可取樣，抵達前tree[15]仍為0；實際heap-cell-segment數量始終為0 | 通過 |
+| 舊投影片trace自動重建與儲存同步 | 將同程式trace改為engineVersion 4並移除全部binaryOperation事件，開啟編輯動畫後儲存 | 編輯器自動重建為engineVersion 5並恢復二元加法事件；儲存後runtime取得新版，第16幀15與0的轉場正常且segment數量為0 | 通過 |
+| lazy／sets融合與操作segment分離 | 完整Segment Tree trace及headless Edge實際SVG | 非預設lazy／sets顯示於tree同格文字；獨立lazy／sets物件數皆為0；操作幀有紫色／橘色segment，回溯幀無segment | 通過 |
 
 ## 小驗證與重跑方式
 ### Parser、runtime、renderer、瀏覽器與範例專項
@@ -61,7 +84,12 @@
 - 執行目錄與必要環境設定：本任務 worktree 的 algo-vis-backend，PORT=3101。
 - 完整操作：以 served trace-renderer.js 的 SHA-256 核對 worktree，POST /trace/analyze 分析 fields／hide／雙層 segment 最小程式，再讀取 algorithm.html cache 版本。
 - 預期結果：來源 hash 相符；fields=tree,lazy,sets、cellRange=true、color=AV_green；新前端版本可見。
-- 實際結果與 exit code：2026-09-20複合賦值落地更新後，停止已核對的alpha PID 11636並重啟為PID 25916。HTTP 200，frame tween trace-216；重啟後heap／Segment Tree實際瀏覽器專項2/2通過。
+- 實際結果與 exit code：2026-09-20動畫拆分後，停止已核對的alpha PID 4668並重啟為PID 4472。HTTP 200；重啟後範例3/3與兩個獨立動畫瀏覽器案例2/2通過。
+- 操作segment範圍更正後：停止已核對的alpha PID 4568並從本worktree重啟為PID 60412；HTTP 200。`/trace/analyze`解析7個frame、9個操作segment描述、0個狀態型segment；3101瀏覽器專項1/1通過。
+- 複合欄位可見性修正後：停止已核對的alpha PID 60412並從本worktree重啟為PID 34600；HTTP 200。3101實際瀏覽器專項1/1通過，lazy／sets獨立SVG物件數均為0。
+- Trace重建版本更新後：停止已核對的alpha PID 34600並從本worktree重啟為PID 59724；HTTP 200，slides入口為parallel-merge-199，ENGINE_VERSION=6；3101實際瀏覽器專項1/1通過。
+- 範例視覺去重後：停止已核對的alpha PID 59724並從本worktree重啟為PID 61504；HTTP 200。Segment Tree範例3/3及完整範例瀏覽器專項1/1通過，確認移除常駐欄位背景後fields／hide、操作segment與演算法輸出不受影響。
+- Segment style與色盤更新後：停止已核對的alpha PID 61504並從本worktree重啟為PID 38424；HTTP 200，renderer=trace-199、provenance=trace-8、slides=parallel-merge-200。3101實際parser 5/5、範例3/3及長期segment瀏覽器專項1/1通過。
 - 證據位置：本機 http://localhost:3101；程序與端點核對輸出只保留於本次代理工作階段。
 
 ### Segment Tree查詢segment消失專項
@@ -107,12 +135,133 @@
 - 實際結果與 exit code：單元與整合32/32通過；headless UI 1/1通過；JavaScript語法與diff檢查通過，exit code均為0。
 - 證據位置：tests/event-settings-source.browser.test.js、tests/view-source-compaction.test.js及tests/slide-animation-parity.test.js，納入程式commit 235f7ca4e3e13607cfb057258f8093c3589056f3。
 
+### Segment_Tree_easy建樹展示專項
+- 目的與對應條件：確認葉節點依輸入順序逐筆呈現，父節點依原演算法由下往上逐一相加，左右來源及算式在實際畫面可見。
+- 執行目錄與必要環境設定：algo-vis-backend；ASM_TEST_BASE_URL=http://127.0.0.1:3101，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree_easy.cpp與原sample input（n=15、值1～15、七筆查詢）。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js tests/heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：15個輸入幀、15個父節點相加幀；每個父節點trace具兩條箭頭；實際SVG顯示兩條具名箭頭及算式文字；查詢輸出不變。
+- 實際結果與 exit code：3101重啟後4/4通過，exit code 0；輸出仍為27／3／119／120／8／5／17。
+- 證據位置：範例與測試納入程式commit f618e1ed7a0a0caa1b0d68771b848f93e7adef3f；執行輸出只保留於本次代理工作階段。
+
+### 二元加法雙來源動畫專項
+- 目的與對應條件：確認一般純量與陣列格加法都保存兩個來源，兩個數字同時移向目的格，且落地、移除與結果提交發生在同一更新。
+- 執行目錄與必要環境設定：algo-vis-backend；隔離服務http://127.0.0.1:3197，重啟後另以alpha http://127.0.0.1:3101重跑實際瀏覽器案例。
+- 測試資料／fixture：最小`total = a + b`／`tree[parent] = tree[left] + tree[right]`及Segment_Tree_easy的15個葉值、查詢13～14。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3197'; node --test tests/assignment-indices.integration.test.js tests/segment-tree-samples.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-name-pattern="segment tree descends" tests/heap-composite-segments.browser.test.js`；`node --check trace-instrumenter.js; node --check public/trace-frame-tween.js; node --test tests/entrypoints.test.js; git diff --check`。
+- 預期結果：雙來源metadata、結果重播、兩個純文字transfer與落地同幀提交皆通過；範例輸出及入口版本正常。
+- 實際結果與exit code：assignment-indices 6/6、segment-tree-samples 2/2、瀏覽器專項1/1、entrypoints 1/1通過，exit code均為0；3101重啟後PID 4668，algorithm.html與腳本皆為trace-217。
+- 證據位置：程式及測試納入commit 6c3688075082ac1580bca25857658787589a569a；執行輸出只保留於本次代理工作階段。
+
+### Easy建構／查詢動畫拆分專項
+- 目的與對應條件：確認建構與查詢各自可直接RUN，查詢不產生建構教學幀，建構不包含查詢流程。
+- 執行目錄與必要環境設定：algo-vis-backend；重啟後alpha服務http://127.0.0.1:3101，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree_easy_build及其15個輸入值；Segment_Tree_easy及原15個值、七筆查詢。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests/segment-tree-samples.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-name-pattern="standalone segment tree" tests/heap-composite-segments.browser.test.js`；`git diff --check`。
+- 預期結果：建構版32幀、15個雙箭頭父節點幀、根值120且無query幀；查詢版無建構幀與箭頭，segment與sum動畫正常且輸出不變。
+- 實際結果與exit code：範例3/3、瀏覽器2/2通過，exit code均為0；3101重啟後PID 4472並回應HTTP 200。
+- 證據位置：範例、sample input與測試納入commit eb1337540fab4926089d2e0de409fd3e0a0bfc49；執行輸出只保留於本次代理工作階段。
+
+### 投影片iframe首幀播放與尺寸重排專項
+- 目的與對應條件：重現3101投影片介面中，建樹父節點加法在iframe剛顯示後被延遲重排取消；確認修正後不需等待即可播放完整雙來源轉場。
+- 執行目錄與必要環境設定：algo-vis-backend；重啟後alpha服務http://127.0.0.1:3101，獨立headless Edge與測試deck localStorage。
+- 測試資料／fixture：使用者同款`Segment_Tree_easy_build.cpp`，額外套用`@style tree[1:Tsize-1] focus`；n=15、值1～15。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests/binary-addition-slide.browser.test.js`；`node --test --test-name-pattern="standalone segment tree build" tests/heap-composite-segments.browser.test.js`；`node --check public/trace-player.js; node --check tests/binary-addition-slide.browser.test.js; node --test tests/entrypoints.test.js; git diff --check`。
+- 預期結果：投影片與演算法頁各1個建樹播放案例通過；入口版本與JavaScript語法正常。
+- 實際結果與exit code：舊trace重建、儲存及第16幀投影片1/1，演算法頁1/1，過期trace編輯器遷移1/1，provenance／入口6/6通過，exit code均為0；停止已核對的3101 PID 64696並從本worktree重啟為PID 54924，HTTP 200，投影片入口為parallel-merge-198、iframe為trace-runtime-38、trace引擎版本為5。
+- 證據位置：tests/binary-addition-slide.browser.test.js、tests/provenance.test.js及程式commit a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c、7a9f9032a96cadbc8b27c279340d2ca8e8fb275e；執行輸出只保留於本次代理工作階段。
+
+### 完整Segment Tree新版範例專項
+- 目的與對應條件：確認既有完整Segment Tree可直接使用新版renderer指令播放建樹、lazy／set、區間分裂、query累加及回溯加總，且原演算法輸出不變。
+- 執行目錄與必要環境設定：algo-vis-backend；隔離服務http://localhost:3198與獨立headless Edge。驗證後停止隔離PID 57680，再重啟alpha 3101為PID 67964。
+- 測試資料／fixture：Segment_Tree.cpp及Segment_Tree-sample_input.txt（15個輸入、七筆add／set／query操作）。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://localhost:3198'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js`；`node --test --test-concurrency=1 --test-name-pattern="full segment tree sample" tests/heap-composite-segments.browser.test.js`；`node --check tests/segment-tree-samples.test.js; node --check tests/heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：建樹不建立幀；heap範圍裁到索引30；fields／hide顯示原三陣列；modify／set使用紫色／橘色segment；操作segment可見；回溯幀segment為0；最終answer與輸出皆為12。
+- 實際結果與exit code：範例3/3、完整範例瀏覽器1/1通過，exit code均為0；trace共123幀且build幀為0，renderer範圍為`[1,31)`，操作時可見複合欄位與segment，回溯加總幀無segment，最終answer及stdout皆為12。3101重啟後PID 53472、HTTP 200，`/trace/analyze`解析7個frame指令。
+- 證據位置：Segment_Tree.cpp、tests/segment-tree-samples.test.js、tests/heap-composite-segments.browser.test.js，最終調整納入程式commit 63b78d12a4108511396a4767589bd86b9ae28bfd；執行輸出只保留於本次代理工作階段。
+
+### 融合欄位與操作segment分離專項
+- 目的與對應條件：確認lazy／sets只顯示在tree格子文字，且紫色／橘色segment只出現在modify／set操作範圍。
+- 執行目錄與必要環境設定：algo-vis-backend；隔離服務http://127.0.0.1:3199與獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp及Segment_Tree-sample_input.txt。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3199'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js`；`node --test --test-concurrency=1 --test-name-pattern='full segment tree sample shows lazy fields' tests/heap-composite-segments.browser.test.js`；`node --check trace-instrumenter.js; node --check public/trace-renderer.js; git diff --check`。
+- 預期結果：範例3/3與瀏覽器專項1/1通過；複合欄位文字與操作segment可見，回溯segment為0，輸出仍為12。
+- 實際結果與exit code：範例3/3、瀏覽器專項1/1、語法檢查通過，exit code均為0；capture-only保留lazy／sets，實際SVG獨立lazy／sets物件數均為0。
+- 證據位置：Segment_Tree.cpp與兩個直接相關測試；執行輸出只保留於本次代理工作階段。
+
+### 舊trace自動重建專項
+- 目的與對應條件：確保保存於投影片的舊capture-only資料不會在重整後繼續顯示獨立lazy／sets。
+- 執行目錄與必要環境設定：algo-vis-backend；隔離服務http://127.0.0.1:3199與獨立headless Edge。
+- 完整指令：`node --test tests/provenance.test.js tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3199'; node --test --test-concurrency=1 tests/binary-addition-slide.browser.test.js`。
+- 預期結果：舊引擎版本判定outdated，編輯器自動RUN為engineVersion 6並保存回runtime；入口載入新版cache key。
+- 實際結果與exit code：provenance／入口6/6、舊投影片重建瀏覽器1/1通過，exit code均為0。
+- 證據位置：trace-provenance.js、三個HTML入口、slides.js及直接相關測試。
+
+### Background持續狀態與色盤專項
+- 目的與對應條件：確認lazy／sets以條件background作用於複合tree格子，資料條件持續成立時背景保留，標記清除或下推後按新狀態重算；同步確認AV_magenta與半透明AV_orange。
+- 執行目錄與必要環境設定：algo-vis-backend；alpha worktree隔離服務http://127.0.0.1:3199，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp、Segment_Tree-sample_input.txt及heap-composite-segments fixture。
+- 完整指令：`node --test tests/style-list.test.js tests/provenance.test.js tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests/segment-tree-samples.test.js`；`node --test --test-name-pattern='full segment tree sample merges' tests/heap-composite-segments.browser.test.js`；`git diff --check`。
+- 預期結果：parser拒絕segment style；範例3/3、背景SVG專項1/1與入口／版本檢查通過；融合欄位背景正確且沒有狀態segment物件。
+- 實際結果與exit code：全部通過，exit code均為0；Segment Tree輸出仍為12，lazy／sets仍為capture-only，紫色／橘色直接出現在tree格子背景。
+- 證據位置：trace-instrumenter.js、trace-renderer.js、Segment_Tree.cpp、tests/style-list.test.js及tests/heap-composite-segments.browser.test.js。
+
+### Segment Tree具名陣列指標專項
+- 目的與對應條件：把範例中的無名稱`point`改為實際C++索引變數形成的陣列指標，並確認既有highlight、segment、查詢累加與父節點二元加法動畫不受影響。
+- 執行目錄與必要環境設定：algo-vis-backend；alpha 3101服務與獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp、Segment_Tree_easy.cpp、Segment_Tree_easy_build.cpp及各自sample input。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js`；`node --test --test-concurrency=1 --test-name-pattern='segment tree' tests/heap-composite-segments.browser.test.js`；`node --check tests/segment-tree-samples.test.js; node --check tests/heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：三個範例解析與輸出3/3通過；三個SVG專項3/3通過；查詢／操作顯示`now`，建樹顯示`i`，畫面沒有point style；二元加法仍顯示兩個來源數字移向父節點。
+- 實際結果與exit code：全部通過，exit code均為0；Segment_Tree輸出仍為12，easy query輸出不變，建樹根值仍為120。
+- 3101重啟核實：已停止核對屬於alpha worktree的PID 38424，從同一backend重啟為PID 42432；HTTP 200，前端載入trace-217，重啟後三個範例再次3/3通過。
+- 證據位置：三個Segment Tree範例與兩個直接相關測試；執行輸出只保留於本次代理工作階段。
+
+### Segment顯示層級回復專項
+- 目的與對應條件：撤回上一輪格內子層修改，確認獨立segment恢復原style layer，原有split入退場、陣列指標與前景箭頭順序不受影響。
+- 執行目錄與必要環境設定：algo-vis-backend；alpha 3101服務與獨立headless Edge。
+- 完整指令：`node --test tests/style-layer.test.js tests/pointer-layer.test.js tests/animation-effect-layer.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 --test-name-pattern='heap fields and local segments' tests/heap-composite-segments.browser.test.js`；`git diff --check`。
+- 預期結果：樣式／指標層5/5、SVG segment專項1/1通過；segment不嵌在cell內，位於style layer且split垂直入退場不變。
+- 實際結果與exit code：全部通過，exit code均為0。
+- 3101重啟核實：停止已核對屬於alpha worktree的PID 23496，從同一backend重啟為PID 34724；HTTP 200，renderer為trace-201、provenance入口為trace-9。重啟後`@style segment`負向分析回傳HTTP 400，範例3/3、獨立segment SVG 1/1及融合背景SVG 1/1通過。
+- 不透明背景核實：程式commit 6accf3f3ffc3b88842422b7639cdfbf60fa6c582將lazy／sets背景改為相同RGB的不透明版本；範例3/3與融合背景SVG 1/1通過。停止alpha PID 34724並從同一backend重啟為PID 69164，HTTP 200；重啟後融合背景SVG再次1/1通過。
+- 證據位置：trace-renderer.js、style-layer.test.js、pointer-layer.test.js及heap-composite-segments.browser.test.js；程式commit cd17b89d0f6292e2ee05717417c0882038146abc。
+
+### Segment退場與持續background交接專項
+- 目的與對應條件：確認完整Segment Tree第5至第6幀由半透明modify segment交接至同色不透明lazy background時，不會在兩者之間露出白色格子。
+- 執行目錄與必要環境設定：algo-vis-backend；重啟後alpha服務http://127.0.0.1:3101，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp及Segment_Tree-sample_input.txt；第5幀為tree[14]上的半透明紫色segment，第6幀為lazy=1的不透明紫色background。
+- 完整指令：`node --check public/trace-frame-tween.js; node --check tests/heap-composite-segments.browser.test.js; node --test tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-name-pattern='full segment tree sample merges' tests/heap-composite-segments.browser.test.js`；`git diff --check`。
+- 預期結果：下一幀background與退場segment為相同RGB且background不透明時，value與index background以可觀察的過渡同步塗色；兩者到達目標色後segment才由上往下退場，不露出白色格子。
+- 實際結果與exit code：語法、入口與瀏覽器專項全部通過，exit code均為0；逐幀取樣確認tree[14]的value與index全程同色，先經過白色與`rgb(231,144,255)`之間的中間色，完成320ms漸變後半透明segment才由40高度縮至0；數值同幀更新為`29,1`。
+- 3101重啟核實：先停止本輪啟動且已核對的alpha PID 39808並重啟為PID 2468；index同步修正後重啟為PID 23964；過渡動畫調整期間依序重啟為PID 10400、42504，最終重啟為PID 10496。HTTP 200，入口載入trace-frame-tween `trace-220`。
+- 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；本次依V2分級只驗證受影響的Segment Tree轉場與入口版本。
+
+### 遞迴回朔複合background持續性專項
+- 目的與對應條件：重現完整Segment Tree遞迴回朔時，條件仍成立的lazy／sets背景短暫退回白色；確認複合欄位value與index在整段轉場維持原色。
+- 執行目錄與必要環境設定：algo-vis-backend；重啟後alpha服務http://127.0.0.1:3101，獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp與Segment_Tree-sample_input.txt；輸入為15個初值及使用者提供的七筆modify／set／query操作。
+- 完整指令：`node --check public/trace-frame-tween.js; node --check tests/heap-composite-segments.browser.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-name-pattern='full segment tree sample merges' tests/heap-composite-segments.browser.test.js`；`node --test tests/style-replay.browser.test.js`；`node --test tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests/segment-tree-samples.test.js`；`git diff --check`。
+- 預期結果：回朔動畫的每次取樣中，持續成立的紫色／橘色background不退白，value與index同色；既有segment交接、一般style重播及三個Segment Tree範例仍通過。
+- 實際結果與exit code：瀏覽器逐幀專項1/1、一般style重播1/1、範例3/3、入口1/1及語法檢查通過，exit code均為0；回朔幀tree[14]等持續標記在全部取樣中保持目標RGB，value與index同步。
+- 3101重啟核實：停止已核對的alpha PID 10496，從同一worktree重啟為PID 19872；HTTP 200，入口載入trace-frame-tween `trace-221`。
+- 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；依使用者指示及V2分級只做受影響的小驗證。
+
+### 完整Segment Tree暫存segment持續性專項
+- 目的與對應條件：重現完整Segment Tree第26幀下推與第29幀回朔時暫存segment整批消失；確認仍待處理區塊在靜態畫面及整段轉場中持續存在。
+- 執行目錄與必要環境設定：algo-vis-backend；alpha 3101服務與獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp與Segment_Tree-sample_input.txt；使用15個初值及七筆modify／set／query操作。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests\segment-tree-samples.test.js`；`node --test --test-name-pattern='full segment tree sample merges' tests\heap-composite-segments.browser.test.js`；`node --check tests\segment-tree-samples.test.js; node --check tests\heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：第26幀持續顯示節點3、5、8、9；第29幀持續顯示節點3、5、9；轉場逐幀取樣都不缺少上述節點；範例輸出仍為12。
+- 實際結果與exit code：範例3/3、完整範例瀏覽器專項1/1、兩個測試檔語法檢查與差異檢查全部通過，exit code均為0；第26與29幀的靜態節點集合及每個requestAnimationFrame取樣皆符合預期。
+- 3101重啟核實：停止已核對的alpha PID 19872，從同一worktree重啟為PID 43660；HTTP 200。重啟後範例3/3與完整範例瀏覽器專項1/1再次通過。
+- 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；依使用者指示及V2分級只跑直接相關案例。
+
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
-- 已知問題或風險：hide 的 LM／INT_MAX 對應目前以 32 位 int 最大值格式化；若未來支援自訂巨集值，需在 trace metadata 加入常數求值。
+- 已知問題或風險：hide 的 LM／INT_MAX 對應目前以 32 位 int 最大值格式化；若未來支援自訂巨集值，需在 trace metadata 加入常數求值。二元加法的雙來源動畫目前限直接的可見純量或安全索引格；巢狀算式、函式呼叫或帶副作用索引沿用一般賦值動畫。
 - 相依與衝突注意：修改 parser、renderer、tween、入口 cache 與兩個範例；合併時需保留 integration 上這些共用檔案的後續版本號。heap.cpp 未修改。
 - 分支推送：已依使用者確認推送至`origin/codex/2026-09-19-alpha-segment-tree`，並以`git ls-remote`核對遠端HEAD。
-- 主代理需補驗證的情境：合併後以 Segment_Tree_easy 與 Segment_Tree 各實際播放數個根／子節點幀，確認複合文字、樣式與局部色塊；再依動畫影響範圍執行整合驗證。
+- 主代理需補驗證的情境：合併後分別以 Segment_Tree_easy_build 播放一個葉節點與父節點雙來源加法幀，再以 Segment_Tree_easy 播放數個查詢幀；並以 Segment_Tree 確認複合文字、樣式與局部色塊，再依動畫影響範圍執行整合驗證。
 
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：已核實並整合至 `intergration`

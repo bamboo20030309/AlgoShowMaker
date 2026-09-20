@@ -69,11 +69,12 @@
   function applyHighlight(element, highlight = {}) {
     const color = highlight.color || highlight.fill || highlight.stroke;
     const typed = highlight.styleTypes || {};
-    const background = typed.background || (Object.hasOwn(typed, 'background') ? 'rgb(231, 144, 255)' : '')
+    const background = typed.background || typed.segment
+      || (Object.hasOwn(typed, 'background') ? 'rgb(231, 144, 255)' : '')
       || (highlight.styleType === 'background' ? color || 'rgb(231, 144, 255)' : '');
     const stroke = typed.highlight || (Object.hasOwn(typed, 'highlight') ? 'red' : '')
       || typed.focus || (Object.hasOwn(typed, 'focus') ? '#ccc' : '')
-      || (highlight.styleType && highlight.styleType !== 'background' ? color : '');
+      || (highlight.styleType && !['background', 'segment'].includes(highlight.styleType) ? color : '');
     if (background) element.setAttribute('fill', background);
     if (stroke) element.setAttribute('stroke', stroke);
     if (highlight.fill) element.setAttribute('fill', highlight.fill);
@@ -95,7 +96,7 @@
       }
       const typedStyles = highlight.styleTypes || {};
       Object.entries(typedStyles).forEach(([type, color]) => {
-        styles.push({ type, color, elements: valid });
+        styles.push({ type: type === 'segment' ? 'background' : type, color, elements: valid });
       });
       if (!Object.keys(typedStyles).length && highlight.styleType && highlight.color !== undefined) {
         styles.push({ type: highlight.styleType, color: highlight.color, elements: valid });
@@ -1478,7 +1479,7 @@
       if (visual.closest('.asm-trace-style-layer')) return;
       const kind = visual.getAttribute('data-trace-attachment-kind') || '';
       const cell = elements.get(visual.getAttribute('data-trace-attached-to'));
-      if (cell && ['highlight', 'point', 'mark', 'segment'].includes(kind)) {
+      if (cell && ['highlight', 'point', 'mark'].includes(kind)) {
         attachStyleVisual(root, visual, cell, kind);
       }
     });
@@ -2816,7 +2817,8 @@
     AV_blue: 'rgba(144, 202, 249, 0.6)',
     AV_red: 'rgba(239, 154, 154, 0.6)',
     AV_yellow: 'rgba(252, 255, 64, 0.46)',
-    AV_orange: 'orange',
+    AV_orange: 'rgba(255, 183, 77, 0.65)',
+    AV_magenta: 'rgba(231, 144, 255, 0.65)',
     AV_node_green: '#e8f5e9',
     AV_node_red: '#ef9a9a',
     AV_grey: '#cccccc',
@@ -4521,9 +4523,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-198';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-201';
   window.ASMTraceRenderers = {
-    build: 'trace-198', updatePresentedHints, evaluateFrameHighlights,
+    build: 'trace-201', updatePresentedHints, evaluateFrameHighlights,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

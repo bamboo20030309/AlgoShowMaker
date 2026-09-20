@@ -41,6 +41,13 @@ int main(){int a[3]={};
   assert.equal(new Set(frame.styles.map(style=>style.id)).size,4);
 });
 
+test('segment is reserved for @segment and is rejected as an @style type', async () => {
+  await assert.rejects(()=>compile(`int main(){int a[3]={0,4,0};
+// @frame a render heap
+// @style a[0:2] segment color AV_magenta when value != 0
+}`),/@style 格式應為/);
+});
+
 test('compiled list styles merge on the same cells inside drawing blocks and keep when filtering', async () => {
   const {trace,window}=await compile(`int main(){int a[4]={1,2,3,4};
 // @frame a

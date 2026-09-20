@@ -139,7 +139,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.ok([...result.first.root,...result.first.child].every(item=>item.styleLayer&&!item.nestedInCell));
     assert.equal(result.first.styleBeforeArrows,true);
     assert.deepEqual(result.first.empty,[]);
-    assert.deepEqual(result.first.fills,['rgba(144, 202, 249, 0.6)','orange']);
+    assert.deepEqual(result.first.fills,['rgba(144, 202, 249, 0.6)','rgba(255, 183, 77, 0.65)']);
     assert.equal(result.second.texts[0],'15 / 6');
     assert.deepEqual(result.second.root.map(item=>[item.start,item.end,item.count]),[[0,7,8]]);
     assert.equal(result.first.root[0].identity,result.second.root[0].identity);
@@ -173,7 +173,95 @@ test('heap fields and local segments render at root and child coordinates', {tim
   } finally {await browser.close();}
 });
 
-test('segment tree descends with segments, removes accepted pieces and accumulates sum', {timeout:60000}, async () => {
+test('standalone segment tree build animates every input and parent sum', {timeout:60000}, async () => {
+  const base=process.env.ASM_TEST_BASE_URL;
+  assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree_easy_build.cpp'),'utf8')
+      .replace(/\r\n?/g,'\n');
+    await page.evaluate(code=>{
+      ace.edit('editor').setValue(code,-1);
+      document.querySelector('#inputArea').value='15\n1 2 3 4 5 6 7 8 9 10 11 12 13 14 15\n';
+    },code);
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    const result=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
+      const buildFrames=doc.frames.map((frame,index)=>({frame,index}))
+        .filter(({frame})=>frame.source?.function==='build');
+      const firstInput=buildFrames[1];
+      const parentBuilds=buildFrames.filter(({frame})=>(frame.arrows||[]).length===2);
+      const parentBuild=parentBuilds[1]||parentBuilds[0];
+      await player.render(firstInput.index,{animatePositions:false,animateEvents:false});
+      const firstInputText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      const firstInputPointer=document.querySelector(
+        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+      )?.textContent;
+      await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
+      const parentText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      const arrowCount=document.querySelectorAll('#asm-trace-root .asm-trace-arrow').length;
+      const binaryEvent=(parentBuild.frame.events||[]).find(event=>event.binaryOperation==='+');
+      const binaryTarget=binaryEvent?.targets?.find(target=>target.role==='target')?.resolvedIndex;
+      await player.render(parentBuild.index-1,{animatePositions:false,animateEvents:false});
+      const samples=[];
+      let settled=false;
+      const transition=player.render(parentBuild.index).finally(()=>{settled=true;});
+      // The real i array pointer contributes its own ordered movement event
+      // before the parent-value assignment. Sample long enough to observe both.
+      for(let count=0;count<420&&!settled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const scene=document.querySelector('#asm-trace-root');
+        const targetText=scene.querySelector(
+          `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
+        )?.querySelector('text:not([data-trace-content-role="index"])');
+        const transfers=[...scene.querySelectorAll('.asm-trace-assign-transfer-value')];
+        samples.push({
+          targetValue:targetText?.textContent,
+          transferValues:transfers.map(item=>item.querySelector('text')?.textContent).sort(),
+          transferRects:transfers.reduce((sum,item)=>sum+item.querySelectorAll('rect').length,0)
+        });
+      }
+      await transition;
+      const binaryFinal=document.querySelector('#asm-trace-root')?.querySelector(
+        `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
+      )?.querySelector('text:not([data-trace-content-role="index"])')?.textContent;
+      const finalFrame=buildFrames.at(-1);
+      await player.render(finalFrame.index,{animatePositions:false,animateEvents:false});
+      const finalText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      return {
+        frameCount:buildFrames.length,
+        firstInputText,firstInputPointer,parentText,arrowCount,
+        binaryEvent:{operation:binaryEvent?.binaryOperation,target:binaryTarget},
+        samples,binaryFinal,finalText,
+        queryFrames:doc.frames.filter(frame=>frame.source?.function==='query').length
+      };
+    });
+    assert.equal(result.frameCount,32);
+    assert.match(result.firstInputText,/讀入第 1 個值 1/);
+    assert.equal(result.firstInputPointer,'i');
+    assert.match(result.parentText,/左右子節點/);
+    assert.equal(result.arrowCount,2);
+    assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
+    const transfers=result.samples.filter(sample=>sample.transferValues.length===2);
+    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])),
+      JSON.stringify(result.samples.slice(-20)));
+    assert.ok(transfers.every(sample=>sample.transferRects===0));
+    assert.ok(transfers.some(sample=>sample.targetValue==='0'));
+    assert.equal(transfers.some(sample=>sample.targetValue==='27'),false);
+    assert.equal(result.binaryFinal,'27');
+    assert.match(result.finalText,/根節點的值是 120/);
+    assert.equal(result.queryFrames,0);
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});
+
+test('standalone segment tree query descends, removes accepted pieces and accumulates sum', {timeout:60000}, async () => {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
   const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
@@ -206,6 +294,12 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       const animatedTree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
       const animatedSegment=animatedTree.closest('#asm-trace-root').querySelector('.asm-trace-heap-cell-segment');
       const animatedVisible=Boolean(animatedSegment&&getComputedStyle(animatedSegment).display!=='none');
+      const pointerLabel=document.querySelector(
+        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+      )?.textContent;
+      const pointStyleCount=document.querySelectorAll(
+        '#asm-trace-root [data-trace-style-kind="point"]'
+      ).length;
       await player.render(compound.index-1,{animatePositions:false,animateEvents:false});
       const beforeScene=document.querySelector('#asm-trace-root');
       const beforeSum=beforeScene.querySelector(`[data-trace-variable="${sumId}"]`);
@@ -244,6 +338,8 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       return {
         deepest,
         animatedVisible,
+        pointerLabel,
+        pointStyleCount,
         beforeSumIdentity,
         afterSumIdentity:sum?.dataset.traceRuntimeIdentity,
         compoundSamples,
@@ -254,6 +350,8 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
     });
     assert.equal(result.deepest,14);
     assert.equal(result.animatedVisible,true);
+    assert.equal(result.pointerLabel,'now');
+    assert.equal(result.pointStyleCount,0);
     assert.ok(result.beforeSumIdentity);
     assert.equal(result.afterSumIdentity,result.beforeSumIdentity);
     assert.ok(result.compoundSamples.length>0);
@@ -275,6 +373,205 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
     assert.deepEqual(result.segments,[]);
     assert.equal(result.sum,'27');
     assert.equal(result.sumBelowTree,true);
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});
+
+test('full segment tree sample merges lazy and set state into cell backgrounds', {timeout:60000}, async () => {
+  const base=process.env.ASM_TEST_BASE_URL;
+  assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree.cpp'),'utf8')
+      .replace(/\r\n?/g,'\n');
+    const input=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree-sample_input.txt'),'utf8');
+    await page.evaluate(({code,input})=>{
+      ace.edit('editor').setValue(code,-1);
+      document.querySelector('#inputArea').value=input;
+    },{code,input});
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    const result=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const byName=Object.fromEntries(Object.entries(doc.variables).map(([id,value])=>[value.name,id]));
+      const indexed=doc.frames.map((frame,index)=>({frame,index}));
+      const scalar=item=>Number(window.ASMTraceModel.scalarValue(item));
+      const markedNodes=frame=>{
+        const result=[];
+        (frame.state[byName.lazy]?.data?.items||[]).forEach((item,node)=>{
+          if(scalar(item)!==0)result.push({node,color:'rgb(231,144,255)'});
+        });
+        (frame.state[byName.sets]?.data?.items||[]).forEach((item,node)=>{
+          if(scalar(item)!==2147483647)result.push({node,color:'rgb(255,183,77)'});
+        });
+        return result;
+      };
+      const operation=indexed.find(({frame})=>frame.source?.function==='main'&&(frame.segments||[]).length>0);
+      const lazyTagged=indexed.find(({frame})=>Object.values(frame.state[byName.lazy]?.data?.items||{})
+        .some(item=>Number(item.value)!==0));
+      const setTagged=indexed.find(({frame})=>Object.values(frame.state[byName.sets]?.data?.items||{})
+        .some(item=>Number(item.value)!==2147483647));
+      const unwind=indexed.find(({frame,index})=>index>lazyTagged.index
+        &&frame.source?.function==='query'&&(frame.arrows||[]).length===2
+        &&markedNodes(frame).length>0);
+      const handoff=indexed.find(({frame,index})=>index>0
+        &&(doc.frames[index-1].segments||[]).some(segment=>segment.split?.phase==='before')
+        &&(frame.segments||[]).some(segment=>segment.split?.phase==='after')
+        &&markedNodes(frame).length>0);
+      await player.render(operation.index,{animatePositions:false,animateEvents:false});
+      const operationSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
+      const handoffMark=markedNodes(handoff.frame)[0];
+      await player.render(handoff.index-1,{animatePositions:false,animateEvents:false});
+      const handoffSamples=[];
+      let handoffSettled=false;
+      const handoffTransition=player.render(handoff.index).finally(()=>{handoffSettled=true;});
+      for(let count=0;count<180&&!handoffSettled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const currentTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+        const segment=currentTree?.closest('#asm-trace-root')?.querySelector(
+          `.asm-trace-heap-cell-segment[data-trace-segment-node="${handoffMark.node}"]`
+        );
+        const rect=currentTree?.querySelector(`[data-trace-index="${handoffMark.node}"] > rect`);
+        const indexRect=currentTree?.querySelector(`[data-trace-index-label="${handoffMark.node}"] > rect`);
+        handoffSamples.push({
+          segmentHeight:segment?Number(segment.getAttribute('height')):0,
+          background:rect?getComputedStyle(rect).fill.replace(/\s+/g,''):'',
+          indexBackground:indexRect?getComputedStyle(indexRect).fill.replace(/\s+/g,''):''
+        });
+      }
+      await handoffTransition;
+      const readBackgrounds=async item=>{
+        await player.render(item.index,{animatePositions:false,animateEvents:false});
+        const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+        return markedNodes(item.frame).map(({node,color})=>({
+          node,color,fill:tree.querySelector(`[data-trace-index="${node}"] > rect`)?.getAttribute('fill')
+        }));
+      };
+      const lazyBackgrounds=await readBackgrounds(lazyTagged);
+      const setBackgrounds=await readBackgrounds(setTagged);
+      await player.render(lazyTagged.index,{animatePositions:false,animateEvents:false});
+      const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+      const compositeTexts=[...tree.querySelectorAll('[data-trace-index] > text:not([data-trace-content-role="index"])')]
+        .map(node=>node.textContent);
+      const separateFields={
+        lazy:document.querySelectorAll(`[data-trace-variable="${byName.lazy}"]`).length,
+        sets:document.querySelectorAll(`[data-trace-variable="${byName.sets}"]`).length
+      };
+      const previousUnwindMarks=new Map(markedNodes(doc.frames[unwind.index-1])
+        .map(mark=>[mark.node,mark.color]));
+      const persistentUnwindMarks=markedNodes(unwind.frame)
+        .filter(mark=>previousUnwindMarks.get(mark.node)===mark.color);
+      await player.render(unwind.index-1,{animatePositions:false,animateEvents:false});
+      const unwindSamples=[];
+      let unwindSettled=false;
+      const unwindTransition=player.render(unwind.index).finally(()=>{unwindSettled=true;});
+      for(let count=0;count<180&&!unwindSettled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const currentTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+        persistentUnwindMarks.forEach(mark=>{
+          const rect=currentTree?.querySelector(`[data-trace-index="${mark.node}"] > rect`);
+          const indexRect=currentTree?.querySelector(`[data-trace-index-label="${mark.node}"] > rect`);
+          unwindSamples.push({
+            node:mark.node,
+            expected:mark.color,
+            background:rect?getComputedStyle(rect).fill.replace(/\s+/g,''):'',
+            indexBackground:indexRect?getComputedStyle(indexRect).fill.replace(/\s+/g,''):''
+          });
+        });
+      }
+      await unwindTransition;
+      const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
+      const unwindTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+      const unwindBackgrounds=markedNodes(unwind.frame).map(({node,color})=>({
+        color,fill:unwindTree.querySelector(`[data-trace-index="${node}"] > rect`)?.getAttribute('fill')
+      }));
+      await player.render(24,{animatePositions:false,animateEvents:false});
+      const frame26ContinuitySamples=[];
+      let frame26Settled=false;
+      const frame26Transition=player.render(25).finally(()=>{frame26Settled=true;});
+      for(let count=0;count<180&&!frame26Settled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const nodes=new Set([...document.querySelectorAll(
+          '#asm-trace-root .asm-trace-heap-cell-segment'
+        )].map(rect=>Number(rect.dataset.traceSegmentNode)));
+        frame26ContinuitySamples.push([3,5,8,9].every(node=>nodes.has(node)));
+      }
+      await frame26Transition;
+      const frame26Segments=[...document.querySelectorAll(
+        '#asm-trace-root .asm-trace-heap-cell-segment'
+      )].map(rect=>Number(rect.dataset.traceSegmentNode)).sort((a,b)=>a-b);
+      await player.render(27,{animatePositions:false,animateEvents:false});
+      const frame29ContinuitySamples=[];
+      let frame29Settled=false;
+      const frame29Transition=player.render(28).finally(()=>{frame29Settled=true;});
+      for(let count=0;count<180&&!frame29Settled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const nodes=new Set([...document.querySelectorAll(
+          '#asm-trace-root .asm-trace-heap-cell-segment'
+        )].map(rect=>Number(rect.dataset.traceSegmentNode)));
+        frame29ContinuitySamples.push([3,5,9].every(node=>nodes.has(node)));
+      }
+      await frame29Transition;
+      const frame29Segments=[...document.querySelectorAll(
+        '#asm-trace-root .asm-trace-heap-cell-segment'
+      )].map(rect=>Number(rect.dataset.traceSegmentNode)).sort((a,b)=>a-b);
+      const pointerLabel=document.querySelector(
+        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+      )?.textContent;
+      const pointStyleCount=document.querySelectorAll(
+        '#asm-trace-root [data-trace-style-kind="point"]'
+      ).length;
+      await player.render(doc.frames.length-1,{animatePositions:false,animateEvents:false});
+      const answer=[...document.querySelectorAll(
+        `[data-trace-object-key="${CSS.escape(`${byName.answer}#0`)}"] > text`
+      )].at(-1)?.textContent;
+      return {
+        buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
+        operationSegments,lazyBackgrounds,setBackgrounds,unwindBackgrounds,unwindSamples,
+        handoffSamples,handoffColor:handoffMark.color,
+        stateSegments:document.querySelectorAll('#asm-trace-root .asm-trace-state-segment').length,
+        compositeTexts,separateFields,unwindSegments,
+        frame26Segments,frame26ContinuitySamples,
+        frame29Segments,frame29ContinuitySamples,
+        pointerLabel,pointStyleCount,answer
+      };
+    });
+    assert.equal(result.buildFrames,0);
+    assert.ok(result.operationSegments>0);
+    assert.ok(result.handoffSamples.every(sample=>sample.background===sample.indexBackground),
+      JSON.stringify(result.handoffSamples));
+    assert.ok(result.handoffSamples.some(sample=>sample.segmentHeight===40
+      &&sample.background!=='rgb(255,255,255)'
+      &&sample.background!==result.handoffColor),JSON.stringify(result.handoffSamples));
+    const exiting=result.handoffSamples.filter(sample=>sample.segmentHeight>0
+      &&sample.segmentHeight<40);
+    assert.ok(exiting.length>0,JSON.stringify(result.handoffSamples));
+    assert.ok(exiting.every(sample=>sample.background===result.handoffColor
+      &&sample.indexBackground===result.handoffColor),
+      JSON.stringify(result.handoffSamples));
+    assert.ok(result.lazyBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
+    assert.ok(result.setBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
+    assert.ok(result.unwindBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
+    assert.ok(result.unwindSamples.length>0,JSON.stringify(result));
+    assert.ok(result.unwindSamples.every(sample=>sample.background===sample.expected
+      &&sample.indexBackground===sample.expected),JSON.stringify(result.unwindSamples));
+    assert.equal(result.stateSegments,0);
+    assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
+    assert.deepEqual(result.separateFields,{lazy:0,sets:0});
+    assert.equal(result.unwindSegments,0);
+    assert.deepEqual(result.frame26Segments,[3,5,8,9]);
+    assert.ok(result.frame26ContinuitySamples.length>0);
+    assert.ok(result.frame26ContinuitySamples.every(Boolean));
+    assert.deepEqual(result.frame29Segments,[3,5,9]);
+    assert.ok(result.frame29ContinuitySamples.length>0);
+    assert.ok(result.frame29ContinuitySamples.every(Boolean));
+    assert.equal(result.pointerLabel,'now');
+    assert.equal(result.pointStyleCount,0);
+    assert.equal(result.answer,'12');
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
 });

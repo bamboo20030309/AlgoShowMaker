@@ -1631,6 +1631,9 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     prepareDrawing(source, analysis, style, target);
     const targetVariable = resolveVariable(style.targetName, style.from);
     if (!targetVariable) throw new Error(`第 ${style.line} 行的 @style 找不到目標變數：${style.targetName}`);
+    const compositeFieldIds = new Set((target.objects || []).flatMap(object => (
+      object.rendererOptions?.fields?.variableIds?.slice(1) || []
+    )));
 
     const ensureCaptured = (name, visible = false) => {
       if (!name || TRACE_STYLE_LOCALS.has(name) || drawingLocal(style, name) && !visible) return;
@@ -1639,9 +1642,10 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
       const alreadyCaptured = target.variables.some(existing => existing.id === variable.id);
       if (!alreadyCaptured) target.variables.push(variable);
       if (!target.names.includes(name)) target.names.push(name);
-      if (visible) {
+      if (visible && !compositeFieldIds.has(variable.id)) {
         target.captureOnlyVariableIds = target.captureOnlyVariableIds.filter(id => id !== variable.id);
-      } else if (!alreadyCaptured && !target.captureOnlyVariableIds.includes(variable.id)) {
+      } else if ((!alreadyCaptured || compositeFieldIds.has(variable.id))
+        && !target.captureOnlyVariableIds.includes(variable.id)) {
         target.captureOnlyVariableIds.push(variable.id);
       }
     };
@@ -3425,6 +3429,23 @@ function instrumentSource(source, watchIds = []) {
     return `${targetArgs(target)}, ${canCaptureIndex ? 'true' : 'false'}, ${resolvedIndex}`;
   }
 
+  function binaryAdditionSources(node) {
+    if (node?.name !== 'BinaryExpression') return null;
+    const children = childrenOf(node);
+    const operatorIndex = children.findIndex(child => child.name === 'ArithOp'
+      && source.slice(child.from, child.to).trim() === '+');
+    if (operatorIndex <= 0 || operatorIndex >= children.length - 1) return null;
+    const leftNode = children[operatorIndex - 1];
+    const rightNode = children[operatorIndex + 1];
+    if (!['Identifier', 'SubscriptExpression'].includes(leftNode.name)
+      || !['Identifier', 'SubscriptExpression'].includes(rightNode.name)) return null;
+    const left = targetDescriptor(leftNode);
+    const right = targetDescriptor(rightNode);
+    const safe = target => Boolean(target.variableId)
+      && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression));
+    return safe(left) && safe(right) ? { left, right } : null;
+  }
+
   function comparisonEvent(leftNode, rightNode, operator, context, signatureNode) {
     const left = rebuild(leftNode, context);
     const right = rebuild(rightNode, context);
@@ -3677,6 +3698,7 @@ ${loop}
       const target = targetDescriptor(targetNode);
       const sourceNode = node.name === 'AssignmentExpression' ? children[children.length - 1] : null;
       const sourceTarget = targetDescriptor(sourceNode);
+      const additionSources = binaryAdditionSources(sourceNode);
       const assignmentOperator = targetNode && sourceNode
         ? source.slice(targetNode.to, sourceNode.from).trim()
         : '';
@@ -3719,7 +3741,11 @@ ${loop}
           const action = chainedAssignment
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
-          rendered = `::asm_trace::${chainedAssignment ? 'event_assign_expr' : 'event_assign'}(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          if (additionSources && !chainedAssignment) {
+            rendered = `::asm_trace::event_binary_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(additionSources.left)}, ${indexedTargetArgs(additionSources.right)}, "+", ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          } else {
+            rendered = `::asm_trace::${chainedAssignment ? 'event_assign_expr' : 'event_assign'}(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          }
         } else if (node.name === 'AssignmentExpression' && repeatableCompoundTarget) {
           rendered = `::asm_trace::event_compound_assign(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); }, true)`;
         } else if (node.name === 'UpdateExpression') {

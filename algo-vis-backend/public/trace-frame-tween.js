@@ -13,6 +13,7 @@
   const ASSIGN_TIMING = Object.freeze({ frame: 160, valueHold: 500, drop: 500, hold: 500, exit: 100 });
   const GENERIC_EVENT_DURATION = Object.freeze({ lift: 340, pulse: 400, fade: 440, code: 400 });
   const APPEAR_TIMING = Object.freeze({ duration: 220, offsetY: -16 });
+  const HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION = 320;
   const MARKER_REFLOW_TIMING = Object.freeze({ duration: 180, entranceDelay: 80 });
   const EXIT_OFFSET_Y = -16;
   const EVENT_CODE_PROMPT_DURATION = 400;
@@ -2215,10 +2216,48 @@
   function prepareForwardValues(options, replayPlan, eventFrame, styleFrame = eventFrame) {
     const tracks = [];
     const previousStyleFrame = options.previousFrame || eventFrame;
-    const conditionalStyleVariables = new Set([
+    const directConditionalStyleVariables = new Set([
       ...(styleFrame?.styles || []), ...(previousStyleFrame?.styles || [])
     ]
       .map(style => style.targetVariableId));
+    const rendererFieldVariableIds = (frame, variableId) => {
+      const fields = frame?.rendererOptions?.[variableId]?.fields;
+      return Array.isArray(fields?.variableIds) ? fields.variableIds.filter(Boolean) : [];
+    };
+    const conditionalStyleVariables = new Set(directConditionalStyleVariables);
+    [styleFrame, previousStyleFrame].forEach(candidateFrame => {
+      Object.keys(candidateFrame?.state || {}).forEach(variableId => {
+        if (rendererFieldVariableIds(candidateFrame, variableId)
+          .some(sourceId => directConditionalStyleVariables.has(sourceId))) {
+          conditionalStyleVariables.add(variableId);
+        }
+      });
+    });
+    const mergeHighlightMaps = (target, source) => {
+      Object.entries(source || {}).forEach(([key, value]) => {
+        const previous = target[key] || {};
+        target[key] = {
+          ...previous,
+          ...value,
+          styleTypes: {
+            ...(previous.styleTypes || {}),
+            ...(value?.styleTypes || {})
+          },
+          sourceStyleIds: {
+            ...(previous.sourceStyleIds || {}),
+            ...(value?.sourceStyleIds || {})
+          }
+        };
+      });
+      return target;
+    };
+    const renderedHighlights = (allHighlights, variableId) => {
+      const combined = mergeHighlightMaps({}, allHighlights?.[variableId]);
+      rendererFieldVariableIds(styleFrame, variableId).forEach(sourceId => {
+        mergeHighlightMaps(combined, allHighlights?.[sourceId]);
+      });
+      return combined;
+    };
     (replayPlan?.visualValueTracks || replayPlan?.valueTracks || [])
       .filter(track => track.kind === 'value').forEach(track => {
       const values = [
@@ -2336,24 +2375,34 @@
       if (!stylesDirty) return;
       stylesDirty = false;
       // Match the original renderer: evaluate the new frame before events.
-      const visualHighlights = (styleTargets.length || indexTracks.length)
+      const allVisualHighlights = (styleTargets.length || indexTracks.length)
         ? (window.ASMTraceRenderers?.evaluateFrameHighlights?.(options.document, styleFrame)
           || window.ASMTraceRules.evaluate(options.document, styleFrame)) : {};
-      const indexHighlights = visualHighlights;
-      evaluatedHighlights = visualHighlights;
+      const highlightsByVariable = new Map();
+      const visualHighlights = variableId => {
+        if (!highlightsByVariable.has(variableId)) {
+          highlightsByVariable.set(variableId, renderedHighlights(allVisualHighlights, variableId));
+        }
+        return highlightsByVariable.get(variableId);
+      };
+      evaluatedHighlights = Object.fromEntries([...new Set([
+        ...styleTargets.map(track => track.variableId),
+        ...indexTracks.map(track => track.variableId)
+      ])].map(variableId => [variableId, visualHighlights(variableId)]));
       const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
         ? highlight.styleTypes.background || 'rgb(231, 144, 255)'
         : highlight.fill || '#ffffff';
       stylePaints = new Map([
         ...styleTargets.map(track => {
-          const highlight = visualHighlights[track.variableId]?.[String(track.styleIndex ?? track.index)] || {};
+          const highlight = visualHighlights(track.variableId)
+            ?.[String(track.styleIndex ?? track.index)] || {};
           return [track.styleRect, {
             fill: backgroundPaint(highlight),
             opacity: '1'
           }];
         }),
         ...indexTracks.map(track => {
-          const highlight = indexHighlights[track.variableId]?.[String(track.index)] || {};
+          const highlight = visualHighlights(track.variableId)?.[String(track.index)] || {};
           return [track.rect, {
             fill: backgroundPaint(highlight),
             opacity: '1'
@@ -2478,7 +2527,10 @@
     rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
-    const source = (event?.targets || []).find(item => item.role === 'source');
+    const sources = (event?.targets || []).filter(item => item.role === 'source'
+      || item.role === 'source-left' || item.role === 'source-right');
+    const source = sources[0];
+    const binaryAddition = event?.binaryOperation === '+' && sources.length === 2;
     if (!target) return null;
     const operand = eventOperand(
       traceDocument, eventFrame, target, event?.payload?.after,
@@ -2546,19 +2598,14 @@
     const sourceValue = Object.prototype.hasOwnProperty.call(event?.payload || {}, 'source')
       ? event.payload.source : null;
     const sourceLabel = String(source?.expression || afterValue || '').trim();
-    const sourceOperand = source
-      ? eventOperand(
-        traceDocument, eventFrame, source, sourceValue,
-        placements, elements, visualKeyForSource, event
-      )
-      : null;
-    const previousSourceVisual = sourceOperand
-      ? previousVisualElement(previousObjects, sourceOperand.visualKey)
-      : null;
+    const sourceOperands = sources.map(item => eventOperand(
+      traceDocument, eventFrame, item, sourceValue,
+      placements, elements, visualKeyForSource, event
+    ));
     let popup = null;
     let markerIncomingText = null;
     let fallingText = null;
-    let transfer = null;
+    let transfers = [];
     let targetText = null;
     let finalText = '';
     let originalOpacity = null;
@@ -2590,11 +2637,15 @@
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
-      transfer = createAssignmentTransfer(
-        root, sourceOperand, operand, sourceValue, previousSourceVisual,
-        { valueOnly: event?.compound === true }
-      );
-      if (!transfer) {
+      transfers = sourceOperands.map(item => createAssignmentTransfer(
+        root,
+        item,
+        operand,
+        sourceValue,
+        item ? previousVisualElement(previousObjects, item.visualKey) : null,
+        { valueOnly: event?.compound === true || binaryAddition }
+      )).filter(Boolean);
+      if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
         fallingText = createSvg('text', {
           class: 'asm-trace-assign-falling-value',
@@ -2667,14 +2718,16 @@
           fallingText.setAttribute('y', String(startY + (targetY - startY) * dropProgress));
           fallingText.setAttribute('opacity', String(dropProgress < 1 ? clamp01(dropProgress * 4) : 0));
         }
-        transfer?.update(dropProgress, 1 - exit);
+        transfers.forEach(item => item.update(dropProgress, 1 - exit));
         if (dropProgress >= 1) {
           landValue();
-          // A compound value transfer represents the source number being
-          // absorbed by the destination. Remove it in the same update that
-          // commits the result instead of leaving a duplicate over the target
-          // throughout the generic assignment hold phase.
-          if (event?.compound === true) transfer?.remove();
+          // Value-only transfers are absorbed by the destination. Remove them
+          // in the same update that commits the result instead of leaving
+          // duplicate numbers over the target during the generic hold phase.
+          if (event?.compound === true || binaryAddition) {
+            transfers.forEach(item => item.remove());
+            transfers = [];
+          }
         }
       },
       remove() {
@@ -2685,7 +2738,8 @@
         }
         popup?.group.remove();
         fallingText?.remove();
-        transfer?.remove();
+        transfers.forEach(item => item.remove());
+        transfers = [];
       }
     };
   }
@@ -5244,6 +5298,56 @@
       && geometry.height > 0 ? geometry : null;
   }
 
+  function heapSplitBackgroundHandoff(element, currentElements, previousObjects) {
+    const segment = heapSplitSegmentRect(element);
+    const cellKey = segment?.getAttribute?.('data-trace-attached-to') || '';
+    const cell = cellKey ? currentElements?.get?.(cellKey) : null;
+    const valueRect = cell?.querySelector?.(':scope > rect') || null;
+    if (!segment || !valueRect) return null;
+    const segmentPaint = parseColor(segment.getAttribute('fill'));
+    const paintFor = (rect, previousRect) => {
+      if (!rect || !segmentPaint) return null;
+      const backgroundPaint = parseColor(
+        rect.getAttribute('fill'), Number(rect.getAttribute('fill-opacity') || 1)
+      );
+      const previousPaint = parseColor(
+        previousRect?.getAttribute?.('fill'),
+        Number(previousRect?.getAttribute?.('fill-opacity') || 1)
+      );
+      if (!backgroundPaint || backgroundPaint.a < 0.999
+        || !previousPaint
+        || segmentPaint.r !== backgroundPaint.r
+        || segmentPaint.g !== backgroundPaint.g
+        || segmentPaint.b !== backgroundPaint.b) return null;
+      return { rect, from: previousPaint, to: backgroundPaint };
+    };
+    const valuePaint = paintFor(valueRect,
+      previousVisualElement(previousObjects, cellKey)?.querySelector?.(':scope > rect'));
+    if (!valuePaint) return null;
+    const indexRect = currentElements?.get?.(`${cellKey}:index`)
+      ?.querySelector?.(':scope > rect') || null;
+    const previousIndexRect = previousVisualElement(previousObjects, `${cellKey}:index`)
+      ?.querySelector?.(':scope > rect') || null;
+    return [valuePaint, paintFor(indexRect, previousIndexRect)].filter(Boolean);
+  }
+
+  function applyHeapSplitBackgroundHandoff(handoff, progress) {
+    const eased = easeOutCubic(clamp01(progress));
+    (handoff || []).forEach(paint => {
+      const rect = paint?.rect;
+      if (!rect?.isConnected) return;
+      const color = interpolateColor(paint.from, paint.to, eased);
+      const transition = rect.style.transition;
+      rect.style.transition = 'none';
+      rect.setAttribute('fill', `rgb(${color.r},${color.g},${color.b})`);
+      rect.setAttribute('fill-opacity', String(color.a));
+      window.getComputedStyle(rect).fill;
+      if (transition) rect.style.transition = transition;
+      else rect.style.removeProperty('transition');
+      window.getComputedStyle(rect).fill;
+    });
+  }
+
   function applyHeapSplitVerticalFade(geometry, progress, phase) {
     if (!geometry?.rect) return;
     const amount = clamp01(progress);
@@ -6169,12 +6273,15 @@
       const retainedByEnteringKeep = previousVisualRetainedByEnteringKeep(
         key, clone, enteringKeepSourceKeys, enteringKeepRuntimeIdentities
       );
+      const heapSplitExit = heapSplitSegmentGeometry(clone);
       ghosts.push({
         wrapper,
         scopeExitSlot: null,
         lifecycleKind: visualLifecycleKind(clone),
         retainedByEnteringKeep,
-        heapSplitExit: heapSplitSegmentGeometry(clone)
+        heapSplitExit,
+        backgroundHandoff: heapSplitExit
+          ? heapSplitBackgroundHandoff(clone, currentElements, previousObjects) : null
       });
     });
 
@@ -6209,9 +6316,18 @@
         : 0;
       return Math.max(end, normalEnd, appearanceEnd);
     }, duration);
+    const backgroundHandoffDuration = ghosts.reduce((end, ghost) => {
+      if (!ghost.backgroundHandoff) return end;
+      const start = removedVisualStartMs(
+        ghost.lifecycleKind, initialDelay, keepSettlementDuration
+      );
+      return Math.max(end, start + HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION
+        + APPEAR_TIMING.duration);
+    }, 0);
     const totalDuration = Math.max(
       eventTimelineDuration,
       motionDuration,
+      backgroundHandoffDuration,
       playbackPlan.totalDurationMs
     );
     let previousTick = performance.now();
@@ -6437,6 +6553,18 @@
         }
       });
       events?.applyStyles?.();
+      // A split operation segment can hand its color to a persistent opaque
+      // background on the same cell. Tween value and index together beneath
+      // the full segment, then begin its top-to-bottom exit after the paint
+      // transition completes so the previous white cell is never exposed.
+      ghosts.forEach(({ backgroundHandoff, lifecycleKind }) => {
+        if (!backgroundHandoff) return;
+        const start = removedVisualStartMs(
+          lifecycleKind, initialDelay, keepSettlementDuration
+        );
+        applyHeapSplitBackgroundHandoff(backgroundHandoff,
+          (elapsed - start) / HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION);
+      });
       // Some draw types expose automatic markers only as nested DOM visuals.
       // Compose their declaration and exit phases just like ordinary entries;
       // otherwise a newly declared marker is already visible behind the old
@@ -6484,7 +6612,7 @@
       ghosts.forEach(({
         wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep,
         heapSplitExit, exitReflow,
-        assignmentSchedule, assignmentPeerSchedule
+        assignmentSchedule, assignmentPeerSchedule, backgroundHandoff
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -6519,7 +6647,7 @@
         }
         const removalStart = removedVisualStartMs(
           lifecycleKind, initialDelay, keepSettlementDuration
-        );
+        ) + (backgroundHandoff ? HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION : 0);
         const ghostProgress = easeOutCubic(clamp01(
           Math.max(0, elapsed - removalStart) / APPEAR_TIMING.duration
         ));
@@ -6674,10 +6802,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-216';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-221';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-216', play, cancel, updateEventAvailability,
+    build: 'trace-221', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
