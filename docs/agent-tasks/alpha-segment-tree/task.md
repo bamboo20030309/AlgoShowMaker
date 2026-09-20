@@ -51,7 +51,7 @@
 - [x] 完整`Segment_Tree.cpp`以新指令重寫：建樹不建立動畫幀；操作階段以fields／hide在tree格內顯示lazy與set，並呈現segment下降分裂、命中移除、query累加answer及回溯父節點加總。
 - [x] 完整範例保留原本特殊葉節點配置、lazy優先規則、set覆蓋規則及sample輸出；回溯幀不重新顯示已完成segment。
 - [x] 完整範例以`range(1,Tsize-1)`裁掉未使用的補零節點；modify segment為紫色，set segment為橘色。
-- [x] `fields(tree,lazy,sets)`將lazy／sets值融入tree格子，並以`hide(lazy=0,sets=LM)`隱藏預設值；非零lazy與非LM sets各自在同索引tree格子保留紫色／橘色完整segment，直到狀態被下推及清除。
+- [x] lazy／sets只作為tree格子內的附加文字欄位，預設值以`hide(lazy=0,sets=LM)`隱藏；不由欄位狀態額外產生segment，紫色／橘色segment只呈現當次modify／set操作範圍。
 
 ## 驗證計畫
 - 開發代理小驗證：V2 E/F/H/J，新增parser／model／renderer局部專項；隔離服務與headless瀏覽器只跑最小fixture及兩個範例sample input；C++原輸出對照改寫前版本。
@@ -77,4 +77,4 @@
 - 2026-09-20：使用者重整後仍看到舊結果；確認投影片保存的是修正前trace，且新增二元加法事件時漏增trace引擎版本。引擎版本提升至5，讓編輯動畫時自動重新RUN並在儲存後替換舊trace。
 - 2026-09-20：依使用者要求再次完整改寫既有Segment_Tree範例；建樹沿用easy版的逐筆輸入與雙來源相加，操作階段使用完整heap、複合欄位、lazy／set顏色、下降split、命中after移除及query answer，回溯只保留父節點加總動畫。
 - 2026-09-20：依使用者修正完整範例展示：移除建樹動畫，tree／lazy／sets仍融合顯示；範圍改為1至Tsize-1以裁去多餘零節點，modify／set segment分別使用紫色／橘色。
-- 2026-09-20：補上由lazy／sets欄位狀態逐幀產生的`tree[*][full] from field`區段；預設值仍由hide隱藏，標記存在期間色塊固定在對應tree格子，父標記清除後才移除。
+- 2026-09-20：依使用者確認融合定義：lazy／sets只進入tree格子文字，不額外生成色塊；移除誤加的欄位狀態segment，保留當次modify／set操作範圍segment。

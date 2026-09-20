@@ -20,8 +20,6 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @place answer.top at tree.bottom offset(0,45)
 // @style lazy[1:Tsize-1] background rgba(231,144,255,0.65) when value != 0
 // @style sets[1:Tsize-1] background AV_orange when value != 2147483647
-// @segment tree[*][full] from lazy color rgba(231,144,255,0.65) as pending_modify when value != 0
-// @segment tree[*][full] from sets color AV_orange as pending_set when value != 2147483647
 // @endpreset
 
 void build() {

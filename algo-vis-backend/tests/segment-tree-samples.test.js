@@ -63,8 +63,6 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   const {code,result,trace}=await runSample('Segment_Tree');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_modify|_draw_segment/);
   assert.match(code,/fields\(tree,lazy,sets\), hide\(lazy=0,\s*sets=LM\)/);
-  assert.match(code,/@segment tree\[\*\]\[full\] from lazy .*when value != 0/);
-  assert.match(code,/@segment tree\[\*\]\[full\] from sets .*when value != 2147483647/);
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
   assert.match(code,/with split\(now,after\)/);
   assert.match(code,/answer \+= tree\[now\]/);
@@ -79,18 +77,13 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(options.range)),[1,31],
     'range stops before the unused padding leaf');
-  const persistent=trace.frames.flatMap(frame=>frame.segments||[]).filter(segment=>segment.dynamicCells);
-  assert.ok(persistent.some(segment=>segment.sourceName==='lazy'&&segment.sourceVariableId),
-    'lazy values drive persistent heap cell segments');
-  assert.ok(persistent.some(segment=>segment.sourceName==='sets'&&segment.sourceVariableId),
-    'set values drive persistent heap cell segments');
   const buildFrames=trace.frames.filter(frame=>frame.source?.function==='build');
   assert.equal(buildFrames.length,0,'the full sample starts after silent tree construction');
   const returnFrames=trace.frames.filter(frame=>frame.source?.function==='query'
     && (frame.arrows||[]).length===2);
   assert.ok(returnFrames.length>0,'recursive returns animate parent recomputation');
-  assert.ok(returnFrames.every(frame=>(frame.segments||[]).every(segment=>segment.id!=='active_range')),
-    'accepted operation ranges do not return during recursive unwind');
+  assert.ok(returnFrames.every(frame=>(frame.segments||[]).length===0),
+    'accepted segments do not return during recursive unwind');
   assert.equal(Number(trace.frames.at(-1).state[answerId].data.value),12,
     'the query accumulator matches the printed answer');
 });

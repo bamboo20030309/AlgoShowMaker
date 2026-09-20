@@ -648,7 +648,7 @@ function splitTopLevel(value, delimiter = ',') {
 const DIRECTIVE_MODIFIERS = new Set(['as', 'at', 'when', 'offset', 'render', 'with', 'without']);
 const FRAME_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'in']);
 const KEEP_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'in']);
-const SEGMENT_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'color', 'from']);
+const SEGMENT_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'color']);
 const PLACE_DIRECTIVE_MODIFIERS = new Set(['at', 'offset', 'when']);
 const DIRECTIVE_ANCHORS = new Set([
   'top-left', 'top', 'top-right', 'left', 'center', 'right',
@@ -985,8 +985,7 @@ function parseDirectiveModifiers(payload, line, directiveName, acceptedModifiers
     ? parseRendererOptions(values.get('with'), line, directiveName)
     : {};
   const color = values.has('color') ? values.get('color').trim() : '';
-  const from = values.has('from') ? values.get('from').trim() : '';
-  return { payload: base, objectId, layoutId, binding, when, renderer, rendererOptions, color, from };
+  return { payload: base, objectId, layoutId, binding, when, renderer, rendererOptions, color };
 }
 
 function parseKeepModifiers(payload, line) {
@@ -1695,30 +1694,19 @@ function segmentDirectivesForSource(source, analysis) {
         if (unsupportedOptions.length) {
           throw new Error(`第 ${line} 行的 @segment 不支援 with ${unsupportedOptions[0]}`);
         }
-        const dynamicCellRange = modifiers.payload.match(/^([A-Za-z_]\w*)\[\s*\*\s*\]\[\s*full\s*\]$/i);
         const cellRange = modifiers.payload.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\[\s*(.*?)\s*:\s*(.*?)\s*\]$/);
         const range = cellRange || modifiers.payload.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*:\s*(.*?)\s*(\)|\])$/);
-        if (!range && !dynamicCellRange) {
-          throw new Error(`第 ${line} 行的 @segment 格式應為：arr[start:end)、tree[node][start:end] 或 tree[*][full] from field`);
+        if (!range) {
+          throw new Error(`第 ${line} 行的 @segment 格式應為：arr[start:end) 或 tree[node][start:end]`);
         }
-        if (!cellRange && !dynamicCellRange && modifiers.rendererOptions?.split) {
+        if (!cellRange && modifiers.rendererOptions?.split) {
           throw new Error(`第 ${line} 行的 @segment split 只支援 heap 格子內部區段`);
         }
-        if (dynamicCellRange && !/^[A-Za-z_]\w*$/.test(modifiers.from || '')) {
-          throw new Error(`第 ${line} 行的 @segment tree[*][full] 必須指定 from 欄位`);
-        }
-        if (!dynamicCellRange && modifiers.from) {
-          throw new Error(`第 ${line} 行的 @segment from 只支援 tree[*][full]`);
-        }
-        if (dynamicCellRange && modifiers.rendererOptions?.split) {
-          throw new Error(`第 ${line} 行的 @segment tree[*][full] 不支援 split`);
-        }
-        const targetName = (dynamicCellRange || range)[1];
-        const cellExpression = dynamicCellRange ? '*' : cellRange ? range[2].trim() : '';
-        const startExpression = dynamicCellRange ? '0' : (cellRange ? range[3] : range[2]).trim() || '0';
-        const endExpression = dynamicCellRange ? 'full' : (cellRange ? range[4] : range[3]).trim();
+        const cellExpression = cellRange ? range[2].trim() : '';
+        const startExpression = (cellRange ? range[3] : range[2]).trim() || '0';
+        const endExpression = (cellRange ? range[4] : range[3]).trim();
         if (!endExpression) throw new Error(`第 ${line} 行的 @segment 缺少結束位置`);
-        for (const expression of dynamicCellRange ? [] : [cellExpression, startExpression, endExpression].filter(Boolean)) {
+        for (const expression of [cellExpression, startExpression, endExpression].filter(Boolean)) {
           if (!parseFrameExpression(expression).valid) {
             throw new Error(`第 ${line} 行的 @segment 範圍運算式無效：${expression}`);
           }
@@ -1729,14 +1717,12 @@ function segmentDirectivesForSource(source, analysis) {
           line,
           id: modifiers.objectId || `segment-line-${line}`,
           named: Boolean(modifiers.objectId),
-          targetName,
-          sourceName: modifiers.from || '',
-          dynamicCells: Boolean(dynamicCellRange),
+          targetName: range[1],
           cellExpression,
-          cellRange: Boolean(cellRange || dynamicCellRange),
+          cellRange: Boolean(cellRange),
           startExpression,
           endExpression,
-          endInclusive: cellRange || dynamicCellRange ? true : range[4] === ']',
+          endInclusive: cellRange ? true : range[4] === ']',
           color: modifiers.color || '',
           showWidth: modifiers.rendererOptions?.showWidth === true,
           split: modifiers.rendererOptions?.split || null,
@@ -1812,18 +1798,11 @@ function attachSegmentDirectives(source, analysis, frameDirectives) {
     };
 
     ensureCaptured(segment.targetName, true);
-    [segment.cellExpression, segment.startExpression, segment.endExpression]
-      .filter(expression => expression && expression !== '*' && expression !== 'full').forEach(expression => {
+    [segment.cellExpression, segment.startExpression, segment.endExpression].filter(Boolean).forEach(expression => {
       (parseFrameExpression(expression).identifiers || []).forEach(name => ensureCaptured(name));
     });
-    if (segment.sourceName) {
-      ensureCaptured(segment.sourceName);
-      segment.sourceVariableId = resolveVariable(segment.sourceName, segment.from)?.id || '';
-    }
     (segment.split?.identifiers || []).forEach(name => ensureCaptured(name));
-    (segment.when?.identifiers || []).forEach(name => {
-      if (!segment.dynamicCells || !['value', 'index', 'node'].includes(name)) ensureCaptured(name);
-    });
+    (segment.when?.identifiers || []).forEach(name => ensureCaptured(name));
     segment.targetVariableId = targetVariable.id;
     target.segments = target.segments.filter(existing => !existing.presetName || existing.id !== segment.id);
     target.segments.push(segment);

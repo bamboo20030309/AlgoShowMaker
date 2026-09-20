@@ -1701,8 +1701,7 @@
   function renderFrameSegments(root, document, frame, placements, elements, options = {}) {
     const segmentOrdinals = new Map();
     (frame.segments || []).forEach((descriptor, descriptorIndex) => {
-      if (!descriptor?.dynamicCells
-        && !window.ASMTraceRules?.expressionMatches?.(document, frame, descriptor?.when)) return;
+      if (!window.ASMTraceRules?.expressionMatches?.(document, frame, descriptor?.when)) return;
       const variableId = descriptor?.targetVariableId;
       const entry = frame.state?.[variableId];
       const items = entry?.data?.items;
@@ -1715,17 +1714,16 @@
         || entry.data?.kind;
       if (descriptor.cellRange) {
         if (rendererName !== 'original-heap') return;
-        const rootNode = descriptor.dynamicCells ? null : Number(window.ASMTraceRules.resolveExpression(
+        const rootNode = Number(window.ASMTraceRules.resolveExpression(
           document, frame, descriptor.cellExpression
         ));
-        const rawStart = descriptor.dynamicCells ? null : Number(window.ASMTraceRules.resolveExpression(
+        const rawStart = Number(window.ASMTraceRules.resolveExpression(
           document, frame, descriptor.startExpression
         ));
-        const rawEnd = descriptor.dynamicCells ? null : Number(window.ASMTraceRules.resolveExpression(
+        const rawEnd = Number(window.ASMTraceRules.resolveExpression(
           document, frame, descriptor.endExpression
         ));
-        if (!descriptor.dynamicCells
-          && (![rootNode, rawStart, rawEnd].every(Number.isInteger) || rawStart > rawEnd)) return;
+        if (![rootNode, rawStart, rawEnd].every(Number.isInteger) || rawStart > rawEnd) return;
         const targetKey = objectKeyForVariable(frame, variableId);
         const heap = elements.get(targetKey);
         const rangeStart = Number(heap?.querySelector?.('[data-trace-range-start]')?.dataset?.traceRangeStart
@@ -1740,8 +1738,8 @@
           const depth = Math.floor(Math.log2(localIndex + 1));
           return 2 ** Math.max(0, levels - depth - 1);
         };
-        const rootSectionCount = descriptor.dynamicCells ? 0 : sectionCountForNode(rootNode);
-        if (!descriptor.dynamicCells && !rootSectionCount) return;
+        const rootSectionCount = sectionCountForNode(rootNode);
+        if (!rootSectionCount) return;
         const ranges = [];
         const addRange = (nodeIndex, start, end) => {
           const sectionCount = sectionCountForNode(nodeIndex);
@@ -1752,18 +1750,7 @@
           }
         };
 
-        if (descriptor.dynamicCells) {
-          const sourceItems = frame.state?.[descriptor.sourceVariableId]?.data?.items;
-          if (!Array.isArray(sourceItems)) return;
-          sourceItems.forEach((item, nodeIndex) => {
-            const sectionCount = sectionCountForNode(nodeIndex);
-            const value = window.ASMTraceModel.scalarValue(item);
-            if (!sectionCount || !window.ASMTraceRules.expressionMatches(
-              document, frame, descriptor.when, { value, index: nodeIndex, node: nodeIndex }
-            )) return;
-            addRange(nodeIndex, 0, sectionCount - 1);
-          });
-        } else if (descriptor.split) {
+        if (descriptor.split) {
           const cursor = Number(window.ASMTraceRules.resolveExpression(
             document, frame, descriptor.split.cursorExpression
           ));
@@ -1815,7 +1802,7 @@
           const height = Number(baseRect.getAttribute('height')) || 0;
           if (!(width > 0 && height > 0)) return;
           const identity = descriptor.named ? descriptor.id : `${descriptor.id || descriptorIndex}`;
-          const key = descriptor.split || descriptor.dynamicCells
+          const key = descriptor.split
             ? `heap-segment:${identity}:${nodeIndex}`
             : `heap-segment:${identity}`;
           const overlay = svg('rect', {
