@@ -102,8 +102,9 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   const returnFrames=trace.frames.filter(frame=>frame.source?.function==='query'
     && (frame.arrows||[]).length===2);
   assert.ok(returnFrames.length>0,'recursive returns animate parent recomputation');
-  assert.ok(returnFrames.every(frame=>(frame.segments||[]).length===0),
-    'accepted segments do not return during recursive unwind');
+  assert.ok(returnFrames.every(frame=>(frame.segments||[]).length===3
+    &&frame.segments.every(segment=>segment.split?.phase==='after')),
+  'recursive unwind retains only pending split segments after the completed subtree');
   assert.equal(Number(trace.frames.at(-1).state[answerId].data.value),12,
     'the query accumulator matches the printed answer');
 });

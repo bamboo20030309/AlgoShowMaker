@@ -455,6 +455,36 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
       const unwindBackgrounds=markedNodes(unwind.frame).map(({node,color})=>({
         color,fill:unwindTree.querySelector(`[data-trace-index="${node}"] > rect`)?.getAttribute('fill')
       }));
+      await player.render(24,{animatePositions:false,animateEvents:false});
+      const frame26ContinuitySamples=[];
+      let frame26Settled=false;
+      const frame26Transition=player.render(25).finally(()=>{frame26Settled=true;});
+      for(let count=0;count<180&&!frame26Settled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const nodes=new Set([...document.querySelectorAll(
+          '#asm-trace-root .asm-trace-heap-cell-segment'
+        )].map(rect=>Number(rect.dataset.traceSegmentNode)));
+        frame26ContinuitySamples.push([3,5,8,9].every(node=>nodes.has(node)));
+      }
+      await frame26Transition;
+      const frame26Segments=[...document.querySelectorAll(
+        '#asm-trace-root .asm-trace-heap-cell-segment'
+      )].map(rect=>Number(rect.dataset.traceSegmentNode)).sort((a,b)=>a-b);
+      await player.render(27,{animatePositions:false,animateEvents:false});
+      const frame29ContinuitySamples=[];
+      let frame29Settled=false;
+      const frame29Transition=player.render(28).finally(()=>{frame29Settled=true;});
+      for(let count=0;count<180&&!frame29Settled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const nodes=new Set([...document.querySelectorAll(
+          '#asm-trace-root .asm-trace-heap-cell-segment'
+        )].map(rect=>Number(rect.dataset.traceSegmentNode)));
+        frame29ContinuitySamples.push([3,5,9].every(node=>nodes.has(node)));
+      }
+      await frame29Transition;
+      const frame29Segments=[...document.querySelectorAll(
+        '#asm-trace-root .asm-trace-heap-cell-segment'
+      )].map(rect=>Number(rect.dataset.traceSegmentNode)).sort((a,b)=>a-b);
       const pointerLabel=document.querySelector(
         '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
       )?.textContent;
@@ -470,7 +500,10 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         operationSegments,lazyBackgrounds,setBackgrounds,unwindBackgrounds,unwindSamples,
         handoffSamples,handoffColor:handoffMark.color,
         stateSegments:document.querySelectorAll('#asm-trace-root .asm-trace-state-segment').length,
-        compositeTexts,separateFields,unwindSegments,pointerLabel,pointStyleCount,answer
+        compositeTexts,separateFields,unwindSegments,
+        frame26Segments,frame26ContinuitySamples,
+        frame29Segments,frame29ContinuitySamples,
+        pointerLabel,pointStyleCount,answer
       };
     });
     assert.equal(result.buildFrames,0);
@@ -496,6 +529,12 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
     assert.deepEqual(result.separateFields,{lazy:0,sets:0});
     assert.equal(result.unwindSegments,0);
+    assert.deepEqual(result.frame26Segments,[3,5,8,9]);
+    assert.ok(result.frame26ContinuitySamples.length>0);
+    assert.ok(result.frame26ContinuitySamples.every(Boolean));
+    assert.deepEqual(result.frame29Segments,[3,5,9]);
+    assert.ok(result.frame29ContinuitySamples.length>0);
+    assert.ok(result.frame29ContinuitySamples.every(Boolean));
     assert.equal(result.pointerLabel,'now');
     assert.equal(result.pointStyleCount,0);
     assert.equal(result.answer,'12');

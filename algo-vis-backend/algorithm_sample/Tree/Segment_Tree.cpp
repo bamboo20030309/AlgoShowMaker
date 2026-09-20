@@ -90,6 +90,9 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         // @frame use operation_pointer_view
         // @style tree[now,now*2,now*2+1] highlight
         // @style sets[now*2,now*2+1] background rgb(255,183,77)
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_magenta as active_range with split(now) when Add != 0
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now) when Set != 2147483647
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now) when Add == 0 and Set == 2147483647
         // @text "先把節點 ${now} 的 set 標記下推；它會覆蓋兩個子節點原本的 add 標記" at tree.top offset(0,-20)
     }
     if (lazy[now] != 0) {
@@ -106,6 +109,9 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         // @style tree[now,now*2,now*2+1] highlight
         // @style lazy[now*2,now*2+1] background rgb(231,144,255) when value != 0
         // @style sets[now*2,now*2+1] background rgb(255,183,77) when value != 2147483647
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_magenta as active_range with split(now) when Add != 0
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now) when Set != 2147483647
+        // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now) when Add == 0 and Set == 2147483647
         // @text "把節點 ${now} 的 add 標記下推；若子節點已有 set，就直接加在 set 上" at tree.top offset(0,-20)
     }
 
@@ -114,11 +120,14 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
 
     int left = now << 1, right = now << 1 | 1;
     tree[now] = tree[left] + tree[right];
-    // 回溯只更新父節點，不再畫已經完成的 segment。
+    // 回溯更新父節點，並保留祖先層尚待處理的 segment；剛完成的子樹不會重新出現。
     // @frame use operation_pointer_view
     // @style tree[now] highlight
     // @arrow from tree[left] to tree[now] as "left_child_sum"
     // @arrow from tree[right] to tree[now] as "right_child_sum"
+    // @segment tree[1][L-Tmask:R-Tmask] color AV_magenta as active_range with split(now,after) when Add != 0
+    // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now,after) when Set != 2147483647
+    // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after) when Add == 0 and Set == 2147483647
     // @text "回到節點 ${now}，由 ${tree[left]} + ${tree[right]} 更新為 ${tree[now]}" at tree.top offset(0,-20)
     return sum;
 }
