@@ -58,7 +58,7 @@
 | D06 | 同一幀連續賦值 | `i=parent; i=left;` 都落在同一幀事件序列 | `i` 依序走到 parent，再走到 left，不能直接跳到 left | 已確認 |
 | D07 | 賦值後另一指標立即退場 | `now` 宣告在 while 外並指向 `heap[6]`；本輪的區域變數 `parent` 指向 `heap[3]`。`now=parent` 是本輪最後一個 statement，接著 `parent` 離開 scope | 先完整播放賦值：`parent` 仍在第 3 格並參與讓位，`now` 移到自己的同格位置，賦值框結束。中間不增加停頓，下一個事件才讓 `parent` 開始退場；此時 `parent` 退出讓位群組，`now` 同步回填中央。賦值與退場不得重疊 | 已確認：沿用事件順序；退場的是 `parent`，`now` 繼續存在。 |
 | D08 | 目標指標即將退場 | `now` 移入 `parent` 所在格，`parent` 稍後 scope exit | `parent` 真正退場前仍替它保留位置 | 已確認 |
-| D09 | heap 同時 resize | `now` 移動期間 `push_back` 讓 heap 展開 | 每個 tick 用 heap 當下幾何重算 `now` 的路徑 | 已確認 |
+| D09 | heap resize 時更新既有指標 | `now` 已指向 heap 節點，`push_back` 事件讓 outerframe 與節點配置展開 | resize 的每個 tick 都用 heap 當下幾何重新計算 `now` 的標籤、箭頭及相關 style，使它們與格子同步移動 | 已確認 |
 | D10 | 由寬格移到單格 | `now: heap[1] → heap[4]` | 移動途中沿用寬格的垂直箭頭規則；`now` 抵達單格目的地後，才切換成單格箭頭規則 | 已確認：抵達目的地後才切換。 |
 | D11 | 由合法格移到 out-of-range | `i: arr[0] → arr[-1]`，或長度 10 的陣列中 `i: 9 → 12` | 指標依索引方向直接平移到結構外側的 unresolved 位置，不先淡出或重新入場 | 已確認：直接平移；不論是索引賦值越界或結構縮短造成越界，都使用相同規則。 |
 | D12 | unresolved 回合法格 | `i: arr[-1] → arr[0]` | `i` 從暫存位置平移回第 0 格 | 已確認 |
@@ -70,6 +70,7 @@
 
 - `computeMarkerLayout(group, targetBounds)`：依 `sortKey`／宣告順序、正方形標籤尺寸、8px 間距，以及單格或寬格箭頭規則，計算群組中每個指標的目標位置與箭頭端點。它只計算結果，不決定動畫時機。
 - 動畫排程層：在入場、離開來源、接近目的地、退場或結構尺寸改變時，更新群組成員並呼叫共用函式，再把指標從目前位置移到新位置。
+- `push_back`／`pop_back` 改變結構尺寸時，`targetBounds` 在每個動畫 tick 都會改變，因此每個 tick 都要重新呼叫版面計算；所有 style、標籤、箭頭及賦值框使用同一份當下幾何，與 outerframe 同步移動。
 - 例：`j: arr[2] → arr[3]`。移動開始時先把 `j` 從第 2 格群組移除並重排 `i`；接近第 3 格時才把 `j` 加入第 3 格群組並重排 `k,l,j`。
 
 ## E. 讓位開始、持續與結束
@@ -152,7 +153,7 @@
 | J06 | 移除格退場 | 尾格被 `pop_back` 移除 | 尾格向外移動並同步淡出 | 已確認 |
 | J07 | 指標指向新增格 | `push_back` 新增尾格後，下一個事件讓 `now` 指向該格 | 先完成新格進場與 heap 擴張，再開始 `now` 的入場或移動；不得讓兩個相鄰事件的動畫重疊 | 已確認：嚴格依事件順序播放。 |
 | J08 | 指標指向被移除的格子 | `now=8` 指向尾格；`pop_back` 把合法範圍由 `heap[1:8]` 改成 `heap[1:7]` | `now` 的 lifetime 不因格子移除而結束；在 heap 內縮期間連續移到索引 8 的結構外側位置，後續賦值或退場再按事件順序播放 | 已確認：沿用 F08 的一般 out-of-range 規則。 |
-| J09 | resize 中讓位 | `now`、`parent` 同格，heap 同時改變寬度 | 先取得當下節點中心，再加同格讓位 offset | 【待填】請確認這個計算順序。 |
+| J09 | resize 時重新計算全部樣式與標籤 | `now`、`parent` 同格；`push_back` 或 `pop_back` 事件正在改變 heap 寬度、outerframe 與節點中心 | resize 的每個 tick 先取得當下 heap 幾何，再重新計算所有格子 style、highlight、value/index 文字、指標標籤、同格讓位、箭頭及賦值框位置；全部與 outerframe 寬度變化同時進行，不能等 resize 結束才跳到新位置 | 已確認：heap 寬度只由 `push_back`／`pop_back` 事件改變，所有相關視覺在該事件中同步重算。 |
 | J10 | index 與 highlight | heap 使用 `labels(value,index)` | 一般 highlight 包含 value＋index；compare 只包含 value | 已確認 |
 
 ## K. 比較與 highlight
@@ -205,7 +206,7 @@
 | N02 | resize 幾何 | heap 展開一半時 `heap[3]` 中心暫時是 `(380,280)` | 使用 resize 當下中心取代最終中心 | 已確認 |
 | N03 | sequence edge 位移 | 新尾格還需從右側 48px 移入 | 在 resize 幾何上加 sequence offset | 已確認 |
 | N04 | 指標跨格移動 | `now` 同時由第 6 格移到第 3 格 | 再計算 marker assignment 路徑 | 已確認 |
-| N05 | 同格讓位 | `parent` 已在第 3 格 | 在當下目標中心加水平讓位 offset | 【待填】請確認讓位應最後加在 assignment／resize 之後。 |
+| N05 | 同格讓位 | `parent` 已在第 3 格，且 heap 正在 resize | 每個 tick 先取得 resize 當下的目標中心，再以通用版面函式計算同格讓位 offset；標籤位置隨兩者合成結果同步更新 | 已確認：先使用當下結構幾何，再計算讓位。 |
 | N06 | 入退場垂直位移 | `parent` 同時開始向上退場 | 在水平讓位後加入 exit y offset | 已確認 |
 | N07 | 賦值框 | `now=parent` 的提示框跟著 `now` | 以完成上述合成後的指標位置為錨點 | 已確認 |
 | N08 | compare 抬起 | 指標所在格向上抬 20px | 在完成基本格子幾何與同格讓位後，將同一個 compare 位移套用到格子和整個指標群組，避免箭頭長度改變 | 已確認：格子與指標群組一起抬起。 |
