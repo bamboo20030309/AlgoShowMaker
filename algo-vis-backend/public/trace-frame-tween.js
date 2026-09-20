@@ -1,7 +1,14 @@
 (function () {
   let activeRun = 0;
   let finishActiveRun = null;
+  let visibilityResumeAt = 0;
   const markerEntrancesByFrame = new Map();
+
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) visibilityResumeAt = performance.now();
+    });
+  }
 
   const COMPARE_COLORS = Object.freeze({
     true: 'rgb(165, 214, 167)',
@@ -169,6 +176,11 @@
     const currentContinuity = String(current.dataset.traceVisualContinuityKey || '');
     const previousContinuity = String(previous.dataset?.traceVisualContinuityKey || '');
     if (currentContinuity && currentContinuity === previousContinuity) return false;
+    const currentAlias = String(current.dataset.traceMarkerAliasContinuityKey || '');
+    const previousAlias = String(previous.dataset?.traceMarkerAliasContinuityKey || '');
+    if (currentAlias && currentAlias === previousAlias
+      && (current.dataset.traceMarkerReferenceAlias === '1'
+        || previous.dataset?.traceMarkerReferenceAlias === '1')) return false;
     const currentIdentity = String(current.dataset.traceRuntimeIdentity || '');
     const previousIdentity = String(previous.dataset?.traceRuntimeIdentity || '');
     return Boolean(currentIdentity && previousIdentity && currentIdentity !== previousIdentity);
@@ -223,6 +235,26 @@
         String(candidate?.dataset?.traceVisualContinuityKey || '') === continuityKey
         && sameSceneGeneration(currentElement, candidate)
       ));
+      if (!element) continue;
+      return {
+        key: String(element.dataset?.traceObjectKey || '') || topKey,
+        element
+      };
+    }
+    const aliasKey = String(currentElement?.dataset?.traceMarkerAliasContinuityKey || '');
+    if (!aliasKey) return null;
+    const aliasMatch = candidate => (
+      String(candidate?.dataset?.traceMarkerAliasContinuityKey || '') === aliasKey
+      && (currentElement?.dataset?.traceMarkerReferenceAlias === '1'
+        || candidate?.dataset?.traceMarkerReferenceAlias === '1')
+    );
+    if (aliasMatch(preferred)) return { key: preferredKey, element: preferred };
+    for (const [topKey, object] of previousObjects || []) {
+      const candidates = [
+        object,
+        ...(object?.querySelectorAll?.('[data-trace-marker-alias-continuity-key]') || [])
+      ];
+      const element = candidates.find(aliasMatch);
       if (!element) continue;
       return {
         key: String(element.dataset?.traceObjectKey || '') || topKey,
@@ -1690,7 +1722,10 @@
   }
 
   function composeLifecycleOpacity(appearOpacity = 1, exitProgress = 0) {
-    return clamp01(appearOpacity) * (1 - clamp01(exitProgress));
+    const exit = clamp01(exitProgress);
+    // Entrance and exit are separate event phases. Once exit begins it owns
+    // opacity completely; multiplying both fades made one visual fade twice.
+    return exit > 0 ? 1 - exit : clamp01(appearOpacity);
   }
 
   function removedVisualStartMs(lifecycleKind, initialDelay = 0, keepSettlementDuration = 0) {
@@ -3348,6 +3383,7 @@
         variableIds: markerSourceVariableIds(entry.element),
         indexExpression: String(entry.element.dataset.traceMarkerIndexExpression || ''),
         sortKey: String(entry.element.dataset.traceMarkerSortKey || entry.key),
+        sortOrder: Number(entry.element.dataset.traceMarkerSortOrder) || 0,
         currentTarget,
         previousTarget: String(
           entry.previousVisual?.dataset?.traceBindingTarget
@@ -3502,8 +3538,7 @@
           const reference = candidates[0]?.placement;
           if (!reference) return;
           group.sort((left, right) => (
-            left.sortKey.localeCompare(right.sortKey, 'en', { numeric: true, sensitivity: 'base' })
-            || left.key.localeCompare(right.key)
+            left.sortOrder - right.sortOrder || left.key.localeCompare(right.key)
           ));
           const gap = 8;
           const totalWidth = group.reduce((sum, item) => sum + item.labelWidth, 0)
@@ -3526,8 +3561,7 @@
         const target = markerTargetGeometry(targetKey, placements);
         if (!target) return;
         group.sort((left, right) => (
-          left.sortKey.localeCompare(right.sortKey, 'en', { numeric: true, sensitivity: 'base' })
-          || left.key.localeCompare(right.key)
+          left.sortOrder - right.sortOrder || left.key.localeCompare(right.key)
         ));
         const gap = 8;
         const totalWidth = group.reduce((sum, item) => sum + item.labelWidth, 0)
@@ -3644,9 +3678,41 @@
           currentPositions.set(marker.key, { ...point });
         }
       });
+      const movingKeys = new Set(markers.map(marker => marker.key));
+      const sourceTargets = new Set(markers.map(marker => state.get(marker.key)).filter(Boolean));
+      const destinationStarts = new Map();
+      markers.forEach(marker => {
+        const from = currentPositions.get(marker.key);
+        const to = nextPositions.get(marker.key);
+        const destination = nextState.get(marker.key);
+        if (!from || !to || !destination || destination === state.get(marker.key)) return;
+        const distance = Math.hypot(to.x - from.x, to.y - from.y);
+        const threshold = Math.max(1, Number(metadata.get(marker.key)?.labelWidth) || 18);
+        const ratio = distance > threshold ? (distance - threshold) / distance : 0;
+        const destinationStart = start + (end - start) * ratio;
+        const previous = destinationStarts.get(destination);
+        destinationStarts.set(destination, previous == null
+          ? destinationStart : Math.min(previous, destinationStart));
+      });
       metadata.forEach((unused, key) => {
+        let stepStart = start;
+        let stepEnd = end;
+        if (!movingKeys.has(key)) {
+          const currentTarget = state.get(key);
+          const nextTarget = nextState.get(key);
+          if (destinationStarts.has(nextTarget) && !sourceTargets.has(currentTarget)) {
+            // Destination peers keep their place until the incoming marker is
+            // one marker square away, then make room as it arrives.
+            stepStart = destinationStarts.get(nextTarget);
+          } else if (sourceTargets.has(currentTarget) && currentTarget === nextTarget) {
+            // The source group fills the vacated place as soon as movement
+            // starts. Reflow uses the shared marker timing instead of waiting
+            // for the whole assignment slot.
+            stepEnd = Math.min(end, start + MARKER_REFLOW_TIMING.duration);
+          }
+        }
         addStep(
-          key, start, end, currentPositions.get(key), nextPositions.get(key),
+          key, stepStart, stepEnd, currentPositions.get(key), nextPositions.get(key),
           state.get(key), nextState.get(key), instant
         );
       });
@@ -3719,11 +3785,23 @@
           }
           if (elapsed < step.end) {
             const progress = easeOutCubic(clamp01((elapsed - step.start) / (step.end - step.start)));
+            const x = step.from.x + (step.to.x - step.from.x) * progress;
+            const y = step.from.y + (step.to.y - step.from.y) * progress;
+            const changingTarget = step.fromTarget && step.toTarget
+              && step.fromTarget !== step.toTarget;
             point = {
-              x: step.from.x + (step.to.x - step.from.x) * progress,
-              y: step.from.y + (step.to.y - step.from.y) * progress,
-              targetX: step.from.targetX + (step.to.targetX - step.from.targetX) * progress,
-              targetY: step.from.targetY + (step.to.targetY - step.from.targetY) * progress
+              x,
+              y,
+              // A cross-cell marker carries its source arrow geometry for the
+              // whole trip. The destination rule becomes active only once it
+              // arrives, so wide-to-single and single-to-wide arrows do not
+              // morph halfway through the assignment.
+              targetX: changingTarget
+                ? x + (step.from.targetX - step.from.x)
+                : step.from.targetX + (step.to.targetX - step.from.targetX) * progress,
+              targetY: changingTarget
+                ? y + (step.from.targetY - step.from.y)
+                : step.from.targetY + (step.to.targetY - step.from.targetY) * progress
             };
             break;
           }
@@ -6133,6 +6211,12 @@
     let animationElapsed = 0;
     function tick(now) {
       if (runId !== activeRun) return;
+      if (document.hidden) {
+        previousTick = now;
+        requestAnimationFrame(tick);
+        return;
+      }
+      if (visibilityResumeAt > previousTick) previousTick = visibilityResumeAt;
       let wallDelta = Math.max(0, now - previousTick);
       previousTick = now;
       if (codeTransitionElapsed < initialDelay) {

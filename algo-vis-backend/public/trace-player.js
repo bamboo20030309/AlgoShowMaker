@@ -92,8 +92,13 @@
     const next = Math.max(0, Math.min(frameCount() - 1, index));
     const requestedFrom = Number.isInteger(options.fromIndex) ? options.fromIndex : currentFrame;
     const fromIndex = Math.max(0, Math.min(frameCount() - 1, requestedFrom));
-    const direction = Math.sign(next - fromIndex);
-    const previous = (options.forceTransition || next !== fromIndex) ? document.frames[fromIndex] : null;
+    // Navigation performed while the page is hidden abandons the paused
+    // transition. Returning to the page must show the latest requested frame,
+    // not finish an animation the user could not see.
+    const stable = options.stable === true || window.document.hidden === true;
+    const direction = stable ? 0 : Math.sign(next - fromIndex);
+    const previous = !stable && (options.forceTransition || next !== fromIndex)
+      ? document.frames[fromIndex] : null;
     currentFrame = next;
     const frame = document.frames[currentFrame];
     const codeTransitionDelayMs = Math.max(0, Number(
@@ -102,8 +107,10 @@
     const cameraTransitionDurationMs = Math.max(0, Number(
       window.ASMTraceCamera?.transitionDuration?.(document, frame, previous || null)
     ) || 0);
+    if (stable) window.ASMTraceFrameTween?.cancel?.();
     const transition = window.ASMTraceRenderers.renderFrame(document, frame, previous || null, {
       ...options,
+      ...(stable ? { animateEvents: false, animatePositions: false } : {}),
       fromIndex,
       toIndex: currentFrame,
       direction,
@@ -152,6 +159,10 @@
     return trackedTransition;
   }
 
+  function renderStable(index, options = {}) {
+    return render(index, { ...options, stable: true });
+  }
+
   function nextKey(direction) {
     const next = currentFrame + direction;
     if (next >= 0 && next < frameCount()) return render(next);
@@ -161,11 +172,13 @@
   function installCodeScript() {
     window.CodeScript = {
       next() { return nextKey(1); },
-      prev() { return nextKey(-1); },
+      next_stable() { return renderStable(currentFrame + 1); },
+      prev() { return renderStable(currentFrame - 1); },
       next_key_frame() { return nextKey(1); },
-      prev_key_frame() { return nextKey(-1); },
-      reset() { return render(0); },
-      goto(index) { return render(index === -1 ? frameCount() - 1 : index); },
+      next_key_frame_stable() { return renderStable(currentFrame + 1); },
+      prev_key_frame() { return renderStable(currentFrame - 1); },
+      reset() { return renderStable(0); },
+      goto(index) { return renderStable(index === -1 ? frameCount() - 1 : index); },
       get_frame_count() { return frameCount(); },
       get_current_frame_index() { return currentFrame; },
       get_current_line() { return Number(document?.frames?.[currentFrame]?.source?.line) || 0; },
@@ -225,6 +238,7 @@
     render,
     previewTransition,
     rebaseCurrentFrame,
+    renderStable,
     setRules,
     setSkins,
     isActive: () => Boolean(document?.frames?.length),

@@ -1,0 +1,47 @@
+# 2026-09-20-beta-marker-playback-rules：指標排版與播放導覽規則
+
+## 任務資訊
+- 負責代理：beta
+- 狀態：待交付
+- 共同基準 commit：d411440cc479e6b6f71f7a3e520023f2197b943c
+- 分支：codex/2026-09-18-beta
+- Worktree：C:/Users/user/Documents/Codex/2026-07-29/algoshowmaker-main-commit-d154dd5-slides-html/work/AlgoShowMaker/.worktrees/2026-09-18-beta
+
+## 問題與預期結果
+- 情境與操作：陣列或 heap 上有多個 index marker、marker 指派與進退場、heap push/pop 尺寸變化，以及上一步、時間線跳轉、短時間連按下一步、長按快轉、分頁隱藏與事件開關等播放操作。
+- 目前行為：marker 排序及讓位時機不完全符合已確認規則；上一步仍建構反向動畫；快速連按會中斷而非依門檻切到穩定幀；部分播放狀態可能在返回舊幀後殘留。
+- 使用者希望的結果：依 `docs/marker-layout-decision-table.md` 已確認項目統一 marker 排版、移動與生命週期，並以穩定幀重建處理上一步、時間線跳轉與快轉。
+- 本次範圍與必要限制：修改 trace renderer、frame tween、player、前端播放控制與必要的 TTS 可見性協調；只做 V2 最小相關驗證，不執行完整 regression、全部測試或大規模演算法動畫驗證。
+
+## 需求確認
+- 已從使用者或上下文確認：確認表全部完成；短時間 500ms 內第 3 次下一步觸發快轉；每次輸入只前進一幀；上一步與時間線直接到穩定幀；快轉不播 TTS；隱藏分頁同時暫停動畫時鐘與 TTS；marker 固定 18px 正方形、間距 8px、單排及固定宣告順序；其餘細節以確認表為準。
+- 尚待使用者回答：無；實作中若發現確認表未涵蓋且會改變結果的歧義再提出。
+- 代理採用的合理假設：既有已符合確認表的行為保持不變；共用播放流程以取消進行中動畫後重建目標穩定幀為單一入口。
+
+## 重現與調查
+- 最小操作步驟或 fixture：使用既有 heap marker assignment fixture，逐幀檢查同格 marker 排列、跨格指派、push_back/pop_back；在播放器連續按上一／下一步及點擊時間線。
+- 重現狀態：已重現
+- 已確認事實：`trace-player.js` 的上一幀目前仍傳遞 previous frame；`front.js` 長按目前切換持續自動步進；renderer 與 tween 以 marker 名稱排序；assignment slot 目前讓來源與目的群組同時開始重排。
+- 尚待調查：局部 alias rename 的 runtime identity 是否足以直接維持同一 visual；事件開關的實際重建入口。
+
+## 修改邊界與依賴
+- 預計修改檔案或模組：`algo-vis-backend/public/trace-renderer.js`、`trace-frame-tween.js`、`trace-player.js`、`front.js`、`tts.js`、相關 focused tests、本任務文件。
+- 共用檔案／介面與協調結果：播放與 renderer 為共用介面；只在 beta 分支修改，交付主代理審查整合。
+- 依賴任務：無；延續 `2026-09-19-beta-heap-animation-timing` 的 heap 動畫基礎。
+
+## 驗收條件
+- [x] 同格 marker 依固定宣告順序以 18px 正方形、8px 間距單排排列，寬格及虛擬格的複數箭頭垂直向下。
+- [x] marker 指派時來源立即補位，目的群組在移動 marker 距目的地一個 marker 寬度時開始讓位，抵達後才切換歸屬。
+- [x] marker 進退場、賦值及 heap 尺寸變化依事件順序處理，且 resize 每幀同步更新格子、文字、style、marker 與箭頭幾何。
+- [x] 上一步及時間線跳轉取消進行中動畫並直接重建目標穩定幀；下一步仍可重播正向動畫。
+- [x] 500ms 內第 3 次下一步切入穩定幀快轉，每次輸入只前進一幀；長按 repeat 使用同一流程且不播放 TTS。
+- [x] 分頁隱藏時動畫時鐘與 TTS 一起暫停；隱藏期間導航後返回只顯示最新目標穩定幀。
+- [x] 事件動畫開關於動畫中切換時立即取消並重建目前幀，不殘留 highlight 或暫存 visual。
+
+## 驗證計畫
+- 子代理小驗證：Node 語法檢查；marker assignment／unresolved marker／outerframe resize 與新增播放導覽 focused tests；必要時用 3102 做單一 heap fixture 的隔離瀏覽器確認。
+- 主代理整合驗收：核實 diff 與 focused tests，整合後依動畫影響範圍決定相關演算法回歸及 heap 實際投影片操作。
+- 測試隔離方式：使用 beta worktree 與 3102；不操作使用者分頁、不覆蓋使用者投影片、不啟動完整 regression。
+
+## 變更紀錄
+- 2026-09-20：依完成的 marker／播放確認表建立實作任務；使用者指示直接開始，中途僅針對未確認且影響結果的問題提問。

@@ -6,6 +6,7 @@
     "SpeechSynthesisUtterance" in window;
 
   let cachedVoices = [];
+  let pausedByVisibility = false;
   const ALGOSHOW_TTS_VOICE_REGEX = /(Microsoft).*(Natural|Neural).*(Chinese|Taiwan|zh[-_]?TW)/i;
   const DISABLED_TTS_VOICE_NAMES = new Set([
     'microsoft hanhan - chinese (traditional, taiwan)'
@@ -51,6 +52,19 @@
   if (hasAPI) {
     refreshVoices();
     window.speechSynthesis.onvoiceschanged = refreshVoices;
+    document.addEventListener?.('visibilitychange', () => {
+      if (document.hidden) {
+        pausedByVisibility = window.speechSynthesis.speaking
+          || window.speechSynthesis.pending;
+        if (pausedByVisibility) {
+          try { window.speechSynthesis.pause(); } catch {}
+        }
+        return;
+      }
+      if (!pausedByVisibility) return;
+      pausedByVisibility = false;
+      try { window.speechSynthesis.resume(); } catch {}
+    });
   }
 
   // 等待 voices 可用（Edge/Chrome 需要）
@@ -184,6 +198,7 @@
 
   function stopSpeak() {
     if (!hasAPI) return;
+    pausedByVisibility = false;
     try { window.speechSynthesis.cancel(); } catch {}
   }
 
