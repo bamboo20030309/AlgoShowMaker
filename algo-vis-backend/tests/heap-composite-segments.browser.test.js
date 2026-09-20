@@ -160,6 +160,16 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       const player=window.ASMTracePlayer,doc=player.getDocument();
       const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
       const sumId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='sum');
+      const buildFrames=doc.frames.map((frame,index)=>({frame,index}))
+        .filter(({frame})=>frame.source?.function==='build');
+      const leafBuild=buildFrames[0];
+      const parentBuild=buildFrames.find(({frame})=>(frame.arrows||[]).length===2);
+      await player.render(leafBuild.index,{animatePositions:false,animateEvents:false});
+      const leafBuildText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
+      const parentBuildText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      const parentBuildArrowNodes=[...document.querySelectorAll('#asm-trace-root .asm-trace-arrow')]
+        .map(arrow=>({id:arrow.dataset.traceArrow,name:arrow.dataset.traceArrowName}));
       const queryFrames=doc.frames.map((frame,index)=>({frame,index})).filter(({frame})=>frame.segments?.length);
       const now=frame=>Number(window.ASMTraceRules.resolveExpression(doc,frame,'now'));
       const deepest=Math.max(...queryFrames.map(({frame})=>now(frame)).filter(Number.isFinite));
@@ -208,6 +218,10 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       const sum=scene.querySelector(`[data-trace-variable="${sumId}"]`);
       const sumCell=sum?.querySelector('[data-trace-index="0"]');
       return {
+        leafBuildText,
+        parentBuildText,
+        parentBuildArrowTrace:parentBuild.frame.arrows,
+        parentBuildArrowNodes,
         deepest,
         animatedVisible,
         beforeSumIdentity,
@@ -218,6 +232,10 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
         sumBelowTree:Number(sum?.dataset?.tracePositionY)>Number(tree?.dataset?.tracePositionY)
       };
     });
+    assert.match(result.leafBuildText,/讀入第 1 個值 1/);
+    assert.match(result.parentBuildText,/左右子節點/);
+    assert.equal(result.parentBuildArrowNodes.length,2,
+      JSON.stringify({trace:result.parentBuildArrowTrace,dom:result.parentBuildArrowNodes}));
     assert.equal(result.deepest,14);
     assert.equal(result.animatedVisible,true);
     assert.ok(result.beforeSumIdentity);

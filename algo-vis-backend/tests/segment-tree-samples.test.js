@@ -28,11 +28,18 @@ test('Segment_Tree_easy uses heap directives and preserves query output', async(
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
   assert.match(code,/with split\(now,after\)/);
   assert.match(code,/sum \+= tree\[now\]/);
+  assert.match(code,/@preset build_view[\s\S]*@object tree render heap with range\(1,Tcapacity\)/);
+  assert.match(code,/讀入第 \$\{i-\(Tsize-n\)\+1\} 個值/);
+  assert.match(code,/@arrow from tree\[left\] to tree\[i\][\s\S]*@arrow from tree\[right\] to tree\[i\]/);
   assert.doesNotMatch(code,/左右結果合併|tree\[now\] = rule/);
   assert.doesNotMatch(code,/@style tree\[now\] (?:highlight,point|highlight)\s+AV_/);
   assert.equal(result.output.trim().replace(/\r\n?/g,'\n'),'27\n3\n119\n120\n8\n5\n17');
   assert.ok(trace.frames.some(frame=>Object.values(frame.renderers||{}).includes('original-heap')));
   assert.ok(trace.frames.some(frame=>(frame.segments||[]).some(segment=>segment.cellRange)));
+  const buildFrames=trace.frames.filter(frame=>frame.source?.function==='build');
+  assert.ok(buildFrames.length>=30,'15 leaf inputs and 15 parent sums each produce a build frame');
+  assert.equal(buildFrames.filter(frame=>(frame.arrows||[]).length===2).length,15,
+    'each parent sum shows arrows from both child nodes');
 });
 
 test('Segment_Tree uses original arrays as fields and preserves lazy/set algorithm output', async()=>{

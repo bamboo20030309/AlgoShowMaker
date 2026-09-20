@@ -8,11 +8,15 @@ using namespace std;
 #define Hbit(X) (32-__builtin_clzll(X))
 
 vector<int> tree, lazy, sets;
-int Tmask, Tsize, Tdeep, n, sum = 0;
+int Tmask, Tsize, Tdeep, Tcapacity, n, sum = 0;
 
 // @defaults
 // @camera focus tree offset(0,35) zoom(1.05)
 // @enddefaults
+
+// @preset build_view
+// @object tree render heap with range(1,Tcapacity)
+// @endpreset
 
 // @preset query_view
 // @object tree render heap with range(1,Tsize-1)
@@ -24,12 +28,26 @@ int rule(int a, int b) { return a + b; }
 
 void build() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
-    tree.assign(1 << Tdeep, 0);
-    lazy.assign(1 << Tdeep, 0);
-    sets.assign(1 << Tdeep, LM);
-    for (int i = Tsize - n; i < Tsize; i++) cin >> tree[i];
-    for (int i = Tsize - n - 1; i > 0; i--)
-        tree[i] = rule(tree[i << 1], tree[i << 1 | 1]);
+    Tcapacity = (1 << Tdeep) - 1;
+    tree.assign(Tcapacity + 1, 0);
+    lazy.assign(Tcapacity + 1, 0);
+    sets.assign(Tcapacity + 1, LM);
+    for (int i = Tsize - n; i < Tsize; i++) {
+        cin >> tree[i];
+        // @frame use build_view
+        // @style tree[i] highlight
+        // @text "讀入第 ${i-(Tsize-n)+1} 個值 ${tree[i]}，放到葉節點 tree[${i}]" at tree.top offset(0,-20)
+    }
+    for (int i = Tsize - n - 1; i > 0; i--) {
+        int left = i << 1, right = i << 1 | 1;
+        tree[i] = rule(tree[left], tree[right]);
+        // @frame use build_view
+        // @style tree[i] highlight
+        // @style tree[left,right] point
+        // @arrow from tree[left] to tree[i] as "left_child_sum"
+        // @arrow from tree[right] to tree[i] as "right_child_sum"
+        // @text "左右子節點 ${tree[left]} + ${tree[right]} = ${tree[i]}\n因此得到 tree[${i}]" at tree.top offset(0,-20)
+    }
 }
 
 // 保留原本的特殊葉節點排列：根區間是 [Tmask, 2*Tmask-1]。
@@ -57,7 +75,7 @@ int main() {
     cin >> n >> m;
     build();
     // @frame use query_view
-    // @text "線段樹由葉節點往上合併；這個版本只示範區間查詢" at tree.top offset(0,-20)
+    // @text "所有父節點都已由左右子節點相加完成，接著開始區間查詢" at tree.top offset(0,-20)
     for (int i = 0; i < m; i++) {
         cin >> x >> y;
         sum = 0;
