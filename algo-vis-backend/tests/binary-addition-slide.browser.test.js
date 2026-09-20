@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
-test('segment tree binary addition remains animated inside an algorithm slide', { timeout: 60000 }, async () => {
+test('an outdated segment tree slide rebuilds and animates its first parent sum', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -37,6 +37,10 @@ test('segment tree binary addition remains animated inside an algorithm slide', 
     const traceDocument = await page.evaluate(() => JSON.parse(JSON.stringify(
       window.ASMTracePlayer.getDocument()
     )));
+    traceDocument.provenance.engineVersion = 4;
+    traceDocument.frames.forEach(frame => {
+      frame.events = (frame.events || []).filter(event => event.binaryOperation !== '+');
+    });
     const slidePage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     slidePage.on('pageerror', error => errors.push(error.message));
     await slidePage.addInitScript(({ code, input, traceDocument }) => {
@@ -57,9 +61,38 @@ test('segment tree binary addition remains animated inside an algorithm slide', 
       document.querySelector('.algorithm-slide-frame')?.contentWindow
         ?.ASMTracePlayer?.isViewportGeometryReady?.()
     ));
-    const runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
+    let runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
     assert.ok(runtime, 'algorithm slide runtime iframe loaded');
-    assert.match(runtime.url(), /v=trace-runtime-37/);
+    assert.match(runtime.url(), /v=trace-runtime-38/);
+    assert.equal(await runtime.evaluate(() => (
+      window.ASMTracePlayer.getDocument().frames.some(frame => (
+        (frame.events || []).some(event => event.binaryOperation === '+')
+      ))
+    )), false, 'the saved v4 trace begins without binary addition metadata');
+    await slidePage.evaluate(() => document.getElementById('algorithmEditSlideBtn').click());
+    await slidePage.waitForFunction(() => (
+      !document.getElementById('algorithmEditorModal').hidden
+      && document.getElementById('algorithmEditorFrame')?.contentWindow?.ASMTracePlayer
+        ?.getDocument?.()?.provenance?.engineVersion === 5
+    ), null, { timeout: 30000 });
+    const editor = slidePage.frames().find(frame => frame.url().includes('asmEmbed=editor'));
+    assert.ok(editor, 'algorithm slide editor iframe loaded');
+    assert.equal(await editor.evaluate(() => (
+      window.ASMTracePlayer.getDocument().frames.some(frame => (
+        (frame.events || []).some(event => event.binaryOperation === '+')
+      ))
+    )), true, 'opening the editor rebuilds the outdated trace');
+    await slidePage.click('#saveAlgorithmEditorBtn');
+    await slidePage.waitForFunction(() => document.getElementById('algorithmEditorModal').hidden);
+    await slidePage.waitForFunction(() => {
+      const player = document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer;
+      const documentTrace = player?.getDocument?.();
+      return documentTrace?.provenance?.engineVersion === 5
+        && documentTrace.frames.some(frame => (
+          (frame.events || []).some(event => event.binaryOperation === '+')
+        ));
+    }, null, { timeout: 30000 });
+    runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
     const result = await runtime.evaluate(async () => {
       const player = window.ASMTracePlayer;
       const doc = player.getDocument();
