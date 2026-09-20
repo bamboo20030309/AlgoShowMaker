@@ -74,37 +74,6 @@ test('style decorations paint between objects and arrows and follow a scaled, re
   assert.equal(layer.childElementCount, 0);
 });
 
-test('segment styles stay inside the cell between its background and content', () => {
-  const dom = new JSDOM(`<!doctype html><svg><g id="asm-trace-root">
-    <g id="object"><g id="cell"><rect id="background" width="40" height="30"/>
-      <rect id="segment" width="40" height="30"/><text id="value">15</text></g></g>
-  </g></svg>`, { runScripts: 'outside-only' });
-  const { window } = dom;
-  const root = window.document.getElementById('asm-trace-root');
-  const cell = window.document.getElementById('cell');
-  const segment = window.document.getElementById('segment');
-  root.getScreenCTM = cell.getScreenCTM = () => new Matrix();
-  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8'));
-
-  assert.equal(window.ASMTraceRenderers.attachStyleVisual(segment, cell, 'segment'), true);
-  const layer = [...cell.children].find(child => child.classList.contains('asm-trace-segment-layer'));
-  assert.ok(layer);
-  assert.equal(layer.classList.contains('asm-trace-style-layer'), true);
-  assert.equal(layer.previousElementSibling.id, 'background');
-  assert.equal(layer.nextElementSibling.id, 'value');
-  assert.equal(segment.closest('.asm-trace-segment-layer'), layer);
-
-  const active = window.document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-  active.classList.add('asm-trace-heap-cell-segment');
-  cell.append(active);
-  const state = window.document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-  state.classList.add('asm-trace-heap-cell-segment', 'asm-trace-state-segment');
-  cell.append(state);
-  assert.equal(window.ASMTraceRenderers.attachStyleVisual(active, cell, 'segment'), true);
-  assert.equal(window.ASMTraceRenderers.attachStyleVisual(state, cell, 'segment'), true);
-  assert.deepEqual([...layer.querySelectorAll('.asm-trace-heap-cell-segment')], [state, active]);
-});
-
 test('highlight includes the index row and follows the visible swap cell until it is restored', () => {
   const dom = new JSDOM(`<!doctype html><svg><g id="asm-trace-root">
     <g id="object"><g id="cell" data-trace-index="0"><rect width="40" height="30"/></g>

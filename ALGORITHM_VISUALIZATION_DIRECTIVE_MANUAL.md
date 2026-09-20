@@ -683,7 +683,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
 // @style 目標 樣式[,樣式...] [顏色] [as ID] [when 條件]
 ```
 
-支援六種樣式：
+支援五種樣式：
 
 | 類型 | 效果 |
 | --- | --- |
@@ -692,16 +692,15 @@ void quick_sort(vector<int>& arr, int low, int high) {
 | `mark` | 在格子上顯示勾選標記 |
 | `background` | 直接設定格子背景色 |
 | `focus` | 保留指定片段正常顯示，將其他格子以指定顏色弱化 |
-| `segment` | 在格子內的style層覆蓋整段色塊；資料條件持續成立時跨幀保留 |
 
-`segment`可沿用一般顏色位置，也可明確寫`color`：
+長期狀態直接使用`background`；renderer會在每幀重新判斷條件。用於`fields(tree,lazy,sets)`的附加欄位時，背景套在相同索引的tree格內，不會建立獨立lazy／sets物件：
 
 ```cpp
-// @style lazy[1:Tsize-1] segment AV_magenta when value != 0
-// @style sets[1:Tsize-1] segment color AV_orange when value != 2147483647
+// @style lazy[1:Tsize-1] background AV_magenta when value != 0
+// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
 ```
 
-它永遠覆蓋目標格子的完整內部範圍，不會像`@segment tree[node][L:R]`依局部端點切開。用於`fields(tree,lazy,sets)`的附加欄位時，色塊畫在相同索引的tree格內，不會建立獨立lazy／sets物件。相同style與索引在條件持續成立時沿用穩定身分；條件失效才退場。當次操作的`@segment`位於狀態segment上層。
+需要依局部端點切開、分裂或顯示當次操作範圍時，使用獨立的`@segment tree[node][L:R]`指令。
 
 所有 `point` 與 `highlight` 共用同一套系統時間節奏；畫布更新、切換幀或產生縮圖時不會各自重新起跳。
 
@@ -753,7 +752,7 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 
 ### 省略顏色時的預設值
 
-六種樣式都能省略顏色：
+五種樣式都能省略顏色：
 
 ```cpp
 // @style arr[0] background
@@ -761,10 +760,9 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 // @style arr[2] mark
 // @style arr[3] point
 // @style arr[1:i] focus
-// @style arr[4] segment
 ```
 
-`highlight`、`point` 使用 draw 系統的紅色，`mark` 使用綠色，`focus` 使用 `AV_grey` 灰色，`segment`使用`AV_magenta`。`background` 沿用當前畫法的預設背景色；一般陣列與 heap 為紫色，stack、queue 等畫法各自使用原本的預設色。指定顏色時仍完全採用指定值。`focus` 是凸顯指定片段、將其餘格子弱化的效果。
+`highlight`、`point` 使用 draw 系統的紅色，`mark` 使用綠色，`focus` 使用 `AV_grey` 灰色。`background` 沿用當前畫法的預設背景色；一般陣列與 heap 為紫色，stack、queue 等畫法各自使用原本的預設色。指定顏色時仍完全採用指定值。`focus` 是凸顯指定片段、將其餘格子弱化的效果。
 
 ### 使用 `value` 和 `index`
 

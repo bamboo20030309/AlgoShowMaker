@@ -166,7 +166,7 @@ int main() {
 | `@layout` | 宣告並設定具名遞迴排版 | `// @layout recursion as "quick_tree" at canvas.top offset(0,80)` |
 | `@exit` | 提早讓指定變數的視覺呈現退場 | `// @exit min_idx` |
 | `@text` | 顯示動態說明文字與 TTS | `// @text "i = ${i}" at arr.bottom when i >= 0` |
-| `@style` | 套用背景、框線、point、mark、focus或整格狀態segment；逗號可組合樣式 | `// @style arr[i,i*2:i*2+1] highlight,point red` |
+| `@style` | 套用背景、框線、point、mark或focus；逗號可組合樣式 | `// @style arr[i,i*2:i*2+1] highlight,point red` |
 | `@segment` | 標示一段連續範圍 | `// @segment arr[low:high]` |
 | `@place` | 將同幀已顯示物件綁到語意錨點 | `// @place pivot at arr.right offset(16,0)` |
 | `@arrow` | 以語意錨點連接格子、變數、keep 或 Studio 物件 | `// @arrow from arr[i].bottom to arr[j].top as "move"` |
@@ -195,10 +195,10 @@ int main() {
 // @style arr[i,i*2:i*2+1] highlight red
 // @style arr[1:i-1,n:n] focus
 // @style prime[0:iteration.last(j)] focus when i * value <= n
-// @style lazy[1:Tsize-1] segment color AV_magenta when value != 0
+// @style lazy[1:Tsize-1] background AV_magenta when value != 0
 ```
 
-`segment` style會在目標格內顯示完整色塊，條件持續成立時跨幀保留；它適合呈現lazy／set等長期狀態。需要顯示當次操作的局部範圍或遞迴分裂時，仍使用`@segment tree[node][L:R]`。
+`background`會在每幀依條件重新套用，適合呈現lazy／set等長期狀態；條件失效時背景自然移除。需要顯示當次操作的局部範圍或遞迴分裂時，使用`@segment tree[node][L:R]`。
 
 `@keep as` 第一次使用名稱時不加編號；重複名稱依序使用 `_1`、`_2`。所有 keep 物件的外框可透過虛擬聯集 `keep.top`、`keep.bottom` 等錨點定位。keep 預設保留來源的相對定位、Studio 位置／綁定與自動排版高度；所有未手動定位的 keep 列，預設垂直間距為 50px。明確的 `offset` 或 Studio 拖曳位置仍優先。若只想從原位置調整，可寫 `// @keep last offset(0,-24)`，正 Y 向下、負 Y 向上。
 

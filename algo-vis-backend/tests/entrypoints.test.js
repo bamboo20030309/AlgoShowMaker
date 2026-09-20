@@ -93,7 +93,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-studio.js?v=trace-120'));
   assert.ok(html.includes('front.js?v=random-id-33'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
-  assert.ok(html.includes('trace-provenance.js?v=trace-8'));
+  assert.ok(html.includes('trace-provenance.js?v=trace-9'));
   assert.ok(html.includes('trace.css?v=trace-36'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';
   assert.match(codeHighlight, /background-color:\s*rgba\(255,\s*214,\s*10,\s*0\.48\)/);

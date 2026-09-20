@@ -136,7 +136,6 @@
     ],
     style: [
       ['background', 'background', '設定格子背景', ' background AV_green'],
-      ['segment', 'segment', '在格子內顯示整段狀態色塊', ' segment color AV_magenta'],
       ['highlight', 'highlight', '強調格子；不寫顏色使用預設色', ' highlight'],
       ['focus', 'focus', '凸顯指定片段並淡化其餘格子', ' focus'],
       ['mark', 'mark', '為格子加上標記', ' mark'],

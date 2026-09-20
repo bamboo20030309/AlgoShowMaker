@@ -18,8 +18,8 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @object tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
 // @object answer render cell
 // @place answer.top at tree.bottom offset(0,45)
-// @style lazy[1:Tsize-1] segment color AV_magenta when value != 0
-// @style sets[1:Tsize-1] segment color AV_orange when value != 2147483647
+// @style lazy[1:Tsize-1] background AV_magenta when value != 0
+// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
 // @endpreset
 
 // 遞迴操作期間用 now 作為 tree 的實際陣列指標。
@@ -27,8 +27,8 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @object tree[now] render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
 // @object answer render cell
 // @place answer.top at tree.bottom offset(0,45)
-// @style lazy[1:Tsize-1] segment color AV_magenta when value != 0
-// @style sets[1:Tsize-1] segment color AV_orange when value != 2147483647
+// @style lazy[1:Tsize-1] background AV_magenta when value != 0
+// @style sets[1:Tsize-1] background AV_orange when value != 2147483647
 // @endpreset
 
 void build() {
