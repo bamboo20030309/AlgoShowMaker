@@ -1559,28 +1559,23 @@
   function eventDots(frame) {
     const dots = el('span', 'trace-studio-event-dots');
     const ordered = window.ASMTraceEvents?.ordered?.(frame.events || []) || frame.events || [];
-    const visible = ordered.filter(event => (
-      event.enabled !== false
-      && window.ASMTraceEvents?.showTag(event.type, trace) !== false
-    ));
+    const visible = ordered.filter(event => window.ASMTraceEvents?.showTimelineEvent
+      ? window.ASMTraceEvents.showTimelineEvent(event, trace)
+      : event.enabled !== false
+        && event.autoAnimationDisabled !== true
+        && window.ASMTraceEvents?.showTag(event.type, trace) !== false);
     const uniqueEvents = new Map();
     visible.forEach(event => {
       const key = event.signature || event.type;
       const existing = uniqueEvents.get(key);
-      // When equivalent events share a tag, keep an active one in preference to
-      // an automatically disabled one.
-      if (!existing || (existing.autoAnimationDisabled === true && event.autoAnimationDisabled !== true)) {
-        uniqueEvents.set(key, event);
-      }
+      if (!existing) uniqueEvents.set(key, event);
     });
     const events = [...uniqueEvents.values()];
     events.forEach(event => {
       const dot = el('i', 'trace-studio-event-dot');
       dot.style.background = eventColorFor(event);
       const label = eventLabel(event);
-      const autoDisabled = event.autoAnimationDisabled === true;
       dot.title = label;
-      dot.classList.toggle('is-disabled', autoDisabled);
       dots.append(dot);
     });
     return dots;

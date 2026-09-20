@@ -29,6 +29,19 @@ test('initial event animation and timeline defaults match the Event Settings pan
     'an enabled declaration is the formal object-entrance animation');
 });
 
+test('timeline labels exclude events that are disabled or cannot be shown', () => {
+  const api = eventApi();
+  const document = { studio: { eventSettings: { timelineTypes: { assign: true } } } };
+  assert.equal(api.showTimelineEvent({ type: 'assign', enabled: true }, document), true);
+  assert.equal(api.showTimelineEvent({ type: 'assign', enabled: false }, document), false,
+    'events hidden by the user do not retain timeline labels');
+  assert.equal(api.showTimelineEvent({
+    type: 'assign', enabled: true, autoAnimationDisabled: true
+  }, document), false, 'events hidden because their animation target is unavailable do not retain labels');
+  assert.equal(api.showTimelineEvent({ type: 'read', enabled: true }, document), false,
+    'the event-type timeline setting still applies');
+});
+
 test('internal conditions never expose saved animation or timeline controls', () => {
   const api = eventApi();
   const document = { studio: { eventSettings: {
