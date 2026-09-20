@@ -40,7 +40,7 @@ void build() {
     }
     for (int i = Tsize - n - 1; i > 0; i--) {
         int left = i << 1, right = i << 1 | 1;
-        tree[i] = rule(tree[left], tree[right]);
+        tree[i] = tree[left] + tree[right];
         // @frame use build_view
         // @style tree[i] highlight
         // @style tree[left,right] point

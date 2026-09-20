@@ -2374,7 +2374,10 @@
     rawDeltas, appearingKeys, previousObjects, visualKeyForSource
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
-    const source = (event?.targets || []).find(item => item.role === 'source');
+    const sources = (event?.targets || []).filter(item => item.role === 'source'
+      || item.role === 'source-left' || item.role === 'source-right');
+    const source = sources[0];
+    const binaryAddition = event?.binaryOperation === '+' && sources.length === 2;
     if (!target) return null;
     const operand = eventOperand(
       traceDocument, eventFrame, target, event?.payload?.after,
@@ -2410,19 +2413,14 @@
     const sourceValue = Object.prototype.hasOwnProperty.call(event?.payload || {}, 'source')
       ? event.payload.source : null;
     const sourceLabel = String(source?.expression || afterValue || '').trim();
-    const sourceOperand = source
-      ? eventOperand(
-        traceDocument, eventFrame, source, sourceValue,
-        placements, elements, visualKeyForSource
-      )
-      : null;
-    const previousSourceVisual = sourceOperand
-      ? previousVisualElement(previousObjects, sourceOperand.visualKey)
-      : null;
+    const sourceOperands = sources.map(item => eventOperand(
+      traceDocument, eventFrame, item, sourceValue,
+      placements, elements, visualKeyForSource
+    ));
     let popup = null;
     let markerIncomingText = null;
     let fallingText = null;
-    let transfer = null;
+    let transfers = [];
     let targetText = null;
     let finalText = '';
     let originalOpacity = null;
@@ -2454,11 +2452,15 @@
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
-      transfer = createAssignmentTransfer(
-        root, sourceOperand, operand, sourceValue, previousSourceVisual,
-        { valueOnly: event?.compound === true }
-      );
-      if (!transfer) {
+      transfers = sourceOperands.map(item => createAssignmentTransfer(
+        root,
+        item,
+        operand,
+        sourceValue,
+        item ? previousVisualElement(previousObjects, item.visualKey) : null,
+        { valueOnly: event?.compound === true || binaryAddition }
+      )).filter(Boolean);
+      if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
         fallingText = createSvg('text', {
           class: 'asm-trace-assign-falling-value',
@@ -2531,14 +2533,16 @@
           fallingText.setAttribute('y', String(startY + (targetY - startY) * dropProgress));
           fallingText.setAttribute('opacity', String(dropProgress < 1 ? clamp01(dropProgress * 4) : 0));
         }
-        transfer?.update(dropProgress, 1 - exit);
+        transfers.forEach(item => item.update(dropProgress, 1 - exit));
         if (dropProgress >= 1) {
           landValue();
-          // A compound value transfer represents the source number being
-          // absorbed by the destination. Remove it in the same update that
-          // commits the result instead of leaving a duplicate over the target
-          // throughout the generic assignment hold phase.
-          if (event?.compound === true) transfer?.remove();
+          // Value-only transfers are absorbed by the destination. Remove them
+          // in the same update that commits the result instead of leaving
+          // duplicate numbers over the target during the generic hold phase.
+          if (event?.compound === true || binaryAddition) {
+            transfers.forEach(item => item.remove());
+            transfers = [];
+          }
         }
       },
       remove() {
@@ -2549,7 +2553,8 @@
         }
         popup?.group.remove();
         fallingText?.remove();
-        transfer?.remove();
+        transfers.forEach(item => item.remove());
+        transfers = [];
       }
     };
   }
@@ -6192,10 +6197,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-216';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-217';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-216', play, cancel, updateEventAvailability,
+    build: 'trace-217', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

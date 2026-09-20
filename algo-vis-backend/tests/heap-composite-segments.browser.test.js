@@ -163,13 +163,39 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
       const buildFrames=doc.frames.map((frame,index)=>({frame,index}))
         .filter(({frame})=>frame.source?.function==='build');
       const leafBuild=buildFrames[0];
-      const parentBuild=buildFrames.find(({frame})=>(frame.arrows||[]).length===2);
+      const parentBuilds=buildFrames.filter(({frame})=>(frame.arrows||[]).length===2);
+      const parentBuild=parentBuilds[1]||parentBuilds[0];
       await player.render(leafBuild.index,{animatePositions:false,animateEvents:false});
       const leafBuildText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
       await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
       const parentBuildText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
       const parentBuildArrowNodes=[...document.querySelectorAll('#asm-trace-root .asm-trace-arrow')]
         .map(arrow=>({id:arrow.dataset.traceArrow,name:arrow.dataset.traceArrowName}));
+      const binaryEvent=(parentBuild.frame.events||[]).find(event=>event.binaryOperation==='+');
+      const binaryTarget=binaryEvent?.targets?.find(target=>target.role==='target')?.resolvedIndex;
+      await player.render(parentBuild.index-1,{animatePositions:false,animateEvents:false});
+      const binarySamples=[];
+      let binarySettled=false;
+      const binaryTransition=player.render(parentBuild.index).finally(()=>{binarySettled=true;});
+      for(let count=0;count<180&&!binarySettled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const scene=document.querySelector('#asm-trace-root');
+        const targetText=scene.querySelector(
+          `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
+        )
+          ?.querySelector('text:not([data-trace-content-role="index"])');
+        const transfers=[...scene.querySelectorAll('.asm-trace-assign-transfer-value')];
+        binarySamples.push({
+          targetValue:targetText?.textContent,
+          transferValues:transfers.map(item=>item.querySelector('text')?.textContent).sort(),
+          transferRects:transfers.reduce((sum,item)=>sum+item.querySelectorAll('rect').length,0)
+        });
+      }
+      await binaryTransition;
+      const binaryFinal=document.querySelector('#asm-trace-root')?.querySelector(
+        `[data-trace-object-key="${CSS.escape(`${treeId}#${binaryTarget}`)}"]`
+      )
+        ?.querySelector('text:not([data-trace-content-role="index"])')?.textContent;
       const queryFrames=doc.frames.map((frame,index)=>({frame,index})).filter(({frame})=>frame.segments?.length);
       const now=frame=>Number(window.ASMTraceRules.resolveExpression(doc,frame,'now'));
       const deepest=Math.max(...queryFrames.map(({frame})=>now(frame)).filter(Number.isFinite));
@@ -222,6 +248,9 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
         parentBuildText,
         parentBuildArrowTrace:parentBuild.frame.arrows,
         parentBuildArrowNodes,
+        binaryEvent:{operation:binaryEvent?.binaryOperation,target:binaryTarget},
+        binarySamples,
+        binaryFinal,
         deepest,
         animatedVisible,
         beforeSumIdentity,
@@ -236,6 +265,17 @@ test('segment tree descends with segments, removes accepted pieces and accumulat
     assert.match(result.parentBuildText,/左右子節點/);
     assert.equal(result.parentBuildArrowNodes.length,2,
       JSON.stringify({trace:result.parentBuildArrowTrace,dom:result.parentBuildArrowNodes}));
+    assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
+    const binaryTransferSamples=result.binarySamples.filter(sample=>sample.transferValues.length===2);
+    assert.ok(binaryTransferSamples.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])),
+      `both child values move toward their parent: ${JSON.stringify(binaryTransferSamples)}`);
+    assert.ok(binaryTransferSamples.every(sample=>sample.transferRects===0),
+      'binary addition moves only the two value texts');
+    assert.ok(binaryTransferSamples.some(sample=>sample.targetValue==='0'),
+      `the parent retains its old value while both child values are moving: ${JSON.stringify(binaryTransferSamples)}`);
+    assert.equal(binaryTransferSamples.some(sample=>sample.targetValue==='27'),false,
+      'both moving values disappear in the same update that commits the parent value');
+    assert.equal(result.binaryFinal,'27');
     assert.equal(result.deepest,14);
     assert.equal(result.animatedVisible,true);
     assert.ok(result.beforeSumIdentity);
