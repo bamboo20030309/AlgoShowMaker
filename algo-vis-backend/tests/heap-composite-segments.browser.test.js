@@ -427,7 +427,29 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         lazy:document.querySelectorAll(`[data-trace-variable="${byName.lazy}"]`).length,
         sets:document.querySelectorAll(`[data-trace-variable="${byName.sets}"]`).length
       };
-      await player.render(unwind.index,{animatePositions:false,animateEvents:false});
+      const previousUnwindMarks=new Map(markedNodes(doc.frames[unwind.index-1])
+        .map(mark=>[mark.node,mark.color]));
+      const persistentUnwindMarks=markedNodes(unwind.frame)
+        .filter(mark=>previousUnwindMarks.get(mark.node)===mark.color);
+      await player.render(unwind.index-1,{animatePositions:false,animateEvents:false});
+      const unwindSamples=[];
+      let unwindSettled=false;
+      const unwindTransition=player.render(unwind.index).finally(()=>{unwindSettled=true;});
+      for(let count=0;count<180&&!unwindSettled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const currentTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+        persistentUnwindMarks.forEach(mark=>{
+          const rect=currentTree?.querySelector(`[data-trace-index="${mark.node}"] > rect`);
+          const indexRect=currentTree?.querySelector(`[data-trace-index-label="${mark.node}"] > rect`);
+          unwindSamples.push({
+            node:mark.node,
+            expected:mark.color,
+            background:rect?getComputedStyle(rect).fill.replace(/\s+/g,''):'',
+            indexBackground:indexRect?getComputedStyle(indexRect).fill.replace(/\s+/g,''):''
+          });
+        });
+      }
+      await unwindTransition;
       const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
       const unwindTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
       const unwindBackgrounds=markedNodes(unwind.frame).map(({node,color})=>({
@@ -445,7 +467,7 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
       )].at(-1)?.textContent;
       return {
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
-        operationSegments,lazyBackgrounds,setBackgrounds,unwindBackgrounds,
+        operationSegments,lazyBackgrounds,setBackgrounds,unwindBackgrounds,unwindSamples,
         handoffSamples,handoffColor:handoffMark.color,
         stateSegments:document.querySelectorAll('#asm-trace-root .asm-trace-state-segment').length,
         compositeTexts,separateFields,unwindSegments,pointerLabel,pointStyleCount,answer
@@ -467,6 +489,9 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     assert.ok(result.lazyBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
     assert.ok(result.setBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
     assert.ok(result.unwindBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
+    assert.ok(result.unwindSamples.length>0,JSON.stringify(result));
+    assert.ok(result.unwindSamples.every(sample=>sample.background===sample.expected
+      &&sample.indexBackground===sample.expected),JSON.stringify(result.unwindSamples));
     assert.equal(result.stateSegments,0);
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
     assert.deepEqual(result.separateFields,{lazy:0,sets:0});

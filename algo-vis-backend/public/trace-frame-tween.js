@@ -2112,10 +2112,48 @@
     // styles always belong to the scene currently displayed at the destination.
     const styleFrame = options.frame || eventFrame;
     const previousStyleFrame = options.previousFrame || eventFrame;
-    const conditionalStyleVariables = new Set([
+    const directConditionalStyleVariables = new Set([
       ...(styleFrame?.styles || []), ...(previousStyleFrame?.styles || [])
     ]
       .map(style => style.targetVariableId));
+    const rendererFieldVariableIds = (frame, variableId) => {
+      const fields = frame?.rendererOptions?.[variableId]?.fields;
+      return Array.isArray(fields?.variableIds) ? fields.variableIds.filter(Boolean) : [];
+    };
+    const conditionalStyleVariables = new Set(directConditionalStyleVariables);
+    [styleFrame, previousStyleFrame].forEach(candidateFrame => {
+      Object.keys(candidateFrame?.state || {}).forEach(variableId => {
+        if (rendererFieldVariableIds(candidateFrame, variableId)
+          .some(sourceId => directConditionalStyleVariables.has(sourceId))) {
+          conditionalStyleVariables.add(variableId);
+        }
+      });
+    });
+    const mergeHighlightMaps = (target, source) => {
+      Object.entries(source || {}).forEach(([key, value]) => {
+        const previous = target[key] || {};
+        target[key] = {
+          ...previous,
+          ...value,
+          styleTypes: {
+            ...(previous.styleTypes || {}),
+            ...(value?.styleTypes || {})
+          },
+          sourceStyleIds: {
+            ...(previous.sourceStyleIds || {}),
+            ...(value?.sourceStyleIds || {})
+          }
+        };
+      });
+      return target;
+    };
+    const renderedHighlights = (allHighlights, variableId) => {
+      const combined = mergeHighlightMaps({}, allHighlights?.[variableId]);
+      rendererFieldVariableIds(styleFrame, variableId).forEach(sourceId => {
+        mergeHighlightMaps(combined, allHighlights?.[sourceId]);
+      });
+      return combined;
+    };
     (replayPlan?.visualValueTracks || replayPlan?.valueTracks || [])
       .filter(track => track.kind === 'value').forEach(track => {
       const values = [
@@ -2233,24 +2271,34 @@
       if (!stylesDirty) return;
       stylesDirty = false;
       // Match the original renderer: evaluate the new frame before events.
-      const visualHighlights = (styleTargets.length || indexTracks.length)
+      const allVisualHighlights = (styleTargets.length || indexTracks.length)
         ? (window.ASMTraceRenderers?.evaluateFrameHighlights?.(options.document, styleFrame)
           || window.ASMTraceRules.evaluate(options.document, styleFrame)) : {};
-      const indexHighlights = visualHighlights;
-      evaluatedHighlights = visualHighlights;
+      const highlightsByVariable = new Map();
+      const visualHighlights = variableId => {
+        if (!highlightsByVariable.has(variableId)) {
+          highlightsByVariable.set(variableId, renderedHighlights(allVisualHighlights, variableId));
+        }
+        return highlightsByVariable.get(variableId);
+      };
+      evaluatedHighlights = Object.fromEntries([...new Set([
+        ...styleTargets.map(track => track.variableId),
+        ...indexTracks.map(track => track.variableId)
+      ])].map(variableId => [variableId, visualHighlights(variableId)]));
       const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
         ? highlight.styleTypes.background || 'rgb(231, 144, 255)'
         : highlight.fill || '#ffffff';
       stylePaints = new Map([
         ...styleTargets.map(track => {
-          const highlight = visualHighlights[track.variableId]?.[String(track.styleIndex ?? track.index)] || {};
+          const highlight = visualHighlights(track.variableId)
+            ?.[String(track.styleIndex ?? track.index)] || {};
           return [track.styleRect, {
             fill: backgroundPaint(highlight),
             opacity: '1'
           }];
         }),
         ...indexTracks.map(track => {
-          const highlight = indexHighlights[track.variableId]?.[String(track.index)] || {};
+          const highlight = visualHighlights(track.variableId)?.[String(track.index)] || {};
           return [track.rect, {
             fill: backgroundPaint(highlight),
             opacity: '1'
@@ -6272,10 +6320,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-220';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-221';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-220', play, cancel, updateEventAvailability,
+    build: 'trace-221', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
