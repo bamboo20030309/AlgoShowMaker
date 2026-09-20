@@ -90,3 +90,4 @@
 - 2026-09-21：依使用者更正撤回上一項顯示優先級修改；移除與background重疊的`@style ... segment`，lazy／sets長期狀態改回條件background，獨立`@segment`維持操作區段用途。
 - 2026-09-21：依使用者補充將lazy／sets的background改為相同RGB的不透明版本；AV_magenta／AV_orange別名及操作segment仍保持半透明。
 - 2026-09-21：檢查完整Segment Tree第5至第6幀後確認，操作segment先退場而持續background較晚提交，造成短暫白色空檔；調整同RGB半透明segment到不透明background的交接順序，先提交底層background再播放segment退場。
+- 2026-09-21：依使用者補充，同格index label的background必須與value同步；交接現在同一動畫更新提交value與index兩個背景，再播放segment退場。

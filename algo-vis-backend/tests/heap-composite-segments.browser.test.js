@@ -402,9 +402,11 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
           `.asm-trace-heap-cell-segment[data-trace-segment-node="${handoffMark.node}"]`
         );
         const rect=currentTree?.querySelector(`[data-trace-index="${handoffMark.node}"] > rect`);
+        const indexRect=currentTree?.querySelector(`[data-trace-index-label="${handoffMark.node}"] > rect`);
         handoffSamples.push({
           segmentHeight:segment?Number(segment.getAttribute('height')):0,
-          background:rect?getComputedStyle(rect).fill.replace(/\s+/g,''):''
+          background:rect?getComputedStyle(rect).fill.replace(/\s+/g,''):'',
+          indexBackground:indexRect?getComputedStyle(indexRect).fill.replace(/\s+/g,''):''
         });
       }
       await handoffTransition;
@@ -453,7 +455,8 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     assert.ok(result.operationSegments>0);
     const exiting=result.handoffSamples.filter(sample=>sample.segmentHeight>0);
     assert.ok(exiting.some(sample=>sample.segmentHeight<40),JSON.stringify(result.handoffSamples));
-    assert.ok(exiting.every(sample=>sample.background===result.handoffColor),
+    assert.ok(exiting.every(sample=>sample.background===result.handoffColor
+      &&sample.indexBackground===result.handoffColor),
       JSON.stringify(result.handoffSamples));
     assert.ok(result.lazyBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));
     assert.ok(result.setBackgrounds.some(item=>item.color===item.fill),JSON.stringify(result));

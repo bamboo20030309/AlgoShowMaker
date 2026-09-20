@@ -4842,34 +4842,44 @@
     const segment = heapSplitSegmentRect(element);
     const cellKey = segment?.getAttribute?.('data-trace-attached-to') || '';
     const cell = cellKey ? currentElements?.get?.(cellKey) : null;
-    const rect = cell?.querySelector?.(':scope > rect') || null;
-    if (!segment || !rect) return null;
+    const valueRect = cell?.querySelector?.(':scope > rect') || null;
+    if (!segment || !valueRect) return null;
     const segmentPaint = parseColor(segment.getAttribute('fill'));
-    const backgroundPaint = parseColor(
-      rect.getAttribute('fill'), Number(rect.getAttribute('fill-opacity') || 1)
-    );
-    if (!segmentPaint || !backgroundPaint || backgroundPaint.a < 0.999
-      || segmentPaint.r !== backgroundPaint.r
-      || segmentPaint.g !== backgroundPaint.g
-      || segmentPaint.b !== backgroundPaint.b) return null;
-    return {
-      rect,
-      fill: rect.getAttribute('fill'),
-      opacity: rect.getAttribute('fill-opacity') || '1'
+    const paintFor = rect => {
+      if (!rect || !segmentPaint) return null;
+      const backgroundPaint = parseColor(
+        rect.getAttribute('fill'), Number(rect.getAttribute('fill-opacity') || 1)
+      );
+      if (!backgroundPaint || backgroundPaint.a < 0.999
+        || segmentPaint.r !== backgroundPaint.r
+        || segmentPaint.g !== backgroundPaint.g
+        || segmentPaint.b !== backgroundPaint.b) return null;
+      return {
+        rect,
+        fill: rect.getAttribute('fill'),
+        opacity: rect.getAttribute('fill-opacity') || '1'
+      };
     };
+    const valuePaint = paintFor(valueRect);
+    if (!valuePaint) return null;
+    const indexRect = currentElements?.get?.(`${cellKey}:index`)
+      ?.querySelector?.(':scope > rect') || null;
+    return [valuePaint, paintFor(indexRect)].filter(Boolean);
   }
 
   function commitHeapSplitBackgroundHandoff(handoff) {
-    const rect = handoff?.rect;
-    if (!rect?.isConnected) return;
-    const transition = rect.style.transition;
-    rect.style.transition = 'none';
-    rect.setAttribute('fill', handoff.fill);
-    rect.setAttribute('fill-opacity', handoff.opacity);
-    window.getComputedStyle(rect).fill;
-    if (transition) rect.style.transition = transition;
-    else rect.style.removeProperty('transition');
-    window.getComputedStyle(rect).fill;
+    (handoff || []).forEach(paint => {
+      const rect = paint?.rect;
+      if (!rect?.isConnected) return;
+      const transition = rect.style.transition;
+      rect.style.transition = 'none';
+      rect.setAttribute('fill', paint.fill);
+      rect.setAttribute('fill-opacity', paint.opacity);
+      window.getComputedStyle(rect).fill;
+      if (transition) rect.style.transition = transition;
+      else rect.style.removeProperty('transition');
+      window.getComputedStyle(rect).fill;
+    });
   }
 
   function applyHeapSplitVerticalFade(geometry, progress, phase) {
@@ -6241,10 +6251,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-218';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-219';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-218', play, cancel, updateEventAvailability,
+    build: 'trace-219', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

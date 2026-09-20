@@ -225,9 +225,9 @@
 - 執行目錄與必要環境設定：algo-vis-backend；重啟後alpha服務http://127.0.0.1:3101，獨立headless Edge。
 - 測試資料／fixture：Segment_Tree.cpp及Segment_Tree-sample_input.txt；第5幀為tree[14]上的半透明紫色segment，第6幀為lazy=1的不透明紫色background。
 - 完整指令：`node --check public/trace-frame-tween.js; node --check tests/heap-composite-segments.browser.test.js; node --test tests/entrypoints.test.js`；`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-name-pattern='full segment tree sample merges' tests/heap-composite-segments.browser.test.js`；`git diff --check`。
-- 預期結果：下一幀background與退場segment為相同RGB且background不透明時，background先在底層提交；segment維持原本由上往下退場，所有segment仍可見的取樣點都不出現白色背景。
-- 實際結果與exit code：語法、入口與瀏覽器專項全部通過，exit code均為0；逐幀取樣確認tree[14]先顯示`rgb(231,144,255)`不透明背景，半透明segment再由40高度縮至0，沒有白色空檔；數值同幀更新為`29,1`。
-- 3101重啟核實：停止本輪啟動且已核對的alpha PID 39808，從同一backend重啟為PID 2468；HTTP 200，入口載入trace-frame-tween `trace-218`。
+- 預期結果：下一幀background與退場segment為相同RGB且background不透明時，value與index background在同一更新先於底層提交；segment維持原本由上往下退場，所有segment仍可見的取樣點都不出現白色背景。
+- 實際結果與exit code：語法、入口與瀏覽器專項全部通過，exit code均為0；逐幀取樣確認tree[14]的value與index同步顯示`rgb(231,144,255)`不透明背景，半透明segment再由40高度縮至0，沒有白色空檔；數值同幀更新為`29,1`。
+- 3101重啟核實：先停止本輪啟動且已核對的alpha PID 39808並重啟為PID 2468；index同步修正後再停止PID 2468並從同一backend重啟為PID 23964。HTTP 200，入口載入trace-frame-tween `trace-219`。
 - 未執行項目：未跑完整regression／全部tests／大規模動畫驗證；本次依V2分級只驗證受影響的Segment Tree轉場與入口版本。
 
 ## 剩餘事項與合併注意
