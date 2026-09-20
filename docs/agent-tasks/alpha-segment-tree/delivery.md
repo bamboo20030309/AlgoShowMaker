@@ -206,6 +206,7 @@
 - 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js`；`node --test --test-concurrency=1 --test-name-pattern='segment tree' tests/heap-composite-segments.browser.test.js`；`node --check tests/segment-tree-samples.test.js; node --check tests/heap-composite-segments.browser.test.js; git diff --check`。
 - 預期結果：三個範例解析與輸出3/3通過；三個SVG專項3/3通過；查詢／操作顯示`now`，建樹顯示`i`，畫面沒有point style；二元加法仍顯示兩個來源數字移向父節點。
 - 實際結果與exit code：全部通過，exit code均為0；Segment_Tree輸出仍為12，easy query輸出不變，建樹根值仍為120。
+- 3101重啟核實：已停止核對屬於alpha worktree的PID 38424，從同一backend重啟為PID 42432；HTTP 200，前端載入trace-217，重啟後三個範例再次3/3通過。
 - 證據位置：三個Segment Tree範例與兩個直接相關測試；執行輸出只保留於本次代理工作階段。
 
 ## 剩餘事項與合併注意
