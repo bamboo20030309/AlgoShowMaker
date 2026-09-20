@@ -325,3 +325,55 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
 });
+
+test('full segment tree sample builds, shows lazy fields and unwinds without segments', {timeout:60000}, async () => {
+  const base=process.env.ASM_TEST_BASE_URL;
+  assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree.cpp'),'utf8')
+      .replace(/\r\n?/g,'\n');
+    const input=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree-sample_input.txt'),'utf8');
+    await page.evaluate(({code,input})=>{
+      ace.edit('editor').setValue(code,-1);
+      document.querySelector('#inputArea').value=input;
+    },{code,input});
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    const result=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const byName=Object.fromEntries(Object.entries(doc.variables).map(([id,value])=>[value.name,id]));
+      const indexed=doc.frames.map((frame,index)=>({frame,index}));
+      const parentBuild=indexed.find(({frame})=>frame.source?.function==='build'&&(frame.arrows||[]).length===2);
+      const operation=indexed.find(({frame})=>frame.source?.function==='main'&&(frame.segments||[]).length>0);
+      const tagged=indexed.find(({frame})=>Object.values(frame.state[byName.lazy]?.data?.items||{})
+        .some(item=>Number(item.value)!==0));
+      const unwind=indexed.find(({frame})=>frame.source?.function==='query'&&(frame.arrows||[]).length===2);
+      await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
+      const parentArrows=document.querySelectorAll('#asm-trace-root .asm-trace-arrow').length;
+      await player.render(operation.index,{animatePositions:false,animateEvents:false});
+      const operationSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
+      await player.render(tagged.index,{animatePositions:false,animateEvents:false});
+      const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+      const compositeTexts=[...tree.querySelectorAll('[data-trace-index] > text:not([data-trace-content-role="index"])')]
+        .map(node=>node.textContent);
+      await player.render(unwind.index,{animatePositions:false,animateEvents:false});
+      const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
+      await player.render(doc.frames.length-1,{animatePositions:false,animateEvents:false});
+      const answer=document.querySelector(
+        `[data-trace-object-key="${CSS.escape(`${byName.answer}#0`)}"] > text`
+      )?.textContent;
+      return {parentArrows,operationSegments,compositeTexts,unwindSegments,answer};
+    });
+    assert.equal(result.parentArrows,2);
+    assert.ok(result.operationSegments>0);
+    assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
+    assert.equal(result.unwindSegments,0);
+    assert.equal(result.answer,'12');
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});

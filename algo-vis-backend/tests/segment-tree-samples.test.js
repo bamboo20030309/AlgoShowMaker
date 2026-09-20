@@ -63,11 +63,30 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   const {code,result,trace}=await runSample('Segment_Tree');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_modify|_draw_segment/);
   assert.match(code,/fields\(tree,lazy,sets\), hide\(lazy=0,sets=LM\)/);
+  assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
+  assert.match(code,/with split\(now,after\)/);
+  assert.match(code,/answer \+= tree\[now\]/);
+  assert.match(code,/tree\[i\] = tree\[left\] \+ tree\[right\]/);
   assert.equal(result.output.trim(),'12');
   const treeId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='tree');
+  const answerId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='answer');
   const options=trace.frames.map(frame=>frame.rendererOptions?.[treeId]).find(value=>value?.fields);
   assert.deepEqual(JSON.parse(JSON.stringify(options.fields.names)),['tree','lazy','sets']);
   assert.deepEqual(JSON.parse(JSON.stringify(options.hide.entries)),[
     {field:'lazy',value:'0'},{field:'sets',value:'LM'}
   ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(options.range)),[1,32],
+    'the complete 31-node heap stays visible, including the padding leaf');
+  const buildFrames=trace.frames.filter(frame=>frame.source?.function==='build');
+  assert.equal(buildFrames.length,32,
+    'the full sample includes initial allocation, 15 inputs, 15 parent sums and completion');
+  assert.equal(buildFrames.filter(frame=>(frame.arrows||[]).length===2).length,15,
+    'every parent is built from both visible child cells');
+  const returnFrames=trace.frames.filter(frame=>frame.source?.function==='query'
+    && (frame.arrows||[]).length===2);
+  assert.ok(returnFrames.length>0,'recursive returns animate parent recomputation');
+  assert.ok(returnFrames.every(frame=>(frame.segments||[]).length===0),
+    'accepted segments do not return during recursive unwind');
+  assert.equal(Number(trace.frames.at(-1).state[answerId].data.value),12,
+    'the query accumulator matches the printed answer');
 });
