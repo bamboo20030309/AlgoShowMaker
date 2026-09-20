@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-19-alpha-segment-tree
 - 共同基準 commit：61a4baade9b06b5e50d0c7a24683e937db9c7112
-- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a、f618e1ed7a0a0caa1b0d68771b848f93e7adef3f、6c3688075082ac1580bca25857658787589a569a、eb1337540fab4926089d2e0de409fd3e0a0bfc49、a91ec0624a9988004744f34ff000ec4cc3e28e7e
-- 驗證時的 HEAD 與未提交修改：a91ec0624a9988004744f34ff000ec4cc3e28e7e；程式驗證完成時僅有文件更新
+- 程式修正 commit：34f734a2489336ef359064b696cacb124d8239b9、79073d3e3e05b3f4c97c8218033b8c2dd6e3102e、69a158f4a19c777e9174a6cd87309efa5fba3c03、1f9a95f0e516ad97e4f9a9baae894375b21eeb8a、0158b1c6ea2c481d21c9499ea19c54b03d2b773c、736cf91dba7d7b8695e635a71e2f93ebecec03e2、1a18710eaa7a429159e555ad6b2099e6ebadb8f2、235f7ca4e3e13607cfb057258f8093c3589056f3、bf26ba00c7e50de08f4172e575df409c898e4f8a、f618e1ed7a0a0caa1b0d68771b848f93e7adef3f、6c3688075082ac1580bca25857658787589a569a、eb1337540fab4926089d2e0de409fd3e0a0bfc49、a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c
+- 驗證時的 HEAD 與未提交修改：fc834a35a811278a9cd7786ae274fbaa8346e64c；程式驗證完成時僅有文件更新
 - 驗證日期：2026-09-20
 
 ## 根因與修改
@@ -20,6 +20,7 @@
 - 建構／查詢拆分：`Segment_Tree_easy_build.cpp`獨立提供建構動畫，從初始樹、15筆輸入、15個父節點加總到根節點完成共32幀；`Segment_Tree_easy.cpp`先無幀建樹，第一幀直接顯示完整樹並只播放查詢下降、segment分裂及sum累加。兩份範例各有sample input。
 - 二元加法動畫：instrumenter辨識`target = left + right`，在左右運算元為可見純量或安全索引格時保存兩個來源target；播放器建立兩個純文字transfer並以相同進度移向目的值，落地時同幀移除兩者並提交結果。Segment_Tree_easy的父節點建構改為`tree[i] = tree[left] + tree[right]`以使用此行為；演算法與輸出不變。
 - 投影片取消動畫根因與修正：runtime iframe回報幾何就緒後，ResizeObserver仍可能排入一至兩次畫布重定位；若此時切幀，重定位會呼叫tween cancel，原本1660ms的加法事件約49ms便直接結束。播放器現在在活動播放計畫期間只記錄待重定位，等動畫完成後才重新套用目前幀幾何。
+- 3101既有頁面未同步：服務重啟不會替已開啟的瀏覽器iframe重新載入JavaScript，且前次修正未同步提升投影片runtime URL版本，因此既有頁面仍可保留舊播放器。slides.js提升至parallel-merge-197，runtime/editor iframe提升至trace-runtime-37；重新載入投影片頁面後會明確取得新版。
 - 修改檔案及用途：trace-instrumenter.js／server.js 定義與保存語法；ASMTrace.hpp／trace-model.js 處理 tuple；trace-renderer.js／trace-frame-tween.js 繪製與轉場；Segment_Tree_easy.cpp／Segment_Tree.cpp 改寫範例；HTML cache、指令提示、手冊、README 與直接相關測試同步更新。
 - README／版本紀錄／使用說明更新：README 與 ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md 已加入新語法及行為；tests/README.md 記錄專項測試。
 - 與 task.md 的差異：query 的預設參數改由呼叫端明確傳入，因目前變數分析不會把具有預設值的參數提供給幀指令；傳入值與原預設值相同，演算法結果不變。依使用者後續補充加入split遞迴前沿，並讓point／highlight沿用預設樣式。
@@ -41,7 +42,7 @@
 | 自動事件設定跟隨檔案 | UI切換兩個選項、檢查`@asm-view`並重新RUN | 寫入false／true；重新RUN後trace仍為false／true，其他事件偏好沿用帳號預設 | 通過 |
 | easy建構與查詢獨立動畫 | 兩份sample input編譯、trace來源與headless Edge實際播放 | 建構版32幀且無query幀；查詢版無建構幀／箭頭，七筆輸出不變；兩段皆可獨立RUN | 通過 |
 | 二元加法雙來源動畫 | 純量／陣列trace事件與Segment_Tree_easy逐requestAnimationFrame取樣 | `total=a+b`與`tree[parent]=tree[left]+tree[right]`皆保存左右來源；13與14同步移向tree[14]，目的值保持0直到落地，同一更新移除兩個transfer並顯示27 | 通過 |
-| 投影片內的二元加法動畫 | 將使用者建樹程式編譯後存入獨立投影片deck，iframe剛完成幾何準備便切到父節點幀 | 播放計畫維持1660ms；13與14的純文字transfer可取樣，抵達前tree[14]仍為0；沒有page error | 通過 |
+| 投影片內的二元加法動畫 | 將使用者建樹程式編譯後存入獨立投影片deck，iframe剛完成幾何準備便切到第16幀第一個父節點 | runtime為trace-runtime-37；播放計畫維持1660ms；15與補零來源0的純文字transfer可取樣，抵達前tree[15]仍為0；實際heap-cell-segment數量始終為0 | 通過 |
 
 ## 小驗證與重跑方式
 ### Parser、runtime、renderer、瀏覽器與範例專項
@@ -146,8 +147,8 @@
 - 測試資料／fixture：使用者同款`Segment_Tree_easy_build.cpp`，額外套用`@style tree[1:Tsize-1] focus`；n=15、值1～15。
 - 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test tests/binary-addition-slide.browser.test.js`；`node --test --test-name-pattern="standalone segment tree build" tests/heap-composite-segments.browser.test.js`；`node --check public/trace-player.js; node --check tests/binary-addition-slide.browser.test.js; node --test tests/entrypoints.test.js; git diff --check`。
 - 預期結果：投影片與演算法頁各1個建樹播放案例通過；入口版本與JavaScript語法正常。
-- 實際結果與exit code：投影片1/1、演算法頁1/1、入口1/1通過，exit code均為0；停止已核對的3101 PID 4472並從本worktree重啟為PID 16632，HTTP 200且提供trace-player-25。
-- 證據位置：tests/binary-addition-slide.browser.test.js及程式commit a91ec0624a9988004744f34ff000ec4cc3e28e7e；執行輸出只保留於本次代理工作階段。
+- 實際結果與exit code：第16幀投影片1/1、演算法頁1/1、入口1/1通過，exit code均為0；停止已核對的3101 PID 16632並從本worktree重啟為PID 64696，HTTP 200，投影片入口為parallel-merge-197且iframe為trace-runtime-37。
+- 證據位置：tests/binary-addition-slide.browser.test.js及程式commit a91ec0624a9988004744f34ff000ec4cc3e28e7e、fc834a35a811278a9cd7786ae274fbaa8346e64c；執行輸出只保留於本次代理工作階段。
 
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
