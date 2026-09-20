@@ -18,6 +18,13 @@ int Tmask, Tsize, Tdeep, Tcapacity, n, sum = 0;
 // @place sum.top at tree.bottom offset(0,45)
 // @endpreset
 
+// 遞迴查詢期間用 now 作為 tree 的實際陣列指標。
+// @preset query_pointer_view
+// @object tree[now] render heap with range(1,Tsize-1)
+// @object sum render cell
+// @place sum.top at tree.bottom offset(0,45)
+// @endpreset
+
 // 先完成資料建構，不在查詢動畫中逐步播放。
 void build_tree() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
@@ -30,14 +37,14 @@ void build_tree() {
 
 // 保留原本的特殊葉節點排列：根區間是 [Tmask, 2*Tmask-1]。
 void query(int l, int r, int L, int R, int now) {
-    // @frame use query_view
-    // @style tree[now] highlight,point
+    // @frame use query_pointer_view
+    // @style tree[now] highlight
     // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)
     // @text "節點 ${now} 代表目前區間；另一側尚待處理的區段也會保留" at tree.top offset(0,-20)
     if (L <= l && r <= R) {
         sum += tree[now];
-        // @frame use query_view
-        // @style tree[now] highlight,point
+        // @frame use query_pointer_view
+        // @style tree[now] highlight
         // @style sum highlight
         // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after)
         // @text "整段命中，將 ${tree[now]} 加入 sum；目前 sum = ${sum}" at tree.top offset(0,-20)

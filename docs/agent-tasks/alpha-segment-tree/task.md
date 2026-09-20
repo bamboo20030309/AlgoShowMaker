@@ -11,7 +11,7 @@
 - 情境與操作：新版指令目前只能讓heap呈現單一來源值，既有@segment只表示一般陣列範圍；兩個線段樹範例仍依賴AV.hpp及舊繪圖資料。
 - 目前行為：原始功能無法直接合併tree／lazy／sets同索引，也無法在heap節點格內依局部範圍著色；後續實際播放另發現`sum += tree[now]`會令sum暫時變空，且全域sum跨遞迴幀反覆入退場。自動固定與迴圈邊界選項只保存為帳號偏好，`@asm-view`會丟棄它們，重新RUN後無法維持單一檔案的選擇。建樹的雙來源加法在演算法頁可播放，但投影片iframe剛顯示後立即切幀時會直接跳到結果。
 - 使用者希望的結果：新增fields／hide／separator、pair／tuple單格格式及雙層@segment，並以新語法改寫兩個範例；`+=`應讓來源格內數字移至目的數字位置後提交結果；`target = a + b`應讓兩個可見來源數字同步移向目的格，抵達時消失並提交加總；建構與查詢要拆成兩個可獨立RUN的完整動畫；全域純量跨幀保持同一物件；自動固定與迴圈邊界設定應跟著程式設定檔保存。
-- 本次範圍與必要限制：三種結構統一使用既有render heap；不新增標準線段樹renderer；保留特殊線段樹演算法、儲存與輸出；不修改已完成的heap.cpp；point／highlight使用預設樣式；遞迴下降時顯示目前與尚待處理的segment，命中後移除完成區段，回溯不建立幀；格內segment歸入style顯示層。
+- 本次範圍與必要限制：三種結構統一使用既有render heap；不新增標準線段樹renderer；保留特殊線段樹演算法、儲存與輸出；不修改已完成的heap.cpp；highlight使用預設樣式，目前節點改用具變數名稱的陣列指標，不使用無名稱point；遞迴下降時顯示目前與尚待處理的segment，命中後移除完成區段，回溯不建立幀；格內segment歸入style顯示層。
 
 ## 需求確認
 - 已確認：fields保留各來源身分與事件；hide逐幀按欄位判斷；separator預設逗點；segment局部端點包含、裁切、L>R隱藏、後者在上；as提供穩定身分；when與既有單層@segment相容。
@@ -43,7 +43,7 @@
 - [x] 一般播放套用同格highlight／point時不會清除segment；第三幀、倒退及重播皆維持正確顯示。
 - [x] 既有@segment arr[L:R]與heap既有行為不變。
 - [x] Segment_Tree_easy.cpp與Segment_Tree.cpp移除AV.hpp及舊繪圖資料，保留演算法及輸出，能以sample input編譯產生trace。
-- [x] Segment_Tree_easy逐筆顯示葉節點輸入，之後每個父節點各以左右子節點、兩條箭頭、算式文字與預設point／highlight呈現由下往上的建樹過程。
+- [x] Segment_Tree_easy逐筆顯示葉節點輸入，之後每個父節點各以左右子節點、兩條箭頭、算式文字、預設highlight與具名i陣列指標呈現由下往上的建樹過程。
 - [x] `total = a + b`及`tree[parent] = tree[left] + tree[right]`記錄兩個可見來源；兩個數字同步移向目的格，抵達時立即消失並在同一更新提交加總。
 - [x] `Segment_Tree_easy_build`只包含完整建構動畫；`Segment_Tree_easy`從完整樹開始只播放查詢，兩者各自具有可直接RUN的輸入與結束幀。
 - [x] 建樹動畫放入投影片後，即使iframe剛完成顯示便切換父節點幀，左右來源數字仍完整移向目的格，不被延遲的畫面重排取消。
@@ -53,6 +53,7 @@
 - [x] 完整範例以`range(1,Tsize-1)`裁掉未使用的補零節點；modify segment為紫色，set segment為橘色。
 - [x] lazy／sets作為tree格子內的附加文字欄位，預設值以`hide(lazy=0,sets=LM)`隱藏；非預設標記以`@style ... segment color ...`在同一tree格內顯示整段狀態色塊，跨幀保留至實際標記被清除或下推。當次modify／set操作仍使用可分裂的`@segment`顯示。
 - [x] `AV_orange`改為半透明橘色，新增`AV_magenta = rgba(231,144,255,0.65)`，解析、renderer、文字、箭頭、GUI及舊AV色盤一致。
+- [x] Segment Tree查詢／操作幀以`now`陣列指標指向`tree[now]`，建樹幀以`i`指標指向`tree[i]`；不再繪製無名稱point，原highlight、segment與二元加法數字移動仍正常。
 
 ## 驗證計畫
 - 開發代理小驗證：V2 E/F/H/J，新增parser／model／renderer局部專項；隔離服務與headless瀏覽器只跑最小fixture及兩個範例sample input；C++原輸出對照改寫前版本。
@@ -83,3 +84,4 @@
 - 2026-09-20：capture-only契約變更需重建既有trace；追蹤引擎版本提升至6並更新投影片iframe快取版本，使舊投影片進入編輯時自動RUN。
 - 2026-09-20：依使用者確認移除operation_view中對全部非預設lazy／sets欄位的常駐背景樣式；紫色／橘色由當次modify／set segment表達，欄位只保留文字。
 - 2026-09-21：依使用者更新需求新增`segment` style：lazy／sets非預設值在tree同索引格保存整段色塊，資料標記未變時沿用穩定身分，下推後父色塊移除並由子節點狀態接續；當次操作的`@segment`維持局部分裂且顯示在狀態色塊上層。同步新增AV_magenta並將AV_orange改為半透明橘色。
+- 2026-09-21：依使用者要求將Segment Tree範例的無名稱point改為真正的陣列指標；查詢／操作使用now，建樹使用i，並保留highlight及既有數字加總動畫。

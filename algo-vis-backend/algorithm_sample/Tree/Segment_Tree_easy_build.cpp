@@ -16,6 +16,11 @@ int Tmask, Tsize, Tdeep, Tcapacity, n;
 // @object tree render heap with range(1,Tcapacity)
 // @endpreset
 
+// 建樹迴圈中以實際變數 i 作為 tree 的陣列指標。
+// @preset build_pointer_view
+// @object tree[i] render heap with range(1,Tcapacity)
+// @endpreset
+
 void build() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
     Tcapacity = (1 << Tdeep) - 1;
@@ -27,7 +32,7 @@ void build() {
 
     for (int i = Tsize - n; i < Tsize; i++) {
         cin >> tree[i];
-        // @frame use build_view
+        // @frame use build_pointer_view
         // @style tree[i] highlight
         // @text "讀入第 ${i-(Tsize-n)+1} 個值 ${tree[i]}，放到葉節點 tree[${i}]" at tree.top offset(0,-20)
     }
@@ -35,8 +40,8 @@ void build() {
     for (int i = Tsize - n - 1; i > 0; i--) {
         int left = i << 1, right = i << 1 | 1;
         tree[i] = tree[left] + tree[right];
-        // @frame use build_view
-        // @style tree[i] highlight,point
+        // @frame use build_pointer_view
+        // @style tree[i] highlight
         // @arrow from tree[left] to tree[i] as "left_child_sum"
         // @arrow from tree[right] to tree[i] as "right_child_sum"
         // @text "左右子節點 ${tree[left]} + ${tree[right]} = ${tree[i]}\n因此得到 tree[${i}]" at tree.top offset(0,-20)

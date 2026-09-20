@@ -199,6 +199,15 @@
 - 實際結果與exit code：全部通過，exit code均為0；Segment Tree輸出仍為12，lazy／sets仍為capture-only，當次操作segment與長期狀態segment同時存在時圖層順序正確。
 - 證據位置：trace-instrumenter.js、trace-renderer.js、Segment_Tree.cpp、tests/style-list.test.js及tests/heap-composite-segments.browser.test.js。
 
+### Segment Tree具名陣列指標專項
+- 目的與對應條件：把範例中的無名稱`point`改為實際C++索引變數形成的陣列指標，並確認既有highlight、segment、查詢累加與父節點二元加法動畫不受影響。
+- 執行目錄與必要環境設定：algo-vis-backend；alpha 3101服務與獨立headless Edge。
+- 測試資料／fixture：Segment_Tree.cpp、Segment_Tree_easy.cpp、Segment_Tree_easy_build.cpp及各自sample input。
+- 完整指令：`$env:ASM_TEST_BASE_URL='http://127.0.0.1:3101'; node --test --test-concurrency=1 tests/segment-tree-samples.test.js`；`node --test --test-concurrency=1 --test-name-pattern='segment tree' tests/heap-composite-segments.browser.test.js`；`node --check tests/segment-tree-samples.test.js; node --check tests/heap-composite-segments.browser.test.js; git diff --check`。
+- 預期結果：三個範例解析與輸出3/3通過；三個SVG專項3/3通過；查詢／操作顯示`now`，建樹顯示`i`，畫面沒有point style；二元加法仍顯示兩個來源數字移向父節點。
+- 實際結果與exit code：全部通過，exit code均為0；Segment_Tree輸出仍為12，easy query輸出不變，建樹根值仍為120。
+- 證據位置：三個Segment Tree範例與兩個直接相關測試；執行輸出只保留於本次代理工作階段。
+
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression／全部 tests／大規模動畫驗證，依使用者及 V2 分級由主代理決定整合範圍。
 - 已知問題或風險：hide 的 LM／INT_MAX 對應目前以 32 位 int 最大值格式化；若未來支援自訂巨集值，需在 trace metadata 加入常數求值。二元加法的雙來源動畫目前限直接的可見純量或安全索引格；巢狀算式、函式呼叫或帶副作用索引沿用一般賦值動畫。

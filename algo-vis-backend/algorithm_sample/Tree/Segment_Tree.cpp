@@ -22,6 +22,15 @@ int Tmask, Tsize, Tdeep, n, answer = 0;
 // @style sets[1:Tsize-1] segment color AV_orange when value != 2147483647
 // @endpreset
 
+// 遞迴操作期間用 now 作為 tree 的實際陣列指標。
+// @preset operation_pointer_view
+// @object tree[now] render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
+// @object answer render cell
+// @place answer.top at tree.bottom offset(0,45)
+// @style lazy[1:Tsize-1] segment color AV_magenta when value != 0
+// @style sets[1:Tsize-1] segment color AV_orange when value != 2147483647
+// @endpreset
+
 void build() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
     tree.assign(1 << Tdeep, 0);
@@ -37,8 +46,8 @@ void build() {
 // 保留原本的特殊葉節點排列與 lazy／set 優先關係。
 int query(int l, int r, int L, int R, int Add, int Set, int now) {
     // segment 只在下降時分裂；同一時間保留另一側尚待處理的區段。
-    // @frame use operation_view
-    // @style tree[now] highlight,point
+    // @frame use operation_pointer_view
+    // @style tree[now] highlight
     // @segment tree[1][L-Tmask:R-Tmask] color AV_magenta as active_range with split(now) when Add != 0
     // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now) when Set != 2147483647
     // @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now) when Add == 0 and Set == 2147483647
@@ -60,8 +69,8 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         if (l == r) lazy[now] = 0, sets[now] = LM;
 
         // 命中的區段在這一幀向下淡出；遞迴返回時不再重新建立。
-        // @frame use operation_view
-        // @style tree[now] highlight,point
+        // @frame use operation_pointer_view
+        // @style tree[now] highlight
         // @style answer highlight when Add == 0 and Set == 2147483647
         // @segment tree[1][L-Tmask:R-Tmask] color AV_magenta as active_range with split(now,after) when Add != 0
         // @segment tree[1][L-Tmask:R-Tmask] color AV_orange as active_range with split(now,after) when Set != 2147483647
@@ -78,7 +87,7 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         tree[now << 1] = tree[now << 1 | 1] = tree[now] / 2;
         lazy[now << 1] = lazy[now << 1 | 1] = 0;
         sets[now] = LM;
-        // @frame use operation_view
+        // @frame use operation_pointer_view
         // @style tree[now,now*2,now*2+1] highlight
         // @style sets[now*2,now*2+1] background AV_orange
         // @text "先把節點 ${now} 的 set 標記下推；它會覆蓋兩個子節點原本的 add 標記" at tree.top offset(0,-20)
@@ -93,7 +102,7 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
         else
             lazy[now << 1 | 1] += lazy[now], tree[now << 1 | 1] += M * lazy[now << 1 | 1];
         lazy[now] = 0;
-        // @frame use operation_view
+        // @frame use operation_pointer_view
         // @style tree[now,now*2,now*2+1] highlight
         // @style lazy[now*2,now*2+1] background AV_magenta when value != 0
         // @style sets[now*2,now*2+1] background AV_orange when value != 2147483647
@@ -106,8 +115,8 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
     int left = now << 1, right = now << 1 | 1;
     tree[now] = tree[left] + tree[right];
     // 回溯只更新父節點，不再畫已經完成的 segment。
-    // @frame use operation_view
-    // @style tree[now] highlight,point
+    // @frame use operation_pointer_view
+    // @style tree[now] highlight
     // @arrow from tree[left] to tree[now] as "left_child_sum"
     // @arrow from tree[right] to tree[now] as "right_child_sum"
     // @text "回到節點 ${now}，由 ${tree[left]} + ${tree[right]} 更新為 ${tree[now]}" at tree.top offset(0,-20)

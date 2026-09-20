@@ -166,6 +166,9 @@ test('standalone segment tree build animates every input and parent sum', {timeo
       const parentBuild=parentBuilds[1]||parentBuilds[0];
       await player.render(firstInput.index,{animatePositions:false,animateEvents:false});
       const firstInputText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
+      const firstInputPointer=document.querySelector(
+        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+      )?.textContent;
       await player.render(parentBuild.index,{animatePositions:false,animateEvents:false});
       const parentText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
       const arrowCount=document.querySelectorAll('#asm-trace-root .asm-trace-arrow').length;
@@ -175,7 +178,9 @@ test('standalone segment tree build animates every input and parent sum', {timeo
       const samples=[];
       let settled=false;
       const transition=player.render(parentBuild.index).finally(()=>{settled=true;});
-      for(let count=0;count<180&&!settled;count++){
+      // The real i array pointer contributes its own ordered movement event
+      // before the parent-value assignment. Sample long enough to observe both.
+      for(let count=0;count<420&&!settled;count++){
         await new Promise(resolve=>requestAnimationFrame(resolve));
         const scene=document.querySelector('#asm-trace-root');
         const targetText=scene.querySelector(
@@ -197,7 +202,7 @@ test('standalone segment tree build animates every input and parent sum', {timeo
       const finalText=document.querySelector('#asm-trace-root .asm-trace-text-object')?.textContent||'';
       return {
         frameCount:buildFrames.length,
-        firstInputText,parentText,arrowCount,
+        firstInputText,firstInputPointer,parentText,arrowCount,
         binaryEvent:{operation:binaryEvent?.binaryOperation,target:binaryTarget},
         samples,binaryFinal,finalText,
         queryFrames:doc.frames.filter(frame=>frame.source?.function==='query').length
@@ -205,11 +210,13 @@ test('standalone segment tree build animates every input and parent sum', {timeo
     });
     assert.equal(result.frameCount,32);
     assert.match(result.firstInputText,/讀入第 1 個值 1/);
+    assert.equal(result.firstInputPointer,'i');
     assert.match(result.parentText,/左右子節點/);
     assert.equal(result.arrowCount,2);
     assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
     const transfers=result.samples.filter(sample=>sample.transferValues.length===2);
-    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])));
+    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])),
+      JSON.stringify(result.samples.slice(-20)));
     assert.ok(transfers.every(sample=>sample.transferRects===0));
     assert.ok(transfers.some(sample=>sample.targetValue==='0'));
     assert.equal(transfers.some(sample=>sample.targetValue==='27'),false);
@@ -253,6 +260,12 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
       const animatedTree=[...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
       const animatedSegment=animatedTree.closest('#asm-trace-root').querySelector('.asm-trace-heap-cell-segment');
       const animatedVisible=Boolean(animatedSegment&&getComputedStyle(animatedSegment).display!=='none');
+      const pointerLabel=document.querySelector(
+        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+      )?.textContent;
+      const pointStyleCount=document.querySelectorAll(
+        '#asm-trace-root [data-trace-style-kind="point"]'
+      ).length;
       await player.render(compound.index-1,{animatePositions:false,animateEvents:false});
       const beforeScene=document.querySelector('#asm-trace-root');
       const beforeSum=beforeScene.querySelector(`[data-trace-variable="${sumId}"]`);
@@ -291,6 +304,8 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
       return {
         deepest,
         animatedVisible,
+        pointerLabel,
+        pointStyleCount,
         beforeSumIdentity,
         afterSumIdentity:sum?.dataset.traceRuntimeIdentity,
         compoundSamples,
@@ -301,6 +316,8 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
     });
     assert.equal(result.deepest,14);
     assert.equal(result.animatedVisible,true);
+    assert.equal(result.pointerLabel,'now');
+    assert.equal(result.pointStyleCount,0);
     assert.ok(result.beforeSumIdentity);
     assert.equal(result.afterSumIdentity,result.beforeSumIdentity);
     assert.ok(result.compoundSamples.length>0);
@@ -421,6 +438,12 @@ test('full segment tree sample keeps lazy and set style segments until their mar
       )].map(rect=>rect.classList.contains('asm-trace-state-segment')?'state':'active');
       await player.render(unwind.index,{animatePositions:false,animateEvents:false});
       const unwindSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
+      const pointerLabel=document.querySelector(
+        '#asm-trace-root .asm-trace-pointer-layer .trace-variable-marker-label-text'
+      )?.textContent;
+      const pointStyleCount=document.querySelectorAll(
+        '#asm-trace-root [data-trace-style-kind="point"]'
+      ).length;
       await player.render(doc.frames.length-1,{animatePositions:false,animateEvents:false});
       const answer=[...document.querySelectorAll(
         `[data-trace-object-key="${CSS.escape(`${byName.answer}#0`)}"] > text`
@@ -429,7 +452,7 @@ test('full segment tree sample keeps lazy and set style segments until their mar
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
         operationSegments,storedSegments,compositeTexts,separateFields,
         persistentIdentities:[persistentBefore,persistentAfter],pushState,segmentOrder,
-        unwindSegments,answer
+        unwindSegments,pointerLabel,pointStyleCount,answer
       };
     });
     assert.equal(result.buildFrames,0);
@@ -451,6 +474,8 @@ test('full segment tree sample keeps lazy and set style segments until their mar
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
     assert.deepEqual(result.separateFields,{lazy:0,sets:0});
     assert.ok(result.unwindSegments>0,'pending lazy/set markers remain visible during unrelated unwind frames');
+    assert.equal(result.pointerLabel,'now');
+    assert.equal(result.pointStyleCount,0);
     assert.equal(result.answer,'12');
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
