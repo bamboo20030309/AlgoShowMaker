@@ -2350,6 +2350,13 @@
       // Match the original renderer: evaluate the new frame before events.
       const visualHighlights = (styleTargets.length || indexTracks.length)
         ? window.ASMTraceRules.evaluate(options.document, styleFrame) : {};
+      // Fixed marks are accumulated renderer state rather than ordinary
+      // authored styles. Reapply them to the tween's live style evaluation so
+      // a reference alias boundary (for example heapify::arr -> heap_sort::arr)
+      // cannot hide the destination frame's already-rendered mark.
+      window.ASMTraceRenderers?.applyFixedEventStyles?.(
+        options.document, styleFrame, visualHighlights
+      );
       const indexHighlights = visualHighlights;
       evaluatedHighlights = visualHighlights;
       const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
@@ -6695,10 +6702,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-214';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-215';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-214', play, cancel, updateEventAvailability,
+    build: 'trace-215', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

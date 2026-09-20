@@ -49,7 +49,12 @@ test('reference aliases preserve focus paint and automatic fixed marks across a 
           .filter(node => node.dataset.traceAttachedTo?.startsWith('main:arr'))
           .map(node => ({
             target: node.dataset.traceAttachedTo,
-            opacity: getComputedStyle(node).opacity
+            opacity: getComputedStyle(node).opacity,
+            display: getComputedStyle(node).display,
+            bounds: (() => {
+              const rect = node.getBoundingClientRect();
+              return { width: rect.width, height: rect.height };
+            })()
           }));
         return { fills, marks };
       });
@@ -62,7 +67,11 @@ test('reference aliases preserve focus paint and automatic fixed marks across a 
         assert.equal(presentation.fills['4'], 'rgb(204, 204, 204)',
           'unchanged focus paint must stay gray at ' + delay + 'ms');
         assert.ok(presentation.marks.some(mark => (
-          mark.target.endsWith('#3') && mark.opacity === '1'
+          mark.target.endsWith('#3')
+          && mark.opacity === '1'
+          && mark.display !== 'none'
+          && mark.bounds.width > 0
+          && mark.bounds.height > 0
         )), 'automatic fixed mark must remain visible at ' + delay + 'ms');
       }
       await page.evaluate(() => window.__aliasFocusTransition);

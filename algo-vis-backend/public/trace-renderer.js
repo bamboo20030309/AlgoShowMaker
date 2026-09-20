@@ -1310,6 +1310,8 @@
         visual = group.firstElementChild;
         if (visual) {
           visual._asmLiveHint = true;
+          visual.setAttribute('data-trace-attached-to', key);
+          visual.setAttribute('data-trace-attachment-kind', kind);
           attachStyleVisual(root, visual, cell, kind);
           hints.set(kind, visual);
         }
@@ -4314,9 +4316,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-186';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-187';
   window.ASMTraceRenderers = {
-    build: 'trace-186', updatePresentedHints,
+    build: 'trace-187', updatePresentedHints, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
