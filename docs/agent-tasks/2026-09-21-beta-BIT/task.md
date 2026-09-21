@@ -41,6 +41,7 @@
 - [x] 建構時 `BIT[i]` 的 compound assignment 明確以可見的 `num[k]` 為來源，播放時數值會從 num 格移向 BIT 格。
 - [x] 建樹畫面以預設 highlight 指定目前的 `num[k]`，不替 num 區間加 background；查詢畫面保留使用區間 background，可見區間以 `i-lb+1~i` 顯示。
 - [x] `i += lb` 與 `i -= lb` 會讓依賴 i 的 marker 沿既有 position 路徑平移；BIT／num 的 compound value assignment 不被誤判為 marker 移動。
+- [x] 終止迴圈的 `i: 8→16` 依 BIT 層級公式移到 BIT[16] 虛擬格中心，不以一般線性陣列公式飛出右側。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -59,3 +60,4 @@
 - 2026-09-21：依指定改用 `num.left-bottom at BIT.left-top offset(-40,-70)`；建樹只 highlight `num[k]`，查詢才顯示 num 區間 background，區間文字改用 `~`；程式 commit 為 `de9ebaca102e2618bd013a2dc1b2ef3fb5749337`。
 - 2026-09-21：移除只供繪圖使用的區間左端點變數 `l`，改由 `@style` 與 `@text` 直接計算 `i-lb+1`；程式 commit 為 `a69a43f837508d64b7c9c1a79b3789d83c8a0a87`。
 - 2026-09-21：修正 scalar compound write 未進入 marker position 動畫的分類缺口；只有事件目標確實控制 marker 時才平移，陣列 compound assignment 維持數值動畫；程式 commit 為 `33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`。
+- 2026-09-21：修正同幀進入下一次 build 時遺失舊事件 BIT[16] 虛擬 placement 的問題；事件 before／after 先依 BIT 幾何建立虛擬格，避免 marker 線性外插到右下方；程式 commit 為 `210f1d547fca85f9665a30216bae28eb13e2e917`。
