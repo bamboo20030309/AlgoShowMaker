@@ -59,8 +59,8 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
   assert.match(buildBody, /@style num\[k\] highlight/);
   assert.doesNotMatch(buildBody, /@style num\[[^\n]+\] background/);
   assert.doesNotMatch(code, /\bint l\s*=/);
-  assert.match(sumBody, /@style num\[i-lb\+1:i\] background AV_blue/);
-  assert.match(code, /num\[\$\{i-lb\+1\}~\$\{i\}\]/);
+  assert.match(sumBody, /@style num\[i-\(i&-i\)\+1:i\] background AV_blue/);
+  assert.match(code, /num\[\$\{i-\(i&-i\)\+1\}~\$\{i\}\]/);
   assert.doesNotMatch(code, /\$\{l\}\.\.\$\{i\}/);
   assert.deepEqual(
     [...new Set(Array.from(code.matchAll(/@object\s+([A-Za-z_]\w*)/g), match => match[1]))].sort(),
@@ -72,7 +72,7 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
   assert.match(code, /BIT\[i\] \+= num\[k\];/);
   assert.match(code, /int sum\(int i\)/);
   assert.match(sumBody, /for \(; i > 0; i -= i & -i\)/);
-  assert.match(code, /int lb = i & -i;/);
+  assert.doesNotMatch(code, /\bint lb\b|\blb\b/);
 
   const frames = findFrameDirectives(code);
   assert.ok(frames.length > 0);
