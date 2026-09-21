@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-beta-BIT
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`
-- 驗證時的 HEAD 與未提交修改：`0fd7da94fe675efc311327e6cf83a7d34480a924`；只有本任務 task／delivery 文件待提交
+- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`
+- 驗證時的 HEAD 與未提交修改：`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`；只有本任務 task／delivery 文件待提交
 - 驗證日期：2026-09-21
 
 ## 根因與修改
@@ -21,7 +21,7 @@
 | 位元運算解析、求值與優先序 | parser/runtime 專項案例及 `arr[i & -i] += 7` compile | 六種運算求值正確，compound write 的 resolvedIndex 為 4 | 通過 |
 | Binary Indexed Tree 全名與舊別名 | renderer alias parser 案例 | 全名、連字號、底線、bit、fenwick 均解析為 original-bit | 通過 |
 | 只顯示 num 與 BIT，無舊繪圖或 keep | 靜態結構檢查與實際 trace | 每幀只有 num／BIT 兩個資料物件，無 AV.hpp、draw 或 keep | 通過 |
-| num 0-based 預設 label、num[0] 灰色；BIT 1-based 二進制 label | compile trace 與瀏覽器 SVG | num 顯示 0 至 9 且 num[0] 為 `rgb(204, 204, 204)`；BIT 顯示 0001 至 1010 | 通過 |
+| num 完整顯示、0-based 預設 label、num[0] 灰色並使用指定位置；BIT 1-based 二進制 label | compile trace 與瀏覽器 SVG | num 完整顯示 10 格與 0 至 9，num[0] 為 `rgb(204, 204, 204)`，並依縮放比例位於 `BIT.top offset(-40,-70)`；BIT 顯示 0001 至 1010 | 通過 |
 | 更新、前綴和與區間和正確 | sample compile | 輸出 `sum of L to R = 42`，BIT 最終值符合預期 | 通過 |
 | 非 2 的冪次寬格、highlight、marker | n=10 實際瀏覽器 transition | 10 格寬度、BIT[8]=54、寬格 highlight 與 i marker 均正確 | 通過 |
 
@@ -40,8 +40,8 @@
 - 分類：E（指令／frame／綁定／位置）、F（runtime 事件／索引／資料）、G（marker）、H（style／標籤）及 A 的入口快取檢查。
 - 選擇依據：本次修改共用指令 parser/runtime、renderer 名稱、索引事件及 Binary Indexed Tree 實際 SVG。
 - 執行的測試檔／名稱篩選：完整執行新增的 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`，另執行直接受 cache key 影響的 `entrypoints.test.js`。
-- 驗證環境與隔離服務：先用 3196 隔離服務開發驗證，完成後停止；最終在 beta 3102、PID 61296 重跑。未操作使用者分頁或資料。
-- 驗證版本、完整指令、結果與證據：最新程式 commit `0fd7da94fe675efc311327e6cf83a7d34480a924`；命令與結果見上一節。
+- 驗證環境與隔離服務：先用 3196 隔離服務開發驗證，完成後停止；最終在 beta 3102、PID 56988 重跑。未操作使用者分頁或資料。
+- 驗證版本、完整指令、結果與證據：最新程式 commit `7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`；命令與結果見上一節。
 - 未執行的驗證及原因：依 V2 分級未執行 `npm test`、完整 regression、廣泛排序或其他無關演算法動畫。
 - 需要主代理做的 V3 驗證：整合後實際播放 build 與兩次 sum，確認 num／BIT 的不同索引基準、全名 renderer、二進制索引及區間對照；再依 parser 共用影響決定是否增加其他指令案例。
 
