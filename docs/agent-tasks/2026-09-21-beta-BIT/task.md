@@ -10,7 +10,7 @@
 ## 問題與預期結果
 - 情境與操作：舊 Binary Indexed Tree 範例仍依賴 AV.hpp 與手寫繪圖程式，指令運算式也不能解析位元運算。
 - 目前行為：範例混入大量繪圖輔助碼；renderer 只提供 bit／fenwick 縮寫；沒有 Binary Indexed Tree 專項解析與實際 SVG 驗證。後續整合範例在兩次 `sum()` 交界幀保留了停用事件的不可見虛擬 `BIT[0]` placement，自動鏡頭因此向下取景；`cin >> L >> R` 放在 `while` 條件時，第一個 body frame 仍把 L、R 視為未初始化。
-- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數；新增小寫 `@let`，用唯讀幀內別名簡化重複的繪圖運算式，不加入新的繪圖迴圈能力；建樹與區間查詢拆成兩個可獨立執行的範例，不可見虛擬格不影響自動鏡頭；建樹與查詢時 focus 本輪完整 BIT 路徑，每次 sum 結束新增總和摘要幀並保留走過格子的加減配色，且不為視覺需求增加函式輸入或區域 C++ 變數。
+- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數；新增小寫 `@let`，用唯讀幀內別名簡化重複的繪圖運算式，不加入新的繪圖迴圈能力；建樹與區間查詢拆成兩個可獨立執行的範例，不可見虛擬格不影響自動鏡頭；建樹與查詢時 focus 本輪完整 BIT 路徑，每次 sum 結束新增總和摘要幀並保留走過格子的加減配色；另將舊一維前綴和改成只使用新指令的完整建表與區間查詢範例。
 - 本次範圍與必要限制：保留既有 bit／fenwick 相容名稱；角落錨點同時接受水平在前的別名並正規化；不做完整 regression 或全部測試；修改後重啟 beta 3102、commit 並 push。
 
 ## 需求確認
@@ -49,6 +49,7 @@
 - [x] `while (cin >> L >> R)` 每次成功讀取後，在 body 的第一個 frame 即可取得本次 L、R；連續兩筆輸入分別產生正確狀態。
 - [x] 建樹與查詢逐幀 focus 本輪會經過的完整 BIT 路徑；每次 `sum()` 返回前新增一個「所有數字總和為 …」摘要幀，右端前綴路徑為綠色、扣除路徑為紅色。
 - [x] `sum` 保持單一索引參數；`deduct` 移到全域，路徑起點由 `iteration.first(i)` 取得，不增加只供繪圖使用的函式參數或區域 C++ 變數。
+- [x] 一維前綴和範例移除 AV.hpp 與手寫繪圖程式，使用 1-based num／pre 與 0 保留格；逐格呈現 `pre[i] = pre[i-1] + num[i]`，並以綠色區間、綠色 pre[R]、紅色 pre[L-1] 呈現查詢。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -75,3 +76,4 @@
 - 2026-09-22：查詢函式新增 `deduct` 語意；右端前綴路徑使用 `AV_green`，左端扣除路徑使用 `AV_red`，並移除下一索引文字。程式 commit 為 `bbbf25f8a46fea6e031b5c1801ee12d99a010b33`。
 - 2026-09-22：補上直接以 `cin >> ...` 作為條件時的初始化標記，使 `while` body 首幀與後續迭代都取得最新輸入；查詢範例改為支援連續輸入。程式 commit 為 `573159879e666f59bcb6460e45afcd21b9ee4813`。
 - 2026-09-22：新增 `iteration.first(i)` 繪圖衍生值；建樹／查詢 focus 完整 BIT 路徑，每次 sum 結束顯示總和與完整綠／紅路徑。`sum` 維持單一索引參數，`deduct` 改為全域。程式 commit 為 `ada802d295db206c5678792299fbc2dc11b396d6`。
+- 2026-09-22：依使用者要求不實作 `@context`，BIT 保持全域 `deduct`；只把舊一維前綴和改成新指令版本，範例輸入查詢 3～14 並得到 102。程式 commit 為 `303044bd3388d22df6766369e2d00d89ed4bd120`。

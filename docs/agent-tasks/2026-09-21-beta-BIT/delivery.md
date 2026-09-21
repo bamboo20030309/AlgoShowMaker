@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-beta-BIT
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`、`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`、`de9ebaca102e2618bd013a2dc1b2ef3fb5749337`、`a69a43f837508d64b7c9c1a79b3789d83c8a0a87`、`33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`、`210f1d547fca85f9665a30216bae28eb13e2e917`、`21b2a88fad59c481796cec078ce9e767466f5baf`、`7246804dd468b617e9726dffeede4398ce94ea36`、`3d53e3cc7bec6c32c7066ae5051e8722da3411f7`、`4c4a6ac92824e0d66f12a43f216dce381e57d961`、`f3132c75549f8aef6df3ce6137f54e742860c347`、`bbbf25f8a46fea6e031b5c1801ee12d99a010b33`、`573159879e666f59bcb6460e45afcd21b9ee4813`、`ada802d295db206c5678792299fbc2dc11b396d6`
-- 驗證時的 HEAD 與未提交修改：程式 HEAD `ada802d295db206c5678792299fbc2dc11b396d6`；只有本任務 task／delivery 文件待提交
+- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`、`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`、`de9ebaca102e2618bd013a2dc1b2ef3fb5749337`、`a69a43f837508d64b7c9c1a79b3789d83c8a0a87`、`33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`、`210f1d547fca85f9665a30216bae28eb13e2e917`、`21b2a88fad59c481796cec078ce9e767466f5baf`、`7246804dd468b617e9726dffeede4398ce94ea36`、`3d53e3cc7bec6c32c7066ae5051e8722da3411f7`、`4c4a6ac92824e0d66f12a43f216dce381e57d961`、`f3132c75549f8aef6df3ce6137f54e742860c347`、`bbbf25f8a46fea6e031b5c1801ee12d99a010b33`、`573159879e666f59bcb6460e45afcd21b9ee4813`、`ada802d295db206c5678792299fbc2dc11b396d6`、`303044bd3388d22df6766369e2d00d89ed4bd120`
+- 驗證時的 HEAD 與未提交修改：程式 HEAD `303044bd3388d22df6766369e2d00d89ed4bd120`；只有本任務 task／delivery 文件待提交
 - 驗證日期：2026-09-22
 
 ## 根因與修改
@@ -36,6 +36,7 @@
 | 查詢加減配色與文字 | 查詢 sample compile、靜態指令及實際 SVG | `deduct=false` 的 sum(R) 為綠色，`deduct=true` 的 sum(L-1) 為紅色；輸出為 25，且不含「下一個索引」 | 通過 |
 | 條件式串流輸入 | `while (cin >> L >> R)` 兩筆輸入 compile | body 兩個 frame 依序取得 `[2,8]`、`[4,7]`，不再呈現空值 | 通過 |
 | 完整 BIT 路徑與 sum 摘要 | 3102 實際 SVG、`iteration.first` 專項 | build(5) focus 5／6／8；sum(7) focus 7／6／4；兩個摘要幀分別顯示 39 綠色路徑與 14 紅色路徑 | 通過 |
+| 一維前綴和新指令範例 | 靜態結構、3102 compile 與 frame style 求值 | 無 AV.hpp／手寫 draw；pre 前六格為 0,1,3,6,10,15；查詢 3～14 得 102，pre[14] 綠色、pre[2] 紅色 | 通過 |
 
 ## 小驗證與重跑方式
 ### V2 Binary Indexed Tree 專項
@@ -44,7 +45,7 @@
 - 測試資料／fixture：拆分後的建樹與區間查詢範例及各自輸入，n=10、查詢 4..7。
 - 完整指令或操作步驟：相關 JavaScript 語法檢查；`node --test --test-concurrency=1 tests/unresolved-markers.test.js tests/binary-indexed-tree.test.js tests/binary-indexed-tree.browser.test.js tests/entrypoints.test.js`；`git diff --check`。
 - 預期結果：無語法或差異錯誤；所選案例全部通過且無 skip。
-- 實際結果與 exit code（適用時）：既有錨點、marker 與 BIT 專項結果維持通過。新增 `@let` 後，從重啟的 3102 執行 BIT parser／runtime／browser、指令提示與入口共 11/11 通過；preset／defaults／text／style 擴大檢查 26/27 通過，唯一失敗是服務回覆「請求過於頻繁」，不列為通過。2026-09-22 的鏡頭與範例拆分追加驗證執行 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`、`camera-directives.test.js`、`entrypoints.test.js`，12/12 通過；重啟後再跑 BIT 兩檔，8/8 通過。加減配色與文字調整後重啟 3102，再跑 BIT 兩檔 8/8 通過。條件式輸入新增案例單獨重跑 1/1 通過，BIT 兩檔再跑 8/8 通過。完整路徑版本另跑 BIT 瀏覽器 2/2、BIT／入口 7/7、`iteration.first` 1/1，皆 exit code 0。3102 現為 PID 34036，HTTP 200。
+- 實際結果與 exit code（適用時）：既有錨點、marker 與 BIT 專項結果維持通過。新增 `@let` 後，從重啟的 3102 執行 BIT parser／runtime／browser、指令提示與入口共 11/11 通過；preset／defaults／text／style 擴大檢查 26/27 通過，唯一失敗是服務回覆「請求過於頻繁」，不列為通過。2026-09-22 的鏡頭與範例拆分追加驗證執行 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`、`camera-directives.test.js`、`entrypoints.test.js`，12/12 通過；重啟後再跑 BIT 兩檔，8/8 通過。加減配色與文字調整後重啟 3102，再跑 BIT 兩檔 8/8 通過。條件式輸入新增案例單獨重跑 1/1 通過，BIT 兩檔再跑 8/8 通過。完整路徑版本另跑 BIT 瀏覽器 2/2、BIT／入口 7/7、`iteration.first` 1/1；一維前綴和重啟後專項 2/2，皆 exit code 0。3102 現為 PID 59064，HTTP 200。
 - 證據位置：已提交測試檔；執行摘要僅存在本次本機工作紀錄，不提交 test-results 或 server log。
 
 ## 驗證分級與選擇
@@ -53,7 +54,7 @@
 - 選擇依據：本次修改共用指令 parser/runtime、renderer 名稱、索引事件及 Binary Indexed Tree 實際 SVG。
 - 執行的測試檔／名稱篩選：完整執行 `place-directives.test.js`、`binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js` 與直接受 cache key 影響的 `entrypoints.test.js`。
 - 驗證環境與隔離服務：先用 3197 隔離服務驗證並停止；最終從 beta BIT worktree 重啟 3102（PID 34312）後重跑。未操作使用者分頁或資料。
-- 驗證版本、完整指令、結果與證據：最新程式 commit `ada802d295db206c5678792299fbc2dc11b396d6`；最終直接相關 BIT 瀏覽器 2/2、BIT／入口 7/7、`iteration.first` 1/1 通過。中途遇到的服務頻率限制不列為程式驗證結果，重啟後已分開重跑。
+- 驗證版本、完整指令、結果與證據：最新程式 commit `303044bd3388d22df6766369e2d00d89ed4bd120`；一維前綴和專項 2/2 通過；先前 BIT 瀏覽器 2/2、BIT／入口 7/7、`iteration.first` 1/1 維持已驗證紀錄。
 - 未執行的驗證及原因：依 V2 分級未執行 `npm test`、完整 regression、廣泛排序或其他無關演算法動畫。
 - 需要主代理做的 V3 驗證：整合後實際播放 build 與兩次 sum，確認 num／BIT 的不同索引基準、全名 renderer、二進制索引及區間對照；再依 parser 共用影響決定是否增加其他指令案例。
 
