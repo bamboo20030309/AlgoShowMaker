@@ -4,13 +4,13 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-alpha-standard-segment-tree
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：8ba0334cea3fea756f290b564290cb71c8a06c89、81a7237f5eb7f5abbba0e9cc5a253e4048e7d67c、15d2c91c2b1c9363c20656d2a7ee6d8a32e90f6c、cdf0e020f07de8b57800065b996910bbb3cbfacd、a7e859d15f7bbf79e5c6cdffff41daa222655c94、01a2d594c346639179f61a89fc4922ba2ac88702、7f55475475d932a5341fab50fddfa374afe9c0db、5efb734b7bef842eb8e764dc25d2645f70f85725、aeeee48dd49c8a6099535e807ce322ca9a46d291、3fab76fd8f68904a54dc462d951ebe25c5017800、98597b1466773a3d5de9f4c43083a5863c45e2e3
-- 驗證時的 HEAD 與未提交修改：98597b1466773a3d5de9f4c43083a5863c45e2e3；程式驗證後只有交付文件修改
+- 程式修正 commit：8ba0334cea3fea756f290b564290cb71c8a06c89、81a7237f5eb7f5abbba0e9cc5a253e4048e7d67c、15d2c91c2b1c9363c20656d2a7ee6d8a32e90f6c、cdf0e020f07de8b57800065b996910bbb3cbfacd、a7e859d15f7bbf79e5c6cdffff41daa222655c94、01a2d594c346639179f61a89fc4922ba2ac88702、7f55475475d932a5341fab50fddfa374afe9c0db、5efb734b7bef842eb8e764dc25d2645f70f85725、aeeee48dd49c8a6099535e807ce322ca9a46d291、3fab76fd8f68904a54dc462d951ebe25c5017800、98597b1466773a3d5de9f4c43083a5863c45e2e3、8ceb0774a98f863e901451265e2b11e166168bd7
+- 驗證時的 HEAD 與未提交修改：8ceb0774a98f863e901451265e2b11e166168bd7；程式驗證後只有交付文件修改
 - 驗證日期：2026-09-22
 
 ## 根因與修改
-- 已確認根因與證據：既有 heap／舊 segment-tree renderer 以完整二元樹層級與固定格寬定位，無法讓 n=10 的 3/2 子區間反映長度，也無法保留深度 3 與深度 4 葉節點的自然遞迴位置。n=11 第 55 幀的 trace 仍保存 `tree[6]=21`、`sets[6]=7`，靜態 render 顯示 `21,7`；從第 54 幀播放賦值動畫後只剩 `21`，證明動畫收尾誤將複合 `<text>` 容器整體覆寫。
-- 修正方式與行為變化：新增 `render segment_tree with range(start,end)`；range 同時指定資料區間，並以起點推導 tree 根索引；依標準中點拆分建立實際節點，水平寬度按區間長度，垂直位置按真實遞迴深度。最小 value 格固定 40×40px、index 格高 12px；新增 `gap(horizontal,vertical)`，單參數沿用雙軸，垂直 gap 為 0 時 heap／segment tree 不畫父子線。下方標籤將 tree index 平常置中、interval 靠右；碰撞時依 SVG 實測字寬將 index 向左避讓，空間仍不足才縮字，兩者垂直置中。葉節點 `[x,x]` 簡化為 `[x]`。value 一般使用一致的 16px，interval 比 index 小 2px。標準範例現支援區間 modify、set 與 query，並在同一 tree 格合併顯示 lazy/set 標記。賦值事件現在依 target variable 選取複合格內對應的 `<tspan>`，不再刪除同格其他欄位。第一版 `format(...)` 在 renderer 與事件 replay 共用格式器；標準範例依語意顯示 set `=value` 與 modify 的帶號數值。
+- 已確認根因與證據：既有 heap／舊 segment-tree renderer 以完整二元樹層級與固定格寬定位，無法讓 n=10 的 3/2 子區間反映長度，也無法保留深度 3 與深度 4 葉節點的自然遞迴位置。n=11 第 55 幀的 trace 仍保存 `tree[6]=21`、`sets[6]=7`，靜態 render 顯示 `21,7`；從第 54 幀播放賦值動畫後只剩 `21`，證明動畫收尾誤將複合 `<text>` 容器整體覆寫。二元加法進入 value-only 搬移時又只傳入來源格元素，遺失 source target 的 variableId，因此無法選到 tree 對應的 `<tspan>`，會把 `5,=13`／`7,+3` 整串複製。
+- 修正方式與行為變化：新增 `render segment_tree with range(start,end)`；range 同時指定資料區間，並以起點推導 tree 根索引；依標準中點拆分建立實際節點，水平寬度按區間長度，垂直位置按真實遞迴深度。最小 value 格固定 40×40px、index 格高 12px；新增 `gap(horizontal,vertical)`，單參數沿用雙軸，垂直 gap 為 0 時 heap／segment tree 不畫父子線。下方標籤將 tree index 平常置中、interval 靠右；碰撞時依 SVG 實測字寬將 index 向左避讓，空間仍不足才縮字，兩者垂直置中。葉節點 `[x,x]` 簡化為 `[x]`。value 一般使用一致的 16px，interval 比 index 小 2px。標準範例現支援區間 modify、set 與 query，並在同一 tree 格合併顯示 lazy/set 標記。賦值事件現在依 target variable 選取複合格內對應的 `<tspan>`，不再刪除同格其他欄位；二元加法的來源也保留各自 variableId，只建立 tree 數字的飛行文字。第一版 `format(...)` 在 renderer 與事件 replay 共用格式器；標準範例依語意顯示 set `=value` 與 modify 的帶號數值。每個格內 segment 另繪左右 1px 灰色虛線，邊界幾何與色塊的寬度補間、split 入場及退場同步。
 - 修改檔案及用途：instrumenter/server 解析並解析 renderer 與 gap 選項；trace renderer 分派新排版、split 與格內 segment；各陣列 renderer 套用水平／垂直間距；入口快取及提示同步；手冊與專項測試補充幾何規則。
 - README／版本紀錄／使用說明更新：README 與 `ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md` 已加入語法、排版規則與查詢 segment 範例。
 - 與 task.md 的差異：無
@@ -33,6 +33,8 @@
 | 第一版 format 語法與執行期保存 | parser/runtime 專項 | 八種格式均解析；欄位名稱、precision 與 variableId 寫入 frame options；未知格式、欄位、重複欄位與 precision 11 均拒絕 | 通過 |
 | 靜態與動畫格式一致 | browser 實際 SVG 與連續幀播放 | `signed`、`assign`、binary、hex、bool、fixed、percent 顯示正確；assign 動畫後為 `=9`，signed 動畫後為 `+5` | 通過 |
 | 標準範例格式化 lazy/set | n=15 與 n=11 browser 專項 | lazy 顯示 `+...`，sets 顯示 `=...`；第 55 幀顯示 `21,=7` 且欄位仍存在 | 通過 |
+| 複合 tree 格二元加法來源 | 最小 heap browser 動畫專項 | 來源格靜態顯示 `5,=13`／`7,+3`；飛行文字只出現 `5`、`7`，父節點完成為 12 | 通過 |
+| segment 左右虛線 | heap segment SVG 與逐 tick 幾何專項 | 每個色塊有 left/right 兩條 `#6b7280`、1px、`3 3` 虛線；水平補間及 split 高度變化全程貼齊 | 通過 |
 
 ## 小驗證與重跑方式
 ### 新標準線段樹 parser、runtime 與實際 SVG
@@ -67,7 +69,7 @@
 - 執行目錄與必要環境設定：本 worktree `algo-vis-backend`；`PORT=3101`。
 - 完整指令或操作步驟：核對 3101 舊 PID 46680 後只停止該服務並從本 worktree 重啟；確認 `algorithm.html` 載入 `trace-205` 與 `gap-1`；向 `/trace/analyze` 提交包含 `render segment_tree with range(1,n), gap(10,24)` 的最小程式；再以 `ASM_TEST_BASE_URL=http://127.0.0.1:3101` 重跑三個直接相關專項測試檔。
 - 預期結果：HTTP 200；後端接受 range 與雙軸 gap；前端使用最新 cache key；專項測試全部通過。
-- 實際結果與 exit code（適用時）：gap 更新後 PID 9044；標籤排版更新後 PID 69684；字體更新後 PID 61468；指定操作範例更新後 PID 9956；標籤避讓更新後 PID 63888；回朔加法幀更新後 PID 59676；回朔 split after 更新後 PID 59292；複合欄位動畫修正後 PID 49992；format 更新後 PID 52864。最新 `algorithm.html` 載入 `trace-224`、`trace-206`、`directive-20`；n=11 複合欄位與八種 format 動畫專項 2/2 pass；exit code 0。
+- 實際結果與 exit code（適用時）：gap 更新後 PID 9044；標籤排版更新後 PID 69684；字體更新後 PID 61468；指定操作範例更新後 PID 9956；標籤避讓更新後 PID 63888；回朔加法幀更新後 PID 59676；回朔 split after 更新後 PID 59292；複合欄位動畫修正後 PID 49992；format 更新後 PID 52864；二元加法欄位與 segment 邊界更新後 PID 23232。最新 `algorithm.html` 載入 `trace-225`、`trace-207`、`directive-20`；3101 上的複合 tree 加法與 segment 邊界專項 2/2 pass；exit code 0。
 - 證據位置：本機 3101 服務與終端摘要，未提交 server log。
 
 ## 驗證分級與選擇
@@ -76,7 +78,7 @@
 - 選擇依據：修改 renderer 選項解析、SVG 幾何、格內 segment 與 split 路徑。
 - 執行的測試檔／名稱篩選：`standard-segment-tree.test.js`、`standard-segment-tree.browser.test.js`、`renderer-gaps.browser.test.js`、`entrypoints.test.js`、`directive-assist.test.js`、`frame-renderer-options.integration.test.js`、`heap-composite-segments.test.js`、`segment-tree-samples.test.js`，以及 heap composite browser 的兩個直接相關案例。
 - 驗證環境與隔離服務：本分支 worktree、localhost:3198／3199 隔離服務、重啟後的 alpha localhost:3101、Playwright 無頭 Edge；未操作使用者分頁或投影片。
-- 驗證版本、完整指令、結果與證據：程式 commit 98597b1466773a3d5de9f4c43083a5863c45e2e3；3199 的 parser／runtime／入口／提示 8/8、標準線段樹 browser 3/3、binary addition browser 1/1、舊 segment tree samples 3/3、heap composite 直接相關 browser 1/1 通過。相容性批次首次執行有兩項被 API rate limit 拒絕，重啟隔離服務後單獨重跑 3/3 通過；heap browser 首次因同一服務累積請求逾時，重啟後 1/1 通過。3101 重啟後複合欄位與 format 動畫專項 2/2 通過。
+- 驗證版本、完整指令、結果與證據：程式 commit 8ceb0774a98f863e901451265e2b11e166168bd7；先前 3199 的 parser／runtime／入口／提示 8/8、標準線段樹 browser 3/3、binary addition browser 1/1、舊 segment tree samples 3/3、heap composite 直接相關 browser 1/1 通過。本次在 3197／32789 以名稱篩選重跑複合 tree 加法、segment 邊界、既有建樹加法、標準 n=10 與投影片舊 trace 重建，共 5/5 通過；標準 n=10 首次因共用隔離服務的請求累積逾時，改用全新 32789 服務後通過。3101 重啟為 PID 23232 後，新加法與邊界專項 2/2 通過。
 - 未執行的驗證及原因：依分級未執行完整 regression、全部 tests 或廣泛演算法動畫驗證。
 - 需要主代理做的 V3 驗證：整合後以 n=10 幾何 fixture 核對比例寬度與自然深度，再以指定 n=15、7 操作範例核對 modify／set／query segment、複合欄位及最後答案 12。
 
