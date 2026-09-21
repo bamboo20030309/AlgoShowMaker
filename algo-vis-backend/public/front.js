@@ -540,21 +540,37 @@ int main() {
 
 
 // 子標籤切換
+let preservedCanvasCamera = null;
+
 function activateTab(btn) {
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+  const nextTab = btn?.dataset.tab;
+  if (activeTab === 'tab-canvas' && nextTab !== 'tab-canvas') {
+    const camera = window.getCameraViewport?.();
+    if (camera) preservedCanvasCamera = camera;
+  }
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.subContent').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById(btn.dataset.tab).classList.add('active');
+  document.getElementById(nextTab).classList.add('active');
+  if (nextTab === 'tab-canvas') {
+    requestAnimationFrame(() => {
+      if (preservedCanvasCamera && window.setCamera) {
+        window.setCamera(
+          preservedCanvasCamera.centerX,
+          preservedCanvasCamera.centerY,
+          preservedCanvasCamera.scale,
+          false
+        );
+      } else {
+        window.updateTransform?.();
+      }
+    });
+  }
 }
 document.querySelectorAll('.tab-btn').forEach(btn =>
   btn.addEventListener('click', () => {
     activateTab(btn);
-    // 切換到畫布 Tab 時，SVG 剛從隱藏狀態恢復，需重新計算並對齊鏡頭
-    if (btn.dataset.tab === 'tab-canvas') {
-      requestAnimationFrame(() => {
-        if (window.setAutoCamera) window.setAutoCamera(1.0, false);
-      });
-    }
     if (btn.dataset.tab === 'tab-syntax-tree') {
       window.ASMSyntaxTree?.ensureCurrent?.(aceEditor.getValue());
     }

@@ -254,8 +254,8 @@
     const pointerX = currentView.x + (event.clientX - rect.left - offsetX) / scale;
     const pointerY = currentView.y + (event.clientY - rect.top - offsetY) / scale;
     const factor = Math.exp(event.deltaY * 0.0014);
-    const minimumWidth = Math.max(MAX_NODE_WIDTH * 1.25, baseView.width * 0.035);
-    const nextWidth = Math.min(baseView.width, Math.max(minimumWidth, currentView.width * factor));
+    const nextWidth = currentView.width * factor;
+    if (!Number.isFinite(nextWidth) || nextWidth <= 0) return;
     const ratio = nextWidth / currentView.width;
     const nextHeight = currentView.height * ratio;
     if (Math.abs(nextWidth - currentView.width) < 0.01) return;
