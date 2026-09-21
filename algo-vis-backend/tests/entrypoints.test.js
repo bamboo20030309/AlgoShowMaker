@@ -90,7 +90,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-25'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-6'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-121'));
+  assert.ok(html.includes('trace-studio.js?v=trace-122'));
   assert.ok(html.includes('front.js?v=random-id-34'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
   assert.ok(html.includes('trace-provenance.js?v=trace-9'));
@@ -134,7 +134,11 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     'completed nested event spans must form one continuous background band');
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
   assert.ok(html.includes('draw/draw_array.js?v=trace-2'));
-  assert.ok(html.includes('trace-studio.css?v=trace-51'));
+  assert.ok(html.includes('trace-studio.css?v=trace-52'));
+  assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,
+    'the retired marker-shape controls must not return to the object inspector');
+  assert.doesNotMatch(read('trace-studio.css'), /trace-studio-marker-shape/,
+    'retired marker-shape controls must not keep unused styles');
   assert.doesNotMatch(read('trace-studio.js'), /inspector\.append\(field\('作用時間線'/,
     'the obsolete event timeline scope selector is absent from the right sidebar');
   assert.match(read('trace-studio.css'), /\.trace-studio-event-code-button\.is-current\s*\{[^}]*inset 4px 0 #60a5fa/s,
