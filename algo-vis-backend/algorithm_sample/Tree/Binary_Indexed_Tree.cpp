@@ -14,14 +14,14 @@ vector<int> num, BIT;
 // @object num with labels(value,index)
 // @object BIT render binary indexed tree with range(1,n), labels(value,binary-index-padded)
 // @style num[0] background AV_grey
-// @place num at BIT.top offset(-40,-70)
+// @place num.left-bottom at BIT.left-top offset(-40,-70)
 // @endpreset
 
 // @preset binary_indexed_tree_pointer_view
 // @object num with labels(value,index)
 // @object BIT[i] render binary indexed tree with range(1,n), labels(value,binary-index-padded)
 // @style num[0] background AV_grey
-// @place num at BIT.top offset(-40,-70)
+// @place num.left-bottom at BIT.left-top offset(-40,-70)
 // @endpreset
 
 void build(int i) {
@@ -31,15 +31,15 @@ void build(int i) {
         int l = i - lb + 1;
 
         // @frame use binary_indexed_tree_pointer_view
-        // @style num[l:i] background AV_green
+        // @style num[k] highlight
         // @style BIT[i] highlight
         // @style BIT[i] background AV_green
-        // @text "BIT[${i}] 涵蓋 num[${l}..${i}]，準備加上 num[${k}] = ${num[k]}" at num.top offset(0,-20)
+        // @text "BIT[${i}] 涵蓋 num[${l}~${i}]，準備加上 num[${k}] = ${num[k]}" at num.top offset(0,-20)
 
         BIT[i] += num[k];
 
         // @frame use binary_indexed_tree_pointer_view
-        // @style num[l:i] background AV_green
+        // @style num[k] highlight
         // @style BIT[i] highlight
         // @style BIT[i] background AV_green
         // @text "BIT[${i}] 更新為 ${BIT[i]}；下一個索引是 ${i + lb}" at num.top offset(0,-20)
@@ -58,7 +58,7 @@ int sum(int i) {
         // @style num[l:i] background AV_blue
         // @style BIT[i] highlight
         // @style BIT[i] background AV_blue
-        // @text "BIT[${i}] 代表 num[${l}..${i}]，將 ${BIT[i]} 加入總和" at num.top offset(0,-20)
+        // @text "BIT[${i}] 代表 num[${l}~${i}]，將 ${BIT[i]} 加入總和" at num.top offset(0,-20)
 
         ans += BIT[i];
 

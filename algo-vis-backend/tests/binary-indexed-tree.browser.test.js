@@ -80,7 +80,7 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         return samples;
       }, frameIndex);
 
-      const presentation = await page.evaluate(({ numId, bitId, iId }) => {
+      const presentation = await page.evaluate(({ numId, bitId, iId, sourceIndex }) => {
         const root = document.querySelector('#asm-trace-root');
         const object = id => root.querySelector(`[data-trace-variable="${CSS.escape(id)}"]`);
         const num = object(numId);
@@ -102,9 +102,13 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
           .map(node => ({ index: Number(node.dataset.traceIndexLabel), text: node.textContent.trim() }));
         const marker = [...root.querySelectorAll('.asm-trace-bound-object')]
           .find(node => node.dataset.traceSourceVariableId === iId);
-        const highlight = [...root.querySelectorAll('[data-trace-attachment-kind="highlight"]')]
-          .find(node => node.dataset.traceAttachedTo?.endsWith('#8')
+        const highlights = [...root.querySelectorAll('[data-trace-attachment-kind="highlight"]')]
+          .filter(node => getComputedStyle(node).display !== 'none');
+        const highlight = highlights
+          .find(node => node.dataset.traceAttachedTo === `${bitId}#8`
             && getComputedStyle(node).display !== 'none');
+        const numHighlight = highlights
+          .find(node => node.dataset.traceAttachedTo === `${numId}#${sourceIndex}`);
         return {
           dataObjects: [...root.querySelectorAll('.asm-trace-object[data-trace-variable]')]
             .map(node => node.dataset.traceVariable),
@@ -117,9 +121,10 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
             target: marker.dataset.traceBindingTarget,
             bounds: rect(marker)
           },
-          highlight: rect(highlight)
+          highlight: rect(highlight),
+          numHighlight: rect(numHighlight)
         };
-      }, { numId, bitId, iId });
+      }, { numId, bitId, iId, sourceIndex });
 
       assert.deepEqual([...new Set(presentation.dataObjects)].sort(), [bitId, numId].sort());
       assert.equal(presentation.numCellCount, 11, 'num displays the leading zero and all input values');
@@ -139,18 +144,17 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         .map(sample => sample.transform));
       assert.ok(transferTransforms.size > 2,
         `num[${sourceIndex}] value visibly travels to BIT[8]`);
-      const numCenter = presentation.numBounds.left + presentation.numBounds.width / 2;
-      const bitCenter = presentation.bitBounds.left + presentation.bitBounds.width / 2;
       const scale = presentation.cells.find(cell => cell.index === 1).bounds.width / 40;
-      assert.ok(Math.abs(numCenter - (bitCenter - 40 * scale)) <= 1,
-        'num is horizontally placed at BIT.top offset(-40,-70)');
-      assert.ok(Math.abs(presentation.bitBounds.top - presentation.numBounds.bottom - 78 * scale) <= 1,
-        'num is vertically placed above BIT with the requested -70 offset');
+      assert.ok(Math.abs(presentation.numBounds.left - (presentation.bitBounds.left - 40 * scale)) <= 1,
+        'num.left-bottom uses BIT.left-top offset -40 on x');
+      assert.ok(Math.abs(presentation.numBounds.bottom - (presentation.bitBounds.top - 70 * scale)) <= 1,
+        'num.left-bottom uses BIT.left-top offset -70 on y');
       assert.equal(presentation.marker?.label, 'i');
       assert.ok(presentation.marker?.target?.endsWith('#8'));
       assert.ok(presentation.highlight?.width >= presentation.cells.find(cell => cell.index === 8).bounds.width
         && presentation.highlight.height > presentation.cells.find(cell => cell.index === 8).bounds.height,
       'highlight covers the wide value cell and its binary index label');
+      assert.ok(presentation.numHighlight, `build highlights the current source cell num[${sourceIndex}]`);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

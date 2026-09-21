@@ -53,7 +53,13 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
   assert.match(code, /@style num\[0\] background AV_grey/);
   assert.match(code, /num\.resize\(n \+ 1\)/);
   assert.match(code, /for \(int i = 1; i <= n; i\+\+\) cin >> num\[i\];/);
-  assert.match(code, /@place num at BIT\.top offset\(-40,-70\)/);
+  assert.match(code, /@place num\.left-bottom at BIT\.left-top offset\(-40,-70\)/);
+  const buildBody = code.match(/void build\(int i\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  const sumBody = code.match(/int sum\(int i\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(buildBody, /@style num\[k\] highlight/);
+  assert.doesNotMatch(buildBody, /@style num\[[^\n]+\] background/);
+  assert.match(sumBody, /@style num\[l:i\] background AV_blue/);
+  assert.doesNotMatch(code, /\$\{l\}\.\.\$\{i\}/);
   assert.deepEqual(
     [...new Set(Array.from(code.matchAll(/@object\s+([A-Za-z_]\w*)/g), match => match[1]))].sort(),
     ['BIT', 'num']
@@ -75,7 +81,8 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
     ?.rendererOptions.labels?.indexFormat === 'binary-padded'));
   assert.ok(frames.every(frame => frame.placeBindings.some(binding => (
     binding.sourceName === 'num' && binding.targetName === 'BIT'
-      && binding.anchor === 'top' && binding.offsetX === -40 && binding.offsetY === -70
+      && binding.sourceAnchor === 'bottom-left' && binding.anchor === 'top-left'
+      && binding.offsetX === -40 && binding.offsetY === -70
   ))));
   assert.ok(frames.flatMap(frame => frame.styles)
     .filter(style => style.styleType === 'highlight' || style.styleType === 'point')
