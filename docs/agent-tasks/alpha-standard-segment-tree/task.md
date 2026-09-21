@@ -43,8 +43,8 @@
 - [x] 標準範例讀取指定的 n=15、7 個操作輸入；modify、set、query 分別顯示紫、橘、綠 segment，最後 query [8,9] 輸出 12。
 - [x] 標準範例以 `fields(tree,lazy,sets)` 合併欄位，並以 `hide(lazy=0,sets=LM)` 隱藏預設 lazy/set 值。
 - [x] n=15 的兩位數葉節點 index 28/29 不與 interval `[13]`／`[14]` 重疊，且 index 與 interval 都在 12px 標籤框中垂直置中。
-- [x] update 回朔時插入左右子節點相加並寫回父節點的幀；query 只有跨中點、確實合併兩個回傳值時插入 `leftSum + rightSum = result` 回朔幀。
-- [x] update 與 query 的回朔加法幀都帶有對應顏色的 `split(now,after)`，完成當前節點時同步收回 segment。
+- [x] update 回朔時插入左右子節點相加並寫回父節點的幀；query 只顯示單一全域 `sum`，完整命中時直接以 `sum += tree[now]` 累加，不建立 `leftSum`／`rightSum`／`result`。
+- [x] update 回朔幀與 query 命中幀帶有對應顏色的 `split(now,after)`；query 的 `+=` 動畫只將命中 tree 欄位數字移入 sum。
 - [x] 融合顯示的 tree 格執行賦值動畫後，只更新事件所屬欄位；未隱藏的 lazy／sets 欄位與分隔符號不會被清除。
 - [x] `format(field=type,...)` 支援 `raw`、`signed`、`assign`、`binary`、`hex`、`bool`、`fixed(n)`、`percent(n)`，且只改顯示、不改原始資料、條件或 hide 判斷。
 - [x] 格子靜態文字與事件動畫共用格式；`assign`／`signed` 動畫完成後仍保留 `=`／正負號。
@@ -70,3 +70,4 @@
 - 2026-09-22：重現 n=11 輸入第 55 幀 `tree[6]` 遺失 sets 欄位；確認 trace 仍有 `sets[6]=7`，修正賦值動畫只更新複合格內對應變數的文字節點。
 - 2026-09-22：依使用者確認新增第一版 `format(...)`，並將標準範例的 set／modify 標記改成 `=value`／帶正負號的 value；第二版值映射與自訂前後綴列為後續優化候選，交由主代理保留。
 - 2026-09-22：依使用者回饋修正複合 tree 格的二元加法來源，只搬移 tree 欄位；格內 segment 新增左右 1px 灰色虛線並跟隨既有 segment 動畫。
+- 2026-09-22：依使用者回饋簡化標準範例 query；移除三個回傳值格與回朔合併幀，改為完整命中時直接 `sum += tree[now]`，並在命中幀顯示 sum 與收回綠色 segment。

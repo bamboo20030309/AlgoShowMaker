@@ -251,8 +251,8 @@ int main() {
         && frameHas(frame, idByName.lazy, value => value !== 0));
       const setFrame = doc.frames.findIndex(frame => frame.renderers?.[idByName.tree] === 'original-segment-tree'
         && frameHas(frame, idByName.sets, value => value !== 2147483647));
-      const mergeFrame = doc.frames.findIndex(frame => Object.keys(frame.renderers || {})
-        .some(variableId => doc.variables[variableId]?.name === 'leftSum'));
+      const hitFrame = doc.frames.findIndex(frame => frame.source?.function === 'query'
+        && (frame.events || []).some(event => event.signature?.includes('sum += tree[now]')));
       const visibleFields = async (frameIndex, variableId) => {
         await player.render(frameIndex, { animatePositions: false, animateEvents: false });
         return [...document.querySelectorAll(`[data-trace-field-variable="${variableId}"]`)]
@@ -278,38 +278,57 @@ int main() {
             && interval.getAttribute('dominant-baseline') === 'central'
         };
       });
-      if (mergeFrame >= 0) {
-        await player.render(mergeFrame, { animatePositions: false, animateEvents: false });
+      const sumAnimation = [];
+      if (hitFrame > 0) {
+        await player.render(hitFrame - 1, { animatePositions: false, animateEvents: false });
+        let settled = false;
+        const transition = player.render(hitFrame).finally(() => { settled = true; });
+        for (let count = 0; count < 240 && !settled; count += 1) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          const transfer = document.querySelector('.asm-trace-assign-transfer-value');
+          const sumText = document.querySelector(
+            `[data-trace-object-key="${CSS.escape(`${idByName.sum}#0`)}"] > text`
+          );
+          sumAnimation.push({
+            transfer: transfer?.textContent || '',
+            sum: sumText?.textContent || ''
+          });
+        }
+        await transition;
       }
-      const mergeVisible = ['leftSum', 'rightSum', 'result'].every(name => {
-        const variableId = idByName[name];
-        return Boolean(document.querySelector(`[data-trace-variable="${variableId}"]`));
-      });
+      const sumVisible = Boolean(document.querySelector(`[data-trace-variable="${idByName.sum}"]`));
       return {
         lazyFrame,
         setFrame,
-        mergeFrame,
-        mergeVisible,
+        hitFrame,
+        sumVisible,
+        sumAnimation,
         lazyFields,
         setFields,
         overlappingLabels: labels.filter(label => label.overlaps).map(label => label.index),
         verticallyOffCenter: labels.filter(label => !label.verticallyCentered).map(label => label.index),
         adjustedLabels: labels.filter(label => label.adjusted).map(label => label.index),
-        finalAns: numeric(doc.frames.at(-1).state[idByName.ans].data),
+        finalSum: numeric(doc.frames.at(-1).state[idByName.sum].data),
         colors: [...new Set(doc.frames.flatMap(frame => (frame.segments || []).map(segment => segment.color)))]
       };
     });
     assert.ok(operations.lazyFrame >= 0);
     assert.ok(operations.setFrame >= 0);
-    assert.ok(operations.mergeFrame >= 0);
-    assert.equal(operations.mergeVisible, true);
+    assert.ok(operations.hitFrame >= 0);
+    assert.equal(operations.sumVisible, true);
+    const sumTransfers = operations.sumAnimation.filter(sample => sample.transfer);
+    assert.ok(sumTransfers.length > 0, JSON.stringify(operations.sumAnimation));
+    assert.ok(sumTransfers.every(sample => /^\d+$/.test(sample.transfer)),
+      'sum += moves only the tree numeric field');
+    assert.ok(sumTransfers.some(sample => sample.sum === '0'),
+      'sum keeps its old value until the tree value arrives');
     assert.ok(operations.lazyFields.some(value => /^\+\d/.test(value)));
     assert.ok(operations.setFields.some(value => /^=/.test(value)));
     assert.deepEqual(operations.overlappingLabels, []);
     assert.deepEqual(operations.verticallyOffCenter, []);
     assert.ok(operations.adjustedLabels.includes('28'));
     assert.ok(operations.adjustedLabels.includes('29'));
-    assert.equal(operations.finalAns, 12);
+    assert.equal(operations.finalSum, 12);
     assert.ok(operations.colors.includes('AV_magenta'));
     assert.ok(operations.colors.includes('AV_orange'));
     assert.ok(operations.colors.includes('AV_green'));

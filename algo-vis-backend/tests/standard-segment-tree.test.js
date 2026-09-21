@@ -49,7 +49,7 @@ test('standard segment tree sample resolves n=15 options and executes modify, se
     { field: 'sets', type: 'assign', variableId: byName.sets },
     { field: 'lazy', type: 'signed', variableId: byName.lazy }
   ]);
-  assert.equal(Number(trace.frames.at(-1).state[byName.ans].data.value), 12);
+  assert.equal(Number(trace.frames.at(-1).state[byName.sum].data.value), 12);
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_magenta')));
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_orange')));
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_green')));
@@ -57,21 +57,14 @@ test('standard segment tree sample resolves n=15 options and executes modify, se
   const textOf = frame => (frame.texts || []).flatMap(text => text.segments || [])
     .map(segment => segment.text || '').join('');
   assert.ok(trace.frames.some(frame => textOf(frame).includes('回朔到節點')));
-  const queryMerge = trace.frames.find(frame => Object.keys(frame.renderers || {})
-    .some(id => trace.variables[id]?.name === 'leftSum'));
-  assert.ok(queryMerge, 'query backtracking frame displays leftSum/rightSum/result');
-  assert.ok(Object.keys(queryMerge.renderers || {}).some(id => trace.variables[id]?.name === 'rightSum'));
-  assert.ok(Object.keys(queryMerge.renderers || {}).some(id => trace.variables[id]?.name === 'result'));
-  const valueOf = name => {
-    const id = Object.keys(queryMerge.state || {}).find(variableId => trace.variables[variableId]?.name === name);
-    return Number(queryMerge.state[id]?.data?.value);
-  };
-  assert.deepEqual([valueOf('leftSum'), valueOf('rightSum'), valueOf('result')], [5,7,12]);
-  assert.ok((queryMerge.events || []).some(event => event.signature?.includes('result = leftSum + rightSum')));
-  assert.ok((queryMerge.segments || []).some(segment => segment.color === 'AV_green'
-    && segment.split?.phase === 'after'));
-  const updateBacktracks = trace.frames.filter(frame => textOf(frame).includes('回朔到節點')
-    && !Object.keys(frame.renderers || {}).some(id => trace.variables[id]?.name === 'leftSum'));
+  assert.equal(['leftSum','rightSum','result'].some(name => byName[name]), false);
+  const queryHits = trace.frames.filter(frame => frame.source?.function === 'query'
+    && (frame.events || []).some(event => event.signature?.includes('sum += tree[now]')));
+  assert.ok(queryHits.length > 0, 'query hit frames add tree[now] directly into sum');
+  assert.ok(queryHits.every(frame => Object.keys(frame.renderers || {}).includes(byName.sum)));
+  assert.ok(queryHits.every(frame => (frame.segments || []).some(segment => segment.color === 'AV_green'
+    && segment.split?.phase === 'after')));
+  const updateBacktracks = trace.frames.filter(frame => textOf(frame).includes('回朔到節點'));
   assert.ok(updateBacktracks.some(frame => (frame.segments || []).some(segment => segment.color === 'AV_magenta'
     && segment.split?.phase === 'after')));
   assert.ok(updateBacktracks.some(frame => (frame.segments || []).some(segment => segment.color === 'AV_orange'
