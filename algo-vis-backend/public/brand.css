@@ -1,0 +1,66 @@
+.brand {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  color: var(--text-bright, #ffffff);
+  font-family: Arial, "Noto Sans TC", sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: normal;
+  text-decoration: none;
+}
+
+.brand::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -6px -8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.brand-mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  object-fit: contain;
+  transition: transform 150ms ease, filter 150ms ease;
+}
+
+.brand:hover {
+  color: var(--text-bright, #ffffff);
+}
+
+.brand:hover::before {
+  border-color: rgba(112, 190, 255, 0.18);
+  background: rgba(112, 190, 255, 0.1);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.16);
+}
+
+.brand:hover .brand-mark {
+  transform: scale(1.06);
+  filter: brightness(1.08);
+}
+
+.brand:active .brand-mark {
+  transform: scale(0.98);
+}
+
+.brand:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 8px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand::before,
+  .brand-mark {
+    transition: none;
+  }
+}
