@@ -708,33 +708,6 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
-    if (name === 'domain') {
-      if (args.parts.length !== 2) {
-        throw new Error(`第 ${line} 行的 ${directiveName} domain 必須是 domain(start,end)`);
-      }
-      const parsed = args.parts.map(expression => ({ expression, parsed: parseFrameExpression(expression) }));
-      const invalid = parsed.find(item => !item.parsed.valid);
-      if (invalid) throw new Error(`第 ${line} 行的 ${directiveName} domain 運算式無效：${invalid.expression}`);
-      options.domain = {
-        startExpression: parsed[0].expression,
-        endExpression: parsed[1].expression,
-        identifiers: [...new Set(parsed.flatMap(item => item.parsed.identifiers || []))]
-      };
-      continue;
-    }
-
-    if (name === 'root' || name === 'unit') {
-      if (args.parts.length !== 1 || !parseFrameExpression(args.parts[0]).valid) {
-        throw new Error(`第 ${line} 行的 ${directiveName} ${name} 必須是 ${name}(expression)`);
-      }
-      const parsed = parseFrameExpression(args.parts[0]);
-      options[name] = {
-        expression: args.parts[0],
-        identifiers: parsed.identifiers || []
-      };
-      continue;
-    }
-
     if (name === 'columns') {
       if (args.parts.length !== 1 || !parseFrameExpression(args.parts[0]).valid) {
         throw new Error(`第 ${line} 行的 ${directiveName} columns 必須是 columns(count)`);
@@ -2755,12 +2728,8 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     }
     const sourceVariable = variables.find(variable => variable.name === parsed.displayNames[0]);
     if (!sourceVariable) throw new Error(`第 ${line} 行的 ${directiveName} 缺少主要物件`);
-    if (modifiers.renderer === 'original-segment-tree' && !modifiers.rendererOptions?.domain) {
-      throw new Error(`第 ${line} 行的 ${directiveName} render segment_tree 必須指定 with domain(start,end)`);
-    }
-    if (modifiers.renderer !== 'original-segment-tree'
-      && ['domain', 'root', 'unit'].some(name => modifiers.rendererOptions?.[name])) {
-      throw new Error(`第 ${line} 行的 ${directiveName} domain、root、unit 只支援 render segment_tree`);
+    if (modifiers.renderer === 'original-segment-tree' && !modifiers.rendererOptions?.range) {
+      throw new Error(`第 ${line} 行的 ${directiveName} render segment_tree 必須指定 with range(start,end)`);
     }
     if (modifiers.rendererOptions?.fields
       && modifiers.rendererOptions.fields.names[0] !== sourceVariable.name) {

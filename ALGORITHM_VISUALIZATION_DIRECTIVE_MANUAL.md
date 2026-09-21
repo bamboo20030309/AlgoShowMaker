@@ -1090,21 +1090,24 @@ int displaySize = arr.size() - 1;
 // @frame arr[1,i] render heap with range(1,displaySize)
 ```
 
-### 標準線段樹的 `domain`、`root` 與 `unit`
+### 標準線段樹的 `range`
 
 ```cpp
-// @frame tree[now] render segment_tree with domain(1,n), root(1), unit(48)
+// @frame tree[now] render segment_tree with range(1,n)
 ```
 
-`domain(start,end)` 指定根節點代表的資料區間，左右端點都包含在內，也是
-`render segment_tree` 的必要選項。renderer 會用標準遞迴的 `mid=(left+right)/2`
-拆分區間；每個節點的寬度等於區間長度乘上 `unit`，垂直位置則使用該節點的
+對 `render segment_tree` 而言，`range(start,end)` 同時指定根節點代表的資料區間，
+以及 tree 陣列中的根索引；左右端點都包含在內。`range(1,n)` 表示資料區間是
+`[1,n]` 且根節點是 `tree[1]`；`range(0,n-1)` 則表示資料區間是 `[0,n-1]`
+且根節點是 `tree[0]`。renderer 會依根索引自動選擇 1-based 或 0-based 的子節點公式。
+
+renderer 會用標準遞迴的 `mid=(left+right)/2` 拆分區間；每個節點的寬度等於
+其區間長度乘上內建單位寬度，垂直位置則使用該節點的
 真實遞迴深度。當 `n` 不是二次方時不會補假節點，也不會把較早成為葉節點的
 節點強制對齊到最底層。
 
-`root(expression)` 指定根節點在一維 tree 陣列中的索引，預設為 `1`；
-`unit(expression)` 指定一個最小資料區間的像素寬度，預設為 `48`。每個節點下方
-會自動顯示其代表的 `[left,right]`，因此標準的 `vector<int> tree(4*n+5)` 可以直接
+每個節點下方會自動顯示其代表的 `[left,right]`，因此標準的
+`vector<int> tree(4*n+5)` 可以直接
 視覺化，不需要另外產生顯示用陣列。
 
 查詢區段仍可沿用格內 `@segment` 與 `split`：

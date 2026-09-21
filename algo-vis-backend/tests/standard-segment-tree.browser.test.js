@@ -21,7 +21,7 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
       ace.edit('editor').setValue(code, -1);
       document.getElementById('inputArea').value = input;
     }, { code, input });
-    await page.click('#runBtn');
+    await page.evaluate(() => document.getElementById('runBtn').click());
     await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code, code, { timeout: 30000 });
     const result = await page.evaluate(async () => {
       const player = window.ASMTracePlayer;
@@ -94,6 +94,53 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
     assert.equal(result.edgeToLeafThree, true);
     assert.equal(result.edgeToLeafOne, true);
     assert.deepEqual(errors, []);
+
+    const zeroBasedCode = `#include <bits/stdc++.h>
+using namespace std;
+vector<int> tree;
+int n;
+int main() {
+  cin >> n;
+  tree.assign(4 * n + 5, 0);
+  // @frame tree render segment_tree with range(0,n-1)
+  return 0;
+}
+`;
+    await page.evaluate(({ code }) => {
+      ace.edit('editor').setValue(code, -1);
+      document.getElementById('inputArea').value = '10\n';
+    }, { code: zeroBasedCode });
+    await page.evaluate(() => document.getElementById('runBtn').click());
+    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code,
+      zeroBasedCode, { timeout: 30000 });
+    const zeroBased = await page.evaluate(async () => {
+      const player = window.ASMTracePlayer;
+      const doc = player.getDocument();
+      const treeId = Object.entries(doc.variables).find(([, value]) => value.name === 'tree')[0];
+      const frameIndex = doc.frames.findIndex(frame => frame.renderers?.[treeId] === 'original-segment-tree');
+      await player.render(frameIndex, { animatePositions: false, animateEvents: false });
+      const tree = [...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
+      const geometry = index => {
+        const cell = tree.querySelector(`[data-trace-index="${index}"]`);
+        const rect = cell?.querySelector(':scope > rect');
+        return {
+          left: Number(cell?.dataset.segmentLeft),
+          right: Number(cell?.dataset.segmentRight),
+          width: Number(rect?.getAttribute('width'))
+        };
+      };
+      return {
+        visible: [...tree.querySelectorAll('[data-trace-index]')]
+          .map(node => Number(node.dataset.traceIndex)).sort((a, b) => a - b),
+        root: geometry(0), left: geometry(1), right: geometry(2),
+        edge: Boolean(tree.querySelector('[data-segment-parent="0"][data-segment-child="1"]'))
+      };
+    });
+    assert.deepEqual(zeroBased.visible, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,23,24]);
+    assert.deepEqual(zeroBased.root, { left: 0, right: 9, width: 480 });
+    assert.deepEqual(zeroBased.left, { left: 0, right: 4, width: 240 });
+    assert.deepEqual(zeroBased.right, { left: 5, right: 9, width: 240 });
+    assert.equal(zeroBased.edge, true);
   } finally {
     await browser.close();
   }

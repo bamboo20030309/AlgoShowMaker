@@ -426,7 +426,7 @@
     const domainStart = Number(options.domainStart);
     const domainEnd = Number(options.domainEnd);
     const rootIndex = Number.isInteger(Number(options.root)) ? Number(options.root) : 1;
-    const unit = Math.max(24, Number(options.unit) || 48);
+    const unit = 48;
     const gap = Math.max(0, Number(options.gap) || 0);
     const indexMode = Number(options.indexMode) || 0;
     if (!Number.isInteger(domainStart) || !Number.isInteger(domainEnd)
@@ -446,8 +446,9 @@
       nodes.push(node);
       if (left >= right) return;
       const middle = Math.floor((left + right) / 2);
-      visit(index * 2, left, middle, depth + 1, node);
-      visit(index * 2 + 1, middle + 1, right, depth + 1, node);
+      const leftChild = rootIndex === 0 ? index * 2 + 1 : index * 2;
+      visit(leftChild, left, middle, depth + 1, node);
+      visit(leftChild + 1, middle + 1, right, depth + 1, node);
     };
     visit(rootIndex, domainStart, domainEnd, 0);
     if (!nodes.length) return;

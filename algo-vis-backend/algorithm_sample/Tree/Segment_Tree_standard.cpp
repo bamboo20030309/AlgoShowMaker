@@ -10,13 +10,13 @@ int n, ans = 0;
 // @enddefaults
 
 // @preset query_view
-// @object tree render segment_tree with domain(1,n), root(1), unit(48)
+// @object tree render segment_tree with range(1,n)
 // @object ans render cell
 // @place ans.top at tree.bottom offset(0,45)
 // @endpreset
 
 // @preset query_pointer_view
-// @object tree[now] render segment_tree with domain(1,n), root(1), unit(48)
+// @object tree[now] render segment_tree with range(1,n)
 // @object ans render cell
 // @place ans.top at tree.bottom offset(0,45)
 // @endpreset

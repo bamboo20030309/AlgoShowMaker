@@ -244,7 +244,7 @@
     }
     const configuredRange = Array.isArray(rendererOptions.range) ? rendererOptions.range : [];
     const intervalSegmentTree = requested === 'original-segment-tree'
-      && Array.isArray(rendererOptions.domain);
+      && configuredRange.length >= 2;
     const rangeStart = intervalSegmentTree ? 0 : Number.isFinite(Number(configuredRange[0]))
       ? Math.max(0, Math.min(values.length, Math.trunc(Number(configuredRange[0]))))
       : 0;
@@ -266,10 +266,9 @@
     } else if (mode === 'segment-tree' && intervalSegmentTree
       && typeof window.draw_standard_segment_tree === 'function') {
       window.draw_standard_segment_tree(group, id, values, styles, {
-        domainStart: Number(rendererOptions.domain[0]),
-        domainEnd: Number(rendererOptions.domain[1]),
-        root: Number.isInteger(Number(rendererOptions.root)) ? Number(rendererOptions.root) : 1,
-        unit: Number(rendererOptions.unit) || 48,
+        domainStart: Number(configuredRange[0]),
+        domainEnd: Number(configuredRange[1]) - 1,
+        root: Number(configuredRange[0]),
         indexMode,
         gap
       });
@@ -1771,9 +1770,13 @@
           if (!Number.isInteger(cursor)) return;
           const path = [];
           let ancestor = cursor;
-          while (ancestor > rootNode) {
+          const zeroBasedTree = intervalSegmentTree && rootNode === 0;
+          const parentOf = node => zeroBasedTree ? Math.floor((node - 1) / 2) : Math.floor(node / 2);
+          const leftChildOf = node => zeroBasedTree ? node * 2 + 1 : node * 2;
+          const rightChildOf = node => leftChildOf(node) + 1;
+          while (ancestor !== rootNode && ancestor >= 0) {
             path.unshift(ancestor);
-            ancestor = Math.floor(ancestor / 2);
+            ancestor = parentOf(ancestor);
           }
           if (ancestor !== rootNode) return;
           const queryStart = Math.max(0, rawStart);
@@ -1786,14 +1789,16 @@
             const leftCount = intervalSegmentTree ? Math.ceil(intervalCount / 2) : intervalCount / 2;
             const rightCount = intervalCount - leftCount;
             if (!Number.isInteger(leftCount) || leftCount < 1 || rightCount < 1) return;
-            if (child === currentNode * 2) {
+            const leftChild = leftChildOf(currentNode);
+            const rightChild = rightChildOf(currentNode);
+            if (child === leftChild) {
               const siblingStart = intervalStart + leftCount;
               const overlapStart = Math.max(queryStart, siblingStart);
               const overlapEnd = Math.min(queryEnd, siblingStart + rightCount - 1);
-              addRange(currentNode * 2 + 1, overlapStart - siblingStart,
+              addRange(rightChild, overlapStart - siblingStart,
                 overlapEnd - siblingStart, rightCount);
               intervalCount = leftCount;
-            } else if (child === currentNode * 2 + 1) {
+            } else if (child === rightChild) {
               intervalStart += leftCount;
               intervalCount = rightCount;
             } else return;
@@ -4608,9 +4613,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-203';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-204';
   window.ASMTraceRenderers = {
-    build: 'trace-203', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-204', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

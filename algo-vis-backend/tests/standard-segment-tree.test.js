@@ -10,19 +10,20 @@ const inputPath = path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_st
 const source = fs.readFileSync(samplePath, 'utf8');
 const input = fs.readFileSync(inputPath, 'utf8');
 
-test('standard segment tree renderer parses domain, root and unit options', () => {
+test('standard segment tree renderer derives its domain and root from range', () => {
   const frames = findFrameDirectives(source);
   const object = frames.flatMap(frame => frame.objects || [])
     .find(item => item.renderer === 'original-segment-tree');
   assert.ok(object);
-  assert.equal(object.rendererOptions.domain.startExpression, '1');
-  assert.equal(object.rendererOptions.domain.endExpression, 'n');
-  assert.equal(object.rendererOptions.root.expression, '1');
-  assert.equal(object.rendererOptions.unit.expression, '48');
-  assert.throws(() => findFrameDirectives(source.replace('with domain(1,n), root(1), unit(48)', '')),
-    /render segment_tree 必須指定 with domain/);
-  assert.throws(() => findFrameDirectives(source.replace('render segment_tree', 'render heap')),
-    /domain、root、unit 只支援 render segment_tree/);
+  assert.equal(object.rendererOptions.range.startExpression, '1');
+  assert.equal(object.rendererOptions.range.endExpression, 'n');
+  assert.equal(object.rendererOptions.domain, undefined);
+  assert.equal(object.rendererOptions.root, undefined);
+  assert.equal(object.rendererOptions.unit, undefined);
+  assert.throws(() => findFrameDirectives(source.replace('with range(1,n)', '')),
+    /render segment_tree 必須指定 with range/);
+  assert.throws(() => findFrameDirectives(source.replace('range(1,n)', 'unit(48)')),
+    /不支援 with unit/);
 });
 
 test('standard segment tree sample resolves n=10 geometry options and preserves output', async () => {
@@ -30,9 +31,10 @@ test('standard segment tree sample resolves n=10 geometry options and preserves 
   const byName = Object.fromEntries(Object.entries(trace.variables).map(([id, value]) => [value.name, id]));
   const frame = trace.frames.find(item => item.renderers?.[byName.tree] === 'original-segment-tree');
   assert.ok(frame);
-  assert.deepEqual(Array.from(frame.rendererOptions[byName.tree].domain), [1, 10]);
-  assert.equal(frame.rendererOptions[byName.tree].root, 1);
-  assert.equal(frame.rendererOptions[byName.tree].unit, 48);
+  assert.deepEqual(Array.from(frame.rendererOptions[byName.tree].range), [1, 11]);
+  assert.equal(frame.rendererOptions[byName.tree].domain, undefined);
+  assert.equal(frame.rendererOptions[byName.tree].root, undefined);
+  assert.equal(frame.rendererOptions[byName.tree].unit, undefined);
   assert.equal(Number(trace.frames.at(-1).state[byName.ans].data.value), 33);
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.split?.phase === 'after')));
 });

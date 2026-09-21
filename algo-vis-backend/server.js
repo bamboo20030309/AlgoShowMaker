@@ -1380,19 +1380,6 @@ function resolveFrameRendererOptions(frame, directive) {
     const end = resolveTraceIndexExpression(frame, source.range.endExpression);
     if (start != null && end != null) options.range = [start, end + 1];
   }
-  if (source.domain) {
-    const start = resolveTraceIndexExpression(frame, source.domain.startExpression);
-    const end = resolveTraceIndexExpression(frame, source.domain.endExpression);
-    if (start != null && end != null && start <= end) options.domain = [start, end];
-  }
-  if (source.root) {
-    const root = resolveTraceIndexExpression(frame, source.root.expression);
-    if (root != null && root >= 0) options.root = root;
-  }
-  if (source.unit) {
-    const unit = resolveTraceIndexExpression(frame, source.unit.expression);
-    if (unit != null && unit > 0) options.unit = unit;
-  }
   if (source.columns) {
     const columns = resolveTraceIndexExpression(frame, source.columns.expression);
     if (columns != null && columns > 0) options.columns = columns;

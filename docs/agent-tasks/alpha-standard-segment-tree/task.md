@@ -16,7 +16,7 @@
 ## 需求確認
 - 已從使用者或上下文確認：採用區間比例寬度與自然遞迴深度；n=10 必須可表達 3/2 等非等分子區間；新增 renderer 名稱為 `segment_tree`。
 - 尚待使用者回答：無
-- 代理採用的合理假設：根索引預設 1，每個最小區間預設 48px；根資料區間由 `domain(start,end)` 明確指定。
+- 代理採用的合理假設：`range(start,end)` 的起點同時是資料區間起點與 tree 根索引；格寬使用 renderer 內建值。
 
 ## 重現與調查
 - 最小操作步驟或 fixture：執行 `Segment_Tree_standard.cpp`，輸入 n=10、數列 1 到 10，查詢 [3,8]。
@@ -30,7 +30,7 @@
 - 依賴任務：無
 
 ## 驗收條件
-- [x] `render segment_tree with domain(1,n)` 可解析並在 trace 中解析執行期 n。
+- [x] `render segment_tree with range(1,n)` 可解析並在 trace 中解析執行期 n，且以 `tree[1]` 為根。
 - [x] n=10 只畫實際存在的 19 個節點，根寬 10 單位，左右子樹各寬 5 單位，3/2 子區間寬度正確。
 - [x] 葉節點保留真實遞迴深度，父子邊連接正確，不進行底部對齊。
 - [x] 既有 style、格內 `@segment` 與 `split(now)`／`split(now,after)` 可作用於新排版。
@@ -43,3 +43,4 @@
 
 ## 變更紀錄
 - 2026-09-21：依使用者確認新增標準線段樹 renderer；不採葉節點底部對齊。
+- 2026-09-21：依使用者回饋移除 `domain/root/unit`，改由 `range` 起點推導根索引並採用內建格寬。
