@@ -10,7 +10,7 @@
 ## 問題與預期結果
 - 情境與操作：舊 Binary Indexed Tree 範例仍依賴 AV.hpp 與手寫繪圖程式，指令運算式也不能解析位元運算。
 - 目前行為：範例混入大量繪圖輔助碼；renderer 只提供 bit／fenwick 縮寫；沒有 Binary Indexed Tree 專項解析與實際 SVG 驗證。
-- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數。
+- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數；新增小寫 `@let`，用唯讀幀內別名簡化重複的繪圖運算式，不加入新的繪圖迴圈能力。
 - 本次範圍與必要限制：保留既有 bit／fenwick 相容名稱；角落錨點同時接受水平在前的別名並正規化；不做完整 regression 或全部測試；修改後重啟 beta 3102、commit 並 push。
 
 ## 需求確認
@@ -25,7 +25,7 @@
 - 尚待調查：無；寬格 marker、compound assignment 與二進制 index 標籤均已用專項案例確認。
 
 ## 修改邊界與依賴
-- 預計修改檔案或模組：`trace-instrumenter.js`、`public/trace-rules.js`、`algorithm_sample/Tree/Binary_Indexed_Tree.cpp`、sample input、BIT 專項測試、必要入口 cache key、本任務文件。
+- 預計修改檔案或模組：`trace-instrumenter.js`、`public/trace-rules.js`、`public/trace-model.js`、`server.js`、`algorithm_sample/Tree/Binary_Indexed_Tree.cpp`、sample input、指令手冊與提示、BIT 專項測試、必要入口 cache key、本任務文件。
 - 共用檔案／介面與協調結果：運算式 parser／evaluator 是共用介面；保留既有語法並新增運算子，不改現有算術與條件語意。
 - 依賴任務：無；使用 main v4.9 既有 renderer、marker 與播放行為。
 
@@ -39,7 +39,8 @@
 - [x] `left-top`、`right-top`、`left-bottom`、`right-bottom` 可用於來源及目標錨點，並分別正規化為既有角落名稱。
 - [x] 範例中的 highlight 與 point 不指定顏色，沿用 renderer 預設值；只有 background 使用教學色彩。
 - [x] 建構時 `BIT[i]` 的 compound assignment 明確以可見的 `num[k]` 為來源，播放時數值會從 num 格移向 BIT 格。
-- [x] 建樹畫面以預設 highlight 指定目前的 `num[k]`，不替 num 區間加 background；查詢畫面保留使用區間 background，可見區間直接以 `i-(i&-i)+1~i` 計算，不為繪圖宣告 `lb`。
+- [x] 建樹畫面以預設 highlight 指定目前的 `num[k]`，不替 num 區間加 background；查詢畫面保留使用區間 background，可見區間透過小寫 `@let lb = i & -i` 簡化為 `i-lb+1~i`。
+- [x] `@let` 在每次幀擷取時依該幀狀態求值，可依序引用先前別名；只捕捉相依 C++ 變數，不建立 C++ 變數、畫布物件、marker 或 runtime 事件，並可放在 frame、preset 與 defaults 範圍。
 - [x] 一般 scalar compound update 會讓依賴該變數的 marker 沿既有 position 路徑平移；BIT／num 的 compound value assignment 不被誤判為 marker 移動。
 - [x] 超出範圍的 BIT marker 仍可依 BIT 層級公式前往虛擬格；範例的 build／sum 更新式改放在 `for` header，最後一次更新由既有迴圈邊界規則略過，中間更新仍播放平移。
 
@@ -63,3 +64,4 @@
 - 2026-09-21：修正同幀進入下一次 build 時遺失舊事件 BIT[16] 虛擬 placement 的問題；事件 before／after 先依 BIT 幾何建立虛擬格，避免 marker 線性外插到右下方；程式 commit 為 `210f1d547fca85f9665a30216bae28eb13e2e917`。
 - 2026-09-21：依使用者決定保留一般變數前往虛擬格的真實呈現，將 build／sum 改為 `for` 更新式，使終止更新沿用既有迴圈邊界抑制；程式 commit 為 `21b2a88fad59c481796cec078ce9e767466f5baf`。
 - 2026-09-21：移除只供指令文字與區間使用的 `lb`，將 lowbit 運算直接寫入 `@style`、`@text` 與 `for` 更新式；程式 commit 為 `7246804dd468b617e9726dffeede4398ce94ea36`。
+- 2026-09-21：依使用者確認新增小寫 `@let` 唯讀繪圖別名，不新增迴圈；BIT pointer preset 宣告 `lb` 並由 style／text 共用。程式 commit 為 `3d53e3cc7bec6c32c7066ae5051e8722da3411f7`，手冊與編輯器提示 commit 為 `4c4a6ac92824e0d66f12a43f216dce381e57d961`。
