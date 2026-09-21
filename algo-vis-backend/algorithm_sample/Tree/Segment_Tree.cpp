@@ -15,7 +15,7 @@ int Tmask, Tsize, Tdeep, n, ans = 0;
 
 // 操作時在樹下方顯示 query 已累加的答案。
 // @preset operation_view
-// @object tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
+// @object tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM), format(lazy=signed,sets=assign)
 // @object ans render cell
 // @place ans.top at tree.bottom offset(0,45)
 // @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
@@ -24,7 +24,7 @@ int Tmask, Tsize, Tdeep, n, ans = 0;
 
 // 遞迴操作期間用 now 作為 tree 的實際陣列指標。
 // @preset operation_pointer_view
-// @object tree[now] render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM)
+// @object tree[now] render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0, sets=LM), format(lazy=signed,sets=assign)
 // @object ans render cell
 // @place ans.top at tree.bottom offset(0,45)
 // @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0

@@ -73,6 +73,7 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   const {code,result,trace}=await runSample('Segment_Tree');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_modify|_draw_segment/);
   assert.match(code,/fields\(tree,lazy,sets\), hide\(lazy=0,\s*sets=LM\)/);
+  assert.match(code,/format\(lazy=signed,sets=assign\)/);
   assert.match(code,/@preset operation_pointer_view[\s\S]*@object tree\[now\] render heap/);
   assert.doesNotMatch(code,/@style tree\[now\][^\n]*\bpoint\b/);
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
@@ -88,6 +89,10 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   assert.deepEqual(JSON.parse(JSON.stringify(options.fields.names)),['tree','lazy','sets']);
   assert.deepEqual(JSON.parse(JSON.stringify(options.hide.entries)),[
     {field:'lazy',value:'0'},{field:'sets',value:'LM'}
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(options.format.entries)),[
+    {field:'lazy',type:'signed',variableId:lazyId},
+    {field:'sets',type:'assign',variableId:setsId}
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(options.range)),[1,31],
     'range stops before the unused padding leaf');

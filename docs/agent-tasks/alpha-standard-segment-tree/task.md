@@ -51,6 +51,7 @@
 - [x] 標準範例改用 `fields(tree,sets,lazy)`、`hide(sets=LM,lazy=0)`、`format(sets=assign,lazy=signed)`，使 set 與 modify 顯示為 `=8`、`+3` 或 `-2`。
 - [x] `tree[a] + tree[b]` 的加法賦值動畫只搬移兩個 tree 欄位的數字，不會把同格的 `=set` 或帶號 lazy 欄位一起搬入父節點。
 - [x] 每個格內 segment 的左右邊界各顯示一條 1px 灰色虛線，且在區段寬度補間與 split 淡入淡出時貼合色塊邊緣。
+- [x] 舊特殊排列的 `Segment_Tree.cpp` 也套用欄位格式：modify/lazy 顯示帶正負號，set/sets 顯示 `=值`，原演算法輸出不變。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
@@ -71,3 +72,4 @@
 - 2026-09-22：依使用者確認新增第一版 `format(...)`，並將標準範例的 set／modify 標記改成 `=value`／帶正負號的 value；第二版值映射與自訂前後綴列為後續優化候選，交由主代理保留。
 - 2026-09-22：依使用者回饋修正複合 tree 格的二元加法來源，只搬移 tree 欄位；格內 segment 新增左右 1px 灰色虛線並跟隨既有 segment 動畫。
 - 2026-09-22：依使用者回饋簡化標準範例 query；移除三個回傳值格與回朔合併幀，改為完整命中時直接 `sum += tree[now]`，並在命中幀顯示 sum 與收回綠色 segment。
+- 2026-09-22：依使用者提供的舊特殊排列範例，在 operation 與 pointer preset 加入 `format(lazy=signed,sets=assign)`，讓 modify/set 標記有明確語意。

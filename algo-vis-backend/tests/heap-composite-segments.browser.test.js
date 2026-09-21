@@ -551,6 +551,12 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
       const tree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
       const compositeTexts=[...tree.querySelectorAll('[data-trace-index] > text:not([data-trace-content-role="index"])')]
         .map(node=>node.textContent);
+      const lazyFieldTexts=[...tree.querySelectorAll(`[data-trace-field-variable="${byName.lazy}"]`)]
+        .map(node=>node.textContent);
+      await player.render(setTagged.index,{animatePositions:false,animateEvents:false});
+      const setTree=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
+      const setFieldTexts=[...setTree.querySelectorAll(`[data-trace-field-variable="${byName.sets}"]`)]
+        .map(node=>node.textContent);
       const separateFields={
         lazy:document.querySelectorAll(`[data-trace-variable="${byName.lazy}"]`).length,
         sets:document.querySelectorAll(`[data-trace-variable="${byName.sets}"]`).length
@@ -636,7 +642,7 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         operationSegments,lazyBackgrounds,setBackgrounds,unwindBackgrounds,unwindSamples,
         handoffSamples,handoffColor:handoffMark.color,
         stateSegments:document.querySelectorAll('#asm-trace-root .asm-trace-state-segment').length,
-        compositeTexts,separateFields,unwindSegments,
+        compositeTexts,lazyFieldTexts,setFieldTexts,separateFields,unwindSegments,
         frame26Segments,frame26ContinuitySamples,
         frame29Segments,frame29ContinuitySamples,
         pointerLabel,pointStyleCount,ans
@@ -665,6 +671,8 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     assert.deepEqual(unwindMismatches,[]);
     assert.equal(result.stateSegments,0);
     assert.ok(result.compositeTexts.some(text=>text.includes(',')),JSON.stringify(result));
+    assert.ok(result.lazyFieldTexts.some(text=>/^\+\d/.test(text)),JSON.stringify(result));
+    assert.ok(result.setFieldTexts.some(text=>/^=/.test(text)),JSON.stringify(result));
     assert.deepEqual(result.separateFields,{lazy:0,sets:0});
     assert.equal(result.unwindSegments,0);
     assert.deepEqual(result.frame26Segments,[3,5,8,9]);
