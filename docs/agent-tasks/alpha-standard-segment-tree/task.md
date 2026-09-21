@@ -2,7 +2,7 @@
 
 ## 任務資訊
 - 負責代理：alpha
-- 狀態：開發中
+- 狀態：待交付
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
 - 分支：codex/2026-09-21-alpha-standard-segment-tree
 - Worktree：C:\Users\user\Documents\Codex\2026-07-29\algoshowmaker-main-commit-d154dd5-slides-html\work\AlgoShowMaker\.worktrees\2026-09-21-alpha-standard-segment-tree
@@ -35,9 +35,9 @@
 - [x] 葉節點保留真實遞迴深度，父子邊連接正確，不進行底部對齊。
 - [x] 既有 style、格內 `@segment` 與 `split(now)`／`split(now,after)` 可作用於新排版。
 - [x] 現有 `render heap` 與原線段樹範例行為不受影響。
-- [ ] 標準線段樹最小 value 格為 40×40px，index 格高 12px；不寫 gap 時格子貼合且不畫父子線。
-- [ ] `gap(10,24)` 分別套用水平與垂直間距；三單位跨區間格寬為 140px，垂直 gap 大於 0 時才畫父子線。
-- [ ] 一般陣列、heap、BIT、queue、stack、disk 依各自排版軸套用 gap，且格內 `@segment` 不跨越水平 gap。
+- [x] 標準線段樹最小 value 格為 40×40px，index 格高 12px；不寫 gap 時格子貼合且不畫父子線。
+- [x] `gap(10,24)` 分別套用水平與垂直間距；三單位跨區間格寬為 140px，垂直 gap 大於 0 時才畫父子線。
+- [x] 一般陣列、heap、BIT、queue、stack、disk 依各自排版軸套用 gap，且格內 `@segment` 不跨越水平 gap。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
