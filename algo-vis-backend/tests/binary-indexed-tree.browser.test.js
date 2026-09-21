@@ -275,9 +275,16 @@ test('Binary Indexed Tree query range stays green without framing an invisible B
       const previousBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
       await page.evaluate(index => window.ASMTracePlayer.renderStable(index), secondSumStartIndex);
       const nextBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
+      const deductedFill = await page.evaluate(numId => {
+        const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
+        const cell = num.querySelector('[data-trace-index="1"]');
+        return getComputedStyle(cell.querySelector(':scope > rect')).fill;
+      }, numId);
       assert.equal(nextBounds.bottom, previousBounds.bottom,
         'disabled terminal i: 8 -> 0 placement does not expand automatic camera bounds');
       assert.equal(nextBounds.centerY, previousBounds.centerY);
+      assert.match(deductedFill, /239, 154, 154/,
+        'the prefix range deducted from the answer is red');
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

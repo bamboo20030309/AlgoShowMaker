@@ -29,22 +29,28 @@ void add(int i, int x) {
     for (; i <= n; i += i & -i) BIT[i] += x;
 }
 
-int sum(int i) {
+int sum(int i, bool deduct) {
     int ans = 0;
     for (; i > 0; i -= i & -i) {
         // @frame use binary_indexed_tree_pointer_view
-        // @style num[i-lb+1:i] background AV_green
+        // @style num[i-lb+1:i] background AV_green when !deduct
+        // @style num[i-lb+1:i] background AV_red when deduct
         // @style BIT[i] highlight
-        // @style BIT[i] background AV_green
-        // @text "BIT[${i}] 代表 num[${i-lb+1}~${i}]，將 ${BIT[i]} 加入總和" at num.top offset(0,-20)
+        // @style BIT[i] background AV_green when !deduct
+        // @style BIT[i] background AV_red when deduct
+        // @text "BIT[${i}] 代表 num[${i-lb+1}~${i}]，這段會加入右端前綴和" at num.top offset(0,-20) when !deduct
+        // @text "BIT[${i}] 代表 num[${i-lb+1}~${i}]，這段最後會從答案扣除" at num.top offset(0,-20) when deduct
 
         ans += BIT[i];
 
         // @frame use binary_indexed_tree_pointer_view
-        // @style num[i-lb+1:i] background AV_green
+        // @style num[i-lb+1:i] background AV_green when !deduct
+        // @style num[i-lb+1:i] background AV_red when deduct
         // @style BIT[i] highlight
-        // @style BIT[i] background AV_green
-        // @text "目前總和是 ${ans}；下一個索引是 ${i - lb}" at num.top offset(0,-20)
+        // @style BIT[i] background AV_green when !deduct
+        // @style BIT[i] background AV_red when deduct
+        // @text "右端前綴和目前是 ${ans}" at num.top offset(0,-20) when !deduct
+        // @text "要扣除的左端前綴和目前是 ${ans}" at num.top offset(0,-20) when deduct
     }
     return ans;
 }
@@ -64,8 +70,8 @@ int main() {
     // @style num[L:R] background AV_green
     // @text "查詢第 ${L} 到第 ${R} 個數：計算 sum(${R}) - sum(${L - 1})" at num.top offset(0,-20)
 
-    int sumR = sum(R);
-    int sumL = sum(L - 1);
+    int sumR = sum(R, false);
+    int sumL = sum(L - 1, true);
     int ans = sumR - sumL;
 
     // @frame use binary_indexed_tree_view

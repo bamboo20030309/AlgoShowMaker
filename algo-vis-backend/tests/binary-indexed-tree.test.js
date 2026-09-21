@@ -128,10 +128,14 @@ test('Binary Indexed Tree build and query samples are separate two-object exampl
   assert.match(buildCode, /BIT\[i\] \+= num\[k\];/);
   assert.doesNotMatch(buildCode, /int sum\(int i\)/);
 
-  const sumBody = queryCode.match(/int sum\(int i\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  const sumBody = queryCode.match(/int sum\(int i, bool deduct\) \{([\s\S]*?)\n\}/)?.[1] || '';
   assert.match(sumBody, /for \(; i > 0; i -= i & -i\)/);
-  assert.match(sumBody, /@style num\[i-lb\+1:i\] background AV_green/);
+  assert.match(sumBody, /@style num\[i-lb\+1:i\] background AV_green when !deduct/);
+  assert.match(sumBody, /@style num\[i-lb\+1:i\] background AV_red when deduct/);
   assert.match(queryCode, /num\[\$\{i-lb\+1\}~\$\{i\}\]/);
+  assert.match(queryCode, /sum\(R, false\)/);
+  assert.match(queryCode, /sum\(L - 1, true\)/);
+  assert.doesNotMatch(queryCode, /下一個索引/);
   assert.doesNotMatch(queryCode, /void build\(int i\)/);
 });
 
