@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-alpha-standard-segment-tree
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：8ba0334cea3fea756f290b564290cb71c8a06c89、81a7237f5eb7f5abbba0e9cc5a253e4048e7d67c、15d2c91c2b1c9363c20656d2a7ee6d8a32e90f6c、cdf0e020f07de8b57800065b996910bbb3cbfacd、a7e859d15f7bbf79e5c6cdffff41daa222655c94、01a2d594c346639179f61a89fc4922ba2ac88702、7f55475475d932a5341fab50fddfa374afe9c0db、5efb734b7bef842eb8e764dc25d2645f70f85725、aeeee48dd49c8a6099535e807ce322ca9a46d291、3fab76fd8f68904a54dc462d951ebe25c5017800、98597b1466773a3d5de9f4c43083a5863c45e2e3、8ceb0774a98f863e901451265e2b11e166168bd7、6525d3a991abfc35e8de298c0955d0282565ca6d
-- 驗證時的 HEAD 與未提交修改：6525d3a991abfc35e8de298c0955d0282565ca6d；程式驗證後只有交付文件修改
+- 程式修正 commit：8ba0334cea3fea756f290b564290cb71c8a06c89、81a7237f5eb7f5abbba0e9cc5a253e4048e7d67c、15d2c91c2b1c9363c20656d2a7ee6d8a32e90f6c、cdf0e020f07de8b57800065b996910bbb3cbfacd、a7e859d15f7bbf79e5c6cdffff41daa222655c94、01a2d594c346639179f61a89fc4922ba2ac88702、7f55475475d932a5341fab50fddfa374afe9c0db、5efb734b7bef842eb8e764dc25d2645f70f85725、aeeee48dd49c8a6099535e807ce322ca9a46d291、3fab76fd8f68904a54dc462d951ebe25c5017800、98597b1466773a3d5de9f4c43083a5863c45e2e3、8ceb0774a98f863e901451265e2b11e166168bd7、6525d3a991abfc35e8de298c0955d0282565ca6d、4f1923fc86cc752de55ed1cb3e3644f06364f6ff
+- 驗證時的 HEAD 與未提交修改：4f1923fc86cc752de55ed1cb3e3644f06364f6ff；程式驗證後只有交付文件修改
 - 驗證日期：2026-09-22
 
 ## 根因與修改
@@ -35,6 +35,7 @@
 | 標準範例格式化 lazy/set | n=15 與 n=11 browser 專項 | lazy 顯示 `+...`，sets 顯示 `=...`；第 55 幀顯示 `21,=7` 且欄位仍存在 | 通過 |
 | 複合 tree 格二元加法來源 | 最小 heap browser 動畫專項 | 來源格靜態顯示 `5,=13`／`7,+3`；飛行文字只出現 `5`、`7`，父節點完成為 12 | 通過 |
 | segment 左右虛線 | heap segment SVG 與逐 tick 幾何專項 | 每個色塊有 left/right 兩條 `#6b7280`、1px、`3 3` 虛線；水平補間及 split 高度變化全程貼齊 | 通過 |
+| 舊 Segment_Tree modify/set 格式 | sample runtime 與實際 browser 融合格文字 | lazy 欄位顯示 `+...`，sets 欄位顯示 `=...`；原輸出仍為 12 | 通過 |
 
 ## 小驗證與重跑方式
 ### 新標準線段樹 parser、runtime 與實際 SVG
@@ -78,7 +79,7 @@
 - 執行目錄與必要環境設定：本 worktree `algo-vis-backend`；`PORT=3101`。
 - 完整指令或操作步驟：核對 3101 舊 PID 46680 後只停止該服務並從本 worktree 重啟；確認 `algorithm.html` 載入 `trace-205` 與 `gap-1`；向 `/trace/analyze` 提交包含 `render segment_tree with range(1,n), gap(10,24)` 的最小程式；再以 `ASM_TEST_BASE_URL=http://127.0.0.1:3101` 重跑三個直接相關專項測試檔。
 - 預期結果：HTTP 200；後端接受 range 與雙軸 gap；前端使用最新 cache key；專項測試全部通過。
-- 實際結果與 exit code（適用時）：gap 更新後 PID 9044；標籤排版更新後 PID 69684；字體更新後 PID 61468；指定操作範例更新後 PID 9956；標籤避讓更新後 PID 63888；回朔加法幀更新後 PID 59676；回朔 split after 更新後 PID 59292；複合欄位動畫修正後 PID 49992；format 更新後 PID 52864；二元加法欄位與 segment 邊界更新後 PID 23232；標準 query sum 範例更新後 PID 36992。最新 `algorithm.html` 載入 `trace-225`、`trace-207`、`directive-20`；3101 上的標準 n=15 parser/runtime 專項 1/1 pass；exit code 0。
+- 實際結果與 exit code（適用時）：gap 更新後 PID 9044；標籤排版更新後 PID 69684；字體更新後 PID 61468；指定操作範例更新後 PID 9956；標籤避讓更新後 PID 63888；回朔加法幀更新後 PID 59676；回朔 split after 更新後 PID 59292；複合欄位動畫修正後 PID 49992；format 更新後 PID 52864；二元加法欄位與 segment 邊界更新後 PID 23232；標準 query sum 範例更新後 PID 36992；舊 Segment_Tree format 更新後 PID 37904。最新 `algorithm.html` 載入 `trace-225`、`trace-207`、`directive-20`；3101 上 sample runtime 與實際 browser 專項 2/2 pass；exit code 0。
 - 證據位置：本機 3101 服務與終端摘要，未提交 server log。
 
 ## 驗證分級與選擇
@@ -87,7 +88,7 @@
 - 選擇依據：修改 renderer 選項解析、SVG 幾何、格內 segment 與 split 路徑。
 - 執行的測試檔／名稱篩選：`standard-segment-tree.test.js`、`standard-segment-tree.browser.test.js`、`renderer-gaps.browser.test.js`、`entrypoints.test.js`、`directive-assist.test.js`、`frame-renderer-options.integration.test.js`、`heap-composite-segments.test.js`、`segment-tree-samples.test.js`，以及 heap composite browser 的兩個直接相關案例。
 - 驗證環境與隔離服務：本分支 worktree、localhost:3198／3199 隔離服務、重啟後的 alpha localhost:3101、Playwright 無頭 Edge；未操作使用者分頁或投影片。
-- 驗證版本、完整指令、結果與證據：程式 commit 6525d3a991abfc35e8de298c0955d0282565ca6d；先前 3199 的 parser／runtime／入口／提示 8/8、標準線段樹 browser 3/3、binary addition browser 1/1、舊 segment tree samples 3/3、heap composite 直接相關 browser 1/1 通過。本次 query sum 調整後，alpha 3101 parser/runtime 4/4、32791 標準 browser 1/1、重啟後 3101 的 n=15 專項 1/1 通過。3101 現為 PID 36992。
+- 驗證版本、完整指令、結果與證據：程式 commit 4f1923fc86cc752de55ed1cb3e3644f06364f6ff；先前 3199 的 parser／runtime／入口／提示 8/8、標準線段樹 browser 3/3、binary addition browser 1/1、舊 segment tree samples 3/3、heap composite 直接相關 browser 1/1 通過。本次舊 Segment_Tree format 調整後，重啟的 alpha 3101 上 sample runtime 1/1、融合格 browser 1/1 通過，確認 lazy 為帶號字串、sets 為等號字串且輸出仍為 12。3101 現為 PID 37904。
 - 未執行的驗證及原因：依分級未執行完整 regression、全部 tests 或廣泛演算法動畫驗證。
 - 需要主代理做的 V3 驗證：整合後以 n=10 幾何 fixture 核對比例寬度與自然深度，再以指定 n=15、7 操作範例核對 modify／set／query segment、複合欄位及最後答案 12。
 
