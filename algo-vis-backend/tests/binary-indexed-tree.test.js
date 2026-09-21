@@ -68,8 +68,10 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
   );
   assert.match(code, /void build\(int i\)/);
   assert.match(code, /int k = i;/);
+  assert.match(buildBody, /for \(; i <= n; i \+= i & -i\)/);
   assert.match(code, /BIT\[i\] \+= num\[k\];/);
   assert.match(code, /int sum\(int i\)/);
+  assert.match(sumBody, /for \(; i > 0; i -= i & -i\)/);
   assert.match(code, /int lb = i & -i;/);
 
   const frames = findFrameDirectives(code);

@@ -37,18 +37,25 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
     const sourceValue = String(trace.frames[frameIndex].state[numId].data.items[sourceIndex].value);
     const markerMoveFrameIndex = trace.frames.findIndex(frame => (
       frame.source?.function === 'build'
-      && frame.events.some(event => event.expression === 'i += lb'
+      && frame.events.some(event => event.expression === 'i += i & -i'
         && Number(event.payload?.before?.value) === 1
         && Number(event.payload?.after?.value) === 2)
     ));
-    assert.ok(markerMoveFrameIndex > 0, 'sample must contain an i += lb marker move');
-    const overflowMoveFrameIndex = trace.frames.findIndex(frame => (
-      frame.source?.function === 'build'
-      && frame.events.some(event => event.expression === 'i += lb'
-        && Number(event.payload?.before?.value) === 8
-        && Number(event.payload?.after?.value) === 16)
+    assert.ok(markerMoveFrameIndex > 0, 'sample must contain an ordinary for-update marker move');
+    const terminalUpdate = trace.frames.flatMap(frame => frame.events || []).find(event => (
+      event.expression === 'i += i & -i'
+      && Number(event.payload?.before?.value) === 8
+      && Number(event.payload?.after?.value) === 16
     ));
-    assert.ok(overflowMoveFrameIndex > 0, 'sample must contain the terminal i: 8 -> 16 move');
+    assert.ok(terminalUpdate, 'sample must retain the terminal i: 8 -> 16 runtime update');
+    assert.equal(terminalUpdate.loopBoundary, true);
+    assert.equal(terminalUpdate.loopBoundarySuppressed, true);
+    assert.equal(terminalUpdate.enabled, false);
+    const terminalUpdateFrameIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'build'
+      && frame.events.includes(terminalUpdate)
+    ));
+    assert.ok(terminalUpdateFrameIndex > 0);
 
     const browser = await chromium.launch({
       headless: true,
@@ -188,36 +195,18 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       const markerPositions = new Set(markerMotion.map(point => (
         `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`
       )));
-      assert.ok(markerPositions.size > 2, 'i += lb visibly moves the i marker between BIT cells');
-      await page.evaluate(index => window.ASMTracePlayer.renderStable(index - 1), overflowMoveFrameIndex);
-      const overflowMotion = await page.evaluate(async ({ index, iId, bitId }) => {
-        const samples = [];
-        let settled = false;
-        const transition = window.ASMTracePlayer.render(index, { fromIndex: index - 1 })
-          .finally(() => { settled = true; });
-        for (let count = 0; count < 180 && !settled; count++) {
-          await new Promise(resolve => requestAnimationFrame(resolve));
-          const root = document.querySelector('#asm-trace-root');
-          const marker = [...root.querySelectorAll('.asm-trace-bound-object')]
-            .find(node => node.dataset.traceSourceVariableId === iId);
-          const bit = root.querySelector(`[data-trace-variable="${CSS.escape(bitId)}"]`);
-          const markerBox = marker?.getBoundingClientRect?.();
-          const bitBox = bit?.getBoundingClientRect?.();
-          if (markerBox && bitBox) samples.push({
-            x: markerBox.left + markerBox.width / 2,
-            bitLeft: bitBox.left,
-            bitRight: bitBox.right
-          });
-        }
-        await transition;
-        return samples;
-      }, { index: overflowMoveFrameIndex, iId, bitId });
-      assert.ok(overflowMotion.length > 2);
-      const overflowOutside = overflowMotion.filter(sample => (
-        sample.x < sample.bitLeft - 1 || sample.x > sample.bitRight + 1
-      ));
-      assert.ok(overflowOutside.length === 0,
-        `i: 8 -> 16 stays within BIT bounds; outside=${JSON.stringify(overflowOutside.slice(0, 5))}`);
+      assert.ok(markerPositions.size > 2, 'ordinary for updates visibly move the i marker between BIT cells');
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), terminalUpdateFrameIndex);
+      const terminalPresentation = await page.evaluate(iId => {
+        const marker = [...document.querySelectorAll('#asm-trace-root .asm-trace-bound-object')]
+          .find(node => node.dataset.traceSourceVariableId === iId);
+        return marker && {
+          target: marker.dataset.traceBindingTarget,
+          label: marker.querySelector('.trace-variable-marker-label-text')?.textContent
+        };
+      }, iId);
+      assert.ok(!terminalPresentation?.target?.endsWith('#16'),
+        'the suppressed terminal loop update does not present a move to virtual BIT[16]');
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();
