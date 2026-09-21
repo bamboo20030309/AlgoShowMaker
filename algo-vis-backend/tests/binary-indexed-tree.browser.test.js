@@ -20,11 +20,11 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       .find(([, item]) => item.name === name && (!functionName || item.functionName === functionName))?.[0];
     const numId = variable('num');
     const bitId = variable('BIT');
-    const positionId = variable('position', 'add');
-    assert.ok(numId && bitId && positionId);
+    const iId = variable('i', 'build');
+    assert.ok(numId && bitId && iId);
     const frameIndex = trace.frames.findLastIndex(frame => (
-      frame.source?.function === 'add'
-      && Number(frame.state?.[positionId]?.data?.value) === 8
+      frame.source?.function === 'build'
+      && Number(frame.state?.[iId]?.data?.value) === 8
       && frame.events.some(event => event.type === 'write'
         && event.targets?.some(target => target.variableId === bitId && target.resolvedIndex === 8))
     ));
@@ -41,10 +41,20 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       await page.goto(base + '/algorithm.html');
       await page.waitForFunction(() => window.ASMTracePlayer && window.asmApplyTraceDocument);
       await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(() => window.ASMTracePlayer.renderStable(0));
+      const initialNum = await page.evaluate(numId => {
+        const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
+        const cell = num?.querySelector('[data-trace-index="0"]');
+        return {
+          labels: [...(num?.querySelectorAll('[data-trace-index-label]') || [])]
+            .map(node => node.textContent.trim()),
+          fill: cell ? getComputedStyle(cell.querySelector(':scope > rect')).fill : ''
+        };
+      }, numId);
       await page.evaluate(index => window.ASMTracePlayer.renderStable(index - 1), frameIndex);
       await page.evaluate(index => window.ASMTracePlayer.render(index, { fromIndex: index - 1 }), frameIndex);
 
-      const presentation = await page.evaluate(({ numId, bitId, positionId }) => {
+      const presentation = await page.evaluate(({ numId, bitId, iId }) => {
         const root = document.querySelector('#asm-trace-root');
         const object = id => root.querySelector(`[data-trace-variable="${CSS.escape(id)}"]`);
         const num = object(numId);
@@ -65,7 +75,7 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         const labels = [...bit.querySelectorAll('[data-trace-index-label]')]
           .map(node => ({ index: Number(node.dataset.traceIndexLabel), text: node.textContent.trim() }));
         const marker = [...root.querySelectorAll('.asm-trace-bound-object')]
-          .find(node => node.dataset.traceSourceVariableId === positionId);
+          .find(node => node.dataset.traceSourceVariableId === iId);
         const highlight = [...root.querySelectorAll('[data-trace-attachment-kind="highlight"]')]
           .find(node => node.dataset.traceAttachedTo?.endsWith('#8')
             && getComputedStyle(node).display !== 'none');
@@ -80,9 +90,11 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
           },
           highlight: rect(highlight)
         };
-      }, { numId, bitId, positionId });
+      }, { numId, bitId, iId });
 
       assert.deepEqual([...new Set(presentation.dataObjects)].sort(), [bitId, numId].sort());
+      assert.deepEqual(initialNum.labels, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+      assert.equal(initialNum.fill, 'rgb(204, 204, 204)');
       assert.equal(presentation.cells.length, 10);
       assert.deepEqual(presentation.labels.map(label => label.text),
         ['0001', '0010', '0011', '0100', '0101', '0110', '0111', '1000', '1001', '1010']);
@@ -92,7 +104,7 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       assert.equal(presentation.cells.find(cell => cell.index === 8).value, '54');
       assert.ok(presentation.bitBounds.top > presentation.numBounds.bottom,
         'Binary Indexed Tree is placed below num');
-      assert.equal(presentation.marker?.label, 'position');
+      assert.equal(presentation.marker?.label, 'i');
       assert.ok(presentation.marker?.target?.endsWith('#8'));
       assert.ok(presentation.highlight?.width >= presentation.cells.find(cell => cell.index === 8).bounds.width
         && presentation.highlight.height > presentation.cells.find(cell => cell.index === 8).bounds.height,

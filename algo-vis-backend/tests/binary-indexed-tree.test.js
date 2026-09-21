@@ -46,24 +46,27 @@ test('directive expressions parse and evaluate C++ bitwise precedence', () => {
 
 test('Binary Indexed Tree sample only uses the two new-directive objects', () => {
   const code = fs.readFileSync(samplePath, 'utf8');
-  assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|frame_draw|start_draw|end_draw|_draw_|@keep/);
-  assert.match(code, /@object BIT(?:\[position\])? render binary indexed tree/);
+  assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|frame_draw|start_draw|end_draw|_draw_|@keep|long long/);
+  assert.match(code, /@object num with range\(0,n-1\), labels\(value,index\)/);
+  assert.match(code, /@object BIT(?:\[i\])? render binary indexed tree/);
+  assert.match(code, /@style num\[0\] background AV_grey/);
   assert.deepEqual(
     [...new Set(Array.from(code.matchAll(/@object\s+([A-Za-z_]\w*)/g), match => match[1]))].sort(),
     ['BIT', 'num']
   );
-  assert.ok(Array.from(code.matchAll(/@object[^\n]+labels\(([^)]*)\)/g))
-    .every(match => match[1].split(',').map(value => value.trim()).includes('binary-index-padded')));
-  assert.match(code, /int lowbit = position & -position;/);
-  assert.match(code, /int left = position - lowbit \+ 1;/);
+  assert.match(code, /void build\(int i, int x\)/);
+  assert.match(code, /int sum\(int i\)/);
+  assert.match(code, /int lb = i & -i;/);
+  assert.match(code, /int l = i - lb \+ 1;/);
 
   const frames = findFrameDirectives(code);
   assert.ok(frames.length > 0);
   assert.ok(frames.every(frame => frame.objects.length === 2));
   assert.ok(frames.every(frame => frame.objects.some(object => object.renderer === 'original-bit')));
-  assert.ok(frames.every(frame => frame.objects.every(object => (
-    object.rendererOptions.labels?.indexFormat === 'binary-padded'
-  ))));
+  assert.ok(frames.every(frame => frame.objects.find(object => object.primaryName === 'num')
+    ?.rendererOptions.labels?.indexFormat === 'decimal'));
+  assert.ok(frames.every(frame => frame.objects.find(object => object.primaryName === 'BIT')
+    ?.rendererOptions.labels?.indexFormat === 'binary-padded'));
 });
 
 test('Binary Indexed Tree renderer accepts its full name and legacy aliases', () => {
@@ -135,14 +138,15 @@ test('Binary Indexed Tree sample preserves point updates and range-sum output', 
   const trace = result.traceDocument;
   const byName = Object.fromEntries(Object.entries(trace.variables)
     .map(([id, variable]) => [variable.name, id]));
-  assert.ok(trace.frames.length > 20, 'update and prefix loops generate teaching frames');
+  assert.ok(trace.frames.length > 20, 'build and sum loops generate teaching frames');
   assert.ok(trace.frames.every(frame => frame.renderers?.[byName.BIT] === 'original-bit'));
   assert.ok(trace.frames.every(frame => frame.rendererOptions?.[byName.BIT]?.indexMode === 4));
-  assert.ok(trace.frames.every(frame => frame.rendererOptions?.[byName.num]?.indexMode === 4));
+  assert.ok(trace.frames.every(frame => frame.rendererOptions?.[byName.num]?.indexMode === 1));
+  assert.equal(trace.frames.at(-1).state[byName.num].data.items.length, 10);
   assert.deepEqual(trace.frames.at(-1).state[byName.BIT].data.items.slice(1).map(item => Number(item.value)),
     [5, 12, 2, 15, 9, 13, 11, 54, 8, 14]);
-  assert.ok(trace.frames.filter(frame => ['add', 'prefix_sum'].includes(frame.source?.function))
+  assert.ok(trace.frames.filter(frame => ['build', 'sum'].includes(frame.source?.function))
     .every(frame => frame.bindings.some(binding => (
-      binding.targetName === 'BIT' && binding.indexExpression === 'position'
+      binding.targetName === 'BIT' && binding.indexExpression === 'i'
     ))));
 });
