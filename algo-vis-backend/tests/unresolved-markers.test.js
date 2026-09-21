@@ -7,7 +7,7 @@ const vm = require('node:vm');
 // Exercise the renderer's binding adapter without adding a public test API.
 const source = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8')
   .replace('window.ASMTraceRenderers = {',
-    'window.ASMTraceRenderers = { renderFrameBindings, keepArrowObjectKey,')
+    'window.ASMTraceRenderers = { renderFrameBindings, keepArrowObjectKey, ensureLinearIndexPlacement,')
   .replace('if (objects.length) renderStudioObjects(root, document, frame, placements, elements, options, objects);',
     'root.objects = objects;');
 const context = vm.createContext({
@@ -2173,6 +2173,34 @@ test('a moving declaration continuation uses the standard cross-cell duration', 
   );
   assert.equal(stationarySlots[0].duration, 220);
   assert.equal(stationarySlots[0].declarationMarkerMotionDuration, 180);
+});
+
+test('a BIT virtual marker target follows BIT geometry instead of linear extrapolation', () => {
+  const placements = new Map([
+    ['BIT#1', { x: 0, y: 156, width: 40, height: 52 }],
+    ['BIT#2', { x: 0, y: 104, width: 80, height: 52 }],
+    ['BIT#4', { x: 0, y: 52, width: 160, height: 52 }],
+    ['BIT#8', { x: 0, y: 0, width: 320, height: 52 }],
+    ['BIT#9', { x: 320, y: 156, width: 40, height: 52 }],
+    ['BIT#10', { x: 320, y: 104, width: 80, height: 52 }]
+  ]);
+  const layout = {
+    getAttribute: name => ({
+      'data-layout': 'BIT', 'data-bit-rows': '3',
+      'data-row-height': '52', 'data-box-size': '40'
+    })[name] || null
+  };
+  const elements = new Map([...placements.keys()].map(key => [
+    key, { closest: selector => selector === '[data-layout]' ? layout : null }
+  ]));
+  const virtual = context.window.ASMTraceRenderers.ensureLinearIndexPlacement(
+    {}, 'BIT', 16, 11, placements, elements
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(virtual)),
+    { x: 0, y: -52, width: 640, height: 52 }
+  );
+  assert.equal(placements.get('BIT#16'), virtual);
 });
 
 test('compound scalar writes move their dependent marker but array compounds do not', () => {
