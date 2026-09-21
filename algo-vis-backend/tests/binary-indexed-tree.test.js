@@ -51,6 +51,8 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
   assert.doesNotMatch(code, /@object num[^\n]*\brange\(/);
   assert.match(code, /@object BIT(?:\[i\])? render binary indexed tree/);
   assert.match(code, /@style num\[0\] background AV_grey/);
+  assert.match(code, /num\.resize\(n \+ 1\)/);
+  assert.match(code, /for \(int i = 1; i <= n; i\+\+\) cin >> num\[i\];/);
   assert.match(code, /@place num at BIT\.top offset\(-40,-70\)/);
   assert.deepEqual(
     [...new Set(Array.from(code.matchAll(/@object\s+([A-Za-z_]\w*)/g), match => match[1]))].sort(),
@@ -148,7 +150,8 @@ test('Binary Indexed Tree sample preserves point updates and range-sum output', 
   assert.ok(trace.frames.every(frame => frame.renderers?.[byName.BIT] === 'original-bit'));
   assert.ok(trace.frames.every(frame => frame.rendererOptions?.[byName.BIT]?.indexMode === 4));
   assert.ok(trace.frames.every(frame => frame.rendererOptions?.[byName.num]?.indexMode === 1));
-  assert.equal(trace.frames.at(-1).state[byName.num].data.items.length, 10);
+  assert.equal(trace.frames.at(-1).state[byName.num].data.items.length, 11);
+  assert.equal(Number(trace.frames.at(-1).state[byName.num].data.items[0].value), 0);
   assert.deepEqual(trace.frames.at(-1).state[byName.BIT].data.items.slice(1).map(item => Number(item.value)),
     [5, 12, 2, 15, 9, 13, 11, 54, 8, 14]);
   assert.ok(trace.frames.filter(frame => ['build', 'sum'].includes(frame.source?.function))

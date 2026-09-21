@@ -48,6 +48,7 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         return {
           labels: [...(num?.querySelectorAll('[data-trace-index-label]') || [])]
             .map(node => node.textContent.trim()),
+          value: cell?.dataset.traceDataValue || '',
           fill: cell ? getComputedStyle(cell.querySelector(':scope > rect')).fill : ''
         };
       }, numId);
@@ -96,8 +97,9 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       }, { numId, bitId, iId });
 
       assert.deepEqual([...new Set(presentation.dataObjects)].sort(), [bitId, numId].sort());
-      assert.equal(presentation.numCellCount, 10, 'num displays the complete vector');
-      assert.deepEqual(initialNum.labels, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+      assert.equal(presentation.numCellCount, 11, 'num displays the leading zero and all input values');
+      assert.deepEqual(initialNum.labels, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+      assert.equal(initialNum.value, '0');
       assert.equal(initialNum.fill, 'rgb(204, 204, 204)');
       assert.equal(presentation.cells.length, 10);
       assert.deepEqual(presentation.labels.map(label => label.text),
