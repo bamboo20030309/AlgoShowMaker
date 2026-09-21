@@ -5,7 +5,7 @@
 
 - 文件語言：繁體中文
 - 適用介面：演算法編輯器、Trace Studio、演算法投影片編輯器與投影片播放介面
-- 最後核對日期：2026/09/18
+- 最後核對日期：2026/09/20
 
 > 本手冊介紹 `// @frame` 這套追蹤語法。它和直接呼叫 `AV.hpp` 的傳統 `av.draw(...)`
 > 繪圖 API 是兩套不同入口；使用追蹤語法時，不需要自行呼叫 `av.start_draw()`。
@@ -137,7 +137,7 @@ arr[i] = key;
 | `@exit` | 提早讓一或多個可見變數退場 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
 | `@text` | 加入說明文字與 TTS | 支援 | 支援 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@style` | 套用格子樣式 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 不支援 | 不支援 |
-| `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 僅 `showWidth` | 不支援 |
+| `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | `showWidth`、heap格內區段的`split` | 不支援 |
 | `@place` | 將已顯示物件綁到另一物件的錨點 | 不支援 | 必須指定 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@arrow` | 連接兩個視覺目標 | 支援 | 端點各自指定 | 端點各自支援 | 支援 | 不支援 | 專用樣式修飾詞 | 不支援 |
 | `@events` | 控制本幀全部或指定種類事件動畫 | 不支援 | 不支援 | 不支援 | 支援（幀擷取狀態） | 不支援 | 不支援 | 不支援 |
@@ -671,7 +671,7 @@ void quick_sort(vector<int>& arr, int low, int high) {
 
 ## `@style`：設定格子樣式
 
-播放時，background／focus 的填色及 highlight／point／mark 的顏色以 180ms 平滑過渡；value 與 index 填色使用相同時機與速度，位移補間不另外覆寫 style 的顏色。
+播放時，background／focus／segment 的填色及 highlight／point／mark 的顏色以 180ms 平滑過渡；value 與 index 填色使用相同時機與速度，位移補間不另外覆寫 style 的顏色。
 進入新幀時就以該幀最終狀態套用 style，不等待比較、賦值或交換動畫完成。
 框與提示的位置沿用格子的同一段位移／縮放動畫，不另外延遲追趕，閃爍節奏不重啟。
 自動播放等待最後的變色完成；Studio 手動拖曳維持即時更新。
@@ -692,6 +692,15 @@ void quick_sort(vector<int>& arr, int low, int high) {
 | `mark` | 在格子上顯示勾選標記 |
 | `background` | 直接設定格子背景色 |
 | `focus` | 保留指定片段正常顯示，將其他格子以指定顏色弱化 |
+
+長期狀態直接使用`background`；renderer會在每幀重新判斷條件。用於`fields(tree,lazy,sets)`的附加欄位時，背景套在相同索引的tree格內，不會建立獨立lazy／sets物件：
+
+```cpp
+// @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
+// @style sets[1:Tsize-1] background rgb(255,183,77) when value != 2147483647
+```
+
+需要依局部端點切開、分裂或顯示當次操作範圍時，使用獨立的`@segment tree[node][L:R]`指令。
 
 所有 `point` 與 `highlight` 共用同一套系統時間節奏；畫布更新、切換幀或產生縮圖時不會各自重新起跳。
 
@@ -767,7 +776,7 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 
 條件會對選取範圍內的每一格分別計算。
 
-style 還原為入幀套用：background／focus／highlight／point／mark 在進入新幀時依該幀最終 `value`、`index` 與變數狀態求值，不等待事件提交或整幀結束，也不再依中途顯示數值重新求值。已開啟交換動畫的格子填色是例外：交換開始前維持來源格子的舊色，實際交換起跑才啟動 180ms 變色，顏色跟隨移動中的格子；固定的 index 框也在相同時點啟動變色。關閉交換動畫不等待。其他 style 仍可能先於賦值反映新幀結果。數值與事件仍按原本 runtime order 播放；style 跟隨格子移動與縮放，value／index 背景使用同一份幀規則。`highlight`、`point` 等提示沿用全域閃爍／跳動節奏，不因換幀重啟。Studio 靜態預覽與三個播放介面採相同規則。
+style 還原為入幀套用：background／focus／highlight／point／mark／segment 在進入新幀時依該幀最終 `value`、`index` 與變數狀態求值，不等待事件提交或整幀結束，也不再依中途顯示數值重新求值。已開啟交換動畫的格子填色是例外：交換開始前維持來源格子的舊色，實際交換起跑才啟動 180ms 變色，顏色跟隨移動中的格子；固定的 index 框也在相同時點啟動變色。關閉交換動畫不等待。其他 style 仍可能先於賦值反映新幀結果。數值與事件仍按原本 runtime order 播放；style 跟隨格子移動與縮放，value／index 背景使用同一份幀規則。`highlight`、`point` 等提示沿用全域閃爍／跳動節奏，不因換幀重啟。Studio 靜態預覽與三個播放介面採相同規則。
 
 C++ 範圍迴圈（`ForRangeLoop`）標頭宣告的變數也能在迴圈內的指令中使用，例如：
 
@@ -786,7 +795,7 @@ for (auto& v : prime) {
 支援：
 
 - AlgoShowMaker 色名，例如 `AV_red`、`AV_green`、`AV_blue`、`AV_yellow`、
-  `AV_orange`、`AV_grey`、`AV_black`、`AV_white`。
+  `AV_orange`、`AV_magenta`、`AV_grey`、`AV_black`、`AV_white`。其中`AV_orange`為`rgba(255,183,77,0.65)`，`AV_magenta`為`rgba(231,144,255,0.65)`。
 - CSS 色名，例如 `red`、`orange`。
 - Hex，例如 `#ff0000`、`#ff000080`。
 - `rgb(...)`、`rgba(...)`、`hsl(...)`、`hsla(...)`。
@@ -815,7 +824,36 @@ for (auto& v : prime) {
 // @segment arr[low:high] with showWidth(true)
 ```
 
-`showWidth(true)` 顯示區段寬度資訊；`@segment` 的 `with` 目前只支援 `showWidth(true|false)`。
+`showWidth(true)` 顯示一般陣列區段的寬度資訊；heap格內區段另支援下節的`split(cursor[,after])`。
+
+### Heap 格子內部區段
+
+雙層索引把色塊畫在一個 heap 節點格內，與上面的普通陣列區間語法分開：
+
+```cpp
+// @frame tree render heap with range(1,Tsize-1)
+// @segment tree[now][L:R] color AV_green as active_range when L <= R
+```
+
+第一層 `tree[now]` 選擇節點，第二層 `[L:R]` 使用該節點自己的局部座標，左右端都包含。
+renderer依節點層級把格子切成 `2^k` 段；根節點涵蓋8個最小區段時合法座標為0～7，下一層為0～3。
+`L > R` 不顯示；負數及超過末端的範圍會裁切。多個色塊依來源順序疊放，後寫的在上層。
+`as` 在相鄰幀提供穩定身分，格子、端點與寬度改變時可配對轉場。
+格內segment屬於style顯示層：它跟隨所綁定格子的移動與顯示狀態，位於資料物件上方、前景箭頭下方，且不受事件動畫開關控制。
+
+遞迴線段樹若要保留已分裂但尚未處理的另一側，可從根節點描述完整查詢範圍，再指定目前遞迴游標：
+
+```cpp
+// 進入節點：顯示目前節點及祖先留下、尚待處理的右側前沿
+// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)
+
+// 完成節點：移除目前節點，只保留尚待處理的另一側
+// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now,after)
+```
+
+`split(cursor)`依根節點到cursor的路徑建立遞迴前沿；往左遞迴時，與查詢範圍相交的右子節點會繼續顯示，往右遞迴時已完成的左側不會重新出現。`split(cursor,after)`表示cursor代表的節點已完成。這可取代舊版手動維護`_draw_segment`陣列。
+
+`split`產生的格內segment以垂直方向轉場：新區段從格子頂端向下淡入，完成的區段也從頂端向下淡出。若教學只呈現向下遍歷，可在進入節點的幀使用`split(now)`，命中完整區間並更新答案後使用`split(now,after)`，遞迴返回後不要再建立幀；已完成的區段就不會在回溯時重新出現。這些轉場屬於style顯示層，即使該幀使用`@events animate off`仍會播放。
 
 ## `@arrow`：連接視覺物件
 
@@ -1059,6 +1097,20 @@ int displaySize = arr.size() - 1;
 ```
 
 設定矩陣或平面排列使用的欄數。參數可使用安全算術運算式。
+
+### `fields(...)`、`hide(...)` 與 `separator(...)`
+
+```cpp
+// @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+// @frame tree render heap with fields(tree,lazy,sets), separator(" / ")
+```
+
+`fields` 把多個陣列的同一索引合併到主要物件的一格中；每個陣列仍保留自己的變數身分、狀態與事件。
+`hide` 必須明確寫欄位和值，每幀重新判定；被隱藏的欄位不留下空位或多餘分隔符號。
+分隔符號預設為逗點，只有需要其他符號時才寫 `separator`。第一個field必須是`@frame`的主要物件。
+
+`pair`與`tuple`本身仍是一個元素，因此`vector<pair<...>>`及`vector<tuple<...>>`每個元素只畫一格。
+成員預設以同一separator連接且保留零；pair可用`hide(first=value,second=value)`隱藏指定成員。
 
 ### `labels(...)`
 
@@ -1428,6 +1480,12 @@ Studio 對受來源控制的事件標示 `@events` 原因並停用直接切換�
 | 呼叫函式 `call` | 呼叫片段塗灰，不移動畫布物件 | 關閉 |
 | 進入／離開函式 | 無 | 關閉 |
 
+複合賦值若來源與目的都能對應到可見格子，例如`sum += tree[now]`，會保留`sum`的舊值，將`tree[now]`格內的數字平移到`sum`的數字位置，抵達時提交新值並在同一個動畫更新中立即移除移動數字，不會停留在目的地。移動的是文字值，不包含來源格子的框線。全域純量在不同函式與遞迴幀之間沿用同一個runtime身分，因此只在第一次顯示時入場，不會因切換activation反覆淡入、淡出。含有副作用的目的索引（例如`arr[nextIndex()] += 2`）不會為了動畫重複求值；無法安全建立來源到目的動畫時會直接提交結果。
+
+二元加法賦值若兩側都是可見的純量或安全索引格，例如`total = a + b`或`tree[parent] = tree[left] + tree[right]`，會保留目的格舊值，將左右兩個來源的數字同步移向目的數字位置。兩個數字抵達時立即移除，目的格在同一個動畫更新中改成加總結果；來源格框線不會跟著移動。索引只接受不含函式呼叫、遞增或遞減的安全運算式，避免為了動畫重複執行副作用；其他運算式沿用一般賦值動畫。
+
+線段樹easy教學分成兩個可獨立RUN的範例。`algorithm_sample/Tree/Segment_Tree_easy_build.cpp`從初始化、逐筆輸入、父節點加總一路播放到根節點完成；`algorithm_sample/Tree/Segment_Tree_easy.cpp`先在無教學幀的初始化階段完成建樹，第一幀直接顯示完整樹，之後只播放查詢下降、segment分裂與sum累加。兩份範例各有自己的sample input。
+
 「呼叫函式」依實際執行順序，在呼叫發生時將該段程式碼塗灰，並保留灰色痕跡；
 不播放黃色提示、放大、位移或入退場動畫。可從事件設定或 Studio 呼叫按鈕關閉，
 關閉後不塗灰；保留原本預設關閉與已儲存的設定，Studio 右欄仍提供呼叫按鈕。
@@ -1488,7 +1546,7 @@ for (int i = 0; i < n; i++) {
 
 - 關閉時，該次更新不播放、不列入事件表與事件線、不高亮程式碼，也不改變指標的邏輯位置，效果等同這次事件不存在。
 - 開啟時，該次更新恢復為正式事件，按照原始執行順序播放，並以「迴圈邊界」顯示；若 `j+1` 等衍生指標超出陣列最後一格，仍會顯示在最後一格右側的外推位置。
-- 這是全域事件設定，與一般賦值事件開關及「自動固定」分開保存。
+- 這個開關與「自動固定」會保存到目前程式的 `@asm-view`；重新 RUN、儲存投影片或重新開啟後仍沿用該檔案的選擇。事件間隔與一般賦值等事件偏好仍使用帳號設定。
 
 ### 自動固定
 

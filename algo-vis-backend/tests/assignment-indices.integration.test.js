@@ -58,6 +58,76 @@ int main() {
   assert.equal(Number(frame.state[updates[1].targets[0].variableId].data.value), 1);
 });
 
+test('compound += captures its target values and visible source cell', async () => {
+  const { trace, window } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+vector<int> tree = {0, 27};
+int sum = 0;
+int main() {
+ int now = 1;
+ // @frame tree,sum
+ sum += tree[now];
+ // @frame tree,sum
+}`);
+  const frame = trace.frames.at(-1);
+  const event = frame.events.find(item => item.type === 'write' && item.compound === true);
+  const tree = Object.keys(trace.variables).find(id => trace.variables[id].name === 'tree');
+  const sum = Object.keys(trace.variables).find(id => trace.variables[id].name === 'sum');
+  assert.ok(event);
+  assert.equal(event.update, undefined);
+  assert.equal(event.payload.before.value, 0);
+  assert.equal(event.payload.after.value, 27);
+  assert.equal(Object.hasOwn(event.payload, 'source'), false,
+    'the renderer reads the source cell text without evaluating the C++ expression twice');
+  assert.equal(event.targets.find(target => target.role === 'target').variableId, sum);
+  assert.equal(event.targets.find(target => target.role === 'source').variableId, tree);
+  assert.equal(event.targets.find(target => target.role === 'source').resolvedIndex, 1);
+  const replay = window.ASMTraceFrameTween.createForwardReplayPlan(trace, frame, [], 1);
+  const track = replay.valueTracks.find(item => item.key.endsWith(`${sum}#0`));
+  assert.equal(track.initial.value, 0);
+  assert.equal(track.steps.at(-1).after.value, 27);
+});
+
+test('binary addition assignment captures both visible sources without reevaluating them', async () => {
+  const { trace, window } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+vector<int> tree = {0, 3, 4, 0};
+int main() {
+ int left = 1, right = 2, parent = 3;
+ int a = 5, b = 6, total = 0;
+ // @frame tree,a,b,total
+ total = a + b;
+ tree[parent] = tree[left] + tree[right];
+ // @frame tree,a,b,total
+}`);
+  const frame = trace.frames.at(-1);
+  const tree = Object.keys(trace.variables).find(id => trace.variables[id].name === 'tree');
+  const variableByName = name => Object.keys(trace.variables)
+    .find(id => trace.variables[id].name === name);
+  const event = frame.events.find(item => item.type === 'assign'
+    && item.targets?.some(target => target.variableId === tree && target.role === 'target'));
+  assert.ok(event);
+  assert.equal(event.binaryOperation, '+');
+  assert.equal(event.payload.before.value, 0);
+  assert.equal(event.payload.after.value, 7);
+  assert.equal(Object.hasOwn(event.payload, 'source'), false);
+  assert.deepEqual(Array.from(event.targets, target => [target.role, target.resolvedIndex]), [
+    ['target', 3], ['source-left', 1], ['source-right', 2]
+  ]);
+  const replay = window.ASMTraceFrameTween.createForwardReplayPlan(trace, frame, [], 1);
+  const track = replay.valueTracks.find(item => item.key.endsWith(`${tree}#3`));
+  assert.equal(track.initial.value, 0);
+  assert.equal(track.steps.at(-1).after.value, 7);
+  const scalarEvent = frame.events.find(item => item.type === 'assign'
+    && item.targets?.some(target => target.variableId === variableByName('total')));
+  assert.equal(scalarEvent.binaryOperation, '+');
+  assert.deepEqual(Array.from(scalarEvent.targets, target => [target.role, target.variableId]), [
+    ['target', variableByName('total')],
+    ['source-left', variableByName('a')],
+    ['source-right', variableByName('b')]
+  ]);
+});
+
 test('capturing initializer metadata does not evaluate an index function again', async () => {
   const { trace } = await compile(`#include <bits/stdc++.h>
 using namespace std;
@@ -74,4 +144,26 @@ int main() {
   const key = Object.keys(trace.variables).find(id => trace.variables[id].name === 'key');
   const initializer = frame.events.find(event => event.type === 'assign' && event.targets[0]?.variableId === key);
   assert.equal(initializer.targets[1].resolvedIndex, undefined);
+});
+
+test('compound assignment does not reevaluate a side-effecting target index', async () => {
+  const { trace } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int calls = 0;
+int nextIndex() { calls++; return 0; }
+int main() {
+ vector<int> arr = {3, 1};
+ // @frame arr,calls
+ arr[nextIndex()] += 2;
+ // @frame arr,calls
+}`);
+  const frame = trace.frames.at(-1);
+  const calls = Object.keys(trace.variables).find(id => trace.variables[id].name === 'calls');
+  const arr = Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr');
+  assert.equal(Number(frame.state[calls].data.value), 1);
+  assert.equal(Number(frame.state[arr].data.items[0].value), 5);
+  const write = frame.events.find(event => event.type === 'write'
+    && event.targets?.some(target => target.variableId === arr));
+  assert.equal(write.compound, undefined,
+    'unsafe target expressions preserve the single-evaluation write path');
 });

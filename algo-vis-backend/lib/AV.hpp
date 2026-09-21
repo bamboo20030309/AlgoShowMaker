@@ -24,6 +24,7 @@ const string AV_blue       = "AV_blue";
 const string AV_red        = "AV_red";
 const string AV_yellow     = "AV_yellow";
 const string AV_orange     = "AV_orange";
+const string AV_magenta    = "AV_magenta";
 
 const string AV_node_green = "AV_node_green";
 const string AV_node_red   = "AV_node_red";
@@ -1065,7 +1066,8 @@ public:
             {"AV_blue",       "rgba(144, 202, 249, 0.6)"},
             {"AV_red",        "rgba(239, 154, 154, 0.6)"},
             {"AV_yellow",     "rgba(252, 255, 64, 0.46)"},
-            {"AV_orange",     "orange"},
+            {"AV_orange",     "rgba(255, 183, 77, 0.65)"},
+            {"AV_magenta",    "rgba(231, 144, 255, 0.65)"},
             {"AV_node_green", "#e8f5e9"},
             {"AV_node_red",   "#ef9a9a"},
             {"AV_grey",       "#cccccc"},

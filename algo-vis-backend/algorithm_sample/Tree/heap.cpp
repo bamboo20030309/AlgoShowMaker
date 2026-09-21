@@ -1,248 +1,133 @@
-//Max Heap Sample
+// Max Heap Sample
 #include <bits/stdc++.h>
-#include "AV.hpp"
 using namespace std;
-AV av;
+
+// heap[0] 不使用，讓父子索引關係保持簡單：
+// parent = i / 2、left = i * 2、right = i * 2 + 1。
 vector<int> heap = {0};
-//draw{
-string _draw_up_color = "rgba(32, 140, 255, 0.44)", _draw_down_color = "rgba(123, 209, 255, 0.44)";
-//}
-void heap_push (int n) {
-    int now = heap.size();
-    heap.push_back(n);
-    //draw{
-    vector<int> _draw_focus;
-    for(int i=now;i>0;i>>=1) _draw_focus.push_back(i);
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now}}, {{"background","rgba(47, 255, 82, 0.44)"},{now}} }, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now}}, {{"background","rgba(47, 255, 82, 0.44)"},{now}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"{現在要} "},{"新增: "+to_string(n),"rgba(47, 255, 82, 0.44)"},{" {進入 heap}\n{第一步驟}: 先將他 push 到陣列的最後"}}, Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    while(now > 1){
-        if(heap[now>>1] >= heap[now]) {
-            //draw{
-            av.start_frame_draw();
-            av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background","rgba(255, 82, 82, 0.44)"},{now>>1}} }, {0}, "normal", 0, 1);
-            av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background","rgba(255, 82, 82, 0.44)"},{now>>1}} }, {0}, "heap" , 10, 1);
-            av.colored_text( {{"上層比下層大 "},{"不用交換","rgba(255, 82, 82, 0.44)"}}, Pos("num","top",0,-20));
-            av.camera(Pos("num", "bottom", 0, 60), 1.3);
-            av.end_frame_draw();
-            //}
+
+void heap_push(int value) {
+    heap.push_back(value);
+    int heapSize = heap.size() - 1;
+    int now = heapSize;
+
+    // @frame heap[now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+    // @style heap[now] highlight
+    // @text "先把 ${value} 加到 heap 的最後一格" at heap.bottom
+
+    while (now > 1) {
+        int parent = now / 2;
+
+        if (heap[parent] >= heap[now]) {
+            // @frame heap[parent,now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+            // @style heap[parent,now] highlight
+            // @text "父節點 ${heap[parent]} 不小於子節點 ${heap[now]}，停止向上調整" at heap.bottom
             break;
-        } else {
-            //draw{
-            av.start_frame_draw();
-            av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_up_color},{now>>1}}, {{"background",_draw_down_color},{now}} }, {0}, "normal", 0, 1);
-            av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_up_color},{now>>1}}, {{"background",_draw_down_color},{now}} }, {0}, "heap" , 10, 1);
-            av.colored_text( {{"上層",_draw_up_color},{" 比 "},{"下層",_draw_down_color},{" 小的時候"}}, Pos("num","top",0,-20));
-            av.camera(Pos("num", "bottom", 0, 60), 1.3);
-            av.end_frame_draw();
-            //}
-            swap(heap[now>>1],heap[now]); 
-            //draw{
-            av.start_frame_draw();
-            av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_down_color},{now>>1}}, {{"background",_draw_up_color},{now}} }, {0}, "normal", 0, 1);
-            av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now>>1,now}}, {{"focus"},_draw_focus}, {{"background",_draw_down_color},{now>>1}}, {{"background",_draw_up_color},{now}} }, {0}, "heap" , 10, 1);
-            av.colored_text( {{"上層",_draw_down_color},{" 和 "},{"下層",_draw_up_color},{" 就上下交換"}}, Pos("num","top",0,-20));
-            av.camera(Pos("num", "bottom", 0, 60), 1.3);
-            av.end_frame_draw();
-            //}
-            now>>=1;
         }
+
+        // @frame heap[parent,now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+        // @style heap[parent,now] highlight
+        // @text "子節點 ${heap[now]} 較大，與父節點 ${heap[parent]} 交換" at heap.bottom
+
+        swap(heap[parent], heap[now]);
+
+        // @frame heap[parent,now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+        // @style heap[parent,now] highlight
+        // @text "較大的值已上移，繼續檢查新的父節點" at heap.bottom
+
+        now = parent;
     }
 }
 
-int heap_top(){
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1}}, {{"background","rgba(47, 255, 82, 0.44)"},{1}} }, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1}}, {{"background","rgba(47, 255, 82, 0.44)"},{1}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"查詢 ","rgba(47, 255, 82, 0.44)"},{" heap中最大元素: "},{to_string(heap[1]),"rgba(47, 255, 82, 0.44)"} }, Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    if(heap.size()>1)return heap[1];
-    return 0;
+int heap_top() {
+    int heapSize = heap.size() - 1;
+    if (heapSize == 0) return 0;
+
+    // @frame heap[1] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @style heap[1] highlight
+    // @text "最大值 ${heap[1]} 位於根節點" at heap.bottom
+
+    return heap[1];
 }
 
 void heap_pop() {
-    int Size = heap.size()-1;
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background","rgba(255, 82, 82, 0.44)"},{Size}} }, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background","rgba(255, 82, 82, 0.44)"},{Size}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"刪除 ","rgba(255, 82, 82, 0.44)"},{" heap中最大元素: "},{to_string(heap[1]),"rgba(255, 82, 82, 0.44)"} }, Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_up_color},{1}}, {{"background",_draw_down_color},{Size}} }, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_up_color},{1}}, {{"background",_draw_down_color},{Size}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"先把 "},{"最前面",_draw_up_color},{" 和 "},{"最後面",_draw_down_color},{" 交換"}}, Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    swap(heap[1],heap[Size]);
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_down_color},{1}}, {{"background",_draw_up_color},{Size}} }, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{1,Size}}, {{"focus"},{1,Size}}, {{"background",_draw_down_color},{1}}, {{"background",_draw_up_color},{Size}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"{先把} "},{"最前面",_draw_down_color},{" 和 "},{"最後面",_draw_up_color},{" 交換"}}, Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    heap.pop_back(); Size--;
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, { {{"focus"},{1}} }, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, { {{"focus"},{1}} }, {0}, "heap",  10, 1);
-    av.colored_text( {{"{接著}刪除掉最後面的格子"}}, Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    int now=1;
-    while (now*2+1 <= Size) {
-        //draw{
-        av.start_frame_draw();
-        av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "normal", 0, 1);
-        av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "heap",  10, 1);
-        av.colored_text( {{"看看 "},{"下層的兩個格子",_draw_down_color},{"有沒有比 "},{"上層",_draw_up_color},{" 大"}}, Pos("num","top",0,-20));
-        av.camera(Pos("num", "bottom", 0, 60), 1.3);
-        av.end_frame_draw();
-        //}
-        int Max = max(heap[now<<1], heap[(now<<1)+1]);
-        if (heap[now] < Max) {
-            if(heap[now<<1] > heap[(now<<1)+1]) {
-                //draw{
-                av.start_frame_draw();
-                av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "normal", 0, 1);
-                av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"大的那個",_draw_down_color},{" 跟 "},{"上層",_draw_up_color},{" 交換"}}, Pos("num","top",0,-20));
-                av.camera(Pos("num", "bottom", 0, 60), 1.3);
-                av.end_frame_draw();
-                //}
-                swap(heap[now<<1], heap[now]);
-                //draw{
-                av.start_frame_draw();
-                av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "normal", 0, 1);
-                av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"{大的那個}",_draw_up_color},{" {跟} "},{"{上層}",_draw_down_color},{" {交換}"}}, Pos("num","top",0,-20));
-                av.camera(Pos("num", "bottom", 0, 60), 1.3);
-                av.end_frame_draw();
-                //}
-                now = (now<<1);
-            } else {
-                //draw{
-                av.start_frame_draw();
-                av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{(now<<1)+1}} }, {0}, "normal", 0, 1);
-                av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{(now<<1)+1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"大的那個",_draw_down_color},{" 跟 "},{"上層",_draw_up_color},{"交換"}}, Pos("num","top",0,-20));
-                av.camera(Pos("num", "bottom", 0, 60), 1.3);
-                av.end_frame_draw();
-                //}
-                swap(heap[(now<<1)+1], heap[now]);
-                //draw{
-                av.start_frame_draw();
-                av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{(now<<1)+1}} }, {0}, "normal", 0, 1);
-                av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{(now<<1)+1}} }, {0}, "heap",  10, 1);
-                av.colored_text( {{"{有的話} "},{"{大的那個}",_draw_up_color},{" {跟} "},{"{上層}",_draw_down_color},{" {交換}"}}, Pos("num","top",0,-20));
-                av.camera(Pos("num", "bottom", 0, 60), 1.3);
-                av.end_frame_draw();
-                //}
-                now = (now<<1)+1;
-            }
-        } else {
-            //draw{
-            av.start_frame_draw();
-            av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1,(now<<1)+1}} }, {0}, "normal", 0, 1);
-            av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1,(now<<1)+1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{沒有的話}就不用交換"}}, Pos("num","top",0,-20));
-            av.camera(Pos("num", "bottom", 0, 60), 1.3);
-            av.end_frame_draw();
-            //}
+    int heapSize = heap.size() - 1;
+    if (heapSize == 0) return;
+
+    // @frame heap[1,heapSize] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @style heap[1,heapSize] highlight
+    // @text "先把根節點與最後一格交換" at heap.bottom
+
+    swap(heap[1], heap[heapSize]);
+
+    // @frame heap[1,heapSize] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @style heap[1,heapSize] highlight
+    // @text "移除已經換到最後一格的最大值 ${heap[heapSize]}" at heap.bottom
+
+    heap.pop_back();
+    heapSize--;
+
+    // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @text "從根節點開始向下維護最大堆積" at heap.bottom when heapSize > 0
+
+    int now = 1;
+    while (now <= heapSize) {
+        int left = now * 2;
+        int right = now * 2 + 1;
+
+        if (left > heapSize) {
+            // @frame heap[now] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+            // @style heap[now] highlight
+            // @text "節點 ${now} 已經沒有子節點，向下調整完成" at heap.bottom
             break;
         }
-    }
-    if (Size == 2) {
-        //draw{
-        av.start_frame_draw();
-        av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "normal", 0, 1);
-        av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1,(now<<1)+1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1,(now<<1)+1}} }, {0}, "heap",  10, 1);
-        av.colored_text( {{"看看 "},{"下層",_draw_down_color},{" 有沒有比 "},{"上層",_draw_up_color},{" 大"}}, Pos("num","top",0,-20));
-        av.camera(Pos("num", "bottom", 0, 60), 1.3);
-        av.end_frame_draw();
-        //}
-        if(heap[now] < heap[now<<1]) {
-            //draw{
-            av.start_frame_draw();
-            av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "normal", 0, 1);
-            av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_up_color},{now}}, {{"background",_draw_down_color},{now<<1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{因為只剩一個就直接} "},{"下層",_draw_up_color},{" 跟 "},{"上層",_draw_down_color},{" 交換"}}, Pos("num","top",0,-20));
-            av.camera(Pos("num", "bottom", 0, 60), 1.3);
-            av.end_frame_draw();
-            //}
-            swap(heap[now<<1], heap[now]);
-            //draw{
-            av.start_frame_draw();
-            av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "normal", 0, 1);
-            av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now,now<<1}}, {{"focus"},{now,now<<1,(now<<1)+1}}, {{"background",_draw_down_color},{now}}, {{"background",_draw_up_color},{now<<1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{因為只剩一個就直接} "},{"{下層}",_draw_down_color},{" {跟} "},{"{上層}",_draw_up_color},{" {交換}"}}, Pos("num","top",0,-20));
-            av.camera(Pos("num", "bottom", 0, 60), 1.3);
-            av.end_frame_draw();
-            //}
-            now = (now<<1);
-        } else {
-            //draw{
-            av.start_frame_draw();
-            av.frame_draw("num" , Pos(0,0),   heap, { {{"highlight"},{now<<1}}, {{"focus"},{now}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1}} }, {0}, "normal", 0, 1);
-            av.frame_draw("heap", Pos(0,150), heap, { {{"highlight"},{now<<1}}, {{"focus"},{now}}, {{"background","rgba(255, 82, 82, 0.44)"},{now<<1}} }, {0}, "heap",  10, 1);
-            av.colored_text( {{"{沒有的話}就不用交換"}}, Pos("num","top",0,-20));
-            av.camera(Pos("num", "bottom", 0, 60), 1.3);
-            av.end_frame_draw();
-            //}
+
+        int largest = now;
+        if (heap[left] > heap[largest]) largest = left;
+        if (right <= heapSize && heap[right] > heap[largest]) largest = right;
+
+        if (largest == now) {
+            // @frame heap[now,left,right] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+            // @style heap[now,left,right] highlight
+            // @text "父節點 ${heap[now]} 已不小於現有子節點，停止向下調整" at heap.bottom
+            break;
         }
+
+        // @frame heap[now,largest] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+        // @style heap[now,largest] highlight
+        // @text "將較大的子節點 ${heap[largest]} 與父節點 ${heap[now]} 交換" at heap.bottom
+
+        swap(heap[now], heap[largest]);
+
+        // @frame heap[now,largest] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+        // @style heap[now,largest] highlight
+        // @text "較小的值已下沉，繼續檢查它的新位置" at heap.bottom
+
+        now = largest;
     }
 }
 
 int main() {
-    //draw{
-    av.start_draw();
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, {}, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, {}, {0}, "heap",  10, 1);
-    av.text("這是堆積(heap){的演算法範例}", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    int n; cin>>n;
-    vector<int> Input(n);
-    for(auto&v:Input)cin>>v;
-    for (auto&v:Input) {
-        heap_push(v);
+    int n;
+    cin >> n;
+    vector<int> input(n);
+    for (int& value : input) cin >> value;
+
+    for (int value : input) heap_push(value);
+
+    int builtSize = heap.size() - 1;
+
+    // @frame heap render heap with range(1,builtSize), labels(value,index) at canvas.top offset(0,80)
+    // @text "所有元素都已加入，最大堆積建立完成" at heap.bottom
+    // @keep heap as "built_heap"
+
+    // @frame heap render heap with range(1,builtSize), labels(value,index) at keep.bottom offset(0,40)
+    // @text "接著反覆查詢並刪除最大值" at heap.bottom
+
+    while (heap.size() > 1) {
+        cout << heap_top() << '\n';
+        heap_pop();
     }
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, {}, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, {}, {0}, "heap",  10, 1);
-    av.text("來看看查詢和刪除", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    av.stop();
-    //}
-    while(heap.size()>1) {
-        cout<< heap_top() <<endl, heap_pop();
-    }
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),   heap, {}, {0}, "normal", 0, 1);
-    av.frame_draw("heap", Pos(0,150), heap, {}, {0}, "heap",  10, 1);
-    av.text("到這邊就完成啦", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    av.end_draw();
-    //}
+
     return 0;
 }

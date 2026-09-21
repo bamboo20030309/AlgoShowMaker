@@ -14,7 +14,8 @@
     { id: 'frame', label: '@frame', effect: '擷取此刻的動畫幀並選擇要顯示的變數', code: '// @frame arr', examples: [
       '// @frame arr',
       '// @frame arr[i,j],key\n// @style arr[i] highlight',
-      '// @frame arr[i,j],key render heap with range(1,n) at canvas.top offset(0,80)\n// @style arr[i] highlight AV_red\n// @text "正在檢查第 ${i} 格" at arr.bottom'
+      '// @frame arr[i,j],key render heap with range(1,n) at canvas.top offset(0,80)\n// @style arr[i] highlight AV_red\n// @text "正在檢查第 ${i} 格" at arr.bottom',
+      '// @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)'
     ] },
     { id: 'preset', label: '@preset', effect: '定義可重用的物件、位置與樣式；每次 @frame use 時重新計算變數', code: '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset', examples: [
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset\n// @frame use sieve_view',
@@ -50,9 +51,11 @@
       '// @text "第 ${i} 格" at arr.bottom when i >= 0',
       '// @text "目前檢查第 ${i} 格" at arr.bottom offset(0,20) when i >= 0'
     ] },
-    { id: 'segment', label: '@segment', effect: '在陣列上標示連續區間', code: '// @segment arr[low:high]', examples: [
+    { id: 'segment', label: '@segment', effect: '標示一般陣列區間或 heap 格子內部區段', code: '// @segment arr[low:high]', examples: [
       '// @segment arr[low:high]',
       '// @segment arr[low:high] when low <= high',
+      '// @segment tree[now][L:R] color AV_green as active_range when L <= R',
+      '// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)',
       '// @frame arr[i]\n// @segment arr[low:high]\n// @text "處理目前區間" at arr.bottom'
     ] },
     { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件', code: '// @place pivot at arr.right offset(16,0)', examples: [

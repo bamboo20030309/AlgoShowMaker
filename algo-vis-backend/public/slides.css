@@ -3127,6 +3127,33 @@ body:not(.asm-edit-mode) .asm-slide-frame-content {
   pointer-events: none;
 }
 
+.asm-selection-overlay-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 100000;
+  overflow: visible;
+  pointer-events: none;
+}
+
+body:not(.asm-edit-mode) .asm-selection-overlay-layer,
+.reveal.overview .asm-selection-overlay-layer {
+  display: none;
+}
+
+.asm-marquee-selection-box,
+.asm-structure-cell-selection-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid rgba(96, 165, 250, 0.92);
+  background: rgba(147, 197, 253, 0.22);
+  box-shadow: 0 0 0 1px rgba(239, 246, 255, 0.72);
+  pointer-events: none;
+}
+
+.asm-structure-cell-selection-box {
+  background: rgba(147, 197, 253, 0.16);
+}
+
 .fabric-fragment-proxy {
   position: absolute;
   left: 0;
@@ -3250,9 +3277,7 @@ body.asm-edit-mode .latex-widget.is-selected::after {
 }
 
 .structure-widget [data-structure-item-index].is-structure-cell-selected > rect:first-of-type {
-  stroke: #1d8f83 !important;
-  stroke-width: 2px !important;
-  vector-effect: non-scaling-stroke;
+  stroke: transparent !important;
 }
 
 .structure-inline-value-input {
@@ -3604,6 +3629,7 @@ body:not(.asm-edit-mode) > .tts-transport[data-expanded="true"] {
 }
 
 .structure-context-menu.structure-cell-style-toolbar { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.structure-context-menu.structure-cell-style-toolbar[hidden] { display: none; }
 .structure-cell-style-toolbar button { display: flex; align-items: center; justify-content: center; width: 30px; height: 34px; padding: 3px; }
 .structure-cell-style-toolbar button[aria-pressed="true"] { background: #3b626c; outline: 1px solid #75c7d6; }
 .structure-cell-style-toolbar input { width: 90px; min-width: 0; }

@@ -9,6 +9,7 @@
   let runtimeVisibilityConfirmed = false;
   let activePlaybackPlan = null;
   let lastPlaybackPlan = null;
+  let viewportRebasePendingAfterPlayback = false;
 
   function frameCount() {
     return document?.frames?.length || 0;
@@ -44,10 +45,19 @@
 
   function rebaseCurrentFrame(options = {}) {
     if (!document?.frames?.length) return Promise.resolve(false);
+    if (options.confirmVisible) runtimeVisibilityConfirmed = true;
+    // The runtime iframe can report a delayed ResizeObserver update just after
+    // it becomes visible. Re-rendering here would cancel a frame tween that
+    // the presenter has already started, so defer the geometry rebase until
+    // that tween has settled.
+    if (activePlaybackPlan) {
+      viewportRebasePendingAfterPlayback = true;
+      return Promise.resolve(true);
+    }
     const canvas = window.document.getElementById('arraySvg');
     const rect = canvas?.getBoundingClientRect?.();
     if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) return Promise.resolve(false);
-    if (options.confirmVisible) runtimeVisibilityConfirmed = true;
+    viewportRebasePendingAfterPlayback = false;
     window.ASMTraceFrameTween?.cancel?.();
     const frame = document.frames[currentFrame];
     const transition = window.ASMTraceRenderers.renderFrame(document, frame, null, {
@@ -92,8 +102,13 @@
     const next = Math.max(0, Math.min(frameCount() - 1, index));
     const requestedFrom = Number.isInteger(options.fromIndex) ? options.fromIndex : currentFrame;
     const fromIndex = Math.max(0, Math.min(frameCount() - 1, requestedFrom));
-    const direction = Math.sign(next - fromIndex);
-    const previous = (options.forceTransition || next !== fromIndex) ? document.frames[fromIndex] : null;
+    // Navigation performed while the page is hidden abandons the paused
+    // transition. Returning to the page must show the latest requested frame,
+    // not finish an animation the user could not see.
+    const stable = options.stable === true || window.document.hidden === true;
+    const direction = stable ? 0 : Math.sign(next - fromIndex);
+    const previous = !stable && (options.forceTransition || next !== fromIndex)
+      ? document.frames[fromIndex] : null;
     currentFrame = next;
     const frame = document.frames[currentFrame];
     const codeTransitionDelayMs = Math.max(0, Number(
@@ -102,8 +117,10 @@
     const cameraTransitionDurationMs = Math.max(0, Number(
       window.ASMTraceCamera?.transitionDuration?.(document, frame, previous || null)
     ) || 0);
+    if (stable) window.ASMTraceFrameTween?.cancel?.();
     const transition = window.ASMTraceRenderers.renderFrame(document, frame, previous || null, {
       ...options,
+      ...(stable ? { animateEvents: false, animatePositions: false } : {}),
       fromIndex,
       toIndex: currentFrame,
       direction,
@@ -147,25 +164,41 @@
       window.dispatchEvent(new CustomEvent('asm:trace-playback-plan-complete', {
         detail: { document, frame, plan: playbackPlan }
       }));
+      if (viewportRebasePendingAfterPlayback) scheduleViewportCameraRefresh();
     });
     trackedTransition.playbackPlan = playbackPlan;
     return trackedTransition;
   }
 
+  function renderStable(index, options = {}) {
+    return render(index, { ...options, stable: true });
+  }
+
   function nextKey(direction) {
     const next = currentFrame + direction;
-    if (next >= 0 && next < frameCount()) return render(next);
-    return Promise.resolve();
+    if (next < 0 || next >= frameCount()) return Promise.resolve();
+    if (direction > 0 && activePlaybackPlan) {
+      const settledFrame = currentFrame;
+      // A forward input during playback first commits the current destination
+      // frame without animation, then starts the following frame from that
+      // stable geometry. This keeps one input equal to one forward step while
+      // never waiting for an obsolete animation to finish.
+      renderStable(settledFrame, { interruptedPlayback: true });
+      return render(settledFrame + 1, { fromIndex: settledFrame });
+    }
+    return render(next);
   }
 
   function installCodeScript() {
     window.CodeScript = {
       next() { return nextKey(1); },
-      prev() { return nextKey(-1); },
+      next_stable() { return renderStable(currentFrame + 1); },
+      prev() { return renderStable(currentFrame - 1); },
       next_key_frame() { return nextKey(1); },
-      prev_key_frame() { return nextKey(-1); },
-      reset() { return render(0); },
-      goto(index) { return render(index === -1 ? frameCount() - 1 : index); },
+      next_key_frame_stable() { return renderStable(currentFrame + 1); },
+      prev_key_frame() { return renderStable(currentFrame - 1); },
+      reset() { return renderStable(0); },
+      goto(index) { return renderStable(index === -1 ? frameCount() - 1 : index); },
       get_frame_count() { return frameCount(); },
       get_current_frame_index() { return currentFrame; },
       get_current_line() { return Number(document?.frames?.[currentFrame]?.source?.line) || 0; },
@@ -184,6 +217,7 @@
     clearTimeout(cameraTimer);
     activePlaybackPlan = null;
     lastPlaybackPlan = null;
+    viewportRebasePendingAfterPlayback = false;
     document = window.ASMTraceModel.normalizeTraceDocument(source);
     currentFrame = 0;
     viewportGeometryReady = !isRuntimeEmbed();
@@ -225,6 +259,7 @@
     render,
     previewTransition,
     rebaseCurrentFrame,
+    renderStable,
     setRules,
     setSkins,
     isActive: () => Boolean(document?.frames?.length),

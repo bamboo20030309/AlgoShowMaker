@@ -407,6 +407,56 @@ int main() {
     'the initialized entrance must not create a falling assignment value box');
 });
 
+test('same-name markers only receive events during their own runtime lifetime', async () => {
+  const { window } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int main() { vector<int> arr = {3, 2, 1}; // @frame arr
+}`);
+  const variableId = 'heap_push:now';
+  const oldMarker = { dataset: {
+    traceSourceVariableId: variableId,
+    traceRuntimeIdentity: 'lifetime-old'
+  } };
+  const newMarker = { dataset: {
+    traceSourceVariableId: variableId,
+    traceRuntimeIdentity: 'lifetime-new'
+  } };
+  const frame = { events: [
+    { type: 'assign', order: 10, targets: [{ variableId, role: 'target' }] },
+    { type: 'scope-exit', order: 20,
+      targets: [{ variableId, lifetimeIdentity: 'lifetime-old', role: 'target' }] },
+    { type: 'declare', order: 30,
+      targets: [{ variableId, lifetimeIdentity: 'lifetime-new', role: 'target' }] },
+    { type: 'assign', order: 40, targets: [{ variableId, role: 'target' }] }
+  ] };
+
+  assert.equal(window.ASMTraceFrameTween.markerLifetimeActiveAtEvent(
+    frame, frame.events[0], oldMarker
+  ), true);
+  assert.equal(window.ASMTraceFrameTween.markerLifetimeActiveAtEvent(
+    frame, frame.events[0], newMarker
+  ), false);
+  assert.equal(window.ASMTraceFrameTween.markerLifetimeActiveAtEvent(
+    frame, frame.events[3], oldMarker
+  ), false);
+  assert.equal(window.ASMTraceFrameTween.markerLifetimeActiveAtEvent(
+    frame, frame.events[3], newMarker
+  ), true);
+
+  const labelAttributes = { x: '-9', y: '-40', width: '18', height: '18' };
+  const labelBox = { getAttribute: name => labelAttributes[name] ?? null };
+  const marker = { querySelector: selector => (
+    selector === '.trace-variable-marker-label-box' ? labelBox : null
+  ) };
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(window.ASMTraceFrameTween.detachedMarkerPopupPoint(
+      { x: 100, y: 200, width: 40, height: 40 }, marker
+    ))),
+    { x: 120, y: 160, width: 40, height: 40 },
+    'a detached assignment reuses the authored label offset from its bound cell'
+  );
+});
+
 test('container replay never overwrites an array outerframe label', async () => {
   const { window } = await compile(`#include <bits/stdc++.h>
 using namespace std;

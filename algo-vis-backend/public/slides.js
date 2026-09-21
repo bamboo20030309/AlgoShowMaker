@@ -343,6 +343,8 @@
   const structureTreeArrowColorInput = document.getElementById('structureTreeArrowColorInput');
   const structureIndexModeSelect = document.getElementById('structureIndexModeSelect');
   const structureIndexBaseSelect = document.getElementById('structureIndexBaseSelect');
+  const structureLengthControl = document.getElementById('structureLengthControl');
+  const structureLengthInput = document.getElementById('structureLengthInput');
   const structureItemsPerRowInput = document.getElementById('structureItemsPerRowInput');
   const structureGapInput = document.getElementById('structureGapInput');
   const structureCellSizeInput = document.getElementById('structureCellSizeInput');
@@ -2155,7 +2157,7 @@
     const nodes = values.flatMap((value, index) => present[index]
       ? [{ id: `node-${index}`, value: String(value) }]
       : []);
-    if (!nodes.length) nodes.push({ id: 'node-0', value: 'Root' });
+    if (!nodes.length) nodes.push({ id: 'node-0', value: '0' });
     const nodeIds = new Set(nodes.map(node => node.id));
     const rootId = nodes[0].id;
     const edges = [];
@@ -2757,6 +2759,10 @@
             <canvas id="fabric-${slide.id}" width="${SLIDE_W}" height="${SLIDE_H}"></canvas>
           </div>
           <div class="widget-layer" data-slide-id="${slide.id}"></div>
+          <div class="asm-selection-overlay-layer" data-slide-id="${slide.id}" aria-hidden="true">
+            <div class="asm-marquee-selection-box" hidden></div>
+            <div class="asm-structure-cell-selection-box" hidden></div>
+          </div>
         </div>
       `;
     renderSlideWidgets(section.querySelector('.widget-layer'), slide);
@@ -2774,7 +2780,7 @@
           class="algorithm-slide-frame${hasScript ? ' is-loading' : ''}"
           data-slide-id="${slide.id}"
           title="Algorithm animation"
-          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-36' : 'about:blank'}"
+          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-40' : 'about:blank'}"
           ${hasScript ? '' : 'hidden'}
         ></iframe>
         <div class="algorithm-slide-placeholder" ${hasScript ? 'hidden' : ''}>
@@ -2902,6 +2908,7 @@
       content.dataset.latexSource = latexSource;
       content.textContent = latexSource;
       el.appendChild(content);
+      renderMathWidgets(content);
     }
     positionWidgetContent(el, widget);
     const handles = widget.type === 'code' || widget.type === 'structure'
@@ -3021,6 +3028,8 @@
             backgroundColor: 'rgba(0,0,0,0)',
             preserveObjectStacking: true,
             selection: true,
+            selectionColor: 'rgba(0, 0, 0, 0)',
+            selectionBorderColor: 'rgba(0, 0, 0, 0)',
             targetFindTolerance: 8,
             stopContextMenu: true,
             uniformScaling: false,
@@ -3166,7 +3175,7 @@
     canvas.on('text:changed', sync);
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
-      exitWidgetEditorIfNeeded();
+      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -3174,7 +3183,7 @@
     });
     canvas.on('selection:updated', e => {
       if (canvas.__asmSerializingSelection) return;
-      exitWidgetEditorIfNeeded();
+      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -3188,6 +3197,18 @@
       clearSnapGuides();
     });
     canvas.on('mouse:down', e => {
+      if (!e.target && document.body.classList.contains('asm-edit-mode')) {
+        const start = marqueePointForCanvas(canvas, e.e);
+        if (start) canvas.__asmWidgetMarquee = {
+          start,
+          end: start,
+          additive: !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey)
+        };
+        updateMarqueeSelectionOverlay(slide.id, start, start);
+      } else {
+        canvas.__asmWidgetMarquee = null;
+        hideMarqueeSelectionOverlay(slide.id);
+      }
       if (e.target) {
         e.target.__asmMoveOrigin = {
           left: e.target.left || 0,
@@ -3203,6 +3224,13 @@
       applyFabricObjectSnap(e, canvas);
       updateObjectToolbar(e.target, canvas);
     });
+    canvas.on('mouse:move', e => {
+      if (!canvas.__asmWidgetMarquee) return;
+      const end = marqueePointForCanvas(canvas, e.e);
+      if (!end) return;
+      canvas.__asmWidgetMarquee.end = end;
+      updateMarqueeSelectionOverlay(slide.id, canvas.__asmWidgetMarquee.start, end);
+    });
     canvas.on('object:scaling', e => {
       canvas.__asmInteractionDirty = true;
       keepShapeStrokeUniform(e.target, canvas);
@@ -3215,7 +3243,14 @@
       clearSnapGuides();
       updateObjectToolbar(e.target, canvas);
     });
-    canvas.on('mouse:up', () => {
+    canvas.on('mouse:up', e => {
+      const widgetMarquee = canvas.__asmWidgetMarquee;
+      canvas.__asmWidgetMarquee = null;
+      if (widgetMarquee) {
+        widgetMarquee.end = marqueePointForCanvas(canvas, e.e) || widgetMarquee.start;
+        applyWidgetMarqueeSelection(canvas, slide, widgetMarquee);
+      }
+      hideMarqueeSelectionOverlay(slide.id);
       if (canvas.__asmInteractionDirty) {
         canvas.__asmInteractionDirty = false;
         sync({ target: canvas.getActiveObject() });
@@ -4349,7 +4384,7 @@
       content: type === 'code'
         ? defaultCode()
         : (isStructure
-          ? (normalizedStructureMode === 'matrix' ? '1, 2, 3\n4, 5, 6' : '8, 3, 12, 1, 6, 10, 14')
+          ? (normalizedStructureMode === 'matrix' ? '0, 0, 0\n0, 0, 0' : '0, 0, 0, 0, 0, 0, 0')
           : String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`)
     };
     if (isStructure) {
@@ -5228,6 +5263,69 @@
     return selectedIds.filter(id => existingIds.has(id));
   }
 
+  function marqueePointForCanvas(canvas, nativeEvent) {
+    const host = canvas?.upperCanvasEl?.closest?.('.fabric-host');
+    const rect = host?.getBoundingClientRect?.();
+    if (!rect || !rect.width || !rect.height || !nativeEvent) return null;
+    return {
+      x: ((nativeEvent.clientX - rect.left) / rect.width) * SLIDE_W,
+      y: ((nativeEvent.clientY - rect.top) / rect.height) * SLIDE_H
+    };
+  }
+
+  function selectionOverlayElement(slideId, selector) {
+    return document.querySelector(`.asm-selection-overlay-layer[data-slide-id="${CSS.escape(slideId)}"] ${selector}`);
+  }
+
+  function updateMarqueeSelectionOverlay(slideId, start, end) {
+    const box = selectionOverlayElement(slideId, '.asm-marquee-selection-box');
+    if (!box || !start || !end) return;
+    const left = Math.min(start.x, end.x);
+    const top = Math.min(start.y, end.y);
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+    box.style.width = `${Math.abs(end.x - start.x)}px`;
+    box.style.height = `${Math.abs(end.y - start.y)}px`;
+    box.hidden = false;
+  }
+
+  function hideMarqueeSelectionOverlay(slideId) {
+    const box = selectionOverlayElement(slideId, '.asm-marquee-selection-box');
+    if (box) box.hidden = true;
+  }
+
+  function applyWidgetMarqueeSelection(canvas, slide, marquee) {
+    if (!marquee?.start || !marquee.end) return;
+    const left = Math.min(marquee.start.x, marquee.end.x);
+    const top = Math.min(marquee.start.y, marquee.end.y);
+    const right = Math.max(marquee.start.x, marquee.end.x);
+    const bottom = Math.max(marquee.start.y, marquee.end.y);
+    if (right - left < 4 && bottom - top < 4) {
+      if (!marquee.additive) {
+        clearWidgetSelection();
+        clearStructureCellSelection();
+      }
+      return;
+    }
+    const layer = document.querySelector(`.widget-layer[data-slide-id="${CSS.escape(slide.id)}"]`);
+    if (!layer) return;
+    if (!marquee.additive) {
+      layer.querySelectorAll('.slide-widget.is-selected').forEach(el => el.classList.remove('is-selected'));
+      selectedWidgetId = null;
+    }
+    normalizeWidgets(slide.widgets).forEach(widget => {
+      const intersects = widget.x < right && widget.x + widget.w > left
+        && widget.y < bottom && widget.y + widget.h > top;
+      if (!intersects) return;
+      layer.querySelector(`.slide-widget[data-widget-id="${CSS.escape(widget.id)}"]`)?.classList.add('is-selected');
+    });
+    const ids = selectedWidgetIdsInCurrentSlide();
+    selectedWidgetId = ids.length === 1 && activeFabricObjects().length === 0 ? ids[0] : null;
+    if (selectedWidgetId) showWidgetEditor(selectedWidgetId);
+    else showDefaultPanel();
+    updateAlignmentToolbar();
+  }
+
   function selectAllCurrentWidgets() {
     const slide = getSlide();
     if (!slide) return [];
@@ -5286,6 +5384,7 @@
   function syncStructureEditorVisibility(widget) {
     const mode = widget?.structureMode || 'normal';
     if (structureTreeControls) structureTreeControls.hidden = mode !== 'binary_tree';
+    if (structureLengthControl) structureLengthControl.hidden = ['matrix', 'binary_tree'].includes(mode);
     if (structureFrameBackgroundControls) structureFrameBackgroundControls.hidden = !['normal', 'matrix'].includes(mode);
     if (structureFrameBackgroundColorInput && structureFrameBackgroundEnabledInput) {
       structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
@@ -5311,6 +5410,7 @@
     setStructureColorButton(structureTreeArrowColorInput, widget.treeArrowColor || '#333333');
     structureIndexModeSelect.value = String(widget.indexMode ?? 0);
     structureIndexBaseSelect.value = String(widget.indexBase ?? 0);
+    if (structureLengthInput) structureLengthInput.value = String(Math.max(1, linearStructureValues(widget.content).length));
     structureItemsPerRowInput.value = String(widget.itemsPerRow ?? 0);
     structureGapInput.value = String(widget.gap ?? 0);
     structureCellSizeInput.value = String(widget.cellSize ?? 58);
@@ -5359,6 +5459,19 @@
     }, { history });
   }
 
+  function updateSelectedStructureLength(rawLength) {
+    const found = getWidget(selectedWidgetId);
+    if (!found.widget || found.widget.type !== 'structure') return;
+    const mode = found.widget.structureMode || 'normal';
+    if (['matrix', 'binary_tree'].includes(mode)) return;
+    const length = Math.max(1, Math.min(100, Math.round(Number(rawLength) || 1)));
+    const values = linearStructureValues(found.widget.content);
+    while (values.length < length) values.push('0');
+    values.length = length;
+    updateSelectedStructure({ content: values.join(', ') });
+    if (structureLengthInput) structureLengthInput.value = String(length);
+  }
+
   function hideStructureContextMenu() {
     if (!structureContextMenu) return;
     structureContextMenu.hidden = true;
@@ -5405,9 +5518,7 @@
       };
     }
     const displayedIndex = Math.max(0, Number(cell.dataset.structureItemIndex) || 0);
-    const itemIndex = ['heap', 'segment_tree', 'BIT'].includes(mode)
-      ? Math.max(0, displayedIndex - 1)
-      : displayedIndex;
+    const itemIndex = displayedIndex;
     return {
       widget: found.widget,
       cell,
@@ -5435,7 +5546,37 @@
 
   function restoreStructureCellSelection(widgetEl) {
     if (!selectedStructureCell || selectedStructureCell.widgetId !== widgetEl?.dataset.widgetId) return;
-    structureCellForKey(widgetEl, selectedStructureCell.key)?.classList.add('is-structure-cell-selected');
+    const cell = structureCellForKey(widgetEl, selectedStructureCell.key);
+    cell?.classList.add('is-structure-cell-selected');
+    updateStructureCellSelectionOverlay(widgetEl, cell);
+  }
+
+  function hideStructureCellSelectionOverlay() {
+    document.querySelectorAll('.asm-structure-cell-selection-box').forEach(box => { box.hidden = true; });
+  }
+
+  function updateStructureCellSelectionOverlay(widgetEl, cell) {
+    const slideId = widgetEl?.closest?.('.asm-slide')?.dataset.slideId;
+    const frame = widgetEl?.closest?.('.asm-slide-frame-content');
+    const target = cell?.querySelector?.(':scope > rect:first-of-type') || cell;
+    const box = slideId && selectionOverlayElement(slideId, '.asm-structure-cell-selection-box');
+    if (!frame || !target || !box) {
+      hideStructureCellSelectionOverlay();
+      return;
+    }
+    const frameRect = frame.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    if (!frameRect.width || !frameRect.height || !targetRect.width || !targetRect.height) {
+      hideStructureCellSelectionOverlay();
+      return;
+    }
+    const scaleX = SLIDE_W / frameRect.width;
+    const scaleY = SLIDE_H / frameRect.height;
+    box.style.left = `${(targetRect.left - frameRect.left) * scaleX}px`;
+    box.style.top = `${(targetRect.top - frameRect.top) * scaleY}px`;
+    box.style.width = `${targetRect.width * scaleX}px`;
+    box.style.height = `${targetRect.height * scaleY}px`;
+    box.hidden = false;
   }
 
   function clearStructureCellSelection({ closeEditor = true } = {}) {
@@ -5445,6 +5586,7 @@
     document.querySelectorAll('.is-structure-cell-selected').forEach(cell => {
       cell.classList.remove('is-structure-cell-selected');
     });
+    hideStructureCellSelectionOverlay();
     selectedStructureCell = null;
     if (closeEditor) closeStructureInlineEditor(true);
   }
@@ -5457,6 +5599,7 @@
     });
     selectedStructureCell = { widgetId: details.widget.id, key: details.key };
     details.cell.classList.add('is-structure-cell-selected');
+    updateStructureCellSelectionOverlay(widgetEl, details.cell);
     return details;
   }
 
@@ -5660,7 +5803,7 @@
     } else if (action === 'tree-add') {
       const childEdges = treeData.edges.filter(edge => edge.from === node.id);
       const id = randomId();
-      treeData.nodes.push({ id, value: '1' });
+      treeData.nodes.push({ id, value: '0' });
       treeData.edges.push({
         from: node.id,
         to: id,
@@ -5692,15 +5835,15 @@
     if (action === 'matrix-save') {
       rows[row][column] = context.value;
     } else if (action === 'matrix-row-before' || action === 'matrix-row-after') {
-      rows.splice(row + (action === 'matrix-row-after' ? 1 : 0), 0, Array(columns).fill('1'));
+      rows.splice(row + (action === 'matrix-row-after' ? 1 : 0), 0, Array(columns).fill('0'));
     } else if (action === 'matrix-column-before' || action === 'matrix-column-after') {
       const insertAt = column + (action === 'matrix-column-after' ? 1 : 0);
-      rows.forEach(item => item.splice(insertAt, 0, '1'));
+      rows.forEach(item => item.splice(insertAt, 0, '0'));
     } else if (action === 'matrix-row-delete') {
-      if (rows.length === 1) rows[0] = Array(columns).fill('');
+      if (rows.length === 1) rows[0] = Array(columns).fill('0');
       else rows.splice(row, 1);
     } else if (action === 'matrix-column-delete') {
-      if (columns === 1) rows.forEach(item => { item[0] = ''; });
+      if (columns === 1) rows.forEach(item => { item[0] = '0'; });
       else rows.forEach(item => item.splice(column, 1));
     } else {
       return;
@@ -5711,14 +5854,14 @@
 
   function applyItemContextAction(action, context, widget) {
     const values = linearStructureValues(widget.content);
-    if (!values.length) values.push('');
+    if (!values.length) values.push('0');
     const index = Math.min(context.itemIndex, values.length - 1);
     if (action === 'item-save') {
       values[index] = context.value;
     } else if (action === 'item-before' || action === 'item-after') {
-      values.splice(index + (action === 'item-after' ? 1 : 0), 0, '1');
+      values.splice(index + (action === 'item-after' ? 1 : 0), 0, '0');
     } else if (action === 'item-delete') {
-      if (values.length === 1) values[0] = '';
+      if (values.length === 1) values[0] = '0';
       else values.splice(index, 1);
     } else {
       return;
@@ -6541,6 +6684,7 @@
     }));
     structureIndexModeSelect?.addEventListener('change', () => updateSelectedStructure({ indexMode: Number(structureIndexModeSelect.value) }));
     structureIndexBaseSelect?.addEventListener('change', () => updateSelectedStructure({ indexBase: Number(structureIndexBaseSelect.value) }));
+    structureLengthInput?.addEventListener('change', () => updateSelectedStructureLength(structureLengthInput.value));
     structureItemsPerRowInput?.addEventListener('input', () => updateSelectedStructure({ itemsPerRow: Math.max(0, Number(structureItemsPerRowInput.value) || 0) }));
     structureGapInput?.addEventListener('input', () => updateSelectedStructure({ gap: Math.max(0, Number(structureGapInput.value) || 0) }));
     structureCellSizeInput?.addEventListener('input', () => updateSelectedStructure({ cellSize: Math.max(18, Number(structureCellSizeInput.value) || 18) }));
@@ -7865,7 +8009,7 @@
     }
 
     frame.classList.add('is-loading');
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-36';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-40';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -7947,7 +8091,7 @@
     if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在載入動畫…';
     algorithmEditorModal.classList.add('is-loading');
     algorithmEditorModal.hidden = false;
-    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-36';
+    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-40';
   }
 
   function closeAlgorithmEditor() {
@@ -9685,6 +9829,23 @@
 
   function initReveal() {
     reveal = window.Reveal;
+    const localMathPlugin = {
+      id: 'katex',
+      init(instance) {
+        instance.on('ready', () => {
+          window.renderMathInElement?.(instance.getSlidesElement(), {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '$', right: '$', display: false },
+              { left: '\\(', right: '\\)', display: false },
+              { left: '\\[', right: '\\]', display: true }
+            ],
+            ignoredClasses: ['latex-content']
+          });
+          instance.layout();
+        });
+      }
+    };
     reveal.initialize({
       hash: false,
       controls: true,
@@ -9706,7 +9867,7 @@
         window.RevealNotes,
         window.RevealSearch,
         window.RevealHighlight,
-        window.RevealMath && window.RevealMath.KaTeX
+        window.katex && localMathPlugin
       ].filter(Boolean)
     }).then(() => {
       revealReady = true;
@@ -9735,7 +9896,11 @@
       reveal.on('fragmenthidden', refreshFabricFragmentVisibility);
       bindOverviewEvents();
       syncAlgorithmFrameVisibility();
-      setTimeout(refreshRevealWidgets, 1200);
+      refreshRevealWidgets();
+      document.fonts?.ready.then(() => {
+        autoSizeLatexWidgets(slidesRoot);
+        reveal.layout();
+      });
     });
   }
 

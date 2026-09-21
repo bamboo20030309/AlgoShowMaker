@@ -1351,6 +1351,66 @@ document.addEventListener('DOMContentLoaded', () => {
     direction: 0,   // +1 往後, -1 往前, 0 不管方向
   };
 
+  const FAST_STEP_WINDOW_MS = 500;
+  const FAST_STEP_THRESHOLD = 3;
+  const forwardBurst = {
+    times: [],
+    baseFrame: 0,
+    targetFrame: 0,
+    generation: 0,
+    queue: Promise.resolve()
+  };
+
+  function cancelForwardBurst() {
+    forwardBurst.times = [];
+    forwardBurst.generation += 1;
+    forwardBurst.queue = Promise.resolve();
+  }
+
+  function stableFrameStep(targetFrame) {
+    const total = csGetFrameCount();
+    if (!total) return Promise.resolve();
+    const target = Math.max(0, Math.min(total - 1, Number(targetFrame) || 0));
+    TTS_RUN_ID += 1;
+    clearTTSHighlight();
+    try { window.speechSynthesis.cancel(); } catch { }
+    window.ASMTraceFrameTween?.cancel?.();
+    if (window.ASMTracePlayer?.renderStable) {
+      return window.ASMTracePlayer.renderStable(target);
+    }
+    return CodeScript.goto(target);
+  }
+
+  function requestForwardStep(animatedStepFn, options = {}) {
+    const now = performance.now();
+    const repeat = options.repeat === true;
+    forwardBurst.times = forwardBurst.times.filter(time => now - time <= FAST_STEP_WINDOW_MS);
+    if (!forwardBurst.times.length) {
+      forwardBurst.baseFrame = csGetCurrentFrameIndex();
+      forwardBurst.targetFrame = forwardBurst.baseFrame;
+    }
+    forwardBurst.times.push(now);
+    forwardBurst.targetFrame = Math.min(
+      Math.max(0, csGetFrameCount() - 1),
+      forwardBurst.targetFrame + 1
+    );
+
+    if (repeat || forwardBurst.times.length >= FAST_STEP_THRESHOLD) {
+      forwardBurst.generation += 1;
+      forwardBurst.queue = Promise.resolve();
+      return stableFrameStep(forwardBurst.targetFrame).finally(syncCurrentFrameFromCodeScript);
+    }
+
+    // Each input must reach the player immediately. The player cancels an
+    // unfinished transition, settles its destination frame, and starts the
+    // requested next transition; queueing here would make the click wait for
+    // the obsolete animation instead.
+    forwardBurst.queue = Promise.resolve(animatedStepFn()).then(() => {
+      syncCurrentFrameFromCodeScript();
+    });
+    return forwardBurst.queue;
+  }
+
   function stopStepAuto() {
     if (stepAuto.intervalId) {
       clearInterval(stepAuto.intervalId);
@@ -1374,12 +1434,17 @@ document.addEventListener('DOMContentLoaded', () => {
     stepAuto.direction = direction;
     btn.classList.add('auto-stepping');
 
-    stepAuto.intervalId = setInterval(async () => {
+    const runRepeatStep = async () => {
       if (stepAuto.running) return;
       stepAuto.running = true;
       const before = csGetCurrentFrameIndex();
 
-      await Promise.resolve(stepFn());
+      if (direction > 0) {
+        await Promise.resolve(requestForwardStep(stepFn, { repeat: true }));
+      } else {
+        cancelForwardBurst();
+        await Promise.resolve(stepFn({ stable: true }));
+      }
       syncCurrentFrameFromCodeScript();
 
       const after = csGetCurrentFrameIndex();
@@ -1411,7 +1476,9 @@ document.addEventListener('DOMContentLoaded', () => {
         stopStepAuto(); // 會清 interval + 把按鈕 auto-stepping 樣式拿掉
       }
       stepAuto.running = false;
-    }, speed);
+    };
+    runRepeatStep();
+    stepAuto.intervalId = setInterval(runRepeatStep, Math.max(50, speed));
   }
 
 
@@ -1432,7 +1499,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 短按：走一步
     const doSingleStep = () => {
       pause();   // 停止全局播放
-      stepFn();
+      if (direction > 0) requestForwardStep(() => stepFn({ stable: false }));
+      else {
+        cancelForwardBurst();
+        stepFn({ stable: true });
+      }
       syncCurrentFrameFromCodeScript();
     };
 
@@ -1445,14 +1516,8 @@ document.addEventListener('DOMContentLoaded', () => {
         longPressTimer = null;
         longPressFired = true;
 
-        // 長按 → 切換 auto 模式
-        if (stepAuto.activeBtn === btn) {
-          // 如果這顆已經是 auto → 關掉
-          stopStepAuto();
-        } else {
-          // 不是 → 啟動 auto 模式（帶方向）
-          startStepAuto(btn, stepFn, direction);
-        }
+        // 長按期間持續 repeat；放開即停止。
+        startStepAuto(btn, stepFn, direction);
       }, 300); // 長按判定時間
     };
 
@@ -1461,24 +1526,27 @@ document.addEventListener('DOMContentLoaded', () => {
       clearLongPressTimer();
 
       if (!longPressFired) {
-        // 短按：如果正在 auto，就當作關掉 auto，否則就走一步
-        if (stepAuto.activeBtn === btn) {
-          stopStepAuto();
-        } else {
-          doSingleStep();
-        }
+        doSingleStep();
+      } else {
+        stopStepAuto();
       }
     };
 
     // 滑鼠事件
     btn.addEventListener('mousedown', onPressStart);
     btn.addEventListener('mouseup', onPressEnd);
-    btn.addEventListener('mouseleave', clearLongPressTimer);
+    btn.addEventListener('mouseleave', () => {
+      clearLongPressTimer();
+      if (longPressFired) stopStepAuto();
+    });
 
     // 觸控事件
     btn.addEventListener('touchstart', onPressStart, { passive: false });
     btn.addEventListener('touchend', onPressEnd, { passive: false });
-    btn.addEventListener('touchcancel', clearLongPressTimer, { passive: false });
+    btn.addEventListener('touchcancel', () => {
+      clearLongPressTimer();
+      if (longPressFired) stopStepAuto();
+    }, { passive: false });
   }
 
   // === 綁定各個按鈕 ===
@@ -1491,36 +1559,79 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // 上一大步 / 下一大步：可長按切換自動模式
-  bindStepButton(prevKeyBtn, () => {
+  bindStepButton(prevKeyBtn, ({ stable } = {}) => {
     // 如果不在第0幀，且有上一個 Key Frame，才允許往回跳
     if (CodeScript && CodeScript.get_current_frame_index() > 0) {
       if (CodeScript.has_prev_key && !CodeScript.has_prev_key()) return;
-      return stepWithTween(() => CodeScript.prev_key_frame(), 300);
+      return stable ? CodeScript.prev_key_frame() : stepWithTween(() => CodeScript.prev_key_frame(), 300);
     }
   }, -1);
 
-  bindStepButton(nextKeyBtn, () => {
+  bindStepButton(nextKeyBtn, ({ stable } = {}) => {
     // 如果還沒到最後一幀，且有下一個 Key Frame，才允許往下跳
     if (CodeScript && CodeScript.get_current_frame_index() < CodeScript.get_frame_count() - 1) {
       if (CodeScript.has_next_key && !CodeScript.has_next_key()) return;
+      if (stable && typeof CodeScript.next_key_frame_stable === 'function') {
+        return CodeScript.next_key_frame_stable();
+      }
       return stepWithTween(() => CodeScript.next_key_frame(), 300);
     }
   }, +1);
 
   // 上一步 / 下一步：可長按切換自動模式
-  bindStepButton(prevBtn, () => {
+  bindStepButton(prevBtn, ({ stable } = {}) => {
     // 如果不在第0幀，才允許上一步
     if (CodeScript && CodeScript.get_current_frame_index() > 0) {
-      return stepWithTween(() => CodeScript.prev(), 300);
+      return stable ? CodeScript.prev() : stepWithTween(() => CodeScript.prev(), 300);
     }
   }, -1);
 
-  bindStepButton(nextBtn, () => {
+  bindStepButton(nextBtn, ({ stable } = {}) => {
     // 如果還沒到最後一幀，才允許下一步
     if (CodeScript && CodeScript.get_current_frame_index() < CodeScript.get_frame_count() - 1) {
+      if (stable && typeof CodeScript.next_stable === 'function') return CodeScript.next_stable();
       return stepWithTween(() => CodeScript.next(), 300);
     }
   }, +1);
+
+  window.ASMPlaybackNavigation = {
+    fastStepWindowMs: FAST_STEP_WINDOW_MS,
+    fastStepThreshold: FAST_STEP_THRESHOLD,
+    requestForwardStep,
+    cancelForwardBurst,
+    stableFrameStep
+  };
+
+  const heldNavigationKeys = new Set();
+  const editableNavigationTarget = target => Boolean(target?.closest?.(
+    'input, textarea, select, [contenteditable="true"], .ace_editor'
+  ));
+  window.addEventListener('keydown', event => {
+    const button = event.key === 'ArrowRight' ? nextBtn
+      : event.key === 'ArrowLeft' ? prevBtn : null;
+    if (!button || event.ctrlKey || event.metaKey || event.altKey
+      || editableNavigationTarget(event.target)) return;
+    event.preventDefault();
+    if (heldNavigationKeys.has(event.key)) return;
+    heldNavigationKeys.add(event.key);
+    button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  });
+  window.addEventListener('keyup', event => {
+    const button = event.key === 'ArrowRight' ? nextBtn
+      : event.key === 'ArrowLeft' ? prevBtn : null;
+    if (!button || !heldNavigationKeys.delete(event.key)) return;
+    event.preventDefault();
+    button.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  window.addEventListener('blur', () => {
+    if (heldNavigationKeys.has('ArrowRight')) {
+      nextBtn?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    }
+    if (heldNavigationKeys.has('ArrowLeft')) {
+      prevBtn?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    }
+    heldNavigationKeys.clear();
+  });
 
   // 跳到最後：維持你目前的「跳到下一個 stopFrame」邏輯
   bindAction(finishBtn, () => gotoNextStopOrEnd());

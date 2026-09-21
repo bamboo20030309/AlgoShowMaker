@@ -23,6 +23,9 @@ test('structure annotations follow indices, persist and retain custom colors', {
     await page.addInitScript(deck => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(deck)), deck);
     await page.goto(base + '/slides.html');
     await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    const structureMenu = page.locator('#structureContextMenu');
+    assert.equal(await structureMenu.getAttribute('hidden'), '');
+    assert.equal(await structureMenu.evaluate(element => getComputedStyle(element).display), 'none');
     const object = page.locator('[data-widget-id="structure"]');
     const annotations = () => object.locator('[data-structure-annotation-index]').evaluateAll(items => items.map(item => item.dataset.structureAnnotationIndex));
     assert.deepEqual(await annotations(), ['1']);

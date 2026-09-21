@@ -538,6 +538,12 @@
     return byType[type]?.timelineByDefault === true;
   }
 
+  function showTimelineEvent(event = {}, document = null) {
+    return event.enabled !== false
+      && event.autoAnimationDisabled !== true
+      && showTag(event.type, document);
+  }
+
   function isForHeaderEvent(event = {}) {
     if (!['declare', 'assign', 'compare'].includes(event.type)) return false;
     const source = event.source;
@@ -580,6 +586,7 @@
     controlState,
     availabilityKind,
     showTag,
+    showTimelineEvent,
     showInspector(event = {}, document = null) {
       if (event.type === 'fixed') return false;
       if (event.loopBoundarySuppressed === true) return false;

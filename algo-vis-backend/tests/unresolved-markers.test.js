@@ -112,14 +112,14 @@ test('unresolved derived markers preserve constant array-cell offsets', () => {
 });
 test('heap uses visual left edge, not the smallest index', () => {
   checkUnknown(bindings({ cells: [[1, 160, 40], [2, 80, 120], [3, 240, 120], [4, 20, 200]],
-    values: { j: undefined, i: null } }), 20, 200, ['i', 'j']);
+    values: { j: undefined, i: null } }), 20, 200, ['j', 'i']);
 });
 test('stack uses the uppermost cell when left edges tie', () => {
   checkUnknown(bindings({ cells: [[0, 100, 200], [1, 100, 140], [2, 100, 80]] }), 100, 80, ['i']);
 });
 test('single visible wide cell, nonzero range and object alias', () => {
   checkUnknown(bindings({ cells: [[3, -50, 35, 120]], values: { j: NaN, i: null }, objectId: 'named-array' }),
-    -50, 35, ['i', 'j']);
+    -50, 35, ['j', 'i']);
 });
 test('decorations and virtual out-of-range cells are not reference cells', () => {
   checkUnknown(bindings({ cells: [[2, 100, 80]], virtual: [[-1, -100, 20], [6, -200, 10]] }), 100, 80, ['i']);
@@ -166,6 +166,122 @@ test('recursive automatic markers keep visual continuity without merging runtime
   assert.equal(context.window.ASMTraceFrameTween.markerActivationChanged(
     marker('activation-child', 'auto-marker:other:i:arr:0'), parent
   ), true);
+});
+
+test('a reference parameter renames one continuing marker without re-entering', () => {
+  const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { markerActivationChanged, previousVisualForEntry,');
+  vm.runInContext(tweenSource, context);
+  const aliasKey = 'auto-marker-alias:address-i:address-heap:$source';
+  const caller = {
+    dataset: {
+      traceObjectKey: 'marker-i',
+      traceSourceVariableId: 'main:i',
+      traceRuntimeIdentity: 'caller-lifetime',
+      traceVisualContinuityKey: 'auto-marker:main:i:main:heap:i:0',
+      traceMarkerAliasContinuityKey: aliasKey
+    },
+    querySelectorAll: () => []
+  };
+  const callee = {
+    dataset: {
+      traceObjectKey: 'marker-pos',
+      traceSourceVariableId: 'visit:pos',
+      traceRuntimeIdentity: 'callee-lifetime',
+      traceVisualContinuityKey: 'auto-marker:visit:pos:visit:heap:pos:0',
+      traceMarkerAliasContinuityKey: aliasKey,
+      traceMarkerReferenceAlias: '1'
+    }
+  };
+  const previous = new Map([['marker-i', caller]]);
+  assert.equal(
+    context.window.ASMTraceFrameTween.previousVisualForEntry(callee, previous, 'marker-pos'),
+    caller,
+    'the reference alias reuses the caller marker visual'
+  );
+  assert.equal(
+    context.window.ASMTraceFrameTween.markerActivationChanged(callee, caller),
+    false,
+    'renaming i to pos is not a new marker lifetime animation'
+  );
+});
+
+test('renderer gives caller and reference parameter the same physical alias key', () => {
+  const renderAlias = ({ sourceId, sourceName, sourceType, targetId, targetName, targetType }) => {
+    context.window.ASMTraceRules = { resolveExpression: () => 1 };
+    const placements = new Map([
+      [`${targetId}#0`, { x: 0, y: 40, width: 40, height: 40 }],
+      [`${targetId}#1`, { x: 40, y: 40, width: 40, height: 40 }]
+    ]);
+    const elements = new Map([...placements.keys()].map(key => [key, { closest: () => null }]));
+    const frame = {
+      state: {
+        [sourceId]: { identity: 'address-i', lifetime: `life-${sourceName}`, data: { kind: 'scalar', value: 1 } },
+        [targetId]: { identity: 'address-heap', lifetime: `life-${targetName}`, data: { kind: 'sequence', items: [0, 9] } }
+      },
+      bindings: [{
+        mode: 'index', sourceVariableId: sourceId, sourceName,
+        targetVariableId: targetId, targetName, indexExpression: sourceName
+      }]
+    };
+    const root = {};
+    context.window.ASMTraceRenderers.renderFrameBindings(root, {
+      variables: {
+        [sourceId]: { name: sourceName, cppType: sourceType },
+        [targetId]: { name: targetName, cppType: targetType }
+      }
+    }, frame, placements, elements);
+    return root.objects[0];
+  };
+  const caller = renderAlias({
+    sourceId: 'main:i', sourceName: 'i', sourceType: 'int',
+    targetId: 'main:heap', targetName: 'heap', targetType: 'vector<int>'
+  });
+  const callee = renderAlias({
+    sourceId: 'visit:pos', sourceName: 'pos', sourceType: 'int&',
+    targetId: 'visit:heap', targetName: 'heap', targetType: 'vector<int>&'
+  });
+  assert.equal(caller.sourceAliasContinuityKey, callee.sourceAliasContinuityKey);
+  assert.equal(caller.sourceReferenceAlias, false);
+  assert.equal(callee.sourceReferenceAlias, true);
+});
+
+test('a visible global keeps its marker beside a reference parameter alias', () => {
+  context.window.ASMTraceRules = {
+    resolveExpression: (doc, frame, expression) => frame.state[
+      expression === 'pos' ? 'visit:pos' : 'global:i'
+    ]?.data?.value
+  };
+  const placements = new Map([
+    ['visit:heap#0', { x: 0, y: 40, width: 40, height: 40 }],
+    ['visit:heap#1', { x: 40, y: 40, width: 40, height: 40 }]
+  ]);
+  const elements = new Map([...placements.keys()].map(key => [key, { closest: () => null }]));
+  const frame = {
+    state: {
+      'global:i': { identity: 'address-i', lifetime: 'global-life', data: { kind: 'scalar', value: 1 } },
+      'visit:pos': { identity: 'address-i', lifetime: 'param-life', data: { kind: 'scalar', value: 1 } },
+      'visit:heap': { identity: 'address-heap', data: { kind: 'sequence', items: [0, 9] } }
+    },
+    bindings: [{
+      mode: 'index', sourceVariableId: 'visit:pos', sourceName: 'pos',
+      targetVariableId: 'visit:heap', targetName: 'heap', indexExpression: 'pos'
+    }]
+  };
+  const root = {};
+  context.window.ASMTraceRenderers.renderFrameBindings(root, {
+    variables: {
+      'global:i': { name: 'i', cppType: 'int', kind: 'scalar', functionName: 'global' },
+      'visit:pos': { name: 'pos', cppType: 'int&', kind: 'scalar', functionName: 'visit' },
+      'visit:heap': { name: 'heap', cppType: 'vector<int>&', kind: 'sequence', functionName: 'visit' }
+    }
+  }, frame, placements, elements);
+  assert.deepEqual(Array.from(root.objects, object => object.text), ['i', 'pos']);
+  assert.ok(root.objects.every(object => object.sourceVariableIds.includes('global:i')));
+  assert.ok(root.objects.every(object => object.sourceVariableIds.includes('visit:pos')));
+  assert.ok(root.objects.every(object => !object.sourceAliasContinuityKey),
+    'two explicitly visible aliases remain separate marker visuals');
 });
 
 test('a moved swap container settles before its swap event can start', () => {
@@ -258,8 +374,8 @@ test('text and marker lifecycles use distinct shared motion profiles', () => {
     'ordinary visuals still wait for code and keep settlement');
   assert.equal(opacity(0, 0), 0, 'scope exit cannot reveal an object before entrance starts');
   assert.equal(opacity(0.4, 0), 0.4, 'entrance opacity is preserved before exit starts');
-  assert.ok(Math.abs(opacity(0.6, 0.25) - 0.45) < 1e-9,
-    'overlapping entrance and exit opacity are multiplied');
+  assert.equal(opacity(0.6, 0.25), 0.75,
+    'once exit begins it exclusively owns opacity');
   assert.equal(opacity(1, 1), 0, 'a fully exited object is hidden');
 });
 
@@ -1651,20 +1767,24 @@ test('marker event motion preserves same-cell reflow and a peer entrance', () =>
     'i reaches its allocated side before frame events');
 });
 
-test('a marker exit finishes before its same-cell peers close the gap', () => {
+test('a marker exit and its same-cell peer close-gap motion start together', () => {
   const oldMarker = (variableId, lifetime, x) => ({
     dataset: {
       traceBindingTarget: 'arr#0',
       traceSourceVariableId: variableId,
-      traceRuntimeIdentity: lifetime
+      traceRuntimeIdentity: lifetime,
+      traceMarkerSortKey: variableId
     },
     closest: () => null,
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: name => name === 'width' ? '18' : null }
+      : null,
     querySelectorAll: () => [],
     getAttribute: name => name === 'transform' ? `translate(${x},8)` : null
   });
   const currentI = oldMarker('i', 'life-i', 20);
   const previousI = oldMarker('i', 'life-i', 7);
-  const previousJ = oldMarker('j', 'life-j', 33);
+  const previousJ = oldMarker('j', 'life-j', 20);
   const exit = {
     id: 'exit-j', type: 'scope-exit',
     targets: [{ variableId: 'j', lifetimeIdentity: 'life-j' }]
@@ -1672,18 +1792,22 @@ test('a marker exit finishes before its same-cell peers close the gap', () => {
   const schedule = context.window.ASMTraceFrameTween.exitMarkerReflowSchedule({
     eventTimeline: [{
       event: exit, animation: 'exit', markerExit: true,
-      start: 0, exitDuration: 220, reflowStart: 220, end: 400
+      start: 0, visualStart: 0, exitDuration: 220, reflowStart: 0, end: 220
     }],
     currentElements: new Map([['marker-i', currentI]]),
     previousPlacements: new Map([['marker-i', { x: 7, y: 8 }]]),
-    currentPlacements: new Map([['marker-i', { x: 20, y: 8 }]]),
+    currentPlacements: new Map([
+      ['arr#0', { x: 0, y: 8, width: 40, height: 40 }],
+      ['marker-i', { x: 20, y: 8 }]
+    ]),
     previousObjects: new Map([
       ['marker-i', previousI], ['marker-j', previousJ]
     ])
   });
   assert.deepEqual(JSON.parse(JSON.stringify(schedule.get('marker-i'))), {
-    start: 220, duration: 180, eventId: 'exit-j'
-  }, 'the remaining marker waits for the exiting marker to lift and fade first');
+    start: 0, duration: 220, eventId: 'exit-j', target: 'arr#0',
+    holdOffsetX: -13, ghostOffsetX: 13, arrivalStart: 0, arrivalEnd: 0
+  }, 'the peer keeps the two-marker offset until the exit starts');
 
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
@@ -1717,17 +1841,129 @@ test('a marker exit finishes before its same-cell peers close the gap', () => {
     }],
     { keys: new Set(), duration: 0, exitReflows: schedule }
   );
-  motion.update(219);
-  assert.equal(motion.arrowStates.get('marker-i').x, 33);
+  motion.update(0);
+  assert.equal(motion.arrowStates.get('marker-i').x, 7);
   assert.equal(motion.arrowStates.get('marker-i').targetX, 20,
-    'the waiting peer stays offset while its arrow keeps pointing to the cell centre');
-  motion.update(310);
-  assert.ok(motion.arrowStates.get('marker-i').x > 20
-    && motion.arrowStates.get('marker-i').x < 33,
-  'the label and arrow close the gap together after the old marker exits');
-  motion.update(400);
+    'the waiting peer stays offset while its arrow points to the cell centre');
+  motion.update(110);
+  assert.ok(motion.arrowStates.get('marker-i').x > 7
+    && motion.arrowStates.get('marker-i').x < 20,
+  'the label and arrow close the gap while the old marker exits');
+  motion.update(220);
   assert.equal(motion.arrowStates.get('marker-i').x, 20);
   assert.equal(motion.arrowStates.get('marker-i').targetX, 20);
+});
+
+test('a new marker lifetime does not make room for the preceding lifetime exit', () => {
+  const marker = (lifetime, target, x) => ({
+    dataset: {
+      traceBindingTarget: target,
+      traceSourceVariableId: 'now',
+      traceRuntimeIdentity: lifetime,
+      traceVisualContinuityKey: 'heap-push:now',
+      traceMarkerSortKey: 'now'
+    },
+    closest: () => null,
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: name => name === 'width' ? '18' : null }
+      : null,
+    querySelectorAll: () => [],
+    getAttribute: name => name === 'transform' ? `translate(${x},8)` : null
+  });
+  const current = marker('now@new', 'heap#2', 60);
+  const previous = marker('now@old', 'heap#1', 20);
+  const exit = {
+    id: 'exit-old-now', type: 'scope-exit',
+    targets: [{ variableId: 'now', lifetimeIdentity: 'now@old' }]
+  };
+  const schedule = context.window.ASMTraceFrameTween.exitMarkerReflowSchedule({
+    eventTimeline: [{
+      event: exit, animation: 'exit', markerExit: true,
+      start: 100, visualStart: 100, exitDuration: 220, reflowStart: 100, end: 320
+    }],
+    currentElements: new Map([['marker-now', current]]),
+    currentPlacements: new Map([
+      ['heap#1', { x: 20, y: 8, width: 40, height: 40 }],
+      ['heap#2', { x: 60, y: 48, width: 40, height: 40 }],
+      ['marker-now', { x: 60, y: 48 }]
+    ]),
+    previousObjects: new Map([['marker-now', previous]])
+  });
+  assert.equal(schedule.size, 0);
+});
+
+test('an exiting heap marker assignment uses the full parent node displacement', () => {
+  context.window.ASMTraceRules = {
+    resolveExpression: (document, frame, expression, locals) => locals[expression]
+  };
+  const visual = {
+    dataset: {
+      traceBindingTarget: 'heap#2',
+      traceSourceVariableId: 'now',
+      traceRuntimeIdentity: 'now@old',
+      traceMarkerIndexExpression: 'now'
+    }
+  };
+  const assignment = {
+    id: 'assign-now-parent', type: 'assign', order: 10,
+    payload: { before: 2, after: 1 },
+    targets: [{ variableId: 'now', lifetimeIdentity: 'now@old', role: 'target' }]
+  };
+  const slot = { event: assignment, animation: 'assign', start: 100, motionStart: 220, end: 520 };
+  const exitSlot = { event: {}, animation: 'exit', start: 600 };
+  const schedule = context.window.ASMTraceFrameTween.previousMarkerAssignmentSchedule({
+    traceDocument: { variables: { now: { name: 'now' } } },
+    eventFrame: { events: [assignment] },
+    eventTimeline: [slot, exitSlot],
+    visual,
+    placements: new Map([
+      ['heap#1', { x: 100, y: 40, width: 40, height: 40 }],
+      ['heap#2', { x: 60, y: 120, width: 40, height: 40 }]
+    ]),
+    exitSlot
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(schedule)), [{
+    start: 220, end: 520,
+    from: { x: 0, y: 0 }, to: { x: 40, y: -80 },
+    fromTarget: 'heap#2', toTarget: 'heap#1'
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    context.window.ASMTraceFrameTween.previousMarkerAssignmentOffset(schedule, 520)
+  )), { x: 40, y: -80 });
+});
+
+test('an exiting marker makes room for a marker that remains on its destination cell', () => {
+  const visual = (name, target) => ({
+    dataset: {
+      traceBindingTarget: target,
+      traceSourceVariableId: name,
+      traceMarkerSortKey: name
+    },
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: attribute => attribute === 'width' ? '18' : null }
+      : null
+  });
+  const mover = {
+    visual: visual('now', 'heap#2'),
+    scopeExitSlot: { start: 800 },
+    assignmentSchedule: [{
+      start: 200, end: 500,
+      from: { x: 0, y: 0 }, to: { x: 40, y: -80 },
+      fromTarget: 'heap#2', toTarget: 'heap#1'
+    }]
+  };
+  const parent = {
+    visual: visual('parent', 'heap#1'),
+    scopeExitSlot: { start: 800 },
+    assignmentSchedule: []
+  };
+  context.window.ASMTraceFrameTween.applyPreviousMarkerAssignmentReflows([mover, parent]);
+  assert.equal(mover.assignmentSchedule[0].to.x, 27,
+    'the arriving marker lands on its allocated side of the shared cell');
+  assert.deepEqual(JSON.parse(JSON.stringify(parent.assignmentPeerSchedule)), [{
+    start: 200, end: 500,
+    from: { x: 0, y: 0 }, to: { x: 13, y: 0 }
+  }], 'the existing marker makes room while the arriving marker moves');
 });
 
 test('same-cell reflow finishes before a later i++ marker movement', () => {
@@ -1793,8 +2029,150 @@ test('same-cell reflow finishes before a later i++ marker movement', () => {
   motion.update(780);
   assert.ok(liveX('marker-i') > 7 && liveX('marker-i') < 60,
     'only after reflow does i++ move i toward arr[1]');
-  assert.ok(liveX('marker-j') < 33 && liveX('marker-j') > 20,
-    'j recenters as i leaves its cell');
+  assert.equal(liveX('marker-j'), 20,
+    'the source peer starts immediately and finishes the shared reflow timing');
+});
+
+test('destination peers make room as soon as an arriving marker starts moving', () => {
+  const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { markerAssignmentMotion,');
+  vm.runInContext(tweenSource, context);
+  context.window.ASMTraceRules = {
+    resolveExpression: (doc, frame, expression, locals) => Number(locals[expression])
+  };
+  const marker = (variableId, target, transform, order) => ({
+    dataset: {
+      traceBindingTarget: target,
+      traceSourceVariableId: variableId,
+      traceMarkerIndexExpression: variableId,
+      traceMarkerSortKey: variableId,
+      traceMarkerSortOrder: String(order),
+      traceMarkerBaseCellWidth: '40'
+    },
+    getAttribute: name => name === 'transform' ? transform : null
+  });
+  const currentI = marker('i', 'arr#1', 'translate(47,8)', 0);
+  const previousI = marker('i', 'arr#0', 'translate(20,8)', 0);
+  const currentJ = marker('j', 'arr#1', 'translate(73,8)', 1);
+  const previousJ = marker('j', 'arr#1', 'translate(60,8)', 1);
+  const entry = (key, element, previousVisual) => ({
+    key, element, previousVisual, markerPointPath: {},
+    markerLabelBox: { getAttribute: name => name === 'width' ? '18' : null }
+  });
+  const assignment = {
+    type: 'assign', order: 1,
+    targets: [{ variableId: 'i', role: 'target' }],
+    payload: { before: 0, after: 1 }
+  };
+  const motion = context.window.ASMTraceFrameTween.markerAssignmentMotion(
+    { variables: { i: { name: 'i' }, j: { name: 'j' } } },
+    { events: [assignment] },
+    [{ event: assignment, animation: 'assign', start: 0, motionStart: 0, end: 520 }],
+    new Map([
+      ['arr#0', { x: 0, y: 8, width: 40, height: 40 }],
+      ['arr#1', { x: 40, y: 8, width: 40, height: 40 }]
+    ]),
+    new Map([['marker-i', currentI], ['marker-j', currentJ]]),
+    [entry('marker-i', currentI, previousI), entry('marker-j', currentJ, previousJ)]
+  );
+  const liveJ = () => 73 + motion.adjustments.get('marker-j').x;
+  motion.update(0);
+  const startingArrow = motion.arrowStates.get('marker-i');
+  assert.equal(startingArrow.targetX - startingArrow.x, 0,
+    'the moving marker retains its source arrow direction at departure');
+  motion.update(150);
+  const turningArrow = motion.arrowStates.get('marker-i');
+  assert.ok(turningArrow.targetX - turningArrow.x > 0
+    && turningArrow.targetX - turningArrow.x < 13,
+  'the moving marker turns continuously toward its destination direction');
+  assert.ok(liveJ() > 60 && liveJ() < 73,
+    'destination peer starts making room with the arriving marker');
+  motion.update(520);
+  assert.equal(liveJ(), 73, 'destination peer finishes reflow when the marker arrives');
+});
+
+test('a moving declaration continuation uses the standard cross-cell duration', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { markerAssignmentMotion,');
+  const c = vm.createContext({
+    window: {
+      ASMTraceRules: { resolveExpression: (doc, frame, expression, locals) => (
+        Number(locals[expression])
+      ) },
+      ASMTraceEvents: {
+        animation: type => type === 'declare' ? 'declare' : 'none',
+        ordered: events => [...events].sort((left, right) => left.order - right.order)
+      }
+    },
+    document: { documentElement: { dataset: {} } },
+    requestAnimationFrame() {}, cancelAnimationFrame() {}, performance: { now: () => 0 },
+    CustomEvent: class CustomEvent {}, queueMicrotask() {}
+  });
+  vm.runInContext(source, c);
+  const tween = c.window.ASMTraceFrameTween;
+  const visual = (identity, target, x) => ({
+    dataset: {
+      traceObjectKey: 'marker-i',
+      traceBindingTarget: target,
+      traceSourceVariableId: 'i',
+      traceMarkerIndexExpression: 'i',
+      traceMarkerSortKey: 'i',
+      traceMarkerBaseCellWidth: '40',
+      traceRuntimeIdentity: identity,
+      traceVisualContinuityKey: 'heapify:i:arr'
+    },
+    getAttribute: name => name === 'transform' ? `translate(${x},8)` : null
+  });
+  const previous = visual('parent-i', 'arr#0', 20);
+  const current = visual('child-i', 'arr#1', 60);
+  const declaration = {
+    id: 'declare-child-i', type: 'declare', order: 1, name: 'i',
+    targets: [{ variableId: 'i', role: 'target' }]
+  };
+  const previousPlacements = new Map([['marker-i', { x: 20, y: 8 }]]);
+  const currentPlacements = new Map([
+    ['marker-i', { x: 60, y: 8 }],
+    ['arr#0', { x: 0, y: 8, width: 40, height: 40 }],
+    ['arr#1', { x: 40, y: 8, width: 40, height: 40 }]
+  ]);
+  const elements = new Map([['marker-i', current]]);
+  const slots = tween.buildEventTimeline(
+    { variables: { i: { name: 'i' } } },
+    { events: [declaration] }, 1, 520,
+    previousPlacements, currentPlacements, elements, 0,
+    new Map([['marker-i', previous]]), null,
+    { continuingKeys: new Set(['marker-i']), skipAvailability: true }
+  );
+  assert.equal(slots[0].duration, 520);
+  assert.equal(slots[0].declarationMarkerMotionDuration, 520);
+  slots[0].continuingVisualKeys = new Set(['marker-i']);
+
+  const motion = tween.markerAssignmentMotion(
+    { variables: { i: { name: 'i' } } },
+    { events: [declaration] }, slots, currentPlacements, elements,
+    [{
+      key: 'marker-i', element: current, previousVisual: previous,
+      markerPointPath: {}, markerLabelBox: { getAttribute: () => '18' }
+    }]
+  );
+  const liveX = () => 60 + motion.adjustments.get('marker-i').x;
+  motion.update(180);
+  assert.ok(liveX() > 20 && liveX() < 60,
+    'the declaration continuation is still moving after the old 180ms duration');
+  motion.update(520);
+  assert.equal(liveX(), 60);
+
+  const stationarySlots = tween.buildEventTimeline(
+    { variables: { i: { name: 'i' } } },
+    { events: [declaration] }, 1, 520,
+    new Map([['marker-i', { x: 60, y: 8 }]]), currentPlacements, elements, 0,
+    new Map([['marker-i', visual('parent-i', 'arr#1', 60)]]), null,
+    { continuingKeys: new Set(['marker-i']), skipAvailability: true }
+  );
+  assert.equal(stationarySlots[0].duration, 220);
+  assert.equal(stationarySlots[0].declarationMarkerMotionDuration, 180);
 });
 
 test('compare marker followers use the event checkpoint rather than the final rendered binding', () => {
