@@ -11,7 +11,7 @@
 - 情境與操作：標準線段樹使用一維陣列與遞迴區間建樹，n 可能不是二次方。
 - 目前行為：既有 heap 排版用完整二元樹層級安排固定寬度格子，不能直接呈現節點區間長度，也會讓不同深度的葉節點失去自然父子關係。
 - 使用者希望的結果：新增 `render segment_tree`，讓格子寬度反映區間長度，子節點直接位於父節點下一層，且不把葉節點強制對齊到底部；最小格為 40×40px、index 高 12px，並可分別設定水平與垂直 gap；tree index 平常置中，interval 靠右且葉節點使用單端點括號，碰撞時 index 向左避讓；兩段標籤在框內垂直置中；葉節點 value 與其他節點同字級。
-- 本次範圍與必要限制：保留既有 `render heap` 與舊線段樹範例；提供標準 `vector<int> tree(4*n+5)` lazy 範例，輸入操作 1/2/3 分別代表 modify、set、query；新增 `gap(horizontal,vertical)` 到陣列類 renderer；範例預設不寫 gap；只做相關 V2 小驗證。
+- 本次範圍與必要限制：保留既有 `render heap` 與舊線段樹範例；提供標準 `vector<int> tree(4*n+5)` lazy 範例，輸入操作 1/2/3 分別代表 modify、set、query；新增 `gap(horizontal,vertical)` 到陣列類 renderer；新增第一版 `format(...)` 顯示格式並改寫標準範例；範例預設不寫 gap；只做相關 V2 小驗證。第二版 `map(...)`、自訂 `prefix(...)`／`suffix(...)` 先記錄，不在本次實作。
 
 ## 需求確認
 - 已從使用者或上下文確認：採用區間比例寬度與自然遞迴深度；n=10 必須可表達 3/2 等非等分子區間；新增 renderer 名稱為 `segment_tree`；水平 gap 會擴大 heap／segment tree 等跨單位節點本身，垂直 gap 為 0 時不畫父子連線。
@@ -46,6 +46,9 @@
 - [x] update 回朔時插入左右子節點相加並寫回父節點的幀；query 只有跨中點、確實合併兩個回傳值時插入 `leftSum + rightSum = result` 回朔幀。
 - [x] update 與 query 的回朔加法幀都帶有對應顏色的 `split(now,after)`，完成當前節點時同步收回 segment。
 - [x] 融合顯示的 tree 格執行賦值動畫後，只更新事件所屬欄位；未隱藏的 lazy／sets 欄位與分隔符號不會被清除。
+- [x] `format(field=type,...)` 支援 `raw`、`signed`、`assign`、`binary`、`hex`、`bool`、`fixed(n)`、`percent(n)`，且只改顯示、不改原始資料、條件或 hide 判斷。
+- [x] 格子靜態文字與事件動畫共用格式；`assign`／`signed` 動畫完成後仍保留 `=`／正負號。
+- [x] 標準範例改用 `fields(tree,sets,lazy)`、`hide(sets=LM,lazy=0)`、`format(sets=assign,lazy=signed)`，使 set 與 modify 顯示為 `=8`、`+3` 或 `-2`。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
@@ -63,3 +66,4 @@
 - 2026-09-21：依使用者回饋新增回朔加法幀；update 顯示兩個 child 合併回 parent，query 改為標準回傳值寫法並只在跨中點時顯示左右答案合併。
 - 2026-09-21：依使用者回饋在所有回朔加法幀加入 `split(now,after)`；modify、set、query 分別沿用紫、橘、綠 segment。
 - 2026-09-22：重現 n=11 輸入第 55 幀 `tree[6]` 遺失 sets 欄位；確認 trace 仍有 `sets[6]=7`，修正賦值動畫只更新複合格內對應變數的文字節點。
+- 2026-09-22：依使用者確認新增第一版 `format(...)`，並將標準範例的 set／modify 標記改成 `=value`／帶正負號的 value；第二版值映射與自訂前後綴列為後續優化候選，交由主代理保留。
