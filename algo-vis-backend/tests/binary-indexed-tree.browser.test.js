@@ -35,6 +35,13 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
     assert.equal(source.variableId, numId);
     const sourceIndex = source.resolvedIndex;
     const sourceValue = String(trace.frames[frameIndex].state[numId].data.items[sourceIndex].value);
+    const markerMoveFrameIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'build'
+      && frame.events.some(event => event.expression === 'i += lb'
+        && Number(event.payload?.before?.value) === 1
+        && Number(event.payload?.after?.value) === 2)
+    ));
+    assert.ok(markerMoveFrameIndex > 0, 'sample must contain an i += lb marker move');
 
     const browser = await chromium.launch({
       headless: true,
@@ -155,6 +162,26 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         && presentation.highlight.height > presentation.cells.find(cell => cell.index === 8).bounds.height,
       'highlight covers the wide value cell and its binary index label');
       assert.ok(presentation.numHighlight, `build highlights the current source cell num[${sourceIndex}]`);
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index - 1), markerMoveFrameIndex);
+      const markerMotion = await page.evaluate(async ({ index, iId }) => {
+        const samples = [];
+        let settled = false;
+        const transition = window.ASMTracePlayer.render(index, { fromIndex: index - 1 })
+          .finally(() => { settled = true; });
+        for (let count = 0; count < 180 && !settled; count++) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          const marker = [...document.querySelectorAll('#asm-trace-root .asm-trace-bound-object')]
+            .find(node => node.dataset.traceSourceVariableId === iId);
+          const box = marker?.getBoundingClientRect?.();
+          if (box) samples.push({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+        }
+        await transition;
+        return samples;
+      }, { index: markerMoveFrameIndex, iId });
+      const markerPositions = new Set(markerMotion.map(point => (
+        `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`
+      )));
+      assert.ok(markerPositions.size > 2, 'i += lb visibly moves the i marker between BIT cells');
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

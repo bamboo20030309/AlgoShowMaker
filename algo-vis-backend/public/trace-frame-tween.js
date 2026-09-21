@@ -3234,7 +3234,8 @@
     if (isDeclarationInitializerAssignment(event)) {
       return Boolean(assignmentTargetMarker(event, elements, eventFrame, previousObjects));
     }
-    if (event?.type !== 'write' || event.update !== true) return false;
+    if (event?.type !== 'write'
+      || (event.update !== true && event.compound !== true)) return false;
     for (const [, element] of elements || []) {
       if (!(event.targets || []).some(target => markerMatchesEventTarget(element, target))) continue;
       return true;
@@ -6933,10 +6934,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-222';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-223';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-222', play, cancel, updateEventAvailability,
+    build: 'trace-223', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

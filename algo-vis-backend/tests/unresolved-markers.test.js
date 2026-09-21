@@ -2175,6 +2175,44 @@ test('a moving declaration continuation uses the standard cross-cell duration', 
   assert.equal(stationarySlots[0].declarationMarkerMotionDuration, 180);
 });
 
+test('compound scalar writes move their dependent marker but array compounds do not', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { updateTargetsMarker,');
+  const c = vm.createContext({
+    window: {},
+    document: { documentElement: { dataset: {} } },
+    queueMicrotask() {}
+  });
+  vm.runInContext(source, c);
+  const marker = {
+    dataset: { traceSourceVariableId: 'build:i', traceRuntimeIdentity: 'build-i-life' },
+    closest: () => null
+  };
+  const elements = new Map([['marker-i', marker]]);
+  const compoundIndex = {
+    type: 'write', compound: true,
+    targets: [
+      { role: 'target', variableId: 'build:i', lifetimeIdentity: 'build-i-life' },
+      { role: 'source', variableId: 'build:lb' }
+    ]
+  };
+  assert.equal(c.window.ASMTraceFrameTween.updateTargetsMarker(
+    compoundIndex, elements, { events: [compoundIndex] }
+  ), true, 'i += lb uses the position animation of the i marker');
+
+  const compoundArray = {
+    type: 'write', compound: true,
+    targets: [
+      { role: 'target', variableId: 'BIT', resolvedIndex: 4 },
+      { role: 'source', variableId: 'num', resolvedIndex: 3 }
+    ]
+  };
+  assert.equal(c.window.ASMTraceFrameTween.updateTargetsMarker(
+    compoundArray, elements, { events: [compoundArray] }
+  ), false, 'BIT[i] += num[k] remains a value assignment');
+});
+
 test('compare marker followers use the event checkpoint rather than the final rendered binding', () => {
   const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8');
   assert.doesNotMatch(source, /function markerMatchesCompareOperand\(/);
