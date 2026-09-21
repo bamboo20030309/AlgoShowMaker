@@ -35,7 +35,10 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
       const geometry = index => {
         const target = cell(index);
         const rect = target?.querySelector(':scope > rect');
-        const indexRect = tree.querySelector(`[data-trace-index-label="${index}"]`)?.querySelector?.('rect');
+        const label = tree.querySelector(`[data-trace-index-label="${index}"]`);
+        const indexRect = label?.querySelector?.('rect');
+        const indexText = label?.querySelector?.('[data-segment-label-role="index"]');
+        const intervalText = label?.querySelector?.('[data-segment-label-role="interval"]');
         return {
           left: Number(target?.dataset.segmentLeft),
           right: Number(target?.dataset.segmentRight),
@@ -44,7 +47,21 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
           width: Number(rect?.getAttribute('width')),
           height: Number(rect?.getAttribute('height')),
           indexHeight: Number(indexRect?.getAttribute('height')),
-          label: tree.querySelector(`[data-trace-index-label="${index}"]`)?.textContent
+          label: label?.textContent,
+          indexLabel: indexText ? {
+            text: indexText.textContent,
+            anchor: indexText.getAttribute('text-anchor'),
+            x: Number(indexText.getAttribute('x'))
+          } : null,
+          intervalLabel: intervalText ? {
+            text: intervalText.textContent,
+            anchor: intervalText.getAttribute('text-anchor'),
+            x: Number(intervalText.getAttribute('x')),
+            fontSize: Number(intervalText.getAttribute('font-size'))
+          } : null,
+          labelOverlap: indexText && intervalText
+            ? indexText.getBBox().x + indexText.getBBox().width > intervalText.getBBox().x
+            : false
         };
       };
       const visible = [...tree.querySelectorAll('[data-trace-index]')].map(node => Number(node.dataset.traceIndex));
@@ -65,7 +82,7 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
         layout: layout?.getAttribute('data-layout'),
         root: geometry(1), left: geometry(2), right: geometry(3),
         three: geometry(4), two: geometry(5), leafThree: geometry(9),
-        pairOneTwo: geometry(8), leafOne: geometry(16),
+        pairOneTwo: geometry(8), leafOne: geometry(16), leafTen: geometry(15),
         visible: visible.sort((a, b) => a - b),
         segment: segment ? {
           node: Number(segment.dataset.traceSegmentNode),
@@ -88,6 +105,16 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
     assert.equal(result.pairOneTwo.y, result.leafThree.y);
     assert.ok(result.leafOne.y > result.leafThree.y, 'early leaf stays at its natural recursion depth');
     assert.match(result.root.label, /\[1,10\]/);
+    assert.deepEqual(result.root.indexLabel, { text: '1', anchor: 'middle', x: 208 });
+    assert.deepEqual(result.root.intervalLabel,
+      { text: '[1,10]', anchor: 'end', x: 405, fontSize: 11 });
+    assert.deepEqual(result.leafOne.indexLabel, { text: '16', anchor: 'middle', x: 28 });
+    assert.deepEqual(result.leafOne.intervalLabel,
+      { text: '1', anchor: 'end', x: 45, fontSize: 10 });
+    assert.deepEqual(result.leafTen.intervalLabel,
+      { text: '10', anchor: 'end', x: 405, fontSize: 10 });
+    assert.equal(result.leafOne.labelOverlap, false);
+    assert.equal(result.leafTen.labelOverlap, false);
     assert.deepEqual(result.segment, { node: 1, width: 240 });
     assert.ok(result.frontiers.some(item => item.phase === 'before'
       && JSON.stringify(item.nodes) === JSON.stringify([2,3])));

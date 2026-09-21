@@ -576,17 +576,43 @@
       labelRect.setAttribute('fill', fill);
       labelRect.setAttribute('stroke', '#59656b');
       labelRect.setAttribute('stroke-width', '1');
-      let labelText = label.querySelector(':scope > text');
-      if (!labelText) {
-        labelText = document.createElementNS(NS, 'text');
-        label.appendChild(labelText);
+      let indexText = label.querySelector(':scope > [data-segment-label-role="index"]');
+      if (indexMode) {
+        if (!indexText) {
+          indexText = document.createElementNS(NS, 'text');
+          indexText.setAttribute('data-segment-label-role', 'index');
+          label.appendChild(indexText);
+        }
+        indexText.setAttribute('x', String(box.x + box.width / 2));
+        indexText.setAttribute('y', String(box.y + cellHeight + 10));
+        indexText.setAttribute('text-anchor', 'middle');
+        indexText.setAttribute('font-family', 'Arial');
+        indexText.setAttribute('font-size', String(Math.max(8, Math.min(11, box.width / 4))));
+        indexText.textContent = String(node.index);
+      } else indexText?.remove();
+
+      let intervalText = label.querySelector(':scope > [data-segment-label-role="interval"]');
+      if (!intervalText) {
+        intervalText = document.createElementNS(NS, 'text');
+        intervalText.setAttribute('data-segment-label-role', 'interval');
+        label.appendChild(intervalText);
       }
-      labelText.setAttribute('x', String(box.x + box.width / 2));
-      labelText.setAttribute('y', String(box.y + cellHeight + 10));
-      labelText.setAttribute('text-anchor', 'middle');
-      labelText.setAttribute('font-family', 'Arial');
-      labelText.setAttribute('font-size', String(Math.max(8, Math.min(11, box.width / 4))));
-      labelText.textContent = `${indexMode ? `${node.index} ` : ''}[${node.left},${node.right}]`;
+      const intervalLabel = node.left === node.right
+        ? String(node.left)
+        : `[${node.left},${node.right}]`;
+      const intervalFontSize = typeof window.fitSvgText === 'function'
+        ? window.fitSvgText(g, intervalLabel, Math.max(8, box.width / 2 - 3), intervalLabelHeight, {
+          maxFont: node.left === node.right ? 10 : 11,
+          minFont: 8,
+          padding: 0
+        })
+        : Math.max(8, Math.min(node.left === node.right ? 10 : 11, box.width / 4));
+      intervalText.setAttribute('x', String(box.x + box.width - 3));
+      intervalText.setAttribute('y', String(box.y + cellHeight + 10));
+      intervalText.setAttribute('text-anchor', 'end');
+      intervalText.setAttribute('font-family', 'Arial');
+      intervalText.setAttribute('font-size', String(intervalFontSize));
+      intervalText.textContent = intervalLabel;
 
       if (window.HintWidgets) {
         const highlighted = highlight.findLast(item => includesNode(item, node.index));
