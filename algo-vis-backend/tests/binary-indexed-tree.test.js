@@ -51,6 +51,7 @@ test('@let creates frame-local read-only aliases without C++ variables', () => {
 // @object arr
 // @let lb = i & -i
 // @let left = i - lb + 1
+// @let deduct = left == 1
 // @style arr[left:i] background AV_blue
 // @text "range \${left}~\${i}" at arr.top
 // @endpreset
@@ -62,7 +63,8 @@ int main() {
   const [frame] = findFrameDirectives(source);
   assert.deepEqual(frame.lets.map(binding => ({ name: binding.name, expression: binding.expression })), [
     { name: 'lb', expression: 'i & -i' },
-    { name: 'left', expression: 'i - lb + 1' }
+    { name: 'left', expression: 'i - lb + 1' },
+    { name: 'deduct', expression: 'left == 1' }
   ]);
   const i = frame.variables.find(variable => variable.name === 'i');
   assert.ok(i && frame.captureOnlyVariableIds.includes(i.id));
@@ -76,6 +78,7 @@ int main() {
   };
   assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'lb'), 4);
   assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'left'), 1);
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'deduct'), true);
   assert.equal(context.ASMTraceRules.resolveTextExpression(document, runtimeFrame, 'i + lb'), '8');
 
   assert.throws(() => findFrameDirectives(source.replace('@let left = i - lb + 1', '@let lb = 2')),

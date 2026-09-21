@@ -193,11 +193,12 @@ int main() {
 ```cpp
 // @frame BIT[i]
 // @let lb = i & -i
+// @let deduct = iteration.first(i) == L - 1
 // @style num[i-lb+1:i] background AV_blue
 // @text "BIT[${i}] 涵蓋 num[${i-lb+1}~${i}]" at num.top
 ```
 
-別名會在每次擷取該幀時重新計算，可引用先前宣告的 `@let`；它不會成為 C++ 變數、畫布物件、marker 或 runtime 事件。`@let` 也可寫在 `@preset`／`@defaults` 中。
+別名會在每次擷取該幀時重新計算，可引用先前宣告的 `@let`，並可使用算術、位元、比較與邏輯運算；它不會成為 C++ 變數、畫布物件、marker 或 runtime 事件。`@let` 也可寫在 `@preset`／`@defaults` 中。
 
 箭頭使用共用 Arrow Model；`@arrow`、Trace Studio 箭頭及遞迴 layout 箭頭共享同一套端點、邊距、箭頭頭部與顏色邏輯，底層沿用原本 `drawArrow` 的幾何比例。完整選項請參考[演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md#arrow連接視覺物件)。
 

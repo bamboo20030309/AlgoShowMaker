@@ -402,6 +402,7 @@ for (int i=2; i<=n; i++) {
 // @frame BIT[i]
 // @let lb = i & -i
 // @let left = i - lb + 1
+// @let deduct = iteration.first(i) == L - 1
 // @style num[left:i] background AV_blue
 // @text "BIT[${i}] 涵蓋 num[${left}~${i}]" at num.top
 ```
@@ -410,6 +411,7 @@ for (int i=2; i<=n; i++) {
 - 別名只供該幀的繪圖運算式使用，不建立 C++ 變數、畫布物件、marker 或 runtime 事件。
 - 每次程式執行到該幀時，會依該幀捕捉的 C++ 狀態重新求值；上一步或時間線跳轉也從穩定幀重建。
 - 後面的 `@let` 可以引用前面已宣告的別名。名稱不可重複、不可使用 `value`／`index`，也不可與該幀可見的 C++ 變數同名。
+- 運算式可使用算術、位元、比較與邏輯運算；比較結果可直接供 `when` 條件使用。
 - 可寫在 `@preset` 或 `@defaults` 中，在每個使用位置重新求值。
 - 目前不提供可修改狀態的指令變數，也不因 `@let` 執行迴圈。
 

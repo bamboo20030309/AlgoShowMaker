@@ -2031,7 +2031,7 @@ function attachLetDirectives(source, analysis, frameDirectives) {
     if (!match) throw new Error(`第 ${line} 行的 @let 格式應為：@let 名稱 = 運算式`);
     const name = match[1];
     const expression = match[2].trim();
-    const parsed = parseFrameExpression(expression);
+    const parsed = parseConditionExpression(expression);
     if (!parsed.valid) throw new Error(`第 ${line} 行的 @let 運算式無效：${expression}`);
     if (TRACE_STYLE_LOCALS.has(name)) throw new Error(`第 ${line} 行的 @let 名稱不可使用 ${name}`);
     return { name, expression, identifiers: parsed.identifiers || [], line, presetName };
