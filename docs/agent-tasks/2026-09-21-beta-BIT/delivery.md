@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-beta-BIT
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`
-- 驗證時的 HEAD 與未提交修改：`93b5a32d2fe6aa732579b4c74600802586d985b1`；只有本任務 task／delivery 文件待提交
+- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`、`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`
+- 驗證時的 HEAD 與未提交修改：`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`；只有本任務 task／delivery 文件待提交
 - 驗證日期：2026-09-21
 
 ## 根因與修改
@@ -26,6 +26,7 @@
 | 非 2 的冪次寬格、highlight、marker | n=10 實際瀏覽器 transition | 10 格寬度、BIT[8]=54、寬格 highlight 與 i marker 均正確 | 通過 |
 | 反向角落錨點名稱 | @place 靜態解析及 compile API | 四個別名的來源／目標均正規化；`pivot.left-top at arr.left-top` 實際編譯為 top-left | 通過 |
 | highlight／point 使用預設顏色 | 靜態 frame styles 與 BIT 瀏覽器專項 | 所有 highlight／point style 的 color 為空；背景色與寬格 highlight 呈現正常 | 通過 |
+| num 值飛向 BIT 的建構動畫 | compound event 資料與實際瀏覽器 transition | 每個 BIT write 的 source 是 num[k]；num[8] 的值 15 產生 transfer 且 transform 持續改變後抵達 BIT[8] | 通過 |
 
 ## 小驗證與重跑方式
 ### V2 Binary Indexed Tree 專項
@@ -42,8 +43,8 @@
 - 分類：E（指令／frame／綁定／位置）、F（runtime 事件／索引／資料）、G（marker）、H（style／標籤）及 A 的入口快取檢查。
 - 選擇依據：本次修改共用指令 parser/runtime、renderer 名稱、索引事件及 Binary Indexed Tree 實際 SVG。
 - 執行的測試檔／名稱篩選：完整執行 `place-directives.test.js`、`binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js` 與直接受 cache key 影響的 `entrypoints.test.js`。
-- 驗證環境與隔離服務：先用 3196 隔離服務開發驗證，完成後停止；最終在 beta 3102、PID 67064 重跑。未操作使用者分頁或資料。
-- 驗證版本、完整指令、結果與證據：最新程式 commit `93b5a32d2fe6aa732579b4c74600802586d985b1`；完整錨點相關組合於前一程式 commit 通過，最新受影響 BIT／入口子集於本 commit 重跑通過。
+- 驗證環境與隔離服務：先用 3196 隔離服務開發驗證，完成後停止；最終在 beta 3102、PID 67716 重跑。未操作使用者分頁或資料。
+- 驗證版本、完整指令、結果與證據：最新程式 commit `1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`；完整錨點相關組合於前一 parser commit 通過，最新受影響 BIT／入口子集於本 commit 重跑通過。
 - 未執行的驗證及原因：依 V2 分級未執行 `npm test`、完整 regression、廣泛排序或其他無關演算法動畫。
 - 需要主代理做的 V3 驗證：整合後實際播放 build 與兩次 sum，確認 num／BIT 的不同索引基準、全名 renderer、二進制索引及區間對照；再依 parser 共用影響決定是否增加其他指令案例。
 

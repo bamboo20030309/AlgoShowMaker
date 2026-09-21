@@ -38,6 +38,7 @@
 - [x] 非 2 的冪次長度仍有正確格寬、索引、highlight 與 marker 定位。
 - [x] `left-top`、`right-top`、`left-bottom`、`right-bottom` 可用於來源及目標錨點，並分別正規化為既有角落名稱。
 - [x] 範例中的 highlight 與 point 不指定顏色，沿用 renderer 預設值；只有 background 使用教學色彩。
+- [x] 建構時 `BIT[i]` 的 compound assignment 明確以可見的 `num[k]` 為來源，播放時數值會從 num 格移向 BIT 格。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -52,3 +53,4 @@
 - 2026-09-21：依使用者釐清在 num 前置值為 0 的保留格，使用 `AV_grey`，實際輸入回到 num[1..n] 並直接與 BIT 對齊；程式 commit 為 `80c3d15ae893f59ff7e7f94efda9459100e4d1e8`。
 - 2026-09-21：新增四個水平在前的角落錨點別名，支援 @place 來源與目標，並同步 camera、arrow 與前端文字指令綁定辨識；程式 commit 為 `399071d5125999b932aacf5a30ce572cb18b9e83`。
 - 2026-09-21：拆開 BIT 的 highlight 與 background 指令，highlight／point 保留預設顏色，只有 background 指定 AV_green／AV_blue；程式 commit 為 `93b5a32d2fe6aa732579b4c74600802586d985b1`。
+- 2026-09-21：將 build 改為保存原始索引 k 並執行 `BIT[i] += num[k]`，讓事件來源對應可見 num 格並播放數值 transfer；程式 commit 為 `1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`。
