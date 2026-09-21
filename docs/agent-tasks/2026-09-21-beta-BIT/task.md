@@ -9,7 +9,7 @@
 
 ## 問題與預期結果
 - 情境與操作：舊 Binary Indexed Tree 範例仍依賴 AV.hpp 與手寫繪圖程式，指令運算式也不能解析位元運算。
-- 目前行為：範例混入大量繪圖輔助碼；renderer 只提供 bit／fenwick 縮寫；沒有 Binary Indexed Tree 專項解析與實際 SVG 驗證。後續整合範例在兩次 `sum()` 交界幀保留了停用事件的不可見虛擬 `BIT[0]` placement，自動鏡頭因此向下取景。
+- 目前行為：範例混入大量繪圖輔助碼；renderer 只提供 bit／fenwick 縮寫；沒有 Binary Indexed Tree 專項解析與實際 SVG 驗證。後續整合範例在兩次 `sum()` 交界幀保留了停用事件的不可見虛擬 `BIT[0]` placement，自動鏡頭因此向下取景；`cin >> L >> R` 放在 `while` 條件時，第一個 body frame 仍把 L、R 視為未初始化。
 - 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數；新增小寫 `@let`，用唯讀幀內別名簡化重複的繪圖運算式，不加入新的繪圖迴圈能力；建樹與區間查詢拆成兩個可獨立執行的範例，不可見虛擬格不影響自動鏡頭。
 - 本次範圍與必要限制：保留既有 bit／fenwick 相容名稱；角落錨點同時接受水平在前的別名並正規化；不做完整 regression 或全部測試；修改後重啟 beta 3102、commit 並 push。
 
@@ -46,6 +46,7 @@
 - [x] 建樹與區間查詢分成兩個範例及各自輸入；查詢範例使用 `AV_green` 顯示涵蓋區間。
 - [x] 兩次 `sum()` 交界幀的停用 `i: 8→0` 可以保留虛擬 placement 供事件解析，但沒有實際 SVG 元素時不納入自動鏡頭邊界。
 - [x] 區間查詢將答案保留的右端前綴範圍塗綠、最後扣除的左端前綴範圍塗紅；累計說明不顯示「下一個索引」。
+- [x] `while (cin >> L >> R)` 每次成功讀取後，在 body 的第一個 frame 即可取得本次 L、R；連續兩筆輸入分別產生正確狀態。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -70,3 +71,4 @@
 - 2026-09-21：依使用者確認新增小寫 `@let` 唯讀繪圖別名，不新增迴圈；BIT pointer preset 宣告 `lb` 並由 style／text 共用。程式 commit 為 `3d53e3cc7bec6c32c7066ae5051e8722da3411f7`，手冊與編輯器提示 commit 為 `4c4a6ac92824e0d66f12a43f216dce381e57d961`。
 - 2026-09-22：重現查詢交界幀的鏡頭偏移，確認停用的終止更新建立不可見 `BIT[0]` placement；自動鏡頭改為只計入有實際元素的 placement，並將建樹與區間查詢拆成兩份範例。程式 commit 為 `f3132c75549f8aef6df3ce6137f54e742860c347`。
 - 2026-09-22：查詢函式新增 `deduct` 語意；右端前綴路徑使用 `AV_green`，左端扣除路徑使用 `AV_red`，並移除下一索引文字。程式 commit 為 `bbbf25f8a46fea6e031b5c1801ee12d99a010b33`。
+- 2026-09-22：補上直接以 `cin >> ...` 作為條件時的初始化標記，使 `while` body 首幀與後續迭代都取得最新輸入；查詢範例改為支援連續輸入。程式 commit 為 `573159879e666f59bcb6460e45afcd21b9ee4813`。

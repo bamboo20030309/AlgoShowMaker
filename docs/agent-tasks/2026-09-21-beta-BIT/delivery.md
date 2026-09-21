@@ -4,12 +4,12 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-beta-BIT
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`、`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`、`de9ebaca102e2618bd013a2dc1b2ef3fb5749337`、`a69a43f837508d64b7c9c1a79b3789d83c8a0a87`、`33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`、`210f1d547fca85f9665a30216bae28eb13e2e917`、`21b2a88fad59c481796cec078ce9e767466f5baf`、`7246804dd468b617e9726dffeede4398ce94ea36`、`3d53e3cc7bec6c32c7066ae5051e8722da3411f7`、`4c4a6ac92824e0d66f12a43f216dce381e57d961`、`f3132c75549f8aef6df3ce6137f54e742860c347`、`bbbf25f8a46fea6e031b5c1801ee12d99a010b33`
-- 驗證時的 HEAD 與未提交修改：程式 HEAD `bbbf25f8a46fea6e031b5c1801ee12d99a010b33`；只有本任務 task／delivery 文件待提交
+- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`、`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`、`de9ebaca102e2618bd013a2dc1b2ef3fb5749337`、`a69a43f837508d64b7c9c1a79b3789d83c8a0a87`、`33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`、`210f1d547fca85f9665a30216bae28eb13e2e917`、`21b2a88fad59c481796cec078ce9e767466f5baf`、`7246804dd468b617e9726dffeede4398ce94ea36`、`3d53e3cc7bec6c32c7066ae5051e8722da3411f7`、`4c4a6ac92824e0d66f12a43f216dce381e57d961`、`f3132c75549f8aef6df3ce6137f54e742860c347`、`bbbf25f8a46fea6e031b5c1801ee12d99a010b33`、`573159879e666f59bcb6460e45afcd21b9ee4813`
+- 驗證時的 HEAD 與未提交修改：程式 HEAD `573159879e666f59bcb6460e45afcd21b9ee4813`；只有本任務 task／delivery 文件待提交
 - 驗證日期：2026-09-22
 
 ## 根因與修改
-- 已確認根因與證據：指令 tokenizer、parser 與瀏覽器 runtime evaluator 原先只支援算術、比較及邏輯運算，無法處理 `& | ^ ~ << >>`；舊範例依賴 `AV.hpp` 與手寫繪圖程式；marker position 分類只接受 `write + update`，漏掉 `write + compound`；while body 內的 `i += lb` 是普通賦值事件，因此終止 build 時會如實呈現 `i: 8→16`，不會使用只適用於 for 更新式的迴圈邊界規則。查詢第 52 幀同時承接 `sum(8)` 結束與 `sum(1)` 進入，停用的 `i: 8→0` 仍建立不可見 `BIT[0]` placement（底部 816），舊 `currentBounds()` 未檢查實際元素而把它納入鏡頭邊界（底部由 472 變成 896）。
+- 已確認根因與證據：指令 tokenizer、parser 與瀏覽器 runtime evaluator 原先只支援算術、比較及邏輯運算，無法處理 `& | ^ ~ << >>`；舊範例依賴 `AV.hpp` 與手寫繪圖程式；marker position 分類只接受 `write + update`，漏掉 `write + compound`；while body 內的 `i += lb` 是普通賦值事件，因此終止 build 時會如實呈現 `i: 8→16`，不會使用只適用於 for 更新式的迴圈邊界規則。查詢第 52 幀同時承接 `sum(8)` 結束與 `sum(1)` 進入，停用的 `i: 8→0` 仍建立不可見 `BIT[0]` placement（底部 816），舊 `currentBounds()` 未檢查實際元素而把它納入鏡頭邊界（底部由 472 變成 896）。另因輸入初始化標記原本只附加在 `cin >> ...;` 的 ExpressionStatement 後，直接把串流擷取寫進 `while` 條件時沒有標記，body 第一幀便將已讀入的 L、R 呈現為空值。
 - 修正方式與行為變化：新增 C++ 優先序的整數位元運算解析與求值，讓安全的位元索引可保存實際索引；新增 `render binary indexed tree` 全名與連字號／底線別名，同時保留 bit／fenwick；將範例改成 num[0] 保留格及 1-based num／BIT 的 build、sum 與 range sum，只用新指令顯示兩個資料物件；採 int、簡短變數與接近舊版的程式結構；角落錨點新增水平在前的四個別名並統一存成原有標準名稱；讓確實命中 marker 來源變數的 compound scalar write 使用既有 position 平移；最後將 build／sum 改為 `for`，終止更新交由既有 loop-boundary 規則抑制；新增小寫 `@let`，把唯讀別名保存在 frame 中並於播放時依穩定幀求值，不產生 C++ runtime 狀態。
 - 修改檔案及用途：`trace-instrumenter.js`、`public/trace-rules.js`、`public/trace-model.js` 與 `server.js` 解析、保存及求值位元運算與 `@let`；`Binary_Indexed_Tree_Build.cpp`、`Binary_Indexed_Tree_Range_Query.cpp` 與各自 sample input 提供拆分範例；`trace-renderer.js` 排除沒有實際元素的 placement 之自動取景；入口 HTML 更新 cache key；BIT 與指令提示專項測試驗證 parser、compile、SVG、文字、寬格、標籤、highlight、marker 與鏡頭邊界。
 - README／版本紀錄／使用說明更新：README 指令速查、完整指令手冊及編輯器指令提示均加入小寫 `@let` 語法、作用域與限制。
@@ -34,6 +34,7 @@
 | 建樹與查詢拆分 | 兩份 sample compile 與輸出核對 | 建樹輸出完整 BIT；查詢輸入 `2 8`，輸出 49，動畫只包含查詢路徑 | 通過 |
 | 查詢區間與鏡頭 | 實際瀏覽器 SVG 與 `currentBounds()` | `num[1:8]` 顯示 AV_green；第二次 sum 進入前後鏡頭 bottom／centerY 相同，不再納入不可見 BIT[0] | 通過 |
 | 查詢加減配色與文字 | 查詢 sample compile、靜態指令及實際 SVG | `sum(R, false)` 為綠色，`sum(L-1, true)` 為紅色；輸出仍為 49，且不含「下一個索引」 | 通過 |
+| 條件式串流輸入 | `while (cin >> L >> R)` 兩筆輸入 compile | body 兩個 frame 依序取得 `[2,8]`、`[4,7]`，不再呈現空值 | 通過 |
 
 ## 小驗證與重跑方式
 ### V2 Binary Indexed Tree 專項
@@ -42,7 +43,7 @@
 - 測試資料／fixture：拆分後的建樹與區間查詢範例及各自輸入，n=10、查詢 2..8。
 - 完整指令或操作步驟：相關 JavaScript 語法檢查；`node --test --test-concurrency=1 tests/unresolved-markers.test.js tests/binary-indexed-tree.test.js tests/binary-indexed-tree.browser.test.js tests/entrypoints.test.js`；`git diff --check`。
 - 預期結果：無語法或差異錯誤；所選案例全部通過且無 skip。
-- 實際結果與 exit code（適用時）：既有錨點、marker 與 BIT 專項結果維持通過。新增 `@let` 後，從重啟的 3102 執行 BIT parser／runtime／browser、指令提示與入口共 11/11 通過；preset／defaults／text／style 擴大檢查 26/27 通過，唯一失敗是服務回覆「請求過於頻繁」，不列為通過。2026-09-22 的鏡頭與範例拆分追加驗證執行 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`、`camera-directives.test.js`、`entrypoints.test.js`，12/12 通過；重啟後再跑 BIT 兩檔，8/8 通過。加減配色與文字調整後重啟 3102，再跑 BIT 兩檔 8/8 通過；以上皆 exit code 0。3102 現為 PID 41640，HTTP 200 並載入 `trace-renderer.js?v=trace-204`。
+- 實際結果與 exit code（適用時）：既有錨點、marker 與 BIT 專項結果維持通過。新增 `@let` 後，從重啟的 3102 執行 BIT parser／runtime／browser、指令提示與入口共 11/11 通過；preset／defaults／text／style 擴大檢查 26/27 通過，唯一失敗是服務回覆「請求過於頻繁」，不列為通過。2026-09-22 的鏡頭與範例拆分追加驗證執行 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`、`camera-directives.test.js`、`entrypoints.test.js`，12/12 通過；重啟後再跑 BIT 兩檔，8/8 通過。加減配色與文字調整後重啟 3102，再跑 BIT 兩檔 8/8 通過。條件式輸入新增案例單獨重跑 1/1 通過，BIT 兩檔再跑 8/8 通過；以上皆 exit code 0。3102 現為 PID 45276，HTTP 200。
 - 證據位置：已提交測試檔；執行摘要僅存在本次本機工作紀錄，不提交 test-results 或 server log。
 
 ## 驗證分級與選擇
