@@ -134,15 +134,36 @@
     return null;
   }
 
-  function iterationLastValue(document, frame, variableName) {
+  function iterationValue(document, frame, boundary, variableName) {
     const frameId = String(frame?.id || '');
     const name = String(variableName || '').trim();
     if (!frameId || !name) return null;
-    const summary = document?.iterationSummaries?.[frameId]?.last?.[name];
+    const summary = document?.iterationSummaries?.[frameId]?.[boundary]?.[name];
     return summary == null ? null : summary;
   }
 
+  function iterationLastValue(document, frame, variableName) {
+    return iterationValue(document, frame, 'last', variableName);
+  }
+
+  function iterationFirstValue(document, frame, variableName) {
+    return iterationValue(document, frame, 'first', variableName);
+  }
+
   function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
+    if (!locals?.__asmDirectiveLetsResolved && Array.isArray(frame?.lets) && frame.lets.length) {
+      const resolvedLocals = { ...(locals || {}) };
+      Object.defineProperty(resolvedLocals, '__asmDirectiveLetsResolved', {
+        value: true,
+        enumerable: false
+      });
+      for (const binding of frame.lets) {
+        const value = resolveExpression(document, frame, binding.expression, resolvedLocals, allowTextSlices);
+        if (value == null) return null;
+        resolvedLocals[binding.name] = value;
+      }
+      locals = resolvedLocals;
+    }
     const source = String(expression ?? '').trim();
     if (!source) return null;
     const tokens = [];
@@ -167,13 +188,13 @@
         cursor += identifier[0].length;
         continue;
       }
-      const compoundOperator = source.slice(cursor).match(/^(?:&&|\|\||==|!=|<=|>=)/);
+      const compoundOperator = source.slice(cursor).match(/^(?:&&|\|\||<<|>>|==|!=|<=|>=)/);
       if (compoundOperator) {
         tokens.push({ type: 'operator', value: compoundOperator[0] });
         cursor += compoundOperator[0].length;
         continue;
       }
-      if ('+-*/%()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
+      if ('+-*/%&|^~()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
         tokens.push({ type: 'operator', value: source[cursor] });
         cursor += 1;
         continue;
@@ -210,12 +231,13 @@
       if (token.value === 'iteration' && peek('.')) {
         consume('.');
         const method = consume();
-        if (method?.type !== 'identifier' || method.value !== 'last' || !consume('(')) {
+        if (method?.type !== 'identifier'
+          || (method.value !== 'first' && method.value !== 'last') || !consume('(')) {
           return invalid;
         }
         const variable = consume();
         if (variable?.type !== 'identifier' || !consume(')')) return invalid;
-        return knownValue(iterationLastValue(document, frame, variable.value));
+        return knownValue(iterationValue(document, frame, method.value, variable.value));
       }
       if (TEMPORAL_FUNCTIONS.has(token.value) && peek('(')) {
         consume('(');
@@ -237,13 +259,13 @@
       let data = found.entry?.data;
       while (peek('[')) {
         consume('[');
-        const index = allowTextSlices && peek(':') ? 0 : parseAdditive();
+        const index = allowTextSlices && peek(':') ? 0 : parseBitwiseOr();
         if (index === invalid || !Number.isInteger(Number(index))) return invalid;
         if (allowTextSlices && peek(':')) {
           consume(':');
           const items = Array.isArray(data) ? data : data?.items;
           if (!Array.isArray(items)) return invalid;
-          const end = peek(']') ? items.length - 1 : parseAdditive();
+          const end = peek(']') ? items.length - 1 : parseBitwiseOr();
           if (end === invalid || !Number.isInteger(Number(end))) return invalid;
           const startIndex = Math.max(0, Number(index));
           const endIndex = Math.min(items.length - 1, Number(end));
@@ -286,6 +308,11 @@
         const value = parseUnary();
         return value === invalid ? invalid : !Boolean(value);
       }
+      if (peek('~')) {
+        consume('~');
+        const value = parseUnary();
+        return value === invalid ? invalid : ~Number(value);
+      }
       return parsePrimary();
     }
 
@@ -313,6 +340,19 @@
       return value;
     }
 
+    function parseShift() {
+      let value = parseAdditive();
+      while (peek('<<') || peek('>>')) {
+        const operator = consume().value;
+        const right = parseAdditive();
+        if (value === invalid || right === invalid) return invalid;
+        value = operator === '<<'
+          ? Number(value) << Number(right)
+          : Number(value) >> Number(right);
+      }
+      return value;
+    }
+
     function comparable(left, right) {
       const leftNumber = Number(left);
       const rightNumber = Number(right);
@@ -324,10 +364,10 @@
     }
 
     function parseRelational() {
-      let value = parseAdditive();
+      let value = parseShift();
       while (peek('<') || peek('<=') || peek('>') || peek('>=')) {
         const operator = consume().value;
-        const right = parseAdditive();
+        const right = parseShift();
         if (value === invalid || right === invalid) return invalid;
         const pair = comparable(value, right);
         if (operator === '<') value = pair.left < pair.right;
@@ -350,11 +390,44 @@
       return value;
     }
 
-    function parseLogicalAnd() {
+    function parseBitwiseAnd() {
       let value = parseEquality();
+      while (peek('&')) {
+        consume('&');
+        const right = parseEquality();
+        if (value === invalid || right === invalid) return invalid;
+        value = Number(value) & Number(right);
+      }
+      return value;
+    }
+
+    function parseBitwiseXor() {
+      let value = parseBitwiseAnd();
+      while (peek('^')) {
+        consume('^');
+        const right = parseBitwiseAnd();
+        if (value === invalid || right === invalid) return invalid;
+        value = Number(value) ^ Number(right);
+      }
+      return value;
+    }
+
+    function parseBitwiseOr() {
+      let value = parseBitwiseXor();
+      while (peek('|')) {
+        consume('|');
+        const right = parseBitwiseXor();
+        if (value === invalid || right === invalid) return invalid;
+        value = Number(value) | Number(right);
+      }
+      return value;
+    }
+
+    function parseLogicalAnd() {
+      let value = parseBitwiseOr();
       while (peek('&&')) {
         consume('&&');
-        const right = parseEquality();
+        const right = parseBitwiseOr();
         if (value === invalid || right === invalid) return invalid;
         value = Boolean(value) && Boolean(right);
       }
@@ -698,7 +771,7 @@
     frameMatches,
     conditionMatches,
     variableEntry,
-    resolveExpression, resolveTextExpression, iterationLastValue,
+    resolveExpression, resolveTextExpression, iterationFirstValue, iterationLastValue,
     temporalValue,
     expressionMatches,
     textExpressionMatches,

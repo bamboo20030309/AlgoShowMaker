@@ -76,3 +76,27 @@ int main() {
     ['0', '1', '2']
   ]);
 });
+
+test('iteration.first resolves the initial value throughout and immediately after a loop lifetime', async () => {
+  const { trace, window } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int values[9] = {};
+int sum(int i) {
+  int ans = 0;
+  for (; i > 0; i -= i & -i) {
+    // @frame values
+    // @style values[1:iteration.first(i)] focus
+    ans += i;
+  }
+  // @frame values
+  // @style values[1:iteration.first(i)] focus
+  return ans;
+}
+int main() {
+  sum(7);
+  sum(4);
+}`);
+  const values = Array.from(trace.frames, frame =>
+    window.ASMTraceRules.resolveExpression(trace, frame, 'iteration.first(i)'));
+  assert.deepEqual(values, [7, 7, 7, 7, 4, 4]);
+});

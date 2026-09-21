@@ -1614,11 +1614,52 @@
       : placements.get(targetObjectKey) || null;
   }
 
-  function ensureLinearIndexPlacement(frame, variableId, index, itemCount, placements) {
+  function bitVirtualIndexPlacement(frame, variableId, index, placements, elements) {
+    const objectKey = objectKeyForVariable(frame, variableId);
+    const prefix = `${objectKey}#`;
+    const cells = [];
+    placements.forEach((placement, key) => {
+      if (!key.startsWith(prefix) || !/^-?\d+$/.test(key.slice(prefix.length))) return;
+      if (!elements?.has?.(key)) return;
+      cells.push({ key, index: Number(key.slice(prefix.length)), placement });
+    });
+    cells.sort((left, right) => left.index - right.index);
+    const first = cells[0];
+    const layout = first && elements.get(first.key)?.closest?.('[data-layout]');
+    if (String(layout?.getAttribute?.('data-layout') || '').toLowerCase() !== 'bit') return null;
+
+    const localIndex = index - first.index + 1;
+    if (localIndex <= 0) return null;
+    const rows = Number(layout.getAttribute('data-bit-rows'));
+    const rowHeight = Number(layout.getAttribute('data-row-height'));
+    const baseWidth = Number(layout.getAttribute('data-box-size'))
+      || Number(first.placement.width) || 40;
+    if (!Number.isFinite(rows) || !Number.isFinite(rowHeight) || rowHeight <= 0) return null;
+
+    const widthUnits = localIndex & -localIndex;
+    const layer = Math.log2(widthUnits);
+    const width = baseWidth * widthUnits;
+    const originX = Number(first.placement.x) || 0;
+    const originY = (Number(first.placement.y) || 0) - rows * rowHeight;
+    return {
+      ...first.placement,
+      x: originX + Math.floor((localIndex - 1) / widthUnits) * width,
+      y: originY + (rows - layer) * rowHeight,
+      width
+    };
+  }
+
+  function ensureLinearIndexPlacement(frame, variableId, index, itemCount, placements, elements = null) {
     if (!Number.isInteger(index) || !Number.isInteger(itemCount) || itemCount < 1) return null;
     const objectKey = objectKeyForVariable(frame, variableId);
     const key = `${objectKey}#${index}`;
     if (placements.has(key)) return placements.get(key);
+
+    const bitPlacement = bitVirtualIndexPlacement(frame, variableId, index, placements, elements);
+    if (bitPlacement) {
+      placements.set(key, bitPlacement);
+      return bitPlacement;
+    }
 
     const edgeIndex = index < 0 ? 0 : itemCount - 1;
     const neighbourIndex = index < 0 ? Math.min(1, itemCount - 1) : Math.max(0, itemCount - 2);
@@ -3557,6 +3598,21 @@
         || !targetEntry
         || targetKind === 'matrix'
         || !targetItems.length) return;
+      const markerSourceIds = new Set(binding.sourceVariableIds || [binding.sourceVariableId]);
+      (frame.events || []).forEach(event => {
+        if (!['assign', 'write'].includes(event?.type)) return;
+        const eventTarget = (event.targets || []).find(target => target?.role !== 'source'
+          && markerSourceIds.has(target?.variableId));
+        if (!eventTarget) return;
+        ['before', 'after'].forEach(phase => {
+          const eventIndex = Number(displayValue(event.payload?.[phase]));
+          if (!Number.isInteger(eventIndex)) return;
+          ensureLinearIndexPlacement(
+            frame, binding.targetVariableId, eventIndex,
+            targetItems.length, placements, elements
+          );
+        });
+      });
       const unresolvedReference = hasIndexValue ? null : leftmostVisibleIndexPlacement(
         frame, binding.targetVariableId, placements, elements
       );
@@ -3565,7 +3621,8 @@
         binding.targetVariableId,
         indexValue,
         targetItems.length,
-        placements
+        placements,
+        elements
       ) : !unresolvedReference) return;
 
       const label = binding.indexExpression
@@ -4581,6 +4638,7 @@
       snapshotObjectKey(snapshotsById.get(id)) || id
     )));
     const boxes = [...currentScene.placements.entries()]
+      .filter(([key]) => currentScene.elements.has(key))
       .filter(([key]) => options.includeSnapshots !== false || !snapshotIds.has(key))
       .map(([, box]) => box);
     if (!boxes.length) return null;
@@ -4683,9 +4741,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-207';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-208';
   window.ASMTraceRenderers = {
-    build: 'trace-207', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-208', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

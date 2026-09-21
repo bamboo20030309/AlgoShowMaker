@@ -50,6 +50,29 @@ test('@place supports an explicit source anchor and rejects hidden C++ sources',
   )), /來源變數未由前一個 @frame 顯示：pivot/);
 });
 
+test('@place accepts reversed corner anchor names and normalizes them', async () => {
+  const aliases = {
+    'left-top': 'top-left',
+    'right-top': 'top-right',
+    'left-bottom': 'bottom-left',
+    'right-bottom': 'bottom-right'
+  };
+  for (const [alias, canonical] of Object.entries(aliases)) {
+    const aliased = source.replace('@place pivot at arr.right', `@place pivot.${alias} at arr.${alias}`);
+    const [place] = findPlaceDirectives(aliased);
+    assert.equal(place.sourceAnchor, canonical);
+    assert.equal(place.binding.sourceAnchor, canonical);
+    assert.equal(place.binding.anchor, canonical);
+  }
+
+  const aliased = source.replace('@place pivot at arr.right', '@place pivot.left-top at arr.left-top');
+  const { trace } = await compile(aliased);
+  const frame = trace.frames.find(item => item.source?.layoutId === 'quick_tree');
+  const binding = frame.objectBindings.find(item => item.sourceName === 'pivot');
+  assert.equal(binding.sourceAnchor, 'top-left');
+  assert.equal(binding.anchor, 'top-left');
+});
+
 test('@place survives compile in the shared frame objectBindings model', async () => {
   const { trace, window } = await compile(source);
   const frame = trace.frames.find(item => item.source?.layoutId === 'quick_tree');

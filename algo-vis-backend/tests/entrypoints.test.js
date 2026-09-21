@@ -26,8 +26,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-33'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-20'));
+  assert.ok(html.includes('trace-model.js?v=trace-35'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-21'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-25'));
@@ -73,7 +73,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-19'));
+  assert.ok(html.includes('trace-rules.js?v=trace-22'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'segment_tree' ? 'segment-label-3' : 'gap-1';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
@@ -91,7 +91,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-6'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
   assert.ok(html.includes('trace-studio.js?v=trace-121'));
-  assert.ok(html.includes('front.js?v=random-id-34'));
+  assert.ok(html.includes('front.js?v=random-id-35'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
   assert.ok(html.includes('trace-provenance.js?v=trace-9'));
   assert.ok(html.includes('trace.css?v=trace-36'));

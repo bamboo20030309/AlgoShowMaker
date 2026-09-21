@@ -5,7 +5,7 @@
 
 - 文件語言：繁體中文
 - 適用介面：演算法編輯器、Trace Studio、演算法投影片編輯器與投影片播放介面
-- 最後核對日期：2026/09/20
+- 最後核對日期：2026/09/21
 
 > 本手冊介紹 `// @frame` 這套追蹤語法。它和直接呼叫 `AV.hpp` 的傳統 `av.draw(...)`
 > 繪圖 API 是兩套不同入口；使用追蹤語法時，不需要自行呼叫 `av.start_draw()`。
@@ -18,23 +18,24 @@
 4. [共用修飾詞](#共用修飾詞)
 5. [`@frame`：建立動畫幀](#frame建立動畫幀)
 6. [`@defaults`：每幀自動套用](#defaults每幀自動套用的呈現預設)，[`@preset` 與 `@frame use`：重用視圖設定](#preset-與-frame-use重用視圖設定)
-7. [`@keep`：保留畫面狀態](#keep保留畫面狀態)
-8. [`@layout recursion`：遞迴樹排版](#layout-recursion遞迴樹排版)
-9. [`@exit`：提早讓物件退場](#exit提早讓物件退場)
-10. [`@text`：加入說明文字](#text加入說明文字)
-11. [`@style`：設定格子樣式](#style設定格子樣式)
-12. [`@segment`：標示連續區間](#segment標示連續區間)
-13. [`@arrow`：連接視覺物件](#arrow連接視覺物件)
-14. [`@place`：放置同幀物件](#place放置同幀物件)
-15. [`render` 與 `with`：選擇資料結構畫法](#render-與-with選擇資料結構畫法)
-16. [`at` 與 `offset`：相對定位](#at-與-offset相對定位)
-17. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
-18. [完整使用案例](#完整使用案例)
-19. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
+7. [`@let`：幀內唯讀運算別名](#let幀內唯讀運算別名)
+8. [`@keep`：保留畫面狀態](#keep保留畫面狀態)
+9. [`@layout recursion`：遞迴樹排版](#layout-recursion遞迴樹排版)
+10. [`@exit`：提早讓物件退場](#exit提早讓物件退場)
+11. [`@text`：加入說明文字](#text加入說明文字)
+12. [`@style`：設定格子樣式](#style設定格子樣式)
+13. [`@segment`：標示連續區間](#segment標示連續區間)
+14. [`@arrow`：連接視覺物件](#arrow連接視覺物件)
+15. [`@place`：放置同幀物件](#place放置同幀物件)
+16. [`render` 與 `with`：選擇資料結構畫法](#render-與-with選擇資料結構畫法)
+17. [`at` 與 `offset`：相對定位](#at-與-offset相對定位)
+18. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
+19. [完整使用案例](#完整使用案例)
+20. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
     - [`@events`：每幀事件動畫控制](#events每幀事件動畫控制)
-20. [程式碼片段與條件著色](#程式碼片段與條件著色)
-21. [常見錯誤與限制](#常見錯誤與限制)
-22. [文件維護規則](#文件維護規則)
+21. [程式碼片段與條件著色](#程式碼片段與條件著色)
+22. [常見錯誤與限制](#常見錯誤與限制)
+23. [文件維護規則](#文件維護規則)
 
 ## 五分鐘快速入門
 
@@ -135,6 +136,7 @@ arr[i] = key;
 | `@keep` | 保留變數或上一幀 | 支援 | 支援 | 支援 | 支援目前值條件 | 不支援 | 不支援 | 支援 |
 | `@layout` | 宣告或設定具名遞迴樹排版 | 宣告時必須使用 | 宣告時支援 | 宣告時支援 | 不支援 | 不支援 | 專用設定語法 | 不支援 |
 | `@exit` | 提早讓一或多個可見變數退場 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
+| `@let` | 建立幀內唯讀運算別名 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
 | `@text` | 加入說明文字與 TTS | 支援 | 支援 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@style` | 套用格子樣式 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | `showWidth`、heap格內區段的`split` | 不支援 |
@@ -292,7 +294,7 @@ arr[i] = key;
 ```
 
 或使用 `// @camera auto`，讓每幀自動捕捉。區塊支援 `@camera`、`@object`、`@place`、
-`@style`、`@segment`、`@text`、`@arrow`、`@events`、`@automark`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
+`@let`、`@style`、`@segment`、`@text`、`@arrow`、`@events`、`@automark`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
 一份程式只定義一個 defaults 區塊，不可巢狀，必須以 `@enddefaults` 結束。
 
 每幀在當前作用域重新解析變數與運算式；遞迴參數 `arr` 會指向該次呼叫的陣列，
@@ -335,7 +337,7 @@ for (int i=2; i<=n; i++) {
 可寫 `// @frame use sieve_view when i <= n`。
 
 預設區塊必須以 `@endpreset` 結束，至少包含一個 `@` 指令。preset 定義層不再維護指令白名單，
-而是原樣保存每一條設定，再由 `@object`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、
+而是原樣保存每一條設定，再由 `@object`、`@let`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、
 `@camera` 等各自的解析器於 `@frame use` 位置展開。這讓之後新增的幀設定不必再次修改 preset
 的允許清單。變數與 `when` 仍在使用位置解析，不會在 preset 定義時執行。
 
@@ -391,6 +393,25 @@ for (int i=2; i<=n; i++) {
 - `offset(x,y)`：在鏡頭中心加入像素位移。
 - `when`：條件成立時才採用這條鏡頭設定。
 - 優先序為「Trace Studio 的幀覆寫 → 本幀／preset 的 `@camera` → Studio 全域鏡頭 → 自動鏡頭」。
+
+## `@let`：幀內唯讀運算別名
+
+`@let` 可替同一幀內重複使用的安全運算式命名，指令名稱固定使用小寫：
+
+```cpp
+// @frame BIT[i]
+// @let lb = i & -i
+// @let left = i - lb + 1
+// @style num[left:i] background AV_blue
+// @text "BIT[${i}] 涵蓋 num[${left}~${i}]" at num.top
+```
+
+- 語法為 `// @let 名稱 = 運算式`。
+- 別名只供該幀的繪圖運算式使用，不建立 C++ 變數、畫布物件、marker 或 runtime 事件。
+- 每次程式執行到該幀時，會依該幀捕捉的 C++ 狀態重新求值；上一步或時間線跳轉也從穩定幀重建。
+- 後面的 `@let` 可以引用前面已宣告的別名。名稱不可重複、不可使用 `value`／`index`，也不可與該幀可見的 C++ 變數同名。
+- 可寫在 `@preset` 或 `@defaults` 中，在每個使用位置重新求值。
+- 目前不提供可修改狀態的指令變數，也不因 `@let` 執行迴圈。
 
 ## `@keep`：保留畫面狀態
 
@@ -1301,6 +1322,7 @@ bottom-left  bottom  bottom-right
 | --- | --- |
 | 數值 | 整數、十進位數 |
 | 算術 | `+`、`-`、`*`、`/`、`%` |
+| 位元 | `&`、`|`、`^`、`~`、`<<`、`>>` |
 | 比較 | `<`、`<=`、`>`、`>=`、`==`、`!=` |
 | 邏輯 | `&&`、`||`、`!`，以及 `and`、`or` |
 | 括號 | `(...)` |
@@ -1316,7 +1338,7 @@ bottom-left  bottom  bottom-right
 // @style arr[low:high] background AV_green when value < pivot and index != high
 ```
 
-不支援任意函式呼叫、三元運算子、位元運算、字串常值或具有副作用的運算式。
+不支援任意函式呼叫、三元運算子、字串常值或具有副作用的運算式。
 例如 `max(i,j)`、`i++`、`condition ? a : b` 都不應放進視覺化條件。
 
 ### 跨幀與事件函式

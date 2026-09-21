@@ -20,7 +20,7 @@ test('old AV draw right-click code shortcuts are removed', () => {
 
 test('directive assistant supplies keyboard navigation, examples, and native context-menu fallback', () => {
   const source = publicFile('trace-directive-assist.js');
-  for (const directive of ['frame', 'object', 'keep', 'layout', 'style', 'text', 'segment', 'place', 'arrow', 'exit']) {
+  for (const directive of ['frame', 'object', 'let', 'keep', 'layout', 'style', 'text', 'segment', 'place', 'arrow', 'exit']) {
     assert.match(source, new RegExp(`id: '${directive}'`));
   }
   assert.match(source, /event\.code === 'Space'/);
@@ -32,4 +32,6 @@ test('directive assistant supplies keyboard navigation, examples, and native con
   assert.match(source, /if \(!byId\[id\]\) return;/);
   assert.doesNotMatch(source, /av\.start_frame_draw\(\)|av\.frame_draw\(/);
   assert.match(source, /with split\(now\)/);
+  assert.match(source, /label: '@let'.*code: '\/\/ @let lb = i & -i'/);
+  assert.doesNotMatch(source, /@Let\b/);
 });
