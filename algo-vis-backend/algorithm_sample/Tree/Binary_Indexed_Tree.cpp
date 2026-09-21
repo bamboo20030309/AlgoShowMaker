@@ -28,13 +28,12 @@ void build(int i) {
     int k = i;
     while (i <= n) {
         int lb = i & -i;
-        int l = i - lb + 1;
 
         // @frame use binary_indexed_tree_pointer_view
         // @style num[k] highlight
         // @style BIT[i] highlight
         // @style BIT[i] background AV_green
-        // @text "BIT[${i}] 涵蓋 num[${l}~${i}]，準備加上 num[${k}] = ${num[k]}" at num.top offset(0,-20)
+        // @text "BIT[${i}] 涵蓋 num[${i-lb+1}~${i}]，準備加上 num[${k}] = ${num[k]}" at num.top offset(0,-20)
 
         BIT[i] += num[k];
 
@@ -52,18 +51,17 @@ int sum(int i) {
     int ans = 0;
     while (i > 0) {
         int lb = i & -i;
-        int l = i - lb + 1;
 
         // @frame use binary_indexed_tree_pointer_view
-        // @style num[l:i] background AV_blue
+        // @style num[i-lb+1:i] background AV_blue
         // @style BIT[i] highlight
         // @style BIT[i] background AV_blue
-        // @text "BIT[${i}] 代表 num[${l}~${i}]，將 ${BIT[i]} 加入總和" at num.top offset(0,-20)
+        // @text "BIT[${i}] 代表 num[${i-lb+1}~${i}]，將 ${BIT[i]} 加入總和" at num.top offset(0,-20)
 
         ans += BIT[i];
 
         // @frame use binary_indexed_tree_pointer_view
-        // @style num[l:i] background AV_blue
+        // @style num[i-lb+1:i] background AV_blue
         // @style BIT[i] highlight
         // @style BIT[i] background AV_blue
         // @text "目前總和是 ${ans}；下一個索引是 ${i - lb}" at num.top offset(0,-20)
