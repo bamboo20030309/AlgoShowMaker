@@ -1384,6 +1384,16 @@ function resolveFrameRendererOptions(frame, directive) {
     const columns = resolveTraceIndexExpression(frame, source.columns.expression);
     if (columns != null && columns > 0) options.columns = columns;
   }
+  if (source.gap) {
+    const horizontal = resolveTraceIndexExpression(frame, source.gap.horizontalExpression);
+    const vertical = resolveTraceIndexExpression(frame, source.gap.verticalExpression);
+    if (horizontal != null && vertical != null) {
+      options.gap = {
+        horizontal: Math.max(0, horizontal),
+        vertical: Math.max(0, vertical)
+      };
+    }
+  }
   if (source.labels) {
     const format = source.labels.indexFormat || 'none';
     if (source.labels.showValue === false && format === 'decimal') options.indexMode = 2;
@@ -1402,6 +1412,18 @@ function resolveFrameRendererOptions(frame, directive) {
     options.hide = {
       entries: Array.isArray(source.hide.entries)
         ? source.hide.entries.map(entry => ({ field: entry.field, value: entry.value }))
+        : []
+    };
+  }
+  if (source.format) {
+    options.format = {
+      entries: Array.isArray(source.format.entries)
+        ? source.format.entries.map(entry => ({
+          field: entry.field,
+          type: entry.type,
+          ...(Number.isInteger(entry.precision) ? { precision: entry.precision } : {}),
+          variableId: entry.variableId || ''
+        }))
         : []
     };
   }

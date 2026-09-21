@@ -73,21 +73,26 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   const {code,result,trace}=await runSample('Segment_Tree');
   assert.doesNotMatch(code,/AV\.hpp|\bAV\s+av\b|frame_draw|key_frame_draw|colored_text|_draw_modify|_draw_segment/);
   assert.match(code,/fields\(tree,lazy,sets\), hide\(lazy=0,\s*sets=LM\)/);
+  assert.match(code,/format\(lazy=signed,sets=assign\)/);
   assert.match(code,/@preset operation_pointer_view[\s\S]*@object tree\[now\] render heap/);
   assert.doesNotMatch(code,/@style tree\[now\][^\n]*\bpoint\b/);
   assert.match(code,/@segment tree\[1\]\[L-Tmask:R-Tmask\].*with split\(now\)/);
   assert.match(code,/with split\(now,after\)/);
-  assert.match(code,/answer \+= tree\[now\]/);
+  assert.match(code,/ans \+= tree\[now\]/);
   assert.doesNotMatch(code,/@preset build_view|讀入第/);
   assert.equal(result.output.trim(),'12');
   const treeId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='tree');
   const lazyId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='lazy');
   const setsId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='sets');
-  const answerId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='answer');
+  const ansId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='ans');
   const options=trace.frames.map(frame=>frame.rendererOptions?.[treeId]).find(value=>value?.fields);
   assert.deepEqual(JSON.parse(JSON.stringify(options.fields.names)),['tree','lazy','sets']);
   assert.deepEqual(JSON.parse(JSON.stringify(options.hide.entries)),[
     {field:'lazy',value:'0'},{field:'sets',value:'LM'}
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(options.format.entries)),[
+    {field:'lazy',type:'signed',variableId:lazyId},
+    {field:'sets',type:'assign',variableId:setsId}
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(options.range)),[1,31],
     'range stops before the unused padding leaf');
@@ -105,6 +110,6 @@ test('Segment_Tree uses original arrays as fields and preserves lazy/set algorit
   assert.ok(returnFrames.every(frame=>(frame.segments||[]).length===3
     &&frame.segments.every(segment=>segment.split?.phase==='after')),
   'recursive unwind retains only pending split segments after the completed subtree');
-  assert.equal(Number(trace.frames.at(-1).state[answerId].data.value),12,
+  assert.equal(Number(trace.frames.at(-1).state[ansId].data.value),12,
     'the query accumulator matches the printed answer');
 });

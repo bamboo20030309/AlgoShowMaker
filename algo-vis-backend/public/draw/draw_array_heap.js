@@ -64,13 +64,30 @@
     background = normalize(background);
     CDVS       = normalizeIndex(CDVS);
     
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
+    const horizontalGap = gaps.horizontal;
+    const verticalGap = gaps.vertical;
     const levels    = Math.max(1, Math.ceil(Math.log2(ranged_array.length + 1)));
-    const rowH      = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap; 
+    const indexH    = (index == 1 || index == 3 || index == 4 ? indexBoxH : 0);
+    const rowH      = baseBoxSize + indexH + verticalGap;
     const hPerLevel = rowH;
     const width     = (1 << (levels - 1));
-    const totalW    = (baseBoxSize + gap) * width;
+    const spanWidth = units => units * baseBoxSize + Math.max(0, units - 1) * horizontalGap;
+    const totalW    = spanWidth(width);
     const rows      = levels;
     const cols      = width;
+    const geometry = i => {
+      const lvl = Math.floor(Math.log2(i + 1));
+      const cnt = 1 << lvl;
+      const units = width / cnt;
+      const w = spanWidth(units);
+      const pos = i - (cnt - 1);
+      return {
+        lvl, w,
+        x: pos * (w + horizontalGap) + outerframe_padding,
+        y: lvl * hPerLevel + outerframe_padding
+      };
+    };
 
     // 把 heap 排版資訊記在 g 上，給 getPosition 用
     g.setAttribute('data-layout', 'heap');
@@ -78,6 +95,7 @@
     g.setAttribute('data-row-height', String(rowH)); // 統一使用 data-row-height
     g.setAttribute('data-heap-totalW', String(totalW));
     g.setAttribute('data-box-size', String(baseBoxSize));
+    g.setAttribute('data-horizontal-gap', String(horizontalGap));
 
     // 方案 1：影格預索引與標記不活躍
     const nodeMap = new Map();
@@ -86,17 +104,44 @@
       child.setAttribute('data-alive', '0');
     });
 
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap : 0), totalW);  // 畫/更新外框
+    window.draw_array_outerframe(g, groupID,
+      rows * (baseBoxSize + indexH) + Math.max(0, rows - 1) * verticalGap, totalW);
+
+    const edgeLayerId = `heap-edges-${groupID}`;
+    let edgeLayer = nodeMap.get(edgeLayerId);
+    if (!edgeLayer) {
+      edgeLayer = document.createElementNS(NS, 'g');
+      edgeLayer.id = edgeLayerId;
+      edgeLayer.setAttribute('class', 'asm-heap-edges');
+      g.appendChild(edgeLayer);
+    }
+    edgeLayer.setAttribute('data-alive', '1');
+    edgeLayer.replaceChildren();
+    if (verticalGap > 0) {
+      ranged_array.forEach((_, i) => {
+        if (i === 0) return;
+        const parent = Math.floor((i - 1) / 2);
+        const parentBox = geometry(parent);
+        const childBox = geometry(i);
+        const edge = document.createElementNS(NS, 'line');
+        edge.setAttribute('x1', String(parentBox.x + parentBox.w / 2));
+        edge.setAttribute('y1', String(parentBox.y + baseBoxSize + indexH));
+        edge.setAttribute('x2', String(childBox.x + childBox.w / 2));
+        edge.setAttribute('y2', String(childBox.y));
+        edge.setAttribute('stroke', '#8a9499');
+        edge.setAttribute('stroke-width', '1.5');
+        edge.setAttribute('data-heap-parent', String(parent + index_range[0]));
+        edge.setAttribute('data-heap-child', String(i + index_range[0]));
+        edgeLayer.appendChild(edge);
+      });
+    }
     
     let index_cnt = index_range[0];
     // 1. 繪製所有節點 (O(1) 拿物件)
     ranged_array.forEach((v, i) => {
-      const lvl = Math.floor(Math.log2(i + 1));
-      const cnt = 1 << lvl;
-      const w   = totalW / cnt;
-      const pos = i - (cnt - 1);
-      const x   = pos * w + w / 2 + outerframe_padding;
-      const y   = lvl * hPerLevel + outerframe_padding;
+      const box = geometry(i);
+      const { w, y } = box;
+      const x = box.x + w / 2;
 
       const haveFocus        =       focus.length  > 0
         ? focus.some(m => Array.isArray(m.elements) && m.elements.includes(i))
@@ -134,12 +179,9 @@
 
     // 2. 繪製所有提示元件
     ranged_array.forEach((v, i) => {
-      const lvl = Math.floor(Math.log2(i + 1));
-      const cnt = 1 << lvl;
-      const w   = totalW / cnt;
-      const pos = i - (cnt - 1);
-      const x   = pos * w + w / 2 + outerframe_padding;
-      const y   = lvl * hPerLevel + outerframe_padding;
+      const box = geometry(i);
+      const { w, y } = box;
+      const x = box.x + w / 2;
 
       const haveHighlight    =   highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
       const havePoint        =       point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
@@ -170,6 +212,9 @@
       }
     });
 
+    const firstCell = Array.from(g.children).find(child => child.id?.startsWith(`cell-${groupID}-`));
+    if (firstCell && edgeLayer.nextSibling !== firstCell) g.insertBefore(edgeLayer, firstCell);
+
     // 掃除：移除本影格沒被標記 alive 的舊物件
     Array.from(g.children).forEach(child => {
       if (child.getAttribute('data-alive') === '0') {
@@ -193,11 +238,14 @@
       g.getAttribute('data-heap-totalW') ||
       String(baseBoxSize * (1 << Math.max(0, levels - 1)))
     );
+    const horizontalGap = parseFloat(g.getAttribute('data-horizontal-gap') || '0');
 
     const i   = index | 0;             // ranged_array 裡的 index (0-based)
     const lvl = Math.floor(Math.log2(i + 1));
     const cnt = 1 << lvl;              // 此層節點數
-    const w   = totalW / cnt;          // 此層每個節點的水平區塊寬度
+    const leafUnits = 1 << Math.max(0, levels - 1);
+    const units = leafUnits / cnt;
+    const w = units * baseBoxSize + Math.max(0, units - 1) * horizontalGap;
     const pos = i - (cnt - 1);         // 此層中的第幾個（0-based）
 
     // g 自己的 base-offset / translate（全局 / 拖曳）
@@ -207,7 +255,7 @@
       .split(',').map(Number);
 
     // 在本層的中心 x，與本層的 y（頂端）
-    const boxX = baseX + dx + pos * w + outerframe_padding;
+    const boxX = baseX + dx + pos * (w + horizontalGap) + outerframe_padding;
     const boxY = baseY + dy + lvl * rowH + outerframe_padding; 
 
 

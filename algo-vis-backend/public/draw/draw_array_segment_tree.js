@@ -417,6 +417,278 @@
     });
   }
 
+  /**
+   * Draw a standard recursive segment tree. Horizontal geometry comes from
+   * the represented interval; vertical geometry follows the real recursion
+   * depth, so an early leaf is never pushed to an artificial bottom row.
+   */
+  function draw_standard_segment_tree(g, groupID, array, style, options = {}) {
+    const domainStart = Number(options.domainStart);
+    const domainEnd = Number(options.domainEnd);
+    const rootIndex = Number.isInteger(Number(options.root)) ? Number(options.root) : 1;
+    const unit = baseBoxSize;
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(options.gap) : { horizontal: Number(options.gap) || 0, vertical: Number(options.gap) || 0 };
+    const horizontalGap = gaps.horizontal;
+    const verticalGap = gaps.vertical;
+    const indexMode = Number(options.indexMode) || 0;
+    if (!Number.isInteger(domainStart) || !Number.isInteger(domainEnd)
+      || domainStart > domainEnd || rootIndex < 0) return;
+
+    const cellHeight = baseBoxSize;
+    const intervalLabelHeight = indexBoxH;
+    const cellTotalHeight = cellHeight + intervalLabelHeight;
+    const rowHeight = cellTotalHeight + verticalGap;
+    const domainLength = domainEnd - domainStart + 1;
+    const spanWidth = count => count * unit + Math.max(0, count - 1) * horizontalGap;
+    const totalW = spanWidth(domainLength);
+    const nodes = [];
+    const visit = (index, left, right, depth, parent = null) => {
+      if (!Number.isInteger(index) || index < 0 || index >= array.length) return;
+      const node = { index, left, right, depth, parent };
+      nodes.push(node);
+      if (left >= right) return;
+      const middle = Math.floor((left + right) / 2);
+      const leftChild = rootIndex === 0 ? index * 2 + 1 : index * 2;
+      visit(leftChild, left, middle, depth + 1, node);
+      visit(leftChild + 1, middle + 1, right, depth + 1, node);
+    };
+    visit(rootIndex, domainStart, domainEnd, 0);
+    if (!nodes.length) return;
+
+    const maxDepth = Math.max(...nodes.map(node => node.depth));
+    const totalH = (maxDepth + 1) * cellTotalHeight + maxDepth * verticalGap;
+    const position = node => ({
+      x: outerframe_padding + (node.left - domainStart) * (unit + horizontalGap),
+      y: outerframe_padding + node.depth * rowHeight,
+      width: spanWidth(node.right - node.left + 1)
+    });
+
+    g.setAttribute('data-layout', 'segment_tree_interval');
+    g.setAttribute('data-segment-domain-start', String(domainStart));
+    g.setAttribute('data-segment-domain-end', String(domainEnd));
+    g.setAttribute('data-segment-root', String(rootIndex));
+    g.setAttribute('data-segment-unit', String(unit));
+    g.setAttribute('data-horizontal-gap', String(horizontalGap));
+    g.setAttribute('data-vertical-gap', String(verticalGap));
+    g.setAttribute('data-row-height', String(rowHeight));
+    g.setAttribute('data-heap-totalW', String(totalW));
+    g.setAttribute('data-box-size', String(baseBoxSize));
+
+    const nodeMap = new Map();
+    Array.from(g.children).forEach(child => {
+      if (child.id) nodeMap.set(child.id, child);
+      child.setAttribute('data-alive', '0');
+    });
+    window.draw_array_outerframe(g, groupID, totalH, totalW);
+
+    const edgeLayerId = `segment-tree-edges-${groupID}`;
+    let edgeLayer = nodeMap.get(edgeLayerId);
+    if (!edgeLayer) {
+      edgeLayer = document.createElementNS(NS, 'g');
+      edgeLayer.id = edgeLayerId;
+      edgeLayer.setAttribute('class', 'asm-segment-tree-edges');
+      g.appendChild(edgeLayer);
+    }
+    edgeLayer.setAttribute('data-alive', '1');
+    edgeLayer.replaceChildren();
+    nodes.filter(node => node.parent && verticalGap > 0).forEach(node => {
+      const parentBox = position(node.parent);
+      const childBox = position(node);
+      const edge = document.createElementNS(NS, 'line');
+      edge.setAttribute('x1', String(parentBox.x + parentBox.width / 2));
+      edge.setAttribute('y1', String(parentBox.y + cellTotalHeight));
+      edge.setAttribute('x2', String(childBox.x + childBox.width / 2));
+      edge.setAttribute('y2', String(childBox.y));
+      edge.setAttribute('stroke', '#8a9499');
+      edge.setAttribute('stroke-width', '1.5');
+      edge.setAttribute('data-segment-parent', String(node.parent.index));
+      edge.setAttribute('data-segment-child', String(node.index));
+      edgeLayer.appendChild(edge);
+    });
+
+    const stylesOf = type => style.filter(item => item?.type === type);
+    const highlight = stylesOf('highlight');
+    const focus = stylesOf('focus');
+    const point = stylesOf('point');
+    const mark = stylesOf('mark');
+    const background = stylesOf('background');
+    const includesNode = (item, index) => Array.isArray(item?.elements) && item.elements.includes(index);
+    const ensureChild = (id, tag = 'g') => {
+      let element = nodeMap.get(id);
+      if (!element) {
+        element = document.createElementNS(NS, tag);
+        element.id = id;
+        g.appendChild(element);
+        nodeMap.set(id, element);
+      }
+      element.setAttribute('data-alive', '1');
+      return element;
+    };
+
+    nodes.forEach(node => {
+      const box = position(node);
+      const focusItem = focus.findLast(item => includesNode(item, node.index));
+      const backgroundItem = background.findLast(item => includesNode(item, node.index));
+      const fill = backgroundItem?.color?.trim()
+        || (focus.length && !focusItem ? focus.findLast(item => item?.color?.trim())?.color?.trim() || '#ccc' : '#fff');
+      const cellId = `cell-${groupID}-${node.index}`;
+      const cell = ensureChild(cellId);
+      cell.setAttribute('data-segment-left', String(node.left));
+      cell.setAttribute('data-segment-right', String(node.right));
+      cell.setAttribute('data-segment-depth', String(node.depth));
+
+      let rect = cell.querySelector(':scope > rect');
+      if (!rect) {
+        rect = document.createElementNS(NS, 'rect');
+        cell.appendChild(rect);
+      }
+      rect.setAttribute('x', String(box.x));
+      rect.setAttribute('y', String(box.y));
+      rect.setAttribute('width', String(box.width));
+      rect.setAttribute('height', String(cellHeight));
+      rect.setAttribute('fill', fill);
+      rect.setAttribute('stroke', '#59656b');
+      rect.setAttribute('stroke-width', '1');
+
+      let text = cell.querySelector(':scope > text');
+      if (!text) {
+        text = document.createElementNS(NS, 'text');
+        cell.appendChild(text);
+      }
+      text.setAttribute('x', String(box.x + box.width / 2));
+      text.setAttribute('y', String(box.y + cellHeight / 2 + 6));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('font-family', 'Arial');
+      const valueLabel = indexMode === 2 ? String(node.index) : String(array[node.index] ?? '');
+      const valueFontSize = typeof window.fitSvgText === 'function'
+        ? window.fitSvgText(g, valueLabel, box.width, cellHeight, {
+          maxFont: 16,
+          minFont: 10,
+          padding: 4
+        })
+        : 16;
+      text.setAttribute('font-size', String(valueFontSize));
+      text.textContent = valueLabel;
+
+      const labelId = `${cellId}-index`;
+      const label = ensureChild(labelId);
+      let labelRect = label.querySelector(':scope > rect');
+      if (!labelRect) {
+        labelRect = document.createElementNS(NS, 'rect');
+        label.appendChild(labelRect);
+      }
+      labelRect.setAttribute('x', String(box.x));
+      labelRect.setAttribute('y', String(box.y + cellHeight));
+      labelRect.setAttribute('width', String(box.width));
+      labelRect.setAttribute('height', String(intervalLabelHeight));
+      labelRect.setAttribute('fill', fill);
+      labelRect.setAttribute('stroke', '#59656b');
+      labelRect.setAttribute('stroke-width', '1');
+      let indexText = label.querySelector(':scope > [data-segment-label-role="index"]');
+      let indexFontSize = 0;
+      if (indexMode) {
+        if (!indexText) {
+          indexText = document.createElementNS(NS, 'text');
+          indexText.setAttribute('data-segment-label-role', 'index');
+          label.appendChild(indexText);
+        }
+        indexText.setAttribute('x', String(box.x + box.width / 2));
+        indexText.setAttribute('y', String(box.y + cellHeight + intervalLabelHeight / 2));
+        indexText.setAttribute('text-anchor', 'middle');
+        indexText.setAttribute('dominant-baseline', 'central');
+        indexText.setAttribute('font-family', 'Arial');
+        indexFontSize = Math.max(8, Math.min(11, box.width / 4));
+        indexText.setAttribute('font-size', String(indexFontSize));
+        indexText.textContent = String(node.index);
+      } else indexText?.remove();
+
+      let intervalText = label.querySelector(':scope > [data-segment-label-role="interval"]');
+      if (!intervalText) {
+        intervalText = document.createElementNS(NS, 'text');
+        intervalText.setAttribute('data-segment-label-role', 'interval');
+        label.appendChild(intervalText);
+      }
+      const intervalLabel = node.left === node.right
+        ? `[${node.left}]`
+        : `[${node.left},${node.right}]`;
+      let intervalFontSize = typeof window.fitSvgText === 'function'
+        ? window.fitSvgText(g, intervalLabel, Math.max(8, box.width - 2), intervalLabelHeight, {
+          maxFont: node.left === node.right ? 8 : 9,
+          minFont: 7,
+          padding: 0
+        })
+        : (node.left === node.right ? 8 : 9);
+      const intervalRight = box.x + box.width - 1;
+      intervalText.setAttribute('x', String(intervalRight));
+      intervalText.setAttribute('y', String(box.y + cellHeight + intervalLabelHeight / 2));
+      intervalText.setAttribute('text-anchor', 'end');
+      intervalText.setAttribute('dominant-baseline', 'central');
+      intervalText.setAttribute('font-family', 'Arial');
+      intervalText.setAttribute('font-size', String(intervalFontSize));
+      intervalText.textContent = intervalLabel;
+
+      if (indexText) {
+        const measure = element => {
+          try {
+            const length = Number(element.getComputedTextLength?.());
+            if (Number.isFinite(length) && length > 0) return length;
+            const width = Number(element.getBBox?.().width);
+            if (Number.isFinite(width) && width > 0) return width;
+          } catch {}
+          const size = Number(element.getAttribute('font-size')) || 8;
+          return String(element.textContent || '').length * size * 0.6;
+        };
+        const padding = 1;
+        const desiredGap = 2;
+        const available = Math.max(1, box.width - padding * 2 - desiredGap);
+        let indexWidth = measure(indexText);
+        let intervalWidth = measure(intervalText);
+        while (indexWidth + intervalWidth > available
+          && (indexFontSize > 6 || intervalFontSize > 6)) {
+          if (indexFontSize >= intervalFontSize && indexFontSize > 6) indexFontSize -= 0.5;
+          else if (intervalFontSize > 6) intervalFontSize -= 0.5;
+          indexText.setAttribute('font-size', String(indexFontSize));
+          intervalText.setAttribute('font-size', String(intervalFontSize));
+          indexWidth = measure(indexText);
+          intervalWidth = measure(intervalText);
+        }
+        const actualGap = Math.max(0, Math.min(desiredGap,
+          box.width - padding * 2 - indexWidth - intervalWidth));
+        const intervalLeft = intervalRight - intervalWidth;
+        const centeredX = box.x + box.width / 2;
+        const leftmostX = box.x + padding + indexWidth / 2;
+        const collisionFreeX = intervalLeft - actualGap - indexWidth / 2;
+        const indexX = Math.max(leftmostX, Math.min(centeredX, collisionFreeX));
+        indexText.setAttribute('x', String(indexX));
+        indexText.setAttribute('data-segment-label-adjusted', indexX < centeredX ? 'true' : 'false');
+      }
+
+      if (window.HintWidgets) {
+        const highlighted = highlight.findLast(item => includesNode(item, node.index));
+        const pointed = point.findLast(item => includesNode(item, node.index));
+        const marked = mark.findLast(item => includesNode(item, node.index));
+        if (highlighted) {
+          HintWidgets.drawHighlightBox(g, box.x, box.y, box.width, cellTotalHeight,
+            highlighted.color?.trim() || 'red', `highlight-${groupID}-${node.index}`, nodeMap);
+        }
+        if (pointed) {
+          HintWidgets.drawArrow(g, box.x + box.width / 2, box.y,
+            pointed.color?.trim() || 'red', `point-${groupID}-${node.index}`, -20, 12, 8, nodeMap);
+        }
+        if (marked) {
+          HintWidgets.drawMark(g, box.x + box.width - 10, box.y + cellHeight - 10,
+            marked.color?.trim() || 'limegreen', `mark-${groupID}-${node.index}`, nodeMap);
+        }
+      }
+    });
+
+    const firstCell = Array.from(g.children).find(child => child.id?.startsWith(`cell-${groupID}-`));
+    if (firstCell && edgeLayer.nextSibling !== firstCell) g.insertBefore(edgeLayer, firstCell);
+    Array.from(g.children).forEach(child => {
+      if (child.getAttribute('data-alive') === '0') child.remove();
+    });
+  }
+
   // === segment_tree 專用：由 groupID + index 算出節點中心座標 ===
   function getSegmentTreePosition(groupID, index, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
@@ -424,6 +696,25 @@
 
     const g = vp.querySelector('#' + CSS.escape(groupID));
     if (!g) return { x: 0, y: 0 };
+
+    const renderedCell = g.querySelector(`#${CSS.escape(`cell-${groupID}-${index}`)}`);
+    const renderedRect = renderedCell?.querySelector(':scope > rect');
+    if (renderedRect) {
+      const [baseX, baseY] = (g.getAttribute('data-base-offset') || '0,0').split(',').map(Number);
+      const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
+      const boxX = Number(renderedRect.getAttribute('x')) || 0;
+      const boxY = Number(renderedRect.getAttribute('y')) || 0;
+      const boxW = Number(renderedRect.getAttribute('width')) || 0;
+      const boxH = Number(renderedRect.getAttribute('height')) || baseBoxSize;
+      const a = (anchor || 'center').toLowerCase();
+      let finalX = boxX + boxW / 2;
+      let finalY = boxY + boxH / 2;
+      if (a.includes('left')) finalX = boxX;
+      if (a.includes('right')) finalX = boxX + boxW;
+      if (a.includes('top')) finalY = boxY;
+      if (a.includes('bottom')) finalY = boxY + boxH;
+      return { x: baseX + dx + finalX, y: baseY + dy + finalY };
+    }
 
     // 從 g 讀回當初畫 segment_tree 時存的排版資料
     const levels = parseInt(g.getAttribute('data-heap-levels') || '1', 10);
@@ -469,4 +760,5 @@
   };
 
   window.draw_array_segment_tree = draw_array_segment_tree;
+  window.draw_standard_segment_tree = draw_standard_segment_tree;
 })();

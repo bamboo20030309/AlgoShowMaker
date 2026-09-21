@@ -720,6 +720,21 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
+    if (name === 'gap') {
+      if (args.parts.length < 1 || args.parts.length > 2) {
+        throw new Error(`第 ${line} 行的 ${directiveName} gap 必須是 gap(horizontal) 或 gap(horizontal,vertical)`);
+      }
+      const parsed = args.parts.map(expression => ({ expression, parsed: parseFrameExpression(expression) }));
+      const invalid = parsed.find(item => !item.parsed.valid);
+      if (invalid) throw new Error(`第 ${line} 行的 ${directiveName} gap 運算式無效：${invalid.expression}`);
+      options.gap = {
+        horizontalExpression: parsed[0].expression,
+        verticalExpression: (parsed[1] || parsed[0]).expression,
+        identifiers: [...new Set(parsed.flatMap(item => item.parsed.identifiers || []))]
+      };
+      continue;
+    }
+
     if (name === 'labels') {
       const labels = args.parts.map(label => label.trim().toLowerCase());
       const allowed = new Set(['value', 'index', 'binary-index', 'binary-index-padded']);
@@ -789,6 +804,29 @@ function parseRendererOptions(value, line, directiveName) {
         throw new Error(`第 ${line} 行的 ${directiveName} hide 不可重複欄位`);
       }
       options.hide = { entries };
+      continue;
+    }
+
+    if (name === 'format') {
+      const entries = args.parts.map(argument => {
+        const assignment = argument.match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/s);
+        if (!assignment || !assignment[2].trim()) {
+          throw new Error(`第 ${line} 行的 ${directiveName} format 必須是 format(field=type,...)`);
+        }
+        const field = assignment[1];
+        const raw = assignment[2].trim().toLowerCase();
+        const simple = new Set(['raw', 'signed', 'assign', 'binary', 'hex', 'bool']);
+        if (simple.has(raw)) return { field, type: raw };
+        const parameterized = raw.match(/^(fixed|percent)\s*\(\s*(\d+)\s*\)$/);
+        if (!parameterized || Number(parameterized[2]) > 10) {
+          throw new Error(`第 ${line} 行的 ${directiveName} format 不支援格式：${assignment[2].trim()}`);
+        }
+        return { field, type: parameterized[1], precision: Number(parameterized[2]) };
+      });
+      if (new Set(entries.map(entry => entry.field)).size !== entries.length) {
+        throw new Error(`第 ${line} 行的 ${directiveName} format 不可重複欄位`);
+      }
+      options.format = { entries };
       continue;
     }
 
@@ -2728,6 +2766,22 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     }
     const sourceVariable = variables.find(variable => variable.name === parsed.displayNames[0]);
     if (!sourceVariable) throw new Error(`第 ${line} 行的 ${directiveName} 缺少主要物件`);
+    if (modifiers.rendererOptions?.format) {
+      const allowedFormatNames = new Set(modifiers.rendererOptions.fields?.names || [
+        sourceVariable.name, 'first', 'second'
+      ]);
+      const invalidFormat = modifiers.rendererOptions.format.entries
+        .find(entry => !allowedFormatNames.has(entry.field));
+      if (invalidFormat) {
+        throw new Error(`第 ${line} 行的 ${directiveName} format 找不到欄位：${invalidFormat.field}`);
+      }
+      modifiers.rendererOptions.format.entries.forEach(entry => {
+        entry.variableId = variables.find(variable => variable.name === entry.field)?.id || '';
+      });
+    }
+    if (modifiers.renderer === 'original-segment-tree' && !modifiers.rendererOptions?.range) {
+      throw new Error(`第 ${line} 行的 ${directiveName} render segment_tree 必須指定 with range(start,end)`);
+    }
     if (modifiers.rendererOptions?.fields
       && modifiers.rendererOptions.fields.names[0] !== sourceVariable.name) {
       throw new Error(`第 ${line} 行的 ${directiveName} fields 第一個欄位必須是主要物件 ${sourceVariable.name}`);

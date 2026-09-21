@@ -12,7 +12,7 @@
     style,
     index_range = [],
     index = 0,
-    gap_y = 0
+    gap = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
     const size = ranged_array.length;
@@ -44,13 +44,14 @@
       child.setAttribute('data-alive', '0');
     });
 
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
     const container_gap = 6;
     const topArrowSpace = 30;
-    const cellStep = baseBoxSize + gap_y;
+    const cellStep = baseBoxSize + gaps.vertical;
 
     // totalContentW/H 是「內容區」的大小，會影響 outerframe
     const totalContentW = baseBoxSize + 2 * container_gap;
-    const totalContentH = size * cellStep + container_gap + topArrowSpace;
+    const totalContentH = size * baseBoxSize + Math.max(0, size - 1) * gaps.vertical + container_gap + topArrowSpace;
     const offsetY = -(totalContentH + 40); // 抬高以對位底部邊界
 
     // 畫/更新外框 (背景紅色)
@@ -183,7 +184,9 @@
     const localIndex = index - startIdx;
     
     // y 方向：底部錨點邏輯，同步抬高 40px
-    const totalContentH = size * cellStep + container_gap + topArrowSpace;
+    const verticalGap = Math.max(0, cellStep - baseBoxSize);
+    const totalContentH = size * baseBoxSize + Math.max(0, size - 1) * verticalGap
+      + container_gap + topArrowSpace;
     const offsetY = -(totalContentH + 40);
     
     const xLocal = outerframe_padding + container_gap;

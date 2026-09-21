@@ -14,7 +14,7 @@
    * @param {Array[2]}         index_range          - 實際顯示的索引起點（通常等於 range[0]）固定兩格 左邊界及右邊界
    * @param {number}           itemsPerRow          - 每列格數
    * @param {number}           index                - 是否顯示每格下方的索引區
-   * @param {number}           gap                  - 格子之間的間距（水平與垂直皆適用）
+   * @param {number|object}    gap                  - gap(horizontal,vertical)
    */
 
   function draw_array_normal(
@@ -68,8 +68,11 @@
     background = normalize(background);
     CDVS       = normalizeIndex(CDVS);
     
-    const colW = baseBoxSize + gap;  // 每格水平步進（格子寬 + 間距）
-    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + gap; //索引高度 有就是12 沒有就是0 + 間距
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
+    const horizontalGap = gaps.horizontal;
+    const verticalGap = gaps.vertical;
+    const colW = baseBoxSize + horizontalGap;  // 每格水平步進（格子寬 + 水平間距）
+    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + verticalGap;
     if (!isFinite(itemsPerRow) || itemsPerRow < 1) itemsPerRow = ranged_array.length;
     let cols = Math.min(ranged_array.length, itemsPerRow);                              //列寬
     let rows = Math.ceil(ranged_array.length / itemsPerRow);                            //行高
@@ -89,7 +92,9 @@
       child.setAttribute('data-alive', '0');
     });
 
-    window.draw_array_outerframe(g, groupID, rows * rowH - (rows > 0 ? gap : 0), cols * colW - (cols > 0 ? gap : 0));  // 畫/更新外框
+    window.draw_array_outerframe(g, groupID,
+      rows * rowH - (rows > 0 ? verticalGap : 0),
+      cols * colW - (cols > 0 ? horizontalGap : 0));
 
     let index_cnt = index_range[0];
     // 1. 繪製所有節點 (O(1) 拿物件)

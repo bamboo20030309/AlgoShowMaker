@@ -12,8 +12,11 @@
     style,
     index_range = [],
     itemsPerRow = Infinity,
-    index = 0
+    index = 0,
+    gap = 0
   ) {
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
+    const rowStep = rowH + gaps.vertical;
     // 1. 正規化與解析 Style
     function normalize(styleList) {
       if (!Array.isArray(styleList)) return [];
@@ -50,7 +53,7 @@
     const maxDiskWidth = minDiskWidth + (maxVal - 1) * diskWidthStep;
 
     const baseWidth = baseStyle ? parseFloat(baseStyle.color) : maxDiskWidth + 20;
-    const pegHeight = pegStyle ? parseFloat(pegStyle.color) : (maxVal + 1) * rowH;
+    const pegHeight = pegStyle ? parseFloat(pegStyle.color) : (maxVal + 1) * rowStep;
 
     const centerX = baseWidth / 2;
     const bottomY = pegHeight; // 以底座底部為 0,0 往下畫，所以 y=pegHeight 是地板
@@ -58,7 +61,8 @@
     // 更新 g 的佈局資訊
     g.setAttribute('data-layout', 'disk');
     g.setAttribute('data-index-start', String(index_range[0]));
-    g.setAttribute('data-row-height', String(rowH));
+    g.setAttribute('data-row-height', String(rowStep));
+    g.setAttribute('data-cell-height', String(rowH));
     g.setAttribute('data-center-x', String(centerX));
     g.setAttribute('data-bottom-y', String(bottomY));
 
@@ -107,7 +111,7 @@
       // 計算該盤子在畫面上應該處於的高度
       // i=0 是最上面的盤子，y 應該最小
       // y = bottomY - (總數 - i) * rowH
-      const diskY = bottomY - (ranged_array.length - i) * rowH;
+      const diskY = bottomY - (ranged_array.length - i) * rowStep;
       const diskW = minDiskWidth + (v - 1) * diskWidthStep;
       const diskX = centerX - diskW / 2;
 
@@ -163,7 +167,8 @@
     if (!g) return { x: 0, y: 0 };
 
     const startIdx = parseInt(g.getAttribute('data-index-start') || '0', 10);
-    const rowH = parseFloat(g.getAttribute('data-row-height') || '40');
+    const rowStep = parseFloat(g.getAttribute('data-row-height') || '40');
+    const cellHeight = parseFloat(g.getAttribute('data-cell-height') || '40');
     const centerX = parseFloat(g.getAttribute('data-center-x') || '0');
     const bottomY = parseFloat(g.getAttribute('data-bottom-y') || '0');
 
@@ -183,14 +188,14 @@
     const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
 
     const worldX = baseX + dx + centerX;
-    const worldY = baseY + dy + (bottomY - (totalDisks - localIndex) * rowH);
+    const worldY = baseY + dy + (bottomY - (totalDisks - localIndex) * rowStep);
 
     const a = (anchor || 'center').toLowerCase();
     let finalX = worldX;
-    let finalY = worldY + rowH / 2;
+    let finalY = worldY + cellHeight / 2;
 
     if (a.includes('top')) finalY = worldY;
-    if (a.includes('bottom')) finalY = worldY + rowH;
+    if (a.includes('bottom')) finalY = worldY + cellHeight;
     // diskX 的左右側需要知道該盤子的寬度，這比較麻煩
     // 暫時以 centerX 為準
 

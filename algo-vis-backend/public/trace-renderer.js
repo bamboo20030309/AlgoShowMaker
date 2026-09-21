@@ -43,14 +43,43 @@
     return Boolean(entry && displayValue(data, options.separator ?? ',') === hiddenValueToken(entry.value));
   }
 
-  function formattedItem(data, options = {}) {
+  function formatDisplayValue(data, options = {}, field = '', variableId = '') {
+    const raw = displayValue(data, options.separator ?? ',');
+    const entry = options?.format?.entries?.find(item => (
+      (variableId && item.variableId === variableId) || (field && item.field === field)
+    ));
+    if (!entry || entry.type === 'raw') return raw;
+    if (entry.type === 'assign') return `=${raw}`;
+    const numeric = Number(raw);
+    if (entry.type === 'bool') {
+      if (/^(?:true|false)$/i.test(raw)) return raw.toLowerCase();
+      return Number.isFinite(numeric) ? String(numeric !== 0) : raw;
+    }
+    if (!Number.isFinite(numeric)) return raw;
+    if (entry.type === 'signed') return numeric > 0 ? `+${raw}` : raw;
+    if (entry.type === 'binary' || entry.type === 'hex') {
+      if (!Number.isInteger(numeric)) return raw;
+      const prefix = entry.type === 'binary' ? '0b' : '0x';
+      const digits = Math.abs(numeric).toString(entry.type === 'binary' ? 2 : 16);
+      return `${numeric < 0 ? '-' : ''}${prefix}${entry.type === 'hex' ? digits.toUpperCase() : digits}`;
+    }
+    const precision = Math.max(0, Math.min(10, Number(entry.precision) || 0));
+    if (entry.type === 'fixed') return numeric.toFixed(precision);
+    if (entry.type === 'percent') return `${(numeric * 100).toFixed(precision)}%`;
+    return raw;
+  }
+
+  function formattedItem(data, options = {}, field = '', variableId = '') {
     const separator = Object.prototype.hasOwnProperty.call(options, 'separator') ? options.separator : ',';
-    if (data?.kind !== 'pair' && data?.kind !== 'tuple') return displayValue(data, separator);
+    if (data?.kind !== 'pair' && data?.kind !== 'tuple') {
+      return formatDisplayValue(data, options, field, variableId);
+    }
     const names = data.kind === 'pair'
       ? ['first', 'second']
       : (data.items || []).map((_, index) => String(index));
     return (data.items || []).flatMap((item, index) => (
-      hiddenField(options, names[index], item) ? [] : [displayValue(item, separator)]
+      hiddenField(options, names[index], item)
+        ? [] : [formatDisplayValue(item, options, names[index])]
     )).join(separator);
   }
 
@@ -177,12 +206,14 @@
     return element;
   }
 
-  function originalValues(entry, options = {}) {
+  function originalValues(entry, options = {}, field = '', variableId = '') {
     if (entry.data?.kind === 'map') {
       return (entry.data.entries || []).map(item => `${displayValue(item.key)}: ${displayValue(item.value)}`);
     }
-    if (Array.isArray(entry.data?.items)) return entry.data.items.map(item => formattedItem(item, options));
-    return [formattedItem(entry.data, options)];
+    if (Array.isArray(entry.data?.items)) {
+      return entry.data.items.map(item => formattedItem(item, options, field, variableId));
+    }
+    return [formattedItem(entry.data, options, field, variableId)];
   }
 
   function isScalarRenderer(variable, rendererName) {
@@ -201,7 +232,7 @@
     }
     const id = `${context.idPrefix || 'trace-original'}-${context.variableId.replace(/[^A-Za-z0-9_-]/g, '-')}`;
     const rendererOptions = context.skin?.options || {};
-    const gap = Number.isFinite(Number(rendererOptions.gap)) ? Number(rendererOptions.gap) : 0;
+    const gap = rendererOptions.gap ?? 0;
     const requested = context.rendererName || 'original-array';
     const isScalarCell = isScalarRenderer(context.variable, requested);
     const configuredShowIndex = rendererOptions.showIndex;
@@ -227,15 +258,24 @@
       fieldParts = Array.from({ length: itemCount }, (_, index) => fieldSources.flatMap(source => {
         const item = source.entry?.data?.items?.[index];
         if (item == null || hiddenField(rendererOptions, source.name, item)) return [];
-        return [{ variableId: source.variableId, text: formattedItem(item, rendererOptions) }];
+        return [{
+          variableId: source.variableId,
+          text: formattedItem(item, rendererOptions, source.name, source.variableId)
+        }];
       }));
       values = fieldParts.map(parts => parts.map(part => part.text).join(separator));
-    } else values = originalValues(entry, rendererOptions);
+    } else {
+      values = originalValues(
+        entry, rendererOptions, context.variable?.name || '', context.variableId
+      );
+    }
     let itemsPerRow = Infinity;
     if (isMatrix) {
       const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
       const columns = Math.max(1, ...rows.map(row => Array.isArray(row?.items) ? row.items.length : 0));
-      values = rows.flatMap(row => Array.from({ length: columns }, (_, index) => displayValue(row?.items?.[index])));
+      values = rows.flatMap(row => Array.from({ length: columns }, (_, index) => formatDisplayValue(
+        row?.items?.[index], rendererOptions, context.variable?.name || '', context.variableId
+      )));
       itemsPerRow = columns;
     }
     const configuredColumns = Number(rendererOptions.columns);
@@ -243,10 +283,12 @@
       itemsPerRow = Math.max(1, Math.trunc(configuredColumns));
     }
     const configuredRange = Array.isArray(rendererOptions.range) ? rendererOptions.range : [];
-    const rangeStart = Number.isFinite(Number(configuredRange[0]))
+    const intervalSegmentTree = requested === 'original-segment-tree'
+      && configuredRange.length >= 2;
+    const rangeStart = intervalSegmentTree ? 0 : Number.isFinite(Number(configuredRange[0]))
       ? Math.max(0, Math.min(values.length, Math.trunc(Number(configuredRange[0]))))
       : 0;
-    const rangeEndExclusive = Number.isFinite(Number(configuredRange[1]))
+    const rangeEndExclusive = intervalSegmentTree ? values.length : Number.isFinite(Number(configuredRange[1]))
       ? Math.max(rangeStart, Math.min(values.length, Math.trunc(Number(configuredRange[1]))))
       : values.length;
     const range = [rangeStart, rangeEndExclusive - 1];
@@ -261,12 +303,21 @@
       window.draw_array_normal(group, id, values, styles, range, itemsPerRow, indexMode, gap);
     } else if (mode === 'heap' && typeof window.draw_array_heap === 'function') {
       window.draw_array_heap(group, id, values, styles, range, indexMode, gap);
+    } else if (mode === 'segment-tree' && intervalSegmentTree
+      && typeof window.draw_standard_segment_tree === 'function') {
+      window.draw_standard_segment_tree(group, id, values, styles, {
+        domainStart: Number(configuredRange[0]),
+        domainEnd: Number(configuredRange[1]) - 1,
+        root: Number(configuredRange[0]),
+        indexMode,
+        gap
+      });
     } else if (mode === 'segment-tree' && typeof window.draw_array_segment_tree === 'function') {
       window.draw_array_segment_tree(group, id, values, styles, range, indexMode, gap, [], [], [], [], [], [], []);
     } else if (mode === 'bit' && typeof window.draw_array_BIT === 'function') {
       window.draw_array_BIT(group, id, values, styles, range, indexMode, gap);
     } else if (mode === 'disk' && typeof window.draw_array_disk === 'function') {
-      window.draw_array_disk(group, id, values, styles, range, itemsPerRow, indexMode);
+      window.draw_array_disk(group, id, values, styles, range, itemsPerRow, indexMode, gap);
     } else if (mode === 'stack' && typeof window.draw_array_stack === 'function') {
       window.draw_array_stack(group, id, values, styles, range, indexMode, gap);
     } else if (mode === 'queue' && typeof window.draw_array_queue === 'function') {
@@ -367,7 +418,8 @@
   function renderSequence(group, entry, context) {
     const items = Array.isArray(entry.data?.items) ? entry.data.items : [];
     const cellSize = Math.max(32, Math.min(72, Number(context.skin?.options?.cellSize) || 52));
-    const gap = Number.isFinite(Number(context.skin?.options?.gap)) ? Number(context.skin.options.gap) : 0;
+    const rawGap = context.skin?.options?.gap ?? 0;
+    const gap = window.resolveArrayGaps ? window.resolveArrayGaps(rawGap).horizontal : Math.max(0, Number(rawGap) || 0);
     items.forEach((item, index) => {
       const x = index * (cellSize + gap);
       const logicalIndex = context.rowIndex == null ? String(index) : `${context.rowIndex},${index}`;
@@ -1707,7 +1759,8 @@
         || document.variables?.[variableId]?.kind
         || entry.data?.kind;
       if (descriptor.cellRange) {
-        if (rendererName !== 'original-heap') return;
+        const intervalSegmentTree = rendererName === 'original-segment-tree';
+        if (rendererName !== 'original-heap' && !intervalSegmentTree) return;
         const rootNode = Number(window.ASMTraceRules.resolveExpression(
           document, frame, descriptor.cellExpression
         ));
@@ -1724,9 +1777,16 @@
           ?? heap?.dataset?.traceRangeStart ?? 0);
         const levels = Number(heap?.querySelector?.('[data-heap-levels]')?.getAttribute?.('data-heap-levels')
           ?? heap?.getAttribute?.('data-heap-levels'));
-        if (!Number.isInteger(levels) || levels < 1) return;
+        if (!intervalSegmentTree && (!Number.isInteger(levels) || levels < 1)) return;
 
         const sectionCountForNode = nodeIndex => {
+          if (intervalSegmentTree) {
+            const cell = elements.get(`${targetKey}#${nodeIndex}`);
+            const left = Number(cell?.dataset?.segmentLeft);
+            const right = Number(cell?.dataset?.segmentRight);
+            return Number.isInteger(left) && Number.isInteger(right) && left <= right
+              ? right - left + 1 : 0;
+          }
           const localIndex = nodeIndex - rangeStart;
           if (localIndex < 0) return 0;
           const depth = Math.floor(Math.log2(localIndex + 1));
@@ -1735,8 +1795,8 @@
         const rootSectionCount = sectionCountForNode(rootNode);
         if (!rootSectionCount) return;
         const ranges = [];
-        const addRange = (nodeIndex, start, end) => {
-          const sectionCount = sectionCountForNode(nodeIndex);
+        const addRange = (nodeIndex, start, end, knownSectionCount = 0) => {
+          const sectionCount = knownSectionCount || sectionCountForNode(nodeIndex);
           const clippedStart = Math.max(0, start);
           const clippedEnd = Math.min(sectionCount - 1, end);
           if (sectionCount && clippedStart <= clippedEnd) {
@@ -1751,9 +1811,13 @@
           if (!Number.isInteger(cursor)) return;
           const path = [];
           let ancestor = cursor;
-          while (ancestor > rootNode) {
+          const zeroBasedTree = intervalSegmentTree && rootNode === 0;
+          const parentOf = node => zeroBasedTree ? Math.floor((node - 1) / 2) : Math.floor(node / 2);
+          const leftChildOf = node => zeroBasedTree ? node * 2 + 1 : node * 2;
+          const rightChildOf = node => leftChildOf(node) + 1;
+          while (ancestor !== rootNode && ancestor >= 0) {
             path.unshift(ancestor);
-            ancestor = Math.floor(ancestor / 2);
+            ancestor = parentOf(ancestor);
           }
           if (ancestor !== rootNode) return;
           const queryStart = Math.max(0, rawStart);
@@ -1763,23 +1827,28 @@
           let intervalStart = 0;
           let intervalCount = rootSectionCount;
           for (const child of path) {
-            const half = intervalCount / 2;
-            if (!Number.isInteger(half) || half < 1) return;
-            if (child === currentNode * 2) {
-              const siblingStart = intervalStart + half;
+            const leftCount = intervalSegmentTree ? Math.ceil(intervalCount / 2) : intervalCount / 2;
+            const rightCount = intervalCount - leftCount;
+            if (!Number.isInteger(leftCount) || leftCount < 1 || rightCount < 1) return;
+            const leftChild = leftChildOf(currentNode);
+            const rightChild = rightChildOf(currentNode);
+            if (child === leftChild) {
+              const siblingStart = intervalStart + leftCount;
               const overlapStart = Math.max(queryStart, siblingStart);
-              const overlapEnd = Math.min(queryEnd, siblingStart + half - 1);
-              addRange(currentNode * 2 + 1, overlapStart - siblingStart, overlapEnd - siblingStart);
-            } else if (child === currentNode * 2 + 1) {
-              intervalStart += half;
+              const overlapEnd = Math.min(queryEnd, siblingStart + rightCount - 1);
+              addRange(rightChild, overlapStart - siblingStart,
+                overlapEnd - siblingStart, rightCount);
+              intervalCount = leftCount;
+            } else if (child === rightChild) {
+              intervalStart += leftCount;
+              intervalCount = rightCount;
             } else return;
             currentNode = child;
-            intervalCount = half;
           }
           if (descriptor.split.phase !== 'after') {
             const overlapStart = Math.max(queryStart, intervalStart);
             const overlapEnd = Math.min(queryEnd, intervalStart + intervalCount - 1);
-            addRange(cursor, overlapStart - intervalStart, overlapEnd - intervalStart);
+            addRange(cursor, overlapStart - intervalStart, overlapEnd - intervalStart, intervalCount);
           }
         } else {
           addRange(rootNode, rawStart, rawEnd);
@@ -1795,15 +1864,24 @@
           const width = Number(baseRect.getAttribute('width')) || 0;
           const height = Number(baseRect.getAttribute('height')) || 0;
           if (!(width > 0 && height > 0)) return;
+          const horizontalGap = Math.max(0, Number(
+            heap?.querySelector?.('[data-horizontal-gap]')?.getAttribute?.('data-horizontal-gap')
+              ?? heap?.getAttribute?.('data-horizontal-gap')
+              ?? 0
+          ) || 0);
+          const sectionUnit = sectionCount > 0
+            ? Math.max(0, (width - Math.max(0, sectionCount - 1) * horizontalGap) / sectionCount)
+            : 0;
+          const segmentCount = end - start + 1;
           const identity = descriptor.named ? descriptor.id : `${descriptor.id || descriptorIndex}`;
           const key = descriptor.split
             ? `heap-segment:${identity}:${nodeIndex}`
             : `heap-segment:${identity}`;
           const overlay = svg('rect', {
             class: 'asm-trace-heap-cell-segment asm-trace-style-paint',
-            x: x + width * start / sectionCount,
+            x: x + start * (sectionUnit + horizontalGap),
             y,
-            width: width * (end - start + 1) / sectionCount,
+            width: segmentCount * sectionUnit + Math.max(0, segmentCount - 1) * horizontalGap,
             height,
             fill: traceTextColor(descriptor.color, 'rgba(165, 214, 167, 0.6)'),
             stroke: 'none',
@@ -1824,6 +1902,26 @@
           overlay.setAttribute('data-trace-attachment-kind', 'segment');
           if (attachStyleVisual(root, overlay, cell, 'segment')) {
             const wrapper = overlay.parentElement;
+            const segmentX = Number(overlay.getAttribute('x'));
+            const segmentY = Number(overlay.getAttribute('y'));
+            const segmentWidth = Number(overlay.getAttribute('width'));
+            const segmentHeight = Number(overlay.getAttribute('height'));
+            ['left', 'right'].forEach(side => {
+              const boundaryX = side === 'right' ? segmentX + segmentWidth : segmentX;
+              wrapper.append(svg('line', {
+                class: `asm-trace-heap-segment-boundary asm-trace-heap-segment-boundary-${side}`,
+                x1: boundaryX,
+                x2: boundaryX,
+                y1: segmentY,
+                y2: segmentY + segmentHeight,
+                stroke: '#6b7280',
+                'stroke-width': 1,
+                'stroke-dasharray': '3 3',
+                'vector-effect': 'non-scaling-stroke',
+                'pointer-events': 'none',
+                'data-trace-segment-boundary': side
+              }));
+            });
             const styleKey = `style:${key}`;
             const cellPlacement = placements.get(`${targetKey}#${nodeIndex}`);
             wrapper.dataset.traceObjectKey = styleKey;
@@ -4585,10 +4683,11 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-202';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-207';
   window.ASMTraceRenderers = {
-    build: 'trace-202', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
-    register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
+    build: 'trace-207', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
+    displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,

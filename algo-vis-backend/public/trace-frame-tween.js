@@ -1343,6 +1343,18 @@
     return String(value.label || value.type || value.kind || '');
   }
 
+  function displayEventFieldValue(value, frame, variableId) {
+    if (!variableId || typeof window.ASMTraceRenderers?.formatDisplayValue !== 'function') {
+      return displayEventValue(value);
+    }
+    for (const options of Object.values(frame?.rendererOptions || {})) {
+      const entry = options?.format?.entries?.find(item => item.variableId === variableId);
+      if (!entry) continue;
+      return window.ASMTraceRenderers.formatDisplayValue(value, options, entry.field, variableId);
+    }
+    return displayEventValue(value);
+  }
+
   function eventTargetKey(traceDocument, eventFrame, target) {
     if (!target?.variableId) return '';
     const variableKey = objectKeyForVariable(eventFrame, target.variableId);
@@ -2136,12 +2148,23 @@
     return { group, rect, text, width, height };
   }
 
+  function assignableValueText(element, variableId = '') {
+    const text = element?.matches?.('text')
+      ? element
+      : element?.querySelector?.('text');
+    if (!text || text.dataset?.traceContentRole === 'index') return null;
+    if (text.dataset?.traceFieldVariable) return text;
+    if (variableId) {
+      const field = [...text.querySelectorAll?.('[data-trace-field-variable]') || []]
+        .find(candidate => candidate.dataset.traceFieldVariable === variableId);
+      if (field) return field;
+    }
+    return text;
+  }
+
   function assignableTargetText(operand) {
     if (!operand || operand.marker) return null;
-    const text = operand.element.matches?.('text')
-      ? operand.element
-      : operand.element.querySelector?.('text');
-    return text?.dataset?.traceContentRole === 'index' ? null : text;
+    return assignableValueText(operand.element, operand.target?.variableId);
   }
 
   function createAssignmentTransfer(
@@ -2158,7 +2181,7 @@
       || targetOperand.element.closest?.('[data-trace-visibility="hidden"]')) return null;
 
     const sourceElement = valueOnly
-      ? assignableTargetText({ element: sourceOperand.element })
+      ? assignableTargetText(sourceOperand)
       : (sourceVisual || sourceOperand.element);
     const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
     if (!sourceElement || (valueOnly && !targetElement)) return null;
@@ -2171,7 +2194,22 @@
     }
     if (!(box?.width > 0) || !(box?.height > 0)) return null;
 
-    const clone = sourceElement.cloneNode(true);
+    const sourceIsField = sourceElement.matches?.('tspan[data-trace-field-variable]');
+    const sourceText = sourceIsField ? sourceElement.parentElement : null;
+    const computedSource = sourceIsField ? window.getComputedStyle(sourceElement) : null;
+    const clone = sourceIsField
+      ? createSvg('text', {
+        x: box.x + box.width / 2,
+        y: sourceText?.getAttribute?.('y') ?? box.y + box.height / 2,
+        'text-anchor': 'middle',
+        'dominant-baseline': sourceText?.getAttribute?.('dominant-baseline') || 'middle',
+        'font-family': sourceText?.getAttribute?.('font-family') || computedSource?.fontFamily || 'Arial',
+        'font-size': sourceText?.getAttribute?.('font-size') || computedSource?.fontSize || 14,
+        'font-weight': sourceText?.getAttribute?.('font-weight') || computedSource?.fontWeight || 'normal',
+        fill: sourceElement.getAttribute('fill') || sourceText?.getAttribute?.('fill')
+          || computedSource?.fill || '#1f282d'
+      }, sourceElement.textContent)
+      : sourceElement.cloneNode(true);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
       node.removeAttribute?.('data-trace-object-key');
@@ -2308,13 +2346,13 @@
       ))) return;
       const element = options.currentElements?.get?.(track.key);
       if (!element || element.dataset?.traceSourceVariableId) return;
-      const targetText = element.matches?.('text')
-        ? element
-        : element.querySelector?.('text');
-      if (!targetText) return;
-      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
       const cell = element.closest?.('[data-trace-index]') || element;
       const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const targetText = assignableValueText(element, variableId);
+      if (!targetText) return;
+      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
+      const fieldVariableId = targetText.dataset?.traceFieldVariable
+        || track.target?.variableId || variableId;
       const index = Number(cell.dataset?.traceIndex);
       const styleRect = conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
@@ -2322,6 +2360,7 @@
         : null;
       tracks.push({ ...track, targetText: fixedIndex ? null : targetText,
         targetCell: fixedIndex ? element : null, variableId, index, styleRect,
+        fieldVariableId,
         applied: Symbol('unapplied'), currentValue: track.initial });
     });
     const styleTargets = tracks.filter(track => track.styleRect);
@@ -2469,7 +2508,9 @@
       ]);
     };
     const apply = (track, value) => {
-      const displayed = displayEventValue(value);
+      const displayed = track.targetCell
+        ? displayEventValue(value)
+        : displayEventFieldValue(value, styleFrame, track.fieldVariableId);
       if (track.applied === displayed) return;
       track.applied = displayed;
       track.currentValue = value;
@@ -2651,10 +2692,13 @@
       : operand.point.y + (operand.marker
         ? Number(rawDelta.y) || 0
         : Number(carrierDelta.y) || 0);
-    const beforeValue = displayEventValue(event?.payload?.before);
-    const afterValue = displayEventValue(event?.payload?.after);
+    const beforeValue = displayEventFieldValue(event?.payload?.before, eventFrame, target.variableId);
+    const afterValue = displayEventFieldValue(event?.payload?.after, eventFrame, target.variableId);
     const sourceValue = Object.prototype.hasOwnProperty.call(event?.payload || {}, 'source')
       ? event.payload.source : null;
+    const formattedSourceValue = sourceValue == null
+      ? null
+      : displayEventFieldValue(sourceValue, eventFrame, target.variableId);
     const sourceLabel = String(source?.expression || afterValue || '').trim();
     const sourceOperands = sources.map(item => eventOperand(
       traceDocument, eventFrame, item, sourceValue,
@@ -2699,7 +2743,7 @@
         root,
         item,
         operand,
-        sourceValue,
+        formattedSourceValue,
         item ? previousVisualElement(previousObjects, item.visualKey) : null,
         { valueOnly: event?.compound === true || binaryAddition }
       )).filter(Boolean);
@@ -5420,6 +5464,25 @@
       && geometry.height > 0 ? geometry : null;
   }
 
+  function syncHeapSegmentBoundaries(element) {
+    const rect = element?.classList?.contains('asm-trace-heap-cell-segment')
+      ? element
+      : element?.querySelector?.('.asm-trace-heap-cell-segment');
+    if (!rect) return;
+    const x = Number(rect.getAttribute('x'));
+    const y = Number(rect.getAttribute('y'));
+    const width = Number(rect.getAttribute('width'));
+    const height = Number(rect.getAttribute('height'));
+    if (![x, y, width, height].every(Number.isFinite)) return;
+    rect.parentElement?.querySelectorAll?.('.asm-trace-heap-segment-boundary').forEach(line => {
+      const boundaryX = line.dataset.traceSegmentBoundary === 'right' ? x + width : x;
+      line.setAttribute('x1', String(boundaryX));
+      line.setAttribute('x2', String(boundaryX));
+      line.setAttribute('y1', String(y));
+      line.setAttribute('y2', String(y + height));
+    });
+  }
+
   function heapSplitBackgroundHandoff(element, currentElements, previousObjects) {
     const segment = heapSplitSegmentRect(element);
     const cellKey = segment?.getAttribute?.('data-trace-attached-to') || '';
@@ -5476,10 +5539,12 @@
     if (phase === 'exit') {
       geometry.rect.setAttribute('y', String(geometry.y + geometry.height * amount));
       geometry.rect.setAttribute('height', String(geometry.height * (1 - amount)));
+      syncHeapSegmentBoundaries(geometry.rect);
       return;
     }
     geometry.rect.setAttribute('y', String(geometry.y));
     geometry.rect.setAttribute('height', String(geometry.height * amount));
+    syncHeapSegmentBoundaries(geometry.rect);
   }
 
   function outerframeGeometry(element) {
@@ -6659,6 +6724,7 @@
                 before[attribute] + (after[attribute] - before[attribute]) * state.localEased
               ));
             }
+            syncHeapSegmentBoundaries(rect);
           }
           // A rect must have one paint writer. Style owns value/index colors;
           // ordinal parent-rect interpolation must not overwrite those colors.
@@ -6933,10 +6999,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-222';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-225';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-222', play, cancel, updateEventAvailability,
+    build: 'trace-225', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

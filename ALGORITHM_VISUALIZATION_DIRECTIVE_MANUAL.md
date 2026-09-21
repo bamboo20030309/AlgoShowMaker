@@ -1063,7 +1063,7 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 | --- | --- | --- |
 | `render normal` | `array`、`sequence` | 一般水平陣列 |
 | `render heap` | 無 | Heap 樹狀排列 |
-| `render segment-tree` | `segment_tree`、`segmenttree` | Segment Tree |
+| `render segment_tree` | `segment-tree`、`segmenttree` | 依實際區間寬度排列的標準遞迴 Segment Tree |
 | `render bit` | `fenwick` | Binary Indexed Tree |
 | `render disk` | 無 | 圓盤／柱狀序列 |
 | `render stack` | 無 | Stack |
@@ -1090,6 +1090,67 @@ int displaySize = arr.size() - 1;
 // @frame arr[1,i] render heap with range(1,displaySize)
 ```
 
+### 標準線段樹的 `range`
+
+```cpp
+// @frame tree[now] render segment_tree with range(1,n)
+```
+
+對 `render segment_tree` 而言，`range(start,end)` 同時指定根節點代表的資料區間，
+以及 tree 陣列中的根索引；左右端點都包含在內。`range(1,n)` 表示資料區間是
+`[1,n]` 且根節點是 `tree[1]`；`range(0,n-1)` 則表示資料區間是 `[0,n-1]`
+且根節點是 `tree[0]`。renderer 會依根索引自動選擇 1-based 或 0-based 的子節點公式。
+
+renderer 會用標準遞迴的 `mid=(left+right)/2` 拆分區間；最小資料格是
+40×40px，下方區間索引格高 12px。每個節點的寬度依其區間長度計算，垂直位置則使用該節點的
+真實遞迴深度。當 `n` 不是二次方時不會補假節點，也不會把較早成為葉節點的
+節點強制對齊到最底層。
+
+每個節點下方會自動顯示平常置中的 tree index，以及靠格子右側對齊的 interval。
+非葉節點使用 `[left,right]`；葉節點的 `[x,x]` 會簡化成 `[x]`。interval 的基準字級
+比 index 小 2px。兩者會在 12px 標籤框內垂直置中；實測字寬發生碰撞時，index 會先向左避讓，
+整體空間仍不足才縮小字體。value 則在一般數值可容納時固定使用
+16px，不因葉節點只有單格寬而縮小。標準的
+`vector<int> tree(4*n+5)` 可以直接
+視覺化，不需要另外產生顯示用陣列。
+
+標準 lazy segment tree 也可沿用複合欄位選項：
+
+```cpp
+// @object tree render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+```
+
+`algorithm_sample/Tree/Segment_Tree_standard.cpp` 的輸入格式是 `n m`、n 個初值，
+接著輸入 m 個操作：`1 L R value` 為區間加值、`2 L R value` 為區間設值、
+`3 L R` 為區間總和查詢。
+
+查詢區段仍可沿用格內 `@segment` 與 `split`：
+
+```cpp
+// @segment tree[1][L-1:R-1] color AV_green as query_range with split(now)
+```
+
+第二組索引是相對於根區間起點的零基底座標；`split(now)` 會把查詢區段映射到
+目前遞迴路徑及仍待處理的兄弟節點，`split(now,after)` 會移除剛完成的目前節點。
+
+### `gap(horizontal,vertical)`
+
+```cpp
+// @frame tree render segment_tree with range(1,n), gap(10,24)
+// @frame arr with columns(5), gap(8,16)
+```
+
+第一個值是水平間距，第二個值是垂直間距。`gap(10)` 保留相容寫法，等同
+`gap(10,10)`。未寫 `gap` 時兩者都是 0，範例通常維持格子彼此貼合。
+
+一般陣列的水平 gap 只放在相鄰格子之間，垂直 gap 放在換列之間。queue 使用水平值；
+stack 與 disk 使用垂直值。heap、BIT 與標準 segment tree 的節點寬度會連同內部最小格
+一起展開：代表 `count` 個單位的節點寬度為
+`count*40 + (count-1)*horizontalGap`。例如三個單位、水平 gap 10px 時寬度是 140px。
+
+heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線；垂直 gap 為 0 時，
+上下層緊貼且不畫連線。
+
 ### `columns(count)`
 
 ```cpp
@@ -1098,16 +1159,29 @@ int displaySize = arr.size() - 1;
 
 設定矩陣或平面排列使用的欄數。參數可使用安全算術運算式。
 
-### `fields(...)`、`hide(...)` 與 `separator(...)`
+### `fields(...)`、`hide(...)`、`format(...)` 與 `separator(...)`
 
 ```cpp
 // @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
 // @frame tree render heap with fields(tree,lazy,sets), separator(" / ")
+// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
 ```
 
 `fields` 把多個陣列的同一索引合併到主要物件的一格中；每個陣列仍保留自己的變數身分、狀態與事件。
 `hide` 必須明確寫欄位和值，每幀重新判定；被隱藏的欄位不留下空位或多餘分隔符號。
 分隔符號預設為逗點，只有需要其他符號時才寫 `separator`。第一個field必須是`@frame`的主要物件。
+
+`format(field=type,...)`只改變顯示文字；事件、`when`、`hide`與運算仍使用原始值。靜態格子與事件動畫共用相同格式。第一版支援：
+
+- `raw`：原始文字。
+- `signed`：正數加上`+`，零與負數維持原樣。
+- `assign`：加上`=`，用於set／覆寫語意。
+- `binary`、`hex`：整數顯示為`0b...`、`0x...`；負數將負號放在前面。
+- `bool`：數字0顯示`false`，其他有限數字顯示`true`。
+- `fixed(n)`：固定顯示n位小數，n為0～10。
+- `percent(n)`：乘以100後顯示n位小數與`%`，n為0～10。
+
+例如`tree=15`、`sets=8`、`lazy=3`會依`fields(tree,sets,lazy)`顯示為`15,=8,+3`。
 
 `pair`與`tuple`本身仍是一個元素，因此`vector<pair<...>>`及`vector<tuple<...>>`每個元素只畫一格。
 成員預設以同一separator連接且保留零；pair可用`hide(first=value,second=value)`隱藏指定成員。

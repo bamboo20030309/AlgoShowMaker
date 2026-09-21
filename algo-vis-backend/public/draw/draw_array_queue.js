@@ -12,7 +12,7 @@
     style,
     index_range = [],
     index = 0,
-    gap_y = 0
+    gap = 0
   ) {
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
     const size = ranged_array.length;
@@ -43,12 +43,13 @@
       child.setAttribute('data-alive', '0');
     });
 
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
     const container_gap = 6;
     const sideSpace = 20;
-    const cellStepW = baseBoxSize;
+    const cellStepW = baseBoxSize + gaps.horizontal;
 
     // totalContentW 包含左右箭頭空間
-    const totalContentW = size * cellStepW + 2 * sideSpace;
+    const totalContentW = size * baseBoxSize + Math.max(0, size - 1) * gaps.horizontal + 2 * sideSpace;
     // totalContentH 包含上下容器間距
     const totalContentH = baseBoxSize + 2 * container_gap;
 
