@@ -20,22 +20,28 @@ test('standard segment tree renderer derives its domain and root from range', ()
   assert.equal(object.rendererOptions.domain, undefined);
   assert.equal(object.rendererOptions.root, undefined);
   assert.equal(object.rendererOptions.unit, undefined);
-  assert.throws(() => findFrameDirectives(source.replace('with range(1,n)', '')),
+  assert.throws(() => findFrameDirectives(source.replace(
+    'with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)',
+    'with fields(tree,lazy,sets), hide(lazy=0,sets=LM)'
+  )),
     /render segment_tree 必須指定 with range/);
   assert.throws(() => findFrameDirectives(source.replace('range(1,n)', 'unit(48)')),
     /不支援 with unit/);
 });
 
-test('standard segment tree sample resolves n=10 geometry options and preserves output', async () => {
+test('standard segment tree sample resolves n=15 options and executes modify, set and query', async () => {
   const { trace } = await compile(source, input);
   const byName = Object.fromEntries(Object.entries(trace.variables).map(([id, value]) => [value.name, id]));
   const frame = trace.frames.find(item => item.renderers?.[byName.tree] === 'original-segment-tree');
   assert.ok(frame);
-  assert.deepEqual(Array.from(frame.rendererOptions[byName.tree].range), [1, 11]);
+  assert.deepEqual(Array.from(frame.rendererOptions[byName.tree].range), [1, 16]);
   assert.equal(frame.rendererOptions[byName.tree].domain, undefined);
   assert.equal(frame.rendererOptions[byName.tree].root, undefined);
   assert.equal(frame.rendererOptions[byName.tree].unit, undefined);
-  assert.equal(Number(trace.frames.at(-1).state[byName.ans].data.value), 33);
+  assert.equal(Number(trace.frames.at(-1).state[byName.ans].data.value), 12);
+  assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_magenta')));
+  assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_orange')));
+  assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_green')));
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.split?.phase === 'after')));
 });
 

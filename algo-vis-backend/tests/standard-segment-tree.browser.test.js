@@ -16,7 +16,10 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
     await page.waitForFunction(() => window.ace && window.ASMTracePlayer);
     const code = fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_standard.cpp'), 'utf8')
       .replace(/\r\n?/g, '\n');
-    const input = fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_standard-sample_input.txt'), 'utf8');
+    const input = `10 1
+1 2 3 4 5 6 7 8 9 10
+3 3 8
+`;
     await page.evaluate(({ code, input }) => {
       ace.edit('editor').setValue(code, -1);
       document.getElementById('inputArea').value = input;
@@ -65,7 +68,8 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
             : false
         };
       };
-      const visible = [...tree.querySelectorAll('[data-trace-index]')].map(node => Number(node.dataset.traceIndex));
+      const visible = [...tree.querySelectorAll('g[data-trace-index]')]
+        .map(node => Number(node.dataset.traceIndex));
       const segment = tree.closest('#asm-trace-root').querySelector('.asm-trace-heap-cell-segment');
       const frontiers = [];
       for (let index = 0; index < doc.frames.length; index++) {
@@ -164,7 +168,7 @@ int main() {
         };
       };
       return {
-        visible: [...tree.querySelectorAll('[data-trace-index]')]
+        visible: [...tree.querySelectorAll('g[data-trace-index]')]
           .map(node => Number(node.dataset.traceIndex)).sort((a, b) => a - b),
         root: geometry(0), left: geometry(1), right: geometry(2),
         edge: Boolean(tree.querySelector('[data-segment-parent="0"][data-segment-child="1"]'))
@@ -215,6 +219,53 @@ int main() {
     assert.equal(withGap.segmentWidth, 290);
     assert.deepEqual([withGap.horizontalGap, withGap.verticalGap], [10,24]);
     assert.equal(withGap.edge, true);
+
+    const operationsInput = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_standard-sample_input.txt'), 'utf8'
+    );
+    await page.evaluate(({ code, input }) => {
+      ace.edit('editor').setValue(code, -1);
+      document.getElementById('inputArea').value = input;
+    }, { code, input: operationsInput });
+    await page.waitForFunction(() => !document.getElementById('runBtn').classList.contains('loading'));
+    await page.evaluate(() => document.getElementById('runBtn').click());
+    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code,
+      code, { timeout: 30000 });
+    const operations = await page.evaluate(async () => {
+      const player = window.ASMTracePlayer;
+      const doc = player.getDocument();
+      const idByName = Object.fromEntries(
+        Object.entries(doc.variables).map(([id, variable]) => [variable.name, id])
+      );
+      const numeric = item => Number(item?.value ?? item);
+      const frameHas = (frame, variableId, predicate) =>
+        (frame.state?.[variableId]?.data?.items || []).some(item => predicate(numeric(item)));
+      const lazyFrame = doc.frames.findIndex(frame => frame.renderers?.[idByName.tree] === 'original-segment-tree'
+        && frameHas(frame, idByName.lazy, value => value !== 0));
+      const setFrame = doc.frames.findIndex(frame => frame.renderers?.[idByName.tree] === 'original-segment-tree'
+        && frameHas(frame, idByName.sets, value => value !== 2147483647));
+      const visibleFields = async (frameIndex, variableId) => {
+        await player.render(frameIndex, { animatePositions: false, animateEvents: false });
+        return [...document.querySelectorAll(`[data-trace-field-variable="${variableId}"]`)]
+          .map(item => item.textContent);
+      };
+      return {
+        lazyFrame,
+        setFrame,
+        lazyFields: lazyFrame >= 0 ? await visibleFields(lazyFrame, idByName.lazy) : [],
+        setFields: setFrame >= 0 ? await visibleFields(setFrame, idByName.sets) : [],
+        finalAns: numeric(doc.frames.at(-1).state[idByName.ans].data),
+        colors: [...new Set(doc.frames.flatMap(frame => (frame.segments || []).map(segment => segment.color)))]
+      };
+    });
+    assert.ok(operations.lazyFrame >= 0);
+    assert.ok(operations.setFrame >= 0);
+    assert.ok(operations.lazyFields.some(value => Number(value) !== 0));
+    assert.ok(operations.setFields.some(value => Number(value) !== 2147483647));
+    assert.equal(operations.finalAns, 12);
+    assert.ok(operations.colors.includes('AV_magenta'));
+    assert.ok(operations.colors.includes('AV_orange'));
+    assert.ok(operations.colors.includes('AV_green'));
   } finally {
     await browser.close();
   }

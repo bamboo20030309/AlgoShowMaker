@@ -1113,6 +1113,16 @@ renderer 會用標準遞迴的 `mid=(left+right)/2` 拆分區間；最小資料�
 `vector<int> tree(4*n+5)` 可以直接
 視覺化，不需要另外產生顯示用陣列。
 
+標準 lazy segment tree 也可沿用複合欄位選項：
+
+```cpp
+// @object tree render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+```
+
+`algorithm_sample/Tree/Segment_Tree_standard.cpp` 的輸入格式是 `n m`、n 個初值，
+接著輸入 m 個操作：`1 L R value` 為區間加值、`2 L R value` 為區間設值、
+`3 L R` 為區間總和查詢。
+
 查詢區段仍可沿用格內 `@segment` 與 `split`：
 
 ```cpp
