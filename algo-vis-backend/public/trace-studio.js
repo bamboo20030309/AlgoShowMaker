@@ -88,10 +88,6 @@
   let bindingEmpty;
   let bindingCard;
   let activeBinding = null;
-  let markerShapeEditor;
-  let markerShapeEmpty;
-  let markerShapeCard;
-  let markerShapeButtons;
   let objectStateEditor;
   let objectStateEmpty;
   let objectStateCard;
@@ -1134,29 +1130,6 @@
     return `tracking-${`${sourceKey}:${targetId}:marker`.replace(/[^A-Za-z0-9_-]/g, '-')}`;
   }
 
-  function activeValueBinding() {
-    if (!activeBinding || !trace) return null;
-    const frameId = trace.frames[currentIndex]?.id;
-    const binding = frameBinding(frameId, activeBinding.sourceKey) || activeBinding.binding;
-    const targetKey = binding?.targetKey || activeBinding.targetKey;
-    if (!binding || !targetKey || !canUseValueBinding(activeBinding.sourceKey, targetKey)) return null;
-    return { binding, sourceKey: activeBinding.sourceKey, targetKey };
-  }
-
-  function renderMarkerShapeEditor() {
-    if (!markerShapeEditor) return;
-    const active = activeValueBinding();
-    const visible = Boolean(active);
-    markerShapeEditor.hidden = !visible;
-    markerShapeEmpty.hidden = Boolean(visible);
-    markerShapeCard.hidden = !visible;
-    if (!visible) return;
-    const shape = active.binding.markerShape || 'array';
-    markerShapeButtons.querySelectorAll('button').forEach(button => {
-      button.classList.toggle('is-active', button.dataset.markerShape === shape);
-    });
-  }
-
   function renderBindingEditor() {
     if (!bindingEditor) return;
     const binding = activeBinding
@@ -1168,7 +1141,6 @@
     if (!sourceKey) {
       bindingEmpty.hidden = false;
       bindingCard.hidden = true;
-      renderMarkerShapeEditor();
       return;
     }
     const sourceName = variableName(sourceKey);
@@ -1177,7 +1149,6 @@
     bindingCard.hidden = false;
     bindingRelation.textContent = targetExpression ? `${sourceName} → ${targetExpression}` : sourceName;
     if (document.activeElement !== bindingIndexExpression) bindingIndexExpression.value = targetExpression;
-    renderMarkerShapeEditor();
   }
 
   function setActiveBindingForKey(key) {
@@ -1290,35 +1261,6 @@
       syncTrackingFromBinding(sourceKey, parsed.targetKey, parsed.indexExpression, activeBinding.binding.markerShape);
     } else {
       removeTrackingForBinding(sourceKey, parsed.targetKey);
-    }
-    refreshAfterPositionChange();
-    renderEffects();
-    renderBindingEditor();
-  }
-
-  function setMarkerShape(shape) {
-    const active = activeValueBinding();
-    if (!active || !['array', 'arrow'].includes(shape)) return;
-    const expression = String(active.binding.indexExpression || '').trim();
-    frameIdsForScope().forEach(frameId => {
-      const binding = frameBinding(frameId, active.sourceKey) || active.binding;
-      trace.studio.bindings[frameId] ||= {};
-      trace.studio.bindings[frameId][active.sourceKey] = {
-        ...binding,
-        targetKey: binding.targetKey || active.targetKey,
-        sourceAnchor: binding.sourceAnchor || 'top',
-        targetAnchor: binding.targetAnchor || 'center',
-        mode: binding.mode || active.binding.mode || 'relative',
-        targetExpression: binding.targetExpression || active.binding.targetExpression,
-        indexExpression: binding.indexExpression || expression,
-        markerShape: shape
-      };
-    });
-    activeBinding.binding = { ...active.binding, markerShape: shape };
-    if (active.binding.mode === 'value' || shape === 'arrow') {
-      syncTrackingFromBinding(active.sourceKey, active.targetKey, expression, shape);
-    } else {
-      removeTrackingForBinding(active.sourceKey, active.targetKey);
     }
     refreshAfterPositionChange();
     renderEffects();
@@ -3089,28 +3031,6 @@
     bindingEditor.append(bindingEmpty, bindingCard);
     inspectorObjectPanel.append(bindingEditor);
     renderBindingEditor();
-
-    markerShapeEditor = section('註標形狀');
-    markerShapeEditor.dataset.traceObjectControls = '1';
-    markerShapeEmpty = el('div', 'trace-studio-marker-shape-empty', '定位到陣列後可選擇註標形狀');
-    markerShapeCard = el('div', 'trace-studio-marker-shape-card');
-    markerShapeButtons = el('div', 'trace-studio-marker-shapes');
-    [['array', '原始陣列'], ['arrow', '箭頭註標']].forEach(([shape, label]) => {
-      const button = el('button', 'trace-studio-marker-shape');
-      button.type = 'button';
-      button.dataset.markerShape = shape;
-      button.title = label;
-      const preview = el('span', `trace-studio-marker-preview is-${shape}`);
-      if (shape === 'array') preview.append(el('i'), el('b', '', 'i'));
-      else preview.append(el('b', '', 'i'), el('i'), el('em'));
-      button.append(preview, el('span', '', label));
-      button.addEventListener('click', () => setMarkerShape(shape));
-      markerShapeButtons.append(button);
-    });
-    markerShapeCard.append(markerShapeButtons);
-    markerShapeEditor.append(markerShapeEmpty, markerShapeCard);
-    inspectorObjectPanel.append(markerShapeEditor);
-    renderMarkerShapeEditor();
 
     styleEditor = section('物件與樣式');
     styleEditor.dataset.traceObjectControls = '1';
