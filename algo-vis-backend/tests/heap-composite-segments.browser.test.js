@@ -534,8 +534,8 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         '#asm-trace-root [data-trace-style-kind="point"]'
       ).length;
       await player.render(doc.frames.length-1,{animatePositions:false,animateEvents:false});
-      const answer=[...document.querySelectorAll(
-        `[data-trace-object-key="${CSS.escape(`${byName.answer}#0`)}"] > text`
+      const ans=[...document.querySelectorAll(
+        `[data-trace-object-key="${CSS.escape(`${byName.ans}#0`)}"] > text`
       )].at(-1)?.textContent;
       return {
         buildFrames:doc.frames.filter(frame=>frame.source?.function==='build').length,
@@ -545,7 +545,7 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
         compositeTexts,separateFields,unwindSegments,
         frame26Segments,frame26ContinuitySamples,
         frame29Segments,frame29ContinuitySamples,
-        pointerLabel,pointStyleCount,answer
+        pointerLabel,pointStyleCount,ans
       };
     });
     assert.equal(result.buildFrames,0);
@@ -581,7 +581,7 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     assert.ok(result.frame29ContinuitySamples.every(Boolean));
     assert.equal(result.pointerLabel,'now');
     assert.equal(result.pointStyleCount,0);
-    assert.equal(result.answer,'12');
+    assert.equal(result.ans,'12');
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
 });
