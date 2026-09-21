@@ -165,6 +165,7 @@ int main() {
 | `@keep` | 依條件保留變數或上一幀畫面 | `// @keep last as round when i > 0` |
 | `@layout` | 宣告並設定具名遞迴排版 | `// @layout recursion as "quick_tree" at canvas.top offset(0,80)` |
 | `@exit` | 提早讓指定變數的視覺呈現退場 | `// @exit min_idx` |
+| `@let` | 建立本幀唯讀的繪圖運算別名，不產生 C++ 變數或事件 | `// @let lb = i & -i` |
 | `@text` | 顯示動態說明文字與 TTS | `// @text "i = ${i}" at arr.bottom when i >= 0` |
 | `@style` | 套用背景、框線、point、mark或focus；逗號可組合樣式 | `// @style arr[i,i*2:i*2+1] highlight,point red` |
 | `@segment` | 標示一段連續範圍 | `// @segment arr[low:high]` |
@@ -184,8 +185,19 @@ int main() {
 - `in`：把 live `@frame` 或 `@keep` 快照加入已宣告的具名排版，例如 `@frame arr in quick_tree`、`@keep last in quick_tree`。
 
 `@preset` 會原樣保存所有 `@` 設定，並由各指令解析器在 `@frame use` 的位置展開；目前包含
-`@object`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、`@camera`。它只壓縮幀設定，
+`@object`、`@let`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、`@camera`。它只壓縮幀設定，
 不主動執行 `@keep`、`@exit`、`@frame` 等流程動作；這些仍寫在實際執行位置。
+
+重複使用較長的安全運算式時，可用小寫 `@let` 建立幀內唯讀別名：
+
+```cpp
+// @frame BIT[i]
+// @let lb = i & -i
+// @style num[i-lb+1:i] background AV_blue
+// @text "BIT[${i}] 涵蓋 num[${i-lb+1}~${i}]" at num.top
+```
+
+別名會在每次擷取該幀時重新計算，可引用先前宣告的 `@let`；它不會成為 C++ 變數、畫布物件、marker 或 runtime 事件。`@let` 也可寫在 `@preset`／`@defaults` 中。
 
 箭頭使用共用 Arrow Model；`@arrow`、Trace Studio 箭頭及遞迴 layout 箭頭共享同一套端點、邊距、箭頭頭部與顏色邏輯，底層沿用原本 `drawArrow` 的幾何比例。完整選項請參考[演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md#arrow連接視覺物件)。
 

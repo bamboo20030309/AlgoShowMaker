@@ -28,6 +28,11 @@
       '// @frame when i%v==0\n// @object isprime with columns(10), labels(index)\n// @object prime with labels(value)',
       '// @frame\n// @object isprime with range(1,n), columns(10), labels(index)\n// @object prime with columns(10), labels(value)\n// @place prime.top-left at isprime.bottom-left offset(0,60)'
     ] },
+    { id: 'let', label: '@let', effect: '建立本幀唯讀的繪圖運算別名，不產生 C++ 變數或事件', code: '// @let lb = i & -i', examples: [
+      '// @let lb = i & -i',
+      '// @let left = i - lb + 1\n// @style num[left:i] background AV_blue',
+      '// @preset bit_view\n// @object BIT[i]\n// @let lb = i & -i\n// @text "區間 ${i-lb+1}~${i}" at BIT.bottom\n// @endpreset'
+    ] },
     { id: 'keep', label: '@keep', effect: '保存上一幀或指定物件的快照，供後續畫面使用', code: '// @keep last', examples: [
       '// @keep last',
       '// @keep arr as "original"',
@@ -108,6 +113,7 @@
       ['when', 'when', '只在條件成立時產生幀', ' when i >= 0'],
       ['in', 'in', '把畫面加入具名遞迴排版', ' in quick_tree'],
       ['object', '@object', '在這一幀加入另一個獨立設定的物件', '\n// @object prime'],
+      ['let', '@let', '建立本幀唯讀的繪圖運算別名', '\n// @let lb = i & -i'],
       ['style', '@style', '為格子加上視覺樣式', '\n// @style arr[i] highlight'],
       ['automark', '@automark', '選擇顯示自動固定的陣列', '\n// @automark arr'],
       ['text', '@text', '加入說明文字', '\n// @text "正在檢查" at arr.bottom'],
@@ -123,6 +129,7 @@
     ],
     preset: [
       ['object', '@object', '加入預設顯示物件', '\n// @object isprime with columns(10), labels(index)'],
+      ['let', '@let', '加入預設繪圖運算別名', '\n// @let lb = i & -i'],
       ['place', '@place', '加入預設物件位置', '\n// @place prime.top-left at isprime.bottom-left offset(0,60)'],
       ['style', '@style', '加入預設樣式', '\n// @style isprime[i] highlight'],
       ['automark', '@automark', '選擇預設自動固定陣列', '\n// @automark isprime']
