@@ -47,6 +47,30 @@
         "Math"
       ],
       "archive": "/guest-decks/linear-sieve.asmdeck"
+    },
+    {
+      "id": "heap-teaching",
+      "title": "Heap｜堆積：原理與動畫",
+      "categories": [
+        "Data_Structure"
+      ],
+      "archive": "/guest-decks/heap-teaching.asmdeck"
+    },
+    {
+      "id": "binary-indexed-tree-teaching",
+      "title": "Binary Indexed Tree｜樹狀陣列：原理與動畫",
+      "categories": [
+        "Data_Structure"
+      ],
+      "archive": "/guest-decks/binary-indexed-tree-teaching.asmdeck"
+    },
+    {
+      "id": "segment-tree-teaching",
+      "title": "Segment Tree｜線段樹：原理與動畫",
+      "categories": [
+        "Data_Structure"
+      ],
+      "archive": "/guest-decks/segment-tree-teaching.asmdeck"
     }
   ]
 }
