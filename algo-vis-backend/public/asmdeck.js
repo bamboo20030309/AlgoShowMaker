@@ -84,6 +84,14 @@
     return `${provenance.ENGINE_VERSION}/${provenance.FORMAT_VERSION}`;
   }
 
+  function compatibleEngineVersion(savedVersion) {
+    const saved = String(savedVersion || '').match(/^(\d+)\/(\d+)$/);
+    const current = engineVersion().match(/^(\d+)\/(\d+)$/);
+    if (!saved || !current) return false;
+    return Number(saved[2]) === Number(current[2])
+      && Number(saved[1]) <= Number(current[1]);
+  }
+
   function algorithmSlides(deck) {
     return (deck.groups || []).flatMap(group => group.slides || [])
       .filter(slide => slide.kind === 'algorithm-animation');
@@ -248,7 +256,7 @@
     if (manifest?.format !== 'AlgoShowMaker.asmdeck' || manifest.packageVersion !== PACKAGE_VERSION) {
       throw new Error('不支援此投影片檔格式版本。');
     }
-    if (manifest.engineVersion !== engineVersion()) {
+    if (!compatibleEngineVersion(manifest.engineVersion)) {
       throw new Error(`此檔使用追蹤引擎 ${manifest.engineVersion}，目前版本 ${engineVersion()} 不相容，請使用相容版本匯入。`);
     }
     if (!body?.deck?.groups || !body.assets || await sha256(JSON.stringify(body)) !== manifest.contentHash) {
