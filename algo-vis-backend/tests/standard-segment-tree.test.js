@@ -20,9 +20,14 @@ test('standard segment tree renderer derives its domain and root from range', ()
   assert.equal(object.rendererOptions.domain, undefined);
   assert.equal(object.rendererOptions.root, undefined);
   assert.equal(object.rendererOptions.unit, undefined);
+  assert.deepEqual(object.rendererOptions.fields.names, ['tree', 'sets', 'lazy']);
+  assert.deepEqual(object.rendererOptions.format.entries.map(({ field, type }) => ({ field, type })), [
+    { field: 'sets', type: 'assign' },
+    { field: 'lazy', type: 'signed' }
+  ]);
   assert.throws(() => findFrameDirectives(source.replace(
-    'with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)',
-    'with fields(tree,lazy,sets), hide(lazy=0,sets=LM)'
+    'with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)',
+    'with fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)'
   )),
     /render segment_tree 必須指定 with range/);
   assert.throws(() => findFrameDirectives(source.replace('range(1,n)', 'unit(48)')),
@@ -38,6 +43,12 @@ test('standard segment tree sample resolves n=15 options and executes modify, se
   assert.equal(frame.rendererOptions[byName.tree].domain, undefined);
   assert.equal(frame.rendererOptions[byName.tree].root, undefined);
   assert.equal(frame.rendererOptions[byName.tree].unit, undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.rendererOptions[byName.tree].fields.variableIds)),
+    [byName.tree, byName.sets, byName.lazy]);
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.rendererOptions[byName.tree].format.entries)), [
+    { field: 'sets', type: 'assign', variableId: byName.sets },
+    { field: 'lazy', type: 'signed', variableId: byName.lazy }
+  ]);
   assert.equal(Number(trace.frames.at(-1).state[byName.ans].data.value), 12);
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_magenta')));
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_orange')));
@@ -65,6 +76,33 @@ test('standard segment tree sample resolves n=15 options and executes modify, se
     && segment.split?.phase === 'after')));
   assert.ok(updateBacktracks.some(frame => (frame.segments || []).some(segment => segment.color === 'AV_orange'
     && segment.split?.phase === 'after')));
+});
+
+test('format accepts the first-version value formats and rejects invalid declarations', () => {
+  const formatted = `vector<int> tree, sets, lazy;
+int main(){
+  // @frame tree with fields(tree,sets,lazy), format(tree=raw,sets=hex,lazy=fixed(2))
+}`;
+  const object = findFrameDirectives(formatted)[0].objects[0];
+  assert.deepEqual(object.rendererOptions.format.entries.map(entry => ({
+    field: entry.field, type: entry.type, precision: entry.precision
+  })), [
+    { field: 'tree', type: 'raw', precision: undefined },
+    { field: 'sets', type: 'hex', precision: undefined },
+    { field: 'lazy', type: 'fixed', precision: 2 }
+  ]);
+  const singleField = `vector<int> mask;\nint main(){ // @frame mask with format(mask=binary)\n}`;
+  assert.equal(findFrameDirectives(singleField)[0].objects[0].rendererOptions.format.entries[0].type,
+    'binary');
+  assert.throws(() => findFrameDirectives(source.replace('sets=assign', 'sets=unknown')),
+    /format 不支援格式/);
+  assert.throws(() => findFrameDirectives(source.replace('sets=assign', 'missing=assign')),
+    /format 找不到欄位：missing/);
+  assert.throws(() => findFrameDirectives(source.replace(
+    'format(sets=assign,lazy=signed)', 'format(sets=assign,sets=hex)'
+  )), /format 不可重複欄位/);
+  assert.throws(() => findFrameDirectives(source.replace('sets=assign', 'sets=fixed(11)')),
+    /format 不支援格式/);
 });
 
 test('gap accepts one or two expressions and resolves horizontal and vertical spacing', async () => {

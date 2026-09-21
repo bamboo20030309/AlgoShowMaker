@@ -144,7 +144,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
         playbackDurationMs: player.getLastPlaybackPlan()?.totalDurationMs
       };
     });
-    assert.equal(result.build, 'trace-223');
+    assert.equal(result.build, 'trace-224');
     assert.deepEqual(result.event?.targets, [
       ['target', 15], ['source-left', 30], ['source-right', 31]
     ]);

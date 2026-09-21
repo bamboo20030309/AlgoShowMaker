@@ -43,14 +43,43 @@
     return Boolean(entry && displayValue(data, options.separator ?? ',') === hiddenValueToken(entry.value));
   }
 
-  function formattedItem(data, options = {}) {
+  function formatDisplayValue(data, options = {}, field = '', variableId = '') {
+    const raw = displayValue(data, options.separator ?? ',');
+    const entry = options?.format?.entries?.find(item => (
+      (variableId && item.variableId === variableId) || (field && item.field === field)
+    ));
+    if (!entry || entry.type === 'raw') return raw;
+    if (entry.type === 'assign') return `=${raw}`;
+    const numeric = Number(raw);
+    if (entry.type === 'bool') {
+      if (/^(?:true|false)$/i.test(raw)) return raw.toLowerCase();
+      return Number.isFinite(numeric) ? String(numeric !== 0) : raw;
+    }
+    if (!Number.isFinite(numeric)) return raw;
+    if (entry.type === 'signed') return numeric > 0 ? `+${raw}` : raw;
+    if (entry.type === 'binary' || entry.type === 'hex') {
+      if (!Number.isInteger(numeric)) return raw;
+      const prefix = entry.type === 'binary' ? '0b' : '0x';
+      const digits = Math.abs(numeric).toString(entry.type === 'binary' ? 2 : 16);
+      return `${numeric < 0 ? '-' : ''}${prefix}${entry.type === 'hex' ? digits.toUpperCase() : digits}`;
+    }
+    const precision = Math.max(0, Math.min(10, Number(entry.precision) || 0));
+    if (entry.type === 'fixed') return numeric.toFixed(precision);
+    if (entry.type === 'percent') return `${(numeric * 100).toFixed(precision)}%`;
+    return raw;
+  }
+
+  function formattedItem(data, options = {}, field = '', variableId = '') {
     const separator = Object.prototype.hasOwnProperty.call(options, 'separator') ? options.separator : ',';
-    if (data?.kind !== 'pair' && data?.kind !== 'tuple') return displayValue(data, separator);
+    if (data?.kind !== 'pair' && data?.kind !== 'tuple') {
+      return formatDisplayValue(data, options, field, variableId);
+    }
     const names = data.kind === 'pair'
       ? ['first', 'second']
       : (data.items || []).map((_, index) => String(index));
     return (data.items || []).flatMap((item, index) => (
-      hiddenField(options, names[index], item) ? [] : [displayValue(item, separator)]
+      hiddenField(options, names[index], item)
+        ? [] : [formatDisplayValue(item, options, names[index])]
     )).join(separator);
   }
 
@@ -177,12 +206,14 @@
     return element;
   }
 
-  function originalValues(entry, options = {}) {
+  function originalValues(entry, options = {}, field = '', variableId = '') {
     if (entry.data?.kind === 'map') {
       return (entry.data.entries || []).map(item => `${displayValue(item.key)}: ${displayValue(item.value)}`);
     }
-    if (Array.isArray(entry.data?.items)) return entry.data.items.map(item => formattedItem(item, options));
-    return [formattedItem(entry.data, options)];
+    if (Array.isArray(entry.data?.items)) {
+      return entry.data.items.map(item => formattedItem(item, options, field, variableId));
+    }
+    return [formattedItem(entry.data, options, field, variableId)];
   }
 
   function isScalarRenderer(variable, rendererName) {
@@ -227,15 +258,24 @@
       fieldParts = Array.from({ length: itemCount }, (_, index) => fieldSources.flatMap(source => {
         const item = source.entry?.data?.items?.[index];
         if (item == null || hiddenField(rendererOptions, source.name, item)) return [];
-        return [{ variableId: source.variableId, text: formattedItem(item, rendererOptions) }];
+        return [{
+          variableId: source.variableId,
+          text: formattedItem(item, rendererOptions, source.name, source.variableId)
+        }];
       }));
       values = fieldParts.map(parts => parts.map(part => part.text).join(separator));
-    } else values = originalValues(entry, rendererOptions);
+    } else {
+      values = originalValues(
+        entry, rendererOptions, context.variable?.name || '', context.variableId
+      );
+    }
     let itemsPerRow = Infinity;
     if (isMatrix) {
       const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
       const columns = Math.max(1, ...rows.map(row => Array.isArray(row?.items) ? row.items.length : 0));
-      values = rows.flatMap(row => Array.from({ length: columns }, (_, index) => displayValue(row?.items?.[index])));
+      values = rows.flatMap(row => Array.from({ length: columns }, (_, index) => formatDisplayValue(
+        row?.items?.[index], rendererOptions, context.variable?.name || '', context.variableId
+      )));
       itemsPerRow = columns;
     }
     const configuredColumns = Number(rendererOptions.columns);
@@ -4623,10 +4663,11 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-205';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-206';
   window.ASMTraceRenderers = {
-    build: 'trace-205', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
-    register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
+    build: 'trace-206', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
+    displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,

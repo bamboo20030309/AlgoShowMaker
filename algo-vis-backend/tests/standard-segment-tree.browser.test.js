@@ -303,8 +303,8 @@ int main() {
     assert.ok(operations.setFrame >= 0);
     assert.ok(operations.mergeFrame >= 0);
     assert.equal(operations.mergeVisible, true);
-    assert.ok(operations.lazyFields.some(value => Number(value) !== 0));
-    assert.ok(operations.setFields.some(value => Number(value) !== 2147483647));
+    assert.ok(operations.lazyFields.some(value => /^\+\d/.test(value)));
+    assert.ok(operations.setFields.some(value => /^=/.test(value)));
     assert.deepEqual(operations.overlappingLabels, []);
     assert.deepEqual(operations.verticallyOffCenter, []);
     assert.ok(operations.adjustedLabels.includes('28'));
@@ -385,8 +385,93 @@ test('animated tree writes preserve visible lazy and sets fields in composite ce
     });
     assert.ok(result.targetIndex >= 1);
     assert.equal(result.frameNumber, 55);
-    assert.equal(result.text, '21,7');
-    assert.deepEqual(result.fields.map(field => field.text), ['21', '7']);
+    assert.equal(result.text, '21,=7');
+    assert.deepEqual(result.fields.map(field => field.text), ['21', '=7']);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('format renders semantic signs, bases, booleans, precision and percentages', { timeout: 60000 }, async () => {
+  const base = process.env.ASM_TEST_BASE_URL;
+  assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+  });
+  try {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(base + '/algorithm.html');
+    await page.waitForFunction(() => window.ace && window.ASMTracePlayer);
+    const code = `#include <bits/stdc++.h>
+using namespace std;
+// @preset formatted
+// @object base with fields(base,delta,assigned,bits,hexes,flags,decimals,ratios), format(delta=signed,assigned=assign,bits=binary,hexes=hex,flags=bool,decimals=fixed(2),ratios=percent(1))
+// @endpreset
+int main() {
+  vector<int> base = {10,-2};
+  vector<int> delta = {3,-2};
+  vector<int> assigned = {8,-4};
+  vector<int> bits = {10,-10};
+  vector<int> hexes = {31,-31};
+  vector<int> flags = {0,2};
+  vector<double> decimals = {3.5,-2.5};
+  vector<double> ratios = {0.753,-0.125};
+  // @frame use formatted
+  assigned[0] = 9;
+  // @frame use formatted
+  delta[0] += 2;
+  // @frame use formatted
+  return 0;
+}
+`;
+    await page.evaluate(code => {
+      ace.edit('editor').setValue(code, -1);
+      document.getElementById('inputArea').value = '';
+    }, code);
+    await page.evaluate(() => document.getElementById('runBtn').click());
+    await page.waitForFunction(expected => window.ASMTracePlayer.getDocument()?.sourceCode === expected,
+      code, { timeout: 30000 });
+    const result = await page.evaluate(async () => {
+      const player = window.ASMTracePlayer;
+      const doc = player.getDocument();
+      const baseId = Object.entries(doc.variables).find(([, variable]) => variable.name === 'base')[0];
+      const values = () => {
+        const object = [...document.querySelectorAll(`[data-trace-variable="${baseId}"]`)].at(-1);
+        return [0, 1].map(index => object.querySelector(`[data-trace-index="${index}"]`)
+          ?.querySelector(':scope > text')?.textContent);
+      };
+      await player.render(0, { animatePositions: false, animateEvents: false });
+      const initial = values();
+      await player.render(1);
+      const afterAssign = values();
+      await player.render(2);
+      const afterSigned = values();
+      return {
+        initial,
+        afterAssign,
+        afterSigned,
+        formats: doc.frames[0].rendererOptions[baseId].format.entries.map(entry => ({
+          field: entry.field, type: entry.type, precision: entry.precision
+        }))
+      };
+    });
+    assert.deepEqual(result.initial, [
+      '10,+3,=8,0b1010,0x1F,false,3.50,75.3%',
+      '-2,-2,=-4,-0b1010,-0x1F,true,-2.50,-12.5%'
+    ]);
+    assert.deepEqual(result.afterAssign, [
+      '10,+3,=9,0b1010,0x1F,false,3.50,75.3%',
+      '-2,-2,=-4,-0b1010,-0x1F,true,-2.50,-12.5%'
+    ]);
+    assert.deepEqual(result.afterSigned, [
+      '10,+5,=9,0b1010,0x1F,false,3.50,75.3%',
+      '-2,-2,=-4,-0b1010,-0x1F,true,-2.50,-12.5%'
+    ]);
+    assert.equal(result.formats.length, 7);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

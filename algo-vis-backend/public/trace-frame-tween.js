@@ -1343,6 +1343,18 @@
     return String(value.label || value.type || value.kind || '');
   }
 
+  function displayEventFieldValue(value, frame, variableId) {
+    if (!variableId || typeof window.ASMTraceRenderers?.formatDisplayValue !== 'function') {
+      return displayEventValue(value);
+    }
+    for (const options of Object.values(frame?.rendererOptions || {})) {
+      const entry = options?.format?.entries?.find(item => item.variableId === variableId);
+      if (!entry) continue;
+      return window.ASMTraceRenderers.formatDisplayValue(value, options, entry.field, variableId);
+    }
+    return displayEventValue(value);
+  }
+
   function eventTargetKey(traceDocument, eventFrame, target) {
     if (!target?.variableId) return '';
     const variableKey = objectKeyForVariable(eventFrame, target.variableId);
@@ -2324,6 +2336,8 @@
       const targetText = assignableValueText(element, variableId);
       if (!targetText) return;
       const fixedIndex = targetText.dataset?.traceContentRole === 'index';
+      const fieldVariableId = targetText.dataset?.traceFieldVariable
+        || track.target?.variableId || variableId;
       const index = Number(cell.dataset?.traceIndex);
       const styleRect = conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
@@ -2331,6 +2345,7 @@
         : null;
       tracks.push({ ...track, targetText: fixedIndex ? null : targetText,
         targetCell: fixedIndex ? element : null, variableId, index, styleRect,
+        fieldVariableId,
         applied: Symbol('unapplied'), currentValue: track.initial });
     });
     const styleTargets = tracks.filter(track => track.styleRect);
@@ -2478,7 +2493,9 @@
       ]);
     };
     const apply = (track, value) => {
-      const displayed = displayEventValue(value);
+      const displayed = track.targetCell
+        ? displayEventValue(value)
+        : displayEventFieldValue(value, styleFrame, track.fieldVariableId);
       if (track.applied === displayed) return;
       track.applied = displayed;
       track.currentValue = value;
@@ -2660,10 +2677,13 @@
       : operand.point.y + (operand.marker
         ? Number(rawDelta.y) || 0
         : Number(carrierDelta.y) || 0);
-    const beforeValue = displayEventValue(event?.payload?.before);
-    const afterValue = displayEventValue(event?.payload?.after);
+    const beforeValue = displayEventFieldValue(event?.payload?.before, eventFrame, target.variableId);
+    const afterValue = displayEventFieldValue(event?.payload?.after, eventFrame, target.variableId);
     const sourceValue = Object.prototype.hasOwnProperty.call(event?.payload || {}, 'source')
       ? event.payload.source : null;
+    const formattedSourceValue = sourceValue == null
+      ? null
+      : displayEventFieldValue(sourceValue, eventFrame, target.variableId);
     const sourceLabel = String(source?.expression || afterValue || '').trim();
     const sourceOperands = sources.map(item => eventOperand(
       traceDocument, eventFrame, item, sourceValue,
@@ -2708,7 +2728,7 @@
         root,
         item,
         operand,
-        sourceValue,
+        formattedSourceValue,
         item ? previousVisualElement(previousObjects, item.visualKey) : null,
         { valueOnly: event?.compound === true || binaryAddition }
       )).filter(Boolean);
@@ -6942,10 +6962,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-223';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-224';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-223', play, cancel, updateEventAvailability,
+    build: 'trace-224', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

@@ -1415,6 +1415,18 @@ function resolveFrameRendererOptions(frame, directive) {
         : []
     };
   }
+  if (source.format) {
+    options.format = {
+      entries: Array.isArray(source.format.entries)
+        ? source.format.entries.map(entry => ({
+          field: entry.field,
+          type: entry.type,
+          ...(Number.isInteger(entry.precision) ? { precision: entry.precision } : {}),
+          variableId: entry.variableId || ''
+        }))
+        : []
+    };
+  }
   if (Object.prototype.hasOwnProperty.call(source, 'separator')) options.separator = source.separator;
   return options;
 }

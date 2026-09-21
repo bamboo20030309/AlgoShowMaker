@@ -1159,16 +1159,29 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 
 設定矩陣或平面排列使用的欄數。參數可使用安全算術運算式。
 
-### `fields(...)`、`hide(...)` 與 `separator(...)`
+### `fields(...)`、`hide(...)`、`format(...)` 與 `separator(...)`
 
 ```cpp
 // @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
 // @frame tree render heap with fields(tree,lazy,sets), separator(" / ")
+// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
 ```
 
 `fields` 把多個陣列的同一索引合併到主要物件的一格中；每個陣列仍保留自己的變數身分、狀態與事件。
 `hide` 必須明確寫欄位和值，每幀重新判定；被隱藏的欄位不留下空位或多餘分隔符號。
 分隔符號預設為逗點，只有需要其他符號時才寫 `separator`。第一個field必須是`@frame`的主要物件。
+
+`format(field=type,...)`只改變顯示文字；事件、`when`、`hide`與運算仍使用原始值。靜態格子與事件動畫共用相同格式。第一版支援：
+
+- `raw`：原始文字。
+- `signed`：正數加上`+`，零與負數維持原樣。
+- `assign`：加上`=`，用於set／覆寫語意。
+- `binary`、`hex`：整數顯示為`0b...`、`0x...`；負數將負號放在前面。
+- `bool`：數字0顯示`false`，其他有限數字顯示`true`。
+- `fixed(n)`：固定顯示n位小數，n為0～10。
+- `percent(n)`：乘以100後顯示n位小數與`%`，n為0～10。
+
+例如`tree=15`、`sets=8`、`lazy=3`會依`fields(tree,sets,lazy)`顯示為`15,=8,+3`。
 
 `pair`與`tuple`本身仍是一個元素，因此`vector<pair<...>>`及`vector<tuple<...>>`每個元素只畫一格。
 成員預設以同一separator連接且保留零；pair可用`hide(first=value,second=value)`隱藏指定成員。

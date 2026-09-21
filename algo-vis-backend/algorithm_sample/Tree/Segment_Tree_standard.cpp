@@ -12,7 +12,7 @@ int n, ans = 0;
 // @enddefaults
 
 // @preset operation_view
-// @object tree render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+// @object tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
 // @object ans render cell
 // @place ans.top at tree.bottom offset(0,45)
 // @style lazy[1:4*n+4] background rgb(231,144,255) when value != 0
@@ -20,7 +20,7 @@ int n, ans = 0;
 // @endpreset
 
 // @preset query_merge_view
-// @object tree[now] render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+// @object tree[now] render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
 // @object leftSum render cell
 // @object rightSum render cell
 // @object result render cell
@@ -32,7 +32,7 @@ int n, ans = 0;
 // @endpreset
 
 // @preset operation_pointer_view
-// @object tree[now] render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+// @object tree[now] render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
 // @object ans render cell
 // @place ans.top at tree.bottom offset(0,45)
 // @style lazy[1:4*n+4] background rgb(231,144,255) when value != 0

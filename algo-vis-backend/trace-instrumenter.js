@@ -807,6 +807,29 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
+    if (name === 'format') {
+      const entries = args.parts.map(argument => {
+        const assignment = argument.match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/s);
+        if (!assignment || !assignment[2].trim()) {
+          throw new Error(`第 ${line} 行的 ${directiveName} format 必須是 format(field=type,...)`);
+        }
+        const field = assignment[1];
+        const raw = assignment[2].trim().toLowerCase();
+        const simple = new Set(['raw', 'signed', 'assign', 'binary', 'hex', 'bool']);
+        if (simple.has(raw)) return { field, type: raw };
+        const parameterized = raw.match(/^(fixed|percent)\s*\(\s*(\d+)\s*\)$/);
+        if (!parameterized || Number(parameterized[2]) > 10) {
+          throw new Error(`第 ${line} 行的 ${directiveName} format 不支援格式：${assignment[2].trim()}`);
+        }
+        return { field, type: parameterized[1], precision: Number(parameterized[2]) };
+      });
+      if (new Set(entries.map(entry => entry.field)).size !== entries.length) {
+        throw new Error(`第 ${line} 行的 ${directiveName} format 不可重複欄位`);
+      }
+      options.format = { entries };
+      continue;
+    }
+
     if (name === 'separator') {
       if (args.parts.length !== 1) {
         throw new Error(`第 ${line} 行的 ${directiveName} separator 只能指定一個字串`);
@@ -2743,6 +2766,19 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     }
     const sourceVariable = variables.find(variable => variable.name === parsed.displayNames[0]);
     if (!sourceVariable) throw new Error(`第 ${line} 行的 ${directiveName} 缺少主要物件`);
+    if (modifiers.rendererOptions?.format) {
+      const allowedFormatNames = new Set(modifiers.rendererOptions.fields?.names || [
+        sourceVariable.name, 'first', 'second'
+      ]);
+      const invalidFormat = modifiers.rendererOptions.format.entries
+        .find(entry => !allowedFormatNames.has(entry.field));
+      if (invalidFormat) {
+        throw new Error(`第 ${line} 行的 ${directiveName} format 找不到欄位：${invalidFormat.field}`);
+      }
+      modifiers.rendererOptions.format.entries.forEach(entry => {
+        entry.variableId = variables.find(variable => variable.name === entry.field)?.id || '';
+      });
+    }
     if (modifiers.renderer === 'original-segment-tree' && !modifiers.rendererOptions?.range) {
       throw new Error(`第 ${line} 行的 ${directiveName} render segment_tree 必須指定 with range(start,end)`);
     }
