@@ -45,6 +45,7 @@
 - [x] 超出範圍的 BIT marker 仍可依 BIT 層級公式前往虛擬格；範例的 build／sum 更新式改放在 `for` header，最後一次更新由既有迴圈邊界規則略過，中間更新仍播放平移。
 - [x] 建樹與區間查詢分成兩個範例及各自輸入；查詢範例使用 `AV_green` 顯示涵蓋區間。
 - [x] 兩次 `sum()` 交界幀的停用 `i: 8→0` 可以保留虛擬 placement 供事件解析，但沒有實際 SVG 元素時不納入自動鏡頭邊界。
+- [x] 區間查詢將答案保留的右端前綴範圍塗綠、最後扣除的左端前綴範圍塗紅；累計說明不顯示「下一個索引」。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -68,3 +69,4 @@
 - 2026-09-21：移除只供指令文字與區間使用的 `lb`，將 lowbit 運算直接寫入 `@style`、`@text` 與 `for` 更新式；程式 commit 為 `7246804dd468b617e9726dffeede4398ce94ea36`。
 - 2026-09-21：依使用者確認新增小寫 `@let` 唯讀繪圖別名，不新增迴圈；BIT pointer preset 宣告 `lb` 並由 style／text 共用。程式 commit 為 `3d53e3cc7bec6c32c7066ae5051e8722da3411f7`，手冊與編輯器提示 commit 為 `4c4a6ac92824e0d66f12a43f216dce381e57d961`。
 - 2026-09-22：重現查詢交界幀的鏡頭偏移，確認停用的終止更新建立不可見 `BIT[0]` placement；自動鏡頭改為只計入有實際元素的 placement，並將建樹與區間查詢拆成兩份範例。程式 commit 為 `f3132c75549f8aef6df3ce6137f54e742860c347`。
+- 2026-09-22：查詢函式新增 `deduct` 語意；右端前綴路徑使用 `AV_green`，左端扣除路徑使用 `AV_red`，並移除下一索引文字。程式 commit 為 `bbbf25f8a46fea6e031b5c1801ee12d99a010b33`。

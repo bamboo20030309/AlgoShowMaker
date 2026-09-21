@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-beta-BIT
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`、`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`、`de9ebaca102e2618bd013a2dc1b2ef3fb5749337`、`a69a43f837508d64b7c9c1a79b3789d83c8a0a87`、`33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`、`210f1d547fca85f9665a30216bae28eb13e2e917`、`21b2a88fad59c481796cec078ce9e767466f5baf`、`7246804dd468b617e9726dffeede4398ce94ea36`、`3d53e3cc7bec6c32c7066ae5051e8722da3411f7`、`4c4a6ac92824e0d66f12a43f216dce381e57d961`、`f3132c75549f8aef6df3ce6137f54e742860c347`
-- 驗證時的 HEAD 與未提交修改：程式 HEAD `f3132c75549f8aef6df3ce6137f54e742860c347`；只有本任務 task／delivery 文件待提交
+- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`、`93b5a32d2fe6aa732579b4c74600802586d985b1`、`1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`、`de9ebaca102e2618bd013a2dc1b2ef3fb5749337`、`a69a43f837508d64b7c9c1a79b3789d83c8a0a87`、`33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`、`210f1d547fca85f9665a30216bae28eb13e2e917`、`21b2a88fad59c481796cec078ce9e767466f5baf`、`7246804dd468b617e9726dffeede4398ce94ea36`、`3d53e3cc7bec6c32c7066ae5051e8722da3411f7`、`4c4a6ac92824e0d66f12a43f216dce381e57d961`、`f3132c75549f8aef6df3ce6137f54e742860c347`、`bbbf25f8a46fea6e031b5c1801ee12d99a010b33`
+- 驗證時的 HEAD 與未提交修改：程式 HEAD `bbbf25f8a46fea6e031b5c1801ee12d99a010b33`；只有本任務 task／delivery 文件待提交
 - 驗證日期：2026-09-22
 
 ## 根因與修改
@@ -33,6 +33,7 @@
 | 終止更新與虛擬格 | BIT 虛擬格單元案例、trace 事件資料與瀏覽器穩定幀 | 一般越界 marker 仍使用 BIT 虛擬格；範例的 `i: 8→16` runtime 事件標為 loop boundary、enabled=false，穩定畫面不移到 BIT[16] | 通過 |
 | 建樹與查詢拆分 | 兩份 sample compile 與輸出核對 | 建樹輸出完整 BIT；查詢輸入 `2 8`，輸出 49，動畫只包含查詢路徑 | 通過 |
 | 查詢區間與鏡頭 | 實際瀏覽器 SVG 與 `currentBounds()` | `num[1:8]` 顯示 AV_green；第二次 sum 進入前後鏡頭 bottom／centerY 相同，不再納入不可見 BIT[0] | 通過 |
+| 查詢加減配色與文字 | 查詢 sample compile、靜態指令及實際 SVG | `sum(R, false)` 為綠色，`sum(L-1, true)` 為紅色；輸出仍為 49，且不含「下一個索引」 | 通過 |
 
 ## 小驗證與重跑方式
 ### V2 Binary Indexed Tree 專項
@@ -41,7 +42,7 @@
 - 測試資料／fixture：拆分後的建樹與區間查詢範例及各自輸入，n=10、查詢 2..8。
 - 完整指令或操作步驟：相關 JavaScript 語法檢查；`node --test --test-concurrency=1 tests/unresolved-markers.test.js tests/binary-indexed-tree.test.js tests/binary-indexed-tree.browser.test.js tests/entrypoints.test.js`；`git diff --check`。
 - 預期結果：無語法或差異錯誤；所選案例全部通過且無 skip。
-- 實際結果與 exit code（適用時）：既有錨點、marker 與 BIT 專項結果維持通過。新增 `@let` 後，從重啟的 3102 執行 BIT parser／runtime／browser、指令提示與入口共 11/11 通過；preset／defaults／text／style 擴大檢查 26/27 通過，唯一失敗是服務回覆「請求過於頻繁」，不列為通過。2026-09-22 的鏡頭與範例拆分追加驗證執行 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`、`camera-directives.test.js`、`entrypoints.test.js`，12/12 通過；重啟後再跑 BIT 兩檔，8/8 通過，皆 exit code 0。3102 已從本 worktree 重啟為 PID 24956，HTTP 200 並載入 `trace-renderer.js?v=trace-204`。
+- 實際結果與 exit code（適用時）：既有錨點、marker 與 BIT 專項結果維持通過。新增 `@let` 後，從重啟的 3102 執行 BIT parser／runtime／browser、指令提示與入口共 11/11 通過；preset／defaults／text／style 擴大檢查 26/27 通過，唯一失敗是服務回覆「請求過於頻繁」，不列為通過。2026-09-22 的鏡頭與範例拆分追加驗證執行 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`、`camera-directives.test.js`、`entrypoints.test.js`，12/12 通過；重啟後再跑 BIT 兩檔，8/8 通過。加減配色與文字調整後重啟 3102，再跑 BIT 兩檔 8/8 通過；以上皆 exit code 0。3102 現為 PID 41640，HTTP 200 並載入 `trace-renderer.js?v=trace-204`。
 - 證據位置：已提交測試檔；執行摘要僅存在本次本機工作紀錄，不提交 test-results 或 server log。
 
 ## 驗證分級與選擇
