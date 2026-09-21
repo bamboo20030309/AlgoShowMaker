@@ -2,7 +2,7 @@
 
 ## 任務資訊
 - 負責代理：gamma
-- 狀態：開發中
+- 狀態：待交付
 - 共同基準 commit：23a2f6e933fb561757e764d1c97929c49a00dfcb
 - 分支：codex/2026-09-22-gamma
 - Worktree：C:\Users\user\Documents\Codex\2026-07-29\algoshowmaker-main-commit-d154dd5-slides-html\work\AlgoShowMaker\.worktrees\2026-09-22-gamma
@@ -30,9 +30,9 @@
 - 依賴任務：無。
 
 ## 驗收條件
-- [ ] `algorithm.html` 左上角顯示與首頁相同的 Logo 與 `AlgoShowMaker` 文字組合。
-- [ ] 點擊 Logo 或文字所在的品牌連結後會導向 `/` 首頁。
-- [ ] 品牌入口不擠壓或破壞既有頂端選單排列。
+- [x] `algorithm.html` 左上角顯示與首頁相同的 Logo 與 `AlgoShowMaker` 文字組合。
+- [x] 點擊 Logo 或文字所在的品牌連結後會導向 `/` 首頁。
+- [x] 品牌入口不擠壓或破壞既有頂端選單排列。
 
 ## 驗證計畫
 - 子代理小驗證：執行 `entrypoints.test.js`，並以隔離瀏覽器確認圖示載入、品牌尺寸與點擊導向首頁。
