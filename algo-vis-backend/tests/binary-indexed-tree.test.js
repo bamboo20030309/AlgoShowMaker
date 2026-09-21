@@ -75,6 +75,9 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
     binding.sourceName === 'num' && binding.targetName === 'BIT'
       && binding.anchor === 'top' && binding.offsetX === -40 && binding.offsetY === -70
   ))));
+  assert.ok(frames.flatMap(frame => frame.styles)
+    .filter(style => style.styleType === 'highlight' || style.styleType === 'point')
+    .every(style => !style.color), 'highlight and point keep their default colors');
 });
 
 test('Binary Indexed Tree renderer accepts its full name and legacy aliases', () => {
