@@ -45,6 +45,7 @@
 - [x] n=15 的兩位數葉節點 index 28/29 不與 interval `[13]`／`[14]` 重疊，且 index 與 interval 都在 12px 標籤框中垂直置中。
 - [x] update 回朔時插入左右子節點相加並寫回父節點的幀；query 只有跨中點、確實合併兩個回傳值時插入 `leftSum + rightSum = result` 回朔幀。
 - [x] update 與 query 的回朔加法幀都帶有對應顏色的 `split(now,after)`，完成當前節點時同步收回 segment。
+- [x] 融合顯示的 tree 格執行賦值動畫後，只更新事件所屬欄位；未隱藏的 lazy／sets 欄位與分隔符號不會被清除。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
@@ -61,3 +62,4 @@
 - 2026-09-21：依使用者截圖修正兩位數葉節點標籤碰撞；interval 移至距右側 1px，index 在實測碰撞時向左避讓，兩段標籤改為框內垂直置中。
 - 2026-09-21：依使用者回饋新增回朔加法幀；update 顯示兩個 child 合併回 parent，query 改為標準回傳值寫法並只在跨中點時顯示左右答案合併。
 - 2026-09-21：依使用者回饋在所有回朔加法幀加入 `split(now,after)`；modify、set、query 分別沿用紫、橘、綠 segment。
+- 2026-09-22：重現 n=11 輸入第 55 幀 `tree[6]` 遺失 sets 欄位；確認 trace 仍有 `sets[6]=7`，修正賦值動畫只更新複合格內對應變數的文字節點。
