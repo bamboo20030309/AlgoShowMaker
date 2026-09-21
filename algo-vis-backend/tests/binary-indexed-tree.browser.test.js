@@ -10,10 +10,10 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
     const base = process.env.ASM_TEST_BASE_URL;
     assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
     const code = fs.readFileSync(
-      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree.cpp'), 'utf8'
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Build.cpp'), 'utf8'
     );
     const input = fs.readFileSync(
-      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree-sample_input.txt'), 'utf8'
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Build-sample_input.txt'), 'utf8'
     );
     const { trace } = await compile(code, input);
     const variable = (name, functionName = '') => Object.entries(trace.variables)
@@ -210,6 +210,74 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       }, iId);
       assert.ok(!terminalPresentation?.target?.endsWith('#16'),
         'the suppressed terminal loop update does not present a move to virtual BIT[16]');
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
+test('Binary Indexed Tree query range stays green without framing an invisible BIT[0]',
+  { timeout: 60000 }, async () => {
+    const base = process.env.ASM_TEST_BASE_URL;
+    assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
+    const code = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Range_Query.cpp'), 'utf8'
+    );
+    const input = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Range_Query-sample_input.txt'), 'utf8'
+    );
+    const { trace } = await compile(code, input);
+    const variable = (name, functionName = '') => Object.entries(trace.variables)
+      .find(([, item]) => item.name === name && (!functionName || item.functionName === functionName))?.[0];
+    const numId = variable('num');
+    const iId = variable('i', 'sum');
+    const firstQueryIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'sum'
+      && frame.source?.recursionRootIndex === 0
+      && Number(frame.state?.[iId]?.data?.value) === 8
+      && frame.styles.some(style => style.targetVariableId === numId
+        && style.selector?.startExpression === 'i-lb+1')
+    ));
+    const secondSumStartIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'sum'
+      && frame.source?.recursionRootIndex === 1
+      && frame.events.some(event => event.type === 'declare'
+        && event.targets?.some(target => target.variableId === iId))
+    ));
+    assert.ok(firstQueryIndex >= 0 && secondSumStartIndex > 0);
+
+    const browser = await chromium.launch({
+      headless: true,
+      ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+    });
+    try {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.stack || error.message));
+      await page.goto(base + '/algorithm.html');
+      await page.waitForFunction(() => window.ASMTracePlayer && window.asmApplyTraceDocument);
+      await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), firstQueryIndex);
+      const fills = await page.evaluate(numId => {
+        const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
+        return [...num.querySelectorAll('[data-trace-index]')]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => ({
+            index: Number(node.dataset.traceIndex),
+            fill: getComputedStyle(node.querySelector(':scope > rect')).fill
+          }));
+      }, numId);
+      assert.ok(fills.filter(cell => cell.index >= 1 && cell.index <= 8)
+        .every(cell => /165, 214, 167/.test(cell.fill)),
+      '@let lb resolves the green num[1:8] query range');
+
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), secondSumStartIndex - 1);
+      const previousBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), secondSumStartIndex);
+      const nextBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
+      assert.equal(nextBounds.bottom, previousBounds.bottom,
+        'disabled terminal i: 8 -> 0 placement does not expand automatic camera bounds');
+      assert.equal(nextBounds.centerY, previousBounds.centerY);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

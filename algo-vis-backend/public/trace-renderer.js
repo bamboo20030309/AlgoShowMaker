@@ -4540,6 +4540,7 @@
       snapshotObjectKey(snapshotsById.get(id)) || id
     )));
     const boxes = [...currentScene.placements.entries()]
+      .filter(([key]) => currentScene.elements.has(key))
       .filter(([key]) => options.includeSnapshots !== false || !snapshotIds.has(key))
       .map(([, box]) => box);
     if (!boxes.length) return null;
@@ -4642,9 +4643,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-203';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-204';
   window.ASMTraceRenderers = {
-    build: 'trace-203', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-204', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
