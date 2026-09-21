@@ -202,6 +202,9 @@
   let cloudDeckTitle = '未命名投影片';
   let sharedAccess = null;
   let currentShareSettings = { mode: 'private', view_token: null, edit_token: null };
+  let pendingProgressiveRebuild = null;
+  let progressiveRebuildSession = null;
+  let progressiveRebuildGeneration = 0;
   let activeStructureContext = null;
   let selectedStructureCell = null;
   let activeStructureInlineEditor = null;
@@ -605,13 +608,13 @@
       const response = await fetch(entry.archive);
       if (!response.ok) throw new Error('公開投影片載入失敗');
       const archive = await window.ASMDeck.decode(await response.blob());
-      const reconstructed = await window.ASMDeck.rebuildDeck(archive.deck);
-      deck = normalizeDeck(reconstructed);
+      deck = normalizeDeck(archive.deck);
+      pendingProgressiveRebuild = { mode: 'sample' };
       cloudDeckTitle = entry.title;
       sharedAccess = 'view';
       applySharedAccessUi();
       document.title = `${entry.title} - AlgoShowMaker`;
-      setCloudStatus('saved', '公開投影片・僅供觀賞');
+      setCloudStatus('loading', '公開投影片已載入，正在準備動畫…');
       return;
     }
     if (!deckUid && !shareToken) {
@@ -647,6 +650,124 @@
     if (shareDeckBtn && deckUid) shareDeckBtn.hidden = false;
     applySharedAccessUi();
     setCloudStatus('saved', sharedAccess === 'view' ? '僅供觀賞' : '已儲存');
+  }
+
+  function orderedDeckSlides() {
+    return deck.groups.flatMap((group, h) => group.slides.map((slide, v) => ({ slide, h, v })));
+  }
+
+  function progressiveRebuildLabel(session, active = null) {
+    if (!session.total) return session.mode === 'sample' ? '公開投影片・僅供觀賞' : '精簡投影片已匯入';
+    if (session.completed >= session.total) {
+      if (session.mode === 'sample') return session.pending
+        ? `公開投影片・${session.pending} 張動畫需要重新 RUN`
+        : '公開投影片・僅供觀賞';
+      return session.pending
+        ? `投影片已匯入；${session.pending} 張動畫請修正程式後 RUN`
+        : '精簡投影片已匯入';
+    }
+    const progress = `${session.completed}/${session.total}`;
+    const current = active?.slide?.id === getSlide()?.id ? '目前頁' : '背景';
+    return session.mode === 'sample'
+      ? `公開投影片已開啟・${current}動畫 ${progress}`
+      : `投影片已匯入・${current}動畫 ${progress}`;
+  }
+
+  function updateProgressiveRebuildStatus(session, active = null) {
+    if (progressiveRebuildSession !== session) return;
+    document.body.dataset.asmdeckRebuild = session.completed >= session.total ? 'ready' : 'loading';
+    document.body.dataset.asmdeckRebuildProgress = `${session.completed}/${session.total}`;
+    setCloudStatus(session.completed >= session.total ? 'saved' : 'loading', progressiveRebuildLabel(session, active));
+  }
+
+  function prioritizeProgressiveRebuild(h = currentH, v = currentV) {
+    const session = progressiveRebuildSession;
+    if (!session) return;
+    const focus = orderedDeckSlides().findIndex(entry => entry.h === h && entry.v === v);
+    if (focus >= 0) session.focusOrder = focus;
+    updateProgressiveRebuildStatus(session, session.active);
+  }
+
+  function nextProgressiveRebuildEntry(session) {
+    return session.entries
+      .filter(entry => entry.state === 'pending')
+      .sort((left, right) => {
+        const leftDistance = Math.abs(left.order - session.focusOrder);
+        const rightDistance = Math.abs(right.order - session.focusOrder);
+        if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+        const leftBehind = left.order < session.focusOrder ? 1 : 0;
+        const rightBehind = right.order < session.focusOrder ? 1 : 0;
+        return leftBehind - rightBehind || left.order - right.order;
+      })[0] || null;
+  }
+
+  async function runProgressiveRebuild(session) {
+    while (progressiveRebuildSession === session) {
+      const entry = nextProgressiveRebuildEntry(session);
+      if (!entry) break;
+      entry.state = 'running';
+      session.active = entry;
+      updateProgressiveRebuildStatus(session, entry);
+      try {
+        const animation = await window.ASMDeck.rebuildAnimation(entry.slide.animation);
+        if (progressiveRebuildSession !== session) return;
+        const cacheKind = animation.cacheKind || 'run';
+        delete animation.cacheKind;
+        delete animation.rebuild;
+        const current = getSlideById(entry.slide.id);
+        if (current) {
+          current.animation = animation;
+          refreshAlgorithmSlideInPlace(current);
+        }
+        session.stats[cacheKind] += 1;
+        entry.state = 'ready';
+      } catch (error) {
+        if (progressiveRebuildSession !== session) return;
+        const current = getSlideById(entry.slide.id);
+        if (current) {
+          current.animation = { ...current.animation, rebuildError: String(error?.message || error) };
+          refreshAlgorithmSlideInPlace(current);
+        }
+        session.pending += 1;
+        session.stats.pending += 1;
+        entry.state = 'failed';
+      }
+      session.completed += 1;
+      session.active = null;
+      updateProgressiveRebuildStatus(session);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    if (progressiveRebuildSession !== session) return;
+    document.body.dataset.asmdeckLastImportStats = JSON.stringify(session.stats);
+    await saveDeck({ history: false, cloud: session.mode === 'import' });
+    updateProgressiveRebuildStatus(session);
+  }
+
+  function startProgressiveDeckRebuild({ mode = 'import' } = {}) {
+    const allSlides = orderedDeckSlides();
+    const entries = allSlides.map((entry, order) => ({ ...entry, order, state: 'pending' }))
+      .filter(entry => entry.slide.kind === 'algorithm-animation'
+        && entry.slide.animation?.rebuild
+        && !entry.slide.animation?.traceDocument?.frames?.length);
+    const currentOrder = allSlides.findIndex(entry => entry.h === currentH && entry.v === currentV);
+    const session = {
+      generation: ++progressiveRebuildGeneration,
+      mode,
+      entries,
+      total: entries.length,
+      completed: 0,
+      pending: 0,
+      focusOrder: Math.max(0, currentOrder),
+      active: null,
+      stats: { exact: 0, base: 0, run: 0, pending: 0 }
+    };
+    progressiveRebuildSession = session;
+    updateProgressiveRebuildStatus(session);
+    if (!entries.length) {
+      document.body.dataset.asmdeckLastImportStats = JSON.stringify(session.stats);
+      return;
+    }
+    void runProgressiveRebuild(session);
   }
 
   function scheduleCloudSave() {
@@ -881,23 +1002,14 @@
       await window.ASMDeckFileDrop.validate(file);
       if (/\.asmdeck$/i.test(file.name)) {
         const packageData = await window.ASMDeck.decode(file);
-        const importStats = { exact: 0, base: 0, run: 0, pending: 0 };
-        const reconstructed = await window.ASMDeck.rebuildDeck(packageData.deck, slide => {
-          setCloudStatus('saving', `正在重建演算法投影片 ${slide.id}…`);
-        }, (_slide, kind) => {
-          importStats[kind] += 1;
-        });
-        document.body.dataset.asmdeckLastImportStats = JSON.stringify(importStats);
-        const nextDeck = normalizeDeck(reconstructed);
+        const nextDeck = normalizeDeck(packageData.deck);
         const previousDeck = deck;
         await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck));
         deck = nextDeck;
         currentH = 0; currentV = 0;
-        saveDeck();
+        saveDeck({ cloud: false });
         renderDeck();
-        if (!deckUid) setCloudStatus('local', importStats.pending
-          ? `投影片已匯入；${importStats.pending} 張動畫請修正程式後 RUN`
-          : '精簡投影片已匯入');
+        startProgressiveDeckRebuild({ mode: 'import' });
       } else {
         await importDeckJsonText(await file.text());
       }
@@ -2774,6 +2886,7 @@
   function renderAlgorithmSlide(section, slide) {
     const animation = normalizeAlgorithmAnimation(slide.animation);
     const hasScript = !!animation.scriptContent || !!animation.traceDocument?.frames?.length;
+    const rebuildPending = !hasScript && animation.rebuild && !animation.rebuildError;
     section.innerHTML = `
       <div class="asm-slide-frame-content">
         <iframe
@@ -2784,7 +2897,7 @@
           ${hasScript ? '' : 'hidden'}
         ></iframe>
         <div class="algorithm-slide-placeholder" ${hasScript ? 'hidden' : ''}>
-          <div>演算法動畫投影片<span>點選左側橘色按鈕輸入程式碼並編譯</span></div>
+          <div>演算法動畫投影片<span>${rebuildPending ? '正在建立動畫，投影片其他內容可先瀏覽' : '點選左側橘色按鈕輸入程式碼並編譯'}</span></div>
         </div>
       </div>
     `;
@@ -8005,6 +8118,12 @@
     if (!hasAnimation) {
       frame.classList.remove('is-loading');
       if (frame.getAttribute('src') !== 'about:blank') frame.src = 'about:blank';
+      const message = animation.rebuildError
+        ? '原始資料已匯入，請編輯程式並 RUN'
+        : animation.rebuild ? '正在建立動畫，投影片其他內容可先瀏覽'
+          : '點選左側橘色按鈕輸入程式碼並編譯';
+      const label = placeholder.querySelector('span');
+      if (label) label.textContent = message;
       return;
     }
 
@@ -9881,6 +10000,7 @@
         hideStructureContextMenu();
         currentH = event.indexh;
         currentV = event.indexv || 0;
+        prioritizeProgressiveRebuild(currentH, currentV);
         scheduleFabricResolution();
         scheduleCurrentSlideCodeFocus();
         updateAlgorithmEditButton();
@@ -9939,6 +10059,11 @@
     await saveDeck({ history: false, cloud: false });
     pushHistorySnapshot();
     initReveal();
+    if (pendingProgressiveRebuild) {
+      const options = pendingProgressiveRebuild;
+      pendingProgressiveRebuild = null;
+      startProgressiveDeckRebuild(options);
+    }
   }
 
   bootstrap();

@@ -442,7 +442,7 @@
     return deck;
   }
 
-  return { project, encode, decode, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
+  return { project, encode, decode, rebuildAnimation, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
     cacheLimitMB, setCacheLimitMB, sha256,
     animationKey, baseKey, engineVersion, MAGIC, PACKAGE_VERSION };
 });
