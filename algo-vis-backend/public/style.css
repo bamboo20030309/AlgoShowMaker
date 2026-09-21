@@ -92,10 +92,23 @@ html {
 }
 
 .menu-brand {
-  font-weight: bold;
-  font-size: 1.2rem;
-  color: var(--primary-blue);
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-bright);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
   margin-right: 20px;
+  flex-shrink: 0;
+}
+
+.menu-brand-mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .top-github-link {

@@ -40,7 +40,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('compile.js?v=syntax-7'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=freshness-4'));
+  assert.ok(html.includes('style.css?v=brand-home-5'));
+  assert.match(html, /<a class="menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="menu-brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
