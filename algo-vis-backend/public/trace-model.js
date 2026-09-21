@@ -247,6 +247,7 @@
       captureOnlyVariableIds: Array.isArray(frame.captureOnlyVariableIds)
         ? clone(frame.captureOnlyVariableIds)
         : [],
+      lets: Array.isArray(frame.lets) ? clone(frame.lets) : [],
       texts: Array.isArray(frame.texts) ? clone(frame.texts) : [],
       styles: Array.isArray(frame.styles) ? clone(frame.styles) : [],
       segments: Array.isArray(frame.segments) ? clone(frame.segments) : [],

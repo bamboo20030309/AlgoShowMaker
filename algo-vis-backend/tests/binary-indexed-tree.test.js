@@ -44,6 +44,44 @@ test('directive expressions parse and evaluate C++ bitwise precedence', () => {
   assert.equal(evaluate('(mask & 1) != 0'), true);
 });
 
+test('@let creates frame-local read-only aliases without C++ variables', () => {
+  const source = `// @preset view
+// @object arr
+// @let lb = i & -i
+// @let left = i - lb + 1
+// @style arr[left:i] background AV_blue
+// @text "range \${left}~\${i}" at arr.top
+// @endpreset
+int main() {
+  int i = 4;
+  int arr[8] = {};
+  // @frame use view
+}`;
+  const [frame] = findFrameDirectives(source);
+  assert.deepEqual(frame.lets.map(binding => ({ name: binding.name, expression: binding.expression })), [
+    { name: 'lb', expression: 'i & -i' },
+    { name: 'left', expression: 'i - lb + 1' }
+  ]);
+  const i = frame.variables.find(variable => variable.name === 'i');
+  assert.ok(i && frame.captureOnlyVariableIds.includes(i.id));
+  assert.equal(frame.variables.some(variable => variable.name === 'lb' || variable.name === 'left'), false);
+
+  const context = rulesContext();
+  const document = { variables: { [i.id]: { name: 'i' } } };
+  const runtimeFrame = {
+    lets: frame.lets,
+    state: { [i.id]: { data: { kind: 'scalar', value: 4 } } }
+  };
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'lb'), 4);
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'left'), 1);
+  assert.equal(context.ASMTraceRules.resolveTextExpression(document, runtimeFrame, 'i + lb'), '8');
+
+  assert.throws(() => findFrameDirectives(source.replace('@let left = i - lb + 1', '@let lb = 2')),
+    /@let 名稱重複/);
+  assert.throws(() => findFrameDirectives(source.replace('@let lb = i & -i', '@let lb = missing')),
+    /@let 找不到可見變數或先前別名/);
+});
+
 test('Binary Indexed Tree sample only uses the two new-directive objects', () => {
   const code = fs.readFileSync(samplePath, 'utf8');
   assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|frame_draw|start_draw|end_draw|_draw_|@keep|long long/);
@@ -59,8 +97,9 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
   assert.match(buildBody, /@style num\[k\] highlight/);
   assert.doesNotMatch(buildBody, /@style num\[[^\n]+\] background/);
   assert.doesNotMatch(code, /\bint l\s*=/);
-  assert.match(sumBody, /@style num\[i-\(i&-i\)\+1:i\] background AV_blue/);
-  assert.match(code, /num\[\$\{i-\(i&-i\)\+1\}~\$\{i\}\]/);
+  assert.match(code, /@let lb = i & -i/);
+  assert.match(sumBody, /@style num\[i-lb\+1:i\] background AV_blue/);
+  assert.match(code, /num\[\$\{i-lb\+1\}~\$\{i\}\]/);
   assert.doesNotMatch(code, /\$\{l\}\.\.\$\{i\}/);
   assert.deepEqual(
     [...new Set(Array.from(code.matchAll(/@object\s+([A-Za-z_]\w*)/g), match => match[1]))].sort(),
@@ -72,7 +111,7 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
   assert.match(code, /BIT\[i\] \+= num\[k\];/);
   assert.match(code, /int sum\(int i\)/);
   assert.match(sumBody, /for \(; i > 0; i -= i & -i\)/);
-  assert.doesNotMatch(code, /\bint lb\b|\blb\b/);
+  assert.doesNotMatch(code, /\bint lb\b/);
 
   const frames = findFrameDirectives(code);
   assert.ok(frames.length > 0);

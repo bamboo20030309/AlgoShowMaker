@@ -143,6 +143,19 @@
   }
 
   function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
+    if (!locals?.__asmDirectiveLetsResolved && Array.isArray(frame?.lets) && frame.lets.length) {
+      const resolvedLocals = { ...(locals || {}) };
+      Object.defineProperty(resolvedLocals, '__asmDirectiveLetsResolved', {
+        value: true,
+        enumerable: false
+      });
+      for (const binding of frame.lets) {
+        const value = resolveExpression(document, frame, binding.expression, resolvedLocals, allowTextSlices);
+        if (value == null) return null;
+        resolvedLocals[binding.name] = value;
+      }
+      locals = resolvedLocals;
+    }
     const source = String(expression ?? '').trim();
     if (!source) return null;
     const tokens = [];

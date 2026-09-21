@@ -400,7 +400,7 @@ function findPresetDirectives(source, analysis) {
         }
         const directive = text.match(/^\/\/\s*@([A-Za-z_-]+)\b\s*(.*?)\s*$/);
         if (!directive) throw new Error(`第 ${line} 行的 @preset 內容必須是 @ 指令`);
-        if (open.name === '@defaults' && !['camera', 'place', 'style', 'object', 'text', 'segment', 'arrow', 'events', 'automark', 'for', 'endfor'].includes(directive[1].toLowerCase())) {
+        if (open.name === '@defaults' && !['camera', 'place', 'style', 'object', 'text', 'segment', 'arrow', 'events', 'automark', 'let', 'for', 'endfor'].includes(directive[1].toLowerCase())) {
           throw new Error(`第 ${line} 行的 @defaults 只支援呈現指令，不支援 @${directive[1]}`);
         }
         const name = directive[1].toLowerCase();
@@ -1525,7 +1525,7 @@ function attachTextDirectives(source, analysis, frameDirectives) {
       ...(text.when?.identifiers || [])
     ])];
     identifiers.forEach(name => {
-      if (drawingLocal(text, name)) return;
+      if (drawingLocal(text, name) || frameLet(target, name)) return;
       const variable = resolveVariable(name, text.from);
       if (!variable) throw new Error(`第 ${text.line} 行的 @text 找不到可見變數：${name}`);
       const alreadyCaptured = target.variables.some(existing => existing.id === variable.id);
@@ -1686,7 +1686,8 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     )));
 
     const ensureCaptured = (name, visible = false) => {
-      if (!name || TRACE_STYLE_LOCALS.has(name) || drawingLocal(style, name) && !visible) return;
+      if (!name || TRACE_STYLE_LOCALS.has(name)
+        || (drawingLocal(style, name) || frameLet(target, name)) && !visible) return;
       const variable = resolveVariable(name, style.from);
       if (!variable) throw new Error(`第 ${style.line} 行的 @style 找不到可見變數：${name}`);
       const alreadyCaptured = target.variables.some(existing => existing.id === variable.id);
@@ -1839,6 +1840,7 @@ function attachSegmentDirectives(source, analysis, frameDirectives) {
 
     const ensureCaptured = (name, visible = false) => {
       if (!name) return;
+      if (frameLet(target, name) && !visible) return;
       const variable = resolveVariable(name, segment.from);
       if (!variable) throw new Error(`第 ${segment.line} 行的 @segment 找不到可見變數：${name}`);
       const alreadyCaptured = target.variables.some(existing => existing.id === variable.id);
@@ -1968,6 +1970,76 @@ function prepareDrawing(source, analysis, item, frame) {
 }
 
 function drawingLocal(item, name) { return item.drawLoops?.some(scope => scope.variable === name); }
+
+function frameLet(frame, name) {
+  return (frame?.lets || []).some(binding => binding.name === name);
+}
+
+function attachLetDirectives(source, analysis, frameDirectives) {
+  const frames = [...frameDirectives].sort((left, right) => left.from - right.from);
+  frames.forEach(frame => { frame.lets = []; });
+
+  function resolveVariable(name, position) {
+    return analysis.variables
+      .filter(variable => variable.name === name
+        && variable.declarationTo <= position
+        && variable.scopeFrom <= position
+        && position < variable.scopeTo)
+      .sort((left, right) => (left.scopeTo - left.scopeFrom) - (right.scopeTo - right.scopeFrom))[0] || null;
+  }
+
+  function parseLet(payload, line, presetName = '') {
+    const match = String(payload || '').match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/);
+    if (!match) throw new Error(`第 ${line} 行的 @let 格式應為：@let 名稱 = 運算式`);
+    const name = match[1];
+    const expression = match[2].trim();
+    const parsed = parseFrameExpression(expression);
+    if (!parsed.valid) throw new Error(`第 ${line} 行的 @let 運算式無效：${expression}`);
+    if (TRACE_STYLE_LOCALS.has(name)) throw new Error(`第 ${line} 行的 @let 名稱不可使用 ${name}`);
+    return { name, expression, identifiers: parsed.identifiers || [], line, presetName };
+  }
+
+  function addLet(frame, binding) {
+    if (frame.lets.some(existing => existing.name === binding.name)) {
+      throw new Error(`第 ${binding.line} 行的 @let 名稱重複：${binding.name}`);
+    }
+    if (resolveVariable(binding.name, frame.from)) {
+      throw new Error(`第 ${binding.line} 行的 @let 名稱與可見 C++ 變數重複：${binding.name}`);
+    }
+    for (const name of binding.identifiers) {
+      if (frameLet(frame, name)) continue;
+      const variable = resolveVariable(name, frame.from);
+      if (!variable) throw new Error(`第 ${binding.line} 行的 @let 找不到可見變數或先前別名：${name}`);
+      if (!frame.variables.some(existing => existing.id === variable.id)) frame.variables.push(variable);
+      if (!frame.captureOnlyVariableIds.includes(variable.id)) frame.captureOnlyVariableIds.push(variable.id);
+    }
+    frame.lets.push(binding);
+  }
+
+  frames.forEach(frame => {
+    framePresetNames(frame, analysis).forEach(presetName => {
+      (analysis.presetDefinitions?.get(presetName)?.directives || [])
+        .filter(item => item.name === 'let')
+        .forEach(item => addLet(frame, parseLet(item.payload, item.line, presetName)));
+    });
+  });
+
+  const direct = [];
+  function visit(node) {
+    if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+      const text = source.slice(node.from, node.to);
+      const match = text.match(/^\/\/\s*@let\b\s*(.*?)\s*$/i);
+      if (match) direct.push({ ...parseLet(match[1], analysis.lineAt(node.from)), from: node.from });
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  }
+  visit(analysis.tree.topNode);
+  direct.sort((left, right) => left.from - right.from).forEach(binding => {
+    const frame = frames.filter(candidate => candidate.from < binding.from).at(-1) || null;
+    if (!frame) throw new Error(`第 ${binding.line} 行的 @let 前面找不到可套用的 @frame`);
+    addLet(frame, binding);
+  });
+}
 
 function blockAt(root, position) {
   let result = null;
@@ -2188,7 +2260,7 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
     const captureIdentifier = (name, endpointTarget = null) => {
       if (!name) return null;
       if (name === arrow.batch?.variable && !endpointTarget) return true;
-      if (drawingLocal(arrow, name) && !endpointTarget) return true;
+      if ((drawingLocal(arrow, name) || frameLet(targetFrame, name)) && !endpointTarget) return true;
       const variable = resolveVariable(name, arrow.from);
       if (!variable) return null;
       const alreadyCaptured = targetFrame.variables.some(existing => existing.id === variable.id);
@@ -2939,6 +3011,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
   }
 
   visit(analysis.tree.topNode);
+  attachLetDirectives(source, analysis, directives);
   const usedNames = new Set();
   directives.forEach(directive => {
     if (!directive.objects.length) {

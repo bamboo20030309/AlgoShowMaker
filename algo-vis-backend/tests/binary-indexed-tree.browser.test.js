@@ -133,6 +133,7 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         return {
           dataObjects: [...root.querySelectorAll('.asm-trace-object[data-trace-variable]')]
             .map(node => node.dataset.traceVariable),
+          teachingText: root.querySelector('.asm-trace-text-layer')?.textContent || '',
           numBounds: rect(num), bitBounds: rect(bit),
           numCellCount: [...num.querySelectorAll('[data-trace-index]')]
             .filter(node => !node.dataset.traceContentRole).length,
@@ -159,6 +160,8 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       assert.deepEqual(widths, { 1: 40, 2: 80, 3: 40, 4: 160, 5: 40,
         6: 80, 7: 40, 8: 320, 9: 40, 10: 80 });
       assert.equal(presentation.cells.find(cell => cell.index === 8).value, '54');
+      assert.match(presentation.teachingText, /下一個索引是 16/,
+        '@let lb resolves in the rendered teaching text for the current frame');
       assert.ok(transfer.some(sample => sample.value === sourceValue),
         `num[${sourceIndex}] value is copied into the assignment transfer`);
       const transferTransforms = new Set(transfer.filter(sample => sample.value === sourceValue)
