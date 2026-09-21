@@ -317,3 +317,78 @@ int main() {
     await browser.close();
   }
 });
+
+test('animated tree writes preserve visible lazy and sets fields in composite cells', { timeout: 90000 }, async () => {
+  const base = process.env.ASM_TEST_BASE_URL;
+  assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+  });
+  try {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(base + '/algorithm.html');
+    await page.waitForFunction(() => window.ace && window.ASMTracePlayer);
+    const code = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_standard.cpp'), 'utf8'
+    ).replace(/\r\n?/g, '\n');
+    const input = `11 7
+1 2 3 4 5 6 7 8 9 10 11
+1 9 10 1
+1 1 2 2
+2 2 10 3
+1 1 9 4
+2 8 8 5
+1 2 3 6
+3 8 9
+`;
+    await page.evaluate(({ code, input }) => {
+      ace.edit('editor').setValue(code, -1);
+      document.getElementById('inputArea').value = input;
+    }, { code, input });
+    await page.evaluate(() => document.getElementById('runBtn').click());
+    await page.waitForFunction(expected => window.ASMTracePlayer.getDocument()?.sourceCode === expected,
+      code, { timeout: 60000 });
+    const result = await page.evaluate(async () => {
+      const player = window.ASMTracePlayer;
+      const doc = player.getDocument();
+      const idByName = Object.fromEntries(
+        Object.entries(doc.variables).map(([id, variable]) => [variable.name, id])
+      );
+      const valueAt = (frame, variableId, index) => {
+        const item = frame?.state?.[variableId]?.data?.items?.[index];
+        return Number(item?.value ?? item);
+      };
+      const targetIndex = doc.frames.findIndex((frame, index) => index > 0
+        && valueAt(frame, idByName.tree, 6) === 21
+        && valueAt(frame, idByName.sets, 6) === 7
+        && valueAt(doc.frames[index - 1], idByName.tree, 6) === 9
+        && valueAt(doc.frames[index - 1], idByName.sets, 6) === 3);
+      if (targetIndex < 1) return { targetIndex };
+      await player.render(targetIndex - 1, { animatePositions: false, animateEvents: false });
+      await player.render(targetIndex);
+      const tree = [...document.querySelectorAll(
+        `[data-trace-variable="${idByName.tree}"]`
+      )].at(-1);
+      const cell = tree?.querySelector('[data-trace-index="6"]');
+      return {
+        targetIndex,
+        frameNumber: targetIndex + 1,
+        text: cell?.querySelector(':scope > text')?.textContent,
+        fields: [...cell.querySelectorAll('[data-trace-field-variable]')].map(field => ({
+          variableId: field.dataset.traceFieldVariable,
+          text: field.textContent
+        }))
+      };
+    });
+    assert.ok(result.targetIndex >= 1);
+    assert.equal(result.frameNumber, 55);
+    assert.equal(result.text, '21,7');
+    assert.deepEqual(result.fields.map(field => field.text), ['21', '7']);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});

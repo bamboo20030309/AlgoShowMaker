@@ -2136,12 +2136,23 @@
     return { group, rect, text, width, height };
   }
 
+  function assignableValueText(element, variableId = '') {
+    const text = element?.matches?.('text')
+      ? element
+      : element?.querySelector?.('text');
+    if (!text || text.dataset?.traceContentRole === 'index') return null;
+    if (text.dataset?.traceFieldVariable) return text;
+    if (variableId) {
+      const field = [...text.querySelectorAll?.('[data-trace-field-variable]') || []]
+        .find(candidate => candidate.dataset.traceFieldVariable === variableId);
+      if (field) return field;
+    }
+    return text;
+  }
+
   function assignableTargetText(operand) {
     if (!operand || operand.marker) return null;
-    const text = operand.element.matches?.('text')
-      ? operand.element
-      : operand.element.querySelector?.('text');
-    return text?.dataset?.traceContentRole === 'index' ? null : text;
+    return assignableValueText(operand.element, operand.target?.variableId);
   }
 
   function createAssignmentTransfer(
@@ -2308,13 +2319,11 @@
       ))) return;
       const element = options.currentElements?.get?.(track.key);
       if (!element || element.dataset?.traceSourceVariableId) return;
-      const targetText = element.matches?.('text')
-        ? element
-        : element.querySelector?.('text');
-      if (!targetText) return;
-      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
       const cell = element.closest?.('[data-trace-index]') || element;
       const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const targetText = assignableValueText(element, variableId);
+      if (!targetText) return;
+      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
       const index = Number(cell.dataset?.traceIndex);
       const styleRect = conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
@@ -6933,10 +6942,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-222';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-223';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-222', play, cancel, updateEventAvailability,
+    build: 'trace-223', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
