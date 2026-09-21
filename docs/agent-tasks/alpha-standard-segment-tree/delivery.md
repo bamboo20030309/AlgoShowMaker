@@ -4,8 +4,8 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-alpha-standard-segment-tree
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：8ba0334cea3fea756f290b564290cb71c8a06c89、81a7237f5eb7f5abbba0e9cc5a253e4048e7d67c、15d2c91c2b1c9363c20656d2a7ee6d8a32e90f6c、cdf0e020f07de8b57800065b996910bbb3cbfacd、a7e859d15f7bbf79e5c6cdffff41daa222655c94、01a2d594c346639179f61a89fc4922ba2ac88702、7f55475475d932a5341fab50fddfa374afe9c0db
-- 驗證時的 HEAD 與未提交修改：7f55475475d932a5341fab50fddfa374afe9c0db；程式驗證後只有交付文件修改
+- 程式修正 commit：8ba0334cea3fea756f290b564290cb71c8a06c89、81a7237f5eb7f5abbba0e9cc5a253e4048e7d67c、15d2c91c2b1c9363c20656d2a7ee6d8a32e90f6c、cdf0e020f07de8b57800065b996910bbb3cbfacd、a7e859d15f7bbf79e5c6cdffff41daa222655c94、01a2d594c346639179f61a89fc4922ba2ac88702、7f55475475d932a5341fab50fddfa374afe9c0db、5efb734b7bef842eb8e764dc25d2645f70f85725
+- 驗證時的 HEAD 與未提交修改：5efb734b7bef842eb8e764dc25d2645f70f85725；程式驗證後只有交付文件修改
 - 驗證日期：2026-09-21
 
 ## 根因與修改
@@ -62,7 +62,7 @@
 - 執行目錄與必要環境設定：本 worktree `algo-vis-backend`；`PORT=3101`。
 - 完整指令或操作步驟：核對 3101 舊 PID 46680 後只停止該服務並從本 worktree 重啟；確認 `algorithm.html` 載入 `trace-205` 與 `gap-1`；向 `/trace/analyze` 提交包含 `render segment_tree with range(1,n), gap(10,24)` 的最小程式；再以 `ASM_TEST_BASE_URL=http://127.0.0.1:3101` 重跑三個直接相關專項測試檔。
 - 預期結果：HTTP 200；後端接受 range 與雙軸 gap；前端使用最新 cache key；專項測試全部通過。
-- 實際結果與 exit code（適用時）：gap 更新後 PID 9044；標籤排版更新後 PID 69684；字體更新後 PID 61468；指定操作範例更新後 PID 9956；標籤避讓更新後 PID 63888。最新 `algorithm.html` 載入 `segment-label-3`；parser/runtime 3/3、標準線段樹 browser 1/1、renderer gap browser 1/1、entrypoints 1/1 pass；exit code 0。
+- 實際結果與 exit code（適用時）：gap 更新後 PID 9044；標籤排版更新後 PID 69684；字體更新後 PID 61468；指定操作範例更新後 PID 9956；標籤避讓更新後 PID 63888；回朔加法幀更新後 PID 59676。最新 `algorithm.html` 載入 `segment-label-3`；parser/runtime 3/3、標準線段樹 browser 1/1、renderer gap browser 1/1、entrypoints 1/1 pass；exit code 0。
 - 證據位置：本機 3101 服務與終端摘要，未提交 server log。
 
 ## 驗證分級與選擇
@@ -71,7 +71,7 @@
 - 選擇依據：修改 renderer 選項解析、SVG 幾何、格內 segment 與 split 路徑。
 - 執行的測試檔／名稱篩選：`standard-segment-tree.test.js`、`standard-segment-tree.browser.test.js`、`renderer-gaps.browser.test.js`、`entrypoints.test.js`、`directive-assist.test.js`、`frame-renderer-options.integration.test.js`、`heap-composite-segments.test.js`、`segment-tree-samples.test.js`，以及 heap composite browser 的兩個直接相關案例。
 - 驗證環境與隔離服務：本分支 worktree、localhost:3198／3199 隔離服務、重啟後的 alpha localhost:3101、Playwright 無頭 Edge；未操作使用者分頁或投影片。
-- 驗證版本、完整指令、結果與證據：程式 commit 7f55475475d932a5341fab50fddfa374afe9c0db；3199 與重啟後 3101 的標準線段樹 browser 1/1、entrypoints 1/1 通過；n=15 實際 SVG 無標籤重疊且全部垂直置中。
+- 驗證版本、完整指令、結果與證據：程式 commit 5efb734b7bef842eb8e764dc25d2645f70f85725；3199 與重啟後 3101 的 parser/runtime 3/3、標準線段樹 browser 1/1 通過；query 回朔幀實際顯示 5、7、12 三個 value 格及加法事件。
 - 未執行的驗證及原因：依分級未執行完整 regression、全部 tests 或廣泛演算法動畫驗證。
 - 需要主代理做的 V3 驗證：整合後以 n=10 幾何 fixture 核對比例寬度與自然深度，再以指定 n=15、7 操作範例核對 modify／set／query segment、複合欄位及最後答案 12。
 
