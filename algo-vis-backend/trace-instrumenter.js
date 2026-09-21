@@ -690,6 +690,17 @@ const DIRECTIVE_ANCHORS = new Set([
   'top-left', 'top', 'top-right', 'left', 'center', 'right',
   'bottom-left', 'bottom', 'bottom-right'
 ]);
+const DIRECTIVE_ANCHOR_ALIASES = new Map([
+  ['left-top', 'top-left'],
+  ['right-top', 'top-right'],
+  ['left-bottom', 'bottom-left'],
+  ['right-bottom', 'bottom-right']
+]);
+
+function normalizeDirectiveAnchor(value) {
+  const anchor = String(value || '').toLowerCase();
+  return DIRECTIVE_ANCHOR_ALIASES.get(anchor) || anchor;
+}
 const FRAME_RENDERERS = new Map([
   ['normal', 'original-array'],
   ['array', 'original-array'],
@@ -895,12 +906,12 @@ function topLevelModifierPositions(value, acceptedModifiers = DIRECTIVE_MODIFIER
 
 function parseAtBinding(value, line, directiveName, offsetX = 0, offsetY = 0) {
   const raw = String(value || '').trim();
-  const anchorMatch = raw.match(/^(.+?)\.(top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right)$/i);
+  const anchorMatch = raw.match(/^(.+?)\.(top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom)$/i);
   if (!anchorMatch) {
     throw new Error(`第 ${line} 行的 ${directiveName} 定位格式無效：${raw}`);
   }
   const targetExpression = anchorMatch[1].trim();
-  const anchor = anchorMatch[2].toLowerCase();
+  const anchor = normalizeDirectiveAnchor(anchorMatch[2]);
   if (!DIRECTIVE_ANCHORS.has(anchor)) {
     throw new Error(`第 ${line} 行的 ${directiveName} 定位錨點無效：${anchor}`);
   }
@@ -1868,7 +1879,7 @@ function parseArrowTarget(raw, line, role) {
     offsetY = Number(offset[2]) || 0;
     value = value.slice(0, offset.index).trim();
   }
-  if (value && !/\.(?:top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right)$/i.test(value)) {
+  if (value && !/\.(?:top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom)$/i.test(value)) {
     value = `${value}.center`;
   }
   try {
@@ -2353,11 +2364,11 @@ function attachAutoMarkDirectives(source, analysis, frames) {
 
 function parsePlaceSource(value, line) {
   const raw = String(value || '').trim();
-  const match = raw.match(/^([A-Za-z_][A-Za-z0-9_.-]*?)(?:\.(top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right))?$/i);
+  const match = raw.match(/^([A-Za-z_][A-Za-z0-9_.-]*?)(?:\.(top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom))?$/i);
   if (!match) throw new Error(`第 ${line} 行的 @place 來源格式無效：${raw}`);
   return {
     sourceName: match[1],
-    sourceAnchor: match[2]?.toLowerCase() || ''
+    sourceAnchor: match[2] ? normalizeDirectiveAnchor(match[2]) : ''
   };
 }
 
@@ -2559,7 +2570,7 @@ function parseCameraDirective(payload, line) {
   const targetSource = modeMatch[2].trim();
   if (mode === 'auto' && targetSource) throw new Error(`第 ${line} 行的 @camera auto 不接受定位目標`);
   if (mode === 'focus' && !targetSource) throw new Error(`第 ${line} 行的 @camera focus 缺少定位目標`);
-  const hasAnchor = /\.(?:top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right)$/i
+  const hasAnchor = /\.(?:top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom)$/i
     .test(targetSource);
   const binding = mode === 'focus'
     ? parseAtBinding(hasAnchor ? targetSource : `${targetSource}.center`, line, '@camera')

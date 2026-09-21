@@ -217,7 +217,7 @@ window.asmUpdateTextDirectiveBinding = function (lineNumber, binding) {
     ))[0];
     line = session.getLine(row);
   }
-  const atPattern = /\s+at\s+.+?\.(?:top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right)(?=\s+(?:offset|as|when)\b|\s*$)/i;
+  const atPattern = /\s+at\s+.+?\.(?:top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom)(?=\s+(?:offset|as|when)\b|\s*$)/i;
   const offsetPattern = /\s+offset\s*\(\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*\)(?=\s+(?:at|as|when)\b|\s*$)/i;
   let next = line.replace(atPattern, '').replace(offsetPattern, '');
   if (binding?.targetExpression && binding?.anchor) {
