@@ -23,6 +23,7 @@ vector<int> num, BIT;
 // @style num[0] background AV_grey
 // @place num.left-bottom at BIT.left-top offset(-40,-70)
 // @let lb = i & -i
+// @style BIT[1:n] focus when index >= k && index - (index & -index) < k
 // @endpreset
 
 void build(int i) {

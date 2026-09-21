@@ -498,7 +498,7 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
     }
     if (token.value === 'iteration'
       && tokens[position + 1]?.value === '.'
-      && tokens[position + 2]?.value === 'last'
+      && (tokens[position + 2]?.value === 'first' || tokens[position + 2]?.value === 'last')
       && tokens[position + 3]?.value === '('
       && tokens[position + 4]?.type === 'identifier'
       && tokens[position + 5]?.value === ')') {

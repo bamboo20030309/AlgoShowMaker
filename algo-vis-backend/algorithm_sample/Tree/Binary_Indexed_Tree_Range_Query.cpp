@@ -4,6 +4,7 @@ using namespace std;
 
 int n;
 vector<int> num, BIT;
+bool deduct;
 
 // @defaults
 // @camera auto zoom(1.05)
@@ -23,13 +24,15 @@ vector<int> num, BIT;
 // @style num[0] background AV_grey
 // @place num.left-bottom at BIT.left-top offset(-40,-70)
 // @let lb = i & -i
+// @let start = iteration.first(i)
+// @style BIT[1:n] focus when index <= start && index + (index & -index) > start
 // @endpreset
 
 void add(int i, int x) {
     for (; i <= n; i += i & -i) BIT[i] += x;
 }
 
-int sum(int i, bool deduct) {
+int sum(int i) {
     int ans = 0;
     for (; i > 0; i -= i & -i) {
         // @frame use binary_indexed_tree_pointer_view
@@ -52,6 +55,15 @@ int sum(int i, bool deduct) {
         // @text "右端前綴和目前是 ${ans}" at num.top offset(0,-20) when !deduct
         // @text "要扣除的左端前綴和目前是 ${ans}" at num.top offset(0,-20) when deduct
     }
+
+    // @frame use binary_indexed_tree_view
+    // @let start = iteration.first(i)
+    // @style num[1:start] background AV_green when !deduct
+    // @style num[1:start] background AV_red when deduct
+    // @style BIT[1:n] background AV_green when !deduct && index <= start && index + (index & -index) > start
+    // @style BIT[1:n] background AV_red when deduct && index <= start && index + (index & -index) > start
+    // @text "所有數字總和為 ${ans}" as sum_total at num.top offset(0,-20)
+
     return ans;
 }
 
@@ -70,8 +82,10 @@ int main() {
         // @style num[L:R] background AV_green
         // @text "查詢第 ${L} 到第 ${R} 個數：計算 sum(${R}) - sum(${L - 1})" at num.top offset(0,-20)
 
-        int sumR = sum(R, false);
-        int sumL = sum(L - 1, true);
+        deduct = false;
+        int sumR = sum(R);
+        deduct = true;
+        int sumL = sum(L - 1);
         int ans = sumR - sumL;
 
         // @frame use binary_indexed_tree_view

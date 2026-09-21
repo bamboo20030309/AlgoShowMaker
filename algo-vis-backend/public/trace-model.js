@@ -109,6 +109,7 @@
   function buildIterationSummaries(document) {
     const frames = document?.frames || [];
     const summaries = Object.fromEntries(frames.map(frame => [String(frame.id || ''), {
+      first: {},
       last: {},
       details: {}
     }]));
@@ -131,7 +132,7 @@
           groups.set(groupKey, {
             activation, name, variableId, lifetime,
             declarationLine: Number(document?.variables?.[variableId]?.line) || 0,
-            first: frameIndex, last: frameIndex, lastValue: value
+            first: frameIndex, last: frameIndex, firstValue: value, lastValue: value
           });
         } else {
           const group = groups.get(groupKey);
@@ -164,7 +165,7 @@
           if (!groups.has(key)) {
             groups.set(key, { activation, name: variable.name, variableId, lifetime,
               declarationLine: Number(variable.line) || 0,
-              first: frameIndex, last: frameIndex,
+              first: frameIndex, last: frameIndex, firstValue: scalarValue(event.payload?.value),
               lastValue: scalarValue(event.payload?.value), eventOnly: true });
           }
           activeEventGroups.set(activeKey, groups.get(key));
@@ -211,6 +212,7 @@
             : (previous || upcoming));
         if (!selected) return;
         const summary = summaries[String(frame.id || '')];
+        summary.first[name] = selected.firstValue;
         summary.last[name] = selected.lastValue;
         summary.details[name] = {
           variableId: selected.variableId,

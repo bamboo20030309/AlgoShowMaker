@@ -26,7 +26,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-34'));
+  assert.ok(html.includes('trace-model.js?v=trace-35'));
   assert.ok(html.includes('trace-directive-assist.js?v=directive-17'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
@@ -73,7 +73,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-21'));
+  assert.ok(html.includes('trace-rules.js?v=trace-22'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'disk' ? 'focus-3' : 'focus-2';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));

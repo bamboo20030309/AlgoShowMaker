@@ -123,19 +123,30 @@ test('Binary Indexed Tree build and query samples are separate two-object exampl
 
   const buildBody = buildCode.match(/void build\(int i\) \{([\s\S]*?)\n\}/)?.[1] || '';
   assert.match(buildBody, /@style num\[k\] highlight/);
+  assert.match(buildCode,
+    /@style BIT\[1:n\] focus when index >= k && index - \(index & -index\) < k/);
   assert.doesNotMatch(buildBody, /@style num\[[^\n]+\] background/);
   assert.match(buildBody, /for \(; i <= n; i \+= i & -i\)/);
   assert.match(buildCode, /BIT\[i\] \+= num\[k\];/);
   assert.doesNotMatch(buildCode, /int sum\(int i\)/);
 
-  const sumBody = queryCode.match(/int sum\(int i, bool deduct\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  const sumBody = queryCode.match(/int sum\(int i\) \{([\s\S]*?)\n\}/)?.[1] || '';
   assert.match(sumBody, /for \(; i > 0; i -= i & -i\)/);
+  assert.match(queryCode, /@let start = iteration\.first\(i\)/);
+  assert.match(queryCode,
+    /@style BIT\[1:n\] focus when index <= start && index \+ \(index & -index\) > start/);
   assert.match(sumBody, /@style num\[i-lb\+1:i\] background AV_green when !deduct/);
   assert.match(sumBody, /@style num\[i-lb\+1:i\] background AV_red when deduct/);
   assert.match(queryCode, /num\[\$\{i-lb\+1\}~\$\{i\}\]/);
-  assert.match(queryCode, /sum\(R, false\)/);
-  assert.match(queryCode, /sum\(L - 1, true\)/);
+  assert.match(queryCode, /bool deduct;/);
+  assert.match(queryCode, /deduct = false;\s*int sumR = sum\(R\);/);
+  assert.match(queryCode, /deduct = true;\s*int sumL = sum\(L - 1\);/);
   assert.match(queryCode, /while \(cin >> L >> R\)/);
+  assert.match(sumBody, /@text "所有數字總和為 \$\{ans\}" as sum_total/);
+  assert.match(sumBody,
+    /@style BIT\[1:n\] background AV_green when !deduct && index <= start/);
+  assert.match(sumBody,
+    /@style BIT\[1:n\] background AV_red when deduct && index <= start/);
   assert.doesNotMatch(queryCode, /下一個索引/);
   assert.doesNotMatch(queryCode, /void build\(int i\)/);
 });
@@ -213,7 +224,7 @@ test('Binary Indexed Tree build and query samples preserve their results', async
   const buildResult = await compileSample(buildCode, buildInput);
   assert.equal(buildResult.output.trim(), '5 12 2 15 9 13 11 54 8 14');
   const result = await compileSample(queryCode, queryInput);
-  assert.equal(result.output.trim(), 'sum of L to R = 49');
+  assert.equal(result.output.trim(), 'sum of L to R = 25');
 
   const trace = result.traceDocument;
   const byName = Object.fromEntries(Object.entries(trace.variables)
@@ -245,7 +256,8 @@ test('Binary Indexed Tree build and query samples preserve their results', async
     .every(frame => frame.bindings.some(binding => (
       binding.targetName === 'BIT' && binding.indexExpression === 'i'
     ))));
-  assert.ok(trace.frames.filter(frame => frame.source?.function === 'sum')
+  assert.ok(trace.frames.filter(frame => frame.source?.function === 'sum'
+      && frame.bindings.some(binding => binding.indexExpression === 'i'))
     .every(frame => frame.bindings.some(binding => (
       binding.targetName === 'BIT' && binding.indexExpression === 'i'
     ))));

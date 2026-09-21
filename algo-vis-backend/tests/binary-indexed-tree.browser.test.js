@@ -21,7 +21,14 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
     const numId = variable('num');
     const bitId = variable('BIT');
     const iId = variable('i', 'build');
-    assert.ok(numId && bitId && iId);
+    const kId = variable('k', 'build');
+    assert.ok(numId && bitId && iId && kId);
+    const pathFrameIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'build'
+      && Number(frame.state?.[iId]?.data?.value) === 5
+      && Number(frame.state?.[kId]?.data?.value) === 5
+    ));
+    assert.ok(pathFrameIndex >= 0, 'sample must contain the build path starting at num[5]');
     const frameIndex = trace.frames.findLastIndex(frame => (
       frame.source?.function === 'build'
       && Number(frame.state?.[iId]?.data?.value) === 8
@@ -153,6 +160,19 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       assert.deepEqual(initialNum.labels, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
       assert.equal(initialNum.value, '0');
       assert.equal(initialNum.fill, 'rgb(204, 204, 204)');
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), pathFrameIndex);
+      const buildFocus = await page.evaluate(bitId => {
+        const bit = document.querySelector(`[data-trace-variable="${CSS.escape(bitId)}"]`);
+        return Object.fromEntries([...bit.querySelectorAll('[data-trace-index]')]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => [Number(node.dataset.traceIndex),
+            getComputedStyle(node.querySelector(':scope > rect')).fill]));
+      }, bitId);
+      assert.match(buildFocus[5], /165, 214, 167/);
+      assert.equal(buildFocus[6], 'rgb(255, 255, 255)');
+      assert.equal(buildFocus[8], 'rgb(255, 255, 255)');
+      assert.equal(buildFocus[1], 'rgb(204, 204, 204)',
+        'build(5) dims cells outside its BIT update path');
       assert.equal(presentation.cells.length, 10);
       assert.deepEqual(presentation.labels.map(label => label.text),
         ['0001', '0010', '0011', '0100', '0101', '0110', '0111', '1000', '1001', '1010']);
@@ -230,11 +250,12 @@ test('Binary Indexed Tree query range stays green without framing an invisible B
     const variable = (name, functionName = '') => Object.entries(trace.variables)
       .find(([, item]) => item.name === name && (!functionName || item.functionName === functionName))?.[0];
     const numId = variable('num');
+    const bitId = variable('BIT');
     const iId = variable('i', 'sum');
     const firstQueryIndex = trace.frames.findIndex(frame => (
       frame.source?.function === 'sum'
       && frame.source?.recursionRootIndex === 0
-      && Number(frame.state?.[iId]?.data?.value) === 8
+      && Number(frame.state?.[iId]?.data?.value) === 7
       && frame.styles.some(style => style.targetVariableId === numId
         && style.selector?.startExpression === 'i-lb+1')
     ));
@@ -244,7 +265,12 @@ test('Binary Indexed Tree query range stays green without framing an invisible B
       && frame.events.some(event => event.type === 'declare'
         && event.targets?.some(target => target.variableId === iId))
     ));
+    const sumSummaryIndexes = trace.frames.map((frame, index) => (
+      frame.source?.function === 'sum' && frame.texts.some(text => text.id === 'sum_total')
+        ? index : -1
+    )).filter(index => index >= 0);
     assert.ok(firstQueryIndex >= 0 && secondSumStartIndex > 0);
+    assert.equal(sumSummaryIndexes.length, 2, 'each sum call adds one total frame');
 
     const browser = await chromium.launch({
       headless: true,
@@ -258,18 +284,60 @@ test('Binary Indexed Tree query range stays green without framing an invisible B
       await page.waitForFunction(() => window.ASMTracePlayer && window.asmApplyTraceDocument);
       await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
       await page.evaluate(index => window.ASMTracePlayer.renderStable(index), firstQueryIndex);
-      const fills = await page.evaluate(numId => {
+      const firstPath = await page.evaluate(({ numId, bitId }) => {
         const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
-        return [...num.querySelectorAll('[data-trace-index]')]
+        const bit = document.querySelector(`[data-trace-variable="${CSS.escape(bitId)}"]`);
+        const fills = [...num.querySelectorAll('[data-trace-index]')]
           .filter(node => !node.dataset.traceContentRole)
           .map(node => ({
             index: Number(node.dataset.traceIndex),
             fill: getComputedStyle(node.querySelector(':scope > rect')).fill
           }));
-      }, numId);
-      assert.ok(fills.filter(cell => cell.index >= 1 && cell.index <= 8)
-        .every(cell => /165, 214, 167/.test(cell.fill)),
-      '@let lb resolves the green num[1:8] query range');
+        const focus = Object.fromEntries([...bit.querySelectorAll('[data-trace-index]')]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => [Number(node.dataset.traceIndex),
+            getComputedStyle(node.querySelector(':scope > rect')).fill]));
+        return { fills, focus };
+      }, { numId, bitId });
+      assert.match(firstPath.fills.find(cell => cell.index === 7).fill, /165, 214, 167/,
+        '@let lb resolves the current green num[7:7] query range');
+      assert.equal(firstPath.focus[4], 'rgb(255, 255, 255)');
+      assert.equal(firstPath.focus[6], 'rgb(255, 255, 255)');
+      assert.match(firstPath.focus[7], /165, 214, 167/);
+      assert.equal(firstPath.focus[1], 'rgb(204, 204, 204)',
+        'sum(7) dims cells outside its full BIT path');
+
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), sumSummaryIndexes[0]);
+      const greenSummary = await page.evaluate(({ numId, bitId }) => {
+        const colors = id => [...document.querySelectorAll(
+          `[data-trace-variable="${CSS.escape(id)}"] [data-trace-index]`)]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => ({ index: Number(node.dataset.traceIndex),
+            fill: getComputedStyle(node.querySelector(':scope > rect')).fill }));
+        return { num: colors(numId), bit: colors(bitId),
+          text: document.querySelector('.asm-trace-text-layer')?.textContent || '' };
+      }, { numId, bitId });
+      assert.match(greenSummary.text, /所有數字總和為 39/);
+      assert.ok(greenSummary.num.filter(cell => cell.index >= 1 && cell.index <= 7)
+        .every(cell => /165, 214, 167/.test(cell.fill)));
+      assert.deepEqual(greenSummary.bit.filter(cell => /165, 214, 167/.test(cell.fill))
+        .map(cell => cell.index), [4, 6, 7]);
+
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), sumSummaryIndexes[1]);
+      const redSummary = await page.evaluate(({ numId, bitId }) => {
+        const colors = id => [...document.querySelectorAll(
+          `[data-trace-variable="${CSS.escape(id)}"] [data-trace-index]`)]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => ({ index: Number(node.dataset.traceIndex),
+            fill: getComputedStyle(node.querySelector(':scope > rect')).fill }));
+        return { num: colors(numId), bit: colors(bitId),
+          text: document.querySelector('.asm-trace-text-layer')?.textContent || '' };
+      }, { numId, bitId });
+      assert.match(redSummary.text, /所有數字總和為 14/);
+      assert.ok(redSummary.num.filter(cell => cell.index >= 1 && cell.index <= 3)
+        .every(cell => /239, 154, 154/.test(cell.fill)));
+      assert.deepEqual(redSummary.bit.filter(cell => /239, 154, 154/.test(cell.fill))
+        .map(cell => cell.index), [2, 3]);
 
       await page.evaluate(index => window.ASMTracePlayer.renderStable(index), secondSumStartIndex - 1);
       const previousBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
@@ -277,7 +345,7 @@ test('Binary Indexed Tree query range stays green without framing an invisible B
       const nextBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
       const deductedFill = await page.evaluate(numId => {
         const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
-        const cell = num.querySelector('[data-trace-index="1"]');
+        const cell = num.querySelector('[data-trace-index="3"]');
         return getComputedStyle(cell.querySelector(':scope > rect')).fill;
       }, numId);
       assert.equal(nextBounds.bottom, previousBounds.bottom,

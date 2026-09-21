@@ -17,7 +17,7 @@ AlgoShowMaker 是以 C++ 程式執行結果為核心的演算法視覺化與投�
 
 ### AV_V4.7 — 2026/09/16
 
-- 新增多行 `@frame`／`@object`、`@place`、共用 `@arrow`、`@camera`、多個 `use` preset 與 `iteration.last(...)` 繪圖衍生值；完整語法與案例見使用手冊。
+- 新增多行 `@frame`／`@object`、`@place`、共用 `@arrow`、`@camera`、多個 `use` preset 與 `iteration.first(...)`／`iteration.last(...)` 繪圖衍生值；完整語法與案例見使用手冊。
 - 投影片新匯出使用精簡壓縮 `.asmdeck`，包含原始碼、輸入、編輯設定與去重素材，不包含可重建的 trace 結果；匯入優先使用本地快取，未命中才 RUN，舊 JSON 仍可匯入。
 - 箭頭以穩定指令身分或 `as "ID"` 跨幀接續；改綁端點時位置、顏色與線寬平滑過渡，端點物件移動時即時跟隨。歧義配對不猜測，同幀重複 ID 報錯。
 - 最左側模式／匯入匯出工具欄提供「調整投影片順序」圖示按鈕，切換至可拖曳排序的總覽；再按返回所選投影片。Esc 仍可切換，排序沿用既有自動儲存。
@@ -201,7 +201,7 @@ int main() {
 
 箭頭使用共用 Arrow Model；`@arrow`、Trace Studio 箭頭及遞迴 layout 箭頭共享同一套端點、邊距、箭頭頭部與顏色邏輯，底層沿用原本 `drawArrow` 的幾何比例。完整選項請參考[演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md#arrow連接視覺物件)。
 
-條件支援 `&&`、`||`、`and`、`or`，以及 `previous(...)`、`changed(...)` 等跨幀判斷。繪圖運算式也可使用 `iteration.last(j)`，從已完成的 trace 取得目前函式／遞迴執行個體中，這次 `j` 生命週期最後走到的值；它不會產生事件、物件或重新執行 C++。`@style` 可混合單點與區間，例如：
+條件支援 `&&`、`||`、`and`、`or`，以及 `previous(...)`、`changed(...)` 等跨幀判斷。繪圖運算式也可使用 `iteration.first(j)`／`iteration.last(j)`，從已完成的 trace 取得目前函式／遞迴執行個體中，這次 `j` 生命週期最初或最後走到的值；它不會產生事件、物件或重新執行 C++。`@style` 可混合單點與區間，例如：
 
 ```cpp
 // @style arr[i,i*2:i*2+1] highlight red

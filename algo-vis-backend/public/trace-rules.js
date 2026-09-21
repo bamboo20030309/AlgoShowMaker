@@ -134,12 +134,20 @@
     return null;
   }
 
-  function iterationLastValue(document, frame, variableName) {
+  function iterationValue(document, frame, boundary, variableName) {
     const frameId = String(frame?.id || '');
     const name = String(variableName || '').trim();
     if (!frameId || !name) return null;
-    const summary = document?.iterationSummaries?.[frameId]?.last?.[name];
+    const summary = document?.iterationSummaries?.[frameId]?.[boundary]?.[name];
     return summary == null ? null : summary;
+  }
+
+  function iterationLastValue(document, frame, variableName) {
+    return iterationValue(document, frame, 'last', variableName);
+  }
+
+  function iterationFirstValue(document, frame, variableName) {
+    return iterationValue(document, frame, 'first', variableName);
   }
 
   function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
@@ -223,12 +231,13 @@
       if (token.value === 'iteration' && peek('.')) {
         consume('.');
         const method = consume();
-        if (method?.type !== 'identifier' || method.value !== 'last' || !consume('(')) {
+        if (method?.type !== 'identifier'
+          || (method.value !== 'first' && method.value !== 'last') || !consume('(')) {
           return invalid;
         }
         const variable = consume();
         if (variable?.type !== 'identifier' || !consume(')')) return invalid;
-        return knownValue(iterationLastValue(document, frame, variable.value));
+        return knownValue(iterationValue(document, frame, method.value, variable.value));
       }
       if (TEMPORAL_FUNCTIONS.has(token.value) && peek('(')) {
         consume('(');
@@ -762,7 +771,7 @@
     frameMatches,
     conditionMatches,
     variableEntry,
-    resolveExpression, resolveTextExpression, iterationLastValue,
+    resolveExpression, resolveTextExpression, iterationFirstValue, iterationLastValue,
     temporalValue,
     expressionMatches,
     textExpressionMatches,
