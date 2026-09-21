@@ -10,7 +10,7 @@
 ## 問題與預期結果
 - 情境與操作：舊 Binary Indexed Tree 範例仍依賴 AV.hpp 與手寫繪圖程式，指令運算式也不能解析位元運算。
 - 目前行為：範例混入大量繪圖輔助碼；renderer 只提供 bit／fenwick 縮寫；沒有 Binary Indexed Tree 專項解析與實際 SVG 驗證。
-- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並放在 `BIT.top offset(-40,-70)`；BIT 使用前導零二進制 label；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數。
+- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數。
 - 本次範圍與必要限制：保留既有 bit／fenwick 相容名稱；角落錨點同時接受水平在前的別名並正規化；不做完整 regression 或全部測試；修改後重啟 beta 3102、commit 並 push。
 
 ## 需求確認
@@ -33,12 +33,13 @@
 - [x] 指令運算式可解析並正確求值 `& | ^ ~ << >>`，優先序符合 C++ 常見整數運算。
 - [x] `render binary indexed tree` 解析為既有 original-bit renderer，舊 bit／fenwick 仍可用。
 - [x] 範例不含 AV.hpp、av 繪圖呼叫、draw 輔助變數或 keep，只顯示 num 與 BIT。
-- [x] num 完整顯示 0 保留格與所有輸入，num[0] 使用 `AV_grey`，並位於 `BIT.top offset(-40,-70)`；實際 num 與 BIT 資料都是 1-based，BIT 以固定寬度二進制顯示。
+- [x] num 完整顯示 0 保留格與所有輸入，num[0] 使用 `AV_grey`，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；實際 num 與 BIT 資料都是 1-based，BIT 以固定寬度二進制顯示。
 - [x] point update、prefix sum 與 range sum 的輸出正確，畫面能對照目前 BIT 節點涵蓋的 num 區間。
 - [x] 非 2 的冪次長度仍有正確格寬、索引、highlight 與 marker 定位。
 - [x] `left-top`、`right-top`、`left-bottom`、`right-bottom` 可用於來源及目標錨點，並分別正規化為既有角落名稱。
 - [x] 範例中的 highlight 與 point 不指定顏色，沿用 renderer 預設值；只有 background 使用教學色彩。
 - [x] 建構時 `BIT[i]` 的 compound assignment 明確以可見的 `num[k]` 為來源，播放時數值會從 num 格移向 BIT 格。
+- [x] 建樹畫面以預設 highlight 指定目前的 `num[k]`，不替 num 區間加 background；查詢畫面保留使用區間 background，可見區間以 `l~i` 顯示。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -54,3 +55,4 @@
 - 2026-09-21：新增四個水平在前的角落錨點別名，支援 @place 來源與目標，並同步 camera、arrow 與前端文字指令綁定辨識；程式 commit 為 `399071d5125999b932aacf5a30ce572cb18b9e83`。
 - 2026-09-21：拆開 BIT 的 highlight 與 background 指令，highlight／point 保留預設顏色，只有 background 指定 AV_green／AV_blue；程式 commit 為 `93b5a32d2fe6aa732579b4c74600802586d985b1`。
 - 2026-09-21：將 build 改為保存原始索引 k 並執行 `BIT[i] += num[k]`，讓事件來源對應可見 num 格並播放數值 transfer；程式 commit 為 `1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`。
+- 2026-09-21：依指定改用 `num.left-bottom at BIT.left-top offset(-40,-70)`；建樹只 highlight `num[k]`，查詢才顯示 num 區間 background，區間文字改用 `~`；程式 commit 為 `de9ebaca102e2618bd013a2dc1b2ef3fb5749337`。
