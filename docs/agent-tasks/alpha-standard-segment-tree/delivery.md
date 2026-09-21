@@ -28,6 +28,7 @@
 | 指定 n=15、7 操作輸入 | parser/runtime 與 browser 專項 | modify、set、query 均產生對應色彩 segment；lazy/set 欄位顯示非預設值；最後 query [8,9] 輸出 12 | 通過 |
 | 兩位數葉節點標籤避讓與垂直置中 | n=15 實際 SVG `getBBox()` 與屬性檢查 | index 28/29 均觸發向左避讓；所有 index/interval 無重疊，y 位於 12px 框中心且使用 central baseline | 通過 |
 | update/query 回朔加法幀 | n=15 parser/runtime 與實際 SVG 專項 | update 回朔幀顯示 child 相加寫回 parent；query 合併幀顯示 leftSum=5、rightSum=7、result=12，三個 value 格皆實際呈現 | 通過 |
+| 回朔 segment 收回 | n=15 trace descriptor 專項 | modify、set、query 回朔幀分別包含紫、橘、綠 segment，且 split phase 均為 after | 通過 |
 
 ## 小驗證與重跑方式
 ### 新標準線段樹 parser、runtime 與實際 SVG

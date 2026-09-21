@@ -110,6 +110,8 @@ void update(int now, int l, int r, int L, int R, int kind, int value) {
     // @frame use operation_pointer_view
     // @style tree[now*2,now*2+1] highlight
     // @style tree[now] highlight,point
+    // @segment tree[1][L-1:R-1] color AV_magenta as active_range with split(now,after) when kind == 1
+    // @segment tree[1][L-1:R-1] color AV_orange as active_range with split(now,after) when kind == 2
     // @text "回朔到節點 ${now}：${tree[now*2]} + ${tree[now*2+1]} = ${tree[now]}" at tree.top offset(0,-20)
 }
 
@@ -141,6 +143,7 @@ int query(int now, int l, int r, int L, int R) {
     // @style rightSum highlight
     // @style result highlight
     // @style tree[now] point
+    // @segment tree[1][L-1:R-1] color AV_green as active_range with split(now,after)
     // @text "回朔到節點 ${now}：左側 ${leftSum} + 右側 ${rightSum} = ${result}" at tree.top offset(0,-20)
     return result;
 }

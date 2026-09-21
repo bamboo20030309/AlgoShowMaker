@@ -57,6 +57,14 @@ test('standard segment tree sample resolves n=15 options and executes modify, se
   };
   assert.deepEqual([valueOf('leftSum'), valueOf('rightSum'), valueOf('result')], [5,7,12]);
   assert.ok((queryMerge.events || []).some(event => event.signature?.includes('result = leftSum + rightSum')));
+  assert.ok((queryMerge.segments || []).some(segment => segment.color === 'AV_green'
+    && segment.split?.phase === 'after'));
+  const updateBacktracks = trace.frames.filter(frame => textOf(frame).includes('回朔到節點')
+    && !Object.keys(frame.renderers || {}).some(id => trace.variables[id]?.name === 'leftSum'));
+  assert.ok(updateBacktracks.some(frame => (frame.segments || []).some(segment => segment.color === 'AV_magenta'
+    && segment.split?.phase === 'after')));
+  assert.ok(updateBacktracks.some(frame => (frame.segments || []).some(segment => segment.color === 'AV_orange'
+    && segment.split?.phase === 'after')));
 });
 
 test('gap accepts one or two expressions and resolves horizontal and vertical spacing', async () => {
