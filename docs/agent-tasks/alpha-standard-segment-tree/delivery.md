@@ -43,12 +43,20 @@
 - 實際結果與 exit code（適用時）：3/3、3/3、2/2、1/1 pass；exit code 0；無 skip。
 - 證據位置：終端摘要未提交。
 
+### alpha 3101 預覽服務
+- 目的與對應條件：確認推送後的 alpha 預覽實際載入新後端與前端，而非只更新磁碟上的靜態檔案。
+- 執行目錄與必要環境設定：本 worktree `algo-vis-backend`；`PORT=3101`。
+- 完整指令或操作步驟：核對舊 PID 與服務檔案後重啟；向 `/trace/analyze` 提交包含 `render segment_tree with domain(1,n)` 的最小程式；再以 `ASM_TEST_BASE_URL=http://127.0.0.1:3101` 重跑兩個新專項測試檔。
+- 預期結果：HTTP 200；後端接受 domain 並回傳 `original-segment-tree`；專項測試全部通過。
+- 實際結果與 exit code（適用時）：3101 新 PID 70260；analyze HTTP 200；parser/runtime 2/2、browser 1/1 pass；exit code 0。
+- 證據位置：本機 3101 服務與終端摘要，未提交 server log。
+
 ## 驗證分級與選擇
 - 層級：V2
 - 分類：E（指令／frame／位置）、H（style／分層／標籤）
 - 選擇依據：修改 renderer 選項解析、SVG 幾何、格內 segment 與 split 路徑。
 - 執行的測試檔／名稱篩選：見上方兩組小驗證。
-- 驗證環境與隔離服務：本分支 worktree、localhost:3198、Playwright 無頭 Edge；未操作使用者分頁或投影片。
+- 驗證環境與隔離服務：本分支 worktree、localhost:3198 隔離服務、重啟後的 alpha localhost:3101、Playwright 無頭 Edge；未操作使用者分頁或投影片。
 - 驗證版本、完整指令、結果與證據：程式 commit 8ba0334cea3fea756f290b564290cb71c8a06c89；全部選定案例通過。
 - 未執行的驗證及原因：依分級未執行完整 regression、全部 tests 或廣泛演算法動畫驗證。
 - 需要主代理做的 V3 驗證：整合後實際開啟標準 n=10 範例，核對編輯器、Studio、投影片介面的比例寬度、自然深度及查詢 segment 動畫。
