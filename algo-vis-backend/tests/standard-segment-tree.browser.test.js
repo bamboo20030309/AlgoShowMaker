@@ -251,6 +251,8 @@ int main() {
         && frameHas(frame, idByName.lazy, value => value !== 0));
       const setFrame = doc.frames.findIndex(frame => frame.renderers?.[idByName.tree] === 'original-segment-tree'
         && frameHas(frame, idByName.sets, value => value !== 2147483647));
+      const mergeFrame = doc.frames.findIndex(frame => Object.keys(frame.renderers || {})
+        .some(variableId => doc.variables[variableId]?.name === 'leftSum'));
       const visibleFields = async (frameIndex, variableId) => {
         await player.render(frameIndex, { animatePositions: false, animateEvents: false });
         return [...document.querySelectorAll(`[data-trace-field-variable="${variableId}"]`)]
@@ -276,9 +278,18 @@ int main() {
             && interval.getAttribute('dominant-baseline') === 'central'
         };
       });
+      if (mergeFrame >= 0) {
+        await player.render(mergeFrame, { animatePositions: false, animateEvents: false });
+      }
+      const mergeVisible = ['leftSum', 'rightSum', 'result'].every(name => {
+        const variableId = idByName[name];
+        return Boolean(document.querySelector(`[data-trace-variable="${variableId}"]`));
+      });
       return {
         lazyFrame,
         setFrame,
+        mergeFrame,
+        mergeVisible,
         lazyFields,
         setFields,
         overlappingLabels: labels.filter(label => label.overlaps).map(label => label.index),
@@ -290,6 +301,8 @@ int main() {
     });
     assert.ok(operations.lazyFrame >= 0);
     assert.ok(operations.setFrame >= 0);
+    assert.ok(operations.mergeFrame >= 0);
+    assert.equal(operations.mergeVisible, true);
     assert.ok(operations.lazyFields.some(value => Number(value) !== 0));
     assert.ok(operations.setFields.some(value => Number(value) !== 2147483647));
     assert.deepEqual(operations.overlappingLabels, []);

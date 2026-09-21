@@ -43,6 +43,20 @@ test('standard segment tree sample resolves n=15 options and executes modify, se
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_orange')));
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.color === 'AV_green')));
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.split?.phase === 'after')));
+  const textOf = frame => (frame.texts || []).flatMap(text => text.segments || [])
+    .map(segment => segment.text || '').join('');
+  assert.ok(trace.frames.some(frame => textOf(frame).includes('回朔到節點')));
+  const queryMerge = trace.frames.find(frame => Object.keys(frame.renderers || {})
+    .some(id => trace.variables[id]?.name === 'leftSum'));
+  assert.ok(queryMerge, 'query backtracking frame displays leftSum/rightSum/result');
+  assert.ok(Object.keys(queryMerge.renderers || {}).some(id => trace.variables[id]?.name === 'rightSum'));
+  assert.ok(Object.keys(queryMerge.renderers || {}).some(id => trace.variables[id]?.name === 'result'));
+  const valueOf = name => {
+    const id = Object.keys(queryMerge.state || {}).find(variableId => trace.variables[variableId]?.name === name);
+    return Number(queryMerge.state[id]?.data?.value);
+  };
+  assert.deepEqual([valueOf('leftSum'), valueOf('rightSum'), valueOf('result')], [5,7,12]);
+  assert.ok((queryMerge.events || []).some(event => event.signature?.includes('result = leftSum + rightSum')));
 });
 
 test('gap accepts one or two expressions and resolves horizontal and vertical spacing', async () => {

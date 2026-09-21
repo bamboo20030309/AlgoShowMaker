@@ -19,6 +19,18 @@ int n, ans = 0;
 // @style sets[1:4*n+4] background rgb(255,183,77) when value != 2147483647
 // @endpreset
 
+// @preset query_merge_view
+// @object tree[now] render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+// @object leftSum render cell
+// @object rightSum render cell
+// @object result render cell
+// @place leftSum.top at tree.bottom offset(-70,45)
+// @place rightSum.top at tree.bottom offset(0,45)
+// @place result.top at tree.bottom offset(70,45)
+// @style lazy[1:4*n+4] background rgb(231,144,255) when value != 0
+// @style sets[1:4*n+4] background rgb(255,183,77) when value != 2147483647
+// @endpreset
+
 // @preset operation_pointer_view
 // @object tree[now] render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
 // @object ans render cell
@@ -94,29 +106,43 @@ void update(int now, int l, int r, int L, int R, int kind, int value) {
     if (L <= mid) update(now * 2, l, mid, L, R, kind, value);
     if (R > mid) update(now * 2 + 1, mid + 1, r, L, R, kind, value);
     tree[now] = tree[now * 2] + tree[now * 2 + 1];
+
+    // @frame use operation_pointer_view
+    // @style tree[now*2,now*2+1] highlight
+    // @style tree[now] highlight,point
+    // @text "回朔到節點 ${now}：${tree[now*2]} + ${tree[now*2+1]} = ${tree[now]}" at tree.top offset(0,-20)
 }
 
-void query(int now, int l, int r, int L, int R) {
+int query(int now, int l, int r, int L, int R) {
     // @frame use operation_pointer_view
     // @style tree[now] highlight
     // @segment tree[1][L-1:R-1] color AV_green as active_range with split(now)
     // @text "下降到節點 ${now}，檢查區間 [${l},${r}]" at tree.top offset(0,-20)
 
     if (L <= l && r <= R) {
-        ans += tree[now];
-
         // @frame use operation_pointer_view
         // @style tree[now] highlight
-        // @style ans highlight
         // @segment tree[1][L-1:R-1] color AV_green as active_range with split(now,after)
-        // @text "整段命中，將 ${tree[now]} 加入 ans；目前 ans = ${ans}" at tree.top offset(0,-20)
-        return;
+        // @text "整段命中，回傳 tree[${now}] = ${tree[now]}" at tree.top offset(0,-20)
+        return tree[now];
     }
 
     push(now, l, r);
     int mid = (l + r) / 2;
-    if (L <= mid) query(now * 2, l, mid, L, R);
-    if (R > mid) query(now * 2 + 1, mid + 1, r, L, R);
+    if (R <= mid) return query(now * 2, l, mid, L, R);
+    if (L > mid) return query(now * 2 + 1, mid + 1, r, L, R);
+
+    int leftSum = query(now * 2, l, mid, L, R);
+    int rightSum = query(now * 2 + 1, mid + 1, r, L, R);
+    int result = leftSum + rightSum;
+
+    // @frame use query_merge_view
+    // @style leftSum highlight
+    // @style rightSum highlight
+    // @style result highlight
+    // @style tree[now] point
+    // @text "回朔到節點 ${now}：左側 ${leftSum} + 右側 ${rightSum} = ${result}" at tree.top offset(0,-20)
+    return result;
 }
 
 int main() {
@@ -146,7 +172,7 @@ int main() {
         if (kind == 1) update(1, 1, n, L, R, kind, value);
         else if (kind == 2) update(1, 1, n, L, R, kind, value);
         else {
-            query(1, 1, n, L, R);
+            ans = query(1, 1, n, L, R);
             cout << ans << '\n';
         }
 

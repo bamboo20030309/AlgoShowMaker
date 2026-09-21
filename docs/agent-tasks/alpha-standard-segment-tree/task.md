@@ -43,6 +43,7 @@
 - [x] 標準範例讀取指定的 n=15、7 個操作輸入；modify、set、query 分別顯示紫、橘、綠 segment，最後 query [8,9] 輸出 12。
 - [x] 標準範例以 `fields(tree,lazy,sets)` 合併欄位，並以 `hide(lazy=0,sets=LM)` 隱藏預設 lazy/set 值。
 - [x] n=15 的兩位數葉節點 index 28/29 不與 interval `[13]`／`[14]` 重疊，且 index 與 interval 都在 12px 標籤框中垂直置中。
+- [x] update 回朔時插入左右子節點相加並寫回父節點的幀；query 只有跨中點、確實合併兩個回傳值時插入 `leftSum + rightSum = result` 回朔幀。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
@@ -57,3 +58,4 @@
 - 2026-09-21：依使用者回饋保留葉節點單端點括號 `[x]`，interval 比 index 小 2px，value 字級不再隨節點寬度機械縮小。
 - 2026-09-21：依使用者指定輸入將標準範例擴充為 15 個值、7 個 modify/set/query 操作；最後 query [8,9] 輸出 12。
 - 2026-09-21：依使用者截圖修正兩位數葉節點標籤碰撞；interval 移至距右側 1px，index 在實測碰撞時向左避讓，兩段標籤改為框內垂直置中。
+- 2026-09-21：依使用者回饋新增回朔加法幀；update 顯示兩個 child 合併回 parent，query 改為標準回傳值寫法並只在跨中點時顯示左右答案合併。
