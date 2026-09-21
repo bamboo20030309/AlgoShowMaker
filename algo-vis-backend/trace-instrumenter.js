@@ -457,13 +457,13 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
       cursor += identifier[0].length;
       continue;
     }
-    const compoundOperator = source.slice(cursor).match(/^(?:&&|\|\||==|!=|<=|>=)/);
+    const compoundOperator = source.slice(cursor).match(/^(?:&&|\|\||<<|>>|==|!=|<=|>=)/);
     if (compoundOperator) {
       tokens.push({ type: 'operator', value: compoundOperator[0] });
       cursor += compoundOperator[0].length;
       continue;
     }
-    if ('+-*/%()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
+    if ('+-*/%&|^~()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
       tokens.push({ type: 'operator', value: source[cursor] });
       cursor += 1;
       continue;
@@ -482,7 +482,7 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
   function parsePrimary() {
     if (peek('(')) {
       consume('(');
-      if (!(allowCondition ? parseLogicalOr() : parseAdditive()) || !consume(')')) return false;
+      if (!(allowCondition ? parseLogicalOr() : parseBitwiseOr()) || !consume(')')) return false;
       return true;
     }
     const token = tokens[position];
@@ -509,17 +509,17 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
     if (TEMPORAL_TRACE_FUNCTIONS.has(token.value) && tokens[position + 1]?.value === '(') {
       temporalFunctions.push(token.value);
       position += 2;
-      if (!(allowCondition ? parseLogicalOr() : parseAdditive()) || !consume(')')) return false;
+      if (!(allowCondition ? parseLogicalOr() : parseBitwiseOr()) || !consume(')')) return false;
       return true;
     }
     identifiers.push(token.value);
     position += 1;
     while (peek('[')) {
       consume('[');
-      if (!(allowTextSlices && peek(':')) && !parseAdditive()) return false;
+      if (!(allowTextSlices && peek(':')) && !parseBitwiseOr()) return false;
       if (allowTextSlices && peek(':')) {
         consume(':');
-        if (!peek(']') && !parseAdditive()) return false;
+        if (!peek(']') && !parseBitwiseOr()) return false;
       }
       if (!consume(']')) return false;
     }
@@ -537,7 +537,7 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
   }
 
   function parseUnary() {
-    if (peek('+') || peek('-') || (allowCondition && peek('!'))) {
+    if (peek('+') || peek('-') || peek('~') || (allowCondition && peek('!'))) {
       consume();
       return parseUnary();
     }
@@ -562,29 +562,65 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
     return true;
   }
 
-  function parseRelational() {
+  function parseShift() {
     if (!parseAdditive()) return false;
-    while (peek('<') || peek('<=') || peek('>') || peek('>=')) {
+    while (peek('<<') || peek('>>')) {
       consume();
       if (!parseAdditive()) return false;
     }
     return true;
   }
 
+  function parseRelational() {
+    if (!parseShift()) return false;
+    while (allowCondition && (peek('<') || peek('<=') || peek('>') || peek('>='))) {
+      consume();
+      if (!parseShift()) return false;
+    }
+    return true;
+  }
+
   function parseEquality() {
     if (!parseRelational()) return false;
-    while (peek('==') || peek('!=')) {
+    while (allowCondition && (peek('==') || peek('!='))) {
       consume();
       if (!parseRelational()) return false;
     }
     return true;
   }
 
-  function parseLogicalAnd() {
+  function parseBitwiseAnd() {
     if (!parseEquality()) return false;
+    while (peek('&')) {
+      consume('&');
+      if (!parseEquality()) return false;
+    }
+    return true;
+  }
+
+  function parseBitwiseXor() {
+    if (!parseBitwiseAnd()) return false;
+    while (peek('^')) {
+      consume('^');
+      if (!parseBitwiseAnd()) return false;
+    }
+    return true;
+  }
+
+  function parseBitwiseOr() {
+    if (!parseBitwiseXor()) return false;
+    while (peek('|')) {
+      consume('|');
+      if (!parseBitwiseXor()) return false;
+    }
+    return true;
+  }
+
+  function parseLogicalAnd() {
+    if (!parseBitwiseOr()) return false;
     while (peek('&&')) {
       consume();
-      if (!parseEquality()) return false;
+      if (!parseBitwiseOr()) return false;
     }
     return true;
   }
@@ -599,7 +635,7 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
   }
 
   const valid = tokens.length > 0
-    && (allowCondition ? parseLogicalOr() : parseAdditive())
+    && (allowCondition ? parseLogicalOr() : parseBitwiseOr())
     && position === tokens.length;
   return {
     valid,
@@ -664,6 +700,9 @@ const FRAME_RENDERERS = new Map([
   ['segmenttree', 'original-segment-tree'],
   ['bit', 'original-bit'],
   ['fenwick', 'original-bit'],
+  ['binary indexed tree', 'original-bit'],
+  ['binary-indexed-tree', 'original-bit'],
+  ['binary_indexed_tree', 'original-bit'],
   ['disk', 'original-disk'],
   ['stack', 'original-stack'],
   ['queue', 'original-queue'],
@@ -3415,7 +3454,7 @@ function instrumentSource(source, watchIds = []) {
   function canCaptureIndexExpression(indexExpression) {
     const expression = String(indexExpression || '').trim();
     return Boolean(expression)
-      && /^[A-Za-z0-9_+\-*/%()\s]+$/.test(expression)
+      && /^[A-Za-z0-9_+\-*/%&|^~<>()\s]+$/.test(expression)
       && !/(?:\+\+|--)/.test(expression)
       && !/[A-Za-z0-9_)]\s*\(/.test(expression);
   }

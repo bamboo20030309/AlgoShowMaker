@@ -1,140 +1,105 @@
-//Binary_Indexed_Tree Sample
+// Binary Indexed Tree Sample
 #include <bits/stdc++.h>
-#include "AV.hpp"
 using namespace std;
-AV av;
+
 int n;
-vector<int> num,BIT;
-//draw{
-vector<int> _draw_BIT;
-//}
-void build(int i,int x){
-    //draw{
-    int k=i;
-    vector<int> _draw_focus={i};
-    while(k<=n){
-        k+=(k&-k);
-        _draw_focus.push_back(k);
-    }
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
-    av.frame_draw("BIT" , Pos(40,150),  BIT, { {{"highlight"},{i}} }, {0},    "BIT", 0, 4);
-    av.text("從"+to_string(i)+"往上建", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    while(i<=n){
-        BIT[i]+=x;
-        //draw{
-        av.start_frame_draw();
-        av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(47, 255, 82, 0.44)"},AV::AtoB(i-(i&-i)+1,i)}}, {0}, "normal", 0, 1);
-        av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"highlight"},{i}},{{"focus"},_draw_focus},{{"background","rgba(47, 255, 82, 0.44)"},{i}}}, {0},    "BIT", 0, 4);
-        av.text( "{每一次}把 index 加上最小的 bit 後將" + to_string(x) + "加上去 (lowbit = i&-i)" , Pos("num","top",0,-20));
-        av.camera(Pos("num", "bottom", 0, 60), 1.3);
-        av.end_frame_draw();
-        //}
-        i+=(i&-i);
+vector<long long> num, BIT;
+
+// @defaults
+// @camera auto zoom(1.05)
+// @enddefaults
+
+// 原始數列與 Binary Indexed Tree 使用相同的二進制索引，方便上下對照。
+// @preset binary_indexed_tree_view
+// @object num with range(1,n), labels(value,binary-index-padded)
+// @object BIT render binary indexed tree with range(1,n), labels(value,binary-index-padded)
+// @place BIT.top-left at num.bottom-left offset(0,70)
+// @endpreset
+
+// position 會顯示成 Binary Indexed Tree 上的具名指標。
+// @preset binary_indexed_tree_pointer_view
+// @object num with range(1,n), labels(value,binary-index-padded)
+// @object BIT[position] render binary indexed tree with range(1,n), labels(value,binary-index-padded)
+// @place BIT.top-left at num.bottom-left offset(0,70)
+// @endpreset
+
+// 將 delta 加到 num[position] 對應的所有 Binary Indexed Tree 節點。
+void add(int position, long long delta) {
+    while (position <= n) {
+        int lowbit = position & -position;
+        int left = position - lowbit + 1;
+
+        // @frame use binary_indexed_tree_pointer_view
+        // @style num[left:position] background AV_green
+        // @style BIT[position] highlight,background AV_green
+        // @text "索引 ${position} 的節點涵蓋 num[${left}..${position}]，準備加上 ${delta}" at num.top offset(0,-20)
+
+        BIT[position] += delta;
+
+        // @frame use binary_indexed_tree_pointer_view
+        // @style num[left:position] background AV_green
+        // @style BIT[position] highlight,background AV_green
+        // @text "目前節點更新為 ${BIT[position]}；下一個索引是 ${position + lowbit}" at num.top offset(0,-20)
+
+        position += lowbit;
     }
 }
-int sum(int i){
-    //draw{
-    int k=i;
-    vector<int> _draw_focus={i};
-    while(k){
-        k-=(k&-k);
-        _draw_focus.push_back(k);
+
+// 計算 num[1..position] 的前綴和。
+long long prefix_sum(int position) {
+    long long answer = 0;
+    while (position > 0) {
+        int lowbit = position & -position;
+        int left = position - lowbit + 1;
+
+        // @frame use binary_indexed_tree_pointer_view
+        // @style num[left:position] background AV_blue
+        // @style BIT[position] highlight,background AV_blue
+        // @text "目前節點代表 num[${left}..${position}]，將 ${BIT[position]} 加入前綴和" at num.top offset(0,-20)
+
+        answer += BIT[position];
+
+        // @frame use binary_indexed_tree_pointer_view
+        // @style num[left:position] background AV_blue
+        // @style BIT[position] highlight,background AV_blue
+        // @text "目前前綴和是 ${answer}；下一個索引是 ${position - lowbit}" at num.top offset(0,-20)
+
+        position -= lowbit;
     }
-    _draw_BIT = _draw_focus;
-    //}
-    int ans=0;
-	while(i){
-        ans+=BIT[i];
-        //draw{
-        av.start_frame_draw();
-        av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(47, 255, 82, 0.44)"},AV::AtoB(i-(i&-i)+1,i)}}, {0}, "normal", 0, 1);
-        av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"highlight"},{i}},{{"focus"},_draw_focus},{{"background","rgba(47, 255, 82, 0.44)"},{i}}}, {0},    "BIT", 0, 4);
-        av.text( "{每一次查詢就}把index減掉最小的bit後將" + to_string(BIT[i]) + "累計起來 ans=" + to_string(ans) + " (lowbit = i&-i)" , Pos("num","top",0,-20));
-        av.camera(Pos("num", "bottom", 0, 60), 1.3);
-        av.end_frame_draw();
-        //}
-        i-=(i&-i);
-    }
-	return ans;
+    return answer;
 }
 
 int main() {
-    n; cin>>n;
-    BIT.resize(n+1);
-    num.resize(n+1);
-    for(int i=1;i<=n;i++)cin>>num[i];
+    cin >> n;
+    num.assign(n + 1, 0);
+    BIT.assign(n + 1, 0);
+    for (int i = 1; i <= n; i++) cin >> num[i];
 
-    //draw{
-    av.start_draw();
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
-    av.frame_draw("BIT" , Pos(40,150),  BIT, {}, {0},    "BIT", 0, 4);
-    av.text("這是 Binary Index Tree {的演算法範例}", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
+    // @frame use binary_indexed_tree_view
+    // @events animate off
+    // @text "上方是原始數列；下方是尚未建構的 Binary Indexed Tree" at num.top offset(0,-20)
 
-    for(int i=1;i<=n;i++) build(i,num[i]);
+    // 逐點加入，因此這個建構方式的時間複雜度是 O(n log n)。
+    for (int i = 1; i <= n; i++) add(i, num[i]);
 
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
-    av.frame_draw("BIT" , Pos(40,150),  BIT, {}, {0},    "BIT", 0, 4);
-    av.text("這樣就建完樹了", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    av.stop();
-    //}
+    // @frame use binary_indexed_tree_view
+    // @text "Binary Indexed Tree 建構完成；每個寬格代表它負責的連續區間" at num.top offset(0,-20)
 
+    int L, R;
+    cin >> L >> R;
 
-    int L=5,R=13;
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),     num, {}, {0}, "normal", 0, 1);
-    av.frame_draw("BIT" , Pos(40,150),  BIT, {}, {0},    "BIT", 0, 4);
-    av.text("假設要計算" + to_string(L) + "~" + to_string(R) + "的累計值\n那就是先計算樹中1~" + to_string(R) + "的總和後再減掉1~" + to_string(L-1) + "就可以得到" + to_string(L) + "~" + to_string(R) + "的區間值了", Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
+    // @frame use binary_indexed_tree_view
+    // @style num[L:R] background AV_green
+    // @text "查詢 num[${L}..${R}]：計算 prefix_sum(${R}) - prefix_sum(${L - 1})" at num.top offset(0,-20)
 
-    int sumR = sum(R);
+    long long right_prefix = prefix_sum(R);
+    long long left_prefix = prefix_sum(L - 1);
+    long long answer = right_prefix - left_prefix;
 
-    //draw{
-    vector<int> _draw_R = _draw_BIT;
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(41, 162, 243, 0.44)"},AV::AtoB(1,R)}}, {0}, "normal", 0, 1);
-    av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"background","rgba(41, 162, 243, 0.44)"},_draw_BIT}}, {0},    "BIT", 0, 4);
-    av.text("得到1~" + to_string(R) + "的總和是" + to_string(sumR) , Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
+    // @frame use binary_indexed_tree_view
+    // @style num[L:R] background AV_green
+    // @text "區間和 = ${right_prefix} - ${left_prefix} = ${answer}" at num.top offset(0,-20)
 
-    int sumL = sum(L-1);
-
-    //draw{
-    vector<int> _draw_L = _draw_BIT;
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(65, 215, 253, 0.44)"},AV::AtoB(1,L-1)}}, {0}, "normal", 0, 1);
-    av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"background","rgba(65, 215, 253, 0.44)"},_draw_BIT}}, {0},    "BIT", 0, 4);
-    av.text("得到1~" + to_string(L-1) + "的總和是" + to_string(sumL) , Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    //}
-    //draw{
-    av.start_frame_draw();
-    av.frame_draw("num" , Pos(0,0),     num, {{{"background","rgba(47, 255, 82, 0.44)"},AV::AtoB(L,R)}}, {0}, "normal", 0, 1);
-    av.frame_draw("BIT" , Pos(40,150),  BIT, {{{"background","rgba(41, 162, 243, 0.44)"},_draw_R},{{"background","rgba(65, 215, 253, 0.44)"},_draw_L}}, {0},    "BIT", 0, 4);
-    av.text("最後查詢結果也就是 右區間-左區間 = " + to_string(sumR) + "-" + to_string(sumL) + "=" + to_string(sumR-sumL), Pos("num","top",0,-20));
-    av.camera(Pos("num", "bottom", 0, 60), 1.3);
-    av.end_frame_draw();
-    av.end_draw();
-    //}
-
-    cout<<"sum of L to R = "<<sumR-sumL<<endl;
-
+    cout << "sum of L to R = " << answer << '\n';
     return 0;
 }
