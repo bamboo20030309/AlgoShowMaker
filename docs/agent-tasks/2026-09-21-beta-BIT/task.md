@@ -37,6 +37,7 @@
 - [x] point update、prefix sum 與 range sum 的輸出正確，畫面能對照目前 BIT 節點涵蓋的 num 區間。
 - [x] 非 2 的冪次長度仍有正確格寬、索引、highlight 與 marker 定位。
 - [x] `left-top`、`right-top`、`left-bottom`、`right-bottom` 可用於來源及目標錨點，並分別正規化為既有角落名稱。
+- [x] 範例中的 highlight 與 point 不指定顏色，沿用 renderer 預設值；只有 background 使用教學色彩。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -50,3 +51,4 @@
 - 2026-09-21：移除 num 的 range 裁切以顯示完整 vector，並改用 `@place num at BIT.top offset(-40,-70)`；程式 commit 為 `7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`。
 - 2026-09-21：依使用者釐清在 num 前置值為 0 的保留格，使用 `AV_grey`，實際輸入回到 num[1..n] 並直接與 BIT 對齊；程式 commit 為 `80c3d15ae893f59ff7e7f94efda9459100e4d1e8`。
 - 2026-09-21：新增四個水平在前的角落錨點別名，支援 @place 來源與目標，並同步 camera、arrow 與前端文字指令綁定辨識；程式 commit 為 `399071d5125999b932aacf5a30ce572cb18b9e83`。
+- 2026-09-21：拆開 BIT 的 highlight 與 background 指令，highlight／point 保留預設顏色，只有 background 指定 AV_green／AV_blue；程式 commit 為 `93b5a32d2fe6aa732579b4c74600802586d985b1`。
