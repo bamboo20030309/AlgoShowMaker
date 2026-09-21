@@ -1384,6 +1384,16 @@ function resolveFrameRendererOptions(frame, directive) {
     const columns = resolveTraceIndexExpression(frame, source.columns.expression);
     if (columns != null && columns > 0) options.columns = columns;
   }
+  if (source.gap) {
+    const horizontal = resolveTraceIndexExpression(frame, source.gap.horizontalExpression);
+    const vertical = resolveTraceIndexExpression(frame, source.gap.verticalExpression);
+    if (horizontal != null && vertical != null) {
+      options.gap = {
+        horizontal: Math.max(0, horizontal),
+        vertical: Math.max(0, vertical)
+      };
+    }
+  }
   if (source.labels) {
     const format = source.labels.indexFormat || 'none';
     if (source.labels.showValue === false && format === 'decimal') options.indexMode = 2;

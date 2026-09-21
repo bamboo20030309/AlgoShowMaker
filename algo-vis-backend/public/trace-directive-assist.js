@@ -166,6 +166,7 @@
   const withTypes = [
     ['range', '指定顯示索引範圍', 'range(0,n)'],
     ['columns', '長陣列每列格數', 'columns(10)'],
+    ['gap', '設定水平與垂直間距', 'gap(10,24)'],
     ['labels-index', '只顯示索引標籤', 'labels(index)'],
     ['labels-value', '顯示資料值標籤', 'labels(value)']
   ];

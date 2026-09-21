@@ -43,7 +43,7 @@
    * @param {string}           draw_type  // "normal" , "heap" , "segment_tree" , "BIT"
    * @param {number}           itemsPerRow
    * @param {number}           index                - 0 = element, 1 = element + index, 2 = index, 3 = element + index_bin, 4 = element + index_bin_padZero
-   * @param {number}           gap                  - 格子之間的間距
+   * @param {number|object}    gap                  - 水平與垂直格距
    * @param {Array}            segment_lazy         - 線段樹的lazy部分
    * @param {Array}            segment_sets         - 線段樹的sets部分
    * @param {Array}            segment_index        - 要畫區段的格子(為一段格子上色)
@@ -170,7 +170,7 @@
 
       case 'disk':
         window.draw_array_disk(
-          g, groupID, array, style, index_range, itemsPerRow, index
+          g, groupID, array, style, index_range, itemsPerRow, index, gap
         );
         break;
 

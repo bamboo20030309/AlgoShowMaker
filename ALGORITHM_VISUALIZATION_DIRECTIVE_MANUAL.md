@@ -1101,8 +1101,8 @@ int displaySize = arr.size() - 1;
 `[1,n]` 且根節點是 `tree[1]`；`range(0,n-1)` 則表示資料區間是 `[0,n-1]`
 且根節點是 `tree[0]`。renderer 會依根索引自動選擇 1-based 或 0-based 的子節點公式。
 
-renderer 會用標準遞迴的 `mid=(left+right)/2` 拆分區間；每個節點的寬度等於
-其區間長度乘上內建單位寬度，垂直位置則使用該節點的
+renderer 會用標準遞迴的 `mid=(left+right)/2` 拆分區間；最小資料格是
+40×40px，下方區間索引格高 12px。每個節點的寬度依其區間長度計算，垂直位置則使用該節點的
 真實遞迴深度。當 `n` 不是二次方時不會補假節點，也不會把較早成為葉節點的
 節點強制對齊到最底層。
 
@@ -1118,6 +1118,24 @@ renderer 會用標準遞迴的 `mid=(left+right)/2` 拆分區間；每個節點�
 
 第二組索引是相對於根區間起點的零基底座標；`split(now)` 會把查詢區段映射到
 目前遞迴路徑及仍待處理的兄弟節點，`split(now,after)` 會移除剛完成的目前節點。
+
+### `gap(horizontal,vertical)`
+
+```cpp
+// @frame tree render segment_tree with range(1,n), gap(10,24)
+// @frame arr with columns(5), gap(8,16)
+```
+
+第一個值是水平間距，第二個值是垂直間距。`gap(10)` 保留相容寫法，等同
+`gap(10,10)`。未寫 `gap` 時兩者都是 0，範例通常維持格子彼此貼合。
+
+一般陣列的水平 gap 只放在相鄰格子之間，垂直 gap 放在換列之間。queue 使用水平值；
+stack 與 disk 使用垂直值。heap、BIT 與標準 segment tree 的節點寬度會連同內部最小格
+一起展開：代表 `count` 個單位的節點寬度為
+`count*40 + (count-1)*horizontalGap`。例如三個單位、水平 gap 10px 時寬度是 140px。
+
+heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線；垂直 gap 為 0 時，
+上下層緊貼且不畫連線。
 
 ### `columns(count)`
 

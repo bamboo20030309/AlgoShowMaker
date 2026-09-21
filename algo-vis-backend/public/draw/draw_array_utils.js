@@ -2,6 +2,17 @@
 ;(function() {
   const NS = 'http://www.w3.org/2000/svg';
 
+  window.resolveArrayGaps = function(value) {
+    if (value && typeof value === 'object') {
+      return {
+        horizontal: Math.max(0, Number(value.horizontal) || 0),
+        vertical: Math.max(0, Number(value.vertical) || 0)
+      };
+    }
+    const shared = Math.max(0, Number(value) || 0);
+    return { horizontal: shared, vertical: shared };
+  };
+
   /**
    * 根據格子尺寸自動求出文字最大字體（使用二分搜尋）
    */

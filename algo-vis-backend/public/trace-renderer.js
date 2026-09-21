@@ -201,7 +201,7 @@
     }
     const id = `${context.idPrefix || 'trace-original'}-${context.variableId.replace(/[^A-Za-z0-9_-]/g, '-')}`;
     const rendererOptions = context.skin?.options || {};
-    const gap = Number.isFinite(Number(rendererOptions.gap)) ? Number(rendererOptions.gap) : 0;
+    const gap = rendererOptions.gap ?? 0;
     const requested = context.rendererName || 'original-array';
     const isScalarCell = isScalarRenderer(context.variable, requested);
     const configuredShowIndex = rendererOptions.showIndex;
@@ -277,7 +277,7 @@
     } else if (mode === 'bit' && typeof window.draw_array_BIT === 'function') {
       window.draw_array_BIT(group, id, values, styles, range, indexMode, gap);
     } else if (mode === 'disk' && typeof window.draw_array_disk === 'function') {
-      window.draw_array_disk(group, id, values, styles, range, itemsPerRow, indexMode);
+      window.draw_array_disk(group, id, values, styles, range, itemsPerRow, indexMode, gap);
     } else if (mode === 'stack' && typeof window.draw_array_stack === 'function') {
       window.draw_array_stack(group, id, values, styles, range, indexMode, gap);
     } else if (mode === 'queue' && typeof window.draw_array_queue === 'function') {
@@ -378,7 +378,8 @@
   function renderSequence(group, entry, context) {
     const items = Array.isArray(entry.data?.items) ? entry.data.items : [];
     const cellSize = Math.max(32, Math.min(72, Number(context.skin?.options?.cellSize) || 52));
-    const gap = Number.isFinite(Number(context.skin?.options?.gap)) ? Number(context.skin.options.gap) : 0;
+    const rawGap = context.skin?.options?.gap ?? 0;
+    const gap = window.resolveArrayGaps ? window.resolveArrayGaps(rawGap).horizontal : Math.max(0, Number(rawGap) || 0);
     items.forEach((item, index) => {
       const x = index * (cellSize + gap);
       const logicalIndex = context.rowIndex == null ? String(index) : `${context.rowIndex},${index}`;
@@ -1823,15 +1824,24 @@
           const width = Number(baseRect.getAttribute('width')) || 0;
           const height = Number(baseRect.getAttribute('height')) || 0;
           if (!(width > 0 && height > 0)) return;
+          const horizontalGap = Math.max(0, Number(
+            heap?.querySelector?.('[data-horizontal-gap]')?.getAttribute?.('data-horizontal-gap')
+              ?? heap?.getAttribute?.('data-horizontal-gap')
+              ?? 0
+          ) || 0);
+          const sectionUnit = sectionCount > 0
+            ? Math.max(0, (width - Math.max(0, sectionCount - 1) * horizontalGap) / sectionCount)
+            : 0;
+          const segmentCount = end - start + 1;
           const identity = descriptor.named ? descriptor.id : `${descriptor.id || descriptorIndex}`;
           const key = descriptor.split
             ? `heap-segment:${identity}:${nodeIndex}`
             : `heap-segment:${identity}`;
           const overlay = svg('rect', {
             class: 'asm-trace-heap-cell-segment asm-trace-style-paint',
-            x: x + width * start / sectionCount,
+            x: x + start * (sectionUnit + horizontalGap),
             y,
-            width: width * (end - start + 1) / sectionCount,
+            width: segmentCount * sectionUnit + Math.max(0, segmentCount - 1) * horizontalGap,
             height,
             fill: traceTextColor(descriptor.color, 'rgba(165, 214, 167, 0.6)'),
             stroke: 'none',
@@ -4613,9 +4623,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-204';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-205';
   window.ASMTraceRenderers = {
-    build: 'trace-204', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-205', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

@@ -35,12 +35,15 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
       const geometry = index => {
         const target = cell(index);
         const rect = target?.querySelector(':scope > rect');
+        const indexRect = tree.querySelector(`[data-trace-index-label="${index}"]`)?.querySelector?.('rect');
         return {
           left: Number(target?.dataset.segmentLeft),
           right: Number(target?.dataset.segmentRight),
           x: Number(rect?.getAttribute('x')),
           y: Number(rect?.getAttribute('y')),
           width: Number(rect?.getAttribute('width')),
+          height: Number(rect?.getAttribute('height')),
+          indexHeight: Number(indexRect?.getAttribute('height')),
           label: tree.querySelector(`[data-trace-index-label="${index}"]`)?.textContent
         };
       };
@@ -75,24 +78,25 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
     });
     assert.equal(result.layout, 'segment_tree_interval');
     assert.deepEqual(result.visible, [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,24,25]);
-    assert.deepEqual([result.root.left, result.root.right, result.root.width], [1,10,480]);
-    assert.deepEqual([result.left.left, result.left.right, result.left.width], [1,5,240]);
-    assert.deepEqual([result.right.left, result.right.right, result.right.width], [6,10,240]);
-    assert.deepEqual([result.three.width, result.two.width, result.leafThree.width], [144,96,48]);
+    assert.deepEqual([result.root.left, result.root.right, result.root.width], [1,10,400]);
+    assert.deepEqual([result.left.left, result.left.right, result.left.width], [1,5,200]);
+    assert.deepEqual([result.right.left, result.right.right, result.right.width], [6,10,200]);
+    assert.deepEqual([result.three.width, result.two.width, result.leafThree.width], [120,80,40]);
+    assert.deepEqual([result.leafThree.height, result.leafThree.indexHeight], [40,12]);
     assert.equal(result.left.y, result.right.y);
     assert.ok(result.three.y > result.left.y);
     assert.equal(result.pairOneTwo.y, result.leafThree.y);
     assert.ok(result.leafOne.y > result.leafThree.y, 'early leaf stays at its natural recursion depth');
     assert.match(result.root.label, /\[1,10\]/);
-    assert.deepEqual(result.segment, { node: 1, width: 288 });
+    assert.deepEqual(result.segment, { node: 1, width: 240 });
     assert.ok(result.frontiers.some(item => item.phase === 'before'
       && JSON.stringify(item.nodes) === JSON.stringify([2,3])));
     assert.ok(result.frontiers.some(item => item.phase === 'before'
       && JSON.stringify(item.nodes) === JSON.stringify([3,5,9])));
     assert.ok(result.frontiers.some(item => item.phase === 'after'
       && JSON.stringify(item.nodes) === JSON.stringify([3,5])));
-    assert.equal(result.edgeToLeafThree, true);
-    assert.equal(result.edgeToLeafOne, true);
+    assert.equal(result.edgeToLeafThree, false);
+    assert.equal(result.edgeToLeafOne, false);
     assert.deepEqual(errors, []);
 
     const zeroBasedCode = `#include <bits/stdc++.h>
@@ -137,10 +141,50 @@ int main() {
       };
     });
     assert.deepEqual(zeroBased.visible, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,23,24]);
-    assert.deepEqual(zeroBased.root, { left: 0, right: 9, width: 480 });
-    assert.deepEqual(zeroBased.left, { left: 0, right: 4, width: 240 });
-    assert.deepEqual(zeroBased.right, { left: 5, right: 9, width: 240 });
-    assert.equal(zeroBased.edge, true);
+    assert.deepEqual(zeroBased.root, { left: 0, right: 9, width: 400 });
+    assert.deepEqual(zeroBased.left, { left: 0, right: 4, width: 200 });
+    assert.deepEqual(zeroBased.right, { left: 5, right: 9, width: 200 });
+    assert.equal(zeroBased.edge, false);
+
+    const gapCode = code.replaceAll('range(1,n)', 'range(1,n), gap(10,24)');
+    await page.evaluate(({ code, input }) => {
+      ace.edit('editor').setValue(code, -1);
+      document.getElementById('inputArea').value = input;
+    }, { code: gapCode, input });
+    await page.evaluate(() => document.getElementById('runBtn').click());
+    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code,
+      gapCode, { timeout: 30000 });
+    const withGap = await page.evaluate(async () => {
+      const player = window.ASMTracePlayer;
+      const doc = player.getDocument();
+      const treeId = Object.entries(doc.variables).find(([, value]) => value.name === 'tree')[0];
+      const frameIndex = doc.frames.findIndex(frame => frame.renderers?.[treeId] === 'original-segment-tree');
+      await player.render(frameIndex, { animatePositions: false, animateEvents: false });
+      const tree = [...document.querySelectorAll(`[data-trace-variable="${treeId}"]`)].at(-1);
+      const geometry = index => {
+        const cell = tree.querySelector(`[data-trace-index="${index}"]`);
+        const rect = cell?.querySelector(':scope > rect');
+        return {
+          y: Number(rect?.getAttribute('y')),
+          width: Number(rect?.getAttribute('width'))
+        };
+      };
+      const segment = tree.closest('#asm-trace-root').querySelector('.asm-trace-heap-cell-segment');
+      return {
+        root: geometry(1), left: geometry(2), three: geometry(4), two: geometry(5), leaf: geometry(9),
+        segmentWidth: Number(segment?.getAttribute('width')),
+        horizontalGap: Number(tree.querySelector('[data-horizontal-gap]')?.getAttribute('data-horizontal-gap')),
+        verticalGap: Number(tree.querySelector('[data-vertical-gap]')?.getAttribute('data-vertical-gap')),
+        edge: Boolean(tree.querySelector('[data-segment-parent="4"][data-segment-child="9"]'))
+      };
+    });
+    assert.deepEqual([withGap.root.width, withGap.left.width, withGap.three.width,
+      withGap.two.width, withGap.leaf.width], [490,240,140,90,40]);
+    assert.equal(withGap.left.y - withGap.root.y, 76);
+    assert.equal(withGap.three.y - withGap.left.y, 76);
+    assert.equal(withGap.segmentWidth, 290);
+    assert.deepEqual([withGap.horizontalGap, withGap.verticalGap], [10,24]);
+    assert.equal(withGap.edge, true);
   } finally {
     await browser.close();
   }

@@ -426,19 +426,21 @@
     const domainStart = Number(options.domainStart);
     const domainEnd = Number(options.domainEnd);
     const rootIndex = Number.isInteger(Number(options.root)) ? Number(options.root) : 1;
-    const unit = 48;
-    const gap = Math.max(0, Number(options.gap) || 0);
+    const unit = baseBoxSize;
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(options.gap) : { horizontal: Number(options.gap) || 0, vertical: Number(options.gap) || 0 };
+    const horizontalGap = gaps.horizontal;
+    const verticalGap = gaps.vertical;
     const indexMode = Number(options.indexMode) || 0;
     if (!Number.isInteger(domainStart) || !Number.isInteger(domainEnd)
       || domainStart > domainEnd || rootIndex < 0) return;
 
     const cellHeight = baseBoxSize;
-    const intervalLabelHeight = 16;
+    const intervalLabelHeight = indexBoxH;
     const cellTotalHeight = cellHeight + intervalLabelHeight;
-    const rowGap = 28 + gap;
-    const rowHeight = cellTotalHeight + rowGap;
+    const rowHeight = cellTotalHeight + verticalGap;
     const domainLength = domainEnd - domainStart + 1;
-    const totalW = domainLength * unit;
+    const spanWidth = count => count * unit + Math.max(0, count - 1) * horizontalGap;
+    const totalW = spanWidth(domainLength);
     const nodes = [];
     const visit = (index, left, right, depth, parent = null) => {
       if (!Number.isInteger(index) || index < 0 || index >= array.length) return;
@@ -454,11 +456,11 @@
     if (!nodes.length) return;
 
     const maxDepth = Math.max(...nodes.map(node => node.depth));
-    const totalH = (maxDepth + 1) * rowHeight - rowGap;
+    const totalH = (maxDepth + 1) * cellTotalHeight + maxDepth * verticalGap;
     const position = node => ({
-      x: outerframe_padding + (node.left - domainStart) * unit,
+      x: outerframe_padding + (node.left - domainStart) * (unit + horizontalGap),
       y: outerframe_padding + node.depth * rowHeight,
-      width: (node.right - node.left + 1) * unit
+      width: spanWidth(node.right - node.left + 1)
     });
 
     g.setAttribute('data-layout', 'segment_tree_interval');
@@ -466,6 +468,8 @@
     g.setAttribute('data-segment-domain-end', String(domainEnd));
     g.setAttribute('data-segment-root', String(rootIndex));
     g.setAttribute('data-segment-unit', String(unit));
+    g.setAttribute('data-horizontal-gap', String(horizontalGap));
+    g.setAttribute('data-vertical-gap', String(verticalGap));
     g.setAttribute('data-row-height', String(rowHeight));
     g.setAttribute('data-heap-totalW', String(totalW));
     g.setAttribute('data-box-size', String(baseBoxSize));
@@ -487,7 +491,7 @@
     }
     edgeLayer.setAttribute('data-alive', '1');
     edgeLayer.replaceChildren();
-    nodes.filter(node => node.parent).forEach(node => {
+    nodes.filter(node => node.parent && verticalGap > 0).forEach(node => {
       const parentBox = position(node.parent);
       const childBox = position(node);
       const edge = document.createElementNS(NS, 'line');
@@ -578,7 +582,7 @@
         label.appendChild(labelText);
       }
       labelText.setAttribute('x', String(box.x + box.width / 2));
-      labelText.setAttribute('y', String(box.y + cellHeight + 12));
+      labelText.setAttribute('y', String(box.y + cellHeight + 10));
       labelText.setAttribute('text-anchor', 'middle');
       labelText.setAttribute('font-family', 'Arial');
       labelText.setAttribute('font-size', String(Math.max(8, Math.min(11, box.width / 4))));

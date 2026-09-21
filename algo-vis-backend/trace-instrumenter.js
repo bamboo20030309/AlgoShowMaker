@@ -720,6 +720,21 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
+    if (name === 'gap') {
+      if (args.parts.length < 1 || args.parts.length > 2) {
+        throw new Error(`第 ${line} 行的 ${directiveName} gap 必須是 gap(horizontal) 或 gap(horizontal,vertical)`);
+      }
+      const parsed = args.parts.map(expression => ({ expression, parsed: parseFrameExpression(expression) }));
+      const invalid = parsed.find(item => !item.parsed.valid);
+      if (invalid) throw new Error(`第 ${line} 行的 ${directiveName} gap 運算式無效：${invalid.expression}`);
+      options.gap = {
+        horizontalExpression: parsed[0].expression,
+        verticalExpression: (parsed[1] || parsed[0]).expression,
+        identifiers: [...new Set(parsed.flatMap(item => item.parsed.identifiers || []))]
+      };
+      continue;
+    }
+
     if (name === 'labels') {
       const labels = args.parts.map(label => label.trim().toLowerCase());
       const allowed = new Set(['value', 'index', 'binary-index', 'binary-index-padded']);

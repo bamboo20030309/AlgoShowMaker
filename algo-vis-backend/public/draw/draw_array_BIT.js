@@ -64,9 +64,12 @@
     background = normalize(background);
     CDVS = normalizeIndex(CDVS);
 
-    // 計算全陣列可能出現的最大寬度單位 (2^k)，以決定最底層為何
-    const colW = baseBoxSize + gap;  // 每個底層單位的水平步進
-    const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4 ? indexBoxH : 0) + gap;
+    const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
+    const horizontalGap = gaps.horizontal;
+    const verticalGap = gaps.vertical;
+    const indexH = (index == 1 || index == 3 || index == 4 ? indexBoxH : 0);
+    const rowH = baseBoxSize + indexH + verticalGap;
+    const spanWidth = units => units * baseBoxSize + Math.max(0, units - 1) * horizontalGap;
     const Max_cols = Math.max(...ranged_array.map((_, j) => ((j + 1) & -(j + 1))));
     const rows = Math.log2(Max_cols);                                               //行高
     const cols = (array.length > 1 ? array.length - 1 : 1);                         //列寬
@@ -76,7 +79,8 @@
     g.setAttribute('data-layout', 'BIT');
     g.setAttribute('data-bit-rows', String(rows));
     g.setAttribute('data-row-height', String(rowH)); // 統一使用 data-row-height
-    g.setAttribute('data-box-size', String(colW));
+    g.setAttribute('data-box-size', String(baseBoxSize));
+    g.setAttribute('data-horizontal-gap', String(horizontalGap));
 
     // 方案 1：影格預索引與標記不活躍
     const nodeMap = new Map();
@@ -85,7 +89,9 @@
       child.setAttribute('data-alive', '0');
     });
 
-    window.draw_array_outerframe(g, groupID, outerframe_height * rowH - (outerframe_height > 0 ? gap : 0), cols * colW);  // 畫/更新外框
+    window.draw_array_outerframe(g, groupID,
+      outerframe_height * (baseBoxSize + indexH) + Math.max(0, outerframe_height - 1) * verticalGap,
+      spanWidth(cols));
 
     let index_cnt = index_range[0];
     // 1. 繪製所有節點
@@ -93,10 +99,10 @@
       const idx = i + 1;
       const widthUniTxts = idx & -idx;          // e.g. 1,2,4,8,...
       const layer = Math.log2(widthUniTxts);    // 層級 0-based
-      const w = colW * widthUniTxts;     // 寬度 = colW × 單位數
+      const w = spanWidth(widthUniTxts);
       const y = (rows - layer) * rowH + outerframe_padding;
       const idxInLayer = Math.floor(i / widthUniTxts);
-      const x = idxInLayer * w + outerframe_padding;
+      const x = idxInLayer * (w + horizontalGap) + outerframe_padding;
 
       const haveFocus = focus.length > 0
         ? focus.some(m => Array.isArray(m.elements) && m.elements.includes(i))
@@ -137,10 +143,10 @@
       const idx = i + 1;
       const widthUniTxts = idx & -idx;          // e.g. 1,2,4,8,...
       const layer = Math.log2(widthUniTxts);    // 層級 0-based
-      const w = colW * widthUniTxts;     // 寬度 = colW × 單位數
+      const w = spanWidth(widthUniTxts);
       const y = (rows - layer) * rowH + outerframe_padding;
       const idxInLayer = Math.floor(i / widthUniTxts);
-      const x = idxInLayer * w + outerframe_padding;
+      const x = idxInLayer * (w + horizontalGap) + outerframe_padding;
 
       const haveHighlight = highlight.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
       const havePoint = point.findLast(m => Array.isArray(m.elements) && m.elements.includes(i));
@@ -200,11 +206,12 @@
     // 與 draw_array_BIT 裡完全同一套公式
     const widthUnits = idx & -idx;                   // 1,2,4,8,...
     const layer = Math.log2(widthUnits);        // 第幾層（0-based）
-    const colW = parseFloat(g.getAttribute('data-box-size') || String(baseBoxSize));
-    const w = colW * widthUnits;            // 該節點方塊寬度
+    const cellSize = parseFloat(g.getAttribute('data-box-size') || String(baseBoxSize));
+    const horizontalGap = parseFloat(g.getAttribute('data-horizontal-gap') || '0');
+    const w = widthUnits * cellSize + Math.max(0, widthUnits - 1) * horizontalGap;
     const yLocalTop = (rows - layer) * rowH;        // 該層的 y
     const idxInLayer = Math.floor(i / widthUnits);   // 此層中的第幾個
-    const xLocalLeft = idxInLayer * w;               // 左上角 x
+    const xLocalLeft = idxInLayer * (w + horizontalGap);
 
     // g 的 base-offset / translate（canva + 拖曳）統一加上去
     const [baseX, baseY] = (g.getAttribute('data-base-offset') || '0,0')

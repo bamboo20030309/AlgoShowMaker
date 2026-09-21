@@ -38,3 +38,28 @@ test('standard segment tree sample resolves n=10 geometry options and preserves 
   assert.equal(Number(trace.frames.at(-1).state[byName.ans].data.value), 33);
   assert.ok(trace.frames.some(item => (item.segments || []).some(segment => segment.split?.phase === 'after')));
 });
+
+test('gap accepts one or two expressions and resolves horizontal and vertical spacing', async () => {
+  const twoAxisSource = source.replaceAll('range(1,n)', 'range(1,n), gap(10,24)');
+  const frames = findFrameDirectives(twoAxisSource);
+  const object = frames.flatMap(frame => frame.objects || [])
+    .find(item => item.renderer === 'original-segment-tree');
+  assert.deepEqual(object.rendererOptions.gap, {
+    horizontalExpression: '10',
+    verticalExpression: '24',
+    identifiers: []
+  });
+  const { trace } = await compile(twoAxisSource, input);
+  const treeId = Object.entries(trace.variables).find(([, value]) => value.name === 'tree')[0];
+  const frame = trace.frames.find(item => item.renderers?.[treeId] === 'original-segment-tree');
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.rendererOptions[treeId].gap)),
+    { horizontal: 10, vertical: 24 });
+
+  const oneAxisSource = source.replaceAll('range(1,n)', 'range(1,n), gap(7)');
+  const oneAxis = findFrameDirectives(oneAxisSource).flatMap(item => item.objects || [])
+    .find(item => item.renderer === 'original-segment-tree');
+  assert.equal(oneAxis.rendererOptions.gap.horizontalExpression, '7');
+  assert.equal(oneAxis.rendererOptions.gap.verticalExpression, '7');
+  assert.throws(() => findFrameDirectives(source.replace('range(1,n)', 'range(1,n), gap(1,2,3)')),
+    /gap 必須是 gap\(horizontal\) 或 gap\(horizontal,vertical\)/);
+});

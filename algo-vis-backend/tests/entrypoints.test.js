@@ -27,7 +27,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
   assert.ok(html.includes('trace-model.js?v=trace-33'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-18'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-19'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-25'));
@@ -75,10 +75,9 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
   assert.ok(html.includes('trace-rules.js?v=trace-19'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
-    const version = ['disk', 'segment_tree'].includes(name) ? 'focus-3' : 'focus-2';
-    assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
-    assert.ok(slides.includes(`draw/draw_array_${name}.js?v=${version}`));
-    assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
+    assert.ok(html.includes(`draw/draw_array_${name}.js?v=gap-1`));
+    assert.ok(slides.includes(`draw/draw_array_${name}.js?v=gap-1`));
+    assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=gap-1`));
   }
   assert.ok(html.includes('draw/draw_2Darray.js?v=focus-2'));
   assert.ok(html.includes('trace-events.js?v=trace-48'));
@@ -133,7 +132,10 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(read('trace.css'), /is-complete:not\(\.is-active\)[^}]*border-radius:\s*0/s,
     'completed nested event spans must form one continuous background band');
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
-  assert.ok(html.includes('draw/draw_array.js?v=trace-2'));
+  assert.ok(html.includes('draw/draw_array.js?v=trace-3'));
+  for (const surface of [html, slides, legacy]) {
+    assert.ok(surface.includes('draw/draw_array_utils.js?v=gap-1'));
+  }
   assert.ok(html.includes('trace-studio.css?v=trace-51'));
   assert.doesNotMatch(read('trace-studio.js'), /inspector\.append\(field\('作用時間線'/,
     'the obsolete event timeline scope selector is absent from the right sidebar');
