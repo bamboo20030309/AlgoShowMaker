@@ -2181,7 +2181,7 @@
       || targetOperand.element.closest?.('[data-trace-visibility="hidden"]')) return null;
 
     const sourceElement = valueOnly
-      ? assignableTargetText({ element: sourceOperand.element })
+      ? assignableTargetText(sourceOperand)
       : (sourceVisual || sourceOperand.element);
     const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
     if (!sourceElement || (valueOnly && !targetElement)) return null;
@@ -2194,7 +2194,22 @@
     }
     if (!(box?.width > 0) || !(box?.height > 0)) return null;
 
-    const clone = sourceElement.cloneNode(true);
+    const sourceIsField = sourceElement.matches?.('tspan[data-trace-field-variable]');
+    const sourceText = sourceIsField ? sourceElement.parentElement : null;
+    const computedSource = sourceIsField ? window.getComputedStyle(sourceElement) : null;
+    const clone = sourceIsField
+      ? createSvg('text', {
+        x: box.x + box.width / 2,
+        y: sourceText?.getAttribute?.('y') ?? box.y + box.height / 2,
+        'text-anchor': 'middle',
+        'dominant-baseline': sourceText?.getAttribute?.('dominant-baseline') || 'middle',
+        'font-family': sourceText?.getAttribute?.('font-family') || computedSource?.fontFamily || 'Arial',
+        'font-size': sourceText?.getAttribute?.('font-size') || computedSource?.fontSize || 14,
+        'font-weight': sourceText?.getAttribute?.('font-weight') || computedSource?.fontWeight || 'normal',
+        fill: sourceElement.getAttribute('fill') || sourceText?.getAttribute?.('fill')
+          || computedSource?.fill || '#1f282d'
+      }, sourceElement.textContent)
+      : sourceElement.cloneNode(true);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
       node.removeAttribute?.('data-trace-object-key');
@@ -5449,6 +5464,25 @@
       && geometry.height > 0 ? geometry : null;
   }
 
+  function syncHeapSegmentBoundaries(element) {
+    const rect = element?.classList?.contains('asm-trace-heap-cell-segment')
+      ? element
+      : element?.querySelector?.('.asm-trace-heap-cell-segment');
+    if (!rect) return;
+    const x = Number(rect.getAttribute('x'));
+    const y = Number(rect.getAttribute('y'));
+    const width = Number(rect.getAttribute('width'));
+    const height = Number(rect.getAttribute('height'));
+    if (![x, y, width, height].every(Number.isFinite)) return;
+    rect.parentElement?.querySelectorAll?.('.asm-trace-heap-segment-boundary').forEach(line => {
+      const boundaryX = line.dataset.traceSegmentBoundary === 'right' ? x + width : x;
+      line.setAttribute('x1', String(boundaryX));
+      line.setAttribute('x2', String(boundaryX));
+      line.setAttribute('y1', String(y));
+      line.setAttribute('y2', String(y + height));
+    });
+  }
+
   function heapSplitBackgroundHandoff(element, currentElements, previousObjects) {
     const segment = heapSplitSegmentRect(element);
     const cellKey = segment?.getAttribute?.('data-trace-attached-to') || '';
@@ -5505,10 +5539,12 @@
     if (phase === 'exit') {
       geometry.rect.setAttribute('y', String(geometry.y + geometry.height * amount));
       geometry.rect.setAttribute('height', String(geometry.height * (1 - amount)));
+      syncHeapSegmentBoundaries(geometry.rect);
       return;
     }
     geometry.rect.setAttribute('y', String(geometry.y));
     geometry.rect.setAttribute('height', String(geometry.height * amount));
+    syncHeapSegmentBoundaries(geometry.rect);
   }
 
   function outerframeGeometry(element) {
@@ -6688,6 +6724,7 @@
                 before[attribute] + (after[attribute] - before[attribute]) * state.localEased
               ));
             }
+            syncHeapSegmentBoundaries(rect);
           }
           // A rect must have one paint writer. Style owns value/index colors;
           // ordinal parent-rect interpolation must not overwrite those colors.
@@ -6962,10 +6999,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-224';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-225';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-224', play, cancel, updateEventAvailability,
+    build: 'trace-225', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

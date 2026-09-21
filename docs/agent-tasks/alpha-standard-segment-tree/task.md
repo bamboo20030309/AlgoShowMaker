@@ -49,6 +49,8 @@
 - [x] `format(field=type,...)` 支援 `raw`、`signed`、`assign`、`binary`、`hex`、`bool`、`fixed(n)`、`percent(n)`，且只改顯示、不改原始資料、條件或 hide 判斷。
 - [x] 格子靜態文字與事件動畫共用格式；`assign`／`signed` 動畫完成後仍保留 `=`／正負號。
 - [x] 標準範例改用 `fields(tree,sets,lazy)`、`hide(sets=LM,lazy=0)`、`format(sets=assign,lazy=signed)`，使 set 與 modify 顯示為 `=8`、`+3` 或 `-2`。
+- [x] `tree[a] + tree[b]` 的加法賦值動畫只搬移兩個 tree 欄位的數字，不會把同格的 `=set` 或帶號 lazy 欄位一起搬入父節點。
+- [x] 每個格內 segment 的左右邊界各顯示一條 1px 灰色虛線，且在區段寬度補間與 split 淡入淡出時貼合色塊邊緣。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
@@ -67,3 +69,4 @@
 - 2026-09-21：依使用者回饋在所有回朔加法幀加入 `split(now,after)`；modify、set、query 分別沿用紫、橘、綠 segment。
 - 2026-09-22：重現 n=11 輸入第 55 幀 `tree[6]` 遺失 sets 欄位；確認 trace 仍有 `sets[6]=7`，修正賦值動畫只更新複合格內對應變數的文字節點。
 - 2026-09-22：依使用者確認新增第一版 `format(...)`，並將標準範例的 set／modify 標記改成 `=value`／帶正負號的 value；第二版值映射與自訂前後綴列為後續優化候選，交由主代理保留。
+- 2026-09-22：依使用者回饋修正複合 tree 格的二元加法來源，只搬移 tree 欄位；格內 segment 新增左右 1px 灰色虛線並跟隨既有 segment 動畫。

@@ -66,7 +66,12 @@ test('heap fields and local segments render at root and child coordinates', {tim
           id:rect.dataset.traceSegmentId,start:+rect.dataset.traceSegmentStart,end:+rect.dataset.traceSegmentEnd,
           identity:rect.dataset.traceRuntimeIdentity,count:+rect.dataset.traceSegmentCount,
           width:+rect.getAttribute('width'),base:+cell(node).querySelector(':scope > rect').getAttribute('width'),
-          styleLayer:Boolean(rect.closest('.asm-trace-style-layer')),nestedInCell:cell(node).contains(rect)
+          styleLayer:Boolean(rect.closest('.asm-trace-style-layer')),nestedInCell:cell(node).contains(rect),
+          boundaries:[...rect.parentElement.querySelectorAll('.asm-trace-heap-segment-boundary')].map(line=>({
+            side:line.dataset.traceSegmentBoundary,x1:+line.getAttribute('x1'),x2:+line.getAttribute('x2'),
+            y1:+line.getAttribute('y1'),y2:+line.getAttribute('y2'),stroke:line.getAttribute('stroke'),
+            width:+line.getAttribute('stroke-width'),dash:line.getAttribute('stroke-dasharray')
+          }))
         }));
         const children=[...scene.children];
         return {
@@ -86,7 +91,14 @@ test('heap fields and local segments render at root and child coordinates', {tim
         await new Promise(resolve=>requestAnimationFrame(resolve));
         const root=[...document.querySelectorAll(`[data-trace-variable="${byName.tree}"]`)].at(-1);
         const rect=root?.closest('#asm-trace-root')?.querySelector('[data-trace-segment-id="full"]');
-        if(rect)samples.push({x:+rect.getAttribute('x'),width:+rect.getAttribute('width')});
+        if(rect){
+          const boundaries=[...rect.parentElement.querySelectorAll('.asm-trace-heap-segment-boundary')];
+          samples.push({
+            x:+rect.getAttribute('x'),width:+rect.getAttribute('width'),
+            left:+boundaries.find(line=>line.dataset.traceSegmentBoundary==='left')?.getAttribute('x1'),
+            right:+boundaries.find(line=>line.dataset.traceSegmentBoundary==='right')?.getAttribute('x1')
+          });
+        }
       }
       await transition;
       const third=await readTree(treeFrames[2].index);
@@ -110,9 +122,15 @@ test('heap fields and local segments render at root and child coordinates', {tim
         const entering=root?.querySelector('.asm-trace-heap-cell-segment[data-trace-segment-node="4"]');
         const exiting=[...(root?.querySelectorAll('.asm-trace-transition-ghost .asm-trace-heap-cell-segment')||[])]
           .find(rect=>rect.dataset.traceSegmentNode==='2');
+        const boundaryGeometry=rect=>{
+          const line=rect?.parentElement?.querySelector('.asm-trace-heap-segment-boundary-left');
+          return line?{y1:+line.getAttribute('y1'),y2:+line.getAttribute('y2')}:null;
+        };
         splitSamples.push({
-          entering:entering?{y:+entering.getAttribute('y'),height:+entering.getAttribute('height')}:null,
-          exiting:exiting?{y:+exiting.getAttribute('y'),height:+exiting.getAttribute('height')}:null
+          entering:entering?{y:+entering.getAttribute('y'),height:+entering.getAttribute('height'),
+            boundary:boundaryGeometry(entering)}:null,
+          exiting:exiting?{y:+exiting.getAttribute('y'),height:+exiting.getAttribute('height'),
+            boundary:boundaryGeometry(exiting)}:null
         });
       }
       await splitTransition;
@@ -134,6 +152,12 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.equal(result.first.root.length,2);
     assert.deepEqual(result.first.root.map(item=>[item.start,item.end,item.count]),[[0,7,8],[2,5,8]]);
     assert.equal(result.first.root[0].width,result.first.root[0].base);
+    assert.ok([...result.first.root,...result.first.child].every(item=>(
+      item.boundaries.length===2
+      &&item.boundaries.map(boundary=>boundary.side).sort().join(',')==='left,right'
+      &&item.boundaries.every(boundary=>boundary.stroke==='#6b7280'
+        &&boundary.width===1&&boundary.dash==='3 3'&&boundary.x1===boundary.x2)
+    )));
     assert.deepEqual(result.first.child.map(item=>[item.start,item.end,item.count]),[[2,3,4]]);
     assert.equal(result.first.child[0].width,result.first.child[0].base/2);
     assert.ok([...result.first.root,...result.first.child].every(item=>item.styleLayer&&!item.nestedInCell));
@@ -147,6 +171,9 @@ test('heap fields and local segments render at root and child coordinates', {tim
     assert.deepEqual(result.third.root.map(item=>[item.start,item.end,item.count]),[[1,6,8]]);
     assert.ok(result.samples.some(sample=>sample.x>8&&sample.x<48&&sample.width>240&&sample.width<320),
       'named segment interpolates its local x and width');
+    assert.ok(result.samples.every(sample=>Math.abs(sample.left-sample.x)<0.01
+      &&Math.abs(sample.right-sample.x-sample.width)<0.01),
+    'segment boundaries follow interpolated horizontal geometry');
     assert.deepEqual(result.frontiers.map(items=>items.map(({node,start,end,count,phase})=>(
       [node,start,end,count,phase]
     ))), [
@@ -165,6 +192,14 @@ test('heap fields and local segments render at root and child coordinates', {tim
         &&sample.exiting.height>0
         &&sample.exiting.height<result.splitTransitionState.finalHeight
     )),'removed parent segment erases from its top edge downward');
+    assert.ok(result.splitTransitionState.samples.every(sample=>(
+      (!sample.entering||!sample.entering.boundary
+        ||Math.abs(sample.entering.boundary.y1-sample.entering.y)<0.01
+          &&Math.abs(sample.entering.boundary.y2-sample.entering.y-sample.entering.height)<0.01)
+      &&(!sample.exiting||!sample.exiting.boundary
+        ||Math.abs(sample.exiting.boundary.y1-sample.exiting.y)<0.01
+          &&Math.abs(sample.exiting.boundary.y2-sample.exiting.y-sample.exiting.height)<0.01)
+    )),'segment boundaries follow split entrance and exit height');
     assert.deepEqual(result.reload,result.second);
     assert.deepEqual(result.pairs,['5','0 / 5']);
     assert.deepEqual(result.tuples,['1,0,3','0,0,0']);
@@ -373,6 +408,65 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
     assert.deepEqual(result.segments,[]);
     assert.equal(result.sum,'27');
     assert.equal(result.sumBelowTree,true);
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();}
+});
+
+test('composite heap addition transfers only the tree field values', {timeout:60000}, async () => {
+  const base=process.env.ASM_TEST_BASE_URL;
+  assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
+  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+  try {
+    const page=await browser.newPage(),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/algorithm.html');
+    await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
+    const code=`#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  const int LM = 2147483647;
+  vector<int> tree(4, 0), sets(4, LM), lazy(4, 0);
+  tree[2] = 5;
+  tree[3] = 7;
+  sets[2] = 13;
+  lazy[3] = 3;
+  // @frame tree render heap with range(1,3), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
+  tree[1] = tree[2] + tree[3];
+  // @frame tree render heap with range(1,3), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
+  return 0;
+}`;
+    await page.evaluate(code=>ace.edit('editor').setValue(code,-1),code);
+    await page.click('#runBtn');
+    await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
+    const result=await page.evaluate(async()=>{
+      const player=window.ASMTracePlayer,doc=player.getDocument();
+      const treeId=Object.keys(doc.variables).find(id=>doc.variables[id]?.name==='tree');
+      const target=doc.frames.findIndex(frame=>(frame.events||[]).some(event=>(
+        event.binaryOperation==='+'
+        &&event.targets?.some(item=>item.role==='target'&&item.variableId===treeId)
+      )));
+      await player.render(target-1,{animatePositions:false,animateEvents:false});
+      const sourceTexts=[2,3].map(index=>document.querySelector(
+        `[data-trace-object-key="${CSS.escape(`${treeId}#${index}`)}"] > text`
+      )?.textContent);
+      const samples=[];
+      let settled=false;
+      const transition=player.render(target).finally(()=>{settled=true;});
+      for(let count=0;count<300&&!settled;count++){
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        samples.push([...document.querySelectorAll('.asm-trace-assign-transfer-value')]
+          .map(item=>item.textContent).sort());
+      }
+      await transition;
+      return {target,sourceTexts,samples};
+    });
+    assert.ok(result.target>0);
+    assert.deepEqual(result.sourceTexts,['5,=13','7,+3']);
+    const transfers=result.samples.filter(values=>values.length===2);
+    assert.ok(transfers.some(values=>JSON.stringify(values)===JSON.stringify(['5','7'])),
+      JSON.stringify(result.samples));
+    assert.ok(transfers.every(values=>values.every(value=>!/[,+]|=13/.test(value))),
+      JSON.stringify(transfers));
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}
 });

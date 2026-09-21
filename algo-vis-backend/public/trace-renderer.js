@@ -1902,6 +1902,26 @@
           overlay.setAttribute('data-trace-attachment-kind', 'segment');
           if (attachStyleVisual(root, overlay, cell, 'segment')) {
             const wrapper = overlay.parentElement;
+            const segmentX = Number(overlay.getAttribute('x'));
+            const segmentY = Number(overlay.getAttribute('y'));
+            const segmentWidth = Number(overlay.getAttribute('width'));
+            const segmentHeight = Number(overlay.getAttribute('height'));
+            ['left', 'right'].forEach(side => {
+              const boundaryX = side === 'right' ? segmentX + segmentWidth : segmentX;
+              wrapper.append(svg('line', {
+                class: `asm-trace-heap-segment-boundary asm-trace-heap-segment-boundary-${side}`,
+                x1: boundaryX,
+                x2: boundaryX,
+                y1: segmentY,
+                y2: segmentY + segmentHeight,
+                stroke: '#6b7280',
+                'stroke-width': 1,
+                'stroke-dasharray': '3 3',
+                'vector-effect': 'non-scaling-stroke',
+                'pointer-events': 'none',
+                'data-trace-segment-boundary': side
+              }));
+            });
             const styleKey = `style:${key}`;
             const cellPlacement = placements.get(`${targetKey}#${nodeIndex}`);
             wrapper.dataset.traceObjectKey = styleKey;
@@ -4663,9 +4683,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-206';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-207';
   window.ASMTraceRenderers = {
-    build: 'trace-206', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-207', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
