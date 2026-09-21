@@ -1063,7 +1063,7 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 | --- | --- | --- |
 | `render normal` | `array`、`sequence` | 一般水平陣列 |
 | `render heap` | 無 | Heap 樹狀排列 |
-| `render segment-tree` | `segment_tree`、`segmenttree` | Segment Tree |
+| `render segment_tree` | `segment-tree`、`segmenttree` | 依實際區間寬度排列的標準遞迴 Segment Tree |
 | `render bit` | `fenwick` | Binary Indexed Tree |
 | `render disk` | 無 | 圓盤／柱狀序列 |
 | `render stack` | 無 | Stack |
@@ -1089,6 +1089,32 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 int displaySize = arr.size() - 1;
 // @frame arr[1,i] render heap with range(1,displaySize)
 ```
+
+### 標準線段樹的 `domain`、`root` 與 `unit`
+
+```cpp
+// @frame tree[now] render segment_tree with domain(1,n), root(1), unit(48)
+```
+
+`domain(start,end)` 指定根節點代表的資料區間，左右端點都包含在內，也是
+`render segment_tree` 的必要選項。renderer 會用標準遞迴的 `mid=(left+right)/2`
+拆分區間；每個節點的寬度等於區間長度乘上 `unit`，垂直位置則使用該節點的
+真實遞迴深度。當 `n` 不是二次方時不會補假節點，也不會把較早成為葉節點的
+節點強制對齊到最底層。
+
+`root(expression)` 指定根節點在一維 tree 陣列中的索引，預設為 `1`；
+`unit(expression)` 指定一個最小資料區間的像素寬度，預設為 `48`。每個節點下方
+會自動顯示其代表的 `[left,right]`，因此標準的 `vector<int> tree(4*n+5)` 可以直接
+視覺化，不需要另外產生顯示用陣列。
+
+查詢區段仍可沿用格內 `@segment` 與 `split`：
+
+```cpp
+// @segment tree[1][L-1:R-1] color AV_green as query_range with split(now)
+```
+
+第二組索引是相對於根區間起點的零基底座標；`split(now)` 會把查詢區段映射到
+目前遞迴路徑及仍待處理的兄弟節點，`split(now,after)` 會移除剛完成的目前節點。
 
 ### `columns(count)`
 

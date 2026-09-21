@@ -15,7 +15,8 @@
       '// @frame arr',
       '// @frame arr[i,j],key\n// @style arr[i] highlight',
       '// @frame arr[i,j],key render heap with range(1,n) at canvas.top offset(0,80)\n// @style arr[i] highlight AV_red\n// @text "正在檢查第 ${i} 格" at arr.bottom',
-      '// @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)'
+      '// @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)',
+      '// @frame tree render segment_tree with domain(1,n), root(1), unit(48)'
     ] },
     { id: 'preset', label: '@preset', effect: '定義可重用的物件、位置與樣式；每次 @frame use 時重新計算變數', code: '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset', examples: [
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset\n// @frame use sieve_view',
@@ -164,6 +165,9 @@
   ];
   const withTypes = [
     ['range', '指定顯示索引範圍', 'range(0,n)'],
+    ['domain', '指定標準線段樹根區間', 'domain(1,n)'],
+    ['root', '指定標準線段樹根索引', 'root(1)'],
+    ['unit', '設定每個原始元素的水平寬度', 'unit(48)'],
     ['columns', '長陣列每列格數', 'columns(10)'],
     ['labels-index', '只顯示索引標籤', 'labels(index)'],
     ['labels-value', '顯示資料值標籤', 'labels(value)']

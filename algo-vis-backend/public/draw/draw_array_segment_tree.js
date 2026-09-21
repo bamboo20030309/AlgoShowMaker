@@ -417,6 +417,198 @@
     });
   }
 
+  /**
+   * Draw a standard recursive segment tree. Horizontal geometry comes from
+   * the represented interval; vertical geometry follows the real recursion
+   * depth, so an early leaf is never pushed to an artificial bottom row.
+   */
+  function draw_standard_segment_tree(g, groupID, array, style, options = {}) {
+    const domainStart = Number(options.domainStart);
+    const domainEnd = Number(options.domainEnd);
+    const rootIndex = Number.isInteger(Number(options.root)) ? Number(options.root) : 1;
+    const unit = Math.max(24, Number(options.unit) || 48);
+    const gap = Math.max(0, Number(options.gap) || 0);
+    const indexMode = Number(options.indexMode) || 0;
+    if (!Number.isInteger(domainStart) || !Number.isInteger(domainEnd)
+      || domainStart > domainEnd || rootIndex < 0) return;
+
+    const cellHeight = baseBoxSize;
+    const intervalLabelHeight = 16;
+    const cellTotalHeight = cellHeight + intervalLabelHeight;
+    const rowGap = 28 + gap;
+    const rowHeight = cellTotalHeight + rowGap;
+    const domainLength = domainEnd - domainStart + 1;
+    const totalW = domainLength * unit;
+    const nodes = [];
+    const visit = (index, left, right, depth, parent = null) => {
+      if (!Number.isInteger(index) || index < 0 || index >= array.length) return;
+      const node = { index, left, right, depth, parent };
+      nodes.push(node);
+      if (left >= right) return;
+      const middle = Math.floor((left + right) / 2);
+      visit(index * 2, left, middle, depth + 1, node);
+      visit(index * 2 + 1, middle + 1, right, depth + 1, node);
+    };
+    visit(rootIndex, domainStart, domainEnd, 0);
+    if (!nodes.length) return;
+
+    const maxDepth = Math.max(...nodes.map(node => node.depth));
+    const totalH = (maxDepth + 1) * rowHeight - rowGap;
+    const position = node => ({
+      x: outerframe_padding + (node.left - domainStart) * unit,
+      y: outerframe_padding + node.depth * rowHeight,
+      width: (node.right - node.left + 1) * unit
+    });
+
+    g.setAttribute('data-layout', 'segment_tree_interval');
+    g.setAttribute('data-segment-domain-start', String(domainStart));
+    g.setAttribute('data-segment-domain-end', String(domainEnd));
+    g.setAttribute('data-segment-root', String(rootIndex));
+    g.setAttribute('data-segment-unit', String(unit));
+    g.setAttribute('data-row-height', String(rowHeight));
+    g.setAttribute('data-heap-totalW', String(totalW));
+    g.setAttribute('data-box-size', String(baseBoxSize));
+
+    const nodeMap = new Map();
+    Array.from(g.children).forEach(child => {
+      if (child.id) nodeMap.set(child.id, child);
+      child.setAttribute('data-alive', '0');
+    });
+    window.draw_array_outerframe(g, groupID, totalH, totalW);
+
+    const edgeLayerId = `segment-tree-edges-${groupID}`;
+    let edgeLayer = nodeMap.get(edgeLayerId);
+    if (!edgeLayer) {
+      edgeLayer = document.createElementNS(NS, 'g');
+      edgeLayer.id = edgeLayerId;
+      edgeLayer.setAttribute('class', 'asm-segment-tree-edges');
+      g.appendChild(edgeLayer);
+    }
+    edgeLayer.setAttribute('data-alive', '1');
+    edgeLayer.replaceChildren();
+    nodes.filter(node => node.parent).forEach(node => {
+      const parentBox = position(node.parent);
+      const childBox = position(node);
+      const edge = document.createElementNS(NS, 'line');
+      edge.setAttribute('x1', String(parentBox.x + parentBox.width / 2));
+      edge.setAttribute('y1', String(parentBox.y + cellTotalHeight));
+      edge.setAttribute('x2', String(childBox.x + childBox.width / 2));
+      edge.setAttribute('y2', String(childBox.y));
+      edge.setAttribute('stroke', '#8a9499');
+      edge.setAttribute('stroke-width', '1.5');
+      edge.setAttribute('data-segment-parent', String(node.parent.index));
+      edge.setAttribute('data-segment-child', String(node.index));
+      edgeLayer.appendChild(edge);
+    });
+
+    const stylesOf = type => style.filter(item => item?.type === type);
+    const highlight = stylesOf('highlight');
+    const focus = stylesOf('focus');
+    const point = stylesOf('point');
+    const mark = stylesOf('mark');
+    const background = stylesOf('background');
+    const includesNode = (item, index) => Array.isArray(item?.elements) && item.elements.includes(index);
+    const ensureChild = (id, tag = 'g') => {
+      let element = nodeMap.get(id);
+      if (!element) {
+        element = document.createElementNS(NS, tag);
+        element.id = id;
+        g.appendChild(element);
+        nodeMap.set(id, element);
+      }
+      element.setAttribute('data-alive', '1');
+      return element;
+    };
+
+    nodes.forEach(node => {
+      const box = position(node);
+      const focusItem = focus.findLast(item => includesNode(item, node.index));
+      const backgroundItem = background.findLast(item => includesNode(item, node.index));
+      const fill = backgroundItem?.color?.trim()
+        || (focus.length && !focusItem ? focus.findLast(item => item?.color?.trim())?.color?.trim() || '#ccc' : '#fff');
+      const cellId = `cell-${groupID}-${node.index}`;
+      const cell = ensureChild(cellId);
+      cell.setAttribute('data-segment-left', String(node.left));
+      cell.setAttribute('data-segment-right', String(node.right));
+      cell.setAttribute('data-segment-depth', String(node.depth));
+
+      let rect = cell.querySelector(':scope > rect');
+      if (!rect) {
+        rect = document.createElementNS(NS, 'rect');
+        cell.appendChild(rect);
+      }
+      rect.setAttribute('x', String(box.x));
+      rect.setAttribute('y', String(box.y));
+      rect.setAttribute('width', String(box.width));
+      rect.setAttribute('height', String(cellHeight));
+      rect.setAttribute('fill', fill);
+      rect.setAttribute('stroke', '#59656b');
+      rect.setAttribute('stroke-width', '1');
+
+      let text = cell.querySelector(':scope > text');
+      if (!text) {
+        text = document.createElementNS(NS, 'text');
+        cell.appendChild(text);
+      }
+      text.setAttribute('x', String(box.x + box.width / 2));
+      text.setAttribute('y', String(box.y + cellHeight / 2 + 6));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('font-family', 'Arial');
+      text.setAttribute('font-size', String(Math.max(10, Math.min(16, box.width / 3))));
+      text.textContent = indexMode === 2 ? String(node.index) : String(array[node.index] ?? '');
+
+      const labelId = `${cellId}-index`;
+      const label = ensureChild(labelId);
+      let labelRect = label.querySelector(':scope > rect');
+      if (!labelRect) {
+        labelRect = document.createElementNS(NS, 'rect');
+        label.appendChild(labelRect);
+      }
+      labelRect.setAttribute('x', String(box.x));
+      labelRect.setAttribute('y', String(box.y + cellHeight));
+      labelRect.setAttribute('width', String(box.width));
+      labelRect.setAttribute('height', String(intervalLabelHeight));
+      labelRect.setAttribute('fill', fill);
+      labelRect.setAttribute('stroke', '#59656b');
+      labelRect.setAttribute('stroke-width', '1');
+      let labelText = label.querySelector(':scope > text');
+      if (!labelText) {
+        labelText = document.createElementNS(NS, 'text');
+        label.appendChild(labelText);
+      }
+      labelText.setAttribute('x', String(box.x + box.width / 2));
+      labelText.setAttribute('y', String(box.y + cellHeight + 12));
+      labelText.setAttribute('text-anchor', 'middle');
+      labelText.setAttribute('font-family', 'Arial');
+      labelText.setAttribute('font-size', String(Math.max(8, Math.min(11, box.width / 4))));
+      labelText.textContent = `${indexMode ? `${node.index} ` : ''}[${node.left},${node.right}]`;
+
+      if (window.HintWidgets) {
+        const highlighted = highlight.findLast(item => includesNode(item, node.index));
+        const pointed = point.findLast(item => includesNode(item, node.index));
+        const marked = mark.findLast(item => includesNode(item, node.index));
+        if (highlighted) {
+          HintWidgets.drawHighlightBox(g, box.x, box.y, box.width, cellTotalHeight,
+            highlighted.color?.trim() || 'red', `highlight-${groupID}-${node.index}`, nodeMap);
+        }
+        if (pointed) {
+          HintWidgets.drawArrow(g, box.x + box.width / 2, box.y,
+            pointed.color?.trim() || 'red', `point-${groupID}-${node.index}`, -20, 12, 8, nodeMap);
+        }
+        if (marked) {
+          HintWidgets.drawMark(g, box.x + box.width - 10, box.y + cellHeight - 10,
+            marked.color?.trim() || 'limegreen', `mark-${groupID}-${node.index}`, nodeMap);
+        }
+      }
+    });
+
+    const firstCell = Array.from(g.children).find(child => child.id?.startsWith(`cell-${groupID}-`));
+    if (firstCell && edgeLayer.nextSibling !== firstCell) g.insertBefore(edgeLayer, firstCell);
+    Array.from(g.children).forEach(child => {
+      if (child.getAttribute('data-alive') === '0') child.remove();
+    });
+  }
+
   // === segment_tree 專用：由 groupID + index 算出節點中心座標 ===
   function getSegmentTreePosition(groupID, index, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
@@ -424,6 +616,25 @@
 
     const g = vp.querySelector('#' + CSS.escape(groupID));
     if (!g) return { x: 0, y: 0 };
+
+    const renderedCell = g.querySelector(`#${CSS.escape(`cell-${groupID}-${index}`)}`);
+    const renderedRect = renderedCell?.querySelector(':scope > rect');
+    if (renderedRect) {
+      const [baseX, baseY] = (g.getAttribute('data-base-offset') || '0,0').split(',').map(Number);
+      const [dx, dy] = (g.getAttribute('data-translate') || '0,0').split(',').map(Number);
+      const boxX = Number(renderedRect.getAttribute('x')) || 0;
+      const boxY = Number(renderedRect.getAttribute('y')) || 0;
+      const boxW = Number(renderedRect.getAttribute('width')) || 0;
+      const boxH = Number(renderedRect.getAttribute('height')) || baseBoxSize;
+      const a = (anchor || 'center').toLowerCase();
+      let finalX = boxX + boxW / 2;
+      let finalY = boxY + boxH / 2;
+      if (a.includes('left')) finalX = boxX;
+      if (a.includes('right')) finalX = boxX + boxW;
+      if (a.includes('top')) finalY = boxY;
+      if (a.includes('bottom')) finalY = boxY + boxH;
+      return { x: baseX + dx + finalX, y: baseY + dy + finalY };
+    }
 
     // 從 g 讀回當初畫 segment_tree 時存的排版資料
     const levels = parseInt(g.getAttribute('data-heap-levels') || '1', 10);
@@ -469,4 +680,5 @@
   };
 
   window.draw_array_segment_tree = draw_array_segment_tree;
+  window.draw_standard_segment_tree = draw_standard_segment_tree;
 })();

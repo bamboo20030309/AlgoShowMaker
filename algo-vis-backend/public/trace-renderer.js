@@ -243,10 +243,12 @@
       itemsPerRow = Math.max(1, Math.trunc(configuredColumns));
     }
     const configuredRange = Array.isArray(rendererOptions.range) ? rendererOptions.range : [];
-    const rangeStart = Number.isFinite(Number(configuredRange[0]))
+    const intervalSegmentTree = requested === 'original-segment-tree'
+      && Array.isArray(rendererOptions.domain);
+    const rangeStart = intervalSegmentTree ? 0 : Number.isFinite(Number(configuredRange[0]))
       ? Math.max(0, Math.min(values.length, Math.trunc(Number(configuredRange[0]))))
       : 0;
-    const rangeEndExclusive = Number.isFinite(Number(configuredRange[1]))
+    const rangeEndExclusive = intervalSegmentTree ? values.length : Number.isFinite(Number(configuredRange[1]))
       ? Math.max(rangeStart, Math.min(values.length, Math.trunc(Number(configuredRange[1]))))
       : values.length;
     const range = [rangeStart, rangeEndExclusive - 1];
@@ -261,6 +263,16 @@
       window.draw_array_normal(group, id, values, styles, range, itemsPerRow, indexMode, gap);
     } else if (mode === 'heap' && typeof window.draw_array_heap === 'function') {
       window.draw_array_heap(group, id, values, styles, range, indexMode, gap);
+    } else if (mode === 'segment-tree' && intervalSegmentTree
+      && typeof window.draw_standard_segment_tree === 'function') {
+      window.draw_standard_segment_tree(group, id, values, styles, {
+        domainStart: Number(rendererOptions.domain[0]),
+        domainEnd: Number(rendererOptions.domain[1]),
+        root: Number.isInteger(Number(rendererOptions.root)) ? Number(rendererOptions.root) : 1,
+        unit: Number(rendererOptions.unit) || 48,
+        indexMode,
+        gap
+      });
     } else if (mode === 'segment-tree' && typeof window.draw_array_segment_tree === 'function') {
       window.draw_array_segment_tree(group, id, values, styles, range, indexMode, gap, [], [], [], [], [], [], []);
     } else if (mode === 'bit' && typeof window.draw_array_BIT === 'function') {
@@ -1707,7 +1719,8 @@
         || document.variables?.[variableId]?.kind
         || entry.data?.kind;
       if (descriptor.cellRange) {
-        if (rendererName !== 'original-heap') return;
+        const intervalSegmentTree = rendererName === 'original-segment-tree';
+        if (rendererName !== 'original-heap' && !intervalSegmentTree) return;
         const rootNode = Number(window.ASMTraceRules.resolveExpression(
           document, frame, descriptor.cellExpression
         ));
@@ -1724,9 +1737,16 @@
           ?? heap?.dataset?.traceRangeStart ?? 0);
         const levels = Number(heap?.querySelector?.('[data-heap-levels]')?.getAttribute?.('data-heap-levels')
           ?? heap?.getAttribute?.('data-heap-levels'));
-        if (!Number.isInteger(levels) || levels < 1) return;
+        if (!intervalSegmentTree && (!Number.isInteger(levels) || levels < 1)) return;
 
         const sectionCountForNode = nodeIndex => {
+          if (intervalSegmentTree) {
+            const cell = elements.get(`${targetKey}#${nodeIndex}`);
+            const left = Number(cell?.dataset?.segmentLeft);
+            const right = Number(cell?.dataset?.segmentRight);
+            return Number.isInteger(left) && Number.isInteger(right) && left <= right
+              ? right - left + 1 : 0;
+          }
           const localIndex = nodeIndex - rangeStart;
           if (localIndex < 0) return 0;
           const depth = Math.floor(Math.log2(localIndex + 1));
@@ -1735,8 +1755,8 @@
         const rootSectionCount = sectionCountForNode(rootNode);
         if (!rootSectionCount) return;
         const ranges = [];
-        const addRange = (nodeIndex, start, end) => {
-          const sectionCount = sectionCountForNode(nodeIndex);
+        const addRange = (nodeIndex, start, end, knownSectionCount = 0) => {
+          const sectionCount = knownSectionCount || sectionCountForNode(nodeIndex);
           const clippedStart = Math.max(0, start);
           const clippedEnd = Math.min(sectionCount - 1, end);
           if (sectionCount && clippedStart <= clippedEnd) {
@@ -1763,23 +1783,26 @@
           let intervalStart = 0;
           let intervalCount = rootSectionCount;
           for (const child of path) {
-            const half = intervalCount / 2;
-            if (!Number.isInteger(half) || half < 1) return;
+            const leftCount = intervalSegmentTree ? Math.ceil(intervalCount / 2) : intervalCount / 2;
+            const rightCount = intervalCount - leftCount;
+            if (!Number.isInteger(leftCount) || leftCount < 1 || rightCount < 1) return;
             if (child === currentNode * 2) {
-              const siblingStart = intervalStart + half;
+              const siblingStart = intervalStart + leftCount;
               const overlapStart = Math.max(queryStart, siblingStart);
-              const overlapEnd = Math.min(queryEnd, siblingStart + half - 1);
-              addRange(currentNode * 2 + 1, overlapStart - siblingStart, overlapEnd - siblingStart);
+              const overlapEnd = Math.min(queryEnd, siblingStart + rightCount - 1);
+              addRange(currentNode * 2 + 1, overlapStart - siblingStart,
+                overlapEnd - siblingStart, rightCount);
+              intervalCount = leftCount;
             } else if (child === currentNode * 2 + 1) {
-              intervalStart += half;
+              intervalStart += leftCount;
+              intervalCount = rightCount;
             } else return;
             currentNode = child;
-            intervalCount = half;
           }
           if (descriptor.split.phase !== 'after') {
             const overlapStart = Math.max(queryStart, intervalStart);
             const overlapEnd = Math.min(queryEnd, intervalStart + intervalCount - 1);
-            addRange(cursor, overlapStart - intervalStart, overlapEnd - intervalStart);
+            addRange(cursor, overlapStart - intervalStart, overlapEnd - intervalStart, intervalCount);
           }
         } else {
           addRange(rootNode, rawStart, rawEnd);
@@ -4585,9 +4608,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-202';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-203';
   window.ASMTraceRenderers = {
-    build: 'trace-202', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-203', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails, displayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
