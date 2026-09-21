@@ -39,7 +39,8 @@
 - [x] `left-top`、`right-top`、`left-bottom`、`right-bottom` 可用於來源及目標錨點，並分別正規化為既有角落名稱。
 - [x] 範例中的 highlight 與 point 不指定顏色，沿用 renderer 預設值；只有 background 使用教學色彩。
 - [x] 建構時 `BIT[i]` 的 compound assignment 明確以可見的 `num[k]` 為來源，播放時數值會從 num 格移向 BIT 格。
-- [x] 建樹畫面以預設 highlight 指定目前的 `num[k]`，不替 num 區間加 background；查詢畫面保留使用區間 background，可見區間以 `l~i` 顯示。
+- [x] 建樹畫面以預設 highlight 指定目前的 `num[k]`，不替 num 區間加 background；查詢畫面保留使用區間 background，可見區間以 `i-lb+1~i` 顯示。
+- [x] `i += lb` 與 `i -= lb` 會讓依賴 i 的 marker 沿既有 position 路徑平移；BIT／num 的 compound value assignment 不被誤判為 marker 移動。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -57,3 +58,4 @@
 - 2026-09-21：將 build 改為保存原始索引 k 並執行 `BIT[i] += num[k]`，讓事件來源對應可見 num 格並播放數值 transfer；程式 commit 為 `1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`。
 - 2026-09-21：依指定改用 `num.left-bottom at BIT.left-top offset(-40,-70)`；建樹只 highlight `num[k]`，查詢才顯示 num 區間 background，區間文字改用 `~`；程式 commit 為 `de9ebaca102e2618bd013a2dc1b2ef3fb5749337`。
 - 2026-09-21：移除只供繪圖使用的區間左端點變數 `l`，改由 `@style` 與 `@text` 直接計算 `i-lb+1`；程式 commit 為 `a69a43f837508d64b7c9c1a79b3789d83c8a0a87`。
+- 2026-09-21：修正 scalar compound write 未進入 marker position 動畫的分類缺口；只有事件目標確實控制 marker 時才平移，陣列 compound assignment 維持數值動畫；程式 commit 為 `33a56ff3c2ec4d907f21ddfb406dbf2ccd9ab8b4`。
