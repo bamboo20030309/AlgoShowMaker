@@ -487,7 +487,13 @@
       const match = cell.id.match(/-(\d+)$/);
       if (!match) return;
       const index = Number(match[1]);
-      cell.setAttribute('data-structure-item-index', String(index));
+      const itemIndex = mode === 'segment_tree'
+        && group.getAttribute('data-layout') === 'segment_tree_interval'
+        ? index - 1
+        : index;
+      if (itemIndex < 0) return;
+      cell.setAttribute('data-structure-item-index', String(itemIndex));
+      if (mode === 'segment_tree') cell.setAttribute('data-segment-storage-index', String(index));
       if (mode === 'matrix' && columns > 0) {
         cell.setAttribute('data-matrix-row', String(Math.floor(index / columns)));
         cell.setAttribute('data-matrix-column', String(index % columns));
@@ -531,7 +537,21 @@
 
     if (mode === 'normal') renderer(group, label, source, styles, range, itemsPerRow, indexMode, gap);
     else if (mode === 'heap') renderer(group, label, source, styles, range, indexMode, gap);
-    else if (mode === 'segment_tree') renderer(group, label, source, styles, range, indexMode, gap, [], [], [], [], [], [], []);
+    else if (mode === 'segment_tree') {
+      const standardRenderer = window.draw_standard_segment_tree;
+      if (typeof standardRenderer !== 'function') return false;
+      const domainStart = Number(widget.indexBase) === 1 ? 1 : 0;
+      const domainLength = Math.max(1, Math.ceil((values.length + 1) / 2));
+      standardRenderer(group, label, source, styles, {
+        domainStart,
+        domainEnd: domainStart + domainLength - 1,
+        root: 1,
+        indexMode,
+        gap
+      });
+      group.setAttribute('data-slide-segment-node-count', String(values.length));
+      group.setAttribute('data-slide-segment-domain-length', String(domainLength));
+    }
     else if (mode === 'BIT') renderer(group, label, source, styles, range, indexMode, gap);
     else if (mode === 'disk') {
       const numericValues = source.map((value, index) => {
@@ -647,7 +667,9 @@
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', `${MODE_LABELS[mode]} data structure`);
-    svg.setAttribute('data-renderer', mode === 'binary_tree' ? 'original-tree-adapter' : 'original-draw-array');
+    svg.setAttribute('data-renderer', mode === 'binary_tree'
+      ? 'original-tree-adapter'
+      : (mode === 'segment_tree' ? 'standard-segment-tree' : 'original-draw-array'));
     svg.style.display = 'block';
     svg.style.width = '100%';
     svg.style.height = '100%';
