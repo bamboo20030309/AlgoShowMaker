@@ -11,17 +11,17 @@ vector<int> num, BIT;
 
 // num 使用 0-based 十進制索引；BIT 使用 1-based 二進制索引。
 // @preset binary_indexed_tree_view
-// @object num with range(0,n-1), labels(value,index)
+// @object num with labels(value,index)
 // @object BIT render binary indexed tree with range(1,n), labels(value,binary-index-padded)
 // @style num[0] background AV_grey
-// @place BIT.top-left at num.bottom-left offset(0,70)
+// @place num at BIT.top offset(-40,-70)
 // @endpreset
 
 // @preset binary_indexed_tree_pointer_view
-// @object num with range(0,n-1), labels(value,index)
+// @object num with labels(value,index)
 // @object BIT[i] render binary indexed tree with range(1,n), labels(value,binary-index-padded)
 // @style num[0] background AV_grey
-// @place BIT.top-left at num.bottom-left offset(0,70)
+// @place num at BIT.top offset(-40,-70)
 // @endpreset
 
 void build(int i, int x) {

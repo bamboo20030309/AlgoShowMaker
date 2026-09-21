@@ -82,7 +82,10 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         return {
           dataObjects: [...root.querySelectorAll('.asm-trace-object[data-trace-variable]')]
             .map(node => node.dataset.traceVariable),
-          numBounds: rect(num), bitBounds: rect(bit), cells, labels,
+          numBounds: rect(num), bitBounds: rect(bit),
+          numCellCount: [...num.querySelectorAll('[data-trace-index]')]
+            .filter(node => !node.dataset.traceContentRole).length,
+          cells, labels,
           marker: marker && {
             label: marker.querySelector('.trace-variable-marker-label-text')?.textContent,
             target: marker.dataset.traceBindingTarget,
@@ -93,6 +96,7 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       }, { numId, bitId, iId });
 
       assert.deepEqual([...new Set(presentation.dataObjects)].sort(), [bitId, numId].sort());
+      assert.equal(presentation.numCellCount, 10, 'num displays the complete vector');
       assert.deepEqual(initialNum.labels, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
       assert.equal(initialNum.fill, 'rgb(204, 204, 204)');
       assert.equal(presentation.cells.length, 10);
@@ -102,8 +106,13 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       assert.deepEqual(widths, { 1: 40, 2: 80, 3: 40, 4: 160, 5: 40,
         6: 80, 7: 40, 8: 320, 9: 40, 10: 80 });
       assert.equal(presentation.cells.find(cell => cell.index === 8).value, '54');
-      assert.ok(presentation.bitBounds.top > presentation.numBounds.bottom,
-        'Binary Indexed Tree is placed below num');
+      const numCenter = presentation.numBounds.left + presentation.numBounds.width / 2;
+      const bitCenter = presentation.bitBounds.left + presentation.bitBounds.width / 2;
+      const scale = presentation.cells.find(cell => cell.index === 1).bounds.width / 40;
+      assert.ok(Math.abs(numCenter - (bitCenter - 40 * scale)) <= 1,
+        'num is horizontally placed at BIT.top offset(-40,-70)');
+      assert.ok(Math.abs(presentation.bitBounds.top - presentation.numBounds.bottom - 78 * scale) <= 1,
+        'num is vertically placed above BIT with the requested -70 offset');
       assert.equal(presentation.marker?.label, 'i');
       assert.ok(presentation.marker?.target?.endsWith('#8'));
       assert.ok(presentation.highlight?.width >= presentation.cells.find(cell => cell.index === 8).bounds.width

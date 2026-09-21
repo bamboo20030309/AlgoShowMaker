@@ -47,9 +47,11 @@ test('directive expressions parse and evaluate C++ bitwise precedence', () => {
 test('Binary Indexed Tree sample only uses the two new-directive objects', () => {
   const code = fs.readFileSync(samplePath, 'utf8');
   assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|frame_draw|start_draw|end_draw|_draw_|@keep|long long/);
-  assert.match(code, /@object num with range\(0,n-1\), labels\(value,index\)/);
+  assert.match(code, /@object num with labels\(value,index\)/);
+  assert.doesNotMatch(code, /@object num[^\n]*\brange\(/);
   assert.match(code, /@object BIT(?:\[i\])? render binary indexed tree/);
   assert.match(code, /@style num\[0\] background AV_grey/);
+  assert.match(code, /@place num at BIT\.top offset\(-40,-70\)/);
   assert.deepEqual(
     [...new Set(Array.from(code.matchAll(/@object\s+([A-Za-z_]\w*)/g), match => match[1]))].sort(),
     ['BIT', 'num']
@@ -67,6 +69,10 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
     ?.rendererOptions.labels?.indexFormat === 'decimal'));
   assert.ok(frames.every(frame => frame.objects.find(object => object.primaryName === 'BIT')
     ?.rendererOptions.labels?.indexFormat === 'binary-padded'));
+  assert.ok(frames.every(frame => frame.placeBindings.some(binding => (
+    binding.sourceName === 'num' && binding.targetName === 'BIT'
+      && binding.anchor === 'top' && binding.offsetX === -40 && binding.offsetY === -70
+  ))));
 });
 
 test('Binary Indexed Tree renderer accepts its full name and legacy aliases', () => {
