@@ -56,3 +56,4 @@
 - 2026-09-21：拆開 BIT 的 highlight 與 background 指令，highlight／point 保留預設顏色，只有 background 指定 AV_green／AV_blue；程式 commit 為 `93b5a32d2fe6aa732579b4c74600802586d985b1`。
 - 2026-09-21：將 build 改為保存原始索引 k 並執行 `BIT[i] += num[k]`，讓事件來源對應可見 num 格並播放數值 transfer；程式 commit 為 `1d83fa39e8d5ad4028a0c83a3f50188abb658a4e`。
 - 2026-09-21：依指定改用 `num.left-bottom at BIT.left-top offset(-40,-70)`；建樹只 highlight `num[k]`，查詢才顯示 num 區間 background，區間文字改用 `~`；程式 commit 為 `de9ebaca102e2618bd013a2dc1b2ef3fb5749337`。
+- 2026-09-21：移除只供繪圖使用的區間左端點變數 `l`，改由 `@style` 與 `@text` 直接計算 `i-lb+1`；程式 commit 為 `a69a43f837508d64b7c9c1a79b3789d83c8a0a87`。
