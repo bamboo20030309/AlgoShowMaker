@@ -63,22 +63,23 @@ int main() {
     for (int i = 1; i <= n; i++) add(i, num[i]);
 
     int L, R;
-    cin >> L >> R;
+    while (cin >> L >> R) {
 
-    // @frame use binary_indexed_tree_view
-    // @events animate off
-    // @style num[L:R] background AV_green
-    // @text "查詢第 ${L} 到第 ${R} 個數：計算 sum(${R}) - sum(${L - 1})" at num.top offset(0,-20)
+        // @frame use binary_indexed_tree_view
+        // @events animate off
+        // @style num[L:R] background AV_green
+        // @text "查詢第 ${L} 到第 ${R} 個數：計算 sum(${R}) - sum(${L - 1})" at num.top offset(0,-20)
 
-    int sumR = sum(R, false);
-    int sumL = sum(L - 1, true);
-    int ans = sumR - sumL;
+        int sumR = sum(R, false);
+        int sumL = sum(L - 1, true);
+        int ans = sumR - sumL;
 
-    // @frame use binary_indexed_tree_view
-    // @style num[L:R] background AV_green
-    // @text "區間和 = ${sumR} - ${sumL} = ${ans}" at num.top offset(0,-20)
+        // @frame use binary_indexed_tree_view
+        // @style num[L:R] background AV_green
+        // @text "區間和 = ${sumR} - ${sumL} = ${ans}" at num.top offset(0,-20)
 
-    cout << "sum of L to R = " << ans << '\n';
+        cout << "sum of L to R = " << ans << '\n';
+    }
     return 0;
 }
 

@@ -3812,9 +3812,20 @@ ${loop}
         const evaluatedExpression = truthySignature && !suppressEvents
           ? `::asm_trace::event_truthy_compare(${analysis.lineAt(expressionNode.from)}, ${cppString(truthySignature)}, ${indexedTargetArgs(truthyTarget)}, [&]()->decltype(auto){ return (${expression}); })`
           : expression;
+        const conditionText = source.slice(expressionNode.from, expressionNode.to).trim();
+        const conditionInputInitializations = /^(?:std\s*::\s*)?cin\s*>>/.test(conditionText)
+          ? inputInitializationMarks(expressionNode)
+          : '';
+        // Stream extraction normally gets its initialization checkpoint from
+        // the surrounding ExpressionStatement. A direct condition such as
+        // `while (cin >> L >> R)` has no such statement, so record successful
+        // extractions before the loop body can capture its first manual frame.
+        const initializedExpression = conditionInputInitializations && !suppressEvents
+          ? `([&](){ const bool __asm_input_condition_${node.from} = static_cast<bool>(${evaluatedExpression}); if (static_cast<bool>(std::cin)) { ${conditionInputInitializations} } return __asm_input_condition_${node.from}; }())`
+          : evaluatedExpression;
         rendered = suppressEvents
           ? expression
-          : `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(conditionKind)}, [&](){ return static_cast<bool>(${evaluatedExpression}); }))`;
+          : `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(conditionKind)}, [&](){ return static_cast<bool>(${initializedExpression}); }))`;
       }
     } else if (node.name === 'AssignmentExpression' || node.name === 'UpdateExpression') {
       const targetNode = node.name === 'AssignmentExpression' ? children[0] : children.find(child => containsSelectedReference(child));

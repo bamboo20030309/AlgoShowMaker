@@ -135,6 +135,7 @@ test('Binary Indexed Tree build and query samples are separate two-object exampl
   assert.match(queryCode, /num\[\$\{i-lb\+1\}~\$\{i\}\]/);
   assert.match(queryCode, /sum\(R, false\)/);
   assert.match(queryCode, /sum\(L - 1, true\)/);
+  assert.match(queryCode, /while \(cin >> L >> R\)/);
   assert.doesNotMatch(queryCode, /下一個索引/);
   assert.doesNotMatch(queryCode, /void build\(int i\)/);
 });
