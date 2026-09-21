@@ -46,6 +46,7 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
           y: Number(rect?.getAttribute('y')),
           width: Number(rect?.getAttribute('width')),
           height: Number(rect?.getAttribute('height')),
+          valueFontSize: Number(target?.querySelector(':scope > text')?.getAttribute('font-size')),
           indexHeight: Number(indexRect?.getAttribute('height')),
           label: label?.textContent,
           indexLabel: indexText ? {
@@ -100,6 +101,8 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
     assert.deepEqual([result.right.left, result.right.right, result.right.width], [6,10,200]);
     assert.deepEqual([result.three.width, result.two.width, result.leafThree.width], [120,80,40]);
     assert.deepEqual([result.leafThree.height, result.leafThree.indexHeight], [40,12]);
+    assert.deepEqual([result.root.valueFontSize, result.leafOne.valueFontSize,
+      result.leafTen.valueFontSize], [16,16,16]);
     assert.equal(result.left.y, result.right.y);
     assert.ok(result.three.y > result.left.y);
     assert.equal(result.pairOneTwo.y, result.leafThree.y);
@@ -107,12 +110,12 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
     assert.match(result.root.label, /\[1,10\]/);
     assert.deepEqual(result.root.indexLabel, { text: '1', anchor: 'middle', x: 208 });
     assert.deepEqual(result.root.intervalLabel,
-      { text: '[1,10]', anchor: 'end', x: 405, fontSize: 11 });
+      { text: '[1,10]', anchor: 'end', x: 405, fontSize: 9 });
     assert.deepEqual(result.leafOne.indexLabel, { text: '16', anchor: 'middle', x: 28 });
     assert.deepEqual(result.leafOne.intervalLabel,
-      { text: '1', anchor: 'end', x: 45, fontSize: 10 });
+      { text: '[1]', anchor: 'end', x: 45, fontSize: 8 });
     assert.deepEqual(result.leafTen.intervalLabel,
-      { text: '10', anchor: 'end', x: 405, fontSize: 10 });
+      { text: '[10]', anchor: 'end', x: 405, fontSize: 8 });
     assert.equal(result.leafOne.labelOverlap, false);
     assert.equal(result.leafTen.labelOverlap, false);
     assert.deepEqual(result.segment, { node: 1, width: 240 });

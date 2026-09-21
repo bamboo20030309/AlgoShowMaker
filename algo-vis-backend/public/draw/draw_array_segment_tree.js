@@ -559,8 +559,16 @@
       text.setAttribute('y', String(box.y + cellHeight / 2 + 6));
       text.setAttribute('text-anchor', 'middle');
       text.setAttribute('font-family', 'Arial');
-      text.setAttribute('font-size', String(Math.max(10, Math.min(16, box.width / 3))));
-      text.textContent = indexMode === 2 ? String(node.index) : String(array[node.index] ?? '');
+      const valueLabel = indexMode === 2 ? String(node.index) : String(array[node.index] ?? '');
+      const valueFontSize = typeof window.fitSvgText === 'function'
+        ? window.fitSvgText(g, valueLabel, box.width, cellHeight, {
+          maxFont: 16,
+          minFont: 10,
+          padding: 4
+        })
+        : 16;
+      text.setAttribute('font-size', String(valueFontSize));
+      text.textContent = valueLabel;
 
       const labelId = `${cellId}-index`;
       const label = ensureChild(labelId);
@@ -598,15 +606,15 @@
         label.appendChild(intervalText);
       }
       const intervalLabel = node.left === node.right
-        ? String(node.left)
+        ? `[${node.left}]`
         : `[${node.left},${node.right}]`;
       const intervalFontSize = typeof window.fitSvgText === 'function'
         ? window.fitSvgText(g, intervalLabel, Math.max(8, box.width / 2 - 3), intervalLabelHeight, {
-          maxFont: node.left === node.right ? 10 : 11,
-          minFont: 8,
+          maxFont: node.left === node.right ? 8 : 9,
+          minFont: 7,
           padding: 0
         })
-        : Math.max(8, Math.min(node.left === node.right ? 10 : 11, box.width / 4));
+        : (node.left === node.right ? 8 : 9);
       intervalText.setAttribute('x', String(box.x + box.width - 3));
       intervalText.setAttribute('y', String(box.y + cellHeight + 10));
       intervalText.setAttribute('text-anchor', 'end');

@@ -75,7 +75,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
   assert.ok(html.includes('trace-rules.js?v=trace-19'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
-    const version = name === 'segment_tree' ? 'segment-label-1' : 'gap-1';
+    const version = name === 'segment_tree' ? 'segment-label-2' : 'gap-1';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(slides.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));

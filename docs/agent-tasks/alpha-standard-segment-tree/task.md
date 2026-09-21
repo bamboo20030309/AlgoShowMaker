@@ -10,7 +10,7 @@
 ## 問題與預期結果
 - 情境與操作：標準線段樹使用一維陣列與遞迴區間建樹，n 可能不是二次方。
 - 目前行為：既有 heap 排版用完整二元樹層級安排固定寬度格子，不能直接呈現節點區間長度，也會讓不同深度的葉節點失去自然父子關係。
-- 使用者希望的結果：新增 `render segment_tree`，讓格子寬度反映區間長度，子節點直接位於父節點下一層，且不把葉節點強制對齊到底部；最小格為 40×40px、index 高 12px，並可分別設定水平與垂直 gap；tree index 置中，interval 靠右且葉節點不重複顯示相同端點。
+- 使用者希望的結果：新增 `render segment_tree`，讓格子寬度反映區間長度，子節點直接位於父節點下一層，且不把葉節點強制對齊到底部；最小格為 40×40px、index 高 12px，並可分別設定水平與垂直 gap；tree index 置中，interval 靠右且葉節點使用單端點括號；葉節點 value 與其他節點同字級。
 - 本次範圍與必要限制：保留既有 `render heap` 與舊線段樹範例；提供標準 `vector<int> tree(4*n+5)` 範例；新增 `gap(horizontal,vertical)` 到陣列類 renderer；範例預設不寫 gap；只做相關 V2 小驗證。
 
 ## 需求確認
@@ -38,7 +38,8 @@
 - [x] 標準線段樹最小 value 格為 40×40px，index 格高 12px；不寫 gap 時格子貼合且不畫父子線。
 - [x] `gap(10,24)` 分別套用水平與垂直間距；三單位跨區間格寬為 140px，垂直 gap 大於 0 時才畫父子線。
 - [x] 一般陣列、heap、BIT、queue、stack、disk 依各自排版軸套用 gap，且格內 `@segment` 不跨越水平 gap。
-- [x] 標準線段樹下方標籤將 tree index 置中、interval 靠右；葉節點 `[x,x]` 顯示為 `x`，兩位數葉節點不與 index 重疊。
+- [x] 標準線段樹下方標籤將 tree index 置中、interval 靠右且比 index 小 2px；葉節點 `[x,x]` 顯示為 `[x]`，兩位數葉節點不與 index 重疊。
+- [x] 一般可容納的 value 在葉節點與非葉節點都使用 16px，只有內容真正超出格寬時才縮小。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
@@ -50,3 +51,4 @@
 - 2026-09-21：依使用者回饋移除 `domain/root/unit`，改由 `range` 起點推導根索引並採用內建格寬。
 - 2026-09-21：依使用者回饋固定最小格 40×40px、index 高 12px，新增 `gap(horizontal,vertical)`；預設 gap 0，範例不額外拉開。
 - 2026-09-21：依使用者回饋將 index 與 interval 分開排版；index 置中、interval 靠右，葉節點區間簡化為單一端點。
+- 2026-09-21：依使用者回饋保留葉節點單端點括號 `[x]`，interval 比 index 小 2px，value 字級不再隨節點寬度機械縮小。
