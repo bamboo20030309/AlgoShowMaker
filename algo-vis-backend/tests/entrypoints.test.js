@@ -40,8 +40,9 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('compile.js?v=syntax-7'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=brand-home-5'));
-  assert.match(html, /<a class="menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="menu-brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
+  assert.ok(html.includes('style.css?v=brand-shared-6'));
+  assert.ok(html.includes('brand.css?v=hover-pill-1'));
+  assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
@@ -63,6 +64,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
   assert.ok(legacy.includes('home.css?v=brand-favicon-16'));
+  assert.ok(legacy.includes('brand.css?v=hover-pill-1'));
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=7'));
   assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=thumbnail-drag-8'));
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));

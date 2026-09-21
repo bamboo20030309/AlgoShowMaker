@@ -46,33 +46,53 @@ test('algorithm brand matches the home identity and links home', { timeout: 1200
     const brand = page.getByRole('link', { name: 'AlgoShowMaker 首頁' });
     assert.equal(await brand.getAttribute('href'), '/');
     assert.equal(await brand.locator('span').textContent(), 'AlgoShowMaker');
-    const appearance = await brand.evaluate(element => {
+    const readAppearance = element => {
       const image = element.querySelector('img');
       const style = getComputedStyle(element);
       return {
         display: style.display,
         gap: style.gap,
+        color: style.color,
+        fontFamily: style.fontFamily,
         fontSize: style.fontSize,
         fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
         imageLoaded: image.complete && image.naturalWidth > 0,
         imageWidth: image.getBoundingClientRect().width,
         imageHeight: image.getBoundingClientRect().height
       };
-    });
-    assert.ok(['flex', 'inline-flex'].includes(appearance.display));
-    assert.deepEqual({ ...appearance, display: undefined }, {
+    };
+    const algorithmAppearance = await brand.evaluate(readAppearance);
+    assert.ok(['flex', 'inline-flex'].includes(algorithmAppearance.display));
+    assert.deepEqual({ ...algorithmAppearance, display: undefined }, {
       display: undefined,
       gap: '9px',
+      color: 'rgb(255, 255, 255)',
+      fontFamily: 'Arial, "Noto Sans TC", sans-serif',
       fontSize: '17px',
       fontWeight: '700',
+      lineHeight: 'normal',
       imageLoaded: true,
       imageWidth: 28,
       imageHeight: 28
     });
 
+    await brand.hover();
+    await page.waitForTimeout(200);
+    const hoverFeedback = await brand.evaluate(element => ({
+      background: getComputedStyle(element, '::before').backgroundColor,
+      borderColor: getComputedStyle(element, '::before').borderColor,
+      transform: getComputedStyle(element.querySelector('img')).transform
+    }));
+    assert.equal(hoverFeedback.background, 'rgba(112, 190, 255, 0.1)');
+    assert.equal(hoverFeedback.borderColor, 'rgba(112, 190, 255, 0.18)');
+    assert.notEqual(hoverFeedback.transform, 'none');
+
     await brand.click();
     await page.waitForURL(`${base}/`);
-    assert.equal(await page.locator('.brand span').textContent(), 'AlgoShowMaker');
+    const homeBrand = page.getByRole('link', { name: 'AlgoShowMaker 首頁' });
+    assert.equal(await homeBrand.locator('span').textContent(), 'AlgoShowMaker');
+    assert.deepEqual(await homeBrand.evaluate(readAppearance), algorithmAppearance);
   } finally {
     if (browser) await browser.close();
     server.kill();
