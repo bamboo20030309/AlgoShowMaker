@@ -29,6 +29,12 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         && event.targets?.some(target => target.variableId === bitId && target.resolvedIndex === 8))
     ));
     assert.ok(frameIndex > 0, 'sample must contain the update frame for index 8');
+    const write = trace.frames[frameIndex].events.find(event => event.type === 'write'
+      && event.targets?.some(target => target.variableId === bitId && target.resolvedIndex === 8));
+    const source = write.targets.find(target => target.role === 'source');
+    assert.equal(source.variableId, numId);
+    const sourceIndex = source.resolvedIndex;
+    const sourceValue = String(trace.frames[frameIndex].state[numId].data.items[sourceIndex].value);
 
     const browser = await chromium.launch({
       headless: true,
@@ -53,7 +59,26 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
         };
       }, numId);
       await page.evaluate(index => window.ASMTracePlayer.renderStable(index - 1), frameIndex);
-      await page.evaluate(index => window.ASMTracePlayer.render(index, { fromIndex: index - 1 }), frameIndex);
+      const transfer = await page.evaluate(async index => {
+        const player = window.ASMTracePlayer;
+        const samples = [];
+        let settled = false;
+        const transition = player.render(index, { fromIndex: index - 1 }).finally(() => { settled = true; });
+        for (let count = 0; count < 180 && !settled; count++) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          const root = document.querySelector('#asm-trace-root');
+          const moving = root?.querySelector('.asm-trace-assign-transfer-value');
+          const movingText = moving?.querySelector('text');
+          if (moving && movingText) {
+            samples.push({
+              value: movingText.textContent,
+              transform: moving.getAttribute('transform') || ''
+            });
+          }
+        }
+        await transition;
+        return samples;
+      }, frameIndex);
 
       const presentation = await page.evaluate(({ numId, bitId, iId }) => {
         const root = document.querySelector('#asm-trace-root');
@@ -108,6 +133,12 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       assert.deepEqual(widths, { 1: 40, 2: 80, 3: 40, 4: 160, 5: 40,
         6: 80, 7: 40, 8: 320, 9: 40, 10: 80 });
       assert.equal(presentation.cells.find(cell => cell.index === 8).value, '54');
+      assert.ok(transfer.some(sample => sample.value === sourceValue),
+        `num[${sourceIndex}] value is copied into the assignment transfer`);
+      const transferTransforms = new Set(transfer.filter(sample => sample.value === sourceValue)
+        .map(sample => sample.transform));
+      assert.ok(transferTransforms.size > 2,
+        `num[${sourceIndex}] value visibly travels to BIT[8]`);
       const numCenter = presentation.numBounds.left + presentation.numBounds.width / 2;
       const bitCenter = presentation.bitBounds.left + presentation.bitBounds.width / 2;
       const scale = presentation.cells.find(cell => cell.index === 1).bounds.width / 40;

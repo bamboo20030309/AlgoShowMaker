@@ -24,7 +24,8 @@ vector<int> num, BIT;
 // @place num at BIT.top offset(-40,-70)
 // @endpreset
 
-void build(int i, int x) {
+void build(int i) {
+    int k = i;
     while (i <= n) {
         int lb = i & -i;
         int l = i - lb + 1;
@@ -33,9 +34,9 @@ void build(int i, int x) {
         // @style num[l:i] background AV_green
         // @style BIT[i] highlight
         // @style BIT[i] background AV_green
-        // @text "BIT[${i}] 涵蓋 num[${l}..${i}]，準備加上 ${x}" at num.top offset(0,-20)
+        // @text "BIT[${i}] 涵蓋 num[${l}..${i}]，準備加上 num[${k}] = ${num[k]}" at num.top offset(0,-20)
 
-        BIT[i] += x;
+        BIT[i] += num[k];
 
         // @frame use binary_indexed_tree_pointer_view
         // @style num[l:i] background AV_green
@@ -82,7 +83,7 @@ int main() {
     // @events animate off
     // @text "num[0] 是保留格；實際資料與 Binary Indexed Tree 都從 index 1 開始" at num.top offset(0,-20)
 
-    for (int i = 1; i <= n; i++) build(i, num[i]);
+    for (int i = 1; i <= n; i++) build(i);
 
     // @frame use binary_indexed_tree_view
     // @text "Binary Indexed Tree 建構完成；每個寬格代表它負責的連續區間" at num.top offset(0,-20)

@@ -58,7 +58,9 @@ test('Binary Indexed Tree sample only uses the two new-directive objects', () =>
     [...new Set(Array.from(code.matchAll(/@object\s+([A-Za-z_]\w*)/g), match => match[1]))].sort(),
     ['BIT', 'num']
   );
-  assert.match(code, /void build\(int i, int x\)/);
+  assert.match(code, /void build\(int i\)/);
+  assert.match(code, /int k = i;/);
+  assert.match(code, /BIT\[i\] \+= num\[k\];/);
   assert.match(code, /int sum\(int i\)/);
   assert.match(code, /int lb = i & -i;/);
   assert.match(code, /int l = i - lb \+ 1;/);
@@ -157,6 +159,18 @@ test('Binary Indexed Tree sample preserves point updates and range-sum output', 
   assert.equal(Number(trace.frames.at(-1).state[byName.num].data.items[0].value), 0);
   assert.deepEqual(trace.frames.at(-1).state[byName.BIT].data.items.slice(1).map(item => Number(item.value)),
     [5, 12, 2, 15, 9, 13, 11, 54, 8, 14]);
+  const bitWrites = trace.frames.flatMap(frame => frame.events || []).filter(event => (
+    event.type === 'write' && event.compound === true
+      && event.targets?.some(target => target.role === 'target' && target.variableId === byName.BIT)
+  ));
+  assert.ok(bitWrites.length > 0);
+  assert.ok(bitWrites.every(event => {
+    const source = event.targets.find(target => target.role === 'source');
+    return source?.variableId === byName.num
+      && Number.isInteger(source.resolvedIndex)
+      && source.resolvedIndex >= 1
+      && source.resolvedIndex <= 10;
+  }), 'every BIT compound assignment keeps its visible num[k] source cell');
   assert.ok(trace.frames.filter(frame => ['build', 'sum'].includes(frame.source?.function))
     .every(frame => frame.bindings.some(binding => (
       binding.targetName === 'BIT' && binding.indexExpression === 'i'
