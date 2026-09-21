@@ -10,7 +10,7 @@
 ## 問題與預期結果
 - 情境與操作：標準線段樹使用一維陣列與遞迴區間建樹，n 可能不是二次方。
 - 目前行為：既有 heap 排版用完整二元樹層級安排固定寬度格子，不能直接呈現節點區間長度，也會讓不同深度的葉節點失去自然父子關係。
-- 使用者希望的結果：新增 `render segment_tree`，讓格子寬度反映區間長度，子節點直接位於父節點下一層，且不把葉節點強制對齊到底部；最小格為 40×40px、index 高 12px，並可分別設定水平與垂直 gap；tree index 置中，interval 靠右且葉節點使用單端點括號；葉節點 value 與其他節點同字級。
+- 使用者希望的結果：新增 `render segment_tree`，讓格子寬度反映區間長度，子節點直接位於父節點下一層，且不把葉節點強制對齊到底部；最小格為 40×40px、index 高 12px，並可分別設定水平與垂直 gap；tree index 平常置中，interval 靠右且葉節點使用單端點括號，碰撞時 index 向左避讓；兩段標籤在框內垂直置中；葉節點 value 與其他節點同字級。
 - 本次範圍與必要限制：保留既有 `render heap` 與舊線段樹範例；提供標準 `vector<int> tree(4*n+5)` lazy 範例，輸入操作 1/2/3 分別代表 modify、set、query；新增 `gap(horizontal,vertical)` 到陣列類 renderer；範例預設不寫 gap；只做相關 V2 小驗證。
 
 ## 需求確認
@@ -42,6 +42,7 @@
 - [x] 一般可容納的 value 在葉節點與非葉節點都使用 16px，只有內容真正超出格寬時才縮小。
 - [x] 標準範例讀取指定的 n=15、7 個操作輸入；modify、set、query 分別顯示紫、橘、綠 segment，最後 query [8,9] 輸出 12。
 - [x] 標準範例以 `fields(tree,lazy,sets)` 合併欄位，並以 `hide(lazy=0,sets=LM)` 隱藏預設 lazy/set 值。
+- [x] n=15 的兩位數葉節點 index 28/29 不與 interval `[13]`／`[14]` 重疊，且 index 與 interval 都在 12px 標籤框中垂直置中。
 
 ## 驗證計畫
 - 子代理小驗證：語法與差異檢查；新 parser／compile 專項；n=10 瀏覽器幾何、gap 與 split 專項；各陣列類 renderer gap 幾何；舊 heap 格內 segment 與既有線段樹範例相容性。
@@ -55,3 +56,4 @@
 - 2026-09-21：依使用者回饋將 index 與 interval 分開排版；index 置中、interval 靠右，葉節點區間簡化為單一端點。
 - 2026-09-21：依使用者回饋保留葉節點單端點括號 `[x]`，interval 比 index 小 2px，value 字級不再隨節點寬度機械縮小。
 - 2026-09-21：依使用者指定輸入將標準範例擴充為 15 個值、7 個 modify/set/query 操作；最後 query [8,9] 輸出 12。
+- 2026-09-21：依使用者截圖修正兩位數葉節點標籤碰撞；interval 移至距右側 1px，index 在實測碰撞時向左避讓，兩段標籤改為框內垂直置中。

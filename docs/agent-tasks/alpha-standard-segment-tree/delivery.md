@@ -10,7 +10,7 @@
 
 ## 根因與修改
 - 已確認根因與證據：既有 heap／舊 segment-tree renderer 以完整二元樹層級與固定格寬定位，無法讓 n=10 的 3/2 子區間反映長度，也無法保留深度 3 與深度 4 葉節點的自然遞迴位置。
-- 修正方式與行為變化：新增 `render segment_tree with range(start,end)`；range 同時指定資料區間，並以起點推導 tree 根索引；依標準中點拆分建立實際節點，水平寬度按區間長度，垂直位置按真實遞迴深度。最小 value 格固定 40×40px、index 格高 12px；新增 `gap(horizontal,vertical)`，單參數沿用雙軸，垂直 gap 為 0 時 heap／segment tree 不畫父子線。下方標籤將 tree index 置中、interval 靠右；葉節點 `[x,x]` 簡化為 `[x]`。value 一般使用一致的 16px，interval 比 index 小 2px。標準範例現支援區間 modify、set 與 query，並在同一 tree 格合併顯示 lazy/set 標記。
+- 修正方式與行為變化：新增 `render segment_tree with range(start,end)`；range 同時指定資料區間，並以起點推導 tree 根索引；依標準中點拆分建立實際節點，水平寬度按區間長度，垂直位置按真實遞迴深度。最小 value 格固定 40×40px、index 格高 12px；新增 `gap(horizontal,vertical)`，單參數沿用雙軸，垂直 gap 為 0 時 heap／segment tree 不畫父子線。下方標籤將 tree index 平常置中、interval 靠右；碰撞時依 SVG 實測字寬將 index 向左避讓，空間仍不足才縮字，兩者垂直置中。葉節點 `[x,x]` 簡化為 `[x]`。value 一般使用一致的 16px，interval 比 index 小 2px。標準範例現支援區間 modify、set 與 query，並在同一 tree 格合併顯示 lazy/set 標記。
 - 修改檔案及用途：instrumenter/server 解析並解析 renderer 與 gap 選項；trace renderer 分派新排版、split 與格內 segment；各陣列 renderer 套用水平／垂直間距；入口快取及提示同步；手冊與專項測試補充幾何規則。
 - README／版本紀錄／使用說明更新：README 與 `ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md` 已加入語法、排版規則與查詢 segment 範例。
 - 與 task.md 的差異：無
@@ -26,6 +26,7 @@
 | value、index 與 interval 字體 | 無頭瀏覽器檢查文字內容、字級、anchor、座標與實測文字邊界 | 根與葉 value 均為 16px；index 使用 middle；interval 使用 end、距右側 3px且小 2px；葉節點顯示 `[x]`；n=10 的兩位數葉節點不重疊 | 通過 |
 | 舊 heap 與範例相容 | 既有 parser、runtime、browser 專項 | fields/hide/segment 及三個既有線段樹範例均通過 | 通過 |
 | 指定 n=15、7 操作輸入 | parser/runtime 與 browser 專項 | modify、set、query 均產生對應色彩 segment；lazy/set 欄位顯示非預設值；最後 query [8,9] 輸出 12 | 通過 |
+| 兩位數葉節點標籤避讓與垂直置中 | n=15 實際 SVG `getBBox()` 與屬性檢查 | index 28/29 均觸發向左避讓；所有 index/interval 無重疊，y 位於 12px 框中心且使用 central baseline | 通過 |
 
 ## 小驗證與重跑方式
 ### 新標準線段樹 parser、runtime 與實際 SVG

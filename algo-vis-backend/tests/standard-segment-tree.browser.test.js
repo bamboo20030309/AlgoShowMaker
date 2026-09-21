@@ -55,12 +55,17 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
           indexLabel: indexText ? {
             text: indexText.textContent,
             anchor: indexText.getAttribute('text-anchor'),
-            x: Number(indexText.getAttribute('x'))
+            x: Number(indexText.getAttribute('x')),
+            y: Number(indexText.getAttribute('y')),
+            baseline: indexText.getAttribute('dominant-baseline'),
+            adjusted: indexText.getAttribute('data-segment-label-adjusted') === 'true'
           } : null,
           intervalLabel: intervalText ? {
             text: intervalText.textContent,
             anchor: intervalText.getAttribute('text-anchor'),
             x: Number(intervalText.getAttribute('x')),
+            y: Number(intervalText.getAttribute('y')),
+            baseline: intervalText.getAttribute('dominant-baseline'),
             fontSize: Number(intervalText.getAttribute('font-size'))
           } : null,
           labelOverlap: indexText && intervalText
@@ -112,14 +117,16 @@ test('standard n=10 segment tree uses proportional intervals at natural recursio
     assert.equal(result.pairOneTwo.y, result.leafThree.y);
     assert.ok(result.leafOne.y > result.leafThree.y, 'early leaf stays at its natural recursion depth');
     assert.match(result.root.label, /\[1,10\]/);
-    assert.deepEqual(result.root.indexLabel, { text: '1', anchor: 'middle', x: 208 });
+    assert.deepEqual(result.root.indexLabel,
+      { text: '1', anchor: 'middle', x: 208, y: 54, baseline: 'central', adjusted: false });
     assert.deepEqual(result.root.intervalLabel,
-      { text: '[1,10]', anchor: 'end', x: 405, fontSize: 9 });
-    assert.deepEqual(result.leafOne.indexLabel, { text: '16', anchor: 'middle', x: 28 });
+      { text: '[1,10]', anchor: 'end', x: 407, y: 54, baseline: 'central', fontSize: 9 });
+    assert.deepEqual(result.leafOne.indexLabel,
+      { text: '16', anchor: 'middle', x: 28, y: 262, baseline: 'central', adjusted: false });
     assert.deepEqual(result.leafOne.intervalLabel,
-      { text: '[1]', anchor: 'end', x: 45, fontSize: 8 });
+      { text: '[1]', anchor: 'end', x: 47, y: 262, baseline: 'central', fontSize: 8 });
     assert.deepEqual(result.leafTen.intervalLabel,
-      { text: '[10]', anchor: 'end', x: 405, fontSize: 8 });
+      { text: '[10]', anchor: 'end', x: 407, y: 210, baseline: 'central', fontSize: 8 });
     assert.equal(result.leafOne.labelOverlap, false);
     assert.equal(result.leafTen.labelOverlap, false);
     assert.deepEqual(result.segment, { node: 1, width: 240 });
@@ -249,11 +256,34 @@ int main() {
         return [...document.querySelectorAll(`[data-trace-field-variable="${variableId}"]`)]
           .map(item => item.textContent);
       };
+      const lazyFields = lazyFrame >= 0 ? await visibleFields(lazyFrame, idByName.lazy) : [];
+      const setFields = setFrame >= 0 ? await visibleFields(setFrame, idByName.sets) : [];
+      const tree = [...document.querySelectorAll(`[data-trace-variable="${idByName.tree}"]`)].at(-1);
+      const labels = [...tree.querySelectorAll('[data-trace-index-label]')].map(label => {
+        const rect = label.querySelector(':scope > rect');
+        const index = label.querySelector('[data-segment-label-role="index"]');
+        const interval = label.querySelector('[data-segment-label-role="interval"]');
+        const indexBox = index.getBBox();
+        const intervalBox = interval.getBBox();
+        const centerY = Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')) / 2;
+        return {
+          index: index.textContent,
+          adjusted: index.getAttribute('data-segment-label-adjusted') === 'true',
+          overlaps: indexBox.x + indexBox.width > intervalBox.x,
+          verticallyCentered: Number(index.getAttribute('y')) === centerY
+            && Number(interval.getAttribute('y')) === centerY
+            && index.getAttribute('dominant-baseline') === 'central'
+            && interval.getAttribute('dominant-baseline') === 'central'
+        };
+      });
       return {
         lazyFrame,
         setFrame,
-        lazyFields: lazyFrame >= 0 ? await visibleFields(lazyFrame, idByName.lazy) : [],
-        setFields: setFrame >= 0 ? await visibleFields(setFrame, idByName.sets) : [],
+        lazyFields,
+        setFields,
+        overlappingLabels: labels.filter(label => label.overlaps).map(label => label.index),
+        verticallyOffCenter: labels.filter(label => !label.verticallyCentered).map(label => label.index),
+        adjustedLabels: labels.filter(label => label.adjusted).map(label => label.index),
         finalAns: numeric(doc.frames.at(-1).state[idByName.ans].data),
         colors: [...new Set(doc.frames.flatMap(frame => (frame.segments || []).map(segment => segment.color)))]
       };
@@ -262,6 +292,10 @@ int main() {
     assert.ok(operations.setFrame >= 0);
     assert.ok(operations.lazyFields.some(value => Number(value) !== 0));
     assert.ok(operations.setFields.some(value => Number(value) !== 2147483647));
+    assert.deepEqual(operations.overlappingLabels, []);
+    assert.deepEqual(operations.verticallyOffCenter, []);
+    assert.ok(operations.adjustedLabels.includes('28'));
+    assert.ok(operations.adjustedLabels.includes('29'));
     assert.equal(operations.finalAns, 12);
     assert.ok(operations.colors.includes('AV_magenta'));
     assert.ok(operations.colors.includes('AV_orange'));

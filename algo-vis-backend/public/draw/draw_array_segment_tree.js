@@ -585,6 +585,7 @@
       labelRect.setAttribute('stroke', '#59656b');
       labelRect.setAttribute('stroke-width', '1');
       let indexText = label.querySelector(':scope > [data-segment-label-role="index"]');
+      let indexFontSize = 0;
       if (indexMode) {
         if (!indexText) {
           indexText = document.createElementNS(NS, 'text');
@@ -592,10 +593,12 @@
           label.appendChild(indexText);
         }
         indexText.setAttribute('x', String(box.x + box.width / 2));
-        indexText.setAttribute('y', String(box.y + cellHeight + 10));
+        indexText.setAttribute('y', String(box.y + cellHeight + intervalLabelHeight / 2));
         indexText.setAttribute('text-anchor', 'middle');
+        indexText.setAttribute('dominant-baseline', 'central');
         indexText.setAttribute('font-family', 'Arial');
-        indexText.setAttribute('font-size', String(Math.max(8, Math.min(11, box.width / 4))));
+        indexFontSize = Math.max(8, Math.min(11, box.width / 4));
+        indexText.setAttribute('font-size', String(indexFontSize));
         indexText.textContent = String(node.index);
       } else indexText?.remove();
 
@@ -608,19 +611,57 @@
       const intervalLabel = node.left === node.right
         ? `[${node.left}]`
         : `[${node.left},${node.right}]`;
-      const intervalFontSize = typeof window.fitSvgText === 'function'
-        ? window.fitSvgText(g, intervalLabel, Math.max(8, box.width / 2 - 3), intervalLabelHeight, {
+      let intervalFontSize = typeof window.fitSvgText === 'function'
+        ? window.fitSvgText(g, intervalLabel, Math.max(8, box.width - 2), intervalLabelHeight, {
           maxFont: node.left === node.right ? 8 : 9,
           minFont: 7,
           padding: 0
         })
         : (node.left === node.right ? 8 : 9);
-      intervalText.setAttribute('x', String(box.x + box.width - 3));
-      intervalText.setAttribute('y', String(box.y + cellHeight + 10));
+      const intervalRight = box.x + box.width - 1;
+      intervalText.setAttribute('x', String(intervalRight));
+      intervalText.setAttribute('y', String(box.y + cellHeight + intervalLabelHeight / 2));
       intervalText.setAttribute('text-anchor', 'end');
+      intervalText.setAttribute('dominant-baseline', 'central');
       intervalText.setAttribute('font-family', 'Arial');
       intervalText.setAttribute('font-size', String(intervalFontSize));
       intervalText.textContent = intervalLabel;
+
+      if (indexText) {
+        const measure = element => {
+          try {
+            const length = Number(element.getComputedTextLength?.());
+            if (Number.isFinite(length) && length > 0) return length;
+            const width = Number(element.getBBox?.().width);
+            if (Number.isFinite(width) && width > 0) return width;
+          } catch {}
+          const size = Number(element.getAttribute('font-size')) || 8;
+          return String(element.textContent || '').length * size * 0.6;
+        };
+        const padding = 1;
+        const desiredGap = 2;
+        const available = Math.max(1, box.width - padding * 2 - desiredGap);
+        let indexWidth = measure(indexText);
+        let intervalWidth = measure(intervalText);
+        while (indexWidth + intervalWidth > available
+          && (indexFontSize > 6 || intervalFontSize > 6)) {
+          if (indexFontSize >= intervalFontSize && indexFontSize > 6) indexFontSize -= 0.5;
+          else if (intervalFontSize > 6) intervalFontSize -= 0.5;
+          indexText.setAttribute('font-size', String(indexFontSize));
+          intervalText.setAttribute('font-size', String(intervalFontSize));
+          indexWidth = measure(indexText);
+          intervalWidth = measure(intervalText);
+        }
+        const actualGap = Math.max(0, Math.min(desiredGap,
+          box.width - padding * 2 - indexWidth - intervalWidth));
+        const intervalLeft = intervalRight - intervalWidth;
+        const centeredX = box.x + box.width / 2;
+        const leftmostX = box.x + padding + indexWidth / 2;
+        const collisionFreeX = intervalLeft - actualGap - indexWidth / 2;
+        const indexX = Math.max(leftmostX, Math.min(centeredX, collisionFreeX));
+        indexText.setAttribute('x', String(indexX));
+        indexText.setAttribute('data-segment-label-adjusted', indexX < centeredX ? 'true' : 'false');
+      }
 
       if (window.HintWidgets) {
         const highlighted = highlight.findLast(item => includesNode(item, node.index));
