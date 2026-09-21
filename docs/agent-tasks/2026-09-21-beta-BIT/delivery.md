@@ -4,13 +4,13 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-21-beta-BIT
 - 共同基準 commit：2cb0409d1fd430d1fabea1feb5885e908da02236
-- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`
-- 驗證時的 HEAD 與未提交修改：`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`；只有本任務 task／delivery 文件待提交
+- 程式修正 commit：`5b5ad128c97cc6651c8229cd41a63ddfd52de704`、`0fd7da94fe675efc311327e6cf83a7d34480a924`、`7e0ac3e57a7bd0faa07a6fd44a7fe9e4a99decde`、`80c3d15ae893f59ff7e7f94efda9459100e4d1e8`、`399071d5125999b932aacf5a30ce572cb18b9e83`
+- 驗證時的 HEAD 與未提交修改：`399071d5125999b932aacf5a30ce572cb18b9e83`；只有本任務 task／delivery 文件待提交
 - 驗證日期：2026-09-21
 
 ## 根因與修改
 - 已確認根因與證據：指令 tokenizer、parser 與瀏覽器 runtime evaluator 原先只支援算術、比較及邏輯運算，無法處理 `& | ^ ~ << >>`；舊範例依賴 `AV.hpp` 與手寫繪圖程式。
-- 修正方式與行為變化：新增 C++ 優先序的整數位元運算解析與求值，讓安全的位元索引可保存實際索引；新增 `render binary indexed tree` 全名與連字號／底線別名，同時保留 bit／fenwick；將範例改成 num[0] 保留格及 1-based num／BIT 的 build、sum 與 range sum，只用新指令顯示兩個資料物件；採 int、簡短變數與接近舊版的程式結構。
+- 修正方式與行為變化：新增 C++ 優先序的整數位元運算解析與求值，讓安全的位元索引可保存實際索引；新增 `render binary indexed tree` 全名與連字號／底線別名，同時保留 bit／fenwick；將範例改成 num[0] 保留格及 1-based num／BIT 的 build、sum 與 range sum，只用新指令顯示兩個資料物件；採 int、簡短變數與接近舊版的程式結構；角落錨點新增水平在前的四個別名並統一存成原有標準名稱。
 - 修改檔案及用途：`trace-instrumenter.js` 與 `public/trace-rules.js` 處理位元運算；`Binary_Indexed_Tree.cpp` 與 sample input 提供新範例；`algorithm.html` 更新 cache key；兩個 BIT 專項測試驗證 parser、compile、SVG、寬格、標籤、highlight 與 marker；`entrypoints.test.js` 對應 cache key。
 - README／版本紀錄／使用說明更新：不適用；範例本身示範完整語法，沒有新增獨立公開 API 文件。
 - 與 task.md 的差異：無。
@@ -24,24 +24,25 @@
 | num 前置 0 保留格、使用 `AV_grey` 並完整顯示於指定位置；BIT 1-based 二進制 label | compile trace 與瀏覽器 SVG | num 完整顯示 11 格與 index 0 至 10，num[0] 值為 0 且呈 `rgb(204, 204, 204)`，並依縮放比例位於 `BIT.top offset(-40,-70)`；BIT 顯示 0001 至 1010 | 通過 |
 | 更新、前綴和與區間和正確 | sample compile | 輸出 `sum of L to R = 42`，BIT 最終值符合預期 | 通過 |
 | 非 2 的冪次寬格、highlight、marker | n=10 實際瀏覽器 transition | 10 格寬度、BIT[8]=54、寬格 highlight 與 i marker 均正確 | 通過 |
+| 反向角落錨點名稱 | @place 靜態解析及 compile API | 四個別名的來源／目標均正規化；`pivot.left-top at arr.left-top` 實際編譯為 top-left | 通過 |
 
 ## 小驗證與重跑方式
 ### V2 Binary Indexed Tree 專項
 - 目的與對應條件：確認共用 parser/runtime、frame renderer、索引事件與實際 SVG 呈現。
 - 執行目錄與必要環境設定：worktree 的 `algo-vis-backend`；`ASM_TEST_BASE_URL=http://127.0.0.1:3102`。
 - 測試資料／fixture：`algorithm_sample/Tree/Binary_Indexed_Tree.cpp` 與 `Binary_Indexed_Tree-sample_input.txt`，n=10、查詢 3..8。
-- 完整指令或操作步驟：`node --check trace-instrumenter.js`、`node --check public/trace-rules.js`、兩個測試檔語法檢查、`node --test --test-concurrency=1 tests/binary-indexed-tree.test.js tests/binary-indexed-tree.browser.test.js tests/entrypoints.test.js`、`git diff --check`。
-- 預期結果：無語法或差異錯誤；7 個案例全部通過且無 skip。
-- 實際結果與 exit code（適用時）：全部 exit code 0；7 passed、0 failed、0 skipped。3102 回應 HTTP 200 且載入 `trace-rules.js?v=trace-20`。
+- 完整指令或操作步驟：`node --check trace-instrumenter.js`、`node --check public/front.js`、相關測試檔語法檢查、`node --test --test-concurrency=1 tests/place-directives.test.js tests/binary-indexed-tree.test.js tests/binary-indexed-tree.browser.test.js tests/entrypoints.test.js`、`git diff --check`。
+- 預期結果：無語法或差異錯誤；16 個案例全部通過且無 skip。
+- 實際結果與 exit code（適用時）：全部 exit code 0；16 passed、0 failed、0 skipped。3102 回應 HTTP 200 且載入 `front.js?v=random-id-35`。
 - 證據位置：已提交測試檔；執行摘要僅存在本次本機工作紀錄，不提交 test-results 或 server log。
 
 ## 驗證分級與選擇
 - 層級：V2
 - 分類：E（指令／frame／綁定／位置）、F（runtime 事件／索引／資料）、G（marker）、H（style／標籤）及 A 的入口快取檢查。
 - 選擇依據：本次修改共用指令 parser/runtime、renderer 名稱、索引事件及 Binary Indexed Tree 實際 SVG。
-- 執行的測試檔／名稱篩選：完整執行新增的 `binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js`，另執行直接受 cache key 影響的 `entrypoints.test.js`。
-- 驗證環境與隔離服務：先用 3196 隔離服務開發驗證，完成後停止；最終在 beta 3102、PID 40604 重跑。未操作使用者分頁或資料。
-- 驗證版本、完整指令、結果與證據：最新程式 commit `80c3d15ae893f59ff7e7f94efda9459100e4d1e8`；命令與結果見上一節。
+- 執行的測試檔／名稱篩選：完整執行 `place-directives.test.js`、`binary-indexed-tree.test.js`、`binary-indexed-tree.browser.test.js` 與直接受 cache key 影響的 `entrypoints.test.js`。
+- 驗證環境與隔離服務：先用 3196 隔離服務開發驗證，完成後停止；最終在 beta 3102、PID 15064 重跑。未操作使用者分頁或資料。
+- 驗證版本、完整指令、結果與證據：最新程式 commit `399071d5125999b932aacf5a30ce572cb18b9e83`；命令與結果見上一節。
 - 未執行的驗證及原因：依 V2 分級未執行 `npm test`、完整 regression、廣泛排序或其他無關演算法動畫。
 - 需要主代理做的 V3 驗證：整合後實際播放 build 與兩次 sum，確認 num／BIT 的不同索引基準、全名 renderer、二進制索引及區間對照；再依 parser 共用影響決定是否增加其他指令案例。
 
