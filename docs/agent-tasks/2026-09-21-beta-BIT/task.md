@@ -9,8 +9,8 @@
 
 ## 問題與預期結果
 - 情境與操作：舊 Binary Indexed Tree 範例仍依賴 AV.hpp 與手寫繪圖程式，指令運算式也不能解析位元運算。
-- 目前行為：範例混入大量繪圖輔助碼；renderer 只提供 bit／fenwick 縮寫；沒有 Binary Indexed Tree 專項解析與實際 SVG 驗證。
-- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數；新增小寫 `@let`，用唯讀幀內別名簡化重複的繪圖運算式，不加入新的繪圖迴圈能力。
+- 目前行為：範例混入大量繪圖輔助碼；renderer 只提供 bit／fenwick 縮寫；沒有 Binary Indexed Tree 專項解析與實際 SVG 驗證。後續整合範例在兩次 `sum()` 交界幀保留了停用事件的不可見虛擬 `BIT[0]` placement，自動鏡頭因此向下取景。
+- 使用者希望的結果：改成只使用新指令的完整範例；畫面只比較 num 與 BIT，不使用 keep；renderer 在範例中使用 Binary Indexed Tree 全名，只有變數命名使用 BIT；num 前置一個值為 0 的保留格並完整顯示，使用預設十進制 label，num[0] 以 `AV_grey` 填色，並以 `num.left-bottom` 對齊 `BIT.left-top offset(-40,-70)`；BIT 使用前導零二進制 label；建樹時只 highlight 當前 num 格，查詢時才以 background 顯示使用區間；可見區間使用 `~`；指令運算式支援位元運算；程式沿用舊版 build／sum 結構並使用簡短 int 變數；新增小寫 `@let`，用唯讀幀內別名簡化重複的繪圖運算式，不加入新的繪圖迴圈能力；建樹與區間查詢拆成兩個可獨立執行的範例，不可見虛擬格不影響自動鏡頭。
 - 本次範圍與必要限制：保留既有 bit／fenwick 相容名稱；角落錨點同時接受水平在前的別名並正規化；不做完整 regression 或全部測試；修改後重啟 beta 3102、commit 並 push。
 
 ## 需求確認
@@ -19,13 +19,13 @@
 - 代理採用的合理假設：全名語法採 `render binary indexed tree`，並支援連字號／底線別名；位元運算採 C++ 優先序與 JavaScript 32 位整數求值，符合目前 trace 的 int 索引用途。
 
 ## 重現與調查
-- 最小操作步驟或 fixture：讀取 `algorithm_sample/Tree/Binary_Indexed_Tree.cpp`；以 num[0] 保留格、1-based num／BIT、build、sum 與 range sum 重寫；另以非 2 的冪次資料檢查排版。
+- 最小操作步驟或 fixture：讀取拆分後的 `Binary_Indexed_Tree_Build.cpp` 與 `Binary_Indexed_Tree_Range_Query.cpp`；以 num[0] 保留格、1-based num／BIT 分別呈現 build 與 range sum；另以非 2 的冪次資料檢查排版。
 - 重現狀態：已重現
 - 已確認事實：parser 與 runtime evaluator 均缺少 `& | ^ ~ << >>`；`render bit` 已接到 original-bit renderer；BIT renderer 以可見內容的第一格作為邏輯 index 1；目前沒有 BIT 專項測試。
 - 尚待調查：無；寬格 marker、compound assignment 與二進制 index 標籤均已用專項案例確認。
 
 ## 修改邊界與依賴
-- 預計修改檔案或模組：`trace-instrumenter.js`、`public/trace-rules.js`、`public/trace-model.js`、`server.js`、`algorithm_sample/Tree/Binary_Indexed_Tree.cpp`、sample input、指令手冊與提示、BIT 專項測試、必要入口 cache key、本任務文件。
+- 預計修改檔案或模組：`trace-instrumenter.js`、`public/trace-rules.js`、`public/trace-model.js`、`public/trace-renderer.js`、`server.js`、兩份 Binary Indexed Tree 範例及 sample input、指令手冊與提示、BIT 專項測試、必要入口 cache key、本任務文件。
 - 共用檔案／介面與協調結果：運算式 parser／evaluator 是共用介面；保留既有語法並新增運算子，不改現有算術與條件語意。
 - 依賴任務：無；使用 main v4.9 既有 renderer、marker 與播放行為。
 
@@ -43,6 +43,8 @@
 - [x] `@let` 在每次幀擷取時依該幀狀態求值，可依序引用先前別名；只捕捉相依 C++ 變數，不建立 C++ 變數、畫布物件、marker 或 runtime 事件，並可放在 frame、preset 與 defaults 範圍。
 - [x] 一般 scalar compound update 會讓依賴該變數的 marker 沿既有 position 路徑平移；BIT／num 的 compound value assignment 不被誤判為 marker 移動。
 - [x] 超出範圍的 BIT marker 仍可依 BIT 層級公式前往虛擬格；範例的 build／sum 更新式改放在 `for` header，最後一次更新由既有迴圈邊界規則略過，中間更新仍播放平移。
+- [x] 建樹與區間查詢分成兩個範例及各自輸入；查詢範例使用 `AV_green` 顯示涵蓋區間。
+- [x] 兩次 `sum()` 交界幀的停用 `i: 8→0` 可以保留虛擬 placement 供事件解析，但沒有實際 SVG 元素時不納入自動鏡頭邊界。
 
 ## 驗證計畫
 - 子代理小驗證：Node 語法與差異檢查；位元運算／renderer alias parser 測試；BIT sample compile/output 測試；3102 的單一 BIT 瀏覽器 SVG 專項。
@@ -65,3 +67,4 @@
 - 2026-09-21：依使用者決定保留一般變數前往虛擬格的真實呈現，將 build／sum 改為 `for` 更新式，使終止更新沿用既有迴圈邊界抑制；程式 commit 為 `21b2a88fad59c481796cec078ce9e767466f5baf`。
 - 2026-09-21：移除只供指令文字與區間使用的 `lb`，將 lowbit 運算直接寫入 `@style`、`@text` 與 `for` 更新式；程式 commit 為 `7246804dd468b617e9726dffeede4398ce94ea36`。
 - 2026-09-21：依使用者確認新增小寫 `@let` 唯讀繪圖別名，不新增迴圈；BIT pointer preset 宣告 `lb` 並由 style／text 共用。程式 commit 為 `3d53e3cc7bec6c32c7066ae5051e8722da3411f7`，手冊與編輯器提示 commit 為 `4c4a6ac92824e0d66f12a43f216dce381e57d961`。
+- 2026-09-22：重現查詢交界幀的鏡頭偏移，確認停用的終止更新建立不可見 `BIT[0]` placement；自動鏡頭改為只計入有實際元素的 placement，並將建樹與區間查詢拆成兩份範例。程式 commit 為 `f3132c75549f8aef6df3ce6137f54e742860c347`。
