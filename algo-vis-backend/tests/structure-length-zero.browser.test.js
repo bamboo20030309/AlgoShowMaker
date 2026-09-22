@@ -37,7 +37,11 @@ test('heap editing targets the clicked cell and linear structures resize with ze
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.stack || error.message));
-    await page.addInitScript(value => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(value)), deck);
+    await page.addInitScript(value => {
+      if (sessionStorage.getItem('structure-length-fixture-installed')) return;
+      localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(value));
+      sessionStorage.setItem('structure-length-fixture-installed', '1');
+    }, deck);
     await page.goto(`${base}/slides.html`);
     await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
 
@@ -59,10 +63,19 @@ test('heap editing targets the clicked cell and linear structures resize with ze
     const length = page.locator('#structureLengthInput');
     assert.equal(await length.inputValue(), '3');
     await length.fill('5');
-    await length.press('Enter');
     await page.waitForFunction(() => document.querySelectorAll('[data-widget-id="array"] [data-structure-item-index]').length === 5);
     let arrayContent = await readContent('array');
     assert.equal(arrayContent, '5, 6, 7, 0, 0');
+    await page.reload();
+    await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    assert.equal(await array.locator('[data-structure-item-index]').count(), 5);
+    await array.click();
+    assert.equal(await length.inputValue(), '5');
+    await length.fill('');
+    await length.press('1');
+    await length.press('2');
+    await page.waitForFunction(() => document.querySelectorAll('[data-widget-id="array"] [data-structure-item-index]').length === 12);
+    assert.equal((await readContent('array')).split(',').length, 12);
     await length.fill('2');
     await length.press('Enter');
     await page.waitForFunction(() => document.querySelectorAll('[data-widget-id="array"] [data-structure-item-index]').length === 2);

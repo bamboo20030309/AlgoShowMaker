@@ -5540,10 +5540,32 @@
     if (['matrix', 'binary_tree'].includes(mode)) return;
     const length = Math.max(1, Math.min(100, Math.round(Number(rawLength) || 1)));
     const values = linearStructureValues(found.widget.content);
+    if (values.length === length) {
+      if (structureLengthInput) structureLengthInput.value = String(length);
+      return;
+    }
     while (values.length < length) values.push('0');
     values.length = length;
     updateSelectedStructure({ content: values.join(', ') });
     if (structureLengthInput) structureLengthInput.value = String(length);
+  }
+
+  let structureLengthCommitTimer = null;
+  function commitStructureLength(rawLength) {
+    if (structureLengthCommitTimer) clearTimeout(structureLengthCommitTimer);
+    structureLengthCommitTimer = null;
+    updateSelectedStructureLength(rawLength);
+  }
+
+  function scheduleStructureLengthCommit() {
+    if (structureLengthCommitTimer) clearTimeout(structureLengthCommitTimer);
+    const rawLength = structureLengthInput?.value;
+    if (!rawLength) return;
+    const widgetId = selectedWidgetId;
+    structureLengthCommitTimer = setTimeout(() => {
+      structureLengthCommitTimer = null;
+      if (selectedWidgetId === widgetId) updateSelectedStructureLength(rawLength);
+    }, 300);
   }
 
   function hideStructureContextMenu() {
@@ -6763,7 +6785,8 @@
     }));
     structureIndexModeSelect?.addEventListener('change', () => updateSelectedStructure({ indexMode: Number(structureIndexModeSelect.value) }));
     structureIndexBaseSelect?.addEventListener('change', () => updateSelectedStructure({ indexBase: Number(structureIndexBaseSelect.value) }));
-    structureLengthInput?.addEventListener('change', () => updateSelectedStructureLength(structureLengthInput.value));
+    structureLengthInput?.addEventListener('input', scheduleStructureLengthCommit);
+    structureLengthInput?.addEventListener('change', () => commitStructureLength(structureLengthInput.value));
     structureItemsPerRowInput?.addEventListener('input', () => updateSelectedStructure({ itemsPerRow: Math.max(0, Number(structureItemsPerRowInput.value) || 0) }));
     structureGapInput?.addEventListener('input', () => updateSelectedStructure({ gap: Math.max(0, Number(structureGapInput.value) || 0) }));
     structureCellSizeInput?.addEventListener('input', () => updateSelectedStructure({ cellSize: Math.max(18, Number(structureCellSizeInput.value) || 18) }));
