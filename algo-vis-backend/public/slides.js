@@ -7,6 +7,12 @@
   const deckUid = sampleId ? null : urlParams.get('deck');
   let pendingWorkspaceImport = urlParams.get('importFile');
   const shareToken = sampleId ? 'sample:' + sampleId : urlParams.get('share');
+  const chromeHomeLink = document.getElementById('chromeHomeLink');
+  if (sampleId && chromeHomeLink) {
+    chromeHomeLink.href = '/?examples=1';
+    chromeHomeLink.title = '返回範例投影片';
+    chromeHomeLink.setAttribute('aria-label', '返回範例投影片');
+  }
   const SLIDE_W = 1280;
   const SLIDE_H = 720;
   const FABRIC_BLEED = 180;
