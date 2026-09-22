@@ -86,7 +86,7 @@
     });
     return {
       highlight: entry('highlight', widget.highlightColor || '#ff0000', widget.highlightIndices),
-      focus: entry('focus', widget.focusColor || '#808080', widget.focusIndices),
+      focus: entry('focus', widget.focusColor || '#cccccc', widget.focusIndices),
       point: entry('point', widget.pointColor || '#ff0000', widget.pointIndices),
       mark: entry('mark', widget.markColor || '#22c55e', widget.markIndices),
       background: entry('background', widget.backgroundColor || '#10b981', widget.backgroundIndices)

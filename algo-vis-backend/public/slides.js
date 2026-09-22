@@ -2420,7 +2420,7 @@
           textColor: widget.textColor || '#1f282d',
           lineColor: widget.lineColor || '#66767b',
           highlightColor: widget.highlightColor || '#ff0000',
-          focusColor: widget.focusColor || '#808080',
+          focusColor: widget.focusColor || '#cccccc',
           pointColor: widget.pointColor || '#ff0000',
           markColor: widget.markColor || '#22c55e',
           backgroundColor: widget.backgroundColor || '#10b981',
@@ -4550,7 +4550,7 @@
         textColor: '#1f282d',
         lineColor: '#66767b',
         highlightColor: '#ff0000',
-        focusColor: '#808080',
+        focusColor: '#cccccc',
         pointColor: '#ff0000',
         markColor: '#22c55e',
         backgroundColor: '#10b981',
@@ -5574,7 +5574,7 @@
     structureAnnotationTextInput.value = widget.annotationText || '';
     setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#ffffff');
     syncStructureStyleIcon('annotation', widget.annotationColor || '#ffffff');
-    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#808080');
+    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#cccccc');
     structureFocusIndicesInput.value = widget.focusIndices || '';
     setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
     structurePointIndicesInput.value = widget.pointIndices || '';
@@ -5585,7 +5585,7 @@
     if (structureFrameBackgroundEnabledInput) structureFrameBackgroundEnabledInput.checked = widget.frameBackgroundEnabled !== false;
     setStructureColorButton(structureFrameBackgroundColorInput, widget.frameBackgroundColor || DEFAULT_STRUCTURE_FRAME_BACKGROUND);
     syncStructureStyleIcon('highlight', widget.highlightColor || '#ff0000');
-    syncStructureStyleIcon('focus', widget.focusColor || '#808080');
+    syncStructureStyleIcon('focus', widget.focusColor || '#cccccc');
     syncStructureStyleIcon('point', widget.pointColor || '#ff0000');
     syncStructureStyleIcon('mark', widget.markColor || '#22c55e');
     syncStructureStyleIcon('background', widget.backgroundColor || '#10b981');
