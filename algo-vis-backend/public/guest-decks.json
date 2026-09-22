@@ -50,7 +50,7 @@
     },
     {
       "id": "heap-teaching",
-      "title": "Heap｜堆積：原理與動畫",
+      "title": "堆積 (Heap)",
       "categories": [
         "Data_Structure"
       ],
@@ -58,7 +58,7 @@
     },
     {
       "id": "binary-indexed-tree-teaching",
-      "title": "Binary Indexed Tree｜樹狀陣列：原理與動畫",
+      "title": "Binary Indexed Tree",
       "categories": [
         "Data_Structure"
       ],
