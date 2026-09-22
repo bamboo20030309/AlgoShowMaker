@@ -200,6 +200,7 @@
   let cloudSaveInFlight = false;
   let cloudSaveQueued = false;
   let cloudDeckTitle = '未命名投影片';
+  let sampleArchiveBlob = null;
   let sharedAccess = null;
   let currentShareSettings = { mode: 'private', view_token: null, edit_token: null };
   let pendingProgressiveRebuild = null;
@@ -246,6 +247,10 @@
   const importDeckBtn = document.getElementById('importDeckBtn');
   const importDeckInput = document.getElementById('importDeckInput');
   const shareDeckBtn = document.getElementById('shareDeckBtn');
+  const sampleShareDialog = document.getElementById('sampleShareDialog');
+  const sampleShareUrl = document.getElementById('sampleShareUrl');
+  const sampleShareStatus = document.getElementById('sampleShareStatus');
+  const copySampleShareUrlBtn = document.getElementById('copySampleShareUrlBtn');
   const sharedAccessBadge = document.getElementById('sharedAccessBadge');
   const shareDialog = document.getElementById('shareDialog');
   const shareForm = document.getElementById('shareForm');
@@ -607,12 +612,16 @@
       if (!entry) throw new Error('找不到指定的公開投影片');
       const response = await fetch(entry.archive);
       if (!response.ok) throw new Error('公開投影片載入失敗');
-      const archive = await window.ASMDeck.decode(await response.blob());
+      const archiveBlob = await response.blob();
+      const archive = await window.ASMDeck.decode(archiveBlob);
       deck = normalizeDeck(archive.deck);
+      sampleArchiveBlob = archiveBlob;
       pendingProgressiveRebuild = { mode: 'sample' };
       cloudDeckTitle = entry.title;
       sharedAccess = 'view';
       applySharedAccessUi();
+      if (shareDeckBtn) shareDeckBtn.hidden = false;
+      document.body.classList.add('sample-deck-ready');
       document.title = `${entry.title} - AlgoShowMaker`;
       setCloudStatus('loading', '公開投影片已載入，正在準備動畫…');
       return;
@@ -884,6 +893,30 @@
     }
   }
 
+  function openSampleShareDialog() {
+    if (!sampleId || !sampleShareDialog || !sampleShareUrl) return;
+    const url = new URL('/slides.html', window.location.origin);
+    url.searchParams.set('sample', sampleId);
+    sampleShareUrl.value = url.toString();
+    if (sampleShareStatus) sampleShareStatus.textContent = '';
+    sampleShareDialog.showModal();
+  }
+
+  async function copySampleShareUrl() {
+    if (!sampleShareUrl?.value) return;
+    try {
+      await navigator.clipboard.writeText(sampleShareUrl.value);
+    } catch {
+      sampleShareUrl.focus();
+      sampleShareUrl.select();
+      if (!document.execCommand('copy')) {
+        if (sampleShareStatus) sampleShareStatus.textContent = '無法自動複製，請選取上方連結手動複製。';
+        return;
+      }
+    }
+    if (sampleShareStatus) sampleShareStatus.textContent = '連結已複製。';
+  }
+
   function closeShareDialog() {
     if (shareDialog?.open) shareDialog.close();
   }
@@ -960,11 +993,14 @@
     if (exportDeckBtn?.disabled) return;
     exportDeckBtn.disabled = true;
     try {
-      const draft = await editorAnimationExportSnapshot();
-      const projected = await window.ASMDeck.project(deck, draft);
-      const blob = await window.ASMDeck.encode(projected);
-      // Reuse the already-loaded result locally without putting a second trace in the archive.
-      for (const seed of projected.cacheSeeds) await window.ASMDeck.cachePut(seed.key, seed.trace);
+      let blob = sampleId ? sampleArchiveBlob : null;
+      if (!blob) {
+        const draft = await editorAnimationExportSnapshot();
+        const projected = await window.ASMDeck.project(deck, draft);
+        blob = await window.ASMDeck.encode(projected);
+        // Reuse the already-loaded result locally without putting a second trace in the archive.
+        for (const seed of projected.cacheSeeds) await window.ASMDeck.cachePut(seed.key, seed.trace);
+      }
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -6577,7 +6613,12 @@
     exportDeckBtn?.addEventListener('click', exportDeckJson);
     importDeckBtn?.addEventListener('click', () => importDeckInput?.click());
     importDeckInput?.addEventListener('change', () => importDeckJsonFile(importDeckInput.files && importDeckInput.files[0]));
-    shareDeckBtn?.addEventListener('click', openShareDialog);
+    shareDeckBtn?.addEventListener('click', sampleId ? openSampleShareDialog : openShareDialog);
+    document.getElementById('closeSampleShareDialogBtn')?.addEventListener('click', () => sampleShareDialog?.close());
+    copySampleShareUrlBtn?.addEventListener('click', copySampleShareUrl);
+    sampleShareDialog?.addEventListener('click', event => {
+      if (event.target === sampleShareDialog) sampleShareDialog.close();
+    });
     closeShareDialogBtn?.addEventListener('click', closeShareDialog);
     cancelShareDialogBtn?.addEventListener('click', closeShareDialog);
     shareForm?.addEventListener('submit', saveShareSettings);

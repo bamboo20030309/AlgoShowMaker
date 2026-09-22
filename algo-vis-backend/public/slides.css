@@ -3641,9 +3641,14 @@ body.shared-view-only .control-chrome { display: flex; padding-top: 64px; }
 body.shared-view-only .chrome-home-link { display: grid; }
 body.shared-view-only .mode-switch,
 body.shared-view-only #importDeckBtn,
-body.shared-view-only #exportDeckBtn,
 body.shared-view-only #shareDeckBtn { display: none; }
+body.shared-view-only #exportDeckBtn { display: none; }
+body.shared-view-only.sample-deck-ready #exportDeckBtn,
+body.shared-view-only.sample-deck-ready #shareDeckBtn:not([hidden]) { display: grid; }
 body.shared-view-only .shared-access-badge { left: auto; right: 14px; }
 body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--controlbar-w); }
+
+.sample-share-content { padding: 22px; }
+.sample-share-links { margin-top: 22px; }
 
 .deck-file-drop-active { outline: 3px solid #55b9f3; outline-offset: 3px; background: #1d8f83 !important; }
