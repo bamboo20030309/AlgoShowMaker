@@ -56,4 +56,4 @@
 - 演算法投影片實際驗證：在隔離的 3100 瀏覽器分頁載入使用者提供的 bottom-up heapify 程式與輸入，成功產生 34 幀並重播第 5 到第 6 幀；排程專項另確認入場與讓位起點同為 0ms。
 - 未完成或環境阻塞：完整指標測試檔曾因本機編譯 API 頻率限制中止；直接相關專項獨立重跑通過。
 - 本機服務重啟：3100 已啟動，`slides.html` 與 `trace-frame-tween.js` 皆回傳 HTTP 200，腳本 build 為 `trace-227`。
-- Push／公開部署狀態：待本交付紀錄提交後 push intergration；未公開部署。
+- Push／公開部署狀態：intergration 已推送至 origin；未公開部署。
