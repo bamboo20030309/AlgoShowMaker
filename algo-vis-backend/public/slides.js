@@ -5517,11 +5517,23 @@
     syncStructureEditorVisibility(widget);
   }
 
-  function updateSelectedStructure(patch, { history = true } = {}) {
+  function updateSelectedStructure(patch, { history = true, preserveScale = false } = {}) {
     const found = getWidget(selectedWidgetId);
     if (!found.widget || found.widget.type !== 'structure') return;
     const preview = { ...found.widget, ...patch, structureFrameVersion: 4 };
-    const size = constrainedStructureSize(preview);
+    let size;
+    if (preserveScale && window.AlgoStructureRenderer?.getNaturalSize) {
+      const before = window.AlgoStructureRenderer.getNaturalSize(found.widget);
+      const after = window.AlgoStructureRenderer.getNaturalSize(preview);
+      const scale = Math.min(found.widget.w / before.width, found.widget.h / before.height);
+      const boundedScale = Math.min(scale, SLIDE_W / after.width, SLIDE_H / after.height);
+      size = {
+        width: Math.max(40, Math.round(after.width * boundedScale)),
+        height: Math.max(40, Math.round(after.height * boundedScale))
+      };
+    } else {
+      size = constrainedStructureSize(preview);
+    }
     updateSelectedWidget({
       ...patch,
       structureFrameVersion: 4,
@@ -5546,7 +5558,7 @@
     }
     while (values.length < length) values.push('0');
     values.length = length;
-    updateSelectedStructure({ content: values.join(', ') });
+    updateSelectedStructure({ content: values.join(', ') }, { preserveScale: true });
     if (structureLengthInput) structureLengthInput.value = String(length);
   }
 
@@ -5963,7 +5975,7 @@
       return;
     }
     const content = values.join(', ');
-    updateSelectedStructure({ content });
+    updateSelectedStructure({ content }, { preserveScale: action !== 'item-save' });
   }
 
   function handleStructureContextAction(event) {
