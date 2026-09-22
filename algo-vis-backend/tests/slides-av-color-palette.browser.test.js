@@ -50,9 +50,14 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
     }
     const toolbar = page.locator('#structureContextMenu');
     const selectCellStyle = async (index, style) => {
+      if (await page.locator('#iroPopup').isVisible()) {
+        await page.mouse.move(10, 10);
+        await page.waitForTimeout(30);
+      }
       await object.locator(`[data-structure-item-index="${index}"] > text`).click();
       await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar');
       await toolbar.getByRole('button', { name: style, exact: true }).click();
+      await toolbar.getByRole('button', { name: style, exact: true }).hover();
     };
     await selectCellStyle(0, 'Highlight');
     const palette = page.locator('#avColorSwatches');
@@ -62,16 +67,19 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
     await page.screenshot({ path: path.join(root, 'test-results/slides-av-color-palette.png') });
     await palette.locator('[data-av-color="AV_red"]').click();
     await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
-    const savedColor = () => page.evaluate(async () => {
+    const savedWidget = () => page.evaluate(async () => {
       const saved = await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5');
-      return saved.groups[0].slides[0].widgets[0].highlightColor;
+      return saved.groups[0].slides[0].widgets[0];
     });
-    assert.equal(await savedColor(), colors.AV_red);
+    assert.equal((await savedWidget()).cellStyles['0'].highlight, colors.AV_red);
     await selectCellStyle(1, 'Highlight');
     await palette.locator('[data-av-color="AV_node_green"]').click();
     await page.reload();
     await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
-    assert.equal(await savedColor(), colors.AV_node_green);
+    const saved = await savedWidget();
+    assert.equal(saved.cellStyles['0'].highlight, colors.AV_red);
+    assert.equal(saved.cellStyles['1'].highlight, colors.AV_node_green);
+    assert.equal(saved.highlightColor, '#ff0000');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

@@ -161,6 +161,9 @@
   let activeStructureStyleCell = null;
   let iroPicker = null;
   let suppressIroChange = false;
+  let structureStylePickerHoverMode = false;
+  let structureStylePickerPointerActive = false;
+  let structureStylePickerCloseTimer = null;
   let pendingColorHistory = false;
   let pendingHistoryTimer = null;
   let textSelection = null;
@@ -5924,6 +5927,7 @@
 
   function hideStructureContextMenu() {
     if (!structureContextMenu) return;
+    closeStructureStyleHoverPicker();
     structureContextMenu.hidden = true;
     structureContextMenu.replaceChildren();
     activeStructureContext = null;
@@ -6178,21 +6182,48 @@
       button.appendChild(icon);
       button.addEventListener('click', () => {
         const current = getWidget(widgetId).widget;
+        if (!current) return;
+        const currentIndices = new Set(window.AlgoStructureRenderer.parseIndices(current[`${type}Indices`]));
+        const currentlyActive = currentIndices.has(index)
+          || typeof current.cellStyles?.[String(index)]?.[type] === 'string';
         const patch = {};
-        if (!isActive) {
-          indices.add(index);
-          patch[`${type}Indices`] = [...indices].sort((a, b) => a - b).join(',');
+        if (currentlyActive) {
+          currentIndices.delete(index);
+          patch[`${type}Indices`] = [...currentIndices].sort((a, b) => a - b).join(',');
+          patch.cellStyles = patchStructureCellStyle(current, index, type, null);
+          if (activeStructureStyleCell?.widgetId === widgetId
+            && activeStructureStyleCell.index === index
+            && activeStructureStyleCell.type === type) {
+            closeStructureStyleHoverPicker();
+          }
+        } else {
+          currentIndices.add(index);
+          patch[`${type}Indices`] = [...currentIndices].sort((a, b) => a - b).join(',');
           patch.cellStyles = patchStructureCellStyle(
             current,
             index,
             type,
             structureCellStyleColor(current, index, type, binding)
           );
-          updateSelectedStructure(patch, { preserveScale: true });
         }
+        updateSelectedStructure(patch, { preserveScale: true });
         openStructureStyleToolbar(widgetId);
-        const colorButton = structureContextMenu.querySelector(`[data-structure-style-type="${type}"]`);
-        openIro(binding.target, colorButton, { widgetId, index, type });
+      });
+      button.addEventListener('pointerenter', () => {
+        const current = getWidget(widgetId).widget;
+        const activeIndices = new Set(window.AlgoStructureRenderer.parseIndices(current?.[`${type}Indices`]));
+        const active = activeIndices.has(index)
+          || typeof current?.cellStyles?.[String(index)]?.[type] === 'string';
+        if (!active || !binding) {
+          scheduleStructureStylePickerClose(0);
+          return;
+        }
+        cancelStructureStylePickerClose();
+        openIro(binding.target, button, { widgetId, index, type }, { forceOpen: true, hoverMode: true });
+      });
+      button.addEventListener('pointerleave', event => {
+        if (iroPopup.contains(event.relatedTarget)) return;
+        scheduleStructureStylePickerClose();
       });
       structureContextMenu.appendChild(button);
     }
@@ -7206,11 +7237,29 @@
       if (iroPopup.hidden) return;
       const target = event.target;
       if (target.closest?.('#iroPopup, #textColorBtn, #bgColorBtn, #shapeStrokeBtn, #shapeColorBtn, .structure-color-button')) return;
-      iroPopup.hidden = true;
-      commitPendingColorHistory();
+      if (structureStylePickerHoverMode) closeStructureStyleHoverPicker();
+      else {
+        iroPopup.hidden = true;
+        commitPendingColorHistory();
+      }
     });
     ['mousedown', 'pointerdown', 'click'].forEach(type => {
       iroPopup.addEventListener(type, event => event.stopPropagation());
+    });
+    iroPopup.addEventListener('pointerenter', cancelStructureStylePickerClose);
+    iroPopup.addEventListener('pointerleave', () => scheduleStructureStylePickerClose(0));
+    iroPopup.addEventListener('pointerdown', () => {
+      if (!structureStylePickerHoverMode) return;
+      structureStylePickerPointerActive = true;
+      cancelStructureStylePickerClose();
+    });
+    document.addEventListener('pointerup', event => {
+      if (!structureStylePickerPointerActive) return;
+      structureStylePickerPointerActive = false;
+      const target = document.elementFromPoint(event.clientX, event.clientY);
+      if (!iroPopup.contains(target) && !activeStructureStylePickerButton()?.contains(target)) {
+        scheduleStructureStylePickerClose(80);
+      }
     });
     slidesRoot.addEventListener('click', event => {
       if (handleSlideEdgeAddClick(event)) return;
@@ -8536,13 +8585,44 @@
       button.addEventListener('click', () => {
         iroPicker?.color.set(value);
         commitPendingColorHistory();
-        iroPopup.hidden = true;
+        if (!structureStylePickerHoverMode) iroPopup.hidden = true;
       });
       avColorSwatches.appendChild(button);
     });
   }
 
-  function openIro(target, anchorOverride = null, structureCell = null) {
+  function cancelStructureStylePickerClose() {
+    clearTimeout(structureStylePickerCloseTimer);
+    structureStylePickerCloseTimer = null;
+  }
+
+  function closeStructureStyleHoverPicker() {
+    cancelStructureStylePickerClose();
+    if (!structureStylePickerHoverMode) return;
+    structureStylePickerHoverMode = false;
+    structureStylePickerPointerActive = false;
+    iroPopup.hidden = true;
+    commitPendingColorHistory();
+  }
+
+  function activeStructureStylePickerButton() {
+    if (!activeStructureStyleCell) return null;
+    return structureContextMenu?.querySelector(
+      `[data-structure-style-type="${CSS.escape(activeStructureStyleCell.type)}"]`
+    ) || null;
+  }
+
+  function scheduleStructureStylePickerClose(delay = 180) {
+    if (!structureStylePickerHoverMode || structureStylePickerPointerActive) return;
+    cancelStructureStylePickerClose();
+    structureStylePickerCloseTimer = setTimeout(() => {
+      const activeButton = activeStructureStylePickerButton();
+      if (iroPopup.matches(':hover') || activeButton?.matches(':hover')) return;
+      closeStructureStyleHoverPicker();
+    }, delay);
+  }
+
+  function openIro(target, anchorOverride = null, structureCell = null, options = {}) {
     const structureBinding = structureColorBindings.find(binding => binding.target === target);
     const requestedCell = structureBinding?.style ? structureCell : null;
     const sameStructureCell = (!requestedCell && !activeStructureStyleCell)
@@ -8550,9 +8630,11 @@
         && requestedCell.widgetId === activeStructureStyleCell.widgetId
         && requestedCell.index === activeStructureStyleCell.index
         && requestedCell.type === activeStructureStyleCell.type);
-    const shouldClose = !iroPopup.hidden && activeColorTarget === target && sameStructureCell;
+    const shouldClose = !options.forceOpen && !iroPopup.hidden && activeColorTarget === target && sameStructureCell;
     activeColorTarget = target;
     activeStructureStyleCell = requestedCell;
+    structureStylePickerHoverMode = options.hoverMode === true;
+    cancelStructureStylePickerClose();
     iroPopup.hidden = shouldClose;
     if (iroPopup.hidden) {
       commitPendingColorHistory();
