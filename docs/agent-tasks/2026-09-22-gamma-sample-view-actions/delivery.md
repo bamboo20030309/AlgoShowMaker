@@ -40,7 +40,7 @@
 - 測試資料／fixture：無。
 - 完整指令或操作步驟：`node --check public/slides.js`、`node --check tests/sample-view-actions.browser.test.js`、`git diff --check`；重啟已核對的 3104 服務後請求 `/slides.html?sample=fixture`。
 - 預期結果：檢查成功，HTTP 200，入口包含新資產版本。
-- 實際結果與 exit code：三項檢查 exit code 0；3104 已由原 PID 15748 重啟為 PID 13392，HTTP 200，含 `sample-actions-201` 與 `sample-actions-105`。
+- 實際結果與 exit code：JavaScript、入口與差異檢查 exit code 0；3104 已由 PID 76320 重啟為 PID 37768，HTTP 200，入口含 `chromeHomeLink` 並載入 `slides.js?v=inline-scripts-216`。
 - 證據位置：終端摘要；服務 log 在系統 Temp，未提交。
 
 ## 剩餘事項與合併注意
