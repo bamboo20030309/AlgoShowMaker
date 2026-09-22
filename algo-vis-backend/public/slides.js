@@ -40,7 +40,15 @@
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
   const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
-  const STRUCTURE_MODES = ['normal', 'matrix', 'table', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+  const STRUCTURE_MODES = ['normal', 'matrix', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+
+  function isCellGridType(type) {
+    return type === 'structure' || type === 'table';
+  }
+
+  function isCellGridWidget(widget) {
+    return isCellGridType(widget?.type);
+  }
 
   function randomId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -346,7 +354,7 @@
   const latexEditorPanel = document.getElementById('latexEditorPanel');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
   const structureEditorPanel = document.getElementById('structureEditorPanel');
-  const structureEditorTitle = document.getElementById('structureEditorTitle');
+  const tableEditorPanel = document.getElementById('tableEditorPanel');
   const latexEditorInput = document.getElementById('latexEditorInput');
   const openCodeEditorBtn = document.getElementById('openCodeEditorBtn');
   const codeEditorModal = document.getElementById('codeEditorModal');
@@ -365,6 +373,7 @@
   const codeFocusLinesInput = document.getElementById('codeFocusLinesInput');
   const codeShowLineNumbersInput = document.getElementById('codeShowLineNumbersInput');
   const exitStructureEditorBtn = document.getElementById('exitStructureEditorBtn');
+  const exitTableEditorBtn = document.getElementById('exitTableEditorBtn');
   const structureModeSelect = document.getElementById('structureModeSelect');
   const structureTreeControls = document.getElementById('structureTreeControls');
   const structureTreeLayoutSelect = document.getElementById('structureTreeLayoutSelect');
@@ -386,7 +395,6 @@
   const structureFrameBackgroundControls = document.getElementById('structureFrameBackgroundControls');
   const structureFrameBackgroundEnabledInput = document.getElementById('structureFrameBackgroundEnabledInput');
   const structureFrameBackgroundColorInput = document.getElementById('structureFrameBackgroundColorInput');
-  const tableEditorControls = document.getElementById('tableEditorControls');
   const tableRowsInput = document.getElementById('tableRowsInput');
   const tableColumnsInput = document.getElementById('tableColumnsInput');
   const tableHeaderRowInput = document.getElementById('tableHeaderRowInput');
@@ -1593,6 +1601,7 @@
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
+    if (tableEditorPanel) tableEditorPanel.hidden = true;
     setStructureEditorActive(false);
     hideAnimationEditor();
     if (ttsTransport) ttsTransport.hidden = false;
@@ -2563,12 +2572,16 @@
 
   function normalizeWidgets(widgets) {
     return Array.isArray(widgets) ? widgets.map((widget, index) => {
-      const type = widget.type === 'code'
+      const legacyTable = widget.type === 'table'
+        || (widget.type === 'structure' && widget.structureMode === 'table');
+      const type = legacyTable
+        ? 'table'
+        : widget.type === 'code'
         ? 'code'
         : (widget.type === 'structure' ? 'structure' : 'latex');
-      const defaultWidth = type === 'code' ? 560 : (type === 'structure' ? 640 : 320);
-      const defaultHeight = type === 'code' ? 220 : (type === 'structure' ? 300 : 96);
-      const defaultFontSize = type === 'code' ? 21 : (type === 'structure' ? 18 : 34);
+      const defaultWidth = type === 'code' ? 560 : (isCellGridType(type) ? 640 : 320);
+      const defaultHeight = type === 'code' ? 220 : (isCellGridType(type) ? 300 : 96);
+      const defaultFontSize = type === 'code' ? 21 : (isCellGridType(type) ? 18 : 34);
       const normalized = {
         id: widget.id || randomId(),
         type,
@@ -2591,9 +2604,11 @@
         normalized.cropX = Number.isFinite(widget.cropX) ? widget.cropX : 0;
         normalized.cropY = Number.isFinite(widget.cropY) ? widget.cropY : 0;
       }
-      if (type === 'structure') {
+      if (isCellGridType(type)) {
         Object.assign(normalized, {
-          structureMode: STRUCTURE_MODES.includes(widget.structureMode) ? widget.structureMode : 'normal',
+          structureMode: type === 'table'
+            ? 'table'
+            : (STRUCTURE_MODES.includes(widget.structureMode) ? widget.structureMode : 'normal'),
           indexMode: Number.isFinite(Number(widget.indexMode)) ? Math.max(0, Math.min(4, Number(widget.indexMode))) : 0,
           indexBase: Number(widget.indexBase) === 1 ? 1 : 0,
           itemsPerRow: Number.isFinite(Number(widget.itemsPerRow)) ? Math.max(0, Number(widget.itemsPerRow)) : 0,
@@ -2638,7 +2653,7 @@
           markIndices: typeof widget.markIndices === 'string' ? widget.markIndices : '',
           backgroundIndices: typeof widget.backgroundIndices === 'string' ? widget.backgroundIndices : ''
         });
-        if (normalized.structureMode === 'table') {
+        if (type === 'table') {
           normalized.tableData = normalizeTableData(widget.tableData, normalized.content);
           normalized.content = tableContentSummary(normalized.tableData);
           normalized.tableHeaderRow = widget.tableHeaderRow !== false;
@@ -2651,7 +2666,7 @@
           normalized.gap = 0;
           normalized.frameBackgroundEnabled = false;
         }
-        if (normalized.structureMode === 'binary_tree') {
+        if (type === 'structure' && normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
         }
         if (normalized.structureFrameVersion < 4) {
@@ -2807,7 +2822,7 @@
     if (widget.type === 'code') {
       paintWidgetElement(el, widget);
       highlightCodeWidget(el);
-    } else if (widget.type === 'structure') {
+    } else if (isCellGridWidget(widget)) {
       paintStructureWidget(el, widget);
     } else {
       // In-place import/history restore must refresh the source before rendering.
@@ -3051,9 +3066,9 @@
     if (animation.fragmentEnabled && animation.fragmentStyle) el.classList.add(animation.fragmentStyle);
     if (source.type === 'code' && animation.transitionId) el.dataset.codeTransition = 'true';
     else delete el.dataset.codeTransition;
-    if (source.type === 'structure' && animation.transitionId) el.dataset.structureTransition = 'true';
+    if (isCellGridWidget(source) && animation.transitionId) el.dataset.structureTransition = 'true';
     else delete el.dataset.structureTransition;
-    if (source.type !== 'code' && source.type !== 'structure' && animation.transitionId) el.dataset.id = animation.transitionId;
+    if (source.type !== 'code' && !isCellGridWidget(source) && animation.transitionId) el.dataset.id = animation.transitionId;
     else delete el.dataset.id;
     if (animation.fragmentEnabled && animation.fragmentIndex !== null) {
       el.dataset.fragmentIndex = String(animation.fragmentIndex);
@@ -3183,6 +3198,10 @@
 
   function syncWidgetElementInPlace(el, widget, previousWidget) {
     el.dataset.widgetType = widget.type;
+    el.classList.toggle('table-widget', widget.type === 'table');
+    el.classList.toggle('structure-widget', isCellGridWidget(widget));
+    el.classList.toggle('code-widget', widget.type === 'code');
+    el.classList.toggle('latex-widget', widget.type === 'latex');
     el.dataset.manualSize = widget.manualSize ? 'true' : 'false';
     el.style.left = `${widget.x}px`;
     el.style.top = `${widget.y}px`;
@@ -3194,7 +3213,7 @@
     const contentChanged = !previousWidget || [
       'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
     ].some(key => previousWidget[key] !== widget[key]);
-    const structureChanged = widget.type === 'structure' && (!previousWidget || [
+    const structureChanged = isCellGridWidget(widget) && (!previousWidget || [
       'structureMode', 'indexMode', 'indexBase', 'itemsPerRow', 'gap', 'cellSize',
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
@@ -3215,7 +3234,7 @@
 
   function createWidgetElement(widget) {
     const el = document.createElement('div');
-    el.className = `slide-widget ${widget.type}-widget`;
+    el.className = `slide-widget ${widget.type}-widget${widget.type === 'table' ? ' structure-widget' : ''}`;
     el.dataset.widgetId = widget.id;
     el.dataset.widgetType = widget.type;
     el.dataset.manualSize = widget.manualSize ? 'true' : 'false';
@@ -3246,7 +3265,7 @@
       const code = el.querySelector('code');
       code.textContent = widget.content || defaultCode();
       applyCodeFocusLines(code, widget.focusLines, widget.showLineNumbers);
-    } else if (widget.type === 'structure') {
+    } else if (isCellGridWidget(widget)) {
       const content = document.createElement('div');
       content.className = 'widget-content structure-content';
       el.appendChild(content);
@@ -3261,7 +3280,7 @@
       renderMathWidgets(content);
     }
     positionWidgetContent(el, widget);
-    const handles = widget.type === 'code' || widget.type === 'structure'
+    const handles = widget.type === 'code' || isCellGridWidget(widget)
       ? ['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left']
         .map(edge => ['widget-edge-handle', 'resizeEdge', edge])
       : [];
@@ -3274,7 +3293,7 @@
   }
 
   function paintStructureWidget(el, widget) {
-    if (!el || !widget || widget.type !== 'structure') return;
+    if (!el || !widget || !isCellGridWidget(widget)) return;
     let content = el.querySelector('.structure-content');
     if (!content) {
       paintWidgetElement(el, widget);
@@ -3289,7 +3308,7 @@
   function positionWidgetContent(el, widget) {
     const content = el.querySelector('.widget-content');
     if (!content) return;
-    if (widget.type === 'code' || widget.type === 'structure') {
+    if (widget.type === 'code' || isCellGridWidget(widget)) {
       const code = content.querySelector('code');
       const frame = el.querySelector('.code-frame');
       if (frame) {
@@ -3301,7 +3320,7 @@
       content.style.width = `${widget.w}px`;
       content.style.height = `${widget.h}px`;
       content.style.transform = '';
-      if (widget.type === 'structure') {
+      if (isCellGridWidget(widget)) {
         window.AlgoStructureRenderer?.render(content, widget);
         restoreStructureCellSelection(el);
         return;
@@ -4466,10 +4485,10 @@
     const toSlide = getSlideById(event?.toSlide?.dataset.slideId);
     if (!fromSlide || !toSlide) return;
     const fromWidgets = new Map(normalizeWidgets(fromSlide.widgets)
-      .filter(widget => widget.type === 'structure' && widget.transitionId.trim())
+      .filter(widget => isCellGridWidget(widget) && widget.transitionId.trim())
       .map(widget => [widget.transitionId.trim(), widget]));
     const targets = normalizeWidgets(toSlide.widgets).reduce((matches, widget) => {
-      if (widget.type !== 'structure') return matches;
+      if (!isCellGridWidget(widget)) return matches;
       const transitionId = widget.transitionId.trim();
       const source = transitionId && fromWidgets.get(transitionId);
       const el = source && event.toSlide.querySelector(`.structure-widget[data-widget-id="${widget.id}"]`);
@@ -4673,7 +4692,7 @@
   }
 
   function addObject(kind, point) {
-    if (kind === 'latex' || kind === 'code') {
+    if (kind === 'latex' || kind === 'code' || kind === 'table') {
       addWidget(kind, point);
       return;
     }
@@ -4759,14 +4778,18 @@
     const slide = getSlide();
     if (!slide) return;
     slide.widgets = normalizeWidgets(slide.widgets);
-    const normalizedStructureMode = STRUCTURE_MODES.includes(structureMode) ? structureMode : 'normal';
+    const normalizedStructureMode = type === 'table'
+      ? 'table'
+      : (STRUCTURE_MODES.includes(structureMode) ? structureMode : 'normal');
     const isStructure = type === 'structure';
+    const isTable = type === 'table';
+    const isCellGrid = isStructure || isTable;
     const structureWidth = normalizedStructureMode === 'stack' ? 360 : 640;
     const structureHeight = normalizedStructureMode === 'normal' || normalizedStructureMode === 'queue' || normalizedStructureMode === 'disk'
       ? 240
       : 330;
-    const widgetWidth = type === 'code' ? 560 : (isStructure ? structureWidth : 360);
-    const widgetHeight = type === 'code' ? 230 : (isStructure ? structureHeight : 104);
+    const widgetWidth = type === 'code' ? 560 : (isCellGrid ? structureWidth : 360);
+    const widgetHeight = type === 'code' ? 230 : (isCellGrid ? structureHeight : 104);
     const widget = {
       id: randomId(),
       type,
@@ -4775,7 +4798,7 @@
       w: widgetWidth,
       h: widgetHeight,
       language: 'cpp',
-      fontSize: type === 'code' ? 21 : (isStructure ? 18 : 34),
+      fontSize: type === 'code' ? 21 : (isCellGrid ? 18 : 34),
       focusLines: '',
       showLineNumbers: false,
       scale: 1,
@@ -4783,13 +4806,13 @@
       ...normalizeAnimationSettings(),
       content: type === 'code'
         ? defaultCode()
-        : (isStructure
-          ? (normalizedStructureMode === 'table'
+        : (isCellGrid
+          ? (isTable
             ? '欄位 1 | 欄位 2 | 欄位 3\n資料 1 | 資料 2 | 資料 3\n資料 4 | 資料 5 | 資料 6'
             : (normalizedStructureMode === 'matrix' ? '0, 0, 0\n0, 0, 0' : '0, 0, 0, 0, 0, 0, 0'))
           : String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`)
     };
-    if (isStructure) {
+    if (isCellGrid) {
       Object.assign(widget, {
         structureMode: normalizedStructureMode,
         indexMode: 0,
@@ -4825,7 +4848,7 @@
         markIndices: '',
         backgroundIndices: ''
       });
-      if (normalizedStructureMode === 'table') {
+      if (isTable) {
         Object.assign(widget, {
           tableData: [
             ['欄位 1', '欄位 2', '欄位 3'],
@@ -4841,7 +4864,7 @@
           frameBackgroundEnabled: false
         });
       }
-      if (normalizedStructureMode === 'binary_tree') widget.treeData = legacyTreeData(widget.content);
+      if (isStructure && normalizedStructureMode === 'binary_tree') widget.treeData = legacyTreeData(widget.content);
       const naturalSize = constrainedStructureSize(widget);
       widget.w = naturalSize.width;
       widget.h = naturalSize.height;
@@ -5362,7 +5385,7 @@
       return;
     }
 
-    if (widget.type !== 'structure') {
+    if (!isCellGridWidget(widget)) {
       if (Number.isFinite(result.distanceX)) {
         widget.x = result.bounds.left;
         widget.w = Math.max(40, result.bounds.width);
@@ -5787,6 +5810,7 @@
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
+    if (tableEditorPanel) tableEditorPanel.hidden = true;
     setStructureEditorActive(false);
     hideAnimationEditor();
     updateAlgorithmEditButton();
@@ -5805,6 +5829,7 @@
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
+    if (tableEditorPanel) tableEditorPanel.hidden = true;
     setStructureEditorActive(false);
     hideAnimationEditor();
   }
@@ -5817,14 +5842,9 @@
 
   function syncStructureEditorVisibility(widget) {
     const mode = widget?.structureMode || 'normal';
-    if (structureEditorTitle) structureEditorTitle.textContent = mode === 'table' ? '表格' : 'Structure';
     if (structureTreeControls) structureTreeControls.hidden = mode !== 'binary_tree';
-    if (structureLengthControl) structureLengthControl.hidden = ['matrix', 'table', 'binary_tree'].includes(mode);
+    if (structureLengthControl) structureLengthControl.hidden = ['matrix', 'binary_tree'].includes(mode);
     if (structureFrameBackgroundControls) structureFrameBackgroundControls.hidden = !['normal', 'matrix'].includes(mode);
-    if (tableEditorControls) tableEditorControls.hidden = mode !== 'table';
-    if (structureIndexModeSelect) structureIndexModeSelect.closest('label').hidden = mode === 'table';
-    if (structureItemsPerRowInput) structureItemsPerRowInput.closest('label').hidden = mode === 'table';
-    if (structureGapInput) structureGapInput.closest('label').hidden = mode === 'table';
     if (structureFrameBackgroundColorInput && structureFrameBackgroundEnabledInput) {
       structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
     }
@@ -5856,6 +5876,10 @@
     structureAnnotationTextInput.value = widget.annotationText || '';
     if (structureFrameBackgroundEnabledInput) structureFrameBackgroundEnabledInput.checked = widget.frameBackgroundEnabled !== false;
     setStructureColorButton(structureFrameBackgroundColorInput, widget.frameBackgroundColor || DEFAULT_STRUCTURE_FRAME_BACKGROUND);
+    syncStructureEditorVisibility(widget);
+  }
+
+  function populateTableEditor(widget) {
     const tableData = normalizeTableData(widget.tableData, widget.content);
     if (tableRowsInput) tableRowsInput.value = String(tableData.length);
     if (tableColumnsInput) tableColumnsInput.value = String(tableData[0]?.length || 1);
@@ -5865,12 +5889,11 @@
     setStructureColorButton(tableBodyFillInput, widget.tableBodyFill || '#ffffff');
     setStructureColorButton(tableBorderColorInput, widget.tableBorderColor || '#344247');
     setStructureColorButton(tableTextColorInput, widget.tableTextColor || '#1f282d');
-    syncStructureEditorVisibility(widget);
   }
 
   function updateSelectedStructure(patch, { history = true, preserveScale = false } = {}) {
     const found = getWidget(selectedWidgetId);
-    if (!found.widget || found.widget.type !== 'structure') return;
+    if (!found.widget || !isCellGridWidget(found.widget)) return;
     const preview = { ...found.widget, ...patch, structureFrameVersion: 4 };
     let size;
     if (preserveScale && window.AlgoStructureRenderer?.getNaturalSize) {
@@ -5942,7 +5965,7 @@
   function structureCellContext(widgetEl, cell) {
     if (!widgetEl || !cell) return null;
     const found = getWidget(widgetEl.dataset.widgetId);
-    if (!found.widget || found.widget.type !== 'structure') return null;
+    if (!found.widget || !isCellGridWidget(found.widget)) return null;
     const mode = found.widget.structureMode || 'normal';
     const treeNode = cell.closest?.('[data-tree-node-id]');
     if (mode === 'binary_tree') {
@@ -6292,7 +6315,7 @@
     const widgetEl = event.target.closest?.('.structure-widget');
     if (!widgetEl) return;
     const found = getWidget(widgetEl.dataset.widgetId);
-    if (!found.widget || found.widget.type !== 'structure') return;
+    if (!found.widget || !isCellGridWidget(found.widget)) return;
     const mode = found.widget.structureMode || 'normal';
     const treeNode = event.target.closest?.('[data-tree-node-id]');
     const cell = event.target.closest?.('[data-structure-item-index]');
@@ -6378,7 +6401,7 @@
   }
 
   function applyMatrixContextAction(action, context, widget) {
-    const isTable = widget.structureMode === 'table';
+    const isTable = widget.type === 'table' || widget.structureMode === 'table';
     const rows = isTable
       ? normalizeTableData(widget.tableData, widget.content)
       : matrixStructureRows(widget.content);
@@ -6510,7 +6533,8 @@
     latexEditorPanel.hidden = found.widget.type !== 'latex';
     codeEditorPanel.hidden = found.widget.type !== 'code';
     if (structureEditorPanel) structureEditorPanel.hidden = found.widget.type !== 'structure';
-    setStructureEditorActive(found.widget.type === 'structure');
+    if (tableEditorPanel) tableEditorPanel.hidden = found.widget.type !== 'table';
+    setStructureEditorActive(isCellGridWidget(found.widget));
     if (found.widget.type === 'latex') {
       latexFontSizeInput.value = Math.round(found.widget.fontSize || 34);
       latexEditorInput.value = found.widget.content;
@@ -6522,6 +6546,9 @@
       if (codeEditorModalStatus) codeEditorModalStatus.textContent = `Editing code widget ${found.widget.id}`;
     } else if (found.widget.type === 'structure') {
       populateStructureEditor(found.widget);
+      if (editorChrome) editorChrome.scrollTop = 0;
+    } else if (found.widget.type === 'table') {
+      populateTableEditor(found.widget);
       if (editorChrome) editorChrome.scrollTop = 0;
     }
     showAnimationEditor(found.widget);
@@ -6538,6 +6565,7 @@
     latexEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
+    if (tableEditorPanel) tableEditorPanel.hidden = true;
     setStructureEditorActive(false);
     showAnimationEditor(obj);
   }
@@ -6895,7 +6923,7 @@
       code.className = `language-${widget.language || 'cpp'}`;
       code.textContent = widget.content || defaultCode();
       applyCodeFocusLines(code, widget.focusLines, widget.showLineNumbers);
-    } else if (widget.type === 'structure') {
+    } else if (isCellGridWidget(widget)) {
       let content = el.querySelector('.structure-content');
       if (!content) {
         paintWidgetElement(el, widget);
@@ -7309,6 +7337,7 @@
     document.getElementById('exitLatexEditorBtn').addEventListener('click', clearWidgetSelection);
     document.getElementById('exitCodeEditorBtn').addEventListener('click', clearWidgetSelection);
     exitStructureEditorBtn?.addEventListener('click', clearWidgetSelection);
+    exitTableEditorBtn?.addEventListener('click', clearWidgetSelection);
     latexEditorInput.addEventListener('input', () => updateSelectedWidget({ content: latexEditorInput.value }));
     structureModeSelect?.addEventListener('change', () => {
       const found = getWidget(selectedWidgetId);
@@ -7316,15 +7345,6 @@
       const patch = { structureMode };
       if (structureMode === 'binary_tree') {
         patch.treeData = normalizeTreeData(found.widget?.treeData, found.widget?.content || '');
-      }
-      if (structureMode === 'table') {
-        patch.tableData = normalizeTableData(found.widget?.tableData, found.widget?.content || '');
-        patch.content = tableContentSummary(patch.tableData);
-        patch.tableHeaderRow = found.widget?.tableHeaderRow !== false;
-        patch.tableHeaderColumn = found.widget?.tableHeaderColumn === true;
-        patch.frameBackgroundEnabled = false;
-        patch.indexMode = 0;
-        patch.gap = 0;
       }
       updateSelectedStructure(patch);
       syncStructureEditorVisibility({ structureMode });
@@ -7352,7 +7372,7 @@
     });
     const updateTableDimensions = () => {
       const found = getWidget(selectedWidgetId);
-      if (!found.widget || found.widget.structureMode !== 'table') return;
+      if (!found.widget || found.widget.type !== 'table') return;
       const tableData = resizeTableData(found.widget, tableRowsInput?.value, tableColumnsInput?.value);
       updateSelectedStructure({
         tableData,
@@ -7522,7 +7542,7 @@
         resetCodeWidgetRuntimeStyles(widgetEl, found.widget);
       }
       const dragIds = preserveGroup ? selectedIds : [widgetEl.dataset.widgetId];
-      const resizable = dragIds.length === 1 && (found.widget.type === 'code' || found.widget.type === 'structure');
+      const resizable = dragIds.length === 1 && (found.widget.type === 'code' || isCellGridWidget(found.widget));
       const edge = resizable ? (event.target.dataset.resizeEdge || inferResizeEdge(widgetEl, event)) : null;
       const layerRect = widgetEl.closest('.widget-layer').getBoundingClientRect();
       const scaleX = layerRect.width / SLIDE_W;
@@ -7537,7 +7557,7 @@
         originalY: found.widget.y,
         originalW: found.widget.w,
         originalH: found.widget.h,
-        originalFontSize: found.widget.fontSize || (found.widget.type === 'code' ? 21 : (found.widget.type === 'structure' ? 18 : 34)),
+        originalFontSize: found.widget.fontSize || (found.widget.type === 'code' ? 21 : (isCellGridWidget(found.widget) ? 18 : 34)),
         originalScale: found.widget.scale || 1,
         items: dragIds.map(id => {
           const item = getWidget(id).widget;
@@ -7709,7 +7729,7 @@
     function resizeWidgetFromEdge(widget, drag, dx, dy) {
       const minW = 40;
       const minH = 40;
-      if (widget.type === 'structure') {
+      if (isCellGridWidget(widget)) {
         const ratio = Math.max(0.1, drag.originalW / Math.max(1, drag.originalH));
         const drivesHeight = !drag.edge.includes('left') && !drag.edge.includes('right')
           && (drag.edge.includes('top') || drag.edge.includes('bottom'));

@@ -620,8 +620,9 @@
   }
 
   function drawWithOriginalRenderer(group, widget, rawValues) {
-    const mode = widget.structureMode === 'matrix' || widget.structureMode === 'table'
-      ? widget.structureMode
+    const requestedMode = widget.type === 'table' ? 'table' : widget.structureMode;
+    const mode = requestedMode === 'matrix' || requestedMode === 'table'
+      ? requestedMode
       : (ORIGINAL_RENDERERS[widget.structureMode] ? widget.structureMode : 'normal');
     if (mode === 'table') return drawTable(group, widget);
     if (mode === 'matrix') {
@@ -722,8 +723,9 @@
   }
 
   function buildStructureSvg(widget) {
-    const mode = widget.structureMode === 'binary_tree' || widget.structureMode === 'matrix' || widget.structureMode === 'table' || ORIGINAL_RENDERERS[widget.structureMode]
-      ? widget.structureMode
+    const requestedMode = widget.type === 'table' ? 'table' : widget.structureMode;
+    const mode = requestedMode === 'binary_tree' || requestedMode === 'matrix' || requestedMode === 'table' || ORIGINAL_RENDERERS[requestedMode]
+      ? requestedMode
       : 'normal';
     const svg = element('svg', { xmlns: NS });
     addOriginalAnimationDefs(svg);
