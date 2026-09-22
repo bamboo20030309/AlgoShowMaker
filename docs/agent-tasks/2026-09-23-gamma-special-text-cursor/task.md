@@ -2,7 +2,7 @@
 
 ## 任務資訊
 - 負責代理：gamma
-- 狀態：開發中
+- 狀態：待交付
 - 共同基準 commit：bd9a4af388431ab68fb4538e6ecac2fecd179369
 - 分支：codex/2026-09-22-gamma
 - Worktree：C:\Users\user\Documents\Codex\2026-07-29\algoshowmaker-main-commit-d154dd5-slides-html\work\AlgoShowMaker\.worktrees\2026-09-22-gamma
@@ -30,9 +30,9 @@
 - 依賴任務：無
 
 ## 驗收條件
-- [ ] 點擊 `②` 左半與右半時，游標分別位於字元前後。
-- [ ] 組合字與 ZWJ emoji 只產生一個游標位置，後方既有樣式及上下標仍套用到正確字元。
-- [ ] 舊投影片文字可載入並儲存新的字素版本資訊。
+- [x] 點擊 `②` 左半與右半時，游標分別位於字元前後。
+- [x] 組合字與 ZWJ emoji 只產生一個游標位置，後方既有樣式及上下標仍套用到正確字元。
+- [x] 舊投影片文字可載入並儲存新的字素版本資訊。
 
 ## 驗證計畫
 - 子代理小驗證：JS 語法、特殊文字游標 Playwright 專項、既有行內上下標專項、入口版本測試與 diff check。
