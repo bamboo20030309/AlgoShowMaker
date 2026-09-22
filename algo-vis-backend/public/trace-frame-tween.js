@@ -531,15 +531,11 @@
       : 0;
     const entranceTargets = [...new Set(enteringMarkerKeys)].filter(Boolean);
     const entranceDuration = entranceTargets.length ? APPEAR_TIMING.duration : 0;
-    const markerReflowActive = entranceTargets.length > 0 && enabledTransitions.some(step => (
-      step?.subtype === 'marker-group-reflow' && Number(step?.durationMs) > 0
-    ));
-    const entranceLead = markerReflowActive ? MARKER_REFLOW_TIMING.entranceDelay : 0;
-    // Existing markers start making room first. The entering marker joins a
-    // moment later, while the reflow is still running, and events wait for
-    // both overlapping phases to complete.
+    // A newly entering marker and its peers begin their motions together.
+    // Letting peers reflow first makes a lone marker visibly drift before the
+    // incoming marker exists, so no marker entrance reserves an advance lead.
     const frameTransitionStart = preKeepEnd;
-    const entranceStart = frameTransitionStart + Math.max(keepDuration, entranceLead);
+    const entranceStart = frameTransitionStart + keepDuration;
     const scheduledEventStart = regularSlots.length
       ? Math.min(...regularSlots.map(slot => Number(slot.promptStart ?? slot.start) || 0))
       : 0;
@@ -7000,10 +6996,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-226';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-227';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-226', play, cancel, updateEventAvailability,
+    build: 'trace-227', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

@@ -1543,7 +1543,7 @@ test('assignment retains the parked arrow until motion starts, then reaches the 
   assert.equal(motion.adjustments.size, 0);
 });
 
-test('same-cell marker reflow leads the overlapping entrance, then frame events start', () => {
+test('same-cell marker reflow starts with the overlapping entrance, then frame events start', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerGroupReflowDuration, markerFrameMotionDelay,');
@@ -1668,9 +1668,10 @@ test('same-cell marker reflow leads the overlapping entrance, then frame events 
     transitionSteps: [reflowStep]
   });
   assert.equal(preEventPlan.phases.find(phase => phase.id === 'frame-transition').startMs, 0);
-  assert.equal(preEventPlan.phases.find(phase => phase.id === 'object-entrance').startMs, 80);
-  assert.equal(preEventPlan.preEventDurationMs, 300,
-    'reflow finishes at 180 ms and the delayed 220 ms entrance finishes at 300 ms');
+  assert.equal(preEventPlan.phases.find(phase => phase.id === 'object-entrance').startMs, 0,
+    'the incoming marker appears when its peers begin making room');
+  assert.equal(preEventPlan.preEventDurationMs, 220,
+    'the simultaneous 180 ms reflow and 220 ms entrance finish at 220 ms');
 
   const event = { id: 'compare-after-j-entry', type: 'compare', order: 3 };
   const plan = context.window.ASMTraceFrameTween.createPlaybackPlan({
