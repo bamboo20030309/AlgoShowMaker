@@ -34,7 +34,7 @@
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
   const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
-  const STRUCTURE_MODES = ['normal', 'matrix', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+  const STRUCTURE_MODES = ['normal', 'matrix', 'table', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
 
   function randomId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -184,6 +184,7 @@
   let customOverviewRightMouseDown = false;
   let slideClipboard = [];
   let slideMutationInFlight = false;
+  let pendingSlideDelete = null;
   const slidePageEnteringIds = new Set();
   const overviewPageEnteringIds = new Set();
   let objectClipboard = { fabric: [], widgets: [], cut: false };
@@ -336,6 +337,7 @@
   const latexEditorPanel = document.getElementById('latexEditorPanel');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
   const structureEditorPanel = document.getElementById('structureEditorPanel');
+  const structureEditorTitle = document.getElementById('structureEditorTitle');
   const latexEditorInput = document.getElementById('latexEditorInput');
   const openCodeEditorBtn = document.getElementById('openCodeEditorBtn');
   const codeEditorModal = document.getElementById('codeEditorModal');
@@ -343,6 +345,11 @@
   const codeEditorModalStatus = document.getElementById('codeEditorModalStatus');
   const closeCodeEditorModalBtn = document.getElementById('closeCodeEditorModalBtn');
   const saveCodeEditorModalBtn = document.getElementById('saveCodeEditorModalBtn');
+  const slideDeleteDialog = document.getElementById('slideDeleteDialog');
+  const slideDeleteMessage = document.getElementById('slideDeleteMessage');
+  const closeSlideDeleteDialogBtn = document.getElementById('closeSlideDeleteDialogBtn');
+  const cancelSlideDeleteBtn = document.getElementById('cancelSlideDeleteBtn');
+  const confirmSlideDeleteBtn = document.getElementById('confirmSlideDeleteBtn');
   const codeLanguageSelect = document.getElementById('codeLanguageSelect');
   const latexFontSizeInput = document.getElementById('latexFontSizeInput');
   const codeFontSizeInput = document.getElementById('codeFontSizeInput');
@@ -370,10 +377,23 @@
   const structureFrameBackgroundControls = document.getElementById('structureFrameBackgroundControls');
   const structureFrameBackgroundEnabledInput = document.getElementById('structureFrameBackgroundEnabledInput');
   const structureFrameBackgroundColorInput = document.getElementById('structureFrameBackgroundColorInput');
+  const tableEditorControls = document.getElementById('tableEditorControls');
+  const tableRowsInput = document.getElementById('tableRowsInput');
+  const tableColumnsInput = document.getElementById('tableColumnsInput');
+  const tableHeaderRowInput = document.getElementById('tableHeaderRowInput');
+  const tableHeaderColumnInput = document.getElementById('tableHeaderColumnInput');
+  const tableHeaderFillInput = document.getElementById('tableHeaderFillInput');
+  const tableBodyFillInput = document.getElementById('tableBodyFillInput');
+  const tableBorderColorInput = document.getElementById('tableBorderColorInput');
+  const tableTextColorInput = document.getElementById('tableTextColorInput');
   const structureColorBindings = [
     { target: 'structure-annotation', field: 'annotationColor', style: 'annotation', fallback: '#ffffff' },
     { target: 'structure-tree-arrow', button: structureTreeArrowColorInput, field: 'treeArrowColor' },
     { target: 'structure-frame-background', button: structureFrameBackgroundColorInput, field: 'frameBackgroundColor' },
+    { target: 'table-header-fill', button: tableHeaderFillInput, field: 'tableHeaderFill', fallback: '#d9efeb' },
+    { target: 'table-body-fill', button: tableBodyFillInput, field: 'tableBodyFill', fallback: '#ffffff' },
+    { target: 'table-border', button: tableBorderColorInput, field: 'tableBorderColor', fallback: '#344247' },
+    { target: 'table-text', button: tableTextColorInput, field: 'tableTextColor', fallback: '#1f282d' },
     { target: 'structure-highlight', field: 'highlightColor', style: 'highlight', fallback: '#ff0000' },
     { target: 'structure-focus', field: 'focusColor', style: 'focus', fallback: '#808080' },
     { target: 'structure-point', field: 'pointColor', style: 'point', fallback: '#ff0000' },
@@ -2472,6 +2492,62 @@
     return rows.map(row => row.join(', ')).join('\n');
   }
 
+  function normalizeTableData(value, fallbackContent = '') {
+    const source = Array.isArray(value) && value.length
+      ? value
+      : matrixStructureRows(fallbackContent);
+    const rows = source.slice(0, 20).map(row => (
+      Array.isArray(row) ? row : [row]
+    ).slice(0, 12).map(cell => String(cell ?? '').slice(0, 500)));
+    const columnCount = Math.max(1, ...rows.map(row => row.length));
+    if (!rows.length) rows.push(['']);
+    rows.forEach(row => { while (row.length < columnCount) row.push(''); });
+    return rows;
+  }
+
+  function tableContentSummary(rows) {
+    return rows.map(row => row.join(' | ')).join('\n');
+  }
+
+  function resizeTableData(widget, rowCount, columnCount) {
+    const rows = normalizeTableData(widget?.tableData, widget?.content);
+    const targetRows = Math.max(1, Math.min(20, Math.round(Number(rowCount) || rows.length)));
+    const targetColumns = Math.max(1, Math.min(12, Math.round(Number(columnCount) || rows[0]?.length || 1)));
+    while (rows.length < targetRows) rows.push(Array(targetColumns).fill(''));
+    rows.length = targetRows;
+    rows.forEach(row => {
+      while (row.length < targetColumns) row.push('');
+      row.length = targetColumns;
+    });
+    return rows;
+  }
+
+  function remapTableMetadataForResize(widget, nextRows) {
+    const previousRows = normalizeTableData(widget?.tableData, widget?.content);
+    const previousColumns = previousRows[0]?.length || 1;
+    const nextColumns = nextRows[0]?.length || 1;
+    const oldToNew = new Map();
+    for (let row = 0; row < Math.min(previousRows.length, nextRows.length); row += 1) {
+      for (let column = 0; column < Math.min(previousColumns, nextColumns); column += 1) {
+        oldToNew.set(row * previousColumns + column, row * nextColumns + column);
+      }
+    }
+    const cellStyles = {};
+    Object.entries(widget?.cellStyles || {}).forEach(([key, value]) => {
+      const nextIndex = oldToNew.get(Number(key));
+      if (nextIndex !== undefined) cellStyles[nextIndex] = value;
+    });
+    const patch = { cellStyles };
+    ['highlight', 'focus', 'point', 'mark', 'background', 'annotation'].forEach(type => {
+      patch[`${type}Indices`] = window.AlgoStructureRenderer.parseIndices(widget?.[`${type}Indices`])
+        .map(index => oldToNew.get(index))
+        .filter(index => index !== undefined)
+        .sort((a, b) => a - b)
+        .join(',');
+    });
+    return patch;
+  }
+
   function treeContentSummary(treeData) {
     return treeData.nodes.map(node => node.value).join(', ');
   }
@@ -2553,6 +2629,19 @@
           markIndices: typeof widget.markIndices === 'string' ? widget.markIndices : '',
           backgroundIndices: typeof widget.backgroundIndices === 'string' ? widget.backgroundIndices : ''
         });
+        if (normalized.structureMode === 'table') {
+          normalized.tableData = normalizeTableData(widget.tableData, normalized.content);
+          normalized.content = tableContentSummary(normalized.tableData);
+          normalized.tableHeaderRow = widget.tableHeaderRow !== false;
+          normalized.tableHeaderColumn = widget.tableHeaderColumn === true;
+          normalized.tableHeaderFill = widget.tableHeaderFill || '#d9efeb';
+          normalized.tableBodyFill = widget.tableBodyFill || '#ffffff';
+          normalized.tableBorderColor = widget.tableBorderColor || '#344247';
+          normalized.tableTextColor = widget.tableTextColor || '#1f282d';
+          normalized.indexMode = 0;
+          normalized.gap = 0;
+          normalized.frameBackgroundEnabled = false;
+        }
         if (normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
         }
@@ -3104,6 +3193,8 @@
       'annotationIndices', 'annotationColor',
       'annotationText', 'annotationLabels',
       'cellStyles',
+      'tableData', 'tableHeaderRow', 'tableHeaderColumn',
+      'tableHeaderFill', 'tableBodyFill', 'tableBorderColor', 'tableTextColor',
       'frameBackgroundEnabled', 'frameBackgroundColor', 'treeLayout', 'treeArrowColor',
       'treeData', 'structureFrameVersion',
       'w', 'h'
@@ -4041,7 +4132,9 @@
   function structureSourceState(widget) {
     const mode = widget?.structureMode || 'normal';
     const values = linearStructureValues(widget?.content);
-    const matrixRows = mode === 'matrix' ? matrixStructureRows(widget?.content) : [];
+    const matrixRows = mode === 'table'
+      ? normalizeTableData(widget?.tableData, widget?.content)
+      : (mode === 'matrix' ? matrixStructureRows(widget?.content) : []);
     const tree = mode === 'binary_tree' ? normalizeTreeData(widget?.treeData, widget?.content) : { nodes: [], edges: [] };
     return {
       mode,
@@ -4069,7 +4162,7 @@
       const treeNodeId = String(element.dataset.treeNodeId || '');
       const existed = sameMode && (element.classList.contains('tree-node')
         ? sourceState.treeNodeIds.has(treeNodeId)
-        : (sourceState.mode === 'matrix'
+        : (sourceState.mode === 'matrix' || sourceState.mode === 'table'
           ? matrixRow < sourceState.matrixRows && matrixColumn < sourceState.matrixColumns
           : itemIndex < sourceState.valueCount));
       if (existed) return result;
@@ -4138,7 +4231,7 @@
       const treeNodeId = String(element.dataset.treeNodeId || '');
       const stillExists = element.classList.contains('tree-node')
         ? destinationState.treeNodeIds.has(treeNodeId)
-        : (destinationState.mode === 'matrix'
+        : (destinationState.mode === 'matrix' || destinationState.mode === 'table'
           ? matrixRow < destinationState.matrixRows && matrixColumn < destinationState.matrixColumns
           : itemIndex < destinationState.valueCount);
       if (stillExists) return;
@@ -4682,7 +4775,9 @@
       content: type === 'code'
         ? defaultCode()
         : (isStructure
-          ? (normalizedStructureMode === 'matrix' ? '0, 0, 0\n0, 0, 0' : '0, 0, 0, 0, 0, 0, 0')
+          ? (normalizedStructureMode === 'table'
+            ? '欄位 1 | 欄位 2 | 欄位 3\n資料 1 | 資料 2 | 資料 3\n資料 4 | 資料 5 | 資料 6'
+            : (normalizedStructureMode === 'matrix' ? '0, 0, 0\n0, 0, 0' : '0, 0, 0, 0, 0, 0, 0'))
           : String.raw`\(\sum_{i=1}^{n} i = \frac{n(n+1)}{2}\)`)
     };
     if (isStructure) {
@@ -4721,6 +4816,22 @@
         markIndices: '',
         backgroundIndices: ''
       });
+      if (normalizedStructureMode === 'table') {
+        Object.assign(widget, {
+          tableData: [
+            ['欄位 1', '欄位 2', '欄位 3'],
+            ['資料 1', '資料 2', '資料 3'],
+            ['資料 4', '資料 5', '資料 6']
+          ],
+          tableHeaderRow: true,
+          tableHeaderColumn: false,
+          tableHeaderFill: '#d9efeb',
+          tableBodyFill: '#ffffff',
+          tableBorderColor: '#344247',
+          tableTextColor: '#1f282d',
+          frameBackgroundEnabled: false
+        });
+      }
       if (normalizedStructureMode === 'binary_tree') widget.treeData = legacyTreeData(widget.content);
       const naturalSize = constrainedStructureSize(widget);
       widget.w = naturalSize.width;
@@ -5697,9 +5808,14 @@
 
   function syncStructureEditorVisibility(widget) {
     const mode = widget?.structureMode || 'normal';
+    if (structureEditorTitle) structureEditorTitle.textContent = mode === 'table' ? '表格' : 'Structure';
     if (structureTreeControls) structureTreeControls.hidden = mode !== 'binary_tree';
-    if (structureLengthControl) structureLengthControl.hidden = ['matrix', 'binary_tree'].includes(mode);
+    if (structureLengthControl) structureLengthControl.hidden = ['matrix', 'table', 'binary_tree'].includes(mode);
     if (structureFrameBackgroundControls) structureFrameBackgroundControls.hidden = !['normal', 'matrix'].includes(mode);
+    if (tableEditorControls) tableEditorControls.hidden = mode !== 'table';
+    if (structureIndexModeSelect) structureIndexModeSelect.closest('label').hidden = mode === 'table';
+    if (structureItemsPerRowInput) structureItemsPerRowInput.closest('label').hidden = mode === 'table';
+    if (structureGapInput) structureGapInput.closest('label').hidden = mode === 'table';
     if (structureFrameBackgroundColorInput && structureFrameBackgroundEnabledInput) {
       structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
     }
@@ -5731,6 +5847,15 @@
     structureAnnotationTextInput.value = widget.annotationText || '';
     if (structureFrameBackgroundEnabledInput) structureFrameBackgroundEnabledInput.checked = widget.frameBackgroundEnabled !== false;
     setStructureColorButton(structureFrameBackgroundColorInput, widget.frameBackgroundColor || DEFAULT_STRUCTURE_FRAME_BACKGROUND);
+    const tableData = normalizeTableData(widget.tableData, widget.content);
+    if (tableRowsInput) tableRowsInput.value = String(tableData.length);
+    if (tableColumnsInput) tableColumnsInput.value = String(tableData[0]?.length || 1);
+    if (tableHeaderRowInput) tableHeaderRowInput.checked = widget.tableHeaderRow !== false;
+    if (tableHeaderColumnInput) tableHeaderColumnInput.checked = widget.tableHeaderColumn === true;
+    setStructureColorButton(tableHeaderFillInput, widget.tableHeaderFill || '#d9efeb');
+    setStructureColorButton(tableBodyFillInput, widget.tableBodyFill || '#ffffff');
+    setStructureColorButton(tableBorderColorInput, widget.tableBorderColor || '#344247');
+    setStructureColorButton(tableTextColorInput, widget.tableTextColor || '#1f282d');
     syncStructureEditorVisibility(widget);
   }
 
@@ -5766,7 +5891,7 @@
     const found = getWidget(selectedWidgetId);
     if (!found.widget || found.widget.type !== 'structure') return;
     const mode = found.widget.structureMode || 'normal';
-    if (['matrix', 'binary_tree'].includes(mode)) return;
+    if (['matrix', 'table', 'binary_tree'].includes(mode)) return;
     const length = Math.max(1, Math.min(100, Math.round(Number(rawLength) || 1)));
     const values = linearStructureValues(found.widget.content);
     if (values.length === length) {
@@ -5826,9 +5951,12 @@
         }
       };
     }
-    if (mode === 'matrix') {
+    if (mode === 'matrix' || mode === 'table') {
       const row = Math.max(0, Number(cell.dataset.matrixRow) || 0);
       const column = Math.max(0, Number(cell.dataset.matrixColumn) || 0);
+      const rows = mode === 'table'
+        ? normalizeTableData(found.widget.tableData, found.widget.content)
+        : matrixStructureRows(found.widget.content);
       return {
         widget: found.widget,
         cell,
@@ -5838,7 +5966,7 @@
           mode,
           row,
           column,
-          value: matrixStructureRows(found.widget.content)[row]?.[column] || ''
+          value: rows[row]?.[column] || ''
         }
       };
     }
@@ -5957,7 +6085,7 @@
     if (!found.widget) return;
     editor.context.value = value;
     if (editor.context.mode === 'binary_tree') applyTreeContextAction('tree-save', editor.context, found.widget);
-    else if (editor.context.mode === 'matrix') applyMatrixContextAction('matrix-save', editor.context, found.widget);
+    else if (editor.context.mode === 'matrix' || editor.context.mode === 'table') applyMatrixContextAction('matrix-save', editor.context, found.widget);
     else applyItemContextAction('item-save', editor.context, found.widget);
   }
 
@@ -6151,7 +6279,7 @@
         structureContextButton('Add node', 'tree-add'),
         structureContextButton('Delete node', 'tree-delete', nodeId === treeData.rootId)
       );
-    } else if (mode === 'matrix') {
+    } else if (mode === 'matrix' || mode === 'table') {
       activeStructureContext = { ...details.context, cellKey: details.key };
       structureContextMenu.append(
         structureContextButton('Edit value', 'matrix-edit'),
@@ -6213,29 +6341,68 @@
   }
 
   function applyMatrixContextAction(action, context, widget) {
-    const rows = matrixStructureRows(widget.content);
+    const isTable = widget.structureMode === 'table';
+    const rows = isTable
+      ? normalizeTableData(widget.tableData, widget.content)
+      : matrixStructureRows(widget.content);
     const columns = Math.max(1, ...rows.map(row => row.length));
     rows.forEach(row => { while (row.length < columns) row.push(''); });
+    const indexRows = rows.map((item, rowIndex) => item.map((value, columnIndex) => rowIndex * columns + columnIndex));
     const row = Math.min(context.row, rows.length - 1);
     const column = Math.min(context.column, columns - 1);
     if (action === 'matrix-save') {
       rows[row][column] = context.value;
     } else if (action === 'matrix-row-before' || action === 'matrix-row-after') {
-      rows.splice(row + (action === 'matrix-row-after' ? 1 : 0), 0, Array(columns).fill('0'));
+      if (isTable && rows.length >= 20) return;
+      const insertAt = row + (action === 'matrix-row-after' ? 1 : 0);
+      rows.splice(insertAt, 0, Array(columns).fill(isTable ? '' : '0'));
+      indexRows.splice(insertAt, 0, Array(columns).fill(null));
     } else if (action === 'matrix-column-before' || action === 'matrix-column-after') {
+      if (isTable && columns >= 12) return;
       const insertAt = column + (action === 'matrix-column-after' ? 1 : 0);
-      rows.forEach(item => item.splice(insertAt, 0, '0'));
+      rows.forEach(item => item.splice(insertAt, 0, isTable ? '' : '0'));
+      indexRows.forEach(item => item.splice(insertAt, 0, null));
     } else if (action === 'matrix-row-delete') {
-      if (rows.length === 1) rows[0] = Array(columns).fill('0');
-      else rows.splice(row, 1);
+      if (rows.length === 1) {
+        rows[0] = Array(columns).fill(isTable ? '' : '0');
+        indexRows[0] = Array(columns).fill(null);
+      } else {
+        rows.splice(row, 1);
+        indexRows.splice(row, 1);
+      }
     } else if (action === 'matrix-column-delete') {
-      if (columns === 1) rows.forEach(item => { item[0] = '0'; });
-      else rows.forEach(item => item.splice(column, 1));
+      if (columns === 1) {
+        rows.forEach((item, rowIndex) => { item[0] = isTable ? '' : '0'; indexRows[rowIndex][0] = null; });
+      } else {
+        rows.forEach(item => item.splice(column, 1));
+        indexRows.forEach(item => item.splice(column, 1));
+      }
     } else {
       return;
     }
-    const content = matrixStructureContent(rows);
-    updateSelectedStructure({ content });
+    const content = isTable ? tableContentSummary(rows) : matrixStructureContent(rows);
+    if (!isTable) {
+      updateSelectedStructure({ content });
+      return;
+    }
+    const oldToNew = new Map();
+    indexRows.forEach((item, rowIndex) => item.forEach((oldIndex, columnIndex) => {
+      if (oldIndex !== null) oldToNew.set(oldIndex, rowIndex * item.length + columnIndex);
+    }));
+    const cellStyles = {};
+    Object.entries(widget.cellStyles || {}).forEach(([key, value]) => {
+      const nextIndex = oldToNew.get(Number(key));
+      if (nextIndex !== undefined) cellStyles[nextIndex] = value;
+    });
+    const patch = { tableData: rows, content, cellStyles };
+    ['highlight', 'focus', 'point', 'mark', 'background', 'annotation'].forEach(type => {
+      patch[`${type}Indices`] = window.AlgoStructureRenderer.parseIndices(widget[`${type}Indices`])
+        .map(index => oldToNew.get(index))
+        .filter(index => index !== undefined)
+        .sort((a, b) => a - b)
+        .join(',');
+    });
+    updateSelectedStructure(patch);
   }
 
   function applyItemContextAction(action, context, widget) {
@@ -6284,7 +6451,7 @@
       return;
     }
     if (context.mode === 'binary_tree') applyTreeContextAction(action, context, found.widget);
-    else if (context.mode === 'matrix') applyMatrixContextAction(action, context, found.widget);
+    else if (context.mode === 'matrix' || context.mode === 'table') applyMatrixContextAction(action, context, found.widget);
     else applyItemContextAction(action, context, found.widget);
     hideStructureContextMenu();
   }
@@ -7004,6 +7171,16 @@
     shareDialog?.addEventListener('click', event => {
       if (event.target === shareDialog) closeShareDialog();
     });
+    closeSlideDeleteDialogBtn?.addEventListener('click', closeSlideDeleteDialog);
+    cancelSlideDeleteBtn?.addEventListener('click', closeSlideDeleteDialog);
+    confirmSlideDeleteBtn?.addEventListener('click', confirmPendingSlideDelete);
+    slideDeleteDialog?.addEventListener('cancel', event => {
+      event.preventDefault();
+      closeSlideDeleteDialog();
+    });
+    slideDeleteDialog?.addEventListener('click', event => {
+      if (event.target === slideDeleteDialog) closeSlideDeleteDialog();
+    });
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);
@@ -7085,6 +7262,15 @@
       if (structureMode === 'binary_tree') {
         patch.treeData = normalizeTreeData(found.widget?.treeData, found.widget?.content || '');
       }
+      if (structureMode === 'table') {
+        patch.tableData = normalizeTableData(found.widget?.tableData, found.widget?.content || '');
+        patch.content = tableContentSummary(patch.tableData);
+        patch.tableHeaderRow = found.widget?.tableHeaderRow !== false;
+        patch.tableHeaderColumn = found.widget?.tableHeaderColumn === true;
+        patch.frameBackgroundEnabled = false;
+        patch.indexMode = 0;
+        patch.gap = 0;
+      }
       updateSelectedStructure(patch);
       syncStructureEditorVisibility({ structureMode });
     });
@@ -7109,6 +7295,22 @@
       if (structureFrameBackgroundColorInput) structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
       updateSelectedStructure({ frameBackgroundEnabled: structureFrameBackgroundEnabledInput.checked });
     });
+    const updateTableDimensions = () => {
+      const found = getWidget(selectedWidgetId);
+      if (!found.widget || found.widget.structureMode !== 'table') return;
+      const tableData = resizeTableData(found.widget, tableRowsInput?.value, tableColumnsInput?.value);
+      updateSelectedStructure({
+        tableData,
+        content: tableContentSummary(tableData),
+        ...remapTableMetadataForResize(found.widget, tableData)
+      }, { preserveScale: true });
+      if (tableRowsInput) tableRowsInput.value = String(tableData.length);
+      if (tableColumnsInput) tableColumnsInput.value = String(tableData[0].length);
+    };
+    tableRowsInput?.addEventListener('change', updateTableDimensions);
+    tableColumnsInput?.addEventListener('change', updateTableDimensions);
+    tableHeaderRowInput?.addEventListener('change', () => updateSelectedStructure({ tableHeaderRow: tableHeaderRowInput.checked }, { preserveScale: true }));
+    tableHeaderColumnInput?.addEventListener('change', () => updateSelectedStructure({ tableHeaderColumn: tableHeaderColumnInput.checked }, { preserveScale: true }));
     structureColorBindings.forEach(binding => {
       binding.button?.addEventListener('click', () => openIro(binding.target));
     });
@@ -7606,6 +7808,12 @@
     });
 
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && slideDeleteDialog?.open) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSlideDeleteDialog();
+        return;
+      }
       if (event.key === 'Escape' && structureContextMenu && !structureContextMenu.hidden) {
         event.preventDefault();
         event.stopPropagation();
@@ -8710,6 +8918,31 @@
     requestAnimationFrame(() => openAlgorithmEditor(slide.id));
   }
 
+  function closeSlideDeleteDialog() {
+    pendingSlideDelete = null;
+    if (slideDeleteDialog?.open) slideDeleteDialog.close();
+  }
+
+  function confirmPendingSlideDelete() {
+    const pending = pendingSlideDelete;
+    pendingSlideDelete = null;
+    if (slideDeleteDialog?.open) slideDeleteDialog.close();
+    pending?.commit?.();
+  }
+
+  function requestSlideDeleteConfirmation(slideIds, commit) {
+    if (!slideDeleteDialog || typeof slideDeleteDialog.showModal !== 'function') return;
+    const count = slideIds.length;
+    pendingSlideDelete = { slideIds: slideIds.slice(), commit };
+    if (slideDeleteMessage) {
+      slideDeleteMessage.textContent = count === 1
+        ? '即將刪除目前選取的投影片。刪除後仍可立即使用復原。'
+        : `即將刪除選取的 ${count} 張投影片。刪除後仍可立即使用復原。`;
+    }
+    slideDeleteDialog.showModal();
+    requestAnimationFrame(() => confirmSlideDeleteBtn?.focus());
+  }
+
   function deleteOverviewSelectedSlide() {
     if (slideMutationInFlight) return;
     const ids = customOverviewOpen
@@ -8720,22 +8953,24 @@
     if (!removableIds.length) return;
     const beforeOrder = flatSlideIds();
     const firstDeletedIndex = beforeOrder.findIndex(id => removableIds.includes(id));
-    runSlideDeleteTransition(removableIds, () => {
-      removeSlidesByIds(removableIds);
-      const afterOrder = flatSlideIds();
-      const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
-      if (fallbackId) {
-        overviewSelectedSlideId = fallbackId;
-        overviewSelectedSlideIds = new Set([fallbackId]);
-        overviewSelectionAnchorId = fallbackId;
-        const pos = slidePositions.get(fallbackId);
-        if (pos) {
-          currentH = pos.h;
-          currentV = pos.v;
+    requestSlideDeleteConfirmation(removableIds, () => {
+      runSlideDeleteTransition(removableIds, () => {
+        removeSlidesByIds(removableIds);
+        const afterOrder = flatSlideIds();
+        const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
+        if (fallbackId) {
+          overviewSelectedSlideId = fallbackId;
+          overviewSelectedSlideIds = new Set([fallbackId]);
+          overviewSelectionAnchorId = fallbackId;
+          const pos = slidePositions.get(fallbackId);
+          if (pos) {
+            currentH = pos.h;
+            currentV = pos.v;
+          }
         }
-      }
-      saveDeck();
-      renderDeck();
+        saveDeck();
+        renderDeck();
+      });
     });
   }
 

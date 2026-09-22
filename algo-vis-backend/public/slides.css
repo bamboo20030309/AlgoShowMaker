@@ -3734,3 +3734,34 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--control
 .sample-share-links { margin-top: 22px; }
 
 .deck-file-drop-active { outline: 3px solid #55b9f3; outline-offset: 3px; background: #1d8f83 !important; }
+
+.table-editor-controls {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.table-editor-controls[hidden] { display: none; }
+.table-editor-controls .check-field { margin: 0; }
+
+.table-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.table-color-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  min-width: 0;
+  color: #d7e1df;
+  font-size: 12px;
+}
+
+.slide-delete-message { margin: 22px 0 18px; color: #c7d0d3; font-size: 14px; line-height: 1.6; }
+.slide-delete-confirm-btn { border-color: #b94a4a !important; background: #8f2f35 !important; color: #fff; }
+.slide-delete-confirm-btn:hover { background: #a93a42 !important; }
