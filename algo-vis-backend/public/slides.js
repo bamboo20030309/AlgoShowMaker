@@ -6107,7 +6107,7 @@
       return;
     }
     const content = values.join(', ');
-    updateSelectedStructure({ content }, { preserveScale: action !== 'item-save' });
+    updateSelectedStructure({ content }, { preserveScale: true });
   }
 
   function handleStructureContextAction(event) {
