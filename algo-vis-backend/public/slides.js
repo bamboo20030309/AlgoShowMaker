@@ -243,6 +243,10 @@
   const importDeckBtn = document.getElementById('importDeckBtn');
   const importDeckInput = document.getElementById('importDeckInput');
   const shareDeckBtn = document.getElementById('shareDeckBtn');
+  const sampleShareDialog = document.getElementById('sampleShareDialog');
+  const sampleShareUrl = document.getElementById('sampleShareUrl');
+  const sampleShareStatus = document.getElementById('sampleShareStatus');
+  const copySampleShareUrlBtn = document.getElementById('copySampleShareUrlBtn');
   const sharedAccessBadge = document.getElementById('sharedAccessBadge');
   const shareDialog = document.getElementById('shareDialog');
   const shareForm = document.getElementById('shareForm');
@@ -610,6 +614,8 @@
       cloudDeckTitle = entry.title;
       sharedAccess = 'view';
       applySharedAccessUi();
+      if (shareDeckBtn) shareDeckBtn.hidden = false;
+      document.body.classList.add('sample-deck-ready');
       document.title = `${entry.title} - AlgoShowMaker`;
       setCloudStatus('saved', '公開投影片・僅供觀賞');
       return;
@@ -761,6 +767,30 @@
     } finally {
       if (saveShareSettingsBtn) saveShareSettingsBtn.disabled = false;
     }
+  }
+
+  function openSampleShareDialog() {
+    if (!sampleId || !sampleShareDialog || !sampleShareUrl) return;
+    const url = new URL('/slides.html', window.location.origin);
+    url.searchParams.set('sample', sampleId);
+    sampleShareUrl.value = url.toString();
+    if (sampleShareStatus) sampleShareStatus.textContent = '';
+    sampleShareDialog.showModal();
+  }
+
+  async function copySampleShareUrl() {
+    if (!sampleShareUrl?.value) return;
+    try {
+      await navigator.clipboard.writeText(sampleShareUrl.value);
+    } catch {
+      sampleShareUrl.focus();
+      sampleShareUrl.select();
+      if (!document.execCommand('copy')) {
+        if (sampleShareStatus) sampleShareStatus.textContent = '無法自動複製，請選取上方連結手動複製。';
+        return;
+      }
+    }
+    if (sampleShareStatus) sampleShareStatus.textContent = '連結已複製。';
   }
 
   function closeShareDialog() {
@@ -6464,7 +6494,12 @@
     exportDeckBtn?.addEventListener('click', exportDeckJson);
     importDeckBtn?.addEventListener('click', () => importDeckInput?.click());
     importDeckInput?.addEventListener('change', () => importDeckJsonFile(importDeckInput.files && importDeckInput.files[0]));
-    shareDeckBtn?.addEventListener('click', openShareDialog);
+    shareDeckBtn?.addEventListener('click', sampleId ? openSampleShareDialog : openShareDialog);
+    document.getElementById('closeSampleShareDialogBtn')?.addEventListener('click', () => sampleShareDialog?.close());
+    copySampleShareUrlBtn?.addEventListener('click', copySampleShareUrl);
+    sampleShareDialog?.addEventListener('click', event => {
+      if (event.target === sampleShareDialog) sampleShareDialog.close();
+    });
     closeShareDialogBtn?.addEventListener('click', closeShareDialog);
     cancelShareDialogBtn?.addEventListener('click', closeShareDialog);
     shareForm?.addEventListener('submit', saveShareSettings);

@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=structure-menu-hidden-104" />
+  <link rel="stylesheet" href="slides.css?v=sample-actions-105" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
   <link rel="preload" href="/vendor/katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin />
@@ -567,6 +567,26 @@
     </form>
   </dialog>
 
+  <dialog id="sampleShareDialog" class="share-dialog" aria-labelledby="sampleShareTitle">
+    <div class="sample-share-content">
+      <div class="share-dialog-header">
+        <div>
+          <span class="share-eyebrow">公開投影片</span>
+          <h2 id="sampleShareTitle">分享這份範例</h2>
+        </div>
+        <button id="closeSampleShareDialogBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <div class="share-links sample-share-links">
+        <label for="sampleShareUrl">觀賞連結</label>
+        <div class="share-url-row">
+          <input id="sampleShareUrl" type="text" readonly />
+          <button id="copySampleShareUrlBtn" type="button">複製</button>
+        </div>
+      </div>
+      <div id="sampleShareStatus" class="share-dialog-status" role="status" aria-live="polite"></div>
+    </div>
+  </dialog>
+
   <div id="objectToolbar" class="object-toolbar" hidden>
     <select id="fontFamilySelect" title="字體">
       <option value="Arial">Arial</option>
@@ -739,7 +759,7 @@
   <script src="trace-provenance.js?v=trace-9"></script>
   <script src="asmdeck.js?v=5"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="slides.js?v=parallel-merge-200"></script>
+  <script src="slides.js?v=sample-actions-201"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 
