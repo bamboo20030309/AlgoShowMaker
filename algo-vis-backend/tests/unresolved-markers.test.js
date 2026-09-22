@@ -1718,6 +1718,68 @@ test('same-cell marker reflow leads the overlapping entrance, then frame events 
   );
 });
 
+test('a caller marker waits for the outgoing same-cell parameter without affecting its layout', () => {
+  const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { deferredMarkerEntranceBarriers, exitMarkerReflowSchedule,');
+  vm.runInContext(tweenSource, context);
+  const marker = (variableId, lifetimeIdentity) => ({
+    dataset: {
+      traceSourceVariableId: variableId,
+      traceSourceVariableIds: JSON.stringify([variableId]),
+      traceRuntimeIdentity: lifetimeIdentity,
+      traceBindingTarget: 'heap#5',
+      traceMarkerIndexExpression: '5',
+      traceMarkerSortKey: variableId
+    },
+    closest: () => null,
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: name => name === 'width' ? '18' : null }
+      : null,
+    querySelectorAll: () => [],
+    getAttribute: name => name === 'transform' ? 'translate(100,8)' : null
+  });
+  const entering = marker('main:i', 'life-i');
+  const outgoing = marker('sift_down:now', 'life-now');
+  const assignment = {
+    id: 'move-now', type: 'assign', order: 10,
+    targets: [{ role: 'target', variableId: 'sift_down:now' }]
+  };
+  const exit = {
+    id: 'exit-now', type: 'scope-exit', order: 13,
+    targets: [{ role: 'target', variableId: 'sift_down:now', lifetimeIdentity: 'life-now' }]
+  };
+  const timeline = [
+    { event: assignment, animation: 'assign', start: 0, duration: 520, end: 520 },
+    { event: exit, animation: 'exit', markerExit: true,
+      start: 520, visualStart: 520, reflowStart: 520,
+      exitDuration: 220, duration: 220, end: 740 }
+  ];
+  const barriers = context.window.ASMTraceFrameTween.deferredMarkerEntranceBarriers({
+    enteringMarkerKeys: new Set(['marker-i']),
+    traceDocument: { variables: { 'main:i': { name: 'i' } } },
+    eventFrame: { id: 'return-to-caller', events: [assignment, exit], state: {} },
+    eventTimeline: timeline,
+    currentElements: new Map([['marker-i', entering]]),
+    previousObjects: new Map([['marker-now', outgoing]])
+  });
+  assert.equal(barriers.get('marker-i'), 740,
+    'the caller marker entrance waits through the parameter assignment and exit');
+
+  const reflow = context.window.ASMTraceFrameTween.exitMarkerReflowSchedule({
+    eventTimeline: timeline,
+    currentElements: new Map([['marker-i', entering]]),
+    currentPlacements: new Map([
+      ['heap#5', { x: 100, y: 8, width: 40, height: 40 }],
+      ['marker-i', { x: 100, y: 8 }]
+    ]),
+    previousObjects: new Map([['marker-now', outgoing]]),
+    excludedPeerKeys: new Set(barriers.keys())
+  });
+  assert.equal(reflow.size, 0,
+    'the still-hidden caller marker cannot push the outgoing parameter ghost sideways');
+});
+
 test('marker event motion preserves same-cell reflow and a peer entrance', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',

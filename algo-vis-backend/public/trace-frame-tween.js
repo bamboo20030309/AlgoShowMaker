@@ -400,6 +400,45 @@
     return hasReflow ? MARKER_REFLOW_TIMING.duration : 0;
   }
 
+  function deferredMarkerEntranceBarriers({
+    enteringMarkerKeys = new Set(), traceDocument, eventFrame,
+    eventTimeline = [], currentElements, previousObjects
+  } = {}) {
+    const barriers = new Map();
+    const previousMarkers = [];
+    previousObjects?.forEach?.(element => {
+      const candidates = [
+        element,
+        ...(element?.querySelectorAll?.('[data-trace-source-variable-id]') || [])
+      ];
+      candidates.forEach(candidate => {
+        if (!candidate?.dataset?.traceSourceVariableId) return;
+        const target = String(candidate.dataset.traceBindingTarget || '');
+        if (!markerTargetParts(target)) return;
+        previousMarkers.push({ element: candidate, target });
+      });
+    });
+    enteringMarkerKeys.forEach(key => {
+      const entering = currentElements?.get?.(key);
+      const target = markerTargetBeforeFrameEvents(traceDocument, eventFrame, entering);
+      if (!target) return;
+      const blockers = previousMarkers.filter(item => item.target === target);
+      if (!blockers.length) return;
+      let barrier = 0;
+      (eventTimeline || []).forEach(slot => {
+        if (!['assign', 'position', 'exit'].includes(slot?.animation)) return;
+        const targets = slot.event?.targets || [];
+        const matchesBlocker = blockers.some(blocker => targets.some(candidate => (
+          candidate?.role !== 'source'
+          && markerMatchesEventTarget(blocker.element, candidate)
+        )));
+        if (matchesBlocker) barrier = Math.max(barrier, Number(slot.end) || 0);
+      });
+      if (barrier > 0) barriers.set(key, barrier);
+    });
+    return barriers;
+  }
+
   function markerFrameMotionDelay(key, swapStart, eventDelay, reflowKeys) {
     if (reflowKeys?.has?.(key)) return 0;
     return Math.max(Number(swapStart) || 0, Number(eventDelay) || 0);
@@ -4282,7 +4321,8 @@
   }
 
   function exitMarkerReflowSchedule({
-    eventTimeline, currentElements, previousPlacements, currentPlacements, previousObjects
+    eventTimeline, currentElements, previousPlacements, currentPlacements, previousObjects,
+    excludedPeerKeys = new Set()
   } = {}) {
     const schedule = new Map();
     (eventTimeline || []).filter(slot => (
@@ -4320,6 +4360,10 @@
         const peers = [];
         currentElements?.forEach?.((element, key) => {
           if (!element?.dataset?.traceSourceVariableId) return;
+          // Markers held behind an outgoing lifetime's event barrier are not
+          // visible peers yet. Their destination-frame geometry must not
+          // push the outgoing marker aside before they enter.
+          if (excludedPeerKeys?.has?.(key)) return;
           if ((slot.event?.targets || []).some(target => markerMatchesEventTarget(element, target))) return;
           const candidatePrevious = previousVisualForEntry(element, previousObjects, key);
           // A new loop activation can reuse the same authored marker key while
@@ -5787,6 +5831,20 @@
       { continuingKeys }
     );
     const provisionalEventTimeline = [...preKeepEventTimeline, ...provisionalRegularTimeline];
+    const provisionalDeferredEntranceBarriers = Number(options.direction) < 0
+      ? new Map()
+      : deferredMarkerEntranceBarriers({
+        enteringMarkerKeys,
+        traceDocument,
+        eventFrame,
+        eventTimeline: provisionalEventTimeline,
+        currentElements,
+        previousObjects
+      });
+    const deferredMarkerEntranceKeys = new Set(provisionalDeferredEntranceBarriers.keys());
+    const immediateMarkerEntranceKeys = new Set(
+      [...enteringMarkerKeys].filter(key => !deferredMarkerEntranceKeys.has(key))
+    );
     const eventControlledKeys = new Set(eventMotionDelays(
       traceDocument, eventFrame, provisionalEventTimeline, currentPlacements, currentElements
     ).keys());
@@ -5800,7 +5858,7 @@
     });
     const markerReflowKeys = new Set();
     const markerReflowDuration = markerGroupReflowDuration({
-      enteringMarkerKeys,
+      enteringMarkerKeys: immediateMarkerEntranceKeys,
       currentElements,
       previousPlacements,
       currentPlacements,
@@ -5846,7 +5904,7 @@
       direction: options.direction,
       runId,
       transitionSteps,
-      enteringMarkerKeys,
+      enteringMarkerKeys: immediateMarkerEntranceKeys,
       eventTimeline: preKeepEventTimeline,
       initialDelayMs: initialDelay,
       keepTransitionKeys,
@@ -5862,6 +5920,14 @@
     );
     const eventTimeline = [...preKeepEventTimeline, ...regularEventTimeline];
     eventTimeline.forEach(slot => { slot.continuingVisualKeys = continuingKeys; });
+    const deferredEntranceBarriers = deferredMarkerEntranceBarriers({
+      enteringMarkerKeys: deferredMarkerEntranceKeys,
+      traceDocument,
+      eventFrame,
+      eventTimeline,
+      currentElements,
+      previousObjects
+    });
     const declarationSchedule = declarationVisualSchedule(
       traceDocument, eventFrame, eventTimeline, currentPlacements, currentElements, continuingKeys
     );
@@ -5879,14 +5945,15 @@
       currentElements,
       previousPlacements,
       currentPlacements,
-      previousObjects
+      previousObjects,
+      excludedPeerKeys: deferredMarkerEntranceKeys
     });
     const playbackPlan = createPlaybackPlan({
       frame,
       direction: options.direction,
       runId,
       transitionSteps,
-      enteringMarkerKeys,
+      enteringMarkerKeys: immediateMarkerEntranceKeys,
       eventTimeline,
       initialDelayMs: initialDelay,
       keepTransitionKeys,
@@ -6167,6 +6234,8 @@
         : declarationSlot
         ? (Number(declarationSlot.start) || 0)
           + (Number(declarationSlot.declarationEntranceDelay) || 0)
+        : deferredMarkerEntranceKeys.has(entry.key)
+          ? (Number(deferredEntranceBarriers.get(entry.key)) || 0)
         : entry.sceneBoundaryEntrance
           ? sceneEntranceStart
         : enteringMarkerKeys.has(entry.key)
@@ -6934,15 +7003,16 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-223';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-224';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-223', play, cancel, updateEventAvailability,
+    build: 'trace-224', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
     scopeExitVisualContinues,
     declarationVisualSchedule, recursiveRoleContinuations, exitMarkerReflowSchedule,
+    deferredMarkerEntranceBarriers,
     previousMarkerAssignmentSchedule, previousMarkerAssignmentOffset,
     applyPreviousMarkerAssignmentReflows,
     isForInitializerAssignment,
