@@ -29,7 +29,7 @@
   const FABRIC_CUSTOM_PROPS = [
     'transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius', 'layerIndex',
     'styles', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'underline', 'linethrough', 'fill', 'textBackgroundColor',
-    'asmInlineScripts', 'asmInlineScriptBaseStyles',
+    'asmInlineScripts', 'asmInlineScriptBaseStyles', 'asmGraphemeVersion',
     'asmShapeType', 'arrowHeadSize', 'arrowHeadStyle',
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
@@ -2087,6 +2087,15 @@
           } : {}),
           textBaseline: normalizeTextBaselineValue(normalizedObject.textBaseline)
         });
+        if (type.includes('text') && typeof result.text === 'string' && result.asmGraphemeVersion !== 2) {
+          result.styles = migrateFabricStylesToUnicodeGraphemes(result.text, result.styles);
+          if (result.asmInlineScriptBaseStyles) {
+            result.asmInlineScriptBaseStyles = migrateFabricStylesToUnicodeGraphemes(
+              result.text, result.asmInlineScriptBaseStyles
+            );
+          }
+        }
+        if (type.includes('text')) result.asmGraphemeVersion = 2;
         if (result.asmInlineScripts && typeof result.text === 'string') {
           result.asmInlineScriptBaseStyles = normalizeFabricTextStyles(
             result.asmInlineScriptBaseStyles || result.styles
@@ -2211,6 +2220,7 @@
             visible: true
           };
           if (textLike) {
+            normalized.asmGraphemeVersion = 2;
             normalized.styles = normalizeFabricTextStyles(source?.styles || obj?.styles);
             if (source?.asmInlineScripts) {
               const baseStyles = normalizeFabricTextStyles(source.asmInlineScriptBaseStyles || {});
@@ -2388,6 +2398,49 @@
       if (Object.keys(entry).length) normalized[String(Number(key))] = entry;
     });
     return normalized;
+  }
+
+  function unicodeGraphemes(text) {
+    if (window.ASMInlineScripts?.segmentGraphemes) {
+      return window.ASMInlineScripts.segmentGraphemes(text);
+    }
+    return Array.from(String(text || ''));
+  }
+
+  function migrateFabricStylesToUnicodeGraphemes(text, styles) {
+    const normalized = normalizeFabricTextStyles(styles);
+    const lines = String(text || '').split('\n');
+    const migrated = {};
+    Object.entries(normalized).forEach(([lineIndex, lineStyles]) => {
+      const line = lines[Number(lineIndex)] || '';
+      const oldCharacters = Array.from(line);
+      const graphemes = unicodeGraphemes(line);
+      if (oldCharacters.length === graphemes.length) {
+        migrated[lineIndex] = lineStyles;
+        return;
+      }
+      const graphemeStarts = [];
+      let offset = 0;
+      graphemes.forEach(grapheme => {
+        graphemeStarts.push(offset);
+        offset += grapheme.length;
+      });
+      const migratedLine = {};
+      let oldOffset = 0;
+      oldCharacters.forEach((character, oldIndex) => {
+        const style = lineStyles[oldIndex];
+        if (style) {
+          let nextIndex = graphemeStarts.findIndex((start, index) => (
+            oldOffset >= start && oldOffset < start + graphemes[index].length
+          ));
+          if (nextIndex < 0) nextIndex = Math.max(0, graphemes.length - 1);
+          migratedLine[nextIndex] = { ...(migratedLine[nextIndex] || {}), ...style };
+        }
+        oldOffset += character.length;
+      });
+      if (Object.keys(migratedLine).length) migrated[lineIndex] = migratedLine;
+    });
+    return migrated;
   }
 
   function structureCellStyleColor(widget, index, type, binding) {
@@ -3210,6 +3263,7 @@
   async function buildFabricCanvases(buildGeneration = fabricBuildGeneration) {
     if (buildGeneration !== fabricBuildGeneration) return;
     document.body.dataset.fabricBuild = 'starting';
+    patchFabricUnicodeGraphemes();
     patchFabricTextCompositionUnderline();
     patchFabricTextCursorBlink();
     for (const group of deck.groups) {
@@ -3280,6 +3334,13 @@
     proto.__asmCursorBlinkPatched = true;
   }
 
+  function patchFabricUnicodeGraphemes() {
+    const Fabric = f();
+    if (!Fabric?.util?.string || Fabric.util.string.__asmUnicodeGraphemesPatched) return;
+    Fabric.util.string.graphemeSplit = unicodeGraphemes;
+    Object.defineProperty(Fabric.util.string, '__asmUnicodeGraphemesPatched', { value: true });
+  }
+
   function patchFabricTextCompositionUnderline() {
     const Fabric = f();
     const proto = Fabric?.IText?.prototype;
@@ -3292,9 +3353,16 @@
         const textareaEnd = this.hiddenTextarea?.selectionEnd ?? this.selectionEnd ?? textareaStart;
         const compositionStart = Number.isFinite(Number(this.compositionStart)) ? Number(this.compositionStart) : textareaStart;
         const compositionEnd = Number.isFinite(Number(this.compositionEnd)) ? Number(this.compositionEnd) : textareaEnd;
-        const selectionStart = Math.min(compositionStart, compositionEnd, textareaStart, textareaEnd);
-        let selectionEnd = Math.max(compositionStart, compositionEnd, textareaStart, textareaEnd);
-        if (selectionEnd <= selectionStart) selectionEnd = Math.min((this.text || '').length, selectionStart + 1);
+        const stringSelectionStart = Math.min(compositionStart, compositionEnd, textareaStart, textareaEnd);
+        let stringSelectionEnd = Math.max(compositionStart, compositionEnd, textareaStart, textareaEnd);
+        if (stringSelectionEnd <= stringSelectionStart) {
+          stringSelectionEnd = Math.min((this.text || '').length, stringSelectionStart + 1);
+        }
+        const graphemeSelection = this.fromStringToGraphemeSelection(
+          stringSelectionStart, stringSelectionEnd, this.text || ''
+        );
+        const selectionStart = graphemeSelection.selectionStart;
+        const selectionEnd = graphemeSelection.selectionEnd;
         const start = this.get2DCursorLocation(selectionStart);
         const end = this.get2DCursorLocation(selectionEnd);
         const startLine = start.lineIndex;
@@ -3750,6 +3818,7 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
+    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2 });
     if (obj.asmInlineScripts && isTextObject(obj)) {
       if (!obj.asmInlineScriptBaseStyles) {
         obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
@@ -4536,7 +4605,8 @@
           fill: '#1f282d',
           styles: {},
           asmInlineScripts: true,
-          asmInlineScriptBaseStyles: {}
+          asmInlineScriptBaseStyles: {},
+          asmGraphemeVersion: 2
         });
       } else {
         obj = createShape(kind, left, top);

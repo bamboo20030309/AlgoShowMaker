@@ -14,9 +14,20 @@
     return result;
   }
 
+  const graphemeSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
+
+  function segmentGraphemes(text) {
+    const value = String(text || '');
+    if (!graphemeSegmenter) return Array.from(value);
+    return Array.from(graphemeSegmenter.segment(value), entry => entry.segment);
+  }
+
   function format(text, baseStyles = {}, defaultFontSize = 18) {
     const styles = copyStyles(baseStyles);
-    String(text || '').split('\n').forEach((line, lineIndex) => {
+    String(text || '').split('\n').forEach((sourceLine, lineIndex) => {
+      const line = segmentGraphemes(sourceLine);
       const lineStyles = styles[lineIndex] || (styles[lineIndex] = {});
       const hide = index => {
         lineStyles[index] = {
@@ -71,5 +82,5 @@
     return styles;
   }
 
-  return { copyStyles, format };
+  return { copyStyles, format, segmentGraphemes };
 });
