@@ -67,12 +67,12 @@
 - 主代理需補驗證的情境：bottom-up heapify 第五至第六幀；callee 參數退場後 caller 迴圈指標恢復的同格案例。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：程式修正與交付紀錄已推送至 `origin/codex/2026-09-21-beta-BIT`；未發布 Release 或公開部署。
+- 狀態：已由主代理核實並整合至 `intergration`
+- 核實的程式 commit 與 diff 範圍：`441dfbe`；整合時保留 `trace-228` 的延後進場播放階段，加入 hidden peer 排除後更新為 `trace-229`。
+- 差異審查與必要重跑結果：`unresolved-markers.test.js` 與 `entrypoints.test.js` 共 65 項通過；3199 隔離服務的 Heap 實際播放案例 1 項通過；語法與 diff 檢查通過。
+- 合併 commit：`e392f48`
+- 完整 regression：依 V2 分級未執行；本次只影響同格 marker 退場與 caller marker 延後入場，已跑 G、J 類直接相關驗證。
+- 演算法投影片實際驗證：使用 `heap-caller-marker-reentry.cpp` 在隔離服務確認 caller `i` 隱藏期間，outgoing `now` 不會提前橫移。
+- 未完成或環境阻塞：無。
+- 本機服務重啟：3100 已重啟為 PID 59108；`algorithm.html` 與 `slides.html` 皆回應 HTTP 200，並分別載入 `trace-229` 與 `slides-209`。
+- Push／公開部署狀態：本輪整合與紀錄將推送 `origin/intergration`；未合併 main、未發布 Release 或公開部署。
