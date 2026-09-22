@@ -65,4 +65,4 @@
 - 演算法投影片實際驗證：3100 產生 34 幀，重播第 5→6 幀符合預期。
 - 未完成或環境阻塞：無。
 - 本機服務重啟：3100 已由 intergration worktree 啟動；`slides.html` 與 `trace-frame-tween.js` HTTP 200，build `trace-228`。
-- Push／公開部署狀態：待推送 intergration；未公開部署。
+- Push／公開部署狀態：intergration 已推送至 origin；未公開部署。
