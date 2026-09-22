@@ -1541,10 +1541,12 @@
       ttsScript: ''
     });
     configureObject(object);
+    object.set({ layerIndex: nextUnifiedLayerIndex(slide, canvas) });
     canvas.add(object);
     canvas.setActiveObject(object);
     canvas.requestRenderAll();
     syncCurrentSlideCanvas();
+    syncUnifiedLayerStyles(slide, canvas);
     openSelectedTextTts();
   }
 
@@ -4552,10 +4554,13 @@
 
     try {
       configureObject(obj);
+      const slide = getSlide();
+      obj.set({ layerIndex: nextUnifiedLayerIndex(slide, canvas) });
       canvas.add(obj);
       canvas.setActiveObject(obj);
       canvas.requestRenderAll();
       syncCurrentSlideCanvas();
+      syncUnifiedLayerStyles(slide, canvas);
       updateObjectToolbar(obj, canvas);
       pendingTool = null;
       updateArmedTool();
@@ -4602,6 +4607,7 @@
       focusLines: '',
       showLineNumbers: false,
       scale: 1,
+      layerIndex: nextUnifiedLayerIndex(slide, currentFabricCanvas()),
       ...normalizeAnimationSettings(),
       content: type === 'code'
         ? defaultCode()
@@ -4658,6 +4664,7 @@
     updateArmedTool();
     document.body.dataset.lastToolStatus = `added:${type}`;
     appendWidgetsToCurrentSlide([widget]);
+    syncUnifiedLayerStyles(slide, currentFabricCanvas());
     const el = document.querySelector(`.slide-widget[data-widget-id="${widget.id}"]`);
     if (el) refreshWidgetElement(el, widget);
     selectWidget(widget.id);
@@ -4742,10 +4749,13 @@
       const obj = new ImageClass(img, { left, top });
       obj.scaleToWidth(320);
       configureObject(obj);
+      const slide = getSlide();
+      obj.set({ layerIndex: nextUnifiedLayerIndex(slide, canvas) });
       canvas.add(obj);
       canvas.setActiveObject(obj);
       canvas.requestRenderAll();
       syncCurrentSlideCanvas();
+      syncUnifiedLayerStyles(slide, canvas);
       updateObjectToolbar(obj, canvas);
     };
     img.src = src;
@@ -5353,10 +5363,12 @@
     let changed = false;
     if (canvas && objectClipboard.fabric.length) {
       const objects = await enlivenFabricObjects(objectClipboard.fabric);
+      let nextLayer = nextUnifiedLayerIndex(slide, canvas);
       suppressCanvasSave = true;
       try {
         objects.forEach(obj => {
-          obj.set?.({ fragmentProxyId: randomId(), ttsObjectId: randomId() });
+          obj.set?.({ fragmentProxyId: randomId(), ttsObjectId: randomId(), layerIndex: nextLayer });
+          nextLayer += STACK_LAYER_STEP;
           configureObject(obj);
           obj.setCoords?.();
           canvas.add(obj);
@@ -5380,8 +5392,14 @@
       slide.widgets = normalizeWidgets(slide.widgets);
       const pastedWidgets = objectClipboard.widgets.map(widget => ({
         ...clone(widget),
-        id: randomId()
+        id: randomId(),
+        layerIndex: 0
       }));
+      let nextLayer = nextUnifiedLayerIndex(slide, canvas);
+      pastedWidgets.forEach(widget => {
+        widget.layerIndex = nextLayer;
+        nextLayer += STACK_LAYER_STEP;
+      });
       slide.widgets.push(...pastedWidgets);
       selectedWidgetId = pastedWidgets.length === 1 ? pastedWidgets[0].id : null;
       appendWidgetsToCurrentSlide(pastedWidgets);
@@ -5393,7 +5411,10 @@
       refreshRevealWidgets();
       changed = pastedWidgets.length > 0 || changed;
     }
-    if (changed) saveDeck();
+    if (changed) {
+      syncUnifiedLayerStyles(slide, canvas);
+      saveDeck();
+    }
     objectClipboard.cut = false;
   }
 
@@ -6357,8 +6378,8 @@
     const entries = unifiedLayerEntries(slide, canvas);
     const host = document.querySelector(`.fabric-host[data-slide-id="${slide.id}"]`);
     let fabricZ = null;
-    entries.forEach((entry, index) => {
-      const z = STACK_LAYER_BASE + index * STACK_LAYER_STEP;
+    entries.forEach(entry => {
+      const z = Number(entry.layerIndex) || STACK_LAYER_BASE;
       if (entry.kind === 'widget') {
         const el = document.querySelector(`.slide-widget[data-widget-id="${entry.id}"]`);
         if (el) el.style.zIndex = String(z);
@@ -6397,16 +6418,20 @@
     return entries.sort((a, b) => (a.layerIndex - b.layerIndex) || (a.originalIndex || 0) - (b.originalIndex || 0));
   }
 
+  function nextUnifiedLayerIndex(slide, canvas = currentFabricCanvas()) {
+    const highest = unifiedLayerEntries(slide, canvas).reduce(
+      (value, entry) => Math.max(value, Number(entry.layerIndex) || 0),
+      STACK_LAYER_BASE - STACK_LAYER_STEP
+    );
+    return highest + STACK_LAYER_STEP;
+  }
+
   function applyUnifiedLayerEntries(slide, canvas, entries) {
-    const firstFabricIndex = entries.findIndex(entry => entry.kind === 'fabric');
-    let belowWidgetCount = 0;
-    let aboveWidgetCount = 0;
-    let fabricCount = 0;
-    entries.forEach((entry, index) => {
+    entries.forEach(entry => {
       if (entry.kind === 'widget') {
-        entry.widget.layerIndex = STACK_LAYER_BASE + index * STACK_LAYER_STEP;
+        entry.widget.layerIndex = entry.layerIndex;
       } else if (entry.kind === 'fabric') {
-        entry.object.set?.({ layerIndex: STACK_LAYER_BASE + index * STACK_LAYER_STEP });
+        entry.object.set?.({ layerIndex: entry.layerIndex });
       }
     });
     slide.widgets = entries.filter(entry => entry.kind === 'widget').map(entry => entry.widget);
@@ -6460,8 +6485,23 @@
     return object && object.type !== 'activeSelection' ? { canvas, object } : {};
   }
 
-  function moveArrayItem(items, fromIndex, toIndex) {
+  function moveLayerEntry(items, fromIndex, toIndex, action) {
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length) return false;
+    const entry = items[fromIndex];
+    const target = items[toIndex];
+    if (action === 'top') {
+      entry.layerIndex = Math.max(...items.map(item => Number(item.layerIndex) || 0)) + STACK_LAYER_STEP;
+    } else if (action === 'bottom') {
+      entry.layerIndex = Math.min(...items.map(item => Number(item.layerIndex) || 0)) - STACK_LAYER_STEP;
+    } else {
+      const value = entry.layerIndex;
+      if (value === target.layerIndex) {
+        entry.layerIndex = Number(target.layerIndex) + (action === 'up' ? 1 : -1);
+      } else {
+        entry.layerIndex = target.layerIndex;
+        target.layerIndex = value;
+      }
+    }
     const [item] = items.splice(fromIndex, 1);
     items.splice(toIndex, 0, item);
     return true;
@@ -6483,7 +6523,7 @@
     const entries = unifiedLayerEntries(found.slide, canvas);
     const index = entries.findIndex(entry => entry.kind === 'widget' && entry.id === selectedWidgetId);
     const nextIndex = targetLayerIndex(action, index, entries.length);
-    if (!moveArrayItem(entries, index, nextIndex)) return false;
+    if (!moveLayerEntry(entries, index, nextIndex, action)) return false;
     applyUnifiedLayerEntries(found.slide, canvas, entries);
     if (canvas) found.slide.canvas = serializeFabricCanvas(canvas);
     syncSlideAutoAnimate(found.slide);
@@ -6511,7 +6551,7 @@
     const entries = unifiedLayerEntries(slide, target.canvas);
     const index = entries.findIndex(entry => entry.kind === 'fabric' && entry.object === target.object);
     const nextIndex = targetLayerIndex(action, index, entries.length);
-    if (!moveArrayItem(entries, index, nextIndex)) return false;
+    if (!moveLayerEntry(entries, index, nextIndex, action)) return false;
     applyUnifiedLayerEntries(slide, target.canvas, entries);
     target.canvas.setActiveObject(target.object);
     target.canvas.requestRenderAll();
