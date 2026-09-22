@@ -6910,14 +6910,17 @@
       if (isCodeScrollbarInteraction(event, widgetEl)) return;
       if (widgetEl.classList.contains('structure-widget')) {
         if (event.target.closest?.('.structure-inline-value-input')) return;
-        if (widgetEl.classList.contains('is-selected')
-          && event.target.closest?.('[data-structure-item-index]')) return;
       }
       if (event.shiftKey) return;
-      event.stopPropagation();
-      event.preventDefault();
-      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-      if (event.pointerId != null && widgetEl.setPointerCapture) {
+      const selectedStructureCellHit = widgetEl.classList.contains('structure-widget')
+        && widgetEl.classList.contains('is-selected')
+        && !!event.target.closest?.('[data-structure-item-index]');
+      if (!selectedStructureCellHit) {
+        event.stopPropagation();
+        event.preventDefault();
+        if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      }
+      if (!selectedStructureCellHit && event.pointerId != null && widgetEl.setPointerCapture) {
         try {
           widgetEl.setPointerCapture(event.pointerId);
         } catch (err) {
