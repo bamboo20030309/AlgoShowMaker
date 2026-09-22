@@ -2,7 +2,7 @@
 
 ## 任務資訊
 - 負責代理：主代理 beta
-- 狀態：開發中
+- 狀態：待交付
 - 共同基準 commit：0074069
 - 分支：intergration
 - Worktree：C:\Users\user\Documents\Codex\2026-07-29\algoshowmaker-main-commit-d154dd5-slides-html\work\AlgoShowMaker\.worktrees\intergration
@@ -30,9 +30,9 @@
 - 依賴任務：無。
 
 ## 驗收條件
-- [ ] `now` 的賦值移動與退場完成前，呼叫端 `i` 不入場且不參與 `heap[5]` 的讓位。
-- [ ] `now` 退場完成後，`i` 才由穩定位置進入 `heap[5]`。
-- [ ] 一般同格新增指標仍維持入場與讓位同步開始。
+- [x] `now` 的賦值移動與退場完成前，呼叫端 `i` 不入場且不參與 `heap[5]` 的讓位。
+- [x] `now` 退場完成後，`i` 才由穩定位置進入 `heap[5]`。
+- [x] 一般同格新增指標仍維持入場與讓位同步開始。
 
 ## 驗證計畫
 - 子代理小驗證：不適用，本次由主代理直接修正；執行 JavaScript 語法檢查與 `unresolved-markers.test.js` 的同格入場排程專項案例。
