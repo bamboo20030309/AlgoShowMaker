@@ -49,12 +49,12 @@
 - 主代理需補驗證的情境：整合後開啟任一真實公開範例，在左欄匯出並分享，確認 URL 指向該範例。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：已核實並合併至 `intergration`。
+- 核實的程式 commit 與 diff 範圍：`77815e5`、`3706489`；樣本觀賞介面的匯出／分享、CSS、入口版本與專項測試。
+- 差異審查與必要重跑結果：解決 `slides.html`／`entrypoints.test.js` 的版本衝突，保留整合分支的漸進載入。實際三份教學範例暴露動畫尚未重建時無法匯出；合併時改為直接下載已驗證的原始範例 archive，並增加位元組一致性測試。`node --check`、`git diff --check` 與 `tests/sample-view-actions.browser.test.js`、`tests/entrypoints.test.js`、`tests/asmdeck.test.js` 共 15 案通過。
+- 合併 commit：`9ab5870`。
+- 完整 regression：未執行；本輪改動屬 V1 公開範例操作，已執行對應專項測試與隔離瀏覽器實測。
+- 演算法投影片實際驗證：Heap、BIT、Segment Tree 三份真實範例的分享與複製連結通過；Heap 匯出檔重新解碼為 12 頁，隔離瀏覽器無 page error。
+- 未完成或環境阻塞：無。
+- 本機服務重啟：3100 已由 PID 11140 重啟為 PID 58152，HTTP 200，入口載入 `sample-actions-202`。
+- Push／公開部署狀態：`9ab5870` 已推送到 `origin/intergration`；未合併 main，未公開部署。
