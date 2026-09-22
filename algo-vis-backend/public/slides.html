@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=sample-actions-105" />
+  <link rel="stylesheet" href="slides.css?v=inline-scripts-109" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
   <link rel="preload" href="/vendor/katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin />
@@ -334,42 +334,6 @@
         </label>
       </div>
 
-      <div class="structure-section-title">元素樣式</div>
-      <div class="structure-style-list">
-        <label data-structure-style="highlight">
-          <span class="structure-style-icon style-icon highlight" role="img" title="Highlight" aria-label="Highlight"></span>
-          <input id="structureHighlightIndicesInput" type="text" placeholder="例如 1,3-5" aria-label="Highlight 索引" />
-          <button id="structureHighlightColorInput" class="structure-color-button" type="button" data-color="#ff0000" title="選擇 Highlight 顏色" aria-label="選擇 Highlight 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="focus">
-          <span class="structure-style-icon style-icon focus" role="img" title="Focus" aria-label="Focus"></span>
-          <input id="structureFocusIndicesInput" type="text" placeholder="索引" aria-label="Focus 索引" />
-          <button id="structureFocusColorInput" class="structure-color-button" type="button" data-color="#cccccc" title="選擇 Focus 顏色" aria-label="選擇 Focus 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="point">
-          <span class="structure-style-icon style-icon point" role="img" title="Point" aria-label="Point"></span>
-          <input id="structurePointIndicesInput" type="text" placeholder="索引" aria-label="Point 索引" />
-          <button id="structurePointColorInput" class="structure-color-button" type="button" data-color="#ff0000" title="選擇 Point 顏色" aria-label="選擇 Point 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="mark">
-          <span class="structure-style-icon style-icon mark" role="img" title="Mark" aria-label="Mark"></span>
-          <input id="structureMarkIndicesInput" type="text" placeholder="索引" aria-label="Mark 索引" />
-          <button id="structureMarkColorInput" class="structure-color-button" type="button" data-color="#22c55e" title="選擇 Mark 顏色" aria-label="選擇 Mark 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="background">
-          <span class="structure-style-icon style-icon background" role="img" title="Background" aria-label="Background"></span>
-          <input id="structureBackgroundIndicesInput" type="text" placeholder="索引，留空即不套用" aria-label="Background 索引" />
-          <button id="structureBackgroundColorInput" class="structure-color-button" type="button" data-color="#10b981" title="選擇 Background 顏色" aria-label="選擇 Background 顏色"><span></span></button>
-        </label>
-      </div>
-      <div class="structure-section-title">註標箭頭</div>
-      <div class="structure-style-list">
-        <label data-structure-style="annotation">
-          <svg class="structure-style-icon" style="color: var(--style-color, #ffffff)" width="22" height="30" viewBox="0 0 22 30" role="img" aria-label="註標箭頭"><rect x="6" y="1" width="10" height="10" fill="#bfe8f7" stroke="currentColor"/><path d="M11 11v17m-3-5 3 5 3-5" fill="none" stroke="currentColor"/></svg>
-          <input id="structureAnnotationIndicesInput" type="text" placeholder="例如 1,3-5" aria-label="註標箭頭索引" />
-          <button id="structureAnnotationColorInput" class="structure-color-button" type="button" data-color="#ffffff" title="選擇註標箭頭顏色" aria-label="選擇註標箭頭顏色"><span></span></button>
-        </label>
-      </div>
       <label class="field-label" for="structureAnnotationTextInput">預設註標文字（留空顯示索引）</label>
       <input id="structureAnnotationTextInput" type="text" maxlength="80" placeholder="例如 i、left" />
       <div class="structure-legacy-fields" hidden>
@@ -602,6 +566,7 @@
     <button id="strikeBtn" type="button" title="刪除線"><s>S</s></button>
     <button id="alignCycleBtn" type="button" title="切換靠左 / 置中 / 靠右"><span class="align-icon align-left-icon"></span></button>
     <button id="listStyleBtn" type="button" title="項目符號 / 編號"><span class="list-style-icon" aria-hidden="true"></span></button>
+    <button id="inlineScriptsBtn" type="button" title="解析上標與下標（_ 和 ^）" aria-label="解析上標與下標" aria-pressed="false"><span aria-hidden="true">A₂</span></button>
     <button id="textColorBtn" type="button" title="文字顏色"><span class="text-color-icon" aria-hidden="true">A</span></button>
     <button id="bgColorBtn" type="button" title="文字背景色"><span class="text-bg-icon">A</span></button>
     <button id="ttsObjectBtn" type="button" title="編輯 TTS 台詞" aria-label="編輯 TTS 台詞">
@@ -615,6 +580,10 @@
     </button>
     <div id="iroPopup" class="iro-popup" hidden>
       <div id="iroPicker"></div>
+      <div class="asm-av-palette" aria-label="AV 常用顏色">
+        <div class="asm-av-palette-title">AV 常用顏色</div>
+        <div id="avColorSwatches" class="asm-av-swatch-list"></div>
+      </div>
       <div id="shapeStyleControls" class="shape-style-controls" hidden>
         <label class="shape-style-label" for="shapeStrokeWidthInput">
           <span>邊框粗細</span>
@@ -749,7 +718,7 @@
   <script src="draw/draw_array_stack.js?v=gap-1"></script>
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
   <script src="slide-structures.js?v=15"></script>
-  <script src="deck-thumbnail.js?v=3"></script>
+  <script src="deck-thumbnail.js?v=4"></script>
   <script src="slides-storage.js?v=5"></script>
   <script src="slides-cloud.js?v=1"></script>
   <script src="tts.js?v=10"></script>
@@ -759,7 +728,9 @@
   <script src="trace-provenance.js?v=trace-9"></script>
   <script src="asmdeck.js?v=6"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="slides.js?v=sample-actions-202"></script>
+  <script src="slide-inline-scripts.js?v=1"></script>
+  <script src="trace-arrow-model.js?v=arrow-8"></script>
+  <script src="slides.js?v=inline-scripts-209"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

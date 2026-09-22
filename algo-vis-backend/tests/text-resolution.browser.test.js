@@ -46,9 +46,9 @@ test('slide text backing density follows display zoom while preserving editable 
       await page.waitForTimeout(500);
       await page.locator('#slideOrderToggleBtn').click();
       await page.waitForSelector('#customOverview:not([hidden])');
-      await page.waitForFunction(() => [...document.querySelectorAll('.custom-overview-mini img')].every(img => img.complete && img.naturalWidth));
-      const snapshot = await page.locator('.custom-overview-mini img').first().evaluate(img => ({ png: img.src.startsWith('data:image/png'), width: img.naturalWidth, height: img.naturalHeight }));
-      assert.equal(snapshot.png, true); assert.equal(snapshot.width, 1640); assert.equal(snapshot.height, 1080);
+      await page.waitForFunction(() => [...document.querySelectorAll('.custom-overview-thumb')].every(thumb => thumb.dataset.thumbnailReady === 'true'));
+      const snapshot = await page.locator('.custom-overview-snapshot').first().evaluate(img => ({ jpeg: img.src.startsWith('data:image/jpeg'), width: img.naturalWidth, height: img.naturalHeight }));
+      assert.equal(snapshot.jpeg, true); assert.equal(snapshot.width, 640); assert.equal(snapshot.height, 360);
       await page.locator('#slideOrderToggleBtn').click();
       await page.waitForTimeout(500);
       const point = await page.evaluate(() => { const el = document.querySelector('#fabric-s1'); const rect = el.getBoundingClientRect(); const scale = rect.width / 1640; return { x: rect.left + (180 + 440) * scale, y: rect.top + (180 + 245) * scale }; });

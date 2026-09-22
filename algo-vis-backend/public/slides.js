@@ -29,6 +29,7 @@
   const FABRIC_CUSTOM_PROPS = [
     'transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius', 'layerIndex',
     'styles', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'underline', 'linethrough', 'fill', 'textBackgroundColor',
+    'asmInlineScripts', 'asmInlineScriptBaseStyles',
     'asmShapeType', 'arrowHeadSize', 'arrowHeadStyle',
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
@@ -177,6 +178,7 @@
   let suppressOverviewScrollbar = false;
   let customOverviewOpen = false;
   let customOverviewDrag = null;
+  const slideOrderThumbnailCache = new Map();
   let suppressCustomOverviewClick = false;
   let customOverviewRightMouseDown = false;
   let slideClipboard = [];
@@ -297,6 +299,7 @@
   const ttsVolumeValue = document.getElementById('ttsVolumeValue');
   const fontFamilySelect = document.getElementById('fontFamilySelect');
   const fontSizeInput = document.getElementById('fontSizeInput');
+  const inlineScriptsBtn = document.getElementById('inlineScriptsBtn');
   const boldBtn = document.getElementById('boldBtn');
   const italicBtn = document.getElementById('italicBtn');
   const underlineBtn = document.getElementById('underlineBtn');
@@ -308,6 +311,7 @@
   const shapeStrokeBtn = document.getElementById('shapeStrokeBtn');
   const shapeColorBtn = document.getElementById('shapeColorBtn');
   const iroPopup = document.getElementById('iroPopup');
+  const avColorSwatches = document.getElementById('avColorSwatches');
   const shapeStyleControls = document.getElementById('shapeStyleControls');
   const shapeStrokeWidthInput = document.getElementById('shapeStrokeWidthInput');
   const shapeStrokeWidthValue = document.getElementById('shapeStrokeWidthValue');
@@ -361,31 +365,19 @@
   const structureBorderColorInput = document.getElementById('structureBorderColorInput');
   const structureTextColorInput = document.getElementById('structureTextColorInput');
   const structureLineColorInput = document.getElementById('structureLineColorInput');
-  const structureHighlightColorInput = document.getElementById('structureHighlightColorInput');
-  const structureHighlightIndicesInput = document.getElementById('structureHighlightIndicesInput');
-  const structureAnnotationIndicesInput = document.getElementById('structureAnnotationIndicesInput');
-  const structureAnnotationColorInput = document.getElementById('structureAnnotationColorInput');
   const structureAnnotationTextInput = document.getElementById('structureAnnotationTextInput');
-  const structureFocusColorInput = document.getElementById('structureFocusColorInput');
-  const structureFocusIndicesInput = document.getElementById('structureFocusIndicesInput');
-  const structurePointColorInput = document.getElementById('structurePointColorInput');
-  const structurePointIndicesInput = document.getElementById('structurePointIndicesInput');
-  const structureMarkColorInput = document.getElementById('structureMarkColorInput');
-  const structureMarkIndicesInput = document.getElementById('structureMarkIndicesInput');
-  const structureBackgroundColorInput = document.getElementById('structureBackgroundColorInput');
-  const structureBackgroundIndicesInput = document.getElementById('structureBackgroundIndicesInput');
   const structureFrameBackgroundControls = document.getElementById('structureFrameBackgroundControls');
   const structureFrameBackgroundEnabledInput = document.getElementById('structureFrameBackgroundEnabledInput');
   const structureFrameBackgroundColorInput = document.getElementById('structureFrameBackgroundColorInput');
   const structureColorBindings = [
-    { target: 'structure-annotation', button: structureAnnotationColorInput, field: 'annotationColor', style: 'annotation' },
+    { target: 'structure-annotation', field: 'annotationColor', style: 'annotation', fallback: '#ffffff' },
     { target: 'structure-tree-arrow', button: structureTreeArrowColorInput, field: 'treeArrowColor' },
     { target: 'structure-frame-background', button: structureFrameBackgroundColorInput, field: 'frameBackgroundColor' },
-    { target: 'structure-highlight', button: structureHighlightColorInput, field: 'highlightColor', style: 'highlight' },
-    { target: 'structure-focus', button: structureFocusColorInput, field: 'focusColor', style: 'focus' },
-    { target: 'structure-point', button: structurePointColorInput, field: 'pointColor', style: 'point' },
-    { target: 'structure-mark', button: structureMarkColorInput, field: 'markColor', style: 'mark' },
-    { target: 'structure-background', button: structureBackgroundColorInput, field: 'backgroundColor', style: 'background' }
+    { target: 'structure-highlight', field: 'highlightColor', style: 'highlight', fallback: '#ff0000' },
+    { target: 'structure-focus', field: 'focusColor', style: 'focus', fallback: '#808080' },
+    { target: 'structure-point', field: 'pointColor', style: 'point', fallback: '#ff0000' },
+    { target: 'structure-mark', field: 'markColor', style: 'mark', fallback: '#22c55e' },
+    { target: 'structure-background', field: 'backgroundColor', style: 'background', fallback: '#10b981' }
   ];
   const animationEditorPanel = document.getElementById('animationEditorPanel');
   const layerToTopBtn = document.getElementById('layerToTopBtn');
@@ -1121,6 +1113,9 @@
 
     const selection = historyTextSelections[index];
     object.set(clone(savedObject));
+    if (object.asmInlineScripts) {
+      object.styles = window.ASMInlineScripts.copyStyles(object.asmInlineScriptBaseStyles || {});
+    }
     object.initDimensions();
     object.setCoords();
     const length = object._text.length;
@@ -2079,20 +2074,25 @@
           ttsObjectId: normalizedObject.ttsObjectId || randomId(),
           ...normalizeTtsObjectFields(normalizedObject)
         };
-        if (type.includes('text') && type !== 'textbox' && f()?.Textbox) {
-          return sanitizeFabricTextBaseline({
-            ...normalizedObject,
-            ...ttsFields,
-            type: 'textbox',
-            textBaseline: normalizeTextBaselineValue(normalizedObject.textBaseline),
-            width: Number.isFinite(normalizedObject.width) ? Math.max(40, normalizedObject.width) : 360
-          });
-        }
-        return sanitizeFabricTextBaseline({
+        const legacyText = type.includes('text') && type !== 'textbox' && f()?.Textbox;
+        const result = sanitizeFabricTextBaseline({
           ...normalizedObject,
           ...ttsFields,
+          ...(legacyText ? {
+            type: 'textbox',
+            width: Number.isFinite(normalizedObject.width) ? Math.max(40, normalizedObject.width) : 360
+          } : {}),
           textBaseline: normalizeTextBaselineValue(normalizedObject.textBaseline)
         });
+        if (result.asmInlineScripts && typeof result.text === 'string') {
+          result.asmInlineScriptBaseStyles = normalizeFabricTextStyles(
+            result.asmInlineScriptBaseStyles || result.styles
+          );
+          result.styles = window.ASMInlineScripts.format(
+            result.text, result.asmInlineScriptBaseStyles, result.fontSize
+          );
+        }
+        return result;
       })
     };
   }
@@ -2207,7 +2207,14 @@
             ...sanitizeFabricTextBaseline(obj),
             visible: true
           };
-          if (textLike) normalized.styles = normalizeFabricTextStyles(source?.styles || obj?.styles);
+          if (textLike) {
+            normalized.styles = normalizeFabricTextStyles(source?.styles || obj?.styles);
+            if (source?.asmInlineScripts) {
+              const baseStyles = normalizeFabricTextStyles(source.asmInlineScriptBaseStyles || {});
+              normalized.asmInlineScriptBaseStyles = baseStyles;
+              normalized.styles = window.ASMInlineScripts.format(source.text, baseStyles, source.fontSize);
+            }
+          }
           return normalized;
         });
         return serialized;
@@ -2420,7 +2427,7 @@
           textColor: widget.textColor || '#1f282d',
           lineColor: widget.lineColor || '#66767b',
           highlightColor: widget.highlightColor || '#ff0000',
-          focusColor: widget.focusColor || '#cccccc',
+          focusColor: widget.focusColor || '#808080',
           pointColor: widget.pointColor || '#ff0000',
           markColor: widget.markColor || '#22c55e',
           backgroundColor: widget.backgroundColor || '#10b981',
@@ -3321,7 +3328,26 @@
     canvas.on('object:added', event => sync(event, { syncFragments: true }));
     canvas.on('object:modified', sync);
     canvas.on('object:removed', event => sync(event, { syncFragments: true }));
-    canvas.on('text:changed', sync);
+    canvas.on('text:changed', event => {
+      if (event.target?.asmInlineScripts && event.target.isEditing) {
+        event.target.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(event.target.styles);
+      }
+      sync(event);
+    });
+    canvas.on('text:editing:entered', event => {
+      const obj = event.target;
+      if (!obj?.asmInlineScripts) return;
+      obj.styles = window.ASMInlineScripts.copyStyles(obj.asmInlineScriptBaseStyles || {});
+      obj.initDimensions();
+      canvas.requestRenderAll();
+    });
+    canvas.on('text:editing:exited', event => {
+      const obj = event.target;
+      if (!obj?.asmInlineScripts) return;
+      obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
+      applyInlineScripts(obj);
+      sync(event);
+    });
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
       if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
@@ -3683,6 +3709,12 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
+    if (obj.asmInlineScripts && isTextObject(obj)) {
+      if (!obj.asmInlineScriptBaseStyles) {
+        obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
+      }
+      applyInlineScripts(obj);
+    }
     if (shapeType(obj) === 'arrow') {
       obj.set({
         arrowHeadSize: Math.max(6, Math.min(80, Number(obj.arrowHeadSize) || 24)),
@@ -4461,7 +4493,9 @@
           fontFamily: DEFAULT_FONT_FAMILY,
           fontWeight: 'bold',
           fill: '#1f282d',
-          styles: {}
+          styles: {},
+          asmInlineScripts: true,
+          asmInlineScriptBaseStyles: {}
         });
       } else {
         obj = createShape(kind, left, top);
@@ -4550,7 +4584,7 @@
         textColor: '#1f282d',
         lineColor: '#66767b',
         highlightColor: '#ff0000',
-        focusColor: '#cccccc',
+        focusColor: '#808080',
         pointColor: '#ff0000',
         markColor: '#22c55e',
         backgroundColor: '#10b981',
@@ -5540,11 +5574,6 @@
     }
   }
 
-  function syncStructureStyleIcon(type, color) {
-    const icon = structureEditorPanel?.querySelector(`[data-structure-style="${type}"] .structure-style-icon`);
-    if (icon) icon.style.setProperty('--style-color', color);
-  }
-
   function setStructureColorButton(button, color) {
     if (!button) return;
     const value = color || '#ffffff';
@@ -5568,35 +5597,29 @@
     structureBorderColorInput.value = widget.borderColor || '#344247';
     structureTextColorInput.value = widget.textColor || '#1f282d';
     structureLineColorInput.value = widget.lineColor || '#66767b';
-    setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ff0000');
-    structureHighlightIndicesInput.value = widget.highlightIndices || '';
-    structureAnnotationIndicesInput.value = widget.annotationIndices || '';
     structureAnnotationTextInput.value = widget.annotationText || '';
-    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#ffffff');
-    syncStructureStyleIcon('annotation', widget.annotationColor || '#ffffff');
-    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#cccccc');
-    structureFocusIndicesInput.value = widget.focusIndices || '';
-    setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
-    structurePointIndicesInput.value = widget.pointIndices || '';
-    setStructureColorButton(structureMarkColorInput, widget.markColor || '#22c55e');
-    structureMarkIndicesInput.value = widget.markIndices || '';
-    setStructureColorButton(structureBackgroundColorInput, widget.backgroundColor || '#10b981');
-    structureBackgroundIndicesInput.value = widget.backgroundIndices || '';
     if (structureFrameBackgroundEnabledInput) structureFrameBackgroundEnabledInput.checked = widget.frameBackgroundEnabled !== false;
     setStructureColorButton(structureFrameBackgroundColorInput, widget.frameBackgroundColor || DEFAULT_STRUCTURE_FRAME_BACKGROUND);
-    syncStructureStyleIcon('highlight', widget.highlightColor || '#ff0000');
-    syncStructureStyleIcon('focus', widget.focusColor || '#cccccc');
-    syncStructureStyleIcon('point', widget.pointColor || '#ff0000');
-    syncStructureStyleIcon('mark', widget.markColor || '#22c55e');
-    syncStructureStyleIcon('background', widget.backgroundColor || '#10b981');
     syncStructureEditorVisibility(widget);
   }
 
-  function updateSelectedStructure(patch, { history = true } = {}) {
+  function updateSelectedStructure(patch, { history = true, preserveScale = false } = {}) {
     const found = getWidget(selectedWidgetId);
     if (!found.widget || found.widget.type !== 'structure') return;
     const preview = { ...found.widget, ...patch, structureFrameVersion: 4 };
-    const size = constrainedStructureSize(preview);
+    let size;
+    if (preserveScale && window.AlgoStructureRenderer?.getNaturalSize) {
+      const before = window.AlgoStructureRenderer.getNaturalSize(found.widget);
+      const after = window.AlgoStructureRenderer.getNaturalSize(preview);
+      const scale = Math.min(found.widget.w / before.width, found.widget.h / before.height);
+      const boundedScale = Math.min(scale, SLIDE_W / after.width, SLIDE_H / after.height);
+      size = {
+        width: Math.max(40, Math.round(after.width * boundedScale)),
+        height: Math.max(40, Math.round(after.height * boundedScale))
+      };
+    } else {
+      size = constrainedStructureSize(preview);
+    }
     updateSelectedWidget({
       ...patch,
       structureFrameVersion: 4,
@@ -5615,10 +5638,32 @@
     if (['matrix', 'binary_tree'].includes(mode)) return;
     const length = Math.max(1, Math.min(100, Math.round(Number(rawLength) || 1)));
     const values = linearStructureValues(found.widget.content);
+    if (values.length === length) {
+      if (structureLengthInput) structureLengthInput.value = String(length);
+      return;
+    }
     while (values.length < length) values.push('0');
     values.length = length;
-    updateSelectedStructure({ content: values.join(', ') });
+    updateSelectedStructure({ content: values.join(', ') }, { preserveScale: true });
     if (structureLengthInput) structureLengthInput.value = String(length);
+  }
+
+  let structureLengthCommitTimer = null;
+  function commitStructureLength(rawLength) {
+    if (structureLengthCommitTimer) clearTimeout(structureLengthCommitTimer);
+    structureLengthCommitTimer = null;
+    updateSelectedStructureLength(rawLength);
+  }
+
+  function scheduleStructureLengthCommit() {
+    if (structureLengthCommitTimer) clearTimeout(structureLengthCommitTimer);
+    const rawLength = structureLengthInput?.value;
+    if (!rawLength) return;
+    const widgetId = selectedWidgetId;
+    structureLengthCommitTimer = setTimeout(() => {
+      structureLengthCommitTimer = null;
+      if (selectedWidgetId === widgetId) updateSelectedStructureLength(rawLength);
+    }, 300);
   }
 
   function hideStructureContextMenu() {
@@ -5829,6 +5874,24 @@
     return button;
   }
 
+  function structureStyleIcon(type, color) {
+    if (type === 'annotation') {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'structure-style-icon');
+      svg.setAttribute('width', '22');
+      svg.setAttribute('height', '30');
+      svg.setAttribute('viewBox', '0 0 22 30');
+      svg.style.setProperty('--style-color', color);
+      svg.style.color = 'var(--style-color)';
+      svg.innerHTML = '<rect x="6" y="1" width="10" height="10" fill="#bfe8f7" stroke="currentColor"/><path d="M11 11v17m-3-5 3 5 3-5" fill="none" stroke="currentColor"/>';
+      return svg;
+    }
+    const icon = document.createElement('span');
+    icon.className = `structure-style-icon style-icon ${type}`;
+    icon.style.setProperty('--style-color', color);
+    return icon;
+  }
+
   function openStructureStyleToolbar(widgetId) {
     const widgetEl = document.querySelector(`section.present .structure-widget[data-widget-id="${CSS.escape(widgetId)}"]`);
     const cell = structureCellForKey(widgetEl, selectedStructureCell?.key);
@@ -5839,20 +5902,48 @@
     structureContextMenu.replaceChildren();
     activeStructureContext = null;
     structureContextMenu.classList.add('structure-cell-style-toolbar');
-    for (const [type, label] of [['highlight', 'Highlight'], ['focus', 'Focus'], ['point', 'Point'], ['mark', 'Mark'], ['background', 'Background'], ['annotation', '註標箭頭']]) {
+    const styleTypes = [['highlight', 'Highlight'], ['focus', 'Focus'], ['point', 'Point'], ['mark', 'Mark'], ['background', 'Background'], ['annotation', '註標箭頭']];
+    let hasSelectedStyle = false;
+    for (const [type, label] of styleTypes) {
       const indices = new Set(window.AlgoStructureRenderer.parseIndices(found.widget[`${type}Indices`]));
+      const binding = structureColorBindings.find(item => item.style === type);
+      hasSelectedStyle ||= indices.has(index);
       const button = document.createElement('button');
       button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
+      button.dataset.structureStyleType = type;
       button.setAttribute('aria-pressed', String(indices.has(index)));
-      const icon = structureEditorPanel.querySelector(`[data-structure-style="${type}"] .structure-style-icon`);
-      if (icon) { const clone = icon.cloneNode(true); clone.removeAttribute('role'); clone.setAttribute('aria-hidden', 'true'); button.appendChild(clone); }
+      const icon = structureStyleIcon(type, found.widget[binding.field] || binding.fallback);
+      icon.setAttribute('aria-hidden', 'true');
+      button.appendChild(icon);
       button.addEventListener('click', () => {
-        if (indices.has(index)) indices.delete(index); else indices.add(index);
-        updateSelectedStructure({ [`${type}Indices`]: [...indices].sort((a, b) => a - b).join(',') });
-        populateStructureEditor(getWidget(widgetId).widget);
+        if (!indices.has(index)) {
+          indices.add(index);
+          updateSelectedStructure({ [`${type}Indices`]: [...indices].sort((a, b) => a - b).join(',') });
+        }
         openStructureStyleToolbar(widgetId);
+        const colorButton = structureContextMenu.querySelector(`[data-structure-style-type="${type}"]`);
+        openIro(binding.target, colorButton);
       });
       structureContextMenu.appendChild(button);
+    }
+    if (hasSelectedStyle) {
+      const clearButton = document.createElement('button');
+      clearButton.type = 'button';
+      clearButton.className = 'structure-clear-cell-styles';
+      clearButton.title = '清除格子樣式';
+      clearButton.setAttribute('aria-label', '清除格子樣式');
+      clearButton.textContent = '×';
+      clearButton.addEventListener('click', () => {
+        const patch = {};
+        styleTypes.forEach(([type]) => {
+          const remaining = window.AlgoStructureRenderer.parseIndices(getWidget(widgetId).widget[`${type}Indices`])
+            .filter(item => item !== index);
+          patch[`${type}Indices`] = remaining.join(',');
+        });
+        updateSelectedStructure(patch);
+        openStructureStyleToolbar(widgetId);
+      });
+      structureContextMenu.appendChild(clearButton);
     }
     if (window.AlgoStructureRenderer.parseIndices(found.widget.annotationIndices).includes(index)) {
       const input = document.createElement('input');
@@ -6016,7 +6107,7 @@
       return;
     }
     const content = values.join(', ');
-    updateSelectedStructure({ content });
+    updateSelectedStructure({ content }, { preserveScale: action !== 'item-save' });
   }
 
   function handleStructureContextAction(event) {
@@ -6838,7 +6929,8 @@
     }));
     structureIndexModeSelect?.addEventListener('change', () => updateSelectedStructure({ indexMode: Number(structureIndexModeSelect.value) }));
     structureIndexBaseSelect?.addEventListener('change', () => updateSelectedStructure({ indexBase: Number(structureIndexBaseSelect.value) }));
-    structureLengthInput?.addEventListener('change', () => updateSelectedStructureLength(structureLengthInput.value));
+    structureLengthInput?.addEventListener('input', scheduleStructureLengthCommit);
+    structureLengthInput?.addEventListener('change', () => commitStructureLength(structureLengthInput.value));
     structureItemsPerRowInput?.addEventListener('input', () => updateSelectedStructure({ itemsPerRow: Math.max(0, Number(structureItemsPerRowInput.value) || 0) }));
     structureGapInput?.addEventListener('input', () => updateSelectedStructure({ gap: Math.max(0, Number(structureGapInput.value) || 0) }));
     structureCellSizeInput?.addEventListener('input', () => updateSelectedStructure({ cellSize: Math.max(18, Number(structureCellSizeInput.value) || 18) }));
@@ -6847,13 +6939,7 @@
     structureBorderColorInput?.addEventListener('input', () => updateSelectedStructure({ borderColor: structureBorderColorInput.value }));
     structureTextColorInput?.addEventListener('input', () => updateSelectedStructure({ textColor: structureTextColorInput.value }));
     structureLineColorInput?.addEventListener('input', () => updateSelectedStructure({ lineColor: structureLineColorInput.value }));
-    structureHighlightIndicesInput?.addEventListener('input', () => updateSelectedStructure({ highlightIndices: structureHighlightIndicesInput.value }));
-    structureAnnotationIndicesInput?.addEventListener('input', () => updateSelectedStructure({ annotationIndices: structureAnnotationIndicesInput.value }));
     structureAnnotationTextInput?.addEventListener('input', () => updateSelectedStructure({ annotationText: structureAnnotationTextInput.value }));
-    structureFocusIndicesInput?.addEventListener('input', () => updateSelectedStructure({ focusIndices: structureFocusIndicesInput.value }));
-    structurePointIndicesInput?.addEventListener('input', () => updateSelectedStructure({ pointIndices: structurePointIndicesInput.value }));
-    structureMarkIndicesInput?.addEventListener('input', () => updateSelectedStructure({ markIndices: structureMarkIndicesInput.value }));
-    structureBackgroundIndicesInput?.addEventListener('input', () => updateSelectedStructure({ backgroundIndices: structureBackgroundIndicesInput.value }));
     structureFrameBackgroundEnabledInput?.addEventListener('change', () => {
       if (structureFrameBackgroundColorInput) structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
       updateSelectedStructure({ frameBackgroundEnabled: structureFrameBackgroundEnabledInput.checked });
@@ -6904,6 +6990,7 @@
     italicBtn.addEventListener('click', () => toggleTextStyle('fontStyle', 'italic', 'normal'));
     underlineBtn.addEventListener('click', () => toggleTextStyle('underline', true, false));
     strikeBtn.addEventListener('click', () => toggleTextStyle('linethrough', true, false));
+    inlineScriptsBtn?.addEventListener('click', toggleInlineScripts);
     alignCycleBtn.addEventListener('click', cycleTextAlign);
     listStyleBtn.addEventListener('click', cycleTextList);
     textColorBtn.addEventListener('click', () => openIro('text'));
@@ -6984,14 +7071,17 @@
       if (isCodeScrollbarInteraction(event, widgetEl)) return;
       if (widgetEl.classList.contains('structure-widget')) {
         if (event.target.closest?.('.structure-inline-value-input')) return;
-        if (widgetEl.classList.contains('is-selected')
-          && event.target.closest?.('[data-structure-item-index]')) return;
       }
       if (event.shiftKey) return;
-      event.stopPropagation();
-      event.preventDefault();
-      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-      if (event.pointerId != null && widgetEl.setPointerCapture) {
+      const selectedStructureCellHit = widgetEl.classList.contains('structure-widget')
+        && widgetEl.classList.contains('is-selected')
+        && !!event.target.closest?.('[data-structure-item-index]');
+      if (!selectedStructureCellHit) {
+        event.stopPropagation();
+        event.preventDefault();
+        if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      }
+      if (!selectedStructureCellHit && event.pointerId != null && widgetEl.setPointerCapture) {
         try {
           widgetEl.setPointerCapture(event.pointerId);
         } catch (err) {
@@ -7660,6 +7750,8 @@
       italicBtn.classList.toggle('is-active', (style.fontStyle || obj.fontStyle) === 'italic');
       underlineBtn.classList.toggle('is-active', !!(style.underline ?? obj.underline));
       strikeBtn.classList.toggle('is-active', !!(style.linethrough ?? obj.linethrough));
+      inlineScriptsBtn?.classList.toggle('is-active', !!obj.asmInlineScripts);
+      inlineScriptsBtn?.setAttribute('aria-pressed', String(!!obj.asmInlineScripts));
       updateAlignButton(obj.textAlign || 'left');
       updateListButton(obj);
       updateTextColorButton(obj);
@@ -7807,6 +7899,37 @@
     return !!(obj && obj.type && obj.type.toLowerCase().includes('text'));
   }
 
+  function applyInlineScripts(obj) {
+    if (!obj?.asmInlineScripts || !isTextObject(obj) || obj.isEditing) return;
+    obj.styles = window.ASMInlineScripts.format(
+      obj.text, obj.asmInlineScriptBaseStyles || {}, obj.fontSize
+    );
+    obj.initDimensions();
+    obj.setCoords();
+    obj.dirty = true;
+    obj.canvas?.requestRenderAll();
+  }
+
+  function toggleInlineScripts() {
+    const { canvas, object } = activeTextObject();
+    if (!canvas || !object) return;
+    if (object.isEditing) object.exitEditing();
+    if (object.asmInlineScripts) {
+      object.asmInlineScripts = false;
+      object.styles = window.ASMInlineScripts.copyStyles(object.asmInlineScriptBaseStyles || {});
+      object.asmInlineScriptBaseStyles = null;
+      object.initDimensions();
+      object.setCoords();
+    } else {
+      object.asmInlineScripts = true;
+      object.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(object.styles);
+      applyInlineScripts(object);
+    }
+    canvas.requestRenderAll();
+    syncCurrentSlideCanvas();
+    updateObjectToolbar(object, canvas);
+  }
+
   function isImageObject(obj) {
     return !!(obj && obj.type && obj.type.toLowerCase().includes('image'));
   }
@@ -7834,6 +7957,13 @@
       target.object.set(style);
     } else if (target.object.setSelectionStyles) {
       target.object.setSelectionStyles(style, target.start, target.end);
+    }
+    if (target.object.asmInlineScripts) {
+      if (target.object.isEditing) {
+        target.object.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(target.object.styles);
+      } else {
+        applyInlineScripts(target.object);
+      }
     }
     target.object.dirty = true;
     target.object.setCoords();
@@ -7864,6 +7994,7 @@
     const target = activeTextObject();
     if (!target.canvas || !target.object) return;
     target.object.set(style);
+    if (target.object.asmInlineScripts) applyInlineScripts(target.object);
     target.object.setCoords();
     target.canvas.requestRenderAll();
     syncCurrentSlideCanvas({ history });
@@ -8011,7 +8142,34 @@
     updateObjectToolbar(target.object, target.canvas);
   }
 
-  function openIro(target) {
+  function populateAvColorSwatches() {
+    if (!avColorSwatches || avColorSwatches.childElementCount) return;
+    Object.entries(window.ASMArrowModel?.COLORS || {}).forEach(([name, value]) => {
+      if (!name.startsWith('AV_')) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'asm-av-swatch';
+      button.dataset.avColor = name;
+      button.title = `${name} · ${value}`;
+      button.setAttribute('aria-label', name);
+      button.style.setProperty('--av-swatch-color', value);
+      const chip = document.createElement('span');
+      chip.className = 'asm-av-swatch-chip';
+      chip.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.className = 'asm-av-swatch-name';
+      label.textContent = name;
+      button.append(chip, label);
+      button.addEventListener('click', () => {
+        iroPicker?.color.set(value);
+        commitPendingColorHistory();
+        iroPopup.hidden = true;
+      });
+      avColorSwatches.appendChild(button);
+    });
+  }
+
+  function openIro(target, anchorOverride = null) {
     const structureBinding = structureColorBindings.find(binding => binding.target === target);
     const shouldClose = !iroPopup.hidden && activeColorTarget === target;
     activeColorTarget = target;
@@ -8020,6 +8178,7 @@
       commitPendingColorHistory();
       return;
     }
+    populateAvColorSwatches();
     shapeStyleControls.hidden = activeColorTarget !== 'shape-stroke';
     if (!iroPicker) {
       iroPicker = new window.iro.ColorPicker('#iroPicker', {
@@ -8040,8 +8199,10 @@
         if (binding) {
           const structureColor = color.alpha < 1 ? value : color.hexString;
           setStructureColorButton(binding.button, structureColor);
-          if (binding.style) syncStructureStyleIcon(binding.style, structureColor);
-          updateSelectedWidget({ [binding.field]: structureColor }, { history: false });
+          structureContextMenu
+            ?.querySelector(`[data-structure-style-type="${binding.style}"] .structure-style-icon`)
+            ?.style.setProperty('--style-color', structureColor);
+          updateSelectedStructure({ [binding.field]: structureColor }, { history: false });
           scheduleHistorySnapshot();
           return;
         }
@@ -8068,8 +8229,9 @@
     const canvas = currentFabricCanvas();
     const active = canvas && canvas.getActiveObject();
     const style = active && isTextObject(active) ? getTextSelectionStyle(active) : {};
+    const selectedStructure = selectedWidgetId ? getWidget(selectedWidgetId).widget : null;
     const current = structureBinding
-      ? (structureBinding.button?.dataset.color || '#333333')
+      ? (structureBinding.button?.dataset.color || selectedStructure?.[structureBinding.field] || structureBinding.fallback || '#333333')
       : activeColorTarget === 'shape-fill'
       ? (active?.fill || 'rgba(238, 231, 251, 1)')
       : activeColorTarget === 'shape-stroke'
@@ -8083,7 +8245,7 @@
     } finally {
       suppressIroChange = false;
     }
-    const anchor = structureBinding?.button
+    const anchor = anchorOverride || structureBinding?.button
       || (activeColorTarget === 'shape-fill'
         ? shapeColorBtn
         : activeColorTarget === 'shape-stroke'
@@ -8093,9 +8255,13 @@
             : bgColorBtn);
     if (anchor) {
       const rect = anchor.getBoundingClientRect();
-      const popupWidth = 174;
+      const popupWidth = iroPopup.getBoundingClientRect().width;
+      const popupHeight = iroPopup.getBoundingClientRect().height;
       iroPopup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8))}px`;
-      iroPopup.style.top = `${Math.min(rect.bottom + 8, window.innerHeight - 300)}px`;
+      const below = rect.bottom + 8;
+      const above = rect.top - popupHeight - 8;
+      const top = below + popupHeight <= window.innerHeight - 8 || above < 8 ? below : above;
+      iroPopup.style.top = `${Math.max(8, Math.min(top, window.innerHeight - popupHeight - 8))}px`;
     }
   }
 
@@ -8655,6 +8821,37 @@
     return [overviewSelectedSlideId || getSlide()?.id].filter(Boolean);
   }
 
+  function slideOrderThumbnailSignature(slide) {
+    return JSON.stringify([
+      slide?.kind || '',
+      slide?.canvas || null,
+      slide?.widgets || [],
+      slide?.animation || null
+    ]);
+  }
+
+  function slideOrderThumbnailEntry(slide) {
+    const entry = slide && slideOrderThumbnailCache.get(slide.id);
+    return entry?.signature === slideOrderThumbnailSignature(slide) ? entry : null;
+  }
+
+  function ensureSlideOrderThumbnail(slide) {
+    if (!slide || !window.AlgoDeckThumbnail?.createSlide) return Promise.resolve(slideCanvasDataUrl(slide));
+    const signature = slideOrderThumbnailSignature(slide);
+    const cached = slideOrderThumbnailCache.get(slide.id);
+    if (cached?.signature === signature) return cached.promise || Promise.resolve(cached.src);
+    const entry = { signature, src: '', promise: null };
+    entry.promise = window.AlgoDeckThumbnail.createSlide(clone(slide)).then(src => {
+      if (slideOrderThumbnailCache.get(slide.id) === entry) {
+        entry.src = src;
+        entry.promise = null;
+      }
+      return src;
+    }).catch(() => slideCanvasDataUrl(slide));
+    slideOrderThumbnailCache.set(slide.id, entry);
+    return entry.promise;
+  }
+
   function createCustomOverviewThumb(slide, h, v) {
     const thumb = document.createElement('button');
     thumb.type = 'button';
@@ -8672,32 +8869,18 @@
     pageNumber.className = 'custom-overview-page-number';
     pageNumber.textContent = String(flatSlideIds().indexOf(slide.id) + 1);
 
-    if (slide.kind === 'algorithm-animation') {
-      const preview = document.createElement('div');
-      preview.className = 'algorithm-overview-preview';
-      preview.innerHTML = '<div>{;}<span>Algorithm</span></div>';
-      mini.appendChild(preview);
-      thumb.append(mini, pageNumber);
-      return thumb;
-    }
-
     const image = document.createElement('img');
+    image.className = 'custom-overview-snapshot';
     image.alt = '';
     image.draggable = false;
-    image.src = slideCanvasDataUrl(slide);
+    image.src = slideOrderThumbnailEntry(slide)?.src || slideCanvasDataUrl(slide);
     mini.appendChild(image);
-
-    const renderedLayer = document.querySelector(`.widget-layer[data-slide-id="${slide.id}"]`);
-    if (renderedLayer) {
-      mini.appendChild(renderedLayer.cloneNode(true));
-    } else {
-      const layer = document.createElement('div');
-      layer.className = 'widget-layer';
-      renderSlideWidgets(layer, slide);
-      mini.appendChild(layer);
-    }
-
     thumb.append(mini, pageNumber);
+    ensureSlideOrderThumbnail(slide).then(src => {
+      if (!image.isConnected || thumb.dataset.slideId !== slide.id) return;
+      image.src = src;
+      thumb.dataset.thumbnailReady = 'true';
+    });
     return thumb;
   }
 
@@ -9085,11 +9268,21 @@
     const rect = sourceThumbs[0].getBoundingClientRect();
     const ghost = document.createElement('div');
     ghost.className = 'overview-drag-ghost custom-overview-multi-ghost';
+    ghost.dataset.previewMode = 'thumbnail';
     sourceThumbs.forEach(thumb => {
-      const clone = thumb.cloneNode(true);
-      clone.classList.remove('is-selected', 'is-overview-drag-source');
-      clone.setAttribute('aria-hidden', 'true');
-      ghost.appendChild(clone);
+      const thumbRect = thumb.getBoundingClientRect();
+      const frame = document.createElement('div');
+      frame.className = 'custom-overview-drag-thumbnail';
+      frame.style.width = `${thumbRect.width}px`;
+      frame.style.height = `${thumbRect.height}px`;
+      const sourceImage = thumb.querySelector('.custom-overview-snapshot');
+      const image = document.createElement('img');
+      image.className = 'custom-overview-drag-snapshot';
+      image.alt = '';
+      image.draggable = false;
+      image.src = sourceImage?.src || '';
+      frame.appendChild(image);
+      ghost.appendChild(frame);
     });
     if (sourceThumbs.length > 1) {
       const badge = document.createElement('span');
@@ -9765,36 +9958,25 @@
   function createOverviewDragGhost(section) {
     if (!section) return null;
     const rect = section.getBoundingClientRect();
-    const ghost = section.cloneNode(true);
-    ghost.classList.add('overview-drag-ghost');
-    ghost.classList.remove('asm-slide', 'present', 'past', 'future', 'is-overview-selected', 'is-overview-drag-source');
-    ghost.removeAttribute('data-slide-id');
-    ghost.removeAttribute('data-h');
-    ghost.removeAttribute('data-v');
+    const slide = deck.groups.flatMap(group => group.slides).find(item => item.id === section.dataset.slideId);
+    const ghost = document.createElement('div');
+    ghost.className = 'overview-drag-ghost overview-static-drag-ghost';
+    ghost.dataset.previewMode = 'thumbnail';
     ghost.setAttribute('aria-hidden', 'true');
-    ghost.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-    const originalCanvases = Array.from(section.querySelectorAll('canvas'));
-    const ghostCanvases = Array.from(ghost.querySelectorAll('canvas'));
-    ghostCanvases.forEach((canvas, index) => {
-      const original = originalCanvases[index];
-      if (!original || !original.toDataURL) return;
-      const image = document.createElement('img');
-      try {
-        image.src = original.toDataURL('image/png');
-      } catch (err) {
-        return;
-      }
-      image.className = canvas.className;
-      image.style.cssText = canvas.style.cssText;
-      image.style.width = `${canvas.getBoundingClientRect().width || rect.width}px`;
-      image.style.height = `${canvas.getBoundingClientRect().height || rect.height}px`;
-      canvas.replaceWith(image);
-    });
+    const image = document.createElement('img');
+    image.className = 'overview-drag-snapshot';
+    image.alt = '';
+    image.draggable = false;
+    image.src = slideOrderThumbnailEntry(slide)?.src || slideCanvasDataUrl(slide);
+    ghost.appendChild(image);
     ghost.style.left = `${rect.left}px`;
     ghost.style.top = `${rect.top}px`;
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
     document.body.appendChild(ghost);
+    ensureSlideOrderThumbnail(slide).then(src => {
+      if (image.isConnected) image.src = src;
+    });
     return ghost;
   }
 
