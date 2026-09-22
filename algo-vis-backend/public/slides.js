@@ -178,6 +178,7 @@
   let suppressOverviewScrollbar = false;
   let customOverviewOpen = false;
   let customOverviewDrag = null;
+  const slideOrderThumbnailCache = new Map();
   let suppressCustomOverviewClick = false;
   let customOverviewRightMouseDown = false;
   let slideClipboard = [];
@@ -8694,6 +8695,37 @@
     return [overviewSelectedSlideId || getSlide()?.id].filter(Boolean);
   }
 
+  function slideOrderThumbnailSignature(slide) {
+    return JSON.stringify([
+      slide?.kind || '',
+      slide?.canvas || null,
+      slide?.widgets || [],
+      slide?.animation || null
+    ]);
+  }
+
+  function slideOrderThumbnailEntry(slide) {
+    const entry = slide && slideOrderThumbnailCache.get(slide.id);
+    return entry?.signature === slideOrderThumbnailSignature(slide) ? entry : null;
+  }
+
+  function ensureSlideOrderThumbnail(slide) {
+    if (!slide || !window.AlgoDeckThumbnail?.createSlide) return Promise.resolve(slideCanvasDataUrl(slide));
+    const signature = slideOrderThumbnailSignature(slide);
+    const cached = slideOrderThumbnailCache.get(slide.id);
+    if (cached?.signature === signature) return cached.promise || Promise.resolve(cached.src);
+    const entry = { signature, src: '', promise: null };
+    entry.promise = window.AlgoDeckThumbnail.createSlide(clone(slide)).then(src => {
+      if (slideOrderThumbnailCache.get(slide.id) === entry) {
+        entry.src = src;
+        entry.promise = null;
+      }
+      return src;
+    }).catch(() => slideCanvasDataUrl(slide));
+    slideOrderThumbnailCache.set(slide.id, entry);
+    return entry.promise;
+  }
+
   function createCustomOverviewThumb(slide, h, v) {
     const thumb = document.createElement('button');
     thumb.type = 'button';
@@ -8711,32 +8743,18 @@
     pageNumber.className = 'custom-overview-page-number';
     pageNumber.textContent = String(flatSlideIds().indexOf(slide.id) + 1);
 
-    if (slide.kind === 'algorithm-animation') {
-      const preview = document.createElement('div');
-      preview.className = 'algorithm-overview-preview';
-      preview.innerHTML = '<div>{;}<span>Algorithm</span></div>';
-      mini.appendChild(preview);
-      thumb.append(mini, pageNumber);
-      return thumb;
-    }
-
     const image = document.createElement('img');
+    image.className = 'custom-overview-snapshot';
     image.alt = '';
     image.draggable = false;
-    image.src = slideCanvasDataUrl(slide);
+    image.src = slideOrderThumbnailEntry(slide)?.src || slideCanvasDataUrl(slide);
     mini.appendChild(image);
-
-    const renderedLayer = document.querySelector(`.widget-layer[data-slide-id="${slide.id}"]`);
-    if (renderedLayer) {
-      mini.appendChild(renderedLayer.cloneNode(true));
-    } else {
-      const layer = document.createElement('div');
-      layer.className = 'widget-layer';
-      renderSlideWidgets(layer, slide);
-      mini.appendChild(layer);
-    }
-
     thumb.append(mini, pageNumber);
+    ensureSlideOrderThumbnail(slide).then(src => {
+      if (!image.isConnected || thumb.dataset.slideId !== slide.id) return;
+      image.src = src;
+      thumb.dataset.thumbnailReady = 'true';
+    });
     return thumb;
   }
 
@@ -9124,11 +9142,21 @@
     const rect = sourceThumbs[0].getBoundingClientRect();
     const ghost = document.createElement('div');
     ghost.className = 'overview-drag-ghost custom-overview-multi-ghost';
+    ghost.dataset.previewMode = 'thumbnail';
     sourceThumbs.forEach(thumb => {
-      const clone = thumb.cloneNode(true);
-      clone.classList.remove('is-selected', 'is-overview-drag-source');
-      clone.setAttribute('aria-hidden', 'true');
-      ghost.appendChild(clone);
+      const thumbRect = thumb.getBoundingClientRect();
+      const frame = document.createElement('div');
+      frame.className = 'custom-overview-drag-thumbnail';
+      frame.style.width = `${thumbRect.width}px`;
+      frame.style.height = `${thumbRect.height}px`;
+      const sourceImage = thumb.querySelector('.custom-overview-snapshot');
+      const image = document.createElement('img');
+      image.className = 'custom-overview-drag-snapshot';
+      image.alt = '';
+      image.draggable = false;
+      image.src = sourceImage?.src || '';
+      frame.appendChild(image);
+      ghost.appendChild(frame);
     });
     if (sourceThumbs.length > 1) {
       const badge = document.createElement('span');
@@ -9804,36 +9832,25 @@
   function createOverviewDragGhost(section) {
     if (!section) return null;
     const rect = section.getBoundingClientRect();
-    const ghost = section.cloneNode(true);
-    ghost.classList.add('overview-drag-ghost');
-    ghost.classList.remove('asm-slide', 'present', 'past', 'future', 'is-overview-selected', 'is-overview-drag-source');
-    ghost.removeAttribute('data-slide-id');
-    ghost.removeAttribute('data-h');
-    ghost.removeAttribute('data-v');
+    const slide = deck.groups.flatMap(group => group.slides).find(item => item.id === section.dataset.slideId);
+    const ghost = document.createElement('div');
+    ghost.className = 'overview-drag-ghost overview-static-drag-ghost';
+    ghost.dataset.previewMode = 'thumbnail';
     ghost.setAttribute('aria-hidden', 'true');
-    ghost.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
-    const originalCanvases = Array.from(section.querySelectorAll('canvas'));
-    const ghostCanvases = Array.from(ghost.querySelectorAll('canvas'));
-    ghostCanvases.forEach((canvas, index) => {
-      const original = originalCanvases[index];
-      if (!original || !original.toDataURL) return;
-      const image = document.createElement('img');
-      try {
-        image.src = original.toDataURL('image/png');
-      } catch (err) {
-        return;
-      }
-      image.className = canvas.className;
-      image.style.cssText = canvas.style.cssText;
-      image.style.width = `${canvas.getBoundingClientRect().width || rect.width}px`;
-      image.style.height = `${canvas.getBoundingClientRect().height || rect.height}px`;
-      canvas.replaceWith(image);
-    });
+    const image = document.createElement('img');
+    image.className = 'overview-drag-snapshot';
+    image.alt = '';
+    image.draggable = false;
+    image.src = slideOrderThumbnailEntry(slide)?.src || slideCanvasDataUrl(slide);
+    ghost.appendChild(image);
     ghost.style.left = `${rect.left}px`;
     ghost.style.top = `${rect.top}px`;
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
     document.body.appendChild(ghost);
+    ensureSlideOrderThumbnail(slide).then(src => {
+      if (image.isConnected) image.src = src;
+    });
     return ghost;
   }
 
