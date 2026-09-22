@@ -7461,13 +7461,13 @@
     });
 
     document.addEventListener('keyup', event => {
-      if (event.target.closest && event.target.closest('#objectToolbar, #ttsObjectEditorPopover')) return;
+      if (event.target.closest && event.target.closest('#objectToolbar, #ttsObjectEditorPopover, #iroPopup')) return;
       const canvas = currentFabricCanvas();
       if (canvas) updateObjectToolbar(canvas.getActiveObject(), canvas);
     });
 
     document.addEventListener('mouseup', event => {
-      if (event.target.closest && event.target.closest('#objectToolbar, #ttsObjectEditorPopover')) return;
+      if (event.target.closest && event.target.closest('#objectToolbar, #ttsObjectEditorPopover, #iroPopup')) return;
       const canvas = currentFabricCanvas();
       if (canvas) updateObjectToolbar(canvas.getActiveObject(), canvas);
     });
@@ -8041,7 +8041,7 @@
           const structureColor = color.alpha < 1 ? value : color.hexString;
           setStructureColorButton(binding.button, structureColor);
           if (binding.style) syncStructureStyleIcon(binding.style, structureColor);
-          updateSelectedStructure({ [binding.field]: structureColor }, { history: false });
+          updateSelectedWidget({ [binding.field]: structureColor }, { history: false });
           scheduleHistorySnapshot();
           return;
         }
