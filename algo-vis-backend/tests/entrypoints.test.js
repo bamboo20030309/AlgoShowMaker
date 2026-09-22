@@ -47,7 +47,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=sample-actions-201'));
+  assert.ok(slides.includes('slides.js?v=inline-scripts-202'));
+  assert.ok(slides.includes('slide-inline-scripts.js?v=1'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
   assert.ok(!slides.includes('id="deckCacheDialog"'));
@@ -57,7 +58,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(surface.includes('rel="noopener noreferrer"'));
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
-  assert.ok(slides.includes('slides.css?v=sample-actions-105'));
+  assert.ok(slides.includes('slides.css?v=inline-scripts-106'));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
   }

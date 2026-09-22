@@ -29,6 +29,7 @@
   const FABRIC_CUSTOM_PROPS = [
     'transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius', 'layerIndex',
     'styles', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'underline', 'linethrough', 'fill', 'textBackgroundColor',
+    'asmInlineScripts', 'asmInlineScriptBaseStyles',
     'asmShapeType', 'arrowHeadSize', 'arrowHeadStyle',
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
@@ -293,6 +294,7 @@
   const ttsVolumeValue = document.getElementById('ttsVolumeValue');
   const fontFamilySelect = document.getElementById('fontFamilySelect');
   const fontSizeInput = document.getElementById('fontSizeInput');
+  const inlineScriptsBtn = document.getElementById('inlineScriptsBtn');
   const boldBtn = document.getElementById('boldBtn');
   const italicBtn = document.getElementById('italicBtn');
   const underlineBtn = document.getElementById('underlineBtn');
@@ -1003,6 +1005,9 @@
 
     const selection = historyTextSelections[index];
     object.set(clone(savedObject));
+    if (object.asmInlineScripts) {
+      object.styles = window.ASMInlineScripts.copyStyles(object.asmInlineScriptBaseStyles || {});
+    }
     object.initDimensions();
     object.setCoords();
     const length = object._text.length;
@@ -1961,20 +1966,25 @@
           ttsObjectId: normalizedObject.ttsObjectId || randomId(),
           ...normalizeTtsObjectFields(normalizedObject)
         };
-        if (type.includes('text') && type !== 'textbox' && f()?.Textbox) {
-          return sanitizeFabricTextBaseline({
-            ...normalizedObject,
-            ...ttsFields,
-            type: 'textbox',
-            textBaseline: normalizeTextBaselineValue(normalizedObject.textBaseline),
-            width: Number.isFinite(normalizedObject.width) ? Math.max(40, normalizedObject.width) : 360
-          });
-        }
-        return sanitizeFabricTextBaseline({
+        const legacyText = type.includes('text') && type !== 'textbox' && f()?.Textbox;
+        const result = sanitizeFabricTextBaseline({
           ...normalizedObject,
           ...ttsFields,
+          ...(legacyText ? {
+            type: 'textbox',
+            width: Number.isFinite(normalizedObject.width) ? Math.max(40, normalizedObject.width) : 360
+          } : {}),
           textBaseline: normalizeTextBaselineValue(normalizedObject.textBaseline)
         });
+        if (result.asmInlineScripts && typeof result.text === 'string') {
+          result.asmInlineScriptBaseStyles = normalizeFabricTextStyles(
+            result.asmInlineScriptBaseStyles || result.styles
+          );
+          result.styles = window.ASMInlineScripts.format(
+            result.text, result.asmInlineScriptBaseStyles, result.fontSize
+          );
+        }
+        return result;
       })
     };
   }
@@ -2089,7 +2099,14 @@
             ...sanitizeFabricTextBaseline(obj),
             visible: true
           };
-          if (textLike) normalized.styles = normalizeFabricTextStyles(source?.styles || obj?.styles);
+          if (textLike) {
+            normalized.styles = normalizeFabricTextStyles(source?.styles || obj?.styles);
+            if (source?.asmInlineScripts) {
+              const baseStyles = normalizeFabricTextStyles(source.asmInlineScriptBaseStyles || {});
+              normalized.asmInlineScriptBaseStyles = baseStyles;
+              normalized.styles = window.ASMInlineScripts.format(source.text, baseStyles, source.fontSize);
+            }
+          }
           return normalized;
         });
         return serialized;
@@ -3202,7 +3219,26 @@
     canvas.on('object:added', event => sync(event, { syncFragments: true }));
     canvas.on('object:modified', sync);
     canvas.on('object:removed', event => sync(event, { syncFragments: true }));
-    canvas.on('text:changed', sync);
+    canvas.on('text:changed', event => {
+      if (event.target?.asmInlineScripts && event.target.isEditing) {
+        event.target.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(event.target.styles);
+      }
+      sync(event);
+    });
+    canvas.on('text:editing:entered', event => {
+      const obj = event.target;
+      if (!obj?.asmInlineScripts) return;
+      obj.styles = window.ASMInlineScripts.copyStyles(obj.asmInlineScriptBaseStyles || {});
+      obj.initDimensions();
+      canvas.requestRenderAll();
+    });
+    canvas.on('text:editing:exited', event => {
+      const obj = event.target;
+      if (!obj?.asmInlineScripts) return;
+      obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
+      applyInlineScripts(obj);
+      sync(event);
+    });
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
       if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
@@ -3564,6 +3600,12 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
+    if (obj.asmInlineScripts && isTextObject(obj)) {
+      if (!obj.asmInlineScriptBaseStyles) {
+        obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
+      }
+      applyInlineScripts(obj);
+    }
     if (shapeType(obj) === 'arrow') {
       obj.set({
         arrowHeadSize: Math.max(6, Math.min(80, Number(obj.arrowHeadSize) || 24)),
@@ -4342,7 +4384,9 @@
           fontFamily: DEFAULT_FONT_FAMILY,
           fontWeight: 'bold',
           fill: '#1f282d',
-          styles: {}
+          styles: {},
+          asmInlineScripts: true,
+          asmInlineScriptBaseStyles: {}
         });
       } else {
         obj = createShape(kind, left, top);
@@ -6785,6 +6829,7 @@
     italicBtn.addEventListener('click', () => toggleTextStyle('fontStyle', 'italic', 'normal'));
     underlineBtn.addEventListener('click', () => toggleTextStyle('underline', true, false));
     strikeBtn.addEventListener('click', () => toggleTextStyle('linethrough', true, false));
+    inlineScriptsBtn?.addEventListener('click', toggleInlineScripts);
     alignCycleBtn.addEventListener('click', cycleTextAlign);
     listStyleBtn.addEventListener('click', cycleTextList);
     textColorBtn.addEventListener('click', () => openIro('text'));
@@ -7541,6 +7586,8 @@
       italicBtn.classList.toggle('is-active', (style.fontStyle || obj.fontStyle) === 'italic');
       underlineBtn.classList.toggle('is-active', !!(style.underline ?? obj.underline));
       strikeBtn.classList.toggle('is-active', !!(style.linethrough ?? obj.linethrough));
+      inlineScriptsBtn?.classList.toggle('is-active', !!obj.asmInlineScripts);
+      inlineScriptsBtn?.setAttribute('aria-pressed', String(!!obj.asmInlineScripts));
       updateAlignButton(obj.textAlign || 'left');
       updateListButton(obj);
       updateTextColorButton(obj);
@@ -7688,6 +7735,37 @@
     return !!(obj && obj.type && obj.type.toLowerCase().includes('text'));
   }
 
+  function applyInlineScripts(obj) {
+    if (!obj?.asmInlineScripts || !isTextObject(obj) || obj.isEditing) return;
+    obj.styles = window.ASMInlineScripts.format(
+      obj.text, obj.asmInlineScriptBaseStyles || {}, obj.fontSize
+    );
+    obj.initDimensions();
+    obj.setCoords();
+    obj.dirty = true;
+    obj.canvas?.requestRenderAll();
+  }
+
+  function toggleInlineScripts() {
+    const { canvas, object } = activeTextObject();
+    if (!canvas || !object) return;
+    if (object.isEditing) object.exitEditing();
+    if (object.asmInlineScripts) {
+      object.asmInlineScripts = false;
+      object.styles = window.ASMInlineScripts.copyStyles(object.asmInlineScriptBaseStyles || {});
+      object.asmInlineScriptBaseStyles = null;
+      object.initDimensions();
+      object.setCoords();
+    } else {
+      object.asmInlineScripts = true;
+      object.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(object.styles);
+      applyInlineScripts(object);
+    }
+    canvas.requestRenderAll();
+    syncCurrentSlideCanvas();
+    updateObjectToolbar(object, canvas);
+  }
+
   function isImageObject(obj) {
     return !!(obj && obj.type && obj.type.toLowerCase().includes('image'));
   }
@@ -7715,6 +7793,13 @@
       target.object.set(style);
     } else if (target.object.setSelectionStyles) {
       target.object.setSelectionStyles(style, target.start, target.end);
+    }
+    if (target.object.asmInlineScripts) {
+      if (target.object.isEditing) {
+        target.object.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(target.object.styles);
+      } else {
+        applyInlineScripts(target.object);
+      }
     }
     target.object.dirty = true;
     target.object.setCoords();
@@ -7745,6 +7830,7 @@
     const target = activeTextObject();
     if (!target.canvas || !target.object) return;
     target.object.set(style);
+    if (target.object.asmInlineScripts) applyInlineScripts(target.object);
     target.object.setCoords();
     target.canvas.requestRenderAll();
     syncCurrentSlideCanvas({ history });

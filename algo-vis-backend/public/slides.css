@@ -2446,6 +2446,7 @@ body.custom-overview-open .reveal .controls {
 .object-toolbar.is-shape #strikeBtn,
 .object-toolbar.is-shape #alignCycleBtn,
 .object-toolbar.is-shape #listStyleBtn,
+.object-toolbar.is-shape #inlineScriptsBtn,
 .object-toolbar.is-shape #textColorBtn,
 .object-toolbar.is-shape #bgColorBtn,
 .object-toolbar.is-shape #ttsObjectBtn {
