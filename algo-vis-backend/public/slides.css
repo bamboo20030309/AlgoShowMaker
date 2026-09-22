@@ -2496,7 +2496,7 @@ body.custom-overview-open .reveal .controls {
 
 .iro-popup {
   position: fixed;
-  z-index: 90;
+  z-index: 98;
   width: 258px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
@@ -3700,6 +3700,7 @@ body:not(.asm-edit-mode) > .tts-transport[data-expanded="true"] {
 .structure-context-menu.structure-cell-style-toolbar[hidden] { display: none; }
 .structure-cell-style-toolbar button { display: flex; align-items: center; justify-content: center; width: 30px; height: 34px; padding: 3px; }
 .structure-cell-style-toolbar button[aria-pressed="true"] { background: #3b626c; outline: 1px solid #75c7d6; }
+.structure-cell-style-toolbar .structure-clear-cell-styles { color: #fca5a5; font-size: 20px; line-height: 1; }
 .structure-cell-style-toolbar input { width: 90px; min-width: 0; }
 body:not(.asm-edit-mode) > .tts-transport #ttsScriptShell,
 body:not(.asm-edit-mode) > .tts-transport #ttsScriptSource,

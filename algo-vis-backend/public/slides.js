@@ -360,31 +360,19 @@
   const structureBorderColorInput = document.getElementById('structureBorderColorInput');
   const structureTextColorInput = document.getElementById('structureTextColorInput');
   const structureLineColorInput = document.getElementById('structureLineColorInput');
-  const structureHighlightColorInput = document.getElementById('structureHighlightColorInput');
-  const structureHighlightIndicesInput = document.getElementById('structureHighlightIndicesInput');
-  const structureAnnotationIndicesInput = document.getElementById('structureAnnotationIndicesInput');
-  const structureAnnotationColorInput = document.getElementById('structureAnnotationColorInput');
   const structureAnnotationTextInput = document.getElementById('structureAnnotationTextInput');
-  const structureFocusColorInput = document.getElementById('structureFocusColorInput');
-  const structureFocusIndicesInput = document.getElementById('structureFocusIndicesInput');
-  const structurePointColorInput = document.getElementById('structurePointColorInput');
-  const structurePointIndicesInput = document.getElementById('structurePointIndicesInput');
-  const structureMarkColorInput = document.getElementById('structureMarkColorInput');
-  const structureMarkIndicesInput = document.getElementById('structureMarkIndicesInput');
-  const structureBackgroundColorInput = document.getElementById('structureBackgroundColorInput');
-  const structureBackgroundIndicesInput = document.getElementById('structureBackgroundIndicesInput');
   const structureFrameBackgroundControls = document.getElementById('structureFrameBackgroundControls');
   const structureFrameBackgroundEnabledInput = document.getElementById('structureFrameBackgroundEnabledInput');
   const structureFrameBackgroundColorInput = document.getElementById('structureFrameBackgroundColorInput');
   const structureColorBindings = [
-    { target: 'structure-annotation', button: structureAnnotationColorInput, field: 'annotationColor', style: 'annotation' },
+    { target: 'structure-annotation', field: 'annotationColor', style: 'annotation', fallback: '#ffffff' },
     { target: 'structure-tree-arrow', button: structureTreeArrowColorInput, field: 'treeArrowColor' },
     { target: 'structure-frame-background', button: structureFrameBackgroundColorInput, field: 'frameBackgroundColor' },
-    { target: 'structure-highlight', button: structureHighlightColorInput, field: 'highlightColor', style: 'highlight' },
-    { target: 'structure-focus', button: structureFocusColorInput, field: 'focusColor', style: 'focus' },
-    { target: 'structure-point', button: structurePointColorInput, field: 'pointColor', style: 'point' },
-    { target: 'structure-mark', button: structureMarkColorInput, field: 'markColor', style: 'mark' },
-    { target: 'structure-background', button: structureBackgroundColorInput, field: 'backgroundColor', style: 'background' }
+    { target: 'structure-highlight', field: 'highlightColor', style: 'highlight', fallback: '#ff0000' },
+    { target: 'structure-focus', field: 'focusColor', style: 'focus', fallback: '#808080' },
+    { target: 'structure-point', field: 'pointColor', style: 'point', fallback: '#ff0000' },
+    { target: 'structure-mark', field: 'markColor', style: 'mark', fallback: '#22c55e' },
+    { target: 'structure-background', field: 'backgroundColor', style: 'background', fallback: '#10b981' }
   ];
   const animationEditorPanel = document.getElementById('animationEditorPanel');
   const layerToTopBtn = document.getElementById('layerToTopBtn');
@@ -5466,11 +5454,6 @@
     }
   }
 
-  function syncStructureStyleIcon(type, color) {
-    const icon = structureEditorPanel?.querySelector(`[data-structure-style="${type}"] .structure-style-icon`);
-    if (icon) icon.style.setProperty('--style-color', color);
-  }
-
   function setStructureColorButton(button, color) {
     if (!button) return;
     const value = color || '#ffffff';
@@ -5494,27 +5477,9 @@
     structureBorderColorInput.value = widget.borderColor || '#344247';
     structureTextColorInput.value = widget.textColor || '#1f282d';
     structureLineColorInput.value = widget.lineColor || '#66767b';
-    setStructureColorButton(structureHighlightColorInput, widget.highlightColor || '#ff0000');
-    structureHighlightIndicesInput.value = widget.highlightIndices || '';
-    structureAnnotationIndicesInput.value = widget.annotationIndices || '';
     structureAnnotationTextInput.value = widget.annotationText || '';
-    setStructureColorButton(structureAnnotationColorInput, widget.annotationColor || '#ffffff');
-    syncStructureStyleIcon('annotation', widget.annotationColor || '#ffffff');
-    setStructureColorButton(structureFocusColorInput, widget.focusColor || '#808080');
-    structureFocusIndicesInput.value = widget.focusIndices || '';
-    setStructureColorButton(structurePointColorInput, widget.pointColor || '#ff0000');
-    structurePointIndicesInput.value = widget.pointIndices || '';
-    setStructureColorButton(structureMarkColorInput, widget.markColor || '#22c55e');
-    structureMarkIndicesInput.value = widget.markIndices || '';
-    setStructureColorButton(structureBackgroundColorInput, widget.backgroundColor || '#10b981');
-    structureBackgroundIndicesInput.value = widget.backgroundIndices || '';
     if (structureFrameBackgroundEnabledInput) structureFrameBackgroundEnabledInput.checked = widget.frameBackgroundEnabled !== false;
     setStructureColorButton(structureFrameBackgroundColorInput, widget.frameBackgroundColor || DEFAULT_STRUCTURE_FRAME_BACKGROUND);
-    syncStructureStyleIcon('highlight', widget.highlightColor || '#ff0000');
-    syncStructureStyleIcon('focus', widget.focusColor || '#808080');
-    syncStructureStyleIcon('point', widget.pointColor || '#ff0000');
-    syncStructureStyleIcon('mark', widget.markColor || '#22c55e');
-    syncStructureStyleIcon('background', widget.backgroundColor || '#10b981');
     syncStructureEditorVisibility(widget);
   }
 
@@ -5789,6 +5754,24 @@
     return button;
   }
 
+  function structureStyleIcon(type, color) {
+    if (type === 'annotation') {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'structure-style-icon');
+      svg.setAttribute('width', '22');
+      svg.setAttribute('height', '30');
+      svg.setAttribute('viewBox', '0 0 22 30');
+      svg.style.setProperty('--style-color', color);
+      svg.style.color = 'var(--style-color)';
+      svg.innerHTML = '<rect x="6" y="1" width="10" height="10" fill="#bfe8f7" stroke="currentColor"/><path d="M11 11v17m-3-5 3 5 3-5" fill="none" stroke="currentColor"/>';
+      return svg;
+    }
+    const icon = document.createElement('span');
+    icon.className = `structure-style-icon style-icon ${type}`;
+    icon.style.setProperty('--style-color', color);
+    return icon;
+  }
+
   function openStructureStyleToolbar(widgetId) {
     const widgetEl = document.querySelector(`section.present .structure-widget[data-widget-id="${CSS.escape(widgetId)}"]`);
     const cell = structureCellForKey(widgetEl, selectedStructureCell?.key);
@@ -5799,20 +5782,48 @@
     structureContextMenu.replaceChildren();
     activeStructureContext = null;
     structureContextMenu.classList.add('structure-cell-style-toolbar');
-    for (const [type, label] of [['highlight', 'Highlight'], ['focus', 'Focus'], ['point', 'Point'], ['mark', 'Mark'], ['background', 'Background'], ['annotation', '註標箭頭']]) {
+    const styleTypes = [['highlight', 'Highlight'], ['focus', 'Focus'], ['point', 'Point'], ['mark', 'Mark'], ['background', 'Background'], ['annotation', '註標箭頭']];
+    let hasSelectedStyle = false;
+    for (const [type, label] of styleTypes) {
       const indices = new Set(window.AlgoStructureRenderer.parseIndices(found.widget[`${type}Indices`]));
+      const binding = structureColorBindings.find(item => item.style === type);
+      hasSelectedStyle ||= indices.has(index);
       const button = document.createElement('button');
       button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
+      button.dataset.structureStyleType = type;
       button.setAttribute('aria-pressed', String(indices.has(index)));
-      const icon = structureEditorPanel.querySelector(`[data-structure-style="${type}"] .structure-style-icon`);
-      if (icon) { const clone = icon.cloneNode(true); clone.removeAttribute('role'); clone.setAttribute('aria-hidden', 'true'); button.appendChild(clone); }
+      const icon = structureStyleIcon(type, found.widget[binding.field] || binding.fallback);
+      icon.setAttribute('aria-hidden', 'true');
+      button.appendChild(icon);
       button.addEventListener('click', () => {
-        if (indices.has(index)) indices.delete(index); else indices.add(index);
-        updateSelectedStructure({ [`${type}Indices`]: [...indices].sort((a, b) => a - b).join(',') });
-        populateStructureEditor(getWidget(widgetId).widget);
+        if (!indices.has(index)) {
+          indices.add(index);
+          updateSelectedStructure({ [`${type}Indices`]: [...indices].sort((a, b) => a - b).join(',') });
+        }
         openStructureStyleToolbar(widgetId);
+        const colorButton = structureContextMenu.querySelector(`[data-structure-style-type="${type}"]`);
+        openIro(binding.target, colorButton);
       });
       structureContextMenu.appendChild(button);
+    }
+    if (hasSelectedStyle) {
+      const clearButton = document.createElement('button');
+      clearButton.type = 'button';
+      clearButton.className = 'structure-clear-cell-styles';
+      clearButton.title = '清除格子樣式';
+      clearButton.setAttribute('aria-label', '清除格子樣式');
+      clearButton.textContent = '×';
+      clearButton.addEventListener('click', () => {
+        const patch = {};
+        styleTypes.forEach(([type]) => {
+          const remaining = window.AlgoStructureRenderer.parseIndices(getWidget(widgetId).widget[`${type}Indices`])
+            .filter(item => item !== index);
+          patch[`${type}Indices`] = remaining.join(',');
+        });
+        updateSelectedStructure(patch);
+        openStructureStyleToolbar(widgetId);
+      });
+      structureContextMenu.appendChild(clearButton);
     }
     if (window.AlgoStructureRenderer.parseIndices(found.widget.annotationIndices).includes(index)) {
       const input = document.createElement('input');
@@ -6808,13 +6819,7 @@
     structureBorderColorInput?.addEventListener('input', () => updateSelectedStructure({ borderColor: structureBorderColorInput.value }));
     structureTextColorInput?.addEventListener('input', () => updateSelectedStructure({ textColor: structureTextColorInput.value }));
     structureLineColorInput?.addEventListener('input', () => updateSelectedStructure({ lineColor: structureLineColorInput.value }));
-    structureHighlightIndicesInput?.addEventListener('input', () => updateSelectedStructure({ highlightIndices: structureHighlightIndicesInput.value }));
-    structureAnnotationIndicesInput?.addEventListener('input', () => updateSelectedStructure({ annotationIndices: structureAnnotationIndicesInput.value }));
     structureAnnotationTextInput?.addEventListener('input', () => updateSelectedStructure({ annotationText: structureAnnotationTextInput.value }));
-    structureFocusIndicesInput?.addEventListener('input', () => updateSelectedStructure({ focusIndices: structureFocusIndicesInput.value }));
-    structurePointIndicesInput?.addEventListener('input', () => updateSelectedStructure({ pointIndices: structurePointIndicesInput.value }));
-    structureMarkIndicesInput?.addEventListener('input', () => updateSelectedStructure({ markIndices: structureMarkIndicesInput.value }));
-    structureBackgroundIndicesInput?.addEventListener('input', () => updateSelectedStructure({ backgroundIndices: structureBackgroundIndicesInput.value }));
     structureFrameBackgroundEnabledInput?.addEventListener('change', () => {
       if (structureFrameBackgroundColorInput) structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
       updateSelectedStructure({ frameBackgroundEnabled: structureFrameBackgroundEnabledInput.checked });
@@ -8043,7 +8048,7 @@
     });
   }
 
-  function openIro(target) {
+  function openIro(target, anchorOverride = null) {
     const structureBinding = structureColorBindings.find(binding => binding.target === target);
     const shouldClose = !iroPopup.hidden && activeColorTarget === target;
     activeColorTarget = target;
@@ -8073,7 +8078,9 @@
         if (binding) {
           const structureColor = color.alpha < 1 ? value : color.hexString;
           setStructureColorButton(binding.button, structureColor);
-          if (binding.style) syncStructureStyleIcon(binding.style, structureColor);
+          structureContextMenu
+            ?.querySelector(`[data-structure-style-type="${binding.style}"] .structure-style-icon`)
+            ?.style.setProperty('--style-color', structureColor);
           updateSelectedStructure({ [binding.field]: structureColor }, { history: false });
           scheduleHistorySnapshot();
           return;
@@ -8101,8 +8108,9 @@
     const canvas = currentFabricCanvas();
     const active = canvas && canvas.getActiveObject();
     const style = active && isTextObject(active) ? getTextSelectionStyle(active) : {};
+    const selectedStructure = selectedWidgetId ? getWidget(selectedWidgetId).widget : null;
     const current = structureBinding
-      ? (structureBinding.button?.dataset.color || '#333333')
+      ? (structureBinding.button?.dataset.color || selectedStructure?.[structureBinding.field] || structureBinding.fallback || '#333333')
       : activeColorTarget === 'shape-fill'
       ? (active?.fill || 'rgba(238, 231, 251, 1)')
       : activeColorTarget === 'shape-stroke'
@@ -8116,7 +8124,7 @@
     } finally {
       suppressIroChange = false;
     }
-    const anchor = structureBinding?.button
+    const anchor = anchorOverride || structureBinding?.button
       || (activeColorTarget === 'shape-fill'
         ? shapeColorBtn
         : activeColorTarget === 'shape-stroke'
