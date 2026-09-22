@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=inline-scripts-109" />
+  <link rel="stylesheet" href="slides.css?v=inline-scripts-110" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
   <link rel="preload" href="/vendor/katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin />
@@ -26,7 +26,7 @@
       document.body.classList.add('shared-view-only');
     }
   </script>
-  <a class="chrome-home-link" href="/" title="返回我的投影片" aria-label="返回我的投影片">
+  <a id="chromeHomeLink" class="chrome-home-link" href="/" title="返回我的投影片" aria-label="返回我的投影片">
     <svg class="chrome-home-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M3 10.8 12 3l9 7.8"></path>
       <path d="M5.5 9.5V21h13V9.5M9.5 21v-7h5v7"></path>
@@ -167,6 +167,9 @@
         <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="matrix" title="2D Array" aria-label="2D Array" data-tooltip="2D Array">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8"></rect><rect x="13" y="3" width="8" height="8"></rect><rect x="3" y="13" width="8" height="8"></rect><rect x="13" y="13" width="8" height="8"></rect></svg>
         </button>
+        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="table" title="Table" aria-label="Table" data-tooltip="Table">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="17"></rect><path d="M2.5 9h19M9 3.5v17M15.5 3.5v17M2.5 14.7h19"></path></svg>
+        </button>
         <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="binary_tree" title="Tree" aria-label="Tree" data-tooltip="Tree">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v4M6 14v-3h12v3"></path><circle cx="12" cy="4" r="3"></circle><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="18" r="3"></circle></svg>
         </button>
@@ -258,7 +261,7 @@
 
     <div id="structureEditorPanel" class="sidebar-panel widget-editor-panel structure-editor-panel" hidden>
       <div class="panel-title">
-        <strong>Structure</strong>
+        <strong id="structureEditorTitle">Structure</strong>
         <button id="exitStructureEditorBtn" type="button" title="Close" aria-label="Close">×</button>
       </div>
 
@@ -266,6 +269,7 @@
       <select id="structureModeSelect">
         <option value="normal">Array</option>
         <option value="matrix">2D Array</option>
+        <option value="table">Table</option>
         <option value="binary_tree">Tree</option>
         <option value="heap">Heap</option>
         <option value="segment_tree">Segment Tree</option>
@@ -323,6 +327,22 @@
           <span>格子間距</span>
           <input id="structureGapInput" type="number" min="0" max="40" value="0" />
         </label>
+      </div>
+
+      <div id="tableEditorControls" class="table-editor-controls" hidden>
+        <div class="structure-section-title">表格</div>
+        <div class="structure-field-grid">
+          <label><span>列數</span><input id="tableRowsInput" type="number" min="1" max="20" value="3" /></label>
+          <label><span>欄數</span><input id="tableColumnsInput" type="number" min="1" max="12" value="3" /></label>
+        </div>
+        <label class="check-field" for="tableHeaderRowInput"><input id="tableHeaderRowInput" type="checkbox" checked /><span>首列為表頭</span></label>
+        <label class="check-field" for="tableHeaderColumnInput"><input id="tableHeaderColumnInput" type="checkbox" /><span>首欄為表頭</span></label>
+        <div class="table-color-grid">
+          <label><span>表頭</span><button id="tableHeaderFillInput" class="structure-color-button" type="button" data-color="#d9efeb" title="表頭底色" aria-label="表頭底色"><span></span></button></label>
+          <label><span>內容</span><button id="tableBodyFillInput" class="structure-color-button" type="button" data-color="#ffffff" title="內容底色" aria-label="內容底色"><span></span></button></label>
+          <label><span>框線</span><button id="tableBorderColorInput" class="structure-color-button" type="button" data-color="#344247" title="表格框線顏色" aria-label="表格框線顏色"><span></span></button></label>
+          <label><span>文字</span><button id="tableTextColorInput" class="structure-color-button" type="button" data-color="#1f282d" title="表格文字顏色" aria-label="表格文字顏色"><span></span></button></label>
+        </div>
       </div>
 
       <div id="structureFrameBackgroundControls" class="structure-frame-background-controls">
@@ -480,6 +500,23 @@
       <div id="codeAceEditor" class="code-ace-editor"></div>
     </div>
   </div>
+
+  <dialog id="slideDeleteDialog" class="share-dialog slide-delete-dialog" aria-labelledby="slideDeleteTitle">
+    <form method="dialog">
+      <div class="share-dialog-header">
+        <div>
+          <span class="share-eyebrow">刪除確認</span>
+          <h2 id="slideDeleteTitle">刪除投影片？</h2>
+        </div>
+        <button id="closeSlideDeleteDialogBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <p id="slideDeleteMessage" class="slide-delete-message">刪除後仍可立即使用復原。</p>
+      <div class="share-dialog-actions">
+        <button id="cancelSlideDeleteBtn" type="button">取消</button>
+        <button id="confirmSlideDeleteBtn" class="slide-delete-confirm-btn" type="button">刪除</button>
+      </div>
+    </form>
+  </dialog>
 
 
   <dialog id="shareDialog" class="share-dialog">
@@ -717,7 +754,7 @@
   <script src="draw/draw_array_disk.js?v=gap-1"></script>
   <script src="draw/draw_array_stack.js?v=gap-1"></script>
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
-  <script src="slide-structures.js?v=15"></script>
+  <script src="slide-structures.js?v=17"></script>
   <script src="deck-thumbnail.js?v=4"></script>
   <script src="slides-storage.js?v=5"></script>
   <script src="slides-cloud.js?v=1"></script>
@@ -728,9 +765,9 @@
   <script src="trace-provenance.js?v=trace-9"></script>
   <script src="asmdeck.js?v=6"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="slide-inline-scripts.js?v=1"></script>
+  <script src="slide-inline-scripts.js?v=2"></script>
   <script src="trace-arrow-model.js?v=arrow-8"></script>
-  <script src="slides.js?v=inline-scripts-209"></script>
+  <script src="slides.js?v=inline-scripts-216"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

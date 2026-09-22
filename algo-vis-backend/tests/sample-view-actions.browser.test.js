@@ -70,6 +70,13 @@ test('public sample viewer can export and share its viewing link', { timeout: 12
     const exported = await ASMDeck.decode(new Blob([exportedBytes]));
     assert.equal(exported.deck.groups[0].slides.length, 1);
 
+    const homeLink = page.locator('#chromeHomeLink');
+    assert.equal(await homeLink.getAttribute('href'), '/?examples=1');
+    assert.equal(await homeLink.getAttribute('aria-label'), '返回範例投影片');
+    await homeLink.click();
+    await page.waitForURL(`${base}/?examples=1`);
+    await page.waitForFunction(() => document.body.classList.contains('examples-view'));
+
     const sharedPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await sharedPage.route('**/api/shared-slides/fixture', route => route.fulfill({
       json: { slide: { deck, title: 'Shared Deck' }, access: 'view' }
@@ -80,6 +87,8 @@ test('public sample viewer can export and share its viewing link', { timeout: 12
     assert.equal(await sharedPage.locator('#exportDeckBtn').isVisible(), false);
     assert.equal(await sharedPage.locator('#shareDeckBtn').isVisible(), false);
     assert.equal(await sharedPage.locator('#sampleShareDialog').evaluate(el => el.open), false);
+    assert.equal(await sharedPage.locator('#chromeHomeLink').getAttribute('href'), '/');
+    assert.equal(await sharedPage.locator('#chromeHomeLink').getAttribute('aria-label'), '返回我的投影片');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

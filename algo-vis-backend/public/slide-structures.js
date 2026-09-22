@@ -14,6 +14,7 @@
   const MODE_LABELS = {
     normal: 'Array',
     matrix: '2D Array',
+    table: 'Table',
     binary_tree: 'Tree',
     heap: 'Heap',
     segment_tree: 'Segment Tree',
@@ -78,11 +79,37 @@
     return [...indices];
   }
 
+  function tableRowsFromWidget(widget) {
+    const source = Array.isArray(widget?.tableData) && widget.tableData.length
+      ? widget.tableData
+      : matrixRowsFromContent(widget?.content);
+    const rows = source.map(row => (Array.isArray(row) ? row : [row]).map(value => String(value ?? '')));
+    const columns = Math.max(1, ...rows.map(row => row.length));
+    rows.forEach(row => { while (row.length < columns) row.push(''); });
+    return rows.length ? rows : [['']];
+  }
+
+  function cellStyleColor(widget, index, type, fallback) {
+    const value = widget.cellStyles?.[String(index)]?.[type];
+    return typeof value === 'string' && value ? value : fallback;
+  }
+
+  function styledIndices(widget, type, source, length) {
+    const indices = new Set(parseIndices(source, length));
+    Object.entries(widget.cellStyles || {}).forEach(([key, styles]) => {
+      const index = Number(key);
+      if (Number.isInteger(index) && index >= 0 && index < length && styles && typeof styles[type] === 'string') {
+        indices.add(index);
+      }
+    });
+    return [...indices].sort((a, b) => a - b);
+  }
+
   function styleData(widget, length) {
     const entry = (type, color, source) => ({
       type,
       color,
-      elements: parseIndices(source, length)
+      elements: styledIndices(widget, type, source, length)
     });
     return {
       highlight: entry('highlight', widget.highlightColor || '#ff0000', widget.highlightIndices),
@@ -96,8 +123,11 @@
   function originalStyles(widget, length, oneBased) {
     const offset = oneBased ? 1 : 0;
     return Object.values(styleData(widget, length))
-      .map(item => ({ ...item, elements: item.elements.map(index => index + offset) }))
-      .filter(item => item.elements.length);
+      .flatMap(item => item.elements.map(index => ({
+        type: item.type,
+        color: cellStyleColor(widget, index, item.type, item.color),
+        elements: [index + offset]
+      })));
   }
 
   function addOriginalAnimationDefs(svg) {
@@ -428,7 +458,7 @@
       const content = indexMode === 2 ? index : treeNode.value;
       const nodeStyles = Object.values(styles).map(item => ({
         type: item.type,
-        color: item.color,
+        color: cellStyleColor(widget, index, item.type, item.color),
         elements: item.elements.includes(index) ? [0] : []
       }));
       const node = element('g', {
@@ -494,24 +524,113 @@
       if (itemIndex < 0) return;
       cell.setAttribute('data-structure-item-index', String(itemIndex));
       if (mode === 'segment_tree') cell.setAttribute('data-segment-storage-index', String(index));
-      if (mode === 'matrix' && columns > 0) {
+      if ((mode === 'matrix' || mode === 'table') && columns > 0) {
         cell.setAttribute('data-matrix-row', String(Math.floor(index / columns)));
         cell.setAttribute('data-matrix-column', String(index % columns));
       }
     });
   }
 
+  function drawTable(group, widget) {
+    const rows = tableRowsFromWidget(widget);
+    const columns = Math.max(1, ...rows.map(row => row.length));
+    const headerFill = widget.tableHeaderFill || '#d9efeb';
+    const bodyFill = widget.tableBodyFill || '#ffffff';
+    const borderColor = widget.tableBorderColor || '#344247';
+    const textColor = widget.tableTextColor || '#1f282d';
+    const fontSize = clamp(number(widget.fontSize, 18), 10, 48);
+    const rowHeight = clamp(fontSize * 2.8, 52, 88);
+    const measureLength = value => Array.from(String(value ?? '')).reduce((length, character) => (
+      length + (/^[\x00-\xff]$/.test(character) ? 0.58 : 1)
+    ), 0);
+    const columnWidths = Array.from({ length: columns }, (_, column) => {
+      const longest = Math.max(...rows.map(row => measureLength(row[column] ?? '')), 4);
+      return clamp(longest * fontSize + 32, 116, 240);
+    });
+    const xOffsets = [];
+    columnWidths.reduce((offset, width, column) => {
+      xOffsets[column] = offset;
+      return offset + width;
+    }, 0);
+    const styleSets = Object.fromEntries(Object.entries(styleData(widget, rows.length * columns))
+      .map(([type, entry]) => [type, new Set(entry.elements)]));
+
+    rows.forEach((rowValues, row) => Array.from({ length: columns }, (_, column) => {
+      const index = row * columns + column;
+      const isHeader = (widget.tableHeaderRow !== false && row === 0)
+        || (widget.tableHeaderColumn === true && column === 0);
+      const width = columnWidths[column];
+      const x = xOffsets[column];
+      const y = row * rowHeight;
+      const cell = element('g', {
+        id: `cell-table-${index}`,
+        'data-structure-item-index': index,
+        'data-matrix-row': row,
+        'data-matrix-column': column,
+        'data-table-header': isHeader ? 'true' : 'false'
+      });
+      const background = styleSets.background.has(index)
+        ? cellStyleColor(widget, index, 'background', widget.backgroundColor || '#10b981')
+        : (isHeader ? headerFill : bodyFill);
+      const emphasizedType = ['highlight', 'focus', 'point', 'mark'].find(type => styleSets[type].has(index));
+      const emphasizedColor = emphasizedType
+        ? cellStyleColor(widget, index, emphasizedType, widget[`${emphasizedType}Color`] || borderColor)
+        : borderColor;
+      cell.appendChild(element('rect', {
+        x,
+        y,
+        width,
+        height: rowHeight,
+        rx: 0,
+        fill: background,
+        stroke: emphasizedColor,
+        'stroke-width': emphasizedType ? 4 : 1.5,
+        class: emphasizedType === 'highlight' ? 'highlight-blink' : ''
+      }));
+      const rawValue = String(rowValues[column] ?? '');
+      const displayValue = Array.from(rawValue).length > 80
+        ? `${Array.from(rawValue).slice(0, 79).join('')}…`
+        : rawValue;
+      const availableWidth = Math.max(24, width - 22);
+      const fittedFontSize = Math.max(10, Math.min(fontSize, availableWidth / Math.max(1, measureLength(displayValue))));
+      const text = element('text', {
+        x: x + width / 2,
+        y: y + rowHeight / 2,
+        fill: textColor,
+        'font-size': fittedFontSize,
+        'font-family': 'Arial, Noto Sans TC, sans-serif',
+        'font-weight': isHeader ? 700 : 400,
+        'text-anchor': 'middle',
+        'dominant-baseline': 'middle'
+      });
+      text.textContent = displayValue;
+      cell.appendChild(text);
+      group.appendChild(cell);
+      return cell;
+    }));
+
+    const width = columnWidths.reduce((total, value) => total + value, 0);
+    const height = rows.length * rowHeight;
+    group.setAttribute('data-layout', 'table');
+    group.setAttribute('data-outerframe-left', '0');
+    group.setAttribute('data-outerframe-top', '0');
+    group.setAttribute('data-outerframe-right', String(width));
+    group.setAttribute('data-outerframe-bottom', String(height));
+    return true;
+  }
+
   function drawWithOriginalRenderer(group, widget, rawValues) {
-    const mode = widget.structureMode === 'matrix'
-      ? 'matrix'
+    const mode = widget.structureMode === 'matrix' || widget.structureMode === 'table'
+      ? widget.structureMode
       : (ORIGINAL_RENDERERS[widget.structureMode] ? widget.structureMode : 'normal');
+    if (mode === 'table') return drawTable(group, widget);
     if (mode === 'matrix') {
       const rows = matrixRowsFromContent(widget.content);
       const columns = Math.max(1, ...rows.map(row => row.length));
       const values = rows.flatMap(row => Array.from({ length: columns }, (_, index) => row[index] ?? ''));
       window.draw_array_normal(
         group,
-        MODE_LABELS.matrix,
+        MODE_LABELS[mode],
         values,
         originalStyles(widget, values.length, false),
         [0, values.length - 1],
@@ -519,8 +638,8 @@
         clamp(Math.round(number(widget.indexMode, 0)), 0, 4),
         clamp(number(widget.gap, 0), 0, 40)
       );
-      applyFrameBackground(group, widget, mode);
       tagEditableCells(group, mode, columns);
+      applyFrameBackground(group, widget, mode);
       return true;
     }
     const renderer = window[ORIGINAL_RENDERERS[mode]];
@@ -593,7 +712,7 @@
     const bounds = originalBounds(group, mode);
     const edgePadding = group.querySelector('[data-structure-annotation-index]') ? 10 : 3;
     const pointPadding = group.querySelector('[data-structure-annotation-index]') ? 44
-      : (parseIndices(widget.pointIndices, valuesFromContent(widget.content).length).length ? 28 : edgePadding);
+      : (styledIndices(widget, 'point', widget.pointIndices, valuesFromContent(widget.content).length).length ? 28 : edgePadding);
     return {
       left: bounds.left - edgePadding,
       top: bounds.top - pointPadding,
@@ -603,7 +722,7 @@
   }
 
   function buildStructureSvg(widget) {
-    const mode = widget.structureMode === 'binary_tree' || widget.structureMode === 'matrix' || ORIGINAL_RENDERERS[widget.structureMode]
+    const mode = widget.structureMode === 'binary_tree' || widget.structureMode === 'matrix' || widget.structureMode === 'table' || ORIGINAL_RENDERERS[widget.structureMode]
       ? widget.structureMode
       : 'normal';
     const svg = element('svg', { xmlns: NS });
@@ -620,7 +739,7 @@
   function addAnnotations(group, widget) {
     const cells = [...group.querySelectorAll('[data-structure-item-index]')];
     const length = Math.max(0, ...cells.map(cell => Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex) + 1));
-    const selected = new Set(parseIndices(widget.annotationIndices, length));
+    const selected = new Set(styledIndices(widget, 'annotation', widget.annotationIndices, length));
     cells.forEach(cell => {
       const index = Number(cell.dataset.structureItemIndex);
       const treeIndex = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex);
@@ -636,12 +755,13 @@
       const label = widget.annotationLabels?.[actualIndex] || widget.annotationText || String(actualIndex);
       window.draw_block(marker, x - 9, y - 40, label, 18, 18, '#bfe8f7', `annotation-${actualIndex}`);
       marker.querySelector('rect')?.setAttribute('fill-opacity', '0.58');
-      marker.querySelector('rect')?.setAttribute('stroke', widget.annotationColor || '#ffffff');
+      const annotationColor = cellStyleColor(widget, actualIndex, 'annotation', widget.annotationColor || '#ffffff');
+      marker.querySelector('rect')?.setAttribute('stroke', annotationColor);
       const text = marker.querySelector('text');
       if (text) { text.setAttribute('font-size', String(Math.max(4, Math.min(8, 14 / (Array.from(label).length * 0.62))))); text.setAttribute('font-weight', 'bold'); }
       marker.appendChild(element('path', {
         d: `M ${x} ${y - 22} L ${x} ${y - 2} M ${x - 3} ${y - 8} L ${x} ${y - 2} L ${x + 3} ${y - 8}`,
-        fill: 'none', stroke: widget.annotationColor || '#ffffff', 'stroke-width': 1,
+        fill: 'none', stroke: annotationColor, 'stroke-width': 1,
         'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
       }));
     });
@@ -669,7 +789,9 @@
     svg.setAttribute('aria-label', `${MODE_LABELS[mode]} data structure`);
     svg.setAttribute('data-renderer', mode === 'binary_tree'
       ? 'original-tree-adapter'
-      : (mode === 'segment_tree' ? 'standard-segment-tree' : 'original-draw-array'));
+      : (mode === 'segment_tree'
+        ? 'standard-segment-tree'
+        : (mode === 'table' ? 'presentation-table' : 'original-draw-array')));
     svg.style.display = 'block';
     svg.style.width = '100%';
     svg.style.height = '100%';
@@ -707,6 +829,7 @@
     drawCanvas,
     getNaturalSize,
     parseIndices,
+    cellStyleColor,
     render,
     valuesFromContent
   };

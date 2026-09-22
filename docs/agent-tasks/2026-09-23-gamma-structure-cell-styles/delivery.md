@@ -1,0 +1,51 @@
+# 2026-09-23-gamma-structure-cell-styles 交付驗證紀錄
+
+## 交付資訊
+- 狀態：待主代理核實
+- 分支：codex/2026-09-22-gamma
+- 共同基準 commit：b90a56f3733d5ccfe26fb5cadfd47b5e25bf2755
+- 程式修正 commit：655ce04f254dfd4205742a352eae322d3dc94d88
+- 驗證時的 HEAD 與未提交修改：655ce04f254dfd4205742a352eae322d3dc94d88；程式驗證後工作目錄乾淨
+- 驗證日期：2026-09-23
+
+## 根因與修改
+- 已確認根因與證據：style 套用格子以索引分開，但顏色只存在 widget 的全域欄位，所以修改同類 style 顏色會同時影響所有格子。
+- 修正方式與行為變化：新增每格 `cellStyles` 色彩映射；renderer 逐格建立 style；選色器只更新目前格子；舊全域設定保留為相容預設。
+- 修改檔案及用途：`slides.js` 保存及編輯每格 style；`slide-structures.js` 逐格解析並渲染色彩；`slides.html` 與 `entrypoints.test.js` 更新資源版本；`structure-annotations.browser.test.js` 驗證獨立色彩、清除及重載。
+- README／版本紀錄／使用說明更新：不適用；格子工具列操作方式不變。
+- 與 task.md 的差異：無。
+
+## 驗收條件對照
+| task.md 條件 | 驗證方式 | 實際結果 | 判定 |
+|---|---|---|---|
+| 不同格子可使用不同顏色 | structure 局部瀏覽器測試 | 第 0 格藍色、第 2 格黃色，保存資料及 SVG stroke 相符 | 通過 |
+| 單格調色不影響其他格 | 比對保存資料與 SVG stroke | 兩格 `cellStyles` 及畫面顏色保持獨立 | 通過 |
+| 單格清除及重載維持 | 清除第 0 格後讀回資料並重載 | 第 0 格映射移除，第 2 格 highlight／mark 重載後保留 | 通過 |
+| 舊資料格式相容 | 使用只有全域顏色與索引的 widget 建立 SVG | 舊 `highlightColor: #123456` 仍正確渲染 | 通過 |
+
+## 小驗證與重跑方式
+### Structure 每格獨立樣式
+- 目的與對應條件：驗證每格顏色、清除、保存、重載及舊格式。
+- 執行目錄與必要環境設定：`algo-vis-backend`；瀏覽器測試自動使用隨機埠。
+- 測試資料／fixture：四格一般陣列及現有 structure renderer fixtures。
+- 完整指令或操作步驟：`node --check public/slides.js`；`node --check public/slide-structures.js`；`node --test tests/entrypoints.test.js`；`node --test tests/structure-annotations.browser.test.js`；`node --test tests/slide-segment-tree.browser.test.js`；`git diff --check`。
+- 預期結果：第 0 格藍色、第 2 格黃色；清除第 0 格不改變第 2 格。
+- 實際結果與 exit code（適用時）：兩個語法檢查、入口測試、structure 樣式測試、Segment Tree 測試及 diff 檢查均 exit code 0；三個測試檔各 1/1 通過。
+- 證據位置：`algo-vis-backend/tests/structure-annotations.browser.test.js` 與本次終端摘要。
+
+## 剩餘事項與合併注意
+- 未驗證項目及原因：無。
+- 已知問題或風險：無。
+- 相依與衝突注意：`slides.js`、`slide-structures.js` 與入口版本為共用檔案。
+- 主代理需補驗證的情境：整合後人工確認一般陣列、Heap、Segment Tree 的不同格獨立顏色。
+
+## 主代理核實與整合（由主代理填寫）
+- 狀態：尚未核實
+- 核實的程式 commit 與 diff 範圍：
+- 差異審查與必要重跑結果：
+- 合併 commit：
+- 完整 regression：
+- 演算法投影片實際驗證：
+- 未完成或環境阻塞：
+- 本機服務重啟：
+- Push／公開部署狀態：
