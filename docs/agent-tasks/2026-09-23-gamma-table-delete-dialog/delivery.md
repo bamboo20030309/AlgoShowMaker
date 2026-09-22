@@ -53,6 +53,12 @@
 - 實際結果與 exit code（適用時）：語法檢查通過；entrypoints 1 pass；diff check 無空白錯誤，僅 Git CRLF 提示；exit code 0。
 - 證據位置：本交付紀錄摘要。
 
+### gamma 預覽
+- 目的與對應條件：讓主代理可直接查看本分支的獨立 Table 入口與編輯面板。
+- 執行目錄與必要環境設定：`algo-vis-backend`，`PORT=3104`。
+- 完整指令或操作步驟：背景啟動 `node server.js`，讀取 `http://127.0.0.1:3104/slides.html`。
+- 實際結果與 exit code（適用時）：HTTP 200；頁面載入 `slides.js?v=inline-scripts-217` 並包含獨立 `data-tool="table"` 入口；啟動程序 PID 77356。
+
 ## 剩餘事項與合併注意
 - 未驗證項目及原因：未跑完整 regression 與演算法動畫驗證，依使用者與專案規範，本次屬非動畫前端功能，只跑相關局部測試。未另做 PDF／圖片匯出像素比較，表格沿用既有 widget 匯出管線。
 - 已知問題或風險：第一版沒有合併儲存格、公式、跨格貼上、儲存格內換行、每格富文字與專用表格動畫。單格最多保存 500 字；畫面顯示超過 80 個 Unicode code point 時以省略號截斷。列欄限制為 20×12，避免投影片上產生不可讀的超大表格。
