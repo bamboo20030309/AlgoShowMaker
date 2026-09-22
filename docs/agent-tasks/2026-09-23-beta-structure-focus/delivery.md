@@ -48,12 +48,12 @@
 - 主代理需補驗證的情境：整合後確認新增 structure 的 Focus 色與 deck 垂直分組。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：整合驗收通過；GitHub 推送未執行。
+- 核實的程式 commit 與 diff 範圍：`0ff36ea54cf5c2db9eb6480dfcc8687ef8c0bd8d`，僅 `slides.js`、`slides.html`、`slide-structures.js` 的預設 Focus 色與任務文件；交付紀錄另由 `ed91646` 提交。
+- 差異審查與必要重跑結果：檢查原色 `#808080` 的 fallback 與新增元件設定均改為 `#cccccc`，使用者自訂色仍保留。整合版 3100 匯入 deck 後讀得 10 組、21 頁、27 個 structure 均為指定 Focus／outerframe 預設；垂直導航可由第 7 組第 1 頁進到第 2 頁，無 pageerror。
+- 合併 commit：`7dd186ad920ba1aaefc736f348d8fd14e44cc953`。
+- 完整 regression：未執行；本次程式碼變動為非動畫的投影片編輯器預設色，依 V1 分級做局部瀏覽器驗證。
+- 演算法投影片實際驗證：新增逐一插入動畫對指定輸入的 `/trace/analyze` 有 5 個指令，`/compile` 產生 36 幀；未跑大規模動畫驗證。
+- 未完成或環境阻塞：遠端推送先前受自動審核阻擋，需使用者明確確認 GitHub 目的地及完整推送內容。
+- 本機服務重啟：核對 3100 原 PID 43408 與整合 worktree 靜態檔 SHA-256 相同後停止，以 PID 14536 重啟；`slides.js` 與 `slide-structures.js` 的 HTTP 200 回應內容均與整合檔案雜湊相同。
+- Push／公開部署狀態：尚未推送；未合併 main、未公開部署。
