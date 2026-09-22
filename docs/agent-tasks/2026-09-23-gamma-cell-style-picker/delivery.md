@@ -66,5 +66,5 @@
 - 完整 regression：
 - 演算法投影片實際驗證：
 - 未完成或環境阻塞：
-- 本機服務重啟：待本次交付重啟後更新。
+- 本機服務重啟：gamma 3104 已重啟，PID 76320；HTTP 200，載入 `slides.js?v=inline-scripts-215`。
 - Push／公開部署狀態：gamma 分支推送至 origin 供主代理核實；未公開部署。
