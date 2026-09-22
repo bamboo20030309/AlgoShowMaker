@@ -2,7 +2,7 @@
 
 ## 任務資訊
 - 負責代理：主代理 beta
-- 狀態：開發中
+- 狀態：待交付
 - 共同基準 commit：0074069
 - 分支：intergration
 - Worktree：C:\Users\user\Documents\Codex\2026-07-29\algoshowmaker-main-commit-d154dd5-slides-html\work\AlgoShowMaker\.worktrees\intergration
@@ -30,9 +30,9 @@
 - 依賴任務：無。
 
 ## 驗收條件
-- [ ] 新 marker 入場開始前，同格既有 marker 保持原位。
-- [ ] 新 marker 入場與同格 marker 讓位在同一時間開始。
-- [ ] 兩段動畫完成後才開始後續 trace 事件。
+- [x] 新 marker 入場開始前，同格既有 marker 保持原位。
+- [x] 新 marker 入場與同格 marker 讓位在同一時間開始。
+- [x] 兩段動畫完成後才開始後續 trace 事件。
 
 ## 驗證計畫
 - 子代理小驗證：不適用，本次由主代理直接修正；執行 JavaScript 語法檢查與 `unresolved-markers.test.js` 的同格入場排程專項案例。
