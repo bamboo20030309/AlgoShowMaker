@@ -4397,7 +4397,8 @@
   }
 
   function exitMarkerReflowSchedule({
-    eventTimeline, currentElements, previousPlacements, currentPlacements, previousObjects
+    eventTimeline, currentElements, previousPlacements, currentPlacements, previousObjects,
+    excludedPeerKeys = new Set()
   } = {}) {
     const schedule = new Map();
     (eventTimeline || []).filter(slot => (
@@ -4435,6 +4436,10 @@
         const peers = [];
         currentElements?.forEach?.((element, key) => {
           if (!element?.dataset?.traceSourceVariableId) return;
+          // Markers held behind an outgoing lifetime's event barrier are not
+          // visible peers yet. Their destination-frame geometry must not
+          // push the outgoing marker aside before they enter.
+          if (excludedPeerKeys?.has?.(key)) return;
           if ((slot.event?.targets || []).some(target => markerMatchesEventTarget(element, target))) return;
           const candidatePrevious = previousVisualForEntry(element, previousObjects, key);
           // A new loop activation can reuse the same authored marker key while
@@ -6055,7 +6060,8 @@
       currentElements,
       previousPlacements,
       currentPlacements,
-      previousObjects
+      previousObjects,
+      excludedPeerKeys: deferredMarkerEntranceKeys
     });
     const playbackPlan = createPlaybackPlan({
       frame,
@@ -7124,10 +7130,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-228';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-229';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-228', play, cancel, updateEventAvailability,
+    build: 'trace-229', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
