@@ -306,6 +306,7 @@
   const shapeStrokeBtn = document.getElementById('shapeStrokeBtn');
   const shapeColorBtn = document.getElementById('shapeColorBtn');
   const iroPopup = document.getElementById('iroPopup');
+  const avColorSwatches = document.getElementById('avColorSwatches');
   const shapeStyleControls = document.getElementById('shapeStyleControls');
   const shapeStrokeWidthInput = document.getElementById('shapeStrokeWidthInput');
   const shapeStrokeWidthValue = document.getElementById('shapeStrokeWidthValue');
@@ -8016,6 +8017,32 @@
     updateObjectToolbar(target.object, target.canvas);
   }
 
+  function populateAvColorSwatches() {
+    if (!avColorSwatches || avColorSwatches.childElementCount) return;
+    Object.entries(window.ASMArrowModel?.COLORS || {}).forEach(([name, value]) => {
+      if (!name.startsWith('AV_')) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'asm-av-swatch';
+      button.dataset.avColor = name;
+      button.title = `${name} · ${value}`;
+      button.setAttribute('aria-label', name);
+      button.style.setProperty('--av-swatch-color', value);
+      const chip = document.createElement('span');
+      chip.className = 'asm-av-swatch-chip';
+      chip.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.className = 'asm-av-swatch-name';
+      label.textContent = name;
+      button.append(chip, label);
+      button.addEventListener('click', () => {
+        iroPicker?.color.set(value);
+        commitPendingColorHistory();
+      });
+      avColorSwatches.appendChild(button);
+    });
+  }
+
   function openIro(target) {
     const structureBinding = structureColorBindings.find(binding => binding.target === target);
     const shouldClose = !iroPopup.hidden && activeColorTarget === target;
@@ -8025,6 +8052,7 @@
       commitPendingColorHistory();
       return;
     }
+    populateAvColorSwatches();
     shapeStyleControls.hidden = activeColorTarget !== 'shape-stroke';
     if (!iroPicker) {
       iroPicker = new window.iro.ColorPicker('#iroPicker', {
@@ -8098,9 +8126,13 @@
             : bgColorBtn);
     if (anchor) {
       const rect = anchor.getBoundingClientRect();
-      const popupWidth = 174;
+      const popupWidth = iroPopup.getBoundingClientRect().width;
+      const popupHeight = iroPopup.getBoundingClientRect().height;
       iroPopup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8))}px`;
-      iroPopup.style.top = `${Math.min(rect.bottom + 8, window.innerHeight - 300)}px`;
+      const below = rect.bottom + 8;
+      const above = rect.top - popupHeight - 8;
+      const top = below + popupHeight <= window.innerHeight - 8 || above < 8 ? below : above;
+      iroPopup.style.top = `${Math.max(8, Math.min(top, window.innerHeight - popupHeight - 8))}px`;
     }
   }
 
