@@ -47,12 +47,12 @@
 - 主代理需補驗證的情境：整合版重新匯入同一 deck 並拖動 structure 顏色。
 
 ## 主代理核實與整合（由主代理填寫）
-- 狀態：尚未核實
-- 核實的程式 commit 與 diff 範圍：
-- 差異審查與必要重跑結果：
-- 合併 commit：
-- 完整 regression：
-- 演算法投影片實際驗證：
-- 未完成或環境阻塞：
-- 本機服務重啟：
-- Push／公開部署狀態：
+- 狀態：整合驗收通過；遠端推送待明確授權。
+- 核實的程式 commit 與 diff 範圍：`b102f736fdaa2a6dfbade64d3fb7cd60765a8f6e`，僅 `algo-vis-backend/public/slides.js` 的選色器事件與結構元件改色路徑；文件 commit 為 `f2101c6`。
+- 差異審查與必要重跑結果：`node --check algo-vis-backend/public/slides.js`、`git diff --check HEAD^ HEAD` 通過。隔離 Edge 匯入本輪 Heap deck 的結構元件，拖曳色相條由紅色至 `#8000ff`；拖曳中、放開滑鼠後與重新載入後均為 `#8000ff`，沒有 `pageerror`。未整合版在放開滑鼠後回到 `#ff0000`，確認修正針對原問題。
+- 合併 commit：`77e85a017880f5ffe25ccc475811d17bc75fb2c3`。
+- 完整 regression：未執行；屬非動畫編輯器局部修正，依 V1 分級做局部瀏覽器驗證。
+- 演算法投影片實際驗證：從 Heap deck 取出結構元件進行隔離匯入與選色操作；未執行演算法動畫驗證集。
+- 未完成或環境阻塞：無功能驗證阻塞；推送受自動審核阻擋，需明確確認 GitHub 遠端及本次 payload。
+- 本機服務重啟：已核對原 3100 服務所提供的 `slides.js` 與整合 worktree 相同，停止原 PID 58152 後以 PID 43408 重啟；`http://localhost:3100/slides.js` 回傳 200，檔案 SHA-256 與整合 worktree 相同。
+- Push／公開部署狀態：尚未推送；`origin` 為 `https://github.com/bamboo20030309/AlgoShowMaker.git`。`origin/intergration` 落後本地多個既有整合提交，推送會包含本輪以外的內容；未公開部署。
