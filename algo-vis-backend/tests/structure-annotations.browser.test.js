@@ -60,19 +60,38 @@ test('structure annotations follow indices, persist and retain custom colors', {
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'test-results/structure-cell-style-color-picker.png') });
     await page.locator('#avColorSwatches [data-av-color="AV_blue"]').click();
-    assert.equal((await savedWidget()).highlightColor, 'rgba(144, 202, 249, 0.6)');
+    let styled = await savedWidget();
+    assert.equal(styled.highlightColor, '#ff0000');
+    assert.equal(styled.cellStyles['0'].highlight, 'rgba(144, 202, 249, 0.6)');
+    await selectCell(2);
+    await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
+    await page.locator('#avColorSwatches [data-av-color="AV_yellow"]').click();
+    styled = await savedWidget();
+    assert.equal(styled.highlightIndices, '0,2');
+    assert.equal(styled.cellStyles['0'].highlight, 'rgba(144, 202, 249, 0.6)');
+    assert.equal(styled.cellStyles['2'].highlight, 'rgba(252, 255, 64, 0.46)');
+    const highlightColors = await object.locator('.highlight-blink').evaluateAll(items => Object.fromEntries(items.map(item => [
+      item.id.match(/-(\d+)$/)?.[1],
+      item.getAttribute('stroke')
+    ])));
+    assert.equal(highlightColors['0'], styled.cellStyles['0'].highlight);
+    assert.equal(highlightColors['2'], styled.cellStyles['2'].highlight);
     await selectCell(0);
     await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).click();
     assert.deepEqual(await annotations(), ['0', '1']);
     assert.equal(await page.locator('#iroPopup').isVisible(), true);
     await page.locator('#iroPicker .IroBox').first().click({ position: { x: 110, y: 35 } });
-    const annotationColor = (await savedWidget()).annotationColor;
+    const annotationColor = (await savedWidget()).cellStyles['0'].annotation;
     assert.notEqual(annotationColor, '#ffffff');
-    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), annotationColor);
+    assert.equal(await object.locator('[data-structure-annotation-index="0"] > path').getAttribute('stroke'), annotationColor);
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#ffffff');
     await selectCell(0);
     await toolbar.getByRole('button', { name: '清除格子樣式', exact: true }).click();
     assert.deepEqual(await annotations(), ['1']);
-    assert.equal((await savedWidget()).highlightIndices, '');
+    styled = await savedWidget();
+    assert.equal(styled.highlightIndices, '2');
+    assert.equal(styled.cellStyles['0'], undefined);
+    assert.equal(styled.cellStyles['2'].highlight, 'rgba(252, 255, 64, 0.46)');
     await selectCell(2); await toolbar.getByRole('button', { name: 'Mark', exact: true }).click();
     assert.equal((await savedWidget()).markIndices, '2');
     await selectCell(1); await toolbar.getByRole('textbox', { name: '此格註標文字' }).fill('left'); await page.keyboard.press('Enter');
@@ -92,9 +111,12 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(saved.annotationIndices, '1,3');
     assert.equal(saved.annotationText, 'i');
     assert.deepEqual(saved.annotationLabels, { 1: 'left', 3: 'right' });
+    assert.equal(saved.cellStyles['2'].highlight, 'rgba(252, 255, 64, 0.46)');
+    assert.equal(saved.cellStyles['2'].mark, '#22c55e');
+    assert.equal(await object.locator('#highlight-Array-2').getAttribute('stroke'), saved.cellStyles['2'].highlight);
     assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'left');
-    assert.equal(saved.annotationColor, annotationColor);
-    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), annotationColor);
+    assert.equal(saved.annotationColor, '#ffffff');
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#ffffff');
     const custom = await page.evaluate(widget => {
       const svg = AlgoStructureRenderer.createSvg({ ...widget, highlightColor: '#123456', highlightIndices: '0' });
       return svg.querySelector('.highlight-blink').getAttribute('stroke');

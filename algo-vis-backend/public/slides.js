@@ -158,6 +158,7 @@
   let suppressCanvasSave = false;
   let suppressHistory = false;
   let activeColorTarget = 'text';
+  let activeStructureStyleCell = null;
   let iroPicker = null;
   let suppressIroChange = false;
   let pendingColorHistory = false;
@@ -2369,6 +2370,42 @@
       .filter(Boolean);
   }
 
+  const STRUCTURE_CELL_STYLE_TYPES = new Set(['highlight', 'focus', 'point', 'mark', 'background', 'annotation']);
+
+  function normalizeStructureCellStyles(source) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+    const normalized = {};
+    Object.entries(source).forEach(([key, styles]) => {
+      if (!/^\d+$/.test(key) || !styles || typeof styles !== 'object' || Array.isArray(styles)) return;
+      const entry = {};
+      Object.entries(styles).forEach(([type, color]) => {
+        if (STRUCTURE_CELL_STYLE_TYPES.has(type) && typeof color === 'string' && color.trim()) {
+          entry[type] = color.slice(0, 80);
+        }
+      });
+      if (Object.keys(entry).length) normalized[String(Number(key))] = entry;
+    });
+    return normalized;
+  }
+
+  function structureCellStyleColor(widget, index, type, binding) {
+    return widget?.cellStyles?.[String(index)]?.[type]
+      || widget?.[binding.field]
+      || binding.fallback
+      || '#333333';
+  }
+
+  function patchStructureCellStyle(widget, index, type, color) {
+    const cellStyles = normalizeStructureCellStyles(widget?.cellStyles);
+    const key = String(index);
+    const entry = { ...(cellStyles[key] || {}) };
+    if (color) entry[type] = color;
+    else delete entry[type];
+    if (Object.keys(entry).length) cellStyles[key] = entry;
+    else delete cellStyles[key];
+    return cellStyles;
+  }
+
   function matrixStructureRows(content) {
     const rows = String(content || '')
       .split(/\r?\n|;/)
@@ -2454,6 +2491,7 @@
           annotationColor: widget.annotationColor || '#ffffff',
           annotationText: typeof widget.annotationText === 'string' ? widget.annotationText.slice(0, 80) : '',
           annotationLabels: Object.fromEntries(Object.entries(widget.annotationLabels || {}).filter(([key, value]) => /^\d+$/.test(key) && typeof value === 'string').map(([key, value]) => [key, value.slice(0, 80)])),
+          cellStyles: normalizeStructureCellStyles(widget.cellStyles),
           highlightIndices: typeof widget.highlightIndices === 'string' ? widget.highlightIndices : '',
           focusIndices: typeof widget.focusIndices === 'string' ? widget.focusIndices : '',
           pointIndices: typeof widget.pointIndices === 'string' ? widget.pointIndices : '',
@@ -3010,6 +3048,7 @@
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
       'annotationIndices', 'annotationColor',
       'annotationText', 'annotationLabels',
+      'cellStyles',
       'frameBackgroundEnabled', 'frameBackgroundColor', 'treeLayout', 'treeArrowColor',
       'treeData', 'structureFrameVersion',
       'w', 'h'
@@ -4599,6 +4638,7 @@
         annotationColor: '#ffffff',
         annotationText: '',
         annotationLabels: {},
+        cellStyles: {},
         highlightIndices: '',
         focusIndices: '',
         pointIndices: '',
@@ -5907,22 +5947,33 @@
     for (const [type, label] of styleTypes) {
       const indices = new Set(window.AlgoStructureRenderer.parseIndices(found.widget[`${type}Indices`]));
       const binding = structureColorBindings.find(item => item.style === type);
-      hasSelectedStyle ||= indices.has(index);
+      const hasCellStyle = typeof found.widget.cellStyles?.[String(index)]?.[type] === 'string';
+      const isActive = indices.has(index) || hasCellStyle;
+      hasSelectedStyle ||= isActive;
       const button = document.createElement('button');
       button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
       button.dataset.structureStyleType = type;
-      button.setAttribute('aria-pressed', String(indices.has(index)));
-      const icon = structureStyleIcon(type, found.widget[binding.field] || binding.fallback);
+      button.setAttribute('aria-pressed', String(isActive));
+      const icon = structureStyleIcon(type, structureCellStyleColor(found.widget, index, type, binding));
       icon.setAttribute('aria-hidden', 'true');
       button.appendChild(icon);
       button.addEventListener('click', () => {
-        if (!indices.has(index)) {
+        const current = getWidget(widgetId).widget;
+        const patch = {};
+        if (!isActive) {
           indices.add(index);
-          updateSelectedStructure({ [`${type}Indices`]: [...indices].sort((a, b) => a - b).join(',') });
+          patch[`${type}Indices`] = [...indices].sort((a, b) => a - b).join(',');
+          patch.cellStyles = patchStructureCellStyle(
+            current,
+            index,
+            type,
+            structureCellStyleColor(current, index, type, binding)
+          );
+          updateSelectedStructure(patch, { preserveScale: true });
         }
         openStructureStyleToolbar(widgetId);
         const colorButton = structureContextMenu.querySelector(`[data-structure-style-type="${type}"]`);
-        openIro(binding.target, colorButton);
+        openIro(binding.target, colorButton, { widgetId, index, type });
       });
       structureContextMenu.appendChild(button);
     }
@@ -5940,7 +5991,11 @@
             .filter(item => item !== index);
           patch[`${type}Indices`] = remaining.join(',');
         });
-        updateSelectedStructure(patch);
+        patch.cellStyles = styleTypes.reduce(
+          (styles, [type]) => patchStructureCellStyle({ cellStyles: styles }, index, type, null),
+          getWidget(widgetId).widget.cellStyles
+        );
+        updateSelectedStructure(patch, { preserveScale: true });
         openStructureStyleToolbar(widgetId);
       });
       structureContextMenu.appendChild(clearButton);
@@ -5953,7 +6008,7 @@
       input.addEventListener('input', () => {
         const labels = { ...getWidget(widgetId).widget.annotationLabels };
         if (input.value) labels[index] = input.value; else delete labels[index];
-        updateSelectedStructure({ annotationLabels: labels });
+        updateSelectedStructure({ annotationLabels: labels }, { preserveScale: true });
       });
       input.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
       structureContextMenu.appendChild(input);
@@ -8169,10 +8224,17 @@
     });
   }
 
-  function openIro(target, anchorOverride = null) {
+  function openIro(target, anchorOverride = null, structureCell = null) {
     const structureBinding = structureColorBindings.find(binding => binding.target === target);
-    const shouldClose = !iroPopup.hidden && activeColorTarget === target;
+    const requestedCell = structureBinding?.style ? structureCell : null;
+    const sameStructureCell = (!requestedCell && !activeStructureStyleCell)
+      || (requestedCell && activeStructureStyleCell
+        && requestedCell.widgetId === activeStructureStyleCell.widgetId
+        && requestedCell.index === activeStructureStyleCell.index
+        && requestedCell.type === activeStructureStyleCell.type);
+    const shouldClose = !iroPopup.hidden && activeColorTarget === target && sameStructureCell;
     activeColorTarget = target;
+    activeStructureStyleCell = requestedCell;
     iroPopup.hidden = shouldClose;
     if (iroPopup.hidden) {
       commitPendingColorHistory();
@@ -8202,7 +8264,17 @@
           structureContextMenu
             ?.querySelector(`[data-structure-style-type="${binding.style}"] .structure-style-icon`)
             ?.style.setProperty('--style-color', structureColor);
-          updateSelectedStructure({ [binding.field]: structureColor }, { history: false });
+          if (binding.style && activeStructureStyleCell?.type === binding.style) {
+            const context = activeStructureStyleCell;
+            const widget = getWidget(context.widgetId).widget;
+            if (widget && selectedWidgetId === context.widgetId) {
+              updateSelectedStructure({
+                cellStyles: patchStructureCellStyle(widget, context.index, context.type, structureColor)
+              }, { history: false, preserveScale: true });
+            }
+          } else {
+            updateSelectedStructure({ [binding.field]: structureColor }, { history: false, preserveScale: true });
+          }
           scheduleHistorySnapshot();
           return;
         }
@@ -8231,7 +8303,14 @@
     const style = active && isTextObject(active) ? getTextSelectionStyle(active) : {};
     const selectedStructure = selectedWidgetId ? getWidget(selectedWidgetId).widget : null;
     const current = structureBinding
-      ? (structureBinding.button?.dataset.color || selectedStructure?.[structureBinding.field] || structureBinding.fallback || '#333333')
+      ? (structureBinding.style && activeStructureStyleCell
+        ? structureCellStyleColor(
+          selectedStructure,
+          activeStructureStyleCell.index,
+          activeStructureStyleCell.type,
+          structureBinding
+        )
+        : (structureBinding.button?.dataset.color || selectedStructure?.[structureBinding.field] || structureBinding.fallback || '#333333'))
       : activeColorTarget === 'shape-fill'
       ? (active?.fill || 'rgba(238, 231, 251, 1)')
       : activeColorTarget === 'shape-stroke'

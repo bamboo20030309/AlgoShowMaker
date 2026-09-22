@@ -78,11 +78,27 @@
     return [...indices];
   }
 
+  function cellStyleColor(widget, index, type, fallback) {
+    const value = widget.cellStyles?.[String(index)]?.[type];
+    return typeof value === 'string' && value ? value : fallback;
+  }
+
+  function styledIndices(widget, type, source, length) {
+    const indices = new Set(parseIndices(source, length));
+    Object.entries(widget.cellStyles || {}).forEach(([key, styles]) => {
+      const index = Number(key);
+      if (Number.isInteger(index) && index >= 0 && index < length && styles && typeof styles[type] === 'string') {
+        indices.add(index);
+      }
+    });
+    return [...indices].sort((a, b) => a - b);
+  }
+
   function styleData(widget, length) {
     const entry = (type, color, source) => ({
       type,
       color,
-      elements: parseIndices(source, length)
+      elements: styledIndices(widget, type, source, length)
     });
     return {
       highlight: entry('highlight', widget.highlightColor || '#ff0000', widget.highlightIndices),
@@ -96,8 +112,11 @@
   function originalStyles(widget, length, oneBased) {
     const offset = oneBased ? 1 : 0;
     return Object.values(styleData(widget, length))
-      .map(item => ({ ...item, elements: item.elements.map(index => index + offset) }))
-      .filter(item => item.elements.length);
+      .flatMap(item => item.elements.map(index => ({
+        type: item.type,
+        color: cellStyleColor(widget, index, item.type, item.color),
+        elements: [index + offset]
+      })));
   }
 
   function addOriginalAnimationDefs(svg) {
@@ -428,7 +447,7 @@
       const content = indexMode === 2 ? index : treeNode.value;
       const nodeStyles = Object.values(styles).map(item => ({
         type: item.type,
-        color: item.color,
+        color: cellStyleColor(widget, index, item.type, item.color),
         elements: item.elements.includes(index) ? [0] : []
       }));
       const node = element('g', {
@@ -593,7 +612,7 @@
     const bounds = originalBounds(group, mode);
     const edgePadding = group.querySelector('[data-structure-annotation-index]') ? 10 : 3;
     const pointPadding = group.querySelector('[data-structure-annotation-index]') ? 44
-      : (parseIndices(widget.pointIndices, valuesFromContent(widget.content).length).length ? 28 : edgePadding);
+      : (styledIndices(widget, 'point', widget.pointIndices, valuesFromContent(widget.content).length).length ? 28 : edgePadding);
     return {
       left: bounds.left - edgePadding,
       top: bounds.top - pointPadding,
@@ -620,7 +639,7 @@
   function addAnnotations(group, widget) {
     const cells = [...group.querySelectorAll('[data-structure-item-index]')];
     const length = Math.max(0, ...cells.map(cell => Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex) + 1));
-    const selected = new Set(parseIndices(widget.annotationIndices, length));
+    const selected = new Set(styledIndices(widget, 'annotation', widget.annotationIndices, length));
     cells.forEach(cell => {
       const index = Number(cell.dataset.structureItemIndex);
       const treeIndex = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex);
@@ -636,12 +655,13 @@
       const label = widget.annotationLabels?.[actualIndex] || widget.annotationText || String(actualIndex);
       window.draw_block(marker, x - 9, y - 40, label, 18, 18, '#bfe8f7', `annotation-${actualIndex}`);
       marker.querySelector('rect')?.setAttribute('fill-opacity', '0.58');
-      marker.querySelector('rect')?.setAttribute('stroke', widget.annotationColor || '#ffffff');
+      const annotationColor = cellStyleColor(widget, actualIndex, 'annotation', widget.annotationColor || '#ffffff');
+      marker.querySelector('rect')?.setAttribute('stroke', annotationColor);
       const text = marker.querySelector('text');
       if (text) { text.setAttribute('font-size', String(Math.max(4, Math.min(8, 14 / (Array.from(label).length * 0.62))))); text.setAttribute('font-weight', 'bold'); }
       marker.appendChild(element('path', {
         d: `M ${x} ${y - 22} L ${x} ${y - 2} M ${x - 3} ${y - 8} L ${x} ${y - 2} L ${x + 3} ${y - 8}`,
-        fill: 'none', stroke: widget.annotationColor || '#ffffff', 'stroke-width': 1,
+        fill: 'none', stroke: annotationColor, 'stroke-width': 1,
         'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
       }));
     });
@@ -707,6 +727,7 @@
     drawCanvas,
     getNaturalSize,
     parseIndices,
+    cellStyleColor,
     render,
     valuesFromContent
   };
