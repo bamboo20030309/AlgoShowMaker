@@ -1223,8 +1223,44 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 - `index`：十進位索引。
 - `binary-index`：二進位索引。
 - `binary-index-padded`：補齊寬度的二進位索引。
+- `none`：資料值與索引都不顯示；資料格仍保留。
 
 一次最多選擇一種索引格式，不可同時指定 `index` 和 `binary-index`。
+
+### 一維與二維自訂標籤
+
+```cpp
+// @frame arr with index-labels("",labels)
+// @frame grid[row][column] with row-labels("",rowNames), column-labels(blank(1),columnNames), inner-labels(index)
+```
+
+- `index-labels(...)`：一維陣列的索引標籤。
+- `row-labels(...)`：二維陣列左側的列標籤。
+- `column-labels(...)`：二維陣列上方共用的欄標籤。
+- `inner-labels(index)`：每一列各自從 0 開始的欄索引；也可傳入二維標籤陣列。
+
+參數可混合字串、字元、數字與陣列，陣列會依序展開。例如
+`index-labels("", "", labels)` 會先補兩格空白，再接上 `labels`；同義寫法是
+`index-labels(blank(2), labels)`。使用 `none` 可關閉該組標籤。
+
+二維資料格固定為 40px；inner label 高 12px。左側 row label 只和 40px 資料格對齊，
+不包含下方的 inner label。ragged matrix 只建立實際存在的資料格；空列仍保留 row label 與列高。
+
+### 二維格線、外框與索引指標
+
+```cpp
+// @frame grid[i][j] with gridlines(0), outerframe(false), marker-layout(axis)
+// @frame grid[i][j] with marker-layout(inner)
+```
+
+- `gridlines(width)`：設定資料格與標籤格線寬；`0` 隱藏線條但保留可互動區域。
+- `outerframe(true|false)`：控制整個物件的底盤外框，不影響資料格本身。
+- `marker-layout(axis)`：`i` 在最左側垂直移動，`j` 在上方共用欄軸水平移動，為預設。
+- `marker-layout(inner)`：列指標仍在左側，欄指標移到 `i` 所在列後水平移動。
+
+`grid[i][j]` 的第一個括號固定代表 row／垂直方向，第二個括號代表 column／水平方向。
+`@style grid[i][j] highlight` 只標示資料格與該格 inner label，不標示 row／column label。
+本版不擴充 `range(start,end)`；它仍維持原本的一維範圍語意。
 
 ### 同時使用多個選項
 

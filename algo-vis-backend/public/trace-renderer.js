@@ -237,9 +237,11 @@
     const isScalarCell = isScalarRenderer(context.variable, requested);
     const configuredShowIndex = rendererOptions.showIndex;
     const configuredIndexMode = Number(rendererOptions.indexMode);
-    const indexMode = isScalarCell ? 0 : Number.isFinite(configuredIndexMode)
+    let indexMode = isScalarCell ? 0 : Number.isFinite(configuredIndexMode)
       ? Math.max(0, Math.min(4, Math.trunc(configuredIndexMode)))
       : (configuredShowIndex === false ? 0 : 1);
+    if (!isScalarCell && rendererOptions.indexLabels?.mode === 'none') indexMode = 0;
+    else if (!isScalarCell && ['index', 'custom'].includes(rendererOptions.indexLabels?.mode)) indexMode = 1;
     const isMatrix = requested === 'original-matrix' || context.variable.kind === 'matrix';
     const fieldSpec = rendererOptions.fields;
     const fieldSources = Array.isArray(fieldSpec?.variableIds) && context.frame
@@ -377,6 +379,12 @@
           indices,
           kind: isMatrix ? 'matrix-cell' : 'array-cell'
         });
+        if (Object.prototype.hasOwnProperty.call(rendererOptions, 'gridlines')) {
+          cell.querySelectorAll(':scope > rect').forEach(rect => {
+            rect.setAttribute('stroke-width', String(Math.max(0, Number(rendererOptions.gridlines) || 0)));
+            rect.setAttribute('pointer-events', 'all');
+          });
+        }
       }
       ['highlight', 'point', 'mark'].forEach(kind => {
         const hint = group.querySelector(`#${CSS.escape(`${kind}-${id}-${localIndex}`)}`);
@@ -403,8 +411,20 @@
       if (indexLabel) {
         indexLabel.setAttribute('data-trace-index-label', String(logicalIndex));
         markSelectable(indexLabel, `${cellKey}:index`, context, context.variableId);
+        if (Object.prototype.hasOwnProperty.call(rendererOptions, 'gridlines')) {
+          indexLabel.querySelectorAll(':scope > rect').forEach(rect => {
+            rect.setAttribute('stroke-width', String(Math.max(0, Number(rendererOptions.gridlines) || 0)));
+          });
+        }
+        if (rendererOptions.indexLabels?.mode === 'custom') {
+          const text = indexLabel.querySelector('text');
+          if (text) text.textContent = String(rendererOptions.indexLabels.values?.[logicalIndex] ?? '');
+        }
       }
     });
+    if (rendererOptions.outerframe === false) {
+      group.querySelectorAll(':scope > .outerframe-bg, :scope > .outerframe-nb').forEach(node => node.remove());
+    }
     group.querySelectorAll(':scope > .outerframe-label').forEach(label => {
       label.textContent = context.variable?.name || '';
       label.setAttribute('font-family', 'Arial');
@@ -476,6 +496,147 @@
       height = (rowIndex + 1) * 58;
     });
     return Math.max(70, height + 10);
+  }
+
+  function renderOriginalMatrix(group, entry, context) {
+    const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
+    const options = context.skin?.options || {};
+    const cellSize = 40;
+    const innerHeight = 12;
+    const axisSize = 40;
+    const gridlines = Math.max(0, Number.isFinite(Number(options.gridlines))
+      ? Number(options.gridlines) : 1);
+    const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
+    const showValue = options.showValue !== false && indexMode !== 2;
+    const defaultIndices = indexMode !== 0 && options.showIndex !== false;
+    const maxColumns = Math.max(0, ...rows.map(row => Array.isArray(row?.items) ? row.items.length : 0));
+    const labelSpec = (name, fallback) => options[name] || fallback;
+    const rowSpec = labelSpec('rowLabels', defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const columnSpec = labelSpec('columnLabels', defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const innerSpec = labelSpec('innerLabels', { mode: 'none', values: [] });
+    const showRows = rowSpec.mode !== 'none';
+    const showColumns = columnSpec.mode !== 'none';
+    const showInner = innerSpec.mode !== 'none';
+    const originX = showRows ? axisSize : 0;
+    const originY = showColumns ? axisSize : 0;
+    const rowStride = cellSize + (showInner ? innerHeight : 0);
+    const contentWidth = Math.max(cellSize, maxColumns * cellSize);
+    const contentHeight = Math.max(cellSize, rows.length * rowStride);
+    const totalWidth = originX + contentWidth;
+    const totalHeight = originY + contentHeight;
+    const objectKey = objectKeyForVariable(context.frame, context.variableId);
+    const setBounds = (element, x, y, width, height) => {
+      element.setAttribute('data-outerframe-left', String(x));
+      element.setAttribute('data-outerframe-top', String(y));
+      element.setAttribute('data-outerframe-right', String(x + width));
+      element.setAttribute('data-outerframe-bottom', String(y + height));
+      return element;
+    };
+    const labelValue = (spec, first, second = null) => {
+      if (spec.mode === 'index') return second == null ? first : second;
+      if (spec.mode !== 'custom') return '';
+      const value = second == null ? spec.values?.[first] : spec.values?.[first]?.[second];
+      return value == null ? '' : displayValue(value);
+    };
+    const labelGroup = (key, x, y, width, height, text, role) => {
+      const node = markSelectable(setBounds(svg('g', {
+        transform: `translate(${x}, ${y})`, 'data-trace-label-role': role
+      }), 0, 0, width, height), key, context, context.variableId);
+      node.append(
+        svg('rect', { x: 0, y: 0, width, height, fill: '#f5f7f8', stroke: '#59656b', 'stroke-width': gridlines }),
+        svg('text', {
+          x: width / 2, y: height / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+          'font-family': 'Arial', 'font-size': height <= innerHeight ? 9 : 12, fill: '#59656b'
+        }, String(text))
+      );
+      return node;
+    };
+    const invisibleAxisTarget = (key, x, y, width, height, role) => {
+      const node = markSelectable(setBounds(svg('g', {
+        transform: `translate(${x}, ${y})`, 'data-trace-label-role': role,
+        'data-trace-axis-target': '1', opacity: 0, 'pointer-events': 'none'
+      }), 0, 0, width, height), key, { ...context, interactive: false }, context.variableId);
+      node.append(svg('rect', { x: 0, y: 0, width, height, fill: 'transparent' }));
+      return node;
+    };
+
+    if (options.outerframe !== false) {
+      group.append(svg('rect', {
+        class: 'trace-matrix-outerframe', x: -8, y: -8,
+        width: totalWidth + 16, height: totalHeight + 36,
+        rx: 3, fill: '#ffffff', stroke: '#8b979d', 'stroke-width': 1
+      }));
+    }
+    if (showColumns) {
+      for (let column = 0; column < maxColumns; column += 1) {
+        group.append(labelGroup(`${objectKey}:column-label:${column}`,
+          originX + column * cellSize, 0, cellSize, axisSize,
+          labelValue(columnSpec, column), 'column'));
+      }
+    } else {
+      for (let column = 0; column < maxColumns; column += 1) {
+        group.append(invisibleAxisTarget(`${objectKey}:column-label:${column}`,
+          originX + column * cellSize, 0, cellSize, cellSize, 'column'));
+      }
+    }
+    rows.forEach((row, rowIndex) => {
+      const items = Array.isArray(row?.items) ? row.items : [];
+      const y = originY + rowIndex * rowStride;
+      if (showRows) {
+        group.append(labelGroup(`${objectKey}:row-label:${rowIndex}`,
+          0, y, axisSize, cellSize, labelValue(rowSpec, rowIndex), 'row'));
+      } else {
+        group.append(invisibleAxisTarget(`${objectKey}:row-label:${rowIndex}`,
+          0, y, cellSize, cellSize, 'row'));
+      }
+      items.forEach((item, columnIndex) => {
+        const x = originX + columnIndex * cellSize;
+        const cellKey = `${objectKey}#${rowIndex},${columnIndex}`;
+        const highlight = context.highlights?.[`${rowIndex},${columnIndex}`]
+          || context.highlights?.$object || {};
+        const cell = markSelectable(setBounds(svg('g', {
+          transform: `translate(${x}, ${y})`, 'data-trace-index': `${rowIndex},${columnIndex}`
+        }), 0, 0, cellSize, cellSize), cellKey, context, context.variableId);
+        markArrowTarget(cell, {
+          key: cellKey, objectKey, objectLabel: context.variable?.name || context.variableId,
+          indices: [rowIndex, columnIndex], kind: 'matrix-cell'
+        });
+        const rect = svg('rect', {
+          x: 0, y: 0, width: cellSize, height: cellSize,
+          fill: '#ffffff', stroke: '#59656b', 'stroke-width': gridlines, 'pointer-events': 'all'
+        });
+        applyHighlight(rect, highlight);
+        cell.append(rect);
+        if (showValue) {
+          cell.append(svg('text', {
+            x: cellSize / 2, y: cellSize / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+            'font-family': 'Arial', 'font-size': 16, fill: '#1f282d', 'data-trace-content-role': 'value'
+          }, formatDisplayValue(item, options, context.variable?.name || '', context.variableId)));
+        }
+        group.append(cell);
+        if (showInner) {
+          const inner = labelGroup(`${cellKey}:index`, x, y + cellSize, cellSize, innerHeight,
+            labelValue(innerSpec, rowIndex, columnIndex), 'inner');
+          inner.setAttribute('data-trace-index-label', `${rowIndex},${columnIndex}`);
+          applyHighlight(inner.querySelector('rect'), highlight);
+          group.append(inner);
+        }
+      });
+    });
+    group.append(markSelectable(svg('text', {
+      class: 'outerframe-label', x: 0, y: totalHeight + 22,
+      'font-family': 'Arial', 'font-size': 16, 'font-weight': 'bold', fill: '#1f282d'
+    }, context.variable?.name || ''), `${context.variableId}:label`, context, context.variableId));
+    group.setAttribute('data-layout', 'matrix');
+    group.setAttribute('data-box-size', String(cellSize));
+    group.setAttribute('data-matrix-origin-x', String(originX));
+    group.setAttribute('data-matrix-origin-y', String(originY));
+    group.setAttribute('data-matrix-row-stride', String(rowStride));
+    group.setAttribute('data-outerframe-left', options.outerframe === false ? '0' : '-8');
+    group.setAttribute('data-outerframe-top', options.outerframe === false ? '0' : '-8');
+    group.setAttribute('data-outerframe-right', String(totalWidth + (options.outerframe === false ? 0 : 8)));
+    group.setAttribute('data-outerframe-bottom', String(totalHeight + 28));
+    return totalHeight + 36;
   }
 
   function renderScalar(group, entry, context) {
@@ -1598,6 +1759,8 @@
       if (!indices.length || indices.some(index => !Number.isInteger(index))) return null;
       if (target.axis === 'row' || target.axis === 'column') {
         const index = indices[0];
+        const axisPlacement = placements.get(`${targetObjectKey}:${target.axis}-label:${index}`);
+        if (axisPlacement) return axisPlacement;
         const cell = placements.get(target.axis === 'row' ? `${targetObjectKey}#${index},0` : `${targetObjectKey}#0,${index}`);
         if (!cell) return null;
         if (target.axis === 'row') {
@@ -3345,7 +3508,33 @@
         const sourceEntry = frame.state?.[studioObject.sourceVariableId];
         const label = studioObject.text || source?.name || 'index';
         const shape = studioObject.shape || 'array';
-        if (shape === 'arrow') {
+        if (shape === 'arrow-left') {
+          const labelSize = 18;
+          const labelLeft = -40;
+          const labelTop = -labelSize / 2;
+          const labelLength = Math.max(1, Array.from(String(label)).length);
+          const fontSize = Math.max(4, Math.min(8, (labelSize - 4) / (labelLength * 0.62)));
+          const borderColor = '#333';
+          motion.append(
+            svg('rect', {
+              class: 'trace-variable-marker-label-box', x: labelLeft, y: labelTop,
+              width: labelSize, height: labelSize, fill: '#bfe8f7', 'fill-opacity': 0.58,
+              stroke: borderColor, 'stroke-width': 1
+            }),
+            svg('text', {
+              class: 'trace-variable-marker-label-text', x: labelLeft + labelSize / 2, y: 0,
+              'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial',
+              'font-size': fontSize, 'font-weight': 'bold', fill: studioObject.textColor || '#1f282d'
+            }, label),
+            svg('g', { class: 'trace-variable-marker-point' },
+              svg('path', {
+                d: 'M -22 0 L -2 0 M -8 -5 L -2 0 L -8 5', fill: 'none',
+                stroke: borderColor, 'stroke-width': 1, 'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
+              }))
+          );
+          object.dataset.traceMarkerBaseCellWidth = String(Math.max(1, Number(studioObject.baseCellWidth) || 40));
+          box = { x: labelLeft, y: labelTop, width: 38, height: labelSize };
+        } else if (shape === 'arrow') {
           const labelWidth = 18;
           const labelHeight = labelWidth;
           const labelLength = Math.max(1, Array.from(String(label)).length);
@@ -3594,9 +3783,66 @@
       const resolvedIndexValue = rawIndexValue == null ? NaN : Number(rawIndexValue);
       const hasIndexValue = Number.isInteger(resolvedIndexValue);
       const indexValue = hasIndexValue ? resolvedIndexValue : null;
+      if (targetKind === 'matrix') {
+        if (binding.mode !== 'index' || !targetEntry || !hasIndexValue) return;
+        const targetObjectKey = objectKeyForVariable(frame, binding.targetVariableId);
+        const dimension = Number(binding.indexDimension) || 0;
+        const rendererOptions = frame.rendererOptions?.[binding.targetVariableId] || {};
+        let targetKey = `${targetObjectKey}:${dimension === 0 ? 'row' : 'column'}-label:${indexValue}`;
+        let targetExpression = String(indexValue);
+        let targetAxis = dimension === 0 ? 'row' : 'column';
+        if (dimension === 1 && rendererOptions.markerLayout === 'inner') {
+          const rowBinding = bindings.find(candidate => (
+            candidate.targetVariableId === binding.targetVariableId
+            && Number(candidate.indexDimension) === 0
+          ));
+          const rowValue = Number(window.ASMTraceRules.resolveExpression(
+            document, frame, rowBinding?.indexExpression || ''
+          ));
+          if (!Number.isInteger(rowValue)) return;
+          targetKey = `${targetObjectKey}#${rowValue},${indexValue}`;
+          targetExpression = `${rowValue},${indexValue}`;
+          targetAxis = '';
+        }
+        const targetPlacement = placements.get(targetKey);
+        if (!targetPlacement) return;
+        const label = binding.indexExpression || binding.sourceName || 'index';
+        const sourceVariable = document.variables?.[binding.sourceVariableId] || {};
+        const snapshotOwner = String(options.snapshotOwner || '');
+        pending.push({
+          id: `${snapshotOwner ? `${snapshotOwner}:` : ''}auto-frame-binding-${binding.sourceVariableId}-${binding.targetVariableId}-${index}`,
+          type: 'variable-marker', sourceVariableId: binding.sourceVariableId,
+          sourceVariableIds: binding.sourceVariableIds || [binding.sourceVariableId],
+          sourceSnapshotOwner: snapshotOwner,
+          sourceRuntimeIdentity: frame.state?.[binding.sourceVariableId]?.lifetime
+            || frame.state?.[binding.sourceVariableId]?.identity || '',
+          sourceVisualContinuityKey: `${snapshotOwner ? `snapshot:${snapshotOwner}:` : ''}auto-matrix-marker:${binding.sourceVariableId}:${binding.targetVariableId}:${dimension}`,
+          sourceAliasContinuityKey: '', sourceReferenceAlias: /&/.test(String(sourceVariable.cppType || '')),
+          targetVariableId: binding.targetVariableId, targetObjectKey,
+          targetRuntimeIdentity: targetEntry?.identity || '', targetPlacement,
+          baseCellWidth: 40, indexValue, unresolvedIndex: false, label,
+          markerSortOrder: index, markerSortKey: binding.sourceName || label,
+          markerSortExpression: indexExpression, relativeMarkerBase: '', relativeMarkerOffset: null,
+          indexExpression, labelWidth: 18,
+          target: {
+            variableId: binding.targetVariableId,
+            indexExpression: targetExpression,
+            ...(targetAxis ? { axis: targetAxis } : {}),
+            anchor: dimension === 0 ? 'left' : 'top'
+          },
+          pointerTarget: {
+            variableId: binding.targetVariableId,
+            indexExpression: targetExpression,
+            ...(targetAxis ? { axis: targetAxis } : {}),
+            anchor: 'center'
+          },
+          text: label, shape: dimension === 0 ? 'arrow-left' : 'arrow',
+          color: '#12a6df', stroke: '#0b7ead'
+        });
+        return;
+      }
       if (binding.mode !== 'index'
         || !targetEntry
-        || targetKind === 'matrix'
         || !targetItems.length) return;
       const markerSourceIds = new Set(binding.sourceVariableIds || [binding.sourceVariableId]);
       (frame.events || []).forEach(event => {
@@ -4610,7 +4856,7 @@
   register('graph', renderGraph);
   register('coordinate-system', renderCoordinateSystem);
   register('original-array', renderOriginal);
-  register('original-matrix', renderOriginal);
+  register('original-matrix', renderOriginalMatrix);
   register('original-cell', renderOriginal);
   register('original-heap', renderOriginal);
   register('original-segment-tree', renderOriginal);

@@ -1402,7 +1402,37 @@ function resolveFrameRendererOptions(frame, directive) {
     else if (format === 'binary') options.indexMode = 3;
     else if (format === 'binary-padded') options.indexMode = 4;
     else options.indexMode = 0;
+    if (source.labels.showValue === false && format === 'none') options.showValue = false;
   }
+  const materializeTraceValue = data => {
+    if (Array.isArray(data?.items)) return data.items.map(materializeTraceValue);
+    return traceScalarValue(data);
+  };
+  const resolveLabelSource = spec => {
+    if (!spec) return null;
+    if (spec.mode !== 'custom') return { mode: spec.mode, values: [] };
+    const values = [];
+    (spec.parts || []).forEach(part => {
+      if (part.type === 'blank') {
+        values.push(...Array.from({ length: Math.max(0, Number(part.count) || 0) }, () => ''));
+      } else if (part.type === 'literal') {
+        values.push(part.value);
+      } else if (part.type === 'variable') {
+        const entry = frame.state?.[part.variableId]
+          || Object.values(frame.state || {}).find(item => item?.name === part.name);
+        const value = materializeTraceValue(entry?.data);
+        if (Array.isArray(value)) values.push(...value);
+        else if (value !== undefined) values.push(value);
+      }
+    });
+    return { mode: 'custom', values };
+  };
+  ['indexLabels', 'rowLabels', 'columnLabels', 'innerLabels'].forEach(name => {
+    if (source[name]) options[name] = resolveLabelSource(source[name]);
+  });
+  if (Object.prototype.hasOwnProperty.call(source, 'gridlines')) options.gridlines = source.gridlines;
+  if (Object.prototype.hasOwnProperty.call(source, 'outerframe')) options.outerframe = source.outerframe;
+  if (source.markerLayout) options.markerLayout = source.markerLayout;
   if (source.fields) {
     options.fields = {
       names: Array.isArray(source.fields.names) ? [...source.fields.names] : [],

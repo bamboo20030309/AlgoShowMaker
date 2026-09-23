@@ -730,13 +730,46 @@ function parseRendererOptions(value, line, directiveName) {
   }
 
   const options = {};
+  const seen = new Set();
+  const parseLabelSource = (name, parts) => {
+    if (parts.length === 1 && /^(?:none|index)$/i.test(parts[0])) {
+      return { mode: parts[0].trim().toLowerCase(), parts: [], identifiers: [] };
+    }
+    const identifiers = [];
+    const labelParts = parts.map(rawPart => {
+      const raw = rawPart.trim();
+      const blank = raw.match(/^blank(?:\(\s*(\d+)\s*\))?$/i);
+      if (blank) return { type: 'blank', count: Number(blank[1] || 1) };
+      if (/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw)) {
+        return { type: 'literal', value: Number(raw) };
+      }
+      if ((raw.startsWith('"') && raw.endsWith('"'))
+        || (raw.startsWith("'") && raw.endsWith("'"))) {
+        try {
+          const literal = raw.startsWith('"')
+            ? JSON.parse(raw)
+            : raw.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+          return { type: 'literal', value: literal };
+        } catch {
+          throw new Error(`第 ${line} 行的 ${directiveName} ${name} 字串格式無效：${raw}`);
+        }
+      }
+      if (/^[A-Za-z_]\w*$/.test(raw)) {
+        identifiers.push(raw);
+        return { type: 'variable', name: raw };
+      }
+      throw new Error(`第 ${line} 行的 ${directiveName} ${name} 只接受常值、blank(n) 或陣列變數`);
+    });
+    return { mode: 'custom', parts: labelParts, identifiers: [...new Set(identifiers)] };
+  };
   for (const part of split.parts) {
     const match = part.match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*\((.*)\)$/s);
     if (!match) throw new Error(`第 ${line} 行的 ${directiveName} with 選項格式無效：${part}`);
     const name = match[1].toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(options, name)) {
+    if (seen.has(name)) {
       throw new Error(`第 ${line} 行的 ${directiveName} 重複使用 with ${name}`);
     }
+    seen.add(name);
     const args = splitTopLevel(match[2]);
     if (!args.valid || args.parts.some(argument => !argument)) {
       throw new Error(`第 ${line} 行的 ${directiveName} with ${name} 參數格式無效`);
@@ -787,13 +820,17 @@ function parseRendererOptions(value, line, directiveName) {
 
     if (name === 'labels') {
       const labels = args.parts.map(label => label.trim().toLowerCase());
-      const allowed = new Set(['value', 'index', 'binary-index', 'binary-index-padded']);
+      const allowed = new Set(['value', 'index', 'none', 'binary-index', 'binary-index-padded']);
       const invalid = labels.find(label => !allowed.has(label));
       if (invalid || new Set(labels).size !== labels.length) {
-        throw new Error(`第 ${line} 行的 ${directiveName} labels 只支援 value、index、binary-index、binary-index-padded`);
+        throw new Error(`第 ${line} 行的 ${directiveName} labels 只支援 value、index、none、binary-index、binary-index-padded`);
+      }
+      if (labels.includes('none') && labels.length !== 1) {
+        throw new Error(`第 ${line} 行的 ${directiveName} labels(none) 不可搭配其他項目`);
       }
       const indexLabels = labels.filter(label => label !== 'value');
-      if (indexLabels.length > 1 || (!labels.includes('value') && !labels.includes('index'))) {
+      if (indexLabels.length > 1
+        || (!labels.includes('value') && !labels.includes('index') && !labels.includes('none'))) {
         throw new Error(`第 ${line} 行的 ${directiveName} labels 組合無效：${match[2]}`);
       }
       options.labels = {
@@ -802,6 +839,43 @@ function parseRendererOptions(value, line, directiveName) {
           ? 'binary-padded'
           : labels.includes('binary-index') ? 'binary' : labels.includes('index') ? 'decimal' : 'none'
       };
+      continue;
+    }
+
+    const labelOptionNames = {
+      'index-labels': 'indexLabels',
+      'row-labels': 'rowLabels',
+      'column-labels': 'columnLabels',
+      'inner-labels': 'innerLabels'
+    };
+    if (labelOptionNames[name]) {
+      options[labelOptionNames[name]] = parseLabelSource(name, args.parts);
+      continue;
+    }
+
+    if (name === 'gridlines') {
+      const width = Number(args.parts[0]);
+      if (args.parts.length !== 1 || !Number.isFinite(width) || width < 0) {
+        throw new Error(`第 ${line} 行的 ${directiveName} gridlines 必須是非負數`);
+      }
+      options.gridlines = width;
+      continue;
+    }
+
+    if (name === 'outerframe') {
+      if (args.parts.length !== 1 || !/^(?:true|false)$/i.test(args.parts[0])) {
+        throw new Error(`第 ${line} 行的 ${directiveName} outerframe 必須是 true 或 false`);
+      }
+      options.outerframe = args.parts[0].toLowerCase() === 'true';
+      continue;
+    }
+
+    if (name === 'marker-layout') {
+      const mode = args.parts[0]?.trim().toLowerCase();
+      if (args.parts.length !== 1 || !['axis', 'inner'].includes(mode)) {
+        throw new Error(`第 ${line} 行的 ${directiveName} marker-layout 只支援 axis 或 inner`);
+      }
+      options.markerLayout = mode;
       continue;
     }
 
@@ -1333,19 +1407,55 @@ function parseFrameSpec(raw) {
   };
 
   for (const part of split.parts) {
-    const indexed = part.match(/^([A-Za-z_]\w*)\s*\[\s*(.*?)\s*\]$/);
+    const target = part.match(/^([A-Za-z_]\w*)/);
+    const indexGroups = [];
+    let cursor = target?.[0].length || 0;
+    let validIndexed = Boolean(target);
+    while (validIndexed && cursor < part.length) {
+      while (/\s/.test(part[cursor] || '')) cursor += 1;
+      if (cursor >= part.length) break;
+      if (part[cursor] !== '[') {
+        validIndexed = false;
+        break;
+      }
+      const start = ++cursor;
+      let depth = 1;
+      let quote = '';
+      let escaped = false;
+      while (cursor < part.length && depth > 0) {
+        const token = part[cursor];
+        if (quote) {
+          if (escaped) escaped = false;
+          else if (token === '\\') escaped = true;
+          else if (token === quote) quote = '';
+        } else if (token === '"' || token === "'") quote = token;
+        else if (token === '[') depth += 1;
+        else if (token === ']') depth -= 1;
+        cursor += 1;
+      }
+      if (depth !== 0) {
+        validIndexed = false;
+        break;
+      }
+      indexGroups.push(part.slice(start, cursor - 1).trim());
+    }
+    const indexed = validIndexed && indexGroups.length && cursor === part.length;
     if (!indexed) {
       part.split(/\s+/).filter(Boolean).forEach(addDisplayName);
       continue;
     }
 
-    const targetName = indexed[1];
-    const expressions = splitTopLevel(indexed[2]);
-    if (!expressions.valid || expressions.parts.some(expression => !expression)) {
-      return { names: [targetName], bindings: [], invalidExpression: indexed[2] };
+    const targetName = target[1];
+    const expressionParts = indexGroups.flatMap(group => {
+      const expressions = splitTopLevel(group);
+      return expressions.valid && expressions.parts.every(Boolean) ? expressions.parts : [null];
+    });
+    if (expressionParts.some(expression => expression == null)) {
+      return { names: [targetName], bindings: [], invalidExpression: part };
     }
-    const parsedExpressions = expressions.parts.map(expression => ({
+    const parsedExpressions = expressionParts.map((expression, indexDimension) => ({
       expression,
+      indexDimension,
       parsed: parseFrameExpression(expression)
     }));
     const invalidExpression = parsedExpressions.find(item => !item.parsed.valid)?.expression || '';
@@ -1360,6 +1470,7 @@ function parseFrameSpec(raw) {
       sourceName: item.parsed.identifiers[0] || '',
       sourceNames: item.parsed.identifiers,
       indexExpression: item.expression,
+      indexDimension: item.indexDimension,
       mode: 'index'
     })));
   }
@@ -1587,6 +1698,22 @@ const TRACE_STYLE_LOCALS = new Set(['value', 'index']);
 
 function parseStyleTarget(raw, line) {
   const source = String(raw || '').trim();
+  const matrixCell = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\[\s*(.*?)\s*\]$/);
+  if (matrixCell) {
+    const expressions = [matrixCell[2].trim(), matrixCell[3].trim()];
+    const invalid = expressions.find(expression => !expression || !parseFrameExpression(expression).valid);
+    if (invalid !== undefined) {
+      throw new Error(`第 ${line} 行的 @style 二維索引運算式無效：${invalid}`);
+    }
+    return {
+      targetName: matrixCell[1],
+      selector: {
+        type: 'matrix-cell',
+        rowExpression: expressions[0],
+        columnExpression: expressions[1]
+      }
+    };
+  }
   const indexed = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*(\)|\])$/);
   if (indexed) {
     const split = splitTopLevel(indexed[2]);
@@ -1745,7 +1872,9 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
       : [style.selector];
     const selectorExpressions = selectors.flatMap(selector => selector?.type === 'range'
       ? [selector.startExpression, selector.endExpression]
-      : selector?.type === 'index' ? [selector.indexExpression] : []);
+      : selector?.type === 'index' ? [selector.indexExpression]
+        : selector?.type === 'matrix-cell'
+          ? [selector.rowExpression, selector.columnExpression] : []);
     selectorExpressions.forEach(expression => {
       const parsed = parseFrameExpression(expression);
       (parsed.identifiers || []).forEach(name => ensureCaptured(name));
@@ -2856,6 +2985,10 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     (modifiers.when?.identifiers || []).forEach(includeDependency);
     Object.values(modifiers.rendererOptions || {}).forEach(option => {
       (option.identifiers || []).forEach(includeDependency);
+      (option.parts || []).forEach(part => {
+        if (part.type !== 'variable') return;
+        part.variableId = includeDependency(part.name)?.id || '';
+      });
     });
     if (modifiers.rendererOptions?.fields) {
       modifiers.rendererOptions.fields.variableIds = modifiers.rendererOptions.fields.names.map(name => (
@@ -2921,7 +3054,8 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         sourceName: binding.sourceName,
         sourceVariableId: sourceVariables[0]?.id || '',
         sourceVariableIds: sourceVariables.map(variable => variable.id),
-        indexExpression: binding.indexExpression || binding.sourceName
+        indexExpression: binding.indexExpression || binding.sourceName,
+        indexDimension: binding.indexDimension
       };
     });
     return {
@@ -3513,16 +3647,23 @@ function instrumentSource(source, watchIds = []) {
       return { variableId: watch?.id || '', expression, indexExpression: '' };
     }
     if (node.name === 'SubscriptExpression') {
-      const children = childrenOf(node);
-      const base = children[0];
-      const index = children.find(child => !['[', ']'].includes(child.name) && child !== base);
-      const baseIdentifier = firstDescendant(base, new Set(['Identifier']));
+      const indices = [];
+      let base = node;
+      while (base?.name === 'SubscriptExpression') {
+        const children = childrenOf(base);
+        const nextBase = children[0];
+        const index = children.find(child => !['[', ']'].includes(child.name) && child !== nextBase);
+        if (index) indices.unshift(compactExpression(source.slice(index.from, index.to)));
+        base = nextBase;
+      }
+      const baseIdentifier = base?.name === 'Identifier'
+        ? base : firstDescendant(base, new Set(['Identifier']));
       const baseName = baseIdentifier ? source.slice(baseIdentifier.from, baseIdentifier.to) : '';
       const watch = watchAt(baseName, node.from);
       return {
         variableId: watch?.id || '',
         expression,
-        indexExpression: index ? compactExpression(source.slice(index.from, index.to)) : ''
+        indexExpression: indices.join(',')
       };
     }
     const identifier = firstDescendant(node, new Set(['Identifier']));
