@@ -1,0 +1,49 @@
+# 2026-09-23-gamma-array-value-scale 交付驗證紀錄
+
+## 交付資訊
+- 狀態：待主代理核實
+- 分支：codex/2026-09-22-gamma
+- 共同基準 commit：07726ba99209aab557879f0fd1776ed77cec73a7
+- 程式修正 commit：97ff0da7cc434aa99e4ebd22ed652da4d9173c51
+- 驗證時的 HEAD 與未提交修改：97ff0da7cc434aa99e4ebd22ed652da4d9173c51；程式驗證後工作目錄乾淨
+- 驗證日期：2026-09-23
+
+## 根因與修改
+- 已確認根因與證據：線性 structure 的 `item-save` 路徑未使用既有比例保存選項，重算後把自訂 284×172 尺寸改回 142×86。
+- 修正方式與行為變化：格子值儲存時啟用 `preserveScale`，與增減格子及長度變更採用相同計算。
+- 修改檔案及用途：`public/slides.js` 啟用內容儲存的比例保留；`slides.html` 更新資源版本；`entrypoints.test.js` 同步入口契約；`structure-length-zero.browser.test.js` 新增自訂尺寸陣列內容編輯驗證。
+- README／版本紀錄／使用說明更新：不適用；修正既有編輯行為。
+- 與 task.md 的差異：無。
+
+## 驗收條件對照
+| task.md 條件 | 驗證方式 | 實際結果 | 判定 |
+|---|---|---|---|
+| 編輯格子後維持尺寸與比例 | structure 局部瀏覽器測試 | 儲存尺寸、畫面寬高及格子寬度皆維持 | 通過 |
+| 新值保存且後續增減長度仍維持比例 | 讀回 IndexedDB 並量測格子 | `55, 6, 7` 正確保存，增減與重載檢查通過 | 通過 |
+
+## 小驗證與重跑方式
+### 陣列格子編輯與比例
+- 目的與對應條件：驗證自訂比例陣列內容編輯、保存及後續增減格子。
+- 執行目錄與必要環境設定：`algo-vis-backend`；測試自動使用隨機埠。
+- 測試資料／fixture：已保存 284×172 自訂尺寸的三格一般陣列。
+- 完整指令或操作步驟：`node --check public/slides.js`；`node --test tests/entrypoints.test.js`；`node --test tests/structure-length-zero.browser.test.js`；`git diff --check`。
+- 預期結果：內容由 `5` 變成 `55`，尺寸與格子比例不變。
+- 實際結果與 exit code（適用時）：語法檢查、入口測試、structure 瀏覽器測試及 diff 檢查皆 exit code 0；兩個測試檔各 1/1 通過。
+- 證據位置：`algo-vis-backend/tests/structure-length-zero.browser.test.js` 與本次終端摘要。
+
+## 剩餘事項與合併注意
+- 未驗證項目及原因：無。
+- 已知問題或風險：無。
+- 相依與衝突注意：`slides.js`、`slides.html`、`entrypoints.test.js` 為常見共用檔案。
+- 主代理需補驗證的情境：實際拖曳縮放後編輯數值並重新開啟投影片。
+
+## 主代理核實與整合（由主代理填寫）
+- 狀態：尚未核實
+- 核實的程式 commit 與 diff 範圍：
+- 差異審查與必要重跑結果：
+- 合併 commit：
+- 完整 regression：
+- 演算法投影片實際驗證：
+- 未完成或環境阻塞：
+- 本機服務重啟：
+- Push／公開部署狀態：

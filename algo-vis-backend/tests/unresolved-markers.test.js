@@ -7,7 +7,7 @@ const vm = require('node:vm');
 // Exercise the renderer's binding adapter without adding a public test API.
 const source = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8')
   .replace('window.ASMTraceRenderers = {',
-    'window.ASMTraceRenderers = { renderFrameBindings, keepArrowObjectKey,')
+    'window.ASMTraceRenderers = { renderFrameBindings, keepArrowObjectKey, ensureLinearIndexPlacement,')
   .replace('if (objects.length) renderStudioObjects(root, document, frame, placements, elements, options, objects);',
     'root.objects = objects;');
 const context = vm.createContext({
@@ -1543,7 +1543,7 @@ test('assignment retains the parked arrow until motion starts, then reaches the 
   assert.equal(motion.adjustments.size, 0);
 });
 
-test('same-cell marker reflow leads the overlapping entrance, then frame events start', () => {
+test('same-cell marker reflow starts with the overlapping entrance, then frame events start', () => {
   const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
     .replace('window.ASMTraceFrameTween = {',
       'window.ASMTraceFrameTween = { markerGroupReflowDuration, markerFrameMotionDelay,');
@@ -1668,9 +1668,10 @@ test('same-cell marker reflow leads the overlapping entrance, then frame events 
     transitionSteps: [reflowStep]
   });
   assert.equal(preEventPlan.phases.find(phase => phase.id === 'frame-transition').startMs, 0);
-  assert.equal(preEventPlan.phases.find(phase => phase.id === 'object-entrance').startMs, 80);
-  assert.equal(preEventPlan.preEventDurationMs, 300,
-    'reflow finishes at 180 ms and the delayed 220 ms entrance finishes at 300 ms');
+  assert.equal(preEventPlan.phases.find(phase => phase.id === 'object-entrance').startMs, 0,
+    'the incoming marker appears when its peers begin making room');
+  assert.equal(preEventPlan.preEventDurationMs, 220,
+    'the simultaneous 180 ms reflow and 220 ms entrance finish at 220 ms');
 
   const event = { id: 'compare-after-j-entry', type: 'compare', order: 3 };
   const plan = context.window.ASMTraceFrameTween.createPlaybackPlan({
@@ -1716,6 +1717,123 @@ test('same-cell marker reflow leads the overlapping entrance, then frame events 
     { start: 0, end: 300 },
     'a declaration-owned marker also waits for the make-room head start'
   );
+});
+
+test('a caller marker waits for the outgoing same-cell marker to move and exit', () => {
+  const marker = (variableId, lifetimeIdentity) => ({
+    dataset: {
+      traceSourceVariableId: variableId,
+      traceSourceVariableIds: JSON.stringify([variableId]),
+      traceRuntimeIdentity: lifetimeIdentity,
+      traceBindingTarget: 'heap#5',
+      traceMarkerIndexExpression: '5'
+    },
+    querySelectorAll: () => []
+  });
+  const entering = marker('main:i', 'life-i');
+  const outgoing = marker('move_down:now', 'life-now');
+  const assignment = {
+    id: 'move-now', type: 'assign', order: 10,
+    targets: [{ role: 'target', variableId: 'move_down:now' }]
+  };
+  const exit = {
+    id: 'exit-now', type: 'scope-exit', order: 13,
+    targets: [{ role: 'target', variableId: 'move_down:now', lifetimeIdentity: 'life-now' }]
+  };
+  const frame = { id: 'return-to-caller', events: [assignment, exit], state: {} };
+  const timeline = [
+    { event: assignment, animation: 'assign', promptStart: 0, visualStart: 0,
+      start: 0, duration: 520, end: 520 },
+    { event: exit, animation: 'exit', promptStart: 520, visualStart: 520,
+      start: 520, duration: 220, end: 740 }
+  ];
+  const barriers = context.window.ASMTraceFrameTween.deferredMarkerEntranceBarriers({
+    enteringMarkerKeys: new Set(['marker-i']),
+    traceDocument: { variables: { 'main:i': { name: 'i' } } },
+    eventFrame: frame,
+    eventTimeline: timeline,
+    currentElements: new Map([['marker-i', entering]]),
+    previousObjects: new Map([['marker-now', outgoing]])
+  });
+  assert.equal(barriers.get('marker-i'), 740,
+    'the caller marker waits until the outgoing parameter finishes its exit');
+
+  const plan = context.window.ASMTraceFrameTween.createPlaybackPlan({
+    frame,
+    direction: 1,
+    enteringMarkerKeys: [],
+    deferredMarkerEntranceKeys: ['marker-i'],
+    deferredMarkerEntranceStartMs: barriers.get('marker-i'),
+    eventTimeline: timeline
+  });
+  const events = plan.phases.find(phase => phase.id === 'trace-events');
+  const entrance = plan.phases.find(phase => phase.id === 'deferred-object-entrance');
+  assert.equal(events.startMs, 0);
+  assert.equal(entrance.startMs, 740);
+  assert.equal(entrance.steps[0].targetKey, 'marker-i');
+  assert.equal(plan.totalDurationMs, 960);
+});
+
+test('a hidden caller marker does not move an outgoing same-cell parameter sideways', () => {
+  const tweenSource = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { deferredMarkerEntranceBarriers, exitMarkerReflowSchedule,');
+  vm.runInContext(tweenSource, context);
+  const marker = (variableId, lifetimeIdentity) => ({
+    dataset: {
+      traceSourceVariableId: variableId,
+      traceSourceVariableIds: JSON.stringify([variableId]),
+      traceRuntimeIdentity: lifetimeIdentity,
+      traceBindingTarget: 'heap#5',
+      traceMarkerIndexExpression: '5',
+      traceMarkerSortKey: variableId
+    },
+    closest: () => null,
+    querySelector: selector => selector === '.trace-variable-marker-label-box'
+      ? { getAttribute: name => name === 'width' ? '18' : null }
+      : null,
+    querySelectorAll: () => [],
+    getAttribute: name => name === 'transform' ? 'translate(100,8)' : null
+  });
+  const entering = marker('main:i', 'life-i');
+  const outgoing = marker('sift_down:now', 'life-now');
+  const assignment = {
+    id: 'move-now', type: 'assign', order: 10,
+    targets: [{ role: 'target', variableId: 'sift_down:now' }]
+  };
+  const exit = {
+    id: 'exit-now', type: 'scope-exit', order: 13,
+    targets: [{ role: 'target', variableId: 'sift_down:now', lifetimeIdentity: 'life-now' }]
+  };
+  const timeline = [
+    { event: assignment, animation: 'assign', start: 0, duration: 520, end: 520 },
+    { event: exit, animation: 'exit', markerExit: true,
+      start: 520, visualStart: 520, reflowStart: 520,
+      exitDuration: 220, duration: 220, end: 740 }
+  ];
+  const barriers = context.window.ASMTraceFrameTween.deferredMarkerEntranceBarriers({
+    enteringMarkerKeys: new Set(['marker-i']),
+    traceDocument: { variables: { 'main:i': { name: 'i' } } },
+    eventFrame: { id: 'return-to-caller', events: [assignment, exit], state: {} },
+    eventTimeline: timeline,
+    currentElements: new Map([['marker-i', entering]]),
+    previousObjects: new Map([['marker-now', outgoing]])
+  });
+  assert.equal(barriers.get('marker-i'), 740,
+    'the caller marker entrance waits through the parameter assignment and exit');
+
+  const reflow = context.window.ASMTraceFrameTween.exitMarkerReflowSchedule({
+    eventTimeline: timeline,
+    currentElements: new Map([['marker-i', entering]]),
+    currentPlacements: new Map([
+      ['heap#5', { x: 100, y: 8, width: 40, height: 40 }],
+      ['marker-i', { x: 100, y: 8 }]
+    ]),
+    previousObjects: new Map([['marker-now', outgoing]]),
+    excludedPeerKeys: new Set(barriers.keys())
+  });
+  assert.equal(reflow.size, 0,
+    'the still-hidden caller marker cannot push the outgoing parameter ghost sideways');
 });
 
 test('marker event motion preserves same-cell reflow and a peer entrance', () => {
@@ -2173,6 +2291,72 @@ test('a moving declaration continuation uses the standard cross-cell duration', 
   );
   assert.equal(stationarySlots[0].duration, 220);
   assert.equal(stationarySlots[0].declarationMarkerMotionDuration, 180);
+});
+
+test('a BIT virtual marker target follows BIT geometry instead of linear extrapolation', () => {
+  const placements = new Map([
+    ['BIT#1', { x: 0, y: 156, width: 40, height: 52 }],
+    ['BIT#2', { x: 0, y: 104, width: 80, height: 52 }],
+    ['BIT#4', { x: 0, y: 52, width: 160, height: 52 }],
+    ['BIT#8', { x: 0, y: 0, width: 320, height: 52 }],
+    ['BIT#9', { x: 320, y: 156, width: 40, height: 52 }],
+    ['BIT#10', { x: 320, y: 104, width: 80, height: 52 }]
+  ]);
+  const layout = {
+    getAttribute: name => ({
+      'data-layout': 'BIT', 'data-bit-rows': '3',
+      'data-row-height': '52', 'data-box-size': '40'
+    })[name] || null
+  };
+  const elements = new Map([...placements.keys()].map(key => [
+    key, { closest: selector => selector === '[data-layout]' ? layout : null }
+  ]));
+  const virtual = context.window.ASMTraceRenderers.ensureLinearIndexPlacement(
+    {}, 'BIT', 16, 11, placements, elements
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(virtual)),
+    { x: 0, y: -52, width: 640, height: 52 }
+  );
+  assert.equal(placements.get('BIT#16'), virtual);
+});
+
+test('compound scalar writes move their dependent marker but array compounds do not', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8')
+    .replace('window.ASMTraceFrameTween = {',
+      'window.ASMTraceFrameTween = { updateTargetsMarker,');
+  const c = vm.createContext({
+    window: {},
+    document: { documentElement: { dataset: {} } },
+    queueMicrotask() {}
+  });
+  vm.runInContext(source, c);
+  const marker = {
+    dataset: { traceSourceVariableId: 'build:i', traceRuntimeIdentity: 'build-i-life' },
+    closest: () => null
+  };
+  const elements = new Map([['marker-i', marker]]);
+  const compoundIndex = {
+    type: 'write', compound: true,
+    targets: [
+      { role: 'target', variableId: 'build:i', lifetimeIdentity: 'build-i-life' },
+      { role: 'source', variableId: 'build:lb' }
+    ]
+  };
+  assert.equal(c.window.ASMTraceFrameTween.updateTargetsMarker(
+    compoundIndex, elements, { events: [compoundIndex] }
+  ), true, 'i += lb uses the position animation of the i marker');
+
+  const compoundArray = {
+    type: 'write', compound: true,
+    targets: [
+      { role: 'target', variableId: 'BIT', resolvedIndex: 4 },
+      { role: 'source', variableId: 'num', resolvedIndex: 3 }
+    ]
+  };
+  assert.equal(c.window.ASMTraceFrameTween.updateTargetsMarker(
+    compoundArray, elements, { events: [compoundArray] }
+  ), false, 'BIT[i] += num[k] remains a value assignment');
 });
 
 test('compare marker followers use the event checkpoint rather than the final rendered binding', () => {

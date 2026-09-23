@@ -17,7 +17,7 @@ AlgoShowMaker 是以 C++ 程式執行結果為核心的演算法視覺化與投�
 
 ### AV_V4.7 — 2026/09/16
 
-- 新增多行 `@frame`／`@object`、`@place`、共用 `@arrow`、`@camera`、多個 `use` preset 與 `iteration.last(...)` 繪圖衍生值；完整語法與案例見使用手冊。
+- 新增多行 `@frame`／`@object`、`@place`、共用 `@arrow`、`@camera`、多個 `use` preset 與 `iteration.first(...)`／`iteration.last(...)` 繪圖衍生值；完整語法與案例見使用手冊。
 - 投影片新匯出使用精簡壓縮 `.asmdeck`，包含原始碼、輸入、編輯設定與去重素材，不包含可重建的 trace 結果；匯入優先使用本地快取，未命中才 RUN，舊 JSON 仍可匯入。
 - 箭頭以穩定指令身分或 `as "ID"` 跨幀接續；改綁端點時位置、顏色與線寬平滑過渡，端點物件移動時即時跟隨。歧義配對不猜測，同幀重複 ID 報錯。
 - 最左側模式／匯入匯出工具欄提供「調整投影片順序」圖示按鈕，切換至可拖曳排序的總覽；再按返回所選投影片。Esc 仍可切換，排序沿用既有自動儲存。
@@ -165,6 +165,7 @@ int main() {
 | `@keep` | 依條件保留變數或上一幀畫面 | `// @keep last as round when i > 0` |
 | `@layout` | 宣告並設定具名遞迴排版 | `// @layout recursion as "quick_tree" at canvas.top offset(0,80)` |
 | `@exit` | 提早讓指定變數的視覺呈現退場 | `// @exit min_idx` |
+| `@let` | 建立本幀唯讀的繪圖運算別名，不產生 C++ 變數或事件 | `// @let lb = i & -i` |
 | `@text` | 顯示動態說明文字與 TTS | `// @text "i = ${i}" at arr.bottom when i >= 0` |
 | `@style` | 套用背景、框線、point、mark或focus；逗號可組合樣式 | `// @style arr[i,i*2:i*2+1] highlight,point red` |
 | `@segment` | 標示一段連續範圍 | `// @segment arr[low:high]` |
@@ -179,17 +180,29 @@ int main() {
 - `offset(x,y)`：在語意定位後加入像素位移。
 - `when`：依目前或跨幀條件決定是否顯示。
 - `render`：切換資料結構畫法，例如 `render heap`。
-- `with`：傳入 `range(...)`、`columns(...)`、`labels(...)` 等 renderer 選項。
+- `with`：傳入 `range(...)`、`columns(...)`、`labels(...)` 等 renderer 選項；標準線段樹以 `range(...)` 同時指定資料區間與根索引。
 - `without style`：讓 `@keep` 保留資料但不保存當下樣式。
 - `in`：把 live `@frame` 或 `@keep` 快照加入已宣告的具名排版，例如 `@frame arr in quick_tree`、`@keep last in quick_tree`。
 
 `@preset` 會原樣保存所有 `@` 設定，並由各指令解析器在 `@frame use` 的位置展開；目前包含
-`@object`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、`@camera`。它只壓縮幀設定，
+`@object`、`@let`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、`@camera`。它只壓縮幀設定，
 不主動執行 `@keep`、`@exit`、`@frame` 等流程動作；這些仍寫在實際執行位置。
+
+重複使用較長的安全運算式時，可用小寫 `@let` 建立幀內唯讀別名：
+
+```cpp
+// @frame BIT[i]
+// @let lb = i & -i
+// @let deduct = iteration.first(i) == L - 1
+// @style num[i-lb+1:i] background AV_blue
+// @text "BIT[${i}] 涵蓋 num[${i-lb+1}~${i}]" at num.top
+```
+
+別名會在每次擷取該幀時重新計算，可引用先前宣告的 `@let`，並可使用算術、位元、比較與邏輯運算；它不會成為 C++ 變數、畫布物件、marker 或 runtime 事件。`@let` 也可寫在 `@preset`／`@defaults` 中。
 
 箭頭使用共用 Arrow Model；`@arrow`、Trace Studio 箭頭及遞迴 layout 箭頭共享同一套端點、邊距、箭頭頭部與顏色邏輯，底層沿用原本 `drawArrow` 的幾何比例。完整選項請參考[演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md#arrow連接視覺物件)。
 
-條件支援 `&&`、`||`、`and`、`or`，以及 `previous(...)`、`changed(...)` 等跨幀判斷。繪圖運算式也可使用 `iteration.last(j)`，從已完成的 trace 取得目前函式／遞迴執行個體中，這次 `j` 生命週期最後走到的值；它不會產生事件、物件或重新執行 C++。`@style` 可混合單點與區間，例如：
+條件支援 `&&`、`||`、`and`、`or`，以及 `previous(...)`、`changed(...)` 等跨幀判斷。繪圖運算式也可使用 `iteration.first(j)`／`iteration.last(j)`，從已完成的 trace 取得目前函式／遞迴執行個體中，這次 `j` 生命週期最初或最後走到的值；它不會產生事件、物件或重新執行 C++。`@style` 可混合單點與區間，例如：
 
 ```cpp
 // @style arr[i,i*2:i*2+1] highlight red
@@ -285,6 +298,10 @@ C++ 原始碼
 - 複合賦值的可見來源數字抵達目的值時會立即消失並提交結果，不在目的地額外停留。
 - `target = a + b`及`tree[parent] = tree[left] + tree[right]`會讓兩個可見來源的數字同步移向目的格；抵達時兩個移動數字立即消失，目的格在同一個動畫更新中顯示加總結果。無法安全定位兩個來源時沿用一般賦值動畫。
 - `render heap` 新增 `fields(...)`、逐幀 `hide(field=value)`、`separator(...)`、pair／tuple單格格式，以及style顯示層中的 `@segment tree[node][L:R] color ...` 格內區段；`with split(now)`可保留遞迴分裂後尚待處理的另一側。線段樹範例已移除AV.hpp舊繪圖程式並保留原演算法；`Segment_Tree_easy_build`完整播放輸入與由下往上的建樹，`Segment_Tree_easy`則從已建好的樹開始，只播放查詢與sum累加。
+- `render segment_tree with range(1,n)` 會以 `tree[1]` 為根，依每個節點代表的實際區間決定格子寬度，並沿用標準遞迴深度排列；非二次方長度不補假葉節點，也不把較早結束的葉節點強制推到底層。最小格為 40×40px，下方 index 格高 12px；value 一般使用 16px，tree index 平常置中，interval 靠右且比 index 小 2px。兩者碰撞時 index 會向左避讓，空間仍不足才縮小字體；兩段標籤都在 index 框內垂直置中。葉節點 `[x,x]` 簡化為 `[x]`。
+- `Segment_Tree_standard.cpp` 示範標準遞迴 lazy segment tree；輸入先給 `n m` 與 n 個初值，再以 `1 L R value` 表示區間加值、`2 L R value` 表示區間設值、`3 L R` 表示區間總和查詢。範例用 `fields(tree,sets,lazy)` 將三個欄位放進同一格，並以 `hide(sets=LM,lazy=0)` 隱藏預設標記、`format(sets=assign,lazy=signed)` 將標記顯示為 `=8`／`+3`／`-2`。更新回朔時會顯示左右子節點相加寫回父節點；查詢跨中點時則顯示左右回傳值相加的回朔幀。兩種回朔幀都以 `split(now,after)` 同步收回已完成節點的 segment。
+- renderer 的 `format(field=type,...)` 第一版支援 `raw`、`signed`、`assign`、`binary`、`hex`、`bool`、`fixed(n)` 與 `percent(n)`；格式化只改變靜態畫面與事件動畫文字，不改變原始資料、條件或 hide 判斷。
+- renderer 選項支援 `gap(horizontal,vertical)`；單參數 `gap(x)` 等同 `gap(x,x)`。一般陣列只增加格間距；heap、BIT 與標準 segment tree 的跨區間節點寬度使用 `count*40+(count-1)*horizontalGap`。heap 與 segment tree 在垂直 gap 為 0 時不畫父子連線。
 - 擷取會由當幀事件向上找到最外層的 `for`、`while` 或 `if`；迴圈一律顯示完整內容與結尾大括號，聯集子樹之外的程式碼隱藏為省略號。省略區段若只剩一行可執行程式碼，會直接顯示該行，不再以 `…` 代替。
 - 當事件位於 `main` 以外的函式時，程式碼片段會顯示該函式的完整內容，包括函式宣告、所有可執行程式與結尾大括號；註解與繪圖指令仍會隱藏。同一函式內的幀沿用相同函式子樹，不會因事件落在不同分支或遞迴層級而反覆切換片段。
 - 首幀沒有事件時，會由畫面上的變數反查宣告、輸入和必要的初始化迴圈。一般註解、繪圖指令與非演算法樣板程式碼預設不顯示。

@@ -6,6 +6,7 @@
       "categories": [
         "Sorting"
       ],
+      "hints": ["分治", "原地排序"],
       "archive": "/guest-decks/quick-sort.asmdeck"
     },
     {
@@ -14,6 +15,7 @@
       "categories": [
         "Sorting"
       ],
+      "hints": ["相鄰交換"],
       "archive": "/guest-decks/bubble-sort.asmdeck"
     },
     {
@@ -22,6 +24,7 @@
       "categories": [
         "Sorting"
       ],
+      "hints": ["選取最小值"],
       "archive": "/guest-decks/selection-sort.asmdeck"
     },
     {
@@ -30,6 +33,7 @@
       "categories": [
         "Sorting"
       ],
+      "hints": ["逐步插入"],
       "archive": "/guest-decks/insertion-sort.asmdeck"
     },
     {
@@ -38,6 +42,7 @@
       "categories": [
         "Sorting"
       ],
+      "hints": ["堆積", "原地排序"],
       "archive": "/guest-decks/heap-sort.asmdeck"
     },
     {
@@ -46,7 +51,35 @@
       "categories": [
         "Math"
       ],
+      "hints": ["質數篩"],
       "archive": "/guest-decks/linear-sieve.asmdeck"
+    },
+    {
+      "id": "heap-teaching",
+      "title": "堆積 (Heap)",
+      "categories": [
+        "Data_Structure"
+      ],
+      "hints": ["優先佇列", "最大值／最小值"],
+      "archive": "/guest-decks/heap-teaching.asmdeck"
+    },
+    {
+      "id": "binary-indexed-tree-teaching",
+      "title": "Binary Indexed Tree",
+      "categories": [
+        "Data_Structure"
+      ],
+      "hints": ["單點修改", "區間和"],
+      "archive": "/guest-decks/binary-indexed-tree-teaching.asmdeck"
+    },
+    {
+      "id": "segment-tree-teaching",
+      "title": "線段樹 (Segment Tree)",
+      "categories": [
+        "Data_Structure"
+      ],
+      "hints": ["區間修改", "區間和"],
+      "archive": "/guest-decks/segment-tree-teaching.asmdeck"
     }
   ]
 }

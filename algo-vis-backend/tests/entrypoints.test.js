@@ -26,8 +26,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-33'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-16'));
+  assert.ok(html.includes('trace-model.js?v=trace-35'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-21'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-25'));
@@ -40,12 +40,15 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('compile.js?v=syntax-7'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=freshness-4'));
+  assert.ok(html.includes('style.css?v=brand-shared-6'));
+  assert.ok(html.includes('brand.css?v=hover-pill-1'));
+  assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=parallel-merge-200'));
+  assert.ok(slides.includes('slides.js?v=inline-script-default-222'));
+  assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
   assert.ok(!slides.includes('id="deckCacheDialog"'));
@@ -55,16 +58,25 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(surface.includes('rel="noopener noreferrer"'));
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
-  assert.ok(slides.includes('slides.css?v=structure-menu-hidden-104'));
+  assert.ok(slides.includes('slides.css?v=inline-scripts-111'));
+  assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-8') < slides.indexOf('slides.js?v='));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
   }
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
-  assert.ok(legacy.includes('home.css?v=brand-favicon-16'));
+  assert.ok(legacy.includes('home.css?v=brand-favicon-17'));
+  assert.ok(legacy.includes('brand.css?v=hover-pill-1'));
+  assert.ok(legacy.includes('guest-gallery.js?v=5'));
+  assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=7'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=thumbnail-drag-8'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=header-examples-9'));
+  assert.match(legacy, /id="headerSlidesLink"[^>]+href="\/"[^>]*>投影片<\/a>/);
+  assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
+  assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
+  assert.ok(slides.includes('slide-structures.js?v=20'));
+  assert.ok(legacy.includes('slide-structures.js?v=7'));
   assert.ok(html.includes('trace-arrow-model.js?v=arrow-8'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
@@ -73,9 +85,9 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-19'));
+  assert.ok(html.includes('trace-rules.js?v=trace-22'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
-    const version = name === 'disk' ? 'focus-3' : 'focus-2';
+    const version = name === 'segment_tree' ? 'segment-label-3' : 'gap-1';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(slides.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
@@ -90,8 +102,9 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-25'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-6'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-121'));
-  assert.ok(html.includes('front.js?v=random-id-34'));
+  assert.ok(html.includes('trace-studio.js?v=trace-122'));
+  assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
+  assert.ok(html.includes('front.js?v=random-id-36'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
   assert.ok(html.includes('trace-provenance.js?v=trace-9'));
   assert.ok(html.includes('trace.css?v=trace-36'));
@@ -133,8 +146,15 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(read('trace.css'), /is-complete:not\(\.is-active\)[^}]*border-radius:\s*0/s,
     'completed nested event spans must form one continuous background band');
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
-  assert.ok(html.includes('draw/draw_array.js?v=trace-2'));
-  assert.ok(html.includes('trace-studio.css?v=trace-51'));
+  assert.ok(html.includes('draw/draw_array.js?v=trace-3'));
+  for (const surface of [html, slides, legacy]) {
+    assert.ok(surface.includes('draw/draw_array_utils.js?v=gap-1'));
+  }
+  assert.ok(html.includes('trace-studio.css?v=trace-52'));
+  assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,
+    'the retired marker-shape controls must not return to the object inspector');
+  assert.doesNotMatch(read('trace-studio.css'), /trace-studio-marker-shape/,
+    'retired marker-shape controls must not keep unused styles');
   assert.doesNotMatch(read('trace-studio.js'), /inspector\.append\(field\('作用時間線'/,
     'the obsolete event timeline scope selector is absent from the right sidebar');
   assert.match(read('trace-studio.css'), /\.trace-studio-event-code-button\.is-current\s*\{[^}]*inset 4px 0 #60a5fa/s,

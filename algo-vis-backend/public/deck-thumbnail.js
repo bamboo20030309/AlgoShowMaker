@@ -119,7 +119,7 @@
     }
   }
 
-  async function create(deck) {
+  async function createSlide(slide) {
     const output = document.createElement('canvas');
     output.width = OUTPUT_WIDTH;
     output.height = OUTPUT_HEIGHT;
@@ -127,7 +127,6 @@
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT);
 
-    const slide = firstSlide(deck);
     if (!slide) return output.toDataURL('image/jpeg', 0.82);
     if (slide.kind === 'algorithm-animation') {
       drawAlgorithmCover(context, slide);
@@ -138,5 +137,9 @@
     return output.toDataURL('image/jpeg', 0.82);
   }
 
-  window.AlgoDeckThumbnail = { create };
+  async function create(deck) {
+    return createSlide(firstSlide(deck));
+  }
+
+  window.AlgoDeckThumbnail = { create, createSlide };
 })();

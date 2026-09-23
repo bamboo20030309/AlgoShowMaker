@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=structure-menu-hidden-104" />
+  <link rel="stylesheet" href="slides.css?v=inline-scripts-111" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
   <link rel="preload" href="/vendor/katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin />
@@ -26,7 +26,7 @@
       document.body.classList.add('shared-view-only');
     }
   </script>
-  <a class="chrome-home-link" href="/" title="返回我的投影片" aria-label="返回我的投影片">
+  <a id="chromeHomeLink" class="chrome-home-link" href="/" title="返回我的投影片" aria-label="返回我的投影片">
     <svg class="chrome-home-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M3 10.8 12 3l9 7.8"></path>
       <path d="M5.5 9.5V21h13V9.5M9.5 21v-7h5v7"></path>
@@ -131,6 +131,11 @@
     <button type="button" class="palette-item tool-code" draggable="true" data-tool="code" title="C++ 程式碼">
       <span class="tool-icon">{}</span>
       <span>code</span>
+    </button>
+
+    <button type="button" class="palette-item tool-table" draggable="true" data-tool="table" title="Table" aria-label="Table">
+      <svg class="structure-palette-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="17"></rect><path d="M2.5 9h19M9 3.5v17M15.5 3.5v17M2.5 14.7h19"></path></svg>
+      <span>Table</span>
     </button>
 
     <div class="shape-tool">
@@ -258,7 +263,7 @@
 
     <div id="structureEditorPanel" class="sidebar-panel widget-editor-panel structure-editor-panel" hidden>
       <div class="panel-title">
-        <strong>Structure</strong>
+        <strong id="structureEditorTitle">Structure</strong>
         <button id="exitStructureEditorBtn" type="button" title="Close" aria-label="Close">×</button>
       </div>
 
@@ -334,42 +339,6 @@
         </label>
       </div>
 
-      <div class="structure-section-title">元素樣式</div>
-      <div class="structure-style-list">
-        <label data-structure-style="highlight">
-          <span class="structure-style-icon style-icon highlight" role="img" title="Highlight" aria-label="Highlight"></span>
-          <input id="structureHighlightIndicesInput" type="text" placeholder="例如 1,3-5" aria-label="Highlight 索引" />
-          <button id="structureHighlightColorInput" class="structure-color-button" type="button" data-color="#ff0000" title="選擇 Highlight 顏色" aria-label="選擇 Highlight 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="focus">
-          <span class="structure-style-icon style-icon focus" role="img" title="Focus" aria-label="Focus"></span>
-          <input id="structureFocusIndicesInput" type="text" placeholder="索引" aria-label="Focus 索引" />
-          <button id="structureFocusColorInput" class="structure-color-button" type="button" data-color="#808080" title="選擇 Focus 顏色" aria-label="選擇 Focus 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="point">
-          <span class="structure-style-icon style-icon point" role="img" title="Point" aria-label="Point"></span>
-          <input id="structurePointIndicesInput" type="text" placeholder="索引" aria-label="Point 索引" />
-          <button id="structurePointColorInput" class="structure-color-button" type="button" data-color="#ff0000" title="選擇 Point 顏色" aria-label="選擇 Point 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="mark">
-          <span class="structure-style-icon style-icon mark" role="img" title="Mark" aria-label="Mark"></span>
-          <input id="structureMarkIndicesInput" type="text" placeholder="索引" aria-label="Mark 索引" />
-          <button id="structureMarkColorInput" class="structure-color-button" type="button" data-color="#22c55e" title="選擇 Mark 顏色" aria-label="選擇 Mark 顏色"><span></span></button>
-        </label>
-        <label data-structure-style="background">
-          <span class="structure-style-icon style-icon background" role="img" title="Background" aria-label="Background"></span>
-          <input id="structureBackgroundIndicesInput" type="text" placeholder="索引，留空即不套用" aria-label="Background 索引" />
-          <button id="structureBackgroundColorInput" class="structure-color-button" type="button" data-color="#10b981" title="選擇 Background 顏色" aria-label="選擇 Background 顏色"><span></span></button>
-        </label>
-      </div>
-      <div class="structure-section-title">註標箭頭</div>
-      <div class="structure-style-list">
-        <label data-structure-style="annotation">
-          <svg class="structure-style-icon" style="color: var(--style-color, #ffffff)" width="22" height="30" viewBox="0 0 22 30" role="img" aria-label="註標箭頭"><rect x="6" y="1" width="10" height="10" fill="#bfe8f7" stroke="currentColor"/><path d="M11 11v17m-3-5 3 5 3-5" fill="none" stroke="currentColor"/></svg>
-          <input id="structureAnnotationIndicesInput" type="text" placeholder="例如 1,3-5" aria-label="註標箭頭索引" />
-          <button id="structureAnnotationColorInput" class="structure-color-button" type="button" data-color="#ffffff" title="選擇註標箭頭顏色" aria-label="選擇註標箭頭顏色"><span></span></button>
-        </label>
-      </div>
       <label class="field-label" for="structureAnnotationTextInput">預設註標文字（留空顯示索引）</label>
       <input id="structureAnnotationTextInput" type="text" maxlength="80" placeholder="例如 i、left" />
       <div class="structure-legacy-fields" hidden>
@@ -380,6 +349,25 @@
         <input id="structureBorderColorInput" type="color" value="#344247" />
         <input id="structureTextColorInput" type="color" value="#1f282d" />
         <input id="structureLineColorInput" type="color" value="#66767b" />
+      </div>
+    </div>
+
+    <div id="tableEditorPanel" class="sidebar-panel widget-editor-panel table-editor-controls" hidden>
+      <div class="panel-title">
+        <strong>Table</strong>
+        <button id="exitTableEditorBtn" type="button" title="Close" aria-label="Close">×</button>
+      </div>
+      <div class="structure-field-grid">
+        <label><span>列數</span><input id="tableRowsInput" type="number" min="1" max="20" value="3" /></label>
+        <label><span>欄數</span><input id="tableColumnsInput" type="number" min="1" max="12" value="3" /></label>
+      </div>
+      <label class="check-field" for="tableHeaderRowInput"><input id="tableHeaderRowInput" type="checkbox" checked /><span>首列為表頭</span></label>
+      <label class="check-field" for="tableHeaderColumnInput"><input id="tableHeaderColumnInput" type="checkbox" /><span>首欄為表頭</span></label>
+      <div class="table-color-grid">
+        <label><span>表頭</span><button id="tableHeaderFillInput" class="structure-color-button" type="button" data-color="#d9efeb" title="表頭底色" aria-label="表頭底色"><span></span></button></label>
+        <label><span>內容</span><button id="tableBodyFillInput" class="structure-color-button" type="button" data-color="#ffffff" title="內容底色" aria-label="內容底色"><span></span></button></label>
+        <label><span>框線</span><button id="tableBorderColorInput" class="structure-color-button" type="button" data-color="#344247" title="表格框線顏色" aria-label="表格框線顏色"><span></span></button></label>
+        <label><span>文字</span><button id="tableTextColorInput" class="structure-color-button" type="button" data-color="#1f282d" title="表格文字顏色" aria-label="表格文字顏色"><span></span></button></label>
       </div>
     </div>
 
@@ -517,6 +505,23 @@
     </div>
   </div>
 
+  <dialog id="slideDeleteDialog" class="share-dialog slide-delete-dialog" aria-labelledby="slideDeleteTitle">
+    <form method="dialog">
+      <div class="share-dialog-header">
+        <div>
+          <span class="share-eyebrow">刪除確認</span>
+          <h2 id="slideDeleteTitle">刪除投影片？</h2>
+        </div>
+        <button id="closeSlideDeleteDialogBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <p id="slideDeleteMessage" class="slide-delete-message">刪除後仍可立即使用復原。</p>
+      <div class="share-dialog-actions">
+        <button id="cancelSlideDeleteBtn" type="button">取消</button>
+        <button id="confirmSlideDeleteBtn" class="slide-delete-confirm-btn" type="button">刪除</button>
+      </div>
+    </form>
+  </dialog>
+
 
   <dialog id="shareDialog" class="share-dialog">
     <form id="shareForm">
@@ -567,6 +572,26 @@
     </form>
   </dialog>
 
+  <dialog id="sampleShareDialog" class="share-dialog" aria-labelledby="sampleShareTitle">
+    <div class="sample-share-content">
+      <div class="share-dialog-header">
+        <div>
+          <span class="share-eyebrow">公開投影片</span>
+          <h2 id="sampleShareTitle">分享這份範例</h2>
+        </div>
+        <button id="closeSampleShareDialogBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <div class="share-links sample-share-links">
+        <label for="sampleShareUrl">觀賞連結</label>
+        <div class="share-url-row">
+          <input id="sampleShareUrl" type="text" readonly />
+          <button id="copySampleShareUrlBtn" type="button">複製</button>
+        </div>
+      </div>
+      <div id="sampleShareStatus" class="share-dialog-status" role="status" aria-live="polite"></div>
+    </div>
+  </dialog>
+
   <div id="objectToolbar" class="object-toolbar" hidden>
     <select id="fontFamilySelect" title="字體">
       <option value="Arial">Arial</option>
@@ -582,6 +607,7 @@
     <button id="strikeBtn" type="button" title="刪除線"><s>S</s></button>
     <button id="alignCycleBtn" type="button" title="切換靠左 / 置中 / 靠右"><span class="align-icon align-left-icon"></span></button>
     <button id="listStyleBtn" type="button" title="項目符號 / 編號"><span class="list-style-icon" aria-hidden="true"></span></button>
+    <button id="inlineScriptsBtn" type="button" title="解析上標與下標（例如 1^n、m_1；\_ 保留字面底線）" aria-label="解析上標與下標" aria-pressed="false"><span aria-hidden="true">A₂</span></button>
     <button id="textColorBtn" type="button" title="文字顏色"><span class="text-color-icon" aria-hidden="true">A</span></button>
     <button id="bgColorBtn" type="button" title="文字背景色"><span class="text-bg-icon">A</span></button>
     <button id="ttsObjectBtn" type="button" title="編輯 TTS 台詞" aria-label="編輯 TTS 台詞">
@@ -595,6 +621,10 @@
     </button>
     <div id="iroPopup" class="iro-popup" hidden>
       <div id="iroPicker"></div>
+      <div class="asm-av-palette" aria-label="AV 常用顏色">
+        <div class="asm-av-palette-title">AV 常用顏色</div>
+        <div id="avColorSwatches" class="asm-av-swatch-list"></div>
+      </div>
       <div id="shapeStyleControls" class="shape-style-controls" hidden>
         <label class="shape-style-label" for="shapeStrokeWidthInput">
           <span>邊框粗細</span>
@@ -717,29 +747,31 @@
     if (window.ace && window.ace.config) window.ace.config.set('basePath', '/vendor/ace');
     document.body.dataset.aceBridge = window.ace && window.ace.edit ? 'ready' : 'missing';
   </script>
-  <script src="draw/draw_array_utils.js"></script>
+  <script src="draw/draw_array_utils.js?v=gap-1"></script>
   <script src="draw/draw_block.js"></script>
   <script src="draw/draw_array_outerframe.js"></script>
   <script src="draw/draw_array_hintWidget.js?v=trace-4"></script>
-  <script src="draw/draw_array_normal.js?v=focus-2"></script>
-  <script src="draw/draw_array_heap.js?v=focus-2"></script>
-  <script src="draw/draw_array_segment_tree.js?v=focus-2"></script>
-  <script src="draw/draw_array_BIT.js?v=focus-2"></script>
-  <script src="draw/draw_array_disk.js?v=focus-3"></script>
-  <script src="draw/draw_array_stack.js?v=focus-2"></script>
-  <script src="draw/draw_array_queue.js?v=focus-2"></script>
-  <script src="slide-structures.js?v=14"></script>
-  <script src="deck-thumbnail.js?v=3"></script>
+  <script src="draw/draw_array_normal.js?v=gap-1"></script>
+  <script src="draw/draw_array_heap.js?v=gap-1"></script>
+  <script src="draw/draw_array_segment_tree.js?v=segment-label-3"></script>
+  <script src="draw/draw_array_BIT.js?v=gap-1"></script>
+  <script src="draw/draw_array_disk.js?v=gap-1"></script>
+  <script src="draw/draw_array_stack.js?v=gap-1"></script>
+  <script src="draw/draw_array_queue.js?v=gap-1"></script>
+  <script src="slide-structures.js?v=20"></script>
+  <script src="deck-thumbnail.js?v=4"></script>
   <script src="slides-storage.js?v=5"></script>
   <script src="slides-cloud.js?v=1"></script>
   <script src="tts.js?v=10"></script>
   <script src="algorithm-animation.js?v=animation-3"></script>
   <script src="trace-view-source.js?v=trace-15"></script>
-  <script src="trace-model.js?v=trace-33"></script>
+  <script src="trace-model.js?v=trace-35"></script>
   <script src="trace-provenance.js?v=trace-9"></script>
-  <script src="asmdeck.js?v=5"></script>
+  <script src="asmdeck.js?v=6"></script>
   <script src="deck-file-drop.js?v=1"></script>
-  <script src="slides.js?v=parallel-merge-200"></script>
+  <script src="slide-inline-scripts.js?v=2"></script>
+  <script src="trace-arrow-model.js?v=arrow-8"></script>
+  <script src="slides.js?v=inline-script-default-222"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

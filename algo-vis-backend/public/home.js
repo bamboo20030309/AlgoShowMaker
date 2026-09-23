@@ -13,6 +13,10 @@
   const accountArea = document.getElementById('accountArea');
   const accountName = document.getElementById('accountName');
   const logoutBtn = document.getElementById('logoutBtn');
+  const headerSlidesLink = document.getElementById('headerSlidesLink');
+  const headerExamplesLink = document.getElementById('headerExamplesLink');
+  const workspaceSlidesNav = document.getElementById('workspaceSlidesNav');
+  const workspaceExamplesNav = document.getElementById('workspaceExamplesNav');
   const authTitle = document.getElementById('authTitle');
   const authSubtitle = document.getElementById('authSubtitle');
   const authTabs = document.getElementById('authTabs');
@@ -79,12 +83,28 @@
     state.user = null;
   }
 
+  function setNavigationActive(element, active) {
+    if (!element) return;
+    element.classList.toggle('is-active', active);
+    if (active) element.setAttribute('aria-current', 'page');
+    else element.removeAttribute('aria-current');
+  }
+
+  function syncHomeNavigation() {
+    const examplesActive = new URLSearchParams(location.search).get('examples') === '1';
+    setNavigationActive(headerSlidesLink, !examplesActive);
+    setNavigationActive(headerExamplesLink, examplesActive);
+    setNavigationActive(workspaceSlidesNav, !examplesActive);
+    setNavigationActive(workspaceExamplesNav, examplesActive);
+  }
+
   function safeNextPath() {
     const next = new URLSearchParams(location.search).get('next');
     return next && next.startsWith('/') && !next.startsWith('//') ? next : '';
   }
 
   function showGuest() {
+    syncHomeNavigation();
     guestView.hidden = false;
     dashboardView.hidden = true;
     accountArea.hidden = true;
@@ -92,6 +112,7 @@
   }
 
   async function showDashboard(user) {
+    syncHomeNavigation();
     state.user = user;
     guestView.hidden = true;
     dashboardView.hidden = false;

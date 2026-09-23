@@ -28,37 +28,97 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(await structureMenu.evaluate(element => getComputedStyle(element).display), 'none');
     const object = page.locator('[data-widget-id="structure"]');
     const annotations = () => object.locator('[data-structure-annotation-index]').evaluateAll(items => items.map(item => item.dataset.structureAnnotationIndex));
+    const savedWidget = () => page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].widgets[0]);
     assert.deepEqual(await annotations(), ['1']);
     assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), '#ffffff');
     await object.click();
-    if (!(await page.locator('#structureAnnotationIndicesInput').isVisible())) { await page.locator('#modeToggleBtn').click(); await object.click(); }
-    for (const [name, color] of [['Highlight', '#ff0000'], ['Focus', '#808080'], ['Point', '#ff0000'], ['Mark', '#22c55e']]) assert.equal(await page.locator(`#structure${name}ColorInput`).getAttribute('data-color'), color);
-    await page.locator('#structureAnnotationIndicesInput').fill('0,2-3,99');
-    assert.deepEqual(await annotations(), ['0', '2', '3']);
+    if (!(await page.locator('#structureLengthInput').isVisible())) { await page.locator('#modeToggleBtn').click(); await object.click(); }
+    assert.equal(await page.locator('#structureEditorPanel .structure-style-list').count(), 0);
+    assert.equal(await page.locator('#structureHighlightIndicesInput, #structureAnnotationIndicesInput').count(), 0);
     const geometry = await object.locator('svg').evaluate(svg => {
       const view = svg.viewBox.baseVal;
       return [...svg.querySelectorAll('[data-structure-annotation-index]')].every(marker => { const box = marker.getBBox(); return box.y >= view.y && box.y + box.height <= view.y + view.height; });
     });
     assert.equal(geometry, true);
-    await page.locator('#structureAnnotationIndicesInput').fill(''); assert.deepEqual(await annotations(), []);
-    await page.locator('#structureAnnotationIndicesInput').fill('1,3');
     await page.locator('#structureAnnotationTextInput').fill('i');
     assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'i');
+    const defaults = await savedWidget();
+    assert.deepEqual(
+      [defaults.highlightColor, defaults.focusColor, defaults.pointColor, defaults.markColor],
+      ['#ff0000', '#808080', '#ff0000', '#22c55e']
+    );
     async function selectCell(index) {
+      if (await page.locator('#iroPopup').isVisible()) {
+        await page.mouse.move(10, 10);
+        await page.waitForTimeout(30);
+      }
       await object.locator(`[data-structure-item-index="${index}"] > text`).click();
       await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar');
     }
     await selectCell(0);
     const toolbar = page.locator('#structureContextMenu');
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
-    assert.equal(await page.locator('#structureHighlightIndicesInput').inputValue(), '0');
+    assert.equal((await savedWidget()).highlightIndices, '0');
+    await toolbar.getByRole('button', { name: 'Highlight', exact: true }).hover();
+    assert.equal(await page.locator('#iroPopup').isVisible(), true);
+    assert.equal(await toolbar.locator('[data-structure-style-type]').count(), 6);
+    fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
+    await page.screenshot({ path: path.join(root, 'test-results/structure-cell-style-color-picker.png') });
+    await page.locator('#avColorSwatches [data-av-color="AV_blue"]').click();
+    let styled = await savedWidget();
+    assert.equal(styled.highlightColor, '#ff0000');
+    assert.equal(styled.cellStyles['0'].highlight, 'rgba(144, 202, 249, 0.6)');
+    await selectCell(2);
+    await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
+    await toolbar.getByRole('button', { name: 'Highlight', exact: true }).hover();
+    await page.locator('#avColorSwatches [data-av-color="AV_yellow"]').click();
+    styled = await savedWidget();
+    assert.equal(styled.highlightIndices, '0,2');
+    assert.equal(styled.cellStyles['0'].highlight, 'rgba(144, 202, 249, 0.6)');
+    assert.equal(styled.cellStyles['2'].highlight, 'rgba(252, 255, 64, 0.46)');
+    const highlightColors = await object.locator('.highlight-blink').evaluateAll(items => Object.fromEntries(items.map(item => [
+      item.id.match(/-(\d+)$/)?.[1],
+      item.getAttribute('stroke')
+    ])));
+    assert.equal(highlightColors['0'], styled.cellStyles['0'].highlight);
+    assert.equal(highlightColors['2'], styled.cellStyles['2'].highlight);
+    const layerState = await object.locator('[data-slide-structure]').evaluate(group => {
+      const base = group.querySelector(':scope > [data-structure-base-layer]');
+      const style = group.querySelector(':scope > [data-structure-style-layer]');
+      return {
+        childLayers: [...group.children].map(item => item.getAttribute('data-structure-base-layer') || item.getAttribute('data-structure-style-layer')),
+        baseHighlights: base?.querySelectorAll('[id^="highlight-"]').length,
+        styleHighlights: style?.querySelectorAll('[id^="highlight-"]').length,
+        pointerEvents: style?.getAttribute('pointer-events')
+      };
+    });
+    assert.deepEqual(layerState, {
+      childLayers: ['1', 'foreground'],
+      baseHighlights: 0,
+      styleHighlights: 2,
+      pointerEvents: 'none'
+    });
+    await selectCell(0);
     await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).click();
-    assert.deepEqual(await annotations(), ['0', '1', '3']);
-    await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).click();
-    assert.deepEqual(await annotations(), ['1', '3']);
+    assert.deepEqual(await annotations(), ['0', '1']);
+    await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).hover();
+    assert.equal(await page.locator('#iroPopup').isVisible(), true);
+    await page.locator('#iroPicker .IroBox').first().click({ position: { x: 110, y: 35 } });
+    const annotationColor = (await savedWidget()).cellStyles['0'].annotation;
+    assert.notEqual(annotationColor, '#ffffff');
+    assert.equal(await object.locator('[data-structure-annotation-index="0"] > path').getAttribute('stroke'), annotationColor);
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#ffffff');
+    await selectCell(0);
+    await toolbar.getByRole('button', { name: '清除格子樣式', exact: true }).click();
+    assert.deepEqual(await annotations(), ['1']);
+    styled = await savedWidget();
+    assert.equal(styled.highlightIndices, '2');
+    assert.equal(styled.cellStyles['0'], undefined);
+    assert.equal(styled.cellStyles['2'].highlight, 'rgba(252, 255, 64, 0.46)');
     await selectCell(2); await toolbar.getByRole('button', { name: 'Mark', exact: true }).click();
-    assert.equal(await page.locator('#structureMarkIndicesInput').inputValue(), '2');
+    assert.equal((await savedWidget()).markIndices, '2');
     await selectCell(1); await toolbar.getByRole('textbox', { name: '此格註標文字' }).fill('left'); await page.keyboard.press('Enter');
+    await selectCell(3); await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).click();
     await selectCell(3); await toolbar.getByRole('textbox', { name: '此格註標文字' }).fill('right'); await page.keyboard.press('Enter');
     assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'left');
     assert.equal(await object.locator('[data-structure-annotation-index="3"] text').textContent(), 'right');
@@ -67,23 +127,19 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.ok(toolbarBox.y + toolbarBox.height < cellBox.y);
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'test-results/structure-cell-toolbar.png') });
-    assert.equal(await page.locator('[data-structure-style="annotation"] svg rect').count(), 1);
-    await page.locator('#structureAnnotationColorInput').click();
-    await page.locator('#iroPicker .IroBox').first().click({ position: { x: 110, y: 35 } });
-    const annotationColor = await page.locator('#structureAnnotationColorInput').getAttribute('data-color');
-    assert.notEqual(annotationColor, '#ffffff');
-    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), annotationColor);
-    await page.locator('#structureAnnotationColorInput').click();
     await page.locator('#modeToggleBtn').click(); await page.waitForTimeout(600);
     await page.reload(); await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready'));
     assert.deepEqual(await annotations(), ['1', '3']);
-    const saved = await page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].widgets[0]);
+    const saved = await savedWidget();
     assert.equal(saved.annotationIndices, '1,3');
     assert.equal(saved.annotationText, 'i');
     assert.deepEqual(saved.annotationLabels, { 1: 'left', 3: 'right' });
+    assert.equal(saved.cellStyles['2'].highlight, 'rgba(252, 255, 64, 0.46)');
+    assert.equal(saved.cellStyles['2'].mark, '#22c55e');
+    assert.equal(await object.locator('#highlight-Array-2').getAttribute('stroke'), saved.cellStyles['2'].highlight);
     assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'left');
-    assert.equal(saved.annotationColor, annotationColor);
-    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), annotationColor);
+    assert.equal(saved.annotationColor, '#ffffff');
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#ffffff');
     const custom = await page.evaluate(widget => {
       const svg = AlgoStructureRenderer.createSvg({ ...widget, highlightColor: '#123456', highlightIndices: '0' });
       return svg.querySelector('.highlight-blink').getAttribute('stroke');
@@ -98,11 +154,25 @@ test('structure annotations follow indices, persist and retain custom colors', {
       return !parsed.querySelector('parsererror');
     }, widget);
     assert.equal(canvasDraw, true);
-    const otherModes = await page.evaluate(widget => ['matrix', 'binary_tree', 'heap'].map(structureMode => {
-      const svg = AlgoStructureRenderer.createSvg({ ...widget, structureMode, content: structureMode === 'matrix' ? '10,20;30,40' : '10,20,30,40', annotationIndices: '2' });
-      return [...svg.querySelectorAll('[data-structure-annotation-index]')].map(item => item.dataset.structureAnnotationIndex);
-    }), widget);
-    assert.deepEqual(otherModes, [['2'], ['2'], ['2']]);
+    const layeredModes = ['normal', 'matrix', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+    const otherModes = await page.evaluate(({ widget, modes }) => modes.map(structureMode => {
+      const svg = AlgoStructureRenderer.createSvg({ ...widget, structureMode, content: structureMode === 'matrix' ? '10,20;30,40' : '10,20,30,40', annotationIndices: '2', highlightIndices: '0' });
+      const group = svg.querySelector('[data-slide-structure]');
+      const base = group.querySelector(':scope > [data-structure-base-layer]');
+      const style = group.querySelector(':scope > [data-structure-style-layer]');
+      return {
+        mode: structureMode,
+        baseDecorations: base.querySelectorAll('[id^="highlight-"], [id^="point-"], [id^="mark-"], [data-structure-annotation-index]').length,
+        styleDecorations: style.querySelectorAll('[id^="highlight-"], [id^="point-"], [id^="mark-"], [data-structure-annotation-index]').length,
+        order: [...group.children].map(item => item.getAttribute('data-structure-base-layer') || item.getAttribute('data-structure-style-layer'))
+      };
+    }), { widget, modes: layeredModes });
+    assert.deepEqual(otherModes.map(result => result.mode), layeredModes);
+    otherModes.forEach(result => {
+      assert.equal(result.baseDecorations, 0, `${result.mode} left a decoration in the base layer`);
+      assert.ok(result.styleDecorations > 0, `${result.mode} did not render a foreground style decoration`);
+      assert.deepEqual(result.order, ['1', 'foreground'], `${result.mode} layer order`);
+    });
     assert.deepEqual(errors, []);
   } finally { if (browser) await browser.close(); server.kill(); }
 });

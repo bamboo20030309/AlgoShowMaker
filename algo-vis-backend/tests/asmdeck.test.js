@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { webcrypto } = require('node:crypto');
 const { gunzipSync, gzipSync } = require('node:zlib');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
 
 global.crypto = webcrypto;
@@ -107,6 +108,37 @@ test('asmdeck gzip round-trip checks hashes and restores both deduplicated image
   await assert.rejects(() => archive.decode(new Blob([
     archive.MAGIC, gzipSync(Buffer.from(JSON.stringify(payload)))
   ])), /雜湊不符/);
+});
+
+test('older engine archives rebuild on the current engine while newer or different formats remain blocked', async () => {
+  const projected = await archive.project(fixture());
+  const blob = await archive.encode(projected);
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  const payload = JSON.parse(gunzipSync(bytes.subarray(archive.MAGIC.length)));
+  const [currentEngine, currentFormat] = archive.engineVersion().split('/').map(Number);
+
+  payload.manifest.engineVersion = `${Math.max(0, currentEngine - 1)}/${currentFormat}`;
+  const older = new Blob([archive.MAGIC, gzipSync(Buffer.from(JSON.stringify(payload)))]);
+  assert.equal((await archive.decode(older)).manifest.engineVersion, payload.manifest.engineVersion);
+
+  payload.manifest.engineVersion = `${currentEngine + 1}/${currentFormat}`;
+  const newer = new Blob([archive.MAGIC, gzipSync(Buffer.from(JSON.stringify(payload)))]);
+  await assert.rejects(() => archive.decode(newer), /不相容/);
+
+  payload.manifest.engineVersion = `${currentEngine}/${currentFormat + 1}`;
+  const differentFormat = new Blob([archive.MAGIC, gzipSync(Buffer.from(JSON.stringify(payload)))]);
+  await assert.rejects(() => archive.decode(differentFormat), /不相容/);
+});
+
+test('every bundled guest deck remains decodable after engine upgrades', async () => {
+  const publicRoot = path.resolve(__dirname, '../public');
+  const catalog = JSON.parse(fs.readFileSync(path.join(publicRoot, 'guest-decks.json'), 'utf8'));
+  assert.ok(catalog.decks.length > 0);
+  for (const entry of catalog.decks) {
+    const bytes = fs.readFileSync(path.join(publicRoot, entry.archive.replace(/^\//, '')));
+    const decoded = await archive.decode(new Blob([bytes]));
+    assert.ok(decoded.deck.groups?.length > 0, entry.id);
+  }
 });
 
 test('dirty code is refused instead of silently exporting the prior RUN', async () => {

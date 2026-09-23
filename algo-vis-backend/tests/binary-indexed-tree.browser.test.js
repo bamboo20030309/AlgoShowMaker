@@ -1,0 +1,360 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { chromium } = require('playwright');
+const { compile } = require('./helpers/compile');
+
+test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
+  { timeout: 60000 }, async () => {
+    const base = process.env.ASM_TEST_BASE_URL;
+    assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
+    const code = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Build.cpp'), 'utf8'
+    );
+    const input = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Build-sample_input.txt'), 'utf8'
+    );
+    const { trace } = await compile(code, input);
+    const variable = (name, functionName = '') => Object.entries(trace.variables)
+      .find(([, item]) => item.name === name && (!functionName || item.functionName === functionName))?.[0];
+    const numId = variable('num');
+    const bitId = variable('BIT');
+    const iId = variable('i', 'build');
+    const kId = variable('k', 'build');
+    assert.ok(numId && bitId && iId && kId);
+    const pathFrameIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'build'
+      && Number(frame.state?.[iId]?.data?.value) === 5
+      && Number(frame.state?.[kId]?.data?.value) === 5
+    ));
+    assert.ok(pathFrameIndex >= 0, 'sample must contain the build path starting at num[5]');
+    const frameIndex = trace.frames.findLastIndex(frame => (
+      frame.source?.function === 'build'
+      && Number(frame.state?.[iId]?.data?.value) === 8
+      && frame.events.some(event => event.type === 'write'
+        && event.targets?.some(target => target.variableId === bitId && target.resolvedIndex === 8))
+    ));
+    assert.ok(frameIndex > 0, 'sample must contain the update frame for index 8');
+    const write = trace.frames[frameIndex].events.find(event => event.type === 'write'
+      && event.targets?.some(target => target.variableId === bitId && target.resolvedIndex === 8));
+    const source = write.targets.find(target => target.role === 'source');
+    assert.equal(source.variableId, numId);
+    const sourceIndex = source.resolvedIndex;
+    const sourceValue = String(trace.frames[frameIndex].state[numId].data.items[sourceIndex].value);
+    const markerMoveFrameIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'build'
+      && frame.events.some(event => event.expression === 'i += i & -i'
+        && Number(event.payload?.before?.value) === 1
+        && Number(event.payload?.after?.value) === 2)
+    ));
+    assert.ok(markerMoveFrameIndex > 0, 'sample must contain an ordinary for-update marker move');
+    const terminalUpdate = trace.frames.flatMap(frame => frame.events || []).find(event => (
+      event.expression === 'i += i & -i'
+      && Number(event.payload?.before?.value) === 8
+      && Number(event.payload?.after?.value) === 16
+    ));
+    assert.ok(terminalUpdate, 'sample must retain the terminal i: 8 -> 16 runtime update');
+    assert.equal(terminalUpdate.loopBoundary, true);
+    assert.equal(terminalUpdate.loopBoundarySuppressed, true);
+    assert.equal(terminalUpdate.enabled, false);
+    const terminalUpdateFrameIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'build'
+      && frame.events.includes(terminalUpdate)
+    ));
+    assert.ok(terminalUpdateFrameIndex > 0);
+
+    const browser = await chromium.launch({
+      headless: true,
+      ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+    });
+    try {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.stack || error.message));
+      await page.goto(base + '/algorithm.html');
+      await page.waitForFunction(() => window.ASMTracePlayer && window.asmApplyTraceDocument);
+      await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(() => window.ASMTracePlayer.renderStable(0));
+      const initialNum = await page.evaluate(numId => {
+        const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
+        const cell = num?.querySelector('[data-trace-index="0"]');
+        return {
+          labels: [...(num?.querySelectorAll('[data-trace-index-label]') || [])]
+            .map(node => node.textContent.trim()),
+          value: cell?.dataset.traceDataValue || '',
+          fill: cell ? getComputedStyle(cell.querySelector(':scope > rect')).fill : ''
+        };
+      }, numId);
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index - 1), frameIndex);
+      const transfer = await page.evaluate(async index => {
+        const player = window.ASMTracePlayer;
+        const samples = [];
+        let settled = false;
+        const transition = player.render(index, { fromIndex: index - 1 }).finally(() => { settled = true; });
+        for (let count = 0; count < 180 && !settled; count++) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          const root = document.querySelector('#asm-trace-root');
+          const moving = root?.querySelector('.asm-trace-assign-transfer-value');
+          const movingText = moving?.querySelector('text');
+          if (moving && movingText) {
+            samples.push({
+              value: movingText.textContent,
+              transform: moving.getAttribute('transform') || ''
+            });
+          }
+        }
+        await transition;
+        return samples;
+      }, frameIndex);
+
+      const presentation = await page.evaluate(({ numId, bitId, iId, sourceIndex }) => {
+        const root = document.querySelector('#asm-trace-root');
+        const object = id => root.querySelector(`[data-trace-variable="${CSS.escape(id)}"]`);
+        const num = object(numId);
+        const bit = object(bitId);
+        const rect = node => {
+          const box = node?.getBoundingClientRect?.();
+          return box && { left: box.left, top: box.top, width: box.width, height: box.height,
+            right: box.right, bottom: box.bottom };
+        };
+        const cells = [...bit.querySelectorAll('[data-trace-index]')]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => ({
+            index: Number(node.dataset.traceIndex),
+            value: node.dataset.traceDataValue,
+            width: Number(node.querySelector(':scope > rect')?.getAttribute('width')),
+            bounds: rect(node.querySelector(':scope > rect'))
+          }));
+        const labels = [...bit.querySelectorAll('[data-trace-index-label]')]
+          .map(node => ({ index: Number(node.dataset.traceIndexLabel), text: node.textContent.trim() }));
+        const marker = [...root.querySelectorAll('.asm-trace-bound-object')]
+          .find(node => node.dataset.traceSourceVariableId === iId);
+        const highlights = [...root.querySelectorAll('[data-trace-attachment-kind="highlight"]')]
+          .filter(node => getComputedStyle(node).display !== 'none');
+        const highlight = highlights
+          .find(node => node.dataset.traceAttachedTo === `${bitId}#8`
+            && getComputedStyle(node).display !== 'none');
+        const numHighlight = highlights
+          .find(node => node.dataset.traceAttachedTo === `${numId}#${sourceIndex}`);
+        return {
+          dataObjects: [...root.querySelectorAll('.asm-trace-object[data-trace-variable]')]
+            .map(node => node.dataset.traceVariable),
+          teachingText: root.querySelector('.asm-trace-text-layer')?.textContent || '',
+          numBounds: rect(num), bitBounds: rect(bit),
+          numCellCount: [...num.querySelectorAll('[data-trace-index]')]
+            .filter(node => !node.dataset.traceContentRole).length,
+          cells, labels,
+          marker: marker && {
+            label: marker.querySelector('.trace-variable-marker-label-text')?.textContent,
+            target: marker.dataset.traceBindingTarget,
+            bounds: rect(marker)
+          },
+          highlight: rect(highlight),
+          numHighlight: rect(numHighlight)
+        };
+      }, { numId, bitId, iId, sourceIndex });
+
+      assert.deepEqual([...new Set(presentation.dataObjects)].sort(), [bitId, numId].sort());
+      assert.equal(presentation.numCellCount, 11, 'num displays the leading zero and all input values');
+      assert.deepEqual(initialNum.labels, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+      assert.equal(initialNum.value, '0');
+      assert.equal(initialNum.fill, 'rgb(204, 204, 204)');
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), pathFrameIndex);
+      const buildFocus = await page.evaluate(bitId => {
+        const bit = document.querySelector(`[data-trace-variable="${CSS.escape(bitId)}"]`);
+        return Object.fromEntries([...bit.querySelectorAll('[data-trace-index]')]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => [Number(node.dataset.traceIndex),
+            getComputedStyle(node.querySelector(':scope > rect')).fill]));
+      }, bitId);
+      assert.match(buildFocus[5], /165, 214, 167/);
+      assert.equal(buildFocus[6], 'rgb(255, 255, 255)');
+      assert.equal(buildFocus[8], 'rgb(255, 255, 255)');
+      assert.equal(buildFocus[1], 'rgb(204, 204, 204)',
+        'build(5) dims cells outside its BIT update path');
+      assert.equal(presentation.cells.length, 10);
+      assert.deepEqual(presentation.labels.map(label => label.text),
+        ['0001', '0010', '0011', '0100', '0101', '0110', '0111', '1000', '1001', '1010']);
+      const widths = Object.fromEntries(presentation.cells.map(cell => [cell.index, cell.width]));
+      assert.deepEqual(widths, { 1: 40, 2: 80, 3: 40, 4: 160, 5: 40,
+        6: 80, 7: 40, 8: 320, 9: 40, 10: 80 });
+      assert.equal(presentation.cells.find(cell => cell.index === 8).value, '54');
+      assert.match(presentation.teachingText, /下一個索引是 16/,
+        '@let lb resolves in the rendered teaching text for the current frame');
+      assert.ok(transfer.some(sample => sample.value === sourceValue),
+        `num[${sourceIndex}] value is copied into the assignment transfer`);
+      const transferTransforms = new Set(transfer.filter(sample => sample.value === sourceValue)
+        .map(sample => sample.transform));
+      assert.ok(transferTransforms.size > 2,
+        `num[${sourceIndex}] value visibly travels to BIT[8]`);
+      const scale = presentation.cells.find(cell => cell.index === 1).bounds.width / 40;
+      assert.ok(Math.abs(presentation.numBounds.left - (presentation.bitBounds.left - 40 * scale)) <= 1,
+        'num.left-bottom uses BIT.left-top offset -40 on x');
+      assert.ok(Math.abs(presentation.numBounds.bottom - (presentation.bitBounds.top - 70 * scale)) <= 1,
+        'num.left-bottom uses BIT.left-top offset -70 on y');
+      assert.equal(presentation.marker?.label, 'i');
+      assert.ok(presentation.marker?.target?.endsWith('#8'));
+      assert.ok(presentation.highlight?.width >= presentation.cells.find(cell => cell.index === 8).bounds.width
+        && presentation.highlight.height > presentation.cells.find(cell => cell.index === 8).bounds.height,
+      'highlight covers the wide value cell and its binary index label');
+      assert.ok(presentation.numHighlight, `build highlights the current source cell num[${sourceIndex}]`);
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index - 1), markerMoveFrameIndex);
+      const markerMotion = await page.evaluate(async ({ index, iId }) => {
+        const samples = [];
+        let settled = false;
+        const transition = window.ASMTracePlayer.render(index, { fromIndex: index - 1 })
+          .finally(() => { settled = true; });
+        for (let count = 0; count < 180 && !settled; count++) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          const marker = [...document.querySelectorAll('#asm-trace-root .asm-trace-bound-object')]
+            .find(node => node.dataset.traceSourceVariableId === iId);
+          const box = marker?.getBoundingClientRect?.();
+          if (box) samples.push({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+        }
+        await transition;
+        return samples;
+      }, { index: markerMoveFrameIndex, iId });
+      const markerPositions = new Set(markerMotion.map(point => (
+        `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`
+      )));
+      assert.ok(markerPositions.size > 2, 'ordinary for updates visibly move the i marker between BIT cells');
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), terminalUpdateFrameIndex);
+      const terminalPresentation = await page.evaluate(iId => {
+        const marker = [...document.querySelectorAll('#asm-trace-root .asm-trace-bound-object')]
+          .find(node => node.dataset.traceSourceVariableId === iId);
+        return marker && {
+          target: marker.dataset.traceBindingTarget,
+          label: marker.querySelector('.trace-variable-marker-label-text')?.textContent
+        };
+      }, iId);
+      assert.ok(!terminalPresentation?.target?.endsWith('#16'),
+        'the suppressed terminal loop update does not present a move to virtual BIT[16]');
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
+test('Binary Indexed Tree query range stays green without framing an invisible BIT[0]',
+  { timeout: 60000 }, async () => {
+    const base = process.env.ASM_TEST_BASE_URL;
+    assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
+    const code = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Range_Query.cpp'), 'utf8'
+    );
+    const input = fs.readFileSync(
+      path.join(__dirname, '../algorithm_sample/Tree/Binary_Indexed_Tree_Range_Query-sample_input.txt'), 'utf8'
+    );
+    const { trace } = await compile(code, input);
+    const variable = (name, functionName = '') => Object.entries(trace.variables)
+      .find(([, item]) => item.name === name && (!functionName || item.functionName === functionName))?.[0];
+    const numId = variable('num');
+    const bitId = variable('BIT');
+    const iId = variable('i', 'sum');
+    const firstQueryIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'sum'
+      && frame.source?.recursionRootIndex === 0
+      && Number(frame.state?.[iId]?.data?.value) === 7
+      && frame.styles.some(style => style.targetVariableId === numId
+        && style.selector?.startExpression === 'i-lb+1')
+    ));
+    const secondSumStartIndex = trace.frames.findIndex(frame => (
+      frame.source?.function === 'sum'
+      && frame.source?.recursionRootIndex === 1
+      && frame.events.some(event => event.type === 'declare'
+        && event.targets?.some(target => target.variableId === iId))
+    ));
+    const sumSummaryIndexes = trace.frames.map((frame, index) => (
+      frame.source?.function === 'sum' && frame.texts.some(text => text.id === 'sum_total')
+        ? index : -1
+    )).filter(index => index >= 0);
+    assert.ok(firstQueryIndex >= 0 && secondSumStartIndex > 0);
+    assert.equal(sumSummaryIndexes.length, 2, 'each sum call adds one total frame');
+
+    const browser = await chromium.launch({
+      headless: true,
+      ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+    });
+    try {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.stack || error.message));
+      await page.goto(base + '/algorithm.html');
+      await page.waitForFunction(() => window.ASMTracePlayer && window.asmApplyTraceDocument);
+      await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), firstQueryIndex);
+      const firstPath = await page.evaluate(({ numId, bitId }) => {
+        const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
+        const bit = document.querySelector(`[data-trace-variable="${CSS.escape(bitId)}"]`);
+        const fills = [...num.querySelectorAll('[data-trace-index]')]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => ({
+            index: Number(node.dataset.traceIndex),
+            fill: getComputedStyle(node.querySelector(':scope > rect')).fill
+          }));
+        const focus = Object.fromEntries([...bit.querySelectorAll('[data-trace-index]')]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => [Number(node.dataset.traceIndex),
+            getComputedStyle(node.querySelector(':scope > rect')).fill]));
+        return { fills, focus };
+      }, { numId, bitId });
+      assert.match(firstPath.fills.find(cell => cell.index === 7).fill, /165, 214, 167/,
+        '@let lb resolves the current green num[7:7] query range');
+      assert.equal(firstPath.focus[4], 'rgb(255, 255, 255)');
+      assert.equal(firstPath.focus[6], 'rgb(255, 255, 255)');
+      assert.match(firstPath.focus[7], /165, 214, 167/);
+      assert.equal(firstPath.focus[1], 'rgb(204, 204, 204)',
+        'sum(7) dims cells outside its full BIT path');
+
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), sumSummaryIndexes[0]);
+      const greenSummary = await page.evaluate(({ numId, bitId }) => {
+        const colors = id => [...document.querySelectorAll(
+          `[data-trace-variable="${CSS.escape(id)}"] [data-trace-index]`)]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => ({ index: Number(node.dataset.traceIndex),
+            fill: getComputedStyle(node.querySelector(':scope > rect')).fill }));
+        return { num: colors(numId), bit: colors(bitId),
+          text: document.querySelector('.asm-trace-text-layer')?.textContent || '' };
+      }, { numId, bitId });
+      assert.match(greenSummary.text, /所有數字總和為 39/);
+      assert.ok(greenSummary.num.filter(cell => cell.index >= 1 && cell.index <= 7)
+        .every(cell => /165, 214, 167/.test(cell.fill)));
+      assert.deepEqual(greenSummary.bit.filter(cell => /165, 214, 167/.test(cell.fill))
+        .map(cell => cell.index), [4, 6, 7]);
+
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), sumSummaryIndexes[1]);
+      const redSummary = await page.evaluate(({ numId, bitId }) => {
+        const colors = id => [...document.querySelectorAll(
+          `[data-trace-variable="${CSS.escape(id)}"] [data-trace-index]`)]
+          .filter(node => !node.dataset.traceContentRole)
+          .map(node => ({ index: Number(node.dataset.traceIndex),
+            fill: getComputedStyle(node.querySelector(':scope > rect')).fill }));
+        return { num: colors(numId), bit: colors(bitId),
+          text: document.querySelector('.asm-trace-text-layer')?.textContent || '' };
+      }, { numId, bitId });
+      assert.match(redSummary.text, /所有數字總和為 14/);
+      assert.ok(redSummary.num.filter(cell => cell.index >= 1 && cell.index <= 3)
+        .every(cell => /239, 154, 154/.test(cell.fill)));
+      assert.deepEqual(redSummary.bit.filter(cell => /239, 154, 154/.test(cell.fill))
+        .map(cell => cell.index), [2, 3]);
+
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), secondSumStartIndex - 1);
+      const previousBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), secondSumStartIndex);
+      const nextBounds = await page.evaluate(() => window.ASMTraceRenderers.currentBounds());
+      const deductedFill = await page.evaluate(numId => {
+        const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
+        const cell = num.querySelector('[data-trace-index="3"]');
+        return getComputedStyle(cell.querySelector(':scope > rect')).fill;
+      }, numId);
+      assert.equal(nextBounds.bottom, previousBounds.bottom,
+        'disabled terminal i: 8 -> 0 placement does not expand automatic camera bounds');
+      assert.equal(nextBounds.centerY, previousBounds.centerY);
+      assert.match(deductedFill, /239, 154, 154/,
+        'the prefix range deducted from the answer is red');
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });

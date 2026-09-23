@@ -5,7 +5,7 @@
 
 - 文件語言：繁體中文
 - 適用介面：演算法編輯器、Trace Studio、演算法投影片編輯器與投影片播放介面
-- 最後核對日期：2026/09/20
+- 最後核對日期：2026/09/21
 
 > 本手冊介紹 `// @frame` 這套追蹤語法。它和直接呼叫 `AV.hpp` 的傳統 `av.draw(...)`
 > 繪圖 API 是兩套不同入口；使用追蹤語法時，不需要自行呼叫 `av.start_draw()`。
@@ -18,23 +18,24 @@
 4. [共用修飾詞](#共用修飾詞)
 5. [`@frame`：建立動畫幀](#frame建立動畫幀)
 6. [`@defaults`：每幀自動套用](#defaults每幀自動套用的呈現預設)，[`@preset` 與 `@frame use`：重用視圖設定](#preset-與-frame-use重用視圖設定)
-7. [`@keep`：保留畫面狀態](#keep保留畫面狀態)
-8. [`@layout recursion`：遞迴樹排版](#layout-recursion遞迴樹排版)
-9. [`@exit`：提早讓物件退場](#exit提早讓物件退場)
-10. [`@text`：加入說明文字](#text加入說明文字)
-11. [`@style`：設定格子樣式](#style設定格子樣式)
-12. [`@segment`：標示連續區間](#segment標示連續區間)
-13. [`@arrow`：連接視覺物件](#arrow連接視覺物件)
-14. [`@place`：放置同幀物件](#place放置同幀物件)
-15. [`render` 與 `with`：選擇資料結構畫法](#render-與-with選擇資料結構畫法)
-16. [`at` 與 `offset`：相對定位](#at-與-offset相對定位)
-17. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
-18. [完整使用案例](#完整使用案例)
-19. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
+7. [`@let`：幀內唯讀運算別名](#let幀內唯讀運算別名)
+8. [`@keep`：保留畫面狀態](#keep保留畫面狀態)
+9. [`@layout recursion`：遞迴樹排版](#layout-recursion遞迴樹排版)
+10. [`@exit`：提早讓物件退場](#exit提早讓物件退場)
+11. [`@text`：加入說明文字](#text加入說明文字)
+12. [`@style`：設定格子樣式](#style設定格子樣式)
+13. [`@segment`：標示連續區間](#segment標示連續區間)
+14. [`@arrow`：連接視覺物件](#arrow連接視覺物件)
+15. [`@place`：放置同幀物件](#place放置同幀物件)
+16. [`render` 與 `with`：選擇資料結構畫法](#render-與-with選擇資料結構畫法)
+17. [`at` 與 `offset`：相對定位](#at-與-offset相對定位)
+18. [`when`：條件與跨幀判斷](#when條件與跨幀判斷)
+19. [完整使用案例](#完整使用案例)
+20. [事件動畫與 Trace Studio](#事件動畫與-trace-studio)
     - [`@events`：每幀事件動畫控制](#events每幀事件動畫控制)
-20. [程式碼片段與條件著色](#程式碼片段與條件著色)
-21. [常見錯誤與限制](#常見錯誤與限制)
-22. [文件維護規則](#文件維護規則)
+21. [程式碼片段與條件著色](#程式碼片段與條件著色)
+22. [常見錯誤與限制](#常見錯誤與限制)
+23. [文件維護規則](#文件維護規則)
 
 ## 五分鐘快速入門
 
@@ -135,6 +136,7 @@ arr[i] = key;
 | `@keep` | 保留變數或上一幀 | 支援 | 支援 | 支援 | 支援目前值條件 | 不支援 | 不支援 | 支援 |
 | `@layout` | 宣告或設定具名遞迴樹排版 | 宣告時必須使用 | 宣告時支援 | 宣告時支援 | 不支援 | 不支援 | 專用設定語法 | 不支援 |
 | `@exit` | 提早讓一或多個可見變數退場 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
+| `@let` | 建立幀內唯讀運算別名 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 | 不支援 |
 | `@text` | 加入說明文字與 TTS | 支援 | 支援 | 支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@style` | 套用格子樣式 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | 不支援 | 不支援 |
 | `@segment` | 標示陣列區間 | 支援 | 不支援 | 不支援 | 支援 | 不支援 | `showWidth`、heap格內區段的`split` | 不支援 |
@@ -292,7 +294,7 @@ arr[i] = key;
 ```
 
 或使用 `// @camera auto`，讓每幀自動捕捉。區塊支援 `@camera`、`@object`、`@place`、
-`@style`、`@segment`、`@text`、`@arrow`、`@events`、`@automark`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
+`@let`、`@style`、`@segment`、`@text`、`@arrow`、`@events`、`@automark`；不接受 `@frame`、`@keep`、`@exit`、`@layout` 等流程指令。
 一份程式只定義一個 defaults 區塊，不可巢狀，必須以 `@enddefaults` 結束。
 
 每幀在當前作用域重新解析變數與運算式；遞迴參數 `arr` 會指向該次呼叫的陣列，
@@ -335,7 +337,7 @@ for (int i=2; i<=n; i++) {
 可寫 `// @frame use sieve_view when i <= n`。
 
 預設區塊必須以 `@endpreset` 結束，至少包含一個 `@` 指令。preset 定義層不再維護指令白名單，
-而是原樣保存每一條設定，再由 `@object`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、
+而是原樣保存每一條設定，再由 `@object`、`@let`、`@place`、`@style`、`@segment`、`@text`、`@arrow`、
 `@camera` 等各自的解析器於 `@frame use` 位置展開。這讓之後新增的幀設定不必再次修改 preset
 的允許清單。變數與 `when` 仍在使用位置解析，不會在 preset 定義時執行。
 
@@ -391,6 +393,27 @@ for (int i=2; i<=n; i++) {
 - `offset(x,y)`：在鏡頭中心加入像素位移。
 - `when`：條件成立時才採用這條鏡頭設定。
 - 優先序為「Trace Studio 的幀覆寫 → 本幀／preset 的 `@camera` → Studio 全域鏡頭 → 自動鏡頭」。
+
+## `@let`：幀內唯讀運算別名
+
+`@let` 可替同一幀內重複使用的安全運算式命名，指令名稱固定使用小寫：
+
+```cpp
+// @frame BIT[i]
+// @let lb = i & -i
+// @let left = i - lb + 1
+// @let deduct = iteration.first(i) == L - 1
+// @style num[left:i] background AV_blue
+// @text "BIT[${i}] 涵蓋 num[${left}~${i}]" at num.top
+```
+
+- 語法為 `// @let 名稱 = 運算式`。
+- 別名只供該幀的繪圖運算式使用，不建立 C++ 變數、畫布物件、marker 或 runtime 事件。
+- 每次程式執行到該幀時，會依該幀捕捉的 C++ 狀態重新求值；上一步或時間線跳轉也從穩定幀重建。
+- 後面的 `@let` 可以引用前面已宣告的別名。名稱不可重複、不可使用 `value`／`index`，也不可與該幀可見的 C++ 變數同名。
+- 運算式可使用算術、位元、比較與邏輯運算；比較結果可直接供 `when` 條件使用。
+- 可寫在 `@preset` 或 `@defaults` 中，在每個使用位置重新求值。
+- 目前不提供可修改狀態的指令變數，也不因 `@let` 執行迴圈。
 
 ## `@keep`：保留畫面狀態
 
@@ -1063,7 +1086,7 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 | --- | --- | --- |
 | `render normal` | `array`、`sequence` | 一般水平陣列 |
 | `render heap` | 無 | Heap 樹狀排列 |
-| `render segment-tree` | `segment_tree`、`segmenttree` | Segment Tree |
+| `render segment_tree` | `segment-tree`、`segmenttree` | 依實際區間寬度排列的標準遞迴 Segment Tree |
 | `render bit` | `fenwick` | Binary Indexed Tree |
 | `render disk` | 無 | 圓盤／柱狀序列 |
 | `render stack` | 無 | Stack |
@@ -1090,6 +1113,67 @@ int displaySize = arr.size() - 1;
 // @frame arr[1,i] render heap with range(1,displaySize)
 ```
 
+### 標準線段樹的 `range`
+
+```cpp
+// @frame tree[now] render segment_tree with range(1,n)
+```
+
+對 `render segment_tree` 而言，`range(start,end)` 同時指定根節點代表的資料區間，
+以及 tree 陣列中的根索引；左右端點都包含在內。`range(1,n)` 表示資料區間是
+`[1,n]` 且根節點是 `tree[1]`；`range(0,n-1)` 則表示資料區間是 `[0,n-1]`
+且根節點是 `tree[0]`。renderer 會依根索引自動選擇 1-based 或 0-based 的子節點公式。
+
+renderer 會用標準遞迴的 `mid=(left+right)/2` 拆分區間；最小資料格是
+40×40px，下方區間索引格高 12px。每個節點的寬度依其區間長度計算，垂直位置則使用該節點的
+真實遞迴深度。當 `n` 不是二次方時不會補假節點，也不會把較早成為葉節點的
+節點強制對齊到最底層。
+
+每個節點下方會自動顯示平常置中的 tree index，以及靠格子右側對齊的 interval。
+非葉節點使用 `[left,right]`；葉節點的 `[x,x]` 會簡化成 `[x]`。interval 的基準字級
+比 index 小 2px。兩者會在 12px 標籤框內垂直置中；實測字寬發生碰撞時，index 會先向左避讓，
+整體空間仍不足才縮小字體。value 則在一般數值可容納時固定使用
+16px，不因葉節點只有單格寬而縮小。標準的
+`vector<int> tree(4*n+5)` 可以直接
+視覺化，不需要另外產生顯示用陣列。
+
+標準 lazy segment tree 也可沿用複合欄位選項：
+
+```cpp
+// @object tree render segment_tree with range(1,n), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
+```
+
+`algorithm_sample/Tree/Segment_Tree_standard.cpp` 的輸入格式是 `n m`、n 個初值，
+接著輸入 m 個操作：`1 L R value` 為區間加值、`2 L R value` 為區間設值、
+`3 L R` 為區間總和查詢。
+
+查詢區段仍可沿用格內 `@segment` 與 `split`：
+
+```cpp
+// @segment tree[1][L-1:R-1] color AV_green as query_range with split(now)
+```
+
+第二組索引是相對於根區間起點的零基底座標；`split(now)` 會把查詢區段映射到
+目前遞迴路徑及仍待處理的兄弟節點，`split(now,after)` 會移除剛完成的目前節點。
+
+### `gap(horizontal,vertical)`
+
+```cpp
+// @frame tree render segment_tree with range(1,n), gap(10,24)
+// @frame arr with columns(5), gap(8,16)
+```
+
+第一個值是水平間距，第二個值是垂直間距。`gap(10)` 保留相容寫法，等同
+`gap(10,10)`。未寫 `gap` 時兩者都是 0，範例通常維持格子彼此貼合。
+
+一般陣列的水平 gap 只放在相鄰格子之間，垂直 gap 放在換列之間。queue 使用水平值；
+stack 與 disk 使用垂直值。heap、BIT 與標準 segment tree 的節點寬度會連同內部最小格
+一起展開：代表 `count` 個單位的節點寬度為
+`count*40 + (count-1)*horizontalGap`。例如三個單位、水平 gap 10px 時寬度是 140px。
+
+heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線；垂直 gap 為 0 時，
+上下層緊貼且不畫連線。
+
 ### `columns(count)`
 
 ```cpp
@@ -1098,16 +1182,29 @@ int displaySize = arr.size() - 1;
 
 設定矩陣或平面排列使用的欄數。參數可使用安全算術運算式。
 
-### `fields(...)`、`hide(...)` 與 `separator(...)`
+### `fields(...)`、`hide(...)`、`format(...)` 與 `separator(...)`
 
 ```cpp
 // @frame tree render heap with range(1,Tsize-1), fields(tree,lazy,sets), hide(lazy=0,sets=LM)
 // @frame tree render heap with fields(tree,lazy,sets), separator(" / ")
+// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
 ```
 
 `fields` 把多個陣列的同一索引合併到主要物件的一格中；每個陣列仍保留自己的變數身分、狀態與事件。
 `hide` 必須明確寫欄位和值，每幀重新判定；被隱藏的欄位不留下空位或多餘分隔符號。
 分隔符號預設為逗點，只有需要其他符號時才寫 `separator`。第一個field必須是`@frame`的主要物件。
+
+`format(field=type,...)`只改變顯示文字；事件、`when`、`hide`與運算仍使用原始值。靜態格子與事件動畫共用相同格式。第一版支援：
+
+- `raw`：原始文字。
+- `signed`：正數加上`+`，零與負數維持原樣。
+- `assign`：加上`=`，用於set／覆寫語意。
+- `binary`、`hex`：整數顯示為`0b...`、`0x...`；負數將負號放在前面。
+- `bool`：數字0顯示`false`，其他有限數字顯示`true`。
+- `fixed(n)`：固定顯示n位小數，n為0～10。
+- `percent(n)`：乘以100後顯示n位小數與`%`，n為0～10。
+
+例如`tree=15`、`sets=8`、`lazy=3`會依`fields(tree,sets,lazy)`顯示為`15,=8,+3`。
 
 `pair`與`tuple`本身仍是一個元素，因此`vector<pair<...>>`及`vector<tuple<...>>`每個元素只畫一格。
 成員預設以同一separator連接且保留零；pair可用`hide(first=value,second=value)`隱藏指定成員。
@@ -1227,6 +1324,7 @@ bottom-left  bottom  bottom-right
 | --- | --- |
 | 數值 | 整數、十進位數 |
 | 算術 | `+`、`-`、`*`、`/`、`%` |
+| 位元 | `&`、`|`、`^`、`~`、`<<`、`>>` |
 | 比較 | `<`、`<=`、`>`、`>=`、`==`、`!=` |
 | 邏輯 | `&&`、`||`、`!`，以及 `and`、`or` |
 | 括號 | `(...)` |
@@ -1242,7 +1340,7 @@ bottom-left  bottom  bottom-right
 // @style arr[low:high] background AV_green when value < pivot and index != high
 ```
 
-不支援任意函式呼叫、三元運算子、位元運算、字串常值或具有副作用的運算式。
+不支援任意函式呼叫、三元運算子、字串常值或具有副作用的運算式。
 例如 `max(i,j)`、`i++`、`condition ? a : b` 都不應放進視覺化條件。
 
 ### 跨幀與事件函式

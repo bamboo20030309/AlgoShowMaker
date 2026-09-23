@@ -400,6 +400,45 @@
     return hasReflow ? MARKER_REFLOW_TIMING.duration : 0;
   }
 
+  function deferredMarkerEntranceBarriers({
+    enteringMarkerKeys = new Set(), traceDocument, eventFrame,
+    eventTimeline = [], currentElements, previousObjects
+  } = {}) {
+    const barriers = new Map();
+    const previousMarkers = [];
+    previousObjects?.forEach?.(element => {
+      const candidates = [
+        element,
+        ...(element?.querySelectorAll?.('[data-trace-source-variable-id]') || [])
+      ];
+      candidates.forEach(candidate => {
+        if (!candidate?.dataset?.traceSourceVariableId) return;
+        const target = String(candidate.dataset.traceBindingTarget || '');
+        if (!markerTargetParts(target)) return;
+        previousMarkers.push({ element: candidate, target });
+      });
+    });
+    enteringMarkerKeys.forEach(key => {
+      const entering = currentElements?.get?.(key);
+      const target = markerTargetBeforeFrameEvents(traceDocument, eventFrame, entering);
+      if (!target) return;
+      const blockers = previousMarkers.filter(item => item.target === target);
+      if (!blockers.length) return;
+      let barrier = 0;
+      (eventTimeline || []).forEach(slot => {
+        if (!['assign', 'position', 'exit'].includes(slot?.animation)) return;
+        const targets = slot.event?.targets || [];
+        const matchesBlocker = blockers.some(blocker => targets.some(candidate => (
+          candidate?.role !== 'source'
+          && markerMatchesEventTarget(blocker.element, candidate)
+        )));
+        if (matchesBlocker) barrier = Math.max(barrier, Number(slot.end) || 0);
+      });
+      if (barrier > 0) barriers.set(key, barrier);
+    });
+    return barriers;
+  }
+
   function markerFrameMotionDelay(key, swapStart, eventDelay, reflowKeys) {
     if (reflowKeys?.has?.(key)) return 0;
     return Math.max(Number(swapStart) || 0, Number(eventDelay) || 0);
@@ -504,6 +543,8 @@
 
   function createPlaybackPlan({
     frame, direction, runId = 0, transitionSteps = [], enteringMarkerKeys = [], eventTimeline = [],
+    deferredMarkerEntranceKeys = [], deferredMarkerEntranceStartMs = 0,
+    deferredMarkerReflowKeys = [],
     initialDelayMs = 0, keepTransitionKeys = [], keepTransitionDurationMs = 0,
     cameraTransitionDurationMs = 0
   } = {}) {
@@ -531,15 +572,11 @@
       : 0;
     const entranceTargets = [...new Set(enteringMarkerKeys)].filter(Boolean);
     const entranceDuration = entranceTargets.length ? APPEAR_TIMING.duration : 0;
-    const markerReflowActive = entranceTargets.length > 0 && enabledTransitions.some(step => (
-      step?.subtype === 'marker-group-reflow' && Number(step?.durationMs) > 0
-    ));
-    const entranceLead = markerReflowActive ? MARKER_REFLOW_TIMING.entranceDelay : 0;
-    // Existing markers start making room first. The entering marker joins a
-    // moment later, while the reflow is still running, and events wait for
-    // both overlapping phases to complete.
+    // A newly entering marker and its peers begin their motions together.
+    // Letting peers reflow first makes a lone marker visibly drift before the
+    // incoming marker exists, so no marker entrance reserves an advance lead.
     const frameTransitionStart = preKeepEnd;
-    const entranceStart = frameTransitionStart + Math.max(keepDuration, entranceLead);
+    const entranceStart = frameTransitionStart + keepDuration;
     const scheduledEventStart = regularSlots.length
       ? Math.min(...regularSlots.map(slot => Number(slot.promptStart ?? slot.start) || 0))
       : 0;
@@ -574,13 +611,19 @@
     const eventEnd = regularSlots.reduce(
       (end, slot) => Math.max(end, Number(slot.end) || 0), eventStart
     );
+    const deferredEntranceTargets = [...new Set(deferredMarkerEntranceKeys)].filter(Boolean);
+    const deferredEntranceStart = deferredEntranceTargets.length
+      ? Math.max(eventStart, Number(deferredMarkerEntranceStartMs) || 0)
+      : 0;
+    const deferredEntranceDuration = deferredEntranceTargets.length ? APPEAR_TIMING.duration : 0;
+    const deferredEntranceEnd = deferredEntranceStart + deferredEntranceDuration;
     return {
       version: 1,
       id: `frame-playback:${frame?.id || 'unknown'}:${runId}`,
       frameId: String(frame?.id || ''),
       direction: Number(direction) || 0,
       preEventDurationMs: eventStart,
-      totalDurationMs: Math.max(preKeepEnd, eventStart, eventEnd),
+      totalDurationMs: Math.max(preKeepEnd, eventStart, eventEnd, deferredEntranceEnd),
       phases: [
         ...(initialDelay ? [{
           id: 'code-transition',
@@ -656,7 +699,35 @@
           startMs: eventStart,
           durationMs: Math.max(0, eventEnd - eventStart),
           steps: eventSteps
-        }
+        },
+        ...(deferredEntranceTargets.length ? [{
+          id: 'deferred-object-entrance',
+          mode: 'parallel',
+          startMs: deferredEntranceStart,
+          durationMs: deferredEntranceDuration,
+          steps: [
+            ...deferredEntranceTargets.map(targetKey => ({
+              id: `marker-enter:${targetKey}`,
+              kind: 'object-entrance',
+              subtype: 'marker-enter',
+              targetKey,
+              durationMs: APPEAR_TIMING.duration,
+              blocking: true,
+              enabled: true,
+              source: 'automatic'
+            })),
+            ...([...new Set(deferredMarkerReflowKeys)].filter(Boolean).length ? [{
+              id: 'deferred-marker-group-reflow',
+              kind: 'object-transition',
+              subtype: 'marker-group-reflow',
+              targetKeys: [...new Set(deferredMarkerReflowKeys)].filter(Boolean),
+              durationMs: MARKER_REFLOW_TIMING.duration,
+              blocking: true,
+              enabled: true,
+              source: 'automatic'
+            }] : [])
+          ]
+        }] : [])
       ]
     };
   }
@@ -1341,6 +1412,18 @@
     if (Object.prototype.hasOwnProperty.call(value, 'value')) return String(value.value ?? '');
     if (Array.isArray(value.items)) return `[${value.items.map(displayEventValue).join(', ')}]`;
     return String(value.label || value.type || value.kind || '');
+  }
+
+  function displayEventFieldValue(value, frame, variableId) {
+    if (!variableId || typeof window.ASMTraceRenderers?.formatDisplayValue !== 'function') {
+      return displayEventValue(value);
+    }
+    for (const options of Object.values(frame?.rendererOptions || {})) {
+      const entry = options?.format?.entries?.find(item => item.variableId === variableId);
+      if (!entry) continue;
+      return window.ASMTraceRenderers.formatDisplayValue(value, options, entry.field, variableId);
+    }
+    return displayEventValue(value);
   }
 
   function eventTargetKey(traceDocument, eventFrame, target) {
@@ -2136,12 +2219,23 @@
     return { group, rect, text, width, height };
   }
 
+  function assignableValueText(element, variableId = '') {
+    const text = element?.matches?.('text')
+      ? element
+      : element?.querySelector?.('text');
+    if (!text || text.dataset?.traceContentRole === 'index') return null;
+    if (text.dataset?.traceFieldVariable) return text;
+    if (variableId) {
+      const field = [...text.querySelectorAll?.('[data-trace-field-variable]') || []]
+        .find(candidate => candidate.dataset.traceFieldVariable === variableId);
+      if (field) return field;
+    }
+    return text;
+  }
+
   function assignableTargetText(operand) {
     if (!operand || operand.marker) return null;
-    const text = operand.element.matches?.('text')
-      ? operand.element
-      : operand.element.querySelector?.('text');
-    return text?.dataset?.traceContentRole === 'index' ? null : text;
+    return assignableValueText(operand.element, operand.target?.variableId);
   }
 
   function createAssignmentTransfer(
@@ -2158,7 +2252,7 @@
       || targetOperand.element.closest?.('[data-trace-visibility="hidden"]')) return null;
 
     const sourceElement = valueOnly
-      ? assignableTargetText({ element: sourceOperand.element })
+      ? assignableTargetText(sourceOperand)
       : (sourceVisual || sourceOperand.element);
     const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
     if (!sourceElement || (valueOnly && !targetElement)) return null;
@@ -2171,7 +2265,22 @@
     }
     if (!(box?.width > 0) || !(box?.height > 0)) return null;
 
-    const clone = sourceElement.cloneNode(true);
+    const sourceIsField = sourceElement.matches?.('tspan[data-trace-field-variable]');
+    const sourceText = sourceIsField ? sourceElement.parentElement : null;
+    const computedSource = sourceIsField ? window.getComputedStyle(sourceElement) : null;
+    const clone = sourceIsField
+      ? createSvg('text', {
+        x: box.x + box.width / 2,
+        y: sourceText?.getAttribute?.('y') ?? box.y + box.height / 2,
+        'text-anchor': 'middle',
+        'dominant-baseline': sourceText?.getAttribute?.('dominant-baseline') || 'middle',
+        'font-family': sourceText?.getAttribute?.('font-family') || computedSource?.fontFamily || 'Arial',
+        'font-size': sourceText?.getAttribute?.('font-size') || computedSource?.fontSize || 14,
+        'font-weight': sourceText?.getAttribute?.('font-weight') || computedSource?.fontWeight || 'normal',
+        fill: sourceElement.getAttribute('fill') || sourceText?.getAttribute?.('fill')
+          || computedSource?.fill || '#1f282d'
+      }, sourceElement.textContent)
+      : sourceElement.cloneNode(true);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
       node.removeAttribute?.('data-trace-object-key');
@@ -2308,13 +2417,13 @@
       ))) return;
       const element = options.currentElements?.get?.(track.key);
       if (!element || element.dataset?.traceSourceVariableId) return;
-      const targetText = element.matches?.('text')
-        ? element
-        : element.querySelector?.('text');
-      if (!targetText) return;
-      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
       const cell = element.closest?.('[data-trace-index]') || element;
       const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const targetText = assignableValueText(element, variableId);
+      if (!targetText) return;
+      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
+      const fieldVariableId = targetText.dataset?.traceFieldVariable
+        || track.target?.variableId || variableId;
       const index = Number(cell.dataset?.traceIndex);
       const styleRect = conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
@@ -2322,6 +2431,7 @@
         : null;
       tracks.push({ ...track, targetText: fixedIndex ? null : targetText,
         targetCell: fixedIndex ? element : null, variableId, index, styleRect,
+        fieldVariableId,
         applied: Symbol('unapplied'), currentValue: track.initial });
     });
     const styleTargets = tracks.filter(track => track.styleRect);
@@ -2469,7 +2579,9 @@
       ]);
     };
     const apply = (track, value) => {
-      const displayed = displayEventValue(value);
+      const displayed = track.targetCell
+        ? displayEventValue(value)
+        : displayEventFieldValue(value, styleFrame, track.fieldVariableId);
       if (track.applied === displayed) return;
       track.applied = displayed;
       track.currentValue = value;
@@ -2651,10 +2763,13 @@
       : operand.point.y + (operand.marker
         ? Number(rawDelta.y) || 0
         : Number(carrierDelta.y) || 0);
-    const beforeValue = displayEventValue(event?.payload?.before);
-    const afterValue = displayEventValue(event?.payload?.after);
+    const beforeValue = displayEventFieldValue(event?.payload?.before, eventFrame, target.variableId);
+    const afterValue = displayEventFieldValue(event?.payload?.after, eventFrame, target.variableId);
     const sourceValue = Object.prototype.hasOwnProperty.call(event?.payload || {}, 'source')
       ? event.payload.source : null;
+    const formattedSourceValue = sourceValue == null
+      ? null
+      : displayEventFieldValue(sourceValue, eventFrame, target.variableId);
     const sourceLabel = String(source?.expression || afterValue || '').trim();
     const sourceOperands = sources.map(item => eventOperand(
       traceDocument, eventFrame, item, sourceValue,
@@ -2699,7 +2814,7 @@
         root,
         item,
         operand,
-        sourceValue,
+        formattedSourceValue,
         item ? previousVisualElement(previousObjects, item.visualKey) : null,
         { valueOnly: event?.compound === true || binaryAddition }
       )).filter(Boolean);
@@ -3234,7 +3349,8 @@
     if (isDeclarationInitializerAssignment(event)) {
       return Boolean(assignmentTargetMarker(event, elements, eventFrame, previousObjects));
     }
-    if (event?.type !== 'write' || event.update !== true) return false;
+    if (event?.type !== 'write'
+      || (event.update !== true && event.compound !== true)) return false;
     for (const [, element] of elements || []) {
       if (!(event.targets || []).some(target => markerMatchesEventTarget(element, target))) continue;
       return true;
@@ -4281,7 +4397,8 @@
   }
 
   function exitMarkerReflowSchedule({
-    eventTimeline, currentElements, previousPlacements, currentPlacements, previousObjects
+    eventTimeline, currentElements, previousPlacements, currentPlacements, previousObjects,
+    excludedPeerKeys = new Set()
   } = {}) {
     const schedule = new Map();
     (eventTimeline || []).filter(slot => (
@@ -4319,6 +4436,10 @@
         const peers = [];
         currentElements?.forEach?.((element, key) => {
           if (!element?.dataset?.traceSourceVariableId) return;
+          // Markers held behind an outgoing lifetime's event barrier are not
+          // visible peers yet. Their destination-frame geometry must not
+          // push the outgoing marker aside before they enter.
+          if (excludedPeerKeys?.has?.(key)) return;
           if ((slot.event?.targets || []).some(target => markerMatchesEventTarget(element, target))) return;
           const candidatePrevious = previousVisualForEntry(element, previousObjects, key);
           // A new loop activation can reuse the same authored marker key while
@@ -5420,6 +5541,25 @@
       && geometry.height > 0 ? geometry : null;
   }
 
+  function syncHeapSegmentBoundaries(element) {
+    const rect = element?.classList?.contains('asm-trace-heap-cell-segment')
+      ? element
+      : element?.querySelector?.('.asm-trace-heap-cell-segment');
+    if (!rect) return;
+    const x = Number(rect.getAttribute('x'));
+    const y = Number(rect.getAttribute('y'));
+    const width = Number(rect.getAttribute('width'));
+    const height = Number(rect.getAttribute('height'));
+    if (![x, y, width, height].every(Number.isFinite)) return;
+    rect.parentElement?.querySelectorAll?.('.asm-trace-heap-segment-boundary').forEach(line => {
+      const boundaryX = line.dataset.traceSegmentBoundary === 'right' ? x + width : x;
+      line.setAttribute('x1', String(boundaryX));
+      line.setAttribute('x2', String(boundaryX));
+      line.setAttribute('y1', String(y));
+      line.setAttribute('y2', String(y + height));
+    });
+  }
+
   function heapSplitBackgroundHandoff(element, currentElements, previousObjects) {
     const segment = heapSplitSegmentRect(element);
     const cellKey = segment?.getAttribute?.('data-trace-attached-to') || '';
@@ -5476,10 +5616,12 @@
     if (phase === 'exit') {
       geometry.rect.setAttribute('y', String(geometry.y + geometry.height * amount));
       geometry.rect.setAttribute('height', String(geometry.height * (1 - amount)));
+      syncHeapSegmentBoundaries(geometry.rect);
       return;
     }
     geometry.rect.setAttribute('y', String(geometry.y));
     geometry.rect.setAttribute('height', String(geometry.height * amount));
+    syncHeapSegmentBoundaries(geometry.rect);
   }
 
   function outerframeGeometry(element) {
@@ -5786,6 +5928,20 @@
       { continuingKeys }
     );
     const provisionalEventTimeline = [...preKeepEventTimeline, ...provisionalRegularTimeline];
+    const provisionalDeferredEntranceBarriers = Number(options.direction) < 0
+      ? new Map()
+      : deferredMarkerEntranceBarriers({
+        enteringMarkerKeys,
+        traceDocument,
+        eventFrame,
+        eventTimeline: provisionalEventTimeline,
+        currentElements,
+        previousObjects
+      });
+    const deferredMarkerEntranceKeys = new Set(provisionalDeferredEntranceBarriers.keys());
+    const immediateMarkerEntranceKeys = new Set(
+      [...enteringMarkerKeys].filter(key => !deferredMarkerEntranceKeys.has(key))
+    );
     const eventControlledKeys = new Set(eventMotionDelays(
       traceDocument, eventFrame, provisionalEventTimeline, currentPlacements, currentElements
     ).keys());
@@ -5799,7 +5955,7 @@
     });
     const markerReflowKeys = new Set();
     const markerReflowDuration = markerGroupReflowDuration({
-      enteringMarkerKeys,
+      enteringMarkerKeys: immediateMarkerEntranceKeys,
       currentElements,
       previousPlacements,
       currentPlacements,
@@ -5810,6 +5966,20 @@
       traceDocument,
       eventFrame
     });
+    const deferredMarkerReflowKeys = new Set();
+    const deferredMarkerReflowDuration = markerGroupReflowDuration({
+      enteringMarkerKeys: deferredMarkerEntranceKeys,
+      currentElements,
+      previousPlacements,
+      currentPlacements,
+      previousObjects,
+      transitionForKey,
+      duration,
+      reflowKeys: deferredMarkerReflowKeys,
+      traceDocument,
+      eventFrame
+    });
+    eventControlledKeys.forEach(key => deferredMarkerReflowKeys.delete(key));
     const transitionSteps = recursiveMarkerTransitionSteps({
       previousPlacements,
       currentPlacements,
@@ -5845,7 +6015,7 @@
       direction: options.direction,
       runId,
       transitionSteps,
-      enteringMarkerKeys,
+      enteringMarkerKeys: immediateMarkerEntranceKeys,
       eventTimeline: preKeepEventTimeline,
       initialDelayMs: initialDelay,
       keepTransitionKeys,
@@ -5861,6 +6031,18 @@
     );
     const eventTimeline = [...preKeepEventTimeline, ...regularEventTimeline];
     eventTimeline.forEach(slot => { slot.continuingVisualKeys = continuingKeys; });
+    const deferredEntranceBarriers = deferredMarkerEntranceBarriers({
+      enteringMarkerKeys: deferredMarkerEntranceKeys,
+      traceDocument,
+      eventFrame,
+      eventTimeline,
+      currentElements,
+      previousObjects
+    });
+    const deferredMarkerEntranceStart = Math.max(
+      0,
+      ...deferredEntranceBarriers.values()
+    );
     const declarationSchedule = declarationVisualSchedule(
       traceDocument, eventFrame, eventTimeline, currentPlacements, currentElements, continuingKeys
     );
@@ -5878,14 +6060,18 @@
       currentElements,
       previousPlacements,
       currentPlacements,
-      previousObjects
+      previousObjects,
+      excludedPeerKeys: deferredMarkerEntranceKeys
     });
     const playbackPlan = createPlaybackPlan({
       frame,
       direction: options.direction,
       runId,
       transitionSteps,
-      enteringMarkerKeys,
+      enteringMarkerKeys: immediateMarkerEntranceKeys,
+      deferredMarkerEntranceKeys,
+      deferredMarkerEntranceStartMs: deferredMarkerEntranceStart,
+      deferredMarkerReflowKeys,
       eventTimeline,
       initialDelayMs: initialDelay,
       keepTransitionKeys,
@@ -5909,6 +6095,9 @@
     const frameTransitionStart = Number(
       playbackPlan.phases.find(phase => phase.id === 'frame-transition')?.startMs
     ) || initialDelay;
+    const deferredEntranceStart = Number(
+      playbackPlan.phases.find(phase => phase.id === 'deferred-object-entrance')?.startMs
+    ) || 0;
     const reverseSequenceGeometryTimeline = buildReverseSequenceGeometryTimeline(
       traceDocument, eventFrame, options.direction, duration,
       previousPlacements, currentPlacements, currentElements,
@@ -6076,7 +6265,10 @@
         markerContinuation: useMarkerContinuation ? markerContinuation : null,
         declarationReflow: declarationReflowSchedule.get(key) || null,
         exitReflow: exitReflowSchedule.get(key) || null,
-        markerGroupReflow: markerReflowKeys.has(key),
+        markerGroupReflow: markerReflowKeys.has(key) || deferredMarkerReflowKeys.has(key),
+        markerGroupReflowDuration: deferredMarkerReflowKeys.has(key)
+          ? deferredMarkerReflowDuration
+          : markerReflowDuration,
         sequenceMotionSlot,
         sequenceGeometrySlot,
         // A marker that only shifts aside for an entering peer must move at
@@ -6087,6 +6279,8 @@
           ? Number(declarationReflowSchedule.get(key)?.start) || 0
           : exitReflowSchedule.has(key)
             ? Number(exitReflowSchedule.get(key)?.start) || 0
+          : deferredMarkerReflowKeys.has(key)
+            ? deferredEntranceStart
           : Math.max(frameTransitionStart, markerFrameMotionDelay(
             key, swap?.start, motionDelays.get(key), markerReflowKeys
           ))
@@ -6166,6 +6360,8 @@
         : declarationSlot
         ? (Number(declarationSlot.start) || 0)
           + (Number(declarationSlot.declarationEntranceDelay) || 0)
+        : deferredMarkerEntranceKeys.has(entry.key)
+          ? deferredEntranceStart
         : entry.sceneBoundaryEntrance
           ? sceneEntranceStart
         : enteringMarkerKeys.has(entry.key)
@@ -6431,7 +6627,7 @@
           Number(entry.sequenceMotionSlot?.duration)
           || Number(entry.declarationReflow?.duration)
           || Number(entry.exitReflow?.duration)
-          || (entry.markerGroupReflow ? markerReflowDuration : 0)
+          || Number(entry.markerGroupReflowDuration)
           || Number(entry.plan?.duration)
           || duration
       );
@@ -6500,7 +6696,7 @@
           Number(entry.sequenceMotionSlot?.duration)
             || Number(entry.declarationReflow?.duration)
             || Number(entry.exitReflow?.duration)
-            || (entry.markerGroupReflow ? markerReflowDuration : 0)
+            || Number(entry.markerGroupReflowDuration)
             || Number(entry.plan?.duration)
             || duration
         );
@@ -6659,6 +6855,7 @@
                 before[attribute] + (after[attribute] - before[attribute]) * state.localEased
               ));
             }
+            syncHeapSegmentBoundaries(rect);
           }
           // A rect must have one paint writer. Style owns value/index colors;
           // ordinal parent-rect interpolation must not overwrite those colors.
@@ -6933,15 +7130,16 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-222';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-229';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-222', play, cancel, updateEventAvailability,
+    build: 'trace-229', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
     scopeExitVisualContinues,
     declarationVisualSchedule, recursiveRoleContinuations, exitMarkerReflowSchedule,
+    deferredMarkerEntranceBarriers,
     previousMarkerAssignmentSchedule, previousMarkerAssignmentOffset,
     applyPreviousMarkerAssignmentReflows,
     isForInitializerAssignment,

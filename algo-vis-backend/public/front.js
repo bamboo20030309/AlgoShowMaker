@@ -217,7 +217,7 @@ window.asmUpdateTextDirectiveBinding = function (lineNumber, binding) {
     ))[0];
     line = session.getLine(row);
   }
-  const atPattern = /\s+at\s+.+?\.(?:top-left|top|top-right|left|center|right|bottom-left|bottom|bottom-right)(?=\s+(?:offset|as|when)\b|\s*$)/i;
+  const atPattern = /\s+at\s+.+?\.(?:top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom)(?=\s+(?:offset|as|when)\b|\s*$)/i;
   const offsetPattern = /\s+offset\s*\(\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*\)(?=\s+(?:at|as|when)\b|\s*$)/i;
   let next = line.replace(atPattern, '').replace(offsetPattern, '');
   if (binding?.targetExpression && binding?.anchor) {
@@ -540,21 +540,37 @@ int main() {
 
 
 // 子標籤切換
+let preservedCanvasCamera = null;
+
 function activateTab(btn) {
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+  const nextTab = btn?.dataset.tab;
+  if (activeTab === 'tab-canvas' && nextTab !== 'tab-canvas') {
+    const camera = window.getCameraViewport?.();
+    if (camera) preservedCanvasCamera = camera;
+  }
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.subContent').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById(btn.dataset.tab).classList.add('active');
+  document.getElementById(nextTab).classList.add('active');
+  if (nextTab === 'tab-canvas') {
+    requestAnimationFrame(() => {
+      if (preservedCanvasCamera && window.setCamera) {
+        window.setCamera(
+          preservedCanvasCamera.centerX,
+          preservedCanvasCamera.centerY,
+          preservedCanvasCamera.scale,
+          false
+        );
+      } else {
+        window.updateTransform?.();
+      }
+    });
+  }
 }
 document.querySelectorAll('.tab-btn').forEach(btn =>
   btn.addEventListener('click', () => {
     activateTab(btn);
-    // 切換到畫布 Tab 時，SVG 剛從隱藏狀態恢復，需重新計算並對齊鏡頭
-    if (btn.dataset.tab === 'tab-canvas') {
-      requestAnimationFrame(() => {
-        if (window.setAutoCamera) window.setAutoCamera(1.0, false);
-      });
-    }
     if (btn.dataset.tab === 'tab-syntax-tree') {
       window.ASMSyntaxTree?.ensureCurrent?.(aceEditor.getValue());
     }
