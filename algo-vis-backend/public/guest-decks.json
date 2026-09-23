@@ -66,7 +66,7 @@
     },
     {
       "id": "segment-tree-teaching",
-      "title": "Segment Tree｜線段樹：原理與動畫",
+      "title": "線段樹 (Segment Tree)",
       "categories": [
         "Data_Structure"
       ],
