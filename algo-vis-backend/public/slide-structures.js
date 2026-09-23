@@ -51,6 +51,34 @@
       .filter(Boolean);
   }
 
+  function segmentDomainLength(widget, valueCount) {
+    const configured = Number(widget?.segmentDomainLength);
+    if (Number.isInteger(configured) && configured > 0) return clamp(configured, 1, 100);
+    return Math.max(1, Math.ceil((Math.max(1, Number(valueCount) || 1) + 1) / 2));
+  }
+
+  function segmentStorageLength(domainLength) {
+    const length = clamp(Math.round(Number(domainLength) || 1), 1, 100);
+    let maximum = 1;
+    const visit = (index, left, right) => {
+      maximum = Math.max(maximum, index);
+      if (left >= right) return;
+      const middle = Math.floor((left + right) / 2);
+      visit(index * 2, left, middle);
+      visit(index * 2 + 1, middle + 1, right);
+    };
+    visit(1, 0, length - 1);
+    return maximum;
+  }
+
+  function normalizeSegmentValues(values, domainLength) {
+    const result = Array.isArray(values) ? values.map(value => String(value)) : [];
+    const storageLength = segmentStorageLength(domainLength);
+    while (result.length < storageLength) result.push('0');
+    result.length = storageLength;
+    return result;
+  }
+
   function matrixRowsFromContent(content) {
     const rows = String(content || '')
       .split(/\r?\n|;/)
@@ -634,7 +662,11 @@
     }
     const renderer = window[ORIGINAL_RENDERERS[mode]];
     if (typeof renderer !== 'function') return false;
-    const values = rawValues.length ? rawValues : [''];
+    let values = rawValues.length ? rawValues : [''];
+    const explicitSegmentDomainLength = mode === 'segment_tree'
+      ? segmentDomainLength(widget, values.length)
+      : null;
+    if (mode === 'segment_tree') values = normalizeSegmentValues(values, explicitSegmentDomainLength);
     const oneBased = ONE_BASED_MODES.has(mode);
     const source = oneBased ? [null, ...values] : values;
     const range = oneBased ? [1, source.length - 1] : [0, source.length - 1];
@@ -650,7 +682,7 @@
       const standardRenderer = window.draw_standard_segment_tree;
       if (typeof standardRenderer !== 'function') return false;
       const domainStart = Number(widget.indexBase) === 1 ? 1 : 0;
-      const domainLength = Math.max(1, Math.ceil((values.length + 1) / 2));
+      const domainLength = explicitSegmentDomainLength;
       standardRenderer(group, label, source, styles, {
         domainStart,
         domainEnd: domainStart + domainLength - 1,
@@ -658,8 +690,9 @@
         indexMode,
         gap
       });
-      group.setAttribute('data-slide-segment-node-count', String(values.length));
+      group.setAttribute('data-slide-segment-node-count', String(domainLength * 2 - 1));
       group.setAttribute('data-slide-segment-domain-length', String(domainLength));
+      group.setAttribute('data-slide-segment-storage-length', String(values.length));
     }
     else if (mode === 'BIT') renderer(group, label, source, styles, range, indexMode, gap);
     else if (mode === 'disk') {
@@ -867,6 +900,9 @@
     parseIndices,
     cellStyleColor,
     render,
+    normalizeSegmentValues,
+    segmentDomainLength,
+    segmentStorageLength,
     valuesFromContent
   };
 })();

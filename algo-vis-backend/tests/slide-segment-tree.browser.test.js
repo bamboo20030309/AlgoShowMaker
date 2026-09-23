@@ -128,6 +128,88 @@ test('slide Segment Tree uses the standard interval renderer and keeps zero-base
       }, widget);
       assert.deepEqual(oneBased.domain, [1, 4]);
       assert.match(oneBased.rootLabel, /\[1,4\]/);
+
+      const sparseTen = await page.evaluate(() => {
+        const values = [55, 15, 40, 6, 9, 21, 19, 3, 3, 4, 5, 13, 8, 9, 10, 1, 2,
+          0, 0, 0, 0, 0, 0, 6, 7];
+        const svg = AlgoStructureRenderer.createSvg({
+          id: 'sparse-ten', type: 'structure', structureMode: 'segment_tree',
+          segmentDomainLength: 10, content: values.join(', '), indexBase: 1,
+          indexMode: 1, gap: 8, w: 900, h: 500
+        });
+        const group = svg.querySelector('[data-slide-structure="segment_tree"]');
+        const nodes = [...group.querySelectorAll('[data-segment-storage-index]')].map(cell => ({
+          storage: Number(cell.dataset.segmentStorageIndex),
+          value: cell.querySelector(':scope > text')?.textContent,
+          interval: [Number(cell.dataset.segmentLeft), Number(cell.dataset.segmentRight)]
+        }));
+        return {
+          domain: [Number(group.dataset.segmentDomainStart), Number(group.dataset.segmentDomainEnd)],
+          domainLength: Number(group.dataset.slideSegmentDomainLength),
+          storageLength: Number(group.dataset.slideSegmentStorageLength),
+          visible: nodes.map(node => node.storage).sort((a, b) => a - b),
+          twentyFour: nodes.find(node => node.storage === 24),
+          twentyFive: nodes.find(node => node.storage === 25)
+        };
+      });
+      assert.deepEqual(sparseTen.domain, [1, 10]);
+      assert.equal(sparseTen.domainLength, 10);
+      assert.equal(sparseTen.storageLength, 25);
+      assert.deepEqual(sparseTen.visible, [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,24,25]);
+      assert.deepEqual(sparseTen.twentyFour, { storage: 24, value: '6', interval: [6, 6] });
+      assert.deepEqual(sparseTen.twentyFive, { storage: 25, value: '7', interval: [7, 7] });
+
+      await object.click();
+      const lengthInput = page.locator('#structureLengthInput');
+      assert.equal(await lengthInput.inputValue(), '4', 'legacy objects infer the prior four-leaf domain');
+      await lengthInput.fill('10');
+      await page.waitForFunction(() => {
+        const group = document.querySelector('[data-widget-id="segment"] [data-slide-structure="segment_tree"]');
+        return group?.dataset.slideSegmentDomainLength === '10'
+          && group.querySelectorAll('[data-segment-storage-index]').length === 19;
+      });
+      const resized = await page.evaluate(async () => {
+        const saved = await ASMSlideStorage.create(indexedDB, localStorage)
+          .loadDeck('asm_reveal_fabric_deck_v5');
+        const value = saved.groups[0].slides[0].widgets[0];
+        const group = document.querySelector('[data-widget-id="segment"] [data-slide-structure="segment_tree"]');
+        return {
+          domainLength: value.segmentDomainLength,
+          storageLength: value.content.split(',').length,
+          visible: [...group.querySelectorAll('[data-segment-storage-index]')]
+            .map(node => Number(node.dataset.segmentStorageIndex)).sort((a, b) => a - b)
+        };
+      });
+      assert.equal(resized.domainLength, 10);
+      assert.equal(resized.storageLength, 25);
+      assert.deepEqual(resized.visible, [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,24,25]);
+
+      const bundled = await page.evaluate(async () => {
+        const response = await fetch('/guest-decks/segment-tree-teaching.asmdeck');
+        const archive = await ASMDeck.decode(await response.blob());
+        const slides = archive.deck.groups.flatMap(group => group.slides || []);
+        return [5, 11, 15].map(pageNumber => {
+          const widget = slides[pageNumber - 1].widgets.find(item => item.structureMode === 'segment_tree');
+          const values = widget.content.split(',').map(value => value.trim());
+          const svg = AlgoStructureRenderer.createSvg(widget);
+          const visible = [...svg.querySelectorAll('[data-segment-storage-index]')]
+            .map(node => Number(node.dataset.segmentStorageIndex)).sort((a, b) => a - b);
+          return {
+            pageNumber,
+            domainLength: widget.segmentDomainLength,
+            storageLength: values.length,
+            twentyFour: values[23],
+            twentyFive: values[24],
+            visible
+          };
+        });
+      });
+      const visibleTen = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,24,25];
+      assert.deepEqual(bundled, [
+        { pageNumber: 5, domainLength: 10, storageLength: 25, twentyFour: '6', twentyFive: '7', visible: visibleTen },
+        { pageNumber: 11, domainLength: 10, storageLength: 25, twentyFour: '6', twentyFive: '7', visible: visibleTen },
+        { pageNumber: 15, domainLength: 10, storageLength: 25, twentyFour: '6', twentyFive: '7', visible: visibleTen }
+      ]);
       assert.deepEqual(errors, []);
     } finally {
       if (browser) await browser.close();
