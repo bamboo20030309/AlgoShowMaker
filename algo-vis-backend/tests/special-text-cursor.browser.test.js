@@ -107,6 +107,48 @@ test('special text uses visual graphemes for cursor placement and preserved styl
     assert.equal(await page.evaluate(() => specialTextCanvas.getObjects()[0].selectionStart), 11);
     await page.keyboard.press('ArrowLeft');
     assert.equal(await page.evaluate(() => specialTextCanvas.getObjects()[0].selectionStart), 10);
+
+    await page.keyboard.press('End');
+    for (const character of ' 1^n') await page.keyboard.insertText(character);
+    const liveScript = await page.evaluate(() => {
+      const object = specialTextCanvas.getObjects()[0];
+      return {
+        text: object.text,
+        editing: object.isEditing,
+        marker: { ...(object.styles?.[0]?.[13] || {}) },
+        exponent: { ...(object.styles?.[0]?.[14] || {}) }
+      };
+    });
+    assert.equal(liveScript.text.endsWith(' 1^n'), true);
+    assert.equal(liveScript.editing, true);
+    assert.equal(liveScript.marker.fill, 'rgba(0, 0, 0, 0)');
+    assert.ok(liveScript.exponent.deltaY < 0);
+
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(() => specialTextCanvas.getObjects()[0].text.endsWith(' 1^'));
+    assert.notEqual(
+      await page.evaluate(() => specialTextCanvas.getObjects()[0].styles?.[0]?.[13]?.fill),
+      'rgba(0, 0, 0, 0)'
+    );
+    await page.keyboard.press('Control+Shift+z');
+    await page.waitForFunction(() => specialTextCanvas.getObjects()[0].text.endsWith(' 1^n'));
+    await page.waitForFunction(() => specialTextCanvas.getObjects()[0].styles?.[0]?.[13]?.fill === 'rgba(0, 0, 0, 0)');
+    const redoneScript = await page.evaluate(() => {
+      const object = specialTextCanvas.getObjects()[0];
+      return { styles: object.styles, base: object.asmInlineScriptBaseStyles, enabled: object.asmInlineScripts };
+    });
+    assert.equal(redoneScript.styles?.[0]?.[13]?.fill, 'rgba(0, 0, 0, 0)', JSON.stringify(redoneScript));
+
+    await page.evaluate(() => specialTextCanvas.getObjects()[0].exitEditing());
+    const exitedScript = await page.evaluate(() => {
+      const object = specialTextCanvas.getObjects()[0];
+      return {
+        marker: { ...(object.styles?.[0]?.[13] || {}) },
+        exponent: { ...(object.styles?.[0]?.[14] || {}) }
+      };
+    });
+    assert.equal(exitedScript.marker.fill, 'rgba(0, 0, 0, 0)');
+    assert.ok(exitedScript.exponent.deltaY < 0);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

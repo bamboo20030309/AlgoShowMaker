@@ -1184,6 +1184,14 @@
     syncFabricFragmentProxies(slide.id, canvas);
     updateObjectToolbar(object, canvas);
     syncTtsEditor();
+    if (object.asmInlineScripts) {
+      const restoredText = object.text;
+      requestAnimationFrame(() => {
+        if (!object.isEditing || object.text !== restoredText) return;
+        applyInlineScripts(object, { allowEditing: true });
+        object.__asmInlineScriptEditingFormatted = true;
+      });
+    }
     return true;
   }
 
@@ -3545,6 +3553,10 @@
     canvas.on('text:changed', event => {
       if (event.target?.asmInlineScripts && event.target.isEditing) {
         event.target.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(event.target.styles);
+        if (!event.target.inCompositionMode) {
+          applyInlineScripts(event.target, { allowEditing: true });
+          event.target.__asmInlineScriptEditingFormatted = true;
+        }
       }
       sync(event);
     });
@@ -3552,14 +3564,20 @@
       const obj = event.target;
       if (!obj?.asmInlineScripts) return;
       obj.styles = window.ASMInlineScripts.copyStyles(obj.asmInlineScriptBaseStyles || {});
+      obj.__asmInlineScriptEditingFormatted = false;
+      bindInlineScriptEditingInput(obj);
       obj.initDimensions();
       canvas.requestRenderAll();
     });
     canvas.on('text:editing:exited', event => {
       const obj = event.target;
       if (!obj?.asmInlineScripts) return;
-      obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
-      applyInlineScripts(obj);
+      unbindInlineScriptEditingInput(obj);
+      if (!obj.__asmInlineScriptEditingFormatted) {
+        obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
+      }
+      applyInlineScripts(obj, { allowEditing: true });
+      delete obj.__asmInlineScriptEditingFormatted;
       sync(event);
     });
     canvas.on('selection:created', e => {
@@ -8316,8 +8334,34 @@
     return !!(obj && obj.type && obj.type.toLowerCase().includes('text'));
   }
 
-  function applyInlineScripts(obj) {
-    if (!obj?.asmInlineScripts || !isTextObject(obj) || obj.isEditing) return;
+  function restoreInlineScriptEditingBase(obj) {
+    if (!obj?.asmInlineScripts || !obj.isEditing) return;
+    obj.styles = window.ASMInlineScripts.copyStyles(obj.asmInlineScriptBaseStyles || {});
+    obj.__asmInlineScriptEditingFormatted = false;
+    obj.initDimensions();
+    obj.setCoords();
+    obj.dirty = true;
+  }
+
+  function bindInlineScriptEditingInput(obj) {
+    unbindInlineScriptEditingInput(obj);
+    if (!obj?.hiddenTextarea) return;
+    const handler = event => {
+      if (event?.inputType === 'historyUndo' || event?.inputType === 'historyRedo') return;
+      restoreInlineScriptEditingBase(obj);
+    };
+    obj.__asmInlineScriptBeforeInput = handler;
+    obj.hiddenTextarea.addEventListener('beforeinput', handler, true);
+  }
+
+  function unbindInlineScriptEditingInput(obj) {
+    if (!obj?.hiddenTextarea || !obj.__asmInlineScriptBeforeInput) return;
+    obj.hiddenTextarea.removeEventListener('beforeinput', obj.__asmInlineScriptBeforeInput, true);
+    delete obj.__asmInlineScriptBeforeInput;
+  }
+
+  function applyInlineScripts(obj, { allowEditing = false } = {}) {
+    if (!obj?.asmInlineScripts || !isTextObject(obj) || (obj.isEditing && !allowEditing)) return;
     obj.styles = window.ASMInlineScripts.format(
       obj.text, obj.asmInlineScriptBaseStyles || {}, obj.fontSize
     );
