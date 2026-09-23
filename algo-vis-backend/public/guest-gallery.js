@@ -16,6 +16,14 @@
     return [...new Set((Array.isArray(entry.categories) ? entry.categories : [entry.category]).filter(id => Object.hasOwn(categories, id)))];
   }
 
+  function entryLabels(entry) {
+    const categoryLabels = entryCategories(entry).map(id => categories[id]);
+    const hints = Array.isArray(entry.hints)
+      ? entry.hints.filter(value => typeof value === 'string' && value.trim()).map(value => value.trim())
+      : [];
+    return [...new Set([...categoryLabels, ...hints])];
+  }
+
   async function showCover(entry, preview) {
     try {
       if (!thumbnails.has(entry.id)) thumbnails.set(entry.id, (async () => {
@@ -41,7 +49,7 @@
   function render() {
     if (!ready) return;
     const query = search.value.trim().toLocaleLowerCase();
-    const visible = decks.filter(entry => entry.title.toLocaleLowerCase().includes(query));
+    const visible = decks.filter(entry => `${entry.title} ${entryLabels(entry).join(' ')}`.toLocaleLowerCase().includes(query));
     count.textContent = `共 ${visible.length} 份`;
     message.textContent = visible.length || !query ? '' : '找不到符合搜尋的投影片。';
     grid.replaceChildren();
@@ -86,7 +94,14 @@
         title.textContent = entry.title;
         const meta = document.createElement('span');
         meta.className = 'deck-meta';
-        meta.textContent = `${entryCategories(entry).map(id => categories[id]).join(' · ')} · 免登入觀賞`;
+        const labels = entryLabels(entry);
+        meta.setAttribute('aria-label', labels.join('、'));
+        meta.replaceChildren(...labels.map(label => {
+          const hint = document.createElement('span');
+          hint.className = 'deck-hint';
+          hint.textContent = label;
+          return hint;
+        }));
         info.append(title, meta);
         link.append(preview, info);
         card.append(link);

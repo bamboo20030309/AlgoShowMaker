@@ -552,9 +552,6 @@
       xOffsets[column] = offset;
       return offset + width;
     }, 0);
-    const styleSets = Object.fromEntries(Object.entries(styleData(widget, rows.length * columns))
-      .map(([type, entry]) => [type, new Set(entry.elements)]));
-
     rows.forEach((rowValues, row) => Array.from({ length: columns }, (_, column) => {
       const index = row * columns + column;
       const isHeader = (widget.tableHeaderRow !== false && row === 0)
@@ -569,23 +566,15 @@
         'data-matrix-column': column,
         'data-table-header': isHeader ? 'true' : 'false'
       });
-      const background = styleSets.background.has(index)
-        ? cellStyleColor(widget, index, 'background', widget.backgroundColor || '#10b981')
-        : (isHeader ? headerFill : bodyFill);
-      const emphasizedType = ['highlight', 'focus', 'point', 'mark'].find(type => styleSets[type].has(index));
-      const emphasizedColor = emphasizedType
-        ? cellStyleColor(widget, index, emphasizedType, widget[`${emphasizedType}Color`] || borderColor)
-        : borderColor;
       cell.appendChild(element('rect', {
         x,
         y,
         width,
         height: rowHeight,
         rx: 0,
-        fill: background,
-        stroke: emphasizedColor,
-        'stroke-width': emphasizedType ? 4 : 1.5,
-        class: emphasizedType === 'highlight' ? 'highlight-blink' : ''
+        fill: isHeader ? headerFill : bodyFill,
+        stroke: borderColor,
+        'stroke-width': 1.5
       }));
       const rawValue = String(rowValues[column] ?? '');
       const displayValue = Array.from(rawValue).length > 80
@@ -734,7 +723,8 @@
     const values = valuesFromContent(widget.content);
     if (mode === 'binary_tree') drawTree(group, widget, values);
     else drawWithOriginalRenderer(group, { ...widget, structureMode: mode }, values);
-    addAnnotations(group, widget);
+    if (mode !== 'table') addAnnotations(group, widget);
+    separateStructureLayers(group);
     return { svg, group, mode, bounds: paddedBounds(group, mode, widget) };
   }
 
@@ -767,6 +757,50 @@
         'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
       }));
     });
+  }
+
+  function copyLayerTransform(source, target) {
+    ['transform', 'opacity', 'display', 'visibility'].forEach(name => {
+      if (source.hasAttribute(name)) target.setAttribute(name, source.getAttribute(name));
+    });
+  }
+
+  function separateStructureLayers(group) {
+    const baseLayer = element('g', {
+      class: 'asm-slide-structure-base-layer',
+      'data-structure-base-layer': '1'
+    });
+    while (group.firstChild) baseLayer.appendChild(group.firstChild);
+    group.appendChild(baseLayer);
+
+    const styleLayer = element('g', {
+      class: 'asm-slide-structure-style-layer',
+      'data-structure-style-layer': 'foreground',
+      'pointer-events': 'none'
+    });
+    const selector = '[id^="highlight-"], [id^="point-"], [id^="mark-"], [data-structure-annotation-index]';
+    [...baseLayer.querySelectorAll(selector)].forEach(visual => {
+      const sourceCell = visual.closest('[data-structure-item-index]');
+      if (sourceCell) {
+        visual.setAttribute('data-structure-style-source-index', sourceCell.dataset.structureItemIndex);
+        if (sourceCell.dataset.segmentStorageIndex) {
+          visual.setAttribute('data-structure-style-source-storage-index', sourceCell.dataset.segmentStorageIndex);
+        }
+      }
+      const ancestors = [];
+      for (let current = visual.parentElement; current && current !== baseLayer; current = current.parentElement) {
+        ancestors.unshift(current);
+      }
+      let target = styleLayer;
+      ancestors.forEach(ancestor => {
+        const wrapper = element('g', { class: 'asm-slide-structure-style-transform' });
+        copyLayerTransform(ancestor, wrapper);
+        target.appendChild(wrapper);
+        target = wrapper;
+      });
+      target.appendChild(visual);
+    });
+    group.appendChild(styleLayer);
   }
 
   function getNaturalSize(widget) {

@@ -85,7 +85,7 @@ test('slide Segment Tree uses the standard interval renderer and keeps zero-base
           edges: group.querySelectorAll('.asm-segment-tree-edges line').length,
           rootLabel: group.querySelector('[data-segment-storage-index="1"] + [id$="-index"]')?.textContent,
           annotationStorage: Number(group.querySelector('[data-structure-annotation-index="2"]')
-            ?.closest('[data-segment-storage-index]')?.dataset.segmentStorageIndex),
+            ?.dataset.structureStyleSourceStorageIndex),
           highlights: group.querySelectorAll('.highlight-blink').length
         };
       });

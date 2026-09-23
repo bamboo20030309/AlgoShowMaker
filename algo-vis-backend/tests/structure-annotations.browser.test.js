@@ -82,6 +82,22 @@ test('structure annotations follow indices, persist and retain custom colors', {
     ])));
     assert.equal(highlightColors['0'], styled.cellStyles['0'].highlight);
     assert.equal(highlightColors['2'], styled.cellStyles['2'].highlight);
+    const layerState = await object.locator('[data-slide-structure]').evaluate(group => {
+      const base = group.querySelector(':scope > [data-structure-base-layer]');
+      const style = group.querySelector(':scope > [data-structure-style-layer]');
+      return {
+        childLayers: [...group.children].map(item => item.getAttribute('data-structure-base-layer') || item.getAttribute('data-structure-style-layer')),
+        baseHighlights: base?.querySelectorAll('[id^="highlight-"]').length,
+        styleHighlights: style?.querySelectorAll('[id^="highlight-"]').length,
+        pointerEvents: style?.getAttribute('pointer-events')
+      };
+    });
+    assert.deepEqual(layerState, {
+      childLayers: ['1', 'foreground'],
+      baseHighlights: 0,
+      styleHighlights: 2,
+      pointerEvents: 'none'
+    });
     await selectCell(0);
     await toolbar.getByRole('button', { name: '註標箭頭', exact: true }).click();
     assert.deepEqual(await annotations(), ['0', '1']);
@@ -138,11 +154,25 @@ test('structure annotations follow indices, persist and retain custom colors', {
       return !parsed.querySelector('parsererror');
     }, widget);
     assert.equal(canvasDraw, true);
-    const otherModes = await page.evaluate(widget => ['matrix', 'binary_tree', 'heap'].map(structureMode => {
-      const svg = AlgoStructureRenderer.createSvg({ ...widget, structureMode, content: structureMode === 'matrix' ? '10,20;30,40' : '10,20,30,40', annotationIndices: '2' });
-      return [...svg.querySelectorAll('[data-structure-annotation-index]')].map(item => item.dataset.structureAnnotationIndex);
-    }), widget);
-    assert.deepEqual(otherModes, [['2'], ['2'], ['2']]);
+    const layeredModes = ['normal', 'matrix', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+    const otherModes = await page.evaluate(({ widget, modes }) => modes.map(structureMode => {
+      const svg = AlgoStructureRenderer.createSvg({ ...widget, structureMode, content: structureMode === 'matrix' ? '10,20;30,40' : '10,20,30,40', annotationIndices: '2', highlightIndices: '0' });
+      const group = svg.querySelector('[data-slide-structure]');
+      const base = group.querySelector(':scope > [data-structure-base-layer]');
+      const style = group.querySelector(':scope > [data-structure-style-layer]');
+      return {
+        mode: structureMode,
+        baseDecorations: base.querySelectorAll('[id^="highlight-"], [id^="point-"], [id^="mark-"], [data-structure-annotation-index]').length,
+        styleDecorations: style.querySelectorAll('[id^="highlight-"], [id^="point-"], [id^="mark-"], [data-structure-annotation-index]').length,
+        order: [...group.children].map(item => item.getAttribute('data-structure-base-layer') || item.getAttribute('data-structure-style-layer'))
+      };
+    }), { widget, modes: layeredModes });
+    assert.deepEqual(otherModes.map(result => result.mode), layeredModes);
+    otherModes.forEach(result => {
+      assert.equal(result.baseDecorations, 0, `${result.mode} left a decoration in the base layer`);
+      assert.ok(result.styleDecorations > 0, `${result.mode} did not render a foreground style decoration`);
+      assert.deepEqual(result.order, ['1', 'foreground'], `${result.mode} layer order`);
+    });
     assert.deepEqual(errors, []);
   } finally { if (browser) await browser.close(); server.kill(); }
 });

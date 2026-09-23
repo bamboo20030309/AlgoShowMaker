@@ -1051,6 +1051,22 @@ input:focus-visible {
 .guest-gallery .deck-open { color: inherit; text-decoration: none; }
 .guest-gallery .deck-info { display: block; }
 .guest-gallery .deck-title { display: block; margin-bottom: 8px; }
+.guest-gallery .deck-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow: visible;
+  white-space: normal;
+}
+.guest-gallery .deck-hint {
+  padding: 3px 8px;
+  border: 1px solid rgba(95, 195, 169, 0.34);
+  border-radius: 999px;
+  background: rgba(95, 195, 169, 0.1);
+  color: #bcebdd;
+  font-size: 11px;
+  line-height: 1.35;
+}
 .guest-gallery .deck-preview::before, .guest-gallery .deck-preview::after { display: none; }
 .gallery-cover-status { padding: 20px; color: #39484c; text-align: center; }
 @media (max-width: 900px) {

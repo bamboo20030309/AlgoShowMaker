@@ -26,6 +26,7 @@
   const fabricCanvases = new Map();
   const slidePositions = new Map();
   const MAX_HISTORY = 80;
+  const TEXT_EDIT_SAVE_DELAY = 300;
   const CODE_SCROLLBAR_HIT_GUTTER = 5;
   const FABRIC_LAYER_INDEX = 1000;
   const WIDGET_LAYER_BELOW_BASE = 100;
@@ -48,6 +49,17 @@
 
   function isCellGridWidget(widget) {
     return isCellGridType(widget?.type);
+  }
+
+  const TABLE_UNSUPPORTED_STRUCTURE_STYLE_FIELDS = [
+    'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
+    'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
+    'annotationIndices', 'annotationColor', 'annotationText', 'annotationLabels', 'cellStyles'
+  ];
+
+  function stripTableStructureStyles(widget) {
+    TABLE_UNSUPPORTED_STRUCTURE_STYLE_FIELDS.forEach(field => delete widget[field]);
+    return widget;
   }
 
   function randomId() {
@@ -208,6 +220,8 @@
   let history = [];
   let historyIndex = -1;
   let historyTextSelections = [];
+  let textEditSession = null;
+  let textEditSaveTimer = null;
   let editingAlgorithmSlideId = null;
   let pendingAlgorithmExportSnapshot = null;
   let modeLayoutAnimationTimer = null;
@@ -566,6 +580,9 @@
   function saveDeck({ history: pushHistory = true, cloud = true } = {}) {
     const serializedDeck = JSON.stringify(deck);
     const revision = ++localSaveRevision;
+    document.body.dataset.localDeckRevision = String(revision);
+    document.body.dataset.lastDeckSaveCloud = String(cloud);
+    document.body.dataset.lastDeckSaveHistory = String(pushHistory);
     document.body.dataset.localDeckSave = 'pending';
     document.body.dataset.localDeckChars = String(serializedDeck.length);
     const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck).then(() => {
@@ -1173,7 +1190,163 @@
     syncFabricFragmentProxies(slide.id, canvas);
     updateObjectToolbar(object, canvas);
     syncTtsEditor();
+    if (object.asmInlineScripts) {
+      const restoredText = object.text;
+      requestAnimationFrame(() => {
+        if (!object.isEditing || object.text !== restoredText) return;
+        applyInlineScripts(object, { allowEditing: true });
+        object.__asmInlineScriptEditingFormatted = true;
+      });
+    }
     return true;
+  }
+
+  function captureTextEditState(object) {
+    return {
+      text: object.text,
+      styles: clone(object.styles || {}),
+      asmInlineScriptBaseStyles: object.asmInlineScripts
+        ? clone(object.asmInlineScriptBaseStyles || {})
+        : null,
+      selectionStart: Number(object.selectionStart) || 0,
+      selectionEnd: Number(object.selectionEnd) || 0
+    };
+  }
+
+  function sameTextEditState(left, right) {
+    return !!left && !!right
+      && left.text === right.text
+      && left.selectionStart === right.selectionStart
+      && left.selectionEnd === right.selectionEnd
+      && JSON.stringify(left.styles) === JSON.stringify(right.styles)
+      && JSON.stringify(left.asmInlineScriptBaseStyles) === JSON.stringify(right.asmInlineScriptBaseStyles);
+  }
+
+  function updateTextEditDiagnostics() {
+    document.body.dataset.textHistoryIndex = String(textEditSession?.index ?? -1);
+    document.body.dataset.textHistoryLength = String(textEditSession?.states.length ?? 0);
+  }
+
+  function beginTextEditSession(canvas, slide, object) {
+    clearTimeout(textEditSaveTimer);
+    textEditSaveTimer = null;
+    textEditSession = {
+      canvas,
+      slideId: slide.id,
+      object,
+      states: [captureTextEditState(object)],
+      index: 0,
+      pendingState: null,
+      restoring: false,
+      beforeInputHandler: null,
+      compositionEndHandler: null
+    };
+    textEditSession.beforeInputHandler = () => {
+      const session = textEditSession;
+      if (!session || session.object !== object || session.pendingState) return;
+      const current = session.states[session.index];
+      current.selectionStart = Number(object.selectionStart) || 0;
+      current.selectionEnd = Number(object.selectionEnd) || 0;
+    };
+    object.hiddenTextarea?.addEventListener('beforeinput', textEditSession.beforeInputHandler, true);
+    updateTextEditDiagnostics();
+  }
+
+  function commitTextEditCheckpoint() {
+    const session = textEditSession;
+    const state = session?.pendingState;
+    if (!session || !state) return false;
+    session.pendingState = null;
+    if (sameTextEditState(session.states[session.index], state)) return false;
+    session.states = session.states.slice(0, session.index + 1);
+    session.states.push(state);
+    if (session.states.length > MAX_HISTORY) session.states.shift();
+    session.index = session.states.length - 1;
+    updateTextEditDiagnostics();
+    return true;
+  }
+
+  function persistTextEditSession() {
+    textEditSaveTimer = null;
+    if (!textEditSession) return;
+    commitTextEditCheckpoint();
+    saveDeck({ history: false, cloud: false });
+  }
+
+  function scheduleTextEditPersistence() {
+    clearTimeout(textEditSaveTimer);
+    document.body.dataset.localDeckSave = 'pending';
+    textEditSaveTimer = setTimeout(persistTextEditSession, TEXT_EDIT_SAVE_DELAY);
+  }
+
+  function recordTextEditChange(object, { schedule = true } = {}) {
+    const session = textEditSession;
+    if (!session || session.restoring || session.object !== object) return;
+    session.pendingState = captureTextEditState(object);
+    if (schedule) scheduleTextEditPersistence();
+  }
+
+  function applyTextEditState(session, state) {
+    const { object, canvas } = session;
+    session.restoring = true;
+    try {
+      object.set({
+        text: state.text,
+        styles: clone(state.styles || {}),
+        asmInlineScriptBaseStyles: state.asmInlineScriptBaseStyles === null
+          ? null
+          : clone(state.asmInlineScriptBaseStyles)
+      });
+      object.initDimensions();
+      object.setCoords();
+      const length = object._text.length;
+      object.selectionStart = Math.min(length, state.selectionStart);
+      object.selectionEnd = Math.min(length, state.selectionEnd);
+      if (object.hiddenTextarea) {
+        object.hiddenTextarea.value = object.text;
+        object._updateTextarea();
+        object.hiddenTextarea.focus({ preventScroll: true });
+      }
+      object.dirty = true;
+      object.restartCursorIfNeeded?.();
+      canvas.requestRenderAll();
+      const slide = deck.groups.flatMap(group => group.slides).find(item => item.id === session.slideId);
+      if (slide) slide.canvas = serializeFabricCanvas(canvas);
+      updateObjectToolbar(object, canvas);
+    } finally {
+      session.restoring = false;
+    }
+    scheduleTextEditPersistence();
+  }
+
+  function restoreTextEditCheckpoint(direction) {
+    const session = textEditSession;
+    if (!session || !session.object?.isEditing || session.object.inCompositionMode) return false;
+    commitTextEditCheckpoint();
+    const nextIndex = session.index + direction;
+    if (nextIndex < 0 || nextIndex >= session.states.length) return true;
+    session.index = nextIndex;
+    applyTextEditState(session, session.states[nextIndex]);
+    updateTextEditDiagnostics();
+    return true;
+  }
+
+  function finishTextEditSession({ save = true } = {}) {
+    if (!textEditSession) return;
+    textEditSession.object.hiddenTextarea?.removeEventListener(
+      'beforeinput', textEditSession.beforeInputHandler, true
+    );
+    if (textEditSession.compositionEndHandler) {
+      textEditSession.object.hiddenTextarea?.removeEventListener(
+        'compositionend', textEditSession.compositionEndHandler
+      );
+    }
+    clearTimeout(textEditSaveTimer);
+    textEditSaveTimer = null;
+    commitTextEditCheckpoint();
+    if (save) saveDeck();
+    textEditSession = null;
+    updateTextEditDiagnostics();
   }
 
   function deckSlideStructure(deckState) {
@@ -1206,11 +1379,13 @@
 
   function undo() {
     commitPendingColorHistory();
+    if (restoreTextEditCheckpoint(-1)) return;
     restoreHistory(historyIndex - 1);
   }
 
   function redo() {
     commitPendingColorHistory();
+    if (restoreTextEditCheckpoint(1)) return;
     restoreHistory(historyIndex + 1);
   }
 
@@ -2209,6 +2384,20 @@
     return normalized;
   }
 
+  function fabricTextStylesNeedNormalization(styles) {
+    if (!styles || typeof styles !== 'object') return false;
+    if (Array.isArray(styles)) return true;
+    for (const [lineIndex, lineStyles] of Object.entries(styles)) {
+      if (!/^\d+$/.test(lineIndex) || !lineStyles || typeof lineStyles !== 'object'
+        || Array.isArray(lineStyles) || !Object.keys(lineStyles).length) return true;
+      for (const [characterIndex, style] of Object.entries(lineStyles)) {
+        if (!/^\d+$/.test(characterIndex) || !style || typeof style !== 'object'
+          || style.textBaseline === 'alphabetical') return true;
+      }
+    }
+    return false;
+  }
+
   function sanitizeFabricTextBaseline(target) {
     if (!target) return target;
     if (target.textBaseline === 'alphabetical') {
@@ -2216,16 +2405,10 @@
       else target.textBaseline = 'alphabetic';
     }
     const textLike = typeof target.text === 'string' || String(target.type || '').toLowerCase().includes('text');
-    const styles = textLike ? normalizeFabricTextStyles(target.styles) : null;
-    if (textLike && target.set) target.set('styles', styles);
-    else if (textLike) target.styles = styles;
-    if (styles && typeof styles === 'object') {
-      Object.values(styles).forEach(lineStyles => {
-        if (!lineStyles || typeof lineStyles !== 'object') return;
-        Object.values(lineStyles).forEach(style => {
-          if (style && style.textBaseline === 'alphabetical') style.textBaseline = 'alphabetic';
-        });
-      });
+    if (textLike && fabricTextStylesNeedNormalization(target.styles)) {
+      const styles = normalizeFabricTextStyles(target.styles);
+      if (target.set) target.set('styles', styles);
+      else target.styles = styles;
     }
     return target;
   }
@@ -2540,32 +2723,6 @@
     return rows;
   }
 
-  function remapTableMetadataForResize(widget, nextRows) {
-    const previousRows = normalizeTableData(widget?.tableData, widget?.content);
-    const previousColumns = previousRows[0]?.length || 1;
-    const nextColumns = nextRows[0]?.length || 1;
-    const oldToNew = new Map();
-    for (let row = 0; row < Math.min(previousRows.length, nextRows.length); row += 1) {
-      for (let column = 0; column < Math.min(previousColumns, nextColumns); column += 1) {
-        oldToNew.set(row * previousColumns + column, row * nextColumns + column);
-      }
-    }
-    const cellStyles = {};
-    Object.entries(widget?.cellStyles || {}).forEach(([key, value]) => {
-      const nextIndex = oldToNew.get(Number(key));
-      if (nextIndex !== undefined) cellStyles[nextIndex] = value;
-    });
-    const patch = { cellStyles };
-    ['highlight', 'focus', 'point', 'mark', 'background', 'annotation'].forEach(type => {
-      patch[`${type}Indices`] = window.AlgoStructureRenderer.parseIndices(widget?.[`${type}Indices`])
-        .map(index => oldToNew.get(index))
-        .filter(index => index !== undefined)
-        .sort((a, b) => a - b)
-        .join(',');
-    });
-    return patch;
-  }
-
   function treeContentSummary(treeData) {
     return treeData.nodes.map(node => node.value).join(', ');
   }
@@ -2665,6 +2822,7 @@
           normalized.indexMode = 0;
           normalized.gap = 0;
           normalized.frameBackgroundEnabled = false;
+          stripTableStructureStyles(normalized);
         }
         if (type === 'structure' && normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
@@ -3542,13 +3700,17 @@
   }
 
   function wireCanvas(canvas, slide) {
-    const sync = (event, { syncFragments = false } = {}) => {
+    const sync = (event, { syncFragments = false, textEdit = false, deferSave = false } = {}) => {
       if (suppressCanvasSave) return;
       const currentSlide = deck.groups.flatMap(group => group.slides).find(item => item.id === slide.id);
       if (!currentSlide) return;
       normalizeShapeGeometry(event && event.target, canvas);
       currentSlide.canvas = serializeFabricCanvas(canvas);
-      saveDeck({ history: !event?.target?.inCompositionMode });
+      if (textEdit) {
+        recordTextEditChange(event?.target, { schedule: !event?.target?.inCompositionMode });
+      } else if (!deferSave) {
+        saveDeck({ history: !event?.target?.inCompositionMode });
+      }
       syncSlideAutoAnimate(currentSlide);
       if (syncFragments) syncFabricFragmentProxies(currentSlide.id, canvas);
       updateObjectToolbar(canvas.getActiveObject(), canvas);
@@ -3559,22 +3721,36 @@
     canvas.on('text:changed', event => {
       if (event.target?.asmInlineScripts && event.target.isEditing) {
         event.target.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(event.target.styles);
+        if (!event.target.inCompositionMode) {
+          applyInlineScripts(event.target, { allowEditing: true });
+          event.target.__asmInlineScriptEditingFormatted = true;
+        }
       }
-      sync(event);
+      sync(event, { textEdit: true });
     });
     canvas.on('text:editing:entered', event => {
       const obj = event.target;
-      if (!obj?.asmInlineScripts) return;
+      if (!obj) return;
+      beginTextEditSession(canvas, slide, obj);
+      if (!obj.asmInlineScripts) return;
       obj.styles = window.ASMInlineScripts.copyStyles(obj.asmInlineScriptBaseStyles || {});
-      obj.initDimensions();
-      canvas.requestRenderAll();
+      bindInlineScriptEditingInput(obj);
+      applyInlineScripts(obj, { allowEditing: true });
+      obj.__asmInlineScriptEditingFormatted = true;
     });
     canvas.on('text:editing:exited', event => {
       const obj = event.target;
-      if (!obj?.asmInlineScripts) return;
-      obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
-      applyInlineScripts(obj);
-      sync(event);
+      if (!obj) return;
+      if (obj.asmInlineScripts) {
+        unbindInlineScriptEditingInput(obj);
+        if (!obj.__asmInlineScriptEditingFormatted) {
+          obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
+        }
+        applyInlineScripts(obj, { allowEditing: true });
+        delete obj.__asmInlineScriptEditingFormatted;
+      }
+      sync(event, { deferSave: true });
+      finishTextEditSession();
     });
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
@@ -3613,6 +3789,7 @@
         hideMarqueeSelectionOverlay(slide.id);
       }
       if (e.target) {
+        enableTextInteractionCache(e.target);
         e.target.__asmMoveOrigin = {
           left: e.target.left || 0,
           top: e.target.top || 0
@@ -3622,6 +3799,7 @@
     });
     canvas.on('object:moving', e => {
       finishFabricAutoAnimation();
+      enableTextInteractionCache(e.target);
       canvas.__asmInteractionDirty = true;
       constrainFabricMoveWithShift(e);
       applyFabricObjectSnap(e, canvas);
@@ -3635,6 +3813,7 @@
       updateMarqueeSelectionOverlay(slide.id, canvas.__asmWidgetMarquee.start, end);
     });
     canvas.on('object:scaling', e => {
+      enableTextInteractionCache(e.target);
       canvas.__asmInteractionDirty = true;
       keepShapeStrokeUniform(e.target, canvas);
       normalizeTextBoxResize(e.target, canvas);
@@ -3642,6 +3821,7 @@
       updateObjectToolbar(e.target, canvas);
     });
     canvas.on('object:rotating', e => {
+      enableTextInteractionCache(e.target);
       canvas.__asmInteractionDirty = true;
       clearSnapGuides();
       updateObjectToolbar(e.target, canvas);
@@ -3654,6 +3834,7 @@
         applyWidgetMarqueeSelection(canvas, slide, widgetMarquee);
       }
       hideMarqueeSelectionOverlay(slide.id);
+      restoreTextInteractionCache(canvas);
       if (canvas.__asmInteractionDirty) {
         canvas.__asmInteractionDirty = false;
         sync({ target: canvas.getActiveObject() });
@@ -3680,11 +3861,12 @@
         });
         e.target.setCoords?.();
         const textarea = e.target.hiddenTextarea;
-        // beforeinput observes the selection being replaced, whereas changed
-        // observes the new caret. Keep both alongside the existing deck history.
-        textarea?.addEventListener('beforeinput', rememberEditingTextSelection);
-        textarea?.addEventListener('compositionstart', rememberEditingTextSelection, true);
-        textarea?.addEventListener('compositionend', () => sync({ target: e.target }));
+        // Composition updates stay in the lightweight text session and commit
+        // once the browser reports the final composed value.
+        if (textEditSession?.object === e.target) {
+          textEditSession.compositionEndHandler = () => sync({ target: e.target }, { textEdit: true });
+          textarea?.addEventListener('compositionend', textEditSession.compositionEndHandler);
+        }
         commitPendingColorHistory();
         // Import JSON can omit Fabric defaults and generated object IDs. The
         // first text edit serializes every sibling too. Canonicalize the current
@@ -4863,6 +5045,7 @@
           tableTextColor: '#1f282d',
           frameBackgroundEnabled: false
         });
+        stripTableStructureStyles(widget);
       }
       if (isStructure && normalizedStructureMode === 'binary_tree') widget.treeData = legacyTreeData(widget.content);
       const naturalSize = constrainedStructureSize(widget);
@@ -5879,6 +6062,29 @@
     syncStructureEditorVisibility(widget);
   }
 
+  function enableTextInteractionCache(object) {
+    if (!isTextObject(object) || object.isEditing || object.__asmTextInteractionCache) return;
+    object.__asmTextInteractionCache = {
+      objectCaching: object.objectCaching,
+      noScaleCache: object.noScaleCache
+    };
+    object.set({ objectCaching: true, noScaleCache: true });
+    object.dirty = true;
+  }
+
+  function restoreTextInteractionCache(canvas) {
+    let changed = false;
+    canvas.getObjects().forEach(object => {
+      const previous = object.__asmTextInteractionCache;
+      if (!previous) return;
+      object.set(previous);
+      delete object.__asmTextInteractionCache;
+      object.dirty = true;
+      changed = true;
+    });
+    if (changed) canvas.requestRenderAll();
+  }
+
   function populateTableEditor(widget) {
     const tableData = normalizeTableData(widget.tableData, widget.content);
     if (tableRowsInput) tableRowsInput.value = String(tableData.length);
@@ -6189,6 +6395,10 @@
     const cell = structureCellForKey(widgetEl, selectedStructureCell?.key);
     const found = getWidget(widgetId);
     if (!cell || !found.widget || !document.body.classList.contains('asm-edit-mode')) return;
+    if (found.widget.type === 'table') {
+      hideStructureContextMenu();
+      return;
+    }
     const index = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex);
     if (!Number.isInteger(index)) return;
     structureContextMenu.replaceChildren();
@@ -6407,7 +6617,6 @@
       : matrixStructureRows(widget.content);
     const columns = Math.max(1, ...rows.map(row => row.length));
     rows.forEach(row => { while (row.length < columns) row.push(''); });
-    const indexRows = rows.map((item, rowIndex) => item.map((value, columnIndex) => rowIndex * columns + columnIndex));
     const row = Math.min(context.row, rows.length - 1);
     const column = Math.min(context.column, columns - 1);
     if (action === 'matrix-save') {
@@ -6416,26 +6625,21 @@
       if (isTable && rows.length >= 20) return;
       const insertAt = row + (action === 'matrix-row-after' ? 1 : 0);
       rows.splice(insertAt, 0, Array(columns).fill(isTable ? '' : '0'));
-      indexRows.splice(insertAt, 0, Array(columns).fill(null));
     } else if (action === 'matrix-column-before' || action === 'matrix-column-after') {
       if (isTable && columns >= 12) return;
       const insertAt = column + (action === 'matrix-column-after' ? 1 : 0);
       rows.forEach(item => item.splice(insertAt, 0, isTable ? '' : '0'));
-      indexRows.forEach(item => item.splice(insertAt, 0, null));
     } else if (action === 'matrix-row-delete') {
       if (rows.length === 1) {
         rows[0] = Array(columns).fill(isTable ? '' : '0');
-        indexRows[0] = Array(columns).fill(null);
       } else {
         rows.splice(row, 1);
-        indexRows.splice(row, 1);
       }
     } else if (action === 'matrix-column-delete') {
       if (columns === 1) {
-        rows.forEach((item, rowIndex) => { item[0] = isTable ? '' : '0'; indexRows[rowIndex][0] = null; });
+        rows.forEach(item => { item[0] = isTable ? '' : '0'; });
       } else {
         rows.forEach(item => item.splice(column, 1));
-        indexRows.forEach(item => item.splice(column, 1));
       }
     } else {
       return;
@@ -6445,24 +6649,7 @@
       updateSelectedStructure({ content });
       return;
     }
-    const oldToNew = new Map();
-    indexRows.forEach((item, rowIndex) => item.forEach((oldIndex, columnIndex) => {
-      if (oldIndex !== null) oldToNew.set(oldIndex, rowIndex * item.length + columnIndex);
-    }));
-    const cellStyles = {};
-    Object.entries(widget.cellStyles || {}).forEach(([key, value]) => {
-      const nextIndex = oldToNew.get(Number(key));
-      if (nextIndex !== undefined) cellStyles[nextIndex] = value;
-    });
-    const patch = { tableData: rows, content, cellStyles };
-    ['highlight', 'focus', 'point', 'mark', 'background', 'annotation'].forEach(type => {
-      patch[`${type}Indices`] = window.AlgoStructureRenderer.parseIndices(widget[`${type}Indices`])
-        .map(index => oldToNew.get(index))
-        .filter(index => index !== undefined)
-        .sort((a, b) => a - b)
-        .join(',');
-    });
-    updateSelectedStructure(patch);
+    updateSelectedStructure({ tableData: rows, content });
   }
 
   function applyItemContextAction(action, context, widget) {
@@ -7374,11 +7561,7 @@
       const found = getWidget(selectedWidgetId);
       if (!found.widget || found.widget.type !== 'table') return;
       const tableData = resizeTableData(found.widget, tableRowsInput?.value, tableColumnsInput?.value);
-      updateSelectedStructure({
-        tableData,
-        content: tableContentSummary(tableData),
-        ...remapTableMetadataForResize(found.widget, tableData)
-      }, { preserveScale: true });
+      updateSelectedStructure({ tableData, content: tableContentSummary(tableData) }, { preserveScale: true });
       if (tableRowsInput) tableRowsInput.value = String(tableData.length);
       if (tableColumnsInput) tableColumnsInput.value = String(tableData[0].length);
     };
@@ -7829,6 +8012,11 @@
         selectStructureCell(widgetEl, structureCell);
         if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
         const widgetId = widgetEl.dataset.widgetId;
+        if (getWidget(widgetId).widget?.type === 'table') {
+          hideStructureContextMenu();
+          selectWidget(widgetId);
+          return;
+        }
         structureCellClickTimer = setTimeout(() => {
           structureCellClickTimer = null;
           if (activeStructureInlineEditor || selectedStructureCell?.widgetId !== widgetId) return;
@@ -8347,8 +8535,34 @@
     return !!(obj && obj.type && obj.type.toLowerCase().includes('text'));
   }
 
-  function applyInlineScripts(obj) {
-    if (!obj?.asmInlineScripts || !isTextObject(obj) || obj.isEditing) return;
+  function restoreInlineScriptEditingBase(obj) {
+    if (!obj?.asmInlineScripts || !obj.isEditing) return;
+    obj.styles = window.ASMInlineScripts.copyStyles(obj.asmInlineScriptBaseStyles || {});
+    obj.__asmInlineScriptEditingFormatted = false;
+    obj.initDimensions();
+    obj.setCoords();
+    obj.dirty = true;
+  }
+
+  function bindInlineScriptEditingInput(obj) {
+    unbindInlineScriptEditingInput(obj);
+    if (!obj?.hiddenTextarea) return;
+    const handler = event => {
+      if (event?.inputType === 'historyUndo' || event?.inputType === 'historyRedo') return;
+      restoreInlineScriptEditingBase(obj);
+    };
+    obj.__asmInlineScriptBeforeInput = handler;
+    obj.hiddenTextarea.addEventListener('beforeinput', handler, true);
+  }
+
+  function unbindInlineScriptEditingInput(obj) {
+    if (!obj?.hiddenTextarea || !obj.__asmInlineScriptBeforeInput) return;
+    obj.hiddenTextarea.removeEventListener('beforeinput', obj.__asmInlineScriptBeforeInput, true);
+    delete obj.__asmInlineScriptBeforeInput;
+  }
+
+  function applyInlineScripts(obj, { allowEditing = false } = {}) {
+    if (!obj?.asmInlineScripts || !isTextObject(obj) || (obj.isEditing && !allowEditing)) return;
     obj.styles = window.ASMInlineScripts.format(
       obj.text, obj.asmInlineScriptBaseStyles || {}, obj.fontSize
     );

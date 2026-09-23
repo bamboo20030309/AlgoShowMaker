@@ -65,6 +65,21 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     } };
     await page.locator('#importDeckInput').setInputFiles({ name: 'text.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(payload)) });
     await page.waitForFunction(() => window.testCanvas?.getObjects()[0]?.text === 'Alpha beta');
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+
+    const dragPosition = await page.evaluate(() => {
+      const canvas = testCanvas, object = canvas.getObjects()[1], rect = canvas.upperCanvasEl.getBoundingClientRect();
+      window.textCacheDuringMove = null;
+      canvas.on('object:moving', event => { window.textCacheDuringMove = event.target.objectCaching; });
+      const point = fabric.util.transformPoint(new fabric.Point(object.left + 20, object.top + 20), canvas.viewportTransform);
+      return { x: rect.left + point.x * rect.width / canvas.width, y: rect.top + point.y * rect.height / canvas.height };
+    });
+    await page.mouse.move(dragPosition.x, dragPosition.y);
+    await page.mouse.down();
+    await page.mouse.move(dragPosition.x + 40, dragPosition.y + 20, { steps: 3 });
+    await page.mouse.up();
+    assert.equal(await page.evaluate(() => window.textCacheDuringMove), true);
+    assert.equal(await page.evaluate(() => testCanvas.getObjects()[1].objectCaching), false);
     async function beginEditing() {
       const position = await page.evaluate(() => {
         const c = testCanvas, o = c.getObjects()[0], r = c.upperCanvasEl.getBoundingClientRect();
@@ -103,12 +118,30 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     assert.equal(await page.locator('body').getAttribute('data-history-index'), historyBeforeEditing);
     await select(6, 10);
     const originalStyles = await page.evaluate(() => JSON.parse(JSON.stringify(testCanvas.getActiveObject().styles)));
-    await page.keyboard.insertText('gamma');
+    const saveRevisionBeforeTyping = Number(await page.locator('body').getAttribute('data-local-deck-revision'));
+    await page.evaluate(() => {
+      window.textStyleSetCalls = 0;
+      testCanvas.getObjects().forEach(object => {
+        const original = object.set;
+        object.set = function (...args) {
+          if (args[0] === 'styles' || (args[0] && typeof args[0] === 'object' && 'styles' in args[0])) {
+            window.textStyleSetCalls += 1;
+          }
+          return original.apply(this, args);
+        };
+      });
+    });
+    for (const character of 'gamma') await page.keyboard.insertText(character);
     await state('Alpha gamma', 11);
+    assert.equal(Number(await page.locator('body').getAttribute('data-local-deck-revision')), saveRevisionBeforeTyping);
+    assert.equal(await page.evaluate(() => window.textStyleSetCalls), 0);
+    await page.waitForFunction(revision => Number(document.body.dataset.localDeckRevision) === revision + 1, saveRevisionBeforeTyping);
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-cloud'), 'false');
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-history'), 'false');
     const changedStyles = await page.evaluate(() => JSON.parse(JSON.stringify(testCanvas.getActiveObject().styles)));
     const replacementHistory = Number(await page.locator('body').getAttribute('data-history-index'));
     await page.keyboard.press('Control+z');
-    assert.equal(Number(await page.locator('body').getAttribute('data-history-index')), replacementHistory - 1);
+    assert.equal(Number(await page.locator('body').getAttribute('data-history-index')), replacementHistory);
     assert.deepEqual((await state('Alpha beta', 6, 10)).styles, originalStyles);
     await page.keyboard.press('Control+Shift+z');
     assert.deepEqual((await state('Alpha gamma', 11)).styles, changedStyles);
@@ -155,7 +188,7 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     assert.equal(Number(await page.locator('body').getAttribute('data-history-index')), beforeComposition);
     await page.evaluate(() => originalTextarea.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '中文' })));
     await state('Alpha gamma!😀中文', 15);
-    assert.equal(Number(await page.locator('body').getAttribute('data-history-index')), beforeComposition + 1);
+    assert.equal(Number(await page.locator('body').getAttribute('data-history-index')), beforeComposition);
     assert.deepEqual(await page.evaluate(() => compositionEvents), ['compositionstart', 'beforeinput', 'input', 'beforeinput', 'input', 'compositionend']);
     await page.keyboard.press('Control+z');
     await state('Alpha gamma!😀', 13);
@@ -202,13 +235,17 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     });
 
     // Ordinary deck undo rebuilds objects; subsequent text edits must save the current slide.
+    const historyBeforeExit = Number(await page.locator('body').getAttribute('data-history-index'));
     await page.evaluate(() => { testCanvas.getActiveObject().exitEditing(); document.activeElement.blur(); });
+    await page.waitForFunction(index => Number(document.body.dataset.historyIndex) === index + 1, historyBeforeExit);
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-cloud'), 'true');
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-history'), 'true');
     await page.keyboard.press('Control+z');
-    await page.waitForFunction(() => testCanvas.getObjects()[0]?.text === 'Alpha gamma!😀');
+    await page.waitForFunction(() => testCanvas.getObjects()[0]?.text === 'Alpha beta');
     await beginEditing();
-    await select(13, 13);
+    await select(10, 10);
     await page.keyboard.insertText(' persisted');
-    await state('Alpha gamma!😀 persisted', 23);
+    await state('Alpha beta persisted', 20);
     await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
     await page.reload();
     await page.waitForFunction(() => document.body.dataset.fabricObjectCount === '3');
@@ -220,7 +257,7 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#exportDeckBtn').click()]);
     const bytes = [...require('node:fs').readFileSync(await download.path())];
     const exported = await page.evaluate(bytes => ASMDeck.decode(new Blob([new Uint8Array(bytes)])), bytes);
-    assert.equal(exported.deck.groups[0].slides[0].canvas.objects[0].text, 'Alpha gamma!😀 persisted');
+    assert.equal(exported.deck.groups[0].slides[0].canvas.objects[0].text, 'Alpha beta persisted');
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
