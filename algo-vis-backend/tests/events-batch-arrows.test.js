@@ -254,7 +254,10 @@ test('compiled linear sieve preserves results and uses iteration.last for user-w
     (expression,locals)=>window.ASMTraceRules.resolveExpression(trace,frame,expression,locals),
     (condition,locals)=>window.ASMTraceRules.expressionMatches(trace,frame,condition,locals)).length);
   assert.deepEqual(Array.from(counts),[1,2,1]);
-  assert.ok(compact.every(frame=>frame.events.length>0 && frame.events.every(event=>event.enabled===false)));
+  const fixed = compact.flatMap(frame=>frame.events.filter(event=>event.type==='fixed'));
+  assert.ok(fixed.length>0 && fixed.every(event=>event.enabled===true));
+  assert.ok(compact.every(frame=>frame.events.filter(event=>event.type!=='fixed' && event.type!=='condition')
+    .every(event=>event.enabled===false)));
   assert.ok(trace.frames.some(frame=>!frame.eventControls.length && frame.events.some(event=>event.enabled===true)));
   const isprimeId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='isprime');
   const final=trace.frames.at(-1).state[isprimeId].data.items.map(item=>item.value);
@@ -267,7 +270,10 @@ test('compact sieve frame before inner loop uses its actual entries without rang
   const compact=trace.frames.filter(frame=>frame.eventControls.length);
   assert.equal(compact.length,23);
   assert.deepEqual(Array.from(compact.slice(0,3),frame=>Array.from(expandLoop(window,trace,frame),arrow=>arrow.to.indexExpression)),[['16'],['18','27'],['20']]);
-  assert.ok(compact.every(frame=>frame.events.every(event=>event.enabled===false)));
+  const fixed = compact.flatMap(frame=>frame.events.filter(event=>event.type==='fixed'));
+  assert.ok(fixed.length>0 && fixed.every(event=>event.enabled===true));
+  assert.ok(compact.every(frame=>frame.events.filter(event=>event.type!=='fixed' && event.type!=='condition')
+    .every(event=>event.enabled===false)));
   const prime=Object.keys(trace.variables).find(id=>trace.variables[id].name==='prime');
   assert.deepEqual(Array.from(trace.frames.at(-1).state[prime].data.items,item=>item.value),[2,3,5,7,11,13,17,19,23,29]);
 });

@@ -2420,9 +2420,10 @@
       const cell = element.closest?.('[data-trace-index]') || element;
       const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
       const targetText = assignableValueText(element, variableId);
-      if (!targetText) return;
-      const fixedIndex = targetText.dataset?.traceContentRole === 'index';
-      const fieldVariableId = targetText.dataset?.traceFieldVariable
+      const fixedIndex = !targetText
+        && Boolean(element.querySelector?.('text[data-trace-content-role="index"]'));
+      if (!targetText && !fixedIndex) return;
+      const fieldVariableId = targetText?.dataset?.traceFieldVariable
         || track.target?.variableId || variableId;
       const index = Number(cell.dataset?.traceIndex);
       const styleRect = conditionalStyleVariables.has(variableId)
@@ -7130,10 +7131,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-229';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-230';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-229', play, cancel, updateEventAvailability,
+    build: 'trace-230', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

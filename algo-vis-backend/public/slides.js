@@ -821,6 +821,7 @@
     updateProgressiveRebuildStatus(session);
     if (!entries.length) {
       document.body.dataset.asmdeckLastImportStats = JSON.stringify(session.stats);
+      if (session.mode === 'import') scheduleCloudSave();
       return;
     }
     void runProgressiveRebuild(session);
