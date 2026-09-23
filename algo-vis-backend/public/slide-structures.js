@@ -724,6 +724,7 @@
     if (mode === 'binary_tree') drawTree(group, widget, values);
     else drawWithOriginalRenderer(group, { ...widget, structureMode: mode }, values);
     if (mode !== 'table') addAnnotations(group, widget);
+    separateStructureLayers(group);
     return { svg, group, mode, bounds: paddedBounds(group, mode, widget) };
   }
 
@@ -756,6 +757,50 @@
         'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
       }));
     });
+  }
+
+  function copyLayerTransform(source, target) {
+    ['transform', 'opacity', 'display', 'visibility'].forEach(name => {
+      if (source.hasAttribute(name)) target.setAttribute(name, source.getAttribute(name));
+    });
+  }
+
+  function separateStructureLayers(group) {
+    const baseLayer = element('g', {
+      class: 'asm-slide-structure-base-layer',
+      'data-structure-base-layer': '1'
+    });
+    while (group.firstChild) baseLayer.appendChild(group.firstChild);
+    group.appendChild(baseLayer);
+
+    const styleLayer = element('g', {
+      class: 'asm-slide-structure-style-layer',
+      'data-structure-style-layer': 'foreground',
+      'pointer-events': 'none'
+    });
+    const selector = '[id^="highlight-"], [id^="point-"], [id^="mark-"], [data-structure-annotation-index]';
+    [...baseLayer.querySelectorAll(selector)].forEach(visual => {
+      const sourceCell = visual.closest('[data-structure-item-index]');
+      if (sourceCell) {
+        visual.setAttribute('data-structure-style-source-index', sourceCell.dataset.structureItemIndex);
+        if (sourceCell.dataset.segmentStorageIndex) {
+          visual.setAttribute('data-structure-style-source-storage-index', sourceCell.dataset.segmentStorageIndex);
+        }
+      }
+      const ancestors = [];
+      for (let current = visual.parentElement; current && current !== baseLayer; current = current.parentElement) {
+        ancestors.unshift(current);
+      }
+      let target = styleLayer;
+      ancestors.forEach(ancestor => {
+        const wrapper = element('g', { class: 'asm-slide-structure-style-transform' });
+        copyLayerTransform(ancestor, wrapper);
+        target.appendChild(wrapper);
+        target = wrapper;
+      });
+      target.appendChild(visual);
+    });
+    group.appendChild(styleLayer);
   }
 
   function getNaturalSize(widget) {

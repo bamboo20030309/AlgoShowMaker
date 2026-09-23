@@ -72,7 +72,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=7'));
   assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=thumbnail-drag-8'));
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(slides.includes('slide-structures.js?v=19'));
+  assert.ok(slides.includes('slide-structures.js?v=20'));
   assert.ok(legacy.includes('slide-structures.js?v=7'));
   assert.ok(html.includes('trace-arrow-model.js?v=arrow-8'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
