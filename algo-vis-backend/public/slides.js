@@ -581,6 +581,8 @@
     const serializedDeck = JSON.stringify(deck);
     const revision = ++localSaveRevision;
     document.body.dataset.localDeckRevision = String(revision);
+    document.body.dataset.lastDeckSaveCloud = String(cloud);
+    document.body.dataset.lastDeckSaveHistory = String(pushHistory);
     document.body.dataset.localDeckSave = 'pending';
     document.body.dataset.localDeckChars = String(serializedDeck.length);
     const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck).then(() => {
@@ -1268,7 +1270,7 @@
     textEditSaveTimer = null;
     if (!textEditSession) return;
     commitTextEditCheckpoint();
-    saveDeck({ history: false });
+    saveDeck({ history: false, cloud: false });
   }
 
   function scheduleTextEditPersistence() {

@@ -136,6 +136,8 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     assert.equal(Number(await page.locator('body').getAttribute('data-local-deck-revision')), saveRevisionBeforeTyping);
     assert.equal(await page.evaluate(() => window.textStyleSetCalls), 0);
     await page.waitForFunction(revision => Number(document.body.dataset.localDeckRevision) === revision + 1, saveRevisionBeforeTyping);
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-cloud'), 'false');
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-history'), 'false');
     const changedStyles = await page.evaluate(() => JSON.parse(JSON.stringify(testCanvas.getActiveObject().styles)));
     const replacementHistory = Number(await page.locator('body').getAttribute('data-history-index'));
     await page.keyboard.press('Control+z');
@@ -233,7 +235,11 @@ test('Fabric text undo preserves editing, selections, styles and saved history',
     });
 
     // Ordinary deck undo rebuilds objects; subsequent text edits must save the current slide.
+    const historyBeforeExit = Number(await page.locator('body').getAttribute('data-history-index'));
     await page.evaluate(() => { testCanvas.getActiveObject().exitEditing(); document.activeElement.blur(); });
+    await page.waitForFunction(index => Number(document.body.dataset.historyIndex) === index + 1, historyBeforeExit);
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-cloud'), 'true');
+    assert.equal(await page.locator('body').getAttribute('data-last-deck-save-history'), 'true');
     await page.keyboard.press('Control+z');
     await page.waitForFunction(() => testCanvas.getObjects()[0]?.text === 'Alpha beta');
     await beginEditing();
