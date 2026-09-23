@@ -18,7 +18,8 @@
       <span>AlgoShowMaker</span>
     </a>
     <nav class="header-nav" aria-label="主要導覽">
-      <a class="nav-link is-active" href="/">投影片</a>
+      <a id="headerSlidesLink" class="nav-link is-active" href="/" aria-current="page">投影片</a>
+      <a id="headerExamplesLink" class="nav-link" href="/?examples=1">範例投影片</a>
       <a class="nav-link" href="/algorithm.html">演算法動畫</a>
     </nav>
     <a class="header-github-link" href="https://github.com/bamboo20030309/AlgoShowMaker" target="_blank"
@@ -96,11 +97,11 @@
       <aside class="workspace-sidebar">
         <div>
           <span class="sidebar-label">工作區</span>
-          <button class="sidebar-item is-active" type="button">
+          <button id="workspaceSlidesNav" class="sidebar-item is-active" type="button" aria-current="page">
             <span class="sidebar-icon">▤</span>
             我的投影片
           </button>
-          <a class="sidebar-item" href="/?examples=1"><span class="sidebar-icon" aria-hidden="true">▤</span>範例投影片</a>
+          <a id="workspaceExamplesNav" class="sidebar-item" href="/?examples=1"><span class="sidebar-icon" aria-hidden="true">▤</span>範例投影片</a>
           <a class="sidebar-item" href="/algorithm.html">
             <span class="sidebar-icon">▶</span>
             演算法動畫
@@ -247,7 +248,7 @@
   <script src="deck-file-drop.js?v=1"></script>
   <script src="library-layout.js?v=2"></script>
   <script src="library-organizer.js?v=7"></script>
-  <script src="home.js?v=thumbnail-drag-8"></script>
+  <script src="home.js?v=header-examples-9"></script>
 </body>
 
 </html>
