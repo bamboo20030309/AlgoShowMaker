@@ -3564,10 +3564,9 @@
       const obj = event.target;
       if (!obj?.asmInlineScripts) return;
       obj.styles = window.ASMInlineScripts.copyStyles(obj.asmInlineScriptBaseStyles || {});
-      obj.__asmInlineScriptEditingFormatted = false;
       bindInlineScriptEditingInput(obj);
-      obj.initDimensions();
-      canvas.requestRenderAll();
+      applyInlineScripts(obj, { allowEditing: true });
+      obj.__asmInlineScriptEditingFormatted = true;
     });
     canvas.on('text:editing:exited', event => {
       const obj = event.target;

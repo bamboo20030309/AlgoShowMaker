@@ -149,6 +149,24 @@ test('special text uses visual graphemes for cursor placement and preserved styl
     });
     assert.equal(exitedScript.marker.fill, 'rgba(0, 0, 0, 0)');
     assert.ok(exitedScript.exponent.deltaY < 0);
+
+    await page.evaluate(() => {
+      const object = specialTextCanvas.getObjects()[0];
+      specialTextCanvas.setActiveObject(object);
+      object.enterEditing();
+      object.hiddenTextarea.focus();
+    });
+    const reenteredScript = await page.evaluate(() => {
+      const object = specialTextCanvas.getObjects()[0];
+      return {
+        editing: object.isEditing,
+        marker: { ...(object.styles?.[0]?.[13] || {}) },
+        exponent: { ...(object.styles?.[0]?.[14] || {}) }
+      };
+    });
+    assert.equal(reenteredScript.editing, true);
+    assert.equal(reenteredScript.marker.fill, 'rgba(0, 0, 0, 0)');
+    assert.ok(reenteredScript.exponent.deltaY < 0);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
