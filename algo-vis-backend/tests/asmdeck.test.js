@@ -135,7 +135,8 @@ test('every bundled guest deck remains decodable after engine upgrades', async (
   const catalog = JSON.parse(fs.readFileSync(path.join(publicRoot, 'guest-decks.json'), 'utf8'));
   assert.ok(catalog.decks.length > 0);
   for (const entry of catalog.decks) {
-    const bytes = fs.readFileSync(path.join(publicRoot, entry.archive.replace(/^\//, '')));
+    const archivePath = entry.archive.replace(/^\//, '').split('?')[0];
+    const bytes = fs.readFileSync(path.join(publicRoot, archivePath));
     const decoded = await archive.decode(new Blob([bytes]));
     assert.ok(decoded.deck.groups?.length > 0, entry.id);
   }
