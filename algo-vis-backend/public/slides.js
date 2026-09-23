@@ -365,6 +365,7 @@
   const defaultToolPanel = document.getElementById('defaultToolPanel');
   const slideOrderToggleBtn = document.getElementById('slideOrderToggleBtn');
   const overviewSidebarPanel = document.getElementById('overviewSidebarPanel');
+  const overviewDeleteSlideBtn = document.getElementById('overviewDeleteSlideBtn');
   const latexEditorPanel = document.getElementById('latexEditorPanel');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
   const structureEditorPanel = document.getElementById('structureEditorPanel');
@@ -2610,6 +2611,19 @@
       .filter(Boolean);
   }
 
+  function segmentDomainLength(widget, values = linearStructureValues(widget?.content)) {
+    return window.AlgoStructureRenderer?.segmentDomainLength
+      ? window.AlgoStructureRenderer.segmentDomainLength(widget, values.length)
+      : Math.max(1, Math.ceil((Math.max(1, values.length) + 1) / 2));
+  }
+
+  function normalizeSegmentValues(values, domainLength) {
+    if (window.AlgoStructureRenderer?.normalizeSegmentValues) {
+      return window.AlgoStructureRenderer.normalizeSegmentValues(values, domainLength);
+    }
+    return values.slice();
+  }
+
   const STRUCTURE_CELL_STYLE_TYPES = new Set(['highlight', 'focus', 'point', 'mark', 'background', 'annotation']);
 
   function normalizeStructureCellStyles(source) {
@@ -2833,6 +2847,11 @@
         }
         if (type === 'structure' && normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
+        }
+        if (type === 'structure' && normalized.structureMode === 'segment_tree') {
+          const values = linearStructureValues(normalized.content);
+          normalized.segmentDomainLength = segmentDomainLength(widget, values);
+          normalized.content = normalizeSegmentValues(values, normalized.segmentDomainLength).join(', ');
         }
         if (normalized.structureFrameVersion < 4) {
           const size = constrainedStructureSize(normalized);
@@ -3379,7 +3398,7 @@
       'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
     ].some(key => previousWidget[key] !== widget[key]);
     const structureChanged = isCellGridWidget(widget) && (!previousWidget || [
-      'structureMode', 'indexMode', 'indexBase', 'itemsPerRow', 'gap', 'cellSize',
+      'structureMode', 'indexMode', 'indexBase', 'segmentDomainLength', 'itemsPerRow', 'gap', 'cellSize',
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
@@ -5055,6 +5074,10 @@
         stripTableStructureStyles(widget);
       }
       if (isStructure && normalizedStructureMode === 'binary_tree') widget.treeData = legacyTreeData(widget.content);
+      if (isStructure && normalizedStructureMode === 'segment_tree') {
+        widget.segmentDomainLength = 7;
+        widget.content = normalizeSegmentValues(linearStructureValues(widget.content), 7).join(', ');
+      }
       const naturalSize = constrainedStructureSize(widget);
       widget.w = naturalSize.width;
       widget.h = naturalSize.height;
@@ -6054,7 +6077,9 @@
     setStructureColorButton(structureTreeArrowColorInput, widget.treeArrowColor || '#333333');
     structureIndexModeSelect.value = String(widget.indexMode ?? 0);
     structureIndexBaseSelect.value = String(widget.indexBase ?? 0);
-    if (structureLengthInput) structureLengthInput.value = String(Math.max(1, linearStructureValues(widget.content).length));
+    if (structureLengthInput) structureLengthInput.value = String(widget.structureMode === 'segment_tree'
+      ? segmentDomainLength(widget)
+      : Math.max(1, linearStructureValues(widget.content).length));
     structureItemsPerRowInput.value = String(widget.itemsPerRow ?? 0);
     structureGapInput.value = String(widget.gap ?? 0);
     structureCellSizeInput.value = String(widget.cellSize ?? 58);
@@ -6139,6 +6164,19 @@
     if (['matrix', 'table', 'binary_tree'].includes(mode)) return;
     const length = Math.max(1, Math.min(100, Math.round(Number(rawLength) || 1)));
     const values = linearStructureValues(found.widget.content);
+    if (mode === 'segment_tree') {
+      const normalizedValues = normalizeSegmentValues(values, length);
+      if (segmentDomainLength(found.widget, values) === length && values.length === normalizedValues.length) {
+        if (structureLengthInput) structureLengthInput.value = String(length);
+        return;
+      }
+      updateSelectedStructure({
+        segmentDomainLength: length,
+        content: normalizedValues.join(', ')
+      }, { preserveScale: true });
+      if (structureLengthInput) structureLengthInput.value = String(length);
+      return;
+    }
     if (values.length === length) {
       if (structureLengthInput) structureLengthInput.value = String(length);
       return;
@@ -6567,6 +6605,9 @@
         structureContextButton('Delete row', 'matrix-row-delete'),
         structureContextButton('Delete column', 'matrix-column-delete')
       );
+    } else if (mode === 'segment_tree') {
+      activeStructureContext = { ...details.context, cellKey: details.key };
+      structureContextMenu.append(structureContextButton('Edit value', 'item-edit'));
     } else {
       activeStructureContext = { ...details.context, cellKey: details.key };
       structureContextMenu.append(
@@ -7443,6 +7484,7 @@
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);
+    overviewDeleteSlideBtn?.addEventListener('click', deleteOverviewSelectedSlide);
     algorithmEditSlideBtn?.addEventListener('click', () => {
       const slide = getSlide();
       if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
@@ -7539,6 +7581,11 @@
       const patch = { structureMode };
       if (structureMode === 'binary_tree') {
         patch.treeData = normalizeTreeData(found.widget?.treeData, found.widget?.content || '');
+      }
+      if (structureMode === 'segment_tree') {
+        const values = linearStructureValues(found.widget?.content);
+        patch.segmentDomainLength = Math.max(1, values.length);
+        patch.content = normalizeSegmentValues(values, patch.segmentDomainLength).join(', ');
       }
       updateSelectedStructure(patch);
       syncStructureEditorVisibility({ structureMode });
@@ -9549,6 +9596,7 @@
   function renderCustomOverview() {
     if (!customOverviewBoard || !customOverviewOpen) return;
     rebuildPositions();
+    if (overviewDeleteSlideBtn) overviewDeleteSlideBtn.disabled = totalSlides() <= 1;
     customOverviewBoard.innerHTML = '';
     deck.groups.forEach((group, h) => {
       const column = document.createElement('div');
