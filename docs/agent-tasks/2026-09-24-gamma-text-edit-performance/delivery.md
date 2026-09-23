@@ -4,13 +4,13 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-22-gamma
 - 共同基準 commit：2b76e589f63706684ae24bf22ba74b86ad3ade92
-- 程式修正 commit：520a73a03210b3cba74c3f7fbf2cacf1b4cafd0f
-- 驗證時的 HEAD 與未提交修改：程式內容對應 520a73a03210b3cba74c3f7fbf2cacf1b4cafd0f；程式 commit 後工作樹乾淨，之後僅新增本交付紀錄與更新 task 狀態。
+- 程式修正 commit：520a73a03210b3cba74c3f7fbf2cacf1b4cafd0f、38ba088ccc76ff0e8a8a15b04211da74b7aa4a50
+- 驗證時的 HEAD 與未提交修改：最終程式內容對應 38ba088ccc76ff0e8a8a15b04211da74b7aa4a50；驗證時只有本交付紀錄更新尚未提交。
 - 驗證日期：2026-09-24
 
 ## 根因與修改
 - 已確認根因與證據：每次 `text:changed` 會對當頁所有文字物件呼叫 `set('styles')`，再對整份 deck stringify、排入 IndexedDB 並建立完整歷史；文字 undo 解析與比較完整 deck；文字物件永久停用 Fabric 快取。修正前 60 個文字物件每鍵 60 次樣式寫入，應用處理中位 38.7 ms。
-- 修正方式與行為變化：只在樣式確實需要正規化時才寫回；編輯期間保存單一文字物件的輕量狀態，300 ms 連續輸入合併為一個 checkpoint 與草稿寫入；離開編輯才建立完整 deck 歷史；拖曳、縮放及旋轉期間暫用文字快取，滑鼠放開後恢復高解析設定。
+- 修正方式與行為變化：只在樣式確實需要正規化時才寫回；編輯期間保存單一文字物件的輕量狀態，300 ms 連續輸入合併為一個 checkpoint 與本機草稿寫入，且不排程雲端；離開編輯才建立完整 deck 歷史並排程雲端同步；拖曳、縮放及旋轉期間暫用文字快取，滑鼠放開後恢復高解析設定。
 - 修改檔案及用途：`public/slides.js` 實作樣式快路徑、輕量文字歷史、儲存 debounce 與互動快取；`public/slides.html` 更新快取版本；`tests/slides-text-undo.browser.test.js` 驗證儲存合併、樣式寫入、拖曳快取、undo/redo 與重載；`tests/special-text-cursor.browser.test.js` 更新連續輸入復原契約；`tests/entrypoints.test.js` 更新入口版本斷言。
 - README／版本紀錄／使用說明更新：不適用；沒有新增操作或變更檔案格式。
 - 與 task.md 的差異：無。
@@ -19,7 +19,8 @@
 | task.md 條件 | 驗證方式 | 實際結果 | 判定 |
 |---|---|---|---|
 | 未變更物件不重設 styles | 瀏覽器包裝 Fabric `set` 並逐字輸入 `gamma` | 輸入期間 styles 寫入 0 次 | 通過 |
-| 連續輸入只排程一次草稿寫入 | 比較五個字輸入前、輸入後與 300 ms 後的 revision | 輸入當下 revision 不變，閒置後只增加 1 | 通過 |
+| 連續輸入只排程一次本機草稿寫入 | 比較五個字輸入前、輸入後與 300 ms 後的 revision 及 save scope | 輸入當下 revision 不變，閒置後只增加 1，cloud/history 均為 false | 通過 |
+| 離開編輯才建立完整歷史並排程雲端 | 離開文字編輯後檢查歷史索引與 save scope | 歷史索引增加 1，cloud/history 均為 true | 通過 |
 | 輕量文字 undo/redo 保留狀態 | 文字、選取、樣式、emoji、IME 與上下標瀏覽器操作 | 全部符合；全域 deck 歷史在編輯中不增加 | 通過 |
 | 互動期間使用快取並恢復 | 實際拖曳文字物件並在 moving／mouseup 取值 | moving 為 true，mouseup 後恢復 false | 通過 |
 | 大型頁面效能改善 | 同一 headless Edge 探針，20 次逐字輸入及一次 undo | 60 文字頁面輸入 42.7→4.8 ms、undo 143.4→13.3 ms | 通過 |
@@ -67,7 +68,7 @@
 - 選擇依據：修改一般 Fabric 文字輸入、undo/redo、IndexedDB 排程與物件互動快取，不涉及動畫、trace 或播放。
 - 執行的測試檔／名稱篩選：`slides-text-undo.browser.test.js`、`special-text-cursor.browser.test.js`、`slide-inline-scripts.test.js`、`entrypoints.test.js`，皆完整執行。
 - 驗證環境與隔離服務：隨機埠、獨立 headless Edge、臨時匯入 deck；未操作使用者分頁。
-- 驗證版本、完整指令、結果與證據：程式內容為 520a73a03210b3cba74c3f7fbf2cacf1b4cafd0f；指令與結果如上。
+- 驗證版本、完整指令、結果與證據：最終程式內容為 38ba088ccc76ff0e8a8a15b04211da74b7aa4a50；指令與結果如上。
 - 未執行的驗證及原因：未執行演算法驗證集與完整 regression；本次為 V1 文字編輯與儲存效能修正。
 - 需要主代理做的 V3 驗證：無；建議整合版以實際大型文字投影片確認輸入與拖曳手感。
 
