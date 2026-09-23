@@ -50,6 +50,17 @@
     return isCellGridType(widget?.type);
   }
 
+  const TABLE_UNSUPPORTED_STRUCTURE_STYLE_FIELDS = [
+    'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
+    'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
+    'annotationIndices', 'annotationColor', 'annotationText', 'annotationLabels', 'cellStyles'
+  ];
+
+  function stripTableStructureStyles(widget) {
+    TABLE_UNSUPPORTED_STRUCTURE_STYLE_FIELDS.forEach(field => delete widget[field]);
+    return widget;
+  }
+
   function randomId() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
       return window.crypto.randomUUID();
@@ -2540,32 +2551,6 @@
     return rows;
   }
 
-  function remapTableMetadataForResize(widget, nextRows) {
-    const previousRows = normalizeTableData(widget?.tableData, widget?.content);
-    const previousColumns = previousRows[0]?.length || 1;
-    const nextColumns = nextRows[0]?.length || 1;
-    const oldToNew = new Map();
-    for (let row = 0; row < Math.min(previousRows.length, nextRows.length); row += 1) {
-      for (let column = 0; column < Math.min(previousColumns, nextColumns); column += 1) {
-        oldToNew.set(row * previousColumns + column, row * nextColumns + column);
-      }
-    }
-    const cellStyles = {};
-    Object.entries(widget?.cellStyles || {}).forEach(([key, value]) => {
-      const nextIndex = oldToNew.get(Number(key));
-      if (nextIndex !== undefined) cellStyles[nextIndex] = value;
-    });
-    const patch = { cellStyles };
-    ['highlight', 'focus', 'point', 'mark', 'background', 'annotation'].forEach(type => {
-      patch[`${type}Indices`] = window.AlgoStructureRenderer.parseIndices(widget?.[`${type}Indices`])
-        .map(index => oldToNew.get(index))
-        .filter(index => index !== undefined)
-        .sort((a, b) => a - b)
-        .join(',');
-    });
-    return patch;
-  }
-
   function treeContentSummary(treeData) {
     return treeData.nodes.map(node => node.value).join(', ');
   }
@@ -2665,6 +2650,7 @@
           normalized.indexMode = 0;
           normalized.gap = 0;
           normalized.frameBackgroundEnabled = false;
+          stripTableStructureStyles(normalized);
         }
         if (type === 'structure' && normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
@@ -4863,6 +4849,7 @@
           tableTextColor: '#1f282d',
           frameBackgroundEnabled: false
         });
+        stripTableStructureStyles(widget);
       }
       if (isStructure && normalizedStructureMode === 'binary_tree') widget.treeData = legacyTreeData(widget.content);
       const naturalSize = constrainedStructureSize(widget);
@@ -6189,6 +6176,10 @@
     const cell = structureCellForKey(widgetEl, selectedStructureCell?.key);
     const found = getWidget(widgetId);
     if (!cell || !found.widget || !document.body.classList.contains('asm-edit-mode')) return;
+    if (found.widget.type === 'table') {
+      hideStructureContextMenu();
+      return;
+    }
     const index = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex);
     if (!Number.isInteger(index)) return;
     structureContextMenu.replaceChildren();
@@ -6407,7 +6398,6 @@
       : matrixStructureRows(widget.content);
     const columns = Math.max(1, ...rows.map(row => row.length));
     rows.forEach(row => { while (row.length < columns) row.push(''); });
-    const indexRows = rows.map((item, rowIndex) => item.map((value, columnIndex) => rowIndex * columns + columnIndex));
     const row = Math.min(context.row, rows.length - 1);
     const column = Math.min(context.column, columns - 1);
     if (action === 'matrix-save') {
@@ -6416,26 +6406,21 @@
       if (isTable && rows.length >= 20) return;
       const insertAt = row + (action === 'matrix-row-after' ? 1 : 0);
       rows.splice(insertAt, 0, Array(columns).fill(isTable ? '' : '0'));
-      indexRows.splice(insertAt, 0, Array(columns).fill(null));
     } else if (action === 'matrix-column-before' || action === 'matrix-column-after') {
       if (isTable && columns >= 12) return;
       const insertAt = column + (action === 'matrix-column-after' ? 1 : 0);
       rows.forEach(item => item.splice(insertAt, 0, isTable ? '' : '0'));
-      indexRows.forEach(item => item.splice(insertAt, 0, null));
     } else if (action === 'matrix-row-delete') {
       if (rows.length === 1) {
         rows[0] = Array(columns).fill(isTable ? '' : '0');
-        indexRows[0] = Array(columns).fill(null);
       } else {
         rows.splice(row, 1);
-        indexRows.splice(row, 1);
       }
     } else if (action === 'matrix-column-delete') {
       if (columns === 1) {
-        rows.forEach((item, rowIndex) => { item[0] = isTable ? '' : '0'; indexRows[rowIndex][0] = null; });
+        rows.forEach(item => { item[0] = isTable ? '' : '0'; });
       } else {
         rows.forEach(item => item.splice(column, 1));
-        indexRows.forEach(item => item.splice(column, 1));
       }
     } else {
       return;
@@ -6445,24 +6430,7 @@
       updateSelectedStructure({ content });
       return;
     }
-    const oldToNew = new Map();
-    indexRows.forEach((item, rowIndex) => item.forEach((oldIndex, columnIndex) => {
-      if (oldIndex !== null) oldToNew.set(oldIndex, rowIndex * item.length + columnIndex);
-    }));
-    const cellStyles = {};
-    Object.entries(widget.cellStyles || {}).forEach(([key, value]) => {
-      const nextIndex = oldToNew.get(Number(key));
-      if (nextIndex !== undefined) cellStyles[nextIndex] = value;
-    });
-    const patch = { tableData: rows, content, cellStyles };
-    ['highlight', 'focus', 'point', 'mark', 'background', 'annotation'].forEach(type => {
-      patch[`${type}Indices`] = window.AlgoStructureRenderer.parseIndices(widget[`${type}Indices`])
-        .map(index => oldToNew.get(index))
-        .filter(index => index !== undefined)
-        .sort((a, b) => a - b)
-        .join(',');
-    });
-    updateSelectedStructure(patch);
+    updateSelectedStructure({ tableData: rows, content });
   }
 
   function applyItemContextAction(action, context, widget) {
@@ -7374,11 +7342,7 @@
       const found = getWidget(selectedWidgetId);
       if (!found.widget || found.widget.type !== 'table') return;
       const tableData = resizeTableData(found.widget, tableRowsInput?.value, tableColumnsInput?.value);
-      updateSelectedStructure({
-        tableData,
-        content: tableContentSummary(tableData),
-        ...remapTableMetadataForResize(found.widget, tableData)
-      }, { preserveScale: true });
+      updateSelectedStructure({ tableData, content: tableContentSummary(tableData) }, { preserveScale: true });
       if (tableRowsInput) tableRowsInput.value = String(tableData.length);
       if (tableColumnsInput) tableColumnsInput.value = String(tableData[0].length);
     };
@@ -7829,6 +7793,11 @@
         selectStructureCell(widgetEl, structureCell);
         if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
         const widgetId = widgetEl.dataset.widgetId;
+        if (getWidget(widgetId).widget?.type === 'table') {
+          hideStructureContextMenu();
+          selectWidget(widgetId);
+          return;
+        }
         structureCellClickTimer = setTimeout(() => {
           structureCellClickTimer = null;
           if (activeStructureInlineEditor || selectedStructureCell?.widgetId !== widgetId) return;

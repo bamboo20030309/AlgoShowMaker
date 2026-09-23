@@ -53,10 +53,14 @@ test('table widget edits cells, dimensions, headers and persisted data', { timeo
     assert.equal(await table.locator('[data-structure-item-index]').count(), 9);
     assert.equal(await page.locator('#tableEditorPanel').isVisible(), true);
     assert.equal(await page.locator('#structureEditorPanel').isVisible(), false);
+    assert.equal(await page.locator('#tableEditorPanel [data-structure-style-type]').count(), 0);
     assert.equal(await table.locator('[data-matrix-row="0"][data-matrix-column="1"]').getAttribute('data-table-header'), 'true');
     assert.equal(await table.locator('[data-matrix-row="1"][data-matrix-column="0"]').getAttribute('data-table-header'), 'false');
 
     const editable = table.locator('[data-matrix-row="1"][data-matrix-column="1"]');
+    await editable.click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator('#structureContextMenu [data-structure-style-type]').count(), 0);
     await editable.dblclick();
     const input = table.locator('.structure-inline-value-input');
     await input.fill('含逗號, 仍是同一格');
@@ -116,6 +120,9 @@ test('legacy structure tables load and save as standalone table widgets', { time
             structureMode: 'table',
             tableData: [['標題 A', '標題 B'], ['值 A', '值 B']],
             content: '標題 A | 標題 B\n值 A | 值 B',
+            highlightIndices: '1',
+            highlightColor: '#ff00ff',
+            cellStyles: { 1: { highlight: '#00ff00' } },
             x: 120,
             y: 100,
             w: 420,
@@ -130,6 +137,10 @@ test('legacy structure tables load and save as standalone table widgets', { time
     const table = page.locator('[data-widget-id="legacy-table"]');
     assert.equal(await table.getAttribute('data-widget-type'), 'table');
     assert.equal(await table.locator('[data-slide-structure]').getAttribute('data-slide-structure'), 'table');
+    const legacyStyledCell = table.locator('[data-structure-item-index="1"] > rect');
+    assert.equal(await legacyStyledCell.getAttribute('stroke-width'), '1.5');
+    assert.notEqual(await legacyStyledCell.getAttribute('stroke'), '#00ff00');
+    assert.equal(await legacyStyledCell.getAttribute('class'), null);
     await table.click();
     assert.equal(await page.locator('#tableEditorPanel').isVisible(), true);
     assert.equal(await page.locator('#structureEditorPanel').isVisible(), false);
@@ -142,6 +153,9 @@ test('legacy structure tables load and save as standalone table widgets', { time
     });
     assert.equal(saved.type, 'table');
     assert.equal(saved.tableHeaderColumn, true);
+    assert.equal(saved.highlightIndices, undefined);
+    assert.equal(saved.highlightColor, undefined);
+    assert.equal(saved.cellStyles, undefined);
   } finally {
     await browser?.close();
     server.kill();

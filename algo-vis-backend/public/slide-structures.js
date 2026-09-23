@@ -552,9 +552,6 @@
       xOffsets[column] = offset;
       return offset + width;
     }, 0);
-    const styleSets = Object.fromEntries(Object.entries(styleData(widget, rows.length * columns))
-      .map(([type, entry]) => [type, new Set(entry.elements)]));
-
     rows.forEach((rowValues, row) => Array.from({ length: columns }, (_, column) => {
       const index = row * columns + column;
       const isHeader = (widget.tableHeaderRow !== false && row === 0)
@@ -569,23 +566,15 @@
         'data-matrix-column': column,
         'data-table-header': isHeader ? 'true' : 'false'
       });
-      const background = styleSets.background.has(index)
-        ? cellStyleColor(widget, index, 'background', widget.backgroundColor || '#10b981')
-        : (isHeader ? headerFill : bodyFill);
-      const emphasizedType = ['highlight', 'focus', 'point', 'mark'].find(type => styleSets[type].has(index));
-      const emphasizedColor = emphasizedType
-        ? cellStyleColor(widget, index, emphasizedType, widget[`${emphasizedType}Color`] || borderColor)
-        : borderColor;
       cell.appendChild(element('rect', {
         x,
         y,
         width,
         height: rowHeight,
         rx: 0,
-        fill: background,
-        stroke: emphasizedColor,
-        'stroke-width': emphasizedType ? 4 : 1.5,
-        class: emphasizedType === 'highlight' ? 'highlight-blink' : ''
+        fill: isHeader ? headerFill : bodyFill,
+        stroke: borderColor,
+        'stroke-width': 1.5
       }));
       const rawValue = String(rowValues[column] ?? '');
       const displayValue = Array.from(rawValue).length > 80
@@ -734,7 +723,7 @@
     const values = valuesFromContent(widget.content);
     if (mode === 'binary_tree') drawTree(group, widget, values);
     else drawWithOriginalRenderer(group, { ...widget, structureMode: mode }, values);
-    addAnnotations(group, widget);
+    if (mode !== 'table') addAnnotations(group, widget);
     return { svg, group, mode, bounds: paddedBounds(group, mode, widget) };
   }
 
