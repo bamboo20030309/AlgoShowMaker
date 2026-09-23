@@ -86,7 +86,7 @@
         title.textContent = entry.title;
         const meta = document.createElement('span');
         meta.className = 'deck-meta';
-        meta.textContent = `${entryCategories(entry).map(id => categories[id]).join(' · ')} · 免登入觀賞`;
+        meta.textContent = entryCategories(entry).map(id => categories[id]).join(' · ');
         info.append(title, meta);
         link.append(preview, info);
         card.append(link);
