@@ -45,8 +45,11 @@ test('ordinary text keeps editable script source and reloads rendered script sty
     const deck = { groups: [{ id: 'group', slides: [{ id: 'slide', canvas: { version: '5.3.0', objects: [
       { type: 'textbox', left: 100, top: 100, width: 600, text: 'A_2 x^{n+1}', fontSize: 40,
         fill: '#111111', styles: {}, asmInlineScripts: true, asmInlineScriptBaseStyles: {} },
-      { type: 'textbox', left: 100, top: 220, width: 600, text: 'legacy_2', fontSize: 40,
-        fill: '#111111', styles: { 0: { 0: { fill: '#ff0000', fontWeight: 'bold' } } } }
+      { type: 'textbox', left: 100, top: 220, width: 600, text: '1^n m_1', fontSize: 40,
+        fill: '#111111', styles: { 0: { 0: { fill: '#ff0000', fontWeight: 'bold' } } } },
+      { type: 'textbox', left: 100, top: 340, width: 600, text: 'off_2', fontSize: 40,
+        fill: '#111111', styles: { 0: { 0: { fill: '#ff0000', fontWeight: 'bold' } } },
+        asmInlineScripts: false }
     ] }, widgets: [] }] }] };
     await page.locator('#importDeckInput').setInputFiles({ name: 'scripts.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ deck })) });
     await page.waitForFunction(() => window.scriptTestCanvas?.getObjects()[0]?.text === 'A_2 x^{n+1}');
@@ -55,9 +58,13 @@ test('ordinary text keeps editable script source and reloads rendered script sty
     })));
     assert.equal(initial[0].styles[0][2].deltaY, 4.4);
     assert.equal(initial[0].styles[0][7].deltaY, -14);
-    assert.equal(initial[1].enabled, false);
+    assert.equal(initial[1].enabled, true);
     assert.equal(initial[1].styles[0][0].fill, '#ff0000');
-    assert.equal(initial[1].styles[0][7], undefined);
+    assert.equal(initial[1].styles[0][2].deltaY, -14);
+    assert.equal(initial[1].styles[0][6].deltaY, 4.4);
+    assert.equal(initial[2].enabled, false);
+    assert.equal(initial[2].styles[0][0].fill, '#ff0000');
+    assert.equal(initial[2].styles[0][4], undefined);
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'test-results/inline-scripts.png') });
 
@@ -67,7 +74,7 @@ test('ordinary text keeps editable script source and reloads rendered script sty
       object.enterEditing();
       object.hiddenTextarea.focus();
     });
-    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[0].styles[0]?.[2]?.deltaY), undefined);
+    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[0].styles[0]?.[2]?.deltaY), 4.4);
     assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[0].hiddenTextarea.value), 'A_2 x^{n+1}');
     await page.keyboard.press('End');
     await page.keyboard.insertText(' A^3');
@@ -80,13 +87,13 @@ test('ordinary text keeps editable script source and reloads rendered script sty
     assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[0].styles[0][2].deltaY), 4.4);
     assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[0].styles[0][14].deltaY), -14);
 
-    await page.evaluate(() => scriptTestCanvas.setActiveObject(scriptTestCanvas.getObjects()[1]));
+    await page.evaluate(() => scriptTestCanvas.setActiveObject(scriptTestCanvas.getObjects()[2]));
     await page.locator('#inlineScriptsBtn').evaluate(button => button.click());
-    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[1].asmInlineScripts), true);
-    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[1].styles[0][7].deltaY), 4.4);
+    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[2].asmInlineScripts), true);
+    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[2].styles[0][4].deltaY), 4.4);
     await page.locator('#inlineScriptsBtn').evaluate(button => button.click());
-    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[1].asmInlineScripts), false);
-    assert.deepEqual(await page.evaluate(() => scriptTestCanvas.getObjects()[1].styles), {
+    assert.equal(await page.evaluate(() => scriptTestCanvas.getObjects()[2].asmInlineScripts), false);
+    assert.deepEqual(await page.evaluate(() => scriptTestCanvas.getObjects()[2].styles), {
       0: { 0: { fill: '#ff0000', fontWeight: 'bold' } }
     });
 

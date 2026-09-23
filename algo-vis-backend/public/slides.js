@@ -2308,7 +2308,13 @@
             );
           }
         }
-        if (type.includes('text')) result.asmGraphemeVersion = 2;
+        if (type.includes('text')) {
+          result.asmGraphemeVersion = 2;
+          // Decks saved before inline scripts existed have no preference to
+          // migrate. Treat those text objects like newly created text while
+          // preserving an explicit opt-out from the A₂ toolbar button.
+          if (typeof result.asmInlineScripts !== 'boolean') result.asmInlineScripts = true;
+        }
         if (result.asmInlineScripts && typeof result.text === 'string') {
           result.asmInlineScriptBaseStyles = normalizeFabricTextStyles(
             result.asmInlineScriptBaseStyles || result.styles
