@@ -109,6 +109,7 @@ test('special text uses visual graphemes for cursor placement and preserved styl
     assert.equal(await page.evaluate(() => specialTextCanvas.getObjects()[0].selectionStart), 10);
 
     await page.keyboard.press('End');
+    const beforeLiveScript = await page.evaluate(() => specialTextCanvas.getObjects()[0].text);
     for (const character of ' 1^n') await page.keyboard.insertText(character);
     const liveScript = await page.evaluate(() => {
       const object = specialTextCanvas.getObjects()[0];
@@ -125,11 +126,7 @@ test('special text uses visual graphemes for cursor placement and preserved styl
     assert.ok(liveScript.exponent.deltaY < 0);
 
     await page.keyboard.press('Control+z');
-    await page.waitForFunction(() => specialTextCanvas.getObjects()[0].text.endsWith(' 1^'));
-    assert.notEqual(
-      await page.evaluate(() => specialTextCanvas.getObjects()[0].styles?.[0]?.[13]?.fill),
-      'rgba(0, 0, 0, 0)'
-    );
+    await page.waitForFunction(text => specialTextCanvas.getObjects()[0].text === text, beforeLiveScript);
     await page.keyboard.press('Control+Shift+z');
     await page.waitForFunction(() => specialTextCanvas.getObjects()[0].text.endsWith(' 1^n'));
     await page.waitForFunction(() => specialTextCanvas.getObjects()[0].styles?.[0]?.[13]?.fill === 'rgba(0, 0, 0, 0)');
