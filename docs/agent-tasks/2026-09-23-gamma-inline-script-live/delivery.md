@@ -4,13 +4,13 @@
 - 狀態：待主代理核實
 - 分支：codex/2026-09-22-gamma
 - 共同基準 commit：2ddbb6dffd5b894358c3329ecb4a97c88289185a
-- 程式修正 commit：fbfa1933dae64e14499b75ddb9fdefb25746ab54
-- 驗證時的 HEAD 與未提交修改：程式驗證內容對應 fbfa1933dae64e14499b75ddb9fdefb25746ab54；程式 commit 後工作樹乾淨，之後僅新增本交付紀錄與更新 task 狀態。
+- 程式修正 commit：fbfa1933dae64e14499b75ddb9fdefb25746ab54、34def8f26a293a58e36dc5dc4057482395b82496
+- 驗證時的 HEAD 與未提交修改：最終程式驗證內容對應 34def8f26a293a58e36dc5dc4057482395b82496；驗證時只有本交付紀錄更新尚未提交。
 - 驗證日期：2026-09-23
 
 ## 根因與修改
 - 已確認根因與證據：既有 `applyInlineScripts` 在文字物件仍為 `isEditing` 時直接返回；Fabric 的離開編輯事件執行期間也可能仍保持該旗標，因此輸入 `1^n` 時不會即時套用，離開後亦可能漏套用。
-- 修正方式與行為變化：每次文字輸入前暫時還原可編輯的基礎樣式，`text:changed` 後立即重建上下標樣式；離開編輯及文字 undo/redo 後重新確認顯示樣式。未完成的 `^`／`_` 維持普通文字。
+- 修正方式與行為變化：每次文字輸入前暫時還原可編輯的基礎樣式，`text:changed` 後立即重建上下標樣式；離開編輯、重新進入及文字 undo/redo 後重新確認顯示樣式。未完成的 `^`／`_` 維持普通文字。
 - 修改檔案及用途：`public/slides.js` 調整文字編輯事件與上下標套用生命週期；`public/slides.html` 更新腳本快取版本；`tests/special-text-cursor.browser.test.js` 驗證即時上標、復原、重做與離開編輯。
 - README／版本紀錄／使用說明更新：不適用；語法與既有按鈕不變，本次修正既有行為。
 - 與 task.md 的差異：無。
@@ -47,7 +47,7 @@
 - 測試資料／fixture：測試內臨時匯入 deck，不使用使用者資料。
 - 完整指令或操作步驟：`node --test tests/special-text-cursor.browser.test.js`
 - 預期結果：1 項測試通過。
-- 實際結果與 exit code（適用時）：1 passed、0 failed，exit code 0，約 3.0 秒。
+- 實際結果與 exit code（適用時）：1 passed、0 failed，exit code 0，約 2.8 秒；涵蓋重新進入編輯仍維持格式。
 - 證據位置：`tests/special-text-cursor.browser.test.js`。
 
 ### 既有文字復原驗證
@@ -65,7 +65,7 @@
 - 選擇依據：修改一般 Fabric 文字編輯、即時樣式與 undo/redo，不涉及動畫、trace 或播放。
 - 執行的測試檔／名稱篩選：`slide-inline-scripts.test.js`、`special-text-cursor.browser.test.js`、`slides-text-undo.browser.test.js`，皆完整執行且無 skip。
 - 驗證環境與隔離服務：各瀏覽器測試使用隨機埠、獨立 headless Edge 與臨時 deck。
-- 驗證版本、完整指令、結果與證據：程式內容為 fbfa1933dae64e14499b75ddb9fdefb25746ab54；指令與結果如上。
+- 驗證版本、完整指令、結果與證據：最終程式內容為 34def8f26a293a58e36dc5dc4057482395b82496；指令與結果如上。
 - 未執行的驗證及原因：未執行演算法驗證集與完整 regression；本次為非動畫文字編輯修正，依 V1 分級不執行。
 - 需要主代理做的 V3 驗證：無；主代理應在整合版手動輸入 `1^n` 並確認立即顯示及復原。
 
