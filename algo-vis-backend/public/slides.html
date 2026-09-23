@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=inline-scripts-110" />
+  <link rel="stylesheet" href="slides.css?v=inline-scripts-111" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
   <link rel="preload" href="/vendor/katex/fonts/KaTeX_Main-Regular.woff2" as="font" type="font/woff2" crossorigin />
@@ -133,6 +133,11 @@
       <span>code</span>
     </button>
 
+    <button type="button" class="palette-item tool-table" draggable="true" data-tool="table" title="Table" aria-label="Table">
+      <svg class="structure-palette-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="17"></rect><path d="M2.5 9h19M9 3.5v17M15.5 3.5v17M2.5 14.7h19"></path></svg>
+      <span>Table</span>
+    </button>
+
     <div class="shape-tool">
       <button id="shapeMenuBtn" type="button" class="palette-item tool-shape" title="Shapes">
         <span class="shape-stack" aria-hidden="true">
@@ -166,9 +171,6 @@
         </button>
         <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="matrix" title="2D Array" aria-label="2D Array" data-tooltip="2D Array">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8"></rect><rect x="13" y="3" width="8" height="8"></rect><rect x="3" y="13" width="8" height="8"></rect><rect x="13" y="13" width="8" height="8"></rect></svg>
-        </button>
-        <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="table" title="Table" aria-label="Table" data-tooltip="Table">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="17"></rect><path d="M2.5 9h19M9 3.5v17M15.5 3.5v17M2.5 14.7h19"></path></svg>
         </button>
         <button class="icon-tooltip" type="button" draggable="true" data-tool="structure" data-structure-mode="binary_tree" title="Tree" aria-label="Tree" data-tooltip="Tree">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v4M6 14v-3h12v3"></path><circle cx="12" cy="4" r="3"></circle><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="18" r="3"></circle></svg>
@@ -269,7 +271,6 @@
       <select id="structureModeSelect">
         <option value="normal">Array</option>
         <option value="matrix">2D Array</option>
-        <option value="table">Table</option>
         <option value="binary_tree">Tree</option>
         <option value="heap">Heap</option>
         <option value="segment_tree">Segment Tree</option>
@@ -329,22 +330,6 @@
         </label>
       </div>
 
-      <div id="tableEditorControls" class="table-editor-controls" hidden>
-        <div class="structure-section-title">表格</div>
-        <div class="structure-field-grid">
-          <label><span>列數</span><input id="tableRowsInput" type="number" min="1" max="20" value="3" /></label>
-          <label><span>欄數</span><input id="tableColumnsInput" type="number" min="1" max="12" value="3" /></label>
-        </div>
-        <label class="check-field" for="tableHeaderRowInput"><input id="tableHeaderRowInput" type="checkbox" checked /><span>首列為表頭</span></label>
-        <label class="check-field" for="tableHeaderColumnInput"><input id="tableHeaderColumnInput" type="checkbox" /><span>首欄為表頭</span></label>
-        <div class="table-color-grid">
-          <label><span>表頭</span><button id="tableHeaderFillInput" class="structure-color-button" type="button" data-color="#d9efeb" title="表頭底色" aria-label="表頭底色"><span></span></button></label>
-          <label><span>內容</span><button id="tableBodyFillInput" class="structure-color-button" type="button" data-color="#ffffff" title="內容底色" aria-label="內容底色"><span></span></button></label>
-          <label><span>框線</span><button id="tableBorderColorInput" class="structure-color-button" type="button" data-color="#344247" title="表格框線顏色" aria-label="表格框線顏色"><span></span></button></label>
-          <label><span>文字</span><button id="tableTextColorInput" class="structure-color-button" type="button" data-color="#1f282d" title="表格文字顏色" aria-label="表格文字顏色"><span></span></button></label>
-        </div>
-      </div>
-
       <div id="structureFrameBackgroundControls" class="structure-frame-background-controls">
         <div class="structure-section-title">Array 外框背景</div>
         <label class="structure-background-toggle">
@@ -364,6 +349,25 @@
         <input id="structureBorderColorInput" type="color" value="#344247" />
         <input id="structureTextColorInput" type="color" value="#1f282d" />
         <input id="structureLineColorInput" type="color" value="#66767b" />
+      </div>
+    </div>
+
+    <div id="tableEditorPanel" class="sidebar-panel widget-editor-panel table-editor-controls" hidden>
+      <div class="panel-title">
+        <strong>Table</strong>
+        <button id="exitTableEditorBtn" type="button" title="Close" aria-label="Close">×</button>
+      </div>
+      <div class="structure-field-grid">
+        <label><span>列數</span><input id="tableRowsInput" type="number" min="1" max="20" value="3" /></label>
+        <label><span>欄數</span><input id="tableColumnsInput" type="number" min="1" max="12" value="3" /></label>
+      </div>
+      <label class="check-field" for="tableHeaderRowInput"><input id="tableHeaderRowInput" type="checkbox" checked /><span>首列為表頭</span></label>
+      <label class="check-field" for="tableHeaderColumnInput"><input id="tableHeaderColumnInput" type="checkbox" /><span>首欄為表頭</span></label>
+      <div class="table-color-grid">
+        <label><span>表頭</span><button id="tableHeaderFillInput" class="structure-color-button" type="button" data-color="#d9efeb" title="表頭底色" aria-label="表頭底色"><span></span></button></label>
+        <label><span>內容</span><button id="tableBodyFillInput" class="structure-color-button" type="button" data-color="#ffffff" title="內容底色" aria-label="內容底色"><span></span></button></label>
+        <label><span>框線</span><button id="tableBorderColorInput" class="structure-color-button" type="button" data-color="#344247" title="表格框線顏色" aria-label="表格框線顏色"><span></span></button></label>
+        <label><span>文字</span><button id="tableTextColorInput" class="structure-color-button" type="button" data-color="#1f282d" title="表格文字顏色" aria-label="表格文字顏色"><span></span></button></label>
       </div>
     </div>
 
@@ -754,7 +758,7 @@
   <script src="draw/draw_array_disk.js?v=gap-1"></script>
   <script src="draw/draw_array_stack.js?v=gap-1"></script>
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
-  <script src="slide-structures.js?v=17"></script>
+  <script src="slide-structures.js?v=18"></script>
   <script src="deck-thumbnail.js?v=4"></script>
   <script src="slides-storage.js?v=5"></script>
   <script src="slides-cloud.js?v=1"></script>
@@ -767,7 +771,7 @@
   <script src="deck-file-drop.js?v=1"></script>
   <script src="slide-inline-scripts.js?v=2"></script>
   <script src="trace-arrow-model.js?v=arrow-8"></script>
-  <script src="slides.js?v=inline-scripts-216"></script>
+  <script src="slides.js?v=inline-scripts-217"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

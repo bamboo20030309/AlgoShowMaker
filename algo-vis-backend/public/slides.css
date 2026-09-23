@@ -3746,6 +3746,12 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--control
 .table-editor-controls[hidden] { display: none; }
 .table-editor-controls .check-field { margin: 0; }
 
+#tableEditorPanel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .table-color-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
