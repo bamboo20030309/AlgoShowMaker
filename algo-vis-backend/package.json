@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test tests/*.test.js",
+    "test:legacy-objects": "node --test tests/slide-inline-scripts.test.js tests/inline-scripts.browser.test.js tests/table-widget.browser.test.js",
     "regression": "node scripts/regression.js",
     "regression:animation": "node scripts/regression.js --animation-only"
   },

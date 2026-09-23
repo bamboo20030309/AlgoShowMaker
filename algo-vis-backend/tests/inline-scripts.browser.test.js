@@ -107,9 +107,15 @@ test('ordinary text keeps editable script source and reloads rendered script sty
     global.ASMTraceProvenance = require('../public/trace-provenance');
     const exportedDeck = await require('../public/asmdeck').decode(new Blob([exported]));
     const exportedText = exportedDeck.deck.groups[0].slides[0].canvas.objects[0];
+    const exportedLegacyText = exportedDeck.deck.groups[0].slides[0].canvas.objects[1];
     assert.equal(exportedText.text, 'A_2 x^{n+1} A^3');
     assert.equal(exportedText.asmInlineScripts, true);
     assert.equal(exportedText.styles[0][2].deltaY, 4.4);
+    assert.equal(exportedLegacyText.text, '1^n m_1');
+    assert.equal(exportedLegacyText.asmInlineScripts, true);
+    assert.equal(exportedLegacyText.styles[0][0].fill, '#ff0000');
+    assert.equal(exportedLegacyText.styles[0][2].deltaY, -14);
+    assert.equal(exportedLegacyText.styles[0][6].deltaY, 4.4);
     const thumbnail = await page.evaluate(async deckData => AlgoDeckThumbnail.create(deckData), exportedDeck.deck);
     assert.match(thumbnail, /^data:image\/jpeg;base64,/);
     fs.writeFileSync(path.join(root, 'test-results/inline-scripts-thumbnail.jpg'), Buffer.from(thumbnail.split(',')[1], 'base64'));
@@ -117,13 +123,17 @@ test('ordinary text keeps editable script source and reloads rendered script sty
       name: 'scripts.asmdeck', mimeType: 'application/octet-stream', buffer: exported
     });
     await page.waitForFunction(() => window.scriptTestCanvas?.getObjects()[0]?.text === 'A_2 x^{n+1} A^3');
-    const reloaded = await page.evaluate(() => {
-      const object = scriptTestCanvas.getObjects()[0];
-      return { asmInlineScripts: object.asmInlineScripts, styles: object.styles };
-    });
+    const [reloaded, reloadedLegacy] = await page.evaluate(() => scriptTestCanvas.getObjects().slice(0, 2).map(object => ({
+      text: object.text, asmInlineScripts: object.asmInlineScripts, styles: object.styles
+    })));
     assert.equal(reloaded.asmInlineScripts, true);
     assert.equal(reloaded.styles[0][2].deltaY, 4.4);
     assert.equal(reloaded.styles[0][14].deltaY, -14);
+    assert.equal(reloadedLegacy.text, '1^n m_1');
+    assert.equal(reloadedLegacy.asmInlineScripts, true);
+    assert.equal(reloadedLegacy.styles[0][0].fill, '#ff0000');
+    assert.equal(reloadedLegacy.styles[0][2].deltaY, -14);
+    assert.equal(reloadedLegacy.styles[0][6].deltaY, 4.4);
     const freshPage = await browser.newPage();
     await freshPage.goto(`${base}/slides.html`);
     await freshPage.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready'));
