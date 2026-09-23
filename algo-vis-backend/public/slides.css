@@ -374,6 +374,22 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal {
   background: rgba(29, 143, 131, 0.18);
 }
 
+.overview-delete-action {
+  margin-top: 6px;
+  border-color: rgba(227, 93, 106, 0.62);
+  background: rgba(227, 93, 106, 0.16);
+}
+
+.overview-delete-action .tool-icon {
+  border-color: rgba(255, 156, 165, 0.8);
+  color: #ffb0b7;
+}
+
+.overview-delete-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .overview-algorithm-action {
   min-height: 62px;
   align-items: flex-start;

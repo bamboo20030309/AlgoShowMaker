@@ -365,6 +365,7 @@
   const defaultToolPanel = document.getElementById('defaultToolPanel');
   const slideOrderToggleBtn = document.getElementById('slideOrderToggleBtn');
   const overviewSidebarPanel = document.getElementById('overviewSidebarPanel');
+  const overviewDeleteSlideBtn = document.getElementById('overviewDeleteSlideBtn');
   const latexEditorPanel = document.getElementById('latexEditorPanel');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
   const structureEditorPanel = document.getElementById('structureEditorPanel');
@@ -7483,6 +7484,7 @@
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);
+    overviewDeleteSlideBtn?.addEventListener('click', deleteOverviewSelectedSlide);
     algorithmEditSlideBtn?.addEventListener('click', () => {
       const slide = getSlide();
       if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
@@ -9594,6 +9596,7 @@
   function renderCustomOverview() {
     if (!customOverviewBoard || !customOverviewOpen) return;
     rebuildPositions();
+    if (overviewDeleteSlideBtn) overviewDeleteSlideBtn.disabled = totalSlides() <= 1;
     customOverviewBoard.innerHTML = '';
     deck.groups.forEach((group, h) => {
       const column = document.createElement('div');

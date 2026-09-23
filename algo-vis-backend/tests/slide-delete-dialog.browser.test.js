@@ -41,7 +41,7 @@ test('slide deletion requires the custom confirmation dialog', { timeout: 90000 
     await page.waitForFunction(() => document.querySelector('.custom-overview')?.hidden === false);
     assert.equal(await page.locator('.custom-overview-thumb').count(), 2);
 
-    await page.keyboard.press('Delete');
+    await page.locator('#overviewDeleteSlideBtn').click();
     assert.equal(await page.locator('#slideDeleteDialog').evaluate(dialog => dialog.open), true);
     assert.match(await page.locator('#slideDeleteMessage').textContent(), /刪除/);
     await page.locator('#cancelSlideDeleteBtn').click();
@@ -56,6 +56,7 @@ test('slide deletion requires the custom confirmation dialog', { timeout: 90000 
     await page.locator('#confirmSlideDeleteBtn').click();
     await page.waitForFunction(() => document.querySelectorAll('.custom-overview-thumb').length === 1);
     assert.equal(await page.locator('.custom-overview-thumb').count(), 1);
+    assert.equal(await page.locator('#overviewDeleteSlideBtn').isDisabled(), true);
     await page.keyboard.press('Control+z');
     await page.waitForFunction(() => document.querySelectorAll('.custom-overview-thumb').length === 2);
   } finally {
