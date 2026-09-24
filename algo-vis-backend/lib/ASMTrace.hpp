@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstdint>
 #include <deque>
 #include <fstream>
 #include <iomanip>
@@ -573,7 +574,17 @@ inline std::string target_json(const char* role, const char* variable_id,
     + ",\"variableId\":" + quoted(variable_id ? variable_id : "")
     + ",\"expression\":" + quoted(expression ? expression : "")
     + ",\"indexExpression\":" + quoted(index_expression ? index_expression : "");
-  if (has_resolved_index) result += ",\"resolvedIndex\":" + std::to_string(resolved_index);
+  if (has_resolved_index) {
+    const std::string index_source = index_expression ? index_expression : "";
+    if (index_source.find(',') != std::string::npos) {
+      const std::uint64_t packed = static_cast<std::uint64_t>(resolved_index);
+      const std::int32_t row = static_cast<std::int32_t>(packed >> 32);
+      const std::int32_t column = static_cast<std::int32_t>(packed & 0xffffffffULL);
+      result += ",\"resolvedIndices\":[" + std::to_string(row) + ',' + std::to_string(column) + ']';
+    } else {
+      result += ",\"resolvedIndex\":" + std::to_string(resolved_index);
+    }
+  }
   return result + '}';
 }
 

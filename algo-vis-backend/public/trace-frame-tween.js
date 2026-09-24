@@ -1435,8 +1435,12 @@
       return `${variableKey}#0`;
     }
     if (!expression) return variableKey;
+    const capturedIndices = Array.isArray(target.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
     const capturedIndex = Number(target.resolvedIndex);
-    const indices = Object.prototype.hasOwnProperty.call(target, 'resolvedIndex')
+    const indices = capturedIndices.length && capturedIndices.every(Number.isInteger)
+      ? capturedIndices
+      : Object.prototype.hasOwnProperty.call(target, 'resolvedIndex')
       && Number.isInteger(capturedIndex)
       ? [capturedIndex]
       : expression.split(',').map(part => Number(

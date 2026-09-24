@@ -25,3 +25,12 @@
 
 - Beta：http://localhost:3102
 - 已確認 HTTP 200、`/trace/analyze` 新語法與新版 `trace-renderer.js`。
+
+## 2026-09-25 修正
+
+- inner label/index 改為白底；`background` 不會染色 inner label，`highlight` 外框仍包含完整 12px inner label。
+- highlight 的播放中高度改由「資料格 40px + 當前 inner label 12px」每次重算，不再從前一個 highlight 高度累加。
+- 二維寫入事件新增 `resolvedIndices`，在執行 `grid[row][column] = 99` 當下捕捉 `[1,0]`；後續即使 `row,column` 變成 `2,1`，動畫也不會把 99 寫到 `grid[2][1]`。
+- 保留舊 trace 相容：沒有 `resolvedIndices` 的既有資料仍回退使用 `indexExpression`。
+- V2 最小驗證：`matrix-renderer.test.js`、`matrix-renderer.browser.test.js`、`assignment-indices.integration.test.js`，共 12/12 通過；使用隔離服務 `3197`，未執行完整 regression。
+- 真實瀏覽器以使用者提供的 ragged matrix 案例實際執行下一步與上一步：highlight 全程維持 52px、垂直位置差 0px，前進後 `grid[1][0] = 99`、`grid[2][1] = 8`。

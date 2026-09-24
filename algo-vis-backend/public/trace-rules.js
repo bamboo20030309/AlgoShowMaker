@@ -75,6 +75,9 @@
   }
 
   function eventTargetIndex(document, frame, target) {
+    const capturedIndices = Array.isArray(target?.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
+    if (capturedIndices.length && capturedIndices.every(Number.isInteger)) return capturedIndices;
     const captured = Number(target?.resolvedIndex);
     if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
       && Number.isInteger(captured)) return [captured];
@@ -573,6 +576,11 @@
   }
 
   function resolveIndex(target, frame) {
+    const capturedIndices = Array.isArray(target?.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
+    if (capturedIndices.length && capturedIndices.every(Number.isInteger)) {
+      return capturedIndices.length === 1 ? capturedIndices[0] : capturedIndices.join(',');
+    }
     const capturedIndex = Number(target?.resolvedIndex);
     if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
       && Number.isInteger(capturedIndex)) return capturedIndex;

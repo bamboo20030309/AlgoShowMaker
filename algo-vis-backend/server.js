@@ -982,12 +982,19 @@ function mutationTargets(event = {}) {
 function applyKeepMutation(frame, target, value) {
   const entry = frame?.state?.[target?.variableId];
   if (!entry || value == null) return;
+  const captured = Array.isArray(target.resolvedIndices)
+    ? target.resolvedIndices.map(Number) : [];
   const resolvedIndex = Number(target.resolvedIndex);
-  const items = entry.data?.items;
-  if (Number.isInteger(resolvedIndex) && Array.isArray(items)) {
-    if (resolvedIndex >= 0 && resolvedIndex < items.length) {
-      items[resolvedIndex] = cloneTraceValue(value);
+  const indices = captured.length && captured.every(Number.isInteger)
+    ? captured : (Number.isInteger(resolvedIndex) ? [resolvedIndex] : []);
+  if (indices.length) {
+    let data = entry.data;
+    for (let depth = 0; depth < indices.length - 1; depth += 1) {
+      data = data?.items?.[indices[depth]];
     }
+    const items = data?.items;
+    const index = indices.at(-1);
+    if (Array.isArray(items) && index >= 0 && index < items.length) items[index] = cloneTraceValue(value);
     return;
   }
   entry.data = cloneTraceValue(value);

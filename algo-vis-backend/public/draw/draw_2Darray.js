@@ -219,7 +219,7 @@
         window.draw_block(g, x, y, value, cellW, cellH, fillColor, `block-${groupID}-${r}-${c}`, nodeMap);
         if (hasInnerLabels) {
           const innerValue = config.innerLabels?.[r]?.[c] ?? '';
-          window.draw_block(g, x, y + cellH, innerValue, cellW, 12, headerColor,
+          window.draw_block(g, x, y + cellH, innerValue, cellW, 12, '#fff',
             `block-${groupID}-${r}-${c}-inner`, nodeMap);
         }
       }

@@ -99,6 +99,7 @@ int main() {
   const target = assign.targets.find(item => item.variableId === gridId);
   assert.equal(target.indexExpression, 'i,j');
   assert.equal(Object.hasOwn(target, 'resolvedIndex'), false);
+  assert.deepEqual(Array.from(target.resolvedIndices), [1, 0]);
 });
 
 function rendererApi() {
@@ -183,7 +184,7 @@ test('original matrix renderer keeps ragged rows and isolates axis labels from c
   assert.equal(window.document.querySelectorAll('[data-trace-label-role="inner"]').length, 3);
   assert.equal(window.document.querySelector('.trace-matrix-outerframe'), null);
   assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#1,0"] > rect`).getAttribute('fill'), 'pink');
-  assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#1,0:index"] > rect`).getAttribute('fill'), 'pink');
+  assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#1,0:index"] > rect`).getAttribute('fill'), '#ffffff');
   assert.notEqual(window.document.querySelector(`[data-trace-object-key="${gridId}:row-label:1"] > rect`).getAttribute('fill'), 'pink');
   assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#0,0"] > rect`).getAttribute('stroke-width'), '0');
   assert.equal(window.document.querySelectorAll('[data-trace-content-role="value"]').length, 0);

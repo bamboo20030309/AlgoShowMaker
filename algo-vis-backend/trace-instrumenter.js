@@ -3730,19 +3730,28 @@ function instrumentSource(source, watchIds = []) {
     return `${cppString(target.variableId)}, ${cppString(target.expression)}, ${cppString(target.indexExpression)}`;
   }
 
-  function canCaptureIndexExpression(indexExpression) {
-    const expression = String(indexExpression || '').trim();
-    return Boolean(expression)
-      && /^[A-Za-z0-9_+\-*/%&|^~<>()\s]+$/.test(expression)
+  function capturableIndexExpressions(indexExpression) {
+    const parts = String(indexExpression || '').split(',').map(part => part.trim());
+    if (!parts.length || parts.length > 2 || parts.some(expression => !expression)) return [];
+    return parts.every(expression => (
+      /^[A-Za-z0-9_+\-*/%&|^~<>()\s]+$/.test(expression)
       && !/(?:\+\+|--)/.test(expression)
-      && !/[A-Za-z0-9_)]\s*\(/.test(expression);
+      && !/[A-Za-z0-9_)]\s*\(/.test(expression)
+    )) ? parts : [];
+  }
+
+  function canCaptureIndexExpression(indexExpression) {
+    return capturableIndexExpressions(indexExpression).length > 0;
   }
 
   function indexedTargetArgs(target) {
     const indexExpression = String(target.indexExpression || '').trim();
-    const canCaptureIndex = canCaptureIndexExpression(indexExpression);
-    const resolvedIndex = canCaptureIndex
-      ? `static_cast<long long>(${indexExpression})`
+    const indexExpressions = capturableIndexExpressions(indexExpression);
+    const canCaptureIndex = indexExpressions.length > 0;
+    const resolvedIndex = indexExpressions.length === 2
+      ? `static_cast<long long>((static_cast<unsigned long long>(static_cast<unsigned int>(${indexExpressions[0]})) << 32) | static_cast<unsigned int>(${indexExpressions[1]}))`
+      : indexExpressions.length === 1
+      ? `static_cast<long long>(${indexExpressions[0]})`
       : '0LL';
     return `${targetArgs(target)}, ${canCaptureIndex ? 'true' : 'false'}, ${resolvedIndex}`;
   }

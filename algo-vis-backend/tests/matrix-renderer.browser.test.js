@@ -71,6 +71,106 @@ test('matrix renderer works in the real browser SVG surface', { timeout: 60000 }
         highlightHeight: document.querySelector('[data-trace-attached-to="grid#1,0"]')?.getAttribute('height'),
         outerframe: Boolean(document.querySelector('.outerframe-bg'))
       };
+      const nextFrame = structuredClone(frame);
+      nextFrame.id = 'matrix-browser-next';
+      nextFrame.state[grid].data.items[1].items[0].value = 99;
+      nextFrame.state[i].data.value = 2;
+      nextFrame.state[j].data.value = 1;
+      nextFrame.styles = [{ id: 'next-cell', targetVariableId: grid, selector: {
+        type: 'matrix-cell', rowExpression: 'i', columnExpression: 'j'
+      }, styleType: 'background', color: 'yellow' }];
+      nextFrame.rendererOptions[grid] = {
+        rowLabels: { mode: 'custom', values: ['A', 'B'] },
+        columnLabels: { mode: 'custom', values: ['X', 'Y'] },
+        innerLabels: { mode: 'index', values: [] }, gridlines: 0,
+        outerframe: false, markerLayout: 'axis'
+      };
+      traceDocument.frames.push(nextFrame);
+      await window.ASMTraceRenderers.renderFrame(traceDocument, nextFrame, frame, {
+        direction: 1, animatePositions: true, animateEvents: true
+      });
+      await window.ASMTraceRenderers.renderFrame(traceDocument, frame, nextFrame, {
+        direction: -1, animatePositions: true, animateEvents: true
+      });
+      originalResult.reverseHighlightHeights = [...document.querySelectorAll(
+        '[data-trace-attached-to="grid#1,0"][data-trace-attachment-kind="highlight"]'
+      )].filter(node => node.getAttribute('display') !== 'none')
+        .map(node => node.getAttribute('height'));
+
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  vector<vector<int>> grid = {{1,2,3,4},{5,6},{7,8,9}};
+  vector<char> rowNames = {'A','B','C'};
+  vector<int> columnNames = {10,20,30,40};
+  vector<vector<int>> innerNames = {{0,1,2,3},{0,1},{0,1,2}};
+  int row = 1; int column = 0;
+  // @frame grid[row][column]
+  // with labels(value,index),
+  //      row-labels(rowNames),
+  //      column-labels(columnNames),
+  //      inner-labels(innerNames),
+  //      gridlines(1),
+  //      outerframe(true),
+  //      marker-layout(inner)
+  // @style grid[row][column] highlight
+  grid[row][column] = 99;
+  row = 2; column = 1;
+  // @frame grid[row][column] with labels(value,index), row-labels(rowNames), column-labels(columnNames), inner-labels(index), gridlines(0), outerframe(false), marker-layout(axis)
+  // @style grid[row][column] background AV_yellow
+}`;
+      const analyzed = await fetch('/trace/analyze', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: source })
+      }).then(response => response.json());
+      const watches = [...new Set(analyzed.frameDirectives.flatMap(item => item.variableIds))];
+      const compiled = await fetch('/compile', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: source, input: '', trace: { enabled: true, watches, sliceMode: 'manual' } })
+      }).then(response => response.json());
+      const compiledTrace = window.ASMTraceModel.normalizeTraceDocument(compiled.traceDocument || compiled.trace);
+      const compiledGridId = Object.keys(compiledTrace.variables)
+        .find(id => compiledTrace.variables[id].name === 'grid');
+      await window.ASMTraceRenderers.renderFrame(compiledTrace, compiledTrace.frames[0], null, {
+        animatePositions: false, animateEvents: false
+      });
+      const initialCompiledHighlight = document.querySelector(
+        `[data-trace-attached-to="${compiledGridId}#1,0"][data-trace-attachment-kind="highlight"]`
+      );
+      const initialCompiledHighlightTop = initialCompiledHighlight?.getBoundingClientRect().top;
+      await window.ASMTraceRenderers.renderFrame(
+        compiledTrace, compiledTrace.frames[1], compiledTrace.frames[0],
+        { direction: 1, animatePositions: true, animateEvents: true }
+      );
+      originalResult.forwardMutationValues = [
+        document.querySelector(`[data-trace-object-key="${compiledGridId}#1,0"] [data-trace-content-role="value"]`)?.textContent,
+        document.querySelector(`[data-trace-object-key="${compiledGridId}#2,1"] [data-trace-content-role="value"]`)?.textContent
+      ];
+      const reverseHeights = [];
+      const reverseTransition = window.ASMTraceRenderers.renderFrame(
+        compiledTrace, compiledTrace.frames[0], compiledTrace.frames[1],
+        { direction: -1, animatePositions: true, animateEvents: true }
+      );
+      const sampler = setInterval(() => {
+        document.querySelectorAll(
+          `[data-trace-attached-to="${compiledGridId}#1,0"][data-trace-attachment-kind="highlight"]`
+        ).forEach(node => {
+          if (node.getAttribute('display') !== 'none') reverseHeights.push(node.getAttribute('height'));
+        });
+      }, 16);
+      await reverseTransition;
+      clearInterval(sampler);
+      originalResult.compiledReverseHighlightHeights = [...document.querySelectorAll(
+        `[data-trace-attached-to="${compiledGridId}#1,0"][data-trace-attachment-kind="highlight"]`
+      )].filter(node => node.getAttribute('display') !== 'none')
+        .map(node => node.getAttribute('height'));
+      originalResult.compiledReverseHighlightSamples = [...new Set(reverseHeights)];
+      const reversedCompiledHighlight = document.querySelector(
+        `[data-trace-attached-to="${compiledGridId}#1,0"][data-trace-attachment-kind="highlight"]`
+      );
+      originalResult.compiledReverseHighlightTopDelta = Math.round(
+        (reversedCompiledHighlight?.getBoundingClientRect().top || 0) - (initialCompiledHighlightTop || 0)
+      );
       traceDocument.skins[grid].options = {
         rowLabels: { mode: 'none', values: [] },
         columnLabels: { mode: 'none', values: [] },
@@ -92,9 +192,13 @@ test('matrix renderer works in the real browser SVG surface', { timeout: 60000 }
     assert.deepEqual(result, {
       cells: 3, rowLabels: 2, columnLabels: 2, innerLabels: 3,
       markers: ['i', 'j'], cellStroke: '#333', cellStrokeWidth: '0',
-      innerFill: 'rgba(111, 161, 255, 0.7)', innerHeight: '12',
+      innerFill: '#fff', innerHeight: '12',
       rowStroke: '#333', rowFill: 'rgba(111, 161, 255, 0.7)',
       highlightStroke: 'red', highlightHeight: '52', outerframe: false,
+      reverseHighlightHeights: ['52'],
+      forwardMutationValues: ['99', '8'], compiledReverseHighlightHeights: ['52'],
+      compiledReverseHighlightSamples: ['52'],
+      compiledReverseHighlightTopDelta: 0,
       hiddenAxisTargets: 4, hiddenLabelMarkers: ['i', 'j'],
       originalOuterframeFill: 'rgba(209,230,172,0.5)'
     });
