@@ -20,6 +20,7 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.match(code, /@layout recursion as "fib_tree"/);
   assert.doesNotMatch(code, /string\s+call|@frame\s+(?:left|right|result)|@frame\s+left,right,result/);
   assert.match(code, /@frame value in fib_tree/);
+  assert.match(code, /@frame value in fib_tree with display\("F\(\$\{call\}\)"\)/);
   assert.match(code, /@let call = n/);
   assert.match(code, /@keep value as "F" in fib_tree/);
 
@@ -42,14 +43,31 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.deepEqual(directChildren.map(snapshot => snapshot.layoutNode.siblingIndex), [0, 1]);
 
   const recursiveFrames = trace.frames.filter(frame => frame.source?.layoutId === 'fib_tree');
-  assert.equal(recursiveFrames.length, 22);
+  assert.equal(recursiveFrames.length, 30,
+    'each of the 15 calls has one pending frame and one returned-value frame');
   assert.ok(recursiveFrames.every(frame => frame.source.recursionActivationId));
   assert.equal(recursiveFrames[0].snapshotIds.length, 1,
     'the first call is retained in the same frame instead of appearing one frame late');
 
+  const pendingSnapshots = trace.snapshots.filter(snapshot => !snapshot.replacesSnapshotId);
+  assert.deepEqual(pendingSnapshots.map(snapshot => (
+    `${snapshot.objectId}=F(${snapshot.data.value})`
+  )), [
+    'F=F(5)', 'F_1=F(4)', 'F_2=F(3)', 'F_3=F(2)', 'F_4=F(1)',
+    'F_5=F(0)', 'F_6=F(1)', 'F_7=F(2)', 'F_8=F(1)', 'F_9=F(0)',
+    'F_10=F(3)', 'F_11=F(2)', 'F_12=F(1)', 'F_13=F(0)', 'F_14=F(1)'
+  ], 'keep names follow first-creation order in the depth-first recursion traversal');
+  assert.ok(pendingSnapshots.every(snapshot => (
+    snapshot.rendererOptions?.display?.template === 'F(${call})'
+  )), 'unresolved calls keep the F(n) display template');
+  assert.ok(finalSnapshots.every(snapshot => !snapshot.rendererOptions?.display),
+    'returned calls remove the pending template so the numeric result is shown');
+
   assert.equal(Number(roots[0].data.value), 5, 'the root F(5) node is updated to its return value');
+  const snapshotsById = new Map(trace.snapshots.map(snapshot => [snapshot.id, snapshot]));
   const returnedTwos = finalSnapshots.filter(snapshot => (
-    snapshot.replacesSnapshotId && Number(snapshot.data.value) === 1
+    Number(snapshotsById.get(snapshot.replacesSnapshotId)?.data?.value) === 2
+    && Number(snapshot.data.value) === 1
   ));
   assert.equal(returnedTwos.length, 3, 'each completed F(2) node is updated from 2 to 1');
   const returnFrameLine = code.split(/\r?\n/)

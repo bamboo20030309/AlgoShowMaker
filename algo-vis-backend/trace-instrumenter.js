@@ -898,6 +898,32 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
+    if (name === 'display') {
+      if (args.parts.length !== 1) {
+        throw new Error(`第 ${line} 行的 ${directiveName} display 只能指定一個字串`);
+      }
+      const raw = args.parts[0];
+      let template = null;
+      try {
+        template = raw.startsWith('"') ? JSON.parse(raw) : (raw.match(/^'([^']*)'$/s)?.[1] ?? null);
+      } catch {
+        template = null;
+      }
+      if (typeof template !== 'string') {
+        throw new Error(`第 ${line} 行的 ${directiveName} display 必須使用引號字串`);
+      }
+      const expressions = [...template.matchAll(/\$\{([^{}]+)\}/g)].map(expressionMatch => {
+        const expression = expressionMatch[1].trim();
+        const parsed = parseTraceExpression(expression, false, true);
+        if (!expression || !parsed.valid) {
+          throw new Error(`第 ${line} 行的 ${directiveName} display 變數運算式無效：${expressionMatch[0]}`);
+        }
+        return expression;
+      });
+      options.display = { template, expressions };
+      continue;
+    }
+
     throw new Error(`第 ${line} 行的 ${directiveName} 不支援 with ${name}`);
   }
   return options;

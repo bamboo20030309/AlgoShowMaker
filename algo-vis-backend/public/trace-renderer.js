@@ -226,6 +226,17 @@
     content.querySelectorAll('[id$="-index"], [data-trace-index-label]').forEach(label => label.remove());
   }
 
+  function renderedScalarValue(entry, context) {
+    const displayTemplate = context.skin?.options?.display?.template;
+    if (typeof displayTemplate !== 'string') return displayValue(entry.data);
+    return displayTemplate.replace(/\$\{([^{}]+)\}/g, (_, expression) => {
+      const resolved = window.ASMTraceRules?.resolveTextExpression?.(
+        context.document, context.frame, expression.trim()
+      );
+      return resolved == null ? '' : String(resolved);
+    });
+  }
+
   function renderOriginal(group, entry, context) {
     if (typeof window.draw_array_normal !== 'function') {
       return Array.isArray(entry.data?.items) ? renderSequence(group, entry, context) : renderScalar(group, entry, context);
@@ -269,6 +280,7 @@
         entry, rendererOptions, context.variable?.name || '', context.variableId
       );
     }
+    if (isScalarCell && rendererOptions.display) values = [renderedScalarValue(entry, context)];
     let itemsPerRow = Infinity;
     if (isMatrix) {
       const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
@@ -479,11 +491,12 @@
   }
 
   function renderScalar(group, entry, context) {
+    const renderedValue = renderedScalarValue(entry, context);
     const rect = svg('rect', { x: 0, y: 0, width: 150, height: 52, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 });
     applyHighlight(rect, context.highlights?.$object);
     group.append(rect, svg('text', {
       x: 75, y: 33, 'text-anchor': 'middle', 'font-family': 'Arial', 'font-size': 24, fill: '#1f282d'
-    }, displayValue(entry.data)));
+    }, renderedValue));
     return 68;
   }
 

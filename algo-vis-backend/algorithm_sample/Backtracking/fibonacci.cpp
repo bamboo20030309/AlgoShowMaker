@@ -14,22 +14,19 @@ int fibonacci(int n) {
     int value = n;
 
     // 先保存目前呼叫，讓後續兩個遞迴呼叫接在它的下方。
-    // 節點下方的 F 與格內的 n 合起來表示 F(n)。
+    // 尚未得到回傳值時，節點格內顯示 F(n)。
     // @keep value as "F" in fib_tree
-    // @frame value in fib_tree
+    // @frame value in fib_tree with display("F(${call})")
     // @let call = n
     // @text "進入 F(${call})" at value.bottom
 
-    if (n <= 1) {
-        // 基底節點的初始值就是回傳值，不需要再建立另一個畫面物件。
-        return value;
+    if (n > 1) {
+        int left = fibonacci(n - 1);
+        int right = fibonacci(n - 2);
+        value = left + right;
     }
 
-    int left = fibonacci(n - 1);
-    int right = fibonacci(n - 2);
-    value = left + right;
-
-    // 不另外畫 left、right 或 result；直接更新目前 activation 的節點。
+    // 不另外畫 left、right 或 result；得知回傳值後，直接更新目前 activation 的節點。
     // @keep value as "F" in fib_tree
     // @frame value in fib_tree
     // @let call = n

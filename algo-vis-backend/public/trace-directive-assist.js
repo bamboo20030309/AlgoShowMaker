@@ -16,7 +16,8 @@
       '// @frame arr[i,j],key\n// @style arr[i] highlight',
       '// @frame arr[i,j],key render heap with range(1,n) at canvas.top offset(0,80)\n// @style arr[i] highlight AV_red\n// @text "正在檢查第 ${i} 格" at arr.bottom',
       '// @frame tree render heap with range(1,Tsize-1), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)',
-      '// @frame tree render segment_tree with range(1,n)'
+      '// @frame tree render segment_tree with range(1,n)',
+      '// @frame value with display("F(${call})")\n// @let call = n'
     ] },
     { id: 'preset', label: '@preset', effect: '定義可重用的物件、位置與樣式；每次 @frame use 時重新計算變數', code: '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset', examples: [
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset\n// @frame use sieve_view',

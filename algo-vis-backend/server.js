@@ -1121,7 +1121,11 @@ function materializeKeepSnapshots(frames) {
   }
   function variableRenderState(frame, variableId, identity = '') {
     if (!frame) return null;
-    let sourceVariableId = frame.state?.[variableId] ? variableId : '';
+    const directEntry = frame.state?.[variableId];
+    let sourceVariableId = directEntry
+      && (!identity || String(directEntry.identity || '') === String(identity))
+      ? variableId
+      : '';
     if (!sourceVariableId && identity) {
       sourceVariableId = Object.entries(frame.state || {})
         .find(([, entry]) => String(entry?.identity || '') === String(identity))?.[0] || '';
@@ -1213,8 +1217,11 @@ function materializeKeepSnapshots(frames) {
       const capturedData = event.payload?.data;
       if (!variableId || (!entry && capturedData == null)) return;
       const identity = String(entry?.identity || '');
-      const renderState = variableRenderState(frames[frameIndex - 1], variableId, identity)
-        || variableRenderState(frame, variableId, identity)
+      const currentRenderState = variableRenderState(frame, variableId, identity);
+      const previousRenderState = variableRenderState(frames[frameIndex - 1], variableId, identity);
+      const renderState = (event.layoutId && event.recursionActivationId
+        ? currentRenderState || previousRenderState
+        : previousRenderState || currentRenderState)
         || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [] };
       const preserveStyle = event.preserveStyle !== false;
       const count = (counts.get(variableId) || 0) + 1;
@@ -1455,6 +1462,12 @@ function resolveFrameRendererOptions(frame, directive) {
           variableId: entry.variableId || ''
         }))
         : []
+    };
+  }
+  if (source.display && typeof source.display.template === 'string') {
+    options.display = {
+      template: source.display.template,
+      expressions: Array.isArray(source.display.expressions) ? [...source.display.expressions] : []
     };
   }
   if (Object.prototype.hasOwnProperty.call(source, 'separator')) options.separator = source.separator;
