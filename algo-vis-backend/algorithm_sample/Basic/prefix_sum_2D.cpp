@@ -13,16 +13,16 @@ vector<vector<int>> num, pre;
 // @enddefaults
 
 // num 與 pre 都在第 0 列、第 0 欄補 0，實際資料從 [1][1] 開始。
-// row／column label 顯示共用座標；inner label 顯示每列自己的欄索引。
+// matrix 預設會顯示數值、row／column index、格線與 outerframe，因此不必重複寫 with。
 // @preset prefix_sum_2d_view
-// @object pre render matrix with labels(value,index), row-labels(index), column-labels(index), inner-labels(index), gridlines(1), outerframe(true)
-// @object num render matrix with labels(value,index), row-labels(index), column-labels(index), inner-labels(index), gridlines(1), outerframe(true)
+// @object pre render matrix
+// @object num render matrix
 // @place num.left at pre.right offset(100,0)
 // @endpreset
 
-// 建表時讓 row 在左側移動，column 在目前 row 的 inner label 上水平移動。
+// 建表時讓 row 在左側移動，column 進入目前 row 後水平移動；不顯示 inner index。
 // @preset prefix_sum_2d_cursor
-// @object pre[row][column] render matrix with labels(value,index), row-labels(index), column-labels(index), inner-labels(index), gridlines(1), outerframe(true), marker-layout(inner)
+// @object pre[row][column] render matrix with marker-layout(inner)
 // @endpreset
 
 int main() {

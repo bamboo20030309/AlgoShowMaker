@@ -54,3 +54,10 @@
 ### 舊有物件相容性
 
 - 不適用：本次只移轉隨附演算法範例，未修改任何持久化物件格式或載入／儲存路徑。
+
+### 後續語法精簡
+
+- 依目前案例移除 `inner-labels(index)`，矩陣只顯示預設的 row／column index。
+- 省略 matrix renderer 已有的 `labels(value,index)`、`row-labels(index)`、`column-labels(index)`、`gridlines(1)` 與 `outerframe(true)`；一般物件改為 `@object ... render matrix`。
+- 游標物件只保留非預設的 `with marker-layout(inner)`，讓 column 指標進入目前 row 水平移動，但不顯示 inner index。
+- `prefix-sum.test.js` 4/4 通過，並新增斷言防止範例重新加入冗餘預設或 inner labels。

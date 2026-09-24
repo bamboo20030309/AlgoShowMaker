@@ -49,7 +49,10 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /vector<vector<int>> num, pre;/);
   assert.match(code, /pre\[row\]\[column\] = num\[row\]\[column\]/);
   assert.match(code, /@object pre\[row\]\[column\] render matrix/);
-  assert.match(code, /inner-labels\(index\)/);
+  assert.match(code, /@object pre render matrix\s*$/m);
+  assert.match(code, /@object num render matrix\s*$/m);
+  assert.doesNotMatch(code, /inner-labels\(/);
+  assert.doesNotMatch(code, /labels\(value,index\)|row-labels\(index\)|column-labels\(index\)|gridlines\(1\)|outerframe\(true\)/);
   assert.match(code, /marker-layout\(inner\)/);
   assert.match(code, /@place num\.left at pre\.right offset\(100,0\)/);
   assert.match(code, /@for r in \[r1:r2\]/);
@@ -59,7 +62,7 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.equal(frames.length, 4, 'loop directives expand into runtime frames');
   assert.ok(frames.every(frame => frame.objects.length === 2));
   assert.equal(frames[1].objects[0].renderer, 'original-matrix');
-  assert.equal(frames[1].objects[0].rendererOptions.innerLabels.mode, 'index');
+  assert.equal(frames[1].objects[0].rendererOptions.innerLabels, undefined);
   assert.equal(frames[1].objects[0].rendererOptions.markerLayout, 'inner');
   assert.deepEqual(frames[1].bindings.map(binding => binding.indexDimension), [0, 1]);
   assert.deepEqual(frames[3].styles[0].drawLoops.map(loop => loop.variable), ['r', 'c']);
