@@ -30,6 +30,7 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   const { trace } = await compile(code, input);
   assert.equal(trace.layouts.length, 1);
   assert.equal(trace.layouts[0].id, 'fib_tree');
+  assert.equal(trace.layouts[0].showFlowArrows, true);
   const finalSnapshotIds = new Set(trace.frames.at(-1).snapshotIds);
   const finalSnapshots = trace.snapshots.filter(snapshot => finalSnapshotIds.has(snapshot.id));
   assert.equal(finalSnapshots.length, 15, 'F(5) leaves one active node for every call');

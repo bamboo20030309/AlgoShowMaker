@@ -27,6 +27,7 @@ test('@layout recursion requires a named target and provides documented defaults
   assert.equal(layout.levelGap, 100);
   assert.equal(layout.degree, 2);
   assert.equal(layout.showEdges, true);
+  assert.equal(layout.showFlowArrows, false);
   assert.equal(layout.edgeColor, 'black');
   assert.equal(layout.edgeWidth, 2);
   assert.equal(layout.binding.canvas, true);
@@ -51,6 +52,7 @@ test('@layout accepts explicit recursion settings and all four directions', () =
 // @layout tree align end
 // @layout tree degree 3
 // @layout tree edges off
+// @layout tree flow-arrows on
 `);
     assert.equal(layout.direction, direction);
     assert.equal(layout.mode, 'inorder');
@@ -59,7 +61,10 @@ test('@layout accepts explicit recursion settings and all four directions', () =
     assert.equal(layout.align, 'end');
     assert.equal(layout.degree, 3);
     assert.equal(layout.showEdges, false);
+    assert.equal(layout.showFlowArrows, true);
   }
+  assert.throws(() => findLayoutDirectives(`${declaration}// @layout quick_tree flow-arrows maybe`),
+    /flow-arrows 必須是 on 或 off/);
 });
 
 test('@keep in attaches a snapshot to an existing recursion layout', () => {
@@ -342,6 +347,41 @@ test('@keep in replaces its live @frame node without shifting the array outerfra
     renderer.currentPlacement('partition', false),
     'the live variable key remains an alias for text and event bindings'
   );
+});
+
+test('recursion flow arrows mirror their anchors across the growth axis', () => {
+  const renderer = rendererApi();
+  for (const direction of ['top-down', 'bottom-up']) {
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'enter'))),
+      { from: 'left', to: 'left', side: 'left' }
+    );
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'exit'))),
+      { from: 'right', to: 'right', side: 'right' }
+    );
+  }
+  for (const direction of ['left-right', 'right-left']) {
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'enter'))),
+      { from: 'top', to: 'top', side: 'top' }
+    );
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'exit'))),
+      { from: 'bottom', to: 'bottom', side: 'bottom' }
+    );
+  }
+
+  const left = renderer.recursionFlowQuadraticPoints(
+    { x: 100, y: 80 }, { x: 140, y: 180 }, 'left', 2
+  );
+  assert.equal(left.bend, 26);
+  assert.deepEqual(JSON.parse(JSON.stringify(left.control)), { x: 68, y: 130 });
+  assert.match(left.path, /^M 100 80 Q 68 130 140 180$/);
+  const bottom = renderer.recursionFlowQuadraticPoints(
+    { x: 80, y: 100 }, { x: 180, y: 140 }, 'bottom', 2
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(bottom.control)), { x: 130, y: 172 });
 });
 
 test('recursion layout arrows use stable depth-first preorder', () => {

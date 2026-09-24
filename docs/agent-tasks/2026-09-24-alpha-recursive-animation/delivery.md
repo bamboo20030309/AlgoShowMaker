@@ -111,3 +111,22 @@
 
 - 沒有新增持久化物件欄位；舊 trace 沒有 `return`／`return-complete` 時照原資料載入，不會合成額外事件。
 - 新 trace 的 `return` 預設開啟；已儲存的 `studio.eventSettings.defaultEnabled.return = false` 經實際套用後仍維持關閉，不會被新預設覆蓋。
+
+## 2026-09-25：遞迴 DFS 進入／返回輔助箭頭
+
+- recursion layout 新增 `flow-arrows on|off` 開關，預設 `off`；Fibonacci 範例已開啟。
+- 開啟後依實際 DFS 生命週期保留每一條走訪紀錄：進入 child 時加入 enter arrow，child 的 `function-exit` 出現後加入 exit arrow；同一 child 永遠先 enter、走完其完整子樹後才 exit。
+- `top-down`／`bottom-up` 皆由 outerframe 的 `center.left` 進入、`center.right` 返回；`left-right`／`right-left` 皆由 `center.top` 進入、`center.bottom` 返回。
+- 箭頭為 1px、`rgba(107, 114, 128, 0.38)` 的二次貝茲曲線，進場以 260ms path draw 呈現；曲率依跨距與遞迴深度限制在 18–38px，避免深層曲線無限制外擴。
+- 每條箭頭以 layout、phase、父 activation、子 activation 建立穩定 identity。樹重排與 child growth tween 的每個 tick 都重新讀取節點目前 outerframe，因此歷史箭頭會與節點同步移動，端點不會留在舊位置。
+- 輔助箭頭沿用既有 SVG arrow layer 與 frame tween 配對，但不加入 layout placement／camera bounds，避免歷史曲線改變自動鏡頭或樹排版。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（recursion layout directive）、G（activation 生命週期與箭頭 tween）、J（瀏覽器播放）。
+- parser／geometry：驗證預設關閉、明確開啟、非法值、四種 direction 的錨點與二次貝茲控制點。
+- Fibonacci `F(5)` 瀏覽器：最終 14 條一般父子邊、14 條 enter、14 條 exit；flow sequence 為 0–27，每個 child 的 enter 早於 exit，端點精確貼合 outerframe。
+- 重排與長出：驗證第 9→10 幀既有 flow arrows 持續存在並連續位移；新 child 長出時 path dash offset 遞減且終點全程貼住移動中的 child，完成後移除暫態 dash mask。
+- 舊物件相容性：`showFlowArrows` 缺欄位與明確 `false` 都不顯示；明確 `true` 經 JSON 儲存、載入、使用、再儲存與重開後仍保留並顯示 28 條走訪箭頭。
+- 直接相關 parser、identity、outerframe tween、入口與 Fibonacci 測試共 28/28 通過；其中瀏覽器專項 1/1 通過，0 fail、0 skipped。alpha 3101 重啟後另以實際 `/trace/analyze`＋`/compile` 再驗證範例 1/1 通過，並確認 renderer 217、tween 238、directive assist 23 已載入。
+- 未執行完整 regression、全部 tests 或無關演算法動畫；依 V2 規範只跑直接相關的小型驗證。

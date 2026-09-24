@@ -9,6 +9,7 @@ using namespace std;
 // @layout fib_tree sibling-gap 32
 // @layout fib_tree level-gap 88
 // @layout fib_tree degree 2
+// @layout fib_tree flow-arrows on
 
 int F(int n) {
     // 先保存目前呼叫，讓後續兩個遞迴呼叫接在它的下方。

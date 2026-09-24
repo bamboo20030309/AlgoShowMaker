@@ -162,7 +162,8 @@
     arrow: [['as', 'as', '為箭頭命名', ' as "relation"'], ['when', 'when', '條件成立才顯示箭頭', ' when i >= 0']],
     layout: [
       ['layout-direction', 'direction', '在下一行明確指定排版 ID 與生長方向', '\n// @layout quick_tree direction top-down'],
-      ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder']
+      ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder'],
+      ['layout-flow-arrows', 'flow-arrows', '顯示 DFS 進入與返回的彎曲輔助箭頭', '\n// @layout quick_tree flow-arrows on']
     ]
   };
   const renderTypes = [
@@ -237,6 +238,7 @@
     const rules = childRules[id].filter(rule => {
       if (rule[0] === 'more-preset') return /^\s*\/\/\s*@frame\s+use\s+/.test(line) && !/\bwhen\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-direction') return !/\bdirection\b/.test(line);
+      if (id === 'layout' && rule[0] === 'layout-flow-arrows') return !/\bflow-arrows\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-order') return !/\b(?:order|mode)\b/.test(line);
       if (rule[3]?.startsWith('\n')) return true;
       if (rule[0] === 'render' || rule[0] === 'with') return !new RegExp(`\\b${rule[0]}\\b`).test(line);

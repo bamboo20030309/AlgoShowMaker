@@ -5908,6 +5908,11 @@
           return `rgba(${paint.r},${paint.g},${paint.b},${paint.a})`;
         } } : null;
       record.element.setAttribute('opacity', previous ? '1' : '0');
+      if (!previous && record.element.dataset.traceArrowDraw === 'true') {
+        record.element.setAttribute('pathLength', '1');
+        record.element.setAttribute('stroke-dasharray', '1');
+        record.element.setAttribute('stroke-dashoffset', '1');
+      }
     });
     let resolveRun = null;
     const completion = new Promise(resolve => { resolveRun = resolve; });
@@ -5922,6 +5927,10 @@
         }
         delete element._asmArrowTween;
         element.removeAttribute('opacity');
+        if (element.dataset.traceArrowDraw === 'true') {
+          element.removeAttribute('stroke-dasharray');
+          element.removeAttribute('stroke-dashoffset');
+        }
       });
       window.ASMTraceRenderers?.refreshArrows?.();
       const resolve = resolveRun;
@@ -7058,7 +7067,14 @@
       const arrowProgress = easeOutCubic(clamp01((elapsed - initialDelay) / duration));
       newArrows.forEach(({ element }) => {
         if (element._asmArrowTween) element._asmArrowTween.progress = arrowProgress;
-        element.setAttribute('opacity', element._asmArrowTween ? '1' : String(arrowProgress));
+        const draws = !element._asmArrowTween && element.dataset.traceArrowDraw === 'true';
+        const drawDuration = Math.max(1,
+          Math.min(duration, Number(element.dataset.traceArrowDrawDuration) || duration));
+        const drawProgress = draws
+          ? easeOutCubic(clamp01((elapsed - initialDelay) / drawDuration))
+          : arrowProgress;
+        if (draws) element.setAttribute('stroke-dashoffset', String(1 - drawProgress));
+        element.setAttribute('opacity', element._asmArrowTween ? '1' : String(drawProgress));
       });
       // Endpoints use the SVG positions produced by this tick, not a second
       // independent tween. The new recursion edge therefore ends at the
@@ -7283,10 +7299,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-237';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-238';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-237', play, cancel, updateEventAvailability,
+    build: 'trace-238', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

@@ -1019,6 +1019,30 @@
     return markerId;
   }
 
+  function ensureRecursionFlowArrowMarker(rootSvg, idPrefix, color) {
+    const markerId = `${idPrefix}-recursion-flow-arrowhead`;
+    let marker = rootSvg.querySelector(`#${markerId}`);
+    if (marker) return markerId;
+    let defs = rootSvg.querySelector('defs');
+    if (!defs) {
+      defs = svg('defs');
+      rootSvg.prepend(defs);
+    }
+    marker = svg('marker', {
+      id: markerId,
+      viewBox: '0 0 5 5',
+      refX: 5,
+      refY: 2.5,
+      markerWidth: 5,
+      markerHeight: 5,
+      markerUnits: 'userSpaceOnUse',
+      orient: 'auto'
+    });
+    marker.append(svg('path', { d: 'M 0 0 L 5 2.5 L 0 5 Z', fill: color }));
+    defs.append(marker);
+    return markerId;
+  }
+
   function closestEdgePoints(from, to) {
     const fromCenter = anchorPoint(from, 'center');
     const toCenter = anchorPoint(to, 'center');
@@ -1054,6 +1078,41 @@
     const start = anchorPoint(from, startAnchor);
     const end = anchorPoint(to, endAnchor);
     return { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+  }
+
+  function recursionFlowAnchors(direction = 'top-down', phase = 'enter') {
+    const horizontalGrowth = ['left-right', 'right-left'].includes(
+      String(direction || 'top-down').toLowerCase()
+    );
+    const side = horizontalGrowth
+      ? (phase === 'exit' ? 'bottom' : 'top')
+      : (phase === 'exit' ? 'right' : 'left');
+    return { from: side, to: side, side };
+  }
+
+  function recursionFlowQuadraticPoints(start, end, side = 'left', depth = 0) {
+    const horizontalSide = side === 'left' || side === 'right';
+    const span = horizontalSide
+      ? Math.abs(Number(end.y) - Number(start.y))
+      : Math.abs(Number(end.x) - Number(start.x));
+    const bend = Math.max(18, Math.min(38,
+      span * 0.22 + Math.min(4, Math.max(0, Number(depth) || 0)) * 2
+    ));
+    const control = {
+      x: (Number(start.x) + Number(end.x)) / 2,
+      y: (Number(start.y) + Number(end.y)) / 2
+    };
+    if (side === 'left') control.x -= bend * 2;
+    else if (side === 'right') control.x += bend * 2;
+    else if (side === 'top') control.y -= bend * 2;
+    else control.y += bend * 2;
+    return {
+      start: { x: Number(start.x), y: Number(start.y) },
+      control,
+      end: { x: Number(end.x), y: Number(end.y) },
+      bend,
+      path: `M ${Number(start.x)} ${Number(start.y)} Q ${control.x} ${control.y} ${Number(end.x)} ${Number(end.y)}`
+    };
   }
 
   function recursionOuterframePlacement(element, fallback, stop, preferredVariableId = '') {
@@ -1428,6 +1487,19 @@
       arrow.dataset.traceArrowFromY = String(start.y);
       arrow.dataset.traceArrowToX = String(end.x);
       arrow.dataset.traceArrowToY = String(end.y);
+      if (arrow.dataset.traceArrowCurve === 'recursion-flow') {
+        const curve = recursionFlowQuadraticPoints(
+          start,
+          end,
+          arrow.dataset.traceArrowCurveSide || 'left',
+          Number(arrow.dataset.traceArrowCurveDepth) || 0
+        );
+        arrow.removeAttribute('display');
+        arrow.setAttribute('d', curve.path);
+        arrow.dataset.traceArrowControlX = String(curve.control.x);
+        arrow.dataset.traceArrowControlY = String(curve.control.y);
+        return;
+      }
       const geometry = model.geometry(start, end,
         { anchor: arrow.dataset.traceArrowFromAnchor, outerframe: !fromCell, indexExpression: fromCell ? 'cell' : '' },
         { anchor: arrow.dataset.traceArrowToAnchor, outerframe: !toCell, indexExpression: toCell ? 'cell' : '' }, style);
@@ -2730,6 +2802,7 @@
         const objectKey = snapshotObjectKey(snapshot);
         const element = elements.get(objectKey);
         const fallbackBox = placements.get(objectKey);
+        const parentSnapshot = activeParentSnapshot(snapshot);
         const preferredVariableId = snapshot.kind === 'frame'
           ? String(snapshot.frame?.source?.primaryVariableId || '')
           : String(snapshot.sourceVariableId || '');
@@ -2738,8 +2811,12 @@
           objectKey,
           snapshot,
           preferredVariableId,
-          parentId: activeParentSnapshot(snapshot)?.id
+          parentId: parentSnapshot?.id
             || String(snapshot.layoutNode?.parentSnapshotId || ''),
+          activationId: String(snapshot.recursionActivationId || ''),
+          parentActivationId: String(parentSnapshot?.recursionActivationId
+            || snapshot.recursionParentActivationId || ''),
+          recursionDepth: Number(snapshot.recursionDepth) || 0,
           siblingIndex: snapshot.layoutNode?.siblingIndex,
           rootIndex: snapshot.layoutNode?.rootIndex,
           // A live @frame node and the @keep node that replaces it must use
@@ -2790,6 +2867,10 @@
               live: true,
               preferredVariableId: frame.source.primaryVariableId,
               parentId: parentSnapshot?.id || '',
+              activationId,
+              parentActivationId: String(parentSnapshot?.recursionActivationId
+                || frame.source.recursionParentActivationId || ''),
+              recursionDepth: Number(frame.source.recursionDepth) || 0,
               siblingIndex: Number(frame.source.recursionSiblingIndex) || 0,
               rootIndex: Number(frame.source.recursionRootIndex) || 0,
               box
@@ -2817,6 +2898,9 @@
         element.dataset.traceLayoutId = layout.id;
         element.dataset.traceLayoutNode = node.id;
         element.dataset.traceLayoutParent = node.parentId || '';
+        element.dataset.traceLayoutActivation = node.activationId || '';
+        element.dataset.traceLayoutParentActivation = node.parentActivationId || '';
+        element.dataset.traceLayoutDepth = String(Number(node.recursionDepth) || 0);
         element.dataset.traceLayoutPreferredVariable = node.preferredVariableId || '';
         element.dataset.traceLayoutSiblingIndex = String(Number(node.siblingIndex) || 0);
         element.dataset.traceLayoutRootIndex = String(Number(node.rootIndex) || 0);
@@ -2915,6 +2999,154 @@
       });
       renderArrowModels(rootSvg, root, document, frame, placements, elements,
         models, options, `layout-${layout.id}`);
+    });
+  }
+
+  function completedRecursionActivations(document, frame) {
+    const frames = Array.isArray(document?.frames) ? document.frames : [];
+    const frameIndex = frames.indexOf(frame);
+    const elapsed = frameIndex >= 0 ? frames.slice(0, frameIndex + 1) : [frame];
+    const completed = new Set();
+    elapsed.forEach(item => (item?.events || []).forEach(event => {
+      if (event?.type !== 'function-exit') return;
+      const activationId = String(event.recursionActivationId || '');
+      if (activationId) completed.add(activationId);
+    }));
+    return completed;
+  }
+
+  function renderRecursionFlowArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
+    (document.layouts || []).filter(layout => (
+      layout?.type === 'recursion' && layout.showFlowArrows === true
+    )).forEach(layout => {
+      const nodesById = new Map();
+      [...elements.entries()].forEach(([fallbackKey, element]) => {
+        const id = String(element?.dataset?.traceLayoutNode || '');
+        if (!id || String(element?.dataset?.traceLayoutId || '') !== String(layout.id || '')) return;
+        const activationId = String(element.dataset.traceLayoutActivation || '');
+        const objectKey = String(element.dataset.traceObjectKey || fallbackKey || '');
+        if (!activationId || !objectKey || nodesById.has(id)) return;
+        nodesById.set(id, {
+          id,
+          parentId: String(element.dataset.traceLayoutParent || ''),
+          activationId,
+          parentActivationId: String(element.dataset.traceLayoutParentActivation || ''),
+          recursionDepth: Number(element.dataset.traceLayoutDepth) || 0,
+          siblingIndex: Number(element.dataset.traceLayoutSiblingIndex) || 0,
+          rootIndex: Number(element.dataset.traceLayoutRootIndex) || 0,
+          preferredVariableId: String(element.dataset.traceLayoutPreferredVariable || ''),
+          objectKey,
+          element,
+          children: []
+        });
+      });
+      const nodes = [...nodesById.values()];
+      if (nodes.length < 2) return;
+      const roots = [];
+      nodes.forEach(node => {
+        const parent = nodesById.get(node.parentId);
+        if (parent && parent !== node) parent.children.push(node);
+        else roots.push(node);
+      });
+      const sortNodes = list => list.sort((left, right) => (
+        left.siblingIndex - right.siblingIndex
+        || left.rootIndex - right.rootIndex
+        || left.id.localeCompare(right.id, undefined, { numeric: true })
+      ));
+      sortNodes(roots);
+      nodes.forEach(node => sortNodes(node.children));
+      const completed = completedRecursionActivations(document, frame);
+      const actions = [];
+      const visited = new Set();
+      const visit = node => {
+        if (!node || visited.has(node.id)) return;
+        visited.add(node.id);
+        node.children.forEach(child => {
+          actions.push({ phase: 'enter', parent: node, child });
+          visit(child);
+          if (completed.has(child.activationId)) {
+            actions.push({ phase: 'exit', parent: node, child });
+          }
+        });
+      };
+      roots.forEach(visit);
+      nodes.forEach(visit);
+      if (!actions.length) return;
+
+      const color = 'rgba(107, 114, 128, 0.38)';
+      const markerId = ensureRecursionFlowArrowMarker(
+        rootSvg, `${safeKey(layout.id)}-${options.idPrefix || 'trace'}`, color
+      );
+      const layer = svg('g', {
+        class: 'asm-trace-arrow-layer asm-trace-recursion-flow-arrows',
+        'data-trace-layout-id': layout.id,
+        'pointer-events': 'none',
+        'aria-hidden': 'true'
+      });
+      actions.forEach((action, sequence) => {
+        const { phase, parent, child } = action;
+        const fromNode = phase === 'exit' ? child : parent;
+        const toNode = phase === 'exit' ? parent : child;
+        const from = recursionOuterframePlacement(
+          fromNode.element, placements.get(fromNode.objectKey), root, fromNode.preferredVariableId
+        );
+        const to = recursionOuterframePlacement(
+          toNode.element, placements.get(toNode.objectKey), root, toNode.preferredVariableId
+        );
+        if (!from || !to) return;
+        const anchors = recursionFlowAnchors(layout.direction, phase);
+        const start = anchorPoint(from, anchors.from);
+        const end = anchorPoint(to, anchors.to);
+        const curve = recursionFlowQuadraticPoints(
+          start, end, anchors.side, child.recursionDepth
+        );
+        const identity = `${layout.id}:${phase}:${parent.activationId}:${child.activationId}`;
+        const key = `recursion-flow:${identity}`;
+        const path = svg('path', {
+          id: `trace-recursion-flow-${safeKey(identity)}`,
+          class: `asm-trace-recursion-flow-arrow asm-trace-recursion-flow-${phase}`,
+          d: curve.path,
+          stroke: color,
+          'stroke-width': 1,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          fill: 'none',
+          'marker-end': `url(#${markerId})`,
+          'data-trace-object-key': key,
+          'data-arrow-key': key,
+          'data-trace-arrow': identity,
+          'data-trace-arrow-identity': JSON.stringify({
+            id: identity, source: 'recursion-flow', explicitId: true,
+            fromObject: fromNode.objectKey, toObject: toNode.objectKey,
+            line: 'quadratic', headStart: 'none', headEnd: 'arrow'
+          }),
+          'data-trace-arrow-source': 'recursion-flow',
+          'data-trace-arrow-layer': 'background',
+          'data-trace-arrow-from-key': fromNode.objectKey,
+          'data-trace-arrow-to-key': toNode.objectKey,
+          'data-trace-arrow-from-cell': 'false',
+          'data-trace-arrow-to-cell': 'false',
+          'data-trace-arrow-from-anchor': anchors.from,
+          'data-trace-arrow-to-anchor': anchors.to,
+          'data-trace-arrow-from-dx': 0,
+          'data-trace-arrow-from-dy': 0,
+          'data-trace-arrow-to-dx': 0,
+          'data-trace-arrow-to-dy': 0,
+          'data-trace-arrow-head-start': 'none',
+          'data-trace-arrow-head-end': 'arrow',
+          'data-trace-arrow-curve': 'recursion-flow',
+          'data-trace-arrow-curve-side': anchors.side,
+          'data-trace-arrow-curve-depth': child.recursionDepth,
+          'data-trace-arrow-draw': 'true',
+          'data-trace-arrow-draw-duration': 260,
+          'data-trace-flow-phase': phase,
+          'data-trace-flow-sequence': sequence,
+          'data-trace-flow-parent-activation': parent.activationId,
+          'data-trace-flow-child-activation': child.activationId
+        });
+        layer.append(path);
+      });
+      if (layer.childElementCount) root.append(layer);
     });
   }
 
@@ -4408,6 +4640,7 @@
     // their automatic layout. Resolve the parent/child edges only now so the
     // arrowhead lands on the child's final outerframe top/side anchor.
     renderRecursionLayoutEdges(rootSvg, root, document, frame, placements, elements, options);
+    renderRecursionFlowArrows(rootSvg, root, document, frame, placements, elements, options);
     renderKeepLastArrows(rootSvg, root, document, frame, placements, elements, keepNodes, options);
     const sceneGeneration = String(Number(frame.sceneGeneration) || 0);
     root.dataset.traceSceneGeneration = sceneGeneration;
@@ -4909,15 +5142,16 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-216';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-217';
   window.ASMTraceRenderers = {
-    build: 'trace-216', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-217', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,
     runtimeIdentityToken, recursionLayoutCoordinates, recursionLayoutPreorder, recursionLayoutEdgePoints,
+    recursionFlowAnchors, recursionFlowQuadraticPoints,
     defaultLiveObjectPlacementDelta, shiftPlacementTree, semanticTargetPlacement,
     keepAnchorPlacement,
     recursionOuterframePlacement,

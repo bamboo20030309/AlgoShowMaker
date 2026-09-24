@@ -573,6 +573,7 @@ return value;
 // @layout quick_tree level-gap 100
 // @layout quick_tree degree 2
 // @layout quick_tree edges on
+// @layout quick_tree flow-arrows off
 ```
 
 若宣告時省略 `at`，根位置也預設為 `canvas.top offset(0,80)`。
@@ -591,7 +592,10 @@ return value;
 | `level-gap` | 正數像素 | 父子層之間的額外間距，預設 100 |
 | `degree` | 正整數 | `binary` 模式的每個節點槽位數，預設 2 |
 | `edges` | `on`、`off` | 顯示或隱藏黑色 2px 父子箭頭，預設開啟 |
+| `flow-arrows` | `on`、`off` | 顯示遞迴 DFS 進入／返回的半透明灰色二次貝茲箭頭，預設關閉 |
 | `reset` | 無值 | 將上述排列設定恢復預設，保留名稱與根錨點 |
+
+`flow-arrows on` 會依實際 DFS 執行順序保留每一條走訪箭頭；新節點進入時先畫進入箭頭，該子樹完成後再畫返回箭頭，樹重新排版時所有既有箭頭會持續綁定節點 outerframe 並同步位移。`top-down` 與 `bottom-up` 使用左側進入、右側返回；`left-right` 與 `right-left` 使用上方進入、下方返回。箭頭為 1px 半透明灰色二次貝茲曲線。
 
 六種 mode 沿用 `AV.hpp` 樹排版的概念：`compact` 依節點實際外框緊密排列；
 `levelorder` 逐層排列；`binary` 保留完整 k 元樹槽位；`preorder`、`inorder`、`postorder`

@@ -1237,6 +1237,7 @@ const RECURSION_LAYOUT_DEFAULTS = Object.freeze({
   levelGap: 100,
   degree: 2,
   showEdges: true,
+  showFlowArrows: false,
   edgeColor: 'black',
   edgeWidth: 2
 });
@@ -1317,7 +1318,7 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     const targetMatch = payload.match(/^([A-Za-z_][A-Za-z0-9_.-]*)\s+(.+)$/s);
     if (!targetMatch) throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID`);
     const id = targetMatch[1];
-    if (/^(?:direction|mode|order|align|sibling-gap|level-gap|degree|edges|reset)$/i.test(id)) {
+    if (/^(?:direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows|reset)$/i.test(id)) {
       throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID 在設定名稱前，例如：@layout quick_tree ${payload}`);
     }
     const layout = layouts.get(id);
@@ -1327,7 +1328,7 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
       Object.assign(layout, RECURSION_LAYOUT_DEFAULTS);
       return;
     }
-    const settingMatch = setting.match(/^(direction|mode|order|align|sibling-gap|level-gap|degree|edges)\s+(.+)$/i);
+    const settingMatch = setting.match(/^(direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows)\s+(.+)$/i);
     if (!settingMatch) throw new Error(`第 ${line} 行的 @layout ${id} 設定無效：${setting}`);
     const name = settingMatch[1].toLowerCase();
     const value = settingMatch[2].trim().toLowerCase();
@@ -1351,6 +1352,9 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     } else if (name === 'edges') {
       if (!['on', 'off'].includes(value)) throw new Error(`第 ${line} 行的 @layout edges 必須是 on 或 off`);
       layout.showEdges = value === 'on';
+    } else if (name === 'flow-arrows') {
+      if (!['on', 'off'].includes(value)) throw new Error(`第 ${line} 行的 @layout flow-arrows 必須是 on 或 off`);
+      layout.showFlowArrows = value === 'on';
     } else {
       const number = Number(value);
       if (!Number.isFinite(number) || number <= 0) {

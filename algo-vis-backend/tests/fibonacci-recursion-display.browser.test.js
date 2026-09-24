@@ -123,18 +123,102 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
     assert.ok(callHighlights.firstReturnOrder < callHighlights.secondOrder,
       'the right highlight is scheduled only after the left invocation returns');
 
-    const preorderTargets = await page.evaluate(async sourceTrace => {
+    const finalArrows = await page.evaluate(async sourceTrace => {
       const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
       const finalFrame = document.frames.at(-1);
       await window.ASMTraceRenderers.renderFrame(document, finalFrame, null, {
         animatePositions: false,
         animateEvents: false
       });
-      return [...window.document.querySelectorAll('.asm-trace-layout-edge')]
-        .map(edge => edge.dataset.traceArrowToKey);
+      const root = window.document.getElementById('asm-trace-root');
+      const flow = [...window.document.querySelectorAll('.asm-trace-recursion-flow-arrow')]
+        .map(arrow => {
+          const from = window.document.querySelector(
+            `[data-trace-object-key="${arrow.dataset.traceArrowFromKey}"]`
+          );
+          const to = window.document.querySelector(
+            `[data-trace-object-key="${arrow.dataset.traceArrowToKey}"]`
+          );
+          const fromBox = window.ASMArrowModel.presentedBounds(from, root, true);
+          const toBox = window.ASMArrowModel.presentedBounds(to, root, true);
+          const side = arrow.dataset.traceArrowCurveSide;
+          const anchor = (box, targetSide) => targetSide === 'left'
+            ? { x: box.x, y: box.y + box.height / 2 }
+            : targetSide === 'right'
+              ? { x: box.x + box.width, y: box.y + box.height / 2 }
+              : targetSide === 'top'
+                ? { x: box.x + box.width / 2, y: box.y }
+                : { x: box.x + box.width / 2, y: box.y + box.height };
+          const start = anchor(fromBox, side);
+          const end = anchor(toBox, side);
+          return {
+            phase: arrow.dataset.traceFlowPhase,
+            sequence: Number(arrow.dataset.traceFlowSequence),
+            child: arrow.dataset.traceFlowChildActivation,
+            fromAnchor: arrow.dataset.traceArrowFromAnchor,
+            toAnchor: arrow.dataset.traceArrowToAnchor,
+            stroke: arrow.getAttribute('stroke'),
+            width: arrow.getAttribute('stroke-width'),
+            path: arrow.getAttribute('d'),
+            startError: Math.hypot(Number(arrow.dataset.traceArrowFromX) - start.x,
+              Number(arrow.dataset.traceArrowFromY) - start.y),
+            endError: Math.hypot(Number(arrow.dataset.traceArrowToX) - end.x,
+              Number(arrow.dataset.traceArrowToY) - end.y)
+          };
+        });
+      return {
+        preorderTargets: [...window.document.querySelectorAll('.asm-trace-layout-edge')]
+          .map(edge => edge.dataset.traceArrowToKey),
+        flow
+      };
     }, trace);
-    assert.deepEqual(preorderTargets, Array.from({ length: 14 }, (_, index) => `F_${index + 1}`),
-      `recursion arrows follow parent-first, left-subtree-first preorder: ${preorderTargets.join(', ')}`);
+    assert.deepEqual(finalArrows.preorderTargets, Array.from({ length: 14 }, (_, index) => `F_${index + 1}`),
+      `recursion arrows follow parent-first, left-subtree-first preorder: ${finalArrows.preorderTargets.join(', ')}`);
+    assert.equal(finalArrows.flow.filter(arrow => arrow.phase === 'enter').length, 14);
+    assert.equal(finalArrows.flow.filter(arrow => arrow.phase === 'exit').length, 14,
+      'every completed recursive edge retains its return arrow');
+    assert.deepEqual(finalArrows.flow.map(arrow => arrow.sequence),
+      Array.from({ length: 28 }, (_, index) => index), 'flow arrows retain DFS lifecycle order');
+    finalArrows.flow.forEach(arrow => {
+      assert.equal(arrow.fromAnchor, arrow.phase === 'enter' ? 'left' : 'right');
+      assert.equal(arrow.toAnchor, arrow.phase === 'enter' ? 'left' : 'right');
+      assert.equal(arrow.width, '1');
+      assert.equal(arrow.stroke, 'rgba(107, 114, 128, 0.38)');
+      assert.match(arrow.path, / Q /, 'flow connector is a quadratic Bézier path');
+      assert.ok(arrow.startError < 0.1 && arrow.endError < 0.1,
+        `flow arrow endpoints stay on outerframe center anchors: ${JSON.stringify(arrow)}`);
+    });
+    const entries = new Map(finalArrows.flow.filter(arrow => arrow.phase === 'enter')
+      .map(arrow => [arrow.child, arrow.sequence]));
+    finalArrows.flow.filter(arrow => arrow.phase === 'exit').forEach(arrow => {
+      assert.ok(entries.get(arrow.child) < arrow.sequence,
+        `activation returns only after its DFS entry: ${JSON.stringify(arrow)}`);
+    });
+
+    const compatibility = await page.evaluate(async sourceTrace => {
+      const count = async raw => {
+        const reopened = JSON.parse(JSON.stringify(raw));
+        const document = window.ASMTraceModel.normalizeTraceDocument(reopened);
+        await window.ASMTraceRenderers.renderFrame(document, document.frames.at(-1), null, {
+          animatePositions: false, animateEvents: false
+        });
+        return window.document.querySelectorAll('.asm-trace-recursion-flow-arrow').length;
+      };
+      const legacy = JSON.parse(JSON.stringify(sourceTrace));
+      delete legacy.layouts[0].showFlowArrows;
+      const disabled = JSON.parse(JSON.stringify(sourceTrace));
+      disabled.layouts[0].showFlowArrows = false;
+      return {
+        enabledAfterReopen: await count(sourceTrace),
+        legacyWithoutField: await count(legacy),
+        explicitlyDisabled: await count(disabled)
+      };
+    }, trace);
+    assert.deepEqual(compatibility, {
+      enabledAfterReopen: 28,
+      legacyWithoutField: 0,
+      explicitlyDisabled: 0
+    }, 'saved on/off state survives reopen while old layouts remain disabled');
 
     const reflowEdges = await page.evaluate(async sourceTrace => {
       const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
@@ -161,10 +245,34 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
           toGap: Math.hypot(line[2] - (toBox.x + toBox.width / 2), line[3] - toBox.y)
         };
       });
+      const readFlow = () => [...window.document.querySelectorAll(
+        '.asm-trace-recursion-flow-enter[data-trace-arrow-from-key="F_3"]'
+      )].map(edge => {
+        const root = window.document.getElementById('asm-trace-root');
+        const fromKey = edge.dataset.traceArrowFromKey;
+        const toKey = edge.dataset.traceArrowToKey;
+        const fromNode = window.document.querySelector(`[data-trace-object-key="${fromKey}"]`);
+        const toNode = window.document.querySelector(`[data-trace-object-key="${toKey}"]`);
+        const fromBox = window.ASMArrowModel.presentedBounds(fromNode, root, true);
+        const toBox = window.ASMArrowModel.presentedBounds(toNode, root, true);
+        const line = [
+          Number(edge.dataset.traceArrowFromX), Number(edge.dataset.traceArrowFromY),
+          Number(edge.dataset.traceArrowToX), Number(edge.dataset.traceArrowToY)
+        ];
+        return {
+          toKey,
+          line,
+          fromGap: Math.hypot(line[0] - fromBox.x,
+            line[1] - (fromBox.y + fromBox.height / 2)),
+          toGap: Math.hypot(line[2] - toBox.x,
+            line[3] - (toBox.y + toBox.height / 2))
+        };
+      });
       await window.ASMTraceRenderers.renderFrame(document, fromFrame, null, {
         animatePositions: false, animateEvents: false
       });
       const before = read();
+      const beforeFlow = readFlow();
       const beforeAll = [...window.document.querySelectorAll('.asm-trace-layout-edge')]
         .map(edge => [edge.dataset.traceArrowFromKey, edge.dataset.traceArrowToKey]);
       const transition = window.ASMTraceRenderers.renderFrame(document, toFrame, fromFrame, {
@@ -172,10 +280,15 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
       });
       await pause(20);
       const start = read();
+      const startFlow = readFlow();
       await pause(120);
       const middle = read();
+      const middleFlow = readFlow();
       await transition;
-      return { before, beforeAll, start, middle, end: read() };
+      return {
+        before, beforeAll, start, middle, end: read(),
+        beforeFlow, startFlow, middleFlow, endFlow: readFlow()
+      };
     }, trace);
     const edgeByTarget = (items, key) => items.find(item => item.toKey === key);
     const lineDistance = (left, right) => Math.hypot(...left.line.map(
@@ -194,6 +307,20 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
       assert.ok(lineDistance(before, start) <= lineDistance(before, middle) + 2
         && lineDistance(before, middle) <= total + 2,
       `F_3 child edge moves continuously without a geometry jump: ${JSON.stringify(reflowEdges)}`);
+
+      const beforeFlow = edgeByTarget(reflowEdges.beforeFlow, key);
+      const startFlow = edgeByTarget(reflowEdges.startFlow, key);
+      const middleFlow = edgeByTarget(reflowEdges.middleFlow, key);
+      const endFlow = edgeByTarget(reflowEdges.endFlow, key);
+      assert.ok(beforeFlow && startFlow && middleFlow && endFlow,
+        `stored DFS enter arrow remains present during reflow (${key})`);
+      assert.ok([startFlow, middleFlow, endFlow].every(edge => (
+        edge.fromGap < 0.1 && edge.toGap < 0.1
+      )), `quadratic flow arrow stays on outerframe center.left during reflow: ${JSON.stringify(reflowEdges)}`);
+      const flowTotal = lineDistance(beforeFlow, endFlow);
+      assert.ok(lineDistance(beforeFlow, startFlow) <= lineDistance(beforeFlow, middleFlow) + 2
+        && lineDistance(beforeFlow, middleFlow) <= flowTotal + 2,
+      `quadratic flow arrow moves continuously with the recursion layout: ${JSON.stringify(reflowEdges)}`);
     }
 
     const growth = await page.evaluate(async ({
@@ -212,6 +339,9 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
         const edge = window.document.querySelector(
           `.asm-trace-layout-edge[data-trace-arrow-to-key="${childKey}"]`
         );
+        const flow = window.document.querySelector(
+          `.asm-trace-recursion-flow-enter[data-trace-arrow-to-key="${childKey}"]`
+        );
         const x1 = Number(edge?.getAttribute('x1'));
         const y1 = Number(edge?.getAttribute('y1'));
         const x2 = Number(edge?.getAttribute('x2'));
@@ -226,6 +356,12 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
           edgeLength: edge ? Math.hypot(x2 - x1, y2 - y1) : -1,
           edgeEndpointGap: edge && nodeBox
             ? Math.hypot(x2 - (nodeBox.x + nodeBox.width / 2), y2 - nodeBox.y)
+            : -1,
+          flowDashOffset: flow?.getAttribute('stroke-dashoffset') || '',
+          flowOpacity: Number(flow?.getAttribute('opacity')),
+          flowEndpointGap: flow && nodeBox
+            ? Math.hypot(Number(flow.dataset.traceArrowToX) - nodeBox.x,
+              Number(flow.dataset.traceArrowToY) - (nodeBox.y + nodeBox.height / 2))
             : -1
         };
       };
@@ -313,11 +449,20 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
     assert.ok(translation(growth.forwardStart) > translation(growth.forwardMiddle)
       && translation(growth.forwardMiddle) > translation(growth.forwardEnd),
     `the kept node moves continuously from the current node into its layout slot: ${JSON.stringify(growth)}`);
-    assert.ok(growth.forwardMiddle.edgeLength > growth.forwardStart.edgeLength,
-      `the parent-child edge extends while the node grows outward: ${JSON.stringify(growth)}`);
+    assert.ok(growth.forwardEnd.edgeLength > growth.forwardStart.edgeLength
+      && growth.forwardEnd.edgeLength > growth.forwardMiddle.edgeLength,
+      `the parent-child edge finishes extended after the centered child passes its parent: ${JSON.stringify(growth)}`);
     assert.ok(growth.forwardStart.edgeEndpointGap < 24
       && growth.forwardMiddle.edgeEndpointGap < 24,
     `the extending edge stays attached to the moving node: ${JSON.stringify(growth)}`);
+    assert.ok(Number(growth.forwardStart.flowDashOffset)
+      > Number(growth.forwardMiddle.flowDashOffset),
+    `the DFS enter arrow draws from parent to child during growth: ${JSON.stringify(growth)}`);
+    assert.ok(growth.forwardStart.flowEndpointGap < 0.1
+      && growth.forwardMiddle.flowEndpointGap < 0.1,
+    `the drawing DFS arrow stays bound to child center.left: ${JSON.stringify(growth)}`);
+    assert.equal(growth.forwardEnd.flowDashOffset, '',
+      'the stored flow arrow removes its temporary draw mask after completion');
     assert.equal(growth.forwardEnd.opacity, 0,
       'the completed node removes its temporary opacity attribute');
     assert.ok(!growth.forwardEnd.transform.includes('scale('));
