@@ -60,6 +60,11 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.doesNotMatch(code, /labels\(value,index\)|row-labels\(index\)|column-labels\(index\)|gridlines\(1\)|outerframe\(true\)/);
   assert.match(code, /marker-layout\(inner\)/);
   assert.match(code, /@place num\.left at pre\.right offset\(100,0\)/);
+  assert.match(code, /@camera auto zoom\(1\)/);
+  assert.match(code, /@style pre\[0:n\]\[0\] background AV_grey/);
+  assert.match(code, /@style pre\[0\]\[0:m\] background AV_grey/);
+  assert.match(code, /@style num\[0:n\]\[0\] background AV_grey/);
+  assert.match(code, /@style num\[0\]\[0:m\] background AV_grey/);
   assert.match(code, /@style num\[0:r-1\]\[0:c\] background AV_blue/);
   assert.match(code, /@style num\[0:r\]\[0:c-1\] background AV_orange/);
   assert.match(code, /@style num\[0:r-1\]\[0:c-1\] background AV_red/);
@@ -74,7 +79,8 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /"text":\s*"num\[\$\{r\}\]\[\$\{c\}\]"/);
   assert.doesNotMatch(code, /"text":\s*"\$\{(?:pre|num)\[/);
   assert.doesNotMatch(code, /"text":\s*"pre\[[^"]+\]\s*=\s*\$\{pre\[/);
-  assert.match(code, /@camera focus num zoom\(2\.0\) when r <= n \/ 2/);
+  assert.match(code, /@camera focus num zoom\(1\.7\) when r <= n \/ 2 && \(r > 1 \|\| c > 1\)/);
+  assert.match(code, /\/\* @asm-view[\s\S]*"autoFixedEnabled": true/);
   assert.match(code, /@style num\[r1:r2\]\[c1:c2\] background AV_green/);
 
   const frames = findFrameDirectives(code);
@@ -84,7 +90,7 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.equal(frames[1].objects[0].rendererOptions.innerLabels, undefined);
   assert.equal(frames[1].objects[0].rendererOptions.markerLayout, 'inner');
   assert.deepEqual(frames[1].bindings.map(binding => binding.indexDimension), [0, 1]);
-  assert.deepEqual(frames[1].camera.condition.identifiers, ['r', 'n']);
+  assert.deepEqual(frames[1].camera.condition.identifiers, ['r', 'n', 'c']);
   assert.equal(frames[1].camera.target.variableId, frames[1].objects[1].primaryVariableId);
   const buildColors = frames.slice(1, 5).map(frame => [...new Set(frame.texts
     .flatMap(text => text.segments)

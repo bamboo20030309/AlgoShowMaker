@@ -9,7 +9,7 @@ int ans;
 vector<vector<int>> num, pre;
 
 // @defaults
-// @camera auto zoom(0.85)
+// @camera auto zoom(1)
 // @enddefaults
 
 // num 與 pre 都在第 0 列、第 0 欄補 0，實際資料從 [1][1] 開始。
@@ -41,8 +41,10 @@ int main() {
 
     // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
     // @events animate off
-    // @style pre[0][0] background AV_grey
-    // @style num[0][0] background AV_grey
+    // @style pre[0:n][0] background AV_grey
+    // @style pre[0][0:m] background AV_grey
+    // @style num[0:n][0] background AV_grey
+    // @style num[0][0:m] background AV_grey
     // @text "二維前綴和在第 0 列與第 0 欄補 0，避免建表時另外判斷邊界" at pre.top offset(0,-24)
 
     for (r = 1; r <= n; r++) {
@@ -65,7 +67,7 @@ int main() {
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_up_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(2.0) when r <= n / 2
+            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
 
             // Step 2：加上左方前綴和。
             pre[r][c] += pre[r][c - 1];
@@ -92,7 +94,7 @@ int main() {
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_left_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(2.0) when r <= n / 2
+            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
 
             // Step 3：扣掉被重複計算的左上角。
             pre[r][c] -= pre[r - 1][c - 1];
@@ -126,7 +128,7 @@ int main() {
             //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
             //   {"text": " + num[${r}][${c}]"}
             // ] as build_overlap_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(2.0) when r <= n / 2
+            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
 
             // Step 4：最後加上目前資料格。
             pre[r][c] += num[r][c];
@@ -166,7 +168,7 @@ int main() {
             //   {"text": "num[${r}][${c}]", "background": "AV_green"},
             //   {"text": " = ${pre[r][c]}"}
             // ] as build_value_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(2.0) when r <= n / 2
+            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
         }
     }
 
@@ -198,3 +200,17 @@ int main() {
 
     return 0;
 }
+
+/* @asm-view
+{
+  "version": 1,
+  "rules": [],
+  "skins": {},
+  "studio": {
+    "eventSettings": {
+      "autoFixedEnabled": true,
+      "autoLoopBoundaryEnabled": false
+    }
+  }
+}
+@asm-view */

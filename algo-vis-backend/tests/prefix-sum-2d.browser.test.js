@@ -48,6 +48,8 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
       ));
       const firstHalf = step(2, 2, 'build_value_num');
       const secondHalf = step(3, 2, 'build_value_pre');
+      const initialFrames = ['build_up_num', 'build_left_num', 'build_overlap_num', 'build_value_num']
+        .map(id => step(1, 1, id));
       await window.ASMTraceRenderers.renderFrame(trace, firstHalf, null, {
         animatePositions: false, animateEvents: false
       });
@@ -78,11 +80,15 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
         fills,
         coloredPrefixCellCount: coloredPrefixCells.length,
         textBackgrounds: [...new Set(textBackgrounds)],
+        textBackgroundRunCount: textBackgrounds.length,
         formulaText,
         firstTextVisible: Boolean(document.querySelector('[data-trace-text-id="build_value_pre"]')),
         firstTextHidden: Boolean(document.querySelector('[data-trace-text-id="build_value_num"]')),
         firstCameraZoom: firstCamera?.zoom,
         firstCameraTarget: trace.variables[firstCamera?.target?.variableId]?.name,
+        initialFramesUseFullRange: initialFrames.every(frame => (
+          frame && !window.ASMTraceCamera.ruleForFrame(trace, frame)?.target
+        )),
         innerLabels: document.querySelectorAll('[data-trace-label-role="inner"]').length,
         markers: [...document.querySelectorAll('.trace-variable-marker-label-text')]
           .map(node => node.textContent).sort()
@@ -102,11 +108,13 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
         'rgba(239, 154, 154, 0.6)',
         'rgba(165, 214, 167, 0.6)'
       ],
+      textBackgroundRunCount: 4,
       formulaText: 'pre[2][2] = pre[1][2] + pre[2][1] - pre[1][1] + num[2][2] = 16',
       firstTextVisible: true,
       firstTextHidden: false,
-      firstCameraZoom: 2,
+      firstCameraZoom: 1.7,
       firstCameraTarget: 'num',
+      initialFramesUseFullRange: true,
       innerLabels: 0,
       markers: ['c', 'r']
     });

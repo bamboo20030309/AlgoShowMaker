@@ -691,6 +691,8 @@ void quick_sort(vector<int>& arr, int low, int high) {
 // ] as current_value at arr.bottom
 ```
 
+同一行中相鄰且 `background` 相同的文字片段，顯示時會合併為一個連續背景區段；`${...}` 插值即使在內部拆成多個可編輯片段，也不會產生重疊色塊或接縫。
+
 欄位支援：
 
 | 標準欄位 | 相容別名 | 說明 |

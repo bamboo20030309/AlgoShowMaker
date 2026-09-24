@@ -27,7 +27,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
   assert.ok(html.includes('trace-model.js?v=trace-35'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-21'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-22'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-25'));
@@ -85,24 +85,24 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-22'));
+  assert.ok(html.includes('trace-rules.js?v=trace-24'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'segment_tree' ? 'segment-label-3' : 'gap-1';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(slides.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
-  assert.ok(html.includes('draw/draw_2Darray.js?v=focus-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-48'));
+  assert.ok(html.includes('draw/draw_2Darray.js?v=matrix-labels-2'));
+  assert.ok(html.includes('trace-events.js?v=trace-49'));
   const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
-  assert.ok(html.includes('trace-camera.js?v=trace-5'));
+  assert.ok(html.includes('trace-camera.js?v=trace-6'));
   assert.ok(html.includes('trace-player.js?v=trace-25'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-6'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-122'));
+  assert.ok(html.includes('trace-studio.js?v=trace-123'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
   assert.ok(html.includes('front.js?v=random-id-36'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));

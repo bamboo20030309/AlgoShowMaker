@@ -3440,11 +3440,42 @@
           'data-trace-text-line': '1'
         });
         let cursorX = padX;
-        line.forEach(segment => {
+        const segmentLayouts = line.flatMap(segment => {
           const segmentWidth = measureText(segment.display, segment.fontSize, segment.bold);
-          if (!segment.display) return;
+          if (!segment.display) return [];
+          const layout = { segment, segmentWidth, cursorX };
+          cursorX += segmentWidth;
+          return [layout];
+        });
+        const backgroundRuns = [];
+        segmentLayouts.forEach(layout => {
+          const fill = layout.segment.background;
+          if (!fill || fill === 'none' || fill === 'rgba(0,0,0,0)') return;
+          const previous = backgroundRuns.at(-1);
+          if (previous && previous.fill === fill
+            && Math.abs(previous.x + previous.width - layout.cursorX) < 0.001) {
+            previous.width += layout.segmentWidth;
+            return;
+          }
+          backgroundRuns.push({ fill, x: layout.cursorX, width: layout.segmentWidth });
+        });
+        backgroundRuns.forEach(run => {
+          lineGroup.append(svg('rect', {
+            class: 'asm-trace-text-segment-background',
+            x: run.x - 2 * objectScale,
+            y: 0,
+            width: Math.max(4 * objectScale, run.width + 4 * objectScale),
+            height: lineHeight[lineIndex],
+            rx: 2 * objectScale,
+            fill: run.fill,
+            stroke: 'none',
+            'pointer-events': 'none',
+            'data-trace-text-background-run': '1'
+          }));
+        });
+        segmentLayouts.forEach(({ segment, segmentWidth, cursorX: segmentX }) => {
           const segmentGroup = svg('g', {
-            transform: `translate(${cursorX}, 0)`,
+            transform: `translate(${segmentX}, 0)`,
             'data-trace-object-key': segment.segmentKey,
             'data-trace-parent-key': key,
             'data-trace-movable': '0',
@@ -3453,16 +3484,17 @@
             'data-trace-text-segment-id': segment.segmentId || String(segment.segmentIndex),
             'data-trace-text-base-key': segment.baseKey || segment.segmentKey,
             'data-trace-text-source-start': segment.sourceStart ?? 0,
-            'data-trace-text-source-end': segment.sourceEnd ?? segment.display.length
+            'data-trace-text-source-end': segment.sourceEnd ?? segment.display.length,
+            'data-trace-text-background': segment.background || 'none'
           });
           segmentGroup.append(svg('rect', {
-            class: 'asm-trace-text-segment-background',
+            class: 'asm-trace-text-segment-hitbox',
             x: -2 * objectScale,
             y: 0,
             width: Math.max(4 * objectScale, segmentWidth + 4 * objectScale),
             height: lineHeight[lineIndex],
             rx: 2 * objectScale,
-            fill: segment.background && segment.background !== 'none' ? segment.background : 'rgba(0,0,0,0)',
+            fill: 'rgba(0,0,0,0)',
             stroke: 'none',
             'pointer-events': 'all'
           }));
@@ -3484,13 +3516,12 @@
           }, segment.display));
           lineGroup.append(segmentGroup);
           placements.set(segment.segmentKey, {
-            x: baseX + cursorX - 2 * objectScale,
+            x: baseX + segmentX - 2 * objectScale,
             y: baseY + lineTop,
             width: Math.max(4 * objectScale, segmentWidth + 4 * objectScale),
             height: lineHeight[lineIndex]
           });
           elements.set(segment.segmentKey, segmentGroup);
-          cursorX += segmentWidth;
         });
         motion.append(lineGroup);
         lineTop += lineHeight[lineIndex] + lineGap;
@@ -5147,9 +5178,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-208';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-211';
   window.ASMTraceRenderers = {
-    build: 'trace-208', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-211', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
