@@ -81,3 +81,9 @@
 - 更新指令手冊、README 與指令提示範例；`trace-rules.js` cache 版本升為 `trace-24`，directive assist 升為 `directive-22`。
 - V2 隔離服務 `3197`：matrix parser／compile／ragged range、二維前綴和 trace、真實瀏覽器四區呈現、既有 matrix SVG 與指令提示共 15/15 通過、0 skip；靜態 JS 與 `git diff --check` 通過。
 - 未執行完整 regression；本次採指令／style／matrix renderer 的最小相關驗證。
+
+## 2026-09-25 多行 `@text` 片段
+
+- `@text` 的 JSON 片段陣列可使用連續普通 `//` 註解換行，逗點後的每個片段能對齊縮排；結尾的 `as`、`at`、`when` 修飾詞接在 `]` 後。
+- 二維前綴和範例的八組彩色公式已改為逐片段換行，顯示內容、顏色與放置條件保持不變。
+- beta 3102 專項驗證：文字陣列 parser、前綴和 trace 與真實瀏覽器四色呈現共 11/11 通過、0 skip；未執行完整 regression。

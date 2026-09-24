@@ -55,8 +55,16 @@ int main() {
             // @style pre[r-1][c] background AV_blue
             // @style num[0:r-1][0:c] background AV_blue
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_up_num at num.top offset(0,-24) when r <= n / 2
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_up_pre at pre.top offset(175,-24) when r > n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
+            // ] as build_up_num at num.top offset(0,-24) when r <= n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
+            // ] as build_up_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
 
             // Step 2：加上左方前綴和。
@@ -70,8 +78,20 @@ int main() {
             // @style num[0:r][0:c-1] background AV_yellow
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_left_num at num.top offset(0,-24) when r <= n / 2
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_left_pre at pre.top offset(175,-24) when r > n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + "},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
+            // ] as build_left_num at num.top offset(0,-24) when r <= n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + "},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
+            // ] as build_left_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
 
             // Step 3：扣掉被重複計算的左上角。
@@ -88,8 +108,24 @@ int main() {
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}","background":"AV_red"},{"text":" + num[${r}][${c}]"}] as build_overlap_num at num.top offset(0,-24) when r <= n / 2
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}","background":"AV_red"},{"text":" + num[${r}][${c}]"}] as build_overlap_pre at pre.top offset(175,-24) when r > n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + "},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": " - "},
+            //   {"text": "pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": " + num[${r}][${c}]"}
+            // ] as build_overlap_num at num.top offset(0,-24) when r <= n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + "},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": " - "},
+            //   {"text": "pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": " + num[${r}][${c}]"}
+            // ] as build_overlap_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
 
             // Step 4：最後加上目前資料格。
@@ -108,8 +144,28 @@ int main() {
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"${pre[r-1][c-1]}","background":"AV_red"},{"text":" + "},{"text":"${num[r][c]}","background":"AV_green"},{"text":" = ${pre[r][c]}"}] as build_value_num at num.top offset(0,-24) when r <= n / 2
-            // @text [{"text":"pre[${r}][${c}] = "},{"text":"${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"${pre[r-1][c-1]}","background":"AV_red"},{"text":" + "},{"text":"${num[r][c]}","background":"AV_green"},{"text":" = ${pre[r][c]}"}] as build_value_pre at pre.top offset(175,-24) when r > n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + "},
+            //   {"text": "${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": " - "},
+            //   {"text": "${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": " + "},
+            //   {"text": "${num[r][c]}", "background": "AV_green"},
+            //   {"text": " = ${pre[r][c]}"}
+            // ] as build_value_num at num.top offset(0,-24) when r <= n / 2
+            // @text [
+            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": " + "},
+            //   {"text": "${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": " - "},
+            //   {"text": "${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": " + "},
+            //   {"text": "${num[r][c]}", "background": "AV_green"},
+            //   {"text": " = ${pre[r][c]}"}
+            // ] as build_value_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
         }
     }

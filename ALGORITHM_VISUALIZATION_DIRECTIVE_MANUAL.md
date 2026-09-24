@@ -682,6 +682,15 @@ void quick_sort(vector<int>& arr, int low, int high) {
 // @text [{"text":"目前值："},{"text":"${arr[i]}","color":"AV_red","background":"#fff3cd","fontSize":18,"bold":true}] at arr.bottom
 ```
 
+文字片段陣列也可以使用連續的普通 `//` 註解換行；陣列結束後再接 `as`、`at`、`when` 等修飾詞：
+
+```cpp
+// @text [
+//   {"text": "目前值："},
+//   {"text": "${arr[i]}", "background": "AV_red"}
+// ] as current_value at arr.bottom
+```
+
 欄位支援：
 
 | 標準欄位 | 相容別名 | 說明 |

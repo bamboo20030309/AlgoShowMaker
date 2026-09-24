@@ -356,6 +356,36 @@ function arrowCommentPayload(source, node, initial) {
   return { payload, end };
 }
 
+function textCommentPayload(source, node, initial) {
+  let payload = initial;
+  let end = node.to;
+  const closesJsonArray = value => {
+    if (!String(value || '').trimStart().startsWith('[')) return true;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (const character of value) {
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') inString = true;
+      else if (character === '[') depth += 1;
+      else if (character === ']' && --depth === 0) return true;
+    }
+    return false;
+  };
+  while (!closesJsonArray(payload)) {
+    const next = source.slice(end).match(/^\r?\n[ \t]*\/\/[ \t]?([^\r\n]*)/);
+    if (!next || next[1].trimStart().startsWith('@')) break;
+    payload += '\n' + next[1];
+    end += next[0].length;
+  }
+  return { payload, end };
+}
+
 function findPresetDirectives(source, analysis) {
   const definitions = new Map();
   const ranges = [];
@@ -406,7 +436,9 @@ function findPresetDirectives(source, analysis) {
         const name = directive[1].toLowerCase();
         const collected = name === 'arrow'
           ? arrowCommentPayload(source, node, directive[2])
-          : { payload: directive[2], end: node.to };
+          : name === 'text'
+            ? textCommentPayload(source, node, directive[2])
+            : { payload: directive[2], end: node.to };
         if (!['for', 'endfor'].includes(name)) open.directives.push({ name, payload: collected.payload, line,
           drawLoops: drawingScopesAt(source, analysis, node.from) });
         continuationEnd = collected.end;
@@ -1569,14 +1601,18 @@ function parseTextPlacement(payload, line) {
 function textDirectivesForSource(source, analysis) {
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
   const directives = [];
+  let continuationEnd = -1;
 
   function visit(node) {
     if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+      if (node.from < continuationEnd) return;
       const text = source.slice(node.from, node.to);
       const match = text.match(/^\/\/\s*@text\b\s*(.*?)\s*$/i);
       if (match) {
         const line = analysis.lineAt(node.from);
-        const placement = parseTextPlacement(match[1], line);
+        const collected = textCommentPayload(source, node, match[1]);
+        continuationEnd = collected.end;
+        const placement = parseTextPlacement(collected.payload, line);
         if (placement.renderer) throw new Error(`第 ${line} 行的 @text 不支援 render`);
         if (Object.keys(placement.rendererOptions || {}).length) throw new Error(`第 ${line} 行的 @text 不支援 with`);
         const payload = placement.payload;
@@ -1591,7 +1627,7 @@ function textDirectivesForSource(source, analysis) {
         }
         directives.push({
           from: node.from,
-          to: node.to,
+          to: collected.end,
           line,
           id: placement.objectId || `line-${line}`,
           drawLoops: drawingScopesAt(source, analysis, node.from),
