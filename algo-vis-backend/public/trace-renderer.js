@@ -2638,6 +2638,35 @@
     return result;
   }
 
+  function recursionLayoutPreorder(sourceNodes) {
+    const nodes = (sourceNodes || []).map((node, index) => ({ node, index, children: [] }));
+    const byId = new Map(nodes.map(entry => [String(entry.node?.id || ''), entry]));
+    const roots = [];
+    const ordered = entries => entries.sort((left, right) => (
+      (Number(left.node?.siblingIndex) || 0) - (Number(right.node?.siblingIndex) || 0)
+      || (Number(left.node?.rootIndex) || 0) - (Number(right.node?.rootIndex) || 0)
+      || left.index - right.index
+    ));
+    nodes.forEach(entry => {
+      const parent = byId.get(String(entry.node?.parentId || ''));
+      if (parent && parent !== entry) parent.children.push(entry);
+      else roots.push(entry);
+    });
+    ordered(roots);
+    nodes.forEach(entry => ordered(entry.children));
+    const result = [];
+    const visited = new Set();
+    function visit(entry) {
+      if (!entry || visited.has(entry)) return;
+      visited.add(entry);
+      result.push(entry.node);
+      entry.children.forEach(visit);
+    }
+    roots.forEach(visit);
+    nodes.forEach(visit);
+    return result;
+  }
+
   function applyRecursionLayouts(rootSvg, root, document, frame, placements, elements, options = {}) {
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
     const visibleSnapshots = (frame.snapshotIds || []).map(id => snapshotsById.get(id)).filter(Boolean);
@@ -2695,7 +2724,8 @@
           objectKey,
           snapshot,
           preferredVariableId,
-          parentId: activeParentSnapshot(snapshot)?.id || '',
+          parentId: activeParentSnapshot(snapshot)?.id
+            || String(snapshot.layoutNode?.parentSnapshotId || ''),
           siblingIndex: snapshot.layoutNode?.siblingIndex,
           rootIndex: snapshot.layoutNode?.rootIndex,
           // A live @frame node and the @keep node that replaces it must use
@@ -2774,6 +2804,8 @@
         element.dataset.traceLayoutNode = node.id;
         element.dataset.traceLayoutParent = node.parentId || '';
         element.dataset.traceLayoutPreferredVariable = node.preferredVariableId || '';
+        element.dataset.traceLayoutSiblingIndex = String(Number(node.siblingIndex) || 0);
+        element.dataset.traceLayoutRootIndex = String(Number(node.rootIndex) || 0);
         if (!destination || explicitlyPlaced) return;
         const dx = destination.x + (Number(snapshot?.placementOffset?.x) || 0) - current.x;
         const dy = destination.y + (Number(snapshot?.placementOffset?.y) || 0) - current.y;
@@ -2808,13 +2840,15 @@
         id: element?.dataset?.traceLayoutNode || '',
         parentId: element?.dataset?.traceLayoutParent || '',
         preferredVariableId: element?.dataset?.traceLayoutPreferredVariable || '',
+        siblingIndex: Number(element?.dataset?.traceLayoutSiblingIndex) || 0,
+        rootIndex: Number(element?.dataset?.traceLayoutRootIndex) || 0,
         objectKey,
         element
       })).filter(node => node.id
         && String(node.element?.dataset?.traceLayoutId || '') === String(layout.id || ''));
       const byId = new Map(sourceNodes.map(node => [node.id, node]));
       const models = [];
-      sourceNodes.forEach(node => {
+      recursionLayoutPreorder(sourceNodes).forEach(node => {
         if (!node.parentId) return;
         const parentNode = byId.get(node.parentId);
         const parentElement = parentNode?.element;
@@ -4846,15 +4880,15 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-213';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-214';
   window.ASMTraceRenderers = {
-    build: 'trace-213', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-214', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,
-    runtimeIdentityToken, recursionLayoutCoordinates, recursionLayoutEdgePoints,
+    runtimeIdentityToken, recursionLayoutCoordinates, recursionLayoutPreorder, recursionLayoutEdgePoints,
     defaultLiveObjectPlacementDelta, shiftPlacementTree, semanticTargetPlacement,
     keepAnchorPlacement,
     recursionOuterframePlacement,

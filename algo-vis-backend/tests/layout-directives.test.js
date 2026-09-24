@@ -247,7 +247,9 @@ test('complete recursion scene keeps a parent-child edge after final placement',
     animatePositions: false, animateEvents: false
   });
   const edge = window.document.querySelector('.asm-trace-layout-edge');
-  assert.ok(edge, 'renderer must keep the recursion edge in the final SVG scene');
+  assert.ok(edge, `renderer must keep the recursion edge in the final SVG scene: ${[
+    ...window.document.querySelectorAll('[data-trace-layout-node]')
+  ].map(node => `${node.dataset.traceLayoutNode}<-${node.dataset.traceLayoutParent}`).join(', ')}`);
   assert.equal(edge.getAttribute('stroke'), 'black');
   assert.equal(edge.getAttribute('stroke-width'), '2');
   assert.ok(Number(edge.getAttribute('y2')) < renderer.currentPlacement('child', false).y,
@@ -339,6 +341,20 @@ test('@keep in replaces its live @frame node without shifting the array outerfra
     renderer.currentPlacement('arr-id', false),
     renderer.currentPlacement('partition', false),
     'the live variable key remains an alias for text and event bindings'
+  );
+});
+
+test('recursion layout arrows use stable depth-first preorder', () => {
+  const renderer = rendererApi();
+  const nodes = [
+    { id: 'right', parentId: 'root', siblingIndex: 1, rootIndex: 0 },
+    { id: 'left-leaf', parentId: 'left', siblingIndex: 0, rootIndex: 0 },
+    { id: 'root', parentId: '', siblingIndex: 0, rootIndex: 0 },
+    { id: 'left', parentId: 'root', siblingIndex: 0, rootIndex: 0 }
+  ];
+  assert.deepEqual(
+    Array.from(renderer.recursionLayoutPreorder(nodes), node => node.id),
+    ['root', 'left', 'left-leaf', 'right']
   );
 });
 

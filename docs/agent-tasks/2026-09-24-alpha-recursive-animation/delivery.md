@@ -16,6 +16,8 @@
 - `display("...")` 已由 scalar 擴充到 sequence、matrix、normal、heap、segment tree、BIT、disk、stack、queue、object 欄位、graph node 與 coordinate point 等既有 renderer；自訂模板只改顯示文字，不改 trace value。
 - 每個格子可使用 `${value}`、`${index}`；矩陣另有 `${row}`、`${column}`，map／object 可使用 `${key}`、`${field}`，並可與目前 frame 變數或 `@let` 混用。
 - 動畫事件重播會重新套用 display 模板，因此 assignment／write 播放前後不會短暫退回原始值；模板內含逗號的引號字串也可正確解析。
+- 遞迴 layout 的父子箭頭現在以穩定的 activation／parent 關係做 DFS 前序輸出：父節點先於子節點、左子樹完整先於右子樹；snapshot 回傳替換不再改變模型或 SVG DOM 的箭頭順序。
+- 舊 trace 若只有 `layoutNode.parentSnapshotId`、缺少 recursion activation metadata，仍會沿用 snapshot parent 關係畫線。
 
 ## 目前可供使用者檢視的行為
 
@@ -25,6 +27,7 @@
 - 新 child 會像從目前父節點長出；按上一步時則縮回同一父節點，樹邊與節點位置同步更新。
 - 陣列等其他物件可直接寫 `@frame arr with display("${index}: ${value}")`，每格使用自己的 index／value。
 - 最終畫面只有 15 個遞迴節點，不存在額外 `left`、`right`、`result` 或 `value` 物件。
+- 最終 Fibonacci `F(5)` 的箭頭 target 順序固定為 `F_1`～`F_14`，符合 DFS 前序的首次建立順序。
 
 ## 驗證分級與選擇
 
@@ -33,7 +36,7 @@
 - 選擇依據：修改遞迴範例、keep snapshot materialization、recursion renderer 的同 activation 替換行為，以及 frame tween 的遞迴進退場。
 - 執行的測試檔／案例：`tests/fibonacci-recursion-sample.test.js`、`tests/fibonacci-recursion-display.browser.test.js`、`tests/display-renderer-options.browser.test.js`、`tests/outerframe-tween.test.js`、`tests/frame-renderer-options.integration.test.js`、`tests/directive-assist.test.js`、`tests/entrypoints.test.js`，以及 `layout-directives.test.js` 的 recursive keep identity 案例。
 - 驗證環境：alpha worktree 的 3101 服務與隔離的 Playwright 瀏覽器，輸入 `5`。
-- 自動測試結果：Fibonacci trace／瀏覽器 2/2、outerframe／growth tween 7/7、recursive keep identity 1/1 通過，全部 0 fail、0 skipped。
+- 自動測試結果：本輪前序修改的 `layout-directives.test.js` 與 `entrypoints.test.js` 共 12/12 通過；Fibonacci 實際瀏覽器 1/1 通過，全部 0 fail、0 skipped。先前 Fibonacci trace／瀏覽器 2/2、outerframe／growth tween 7/7、recursive keep identity 1/1 亦已通過。
 - 瀏覽器 DOM：同一個 `F(2)` snapshot object 回傳後顯示 `1`，且不再殘留 `F(2)` 文字；replacement 中途不含 growth scale。
 - 瀏覽器 tween：正向 1× 驗證父中心起點、縮放／透明度、父子邊延伸與完成定點；反向 2× 驗證 child ghost 縮回父中心並於完成後移除。
 - 通用 display 瀏覽器：normal sequence、heap、matrix 與 assignment replay 通過；確認 `${value/index/row/column}` 與 frame 變數運算，且 trace 原值未被修改。
@@ -46,4 +49,4 @@
 
 ## 舊有物件相容性
 
-- 不適用：本次變更 trace 產生與即時 rendering，沒有新增或修改持久化投影片／Fabric／widget 欄位。
+- 沒有新增或修改持久化投影片／Fabric／widget 欄位；另以缺少 recursion activation metadata、只保留 `layoutNode.parentSnapshotId` 的舊 trace fixture 實際 render，確認父子箭頭仍存在。

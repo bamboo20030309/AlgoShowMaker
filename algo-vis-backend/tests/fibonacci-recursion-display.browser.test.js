@@ -67,6 +67,19 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
     assert.ok(labels.returned.includes('1'), 'returned node shows the numeric result');
     assert.ok(!labels.returned.includes('F(2)'), 'returned node no longer shows the pending call');
 
+    const preorderTargets = await page.evaluate(async sourceTrace => {
+      const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
+      const finalFrame = document.frames.at(-1);
+      await window.ASMTraceRenderers.renderFrame(document, finalFrame, null, {
+        animatePositions: false,
+        animateEvents: false
+      });
+      return [...window.document.querySelectorAll('.asm-trace-layout-edge')]
+        .map(edge => edge.dataset.traceArrowToKey);
+    }, trace);
+    assert.deepEqual(preorderTargets, Array.from({ length: 14 }, (_, index) => `F_${index + 1}`),
+      `recursion arrows follow parent-first, left-subtree-first preorder: ${preorderTargets.join(', ')}`);
+
     const growth = await page.evaluate(async ({
       sourceTrace, parentFrameId, childFrameId, childKey,
       pendingFrameId, returnedFrameId, returnedKey
