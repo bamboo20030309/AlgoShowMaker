@@ -82,6 +82,19 @@ test('text segment arrays may continue across aligned line comments', () => {
   assert.equal(text.binding.targetName, 'a');
 });
 
+test('text segment arrays preserve an explicit speech override', () => {
+  const code = `int main(){int value=3;
+// @frame value
+// @text [
+//   {"text": "value[\${value}] = ", "speech": "當前值"},
+//   {"text": "\${value}", "background": "AV_blue"}
+// ] as spoken
+}`;
+  const text = findFrameDirectives(code)[0].texts.find(item => item.id === 'spoken');
+  assert.equal(text.segments[0].speech, '當前值');
+  assert.equal(text.segments.filter(segment => Object.hasOwn(segment, 'speech')).length, 1);
+});
+
 test('compiled array texts use each frame snapshot and completed loop bounds after JSON reload', async () => {
   const { trace, window } = await compile(source);
   const r = window.ASMTraceRules;

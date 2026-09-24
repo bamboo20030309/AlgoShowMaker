@@ -58,12 +58,12 @@ int main() {
             // @style num[0:r-1][0:c] background AV_blue
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "當前格等於上方"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_up_num at num.top offset(0,-24) when r <= n / 2
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "當前格等於上方"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_up_pre at pre.top offset(175,-24) when r > n / 2
@@ -81,14 +81,14 @@ int main() {
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "加上左方"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_left_num at num.top offset(0,-24) when r <= n / 2
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "加上左方"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
@@ -111,7 +111,7 @@ int main() {
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "減掉左上方"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
@@ -120,7 +120,7 @@ int main() {
             //   {"text": " + num[${r}][${c}]"}
             // ] as build_overlap_num at num.top offset(0,-24) when r <= n / 2
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "減掉左上方"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
@@ -147,7 +147,7 @@ int main() {
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "加上自己"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
@@ -158,7 +158,7 @@ int main() {
             //   {"text": " = ${pre[r][c]}"}
             // ] as build_value_num at num.top offset(0,-24) when r <= n / 2
             // @text [
-            //   {"text": "pre[${r}][${c}] = "},
+            //   {"text": "pre[${r}][${c}] = ", "speech": "加上自己"},
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},

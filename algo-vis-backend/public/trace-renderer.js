@@ -3335,6 +3335,7 @@
       if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when, descriptor.drawLocals)) return;
       const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
       const rawSegments = Array.isArray(descriptor.segments) ? descriptor.segments : [];
+      const explicitSpeech = rawSegments.some(segment => Object.hasOwn(segment || {}, 'speech'));
       const authoredBaseFontSize = Math.max(8,
         Number(rawSegments.find(segment => Number(segment?.fontSize) > 0)?.fontSize) || 14);
       const lines = [[]];
@@ -3347,7 +3348,7 @@
             })
             : segment?.text;
         const resolvedText = expressionValue == null ? '' : String(expressionValue);
-        styledTextPieces(document, frame, key, segment, segmentIndex, resolvedText).forEach(piece => {
+        styledTextPieces(document, frame, key, segment, segmentIndex, resolvedText).forEach((piece, pieceIndex) => {
           piece.text.split('\n').forEach((part, partIndex, parts) => {
             const parsed = traceTextMarkup(part);
             const storedStyle = piece.storedStyle;
@@ -3356,7 +3357,10 @@
               ...piece,
               segmentIndex,
               display: parsed.display,
-              speech: parsed.speech,
+              speech: explicitSpeech
+                ? (Object.hasOwn(segment || {}, 'speech') && pieceIndex === 0 && partIndex === 0
+                  ? String(segment.speech ?? '') : '')
+                : parsed.speech,
               textColor: storedStyle.textColor || traceTextColor(segment?.color, '#111827'),
               background: Object.hasOwn(storedStyle, 'background')
                 ? storedStyle.background
@@ -5182,9 +5186,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-213';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-214';
   window.ASMTraceRenderers = {
-    build: 'trace-213', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-214', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

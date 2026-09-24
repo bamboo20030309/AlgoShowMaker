@@ -1524,7 +1524,10 @@ function normalizeTextSegments(value, line) {
         color: String(item.color ?? item.font_color ?? ''),
         background: String(item.background ?? item.bg_color ?? ''),
         fontSize: Number(item.fontSize ?? item.font_size) || 14,
-        bold: item.bold === true
+        bold: item.bold === true,
+        ...(Object.hasOwn(item, 'speech')
+          ? { speech: String(item.speech ?? '') }
+          : {})
       };
     }
 
@@ -1589,6 +1592,9 @@ function normalizeTextSegments(value, line) {
         segmentId: `s${sourceIndex}-l${tokenIndex}`,
         text: segment.text.slice(cursor)
       });
+    }
+    if (Object.hasOwn(segment, 'speech')) {
+      parts.slice(1).forEach(part => delete part.speech);
     }
     return parts;
   });

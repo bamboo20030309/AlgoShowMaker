@@ -50,6 +50,17 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
       const secondHalf = step(3, 2, 'build_value_pre');
       const initialFrames = ['build_up_num', 'build_left_num', 'build_overlap_num', 'build_value_num']
         .map(id => step(1, 1, id));
+      const initialSpeech = [];
+      for (const [index, id] of [
+        'build_up_num', 'build_left_num', 'build_overlap_num', 'build_value_num'
+      ].entries()) {
+        await window.ASMTraceRenderers.renderFrame(trace, initialFrames[index], null, {
+          animatePositions: false, animateEvents: false
+        });
+        initialSpeech.push(JSON.parse(document.querySelector(
+          `[data-trace-text-id="${id}"]`
+        )?.getAttribute('data-tts-lines') || '[]').join(''));
+      }
       await window.ASMTraceRenderers.renderFrame(trace, firstHalf, null, {
         animatePositions: false, animateEvents: false
       });
@@ -89,6 +100,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
         initialFramesUseFullRange: initialFrames.every(frame => (
           frame && !window.ASMTraceCamera.ruleForFrame(trace, frame)?.target
         )),
+        initialSpeech,
         innerLabels: document.querySelectorAll('[data-trace-label-role="inner"]').length,
         markers: [...document.querySelectorAll('.trace-variable-marker-label-text')]
           .map(node => node.textContent).sort()
@@ -115,6 +127,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
       firstCameraZoom: 1.7,
       firstCameraTarget: 'num',
       initialFramesUseFullRange: true,
+      initialSpeech: ['當前格等於上方', '加上左方', '減掉左上方', '加上自己'],
       innerLabels: 0,
       markers: []
     });
