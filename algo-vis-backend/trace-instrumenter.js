@@ -659,9 +659,21 @@ function splitTopLevel(value, delimiter = ',') {
   const stack = [];
   const pairs = { '(': ')', '[': ']' };
   let start = 0;
+  let quote = '';
+  let escaped = false;
 
   for (let index = 0; index < source.length; index += 1) {
     const token = source[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (token === '\\') escaped = true;
+      else if (token === quote) quote = '';
+      continue;
+    }
+    if (token === '"' || token === "'") {
+      quote = token;
+      continue;
+    }
     if (pairs[token]) {
       stack.push(pairs[token]);
       continue;
@@ -676,7 +688,7 @@ function splitTopLevel(value, delimiter = ',') {
     }
   }
 
-  if (stack.length) return { parts: [], valid: false };
+  if (quote || stack.length) return { parts: [], valid: false };
   parts.push(source.slice(start).trim());
   return { parts, valid: true };
 }
@@ -721,6 +733,9 @@ const FRAME_RENDERERS = new Map([
   ['2d-array', 'original-matrix'],
   ['cell', 'original-cell'],
   ['scalar', 'original-cell']
+]);
+const DISPLAY_TEMPLATE_LOCALS = new Set([
+  'value', 'index', 'row', 'column', 'key', 'field'
 ]);
 
 function parseRendererOptions(value, line, directiveName) {
@@ -912,15 +927,20 @@ function parseRendererOptions(value, line, directiveName) {
       if (typeof template !== 'string') {
         throw new Error(`第 ${line} 行的 ${directiveName} display 必須使用引號字串`);
       }
-      const expressions = [...template.matchAll(/\$\{([^{}]+)\}/g)].map(expressionMatch => {
+      const parsedExpressions = [...template.matchAll(/\$\{([^{}]+)\}/g)].map(expressionMatch => {
         const expression = expressionMatch[1].trim();
         const parsed = parseTraceExpression(expression, false, true);
         if (!expression || !parsed.valid) {
           throw new Error(`第 ${line} 行的 ${directiveName} display 變數運算式無效：${expressionMatch[0]}`);
         }
-        return expression;
+        return { expression, identifiers: parsed.identifiers || [] };
       });
-      options.display = { template, expressions };
+      options.display = {
+        template,
+        expressions: parsedExpressions.map(item => item.expression),
+        identifiers: [...new Set(parsedExpressions.flatMap(item => item.identifiers))]
+          .filter(identifier => !DISPLAY_TEMPLATE_LOCALS.has(identifier))
+      };
       continue;
     }
 
@@ -2880,7 +2900,8 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       return variable;
     };
     (modifiers.when?.identifiers || []).forEach(includeDependency);
-    Object.values(modifiers.rendererOptions || {}).forEach(option => {
+    Object.entries(modifiers.rendererOptions || {}).forEach(([name, option]) => {
+      if (name === 'display') return;
       (option.identifiers || []).forEach(includeDependency);
     });
     if (modifiers.rendererOptions?.fields) {
@@ -3098,6 +3119,22 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       throw new Error(`第 ${directive.line} 行的 @frame 至少需要一個緊接的 @object`);
     }
     const displayedIds = new Set(directive.objects.flatMap(object => object.displayVariableIds || []));
+    directive.objects.flatMap(object => object.rendererOptions?.display?.identifiers || [])
+      .forEach(name => {
+        if (frameLet(directive, name)) return;
+        const variable = resolveVariable(name, directive.from);
+        if (!variable) {
+          throw new Error(`第 ${directive.line} 行的 @frame display 找不到可見變數：${name}`);
+        }
+        if (!directive.variables.some(existing => existing.id === variable.id)) {
+          directive.variables.push(variable);
+        }
+        if (!directive.names.includes(name)) directive.names.push(name);
+        if (!displayedIds.has(variable.id)
+          && !directive.captureOnlyVariableIds.includes(variable.id)) {
+          directive.captureOnlyVariableIds.push(variable.id);
+        }
+      });
     (directive.when?.identifiers || []).forEach(name => {
       const variable = resolveVariable(name, directive.from);
       if (!variable) throw new Error(`第 ${directive.line} 行的 @frame 找不到條件變數：${name}`);

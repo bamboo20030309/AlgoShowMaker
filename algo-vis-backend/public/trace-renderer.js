@@ -226,15 +226,26 @@
     content.querySelectorAll('[id$="-index"], [data-trace-index-label]').forEach(label => label.remove());
   }
 
-  function renderedScalarValue(entry, context) {
-    const displayTemplate = context.skin?.options?.display?.template;
-    if (typeof displayTemplate !== 'string') return displayValue(entry.data);
-    return displayTemplate.replace(/\$\{([^{}]+)\}/g, (_, expression) => {
+  function renderDisplayTemplate(template, data, document, frame, locals = {}, fallback = '') {
+    if (typeof template !== 'string') return fallback;
+    const value = window.ASMTraceModel?.scalarValue?.(data) ?? data;
+    return template.replace(/\$\{([^{}]+)\}/g, (_, expression) => {
       const resolved = window.ASMTraceRules?.resolveTextExpression?.(
-        context.document, context.frame, expression.trim()
+        document, frame, expression.trim(), { value, ...locals }
       );
       return resolved == null ? '' : String(resolved);
     });
+  }
+
+  function renderedDisplayValue(data, context, locals = {}, fallback = displayValue(data)) {
+    return renderDisplayTemplate(
+      context.skin?.options?.display?.template,
+      data,
+      context.document,
+      context.frame,
+      locals,
+      fallback
+    );
   }
 
   function renderOriginal(group, entry, context) {
@@ -280,7 +291,6 @@
         entry, rendererOptions, context.variable?.name || '', context.variableId
       );
     }
-    if (isScalarCell && rendererOptions.display) values = [renderedScalarValue(entry, context)];
     let itemsPerRow = Infinity;
     if (isMatrix) {
       const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
@@ -289,6 +299,32 @@
         row?.items?.[index], rendererOptions, context.variable?.name || '', context.variableId
       )));
       itemsPerRow = columns;
+    }
+    if (rendererOptions.display) {
+      if (isMatrix) {
+        const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
+        values = values.map((fallback, logicalIndex) => {
+          const row = Math.floor(logicalIndex / itemsPerRow);
+          const column = logicalIndex % itemsPerRow;
+          return renderedDisplayValue(rows[row]?.items?.[column], context, {
+            index: logicalIndex, row, column
+          }, fallback);
+        });
+      } else if (entry.data?.kind === 'map') {
+        values = values.map((fallback, index) => {
+          const item = entry.data.entries?.[index];
+          return renderedDisplayValue(item?.value, context, {
+            index,
+            key: window.ASMTraceModel?.scalarValue?.(item?.key) ?? displayValue(item?.key)
+          }, fallback);
+        });
+      } else if (Array.isArray(entry.data?.items)) {
+        values = values.map((fallback, index) => renderedDisplayValue(
+          entry.data.items[index], context, { index }, fallback
+        ));
+      } else {
+        values = [renderedDisplayValue(entry.data, context, { index: 0 }, values[0])];
+      }
     }
     const configuredColumns = Number(rendererOptions.columns);
     if (Number.isFinite(configuredColumns) && configuredColumns > 0) {
@@ -351,10 +387,18 @@
         // Keep that label immutable while retaining the underlying data
         // value as a separate target for event replay and assignment effects.
         cell.setAttribute('data-trace-data-value', String(values[logicalIndex] ?? ''));
+        if (typeof rendererOptions.display?.template === 'string') {
+          cell.setAttribute('data-trace-display-template', rendererOptions.display.template);
+          cell.setAttribute('data-trace-display-index', String(logicalIndex));
+          if (isMatrix) {
+            cell.setAttribute('data-trace-display-row', String(Math.floor(logicalIndex / itemsPerRow)));
+            cell.setAttribute('data-trace-display-column', String(logicalIndex % itemsPerRow));
+          }
+        }
         const contentText = cell.querySelector(':scope > text');
         if (contentText) {
           contentText.setAttribute('data-trace-content-role', indexMode === 2 ? 'index' : 'value');
-          if (fieldParts[logicalIndex]?.length && indexMode !== 2) {
+          if (!rendererOptions.display && fieldParts[logicalIndex]?.length && indexMode !== 2) {
             contentText.textContent = '';
             fieldParts[logicalIndex].forEach((part, partIndex) => {
               if (partIndex) contentText.append(svg('tspan', { 'data-trace-field-separator': '1' }, separator));
@@ -440,6 +484,19 @@
         transform: `translate(${x}, 0)`,
         'data-trace-index': context.rowIndex == null ? index : logicalIndex
       }), cellKey, context, context.variableId);
+      const displayLocals = context.rowIndex == null
+        ? { index }
+        : { index, row: context.rowIndex, column: index };
+      const renderedValue = renderedDisplayValue(item, context, displayLocals);
+      const displayTemplate = context.skin?.options?.display?.template;
+      if (typeof displayTemplate === 'string') {
+        cell.setAttribute('data-trace-display-template', displayTemplate);
+        cell.setAttribute('data-trace-display-index', String(index));
+        if (context.rowIndex != null) {
+          cell.setAttribute('data-trace-display-row', String(context.rowIndex));
+          cell.setAttribute('data-trace-display-column', String(index));
+        }
+      }
       const indices = context.rowIndex == null ? [index] : [context.rowIndex, index];
       markArrowTarget(cell, {
         key: cellKey,
@@ -457,7 +514,7 @@
         'font-family': 'Arial',
         'font-size': Math.max(14, Math.min(24, cellSize * 0.36)),
         fill: '#1f282d'
-      }, displayValue(item)));
+      }, renderedValue));
       if (context.skin?.options?.showIndex !== false) {
         const indexLabel = markSelectable(svg('text', {
           x: cellSize / 2,
@@ -491,7 +548,7 @@
   }
 
   function renderScalar(group, entry, context) {
-    const renderedValue = renderedScalarValue(entry, context);
+    const renderedValue = renderedDisplayValue(entry.data, context, { index: 0 });
     const rect = svg('rect', { x: 0, y: 0, width: 150, height: 52, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 });
     applyHighlight(rect, context.highlights?.$object);
     group.append(rect, svg('text', {
@@ -500,22 +557,24 @@
     return 68;
   }
 
-  function renderObject(group, entry) {
+  function renderObject(group, entry, context = {}) {
     const fields = entry.data?.fields && typeof entry.data.fields === 'object' ? entry.data.fields : {};
     const lines = Object.entries(fields);
     const height = Math.max(58, 32 + lines.length * 26);
     group.append(svg('rect', { x: 0, y: 0, width: 260, height, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 }));
     if (!lines.length) {
-      group.append(svg('text', { x: 16, y: 34, 'font-family': 'Arial', 'font-size': 16, fill: '#667278' }, entry.data?.type || 'Object'));
+      const fallback = entry.data?.type || 'Object';
+      group.append(svg('text', { x: 16, y: 34, 'font-family': 'Arial', 'font-size': 16, fill: '#667278' },
+        renderedDisplayValue(entry.data, context, { index: 0 }, fallback)));
     } else {
       lines.forEach(([key, value], index) => group.append(svg('text', {
         x: 16, y: 30 + index * 26, 'font-family': 'Arial', 'font-size': 16, fill: '#1f282d'
-      }, `${key}: ${displayValue(value)}`)));
+      }, `${key}: ${renderedDisplayValue(value, context, { index, key, field: key })}`)));
     }
     return height + 16;
   }
 
-  function renderGraph(group, entry) {
+  function renderGraph(group, entry, context = {}) {
     const nodes = Object.entries(entry.data?.nodes || {});
     const edges = Array.isArray(entry.data?.edges) ? entry.data.edges : [];
     const positions = {};
@@ -533,12 +592,14 @@
     nodes.forEach(([id, node]) => {
       const position = positions[id];
       group.append(svg('circle', { cx: position.x, cy: position.y, r: 24, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 }));
-      group.append(svg('text', { x: position.x, y: position.y + 6, 'text-anchor': 'middle', 'font-family': 'Arial', 'font-size': 16 }, node.label ?? node.value ?? id));
+      const rawValue = node.label ?? node.value ?? id;
+      group.append(svg('text', { x: position.x, y: position.y + 6, 'text-anchor': 'middle', 'font-family': 'Arial', 'font-size': 16 },
+        renderedDisplayValue(rawValue, context, { index, key: id })));
     });
     return Math.max(110, 80 + Math.ceil(nodes.length / 6) * 90);
   }
 
-  function renderCoordinateSystem(group, entry) {
+  function renderCoordinateSystem(group, entry, context = {}) {
     const width = 520;
     const height = 240;
     group.append(svg('line', { x1: 30, y1: height / 2, x2: width, y2: height / 2, stroke: '#59656b' }));
@@ -548,11 +609,12 @@
     const ys = points.map(point => Number(point.y) || 0);
     const maxX = Math.max(1, ...xs.map(Math.abs));
     const maxY = Math.max(1, ...ys.map(Math.abs));
-    points.forEach(point => {
+    points.forEach((point, index) => {
       const x = width / 2 + (Number(point.x) || 0) / maxX * (width / 2 - 40);
       const y = height / 2 - (Number(point.y) || 0) / maxY * (height / 2 - 24);
       group.append(svg('circle', { cx: x, cy: y, r: 6, fill: point.color || '#1d8f83' }));
-      if (point.label) group.append(svg('text', { x: x + 9, y: y - 8, 'font-family': 'Arial', 'font-size': 13 }, point.label));
+      const label = renderedDisplayValue(point.label ?? point.value ?? '', context, { index });
+      if (label) group.append(svg('text', { x: x + 9, y: y - 8, 'font-family': 'Arial', 'font-size': 13 }, label));
     });
     return height + 20;
   }
@@ -4784,11 +4846,11 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-211';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-213';
   window.ASMTraceRenderers = {
-    build: 'trace-211', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-213', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
-    displayValue, formatDisplayValue, settlePointerLayer,
+    displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,

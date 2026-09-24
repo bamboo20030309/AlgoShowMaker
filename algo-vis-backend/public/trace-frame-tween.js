@@ -2527,13 +2527,24 @@
       const fieldVariableId = targetText?.dataset?.traceFieldVariable
         || track.target?.variableId || variableId;
       const index = Number(cell.dataset?.traceIndex);
+      const displayTemplate = cell.getAttribute?.('data-trace-display-template');
+      const displayLocals = {};
+      for (const [name, attribute] of [
+        ['index', 'data-trace-display-index'],
+        ['row', 'data-trace-display-row'],
+        ['column', 'data-trace-display-column']
+      ]) {
+        if (!cell.hasAttribute?.(attribute)) continue;
+        const local = Number(cell.getAttribute(attribute));
+        if (Number.isFinite(local)) displayLocals[name] = local;
+      }
       const styleRect = conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
         ? cell.querySelector?.(':scope > rect') || null
         : null;
       tracks.push({ ...track, targetText: fixedIndex ? null : targetText,
         targetCell: fixedIndex ? element : null, variableId, index, styleRect,
-        fieldVariableId,
+        fieldVariableId, displayTemplate, displayLocals,
         applied: Symbol('unapplied'), currentValue: track.initial });
     });
     const styleTargets = tracks.filter(track => track.styleRect);
@@ -2681,9 +2692,19 @@
       ]);
     };
     const apply = (track, value) => {
-      const displayed = track.targetCell
+      const fallback = track.targetCell
         ? displayEventValue(value)
         : displayEventFieldValue(value, styleFrame, track.fieldVariableId);
+      const displayed = typeof track.displayTemplate === 'string'
+        ? window.ASMTraceRenderers?.renderDisplayTemplate?.(
+          track.displayTemplate,
+          value,
+          options.document,
+          styleFrame,
+          track.displayLocals,
+          fallback
+        ) ?? fallback
+        : fallback;
       if (track.applied === displayed) return;
       track.applied = displayed;
       track.currentValue = value;
@@ -7277,10 +7298,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-234';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-235';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-234', play, cancel, updateEventAvailability,
+    build: 'trace-235', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

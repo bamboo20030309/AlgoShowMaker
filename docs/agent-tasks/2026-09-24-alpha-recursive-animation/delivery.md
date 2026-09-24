@@ -13,6 +13,9 @@
 - 新增 recursion growth tween：新 activation 的 keep node 會從 active parent 的中心位置，以縮放 `0.72 → 1`、透明度 `0.35 → 1` 移到 layout 終點；父子邊從父端同步延伸。
 - 上一步採對稱行為：移除的新 activation 以 ghost 從 child 位置縮回父節點中心；根節點、找不到父節點與舊 trace 缺少 recursion metadata 時維持既有轉場。
 - 同 activation 的 snapshot replacement 以 activation identity 與 `replacesSnapshotId` 排除，因此 `F(2) → 1` 不會重新長出。
+- `display("...")` 已由 scalar 擴充到 sequence、matrix、normal、heap、segment tree、BIT、disk、stack、queue、object 欄位、graph node 與 coordinate point 等既有 renderer；自訂模板只改顯示文字，不改 trace value。
+- 每個格子可使用 `${value}`、`${index}`；矩陣另有 `${row}`、`${column}`，map／object 可使用 `${key}`、`${field}`，並可與目前 frame 變數或 `@let` 混用。
+- 動畫事件重播會重新套用 display 模板，因此 assignment／write 播放前後不會短暫退回原始值；模板內含逗號的引號字串也可正確解析。
 
 ## 目前可供使用者檢視的行為
 
@@ -20,6 +23,7 @@
 - 節點統一顯示 `F`，格內先顯示 `F(n)`，得知答案後才切換為回傳數值。
 - 同一 `F_3` 節點會由 `F(2)` 原地更新為 `1`；退回更新前的幀會恢復為 `F(2)`。
 - 新 child 會像從目前父節點長出；按上一步時則縮回同一父節點，樹邊與節點位置同步更新。
+- 陣列等其他物件可直接寫 `@frame arr with display("${index}: ${value}")`，每格使用自己的 index／value。
 - 最終畫面只有 15 個遞迴節點，不存在額外 `left`、`right`、`result` 或 `value` 物件。
 
 ## 驗證分級與選擇
@@ -27,11 +31,12 @@
 - 層級：V2。
 - 分類：E（layout／frame）、F（runtime 遞迴資料）、G（生命週期／遞迴 activation）、J（播放與 Studio）。
 - 選擇依據：修改遞迴範例、keep snapshot materialization、recursion renderer 的同 activation 替換行為，以及 frame tween 的遞迴進退場。
-- 執行的測試檔／案例：`tests/fibonacci-recursion-sample.test.js`、`tests/fibonacci-recursion-display.browser.test.js`、`tests/outerframe-tween.test.js`，以及 `layout-directives.test.js` 的 recursive keep identity 案例。
+- 執行的測試檔／案例：`tests/fibonacci-recursion-sample.test.js`、`tests/fibonacci-recursion-display.browser.test.js`、`tests/display-renderer-options.browser.test.js`、`tests/outerframe-tween.test.js`、`tests/frame-renderer-options.integration.test.js`、`tests/directive-assist.test.js`、`tests/entrypoints.test.js`，以及 `layout-directives.test.js` 的 recursive keep identity 案例。
 - 驗證環境：alpha worktree 的 3101 服務與隔離的 Playwright 瀏覽器，輸入 `5`。
 - 自動測試結果：Fibonacci trace／瀏覽器 2/2、outerframe／growth tween 7/7、recursive keep identity 1/1 通過，全部 0 fail、0 skipped。
 - 瀏覽器 DOM：同一個 `F(2)` snapshot object 回傳後顯示 `1`，且不再殘留 `F(2)` 文字；replacement 中途不含 growth scale。
 - 瀏覽器 tween：正向 1× 驗證父中心起點、縮放／透明度、父子邊延伸與完成定點；反向 2× 驗證 child ghost 縮回父中心並於完成後移除。
+- 通用 display 瀏覽器：normal sequence、heap、matrix 與 assignment replay 通過；確認 `${value/index/row/column}` 與 frame 變數運算，且 trace 原值未被修改。
 - 自動播放與 Trace Studio：本輪未執行完整 UI 操作；待使用者以 3101 預覽複核。專項瀏覽器已驗證 transition Promise 在 1×／2× 完成後清除暫態 transform／ghost。
 - 畫面：最終根值 `5`，內部節點顯示回傳值，沒有 `left/right/result/value` 額外區塊。
 - 瀏覽器 console：0 error、0 warning。
