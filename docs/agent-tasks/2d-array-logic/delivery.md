@@ -34,3 +34,23 @@
 - 保留舊 trace 相容：沒有 `resolvedIndices` 的既有資料仍回退使用 `indexExpression`。
 - V2 最小驗證：`matrix-renderer.test.js`、`matrix-renderer.browser.test.js`、`assignment-indices.integration.test.js`，共 12/12 通過；使用隔離服務 `3197`，未執行完整 regression。
 - 真實瀏覽器以使用者提供的 ragged matrix 案例實際執行下一步與上一步：highlight 全程維持 52px、垂直位置差 0px，前進後 `grid[1][0] = 99`、`grid[2][1] = 8`。
+
+## 2026-09-25 二維前綴和範例移轉
+
+- 將 `algorithm_sample/Basic/prefix_sum_2D.cpp` 從 `AV.hpp`／`frame_draw` 舊 API 改為純 C++ 搭配新版 `@defaults`、`@preset`、`@object`、`@frame`、`@style`、`@arrow`、`@text` 與巢狀 `@for` 指令。
+- `num` 與 `pre` 使用新版 `original-matrix` 呈現，示範 row／column／inner labels、`gridlines(1)`、`outerframe(true)` 與 `marker-layout(inner)`。
+- 建表過程逐格顯示四項容斥來源；查詢過程用二維 drawing loops 標示子矩陣，並顯示四角公式與答案。
+- 新增專項測試，檢查範例不再依賴舊 AV API、指令解析結果、24 個 runtime frames、最終前綴矩陣、兩筆查詢答案及最後一筆查詢的二維樣式範圍。
+
+### 驗證分級與選擇
+
+- 層級：V2。
+- 分類：E（frame／preset／drawing loops）、H（matrix style／labels）。
+- 選擇依據：範例改用新版指令並產生動畫 trace，但未修改 parser、runtime 或 renderer 實作。
+- 執行：隔離服務 `http://localhost:3197`；`ASM_TEST_BASE_URL=http://localhost:3197 node --test tests/prefix-sum.test.js`，4/4 通過、0 skip；`matrix-renderer.browser.test.js` 真實瀏覽器 SVG 驗證 1/1 通過。
+- 未執行完整 regression：本次只改範例及其專項測試，依分級採最小相關驗證。
+- 需要主代理做的 V3 驗證：無。
+
+### 舊有物件相容性
+
+- 不適用：本次只移轉隨附演算法範例，未修改任何持久化物件格式或載入／儲存路徑。
