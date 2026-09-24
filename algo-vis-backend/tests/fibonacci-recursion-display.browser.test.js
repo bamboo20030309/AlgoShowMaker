@@ -80,6 +80,49 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
     assert.equal(firstChildPlan.phases.find(phase => phase.id === 'keep-transition')?.startMs, 0,
       'the keep handoff and tree reflow begin in the same tick');
 
+    const callHighlights = await page.evaluate(async sourceTrace => {
+      const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
+      const rootActivation = document.frames.find(frame => (
+        frame.source?.function === 'F' && frame.source?.recursionDepth === 0
+      ))?.source?.recursionActivationId;
+      const calls = document.callLifecycles.filter(event => (
+        event.callerActivationId === rootActivation
+        && event.source?.functionName === 'F'
+      ));
+      const show = async call => {
+        const frame = document.frames.find(candidate => candidate.events.includes(call));
+        call.enabled = true;
+        window.ASMTraceCodePresenter.renderFrame(document, frame, {
+          phases: [{ steps: [{ kind: 'trace-event', enabled: true, eventId: call.id }] }]
+        });
+        window.ASMTraceCodePresenter.setActiveEvent(call.id, 'start');
+        const nodes = [...window.document.querySelectorAll(
+          `[data-trace-event-ids~="${call.id}"]`
+        )];
+        const result = {
+          text: nodes.map(node => node.textContent).join(''),
+          complete: nodes.length > 0 && nodes.every(node => node.classList.contains('is-complete')),
+          frameId: frame?.id || ''
+        };
+        await new Promise(resolve => setTimeout(resolve, 520));
+        return result;
+      };
+      return {
+        first: await show(calls[0]),
+        second: await show(calls[1]),
+        firstReturnOrder: calls[0]?.returnOrder,
+        secondOrder: calls[1]?.order
+      };
+    }, trace);
+    assert.match(callHighlights.first.text, /F\(n - 1\)/);
+    assert.match(callHighlights.second.text, /F\(n - 2\)/);
+    assert.ok(callHighlights.first.complete && callHighlights.second.complete,
+      `each activation-scoped call reaches its own code highlight: ${JSON.stringify(callHighlights)}`);
+    assert.notEqual(callHighlights.first.frameId, callHighlights.second.frameId,
+      'left and right calls are not merged into one code frame');
+    assert.ok(callHighlights.firstReturnOrder < callHighlights.secondOrder,
+      'the right highlight is scheduled only after the left invocation returns');
+
     const preorderTargets = await page.evaluate(async sourceTrace => {
       const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
       const finalFrame = document.frames.at(-1);

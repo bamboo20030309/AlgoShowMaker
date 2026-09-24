@@ -291,19 +291,24 @@ class Recorder {
     output_.flush();
   }
 
-  void add_event(const std::string& type, int line, const std::string& signature,
-                 const std::string& fields = std::string()) {
-    if (!enabled_ || frame_id_ >= max_frames_) return;
+  std::string add_event(const std::string& type, int line, const std::string& signature,
+                        const std::string& fields = std::string()) {
+    if (!enabled_ || frame_id_ >= max_frames_) return std::string();
     const int execution_order = event_id_++;
+    const std::string event_id = std::string("event-") + std::to_string(execution_order);
     std::ostringstream event;
-    event << "{\"id\":" << quoted(std::string("event-") + std::to_string(execution_order))
+    event << "{\"id\":" << quoted(event_id)
           << ",\"order\":" << execution_order
           << ",\"type\":" << quoted(type)
           << ",\"signature\":" << quoted(signature)
           << ",\"line\":" << line;
     if (!fields.empty()) event << ',' << fields;
+    if (fields.find("\"recursionActivationId\"") == std::string::npos) {
+      event << current_activation_source_json();
+    }
     event << '}';
     pending_events_.push_back(event.str());
+    return event_id;
   }
 
   template <typename... Values>
@@ -354,12 +359,34 @@ struct FunctionActivationFrame {
   std::string function_name;
   std::string activation_id;
   std::string parent_activation_id;
+  std::string invoked_by_call_event_id;
   std::vector<std::string> ancestor_activation_ids;
   int recursion_depth;
   int sibling_index;
   int root_index;
   int next_recursive_child;
 };
+
+struct CallInvocationFrame {
+  std::string event_id;
+  std::string callee;
+  std::string callee_activation_id;
+};
+
+inline std::vector<CallInvocationFrame>& call_invocation_stack() {
+  static std::vector<CallInvocationFrame> stack;
+  return stack;
+}
+
+inline bool call_callee_matches_function(const std::string& callee, const std::string& function_name) {
+  if (callee == function_name) return true;
+  if (callee.size() <= function_name.size()) return false;
+  const std::size_t offset = callee.size() - function_name.size();
+  if (callee.compare(offset, function_name.size(), function_name) != 0) return false;
+  return callee.compare(offset >= 2 ? offset - 2 : offset, 2, "::") == 0
+    || callee.compare(offset >= 2 ? offset - 2 : offset, 2, "->") == 0
+    || callee[offset - 1] == '.';
+}
 
 inline std::vector<FunctionActivationFrame>& function_activation_stack() {
   static std::vector<FunctionActivationFrame> stack;
@@ -426,6 +453,7 @@ inline std::string current_activation_source_json() {
   return std::string(",\"recursionFunction\":") + quoted(frame.function_name)
     + ",\"recursionActivationId\":" + quoted(frame.activation_id)
     + ",\"recursionParentActivationId\":" + quoted(frame.parent_activation_id)
+    + ",\"invokedByCallEventId\":" + quoted(frame.invoked_by_call_event_id)
     + ",\"recursionAncestorActivationIds\":" + ancestors.str()
     + ",\"recursionDepth\":" + std::to_string(frame.recursion_depth)
     + ",\"recursionSiblingIndex\":" + std::to_string(frame.sibling_index)
@@ -449,6 +477,11 @@ class FunctionActivation {
     frame.function_name = name;
     frame.activation_id = std::string("activation-")
       + std::to_string(function_activation_counter()++);
+    auto& invocations = call_invocation_stack();
+    if (!invocations.empty() && call_callee_matches_function(invocations.back().callee, name)) {
+      frame.invoked_by_call_event_id = invocations.back().event_id;
+      invocations.back().callee_activation_id = frame.activation_id;
+    }
     frame.next_recursive_child = 0;
     if (parent_index >= 0) {
       FunctionActivationFrame& parent = stack[static_cast<std::size_t>(parent_index)];
@@ -945,6 +978,49 @@ inline void event_call(int line, const char* signature, const char* callee, cons
   recorder().add_event("call", line, signature ? signature : "",
     std::string("\"callee\":") + quoted(callee ? callee : "")
       + ",\"expression\":" + quoted(expression ? expression : ""));
+}
+
+class CallInvocationScope {
+ public:
+  CallInvocationScope(int line, const char* signature, const char* callee, const char* expression)
+      : line_(line), signature_(signature ? signature : ""),
+        callee_(callee ? callee : ""), expression_(expression ? expression : "") {
+    event_id_ = recorder().add_event("call", line_, signature_,
+      std::string("\"callee\":") + ::asm_trace::quoted(callee_)
+        + ",\"expression\":" + ::asm_trace::quoted(expression_));
+    call_invocation_stack().push_back({event_id_, callee_, std::string()});
+  }
+
+  CallInvocationScope(const CallInvocationScope&) = delete;
+  CallInvocationScope& operator=(const CallInvocationScope&) = delete;
+
+  ~CallInvocationScope() {
+    auto& stack = call_invocation_stack();
+    std::string callee_activation_id;
+    if (!stack.empty() && stack.back().event_id == event_id_) {
+      callee_activation_id = stack.back().callee_activation_id;
+      stack.pop_back();
+    }
+    recorder().add_event("call-return", line_, signature_,
+      std::string("\"callEventId\":") + ::asm_trace::quoted(event_id_)
+        + ",\"callee\":" + ::asm_trace::quoted(callee_)
+        + ",\"expression\":" + ::asm_trace::quoted(expression_)
+        + ",\"calleeActivationId\":" + ::asm_trace::quoted(callee_activation_id));
+  }
+
+ private:
+  int line_;
+  std::string signature_;
+  std::string callee_;
+  std::string expression_;
+  std::string event_id_;
+};
+
+template <typename F>
+decltype(auto) event_call_invoke(int line, const char* signature,
+                                 const char* callee, const char* expression, F&& invoke) {
+  CallInvocationScope invocation(line, signature, callee, expression);
+  return std::forward<F>(invoke)();
 }
 
 inline void event_function(int line, const char* signature, const char* function_name, bool entering) {

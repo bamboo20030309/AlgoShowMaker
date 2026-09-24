@@ -24,6 +24,8 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.match(code, /@frame sum in fib_tree/);
   assert.match(code, /@let call = n/);
   assert.match(code, /@keep (?:n|sum) as "F" in fib_tree/);
+  assert.match(code, /int left = F\(n - 1\);\s+int right = F\(n - 2\);/s,
+    'the sample explicitly sequences the left subtree before the right subtree');
 
   const { trace } = await compile(code, input);
   assert.equal(trace.layouts.length, 1);
@@ -49,6 +51,17 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.ok(recursiveFrames.every(frame => frame.source.recursionActivationId));
   assert.equal(recursiveFrames[0].snapshotIds.length, 1,
     'the first call is retained in the same frame instead of appearing one frame late');
+
+  const rootActivation = recursiveFrames[0].source.recursionActivationId;
+  const rootCalls = trace.callLifecycles.filter(event => (
+    event.callerActivationId === rootActivation
+    && event.source?.functionName === 'F'
+  ));
+  assert.deepEqual(Array.from(rootCalls, event => event.expression), ['F(n - 1)', 'F(n - 2)']);
+  assert.ok(rootCalls[0].returnOrder < rootCalls[1].order,
+    'the right call starts only after the complete left subtree has returned');
+  assert.ok(rootCalls.every(event => event.calleeActivationId),
+    'each code-call occurrence links to the recursion node it creates');
 
   const pendingSnapshots = trace.snapshots.filter(snapshot => !snapshot.replacesSnapshotId);
   assert.deepEqual(pendingSnapshots.map(snapshot => (

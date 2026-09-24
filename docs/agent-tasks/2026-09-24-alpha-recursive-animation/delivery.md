@@ -59,3 +59,31 @@
 ## 舊有物件相容性
 
 - 沒有新增或修改持久化投影片／Fabric／widget 欄位；另以缺少 recursion activation metadata、只保留 `layoutNode.parentSnapshotId` 的舊 trace fixture 實際 render，確認父子箭頭仍存在。
+
+## 2026-09-25：遞迴呼叫程式碼事件分流
+
+- Fibonacci 範例將左右遞迴拆為 `int left = F(n - 1);`、`int right = F(n - 2);`，以 C++ 敘述邊界保證左子樹完整返回後才啟動右子樹；兩個區域變數沒有 `@keep`，畫布仍只顯示遞迴節點。
+- 一般 CallExpression instrumentation 改由 `event_call_invoke(...)` 包住真正呼叫，call-start 到 invocation return 成為不可由兄弟運算元探針穿插的完整執行單位；保留 `void`、值回傳與 reference 回傳語意。
+- runtime event 現在帶所在 recursion activation；callee 的 `FunctionActivation` 會保存 `invokedByCallEventId`，內部 `call-return` 則記錄相同 call event 與 callee activation。
+- trace model 建立非持久化 `callLifecycles`，補出 `callOccurrenceId`、`callerActivationId`、`calleeActivationId`、`returnEventId` 與 `returnOrder`，供程式碼呈現依實際 activation 區分呼叫。
+- `call-return` 是內部事件，不出現在 Studio inspector、事件時間線或程式碼片段，因此不會多一個可見動畫；原有 call 開關仍控制呼叫反白。
+- 間接呼叫只有在 callee 名稱與實際進入函式吻合時才綁定 activation，避免 `sort` 等函式內部 callback 被誤認成直接 callee。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：F（runtime 函式呼叫事件）、I（程式碼事件呈現）、G（recursion activation 生命週期）。
+- 隔離環境：alpha worktree 的 `3191` 測試服務與獨立 headless Edge；未操作使用者分頁。
+- `function-call-event.integration.test.js`、`fibonacci-recursion-sample.test.js`、`fibonacci-recursion-display.browser.test.js`：6/6 通過，0 fail、0 skipped。
+- `event-defaults.test.js`、`function-enter-event.integration.test.js`：7/7 通過；`code-presentation.integration.test.js` 的 `call-only recursive context`：1/1 通過。
+- 實際事件斷言：根 activation 的第一個 call 已完成 `call-return` 後，第二個 sibling call 才取得較大的 runtime order；兩者各自連到不同 callee activation。
+- 實際瀏覽器程式碼片段：左、右 call 位於不同 frame，依序只將 `F(n - 1)`、`F(n - 2)` 對應的語法片段標成完成；右側 order 晚於左側 return。
+- 回傳語意：另以 `int&` 回傳函式驗證 wrapper 不會把 reference 降成 value。
+- 原動畫專項：Fibonacci `F(5)` 的節點長出、箭頭同步、DFS 前序與 `F(2) → 1` 瀏覽器測試仍通過。
+- 靜態檢查：所有修改 JS 的 `node --check` 與 `git diff --check` 通過；只有 Windows LF/CRLF 提示。
+- 未執行完整 regression、全部 tests 或廣泛演算法動畫，符合 V2 最小相關驗證要求。
+
+### 舊有物件相容性
+
+- 新 trace：call lifecycle 與 activation linkage 完整建立。
+- 舊 trace：測試移除所有新增欄位與 `call-return` 後重新 normalize，幀數與既有 call events 保留且可正常載入。
+- 本功能沒有新增持久化 Studio/Fabric 欄位；`callLifecycles` 為 normalize 時重建的非 enumerable 資料，不改寫使用者儲存內容與既有事件開關。

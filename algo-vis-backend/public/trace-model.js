@@ -282,6 +282,39 @@
       studio: source.studio && typeof source.studio === 'object' ? clone(source.studio) : {},
       asmView: source.asmView && typeof source.asmView === 'object' ? clone(source.asmView) : null
     };
+    const calls = new Map();
+    const callLifecycles = [];
+    frames.flatMap(frame => frame.events || []).sort((left, right) => (
+      Number(left?.order) - Number(right?.order)
+    )).forEach(event => {
+      if (event?.type === 'call') {
+        event.callOccurrenceId = String(event.id || '');
+        event.callerActivationId = String(event.recursionActivationId || '');
+        calls.set(event.callOccurrenceId, event);
+        callLifecycles.push(event);
+        return;
+      }
+      const callEventId = String(event?.callEventId || event?.invokedByCallEventId || '');
+      const call = calls.get(callEventId);
+      if (!call) return;
+      if (event.type === 'function-enter') {
+        call.calleeActivationId = String(event.recursionActivationId || '');
+        event.callEventId = callEventId;
+      }
+      if (event.type === 'call-return') {
+        call.returnEventId = String(event.id || '');
+        call.returnOrder = Number(event.order);
+        if (!call.calleeActivationId && event.calleeActivationId) {
+          call.calleeActivationId = String(event.calleeActivationId);
+        }
+      }
+    });
+    Object.defineProperty(normalized, 'callLifecycles', {
+      value: callLifecycles,
+      writable: true,
+      configurable: true,
+      enumerable: false
+    });
     window.ASMTraceEvents?.rebuildLoopBoundaryEvents?.(normalized);
     Object.defineProperty(normalized, 'iterationSummaries', {
       value: buildIterationSummaries(normalized),

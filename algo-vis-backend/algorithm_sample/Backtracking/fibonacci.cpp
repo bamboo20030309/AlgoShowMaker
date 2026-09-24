@@ -26,7 +26,11 @@ int F(int n) {
         return n;
     }
 
-    int sum = F(n - 1) + F(n - 2);
+    // 分成兩個敘述，明確保證左子樹完整返回後才呼叫右子樹。
+    // left、right 沒有 @keep，因此不會額外畫在畫布上。
+    int left = F(n - 1);
+    int right = F(n - 2);
+    int sum = left + right;
 
     // 不另外畫 left、right 或 result；直接更新目前 activation 的節點。
     // @keep sum as "F" in fib_tree
