@@ -3804,12 +3804,13 @@ function instrumentSource(source, watchIds = []) {
     return `${targetArgs(target)}, ${canCaptureIndex ? 'true' : 'false'}, ${resolvedIndex}`;
   }
 
-  function binaryAdditionSources(node) {
+  function binaryOperationSources(node) {
     if (node?.name !== 'BinaryExpression') return null;
     const children = childrenOf(node);
     const operatorIndex = children.findIndex(child => child.name === 'ArithOp'
-      && source.slice(child.from, child.to).trim() === '+');
+      && ['+', '-', '*', '/'].includes(source.slice(child.from, child.to).trim()));
     if (operatorIndex <= 0 || operatorIndex >= children.length - 1) return null;
+    const operation = source.slice(children[operatorIndex].from, children[operatorIndex].to).trim();
     const leftNode = children[operatorIndex - 1];
     const rightNode = children[operatorIndex + 1];
     if (!['Identifier', 'SubscriptExpression'].includes(leftNode.name)
@@ -3818,7 +3819,7 @@ function instrumentSource(source, watchIds = []) {
     const right = targetDescriptor(rightNode);
     const safe = target => Boolean(target.variableId)
       && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression));
-    return safe(left) && safe(right) ? { left, right } : null;
+    return safe(left) && safe(right) ? { left, right, operation } : null;
   }
 
   function comparisonEvent(leftNode, rightNode, operator, context, signatureNode) {
@@ -4084,7 +4085,7 @@ ${loop}
       const target = targetDescriptor(targetNode);
       const sourceNode = node.name === 'AssignmentExpression' ? children[children.length - 1] : null;
       const sourceTarget = targetDescriptor(sourceNode);
-      const additionSources = binaryAdditionSources(sourceNode);
+      const binarySources = binaryOperationSources(sourceNode);
       const assignmentOperator = targetNode && sourceNode
         ? source.slice(targetNode.to, sourceNode.from).trim()
         : '';
@@ -4127,8 +4128,8 @@ ${loop}
           const action = chainedAssignment
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
-          if (additionSources && !chainedAssignment) {
-            rendered = `::asm_trace::event_binary_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(additionSources.left)}, ${indexedTargetArgs(additionSources.right)}, "+", ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          if (binarySources && !chainedAssignment) {
+            rendered = `::asm_trace::event_binary_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(binarySources.left)}, ${indexedTargetArgs(binarySources.right)}, ${cppString(binarySources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else {
             rendered = `::asm_trace::${chainedAssignment ? 'event_assign_expr' : 'event_assign'}(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           }

@@ -87,11 +87,55 @@ int main() {
   assert.equal(window.ASMTraceFrameTween.formatAssignmentTransferValue('-3', '+'), '+(-3)');
   assert.equal(window.ASMTraceFrameTween.assignmentTransferOperator({
     compound: true, expression: 'sum -= tree[now]'
-  }), '');
+  }), '-');
+  assert.equal(window.ASMTraceFrameTween.assignmentTransferOperator({
+    compound: true, expression: 'sum *= tree[now]'
+  }), '*');
+  assert.equal(window.ASMTraceFrameTween.assignmentTransferOperator({
+    compound: true, expression: 'sum /= tree[now]'
+  }), '/');
+  assert.equal(window.ASMTraceFrameTween.formatAssignmentTransferValue('-3', '-'), '-(-3)');
+  assert.equal(window.ASMTraceFrameTween.formatAssignmentTransferValue('4', '*'), '*4');
+  assert.equal(window.ASMTraceFrameTween.formatAssignmentTransferValue('2', '/'), '/2');
   const replay = window.ASMTraceFrameTween.createForwardReplayPlan(trace, frame, [], 1);
   const track = replay.valueTracks.find(item => item.key.endsWith(`${sum}#0`));
   assert.equal(track.initial.value, 0);
   assert.equal(track.steps.at(-1).after.value, 27);
+});
+
+test('binary arithmetic assignments capture both operands and their operators', async () => {
+  const { trace, window } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int main() {
+ int a = 12, b = 3;
+ int added = 0, subtracted = 0, multiplied = 0, divided = 0;
+ // @frame a,b,added,subtracted,multiplied,divided
+ added = a + b;
+ subtracted = a - b;
+ multiplied = a * b;
+ divided = a / b;
+ // @frame a,b,added,subtracted,multiplied,divided
+}`);
+  const frame = trace.frames.at(-1);
+  const nameById = new Map(Object.entries(trace.variables).map(([id, variable]) => (
+    [id, variable.name]
+  )));
+  const arithmetic = frame.events.filter(event => (
+    ['+', '-', '*', '/'].includes(event.binaryOperation)
+  ));
+  assert.deepEqual(Array.from(arithmetic, event => [
+    nameById.get(event.targets.find(target => target.role === 'target')?.variableId),
+    event.binaryOperation,
+    Array.from(event.targets, target => target.role)
+  ]), [
+    ['added', '+', ['target', 'source-left', 'source-right']],
+    ['subtracted', '-', ['target', 'source-left', 'source-right']],
+    ['multiplied', '*', ['target', 'source-left', 'source-right']],
+    ['divided', '/', ['target', 'source-left', 'source-right']]
+  ]);
+  assert.deepEqual(Array.from(arithmetic, event => (
+    window.ASMTraceFrameTween.assignmentTransferOperator(event)
+  )), ['+', '-', '*', '/']);
 });
 
 test('binary addition assignment captures both visible sources without reevaluating them', async () => {

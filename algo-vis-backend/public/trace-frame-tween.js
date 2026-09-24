@@ -78,16 +78,21 @@
   }
 
   function assignmentTransferOperator(event) {
-    if (event?.binaryOperation === '+') return '+';
-    if (event?.compound === true
-      && /\+=/.test(String(event?.expression || event?.operation || ''))) return '+';
+    const binaryOperation = String(event?.binaryOperation || '');
+    if (['+', '-', '*', '/'].includes(binaryOperation)) return binaryOperation;
+    if (event?.compound === true) {
+      const compound = String(event?.expression || event?.operation || '')
+        .match(/([+\-*\/])=/);
+      if (compound) return compound[1];
+    }
     return '';
   }
 
   function formatAssignmentTransferValue(value, operator = '') {
     const text = String(value ?? '');
-    if (!operator || !text || text.startsWith(operator)) return text;
-    if (operator === '+' && text.startsWith('-')) return `+(${text})`;
+    if (!operator || !text || text.startsWith(`${operator}(`)) return text;
+    if (text.startsWith('-')) return `${operator}(${text})`;
+    if (text.startsWith(operator)) return text;
     return `${operator}${text}`;
   }
 
@@ -2725,7 +2730,8 @@
     const sources = (event?.targets || []).filter(item => item.role === 'source'
       || item.role === 'source-left' || item.role === 'source-right');
     const source = sources[0];
-    const binaryAddition = event?.binaryOperation === '+' && sources.length === 2;
+    const binaryOperation = ['+', '-', '*', '/'].includes(event?.binaryOperation)
+      && sources.length === 2;
     const transferOperator = assignmentTransferOperator(event);
     if (!target) return null;
     const operand = eventOperand(
@@ -2843,7 +2849,7 @@
         formattedSourceValue,
         item ? previousVisualElement(previousObjects, item.visualKey) : null,
         {
-          valueOnly: event?.compound === true || binaryAddition,
+          valueOnly: event?.compound === true || binaryOperation,
           operatorPrefix: transferOperator
         }
       )).filter(Boolean);
@@ -2926,7 +2932,7 @@
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
-          if (event?.compound === true || binaryAddition) {
+          if (event?.compound === true || binaryOperation) {
             transfers.forEach(item => item.remove());
             transfers = [];
           }
@@ -7159,10 +7165,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-232';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-233';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-232', play, cancel, updateEventAvailability,
+    build: 'trace-233', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
