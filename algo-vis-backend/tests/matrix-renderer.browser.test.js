@@ -55,22 +55,48 @@ test('matrix renderer works in the real browser SVG surface', { timeout: 60000 }
       await window.ASMTraceRenderers.renderFrame(traceDocument, frame, null, {
         animatePositions: false, animateEvents: false
       });
-      return {
+      const originalResult = {
         cells: document.querySelectorAll('[data-trace-arrow-target-kind="matrix-cell"]').length,
         rowLabels: document.querySelectorAll('[data-trace-label-role="row"]').length,
         columnLabels: document.querySelectorAll('[data-trace-label-role="column"]').length,
         innerLabels: document.querySelectorAll('[data-trace-label-role="inner"]').length,
         markers: [...document.querySelectorAll('.trace-variable-marker-label-text')].map(node => node.textContent).sort(),
         cellStroke: document.querySelector('[data-trace-object-key="grid#1,0"] > rect')?.getAttribute('stroke'),
-        innerStroke: document.querySelector('[data-trace-object-key="grid#1,0:index"] > rect')?.getAttribute('stroke'),
+        cellStrokeWidth: document.querySelector('[data-trace-object-key="grid#1,0"] > rect')?.getAttribute('stroke-width'),
+        innerFill: document.querySelector('[data-trace-object-key="grid#1,0:index"] > rect')?.getAttribute('fill'),
+        innerHeight: document.querySelector('[data-trace-object-key="grid#1,0:index"] > rect')?.getAttribute('height'),
         rowStroke: document.querySelector('[data-trace-object-key="grid:row-label:1"] > rect')?.getAttribute('stroke'),
-        outerframe: Boolean(document.querySelector('.trace-matrix-outerframe'))
+        rowFill: document.querySelector('[data-trace-object-key="grid:row-label:1"] > rect')?.getAttribute('fill'),
+        highlightStroke: document.querySelector('[data-trace-attached-to="grid#1,0"]')?.getAttribute('stroke'),
+        highlightHeight: document.querySelector('[data-trace-attached-to="grid#1,0"]')?.getAttribute('height'),
+        outerframe: Boolean(document.querySelector('.outerframe-bg'))
+      };
+      traceDocument.skins[grid].options = {
+        rowLabels: { mode: 'none', values: [] },
+        columnLabels: { mode: 'none', values: [] },
+        innerLabels: { mode: 'none', values: [] },
+        gridlines: 1, outerframe: true, markerLayout: 'axis'
+      };
+      frame.rendererOptions[grid] = { markerLayout: 'axis' };
+      await window.ASMTraceRenderers.renderFrame(traceDocument, frame, null, {
+        animatePositions: false, animateEvents: false
+      });
+      return {
+        ...originalResult,
+        hiddenAxisTargets: document.querySelectorAll('[data-trace-axis-target="1"]').length,
+        hiddenLabelMarkers: [...document.querySelectorAll('.trace-variable-marker-label-text')]
+          .map(node => node.textContent).sort(),
+        originalOuterframeFill: document.querySelector('.outerframe-bg')?.getAttribute('fill')
       };
     });
     assert.deepEqual(result, {
       cells: 3, rowLabels: 2, columnLabels: 2, innerLabels: 3,
-      markers: ['i', 'j'], cellStroke: 'red', innerStroke: 'red',
-      rowStroke: '#59656b', outerframe: false
+      markers: ['i', 'j'], cellStroke: '#333', cellStrokeWidth: '0',
+      innerFill: 'rgba(111, 161, 255, 0.7)', innerHeight: '12',
+      rowStroke: '#333', rowFill: 'rgba(111, 161, 255, 0.7)',
+      highlightStroke: 'red', highlightHeight: '52', outerframe: false,
+      hiddenAxisTargets: 4, hiddenLabelMarkers: ['i', 'j'],
+      originalOuterframeFill: 'rgba(209,230,172,0.5)'
     });
     assert.deepEqual(errors, []);
   } finally {

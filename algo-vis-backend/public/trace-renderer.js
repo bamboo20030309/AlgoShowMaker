@@ -498,7 +498,162 @@
     return Math.max(70, height + 10);
   }
 
+  function renderOriginalMatrixWithDraw2DArray(group, entry, context) {
+    if (typeof window.draw_2Darray !== 'function') return null;
+    const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
+    const options = context.skin?.options || {};
+    const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
+    const defaultIndices = indexMode !== 0 && options.showIndex !== false;
+    const showValue = options.showValue !== false && indexMode !== 2;
+    const rowSpec = options.rowLabels
+      || (defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const columnSpec = options.columnLabels
+      || (defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const innerSpec = options.innerLabels || { mode: 'none', values: [] };
+    const labelValues = (spec, count) => spec.mode === 'none' ? null
+      : Array.from({ length: count }, (_, index) => (
+        spec.mode === 'index' ? index : spec.values?.[index] ?? ''
+      ));
+    const matrix = rows.map(row => (row?.items || []).map(item => (
+      formatDisplayValue(item, options, context.variable?.name || '', context.variableId)
+    )));
+    const rowLabels = labelValues(rowSpec, rows.length);
+    const maxColumns = Math.max(0, ...matrix.map(row => row.length));
+    const columnLabels = labelValues(columnSpec, maxColumns);
+    const innerLabels = innerSpec.mode === 'none' ? null : rows.map((row, rowIndex) => (
+      row.items.map((item, columnIndex) => innerSpec.mode === 'index'
+        ? columnIndex : innerSpec.values?.[rowIndex]?.[columnIndex] ?? '')
+    ));
+    const style = [];
+    const addStyle = (type, color, elements) => {
+      if (elements.length) style.push({ type, color, elements });
+    };
+    const entriesByType = new Map();
+    Object.entries(context.highlights || {}).forEach(([key, highlight]) => {
+      const elements = key === '$object'
+        ? rows.flatMap((row, rowIndex) => row.items.map((item, columnIndex) => [rowIndex, columnIndex]))
+        : [/^(-?\d+),(-?\d+)$/.exec(key)].filter(Boolean).map(match => [Number(match[1]), Number(match[2])]);
+      if (!elements.length) return;
+      const typed = highlight.styleTypes || {};
+      Object.entries(typed).forEach(([type, color]) => {
+        const normalized = type === 'segment' ? 'background' : type;
+        const list = entriesByType.get(`${normalized}\0${color || ''}`) || [];
+        list.push(...elements);
+        entriesByType.set(`${normalized}\0${color || ''}`, list);
+      });
+      if (!Object.keys(typed).length && highlight.styleType) {
+        const list = entriesByType.get(`${highlight.styleType}\0${highlight.color || ''}`) || [];
+        list.push(...elements);
+        entriesByType.set(`${highlight.styleType}\0${highlight.color || ''}`, list);
+      }
+      if (highlight.fill && !typed.background) addStyle('background', highlight.fill, elements);
+      if (highlight.stroke && !typed.highlight) addStyle('highlight', highlight.stroke, elements);
+      if (highlight.fixedMark) addStyle('mark', highlight.fixedMark, elements);
+    });
+    entriesByType.forEach((elements, key) => {
+      const [type, color] = key.split('\0');
+      addStyle(type, color, elements);
+    });
+
+    const drawId = `${context.idPrefix || 'trace-original'}-${safeKey(context.variableId)}`;
+    window.draw_2Darray(drawId, { x: 0, y: 0 }, matrix, style, {}, 'normal', 0, -1, {
+      targetGroup: group,
+      objectLabel: context.variable?.name || '',
+      rowLabels,
+      columnLabels,
+      innerLabels,
+      showValue,
+      gridlines: Object.prototype.hasOwnProperty.call(options, 'gridlines') ? options.gridlines : 1,
+      outerframe: options.outerframe !== false
+    });
+    const objectKey = objectKeyForVariable(context.frame, context.variableId);
+    const rowStride = 40 + (innerLabels ? 12 : 0);
+    const originX = rowLabels ? 48 : 8;
+    const originY = columnLabels ? 48 : 8;
+    const setBounds = (element, x, y, width, height) => {
+      element.setAttribute('data-outerframe-left', String(x));
+      element.setAttribute('data-outerframe-top', String(y));
+      element.setAttribute('data-outerframe-right', String(x + width));
+      element.setAttribute('data-outerframe-bottom', String(y + height));
+      return element;
+    };
+    const invisibleAxisTarget = (key, x, y, role) => {
+      const target = markSelectable(setBounds(svg('g', {
+        'data-trace-label-role': role, 'data-trace-axis-target': '1',
+        opacity: 0, 'pointer-events': 'none'
+      }), x, y, 40, 40), key, { ...context, interactive: false }, context.variableId);
+      target.append(svg('rect', { x, y, width: 40, height: 40, fill: 'transparent' }));
+      group.append(target);
+      return target;
+    };
+    rows.forEach((row, rowIndex) => {
+      (row?.items || []).forEach((item, columnIndex) => {
+        const cellKey = `${objectKey}#${rowIndex},${columnIndex}`;
+        const cell = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-${columnIndex}`)}`);
+        if (cell) {
+          cell.setAttribute('data-trace-index', `${rowIndex},${columnIndex}`);
+          cell.querySelector(':scope > text')?.setAttribute('data-trace-content-role', 'value');
+          markSelectable(cell, cellKey, context, context.variableId);
+          markArrowTarget(cell, {
+            key: cellKey, objectKey, objectLabel: context.variable?.name || context.variableId,
+            indices: [rowIndex, columnIndex], kind: 'matrix-cell'
+          });
+        }
+        const inner = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-${columnIndex}-inner`)}`);
+        if (inner) {
+          inner.setAttribute('data-trace-index-label', `${rowIndex},${columnIndex}`);
+          inner.setAttribute('data-trace-label-role', 'inner');
+          markSelectable(inner, `${cellKey}:index`, context, context.variableId);
+        }
+        ['highlight', 'point', 'mark'].forEach(kind => {
+          const hint = group.querySelector(`#${CSS.escape(`${kind}-${drawId}-${rowIndex}-${columnIndex}`)}`);
+          if (!hint) return;
+          hint.setAttribute('data-trace-attached-to', cellKey);
+          hint.setAttribute('data-trace-attachment-kind', kind);
+          if (kind === 'highlight' || kind === 'point') {
+            const highlight = context.highlights?.[`${rowIndex},${columnIndex}`]
+              || context.highlights?.$object || {};
+            const sourceIdentity = String(
+              highlight.sourceStyleIds?.[kind]
+              || highlight.sourceStyleId
+              || highlight.eventId
+              || `${context.variableId}:${rowIndex},${columnIndex}`
+            );
+            window.HintWidgets?.continuePresentationLoop?.(hint, `${kind}:${sourceIdentity}`);
+          }
+        });
+      });
+      const rowLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-index`)}`);
+      if (rowLabel) {
+        rowLabel.setAttribute('data-trace-label-role', 'row');
+        markSelectable(rowLabel, `${objectKey}:row-label:${rowIndex}`, context, context.variableId);
+      } else {
+        invisibleAxisTarget(`${objectKey}:row-label:${rowIndex}`,
+          8, originY + rowIndex * rowStride, 'row');
+      }
+    });
+    for (let columnIndex = 0; columnIndex < maxColumns; columnIndex += 1) {
+      const columnLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-index-${columnIndex}`)}`);
+      if (columnLabel) {
+        columnLabel.setAttribute('data-trace-label-role', 'column');
+        markSelectable(columnLabel,
+          `${objectKey}:column-label:${columnIndex}`, context, context.variableId);
+      } else {
+        invisibleAxisTarget(`${objectKey}:column-label:${columnIndex}`,
+          originX + columnIndex * 40, 8, 'column');
+      }
+    }
+    group.querySelectorAll(':scope > .outerframe-label').forEach(label => {
+      markSelectable(label, `${context.variableId}:label`, context, context.variableId);
+    });
+    group.setAttribute('data-layout', 'matrix');
+    group.setAttribute('data-box-size', '40');
+    return originalBoundsHeight(group, 78);
+  }
+
   function renderOriginalMatrix(group, entry, context) {
+    const drawnHeight = renderOriginalMatrixWithDraw2DArray(group, entry, context);
+    if (drawnHeight != null) return drawnHeight;
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
     const options = context.skin?.options || {};
     const cellSize = 40;

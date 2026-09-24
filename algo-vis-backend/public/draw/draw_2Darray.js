@@ -65,8 +65,10 @@
     range = {},
     draw_type = 'normal',
     index = 0,
-    codeLine = -1
+    codeLine = -1,
+    renderOptions = null
   ) {
+    const config = renderOptions && typeof renderOptions === 'object' ? renderOptions : {};
     const vp = window.getViewport();
     if (!vp) return;
     if (!initedDefs) { ensureDefs(); initedDefs = true; }
@@ -85,10 +87,15 @@
     if(range.length === 1) startR = range[0][0], startC = range[0][1];
     if(range.length === 2) startR = range[0][0], startC = range[0][1], endR = range[1][0]+1, endC = range[1][1]+1;
 
-    if(draw_type === 'clear') index = 0;
+    if(draw_type === 'clear' && !config.targetGroup) index = 0;
     
-    const isIndexX   = index%2;
-    const isIndexY   = (Math.floor(index / 2)) % 2;
+    const isIndexX = Object.prototype.hasOwnProperty.call(config, 'rowLabels')
+      ? Array.isArray(config.rowLabels) : index % 2;
+    const isIndexY = Object.prototype.hasOwnProperty.call(config, 'columnLabels')
+      ? Array.isArray(config.columnLabels) : (Math.floor(index / 2)) % 2;
+    const hasInnerLabels = Array.isArray(config.innerLabels);
+    const rowStride = baseBoxSize + (hasInnerLabels ? 12 : 0);
+    const effectiveIndexMode = (isIndexX ? 1 : 0) + (isIndexY ? 2 : 0);
 
     const total_rows = endR - startR + isIndexY;
     const total_cols = endC - startC + isIndexX;
@@ -117,7 +124,7 @@
     }
 
     // 取得或建立 g
-    let g = vp.querySelector('#' + groupID);
+    let g = config.targetGroup || vp.querySelector('#' + groupID);
     if (!g) {
       g = document.createElementNS(NS, 'g');
       g.setAttribute('id', groupID);
@@ -128,11 +135,12 @@
     g.setAttribute('data-layout', 'array2D');
 
     // ========= 儲存排版資訊供 getPosition 使用 =========
-    g.setAttribute('data-index-mode', String(index));
+    g.setAttribute('data-index-mode', String(effectiveIndexMode));
     g.setAttribute('data-start-r', String(startR));
     g.setAttribute('data-start-c', String(startC));
     g.setAttribute('data-total-rows', String(total_rows));
     g.setAttribute('data-total-cols', String(total_cols));
+    g.setAttribute('data-row-stride', String(rowStride));
 
     // 先設定基本的 alive 標記
     const nodeMap = new Map();
@@ -142,7 +150,16 @@
     });
 
     // 重要：先畫外框，這會設定 data-outerframe-left/right 等屬性，方便後續物件(或自己)參照
-    window.draw_array_outerframe(g, groupID, total_rows * baseBoxSize, total_cols * baseBoxSize); 
+    const contentHeight = (isIndexY ? baseBoxSize : 0) + Math.max(0, endR - startR) * rowStride;
+    const contentWidth = Math.max(baseBoxSize, total_cols * baseBoxSize);
+    if (config.outerframe !== false) {
+      window.draw_array_outerframe(g, config.objectLabel || groupID, contentHeight, contentWidth);
+    } else {
+      g.setAttribute('data-outerframe-left', String(outerframe_padding));
+      g.setAttribute('data-outerframe-top', String(outerframe_padding));
+      g.setAttribute('data-outerframe-right', String(outerframe_padding + contentWidth));
+      g.setAttribute('data-outerframe-bottom', String(outerframe_padding + contentHeight));
+    }
 
     const headerColor = 'rgba(111, 161, 255, 0.7)';
     // ... 後面繼續畫內容 ...
@@ -151,15 +168,17 @@
         if (isIndexX) {
             for (let r = startR; r < endR; r++) {
                 const x = outerframe_padding;
-                const y = (r - startR + isIndexY) * cellH + outerframe_padding;
-                window.draw_block(g, x, y, r, cellW, cellH, headerColor, `block-${groupID}-${r}-index`, nodeMap);
+                const y = (isIndexY ? cellH : 0) + (r - startR) * rowStride + outerframe_padding;
+                const label = config.rowLabels?.[r] ?? r;
+                window.draw_block(g, x, y, label, cellW, cellH, headerColor, `block-${groupID}-${r}-index`, nodeMap);
             }
         }
         if (isIndexY) {
             for (let c = startC; c < endC; c++) {
                 const x = (c - startC + isIndexX) * cellW + outerframe_padding;
                 const y = outerframe_padding;
-                window.draw_block(g, x, y, c, cellW, cellH, headerColor, `block-${groupID}-index-${c}`, nodeMap);
+                const label = config.columnLabels?.[c] ?? c;
+                window.draw_block(g, x, y, label, cellW, cellH, headerColor, `block-${groupID}-index-${c}`, nodeMap);
             }
         }
     }
@@ -169,9 +188,9 @@
       if (!matrix[r]) continue;
       for (let c = startC; c < Math.min(endC, matrix[r].length); c++) {
         const x = (c - startC + isIndexX) * cellW + outerframe_padding;
-        const y = (r - startR + isIndexY) * cellH + outerframe_padding;
+        const y = (isIndexY ? cellH : 0) + (r - startR) * rowStride + outerframe_padding;
         const cellValue = matrix[r][c];
-        const value = (draw_type === 'clear' || draw_type === 'binary') ? '' : cellValue;
+        const value = (draw_type === 'clear' || draw_type === 'binary' || config.showValue === false) ? '' : cellValue;
 
         const haveFocus = focus.length > 0
           ? focus.some(item => Array.isArray(item.elements)
@@ -198,6 +217,11 @@
         }
 
         window.draw_block(g, x, y, value, cellW, cellH, fillColor, `block-${groupID}-${r}-${c}`, nodeMap);
+        if (hasInnerLabels) {
+          const innerValue = config.innerLabels?.[r]?.[c] ?? '';
+          window.draw_block(g, x, y + cellH, innerValue, cellW, 12, headerColor,
+            `block-${groupID}-${r}-${c}-inner`, nodeMap);
+        }
       }
     }
 
@@ -206,7 +230,7 @@
       if (!matrix[r]) continue;
       for (let c = startC; c < Math.min(endC,matrix[r].length); c++) {
         const x = (c - startC + isIndexX) * cellW + outerframe_padding;
-        const y = (r - startR + isIndexY) * cellH + outerframe_padding;
+        const y = (isIndexY ? cellH : 0) + (r - startR) * rowStride + outerframe_padding;
 
         const haveHighlight    =   highlight.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c));
         const havePoint        =       point.findLast(m => Array.isArray(m.elements) && m.elements.some(([a, b]) => a === r && b === c));
@@ -220,7 +244,8 @@
           // 高光框框
           if (haveHighlight) {
             const hId = `highlight-${groupID}-${r}-${c}`;
-            HintWidgets.drawHighlightBox(g, x, y, baseBoxSize, baseBoxSize, highlight_color, hId, nodeMap);
+            HintWidgets.drawHighlightBox(g, x, y, baseBoxSize,
+              baseBoxSize + (hasInnerLabels ? 12 : 0), highlight_color, hId, nodeMap);
           }
           // 紅色箭頭
           if (havePoint) {
@@ -242,6 +267,21 @@
         child.remove();
       }
     });
+
+    if (Object.prototype.hasOwnProperty.call(config, 'gridlines')) {
+      const width = Math.max(0, Number(config.gridlines) || 0);
+      g.querySelectorAll(':scope > g[id^="block-"] > rect').forEach(rect => {
+        rect.setAttribute('stroke-width', String(width));
+        rect.setAttribute('pointer-events', 'all');
+      });
+    }
+
+    if (config.outerframe === false) {
+      g.querySelectorAll(':scope > .outerframe-bg, :scope > .outerframe-nb, :scope > .outerframe-label')
+        .forEach(node => node.remove());
+    }
+
+    if (config.targetGroup) return g;
 
     // 最後：解析相對座標並應用 Transform (確保這時外框資訊已完整設定)
     const pos = window.resolvePos(Pos);
@@ -318,7 +358,8 @@
         // 公式：(r - startR + isIndexY) * cellH
         // 需注意：如果 row < startR，它會跑到表格上方 (這在 partial render 時是合理的相對位置)
         boxX = (col - startC + isIndexX) * cellW + outerframe_padding;
-        boxY = (row - startR + isIndexY) * cellH + outerframe_padding;
+        const rowStride = parseInt(g.getAttribute('data-row-stride') || String(cellH), 10);
+        boxY = (isIndexY ? cellH : 0) + (row - startR) * rowStride + outerframe_padding;
         boxW = cellW;
         boxH = cellH;
     } else {
@@ -326,7 +367,9 @@
         boxX = 0 + outerframe_padding;
         boxY = 0 + outerframe_padding;
         boxW = totalCols * cellW;
-        boxH = totalRows * cellH;
+        const rowStride = parseInt(g.getAttribute('data-row-stride') || String(cellH), 10);
+        const dataRows = Math.max(0, totalRows - isIndexY);
+        boxH = (isIndexY ? cellH : 0) + dataRows * rowStride;
     }
 
     // 4. 計算錨點 (Anchor)
