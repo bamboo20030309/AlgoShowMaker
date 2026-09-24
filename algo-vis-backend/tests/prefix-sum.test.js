@@ -68,6 +68,12 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /"background":\s*"AV_orange"/);
   assert.match(code, /"background":\s*"AV_red"/);
   assert.match(code, /"background":\s*"AV_green"/);
+  assert.match(code, /"text":\s*"pre\[\$\{r-1\}\]\[\$\{c\}\]"/);
+  assert.match(code, /"text":\s*"pre\[\$\{r\}\]\[\$\{c-1\}\]"/);
+  assert.match(code, /"text":\s*"pre\[\$\{r-1\}\]\[\$\{c-1\}\]"/);
+  assert.match(code, /"text":\s*"num\[\$\{r\}\]\[\$\{c\}\]"/);
+  assert.doesNotMatch(code, /"text":\s*"\$\{(?:pre|num)\[/);
+  assert.doesNotMatch(code, /"text":\s*"pre\[[^"]+\]\s*=\s*\$\{pre\[/);
   assert.match(code, /@camera focus num zoom\(2\.0\) when r <= n \/ 2/);
   assert.match(code, /@style num\[r1:r2\]\[c1:c2\] background AV_green/);
 

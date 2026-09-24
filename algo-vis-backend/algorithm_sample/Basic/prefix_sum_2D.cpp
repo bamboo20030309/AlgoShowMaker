@@ -57,12 +57,12 @@ int main() {
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_up_num at num.top offset(0,-24) when r <= n / 2
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_up_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
@@ -80,16 +80,16 @@ int main() {
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
+            //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_left_num at num.top offset(0,-24) when r <= n / 2
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
+            //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_left_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
@@ -110,20 +110,20 @@ int main() {
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
+            //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - "},
-            //   {"text": "pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
             //   {"text": " + num[${r}][${c}]"}
             // ] as build_overlap_num at num.top offset(0,-24) when r <= n / 2
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
+            //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - "},
-            //   {"text": "pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
             //   {"text": " + num[${r}][${c}]"}
             // ] as build_overlap_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
@@ -146,24 +146,24 @@ int main() {
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "${pre[r][c-1]}", "background": "AV_orange"},
+            //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - "},
-            //   {"text": "${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
             //   {"text": " + "},
-            //   {"text": "${num[r][c]}", "background": "AV_green"},
+            //   {"text": "num[${r}][${c}]", "background": "AV_green"},
             //   {"text": " = ${pre[r][c]}"}
             // ] as build_value_num at num.top offset(0,-24) when r <= n / 2
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
-            //   {"text": "${pre[r-1][c]}", "background": "AV_blue"},
+            //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "${pre[r][c-1]}", "background": "AV_orange"},
+            //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - "},
-            //   {"text": "${pre[r-1][c-1]}", "background": "AV_red"},
+            //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
             //   {"text": " + "},
-            //   {"text": "${num[r][c]}", "background": "AV_green"},
+            //   {"text": "num[${r}][${c}]", "background": "AV_green"},
             //   {"text": " = ${pre[r][c]}"}
             // ] as build_value_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2

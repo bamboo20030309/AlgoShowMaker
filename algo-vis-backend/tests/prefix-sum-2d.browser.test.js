@@ -59,6 +59,9 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
         '[data-trace-text-id="build_value_num"] .asm-trace-text-segment-background'
       )].map(node => node.getAttribute('fill'))
         .filter(value => value && value !== 'rgba(0,0,0,0)');
+      const formulaText = document.querySelector(
+        '[data-trace-text-id="build_value_num"]'
+      )?.textContent?.replace(/\s+/g, ' ').trim();
       const coloredPrefixCells = Array.from({ length: 3 }, (_, row) => (
         Array.from({ length: 3 }, (_, column) => fill(`${row},${column}`))
       )).flat().filter(Boolean);
@@ -75,6 +78,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
         fills,
         coloredPrefixCellCount: coloredPrefixCells.length,
         textBackgrounds: [...new Set(textBackgrounds)],
+        formulaText,
         firstTextVisible: Boolean(document.querySelector('[data-trace-text-id="build_value_pre"]')),
         firstTextHidden: Boolean(document.querySelector('[data-trace-text-id="build_value_num"]')),
         firstCameraZoom: firstCamera?.zoom,
@@ -98,6 +102,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
         'rgba(239, 154, 154, 0.6)',
         'rgba(165, 214, 167, 0.6)'
       ],
+      formulaText: 'pre[2][2] = pre[1][2] + pre[2][1] - pre[1][1] + num[2][2] = 16',
       firstTextVisible: true,
       firstTextHidden: false,
       firstCameraZoom: 2,
