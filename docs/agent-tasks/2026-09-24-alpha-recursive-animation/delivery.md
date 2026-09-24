@@ -18,6 +18,8 @@
 - 動畫事件重播會重新套用 display 模板，因此 assignment／write 播放前後不會短暫退回原始值；模板內含逗號的引號字串也可正確解析。
 - 遞迴 layout 的父子箭頭現在以穩定的 activation／parent 關係做 DFS 前序輸出：父節點先於子節點、左子樹完整先於右子樹；snapshot 回傳替換不再改變模型或 SVG DOM 的箭頭順序。
 - 舊 trace 若只有 `layoutNode.parentSnapshotId`、缺少 recursion activation metadata，仍會沿用 snapshot parent 關係畫線。
+- recursion keep tween 會在清除上一幀前保存 current recursion node 的實際 presented bounds；新 keep 由該位置位移到新 layout slot，而非只在目的地縮放。
+- 父子箭頭每個 tick 直接重算至移動中的 child outerframe，不再做第二次 progress 裁切，因此箭頭與新節點同時延伸且端點不會落後。
 
 ## 目前可供使用者檢視的行為
 
@@ -28,6 +30,7 @@
 - 陣列等其他物件可直接寫 `@frame arr with display("${index}: ${value}")`，每格使用自己的 index／value。
 - 最終畫面只有 15 個遞迴節點，不存在額外 `left`、`right`、`result` 或 `value` 物件。
 - 最終 Fibonacci `F(5)` 的箭頭 target 順序固定為 `F_1`～`F_14`，符合 DFS 前序的首次建立順序。
+- 新 child 從上一幀 current node 的中心開始位移；正向播放時箭頭終點持續貼住 child，反向播放則縮回同一 current node。
 
 ## 驗證分級與選擇
 
@@ -39,6 +42,7 @@
 - 自動測試結果：本輪前序修改的 `layout-directives.test.js` 與 `entrypoints.test.js` 共 12/12 通過；Fibonacci 實際瀏覽器 1/1 通過，全部 0 fail、0 skipped。先前 Fibonacci trace／瀏覽器 2/2、outerframe／growth tween 7/7、recursive keep identity 1/1 亦已通過。
 - 瀏覽器 DOM：同一個 `F(2)` snapshot object 回傳後顯示 `1`，且不再殘留 `F(2)` 文字；replacement 中途不含 growth scale。
 - 瀏覽器 tween：正向 1× 驗證父中心起點、縮放／透明度、父子邊延伸與完成定點；反向 2× 驗證 child ghost 縮回父中心並於完成後移除。
+- current-node handoff 專項：驗證正向 transform 含遞減至零的位移量，且動畫起點／中點的箭頭端點與 moving child 保持在箭頭頭部預留距離內。
 - 通用 display 瀏覽器：normal sequence、heap、matrix 與 assignment replay 通過；確認 `${value/index/row/column}` 與 frame 變數運算，且 trace 原值未被修改。
 - 自動播放與 Trace Studio：本輪未執行完整 UI 操作；待使用者以 3101 預覽複核。專項瀏覽器已驗證 transition Promise 在 1×／2× 完成後清除暫態 transform／ghost。
 - 畫面：最終根值 `5`，內部節點顯示回傳值，沒有 `left/right/result/value` 額外區塊。

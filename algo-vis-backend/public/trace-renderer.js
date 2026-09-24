@@ -745,6 +745,20 @@
     return positions;
   }
 
+  function recursionLayoutMotionPositions(rootSvg, fallbackPositions) {
+    const positions = new Map(fallbackPositions || []);
+    const root = rootSvg.querySelector('#asm-trace-root');
+    if (!root) return positions;
+    root.querySelectorAll('[data-trace-layout-id][data-trace-object-key]').forEach(object => {
+      const parentObject = object.parentElement?.closest?.('[data-trace-object-key]');
+      if (parentObject && root.contains(parentObject)) return;
+      const bounds = window.ASMArrowModel?.presentedBounds?.(object, root, true);
+      if (!bounds) return;
+      positions.set(String(object.dataset.traceObjectKey || ''), { ...bounds });
+    });
+    return positions;
+  }
+
   function captureTopLevelObjects(rootSvg) {
     const root = rootSvg.querySelector('#asm-trace-root');
     const captured = new Map();
@@ -4425,6 +4439,9 @@
     window.ASMTraceFrameTween?.cancel?.();
     const previousPositions = objectPositions(rootSvg);
     const previousMotionPositions = objectMotionPositions(rootSvg, previousPositions);
+    const previousRecursionPlacements = recursionLayoutMotionPositions(
+      rootSvg, previousMotionPositions
+    );
     const previousObjects = captureTopLevelObjects(rootSvg);
     const sourceKeys = new Set(previousPositions.keys());
     const transitionForKey = key => previousFrame
@@ -4465,6 +4482,7 @@
         direction: options.direction,
         previousFrame,
         previousPlacements: previousMotionPositions,
+        previousRecursionPlacements,
         currentPlacements: result.placements,
         previousObjects,
         currentElements: result.elements,
@@ -4880,9 +4898,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-214';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-215';
   window.ASMTraceRenderers = {
-    build: 'trace-214', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-215', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

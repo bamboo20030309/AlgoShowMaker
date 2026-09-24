@@ -168,7 +168,7 @@ test('heap cell follows its outerframe origin while sequence width opens to the 
   assert.equal(Number(afterText.getAttribute('font-size')), 16);
 });
 
-test('recursive keep grows from its active parent center and retracts to the same point', () => {
+test('recursive keep moves from its current recursion node and retracts to the same point', () => {
   const tween = setup().ASMTraceFrameTween;
   const parent = {
     id: 'snapshot:parent:1', objectId: 'F', layoutId: 'fib_tree',
@@ -194,6 +194,7 @@ test('recursive keep grows from its active parent center and retracts to the sam
     x: 110, y: 50, width: 60, height: 30
   });
   assert.equal(forward.entering.get('F_1').parentKey, 'F');
+  assert.equal(forward.entering.get('F_1').sourceKey, 'F');
 
   const reverse = tween.recursionGrowthTransitions(
     document, childFrame, parentFrame, -1, childPlacements, parentPlacements

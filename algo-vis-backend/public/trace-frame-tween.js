@@ -807,12 +807,14 @@
         const childPlacement = destinationPlacements?.get?.(childKey);
         const parentPlacement = sourcePlacements?.get?.(parentKey)
           || destinationPlacements?.get?.(parentKey);
+        const sourceKey = parentKey;
         const placement = centeredPlacement(parentPlacement, childPlacement);
         if (!parent || !childKey || !parentKey || !placement) return;
         target.set(childKey, {
           childSnapshot: snapshot,
           parentSnapshot: parent,
           parentKey,
+          sourceKey,
           placement
         });
       });
@@ -835,24 +837,6 @@
       });
     }
     return result;
-  }
-
-  function applyRecursionGrowthEdges(root, progressByChildKey) {
-    if (!root || !progressByChildKey?.size) return;
-    root.querySelectorAll('.asm-trace-layout-edge[data-trace-arrow-to-key]')
-      .forEach(edge => {
-        const progress = progressByChildKey.get(String(
-          edge.getAttribute('data-trace-arrow-to-key') || ''
-        ));
-        if (!Number.isFinite(progress) || edge.tagName?.toLowerCase() !== 'line') return;
-        const x1 = Number(edge.getAttribute('x1'));
-        const y1 = Number(edge.getAttribute('y1'));
-        const x2 = Number(edge.getAttribute('x2'));
-        const y2 = Number(edge.getAttribute('y2'));
-        if (![x1, y1, x2, y2].every(Number.isFinite)) return;
-        edge.setAttribute('x2', String(x1 + (x2 - x1) * clamp01(progress)));
-        edge.setAttribute('y2', String(y1 + (y2 - y1) * clamp01(progress)));
-      });
   }
 
   function keepSnapshotSourceKeys(snapshot) {
@@ -5955,7 +5939,8 @@
     const keepHandoffSources = keepSnapshotHandoffSources(keepSnapshots, previousPlacements);
     const recursionGrowth = recursionGrowthTransitions(
       traceDocument, options.previousFrame, frame, options.direction,
-      previousPlacements, currentPlacements
+      options.previousRecursionPlacements || previousPlacements,
+      currentPlacements
     );
     const keepTransitionDuration = keepTransitionKeys.size ? APPEAR_TIMING.duration : 0;
     const belongsToEnteringKeep = (element, topKey = '') => {
@@ -6319,7 +6304,8 @@
       const keepTransition = keepSnapshotMember && key === topKey;
       const recursionGrowthEntry = key === topKey
         ? recursionGrowth.entering.get(topKey) || null : null;
-      const keepHandoffSourceKey = keepTransition ? keepHandoffSources.get(topKey) || '' : '';
+      const keepHandoffSourceKey = keepTransition
+        ? recursionGrowthEntry?.sourceKey || keepHandoffSources.get(topKey) || '' : '';
       const sourceKey = previousAliasKey(
         keepHandoffSourceKey || requestedSourceKey,
         topKey,
@@ -7074,11 +7060,9 @@
         element.setAttribute('opacity', element._asmArrowTween ? '1' : String(arrowProgress));
       });
       // Endpoints use the SVG positions produced by this tick, not a second
-      // independent tween which would lag behind the moving objects.
+      // independent tween. The new recursion edge therefore ends at the
+      // moving keep node on every tick and extends with that node.
       window.ASMTraceRenderers?.refreshArrows?.();
-      applyRecursionGrowthEdges(root, new Map(entries
-        .filter(entry => entry.recursionGrowth)
-        .map(entry => [entry.key, motionStates.get(entry.key)?.localEased ?? 1])));
 
       ghosts.forEach(({
         wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep,
@@ -7298,10 +7282,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-235';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-236';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-235', play, cancel, updateEventAvailability,
+    build: 'trace-236', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

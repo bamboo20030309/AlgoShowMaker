@@ -100,11 +100,17 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
         const y1 = Number(edge?.getAttribute('y1'));
         const x2 = Number(edge?.getAttribute('x2'));
         const y2 = Number(edge?.getAttribute('y2'));
+        const root = window.document.getElementById('asm-trace-root');
+        const nodeBox = host && root
+          ? window.ASMArrowModel.presentedBounds(host, root, true) : null;
         return {
           transform: motion?.getAttribute('transform') || '',
           opacity: Number(motion?.getAttribute('opacity')),
           edgeOpacity: Number(edge?.getAttribute('opacity')),
-          edgeLength: edge ? Math.hypot(x2 - x1, y2 - y1) : -1
+          edgeLength: edge ? Math.hypot(x2 - x1, y2 - y1) : -1,
+          edgeEndpointGap: edge && nodeBox
+            ? Math.hypot(x2 - (nodeBox.x + nodeBox.width / 2), y2 - nodeBox.y)
+            : -1
         };
       };
       const reverseSample = () => {
@@ -177,6 +183,10 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
       returnedKey: returned.objectId
     });
     const scale = sample => Number(sample?.transform.match(/scale\(([\d.]+)/)?.[1]);
+    const translation = sample => {
+      const match = sample?.transform.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
+      return match ? Math.hypot(Number(match[1]), Number(match[2])) : 0;
+    };
     assert.ok(scale(growth.forwardStart) >= 0.72 && scale(growth.forwardStart) < 0.85,
       `child begins near its 72% scale origin: ${JSON.stringify(growth)}`);
     assert.ok(growth.forwardStart.opacity >= 0.35 && growth.forwardStart.opacity < 0.65);
@@ -184,8 +194,14 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
       && scale(growth.forwardMiddle) < 1);
     assert.ok(growth.forwardMiddle.opacity > growth.forwardStart.opacity
       && growth.forwardMiddle.opacity < 1);
+    assert.ok(translation(growth.forwardStart) > translation(growth.forwardMiddle)
+      && translation(growth.forwardMiddle) > translation(growth.forwardEnd),
+    `the kept node moves continuously from the current node into its layout slot: ${JSON.stringify(growth)}`);
     assert.ok(growth.forwardMiddle.edgeLength > growth.forwardStart.edgeLength,
       `the parent-child edge extends while the node grows outward: ${JSON.stringify(growth)}`);
+    assert.ok(growth.forwardStart.edgeEndpointGap < 24
+      && growth.forwardMiddle.edgeEndpointGap < 24,
+    `the extending edge stays attached to the moving node: ${JSON.stringify(growth)}`);
     assert.equal(growth.forwardEnd.opacity, 0,
       'the completed node removes its temporary opacity attribute');
     assert.ok(!growth.forwardEnd.transform.includes('scale('));
