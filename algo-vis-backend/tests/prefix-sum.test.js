@@ -52,13 +52,12 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /pre\[r\]\[c\] \+= pre\[r\]\[c - 1\]/);
   assert.match(code, /pre\[r\]\[c\] -= pre\[r - 1\]\[c - 1\]/);
   assert.match(code, /pre\[r\]\[c\] \+= num\[r\]\[c\]/);
-  assert.match(code, /@object pre\[r\]\[c\] render matrix/);
+  assert.match(code, /@object pre\[r\]\[c\] render matrix with marker-layout\(none\)/);
   assert.doesNotMatch(code, /\bint row, column\b|pre\[row\]\[column\]/);
   assert.match(code, /@object pre render matrix\s*$/m);
   assert.match(code, /@object num render matrix\s*$/m);
   assert.doesNotMatch(code, /inner-labels\(/);
   assert.doesNotMatch(code, /labels\(value,index\)|row-labels\(index\)|column-labels\(index\)|gridlines\(1\)|outerframe\(true\)/);
-  assert.match(code, /marker-layout\(inner\)/);
   assert.match(code, /@place num\.left at pre\.right offset\(100,0\)/);
   assert.match(code, /@camera auto zoom\(1\)/);
   assert.match(code, /@style pre\[0:n\]\[0\] background AV_grey/);
@@ -88,7 +87,7 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.ok(frames.every(frame => frame.objects.length === 2));
   assert.equal(frames[1].objects[0].renderer, 'original-matrix');
   assert.equal(frames[1].objects[0].rendererOptions.innerLabels, undefined);
-  assert.equal(frames[1].objects[0].rendererOptions.markerLayout, 'inner');
+  assert.equal(frames[1].objects[0].rendererOptions.markerLayout, 'none');
   assert.deepEqual(frames[1].bindings.map(binding => binding.indexDimension), [0, 1]);
   assert.deepEqual(frames[1].camera.condition.identifiers, ['r', 'n', 'c']);
   assert.equal(frames[1].camera.target.variableId, frames[1].objects[1].primaryVariableId);

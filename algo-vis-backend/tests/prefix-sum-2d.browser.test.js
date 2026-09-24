@@ -116,7 +116,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
       firstCameraTarget: 'num',
       initialFramesUseFullRange: true,
       innerLabels: 0,
-      markers: ['c', 'r']
+      markers: []
     });
     assert.deepEqual(errors, []);
   } finally {

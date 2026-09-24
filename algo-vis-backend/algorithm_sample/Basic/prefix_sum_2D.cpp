@@ -20,9 +20,9 @@ vector<vector<int>> num, pre;
 // @place num.left at pre.right offset(100,0)
 // @endpreset
 
-// 建表時讓 r 在左側移動，c 進入目前列後水平移動；不顯示 inner index。
+// 保留 r、c 與 pre[r][c] 的追蹤關係，但這個範例不畫索引指標。
 // @preset prefix_sum_2d_cursor
-// @object pre[r][c] render matrix with marker-layout(inner)
+// @object pre[r][c] render matrix with marker-layout(none)
 // @endpreset
 
 int main() {

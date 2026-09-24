@@ -904,8 +904,8 @@ function parseRendererOptions(value, line, directiveName) {
 
     if (name === 'marker-layout') {
       const mode = args.parts[0]?.trim().toLowerCase();
-      if (args.parts.length !== 1 || !['axis', 'inner'].includes(mode)) {
-        throw new Error(`第 ${line} 行的 ${directiveName} marker-layout 只支援 axis 或 inner`);
+      if (args.parts.length !== 1 || !['axis', 'inner', 'none'].includes(mode)) {
+        throw new Error(`第 ${line} 行的 ${directiveName} marker-layout 只支援 axis、inner 或 none`);
       }
       options.markerLayout = mode;
       continue;

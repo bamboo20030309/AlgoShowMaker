@@ -3705,6 +3705,21 @@
           const labelLength = Math.max(1, Array.from(String(label)).length);
           const fontSize = Math.max(4, Math.min(8, (labelSize - 4) / (labelLength * 0.62)));
           const borderColor = '#333';
+          const point = svg('g', { class: 'trace-variable-marker-point' });
+          point.append(
+            svg('path', {
+              d: 'M -22 0 L -2 0 M -8 -5 L -2 0 L -8 5', fill: 'none',
+              stroke: borderColor, 'stroke-width': 1, 'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
+            }),
+            svg('polygon', {
+              class: 'trace-variable-marker-arrow-head',
+              points: '-8,-5 -2,0 -8,5',
+              fill: borderColor,
+              stroke: borderColor,
+              'stroke-width': 1,
+              'data-trace-marker-direction': 'right'
+            })
+          );
           motion.append(
             svg('rect', {
               class: 'trace-variable-marker-label-box', x: labelLeft, y: labelTop,
@@ -3716,11 +3731,7 @@
               'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial',
               'font-size': fontSize, 'font-weight': 'bold', fill: studioObject.textColor || '#1f282d'
             }, label),
-            svg('g', { class: 'trace-variable-marker-point' },
-              svg('path', {
-                d: 'M -22 0 L -2 0 M -8 -5 L -2 0 L -8 5', fill: 'none',
-                stroke: borderColor, 'stroke-width': 1, 'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
-              }))
+            point
           );
           object.dataset.traceMarkerBaseCellWidth = String(Math.max(1, Number(studioObject.baseCellWidth) || 40));
           box = { x: labelLeft, y: labelTop, width: 38, height: labelSize };
@@ -3979,6 +3990,7 @@
         const targetObjectKey = objectKeyForVariable(frame, binding.targetVariableId);
         const dimension = Number(binding.indexDimension) || 0;
         const rendererOptions = frame.rendererOptions?.[binding.targetVariableId] || {};
+        if (rendererOptions.markerLayout === 'none') return;
         let targetKey = `${targetObjectKey}:${dimension === 0 ? 'row' : 'column'}-label:${indexValue}`;
         let targetExpression = String(indexValue);
         let targetAxis = dimension === 0 ? 'row' : 'column';
@@ -5178,9 +5190,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-211';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-212';
   window.ASMTraceRenderers = {
-    build: 'trace-211', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-212', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

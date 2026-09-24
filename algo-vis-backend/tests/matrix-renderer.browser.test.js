@@ -71,6 +71,14 @@ test('matrix renderer works in the real browser SVG surface', { timeout: 60000 }
         highlightHeight: document.querySelector('[data-trace-attached-to="grid#1,0"]')?.getAttribute('height'),
         outerframe: Boolean(document.querySelector('.outerframe-bg'))
       };
+      const rowArrowHead = document.querySelector(
+        '.trace-variable-marker-arrow-head[data-trace-marker-direction="right"]'
+      );
+      originalResult.rowArrowHead = {
+        points: rowArrowHead?.getAttribute('points'),
+        fill: rowArrowHead?.getAttribute('fill'),
+        direction: rowArrowHead?.getAttribute('data-trace-marker-direction')
+      };
       const nextFrame = structuredClone(frame);
       nextFrame.id = 'matrix-browser-next';
       nextFrame.state[grid].data.items[1].items[0].value = 99;
@@ -195,6 +203,7 @@ int main() {
       innerFill: '#fff', innerHeight: '12',
       rowStroke: '#333', rowFill: 'rgba(111, 161, 255, 0.7)',
       highlightStroke: 'red', highlightHeight: '52', outerframe: false,
+      rowArrowHead: { points: '-8,-5 -2,0 -8,5', fill: '#333', direction: 'right' },
       reverseHighlightHeights: ['52'],
       forwardMutationValues: ['99', '8'], compiledReverseHighlightHeights: ['52'],
       compiledReverseHighlightSamples: ['52'],
