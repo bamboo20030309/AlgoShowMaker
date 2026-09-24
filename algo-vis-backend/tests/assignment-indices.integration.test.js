@@ -82,6 +82,12 @@ int main() {
   assert.equal(event.targets.find(target => target.role === 'target').variableId, sum);
   assert.equal(event.targets.find(target => target.role === 'source').variableId, tree);
   assert.equal(event.targets.find(target => target.role === 'source').resolvedIndex, 1);
+  assert.equal(window.ASMTraceFrameTween.assignmentTransferOperator(event), '+');
+  assert.equal(window.ASMTraceFrameTween.formatAssignmentTransferValue('27', '+'), '+27');
+  assert.equal(window.ASMTraceFrameTween.formatAssignmentTransferValue('-3', '+'), '+(-3)');
+  assert.equal(window.ASMTraceFrameTween.assignmentTransferOperator({
+    compound: true, expression: 'sum -= tree[now]'
+  }), '');
   const replay = window.ASMTraceFrameTween.createForwardReplayPlan(trace, frame, [], 1);
   const track = replay.valueTracks.find(item => item.key.endsWith(`${sum}#0`));
   assert.equal(track.initial.value, 0);
@@ -121,6 +127,7 @@ int main() {
   const scalarEvent = frame.events.find(item => item.type === 'assign'
     && item.targets?.some(target => target.variableId === variableByName('total')));
   assert.equal(scalarEvent.binaryOperation, '+');
+  assert.equal(window.ASMTraceFrameTween.assignmentTransferOperator(scalarEvent), '+');
   assert.deepEqual(Array.from(scalarEvent.targets, target => [target.role, target.variableId]), [
     ['target', variableByName('total')],
     ['source-left', variableByName('a')],

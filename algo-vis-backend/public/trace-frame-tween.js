@@ -77,6 +77,20 @@
       + ASSIGN_TIMING.drop + ASSIGN_TIMING.hold + ASSIGN_TIMING.exit;
   }
 
+  function assignmentTransferOperator(event) {
+    if (event?.binaryOperation === '+') return '+';
+    if (event?.compound === true
+      && /\+=/.test(String(event?.expression || event?.operation || ''))) return '+';
+    return '';
+  }
+
+  function formatAssignmentTransferValue(value, operator = '') {
+    const text = String(value ?? '');
+    if (!operator || !text || text.startsWith(operator)) return text;
+    if (operator === '+' && text.startsWith('-')) return `+(${text})`;
+    return `${operator}${text}`;
+  }
+
   function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
   }
@@ -2294,6 +2308,12 @@
     removeAnimationNodes(clone);
     const cloneText = clone.matches?.('text') ? clone : clone.querySelector?.('text');
     if (cloneText && value != null) cloneText.textContent = displayEventValue(value);
+    if (cloneText && options.operatorPrefix) {
+      cloneText.textContent = formatAssignmentTransferValue(
+        cloneText.textContent,
+        options.operatorPrefix
+      );
+    }
 
     const sourceBounds = valueOnly ? elementBoundsInRoot(sourceElement, root) : null;
     const targetBounds = valueOnly ? elementBoundsInRoot(targetElement, root) : null;
@@ -2706,6 +2726,7 @@
       || item.role === 'source-left' || item.role === 'source-right');
     const source = sources[0];
     const binaryAddition = event?.binaryOperation === '+' && sources.length === 2;
+    const transferOperator = assignmentTransferOperator(event);
     if (!target) return null;
     const operand = eventOperand(
       traceDocument, eventFrame, target, event?.payload?.after,
@@ -2821,7 +2842,10 @@
         operand,
         formattedSourceValue,
         item ? previousVisualElement(previousObjects, item.visualKey) : null,
-        { valueOnly: event?.compound === true || binaryAddition }
+        {
+          valueOnly: event?.compound === true || binaryAddition,
+          operatorPrefix: transferOperator
+        }
       )).filter(Boolean);
       if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
@@ -7135,10 +7159,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-231';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-232';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-231', play, cancel, updateEventAvailability,
+    build: 'trace-232', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
@@ -7152,6 +7176,7 @@
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
-    createForwardReplayPlan, prepareForwardValues
+    createForwardReplayPlan, prepareForwardValues,
+    assignmentTransferOperator, formatAssignmentTransferValue
   };
 })();

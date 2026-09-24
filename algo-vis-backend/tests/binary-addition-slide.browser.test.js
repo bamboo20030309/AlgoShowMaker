@@ -144,7 +144,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
         playbackDurationMs: player.getLastPlaybackPlan()?.totalDurationMs
       };
     });
-    assert.equal(result.build, 'trace-230');
+    assert.equal(result.build, 'trace-232');
     assert.deepEqual(result.event?.targets, [
       ['target', 15], ['source-left', 30], ['source-right', 31]
     ]);
@@ -152,7 +152,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     assert.notEqual(result.event?.disabled, true);
     assert.ok(result.playbackDurationMs >= 1000, JSON.stringify(result));
     assert.ok(result.samples.some(sample => (
-      JSON.stringify(sample.transferValues) === JSON.stringify(['0', '15'])
+      JSON.stringify(sample.transferValues) === JSON.stringify(['+0', '+15'])
         && sample.targetValue === '0'
     )), JSON.stringify(result));
     assert.ok(result.samples.every(sample => sample.segmentCount === 0), JSON.stringify(result));
