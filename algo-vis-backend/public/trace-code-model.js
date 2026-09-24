@@ -1,5 +1,7 @@
 (function () {
-  const EXIT_EVENT_TYPES = new Set(['scope-exit', 'visual-exit', 'function-exit', 'call-return']);
+  const EXIT_EVENT_TYPES = new Set([
+    'scope-exit', 'visual-exit', 'function-exit', 'call-return', 'return-complete'
+  ]);
   const NON_CODE_EVENT_TYPES = new Set(['fixed', 'keep', ...EXIT_EVENT_TYPES]);
   const CONTROL_CONTEXT_TYPES = new Set([
     'ForStatement', 'IfStatement', 'WhileStatement', 'DoStatement', 'SwitchStatement'

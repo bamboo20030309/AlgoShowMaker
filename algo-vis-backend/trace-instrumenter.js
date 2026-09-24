@@ -125,7 +125,7 @@ function legacyFrameTextVariants(value) {
 function syntaxNodeEventType(node, source) {
   const name = String(node?.name || '');
   if (name === 'FunctionDefinition') return 'function-enter';
-  if (name === 'ReturnStatement') return 'function-exit';
+  if (name === 'ReturnStatement') return 'return';
   if (/^(?:Declaration|ParameterDeclaration|TypeDefinition|NamespaceDefinition)$/.test(name)
     || /(?:Declarator|Type|Specifier)$/.test(name)) return 'declare';
   if (/^(?:IfStatement|ForStatement|WhileStatement|DoStatement|SwitchStatement|ConditionClause)$/.test(name)) {
@@ -187,9 +187,14 @@ function functionInfo(node, source) {
     || firstDescendant(node, new Set(['FunctionDeclarator']));
   const identifier = firstDescendant(declarator, new Set(['Identifier', 'OperatorName']));
   const body = childrenOf(node).find(child => child.name === 'CompoundStatement');
+  const returnType = declarator
+    ? compactExpression(source.slice(node.from, declarator.from))
+      .replace(/^(?:(?:static|inline|constexpr|consteval|virtual|friend)\s+)+/, '')
+    : '';
   return {
     name: identifier ? source.slice(identifier.from, identifier.to) : 'anonymous',
-    body
+    body,
+    returnType
   };
 }
 
@@ -2403,7 +2408,8 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
 }
 
 const EVENT_CONTROL_TYPES = new Set(['declare', 'scope-exit', 'visual-exit', 'read', 'write',
-  'assign', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'function-enter', 'function-exit']);
+  'assign', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'return',
+  'function-enter', 'function-exit']);
 
 function findEventControlDirectives(source, suppliedAnalysis = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
@@ -4105,9 +4111,38 @@ ${loop}
     }
 
     if (node.name === 'ReturnStatement') {
-      const fn = functionNameAt(node);
-      const returnCapture = manualFrames ? '' : `${captureCall(node, 'return')}\n`;
-      rendered = `{\n::asm_trace::event_function(${analysis.lineAt(node.from)}, ${cppString(signature('function-return', node))}, ${cppString(fn)}, false);\n${returnCapture}${rendered}\n}`;
+      let functionNode = node.parent;
+      while (functionNode && functionNode.name !== 'FunctionDefinition') functionNode = functionNode.parent;
+      const info = functionNode ? functionInfo(functionNode, source) : { name: functionNameAt(node), returnType: '' };
+      const fn = info.name;
+      const returnSignature = signature('return', node);
+      const exitSignature = signature('function-return', node);
+      recordEventSource(returnSignature, node, node.from, node.to, true);
+      recordEventSource(exitSignature, node, node.from, node.to, true);
+      const match = rendered.match(/^\s*return\b([\s\S]*);\s*$/);
+      const expression = match ? match[1].trim() : '';
+      const sourceExpression = source.slice(node.from, node.to)
+        .replace(/^\s*return\b/, '').replace(/;\s*$/, '').trim();
+      const directVariable = analysis.variables.find(variable => (
+        variable.name === sourceExpression
+        && variable.functionName === fn
+        && variable.declarationTo <= node.from
+        && node.from < variable.scopeTo
+      ));
+      const returnKeepsReference = /&\s*$/.test(info.returnType) || /\bdecltype\s*\(\s*auto\s*\)/.test(info.returnType);
+      const moveLocalValue = Boolean(directVariable && !returnKeepsReference);
+      const bracedInitializer = /^\{[\s\S]*\}$/.test(sourceExpression);
+      const invoke = expression
+        ? (bracedInitializer && info.returnType
+          ? `[&]()->${info.returnType}{ return ${expression}; }`
+          : (moveLocalValue && info.returnType
+            ? `[&]()->${info.returnType}{ return std::move(${expression}); }`
+            : `[&]()->decltype(auto){ return (${expression}); }`))
+        : '[&](){ }';
+      const capture = manualFrames
+        ? '[&](){ }'
+        : `[&](){ ${captureCall(node, 'return')} }`;
+      rendered = `return ::asm_trace::event_return_invoke(${analysis.lineAt(node.from)}, ${cppString(returnSignature)}, ${cppString(exitSignature)}, ${cppString(fn)}, ${cppString(compactExpression(sourceExpression))}, ${invoke}, ${capture});`;
     } else if (CHECKPOINT_NODES.has(node.name) && node.parent?.name === 'CompoundStatement') {
       const declarations = node.name === 'Declaration' ? declarationEvents(node) : '';
       const inputInitializations = node.name === 'ExpressionStatement'

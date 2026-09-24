@@ -4858,7 +4858,7 @@
     // Keep them in the formal schedule when scalar values are intentionally not
     // drawn, without relaxing canvas-target checks for ordinary events.
     if (event?.type === 'condition') return true;
-    if (['function-enter', 'call'].includes(event?.type)) {
+    if (['function-enter', 'call', 'return'].includes(event?.type)) {
       return Number.isFinite(Number(event?.source?.from))
         && Number.isFinite(Number(event?.source?.to));
     }
@@ -5079,6 +5079,7 @@
       }
       if (event.type === 'swap' && animation === 'swap') duration = swapDuration;
       if (animation === 'sequence') duration = SEQUENCE_TIMING.duration;
+      if (event.type === 'return' && animation === 'code') duration = 260;
       if (!duration && GENERIC_EVENT_DURATION[animation]) duration = GENERIC_EVENT_DURATION[animation];
       if (!duration) return;
       const preKeepBatchKey = event?.type === 'visual-exit'
@@ -7282,10 +7283,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-236';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-237';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-236', play, cancel, updateEventAvailability,
+    build: 'trace-237', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

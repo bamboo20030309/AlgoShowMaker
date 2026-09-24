@@ -547,6 +547,12 @@ inline std::string recursion_layout_context_json(const char* layout_id) {
     + ",\"recursionRootIndex\":" + std::to_string(frame.root_index);
 }
 
+class VariableScopeExit;
+inline std::vector<VariableScopeExit*>& active_scope_exit_guards() {
+  static std::vector<VariableScopeExit*> guards;
+  return guards;
+}
+
 class VariableScopeExit {
  public:
   template <typename T>
@@ -556,14 +562,24 @@ class VariableScopeExit {
         variable_id_(variable_id ? variable_id : ""), name_(name ? name : ""),
         kind_(kind ? kind : "object"), key_(lifetime_key(variable_id, value)), active_(true) {
     lifetime_ = std::string("lifetime-") + std::to_string(lifetime_counter()++);
+    const auto& activations = function_activation_stack();
+    activation_id_ = activations.empty() ? std::string() : activations.back().activation_id;
     active_lifetimes()[key_].push_back(lifetime_);
+    active_scope_exit_guards().push_back(this);
   }
 
   VariableScopeExit(const VariableScopeExit&) = delete;
   VariableScopeExit& operator=(const VariableScopeExit&) = delete;
 
   ~VariableScopeExit() {
+    emit();
+    auto& guards = active_scope_exit_guards();
+    guards.erase(std::remove(guards.begin(), guards.end(), this), guards.end());
+  }
+
+  void emit() {
     if (!active_) return;
+    active_ = false;
     recorder().add_event("scope-exit", line_, signature_,
       std::string("\"name\":") + ::asm_trace::quoted(name_)
         + ",\"kind\":" + ::asm_trace::quoted(kind_)
@@ -582,6 +598,10 @@ class VariableScopeExit {
     if (values.empty()) active_lifetimes().erase(found);
   }
 
+  bool belongs_to(const std::string& activation_id) const {
+    return activation_id_ == activation_id;
+  }
+
  private:
   std::string target_json_with_lifetime() const {
     return std::string("{\"role\":\"target\",\"variableId\":") + ::asm_trace::quoted(variable_id_)
@@ -596,8 +616,19 @@ class VariableScopeExit {
   std::string kind_;
   std::string key_;
   std::string lifetime_;
+  std::string activation_id_;
   bool active_;
 };
+
+inline void emit_current_function_scope_exits() {
+  const auto& activations = function_activation_stack();
+  if (activations.empty()) return;
+  const std::string activation_id = activations.back().activation_id;
+  auto& guards = active_scope_exit_guards();
+  for (auto it = guards.rbegin(); it != guards.rend(); ++it) {
+    if ((*it)->belongs_to(activation_id)) (*it)->emit();
+  }
+}
 
 inline std::string target_json(const char* role, const char* variable_id,
                                const char* expression, const char* index_expression,
@@ -1021,6 +1052,60 @@ decltype(auto) event_call_invoke(int line, const char* signature,
                                  const char* callee, const char* expression, F&& invoke) {
   CallInvocationScope invocation(line, signature, callee, expression);
   return std::forward<F>(invoke)();
+}
+
+template <typename Result, typename Invoke, typename Capture>
+typename std::enable_if<!std::is_void<Result>::value, Result>::type
+event_return_invoke_result(int line, const char* return_signature,
+                           const char* exit_signature, const char* function_name,
+                           const char* expression, const std::string& return_event_id,
+                           Invoke&& invoke, Capture&& capture) {
+  Result result = std::forward<Invoke>(invoke)();
+  recorder().add_event("return-complete", line, return_signature ? return_signature : "",
+    std::string("\"returnEventId\":") + quoted(return_event_id)
+      + ",\"function\":" + quoted(function_name ? function_name : "")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"value\":" + encode_value(result) + "}");
+  emit_current_function_scope_exits();
+  recorder().add_event("function-exit", line, exit_signature ? exit_signature : "",
+    std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"returnEventId\":" + quoted(return_event_id));
+  std::forward<Capture>(capture)();
+  return std::forward<Result>(result);
+}
+
+template <typename Result, typename Invoke, typename Capture>
+typename std::enable_if<std::is_void<Result>::value, void>::type
+event_return_invoke_result(int line, const char* return_signature,
+                           const char* exit_signature, const char* function_name,
+                           const char* expression, const std::string& return_event_id,
+                           Invoke&& invoke, Capture&& capture) {
+  std::forward<Invoke>(invoke)();
+  recorder().add_event("return-complete", line, return_signature ? return_signature : "",
+    std::string("\"returnEventId\":") + quoted(return_event_id)
+      + ",\"function\":" + quoted(function_name ? function_name : "")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"kind\":\"void\"}");
+  emit_current_function_scope_exits();
+  recorder().add_event("function-exit", line, exit_signature ? exit_signature : "",
+    std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"returnEventId\":" + quoted(return_event_id));
+  std::forward<Capture>(capture)();
+}
+
+template <typename Invoke, typename Capture>
+auto event_return_invoke(int line, const char* return_signature,
+                         const char* exit_signature, const char* function_name,
+                         const char* expression, Invoke&& invoke, Capture&& capture)
+  -> decltype(std::forward<Invoke>(invoke)()) {
+  const std::string return_event_id = recorder().add_event("return", line,
+    return_signature ? return_signature : "",
+    std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"expression\":" + quoted(expression ? expression : ""));
+  typedef decltype(std::forward<Invoke>(invoke)()) Result;
+  return event_return_invoke_result<Result>(line, return_signature, exit_signature,
+    function_name, expression, return_event_id,
+    std::forward<Invoke>(invoke), std::forward<Capture>(capture));
 }
 
 inline void event_function(int line, const char* signature, const char* function_name, bool entering) {

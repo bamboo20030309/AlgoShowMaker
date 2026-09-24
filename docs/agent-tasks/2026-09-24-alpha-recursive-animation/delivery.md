@@ -87,3 +87,27 @@
 - 新 trace：call lifecycle 與 activation linkage 完整建立。
 - 舊 trace：測試移除所有新增欄位與 `call-return` 後重新 normalize，幀數與既有 call events 保留且可正常載入。
 - 本功能沒有新增持久化 Studio/Fabric 欄位；`callLifecycles` 為 normalize 時重建的非 enumerable 資料，不改寫使用者儲存內容與既有事件開關。
+
+## 2026-09-25：return 程式流程事件
+
+- `return` 現在是預設開啟的 code-only 事件：只以 260ms 短反白呈現原始 `return` 敘述，不新增 `@frame`、時間線標籤或畫布物件，並可在 Trace Studio 個別關閉。
+- runtime 依序記錄 `return`、回傳運算式內的 call、內部 `return-complete`、目前 activation 的 `scope-exit`、`function-exit`；因此 `return F(...)` 不會在子呼叫前提早顯示函式已離開。
+- `return-complete` 保存實際回傳值、`returnEventId`、function 與 recursion activation metadata，但屬內部事件，不出現在 Studio、時間線或程式碼片段。
+- `function-exit` 連回同一 `returnEventId`；作用域 guard 在 function-exit 前按逆宣告順序結束，原本 destructor 階段不會重複產生 scope-exit。
+- instrumentation 保留值回傳、reference return、`return;`、只求值一次、區域變數 implicit move 與 `return { ... };` braced initializer 的 C++ 語意。
+- `break`、`continue` 尚未加入；本輪依分階段決策只完成直接影響遞迴回傳的 `return`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：F（runtime return/call 順序）、G（activation 與 scope 生命週期）、I（程式碼事件呈現）、J（播放與 Studio 開關）。
+- 隔離環境：alpha worktree 的 `3197` 測試服務與獨立 headless Edge，未操作使用者分頁。
+- `return-event.integration.test.js`：3/3 通過；覆蓋 recursive return 順序、實際值、activation linkage、260ms code-only schedule、明確關閉設定、reference／void、單次求值、implicit move 與 braced initializer。
+- `function-call-event.integration.test.js`、`code-exit-presentation.test.js`、`event-defaults.test.js`、`function-enter-event.integration.test.js`、`fibonacci-recursion-sample.test.js`、`entrypoints.test.js`：20/20 通過。
+- `fibonacci-recursion-display.browser.test.js`：1/1 通過，確認新增 return 事件後 F(5) 的節點長出、回傳原地更新與瀏覽器播放仍正常。
+- 靜態檢查：修改的 JS 全數通過 `node --check`，`git diff --check` 通過；只有既有 Windows LF/CRLF 提示。
+- 未執行完整 regression、全部 tests 或無關演算法動畫，符合 V2 最小相關驗證要求。
+
+### 舊有物件相容性
+
+- 沒有新增持久化物件欄位；舊 trace 沒有 `return`／`return-complete` 時照原資料載入，不會合成額外事件。
+- 新 trace 的 `return` 預設開啟；已儲存的 `studio.eventSettings.defaultEnabled.return = false` 經實際套用後仍維持關閉，不會被新預設覆蓋。

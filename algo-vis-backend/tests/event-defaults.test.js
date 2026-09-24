@@ -17,10 +17,11 @@ test('initial event animation and timeline defaults match the Event Settings pan
   const enabled = new Set([
     'declare', 'scope-exit', 'visual-exit', 'write', 'assign', 'sequence-operation', 'compare', 'swap'
   ]);
+  const animationEnabled = new Set([...enabled, 'return']);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
   api.definitions.forEach(definition => {
     assert.equal(api.defaultEnabled({ type: definition.type }, document),
-      definition.type === 'fixed' || enabled.has(definition.type),
+      definition.type === 'fixed' || animationEnabled.has(definition.type),
       `${definition.type} animation default`);
     assert.equal(api.showTag(definition.type, document), enabled.has(definition.type),
       `${definition.type} timeline default`);

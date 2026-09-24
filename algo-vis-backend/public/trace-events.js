@@ -18,6 +18,8 @@
     // Paired with a call occurrence so recursive code presentation can retain
     // caller/callee state without exposing a second editable timeline event.
     { type: 'call-return', label: '函式呼叫返回', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
+    { type: 'return', label: '回傳', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
+    { type: 'return-complete', label: '完成回傳', color: '#a86524', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'function-enter', label: '進入函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false },
     { type: 'function-exit', label: '離開函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false }
   ];
@@ -39,6 +41,8 @@
     fixed: 'none',
     call: 'code',
     'call-return': 'none',
+    return: 'code',
+    'return-complete': 'none',
     // Function entry is a code-only event. It highlights the function header
     // in playback order without inventing a canvas target animation.
     'function-enter': 'code',
@@ -598,7 +602,7 @@
       // The function definition is the root control in Trace Studio's event
       // outline. Keep its entry record selectable there even though it stays
       // hidden from the compact bottom timeline by default.
-      if (['function-enter', 'call'].includes(event.type)) return true;
+      if (['function-enter', 'call', 'return'].includes(event.type)) return true;
       // Keep classic for controls editable in the right inspector even when
       // their broad event type is hidden from the compact bottom timeline.
       // Other hidden reads/conditions stay compact instead of flooding it.
