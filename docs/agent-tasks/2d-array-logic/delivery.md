@@ -61,3 +61,4 @@
 - 省略 matrix renderer 已有的 `labels(value,index)`、`row-labels(index)`、`column-labels(index)`、`gridlines(1)` 與 `outerframe(true)`；一般物件改為 `@object ... render matrix`。
 - 游標物件只保留非預設的 `with marker-layout(inner)`，讓 column 指標進入目前 row 水平移動，但不顯示 inner index。
 - `prefix-sum.test.js` 4/4 通過，並新增斷言防止範例重新加入冗餘預設或 inner labels。
+- 建表游標與矩陣索引由 `row`／`column` 統一簡化為 `r`／`c`，包含 C++ 迴圈、`pre[r][c]` preset、style、arrow 與插值公式；再次執行 `prefix-sum.test.js`，4/4 通過。

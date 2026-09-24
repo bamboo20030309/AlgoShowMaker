@@ -47,8 +47,10 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   const code = fs.readFileSync(matrixCodePath, 'utf8');
   assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|frame_draw|start_draw|end_draw|_draw_|@keep/);
   assert.match(code, /vector<vector<int>> num, pre;/);
-  assert.match(code, /pre\[row\]\[column\] = num\[row\]\[column\]/);
-  assert.match(code, /@object pre\[row\]\[column\] render matrix/);
+  assert.match(code, /int r, c;/);
+  assert.match(code, /pre\[r\]\[c\] = num\[r\]\[c\]/);
+  assert.match(code, /@object pre\[r\]\[c\] render matrix/);
+  assert.doesNotMatch(code, /\bint row, column\b|pre\[row\]\[column\]/);
   assert.match(code, /@object pre render matrix\s*$/m);
   assert.match(code, /@object num render matrix\s*$/m);
   assert.doesNotMatch(code, /inner-labels\(/);

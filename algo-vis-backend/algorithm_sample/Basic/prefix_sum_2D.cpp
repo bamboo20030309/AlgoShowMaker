@@ -3,7 +3,7 @@
 using namespace std;
 
 int n, m;
-int row, column;
+int r, c;
 int r1, c1, r2, c2;
 int ans;
 vector<vector<int>> num, pre;
@@ -20,9 +20,9 @@ vector<vector<int>> num, pre;
 // @place num.left at pre.right offset(100,0)
 // @endpreset
 
-// 建表時讓 row 在左側移動，column 進入目前 row 後水平移動；不顯示 inner index。
+// 建表時讓 r 在左側移動，c 進入目前列後水平移動；不顯示 inner index。
 // @preset prefix_sum_2d_cursor
-// @object pre[row][column] render matrix with marker-layout(inner)
+// @object pre[r][c] render matrix with marker-layout(inner)
 // @endpreset
 
 int main() {
@@ -30,14 +30,14 @@ int main() {
     num.assign(n + 1, vector<int>(m + 1, 0));
     pre.assign(n + 1, vector<int>(m + 1, 0));
 
-    for (row = 1; row <= n; row++) {
-        for (column = 1; column <= m; column++) {
-            cin >> num[row][column];
+    for (r = 1; r <= n; r++) {
+        for (c = 1; c <= m; c++) {
+            cin >> num[r][c];
         }
     }
 
-    row = 1;
-    column = 1;
+    r = 1;
+    c = 1;
 
     // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
     // @events animate off
@@ -45,24 +45,24 @@ int main() {
     // @style num[0][0] background AV_grey
     // @text "二維前綴和在第 0 列與第 0 欄補 0，避免建表時另外判斷邊界" at pre.top offset(0,-24)
 
-    for (row = 1; row <= n; row++) {
-        for (column = 1; column <= m; column++) {
-            pre[row][column] = num[row][column]
-                + pre[row - 1][column]
-                + pre[row][column - 1]
-                - pre[row - 1][column - 1];
+    for (r = 1; r <= n; r++) {
+        for (c = 1; c <= m; c++) {
+            pre[r][c] = num[r][c]
+                + pre[r - 1][c]
+                + pre[r][c - 1]
+                - pre[r - 1][c - 1];
 
             // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
-            // @style pre[row][column] highlight
-            // @style pre[row-1][column] background AV_blue
-            // @style pre[row][column-1] background AV_orange
-            // @style pre[row-1][column-1] background AV_red
-            // @style num[row][column] background AV_green
-            // @arrow from pre[row-1][column] to pre[row][column] as "from_up" color AV_blue
-            // @arrow from pre[row][column-1] to pre[row][column] as "from_left" color AV_orange
-            // @arrow from pre[row-1][column-1] to pre[row][column] as "remove_overlap" color AV_red
-            // @arrow from num[row][column] to pre[row][column] as "add_value" color AV_green
-            // @text "pre[${row}][${column}] = ${pre[row-1][column]} + ${pre[row][column-1]} - ${pre[row-1][column-1]} + ${num[row][column]} = ${pre[row][column]}" at pre.top offset(0,-24)
+            // @style pre[r][c] highlight
+            // @style pre[r-1][c] background AV_blue
+            // @style pre[r][c-1] background AV_orange
+            // @style pre[r-1][c-1] background AV_red
+            // @style num[r][c] background AV_green
+            // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
+            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
+            // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
+            // @arrow from num[r][c] to pre[r][c] as "add_value" color AV_green
+            // @text "pre[${r}][${c}] = ${pre[r-1][c]} + ${pre[r][c-1]} - ${pre[r-1][c-1]} + ${num[r][c]} = ${pre[r][c]}" at pre.top offset(0,-24)
         }
     }
 
