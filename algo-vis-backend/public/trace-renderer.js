@@ -4784,9 +4784,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-208';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-211';
   window.ASMTraceRenderers = {
-    build: 'trace-208', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-211', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

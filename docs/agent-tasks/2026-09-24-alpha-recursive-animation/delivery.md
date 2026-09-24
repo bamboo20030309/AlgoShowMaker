@@ -10,29 +10,34 @@
 - 遞迴節點的顯示標籤固定為 `F`；尚未回傳時以 `with display("F(${call})")` 在格內顯示完整呼叫，回傳時移除模板並在原位置顯示數值。
 - 基底呼叫也有明確的回傳狀態，因此 `F(1)` 會更新為 `1`、`F(0)` 會更新為 `0`。
 - 新增 Fibonacci 專項 trace 與瀏覽器測試，確認輸入 `5` 產生 15 個有效呼叫節點、30 幀、唯一根節點、左右順序、3 個 `F(2)` 原地更新及最終答案 `5`。
+- 新增 recursion growth tween：新 activation 的 keep node 會從 active parent 的中心位置，以縮放 `0.72 → 1`、透明度 `0.35 → 1` 移到 layout 終點；父子邊從父端同步延伸。
+- 上一步採對稱行為：移除的新 activation 以 ghost 從 child 位置縮回父節點中心；根節點、找不到父節點與舊 trace 缺少 recursion metadata 時維持既有轉場。
+- 同 activation 的 snapshot replacement 以 activation identity 與 `replacesSnapshotId` 排除，因此 `F(2) → 1` 不會重新長出。
 
 ## 目前可供使用者檢視的行為
 
 - 呼叫樹依實際執行順序逐步長出，父子線與左右兄弟順序正確。
 - 節點統一顯示 `F`，格內先顯示 `F(n)`，得知答案後才切換為回傳數值。
 - 同一 `F_3` 節點會由 `F(2)` 原地更新為 `1`；退回更新前的幀會恢復為 `F(2)`。
+- 新 child 會像從目前父節點長出；按上一步時則縮回同一父節點，樹邊與節點位置同步更新。
 - 最終畫面只有 15 個遞迴節點，不存在額外 `left`、`right`、`result` 或 `value` 物件。
 
 ## 驗證分級與選擇
 
 - 層級：V2。
 - 分類：E（layout／frame）、F（runtime 遞迴資料）、G（生命週期／遞迴 activation）、J（播放與 Studio）。
-- 選擇依據：修改遞迴範例、keep snapshot materialization 與 recursion renderer 的同 activation 替換行為。
-- 執行的測試檔／案例：`tests/fibonacci-recursion-sample.test.js`、`tests/fibonacci-recursion-display.browser.test.js`，以及 `layout-directives.test.js` 的 recursive keep identity 案例。
-- 驗證環境：alpha worktree 的隔離 3111 服務與隔離的 Playwright 瀏覽器，輸入 `5`。
-- 自動測試結果：Fibonacci trace／瀏覽器 2/2、recursive keep identity 1/1 通過，全部 0 fail、0 skipped。
-- 瀏覽器 DOM：同一個 `F(2)` snapshot object 回傳後顯示 `1`，且不再殘留 `F(2)` 文字。
-- 自動播放與 Trace Studio：待使用者以 3101 預覽複核；預期共 30 幀，最終完整呼叫樹為 15 個節點。
+- 選擇依據：修改遞迴範例、keep snapshot materialization、recursion renderer 的同 activation 替換行為，以及 frame tween 的遞迴進退場。
+- 執行的測試檔／案例：`tests/fibonacci-recursion-sample.test.js`、`tests/fibonacci-recursion-display.browser.test.js`、`tests/outerframe-tween.test.js`，以及 `layout-directives.test.js` 的 recursive keep identity 案例。
+- 驗證環境：alpha worktree 的 3101 服務與隔離的 Playwright 瀏覽器，輸入 `5`。
+- 自動測試結果：Fibonacci trace／瀏覽器 2/2、outerframe／growth tween 7/7、recursive keep identity 1/1 通過，全部 0 fail、0 skipped。
+- 瀏覽器 DOM：同一個 `F(2)` snapshot object 回傳後顯示 `1`，且不再殘留 `F(2)` 文字；replacement 中途不含 growth scale。
+- 瀏覽器 tween：正向 1× 驗證父中心起點、縮放／透明度、父子邊延伸與完成定點；反向 2× 驗證 child ghost 縮回父中心並於完成後移除。
+- 自動播放與 Trace Studio：本輪未執行完整 UI 操作；待使用者以 3101 預覽複核。專項瀏覽器已驗證 transition Promise 在 1×／2× 完成後清除暫態 transform／ghost。
 - 畫面：最終根值 `5`，內部節點顯示回傳值，沒有 `left/right/result/value` 額外區塊。
 - 瀏覽器 console：0 error、0 warning。
-- 靜態檢查：相關 6 個 JS 檔皆通過 `node --check`，`git diff --check` 通過；僅有既有 Windows LF/CRLF 提示。
+- 靜態檢查：修改的 JS 通過 `node --check`，入口快取 build 一致性測試與 `git diff --check` 通過；僅有既有 Windows LF/CRLF 提示。
 - 未執行：完整 regression、全部 tests、廣泛排序或其他演算法動畫；本次依規範只做直接相關 V2 驗證。
-- 需要主代理做的 V3 驗證：整合時建議以 Fibonacci `F(5)` 核對 `F(2) → 1`、`F(1) → 1`、`F(0) → 0` 的原地替換；不需擴大到無關演算法。
+- 需要主代理做的 V3 驗證：整合時建議以 Fibonacci `F(5)` 的 UI 下一步／上一步／自動播放與 Trace Studio 縮圖，核對 child 長出／縮回、樹邊端點及 `F(2) → 1` 原地替換；不需擴大到無關演算法。
 
 ## 舊有物件相容性
 

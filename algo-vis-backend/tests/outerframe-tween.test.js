@@ -167,3 +167,63 @@ test('heap cell follows its outerframe origin while sequence width opens to the 
   assert.equal(Number(afterText.getAttribute('x')), 40);
   assert.equal(Number(afterText.getAttribute('font-size')), 16);
 });
+
+test('recursive keep grows from its active parent center and retracts to the same point', () => {
+  const tween = setup().ASMTraceFrameTween;
+  const parent = {
+    id: 'snapshot:parent:1', objectId: 'F', layoutId: 'fib_tree',
+    recursionActivationId: 'call:1'
+  };
+  const child = {
+    id: 'snapshot:child:1', objectId: 'F_1', layoutId: 'fib_tree',
+    recursionActivationId: 'call:2', recursionParentActivationId: 'call:1'
+  };
+  const document = { snapshots: [parent, child] };
+  const parentFrame = { snapshotIds: [parent.id] };
+  const childFrame = { snapshotIds: [parent.id, child.id] };
+  const parentPlacements = new Map([['F', { x: 100, y: 40, width: 80, height: 50 }]]);
+  const childPlacements = new Map([
+    ['F', { x: 70, y: 40, width: 80, height: 50 }],
+    ['F_1', { x: 180, y: 130, width: 60, height: 30 }]
+  ]);
+
+  const forward = tween.recursionGrowthTransitions(
+    document, parentFrame, childFrame, 1, parentPlacements, childPlacements
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(forward.entering.get('F_1').placement)), {
+    x: 110, y: 50, width: 60, height: 30
+  });
+  assert.equal(forward.entering.get('F_1').parentKey, 'F');
+
+  const reverse = tween.recursionGrowthTransitions(
+    document, childFrame, parentFrame, -1, childPlacements, parentPlacements
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(reverse.retracting.get('F_1').placement)), {
+    x: 110, y: 50, width: 60, height: 30
+  });
+});
+
+test('recursive return replacement is not treated as a newly grown node', () => {
+  const tween = setup().ASMTraceFrameTween;
+  const pending = {
+    id: 'snapshot:call:pending', objectId: 'F_1', layoutId: 'fib_tree',
+    recursionActivationId: 'call:2', recursionParentActivationId: 'call:1'
+  };
+  const returned = {
+    ...pending,
+    id: 'snapshot:call:returned',
+    replacesSnapshotId: pending.id
+  };
+  const document = { snapshots: [pending, returned] };
+  const placement = new Map([['F_1', { x: 180, y: 130, width: 60, height: 30 }]]);
+  const transition = tween.recursionGrowthTransitions(
+    document,
+    { snapshotIds: [pending.id] },
+    { snapshotIds: [returned.id] },
+    1,
+    placement,
+    placement
+  );
+  assert.equal(transition.entering.size, 0);
+  assert.equal(transition.retracting.size, 0);
+});

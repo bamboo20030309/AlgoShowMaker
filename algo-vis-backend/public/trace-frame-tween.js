@@ -754,6 +754,107 @@
     });
   }
 
+  function recursionGrowthTransitions(
+    traceDocument, previousFrame, frame, direction = 1,
+    previousPlacements = new Map(), currentPlacements = new Map()
+  ) {
+    const result = { entering: new Map(), retracting: new Map() };
+    if (!previousFrame || !frame) return result;
+    const snapshotsById = new Map((traceDocument?.snapshots || []).map(snapshot => [
+      String(snapshot.id), snapshot
+    ]));
+    const snapshotsFor = candidate => (candidate?.snapshotIds || [])
+      .map(id => snapshotsById.get(String(id)))
+      .filter(Boolean);
+    const previousSnapshots = snapshotsFor(previousFrame);
+    const currentSnapshots = snapshotsFor(frame);
+    const snapshotKey = snapshot => String(snapshot?.objectId || snapshot?.id || '');
+    const activationKey = snapshot => [
+      String(snapshot?.layoutId || ''),
+      String(snapshot?.recursionActivationId || '')
+    ].join('|');
+    const activeByActivation = snapshots => new Map(snapshots
+      .filter(snapshot => snapshot?.layoutId && snapshot?.recursionActivationId)
+      .map(snapshot => [activationKey(snapshot), snapshot]));
+    const centeredPlacement = (parentPlacement, childPlacement) => {
+      if (!parentPlacement || !childPlacement) return null;
+      const parentWidth = Number(parentPlacement.width) || 0;
+      const parentHeight = Number(parentPlacement.height) || 0;
+      const childWidth = Number(childPlacement.width) || 0;
+      const childHeight = Number(childPlacement.height) || 0;
+      return {
+        x: (Number(parentPlacement.x) || 0) + (parentWidth - childWidth) / 2,
+        y: (Number(parentPlacement.y) || 0) + (parentHeight - childHeight) / 2,
+        width: childWidth,
+        height: childHeight
+      };
+    };
+    const recordTransitions = ({
+      source, destination, sourcePlacements, destinationPlacements, target
+    }) => {
+      const sourceIds = new Set(source.map(snapshot => String(snapshot.id)));
+      const sourceActivations = activeByActivation(source);
+      destination.forEach(snapshot => {
+        const layoutId = String(snapshot?.layoutId || '');
+        const activationId = String(snapshot?.recursionActivationId || '');
+        const parentActivationId = String(snapshot?.recursionParentActivationId || '');
+        if (!layoutId || !activationId || !parentActivationId
+          || snapshot.replacesSnapshotId || sourceIds.has(String(snapshot.id))
+          || sourceActivations.has(activationKey(snapshot))) return;
+        const parent = sourceActivations.get(`${layoutId}|${parentActivationId}`);
+        const childKey = snapshotKey(snapshot);
+        const parentKey = snapshotKey(parent);
+        const childPlacement = destinationPlacements?.get?.(childKey);
+        const parentPlacement = sourcePlacements?.get?.(parentKey)
+          || destinationPlacements?.get?.(parentKey);
+        const placement = centeredPlacement(parentPlacement, childPlacement);
+        if (!parent || !childKey || !parentKey || !placement) return;
+        target.set(childKey, {
+          childSnapshot: snapshot,
+          parentSnapshot: parent,
+          parentKey,
+          placement
+        });
+      });
+    };
+    if (Number(direction) >= 0) {
+      recordTransitions({
+        source: previousSnapshots,
+        destination: currentSnapshots,
+        sourcePlacements: previousPlacements,
+        destinationPlacements: currentPlacements,
+        target: result.entering
+      });
+    } else {
+      recordTransitions({
+        source: currentSnapshots,
+        destination: previousSnapshots,
+        sourcePlacements: currentPlacements,
+        destinationPlacements: previousPlacements,
+        target: result.retracting
+      });
+    }
+    return result;
+  }
+
+  function applyRecursionGrowthEdges(root, progressByChildKey) {
+    if (!root || !progressByChildKey?.size) return;
+    root.querySelectorAll('.asm-trace-layout-edge[data-trace-arrow-to-key]')
+      .forEach(edge => {
+        const progress = progressByChildKey.get(String(
+          edge.getAttribute('data-trace-arrow-to-key') || ''
+        ));
+        if (!Number.isFinite(progress) || edge.tagName?.toLowerCase() !== 'line') return;
+        const x1 = Number(edge.getAttribute('x1'));
+        const y1 = Number(edge.getAttribute('y1'));
+        const x2 = Number(edge.getAttribute('x2'));
+        const y2 = Number(edge.getAttribute('y2'));
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return;
+        edge.setAttribute('x2', String(x1 + (x2 - x1) * clamp01(progress)));
+        edge.setAttribute('y2', String(y1 + (y2 - y1) * clamp01(progress)));
+      });
+  }
+
   function keepSnapshotSourceKeys(snapshot) {
     if (!snapshot) return [];
     if (snapshot.kind !== 'frame') {
@@ -5831,6 +5932,10 @@
     const keepSnapshotIds = new Set(keepSnapshots.map(snapshot => snapshot.id));
     const keepTransitionKeys = new Set(keepSnapshots.map(snapshot => snapshot.key));
     const keepHandoffSources = keepSnapshotHandoffSources(keepSnapshots, previousPlacements);
+    const recursionGrowth = recursionGrowthTransitions(
+      traceDocument, options.previousFrame, frame, options.direction,
+      previousPlacements, currentPlacements
+    );
     const keepTransitionDuration = keepTransitionKeys.size ? APPEAR_TIMING.duration : 0;
     const belongsToEnteringKeep = (element, topKey = '') => {
       const host = element?.matches?.('[data-trace-snapshot]')
@@ -6191,6 +6296,8 @@
       const keepSnapshotMember = belongsToEnteringKeep(element, topKey);
       const retainedSnapshot = retainedSnapshotVisual(element);
       const keepTransition = keepSnapshotMember && key === topKey;
+      const recursionGrowthEntry = key === topKey
+        ? recursionGrowth.entering.get(topKey) || null : null;
       const keepHandoffSourceKey = keepTransition ? keepHandoffSources.get(topKey) || '' : '';
       const sourceKey = previousAliasKey(
         keepHandoffSourceKey || requestedSourceKey,
@@ -6222,11 +6329,12 @@
           topElement,
           candidatePreviousVisual
         );
-      const previous = redeclaredMarkerKeys.has(key) || activationChanged || generationChanged
+      const previous = recursionGrowthEntry?.placement
+        || (redeclaredMarkerKeys.has(key) || activationChanged || generationChanged
         ? null
         : (useMarkerContinuation
           ? markerContinuation.placement
-          : previousPlacements?.get(sourceKey));
+          : previousPlacements?.get(sourceKey)));
       const mode = previous && plan.requestedMode === 'auto'
         ? 'move'
         : plan.mode || (previous ? 'move' : 'lift');
@@ -6260,6 +6368,7 @@
       entries.push({
         key, sourceKey, element, current, previous, plan, mode, topKey,
         keepTransition, keepSnapshotMember, retainedSnapshot,
+        recursionGrowth: recursionGrowthEntry,
         keepHandoff: Boolean(keepHandoffSourceKey && previous),
         sceneBoundaryEntrance: generationChanged || sceneActivationChanged,
         lifecycleKind: keepTransition ? 'keep-snapshot' : visualLifecycleKind(element),
@@ -6601,6 +6710,8 @@
         scopeExitSlot: null,
         lifecycleKind: visualLifecycleKind(clone),
         retainedByEnteringKeep,
+        recursionRetraction: recursionGrowth.retracting.get(key) || null,
+        previousPlacement: previousPlacements?.get?.(key) || null,
         heapSplitExit,
         backgroundHandoff: heapSplitExit
           ? heapSplitBackgroundHandoff(clone, currentElements, previousObjects) : null
@@ -6753,10 +6864,12 @@
         const adjustedY = (adjustment.absolute === true
           ? (Number(adjustment.y) || 0) + (entry.appearing ? dy : 0)
           : dy + (Number(adjustment.y) || 0)) + exitOffsetY;
+        const recursionScale = entry.recursionGrowth
+          ? 0.72 + 0.28 * localEased : 1;
         motionStates.set(entry.key, {
           x: adjustedX,
           y: adjustedY,
-          scale: Number(adjustment.scale) || 1,
+          scale: (Number(adjustment.scale) || 1) * recursionScale,
           localEased,
           appearProgress,
           appearEased,
@@ -6817,7 +6930,12 @@
         if (entry.markerPointPath && markerArrowState) {
           entry.markerPointPath.setAttribute('d', markerArrowPath(entry, markerArrowState));
         }
-        if (entry.appearing) {
+        if (entry.recursionGrowth) {
+          entry.target.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
+          entry.attachedVisuals.forEach(attachment => {
+            attachment.wrapper.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
+          });
+        } else if (entry.appearing) {
           entry.target.setAttribute('opacity', String(state.appearEased));
           if (state.appearProgress >= 1) delete entry.target.dataset.traceAppearing;
           entry.attachedVisuals.forEach(attachment => {
@@ -6937,15 +7055,43 @@
       // Endpoints use the SVG positions produced by this tick, not a second
       // independent tween which would lag behind the moving objects.
       window.ASMTraceRenderers?.refreshArrows?.();
+      applyRecursionGrowthEdges(root, new Map(entries
+        .filter(entry => entry.recursionGrowth)
+        .map(entry => [entry.key, motionStates.get(entry.key)?.localEased ?? 1])));
 
       ghosts.forEach(({
         wrapper: ghost, scopeExitSlot, lifecycleKind, retainedByEnteringKeep,
         heapSplitExit, exitReflow,
-        assignmentSchedule, assignmentPeerSchedule, backgroundHandoff
+        assignmentSchedule, assignmentPeerSchedule, backgroundHandoff,
+        recursionRetraction, previousPlacement
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
           ghost.removeAttribute('transform');
+          return;
+        }
+        if (recursionRetraction && previousPlacement) {
+          const retractProgress = easeOutCubic(clamp01(
+            Math.max(0, elapsed - frameTransitionStart) / duration
+          ));
+          const fromCenter = {
+            x: (Number(previousPlacement.x) || 0) + (Number(previousPlacement.width) || 0) / 2,
+            y: (Number(previousPlacement.y) || 0) + (Number(previousPlacement.height) || 0) / 2
+          };
+          const to = recursionRetraction.placement;
+          const toCenter = {
+            x: (Number(to.x) || 0) + (Number(to.width) || 0) / 2,
+            y: (Number(to.y) || 0) + (Number(to.height) || 0) / 2
+          };
+          const centerX = fromCenter.x + (toCenter.x - fromCenter.x) * retractProgress;
+          const centerY = fromCenter.y + (toCenter.y - fromCenter.y) * retractProgress;
+          const scale = 1 - 0.28 * retractProgress;
+          ghost.setAttribute('opacity', String(1 - 0.65 * retractProgress));
+          ghost.setAttribute('transform', [
+            `translate(${centerX}, ${centerY})`,
+            `scale(${scale})`,
+            `translate(${-fromCenter.x}, ${-fromCenter.y})`
+          ].join(' '));
           return;
         }
         if (scopeExitSlot) {
@@ -7131,10 +7277,11 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-230';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-234';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-230', play, cancel, updateEventAvailability,
+    build: 'trace-234', play, cancel, updateEventAvailability,
+    recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,
