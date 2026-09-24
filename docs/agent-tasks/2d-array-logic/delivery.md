@@ -62,3 +62,13 @@
 - 游標物件只保留非預設的 `with marker-layout(inner)`，讓 column 指標進入目前 row 水平移動，但不顯示 inner index。
 - `prefix-sum.test.js` 4/4 通過，並新增斷言防止範例重新加入冗餘預設或 inner labels。
 - 建表游標與矩陣索引由 `row`／`column` 統一簡化為 `r`／`c`，包含 C++ 迴圈、`pre[r][c]` preset、style、arrow 與插值公式；再次執行 `prefix-sum.test.js`，4/4 通過。
+
+## 2026-09-25 二維前綴和四步教學
+
+- 每個 `pre[r][c]` 恢復為四個實際計算與畫面：先放入上方前綴和（藍）、加上左方前綴和（黃）、扣掉左上重疊（紅）、加上目前 `num[r][c]`（綠）。
+- 每一步在 `num` 上累積呈現完整區域；最後一步的藍色右欄、黃色下列、紅色重疊與綠色目前格共同覆蓋 `pre[r][c]` 所代表的完整前綴矩形。
+- 公式文字改用新版 JSON 分段 `@text`，各項以相同的 `background` 顏色對應資料區塊。
+- 前半列（範例的前兩列）文字放在右側 `num` 上方並以 `@camera focus num zoom(2.0)` 聚焦；後半列文字回到 `pre` 上方。
+- 修正 compiled `vector<vector<T>>` 的單幀資料雖為 sequence、變數型別仍為 matrix 時的指標辨識；`pre[r][c]` 現在會在真實畫面顯示 r／c 指標，並將 `trace-renderer.js` cache 版本升為 `trace-210`。
+- V2 最小驗證使用隔離服務 `3197`：`prefix-sum.test.js`、`matrix-renderer.test.js`、`matrix-renderer.browser.test.js`、`prefix-sum-2d.browser.test.js`，11/11 通過、0 skip。真實瀏覽器確認四區格色、四段文字底色、9 格完整覆蓋、前半列 `num` 鏡頭、後半列文字位置、無 inner labels 與 r／c 指標。
+- 未執行完整 regression；本次依指令、trace 與 SVG matrix renderer 的 V2 範圍採專項驗證。

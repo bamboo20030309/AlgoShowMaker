@@ -47,22 +47,106 @@ int main() {
 
     for (r = 1; r <= n; r++) {
         for (c = 1; c <= m; c++) {
-            pre[r][c] = num[r][c]
-                + pre[r - 1][c]
-                + pre[r][c - 1]
-                - pre[r - 1][c - 1];
+            // Step 1：先放入上方前綴和。
+            pre[r][c] = pre[r - 1][c];
 
             // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
             // @style pre[r][c] highlight
             // @style pre[r-1][c] background AV_blue
-            // @style pre[r][c-1] background AV_orange
+            // @for rr in [0:r-1]
+            // @for cc in [0:c]
+            // @style num[rr][cc] background AV_blue
+            // @endfor
+            // @endfor
+            // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_up_num at num.top offset(0,-24) when r <= n / 2
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_up_pre at pre.top offset(175,-24) when r > n / 2
+            // @camera focus num zoom(2.0) when r <= n / 2
+
+            // Step 2：加上左方前綴和。
+            pre[r][c] += pre[r][c - 1];
+
+            // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
+            // @style pre[r][c] highlight
+            // @style pre[r-1][c] background AV_blue
+            // @style pre[r][c-1] background AV_yellow
+            // @for rr in [0:r-1]
+            // @for cc in [0:c]
+            // @style num[rr][cc] background AV_blue
+            // @endfor
+            // @endfor
+            // @for rr in [0:r]
+            // @for cc in [0:c-1]
+            // @style num[rr][cc] background AV_yellow
+            // @endfor
+            // @endfor
+            // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
+            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_left_num at num.top offset(0,-24) when r <= n / 2
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_left_pre at pre.top offset(175,-24) when r > n / 2
+            // @camera focus num zoom(2.0) when r <= n / 2
+
+            // Step 3：扣掉被重複計算的左上角。
+            pre[r][c] -= pre[r - 1][c - 1];
+
+            // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
+            // @style pre[r][c] highlight
+            // @style pre[r-1][c] background AV_blue
+            // @style pre[r][c-1] background AV_yellow
+            // @style pre[r-1][c-1] background AV_red
+            // @for rr in [0:r-1]
+            // @for cc in [0:c]
+            // @style num[rr][cc] background AV_blue
+            // @endfor
+            // @endfor
+            // @for rr in [0:r]
+            // @for cc in [0:c-1]
+            // @style num[rr][cc] background AV_yellow
+            // @endfor
+            // @endfor
+            // @for rr in [0:r-1]
+            // @for cc in [0:c-1]
+            // @style num[rr][cc] background AV_red
+            // @endfor
+            // @endfor
+            // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
+            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
+            // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}","background":"AV_red"},{"text":" + num[${r}][${c}]"}] as build_overlap_num at num.top offset(0,-24) when r <= n / 2
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}","background":"AV_red"},{"text":" + num[${r}][${c}]"}] as build_overlap_pre at pre.top offset(175,-24) when r > n / 2
+            // @camera focus num zoom(2.0) when r <= n / 2
+
+            // Step 4：最後加上目前資料格。
+            pre[r][c] += num[r][c];
+
+            // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
+            // @style pre[r][c] highlight
+            // @style pre[r-1][c] background AV_blue
+            // @style pre[r][c-1] background AV_yellow
             // @style pre[r-1][c-1] background AV_red
             // @style num[r][c] background AV_green
-            // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
-            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
-            // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
+            // @for rr in [0:r-1]
+            // @for cc in [0:c]
+            // @style num[rr][cc] background AV_blue
+            // @endfor
+            // @endfor
+            // @for rr in [0:r]
+            // @for cc in [0:c-1]
+            // @style num[rr][cc] background AV_yellow
+            // @endfor
+            // @endfor
+            // @for rr in [0:r-1]
+            // @for cc in [0:c-1]
+            // @style num[rr][cc] background AV_red
+            // @endfor
+            // @endfor
             // @arrow from num[r][c] to pre[r][c] as "add_value" color AV_green
-            // @text "pre[${r}][${c}] = ${pre[r-1][c]} + ${pre[r][c-1]} - ${pre[r-1][c-1]} + ${num[r][c]} = ${pre[r][c]}" at pre.top offset(0,-24)
+            // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
+            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
+            // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"${pre[r-1][c-1]}","background":"AV_red"},{"text":" + "},{"text":"${num[r][c]}","background":"AV_green"},{"text":" = ${pre[r][c]}"}] as build_value_num at num.top offset(0,-24) when r <= n / 2
+            // @text [{"text":"pre[${r}][${c}] = "},{"text":"${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"${pre[r][c-1]}","background":"AV_yellow"},{"text":" - "},{"text":"${pre[r-1][c-1]}","background":"AV_red"},{"text":" + "},{"text":"${num[r][c]}","background":"AV_green"},{"text":" = ${pre[r][c]}"}] as build_value_pre at pre.top offset(175,-24) when r > n / 2
+            // @camera focus num zoom(2.0) when r <= n / 2
         }
     }
 

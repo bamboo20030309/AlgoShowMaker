@@ -3935,7 +3935,8 @@
     bindings.forEach((binding, index) => {
       const targetEntry = frame.state?.[binding.targetVariableId];
       const targetItems = Array.isArray(targetEntry?.data?.items) ? targetEntry.data.items : [];
-      const targetKind = targetEntry?.data?.kind;
+      const targetKind = document.variables?.[binding.targetVariableId]?.kind
+        || targetEntry?.data?.kind;
       const indexExpression = binding.indexExpression || binding.sourceName;
       const relativeIndexOffset = relativeMarkerOffset(indexExpression, binding.sourceName);
       const rawIndexValue = window.ASMTraceRules.resolveExpression(document, frame, indexExpression);
