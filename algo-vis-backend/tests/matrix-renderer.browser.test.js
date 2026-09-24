@@ -71,13 +71,15 @@ test('matrix renderer works in the real browser SVG surface', { timeout: 60000 }
         highlightHeight: document.querySelector('[data-trace-attached-to="grid#1,0"]')?.getAttribute('height'),
         outerframe: Boolean(document.querySelector('.outerframe-bg'))
       };
-      const rowArrowHead = document.querySelector(
-        '.trace-variable-marker-arrow-head[data-trace-marker-direction="right"]'
-      );
-      originalResult.rowArrowHead = {
-        points: rowArrowHead?.getAttribute('points'),
-        fill: rowArrowHead?.getAttribute('fill'),
-        direction: rowArrowHead?.getAttribute('data-trace-marker-direction')
+      const rowArrowPath = [...document.querySelectorAll('.trace-variable-marker-point path')]
+        .find(node => node.getAttribute('d')?.startsWith('M -22 0'));
+      originalResult.rowArrow = {
+        d: rowArrowPath?.getAttribute('d'),
+        fill: rowArrowPath?.getAttribute('fill'),
+        stroke: rowArrowPath?.getAttribute('stroke'),
+        strokeWidth: rowArrowPath?.getAttribute('stroke-width'),
+        linecap: rowArrowPath?.getAttribute('stroke-linecap'),
+        linejoin: rowArrowPath?.getAttribute('stroke-linejoin')
       };
       const nextFrame = structuredClone(frame);
       nextFrame.id = 'matrix-browser-next';
@@ -203,7 +205,10 @@ int main() {
       innerFill: '#fff', innerHeight: '12',
       rowStroke: '#333', rowFill: 'rgba(111, 161, 255, 0.7)',
       highlightStroke: 'red', highlightHeight: '52', outerframe: false,
-      rowArrowHead: { points: '-8,-5 -2,0 -8,5', fill: '#333', direction: 'right' },
+      rowArrow: {
+        d: 'M -22 0 L -2 0 M -8 -5 L -2 0 L -8 5',
+        fill: 'none', stroke: '#333', strokeWidth: '1', linecap: 'square', linejoin: 'miter'
+      },
       reverseHighlightHeights: ['52'],
       forwardMutationValues: ['99', '8'], compiledReverseHighlightHeights: ['52'],
       compiledReverseHighlightSamples: ['52'],

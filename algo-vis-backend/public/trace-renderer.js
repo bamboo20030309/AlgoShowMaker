@@ -3710,14 +3710,6 @@
             svg('path', {
               d: 'M -22 0 L -2 0 M -8 -5 L -2 0 L -8 5', fill: 'none',
               stroke: borderColor, 'stroke-width': 1, 'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
-            }),
-            svg('polygon', {
-              class: 'trace-variable-marker-arrow-head',
-              points: '-8,-5 -2,0 -8,5',
-              fill: borderColor,
-              stroke: borderColor,
-              'stroke-width': 1,
-              'data-trace-marker-direction': 'right'
             })
           );
           motion.append(
@@ -5190,9 +5182,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-212';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-213';
   window.ASMTraceRenderers = {
-    build: 'trace-212', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-213', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
