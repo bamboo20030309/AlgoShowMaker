@@ -78,7 +78,7 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /"text":\s*"num\[\$\{r\}\]\[\$\{c\}\]"/);
   assert.doesNotMatch(code, /"text":\s*"\$\{(?:pre|num)\[/);
   assert.doesNotMatch(code, /"text":\s*"pre\[[^"]+\]\s*=\s*\$\{pre\[/);
-  assert.match(code, /@camera focus num zoom\(1\.7\) when r <= n \/ 2 && \(r > 1 \|\| c > 1\)/);
+  assert.match(code, /@camera focus num zoom\(1\.7\) offset\(0,-60\) when r <= n \/ 2 && \(r > 1 \|\| c > 1\)/);
   assert.match(code, /\/\* @asm-view[\s\S]*"autoFixedEnabled": true/);
   assert.match(code, /@style num\[r1:r2\]\[c1:c2\] background AV_green/);
 

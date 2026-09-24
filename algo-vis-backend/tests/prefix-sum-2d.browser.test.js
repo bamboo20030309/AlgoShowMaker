@@ -96,6 +96,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
         firstTextVisible: Boolean(document.querySelector('[data-trace-text-id="build_value_pre"]')),
         firstTextHidden: Boolean(document.querySelector('[data-trace-text-id="build_value_num"]')),
         firstCameraZoom: firstCamera?.zoom,
+        firstCameraOffsetY: firstCamera?.offsetY,
         firstCameraTarget: trace.variables[firstCamera?.target?.variableId]?.name,
         initialFramesUseFullRange: initialFrames.every(frame => (
           frame && !window.ASMTraceCamera.ruleForFrame(trace, frame)?.target
@@ -125,6 +126,7 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
       firstTextVisible: true,
       firstTextHidden: false,
       firstCameraZoom: 1.7,
+      firstCameraOffsetY: -60,
       firstCameraTarget: 'num',
       initialFramesUseFullRange: true,
       initialSpeech: ['當前格等於上方', '加上左方', '減掉左上方', '加上自己'],

@@ -67,7 +67,7 @@ int main() {
             //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
             //   {"text": " + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_up_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
+            // @camera focus num zoom(1.7) offset(0,-60) when r <= n / 2 && (r > 1 || c > 1)
 
             // Step 2：加上左方前綴和。
             pre[r][c] += pre[r][c - 1];
@@ -94,7 +94,7 @@ int main() {
             //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
             //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_left_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
+            // @camera focus num zoom(1.7) offset(0,-60) when r <= n / 2 && (r > 1 || c > 1)
 
             // Step 3：扣掉被重複計算的左上角。
             pre[r][c] -= pre[r - 1][c - 1];
@@ -128,7 +128,7 @@ int main() {
             //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
             //   {"text": " + num[${r}][${c}]"}
             // ] as build_overlap_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
+            // @camera focus num zoom(1.7) offset(0,-60) when r <= n / 2 && (r > 1 || c > 1)
 
             // Step 4：最後加上目前資料格。
             pre[r][c] += num[r][c];
@@ -168,7 +168,7 @@ int main() {
             //   {"text": "num[${r}][${c}]", "background": "AV_green"},
             //   {"text": " = ${pre[r][c]}"}
             // ] as build_value_pre at pre.top offset(175,-24) when r > n / 2
-            // @camera focus num zoom(1.7) when r <= n / 2 && (r > 1 || c > 1)
+            // @camera focus num zoom(1.7) offset(0,-60) when r <= n / 2 && (r > 1 || c > 1)
         }
     }
 
