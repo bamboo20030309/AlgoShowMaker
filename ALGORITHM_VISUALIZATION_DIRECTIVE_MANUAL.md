@@ -760,6 +760,18 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 - `arr[0:i]`：左右皆包含，包含 `0` 到 `i`。
 - `arr[:i]`：省略起點時從 `0` 開始。
 
+二維陣列可在 row 與 column 各自使用單一索引或包含右端點的範圍：
+
+```cpp
+// @style grid[r][c] highlight AV_red
+// @style grid[r1:r2][c] background AV_blue
+// @style grid[r][c1:c2] background AV_yellow
+// @style grid[r1:r2][c1:c2] background AV_green
+// @style grid[:r][0:c] focus
+```
+
+`grid[r1:r2][c1:c2]` 表示 row `r1..r2`、column `c1..c2` 的矩形，兩個維度都包含右端點；省略起點時從 `0` 開始。ragged matrix 只套用到實際存在的資料格，不會補出缺少的 column。二維範圍目前使用 `]` 的包含端點形式，不支援在單一維度以 `)` 表示排除右端點。
+
 ### 一次選取多段
 
 逗號可以混合單格與範圍：

@@ -184,6 +184,7 @@ int main() {
 ```cpp
 // @style arr[i,i*2:i*2+1] highlight red
 // @style arr[1:i-1,n:n] focus
+// @style matrix[0:r][0:c] background AV_blue
 // @style prime[0:iteration.last(j)] focus when i * value <= n
 // @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
 ```

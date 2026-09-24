@@ -1698,19 +1698,48 @@ const TRACE_STYLE_LOCALS = new Set(['value', 'index']);
 
 function parseStyleTarget(raw, line) {
   const source = String(raw || '').trim();
+  const parseIndexOrRange = (part, endInclusive, label = '範圍') => {
+    const range = splitTopLevel(part, ':');
+    if (!range.valid || range.parts.length > 2
+      || range.parts.some((value, index) => index > 0 && !value)) {
+      throw new Error(`第 ${line} 行的 @style ${label}無效：${part}`);
+    }
+    if (range.parts.length === 2) {
+      const startExpression = range.parts[0].trim() || '0';
+      const endExpression = range.parts[1].trim();
+      for (const expression of [startExpression, endExpression]) {
+        if (!parseFrameExpression(expression).valid) {
+          throw new Error(`第 ${line} 行的 @style ${label}運算式無效：${expression}`);
+        }
+      }
+      return { type: 'range', startExpression, endExpression, endInclusive };
+    }
+    const indexExpression = part.trim();
+    if (!indexExpression || !parseFrameExpression(indexExpression).valid) {
+      throw new Error(`第 ${line} 行的 @style 索引運算式無效：${indexExpression}`);
+    }
+    return { type: 'index', indexExpression };
+  };
   const matrixCell = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\[\s*(.*?)\s*\]$/);
   if (matrixCell) {
-    const expressions = [matrixCell[2].trim(), matrixCell[3].trim()];
-    const invalid = expressions.find(expression => !expression || !parseFrameExpression(expression).valid);
-    if (invalid !== undefined) {
-      throw new Error(`第 ${line} 行的 @style 二維索引運算式無效：${invalid}`);
+    const rowSelector = parseIndexOrRange(matrixCell[2].trim(), true, '二維 row 範圍');
+    const columnSelector = parseIndexOrRange(matrixCell[3].trim(), true, '二維 column 範圍');
+    if (rowSelector.type === 'index' && columnSelector.type === 'index') {
+      return {
+        targetName: matrixCell[1],
+        selector: {
+          type: 'matrix-cell',
+          rowExpression: rowSelector.indexExpression,
+          columnExpression: columnSelector.indexExpression
+        }
+      };
     }
     return {
       targetName: matrixCell[1],
       selector: {
-        type: 'matrix-cell',
-        rowExpression: expressions[0],
-        columnExpression: expressions[1]
+        type: 'matrix-region',
+        rowSelector,
+        columnSelector
       }
     };
   }
@@ -1720,32 +1749,7 @@ function parseStyleTarget(raw, line) {
     if (!split.valid || split.parts.some(part => !part)) {
       throw new Error(`第 ${line} 行的 @style 索引分段無效：${indexed[2].trim()}`);
     }
-    const segments = split.parts.map(part => {
-      const range = splitTopLevel(part, ':');
-      if (!range.valid || range.parts.length > 2 || range.parts.some((value, index) => index > 0 && !value)) {
-        throw new Error(`第 ${line} 行的 @style 範圍無效：${part}`);
-      }
-      if (range.parts.length === 2) {
-        const startExpression = range.parts[0].trim() || '0';
-        const endExpression = range.parts[1].trim();
-        for (const expression of [startExpression, endExpression]) {
-          if (!parseFrameExpression(expression).valid) {
-            throw new Error(`第 ${line} 行的 @style 範圍運算式無效：${expression}`);
-          }
-        }
-        return {
-          type: 'range',
-          startExpression,
-          endExpression,
-          endInclusive: indexed[3] === ']'
-        };
-      }
-      const indexExpression = part.trim();
-      if (!parseFrameExpression(indexExpression).valid) {
-        throw new Error(`第 ${line} 行的 @style 索引運算式無效：${indexExpression}`);
-      }
-      return { type: 'index', indexExpression };
-    });
+    const segments = split.parts.map(part => parseIndexOrRange(part, indexed[3] === ']'));
     return {
       targetName: indexed[1],
       selector: segments.length === 1
@@ -1870,11 +1874,19 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     const selectors = style.selector.type === 'segments'
       ? style.selector.segments || []
       : [style.selector];
+    const dimensionExpressions = selector => selector?.type === 'range'
+      ? [selector.startExpression, selector.endExpression]
+      : selector?.type === 'index' ? [selector.indexExpression] : [];
     const selectorExpressions = selectors.flatMap(selector => selector?.type === 'range'
       ? [selector.startExpression, selector.endExpression]
       : selector?.type === 'index' ? [selector.indexExpression]
         : selector?.type === 'matrix-cell'
-          ? [selector.rowExpression, selector.columnExpression] : []);
+          ? [selector.rowExpression, selector.columnExpression]
+          : selector?.type === 'matrix-region'
+            ? [
+              ...dimensionExpressions(selector.rowSelector),
+              ...dimensionExpressions(selector.columnSelector)
+            ] : []);
     selectorExpressions.forEach(expression => {
       const parsed = parseFrameExpression(expression);
       (parsed.identifiers || []).forEach(name => ensureCaptured(name));

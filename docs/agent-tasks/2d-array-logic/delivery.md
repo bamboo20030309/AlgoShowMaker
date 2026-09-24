@@ -72,3 +72,12 @@
 - 修正 compiled `vector<vector<T>>` 的單幀資料雖為 sequence、變數型別仍為 matrix 時的指標辨識；`pre[r][c]` 現在會在真實畫面顯示 r／c 指標，並將 `trace-renderer.js` cache 版本升為 `trace-210`。
 - V2 最小驗證使用隔離服務 `3197`：`prefix-sum.test.js`、`matrix-renderer.test.js`、`matrix-renderer.browser.test.js`、`prefix-sum-2d.browser.test.js`，11/11 通過、0 skip。真實瀏覽器確認四區格色、四段文字底色、9 格完整覆蓋、前半列 `num` 鏡頭、後半列文字位置、無 inner labels 與 r／c 指標。
 - 未執行完整 regression；本次依指令、trace 與 SVG matrix renderer 的 V2 範圍採專項驗證。
+
+## 2026-09-25 二維 `@style` range
+
+- 新增 `grid[r1:r2][c1:c2]` 矩形選取，row 與 column 都採包含右端點語意；同時支援 `grid[r1:r2][c]`、`grid[r][c1:c2]` 與省略起點的 `grid[:r][0:c]`。
+- parser 新增 `matrix-region` selector，捕捉兩個維度的端點依賴；trace rules 逐列依實際 row 長度展開，因此 ragged matrix 不會生成不存在的資料格。
+- 二維前綴和範例移除建表與查詢區域的巢狀 `@for`，改用 `num[0:r-1][0:c]`、`num[0:r][0:c-1]`、`num[0:r-1][0:c-1]` 與 `num[r1:r2][c1:c2]`。
+- 更新指令手冊、README 與指令提示範例；`trace-rules.js` cache 版本升為 `trace-24`，directive assist 升為 `directive-22`。
+- V2 隔離服務 `3197`：matrix parser／compile／ragged range、二維前綴和 trace、真實瀏覽器四區呈現、既有 matrix SVG 與指令提示共 15/15 通過、0 skip；靜態 JS 與 `git diff --check` 通過。
+- 未執行完整 regression；本次採指令／style／matrix renderer 的最小相關驗證。

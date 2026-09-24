@@ -686,11 +686,37 @@
       const items = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
+        const dimensionIndices = (dimension, count) => {
+          if (dimension?.type === 'index') {
+            const value = resolveExpression(document, frame, dimension.indexExpression, style.drawLocals);
+            const index = value == null ? NaN : Number(value);
+            return Number.isInteger(index) && index >= 0 && index < count ? [index] : [];
+          }
+          if (dimension?.type === 'range') {
+            const startValue = resolveExpression(document, frame, dimension.startExpression, style.drawLocals);
+            const endValue = resolveExpression(document, frame, dimension.endExpression, style.drawLocals);
+            if (startValue == null || endValue == null) return [];
+            const start = Number(startValue);
+            const end = Number(endValue);
+            if (!Number.isInteger(start) || !Number.isInteger(end)) return [];
+            const stop = end + (dimension.endInclusive ? 1 : 0);
+            return Array.from({ length: count }, (_, index) => index)
+              .filter(index => index >= start && index < stop);
+          }
+          return [];
+        };
         if (selector?.type === 'matrix-cell') {
           const row = Number(resolveExpression(document, frame, selector.rowExpression, style.drawLocals));
           const column = Number(resolveExpression(document, frame, selector.columnExpression, style.drawLocals));
           if (!Number.isInteger(row) || !Number.isInteger(column)) return [];
           return [`${row},${column}`];
+        }
+        if (selector?.type === 'matrix-region') {
+          const rows = dimensionIndices(selector.rowSelector, items.length);
+          return rows.flatMap(row => {
+            const columns = dimensionIndices(selector.columnSelector, items[row]?.items?.length || 0);
+            return columns.map(column => `${row},${column}`);
+          });
         }
         if (selector?.type === 'index') {
           const value = resolveExpression(document, frame, selector.indexExpression, style.drawLocals);

@@ -60,15 +60,16 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.doesNotMatch(code, /labels\(value,index\)|row-labels\(index\)|column-labels\(index\)|gridlines\(1\)|outerframe\(true\)/);
   assert.match(code, /marker-layout\(inner\)/);
   assert.match(code, /@place num\.left at pre\.right offset\(100,0\)/);
-  assert.match(code, /@for rr in \[0:r-1\]/);
-  assert.match(code, /@for cc in \[0:c\]/);
+  assert.match(code, /@style num\[0:r-1\]\[0:c\] background AV_blue/);
+  assert.match(code, /@style num\[0:r\]\[0:c-1\] background AV_yellow/);
+  assert.match(code, /@style num\[0:r-1\]\[0:c-1\] background AV_red/);
+  assert.doesNotMatch(code, /@for (?:rr|cc)\b/);
   assert.match(code, /"background":"AV_blue"/);
   assert.match(code, /"background":"AV_yellow"/);
   assert.match(code, /"background":"AV_red"/);
   assert.match(code, /"background":"AV_green"/);
   assert.match(code, /@camera focus num zoom\(2\.0\) when r <= n \/ 2/);
-  assert.match(code, /@for r in \[r1:r2\]/);
-  assert.match(code, /@style num\[r\]\[c\] background AV_green/);
+  assert.match(code, /@style num\[r1:r2\]\[c1:c2\] background AV_green/);
 
   const frames = findFrameDirectives(code);
   assert.equal(frames.length, 7, 'each prefix cell has four authored build steps');
@@ -89,7 +90,11 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
     ['AV_blue', 'AV_yellow', 'AV_red'],
     ['AV_blue', 'AV_yellow', 'AV_red', 'AV_green']
   ]);
-  assert.deepEqual(frames[6].styles[0].drawLoops.map(loop => loop.variable), ['r', 'c']);
+  assert.deepEqual(frames[6].styles[0].selector, {
+    type: 'matrix-region',
+    rowSelector: { type: 'range', startExpression: 'r1', endExpression: 'r2', endInclusive: true },
+    columnSelector: { type: 'range', startExpression: 'c1', endExpression: 'c2', endInclusive: true }
+  });
 });
 
 test('two-dimensional prefix sum sample builds the matrix and answers both queries', async () => {

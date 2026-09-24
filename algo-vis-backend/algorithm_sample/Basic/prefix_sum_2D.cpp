@@ -53,11 +53,7 @@ int main() {
             // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
             // @style pre[r][c] highlight
             // @style pre[r-1][c] background AV_blue
-            // @for rr in [0:r-1]
-            // @for cc in [0:c]
-            // @style num[rr][cc] background AV_blue
-            // @endfor
-            // @endfor
+            // @style num[0:r-1][0:c] background AV_blue
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_up_num at num.top offset(0,-24) when r <= n / 2
             // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + pre[${r}][${c-1}] - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_up_pre at pre.top offset(175,-24) when r > n / 2
@@ -70,16 +66,8 @@ int main() {
             // @style pre[r][c] highlight
             // @style pre[r-1][c] background AV_blue
             // @style pre[r][c-1] background AV_yellow
-            // @for rr in [0:r-1]
-            // @for cc in [0:c]
-            // @style num[rr][cc] background AV_blue
-            // @endfor
-            // @endfor
-            // @for rr in [0:r]
-            // @for cc in [0:c-1]
-            // @style num[rr][cc] background AV_yellow
-            // @endfor
-            // @endfor
+            // @style num[0:r-1][0:c] background AV_blue
+            // @style num[0:r][0:c-1] background AV_yellow
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
             // @text [{"text":"pre[${r}][${c}] = "},{"text":"pre[${r-1}][${c}] = ${pre[r-1][c]}","background":"AV_blue"},{"text":" + "},{"text":"pre[${r}][${c-1}] = ${pre[r][c-1]}","background":"AV_yellow"},{"text":" - pre[${r-1}][${c-1}] + num[${r}][${c}]"}] as build_left_num at num.top offset(0,-24) when r <= n / 2
@@ -94,21 +82,9 @@ int main() {
             // @style pre[r-1][c] background AV_blue
             // @style pre[r][c-1] background AV_yellow
             // @style pre[r-1][c-1] background AV_red
-            // @for rr in [0:r-1]
-            // @for cc in [0:c]
-            // @style num[rr][cc] background AV_blue
-            // @endfor
-            // @endfor
-            // @for rr in [0:r]
-            // @for cc in [0:c-1]
-            // @style num[rr][cc] background AV_yellow
-            // @endfor
-            // @endfor
-            // @for rr in [0:r-1]
-            // @for cc in [0:c-1]
-            // @style num[rr][cc] background AV_red
-            // @endfor
-            // @endfor
+            // @style num[0:r-1][0:c] background AV_blue
+            // @style num[0:r][0:c-1] background AV_yellow
+            // @style num[0:r-1][0:c-1] background AV_red
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
@@ -125,21 +101,9 @@ int main() {
             // @style pre[r][c-1] background AV_yellow
             // @style pre[r-1][c-1] background AV_red
             // @style num[r][c] background AV_green
-            // @for rr in [0:r-1]
-            // @for cc in [0:c]
-            // @style num[rr][cc] background AV_blue
-            // @endfor
-            // @endfor
-            // @for rr in [0:r]
-            // @for cc in [0:c-1]
-            // @style num[rr][cc] background AV_yellow
-            // @endfor
-            // @endfor
-            // @for rr in [0:r-1]
-            // @for cc in [0:c-1]
-            // @style num[rr][cc] background AV_red
-            // @endfor
-            // @endfor
+            // @style num[0:r-1][0:c] background AV_blue
+            // @style num[0:r][0:c-1] background AV_yellow
+            // @style num[0:r-1][0:c-1] background AV_red
             // @arrow from num[r][c] to pre[r][c] as "add_value" color AV_green
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
             // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
@@ -166,11 +130,7 @@ int main() {
             + pre[r1 - 1][c1 - 1];
 
         // @frame use prefix_sum_2d_view
-        // @for r in [r1:r2]
-        // @for c in [c1:c2]
-        // @style num[r][c] background AV_green
-        // @endfor
-        // @endfor
+        // @style num[r1:r2][c1:c2] background AV_green
         // @style pre[r2][c2] background AV_green
         // @style pre[r1-1][c2] background AV_red
         // @style pre[r2][c1-1] background AV_red

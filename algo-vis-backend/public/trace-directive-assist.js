@@ -49,6 +49,7 @@
       '// @style arr[i] highlight,point',
       '// @style arr[i] highlight,point AV_green when value>0',
       '// @style arr[0:i] background AV_green when value < key',
+      '// @style grid[0:r][0:c] background AV_blue',
       '// @style arr[i,i*2:i*2+1] highlight AV_red\n// @style arr[1:n] focus when n < Size',
       '// @style prime[0:iteration.last(j)] focus when i * value <= n'
     ] },

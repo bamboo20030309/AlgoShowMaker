@@ -46,6 +46,54 @@ int main() {
   });
 });
 
+test('matrix style ranges select inclusive row and column regions', async () => {
+  const source = `
+#include <vector>
+using namespace std;
+int main() {
+  vector<vector<int>> grid = {{1, 2, 3}, {4, 5}, {6, 7, 8, 9}};
+  int r = 2, c = 2;
+  // @frame grid
+  // @style grid[0:r-1][0:c] background AV_blue
+  // @style grid[r][0:c-1] highlight AV_red
+  // @style grid[:r][c] point AV_green
+}`;
+  const [frame] = findFrameDirectives(source);
+  assert.deepEqual(frame.styles.map(style => style.selector), [
+    {
+      type: 'matrix-region',
+      rowSelector: { type: 'range', startExpression: '0', endExpression: 'r-1', endInclusive: true },
+      columnSelector: { type: 'range', startExpression: '0', endExpression: 'c', endInclusive: true }
+    },
+    {
+      type: 'matrix-region',
+      rowSelector: { type: 'index', indexExpression: 'r' },
+      columnSelector: { type: 'range', startExpression: '0', endExpression: 'c-1', endInclusive: true }
+    },
+    {
+      type: 'matrix-region',
+      rowSelector: { type: 'range', startExpression: '0', endExpression: 'r', endInclusive: true },
+      columnSelector: { type: 'index', indexExpression: 'c' }
+    }
+  ]);
+  assert.throws(() => findFrameDirectives(source.replace('[0:r-1][0:c]', '[0:r:1][0:c]')),
+    /二維 row 範圍無效/);
+  assert.throws(() => findFrameDirectives(source.replace('[0:r-1][0:c]', '[0:][0:c]')),
+    /二維 row 範圍無效/);
+
+  const { trace, window } = await compile(source);
+  const gridId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'grid');
+  const highlights = window.ASMTraceRules.evaluate(trace, trace.frames[0])[gridId];
+  for (const key of ['0,0', '0,1', '0,2', '1,0', '1,1']) {
+    assert.equal(highlights[key].styleTypes.background, 'rgba(144, 202, 249, 0.6)', key);
+  }
+  assert.equal(highlights['1,2'], undefined, 'ragged rows do not create missing cells');
+  assert.equal(highlights['2,0'].styleTypes.highlight, 'rgba(239, 154, 154, 0.6)');
+  assert.equal(highlights['2,1'].styleTypes.highlight, 'rgba(239, 154, 154, 0.6)');
+  assert.equal(highlights['0,2'].styleTypes.point, 'rgba(165, 214, 167, 0.6)');
+  assert.equal(highlights['2,2'].styleTypes.point, 'rgba(165, 214, 167, 0.6)');
+});
+
 test('compiled vector and fixed matrices resolve custom label arrays per frame', async () => {
   const { trace, window } = await compile(`
 #include <vector>
