@@ -946,6 +946,12 @@ test('code jumps actually move the expanded page to the next focus line', () => 
   const sameLayoutStart = transformY(sameLayoutPage);
   frames.splice(0).forEach(callback => callback());
   assert.notEqual(transformY(sameLayoutPage), sameLayoutStart);
+
+  plans.thirdSameFocus = { sourceCode: 'test', layoutKey: 'L11,L12,L13', focusLine: 11,
+    fragments: [fragment('second', 11, 13, 11)] };
+  const thirdSameFocus = { id: 'thirdSameFocus', events: [] };
+  assert.equal(presenter.transitionDelay(trace, thirdSameFocus), 0,
+    'a layout cleanup on the same focused recursion line must not stall canvas motion');
   dom.window.close();
 });
 

@@ -2850,16 +2850,27 @@
     (document.layouts || []).filter(layout => (
       layout?.type === 'recursion' && layout.showEdges !== false
     )).forEach(layout => {
-      const sourceNodes = [...elements.entries()].map(([objectKey, element]) => ({
-        id: element?.dataset?.traceLayoutNode || '',
-        parentId: element?.dataset?.traceLayoutParent || '',
-        preferredVariableId: element?.dataset?.traceLayoutPreferredVariable || '',
-        siblingIndex: Number(element?.dataset?.traceLayoutSiblingIndex) || 0,
-        rootIndex: Number(element?.dataset?.traceLayoutRootIndex) || 0,
-        objectKey,
-        element
-      })).filter(node => node.id
-        && String(node.element?.dataset?.traceLayoutId || '') === String(layout.id || ''));
+      const sourceNodesById = new Map();
+      [...elements.entries()].forEach(([fallbackKey, element]) => {
+        const id = element?.dataset?.traceLayoutNode || '';
+        if (!id || String(element?.dataset?.traceLayoutId || '') !== String(layout.id || '')) return;
+        // A same-activation @keep handoff temporarily exposes the retained SVG
+        // through both its canonical snapshot key and a live-variable alias.
+        // Build layout edges from the canonical DOM identity exactly once so
+        // the alias disappearing on the next frame cannot rebind/jump edges.
+        const objectKey = String(element?.dataset?.traceObjectKey || fallbackKey || '');
+        if (!objectKey || sourceNodesById.has(id)) return;
+        sourceNodesById.set(id, {
+          id,
+          parentId: element?.dataset?.traceLayoutParent || '',
+          preferredVariableId: element?.dataset?.traceLayoutPreferredVariable || '',
+          siblingIndex: Number(element?.dataset?.traceLayoutSiblingIndex) || 0,
+          rootIndex: Number(element?.dataset?.traceLayoutRootIndex) || 0,
+          objectKey,
+          element
+        });
+      });
+      const sourceNodes = [...sourceNodesById.values()];
       const byId = new Map(sourceNodes.map(node => [node.id, node]));
       const models = [];
       recursionLayoutPreorder(sourceNodes).forEach(node => {
@@ -2887,7 +2898,7 @@
             : direction === 'right-left' ? ['left', 'right']
               : ['bottom', 'top'];
         models.push({
-          id: `${layout.id}:${node.parentId}:${node.id}`,
+          id: `${layout.id}:${parentNode.objectKey}:${node.objectKey}`,
           source: 'layout',
           className: 'asm-trace-layout-edge',
           from: { objectKey: parentNode.objectKey, anchor: anchors[0] },
@@ -4898,9 +4909,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-215';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-216';
   window.ASMTraceRenderers = {
-    build: 'trace-215', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-216', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

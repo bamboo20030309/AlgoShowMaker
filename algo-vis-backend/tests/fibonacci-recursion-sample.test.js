@@ -19,10 +19,11 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|TreeLayout|\/\/draw\{|frame_draw|tree\.paint/);
   assert.match(code, /@layout recursion as "fib_tree"/);
   assert.doesNotMatch(code, /string\s+call|@frame\s+(?:left|right|result)|@frame\s+left,right,result/);
-  assert.match(code, /@frame value in fib_tree/);
-  assert.match(code, /@frame value in fib_tree with display\("F\(\$\{call\}\)"\)/);
+  assert.match(code, /int F\(int n\)/);
+  assert.match(code, /@frame n in fib_tree with display\("F\(\$\{call\}\)"\)/);
+  assert.match(code, /@frame sum in fib_tree/);
   assert.match(code, /@let call = n/);
-  assert.match(code, /@keep value as "F" in fib_tree/);
+  assert.match(code, /@keep (?:n|sum) as "F" in fib_tree/);
 
   const { trace } = await compile(code, input);
   assert.equal(trace.layouts.length, 1);
@@ -72,7 +73,7 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.equal(returnedTwos.length, 3, 'each completed F(2) node is updated from 2 to 1');
   const returnFrameLine = code.split(/\r?\n/)
     .map((line, index) => ({ line, number: index + 1 }))
-    .filter(item => item.line.includes('@frame value in fib_tree'))
+    .filter(item => item.line.includes('@frame sum in fib_tree'))
     .at(-1).number;
   returnedTwos.forEach(snapshot => {
     const createdFrame = trace.frames.find(frame => frame.id === snapshot.createdFrameId);
