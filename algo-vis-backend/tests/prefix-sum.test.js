@@ -61,11 +61,11 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /marker-layout\(inner\)/);
   assert.match(code, /@place num\.left at pre\.right offset\(100,0\)/);
   assert.match(code, /@style num\[0:r-1\]\[0:c\] background AV_blue/);
-  assert.match(code, /@style num\[0:r\]\[0:c-1\] background AV_yellow/);
+  assert.match(code, /@style num\[0:r\]\[0:c-1\] background AV_orange/);
   assert.match(code, /@style num\[0:r-1\]\[0:c-1\] background AV_red/);
   assert.doesNotMatch(code, /@for (?:rr|cc)\b/);
   assert.match(code, /"background":\s*"AV_blue"/);
-  assert.match(code, /"background":\s*"AV_yellow"/);
+  assert.match(code, /"background":\s*"AV_orange"/);
   assert.match(code, /"background":\s*"AV_red"/);
   assert.match(code, /"background":\s*"AV_green"/);
   assert.match(code, /@camera focus num zoom\(2\.0\) when r <= n \/ 2/);
@@ -86,9 +86,9 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
     .filter(Boolean))]);
   assert.deepEqual(buildColors, [
     ['AV_blue'],
-    ['AV_blue', 'AV_yellow'],
-    ['AV_blue', 'AV_yellow', 'AV_red'],
-    ['AV_blue', 'AV_yellow', 'AV_red', 'AV_green']
+    ['AV_blue', 'AV_orange'],
+    ['AV_blue', 'AV_orange', 'AV_red'],
+    ['AV_blue', 'AV_orange', 'AV_red', 'AV_green']
   ]);
   assert.deepEqual(frames[6].styles[0].selector, {
     type: 'matrix-region',
@@ -122,7 +122,7 @@ test('two-dimensional prefix sum sample builds the matrix and answers both queri
   )), [3, 10, 9, 16]);
   const buildStyles = window.ASMTraceRules.evaluate(trace, buildSteps[3]);
   assert.equal(buildStyles[byName.num]['1,2'].styleTypes.background, 'rgba(144, 202, 249, 0.6)');
-  assert.equal(buildStyles[byName.num]['2,1'].styleTypes.background, 'rgba(252, 255, 64, 0.46)');
+  assert.equal(buildStyles[byName.num]['2,1'].styleTypes.background, 'rgba(255, 183, 77, 0.65)');
   assert.equal(buildStyles[byName.num]['1,1'].styleTypes.background, 'rgba(239, 154, 154, 0.6)');
   assert.equal(buildStyles[byName.num]['2,2'].styleTypes.background, 'rgba(165, 214, 167, 0.6)');
   assert.ok(Array.from({ length: 3 }, (_, row) => row).every(row => (

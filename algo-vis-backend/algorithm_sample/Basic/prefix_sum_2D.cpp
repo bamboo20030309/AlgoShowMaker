@@ -73,23 +73,23 @@ int main() {
             // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
             // @style pre[r][c] highlight
             // @style pre[r-1][c] background AV_blue
-            // @style pre[r][c-1] background AV_yellow
+            // @style pre[r][c-1] background AV_orange
             // @style num[0:r-1][0:c] background AV_blue
-            // @style num[0:r][0:c-1] background AV_yellow
+            // @style num[0:r][0:c-1] background AV_orange
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
-            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
+            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
             //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
             //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_left_num at num.top offset(0,-24) when r <= n / 2
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
             //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
             //   {"text": " - pre[${r-1}][${c-1}] + num[${r}][${c}]"}
             // ] as build_left_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(2.0) when r <= n / 2
@@ -100,19 +100,19 @@ int main() {
             // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
             // @style pre[r][c] highlight
             // @style pre[r-1][c] background AV_blue
-            // @style pre[r][c-1] background AV_yellow
+            // @style pre[r][c-1] background AV_orange
             // @style pre[r-1][c-1] background AV_red
             // @style num[0:r-1][0:c] background AV_blue
-            // @style num[0:r][0:c-1] background AV_yellow
+            // @style num[0:r][0:c-1] background AV_orange
             // @style num[0:r-1][0:c-1] background AV_red
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
-            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
+            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
             //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
             //   {"text": " - "},
             //   {"text": "pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}", "background": "AV_red"},
             //   {"text": " + num[${r}][${c}]"}
@@ -121,7 +121,7 @@ int main() {
             //   {"text": "pre[${r}][${c}] = "},
             //   {"text": "pre[${r-1}][${c}] = ${pre[r-1][c]}", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": "pre[${r}][${c-1}] = ${pre[r][c-1]}", "background": "AV_orange"},
             //   {"text": " - "},
             //   {"text": "pre[${r-1}][${c-1}] = ${pre[r-1][c-1]}", "background": "AV_red"},
             //   {"text": " + num[${r}][${c}]"}
@@ -134,21 +134,21 @@ int main() {
             // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
             // @style pre[r][c] highlight
             // @style pre[r-1][c] background AV_blue
-            // @style pre[r][c-1] background AV_yellow
+            // @style pre[r][c-1] background AV_orange
             // @style pre[r-1][c-1] background AV_red
             // @style num[r][c] background AV_green
             // @style num[0:r-1][0:c] background AV_blue
-            // @style num[0:r][0:c-1] background AV_yellow
+            // @style num[0:r][0:c-1] background AV_orange
             // @style num[0:r-1][0:c-1] background AV_red
             // @arrow from num[r][c] to pre[r][c] as "add_value" color AV_green
             // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
-            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_yellow
+            // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
             // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
             // @text [
             //   {"text": "pre[${r}][${c}] = "},
             //   {"text": "${pre[r-1][c]}", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": "${pre[r][c-1]}", "background": "AV_orange"},
             //   {"text": " - "},
             //   {"text": "${pre[r-1][c-1]}", "background": "AV_red"},
             //   {"text": " + "},
@@ -159,7 +159,7 @@ int main() {
             //   {"text": "pre[${r}][${c}] = "},
             //   {"text": "${pre[r-1][c]}", "background": "AV_blue"},
             //   {"text": " + "},
-            //   {"text": "${pre[r][c-1]}", "background": "AV_yellow"},
+            //   {"text": "${pre[r][c-1]}", "background": "AV_orange"},
             //   {"text": " - "},
             //   {"text": "${pre[r-1][c-1]}", "background": "AV_red"},
             //   {"text": " + "},

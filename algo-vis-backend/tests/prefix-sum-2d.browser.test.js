@@ -87,14 +87,14 @@ test('two-dimensional prefix sum renders four colored build steps', { timeout: 6
     assert.deepEqual(result, {
       fills: {
         blue: 'rgba(144, 202, 249, 0.6)',
-        yellow: 'rgba(252, 255, 64, 0.46)',
+        yellow: 'rgba(255, 183, 77, 0.65)',
         red: 'rgba(239, 154, 154, 0.6)',
         green: 'rgba(165, 214, 167, 0.6)'
       },
       coloredPrefixCellCount: 9,
       textBackgrounds: [
         'rgba(144, 202, 249, 0.6)',
-        'rgba(252, 255, 64, 0.46)',
+        'rgba(255, 183, 77, 0.65)',
         'rgba(239, 154, 154, 0.6)',
         'rgba(165, 214, 167, 0.6)'
       ],
