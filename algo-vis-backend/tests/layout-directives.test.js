@@ -319,6 +319,27 @@ test('@keep in replaces its live @frame node without shifting the array outerfra
     { x: keepOuterframe.x, y: keepOuterframe.y },
     { x: liveOuterframe.x, y: liveOuterframe.y }
   );
+
+  const sameFrame = {
+    ...liveFrame,
+    id: 'frame-live-and-keep',
+    snapshotIds: [snapshot.id]
+  };
+  document.frames.push(sameFrame);
+  await renderer.renderFrame(document, sameFrame, keepFrame, {
+    animatePositions: false, animateEvents: false
+  });
+  const visibleObjects = [...window.document.querySelectorAll(
+    '#asm-trace-root > .asm-trace-object'
+  )];
+  assert.equal(visibleObjects.length, 1,
+    'a live recursion value and its active keep snapshot share one visible node');
+  assert.equal(visibleObjects[0].dataset.traceObjectKey, 'partition');
+  assert.deepEqual(
+    renderer.currentPlacement('arr-id', false),
+    renderer.currentPlacement('partition', false),
+    'the live variable key remains an alias for text and event bindings'
+  );
 });
 
 test('recursive keep snapshots retain runtime parent-child layout identities', async () => {

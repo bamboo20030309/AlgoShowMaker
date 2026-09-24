@@ -11,42 +11,37 @@ using namespace std;
 // @layout fib_tree degree 2
 
 int fibonacci(int n) {
-    string call = "F(" + to_string(n) + ")";
+    int value = n;
 
     // 先保存目前呼叫，讓後續兩個遞迴呼叫接在它的下方。
-    // @frame call in fib_tree
-    // @text "進入 ${call}" at call.bottom
-    // @keep last as "call" in fib_tree
+    // 節點下方的 F 與格內的 n 合起來表示 F(n)。
+    // @keep value as "F" in fib_tree
+    // @frame value in fib_tree
+    // @let call = n
+    // @text "進入 F(${call})" at value.bottom
 
     if (n <= 1) {
-        int result = n;
-
-        // @frame result at canvas.top-left offset(120,100)
-        // @text "${call} 命中基底條件，回傳 ${result}" at result.bottom
-        return result;
+        // 基底節點的初始值就是回傳值，不需要再建立另一個畫面物件。
+        return value;
     }
 
     int left = fibonacci(n - 1);
     int right = fibonacci(n - 2);
-    int result = left + right;
+    value = left + right;
 
-    // @frame left,right,result at canvas.top-left offset(120,100)
-    // @text "${call} = ${left} + ${right} = ${result}" at result.bottom
-    return result;
+    // 不另外畫 left、right 或 result；直接更新目前 activation 的節點。
+    // @keep value as "F" in fib_tree
+    // @frame value in fib_tree
+    // @let call = n
+    // @text "F(${call}) 回傳 ${value}" at value.bottom
+    return value;
 }
 
 int main() {
     int n;
     cin >> n;
 
-    // @frame n
-    // @text "用遞迴計算費氏數列 F(${n})" at n.bottom
-
     int result = fibonacci(n);
-
-    // @frame result at canvas.top-left offset(120,100)
-    // @text "F(${n}) 的答案是 ${result}" at result.bottom
-
     cout << result << '\n';
     return 0;
 }

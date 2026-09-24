@@ -205,6 +205,8 @@ int main() {
 
 `@frame ... in quick_tree` 會先把尚未 keep 的目前 `arr` 綁到這次遞迴 activation 的節點位置；隨後的 `@keep ... in quick_tree` 會在相同位置接手。未另外設定時採 `compact`、`top-down`、置中、兄弟間距 40px、層級間距 100px、二分支，以及與 `AV.hpp` 樹排版一致的黑色 2px 父子箭頭。預設箭頭由父節點 `bottom` 指向子節點實際 outerframe 的 `top`。每條設定都必須明確寫出排版 ID，例如 `// @layout quick_tree mode inorder`，避免設定誤套到其他排版。
 
+同一 recursion activation 再次 `@keep ... in quick_tree` 會原地更新既有節點並保留位置與連線。要讓更新在該幀立即呈現，可先寫 `@keep`、再寫 `@frame ... in quick_tree`；live 物件會和更新後的快照共用節點，不會多畫一份。例如 Fibonacci 可用 `@let call = n` 顯示呼叫參數，並在 return 幀直接把節點格內的 `2` 更新為 `1`。
+
 同一個 `@frame` 顯示多個物件時，只有第一個主要物件會成為 recursion layout 節點。例如 `// @frame arr[i],pivot with range(low,high) in quick_tree` 由 `arr` 代表該節點，`i` 是附著在陣列上的指標，`pivot` 是獨立物件。可在下一行寫 `// @place pivot at arr.right offset(16,0)`，把 `pivot` 左側貼到 `arr` 右側；若要明確指定來源錨點可寫 `// @place pivot.left at arr.right offset(16,0)`。
 
 完整語法、條件、定位、renderer 選項、冒泡／插入／快速／堆積排序案例與常見錯誤，請閱讀 [演算法視覺化指令使用手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。

@@ -10,7 +10,8 @@
 
 - 更新 `algorithm_sample/Backtracking/fibonacci.cpp`。
 - 新增直接相關的小型編譯／trace 測試。
-- 不修改遞迴 renderer、排程器或一般播放邏輯。
+- 讓同一 recursion activation 再次 `@keep` 時原地替換舊節點，保留節點 identity、位置與父子關係。
+- 讓同幀 live `@frame` 與更新後的 keep 節點共用一個畫面物件，避免多畫 `value`。
 
 ## 驗證分級
 

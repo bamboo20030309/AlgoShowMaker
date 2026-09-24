@@ -543,6 +543,23 @@ void quick_sort(vector<int>& arr, int low, int high) {
 相同 `as` 名稱仍使用
 `partition`、`partition_1`、`partition_2` 的穩定命名規則。
 
+同一個具名排版、同一個 recursion activation 再次執行 `@keep` 時，會原地替換該 activation
+目前有效的快照，而不是新增第二個節點。新的快照沿用 canvas object ID、樹位置與父子關係；`as`
+指定的文字仍作為顯示標籤，因此內部唯一 ID 的 `_1`、`_2` 後綴不會出現在節點標籤上。
+若要讓更新值在該幀立即顯示，將 `@keep` 放在 `@frame` 前面：
+
+```cpp
+value = left + right;
+// @keep value as "F" in fib_tree
+// @frame value in fib_tree
+// @let call = n
+// @text "F(${call}) 回傳 ${value}" at value.bottom
+return value;
+```
+
+此時 live `value` 與更新後的 keep 快照共用同一個畫面節點；例如 `F(2)` 的格內值會在原位置
+由 `2` 更新為 `1`，不會在畫布角落多出另一個 `value`。
+
 ### 預設設定
 
 只寫宣告而沒有其他設定時，等同於：
@@ -1856,6 +1873,7 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 
 | 日期 | 基準 | 內容 |
 | --- | --- | --- |
+| 2026/09/24 | 工作樹 | 同一 recursion activation 的後續 `@keep` 會原地替換既有節點；補充 `@keep` 置於 `@frame` 前方可在同一幀更新回傳值，且不重複繪製 live 物件。 |
 | 2026/09/16 | `AV_V4.7` | 整理多行物件、preset、camera、arrow、iteration 摘要與 `.asmdeck` 使用說明；補充文字物件大小與片段格式的分工，以及同幀預覽保留選取的操作規則。 |
 | 2026/09/14 | 工作樹 | 新增 `@place` 同幀物件定位；多物件 recursion frame 僅由第一個主要物件建立節點，次要物件可用來源／目標錨點獨立貼附。 |
 | 2026/09/13 | 工作樹 | `@frame ... in` 可將 keep 前的 live 物件綁定到目前遞迴節點；父子箭頭改用實際 outerframe 錨點並對齊 `AV.hpp` 的黑色 2px 樣式。 |

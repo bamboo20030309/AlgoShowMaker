@@ -2593,6 +2593,21 @@
         x: targetAnchor.x + (Number(binding.offsetX) || 0),
         y: targetAnchor.y + (Number(binding.offsetY) || 0)
       };
+      const latestByActivation = new Map();
+      snapshots.forEach(snapshot => {
+        if (snapshot.recursionActivationId) {
+          latestByActivation.set(String(snapshot.recursionActivationId), snapshot);
+        }
+      });
+      const activeParentSnapshot = snapshot => {
+        const ancestors = Array.isArray(snapshot?.recursionAncestorActivationIds)
+          ? [...snapshot.recursionAncestorActivationIds].reverse()
+          : [];
+        const candidates = [snapshot?.recursionParentActivationId, ...ancestors]
+          .map(value => String(value || ''))
+          .filter(value => value && value !== String(snapshot?.recursionActivationId || ''));
+        return candidates.map(id => latestByActivation.get(id)).find(Boolean) || null;
+      };
       const sourceNodes = snapshots.map(snapshot => {
         const objectKey = snapshotObjectKey(snapshot);
         const element = elements.get(objectKey);
@@ -2605,7 +2620,7 @@
           objectKey,
           snapshot,
           preferredVariableId,
-          parentId: snapshot.layoutNode?.parentSnapshotId || '',
+          parentId: activeParentSnapshot(snapshot)?.id || '',
           siblingIndex: snapshot.layoutNode?.siblingIndex,
           rootIndex: snapshot.layoutNode?.rootIndex,
           // A live @frame node and the @keep node that replaces it must use
@@ -2620,14 +2635,22 @@
           )
         };
       }).filter(node => node.objectKey && node.box && elements.has(node.objectKey));
+      let liveReplacement = null;
       if (liveLayout) {
         const activationId = String(frame.source.recursionActivationId || '');
-        const latestByActivation = new Map();
-        snapshots.forEach(snapshot => {
-          if (snapshot.recursionActivationId) latestByActivation.set(snapshot.recursionActivationId, snapshot);
-        });
         const sameActivation = latestByActivation.get(activationId);
-        if (!sameActivation) {
+        if (sameActivation) {
+          const liveObjectKey = objectKeyForVariable(frame, frame.source.primaryVariableId);
+          const retainedObjectKey = snapshotObjectKey(sameActivation);
+          const liveElement = elements.get(liveObjectKey);
+          const retainedElement = elements.get(retainedObjectKey);
+          if (liveObjectKey && retainedObjectKey && liveObjectKey !== retainedObjectKey && retainedElement) {
+            liveElement?.remove();
+            elements.delete(liveObjectKey);
+            placements.delete(liveObjectKey);
+            liveReplacement = { liveObjectKey, retainedObjectKey, retainedElement };
+          }
+        } else {
           const ancestors = Array.isArray(frame.source.recursionAncestorActivationIds)
             ? [...frame.source.recursionAncestorActivationIds].reverse()
             : [];
@@ -2684,6 +2707,13 @@
           shiftPlacementTree(element, dx, dy, placements, elements);
         }
       });
+      if (liveReplacement) {
+        const retainedPlacement = placements.get(liveReplacement.retainedObjectKey);
+        elements.set(liveReplacement.liveObjectKey, liveReplacement.retainedElement);
+        if (retainedPlacement) {
+          placements.set(liveReplacement.liveObjectKey, { ...retainedPlacement });
+        }
+      }
     });
   }
 
