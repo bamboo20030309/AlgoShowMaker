@@ -4,7 +4,7 @@ const { spawn } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const { chromium } = require('playwright');
 
-test('same-ID JSON import and undo/redo refresh LaTeX without reload', { timeout: 90000 }, async () => {
+test('LaTeX refreshes after import, history, and opening an initially hidden slide', { timeout: 90000 }, async () => {
   let server, browser;
   let base = process.env.ASM_TEST_BASE_URL;
   try {
@@ -66,6 +66,54 @@ test('same-ID JSON import and undo/redo refresh LaTeX without reload', { timeout
     await page.keyboard.press('Control+Shift+z');
     await page.waitForFunction(() => document.querySelector('.latex-content')?.dataset.latexSource === 'EDITED');
     assert.ok((await page.locator('[data-widget-id="latex-widget"]').innerText()).includes('EDITED'));
+
+    const formula = String.raw`\mathrm{sum}(L,R)=P[R]-P[L-1]=39-14=25`;
+    const hiddenFormulaPayload = {
+      format: 'AlgoShowMaker.slides', version: 'AV_V4.3', deck: {
+        groups: [
+          { id: 'cover-group', slides: [{
+            id: 'cover-slide', canvas: { version: '5.3.0', objects: [] },
+            widgets: [], ttsScript: '', ttsOrder: []
+          }] },
+          { id: 'formula-group', slides: [{
+            id: 'formula-slide', canvas: { version: '5.3.0', objects: [] },
+            widgets: [{
+              id: 'hidden-formula', type: 'latex', x: 625, y: 248,
+              w: 570, h: 48, fontSize: 26, scale: 1,
+              manualSize: false, content: formula
+            }],
+            ttsScript: '', ttsOrder: []
+          }] }
+        ],
+        ttsSettings: { rate: 1, volume: .3 }
+      }
+    };
+    await page.locator('#importDeckInput').setInputFiles({
+      name: 'hidden-latex.json', mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(hiddenFormulaPayload))
+    });
+    await page.waitForFunction(() => Number(document.body.dataset.slideCount) === 2);
+    await page.waitForFunction(source => (
+      document.querySelector('[data-widget-id="hidden-formula"] .latex-content')
+        ?.dataset.latexRenderedSource === source
+    ), formula);
+    assert.equal(await page.locator('[data-widget-id="hidden-formula"]').evaluate(el => el.style.width), '570px');
+    await page.evaluate(() => Reveal.slide(1, 0));
+    await page.waitForFunction(() => (
+      document.querySelector('[data-widget-id="hidden-formula"]')?.style.width !== '570px'
+    ));
+    const visibleSizes = await page.locator('[data-widget-id="hidden-formula"]').evaluate(el => {
+      const widget = el.getBoundingClientRect();
+      const formulaRect = el.querySelector('.katex').getBoundingClientRect();
+      return {
+        widgetWidth: widget.width,
+        formulaWidth: formulaRect.width,
+        storedWidth: Number.parseFloat(el.style.width)
+      };
+    });
+    assert.ok(visibleSizes.storedWidth > 600, JSON.stringify(visibleSizes));
+    assert.ok(Math.abs(visibleSizes.widgetWidth - visibleSizes.formulaWidth) < 1.5,
+      JSON.stringify(visibleSizes));
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
