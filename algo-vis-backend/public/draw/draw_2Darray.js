@@ -1,3 +1,11 @@
+/**
+ * 模組：二維陣列繪圖器
+ *
+ * 責任：以 SVG 繪製矩陣儲存格、列欄索引、外框與樣式，並提供任意 cell/anchor 的座標查詢。
+ * 資料流：輸入矩陣與 style 先正規化，依可見範圍計算 row/column stride，再建立 cell group 與可供 trace 綁定的 node map。
+ * 重要不變條件：繪製與 get2DArrayPosition 必須共享相同 index mode、padding 及座標原點，否則箭頭與標記會偏移。
+ * 相容性：缺少索引、空矩陣及舊式 style list 均保留安全尺寸與預設外觀。
+ */
 // draw_2Darray.js
 ;(function () {
 
@@ -7,6 +15,9 @@
 
   let initedDefs   = false;
 
+  // ---------------------------------------------------------------------------
+  // 區段：SVG defs 與輸入量測
+  // ---------------------------------------------------------------------------
   function ensureDefs() {
     const svg = window.getViewport().ownerSVGElement;
     if (!svg) return;
@@ -57,6 +68,9 @@
    * @param {string}            draw_type          - normal = 畫數字, clear = 不畫數字
    * @param {number}            index              - 要不要索引    0 都不要, 1 留x索引, 2 留y索引, 3 留x,y索引
    */
+  // ---------------------------------------------------------------------------
+  // 區段：矩陣節點與索引繪製
+  // ---------------------------------------------------------------------------
   function draw2DArray(
     groupID,
     Pos,
@@ -319,6 +333,9 @@
     g.setAttribute('transform', `translate(${baseX + dx},${baseY + dy})`);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：儲存格 anchor 查詢
+  // ---------------------------------------------------------------------------
   function get2DArrayPosition(groupID, row, col, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return { x: 0, y: 0 };

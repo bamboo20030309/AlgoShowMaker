@@ -1,3 +1,11 @@
+/**
+ * 模組：圓形節點 primitive
+ *
+ * 責任：依位置、值與 style 建立可供圖、樹及一般物件使用的 SVG 圓形節點。
+ * 資料流：解析 style 後建立 group、circle 與文字，並附加 code line 等追蹤 metadata。
+ * 重要不變條件：視覺中心與對外 position 必須相同，方便箭頭與轉場以中心定位。
+ * 相容性：舊式 style array 與缺省 codeLine 繼續支援。
+ */
 // draw_circle.js
 ;(function () {
   const NS = "http://www.w3.org/2000/svg";
@@ -9,6 +17,9 @@
    * @param {any}    value - 圓圈內顯示的內容
    * @param {vector} style - 樣式清單 [{type: "background", color: "#..."}, {type: "highlight"}]
    */
+  // ---------------------------------------------------------------------------
+  // 區段：圓形節點建立
+  // ---------------------------------------------------------------------------
   function drawCircle(id, pos, value, style = [], codeLine = -1) {
     const vp = window.getViewport ? window.getViewport() : document.querySelector('#viewport');
     if (!vp) return;

@@ -1,3 +1,11 @@
+/**
+ * 模組：程式碼呈現模型
+ *
+ * 責任：從原始 C++、事件 source range 與語法結構建立每個 frame 的精簡程式碼頁面。
+ * 資料流：原始碼先遮蔽註解並建立結構 context；事件依來源位置分群後選取必要行、補齊宣告與括號，再輸出含語法區段及事件標記的 fragment plan。
+ * 重要不變條件：輸出的原始行號必須始終指回未裁切的 source；省略行只影響呈現，不能改變 event/source 對應。
+ * 相容性：來源資訊不完整的舊 trace 會使用事件文字與結構推論回退；tokenizer 不存在時仍輸出純文字區段。
+ */
 (function () {
   const EXIT_EVENT_TYPES = new Set([
     'scope-exit', 'visual-exit', 'function-exit', 'call-return', 'return-complete'
@@ -9,6 +17,9 @@
   const LOOP_CONTEXT_TYPES = new Set(['ForStatement', 'WhileStatement', 'DoStatement']);
   const CONDITION_BODY_MAX_LINES = 3;
 
+  // ---------------------------------------------------------------------------
+  // 區段：來源預處理
+  // ---------------------------------------------------------------------------
   function sourceLines(source = '') {
     const lines = [];
     let start = 0;
@@ -347,6 +358,9 @@
       : '';
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：語法 context 與事件分群
+  // ---------------------------------------------------------------------------
   function orderedContexts(source) {
     return [...(source?.contexts || [])].sort((left, right) => {
       const leftSize = Number(left?.to) - Number(left?.from);
@@ -626,6 +640,9 @@
     }).filter(segment => segment.text);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：語法 token 合併
+  // ---------------------------------------------------------------------------
   function tokenizeSource(source = '', tokenizer = null) {
     const byLine = new Map();
     if (!tokenizer?.getLineTokens) return byLine;
@@ -807,6 +824,9 @@
     return items;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：片段選行與省略行
+  // ---------------------------------------------------------------------------
   function fragmentForCluster(
     cluster, lines, hidden, displayLines, declarations, excludedDeclarationNames = new Set()
   ) {
@@ -930,6 +950,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 來源與宣告補齊
+  // ---------------------------------------------------------------------------
   function setupSources(document, frame, lines, hidden, displayLines) {
     const names = new Set(displayedFrameNames(document, frame));
     if (!names.size) return [];
@@ -982,6 +1005,9 @@
     )).join(',')).join('|');
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：程式碼頁面計畫輸出
+  // ---------------------------------------------------------------------------
   function planFrame(document, frame) {
     const source = String(document?.sourceCode || '');
     if (!source || !frame) return { frameId: frame?.id || '', sourceCode: source, fragments: [] };

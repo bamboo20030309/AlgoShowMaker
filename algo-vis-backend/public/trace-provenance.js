@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace 來源識別
+ *
+ * 責任：計算影響 trace 的來源碼與設定摘要，用來判斷已儲存動畫是否可直接沿用。
+ * 資料流：把具語意的輸入正規化後建立穩定序列，再比較文件 provenance 與目前編輯內容。
+ * 重要不變條件：摘要只納入會改變分析結果的資料；物件鍵順序或無關 UI 狀態不得造成誤判。
+ * 相容性：舊文件缺少 provenance 時視為無法證明新鮮，由上層決定提示或重新分析。
+ */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -8,6 +16,9 @@
   const ENGINE_VERSION = 10;
   const FORMAT_VERSION = 1;
   const text = value => String(value ?? '').replace(/\r\n?/g, '\n');
+  // ---------------------------------------------------------------------------
+  // 區段：可執行來源正規化
+  // ---------------------------------------------------------------------------
   function sourceText(code) {
     // Only the trailing Studio settings block is non-executable metadata.
     const source = text(code);
@@ -15,6 +26,9 @@
     return block && !source.slice(block.index + block[0].length).trim()
       ? source.slice(0, block.index).trimEnd() : source.trimEnd();
   }
+  // ---------------------------------------------------------------------------
+  // 區段：穩定變更摘要
+  // ---------------------------------------------------------------------------
   function fingerprint(value) {
     // Change detector, not a security/integrity hash.
     let a = 2166136261, b = 5381;
@@ -25,6 +39,9 @@
     }
     return [value.length, a >>> 0, b >>> 0].join(':');
   }
+  // ---------------------------------------------------------------------------
+  // 區段：來源證明建立與狀態比較
+  // ---------------------------------------------------------------------------
   function create(code, input) {
     return { engineVersion: ENGINE_VERSION, formatVersion: FORMAT_VERSION,
       sourceFingerprint: fingerprint(sourceText(code)), inputFingerprint: fingerprint(String(input ?? '')) };

@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace Studio 編輯器
+ *
+ * 責任：提供 frame 時間線、事件開關、物件樣式與位置、綁定、轉場、鏡頭及復原歷史的整合介面。
+ * 資料流：所有編輯先寫入 trace.studio 的可序列化資料，經共用 renderer 即時預覽；history 保存設定快照，儲存時由 view-source 編碼回來源區塊。
+ * 重要不變條件：選取 key、frame scope 與 runtime identity 必須可跨重繪解析；預覽操作不可直接永久改寫 DOM 幾何而略過設定模型。
+ * 相容性：載入舊文件時缺少集合視為空集合，明確隱藏、關閉或自訂值必須在復原與儲存往返後保留。
+ */
 (function () {
   const DEFAULT_EVENT_COLORS = window.ASMTraceEvents?.colors || {};
   const EVENT_LABELS = window.ASMTraceEvents?.labels || {};
@@ -123,6 +131,9 @@
   let liveBindingDrag = null;
   let textStylePreviewFrame = 0;
 
+  // ---------------------------------------------------------------------------
+  // 區段：DOM 建立與 render 邊界
+  // ---------------------------------------------------------------------------
   function el(name, className, text) {
     const node = document.createElement(name);
     if (className) node.className = className;
@@ -163,6 +174,9 @@
     return runStudioRender(() => window.ASMTracePlayer.setRules(rules));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：Studio 模型正規化
+  // ---------------------------------------------------------------------------
   function ensureStudioData() {
     trace.studio ||= {};
     trace.studio.positions ||= {};
@@ -204,6 +218,9 @@
     window.ASMTraceEvents?.applyEnabledStates?.(trace);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：復原／重做歷史
+  // ---------------------------------------------------------------------------
   function editableSnapshot() {
     return JSON.stringify({ rules: trace?.rules || [], studio: trace?.studio || {} });
   }
@@ -262,6 +279,9 @@
     return Object.entries(trace?.variables || {});
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame scope 與語意 key
+  // ---------------------------------------------------------------------------
   function frameIdsForScope() {
     if (!trace?.frames?.length) return [];
     if (scopeSelect.value === 'all') return trace.frames.map(frame => frame.id);
@@ -419,6 +439,9 @@
     return Number(String(descriptor?.id || '').match(/^line-(\d+)$/)?.[1]) || 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文字綁定
+  // ---------------------------------------------------------------------------
   function bindSemanticText(sourceKey, targetKey, targetAnchor) {
     const descriptor = textDescriptorForKey(sourceKey);
     if (!descriptor || targetKey === '$canvas') return false;
@@ -485,6 +508,9 @@
     return true;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：畫布元素與拖曳幾何
+  // ---------------------------------------------------------------------------
   function traceElementsByKey(container) {
     return new Map(Array.from(container?.querySelectorAll?.('[data-trace-object-key]') || [])
       .map(element => [element.dataset.traceObjectKey, element]));
@@ -730,6 +756,9 @@
     return best;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文字區段選取
+  // ---------------------------------------------------------------------------
   function renderTextSelectionHighlight() {
     const canvas = document.getElementById('arraySvg');
     canvas?.querySelectorAll('.asm-trace-text-character-selection').forEach(element => element.remove());
@@ -832,6 +861,9 @@
     return window.ASMTraceTransitions?.explicitRule?.(trace, previousFrame, frame, activeObjectKey) || null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：物件轉場編輯
+  // ---------------------------------------------------------------------------
   function renderTransitionEditor() {
     if (!transitionEditor) return;
     transitionEditor.hidden = !activeObjectKey;
@@ -911,6 +943,9 @@
     renderInspectorNavigation();
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：物件與文字樣式
+  // ---------------------------------------------------------------------------
   function renderStyleEditor() {
     if (!styleEditor) return;
     const textSegment = textSegmentForKey(activeObjectKey);
@@ -1131,6 +1166,9 @@
     return `tracking-${`${sourceKey}:${targetId}:marker`.replace(/[^A-Za-z0-9_-]/g, '-')}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：值與位置綁定
+  // ---------------------------------------------------------------------------
   function renderBindingEditor() {
     if (!bindingEditor) return;
     const binding = activeBinding
@@ -1268,6 +1306,9 @@
     renderBindingEditor();
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：綁定與指標同步
+  // ---------------------------------------------------------------------------
   function syncTrackingFromBinding(sourceKey, targetKey, indexExpression = '', markerShape = 'array') {
     const source = trace?.variables?.[sourceKey];
     const targetId = bindingTargetVariableId(targetKey);

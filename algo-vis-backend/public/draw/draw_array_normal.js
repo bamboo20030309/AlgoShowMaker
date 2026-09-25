@@ -1,3 +1,11 @@
+/**
+ * 模組：一般一維陣列繪圖器
+ *
+ * 責任：繪製水平儲存格、索引、外框及樣式，是多數 sequence renderer 的基礎。
+ * 資料流：輸入值、index mode 與 style list 正規化後計算固定 cell stride，再建立穩定節點 id 與位置資訊。
+ * 重要不變條件：getNormalPosition 必須與實際 padding、索引高度及 anchor 定義一致；資料索引不因裁切或樣式改變。
+ * 相容性：空陣列、隱藏索引與舊式 style 皆使用相容預設。
+ */
 // draw_array_normal.js
 ;(function() {
   const NS = 'http://www.w3.org/2000/svg';
@@ -17,6 +25,9 @@
    * @param {number|object}    gap                  - gap(horizontal,vertical)
    */
 
+  // ---------------------------------------------------------------------------
+  // 區段：一般陣列節點版面
+  // ---------------------------------------------------------------------------
   function draw_array_normal(
     g,
     groupID,
@@ -182,6 +193,9 @@
     });
   }
   
+  // ---------------------------------------------------------------------------
+  // 區段：一般陣列 anchor 查詢
+  // ---------------------------------------------------------------------------
   function getNormalPosition(groupID, index, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return { x: 0, y: 0 };

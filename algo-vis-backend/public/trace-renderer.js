@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace SVG 渲染核心
+ *
+ * 責任：把正規化 frame 的變數、物件、文字、箭頭、keep 快照與 Studio 位置組裝成可動畫的 SVG 場景。
+ * 資料流：先由 rules 計算 frame decorations，再依 renderer registry 建立每個物件及語意 target；取得版面與幾何後交給 tween 比較前一畫面並播放轉場。
+ * 重要不變條件：每個可延續物件都必須帶穩定 object key/runtime identity；DOM 幾何、placement map 與箭頭 target registry 必須來自同一次 render。
+ * 相容性：舊 renderer 名稱、缺少位置／style／binding 的文件在入口正規化；靜態縮圖與無動畫渲染必須與播放完成後的終態一致。
+ */
 (function () {
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const TRACE_ROOT_OFFSET = { x: 90, y: 80 };
@@ -184,6 +192,9 @@
     return `runtime-${(hash >>> 0).toString(36)}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：語意 key 與箭頭目標登錄
+  // ---------------------------------------------------------------------------
   function markSelectable(element, key, context = {}, parentKey = '') {
     if (!element || !key) return element;
     element.classList.add('asm-trace-selectable');
@@ -248,6 +259,9 @@
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：原始資料與序列 renderer
+  // ---------------------------------------------------------------------------
   function renderOriginal(group, entry, context) {
     if (typeof window.draw_array_normal !== 'function') {
       return Array.isArray(entry.data?.items) ? renderSequence(group, entry, context) : renderScalar(group, entry, context);
@@ -551,6 +565,9 @@
     return Math.max(cellSize + 24, 78);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：矩陣 renderer
+  // ---------------------------------------------------------------------------
   function renderMatrix(group, entry, context) {
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
     let height = 0;
@@ -868,6 +885,9 @@
     return totalHeight + 36;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：標量、物件與圖形 renderer
+  // ---------------------------------------------------------------------------
   function renderScalar(group, entry, context) {
     const renderedValue = renderedDisplayValue(entry.data, context, { index: 0 });
     const rect = svg('rect', { x: 0, y: 0, width: 150, height: 52, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 });
@@ -940,6 +960,9 @@
     return height + 20;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：renderer 擴充入口
+  // ---------------------------------------------------------------------------
   function register(name, renderer) {
     if (typeof name === 'string' && typeof renderer === 'function') renderers.set(name, renderer);
   }
@@ -1037,6 +1060,9 @@
     return snapshot.binding ? { ...snapshot.binding } : null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：場景幾何快照
+  // ---------------------------------------------------------------------------
   function objectPositions(rootSvg) {
     const positions = new Map();
     rootSvg.querySelectorAll('#asm-trace-root [data-trace-object-key]').forEach(object => {
@@ -1150,6 +1176,9 @@
     return attributes;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：SVG 動畫 primitive
+  // ---------------------------------------------------------------------------
   function startSvgAnimation(animation) {
     if (!animation) return;
     requestAnimationFrame(() => {
@@ -1239,6 +1268,9 @@
     animatePosition(motion, previous, current, options.animatePositions !== false, plan);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：物件跨 frame 轉場
+  // ---------------------------------------------------------------------------
   function animateChangedObjects(captured, elements, options) {
     if (options.animatePositions === false || !captured?.size) return;
     const identityKeys = capturedKeysByRuntimeIdentity(captured);
@@ -1299,6 +1331,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：箭頭 defs 與幾何
+  // ---------------------------------------------------------------------------
   function ensureArrowMarker(rootSvg, idPrefix = 'asm-trace') {
     const defsId = `${idPrefix}-studio-defs`;
     const markerId = `${idPrefix}-arrowhead`;
@@ -1504,6 +1539,9 @@
     return `keep-arrow:${sourceKey}:${continuityKey}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：keep 與遞迴關係箭頭
+  // ---------------------------------------------------------------------------
   function renderKeepLastArrows(rootSvg, root, document, frame, placements, elements, keepNodes, options = {}) {
     if (!keepNodes.length) return;
     const color = 'rgba(255, 58, 58, 0.7)';
