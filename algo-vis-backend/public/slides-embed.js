@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 演算法頁嵌入橋接器
+// 在 iframe 模式接收父頁命令、回報就緒與播放狀態，並限制嵌入時不需要的編輯介面。
+// -----------------------------------------------------------------------------
 (function () {
   const mode = new URLSearchParams(window.location.search).get('asmEmbed');
   if (!mode) return;
@@ -8,6 +12,10 @@
   let runtimeVisible = mode !== 'runtime';
   let runtimeGeometryRequest = 0;
 
+  // -----------------------------------------------------------------------------
+  // 嵌入畫面穩定化
+  // 套用動畫前先完成進行中的過渡並清除暫時層，父頁收到完成通知時畫面已可擷取。
+  // -----------------------------------------------------------------------------
   function settleAnimationVisuals() {
     // Event tweens use temporary SVG layers (moving values, comparison cards,
     // arrows and resize ghosts). A save/load may happen while one is active,
@@ -61,6 +69,10 @@
     });
   }
 
+  // -----------------------------------------------------------------------------
+  // 編輯器快照與來源新鮮度
+  // 匯出時讀取目前 Ace、輸入與 trace；若來源已變更則標記舊 trace，避免把它誤當可播放結果。
+  // -----------------------------------------------------------------------------
   function snapshotAnimation() {
     window.ASMTraceStudio?.flushSourceSettings?.();
     const input = document.getElementById('inputArea');
@@ -101,6 +113,10 @@
     });
   }
 
+  // -----------------------------------------------------------------------------
+  // 父子頁資料套用
+  // 先更新來源與輸入，再選擇 trace 或傳統腳本播放，最後重設畫布及導覽狀態。
+  // -----------------------------------------------------------------------------
   function applyAnimation(animation = {}) {
     settleAnimationVisuals();
     currentAnimation = normalize(animation);
@@ -121,6 +137,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // postMessage 協定
+  // 只接受父視窗的已知命令；runtime 可見性與 editor 儲存請求分開處理並回傳對應 requestId。
+  // -----------------------------------------------------------------------------
   window.addEventListener('message', event => {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-load-animation') {

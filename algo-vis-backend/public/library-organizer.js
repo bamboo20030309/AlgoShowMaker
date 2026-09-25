@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 投影片庫資料夾控制器
+// 協調 deck 清單、資料夾版面、拖放與遠端儲存；先更新記憶體版面，再序列化提交並重新渲染。
+// -----------------------------------------------------------------------------
 (function () {
   const MIME = 'application/x-asm-library-deck';
   window.ASMLibraryOrganizer = function ({ container, nav, createButton, message, api, createCard }) {
@@ -19,6 +23,10 @@
     const deleteSubmit = document.getElementById('deleteFolderSubmit');
     for (const id of ['closeDeleteFolderBtn', 'cancelDeleteFolderBtn']) document.getElementById(id).addEventListener('click', () => { if (!saving) deleteDialog.close(); });
     deleteDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+    // -----------------------------------------------------------------------------
+    // 資料夾與分類對話框
+    // 對話框暫存目前 folder/deck，確認後才呼叫 API，取消不改 layout。
+    // -----------------------------------------------------------------------------
     function openDeleteFolder(folder) {
       if (!ready || saving) return;
       deletingFolderId = folder.id; deleteMessage.textContent = '';
@@ -65,6 +73,10 @@
       categoryDialog.showModal();
     }
     function status(text, error = false) { message.textContent = text; message.classList.toggle('is-success', !error); }
+    // -----------------------------------------------------------------------------
+    // 版面提交交易
+    // 先正規化下一版 layout，儲存成功後才取代本機狀態並重繪；失敗時維持原排序。
+    // -----------------------------------------------------------------------------
     async function change(next) {
       if (!ready || saving) return false;
       const previous = layout;
@@ -86,6 +98,10 @@
     function highlight(target) {
       clearHighlight(); highlighted = target?.element; highlighted?.classList.add('library-drop-target');
     }
+    // -----------------------------------------------------------------------------
+    // 拖放目的地解析
+    // 從指標位置判斷資料夾或相鄰 deck，透過純 layout.move 計算結果，避免直接搬 DOM。
+    // -----------------------------------------------------------------------------
     function drop(id, target, source) {
       clearHighlight();
       if (id && target && ready && !saving) change(ASMLibraryLayout.move(layout, id, target.folder, target.before, source));
@@ -169,6 +185,10 @@
       if (success) folderDialog.close();
       else { folderMessage.textContent = message.textContent; folderInput.focus(); }
     });
+    // -----------------------------------------------------------------------------
+    // 清單渲染與事件接線
+    // 每次依 layout 重建資料夾與未分類區，卡片事件只傳 deck id，不保存失效的 DOM 參照。
+    // -----------------------------------------------------------------------------
     function render() {
       layout = ASMLibraryLayout.reconcile(layout, decks.map(deck => deck.deck_uid));
       container.replaceChildren(); nav.replaceChildren(); createButton.disabled = !ready || saving;
