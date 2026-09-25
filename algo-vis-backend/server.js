@@ -173,6 +173,12 @@ function logDebug(msg, extra = {}) {
   });
 }
 
+function usesLegacyAnimationCompiler(source) {
+  if (typeof source !== 'string') return false;
+  return /^\s*#\s*include\s*[<"]AV\.hpp[>"]/m.test(source)
+    || /\/\/\s*draw\s*\{/.test(source);
+}
+
 // 設定中間件
 app.use('/vendor/reveal', express.static(path.join(__dirname, 'node_modules', 'reveal.js', 'dist')));
 app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'fabric', 'dist')));
@@ -1791,6 +1797,11 @@ app.post('/compile', (req, res) => {
     asmView = TraceViewSource.parse(code);
   } catch (error) {
     traceWarning = error.message;
+  }
+  if (traceEnabled && usesLegacyAnimationCompiler(code)) {
+    traceEnabled = false;
+    const legacyWarning = '偵測到舊版 AV.hpp / //draw{} 動畫，已使用舊版動畫編譯器，不套用 trace 改寫。';
+    logDebug(legacyWarning);
   }
   if (traceEnabled) {
     try {

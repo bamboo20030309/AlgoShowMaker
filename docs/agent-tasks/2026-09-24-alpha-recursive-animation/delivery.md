@@ -198,3 +198,23 @@
 - 使用 alpha 3101 的舊版 `/compile` 路徑、輸入 4 實際編譯成功；輸出 15 次搬運與「已成功畫圖」，產生 819444 字元 legacy animation script。
 - 隔離 headless Edge 實際載入 script，得到 67 幀、初始幀 0，console 0 error。
 - 層級：V2；只驗證直接相關的舊編譯與 legacy animation 載入，未執行完整 regression 或無關演算法。
+
+## 2026-09-26：舊版動畫與 trace 編譯分流
+
+- `/compile` 現在會辨識 `AV.hpp` 或 `//draw{}` 舊版動畫來源；即使前端送出 `trace.enabled=true`，也會直接使用 legacy animation compiler，不再把舊繪圖 helper、lambda 參數與型別名稱送進 trace instrumenter。
+- debug log 會說明已使用舊版動畫編譯器，但不把這個預期分流當成 warning 而強制切換到除錯頁；舊版仍回傳 `scriptContent`，新版 trace 範例仍回傳 `traceDocument`。
+- 新增 `legacy-hanoi-compile.integration.test.js`，刻意依前端路徑先 `/trace/analyze`，再以 trace enabled 編譯完整舊版河內塔，重現並封鎖本次錯誤。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（舊版 draw 指令）、F（trace instrumentation 分流）、J（瀏覽器 RUN 與 legacy script 套用）。
+- 隔離環境：alpha worktree 的 3187 測試服務與獨立 in-app browser，未操作使用者既有分頁。
+- `legacy-hanoi-compile.integration.test.js`、`hanoi-recursion-sample.test.js`：2/2 通過，0 fail、0 skipped。舊版輸入 4 得到 15 次搬運、無編譯錯誤、`traceDocument=null` 且 legacy `scriptContent` 存在；新版河內塔 trace 同時通過，確認沒有被誤分流。
+- 實際瀏覽器由 RUN 按鈕送出預設 `AV.hpp` 程式，顯示編譯成功、退出碼 0，並把 20 幀動畫腳本套用到畫布；debug log 留有 legacy 分流紀錄。
+- alpha 3101 已從本 worktree 重啟為 PID 56808；HTTP 200 後在正式預覽埠重跑舊版河內塔專項 1/1 通過。
+- 靜態檢查：`server.js` 與新增測試通過 `node --check`，`git diff --check` 通過；只有既有 Windows LF/CRLF 提示。
+- 未執行完整 regression、全部 tests 或無關演算法動畫；依 V2 規範只跑直接相關案例。
+
+### 舊有物件相容性
+
+- 沒有新增持久化物件欄位。既有 legacy source 自動走舊編譯器；不含 `AV.hpp`／`//draw{}` 的新版 trace source 維持原路徑與資料格式。
