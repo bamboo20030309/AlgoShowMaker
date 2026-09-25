@@ -1,3 +1,13 @@
+/*
+ * 範例：最長共同子序列
+ *
+ * 用途與核心步驟：動態規劃計算兩字串前綴的 LCS 長度，再沿相容轉移回溯列舉／還原共同子序列。
+ * 輸入、輸出與複雜度：輸入長度 n、m 的兩字串；輸出 LCS 長度與示範序列。建表 O(nm)、空間 O(nm)；列舉全部解時另受答案數量影響。
+ *
+ * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
+ * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
+ */
+
 // LCS Sample
 #include <bits/stdc++.h>
 using namespace std;
@@ -21,6 +31,10 @@ vector<char> _draw_LCS_row_labels, _draw_LCS_column_labels;
 // @object ans with labels(value)
 // @place ans.left at LCS.right offset(80,0)
 // @endpreset
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 演算法與視覺化輔助程序：前者維護核心不變條件，後者只建立展示資料。
+// ─────────────────────────────────────────────────────────────────────────────
 
 void dfs(int x, int y, string now) {
     if ((int)now.size() == LCS[S.size()][T.size()]) {
@@ -143,6 +157,10 @@ void dfs(int x, int y, string now) {
         _draw_stack_path[x][y] = 0;
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
+// ─────────────────────────────────────────────────────────────────────────────
 
 int main() {
     while (getline(cin, S) && getline(cin, T)) {

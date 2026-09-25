@@ -1,3 +1,13 @@
+/*
+ * 範例：二維前綴和
+ *
+ * 用途與核心步驟：先建立矩形累積表，再以容斥公式計算任意子矩形總和；視覺化分開呈現建表與查詢。
+ * 輸入、輸出與複雜度：輸入 n×m 矩陣與矩形查詢；每次查詢輸出區域和。建表 O(nm)，每次查詢 O(1)，空間 O(nm)。
+ *
+ * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
+ * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
+ */
+
 // Two-dimensional Prefix Sum Sample
 #include <bits/stdc++.h>
 using namespace std;
@@ -24,6 +34,10 @@ vector<vector<int>> num, pre;
 // @preset prefix_sum_2d_cursor
 // @object pre[r][c] render matrix with marker-layout(none)
 // @endpreset
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
+// ─────────────────────────────────────────────────────────────────────────────
 
 int main() {
     cin >> n >> m;

@@ -1,3 +1,18 @@
+/**
+ * 舊版 C++ 視覺化輸出介面
+ *
+ * AV 將演算法程式中的 draw、text、arrow、camera 與累積繪圖呼叫轉成前端可讀的
+ * JavaScript/JSON 指令。公開巨集會自動帶入 __LINE__，使畫面物件能回連來源碼；
+ * 實際工作由對應的 *_impl 函式完成。Pos 同時表示絕對座標及相對於物件／格子的錨點。
+ *
+ * 主要不變條件：每個 groupID 在一個畫面生命週期內代表同一邏輯物件；相對位置的
+ * refId 必須指向已知物件；樣式索引只描述目標格，不可改動演算法資料；frame 計數
+ * 單調遞增，所有輸出依呼叫順序追加到 AV_OUTPUT_FILE 指定的檔案。
+ *
+ * 效能主要與輸出的物件數及序列大小成正比；轉換容器通常為 O(n)，樹形版面配置
+ * 為 O(V)。此標頭偏重教學輸出，呼叫端不應依賴其文字序列化細節作演算法判斷。
+ */
+
 // AV.hpp
 #ifndef AV_HPP
 #define AV_HPP
@@ -35,6 +50,10 @@ const string AV_white      = "AV_white";
 
 using array_style = pair<vector<string>, vector<int>>;
 using array2D_style = pair<vector<string>, vector<pair<int,int>>>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 幾何與定位資料：Pos 的模式由 isRelative 決定，未使用的索引固定為 -1
+// ─────────────────────────────────────────────────────────────────────────────
 
 // 類型檢查：如果是 vector<vector<T>>，則 T 會被匹配為 vector<int> 等
 // 我們要排除 1D 版本 match 到 vector 的情況
@@ -148,7 +167,11 @@ public:
     #define accu_store_triangle(id, pos, h, w, ...) accu_store_triangle_impl(__LINE__, id, pos, h, w, ##__VA_ARGS__)
     #define sleep(ms)             sleep_impl(ms)
 
-    //AtoB function : return a A~B increase vector
+    // ─────────────────────────────────────────────────────────────────────────
+    // 資料轉換工具：將常見容器正規化成序列化器可接受的陣列／字串
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // AtoB 回傳包含首尾的遞增整數序列；end < start 時回傳空陣列。
     static vector<int> AtoB(int start, int end) {
         vector<int> v;
         if (end >= start) {
@@ -314,6 +337,10 @@ public:
         return arr;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 畫面時間線控制：只記錄 frame metadata，不改變演算法中的資料狀態
+    // ─────────────────────────────────────────────────────────────────────────
+
     void stop(){
         _stopFrames.push_back(_frameCount);
     }
@@ -365,6 +392,10 @@ public:
         }
         _content += "            case " + to_string(_frameCount) + ":\n";
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 即時繪圖 API：建立單一畫面命令並附上呼叫端行號
+    // ─────────────────────────────────────────────────────────────────────────
 
     void text_impl(
         const int code_line,
@@ -928,6 +959,9 @@ public:
     }
 
 private:
+    // ─────────────────────────────────────────────────────────────────────────
+    // 序列化內部狀態：_content 依呼叫順序累積，_accu_history 保存跨幀重繪命令
+    // ─────────────────────────────────────────────────────────────────────────
     string _outPath;
     string _content;
     int _frameCount;
@@ -1196,6 +1230,13 @@ public:
     // --- End of AV class members (previously moved overloads to public) ---
 
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TreeLayout：以 (depth, order) 作節點邏輯位置，再換算畫布座標與父子連線
+//
+// register_node／paint 的 path_stack 必須與遞迴 push/pop 成對；update_layout 只重算
+// 幾何資料，不改變使用者樹結構。完整重繪的時間與已登錄節點／邊數 O(V+E) 成正比。
+// ─────────────────────────────────────────────────────────────────────────────
 
 struct TreeLayout {
     int degree;      // 樹的分支度 (例如 2 代表二元樹)
