@@ -19,8 +19,8 @@ test('binary and compound arithmetic transfers show their operators', { timeout:
       const code = `#include <bits/stdc++.h>
 using namespace std;
 int main() {
-  int a = 12, b = 3, result = 0;
-  // @frame a,b,result
+  int a = 12, b = 3, c = 4, d = 5, result = 0;
+  // @frame a,b,c,d,result
   result = a + b;
   result = a - b;
   result = a * b;
@@ -29,7 +29,9 @@ int main() {
   result -= b;
   result *= b;
   result /= b;
-  // @frame a,b,result
+  result = a + b - c + d;
+  result = a * b / c * d;
+  // @frame a,b,c,d,result
 }`;
       const analyzed = await fetch('/trace/analyze', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
@@ -64,14 +66,23 @@ int main() {
         operations: trace.frames[1].events
           .filter(event => event.binaryOperation)
           .map(event => event.binaryOperation),
+        multiSource: trace.frames[1].events
+          .filter(event => event.multiSourceArithmetic)
+          .map(event => event.targets.filter(target => String(target.role).startsWith('source-'))
+            .map(target => [target.expression, target.arithmeticOperator])),
         samples: [...samples]
       };
     });
-    assert.equal(result.build, 'trace-233');
+    assert.equal(result.build, 'trace-234');
     assert.deepEqual(result.operations, ['+', '-', '*', '/']);
+    assert.deepEqual(result.multiSource, [
+      [['a', '+'], ['b', '+'], ['c', '-'], ['d', '+']],
+      [['a', '*'], ['b', '*'], ['c', '/'], ['d', '*']]
+    ]);
     for (const values of [
       ['+12', '+3'], ['-12', '-3'], ['*12', '*3'], ['/12', '/3'],
-      ['+3'], ['-3'], ['*3'], ['/3']
+      ['+3'], ['-3'], ['*3'], ['/3'],
+      ['+12', '+3', '-4', '+5'], ['*12', '*3', '/4', '*5']
     ]) {
       assert.ok(result.samples.includes(JSON.stringify([...values].sort())), JSON.stringify(result));
     }

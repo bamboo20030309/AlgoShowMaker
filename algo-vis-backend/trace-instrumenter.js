@@ -3828,6 +3828,43 @@ function instrumentSource(source, watchIds = []) {
     return safe(left) && safe(right) ? { left, right, operation } : null;
   }
 
+  function multiOperationSources(node) {
+    const safe = target => Boolean(target.variableId)
+      && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression));
+    const collectFamily = (current, operations, identity, opposite) => {
+      const sources = [];
+      const collect = (candidate, operation = identity) => {
+        if (['Identifier', 'SubscriptExpression'].includes(candidate?.name)) {
+          const target = targetDescriptor(candidate);
+          if (!safe(target)) return false;
+          sources.push({ target, operation });
+          return true;
+        }
+        if (candidate?.name !== 'BinaryExpression') return false;
+        const currentChildren = childrenOf(candidate);
+        const operatorIndex = currentChildren.findIndex(child => child.name === 'ArithOp'
+          && operations.includes(source.slice(child.from, child.to).trim()));
+        if (operatorIndex <= 0 || operatorIndex >= currentChildren.length - 1) return false;
+        const binaryOperation = source.slice(
+          currentChildren[operatorIndex].from,
+          currentChildren[operatorIndex].to
+        ).trim();
+        const rightOperation = binaryOperation === identity ? operation : opposite(operation);
+        return collect(currentChildren[operatorIndex - 1], operation)
+          && collect(currentChildren[operatorIndex + 1], rightOperation);
+      };
+      return collect(current) && sources.length > 2 ? sources : null;
+    };
+    return collectFamily(node, ['+', '-'], '+', operation => operation === '+' ? '-' : '+')
+      || collectFamily(node, ['*', '/'], '*', operation => operation === '*' ? '/' : '*');
+  }
+
+  function multiSourceArgs(sources) {
+    return `std::vector<std::string>{${sources.map(({ target, operation }, index) => (
+      `::asm_trace::arithmetic_target_json(${cppString(`source-${index}`)}, ${indexedTargetArgs(target)}, ${cppString(operation)})`
+    )).join(', ')}}`;
+  }
+
   function comparisonEvent(leftNode, rightNode, operator, context, signatureNode) {
     const left = rebuild(leftNode, context);
     const right = rebuild(rightNode, context);
@@ -4092,6 +4129,7 @@ ${loop}
       const sourceNode = node.name === 'AssignmentExpression' ? children[children.length - 1] : null;
       const sourceTarget = targetDescriptor(sourceNode);
       const binarySources = binaryOperationSources(sourceNode);
+      const multiSources = multiOperationSources(sourceNode);
       const assignmentOperator = targetNode && sourceNode
         ? source.slice(targetNode.to, sourceNode.from).trim()
         : '';
@@ -4134,7 +4172,9 @@ ${loop}
           const action = chainedAssignment
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
-          if (binarySources && !chainedAssignment) {
+          if (multiSources && !chainedAssignment) {
+            rendered = `::asm_trace::event_multi_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${multiSourceArgs(multiSources)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          } else if (binarySources && !chainedAssignment) {
             rendered = `::asm_trace::event_binary_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(binarySources.left)}, ${indexedTargetArgs(binarySources.right)}, ${cppString(binarySources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else {
             rendered = `::asm_trace::${chainedAssignment ? 'event_assign_expr' : 'event_assign'}(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;

@@ -2728,10 +2728,12 @@
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
     const sources = (event?.targets || []).filter(item => item.role === 'source'
-      || item.role === 'source-left' || item.role === 'source-right');
+      || String(item.role || '').startsWith('source-'));
     const source = sources[0];
     const binaryOperation = ['+', '-', '*', '/'].includes(event?.binaryOperation)
       && sources.length === 2;
+    const multiSourceArithmetic = event?.multiSourceArithmetic === true
+      && sources.length > 2;
     const transferOperator = assignmentTransferOperator(event);
     if (!target) return null;
     const operand = eventOperand(
@@ -2842,15 +2844,17 @@
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
-      transfers = sourceOperands.map(item => createAssignmentTransfer(
+      transfers = sourceOperands.map((item, index) => createAssignmentTransfer(
         root,
         item,
         operand,
         formattedSourceValue,
         item ? previousVisualElement(previousObjects, item.visualKey) : null,
         {
-          valueOnly: event?.compound === true || binaryOperation,
-          operatorPrefix: transferOperator
+          valueOnly: event?.compound === true || binaryOperation || multiSourceArithmetic,
+          operatorPrefix: multiSourceArithmetic
+            ? sources[index]?.arithmeticOperator
+            : transferOperator
         }
       )).filter(Boolean);
       if (!transfers.length) {
@@ -2932,7 +2936,7 @@
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
-          if (event?.compound === true || binaryOperation) {
+          if (event?.compound === true || binaryOperation || multiSourceArithmetic) {
             transfers.forEach(item => item.remove());
             transfers = [];
           }
@@ -7165,10 +7169,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-233';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-234';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-233', play, cancel, updateEventAvailability,
+    build: 'trace-234', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

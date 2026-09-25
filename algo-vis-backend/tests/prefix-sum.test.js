@@ -162,6 +162,17 @@ test('two-dimensional prefix sum sample builds the matrix and answers both queri
     const assignments = frame.events.filter(event => event.type === 'assign'
       && event.targets.some(target => target.role === 'target' && target.variableId === byName.pre));
     assert.equal(assignments.length, 1, 'a compact cell uses one complete-formula assignment');
+    assert.equal(assignments[0].multiSourceArithmetic, true);
+    assert.deepEqual(Array.from(assignments[0].targets.slice(1), target => target.arithmeticOperator),
+      ['+', '+', '-', '+']);
+    assert.deepEqual(Array.from(assignments[0].targets.slice(1), target => (
+      Array.from(target.resolvedIndices)
+    )), [
+      [scalar(frame, 'r') - 1, scalar(frame, 'c')],
+      [scalar(frame, 'r'), scalar(frame, 'c') - 1],
+      [scalar(frame, 'r') - 1, scalar(frame, 'c') - 1],
+      [scalar(frame, 'r'), scalar(frame, 'c')]
+    ]);
   }
   assert.equal(trace.frames.filter(frame => scalar(frame, 'r') === 2 && scalar(frame, 'c') === 2).length, 1);
   assert.equal(trace.frames.filter(frame => scalar(frame, 'r') === 4 && scalar(frame, 'c') === 2).length, 1);
