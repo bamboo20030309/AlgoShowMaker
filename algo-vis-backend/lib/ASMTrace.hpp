@@ -1,3 +1,18 @@
+/**
+ * 執行期追蹤序列化層
+ *
+ * 插樁後的 C++ 程式透過本標頭把純量、標準容器、指標、作用域與事件編碼成逐行
+ * JSON。後端再讀取這些事件並組成畫面幀。encode_value 的多載是資料格式邊界：
+ * scalar/string/sequence/map/reference 等 kind 必須與 JavaScript trace reader 相容。
+ *
+ * 主要不變條件：字串必須完整 JSON escape；容器編碼不得改變原容器；stack/queue
+ * 以副本展開以保存使用者狀態；物件 identity 在同一程序生命週期內保持穩定；
+ * Writer 必須依事件發生順序輸出，讓前端可重播賦值、比較與函式進出。
+ *
+ * 複雜度：純量編碼為 O(1)，序列／映射為 O(n)，巢狀容器成本為所有元素編碼成本
+ * 的總和；輸出本身至少需要與產生 JSON 大小等量的時間與空間。
+ */
+
 #ifndef ASM_TRACE_HPP
 #define ASM_TRACE_HPP
 
@@ -24,6 +39,10 @@
 #include <vector>
 
 namespace asm_trace {
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JSON 基礎編碼：所有高階事件最終都經過這一層，必須產生合法 JSON 片段
+// ─────────────────────────────────────────────────────────────────────────────
 
 inline std::string escape(const std::string& value) {
   std::ostringstream out;
@@ -211,6 +230,10 @@ template <typename T>
 typename std::enable_if<!std::is_arithmetic<T>::value && !std::is_pointer<T>::value, std::string>::type
 encode_value(const T& value) { return encode_opaque(value); }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 變數快照與生命週期：以 id 識別宣告，以 identity 區分底層物件別名
+// ─────────────────────────────────────────────────────────────────────────────
+
 struct NamedValue {
   std::string id;
   std::string name;
@@ -272,6 +295,10 @@ NamedValue named(const char* id, const char* name, const T& value) {
     uninitialized ? std::string("{\"kind\":\"scalar\",\"value\":\"\"}") : encode_value(value)
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recorder：依呼叫順序寫出 JSON Lines；單一事件不可跨行，以便後端串流解析
+// ─────────────────────────────────────────────────────────────────────────────
 
 class Recorder {
  public:
@@ -355,6 +382,10 @@ inline Recorder& recorder() {
   static Recorder instance;
   return instance;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 函式、遞迴與迴圈上下文：堆疊頂端代表目前正在執行的動態作用域
+// ─────────────────────────────────────────────────────────────────────────────
 
 struct FunctionActivationFrame {
   std::string function_name;
@@ -630,6 +661,12 @@ inline void emit_current_function_scope_exits() {
     if ((*it)->belongs_to(activation_id)) (*it)->emit();
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 事件 API：由插樁器生成的程式呼叫，記錄讀寫、比較、呼叫與容器變更
+//
+// 包裝器必須只求值原始運算元一次，否則 ++、函式呼叫等帶副作用表達式會被重複執行。
+// ─────────────────────────────────────────────────────────────────────────────
 
 inline std::string target_json(const char* role, const char* variable_id,
                                const char* expression, const char* index_expression,

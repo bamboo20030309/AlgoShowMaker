@@ -1,3 +1,13 @@
+/*
+ * 範例：擴展歐幾里得算法
+ *
+ * 用途與核心步驟：先用輾轉相除求 gcd，再由遞迴回傳式回代 Bézout 係數 x、y，使 ax+by=gcd(a,b)。
+ * 輸入、輸出與複雜度：輸入整數 a、b；輸出 gcd 與一組 Bézout 係數。時間 O(log min(|a|,|b|))，遞迴空間同階。
+ *
+ * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
+ * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
+ */
+
 #include "AV.hpp"
 #include <bits/stdc++.h>
 using namespace std;
@@ -8,6 +18,10 @@ TreeLayout tree("tree", 1, Pos(500, 100), 80.0, 100.0);
 map<pair<int, int>, string> node_vals;
 
 int return_step = 0; // 0: 下降, 1: 拿回 x, 2: 算完 y
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 演算法與視覺化輔助程序：前者維護核心不變條件，後者只建立展示資料。
+// ─────────────────────────────────────────────────────────────────────────────
 
 void update_node(int d, int o, int a, int b, string x, string y) {
     string val = to_string(a) + "," + to_string(b) + "," + x + "," + y;
@@ -328,6 +342,10 @@ void ext_euc(int a,int b,int &x,int &y){//x,y不用放東西(code by reference)
     av.accu_store_colored(formula, text_pos);
     //}
 } //最後算出來x為模逆元
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
+// ─────────────────────────────────────────────────────────────────────────────
 
 int main(){
     int a=16,b=6,x,y;

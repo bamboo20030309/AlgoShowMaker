@@ -1,3 +1,13 @@
+/*
+ * 範例：一維前綴和
+ *
+ * 用途與核心步驟：建立 prefix[i] 表示前 i 個元素總和，再用兩個前綴值相減回答區間總和。
+ * 輸入、輸出與複雜度：輸入長度 n 的序列與區間；輸出區間和。預處理 O(n)、每次查詢 O(1)、空間 O(n)。
+ *
+ * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
+ * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
+ */
+
 // One-dimensional Prefix Sum Sample
 #include <bits/stdc++.h>
 using namespace std;
@@ -17,6 +27,10 @@ vector<int> num, pre;
 // @style pre[0] background AV_grey
 // @place num.left-bottom at pre.left-top offset(0,-70)
 // @endpreset
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
+// ─────────────────────────────────────────────────────────────────────────────
 
 int main() {
     cin >> n;

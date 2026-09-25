@@ -1,3 +1,20 @@
+/**
+ * 編譯前追蹤插樁器
+ *
+ * 處理管線分為四階段：先用 Lezer C++ parser 建立語法樹與行號索引；再掃描
+ * `@frame`、`@layout`、`@style`、`@arrow`、`@keep` 等展示指令；接著把指令綁定到
+ * 最接近且仍在有效詞法作用域內的敘述；最後由後往前插入 C++ 追蹤呼叫，以免前方
+ * 插入文字使尚未處理的 source offset 位移。
+ *
+ * 資料契約：分析結果中的 startIndex/endIndex 一律指向原始 UTF-16 字串位置，line
+ * 採前端顯示用的一基底行號；frame 的 identity 用穩定雜湊區分同文指令，而 logical
+ * identity 用於跨編輯版本對齊。解析函式不得執行指令內容，只接受明確白名單語法。
+ *
+ * 主要不變條件：不得在字串、註解或不相干作用域內誤插樁；同一來源位置的插入需
+ * 保持確定順序；生成的暫存識別字必須避開使用者變數；任何解析失敗都應回報原始
+ * 指令行號，讓 API 可以產生可操作的錯誤訊息。
+ */
+
 const { parser } = require('@lezer/cpp');
 
 const DECLARATOR_NODES = new Set([
@@ -12,6 +29,10 @@ const MUTATING_METHODS = new Set([
   'assign', 'clear', 'emplace', 'emplace_back', 'emplace_front', 'erase', 'insert',
   'pop', 'pop_back', 'pop_front', 'push', 'push_back', 'push_front', 'resize'
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 語法樹基礎工具：走訪 Lezer node，並集中管理來源位置與穩定識別碼
+// ─────────────────────────────────────────────────────────────────────────────
 
 function childrenOf(node) {
   const children = [];
@@ -335,6 +356,10 @@ function analyzeSource(source) {
   visit(tree.topNode, { functionName: 'global', functionBody: null, scope: tree.topNode });
   return { tree, variables, lineAt };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 預設集與基本指令 payload：將註解文字轉成可驗證的中介資料
+// ─────────────────────────────────────────────────────────────────────────────
 
 function presetContains(analysis, position) {
   return (analysis.presetRanges || []).some(range => range.from <= position && position < range.to);
@@ -681,6 +706,13 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
     iterationIdentifiers: [...new Set(iterationIdentifiers)]
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 通用指令文法：頂層切割、錨點、renderer 選項與修飾詞
+//
+// splitTopLevel 只在括號／字串之外切割，避免把函式參數或帶逗號的字面值拆壞；
+// 後續 parser 應沿用此工具，不可直接以 String.split 解析使用者表達式。
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parseFrameExpression(expression) {
   return parseTraceExpression(expression, false);
@@ -1473,6 +1505,10 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
   });
   return [...layouts.values()];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 文字、樣式與區段指令：先獨立掃描，再依作用域附著到 frame
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parseFrameSpec(raw) {
   const text = String(raw || '').trim();
@@ -2489,6 +2525,10 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
   return directives;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 箭頭、迴圈批次與區域變數：解析繪圖端點並保存可重播的繫結資訊
+// ─────────────────────────────────────────────────────────────────────────────
+
 function attachArrowDirectives(source, analysis, frameDirectives) {
   const frames = [...frameDirectives].sort((left, right) => left.from - right.from);
   frames.forEach(frame => {
@@ -2710,6 +2750,10 @@ function attachAutoMarkDirectives(source, analysis, frames) {
     });
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 版面、鏡頭與主要 frame：彙整同一來源位置的展示設定
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parsePlaceSource(value, line) {
   const raw = String(value || '').trim();
@@ -3441,6 +3485,13 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
   visit(analysis.tree.topNode);
   return directives;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 物件離場與最終插樁
+//
+// insertions 以原始 offset 收集，最後反向套用；若改成正向插入，前一次修改會使
+// 後續 offset 失效。相同 offset 的 priority／order 也必須保持確定性。
+// ─────────────────────────────────────────────────────────────────────────────
 
 function findExitDirectives(source, suppliedAnalysis = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
