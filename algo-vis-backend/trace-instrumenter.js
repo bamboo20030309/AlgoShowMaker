@@ -3559,6 +3559,15 @@ function instrumentSource(source, watchIds = []) {
       .sort((left, right) => (left.scopeTo - left.scopeFrom) - (right.scopeTo - right.scopeFrom))[0] || null;
   }
 
+  function variableAt(name, position) {
+    return analysis.variables
+      .filter(variable => variable.name === name
+        && variable.declarationTo <= position
+        && variable.scopeFrom <= position
+        && position < variable.scopeTo)
+      .sort((left, right) => (left.scopeTo - left.scopeFrom) - (right.scopeTo - right.scopeFrom))[0] || null;
+  }
+
   function visibleWatches(position, functionName) {
     return selected.filter(variable => variable.functionName === functionName
       && variable.declarationTo <= position
@@ -3592,10 +3601,22 @@ function instrumentSource(source, watchIds = []) {
       const baseIdentifier = firstDescendant(base, new Set(['Identifier']));
       const baseName = baseIdentifier ? source.slice(baseIdentifier.from, baseIdentifier.to) : '';
       const watch = watchAt(baseName, node.from);
+      let numericIndex = true;
+      if (index) {
+        (function inspectIndex(current) {
+          if (!current || !numericIndex) return;
+          if (current.name === 'Identifier') {
+            const variable = variableAt(source.slice(current.from, current.to), current.from);
+            if (variable && variable.kind !== 'scalar') numericIndex = false;
+          }
+          for (let child = current.firstChild; child; child = child.nextSibling) inspectIndex(child);
+        })(index);
+      }
       return {
         variableId: watch?.id || '',
         expression,
-        indexExpression: index ? compactExpression(source.slice(index.from, index.to)) : ''
+        indexExpression: index ? compactExpression(source.slice(index.from, index.to)) : '',
+        numericIndex
       };
     }
     const identifier = firstDescendant(node, new Set(['Identifier']));
@@ -3672,7 +3693,8 @@ function instrumentSource(source, watchIds = []) {
 
   function indexedTargetArgs(target) {
     const indexExpression = String(target.indexExpression || '').trim();
-    const canCaptureIndex = canCaptureIndexExpression(indexExpression);
+    const canCaptureIndex = target.numericIndex !== false
+      && canCaptureIndexExpression(indexExpression);
     const resolvedIndex = canCaptureIndex
       ? `static_cast<long long>(${indexExpression})`
       : '0LL';

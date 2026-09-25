@@ -145,3 +145,26 @@
 - 使用者程式與輸入 `5` 的隔離瀏覽器量測：第 8、9、10 幀 camera centerX 為 `649.42 → 640 → 643.39`；第 9 幀 bounds left 為可見樹的 `568`，三幀皆無 detached `sum` descendant alias。
 - Fibonacci 專項同時重驗 `F(2) → 1`、遞迴節點長出／縮回、一般父子邊與 DFS flow arrows，既有斷言全部通過。
 - 靜態檢查：修改的 JS 通過 `node --check`，`git diff --check` 通過；未執行完整 regression、全部 tests 或無關演算法動畫。
+
+## 2026-09-25：河內塔新版指令範例
+
+- 原有 `algorithm_sample/Backtracking/hanoi.cpp` 完整保留；新版另存為 `algorithm_sample/Backtracking/hanoi-recursion.cpp`，並使用獨立的 `hanoi-recursion-sample_input.txt`。新版移除舊 `AV.hpp`、`TreeLayout` 與 `//draw{}` 呈現層，保留使用者原本的 `map<string, deque<int>> pegs`、兩次遞迴、`front/pop_front/push_front`、`ans.push_back` 與輸出順序。
+- 以 `Peg_A`、`Peg_B`、`Peg_C` 三個 reference 直接引用原資料，三者使用 `render disk` 並由上到下固定在左側；`hanoi_tree` 使用 `left-right` recursion layout 固定在右側，degree 2 並開啟 DFS flow arrows。
+- 輸入沿用 `4`；實際 trace 為 47 幀、15 個可見非 base activation，最終 Peg_A/Peg_B 為空，Peg_C 為 `[1,2,3,4]`。
+- 舊版無法編譯的直接原因是伺服器使用 MinGW GCC 6.3.0：即使參數為 `-std=c++1z`，仍不支援 C++17 structured binding `for (auto const& [color, indices] : color_groups)`，所以 parser 從 `[` 開始連續報錯。新版已移除該舊繪圖 helper。
+- instrumentation 修正非數值 subscript：`pegs[from]`／`pegs[to]` 的 `from`、`to` 是 `string`，不再產生非法的 `static_cast<long long>(from/to)`；既有數值 `arr[i]` 仍照常保存 resolved index。
+- renderer 允許空 sequence 繼續走 disk renderer，因此搬空後仍保留柱子與底座，不會退回 normal array 外觀；renderer build 更新為 219。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（frame/object/place/layout）、F（字串鍵 runtime 寫入）、G（遞迴 activation）、J（實際瀏覽器布局）。
+- 環境：alpha 3101 與隔離 headless Edge，輸入 `4`；未操作使用者分頁。
+- `hanoi-recursion-sample.test.js`、`empty-initial-render.test.js`、`sequence-operations.integration.test.js`：4/4 通過。
+- `assignment-indices.integration.test.js`：6/6 通過，確認數值索引沒有因字串鍵修正而退化。
+- `hanoi-recursion-sample.browser.test.js`：1/1 通過；實際 DOM 為 3 個 disk、15 節點、14 一般樹邊與 28 條 DFS flow arrows，三個 disk 全部位於樹左側，空柱仍有 base/peg，canvas-relative X 差精確為 `360 - 70 = 290px`。
+- 靜態檢查：`trace-instrumenter.js`、`trace-renderer.js` 與新增測試均通過 `node --check`；未執行完整 regression、全部 tests 或無關演算法動畫。
+- 需要主代理做的 V3 驗證：整合時以河內塔輸入 4 手動播放一次，核對盤子轉移與右側遞迴樹同步即可；不需擴大至無關演算法。
+
+### 舊有物件相容性
+
+- 不新增持久化物件欄位；disk renderer 對既有非空 disk 行為不變，新增回歸只覆蓋原本錯誤的空 disk fallback。舊 trace 與明確使用其他 renderer 的 sequence 仍走原路徑。

@@ -347,7 +347,7 @@
     const mode = requested.replace(/^original-/, '');
     // An empty sequence still has a one-cell-wide outerframe, but no cell.
     // Do not route it through layout renderers that assume a first element.
-    if (Array.isArray(entry.data?.items) && !values.length) {
+    if (Array.isArray(entry.data?.items) && !values.length && mode !== 'disk') {
       window.draw_array_normal(group, id, values, styles, range, itemsPerRow, indexMode, gap);
     } else if (mode === 'heap' && typeof window.draw_array_heap === 'function') {
       window.draw_array_heap(group, id, values, styles, range, indexMode, gap);
@@ -5158,9 +5158,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-218';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-219';
   window.ASMTraceRenderers = {
-    build: 'trace-218', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-219', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
