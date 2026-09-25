@@ -1,3 +1,13 @@
+/*
+ * Trace 指令提示浮層。
+ *
+ * 浮層有單欄說明與「候選清單＋預覽」雙欄模式；所有尺寸都受 viewport
+ * 限制，確保它能在編輯器上方滾動而不把主頁面撐開。
+ */
+
+/* -------------------------------------------------------------------------- */
+/* 浮層容器與雙欄建議模式                                                   */
+/* -------------------------------------------------------------------------- */
 .asm-directive-assist {
   position: fixed;
   z-index: 12000;
@@ -23,6 +33,10 @@
   border-top: 0;
   border-left: 1px solid #414b58;
 }
+
+/* -------------------------------------------------------------------------- */
+/* 標題、候選列與目前鍵盤選取狀態                                             */
+/* -------------------------------------------------------------------------- */
 .asm-directive-title {
   padding: 9px 12px;
   color: #dce6f4;
@@ -45,6 +59,10 @@
 .asm-directive-choice strong { color: #9bd0ff; }
 .asm-directive-choice span { color: #bac6d7; }
 .asm-directive-choice[aria-selected="true"] { background: #204d71; }
+
+/* -------------------------------------------------------------------------- */
+/* 語法預覽、層級切換與插入按鈕                                               */
+/* -------------------------------------------------------------------------- */
 .asm-directive-preview {
   padding: 8px 12px;
   color: #aab8ca;
@@ -83,6 +101,7 @@
 }
 .asm-directive-insert { margin: 0 12px 12px; }
 
+/* 窄螢幕改成上下排列，避免兩欄各自縮到無法閱讀。 */
 @media (max-width: 600px) {
   .asm-directive-assist[data-mode="suggestions"] { display: block; }
   .asm-directive-assist[data-mode="suggestions"] .asm-directive-preview {
