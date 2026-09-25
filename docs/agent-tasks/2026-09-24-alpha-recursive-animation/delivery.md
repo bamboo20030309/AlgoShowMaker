@@ -189,3 +189,12 @@
 ### 舊有物件相容性
 
 - 沒有新增持久化欄位。既有明確事件開關仍由 `eventInstructionStates` 決定；預檢只補齊每個 occurrence 的衍生 availability，不覆寫使用者選擇。
+
+## 2026-09-26：舊版河內塔 GCC 6.3 相容修正
+
+- 只修改舊版 `algorithm_sample/Backtracking/hanoi.cpp`；新版 `hanoi-recursion.cpp` 不變。
+- 將 GCC 6.3 不支援的 structured binding 改成 `map<string, vector<int>>::const_iterator`，再由 `it->first`、`it->second` 取得顏色與索引。
+- 將 `<bits/stdc++.h>` 移到 `AV.hpp` 前，確保舊 header 使用 `std::sort` 前已載入 `<algorithm>`。
+- 使用 alpha 3101 的舊版 `/compile` 路徑、輸入 4 實際編譯成功；輸出 15 次搬運與「已成功畫圖」，產生 819444 字元 legacy animation script。
+- 隔離 headless Edge 實際載入 script，得到 67 幀、初始幀 0，console 0 error。
+- 層級：V2；只驗證直接相關的舊編譯與 legacy animation 載入，未執行完整 regression 或無關演算法。
