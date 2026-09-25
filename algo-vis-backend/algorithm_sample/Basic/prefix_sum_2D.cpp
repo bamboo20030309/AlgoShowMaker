@@ -49,6 +49,8 @@ int main() {
 
     for (r = 1; r <= n; r++) {
         for (c = 1; c <= m; c++) {
+            // num 關注模式與後半段總覽模式，都只在各自第一列拆成四步。
+            if (r == 1 || r == n / 2 + 1) {
             // Step 1：先放入上方前綴和。
             pre[r][c] = pre[r - 1][c];
 
@@ -169,6 +171,50 @@ int main() {
             //   {"text": " = ${pre[r][c]}"}
             // ] as build_value_pre at pre.top offset(175,-24) when r > n / 2
             // @camera focus num zoom(1.7) offset(0,-60) when r <= n / 2 && (r > 1 || c > 1)
+            } else {
+                // 同一鏡頭模式從第二列開始，直接用完整公式一步算完。
+                pre[r][c] = pre[r - 1][c]
+                    + pre[r][c - 1]
+                    - pre[r - 1][c - 1]
+                    + num[r][c];
+
+                // @frame use prefix_sum_2d_view, prefix_sum_2d_cursor
+                // @style pre[r][c] highlight
+                // @style pre[r-1][c] background AV_blue
+                // @style pre[r][c-1] background AV_orange
+                // @style pre[r-1][c-1] background AV_red
+                // @style num[r][c] background AV_green
+                // @style num[0:r-1][0:c] background AV_blue
+                // @style num[0:r][0:c-1] background AV_orange
+                // @style num[0:r-1][0:c-1] background AV_red
+                // @arrow from num[r][c] to pre[r][c] as "add_value" color AV_green
+                // @arrow from pre[r-1][c] to pre[r][c] as "from_up" color AV_blue
+                // @arrow from pre[r][c-1] to pre[r][c] as "from_left" color AV_orange
+                // @arrow from pre[r-1][c-1] to pre[r][c] as "remove_overlap" color AV_red
+                // @text [
+                //   {"text": "pre[${r}][${c}] = ", "speech": "直接套用完整公式"},
+                //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
+                //   {"text": " + "},
+                //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
+                //   {"text": " - "},
+                //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
+                //   {"text": " + "},
+                //   {"text": "num[${r}][${c}]", "background": "AV_green"},
+                //   {"text": " = ${pre[r][c]}"}
+                // ] as build_compact_num at num.top offset(0,-24) when r <= n / 2
+                // @text [
+                //   {"text": "pre[${r}][${c}] = ", "speech": "直接套用完整公式"},
+                //   {"text": "pre[${r-1}][${c}]", "background": "AV_blue"},
+                //   {"text": " + "},
+                //   {"text": "pre[${r}][${c-1}]", "background": "AV_orange"},
+                //   {"text": " - "},
+                //   {"text": "pre[${r-1}][${c-1}]", "background": "AV_red"},
+                //   {"text": " + "},
+                //   {"text": "num[${r}][${c}]", "background": "AV_green"},
+                //   {"text": " = ${pre[r][c]}"}
+                // ] as build_compact_pre at pre.top offset(175,-24) when r > n / 2
+                // @camera focus num zoom(1.7) offset(0,-60) when r <= n / 2
+            }
         }
     }
 

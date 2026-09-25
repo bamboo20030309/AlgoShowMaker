@@ -52,6 +52,8 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.match(code, /pre\[r\]\[c\] \+= pre\[r\]\[c - 1\]/);
   assert.match(code, /pre\[r\]\[c\] -= pre\[r - 1\]\[c - 1\]/);
   assert.match(code, /pre\[r\]\[c\] \+= num\[r\]\[c\]/);
+  assert.match(code, /if \(r == 1 \|\| r == n \/ 2 \+ 1\)/);
+  assert.match(code, /pre\[r\]\[c\] = pre\[r - 1\]\[c\]\s*\+ pre\[r\]\[c - 1\]\s*- pre\[r - 1\]\[c - 1\]\s*\+ num\[r\]\[c\]/);
   assert.match(code, /@object pre\[r\]\[c\] render matrix with marker-layout\(none\)/);
   assert.doesNotMatch(code, /\bint row, column\b|pre\[row\]\[column\]/);
   assert.match(code, /@object pre render matrix\s*$/m);
@@ -79,11 +81,13 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
   assert.doesNotMatch(code, /"text":\s*"\$\{(?:pre|num)\[/);
   assert.doesNotMatch(code, /"text":\s*"pre\[[^"]+\]\s*=\s*\$\{pre\[/);
   assert.match(code, /@camera focus num zoom\(1\.7\) offset\(0,-60\) when r <= n \/ 2 && \(r > 1 \|\| c > 1\)/);
+  assert.match(code, /as build_compact_num at num\.top offset\(0,-24\) when r <= n \/ 2/);
+  assert.match(code, /as build_compact_pre at pre\.top offset\(175,-24\) when r > n \/ 2/);
   assert.match(code, /\/\* @asm-view[\s\S]*"autoFixedEnabled": true/);
   assert.match(code, /@style num\[r1:r2\]\[c1:c2\] background AV_green/);
 
   const frames = findFrameDirectives(code);
-  assert.equal(frames.length, 7, 'each prefix cell has four authored build steps');
+  assert.equal(frames.length, 8, 'the sample has four expanded steps plus one compact step');
   assert.ok(frames.every(frame => frame.objects.length === 2));
   assert.equal(frames[1].objects[0].renderer, 'original-matrix');
   assert.equal(frames[1].objects[0].rendererOptions.innerLabels, undefined);
@@ -101,7 +105,7 @@ test('two-dimensional prefix sum sample uses current matrix directives only', ()
     ['AV_blue', 'AV_orange', 'AV_red'],
     ['AV_blue', 'AV_orange', 'AV_red', 'AV_green']
   ]);
-  assert.deepEqual(frames[6].styles[0].selector, {
+  assert.deepEqual(frames[7].styles[0].selector, {
     type: 'matrix-region',
     rowSelector: { type: 'range', startExpression: 'r1', endExpression: 'r2', endInclusive: true },
     columnSelector: { type: 'range', startExpression: 'c1', endExpression: 'c2', endInclusive: true }
@@ -112,35 +116,55 @@ test('two-dimensional prefix sum sample builds the matrix and answers both queri
   const code = fs.readFileSync(matrixCodePath, 'utf8');
   const input = fs.readFileSync(matrixInputPath, 'utf8');
   const { trace, window } = await compile(code, input);
-  assert.equal(trace.frames.length, 84);
+  assert.equal(trace.frames.length, 54);
   const byName = Object.fromEntries(Object.entries(trace.variables)
     .map(([id, variable]) => [variable.name, id]));
-  const scalar = (frame, name) => Number(frame.state[byName[name]].data.value);
-  const buildFrame = id => trace.frames.find(frame => (
-    scalar(frame, 'r') === 2
-    && scalar(frame, 'c') === 2
+  const scalar = (frame, name) => Number(frame.state[byName[name]]?.data?.value);
+  const buildFrame = (id, row, column) => trace.frames.find(frame => (
+    scalar(frame, 'r') === row
+    && scalar(frame, 'c') === column
     && frame.texts.some(text => text.id === id)
   ));
   const buildSteps = [
-    buildFrame('build_up_num'),
-    buildFrame('build_left_num'),
-    buildFrame('build_overlap_num'),
-    buildFrame('build_value_num')
+    buildFrame('build_up_num', 1, 2),
+    buildFrame('build_left_num', 1, 2),
+    buildFrame('build_overlap_num', 1, 2),
+    buildFrame('build_value_num', 1, 2)
   ];
   assert.ok(buildSteps.every(Boolean));
   assert.deepEqual(buildSteps.map(frame => (
-    Number(frame.state[byName.pre].data.items[2].items[2].value)
-  )), [3, 10, 9, 16]);
+    Number(frame.state[byName.pre].data.items[1].items[2].value)
+  )), [0, 1, 1, 3]);
   const buildStyles = window.ASMTraceRules.evaluate(trace, buildSteps[3]);
-  assert.equal(buildStyles[byName.num]['1,2'].styleTypes.background, 'rgba(144, 202, 249, 0.6)');
-  assert.equal(buildStyles[byName.num]['2,1'].styleTypes.background, 'rgba(255, 183, 77, 0.65)');
-  assert.equal(buildStyles[byName.num]['1,1'].styleTypes.background, 'rgba(239, 154, 154, 0.6)');
-  assert.equal(buildStyles[byName.num]['2,2'].styleTypes.background, 'rgba(165, 214, 167, 0.6)');
-  assert.ok(Array.from({ length: 3 }, (_, row) => row).every(row => (
-    Array.from({ length: 3 }, (_, column) => column).every(column => (
-      buildStyles[byName.num][`${row},${column}`]?.styleTypes.background
-    ))
-  )));
+  assert.equal(buildStyles[byName.num]['0,2'].styleTypes.background, 'rgba(144, 202, 249, 0.6)');
+  assert.equal(buildStyles[byName.num]['1,1'].styleTypes.background, 'rgba(255, 183, 77, 0.65)');
+  assert.equal(buildStyles[byName.num]['0,1'].styleTypes.background, 'rgba(239, 154, 154, 0.6)');
+  assert.equal(buildStyles[byName.num]['1,2'].styleTypes.background, 'rgba(165, 214, 167, 0.6)');
+
+  const overviewSteps = [
+    buildFrame('build_up_pre', 3, 2),
+    buildFrame('build_left_pre', 3, 2),
+    buildFrame('build_overlap_pre', 3, 2),
+    buildFrame('build_value_pre', 3, 2)
+  ];
+  assert.ok(overviewSteps.every(Boolean));
+  assert.deepEqual(overviewSteps.map(frame => (
+    Number(frame.state[byName.pre].data.items[3].items[2].value)
+  )), [16, 34, 27, 39]);
+
+  const compactNum = buildFrame('build_compact_num', 2, 2);
+  const compactOverview = buildFrame('build_compact_pre', 4, 2);
+  assert.ok(compactNum);
+  assert.ok(compactOverview);
+  assert.equal(Number(compactNum.state[byName.pre].data.items[2].items[2].value), 16);
+  assert.equal(Number(compactOverview.state[byName.pre].data.items[4].items[2].value), 72);
+  for (const frame of [compactNum, compactOverview]) {
+    const assignments = frame.events.filter(event => event.type === 'assign'
+      && event.targets.some(target => target.role === 'target' && target.variableId === byName.pre));
+    assert.equal(assignments.length, 1, 'a compact cell uses one complete-formula assignment');
+  }
+  assert.equal(trace.frames.filter(frame => scalar(frame, 'r') === 2 && scalar(frame, 'c') === 2).length, 1);
+  assert.equal(trace.frames.filter(frame => scalar(frame, 'r') === 4 && scalar(frame, 'c') === 2).length, 1);
   const last = trace.frames.at(-1);
   const matrix = last.state[byName.pre].data.items.map(row => (
     row.items.map(item => Number(item.value))
