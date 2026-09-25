@@ -213,7 +213,6 @@
   let customOverviewRightMouseDown = false;
   let slideClipboard = [];
   let slideMutationInFlight = false;
-  let pendingSlideDelete = null;
   const slidePageEnteringIds = new Set();
   const overviewPageEnteringIds = new Set();
   let objectClipboard = { fabric: [], widgets: [], cut: false };
@@ -376,11 +375,6 @@
   const codeEditorModalStatus = document.getElementById('codeEditorModalStatus');
   const closeCodeEditorModalBtn = document.getElementById('closeCodeEditorModalBtn');
   const saveCodeEditorModalBtn = document.getElementById('saveCodeEditorModalBtn');
-  const slideDeleteDialog = document.getElementById('slideDeleteDialog');
-  const slideDeleteMessage = document.getElementById('slideDeleteMessage');
-  const closeSlideDeleteDialogBtn = document.getElementById('closeSlideDeleteDialogBtn');
-  const cancelSlideDeleteBtn = document.getElementById('cancelSlideDeleteBtn');
-  const confirmSlideDeleteBtn = document.getElementById('confirmSlideDeleteBtn');
   const codeLanguageSelect = document.getElementById('codeLanguageSelect');
   const latexFontSizeInput = document.getElementById('latexFontSizeInput');
   const codeFontSizeInput = document.getElementById('codeFontSizeInput');
@@ -7423,16 +7417,6 @@
     shareDialog?.addEventListener('click', event => {
       if (event.target === shareDialog) closeShareDialog();
     });
-    closeSlideDeleteDialogBtn?.addEventListener('click', closeSlideDeleteDialog);
-    cancelSlideDeleteBtn?.addEventListener('click', closeSlideDeleteDialog);
-    confirmSlideDeleteBtn?.addEventListener('click', confirmPendingSlideDelete);
-    slideDeleteDialog?.addEventListener('cancel', event => {
-      event.preventDefault();
-      closeSlideDeleteDialog();
-    });
-    slideDeleteDialog?.addEventListener('click', event => {
-      if (event.target === slideDeleteDialog) closeSlideDeleteDialog();
-    });
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);
@@ -8071,12 +8055,6 @@
     });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && slideDeleteDialog?.open) {
-        event.preventDefault();
-        event.stopPropagation();
-        closeSlideDeleteDialog();
-        return;
-      }
       if (event.key === 'Escape' && structureContextMenu && !structureContextMenu.hidden) {
         event.preventDefault();
         event.stopPropagation();
@@ -9240,31 +9218,6 @@
     requestAnimationFrame(() => openAlgorithmEditor(slide.id));
   }
 
-  function closeSlideDeleteDialog() {
-    pendingSlideDelete = null;
-    if (slideDeleteDialog?.open) slideDeleteDialog.close();
-  }
-
-  function confirmPendingSlideDelete() {
-    const pending = pendingSlideDelete;
-    pendingSlideDelete = null;
-    if (slideDeleteDialog?.open) slideDeleteDialog.close();
-    pending?.commit?.();
-  }
-
-  function requestSlideDeleteConfirmation(slideIds, commit) {
-    if (!slideDeleteDialog || typeof slideDeleteDialog.showModal !== 'function') return;
-    const count = slideIds.length;
-    pendingSlideDelete = { slideIds: slideIds.slice(), commit };
-    if (slideDeleteMessage) {
-      slideDeleteMessage.textContent = count === 1
-        ? '即將刪除目前選取的投影片。刪除後仍可立即使用復原。'
-        : `即將刪除選取的 ${count} 張投影片。刪除後仍可立即使用復原。`;
-    }
-    slideDeleteDialog.showModal();
-    requestAnimationFrame(() => confirmSlideDeleteBtn?.focus());
-  }
-
   function deleteOverviewSelectedSlide() {
     if (slideMutationInFlight) return;
     const ids = customOverviewOpen
@@ -9275,24 +9228,22 @@
     if (!removableIds.length) return;
     const beforeOrder = flatSlideIds();
     const firstDeletedIndex = beforeOrder.findIndex(id => removableIds.includes(id));
-    requestSlideDeleteConfirmation(removableIds, () => {
-      runSlideDeleteTransition(removableIds, () => {
-        removeSlidesByIds(removableIds);
-        const afterOrder = flatSlideIds();
-        const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
-        if (fallbackId) {
-          overviewSelectedSlideId = fallbackId;
-          overviewSelectedSlideIds = new Set([fallbackId]);
-          overviewSelectionAnchorId = fallbackId;
-          const pos = slidePositions.get(fallbackId);
-          if (pos) {
-            currentH = pos.h;
-            currentV = pos.v;
-          }
+    runSlideDeleteTransition(removableIds, () => {
+      removeSlidesByIds(removableIds);
+      const afterOrder = flatSlideIds();
+      const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
+      if (fallbackId) {
+        overviewSelectedSlideId = fallbackId;
+        overviewSelectedSlideIds = new Set([fallbackId]);
+        overviewSelectionAnchorId = fallbackId;
+        const pos = slidePositions.get(fallbackId);
+        if (pos) {
+          currentH = pos.h;
+          currentV = pos.v;
         }
-        saveDeck();
-        renderDeck();
-      });
+      }
+      saveDeck();
+      renderDeck();
     });
   }
 

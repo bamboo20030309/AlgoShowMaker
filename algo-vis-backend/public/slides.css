@@ -3767,7 +3767,3 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--control
   color: #d7e1df;
   font-size: 12px;
 }
-
-.slide-delete-message { margin: 22px 0 18px; color: #c7d0d3; font-size: 14px; line-height: 1.6; }
-.slide-delete-confirm-btn { border-color: #b94a4a !important; background: #8f2f35 !important; color: #fff; }
-.slide-delete-confirm-btn:hover { background: #a93a42 !important; }
