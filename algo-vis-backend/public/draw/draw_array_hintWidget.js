@@ -1,8 +1,19 @@
+/**
+ * 模組：陣列提示特效
+ *
+ * 責任：繪製指向箭頭、標記與高亮框，並以共享 presentation clock 維持縮圖與主畫面的動畫節奏。
+ * 資料流：呼叫端提供幾何與 identity；widget 建立 overlay 節點並依 clock 套用循環相位，必要時登錄 node map。
+ * 重要不變條件：同一 identity 的節奏必須跨重繪連續，提示層不得改變底層物件幾何。
+ * 相容性：沒有動畫時鐘或 rhythm id 時仍輸出靜態提示。
+ */
 // hintWidgets.js
 ;(function() {
   const NS = "http://www.w3.org/2000/svg";
   const PRESENTATION_LOOP_MS = 1000;
 
+  // ---------------------------------------------------------------------------
+  // 區段：共享動畫相位
+  // ---------------------------------------------------------------------------
   function presentationClock() {
     const relativeNow = window.performance?.now?.();
     return Number.isFinite(Number(relativeNow))
@@ -25,6 +36,9 @@
   /**
    * 畫紅色箭頭（point）
    */
+  // ---------------------------------------------------------------------------
+  // 區段：提示箭頭
+  // ---------------------------------------------------------------------------
   function drawArrow(g, x, y, color, id, offsetY = -20, ah = 12, aw = 8, nodeMap = null, rhythmId = '') {
     let arrow = nodeMap ? nodeMap.get(id) : (id ? g.querySelector(`#${CSS.escape(id)}`) : null);
     if (!arrow) {
@@ -56,6 +70,9 @@
   /**
    * 畫綠色勾勾（mark）
    */
+  // ---------------------------------------------------------------------------
+  // 區段：標記與高亮框
+  // ---------------------------------------------------------------------------
   function drawMark(g, x, y, color, id, nodeMap = null) {
     let check = nodeMap ? nodeMap.get(id) : (id ? g.querySelector(`#${CSS.escape(id)}`) : null);
     if (!check) {

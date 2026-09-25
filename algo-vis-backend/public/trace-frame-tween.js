@@ -1,3 +1,11 @@
+/**
+ * 模組：Frame 動畫與事件排程核心
+ *
+ * 責任：比較相鄰 frame 的視覺快照，建立物件進退場、位移、交換、指標、keep、箭頭與事件特效的單一播放計畫。
+ * 資料流：createPlaybackPlan 將事件時間線轉成 slots/barriers；幾何準備階段對齊前後 DOM 快照，播放階段只依 elapsed 套用 transform、opacity、style 與覆蓋層。
+ * 重要不變條件：同一 runtime identity 在 frame 間必須延續；所有等待關係以計畫時間為準，重繪不得重排事件；動畫結束必須落在 renderer 的最終幾何。
+ * 相容性：缺少新 transition、identity、presentation hint 的舊 trace 會走安全回退；reduced motion 與非動畫 render 仍要得到完全相同的終態。
+ */
 (function () {
   let activeRun = 0;
   let finishActiveRun = null;
@@ -26,6 +34,9 @@
   const EVENT_CODE_PROMPT_DURATION = 400;
   const SEQUENCE_TIMING = Object.freeze({ duration: 440, travel: 48 });
 
+  // ---------------------------------------------------------------------------
+  // 區段：序列生命週期與指標延續
+  // ---------------------------------------------------------------------------
   function sequenceEdge(operation) {
     return /(?:_front|^push_front$|^pop_front$)/.test(String(operation || ''))
       ? 'front' : 'back';
@@ -560,6 +571,9 @@
     return steps;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件槽位與 barrier 排程
+  // ---------------------------------------------------------------------------
   function createPlaybackPlan({
     frame, direction, runId = 0, transitionSteps = [], enteringMarkerKeys = [], eventTimeline = [],
     deferredMarkerEntranceKeys = [], deferredMarkerEntranceStartMs = 0,
@@ -751,6 +765,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：播放時間映射
+  // ---------------------------------------------------------------------------
   function playbackPhaseAt(plan, elapsed) {
     return plan?.phases?.find(phase => (
       Number(phase.durationMs) > 0
@@ -773,6 +790,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：遞迴與 keep 幾何交接
+  // ---------------------------------------------------------------------------
   function recursionGrowthTransitions(
     traceDocument, previousFrame, frame, direction = 1,
     previousPlacements = new Map(), currentPlacements = new Map()
@@ -929,6 +949,9 @@
     return overlay;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：前後 SVG 幾何對齊
+  // ---------------------------------------------------------------------------
   function alignedRectStates(source, target, fallbackKey = '$object') {
     const states = new Map();
     const sourceRects = [...(source?.querySelectorAll?.('rect') || [])];
@@ -1217,6 +1240,9 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：Heap 交換與版面變更
+  // ---------------------------------------------------------------------------
   function prepareHeapResizeSwaps(
     traceDocument, eventFrame, eventTimeline, currentElements, previousObjects, previousIdentityKeys
   ) {
@@ -1554,6 +1580,9 @@
     return `${variableKey}#${indices.join(',')}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件 mutation 與提交時間
+  // ---------------------------------------------------------------------------
   function mutationVisualCommits(traceDocument, eventFrame, eventTimeline) {
     const commits = new Map();
     const remember = (key, slot, commitAt) => {
@@ -1674,6 +1703,9 @@
     return Number(slot.end) || Number(slot.start) || 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：正向事件重播計畫
+  // ---------------------------------------------------------------------------
   function createForwardReplayPlan(
     traceDocument, eventFrame, eventTimeline = [], direction = 1
   ) {
@@ -1889,6 +1921,9 @@
     return '';
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：比較與賦值操作數定位
+  // ---------------------------------------------------------------------------
   function eventOperand(
     traceDocument, eventFrame, target, value, placements, elements, visualKeyForSource,
     event = null
@@ -1944,6 +1979,9 @@
       + Math.max(0, Number(keepSettlementDuration) || 0);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：全域播放速率
+  // ---------------------------------------------------------------------------
   function animationPlaybackRate() {
     const cssRate = Number(getComputedStyle(document.documentElement)
       .getPropertyValue('--asm-animation-playback-rate'));

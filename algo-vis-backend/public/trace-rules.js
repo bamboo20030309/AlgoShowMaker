@@ -1,8 +1,19 @@
+/**
+ * 模組：條件、運算式與裝飾規則
+ *
+ * 責任：解析 @ 指令中的條件與值運算式，並把符合目前 frame 的規則轉成 highlight、文字、箭頭及版面裝飾。
+ * 資料流：resolver 從 frame state、事件 mutation 與迭代邊界取值；parser 依運算子優先序求值，evaluate 再按 scope 和順序合併規則。
+ * 重要不變條件：運算式解析不得執行任意 JavaScript；比較與索引解析使用 trace 值語意，無法解析時回傳安全的未命中結果。
+ * 相容性：舊指令的變數名稱、renderer 索引與文字切片語法仍由相容路徑解析，缺少欄位不應使整個 frame 失敗。
+ */
 (function () {
   // Event colors belong to the frame/event menus. Objects only receive styles
   // from explicit user rules created in Trace Studio.
   const DEFAULT_RULES = [];
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件與 frame 查詢
+  // ---------------------------------------------------------------------------
   function eventMatches(event, match = {}) {
     if (match.eventType && event.type !== match.eventType) return false;
     if (match.signature && event.signature !== match.signature) return false;
@@ -47,6 +58,9 @@
     return window.ASMTraceModel.scalarValue(value);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：變數、索引與時間值解析
+  // ---------------------------------------------------------------------------
   function targetReference(document, frame, expression, locals = {}) {
     const source = String(expression || '').replace(/\s+/g, '');
     const base = source.match(/^([A-Za-z_]\w*)/)?.[1] || '';
@@ -153,6 +167,9 @@
     return iterationValue(document, frame, 'first', variableName);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：受限運算式 parser
+  // ---------------------------------------------------------------------------
   function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
     if (!locals?.__asmDirectiveLetsResolved && Array.isArray(frame?.lets) && frame.lets.length) {
       const resolvedLocals = { ...(locals || {}) };
@@ -463,6 +480,9 @@
     return arrayItem && typeof scalar === 'string' ? JSON.stringify(scalar) : String(scalar);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文字模板與條件
+  // ---------------------------------------------------------------------------
   function resolveTextExpression(document, frame, expression, locals = {}) {
     return formatTextValue(resolveExpression(document, frame, expression, locals, true));
   }
@@ -598,6 +618,9 @@
     return indices.length === 1 ? indices[0] : indices.join(',');
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：規則目標定位
+  // ---------------------------------------------------------------------------
   function resolveTargetIndex(document, frame, action) {
     const expression = action?.targetIndexExpression ?? action?.targetIndex;
     if (expression == null || String(expression).trim() === '') return null;
@@ -636,6 +659,9 @@
     return next;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：規則求值與合併
+  // ---------------------------------------------------------------------------
   function evaluate(document, frame, options = {}) {
     const highlights = {};
     const rules = [...DEFAULT_RULES, ...(Array.isArray(document?.rules) ? document.rules : [])];
@@ -808,6 +834,9 @@
     return highlights;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 裝飾輸出
+  // ---------------------------------------------------------------------------
   function decorations(document, frame) {
     const output = [];
     for (const rule of document?.rules || []) {

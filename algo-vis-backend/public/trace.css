@@ -1,3 +1,15 @@
+/*
+ * 模組：Trace 共用介面與播放樣式
+ *
+ * 責任：定義 trace 操作列、設定面板、畫布事件效果及程式碼呈現面板的視覺規則。
+ * 資料流：JavaScript 以狀態 class 與 data attribute 表達播放階段；CSS 只根據這些狀態決定版面、顏色與轉場。
+ * 重要不變條件：狀態 class 的名稱是 presenter、renderer 與樣式表之間的契約；動畫終態不得依賴 hover 或暫時 class。
+ * 相容性：保留 reduced-motion、窄螢幕與既有 class 結構，舊頁面缺少新狀態時維持靜態可讀。
+ */
+/* --------------------------------------------------------------------------
+ * 區段：模式切換與頂部操作
+ * -------------------------------------------------------------------------- */
+
 .trace-mode-controls {
   display: none;
   align-items: center;
@@ -70,6 +82,10 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
   cursor: default;
   opacity: 1;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：事件設定面板
+ * -------------------------------------------------------------------------- */
 
 .trace-event-settings-panel {
   position: fixed;
@@ -231,6 +247,10 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
   -webkit-appearance: none;
 }
 
+/* --------------------------------------------------------------------------
+ * 區段：變數與規則設定
+ * -------------------------------------------------------------------------- */
+
 .trace-setup-panel {
   position: absolute;
   z-index: 90;
@@ -353,6 +373,10 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
   color: #ff9890;
 }
 
+/* --------------------------------------------------------------------------
+ * 區段：事件檢視面板
+ * -------------------------------------------------------------------------- */
+
 .trace-event-panel {
   position: absolute;
   z-index: 80;
@@ -451,6 +475,10 @@ body.asm-trace-mode .trace-event-panel {
   color: #96a3a9;
   font-size: 12px;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：畫布物件與播放特效
+ * -------------------------------------------------------------------------- */
 
 .asm-trace-object {
   transition: none;
@@ -587,6 +615,10 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   background: #15191c;
 }
 
+/* --------------------------------------------------------------------------
+ * 區段：程式碼浮動面板
+ * -------------------------------------------------------------------------- */
+
 .asm-trace-code-panel {
   position: absolute;
   z-index: 8;
@@ -636,6 +668,10 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   border-radius: 5px;
   box-shadow: none;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：程式碼換頁與事件高亮
+ * -------------------------------------------------------------------------- */
 
 .asm-trace-code-page {
   position: relative;
@@ -753,6 +789,10 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
 .asm-trace-code-event-span.is-active-first.is-active-last {
   border-radius: 3px;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：窄螢幕調整
+ * -------------------------------------------------------------------------- */
 
 @media (max-width: 760px) {
   .asm-trace-code-panel {

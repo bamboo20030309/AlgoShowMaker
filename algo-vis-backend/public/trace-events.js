@@ -1,3 +1,11 @@
+/**
+ * 模組：事件正規化與啟用狀態
+ *
+ * 責任：建立穩定事件 key、補建迴圈邊界與自動固定事件，並依文件設定計算實際啟用狀態。
+ * 資料流：原始 frame events 先重建衍生事件，再套用帳號／文件設定與可用性；播放器只消費此處產生的一致 enabled/controlState。
+ * 重要不變條件：事件 key 必須跨重新分析維持穩定；衍生事件可重建但不可重複，邊界快照的值須對應事件發生前後的正確 frame。
+ * 相容性：舊文件沒有 instructionStates 或設定欄位時採既有預設；明確關閉的事件必須保留。
+ */
 (function () {
   const definitions = [
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
@@ -52,6 +60,9 @@
   // to many frames. Keep explicit user intent out of the serialized event data
   // so an unavailable occurrence does not permanently disable its instruction.
   const explicitEnabledStates = new WeakSet();
+  // ---------------------------------------------------------------------------
+  // 區段：事件身分與排序
+  // ---------------------------------------------------------------------------
   function cloneValue(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
   }
@@ -158,6 +169,9 @@
   // failed condition are one loop-boundary operation. Keep the captured
   // runtime metadata, but mark that entire operation so one setting can omit
   // its motion and code highlighting without affecting ordinary iterations.
+  // ---------------------------------------------------------------------------
+  // 區段：迴圈邊界衍生事件
+  // ---------------------------------------------------------------------------
   function rebuildLoopBoundaryEvents(document) {
     const entries = (document?.frames || []).flatMap((frame, frameIndex) => (
       orderedEntries(frame?.events || []).map(entry => ({ ...entry, frame, frameIndex }))
@@ -251,6 +265,9 @@
     entry.data = cloneValue(value);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：邊界快照與值回填
+  // ---------------------------------------------------------------------------
   function keepSnapshotFrame(document, snapshot) {
     if (snapshot?.kind !== 'frame' || !snapshot.frame) return snapshot?.frame || null;
     const framesById = new Map((document?.frames || []).map(frame => [frame.id, frame]));
@@ -319,6 +336,9 @@
     return effectiveFrame;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件預設與可用性
+  // ---------------------------------------------------------------------------
   function defaultEnabled(event = {}, document = null) {
     if (event.animate === false) return false;
     if (byType[event.type]?.internal === true) return false;
@@ -357,6 +377,9 @@
   // Rebuild generated fixed state after normalization. This both upgrades old
   // saved traces and guarantees that the editor, Studio and slide runtime use
   // the same runtime-identity-aware result.
+  // ---------------------------------------------------------------------------
+  // 區段：自動固定事件
+  // ---------------------------------------------------------------------------
   function rebuildAutoFixedEvents(document) {
     const frames = Array.isArray(document?.frames) ? document.frames : [];
     const variables = document?.variables || {};
@@ -444,6 +467,9 @@
     return document;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：啟用狀態套用
+  // ---------------------------------------------------------------------------
   function applyEnabledStates(document) {
     rebuildLoopBoundaryEvents(document);
     const eventStates = document?.studio?.eventStates || {};
@@ -528,6 +554,9 @@
     return document;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：介面控制狀態
+  // ---------------------------------------------------------------------------
   function controlState(event = {}) {
     const available = event.autoAnimationDisabled !== true;
     return {

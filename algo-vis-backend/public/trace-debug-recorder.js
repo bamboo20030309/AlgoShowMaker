@@ -1,3 +1,11 @@
+/**
+ * 模組：播放除錯記錄器
+ *
+ * 責任：在不介入渲染結果的前提下，記錄 frame、事件、SVG 物件、鏡頭、TTS 與時間軸狀態。
+ * 資料流：播放器事件驅動 capture；定時 sample 補足動畫中間點，最後可轉成 JSON/CSV，或與既有基準計畫比較。
+ * 重要不變條件：所有座標以 canvas 相對位置記錄，時間以 session 起點為基準；記錄失敗不得中斷正常播放。
+ * 相容性：舊頁面缺少可選的 debug UI、camera 或 TTS 介面時皆允許空值，匯出欄位仍保持穩定。
+ */
 (function (root, factory) {
   const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -44,6 +52,9 @@
     : String(element?.className || '');
   const textValue = value => String(value ?? '').replace(/\s+/g, ' ').trim();
 
+  // ---------------------------------------------------------------------------
+  // 區段：場景快照擷取
+  // ---------------------------------------------------------------------------
   function surfaceName() {
     let embed = '';
     try { embed = new URLSearchParams(root?.location?.search || '').get('asmEmbed') || ''; } catch {}
@@ -245,6 +256,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：時間序列取樣
+  // ---------------------------------------------------------------------------
   function capture(reason = 'manual', detail = {}) {
     if (!active || !session) return null;
     // Continuous samples only need real motion geometry. Full primitive
@@ -323,6 +337,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：記錄工作階段
+  // ---------------------------------------------------------------------------
   function start(requested = {}) {
     if (active) return report();
     const numericInterval = Number(requested.sampleIntervalMs);
@@ -412,6 +429,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：播放器事件接收
+  // ---------------------------------------------------------------------------
   function onPlaybackPlan(event) {
     if (!active) return;
     const detail = event?.detail || {};
@@ -471,6 +491,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：匯出格式
+  // ---------------------------------------------------------------------------
   function rows(source = report()) {
     if (!source) return [];
     return (source.samples || []).flatMap(sample => {
@@ -576,6 +599,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：基準比較
+  // ---------------------------------------------------------------------------
   function compare(expected, actual, requested = {}) {
     const positionTolerancePx = Math.max(0, Number(requested.positionTolerancePx) || 1.5);
     const timingToleranceMs = Math.max(0, Number(requested.timingToleranceMs) || 80);

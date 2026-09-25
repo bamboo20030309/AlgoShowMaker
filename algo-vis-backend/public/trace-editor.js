@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace 編輯入口與設定同步
+ *
+ * 責任：串接原始碼編輯器、分析 API、變數選擇、事件設定及 trace 文件載入。
+ * 資料流：來源碼與設定經 analyze 產生文件，normalize 後交給 renderer/player；Studio 或帳號事件偏好則沿共用保存路徑回寫。
+ * 重要不變條件：畫面顯示的 trace 必須對應目前來源與設定；非同步分析結果只能在仍為最新請求時套用。
+ * 相容性：舊動畫缺少 eventSettings、presentation 或 renderer 名稱時經正規化補值，且明確 false 不得被預設覆蓋。
+ */
 (function () {
   let mode = 'trace';
   let sliceMode = 'auto';
@@ -27,6 +35,9 @@
   ];
   const DEFAULT_EVENT_GAP_MS = 500;
 
+  // ---------------------------------------------------------------------------
+  // 區段：來源與 presentation 區塊
+  // ---------------------------------------------------------------------------
   function editorSource() {
     if (typeof window.asmGetSourceCode === 'function') return window.asmGetSourceCode();
     return typeof aceEditor !== 'undefined' ? aceEditor.getValue() : '';
@@ -79,6 +90,9 @@
     return fresh;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件偏好正規化與帳號同步
+  // ---------------------------------------------------------------------------
   function cleanEventSettings(value = {}) {
     const cleanFlags = source => Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
       typeof source?.[type] === 'boolean' ? [[type, source[type]]] : []
@@ -171,6 +185,9 @@
     }, 240);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：變數 renderer 選擇
+  // ---------------------------------------------------------------------------
   function defaultRenderer(variable) {
     if (variable.kind === 'matrix') return 'original-matrix';
     if (variable.kind === 'stack') return 'original-stack';
@@ -249,6 +266,9 @@
     scheduleAccountEventSettingsSave();
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件設定介面
+  // ---------------------------------------------------------------------------
   function renderEventSettings() {
     if (!eventSettingsPanel || !currentTrace) return;
     const settings = ensureEventSettings();
@@ -415,6 +435,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文件載入與畫面同步
+  // ---------------------------------------------------------------------------
   function applyTraceDocument(trace, options = {}) {
     let preparedTrace = trace;
     const source = editorSource();
@@ -499,6 +522,9 @@
     window.dispatchEvent(new CustomEvent('asm:trace-loaded'));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：動畫快照輸出
+  // ---------------------------------------------------------------------------
   function snapshot() {
     const traceVariables = currentTrace?.variables || {};
     const snapshotTrace = sourceViewWasEdited()

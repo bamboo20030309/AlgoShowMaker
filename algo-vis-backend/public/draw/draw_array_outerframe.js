@@ -1,3 +1,11 @@
+/**
+ * 模組：陣列外框繪圖器
+ *
+ * 責任：為既有陣列內容建立可定位的外框、標題與邊界 metadata。
+ * 資料流：根據內容 bbox 與 padding 建立 frame，並把邊界寫回 group，供箭頭、camera 與 transition 查詢。
+ * 重要不變條件：metadata 必須描述呈現後的實際外框；getOuterframePosition 與 bbox 使用同一局部座標系。
+ * 相容性：內容缺少 bbox 時保留可用的最小外框，舊呼叫參數仍套用預設 padding。
+ */
 // draw_array_outerframe.js
 ;(function() {
   const NS = 'http://www.w3.org/2000/svg';
@@ -12,6 +20,9 @@
    * @param {number}      height       - 高(單位長度)
    * @param {number}      width        - 寬(單位長度)
    */
+  // ---------------------------------------------------------------------------
+  // 區段：外框與標題繪製
+  // ---------------------------------------------------------------------------
   function draw_array_outerframe(
     g,
     groupID,
@@ -83,6 +94,9 @@
     return;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：邊界 metadata 與 anchor 查詢
+  // ---------------------------------------------------------------------------
   function writeOuterframeBBox(g, left, top, right, bottom) {
     g.setAttribute('data-outerframe-left',   String(left));
     g.setAttribute('data-outerframe-top',    String(top));

@@ -1,8 +1,19 @@
+/**
+ * 模組：Trace 文件模型正規化
+ *
+ * 責任：把後端 trace、Studio 設定與舊格式資料整理成 renderer、rules 與 player 共用的文件形狀。
+ * 資料流：輸入先複製與補齊 variables/frames/skins，再套用 frame condition、迭代摘要及事件狀態；下游以 normalize 後的文件為唯一資料來源。
+ * 重要不變條件：正規化不得修改呼叫端原物件；frame、variable 與 snapshot id 必須穩定，缺值與明確 false/0 要分開處理。
+ * 相容性：renderer 別名、舊 skin 形狀與缺少衍生欄位的 trace 都在此集中遷移，避免各畫面各自猜測。
+ */
 (function () {
   function clone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：資料值正規化
+  // ---------------------------------------------------------------------------
   function normalizeData(data) {
     if (!data || typeof data !== 'object') return { kind: 'scalar', value: data ?? null };
     const kind = typeof data.kind === 'string' ? data.kind : 'object';
@@ -57,6 +68,9 @@
     return legacy[renderer] || renderer || defaultRenderer(variable);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：renderer 與 skin 相容層
+  // ---------------------------------------------------------------------------
   function normalizeSkins(variables, sourceSkins) {
     const skins = sourceSkins && typeof sourceSkins === 'object' ? clone(sourceSkins) : {};
     Object.entries(variables || {}).forEach(([variableId, variable]) => {
@@ -72,6 +86,9 @@
     return skins;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 條件與迭代摘要
+  // ---------------------------------------------------------------------------
   function applyFrameConditions(document) {
     if (!window.ASMTraceRules?.expressionMatches) return document;
     const accepted = [];
@@ -225,6 +242,9 @@
     return summaries;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文件入口正規化
+  // ---------------------------------------------------------------------------
   function normalizeTraceDocument(source = {}) {
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
@@ -347,6 +367,9 @@
     return JSON.stringify(normalizeData(data));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：相鄰 frame 差異
+  // ---------------------------------------------------------------------------
   function diffFrame(previous, current) {
     const changes = [];
     const ids = new Set([...Object.keys(previous?.state || {}), ...Object.keys(current?.state || {})]);
@@ -405,6 +428,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：繪圖指令查詢
+  // ---------------------------------------------------------------------------
   function drawingDirectives(document, frame, field) {
     const output = [];
     for (const item of frame?.[field] || []) {

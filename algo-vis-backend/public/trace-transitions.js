@@ -1,3 +1,11 @@
+/**
+ * 模組：物件轉場規則解析
+ *
+ * 責任：依 frame 範圍、目標 key 與 runtime alias 選出物件轉場類型、時間與 easing。
+ * 資料流：先找最具體的 Studio 規則，再回退文件預設；解析結果交給 tween 排程，不直接操作 DOM。
+ * 重要不變條件：規則比對以 from/to frame 與語意物件身分為準，重新命名或 alias 僅可透過明確 runtime identity 銜接。
+ * 相容性：舊文件沒有 transitions 時使用既有預設；duration 會限制在安全範圍，無效類型回退為標準轉場。
+ */
 (function () {
   const DEFAULTS = Object.freeze({
     mode: 'auto',
@@ -12,6 +20,9 @@
     linear: { calcMode: 'linear', keySplines: '' }
   });
 
+  // ---------------------------------------------------------------------------
+  // 區段：轉場預設與規則比對
+  // ---------------------------------------------------------------------------
   function clampDuration(value, fallback = DEFAULTS.duration) {
     const number = Number(value);
     return Number.isFinite(number) ? Math.max(0, Math.min(5000, number)) : fallback;
@@ -62,6 +73,9 @@
     return best;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：跨 frame 身分解析
+  // ---------------------------------------------------------------------------
   function runtimeSourceAlias(fromFrame, toFrame, targetKey, sourceKeys) {
     if (!sourceKeys?.has) return '';
     const target = stateObjectMatch(toFrame, targetKey);
@@ -76,6 +90,9 @@
     return '';
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：最終轉場決議
+  // ---------------------------------------------------------------------------
   function resolve(document, fromFrame, toFrame, targetKey, sourceKeys = null) {
     const base = defaults(document);
     const rule = explicitRule(document, fromFrame, toFrame, targetKey);
@@ -112,6 +129,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：播放計畫時間摘要
+  // ---------------------------------------------------------------------------
   function timing(plan) {
     const easing = EASINGS[plan?.easing] || EASINGS.smooth;
     return {
