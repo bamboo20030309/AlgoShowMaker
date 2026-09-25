@@ -4661,7 +4661,7 @@
     });
     applyObjectColorStyles(document, frame, elements);
     applyVisibilityStates(document, frame, elements);
-    if (options.interactive !== false) {
+    if (options.interactive !== false || options.evaluateAvailability === true) {
       window.ASMTraceFrameTween?.updateEventAvailability?.(
         document, frame, placements, elements, options.availabilityPreviousObjects ?? null
       );
@@ -4958,6 +4958,37 @@
     return thumbnail;
   }
 
+  function preflightEventAvailability(document) {
+    if (!document?.frames?.length
+      || typeof window.ASMTraceFrameTween?.updateEventAvailability !== 'function') return document;
+    const host = svg('svg', {
+      width: 1600,
+      height: 1000,
+      'aria-hidden': 'true'
+    });
+    host.style.cssText = 'position:fixed;left:-10000px;top:-10000px;width:1600px;height:1000px;visibility:hidden;pointer-events:none;';
+    window.document.body.append(host);
+    let previousObjects = null;
+    try {
+      document.frames.forEach((frame, index) => {
+        host.replaceChildren();
+        const result = renderScene(host, host, document, frame, document.frames[index - 1] || null, {
+          idPrefix: `trace-availability-${safeKey(frame.id)}`,
+          interactive: false,
+          evaluateAvailability: true,
+          animatePositions: false,
+          animateEvents: false,
+          transform: '',
+          availabilityPreviousObjects: previousObjects
+        });
+        previousObjects = result.elements;
+      });
+    } finally {
+      host.remove();
+    }
+    return document;
+  }
+
   function frameAnchorForKey(document, frame, key, anchor = 'center', previousFrame = null) {
     if (!document || !frame || !key) return null;
     const host = svg('svg', { width: 1600, height: 1000, 'aria-hidden': 'true' });
@@ -5158,10 +5189,10 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-219';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-220';
   window.ASMTraceRenderers = {
-    build: 'trace-219', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
-    register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
+    build: 'trace-220', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

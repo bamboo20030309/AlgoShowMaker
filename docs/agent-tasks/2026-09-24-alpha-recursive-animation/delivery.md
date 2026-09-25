@@ -168,3 +168,24 @@
 ### 舊有物件相容性
 
 - 不新增持久化物件欄位；disk renderer 對既有非空 disk 行為不變，新增回歸只覆蓋原本錯誤的空 disk fallback。舊 trace 與明確使用其他 renderer 的 sequence 仍走原路徑。
+
+## 2026-09-26：Trace Studio 全影格事件 availability 預檢
+
+- Studio 開啟前會以隱藏、無動畫、非互動 SVG 依序渲染所有影格，先完成每個事件的實際 canvas target availability，再建立來源程式事件樹。
+- 預檢沿用正式 renderer、scene generation、runtime lifetime、marker／binding 與前一幀 visual object；不以是否直接出現在 `@frame` 做簡化判斷。
+- Fibonacci 輸入 5 在尚未逐幀播放時直接開啟 Studio，`int left`、`left = F(n - 1)` 與 `left 退場` 現在立即標記為 `missing-target`，不再先顯示為可用的綠色事件。
+- 自動 array marker 的 `index = 1` 仍為 available；前一幀曾顯示的 `shown` 自然退場也仍為 available，確認預檢沒有把間接顯示或跨幀退場誤判成黃色。
+- 預檢 host 完成後立即移除，不改變主畫布、目前影格或播放順序。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：F（事件 target availability）、G（lifetime／退場）、J（Trace Studio）。
+- `studio-availability-preflight.browser.test.js`、`event-code-tree.test.js`、`entrypoints.test.js`：4/4 通過。
+- `heap-marker-assignment.integration.test.js` 直接相關的 unavailable 預設、matching lifetime exit、hidden lifetime exit：3/3 通過。
+- 實際瀏覽器確認未走訪 Fibonacci 影格的 left 宣告／退場為 `missing-target`；marker-bound assignment 與 previous-frame exit 保持 available。
+- 靜態檢查：修改的 JS 通過 `node --check` 與 `git diff --check`；入口載入 renderer 220、Studio 123。
+- 未執行完整 regression、全部 tests 或無關演算法動畫；依 V2 規範只跑直接相關專項。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位。既有明確事件開關仍由 `eventInstructionStates` 決定；預檢只補齊每個 occurrence 的衍生 availability，不覆寫使用者選擇。
