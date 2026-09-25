@@ -72,6 +72,32 @@ test('save-time view normalization removes stale/default data without mutating t
   });
 });
 
+test('matrix label, zero-width gridline and disabled outerframe settings survive save and reopen', () => {
+  const trace = {
+    variables: { grid: { id: 'grid', name: 'grid', kind: 'matrix', functionName: 'main' } },
+    frames: [{ id: 'frame-0', source: { functionName: 'main', directiveKey: 'manual-frame:grid:0' }, state: { grid: {} } }],
+    skins: { grid: { renderer: 'original-matrix', options: {
+      gridlines: 0, outerframe: false, markerLayout: 'inner',
+      rowLabels: { mode: 'custom', values: ['', 'B'] },
+      columnLabels: { mode: 'none', values: [] },
+      innerLabels: { mode: 'index', values: [] }
+    } } },
+    rules: [], studio: {}
+  };
+  const settings = viewSource.fromTrace(trace);
+  assert.deepEqual(settings.skins.grid.options, trace.skins.grid.options);
+
+  const reopened = { ...trace, skins: {}, studio: {} };
+  viewSource.applyToTrace(reopened, JSON.parse(JSON.stringify(settings)));
+  assert.deepEqual(reopened.skins.grid.options, trace.skins.grid.options);
+
+  const legacy = { ...trace, skins: { grid: { renderer: 'original-matrix', options: {} } }, studio: {} };
+  const legacySettings = viewSource.fromTrace(legacy);
+  const legacyReopened = { ...legacy, skins: {}, studio: {} };
+  viewSource.applyToTrace(legacyReopened, legacySettings);
+  assert.deepEqual(legacyReopened.skins.grid?.options || {}, {});
+});
+
 test('file view settings keep automatic fixed marks and loop boundary events only', () => {
   const trace = fixture();
   trace.studio.eventSettings = {

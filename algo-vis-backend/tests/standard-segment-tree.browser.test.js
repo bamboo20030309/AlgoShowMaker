@@ -318,8 +318,8 @@ int main() {
     assert.equal(operations.sumVisible, true);
     const sumTransfers = operations.sumAnimation.filter(sample => sample.transfer);
     assert.ok(sumTransfers.length > 0, JSON.stringify(operations.sumAnimation));
-    assert.ok(sumTransfers.every(sample => /^\d+$/.test(sample.transfer)),
-      'sum += moves only the tree numeric field');
+    assert.ok(sumTransfers.every(sample => /^\+\d+$/.test(sample.transfer)),
+      'sum += moves only the operator-prefixed tree numeric field');
     assert.ok(sumTransfers.some(sample => sample.sum === '0'),
       'sum keeps its old value until the tree value arrives');
     assert.ok(operations.lazyFields.some(value => /^\+\d/.test(value)));

@@ -77,6 +77,25 @@
       + ASSIGN_TIMING.drop + ASSIGN_TIMING.hold + ASSIGN_TIMING.exit;
   }
 
+  function assignmentTransferOperator(event) {
+    const binaryOperation = String(event?.binaryOperation || '');
+    if (['+', '-', '*', '/'].includes(binaryOperation)) return binaryOperation;
+    if (event?.compound === true) {
+      const compound = String(event?.expression || event?.operation || '')
+        .match(/([+\-*\/])=/);
+      if (compound) return compound[1];
+    }
+    return '';
+  }
+
+  function formatAssignmentTransferValue(value, operator = '') {
+    const text = String(value ?? '');
+    if (!operator || !text || text.startsWith(`${operator}(`)) return text;
+    if (text.startsWith('-')) return `${operator}(${text})`;
+    if (text.startsWith(operator)) return text;
+    return `${operator}${text}`;
+  }
+
   function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
   }
@@ -1520,8 +1539,12 @@
       return `${variableKey}#0`;
     }
     if (!expression) return variableKey;
+    const capturedIndices = Array.isArray(target.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
     const capturedIndex = Number(target.resolvedIndex);
-    const indices = Object.prototype.hasOwnProperty.call(target, 'resolvedIndex')
+    const indices = capturedIndices.length && capturedIndices.every(Number.isInteger)
+      ? capturedIndices
+      : Object.prototype.hasOwnProperty.call(target, 'resolvedIndex')
       && Number.isInteger(capturedIndex)
       ? [capturedIndex]
       : expression.split(',').map(part => Number(
@@ -2375,6 +2398,12 @@
     removeAnimationNodes(clone);
     const cloneText = clone.matches?.('text') ? clone : clone.querySelector?.('text');
     if (cloneText && value != null) cloneText.textContent = displayEventValue(value);
+    if (cloneText && options.operatorPrefix) {
+      cloneText.textContent = formatAssignmentTransferValue(
+        cloneText.textContent,
+        options.operatorPrefix
+      );
+    }
 
     const sourceBounds = valueOnly ? elementBoundsInRoot(sourceElement, root) : null;
     const targetBounds = valueOnly ? elementBoundsInRoot(targetElement, root) : null;
@@ -2805,9 +2834,13 @@
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
     const sources = (event?.targets || []).filter(item => item.role === 'source'
-      || item.role === 'source-left' || item.role === 'source-right');
+      || String(item.role || '').startsWith('source-'));
     const source = sources[0];
-    const binaryAddition = event?.binaryOperation === '+' && sources.length === 2;
+    const binaryOperation = ['+', '-', '*', '/'].includes(event?.binaryOperation)
+      && sources.length === 2;
+    const multiSourceArithmetic = event?.multiSourceArithmetic === true
+      && sources.length > 2;
+    const transferOperator = assignmentTransferOperator(event);
     if (!target) return null;
     const operand = eventOperand(
       traceDocument, eventFrame, target, event?.payload?.after,
@@ -2917,13 +2950,18 @@
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
-      transfers = sourceOperands.map(item => createAssignmentTransfer(
+      transfers = sourceOperands.map((item, index) => createAssignmentTransfer(
         root,
         item,
         operand,
         formattedSourceValue,
         item ? previousVisualElement(previousObjects, item.visualKey) : null,
-        { valueOnly: event?.compound === true || binaryAddition }
+        {
+          valueOnly: event?.compound === true || binaryOperation || multiSourceArithmetic,
+          operatorPrefix: multiSourceArithmetic
+            ? sources[index]?.arithmeticOperator
+            : transferOperator
+        }
       )).filter(Boolean);
       if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
@@ -3004,7 +3042,7 @@
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
-          if (event?.compound === true || binaryAddition) {
+          if (event?.compound === true || binaryOperation || multiSourceArithmetic) {
             transfers.forEach(item => item.remove());
             transfers = [];
           }
@@ -6948,6 +6986,8 @@
           entry.markerPointPath.setAttribute('d', markerArrowPath(entry, markerArrowState));
         }
         if (entry.recursionGrowth) {
+          entry.element.dataset.traceRecursionGrowth = '1';
+          entry.target.dataset.traceRecursionGrowth = '1';
           entry.target.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
           entry.attachedVisuals.forEach(attachment => {
             attachment.wrapper.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
@@ -7165,6 +7205,8 @@
       events?.applyStyles?.();
       entries.forEach(entry => {
         delete entry.target.dataset.traceAppearing;
+        delete entry.element.dataset.traceRecursionGrowth;
+        delete entry.target.dataset.traceRecursionGrowth;
         applyIndexLabelGrowth(entry.indexLabelGeometry, 1);
         const markerAdjustment = entry.markerPointPath
           ? events?.adjustments?.get?.(entry.key)
@@ -7293,16 +7335,19 @@
     document.querySelectorAll('[data-trace-appearing]').forEach(element => {
       delete element.dataset.traceAppearing;
     });
+    document.querySelectorAll('[data-trace-recursion-growth]').forEach(element => {
+      delete element.dataset.traceRecursionGrowth;
+    });
     document.querySelectorAll('[data-trace-playback-plan-id]').forEach(element => {
       delete element.dataset.tracePlaybackPhase;
     });
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-238';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-241';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-238', play, cancel, updateEventAvailability,
+    build: 'trace-241', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
@@ -7317,6 +7362,7 @@
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
-    createForwardReplayPlan, prepareForwardValues
+    createForwardReplayPlan, prepareForwardValues,
+    assignmentTransferOperator, formatAssignmentTransferValue
   };
 })();

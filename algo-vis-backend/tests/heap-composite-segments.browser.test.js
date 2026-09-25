@@ -284,7 +284,7 @@ test('standalone segment tree build animates every input and parent sum', {timeo
     assert.equal(result.arrowCount,2);
     assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
     const transfers=result.samples.filter(sample=>sample.transferValues.length===2);
-    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])),
+    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['+13','+14'])),
       JSON.stringify(result.samples.slice(-20)));
     assert.ok(transfers.every(sample=>sample.transferRects===0));
     assert.ok(transfers.some(sample=>sample.targetValue==='0'));
@@ -394,7 +394,7 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
       'sum never becomes blank while += is playing');
     assert.ok(result.compoundSamples.every(sample=>sample.sumOpacity>0.99),
       'the global sum cell does not replay an entrance or exit');
-    const transferSamples=result.compoundSamples.filter(sample=>sample.transferValue==='27');
+    const transferSamples=result.compoundSamples.filter(sample=>sample.transferValue==='+27');
     assert.ok(transferSamples.length>0,'tree[now] value is copied into a moving text transfer');
     assert.ok(transferSamples.every(sample=>sample.transferRects===0),
       'compound += moves only the value text, not the source cell rectangle');
@@ -463,9 +463,9 @@ int main() {
     assert.ok(result.target>0);
     assert.deepEqual(result.sourceTexts,['5,=13','7,+3']);
     const transfers=result.samples.filter(values=>values.length===2);
-    assert.ok(transfers.some(values=>JSON.stringify(values)===JSON.stringify(['5','7'])),
+    assert.ok(transfers.some(values=>JSON.stringify(values)===JSON.stringify(['+5','+7'])),
       JSON.stringify(result.samples));
-    assert.ok(transfers.every(values=>values.every(value=>!/[,+]|=13/.test(value))),
+    assert.ok(transfers.every(values=>values.every(value=>/^\+\d+$/.test(value))),
       JSON.stringify(transfers));
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}

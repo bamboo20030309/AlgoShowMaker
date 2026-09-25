@@ -7,6 +7,8 @@ const { compile } = require('./helpers/compile');
 
 const codePath = path.join(__dirname, '../algorithm_sample/Basic/prefix_sum.cpp');
 const inputPath = path.join(__dirname, '../algorithm_sample/Basic/prefix_sum-sample_input.txt');
+const matrixCodePath = path.join(__dirname, '../algorithm_sample/Basic/prefix_sum_2D.cpp');
+const matrixInputPath = path.join(__dirname, '../algorithm_sample/Basic/prefix_sum_2D-sample_input.txt');
 
 test('one-dimensional prefix sum sample uses only current directives', () => {
   const code = fs.readFileSync(codePath, 'utf8');
@@ -39,4 +41,161 @@ test('one-dimensional prefix sum sample builds the table and answers its range',
   assert.ok(Array.from({ length: 12 }, (_, index) => index + 3)
     .every(index => styles[byName.num][String(index)].styleTypes.background
       === 'rgba(165, 214, 167, 0.6)'));
+});
+
+test('two-dimensional prefix sum sample uses current matrix directives only', () => {
+  const code = fs.readFileSync(matrixCodePath, 'utf8');
+  assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|frame_draw|start_draw|end_draw|_draw_|@keep/);
+  assert.match(code, /vector<vector<int>> num, pre;/);
+  assert.match(code, /int r, c;/);
+  assert.match(code, /pre\[r\]\[c\] = pre\[r - 1\]\[c\]/);
+  assert.match(code, /pre\[r\]\[c\] \+= pre\[r\]\[c - 1\]/);
+  assert.match(code, /pre\[r\]\[c\] -= pre\[r - 1\]\[c - 1\]/);
+  assert.match(code, /pre\[r\]\[c\] \+= num\[r\]\[c\]/);
+  assert.match(code, /if \(r == 1 \|\| r == n \/ 2 \+ 1\)/);
+  assert.match(code, /pre\[r\]\[c\] = pre\[r - 1\]\[c\]\s*\+ pre\[r\]\[c - 1\]\s*- pre\[r - 1\]\[c - 1\]\s*\+ num\[r\]\[c\]/);
+  assert.match(code, /@object pre\[r\]\[c\] render matrix with marker-layout\(none\)/);
+  assert.doesNotMatch(code, /\bint row, column\b|pre\[row\]\[column\]/);
+  assert.match(code, /@object pre render matrix\s*$/m);
+  assert.match(code, /@object num render matrix\s*$/m);
+  assert.doesNotMatch(code, /inner-labels\(/);
+  assert.doesNotMatch(code, /labels\(value,index\)|row-labels\(index\)|column-labels\(index\)|gridlines\(1\)|outerframe\(true\)/);
+  assert.match(code, /@place num\.left at pre\.right offset\(100,0\)/);
+  assert.match(code, /@camera auto zoom\(1\)/);
+  assert.match(code, /@style pre\[0:n\]\[0\] background AV_grey/);
+  assert.match(code, /@style pre\[0\]\[0:m\] background AV_grey/);
+  assert.match(code, /@style num\[0:n\]\[0\] background AV_grey/);
+  assert.match(code, /@style num\[0\]\[0:m\] background AV_grey/);
+  assert.match(code, /@style num\[0:r-1\]\[0:c\] background AV_blue/);
+  assert.match(code, /@style num\[0:r\]\[0:c-1\] background AV_orange/);
+  assert.match(code, /@style num\[0:r-1\]\[0:c-1\] background AV_red/);
+  assert.doesNotMatch(code, /@for (?:rr|cc)\b/);
+  assert.match(code, /"background":\s*"AV_blue"/);
+  assert.match(code, /"background":\s*"AV_orange"/);
+  assert.match(code, /"background":\s*"AV_red"/);
+  assert.match(code, /"background":\s*"AV_green"/);
+  assert.match(code, /"text":\s*"pre\[\$\{r-1\}\]\[\$\{c\}\]"/);
+  assert.match(code, /"text":\s*"pre\[\$\{r\}\]\[\$\{c-1\}\]"/);
+  assert.match(code, /"text":\s*"pre\[\$\{r-1\}\]\[\$\{c-1\}\]"/);
+  assert.match(code, /"text":\s*"num\[\$\{r\}\]\[\$\{c\}\]"/);
+  assert.doesNotMatch(code, /"text":\s*"\$\{(?:pre|num)\[/);
+  assert.doesNotMatch(code, /"text":\s*"pre\[[^"]+\]\s*=\s*\$\{pre\[/);
+  assert.match(code, /@camera focus num zoom\(1\.7\) offset\(0,-60\) when r <= n \/ 2 && \(r > 1 \|\| c > 1\)/);
+  assert.match(code, /as build_compact_num at num\.top offset\(0,-24\) when r <= n \/ 2/);
+  assert.match(code, /as build_compact_pre at pre\.top offset\(175,-24\) when r > n \/ 2/);
+  assert.match(code, /\/\* @asm-view[\s\S]*"autoFixedEnabled": true/);
+  assert.match(code, /@style num\[r1:r2\]\[c1:c2\] background AV_green/);
+
+  const frames = findFrameDirectives(code);
+  assert.equal(frames.length, 8, 'the sample has four expanded steps plus one compact step');
+  assert.ok(frames.every(frame => frame.objects.length === 2));
+  assert.equal(frames[1].objects[0].renderer, 'original-matrix');
+  assert.equal(frames[1].objects[0].rendererOptions.innerLabels, undefined);
+  assert.equal(frames[1].objects[0].rendererOptions.markerLayout, 'none');
+  assert.deepEqual(frames[1].bindings.map(binding => binding.indexDimension), [0, 1]);
+  assert.deepEqual(frames[1].camera.condition.identifiers, ['r', 'n', 'c']);
+  assert.equal(frames[1].camera.target.variableId, frames[1].objects[1].primaryVariableId);
+  const buildColors = frames.slice(1, 5).map(frame => [...new Set(frame.texts
+    .flatMap(text => text.segments)
+    .map(segment => segment.background)
+    .filter(Boolean))]);
+  assert.deepEqual(buildColors, [
+    ['AV_blue'],
+    ['AV_blue', 'AV_orange'],
+    ['AV_blue', 'AV_orange', 'AV_red'],
+    ['AV_blue', 'AV_orange', 'AV_red', 'AV_green']
+  ]);
+  assert.deepEqual(frames[7].styles[0].selector, {
+    type: 'matrix-region',
+    rowSelector: { type: 'range', startExpression: 'r1', endExpression: 'r2', endInclusive: true },
+    columnSelector: { type: 'range', startExpression: 'c1', endExpression: 'c2', endInclusive: true }
+  });
+});
+
+test('two-dimensional prefix sum sample builds the matrix and answers both queries', async () => {
+  const code = fs.readFileSync(matrixCodePath, 'utf8');
+  const input = fs.readFileSync(matrixInputPath, 'utf8');
+  const { trace, window } = await compile(code, input);
+  assert.equal(trace.frames.length, 54);
+  const byName = Object.fromEntries(Object.entries(trace.variables)
+    .map(([id, variable]) => [variable.name, id]));
+  const scalar = (frame, name) => Number(frame.state[byName[name]]?.data?.value);
+  const buildFrame = (id, row, column) => trace.frames.find(frame => (
+    scalar(frame, 'r') === row
+    && scalar(frame, 'c') === column
+    && frame.texts.some(text => text.id === id)
+  ));
+  const buildSteps = [
+    buildFrame('build_up_num', 1, 2),
+    buildFrame('build_left_num', 1, 2),
+    buildFrame('build_overlap_num', 1, 2),
+    buildFrame('build_value_num', 1, 2)
+  ];
+  assert.ok(buildSteps.every(Boolean));
+  assert.deepEqual(buildSteps.map(frame => (
+    Number(frame.state[byName.pre].data.items[1].items[2].value)
+  )), [0, 1, 1, 3]);
+  const buildStyles = window.ASMTraceRules.evaluate(trace, buildSteps[3]);
+  assert.equal(buildStyles[byName.num]['0,2'].styleTypes.background, 'rgba(144, 202, 249, 0.6)');
+  assert.equal(buildStyles[byName.num]['1,1'].styleTypes.background, 'rgba(255, 183, 77, 0.65)');
+  assert.equal(buildStyles[byName.num]['0,1'].styleTypes.background, 'rgba(239, 154, 154, 0.6)');
+  assert.equal(buildStyles[byName.num]['1,2'].styleTypes.background, 'rgba(165, 214, 167, 0.6)');
+
+  const overviewSteps = [
+    buildFrame('build_up_pre', 3, 2),
+    buildFrame('build_left_pre', 3, 2),
+    buildFrame('build_overlap_pre', 3, 2),
+    buildFrame('build_value_pre', 3, 2)
+  ];
+  assert.ok(overviewSteps.every(Boolean));
+  assert.deepEqual(overviewSteps.map(frame => (
+    Number(frame.state[byName.pre].data.items[3].items[2].value)
+  )), [16, 34, 27, 39]);
+
+  const compactNum = buildFrame('build_compact_num', 2, 2);
+  const compactOverview = buildFrame('build_compact_pre', 4, 2);
+  assert.ok(compactNum);
+  assert.ok(compactOverview);
+  assert.equal(Number(compactNum.state[byName.pre].data.items[2].items[2].value), 16);
+  assert.equal(Number(compactOverview.state[byName.pre].data.items[4].items[2].value), 72);
+  for (const frame of [compactNum, compactOverview]) {
+    const assignments = frame.events.filter(event => event.type === 'assign'
+      && event.targets.some(target => target.role === 'target' && target.variableId === byName.pre));
+    assert.equal(assignments.length, 1, 'a compact cell uses one complete-formula assignment');
+    assert.equal(assignments[0].multiSourceArithmetic, true);
+    assert.deepEqual(Array.from(assignments[0].targets.slice(1), target => target.arithmeticOperator),
+      ['+', '+', '-', '+']);
+    assert.deepEqual(Array.from(assignments[0].targets.slice(1), target => (
+      Array.from(target.resolvedIndices)
+    )), [
+      [scalar(frame, 'r') - 1, scalar(frame, 'c')],
+      [scalar(frame, 'r'), scalar(frame, 'c') - 1],
+      [scalar(frame, 'r') - 1, scalar(frame, 'c') - 1],
+      [scalar(frame, 'r'), scalar(frame, 'c')]
+    ]);
+  }
+  assert.equal(trace.frames.filter(frame => scalar(frame, 'r') === 2 && scalar(frame, 'c') === 2).length, 1);
+  assert.equal(trace.frames.filter(frame => scalar(frame, 'r') === 4 && scalar(frame, 'c') === 2).length, 1);
+  const last = trace.frames.at(-1);
+  const matrix = last.state[byName.pre].data.items.map(row => (
+    row.items.map(item => Number(item.value))
+  ));
+  assert.deepEqual(matrix, [
+    [0, 0, 0, 0, 0, 0],
+    [0, 1, 3, 6, 10, 15],
+    [0, 7, 16, 27, 40, 55],
+    [0, 18, 39, 63, 90, 120],
+    [0, 34, 72, 114, 160, 210]
+  ]);
+  assert.equal(Number(last.state[byName.ans].data.value), 195);
+  const styles = window.ASMTraceRules.evaluate(trace, last);
+  assert.equal(styles[byName.pre]['4,5'].styleTypes.background, 'rgba(165, 214, 167, 0.6)');
+  assert.equal(styles[byName.pre]['1,5'].styleTypes.background, 'rgba(239, 154, 154, 0.6)');
+  assert.equal(styles[byName.pre]['4,0'].styleTypes.background, 'rgba(239, 154, 154, 0.6)');
+  assert.ok(Array.from({ length: 3 }, (_, row) => row + 2).every(row => (
+    Array.from({ length: 5 }, (_, column) => column + 1).every(column => (
+      styles[byName.num][`${row},${column}`].styleTypes.background
+        === 'rgba(165, 214, 167, 0.6)'
+    ))
+  )));
 });

@@ -66,6 +66,35 @@ test('malformed text slices fail analysis instead of capturing partial expressio
   }
 });
 
+test('text segment arrays may continue across aligned line comments', () => {
+  const code = `int main(){int a[2]={3,5};
+// @frame a
+// @text [
+//   {"text": "a[0] = "},
+//   {"text": "\${a[0]}", "background": "AV_blue"}
+// ] as aligned at a.top
+}`;
+  const frame = findFrameDirectives(code)[0];
+  const text = frame.texts.find(item => item.id === 'aligned');
+  assert.ok(text);
+  assert.deepEqual(text.segments.map(segment => segment.kind), ['literal', 'expression']);
+  assert.equal(text.segments[1].background, 'AV_blue');
+  assert.equal(text.binding.targetName, 'a');
+});
+
+test('text segment arrays preserve an explicit speech override', () => {
+  const code = `int main(){int value=3;
+// @frame value
+// @text [
+//   {"text": "value[\${value}] = ", "speech": "當前值"},
+//   {"text": "\${value}", "background": "AV_blue"}
+// ] as spoken
+}`;
+  const text = findFrameDirectives(code)[0].texts.find(item => item.id === 'spoken');
+  assert.equal(text.segments[0].speech, '當前值');
+  assert.equal(text.segments.filter(segment => Object.hasOwn(segment, 'speech')).length, 1);
+});
+
 test('compiled array texts use each frame snapshot and completed loop bounds after JSON reload', async () => {
   const { trace, window } = await compile(source);
   const r = window.ASMTraceRules;

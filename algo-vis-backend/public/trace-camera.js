@@ -1,4 +1,12 @@
 (function () {
+  function cameraConditionMatches(trace, frame, condition) {
+    if (!condition) return true;
+    if (condition.expression && window.ASMTraceRules?.expressionMatches) {
+      return window.ASMTraceRules.expressionMatches(trace, frame, condition) !== false;
+    }
+    return window.ASMTraceRules?.conditionMatches?.(frame, condition) !== false;
+  }
+
   function ruleForFrame(trace, frame) {
     const matchingStudioRules = (trace?.studio?.cameraRules || []).filter(rule => {
       const hasFrameScope = Boolean(rule.frameIds?.length || rule.allFrames
@@ -7,7 +15,7 @@
         ? rule.frameIds
         : window.ASMTraceViewSource?.frameIdsForDescriptor?.(rule, trace?.frames || []);
       if (hasFrameScope && !frameIds?.includes(frame.id)) return false;
-      return window.ASMTraceRules?.conditionMatches?.(frame, rule.condition) !== false;
+      return cameraConditionMatches(trace, frame, rule.condition);
     });
     const frameOverride = matchingStudioRules.filter(rule => (
       rule.allFrames !== true
@@ -15,8 +23,7 @@
         || rule.frameSelectors || rule.sourceSelectors || rule.sourceFrameSelectors)
     )).at(-1);
     if (frameOverride) return frameOverride;
-    if (frame?.camera
-      && window.ASMTraceRules?.conditionMatches?.(frame, frame.camera.condition) !== false) {
+    if (frame?.camera && cameraConditionMatches(trace, frame, frame.camera.condition)) {
       return frame.camera;
     }
     return matchingStudioRules.at(-1) || null;

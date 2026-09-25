@@ -153,11 +153,15 @@
       displayValue: valueText && valueText.dataset?.traceContentRole !== 'index'
         ? textValue(valueText.textContent) : null,
       screen: rectangle(element, canvasRect),
-      attributes: relevantAttributes(element, [
-        'transform', 'opacity', 'display', 'visibility', 'data-base-offset',
-        'data-trace-position-x', 'data-trace-position-y', 'data-trace-render-position',
-        'data-trace-appearing', 'data-trace-scene-generation', 'data-alive', 'data-layout'
-      ]),
+      attributes: {
+        ...relevantAttributes(element, [
+          'transform', 'opacity', 'display', 'visibility', 'data-base-offset',
+          'data-trace-position-x', 'data-trace-position-y', 'data-trace-render-position',
+          'data-trace-appearing', 'data-trace-scene-generation', 'data-alive', 'data-layout'
+        ]),
+        ...(element?.closest?.('[data-trace-recursion-growth]')
+          ? { 'data-trace-recursion-growth': '1' } : {})
+      },
       computed: {
         display: String(computed?.display || ''),
         visibility: String(computed?.visibility || ''),

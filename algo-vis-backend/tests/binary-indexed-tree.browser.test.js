@@ -182,9 +182,10 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       assert.equal(presentation.cells.find(cell => cell.index === 8).value, '54');
       assert.match(presentation.teachingText, /下一個索引是 16/,
         '@let lb resolves in the rendered teaching text for the current frame');
-      assert.ok(transfer.some(sample => sample.value === sourceValue),
-        `num[${sourceIndex}] value is copied into the assignment transfer`);
-      const transferTransforms = new Set(transfer.filter(sample => sample.value === sourceValue)
+      const transferValue = `+${sourceValue}`;
+      assert.ok(transfer.some(sample => sample.value === transferValue),
+        `num[${sourceIndex}] value and compound operator are copied into the assignment transfer`);
+      const transferTransforms = new Set(transfer.filter(sample => sample.value === transferValue)
         .map(sample => sample.transform));
       assert.ok(transferTransforms.size > 2,
         `num[${sourceIndex}] value visibly travels to BIT[8]`);

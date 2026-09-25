@@ -75,6 +75,9 @@
   }
 
   function eventTargetIndex(document, frame, target) {
+    const capturedIndices = Array.isArray(target?.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
+    if (capturedIndices.length && capturedIndices.every(Number.isInteger)) return capturedIndices;
     const captured = Number(target?.resolvedIndex);
     if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
       && Number.isInteger(captured)) return [captured];
@@ -573,17 +576,26 @@
   }
 
   function resolveIndex(target, frame) {
+    const capturedIndices = Array.isArray(target?.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
+    if (capturedIndices.length && capturedIndices.every(Number.isInteger)) {
+      return capturedIndices.length === 1 ? capturedIndices[0] : capturedIndices.join(',');
+    }
     const capturedIndex = Number(target?.resolvedIndex);
     if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
       && Number.isInteger(capturedIndex)) return capturedIndex;
     const expression = String(target?.indexExpression || '').replace(/\s+/g, '');
     if (!expression) return null;
-    if (/^-?\d+$/.test(expression)) return Number(expression);
-    const match = expression.match(/^([A-Za-z_]\w*)([+-]\d+)?$/);
-    if (!match) return null;
-    const base = scalarStateByName(frame, match[1]);
-    if (base == null) return null;
-    return base + Number(match[2] || 0);
+    const resolvePart = part => {
+      if (/^-?\d+$/.test(part)) return Number(part);
+      const match = part.match(/^([A-Za-z_]\w*)([+-]\d+)?$/);
+      if (!match) return null;
+      const base = scalarStateByName(frame, match[1]);
+      return base == null ? null : base + Number(match[2] || 0);
+    };
+    const indices = expression.split(',').map(resolvePart);
+    if (!indices.length || indices.some(index => !Number.isInteger(index))) return null;
+    return indices.length === 1 ? indices[0] : indices.join(',');
   }
 
   function resolveTargetIndex(document, frame, action) {
@@ -674,6 +686,38 @@
       const items = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
+        const dimensionIndices = (dimension, count) => {
+          if (dimension?.type === 'index') {
+            const value = resolveExpression(document, frame, dimension.indexExpression, style.drawLocals);
+            const index = value == null ? NaN : Number(value);
+            return Number.isInteger(index) && index >= 0 && index < count ? [index] : [];
+          }
+          if (dimension?.type === 'range') {
+            const startValue = resolveExpression(document, frame, dimension.startExpression, style.drawLocals);
+            const endValue = resolveExpression(document, frame, dimension.endExpression, style.drawLocals);
+            if (startValue == null || endValue == null) return [];
+            const start = Number(startValue);
+            const end = Number(endValue);
+            if (!Number.isInteger(start) || !Number.isInteger(end)) return [];
+            const stop = end + (dimension.endInclusive ? 1 : 0);
+            return Array.from({ length: count }, (_, index) => index)
+              .filter(index => index >= start && index < stop);
+          }
+          return [];
+        };
+        if (selector?.type === 'matrix-cell') {
+          const row = Number(resolveExpression(document, frame, selector.rowExpression, style.drawLocals));
+          const column = Number(resolveExpression(document, frame, selector.columnExpression, style.drawLocals));
+          if (!Number.isInteger(row) || !Number.isInteger(column)) return [];
+          return [`${row},${column}`];
+        }
+        if (selector?.type === 'matrix-region') {
+          const rows = dimensionIndices(selector.rowSelector, items.length);
+          return rows.flatMap(row => {
+            const columns = dimensionIndices(selector.columnSelector, items[row]?.items?.length || 0);
+            return columns.map(column => `${row},${column}`);
+          });
+        }
         if (selector?.type === 'index') {
           const value = resolveExpression(document, frame, selector.indexExpression, style.drawLocals);
           if (value == null) return [];
@@ -697,6 +741,21 @@
         : [style.selector];
       const indices = [...new Set(selectors.flatMap(selectorIndices))];
       indices.forEach(index => {
+        if (typeof index === 'string' && index.includes(',')) {
+          const [row, column] = index.split(',').map(Number);
+          const item = items[row]?.items?.[column];
+          if (!Number.isInteger(row) || !Number.isInteger(column) || item == null) return;
+          const value = window.ASMTraceModel.scalarValue(item);
+          if (!expressionMatches(document, frame, style.when,
+            { ...style.drawLocals, value, index: column, row, column })) return;
+          const variableHighlights = highlights[variableId] ||= {};
+          variableHighlights[index] = mergeHighlightStyle(
+            variableHighlights[index],
+            { styleType: style.styleType, color: styleColors[style.color] || style.color },
+            { sourceStyleId: style.id || '' }
+          );
+          return;
+        }
         if (index < 0 || index >= items.length) return;
         const presentedValues = options.presentedValues?.get?.(variableId);
         const value = presentedValues?.has?.(index)

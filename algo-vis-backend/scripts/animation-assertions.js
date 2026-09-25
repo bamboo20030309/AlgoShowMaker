@@ -18,17 +18,19 @@ function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
     const objects = sample.objects || [];
     const visible = object => object.effectiveOpacity > opacityThreshold
       && object.computed?.display !== 'none' && object.computed?.visibility !== 'hidden';
+    const growingRecursion = object => object?.attributes?.['data-trace-recursion-growth'] === '1';
     const present = new Map(objects.filter(object => object.retained)
       .map(object => [object.retainedKey || object.key, object]));
     for (const key of retained) {
       const object = present.get(key);
-      if (!object || !visible(object) || object.effectiveOpacity < 0.99) {
+      if (!object || !visible(object) || (!growingRecursion(object) && object.effectiveOpacity < 0.99)) {
         fail(sample, 'keep-visibility', { key, opacity: object?.effectiveOpacity });
       }
     }
     for (const object of objects) {
       if (object.retained && visible(object)) {
-        if (object.effectiveOpacity < 0.99 || object.attributes?.['data-trace-appearing'] === '1') {
+        if (!growingRecursion(object)
+          && (object.effectiveOpacity < 0.99 || object.attributes?.['data-trace-appearing'] === '1')) {
           fail(sample, 'keep-entrance', { key: object.key, opacity: object.effectiveOpacity });
         }
         retained.add(object.retainedKey || object.key);

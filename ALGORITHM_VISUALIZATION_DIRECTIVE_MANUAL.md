@@ -703,6 +703,17 @@ return value;
 // @text [{"text":"目前值："},{"text":"${arr[i]}","color":"AV_red","background":"#fff3cd","fontSize":18,"bold":true}] at arr.bottom
 ```
 
+文字片段陣列也可以使用連續的普通 `//` 註解換行；陣列結束後再接 `as`、`at`、`when` 等修飾詞：
+
+```cpp
+// @text [
+//   {"text": "目前值："},
+//   {"text": "${arr[i]}", "background": "AV_red"}
+// ] as current_value at arr.bottom
+```
+
+同一行中相鄰且 `background` 相同的文字片段，顯示時會合併為一個連續背景區段；`${...}` 插值即使在內部拆成多個可編輯片段，也不會產生重疊色塊或接縫。
+
 欄位支援：
 
 | 標準欄位 | 相容別名 | 說明 |
@@ -780,6 +791,18 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 - `arr[0:i)`：左閉右開，包含 `0`，不包含 `i`。
 - `arr[0:i]`：左右皆包含，包含 `0` 到 `i`。
 - `arr[:i]`：省略起點時從 `0` 開始。
+
+二維陣列可在 row 與 column 各自使用單一索引或包含右端點的範圍：
+
+```cpp
+// @style grid[r][c] highlight AV_red
+// @style grid[r1:r2][c] background AV_blue
+// @style grid[r][c1:c2] background AV_yellow
+// @style grid[r1:r2][c1:c2] background AV_green
+// @style grid[:r][0:c] focus
+```
+
+`grid[r1:r2][c1:c2]` 表示 row `r1..r2`、column `c1..c2` 的矩形，兩個維度都包含右端點；省略起點時從 `0` 開始。ragged matrix 只套用到實際存在的資料格，不會補出缺少的 column。二維範圍目前使用 `]` 的包含端點形式，不支援在單一維度以 `)` 表示排除右端點。
 
 ### 一次選取多段
 
@@ -1244,8 +1267,44 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 - `index`：十進位索引。
 - `binary-index`：二進位索引。
 - `binary-index-padded`：補齊寬度的二進位索引。
+- `none`：資料值與索引都不顯示；資料格仍保留。
 
 一次最多選擇一種索引格式，不可同時指定 `index` 和 `binary-index`。
+
+### 一維與二維自訂標籤
+
+```cpp
+// @frame arr with index-labels("",labels)
+// @frame grid[row][column] with row-labels("",rowNames), column-labels(blank(1),columnNames), inner-labels(index)
+```
+
+- `index-labels(...)`：一維陣列的索引標籤。
+- `row-labels(...)`：二維陣列左側的列標籤。
+- `column-labels(...)`：二維陣列上方共用的欄標籤。
+- `inner-labels(index)`：每一列各自從 0 開始的欄索引；也可傳入二維標籤陣列。
+
+參數可混合字串、字元、數字與陣列，陣列會依序展開。例如
+`index-labels("", "", labels)` 會先補兩格空白，再接上 `labels`；同義寫法是
+`index-labels(blank(2), labels)`。使用 `none` 可關閉該組標籤。
+
+二維資料格固定為 40px；inner label 高 12px。左側 row label 只和 40px 資料格對齊，
+不包含下方的 inner label。ragged matrix 只建立實際存在的資料格；空列仍保留 row label 與列高。
+
+### 二維格線、外框與索引指標
+
+```cpp
+// @frame grid[i][j] with gridlines(0), outerframe(false), marker-layout(axis)
+// @frame grid[i][j] with marker-layout(inner)
+```
+
+- `gridlines(width)`：設定資料格與標籤格線寬；`0` 隱藏線條但保留可互動區域。
+- `outerframe(true|false)`：控制整個物件的底盤外框，不影響資料格本身。
+- `marker-layout(axis)`：`i` 在最左側垂直移動，`j` 在上方共用欄軸水平移動，為預設。
+- `marker-layout(inner)`：列指標仍在左側，欄指標移到 `i` 所在列後水平移動。
+
+`grid[i][j]` 的第一個括號固定代表 row／垂直方向，第二個括號代表 column／水平方向。
+`@style grid[i][j] highlight` 只標示資料格與該格 inner label，不標示 row／column label。
+本版不擴充 `range(start,end)`；它仍維持原本的一維範圍語意。
 
 ### 同時使用多個選項
 

@@ -59,3 +59,19 @@ test('camera priority is Studio frame override, directive, Studio global, automa
   trace.studio.cameraRules = [];
   assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame), null);
 });
+
+test('camera expression conditions decide whether a focus directive applies', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-camera.js'), 'utf8');
+  const window = {
+    ASMTraceRules: {
+      conditionMatches: () => true,
+      expressionMatches: (_trace, frame) => frame.state.allow === true
+    }
+  };
+  vm.runInNewContext(source, { window, getComputedStyle: () => ({ getPropertyValue: () => '' }) });
+  const camera = { source: 'directive', target: { objectKey: 'num' }, condition: { expression: 'allow' } };
+  const frame = { id: 'frame-1', state: { allow: false }, camera };
+  assert.equal(window.ASMTraceCamera.ruleForFrame({}, frame), null);
+  frame.state.allow = true;
+  assert.equal(window.ASMTraceCamera.ruleForFrame({}, frame), camera);
+});

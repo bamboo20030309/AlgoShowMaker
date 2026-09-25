@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstdint>
 #include <deque>
 #include <fstream>
 #include <iomanip>
@@ -637,8 +638,31 @@ inline std::string target_json(const char* role, const char* variable_id,
     + ",\"variableId\":" + quoted(variable_id ? variable_id : "")
     + ",\"expression\":" + quoted(expression ? expression : "")
     + ",\"indexExpression\":" + quoted(index_expression ? index_expression : "");
-  if (has_resolved_index) result += ",\"resolvedIndex\":" + std::to_string(resolved_index);
+  if (has_resolved_index) {
+    const std::string index_source = index_expression ? index_expression : "";
+    if (index_source.find(',') != std::string::npos) {
+      const std::uint64_t packed = static_cast<std::uint64_t>(resolved_index);
+      const std::int32_t row = static_cast<std::int32_t>(packed >> 32);
+      const std::int32_t column = static_cast<std::int32_t>(packed & 0xffffffffULL);
+      result += ",\"resolvedIndices\":[" + std::to_string(row) + ',' + std::to_string(column) + ']';
+    } else {
+      result += ",\"resolvedIndex\":" + std::to_string(resolved_index);
+    }
+  }
   return result + '}';
+}
+
+inline std::string arithmetic_target_json(
+    const char* role, const char* variable_id,
+    const char* expression, const char* index_expression,
+    bool has_resolved_index, long long resolved_index,
+    const char* operation) {
+  std::string result = target_json(
+    role, variable_id, expression, index_expression,
+    has_resolved_index, resolved_index);
+  result.insert(result.size() - 1,
+    std::string(",\"arithmeticOperator\":") + quoted(operation ? operation : "+"));
+  return result;
 }
 
 template <typename T>
@@ -895,6 +919,36 @@ void event_binary_assign(
           left_has_resolved_index, left_resolved_index)
       + ',' + target_json("source-right", right_id, right_expression, right_index,
           right_has_resolved_index, right_resolved_index) + ']');
+}
+
+template <typename BeforeFactory, typename F, typename AfterFactory>
+void event_multi_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const std::vector<std::string>& source_targets,
+    const char* expression,
+    BeforeFactory before_factory, F action, AfterFactory after_factory,
+    bool animate = true, bool for_initializer = false) {
+  const std::string before = encode_value(before_factory());
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  std::string targets = target_json(
+    "target", target_id, target_expression, target_index,
+    target_has_resolved_index, target_resolved_index);
+  for (const std::string& source_target : source_targets) {
+    targets += ',' + source_target;
+  }
+  recorder().add_event("assign", line, signature ? signature : "",
+    std::string("\"operation\":\"=\"")
+      + ",\"multiSourceArithmetic\":true"
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"targets\":[" + targets + ']');
 }
 
 // An assignment used as the right-hand side of another assignment must

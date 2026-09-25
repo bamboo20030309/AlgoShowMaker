@@ -12,6 +12,24 @@ test('actual animation checks catch a transient keep disappearance', () => {
   assert.equal(validate(report).firstViolation.kind, 'keep-visibility');
   assert.equal(validate(report).firstViolation.timeMs, 16);
 });
+test('intentional recursion growth may begin translucent but remains visible', () => {
+  const growth = { retained: true, effectiveOpacity: 0.35,
+    attributes: { 'data-trace-recursion-growth': '1' } };
+  const report = { samples: [sample(0, [object('keep', growth)]),
+    sample(16, [object('keep', { ...growth, effectiveOpacity: 0.7 })]),
+    sample(32, [object('keep', { retained: true })])] };
+  assert.equal(validate(report).pass, true);
+
+  delete report.samples[0].objects[0].attributes['data-trace-recursion-growth'];
+  assert.equal(validate(report).firstViolation.kind, 'keep-entrance');
+});
+test('recursion growth never permits a retained object to disappear', () => {
+  const report = { samples: [sample(0, [object('keep', { retained: true,
+    effectiveOpacity: 0.35, attributes: { 'data-trace-recursion-growth': '1' } })]),
+  sample(16, [object('keep', { retained: true, effectiveOpacity: 0,
+    attributes: { 'data-trace-recursion-growth': '1' } })])] };
+  assert.equal(validate(report).firstViolation.kind, 'keep-visibility');
+});
 test('only visible marker label rectangles count as overlapping', () => {
   const markers = [object('i', { markerLabel: box(0) }), object('j', { markerLabel: box(10) })];
   assert.equal(validate({ samples: [sample(0, markers)] }).pass, false);

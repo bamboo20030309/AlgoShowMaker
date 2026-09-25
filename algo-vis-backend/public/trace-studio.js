@@ -934,7 +934,8 @@
     if (isTextSegment) {
       const renderedText = rendered?.querySelector?.('.asm-trace-text-segment-value');
       const renderedBackground = rendered?.querySelector?.('.asm-trace-text-segment-background');
-      const background = stored.background || renderedBackground?.getAttribute?.('fill') || 'none';
+      const background = stored.background || rendered?.dataset?.traceTextBackground
+        || renderedBackground?.getAttribute?.('fill') || 'none';
       if (textColor && document.activeElement !== textColor) {
         textColor.value = stored.textColor || renderedText?.getAttribute?.('fill') || '#111827';
       }

@@ -361,6 +361,36 @@ function arrowCommentPayload(source, node, initial) {
   return { payload, end };
 }
 
+function textCommentPayload(source, node, initial) {
+  let payload = initial;
+  let end = node.to;
+  const closesJsonArray = value => {
+    if (!String(value || '').trimStart().startsWith('[')) return true;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (const character of value) {
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') inString = true;
+      else if (character === '[') depth += 1;
+      else if (character === ']' && --depth === 0) return true;
+    }
+    return false;
+  };
+  while (!closesJsonArray(payload)) {
+    const next = source.slice(end).match(/^\r?\n[ \t]*\/\/[ \t]?([^\r\n]*)/);
+    if (!next || next[1].trimStart().startsWith('@')) break;
+    payload += '\n' + next[1];
+    end += next[0].length;
+  }
+  return { payload, end };
+}
+
 function findPresetDirectives(source, analysis) {
   const definitions = new Map();
   const ranges = [];
@@ -411,7 +441,9 @@ function findPresetDirectives(source, analysis) {
         const name = directive[1].toLowerCase();
         const collected = name === 'arrow'
           ? arrowCommentPayload(source, node, directive[2])
-          : { payload: directive[2], end: node.to };
+          : name === 'text'
+            ? textCommentPayload(source, node, directive[2])
+            : { payload: directive[2], end: node.to };
         if (!['for', 'endfor'].includes(name)) open.directives.push({ name, payload: collected.payload, line,
           drawLoops: drawingScopesAt(source, analysis, node.from) });
         continuationEnd = collected.end;
@@ -750,13 +782,46 @@ function parseRendererOptions(value, line, directiveName) {
   }
 
   const options = {};
+  const seen = new Set();
+  const parseLabelSource = (name, parts) => {
+    if (parts.length === 1 && /^(?:none|index)$/i.test(parts[0])) {
+      return { mode: parts[0].trim().toLowerCase(), parts: [], identifiers: [] };
+    }
+    const identifiers = [];
+    const labelParts = parts.map(rawPart => {
+      const raw = rawPart.trim();
+      const blank = raw.match(/^blank(?:\(\s*(\d+)\s*\))?$/i);
+      if (blank) return { type: 'blank', count: Number(blank[1] || 1) };
+      if (/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw)) {
+        return { type: 'literal', value: Number(raw) };
+      }
+      if ((raw.startsWith('"') && raw.endsWith('"'))
+        || (raw.startsWith("'") && raw.endsWith("'"))) {
+        try {
+          const literal = raw.startsWith('"')
+            ? JSON.parse(raw)
+            : raw.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+          return { type: 'literal', value: literal };
+        } catch {
+          throw new Error(`第 ${line} 行的 ${directiveName} ${name} 字串格式無效：${raw}`);
+        }
+      }
+      if (/^[A-Za-z_]\w*$/.test(raw)) {
+        identifiers.push(raw);
+        return { type: 'variable', name: raw };
+      }
+      throw new Error(`第 ${line} 行的 ${directiveName} ${name} 只接受常值、blank(n) 或陣列變數`);
+    });
+    return { mode: 'custom', parts: labelParts, identifiers: [...new Set(identifiers)] };
+  };
   for (const part of split.parts) {
     const match = part.match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*\((.*)\)$/s);
     if (!match) throw new Error(`第 ${line} 行的 ${directiveName} with 選項格式無效：${part}`);
     const name = match[1].toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(options, name)) {
+    if (seen.has(name)) {
       throw new Error(`第 ${line} 行的 ${directiveName} 重複使用 with ${name}`);
     }
+    seen.add(name);
     const args = splitTopLevel(match[2]);
     if (!args.valid || args.parts.some(argument => !argument)) {
       throw new Error(`第 ${line} 行的 ${directiveName} with ${name} 參數格式無效`);
@@ -807,13 +872,17 @@ function parseRendererOptions(value, line, directiveName) {
 
     if (name === 'labels') {
       const labels = args.parts.map(label => label.trim().toLowerCase());
-      const allowed = new Set(['value', 'index', 'binary-index', 'binary-index-padded']);
+      const allowed = new Set(['value', 'index', 'none', 'binary-index', 'binary-index-padded']);
       const invalid = labels.find(label => !allowed.has(label));
       if (invalid || new Set(labels).size !== labels.length) {
-        throw new Error(`第 ${line} 行的 ${directiveName} labels 只支援 value、index、binary-index、binary-index-padded`);
+        throw new Error(`第 ${line} 行的 ${directiveName} labels 只支援 value、index、none、binary-index、binary-index-padded`);
+      }
+      if (labels.includes('none') && labels.length !== 1) {
+        throw new Error(`第 ${line} 行的 ${directiveName} labels(none) 不可搭配其他項目`);
       }
       const indexLabels = labels.filter(label => label !== 'value');
-      if (indexLabels.length > 1 || (!labels.includes('value') && !labels.includes('index'))) {
+      if (indexLabels.length > 1
+        || (!labels.includes('value') && !labels.includes('index') && !labels.includes('none'))) {
         throw new Error(`第 ${line} 行的 ${directiveName} labels 組合無效：${match[2]}`);
       }
       options.labels = {
@@ -822,6 +891,43 @@ function parseRendererOptions(value, line, directiveName) {
           ? 'binary-padded'
           : labels.includes('binary-index') ? 'binary' : labels.includes('index') ? 'decimal' : 'none'
       };
+      continue;
+    }
+
+    const labelOptionNames = {
+      'index-labels': 'indexLabels',
+      'row-labels': 'rowLabels',
+      'column-labels': 'columnLabels',
+      'inner-labels': 'innerLabels'
+    };
+    if (labelOptionNames[name]) {
+      options[labelOptionNames[name]] = parseLabelSource(name, args.parts);
+      continue;
+    }
+
+    if (name === 'gridlines') {
+      const width = Number(args.parts[0]);
+      if (args.parts.length !== 1 || !Number.isFinite(width) || width < 0) {
+        throw new Error(`第 ${line} 行的 ${directiveName} gridlines 必須是非負數`);
+      }
+      options.gridlines = width;
+      continue;
+    }
+
+    if (name === 'outerframe') {
+      if (args.parts.length !== 1 || !/^(?:true|false)$/i.test(args.parts[0])) {
+        throw new Error(`第 ${line} 行的 ${directiveName} outerframe 必須是 true 或 false`);
+      }
+      options.outerframe = args.parts[0].toLowerCase() === 'true';
+      continue;
+    }
+
+    if (name === 'marker-layout') {
+      const mode = args.parts[0]?.trim().toLowerCase();
+      if (args.parts.length !== 1 || !['axis', 'inner', 'none'].includes(mode)) {
+        throw new Error(`第 ${line} 行的 ${directiveName} marker-layout 只支援 axis、inner 或 none`);
+      }
+      options.markerLayout = mode;
       continue;
     }
 
@@ -1388,19 +1494,55 @@ function parseFrameSpec(raw) {
   };
 
   for (const part of split.parts) {
-    const indexed = part.match(/^([A-Za-z_]\w*)\s*\[\s*(.*?)\s*\]$/);
+    const target = part.match(/^([A-Za-z_]\w*)/);
+    const indexGroups = [];
+    let cursor = target?.[0].length || 0;
+    let validIndexed = Boolean(target);
+    while (validIndexed && cursor < part.length) {
+      while (/\s/.test(part[cursor] || '')) cursor += 1;
+      if (cursor >= part.length) break;
+      if (part[cursor] !== '[') {
+        validIndexed = false;
+        break;
+      }
+      const start = ++cursor;
+      let depth = 1;
+      let quote = '';
+      let escaped = false;
+      while (cursor < part.length && depth > 0) {
+        const token = part[cursor];
+        if (quote) {
+          if (escaped) escaped = false;
+          else if (token === '\\') escaped = true;
+          else if (token === quote) quote = '';
+        } else if (token === '"' || token === "'") quote = token;
+        else if (token === '[') depth += 1;
+        else if (token === ']') depth -= 1;
+        cursor += 1;
+      }
+      if (depth !== 0) {
+        validIndexed = false;
+        break;
+      }
+      indexGroups.push(part.slice(start, cursor - 1).trim());
+    }
+    const indexed = validIndexed && indexGroups.length && cursor === part.length;
     if (!indexed) {
       part.split(/\s+/).filter(Boolean).forEach(addDisplayName);
       continue;
     }
 
-    const targetName = indexed[1];
-    const expressions = splitTopLevel(indexed[2]);
-    if (!expressions.valid || expressions.parts.some(expression => !expression)) {
-      return { names: [targetName], bindings: [], invalidExpression: indexed[2] };
+    const targetName = target[1];
+    const expressionParts = indexGroups.flatMap(group => {
+      const expressions = splitTopLevel(group);
+      return expressions.valid && expressions.parts.every(Boolean) ? expressions.parts : [null];
+    });
+    if (expressionParts.some(expression => expression == null)) {
+      return { names: [targetName], bindings: [], invalidExpression: part };
     }
-    const parsedExpressions = expressions.parts.map(expression => ({
+    const parsedExpressions = expressionParts.map((expression, indexDimension) => ({
       expression,
+      indexDimension,
       parsed: parseFrameExpression(expression)
     }));
     const invalidExpression = parsedExpressions.find(item => !item.parsed.valid)?.expression || '';
@@ -1415,6 +1557,7 @@ function parseFrameSpec(raw) {
       sourceName: item.parsed.identifiers[0] || '',
       sourceNames: item.parsed.identifiers,
       indexExpression: item.expression,
+      indexDimension: item.indexDimension,
       mode: 'index'
     })));
   }
@@ -1436,7 +1579,10 @@ function normalizeTextSegments(value, line) {
         color: String(item.color ?? item.font_color ?? ''),
         background: String(item.background ?? item.bg_color ?? ''),
         fontSize: Number(item.fontSize ?? item.font_size) || 14,
-        bold: item.bold === true
+        bold: item.bold === true,
+        ...(Object.hasOwn(item, 'speech')
+          ? { speech: String(item.speech ?? '') }
+          : {})
       };
     }
 
@@ -1502,6 +1648,9 @@ function normalizeTextSegments(value, line) {
         text: segment.text.slice(cursor)
       });
     }
+    if (Object.hasOwn(segment, 'speech')) {
+      parts.slice(1).forEach(part => delete part.speech);
+    }
     return parts;
   });
 }
@@ -1513,14 +1662,18 @@ function parseTextPlacement(payload, line) {
 function textDirectivesForSource(source, analysis) {
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
   const directives = [];
+  let continuationEnd = -1;
 
   function visit(node) {
     if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+      if (node.from < continuationEnd) return;
       const text = source.slice(node.from, node.to);
       const match = text.match(/^\/\/\s*@text\b\s*(.*?)\s*$/i);
       if (match) {
         const line = analysis.lineAt(node.from);
-        const placement = parseTextPlacement(match[1], line);
+        const collected = textCommentPayload(source, node, match[1]);
+        continuationEnd = collected.end;
+        const placement = parseTextPlacement(collected.payload, line);
         if (placement.renderer) throw new Error(`第 ${line} 行的 @text 不支援 render`);
         if (Object.keys(placement.rendererOptions || {}).length) throw new Error(`第 ${line} 行的 @text 不支援 with`);
         const payload = placement.payload;
@@ -1535,7 +1688,7 @@ function textDirectivesForSource(source, analysis) {
         }
         directives.push({
           from: node.from,
-          to: node.to,
+          to: collected.end,
           line,
           id: placement.objectId || `line-${line}`,
           drawLoops: drawingScopesAt(source, analysis, node.from),
@@ -1642,38 +1795,58 @@ const TRACE_STYLE_LOCALS = new Set(['value', 'index']);
 
 function parseStyleTarget(raw, line) {
   const source = String(raw || '').trim();
+  const parseIndexOrRange = (part, endInclusive, label = '範圍') => {
+    const range = splitTopLevel(part, ':');
+    if (!range.valid || range.parts.length > 2
+      || range.parts.some((value, index) => index > 0 && !value)) {
+      throw new Error(`第 ${line} 行的 @style ${label}無效：${part}`);
+    }
+    if (range.parts.length === 2) {
+      const startExpression = range.parts[0].trim() || '0';
+      const endExpression = range.parts[1].trim();
+      for (const expression of [startExpression, endExpression]) {
+        if (!parseFrameExpression(expression).valid) {
+          throw new Error(`第 ${line} 行的 @style ${label}運算式無效：${expression}`);
+        }
+      }
+      return { type: 'range', startExpression, endExpression, endInclusive };
+    }
+    const indexExpression = part.trim();
+    if (!indexExpression || !parseFrameExpression(indexExpression).valid) {
+      throw new Error(`第 ${line} 行的 @style 索引運算式無效：${indexExpression}`);
+    }
+    return { type: 'index', indexExpression };
+  };
+  const matrixCell = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\[\s*(.*?)\s*\]$/);
+  if (matrixCell) {
+    const rowSelector = parseIndexOrRange(matrixCell[2].trim(), true, '二維 row 範圍');
+    const columnSelector = parseIndexOrRange(matrixCell[3].trim(), true, '二維 column 範圍');
+    if (rowSelector.type === 'index' && columnSelector.type === 'index') {
+      return {
+        targetName: matrixCell[1],
+        selector: {
+          type: 'matrix-cell',
+          rowExpression: rowSelector.indexExpression,
+          columnExpression: columnSelector.indexExpression
+        }
+      };
+    }
+    return {
+      targetName: matrixCell[1],
+      selector: {
+        type: 'matrix-region',
+        rowSelector,
+        columnSelector
+      }
+    };
+  }
   const indexed = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*(\)|\])$/);
   if (indexed) {
     const split = splitTopLevel(indexed[2]);
     if (!split.valid || split.parts.some(part => !part)) {
       throw new Error(`第 ${line} 行的 @style 索引分段無效：${indexed[2].trim()}`);
     }
-    const segments = split.parts.map(part => {
-      const range = splitTopLevel(part, ':');
-      if (!range.valid || range.parts.length > 2 || range.parts.some((value, index) => index > 0 && !value)) {
-        throw new Error(`第 ${line} 行的 @style 範圍無效：${part}`);
-      }
-      if (range.parts.length === 2) {
-        const startExpression = range.parts[0].trim() || '0';
-        const endExpression = range.parts[1].trim();
-        for (const expression of [startExpression, endExpression]) {
-          if (!parseFrameExpression(expression).valid) {
-            throw new Error(`第 ${line} 行的 @style 範圍運算式無效：${expression}`);
-          }
-        }
-        return {
-          type: 'range',
-          startExpression,
-          endExpression,
-          endInclusive: indexed[3] === ']'
-        };
-      }
-      const indexExpression = part.trim();
-      if (!parseFrameExpression(indexExpression).valid) {
-        throw new Error(`第 ${line} 行的 @style 索引運算式無效：${indexExpression}`);
-      }
-      return { type: 'index', indexExpression };
-    });
+    const segments = split.parts.map(part => parseIndexOrRange(part, indexed[3] === ']'));
     return {
       targetName: indexed[1],
       selector: segments.length === 1
@@ -1798,9 +1971,19 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     const selectors = style.selector.type === 'segments'
       ? style.selector.segments || []
       : [style.selector];
+    const dimensionExpressions = selector => selector?.type === 'range'
+      ? [selector.startExpression, selector.endExpression]
+      : selector?.type === 'index' ? [selector.indexExpression] : [];
     const selectorExpressions = selectors.flatMap(selector => selector?.type === 'range'
       ? [selector.startExpression, selector.endExpression]
-      : selector?.type === 'index' ? [selector.indexExpression] : []);
+      : selector?.type === 'index' ? [selector.indexExpression]
+        : selector?.type === 'matrix-cell'
+          ? [selector.rowExpression, selector.columnExpression]
+          : selector?.type === 'matrix-region'
+            ? [
+              ...dimensionExpressions(selector.rowSelector),
+              ...dimensionExpressions(selector.columnSelector)
+            ] : []);
     selectorExpressions.forEach(expression => {
       const parsed = parseFrameExpression(expression);
       (parsed.identifiers || []).forEach(name => ensureCaptured(name));
@@ -2913,6 +3096,10 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     Object.entries(modifiers.rendererOptions || {}).forEach(([name, option]) => {
       if (name === 'display') return;
       (option.identifiers || []).forEach(includeDependency);
+      (option.parts || []).forEach(part => {
+        if (part.type !== 'variable') return;
+        part.variableId = includeDependency(part.name)?.id || '';
+      });
     });
     if (modifiers.rendererOptions?.fields) {
       modifiers.rendererOptions.fields.variableIds = modifiers.rendererOptions.fields.names.map(name => (
@@ -2978,7 +3165,8 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         sourceName: binding.sourceName,
         sourceVariableId: sourceVariables[0]?.id || '',
         sourceVariableIds: sourceVariables.map(variable => variable.id),
-        indexExpression: binding.indexExpression || binding.sourceName
+        indexExpression: binding.indexExpression || binding.sourceName,
+        indexDimension: binding.indexDimension
       };
     });
     return {
@@ -3586,16 +3774,23 @@ function instrumentSource(source, watchIds = []) {
       return { variableId: watch?.id || '', expression, indexExpression: '' };
     }
     if (node.name === 'SubscriptExpression') {
-      const children = childrenOf(node);
-      const base = children[0];
-      const index = children.find(child => !['[', ']'].includes(child.name) && child !== base);
-      const baseIdentifier = firstDescendant(base, new Set(['Identifier']));
+      const indices = [];
+      let base = node;
+      while (base?.name === 'SubscriptExpression') {
+        const children = childrenOf(base);
+        const nextBase = children[0];
+        const index = children.find(child => !['[', ']'].includes(child.name) && child !== nextBase);
+        if (index) indices.unshift(compactExpression(source.slice(index.from, index.to)));
+        base = nextBase;
+      }
+      const baseIdentifier = base?.name === 'Identifier'
+        ? base : firstDescendant(base, new Set(['Identifier']));
       const baseName = baseIdentifier ? source.slice(baseIdentifier.from, baseIdentifier.to) : '';
       const watch = watchAt(baseName, node.from);
       return {
         variableId: watch?.id || '',
         expression,
-        indexExpression: index ? compactExpression(source.slice(index.from, index.to)) : ''
+        indexExpression: indices.join(',')
       };
     }
     const identifier = firstDescendant(node, new Set(['Identifier']));
@@ -3662,29 +3857,39 @@ function instrumentSource(source, watchIds = []) {
     return `${cppString(target.variableId)}, ${cppString(target.expression)}, ${cppString(target.indexExpression)}`;
   }
 
-  function canCaptureIndexExpression(indexExpression) {
-    const expression = String(indexExpression || '').trim();
-    return Boolean(expression)
-      && /^[A-Za-z0-9_+\-*/%&|^~<>()\s]+$/.test(expression)
+  function capturableIndexExpressions(indexExpression) {
+    const parts = String(indexExpression || '').split(',').map(part => part.trim());
+    if (!parts.length || parts.length > 2 || parts.some(expression => !expression)) return [];
+    return parts.every(expression => (
+      /^[A-Za-z0-9_+\-*/%&|^~<>()\s]+$/.test(expression)
       && !/(?:\+\+|--)/.test(expression)
-      && !/[A-Za-z0-9_)]\s*\(/.test(expression);
+      && !/[A-Za-z0-9_)]\s*\(/.test(expression)
+    )) ? parts : [];
+  }
+
+  function canCaptureIndexExpression(indexExpression) {
+    return capturableIndexExpressions(indexExpression).length > 0;
   }
 
   function indexedTargetArgs(target) {
     const indexExpression = String(target.indexExpression || '').trim();
-    const canCaptureIndex = canCaptureIndexExpression(indexExpression);
-    const resolvedIndex = canCaptureIndex
-      ? `static_cast<long long>(${indexExpression})`
+    const indexExpressions = capturableIndexExpressions(indexExpression);
+    const canCaptureIndex = indexExpressions.length > 0;
+    const resolvedIndex = indexExpressions.length === 2
+      ? `static_cast<long long>((static_cast<unsigned long long>(static_cast<unsigned int>(${indexExpressions[0]})) << 32) | static_cast<unsigned int>(${indexExpressions[1]}))`
+      : indexExpressions.length === 1
+      ? `static_cast<long long>(${indexExpressions[0]})`
       : '0LL';
     return `${targetArgs(target)}, ${canCaptureIndex ? 'true' : 'false'}, ${resolvedIndex}`;
   }
 
-  function binaryAdditionSources(node) {
+  function binaryOperationSources(node) {
     if (node?.name !== 'BinaryExpression') return null;
     const children = childrenOf(node);
     const operatorIndex = children.findIndex(child => child.name === 'ArithOp'
-      && source.slice(child.from, child.to).trim() === '+');
+      && ['+', '-', '*', '/'].includes(source.slice(child.from, child.to).trim()));
     if (operatorIndex <= 0 || operatorIndex >= children.length - 1) return null;
+    const operation = source.slice(children[operatorIndex].from, children[operatorIndex].to).trim();
     const leftNode = children[operatorIndex - 1];
     const rightNode = children[operatorIndex + 1];
     if (!['Identifier', 'SubscriptExpression'].includes(leftNode.name)
@@ -3693,7 +3898,44 @@ function instrumentSource(source, watchIds = []) {
     const right = targetDescriptor(rightNode);
     const safe = target => Boolean(target.variableId)
       && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression));
-    return safe(left) && safe(right) ? { left, right } : null;
+    return safe(left) && safe(right) ? { left, right, operation } : null;
+  }
+
+  function multiOperationSources(node) {
+    const safe = target => Boolean(target.variableId)
+      && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression));
+    const collectFamily = (current, operations, identity, opposite) => {
+      const sources = [];
+      const collect = (candidate, operation = identity) => {
+        if (['Identifier', 'SubscriptExpression'].includes(candidate?.name)) {
+          const target = targetDescriptor(candidate);
+          if (!safe(target)) return false;
+          sources.push({ target, operation });
+          return true;
+        }
+        if (candidate?.name !== 'BinaryExpression') return false;
+        const currentChildren = childrenOf(candidate);
+        const operatorIndex = currentChildren.findIndex(child => child.name === 'ArithOp'
+          && operations.includes(source.slice(child.from, child.to).trim()));
+        if (operatorIndex <= 0 || operatorIndex >= currentChildren.length - 1) return false;
+        const binaryOperation = source.slice(
+          currentChildren[operatorIndex].from,
+          currentChildren[operatorIndex].to
+        ).trim();
+        const rightOperation = binaryOperation === identity ? operation : opposite(operation);
+        return collect(currentChildren[operatorIndex - 1], operation)
+          && collect(currentChildren[operatorIndex + 1], rightOperation);
+      };
+      return collect(current) && sources.length > 2 ? sources : null;
+    };
+    return collectFamily(node, ['+', '-'], '+', operation => operation === '+' ? '-' : '+')
+      || collectFamily(node, ['*', '/'], '*', operation => operation === '*' ? '/' : '*');
+  }
+
+  function multiSourceArgs(sources) {
+    return `std::vector<std::string>{${sources.map(({ target, operation }, index) => (
+      `::asm_trace::arithmetic_target_json(${cppString(`source-${index}`)}, ${indexedTargetArgs(target)}, ${cppString(operation)})`
+    )).join(', ')}}`;
   }
 
   function comparisonEvent(leftNode, rightNode, operator, context, signatureNode) {
@@ -3959,7 +4201,8 @@ ${loop}
       const target = targetDescriptor(targetNode);
       const sourceNode = node.name === 'AssignmentExpression' ? children[children.length - 1] : null;
       const sourceTarget = targetDescriptor(sourceNode);
-      const additionSources = binaryAdditionSources(sourceNode);
+      const binarySources = binaryOperationSources(sourceNode);
+      const multiSources = multiOperationSources(sourceNode);
       const assignmentOperator = targetNode && sourceNode
         ? source.slice(targetNode.to, sourceNode.from).trim()
         : '';
@@ -4002,8 +4245,10 @@ ${loop}
           const action = chainedAssignment
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
-          if (additionSources && !chainedAssignment) {
-            rendered = `::asm_trace::event_binary_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(additionSources.left)}, ${indexedTargetArgs(additionSources.right)}, "+", ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          if (multiSources && !chainedAssignment) {
+            rendered = `::asm_trace::event_multi_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${multiSourceArgs(multiSources)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          } else if (binarySources && !chainedAssignment) {
+            rendered = `::asm_trace::event_binary_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(binarySources.left)}, ${indexedTargetArgs(binarySources.right)}, ${cppString(binarySources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else {
             rendered = `::asm_trace::${chainedAssignment ? 'event_assign_expr' : 'event_assign'}(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           }
