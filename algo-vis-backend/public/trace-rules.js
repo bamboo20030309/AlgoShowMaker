@@ -32,6 +32,8 @@
     if (!Number.isInteger(index)) return undefined;
     if (Array.isArray(data?.items)) return data.items[index];
     if (Array.isArray(data)) return data[index];
+    const scalar = window.ASMTraceModel.scalarValue(data);
+    if (typeof scalar === 'string') return scalar[index];
     return undefined;
   }
 
@@ -290,6 +292,8 @@
         }
         if (Array.isArray(data?.items)) return data.items.length;
         if (Array.isArray(data)) return data.length;
+        const scalar = window.ASMTraceModel.scalarValue(data);
+        if (typeof scalar === 'string') return scalar.length;
         return invalid;
       }
       return knownValue(window.ASMTraceModel.scalarValue(data));

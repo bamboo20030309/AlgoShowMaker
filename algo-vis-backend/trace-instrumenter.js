@@ -2177,6 +2177,7 @@ function prepareDrawing(source, analysis, item, frame) {
     for (const expression of [scope.startExpression, scope.endExpression, scope.stepExpression]) {
       for (const name of parseFrameExpression(expression).identifiers || []) {
         if (locals.has(name)) continue;
+        if (frameLet(frame, name)) continue;
         const variable = analysis.variables.filter(variable => variable.name === name && variable.declarationTo <= frame.from
           && variable.scopeFrom <= frame.from && frame.from < variable.scopeTo)
           .sort((a, b) => (a.scopeTo - a.scopeFrom) - (b.scopeTo - b.scopeFrom))[0];

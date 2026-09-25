@@ -1429,6 +1429,7 @@ function resolveFrameRendererOptions(frame, directive) {
           || Object.values(frame.state || {}).find(item => item?.name === part.name);
         const value = materializeTraceValue(entry?.data);
         if (Array.isArray(value)) values.push(...value);
+        else if (typeof value === 'string') values.push(...value);
         else if (value !== undefined) values.push(value);
       }
     });

@@ -87,6 +87,21 @@ int main() {
     /@let 找不到可見變數或先前別名/);
 });
 
+test('@let resolves string size and character subscripts', () => {
+  const context = rulesContext();
+  const document = { variables: { text: { name: 'text' } } };
+  const runtimeFrame = {
+    lets: [
+      { name: 'last', expression: 'text.size() - 1' },
+      { name: 'same', expression: 'text[1] == text[last]' }
+    ],
+    state: { text: { name: 'text', data: { kind: 'scalar', value: 'aba' } } }
+  };
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'last'), 2);
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'text[0]'), 'a');
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'same'), false);
+});
+
 test('Binary Indexed Tree build and query samples are separate two-object examples', () => {
   const buildCode = fs.readFileSync(buildSamplePath, 'utf8');
   const queryCode = fs.readFileSync(querySamplePath, 'utf8');

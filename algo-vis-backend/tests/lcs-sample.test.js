@@ -14,20 +14,20 @@ test('LCS sample uses current matrix directives without the legacy introduction'
   assert.doesNotMatch(code, /這是 LCS|Longest Common Subsequence 最長共同子序列/);
   assert.match(code, /vector<vector<int>> LCS;/);
   assert.match(code, /set<string> ans;/);
-  assert.doesNotMatch(code, /\b(?:dp|bridge|pathDirection|answerList|rowLabels|columnLabels|collectLCS)\b/);
-  assert.match(code, /vector<vector<int>> _draw_LCS_path;/);
-  assert.match(code, /vector<vector<int>> _draw_stack_path;/);
-  assert.match(code, /int _draw_LCS_rows, _draw_LCS_columns;/);
-  assert.match(code, /void dfs\(int x, int y, string now\)/);
-  assert.match(code, /if \(S\[x - 1\] == T\[y - 1\]\)[\s\S]*dfs\(x - 1, y - 1, now \+ S\[x - 1\]\)/);
-  assert.match(code, /else if \(LCS\[x - 1\]\[y\] == LCS\[x\]\[y - 1\]\)/);
-  assert.match(code, /else if \(LCS\[x - 1\]\[y\] > LCS\[x\]\[y - 1\]\)/);
-  assert.match(code, /LCS\[i\]\[j\] = max\(LCS\[i\]\[j - 1\], LCS\[i - 1\]\[j\]\)/);
-  assert.match(code, /@object LCS render matrix with labels\(value\), row-labels\("",_draw_LCS_row_labels\), column-labels\("",_draw_LCS_column_labels\), marker-layout\(none\)/);
+  assert.doesNotMatch(code, /\b(?:dp|bridge|pathDirection|answerList|rowLabels|columnLabels|collectLCS)\b|_draw_/);
+  assert.match(code, /void dfs\(int x,\s*int y,\s*string now\)/);
+  assert.match(code, /if\s*\(S\[x\s*-\s*1\]\s*==\s*T\[y\s*-\s*1\]\)[\s\S]*dfs\(x\s*-\s*1,\s*y\s*-\s*1,\s*now\s*\+\s*S\[x\s*-\s*1\]\)/);
+  assert.match(code, /else if\s*\(LCS\[x\s*-\s*1\]\[y\]\s*==\s*LCS\[x\]\[y\s*-\s*1\]\)/);
+  assert.match(code, /else if\s*\(LCS\[x\s*-\s*1\]\[y\]\s*>\s*LCS\[x\]\[y\s*-\s*1\]\)/);
+  assert.match(code, /LCS\[i\]\[j\]\s*=\s*max\(LCS\[i\]\[j\s*-\s*1\],\s*LCS\[i\s*-\s*1\]\[j\]\)/);
+  assert.match(code, /@let rows = S\.size\(\)/);
+  assert.match(code, /@let columns = T\.size\(\)/);
+  assert.match(code, /@object LCS render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\), marker-layout\(none\)/);
   assert.match(code, /@object ans with labels\(value\)/);
   assert.match(code, /@style LCS\[x\]\[y\] highlight/);
-  assert.match(code, /@arrow from LCS\[i-1\]\[j-1\] to LCS\[i\]\[j\]/);
-  assert.match(code, /@for i in \[1:_draw_LCS_rows\][\s\S]*@for j in \[1:_draw_LCS_columns\]/);
+  assert.match(code, /@arrow from LCS\[rr-1\]\[cc-1\] to LCS\[rr\]\[cc\]/);
+  assert.match(code, /@for rr in \[1:rows\][\s\S]*@for cc in \[1:columns\]/);
+  assert.match(code, /when S\[rr-1\] == T\[cc-1\] && LCS\[rr\]\[cc\] == LCS\[rr-1\]\[cc-1\] \+ 1/);
   assert.match(code, /@text \[[\s\S]*"background": "AV_green"/);
   assert.equal(findFrameDirectives(code).length, 10);
 });
@@ -35,7 +35,7 @@ test('LCS sample uses current matrix directives without the legacy introduction'
 test('LCS sample builds its matrix and lists the sample answers', async () => {
   const code = fs.readFileSync(codePath, 'utf8');
   const input = fs.readFileSync(inputPath, 'utf8');
-  const { trace } = await compile(code, input);
+  const { trace, window } = await compile(code, input);
   const byName = Object.fromEntries(Object.entries(trace.variables)
     .map(([id, variable]) => [variable.name, id]));
   const last = trace.frames.at(-1);
@@ -49,5 +49,9 @@ test('LCS sample builds its matrix and lists the sample answers', async () => {
   assert.deepEqual(Array.from(options.rowLabels.values), ['', ...'abcdedcba']);
   assert.deepEqual(Array.from(options.columnLabels.values), ['', ...'edcbabcde']);
   assert.equal(options.markerLayout, 'none');
+  const bridgeArrows = window.ASMTraceModel.drawingDirectives(trace, last, 'arrows');
+  assert.equal(bridgeArrows.length, 16);
+  assert.deepEqual(Array.from(bridgeArrows[0].from.indexExpressions), ['0', '4']);
+  assert.deepEqual(Array.from(bridgeArrows[0].to.indexExpressions), ['1', '5']);
   assert.equal(trace.frames[0].texts[0].segments.some(segment => segment.text.includes('這是 LCS')), false);
 });
