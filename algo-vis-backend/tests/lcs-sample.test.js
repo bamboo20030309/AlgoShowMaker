@@ -1,3 +1,11 @@
+/**
+ * 測試模組：lcs-sample.test
+ *
+ * 驗證重點：lcs sample.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -8,6 +16,9 @@ const { compile } = require('./helpers/compile');
 const codePath = path.join(__dirname, '../algorithm_sample/DP/LCS.cpp');
 const inputPath = path.join(__dirname, '../algorithm_sample/DP/LCS-sample_input.txt');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('LCS sample uses current matrix directives without the legacy introduction', () => {
   const code = fs.readFileSync(codePath, 'utf8');
   assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|frame_draw|start_draw|end_draw/);

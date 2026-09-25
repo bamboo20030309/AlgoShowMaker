@@ -1,5 +1,15 @@
+/**
+ * 使用者投影片資料夾與排序 API。
+ *
+ * 版面資料存在使用者 preferences，但每次讀寫都會和實際擁有的 deck 清單
+ * reconcile。PUT 會先驗證結構與所有權，避免前端送入不存在或屬於他人的 ID。
+ */
+
 const Layout = require('./public/library-layout');
 
+// -----------------------------------------------------------------------------
+// 掛載讀取與更新端點；兩者都必須先通過 JWT 身分驗證。
+// -----------------------------------------------------------------------------
 module.exports = function mountSlideLibrary(app, { authenticateToken, User, SlideDeck }) {
   app.get('/api/slide-library', authenticateToken, async (req, res) => {
     try {

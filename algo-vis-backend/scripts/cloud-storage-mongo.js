@@ -1,4 +1,10 @@
-// Opt-in live MongoDB check. Only a uniquely named disposable database is touched.
+/**
+ * 可選用的真實 MongoDB 雲端內容驗證。
+ *
+ * 執行時建立名稱唯一的拋棄式資料庫，只測試分片、權限與提交流程；finally
+ * 必須關閉服務並刪除測試資料庫。此腳本不屬於一般回歸的預設執行範圍。
+ */
+
 require('dotenv').config({ quiet: true });
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
@@ -8,6 +14,9 @@ const { register } = require('../cloud-content');
 const Cloud = require('../public/slides-cloud');
 const Storage = require('../public/slides-storage');
 
+// -----------------------------------------------------------------------------
+// 拋棄式資料庫、HTTP 端點與完整儲存往返
+// -----------------------------------------------------------------------------
 async function main() {
   if (!process.env.MONGO_URI) throw new Error('MONGO_URI is required');
   const dbName = 'asm_cloud_regression_' + randomUUID().replace(/-/g, '');

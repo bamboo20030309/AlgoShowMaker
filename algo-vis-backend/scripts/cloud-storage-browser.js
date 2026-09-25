@@ -1,8 +1,18 @@
+/**
+ * 投影片雲端內容的瀏覽器整合驗證。
+ *
+ * 測試使用記憶體中的分段儲存介面攔截資料，不碰使用者 Mongo 或既有投影片；
+ * 同時觀察網路請求、儲存提交與重新開啟結果，確認大型 deck 的資源分片流程。
+ */
+
 const assert = require('node:assert/strict');
 const { createStore } = require('../cloud-content');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// -----------------------------------------------------------------------------
+// 隔離儲存替代物與瀏覽器驗證流程
+// -----------------------------------------------------------------------------
 async function runCloudStorageBrowser(browser, baseURL, output) {
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
   const page = await context.newPage(), errors = [], rows = [];

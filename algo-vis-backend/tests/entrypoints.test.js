@@ -1,8 +1,19 @@
+/**
+ * 測試模組：entrypoints.test
+ *
+ * 驗證重點：entrypoints.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = name => fs.readFileSync(path.join(__dirname, '../public', name), 'utf8');
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('all algorithm surfaces load the same shared modules in dependency order', () => {
   const html = read('algorithm.html');
   const sources = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1].split('?')[0]);

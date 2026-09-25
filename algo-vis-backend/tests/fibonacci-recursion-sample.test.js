@@ -1,3 +1,11 @@
+/**
+ * 測試模組：fibonacci-recursion-sample.test
+ *
+ * 驗證重點：fibonacci recursion sample.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -11,6 +19,9 @@ const inputPath = path.join(
   __dirname, '../algorithm_sample/Backtracking/fibonacci-sample_input.txt'
 );
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('Fibonacci sample uses the current recursion layout and preserves call relationships', async () => {
   assert.ok(process.env.ASM_TEST_BASE_URL, 'set ASM_TEST_BASE_URL to an isolated server');
   const code = fs.readFileSync(samplePath, 'utf8');

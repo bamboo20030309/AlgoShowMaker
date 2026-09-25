@@ -1,4 +1,14 @@
-// Validate actual browser samples, not synthetic renderer coordinates.
+/**
+ * 實際動畫錄影的統一驗收器。
+ *
+ * 此模組只判斷瀏覽器真正繪製出的樣本，不使用 renderer 的預估座標。
+ * 驗證順序依序涵蓋 keep 可見性、定點標籤重疊與事件提交時機，並回傳
+ * 最早發生的違規，讓回歸報告可以直接定位第一個錯誤畫面。
+ */
+
+// -----------------------------------------------------------------------------
+// 樣本驗證主流程
+// -----------------------------------------------------------------------------
 function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
   const violations = [];
   const samples = report?.samples || [];

@@ -1,3 +1,11 @@
+/**
+ * 測試模組：asmdeck.test
+ *
+ * 驗證重點：asmdeck.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { webcrypto } = require('node:crypto');
@@ -12,6 +20,9 @@ global.ASMTraceViewSource = require('../public/trace-view-source.js');
 global.ASMTraceModel = { normalizeTraceDocument: value => value };
 const archive = require('../public/asmdeck.js');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('HTTP without SubtleCrypto preserves hashes, round-trips, and rejects tampering', async () => {
   const sandbox = { module: { exports: {} }, TextEncoder, TextDecoder, Uint8Array,
     ArrayBuffer, DataView, Uint32Array, Blob, Response, CompressionStream, DecompressionStream,

@@ -1,9 +1,21 @@
+/**
+ * 跨介面的動畫回歸驅動器。
+ *
+ * 每個 fixture 會依序在演算法頁、投影片編輯器與播放模式執行，錄下實際
+ * DOM 樣本後交給 animation-assertions 判斷。輸出目錄保留逐幀資料與失敗
+ * 視窗，供主代理從第一個違規時間點追查，而不是只得到通過／失敗結果。
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const { validate } = require('./animation-assertions');
 const root = path.resolve(__dirname, '..');
 const fixture = name => fs.readFileSync(path.join(root, 'tests/fixtures', name + '.cpp'), 'utf8');
+
+// -----------------------------------------------------------------------------
+// 固定案例清單與輸入
+// -----------------------------------------------------------------------------
 const cases = [
   { name: 'arrow-identity', code: fixture('arrow-identity'), input: '' },
   { name: 'quick-style-swap', code: fixture('quick-style-swap'), input: '6\n5 7 2 1 9 4\n', frameLimit: 5 },
@@ -20,6 +32,9 @@ const cases = [
   { name: 'quick-recursion', code: fixture('quick-recursion'), input: '4\n4 1 3 2\n' }
 ];
 
+// -----------------------------------------------------------------------------
+// 瀏覽器生命週期、三介面執行與報告彙整
+// -----------------------------------------------------------------------------
 async function runAnimationBrowser(baseURL) {
   const selectedCases = cases.filter(item => !process.env.ASM_ANIMATION_CASES
     || process.env.ASM_ANIMATION_CASES.split(',').includes(item.name));

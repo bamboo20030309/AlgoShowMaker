@@ -1,8 +1,19 @@
+/**
+ * 測試模組：arrow-identity.test
+ *
+ * 驗證重點：arrow identity.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { findArrowDirectives, findFrameDirectives } = require('../trace-instrumenter');
 const { pair } = require('../public/trace-arrow-model');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('arrow source identity survives line shifts and keeps explicit IDs separate', () => {
   const code = 'int main(){int arr[3]; // @frame arr\n// @arrow from arr[0] to arr[1]\n// @arrow from arr[1] to arr[2] as "link"\n}';
   const before = findArrowDirectives(code), after = findArrowDirectives('\n\n' + code);
