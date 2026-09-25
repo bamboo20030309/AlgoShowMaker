@@ -67,6 +67,52 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
     assert.ok(labels.returned.includes('1'), 'returned node shows the numeric result');
     assert.ok(!labels.returned.includes('F(2)'), 'returned node no longer shows the pending call');
 
+    const replacementCamera = await page.evaluate(async sourceTrace => {
+      const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
+      const beforeFrame = document.frames[7];
+      const replacementFrame = document.frames[8];
+      const read = () => {
+        const bounds = window.ASMTraceRenderers.currentBounds();
+        const keys = window.ASMTraceRenderers.currentObjectKeys();
+        const snapshotLeft = Math.min(...[...window.document.querySelectorAll(
+          '#asm-trace-root .asm-trace-snapshot'
+        )].map(element => {
+          const key = element.dataset.traceObjectKey;
+          return window.ASMTraceRenderers.currentPlacement(key)?.x ?? Number.POSITIVE_INFINITY;
+        }));
+        const view = window.ASMTraceRenderers.fitCurrentObjectsCamera(
+          0.92, false, 0, 0, 0, true
+        );
+        return {
+          bounds,
+          view,
+          snapshotLeft,
+          staleReplacementChildren: keys.filter(key => (
+            key.includes(':sum@') && (key.includes('#') || key.endsWith(':label'))
+          ))
+        };
+      };
+      await window.ASMTraceRenderers.renderFrame(document, beforeFrame, null, {
+        animatePositions: false, animateEvents: false
+      });
+      const before = read();
+      await window.ASMTraceRenderers.renderFrame(document, replacementFrame, beforeFrame, {
+        animatePositions: false, animateEvents: false
+      });
+      return { before, replacement: read() };
+    }, trace);
+    assert.deepEqual(replacementCamera.replacement.staleReplacementChildren, [],
+      `same-activation handoff removes detached live cell aliases: ${JSON.stringify(replacementCamera)}`);
+    assert.ok(Math.abs(
+      replacementCamera.replacement.bounds.left - replacementCamera.replacement.snapshotLeft
+    ) < 0.1, `camera bounds start at the visible recursion tree: ${JSON.stringify(replacementCamera)}`);
+    assert.ok(Math.abs(
+      replacementCamera.replacement.view.centerX - replacementCamera.replacement.bounds.centerX
+    ) < 0.1, 'auto camera uses the filtered visible-scene bounds');
+    assert.ok(Math.abs(
+      replacementCamera.replacement.view.centerX - replacementCamera.before.view.centerX
+    ) < 20, `F(2) -> 1 replacement does not pull frame 9 camera left: ${JSON.stringify(replacementCamera)}`);
+
     const firstChildPlan = await page.evaluate(async sourceTrace => {
       window.ASMTracePlayer.apply(sourceTrace);
       await new Promise(resolve => requestAnimationFrame(resolve));

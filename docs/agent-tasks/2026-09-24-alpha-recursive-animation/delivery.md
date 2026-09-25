@@ -130,3 +130,18 @@
 - 舊物件相容性：`showFlowArrows` 缺欄位與明確 `false` 都不顯示；明確 `true` 經 JSON 儲存、載入、使用、再儲存與重開後仍保留並顯示 28 條走訪箭頭。
 - 直接相關 parser、identity、outerframe tween、入口與 Fibonacci 測試共 28/28 通過；其中瀏覽器專項 1/1 通過，0 fail、0 skipped。alpha 3101 重啟後另以實際 `/trace/analyze`＋`/compile` 再驗證範例 1/1 通過，並確認 renderer 217、tween 238、directive assist 23 已載入。
 - 未執行完整 regression、全部 tests 或無關演算法動畫；依 V2 規範只跑直接相關的小型驗證。
+
+## 2026-09-25：第 9 幀 auto camera 左偏修正
+
+- 同 activation 的 `@frame sum`／`@keep sum` replacement 現在會清除 live wrapper 與所有 descendant 的 placement／element alias，再將外層 live key 指向保留的 `F_3` 節點。
+- `currentBounds()` 增加 scene-root 歸屬檢查；已從 DOM 移除或不屬於目前 SVG root 的暫存元素不再參與 auto camera bounds。
+- 修正前第 9 幀殘留 `F:sum@…#0` 於 `x=98`，使 camera center 從約 649 跳到 405；修正後 bounds 由可見遞迴樹的最左側開始，center 與前一幀差小於 20px。
+- renderer build 更新為 218。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（camera bounds）、G（same-activation keep replacement）、J（瀏覽器播放鏡頭）。
+- `entrypoints.test.js`、`outerframe-tween.test.js`：8/8 通過；Fibonacci 瀏覽器專項 1/1 通過，0 fail、0 skipped。
+- 使用者程式與輸入 `5` 的隔離瀏覽器量測：第 8、9、10 幀 camera centerX 為 `649.42 → 640 → 643.39`；第 9 幀 bounds left 為可見樹的 `568`，三幀皆無 detached `sum` descendant alias。
+- Fibonacci 專項同時重驗 `F(2) → 1`、遞迴節點長出／縮回、一般父子邊與 DFS flow arrows，既有斷言全部通過。
+- 靜態檢查：修改的 JS 通過 `node --check`，`git diff --check` 通過；未執行完整 regression、全部 tests 或無關演算法動畫。

@@ -2841,9 +2841,16 @@
           const liveElement = elements.get(liveObjectKey);
           const retainedElement = elements.get(retainedObjectKey);
           if (liveObjectKey && retainedObjectKey && liveObjectKey !== retainedObjectKey && retainedElement) {
+            const liveTreeKeys = liveElement
+              ? [...elements.entries()].filter(([, candidate]) => (
+                candidate === liveElement || liveElement.contains(candidate)
+              )).map(([key]) => key)
+              : [liveObjectKey];
             liveElement?.remove();
-            elements.delete(liveObjectKey);
-            placements.delete(liveObjectKey);
+            liveTreeKeys.forEach(key => {
+              elements.delete(key);
+              placements.delete(key);
+            });
             liveReplacement = { liveObjectKey, retainedObjectKey, retainedElement };
           }
         } else {
@@ -4745,7 +4752,11 @@
       animateChangedObjects(previousObjects, result.elements, transitionOptions);
       animateRemovedObjects(result.root, previousObjects, result.elements, document, transitionOptions);
     }
-    currentScene = { document, frame, placements: result.placements, elements: result.elements, rootOffset: TRACE_ROOT_OFFSET };
+    currentScene = {
+      document, frame, root: result.root,
+      placements: result.placements, elements: result.elements,
+      rootOffset: TRACE_ROOT_OFFSET
+    };
     refreshPresentedArrows(result.root, result.elements);
     const playbackPlan = transition?.playbackPlan || null;
     transition = Promise.resolve(transition).then(() => {
@@ -5039,7 +5050,12 @@
       snapshotObjectKey(snapshotsById.get(id)) || id
     )));
     const boxes = [...currentScene.placements.entries()]
-      .filter(([key]) => currentScene.elements.has(key))
+      .filter(([key]) => {
+        const element = currentScene.elements.get(key);
+        if (!element) return false;
+        const belongsToScene = currentScene.root?.contains?.(element);
+        return belongsToScene ?? element.isConnected;
+      })
       .filter(([key]) => options.includeSnapshots !== false || !snapshotIds.has(key))
       .map(([, box]) => box);
     if (!boxes.length) return null;
@@ -5142,9 +5158,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-217';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-218';
   window.ASMTraceRenderers = {
-    build: 'trace-217', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-218', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
