@@ -1,9 +1,17 @@
+// -----------------------------------------------------------------------------
+// 投影片封面產生器
+// 以第一張投影片的 Fabric 與 widget 資料產生固定比例縮圖，供首頁與排序總覽快取。
+// -----------------------------------------------------------------------------
 (function () {
   const OUTPUT_WIDTH = 640;
   const OUTPUT_HEIGHT = 360;
   const SLIDE_WIDTH = 1280;
   const SCALE = OUTPUT_WIDTH / SLIDE_WIDTH;
 
+  // -----------------------------------------------------------------------------
+  // 封面來源與固定輸出尺寸
+  // 只取 deck 的第一張有效 slide，所有 renderer 都畫到 16:9 固定畫布以利快取。
+  // -----------------------------------------------------------------------------
   function firstSlide(deck) {
     if (!deck || !Array.isArray(deck.groups)) return null;
     for (const group of deck.groups) {
@@ -79,6 +87,10 @@
     context.restore();
   }
 
+  // -----------------------------------------------------------------------------
+  // Widget 圖層繪製
+  // 依 layerIndex 排序 code、LaTeX 與 structure，未知類型略過而不讓整張縮圖失敗。
+  // -----------------------------------------------------------------------------
   async function drawWidgets(context, widgets) {
     if (!Array.isArray(widgets)) return;
     const orderedWidgets = widgets
@@ -93,6 +105,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // Fabric 與演算法封面
+  // Fabric JSON 先載入離屏 canvas，再與 widget 合成；演算法投影片則使用專用摘要封面。
+  // -----------------------------------------------------------------------------
   async function renderFabricSlide(output, slide) {
     const Fabric = window.fabric;
     if (!Fabric?.StaticCanvas) return;
@@ -137,6 +153,10 @@
     return output.toDataURL('image/jpeg', 0.82);
   }
 
+  // -----------------------------------------------------------------------------
+  // 公開縮圖入口
+  // 建立失敗時回傳空值交由卡片使用色塊退路，避免縮圖錯誤中斷 deck 清單。
+  // -----------------------------------------------------------------------------
   async function create(deck) {
     return createSlide(firstSlide(deck));
   }

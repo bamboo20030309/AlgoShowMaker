@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 行動版介面適配器
+// 依媒體查詢切換 dock 與側欄狀態，並把行動操作轉送到既有桌面控制項。
+// -----------------------------------------------------------------------------
 (() => {
   const query = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 900px)');
   const body = document.body;
@@ -25,6 +29,10 @@
     return { row: before.length - 1, column: before[before.length - 1].length };
   }
 
+  // -----------------------------------------------------------------------------
+  // Ace 行動輸入橋接
+  // 使用隱藏原生 textarea 接收組字與剪貼簿，再把文字插入 Ace，避免虛擬鍵盤無法定位。
+  // -----------------------------------------------------------------------------
   function installAceNativeMobileInput() {
     const container = document.getElementById('editor');
     const editor = container?.env?.editor;
@@ -98,6 +106,10 @@
     });
   }
 
+  // -----------------------------------------------------------------------------
+  // 演算法頁行動 dock
+  // dock 按鈕轉送現有播放與分頁控制，狀態仍由桌面按鈕及播放器決定。
+  // -----------------------------------------------------------------------------
   function installAlgorithmDock() {
     if (!document.getElementById('arraySvg')) return;
     // Embedded slide animations already receive their transport from the parent slide.
@@ -180,6 +192,10 @@
     if (mode) mode.textContent = body.classList.contains('asm-edit-mode') ? '播放模式' : '編輯模式';
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影片頁行動 dock
+  // 依編輯或播放模式顯示相符動作，避免複製 slides.js 的狀態機。
+  // -----------------------------------------------------------------------------
   function installSlidesDock() {
     if (!document.getElementById('slidesRoot')) return;
     const dock = document.createElement('nav');
@@ -217,6 +233,10 @@
     syncSlidesDock(dock);
   }
 
+  // -----------------------------------------------------------------------------
+  // 媒體查詢生命週期
+  // 斷點改變時切換 body class、重建必要 dock 並送出 resize，讓 Ace、Reveal 與 SVG 重新量測。
+  // -----------------------------------------------------------------------------
   function syncMode() {
     body.classList.toggle('asm-mobile-ui', query.matches);
     if (!query.matches) mobileClasses.forEach(name => body.classList.remove(name));

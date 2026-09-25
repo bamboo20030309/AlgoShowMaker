@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 語法樹面板
+// 將編譯器回傳的 AST 轉成可縮放 SVG，並維護節點展開與錯誤狀態。
+// -----------------------------------------------------------------------------
 (function () {
   const svg = document.getElementById('syntaxTreeSvg');
   const status = document.getElementById('syntaxTreeStatus');
@@ -31,6 +35,10 @@
   let panState = null;
   const measureContext = document.createElement('canvas').getContext('2d');
 
+  // -----------------------------------------------------------------------------
+  // SVG 建構與節點尺寸
+  // 文字尺寸先量測再計算卡片，確保長型別和值不會與子樹連線重疊。
+  // -----------------------------------------------------------------------------
   function element(name, attributes = {}) {
     const node = document.createElementNS(SVG_NS, name);
     Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
@@ -74,6 +82,10 @@
     );
   }
 
+  // -----------------------------------------------------------------------------
+  // 樹狀版面配置
+  // 先由下而上量測子樹寬，再由左而右配置中心點，使父節點落在所有子節點的中間。
+  // -----------------------------------------------------------------------------
   function assignLayout(root) {
     let maxDepth = 0;
 
@@ -127,6 +139,10 @@
     if (baseView) applyViewBox(baseView);
   }
 
+  // -----------------------------------------------------------------------------
+  // AST 呈現與視窗取景
+  // render 重建節點與邊，viewBox 狀態獨立保存，fit 只在新內容或使用者要求時重設。
+  // -----------------------------------------------------------------------------
   function render(payload) {
     svg.replaceChildren();
     if (!payload?.root) {
@@ -210,6 +226,10 @@
     svg.dataset.nodeCount = String(payload.nodeCount || nodes.length);
   }
 
+  // -----------------------------------------------------------------------------
+  // 來源新鮮度與編譯請求
+  // 來源雜湊未變時沿用結果；新請求以序號淘汰較慢的舊回應，避免 AST 倒退。
+  // -----------------------------------------------------------------------------
   async function refresh(source) {
     const code = String(source ?? '');
     lastSource = code;

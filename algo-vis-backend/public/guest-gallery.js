@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 訪客範例資料轉接器
+// 載入公開 deck 索引、整理分類並產生可供首頁渲染的卡片資料。
+// -----------------------------------------------------------------------------
 (() => {
   const categories = {
     Basic: '基礎', Sorting: '排序', Data_Structure: '資料結構',
@@ -12,6 +16,10 @@
   const expanded = new Map();
   let ready = false;
   const thumbnails = new Map();
+  // -----------------------------------------------------------------------------
+  // 範例分類正規化
+  // 合併單一與多重分類欄位並去重，標籤維持來源順序供卡片呈現。
+  // -----------------------------------------------------------------------------
   function entryCategories(entry) {
     return [...new Set((Array.isArray(entry.categories) ? entry.categories : [entry.category]).filter(id => Object.hasOwn(categories, id)))];
   }
@@ -24,6 +32,10 @@
     return [...new Set([...categoryLabels, ...hints])];
   }
 
+  // -----------------------------------------------------------------------------
+  // 範例封面載入
+  // 優先使用索引中的封面，缺少時載入 asmdeck 產生縮圖；失敗保留預設色塊。
+  // -----------------------------------------------------------------------------
   async function showCover(entry, preview) {
     try {
       if (!thumbnails.has(entry.id)) thumbnails.set(entry.id, (async () => {
@@ -46,6 +58,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 分類篩選與卡片渲染
+  // 目前分類只影響可見 entry，不修改原索引；點擊以 sample id 開啟唯讀投影片頁。
+  // -----------------------------------------------------------------------------
   function render() {
     if (!ready) return;
     const query = search.value.trim().toLocaleLowerCase();

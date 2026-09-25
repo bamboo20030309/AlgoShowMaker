@@ -1,8 +1,16 @@
+// -----------------------------------------------------------------------------
+// 投影片草稿儲存層
+// 以 IndexedDB 為主、localStorage 為退路保存大型 deck；公開 API 隱藏版本遷移與儲存後端差異。
+// -----------------------------------------------------------------------------
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.ASMSlideStorage = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
+  // -----------------------------------------------------------------------------
+  // localStorage 相容層
+  // 同步儲存只作退路；寫入失敗時保留舊值並回報 quota 狀態，不讓清理流程誤刪草稿。
+  // -----------------------------------------------------------------------------
   function isQuotaExceeded(error) {
     if (!error) return false;
     return error.name === 'QuotaExceededError'
@@ -68,6 +76,10 @@
   }
 
   // Drafts are durable user data, separate from the disposable trace cache DB.
+  // -----------------------------------------------------------------------------
+  // 內容定址投影
+  // 重型 trace 以 canonical JSON 雜湊拆出，deck 記錄只保存參照，重複內容共用同一份資料。
+  // -----------------------------------------------------------------------------
   async function digest(value) {
     if (!globalThis.crypto?.subtle && typeof module !== 'object') {
       return globalThis.ASMDeck.sha256(value);
@@ -109,6 +121,10 @@
     return { deck, references, traces };
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影合併與還原
+  // 載入時把 trace 參照放回投影片；儲存時與既有資料合併，避免未變內容重寫。
+  // -----------------------------------------------------------------------------
   function hydrate(record, traces = record.traces || {}) {
     const deck = JSON.parse(JSON.stringify(record.deck));
     for (const ref of record.references || []) {
@@ -141,6 +157,10 @@
     return complete;
   }
 
+  // -----------------------------------------------------------------------------
+  // IndexedDB 儲存實作
+  // 每個 storage key 保存 deck 記錄與 trace 表；公開 save/load 自動選擇 IndexedDB 或同步退路。
+  // -----------------------------------------------------------------------------
   function create(indexedDB, storage, databaseName = 'algoshowmaker-drafts-v1') {
     let database;
     let queue = Promise.resolve();

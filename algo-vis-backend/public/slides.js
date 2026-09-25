@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 投影片編輯器主協調器
+// 管理 deck 狀態、Reveal/Fabric/widget 的同步、編輯歷史、TTS、排序與匯入匯出；所有可持久化變更最後都由 saveDeck 收斂。
+// -----------------------------------------------------------------------------
 (function () {
   const STORAGE_KEY = 'asm_reveal_fabric_deck_v5';
   const OLD_STORAGE_KEY = 'asm_reveal_fabric_deck_v4';
@@ -69,6 +73,10 @@
     return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
+  // -----------------------------------------------------------------------------
+  // 預設 deck 與新建資料
+  // 預設值只用於首次建立；載入的任何外部資料仍需經 normalizeDeck 補齊欄位與移除不支援狀態。
+  // -----------------------------------------------------------------------------
   const defaultDeck = {
     ttsSettings: {
       rate: 1.2,
@@ -170,6 +178,10 @@
     ]
   };
 
+  // -----------------------------------------------------------------------------
+  // 執行期狀態與服務控制代碼
+  // 依網址來源隔離本機草稿，並集中保存目前頁面、選取、歷史與非同步工作的狀態。
+  // -----------------------------------------------------------------------------
   const DRAFT_KEY = deckUid ? `${STORAGE_KEY}:deck:${deckUid}`
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
@@ -553,6 +565,10 @@
     };
   }
 
+  // -----------------------------------------------------------------------------
+  // Deck 正規化與本機儲存
+  // 所有載入入口先把舊資料轉成目前 schema；儲存時則先同步畫布，再更新草稿、歷史與雲端排程。
+  // -----------------------------------------------------------------------------
   function normalizeDeck(raw) {
     if (raw && Array.isArray(raw.groups)) {
       raw.ttsSettings = normalizeTtsSettings(raw.ttsSettings);
@@ -650,6 +666,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 雲端載入、漸進重建與同步
+  // 遠端 deck 先進入可操作狀態，再按目前頁面優先逐張重建重型動畫，避免大型簡報阻塞首次呈現。
+  // -----------------------------------------------------------------------------
   async function loadCloudDeck() {
     if (sampleId) {
       setCloudStatus('loading', '正在載入公開投影片…');
@@ -877,6 +897,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 分享權限與匯入匯出
+  // 分享對話框只管理存取模式；匯出會建立穩定快照，匯入則回到共同正規化與重建流程。
+  // -----------------------------------------------------------------------------
   function setShareDialogStatus(text = '', isError = false) {
     if (!shareDialogStatus) return;
     shareDialogStatus.textContent = text;
@@ -1107,6 +1131,10 @@
     } finally { deckImportInProgress = false; if (importDeckInput) importDeckInput.value = ''; }
   }
 
+  // -----------------------------------------------------------------------------
+  // 復原、重做與文字編輯交易
+  // 一般操作以 deck 快照記錄；Fabric 文字輸入另以短期 checkpoint 合併連續鍵入，避免每個字都占一筆歷史。
+  // -----------------------------------------------------------------------------
   function pushHistorySnapshot(snapshot = JSON.stringify(deck)) {
     clearTimeout(pendingHistoryTimer);
     pendingHistoryTimer = null;
@@ -1405,6 +1433,10 @@
     return slide && fabricCanvases.get(slide.id);
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影片旁白與 TTS 狀態機
+  // 從 Fabric 文字與手動台詞建立播放計畫；session/run 狀態保證暫停、換頁或重播後的舊 callback 不再推進。
+  // -----------------------------------------------------------------------------
   function applyTtsPronunciations(text) {
     const parsed = window.parseTTSMarkup?.(text);
     return String(parsed ? parsed.speech : text || '')
@@ -2279,6 +2311,10 @@
     );
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影片、Fabric 與 widget schema 正規化
+  // 舊版箭頭、Unicode 樣式與結構資料都在此邊界遷移，後續渲染可以只處理一致格式。
+  // -----------------------------------------------------------------------------
   function normalizeCanvasJson(canvasJson) {
     return {
       version: canvasJson && canvasJson.version,
@@ -2869,6 +2905,10 @@
     }) : [];
   }
 
+  // -----------------------------------------------------------------------------
+  // Deck DOM 建立與局部更新
+  // 依水平群組與垂直頁面重建 Reveal section，並在資料結構未變時選擇原地還原以保留編輯焦點。
+  // -----------------------------------------------------------------------------
   function rebuildPositions() {
     slidePositions.clear();
     deck.groups.forEach((group, h) => {
@@ -3095,6 +3135,10 @@
     });
   }
 
+  // -----------------------------------------------------------------------------
+  // LaTeX、動畫屬性與投影片 section
+  // widget 內容在進 DOM 前先正規化；Reveal 動畫屬性由 slide 設定單向投影，避免 DOM 成為第二份狀態。
+  // -----------------------------------------------------------------------------
   function normalizeLatexSource(source = '') {
     return String(source || '')
       .replace(/(^|[^\\])\/([a-zA-Z]+)/g, '$1\\$2')
@@ -3563,6 +3607,10 @@
     // Mode and zoom transforms animate for 320ms; redraw again at their final size.
     fabricResolutionTimer = setTimeout(refreshFabricResolution, 400);
   }
+  // -----------------------------------------------------------------------------
+  // Fabric 畫布建立與事件接線
+  // 每次 render 都以 generation 取消過期的非同步載入；事件完成後才把畫布內容同步回目前 slide。
+  // -----------------------------------------------------------------------------
   async function buildFabricCanvases(buildGeneration = fabricBuildGeneration) {
     if (buildGeneration !== fabricBuildGeneration) return;
     document.body.dataset.fabricBuild = 'starting';
@@ -4126,6 +4174,10 @@
     Object.defineProperty(obj, '__asmArrowRendererInstalled', { value: true, configurable: true });
   }
 
+  // -----------------------------------------------------------------------------
+  // Fabric 物件幾何與控制點
+  // 統一套用可選取性、等比例縮放與線段端點控制，確保序列化前的幾何表示可預期。
+  // -----------------------------------------------------------------------------
   function configureObject(obj) {
     sanitizeFabricTextBaseline(obj);
     const animation = normalizeAnimationSettings(obj);
@@ -4273,6 +4325,10 @@
     obj.dirty = true;
   }
 
+  // -----------------------------------------------------------------------------
+  // Reveal 自動轉場協調
+  // Fabric、code 與 structure 各自建立過渡層；任何中斷都必須清掉 ghost 與暫存樣式，再回到目的頁的正式 DOM。
+  // -----------------------------------------------------------------------------
   function finishFabricAutoAnimation() {
     if (!activeFabricAutoAnimation) return;
     cancelAnimationFrame(activeFabricAutoAnimation.frame);
@@ -4899,6 +4955,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 新增元件與媒體
+  // 工具列動作建立具預設樣式的 Fabric 或 widget 物件，完成後統一選取、存檔並刷新編輯面板。
+  // -----------------------------------------------------------------------------
   function addObject(kind, point) {
     if (kind === 'latex' || kind === 'code' || kind === 'table') {
       addWidget(kind, point);
@@ -5230,6 +5290,10 @@
     };
   }
 
+  // -----------------------------------------------------------------------------
+  // 吸附、對齊與多選操作
+  // 把 Fabric 與 HTML widget 轉成同一套邊界資料；拖曳只顯示暫時導線，落點後才寫回 deck。
+  // -----------------------------------------------------------------------------
   function snapCandidateBounds(canvas, excludedFabric = new Set(), excludedWidgetIds = new Set()) {
     const candidates = [];
     canvas?.getObjects().forEach(object => {
@@ -5759,6 +5823,10 @@
     selectAllCurrentWidgets();
   }
 
+  // -----------------------------------------------------------------------------
+  // 物件剪貼簿與選取生命週期
+  // 剪貼簿保存可序列化副本並在貼上時重建 ID；Fabric 與 widget 共用清除、刪除及全選語意。
+  // -----------------------------------------------------------------------------
   function serializeClipboardFabricObjects(canvas, objects) {
     const serialize = () => objects.map(obj => obj.toObject ? obj.toObject(FABRIC_CUSTOM_PROPS) : clone(obj));
     return withAbsoluteFabricSelection(canvas, serialize);
@@ -6009,6 +6077,10 @@
     return ids;
   }
 
+  // -----------------------------------------------------------------------------
+  // 側欄編輯器與結構儲存
+  // 依目前選取切換 code、LaTeX、table 或 structure 面板；欄位修改一律回寫 widget 後再重繪。
+  // -----------------------------------------------------------------------------
   function showDefaultPanel() {
     if (customOverviewOpen) {
       showOverviewSidebarPanel();
@@ -6565,6 +6637,10 @@
     structureContextMenu.style.top = `${top}px`;
   }
 
+  // -----------------------------------------------------------------------------
+  // 結構格子選取與內容功能表
+  // 從 SVG cell 的穩定資料屬性還原邏輯位置，讓樹、矩陣與線性結構共享新增、刪除與樣式操作。
+  // -----------------------------------------------------------------------------
   function openStructureContextMenu(event) {
     if (!document.body.classList.contains('asm-edit-mode') || !structureContextMenu) return;
     const widgetEl = event.target.closest?.('.structure-widget');
@@ -6756,6 +6832,10 @@
     algorithmEditSlideBtn.hidden = getSlide()?.kind !== 'algorithm-animation';
   }
 
+  // -----------------------------------------------------------------------------
+  // 物件層級與動畫屬性
+  // 將 Fabric 及 widget 映射成單一圖層清單；調整順序後同時更新 DOM z-index 與序列化欄位。
+  // -----------------------------------------------------------------------------
   function showWidgetEditor(widgetId) {
     if (ttsPanelIsExpanded()) {
       showOnlyTtsSidebar();
@@ -7210,6 +7290,10 @@
     return Math.max(SLIDE_ZOOM_MIN, Math.min(SLIDE_ZOOM_MAX, Number(value) || 1));
   }
 
+  // -----------------------------------------------------------------------------
+  // 編輯模式、縮放與主介面綁定
+  // 縮放只改編輯視窗比例，Reveal 頁面座標仍維持 1280×720；所有 chrome 事件由 bindChrome 一次註冊。
+  // -----------------------------------------------------------------------------
   function setSlideViewportZoom(value) {
     slideViewportZoom = Math.round(clampSlideViewportZoom(value) * 100) / 100;
     document.documentElement.style.setProperty('--slide-user-zoom', String(slideViewportZoom));
@@ -8288,6 +8372,10 @@
     return {};
   }
 
+  // -----------------------------------------------------------------------------
+  // 物件工具列、文字樣式與顏色選擇器
+  // 工具列依目前 Fabric 選取動態顯示；連續顏色輸入延遲合併歷史，結束互動時再建立正式快照。
+  // -----------------------------------------------------------------------------
   function applyShapeStyle(style, { history = true } = {}) {
     const canvas = currentFabricCanvas();
     if (!canvas) return;
@@ -9122,6 +9210,10 @@
     if (reveal) reveal.layout();
   }
 
+  // -----------------------------------------------------------------------------
+  // 演算法 iframe 通訊
+  // 以 slideId 與 frame 來源核對訊息，把編輯結果與可見性送到正確的嵌入頁，避免背景 iframe 搶走狀態。
+  // -----------------------------------------------------------------------------
   function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-export-animation-snapshot'
@@ -9209,6 +9301,10 @@
     }, window.location.origin);
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影片新增、刪除與搬移
+  // 所有排序操作直接改 deck 的群組結構，之後重建位置索引並保持使用者焦點在受影響頁面。
+  // -----------------------------------------------------------------------------
   function insertSlideNearCurrent(slide) {
     const group = getGroup();
     if (!group) return;
@@ -9545,6 +9641,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 自訂總覽與多張投影片剪貼簿
+  // 自訂總覽以 deck 順序為資料來源，縮圖採簽章快取；多選、剪下與貼上都保持原相對順序。
+  // -----------------------------------------------------------------------------
   function openCustomOverview() {
     if (!customOverview || customOverviewOpen || !document.body.classList.contains('asm-edit-mode')) return;
     if (reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
@@ -9947,6 +10047,10 @@
     document.addEventListener('pointercancel', end, true);
   }
 
+  // -----------------------------------------------------------------------------
+  // 自訂總覽拖放幾何
+  // 拖曳時以縮圖中心與群組間距計算候選插入點，預覽線不修改 deck，pointerup 才提交排序。
+  // -----------------------------------------------------------------------------
   function customOverviewThumbFromPoint(x, y, excludedIds = new Set()) {
     return document.elementsFromPoint(x, y)
       .find(el => el.matches && el.matches('.custom-overview-thumb') && !excludedIds.has(el.dataset.slideId));
@@ -10362,6 +10466,10 @@
     }, true);
   }
 
+  // -----------------------------------------------------------------------------
+  // Reveal 原生總覽拖放與捲動
+  // 原生 overview 需額外補償 Reveal transform；水平及垂直捲軸只改 pan，再同步最近頁面索引。
+  // -----------------------------------------------------------------------------
   function overviewSlideFromPoint(x, y) {
     return document.elementsFromPoint(x, y).find(el => el.matches && el.matches('section.asm-slide'));
   }
@@ -10794,6 +10902,10 @@
     if (drag.ghost) drag.ghost.remove();
   }
 
+  // -----------------------------------------------------------------------------
+  // 診斷資訊與啟動流程
+  // 診斷只讀目前 deck/DOM 供開發檢查；bootstrap 依序載入來源、建立 Reveal、接線事件並啟動儲存。
+  // -----------------------------------------------------------------------------
   function flashHint(text) {
     const hint = document.getElementById('editHint');
     hint.textContent = 'ESC closes overview; drag slides to reorder.';
