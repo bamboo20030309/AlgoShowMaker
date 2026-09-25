@@ -291,19 +291,24 @@ class Recorder {
     output_.flush();
   }
 
-  void add_event(const std::string& type, int line, const std::string& signature,
-                 const std::string& fields = std::string()) {
-    if (!enabled_ || frame_id_ >= max_frames_) return;
+  std::string add_event(const std::string& type, int line, const std::string& signature,
+                        const std::string& fields = std::string()) {
+    if (!enabled_ || frame_id_ >= max_frames_) return std::string();
     const int execution_order = event_id_++;
+    const std::string event_id = std::string("event-") + std::to_string(execution_order);
     std::ostringstream event;
-    event << "{\"id\":" << quoted(std::string("event-") + std::to_string(execution_order))
+    event << "{\"id\":" << quoted(event_id)
           << ",\"order\":" << execution_order
           << ",\"type\":" << quoted(type)
           << ",\"signature\":" << quoted(signature)
           << ",\"line\":" << line;
     if (!fields.empty()) event << ',' << fields;
+    if (fields.find("\"recursionActivationId\"") == std::string::npos) {
+      event << current_activation_source_json();
+    }
     event << '}';
     pending_events_.push_back(event.str());
+    return event_id;
   }
 
   template <typename... Values>
@@ -354,12 +359,34 @@ struct FunctionActivationFrame {
   std::string function_name;
   std::string activation_id;
   std::string parent_activation_id;
+  std::string invoked_by_call_event_id;
   std::vector<std::string> ancestor_activation_ids;
   int recursion_depth;
   int sibling_index;
   int root_index;
   int next_recursive_child;
 };
+
+struct CallInvocationFrame {
+  std::string event_id;
+  std::string callee;
+  std::string callee_activation_id;
+};
+
+inline std::vector<CallInvocationFrame>& call_invocation_stack() {
+  static std::vector<CallInvocationFrame> stack;
+  return stack;
+}
+
+inline bool call_callee_matches_function(const std::string& callee, const std::string& function_name) {
+  if (callee == function_name) return true;
+  if (callee.size() <= function_name.size()) return false;
+  const std::size_t offset = callee.size() - function_name.size();
+  if (callee.compare(offset, function_name.size(), function_name) != 0) return false;
+  return callee.compare(offset >= 2 ? offset - 2 : offset, 2, "::") == 0
+    || callee.compare(offset >= 2 ? offset - 2 : offset, 2, "->") == 0
+    || callee[offset - 1] == '.';
+}
 
 inline std::vector<FunctionActivationFrame>& function_activation_stack() {
   static std::vector<FunctionActivationFrame> stack;
@@ -426,6 +453,7 @@ inline std::string current_activation_source_json() {
   return std::string(",\"recursionFunction\":") + quoted(frame.function_name)
     + ",\"recursionActivationId\":" + quoted(frame.activation_id)
     + ",\"recursionParentActivationId\":" + quoted(frame.parent_activation_id)
+    + ",\"invokedByCallEventId\":" + quoted(frame.invoked_by_call_event_id)
     + ",\"recursionAncestorActivationIds\":" + ancestors.str()
     + ",\"recursionDepth\":" + std::to_string(frame.recursion_depth)
     + ",\"recursionSiblingIndex\":" + std::to_string(frame.sibling_index)
@@ -449,6 +477,11 @@ class FunctionActivation {
     frame.function_name = name;
     frame.activation_id = std::string("activation-")
       + std::to_string(function_activation_counter()++);
+    auto& invocations = call_invocation_stack();
+    if (!invocations.empty() && call_callee_matches_function(invocations.back().callee, name)) {
+      frame.invoked_by_call_event_id = invocations.back().event_id;
+      invocations.back().callee_activation_id = frame.activation_id;
+    }
     frame.next_recursive_child = 0;
     if (parent_index >= 0) {
       FunctionActivationFrame& parent = stack[static_cast<std::size_t>(parent_index)];
@@ -514,6 +547,12 @@ inline std::string recursion_layout_context_json(const char* layout_id) {
     + ",\"recursionRootIndex\":" + std::to_string(frame.root_index);
 }
 
+class VariableScopeExit;
+inline std::vector<VariableScopeExit*>& active_scope_exit_guards() {
+  static std::vector<VariableScopeExit*> guards;
+  return guards;
+}
+
 class VariableScopeExit {
  public:
   template <typename T>
@@ -523,14 +562,24 @@ class VariableScopeExit {
         variable_id_(variable_id ? variable_id : ""), name_(name ? name : ""),
         kind_(kind ? kind : "object"), key_(lifetime_key(variable_id, value)), active_(true) {
     lifetime_ = std::string("lifetime-") + std::to_string(lifetime_counter()++);
+    const auto& activations = function_activation_stack();
+    activation_id_ = activations.empty() ? std::string() : activations.back().activation_id;
     active_lifetimes()[key_].push_back(lifetime_);
+    active_scope_exit_guards().push_back(this);
   }
 
   VariableScopeExit(const VariableScopeExit&) = delete;
   VariableScopeExit& operator=(const VariableScopeExit&) = delete;
 
   ~VariableScopeExit() {
+    emit();
+    auto& guards = active_scope_exit_guards();
+    guards.erase(std::remove(guards.begin(), guards.end(), this), guards.end());
+  }
+
+  void emit() {
     if (!active_) return;
+    active_ = false;
     recorder().add_event("scope-exit", line_, signature_,
       std::string("\"name\":") + ::asm_trace::quoted(name_)
         + ",\"kind\":" + ::asm_trace::quoted(kind_)
@@ -549,6 +598,10 @@ class VariableScopeExit {
     if (values.empty()) active_lifetimes().erase(found);
   }
 
+  bool belongs_to(const std::string& activation_id) const {
+    return activation_id_ == activation_id;
+  }
+
  private:
   std::string target_json_with_lifetime() const {
     return std::string("{\"role\":\"target\",\"variableId\":") + ::asm_trace::quoted(variable_id_)
@@ -563,8 +616,19 @@ class VariableScopeExit {
   std::string kind_;
   std::string key_;
   std::string lifetime_;
+  std::string activation_id_;
   bool active_;
 };
+
+inline void emit_current_function_scope_exits() {
+  const auto& activations = function_activation_stack();
+  if (activations.empty()) return;
+  const std::string activation_id = activations.back().activation_id;
+  auto& guards = active_scope_exit_guards();
+  for (auto it = guards.rbegin(); it != guards.rend(); ++it) {
+    if ((*it)->belongs_to(activation_id)) (*it)->emit();
+  }
+}
 
 inline std::string target_json(const char* role, const char* variable_id,
                                const char* expression, const char* index_expression,
@@ -945,6 +1009,103 @@ inline void event_call(int line, const char* signature, const char* callee, cons
   recorder().add_event("call", line, signature ? signature : "",
     std::string("\"callee\":") + quoted(callee ? callee : "")
       + ",\"expression\":" + quoted(expression ? expression : ""));
+}
+
+class CallInvocationScope {
+ public:
+  CallInvocationScope(int line, const char* signature, const char* callee, const char* expression)
+      : line_(line), signature_(signature ? signature : ""),
+        callee_(callee ? callee : ""), expression_(expression ? expression : "") {
+    event_id_ = recorder().add_event("call", line_, signature_,
+      std::string("\"callee\":") + ::asm_trace::quoted(callee_)
+        + ",\"expression\":" + ::asm_trace::quoted(expression_));
+    call_invocation_stack().push_back({event_id_, callee_, std::string()});
+  }
+
+  CallInvocationScope(const CallInvocationScope&) = delete;
+  CallInvocationScope& operator=(const CallInvocationScope&) = delete;
+
+  ~CallInvocationScope() {
+    auto& stack = call_invocation_stack();
+    std::string callee_activation_id;
+    if (!stack.empty() && stack.back().event_id == event_id_) {
+      callee_activation_id = stack.back().callee_activation_id;
+      stack.pop_back();
+    }
+    recorder().add_event("call-return", line_, signature_,
+      std::string("\"callEventId\":") + ::asm_trace::quoted(event_id_)
+        + ",\"callee\":" + ::asm_trace::quoted(callee_)
+        + ",\"expression\":" + ::asm_trace::quoted(expression_)
+        + ",\"calleeActivationId\":" + ::asm_trace::quoted(callee_activation_id));
+  }
+
+ private:
+  int line_;
+  std::string signature_;
+  std::string callee_;
+  std::string expression_;
+  std::string event_id_;
+};
+
+template <typename F>
+decltype(auto) event_call_invoke(int line, const char* signature,
+                                 const char* callee, const char* expression, F&& invoke) {
+  CallInvocationScope invocation(line, signature, callee, expression);
+  return std::forward<F>(invoke)();
+}
+
+template <typename Result, typename Invoke, typename Capture>
+typename std::enable_if<!std::is_void<Result>::value, Result>::type
+event_return_invoke_result(int line, const char* return_signature,
+                           const char* exit_signature, const char* function_name,
+                           const char* expression, const std::string& return_event_id,
+                           Invoke&& invoke, Capture&& capture) {
+  Result result = std::forward<Invoke>(invoke)();
+  recorder().add_event("return-complete", line, return_signature ? return_signature : "",
+    std::string("\"returnEventId\":") + quoted(return_event_id)
+      + ",\"function\":" + quoted(function_name ? function_name : "")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"value\":" + encode_value(result) + "}");
+  emit_current_function_scope_exits();
+  recorder().add_event("function-exit", line, exit_signature ? exit_signature : "",
+    std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"returnEventId\":" + quoted(return_event_id));
+  std::forward<Capture>(capture)();
+  return std::forward<Result>(result);
+}
+
+template <typename Result, typename Invoke, typename Capture>
+typename std::enable_if<std::is_void<Result>::value, void>::type
+event_return_invoke_result(int line, const char* return_signature,
+                           const char* exit_signature, const char* function_name,
+                           const char* expression, const std::string& return_event_id,
+                           Invoke&& invoke, Capture&& capture) {
+  std::forward<Invoke>(invoke)();
+  recorder().add_event("return-complete", line, return_signature ? return_signature : "",
+    std::string("\"returnEventId\":") + quoted(return_event_id)
+      + ",\"function\":" + quoted(function_name ? function_name : "")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"kind\":\"void\"}");
+  emit_current_function_scope_exits();
+  recorder().add_event("function-exit", line, exit_signature ? exit_signature : "",
+    std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"returnEventId\":" + quoted(return_event_id));
+  std::forward<Capture>(capture)();
+}
+
+template <typename Invoke, typename Capture>
+auto event_return_invoke(int line, const char* return_signature,
+                         const char* exit_signature, const char* function_name,
+                         const char* expression, Invoke&& invoke, Capture&& capture)
+  -> decltype(std::forward<Invoke>(invoke)()) {
+  const std::string return_event_id = recorder().add_event("return", line,
+    return_signature ? return_signature : "",
+    std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"expression\":" + quoted(expression ? expression : ""));
+  typedef decltype(std::forward<Invoke>(invoke)()) Result;
+  return event_return_invoke_result<Result>(line, return_signature, exit_signature,
+    function_name, expression, return_event_id,
+    std::forward<Invoke>(invoke), std::forward<Capture>(capture));
 }
 
 inline void event_function(int line, const char* signature, const char* function_name, bool entering) {

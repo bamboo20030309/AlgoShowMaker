@@ -26,15 +26,17 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-35'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-21'));
+  assert.ok(html.includes('trace-model.js?v=trace-36'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-23'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
-  assert.ok(html.includes('trace-code-model.js?v=code-25'));
+  assert.ok(html.includes('trace-code-model.js?v=code-27'));
+  assert.ok(html.includes('trace-events.js?v=trace-50'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-238'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
-  assert.ok(html.includes('trace-code-presenter.js?v=code-29'));
+  assert.ok(html.includes('trace-code-presenter.js?v=code-30'));
   assert.ok(html.includes('trace-view-source.js?v=trace-15'));
   assert.ok(html.includes('trace-editor.js?v=trace-25'));
   assert.ok(html.includes('compile.js?v=syntax-7'));
@@ -93,7 +95,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
   assert.ok(html.includes('draw/draw_2Darray.js?v=focus-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-48'));
+  assert.ok(html.includes('trace-events.js?v=trace-50'));
   const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));

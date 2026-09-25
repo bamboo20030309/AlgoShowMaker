@@ -226,6 +226,28 @@
     content.querySelectorAll('[id$="-index"], [data-trace-index-label]').forEach(label => label.remove());
   }
 
+  function renderDisplayTemplate(template, data, document, frame, locals = {}, fallback = '') {
+    if (typeof template !== 'string') return fallback;
+    const value = window.ASMTraceModel?.scalarValue?.(data) ?? data;
+    return template.replace(/\$\{([^{}]+)\}/g, (_, expression) => {
+      const resolved = window.ASMTraceRules?.resolveTextExpression?.(
+        document, frame, expression.trim(), { value, ...locals }
+      );
+      return resolved == null ? '' : String(resolved);
+    });
+  }
+
+  function renderedDisplayValue(data, context, locals = {}, fallback = displayValue(data)) {
+    return renderDisplayTemplate(
+      context.skin?.options?.display?.template,
+      data,
+      context.document,
+      context.frame,
+      locals,
+      fallback
+    );
+  }
+
   function renderOriginal(group, entry, context) {
     if (typeof window.draw_array_normal !== 'function') {
       return Array.isArray(entry.data?.items) ? renderSequence(group, entry, context) : renderScalar(group, entry, context);
@@ -277,6 +299,32 @@
         row?.items?.[index], rendererOptions, context.variable?.name || '', context.variableId
       )));
       itemsPerRow = columns;
+    }
+    if (rendererOptions.display) {
+      if (isMatrix) {
+        const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
+        values = values.map((fallback, logicalIndex) => {
+          const row = Math.floor(logicalIndex / itemsPerRow);
+          const column = logicalIndex % itemsPerRow;
+          return renderedDisplayValue(rows[row]?.items?.[column], context, {
+            index: logicalIndex, row, column
+          }, fallback);
+        });
+      } else if (entry.data?.kind === 'map') {
+        values = values.map((fallback, index) => {
+          const item = entry.data.entries?.[index];
+          return renderedDisplayValue(item?.value, context, {
+            index,
+            key: window.ASMTraceModel?.scalarValue?.(item?.key) ?? displayValue(item?.key)
+          }, fallback);
+        });
+      } else if (Array.isArray(entry.data?.items)) {
+        values = values.map((fallback, index) => renderedDisplayValue(
+          entry.data.items[index], context, { index }, fallback
+        ));
+      } else {
+        values = [renderedDisplayValue(entry.data, context, { index: 0 }, values[0])];
+      }
     }
     const configuredColumns = Number(rendererOptions.columns);
     if (Number.isFinite(configuredColumns) && configuredColumns > 0) {
@@ -339,10 +387,18 @@
         // Keep that label immutable while retaining the underlying data
         // value as a separate target for event replay and assignment effects.
         cell.setAttribute('data-trace-data-value', String(values[logicalIndex] ?? ''));
+        if (typeof rendererOptions.display?.template === 'string') {
+          cell.setAttribute('data-trace-display-template', rendererOptions.display.template);
+          cell.setAttribute('data-trace-display-index', String(logicalIndex));
+          if (isMatrix) {
+            cell.setAttribute('data-trace-display-row', String(Math.floor(logicalIndex / itemsPerRow)));
+            cell.setAttribute('data-trace-display-column', String(logicalIndex % itemsPerRow));
+          }
+        }
         const contentText = cell.querySelector(':scope > text');
         if (contentText) {
           contentText.setAttribute('data-trace-content-role', indexMode === 2 ? 'index' : 'value');
-          if (fieldParts[logicalIndex]?.length && indexMode !== 2) {
+          if (!rendererOptions.display && fieldParts[logicalIndex]?.length && indexMode !== 2) {
             contentText.textContent = '';
             fieldParts[logicalIndex].forEach((part, partIndex) => {
               if (partIndex) contentText.append(svg('tspan', { 'data-trace-field-separator': '1' }, separator));
@@ -428,6 +484,19 @@
         transform: `translate(${x}, 0)`,
         'data-trace-index': context.rowIndex == null ? index : logicalIndex
       }), cellKey, context, context.variableId);
+      const displayLocals = context.rowIndex == null
+        ? { index }
+        : { index, row: context.rowIndex, column: index };
+      const renderedValue = renderedDisplayValue(item, context, displayLocals);
+      const displayTemplate = context.skin?.options?.display?.template;
+      if (typeof displayTemplate === 'string') {
+        cell.setAttribute('data-trace-display-template', displayTemplate);
+        cell.setAttribute('data-trace-display-index', String(index));
+        if (context.rowIndex != null) {
+          cell.setAttribute('data-trace-display-row', String(context.rowIndex));
+          cell.setAttribute('data-trace-display-column', String(index));
+        }
+      }
       const indices = context.rowIndex == null ? [index] : [context.rowIndex, index];
       markArrowTarget(cell, {
         key: cellKey,
@@ -445,7 +514,7 @@
         'font-family': 'Arial',
         'font-size': Math.max(14, Math.min(24, cellSize * 0.36)),
         fill: '#1f282d'
-      }, displayValue(item)));
+      }, renderedValue));
       if (context.skin?.options?.showIndex !== false) {
         const indexLabel = markSelectable(svg('text', {
           x: cellSize / 2,
@@ -479,30 +548,33 @@
   }
 
   function renderScalar(group, entry, context) {
+    const renderedValue = renderedDisplayValue(entry.data, context, { index: 0 });
     const rect = svg('rect', { x: 0, y: 0, width: 150, height: 52, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 });
     applyHighlight(rect, context.highlights?.$object);
     group.append(rect, svg('text', {
       x: 75, y: 33, 'text-anchor': 'middle', 'font-family': 'Arial', 'font-size': 24, fill: '#1f282d'
-    }, displayValue(entry.data)));
+    }, renderedValue));
     return 68;
   }
 
-  function renderObject(group, entry) {
+  function renderObject(group, entry, context = {}) {
     const fields = entry.data?.fields && typeof entry.data.fields === 'object' ? entry.data.fields : {};
     const lines = Object.entries(fields);
     const height = Math.max(58, 32 + lines.length * 26);
     group.append(svg('rect', { x: 0, y: 0, width: 260, height, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 }));
     if (!lines.length) {
-      group.append(svg('text', { x: 16, y: 34, 'font-family': 'Arial', 'font-size': 16, fill: '#667278' }, entry.data?.type || 'Object'));
+      const fallback = entry.data?.type || 'Object';
+      group.append(svg('text', { x: 16, y: 34, 'font-family': 'Arial', 'font-size': 16, fill: '#667278' },
+        renderedDisplayValue(entry.data, context, { index: 0 }, fallback)));
     } else {
       lines.forEach(([key, value], index) => group.append(svg('text', {
         x: 16, y: 30 + index * 26, 'font-family': 'Arial', 'font-size': 16, fill: '#1f282d'
-      }, `${key}: ${displayValue(value)}`)));
+      }, `${key}: ${renderedDisplayValue(value, context, { index, key, field: key })}`)));
     }
     return height + 16;
   }
 
-  function renderGraph(group, entry) {
+  function renderGraph(group, entry, context = {}) {
     const nodes = Object.entries(entry.data?.nodes || {});
     const edges = Array.isArray(entry.data?.edges) ? entry.data.edges : [];
     const positions = {};
@@ -520,12 +592,14 @@
     nodes.forEach(([id, node]) => {
       const position = positions[id];
       group.append(svg('circle', { cx: position.x, cy: position.y, r: 24, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 }));
-      group.append(svg('text', { x: position.x, y: position.y + 6, 'text-anchor': 'middle', 'font-family': 'Arial', 'font-size': 16 }, node.label ?? node.value ?? id));
+      const rawValue = node.label ?? node.value ?? id;
+      group.append(svg('text', { x: position.x, y: position.y + 6, 'text-anchor': 'middle', 'font-family': 'Arial', 'font-size': 16 },
+        renderedDisplayValue(rawValue, context, { index, key: id })));
     });
     return Math.max(110, 80 + Math.ceil(nodes.length / 6) * 90);
   }
 
-  function renderCoordinateSystem(group, entry) {
+  function renderCoordinateSystem(group, entry, context = {}) {
     const width = 520;
     const height = 240;
     group.append(svg('line', { x1: 30, y1: height / 2, x2: width, y2: height / 2, stroke: '#59656b' }));
@@ -535,11 +609,12 @@
     const ys = points.map(point => Number(point.y) || 0);
     const maxX = Math.max(1, ...xs.map(Math.abs));
     const maxY = Math.max(1, ...ys.map(Math.abs));
-    points.forEach(point => {
+    points.forEach((point, index) => {
       const x = width / 2 + (Number(point.x) || 0) / maxX * (width / 2 - 40);
       const y = height / 2 - (Number(point.y) || 0) / maxY * (height / 2 - 24);
       group.append(svg('circle', { cx: x, cy: y, r: 6, fill: point.color || '#1d8f83' }));
-      if (point.label) group.append(svg('text', { x: x + 9, y: y - 8, 'font-family': 'Arial', 'font-size': 13 }, point.label));
+      const label = renderedDisplayValue(point.label ?? point.value ?? '', context, { index });
+      if (label) group.append(svg('text', { x: x + 9, y: y - 8, 'font-family': 'Arial', 'font-size': 13 }, label));
     });
     return height + 20;
   }
@@ -666,6 +741,20 @@
       // bounds form made a freshly reloaded first transition treat every cell
       // as (0, 0), so the array appeared to expand from its outerframe corner.
       positions.set(object.dataset.traceObjectKey, { x, y });
+    });
+    return positions;
+  }
+
+  function recursionLayoutMotionPositions(rootSvg, fallbackPositions) {
+    const positions = new Map(fallbackPositions || []);
+    const root = rootSvg.querySelector('#asm-trace-root');
+    if (!root) return positions;
+    root.querySelectorAll('[data-trace-layout-id][data-trace-object-key]').forEach(object => {
+      const parentObject = object.parentElement?.closest?.('[data-trace-object-key]');
+      if (parentObject && root.contains(parentObject)) return;
+      const bounds = window.ASMArrowModel?.presentedBounds?.(object, root, true);
+      if (!bounds) return;
+      positions.set(String(object.dataset.traceObjectKey || ''), { ...bounds });
     });
     return positions;
   }
@@ -930,6 +1019,30 @@
     return markerId;
   }
 
+  function ensureRecursionFlowArrowMarker(rootSvg, idPrefix, color) {
+    const markerId = `${idPrefix}-recursion-flow-arrowhead`;
+    let marker = rootSvg.querySelector(`#${markerId}`);
+    if (marker) return markerId;
+    let defs = rootSvg.querySelector('defs');
+    if (!defs) {
+      defs = svg('defs');
+      rootSvg.prepend(defs);
+    }
+    marker = svg('marker', {
+      id: markerId,
+      viewBox: '0 0 5 5',
+      refX: 5,
+      refY: 2.5,
+      markerWidth: 5,
+      markerHeight: 5,
+      markerUnits: 'userSpaceOnUse',
+      orient: 'auto'
+    });
+    marker.append(svg('path', { d: 'M 0 0 L 5 2.5 L 0 5 Z', fill: color }));
+    defs.append(marker);
+    return markerId;
+  }
+
   function closestEdgePoints(from, to) {
     const fromCenter = anchorPoint(from, 'center');
     const toCenter = anchorPoint(to, 'center');
@@ -965,6 +1078,41 @@
     const start = anchorPoint(from, startAnchor);
     const end = anchorPoint(to, endAnchor);
     return { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+  }
+
+  function recursionFlowAnchors(direction = 'top-down', phase = 'enter') {
+    const horizontalGrowth = ['left-right', 'right-left'].includes(
+      String(direction || 'top-down').toLowerCase()
+    );
+    const side = horizontalGrowth
+      ? (phase === 'exit' ? 'bottom' : 'top')
+      : (phase === 'exit' ? 'right' : 'left');
+    return { from: side, to: side, side };
+  }
+
+  function recursionFlowQuadraticPoints(start, end, side = 'left', depth = 0) {
+    const horizontalSide = side === 'left' || side === 'right';
+    const span = horizontalSide
+      ? Math.abs(Number(end.y) - Number(start.y))
+      : Math.abs(Number(end.x) - Number(start.x));
+    const bend = Math.max(18, Math.min(38,
+      span * 0.22 + Math.min(4, Math.max(0, Number(depth) || 0)) * 2
+    ));
+    const control = {
+      x: (Number(start.x) + Number(end.x)) / 2,
+      y: (Number(start.y) + Number(end.y)) / 2
+    };
+    if (side === 'left') control.x -= bend * 2;
+    else if (side === 'right') control.x += bend * 2;
+    else if (side === 'top') control.y -= bend * 2;
+    else control.y += bend * 2;
+    return {
+      start: { x: Number(start.x), y: Number(start.y) },
+      control,
+      end: { x: Number(end.x), y: Number(end.y) },
+      bend,
+      path: `M ${Number(start.x)} ${Number(start.y)} Q ${control.x} ${control.y} ${Number(end.x)} ${Number(end.y)}`
+    };
   }
 
   function recursionOuterframePlacement(element, fallback, stop, preferredVariableId = '') {
@@ -1339,6 +1487,19 @@
       arrow.dataset.traceArrowFromY = String(start.y);
       arrow.dataset.traceArrowToX = String(end.x);
       arrow.dataset.traceArrowToY = String(end.y);
+      if (arrow.dataset.traceArrowCurve === 'recursion-flow') {
+        const curve = recursionFlowQuadraticPoints(
+          start,
+          end,
+          arrow.dataset.traceArrowCurveSide || 'left',
+          Number(arrow.dataset.traceArrowCurveDepth) || 0
+        );
+        arrow.removeAttribute('display');
+        arrow.setAttribute('d', curve.path);
+        arrow.dataset.traceArrowControlX = String(curve.control.x);
+        arrow.dataset.traceArrowControlY = String(curve.control.y);
+        return;
+      }
       const geometry = model.geometry(start, end,
         { anchor: arrow.dataset.traceArrowFromAnchor, outerframe: !fromCell, indexExpression: fromCell ? 'cell' : '' },
         { anchor: arrow.dataset.traceArrowToAnchor, outerframe: !toCell, indexExpression: toCell ? 'cell' : '' }, style);
@@ -2563,6 +2724,35 @@
     return result;
   }
 
+  function recursionLayoutPreorder(sourceNodes) {
+    const nodes = (sourceNodes || []).map((node, index) => ({ node, index, children: [] }));
+    const byId = new Map(nodes.map(entry => [String(entry.node?.id || ''), entry]));
+    const roots = [];
+    const ordered = entries => entries.sort((left, right) => (
+      (Number(left.node?.siblingIndex) || 0) - (Number(right.node?.siblingIndex) || 0)
+      || (Number(left.node?.rootIndex) || 0) - (Number(right.node?.rootIndex) || 0)
+      || left.index - right.index
+    ));
+    nodes.forEach(entry => {
+      const parent = byId.get(String(entry.node?.parentId || ''));
+      if (parent && parent !== entry) parent.children.push(entry);
+      else roots.push(entry);
+    });
+    ordered(roots);
+    nodes.forEach(entry => ordered(entry.children));
+    const result = [];
+    const visited = new Set();
+    function visit(entry) {
+      if (!entry || visited.has(entry)) return;
+      visited.add(entry);
+      result.push(entry.node);
+      entry.children.forEach(visit);
+    }
+    roots.forEach(visit);
+    nodes.forEach(visit);
+    return result;
+  }
+
   function applyRecursionLayouts(rootSvg, root, document, frame, placements, elements, options = {}) {
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
     const visibleSnapshots = (frame.snapshotIds || []).map(id => snapshotsById.get(id)).filter(Boolean);
@@ -2593,10 +2783,26 @@
         x: targetAnchor.x + (Number(binding.offsetX) || 0),
         y: targetAnchor.y + (Number(binding.offsetY) || 0)
       };
+      const latestByActivation = new Map();
+      snapshots.forEach(snapshot => {
+        if (snapshot.recursionActivationId) {
+          latestByActivation.set(String(snapshot.recursionActivationId), snapshot);
+        }
+      });
+      const activeParentSnapshot = snapshot => {
+        const ancestors = Array.isArray(snapshot?.recursionAncestorActivationIds)
+          ? [...snapshot.recursionAncestorActivationIds].reverse()
+          : [];
+        const candidates = [snapshot?.recursionParentActivationId, ...ancestors]
+          .map(value => String(value || ''))
+          .filter(value => value && value !== String(snapshot?.recursionActivationId || ''));
+        return candidates.map(id => latestByActivation.get(id)).find(Boolean) || null;
+      };
       const sourceNodes = snapshots.map(snapshot => {
         const objectKey = snapshotObjectKey(snapshot);
         const element = elements.get(objectKey);
         const fallbackBox = placements.get(objectKey);
+        const parentSnapshot = activeParentSnapshot(snapshot);
         const preferredVariableId = snapshot.kind === 'frame'
           ? String(snapshot.frame?.source?.primaryVariableId || '')
           : String(snapshot.sourceVariableId || '');
@@ -2605,7 +2811,12 @@
           objectKey,
           snapshot,
           preferredVariableId,
-          parentId: snapshot.layoutNode?.parentSnapshotId || '',
+          parentId: parentSnapshot?.id
+            || String(snapshot.layoutNode?.parentSnapshotId || ''),
+          activationId: String(snapshot.recursionActivationId || ''),
+          parentActivationId: String(parentSnapshot?.recursionActivationId
+            || snapshot.recursionParentActivationId || ''),
+          recursionDepth: Number(snapshot.recursionDepth) || 0,
           siblingIndex: snapshot.layoutNode?.siblingIndex,
           rootIndex: snapshot.layoutNode?.rootIndex,
           // A live @frame node and the @keep node that replaces it must use
@@ -2620,14 +2831,29 @@
           )
         };
       }).filter(node => node.objectKey && node.box && elements.has(node.objectKey));
+      let liveReplacement = null;
       if (liveLayout) {
         const activationId = String(frame.source.recursionActivationId || '');
-        const latestByActivation = new Map();
-        snapshots.forEach(snapshot => {
-          if (snapshot.recursionActivationId) latestByActivation.set(snapshot.recursionActivationId, snapshot);
-        });
         const sameActivation = latestByActivation.get(activationId);
-        if (!sameActivation) {
+        if (sameActivation) {
+          const liveObjectKey = objectKeyForVariable(frame, frame.source.primaryVariableId);
+          const retainedObjectKey = snapshotObjectKey(sameActivation);
+          const liveElement = elements.get(liveObjectKey);
+          const retainedElement = elements.get(retainedObjectKey);
+          if (liveObjectKey && retainedObjectKey && liveObjectKey !== retainedObjectKey && retainedElement) {
+            const liveTreeKeys = liveElement
+              ? [...elements.entries()].filter(([, candidate]) => (
+                candidate === liveElement || liveElement.contains(candidate)
+              )).map(([key]) => key)
+              : [liveObjectKey];
+            liveElement?.remove();
+            liveTreeKeys.forEach(key => {
+              elements.delete(key);
+              placements.delete(key);
+            });
+            liveReplacement = { liveObjectKey, retainedObjectKey, retainedElement };
+          }
+        } else {
           const ancestors = Array.isArray(frame.source.recursionAncestorActivationIds)
             ? [...frame.source.recursionAncestorActivationIds].reverse()
             : [];
@@ -2648,6 +2874,10 @@
               live: true,
               preferredVariableId: frame.source.primaryVariableId,
               parentId: parentSnapshot?.id || '',
+              activationId,
+              parentActivationId: String(parentSnapshot?.recursionActivationId
+                || frame.source.recursionParentActivationId || ''),
+              recursionDepth: Number(frame.source.recursionDepth) || 0,
               siblingIndex: Number(frame.source.recursionSiblingIndex) || 0,
               rootIndex: Number(frame.source.recursionRootIndex) || 0,
               box
@@ -2675,7 +2905,12 @@
         element.dataset.traceLayoutId = layout.id;
         element.dataset.traceLayoutNode = node.id;
         element.dataset.traceLayoutParent = node.parentId || '';
+        element.dataset.traceLayoutActivation = node.activationId || '';
+        element.dataset.traceLayoutParentActivation = node.parentActivationId || '';
+        element.dataset.traceLayoutDepth = String(Number(node.recursionDepth) || 0);
         element.dataset.traceLayoutPreferredVariable = node.preferredVariableId || '';
+        element.dataset.traceLayoutSiblingIndex = String(Number(node.siblingIndex) || 0);
+        element.dataset.traceLayoutRootIndex = String(Number(node.rootIndex) || 0);
         if (!destination || explicitlyPlaced) return;
         const dx = destination.x + (Number(snapshot?.placementOffset?.x) || 0) - current.x;
         const dy = destination.y + (Number(snapshot?.placementOffset?.y) || 0) - current.y;
@@ -2684,6 +2919,13 @@
           shiftPlacementTree(element, dx, dy, placements, elements);
         }
       });
+      if (liveReplacement) {
+        const retainedPlacement = placements.get(liveReplacement.retainedObjectKey);
+        elements.set(liveReplacement.liveObjectKey, liveReplacement.retainedElement);
+        if (retainedPlacement) {
+          placements.set(liveReplacement.liveObjectKey, { ...retainedPlacement });
+        }
+      }
     });
   }
 
@@ -2699,17 +2941,30 @@
     (document.layouts || []).filter(layout => (
       layout?.type === 'recursion' && layout.showEdges !== false
     )).forEach(layout => {
-      const sourceNodes = [...elements.entries()].map(([objectKey, element]) => ({
-        id: element?.dataset?.traceLayoutNode || '',
-        parentId: element?.dataset?.traceLayoutParent || '',
-        preferredVariableId: element?.dataset?.traceLayoutPreferredVariable || '',
-        objectKey,
-        element
-      })).filter(node => node.id
-        && String(node.element?.dataset?.traceLayoutId || '') === String(layout.id || ''));
+      const sourceNodesById = new Map();
+      [...elements.entries()].forEach(([fallbackKey, element]) => {
+        const id = element?.dataset?.traceLayoutNode || '';
+        if (!id || String(element?.dataset?.traceLayoutId || '') !== String(layout.id || '')) return;
+        // A same-activation @keep handoff temporarily exposes the retained SVG
+        // through both its canonical snapshot key and a live-variable alias.
+        // Build layout edges from the canonical DOM identity exactly once so
+        // the alias disappearing on the next frame cannot rebind/jump edges.
+        const objectKey = String(element?.dataset?.traceObjectKey || fallbackKey || '');
+        if (!objectKey || sourceNodesById.has(id)) return;
+        sourceNodesById.set(id, {
+          id,
+          parentId: element?.dataset?.traceLayoutParent || '',
+          preferredVariableId: element?.dataset?.traceLayoutPreferredVariable || '',
+          siblingIndex: Number(element?.dataset?.traceLayoutSiblingIndex) || 0,
+          rootIndex: Number(element?.dataset?.traceLayoutRootIndex) || 0,
+          objectKey,
+          element
+        });
+      });
+      const sourceNodes = [...sourceNodesById.values()];
       const byId = new Map(sourceNodes.map(node => [node.id, node]));
       const models = [];
-      sourceNodes.forEach(node => {
+      recursionLayoutPreorder(sourceNodes).forEach(node => {
         if (!node.parentId) return;
         const parentNode = byId.get(node.parentId);
         const parentElement = parentNode?.element;
@@ -2734,7 +2989,7 @@
             : direction === 'right-left' ? ['left', 'right']
               : ['bottom', 'top'];
         models.push({
-          id: `${layout.id}:${node.parentId}:${node.id}`,
+          id: `${layout.id}:${parentNode.objectKey}:${node.objectKey}`,
           source: 'layout',
           className: 'asm-trace-layout-edge',
           from: { objectKey: parentNode.objectKey, anchor: anchors[0] },
@@ -2751,6 +3006,154 @@
       });
       renderArrowModels(rootSvg, root, document, frame, placements, elements,
         models, options, `layout-${layout.id}`);
+    });
+  }
+
+  function completedRecursionActivations(document, frame) {
+    const frames = Array.isArray(document?.frames) ? document.frames : [];
+    const frameIndex = frames.indexOf(frame);
+    const elapsed = frameIndex >= 0 ? frames.slice(0, frameIndex + 1) : [frame];
+    const completed = new Set();
+    elapsed.forEach(item => (item?.events || []).forEach(event => {
+      if (event?.type !== 'function-exit') return;
+      const activationId = String(event.recursionActivationId || '');
+      if (activationId) completed.add(activationId);
+    }));
+    return completed;
+  }
+
+  function renderRecursionFlowArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
+    (document.layouts || []).filter(layout => (
+      layout?.type === 'recursion' && layout.showFlowArrows === true
+    )).forEach(layout => {
+      const nodesById = new Map();
+      [...elements.entries()].forEach(([fallbackKey, element]) => {
+        const id = String(element?.dataset?.traceLayoutNode || '');
+        if (!id || String(element?.dataset?.traceLayoutId || '') !== String(layout.id || '')) return;
+        const activationId = String(element.dataset.traceLayoutActivation || '');
+        const objectKey = String(element.dataset.traceObjectKey || fallbackKey || '');
+        if (!activationId || !objectKey || nodesById.has(id)) return;
+        nodesById.set(id, {
+          id,
+          parentId: String(element.dataset.traceLayoutParent || ''),
+          activationId,
+          parentActivationId: String(element.dataset.traceLayoutParentActivation || ''),
+          recursionDepth: Number(element.dataset.traceLayoutDepth) || 0,
+          siblingIndex: Number(element.dataset.traceLayoutSiblingIndex) || 0,
+          rootIndex: Number(element.dataset.traceLayoutRootIndex) || 0,
+          preferredVariableId: String(element.dataset.traceLayoutPreferredVariable || ''),
+          objectKey,
+          element,
+          children: []
+        });
+      });
+      const nodes = [...nodesById.values()];
+      if (nodes.length < 2) return;
+      const roots = [];
+      nodes.forEach(node => {
+        const parent = nodesById.get(node.parentId);
+        if (parent && parent !== node) parent.children.push(node);
+        else roots.push(node);
+      });
+      const sortNodes = list => list.sort((left, right) => (
+        left.siblingIndex - right.siblingIndex
+        || left.rootIndex - right.rootIndex
+        || left.id.localeCompare(right.id, undefined, { numeric: true })
+      ));
+      sortNodes(roots);
+      nodes.forEach(node => sortNodes(node.children));
+      const completed = completedRecursionActivations(document, frame);
+      const actions = [];
+      const visited = new Set();
+      const visit = node => {
+        if (!node || visited.has(node.id)) return;
+        visited.add(node.id);
+        node.children.forEach(child => {
+          actions.push({ phase: 'enter', parent: node, child });
+          visit(child);
+          if (completed.has(child.activationId)) {
+            actions.push({ phase: 'exit', parent: node, child });
+          }
+        });
+      };
+      roots.forEach(visit);
+      nodes.forEach(visit);
+      if (!actions.length) return;
+
+      const color = 'rgba(107, 114, 128, 0.38)';
+      const markerId = ensureRecursionFlowArrowMarker(
+        rootSvg, `${safeKey(layout.id)}-${options.idPrefix || 'trace'}`, color
+      );
+      const layer = svg('g', {
+        class: 'asm-trace-arrow-layer asm-trace-recursion-flow-arrows',
+        'data-trace-layout-id': layout.id,
+        'pointer-events': 'none',
+        'aria-hidden': 'true'
+      });
+      actions.forEach((action, sequence) => {
+        const { phase, parent, child } = action;
+        const fromNode = phase === 'exit' ? child : parent;
+        const toNode = phase === 'exit' ? parent : child;
+        const from = recursionOuterframePlacement(
+          fromNode.element, placements.get(fromNode.objectKey), root, fromNode.preferredVariableId
+        );
+        const to = recursionOuterframePlacement(
+          toNode.element, placements.get(toNode.objectKey), root, toNode.preferredVariableId
+        );
+        if (!from || !to) return;
+        const anchors = recursionFlowAnchors(layout.direction, phase);
+        const start = anchorPoint(from, anchors.from);
+        const end = anchorPoint(to, anchors.to);
+        const curve = recursionFlowQuadraticPoints(
+          start, end, anchors.side, child.recursionDepth
+        );
+        const identity = `${layout.id}:${phase}:${parent.activationId}:${child.activationId}`;
+        const key = `recursion-flow:${identity}`;
+        const path = svg('path', {
+          id: `trace-recursion-flow-${safeKey(identity)}`,
+          class: `asm-trace-recursion-flow-arrow asm-trace-recursion-flow-${phase}`,
+          d: curve.path,
+          stroke: color,
+          'stroke-width': 1,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          fill: 'none',
+          'marker-end': `url(#${markerId})`,
+          'data-trace-object-key': key,
+          'data-arrow-key': key,
+          'data-trace-arrow': identity,
+          'data-trace-arrow-identity': JSON.stringify({
+            id: identity, source: 'recursion-flow', explicitId: true,
+            fromObject: fromNode.objectKey, toObject: toNode.objectKey,
+            line: 'quadratic', headStart: 'none', headEnd: 'arrow'
+          }),
+          'data-trace-arrow-source': 'recursion-flow',
+          'data-trace-arrow-layer': 'background',
+          'data-trace-arrow-from-key': fromNode.objectKey,
+          'data-trace-arrow-to-key': toNode.objectKey,
+          'data-trace-arrow-from-cell': 'false',
+          'data-trace-arrow-to-cell': 'false',
+          'data-trace-arrow-from-anchor': anchors.from,
+          'data-trace-arrow-to-anchor': anchors.to,
+          'data-trace-arrow-from-dx': 0,
+          'data-trace-arrow-from-dy': 0,
+          'data-trace-arrow-to-dx': 0,
+          'data-trace-arrow-to-dy': 0,
+          'data-trace-arrow-head-start': 'none',
+          'data-trace-arrow-head-end': 'arrow',
+          'data-trace-arrow-curve': 'recursion-flow',
+          'data-trace-arrow-curve-side': anchors.side,
+          'data-trace-arrow-curve-depth': child.recursionDepth,
+          'data-trace-arrow-draw': 'true',
+          'data-trace-arrow-draw-duration': 260,
+          'data-trace-flow-phase': phase,
+          'data-trace-flow-sequence': sequence,
+          'data-trace-flow-parent-activation': parent.activationId,
+          'data-trace-flow-child-activation': child.activationId
+        });
+        layer.append(path);
+      });
+      if (layer.childElementCount) root.append(layer);
     });
   }
 
@@ -4244,6 +4647,7 @@
     // their automatic layout. Resolve the parent/child edges only now so the
     // arrowhead lands on the child's final outerframe top/side anchor.
     renderRecursionLayoutEdges(rootSvg, root, document, frame, placements, elements, options);
+    renderRecursionFlowArrows(rootSvg, root, document, frame, placements, elements, options);
     renderKeepLastArrows(rootSvg, root, document, frame, placements, elements, keepNodes, options);
     const sceneGeneration = String(Number(frame.sceneGeneration) || 0);
     root.dataset.traceSceneGeneration = sceneGeneration;
@@ -4286,6 +4690,9 @@
     window.ASMTraceFrameTween?.cancel?.();
     const previousPositions = objectPositions(rootSvg);
     const previousMotionPositions = objectMotionPositions(rootSvg, previousPositions);
+    const previousRecursionPlacements = recursionLayoutMotionPositions(
+      rootSvg, previousMotionPositions
+    );
     const previousObjects = captureTopLevelObjects(rootSvg);
     const sourceKeys = new Set(previousPositions.keys());
     const transitionForKey = key => previousFrame
@@ -4326,6 +4733,7 @@
         direction: options.direction,
         previousFrame,
         previousPlacements: previousMotionPositions,
+        previousRecursionPlacements,
         currentPlacements: result.placements,
         previousObjects,
         currentElements: result.elements,
@@ -4344,7 +4752,11 @@
       animateChangedObjects(previousObjects, result.elements, transitionOptions);
       animateRemovedObjects(result.root, previousObjects, result.elements, document, transitionOptions);
     }
-    currentScene = { document, frame, placements: result.placements, elements: result.elements, rootOffset: TRACE_ROOT_OFFSET };
+    currentScene = {
+      document, frame, root: result.root,
+      placements: result.placements, elements: result.elements,
+      rootOffset: TRACE_ROOT_OFFSET
+    };
     refreshPresentedArrows(result.root, result.elements);
     const playbackPlan = transition?.playbackPlan || null;
     transition = Promise.resolve(transition).then(() => {
@@ -4638,7 +5050,12 @@
       snapshotObjectKey(snapshotsById.get(id)) || id
     )));
     const boxes = [...currentScene.placements.entries()]
-      .filter(([key]) => currentScene.elements.has(key))
+      .filter(([key]) => {
+        const element = currentScene.elements.get(key);
+        if (!element) return false;
+        const belongsToScene = currentScene.root?.contains?.(element);
+        return belongsToScene ?? element.isConnected;
+      })
       .filter(([key]) => options.includeSnapshots !== false || !snapshotIds.has(key))
       .map(([, box]) => box);
     if (!boxes.length) return null;
@@ -4741,15 +5158,16 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-208';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-218';
   window.ASMTraceRenderers = {
-    build: 'trace-208', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-218', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
-    displayValue, formatDisplayValue, settlePointerLayer,
+    displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,
-    runtimeIdentityToken, recursionLayoutCoordinates, recursionLayoutEdgePoints,
+    runtimeIdentityToken, recursionLayoutCoordinates, recursionLayoutPreorder, recursionLayoutEdgePoints,
+    recursionFlowAnchors, recursionFlowQuadraticPoints,
     defaultLiveObjectPlacementDelta, shiftPlacementTree, semanticTargetPlacement,
     keepAnchorPlacement,
     recursionOuterframePlacement,

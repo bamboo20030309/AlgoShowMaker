@@ -1079,6 +1079,7 @@ function materializeKeepFrameState(sourceFrame, keepOrder, pendingEvents = []) {
 function materializeKeepSnapshots(frames) {
   const snapshots = [];
   const activeSnapshotIds = [];
+  const activeRecursionSnapshots = new Map();
   const counts = new Map();
   let sceneGeneration = 0;
   const usedObjectIds = new Set(frames.flatMap(frame => [
@@ -1096,9 +1097,35 @@ function materializeKeepSnapshots(frames) {
     usedObjectIds.add(id);
     return id;
   }
+  function recursionSnapshotKey(event) {
+    const layoutId = String(event?.layoutId || '');
+    const activationId = String(event?.recursionActivationId || '');
+    return layoutId && activationId ? `${layoutId}\u0000${activationId}` : '';
+  }
+  function replacedRecursionSnapshot(event) {
+    const key = recursionSnapshotKey(event);
+    const snapshotId = key ? activeRecursionSnapshots.get(key) : '';
+    return snapshotId ? snapshots.find(snapshot => snapshot.id === snapshotId) || null : null;
+  }
+  function activateSnapshot(snapshot, replacedSnapshot = null) {
+    if (replacedSnapshot) {
+      const activeIndex = activeSnapshotIds.indexOf(replacedSnapshot.id);
+      if (activeIndex >= 0) activeSnapshotIds.splice(activeIndex, 1);
+      snapshot.replacesSnapshotId = replacedSnapshot.id;
+    }
+    activeSnapshotIds.push(snapshot.id);
+    const key = snapshot.layoutId && snapshot.recursionActivationId
+      ? `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`
+      : '';
+    if (key) activeRecursionSnapshots.set(key, snapshot.id);
+  }
   function variableRenderState(frame, variableId, identity = '') {
     if (!frame) return null;
-    let sourceVariableId = frame.state?.[variableId] ? variableId : '';
+    const directEntry = frame.state?.[variableId];
+    let sourceVariableId = directEntry
+      && (!identity || String(directEntry.identity || '') === String(identity))
+      ? variableId
+      : '';
     if (!sourceVariableId && identity) {
       sourceVariableId = Object.entries(frame.state || {})
         .find(([, entry]) => String(entry?.identity || '') === String(identity))?.[0] || '';
@@ -1142,14 +1169,17 @@ function materializeKeepSnapshots(frames) {
         const count = (counts.get('$frame') || 0) + 1;
         counts.set('$frame', count);
         const id = `snapshot:frame:${count}`;
-        const objectId = allocateObjectId(event.label || 'Frame');
-        snapshots.push({
+        const replacedSnapshot = replacedRecursionSnapshot(event);
+        const objectId = replacedSnapshot?.objectId || allocateObjectId(event.label || 'Frame');
+        const snapshot = {
           id,
           objectId,
           kind: 'frame',
           createdFrameId: frame.id,
           sourceFrameId: previousFrame.id,
-          label: objectId,
+          label: event.layoutId && event.recursionActivationId
+            ? String(event.label || 'Frame').trim() || 'Frame'
+            : objectId,
           preserveStyle,
           layoutId: String(event.layoutId || ''),
           recursionFunction: String(event.recursionFunction || ''),
@@ -1175,8 +1205,9 @@ function materializeKeepSnapshots(frames) {
             styles: preserveStyle ? JSON.parse(JSON.stringify(retainedFrame.styles || [])) : [],
             snapshotIds: []
           }
-        });
-        activeSnapshotIds.push(id);
+        };
+        snapshots.push(snapshot);
+        activateSnapshot(snapshot, replacedSnapshot);
         keepLastFocus = true;
         return;
       }
@@ -1186,22 +1217,26 @@ function materializeKeepSnapshots(frames) {
       const capturedData = event.payload?.data;
       if (!variableId || (!entry && capturedData == null)) return;
       const identity = String(entry?.identity || '');
-      const renderState = variableRenderState(frames[frameIndex - 1], variableId, identity)
-        || variableRenderState(frame, variableId, identity)
+      const currentRenderState = variableRenderState(frame, variableId, identity);
+      const previousRenderState = variableRenderState(frames[frameIndex - 1], variableId, identity);
+      const renderState = (event.layoutId && event.recursionActivationId
+        ? currentRenderState || previousRenderState
+        : previousRenderState || currentRenderState)
         || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [] };
       const preserveStyle = event.preserveStyle !== false;
       const count = (counts.get(variableId) || 0) + 1;
       counts.set(variableId, count);
       const id = `snapshot:${variableId}:${count}`;
       const labelBase = String(event.label || event.name || entry.name || 'Snapshot').trim() || 'Snapshot';
-      const objectId = allocateObjectId(labelBase);
-      snapshots.push({
+      const replacedSnapshot = replacedRecursionSnapshot(event);
+      const objectId = replacedSnapshot?.objectId || allocateObjectId(labelBase);
+      const snapshot = {
         id,
         objectId,
         sourceVariableId: variableId,
         sourceFrameId: renderState.frameId,
         createdFrameId: frame.id,
-        label: objectId,
+        label: event.layoutId && event.recursionActivationId ? labelBase : objectId,
         preserveStyle,
         layoutId: String(event.layoutId || ''),
         recursionFunction: String(event.recursionFunction || ''),
@@ -1224,8 +1259,9 @@ function materializeKeepSnapshots(frames) {
         renderer: renderState.renderer,
         rendererOptions: renderState.rendererOptions,
         styles: preserveStyle ? renderState.styles : []
-      });
-      activeSnapshotIds.push(id);
+      };
+      snapshots.push(snapshot);
+      activateSnapshot(snapshot, replacedSnapshot);
     });
     sceneGeneration = liveGeneration;
     return {
@@ -1240,16 +1276,16 @@ function materializeKeepSnapshots(frames) {
   snapshots.forEach(snapshot => {
     if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
     const activationKey = `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`;
-    let parentSnapshotId = latestByActivation.get(activationKey)?.id || '';
-    if (!parentSnapshotId) {
-      const ancestors = Array.isArray(snapshot.recursionAncestorActivationIds)
-        ? [...snapshot.recursionAncestorActivationIds].reverse()
-        : [];
-      const parent = ancestors.map(activationId => (
-        latestByActivation.get(`${snapshot.layoutId}\u0000${activationId}`)
-      )).find(Boolean);
-      parentSnapshotId = parent?.id || '';
-    }
+    const ancestors = Array.isArray(snapshot.recursionAncestorActivationIds)
+      ? [...snapshot.recursionAncestorActivationIds].reverse()
+      : [];
+    const parentActivations = [snapshot.recursionParentActivationId, ...ancestors]
+      .map(value => String(value || ''))
+      .filter(value => value && value !== snapshot.recursionActivationId);
+    const parent = parentActivations.map(activationId => (
+      latestByActivation.get(`${snapshot.layoutId}\u0000${activationId}`)
+    )).find(Boolean);
+    const parentSnapshotId = parent?.id || '';
     snapshot.layoutNode = {
       layoutId: snapshot.layoutId,
       nodeId: snapshot.id,
@@ -1426,6 +1462,12 @@ function resolveFrameRendererOptions(frame, directive) {
           variableId: entry.variableId || ''
         }))
         : []
+    };
+  }
+  if (source.display && typeof source.display.template === 'string') {
+    options.display = {
+      template: source.display.template,
+      expressions: Array.isArray(source.display.expressions) ? [...source.display.expressions] : []
     };
   }
   if (Object.prototype.hasOwnProperty.call(source, 'separator')) options.separator = source.separator;

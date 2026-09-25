@@ -64,3 +64,24 @@ test('scope exits neither extract nor highlight code, without changing runtime e
   assert.ok(ids.includes(write.id));
   assert.ok(!ids.includes(exit.id));
 });
+
+test('return is code-visible while return completion stays internal', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-code-model.js');
+  const sourceCode = 'int F(int n) {\n  return n;\n}\n';
+  const visible = {
+    id: 'return-start', type: 'return', line: 2,
+    source: { line: 2, from: 17, to: 26, text: 'return n;' }
+  };
+  const internal = { ...visible, id: 'return-complete', type: 'return-complete' };
+  const visiblePlan = context.ASMTraceCodeModel.planFrame(
+    { sourceCode }, { id: 'return-frame', source: { line: 2, function: 'F' }, events: [visible] }
+  );
+  const visibleIds = visiblePlan.fragments.flatMap(fragment => fragment.items)
+    .flatMap(item => item.segments || []).flatMap(segment => segment.eventIds);
+  assert.ok(visibleIds.includes(visible.id));
+  assert.equal(context.ASMTraceCodeModel.planFrame(
+    { sourceCode }, { id: 'complete-frame', source: { line: 2, function: 'F' }, events: [internal] }
+  ).fragments.length, 0);
+});

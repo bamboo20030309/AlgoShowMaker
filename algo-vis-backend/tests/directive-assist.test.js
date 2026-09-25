@@ -33,5 +33,6 @@ test('directive assistant supplies keyboard navigation, examples, and native con
   assert.doesNotMatch(source, /av\.start_frame_draw\(\)|av\.frame_draw\(/);
   assert.match(source, /with split\(now\)/);
   assert.match(source, /label: '@let'.*code: '\/\/ @let lb = i & -i'/);
+  assert.match(source, /flow-arrows on/);
   assert.doesNotMatch(source, /@Let\b/);
 });

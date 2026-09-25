@@ -125,7 +125,7 @@ function legacyFrameTextVariants(value) {
 function syntaxNodeEventType(node, source) {
   const name = String(node?.name || '');
   if (name === 'FunctionDefinition') return 'function-enter';
-  if (name === 'ReturnStatement') return 'function-exit';
+  if (name === 'ReturnStatement') return 'return';
   if (/^(?:Declaration|ParameterDeclaration|TypeDefinition|NamespaceDefinition)$/.test(name)
     || /(?:Declarator|Type|Specifier)$/.test(name)) return 'declare';
   if (/^(?:IfStatement|ForStatement|WhileStatement|DoStatement|SwitchStatement|ConditionClause)$/.test(name)) {
@@ -187,9 +187,14 @@ function functionInfo(node, source) {
     || firstDescendant(node, new Set(['FunctionDeclarator']));
   const identifier = firstDescendant(declarator, new Set(['Identifier', 'OperatorName']));
   const body = childrenOf(node).find(child => child.name === 'CompoundStatement');
+  const returnType = declarator
+    ? compactExpression(source.slice(node.from, declarator.from))
+      .replace(/^(?:(?:static|inline|constexpr|consteval|virtual|friend)\s+)+/, '')
+    : '';
   return {
     name: identifier ? source.slice(identifier.from, identifier.to) : 'anonymous',
-    body
+    body,
+    returnType
   };
 }
 
@@ -659,9 +664,21 @@ function splitTopLevel(value, delimiter = ',') {
   const stack = [];
   const pairs = { '(': ')', '[': ']' };
   let start = 0;
+  let quote = '';
+  let escaped = false;
 
   for (let index = 0; index < source.length; index += 1) {
     const token = source[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (token === '\\') escaped = true;
+      else if (token === quote) quote = '';
+      continue;
+    }
+    if (token === '"' || token === "'") {
+      quote = token;
+      continue;
+    }
     if (pairs[token]) {
       stack.push(pairs[token]);
       continue;
@@ -676,7 +693,7 @@ function splitTopLevel(value, delimiter = ',') {
     }
   }
 
-  if (stack.length) return { parts: [], valid: false };
+  if (quote || stack.length) return { parts: [], valid: false };
   parts.push(source.slice(start).trim());
   return { parts, valid: true };
 }
@@ -721,6 +738,9 @@ const FRAME_RENDERERS = new Map([
   ['2d-array', 'original-matrix'],
   ['cell', 'original-cell'],
   ['scalar', 'original-cell']
+]);
+const DISPLAY_TEMPLATE_LOCALS = new Set([
+  'value', 'index', 'row', 'column', 'key', 'field'
 ]);
 
 function parseRendererOptions(value, line, directiveName) {
@@ -895,6 +915,37 @@ function parseRendererOptions(value, line, directiveName) {
         throw new Error(`第 ${line} 行的 ${directiveName} separator 必須使用引號字串`);
       }
       options.separator = separator;
+      continue;
+    }
+
+    if (name === 'display') {
+      if (args.parts.length !== 1) {
+        throw new Error(`第 ${line} 行的 ${directiveName} display 只能指定一個字串`);
+      }
+      const raw = args.parts[0];
+      let template = null;
+      try {
+        template = raw.startsWith('"') ? JSON.parse(raw) : (raw.match(/^'([^']*)'$/s)?.[1] ?? null);
+      } catch {
+        template = null;
+      }
+      if (typeof template !== 'string') {
+        throw new Error(`第 ${line} 行的 ${directiveName} display 必須使用引號字串`);
+      }
+      const parsedExpressions = [...template.matchAll(/\$\{([^{}]+)\}/g)].map(expressionMatch => {
+        const expression = expressionMatch[1].trim();
+        const parsed = parseTraceExpression(expression, false, true);
+        if (!expression || !parsed.valid) {
+          throw new Error(`第 ${line} 行的 ${directiveName} display 變數運算式無效：${expressionMatch[0]}`);
+        }
+        return { expression, identifiers: parsed.identifiers || [] };
+      });
+      options.display = {
+        template,
+        expressions: parsedExpressions.map(item => item.expression),
+        identifiers: [...new Set(parsedExpressions.flatMap(item => item.identifiers))]
+          .filter(identifier => !DISPLAY_TEMPLATE_LOCALS.has(identifier))
+      };
       continue;
     }
 
@@ -1186,6 +1237,7 @@ const RECURSION_LAYOUT_DEFAULTS = Object.freeze({
   levelGap: 100,
   degree: 2,
   showEdges: true,
+  showFlowArrows: false,
   edgeColor: 'black',
   edgeWidth: 2
 });
@@ -1266,7 +1318,7 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     const targetMatch = payload.match(/^([A-Za-z_][A-Za-z0-9_.-]*)\s+(.+)$/s);
     if (!targetMatch) throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID`);
     const id = targetMatch[1];
-    if (/^(?:direction|mode|order|align|sibling-gap|level-gap|degree|edges|reset)$/i.test(id)) {
+    if (/^(?:direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows|reset)$/i.test(id)) {
       throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID 在設定名稱前，例如：@layout quick_tree ${payload}`);
     }
     const layout = layouts.get(id);
@@ -1276,7 +1328,7 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
       Object.assign(layout, RECURSION_LAYOUT_DEFAULTS);
       return;
     }
-    const settingMatch = setting.match(/^(direction|mode|order|align|sibling-gap|level-gap|degree|edges)\s+(.+)$/i);
+    const settingMatch = setting.match(/^(direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows)\s+(.+)$/i);
     if (!settingMatch) throw new Error(`第 ${line} 行的 @layout ${id} 設定無效：${setting}`);
     const name = settingMatch[1].toLowerCase();
     const value = settingMatch[2].trim().toLowerCase();
@@ -1300,6 +1352,9 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     } else if (name === 'edges') {
       if (!['on', 'off'].includes(value)) throw new Error(`第 ${line} 行的 @layout edges 必須是 on 或 off`);
       layout.showEdges = value === 'on';
+    } else if (name === 'flow-arrows') {
+      if (!['on', 'off'].includes(value)) throw new Error(`第 ${line} 行的 @layout flow-arrows 必須是 on 或 off`);
+      layout.showFlowArrows = value === 'on';
     } else {
       const number = Number(value);
       if (!Number.isFinite(number) || number <= 0) {
@@ -2357,7 +2412,8 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
 }
 
 const EVENT_CONTROL_TYPES = new Set(['declare', 'scope-exit', 'visual-exit', 'read', 'write',
-  'assign', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'function-enter', 'function-exit']);
+  'assign', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'return',
+  'function-enter', 'function-exit']);
 
 function findEventControlDirectives(source, suppliedAnalysis = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
@@ -2854,7 +2910,8 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       return variable;
     };
     (modifiers.when?.identifiers || []).forEach(includeDependency);
-    Object.values(modifiers.rendererOptions || {}).forEach(option => {
+    Object.entries(modifiers.rendererOptions || {}).forEach(([name, option]) => {
+      if (name === 'display') return;
       (option.identifiers || []).forEach(includeDependency);
     });
     if (modifiers.rendererOptions?.fields) {
@@ -3072,6 +3129,22 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       throw new Error(`第 ${directive.line} 行的 @frame 至少需要一個緊接的 @object`);
     }
     const displayedIds = new Set(directive.objects.flatMap(object => object.displayVariableIds || []));
+    directive.objects.flatMap(object => object.rendererOptions?.display?.identifiers || [])
+      .forEach(name => {
+        if (frameLet(directive, name)) return;
+        const variable = resolveVariable(name, directive.from);
+        if (!variable) {
+          throw new Error(`第 ${directive.line} 行的 @frame display 找不到可見變數：${name}`);
+        }
+        if (!directive.variables.some(existing => existing.id === variable.id)) {
+          directive.variables.push(variable);
+        }
+        if (!directive.names.includes(name)) directive.names.push(name);
+        if (!displayedIds.has(variable.id)
+          && !directive.captureOnlyVariableIds.includes(variable.id)) {
+          directive.captureOnlyVariableIds.push(variable.id);
+        }
+      });
     (directive.when?.identifiers || []).forEach(name => {
       const variable = resolveVariable(name, directive.from);
       if (!variable) throw new Error(`第 ${directive.line} 行的 @frame 找不到條件變數：${name}`);
@@ -4000,7 +4073,7 @@ ${loop}
           ? `::asm_trace::event_sequence_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, (${source.slice(mutationBase.from, mutationBase.to)}), [&](){ ${expression}; })`
           : `::asm_trace::event_write(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(mutationTarget)}, ${cppString(method)}, [&](){ ${expression}; })`;
       } else {
-        rendered = `(::asm_trace::event_call(${analysis.lineAt(node.from)}, ${cppString(signature('call', node))}, ${cppString(callee)}, ${cppString(compactExpression(source.slice(node.from, node.to)))}), (${expression}))`;
+        rendered = `::asm_trace::event_call_invoke(${analysis.lineAt(node.from)}, ${cppString(signature('call', node))}, ${cppString(callee)}, ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&]()->decltype(auto){ return (${expression}); })`;
       }
     }
 
@@ -4042,9 +4115,38 @@ ${loop}
     }
 
     if (node.name === 'ReturnStatement') {
-      const fn = functionNameAt(node);
-      const returnCapture = manualFrames ? '' : `${captureCall(node, 'return')}\n`;
-      rendered = `{\n::asm_trace::event_function(${analysis.lineAt(node.from)}, ${cppString(signature('function-return', node))}, ${cppString(fn)}, false);\n${returnCapture}${rendered}\n}`;
+      let functionNode = node.parent;
+      while (functionNode && functionNode.name !== 'FunctionDefinition') functionNode = functionNode.parent;
+      const info = functionNode ? functionInfo(functionNode, source) : { name: functionNameAt(node), returnType: '' };
+      const fn = info.name;
+      const returnSignature = signature('return', node);
+      const exitSignature = signature('function-return', node);
+      recordEventSource(returnSignature, node, node.from, node.to, true);
+      recordEventSource(exitSignature, node, node.from, node.to, true);
+      const match = rendered.match(/^\s*return\b([\s\S]*);\s*$/);
+      const expression = match ? match[1].trim() : '';
+      const sourceExpression = source.slice(node.from, node.to)
+        .replace(/^\s*return\b/, '').replace(/;\s*$/, '').trim();
+      const directVariable = analysis.variables.find(variable => (
+        variable.name === sourceExpression
+        && variable.functionName === fn
+        && variable.declarationTo <= node.from
+        && node.from < variable.scopeTo
+      ));
+      const returnKeepsReference = /&\s*$/.test(info.returnType) || /\bdecltype\s*\(\s*auto\s*\)/.test(info.returnType);
+      const moveLocalValue = Boolean(directVariable && !returnKeepsReference);
+      const bracedInitializer = /^\{[\s\S]*\}$/.test(sourceExpression);
+      const invoke = expression
+        ? (bracedInitializer && info.returnType
+          ? `[&]()->${info.returnType}{ return ${expression}; }`
+          : (moveLocalValue && info.returnType
+            ? `[&]()->${info.returnType}{ return std::move(${expression}); }`
+            : `[&]()->decltype(auto){ return (${expression}); }`))
+        : '[&](){ }';
+      const capture = manualFrames
+        ? '[&](){ }'
+        : `[&](){ ${captureCall(node, 'return')} }`;
+      rendered = `return ::asm_trace::event_return_invoke(${analysis.lineAt(node.from)}, ${cppString(returnSignature)}, ${cppString(exitSignature)}, ${cppString(fn)}, ${cppString(compactExpression(sourceExpression))}, ${invoke}, ${capture});`;
     } else if (CHECKPOINT_NODES.has(node.name) && node.parent?.name === 'CompoundStatement') {
       const declarations = node.name === 'Declaration' ? declarationEvents(node) : '';
       const inputInitializations = node.name === 'ExpressionStatement'

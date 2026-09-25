@@ -678,9 +678,13 @@
     if (currentDocument !== trace || !currentFrame || currentFrame.id === frame.id) return 0;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return 0;
     const nextPlan = window.ASMTraceCodeModel.planFrame(trace, frame);
+    const nextFocusLine = planFocusLine(nextPlan);
+    // Recursive calls can remove an unrelated caller fragment while keeping
+    // the exact same focused directive line. Let that code-page cleanup run
+    // concurrently; it must not hold the recursion node motion for 500 ms.
+    if (currentFocusLine === nextFocusLine) return 0;
     return currentPlan?.layoutKey && (currentPlan.layoutKey !== nextPlan.layoutKey
-      || (currentFocusLine !== planFocusLine(nextPlan)
-        && focusNeedsScroll(planFocusLine(nextPlan))))
+      || focusNeedsScroll(nextFocusLine))
       ? CODE_TRANSITION_MS
       : 0;
   }
