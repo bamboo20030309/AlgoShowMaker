@@ -272,7 +272,7 @@
       if (Array.isArray(studio[key]) && !studio[key].length) delete studio[key];
     });
     ['eventInstructionStates', 'frameMaps', 'positions', 'bindings', 'visibility',
-      'objectStyles', 'eventStates'].forEach(key => {
+      'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (isObject(studio[key]) && !Object.keys(studio[key]).length) delete studio[key];
     });
     return studio;
@@ -569,7 +569,7 @@
       .map(rule => compactCameraRule(cameraRuleForSource(rule, trace)));
     studio.transitions = dedupeById(studio.transitions).map(compactTransition);
     const frameMaps = {};
-    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
+    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (studio[key] && Object.keys(studio[key]).length) frameMaps[key] = encodeFrameMap(studio[key], frames);
       delete studio[key];
     });
@@ -593,7 +593,7 @@
     next.skins = compactSkins(trace);
     next.studio = isObject(next.studio) ? next.studio : {};
     next.studio.eventInstructionStates = compactInstructionStates(next.studio.eventInstructionStates);
-    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
+    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (!isObject(next.studio[key])) return;
       next.studio[key] = Object.fromEntries(Object.entries(next.studio[key])
         .filter(([frameId, value]) => validFrameIds.has(frameId)
@@ -629,7 +629,7 @@
       studio.transitions = sanitizeTransitions(studio.transitions);
       const frameMaps = studio.frameMaps || {};
       delete studio.frameMaps;
-      ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
+      ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
         if (frameMaps[key]) studio[key] = decodeFrameMap(frameMaps[key], frames);
       });
       studio.cameraRules = (Array.isArray(studio.cameraRules) ? studio.cameraRules : [])

@@ -331,3 +331,27 @@ test('old verbose settings still load, while the next saved trace snapshot is co
   compact.studio.positions['frame-0'].arr.x = 999;
   assert.equal(trace.studio.positions['frame-0'].arr.x, 10, 'saved trace must not share mutable state');
 });
+
+test('per-frame code snippet overrides survive compact source settings and reload', () => {
+  const trace = fixture();
+  trace.studio.codeSnippetOverrides = {
+    'frame-0': { lineStates: { 'event:assign:main:i++#0': false } }
+  };
+  const settings = viewSource.fromTrace(trace);
+  assert.deepEqual(settings.studio.frameMaps.codeSnippetOverrides, [{
+    sourceSelectors: [{ kind: 'manual-frame', functionName: 'main', directiveKey: 'manual-frame:first:0' }],
+    value: { lineStates: { 'event:assign:main:i++#0': false } }
+  }]);
+
+  const reloaded = fixture();
+  reloaded.studio = {};
+  viewSource.applyToTrace(reloaded, settings);
+  assert.deepEqual(reloaded.studio.codeSnippetOverrides, {
+    'frame-0': { lineStates: { 'event:assign:main:i++#0': false } }
+  });
+
+  const oldTrace = fixture();
+  delete oldTrace.studio.codeSnippetOverrides;
+  const oldSettings = viewSource.fromTrace(oldTrace);
+  assert.equal(oldSettings.studio.frameMaps?.codeSnippetOverrides, undefined);
+});
