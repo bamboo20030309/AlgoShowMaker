@@ -61,7 +61,20 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
       return true;
     });
     assert.equal(selected, true, 'fixture must produce an animated swap event frame');
+    await page.getByRole('button', { name: '事件', exact: true }).click();
+    const eventGapField = page.locator('.trace-studio-events-panel .trace-studio-field')
+      .filter({ hasText: '事件間隔時間' });
+    assert.equal(await eventGapField.count(), 1,
+      'the event gap control should live inside the event panel');
+    assert.equal(await eventGapField.evaluate(field => Boolean(
+      field.compareDocumentPosition(document.querySelector('.trace-studio-frame-events-section'))
+        & Node.DOCUMENT_POSITION_FOLLOWING
+    )), true, 'the event gap control should appear above the event code section');
+    assert.equal(await eventGapField.isVisible(), true,
+      'the event gap control should be visible in the event panel');
     await page.getByRole('button', { name: '程式碼', exact: true }).click();
+    assert.equal(await eventGapField.isVisible(), false,
+      'the event gap control should not remain visible in the code panel');
 
     const rows = page.locator('.trace-studio-snippet-line-button');
     await rows.first().waitFor();

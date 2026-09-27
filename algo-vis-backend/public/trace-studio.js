@@ -1774,7 +1774,7 @@
     trace.studio.eventSettings.gapMs = gapMs;
     if (eventGapRange) {
       eventGapRange.value = String(gapMs);
-      eventGapRange.title = `間隔時間 ${gapMs} ms`;
+      eventGapRange.title = `事件間隔時間 ${gapMs} ms`;
     }
     if (eventGapValue) eventGapValue.textContent = `${gapMs} ms`;
     if (!save) return;
@@ -3116,7 +3116,7 @@
     eventGapRange.max = '2000';
     eventGapRange.step = '10';
     eventGapRange.value = String(trace?.studio?.eventSettings?.gapMs ?? 500);
-    eventGapRange.title = `間隔時間 ${eventGapRange.value} ms`;
+    eventGapRange.title = `事件間隔時間 ${eventGapRange.value} ms`;
     eventGapValue = el('output', 'trace-studio-event-gap-value', `${eventGapRange.value} ms`);
     const eventGapControl = el('div', 'trace-studio-event-gap-control');
     eventGapControl.append(eventGapRange, eventGapValue);
@@ -3127,7 +3127,7 @@
       }));
     });
     eventGapRange.addEventListener('change', () => setEventGap(eventGapRange.value, true));
-    inspector.append(field('間隔時間', eventGapControl));
+    const eventGapField = field('事件間隔時間', eventGapControl);
 
     inspectorEventsPanel = el('div', 'trace-studio-inspector-panel trace-studio-events-panel');
     inspectorCodePanel = el('div', 'trace-studio-inspector-panel trace-studio-code-panel');
@@ -3143,7 +3143,7 @@
     frameFixedEditor.classList.add('trace-studio-fixed-section');
     frameFixedList = el('div', 'trace-studio-fixed-batches');
     frameFixedEditor.append(frameFixedList);
-    inspectorEventsPanel.append(frameEventsEditor, frameFixedEditor);
+    inspectorEventsPanel.append(eventGapField, frameEventsEditor, frameFixedEditor);
     renderFrameEventsEditor();
 
     frameCodeSnippetEditor = section('程式碼片段');
