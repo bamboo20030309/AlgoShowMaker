@@ -42,6 +42,21 @@
   ];
   const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
   const STRUCTURE_MODES = ['normal', 'matrix', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+  const STRUCTURE_MODE_LABELS = Object.freeze({
+    normal: 'Array',
+    matrix: '2D Array',
+    binary_tree: 'Tree',
+    heap: 'Heap',
+    segment_tree: 'Segment Tree',
+    BIT: 'Binary Indexed Tree',
+    disk: 'Disk',
+    stack: 'Stack',
+    queue: 'Queue'
+  });
+
+  function defaultStructureName(mode) {
+    return STRUCTURE_MODE_LABELS[mode] || STRUCTURE_MODE_LABELS.normal;
+  }
 
   function isCellGridType(type) {
     return type === 'structure' || type === 'table';
@@ -384,6 +399,7 @@
   const exitStructureEditorBtn = document.getElementById('exitStructureEditorBtn');
   const exitTableEditorBtn = document.getElementById('exitTableEditorBtn');
   const structureModeSelect = document.getElementById('structureModeSelect');
+  const structureNameInput = document.getElementById('structureNameInput');
   const structureTreeControls = document.getElementById('structureTreeControls');
   const structureTreeLayoutSelect = document.getElementById('structureTreeLayoutSelect');
   const structureTreeDirectionSelect = document.getElementById('structureTreeDirectionSelect');
@@ -2820,6 +2836,11 @@
           normalized.frameBackgroundEnabled = false;
           stripTableStructureStyles(normalized);
         }
+        if (type === 'structure') {
+          normalized.structureName = typeof widget.structureName === 'string'
+            ? widget.structureName.slice(0, 80)
+            : defaultStructureName(normalized.structureMode);
+        }
         if (type === 'structure' && normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
         }
@@ -3368,7 +3389,7 @@
       'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
     ].some(key => previousWidget[key] !== widget[key]);
     const structureChanged = isCellGridWidget(widget) && (!previousWidget || [
-      'structureMode', 'indexMode', 'indexBase', 'itemsPerRow', 'gap', 'cellSize',
+      'structureMode', 'structureName', 'indexMode', 'indexBase', 'itemsPerRow', 'gap', 'cellSize',
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
@@ -5084,6 +5105,7 @@
         markIndices: '',
         backgroundIndices: ''
       });
+      if (isStructure) widget.structureName = defaultStructureName(normalizedStructureMode);
       if (isTable) {
         Object.assign(widget, {
           tableData: [
@@ -6096,6 +6118,11 @@
 
   function populateStructureEditor(widget) {
     structureModeSelect.value = widget.structureMode || 'normal';
+    if (structureNameInput) {
+      structureNameInput.value = typeof widget.structureName === 'string'
+        ? widget.structureName
+        : defaultStructureName(widget.structureMode || 'normal');
+    }
     if (structureTreeLayoutSelect) structureTreeLayoutSelect.value = widget.treeLayout || 'compact';
     if (structureTreeDirectionSelect) structureTreeDirectionSelect.value = widget.treeHorizontal ? 'horizontal' : 'vertical';
     setStructureColorButton(structureTreeArrowColorInput, widget.treeArrowColor || '#333333');
@@ -7574,6 +7601,15 @@
       const found = getWidget(selectedWidgetId);
       const structureMode = structureModeSelect.value;
       const patch = { structureMode };
+      const previousMode = found.widget?.structureMode || 'normal';
+      const previousDefaultName = defaultStructureName(previousMode);
+      const currentName = typeof found.widget?.structureName === 'string'
+        ? found.widget.structureName
+        : previousDefaultName;
+      if (currentName === previousDefaultName) {
+        patch.structureName = defaultStructureName(structureMode);
+        if (structureNameInput) structureNameInput.value = patch.structureName;
+      }
       if (structureMode === 'binary_tree') {
         patch.treeData = normalizeTreeData(found.widget?.treeData, found.widget?.content || '');
       }
@@ -7601,6 +7637,7 @@
       if (structureFrameBackgroundColorInput) structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
       updateSelectedStructure({ frameBackgroundEnabled: structureFrameBackgroundEnabledInput.checked });
     });
+    structureNameInput?.addEventListener('input', () => updateSelectedStructure({ structureName: structureNameInput.value }));
     const updateTableDimensions = () => {
       const found = getWidget(selectedWidgetId);
       if (!found.widget || found.widget.type !== 'table') return;
