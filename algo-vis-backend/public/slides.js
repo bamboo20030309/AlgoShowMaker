@@ -242,6 +242,7 @@
   let progressiveRebuildGeneration = 0;
   let activeStructureContext = null;
   let selectedStructureCell = null;
+  let additiveCanvasSelectionGesture = false;
   let activeStructureInlineEditor = null;
   let structureCellClickTimer = null;
   let expandedTtsObjectKey = null;
@@ -3748,7 +3749,9 @@
     });
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
-      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
+      const additive = additiveCanvasSelectionGesture
+        || !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey);
+      if (!canvas.__asmWidgetMarquee && !additive) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -3756,7 +3759,9 @@
     });
     canvas.on('selection:updated', e => {
       if (canvas.__asmSerializingSelection) return;
-      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
+      const additive = additiveCanvasSelectionGesture
+        || !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey);
+      if (!canvas.__asmWidgetMarquee && !additive) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -7654,6 +7659,7 @@
   function bindSlideDrop() {
     let widgetDrag = null;
     let suppressWidgetClick = false;
+    let widgetPointerSelection = null;
 
     const isCodeScrollbarInteraction = (event, widgetEl) => {
       if (!widgetEl?.classList.contains('code-widget')) return false;
@@ -7667,6 +7673,8 @@
 
     const beginWidgetDrag = event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
+      additiveCanvasSelectionGesture = !!(event.shiftKey || event.ctrlKey || event.metaKey);
+      if (additiveCanvasSelectionGesture && selectedStructureCell) clearStructureCellSelection();
       let widgetEl = event.target.closest && event.target.closest('.slide-widget');
       if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) {
         widgetEl = widgetClaimableThroughCanvas(event);
@@ -7681,6 +7689,10 @@
       if (widgetEl.classList.contains('structure-widget')) {
         if (event.target.closest?.('.structure-inline-value-input')) return;
       }
+      widgetPointerSelection = {
+        widgetId: widgetEl.dataset.widgetId,
+        wasSelected: widgetEl.classList.contains('is-selected')
+      };
       if (event.shiftKey) return;
       const selectedStructureCellHit = widgetEl.classList.contains('structure-widget')
         && widgetEl.classList.contains('is-selected')
@@ -7871,12 +7883,16 @@
 
     document.addEventListener('mouseup', () => {
       endWidgetDrag();
+      additiveCanvasSelectionGesture = false;
     }, true);
 
     slidesRoot.addEventListener('pointerdown', event => beginWidgetDrag(event), true);
     document.addEventListener('pointerdown', event => beginWidgetDrag(event), true);
     document.addEventListener('pointermove', event => updateWidgetDrag(event), true);
-    document.addEventListener('pointerup', event => endWidgetDrag(event), true);
+    document.addEventListener('pointerup', event => {
+      endWidgetDrag(event);
+      additiveCanvasSelectionGesture = false;
+    }, true);
 
     slidesRoot.addEventListener('wheel', event => {
       const pre = event.target.closest?.('.code-widget pre');
@@ -7988,10 +8004,26 @@
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
       if (suppressWidgetClick) {
         suppressWidgetClick = false;
+        widgetPointerSelection = null;
         return;
       }
+      const pointerSelection = widgetPointerSelection;
+      widgetPointerSelection = null;
       const structureCell = event.target.closest?.('[data-structure-item-index]');
+      if (event.shiftKey || event.ctrlKey || event.metaKey) {
+        clearStructureCellSelection();
+        toggleWidgetSelection(widgetEl.dataset.widgetId);
+        return;
+      }
       if (structureCell && widgetEl.classList.contains('structure-widget')) {
+        const wasSelected = pointerSelection?.widgetId === widgetEl.dataset.widgetId
+          ? pointerSelection.wasSelected
+          : widgetEl.classList.contains('is-selected');
+        if (!wasSelected) {
+          clearStructureCellSelection();
+          selectWidget(widgetEl.dataset.widgetId);
+          return;
+        }
         closeStructureInlineEditor(true);
         selectStructureCell(widgetEl, structureCell);
         if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
@@ -8010,11 +8042,7 @@
         return;
       }
       clearStructureCellSelection();
-      if (event.shiftKey || event.ctrlKey || event.metaKey) {
-        toggleWidgetSelection(widgetEl.dataset.widgetId);
-      } else {
-        selectWidget(widgetEl.dataset.widgetId);
-      }
+      selectWidget(widgetEl.dataset.widgetId);
     }, true);
 
     slidesRoot.addEventListener('dragover', event => {
