@@ -36,7 +36,7 @@
   const FABRIC_CUSTOM_PROPS = [
     'transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius', 'layerIndex',
     'styles', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'underline', 'linethrough', 'fill', 'textBackgroundColor',
-    'asmInlineScripts', 'asmInlineScriptBaseStyles', 'asmGraphemeVersion',
+    'asmInlineScripts', 'asmInlineScriptBaseStyles', 'asmGraphemeVersion', 'asmTextWidthMode',
     'asmShapeType', 'arrowHeadSize', 'arrowHeadStyle',
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
@@ -1743,6 +1743,7 @@
       fontFamily: DEFAULT_FONT_FAMILY,
       fill: '#1f282d',
       styles: {},
+      asmTextWidthMode: 'fixed',
       ttsCarrier: true,
       ttsScriptMode: 'manual',
       ttsScript: ''
@@ -3721,6 +3722,7 @@
           event.target.__asmInlineScriptEditingFormatted = true;
         }
       }
+      fitAutoTextWidth(event.target, canvas);
       sync(event, { textEdit: true });
     });
     canvas.on('text:editing:entered', event => {
@@ -4102,6 +4104,7 @@
   function configureObject(obj) {
     sanitizeFabricTextBaseline(obj);
     const animation = normalizeAnimationSettings(obj);
+    const textWidthMode = isTextObject(obj) ? inferTextWidthMode(obj) : null;
     configureSelectionControls(obj);
     obj.set({
       lockScalingFlip: true,
@@ -4118,7 +4121,7 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
-    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2 });
+    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2, asmTextWidthMode: textWidthMode });
     if (obj.asmInlineScripts && isTextObject(obj)) {
       if (!obj.asmInlineScriptBaseStyles) {
         obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
@@ -4853,6 +4856,55 @@
     });
   }
 
+  function inferTextWidthMode(obj) {
+    if (obj?.asmTextWidthMode === 'fixed' || obj?.asmTextWidthMode === 'auto') {
+      return obj.asmTextWidthMode;
+    }
+    const sourceLines = String(obj?.text || '').split('\n').length;
+    const renderedLines = Array.isArray(obj?.textLines)
+      ? obj.textLines.length
+      : (Array.isArray(obj?._textLines) ? obj._textLines.length : sourceLines);
+    return renderedLines > sourceLines ? 'fixed' : 'auto';
+  }
+
+  function naturalTextContentWidth(obj) {
+    const Fabric = f();
+    const TextClass = Fabric?.Text || Fabric?.IText;
+    if (!obj || !TextClass) return Math.max(40, Number(obj?.width) || 40);
+    const metricProperties = [
+      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
+      'charSpacing', 'stroke', 'strokeWidth', 'paintFirst', 'direction'
+    ];
+    const properties = metricProperties.reduce((result, key) => {
+      if (obj[key] !== undefined) result[key] = obj[key];
+      return result;
+    }, {});
+    const text = String(obj.text || '');
+    if (!text) return 40;
+    const probe = new TextClass(text, {
+      ...properties,
+      styles: clone(obj.styles || {})
+    });
+    probe.initDimensions?.();
+    const width = Number(probe.width) || 0;
+    return Math.max(40, Math.ceil(width + 1));
+  }
+
+  function fitAutoTextWidth(obj, canvas) {
+    if (!isTextObject(obj) || inferTextWidthMode(obj) !== 'auto') return false;
+    obj.asmTextWidthMode = 'auto';
+    const nextWidth = naturalTextContentWidth(obj);
+    if (Math.abs((Number(obj.width) || 0) - nextWidth) < 0.5
+      && Math.abs((Number(obj.scaleX) || 1) - 1) < 0.001) return false;
+    obj.set({ width: nextWidth, scaleX: 1, dynamicMinWidth: 0 });
+    obj.initDimensions?.();
+    obj.set({ width: nextWidth, scaleX: 1 });
+    obj.dirty = true;
+    obj.setCoords?.();
+    canvas?.requestRenderAll?.();
+    return true;
+  }
+
   function normalizeTextBoxResize(obj, canvas) {
     if (!isTextObject(obj)) return;
     const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
@@ -4861,7 +4913,8 @@
     obj.set({
       width: nextWidth,
       scaleX: 1,
-      scaleY: 1
+      scaleY: 1,
+      asmTextWidthMode: 'fixed'
     });
     if (obj.initDimensions) obj.initDimensions();
     obj.dirty = true;
@@ -4908,7 +4961,8 @@
           styles: {},
           asmInlineScripts: true,
           asmInlineScriptBaseStyles: {},
-          asmGraphemeVersion: 2
+          asmGraphemeVersion: 2,
+          asmTextWidthMode: 'auto'
         });
       } else {
         obj = createShape(kind, left, top);
@@ -4926,6 +4980,7 @@
 
     try {
       configureObject(obj);
+      if (kind === 'text') fitAutoTextWidth(obj, canvas);
       const slide = getSlide();
       obj.set({ layerIndex: nextUnifiedLayerIndex(slide, canvas) });
       canvas.add(obj);
@@ -8593,6 +8648,7 @@
       object.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(object.styles);
       applyInlineScripts(object);
     }
+    fitAutoTextWidth(object, canvas);
     canvas.requestRenderAll();
     syncCurrentSlideCanvas();
     updateObjectToolbar(object, canvas);
@@ -8633,6 +8689,7 @@
         applyInlineScripts(target.object);
       }
     }
+    fitAutoTextWidth(target.object, target.canvas);
     target.object.dirty = true;
     target.object.setCoords();
     target.canvas.requestRenderAll();
@@ -8663,6 +8720,7 @@
     if (!target.canvas || !target.object) return;
     target.object.set(style);
     if (target.object.asmInlineScripts) applyInlineScripts(target.object);
+    fitAutoTextWidth(target.object, target.canvas);
     target.object.setCoords();
     target.canvas.requestRenderAll();
     syncCurrentSlideCanvas({ history });
