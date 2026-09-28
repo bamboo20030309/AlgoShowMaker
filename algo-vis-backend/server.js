@@ -1277,6 +1277,7 @@ function materializeKeepSnapshots(frames) {
       : null;
     const keepEvents = [
       ...(branchKeep ? [branchKeep] : []),
+      ...(frame.initialKeeps || []),
       ...(frame.events || []).filter(event => event.type === 'keep')
     ];
     const snapshotGeneration = sceneGeneration;
@@ -1937,28 +1938,30 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
         && line > range.line && line < range.endLine)
     ));
   };
+  const enrichRuntimeEvent = event => {
+    const source = eventSources[event.signature];
+    const enriched = source ? { ...event, source } : event;
+    if (event.type !== 'keep') return enriched;
+    const directive = keepDirectiveByStatementId.get(enriched.signature);
+    if (!directive) return enriched;
+    return {
+      ...enriched,
+      ...(directive.binding
+        ? { binding: JSON.parse(JSON.stringify(directive.binding)) }
+        : {}),
+      ...(directive.placementOffset
+        ? { placementOffset: JSON.parse(JSON.stringify(directive.placementOffset)) }
+        : {}),
+      ...(directive.when
+        ? { when: JSON.parse(JSON.stringify(directive.when)) }
+        : {}),
+      ...(directive.layoutId ? { layoutId: directive.layoutId } : {})
+    };
+  };
   const allFrames = records.filter(record => record.record === 'frame').map(frame => ({
     ...frame,
-    events: (frame.events || []).map(event => {
-      const source = eventSources[event.signature];
-      const enriched = source ? { ...event, source } : event;
-      if (event.type !== 'keep') return enriched;
-      const directive = keepDirectiveByStatementId.get(enriched.signature);
-      if (!directive) return enriched;
-      return {
-        ...enriched,
-        ...(directive.binding
-          ? { binding: JSON.parse(JSON.stringify(directive.binding)) }
-          : {}),
-        ...(directive.placementOffset
-          ? { placementOffset: JSON.parse(JSON.stringify(directive.placementOffset)) }
-          : {}),
-        ...(directive.when
-          ? { when: JSON.parse(JSON.stringify(directive.when)) }
-          : {}),
-        ...(directive.layoutId ? { layoutId: directive.layoutId } : {})
-      };
-    }).filter(event => !hiddenRuntimeEvent(event))
+    events: (frame.events || []).map(enrichRuntimeEvent).filter(event => !hiddenRuntimeEvent(event)),
+    ...(frame.initialKeeps?.length ? {initialKeeps:frame.initialKeeps.map(enrichRuntimeEvent)} : {})
   }));
   const frameDirectives = Array.isArray(traceRequest.frameDirectives)
     ? traceRequest.frameDirectives

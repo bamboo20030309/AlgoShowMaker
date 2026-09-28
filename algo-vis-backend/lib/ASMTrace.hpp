@@ -22,6 +22,12 @@
 #include <cstdint>
 #include <deque>
 #include <fstream>
+#include <fcntl.h>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 #include <iomanip>
 #include <list>
 #include <map>
@@ -344,12 +350,53 @@ class Recorder {
     if (!path || !*path) return;
     const char* max_frames = std::getenv("ASM_TRACE_MAX_FRAMES");
     if (max_frames) max_frames_ = std::max(1, std::atoi(max_frames));
+    path_ = path;
     output_.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
     enabled_ = output_.is_open();
-    if (enabled_) output_ << "{\"record\":\"meta\",\"schemaVersion\":\"2.0\"}\n";
+    if (enabled_) {
+      output_ << "{\"record\":\"meta\",\"schemaVersion\":\"2.0\"}\n";
+      committed_bytes_ = output_.tellp();
+    }
   }
 
+  ~Recorder() {
+    if (path_.empty() || !output_.is_open()) return;
+    // Only capture commits an interval. Discard flushed chunks and loop metadata
+    // after the final frame as well as the still-buffered tail.
+    output_.close();
+    // Support the project's older MinGW as well as Linux without filesystem.
+    int status = -1;
+#ifdef _WIN32
+    const int file = _open(path_.c_str(), _O_RDWR | _O_BINARY);
+    if (file >= 0) {
+      status = _chsize(file, static_cast<long>(committed_bytes_));
+      _close(file);
+    }
+#else
+    const int file = open(path_.c_str(), O_RDWR);
+    if (file >= 0) {
+      status = ftruncate(file, static_cast<off_t>(committed_bytes_));
+      close(file);
+    }
+#endif
+    if (status != 0) {
+      std::ofstream failure(path_, std::ios::app | std::ios::binary);
+      failure << "{\"record\":\"error\",\"message\":\"Could not discard trailing trace interval\"}\n";
+    }
+  }
   bool enabled() const { return enabled_; }
+  bool recording_events() const {
+    return !trace_suppressed() && enabled_ && frame_id_ > 0 && frame_id_ < max_frames_;
+  }
+  bool recording_initial_keep(const std::string& type) const {
+    return type == "keep" && !trace_suppressed() && enabled_ && frame_id_ == 0;
+  }
+  template <typename Fields>
+  std::string add_event_lazy(const std::string& type, int line,
+                             const std::string& signature, Fields fields) {
+    if (!recording_events() && !recording_initial_keep(type)) return std::string();
+    return add_event(type, line, signature, fields());
+  }
   void loop_record(const std::string& fields) {
     if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return;
     output_ << "{\"record\":\"loop\",\"position\":" << trace_position()++ << ',' << fields << "}\n";
@@ -358,9 +405,7 @@ class Recorder {
 
   std::string add_event(const std::string& type, int line, const std::string& signature,
                         const std::string& fields = std::string()) {
-    if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return std::string();
-    const int execution_order = event_id_++;
-    const std::string event_id = std::string("event-") + std::to_string(execution_order);
+    if (!recording_events() && !recording_initial_keep(type)) return std::string();
     // Instruction and activation metadata are shared within a bounded chunk.
     // Resetting the dictionary at each chunk makes every chunk independently readable.
     std::ostringstream metadata;
@@ -370,6 +415,21 @@ class Recorder {
       metadata << current_activation_source_json();
     metadata << '}';
     const std::string key = metadata.str();
+    if (recording_initial_keep(type)) {
+      // @keep changes the first visible scene: preserve it as initial scene data,
+      // not as an animation event before the first frame.
+      initial_keep_bytes_ += key.size() + fields.size();
+      if (fields.size() + key.size() > 16 * 1024 * 1024 || initial_keep_bytes_ > 128 * 1024 * 1024) {
+        fail("Initial scene limit exceeded");
+        return std::string();
+      }
+      const std::string id = "initial-keep-" + std::to_string(initial_keeps_.size());
+      initial_keeps_.push_back(key.substr(0,key.size()-1) + ",\"id\":" + quoted(id)
+        + ",\"order\":-1," + fields + "}");
+      return id;
+    }
+    const int execution_order = event_id_++;
+    const std::string event_id = std::string("event-") + std::to_string(execution_order);
     if (!pending_events_.empty() && (pending_events_.size() >= 1024
         || pending_bytes_ + fields.size() + key.size() + 64 > 256 * 1024)) flush_events();
     if (!enabled_) return std::string();
@@ -398,9 +458,15 @@ class Recorder {
   template <typename... Values>
   void capture(int line, const char* function_name, const char* statement_id,
                const char* statement_kind, const Values&... values) {
-    if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return;
+    if (trace_suppressed() || frame_id_ >= max_frames_) return;
+    // A resource error matters only if another frame consumes this interval.
+    // A tail-only error is rolled back by the destructor with that interval.
+    if (!enabled_) {
+      if (failed_) committed_bytes_ = output_.tellp();
+      return;
+    }
     flush_events();
-    if (!enabled_) return;
+    if (!enabled_) { committed_bytes_ = output_.tellp(); return; }
     std::vector<NamedValue> state{ values... };
     output_ << "{\"record\":\"frame\",\"id\":" << quoted(std::string("frame-") + std::to_string(frame_id_++))
             << ",\"source\":{\"line\":" << line
@@ -417,14 +483,26 @@ class Recorder {
               << ",\"lifetime\":" << quoted(state[index].lifetime)
               << ",\"data\":" << state[index].json << '}';
     }
-    output_ << "},\"events\":[],\"eventCount\":" << pending_count_ << "}\n";
+    output_ << "},\"events\":[],\"eventCount\":" << pending_count_;
+    if (!initial_keeps_.empty()) {
+      output_ << ",\"initialKeeps\":[";
+      for (std::size_t i = 0; i < initial_keeps_.size(); ++i) {
+        if (i) output_ << ',';
+        output_ << initial_keeps_[i];
+      }
+      output_ << ']';
+      initial_keeps_.clear();
+    }
+    output_ << "}\n";
     output_.flush();
     pending_count_ = 0;
     check_size();
+    committed_bytes_ = output_.tellp();
   }
 
  private:
   void fail(const char* message) {
+    failed_ = true;
     output_ << "{\"record\":\"error\",\"message\":" << quoted(message) << "}\n";
     output_.flush();
     enabled_ = false;
@@ -453,6 +531,11 @@ class Recorder {
     check_size();
   }
   std::ofstream output_;
+  std::string path_;
+  std::uintmax_t committed_bytes_ = 0;
+  bool failed_ = false;
+  std::vector<std::string> initial_keeps_;
+  std::size_t initial_keep_bytes_ = 0;
   std::vector<std::string> pending_events_;
   std::vector<std::string> templates_;
   std::unordered_map<std::string, int> template_ids_;
@@ -620,8 +703,7 @@ class FunctionActivation {
     if (parent_index >= 0) {
       FunctionActivationFrame& parent = stack[static_cast<std::size_t>(parent_index)];
       if (!parent.active_branch_id.empty()) {
-        recorder().add_event("branch-exit", 0, "automatic-branch-boundary",
-          std::string("\"branchId\":") + ::asm_trace::quoted(parent.active_branch_id));
+        recorder().add_event_lazy("branch-exit", 0, "automatic-branch-boundary", [&]() { return std::string("\"branchId\":") + ::asm_trace::quoted(parent.active_branch_id); });
       }
       parent.active_branch_id.clear();
       parent.active_branch_label.clear();
@@ -652,8 +734,7 @@ class FunctionActivation {
     auto& stack = function_activation_stack();
     if (!stack.empty() && stack.back().activation_id == activation_id_) {
       if (!stack.back().active_branch_id.empty()) {
-        recorder().add_event("branch-exit", 0, "automatic-function-exit",
-          std::string("\"branchId\":") + ::asm_trace::quoted(stack.back().active_branch_id));
+        recorder().add_event_lazy("branch-exit", 0, "automatic-function-exit", [&]() { return std::string("\"branchId\":") + ::asm_trace::quoted(stack.back().active_branch_id); });
       }
       stack.pop_back();
       return;
@@ -716,20 +797,18 @@ inline void event_branch_start(int line, const char* signature, const char* labe
   if (stack.empty() || trace_suppressed()) return;
   FunctionActivationFrame& frame = stack.back();
   if (!frame.active_branch_id.empty()) {
-    recorder().add_event("branch-exit", line, signature ? signature : "",
-      std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id));
+    recorder().add_event_lazy("branch-exit", line, signature ? signature : "", [&]() { return std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id); });
   }
   frame.active_branch_id = std::string("branch-") + std::to_string(explicit_branch_counter()++);
   frame.active_branch_label = label ? label : "";
   frame.active_branch_layout_id = layout_id ? layout_id : "";
   frame.active_branch_sibling_index = frame.next_recursive_child++;
-  recorder().add_event("branch-enter", line, signature ? signature : "",
-    std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id)
+  recorder().add_event_lazy("branch-enter", line, signature ? signature : "", [&]() { return std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id)
       + ",\"branchLabel\":" + ::asm_trace::quoted(frame.active_branch_label)
       + ",\"branchLayoutId\":" + ::asm_trace::quoted(frame.active_branch_layout_id)
       + ",\"branchOwnerActivationId\":" + ::asm_trace::quoted(frame.activation_id)
       + ",\"branchDepth\":" + std::to_string(frame.recursion_depth + 1)
-      + ",\"branchSiblingIndex\":" + std::to_string(frame.active_branch_sibling_index));
+      + ",\"branchSiblingIndex\":" + std::to_string(frame.active_branch_sibling_index); });
 }
 
 inline void event_branch_end(int line, const char* signature) {
@@ -737,8 +816,7 @@ inline void event_branch_end(int line, const char* signature) {
   if (stack.empty() || trace_suppressed()) return;
   FunctionActivationFrame& frame = stack.back();
   if (frame.active_branch_id.empty()) return;
-  recorder().add_event("branch-exit", line, signature ? signature : "",
-    std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id));
+  recorder().add_event_lazy("branch-exit", line, signature ? signature : "", [&]() { return std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id); });
   frame.active_branch_id.clear();
   frame.active_branch_label.clear();
   frame.active_branch_layout_id.clear();
@@ -747,9 +825,8 @@ inline void event_branch_end(int line, const char* signature) {
 
 inline void event_control_flow(int line, const char* signature, const char* type,
                                const char* target) {
-  recorder().add_event(type ? type : "control-flow", line, signature ? signature : "",
-    std::string("\"controlTarget\":") + quoted(target ? target : "")
-      + current_loop_source_json());
+  recorder().add_event_lazy(type ? type : "control-flow", line, signature ? signature : "", [&]() { return std::string("\"controlTarget\":") + quoted(target ? target : "")
+      + current_loop_source_json(); });
 }
 
 class VariableScopeExit {
@@ -779,11 +856,10 @@ class VariableScopeExit {
   void emit() {
     if (!active_) return;
     active_ = false;
-    recorder().add_event("scope-exit", line_, signature_,
-      std::string("\"name\":") + ::asm_trace::quoted(name_)
+    recorder().add_event_lazy("scope-exit", line_, signature_, [&]() { return std::string("\"name\":") + ::asm_trace::quoted(name_)
         + ",\"kind\":" + ::asm_trace::quoted(kind_)
         + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime_)
-        + ",\"targets\":[" + target_json_with_lifetime() + ']');
+        + ",\"targets\":[" + target_json_with_lifetime() + ']'; });
     uninitialized_variable_keys().erase(key_);
     auto found = active_lifetimes().find(key_);
     if (found == active_lifetimes().end()) return;
@@ -888,24 +964,22 @@ template <typename T>
 inline void event_keep(int line, const char* signature, const char* variable_id,
                        const char* name, const char* label, const T& value,
                        bool preserve_style = true, const char* layout_id = "") {
-  recorder().add_event("keep", line, signature ? signature : "",
-    std::string("\"name\":") + quoted(name ? name : "")
+  recorder().add_event_lazy("keep", line, signature ? signature : "", [&]() { return std::string("\"name\":") + quoted(name ? name : "")
       + ",\"label\":" + quoted(label ? label : "")
       + ",\"mode\":\"variable\""
       + ",\"preserveStyle\":" + (preserve_style ? "true" : "false")
       + recursion_layout_context_json(layout_id)
       + ",\"payload\":{\"data\":" + encode_value(value) + "}"
-      + ",\"targets\":[" + target_json("source", variable_id, name, "") + ']');
+      + ",\"targets\":[" + target_json("source", variable_id, name, "") + ']'; });
 }
 
 inline void event_keep_last(int line, const char* signature, const char* label,
                             bool preserve_style = true, const char* layout_id = "") {
-  recorder().add_event("keep", line, signature ? signature : "",
-    std::string("\"label\":") + quoted(label ? label : "")
+  recorder().add_event_lazy("keep", line, signature ? signature : "", [&]() { return std::string("\"label\":") + quoted(label ? label : "")
       + ",\"mode\":\"last\""
       + ",\"preserveStyle\":" + (preserve_style ? "true" : "false")
       + recursion_layout_context_json(layout_id)
-      + ",\"targets\":[]");
+      + ",\"targets\":[]"; });
 }
 
 template <typename T>
@@ -915,18 +989,16 @@ inline void event_visual_exit(int line, const char* signature, const char* varia
   std::string target = target_json("target", variable_id, name, "");
   target.insert(target.size() - 1,
     std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
-  recorder().add_event("visual-exit", line, signature ? signature : "",
-    std::string("\"name\":") + quoted(name ? name : "")
+  recorder().add_event_lazy("visual-exit", line, signature ? signature : "", [&]() { return std::string("\"name\":") + quoted(name ? name : "")
       + ",\"kind\":" + quoted(kind ? kind : "object")
       + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
       + ",\"manualVisualExit\":true"
-      + ",\"targets\":[" + target + ']');
+      + ",\"targets\":[" + target + ']'; });
 }
 
 inline void event_read(int line, const char* signature, const char* variable_id,
                        const char* expression, const char* index_expression) {
-  recorder().add_event("read", line, signature ? signature : "",
-    std::string("\"targets\":[") + target_json("target", variable_id, expression, index_expression) + ']');
+  recorder().add_event_lazy("read", line, signature ? signature : "", [&]() { return std::string("\"targets\":[") + target_json("target", variable_id, expression, index_expression) + ']'; });
 }
 
 template <typename T>
@@ -936,13 +1008,12 @@ void event_declare(int line, const char* signature, const char* variable_id,
   const std::string lifetime = current_lifetime(variable_id, value);
   std::string target = target_json("target", variable_id, name, "");
   target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
-  recorder().add_event("declare", line, signature ? signature : "",
-    std::string("\"name\":") + quoted(name ? name : "")
+  recorder().add_event_lazy("declare", line, signature ? signature : "", [&]() { return std::string("\"name\":") + quoted(name ? name : "")
       + ",\"kind\":" + quoted(kind ? kind : "object")
       + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
       + (parameter_declaration ? ",\"parameterDeclaration\":true" : "")
       + ",\"payload\":{\"value\":" + encode_value(value) + "}"
-      + ",\"targets\":[" + target + ']');
+      + ",\"targets\":[" + target + ']'; });
 }
 
 template <typename T>
@@ -954,12 +1025,11 @@ void event_declare_uninitialized(int line, const char* signature, const char* va
   }
   std::string target = target_json("target", variable_id, name, "");
   target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
-  recorder().add_event("declare", line, signature ? signature : "",
-    std::string("\"name\":") + quoted(name ? name : "")
+  recorder().add_event_lazy("declare", line, signature ? signature : "", [&]() { return std::string("\"name\":") + quoted(name ? name : "")
       + ",\"kind\":" + quoted(kind ? kind : "object")
       + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
       + ",\"payload\":{\"value\":null}"
-      + ",\"targets\":[" + target + ']');
+      + ",\"targets\":[" + target + ']'; });
 }
 
 template <typename T>
@@ -977,8 +1047,7 @@ void event_initialized_assign(int line, const char* signature,
   std::string target = target_json("target", target_id, target_expression, target_index,
     target_has_resolved_index, target_resolved_index);
   target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
-  recorder().add_event("assign", line, signature ? signature : "",
-    std::string("\"operation\":\"=\"")
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"animate\":true"
       + ",\"declarationInitializer\":true"
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
@@ -988,15 +1057,14 @@ void event_initialized_assign(int line, const char* signature,
       + ",\"payload\":{\"before\":null,\"after\":" + encoded + ",\"source\":" + encoded + "}"
       + ",\"targets\":[" + target
       + ',' + target_json("source", source_id, source_expression, source_index,
-          source_has_resolved_index, source_resolved_index) + ']');
+          source_has_resolved_index, source_resolved_index) + ']'; });
 }
 
 template <typename F>
 bool event_condition(int line, const char* signature, const char* condition_kind, F evaluate) {
   const bool result = evaluate();
-  recorder().add_event("condition", line, signature ? signature : "",
-    std::string("\"conditionKind\":") + quoted(condition_kind ? condition_kind : "Condition")
-      + ",\"result\":" + (result ? "true" : "false"));
+  recorder().add_event_lazy("condition", line, signature ? signature : "", [&]() { return std::string("\"conditionKind\":") + quoted(condition_kind ? condition_kind : "Condition")
+      + ",\"result\":" + (result ? "true" : "false"); });
   return result;
 }
 
@@ -1006,11 +1074,10 @@ void event_write(int line, const char* signature, const char* variable_id,
                  bool has_resolved_index, long long resolved_index,
                  const char* operation, F action, bool animate = true) {
   action();
-  recorder().add_event("write", line, signature ? signature : "",
-    std::string("\"operation\":") + quoted(operation ? operation : "")
+  recorder().add_event_lazy("write", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"targets\":[" + target_json("target", variable_id, expression, index_expression,
-          has_resolved_index, resolved_index) + ']');
+          has_resolved_index, resolved_index) + ']'; });
 }
 
 template <typename Collection, typename F>
@@ -1024,15 +1091,14 @@ void event_sequence_operation(int line, const char* signature,
   const std::size_t after_size = collection.size();
   const std::string after_front = after_size ? encode_value(collection.front()) : "null";
   const std::string after_back = after_size ? encode_value(collection.back()) : "null";
-  recorder().add_event("sequence-operation", line, signature ? signature : "",
-    std::string("\"operation\":") + quoted(operation ? operation : "")
+  recorder().add_event_lazy("sequence-operation", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"payload\":{\"beforeSize\":" + std::to_string(before_size)
       + ",\"afterSize\":" + std::to_string(after_size)
       + ",\"beforeFront\":" + before_front
       + ",\"beforeBack\":" + before_back
       + ",\"afterFront\":" + after_front
       + ",\"afterBack\":" + after_back + "}"
-      + ",\"targets\":[" + target_json("target", variable_id, expression, "") + ']');
+      + ",\"targets\":[" + target_json("target", variable_id, expression, "") + ']'; });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1046,13 +1112,12 @@ void event_update(int line, const char* signature, const char* variable_id,
   auto&& after_value = after_factory();
   mark_initialized(variable_id, after_value);
   const std::string after = encode_value(after_value);
-  recorder().add_event("write", line, signature ? signature : "",
-    std::string("\"operation\":") + quoted(operation ? operation : "")
+  recorder().add_event_lazy("write", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"update\":true"
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + after + "}"
       + ",\"targets\":[" + target_json("target", variable_id, expression, index_expression,
-          has_resolved_index, resolved_index) + ']');
+          has_resolved_index, resolved_index) + ']'; });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1069,8 +1134,7 @@ void event_compound_assign(
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
   const std::string after = encode_value(after_value);
-  recorder().add_event("write", line, signature ? signature : "",
-    std::string("\"operation\":") + quoted(expression ? expression : "")
+  recorder().add_event_lazy("write", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(expression ? expression : "")
       + ",\"expression\":" + quoted(expression ? expression : "")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"compound\":true"
@@ -1080,7 +1144,7 @@ void event_compound_assign(
           target_has_resolved_index, target_resolved_index)
       + ',' + target_json(
           "source", source_id, source_expression, source_index,
-          source_has_resolved_index, source_resolved_index) + ']');
+          source_has_resolved_index, source_resolved_index) + ']'; });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1096,8 +1160,7 @@ void event_assign(int line, const char* signature,
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
   const std::string after = encode_value(after_value);
-  recorder().add_event("assign", line, signature ? signature : "",
-    std::string("\"operation\":\"=\"")
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
@@ -1105,7 +1168,7 @@ void event_assign(int line, const char* signature,
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
           target_has_resolved_index, target_resolved_index)
       + ',' + target_json("source", source_id, source_expression, source_index,
-          source_has_resolved_index, source_resolved_index) + ']');
+          source_has_resolved_index, source_resolved_index) + ']'; });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1125,8 +1188,7 @@ void event_binary_assign(
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
   const std::string after = encode_value(after_value);
-  recorder().add_event("assign", line, signature ? signature : "",
-    std::string("\"operation\":\"=\"")
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"binaryOperation\":" + quoted(operation ? operation : "")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
@@ -1137,7 +1199,7 @@ void event_binary_assign(
       + ',' + arithmetic_target_json("source-left", left_id, left_expression, left_index,
           left_has_resolved_index, left_resolved_index, operation)
       + ',' + arithmetic_target_json("source-right", right_id, right_expression, right_index,
-          right_has_resolved_index, right_resolved_index, operation) + ']');
+          right_has_resolved_index, right_resolved_index, operation) + ']'; });
 }
 
 template <typename LeftFactory, typename RightFactory,
@@ -1168,8 +1230,7 @@ void event_select_assign(
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
   const std::string after = encode_value(after_value);
-  recorder().add_event("assign", line, signature ? signature : "",
-    std::string("\"operation\":\"=\"")
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"selectionOperation\":" + quoted(selection)
       + ",\"selectedSourceRole\":" + quoted(select_left ? "source-left" : "source-right")
       + ",\"animate\":" + (animate ? "true" : "false")
@@ -1182,7 +1243,7 @@ void event_select_assign(
       + ',' + source_target_json("source-left", left_id, left_expression, left_index,
           left_has_resolved_index, left_resolved_index)
       + ',' + source_target_json("source-right", right_id, right_expression, right_index,
-          right_has_resolved_index, right_resolved_index) + ']');
+          right_has_resolved_index, right_resolved_index) + ']'; });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1205,14 +1266,13 @@ void event_multi_assign(
   for (const std::string& source_target : source_targets) {
     targets += ',' + source_target;
   }
-  recorder().add_event("assign", line, signature ? signature : "",
-    std::string("\"operation\":\"=\"")
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"multiSourceArithmetic\":true"
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
-      + ",\"targets\":[" + targets + ']');
+      + ",\"targets\":[" + targets + ']'; });
 }
 
 // An assignment used as the right-hand side of another assignment must
@@ -1246,8 +1306,7 @@ decltype(auto) event_assign_expr(int line, const char* signature,
     auto&& after_value = after_factory();
     mark_initialized(target_id, after_value);
     const std::string after = encode_value(after_value);
-    recorder().add_event("assign", line, signature ? signature : "",
-      std::string("\"operation\":\"=\"")
+    recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
         + ",\"animate\":" + (animate ? "true" : "false")
         + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
         + ",\"expression\":" + quoted(expression ? expression : "")
@@ -1255,7 +1314,7 @@ decltype(auto) event_assign_expr(int line, const char* signature,
         + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
             target_has_resolved_index, target_resolved_index)
         + ',' + target_json("source", source_id, source_expression, source_index,
-            source_has_resolved_index, source_resolved_index) + ']');
+            source_has_resolved_index, source_resolved_index) + ']'; });
   };
   return assign_expr_action(action, record_after,
     typename std::is_reference<decltype(action())>::type{});
@@ -1271,14 +1330,13 @@ bool event_compare(int line, const char* signature,
   auto&& left = left_factory();
   auto&& right = right_factory();
   const bool result = compare(left, right);
-  recorder().add_event("compare", line, signature ? signature : "",
-    std::string("\"operation\":") + quoted(operation ? operation : "")
+  recorder().add_event_lazy("compare", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"result\":" + (result ? "true" : "false")
       + ",\"payload\":{\"left\":" + encode_value(left) + ",\"right\":" + encode_value(right) + "}"
       + ",\"targets\":[" + target_json("left", left_id, left_expression, left_index,
           left_has_resolved_index, left_resolved_index)
       + ',' + target_json("right", right_id, right_expression, right_index,
-          right_has_resolved_index, right_resolved_index) + ']');
+          right_has_resolved_index, right_resolved_index) + ']'; });
   return result;
 }
 
@@ -1290,13 +1348,12 @@ bool event_truthy_compare(int line, const char* signature,
                           ValueFactory evaluate) {
   auto&& value = evaluate();
   const bool result = static_cast<bool>(value);
-  recorder().add_event("compare", line, signature ? signature : "",
-    std::string("\"comparisonKind\":\"truthy\"")
+  recorder().add_event_lazy("compare", line, signature ? signature : "", [&]() { return std::string("\"comparisonKind\":\"truthy\"")
       + ",\"operation\":\"truthy\""
       + ",\"result\":" + (result ? "true" : "false")
       + ",\"payload\":{\"value\":" + encode_value(value) + "}"
       + ",\"targets\":[" + target_json("value", variable_id, expression,
-          index_expression, has_resolved_index, resolved_index) + ']');
+          index_expression, has_resolved_index, resolved_index) + ']'; });
   return result;
 }
 
@@ -1312,21 +1369,19 @@ void event_swap(int line, const char* signature,
   const std::string left_before = encode_value(left);
   const std::string right_before = encode_value(right);
   action();
-  recorder().add_event("swap", line, signature ? signature : "",
-    std::string("\"payload\":{\"leftBefore\":") + left_before
+  recorder().add_event_lazy("swap", line, signature ? signature : "", [&]() { return std::string("\"payload\":{\"leftBefore\":") + left_before
       + ",\"rightBefore\":" + right_before
       + ",\"leftAfter\":" + encode_value(left)
       + ",\"rightAfter\":" + encode_value(right) + "}"
       + ",\"targets\":[" + target_json("left", left_id, left_expression, left_index,
         left_has_resolved_index, left_resolved_index)
       + ',' + target_json("right", right_id, right_expression, right_index,
-        right_has_resolved_index, right_resolved_index) + ']');
+        right_has_resolved_index, right_resolved_index) + ']'; });
 }
 
 inline void event_call(int line, const char* signature, const char* callee, const char* expression) {
-  recorder().add_event("call", line, signature ? signature : "",
-    std::string("\"callee\":") + quoted(callee ? callee : "")
-      + ",\"expression\":" + quoted(expression ? expression : ""));
+  recorder().add_event_lazy("call", line, signature ? signature : "", [&]() { return std::string("\"callee\":") + quoted(callee ? callee : "")
+      + ",\"expression\":" + quoted(expression ? expression : ""); });
 }
 
 class CallInvocationScope {
@@ -1334,9 +1389,8 @@ class CallInvocationScope {
   CallInvocationScope(int line, const char* signature, const char* callee, const char* expression)
       : line_(line), signature_(signature ? signature : ""),
         callee_(callee ? callee : ""), expression_(expression ? expression : "") {
-    event_id_ = recorder().add_event("call", line_, signature_,
-      std::string("\"callee\":") + ::asm_trace::quoted(callee_)
-        + ",\"expression\":" + ::asm_trace::quoted(expression_));
+    event_id_ = recorder().add_event_lazy("call", line_, signature_, [&]() { return std::string("\"callee\":") + ::asm_trace::quoted(callee_)
+        + ",\"expression\":" + ::asm_trace::quoted(expression_); });
     call_invocation_stack().push_back({event_id_, callee_, std::string()});
   }
 
@@ -1350,11 +1404,10 @@ class CallInvocationScope {
       callee_activation_id = stack.back().callee_activation_id;
       stack.pop_back();
     }
-    recorder().add_event("call-return", line_, signature_,
-      std::string("\"callEventId\":") + ::asm_trace::quoted(event_id_)
+    recorder().add_event_lazy("call-return", line_, signature_, [&]() { return std::string("\"callEventId\":") + ::asm_trace::quoted(event_id_)
         + ",\"callee\":" + ::asm_trace::quoted(callee_)
         + ",\"expression\":" + ::asm_trace::quoted(expression_)
-        + ",\"calleeActivationId\":" + ::asm_trace::quoted(callee_activation_id));
+        + ",\"calleeActivationId\":" + ::asm_trace::quoted(callee_activation_id); });
   }
 
  private:
@@ -1383,9 +1436,8 @@ class OutputInvocationScope {
   OutputInvocationScope& operator=(const OutputInvocationScope&) = delete;
 
   ~OutputInvocationScope() {
-    recorder().add_event("output", line_, signature_,
-      std::string("\"outputKind\":") + ::asm_trace::quoted(kind_)
-        + ",\"expression\":" + ::asm_trace::quoted(expression_));
+    recorder().add_event_lazy("output", line_, signature_, [&]() { return std::string("\"outputKind\":") + ::asm_trace::quoted(kind_)
+        + ",\"expression\":" + ::asm_trace::quoted(expression_); });
   }
 
  private:
@@ -1409,15 +1461,13 @@ event_return_invoke_result(int line, const char* return_signature,
                            const char* expression, const std::string& return_event_id,
                            Invoke&& invoke, Capture&& capture) {
   Result result = std::forward<Invoke>(invoke)();
-  recorder().add_event("return-complete", line, return_signature ? return_signature : "",
-    std::string("\"returnEventId\":") + quoted(return_event_id)
+  recorder().add_event_lazy("return-complete", line, return_signature ? return_signature : "", [&]() { return std::string("\"returnEventId\":") + quoted(return_event_id)
       + ",\"function\":" + quoted(function_name ? function_name : "")
       + ",\"expression\":" + quoted(expression ? expression : "")
-      + ",\"payload\":{\"value\":" + encode_value(result) + "}");
+      + ",\"payload\":{\"value\":" + encode_value(result) + "}"; });
   emit_current_function_scope_exits();
-  recorder().add_event("function-exit", line, exit_signature ? exit_signature : "",
-    std::string("\"function\":") + quoted(function_name ? function_name : "")
-      + ",\"returnEventId\":" + quoted(return_event_id));
+  recorder().add_event_lazy("function-exit", line, exit_signature ? exit_signature : "", [&]() { return std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"returnEventId\":" + quoted(return_event_id); });
   std::forward<Capture>(capture)();
   return std::forward<Result>(result);
 }
@@ -1429,15 +1479,13 @@ event_return_invoke_result(int line, const char* return_signature,
                            const char* expression, const std::string& return_event_id,
                            Invoke&& invoke, Capture&& capture) {
   std::forward<Invoke>(invoke)();
-  recorder().add_event("return-complete", line, return_signature ? return_signature : "",
-    std::string("\"returnEventId\":") + quoted(return_event_id)
+  recorder().add_event_lazy("return-complete", line, return_signature ? return_signature : "", [&]() { return std::string("\"returnEventId\":") + quoted(return_event_id)
       + ",\"function\":" + quoted(function_name ? function_name : "")
       + ",\"expression\":" + quoted(expression ? expression : "")
-      + ",\"payload\":{\"kind\":\"void\"}");
+      + ",\"payload\":{\"kind\":\"void\"}"; });
   emit_current_function_scope_exits();
-  recorder().add_event("function-exit", line, exit_signature ? exit_signature : "",
-    std::string("\"function\":") + quoted(function_name ? function_name : "")
-      + ",\"returnEventId\":" + quoted(return_event_id));
+  recorder().add_event_lazy("function-exit", line, exit_signature ? exit_signature : "", [&]() { return std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"returnEventId\":" + quoted(return_event_id); });
   std::forward<Capture>(capture)();
 }
 
@@ -1447,10 +1495,9 @@ auto event_return_invoke(int line, const char* return_signature,
                          const char* expression, Invoke&& invoke, Capture&& capture)
   -> decltype(std::forward<Invoke>(invoke)()) {
   event_branch_end(line, return_signature);
-  const std::string return_event_id = recorder().add_event("return", line,
-    return_signature ? return_signature : "",
-    std::string("\"function\":") + quoted(function_name ? function_name : "")
-      + ",\"expression\":" + quoted(expression ? expression : ""));
+  const std::string return_event_id = recorder().add_event_lazy("return", line,
+    return_signature ? return_signature : "", [&]() { return std::string("\"function\":") + quoted(function_name ? function_name : "")
+      + ",\"expression\":" + quoted(expression ? expression : ""); });
   typedef decltype(std::forward<Invoke>(invoke)()) Result;
   return event_return_invoke_result<Result>(line, return_signature, exit_signature,
     function_name, expression, return_event_id,
@@ -1458,8 +1505,7 @@ auto event_return_invoke(int line, const char* return_signature,
 }
 
 inline void event_function(int line, const char* signature, const char* function_name, bool entering) {
-  recorder().add_event(entering ? "function-enter" : "function-exit", line, signature ? signature : "",
-    std::string("\"function\":") + quoted(function_name ? function_name : ""));
+  recorder().add_event_lazy(entering ? "function-enter" : "function-exit", line, signature ? signature : "", [&]() { return std::string("\"function\":") + quoted(function_name ? function_name : ""); });
 }
 
 template <typename... Values>

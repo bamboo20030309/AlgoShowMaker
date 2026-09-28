@@ -15,6 +15,7 @@ test('Studio lazily checks visited frames without losing hidden-event or marker-
 using namespace std;
 int main() {
   vector<int> arr = {3, 2, 1};
+  // @frame arr
   int index = 0;
   int hidden = 7;
   {

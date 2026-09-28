@@ -15,13 +15,13 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
   page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   await page.goto(base+'/algorithm.html',{waitUntil:'networkidle'});
   const old=await page.evaluate(()=>{
-   const doc={schemaVersion:'1.0',variables:{a:{id:'a',name:'a',kind:'sequence'}},frames:[{id:'old',source:{},events:[],state:{a:{name:'a',data:{kind:'sequence',items:[{kind:'scalar',value:0},{kind:'scalar',value:8}]}}}}],studio:{eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false,gapMs:0},customColor:'#123456'}};
+   const doc={schemaVersion:'1.0',variables:{a:{id:'a',name:'a',kind:'sequence'}},frames:[{id:'old',source:{},events:[{id:'legacy',order:0,type:'assign',signature:'assign:legacy',enabled:false,targets:[],payload:{before:3,after:8}}],state:{a:{name:'a',data:{kind:'sequence',items:[{kind:'scalar',value:0},{kind:'scalar',value:8}]}}}}],studio:{eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false,gapMs:0},eventInstructionStates:{'assign:legacy':false},customColor:'#123456'}};
    ASMTracePlayer.apply(doc);
    const saved=JSON.stringify(ASMTracePlayer.getDocument());
    const reopened=ASMTracePlayer.apply(JSON.parse(saved));
-   return {settings:reopened.studio,values:reopened.frames[0].state.a.data.items.map(v=>v.value),cells:document.querySelectorAll('#asm-trace-root g[data-trace-index]').length};
+   return {legacy:reopened.frames[0].events.map(e=>({id:e.id,enabled:e.enabled,after:e.payload.after})),settings:reopened.studio,values:reopened.frames[0].state.a.data.items.map(v=>v.value),cells:document.querySelectorAll('#asm-trace-root g[data-trace-index]').length};
   });
-  assert.deepEqual(old,{settings:{eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false,gapMs:0},customColor:'#123456'},values:[0,8],cells:2});
+  assert.deepEqual(old,{legacy:[{id:'legacy',enabled:false,after:8}],settings:{eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false,gapMs:0},eventInstructionStates:{'assign:legacy':false},customColor:'#123456'},values:[0,8],cells:2});
   const source=fs.readFileSync(path.join(__dirname,'fixtures/trace-chunks-checkerboard.cpp'),'utf8').replace(/\r\n/g,'\n');
   const replyPromise=page.waitForResponse(r=>r.url().endsWith('/compile')&&r.request().method()==='POST');
   await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__traceStart=performance.now();document.getElementById('runBtn').click();},source);
@@ -42,7 +42,7 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
     cells:cells.length,fills,settings:doc.studio.eventSettings,output:document.getElementById('outputArea').textContent,
     studio:document.body.classList.contains('asm-trace-studio-open')};
   });
-  assert.equal(result.output,'完成');assert.equal(result.frames,1);assert.equal(result.events,96013);
+  assert.equal(result.output,'完成');assert.equal(result.frames,1);assert.equal(result.events,0);
   assert.equal(result.increasing,true);assert.equal(result.arrLength,1000);assert.equal(result.rows,100);
   assert.equal(result.checkerboard,true);assert.equal(result.cells,11000);assert.equal(result.studio,false);
   assert.equal(result.settings.autoFixedEnabled,false);assert.equal(result.settings.autoLoopBoundaryEnabled,false);
@@ -61,6 +61,58 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
   await page.waitForFunction(()=>document.querySelector('#asm-trace-root g[data-trace-index="50,50"] > text'));
   await page.screenshot({path:path.join(out,'checkerboard.png')});
   console.log(JSON.stringify(result));
+  async function compileRaw(code,input='') {
+    const post=async(endpoint,body)=>{const response=await fetch(base+endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await response.json();assert.equal(response.ok,true);assert.ok(!result.error,result.error);return result;};
+    const analysis=await post('/trace/analyze',{code});
+    return post('/compile',{code,input,trace:{enabled:true,watches:[...new Set(analysis.frameDirectives.flatMap(frame=>frame.variableIds))],sliceMode:'manual'}});
+  }
+  const windowSource=`#include <bits/stdc++.h>
+using namespace std;
+int main(){
+ int x=0;
+ vector<int> arr={3,1,2};
+ x += 5;
+ // @keep x as "seed"
+ // @frame arr,x
+ for(int i=0;i<2;i++){
+  x++;
+  arr[0]+=x;
+  // @frame arr,x
+ }
+ x = 999;
+ cout<<x;
+}
+/* @asm-view
+{"version":1,"rules":[],"skins":{},"studio":{"eventSettings":{"autoFixedEnabled":false,"autoLoopBoundaryEnabled":false}}}
+@asm-view */`;
+  const interval=await compileRaw(windowSource),doc=interval.traceDocument;
+  assert.equal(interval.output,'999');assert.equal(doc.frames.length,3);
+  const variable=Object.values(doc.variables).find(v=>v.name==='x');
+  assert.deepEqual(doc.frames.map(f=>f.state[variable.id].data.value),[5,6,7]);
+  assert.equal(doc.frames[0].events.length,0);
+  assert.ok(doc.frames.slice(1).every(f=>f.events.some(e=>e.type==='write'||e.type==='assign')));
+  const forbidden=[windowSource.split('\n').indexOf(' x += 5;')+1,windowSource.split('\n').indexOf(' x = 999;')+1];
+  assert.ok(doc.frames.every(f=>f.events.every(e=>!forbidden.includes(e.line))));
+  assert.ok(doc.frames.every(f=>f.events.every((e,i,a)=>Number.isFinite(e.order)&&(i===0||a[i-1].order<e.order))));
+  const seed=doc.snapshots.find(snapshot=>snapshot.label.startsWith('seed'));
+  assert.equal(seed?.data.value,5,'initial keep is scene data, not an initial animation');
+  const roundtrip=await page.evaluate(async trace=>{
+    ASMTracePlayer.apply(trace);
+    const before=document.querySelectorAll('#asm-trace-root [data-trace-snapshot]').length;
+    await ASMTracePlayer.render(1);await ASMTracePlayer.render(2);await ASMTracePlayer.render(0);
+    const saved=JSON.stringify(ASMTracePlayer.getDocument());
+    const reopened=ASMTracePlayer.apply(JSON.parse(saved));
+    await ASMTracePlayer.renderStable(2);
+    return {before,index:ASMTracePlayer.getCurrentFrame(),seed:reopened.snapshots.find(s=>s.label.startsWith('seed')).data.value,disabled:reopened.studio.eventSettings.autoFixedEnabled};
+  },doc);
+  assert.ok(roundtrip.before>0);assert.equal(roundtrip.index,2);assert.equal(roundtrip.seed,5);assert.equal(roundtrip.disabled,false);
+  // One small sorting fixture exercises retained middle compare/swap events.
+  const bubble=await compileRaw(fs.readFileSync(path.join(__dirname,'fixtures/bubble.cpp'),'utf8'),'3\n3 1 2\n');
+  const sorted=bubble.traceDocument,arr=Object.values(sorted.variables).find(v=>v.name==='arr');
+  assert.deepEqual(sorted.frames.at(-1).state[arr.id].data.items.map(v=>v.value),[1,2,3]);
+  assert.equal(sorted.frames.flatMap(f=>f.events).filter(e=>e.type==='swap').length,2);
+  await page.evaluate(async trace=>{ASMTracePlayer.apply(trace);await ASMTracePlayer.render(1);await ASMTracePlayer.renderStable(trace.frames.length-1);},sorted);
+  assert.deepEqual(errors,[]);
   await browser.close();browser=null;
   // One existing targeted fixture checks real marker, hidden target and lifetime semantics.
   const {NODE_TEST_CONTEXT, ...childEnvironment}=process.env;
