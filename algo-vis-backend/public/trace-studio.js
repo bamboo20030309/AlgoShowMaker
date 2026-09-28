@@ -3831,33 +3831,15 @@
         const currentFrameId = trace.frames[currentIndex]?.id;
         const binding = frameBinding(currentFrameId, key);
         if (binding) {
-          const currentSourceAnchor = window.ASMTraceRenderers?.currentAnchorForKey?.(
-            key,
-            binding.sourceAnchor || 'top',
-            false
-          );
-          const desiredAnchor = currentSourceAnchor ? {
-            x: currentSourceAnchor.x + dx,
-            y: currentSourceAnchor.y + dy
-          } : null;
           frameIds.forEach(frameId => {
             const next = frameBinding(frameId, key) || binding;
-            const frameIndex = trace.frames.findIndex(frame => frame.id === frameId);
-            const frame = trace.frames[frameIndex];
-            const targetAnchor = frame && desiredAnchor
-              ? window.ASMTraceRenderers?.frameAnchorForKey?.(
-                trace,
-                frame,
-                next.targetKey,
-                next.targetAnchor || 'center',
-                frameIndex > 0 ? trace.frames[frameIndex - 1] : null
-              )
-              : null;
             trace.studio.bindings[frameId] ||= {};
             trace.studio.bindings[frameId][key] = {
               ...next,
-              dx: targetAnchor ? desiredAnchor.x - targetAnchor.x : (Number(next.dx) || 0) + dx,
-              dy: targetAnchor ? desiredAnchor.y - targetAnchor.y : (Number(next.dy) || 0) + dy
+              // 指標位移已從畫面上的實際位置算出；每幀只需在自己的相對偏移上累加一次。
+              // 若重新解析已移動的來源錨點，不但會重複加入位移，也可能套到不同的遞迴樹排版。
+              dx: (Number(next.dx) || 0) + dx,
+              dy: (Number(next.dy) || 0) + dy
             };
           });
           refreshAfterPositionChange();
