@@ -92,7 +92,7 @@
     ] },
     { id: 'events', label: '@events', effect: '控制本幀事件動畫；資料與事件記錄仍保留', code: '// @events animate off', examples: [
       '// @frame arr\n// @events animate off',
-      '// @frame arr\n// @events compare,read animate off when i > 7'
+      '// @frame arr\n// @events compare,assignment animate off when i > 7'
     ] },
     { id: 'automark', label: '@automark', effect: '選擇本幀顯示自動固定標記的陣列；none 隱藏全部', code: '// @automark arr', examples: [
       '// @frame isprime,prime\n// @automark isprime',

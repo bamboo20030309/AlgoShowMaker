@@ -42,7 +42,7 @@ int main() {
     assert.deepEqual(
       await page.locator('.trace-event-settings-row strong').allTextContents(),
       [
-        '宣告／物件入場', '物件退場／手動退場', '讀取', '比較', '賦值', '交換',
+        '宣告／物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
         '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
       ]
     );

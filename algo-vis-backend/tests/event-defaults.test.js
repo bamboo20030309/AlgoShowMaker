@@ -50,9 +50,12 @@ test('event settings follow the teaching-oriented display order', () => {
     .filter(definition => definition.category !== 'state' && definition.internal !== true)
     .map(definition => definition.label);
   assert.deepEqual(Array.from(visibleLabels), [
-    '宣告／物件入場', '物件退場／手動退場', '讀取', '比較', '賦值', '交換',
+    '宣告／物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
     '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
   ]);
+  assert.equal(api.definition('read').internal, true);
+  assert.equal(api.showTag('read'), false);
+  assert.equal(api.showInspector({ type: 'read' }), false);
 });
 
 test('return, break and continue share one control-flow setting', () => {
@@ -188,10 +191,16 @@ test('internal conditions never expose saved animation or timeline controls', ()
   const api = eventApi();
   const document = { studio: { eventSettings: {
     autoFixedEnabled: false,
-    defaultEnabled: { condition: true },
-    timelineTypes: { condition: true }
-  }, eventStates: { 'frame-1': { 'condition:main:1:i < n::0': true } },
-  eventInstructionStates: { 'condition:main:1:i < n': true } }, frames: [] };
+    defaultEnabled: { condition: true, read: true },
+    timelineTypes: { condition: true, read: true }
+  }, eventStates: { 'frame-1': {
+    'condition:main:1:i < n::0': true,
+    'read:main:1:i::0': true
+  } },
+  eventInstructionStates: {
+    'condition:main:1:i < n': true,
+    'read:main:1:i': true
+  } }, frames: [] };
   assert.equal(api.defaultEnabled({ type: 'condition' }, document), false);
   assert.equal(api.showTag('condition', document), false);
   assert.equal(api.showInspector({ type: 'condition' }, document), false);
@@ -199,6 +208,8 @@ test('internal conditions never expose saved animation or timeline controls', ()
   api.applyEnabledStates(document);
   assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'condition'), false);
   assert.equal(Object.hasOwn(document.studio.eventSettings.timelineTypes, 'condition'), false);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'read'), false);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.timelineTypes, 'read'), false);
   assert.deepEqual(Object.keys(document.studio.eventInstructionStates), []);
   assert.deepEqual(Object.keys(document.studio.eventStates['frame-1']), []);
   assert.equal(api.defaultEnabled({ type: 'fixed' }, document), false);

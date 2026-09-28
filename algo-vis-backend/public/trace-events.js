@@ -10,7 +10,9 @@
   const definitions = [
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
     { type: 'object-exit', label: '物件退場／手動退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
-    { type: 'read', label: '讀取', color: '#3976b8', enabledByDefault: false, timelineByDefault: false },
+    // Reads remain internal access metadata for automatic fixed markers. They
+    // are not a user-facing event, animation, timeline entry or Studio item.
+    { type: 'read', label: '讀取', color: '#3976b8', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },
@@ -517,14 +519,22 @@
     const eventStates = document?.studio?.eventStates || {};
     const instructionStates = document?.studio?.eventInstructionStates || {};
     const settings = migrateAliasedEventSettings(eventSettings(document));
-    if (settings.defaultEnabled) delete settings.defaultEnabled.condition;
-    if (settings.timelineTypes) delete settings.timelineTypes.condition;
+    if (settings.defaultEnabled) {
+      delete settings.defaultEnabled.condition;
+      delete settings.defaultEnabled.read;
+    }
+    if (settings.timelineTypes) {
+      delete settings.timelineTypes.condition;
+      delete settings.timelineTypes.read;
+    }
     Object.keys(instructionStates).forEach(key => {
-      if (canonicalInstructionKey(key).startsWith('condition:')) delete instructionStates[key];
+      const canonical = canonicalInstructionKey(key);
+      if (canonical.startsWith('condition:') || canonical.startsWith('read:')) delete instructionStates[key];
     });
     Object.values(eventStates).forEach(states => {
       Object.keys(states || {}).forEach(key => {
-        if (canonicalInstructionKey(key).startsWith('condition:')) delete states[key];
+        const canonical = canonicalInstructionKey(key);
+        if (canonical.startsWith('condition:') || canonical.startsWith('read:')) delete states[key];
       });
     });
     (document?.frames || []).forEach(frame => {

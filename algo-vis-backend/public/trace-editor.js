@@ -30,7 +30,7 @@
   const embedMode = new URLSearchParams(window.location.search).get('asmEmbed');
 
   const EVENT_SETTING_TYPES = [
-    'declare', 'object-exit', 'read', 'assignment', 'compare', 'swap',
+    'declare', 'object-exit', 'assignment', 'compare', 'swap',
     'call', 'control-flow', 'function-enter', 'function-exit'
   ];
   const LEGACY_EVENT_SETTING_ALIASES = Object.freeze({
