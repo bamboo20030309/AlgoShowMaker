@@ -54,3 +54,10 @@ body.asm-embed-runtime #canvasWrapper {
   height: 100%;
   flex: 1 1 auto;
 }
+
+/* Runtime drawings are presentation content rather than editable objects.
+   Let pointer gestures reach the SVG canvas even when a large structure fills
+   most of the slide, so the presenter can pan from anywhere on the drawing. */
+body.asm-embed-runtime #viewport .draggable-object {
+  pointer-events: none;
+}

@@ -97,7 +97,8 @@
       // 判斷是否可拖曳：左鍵 (0) 要看是否為繪圖模式，右鍵 (2) 永遠允許拖曳
       if (e.button === 0) {
         if (window.isDrawingMode) return;
-        if (document.body.classList.contains('asm-trace-studio-open')
+        if (!document.body.classList.contains('asm-embed-runtime')
+          && document.body.classList.contains('asm-trace-studio-open')
           && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
           return;
         }

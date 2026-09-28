@@ -76,11 +76,15 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     const beforeRevision = Number(await page.locator('body').getAttribute('data-local-deck-revision') || 0);
     const canvas = runtime.locator('#arraySvg');
     const box = await canvas.boundingBox();
-    // Use an empty grid corner: trace objects intentionally retain their own
-    // click/drag interactions while the surrounding canvas controls the view.
-    await page.mouse.move(box.x + box.width * 0.08, box.y + box.height * 0.85);
+    const drawnObjectBox = await runtime.locator('#viewport .draggable-object').first().boundingBox();
+    assert.ok(drawnObjectBox, 'fixture should render an interactive drawing object');
+    // Runtime objects are read-only presentation content, so dragging directly
+    // over a structure/code object must pan the camera as well as empty grid.
+    await page.mouse.move(drawnObjectBox.x + drawnObjectBox.width / 2,
+      drawnObjectBox.y + drawnObjectBox.height / 2);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.08 + 72, box.y + box.height * 0.85 + 36);
+    await page.mouse.move(drawnObjectBox.x + drawnObjectBox.width / 2 + 72,
+      drawnObjectBox.y + drawnObjectBox.height / 2 + 36);
     await page.mouse.up();
     await page.waitForFunction(revision => Number(document.body.dataset.localDeckRevision || 0) > revision,
       beforeRevision);
