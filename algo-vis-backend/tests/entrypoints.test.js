@@ -164,7 +164,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
   assert.ok(html.includes('draw/draw_array.js?v=trace-3'));
   for (const surface of [html, slides, legacy]) {
-    assert.ok(surface.includes('draw/draw_array_utils.js?v=fit-2'));
+    assert.ok(surface.includes('draw/draw_array_utils.js?v=fit-3'));
   }
   assert.ok(html.includes('trace-studio.css?v=trace-58'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,

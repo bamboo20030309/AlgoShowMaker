@@ -5094,12 +5094,12 @@
       motion.append(content);
       object.append(motion);
       root.append(object);
-      let height = renderer(content, entry, {
+      let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
         variable, variableId: objectKey, skin, rendererName,
         highlights: snapshotHighlights, diff: [],
         document, frame: snapshotRenderFrame, allHighlights: snapshotAllHighlights,
         idPrefix: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`, interactive: options.interactive
-      });
+      }));
       removeScalarIndexLabels(content, variable, rendererName);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
@@ -5179,6 +5179,22 @@
       options,
       keepNodes
     );
+    // Predict only simple array/matrix extents from model data, before SVG text
+    // exists. The actual screen transform corrects detail after camera fitting.
+    let estimatedWidth = 1, estimatedHeight = 1;
+    Object.values(frame.state || {}).forEach(entry => {
+      const data = entry?.data;
+      if (data?.kind === 'sequence') { estimatedWidth = Math.max(estimatedWidth, (data.items?.length || 1) * 40 + 32); estimatedHeight += 110; }
+      if (data?.kind === 'matrix') {
+        const rows = data.items || [];
+        estimatedWidth = Math.max(estimatedWidth, Math.max(1,...rows.map(row => row.items?.length || 0)) * 40 + 64);
+        estimatedHeight += rows.length * 52 + 110;
+      }
+    });
+    const cameraRule = cameraRuleForFrame(document, frame);
+    const expectedCamera = autoCameraView({left:0,top:0,right:estimatedWidth,bottom:estimatedHeight,width:estimatedWidth,height:estimatedHeight}, Number(cameraRule?.zoom) || 0.92);
+    const lodScale = options.interactive === false ? Math.min(220/estimatedWidth,112/estimatedHeight)
+      : cameraRule?.manualFrame || cameraRule?.autoCapture === false ? Number(cameraRule.zoom) || 0.92 : expectedCamera?.scale || 1;
     Object.entries(document.variables || {}).forEach(([variableId, variable]) => {
       const entry = frame.state?.[variableId];
       const objectKey = objectKeyForVariable(frame, variableId);
@@ -5225,12 +5241,21 @@
       motion.append(content);
       object.append(motion);
       root.append(object);
-      let height = renderer(content, entry, {
+      const canLod = window.ASMStructureLOD && (!previousFrame || options.interactive === false)
+        && options.animateEvents === false
+        && ['sequence','matrix'].includes(entry.data?.kind)
+        && ['sequence','matrix','original-array','original-matrix'].includes(rendererName)
+        && !skin.options.display && !skin.options.fields && !skin.options.indexLabels
+        && !skin.options.labels && !skin.options.indexMode
+        && !Object.keys(document.studio?.objectStyles?.[frame.id] || {}).length;
+      window.ASMStructureLOD?.begin(content, lodScale, canLod);
+      let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
         variable, variableId: objectKey, skin, rendererName,
         highlights: highlights[variableId] || {}, diff,
         document, frame, allHighlights: highlights,
         idPrefix: `${idPrefix}-original`, interactive: options.interactive
-      });
+      }));
+      window.ASMStructureLOD?.finish(content);
       removeScalarIndexLabels(content, variable, rendererName);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
@@ -5574,6 +5599,7 @@
   function cloneThumbnailScene(document, frame, prefix) {
     if (!canReuseStudioScene(document, frame)) return null;
     const root = currentScene.root.cloneNode(true);
+    window.ASMStructureLOD?.adopt(currentScene.root, root);
     const nodes = [root, ...root.querySelectorAll('*')];
     const ids = new Map();
     nodes.forEach(node => {
@@ -5611,6 +5637,7 @@
         idPrefix: `trace-thumb-${frameKey}`,
         interactive: false,
         animatePositions: false,
+        animateEvents: false,
         transform: ''
       });
     } finally {
@@ -5885,9 +5912,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-230';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-231';
   window.ASMTraceRenderers = {
-    build: 'trace-230', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-231', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

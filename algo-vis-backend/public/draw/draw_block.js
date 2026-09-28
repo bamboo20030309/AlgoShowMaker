@@ -56,6 +56,11 @@
       rect.setAttribute("stroke", "#333");
       rect.setAttribute("stroke-width", "1");
 
+      if (window.ASMStructureLOD?.record(g, cellG, i, x, y, w, h)) {
+        cellG.querySelector(':scope > text')?.remove();
+        return;
+      }
+
       // 取得/建立 text
       let txt = cellG.querySelector(":scope > text");
       if (!txt) {

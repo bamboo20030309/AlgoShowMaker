@@ -41,6 +41,37 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   assert.equal(await page.locator('.tab-btn[data-tab="tab-canvas"]').evaluate(el=>el.classList.contains('active')),true);
   assert.equal(await page.evaluate(()=>window.__renders),1);
   assert.equal(await page.locator('#asm-trace-root g[data-trace-index]').count(),3000);
+  await page.waitForFunction(()=>document.querySelector('#asm-trace-root [data-asm-lod="overview"]'));
+  const geometryBefore=await page.evaluate(()=>[...document.querySelectorAll('#asm-trace-root g[data-trace-index]')].map(el=>({key:el.dataset.traceObjectKey,bounds:ASMTraceRenderers.currentPlacement(el.dataset.traceObjectKey,false)})));
+  assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),0);
+  assert.ok(await page.locator('#asm-trace-root [data-asm-lod-batch]').count()>0);
+  await page.evaluate(()=>{
+    const cell=document.querySelector('#asm-trace-root g[data-trace-index*=","]');
+    const rect=cell.querySelector(':scope > rect');
+    const box=rect.getBBox();
+    const point=new DOMPoint(box.x+box.width/2,box.y+box.height/2)
+      .matrixTransform(rect.getScreenCTM()).matrixTransform(getViewport().getScreenCTM().inverse());
+    window.__lodCameraPoint=point;
+    setCamera(point.x,point.y,1,false);
+  });
+  await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='full'));
+  assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),3000);
+  assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').evaluateAll(nodes=>nodes.every(node=>node.textContent==='0')),true);
+  // Screenshot evidence stays local; no test-results files are committed.
+  if (process.env.ASM_LOD_SCREENSHOTS === '1') {
+    await page.screenshot({path:path.join(root,'test-results/culling-profile/lod-full.png')});
+  }
+  assert.equal(await page.locator('#asm-trace-root [data-asm-lod-batch]').count(),0);
+  const geometryAfter=await page.evaluate(()=>[...document.querySelectorAll('#asm-trace-root g[data-trace-index]')].map(el=>({key:el.dataset.traceObjectKey,bounds:ASMTraceRenderers.currentPlacement(el.dataset.traceObjectKey,false)})));
+  assert.deepEqual(geometryAfter,geometryBefore,'LOD does not move any cell anchor');
+  await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.4,false));
+  await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='simple'));
+  assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),0);
+  await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.1,false));
+  await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='overview'));
+  if (process.env.ASM_LOD_SCREENSHOTS === '1') {
+    await page.screenshot({path:path.join(root,'test-results/culling-profile/lod-overview.png')});
+  }
   const entry=await page.evaluate(()=>{const t=performance.now();ASMTraceStudio.open();return performance.now()-t;});
   await page.waitForFunction(()=>document.querySelector('[data-trace-scene-reused="true"]'));
   assert.equal(await page.evaluate(()=>window.__renders),1,'Studio reuses stable scene');
@@ -63,6 +94,21 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   await page.waitForTimeout(200);
   assert.equal(await page.evaluate(()=>ASMTracePlayer.getDocument().studio.eventSettings.autoFixedEnabled),false);
   assert.equal(await page.evaluate(()=>ASMTracePlayer.getDocument().studio.eventSettings.autoLoopBoundaryEnabled),false);
+  await page.evaluate(()=>{
+    const doc=ASMTracePlayer.getDocument(),frame=doc.frames[0];
+    const variable=Object.entries(doc.variables).find(([,value])=>value.kind==='matrix')[0];
+    frame.styles.push({id:'lod-highlight',targetVariableId:variable,
+      selector:{type:'matrix-cell',rowExpression:'0',columnExpression:'0'},styleType:'highlight',color:'red'});
+    return ASMTracePlayer.renderStable(0);
+  });
+  await page.waitForFunction(()=>document.querySelector('#asm-trace-root [data-trace-attachment-kind="highlight"]'));
+  const preservedHint=await page.locator('#asm-trace-root [data-trace-attachment-kind="highlight"]').first().evaluate(el=>({
+    color:el.getAttribute('stroke'),rectSuppressed:el.hasAttribute('data-asm-lod-rect'),
+    batch:!!el.closest('[data-asm-lod-batch]')
+  }));
+  assert.equal(preservedHint.rectSuppressed,false);
+  assert.equal(preservedHint.batch,false);
+  assert.equal(preservedHint.color,'red');
   // Hidden objects require a fresh editing scene, and thumbnails retain the
   // existing renderer fallback and its editing ghost visibility.
   await page.evaluate(()=>{

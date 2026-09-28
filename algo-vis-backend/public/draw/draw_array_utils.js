@@ -31,6 +31,18 @@
   // 區段：SVG 字級量測
   // ---------------------------------------------------------------------------
   const fitTextCache = new Map();
+  const fitTextBatches = new WeakMap();
+  window.withSvgTextFitStyle = (group, callback) => {
+    const previous = fitTextBatches.get(group);
+    // Snapshot once before drawing writes; CSSStyleDeclaration itself is live.
+    const style = getComputedStyle(group);
+    const snapshot = Object.fromEntries(['fontFamily','fontWeight','fontStyle',
+      'fontStretch','letterSpacing','wordSpacing','fontVariant','fontFeatureSettings',
+      'fontVariationSettings','textTransform'].map(key => [key, style[key]]));
+    fitTextBatches.set(group, snapshot);
+    try { return callback(); }
+    finally { if (previous) fitTextBatches.set(group, previous); else fitTextBatches.delete(group); }
+  };
   const clearFitTextCache = () => fitTextCache.clear();
   document.fonts?.addEventListener?.('loadingdone', clearFitTextCache);
   document.fonts?.addEventListener?.('loadingerror', clearFitTextCache);
@@ -45,7 +57,7 @@
     } = opts;
 
     // Include inherited typography; do not share results across different fonts.
-    const inherited = getComputedStyle(g);
+    const inherited = fitTextBatches.get(g) || getComputedStyle(g);
     const resolvedFamily = family === 'inherit' ? inherited.fontFamily : family;
     const resolvedWeight = fontWeight === 'inherit' ? inherited.fontWeight : fontWeight;
     const cacheKey = JSON.stringify([String(textContent), maxWidth, maxHeight,
