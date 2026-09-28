@@ -146,6 +146,8 @@ test('until return arrows follow active recursive ancestors and disappear on unw
   const document = { frames: [parent, child, grandchild, returned] };
   const childTrail = window.ASMTraceModel.returnTrailArrows(document, child);
   assert.equal(childTrail.length, 1);
+  assert.equal(childTrail[0].id, parent.arrows[0].id);
+  assert.equal(childTrail[0].explicitId, false);
   assert.deepEqual(childTrail[0].from.indexExpressions, ['5', '4']);
   assert.deepEqual(childTrail[0].to.indexExpressions, ['4', '4']);
   const fullTrail = window.ASMTraceModel.returnTrailArrows(document, grandchild);

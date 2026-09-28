@@ -1548,7 +1548,14 @@
       if (!geometry) return;
       const activation = String(arrow.trailActivationId
         || frame.source?.recursionActivationId || frame.source?.function || '');
-      const runtimeId = arrow.source === 'directive' && arrow.explicitId === false && activation
+      const recursiveLifetime = arrow.source === 'directive'
+        && (arrow.until === 'return' || Boolean(arrow.trailActivationId));
+      // Implicit IDs are stable hashes of the authored arrow state. Reuse
+      // them across recursive frames so unchanged arrows keep their DOM
+      // identity automatically. Only activation-owned lifetimes need a
+      // recursive suffix to keep simultaneous DFS paths distinct.
+      const runtimeId = arrow.source === 'directive'
+        && recursiveLifetime && activation
         ? `${arrow.id}@${activation}` : arrow.id;
       const key = arrow.source === 'studio'
         ? `arrow:${arrow.id}`
@@ -1563,8 +1570,9 @@
         'data-trace-arrow-runtime-id': runtimeId,
         'data-trace-arrow-name': arrow.displayName || arrow.id,
         'data-trace-arrow-identity': JSON.stringify({ id: arrow.id, source: arrow.source,
-          explicitId: arrow.explicitId ?? (arrow.source === 'studio' ? true : undefined),
-          scope: arrow.source === 'directive' ? activation : '',
+          explicitId: recursiveLifetime ? false
+            : arrow.explicitId ?? (arrow.source === 'studio' ? true : undefined),
+          scope: arrow.source === 'directive' && recursiveLifetime ? activation : '',
           fromObject: arrow.from.variableId || arrow.from.objectKey || arrow.from.targetName,
           toObject: arrow.to.variableId || arrow.to.objectKey || arrow.to.targetName,
           line: arrow.style.line, headStart: arrow.style.headStart, headEnd: arrow.style.headEnd }),
@@ -4346,8 +4354,12 @@
       batch => window.ASMTraceModel.loopSamples(document, frame, batch)));
     const ids = new Set();
     expanded.forEach(arrow => {
-      if (ids.has(arrow.id)) throw new Error(`本幀 @arrow 展開後 ID 重複：${arrow.id}`);
-      ids.add(arrow.id);
+      const recursiveLifetime = arrow.until === 'return' || Boolean(arrow.trailActivationId);
+      const activation = String(arrow.trailActivationId
+        || frame.source?.recursionActivationId || frame.source?.function || '');
+      const runtimeId = recursiveLifetime && activation ? `${arrow.id}@${activation}` : arrow.id;
+      if (ids.has(runtimeId)) throw new Error(`本幀 @arrow 展開後 ID 重複：${runtimeId}`);
+      ids.add(runtimeId);
     });
     renderArrowModels(rootSvg, root, document, frame, placements, elements,
       expanded.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
@@ -5227,9 +5239,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-218';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-219';
   window.ASMTraceRenderers = {
-    build: 'trace-218', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-219', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

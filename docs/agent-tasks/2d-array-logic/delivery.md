@@ -145,3 +145,45 @@
 
 - `until` 為新的選用指令欄位；未使用的舊 `@arrow`、Studio arrow 與已儲存投影片保持原行為。
 - `.asmdeck` 儲存格式未新增欄位，指令仍保存在 `animation.code`；新檔已完成雜湊驗證、解壓、重新編譯與重開所需的重建資料核對。
+
+## 2026-09-28 LCS 回溯順序與教學文字
+
+- DFS 由右下往左上回溯時，改用 `S[x-1] + now` 將命中字元加在已累積字串前方，避免直接輸出顯倒的回溯順序。以 `abcde` 與 `ace` 專項驗證結果為 `ace`。
+- 每個 DFS 動畫幀的上方文字均顯示「目前累積字串」；命中字元的幀會顯示加入後的新字串，終點顯示完整 LCS。
+- 建表文字簡化為「字元相同，從左上取值加一」與「字元不相同，從左或上拿最大的過來」。
+- 拆出 `lcs_answers` preset；建表幀只畫 `LCS` matrix，進入 DFS 後才顯示 `ans`。
+- 新輸出 `LCS 完整版 - 回溯順序修正.asmdeck`，保留 15 頁原版面與兩段動畫。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（preset／text／frame）、J（投影片動畫重建與播放）。
+- `lcs-sample.test.js` 3/3 通過：包含非對稱字串順序、建表隱藏 `ans`、新文字與原 LCS 結果。
+- `lcs-sample.browser.test.js` 2/2 通過：真實 SVG 確認建表幀無 `ans`，DFS 終點文字顯示「ace」，路徑箭頭退回時仍正確移除。
+- 投影片檔雜湊核對通過；第 9 頁建表動畫 82 幀、第 12 頁以 `abcde` / `ace` 重建 8 幀，結果 `ace`，建表幀未生成 `ans` renderer options。
+- Beta 3102 已從本 worktree 重啟為 PID `1760`，`algorithm.html` HTTP 200。
+- 未執行完整 regression；只修改 LCS 範例與投影片內容，依 V2 採直接相關專項。
+
+### 舊有物件相容性
+
+- 本次未修改指令格式或持久化 schema；舊投影片與舊 `@frame`、`@text`、`@object` 繼續沿用原行為。
+
+## 2026-09-28 LCS 回溯箭頭穩定與不透明綠色
+
+- 閃爍原因是 renderer 原先替所有未命名 directive arrow 加上目前遞迴 activation；每次進入子遞迴後，即使箭頭內容完全相同，DOM 身分仍改變，frame tween 因而把整批箭頭視為新物件並重播入場。
+- 未命名的一般箭頭現在沿用由完整指令狀態產生的穩定 ID；跨遞迴幀若箭頭未改變會自動保留同一身分，不要求使用者額外寫 `as "id"`。
+- `until return` 箭頭仍以建立它的 activation 區分，讓多層 DFS 路徑能同時存在；目前箭頭轉為子幀 trail 時沿用同一 runtime ID，不會在交接瞬間重新入場。
+- LCS 五種 DFS 下降箭頭改用 `AV_green!`，實際 SVG stroke 為不透明 `#a5d6a7`。
+- 新輸出 `LCS 完整版 - 回溯箭頭修正.asmdeck`；15 頁、兩段動畫共 10 個不透明回溯箭頭，內容雜湊核對通過。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（arrow identity）、G（遞迴 activation／return trail）、J（frame tween 與回溯播放）。
+- 語法與單元：`arrow-identity.test.js`、`arrow-directives.test.js`、`entrypoints.test.js` 相關檢查通過。
+- 編譯與範例：`lcs-sample.test.js` 3/3；二維箭頭五個 compile/render 專項 5/5 通過。
+- 真實瀏覽器：`lcs-sample.browser.test.js` 2/2 通過；確認相鄰遞迴幀的既有箭頭 object key 全部延續、最深路徑會隨 return 移除，且所有 DFS path stroke 均為 `#a5d6a7`。
+- 未執行完整 regression；依 V2 分級只執行直接相關的 parser／model／SVG／播放專項。
+- Beta 3102 已從本 worktree 重啟為 PID `39444`；`algorithm.html` HTTP 200，載入 `trace-model.js?v=trace-37` 與 `trace-renderer.js?v=trace-219`。
+
+### 舊有物件相容性
+
+- 未新增持久化欄位或變更 `.asmdeck` schema。舊的明確 `as "id"` 箭頭仍優先使用其指定身分；未命名箭頭只改善跨幀自動配對，既有顏色、端點與生命週期語意不變。

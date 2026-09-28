@@ -111,7 +111,8 @@ test('LCS matching labels stay green while +1 replaces the old target value', { 
         build: window.ASMTraceFrameTween.build,
         rowFill,
         columnFill,
-        assignment: frame.events.find(event => event.line === 113 && event.type === 'assign'),
+        answerRendered: Boolean(document.querySelector(`[data-trace-object-key="${byName.ans}"]`)),
+        assignment: frame.events.find(event => event.type === 'assign' && event.binaryOperation === '+'),
         transferSamples: [...transferSamples],
         transferRectSeen,
         targetFills: [...targetFills],
@@ -126,6 +127,7 @@ test('LCS matching labels stay green while +1 replaces the old target value', { 
     assert.equal(result.build, 'trace-238');
     assert.equal(result.rowFill, '#a5d6a7');
     assert.equal(result.columnFill, '#a5d6a7');
+    assert.equal(result.answerRendered, false, 'the build-table frame must not render ans');
     assert.equal(result.assignment.binaryOperation, '+');
     assert.deepEqual(result.assignment.targets.slice(1).map(target => ({
       resolvedIndices: target.resolvedIndices,
@@ -153,7 +155,7 @@ test('LCS DFS draws the active path and removes returned edges', { timeout: 6000
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const code = fs.readFileSync(path.join(__dirname, '../algorithm_sample/DP/LCS.cpp'), 'utf8');
-  const input = fs.readFileSync(path.join(__dirname, '../algorithm_sample/DP/LCS-sample_input.txt'), 'utf8');
+  const input = 'abcde\nace\n';
   const browser = await chromium.launch({
     headless: true,
     ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
@@ -177,23 +179,55 @@ test('LCS DFS draws the active path and removes returned edges', { timeout: 6000
         (right.source.recursionAncestorActivationIds?.length || 0)
         - (left.source.recursionAncestorActivationIds?.length || 0))[0];
       const deepestIndex = trace.frames.indexOf(deepest);
-      const returned = trace.frames.slice(deepestIndex + 1).find(frame => frame.source?.function === 'dfs'
-        && (frame.source.recursionAncestorActivationIds?.length || 0)
+      const returned = trace.frames.slice(deepestIndex + 1).find(frame =>
+        (frame.source?.recursionAncestorActivationIds?.length || 0)
           < (deepest.source.recursionAncestorActivationIds?.length || 0));
-      const renderAndCount = async frame => {
+      const renderAndInspect = async frame => {
         await window.ASMTraceRenderers.renderFrame(trace, frame, null, {
           animatePositions: false, animateEvents: false
         });
-        return document.querySelectorAll('[data-trace-arrow-runtime-id*="@return:"]').length;
+        return {
+          count: document.querySelectorAll('[data-trace-arrow-runtime-id*="@activation-"]').length,
+          text: [...document.querySelectorAll('.asm-trace-text-object')]
+            .map(node => node.textContent).join('')
+        };
       };
+      const sourceIndex = trace.frames.findIndex((frame, index) => {
+        const activation = frame.source?.recursionActivationId;
+        return frame.arrows?.some(arrow => arrow.until === 'return')
+          && trace.frames[index + 1]?.source?.recursionAncestorActivationIds?.includes(activation);
+      });
+      const sourceFrame = trace.frames[sourceIndex], childFrame = trace.frames[sourceIndex + 1];
+      await window.ASMTraceRenderers.renderFrame(trace, sourceFrame, null, {
+        animatePositions: false, animateEvents: false
+      });
+      const sourceKeys = [...document.querySelectorAll('[data-trace-arrow-source="directive"]')]
+        .map(node => node.dataset.traceObjectKey).filter(Boolean);
+      await window.ASMTraceRenderers.renderFrame(trace, childFrame, sourceFrame, {
+        animatePositions: false, animateEvents: false
+      });
+      const childArrows = [...document.querySelectorAll('[data-trace-arrow-source="directive"]')];
+      const childKeys = new Set(childArrows.map(node => node.dataset.traceObjectKey).filter(Boolean));
+      const pathColors = childArrows.filter(node =>
+        node.dataset.traceArrowRuntimeId?.includes('@activation-'))
+        .map(node => node.getAttribute('stroke'));
+      const deepestView = await renderAndInspect(deepest);
+      const returnedView = await renderAndInspect(returned);
       return {
         expectedDeepest: deepest.source.recursionAncestorActivationIds.length,
-        deepestCount: await renderAndCount(deepest),
-        returnedCount: await renderAndCount(returned)
+        deepestCount: deepestView.count,
+        deepestText: deepestView.text,
+        returnedCount: returnedView.count,
+        missingContinuingKeys: sourceKeys.filter(key => !childKeys.has(key)),
+        pathColors
       };
     }, { code, input });
     assert.equal(result.deepestCount, result.expectedDeepest, JSON.stringify(result));
+    assert.match(result.deepestText, /目前累積字串就是 LCS：「ace」/, JSON.stringify(result));
     assert.ok(result.returnedCount < result.deepestCount, JSON.stringify(result));
+    assert.deepEqual(result.missingContinuingKeys, [], JSON.stringify(result));
+    assert.ok(result.pathColors.length >= 2, JSON.stringify(result));
+    assert.ok(result.pathColors.every(color => color === '#a5d6a7'), JSON.stringify(result));
   } finally {
     await browser.close();
   }
