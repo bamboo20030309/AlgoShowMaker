@@ -38,6 +38,13 @@ function isPrintfCallee(value) {
   return /^(?:::)?(?:std::)?printf$/.test(String(value || '').replace(/\s+/g, ''));
 }
 
+function isTypeConstructionCallee(node, value) {
+  if (['PrimitiveType', 'TypeIdentifier', 'TemplateType'].includes(node?.name)) return true;
+  const compact = String(value || '').replace(/\s+/g, '');
+  return /^(?:::)?(?:std::)?(?:array|basic_string|bitset|deque|forward_list|list|map|multimap|optional|pair|priority_queue|queue|set|stack|string|tuple|unordered_map|unordered_multimap|unordered_multiset|unordered_set|variant|vector)(?:<|$)/
+    .test(compact);
+}
+
 function isOutputStreamStatement(value) {
   return /(?:^|[^A-Za-z0-9_:])(?:(?:std\s*::\s*)?(?:cout|cerr|clog|wcout|wcerr|wclog))\s*<</
     .test(String(value || ''));
@@ -4912,7 +4919,7 @@ ${loop}
       const mutationVariable = analysis.variables.find(variable => (
         variable.id === mutationTarget?.variableId
       ));
-      if (suppressEvents) {
+      if (suppressEvents || isTypeConstructionCallee(calleeNode, callee)) {
         rendered = expression;
       } else if (isPrintfCallee(callee)) {
         rendered = `::asm_trace::event_output_invoke(${analysis.lineAt(node.from)}, ${cppString(signature('output', node))}, "printf", ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&]()->decltype(auto){ return (${expression}); })`;

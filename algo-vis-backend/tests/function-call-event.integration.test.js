@@ -46,6 +46,32 @@ int main() {
   assert.equal(timeline().length, 0);
 });
 
+test('container constructors stay inside declaration assignment without a separate call event', async () => {
+  const { trace } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int makeValue() { return 4; }
+int main() {
+  int n=7,m=6;
+  vector<vector<int>> dp(n,vector<int>(m,0));
+  int value=makeValue();
+  // @frame dp, value
+}`);
+  const events = trace.frames.flatMap(frame => frame.events || []);
+  const dpEvents = events.filter(event => (
+    ['declare', 'assign'].includes(event.type)
+    && event.targets?.[0]?.expression === 'dp'
+  ));
+  assert.deepEqual(Array.from(dpEvents, event => [event.type, event.source?.text]), [
+    ['declare', 'vector<vector<int>> dp'],
+    ['assign', 'dp(n,vector<int>(m,0))']
+  ]);
+  assert.equal(events.some(event => (
+    event.type === 'call' && /vector\s*<\s*int\s*>/.test(event.callee || '')
+  )), false, 'a value constructor is part of the initializer rather than a function-call event');
+  assert.equal(events.some(event => event.type === 'call' && event.callee === 'makeValue'), true,
+    'ordinary function calls used by another initializer remain observable');
+});
+
 test('a recursive call event stays paired with its invocation and activation', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
