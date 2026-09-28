@@ -24,6 +24,8 @@
   let pendingThumbnails = [];
   const THUMBNAIL_CACHE_LIMIT = 24;
   const thumbnailCache = new Map();
+  const RAIL_ROW_HEIGHT = 174;
+  const RAIL_ROW_PITCH = RAIL_ROW_HEIGHT + 5;
   let rail;
   let timeline;
   let inspector;
@@ -331,6 +333,7 @@
     ensureStudioData();
     setPlayerRules(trace.rules);
     renderRail();
+    revealCurrentFrameInRail();
     renderTimeline();
     renderEffects();
     renderSelection();
@@ -2284,6 +2287,7 @@
     const list = rail.querySelector('.trace-studio-frame-list');
     if (!list) return;
     cancelThumbnailRendering();
+    mountVisibleRailCards(list);
     const viewportRect = list.getBoundingClientRect();
     const viewportCenter = (viewportRect.top + viewportRect.bottom) / 2;
     const jobs = [];
@@ -2367,14 +2371,7 @@
     scheduleThumbnailRendering();
   }
 
-  function renderRail() {
-    cancelThumbnailCulling();
-    cancelThumbnailRendering();
-    clearThumbnailCache();
-    const list = rail.querySelector('.trace-studio-frame-list');
-    const scrollTop = list.scrollTop;
-    list.replaceChildren();
-    trace.frames.forEach((frame, index) => {
+  function createRailCard(frame, index) {
       const button = el('button', 'trace-studio-frame');
       button.type = 'button';
       button.dataset.frameId = frame.id;
@@ -2396,9 +2393,55 @@
       const preview = thumbnailPlaceholder();
       button.append(header, source, preview);
       button.addEventListener('click', event => selectFrame(index, event));
-      list.append(button);
+      button.style.height = `${RAIL_ROW_HEIGHT}px`;
+      button.style.boxSizing = 'border-box';
+      button.classList.toggle('is-selected', selectedFrames.has(frame.id));
+      button.classList.toggle('is-current', index === currentIndex);
+      return button;
+  }
+
+  function mountVisibleRailCards(list) {
+    const top = list.querySelector('[data-spacer="top"]');
+    const bottom = list.querySelector('[data-spacer="bottom"]');
+    if (!top || !bottom || list.clientHeight <= 0) return;
+    const start = Math.max(0, Math.floor(Math.max(0, list.scrollTop - 6) / RAIL_ROW_PITCH) - 1);
+    const end = Math.min(trace.frames.length,
+      Math.ceil((list.scrollTop + list.clientHeight - 6) / RAIL_ROW_PITCH) + 1);
+    const mounted = new Map();
+    list.querySelectorAll('.trace-studio-frame').forEach(button => {
+      const index = Number(button.dataset.frameIndex);
+      if (index < start || index >= end) {
+        const preview = button.querySelector('[data-thumbnail-rendered="true"]');
+        if (preview) cacheThumbnail(button.dataset.frameId, preview);
+        button.remove();
+      } else mounted.set(index, button);
     });
+    top.style.height = `${start * RAIL_ROW_PITCH}px`;
+    bottom.style.height = `${(trace.frames.length - end) * RAIL_ROW_PITCH}px`;
+    for (let index = start; index < end; index += 1) {
+      if (mounted.has(index)) continue;
+      const button = createRailCard(trace.frames[index], index);
+      const following = [...list.querySelectorAll('.trace-studio-frame')]
+        .find(item => Number(item.dataset.frameIndex) > index);
+      list.insertBefore(button, following || bottom);
+    }
+  }
+
+  function renderRail() {
+    cancelThumbnailCulling();
+    cancelThumbnailRendering();
+    clearThumbnailCache();
+    const list = rail.querySelector('.trace-studio-frame-list');
+    const scrollTop = list.scrollTop;
+    list.replaceChildren();
+    const top = el('div', 'trace-studio-rail-spacer');
+    top.dataset.spacer = 'top';
+    const bottom = el('div', 'trace-studio-rail-spacer');
+    bottom.dataset.spacer = 'bottom';
+    bottom.style.height = `${trace.frames.length * RAIL_ROW_PITCH}px`;
+    list.append(top, bottom);
     list.scrollTop = scrollTop;
+    mountVisibleRailCards(list);
     scheduleThumbnailCulling();
   }
 
@@ -2426,13 +2469,12 @@
   function revealCurrentFrameInRail() {
     if (!rail || !trace) return;
     const list = rail.querySelector('.trace-studio-frame-list');
-    const current = list?.querySelector(`.trace-studio-frame[data-frame-index="${currentIndex}"]`);
-    if (!list || !current) return;
-    const listRect = list.getBoundingClientRect();
-    const currentRect = current.getBoundingClientRect();
-    if (currentRect.top < listRect.top || currentRect.bottom > listRect.bottom) {
-      current.scrollIntoView({ block: 'nearest' });
-    }
+    if (!list) return;
+    const top = 6 + currentIndex * RAIL_ROW_PITCH;
+    const bottom = top + RAIL_ROW_HEIGHT;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+    mountVisibleRailCards(list);
     scheduleThumbnailCulling();
   }
 
@@ -3795,7 +3837,6 @@
     const canvasTab = document.querySelector('.tab-btn[data-tab="tab-canvas"]');
     if (canvasTab && !canvasTab.classList.contains('active')) canvasTab.click();
     ensureStudioData();
-    window.ASMTraceRenderers?.preflightEventAvailability?.(trace);
     buildUi();
     document.body.classList.add('asm-trace-studio-open');
     if (historyTrace !== trace) resetHistory();
@@ -3812,6 +3853,7 @@
     selectionAnchor = currentIndex;
     refreshVariableOptions();
     renderRail();
+    revealCurrentFrameInRail();
     renderTimeline();
     renderEffects();
     renderSelection();
@@ -3901,6 +3943,7 @@
     if (!document.body.classList.contains('asm-trace-studio-open')) return;
     const next = Math.max(0, Math.min(trace.frames.length - 1, Number(event.detail.index) || 0));
     currentIndex = next;
+    window.ASMTraceRenderers?.preflightEventAvailability?.(trace, { frameIndex: next });
     if (textObjectKey(activeObjectKey) && !textSelectionExists(activeObjectKey)) {
       setActiveObjectKey('');
       activeBinding = null;
