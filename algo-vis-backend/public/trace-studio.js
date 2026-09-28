@@ -470,6 +470,11 @@
       && (trace?.studio?.objects || []).some(object => String(object?.id || '') === requestedObjectKey)
       ? `studio:${requestedObjectKey}`
       : requestedObjectKey;
+    const explicitSourceAnchor = String(binding.sourceAnchor || '').trim();
+    const inferredSourceAnchor = [
+      String(binding.anchor || '').includes('top') ? 'bottom' : String(binding.anchor || '').includes('bottom') ? 'top' : '',
+      String(binding.anchor || '').includes('left') ? 'right' : String(binding.anchor || '').includes('right') ? 'left' : ''
+    ].filter(Boolean).join('-') || 'center';
     return {
       semanticText: Boolean(descriptor),
       semanticDirective: Boolean(objectBinding),
@@ -478,17 +483,14 @@
         ? '$canvas'
         : `${binding.targetVariableId || objectTargetKey}${resolvedIndex ? `#${resolvedIndex}` : ''}`,
       sourceAnchor: objectBinding
-        ? ([
-          String(binding.anchor || '').includes('top') ? 'bottom' : String(binding.anchor || '').includes('bottom') ? 'top' : '',
-          String(binding.anchor || '').includes('left') ? 'right' : String(binding.anchor || '').includes('right') ? 'left' : ''
-        ].filter(Boolean).join('-') || 'center')
+        ? (explicitSourceAnchor || inferredSourceAnchor)
         : 'center',
       targetAnchor: binding.anchor || 'center',
       targetExpression: binding.targetExpression,
-      dx: (objectBinding
+      dx: (objectBinding && !explicitSourceAnchor
         ? (String(binding.anchor || '').includes('left') ? -8 : String(binding.anchor || '').includes('right') ? 8 : 0)
         : 0) + (Number(binding.offsetX) || 0),
-      dy: (objectBinding
+      dy: (objectBinding && !explicitSourceAnchor
         ? (String(binding.anchor || '').includes('top') ? -8 : String(binding.anchor || '').includes('bottom') ? 8 : 0)
         : 0) + (Number(binding.offsetY) || 0),
       mode: 'relative'
