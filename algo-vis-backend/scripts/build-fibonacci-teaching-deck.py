@@ -308,7 +308,8 @@ add(s,
 slides.append(s)
 
 # 10 — Native recursion animation
-source = SOURCE.read_text(encoding="utf-8")
+with SOURCE.open("r", encoding="utf-8", newline="") as source_file:
+    source = source_file.read()
 slides.append({
     "id": uid(), "kind": "algorithm-animation", "ttsScript": "", "ttsOrder": [],
     "canvas": {"objects": []}, "widgets": [],
@@ -350,7 +351,7 @@ js_hash = subprocess.run(
 ).stdout.strip()
 manifest = {
     "format": "AlgoShowMaker.asmdeck", "packageVersion": 1,
-    "engineVersion": "8/1", "exportedAt": datetime.now(timezone.utc).isoformat(),
+    "engineVersion": "10/1", "exportedAt": datetime.now(timezone.utc).isoformat(),
     "contentHash": js_hash, "assetHashes": []
 }
 payload = {"manifest": manifest, "body": body}

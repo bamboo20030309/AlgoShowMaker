@@ -427,3 +427,21 @@
 ### 舊有物件相容性
 
 - 本次只新增範例檔、產生器、專項測試與訪客範例索引，沒有修改既有投影片儲存格式或動畫欄位；舊投影片與既有自訂值不需要遷移。
+
+## 2026-09-28：同步最新 intergration
+
+- 先以 `da9cb72` 保存 Fibonacci 教學投影片，再取得並合併 `origin/intergration` 的最新提交 `b89c10a`（`fix: use modal for deck deletion`）；合併提交為 `4ec7f1e`，沒有內容衝突。
+- 統合分支將追蹤引擎更新為 `10/1`，並替 Fibonacci 範例加入檔案說明；已把投影片產生器的 engine version 更新為 `10/1`，保留來源檔原始 CRLF，重新產生 deck，確保內嵌程式碼與目前範例逐位元一致。
+- 修正統合分支既有 `entrypoints.test.js` 仍尋找舊 `home.js?v=header-examples-9` 的問題，使斷言對齊實際入口 `home.js?v=delete-dialog-10`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：D（動畫設定還原）、I（遞迴程式碼呈現）、入口依賴順序。
+- `fibonacci-teaching-deck.browser.test.js`：1/1 通過；10 頁與動畫重建 1/1，內嵌來源、輸入與教學內容均正確。
+- 在獨立 3196 測試服務執行 `fibonacci-recursion-sample.test.js`、`fibonacci-recursion-display.browser.test.js`、`entrypoints.test.js`：3/3 通過，無 skip。
+- `git diff --check` 通過，只有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已由合併後 worktree 重啟為 PID `39312`；正式預覽載入 10 頁、動畫重建 1/1，無瀏覽器錯誤。
+
+### 舊有物件相容性
+
+- 同步未新增持久化欄位；Fibonacci deck 依目前 `10/1` 引擎重新封裝，既有 deck 仍由 asmdeck 的同格式相容規則載入，不需資料遷移。
