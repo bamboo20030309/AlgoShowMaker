@@ -93,3 +93,11 @@
 - 使用者要求幀條、幀數、時間與語速控制整組靠右。
 - 幀條取消填滿剩餘空間，左側使用自動間距；延續 180px 基準／220px 上限，右側資訊與語速控制依既有順序靠齊。
 - 驗證：node --test tests/playback-time.browser.test.js tests/entrypoints.test.js，2 passed、0 failed；git diff --check 通過。純 CSS 版面修正，無資料格式變更，未跑大型驗證。
+
+
+## 幀條提示遮蓋修正
+- 提示原先位於畫布容器內，局部 z-index 無法跨越祖先的裁切／顯示層。
+- 改放在 body 上的 fixed 浮層，z-index 10000；依幀條位置計算座標，上方不足則顯示下方，水平限制在視窗內。
+- 滾動、視窗縮放及游標離開時隱藏提示，避免殘留。
+- 驗證：語法與差異檢查；playback-time.browser.test.js 及 entrypoints.test.js 共 2 個案例通過，包含浮層脫離裁切容器、位於視窗範圍、hover 與拖曳操作。
+- V1 局部修正，無儲存格式變更，未執行大型 regression。

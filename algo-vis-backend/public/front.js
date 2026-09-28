@@ -819,10 +819,17 @@ function buildFrameBars() {
       const targetIdx = frameAtPointer(e);
       if (targetIdx < 0) return;
       const preview = document.getElementById('frameHoverPreview');
-      timeline.style.setProperty('--frame-hover-position', `${((targetIdx + 0.5) / totalFrames) * 100}%`);
+
       if (preview) {
         preview.textContent = `第 ${targetIdx + 1} / ${totalFrames} 幀`;
+        if (preview.parentElement !== document.body) document.body.appendChild(preview);
         preview.hidden = false;
+        const rect = timeline.getBoundingClientRect();
+        const box = preview.getBoundingClientRect();
+        const center = rect.left + ((targetIdx + 0.5) / totalFrames) * rect.width;
+        preview.style.left = `${Math.max(8, Math.min(center - box.width / 2, window.innerWidth - box.width - 8))}px`;
+        const above = rect.top - box.height - 6;
+        preview.style.top = `${above >= 8 ? above : rect.bottom + 6}px`;
       }
     };
 
@@ -852,6 +859,8 @@ function buildFrameBars() {
       isDraggingTimeline = false;
       timeline.releasePointerCapture(e.pointerId);
     });
+    window.addEventListener('resize', hidePreview);
+    window.addEventListener('scroll', hidePreview, true);
     timeline.addEventListener('pointerenter', showPreview);
     timeline.addEventListener('pointerleave', () => {
       hidePreview();

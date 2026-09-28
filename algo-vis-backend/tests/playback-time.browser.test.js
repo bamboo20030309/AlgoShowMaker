@@ -92,6 +92,16 @@ test('playback clock estimates total time, follows rate, and restarts the curren
     await page.locator('#frameTimeline').hover({ position: { x: 20, y: 15 } });
     await assert.doesNotReject(() => page.locator('#frameHoverPreview').waitFor({ state: 'visible' }));
     assert.equal(await page.locator('#frameHoverPreview').textContent(), '第 1 / 2 幀');
+    const previewPlacement = await page.locator('#frameHoverPreview').evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return {
+        outsideClippedPanel: element.parentElement === document.body,
+        inViewport: rect.top >= 0 && rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+        position: getComputedStyle(element).position
+      };
+    });
+    assert.deepEqual(previewPlacement, { outsideClippedPanel: true, inViewport: true, position: 'fixed' });
+
     const timeColors = await clock.evaluate(element => ({
       current: getComputedStyle(element.querySelector('.playback-time-current')).color,
       total: getComputedStyle(element.querySelector('.playback-time-total')).color
