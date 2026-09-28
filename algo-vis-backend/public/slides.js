@@ -9303,7 +9303,10 @@
     frame.contentWindow.postMessage({
       type: 'asm-runtime-visibility',
       visible: visible === true,
-      presentationMode: !document.body.classList.contains('asm-edit-mode'),
+      // The embedded runtime is the slide's presentation surface even while
+      // the outer slide editor sidebar is visible. Only asmEmbed=editor is the
+      // algorithm-animation editor and must stay independent of this camera.
+      presentationMode: true,
       cameraEditable: sharedAccess !== 'view'
     }, window.location.origin);
   }
@@ -9394,8 +9397,7 @@
       const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
         .find(frame => frame.contentWindow === event.source);
       const slide = runtimeFrame ? getSlideById(runtimeFrame.dataset.slideId) : null;
-      if (!slide || slide.kind !== 'algorithm-animation' || sharedAccess === 'view'
-        || document.body.classList.contains('asm-edit-mode')) return;
+      if (!slide || slide.kind !== 'algorithm-animation' || sharedAccess === 'view') return;
       const presentationCamera = window.ASMAlgorithmAnimation
         ?.normalizePresentationCamera?.(event.data.presentationCamera);
       slide.animation = normalizeAlgorithmAnimation({ ...slide.animation, presentationCamera });

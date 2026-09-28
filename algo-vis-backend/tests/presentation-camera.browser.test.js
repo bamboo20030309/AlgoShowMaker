@@ -67,16 +67,20 @@ test('presentation canvas gestures save one slide-wide camera without changing e
       ?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
     const runtime = page.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
     assert.ok(runtime);
-    await page.click('#modeToggleBtn');
     await runtime.waitForFunction(() => window.getPresentationCameraTransform
       && document.body.classList.contains('asm-embed-runtime'));
+
+    assert.equal(await page.locator('body').evaluate(body => body.classList.contains('asm-edit-mode')), true,
+      'the outer slide editor may remain open while its embedded runtime saves the presentation camera');
 
     const beforeRevision = Number(await page.locator('body').getAttribute('data-local-deck-revision') || 0);
     const canvas = runtime.locator('#arraySvg');
     const box = await canvas.boundingBox();
-    await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.55);
+    // Use an empty grid corner: trace objects intentionally retain their own
+    // click/drag interactions while the surrounding canvas controls the view.
+    await page.mouse.move(box.x + box.width * 0.08, box.y + box.height * 0.85);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.55 + 72, box.y + box.height * 0.55 + 36);
+    await page.mouse.move(box.x + box.width * 0.08 + 72, box.y + box.height * 0.85 + 36);
     await page.mouse.up();
     await page.waitForFunction(revision => Number(document.body.dataset.localDeckRevision || 0) > revision,
       beforeRevision);
@@ -114,13 +118,11 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     assert.notEqual(acrossFrames.editBase, acrossFrames.withPresentation);
 
     await page.click('#modeToggleBtn');
-    await runtime.waitForFunction(() => {
+    await runtime.waitForFunction(expected => {
       const camera = window.getPresentationCameraTransform?.();
-      return camera && camera.panXRatio === 0 && camera.panYRatio === 0 && camera.zoomFactor === 1;
-    });
-    const editTransform = await runtime.locator('#viewport').getAttribute('transform');
-    assert.notEqual(editTransform, acrossFrames.withPresentation,
-      'edit mode should render its responsive base camera without the saved presentation offset');
+      return camera && Math.abs(camera.panXRatio - expected.panXRatio) < 1e-6
+        && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6;
+    }, saved);
 
     await page.click('#modeToggleBtn');
     await runtime.waitForFunction(expected => {
@@ -129,11 +131,20 @@ test('presentation canvas gestures save one slide-wide camera without changing e
         && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6;
     }, saved);
 
+    await page.click('#algorithmEditSlideBtn');
+    await page.waitForFunction(() => document.querySelector('#algorithmEditorFrame')
+      ?.contentWindow?.document?.body?.classList.contains('asm-embed-editor'));
+    const editor = page.frames().find(frame => frame.url().includes('asmEmbed=editor'));
+    assert.ok(editor);
+    const editorCamera = await editor.evaluate(() => window.getPresentationCameraTransform?.());
+    assert.deepEqual(editorCamera, { panXRatio: 0, panYRatio: 0, zoomFactor: 1 },
+      'the algorithm-animation editor must not inherit the slide presentation camera');
+    await page.keyboard.press('Escape');
+
     await page.reload();
     await page.waitForFunction(() => document.querySelector('.algorithm-slide-frame')
       ?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
     const reloadedRuntime = page.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
-    await page.click('#modeToggleBtn');
     await reloadedRuntime.waitForFunction(expected => {
       const camera = window.getPresentationCameraTransform?.();
       return camera && Math.abs(camera.panXRatio - expected.panXRatio) < 1e-6
