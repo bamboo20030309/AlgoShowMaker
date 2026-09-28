@@ -9,11 +9,9 @@
 (function () {
   const definitions = [
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
-    { type: 'scope-exit', label: '作用域結束／物件退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
-    { type: 'visual-exit', label: '手動物件退場', color: '#9a6448', enabledByDefault: true, timelineByDefault: true },
+    { type: 'object-exit', label: '物件退場／手動退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
     { type: 'read', label: '讀取', color: '#3976b8', enabledByDefault: false, timelineByDefault: false },
-    { type: 'write', label: '數值更新／複合賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
-    { type: 'assign', label: '直接／初始化賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'assignment', label: 'assign/write 賦值事件', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     // Whole-condition results are internal playback metadata. Comparisons are
@@ -35,23 +33,33 @@
     { type: 'function-exit', label: '離開函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false }
   ];
   const eventTypeAliases = Object.freeze({
+    'scope-exit': 'object-exit',
+    'visual-exit': 'object-exit',
+    write: 'assignment',
+    assign: 'assignment',
     return: 'control-flow',
     break: 'control-flow',
     continue: 'control-flow'
   });
   const canonicalEventType = type => eventTypeAliases[type] || type;
-  const controlFlowEventLabel = '流程跳轉事件';
+  const aliasedEventLabels = Object.freeze({
+    'scope-exit': '作用域結束／物件退場',
+    'visual-exit': '手動物件退場',
+    write: '數值更新／複合賦值',
+    assign: '直接／初始化賦值',
+    return: '流程跳轉事件',
+    break: '流程跳轉事件',
+    continue: '流程跳轉事件'
+  });
   const byType = Object.fromEntries(definitions.map(definition => [definition.type, definition]));
   const animations = Object.freeze({
     // Declaration and scope exit form one controllable visual lifetime. When
     // their switches are disabled the frame jumps directly to the resulting
     // visible/absent state without an entrance/exit animation.
     declare: 'declare',
-    'scope-exit': 'exit',
-    'visual-exit': 'exit',
+    'object-exit': 'exit',
     read: 'none',
-    write: 'assign',
-    assign: 'assign',
+    assignment: 'assign',
     'sequence-operation': 'sequence',
     compare: 'compare',
     condition: 'none',
@@ -256,12 +264,14 @@
       const values = settings[group] && typeof settings[group] === 'object'
         ? settings[group]
         : (settings[group] = {});
-      const legacy = Object.keys(eventTypeAliases)
-        .filter(type => typeof values[type] === 'boolean')
-        .map(type => values[type]);
-      if (typeof values['control-flow'] !== 'boolean' && legacy.length) {
-        values['control-flow'] = !legacy.includes(false);
-      }
+      [...new Set(Object.values(eventTypeAliases))].forEach(canonical => {
+        const legacy = Object.entries(eventTypeAliases)
+          .filter(([type, target]) => target === canonical && typeof values[type] === 'boolean')
+          .map(([type]) => values[type]);
+        if (typeof values[canonical] !== 'boolean' && legacy.length) {
+          values[canonical] = !legacy.includes(false);
+        }
+      });
       Object.keys(eventTypeAliases).forEach(type => { delete values[type]; });
     });
     return settings;
@@ -639,11 +649,8 @@
   window.ASMTraceEvents = {
     definitions,
     labels: Object.fromEntries([
-      ...definitions.map(definition => [
-        definition.type,
-        definition.type === 'control-flow' ? controlFlowEventLabel : definition.label
-      ]),
-      ...Object.keys(eventTypeAliases).map(type => [type, controlFlowEventLabel])
+      ...definitions.map(definition => [definition.type, definition.label]),
+      ...Object.entries(aliasedEventLabels)
     ]),
     colors: Object.fromEntries([
       ...definitions.map(definition => [definition.type, definition.color]),

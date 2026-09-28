@@ -2804,7 +2804,7 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
 }
 
 const EVENT_CONTROL_TYPES = new Set(['declare', 'scope-exit', 'visual-exit', 'read', 'write',
-  'assign', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'control-flow',
+  'assign', 'assignment', 'object-exit', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'control-flow',
   'return', 'break', 'continue',
   'function-enter', 'function-exit']);
 

@@ -30,10 +30,18 @@
   const embedMode = new URLSearchParams(window.location.search).get('asmEmbed');
 
   const EVENT_SETTING_TYPES = [
-    'declare', 'scope-exit', 'read', 'write', 'assign', 'compare', 'swap',
+    'declare', 'object-exit', 'read', 'assignment', 'compare', 'swap',
     'call', 'control-flow', 'function-enter', 'function-exit'
   ];
-  const LEGACY_CONTROL_FLOW_SETTING_TYPES = ['return', 'break', 'continue'];
+  const LEGACY_EVENT_SETTING_ALIASES = Object.freeze({
+    'scope-exit': 'object-exit',
+    'visual-exit': 'object-exit',
+    write: 'assignment',
+    assign: 'assignment',
+    return: 'control-flow',
+    break: 'control-flow',
+    continue: 'control-flow'
+  });
   const DEFAULT_EVENT_GAP_MS = 500;
 
   // ---------------------------------------------------------------------------
@@ -99,12 +107,14 @@
       const flags = Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
         typeof source?.[type] === 'boolean' ? [[type, source[type]]] : []
       )));
-      if (typeof flags['control-flow'] !== 'boolean') {
-        const legacy = LEGACY_CONTROL_FLOW_SETTING_TYPES
-          .filter(type => typeof source?.[type] === 'boolean')
-          .map(type => source[type]);
-        if (legacy.length) flags['control-flow'] = !legacy.includes(false);
-      }
+      [...new Set(Object.values(LEGACY_EVENT_SETTING_ALIASES))].forEach(canonical => {
+        const legacy = Object.entries(LEGACY_EVENT_SETTING_ALIASES)
+          .filter(([type, target]) => target === canonical && typeof source?.[type] === 'boolean')
+          .map(([type]) => source[type]);
+        if (typeof flags[canonical] !== 'boolean' && legacy.length) {
+          flags[canonical] = !legacy.includes(false);
+        }
+      });
       return flags;
     };
     return {

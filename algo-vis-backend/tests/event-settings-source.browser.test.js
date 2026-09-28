@@ -45,9 +45,23 @@ int main() {
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '回傳' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '跳出迴圈' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '繼續下一輪' }).count(), 0);
+    const assignmentRows = page.locator('.trace-event-settings-row')
+      .filter({ hasText: 'assign/write 賦值事件' });
+    assert.equal(await assignmentRows.count(), 1, 'assign and write share one settings row');
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '直接／初始化賦值' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '數值更新／複合賦值' }).count(), 0);
+    const exitRows = page.locator('.trace-event-settings-row')
+      .filter({ hasText: '物件退場／手動退場' });
+    assert.equal(await exitRows.count(), 1, 'scope and manual exits share one settings row');
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '作用域結束／物件退場' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '手動物件退場' }).count(), 0);
     await flowRows.locator('input').first().setChecked(false);
+    await assignmentRows.locator('input').first().setChecked(false);
+    await exitRows.locator('input').first().setChecked(false);
     await page.waitForFunction(() => (
       window.ASMTracePlayer.getDocument()?.studio?.eventSettings?.defaultEnabled?.['control-flow'] === false
+      && window.ASMTracePlayer.getDocument()?.studio?.eventSettings?.defaultEnabled?.assignment === false
+      && window.ASMTracePlayer.getDocument()?.studio?.eventSettings?.defaultEnabled?.['object-exit'] === false
     ));
     await page.locator('.trace-auto-fixed-toggle').setChecked(false);
     await page.locator('.trace-auto-loop-boundary-toggle').setChecked(true);

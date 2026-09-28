@@ -26,7 +26,7 @@ function eventApi() {
 test('initial event animation and timeline defaults match the Event Settings panel', () => {
   const api = eventApi();
   const enabled = new Set([
-    'declare', 'scope-exit', 'visual-exit', 'write', 'assign', 'sequence-operation', 'compare', 'swap'
+    'declare', 'object-exit', 'assignment', 'sequence-operation', 'compare', 'swap'
   ]);
   const animationEnabled = new Set([...enabled, 'output', 'control-flow']);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
@@ -84,17 +84,85 @@ test('return, break and continue share one control-flow setting', () => {
   assert.equal(api.showTag('continue', document), true);
 });
 
-test('direct assignments and value updates use distinct user-facing names', () => {
+test('assign and write share one setting while retaining distinct event names', () => {
   const api = eventApi();
-  assert.equal(api.definition('assign').label, '直接／初始化賦值');
-  assert.equal(api.definition('write').label, '數值更新／複合賦值');
-  assert.equal(api.animation('assign'), 'assign');
-  assert.equal(api.animation('write'), 'assign');
+  const visibleTypes = api.definitions.filter(definition => definition.internal !== true)
+    .map(definition => definition.type);
+  assert.equal(visibleTypes.includes('assignment'), true);
+  assert.equal(visibleTypes.includes('assign'), false);
+  assert.equal(visibleTypes.includes('write'), false);
+  for (const type of ['assign', 'write']) {
+    assert.equal(api.definition(type).type, 'assignment');
+    assert.equal(api.definition(type).label, 'assign/write 賦值事件');
+    assert.equal(api.animation(type), 'assign');
+  }
+  assert.equal(api.labels.assign, '直接／初始化賦值');
+  assert.equal(api.labels.write, '數值更新／複合賦值');
+
+  const document = {
+    studio: {
+      eventSettings: {
+        defaultEnabled: { assign: false },
+        timelineTypes: { write: true }
+      },
+      eventStates: {},
+      eventInstructionStates: {}
+    },
+    frames: [{ id: 'frame-1', events: [
+      { id: 'assign-1', type: 'assign', signature: 'assign:main:1:value' },
+      { id: 'write-1', type: 'write', signature: 'write:main:2:value++' }
+    ] }]
+  };
+  api.applyEnabledStates(document);
+  assert.equal(document.studio.eventSettings.defaultEnabled.assignment, false);
+  assert.equal(document.studio.eventSettings.timelineTypes.assignment, true);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'assign'), false);
+  assert.ok(document.frames[0].events.every(event => event.enabled === false));
+  assert.equal(api.showTag('assign', document), true);
+  assert.equal(api.showTag('write', document), true);
+});
+
+test('scope and manual exits share one setting while retaining distinct event names', () => {
+  const api = eventApi();
+  const visibleTypes = api.definitions.filter(definition => definition.internal !== true)
+    .map(definition => definition.type);
+  assert.equal(visibleTypes.includes('object-exit'), true);
+  assert.equal(visibleTypes.includes('scope-exit'), false);
+  assert.equal(visibleTypes.includes('visual-exit'), false);
+  for (const type of ['scope-exit', 'visual-exit']) {
+    assert.equal(api.definition(type).type, 'object-exit');
+    assert.equal(api.definition(type).label, '物件退場／手動退場');
+    assert.equal(api.animation(type), 'exit');
+  }
+  assert.equal(api.labels['scope-exit'], '作用域結束／物件退場');
+  assert.equal(api.labels['visual-exit'], '手動物件退場');
+
+  const document = {
+    studio: {
+      eventSettings: {
+        defaultEnabled: { 'scope-exit': false },
+        timelineTypes: { 'visual-exit': true }
+      },
+      eventStates: {},
+      eventInstructionStates: {}
+    },
+    frames: [{ id: 'frame-1', events: [
+      { id: 'scope-exit-1', type: 'scope-exit', signature: 'scope-exit:main:1:value' },
+      { id: 'visual-exit-1', type: 'visual-exit', signature: 'visual-exit:main:2:value' }
+    ] }]
+  };
+  api.applyEnabledStates(document);
+  assert.equal(document.studio.eventSettings.defaultEnabled['object-exit'], false);
+  assert.equal(document.studio.eventSettings.timelineTypes['object-exit'], true);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'scope-exit'), false);
+  assert.ok(document.frames[0].events.every(event => event.enabled === false));
+  assert.equal(api.showTag('scope-exit', document), true);
+  assert.equal(api.showTag('visual-exit', document), true);
 });
 
 test('timeline labels exclude events that are disabled or cannot be shown', () => {
   const api = eventApi();
-  const document = { studio: { eventSettings: { timelineTypes: { assign: true } } } };
+  const document = { studio: { eventSettings: { timelineTypes: { assignment: true } } } };
   assert.equal(api.showTimelineEvent({ type: 'assign', enabled: true }, document), true);
   assert.equal(api.showTimelineEvent({ type: 'assign', enabled: false }, document), false,
     'events hidden by the user do not retain timeline labels');
