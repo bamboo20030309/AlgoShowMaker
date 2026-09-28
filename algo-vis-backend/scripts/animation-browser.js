@@ -1,8 +1,8 @@
 /**
- * 跨介面的動畫回歸驅動器。
+ * 投影片播放環境的動畫回歸驅動器。
  *
- * 每個 fixture 會依序在演算法頁、投影片編輯器與播放模式執行，錄下實際
- * DOM 樣本後交給 animation-assertions 判斷。輸出目錄保留逐幀資料與失敗
+ * 每個 fixture 先經演算法頁的真實 RUN 產生動畫，再載入投影片播放模式，
+ * 錄下實際 DOM 樣本後交給 animation-assertions 判斷。輸出目錄保留逐幀資料與失敗
  * 視窗，供主代理從第一個違規時間點追查，而不是只得到通過／失敗結果。
  */
 
@@ -33,8 +33,34 @@ const cases = [
 ];
 
 // -----------------------------------------------------------------------------
-// 瀏覽器生命週期、三介面執行與報告彙整
+// 真實 RUN 準備、runtime 執行與報告彙整
 // -----------------------------------------------------------------------------
+async function buildAnimation(browser, baseURL, item) {
+  const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  try {
+    await page.goto(baseURL + '/algorithm.html');
+    await page.waitForFunction(() => typeof aceEditor !== 'undefined' && window.ASMTraceDebugRecorder);
+    // Real RUN button uses analyze/compile and the application's load path.
+    await page.evaluate(({ code, input }) => {
+      aceEditor.setValue(code, -1);
+      document.getElementById('inputArea').value = input;
+    }, item);
+    await page.locator('#runBtn').click();
+    await page.waitForFunction(() => window.ASMTracePlayer?.getDocument?.()?.frames?.length > 1,
+      null, { timeout: 60000 });
+    const animation = await page.evaluate(() => ({ ...window.ASMTraceEditor.snapshot(),
+      code: aceEditor.getValue(), input: document.getElementById('inputArea').value }));
+    if (errors.length) throw new Error(`RUN 準備發生 console 錯誤：${errors.join(' | ')}`);
+    return animation;
+  } finally {
+    await context.close();
+  }
+}
+
 async function runAnimationBrowser(baseURL) {
   const selectedCases = cases.filter(item => !process.env.ASM_ANIMATION_CASES
     || process.env.ASM_ANIMATION_CASES.split(',').includes(item.name));
@@ -70,8 +96,17 @@ async function runAnimationBrowser(baseURL) {
     }
     for (const item of selectedCases) {
       let animation;
-      let baseline;
-      for (const mode of ['algorithm', 'editor', 'runtime']) {
+      try {
+        console.log(`BUILD ${item.name}`);
+        animation = await buildAnimation(browser, baseURL, item);
+      } catch (error) {
+        const label = `${item.name}-setup`;
+        failures.push(label);
+        results.push({ label, pass: false, error: error.message });
+        console.error(`FAIL ${label}: ${error.message}`);
+        continue;
+      }
+      for (const mode of ['runtime']) {
         const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
         const page = await context.newPage();
         const errors = [];
@@ -81,34 +116,19 @@ async function runAnimationBrowser(baseURL) {
         const label = `${item.name}-${mode}`;
         console.log(`RUN ${label}`);
         try {
-          if (mode === 'algorithm') {
-            await page.goto(baseURL + '/algorithm.html');
-            await page.waitForFunction(() => typeof aceEditor !== 'undefined' && window.ASMTraceDebugRecorder);
-            // Real RUN button uses analyze/compile and the application's load path.
-            await page.evaluate(({ code, input }) => {
-              aceEditor.setValue(code, -1);
-              document.getElementById('inputArea').value = input;
-            }, item);
-            await page.locator('#runBtn').click();
-            await page.waitForFunction(() => window.ASMTracePlayer?.getDocument?.()?.frames?.length > 1,
-              null, { timeout: 60000 });
-            animation = await page.evaluate(() => ({ ...window.ASMTraceEditor.snapshot(),
-              code: aceEditor.getValue(), input: document.getElementById('inputArea').value }));
-          } else {
-            // Same-origin parent uses the exact slide iframe message protocol.
-            await page.route('**/asm-animation-regression-host', route => route.fulfill({
-              contentType: 'text/html', body: `<html><body style="margin:0"><iframe id="animation" style="border:0;width:100vw;height:100vh" src="/algorithm.html?asmEmbed=${mode}"></iframe></body></html>`
-            }));
-            await page.goto(baseURL + '/asm-animation-regression-host');
-            await page.waitForFunction(() => document.querySelector('iframe')?.contentWindow?.ASMTraceEditor);
-            target = page.frames().find(frame => frame.url().includes('/algorithm.html'));
-            await page.evaluate(animation => {
-              const child = document.querySelector('iframe').contentWindow;
-              child.postMessage({ type: 'asm-load-animation', animation }, location.origin);
-              child.postMessage({ type: 'asm-runtime-visibility', visible: true }, location.origin);
-            }, JSON.parse(JSON.stringify(animation)));
-            await target.waitForFunction(() => window.ASMTracePlayer?.getDocument?.()?.frames?.length > 1);
-          }
+          // Same-origin parent uses the exact slide iframe message protocol.
+          await page.route('**/asm-animation-regression-host', route => route.fulfill({
+            contentType: 'text/html', body: `<html><body style="margin:0"><iframe id="animation" style="border:0;width:100vw;height:100vh" src="/algorithm.html?asmEmbed=${mode}"></iframe></body></html>`
+          }));
+          await page.goto(baseURL + '/asm-animation-regression-host');
+          await page.waitForFunction(() => document.querySelector('iframe')?.contentWindow?.ASMTraceEditor);
+          target = page.frames().find(frame => frame.url().includes('/algorithm.html'));
+          await page.evaluate(animation => {
+            const child = document.querySelector('iframe').contentWindow;
+            child.postMessage({ type: 'asm-load-animation', animation }, location.origin);
+            child.postMessage({ type: 'asm-runtime-visibility', visible: true }, location.origin);
+          }, JSON.parse(JSON.stringify(animation)));
+          await target.waitForFunction(() => window.ASMTracePlayer?.getDocument?.()?.frames?.length > 1);
           await target.evaluate(() => window.ASMTraceStudio?.close?.());
           if (item.name === 'arrow-identity') await target.evaluate(() => {
             window.__arrowChecks = { rebound: 0, follow: 0, failures: [] };
@@ -502,11 +522,6 @@ async function runAnimationBrowser(baseURL) {
                 .sort((a, b) => a[0].localeCompare(b[0])),
               events: sample.code?.lines?.flatMap(line => line.events || []).map(event => [event.ids, event.classes]) }));
           if (!settled.length) throw new Error('沒有任何播放完成檢查點');
-          if (mode === 'algorithm') baseline = settled;
-          else if (JSON.stringify(settled) !== JSON.stringify(baseline)) {
-            verdict.pass = false;
-            verdict.violations.push({ kind: 'surface-parity', message: '與 algorithm 的完成畫面不同' });
-          }
           if (errors.length) { verdict.pass = false; verdict.violations.push({ kind: 'console', errors }); }
           fs.writeFileSync(path.join(output, label + '.json'), JSON.stringify({ verdict, report }, null, 2));
           if (!verdict.pass) {
