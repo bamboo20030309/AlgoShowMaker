@@ -39,6 +39,15 @@ int main() {
       code, { timeout: 30000 });
 
     await page.click('#eventSettingsBtn');
+    const flowRows = page.locator('.trace-event-settings-row').filter({ hasText: '流程跳轉' });
+    assert.equal(await flowRows.count(), 1, 'return, break and continue share one settings row');
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '回傳' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '跳出迴圈' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '繼續下一輪' }).count(), 0);
+    await flowRows.locator('input').first().setChecked(false);
+    await page.waitForFunction(() => (
+      window.ASMTracePlayer.getDocument()?.studio?.eventSettings?.defaultEnabled?.['control-flow'] === false
+    ));
     await page.locator('.trace-auto-fixed-toggle').setChecked(false);
     await page.locator('.trace-auto-loop-boundary-toggle').setChecked(true);
     await page.waitForFunction(() => {

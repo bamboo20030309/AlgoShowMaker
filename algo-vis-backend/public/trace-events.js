@@ -12,8 +12,8 @@
     { type: 'scope-exit', label: '作用域結束／物件退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
     { type: 'visual-exit', label: '手動物件退場', color: '#9a6448', enabledByDefault: true, timelineByDefault: true },
     { type: 'read', label: '讀取', color: '#3976b8', enabledByDefault: false, timelineByDefault: false },
-    { type: 'write', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
-    { type: 'assign', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'write', label: '數值更新／複合賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'assign', label: '直接／初始化賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     // Whole-condition results are internal playback metadata. Comparisons are
@@ -27,15 +27,19 @@
     // Paired with a call occurrence so recursive code presentation can retain
     // caller/callee state without exposing a second editable timeline event.
     { type: 'call-return', label: '函式呼叫返回', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
-    { type: 'return', label: '回傳', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
     { type: 'return-complete', label: '完成回傳', color: '#a86524', internal: true, enabledByDefault: false, timelineByDefault: false },
-    { type: 'break', label: '跳出迴圈／switch', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
-    { type: 'continue', label: '繼續下一輪', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
+    { type: 'control-flow', label: '流程跳轉', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
     { type: 'branch-enter', label: '進入遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'branch-exit', label: '離開遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'function-enter', label: '進入函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false },
     { type: 'function-exit', label: '離開函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false }
   ];
+  const eventTypeAliases = Object.freeze({
+    return: 'control-flow',
+    break: 'control-flow',
+    continue: 'control-flow'
+  });
+  const canonicalEventType = type => eventTypeAliases[type] || type;
   const byType = Object.fromEntries(definitions.map(definition => [definition.type, definition]));
   const animations = Object.freeze({
     // Declaration and scope exit form one controllable visual lifetime. When
@@ -55,10 +59,8 @@
     call: 'code',
     output: 'code',
     'call-return': 'none',
-    return: 'code',
+    'control-flow': 'code',
     'return-complete': 'none',
-    break: 'code',
-    continue: 'code',
     'branch-enter': 'none',
     'branch-exit': 'none',
     // Function entry is a code-only event. It highlights the function header
@@ -248,6 +250,22 @@
     return document?.studio?.eventSettings || {};
   }
 
+  function migrateAliasedEventSettings(settings = {}) {
+    ['defaultEnabled', 'timelineTypes'].forEach(group => {
+      const values = settings[group] && typeof settings[group] === 'object'
+        ? settings[group]
+        : (settings[group] = {});
+      const legacy = Object.keys(eventTypeAliases)
+        .filter(type => typeof values[type] === 'boolean')
+        .map(type => values[type]);
+      if (typeof values['control-flow'] !== 'boolean' && legacy.length) {
+        values['control-flow'] = !legacy.includes(false);
+      }
+      Object.keys(eventTypeAliases).forEach(type => { delete values[type]; });
+    });
+    return settings;
+  }
+
   function boundaryMutationTargets(event = {}) {
     const targets = (event.targets || []).filter(target => target?.variableId);
     const explicit = targets.filter(target => target.role === 'target');
@@ -351,7 +369,8 @@
   // ---------------------------------------------------------------------------
   function defaultEnabled(event = {}, document = null) {
     if (event.animate === false) return false;
-    if (byType[event.type]?.internal === true) return false;
+    const type = canonicalEventType(event.type);
+    if (byType[type]?.internal === true) return false;
     if (event.loopBoundary === true) {
       return eventSettings(document).autoLoopBoundaryEnabled === true;
     }
@@ -362,9 +381,11 @@
       if (typeof settings.defaultEnabled?.fixed === 'boolean') return settings.defaultEnabled.fixed;
       return true;
     }
-    const configured = eventSettings(document).defaultEnabled?.[event.type];
+    const configured = eventSettings(document).defaultEnabled?.[type];
     if (typeof configured === 'boolean') return configured;
-    return byType[event.type]?.enabledByDefault !== false;
+    const legacyConfigured = eventSettings(document).defaultEnabled?.[event.type];
+    if (typeof legacyConfigured === 'boolean') return legacyConfigured;
+    return byType[type]?.enabledByDefault !== false;
   }
 
   const FIXED_KINDS = new Set(['sequence', 'stack', 'queue', 'set']);
@@ -484,7 +505,7 @@
     rebuildLoopBoundaryEvents(document);
     const eventStates = document?.studio?.eventStates || {};
     const instructionStates = document?.studio?.eventInstructionStates || {};
-    const settings = eventSettings(document);
+    const settings = migrateAliasedEventSettings(eventSettings(document));
     if (settings.defaultEnabled) delete settings.defaultEnabled.condition;
     if (settings.timelineTypes) delete settings.timelineTypes.condition;
     Object.keys(instructionStates).forEach(key => {
@@ -541,14 +562,16 @@
       // do not remove metadata or mutate captured values. Internal condition
       // records remain internal even under "all animate on".
       (frame.events || []).forEach(event => {
-        if (byType[event.type]?.internal) {
+        if (byType[canonicalEventType(event.type)]?.internal) {
           if (event.loopBoundaryCondition === true) controls.forEach(control => {
             if (control.types.includes('all')) event.loopBoundarySuppressed = !control.animate;
           });
           return;
         }
         controls.forEach(control => {
-          if (!control.types.includes('all') && !control.types.includes(event.type)) return;
+          if (!control.types.includes('all')
+            && !control.types.includes(event.type)
+            && !control.types.includes(canonicalEventType(event.type))) return;
           // Fixed is persistent state with no timed animation. Broad animation
           // controls preserve its global/frame switch; explicit fixed rules
           // retain their existing meaning for saved sources.
@@ -585,6 +608,7 @@
   }
 
   function showTag(type, document = null) {
+    type = canonicalEventType(type);
     if (type === 'fixed') return false;
     if (byType[type]?.internal === true) return false;
     const configured = eventSettings(document).timelineTypes?.[type];
@@ -613,17 +637,24 @@
 
   window.ASMTraceEvents = {
     definitions,
-    labels: Object.fromEntries(definitions.map(definition => [definition.type, definition.label])),
-    colors: Object.fromEntries(definitions.map(definition => [definition.type, definition.color])),
+    labels: Object.fromEntries([
+      ...definitions.map(definition => [definition.type, definition.label]),
+      ...Object.entries(eventTypeAliases).map(([type, canonical]) => [type, byType[canonical].label])
+    ]),
+    colors: Object.fromEntries([
+      ...definitions.map(definition => [definition.type, definition.color]),
+      ...Object.entries(eventTypeAliases).map(([type, canonical]) => [type, byType[canonical].color])
+    ]),
     animations,
     definition(type) {
-      return byType[type] || { type, label: type, color: '#65737a', showTag: true };
+      const canonical = canonicalEventType(type);
+      return byType[canonical] || { type, label: type, color: '#65737a', showTag: true };
     },
     color(type) {
-      return byType[type]?.color || '#65737a';
+      return byType[canonicalEventType(type)]?.color || '#65737a';
     },
     animation(type) {
-      return animations[type] || 'none';
+      return animations[canonicalEventType(type)] || 'none';
     },
     eventKey,
     instructionKey,
@@ -644,11 +675,11 @@
     showInspector(event = {}, document = null) {
       if (event.type === 'fixed') return false;
       if (event.loopBoundarySuppressed === true) return false;
-      if (byType[event.type]?.internal === true) return false;
+      if (byType[canonicalEventType(event.type)]?.internal === true) return false;
       // The function definition is the root control in Trace Studio's event
       // outline. Keep its entry record selectable there even though it stays
       // hidden from the compact bottom timeline by default.
-      if (['function-enter', 'call', 'output', 'return'].includes(event.type)) return true;
+      if (['function-enter', 'call', 'output', 'control-flow'].includes(canonicalEventType(event.type))) return true;
       // Keep classic for controls editable in the right inspector even when
       // their broad event type is hidden from the compact bottom timeline.
       // Other hidden reads/conditions stay compact instead of flooding it.

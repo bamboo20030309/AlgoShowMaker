@@ -31,8 +31,9 @@
 
   const EVENT_SETTING_TYPES = [
     'declare', 'scope-exit', 'read', 'write', 'assign', 'compare', 'swap',
-    'call', 'function-enter', 'function-exit'
+    'call', 'control-flow', 'function-enter', 'function-exit'
   ];
+  const LEGACY_CONTROL_FLOW_SETTING_TYPES = ['return', 'break', 'continue'];
   const DEFAULT_EVENT_GAP_MS = 500;
 
   // ---------------------------------------------------------------------------
@@ -94,9 +95,18 @@
   // 區段：事件偏好正規化與帳號同步
   // ---------------------------------------------------------------------------
   function cleanEventSettings(value = {}) {
-    const cleanFlags = source => Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
-      typeof source?.[type] === 'boolean' ? [[type, source[type]]] : []
-    )));
+    const cleanFlags = source => {
+      const flags = Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
+        typeof source?.[type] === 'boolean' ? [[type, source[type]]] : []
+      )));
+      if (typeof flags['control-flow'] !== 'boolean') {
+        const legacy = LEGACY_CONTROL_FLOW_SETTING_TYPES
+          .filter(type => typeof source?.[type] === 'boolean')
+          .map(type => source[type]);
+        if (legacy.length) flags['control-flow'] = !legacy.includes(false);
+      }
+      return flags;
+    };
     return {
       gapMs: Number.isFinite(Number(value.gapMs))
         ? Math.max(0, Math.min(2000, Number(value.gapMs)))

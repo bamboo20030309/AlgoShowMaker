@@ -28,7 +28,7 @@ test('initial event animation and timeline defaults match the Event Settings pan
   const enabled = new Set([
     'declare', 'scope-exit', 'visual-exit', 'write', 'assign', 'sequence-operation', 'compare', 'swap'
   ]);
-  const animationEnabled = new Set([...enabled, 'output', 'return', 'break', 'continue']);
+  const animationEnabled = new Set([...enabled, 'output', 'control-flow']);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
   api.definitions.forEach(definition => {
     assert.equal(api.defaultEnabled({ type: definition.type }, document),
@@ -42,6 +42,53 @@ test('initial event animation and timeline defaults match the Event Settings pan
   document.studio.eventSettings.defaultEnabled.output = false;
   assert.equal(api.defaultEnabled({ type: 'output' }, document), false,
     'an explicitly disabled saved output setting remains disabled');
+});
+
+test('return, break and continue share one control-flow setting', () => {
+  const api = eventApi();
+  const visibleTypes = api.definitions.filter(definition => definition.internal !== true)
+    .map(definition => definition.type);
+  assert.equal(visibleTypes.includes('control-flow'), true);
+  assert.equal(visibleTypes.includes('return'), false);
+  assert.equal(visibleTypes.includes('break'), false);
+  assert.equal(visibleTypes.includes('continue'), false);
+  for (const type of ['return', 'break', 'continue']) {
+    assert.equal(api.definition(type).type, 'control-flow');
+    assert.equal(api.definition(type).label, '流程跳轉');
+    assert.equal(api.animation(type), 'code');
+  }
+
+  const document = {
+    studio: {
+      eventSettings: {
+        defaultEnabled: { return: false },
+        timelineTypes: { break: true }
+      },
+      eventStates: {},
+      eventInstructionStates: {}
+    },
+    frames: [{ id: 'frame-1', events: [
+      { id: 'return-1', type: 'return', signature: 'return:main:1:0' },
+      { id: 'break-1', type: 'break', signature: 'break:main:2:break' },
+      { id: 'continue-1', type: 'continue', signature: 'continue:main:3:continue' }
+    ] }]
+  };
+  api.applyEnabledStates(document);
+  assert.equal(document.studio.eventSettings.defaultEnabled['control-flow'], false);
+  assert.equal(document.studio.eventSettings.timelineTypes['control-flow'], true);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'return'), false);
+  assert.ok(document.frames[0].events.every(event => event.enabled === false));
+  assert.equal(api.showTag('return', document), true);
+  assert.equal(api.showTag('break', document), true);
+  assert.equal(api.showTag('continue', document), true);
+});
+
+test('direct assignments and value updates use distinct user-facing names', () => {
+  const api = eventApi();
+  assert.equal(api.definition('assign').label, '直接／初始化賦值');
+  assert.equal(api.definition('write').label, '數值更新／複合賦值');
+  assert.equal(api.animation('assign'), 'assign');
+  assert.equal(api.animation('write'), 'assign');
 });
 
 test('timeline labels exclude events that are disabled or cannot be shown', () => {
