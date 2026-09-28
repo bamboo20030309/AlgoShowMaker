@@ -14,6 +14,7 @@
   const KEEP_SNAPSHOT_GAP = 50;
   const renderers = new Map();
   let currentScene = null;
+  const recentScenes = new Map();
 
   function eventAnimation(type) {
     return window.ASMTraceEvents?.animation?.(type) || 'none';
@@ -5392,12 +5393,20 @@
     currentScene = {
       document, frame, root: result.root,
       placements: result.placements, elements: result.elements,
-      rootOffset: TRACE_ROOT_OFFSET
+      rootOffset: TRACE_ROOT_OFFSET, height: result.height, settled: false
     };
+    const renderedScene = currentScene;
+    if ([...recentScenes.values()].some(scene => scene.document !== document)) recentScenes.clear();
+    recentScenes.delete(frame.id);
+    recentScenes.set(frame.id, currentScene);
+    if (recentScenes.size > 2) recentScenes.delete(recentScenes.keys().next().value);
     refreshPresentedArrows(result.root, result.elements);
     const playbackPlan = transition?.playbackPlan || null;
     transition = Promise.resolve(transition).then(() => {
-      if (currentScene?.frame?.id === frame.id) revealDelayedFixedMarks(delayedMarks);
+      if (currentScene === renderedScene) {
+        revealDelayedFixedMarks(delayedMarks);
+        renderedScene.settled = true;
+      }
     });
     if (playbackPlan) transition.playbackPlan = playbackPlan;
     window.dispatchEvent(new CustomEvent('asm:trace-rendered', {
@@ -5556,6 +5565,32 @@
     });
   }
 
+  function canReuseStudioScene(document, frame) {
+    return currentScene?.document === document && currentScene?.frame === frame
+      && currentScene.root.isConnected && currentScene.settled
+      && !Object.values(document.studio?.visibility?.[frame.id] || {}).includes('hidden');
+  }
+
+  function cloneThumbnailScene(document, frame, prefix) {
+    if (!canReuseStudioScene(document, frame)) return null;
+    const root = currentScene.root.cloneNode(true);
+    const nodes = [root, ...root.querySelectorAll('*')];
+    const ids = new Map();
+    nodes.forEach(node => {
+      node.removeAttribute('data-asm-viewport-culled');
+      if (node.id) { const old = node.id; node.id = `${prefix}-${old}`; ids.set(old, node.id); }
+    });
+    nodes.forEach(node => {
+      for (const attr of [...node.attributes]) {
+        let value = attr.value.replace(/url\(#([^)]*)\)/g, (match, id) => ids.has(id) ? `url(#${ids.get(id)})` : match);
+        if ((attr.localName === 'href') && value.startsWith('#') && ids.has(value.slice(1))) value = '#' + ids.get(value.slice(1));
+        if (value !== attr.value) node.setAttributeNS(attr.namespaceURI, attr.name, value);
+      }
+    });
+    root.setAttribute('transform', '');
+    return {root, placements: currentScene.placements, elements: currentScene.elements, height: currentScene.height};
+  }
+
   function createThumbnail(document, frame, previousFrame = null) {
     const frameKey = String(frame?.id || 'frame').replace(/[^A-Za-z0-9_-]/g, '-');
     const thumbnail = svg('svg', {
@@ -5568,7 +5603,11 @@
     window.document.body.append(thumbnail);
     let result;
     try {
-      result = renderScene(thumbnail, thumbnail, document, frame, previousFrame, {
+      result = cloneThumbnailScene(document, frame, `trace-thumb-${frameKey}`);
+      if (result) {
+        thumbnail.append(result.root);
+        thumbnail.dataset.traceSceneReused = 'true';
+      } else result = renderScene(thumbnail, thumbnail, document, frame, previousFrame, {
         idPrefix: `trace-thumb-${frameKey}`,
         interactive: false,
         animatePositions: false,
@@ -5598,6 +5637,16 @@
   function preflightEventAvailability(document, options = {}) {
     if (!document?.frames?.length
       || typeof window.ASMTraceFrameTween?.updateEventAvailability !== 'function') return document;
+    const requestedFrame = Number.isInteger(options.frameIndex) ? document.frames[options.frameIndex] : null;
+    const live = currentScene?.document === document && currentScene.frame === requestedFrame
+      && currentScene.root.isConnected ? currentScene : null;
+    const previousFrame = requestedFrame && document.frames[options.frameIndex - 1];
+    const previousScene = previousFrame && recentScenes.get(previousFrame.id);
+    if (live && (!previousFrame || previousScene?.document === document)) {
+      window.ASMTraceFrameTween.updateEventAvailability(document, requestedFrame,
+        live.placements, live.elements, previousScene?.elements || null);
+      return document;
+    }
     const host = svg('svg', {
       width: 1600,
       height: 1000,
@@ -5613,6 +5662,11 @@
       const end = requested === null ? document.frames.length : requested + 1;
       for (let index = start; index < end; index += 1) {
         const frame = document.frames[index];
+        if (live && frame === requestedFrame) {
+          window.ASMTraceFrameTween.updateEventAvailability(document, frame,
+            live.placements, live.elements, previousObjects);
+          continue;
+        }
         host.replaceChildren();
         const result = renderScene(host, host, document, frame, document.frames[index - 1] || null, {
           idPrefix: `trace-availability-${safeKey(frame.id)}`,
@@ -5831,10 +5885,10 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-229';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-230';
   window.ASMTraceRenderers = {
-    build: 'trace-229', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
-    register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
+    build: 'trace-230', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,

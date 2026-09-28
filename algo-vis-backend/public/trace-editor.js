@@ -439,6 +439,9 @@
   // 區段：文件載入與畫面同步
   // ---------------------------------------------------------------------------
   function applyTraceDocument(trace, options = {}) {
+    if (options.openStudio === false && document.body.classList.contains('asm-trace-studio-open')) {
+      window.ASMTraceStudio?.close?.({ render: false });
+    }
     let preparedTrace = trace;
     const source = editorSource();
     const pending = pendingAnimation?.rebuild;
@@ -492,8 +495,8 @@
     updateStudioButton();
     loadAccountEventSettings();
     setTimeout(() => {
-      if (embedMode === 'runtime') {
-        window.ASMTraceStudio?.close?.();
+      if (embedMode === 'runtime' || options.openStudio === false) {
+        if (document.body.classList.contains('asm-trace-studio-open')) window.ASMTraceStudio?.close?.({ render: false });
         return;
       }
       window.ASMTraceStudio?.open(currentTrace);

@@ -3758,7 +3758,7 @@
     });
   }
 
-  function closeStudio() {
+  function closeStudio(options = {}) {
     cancelThumbnailCulling();
     cancelThumbnailRendering();
     cancelEventAvailabilityRefresh();
@@ -3772,7 +3772,7 @@
     document.body.classList.remove('asm-trace-studio-open');
     activeObjectKey = '';
     codePanelSelectionActive = false;
-    renderPlayerFrame(currentIndex, { animatePositions: false });
+    if (options.render !== false) renderPlayerFrame(currentIndex, { animatePositions: false });
   }
 
   function buildUi() {
@@ -3909,7 +3909,11 @@
     renderSelection();
     renderObjectStateEditor();
     renderBindingEditor();
-    renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+    if (!window.ASMTraceRenderers?.canReuseStudioScene?.(trace, trace.frames[currentIndex])) {
+      renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+    } else {
+      window.ASMTraceRenderers.preflightEventAvailability(trace, { frameIndex: currentIndex });
+    }
     applyCameraForFrame(currentIndex, false);
   }
 

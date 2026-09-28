@@ -30,6 +30,11 @@
   // ---------------------------------------------------------------------------
   // 區段：SVG 字級量測
   // ---------------------------------------------------------------------------
+  const fitTextCache = new Map();
+  const clearFitTextCache = () => fitTextCache.clear();
+  document.fonts?.addEventListener?.('loadingdone', clearFitTextCache);
+  document.fonts?.addEventListener?.('loadingerror', clearFitTextCache);
+  window.clearSvgTextFitCache = clearFitTextCache;
   window.fitSvgText = function(g, textContent, maxWidth, maxHeight, opts = {}) {
     const {
       maxFont = 16,
@@ -39,6 +44,18 @@
       padding = 4
     } = opts;
 
+    // Include inherited typography; do not share results across different fonts.
+    const inherited = getComputedStyle(g);
+    const resolvedFamily = family === 'inherit' ? inherited.fontFamily : family;
+    const resolvedWeight = fontWeight === 'inherit' ? inherited.fontWeight : fontWeight;
+    const cacheKey = JSON.stringify([String(textContent), maxWidth, maxHeight,
+      maxFont, minFont, resolvedFamily, resolvedWeight, padding,
+      inherited.fontStyle, inherited.fontStretch, inherited.letterSpacing,
+      inherited.wordSpacing, inherited.fontVariant, inherited.fontFeatureSettings,
+      inherited.fontVariationSettings, inherited.textTransform]);
+    const cacheable = g.isConnected && document.fonts?.status !== 'loading';
+    if (cacheable && fitTextCache.has(cacheKey)) return fitTextCache.get(cacheKey);
+    let exactMeasurement = true;
     const dummy = document.createElementNS(NS, 'text');
     dummy.textContent = textContent;
     dummy.setAttribute('x', -9999);
@@ -61,6 +78,7 @@
       // [修正] 如果 getComputedTextLength 回傳 0 (可能因為元素尚未渲染或在隱藏層)
       // 則使用估計值：假設平均字元寬度為字體大小的 0.6 倍
       if (w <= 0 && textContent.length > 0) {
+        exactMeasurement = false;
         w = textContent.length * mid * 0.6;
       }
 
@@ -74,6 +92,10 @@
     }
 
     g.removeChild(dummy);
+    if (cacheable && exactMeasurement) {
+      if (fitTextCache.size >= 4096) fitTextCache.delete(fitTextCache.keys().next().value);
+      fitTextCache.set(cacheKey, best);
+    }
     return best;
   };
 
