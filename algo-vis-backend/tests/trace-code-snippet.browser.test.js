@@ -43,7 +43,7 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${base}/algorithm.html`);
     await page.waitForFunction(() => window.ace && window.ASMTracePlayer && window.ASMTraceStudio);
-    const longLine = `// ${'horizontal scrolling keeps this source line intact '.repeat(5)}`;
+    const longLine = `const char* snippetLayoutProbe = "${'horizontal-scrolling-keeps-this-source-line-intact-'.repeat(5)}";`;
     const code = fs.readFileSync(path.join(__dirname, 'fixtures/bubble.cpp'), 'utf8')
       .replace('#include <bits/stdc++.h>', `#include <bits/stdc++.h>\n${longLine}`);
     await page.evaluate(source => ace.edit('editor').setValue(source, -1), code);
@@ -88,9 +88,13 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
 
     const rows = page.locator('.trace-studio-snippet-line-button');
     await rows.first().waitFor();
-    assert.ok(await rows.count() >= 12, 'the editor should keep the complete source visible as line buttons');
+    assert.ok(await rows.count() >= 12, 'the editor should keep every code line visible as a line button');
     assert.match(await page.locator('.trace-studio-code-snippet-list').textContent(), /#include/);
     assert.match(await page.locator('.trace-studio-code-snippet-list').textContent(), /return 0/);
+    assert.equal(await rows.evaluateAll(nodes => nodes.some(node => {
+      const text = node.querySelector('.trace-studio-snippet-code')?.textContent || '';
+      return !text.trim() || text.trim().startsWith('//');
+    })), false, 'blank and comment-only lines should not appear in the snippet editor');
     assert.ok(await page.locator('.trace-studio-snippet-line-button:not(.is-enabled)').count() > 0,
       'lines outside the current automatic snippet should remain visible and transparent');
     const markedRows = await rows.filter({ has: page.locator('mark.trace-studio-snippet-event-source') }).count();
@@ -107,6 +111,17 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
       'long source lines should use horizontal scrolling');
     assert.equal(await page.locator('.trace-studio-snippet-gutter').first().evaluate(node => getComputedStyle(node).position), 'sticky',
       'the selection marker and line number should remain fixed while scrolling');
+    const leftAlignedRow = rows.filter({ hasText: '#include' }).first();
+    const leftAlignedGutter = leftAlignedRow.locator('.trace-studio-snippet-gutter');
+    const leftAlignedCode = leftAlignedRow.locator('.trace-studio-snippet-code');
+    const gutterBeforeScroll = await leftAlignedGutter.boundingBox();
+    const codeBeforeScroll = await leftAlignedCode.boundingBox();
+    assert.ok(codeBeforeScroll.x < gutterBeforeScroll.x + gutterBeforeScroll.width + 2,
+      'code should start immediately after the fixed gutter instead of aligning to the right edge');
+    await snippetList.evaluate(node => { node.scrollLeft = 120; });
+    const gutterAfterScroll = await leftAlignedGutter.boundingBox();
+    assert.ok(Math.abs(gutterAfterScroll.x - gutterBeforeScroll.x) < 1,
+      `the marker and line number should stay at the same position during horizontal scrolling (${gutterBeforeScroll.x} -> ${gutterAfterScroll.x})`);
 
     const inspector = page.locator('.trace-studio-inspector');
     const inspectorWidthBefore = (await inspector.boundingBox()).width;

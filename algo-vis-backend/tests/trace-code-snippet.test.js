@@ -18,6 +18,8 @@ function loadModel() {
 
 function fixture() {
   const sourceCode = `int main() {
+  // editor-only explanation
+
   int value = 1;
   if (value > 0) {
     value++;
@@ -25,25 +27,25 @@ function fixture() {
 }`;
   const functionContext = {
     type: 'FunctionDefinition', functionName: 'main', from: 0, to: sourceCode.length,
-    headerFrom: 0, headerTo: sourceCode.indexOf('{'), openLine: 1, closeLine: 6
+    headerFrom: 0, headerTo: sourceCode.indexOf('{'), openLine: 1, closeLine: 8
   };
   const ifFrom = sourceCode.indexOf('if (');
   const ifContext = {
     type: 'IfStatement', functionName: 'main', from: ifFrom,
     to: sourceCode.indexOf('\n  }', ifFrom) + 4,
-    headerFrom: ifFrom, headerTo: sourceCode.indexOf('{', ifFrom), openLine: 3, closeLine: 5,
-    structuralLines: [3, 5]
+    headerFrom: ifFrom, headerTo: sourceCode.indexOf('{', ifFrom), openLine: 5, closeLine: 7,
+    structuralLines: [5, 7]
   };
   const from = sourceCode.indexOf('value++');
   const event = {
     id: 'event-write', type: 'write', signature: 'write:main:4:value++', enabled: true,
     source: {
       functionName: 'main', from, to: from + 'value++'.length,
-      line: 4, endLine: 4, text: 'value++', contexts: [functionContext, ifContext]
+      line: 6, endLine: 6, text: 'value++', contexts: [functionContext, ifContext]
     }
   };
   const frame = {
-    id: 'frame-1', source: { functionName: 'main', line: 4 }, events: [event], state: {}
+    id: 'frame-1', source: { functionName: 'main', line: 6 }, events: [event], state: {}
   };
   return {
     document: { sourceCode, sourceStructure: [functionContext, ifContext], frames: [frame], studio: {} },
@@ -59,8 +61,9 @@ test('snippet editor starts from the automatic code plan and marks exact animate
   const rows = editor.fragments.flatMap(fragment => fragment.rows);
   const eventRow = rows.find(row => row.text.includes('value++'));
 
-  assert.equal(rows.length, document.sourceCode.split('\n').length,
-    'the editor should keep every source line visible');
+  assert.equal(rows.length, document.sourceCode.split('\n').length - 2,
+    'the editor should omit comment-only and blank source lines');
+  assert.equal(rows.some(row => !row.text.trim() || row.text.trim().startsWith('//')), false);
   assert.ok(rows.some(row => !row.included),
     'source lines outside the automatic snippet should remain visible but unchecked');
   assert.ok(eventRow);

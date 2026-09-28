@@ -41,7 +41,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-directive-assist.js?v=directive-24'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
-  assert.ok(html.includes('trace-code-model.js?v=code-34'));
+  assert.ok(html.includes('trace-code-model.js?v=code-35'));
   assert.ok(html.includes('trace-events.js?v=trace-52'));
   assert.ok(html.includes('trace-frame-tween.js?v=trace-256'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
@@ -166,7 +166,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   for (const surface of [html, slides, legacy]) {
     assert.ok(surface.includes('draw/draw_array_utils.js?v=gap-1'));
   }
-  assert.ok(html.includes('trace-studio.css?v=trace-54'));
+  assert.ok(html.includes('trace-studio.css?v=trace-55'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,
     'the retired marker-shape controls must not return to the object inspector');
   assert.doesNotMatch(read('trace-studio.css'), /trace-studio-marker-shape/,

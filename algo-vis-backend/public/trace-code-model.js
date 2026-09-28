@@ -1144,9 +1144,11 @@
 
   function snippetEditorHiddenLines(lines = []) {
     const hidden = new Set();
+    const commentMasked = commentMaskedLines(lines);
     let asmView = false;
     lines.forEach(line => {
       const text = String(line.text || '');
+      if (!String(commentMasked.get(line.number) || '').trim()) hidden.add(line.number);
       if (/\/\*\s*@asm-view\b/i.test(text)) asmView = true;
       if (asmView) hidden.add(line.number);
       if (/@asm-view\s*\*\//i.test(text)) asmView = false;

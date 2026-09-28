@@ -605,7 +605,7 @@ body.asm-trace-camera-framing #arraySvg {
   width: max-content;
   min-width: 100%;
   box-sizing: border-box;
-  padding: 7px;
+  padding: 7px 0;
 }
 
 .trace-studio-snippet-function {
@@ -616,29 +616,37 @@ body.asm-trace-camera-framing #arraySvg {
 }
 
 .trace-studio-snippet-lines {
+  width: max-content;
   min-width: max-content;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
   gap: 4px;
 }
 
 .trace-studio-snippet-line {
+  width: 100%;
   min-width: max-content;
   display: grid;
   gap: 4px;
 }
 
 .trace-studio-snippet-line-button {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
-  grid-template-columns: auto max-content;
+  box-sizing: border-box;
+  grid-template-columns: max-content max-content;
+  justify-content: start;
   gap: 0;
   background: transparent;
   color: rgba(220, 229, 236, 0.48);
+  text-align: left;
 }
 
 .trace-studio-snippet-gutter {
   position: sticky;
   z-index: 2;
-  left: 0;
+  left: 9px;
   align-self: stretch;
   display: grid;
   grid-template-columns: 4px 28px;
