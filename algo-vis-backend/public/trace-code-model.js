@@ -126,8 +126,17 @@
   function presentationLineNumbers(lines, displayLines = commentMaskedLines(lines)) {
     const hidden = mainWrapperLines(lines);
     let asmView = false;
+    let codeHideDepth = 0;
     lines.forEach(line => {
       const text = line.text;
+      const opensCodeHide = /^\s*\/\/\s*@code\s+hide\s*$/i.test(text);
+      const closesCodeHide = /^\s*\/\/\s*@endcode\s*$/i.test(text);
+      if (codeHideDepth > 0 || opensCodeHide) hidden.add(line.number);
+      if (opensCodeHide) codeHideDepth += 1;
+      if (closesCodeHide) {
+        hidden.add(line.number);
+        codeHideDepth = Math.max(0, codeHideDepth - 1);
+      }
       if (/\/\*\s*@asm-view\b/i.test(text)) asmView = true;
       if (asmView) hidden.add(line.number);
       if (/@asm-view\s*\*\//i.test(text)) asmView = false;
@@ -982,7 +991,15 @@
     )).join(',')).join('|');
   }
 
-  function planFrame(document, frame) {
+  function previousTimelineFrame(document, frame) {
+    const frames = Array.isArray(document?.frames) ? document.frames : [];
+    const frameId = String(frame?.id || '');
+    const index = frames.findIndex(candidate => candidate === frame
+      || (frameId && String(candidate?.id || '') === frameId));
+    return index > 0 ? frames[index - 1] : null;
+  }
+
+  function planFrame(document, frame, inheritedFrameIds = new Set()) {
     const source = String(document?.sourceCode || '');
     if (!source || !frame) return { frameId: frame?.id || '', sourceCode: source, fragments: [] };
     const lines = sourceLines(source);
@@ -993,6 +1010,25 @@
       ? document.sourceStructure
       : inferredControlStructure(source, lines);
     const frameEvents = Array.isArray(frame.events) ? frame.events : [];
+    // A drawing-only frame does not introduce a new execution location. Keep
+    // the preceding timeline snippet visible so recursion/layout-only frames
+    // do not blank the code panel or manufacture a code-page transition.
+    if (!frameEvents.length) {
+      const previousFrame = previousTimelineFrame(document, frame);
+      const previousId = String(previousFrame?.id || '');
+      if (previousFrame && !inheritedFrameIds.has(previousId)) {
+        const visited = new Set(inheritedFrameIds);
+        visited.add(String(frame.id || ''));
+        const previousPlan = planFrame(document, previousFrame, visited);
+        if (previousPlan.fragments?.length) {
+          return {
+            ...previousPlan,
+            frameId: frame.id || '',
+            inheritedFromFrameId: previousId
+          };
+        }
+      }
+    }
     let sources = presentationEvents(frame)
       .map(event => eventSourceFor(event, lines, source, hidden))
       .filter(Boolean)

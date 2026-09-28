@@ -20,6 +20,7 @@
   const ASSIGN_TIMING = Object.freeze({ frame: 160, valueHold: 500, drop: 500, hold: 500, exit: 100 });
   const GENERIC_EVENT_DURATION = Object.freeze({ lift: 340, pulse: 400, fade: 440, code: 400 });
   const APPEAR_TIMING = Object.freeze({ duration: 220, offsetY: -16 });
+  const STYLE_PAINT_DURATION = 180;
   const HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION = 320;
   const MARKER_REFLOW_TIMING = Object.freeze({ duration: 180, entranceDelay: 80 });
   const EXIT_OFFSET_Y = -16;
@@ -215,6 +216,14 @@
 
   function sameSceneGeneration(current, previous) {
     if (!sameVisualDomain(current, previous)) return false;
+    if (!retainedVisualOwner(current) && !retainedVisualOwner(previous)) {
+      const currentIdentity = String(current?.dataset?.traceRuntimeIdentity || '');
+      const previousIdentity = String(previous?.dataset?.traceRuntimeIdentity || '');
+      const currentContinuity = String(current?.dataset?.traceVisualContinuityKey || '');
+      const previousContinuity = String(previous?.dataset?.traceVisualContinuityKey || '');
+      if ((currentIdentity && currentIdentity === previousIdentity)
+        || (currentContinuity && currentContinuity === previousContinuity)) return true;
+    }
     const currentGeneration = Number(current?.dataset?.traceSceneGeneration);
     const previousGeneration = Number(previous?.dataset?.traceSceneGeneration);
     return !Number.isFinite(currentGeneration)
@@ -1049,6 +1058,16 @@
     return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : fallback;
   }
 
+  function outerframeMotionPosition(element, fallback) {
+    const origin = motionPosition(element, fallback);
+    const geometry = outerframeGeometry(element);
+    if (!origin || !geometry?.backgroundBox) return null;
+    return {
+      x: (Number(origin.x) || 0) + (Number(geometry.backgroundBox.x) || 0),
+      y: (Number(origin.y) || 0) + (Number(geometry.backgroundBox.y) || 0)
+    };
+  }
+
   function relativeMotionDelta(own, parent, options = {}) {
     if (options.lockToTarget || options.inheritParentMotion) return { x: 0, y: 0 };
     return {
@@ -1062,6 +1081,11 @@
       && [...(element.parentElement?.children || [])].some(child => (
         child.classList?.contains('outerframe-bg')
       )));
+  }
+
+  function stableObjectLabel(element) {
+    return outerframeGeometryLabel(element)
+      || element?.classList?.contains('asm-trace-object-label') === true;
   }
 
   function indexLabelGrowthCandidate(entry, previousPlacements, previousObjects) {
@@ -2064,6 +2088,9 @@
             class: 'asm-trace-animation-cell-host',
             'pointer-events': 'none'
           });
+          const ownerVariableId = parent.closest?.('[data-trace-variable]')
+            ?.dataset?.traceVariable || '';
+          if (ownerVariableId) wrapper.dataset.traceVariable = ownerVariableId;
           const transform = parentTransformInRoot(parent);
           if (transform) wrapper.setAttribute('transform', transform);
           layer.append(wrapper);
@@ -2582,15 +2609,25 @@
     let stylesDirty = true;
     let evaluatedHighlights = {};
     let styleElapsed = 0;
-    // Only animated swaps defer paint. Other frame-authored styles retain
-    // their entry-time semantics; disabled swaps have no animation barrier.
-    const swapPaintStarts = new Map();
+    // Paint timing consumes explicit playback events. Geometry analysis creates
+    // visual-move events before this controller is built; style does not infer
+    // movement again and therefore cannot accidentally lock an entire container.
+    const paintHoldEnds = new Map();
+    (options.visualMoveEvents || []).forEach(event => {
+      if (event?.holdStyle !== true) return;
+      (event.targetKeys || [event.targetKey]).filter(Boolean).forEach(key => {
+        paintHoldEnds.set(
+          String(key),
+          Math.max(Number(paintHoldEnds.get(String(key))) || 0, Number(event.endMs) || 0)
+        );
+      });
+    });
     (replayPlan?.checkpoints || []).forEach(checkpoint => {
       if (checkpoint.eventType !== 'swap' || checkpoint.mode !== 'animated') return;
       checkpoint.mutations.filter(mutation => mutation.kind === 'value').forEach(mutation => {
-        const start = Number(checkpoint.animationStartMs ?? checkpoint.startMs) || 0;
+        const end = Number(checkpoint.commitMs) || 0;
         for (const key of [mutation.visualKey || mutation.key, `${mutation.key}:index`]) {
-          if (!swapPaintStarts.has(key)) swapPaintStarts.set(key, start);
+          paintHoldEnds.set(key, Math.max(Number(paintHoldEnds.get(key)) || 0, end));
         }
       });
     });
@@ -2603,7 +2640,7 @@
       let key = isIndex
         ? (String(track.key).endsWith(':index') ? track.key : `${track.key}:index`)
         : track.key;
-      if (!isIndex && swapPaintStarts.has(key)) {
+      if (!isIndex && paintHoldEnds.has(key)) {
         key = Object.keys(initialBindings).find(source => initialBindings[source] === key) || key;
       }
       const currentElement = options.currentElements?.get?.(track.key)
@@ -2621,7 +2658,16 @@
       // each function. Resolve the previous paint through the container's
       // runtime identity so unchanged focus/background styling does not restart
       // from the default white color at a function boundary.
-      const previous = options.previousObjects?.get?.(sourceKey)
+      // Disk cells can change logical indices when a top disk leaves its peg.
+      // Match their paint through the same visual continuity key used by their
+      // movement, otherwise the next disk inherits the departed index's color.
+      const continuityPrevious = !isIndex && currentElement?.dataset?.traceSourceVariableId
+        ? previousVisualForEntry(
+          currentElement, options.previousObjects, sourceKey || key || ''
+        )
+        : null;
+      const previous = continuityPrevious
+        || options.previousObjects?.get?.(sourceKey)
         || (typeof CSS !== 'undefined'
           ? previousVisualElement(options.previousObjects, sourceKey || key || '')
           : null);
@@ -2631,6 +2677,8 @@
       initialPaints.set(track, paint);
       return paint;
     };
+    const initializedStyleRects = new WeakSet();
+    const heldStyleRects = new WeakSet();
     const refreshStyles = () => {
       if (!stylesDirty) return;
       stylesDirty = false;
@@ -2732,15 +2780,15 @@
             ? (String(track?.key).endsWith(':index') ? track.key : `${track?.key}:index`)
             : track?.key;
           const initial = previousPaint(track, isIndex, paint);
-          const held = styleElapsed < (swapPaintStarts.get(key) ?? 0);
+          const held = styleElapsed < (paintHoldEnds.get(key) ?? 0);
           if (held) paint = initial;
           // Establish the replay's initial paint immediately; only subsequent
           // changes transition. Geometry continues on the cell's own tick.
-          if (rect.classList && !rect.classList.contains('asm-trace-style-paint')) {
+          if (rect.classList && !initializedStyleRects.has(rect)) {
             // Start the color transition at entry, not at numeric completion.
-            // A freshly inserted rect already has the destination color.
-            // Establish the source without accidentally starting a reverse
-            // transition, then enable the shared 180ms transition once.
+            // A reused rect can still carry the prior playback class. Always
+            // establish this transition's continuity-matched source paint
+            // without animating to it, then enable the shared transition.
             rect.style.transition = 'none';
             rect.setAttribute('fill', initial.fill);
             rect.setAttribute('fill-opacity', initial.opacity);
@@ -2748,6 +2796,19 @@
             window.getComputedStyle(rect).fill;
             rect.style.removeProperty('transition');
             window.getComputedStyle(rect).fill;
+            initializedStyleRects.add(rect);
+          }
+          if (held) {
+            rect.style.transition = 'none';
+            heldStyleRects.add(rect);
+          } else {
+            rect.style.removeProperty('transition');
+            if (heldStyleRects.has(rect)) {
+              // Commit the carried source color before enabling the destination
+              // transition on the first tick after the visual-move event ends.
+              window.getComputedStyle(rect).fill;
+              heldStyleRects.delete(rect);
+            }
           }
           rect.setAttribute('fill', paint.fill);
           rect.setAttribute('fill-opacity', paint.opacity);
@@ -2763,7 +2824,7 @@
         styleTargets.forEach(track => {
           const highlight = evaluatedHighlights[track.variableId]?.[String(track.styleIndex ?? track.index)] || {};
           const focused = Object.hasOwn(highlight.styleTypes || {}, 'focus');
-          if (styleElapsed >= (swapPaintStarts.get(track.key) ?? 0)
+          if (styleElapsed >= (paintHoldEnds.get(track.key) ?? 0)
             && focusColors.has(track.variableId) && !focused
             && !Object.hasOwn(highlight.styleTypes || {}, 'background')) {
             track.styleRect.setAttribute('fill', focusColors.get(track.variableId));
@@ -2793,7 +2854,7 @@
             apply(track, value);
           }
         });
-        // Numeric completion does not gate destination-frame styles.
+        // Completion releases every geometry/style barrier.
         stylesDirty = true;
       }
     };
@@ -4858,7 +4919,7 @@
     // Keep them in the formal schedule when scalar values are intentionally not
     // drawn, without relaxing canvas-target checks for ordinary events.
     if (event?.type === 'condition') return true;
-    if (['function-enter', 'call', 'return'].includes(event?.type)) {
+    if (['function-enter', 'call', 'output', 'return'].includes(event?.type)) {
       return Number.isFinite(Number(event?.source?.from))
         && Number.isFinite(Number(event?.source?.to));
     }
@@ -5366,7 +5427,9 @@
   function eventSequence(options, eventFrame, eventTimeline) {
     const logicalEvents = orderedEvents(eventFrame)
       .filter(event => event?.loopBoundarySuppressed !== true);
-    if (!eventTimeline.length && !logicalEvents.length) return null;
+    // A frame can have no runtime event while its persisted objects still
+    // move and change conditional style. Keep the replay/style controller
+    // alive so paint can wait for that geometry transition.
     const replayPlan = options.forwardReplayPlan || createForwardReplayPlan(
       options.document, eventFrame, eventTimeline, options.direction
     );
@@ -6329,6 +6392,11 @@
         ? markerContinuation.element
         : previousVisualElement(previousObjects, sourceKey);
       const activationChanged = markerActivationChanged(element, candidatePreviousVisual);
+      const previousOuterframeOwner = candidatePreviousVisual
+        ?.closest?.('.asm-trace-object') || null;
+      const objectLabelOwnerContinues = stableObjectLabel(element)
+        && stableObjectLabel(candidatePreviousVisual)
+        && sameSceneGeneration(topElement, previousOuterframeOwner);
       // @keep cuts every live visual into a new scene, not only automatic
       // markers. The retained copy owns the old generation; the following
       // array/cell/object must enter independently instead of borrowing the
@@ -6336,6 +6404,7 @@
       const generationChanged = candidatePreviousVisual
         && !keepSnapshotMember
         && !retainedSnapshot
+        && !objectLabelOwnerContinues
         && !sameSceneGeneration(element, candidatePreviousVisual);
       const sceneActivationChanged = key === topKey
         && !keepSnapshotMember
@@ -6355,15 +6424,22 @@
       const mode = previous && plan.requestedMode === 'auto'
         ? 'move'
         : plan.mode || (previous ? 'move' : 'lift');
-      // Snapshot hosts store their authored origin, while placements describe
-      // the actual rendered content bounds. A keep handoff must align those
-      // content bounds with the outgoing live object, otherwise the retained
-      // array visibly nudges by its inner padding before settling.
-      const deltaCurrent = keepHandoffSourceKey ? currentPlacement : current;
+      // A keep handoff aligns the structural outerframe, not the decorated
+      // placement bounds. Highlight/point visuals can extend above a node and
+      // must not make an unchanged live object appear to move as it becomes a
+      // retained snapshot. The outerframe-local offset still preserves arrays
+      // whose authored origin includes inner padding.
+      const previousOuterframe = keepHandoffSourceKey
+        ? outerframeMotionPosition(candidatePreviousVisual, previous) : null;
+      const currentOuterframe = keepHandoffSourceKey
+        ? outerframeMotionPosition(element, current) : null;
+      const deltaPrevious = previousOuterframe || previous;
+      const deltaCurrent = currentOuterframe
+        || (keepHandoffSourceKey ? currentPlacement : current);
       const raw = previous
         ? {
-          x: (Number(previous.x) || 0) - (Number(deltaCurrent.x) || 0),
-          y: (Number(previous.y) || 0) - (Number(deltaCurrent.y) || 0)
+          x: (Number(deltaPrevious.x) || 0) - (Number(deltaCurrent.x) || 0),
+          y: (Number(deltaPrevious.y) || 0) - (Number(deltaCurrent.y) || 0)
         }
         : { x: 0, y: 24 };
       rawDeltas.set(key, raw);
@@ -6525,6 +6601,15 @@
         ? null
         : candidatePreviousVisual;
       entry.previousVisual = previousVisual;
+      const previousOwner = String(previousVisual?.closest?.('[data-trace-variable]')
+        ?.dataset?.traceVariable || '');
+      const currentOwner = String(entry.element?.closest?.('[data-trace-variable]')
+        ?.dataset?.traceVariable || '');
+      entry.crossContainerMotion = Boolean(
+        entry.key !== entry.topKey
+        && entry.element?.dataset?.traceVisualContinuityKey
+        && previousOwner && currentOwner && previousOwner !== currentOwner
+      );
       entry.heapSplitEntrance = !previousVisual
         ? heapSplitSegmentGeometry(entry.element) : null;
       entry.sequenceRectGeometry = entry.sequenceGeometrySlot && previousVisual
@@ -6736,6 +6821,89 @@
     });
 
     const appearingKeys = new Set(entries.filter(entry => entry.appearing).map(entry => entry.key));
+    // Convert verified visual movement into internal playback events. Runtime
+    // statements are intentionally not used here: layout and cross-container
+    // movement can occur in an eventless authored frame. Consumers such as
+    // style timing only read these events and never repeat the geometry test.
+    const visualMoveEvents = entries.flatMap(entry => {
+      if (!entry.previous || entry.appearing) return [];
+      const raw = rawDeltas.get(entry.key) || { x: 0, y: 0 };
+      const distance = Math.hypot(Number(raw.x) || 0, Number(raw.y) || 0);
+      const visiblyMoves = distance > 0.5
+        || entry.geometryTransition === true
+        || (entry.mode === 'arc' && Boolean(entry.previous));
+      if (!visiblyMoves) return [];
+      const durationMs = Math.max(
+        1,
+        Number(entry.sequenceMotionSlot?.duration)
+          || Number(entry.declarationReflow?.duration)
+          || Number(entry.exitReflow?.duration)
+          || Number(entry.markerGroupReflowDuration)
+          || Number(entry.plan?.duration)
+          || duration
+      );
+      const startMs = Number(entry.motionDelay) || 0;
+      return [{
+        id: `visual-move:${entry.key}`,
+        type: 'visual-move',
+        kind: 'visual-move',
+        subtype: entry.crossContainerMotion ? 'cross-container'
+          : entry.geometryTransition ? 'geometry' : entry.mode === 'arc' ? 'arc' : 'translate',
+        targetKey: entry.key,
+        targetKeys: [entry.key],
+        startMs,
+        durationMs,
+        endMs: startMs + durationMs,
+        holdStyle: entry.repaintTransition === true,
+        blocking: true,
+        enabled: true,
+        source: 'automatic'
+      }];
+    });
+    if (visualMoveEvents.length) {
+      const startMs = Math.min(...visualMoveEvents.map(event => event.startMs));
+      const endMs = Math.max(...visualMoveEvents.map(event => event.endMs));
+      playbackPlan.phases.push({
+        id: 'visual-motions',
+        mode: 'parallel',
+        startMs,
+        durationMs: Math.max(0, endMs - startMs),
+        steps: visualMoveEvents
+      });
+      const paintEvents = visualMoveEvents.filter(event => event.holdStyle === true);
+      if (paintEvents.length) {
+        const paintStart = Math.min(...paintEvents.map(event => event.endMs));
+        const paintEnd = Math.max(...paintEvents.map(
+          event => event.endMs + STYLE_PAINT_DURATION
+        ));
+        playbackPlan.phases.push({
+          id: 'style-paint-transition',
+          mode: 'parallel',
+          startMs: paintStart,
+          durationMs: Math.max(0, paintEnd - paintStart),
+          steps: paintEvents.map(event => ({
+            id: `style-after:${event.id}`,
+            kind: 'style-transition',
+            subtype: 'post-visual-move',
+            targetKeys: event.targetKeys,
+            startMs: event.endMs,
+            durationMs: STYLE_PAINT_DURATION,
+            endMs: event.endMs + STYLE_PAINT_DURATION,
+            blocking: true,
+            enabled: true,
+            source: 'automatic'
+          }))
+        });
+        playbackPlan.totalDurationMs = Math.max(
+          Number(playbackPlan.totalDurationMs) || 0,
+          paintEnd
+        );
+      }
+      playbackPlan.totalDurationMs = Math.max(
+        Number(playbackPlan.totalDurationMs) || 0,
+        endMs
+      );
+    }
     const events = eventSequence({
       ...options,
       rawDeltas,
@@ -6744,11 +6912,19 @@
       markerReflowDuration,
       exitReflowSchedule,
       appearingKeys,
+      visualMoveEvents,
       forwardReplayPlan,
       visualKeyForSource: key => visualKeyBySource.get(key) || key
     }, eventFrame, playbackEventTimeline);
     const eventTimelineDuration = playbackEventTimeline.reduce(
       (end, slot) => Math.max(end, slot.end), 0
+    );
+    const visualMoveTimelineDuration = visualMoveEvents.reduce(
+      (end, event) => Math.max(end, Number(event.endMs) || 0), 0
+    );
+    const styleTimelineDuration = Math.max(
+      eventTimelineDuration,
+      visualMoveTimelineDuration
     );
     const motionDuration = entries.reduce((end, entry) => {
       const localDuration = Math.max(
@@ -6810,7 +6986,7 @@
       const progress = Math.max(0, Math.min(1, elapsed / duration));
       const eased = easeOutCubic(progress);
 
-      if (elapsed < eventTimelineDuration) {
+      if (elapsed < styleTimelineDuration) {
         events?.update(elapsed);
       } else {
         events?.finish();
@@ -6907,6 +7083,13 @@
           || (exitSlot && elapsed >= exitStart
             && elapsed < exitStart + (Number(exitSlot.exitDuration) || APPEAR_TIMING.duration))) {
           animatedVisuals.push(element);
+        }
+      });
+      entries.forEach(entry => {
+        const state = motionStates.get(entry.key);
+        if (entry.crossContainerMotion && state?.localEased < 1
+          && Math.hypot(Number(entry.dx) || 0, Number(entry.dy) || 0) > 0.5) {
+          animatedVisuals.push(entry.element);
         }
       });
       animatedVisuals.push(...(events?.animatedElements || []));
@@ -7299,10 +7482,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-238';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-253';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-238', play, cancel, updateEventAvailability,
+    build: 'trace-253', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

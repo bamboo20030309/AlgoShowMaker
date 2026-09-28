@@ -365,7 +365,12 @@
     } else if (mode === 'bit' && typeof window.draw_array_BIT === 'function') {
       window.draw_array_BIT(group, id, values, styles, range, indexMode, gap);
     } else if (mode === 'disk' && typeof window.draw_array_disk === 'function') {
-      window.draw_array_disk(group, id, values, styles, range, itemsPerRow, indexMode, gap);
+      window.draw_array_disk(
+        group, id, values, styles, range, itemsPerRow, indexMode, gap,
+        Number.isFinite(Number(rendererOptions.capacity))
+          ? Math.max(0, Math.trunc(Number(rendererOptions.capacity)))
+          : null
+      );
     } else if (mode === 'stack' && typeof window.draw_array_stack === 'function') {
       window.draw_array_stack(group, id, values, styles, range, indexMode, gap);
     } else if (mode === 'queue' && typeof window.draw_array_queue === 'function') {
@@ -387,6 +392,11 @@
         // Keep that label immutable while retaining the underlying data
         // value as a separate target for event replay and assignment effects.
         cell.setAttribute('data-trace-data-value', String(values[logicalIndex] ?? ''));
+        if (mode === 'disk') {
+          cell.setAttribute('data-trace-source-variable-id', context.variableId);
+          cell.setAttribute('data-trace-visual-continuity-key', `disk:${String(values[logicalIndex] ?? '')}`);
+          cell.setAttribute('data-trace-runtime-identity', `disk:${String(values[logicalIndex] ?? '')}`);
+        }
         if (typeof rendererOptions.display?.template === 'string') {
           cell.setAttribute('data-trace-display-template', rendererOptions.display.template);
           cell.setAttribute('data-trace-display-index', String(logicalIndex));
@@ -634,6 +644,18 @@
 
   function snapshotObjectKey(snapshot) {
     return String(snapshot?.objectId || snapshot?.id || '');
+  }
+
+  function recursionParentObjectKey(document, frame) {
+    const parentActivationId = String(frame?.source?.recursionParentActivationId || '');
+    const layoutId = String(frame?.source?.layoutId || '');
+    if (!parentActivationId) return '';
+    const snapshotsById = new Map((document?.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
+    const parent = [...(frame?.snapshotIds || [])].reverse()
+      .map(snapshotId => snapshotsById.get(snapshotId))
+      .find(snapshot => String(snapshot?.recursionActivationId || '') === parentActivationId
+        && (!layoutId || String(snapshot?.layoutId || '') === layoutId));
+    return snapshotObjectKey(parent);
   }
 
   function keepSnapshotObjectKeys(document, frame, sourceObjectKey = '') {
@@ -1144,7 +1166,28 @@
   function semanticTargetPlacement(targetKey, placements, elements) {
     const fallback = placements.get(targetKey) || null;
     const element = elements.get(targetKey);
-    if (!fallback || !element) return fallback;
+    if (!fallback || !element) {
+      const layoutElements = [...new Set([...elements.values()].filter(candidate => (
+        String(candidate?.dataset?.traceLayoutId || '') === String(targetKey || '')
+        && candidate?.dataset?.traceLayoutNode
+        && candidate.getAttribute?.('display') !== 'none'
+      )))];
+      const boxes = layoutElements.map(candidate => {
+        const objectKey = String(candidate.dataset.traceObjectKey || '');
+        const candidateFallback = placements.get(objectKey);
+        return recursionOuterframePlacement(
+          candidate,
+          candidateFallback,
+          candidate.parentElement
+        );
+      }).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
+      if (!boxes.length) return fallback;
+      const left = Math.min(...boxes.map(box => box.x));
+      const top = Math.min(...boxes.map(box => box.y));
+      const right = Math.max(...boxes.map(box => box.x + box.width));
+      const bottom = Math.max(...boxes.map(box => box.y + box.height));
+      return { x: left, y: top, width: right - left, height: bottom - top };
+    }
     // A semantic object anchor such as arr.right belongs to the object's
     // stable outerframe. Transient point/highlight/marker decorations may
     // extend the SVG bounding box, but must never move the anchor itself.
@@ -1737,7 +1780,10 @@
   }
 
   function targetPlacement(document, frame, placements, target = {}, elements = null) {
-    const objectKey = target.objectKey || target.targetObjectKey || target.key;
+    const requestedObjectKey = target.objectKey || target.targetObjectKey || target.key;
+    const objectKey = requestedObjectKey === 'recursion_parent'
+      ? recursionParentObjectKey(document, frame)
+      : requestedObjectKey;
     const variableId = target.variableId || target.targetVariableId;
     if (!objectKey && !variableId) return null;
     if (objectKey === 'keep' || objectKey === '$keep') {
@@ -1884,7 +1930,10 @@
   }
 
   function resolvedTargetKey(document, frame, target, placements = currentScene?.placements || new Map()) {
-    const objectKey = target?.objectKey || target?.targetObjectKey || target?.key;
+    const requestedObjectKey = target?.objectKey || target?.targetObjectKey || target?.key;
+    const objectKey = requestedObjectKey === 'recursion_parent'
+      ? recursionParentObjectKey(document, frame)
+      : requestedObjectKey;
     if (objectKey) {
       if ((objectKey === 'keep' || objectKey === '$keep')
         && !String(target?.indexExpression ?? '').trim()) return '$keep';
@@ -2630,7 +2679,7 @@
           cursor += crossSize(node) + siblingGap;
         });
       });
-    } else if (mode === 'binary') {
+    } else if (mode === 'slots' || mode === 'binary') {
       const degree = Math.max(1, Math.trunc(Number(layout?.degree) || 2));
       const pitch = Math.max(...nodes.map(crossSize)) + siblingGap;
       function assignSlots(node, slot, treeDepth, rootCenter, treeOffset) {
@@ -2721,6 +2770,25 @@
       }
       result.set(item.node.id, { x, y, width: item.node.width, height: item.node.height });
     });
+    // `at ... offset(...)` anchors the root node, not the bounding box of the
+    // whole tree.  Growing a sibling/subtree may repack every other node, but
+    // the root-facing edge remains pinned to the authored anchor.
+    const root = roots[0];
+    const rootBox = root ? result.get(root.id) : null;
+    if (rootBox) {
+      const rootAnchorName = direction === 'bottom-up'
+        ? 'bottom'
+        : direction === 'left-right'
+          ? 'left'
+          : direction === 'right-left' ? 'right' : 'top';
+      const rootPoint = anchorPoint(rootBox, rootAnchorName);
+      const dx = (Number(anchor.x) || 0) - rootPoint.x;
+      const dy = (Number(anchor.y) || 0) - rootPoint.y;
+      result.forEach(box => {
+        box.x += dx;
+        box.y += dy;
+      });
+    }
     return result;
   }
 
@@ -3015,8 +3083,10 @@
     const elapsed = frameIndex >= 0 ? frames.slice(0, frameIndex + 1) : [frame];
     const completed = new Set();
     elapsed.forEach(item => (item?.events || []).forEach(event => {
-      if (event?.type !== 'function-exit') return;
-      const activationId = String(event.recursionActivationId || '');
+      if (event?.type !== 'function-exit' && event?.type !== 'branch-exit') return;
+      const activationId = String(event?.type === 'branch-exit'
+        ? event.branchId || ''
+        : event.recursionActivationId || '');
       if (activationId) completed.add(activationId);
     }));
     return completed;
@@ -3280,6 +3350,21 @@
 
   function evaluateFrameHighlights(document, frame) {
     const highlights = window.ASMTraceRules.evaluate(document, frame);
+    const layoutIds = frame?.source?.layoutIds || {};
+    Object.entries(layoutIds).forEach(([variableId, layoutId]) => {
+      const color = traceTextColor((document.layouts || []).find(layout => (
+        layout?.type === 'recursion' && layout.id === layoutId
+      ))?.background, '');
+      if (!color) return;
+      const hasExplicitBackground = Object.values(highlights[variableId] || {}).some(highlight => (
+        Object.prototype.hasOwnProperty.call(highlight?.styleTypes || {}, 'background')
+      ));
+      if (hasExplicitBackground) return;
+      highlights[variableId] = {
+        ...(highlights[variableId] || {}),
+        $object: { styleTypes: { background: color } }
+      };
+    });
     applyFixedEventStyles(document, frame, highlights);
     return highlights;
   }
@@ -3349,8 +3434,10 @@
 
   const TRACE_TEXT_COLORS = Object.freeze({
     AV_green: 'rgba(165, 214, 167, 0.6)',
+    AV_opaque_green: '#a5d6a7',
     AV_blue: 'rgba(144, 202, 249, 0.6)',
     AV_red: 'rgba(239, 154, 154, 0.6)',
+    AV_opaque_red: '#ef9a9a',
     AV_yellow: 'rgba(252, 255, 64, 0.46)',
     AV_orange: 'rgba(255, 183, 77, 0.65)',
     AV_magenta: 'rgba(231, 144, 255, 0.65)',
@@ -4429,13 +4516,29 @@
       const sourceFrame = snapshot.sourceFrameId
         ? document.frames?.find(item => item.id === snapshot.sourceFrameId)
         : null;
+      const activeSnapshot = frame.source?.systemBranchPreview
+        ? frame.source.previewSnapshotId === snapshot.id
+        : String(frame.source?.recursionActivationId || '') === String(snapshot.recursionActivationId || '');
+      const visibleSnapshotStyles = activeSnapshot
+        ? snapshot.styles
+        : (snapshot.styles || []).filter(style => !['highlight', 'point'].includes(style.styleType));
       const snapshotStyleFrame = sourceFrame && Array.isArray(snapshot.styles)
-        ? { ...sourceFrame, events: [], styles: snapshot.styles }
+        ? { ...sourceFrame, events: [], styles: visibleSnapshotStyles }
         : null;
       const snapshotAllHighlights = snapshotStyleFrame
         ? window.ASMTraceRules.evaluate({ ...document, rules: [] }, snapshotStyleFrame)
         : {};
-      const snapshotHighlights = snapshotAllHighlights[snapshot.sourceVariableId] || {};
+      const snapshotHighlights = {};
+      mergeHighlights(snapshotHighlights, snapshotAllHighlights[snapshot.sourceVariableId] || {});
+      const layoutBackground = traceTextColor((document.layouts || []).find(layout => (
+        layout?.type === 'recursion' && layout.id === snapshot.layoutId
+      ))?.background, '');
+      const hasExplicitBackground = Object.values(snapshotHighlights).some(highlight => (
+        Object.prototype.hasOwnProperty.call(highlight?.styleTypes || {}, 'background')
+      ));
+      if (layoutBackground && !hasExplicitBackground) {
+        snapshotHighlights.$object = { styleTypes: { background: layoutBackground } };
+      }
       const snapshotRenderFrame = snapshotStyleFrame || sourceFrame || frame;
       const position = snapshotStudioPosition(document, frame, snapshot);
       const baseX = position.x;
@@ -4472,6 +4575,7 @@
       if (!content.querySelector(':scope > .outerframe-label')) {
         const labelY = Math.max(Number(height) || 0, contentBox.y + contentBox.height) + 20;
         motion.append(markSelectable(svg('text', {
+          class: 'asm-trace-object-label',
           x: contentBox.x + contentBox.width / 2,
           y: labelY,
           'text-anchor': 'middle',
@@ -4602,6 +4706,7 @@
       if (!content.querySelector(':scope > .outerframe-label')) {
         const labelY = Math.max(Number(height) || 0, contentBox.y + contentBox.height) + 20;
         motion.append(markSelectable(svg('text', {
+          class: 'asm-trace-object-label',
           x: contentBox.x + contentBox.width / 2,
           y: labelY,
           'text-anchor': 'middle',
@@ -4633,6 +4738,9 @@
     // automatic markers read the pre-offset coordinates from placements.
     applyBindings(document, frame, placements, elements);
     applyRecursionLayouts(rootSvg, root, document, frame, placements, elements, options);
+    // A binding may target the complete bounds of a recursion layout. Those
+    // bounds only exist after its nodes have reached their automatic slots.
+    applyBindings(document, frame, placements, elements);
     renderFrameSegments(root, document, frame, placements, elements, options);
     y = renderFrameTexts(root, document, frame, y, placements, elements, options);
     y = renderDecorations(root, document, frame, y, placements, elements, options);
@@ -5189,9 +5297,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-220';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-227';
   window.ASMTraceRenderers = {
-    build: 'trace-220', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-227', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

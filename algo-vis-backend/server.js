@@ -20,8 +20,6 @@ const {
 const {
   analyzeSource,
   buildSyntaxTree,
-  findFrameDirectives,
-  findLayoutDirectives,
   instrumentSource
 } = require('./trace-instrumenter');
 const TraceViewSource = require('./public/trace-view-source');
@@ -199,11 +197,19 @@ app.post('/trace/analyze', limiter, (req, res) => {
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
   try {
     const analysis = analyzeSource(code);
-    const frameDirectives = findFrameDirectives(code, analysis);
-    const layoutDirectives = findLayoutDirectives(code, analysis);
+    const instrumented = instrumentSource(code, []);
+    const frameDirectives = instrumented.frameDirectives;
+    const layoutDirectives = instrumented.layoutDirectives;
+    const branchDirectives = instrumented.branchDirectives;
     res.json({
       success: true,
       layouts: layoutDirectives,
+      branches: branchDirectives.map(directive => ({
+        type: directive.type,
+        line: directive.line,
+        label: directive.label || '',
+        layoutId: directive.layoutId || ''
+      })),
       frameDirectives: frameDirectives.map(directive => ({
         line: directive.line,
         name: directive.name || '',
@@ -240,7 +246,7 @@ app.post('/trace/analyze', limiter, (req, res) => {
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       })),
-      variables: analysis.variables.map(variable => ({
+      variables: instrumented.variables.map(variable => ({
         id: variable.id,
         name: variable.name,
         cppType: variable.type,
@@ -1148,8 +1154,39 @@ function materializeKeepSnapshots(frames) {
       binding: binding ? JSON.parse(JSON.stringify(binding)) : null,
       styles: (frame.styles || [])
         .filter(style => style.targetVariableId === sourceVariableId)
-        .map(style => JSON.parse(JSON.stringify(style)))
+        .map(style => JSON.parse(JSON.stringify(style))),
+      arrows: (frame.arrows || [])
+        .filter(arrow => arrow?.from?.targetVariableId === sourceVariableId)
+        .map(arrow => JSON.parse(JSON.stringify(arrow)))
     };
+  }
+  function retainedSnapshotArrows(renderState, frame, snapshot) {
+    return (renderState?.arrows || []).map(arrow => {
+      const retained = cloneTraceValue(arrow);
+      retained.id = `${arrow.id}@${snapshot.id}`;
+      retained.explicitId = true;
+      retained.retainedFromArrowId = arrow.id;
+      retained.source = 'directive';
+      retained.from = {
+        ...retained.from,
+        targetVariableId: '',
+        targetName: '',
+        targetObjectKey: snapshot.objectId,
+        objectKey: snapshot.objectId
+      };
+      for (const endpointName of ['from', 'to']) {
+        const endpoint = retained[endpointName];
+        if (!endpoint || !Array.isArray(endpoint.indexExpressions)) continue;
+        const resolved = endpoint.indexExpressions.map(expression => (
+          resolveTraceIndexExpression(frame, expression)
+        ));
+        if (resolved.every(Number.isInteger)) {
+          endpoint.indexExpressions = resolved.map(String);
+          endpoint.indexExpression = resolved.join(',');
+        }
+      }
+      return retained;
+    });
   }
   function eventsForGeneration(events, generation, preKeepGeneration = generation) {
     return (events || []).filter(event => event?.type !== 'keep').map(event => ({
@@ -1161,8 +1198,32 @@ function materializeKeepSnapshots(frames) {
       }))
     }));
   }
-  const materializedFrames = frames.map((frame, frameIndex) => {
-    const keepEvents = (frame.events || []).filter(event => event.type === 'keep');
+  let materializedFrames = frames.map((frame, frameIndex) => {
+    const branchVariableId = String(frame.source?.primaryVariableId || '');
+    const branchEntry = branchVariableId ? frame.state?.[branchVariableId] : null;
+    const branchKeep = frame.source?.branchId && frame.source?.layoutId && branchEntry
+      ? {
+        type: 'keep',
+        order: Number((frame.events || [])[0]?.order ?? -1) - 0.25,
+        signature: `automatic-branch:${frame.source.branchId}`,
+        label: String(frame.source.branchLabel || branchEntry.name || 'Branch'),
+        layoutId: String(frame.source.layoutId),
+        recursionFunction: String(frame.source.recursionFunction || ''),
+        recursionActivationId: String(frame.source.recursionActivationId || frame.source.branchId),
+        recursionParentActivationId: String(frame.source.recursionParentActivationId || frame.source.branchOwnerActivationId || ''),
+        recursionAncestorActivationIds: cloneTraceValue(frame.source.recursionAncestorActivationIds || []),
+        recursionDepth: Number(frame.source.recursionDepth) || 0,
+        recursionSiblingIndex: Number(frame.source.recursionSiblingIndex) || 0,
+        recursionRootIndex: Number(frame.source.recursionRootIndex) || 0,
+        preserveStyle: true,
+        payload: { data: cloneTraceValue(branchEntry.data) },
+        targets: [{ variableId: branchVariableId }]
+      }
+      : null;
+    const keepEvents = [
+      ...(branchKeep ? [branchKeep] : []),
+      ...(frame.events || []).filter(event => event.type === 'keep')
+    ];
     const snapshotGeneration = sceneGeneration;
     const liveGeneration = keepEvents.length ? sceneGeneration + 1 : sceneGeneration;
     let keepLastFocus = false;
@@ -1228,7 +1289,7 @@ function materializeKeepSnapshots(frames) {
       const renderState = (event.layoutId && event.recursionActivationId
         ? currentRenderState || previousRenderState
         : previousRenderState || currentRenderState)
-        || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [] };
+        || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [], arrows: [] };
       const preserveStyle = event.preserveStyle !== false;
       const count = (counts.get(variableId) || 0) + 1;
       counts.set(variableId, count);
@@ -1266,6 +1327,9 @@ function materializeKeepSnapshots(frames) {
         rendererOptions: renderState.rendererOptions,
         styles: preserveStyle ? renderState.styles : []
       };
+      snapshot.arrows = snapshot.layoutId
+        ? retainedSnapshotArrows(renderState, frame, snapshot)
+        : [];
       snapshots.push(snapshot);
       activateSnapshot(snapshot, replacedSnapshot);
     });
@@ -1303,6 +1367,148 @@ function materializeKeepSnapshots(frames) {
     };
     latestByActivation.set(activationKey, snapshot);
   });
+  const initialByActivation = new Map();
+  snapshots.forEach(snapshot => {
+    if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
+    const key = `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`;
+    if (!initialByActivation.has(key)) initialByActivation.set(key, snapshot);
+  });
+  const childrenByParent = new Map();
+  for (const snapshot of initialByActivation.values()) {
+    if (!snapshot.recursionParentActivationId) continue;
+    const key = `${snapshot.layoutId}\u0000${snapshot.recursionParentActivationId}`;
+    if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+    childrenByParent.get(key).push(snapshot);
+  }
+  const previewPlans = [];
+  for (const [parentKey, children] of childrenByParent.entries()) {
+    const parent = initialByActivation.get(parentKey);
+    if (!parent || children.length < 2) continue;
+    const ordered = [...children].sort((left, right) => (
+      Number(left.recursionSiblingIndex) - Number(right.recursionSiblingIndex)
+    ));
+    const childIndexes = ordered.map(child => (
+      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+    )).filter(index => index >= 0);
+    if (!childIndexes.length) continue;
+    const parentIndex = materializedFrames.findIndex(frame => frame.id === parent.createdFrameId);
+    const firstChildIndex = Math.min(...childIndexes);
+    if (parentIndex < 0 || firstChildIndex <= parentIndex) continue;
+    const previews = ordered.map(child => {
+      const childFrameIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
+      const subtreeActivations = new Set([...initialByActivation.values()]
+        .filter(candidate => candidate.layoutId === child.layoutId
+          && (candidate.recursionActivationId === child.recursionActivationId
+            || (candidate.recursionAncestorActivationIds || []).includes(child.recursionActivationId)))
+        .map(candidate => candidate.recursionActivationId));
+      let completionFrame = materializedFrames[childFrameIndex] || null;
+      for (let index = childFrameIndex; index < materializedFrames.length; index += 1) {
+        const candidate = materializedFrames[index];
+        const activationId = String(candidate.source?.recursionActivationId || '');
+        if (subtreeActivations.has(activationId)) {
+          completionFrame = candidate;
+        } else if (index > childFrameIndex) {
+          break;
+        }
+      }
+      return {
+        child,
+        childFrame: materializedFrames[childFrameIndex] || null,
+        completionFrame
+      };
+    });
+    previewPlans.push({ insertIndex: parentIndex + 1, parentKey, previews });
+  }
+  previewPlans.sort((left, right) => right.insertIndex - left.insertIndex).forEach(plan => {
+    const base = materializedFrames[Math.max(0, plan.insertIndex - 1)];
+    if (!base) return;
+    const firstActualChildIndex = Math.min(...plan.previews.map(({ child }) => (
+      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+    )).filter(index => index >= 0));
+    plan.previews.forEach(({ child }) => {
+      const actualIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
+      for (let index = plan.insertIndex; index < actualIndex; index += 1) {
+        const frame = materializedFrames[index];
+        if (!frame.snapshotIds.includes(child.id)) frame.snapshotIds.push(child.id);
+      }
+    });
+    const finalPreview = plan.previews[plan.previews.length - 1];
+    for (let index = plan.insertIndex; index < firstActualChildIndex; index += 1) {
+      const frame = materializedFrames[index];
+      const heldState = cloneTraceValue(frame.state || {});
+      for (const [variableId, renderer] of Object.entries(finalPreview?.childFrame?.renderers || {})) {
+        if (!/(?:^|-)disk$/.test(renderer)
+          || !finalPreview?.completionFrame?.state?.[variableId]) continue;
+        heldState[variableId] = cloneTraceValue(finalPreview.completionFrame.state[variableId]);
+      }
+      frame.state = heldState;
+    }
+    const growing = [];
+    const previewFrames = plan.previews.map(({ child, childFrame, completionFrame }, ordinal) => {
+      growing.push(child.id);
+      const authored = childFrame || base;
+      const state = cloneTraceValue(base.state || {});
+      for (const variableId of authored.captureOnlyVariableIds || []) {
+        if (authored.state?.[variableId]) state[variableId] = cloneTraceValue(authored.state[variableId]);
+      }
+      for (const [variableId, renderer] of Object.entries(authored.renderers || {})) {
+        if (!/(?:^|-)disk$/.test(renderer) || !completionFrame?.state?.[variableId]) continue;
+        state[variableId] = cloneTraceValue(completionFrame.state[variableId]);
+      }
+      return {
+        ...base,
+        objectBindings: cloneTraceValue(authored.objectBindings || {}),
+        renderers: cloneTraceValue(authored.renderers || {}),
+        rendererOptions: cloneTraceValue(authored.rendererOptions || {}),
+        captureOnlyVariableIds: cloneTraceValue(authored.captureOnlyVariableIds || []),
+        lets: cloneTraceValue(authored.lets || {}),
+        texts: cloneTraceValue(authored.texts || []),
+        styles: cloneTraceValue(authored.styles || []),
+        segments: cloneTraceValue(authored.segments || []),
+        camera: cloneTraceValue(authored.camera || base.camera || null),
+        state,
+        id: `branch-preview:${plan.parentKey.replace(/\u0000/g, ':')}:${ordinal}`,
+        source: {
+          ...(authored.source || base.source || {}),
+          systemBranchPreview: true,
+          previewSnapshotId: child.id
+        },
+        events: [],
+        snapshotIds: [...new Set([...(base.snapshotIds || []), ...growing])],
+        keepLastFocus: false
+      };
+    });
+    const transitionStyleFrameId = previewFrames.at(-1)?.id || '';
+    // Authored handoff frames deliberately show the real board without disk
+    // coloring.  Their outgoing restore motion still belongs to the final
+    // branch preview, so retain that preview as the paint source used only by
+    // the following transition.
+    for (let index = plan.insertIndex; index < firstActualChildIndex; index += 1) {
+      const frame = materializedFrames[index];
+      frame.source = {
+        ...(frame.source || {}),
+        systemBranchHandoff: true,
+        transitionStyleFrameId
+      };
+    }
+    materializedFrames.splice(plan.insertIndex, 0, ...previewFrames);
+  });
+  const snapshotsById = new Map(snapshots.map(snapshot => [snapshot.id, snapshot]));
+  materializedFrames = materializedFrames.map(frame => {
+    const retainedArrows = (frame.snapshotIds || []).flatMap(snapshotId => (
+      snapshotsById.get(snapshotId)?.arrows || []
+    ));
+    const retainedSourceIds = new Set(retainedArrows
+      .map(arrow => arrow.retainedFromArrowId)
+      .filter(Boolean));
+    return {
+      ...frame,
+      arrows: [
+        ...(frame.arrows || []).filter(arrow => !retainedSourceIds.has(arrow.id)),
+        ...retainedArrows
+      ]
+    };
+  });
   return { frames: materializedFrames, snapshots };
 }
 
@@ -1317,6 +1523,10 @@ function traceScalarValue(data) {
 function resolveTraceIndexExpression(frame, expression) {
   const source = String(expression ?? '').trim();
   if (!source) return null;
+  const directLet = (frame.lets || []).find(binding => binding?.name === source);
+  if (directLet?.expression && String(directLet.expression).trim() !== source) {
+    return resolveTraceIndexExpression(frame, directLet.expression);
+  }
   const tokens = [];
   let cursor = 0;
   while (cursor < source.length) {
@@ -1336,7 +1546,7 @@ function resolveTraceIndexExpression(frame, expression) {
       cursor += identifier[0].length;
       continue;
     }
-    if ('+-*/%()'.includes(source[cursor])) {
+    if ('+-*/%().'.includes(source[cursor])) {
       tokens.push({ type: 'operator', value: source[cursor] });
       cursor += 1;
       continue;
@@ -1368,8 +1578,23 @@ function resolveTraceIndexExpression(frame, expression) {
     if (token.type !== 'identifier') return invalid;
     position += 1;
     const match = Object.entries(frame.state || {}).find(([, entry]) => entry?.name === token.value);
-    if (!match) return invalid;
-    return traceScalarValue(match[1]?.data);
+    if (!match) {
+      const binding = (frame.lets || []).find(candidate => candidate?.name === token.value);
+      return binding?.expression ? resolveTraceIndexExpression(frame, binding.expression) : invalid;
+    }
+    const data = match[1]?.data;
+    if (peek('.')) {
+      consume('.');
+      const member = consume();
+      if (member?.type !== 'identifier' || !['length', 'size'].includes(member.value)) return invalid;
+      if (peek('(')) {
+        consume('(');
+        if (!consume(')')) return invalid;
+      }
+      const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : null;
+      return items ? items.length : invalid;
+    }
+    return traceScalarValue(data);
   }
 
   function parseUnary() {
@@ -1469,6 +1694,10 @@ function resolveFrameRendererOptions(frame, directive) {
         }))
         : []
     };
+  }
+  if (source.capacity) {
+    const capacity = resolveTraceIndexExpression(frame, source.capacity.expression);
+    if (capacity != null && capacity >= 0) options.capacity = capacity;
   }
   if (source.display && typeof source.display.template === 'string') {
     options.display = {
@@ -1600,6 +1829,28 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   const eventSources = traceRequest.eventSources && typeof traceRequest.eventSources === 'object'
     ? traceRequest.eventSources
     : {};
+  const codeHideRanges = Array.isArray(traceRequest.codeHideRanges)
+    ? traceRequest.codeHideRanges.map(range => ({
+      from: Number(range.from) || 0,
+      contentFrom: Number(range.contentFrom) || Number(range.from) || 0,
+      contentTo: Number(range.contentTo) || Number(range.to) || 0,
+      to: Number(range.to) || 0,
+      line: Number(range.line) || 0,
+      endLine: Number(range.endLine) || 0
+    }))
+    : [];
+  const hiddenRuntimeEvent = event => {
+    if (!event || event.type === 'keep') return false;
+    const from = Number(event.source?.from);
+    const to = Number(event.source?.to);
+    const line = Number(event.source?.line || event.line);
+    return codeHideRanges.some(range => (
+      (Number.isFinite(from) && Number.isFinite(to)
+        && from < range.contentTo && to > range.contentFrom)
+      || (line > 0 && range.line > 0 && range.endLine > 0
+        && line > range.line && line < range.endLine)
+    ));
+  };
   const allFrames = records.filter(record => record.record === 'frame').map(frame => ({
     ...frame,
     events: (frame.events || []).map(event => {
@@ -1621,7 +1872,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
           : {}),
         ...(directive.layoutId ? { layoutId: directive.layoutId } : {})
       };
-    })
+    }).filter(event => !hiddenRuntimeEvent(event))
   }));
   const frameDirectives = Array.isArray(traceRequest.frameDirectives)
     ? traceRequest.frameDirectives
@@ -1659,17 +1910,30 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
     const layoutIds = Object.fromEntries(objectDirectives
       .filter(object => object.primaryVariableId && object.layoutId)
       .map(object => [object.primaryVariableId, object.layoutId]));
+    const primaryLayoutId = primaryObject?.layoutId || '';
+    const branchActive = Boolean(frame.source?.branchId
+      && frame.source?.branchLayoutId === primaryLayoutId);
+    const branchAncestors = branchActive
+      ? [...(frame.source?.recursionAncestorActivationIds || []), frame.source?.branchOwnerActivationId]
+      : frame.source?.recursionAncestorActivationIds;
     return {
       ...frame,
       source: {
         ...(frame.source || {}),
+        ...(branchActive ? {
+          recursionActivationId: frame.source.branchId,
+          recursionParentActivationId: frame.source.branchOwnerActivationId,
+          recursionAncestorActivationIds: branchAncestors,
+          recursionDepth: frame.source.branchDepth,
+          recursionSiblingIndex: frame.source.branchSiblingIndex
+        } : {}),
         directiveName: directive?.name || '',
         directiveKey: directive?.sourceKey || '',
         logicalDirectiveKey: directive?.logicalSourceKey || '',
         directiveKeyAliases: directive?.sourceKeyAliases || [],
         objectId: primaryObject?.objectId || '',
         objectIds,
-        layoutId: primaryObject?.layoutId || '',
+        layoutId: primaryLayoutId,
         layoutIds,
         primaryVariableId,
         when: directive?.when || null
@@ -1735,6 +1999,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
     sourceStructure: Array.isArray(traceRequest.sourceStructure)
       ? JSON.parse(JSON.stringify(traceRequest.sourceStructure))
       : [],
+    codeHideRanges: JSON.parse(JSON.stringify(codeHideRanges)),
     sliceMode,
     variables: variableMap,
     frames: keepSnapshots.frames,
@@ -1790,6 +2055,7 @@ app.post('/compile', (req, res) => {
   let traceEventSources = {};
   let traceSourceDeclarations = [];
   let traceSourceStructure = [];
+  let traceCodeHideRanges = [];
   let traceSliceMode = trace?.sliceMode;
   let traceWarning = '';
   let asmView = null;
@@ -1870,6 +2136,9 @@ app.post('/compile', (req, res) => {
       traceSourceStructure = Array.isArray(instrumented.sourceStructure)
         ? instrumented.sourceStructure
         : [];
+      traceCodeHideRanges = Array.isArray(instrumented.codeHideRanges)
+        ? instrumented.codeHideRanges
+        : [];
       if (instrumented.frameDirectives.length) traceSliceMode = 'manual';
       logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);
     } catch (err) {
@@ -1885,6 +2154,7 @@ app.post('/compile', (req, res) => {
       traceEventSources = {};
       traceSourceDeclarations = [];
       traceSourceStructure = [];
+      traceCodeHideRanges = [];
       traceWarning = `追蹤分析未完成，已使用一般執行：${err.message}`;
       logDebug(traceWarning);
     }
@@ -2124,6 +2394,7 @@ app.post('/compile', (req, res) => {
             eventSources: traceEventSources,
             sourceDeclarations: traceSourceDeclarations,
             sourceStructure: traceSourceStructure,
+            codeHideRanges: traceCodeHideRanges,
             asmView
           });
         } catch (err) {

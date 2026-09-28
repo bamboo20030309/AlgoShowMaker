@@ -72,6 +72,36 @@ int main() {
   assert.equal(primeBinding.offsetY, 60);
 });
 
+test('one @object target list applies the same renderer options to every object', async () => {
+  const { trace } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  int n = 4;
+  deque<int> a = {1, 2, 3, 4};
+  deque<int> b;
+  deque<int> c;
+  // @frame
+  // @object a, b, c render disk with capacity(n)
+  return 0;
+}`);
+  const frame = trace.frames[0];
+  const idByName = Object.fromEntries(
+    Object.entries(trace.variables).map(([id, variable]) => [variable.name, id])
+  );
+  assert.deepEqual(frame.source.primaryVariableId, idByName.a);
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.renderers)), {
+    [idByName.a]: 'original-disk',
+    [idByName.b]: 'original-disk',
+    [idByName.c]: 'original-disk'
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.rendererOptions)), {
+    [idByName.a]: { capacity: 4 },
+    [idByName.b]: { capacity: 4 },
+    [idByName.c]: { capacity: 4 }
+  });
+  assert.deepEqual([...frame.captureOnlyVariableIds], [idByName.n]);
+});
+
 test('blank @frame when emits only matching multi-object frames', async () => {
   const { trace } = await compile(`#include <bits/stdc++.h>
 using namespace std;

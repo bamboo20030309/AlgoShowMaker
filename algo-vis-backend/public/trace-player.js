@@ -148,10 +148,11 @@
         plan: playbackPlan
       }
     }));
-    const cameraDelayMs = playbackPlan?.phases?.find(phase => phase.id === 'keep-transition')?.startMs
-      ?? playbackPlan?.phases?.find(phase => phase.id === 'frame-transition')?.startMs
-      ?? codeTransitionDelayMs;
-    applyPlaybackCamera(frame, previous || null, cameraDelayMs);
+    // The new scene is installed synchronously. Start auto-camera capture in
+    // the same tick so persistent objects anchored to a growing layout (and
+    // arrows attached to them) never spend the code-highlight delay outside
+    // the previous viewport.
+    applyPlaybackCamera(frame, previous || null, 0);
     if (typeof window.syncCurrentFrameFromCodeScript === 'function') window.syncCurrentFrameFromCodeScript();
     if (typeof window.clearAllEditorHighlights === 'function') window.clearAllEditorHighlights();
     if (typeof window.addEditorHighlight === 'function' && Number(frame.source?.line) > 0) {

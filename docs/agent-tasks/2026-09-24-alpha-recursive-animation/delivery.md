@@ -218,3 +218,193 @@
 ### 舊有物件相容性
 
 - 沒有新增持久化物件欄位。既有 legacy source 自動走舊編譯器；不含 `AV.hpp`／`//draw{}` 的新版 trace source 維持原路徑與資料格式。
+
+## 2026-09-28：河內塔 keep 對齊、盤子塗色與跨柱圖層
+
+- live object 轉成 `@keep` snapshot 時，改以來源與目標的 outerframe 結構位置對齊，不再使用會包含 highlight／point 外擴範圍的整體 placement；第 1→2 幀 root 的動畫中螢幕 Y 座標維持不變，且不再產生補償用 transform。
+- disk renderer 的條件背景色改為同幀原子提交；第 19→20 幀 `Peg_A` 的盤子 2 與 `Peg_B` 的盤子 1 不再各自做不同色距的 CSS 漸變，而是在同一提交點套用綠色與紅色。既有跨柱移動 paint barrier 保留，盤子飛行途中仍維持來源顏色。
+- 具有相同 disk continuity identity、但 owner Peg 不同的格子，在跨容器 tween 期間會暫時提升到共用 animation effect layer；wrapper 保留目的 Peg 的 variable identity，動畫完成後恢復原 DOM 位置。第 6→7 幀移動盤子因此位於 Peg_C 之上，不再被目的柱整組遮住。
+- tween build 與入口 cache version 更新為 `trace-246`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（keep handoff／跨容器 continuity）、H（disk style 與動畫圖層）、J（實際瀏覽器逐幀播放）。
+- `hanoi-recursion-sample.browser.test.js`、`hanoi-recursion-sample.test.js`：2/2 通過；瀏覽器斷言涵蓋第 1→2、6→7、19→20 幀。
+- `outerframe-tween.test.js`、`animation-effect-layer.test.js`：8/8 通過。
+- `entrypoints.test.js`：1/1 通過，入口 cache version 與 tween／renderer build 相符。
+- 修改的 JS 與瀏覽器測試通過 `node --check`；`git diff --check` 通過，只有既有 Windows LF/CRLF 提示。
+- alpha 3101 已從本 worktree 重啟為 PID 36664；HTTP 200，入口與腳本皆確認載入 `trace-246`，重啟後新版河內塔 `/trace/analyze`＋`/compile` 專項 1/1 通過。
+- 未執行完整 regression、全部 tests 或無關演算法動畫；依 V2 規範只跑直接相關案例。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位。既有 snapshot、disk 與自訂 style 資料格式不變；修正只影響播放時計算的 outerframe 對齊、disk paint 提交與跨 Peg 暫時圖層。
+
+## 2026-09-28：name 連續性與 root handoff 白色回程
+
+- outerframe name label 在 scene generation 改變時會改由其 owner object 判定視覺連續性；同一個 `ans`／一般物件不再因 root 被 `@keep` 就被誤判為新物件淡入。第 1→2 幀的非 root name 保持 opacity 1，沒有 `data-trace-appearing`。
+- 根節點三分支預覽結束後，第 6→7 幀恢復真實盤面時以 handoff 幀實際可見的白色作為四個盤子的飛行色；移動完成後才原子套用當前狀態的紅、紅、綠、白。
+- 白色回程只套用 recursion depth 0 的 root handoff；較深層 handoff 繼續保留先前指定的分支搬運色，因此第 31→32 幀盤子 2 的紅色飛行不退化。
+- tween build 與入口 cache version 更新為 `trace-247`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（scene generation／label continuity）、H（disk paint barrier）、J（實際瀏覽器逐幀播放）。
+- `hanoi-recursion-sample.browser.test.js`、`hanoi-recursion-sample.test.js`：2/2 通過；同時驗證第 1→2 幀 name 不閃爍、第 6→7 幀四盤白色飛行後提交目的色，以及第 31→32 幀既有紅色搬運要求。
+- `outerframe-tween.test.js`、`animation-effect-layer.test.js`：8/8 通過。
+- 修改的 JS 與瀏覽器測試通過 `node --check`；`git diff --check` 通過，只有既有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位；只修正現有 owner identity 與 handoff metadata 的播放時解讀。
+
+## 2026-09-28：所有 recursion handoff 統一依可見顏色搬運
+
+- 上一輪只將 root handoff 設為白色回程，仍讓較深層 handoff 回頭讀取 branch preview 的紅色；因此第 16→17 幀雖然第 16 幀已取消塗色，Peg_C 的盤子仍被舊 preview paint 覆蓋成紅色搬運。
+- 現在所有 `systemBranchHandoff` 都以 handoff 畫面當下的實際 paint 作為跨 Peg 飛行色，不再讀取更早的 `transitionStyleFrameId`。白色盤子保持白色完成移動，落地後才原子提交下一幀條件樣式。
+- 第 31→32 幀同步改成同一規則；先前「較深層維持紅色」的暫行行為由本節取代。
+- 新增實際 `CodeScript.next()` 中斷播放驗證：快速 14→15→16 後 Peg_C 保持白色、進入下一層 recursion 時 outerframe name 不重新入場、快速 18→19→20 時 Peg_A[2]／Peg_B[1] 同步完成綠／紅塗色。
+- tween build 與入口 cache version 更新為 `trace-248`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（recursion handoff）、H（disk paint barrier）、J（連續手動下一步）。
+- `hanoi-recursion-sample.browser.test.js`、`hanoi-recursion-sample.test.js`：2/2 通過；包含第 16→17 幀兩個 Peg_C 盤子在 animation effect layer 中皆為白色。
+- `outerframe-tween.test.js`、`animation-effect-layer.test.js`：8/8 通過。
+- 修改的 JS 與測試通過 `node --check`；`git diff --check` 通過，只有既有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位；既有 handoff trace 會直接採用前一幀實際呈現的 paint，無需重新儲存或資料遷移。
+
+## 2026-09-28：disk fallback name 不再於遞迴換層重新入場
+
+- 實際重現第 16→17 幀時，`Peg_A`、`Peg_B`、`Peg_C` 三個 name 都被設成 `data-trace-appearing=1`，動畫開始 20ms 的 opacity 為 0；先前測試只選取 `.outerframe-label`，因此漏掉 `render disk` 由 renderer 補上的一般文字 name。
+- renderer 現在會以 `asm-trace-object-label` 標記沒有 outerframe label 的 fallback name；tween 將 outerframe name 與 fallback name 統一按 owner object 判定視覺連續性。同一個 Peg 跨 recursion scene generation 保持 opacity 1，不再重新淡入。
+- 測試 selector 改為涵蓋所有 `:label` 視覺，不再只驗 outerframe；修正前可穩定失敗並列出三個 Peg name，修正後通過。
+- tween build 更新為 `trace-249`，renderer build 與入口 cache version 更新為 `trace-227`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（scene generation／object continuity）、H（fallback object label）、J（實際遞迴換層播放）。
+- `hanoi-recursion-sample.browser.test.js`、`hanoi-recursion-sample.test.js`：2/2 通過；直接驗證第 16→17 幀所有既存 object name 的 label、owner、motion opacity 都維持 1，且沒有 `data-trace-appearing`。
+- `outerframe-tween.test.js`、`animation-effect-layer.test.js`：8/8 通過。
+- `entrypoints.test.js`：1/1 通過，入口 cache version 與 tween／renderer build 相符。
+- `trace-renderer.js`、`trace-frame-tween.js` 通過 `node --check`；`git diff --check` 通過，只有既有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已從本 worktree 重啟為 PID 77980；HTTP 200 且入口確認載入 tween `trace-249`、renderer `trace-227`。正式預覽埠的河內塔瀏覽器與 trace 專項 2/2 通過。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位；class 只在渲染時補到既有 fallback name，舊 trace 不需重建資料或遷移。
+
+## 2026-09-28：恢復 disk paint 過渡與右側接木紅色搬運
+
+- 上一輪為同步 disk paint，對所有 `disk:*` continuity 視覺移除了 `.asm-trace-style-paint`，因此連盤子停止移動後原本的 180ms fill 過渡也被關閉。現在所有盤子仍會在幾何移動期間由 paint barrier 固定來源色，落地釋放 barrier 後再同步執行 fill 過渡。
+- recursion handoff 改為依目前 activation 的 sibling role 判斷：左分支進入下一層時維持先前要求的白色回程；右分支「接木」handoff 則沿用最後 branch preview 的紅色搬運群組。第 31→32 幀盤子 2 移動期間保持紅色，落地後才過渡到下一幀的目標色。
+- 快速 14→15→16 仍會等待目前 paint transition 完成；第 16 幀穩定狀態的 Peg_C 兩個盤子皆為白色。快速 18→19→20 的最終紅／綠狀態也保持正確。
+- tween build 與入口 cache version 更新為 `trace-250`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（recursion handoff）、H（disk style paint）、J（快速下一步與瀏覽器播放）。
+- `hanoi-recursion-sample.browser.test.js`：1/1 通過；驗證第 19→20 幀存在起始色、中間插值色與最終色，第 31→32 幀移動中的盤子 2 為紅色，settled 後為目的幀顏色，第 16 幀快速連點後兩盤皆為白色。
+- `hanoi-recursion-sample.test.js`、`style-replay.browser.test.js`、`outerframe-tween.test.js`、`animation-effect-layer.test.js`、`entrypoints.test.js`：11/11 通過。
+- `trace-frame-tween.js` 通過 `node --check`；`git diff --check` 通過，只有既有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已從本 worktree 重啟為 PID `22100`；HTTP 回應 200，入口載入 tween `trace-250`、renderer `trace-227`。重啟後以正式 3101 再驗證 Hanoi browser 與 trace 測試，2/2 通過。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位。既有 trace 的 disk continuity、branch handoff metadata 與 style 指令直接套用新播放規則，不需要資料遷移。
+
+## 2026-09-28：無事件影格沿用上一幀程式碼片段
+
+- `trace-code-model` 現在會讓時間線中沒有任何 runtime event 的影格沿用上一幀可顯示的程式碼片段；連續多個無事件影格會繼續回溯到最近的可顯示片段。第一幀或前方沒有可用片段時仍維持原本的空白／setup-source 行為。
+- `trace-code-presenter` 對真正沒有可顯示片段的目的幀直接回傳 0ms delay，避免空白 code plan 錯誤阻擋畫布 500ms。
+- Hanoi 第 7 幀會沿用第 6 幀的片段，layout／focus 不變，因此第 6→7 幀盤子與遞迴畫面立即開始轉場；正常跨片段捲動仍保留 500ms。
+- cache version 更新為 model `code-29`、presenter `code-32`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：I（程式碼呈現）、J（播放時間表）、G（遞迴交接）。
+- `code-presentation.integration.test.js` 相關案例 2/2 通過：無事件影格繼承與正常跨片段捲動。
+- `hanoi-recursion-sample.browser.test.js`、`entrypoints.test.js`：2/2 通過；實際確認第 7 幀具有繼承片段且 code delay 為 0ms。
+- `trace-code-model.js`、`trace-code-presenter.js` 與 browser test 通過 `node --check`；`git diff --check` 無 whitespace error，只有既有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已從本 worktree 重啟為 PID `22136`；HTTP 200，入口載入 model `code-29`、presenter `code-32`、tween `trace-250`。重啟後上述 4/4 專項案例再次通過。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位。規則只讀取既有 frame event 與時間線順序；缺少額外欄位的舊 trace 可直接套用，無需資料遷移。
+
+## 2026-09-28：位移落地後保留 180ms 上色階段
+
+- style paint barrier 釋放時，先提交位移期間的來源色，再重新啟用 CSS fill transition；即使 barrier 剛好在最後一個幾何 tick 釋放，也不會在同一 tick 直接清除 transition。
+- 只有具有位移 barrier 且來源色與目標色實際不同的物件，才會建立 `style-paint-transition` 阻擋階段。沒有變色的位移不會被額外延長。
+- Hanoi 第 11→12 幀的盤子 1、2 先以白色由 Peg_B 搬回 Peg_A，落地後分別以 180ms 過渡成紅色與綠色。
+- tween build 與入口 cache version 更新為 `trace-251`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（跨容器位移）、H（style paint）、J（播放完成時序）。
+- `hanoi-recursion-sample.browser.test.js`：1/1 通過；逐 30ms 取樣確認搬運期間為白色、落地後盤子 1／2 都存在中間插值色、最終為紅／綠，且播放時間表包含 180ms paint phase。
+- `style-replay.browser.test.js`、`entrypoints.test.js`：2/2 通過；`outerframe-tween.test.js`、`animation-effect-layer.test.js`：8/8 通過。
+- `trace-frame-tween.js` 與 Hanoi browser test 通過 `node --check`；`git diff --check` 無 whitespace error，只有既有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已從本 worktree 重啟為 PID `55156`；HTTP 200，入口載入 tween `trace-251`、model `code-29`、presenter `code-32`。重啟後核心 3/3 專項案例再次通過。
+
+### 舊有物件相容性
+
+- 沒有新增持久化欄位。現有 frame、style 與 transition 設定直接使用新的完成時序；舊 trace 不需要資料遷移，明確沒有顏色變化的物件也不會新增等待。
+
+## 2026-09-28：撤回位移期間固定 style
+
+- 完整播放器重現第 19→20 幀：盤子 2 約 61ms 開始變色，但盤子 1 約 477ms 才開始。原因是上一輪新增的 geometry paint barrier 將「存在 previous outerframe geometry」誤判為「物件正在移動」，並把 Peg_B 的錯誤等待時間傳給盤子 1。
+- 依使用者要求撤回一般位移的 style barrier、handoff paint hold 與落地後 `style-paint-transition`；一般幀的 style 現在與幀轉場同時開始。保留 disk continuity 身分配對、name 連續性及其他無關修正。
+- tween build 與入口 cache version 更新為 `trace-252`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（位移／容器連續性）、H（style paint）、J（完整播放器時序）。
+- `hanoi-recursion-sample.browser.test.js`、`entrypoints.test.js`：2/2 通過。完整 `ASMTracePlayer` 第 19→20 幀在前 90ms 內確認 Peg_A 盤子 2 與 Peg_B 盤子 1 都已離開來源色，最終分別為綠色與紅色；一般位移不再建立 post-motion paint phase。
+- `trace-frame-tween.js` 與 Hanoi browser test 通過 `node --check`；`git diff --check` 無 whitespace error，只有既有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已從本 worktree 重啟為 PID `74960`；HTTP 200，入口確認載入 tween `trace-252`、model `code-29`、presenter `code-32`，並在正式 3101 再次通過上述 2/2 專項案例。
+
+### 舊有物件相容性
+
+- 沒有新增或移除持久化欄位；本次只還原播放器的上色時序，既有 trace 無需遷移或重新儲存。
+
+## 2026-09-28：以 visual-move 事件精確控制移動中的 style
+
+- tween 會先依實際世界座標差、真正的 geometry transition 或 arc 路徑建立內部 `visual-move` 播放事件；layout／跨容器移動即使沒有 C++ runtime event 也能產生事件。事件不進入程式碼片段。
+- style controller 不再自行推測幾何，只讀取 `visual-move` 事件的目標與結束時間。只有真正移動且顏色也改變的物件會維持來源色，事件結束後才執行 180ms 目的色過渡。
+- 沒有位移的第 19→20 幀不產生 disk `visual-move`，Peg_A 盤子 2 與 Peg_B 盤子 1 同步開始變色；第 31→32 幀會產生 cross-container `visual-move`，盤子 1 移動期間不會提前出現目的幀綠色，落地後才變綠。
+- tween build 與入口 cache version 更新為 `trace-253`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：G（跨容器位移）、H（style paint）、J（播放計畫與重播）。
+- `hanoi-recursion-sample.browser.test.js`、`entrypoints.test.js`、`style-replay.browser.test.js`：3/3 通過；實際瀏覽器驗證 visual-move event 的有無、19→20 同步上色、31→32 落地後上色，以及 style 前進／後退／重播。
+- `outerframe-tween.test.js`、`animation-effect-layer.test.js`：8/8 通過。
+- `trace-frame-tween.js` 與相關 browser test 通過 `node --check`。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已從本 worktree 重啟為 PID `47420`；HTTP 200，入口確認載入 tween `trace-253`，並在正式 3101 再次通過 Hanoi browser 與入口 2/2 專項案例。
+
+### 舊有物件相容性
+
+- `visual-move` 是每次播放時由既有前後幀幾何動態建立的內部事件，沒有新增持久化欄位；舊 trace 無需遷移、重存或重新編譯。
+
+## 2026-09-28：河內塔教學範例投影片
+
+- 新增 8 頁原生 `.asmdeck` 教學範例，依序說明 Édouard Lucas 於 1883 年推出的河內塔、64 個黃金盤子的遊戲傳說、三項移動規則、遞迴觀念、移花／搬動底盤／接木、程式碼與複雜度，以及動畫閱讀方式。
+- 最後一頁直接引用 `algorithm_sample/Backtracking/hanoi-recursion.cpp`，輸入固定為 `4`，可逐幀播放左側盤面、右側遞迴樹與搬運紀錄。
+- 新增 `scripts/build-hanoi-teaching-deck.py`，可由同一份範例程式重新產生 `public/guest-decks/hanoi-teaching.asmdeck`；並在訪客範例清單登記為 `Backtracking` 類別。
+- 中文文字方塊啟用逐字換行，避免沒有空白的中文長句超出規則卡片。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：投影片範例載入與動畫重建。
+- `hanoi-teaching-deck.browser.test.js`：1/1 通過；確認 8 頁、由來／規則／三步驟文字、動畫原始碼完全一致、輸入 `4`，且獨立伺服器中 `/trace/analyze` 與 `/compile` 重建完成為 1/1，無瀏覽器錯誤。
+- 以獨立 headless 瀏覽器逐頁視覺檢查封面、由來、規則、三步驟、程式碼、動畫導讀與實際動畫；修正中文換行後未見裁切或重疊。
+- alpha 3101 已由本 worktree 重啟為 PID `52724`；HTTP 200，正式 3101 載入 8 頁並完成動畫重建 1/1，無瀏覽器錯誤。
+- 未執行完整 regression 或無關演算法動畫。
+
+### 舊有物件相容性
+
+- 本次只新增範例檔、產生器與訪客範例索引，沒有修改既有投影片儲存格式或動畫欄位；舊投影片與既有自訂值不需要遷移。

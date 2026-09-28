@@ -13,6 +13,15 @@ const MUTATING_METHODS = new Set([
   'pop', 'pop_back', 'pop_front', 'push', 'push_back', 'push_front', 'resize'
 ]);
 
+function isPrintfCallee(value) {
+  return /^(?:::)?(?:std::)?printf$/.test(String(value || '').replace(/\s+/g, ''));
+}
+
+function isOutputStreamStatement(value) {
+  return /(?:^|[^A-Za-z0-9_:])(?:(?:std\s*::\s*)?(?:cout|cerr|clog|wcout|wcerr|wclog))\s*<</
+    .test(String(value || ''));
+}
+
 function childrenOf(node) {
   const children = [];
   for (let child = node.firstChild; child; child = child.nextSibling) children.push(child);
@@ -82,6 +91,32 @@ function stableSourceHash(value) {
   return (hash >>> 0).toString(36);
 }
 
+function lexicalFunctionName(source, analysis, position) {
+  for (let current = analysis.tree.resolve(position, 1); current; current = current.parent) {
+    if (current.name === 'FunctionDefinition') return functionInfo(current, source).name;
+  }
+  return 'global';
+}
+
+function animationLetVariable(source, analysis, frame, binding) {
+  const functionName = lexicalFunctionName(source, analysis, frame.from);
+  return {
+    id: `animation-let-${stableSourceHash(`${functionName}\u0000${binding.name}`)}`,
+    name: binding.name,
+    type: 'animation-let',
+    kind: 'scalar',
+    line: binding.line,
+    functionName,
+    supported: true,
+    synthetic: true,
+    expression: binding.expression,
+    declarationFrom: frame.from,
+    declarationTo: frame.from,
+    scopeFrom: frame.from,
+    scopeTo: frame.to
+  };
+}
+
 function canonicalFrameIdentity(directive) {
   const name = String(directive?.name || '').trim();
   if (name) return `name:${name}`;
@@ -126,6 +161,8 @@ function syntaxNodeEventType(node, source) {
   const name = String(node?.name || '');
   if (name === 'FunctionDefinition') return 'function-enter';
   if (name === 'ReturnStatement') return 'return';
+  if (name === 'BreakStatement') return 'break';
+  if (name === 'ContinueStatement') return 'continue';
   if (/^(?:Declaration|ParameterDeclaration|TypeDefinition|NamespaceDefinition)$/.test(name)
     || /(?:Declarator|Type|Specifier)$/.test(name)) return 'declare';
   if (/^(?:IfStatement|ForStatement|WhileStatement|DoStatement|SwitchStatement|ConditionClause)$/.test(name)) {
@@ -136,7 +173,12 @@ function syntaxNodeEventType(node, source) {
   }
   if (/^(?:AssignmentExpression|UpdateExpression|UpdateOp)$/.test(name)) return 'write';
   if (name === 'CallExpression') {
-    return /(?:^|::)swap\s*\(/.test(compactExpression(source.slice(node.from, node.to))) ? 'swap' : 'call';
+    const expression = compactExpression(source.slice(node.from, node.to));
+    if (isPrintfCallee(expression.slice(0, expression.indexOf('(')))) return 'output';
+    return /(?:^|::)swap\s*\(/.test(expression) ? 'swap' : 'call';
+  }
+  if (name === 'BinaryExpression' && isOutputStreamStatement(source.slice(node.from, node.to))) {
+    return 'output';
   }
   if (/^(?:Identifier|FieldIdentifier|Number|String|Char|Bool|Null|This)$/.test(name)) return 'read';
   if (name === 'Program' || name === 'CompoundStatement') return 'call';
@@ -918,6 +960,18 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
+    if (name === 'capacity') {
+      if (args.parts.length !== 1 || !parseFrameExpression(args.parts[0]).valid) {
+        throw new Error(`第 ${line} 行的 ${directiveName} capacity 必須是 capacity(count)`);
+      }
+      const parsed = parseFrameExpression(args.parts[0]);
+      options.capacity = {
+        expression: args.parts[0],
+        identifiers: parsed.identifiers || []
+      };
+      continue;
+    }
+
     if (name === 'display') {
       if (args.parts.length !== 1) {
         throw new Error(`第 ${line} 行的 ${directiveName} display 只能指定一個字串`);
@@ -1238,6 +1292,7 @@ const RECURSION_LAYOUT_DEFAULTS = Object.freeze({
   degree: 2,
   showEdges: true,
   showFlowArrows: false,
+  background: '',
   edgeColor: 'black',
   edgeWidth: 2
 });
@@ -1318,7 +1373,7 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     const targetMatch = payload.match(/^([A-Za-z_][A-Za-z0-9_.-]*)\s+(.+)$/s);
     if (!targetMatch) throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID`);
     const id = targetMatch[1];
-    if (/^(?:direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows|reset)$/i.test(id)) {
+    if (/^(?:direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows|background|reset)$/i.test(id)) {
       throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID 在設定名稱前，例如：@layout quick_tree ${payload}`);
     }
     const layout = layouts.get(id);
@@ -1328,19 +1383,28 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
       Object.assign(layout, RECURSION_LAYOUT_DEFAULTS);
       return;
     }
-    const settingMatch = setting.match(/^(direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows)\s+(.+)$/i);
+    const settingMatch = setting.match(/^(direction|mode|order|align|sibling-gap|level-gap|degree|edges|flow-arrows|background)\s+(.+)$/i);
     if (!settingMatch) throw new Error(`第 ${line} 行的 @layout ${id} 設定無效：${setting}`);
     const name = settingMatch[1].toLowerCase();
-    const value = settingMatch[2].trim().toLowerCase();
+    const rawValue = settingMatch[2].trim();
+    const value = rawValue.toLowerCase();
     if (name === 'direction') {
       if (!['top-down', 'bottom-up', 'left-right', 'right-left'].includes(value)) {
         throw new Error(`第 ${line} 行的 @layout direction 只支援 top-down、bottom-up、left-right、right-left`);
       }
       layout.direction = value;
     } else if (name === 'mode' || name === 'order') {
-      const aliases = { 'level-order': 'levelorder', level: 'levelorder' };
+      const aliases = {
+        'level-order': 'levelorder',
+        level: 'levelorder',
+        // `binary` was the original name, but the algorithm has always used
+        // the configured degree rather than assuming two children. Keep it as
+        // an input alias so existing sources continue to load while new trace
+        // data uses the more accurate `slots` name.
+        binary: 'slots'
+      };
       const mode = aliases[value] || value;
-      if (!['compact', 'levelorder', 'binary', 'inorder', 'preorder', 'postorder'].includes(mode)) {
+      if (!['compact', 'levelorder', 'slots', 'inorder', 'preorder', 'postorder'].includes(mode)) {
         throw new Error(`第 ${line} 行的 @layout mode 無效：${value}`);
       }
       layout.mode = mode;
@@ -1355,6 +1419,11 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     } else if (name === 'flow-arrows') {
       if (!['on', 'off'].includes(value)) throw new Error(`第 ${line} 行的 @layout flow-arrows 必須是 on 或 off`);
       layout.showFlowArrows = value === 'on';
+    } else if (name === 'background') {
+      if (!/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(rawValue)) {
+        throw new Error(`第 ${line} 行的 @layout background 顏色無效：${rawValue}`);
+      }
+      layout.background = rawValue;
     } else {
       const number = Number(value);
       if (!Number.isFinite(number) || number <= 0) {
@@ -1598,7 +1667,8 @@ function attachTextDirectives(source, analysis, frameDirectives) {
     prepareDrawing(source, analysis, text, target);
     let bindingTargetVariable = null;
     if (text.binding && !text.binding.canvas) {
-      bindingTargetVariable = resolveVariable(text.binding.targetName, text.from);
+      bindingTargetVariable = target.variables.find(variable => variable.name === text.binding.targetName)
+        || resolveVariable(text.binding.targetName, text.from);
       if (bindingTargetVariable) {
         text.binding.targetVariableId = bindingTargetVariable.id;
       } else {
@@ -1618,7 +1688,7 @@ function attachTextDirectives(source, analysis, frameDirectives) {
       ...(text.when?.identifiers || [])
     ])];
     identifiers.forEach(name => {
-      if (drawingLocal(text, name) || frameLet(target, name)) return;
+      if (drawingLocal(text, name) || frameLet(target, name) || TRACE_FRAME_LOCALS.has(name)) return;
       const variable = resolveVariable(name, text.from);
       if (!variable) throw new Error(`第 ${text.line} 行的 @text 找不到可見變數：${name}`);
       const alreadyCaptured = target.variables.some(existing => existing.id === variable.id);
@@ -1639,6 +1709,9 @@ function attachTextDirectives(source, analysis, frameDirectives) {
 
 const TRACE_STYLE_TYPES = new Set(['highlight', 'focus', 'mark', 'point', 'background']);
 const TRACE_STYLE_LOCALS = new Set(['value', 'index']);
+const TRACE_FRAME_LOCALS = new Set([
+  'recursion_depth', 'recursion_branch', 'recursion_root', 'recursion_preview'
+]);
 
 function parseStyleTarget(raw, line) {
   const source = String(raw || '').trim();
@@ -1687,6 +1760,20 @@ function parseStyleTarget(raw, line) {
   return { targetName: source, selector: { type: 'all' } };
 }
 
+function splitDirectiveTargetList(raw, line, directiveName) {
+  const source = String(raw || '');
+  const split = splitTopLevel(source);
+  if (!split.valid || !split.parts.length || split.parts.some(part => !part.trim())) {
+    throw new Error(`第 ${line} 行的 ${directiveName} 目標列表無效：${source.trim()}`);
+  }
+  return split.parts.map(part => part.trim());
+}
+
+function parseStyleTargets(raw, line) {
+  return splitDirectiveTargetList(raw, line, '@style')
+    .map(part => parseStyleTarget(part, line));
+}
+
 function styleDirectivesForSource(source, analysis) {
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
   const directives = [];
@@ -1705,28 +1792,33 @@ function styleDirectivesForSource(source, analysis) {
         if (!styleMatch) {
           throw new Error(`第 ${line} 行的 @style 格式應為：目標 樣式[,樣式...] [顏色]`);
         }
+        const styleTargets = parseStyleTargets(styleMatch[1], line);
         const styleTypes = styleMatch[2].split(',').map(type => type.trim().toLowerCase());
         if (new Set(styleTypes).size !== styleTypes.length) throw new Error(`第 ${line} 行的 @style 樣式不可重複`);
-        for (const styleType of styleTypes) {
-          const specifiedColor = String(styleMatch[3] || '').trim();
-          const color = specifiedColor || (styleType === 'focus' ? 'AV_grey' : '');
-          if (!TRACE_STYLE_TYPES.has(styleType)) {
-            throw new Error(`第 ${line} 行的 @style 樣式無效：${styleType}`);
+        for (const [targetIndex, styleTarget] of styleTargets.entries()) {
+          for (const styleType of styleTypes) {
+            const specifiedColor = String(styleMatch[3] || '').trim();
+            const color = specifiedColor || (styleType === 'focus' ? 'AV_grey' : '');
+            if (!TRACE_STYLE_TYPES.has(styleType)) {
+              throw new Error(`第 ${line} 行的 @style 樣式無效：${styleType}`);
+            }
+            if (color && !/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
+              throw new Error(`第 ${line} 行的 @style 顏色無效：${color}`);
+            }
+            directives.push({
+              from: node.from,
+              to: node.to,
+              line,
+              id: (modifiers.objectId || `style-line-${line}`)
+                + (styleTargets.length > 1 ? `:target-${targetIndex + 1}` : '')
+                + (styleTypes.length > 1 ? `:${styleType}` : ''),
+              drawLoops: drawingScopesAt(source, analysis, node.from),
+              ...styleTarget,
+              styleType,
+              color,
+              when: modifiers.when
+            });
           }
-          if (color && !/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
-            throw new Error(`第 ${line} 行的 @style 顏色無效：${color}`);
-          }
-          directives.push({
-            from: node.from,
-            to: node.to,
-            line,
-            id: (modifiers.objectId || `style-line-${line}`) + (styleTypes.length > 1 ? `:${styleType}` : ''),
-            drawLoops: drawingScopesAt(source, analysis, node.from),
-            ...parseStyleTarget(styleMatch[1], line),
-            styleType,
-            color,
-            when: modifiers.when
-          });
         }
       }
     }
@@ -1772,16 +1864,18 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     const target = frames.filter(frame => frame.from < style.from).at(-1) || null;
     if (!target) throw new Error(`第 ${style.line} 行的 @style 前面找不到可套用的 @frame`);
     prepareDrawing(source, analysis, style, target);
-    const targetVariable = resolveVariable(style.targetName, style.from);
+    const targetVariable = target.variables.find(variable => variable.name === style.targetName)
+      || resolveVariable(style.targetName, style.from);
     if (!targetVariable) throw new Error(`第 ${style.line} 行的 @style 找不到目標變數：${style.targetName}`);
     const compositeFieldIds = new Set((target.objects || []).flatMap(object => (
       object.rendererOptions?.fields?.variableIds?.slice(1) || []
     )));
 
     const ensureCaptured = (name, visible = false) => {
-      if (!name || TRACE_STYLE_LOCALS.has(name)
+      if (!name || TRACE_STYLE_LOCALS.has(name) || TRACE_FRAME_LOCALS.has(name)
         || (drawingLocal(style, name) || frameLet(target, name)) && !visible) return;
-      const variable = resolveVariable(name, style.from);
+      const variable = target.variables.find(candidate => candidate.name === name)
+        || resolveVariable(name, style.from);
       if (!variable) throw new Error(`第 ${style.line} 行的 @style 找不到可見變數：${name}`);
       const alreadyCaptured = target.variables.some(existing => existing.id === variable.id);
       if (!alreadyCaptured) target.variables.push(variable);
@@ -1819,7 +1913,8 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     target.styles = target.styles.filter(existing => !existing.presetName
         || existing.targetVariableId !== style.targetVariableId
         || existing.styleType !== style.styleType
-        || JSON.stringify(existing.selector) !== JSON.stringify(style.selector));
+        || JSON.stringify(existing.selector) !== JSON.stringify(style.selector)
+        || String(existing.when?.expression || '') !== String(style.when?.expression || ''));
     target.styles.push(style);
   });
 }
@@ -1932,7 +2027,7 @@ function attachSegmentDirectives(source, analysis, frameDirectives) {
     }
 
     const ensureCaptured = (name, visible = false) => {
-      if (!name) return;
+      if (!name || TRACE_FRAME_LOCALS.has(name)) return;
       if (frameLet(target, name) && !visible) return;
       const variable = resolveVariable(name, segment.from);
       if (!variable) throw new Error(`第 ${segment.line} 行的 @segment 找不到可見變數：${name}`);
@@ -2088,7 +2183,9 @@ function attachLetDirectives(source, analysis, frameDirectives) {
     const expression = match[2].trim();
     const parsed = parseConditionExpression(expression);
     if (!parsed.valid) throw new Error(`第 ${line} 行的 @let 運算式無效：${expression}`);
-    if (TRACE_STYLE_LOCALS.has(name)) throw new Error(`第 ${line} 行的 @let 名稱不可使用 ${name}`);
+    if (TRACE_STYLE_LOCALS.has(name) || TRACE_FRAME_LOCALS.has(name)) {
+      throw new Error(`第 ${line} 行的 @let 名稱不可使用 ${name}`);
+    }
     return { name, expression, identifiers: parsed.identifiers || [], line, presetName };
   }
 
@@ -2100,13 +2197,18 @@ function attachLetDirectives(source, analysis, frameDirectives) {
       throw new Error(`第 ${binding.line} 行的 @let 名稱與可見 C++ 變數重複：${binding.name}`);
     }
     for (const name of binding.identifiers) {
-      if (frameLet(frame, name)) continue;
+      if (frameLet(frame, name) || TRACE_FRAME_LOCALS.has(name)) continue;
       const variable = resolveVariable(name, frame.from);
       if (!variable) throw new Error(`第 ${binding.line} 行的 @let 找不到可見變數或先前別名：${name}`);
       if (!frame.variables.some(existing => existing.id === variable.id)) frame.variables.push(variable);
-      if (!frame.captureOnlyVariableIds.includes(variable.id)) frame.captureOnlyVariableIds.push(variable.id);
+      const displayed = frame.objects?.some(object => (
+        object.displayVariableIds || []
+      ).includes(variable.id));
+      if (!displayed && !frame.captureOnlyVariableIds.includes(variable.id)) {
+        frame.captureOnlyVariableIds.push(variable.id);
+      }
     }
-    frame.lets.push(binding);
+    frame.lets.push({ ...binding, variable: animationLetVariable(source, analysis, frame, binding) });
   }
 
   frames.forEach(frame => {
@@ -2353,7 +2455,13 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
     const captureIdentifier = (name, endpointTarget = null) => {
       if (!name) return null;
       if (name === arrow.batch?.variable && !endpointTarget) return true;
-      if ((drawingLocal(arrow, name) || frameLet(targetFrame, name)) && !endpointTarget) return true;
+      const frameVariable = targetFrame.variables.find(variable => variable.name === name);
+      if (frameVariable) {
+        if (endpointTarget) endpointTarget.targetVariableId = frameVariable.id;
+        return frameVariable;
+      }
+      if ((drawingLocal(arrow, name) || frameLet(targetFrame, name) || TRACE_FRAME_LOCALS.has(name))
+        && !endpointTarget) return true;
       const variable = resolveVariable(name, arrow.from);
       if (!variable) return null;
       const alreadyCaptured = targetFrame.variables.some(existing => existing.id === variable.id);
@@ -2877,9 +2985,10 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       .sort((left, right) => (left.scopeTo - left.scopeFrom) - (right.scopeTo - right.scopeFrom))[0] || null;
   }
 
-  function parseFrameObject(node, payload, directiveName) {
+  function parseFrameObject(node, payload, directiveName, suppliedModifiers = null) {
     const line = analysis.lineAt(node.from);
-    const modifiers = parseDirectiveModifiers(payload, line, directiveName, FRAME_DIRECTIVE_MODIFIERS);
+    const modifiers = suppliedModifiers
+      || parseDirectiveModifiers(payload, line, directiveName, FRAME_DIRECTIVE_MODIFIERS);
     const frameSpec = modifiers.payload;
     const parsed = parseFrameSpec(frameSpec);
     if (!frameSpec) throw new Error(`第 ${line} 行的 ${directiveName} 缺少物件`);
@@ -2891,8 +3000,17 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     if (invalid) throw new Error(`第 ${line} 行的 ${directiveName} 變數名稱無效：${invalid}`);
     const variables = names.map(name => {
       const variable = resolveVariable(name, node.from);
-      if (!variable) throw new Error(`第 ${line} 行的 ${directiveName} 找不到可見變數：${name}`);
-      return variable;
+      return variable || {
+        id: `pending-animation-let-${name}`,
+        name,
+        type: 'animation-let',
+        kind: 'scalar',
+        line,
+        functionName: '',
+        supported: true,
+        synthetic: true,
+        expression: ''
+      };
     });
     const captureOnlyVariableIds = [];
     const includeDependency = name => {
@@ -3008,6 +3126,21 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     };
   }
 
+  function parseFrameObjects(node, payload, directiveName) {
+    const line = analysis.lineAt(node.from);
+    const modifiers = parseDirectiveModifiers(payload, line, directiveName, FRAME_DIRECTIVE_MODIFIERS);
+    const targets = splitDirectiveTargetList(modifiers.payload, line, directiveName);
+    if (targets.length === 1) return [parseFrameObject(node, payload, directiveName)];
+    if (modifiers.objectId || modifiers.layoutId || modifiers.binding) {
+      throw new Error(`第 ${line} 行的 ${directiveName} 多物件列表不支援 as、in 或 at；請分開指定各物件`);
+    }
+    return targets.map(target => {
+      const targetModifiers = JSON.parse(JSON.stringify(modifiers));
+      targetModifiers.payload = target;
+      return parseFrameObject(node, target, directiveName, targetModifiers);
+    });
+  }
+
   function appendFrameObject(frame, object, replacePreset = false) {
     const repeated = frame.objects.findIndex(existing => existing.primaryVariableId === object.primaryVariableId);
     if (repeated >= 0 && !(replacePreset && frame.objects[repeated].presetName)) {
@@ -3093,9 +3226,10 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
             const preset = analysis.presetDefinitions.get(name);
             if (!preset) throw new Error(`第 ${line} 行的 @frame use 找不到預設：${name}`);
             preset.directives.filter(item => item.name === 'object').forEach(item => {
-              const object = parseFrameObject(node, item.payload, '@preset @object');
-              object.presetName = name;
-              appendFrameObject(directive, object, true);
+              parseFrameObjects(node, item.payload, '@preset @object').forEach(object => {
+                object.presetName = name;
+                appendFrameObject(directive, object, true);
+              });
             });
           });
         }
@@ -3110,10 +3244,12 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
           if (!openFrame || !/^\s*$/.test(source.slice(continuationEnd, node.from))) {
             throw new Error(`第 ${line} 行的 @object 必須緊接在 @frame 或另一個 @object 後面`);
           }
-          const object = parseFrameObject(node, objectMatch[1], '@object');
-          if (object.when) throw new Error(`第 ${line} 行的 @object 暫不支援 when，請將條件寫在 @frame`);
-          if (object.layoutId) throw new Error(`第 ${line} 行的 @object 暫不支援 in，請將遞迴排版寫在主要 @frame 物件`);
-          appendFrameObject(openFrame, object, true);
+          const objects = parseFrameObjects(node, objectMatch[1], '@object');
+          objects.forEach(object => {
+            if (object.when) throw new Error(`第 ${line} 行的 @object 暫不支援 when，請將條件寫在 @frame`);
+            if (object.layoutId) throw new Error(`第 ${line} 行的 @object 暫不支援 in，請將遞迴排版寫在主要 @frame 物件`);
+            appendFrameObject(openFrame, object, true);
+          });
           continuationEnd = node.to;
         }
       }
@@ -3123,6 +3259,44 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
 
   visit(analysis.tree.topNode);
   attachLetDirectives(source, analysis, directives);
+  directives.forEach(directive => {
+    const letsByName = new Map((directive.lets || []).map(binding => [binding.name, binding]));
+    const replacements = new Map();
+    directive.variables.forEach(variable => {
+      if (!variable.synthetic) return;
+      const binding = letsByName.get(variable.name);
+      if (!binding) {
+        throw new Error(`第 ${variable.line || directive.line} 行的 @object 找不到可見變數或 @let：${variable.name}`);
+      }
+      replacements.set(variable.id, binding.variable);
+    });
+    if (!replacements.size) {
+      directive.syntheticVariables = [];
+      return;
+    }
+    const replaceId = id => replacements.get(id)?.id || id;
+    directive.variables = directive.variables.map(variable => replacements.get(variable.id) || variable)
+      .filter((variable, index, values) => values.findIndex(item => item.id === variable.id) === index);
+    directive.captureOnlyVariableIds = directive.captureOnlyVariableIds.map(replaceId);
+    directive.objects.forEach(object => {
+      object.primaryVariableId = replaceId(object.primaryVariableId);
+      object.displayVariableIds = (object.displayVariableIds || []).map(replaceId);
+      if (object.objectBinding?.sourceVariableId) {
+        object.objectBinding.sourceVariableId = replaceId(object.objectBinding.sourceVariableId);
+      }
+    });
+    directive.bindings.forEach(binding => {
+      binding.targetVariableId = replaceId(binding.targetVariableId);
+      binding.sourceVariableId = replaceId(binding.sourceVariableId);
+      binding.sourceVariableIds = (binding.sourceVariableIds || []).map(replaceId);
+    });
+    if (directive.objectBinding?.sourceVariableId) {
+      directive.objectBinding.sourceVariableId = replaceId(directive.objectBinding.sourceVariableId);
+    }
+    directive.syntheticVariables = [...new Map(
+      [...replacements.values()].map(variable => [variable.id, variable])
+    ).values()];
+  });
   const usedNames = new Set();
   directives.forEach(directive => {
     if (!directive.objects.length) {
@@ -3131,7 +3305,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     const displayedIds = new Set(directive.objects.flatMap(object => object.displayVariableIds || []));
     directive.objects.flatMap(object => object.rendererOptions?.display?.identifiers || [])
       .forEach(name => {
-        if (frameLet(directive, name)) return;
+        if (frameLet(directive, name) || TRACE_FRAME_LOCALS.has(name)) return;
         const variable = resolveVariable(name, directive.from);
         if (!variable) {
           throw new Error(`第 ${directive.line} 行的 @frame display 找不到可見變數：${name}`);
@@ -3146,6 +3320,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         }
       });
     (directive.when?.identifiers || []).forEach(name => {
+      if (TRACE_FRAME_LOCALS.has(name)) return;
       const variable = resolveVariable(name, directive.from);
       if (!variable) throw new Error(`第 ${directive.line} 行的 @frame 找不到條件變數：${name}`);
       if (!directive.variables.some(existing => existing.id === variable.id)) directive.variables.push(variable);
@@ -3171,7 +3346,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
   return directives;
 }
 
-function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = null) {
+function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = null, suppliedFrames = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
   const directives = [];
   const layouts = suppliedLayouts || findLayoutDirectives(source, analysis);
@@ -3223,7 +3398,16 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
         const match = modifiers.payload.match(/^([A-Za-z_]\w*)$/);
         if (!match) throw new Error(`第 ${line} 行的 @keep 語法無效`);
         const name = match[1];
-        const variable = resolveVariable(name, node.from);
+        let variable = resolveVariable(name, node.from);
+        if (!variable && Array.isArray(suppliedFrames)) {
+          const functionName = lexicalFunctionName(source, analysis, node.from);
+          variable = suppliedFrames
+            .filter(frame => frame.from < node.from
+              && lexicalFunctionName(source, analysis, frame.from) === functionName)
+            .sort((left, right) => right.from - left.from)
+            .flatMap(frame => frame.syntheticVariables || [])
+            .find(candidate => candidate.name === name) || null;
+        }
         if (!variable) throw new Error(`第 ${line} 行的 @keep 找不到可見變數：${name}`);
         if (modifiers.binding && !modifiers.binding.canvas) {
           const targetVariable = resolveVariable(modifiers.binding.targetName, node.from);
@@ -3301,8 +3485,130 @@ function findExitDirectives(source, suppliedAnalysis = null) {
   return directives;
 }
 
+function findCodeHideRanges(source, suppliedAnalysis = null) {
+  const analysis = suppliedAnalysis || analyzeSource(source);
+  const ranges = [];
+  const openRanges = [];
+
+  function ownerFunctionFrom(node) {
+    let functionNode = node.parent;
+    while (functionNode && functionNode.name !== 'FunctionDefinition') functionNode = functionNode.parent;
+    return functionNode?.from ?? null;
+  }
+
+  function visit(node) {
+    if (node.name === 'LineComment') {
+      const text = source.slice(node.from, node.to).trim();
+      if (/^\/\/\s*@code\s+hide\s*$/i.test(text)) {
+        openRanges.push({
+          from: node.from,
+          contentFrom: node.to,
+          line: analysis.lineAt(node.from),
+          functionFrom: ownerFunctionFrom(node)
+        });
+      } else if (/^\/\/\s*@endcode\s*$/i.test(text)) {
+        const open = openRanges.pop();
+        if (!open) throw new Error(`第 ${analysis.lineAt(node.from)} 行的 @endcode 找不到對應的 @code hide`);
+        const endFunctionFrom = ownerFunctionFrom(node);
+        ranges.push({
+          ...open,
+          contentTo: node.from,
+          to: node.to,
+          endLine: analysis.lineAt(node.from),
+          runtimeGuard: open.functionFrom !== null && open.functionFrom === endFunctionFrom
+        });
+      }
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  }
+
+  visit(analysis.tree.topNode);
+  if (openRanges.length) {
+    const open = openRanges[openRanges.length - 1];
+    throw new Error(`第 ${open.line} 行的 @code hide 缺少 @endcode`);
+  }
+  return ranges;
+}
+
+function findBranchDirectives(source, suppliedAnalysis = null, suppliedLayouts = null) {
+  const analysis = suppliedAnalysis || analyzeSource(source);
+  const layouts = suppliedLayouts || findLayoutDirectives(source, analysis);
+  const layoutIds = new Set(layouts.filter(layout => layout.type === 'recursion').map(layout => layout.id));
+  const directives = [];
+  const activeByFunction = new Map();
+
+  function ownerFunction(node) {
+    for (let current = node.parent; current; current = current.parent) {
+      if (current.name === 'FunctionDefinition') return functionInfo(current, source).name;
+    }
+    return 'global';
+  }
+
+  function visit(node) {
+    if (node.name === 'ReturnStatement' || node.name === 'CallExpression') {
+      const functionName = ownerFunction(node);
+      const active = activeByFunction.get(functionName);
+      const callee = node.name === 'CallExpression'
+        ? compactExpression(source.slice(node.firstChild?.from || node.from, node.firstChild?.to || node.from))
+        : '';
+      const recursiveBoundary = node.name === 'CallExpression'
+        && (callee === functionName || callee.endsWith(`::${functionName}`));
+      if (active && (node.name === 'ReturnStatement' || recursiveBoundary)) {
+        if (!active.hasFrame) {
+          throw new Error(`第 ${active.line} 行的 @branch 在結束前至少需要一個 @frame`);
+        }
+        active.boundary = node.from;
+        activeByFunction.delete(functionName);
+      }
+    }
+    if (node.name === 'LineComment') {
+      const text = source.slice(node.from, node.to).trim();
+      const branchLike = /^\/\/\s*@branch\b/i.test(text);
+      const endBranch = /^\/\/\s*@endbranch\s*$/i.test(text);
+      const functionName = ownerFunction(node);
+      if (branchLike) {
+        const line = analysis.lineAt(node.from);
+        const match = text.match(/^\/\/\s*@branch(?:\s+as\s+(?:"([^"]+)"|([A-Za-z_]\w*)))?\s+in\s+([A-Za-z_]\w*)\s*$/i);
+        if (!match) throw new Error(`第 ${line} 行的 @branch 格式應為：@branch [as "名稱"] in layout_id`);
+        if (!layoutIds.has(match[3])) throw new Error(`第 ${line} 行的 @branch 找不到遞迴排版 ID：${match[3]}`);
+        const previous = activeByFunction.get(functionName);
+        if (previous && !previous.hasFrame) {
+          throw new Error(`第 ${previous.line} 行的 @branch 在下一個 branch 前至少需要一個 @frame`);
+        }
+        if (previous) previous.boundary = node.from;
+        const directive = {
+          type: 'start', from: node.from, to: node.to, line,
+          functionName, label: match[1] || match[2] || '', layoutId: match[3],
+          hasFrame: false, boundary: Infinity
+        };
+        directives.push(directive);
+        activeByFunction.set(functionName, directive);
+      } else if (endBranch) {
+        const line = analysis.lineAt(node.from);
+        const active = activeByFunction.get(functionName);
+        if (!active) throw new Error(`第 ${line} 行的 @endbranch 找不到作用中的 @branch`);
+        if (!active.hasFrame) throw new Error(`第 ${active.line} 行的 @branch 在 @endbranch 前至少需要一個 @frame`);
+        active.boundary = node.from;
+        directives.push({ type: 'end', from: node.from, to: node.to, line, functionName });
+        activeByFunction.delete(functionName);
+      } else if (/^\/\/\s*@frame\b/i.test(text)) {
+        const active = activeByFunction.get(functionName);
+        if (active) active.hasFrame = true;
+      }
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  }
+
+  visit(analysis.tree.topNode);
+  for (const active of activeByFunction.values()) {
+    if (!active.hasFrame) throw new Error(`第 ${active.line} 行的 @branch 至少需要一個 @frame`);
+  }
+  return directives;
+}
+
 function instrumentSource(source, watchIds = []) {
   const analysis = analyzeSource(source);
+  const codeHideRanges = findCodeHideRanges(source, analysis);
   const frameDirectives = findFrameDirectives(source, analysis);
   const arrowLoops = sourceLoops(source, analysis);
   const sampledLoops = new Map();
@@ -3316,13 +3622,14 @@ function instrumentSource(source, watchIds = []) {
   }));
   const trackedLoops = arrowLoops.filter(loop => sampledLoops.has(loop.id));
   const layoutDirectives = findLayoutDirectives(source, analysis);
+  const branchDirectives = findBranchDirectives(source, analysis, layoutDirectives);
   const layoutIds = new Set(layoutDirectives.map(layout => layout.id));
   frameDirectives.forEach(directive => {
     if (directive.layoutId && !layoutIds.has(directive.layoutId)) {
       throw new Error(`第 ${directive.line} 行的 @frame in 找不到排版 ID：${directive.layoutId}`);
     }
   });
-  const keepDirectives = findKeepDirectives(source, analysis, layoutDirectives);
+  const keepDirectives = findKeepDirectives(source, analysis, layoutDirectives, frameDirectives);
   const exitDirectives = findExitDirectives(source, analysis);
   const manualFrames = frameDirectives.length > 0;
   const selectedIds = new Set((watchIds || []).map(item => typeof item === 'string' ? item : item.id));
@@ -3355,6 +3662,9 @@ function instrumentSource(source, watchIds = []) {
   if (!selectedIds.size && !manualFrames) {
     analysis.variables.forEach(variable => selectedIds.add(variable.id));
   }
+  const animationVariables = [...new Map(frameDirectives
+    .flatMap(directive => directive.syntheticVariables || [])
+    .map(variable => [variable.id, variable])).values()];
   const selected = analysis.variables.filter(variable => selectedIds.has(variable.id));
   const declarationPositions = new Set(analysis.variables.map(variable => variable.nameFrom));
   const sourceKeyOccurrences = new Map();
@@ -3399,6 +3709,17 @@ function instrumentSource(source, watchIds = []) {
       sourceKeyAliases: [...new Set(sourceKeyAliases)]
     };
   });
+  indexedFrameDirectives.forEach(directive => {
+    const branch = branchDirectives.find(item => item.type === 'start'
+      && item.functionName === directive.functionName
+      && item.from < directive.from && directive.from < item.boundary);
+    if (!branch) return;
+    directive.branchLayoutId = branch.layoutId;
+    if (!directive.layoutId) directive.layoutId = branch.layoutId;
+    if (directive.objects?.length && !directive.objects[0].layoutId) {
+      directive.objects[0].layoutId = branch.layoutId;
+    }
+  });
   const directiveByPosition = new Map(indexedFrameDirectives.map(directive => [directive.from, directive]));
   const indexedKeepDirectives = keepDirectives.map((directive, index) => ({
     ...directive,
@@ -3412,6 +3733,7 @@ function instrumentSource(source, watchIds = []) {
     functionName: directive.functionName || directive.variables[0]?.functionName || 'global'
   }));
   const exitDirectiveByPosition = new Map(indexedExitDirectives.map(directive => [directive.from, directive]));
+  const branchDirectiveByPosition = new Map(branchDirectives.map(directive => [directive.from, directive]));
   const eventSources = {};
 
   function sourcePoint(offset) {
@@ -3646,8 +3968,9 @@ function instrumentSource(source, watchIds = []) {
 
   function directiveCaptureCall(node, directive) {
     const functionName = functionNameAt(node);
-    const named = directive.variables.map(variable =>
-      `::asm_trace::named(${cppString(variable.id)}, ${cppString(variable.name)}, (${variable.name}))`);
+    const named = directive.variables.map(variable => variable.synthetic
+      ? `::asm_trace::named(${cppString(variable.id)}, ${cppString(variable.name)}, (${variable.expression}))`
+      : `::asm_trace::named(${cppString(variable.id)}, ${cppString(variable.name)}, (${variable.name}))`);
     const statementId = `manual-frame:${functionName}:${directive.line}:${directive.index}`;
     const capture = `::asm_trace::capture(${directive.line}, ${cppString(functionName)}, ${cppString(statementId)}, "manual-frame"${named.length ? `, ${named.join(', ')}` : ''});`;
     return directive.when?.expression && !(directive.when.temporalFunctions || []).length
@@ -3663,7 +3986,7 @@ function instrumentSource(source, watchIds = []) {
       operation = `::asm_trace::event_keep_last(${directive.line}, ${cppString(statementId)}, ${cppString(directive.label)}, ${directive.preserveStyle !== false ? 'true' : 'false'}, ${cppString(directive.layoutId || '')});`;
     } else {
       const variable = directive.variable;
-      operation = `::asm_trace::event_keep(${directive.line}, ${cppString(statementId)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(directive.label)}, (${variable.name}), ${directive.preserveStyle !== false ? 'true' : 'false'}, ${cppString(directive.layoutId || '')});`;
+      operation = `::asm_trace::event_keep(${directive.line}, ${cppString(statementId)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(directive.label)}, (${variable.synthetic ? variable.expression : variable.name}), ${directive.preserveStyle !== false ? 'true' : 'false'}, ${cppString(directive.layoutId || '')});`;
     }
     return directive.when?.expression
       ? `if (static_cast<bool>(${directive.when.expression})) { ${operation} }`
@@ -3850,7 +4173,29 @@ function instrumentSource(source, watchIds = []) {
     return calls.join('\n');
   }
 
+  function controlFlowTarget(node, type) {
+    for (let current = node.parent; current; current = current.parent) {
+      if (type === 'break' && current.name === 'SwitchStatement') return 'switch-exit';
+      if (current.name === 'ForStatement') return type === 'continue' ? 'for-update' : 'loop-exit';
+      if (current.name === 'WhileStatement') return type === 'continue' ? 'while-condition' : 'loop-exit';
+      if (current.name === 'DoStatement') return type === 'continue' ? 'do-while-condition' : 'loop-exit';
+    }
+    return type === 'break' ? 'scope-exit' : 'condition';
+  }
+
+  function visibleDirectiveOperation(operation, context, position) {
+    if (!context.codeHidden) return operation;
+    return `{
+::asm_trace::TraceSuppressionPause __asm_trace_visible_${position};
+${operation}
+}`;
+  }
+
   function rebuild(node, context = {}) {
+    const hiddenRange = codeHideRanges.find(range => (
+      node.from >= range.contentFrom && node.to <= range.contentTo
+    ));
+    if (hiddenRange) context = { ...context, suppressEvents: true, codeHidden: true };
     const children = childrenOf(node);
     const forInitializer = node.name === 'ForStatement'
       ? children.find(child => child.name === 'Declaration' && isForHeaderExpression(child))
@@ -3869,13 +4214,13 @@ function instrumentSource(source, watchIds = []) {
       && (!enclosingForCondition.node || enclosingForCondition.node.name === node.name));
     const forHeaderWrite = forHeaderExpression
       && (node.name === 'AssignmentExpression' || node.name === 'UpdateExpression');
-    const inheritedSuppression = context.suppressEvents === true
-      && !(forHeaderWrite && context.suppressForHeaderEvents === true);
+    const inheritedSuppression = context.codeHidden === true || (context.suppressEvents === true
+      && !(forHeaderWrite && context.suppressForHeaderEvents === true));
     const suppressEvents = inheritedSuppression || (forHeaderExpression
       && !forHeaderWrite
       && !forHeaderCondition
       && context.allowForConditionEvents !== true);
-    const nestedContext = forHeaderCondition
+    const nestedContext = forHeaderCondition && !context.codeHidden
       ? { ...context, suppressEvents: false, allowForConditionEvents: true }
       : (suppressEvents || forHeaderWrite
       ? {
@@ -3908,15 +4253,37 @@ ${loop}
       && context.omittedForInitializerFrom === node.from
       && context.omittedForInitializerTo === node.to) {
       rendered = ';';
+    } else if (node.name === 'LineComment'
+      && codeHideRanges.some(range => range.from === node.from)) {
+      const range = codeHideRanges.find(item => item.from === node.from);
+      rendered = range.runtimeGuard
+        ? `${source.slice(node.from, node.to)}\n::asm_trace::TraceSuppressionScope __asm_trace_hidden_${node.from};`
+        : source.slice(node.from, node.to);
+    } else if (node.name === 'LineComment'
+      && codeHideRanges.some(range => range.contentTo === node.from)) {
+      const range = codeHideRanges.find(item => item.contentTo === node.from);
+      rendered = range.runtimeGuard
+        ? `__asm_trace_hidden_${range.from}.release();\n${source.slice(node.from, node.to)}`
+        : source.slice(node.from, node.to);
+    } else if (node.name === 'LineComment' && branchDirectiveByPosition.has(node.from)) {
+      const directive = branchDirectiveByPosition.get(node.from);
+      const statementId = `manual-branch:${directive.functionName}:${directive.line}`;
+      const operation = directive.type === 'start'
+        ? `::asm_trace::event_branch_start(${directive.line}, ${cppString(statementId)}, ${cppString(directive.label)}, ${cppString(directive.layoutId)});`
+        : `::asm_trace::event_branch_end(${directive.line}, ${cppString(statementId)});`;
+      rendered = `${source.slice(node.from, node.to)}\n${visibleDirectiveOperation(operation, context, node.from)}`;
     } else if (node.name === 'LineComment' && directiveByPosition.has(node.from)) {
       const directive = directiveByPosition.get(node.from);
-      rendered = `${source.slice(node.from, node.to)}\n${directiveCaptureCall(node, directive)}`;
+      const operation = directiveCaptureCall(node, directive);
+      rendered = `${source.slice(node.from, node.to)}\n${visibleDirectiveOperation(operation, context, node.from)}`;
     } else if (node.name === 'LineComment' && keepDirectiveByPosition.has(node.from)) {
       const directive = keepDirectiveByPosition.get(node.from);
-      rendered = `${source.slice(node.from, node.to)}\n${keepOperationCall(node, directive)}`;
+      const operation = keepOperationCall(node, directive);
+      rendered = `${source.slice(node.from, node.to)}\n${visibleDirectiveOperation(operation, context, node.from)}`;
     } else if (node.name === 'LineComment' && exitDirectiveByPosition.has(node.from)) {
       const directive = exitDirectiveByPosition.get(node.from);
-      rendered = `${source.slice(node.from, node.to)}\n${exitOperationCall(node, directive)}`;
+      const operation = exitOperationCall(node, directive);
+      rendered = `${source.slice(node.from, node.to)}\n${visibleDirectiveOperation(operation, context, node.from)}`;
     } else if (node.name === 'Identifier') {
       const text = source.slice(node.from, node.to);
       const watch = watchAt(text, node.from);
@@ -3973,7 +4340,7 @@ ${loop}
           ? `([&](){ const bool __asm_input_condition_${node.from} = static_cast<bool>(${evaluatedExpression}); if (static_cast<bool>(std::cin)) { ${conditionInputInitializations} } return __asm_input_condition_${node.from}; }())`
           : evaluatedExpression;
         rendered = suppressEvents
-          ? expression
+          ? `${source.slice(node.from, expressionNode.from)}${expression}${source.slice(expressionNode.to, node.to)}`
           : `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(conditionKind)}, [&](){ return static_cast<bool>(${initializedExpression}); }))`;
       }
     } else if (node.name === 'AssignmentExpression' || node.name === 'UpdateExpression') {
@@ -4085,6 +4452,8 @@ ${loop}
       ));
       if (suppressEvents) {
         rendered = expression;
+      } else if (isPrintfCallee(callee)) {
+        rendered = `::asm_trace::event_output_invoke(${analysis.lineAt(node.from)}, ${cppString(signature('output', node))}, "printf", ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&]()->decltype(auto){ return (${expression}); })`;
       } else if (/(?:^|::)swap$/.test(callee) && node.parent?.name === 'ExpressionStatement' && args.length >= 2) {
         const leftTarget = targetDescriptor(args[0]);
         const rightTarget = targetDescriptor(args[1]);
@@ -4117,7 +4486,14 @@ ${loop}
       rendered = `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, "ForStatement", [&](){ return static_cast<bool>(${rendered}); }))`;
     }
 
-    if (node.name === 'CompoundStatement' && node.parent?.name === 'FunctionDefinition') {
+    if (node.name === 'ExpressionStatement' && !suppressEvents
+      && isOutputStreamStatement(source.slice(node.from, node.to))) {
+      const eventSignature = signature('output', node);
+      rendered = `::asm_trace::event_output_invoke(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, "cout", ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&](){ ${rendered} });`;
+    }
+
+    if (node.name === 'CompoundStatement' && node.parent?.name === 'FunctionDefinition'
+      && !suppressEvents) {
       const info = functionInfo(node.parent, source);
       const openOffset = rendered.indexOf('{');
       const closeOffset = rendered.lastIndexOf('}');
@@ -4136,7 +4512,14 @@ ${loop}
       }
     }
 
-    if (node.name === 'ReturnStatement') {
+    if ((node.name === 'BreakStatement' || node.name === 'ContinueStatement') && !suppressEvents) {
+      const type = node.name === 'BreakStatement' ? 'break' : 'continue';
+      const eventSignature = signature(type, node);
+      recordEventSource(eventSignature, node, node.from, node.to, true);
+      rendered = `{ ::asm_trace::event_control_flow(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(type)}, ${cppString(controlFlowTarget(node, type))}); ${rendered} }`;
+    }
+
+    if (node.name === 'ReturnStatement' && !suppressEvents) {
       let functionNode = node.parent;
       while (functionNode && functionNode.name !== 'FunctionDefinition') functionNode = functionNode.parent;
       const info = functionNode ? functionInfo(functionNode, source) : { name: functionNameAt(node), returnType: '' };
@@ -4169,7 +4552,8 @@ ${loop}
         ? '[&](){ }'
         : `[&](){ ${captureCall(node, 'return')} }`;
       rendered = `return ::asm_trace::event_return_invoke(${analysis.lineAt(node.from)}, ${cppString(returnSignature)}, ${cppString(exitSignature)}, ${cppString(fn)}, ${cppString(compactExpression(sourceExpression))}, ${invoke}, ${capture});`;
-    } else if (CHECKPOINT_NODES.has(node.name) && node.parent?.name === 'CompoundStatement') {
+    } else if (!suppressEvents && CHECKPOINT_NODES.has(node.name)
+      && node.parent?.name === 'CompoundStatement') {
       const declarations = node.name === 'Declaration' ? declarationEvents(node) : '';
       const inputInitializations = node.name === 'ExpressionStatement'
         ? inputInitializationMarks(node)
@@ -4179,14 +4563,14 @@ ${loop}
     }
 
     const bodyLoop = trackedLoops.find(loop => loop.bodyFrom === node.from && loop.bodyTo === node.to);
-    if (bodyLoop) {
+    if (bodyLoop && !suppressEvents) {
       const samples = [...sampledLoops.get(bodyLoop.id)].map(name => `::asm_trace::named(${cppString(name)}, ${cppString(name)}, ${name})`);
       const entry = `__asm_loop_${bodyLoop.from}.enter(${samples.join(', ')});`;
       rendered = node.name === 'CompoundStatement'
         ? rendered.replace('{', `{\n${entry}\n`) : `{\n${entry}\n${rendered}\n}`;
     }
     const ownLoop = trackedLoops.find(loop => loop.from === node.from && loop.to === node.to);
-    if (ownLoop && context.rewrittenForInitializerFrom !== node.from) {
+    if (ownLoop && !suppressEvents && context.rewrittenForInitializerFrom !== node.from) {
       rendered = `{\n::asm_trace::LoopScope __asm_loop_${node.from}(${cppString(ownLoop.id)});\n${rendered}\n}`;
     }
     return rendered;
@@ -4195,7 +4579,7 @@ ${loop}
   const instrumented = `#include "ASMTrace.hpp"\n${rebuild(analysis.tree.topNode)}`;
   return {
     code: instrumented,
-    variables: selected,
+    variables: [...selected, ...animationVariables],
     allVariables: analysis.variables,
     sourceDeclarations: analysis.variables.map(variable => ({
       name: variable.name,
@@ -4212,6 +4596,8 @@ ${loop}
     keepDirectives: indexedKeepDirectives,
     layoutDirectives,
     exitDirectives: indexedExitDirectives,
+    branchDirectives,
+    codeHideRanges,
     eventSources
   };
 }
@@ -4226,6 +4612,8 @@ module.exports = {
   findEventControlDirectives,
   findPlaceDirectives,
   findExitDirectives,
+  findCodeHideRanges,
+  findBranchDirectives,
   instrumentSource,
   inferKind
 };

@@ -151,6 +151,15 @@
   }
 
   function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
+    if (!Object.prototype.hasOwnProperty.call(locals || {}, 'recursion_depth')) {
+      locals = {
+        recursion_depth: Number(frame?.source?.recursionDepth) || 0,
+        recursion_branch: Number(frame?.source?.recursionSiblingIndex) || 0,
+        recursion_root: Number(frame?.source?.recursionRootIndex) || 0,
+        recursion_preview: frame?.source?.systemBranchPreview === true,
+        ...(locals || {})
+      };
+    }
     if (!locals?.__asmDirectiveLetsResolved && Array.isArray(frame?.lets) && frame.lets.length) {
       const resolvedLocals = { ...(locals || {}) };
       Object.defineProperty(resolvedLocals, '__asmDirectiveLetsResolved', {
@@ -655,8 +664,10 @@
     }
     const styleColors = {
       AV_green: 'rgba(165, 214, 167, 0.6)',
+      AV_opaque_green: '#a5d6a7',
       AV_blue: 'rgba(144, 202, 249, 0.6)',
       AV_red: 'rgba(239, 154, 154, 0.6)',
+      AV_opaque_red: '#ef9a9a',
       AV_yellow: 'rgba(252, 255, 64, 0.46)',
       AV_orange: 'rgba(255, 183, 77, 0.65)',
       AV_magenta: 'rgba(231, 144, 255, 0.65)',

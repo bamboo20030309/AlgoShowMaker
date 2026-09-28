@@ -272,6 +272,42 @@ NamedValue named(const char* id, const char* name, const T& value) {
   };
 }
 
+inline int& trace_suppression_depth() {
+  static int depth = 0;
+  return depth;
+}
+
+inline bool trace_suppressed() {
+  return trace_suppression_depth() > 0;
+}
+
+class TraceSuppressionScope {
+ public:
+  TraceSuppressionScope() : active_(true) { ++trace_suppression_depth(); }
+  TraceSuppressionScope(const TraceSuppressionScope&) = delete;
+  TraceSuppressionScope& operator=(const TraceSuppressionScope&) = delete;
+  ~TraceSuppressionScope() { release(); }
+  void release() {
+    if (!active_) return;
+    active_ = false;
+    --trace_suppression_depth();
+  }
+ private:
+  bool active_;
+};
+
+class TraceSuppressionPause {
+ public:
+  TraceSuppressionPause() : depth_(trace_suppression_depth()) {
+    trace_suppression_depth() = 0;
+  }
+  TraceSuppressionPause(const TraceSuppressionPause&) = delete;
+  TraceSuppressionPause& operator=(const TraceSuppressionPause&) = delete;
+  ~TraceSuppressionPause() { trace_suppression_depth() = depth_; }
+ private:
+  int depth_;
+};
+
 class Recorder {
  public:
   Recorder() : event_id_(0), frame_id_(0), enabled_(false), max_frames_(5000) {
@@ -286,14 +322,14 @@ class Recorder {
 
   bool enabled() const { return enabled_; }
   void loop_record(const std::string& fields) {
-    if (!enabled_ || frame_id_ >= max_frames_) return;
+    if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return;
     output_ << "{\"record\":\"loop\",\"position\":" << trace_position()++ << ',' << fields << "}\n";
     output_.flush();
   }
 
   std::string add_event(const std::string& type, int line, const std::string& signature,
                         const std::string& fields = std::string()) {
-    if (!enabled_ || frame_id_ >= max_frames_) return std::string();
+    if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return std::string();
     const int execution_order = event_id_++;
     const std::string event_id = std::string("event-") + std::to_string(execution_order);
     std::ostringstream event;
@@ -314,7 +350,7 @@ class Recorder {
   template <typename... Values>
   void capture(int line, const char* function_name, const char* statement_id,
                const char* statement_kind, const Values&... values) {
-    if (!enabled_ || frame_id_ >= max_frames_) return;
+    if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return;
     std::vector<NamedValue> state{ values... };
     output_ << "{\"record\":\"frame\",\"id\":" << quoted(std::string("frame-") + std::to_string(frame_id_++))
             << ",\"source\":{\"line\":" << line
@@ -365,6 +401,10 @@ struct FunctionActivationFrame {
   int sibling_index;
   int root_index;
   int next_recursive_child;
+  std::string active_branch_id;
+  std::string active_branch_label;
+  std::string active_branch_layout_id;
+  int active_branch_sibling_index;
 };
 
 struct CallInvocationFrame {
@@ -457,12 +497,23 @@ inline std::string current_activation_source_json() {
     + ",\"recursionAncestorActivationIds\":" + ancestors.str()
     + ",\"recursionDepth\":" + std::to_string(frame.recursion_depth)
     + ",\"recursionSiblingIndex\":" + std::to_string(frame.sibling_index)
-    + ",\"recursionRootIndex\":" + std::to_string(frame.root_index);
+    + ",\"recursionRootIndex\":" + std::to_string(frame.root_index)
+    + (frame.active_branch_id.empty() ? std::string() :
+      std::string(",\"branchId\":") + quoted(frame.active_branch_id)
+        + ",\"branchLabel\":" + quoted(frame.active_branch_label)
+        + ",\"branchLayoutId\":" + quoted(frame.active_branch_layout_id)
+        + ",\"branchOwnerActivationId\":" + quoted(frame.activation_id)
+        + ",\"branchDepth\":" + std::to_string(frame.recursion_depth + 1)
+        + ",\"branchSiblingIndex\":" + std::to_string(frame.active_branch_sibling_index));
 }
 
 class FunctionActivation {
  public:
   explicit FunctionActivation(const char* function_name) : active_(true) {
+    if (trace_suppressed()) {
+      active_ = false;
+      return;
+    }
     const std::string name = function_name ? function_name : "global";
     auto& stack = function_activation_stack();
     int parent_index = -1;
@@ -483,8 +534,17 @@ class FunctionActivation {
       invocations.back().callee_activation_id = frame.activation_id;
     }
     frame.next_recursive_child = 0;
+    frame.active_branch_sibling_index = -1;
     if (parent_index >= 0) {
       FunctionActivationFrame& parent = stack[static_cast<std::size_t>(parent_index)];
+      if (!parent.active_branch_id.empty()) {
+        recorder().add_event("branch-exit", 0, "automatic-branch-boundary",
+          std::string("\"branchId\":") + ::asm_trace::quoted(parent.active_branch_id));
+      }
+      parent.active_branch_id.clear();
+      parent.active_branch_label.clear();
+      parent.active_branch_layout_id.clear();
+      parent.active_branch_sibling_index = -1;
       frame.parent_activation_id = parent.activation_id;
       frame.ancestor_activation_ids = parent.ancestor_activation_ids;
       frame.ancestor_activation_ids.push_back(parent.activation_id);
@@ -509,6 +569,10 @@ class FunctionActivation {
     if (!active_) return;
     auto& stack = function_activation_stack();
     if (!stack.empty() && stack.back().activation_id == activation_id_) {
+      if (!stack.back().active_branch_id.empty()) {
+        recorder().add_event("branch-exit", 0, "automatic-function-exit",
+          std::string("\"branchId\":") + ::asm_trace::quoted(stack.back().active_branch_id));
+      }
       stack.pop_back();
       return;
     }
@@ -530,20 +594,26 @@ inline std::string recursion_layout_context_json(const char* layout_id) {
   const auto& stack = function_activation_stack();
   if (stack.empty()) return std::string();
   const FunctionActivationFrame& frame = stack.back();
+  const bool use_branch = !frame.active_branch_id.empty()
+    && frame.active_branch_layout_id == std::string(layout_id);
   std::ostringstream ancestors;
   ancestors << '[';
   for (std::size_t index = 0; index < frame.ancestor_activation_ids.size(); ++index) {
     if (index) ancestors << ',';
     ancestors << quoted(frame.ancestor_activation_ids[index]);
   }
+  if (use_branch) {
+    if (!frame.ancestor_activation_ids.empty()) ancestors << ',';
+    ancestors << quoted(frame.activation_id);
+  }
   ancestors << ']';
   return std::string(",\"layoutId\":") + quoted(layout_id)
     + ",\"recursionFunction\":" + quoted(frame.function_name)
-    + ",\"recursionActivationId\":" + quoted(frame.activation_id)
-    + ",\"recursionParentActivationId\":" + quoted(frame.parent_activation_id)
+    + ",\"recursionActivationId\":" + quoted(use_branch ? frame.active_branch_id : frame.activation_id)
+    + ",\"recursionParentActivationId\":" + quoted(use_branch ? frame.activation_id : frame.parent_activation_id)
     + ",\"recursionAncestorActivationIds\":" + ancestors.str()
-    + ",\"recursionDepth\":" + std::to_string(frame.recursion_depth)
-    + ",\"recursionSiblingIndex\":" + std::to_string(frame.sibling_index)
+    + ",\"recursionDepth\":" + std::to_string(use_branch ? frame.recursion_depth + 1 : frame.recursion_depth)
+    + ",\"recursionSiblingIndex\":" + std::to_string(use_branch ? frame.active_branch_sibling_index : frame.sibling_index)
     + ",\"recursionRootIndex\":" + std::to_string(frame.root_index);
 }
 
@@ -551,6 +621,53 @@ class VariableScopeExit;
 inline std::vector<VariableScopeExit*>& active_scope_exit_guards() {
   static std::vector<VariableScopeExit*> guards;
   return guards;
+}
+
+inline unsigned long long& explicit_branch_counter() {
+  static unsigned long long value = 0;
+  return value;
+}
+
+inline void event_branch_start(int line, const char* signature, const char* label,
+                               const char* layout_id) {
+  auto& stack = function_activation_stack();
+  if (stack.empty() || trace_suppressed()) return;
+  FunctionActivationFrame& frame = stack.back();
+  if (!frame.active_branch_id.empty()) {
+    recorder().add_event("branch-exit", line, signature ? signature : "",
+      std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id));
+  }
+  frame.active_branch_id = std::string("branch-") + std::to_string(explicit_branch_counter()++);
+  frame.active_branch_label = label ? label : "";
+  frame.active_branch_layout_id = layout_id ? layout_id : "";
+  frame.active_branch_sibling_index = frame.next_recursive_child++;
+  recorder().add_event("branch-enter", line, signature ? signature : "",
+    std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id)
+      + ",\"branchLabel\":" + ::asm_trace::quoted(frame.active_branch_label)
+      + ",\"branchLayoutId\":" + ::asm_trace::quoted(frame.active_branch_layout_id)
+      + ",\"branchOwnerActivationId\":" + ::asm_trace::quoted(frame.activation_id)
+      + ",\"branchDepth\":" + std::to_string(frame.recursion_depth + 1)
+      + ",\"branchSiblingIndex\":" + std::to_string(frame.active_branch_sibling_index));
+}
+
+inline void event_branch_end(int line, const char* signature) {
+  auto& stack = function_activation_stack();
+  if (stack.empty() || trace_suppressed()) return;
+  FunctionActivationFrame& frame = stack.back();
+  if (frame.active_branch_id.empty()) return;
+  recorder().add_event("branch-exit", line, signature ? signature : "",
+    std::string("\"branchId\":") + ::asm_trace::quoted(frame.active_branch_id));
+  frame.active_branch_id.clear();
+  frame.active_branch_label.clear();
+  frame.active_branch_layout_id.clear();
+  frame.active_branch_sibling_index = -1;
+}
+
+inline void event_control_flow(int line, const char* signature, const char* type,
+                               const char* target) {
+  recorder().add_event(type ? type : "control-flow", line, signature ? signature : "",
+    std::string("\"controlTarget\":") + quoted(target ? target : "")
+      + current_loop_source_json());
 }
 
 class VariableScopeExit {
@@ -1054,6 +1171,36 @@ decltype(auto) event_call_invoke(int line, const char* signature,
   return std::forward<F>(invoke)();
 }
 
+class OutputInvocationScope {
+ public:
+  OutputInvocationScope(int line, const char* signature, const char* kind,
+                        const char* expression)
+      : line_(line), signature_(signature ? signature : ""),
+        kind_(kind ? kind : ""), expression_(expression ? expression : "") {}
+
+  OutputInvocationScope(const OutputInvocationScope&) = delete;
+  OutputInvocationScope& operator=(const OutputInvocationScope&) = delete;
+
+  ~OutputInvocationScope() {
+    recorder().add_event("output", line_, signature_,
+      std::string("\"outputKind\":") + ::asm_trace::quoted(kind_)
+        + ",\"expression\":" + ::asm_trace::quoted(expression_));
+  }
+
+ private:
+  int line_;
+  std::string signature_;
+  std::string kind_;
+  std::string expression_;
+};
+
+template <typename F>
+decltype(auto) event_output_invoke(int line, const char* signature,
+                                   const char* kind, const char* expression, F&& invoke) {
+  OutputInvocationScope output(line, signature, kind, expression);
+  return std::forward<F>(invoke)();
+}
+
 template <typename Result, typename Invoke, typename Capture>
 typename std::enable_if<!std::is_void<Result>::value, Result>::type
 event_return_invoke_result(int line, const char* return_signature,
@@ -1098,6 +1245,7 @@ auto event_return_invoke(int line, const char* return_signature,
                          const char* exit_signature, const char* function_name,
                          const char* expression, Invoke&& invoke, Capture&& capture)
   -> decltype(std::forward<Invoke>(invoke)()) {
+  event_branch_end(line, return_signature);
   const std::string return_event_id = recorder().add_event("return", line,
     return_signature ? return_signature : "",
     std::string("\"function\":") + quoted(function_name ? function_name : "")

@@ -355,8 +355,6 @@
       && conditionContainsComparison(activeEvent, events);
     const active = Boolean(activeId) && linkedIds.has(String(activeId))
       && !suppressWholeConditionPulse;
-    // Calling a function is a code-only breadcrumb: turn the call grey in
-    // execution order, without the yellow pulse used by canvas responses.
     const activeCall = active && activeEvent?.type === 'call';
     // A split condition can contain unchecked slices. Those slices must not
     // prevent a checked, completed comparison from retaining its own result.
@@ -375,10 +373,10 @@
     const conditionResult = condition?.result
       ?? (!pendingComparison ? completedComparison?.result : undefined);
     return {
-      active: active && !activeCall,
-      pending: !activeCall && pendingComparison,
-      complete: activeCall || (conditionResult == null && !pendingComparison
-        && [...linkedIds].some(id => completed.has(id))),
+      active,
+      pending: pendingComparison,
+      complete: conditionResult == null && !pendingComparison
+        && [...linkedIds].some(id => completed.has(id)),
       conditionResult: activeCall ? undefined : conditionResult
     };
   }
@@ -678,6 +676,9 @@
     if (currentDocument !== trace || !currentFrame || currentFrame.id === frame.id) return 0;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return 0;
     const nextPlan = window.ASMTraceCodeModel.planFrame(trace, frame);
+    // With no presentable source there is no code page to scroll toward. The
+    // panel may hide immediately, but it must never stall the canvas tween.
+    if (!(nextPlan.fragments || []).length) return 0;
     const nextFocusLine = planFocusLine(nextPlan);
     // Recursive calls can remove an unrelated caller fragment while keeping
     // the exact same focused directive line. Let that code-page cleanup run

@@ -2806,11 +2806,12 @@
             ? DEFAULT_STRUCTURE_FRAME_BACKGROUND
             : widget.frameBackgroundColor,
           treeLayout: ({
-            top_down: 'binary',
-            left_right: 'binary',
+            top_down: 'slots',
+            left_right: 'slots',
+            binary: 'slots',
             radial: 'compact'
           })[widget.treeLayout] || (
-            ['compact', 'levelorder', 'binary', 'inorder', 'preorder', 'postorder'].includes(widget.treeLayout)
+            ['compact', 'levelorder', 'slots', 'inorder', 'preorder', 'postorder'].includes(widget.treeLayout)
               ? widget.treeLayout
               : 'compact'
           ),

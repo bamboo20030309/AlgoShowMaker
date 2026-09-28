@@ -17,7 +17,7 @@ test('initial event animation and timeline defaults match the Event Settings pan
   const enabled = new Set([
     'declare', 'scope-exit', 'visual-exit', 'write', 'assign', 'sequence-operation', 'compare', 'swap'
   ]);
-  const animationEnabled = new Set([...enabled, 'return']);
+  const animationEnabled = new Set([...enabled, 'output', 'return', 'break', 'continue']);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
   api.definitions.forEach(definition => {
     assert.equal(api.defaultEnabled({ type: definition.type }, document),
@@ -28,6 +28,9 @@ test('initial event animation and timeline defaults match the Event Settings pan
   });
   assert.equal(api.animation('declare'), 'declare',
     'an enabled declaration is the formal object-entrance animation');
+  document.studio.eventSettings.defaultEnabled.output = false;
+  assert.equal(api.defaultEnabled({ type: 'output' }, document), false,
+    'an explicitly disabled saved output setting remains disabled');
 });
 
 test('timeline labels exclude events that are disabled or cannot be shown', () => {
