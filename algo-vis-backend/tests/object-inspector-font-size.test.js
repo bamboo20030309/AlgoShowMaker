@@ -95,7 +95,7 @@ test('text object font size scales its complete bubble geometry proportionally',
     id: 'frame1',
     texts: [{
       id: 'note',
-      segments: [{ kind: 'literal', segmentId: 's0', text: 'hello', fontSize: 10 }]
+      segments: [{ kind: 'literal', segmentId: 's0', text: 'hello', fontSize: 10, background: 'AV_green!' }]
     }]
   };
 
@@ -105,10 +105,12 @@ test('text object font size scales its complete bubble geometry proportionally',
   const object = elements.get('text:note');
   const bubble = object.querySelector(':scope > .asm-trace-motion > rect');
   const text = object.querySelector('.asm-trace-text-segment-value');
+  const segmentBackground = object.querySelector('.asm-trace-text-segment-background');
   const pointer = object.querySelector(':scope > .asm-trace-motion > path');
 
   assert.equal(object.dataset.traceTextScale, '2');
   assert.equal(text.getAttribute('font-size'), '20');
+  assert.equal(segmentBackground.getAttribute('fill'), '#a5d6a7');
   assert.equal(bubble.getAttribute('rx'), '12');
   assert.equal(bubble.getAttribute('stroke-width'), '2.4');
   assert.match(pointer.getAttribute('d'), /L [\d.]+ [\d.]+/);

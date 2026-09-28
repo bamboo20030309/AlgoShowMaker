@@ -95,6 +95,20 @@ test('a local object, place and style replace only the matching preset entries',
   assert.deepEqual(frame.styles.map(style => style.color), ['AV_green']);
 });
 
+test('conditional preset styles for the same target coexist', () => {
+  const conditionalStyles = source.replace(
+    '// @style isprime[i] highlight AV_red',
+    `// @style isprime[i] highlight AV_green! when isprime[i] == 1
+// @style isprime[i] highlight AV_red! when isprime[i] != 1`
+  );
+  const [frame] = findFrameDirectives(conditionalStyles);
+  const highlights = frame.styles.filter(style => style.styleType === 'highlight');
+  assert.deepEqual(highlights.map(style => style.color), ['AV_green!', 'AV_red!']);
+  assert.deepEqual(highlights.map(style => style.when.expression), [
+    'isprime[i] == 1', 'isprime[i] != 1'
+  ]);
+});
+
 test('multiple presets merge left to right and local directives override the combined view', () => {
   const [frame] = findFrameDirectives(layeredSource);
   assert.deepEqual(frame.presetNames, ['sieve_view', 'compact_view']);

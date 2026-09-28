@@ -52,6 +52,20 @@ test('drawing blocks reject malformed boundaries, C++ statements and non-drawing
   assert.throws(()=>findFrameDirectives(source('// @for k in [0:2]\n// @arrow for k in [0:2] from a[0] to a[k]\n// @endfor')),/索引不可與 @for 重複/);
 });
 
+test('@for manual ranges accept frame-local @let aliases', () => {
+  const code = `int main(){int a[8]={},n=3;
+// @frame a
+// @let last = n - 1
+// @for k in [0:last]
+// @style a[k] highlight
+// @endfor
+}`;
+  const frame = findFrameDirectives(code)[0];
+  assert.deepEqual(frame.lets.map(binding => [binding.name, binding.expression]), [['last', 'n - 1']]);
+  assert.equal(frame.styles[0].drawLoops[0].endExpression, 'last');
+  assert.ok(frame.variables.some(variable => variable.name === 'n'));
+});
+
 test('compiled named block shares actual entries across styles, arrows and text, preserving reload and primes', async () => {
   const code=fs.readFileSync(path.join(__dirname,'fixtures/drawing-loop-sieve.cpp'),'utf8');
   const { trace,window }=await compile(code);

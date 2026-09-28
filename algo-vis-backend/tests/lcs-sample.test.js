@@ -25,20 +25,24 @@ test('LCS sample uses current matrix directives without the legacy introduction'
   assert.doesNotMatch(code, /這是 LCS|Longest Common Subsequence 最長共同子序列/);
   assert.match(code, /vector<vector<int>> LCS;/);
   assert.match(code, /set<string> ans;/);
-  assert.doesNotMatch(code, /\b(?:dp|bridge|pathDirection|answerList|rowLabels|columnLabels|collectLCS)\b/);
-  assert.match(code, /vector<vector<int>> _draw_LCS_path;/);
-  assert.match(code, /vector<vector<int>> _draw_stack_path;/);
-  assert.match(code, /int _draw_LCS_rows, _draw_LCS_columns;/);
-  assert.match(code, /void dfs\(int x, int y, string now\)/);
-  assert.match(code, /if \(S\[x - 1\] == T\[y - 1\]\)[\s\S]*dfs\(x - 1, y - 1, now \+ S\[x - 1\]\)/);
-  assert.match(code, /else if \(LCS\[x - 1\]\[y\] == LCS\[x\]\[y - 1\]\)/);
-  assert.match(code, /else if \(LCS\[x - 1\]\[y\] > LCS\[x\]\[y - 1\]\)/);
-  assert.match(code, /LCS\[i\]\[j\] = max\(LCS\[i\]\[j - 1\], LCS\[i - 1\]\[j\]\)/);
-  assert.match(code, /@object LCS render matrix with labels\(value\), row-labels\("",_draw_LCS_row_labels\), column-labels\("",_draw_LCS_column_labels\), marker-layout\(none\)/);
+  assert.doesNotMatch(code, /\b(?:dp|bridge|pathDirection|answerList|rowLabels|columnLabels|collectLCS)\b|_draw_/);
+  assert.match(code, /void dfs\(int x,\s*int y,\s*string now\)/);
+  assert.match(code, /if\s*\(S\[x\s*-\s*1\]\s*==\s*T\[y\s*-\s*1\]\)[\s\S]*dfs\(x\s*-\s*1,\s*y\s*-\s*1,\s*now\s*\+\s*S\[x\s*-\s*1\]\)/);
+  assert.match(code, /else if\s*\(LCS\[x\s*-\s*1\]\[y\]\s*==\s*LCS\[x\]\[y\s*-\s*1\]\)/);
+  assert.match(code, /else if\s*\(LCS\[x\s*-\s*1\]\[y\]\s*>\s*LCS\[x\]\[y\s*-\s*1\]\)/);
+  assert.match(code, /LCS\[i\]\[j\]\s*=\s*max\(LCS\[i\]\[j\s*-\s*1\],\s*LCS\[i\s*-\s*1\]\[j\]\)/);
+  assert.match(code, /@let rows = S\.size\(\)/);
+  assert.match(code, /@let columns = T\.size\(\)/);
+  assert.match(code, /@object LCS render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
+  assert.match(code, /@object LCS\[i\]\[j\] render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
+  assert.match(code, /@object LCS\[x\]\[y\] render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
   assert.match(code, /@object ans with labels\(value\)/);
   assert.match(code, /@style LCS\[x\]\[y\] highlight/);
-  assert.match(code, /@arrow from LCS\[i-1\]\[j-1\] to LCS\[i\]\[j\]/);
-  assert.match(code, /@for i in \[1:_draw_LCS_rows\][\s\S]*@for j in \[1:_draw_LCS_columns\]/);
+  assert.match(code, /@arrow from LCS\[rr-1\]\[cc-1\] to LCS\[rr\]\[cc\]/);
+  assert.match(code, /@style LCS\.row-label\[i\] background AV_green! when S\[i-1\] == T\[j-1\]/);
+  assert.match(code, /@style LCS\.column-label\[j\] background AV_red! when S\[i-1\] != T\[j-1\]/);
+  assert.match(code, /@for rr in \[1:rows\][\s\S]*@for cc in \[1:columns\]/);
+  assert.match(code, /when S\[rr-1\] == T\[cc-1\] && LCS\[rr\]\[cc\] == LCS\[rr-1\]\[cc-1\] \+ 1/);
   assert.match(code, /@text \[[\s\S]*"background": "AV_green"/);
   assert.equal(findFrameDirectives(code).length, 10);
 });
@@ -46,7 +50,7 @@ test('LCS sample uses current matrix directives without the legacy introduction'
 test('LCS sample builds its matrix and lists the sample answers', async () => {
   const code = fs.readFileSync(codePath, 'utf8');
   const input = fs.readFileSync(inputPath, 'utf8');
-  const { trace } = await compile(code, input);
+  const { trace, window } = await compile(code, input);
   const byName = Object.fromEntries(Object.entries(trace.variables)
     .map(([id, variable]) => [variable.name, id]));
   const last = trace.frames.at(-1);
@@ -59,6 +63,64 @@ test('LCS sample builds its matrix and lists the sample answers', async () => {
   assert.deepEqual(answers, ['abcde', 'edcba']);
   assert.deepEqual(Array.from(options.rowLabels.values), ['', ...'abcdedcba']);
   assert.deepEqual(Array.from(options.columnLabels.values), ['', ...'edcbabcde']);
-  assert.equal(options.markerLayout, 'none');
+  assert.equal(options.markerLayout, undefined);
+  const buildFrames = trace.frames.filter(frame => frame.bindings.some(binding => binding.sourceName === 'i'));
+  const buildFrame = buildFrames[0];
+  const dfsFrame = trace.frames.find(frame => frame.bindings.some(binding => binding.sourceName === 'x'));
+  assert.deepEqual(Array.from(buildFrame.bindings, binding => [binding.sourceName, binding.indexDimension]), [
+    ['i', 0], ['j', 1]
+  ]);
+  assert.deepEqual(Array.from(dfsFrame.bindings, binding => [binding.sourceName, binding.indexDimension]), [
+    ['x', 0], ['y', 1]
+  ]);
+  const maxAssignments = buildFrames.flatMap(frame => frame.events.filter(event => (
+    event.selectionOperation === 'max'
+  )));
+  assert.ok(maxAssignments.length > 0, 'mismatching characters use selected-source max events');
+  assert.ok(maxAssignments.every(event => ['source-left', 'source-right']
+    .includes(event.selectedSourceRole)));
+  assert.ok(maxAssignments.every(event => (
+    Number(event.payload.source.value) === Number(event.payload.after.value)
+  )));
+  const [iBinding, jBinding] = buildFrame.bindings;
+  const iValue = Number(buildFrame.state[iBinding.sourceVariableId].data.value);
+  const jValue = Number(buildFrame.state[jBinding.sourceVariableId].data.value);
+  const sameCharacter = options.rowLabels.values[iValue] === options.columnLabels.values[jValue];
+  const expectedLabelColor = sameCharacter
+    ? '#a5d6a7'
+    : '#ef9a9a';
+  const labelHighlights = window.ASMTraceRules.evaluate(trace, buildFrame)[byName.LCS];
+  assert.equal(labelHighlights[`$row-label:${iValue}`].styleTypes.background, expectedLabelColor);
+  assert.equal(labelHighlights[`$column-label:${jValue}`].styleTypes.background, expectedLabelColor);
+  const matchingBuildFrame = buildFrames.find(frame => {
+    const [rowBinding, columnBinding] = frame.bindings;
+    const row = Number(frame.state[rowBinding.sourceVariableId].data.value);
+    const column = Number(frame.state[columnBinding.sourceVariableId].data.value);
+    return options.rowLabels.values[row] === options.columnLabels.values[column];
+  });
+  assert.ok(matchingBuildFrame, 'the sample must contain a matching-character build frame');
+  const [matchingRowBinding, matchingColumnBinding] = matchingBuildFrame.bindings;
+  const matchingRow = Number(matchingBuildFrame.state[matchingRowBinding.sourceVariableId].data.value);
+  const matchingColumn = Number(matchingBuildFrame.state[matchingColumnBinding.sourceVariableId].data.value);
+  const matchingHighlights = window.ASMTraceRules.evaluate(trace, matchingBuildFrame)[byName.LCS];
+  assert.equal(matchingHighlights[`$row-label:${matchingRow}`].styleTypes.background, '#a5d6a7');
+  assert.equal(matchingHighlights[`$column-label:${matchingColumn}`].styleTypes.background, '#a5d6a7');
+  const bridgeArrows = window.ASMTraceModel.drawingDirectives(trace, last, 'arrows');
+  assert.equal(bridgeArrows.length, 16);
+  assert.deepEqual(Array.from(bridgeArrows[0].from.indexExpressions), ['0', '4']);
+  assert.deepEqual(Array.from(bridgeArrows[0].to.indexExpressions), ['1', '5']);
+  const deepestDfsFrame = trace.frames.filter(frame => frame.source?.function === 'dfs')
+    .sort((left, right) => (right.source.recursionAncestorActivationIds?.length || 0)
+      - (left.source.recursionAncestorActivationIds?.length || 0))[0];
+  const activePath = window.ASMTraceModel.returnTrailArrows(trace, deepestDfsFrame);
+  assert.equal(activePath.length, deepestDfsFrame.source.recursionAncestorActivationIds.length);
+  assert.ok(activePath.every(arrow => arrow.trailActivationId));
+  const deepestIndex = trace.frames.indexOf(deepestDfsFrame);
+  const returnedFrame = trace.frames.slice(deepestIndex + 1)
+    .find(frame => frame.source?.function === 'dfs'
+      && (frame.source.recursionAncestorActivationIds?.length || 0) < activePath.length);
+  assert.ok(returnedFrame, 'the sample must return from the deepest DFS branch');
+  assert.ok(window.ASMTraceModel.returnTrailArrows(trace, returnedFrame).length < activePath.length,
+    'returning from recursion removes arrows that no longer belong to the active call path');
   assert.equal(trace.frames[0].texts[0].segments.some(segment => segment.text.includes('這是 LCS')), false);
 });

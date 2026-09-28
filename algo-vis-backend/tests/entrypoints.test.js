@@ -37,13 +37,13 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-37'));
+  assert.ok(html.includes('trace-model.js?v=trace-38'));
   assert.ok(html.includes('trace-directive-assist.js?v=directive-24'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-29'));
   assert.ok(html.includes('trace-events.js?v=trace-52'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-253'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-254'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
@@ -60,7 +60,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=tree-slots-226'));
+  assert.ok(slides.includes('slides.js?v=slides-227'));
+  assert.ok(slides.includes('trace-model.js?v=trace-38'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
@@ -72,7 +73,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
   assert.ok(slides.includes('slides.css?v=slide-delete-action-112'));
-  assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-8') < slides.indexOf('slides.js?v='));
+  assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-10') < slides.indexOf('slides.js?v='));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
   }
@@ -90,7 +91,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
   assert.ok(slides.includes('slide-structures.js?v=22'));
   assert.ok(legacy.includes('slide-structures.js?v=8'));
-  assert.ok(html.includes('trace-arrow-model.js?v=arrow-8'));
+  assert.ok(html.includes('trace-arrow-model.js?v=arrow-10'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
   assert.ok(read('draw/draw_arrow.js').includes('window.ASMArrowModel?.geometry'));
@@ -98,7 +99,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-25'));
+  assert.ok(html.includes('trace-rules.js?v=trace-28'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'segment_tree'
       ? 'segment-label-3'

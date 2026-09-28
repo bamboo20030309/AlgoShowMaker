@@ -3288,6 +3288,20 @@
     if (changed) saveDeck({ history: false });
   }
 
+  let latexAutoSizeFrame = 0;
+  function scheduleVisibleLatexAutoSize(section = reveal?.getCurrentSlide?.()) {
+    cancelAnimationFrame(latexAutoSizeFrame);
+    latexAutoSizeFrame = requestAnimationFrame(() => {
+      latexAutoSizeFrame = requestAnimationFrame(() => {
+        const current = section?.classList?.contains('present')
+          ? section
+          : reveal?.getCurrentSlide?.();
+        autoSizeLatexWidgets(current || slidesRoot);
+        reveal?.layout?.();
+      });
+    });
+  }
+
   function applyAnimationAttributes(el, source) {
     const animation = normalizeAnimationSettings(source);
     FRAGMENT_STYLE_CLASSES.forEach(className => el.classList.remove(className));
@@ -11144,6 +11158,7 @@
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
         syncAlgorithmFrameVisibility();
+        scheduleVisibleLatexAutoSize(event.currentSlide);
       });
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('overviewhidden', scheduleFabricResolution);
@@ -11155,8 +11170,7 @@
       syncAlgorithmFrameVisibility();
       refreshRevealWidgets();
       document.fonts?.ready.then(() => {
-        autoSizeLatexWidgets(slidesRoot);
-        reveal.layout();
+        scheduleVisibleLatexAutoSize();
       });
     });
   }

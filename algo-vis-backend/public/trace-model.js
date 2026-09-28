@@ -485,8 +485,65 @@
     return output;
   }
 
+  function freezeReturnArrow(document, sourceFrame, arrow, activationId) {
+    const locals = arrow.drawLocals || {};
+    if (!window.ASMTraceRules.expressionMatches(document, sourceFrame, arrow.when, locals)) return null;
+    const freezeEndpoint = endpoint => {
+      if (!endpoint) return endpoint;
+      const expressions = endpoint.indexExpressions
+        || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
+      if (!expressions.length) return { ...endpoint };
+      const values = expressions.map(expression =>
+        window.ASMTraceRules.resolveExpression(document, sourceFrame, expression, locals));
+      if (values.some(value => !Number.isSafeInteger(value))) return null;
+      return { ...endpoint, indexExpressions: values.map(String), indexExpression: values.join(',') };
+    };
+    const from = freezeEndpoint(arrow.from), to = freezeEndpoint(arrow.to);
+    if (!from || !to) return null;
+    return {
+      ...arrow,
+      id: `${arrow.id}@return:${activationId}`,
+      explicitId: true,
+      from,
+      to,
+      when: null,
+      until: '',
+      trailActivationId: activationId
+    };
+  }
+
+  // `until return` arrows belong to the recursive edge that follows their
+  // source frame.  Descendant frames inherit one frozen edge from every
+  // active ancestor.  Once playback returns to that ancestor it is no longer
+  // listed as an ancestor, so the edge disappears without user-side state.
+  function returnTrailArrows(document, frame) {
+    const ancestors = Array.isArray(frame?.source?.recursionAncestorActivationIds)
+      ? frame.source.recursionAncestorActivationIds.map(String).filter(Boolean) : [];
+    if (!ancestors.length) return [];
+    const frames = Array.isArray(document?.frames) ? document.frames : [];
+    const frameIndex = frames.indexOf(frame);
+    if (frameIndex <= 0) return [];
+    const output = [];
+    for (const activationId of ancestors) {
+      for (let index = frameIndex - 1; index >= 0; index -= 1) {
+        const sourceFrame = frames[index];
+        if (String(sourceFrame?.source?.recursionActivationId || '') !== activationId) continue;
+        const arrows = drawingDirectives(document, sourceFrame, 'arrows')
+          .filter(arrow => arrow.until === 'return');
+        if (!arrows.length) continue;
+        arrows.forEach(arrow => {
+          const frozen = freezeReturnArrow(document, sourceFrame, arrow, activationId);
+          if (frozen) output.push(frozen);
+        });
+        break;
+      }
+    }
+    return output;
+  }
+
   window.ASMTraceModel = {
     drawingDirectives,
+    returnTrailArrows,
     loopSamples,
     clone,
     normalizeData,

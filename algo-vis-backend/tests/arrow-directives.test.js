@@ -21,7 +21,7 @@ int main() {
   std::vector<int> arr = {3, 1};
   int i = 0;
   // @frame arr[i]
-  // @arrow from arr[i].bottom offset(0,8) to arr[1].top offset(0,-8) as "move_link" color AV_red width 2 head both line curve dash 6,4 when i == 0
+  // @arrow from arr[i].bottom offset(0,8) to arr[1].top offset(0,-8) as "move_link" color AV_red! width 2 head both line curve dash 6,4 when i == 0
 }
 `;
 
@@ -37,7 +37,7 @@ test('@arrow parses semantic endpoints, stable ID, style, offsets and condition'
   assert.equal(arrow.fromTarget.offsetY, 8);
   assert.equal(arrow.toTarget.offsetY, -8);
   assert.deepEqual(arrow.style, {
-    color: 'AV_red', width: 2, head: 'both', line: 'curve', dash: '6,4'
+    color: 'AV_red!', width: 2, head: 'both', line: 'curve', dash: '6,4'
   });
   assert.equal(arrow.when.expression, 'i == 0');
 
@@ -102,6 +102,68 @@ test('@arrow when owns the remaining condition text', () => {
     '// @arrow from canvas.left to canvas.right width 2 when width > 0 && color != 1');
   assert.equal(arrow.style.width, 2);
   assert.equal(arrow.when.expression, 'width > 0 && color != 1');
+});
+
+test('@arrow until return records a recursive-edge lifetime', () => {
+  const [arrow] = findArrowDirectives(
+    '// @arrow from grid[x][y] to grid[x-1][y] color AV_green until return');
+  assert.equal(arrow.until, 'return');
+  assert.throws(() => findArrowDirectives(
+    '// @arrow from grid[x][y] to grid[x-1][y] until frame'), /until 只支援 return/);
+});
+
+test('until return arrows follow active recursive ancestors and disappear on unwind', () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+  const { window } = dom;
+  window.ASMTraceRules = {
+    expressionMatches() { return true; },
+    resolveExpression(_document, frame, expression) {
+      const values = frame.values || {};
+      if (Object.prototype.hasOwnProperty.call(values, expression)) return values[expression];
+      if (expression === 'x-1') return values.x - 1;
+      if (expression === 'y-1') return values.y - 1;
+      return Number(expression);
+    }
+  };
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-model.js'), 'utf8'));
+  const edge = (id, from, to) => ({
+    id, source: 'directive', until: 'return',
+    from: { targetVariableId: 'grid', indexExpressions: from },
+    to: { targetVariableId: 'grid', indexExpressions: to },
+    style: { color: 'AV_green', width: 3, head: 'end', line: 'straight' }
+  });
+  const parent = {
+    id: 'parent-edge', values: { x: 5, y: 4 },
+    source: { recursionActivationId: 'activation-parent', recursionAncestorActivationIds: [] },
+    arrows: [edge('down', ['x', 'y'], ['x-1', 'y'])]
+  };
+  const child = {
+    id: 'child-edge', values: { x: 4, y: 4 },
+    source: { recursionActivationId: 'activation-child',
+      recursionAncestorActivationIds: ['activation-parent'] },
+    arrows: [edge('diagonal', ['x', 'y'], ['x-1', 'y-1'])]
+  };
+  const grandchild = {
+    id: 'grandchild', values: { x: 3, y: 3 },
+    source: { recursionActivationId: 'activation-grandchild',
+      recursionAncestorActivationIds: ['activation-parent', 'activation-child'] },
+    arrows: []
+  };
+  const returned = {
+    id: 'returned', values: { x: 5, y: 4 },
+    source: { recursionActivationId: 'activation-parent', recursionAncestorActivationIds: [] },
+    arrows: []
+  };
+  const document = { frames: [parent, child, grandchild, returned] };
+  const childTrail = window.ASMTraceModel.returnTrailArrows(document, child);
+  assert.equal(childTrail.length, 1);
+  assert.deepEqual(childTrail[0].from.indexExpressions, ['5', '4']);
+  assert.deepEqual(childTrail[0].to.indexExpressions, ['4', '4']);
+  const fullTrail = window.ASMTraceModel.returnTrailArrows(document, grandchild);
+  assert.equal(fullTrail.length, 2);
+  assert.deepEqual(Array.from(fullTrail, arrow => arrow.trailActivationId),
+    ['activation-parent', 'activation-child']);
+  assert.equal(window.ASMTraceModel.returnTrailArrows(document, returned).length, 0);
 });
 
 test('shared arrow geometry preserves the original drawArrow margins', () => {

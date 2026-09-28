@@ -60,7 +60,17 @@ test('matrix renderer works in the real browser SVG surface', { timeout: 60000 }
         captureOnlyVariableIds: [i, j], texts: [], segments: [], arrows: [], snapshotIds: [],
         styles: [{ id: 'cell', targetVariableId: grid, selector: {
           type: 'matrix-cell', rowExpression: 'i', columnExpression: 'j'
-        }, styleType: 'highlight', color: 'red' }]
+        }, styleType: 'highlight', color: 'red' },
+        { id: 'row-label', targetVariableId: grid, selector: {
+          type: 'matrix-axis-label', axis: 'row', dimensionSelector: { type: 'index', indexExpression: 'i' }
+        }, styleType: 'background', color: 'AV_green!' },
+        { id: 'column-label', targetVariableId: grid, selector: {
+          type: 'matrix-axis-label', axis: 'column', dimensionSelector: { type: 'index', indexExpression: 'j' }
+        }, styleType: 'background', color: 'AV_red!' },
+        { id: 'inner-label', targetVariableId: grid, selector: {
+          type: 'matrix-inner-label', rowSelector: { type: 'index', indexExpression: 'i' },
+          columnSelector: { type: 'index', indexExpression: 'j' }
+        }, styleType: 'background', color: 'AV_green' }]
       };
       traceDocument.frames.push(frame);
       await window.ASMTraceRenderers.renderFrame(traceDocument, frame, null, {
@@ -75,9 +85,11 @@ test('matrix renderer works in the real browser SVG surface', { timeout: 60000 }
         cellStroke: document.querySelector('[data-trace-object-key="grid#1,0"] > rect')?.getAttribute('stroke'),
         cellStrokeWidth: document.querySelector('[data-trace-object-key="grid#1,0"] > rect')?.getAttribute('stroke-width'),
         innerFill: document.querySelector('[data-trace-object-key="grid#1,0:index"] > rect')?.getAttribute('fill'),
+        untouchedInnerFill: document.querySelector('[data-trace-object-key="grid#0,0:index"] > rect')?.getAttribute('fill'),
         innerHeight: document.querySelector('[data-trace-object-key="grid#1,0:index"] > rect')?.getAttribute('height'),
         rowStroke: document.querySelector('[data-trace-object-key="grid:row-label:1"] > rect')?.getAttribute('stroke'),
         rowFill: document.querySelector('[data-trace-object-key="grid:row-label:1"] > rect')?.getAttribute('fill'),
+        columnFill: document.querySelector('[data-trace-object-key="grid:column-label:0"] > rect')?.getAttribute('fill'),
         highlightStroke: document.querySelector('[data-trace-attached-to="grid#1,0"]')?.getAttribute('stroke'),
         highlightHeight: document.querySelector('[data-trace-attached-to="grid#1,0"]')?.getAttribute('height'),
         outerframe: Boolean(document.querySelector('.outerframe-bg'))
@@ -213,8 +225,8 @@ int main() {
     assert.deepEqual(result, {
       cells: 3, rowLabels: 2, columnLabels: 2, innerLabels: 3,
       markers: ['i', 'j'], cellStroke: '#333', cellStrokeWidth: '0',
-      innerFill: '#fff', innerHeight: '12',
-      rowStroke: '#333', rowFill: 'rgba(111, 161, 255, 0.7)',
+      innerFill: 'rgba(165, 214, 167, 0.6)', untouchedInnerFill: '#fff', innerHeight: '12',
+      rowStroke: '#333', rowFill: '#a5d6a7', columnFill: '#ef9a9a',
       highlightStroke: 'red', highlightHeight: '52', outerframe: false,
       rowArrow: {
         d: 'M -22 0 L -2 0 M -8 -5 L -2 0 L -8 5',
