@@ -1,4 +1,11 @@
-// One command; owns only its isolated server, never stops the user's server.
+/**
+ * 主代理使用的完整回歸入口。
+ *
+ * 此命令會自行配置隨機埠與 JWT secret，啟動專用 server，再依參數執行全部
+ * Node 測試及／或實際動畫驗證。它只管理自己建立的子程序，不得停止 3000、
+ * 3100 或其他代理的預覽服務。
+ */
+
 const { spawn, spawnSync } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
@@ -6,6 +13,10 @@ const path = require('node:path');
 const net = require('node:net');
 const root = path.resolve(__dirname, '..');
 const REGRESSION_JWT_SECRET = randomBytes(32).toString('base64url');
+
+// -----------------------------------------------------------------------------
+// 同步命令與原始碼掃描工具
+// -----------------------------------------------------------------------------
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, { cwd: root, env, stdio: 'inherit', windowsHide: true });
   if (result.error) throw result.error;
@@ -18,6 +29,10 @@ function walk(dir) {
     return entry.isDirectory() ? walk(file) : file.endsWith('.js') ? [file] : [];
   });
 }
+
+// -----------------------------------------------------------------------------
+// 隔離服務生命週期與測試／動畫階段編排
+// -----------------------------------------------------------------------------
 async function main() {
   if (process.argv.includes('--animation-only') && process.argv.includes('--tests-only')) {
     throw new Error('不能同時略過測試與動畫驗證');

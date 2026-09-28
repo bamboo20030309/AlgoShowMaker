@@ -1,3 +1,11 @@
+/**
+ * 測試模組：structure-annotations.browser.test
+ *
+ * 驗證重點：structure annotations.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -7,6 +15,9 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('structure annotations follow indices, persist and retain custom colors', { timeout: 120000 }, async () => {
   const root = path.resolve(__dirname, '..');
   const port = await new Promise(resolve => { const probe = net.createServer(); probe.listen(0, '127.0.0.1', () => { const p = probe.address().port; probe.close(() => resolve(p)); }); });
@@ -50,7 +61,7 @@ test('structure annotations follow indices, persist and retain custom colors', {
     async function selectCell(index) {
       if (await page.locator('#iroPopup').isVisible()) {
         await page.mouse.move(10, 10);
-        await page.waitForTimeout(30);
+        await page.waitForFunction(() => document.querySelector('#iroPopup')?.hidden === true);
       }
       await object.locator(`[data-structure-item-index="${index}"] > text`).click();
       await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar');
@@ -59,6 +70,8 @@ test('structure annotations follow indices, persist and retain custom colors', {
     const toolbar = page.locator('#structureContextMenu');
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
     assert.equal((await savedWidget()).highlightIndices, '0');
+    await page.mouse.move(10, 10);
+    await page.waitForFunction(() => document.querySelector('#iroPopup')?.hidden === true);
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).hover();
     assert.equal(await page.locator('#iroPopup').isVisible(), true);
     assert.equal(await toolbar.locator('[data-structure-style-type]').count(), 6);
@@ -70,6 +83,8 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(styled.cellStyles['0'].highlight, 'rgba(144, 202, 249, 0.6)');
     await selectCell(2);
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
+    await page.mouse.move(10, 10);
+    await page.waitForFunction(() => document.querySelector('#iroPopup')?.hidden === true);
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).hover();
     await page.locator('#avColorSwatches [data-av-color="AV_yellow"]').click();
     styled = await savedWidget();

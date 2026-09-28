@@ -1,7 +1,19 @@
+/**
+ * AV.hpp 傳統繪圖 API 的綜合示例。
+ *
+ * 同一份遞增序列會以一般陣列、Heap 與 BIT 三種 layout 呈現，並在指定
+ * 幀加入 mark／highlight／focus 等樣式。此檔主要用來快速人工檢查位置
+ * 錨點、箭頭、相機與 key frame 是否能共同運作，不是演算法效能範例。
+ */
+
 #include <bits/stdc++.h>
 #include "AV.hpp"
 using namespace std;
 AV av;
+
+// -----------------------------------------------------------------------------
+// 逐步擴充資料，於每一幀同步更新三種結構與它們之間的連線。
+// -----------------------------------------------------------------------------
 int main() {
     vector<int> num={0};
     av.start_draw();
@@ -13,6 +25,7 @@ int main() {
         av.frame_draw("BIT", Pos("heap","raw bottom-left",0,100), num, {{{"highlight"},{i-1}}, {{"focus"},{i-1}}, {{"point"},{i-1}}, {{"mark"},{i-1}}, {{"background"},{i-1}}}, {0},  "BIT", 10, 1);
         av.arrow( Pos("num","bottom"), Pos("heap","top"), {{"color","black"},{"width","3"}});
         av.arrow( Pos("num",i+1), Pos("BIT",i));
+        // 在幾個固定長度留下關鍵幀，方便比較一般幀與持久標記的差異。
         if(i==3 || i==7 || i==13) {
             av.key_frame_draw("num", Pos(0,0), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i}}, {{"point"},{i}}, {{"focus"},{i}}, {{"background"},{i}}}, {0},  "normal", 0, 1);
             av.key_frame_draw("heap", Pos("num","raw bottom-left",0,100), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i-1}}, {{"point"},{i-1}}, {{"focus"},{i-1}}, {{"background"},{i-1}}}, {0},  "heap", 10, 1);

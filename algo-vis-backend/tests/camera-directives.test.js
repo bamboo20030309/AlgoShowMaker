@@ -1,3 +1,11 @@
+/**
+ * 測試模組：camera-directives.test
+ *
+ * 驗證重點：camera directives.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -5,6 +13,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { findFrameDirectives } = require('../trace-instrumenter');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('an unresolved focus target uses automatic capture instead of the previous center', () => {
   let automatic = 0;
   const window = {
@@ -58,4 +69,20 @@ test('camera priority is Studio frame override, directive, Studio global, automa
   assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame).id, 'global');
   trace.studio.cameraRules = [];
   assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame), null);
+});
+
+test('camera expression conditions decide whether a focus directive applies', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../public/trace-camera.js'), 'utf8');
+  const window = {
+    ASMTraceRules: {
+      conditionMatches: () => true,
+      expressionMatches: (_trace, frame) => frame.state.allow === true
+    }
+  };
+  vm.runInNewContext(source, { window, getComputedStyle: () => ({ getPropertyValue: () => '' }) });
+  const camera = { source: 'directive', target: { objectKey: 'num' }, condition: { expression: 'allow' } };
+  const frame = { id: 'frame-1', state: { allow: false }, camera };
+  assert.equal(window.ASMTraceCamera.ruleForFrame({}, frame), null);
+  frame.state.allow = true;
+  assert.equal(window.ASMTraceCamera.ruleForFrame({}, frame), camera);
 });

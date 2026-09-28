@@ -1,9 +1,20 @@
+/**
+ * 測試模組：standard-segment-tree.browser.test
+ *
+ * 驗證重點：standard segment tree.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('standard n=10 segment tree uses proportional intervals at natural recursion depths', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
@@ -318,8 +329,8 @@ int main() {
     assert.equal(operations.sumVisible, true);
     const sumTransfers = operations.sumAnimation.filter(sample => sample.transfer);
     assert.ok(sumTransfers.length > 0, JSON.stringify(operations.sumAnimation));
-    assert.ok(sumTransfers.every(sample => /^\d+$/.test(sample.transfer)),
-      'sum += moves only the tree numeric field');
+    assert.ok(sumTransfers.every(sample => /^\+\d+$/.test(sample.transfer)),
+      'sum += moves only the operator-prefixed tree numeric field');
     assert.ok(sumTransfers.some(sample => sample.sum === '0'),
       'sum keeps its old value until the tree value arrives');
     assert.ok(operations.lazyFields.some(value => /^\+\d/.test(value)));

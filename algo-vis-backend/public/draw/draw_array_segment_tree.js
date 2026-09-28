@@ -1,3 +1,11 @@
+/**
+ * 模組：Segment Tree 繪圖器
+ *
+ * 責任：支援陣列式與標準區間樹兩種版面，繪製節點、區間標籤、複合 segment 與位置錨點。
+ * 資料流：輸入先正規化索引及 segment 色彩；標準模式遞迴建立區間節點與邊，陣列模式則沿 heap layout 產生完整層級。
+ * 重要不變條件：每個節點的資料 index、區間範圍與 DOM key 必須一致；位置查詢須辨識當前模式並使用相同 geometry。
+ * 相容性：非滿二次冪、缺少 children/segment 描述及舊 style 格式皆須保持可繪製。
+ */
 // draw_array_segment_tree.js
 ;(function() {
   const NS = 'http://www.w3.org/2000/svg';
@@ -17,6 +25,9 @@
    * @param {Array}            segment_left         - 要畫區段格子的左點(絕對位置)
    * @param {Array}            segment_right        - 要畫區段格子的右點(絕對位置)
    */
+  // ---------------------------------------------------------------------------
+  // 區段：陣列式樹版面
+  // ---------------------------------------------------------------------------
   function draw_array_segment_tree(
     g,
     groupID,
@@ -422,6 +433,9 @@
    * the represented interval; vertical geometry follows the real recursion
    * depth, so an early leaf is never pushed to an artificial bottom row.
    */
+  // ---------------------------------------------------------------------------
+  // 區段：標準區間樹遞迴版面
+  // ---------------------------------------------------------------------------
   function draw_standard_segment_tree(g, groupID, array, style, options = {}) {
     const domainStart = Number(options.domainStart);
     const domainEnd = Number(options.domainEnd);
@@ -690,6 +704,9 @@
   }
 
   // === segment_tree 專用：由 groupID + index 算出節點中心座標 ===
+  // ---------------------------------------------------------------------------
+  // 區段：節點 anchor 查詢
+  // ---------------------------------------------------------------------------
   function getSegmentTreePosition(groupID, index, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return { x: 0, y: 0 };

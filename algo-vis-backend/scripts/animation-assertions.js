@@ -1,4 +1,14 @@
-// Validate actual browser samples, not synthetic renderer coordinates.
+/**
+ * 實際動畫錄影的統一驗收器。
+ *
+ * 此模組只判斷瀏覽器真正繪製出的樣本，不使用 renderer 的預估座標。
+ * 驗證順序依序涵蓋 keep 可見性、定點標籤重疊與事件提交時機，並回傳
+ * 最早發生的違規，讓回歸報告可以直接定位第一個錯誤畫面。
+ */
+
+// -----------------------------------------------------------------------------
+// 樣本驗證主流程
+// -----------------------------------------------------------------------------
 function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
   const violations = [];
   const samples = report?.samples || [];
@@ -18,17 +28,19 @@ function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
     const objects = sample.objects || [];
     const visible = object => object.effectiveOpacity > opacityThreshold
       && object.computed?.display !== 'none' && object.computed?.visibility !== 'hidden';
+    const growingRecursion = object => object?.attributes?.['data-trace-recursion-growth'] === '1';
     const present = new Map(objects.filter(object => object.retained)
       .map(object => [object.retainedKey || object.key, object]));
     for (const key of retained) {
       const object = present.get(key);
-      if (!object || !visible(object) || object.effectiveOpacity < 0.99) {
+      if (!object || !visible(object) || (!growingRecursion(object) && object.effectiveOpacity < 0.99)) {
         fail(sample, 'keep-visibility', { key, opacity: object?.effectiveOpacity });
       }
     }
     for (const object of objects) {
       if (object.retained && visible(object)) {
-        if (object.effectiveOpacity < 0.99 || object.attributes?.['data-trace-appearing'] === '1') {
+        if (!growingRecursion(object)
+          && (object.effectiveOpacity < 0.99 || object.attributes?.['data-trace-appearing'] === '1')) {
           fail(sample, 'keep-entrance', { key: object.key, opacity: object.effectiveOpacity });
         }
         retained.add(object.retainedKey || object.key);

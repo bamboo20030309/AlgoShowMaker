@@ -1,9 +1,20 @@
+/**
+ * 測試模組：slide-library.test
+ *
+ * 驗證重點：slide library.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const Layout = require('../public/library-layout');
 const mount = require('../slide-library');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('library reconciles deleted/new decks and preserves user ordering', () => {
   const source = { folders: [{ id: 'math', title: ' Math ', deckIds: ['b', 'gone'] }], unfiled: ['a'] };
   const result = Layout.reconcile(source, ['new', 'a', 'b']);

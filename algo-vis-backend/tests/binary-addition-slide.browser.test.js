@@ -1,9 +1,20 @@
+/**
+ * 測試模組：binary-addition-slide.browser.test
+ *
+ * 驗證重點：binary addition slide.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('an outdated segment tree slide rebuilds and animates its first parent sum', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
@@ -144,7 +155,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
         playbackDurationMs: player.getLastPlaybackPlan()?.totalDurationMs
       };
     });
-    assert.equal(result.build, 'trace-230');
+    assert.equal(result.build, 'trace-256');
     assert.deepEqual(result.event?.targets, [
       ['target', 15], ['source-left', 30], ['source-right', 31]
     ]);
@@ -152,7 +163,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     assert.notEqual(result.event?.disabled, true);
     assert.ok(result.playbackDurationMs >= 1000, JSON.stringify(result));
     assert.ok(result.samples.some(sample => (
-      JSON.stringify(sample.transferValues) === JSON.stringify(['0', '15'])
+      JSON.stringify(sample.transferValues) === JSON.stringify(['+0', '+15'])
         && sample.targetValue === '0'
     )), JSON.stringify(result));
     assert.ok(result.samples.every(sample => sample.segmentCount === 0), JSON.stringify(result));

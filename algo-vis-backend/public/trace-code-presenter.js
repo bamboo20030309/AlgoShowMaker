@@ -1,3 +1,11 @@
+/**
+ * 模組：程式碼面板呈現與轉場
+ *
+ * 責任：把 code model 的 plan 轉為 DOM，管理事件高亮、片段換頁、捲動、拖曳位置及字級。
+ * 資料流：renderer 先提交 frame plan；presenter 建立下一頁並比較前後 fragment，依播放排程加入 entering/leaving class，最後同步焦點行與事件 phase。
+ * 重要不變條件：事件節點可同時對應多個 source span；轉場 timer 必須在下一次 render 前清除，避免舊 frame 的 callback 汙染新畫面。
+ * 相容性：缺少版面偏好或舊儲存 key 時使用 viewport 安全位置；無 Ace tokenizer 時仍可呈現與高亮。
+ */
 (function () {
   let panel = null;
   let body = null;
@@ -28,6 +36,9 @@
   const MIN_CODE_PANEL_FONT_SIZE = 8;
   const MAX_CODE_PANEL_FONT_SIZE = 32;
 
+  // ---------------------------------------------------------------------------
+  // 區段：面板生命週期與使用者偏好
+  // ---------------------------------------------------------------------------
   function ensurePanel() {
     const wrapper = document.getElementById('canvasWrapper');
     if (!wrapper) return null;
@@ -257,6 +268,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：程式碼 DOM 與事件節點
+  // ---------------------------------------------------------------------------
   function renderLine(item, fragmentElement, syntaxLines, transitionLines = null) {
     if (item.kind === 'ellipsis') {
       const ellipsis = document.createElement('div');
@@ -373,14 +387,17 @@
     const conditionResult = condition?.result
       ?? (!pendingComparison ? completedComparison?.result : undefined);
     return {
-      active,
+      active: active && !activeCall,
       pending: pendingComparison,
-      complete: conditionResult == null && !pendingComparison
-        && [...linkedIds].some(id => completed.has(id)),
+      complete: activeCall || (conditionResult == null && !pendingComparison
+        && [...linkedIds].some(id => completed.has(id))),
       conditionResult: activeCall ? undefined : conditionResult
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件播放狀態
+  // ---------------------------------------------------------------------------
   function applyEventClasses() {
     const knownNodes = [...new Set([...eventNodes.values()].flat())];
     [...new Set(knownNodes.map(node => node.closest('.asm-trace-code-line')).filter(Boolean))]
@@ -430,6 +447,9 @@
     return lines.length ? Math.min(...lines) : 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：頁面建立與片段比較
+  // ---------------------------------------------------------------------------
   function buildPage(plan, syntaxLines, expanded = false) {
     const page = document.createElement('div');
     page.className = 'asm-trace-code-page';
@@ -550,6 +570,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：換頁、捲動與排程
+  // ---------------------------------------------------------------------------
   function showExpandedTransition(nextPage, nextPlan, syntaxLines, previous, nextFocusLine) {
     const oldAnchor = previous.querySelector(`[data-source-line="${currentFocusLine}"]`)
       || previous.querySelector('.asm-trace-code-line');
@@ -690,6 +713,9 @@
       : 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 呈現入口
+  // ---------------------------------------------------------------------------
   function renderFrame(trace, frame, playbackPlan = null) {
     ensurePanel();
     const wasPanelHidden = panel?.hidden !== false;

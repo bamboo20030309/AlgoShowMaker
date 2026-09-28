@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace 指令提示
+ *
+ * 責任：根據游標所在的 @ 指令與已輸入參數，提供相依選項、範例及安全的文字插入。
+ * 資料流：編輯器 selection 先解析目前行與父指令，再由規則表產生 choices；使用者選取後只替換對應 token 並重開下一層提示。
+ * 重要不變條件：提示狀態必須跟著游標與編輯器內容更新；插入範例不可破壞既有縮排或其他行。
+ * 相容性：未知與舊指令不會被改寫，僅在規則表能辨識時提供建議。
+ */
 (function () {
   'use strict';
 
@@ -51,6 +59,8 @@
       '// @style arr[i] highlight,point',
       '// @style arr[i] highlight,point AV_green when value>0',
       '// @style arr[0:i] background AV_green when value < key',
+      '// @style grid[0:r][0:c] background AV_blue',
+      '// @style arr[i].index-label background AV_yellow\n// @style grid.row-label[r] background AV_blue\n// @style grid.column-label[c] background AV_orange\n// @style grid[r][c].inner-label background AV_green',
       '// @style arr[i,i*2:i*2+1] highlight AV_red\n// @style arr[1:n] focus when n < Size',
       '// @style prime[0:iteration.last(j)] focus when i * value <= n'
     ] },
@@ -95,6 +105,7 @@
       '// @arrow for j from arr[0] to arr[j]',
       '// @arrow for j in "sieve_loop" from prime[j] to isprime[i*prime[j]]',
       '// @arrow from arr[0] to arr[1]',
+      '// @arrow from grid[x][y] to grid[x-1][y] color AV_green until return',
       '// @arrow from isprime[1] to isprime[12]',
       '// @frame arr[i,j]\n// @arrow from arr[i].bottom to arr[j].top\n// @text "從左到右" at arr.bottom'
     ] },
@@ -195,6 +206,9 @@
   let exampleTier = 0;
   let exampleRow = 0;
 
+  // ---------------------------------------------------------------------------
+  // 區段：提示面板狀態
+  // ---------------------------------------------------------------------------
   function close() {
     popup.hidden = true;
     popup.replaceChildren();
@@ -216,6 +230,9 @@
     return { x: screen.pageX - window.scrollX, y: screen.pageY - window.scrollY + 22 };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：游標與指令解析
+  // ---------------------------------------------------------------------------
   function currentDirective() {
     const pos = editor.getCursorPosition();
     const line = editor.session.getLine(pos.row);
@@ -251,6 +268,9 @@
     return rules.map(makeChild);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：相依選項生成
+  // ---------------------------------------------------------------------------
   function choices() {
     const { id, line, prefix } = currentDirective();
     if (!id || !byId[id]) {
@@ -333,6 +353,9 @@
     place(x, y);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文字替換
+  // ---------------------------------------------------------------------------
   function applyChoice(option) {
     if (!option) return;
     const { pos, line, id } = currentDirective();
@@ -371,6 +394,9 @@
     openSuggestions();
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：範例瀏覽與插入
+  // ---------------------------------------------------------------------------
   function renderExamples() {
     popup.replaceChildren();
     const title = document.createElement('div');

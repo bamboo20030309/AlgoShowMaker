@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 演算法工作區介面協調器
+// 串接 Ace、編譯後 CodeScript、影格導覽、TTS 與帳號介面；畫布模型由其他模組持有，本檔只協調使用者操作與顯示狀態。
+// -----------------------------------------------------------------------------
 // front.js
 // 前端其餘互動：Ace 初始化、標籤切換、重載 script、動畫控制、分割線拖曳
 
@@ -6,6 +10,10 @@
  * @param {string} groupID 
  * @param {object} meta 
  */
+// -----------------------------------------------------------------------------
+// 繪圖版面中介資料
+// 將編譯器的 layout 邊界掛到 SVG 群組，供位置解析、鏡頭與 GUI 編輯器共享。
+// -----------------------------------------------------------------------------
 window.setLayoutMeta = function (groupID, meta) {
   const vp = window.getViewport();
   if (!vp) return;
@@ -31,6 +39,10 @@ window.setLayoutMeta = function (groupID, meta) {
 };
 
 // 全域：TTS 是否開聲音（false=靜音，只做默默自動播放）
+// -----------------------------------------------------------------------------
+// 全域播放世代
+// run id 與高亮請求編號用來淘汰非同步回呼，任何暫停或重播都必須先遞增世代。
+// -----------------------------------------------------------------------------
 let TTS_ENABLED = false;
 
 // 全域：目前這一輪 TTS 播放的「世代編號」
@@ -40,6 +52,10 @@ let TTS_HIGHLIGHT_REQUEST = 0;
 
 
 // 初始化 Ace
+// -----------------------------------------------------------------------------
+// Ace 編輯器與分頁草稿
+// 草稿按頁面與嵌入模式隔離；sessionStorage 保存目前分頁，舊 localStorage 版本只做一次性遷移。
+// -----------------------------------------------------------------------------
 const aceEditor = ace.edit("editor");
 aceEditor.setTheme("ace/theme/monokai");
 aceEditor.session.setMode("ace/mode/c_cpp");
@@ -242,6 +258,10 @@ const Range = ace.require("ace/range").Range;
  * 掃描整個文件，找到所有 //draw{ ... //} 的區塊
  * 回傳每一塊對應的 Range 陣列
  */
+// -----------------------------------------------------------------------------
+// Draw 區塊摺疊
+// 以註解界線尋找可摺疊區段，保留使用者游標與手動展開狀態。
+// -----------------------------------------------------------------------------
 function getDrawBlocks(session) {
   const doc = session.getDocument();
   const lineCount = doc.getLength();
@@ -354,6 +374,10 @@ function toggleDrawBlocks() {
 let editorMarkers = {};
 
 // 去除同一行位置的重複 marker DOM 元素，確保每個 top 位置只保留一個可見元素
+// -----------------------------------------------------------------------------
+// 程式碼高亮標記
+// Ace marker 由固定識別碼管理；重繪前先去除重複節點，避免長時間播放累積殘影。
+// -----------------------------------------------------------------------------
 function deduplicateMarkerLayer() {
   const layer = aceEditor && aceEditor.container && aceEditor.container.querySelector('.ace_marker-layer');
   if (!layer) return;
@@ -589,6 +613,10 @@ document.querySelectorAll('.close-subtab').forEach(btn =>
 );
 
 // 重新載入 code_script.js 並重畫
+// -----------------------------------------------------------------------------
+// 編譯腳本重新載入
+// 撤銷上一輪 script 與快照，載入成功後才建立影格資訊，防止舊 CodeScript 與新 UI 混用。
+// -----------------------------------------------------------------------------
 function reloadCodeScript(onReady) {
   document.querySelectorAll('g.draggable-object').forEach(g => g.remove());
   if (window.resetCameraState) window.resetCameraState();
@@ -609,6 +637,10 @@ function reloadCodeScript(onReady) {
 // ==============================
 // 影格 DOM Snapshot 快取系統
 // ==============================
+// -----------------------------------------------------------------------------
+// 影格快照快取
+// 以固定間隔保存畫布 DOM；跳轉先還原最近快照再向前重播，降低遠距跳幀成本。
+// -----------------------------------------------------------------------------
 const FrameSnapshotCache = (() => {
   const SNAP_INTERVAL = 10;
   const snapshots = new Map();   // key: frameIdx, value: [clonedNode...]
@@ -733,6 +765,10 @@ function csGetCurrentFrameIndex() {
   return 0;
 }
 
+// -----------------------------------------------------------------------------
+// 影格導覽與時間軸
+// 所有按鈕、鍵盤與條碼點擊都收斂到同一跳轉入口，再同步高亮、計數與 TTS。
+// -----------------------------------------------------------------------------
 function csGotoFrame(idx) {
   if (typeof CodeScript === "undefined") return;
   // 快照恢復：跳轉前先嘗試還原最近的快照
@@ -1821,6 +1857,10 @@ document.addEventListener('DOMContentLoaded', () => {
   //  fetchAlgorithmSamples();
 });
 
+// -----------------------------------------------------------------------------
+// 設定選單與工作區版面
+// 選單控制 Ace 摺疊、畫布格線與相機；分割線只更新面板比例，不改 SVG 世界座標。
+// -----------------------------------------------------------------------------
 function initTopMenuBar() {
   // 1. 綁定 Editor 設定：摺疊/展開 draw
   const toggleFoldBtn = document.getElementById('menuToggleFold');
@@ -2571,6 +2611,10 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // --- UI 更新函式 (全域) ---
+// -----------------------------------------------------------------------------
+// 帳號與個人程式碼介面
+// 登入狀態來自本機 token/API 回應，面板開關與遠端清單則各自保留載入狀態。
+// -----------------------------------------------------------------------------
 function updateUserUI(username) {
   const loginBtn = document.getElementById("loginTriggerBtn");
   if (loginBtn && username) {

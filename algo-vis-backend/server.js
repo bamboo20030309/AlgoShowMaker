@@ -1,3 +1,19 @@
+/**
+ * AlgoShowMaker 後端服務
+ *
+ * 模組職責與請求生命週期：
+ * 1. 提供帳號、偏好設定、投影片、分享連結與程式草稿的 REST API。
+ * 2. `/trace/analyze` 與 `/syntax-tree` 只解析來源碼，不執行使用者程式。
+ * 3. `/compile` 先驗證輸入與危險語彙，再插入追蹤碼、呼叫 C++ 編譯器，
+ *    於受時間／輸出／記憶體限制的子程序中執行，最後整理成前端使用的 trace。
+ * 4. 投影片中的大型 trace 會由 CloudContent 抽離與還原；資料庫文件只保存引用，
+ *    因此任何寫入流程都必須同步維護 resource_keys，避免孤兒資源或斷裂引用。
+ *
+ * 主要不變條件：所有私人資源查詢都必須以 JWT 的 user_uid 限定擁有者；分享寫入
+ * 必須持有 edit token；子程序完成、逾時或失敗時都要回收計時器與暫存檔；回傳給
+ * 瀏覽器的錯誤不可洩漏密碼、JWT secret 或伺服器內部檔案內容。
+ */
+
 // server.js
 require('dotenv').config();
 const express = require('express');
@@ -51,6 +67,10 @@ const UserSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', UserSchema);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 持久化資料模型：投影片本體、外部 trace 引用與分享權限
+// ─────────────────────────────────────────────────────────────────────────────
 
 const SlideDeckSchema = new mongoose.Schema({
   user_uid: { type: String, required: true, index: true },
@@ -191,6 +211,10 @@ app.use((err, req, res, next) => {
   return next(err);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 靜態分析 API：只解析來源碼，不會編譯或執行使用者輸入
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/trace/analyze', limiter, (req, res) => {
   const code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
@@ -278,6 +302,10 @@ app.post('/syntax-tree', limiter, (req, res) => {
 // ==========================================
 
 // 1. 註冊 (Register)
+// ─────────────────────────────────────────────────────────────────────────────
+// 帳號 API：註冊、登入、重設密碼與 JWT 身分驗證
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/api/auth/register', async (req, res) => {
   const { username, password } = req.body;
 
@@ -463,6 +491,10 @@ const EVENT_SETTING_TYPES = [
 ];
 const DEFAULT_EVENT_GAP_MS = 500;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 使用者偏好：僅接受已知事件旗標，避免任意欄位寫入 preferences
+// ─────────────────────────────────────────────────────────────────────────────
+
 function cleanEventSettings(value = {}) {
   const cleanFlags = source => Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
     typeof source?.[type] === 'boolean' ? [[type, source[type]]] : []
@@ -506,6 +538,10 @@ app.put('/api/user/preferences/event-settings', authenticateToken, async (req, r
     res.status(500).json({ error: '無法儲存事件設定' });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 投影片 API：擁有者 CRUD、分享權限，以及外部 trace 資源的存取協調
+// ─────────────────────────────────────────────────────────────────────────────
 
 function countDeckSlides(deck) {
   if (!deck || !Array.isArray(deck.groups)) return 0;
@@ -838,6 +874,10 @@ app.delete('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
 
 const cloudContent = CloudContent.register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, cleanCoverThumbnail);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 子程序資源監控：Linux 讀取 /proc；其他平台保留可安全降級的空結果
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * 讀取 Linux /proc/<pid>/status
  */
@@ -892,6 +932,13 @@ function startMemorySampler(childPid, intervalMs = 80) {
     getPeak: () => ({ peakRssKB, peakHwmKB, peakVmsKB }),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trace 後處理：補齊 renderer、keep 物件生命週期與跨幀快照
+//
+// keep materialization 必須依原始 frame 順序執行；每一幀以複本承接前態，
+// 再套用當幀 mutation／exit，避免修改早先已交付給前端的快照。
+// ─────────────────────────────────────────────────────────────────────────────
 
 function defaultTraceRenderer(kind) {
   if (kind === 'matrix') return 'original-matrix';
@@ -994,12 +1041,19 @@ function mutationTargets(event = {}) {
 function applyKeepMutation(frame, target, value) {
   const entry = frame?.state?.[target?.variableId];
   if (!entry || value == null) return;
+  const captured = Array.isArray(target.resolvedIndices)
+    ? target.resolvedIndices.map(Number) : [];
   const resolvedIndex = Number(target.resolvedIndex);
-  const items = entry.data?.items;
-  if (Number.isInteger(resolvedIndex) && Array.isArray(items)) {
-    if (resolvedIndex >= 0 && resolvedIndex < items.length) {
-      items[resolvedIndex] = cloneTraceValue(value);
+  const indices = captured.length && captured.every(Number.isInteger)
+    ? captured : (Number.isInteger(resolvedIndex) ? [resolvedIndex] : []);
+  if (indices.length) {
+    let data = entry.data;
+    for (let depth = 0; depth < indices.length - 1; depth += 1) {
+      data = data?.items?.[indices[depth]];
     }
+    const items = data?.items;
+    const index = indices.at(-1);
+    if (Array.isArray(items) && index >= 0 && index < items.length) items[index] = cloneTraceValue(value);
     return;
   }
   entry.data = cloneTraceValue(value);
@@ -1515,6 +1569,10 @@ function materializeKeepSnapshots(frames) {
 const FIXED_EVENT_KINDS = new Set(['sequence', 'stack', 'queue', 'set']);
 const FIXED_ACCESS_EVENTS = new Set(['read', 'write', 'assign', 'swap']);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 指令求值與固定標記：將分析器保留的索引表達式解析到當幀資料
+// ─────────────────────────────────────────────────────────────────────────────
+
 function traceScalarValue(data) {
   if (!data || typeof data !== 'object') return data;
   return Object.prototype.hasOwnProperty.call(data, 'value') ? data.value : data;
@@ -1669,7 +1727,38 @@ function resolveFrameRendererOptions(frame, directive) {
     else if (format === 'binary') options.indexMode = 3;
     else if (format === 'binary-padded') options.indexMode = 4;
     else options.indexMode = 0;
+    if (source.labels.showValue === false && format === 'none') options.showValue = false;
   }
+  const materializeTraceValue = data => {
+    if (Array.isArray(data?.items)) return data.items.map(materializeTraceValue);
+    return traceScalarValue(data);
+  };
+  const resolveLabelSource = spec => {
+    if (!spec) return null;
+    if (spec.mode !== 'custom') return { mode: spec.mode, values: [] };
+    const values = [];
+    (spec.parts || []).forEach(part => {
+      if (part.type === 'blank') {
+        values.push(...Array.from({ length: Math.max(0, Number(part.count) || 0) }, () => ''));
+      } else if (part.type === 'literal') {
+        values.push(part.value);
+      } else if (part.type === 'variable') {
+        const entry = frame.state?.[part.variableId]
+          || Object.values(frame.state || {}).find(item => item?.name === part.name);
+        const value = materializeTraceValue(entry?.data);
+        if (Array.isArray(value)) values.push(...value);
+        else if (typeof value === 'string') values.push(...value);
+        else if (value !== undefined) values.push(value);
+      }
+    });
+    return { mode: 'custom', values };
+  };
+  ['indexLabels', 'rowLabels', 'columnLabels', 'innerLabels'].forEach(name => {
+    if (source[name]) options[name] = resolveLabelSource(source[name]);
+  });
+  if (Object.prototype.hasOwnProperty.call(source, 'gridlines')) options.gridlines = source.gridlines;
+  if (Object.prototype.hasOwnProperty.call(source, 'outerframe')) options.outerframe = source.outerframe;
+  if (source.markerLayout) options.markerLayout = source.markerLayout;
   if (source.fields) {
     options.fields = {
       names: Array.isArray(source.fields.names) ? [...source.fields.names] : [],
@@ -2017,7 +2106,12 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   };
 }
 
-// === 編譯＋執行 C++ 程式 ===
+// ─────────────────────────────────────────────────────────────────────────────
+// 編譯／執行 API
+//
+// 流程順序是安全邊界的一部分：驗證來源 → 插樁 → 產生暫存檔 → 編譯 →
+// 受限執行 → 解析 trace → 回收。任一分支結束時都需只回收本請求建立的資源。
+// ─────────────────────────────────────────────────────────────────────────────
 app.post('/compile', (req, res) => {
   debugMessages = []; // 每次請求重置
 
@@ -2551,7 +2645,11 @@ function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
   return tree;
 }
 
-// 3. 定義資料結構 (Schema) - 依照你想要的欄位
+// ─────────────────────────────────────────────────────────────────────────────
+// 程式草稿與內建範例 API：草稿受 JWT 擁有者限制，範例目錄只讀
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 程式草稿資料結構
 const CodeSchema = new mongoose.Schema({
   user_uid: { type: String, required: true },  // User UID
   code_uid: { type: String, unique: true },    // Code UID (唯一)

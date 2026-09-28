@@ -1,3 +1,11 @@
+/**
+ * 測試模組：binary-indexed-tree.test
+ *
+ * 驗證重點：binary indexed tree.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -19,6 +27,9 @@ function rulesContext() {
   return context;
 }
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('directive expressions parse and evaluate C++ bitwise precedence', () => {
   const [frame] = findFrameDirectives(`int main() {
     int i = 12, mask = 5;
@@ -85,6 +96,21 @@ int main() {
     /@let 名稱重複/);
   assert.throws(() => findFrameDirectives(source.replace('@let lb = i & -i', '@let lb = missing')),
     /@let 找不到可見變數或先前別名/);
+});
+
+test('@let resolves string size and character subscripts', () => {
+  const context = rulesContext();
+  const document = { variables: { text: { name: 'text' } } };
+  const runtimeFrame = {
+    lets: [
+      { name: 'last', expression: 'text.size() - 1' },
+      { name: 'same', expression: 'text[1] == text[last]' }
+    ],
+    state: { text: { name: 'text', data: { kind: 'scalar', value: 'aba' } } }
+  };
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'last'), 2);
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'text[0]'), 'a');
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'same'), false);
 });
 
 test('Binary Indexed Tree build and query samples are separate two-object examples', () => {

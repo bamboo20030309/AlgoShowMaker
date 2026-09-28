@@ -412,7 +412,9 @@ for (int i=2; i<=n; i++) {
 - 每次程式執行到該幀時，會依該幀捕捉的 C++ 狀態重新求值；上一步或時間線跳轉也從穩定幀重建。
 - 後面的 `@let` 可以引用前面已宣告的別名。名稱不可重複、不可使用 `value`／`index`，也不可與該幀可見的 C++ 變數同名。
 - 運算式可使用算術、位元、比較與邏輯運算；比較結果可直接供 `when` 條件使用。
+- 字串支援以 `[index]` 讀取單一字元，以及使用 `.size()`／`.length` 取得長度。
 - 可寫在 `@preset` 或 `@defaults` 中，在每個使用位置重新求值。
+- 手動繪圖迴圈的範圍可引用同幀先前宣告的別名，例如先寫 `@let last = arr.size() - 1`，再寫 `@for i in [0:last]`。
 - 目前不提供可修改狀態的指令變數，也不因 `@let` 執行迴圈。
 
 ## `@keep`：保留畫面狀態
@@ -703,6 +705,17 @@ return value;
 // @text [{"text":"目前值："},{"text":"${arr[i]}","color":"AV_red","background":"#fff3cd","fontSize":18,"bold":true}] at arr.bottom
 ```
 
+文字片段陣列也可以使用連續的普通 `//` 註解換行；陣列結束後再接 `as`、`at`、`when` 等修飾詞：
+
+```cpp
+// @text [
+//   {"text": "目前值："},
+//   {"text": "${arr[i]}", "background": "AV_red"}
+// ] as current_value at arr.bottom
+```
+
+同一行中相鄰且 `background` 相同的文字片段，顯示時會合併為一個連續背景區段；`${...}` 插值即使在內部拆成多個可編輯片段，也不會產生重疊色塊或接縫。
+
 欄位支援：
 
 | 標準欄位 | 相容別名 | 說明 |
@@ -781,6 +794,18 @@ style 的索引、範圍或 `when` 若依賴尚未取得數值的變數，相關
 - `arr[0:i]`：左右皆包含，包含 `0` 到 `i`。
 - `arr[:i]`：省略起點時從 `0` 開始。
 
+二維陣列可在 row 與 column 各自使用單一索引或包含右端點的範圍：
+
+```cpp
+// @style grid[r][c] highlight AV_red
+// @style grid[r1:r2][c] background AV_blue
+// @style grid[r][c1:c2] background AV_yellow
+// @style grid[r1:r2][c1:c2] background AV_green
+// @style grid[:r][0:c] focus
+```
+
+`grid[r1:r2][c1:c2]` 表示 row `r1..r2`、column `c1..c2` 的矩形，兩個維度都包含右端點；省略起點時從 `0` 開始。ragged matrix 只套用到實際存在的資料格，不會補出缺少的 column。二維範圍目前使用 `]` 的包含端點形式，不支援在單一維度以 `)` 表示排除右端點。
+
 ### 一次選取多段
 
 逗號可以混合單格與範圍：
@@ -840,6 +865,9 @@ for (auto& v : prime) {
 
 - AlgoShowMaker 色名，例如 `AV_red`、`AV_green`、`AV_blue`、`AV_yellow`、
   `AV_orange`、`AV_magenta`、`AV_grey`、`AV_black`、`AV_white`。其中`AV_orange`為`rgba(255,183,77,0.65)`，`AV_magenta`為`rgba(231,144,255,0.65)`。
+- 在完整色名後加 `!` 代表不透明版本：`AV_green!`、`AV_red!`、`AV_blue!`、
+  `AV_yellow!`、`AV_orange!`、`AV_magenta!`、`AV_black!`、`AV_white!`、`AV_grey!`。
+  例如 `AV_green!` 是不透明綠色，原本的 `AV_green` 仍是半透明綠色。
 - CSS 色名，例如 `red`、`orange`。
 - Hex，例如 `#ff0000`、`#ff000080`。
 - `rgb(...)`、`rgba(...)`、`hsl(...)`、`hsla(...)`。
@@ -911,7 +939,7 @@ renderer依節點層級把格子切成 `2^k` 段；根節點涵蓋8個最小區�
 ```
 
 也可以整條寫在一行。多行延續需使用連續的普通 `//` 註解，開頭為
-`from`、`to`、`as`、`color`、`width`、`head`、`line`、`dash` 或 `when`；
+`from`、`to`、`as`、`color`、`width`、`head`、`line`、`dash`、`until` 或 `when`；
 不能跨越 C++ 敘述或另一個 `@` 指令。`when` 仍位於指令最後。
 
 - `[start:end]` 包含兩端，與樣式區間寫法一致；`step` 預設為 1，支援負步長。方向與範圍不合時產生零支箭頭。舊的 `start..end` 已移除，請改用方括號與冒號。
@@ -1037,6 +1065,16 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 // @arrow from arr[i].bottom to arr[j].top as "move_link" color AV_red width 3 head both line curve dash 6,4 when i != j
 ```
 
+遞迴路徑可以使用 `until return`：
+
+```cpp
+// @arrow from LCS[x][y] to LCS[x-1][y-1] color AV_green width 3 until return
+```
+
+這支箭頭會留在後續的子遞迴幀，並與同一條呼叫堆疊上的其他 `until return`
+箭頭一起顯示。當子呼叫返回原本層級時，該層箭頭會自動移除；上一步與下一步也會依幀狀態重建。
+`until return` 目前只支援單支箭頭，不與 `@arrow for` 批次展開併用。
+
 | 修飾詞 | 預設值 | 支援內容 |
 | --- | --- | --- |
 | `as` | 穩定指令 ID，顯示名稱如 `arrow_1` | 箭頭身分與端點分離；跨不同指令延續時建議明確命名 |
@@ -1045,6 +1083,7 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 | `head` | `end` | `start`、`end`、`both`、`none` |
 | `line` | `straight` | `straight`、`curve` |
 | `dash` | 無 | 例如 `6,4` |
+| `until` | 無 | `return`；子遞迴執行期間保留，返回原呼叫層時移除 |
 | `when` | 無 | 條件為真才顯示；請放在整條指令最後 |
 
 同 ID 的箭頭可由播放層穩定對應；layout 自動產生的父子箭頭預設使用 AV.hpp／`drawArrow` 的黑色、線寬與單向箭頭樣式，不需要另外撰寫 `@arrow`。
@@ -1244,8 +1283,45 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 - `index`：十進位索引。
 - `binary-index`：二進位索引。
 - `binary-index-padded`：補齊寬度的二進位索引。
+- `none`：資料值與索引都不顯示；資料格仍保留。
 
 一次最多選擇一種索引格式，不可同時指定 `index` 和 `binary-index`。
+
+### 一維與二維自訂標籤
+
+```cpp
+// @frame arr with index-labels("",labels)
+// @frame grid[row][column] with row-labels("",rowNames), column-labels(blank(1),columnNames), inner-labels(index)
+```
+
+- `index-labels(...)`：一維陣列的索引標籤。
+- `row-labels(...)`：二維陣列左側的列標籤。
+- `column-labels(...)`：二維陣列上方共用的欄標籤。
+- 自訂標籤來源若是字串，會依字元展開；例如 `row-labels("",S)` 會先補一格空白，再依序使用 `S` 的每個字元。
+- `inner-labels(index)`：每一列各自從 0 開始的欄索引；也可傳入二維標籤陣列。
+
+參數可混合字串、字元、數字與陣列，陣列會依序展開。例如
+`index-labels("", "", labels)` 會先補兩格空白，再接上 `labels`；同義寫法是
+`index-labels(blank(2), labels)`。使用 `none` 可關閉該組標籤。
+
+二維資料格固定為 40px；inner label 高 12px。左側 row label 只和 40px 資料格對齊，
+不包含下方的 inner label。ragged matrix 只建立實際存在的資料格；空列仍保留 row label 與列高。
+
+### 二維格線、外框與索引指標
+
+```cpp
+// @frame grid[i][j] with gridlines(0), outerframe(false), marker-layout(axis)
+// @frame grid[i][j] with marker-layout(inner)
+```
+
+- `gridlines(width)`：設定資料格與標籤格線寬；`0` 隱藏線條但保留可互動區域。
+- `outerframe(true|false)`：控制整個物件的底盤外框，不影響資料格本身。
+- `marker-layout(axis)`：`i` 在最左側垂直移動，`j` 在上方共用欄軸水平移動，為預設。
+- `marker-layout(inner)`：列指標仍在左側，欄指標移到 `i` 所在列後水平移動。
+
+`grid[i][j]` 的第一個括號固定代表 row／垂直方向，第二個括號代表 column／水平方向。
+`@style grid[i][j] highlight` 只標示資料格與該格 inner label，不標示 row／column label。
+本版不擴充 `range(start,end)`；它仍維持原本的一維範圍語意。
 
 ### 同時使用多個選項
 
@@ -1601,7 +1677,9 @@ Studio 對受來源控制的事件標示 `@events` 原因並停用直接切換�
 
 複合賦值若來源與目的都能對應到可見格子，例如`sum += tree[now]`，會保留`sum`的舊值，將`tree[now]`格內的數字平移到`sum`的數字位置，抵達時提交新值並在同一個動畫更新中立即移除移動數字，不會停留在目的地。移動的是文字值，不包含來源格子的框線。全域純量在不同函式與遞迴幀之間沿用同一個runtime身分，因此只在第一次顯示時入場，不會因切換activation反覆淡入、淡出。含有副作用的目的索引（例如`arr[nextIndex()] += 2`）不會為了動畫重複求值；無法安全建立來源到目的動畫時會直接提交結果。
 
-二元加法賦值若兩側都是可見的純量或安全索引格，例如`total = a + b`或`tree[parent] = tree[left] + tree[right]`，會保留目的格舊值，將左右兩個來源的數字同步移向目的數字位置。兩個數字抵達時立即移除，目的格在同一個動畫更新中改成加總結果；來源格框線不會跟著移動。索引只接受不含函式呼叫、遞增或遞減的安全運算式，避免為了動畫重複執行副作用；其他運算式沿用一般賦值動畫。
+算式賦值若所有資料來源都是可見的純量或安全索引格，例如`total = a + b`或`tree[parent] = tree[left] + tree[right]`，會保留目的格舊值，將各來源數字同步移向目的數字位置。數值常數（包含帶正負號或括號的常數）沒有資料格來源，因此一律使用目的值相同的文字錨點，以帶運算符號的固定文字直接覆蓋目的格舊值，只隨事件顯示與消失，不做座標位移；常數顯示期間舊值隱藏，提交時再換成最終結果。多個常數會在格內稍微錯開。只有全部非 literal 資料來源都能定位時才播放位移；只要其中一個資料來源未顯示，就不播放任何來源的局部位移，而是直接提交結果。移動數字抵達時立即移除，目的格在同一個動畫更新中改成計算結果；來源格框線與背景不會跟著移動。索引只接受不含函式呼叫、遞增或遞減的安全運算式，避免為了動畫重複執行副作用；其他運算式沿用一般賦值動畫。
+
+`target = max(a,b)`與`target = min(a,b)`（包含`std::max`、`std::min`）使用單一選擇來源動畫：runtime會依實際參數值記錄勝出的來源，`max`只移動較大者，`min`只移動較小者；兩者相等時與C++函式一致，選擇第一個參數。未勝出的參數不產生位移；勝出來源是可見純量或安全索引格時只移動文字值，勝出來源未顯示時直接提交結果。勝出來源是數值常數時，則直接在目的格內顯示該數字。
 
 線段樹easy教學分成兩個可獨立RUN的範例。`algorithm_sample/Tree/Segment_Tree_easy_build.cpp`從初始化、逐筆輸入、父節點加總一路播放到根節點完成；`algorithm_sample/Tree/Segment_Tree_easy.cpp`先在無教學幀的初始化階段完成建樹，第一幀直接顯示完整樹，之後只播放查詢下降、segment分裂與sum累加。兩份範例各有自己的sample input。
 

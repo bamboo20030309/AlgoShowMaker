@@ -1,9 +1,20 @@
+/**
+ * 模組：單字文字 primitive
+ *
+ * 責任：建立具寬度估算與穩定 id 的短文字節點，供結構標籤及舊版呼叫端使用。
+ * 資料流：依文字與字級估算 bbox，再將節點置於呼叫端座標並分配 message/object id。
+ * 重要不變條件：寬度估算只影響版面，不應改寫原始字串；id 產生器在同一頁面保持單調。
+ * 相容性：無 canvas 量測或舊字型設定時使用既有 fallback。
+ */
 // draw_word.js
 // 在畫布上直接畫出純文字，無視 TTS 規則且無背景框
 
 /**
  * 取得文字寬度
  */
+// ---------------------------------------------------------------------------
+// 區段：本地文字寬度量測
+// ---------------------------------------------------------------------------
 function getTextWidthLocal(text, fontSize = 16, fontFace = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif') {
     const canvas = getTextWidthLocal._canvas || (getTextWidthLocal._canvas = document.createElement('canvas'));
     const ctx = canvas.getContext('2d');
@@ -17,6 +28,9 @@ function getTextWidthLocal(text, fontSize = 16, fontFace = 'system-ui, -apple-sy
     window.resetWordCounter = function () {
         wordCounter = 0;
     };
+    // ---------------------------------------------------------------------------
+    // 區段：文字節點建立與身分
+    // ---------------------------------------------------------------------------
     function getNextWordID() {
         wordCounter++;
         return `word-auto-${wordCounter}`;

@@ -1,3 +1,11 @@
+/**
+ * 測試模組：binary-indexed-tree.browser.test
+ *
+ * 驗證重點：binary indexed tree.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -5,6 +13,9 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const { compile } = require('./helpers/compile');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
   { timeout: 60000 }, async () => {
     const base = process.env.ASM_TEST_BASE_URL;
@@ -182,9 +193,10 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       assert.equal(presentation.cells.find(cell => cell.index === 8).value, '54');
       assert.match(presentation.teachingText, /下一個索引是 16/,
         '@let lb resolves in the rendered teaching text for the current frame');
-      assert.ok(transfer.some(sample => sample.value === sourceValue),
-        `num[${sourceIndex}] value is copied into the assignment transfer`);
-      const transferTransforms = new Set(transfer.filter(sample => sample.value === sourceValue)
+      const transferValue = `+${sourceValue}`;
+      assert.ok(transfer.some(sample => sample.value === transferValue),
+        `num[${sourceIndex}] value and compound operator are copied into the assignment transfer`);
+      const transferTransforms = new Set(transfer.filter(sample => sample.value === transferValue)
         .map(sample => sample.transform));
       assert.ok(transferTransforms.size > 2,
         `num[${sourceIndex}] value visibly travels to BIT[8]`);

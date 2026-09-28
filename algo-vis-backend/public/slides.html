@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- -----------------------------------------------------------------------
+  投影片編輯與播放頁
+  固定畫布為 1280×720；控制 chrome、編輯側欄與 Reveal 舞台彼此獨立，slides.js 負責同步。
+  ------------------------------------------------------------------------ -->
 <html lang="zh-Hant">
 
 <head>
@@ -32,6 +36,10 @@
       <path d="M5.5 9.5V21h13V9.5M9.5 21v-7h5v7"></path>
     </svg>
   </a>
+<!-- -----------------------------------------------------------------------
+  播放控制列
+  播放模式始終可見；編輯模式會另外開啟 editorChrome，避免兩套按鈕共用狀態。
+  ------------------------------------------------------------------------ -->
   <aside id="controlChrome" class="control-chrome" aria-label="控制欄">
     <div class="mode-switch" aria-label="模式切換">
       <button id="modeToggleBtn" type="button" title="切換至 Present 模式" aria-label="切換至 Present 模式">
@@ -110,6 +118,10 @@
 
   <div id="sharedAccessBadge" class="shared-access-badge" hidden></div>
 
+<!-- -----------------------------------------------------------------------
+  元件與屬性側欄
+  default、overview 與各 widget editor 是互斥 panel，由目前選取物件決定顯示者。
+  ------------------------------------------------------------------------ -->
   <aside id="editorChrome" class="editor-chrome" aria-label="投影片元件">
     <div class="deck-cloud-meta">
       <div id="cloudSaveStatus" class="cloud-save-status" role="status" aria-live="polite">
@@ -283,6 +295,9 @@
         <option value="stack">Stack</option>
         <option value="queue">Queue</option>
       </select>
+
+      <label class="field-label" for="structureNameInput">外框名稱</label>
+      <input id="structureNameInput" type="text" maxlength="80" placeholder="例如：Array、資料陣列" />
 
       <div id="structureTreeControls" class="structure-tree-controls" hidden>
         <label>
@@ -474,6 +489,10 @@
 
   <div id="editHint" class="edit-hint">ESC 開啟 overview，可拖曳排序投影片。</div>
 
+<!-- -----------------------------------------------------------------------
+  投影片總覽與編輯對話框
+  總覽處理多選排序；演算法、程式碼、分享與刪除對話框則各自維護短期輸入。
+  ------------------------------------------------------------------------ -->
   <div id="customOverview" class="custom-overview" hidden>
     <div id="customOverviewViewport" class="custom-overview-viewport">
       <div id="customOverviewBoard" class="custom-overview-board"></div>
@@ -508,24 +527,6 @@
       <div id="codeAceEditor" class="code-ace-editor"></div>
     </div>
   </div>
-
-  <dialog id="slideDeleteDialog" class="share-dialog slide-delete-dialog" aria-labelledby="slideDeleteTitle">
-    <form method="dialog">
-      <div class="share-dialog-header">
-        <div>
-          <span class="share-eyebrow">刪除確認</span>
-          <h2 id="slideDeleteTitle">刪除投影片？</h2>
-        </div>
-        <button id="closeSlideDeleteDialogBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
-      </div>
-      <p id="slideDeleteMessage" class="slide-delete-message">刪除後仍可立即使用復原。</p>
-      <div class="share-dialog-actions">
-        <button id="cancelSlideDeleteBtn" type="button">取消</button>
-        <button id="confirmSlideDeleteBtn" class="slide-delete-confirm-btn" type="button">刪除</button>
-      </div>
-    </form>
-  </dialog>
-
 
   <dialog id="shareDialog" class="share-dialog">
     <form id="shareForm">
@@ -596,6 +597,10 @@
     </div>
   </dialog>
 
+<!-- -----------------------------------------------------------------------
+  畫布浮動工具
+  文字、形狀、色票、對齊與結構功能表靠目前選取定位，不寫入持久化狀態。
+  ------------------------------------------------------------------------ -->
   <div id="objectToolbar" class="object-toolbar" hidden>
     <select id="fontFamilySelect" title="字體">
       <option value="Arial">Arial</option>
@@ -700,6 +705,10 @@
   <div class="reveal">
     <div id="slidesRoot" class="slides"></div>
   </div>
+<!-- -----------------------------------------------------------------------
+  相依套件與第一方腳本
+  先提供 Reveal/Fabric 與 draw renderer，再載入儲存、結構及 slides.js；後者啟動時會直接讀取前述全域 API。
+  ------------------------------------------------------------------------ -->
   <script src="/vendor/reveal/reveal.js"></script>
   <script>
     (function () {
@@ -768,14 +777,14 @@
   <script src="slides-cloud.js?v=1"></script>
   <script src="tts.js?v=10"></script>
   <script src="algorithm-animation.js?v=animation-3"></script>
-  <script src="trace-view-source.js?v=trace-15"></script>
-  <script src="trace-model.js?v=trace-35"></script>
-  <script src="trace-provenance.js?v=trace-9"></script>
+  <script src="trace-view-source.js?v=trace-16"></script>
+  <script src="trace-model.js?v=trace-38"></script>
+  <script src="trace-provenance.js?v=trace-11"></script>
   <script src="asmdeck.js?v=6"></script>
   <script src="deck-file-drop.js?v=1"></script>
   <script src="slide-inline-scripts.js?v=2"></script>
-  <script src="trace-arrow-model.js?v=arrow-8"></script>
-  <script src="slides.js?v=tree-slots-226"></script>
+  <script src="trace-arrow-model.js?v=arrow-10"></script>
+  <script src="slides.js?v=slides-229"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

@@ -1,3 +1,11 @@
+/**
+ * 模組：Frame 動畫與事件排程核心
+ *
+ * 責任：比較相鄰 frame 的視覺快照，建立物件進退場、位移、交換、指標、keep、箭頭與事件特效的單一播放計畫。
+ * 資料流：createPlaybackPlan 將事件時間線轉成 slots/barriers；幾何準備階段對齊前後 DOM 快照，播放階段只依 elapsed 套用 transform、opacity、style 與覆蓋層。
+ * 重要不變條件：同一 runtime identity 在 frame 間必須延續；所有等待關係以計畫時間為準，重繪不得重排事件；動畫結束必須落在 renderer 的最終幾何。
+ * 相容性：缺少新 transition、identity、presentation hint 的舊 trace 會走安全回退；reduced motion 與非動畫 render 仍要得到完全相同的終態。
+ */
 (function () {
   let activeRun = 0;
   let finishActiveRun = null;
@@ -27,6 +35,9 @@
   const EVENT_CODE_PROMPT_DURATION = 400;
   const SEQUENCE_TIMING = Object.freeze({ duration: 440, travel: 48 });
 
+  // ---------------------------------------------------------------------------
+  // 區段：序列生命週期與指標延續
+  // ---------------------------------------------------------------------------
   function sequenceEdge(operation) {
     return /(?:_front|^push_front$|^pop_front$)/.test(String(operation || ''))
       ? 'front' : 'back';
@@ -76,6 +87,25 @@
     return ASSIGN_TIMING.frame
       + (markerAssignment ? ASSIGN_TIMING.valueHold : 0)
       + ASSIGN_TIMING.drop + ASSIGN_TIMING.hold + ASSIGN_TIMING.exit;
+  }
+
+  function assignmentTransferOperator(event) {
+    const binaryOperation = String(event?.binaryOperation || '');
+    if (['+', '-', '*', '/'].includes(binaryOperation)) return binaryOperation;
+    if (event?.compound === true) {
+      const compound = String(event?.expression || event?.operation || '')
+        .match(/([+\-*\/])=/);
+      if (compound) return compound[1];
+    }
+    return '';
+  }
+
+  function formatAssignmentTransferValue(value, operator = '') {
+    const text = String(value ?? '');
+    if (!operator || !text || text.startsWith(`${operator}(`)) return text;
+    if (text.startsWith('-')) return `${operator}(${text})`;
+    if (text.startsWith(operator)) return text;
+    return `${operator}${text}`;
   }
 
   function easeOutCubic(t) {
@@ -216,6 +246,11 @@
 
   function sameSceneGeneration(current, previous) {
     if (!sameVisualDomain(current, previous)) return false;
+    const currentGeneration = Number(current?.dataset?.traceSceneGeneration);
+    const previousGeneration = Number(previous?.dataset?.traceSceneGeneration);
+    if (Number.isFinite(currentGeneration) && Number.isFinite(previousGeneration)) {
+      return currentGeneration === previousGeneration;
+    }
     if (!retainedVisualOwner(current) && !retainedVisualOwner(previous)) {
       const currentIdentity = String(current?.dataset?.traceRuntimeIdentity || '');
       const previousIdentity = String(previous?.dataset?.traceRuntimeIdentity || '');
@@ -224,11 +259,16 @@
       if ((currentIdentity && currentIdentity === previousIdentity)
         || (currentContinuity && currentContinuity === previousContinuity)) return true;
     }
-    const currentGeneration = Number(current?.dataset?.traceSceneGeneration);
-    const previousGeneration = Number(previous?.dataset?.traceSceneGeneration);
     return !Number.isFinite(currentGeneration)
       || !Number.isFinite(previousGeneration)
       || currentGeneration === previousGeneration;
+  }
+
+  function sameDataCellContinuity(current, previous) {
+    return Boolean(current?.hasAttribute?.('data-trace-index')
+      && previous?.hasAttribute?.('data-trace-index')
+      && !retainedVisualOwner(current)
+      && !retainedVisualOwner(previous));
   }
 
   function previousVisualByContinuity(
@@ -237,7 +277,8 @@
     if (!continuityKey) return null;
     const preferred = previousVisualElement(previousObjects, preferredKey);
     if (String(preferred?.dataset?.traceVisualContinuityKey || '') === continuityKey
-      && sameSceneGeneration(currentElement, preferred)) {
+      && (sameSceneGeneration(currentElement, preferred)
+        || sameDataCellContinuity(currentElement, preferred))) {
       return { key: preferredKey, element: preferred };
     }
     for (const [topKey, object] of previousObjects || []) {
@@ -247,7 +288,8 @@
       ];
       const element = candidates.find(candidate => (
         String(candidate?.dataset?.traceVisualContinuityKey || '') === continuityKey
-        && sameSceneGeneration(currentElement, candidate)
+        && (sameSceneGeneration(currentElement, candidate)
+          || sameDataCellContinuity(currentElement, candidate))
       ));
       if (!element) continue;
       return {
@@ -550,6 +592,9 @@
     return steps;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件槽位與 barrier 排程
+  // ---------------------------------------------------------------------------
   function createPlaybackPlan({
     frame, direction, runId = 0, transitionSteps = [], enteringMarkerKeys = [], eventTimeline = [],
     deferredMarkerEntranceKeys = [], deferredMarkerEntranceStartMs = 0,
@@ -741,6 +786,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：播放時間映射
+  // ---------------------------------------------------------------------------
   function playbackPhaseAt(plan, elapsed) {
     return plan?.phases?.find(phase => (
       Number(phase.durationMs) > 0
@@ -763,6 +811,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：遞迴與 keep 幾何交接
+  // ---------------------------------------------------------------------------
   function recursionGrowthTransitions(
     traceDocument, previousFrame, frame, direction = 1,
     previousPlacements = new Map(), currentPlacements = new Map()
@@ -919,6 +970,9 @@
     return overlay;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：前後 SVG 幾何對齊
+  // ---------------------------------------------------------------------------
   function alignedRectStates(source, target, fallbackKey = '$object') {
     const states = new Map();
     const sourceRects = [...(source?.querySelectorAll?.('rect') || [])];
@@ -1222,6 +1276,9 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：Heap 交換與版面變更
+  // ---------------------------------------------------------------------------
   function prepareHeapResizeSwaps(
     traceDocument, eventFrame, eventTimeline, currentElements, previousObjects, previousIdentityKeys
   ) {
@@ -1544,8 +1601,12 @@
       return `${variableKey}#0`;
     }
     if (!expression) return variableKey;
+    const capturedIndices = Array.isArray(target.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
     const capturedIndex = Number(target.resolvedIndex);
-    const indices = Object.prototype.hasOwnProperty.call(target, 'resolvedIndex')
+    const indices = capturedIndices.length && capturedIndices.every(Number.isInteger)
+      ? capturedIndices
+      : Object.prototype.hasOwnProperty.call(target, 'resolvedIndex')
       && Number.isInteger(capturedIndex)
       ? [capturedIndex]
       : expression.split(',').map(part => Number(
@@ -1555,6 +1616,9 @@
     return `${variableKey}#${indices.join(',')}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件 mutation 與提交時間
+  // ---------------------------------------------------------------------------
   function mutationVisualCommits(traceDocument, eventFrame, eventTimeline) {
     const commits = new Map();
     const remember = (key, slot, commitAt) => {
@@ -1675,6 +1739,9 @@
     return Number(slot.end) || Number(slot.start) || 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：正向事件重播計畫
+  // ---------------------------------------------------------------------------
   function createForwardReplayPlan(
     traceDocument, eventFrame, eventTimeline = [], direction = 1
   ) {
@@ -1890,6 +1957,9 @@
     return '';
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：比較與賦值操作數定位
+  // ---------------------------------------------------------------------------
   function eventOperand(
     traceDocument, eventFrame, target, value, placements, elements, visualKeyForSource,
     event = null
@@ -1945,6 +2015,9 @@
       + Math.max(0, Number(keepSettlementDuration) || 0);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：全域播放速率
+  // ---------------------------------------------------------------------------
   function animationPlaybackRate() {
     const cssRate = Number(getComputedStyle(document.documentElement)
       .getPropertyValue('--asm-animation-playback-rate'));
@@ -1972,6 +2045,13 @@
     Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
     if (text !== '') element.textContent = text;
     return element;
+  }
+
+  function variableOwnerId(element) {
+    const variableHost = element?.closest?.('[data-trace-variable]');
+    if (variableHost?.dataset?.traceVariable) return variableHost.dataset.traceVariable;
+    return element?.closest?.('[data-trace-animation-owner-variable]')
+      ?.dataset?.traceAnimationOwnerVariable || '';
   }
 
   function appendBelowTextLayer(root, element) {
@@ -2088,9 +2168,8 @@
             class: 'asm-trace-animation-cell-host',
             'pointer-events': 'none'
           });
-          const ownerVariableId = parent.closest?.('[data-trace-variable]')
-            ?.dataset?.traceVariable || '';
-          if (ownerVariableId) wrapper.dataset.traceVariable = ownerVariableId;
+          const ownerVariableId = variableOwnerId(parent);
+          if (ownerVariableId) wrapper.dataset.traceAnimationOwnerVariable = ownerVariableId;
           const transform = parentTransformInRoot(parent);
           if (transform) wrapper.setAttribute('transform', transform);
           layer.append(wrapper);
@@ -2126,6 +2205,21 @@
       const right = Math.max(...corners.map(point => point.x));
       const bottom = Math.max(...corners.map(point => point.y));
       return { x: left, y: top, width: right - left, height: bottom - top };
+    } catch {
+      return null;
+    }
+  }
+
+  function elementTextAnchorInRoot(element, root) {
+    if (!element || !root) return null;
+    try {
+      const anchorElement = element.matches?.('tspan') ? element.parentElement : element;
+      const x = Number(element.getAttribute?.('x') ?? anchorElement?.getAttribute?.('x'));
+      const y = Number(element.getAttribute?.('y') ?? anchorElement?.getAttribute?.('y'));
+      const rootMatrix = root.getScreenCTM();
+      const elementMatrix = anchorElement?.getScreenCTM?.();
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !rootMatrix || !elementMatrix) return null;
+      return new DOMPoint(x, y).matrixTransform(rootMatrix.inverse().multiply(elementMatrix));
     } catch {
       return null;
     }
@@ -2402,6 +2496,12 @@
     removeAnimationNodes(clone);
     const cloneText = clone.matches?.('text') ? clone : clone.querySelector?.('text');
     if (cloneText && value != null) cloneText.textContent = displayEventValue(value);
+    if (cloneText && options.operatorPrefix) {
+      cloneText.textContent = formatAssignmentTransferValue(
+        cloneText.textContent,
+        options.operatorPrefix
+      );
+    }
 
     const sourceBounds = valueOnly ? elementBoundsInRoot(sourceElement, root) : null;
     const targetBounds = valueOnly ? elementBoundsInRoot(targetElement, root) : null;
@@ -2461,6 +2561,57 @@
           'transform',
           `translate(${x}, ${y}) scale(${scaleX}, ${scaleY}) translate(${-boxCenter.x}, ${-boxCenter.y})`
         );
+        group.setAttribute('opacity', String(opacity));
+      },
+      remove() {
+        group.remove();
+      }
+    };
+  }
+
+  function createLiteralAssignmentTransfer(
+    root, source, targetOperand, literalIndex, literalCount, operatorPrefix = ''
+  ) {
+    const targetElement = assignableTargetText(targetOperand);
+    const targetBounds = elementBoundsInRoot(targetElement, root);
+    if (!targetElement || !targetBounds) return null;
+    const targetAnchor = elementTextAnchorInRoot(targetElement, root) || {
+      x: targetBounds.x + targetBounds.width / 2,
+      y: targetBounds.y + targetBounds.height / 2
+    };
+    const fontSize = Math.max(10, Number(targetElement.getAttribute?.('font-size')) || 14);
+    const laneGap = Math.max(18, fontSize * 1.4);
+    const desiredLaneOffset = (literalIndex - (literalCount - 1) / 2) * laneGap;
+    const targetWidth = Math.max(targetBounds.width, Number(targetOperand?.point?.width) || 0);
+    const maximumLaneOffset = Math.max(0, targetWidth / 2 - fontSize * 0.55);
+    const laneOffset = Math.max(
+      -maximumLaneOffset,
+      Math.min(maximumLaneOffset, desiredLaneOffset)
+    );
+    const value = displayEventValue(source?.literalValue ?? source?.expression ?? '');
+    const displayed = formatAssignmentTransferValue(value, operatorPrefix);
+    if (!displayed) return null;
+    const group = createSvg('g', {
+      class: 'asm-trace-assign-transfer asm-trace-assign-transfer-value asm-trace-assign-literal-value',
+      opacity: 1,
+      'pointer-events': 'none'
+    });
+    const text = createSvg('text', {
+      x: targetAnchor.x + laneOffset,
+      y: targetAnchor.y,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'middle',
+      'font-family': targetElement.getAttribute?.('font-family') || 'Arial',
+      'font-size': fontSize,
+      'font-weight': targetElement.getAttribute?.('font-weight') || 'normal',
+      fill: targetElement.getAttribute?.('fill') || '#1f282d',
+      'pointer-events': 'none'
+    }, displayed);
+    group.append(text);
+    appendBelowTextLayer(root, group);
+    return {
+      group,
+      update(_progress, opacity = 1) {
         group.setAttribute('opacity', String(opacity));
       },
       remove() {
@@ -2530,7 +2681,7 @@
       const element = options.currentElements?.get?.(track.key);
       if (!element || element.dataset?.traceSourceVariableId) return;
       const cell = element.closest?.('[data-trace-index]') || element;
-      const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const variableId = variableOwnerId(cell);
       const targetText = assignableValueText(element, variableId);
       const fixedIndex = !targetText
         && Boolean(element.querySelector?.('text[data-trace-content-role="index"]'));
@@ -2571,8 +2722,7 @@
           || (Number.isInteger(logicalIndex)
             ? cell?.parentElement?.querySelector?.(`[data-trace-index-label="${logicalIndex}"]`)
             : null);
-        const variableId = label?.closest?.('[data-trace-variable]')?.dataset?.traceVariable
-          || cell?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+        const variableId = variableOwnerId(label) || variableOwnerId(cell);
         const index = Number(label?.getAttribute?.('data-trace-index-label')
           ?? label?.dataset?.traceIndexLabel ?? cell?.dataset?.traceIndex);
         const rect = label?.querySelector?.(':scope > rect') || null;
@@ -2590,7 +2740,7 @@
       const isIndexLabel = element?.hasAttribute?.('data-trace-index-label') === true;
       const index = Number(isIndexLabel
         ? element.getAttribute('data-trace-index-label') : element?.dataset?.traceIndex);
-      const variableId = element?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const variableId = variableOwnerId(element);
       if (!conditionalStyleVariables.has(variableId) || !Number.isInteger(index)) return;
       const rect = element.querySelector?.(':scope > rect');
       if (!rect) return;
@@ -2625,7 +2775,7 @@
     (replayPlan?.checkpoints || []).forEach(checkpoint => {
       if (checkpoint.eventType !== 'swap' || checkpoint.mode !== 'animated') return;
       checkpoint.mutations.filter(mutation => mutation.kind === 'value').forEach(mutation => {
-        const end = Number(checkpoint.commitMs) || 0;
+        const end = Number(checkpoint.animationStartMs ?? checkpoint.startMs) || 0;
         for (const key of [mutation.visualKey || mutation.key, `${mutation.key}:index`]) {
           paintHoldEnds.set(key, Math.max(Number(paintHoldEnds.get(key)) || 0, end));
         }
@@ -2784,7 +2934,7 @@
           if (held) paint = initial;
           // Establish the replay's initial paint immediately; only subsequent
           // changes transition. Geometry continues on the cell's own tick.
-          if (rect.classList && !initializedStyleRects.has(rect)) {
+          if (rect.classList && rect.style && !initializedStyleRects.has(rect)) {
             // Start the color transition at entry, not at numeric completion.
             // A reused rect can still carry the prior playback class. Always
             // establish this transition's continuity-matched source paint
@@ -2798,10 +2948,10 @@
             window.getComputedStyle(rect).fill;
             initializedStyleRects.add(rect);
           }
-          if (held) {
+          if (held && rect.style) {
             rect.style.transition = 'none';
             heldStyleRects.add(rect);
-          } else {
+          } else if (rect.style) {
             rect.style.removeProperty('transition');
             if (heldStyleRects.has(rect)) {
               // Commit the carried source color before enabling the destination
@@ -2865,10 +3015,20 @@
     rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
-    const sources = (event?.targets || []).filter(item => item.role === 'source'
-      || item.role === 'source-left' || item.role === 'source-right');
+    const availableSources = (event?.targets || []).filter(item => item.role === 'source'
+      || String(item.role || '').startsWith('source-'));
+    const selectionOperation = ['max', 'min'].includes(event?.selectionOperation)
+      && availableSources.length === 2;
+    const selectedSourceRole = String(event?.selectedSourceRole || '');
+    const sources = selectionOperation
+      ? availableSources.filter(item => item.role === selectedSourceRole)
+      : availableSources;
     const source = sources[0];
-    const binaryAddition = event?.binaryOperation === '+' && sources.length === 2;
+    const binaryOperation = ['+', '-', '*', '/'].includes(event?.binaryOperation)
+      && sources.length === 2;
+    const multiSourceArithmetic = event?.multiSourceArithmetic === true
+      && sources.length > 2;
+    const transferOperator = assignmentTransferOperator(event);
     if (!target) return null;
     const operand = eventOperand(
       traceDocument, eventFrame, target, event?.payload?.after,
@@ -2943,6 +3103,12 @@
       traceDocument, eventFrame, item, sourceValue,
       placements, elements, visualKeyForSource, event
     ));
+    const arithmeticTransfer = binaryOperation || multiSourceArithmetic;
+    const valueOnlyTransfer = event?.compound === true || arithmeticTransfer || selectionOperation;
+    const allDataSourcesVisible = !(arithmeticTransfer || selectionOperation)
+      || sources.every((item, index) => (
+        item?.literal === true || Boolean(sourceOperands[index])
+      ));
     let popup = null;
     let markerIncomingText = null;
     let fallingText = null;
@@ -2950,6 +3116,7 @@
     let targetText = null;
     let finalText = '';
     let originalOpacity = null;
+    let literalCoversTarget = false;
     let landed = false;
     let popupScale = 1;
 
@@ -2978,14 +3145,40 @@
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
-      transfers = sourceOperands.map(item => createAssignmentTransfer(
-        root,
-        item,
-        operand,
-        formattedSourceValue,
-        item ? previousVisualElement(previousObjects, item.visualKey) : null,
-        { valueOnly: event?.compound === true || binaryAddition }
-      )).filter(Boolean);
+      if (allDataSourcesVisible) {
+        const literalCount = sources.filter(item => item?.literal === true).length;
+        let literalIndex = 0;
+        const candidates = sources.map((sourceItem, index) => {
+          const operatorPrefix = multiSourceArithmetic
+            ? sourceItem?.arithmeticOperator
+            : transferOperator;
+          if (sourceItem?.literal === true) {
+            const transfer = createLiteralAssignmentTransfer(
+              root, sourceItem, operand, literalIndex, literalCount, operatorPrefix
+            );
+            literalIndex += 1;
+            return transfer;
+          }
+          const item = sourceOperands[index];
+          return createAssignmentTransfer(
+            root,
+            item,
+            operand,
+            formattedSourceValue,
+            item ? previousVisualElement(previousObjects, item.visualKey) : null,
+            {
+              valueOnly: valueOnlyTransfer,
+              operatorPrefix
+            }
+          );
+        });
+        if (candidates.every(Boolean)) {
+          transfers = candidates;
+          literalCoversTarget = literalCount > 0;
+          if (literalCoversTarget && targetText) targetText.setAttribute('opacity', '0');
+        }
+        else candidates.filter(Boolean).forEach(item => item.remove());
+      }
       if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
         fallingText = createSvg('text', {
@@ -3009,7 +3202,13 @@
     function landValue() {
       if (landed) return;
       landed = true;
-      if (targetText) targetText.textContent = finalText;
+      if (targetText) {
+        targetText.textContent = finalText;
+        if (literalCoversTarget) {
+          if (originalOpacity == null) targetText.removeAttribute('opacity');
+          else targetText.setAttribute('opacity', originalOpacity);
+        }
+      }
       if (popup) popup.text.textContent = afterValue;
       markerIncomingText?.setAttribute('opacity', '0');
       fallingText?.setAttribute('opacity', '0');
@@ -3065,7 +3264,7 @@
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
-          if (event?.compound === true || binaryAddition) {
+          if (valueOnlyTransfer) {
             transfers.forEach(item => item.remove());
             transfers = [];
           }
@@ -6379,24 +6578,48 @@
         ? recursionGrowth.entering.get(topKey) || null : null;
       const keepHandoffSourceKey = keepTransition
         ? recursionGrowthEntry?.sourceKey || keepHandoffSources.get(topKey) || '' : '';
-      const sourceKey = previousAliasKey(
+      let sourceKey = previousAliasKey(
         keepHandoffSourceKey || requestedSourceKey,
         topKey,
         topElement,
         previousPlacements,
         previousIdentityKeys
       );
+      const dataCellContinuation = !swap && !keepSnapshotMember && !retainedSnapshot
+        && element.hasAttribute?.('data-trace-index')
+        ? previousVisualByContinuity(
+          previousObjects,
+          String(element.dataset?.traceVisualContinuityKey || ''),
+          sourceKey,
+          element
+        )
+        : null;
+      if (dataCellContinuation?.key) sourceKey = dataCellContinuation.key;
       const candidatePreviousVisual = redeclaredMarkerKeys.has(key)
         ? null
         : useMarkerContinuation
         ? markerContinuation.element
-        : previousVisualElement(previousObjects, sourceKey);
+        : dataCellContinuation?.element || previousVisualElement(previousObjects, sourceKey);
       const activationChanged = markerActivationChanged(element, candidatePreviousVisual);
       const previousOuterframeOwner = candidatePreviousVisual
         ?.closest?.('.asm-trace-object') || null;
+      const currentOwnerIdentity = String(topElement?.dataset?.traceRuntimeIdentity || '');
+      const previousOwnerIdentity = String(
+        previousOuterframeOwner?.dataset?.traceRuntimeIdentity || ''
+      );
+      const runtimeOwnerContinues = key === topKey
+        && !topElement?.dataset?.traceSourceVariableId
+        && !retainedVisualOwner(topElement)
+        && !retainedVisualOwner(previousOuterframeOwner)
+        && currentOwnerIdentity
+        && currentOwnerIdentity === previousOwnerIdentity;
       const objectLabelOwnerContinues = stableObjectLabel(element)
         && stableObjectLabel(candidatePreviousVisual)
-        && sameSceneGeneration(topElement, previousOuterframeOwner);
+        && (sameSceneGeneration(topElement, previousOuterframeOwner)
+          || (!retainedVisualOwner(topElement)
+            && !retainedVisualOwner(previousOuterframeOwner)
+            && currentOwnerIdentity
+            && currentOwnerIdentity === previousOwnerIdentity));
       // @keep cuts every live visual into a new scene, not only automatic
       // markers. The retained copy owns the old generation; the following
       // array/cell/object must enter independently instead of borrowing the
@@ -6405,10 +6628,13 @@
         && !keepSnapshotMember
         && !retainedSnapshot
         && !objectLabelOwnerContinues
+        && !runtimeOwnerContinues
+        && !sameDataCellContinuity(element, candidatePreviousVisual)
         && !sameSceneGeneration(element, candidatePreviousVisual);
       const sceneActivationChanged = key === topKey
         && !keepSnapshotMember
         && !retainedSnapshot
+        && !runtimeOwnerContinues
         && !continuingKeys.has(key)
         && needsSceneBoundaryEntrance(
           functionSceneChanged,
@@ -6601,10 +6827,8 @@
         ? null
         : candidatePreviousVisual;
       entry.previousVisual = previousVisual;
-      const previousOwner = String(previousVisual?.closest?.('[data-trace-variable]')
-        ?.dataset?.traceVariable || '');
-      const currentOwner = String(entry.element?.closest?.('[data-trace-variable]')
-        ?.dataset?.traceVariable || '');
+      const previousOwner = String(variableOwnerId(previousVisual));
+      const currentOwner = String(variableOwnerId(entry.element));
       entry.crossContainerMotion = Boolean(
         entry.key !== entry.topKey
         && entry.element?.dataset?.traceVisualContinuityKey
@@ -6854,7 +7078,7 @@
         startMs,
         durationMs,
         endMs: startMs + durationMs,
-        holdStyle: entry.repaintTransition === true,
+        holdStyle: entry.repaintTransition === true && entry.crossContainerMotion === true,
         blocking: true,
         enabled: true,
         source: 'automatic'
@@ -7131,6 +7355,8 @@
           entry.markerPointPath.setAttribute('d', markerArrowPath(entry, markerArrowState));
         }
         if (entry.recursionGrowth) {
+          entry.element.dataset.traceRecursionGrowth = '1';
+          entry.target.dataset.traceRecursionGrowth = '1';
           entry.target.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
           entry.attachedVisuals.forEach(attachment => {
             attachment.wrapper.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
@@ -7348,6 +7574,8 @@
       events?.applyStyles?.();
       entries.forEach(entry => {
         delete entry.target.dataset.traceAppearing;
+        delete entry.element.dataset.traceRecursionGrowth;
+        delete entry.target.dataset.traceRecursionGrowth;
         applyIndexLabelGrowth(entry.indexLabelGeometry, 1);
         const markerAdjustment = entry.markerPointPath
           ? events?.adjustments?.get?.(entry.key)
@@ -7476,16 +7704,19 @@
     document.querySelectorAll('[data-trace-appearing]').forEach(element => {
       delete element.dataset.traceAppearing;
     });
+    document.querySelectorAll('[data-trace-recursion-growth]').forEach(element => {
+      delete element.dataset.traceRecursionGrowth;
+    });
     document.querySelectorAll('[data-trace-playback-plan-id]').forEach(element => {
       delete element.dataset.tracePlaybackPhase;
     });
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-253';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-256';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-253', play, cancel, updateEventAvailability,
+    build: 'trace-256', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
@@ -7500,6 +7731,7 @@
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
-    createForwardReplayPlan, prepareForwardValues
+    createForwardReplayPlan, prepareForwardValues,
+    assignmentTransferOperator, formatAssignmentTransferValue
   };
 })();

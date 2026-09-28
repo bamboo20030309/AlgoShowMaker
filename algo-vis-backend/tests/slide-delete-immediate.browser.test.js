@@ -1,3 +1,11 @@
+/**
+ * 測試模組：slide-delete-immediate.browser.test
+ *
+ * 驗證重點：slide delete dialog.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -6,7 +14,10 @@ const net = require('node:net');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
-test('slide deletion requires the custom confirmation dialog', { timeout: 90000 }, async () => {
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
+test('editor slide deletion happens immediately and remains undoable', { timeout: 90000 }, async () => {
   const root = path.resolve(__dirname, '..');
   const port = await new Promise(resolve => {
     const probe = net.createServer();
@@ -41,20 +52,12 @@ test('slide deletion requires the custom confirmation dialog', { timeout: 90000 
     await page.waitForFunction(() => document.querySelector('.custom-overview')?.hidden === false);
     assert.equal(await page.locator('.custom-overview-thumb').count(), 2);
 
-    await page.locator('#overviewDeleteSlideBtn').click();
-    assert.equal(await page.locator('#slideDeleteDialog').evaluate(dialog => dialog.open), true);
-    assert.match(await page.locator('#slideDeleteMessage').textContent(), /刪除/);
-    await page.locator('#cancelSlideDeleteBtn').click();
-    assert.equal(await page.locator('.custom-overview-thumb').count(), 2);
-
     await page.keyboard.press('Delete');
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#slideDeleteDialog').evaluate(dialog => dialog.open), false);
-    assert.equal(await page.locator('.custom-overview-thumb').count(), 2);
-
-    await page.keyboard.press('Delete');
-    await page.locator('#confirmSlideDeleteBtn').click();
     await page.waitForFunction(() => document.querySelectorAll('.custom-overview-thumb').length === 1);
+    assert.equal(await page.locator('#slideDeleteDialog').count(), 0);
+    assert.equal(await page.locator('.custom-overview-thumb').count(), 1);
+    await page.keyboard.press('Delete');
+    await page.waitForTimeout(300);
     assert.equal(await page.locator('.custom-overview-thumb').count(), 1);
     assert.equal(await page.locator('#overviewDeleteSlideBtn').isDisabled(), true);
     await page.keyboard.press('Control+z');

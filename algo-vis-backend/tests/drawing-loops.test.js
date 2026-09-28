@@ -1,3 +1,11 @@
+/**
+ * 測試模組：drawing-loops.test
+ *
+ * 驗證重點：drawing loops.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -6,6 +14,9 @@ const { findFrameDirectives, instrumentSource } = require('../trace-instrumenter
 const { compile } = require('./helpers/compile');
 const arrowModel = require('../public/trace-arrow-model');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('drawing blocks parse styles, arrows and text with isolated locals and named scopes', () => {
   const code=`int main(){int a[8]={},j=99,n=3;
 // @frame a
@@ -39,6 +50,20 @@ test('drawing blocks reject malformed boundaries, C++ statements and non-drawing
   }
   assert.throws(()=>findFrameDirectives(source('// @for k in [0:2]\n// @for k in [0:2]\n// @endfor\n// @endfor')),/索引不可重複/);
   assert.throws(()=>findFrameDirectives(source('// @for k in [0:2]\n// @arrow for k in [0:2] from a[0] to a[k]\n// @endfor')),/索引不可與 @for 重複/);
+});
+
+test('@for manual ranges accept frame-local @let aliases', () => {
+  const code = `int main(){int a[8]={},n=3;
+// @frame a
+// @let last = n - 1
+// @for k in [0:last]
+// @style a[k] highlight
+// @endfor
+}`;
+  const frame = findFrameDirectives(code)[0];
+  assert.deepEqual(frame.lets.map(binding => [binding.name, binding.expression]), [['last', 'n - 1']]);
+  assert.equal(frame.styles[0].drawLoops[0].endExpression, 'last');
+  assert.ok(frame.variables.some(variable => variable.name === 'n'));
 });
 
 test('compiled named block shares actual entries across styles, arrows and text, preserving reload and primes', async () => {

@@ -1,3 +1,11 @@
+/**
+ * 模組：程式碼呈現模型
+ *
+ * 責任：從原始 C++、事件 source range 與語法結構建立每個 frame 的精簡程式碼頁面。
+ * 資料流：原始碼先遮蔽註解並建立結構 context；事件依來源位置分群後選取必要行、補齊宣告與括號，再輸出含語法區段及事件標記的 fragment plan。
+ * 重要不變條件：輸出的原始行號必須始終指回未裁切的 source；省略行只影響呈現，不能改變 event/source 對應。
+ * 相容性：來源資訊不完整的舊 trace 會使用事件文字與結構推論回退；tokenizer 不存在時仍輸出純文字區段。
+ */
 (function () {
   const EXIT_EVENT_TYPES = new Set([
     'scope-exit', 'visual-exit', 'function-exit', 'call-return', 'return-complete'
@@ -9,6 +17,9 @@
   const LOOP_CONTEXT_TYPES = new Set(['ForStatement', 'WhileStatement', 'DoStatement']);
   const CONDITION_BODY_MAX_LINES = 3;
 
+  // ---------------------------------------------------------------------------
+  // 區段：來源預處理
+  // ---------------------------------------------------------------------------
   function sourceLines(source = '') {
     const lines = [];
     let start = 0;
@@ -356,6 +367,9 @@
       : '';
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：語法 context 與事件分群
+  // ---------------------------------------------------------------------------
   function orderedContexts(source) {
     return [...(source?.contexts || [])].sort((left, right) => {
       const leftSize = Number(left?.to) - Number(left?.from);
@@ -635,6 +649,9 @@
     }).filter(segment => segment.text);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：語法 token 合併
+  // ---------------------------------------------------------------------------
   function tokenizeSource(source = '', tokenizer = null) {
     const byLine = new Map();
     if (!tokenizer?.getLineTokens) return byLine;
@@ -816,6 +833,9 @@
     return items;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：片段選行與省略行
+  // ---------------------------------------------------------------------------
   function fragmentForCluster(
     cluster, lines, hidden, displayLines, declarations, excludedDeclarationNames = new Set()
   ) {
@@ -939,6 +959,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 來源與宣告補齊
+  // ---------------------------------------------------------------------------
   function setupSources(document, frame, lines, hidden, displayLines) {
     const names = new Set(displayedFrameNames(document, frame));
     if (!names.size) return [];
@@ -991,6 +1014,9 @@
     )).join(',')).join('|');
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：程式碼頁面計畫輸出
+  // ---------------------------------------------------------------------------
   function previousTimelineFrame(document, frame) {
     const frames = Array.isArray(document?.frames) ? document.frames : [];
     const frameId = String(frame?.id || '');
@@ -999,7 +1025,7 @@
     return index > 0 ? frames[index - 1] : null;
   }
 
-  function planFrame(document, frame, inheritedFrameIds = new Set()) {
+  function automaticPlanFrame(document, frame, inheritedFrameIds = new Set()) {
     const source = String(document?.sourceCode || '');
     if (!source || !frame) return { frameId: frame?.id || '', sourceCode: source, fragments: [] };
     const lines = sourceLines(source);
@@ -1019,7 +1045,7 @@
       if (previousFrame && !inheritedFrameIds.has(previousId)) {
         const visited = new Set(inheritedFrameIds);
         visited.add(String(frame.id || ''));
-        const previousPlan = planFrame(document, previousFrame, visited);
+        const previousPlan = automaticPlanFrame(document, previousFrame, visited);
         if (previousPlan.fragments?.length) {
           return {
             ...previousPlan,
@@ -1089,6 +1115,153 @@
     };
   }
 
+  function normalizedLineText(text = '') {
+    return String(text).trim().replace(/\s+/g, ' ');
+  }
+
+  function snippetLineStates(document, frame) {
+    const saved = document?.studio?.codeSnippetOverrides?.[frame?.id];
+    return saved && typeof saved.lineStates === 'object' && !Array.isArray(saved.lineStates)
+      ? saved.lineStates
+      : {};
+  }
+
+  function snippetEditorHiddenLines(lines = []) {
+    const hidden = new Set();
+    let asmView = false;
+    lines.forEach(line => {
+      const text = String(line.text || '');
+      if (/\/\*\s*@asm-view\b/i.test(text)) asmView = true;
+      if (asmView) hidden.add(line.number);
+      if (/@asm-view\s*\*\//i.test(text)) asmView = false;
+      if (/^\s*\/\/.*@(?:frame|object|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|defaults|enddefaults|camera|asm(?:[-\w]*)?)\b/i.test(text)) {
+        hidden.add(line.number);
+      }
+    });
+    return hidden;
+  }
+
+  function functionNameForLine(document, line) {
+    const offset = Number(line?.start);
+    if (!Number.isFinite(offset)) return '';
+    return (document?.sourceStructure || [])
+      .filter(context => context?.type === 'FunctionDefinition'
+        && Number(context.from) <= offset && Number(context.to) >= offset)
+      .sort((left, right) => (Number(left.to) - Number(left.from)) - (Number(right.to) - Number(right.from)))
+      .map(context => String(context.functionName || ''))[0] || '';
+  }
+
+  function snippetEditorPlan(document, frame, automatic = automaticPlanFrame(document, frame)) {
+    const savedStates = snippetLineStates(document, frame);
+    const events = new Map((frame?.events || []).map(event => [String(event?.id || ''), event]));
+    const occurrences = new Map();
+    const source = String(document?.sourceCode || '');
+    const lines = sourceLines(source);
+    const hidden = snippetEditorHiddenLines(lines);
+    const automaticLines = new Set((automatic.fragments || []).flatMap(fragment => fragment.items || [])
+      .filter(item => item?.kind === 'line').map(item => Number(item.number)));
+    const eventSources = presentationEvents(frame)
+      .map(event => eventSourceFor(event, lines, source, new Set()))
+      .filter(Boolean);
+    const rows = lines.filter(line => !hidden.has(line.number)).map(line => {
+          const functionName = functionNameForLine(document, line);
+          const item = {
+            kind: 'line',
+            number: line.number,
+            sourceStart: line.start,
+            sourceEnd: line.end,
+            text: line.text,
+            segments: segmentsForLine(line, eventSources)
+          };
+          const sourceEventIds = [...new Set((item.segments || [])
+            .flatMap(segment => segment.eventIds || []).map(String).filter(Boolean))];
+          const eventIds = sourceEventIds.filter(id => {
+            const event = events.get(id);
+            return event && event.enabled !== false && event.autoAnimationDisabled !== true;
+          });
+          const instructionKeys = [...new Set(sourceEventIds.map(id => {
+            const event = events.get(id);
+            return window.ASMTraceEvents?.instructionKey?.(event)
+              || event?.signature || '';
+          }).filter(Boolean))].sort();
+          const normalized = normalizedLineText(item.text);
+          const identity = instructionKeys.length
+            ? `event:${instructionKeys.join('|')}:${normalized}`
+            : `source:${functionName}:${normalized}`;
+          const occurrence = occurrences.get(identity) || 0;
+          occurrences.set(identity, occurrence + 1);
+          const anchor = `${identity}#${occurrence}`;
+          const autoIncluded = automaticLines.has(Number(item.number));
+          const override = Object.prototype.hasOwnProperty.call(savedStates, anchor)
+            ? Boolean(savedStates[anchor])
+            : null;
+          return {
+            anchor,
+            functionName,
+            number: Number(item.number),
+            text: item.text,
+            segments: item.segments || [],
+            eventIds,
+            sourceEventIds,
+            instructionKeys,
+            autoIncluded,
+            included: override == null ? autoIncluded : override,
+            overridden: override != null,
+            item
+          };
+        });
+    return {
+      frameId: frame?.id || '',
+      sourceCode: automatic.sourceCode || '',
+      fragments: [{ functionName: '', rows }]
+    };
+  }
+
+  function itemsForSnippetRows(rows = []) {
+    const items = [];
+    rows.filter(row => row.included).forEach(row => {
+      const previous = items.at(-1);
+      const previousLine = previous?.kind === 'line' ? Number(previous.number) : 0;
+      if (previousLine && row.number > previousLine + 1) items.push({ kind: 'ellipsis' });
+      items.push(row.item);
+    });
+    return items;
+  }
+
+  function applySnippetOverrides(document, frame, automatic) {
+    const saved = document?.studio?.codeSnippetOverrides?.[frame?.id];
+    if (!saved || typeof saved.lineStates !== 'object' || !Object.keys(saved.lineStates).length) {
+      return automatic;
+    }
+    const editor = snippetEditorPlan(document, frame, automatic);
+    const rows = editor.fragments.flatMap(fragment => fragment.rows || []);
+    const selectedItems = itemsForSnippetRows(rows);
+    const fragments = selectedItems.some(item => item?.kind === 'line')
+      ? [normalizeFragmentIndent({
+        functionName: '',
+        eventIds: [...new Set(rows.flatMap(row => row.eventIds))],
+        focusLine: automatic.focusLine,
+        subtreeKey: `snippet:${frame.id || ''}`,
+        items: selectedItems,
+        expandedItems: selectedItems
+      })]
+      : [];
+    return {
+      ...automatic,
+      fragments,
+      focusLine: fragments.length
+        ? Math.min(...fragments.flatMap(fragment => fragment.items)
+          .filter(item => item?.kind === 'line').map(item => Number(item.number)))
+        : 0,
+      layoutKey: planLayoutKey(fragments)
+    };
+  }
+
+  function planFrame(document, frame) {
+    const automatic = automaticPlanFrame(document, frame);
+    return applySnippetOverrides(document, frame, automatic);
+  }
+
   window.ASMTraceCodeModel = {
     sourceLines,
     commentMaskedLines,
@@ -1097,6 +1270,8 @@
     tokenizeSource,
     mergeSyntaxSegments,
     presentationEvents,
+    automaticPlanFrame,
+    snippetEditorPlan,
     planFrame
   };
 })();

@@ -1,9 +1,20 @@
+/**
+ * 測試模組：heap-composite-segments.browser.test
+ *
+ * 驗證重點：heap composite segments.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('kept heap snapshots render through every frame', {timeout:60000}, async () => {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
@@ -284,7 +295,7 @@ test('standalone segment tree build animates every input and parent sum', {timeo
     assert.equal(result.arrowCount,2);
     assert.deepEqual(result.binaryEvent,{operation:'+',target:14});
     const transfers=result.samples.filter(sample=>sample.transferValues.length===2);
-    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['13','14'])),
+    assert.ok(transfers.some(sample=>JSON.stringify(sample.transferValues)===JSON.stringify(['+13','+14'])),
       JSON.stringify(result.samples.slice(-20)));
     assert.ok(transfers.every(sample=>sample.transferRects===0));
     assert.ok(transfers.some(sample=>sample.targetValue==='0'));
@@ -394,7 +405,7 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
       'sum never becomes blank while += is playing');
     assert.ok(result.compoundSamples.every(sample=>sample.sumOpacity>0.99),
       'the global sum cell does not replay an entrance or exit');
-    const transferSamples=result.compoundSamples.filter(sample=>sample.transferValue==='27');
+    const transferSamples=result.compoundSamples.filter(sample=>sample.transferValue==='+27');
     assert.ok(transferSamples.length>0,'tree[now] value is copied into a moving text transfer');
     assert.ok(transferSamples.every(sample=>sample.transferRects===0),
       'compound += moves only the value text, not the source cell rectangle');
@@ -463,9 +474,9 @@ int main() {
     assert.ok(result.target>0);
     assert.deepEqual(result.sourceTexts,['5,=13','7,+3']);
     const transfers=result.samples.filter(values=>values.length===2);
-    assert.ok(transfers.some(values=>JSON.stringify(values)===JSON.stringify(['5','7'])),
+    assert.ok(transfers.some(values=>JSON.stringify(values)===JSON.stringify(['+5','+7'])),
       JSON.stringify(result.samples));
-    assert.ok(transfers.every(values=>values.every(value=>!/[,+]|=13/.test(value))),
+    assert.ok(transfers.every(values=>values.every(value=>/^\+\d+$/.test(value))),
       JSON.stringify(transfers));
     assert.deepEqual(errors,[]);
   } finally {await browser.close();}

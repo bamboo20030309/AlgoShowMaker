@@ -1,4 +1,12 @@
+// -----------------------------------------------------------------------------
+// 編譯結果載入橋接器
+// 套用伺服器回傳的動畫腳本、清理上一輪全域狀態，並通知播放介面重新建立影格。
+// -----------------------------------------------------------------------------
 // compile.js
+// -----------------------------------------------------------------------------
+// 編譯腳本套用入口
+// 重設箭頭與播放器後載入新 CodeScript，最後才同步幀數及目前程式碼行。
+// -----------------------------------------------------------------------------
 window.asmApplyAnimationScript = function (scriptContent) {
   if (!scriptContent) return;
   if (window.resetArrows) window.resetArrows();
@@ -45,6 +53,10 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   const toStr = (v) => (v === undefined || v === null) ? '' : String(v);
 
   // 小工具：判定種類（只用後端回來的 data.error / output）
+  // -----------------------------------------------------------------------------
+  // 執行結果與限制判定
+  // 統一整理 stdout、stderr、逾時與回傳碼，讓 output/debug 面板呈現同一輪編譯結果。
+  // -----------------------------------------------------------------------------
   function judgeResult(data) {
     const err = toStr(data && data.error).trim();
     const outText = toStr(data && data.output);
@@ -192,6 +204,10 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     }
 
     // 3. Trace mode returns data; legacy mode returns an animation script.
+    // -----------------------------------------------------------------------------
+    // Trace 與傳統腳本分流
+    // 有 traceDocument 時交給 Studio 模型；傳統 scriptContent 則走 CodeScript，兩者不共用播放狀態。
+    // -----------------------------------------------------------------------------
     if (data.traceDocument) {
       try {
         const incomingTraceDocument = {

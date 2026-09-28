@@ -1,5 +1,17 @@
+/*
+ * 模組：Trace Studio 版面與編輯狀態
+ *
+ * 責任：定義時間線、frame 卡片、事件樹、Inspector、綁定、樣式與鏡頭編輯器的完整版面。
+ * 資料流：Studio JavaScript 透過 is-selected、is-current、is-disabled 等狀態 class 切換視覺；版面以 timeline 與 inspector 兩大區域組成。
+ * 重要不變條件：選取與目前播放 frame 是不同狀態；hidden/disabled 必須保留可存取性語意，縮圖樣式不可洩漏到主畫布。
+ * 相容性：響應式區段沿用既有 DOM 順序，舊設定缺少新面板時其餘 Inspector 仍可操作。
+ */
 .trace-studio-rail,
 .trace-studio-inspector,
+/* --------------------------------------------------------------------------
+ * 區段：時間線總體版面
+ * -------------------------------------------------------------------------- */
+
 .trace-studio-timeline {
   display: none;
   box-sizing: border-box;
@@ -101,6 +113,10 @@ body.asm-trace-studio-open .trace-studio-timeline {
   border-bottom: 1px solid #3a4348;
 }
 
+/* --------------------------------------------------------------------------
+ * 區段：Frame 清單與縮圖
+ * -------------------------------------------------------------------------- */
+
 .trace-studio-frame-list {
   min-height: 0;
   flex: 1;
@@ -189,6 +205,10 @@ body.asm-trace-camera-framing #arraySvg {
   cursor: crosshair;
 }
 
+/* --------------------------------------------------------------------------
+ * 區段：畫布快顯選單
+ * -------------------------------------------------------------------------- */
+
 .trace-studio-canvas-menu {
   position: fixed;
   z-index: 10020;
@@ -229,6 +249,10 @@ body.asm-trace-camera-framing #arraySvg {
 .trace-studio-hidden-object {
   opacity: 0.28 !important;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：物件狀態與轉場
+ * -------------------------------------------------------------------------- */
 
 .trace-studio-object-state-card {
   display: grid;
@@ -352,6 +376,10 @@ body.asm-trace-camera-framing #arraySvg {
   display: block;
   overflow-y: auto;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：事件程式碼樹
+ * -------------------------------------------------------------------------- */
 
 .trace-studio-event-outline {
   min-width: 0;
@@ -489,6 +517,138 @@ body.asm-trace-camera-framing #arraySvg {
   z-index: 2;
   box-shadow: inset 4px 0 #60a5fa, 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.9);
 }
+
+.trace-studio-code-panel,
+.trace-studio-code-snippet-section {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.trace-studio-code-snippet-section {
+  display: flex;
+}
+
+.trace-studio-snippet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trace-studio-snippet-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: #9facb2;
+  font: 11px/1.4 Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-studio-snippet-meta.has-warning {
+  color: #ffd95a;
+}
+
+.trace-studio-snippet-reset {
+  flex: none;
+  min-height: 27px;
+  padding: 3px 8px !important;
+  font-size: 10px !important;
+}
+
+.trace-studio-code-snippet-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.trace-studio-snippet-outline {
+  padding: 7px;
+}
+
+.trace-studio-snippet-function {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 5px 6px;
+}
+
+.trace-studio-snippet-lines {
+  gap: 4px;
+}
+
+.trace-studio-snippet-line {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.trace-studio-snippet-line-button {
+  grid-template-columns: 4px 28px minmax(0, 1fr);
+  background: transparent;
+  color: rgba(220, 229, 236, 0.48);
+}
+
+.trace-studio-snippet-line-button.is-enabled.is-available {
+  border-color: #3e7650;
+  background: #173323;
+  color: #e4f5e9;
+}
+
+.trace-studio-snippet-line-number {
+  color: #71808a;
+  font: 10px/1.45 Consolas, "Courier New", monospace;
+  text-align: right;
+  user-select: none;
+}
+
+.trace-studio-snippet-code {
+  white-space: pre-wrap;
+}
+
+.trace-studio-snippet-event-source {
+  border-radius: 2px;
+  background: #fff45c;
+  box-shadow: 0 0 0 1px rgba(255, 244, 92, 0.3);
+  color: #161913;
+}
+
+.trace-studio-snippet-line-button:not(.is-enabled) .trace-studio-snippet-event-source {
+  opacity: 0.62;
+}
+
+.trace-studio-snippet-line-button.is-playing .trace-studio-snippet-event-source {
+  box-shadow: 0 0 0 2px #f59e0b, 0 0 10px rgba(245, 158, 11, 0.9);
+}
+
+.trace-studio-snippet-confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid #8b711e;
+  border-radius: 4px;
+  background: #302912;
+  color: #ffe98a;
+  font: 10px/1.35 Arial, sans-serif;
+}
+
+.trace-studio-snippet-confirm button {
+  min-height: 25px;
+  padding: 2px 7px;
+  font-size: 10px;
+}
+
+.trace-studio-snippet-confirm button.is-danger {
+  border-color: #a14b4b;
+  background: #512226;
+  color: #ffd7d7;
+}
+
+/* --------------------------------------------------------------------------
+ * 區段：事件卡片與開關
+ * -------------------------------------------------------------------------- */
 
 .trace-studio-frame-event {
   min-width: 0;
@@ -699,6 +859,10 @@ body.asm-trace-camera-framing #arraySvg {
   overflow: hidden;
 }
 
+/* --------------------------------------------------------------------------
+ * 區段：Inspector 面板切換
+ * -------------------------------------------------------------------------- */
+
 .trace-studio-inspector-panel {
   min-height: 0;
   flex: 1;
@@ -740,7 +904,7 @@ body.asm-trace-camera-framing #arraySvg {
 
 .trace-studio-inspector-toolbar {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 7px 8px;
   border-bottom: 1px solid #3a4348;
@@ -748,7 +912,7 @@ body.asm-trace-camera-framing #arraySvg {
 }
 
 .trace-studio-inspector-toolbar.has-object {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .trace-studio-inspector-tool {
@@ -843,6 +1007,10 @@ body.asm-trace-camera-framing #arraySvg {
   font-size: 11px;
   line-height: 1.45;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：物件綁定編輯
+ * -------------------------------------------------------------------------- */
 
 .trace-studio-binding-card {
   display: grid;
@@ -946,6 +1114,10 @@ body.asm-trace-camera-framing #arraySvg {
 
 .trace-studio-variable-style-fields,
 .trace-studio-object-color-fields,
+/* --------------------------------------------------------------------------
+ * 區段：文字區段樣式
+ * -------------------------------------------------------------------------- */
+
 .trace-studio-text-style-fields {
   display: grid;
   gap: 8px;
@@ -1382,6 +1554,10 @@ body.asm-trace-camera-framing #arraySvg {
 body.asm-trace-studio-open .trace-event-panel {
   display: none !important;
 }
+
+/* --------------------------------------------------------------------------
+ * 區段：響應式版面
+ * -------------------------------------------------------------------------- */
 
 @media (max-width: 1100px) {
   body.asm-trace-studio-open #main {

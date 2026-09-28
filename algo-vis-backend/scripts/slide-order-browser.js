@@ -1,7 +1,17 @@
+/**
+ * 投影片排序介面的瀏覽器驗證。
+ *
+ * 以隔離的 localStorage 建立三張投影片，檢查按鈕樣式、鍵盤操作、拖曳排序、
+ * 選取狀態與重新載入後順序，確保畫面互動和持久化結果一致。
+ */
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// -----------------------------------------------------------------------------
+// 測試資料播種、介面操作與重新載入核實
+// -----------------------------------------------------------------------------
 async function runSlideOrderBrowser(browser, baseURL, output) {
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
   const page = await context.newPage();
@@ -75,6 +85,7 @@ async function runSlideOrderBrowser(browser, baseURL, output) {
     await button.click();
     await page.waitForFunction(() => document.querySelector('section.asm-slide.present')?.dataset.slideId === 'b');
     await button.click();
+    await page.waitForTimeout(400);
     const source = await page.locator('.custom-overview-thumb[data-slide-id="b"]').boundingBox();
     const target = await page.locator('.custom-overview-thumb[data-slide-id="c"]').boundingBox();
     await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);

@@ -1,9 +1,25 @@
+/**
+ * 執行期追蹤序列化層
+ *
+ * 插樁後的 C++ 程式透過本標頭把純量、標準容器、指標、作用域與事件編碼成逐行
+ * JSON。後端再讀取這些事件並組成畫面幀。encode_value 的多載是資料格式邊界：
+ * scalar/string/sequence/map/reference 等 kind 必須與 JavaScript trace reader 相容。
+ *
+ * 主要不變條件：字串必須完整 JSON escape；容器編碼不得改變原容器；stack/queue
+ * 以副本展開以保存使用者狀態；物件 identity 在同一程序生命週期內保持穩定；
+ * Writer 必須依事件發生順序輸出，讓前端可重播賦值、比較與函式進出。
+ *
+ * 複雜度：純量編碼為 O(1)，序列／映射為 O(n)，巢狀容器成本為所有元素編碼成本
+ * 的總和；輸出本身至少需要與產生 JSON 大小等量的時間與空間。
+ */
+
 #ifndef ASM_TRACE_HPP
 #define ASM_TRACE_HPP
 
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstdint>
 #include <deque>
 #include <fstream>
 #include <iomanip>
@@ -23,6 +39,10 @@
 #include <vector>
 
 namespace asm_trace {
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JSON 基礎編碼：所有高階事件最終都經過這一層，必須產生合法 JSON 片段
+// ─────────────────────────────────────────────────────────────────────────────
 
 inline std::string escape(const std::string& value) {
   std::ostringstream out;
@@ -210,6 +230,10 @@ template <typename T>
 typename std::enable_if<!std::is_arithmetic<T>::value && !std::is_pointer<T>::value, std::string>::type
 encode_value(const T& value) { return encode_opaque(value); }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 變數快照與生命週期：以 id 識別宣告，以 identity 區分底層物件別名
+// ─────────────────────────────────────────────────────────────────────────────
+
 struct NamedValue {
   std::string id;
   std::string name;
@@ -272,6 +296,11 @@ NamedValue named(const char* id, const char* name, const T& value) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Recorder：依呼叫順序寫出 JSON Lines；單一事件不可跨行，以便後端串流解析
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 暫停 trace 時保留程式運算，但不把內部輔助動作誤記成使用者事件。
 inline int& trace_suppression_depth() {
   static int depth = 0;
   return depth;
@@ -390,6 +419,10 @@ inline Recorder& recorder() {
   static Recorder instance;
   return instance;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 函式、遞迴與迴圈上下文：堆疊頂端代表目前正在執行的動態作用域
+// ─────────────────────────────────────────────────────────────────────────────
 
 struct FunctionActivationFrame {
   std::string function_name;
@@ -747,6 +780,12 @@ inline void emit_current_function_scope_exits() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 事件 API：由插樁器生成的程式呼叫，記錄讀寫、比較、呼叫與容器變更
+//
+// 包裝器必須只求值原始運算元一次，否則 ++、函式呼叫等帶副作用表達式會被重複執行。
+// ─────────────────────────────────────────────────────────────────────────────
+
 inline std::string target_json(const char* role, const char* variable_id,
                                const char* expression, const char* index_expression,
                                bool has_resolved_index = false, long long resolved_index = 0) {
@@ -754,8 +793,46 @@ inline std::string target_json(const char* role, const char* variable_id,
     + ",\"variableId\":" + quoted(variable_id ? variable_id : "")
     + ",\"expression\":" + quoted(expression ? expression : "")
     + ",\"indexExpression\":" + quoted(index_expression ? index_expression : "");
-  if (has_resolved_index) result += ",\"resolvedIndex\":" + std::to_string(resolved_index);
+  if (has_resolved_index) {
+    const std::string index_source = index_expression ? index_expression : "";
+    if (index_source.find(',') != std::string::npos) {
+      const std::uint64_t packed = static_cast<std::uint64_t>(resolved_index);
+      const std::int32_t row = static_cast<std::int32_t>(packed >> 32);
+      const std::int32_t column = static_cast<std::int32_t>(packed & 0xffffffffULL);
+      result += ",\"resolvedIndices\":[" + std::to_string(row) + ',' + std::to_string(column) + ']';
+    } else {
+      result += ",\"resolvedIndex\":" + std::to_string(resolved_index);
+    }
+  }
   return result + '}';
+}
+
+inline std::string source_target_json(
+    const char* role, const char* variable_id,
+    const char* expression, const char* index_expression,
+    bool has_resolved_index, long long resolved_index) {
+  std::string result = target_json(
+    role, variable_id, expression, index_expression,
+    has_resolved_index, resolved_index);
+  if (!variable_id || !*variable_id) {
+    result.insert(result.size() - 1,
+      std::string(",\"literal\":true,\"literalValue\":")
+        + quoted(expression ? expression : ""));
+  }
+  return result;
+}
+
+inline std::string arithmetic_target_json(
+    const char* role, const char* variable_id,
+    const char* expression, const char* index_expression,
+    bool has_resolved_index, long long resolved_index,
+    const char* operation) {
+  std::string result = source_target_json(
+    role, variable_id, expression, index_expression,
+    has_resolved_index, resolved_index);
+  result.insert(result.size() - 1,
+    std::string(",\"arithmeticOperator\":") + quoted(operation ? operation : "+"));
+  return result;
 }
 
 template <typename T>
@@ -1008,10 +1085,85 @@ void event_binary_assign(
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
           target_has_resolved_index, target_resolved_index)
-      + ',' + target_json("source-left", left_id, left_expression, left_index,
+      + ',' + arithmetic_target_json("source-left", left_id, left_expression, left_index,
+          left_has_resolved_index, left_resolved_index, operation)
+      + ',' + arithmetic_target_json("source-right", right_id, right_expression, right_index,
+          right_has_resolved_index, right_resolved_index, operation) + ']');
+}
+
+template <typename LeftFactory, typename RightFactory,
+          typename BeforeFactory, typename F, typename AfterFactory>
+void event_select_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* left_id, const char* left_expression, const char* left_index,
+    bool left_has_resolved_index, long long left_resolved_index,
+    const char* right_id, const char* right_expression, const char* right_index,
+    bool right_has_resolved_index, long long right_resolved_index,
+    const char* operation, const char* expression,
+    LeftFactory left_factory, RightFactory right_factory,
+    BeforeFactory before_factory, F action, AfterFactory after_factory,
+    bool animate = true, bool for_initializer = false) {
+  const std::string before = encode_value(before_factory());
+  const auto left_value = left_factory();
+  const auto right_value = right_factory();
+  const std::string selection = operation ? operation : "";
+  const bool select_left = selection == "max"
+    ? !(left_value < right_value)
+    : !(right_value < left_value);
+  const std::string selected_source = select_left
+    ? encode_value(left_value)
+    : encode_value(right_value);
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  recorder().add_event("assign", line, signature ? signature : "",
+    std::string("\"operation\":\"=\"")
+      + ",\"selectionOperation\":" + quoted(selection)
+      + ",\"selectedSourceRole\":" + quoted(select_left ? "source-left" : "source-right")
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after
+      + ",\"source\":" + selected_source + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
+          target_has_resolved_index, target_resolved_index)
+      + ',' + source_target_json("source-left", left_id, left_expression, left_index,
           left_has_resolved_index, left_resolved_index)
-      + ',' + target_json("source-right", right_id, right_expression, right_index,
+      + ',' + source_target_json("source-right", right_id, right_expression, right_index,
           right_has_resolved_index, right_resolved_index) + ']');
+}
+
+template <typename BeforeFactory, typename F, typename AfterFactory>
+void event_multi_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const std::vector<std::string>& source_targets,
+    const char* expression,
+    BeforeFactory before_factory, F action, AfterFactory after_factory,
+    bool animate = true, bool for_initializer = false) {
+  const std::string before = encode_value(before_factory());
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  std::string targets = target_json(
+    "target", target_id, target_expression, target_index,
+    target_has_resolved_index, target_resolved_index);
+  for (const std::string& source_target : source_targets) {
+    targets += ',' + source_target;
+  }
+  recorder().add_event("assign", line, signature ? signature : "",
+    std::string("\"operation\":\"=\"")
+      + ",\"multiSourceArithmetic\":true"
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"targets\":[" + targets + ']');
 }
 
 // An assignment used as the right-hand side of another assignment must

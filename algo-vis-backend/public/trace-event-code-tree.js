@@ -1,9 +1,20 @@
+/**
+ * 模組：事件程式碼樹
+ *
+ * 責任：把單一 frame 的事件依函式、控制結構與來源範圍整理成 Studio 可瀏覽的階層。
+ * 資料流：先建立事件群組與可用性，再沿 source contexts 建立 outline；build 階段選出相關行並把事件 segment 掛回原始行號。
+ * 重要不變條件：同一事件群組在樹狀檢視與播放器必須共用穩定 id；排序以來源位置與事件順序為準。
+ * 相容性：缺少完整 contexts 的舊事件仍會落到可顯示的頂層群組，無來源範圍時不杜撰行號。
+ */
 (function () {
   const CONTROL_TYPES = new Set([
     'ForStatement', 'IfStatement', 'WhileStatement', 'DoStatement', 'SwitchStatement'
   ]);
   const OUTLINE_CONTEXT_TYPES = new Set(['FunctionDefinition', ...CONTROL_TYPES]);
 
+  // ---------------------------------------------------------------------------
+  // 區段：來源範圍與事件群組
+  // ---------------------------------------------------------------------------
   function finiteRange(source = {}) {
     const from = Number(source.from);
     const to = Number(source.to);
@@ -83,6 +94,9 @@
     return checked(events.filter(event => availability([event]) === kind));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 事件收集
+  // ---------------------------------------------------------------------------
   function collectGroups(document, frame) {
     const currentEvents = new Set(frame?.events || []);
     const groups = new Map();
@@ -186,6 +200,9 @@
     return items;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：控制結構階層
+  // ---------------------------------------------------------------------------
   function buildOutline(document, frame) {
     const source = String(document?.sourceCode || '');
     const groups = collectGroups(document, frame);
@@ -268,6 +285,9 @@
     ))[0] || null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：程式碼行事件標記
+  // ---------------------------------------------------------------------------
   function segmentsForLine(line, groups) {
     const ranges = groups.filter(group => group.from < line.end && group.to > line.start);
     const boundaries = new Set([line.start, line.end]);
@@ -289,6 +309,9 @@
     }).filter(segment => segment.text);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：樹狀模型輸出
+  // ---------------------------------------------------------------------------
   function build(document, frame) {
     const source = String(document?.sourceCode || '');
     if (!source) return { source, groups: [], items: [] };

@@ -1,9 +1,17 @@
+// -----------------------------------------------------------------------------
+// 投影片雲端 payload 工具
+// 將 deck 與封面內容整理為 API 格式，並集中處理回應錯誤與版本欄位。
+// -----------------------------------------------------------------------------
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.ASMSlideCloud = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   const CHUNK_CHARS = 256 * 1024;
+  // -----------------------------------------------------------------------------
+  // 雲端 deck 投影
+  // 重用本機 storage 的內容定址規則，把大型 trace 拆成可獨立上傳的 references。
+  // -----------------------------------------------------------------------------
   async function project(source, storage) {
     const projected = await storage.project(source);
     const assets = {};
@@ -33,6 +41,10 @@
     if (totalBytes > 512 * 1024 * 1024) throw new Error('投影片總容量超過 512 MB');
     return { snapshot, resources };
   }
+  // -----------------------------------------------------------------------------
+  // UTF-8 安全分塊
+  // 依 Unicode code point 累計 byte 長度，避免在代理字對中間切斷 JSON 字串。
+  // -----------------------------------------------------------------------------
   function chunks(text) {
     const parts = [];
     for (let index = 0; index < text.length;) {
@@ -43,6 +55,10 @@
     }
     return parts;
   }
+  // -----------------------------------------------------------------------------
+  // 分段上傳交易
+  // 先建立或更新 deck metadata，再逐塊上傳引用內容；任一步失敗都回報明確 API 錯誤。
+  // -----------------------------------------------------------------------------
   async function save(source, { endpoint, headers, fetch, storage, title, cover_thumbnail }) {
     const projected = await project(source, storage);
     async function request(url, options) {

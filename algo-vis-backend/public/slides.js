@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 投影片編輯器主協調器
+// 管理 deck 狀態、Reveal/Fabric/widget 的同步、編輯歷史、TTS、排序與匯入匯出；所有可持久化變更最後都由 saveDeck 收斂。
+// -----------------------------------------------------------------------------
 (function () {
   const STORAGE_KEY = 'asm_reveal_fabric_deck_v5';
   const OLD_STORAGE_KEY = 'asm_reveal_fabric_deck_v4';
@@ -36,12 +40,27 @@
   const FABRIC_CUSTOM_PROPS = [
     'transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius', 'layerIndex',
     'styles', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'underline', 'linethrough', 'fill', 'textBackgroundColor',
-    'asmInlineScripts', 'asmInlineScriptBaseStyles', 'asmGraphemeVersion',
+    'asmInlineScripts', 'asmInlineScriptBaseStyles', 'asmGraphemeVersion', 'asmTextWidthMode',
     'asmShapeType', 'arrowHeadSize', 'arrowHeadStyle',
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
   const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
   const STRUCTURE_MODES = ['normal', 'matrix', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+  const STRUCTURE_MODE_LABELS = Object.freeze({
+    normal: 'Array',
+    matrix: '2D Array',
+    binary_tree: 'Tree',
+    heap: 'Heap',
+    segment_tree: 'Segment Tree',
+    BIT: 'Binary Indexed Tree',
+    disk: 'Disk',
+    stack: 'Stack',
+    queue: 'Queue'
+  });
+
+  function defaultStructureName(mode) {
+    return STRUCTURE_MODE_LABELS[mode] || STRUCTURE_MODE_LABELS.normal;
+  }
 
   function isCellGridType(type) {
     return type === 'structure' || type === 'table';
@@ -69,6 +88,10 @@
     return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
+  // -----------------------------------------------------------------------------
+  // 預設 deck 與新建資料
+  // 預設值只用於首次建立；載入的任何外部資料仍需經 normalizeDeck 補齊欄位與移除不支援狀態。
+  // -----------------------------------------------------------------------------
   const defaultDeck = {
     ttsSettings: {
       rate: 1.2,
@@ -170,6 +193,10 @@
     ]
   };
 
+  // -----------------------------------------------------------------------------
+  // 執行期狀態與服務控制代碼
+  // 依網址來源隔離本機草稿，並集中保存目前頁面、選取、歷史與非同步工作的狀態。
+  // -----------------------------------------------------------------------------
   const DRAFT_KEY = deckUid ? `${STORAGE_KEY}:deck:${deckUid}`
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
@@ -213,7 +240,6 @@
   let customOverviewRightMouseDown = false;
   let slideClipboard = [];
   let slideMutationInFlight = false;
-  let pendingSlideDelete = null;
   const slidePageEnteringIds = new Set();
   const overviewPageEnteringIds = new Set();
   let objectClipboard = { fabric: [], widgets: [], cut: false };
@@ -243,6 +269,7 @@
   let progressiveRebuildGeneration = 0;
   let activeStructureContext = null;
   let selectedStructureCell = null;
+  let additiveCanvasSelectionGesture = false;
   let activeStructureInlineEditor = null;
   let structureCellClickTimer = null;
   let expandedTtsObjectKey = null;
@@ -377,11 +404,6 @@
   const codeEditorModalStatus = document.getElementById('codeEditorModalStatus');
   const closeCodeEditorModalBtn = document.getElementById('closeCodeEditorModalBtn');
   const saveCodeEditorModalBtn = document.getElementById('saveCodeEditorModalBtn');
-  const slideDeleteDialog = document.getElementById('slideDeleteDialog');
-  const slideDeleteMessage = document.getElementById('slideDeleteMessage');
-  const closeSlideDeleteDialogBtn = document.getElementById('closeSlideDeleteDialogBtn');
-  const cancelSlideDeleteBtn = document.getElementById('cancelSlideDeleteBtn');
-  const confirmSlideDeleteBtn = document.getElementById('confirmSlideDeleteBtn');
   const codeLanguageSelect = document.getElementById('codeLanguageSelect');
   const latexFontSizeInput = document.getElementById('latexFontSizeInput');
   const codeFontSizeInput = document.getElementById('codeFontSizeInput');
@@ -390,6 +412,7 @@
   const exitStructureEditorBtn = document.getElementById('exitStructureEditorBtn');
   const exitTableEditorBtn = document.getElementById('exitTableEditorBtn');
   const structureModeSelect = document.getElementById('structureModeSelect');
+  const structureNameInput = document.getElementById('structureNameInput');
   const structureTreeControls = document.getElementById('structureTreeControls');
   const structureTreeLayoutSelect = document.getElementById('structureTreeLayoutSelect');
   const structureTreeDirectionSelect = document.getElementById('structureTreeDirectionSelect');
@@ -553,6 +576,10 @@
     };
   }
 
+  // -----------------------------------------------------------------------------
+  // Deck 正規化與本機儲存
+  // 所有載入入口先把舊資料轉成目前 schema；儲存時則先同步畫布，再更新草稿、歷史與雲端排程。
+  // -----------------------------------------------------------------------------
   function normalizeDeck(raw) {
     if (raw && Array.isArray(raw.groups)) {
       raw.ttsSettings = normalizeTtsSettings(raw.ttsSettings);
@@ -650,6 +677,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 雲端載入、漸進重建與同步
+  // 遠端 deck 先進入可操作狀態，再按目前頁面優先逐張重建重型動畫，避免大型簡報阻塞首次呈現。
+  // -----------------------------------------------------------------------------
   async function loadCloudDeck() {
     if (sampleId) {
       setCloudStatus('loading', '正在載入公開投影片…');
@@ -877,6 +908,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 分享權限與匯入匯出
+  // 分享對話框只管理存取模式；匯出會建立穩定快照，匯入則回到共同正規化與重建流程。
+  // -----------------------------------------------------------------------------
   function setShareDialogStatus(text = '', isError = false) {
     if (!shareDialogStatus) return;
     shareDialogStatus.textContent = text;
@@ -1107,6 +1142,10 @@
     } finally { deckImportInProgress = false; if (importDeckInput) importDeckInput.value = ''; }
   }
 
+  // -----------------------------------------------------------------------------
+  // 復原、重做與文字編輯交易
+  // 一般操作以 deck 快照記錄；Fabric 文字輸入另以短期 checkpoint 合併連續鍵入，避免每個字都占一筆歷史。
+  // -----------------------------------------------------------------------------
   function pushHistorySnapshot(snapshot = JSON.stringify(deck)) {
     clearTimeout(pendingHistoryTimer);
     pendingHistoryTimer = null;
@@ -1405,6 +1444,10 @@
     return slide && fabricCanvases.get(slide.id);
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影片旁白與 TTS 狀態機
+  // 從 Fabric 文字與手動台詞建立播放計畫；session/run 狀態保證暫停、換頁或重播後的舊 callback 不再推進。
+  // -----------------------------------------------------------------------------
   function applyTtsPronunciations(text) {
     const parsed = window.parseTTSMarkup?.(text);
     return String(parsed ? parsed.speech : text || '')
@@ -1750,6 +1793,7 @@
       fontFamily: DEFAULT_FONT_FAMILY,
       fill: '#1f282d',
       styles: {},
+      asmTextWidthMode: 'fixed',
       ttsCarrier: true,
       ttsScriptMode: 'manual',
       ttsScript: ''
@@ -2279,6 +2323,10 @@
     );
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影片、Fabric 與 widget schema 正規化
+  // 舊版箭頭、Unicode 樣式與結構資料都在此邊界遷移，後續渲染可以只處理一致格式。
+  // -----------------------------------------------------------------------------
   function normalizeCanvasJson(canvasJson) {
     return {
       version: canvasJson && canvasJson.version,
@@ -2846,6 +2894,11 @@
           normalized.frameBackgroundEnabled = false;
           stripTableStructureStyles(normalized);
         }
+        if (type === 'structure') {
+          normalized.structureName = typeof widget.structureName === 'string'
+            ? widget.structureName.slice(0, 80)
+            : defaultStructureName(normalized.structureMode);
+        }
         if (type === 'structure' && normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
         }
@@ -2870,6 +2923,10 @@
     }) : [];
   }
 
+  // -----------------------------------------------------------------------------
+  // Deck DOM 建立與局部更新
+  // 依水平群組與垂直頁面重建 Reveal section，並在資料結構未變時選擇原地還原以保留編輯焦點。
+  // -----------------------------------------------------------------------------
   function rebuildPositions() {
     slidePositions.clear();
     deck.groups.forEach((group, h) => {
@@ -3096,6 +3153,10 @@
     });
   }
 
+  // -----------------------------------------------------------------------------
+  // LaTeX、動畫屬性與投影片 section
+  // widget 內容在進 DOM 前先正規化；Reveal 動畫屬性由 slide 設定單向投影，避免 DOM 成為第二份狀態。
+  // -----------------------------------------------------------------------------
   function normalizeLatexSource(source = '') {
     return String(source || '')
       .replace(/(^|[^\\])\/([a-zA-Z]+)/g, '$1\\$2')
@@ -3242,6 +3303,20 @@
       positionWidgetContent(el, found.widget);
     });
     if (changed) saveDeck({ history: false });
+  }
+
+  let latexAutoSizeFrame = 0;
+  function scheduleVisibleLatexAutoSize(section = reveal?.getCurrentSlide?.()) {
+    cancelAnimationFrame(latexAutoSizeFrame);
+    latexAutoSizeFrame = requestAnimationFrame(() => {
+      latexAutoSizeFrame = requestAnimationFrame(() => {
+        const current = section?.classList?.contains('present')
+          ? section
+          : reveal?.getCurrentSlide?.();
+        autoSizeLatexWidgets(current || slidesRoot);
+        reveal?.layout?.();
+      });
+    });
   }
 
   function applyAnimationAttributes(el, source) {
@@ -3399,7 +3474,7 @@
       'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
     ].some(key => previousWidget[key] !== widget[key]);
     const structureChanged = isCellGridWidget(widget) && (!previousWidget || [
-      'structureMode', 'indexMode', 'indexBase', 'segmentDomainLength', 'itemsPerRow', 'gap', 'cellSize',
+      'structureMode', 'structureName', 'indexMode', 'indexBase', 'segmentDomainLength', 'itemsPerRow', 'gap', 'cellSize',
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
@@ -3564,6 +3639,10 @@
     // Mode and zoom transforms animate for 320ms; redraw again at their final size.
     fabricResolutionTimer = setTimeout(refreshFabricResolution, 400);
   }
+  // -----------------------------------------------------------------------------
+  // Fabric 畫布建立與事件接線
+  // 每次 render 都以 generation 取消過期的非同步載入；事件完成後才把畫布內容同步回目前 slide。
+  // -----------------------------------------------------------------------------
   async function buildFabricCanvases(buildGeneration = fabricBuildGeneration) {
     if (buildGeneration !== fabricBuildGeneration) return;
     document.body.dataset.fabricBuild = 'starting';
@@ -3753,6 +3832,7 @@
           event.target.__asmInlineScriptEditingFormatted = true;
         }
       }
+      fitAutoTextWidth(event.target, canvas);
       sync(event, { textEdit: true });
     });
     canvas.on('text:editing:entered', event => {
@@ -3781,7 +3861,9 @@
     });
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
-      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
+      const additive = additiveCanvasSelectionGesture
+        || !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey);
+      if (!canvas.__asmWidgetMarquee && !additive) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -3789,7 +3871,9 @@
     });
     canvas.on('selection:updated', e => {
       if (canvas.__asmSerializingSelection) return;
-      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
+      const additive = additiveCanvasSelectionGesture
+        || !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey);
+      if (!canvas.__asmWidgetMarquee && !additive) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -4127,9 +4211,14 @@
     Object.defineProperty(obj, '__asmArrowRendererInstalled', { value: true, configurable: true });
   }
 
+  // -----------------------------------------------------------------------------
+  // Fabric 物件幾何與控制點
+  // 統一套用可選取性、等比例縮放與線段端點控制，確保序列化前的幾何表示可預期。
+  // -----------------------------------------------------------------------------
   function configureObject(obj) {
     sanitizeFabricTextBaseline(obj);
     const animation = normalizeAnimationSettings(obj);
+    const textWidthMode = isTextObject(obj) ? inferTextWidthMode(obj) : null;
     configureSelectionControls(obj);
     obj.set({
       lockScalingFlip: true,
@@ -4146,7 +4235,7 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
-    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2 });
+    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2, asmTextWidthMode: textWidthMode });
     if (obj.asmInlineScripts && isTextObject(obj)) {
       if (!obj.asmInlineScriptBaseStyles) {
         obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
@@ -4274,6 +4363,10 @@
     obj.dirty = true;
   }
 
+  // -----------------------------------------------------------------------------
+  // Reveal 自動轉場協調
+  // Fabric、code 與 structure 各自建立過渡層；任何中斷都必須清掉 ghost 與暫存樣式，再回到目的頁的正式 DOM。
+  // -----------------------------------------------------------------------------
   function finishFabricAutoAnimation() {
     if (!activeFabricAutoAnimation) return;
     cancelAnimationFrame(activeFabricAutoAnimation.frame);
@@ -4881,6 +4974,55 @@
     });
   }
 
+  function inferTextWidthMode(obj) {
+    if (obj?.asmTextWidthMode === 'fixed' || obj?.asmTextWidthMode === 'auto') {
+      return obj.asmTextWidthMode;
+    }
+    const sourceLines = String(obj?.text || '').split('\n').length;
+    const renderedLines = Array.isArray(obj?.textLines)
+      ? obj.textLines.length
+      : (Array.isArray(obj?._textLines) ? obj._textLines.length : sourceLines);
+    return renderedLines > sourceLines ? 'fixed' : 'auto';
+  }
+
+  function naturalTextContentWidth(obj) {
+    const Fabric = f();
+    const TextClass = Fabric?.Text || Fabric?.IText;
+    if (!obj || !TextClass) return Math.max(40, Number(obj?.width) || 40);
+    const metricProperties = [
+      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
+      'charSpacing', 'stroke', 'strokeWidth', 'paintFirst', 'direction'
+    ];
+    const properties = metricProperties.reduce((result, key) => {
+      if (obj[key] !== undefined) result[key] = obj[key];
+      return result;
+    }, {});
+    const text = String(obj.text || '');
+    if (!text) return 40;
+    const probe = new TextClass(text, {
+      ...properties,
+      styles: clone(obj.styles || {})
+    });
+    probe.initDimensions?.();
+    const width = Number(probe.width) || 0;
+    return Math.max(40, Math.ceil(width + 1));
+  }
+
+  function fitAutoTextWidth(obj, canvas) {
+    if (!isTextObject(obj) || inferTextWidthMode(obj) !== 'auto') return false;
+    obj.asmTextWidthMode = 'auto';
+    const nextWidth = naturalTextContentWidth(obj);
+    if (Math.abs((Number(obj.width) || 0) - nextWidth) < 0.5
+      && Math.abs((Number(obj.scaleX) || 1) - 1) < 0.001) return false;
+    obj.set({ width: nextWidth, scaleX: 1, dynamicMinWidth: 0 });
+    obj.initDimensions?.();
+    obj.set({ width: nextWidth, scaleX: 1 });
+    obj.dirty = true;
+    obj.setCoords?.();
+    canvas?.requestRenderAll?.();
+    return true;
+  }
+
   function normalizeTextBoxResize(obj, canvas) {
     if (!isTextObject(obj)) return;
     const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
@@ -4889,7 +5031,8 @@
     obj.set({
       width: nextWidth,
       scaleX: 1,
-      scaleY: 1
+      scaleY: 1,
+      asmTextWidthMode: 'fixed'
     });
     if (obj.initDimensions) obj.initDimensions();
     obj.dirty = true;
@@ -4900,6 +5043,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 新增元件與媒體
+  // 工具列動作建立具預設樣式的 Fabric 或 widget 物件，完成後統一選取、存檔並刷新編輯面板。
+  // -----------------------------------------------------------------------------
   function addObject(kind, point) {
     if (kind === 'latex' || kind === 'code' || kind === 'table') {
       addWidget(kind, point);
@@ -4936,7 +5083,8 @@
           styles: {},
           asmInlineScripts: true,
           asmInlineScriptBaseStyles: {},
-          asmGraphemeVersion: 2
+          asmGraphemeVersion: 2,
+          asmTextWidthMode: 'auto'
         });
       } else {
         obj = createShape(kind, left, top);
@@ -4954,6 +5102,7 @@
 
     try {
       configureObject(obj);
+      if (kind === 'text') fitAutoTextWidth(obj, canvas);
       const slide = getSlide();
       obj.set({ layerIndex: nextUnifiedLayerIndex(slide, canvas) });
       canvas.add(obj);
@@ -5057,6 +5206,7 @@
         markIndices: '',
         backgroundIndices: ''
       });
+      if (isStructure) widget.structureName = defaultStructureName(normalizedStructureMode);
       if (isTable) {
         Object.assign(widget, {
           tableData: [
@@ -5231,6 +5381,10 @@
     };
   }
 
+  // -----------------------------------------------------------------------------
+  // 吸附、對齊與多選操作
+  // 把 Fabric 與 HTML widget 轉成同一套邊界資料；拖曳只顯示暫時導線，落點後才寫回 deck。
+  // -----------------------------------------------------------------------------
   function snapCandidateBounds(canvas, excludedFabric = new Set(), excludedWidgetIds = new Set()) {
     const candidates = [];
     canvas?.getObjects().forEach(object => {
@@ -5760,6 +5914,10 @@
     selectAllCurrentWidgets();
   }
 
+  // -----------------------------------------------------------------------------
+  // 物件剪貼簿與選取生命週期
+  // 剪貼簿保存可序列化副本並在貼上時重建 ID；Fabric 與 widget 共用清除、刪除及全選語意。
+  // -----------------------------------------------------------------------------
   function serializeClipboardFabricObjects(canvas, objects) {
     const serialize = () => objects.map(obj => obj.toObject ? obj.toObject(FABRIC_CUSTOM_PROPS) : clone(obj));
     return withAbsoluteFabricSelection(canvas, serialize);
@@ -6010,6 +6168,10 @@
     return ids;
   }
 
+  // -----------------------------------------------------------------------------
+  // 側欄編輯器與結構儲存
+  // 依目前選取切換 code、LaTeX、table 或 structure 面板；欄位修改一律回寫 widget 後再重繪。
+  // -----------------------------------------------------------------------------
   function showDefaultPanel() {
     if (customOverviewOpen) {
       showOverviewSidebarPanel();
@@ -6073,6 +6235,11 @@
 
   function populateStructureEditor(widget) {
     structureModeSelect.value = widget.structureMode || 'normal';
+    if (structureNameInput) {
+      structureNameInput.value = typeof widget.structureName === 'string'
+        ? widget.structureName
+        : defaultStructureName(widget.structureMode || 'normal');
+    }
     if (structureTreeLayoutSelect) structureTreeLayoutSelect.value = widget.treeLayout || 'compact';
     if (structureTreeDirectionSelect) structureTreeDirectionSelect.value = widget.treeHorizontal ? 'horizontal' : 'vertical';
     setStructureColorButton(structureTreeArrowColorInput, widget.treeArrowColor || '#333333');
@@ -6566,6 +6733,10 @@
     structureContextMenu.style.top = `${top}px`;
   }
 
+  // -----------------------------------------------------------------------------
+  // 結構格子選取與內容功能表
+  // 從 SVG cell 的穩定資料屬性還原邏輯位置，讓樹、矩陣與線性結構共享新增、刪除與樣式操作。
+  // -----------------------------------------------------------------------------
   function openStructureContextMenu(event) {
     if (!document.body.classList.contains('asm-edit-mode') || !structureContextMenu) return;
     const widgetEl = event.target.closest?.('.structure-widget');
@@ -6757,6 +6928,10 @@
     algorithmEditSlideBtn.hidden = getSlide()?.kind !== 'algorithm-animation';
   }
 
+  // -----------------------------------------------------------------------------
+  // 物件層級與動畫屬性
+  // 將 Fabric 及 widget 映射成單一圖層清單；調整順序後同時更新 DOM z-index 與序列化欄位。
+  // -----------------------------------------------------------------------------
   function showWidgetEditor(widgetId) {
     if (ttsPanelIsExpanded()) {
       showOnlyTtsSidebar();
@@ -7211,6 +7386,10 @@
     return Math.max(SLIDE_ZOOM_MIN, Math.min(SLIDE_ZOOM_MAX, Number(value) || 1));
   }
 
+  // -----------------------------------------------------------------------------
+  // 編輯模式、縮放與主介面綁定
+  // 縮放只改編輯視窗比例，Reveal 頁面座標仍維持 1280×720；所有 chrome 事件由 bindChrome 一次註冊。
+  // -----------------------------------------------------------------------------
   function setSlideViewportZoom(value) {
     slideViewportZoom = Math.round(clampSlideViewportZoom(value) * 100) / 100;
     document.documentElement.style.setProperty('--slide-user-zoom', String(slideViewportZoom));
@@ -7472,16 +7651,6 @@
     shareDialog?.addEventListener('click', event => {
       if (event.target === shareDialog) closeShareDialog();
     });
-    closeSlideDeleteDialogBtn?.addEventListener('click', closeSlideDeleteDialog);
-    cancelSlideDeleteBtn?.addEventListener('click', closeSlideDeleteDialog);
-    confirmSlideDeleteBtn?.addEventListener('click', confirmPendingSlideDelete);
-    slideDeleteDialog?.addEventListener('cancel', event => {
-      event.preventDefault();
-      closeSlideDeleteDialog();
-    });
-    slideDeleteDialog?.addEventListener('click', event => {
-      if (event.target === slideDeleteDialog) closeSlideDeleteDialog();
-    });
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);
@@ -7580,6 +7749,15 @@
       const found = getWidget(selectedWidgetId);
       const structureMode = structureModeSelect.value;
       const patch = { structureMode };
+      const previousMode = found.widget?.structureMode || 'normal';
+      const previousDefaultName = defaultStructureName(previousMode);
+      const currentName = typeof found.widget?.structureName === 'string'
+        ? found.widget.structureName
+        : previousDefaultName;
+      if (currentName === previousDefaultName) {
+        patch.structureName = defaultStructureName(structureMode);
+        if (structureNameInput) structureNameInput.value = patch.structureName;
+      }
       if (structureMode === 'binary_tree') {
         patch.treeData = normalizeTreeData(found.widget?.treeData, found.widget?.content || '');
       }
@@ -7612,6 +7790,7 @@
       if (structureFrameBackgroundColorInput) structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
       updateSelectedStructure({ frameBackgroundEnabled: structureFrameBackgroundEnabledInput.checked });
     });
+    structureNameInput?.addEventListener('input', () => updateSelectedStructure({ structureName: structureNameInput.value }));
     const updateTableDimensions = () => {
       const found = getWidget(selectedWidgetId);
       if (!found.widget || found.widget.type !== 'table') return;
@@ -7725,6 +7904,7 @@
   function bindSlideDrop() {
     let widgetDrag = null;
     let suppressWidgetClick = false;
+    let widgetPointerSelection = null;
 
     const isCodeScrollbarInteraction = (event, widgetEl) => {
       if (!widgetEl?.classList.contains('code-widget')) return false;
@@ -7738,6 +7918,8 @@
 
     const beginWidgetDrag = event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
+      additiveCanvasSelectionGesture = !!(event.shiftKey || event.ctrlKey || event.metaKey);
+      if (additiveCanvasSelectionGesture && selectedStructureCell) clearStructureCellSelection();
       let widgetEl = event.target.closest && event.target.closest('.slide-widget');
       if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) {
         widgetEl = widgetClaimableThroughCanvas(event);
@@ -7752,6 +7934,10 @@
       if (widgetEl.classList.contains('structure-widget')) {
         if (event.target.closest?.('.structure-inline-value-input')) return;
       }
+      widgetPointerSelection = {
+        widgetId: widgetEl.dataset.widgetId,
+        wasSelected: widgetEl.classList.contains('is-selected')
+      };
       if (event.shiftKey) return;
       const selectedStructureCellHit = widgetEl.classList.contains('structure-widget')
         && widgetEl.classList.contains('is-selected')
@@ -7942,12 +8128,16 @@
 
     document.addEventListener('mouseup', () => {
       endWidgetDrag();
+      additiveCanvasSelectionGesture = false;
     }, true);
 
     slidesRoot.addEventListener('pointerdown', event => beginWidgetDrag(event), true);
     document.addEventListener('pointerdown', event => beginWidgetDrag(event), true);
     document.addEventListener('pointermove', event => updateWidgetDrag(event), true);
-    document.addEventListener('pointerup', event => endWidgetDrag(event), true);
+    document.addEventListener('pointerup', event => {
+      endWidgetDrag(event);
+      additiveCanvasSelectionGesture = false;
+    }, true);
 
     slidesRoot.addEventListener('wheel', event => {
       const pre = event.target.closest?.('.code-widget pre');
@@ -8059,10 +8249,26 @@
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
       if (suppressWidgetClick) {
         suppressWidgetClick = false;
+        widgetPointerSelection = null;
         return;
       }
+      const pointerSelection = widgetPointerSelection;
+      widgetPointerSelection = null;
       const structureCell = event.target.closest?.('[data-structure-item-index]');
+      if (event.shiftKey || event.ctrlKey || event.metaKey) {
+        clearStructureCellSelection();
+        toggleWidgetSelection(widgetEl.dataset.widgetId);
+        return;
+      }
       if (structureCell && widgetEl.classList.contains('structure-widget')) {
+        const wasSelected = pointerSelection?.widgetId === widgetEl.dataset.widgetId
+          ? pointerSelection.wasSelected
+          : widgetEl.classList.contains('is-selected');
+        if (!wasSelected) {
+          clearStructureCellSelection();
+          selectWidget(widgetEl.dataset.widgetId);
+          return;
+        }
         closeStructureInlineEditor(true);
         selectStructureCell(widgetEl, structureCell);
         if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
@@ -8081,11 +8287,7 @@
         return;
       }
       clearStructureCellSelection();
-      if (event.shiftKey || event.ctrlKey || event.metaKey) {
-        toggleWidgetSelection(widgetEl.dataset.widgetId);
-      } else {
-        selectWidget(widgetEl.dataset.widgetId);
-      }
+      selectWidget(widgetEl.dataset.widgetId);
     }, true);
 
     slidesRoot.addEventListener('dragover', event => {
@@ -8126,12 +8328,6 @@
     });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && slideDeleteDialog?.open) {
-        event.preventDefault();
-        event.stopPropagation();
-        closeSlideDeleteDialog();
-        return;
-      }
       if (event.key === 'Escape' && structureContextMenu && !structureContextMenu.hidden) {
         event.preventDefault();
         event.stopPropagation();
@@ -8289,6 +8485,10 @@
     return {};
   }
 
+  // -----------------------------------------------------------------------------
+  // 物件工具列、文字樣式與顏色選擇器
+  // 工具列依目前 Fabric 選取動態顯示；連續顏色輸入延遲合併歷史，結束互動時再建立正式快照。
+  // -----------------------------------------------------------------------------
   function applyShapeStyle(style, { history = true } = {}) {
     const canvas = currentFabricCanvas();
     if (!canvas) return;
@@ -8642,6 +8842,7 @@
       object.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(object.styles);
       applyInlineScripts(object);
     }
+    fitAutoTextWidth(object, canvas);
     canvas.requestRenderAll();
     syncCurrentSlideCanvas();
     updateObjectToolbar(object, canvas);
@@ -8682,6 +8883,7 @@
         applyInlineScripts(target.object);
       }
     }
+    fitAutoTextWidth(target.object, target.canvas);
     target.object.dirty = true;
     target.object.setCoords();
     target.canvas.requestRenderAll();
@@ -8712,6 +8914,7 @@
     if (!target.canvas || !target.object) return;
     target.object.set(style);
     if (target.object.asmInlineScripts) applyInlineScripts(target.object);
+    fitAutoTextWidth(target.object, target.canvas);
     target.object.setCoords();
     target.canvas.requestRenderAll();
     syncCurrentSlideCanvas({ history });
@@ -8859,6 +9062,42 @@
     updateObjectToolbar(target.object, target.canvas);
   }
 
+  function applyPickedColor(color, target = activeColorTarget, structureCell = activeStructureStyleCell) {
+    const binding = structureColorBindings.find(item => item.target === target);
+    const value = color.rgbaString;
+    if (binding) {
+      const structureColor = color.alpha < 1 ? value : color.hexString;
+      setStructureColorButton(binding.button, structureColor);
+      structureContextMenu
+        ?.querySelector(`[data-structure-style-type="${binding.style}"] .structure-style-icon`)
+        ?.style.setProperty('--style-color', structureColor);
+      if (binding.style && structureCell?.type === binding.style) {
+        const widget = getWidget(structureCell.widgetId).widget;
+        if (widget && selectedWidgetId === structureCell.widgetId) {
+          updateSelectedStructure({
+            cellStyles: patchStructureCellStyle(
+              widget, structureCell.index, structureCell.type, structureColor
+            )
+          }, { history: false, preserveScale: true });
+        }
+      } else {
+        updateSelectedStructure({ [binding.field]: structureColor }, { history: false, preserveScale: true });
+      }
+      scheduleHistorySnapshot();
+      return;
+    }
+    if (target === 'shape-fill') {
+      applyShapeStyle({ fill: value }, { history: false });
+    } else if (target === 'shape-stroke') {
+      applyShapeStyle({ stroke: value }, { history: false });
+    } else if (target === 'text') {
+      applyTextStyle({ fill: value }, { history: false });
+    } else {
+      applyTextStyle({ textBackgroundColor: value }, { history: false });
+    }
+    scheduleHistorySnapshot();
+  }
+
   function populateAvColorSwatches() {
     if (!avColorSwatches || avColorSwatches.childElementCount) return;
     Object.entries(window.ASMArrowModel?.COLORS || {}).forEach(([name, value]) => {
@@ -8878,7 +9117,16 @@
       label.textContent = name;
       button.append(chip, label);
       button.addEventListener('click', () => {
-        iroPicker?.color.set(value);
+        const target = activeColorTarget;
+        const structureCell = activeStructureStyleCell
+          ? { ...activeStructureStyleCell } : null;
+        suppressIroChange = true;
+        try {
+          iroPicker?.color.set(value);
+        } finally {
+          suppressIroChange = false;
+        }
+        if (iroPicker?.color) applyPickedColor(iroPicker.color, target, structureCell);
         commitPendingColorHistory();
         if (!structureStylePickerHoverMode) iroPopup.hidden = true;
       });
@@ -8951,38 +9199,7 @@
       });
       iroPicker.on('color:change', color => {
         if (suppressIroChange) return;
-        const binding = structureColorBindings.find(item => item.target === activeColorTarget);
-        const value = color.rgbaString;
-        if (binding) {
-          const structureColor = color.alpha < 1 ? value : color.hexString;
-          setStructureColorButton(binding.button, structureColor);
-          structureContextMenu
-            ?.querySelector(`[data-structure-style-type="${binding.style}"] .structure-style-icon`)
-            ?.style.setProperty('--style-color', structureColor);
-          if (binding.style && activeStructureStyleCell?.type === binding.style) {
-            const context = activeStructureStyleCell;
-            const widget = getWidget(context.widgetId).widget;
-            if (widget && selectedWidgetId === context.widgetId) {
-              updateSelectedStructure({
-                cellStyles: patchStructureCellStyle(widget, context.index, context.type, structureColor)
-              }, { history: false, preserveScale: true });
-            }
-          } else {
-            updateSelectedStructure({ [binding.field]: structureColor }, { history: false, preserveScale: true });
-          }
-          scheduleHistorySnapshot();
-          return;
-        }
-        if (activeColorTarget === 'shape-fill') {
-          applyShapeStyle({ fill: value }, { history: false });
-        } else if (activeColorTarget === 'shape-stroke') {
-          applyShapeStyle({ stroke: value }, { history: false });
-        } else if (activeColorTarget === 'text') {
-          applyTextStyle({ fill: value }, { history: false });
-        } else {
-          applyTextStyle({ textBackgroundColor: value }, { history: false });
-        }
-        scheduleHistorySnapshot();
+        applyPickedColor(color);
       });
       iroPicker.on('input:end', () => {
         commitPendingColorHistory();
@@ -9031,11 +9248,21 @@
       const rect = anchor.getBoundingClientRect();
       const popupWidth = iroPopup.getBoundingClientRect().width;
       const popupHeight = iroPopup.getBoundingClientRect().height;
-      iroPopup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8))}px`;
+      let left = Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8));
       const below = rect.bottom + 8;
       const above = rect.top - popupHeight - 8;
-      const top = below + popupHeight <= window.innerHeight - 8 || above < 8 ? below : above;
-      iroPopup.style.top = `${Math.max(8, Math.min(top, window.innerHeight - popupHeight - 8))}px`;
+      const preferredTop = below + popupHeight <= window.innerHeight - 8 || above < 8 ? below : above;
+      const top = Math.max(8, Math.min(preferredTop, window.innerHeight - popupHeight - 8));
+      const overlapsAnchor = left < rect.right && left + popupWidth > rect.left
+        && top < rect.bottom && top + popupHeight > rect.top;
+      if (overlapsAnchor) {
+        const right = rect.right + 8;
+        const leftSide = rect.left - popupWidth - 8;
+        if (right + popupWidth <= window.innerWidth - 8) left = right;
+        else if (leftSide >= 8) left = leftSide;
+      }
+      iroPopup.style.left = `${left}px`;
+      iroPopup.style.top = `${top}px`;
     }
   }
 
@@ -9123,6 +9350,10 @@
     if (reveal) reveal.layout();
   }
 
+  // -----------------------------------------------------------------------------
+  // 演算法 iframe 通訊
+  // 以 slideId 與 frame 來源核對訊息，把編輯結果與可見性送到正確的嵌入頁，避免背景 iframe 搶走狀態。
+  // -----------------------------------------------------------------------------
   function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-export-animation-snapshot'
@@ -9210,6 +9441,10 @@
     }, window.location.origin);
   }
 
+  // -----------------------------------------------------------------------------
+  // 投影片新增、刪除與搬移
+  // 所有排序操作直接改 deck 的群組結構，之後重建位置索引並保持使用者焦點在受影響頁面。
+  // -----------------------------------------------------------------------------
   function insertSlideNearCurrent(slide) {
     const group = getGroup();
     if (!group) return;
@@ -9295,31 +9530,6 @@
     requestAnimationFrame(() => openAlgorithmEditor(slide.id));
   }
 
-  function closeSlideDeleteDialog() {
-    pendingSlideDelete = null;
-    if (slideDeleteDialog?.open) slideDeleteDialog.close();
-  }
-
-  function confirmPendingSlideDelete() {
-    const pending = pendingSlideDelete;
-    pendingSlideDelete = null;
-    if (slideDeleteDialog?.open) slideDeleteDialog.close();
-    pending?.commit?.();
-  }
-
-  function requestSlideDeleteConfirmation(slideIds, commit) {
-    if (!slideDeleteDialog || typeof slideDeleteDialog.showModal !== 'function') return;
-    const count = slideIds.length;
-    pendingSlideDelete = { slideIds: slideIds.slice(), commit };
-    if (slideDeleteMessage) {
-      slideDeleteMessage.textContent = count === 1
-        ? '即將刪除目前選取的投影片。刪除後仍可立即使用復原。'
-        : `即將刪除選取的 ${count} 張投影片。刪除後仍可立即使用復原。`;
-    }
-    slideDeleteDialog.showModal();
-    requestAnimationFrame(() => confirmSlideDeleteBtn?.focus());
-  }
-
   function deleteOverviewSelectedSlide() {
     if (slideMutationInFlight) return;
     const ids = customOverviewOpen
@@ -9330,24 +9540,22 @@
     if (!removableIds.length) return;
     const beforeOrder = flatSlideIds();
     const firstDeletedIndex = beforeOrder.findIndex(id => removableIds.includes(id));
-    requestSlideDeleteConfirmation(removableIds, () => {
-      runSlideDeleteTransition(removableIds, () => {
-        removeSlidesByIds(removableIds);
-        const afterOrder = flatSlideIds();
-        const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
-        if (fallbackId) {
-          overviewSelectedSlideId = fallbackId;
-          overviewSelectedSlideIds = new Set([fallbackId]);
-          overviewSelectionAnchorId = fallbackId;
-          const pos = slidePositions.get(fallbackId);
-          if (pos) {
-            currentH = pos.h;
-            currentV = pos.v;
-          }
+    runSlideDeleteTransition(removableIds, () => {
+      removeSlidesByIds(removableIds);
+      const afterOrder = flatSlideIds();
+      const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
+      if (fallbackId) {
+        overviewSelectedSlideId = fallbackId;
+        overviewSelectedSlideIds = new Set([fallbackId]);
+        overviewSelectionAnchorId = fallbackId;
+        const pos = slidePositions.get(fallbackId);
+        if (pos) {
+          currentH = pos.h;
+          currentV = pos.v;
         }
-        saveDeck();
-        renderDeck();
-      });
+      }
+      saveDeck();
+      renderDeck();
     });
   }
 
@@ -9546,6 +9754,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 自訂總覽與多張投影片剪貼簿
+  // 自訂總覽以 deck 順序為資料來源，縮圖採簽章快取；多選、剪下與貼上都保持原相對順序。
+  // -----------------------------------------------------------------------------
   function openCustomOverview() {
     if (!customOverview || customOverviewOpen || !document.body.classList.contains('asm-edit-mode')) return;
     if (reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
@@ -9948,6 +10160,10 @@
     document.addEventListener('pointercancel', end, true);
   }
 
+  // -----------------------------------------------------------------------------
+  // 自訂總覽拖放幾何
+  // 拖曳時以縮圖中心與群組間距計算候選插入點，預覽線不修改 deck，pointerup 才提交排序。
+  // -----------------------------------------------------------------------------
   function customOverviewThumbFromPoint(x, y, excludedIds = new Set()) {
     return document.elementsFromPoint(x, y)
       .find(el => el.matches && el.matches('.custom-overview-thumb') && !excludedIds.has(el.dataset.slideId));
@@ -10363,6 +10579,10 @@
     }, true);
   }
 
+  // -----------------------------------------------------------------------------
+  // Reveal 原生總覽拖放與捲動
+  // 原生 overview 需額外補償 Reveal transform；水平及垂直捲軸只改 pan，再同步最近頁面索引。
+  // -----------------------------------------------------------------------------
   function overviewSlideFromPoint(x, y) {
     return document.elementsFromPoint(x, y).find(el => el.matches && el.matches('section.asm-slide'));
   }
@@ -10795,6 +11015,10 @@
     if (drag.ghost) drag.ghost.remove();
   }
 
+  // -----------------------------------------------------------------------------
+  // 診斷資訊與啟動流程
+  // 診斷只讀目前 deck/DOM 供開發檢查；bootstrap 依序載入來源、建立 Reveal、接線事件並啟動儲存。
+  // -----------------------------------------------------------------------------
   function flashHint(text) {
     const hint = document.getElementById('editHint');
     hint.textContent = 'ESC closes overview; drag slides to reorder.';
@@ -11032,6 +11256,7 @@
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
         syncAlgorithmFrameVisibility();
+        scheduleVisibleLatexAutoSize(event.currentSlide);
       });
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('overviewhidden', scheduleFabricResolution);
@@ -11043,8 +11268,7 @@
       syncAlgorithmFrameVisibility();
       refreshRevealWidgets();
       document.fonts?.ready.then(() => {
-        autoSizeLatexWidgets(slidesRoot);
-        reveal.layout();
+        scheduleVisibleLatexAutoSize();
       });
     });
   }

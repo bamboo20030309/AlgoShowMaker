@@ -1,3 +1,11 @@
+/**
+ * 測試模組：structure-cell-drag.browser.test
+ *
+ * 驗證重點：structure cell drag.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -6,6 +14,9 @@ const net = require('node:net');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('selected array cell remains a handle for dragging its structure widget', { timeout: 120000 }, async () => {
   const root = path.resolve(__dirname, '..');
   const port = await new Promise(resolve => {

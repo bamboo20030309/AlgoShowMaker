@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace SVG 渲染核心
+ *
+ * 責任：把正規化 frame 的變數、物件、文字、箭頭、keep 快照與 Studio 位置組裝成可動畫的 SVG 場景。
+ * 資料流：先由 rules 計算 frame decorations，再依 renderer registry 建立每個物件及語意 target；取得版面與幾何後交給 tween 比較前一畫面並播放轉場。
+ * 重要不變條件：每個可延續物件都必須帶穩定 object key/runtime identity；DOM 幾何、placement map 與箭頭 target registry 必須來自同一次 render。
+ * 相容性：舊 renderer 名稱、缺少位置／style／binding 的文件在入口正規化；靜態縮圖與無動畫渲染必須與播放完成後的終態一致。
+ */
 (function () {
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const TRACE_ROOT_OFFSET = { x: 90, y: 80 };
@@ -184,6 +192,9 @@
     return `runtime-${(hash >>> 0).toString(36)}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：語意 key 與箭頭目標登錄
+  // ---------------------------------------------------------------------------
   function markSelectable(element, key, context = {}, parentKey = '') {
     if (!element || !key) return element;
     element.classList.add('asm-trace-selectable');
@@ -248,6 +259,9 @@
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：原始資料與序列 renderer
+  // ---------------------------------------------------------------------------
   function renderOriginal(group, entry, context) {
     if (typeof window.draw_array_normal !== 'function') {
       return Array.isArray(entry.data?.items) ? renderSequence(group, entry, context) : renderScalar(group, entry, context);
@@ -259,9 +273,11 @@
     const isScalarCell = isScalarRenderer(context.variable, requested);
     const configuredShowIndex = rendererOptions.showIndex;
     const configuredIndexMode = Number(rendererOptions.indexMode);
-    const indexMode = isScalarCell ? 0 : Number.isFinite(configuredIndexMode)
+    let indexMode = isScalarCell ? 0 : Number.isFinite(configuredIndexMode)
       ? Math.max(0, Math.min(4, Math.trunc(configuredIndexMode)))
       : (configuredShowIndex === false ? 0 : 1);
+    if (!isScalarCell && rendererOptions.indexLabels?.mode === 'none') indexMode = 0;
+    else if (!isScalarCell && ['index', 'custom'].includes(rendererOptions.indexLabels?.mode)) indexMode = 1;
     const isMatrix = requested === 'original-matrix' || context.variable.kind === 'matrix';
     const fieldSpec = rendererOptions.fields;
     const fieldSources = Array.isArray(fieldSpec?.variableIds) && context.frame
@@ -443,6 +459,12 @@
           indices,
           kind: isMatrix ? 'matrix-cell' : 'array-cell'
         });
+        if (Object.prototype.hasOwnProperty.call(rendererOptions, 'gridlines')) {
+          cell.querySelectorAll(':scope > rect').forEach(rect => {
+            rect.setAttribute('stroke-width', String(Math.max(0, Number(rendererOptions.gridlines) || 0)));
+            rect.setAttribute('pointer-events', 'all');
+          });
+        }
       }
       ['highlight', 'point', 'mark'].forEach(kind => {
         const hint = group.querySelector(`#${CSS.escape(`${kind}-${id}-${localIndex}`)}`);
@@ -468,9 +490,24 @@
       const indexLabel = group.querySelector(`#${CSS.escape(`cell-${id}-${localIndex}-index`)}`);
       if (indexLabel) {
         indexLabel.setAttribute('data-trace-index-label', String(logicalIndex));
+        indexLabel.setAttribute('data-trace-style-key', `$index-label:${logicalIndex}`);
         markSelectable(indexLabel, `${cellKey}:index`, context, context.variableId);
+        if (Object.prototype.hasOwnProperty.call(rendererOptions, 'gridlines')) {
+          indexLabel.querySelectorAll(':scope > rect').forEach(rect => {
+            rect.setAttribute('stroke-width', String(Math.max(0, Number(rendererOptions.gridlines) || 0)));
+          });
+        }
+        if (rendererOptions.indexLabels?.mode === 'custom') {
+          const text = indexLabel.querySelector('text');
+          if (text) text.textContent = String(rendererOptions.indexLabels.values?.[logicalIndex] ?? '');
+        }
+        applyHighlight(indexLabel.querySelector(':scope > rect'),
+          context.highlights?.[`$index-label:${logicalIndex}`] || {});
       }
     });
+    if (rendererOptions.outerframe === false) {
+      group.querySelectorAll(':scope > .outerframe-bg, :scope > .outerframe-nb').forEach(node => node.remove());
+    }
     group.querySelectorAll(':scope > .outerframe-label').forEach(label => {
       label.textContent = context.variable?.name || '';
       label.setAttribute('font-family', 'Arial');
@@ -526,6 +563,12 @@
         fill: '#1f282d'
       }, renderedValue));
       if (context.skin?.options?.showIndex !== false) {
+        const indexBackground = svg('rect', {
+          x: 0, y: cellSize, width: cellSize, height: 22,
+          fill: 'transparent', stroke: 'none', 'pointer-events': 'none',
+          'data-trace-style-key': `$index-label:${index}`
+        });
+        applyHighlight(indexBackground, context.highlights?.[`$index-label:${index}`] || {});
         const indexLabel = markSelectable(svg('text', {
           x: cellSize / 2,
           y: cellSize + 18,
@@ -534,13 +577,18 @@
           'font-size': 12,
           fill: '#7b858a'
         }, String(index)), `${cellKey}:index`, context, context.variableId);
-        cell.append(indexLabel);
+        indexLabel.setAttribute('data-trace-index-label', String(index));
+        indexLabel.setAttribute('data-trace-style-key', `$index-label:${index}`);
+        cell.append(indexBackground, indexLabel);
       }
       group.append(cell);
     });
     return Math.max(cellSize + 24, 78);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：矩陣 renderer
+  // ---------------------------------------------------------------------------
   function renderMatrix(group, entry, context) {
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
     let height = 0;
@@ -557,6 +605,328 @@
     return Math.max(70, height + 10);
   }
 
+  function renderOriginalMatrixWithDraw2DArray(group, entry, context) {
+    if (typeof window.draw_2Darray !== 'function') return null;
+    const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
+    const options = context.skin?.options || {};
+    const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
+    const defaultIndices = indexMode !== 0 && options.showIndex !== false;
+    const showValue = options.showValue !== false && indexMode !== 2;
+    const rowSpec = options.rowLabels
+      || (defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const columnSpec = options.columnLabels
+      || (defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const innerSpec = options.innerLabels || { mode: 'none', values: [] };
+    const labelValues = (spec, count) => spec.mode === 'none' ? null
+      : Array.from({ length: count }, (_, index) => (
+        spec.mode === 'index' ? index : spec.values?.[index] ?? ''
+      ));
+    const matrix = rows.map((row, rowIndex) => (row?.items || []).map((item, columnIndex) => (
+      renderedDisplayValue(item, context, {
+        index: columnIndex,
+        row: rowIndex,
+        column: columnIndex
+      }, formatDisplayValue(item, options, context.variable?.name || '', context.variableId))
+    )));
+    const rowLabels = labelValues(rowSpec, rows.length);
+    const maxColumns = Math.max(0, ...matrix.map(row => row.length));
+    const columnLabels = labelValues(columnSpec, maxColumns);
+    const innerLabels = innerSpec.mode === 'none' ? null : rows.map((row, rowIndex) => (
+      row.items.map((item, columnIndex) => innerSpec.mode === 'index'
+        ? columnIndex : innerSpec.values?.[rowIndex]?.[columnIndex] ?? '')
+    ));
+    const style = [];
+    const addStyle = (type, color, elements) => {
+      if (elements.length) style.push({ type, color, elements });
+    };
+    const entriesByType = new Map();
+    Object.entries(context.highlights || {}).forEach(([key, highlight]) => {
+      const elements = key === '$object'
+        ? rows.flatMap((row, rowIndex) => row.items.map((item, columnIndex) => [rowIndex, columnIndex]))
+        : [/^(-?\d+),(-?\d+)$/.exec(key)].filter(Boolean).map(match => [Number(match[1]), Number(match[2])]);
+      if (!elements.length) return;
+      const typed = highlight.styleTypes || {};
+      Object.entries(typed).forEach(([type, color]) => {
+        const normalized = type === 'segment' ? 'background' : type;
+        const list = entriesByType.get(`${normalized}\0${color || ''}`) || [];
+        list.push(...elements);
+        entriesByType.set(`${normalized}\0${color || ''}`, list);
+      });
+      if (!Object.keys(typed).length && highlight.styleType) {
+        const list = entriesByType.get(`${highlight.styleType}\0${highlight.color || ''}`) || [];
+        list.push(...elements);
+        entriesByType.set(`${highlight.styleType}\0${highlight.color || ''}`, list);
+      }
+      if (highlight.fill && !typed.background) addStyle('background', highlight.fill, elements);
+      if (highlight.stroke && !typed.highlight) addStyle('highlight', highlight.stroke, elements);
+      if (highlight.fixedMark) addStyle('mark', highlight.fixedMark, elements);
+    });
+    entriesByType.forEach((elements, key) => {
+      const [type, color] = key.split('\0');
+      addStyle(type, color, elements);
+    });
+
+    const drawId = `${context.idPrefix || 'trace-original'}-${safeKey(context.variableId)}`;
+    window.draw_2Darray(drawId, { x: 0, y: 0 }, matrix, style, {}, 'normal', 0, -1, {
+      targetGroup: group,
+      objectLabel: context.variable?.name || '',
+      rowLabels,
+      columnLabels,
+      innerLabels,
+      showValue,
+      gridlines: Object.prototype.hasOwnProperty.call(options, 'gridlines') ? options.gridlines : 1,
+      outerframe: options.outerframe !== false
+    });
+    const objectKey = objectKeyForVariable(context.frame, context.variableId);
+    const rowStride = 40 + (innerLabels ? 12 : 0);
+    const originX = rowLabels ? 48 : 8;
+    const originY = columnLabels ? 48 : 8;
+    const setBounds = (element, x, y, width, height) => {
+      element.setAttribute('data-outerframe-left', String(x));
+      element.setAttribute('data-outerframe-top', String(y));
+      element.setAttribute('data-outerframe-right', String(x + width));
+      element.setAttribute('data-outerframe-bottom', String(y + height));
+      return element;
+    };
+    const invisibleAxisTarget = (key, x, y, role) => {
+      const target = markSelectable(setBounds(svg('g', {
+        'data-trace-label-role': role, 'data-trace-axis-target': '1',
+        opacity: 0, 'pointer-events': 'none'
+      }), x, y, 40, 40), key, { ...context, interactive: false }, context.variableId);
+      target.append(svg('rect', { x, y, width: 40, height: 40, fill: 'transparent' }));
+      group.append(target);
+      return target;
+    };
+    rows.forEach((row, rowIndex) => {
+      (row?.items || []).forEach((item, columnIndex) => {
+        const cellKey = `${objectKey}#${rowIndex},${columnIndex}`;
+        const cell = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-${columnIndex}`)}`);
+        if (cell) {
+          cell.setAttribute('data-trace-index', `${rowIndex},${columnIndex}`);
+          cell.querySelector(':scope > text')?.setAttribute('data-trace-content-role', 'value');
+          markSelectable(cell, cellKey, context, context.variableId);
+          markArrowTarget(cell, {
+            key: cellKey, objectKey, objectLabel: context.variable?.name || context.variableId,
+            indices: [rowIndex, columnIndex], kind: 'matrix-cell'
+          });
+        }
+        const inner = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-${columnIndex}-inner`)}`);
+        if (inner) {
+          inner.setAttribute('data-trace-index-label', `${rowIndex},${columnIndex}`);
+          inner.setAttribute('data-trace-label-role', 'inner');
+          inner.setAttribute('data-trace-style-key', `$inner-label:${rowIndex},${columnIndex}`);
+          markSelectable(inner, `${cellKey}:index`, context, context.variableId);
+          applyHighlight(inner.querySelector(':scope > rect'),
+            context.highlights?.[`$inner-label:${rowIndex},${columnIndex}`] || {});
+        }
+        ['highlight', 'point', 'mark'].forEach(kind => {
+          const hint = group.querySelector(`#${CSS.escape(`${kind}-${drawId}-${rowIndex}-${columnIndex}`)}`);
+          if (!hint) return;
+          hint.setAttribute('data-trace-attached-to', cellKey);
+          hint.setAttribute('data-trace-attachment-kind', kind);
+          if (kind === 'highlight' || kind === 'point') {
+            const highlight = context.highlights?.[`${rowIndex},${columnIndex}`]
+              || context.highlights?.$object || {};
+            const sourceIdentity = String(
+              highlight.sourceStyleIds?.[kind]
+              || highlight.sourceStyleId
+              || highlight.eventId
+              || `${context.variableId}:${rowIndex},${columnIndex}`
+            );
+            window.HintWidgets?.continuePresentationLoop?.(hint, `${kind}:${sourceIdentity}`);
+          }
+        });
+      });
+      const rowLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-index`)}`);
+      if (rowLabel) {
+        rowLabel.setAttribute('data-trace-label-role', 'row');
+        rowLabel.setAttribute('data-trace-style-key', `$row-label:${rowIndex}`);
+        markSelectable(rowLabel, `${objectKey}:row-label:${rowIndex}`, context, context.variableId);
+        applyHighlight(rowLabel.querySelector(':scope > rect'),
+          context.highlights?.[`$row-label:${rowIndex}`] || {});
+      } else {
+        invisibleAxisTarget(`${objectKey}:row-label:${rowIndex}`,
+          8, originY + rowIndex * rowStride, 'row');
+      }
+    });
+    for (let columnIndex = 0; columnIndex < maxColumns; columnIndex += 1) {
+      const columnLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-index-${columnIndex}`)}`);
+      if (columnLabel) {
+        columnLabel.setAttribute('data-trace-label-role', 'column');
+        columnLabel.setAttribute('data-trace-style-key', `$column-label:${columnIndex}`);
+        markSelectable(columnLabel,
+          `${objectKey}:column-label:${columnIndex}`, context, context.variableId);
+        applyHighlight(columnLabel.querySelector(':scope > rect'),
+          context.highlights?.[`$column-label:${columnIndex}`] || {});
+      } else {
+        invisibleAxisTarget(`${objectKey}:column-label:${columnIndex}`,
+          originX + columnIndex * 40, 8, 'column');
+      }
+    }
+    group.querySelectorAll(':scope > .outerframe-label').forEach(label => {
+      markSelectable(label, `${context.variableId}:label`, context, context.variableId);
+    });
+    group.setAttribute('data-layout', 'matrix');
+    group.setAttribute('data-box-size', '40');
+    return originalBoundsHeight(group, 78);
+  }
+
+  function renderOriginalMatrix(group, entry, context) {
+    const drawnHeight = renderOriginalMatrixWithDraw2DArray(group, entry, context);
+    if (drawnHeight != null) return drawnHeight;
+    const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
+    const options = context.skin?.options || {};
+    const cellSize = 40;
+    const innerHeight = 12;
+    const axisSize = 40;
+    const gridlines = Math.max(0, Number.isFinite(Number(options.gridlines))
+      ? Number(options.gridlines) : 1);
+    const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
+    const showValue = options.showValue !== false && indexMode !== 2;
+    const defaultIndices = indexMode !== 0 && options.showIndex !== false;
+    const maxColumns = Math.max(0, ...rows.map(row => Array.isArray(row?.items) ? row.items.length : 0));
+    const labelSpec = (name, fallback) => options[name] || fallback;
+    const rowSpec = labelSpec('rowLabels', defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const columnSpec = labelSpec('columnLabels', defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
+    const innerSpec = labelSpec('innerLabels', { mode: 'none', values: [] });
+    const showRows = rowSpec.mode !== 'none';
+    const showColumns = columnSpec.mode !== 'none';
+    const showInner = innerSpec.mode !== 'none';
+    const originX = showRows ? axisSize : 0;
+    const originY = showColumns ? axisSize : 0;
+    const rowStride = cellSize + (showInner ? innerHeight : 0);
+    const contentWidth = Math.max(cellSize, maxColumns * cellSize);
+    const contentHeight = Math.max(cellSize, rows.length * rowStride);
+    const totalWidth = originX + contentWidth;
+    const totalHeight = originY + contentHeight;
+    const objectKey = objectKeyForVariable(context.frame, context.variableId);
+    const setBounds = (element, x, y, width, height) => {
+      element.setAttribute('data-outerframe-left', String(x));
+      element.setAttribute('data-outerframe-top', String(y));
+      element.setAttribute('data-outerframe-right', String(x + width));
+      element.setAttribute('data-outerframe-bottom', String(y + height));
+      return element;
+    };
+    const labelValue = (spec, first, second = null) => {
+      if (spec.mode === 'index') return second == null ? first : second;
+      if (spec.mode !== 'custom') return '';
+      const value = second == null ? spec.values?.[first] : spec.values?.[first]?.[second];
+      return value == null ? '' : displayValue(value);
+    };
+    const labelGroup = (key, x, y, width, height, text, role) => {
+      const node = markSelectable(setBounds(svg('g', {
+        transform: `translate(${x}, ${y})`, 'data-trace-label-role': role
+      }), 0, 0, width, height), key, context, context.variableId);
+      node.append(
+        svg('rect', { x: 0, y: 0, width, height, fill: '#f5f7f8', stroke: '#59656b', 'stroke-width': gridlines }),
+        svg('text', {
+          x: width / 2, y: height / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+          'font-family': 'Arial', 'font-size': height <= innerHeight ? 9 : 12, fill: '#59656b'
+        }, String(text))
+      );
+      const labelIndex = key.split(':').at(-1);
+      node.setAttribute('data-trace-style-key', `$${role}-label:${labelIndex}`);
+      return node;
+    };
+    const invisibleAxisTarget = (key, x, y, width, height, role) => {
+      const node = markSelectable(setBounds(svg('g', {
+        transform: `translate(${x}, ${y})`, 'data-trace-label-role': role,
+        'data-trace-axis-target': '1', opacity: 0, 'pointer-events': 'none'
+      }), 0, 0, width, height), key, { ...context, interactive: false }, context.variableId);
+      node.append(svg('rect', { x: 0, y: 0, width, height, fill: 'transparent' }));
+      return node;
+    };
+
+    if (options.outerframe !== false) {
+      group.append(svg('rect', {
+        class: 'trace-matrix-outerframe', x: -8, y: -8,
+        width: totalWidth + 16, height: totalHeight + 36,
+        rx: 3, fill: '#ffffff', stroke: '#8b979d', 'stroke-width': 1
+      }));
+    }
+    if (showColumns) {
+      for (let column = 0; column < maxColumns; column += 1) {
+        const label = labelGroup(`${objectKey}:column-label:${column}`,
+          originX + column * cellSize, 0, cellSize, axisSize,
+          labelValue(columnSpec, column), 'column');
+        applyHighlight(label.querySelector('rect'), context.highlights?.[`$column-label:${column}`] || {});
+        group.append(label);
+      }
+    } else {
+      for (let column = 0; column < maxColumns; column += 1) {
+        group.append(invisibleAxisTarget(`${objectKey}:column-label:${column}`,
+          originX + column * cellSize, 0, cellSize, cellSize, 'column'));
+      }
+    }
+    rows.forEach((row, rowIndex) => {
+      const items = Array.isArray(row?.items) ? row.items : [];
+      const y = originY + rowIndex * rowStride;
+      if (showRows) {
+        const label = labelGroup(`${objectKey}:row-label:${rowIndex}`,
+          0, y, axisSize, cellSize, labelValue(rowSpec, rowIndex), 'row');
+        applyHighlight(label.querySelector('rect'), context.highlights?.[`$row-label:${rowIndex}`] || {});
+        group.append(label);
+      } else {
+        group.append(invisibleAxisTarget(`${objectKey}:row-label:${rowIndex}`,
+          0, y, cellSize, cellSize, 'row'));
+      }
+      items.forEach((item, columnIndex) => {
+        const x = originX + columnIndex * cellSize;
+        const cellKey = `${objectKey}#${rowIndex},${columnIndex}`;
+        const highlight = context.highlights?.[`${rowIndex},${columnIndex}`]
+          || context.highlights?.$object || {};
+        const cell = markSelectable(setBounds(svg('g', {
+          transform: `translate(${x}, ${y})`, 'data-trace-index': `${rowIndex},${columnIndex}`
+        }), 0, 0, cellSize, cellSize), cellKey, context, context.variableId);
+        markArrowTarget(cell, {
+          key: cellKey, objectKey, objectLabel: context.variable?.name || context.variableId,
+          indices: [rowIndex, columnIndex], kind: 'matrix-cell'
+        });
+        const rect = svg('rect', {
+          x: 0, y: 0, width: cellSize, height: cellSize,
+          fill: '#ffffff', stroke: '#59656b', 'stroke-width': gridlines, 'pointer-events': 'all'
+        });
+        applyHighlight(rect, highlight);
+        cell.append(rect);
+        if (showValue) {
+          cell.append(svg('text', {
+            x: cellSize / 2, y: cellSize / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
+            'font-family': 'Arial', 'font-size': 16, fill: '#1f282d', 'data-trace-content-role': 'value'
+          }, formatDisplayValue(item, options, context.variable?.name || '', context.variableId)));
+        }
+        group.append(cell);
+        if (showInner) {
+          const inner = labelGroup(`${cellKey}:index`, x, y + cellSize, cellSize, innerHeight,
+            labelValue(innerSpec, rowIndex, columnIndex), 'inner');
+          inner.setAttribute('data-trace-index-label', `${rowIndex},${columnIndex}`);
+          inner.setAttribute('data-trace-style-key', `$inner-label:${rowIndex},${columnIndex}`);
+          applyHighlight(inner.querySelector('rect'), highlight);
+          inner.querySelector('rect')?.setAttribute('fill', '#ffffff');
+          applyHighlight(inner.querySelector('rect'),
+            context.highlights?.[`$inner-label:${rowIndex},${columnIndex}`] || {});
+          group.append(inner);
+        }
+      });
+    });
+    group.append(markSelectable(svg('text', {
+      class: 'outerframe-label', x: 0, y: totalHeight + 22,
+      'font-family': 'Arial', 'font-size': 16, 'font-weight': 'bold', fill: '#1f282d'
+    }, context.variable?.name || ''), `${context.variableId}:label`, context, context.variableId));
+    group.setAttribute('data-layout', 'matrix');
+    group.setAttribute('data-box-size', String(cellSize));
+    group.setAttribute('data-matrix-origin-x', String(originX));
+    group.setAttribute('data-matrix-origin-y', String(originY));
+    group.setAttribute('data-matrix-row-stride', String(rowStride));
+    group.setAttribute('data-outerframe-left', options.outerframe === false ? '0' : '-8');
+    group.setAttribute('data-outerframe-top', options.outerframe === false ? '0' : '-8');
+    group.setAttribute('data-outerframe-right', String(totalWidth + (options.outerframe === false ? 0 : 8)));
+    group.setAttribute('data-outerframe-bottom', String(totalHeight + 28));
+    return totalHeight + 36;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 區段：標量、物件與圖形 renderer
+  // ---------------------------------------------------------------------------
   function renderScalar(group, entry, context) {
     const renderedValue = renderedDisplayValue(entry.data, context, { index: 0 });
     const rect = svg('rect', { x: 0, y: 0, width: 150, height: 52, fill: '#ffffff', stroke: '#59656b', 'stroke-width': 1 });
@@ -629,6 +999,9 @@
     return height + 20;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：renderer 擴充入口
+  // ---------------------------------------------------------------------------
   function register(name, renderer) {
     if (typeof name === 'string' && typeof renderer === 'function') renderers.set(name, renderer);
   }
@@ -738,6 +1111,9 @@
     return snapshot.binding ? { ...snapshot.binding } : null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：場景幾何快照
+  // ---------------------------------------------------------------------------
   function objectPositions(rootSvg) {
     const positions = new Map();
     rootSvg.querySelectorAll('#asm-trace-root [data-trace-object-key]').forEach(object => {
@@ -851,6 +1227,9 @@
     return attributes;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：SVG 動畫 primitive
+  // ---------------------------------------------------------------------------
   function startSvgAnimation(animation) {
     if (!animation) return;
     requestAnimationFrame(() => {
@@ -940,6 +1319,9 @@
     animatePosition(motion, previous, current, options.animatePositions !== false, plan);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：物件跨 frame 轉場
+  // ---------------------------------------------------------------------------
   function animateChangedObjects(captured, elements, options) {
     if (options.animatePositions === false || !captured?.size) return;
     const identityKeys = capturedKeysByRuntimeIdentity(captured);
@@ -1000,6 +1382,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：箭頭 defs 與幾何
+  // ---------------------------------------------------------------------------
   function ensureArrowMarker(rootSvg, idPrefix = 'asm-trace') {
     const defsId = `${idPrefix}-studio-defs`;
     const markerId = `${idPrefix}-arrowhead`;
@@ -1226,6 +1611,9 @@
     return `keep-arrow:${sourceKey}:${continuityKey}`;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：keep 與遞迴關係箭頭
+  // ---------------------------------------------------------------------------
   function renderKeepLastArrows(rootSvg, root, document, frame, placements, elements, keepNodes, options = {}) {
     if (!keepNodes.length) return;
     const color = 'rgba(255, 58, 58, 0.7)';
@@ -1391,7 +1779,8 @@
         ? window.ASMArrowModel.geometry(start, end, fromTarget, toTarget, arrow.style)
         : { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
       if (!geometry) return;
-      const activation = String(frame.source?.recursionActivationId || frame.source?.function || '');
+      const activation = String(arrow.trailActivationId
+        || frame.source?.recursionActivationId || frame.source?.function || '');
       const runtimeId = arrow.source === 'directive' && arrow.explicitId === false && activation
         ? `${arrow.id}@${activation}` : arrow.id;
       const key = arrow.source === 'studio'
@@ -1612,6 +2001,7 @@
             .find(child => child.getAttribute('data-trace-index-label') === index) : null);
         wrapper._asmStyleIndexRect = [...(indexCell?.children || [])]
           .find(child => child.tagName?.toLowerCase() === 'rect');
+        wrapper._asmStyleUsesIndexHeight = kind === 'highlight';
         wrapper._asmStyleInsets = {
           left: number(visual, 'x') - number(rect, 'x'),
           top: number(visual, 'y') - number(rect, 'y'),
@@ -1716,9 +2106,12 @@
         visual.setAttribute('x', String(number('x') + insets.left));
         visual.setAttribute('y', String(number('y') + insets.top));
         visual.setAttribute('width', String(Math.max(0, number('width') + insets.right - insets.left)));
-        const indexHeight = Number(wrapper._asmStyleIndexRect?.getAttribute('height')) || 0;
+        const indexHeight = wrapper._asmStyleUsesIndexHeight
+          ? Number(wrapper._asmStyleIndexRect?.getAttribute('height')) || 0 : 0;
+        const bottomInset = wrapper._asmStyleUsesIndexHeight && wrapper._asmStyleIndexRect
+          ? indexHeight : insets.bottom;
         visual.setAttribute('height', String(Math.max(0, number('height')
-          + Math.max(insets.bottom, indexHeight) - insets.top)));
+          + bottomInset - insets.top)));
       }
     });
   }
@@ -1805,6 +2198,8 @@
       if (!indices.length || indices.some(index => !Number.isInteger(index))) return null;
       if (target.axis === 'row' || target.axis === 'column') {
         const index = indices[0];
+        const axisPlacement = placements.get(`${targetObjectKey}:${target.axis}-label:${index}`);
+        if (axisPlacement) return axisPlacement;
         const cell = placements.get(target.axis === 'row' ? `${targetObjectKey}#${index},0` : `${targetObjectKey}#0,${index}`);
         if (!cell) return null;
         if (target.axis === 'row') {
@@ -3446,7 +3841,16 @@
     AV_grey: '#cccccc',
     AV_node_grey: '#cccccc',
     AV_black: '#111827',
-    AV_white: '#ffffff'
+    AV_white: '#ffffff',
+    'AV_green!': '#a5d6a7',
+    'AV_red!': '#ef9a9a',
+    'AV_blue!': '#90caf9',
+    'AV_yellow!': '#fcff40',
+    'AV_orange!': '#ffb74d',
+    'AV_magenta!': '#e790ff',
+    'AV_black!': '#111827',
+    'AV_white!': '#ffffff',
+    'AV_grey!': '#cccccc'
   });
 
   function traceTextColor(value, fallback = '') {
@@ -3503,6 +3907,7 @@
       if (!window.ASMTraceRules?.textExpressionMatches?.(document, frame, descriptor?.when, descriptor.drawLocals)) return;
       const key = `text:${descriptor.id || `${frame.id}-${descriptorIndex}`}`;
       const rawSegments = Array.isArray(descriptor.segments) ? descriptor.segments : [];
+      const explicitSpeech = rawSegments.some(segment => Object.hasOwn(segment || {}, 'speech'));
       const authoredBaseFontSize = Math.max(8,
         Number(rawSegments.find(segment => Number(segment?.fontSize) > 0)?.fontSize) || 14);
       const lines = [[]];
@@ -3515,7 +3920,7 @@
             })
             : segment?.text;
         const resolvedText = expressionValue == null ? '' : String(expressionValue);
-        styledTextPieces(document, frame, key, segment, segmentIndex, resolvedText).forEach(piece => {
+        styledTextPieces(document, frame, key, segment, segmentIndex, resolvedText).forEach((piece, pieceIndex) => {
           piece.text.split('\n').forEach((part, partIndex, parts) => {
             const parsed = traceTextMarkup(part);
             const storedStyle = piece.storedStyle;
@@ -3524,7 +3929,10 @@
               ...piece,
               segmentIndex,
               display: parsed.display,
-              speech: parsed.speech,
+              speech: explicitSpeech
+                ? (Object.hasOwn(segment || {}, 'speech') && pieceIndex === 0 && partIndex === 0
+                  ? String(segment.speech ?? '') : '')
+                : parsed.speech,
               textColor: storedStyle.textColor || traceTextColor(segment?.color, '#111827'),
               background: Object.hasOwn(storedStyle, 'background')
                 ? storedStyle.background
@@ -3608,11 +4016,42 @@
           'data-trace-text-line': '1'
         });
         let cursorX = padX;
-        line.forEach(segment => {
+        const segmentLayouts = line.flatMap(segment => {
           const segmentWidth = measureText(segment.display, segment.fontSize, segment.bold);
-          if (!segment.display) return;
+          if (!segment.display) return [];
+          const layout = { segment, segmentWidth, cursorX };
+          cursorX += segmentWidth;
+          return [layout];
+        });
+        const backgroundRuns = [];
+        segmentLayouts.forEach(layout => {
+          const fill = layout.segment.background;
+          if (!fill || fill === 'none' || fill === 'rgba(0,0,0,0)') return;
+          const previous = backgroundRuns.at(-1);
+          if (previous && previous.fill === fill
+            && Math.abs(previous.x + previous.width - layout.cursorX) < 0.001) {
+            previous.width += layout.segmentWidth;
+            return;
+          }
+          backgroundRuns.push({ fill, x: layout.cursorX, width: layout.segmentWidth });
+        });
+        backgroundRuns.forEach(run => {
+          lineGroup.append(svg('rect', {
+            class: 'asm-trace-text-segment-background',
+            x: run.x - 2 * objectScale,
+            y: 0,
+            width: Math.max(4 * objectScale, run.width + 4 * objectScale),
+            height: lineHeight[lineIndex],
+            rx: 2 * objectScale,
+            fill: run.fill,
+            stroke: 'none',
+            'pointer-events': 'none',
+            'data-trace-text-background-run': '1'
+          }));
+        });
+        segmentLayouts.forEach(({ segment, segmentWidth, cursorX: segmentX }) => {
           const segmentGroup = svg('g', {
-            transform: `translate(${cursorX}, 0)`,
+            transform: `translate(${segmentX}, 0)`,
             'data-trace-object-key': segment.segmentKey,
             'data-trace-parent-key': key,
             'data-trace-movable': '0',
@@ -3621,16 +4060,17 @@
             'data-trace-text-segment-id': segment.segmentId || String(segment.segmentIndex),
             'data-trace-text-base-key': segment.baseKey || segment.segmentKey,
             'data-trace-text-source-start': segment.sourceStart ?? 0,
-            'data-trace-text-source-end': segment.sourceEnd ?? segment.display.length
+            'data-trace-text-source-end': segment.sourceEnd ?? segment.display.length,
+            'data-trace-text-background': segment.background || 'none'
           });
           segmentGroup.append(svg('rect', {
-            class: 'asm-trace-text-segment-background',
+            class: 'asm-trace-text-segment-hitbox',
             x: -2 * objectScale,
             y: 0,
             width: Math.max(4 * objectScale, segmentWidth + 4 * objectScale),
             height: lineHeight[lineIndex],
             rx: 2 * objectScale,
-            fill: segment.background && segment.background !== 'none' ? segment.background : 'rgba(0,0,0,0)',
+            fill: 'rgba(0,0,0,0)',
             stroke: 'none',
             'pointer-events': 'all'
           }));
@@ -3652,13 +4092,12 @@
           }, segment.display));
           lineGroup.append(segmentGroup);
           placements.set(segment.segmentKey, {
-            x: baseX + cursorX - 2 * objectScale,
+            x: baseX + segmentX - 2 * objectScale,
             y: baseY + lineTop,
             width: Math.max(4 * objectScale, segmentWidth + 4 * objectScale),
             height: lineHeight[lineIndex]
           });
           elements.set(segment.segmentKey, segmentGroup);
-          cursorX += segmentWidth;
         });
         motion.append(lineGroup);
         lineTop += lineHeight[lineIndex] + lineGap;
@@ -3835,7 +4274,36 @@
         const sourceEntry = frame.state?.[studioObject.sourceVariableId];
         const label = studioObject.text || source?.name || 'index';
         const shape = studioObject.shape || 'array';
-        if (shape === 'arrow') {
+        if (shape === 'arrow-left') {
+          const labelSize = 18;
+          const labelLeft = -40;
+          const labelTop = -labelSize / 2;
+          const labelLength = Math.max(1, Array.from(String(label)).length);
+          const fontSize = Math.max(4, Math.min(8, (labelSize - 4) / (labelLength * 0.62)));
+          const borderColor = '#333';
+          const point = svg('g', { class: 'trace-variable-marker-point' });
+          point.append(
+            svg('path', {
+              d: 'M -22 0 L -2 0 M -8 -5 L -2 0 L -8 5', fill: 'none',
+              stroke: borderColor, 'stroke-width': 1, 'stroke-linecap': 'square', 'stroke-linejoin': 'miter'
+            })
+          );
+          motion.append(
+            svg('rect', {
+              class: 'trace-variable-marker-label-box', x: labelLeft, y: labelTop,
+              width: labelSize, height: labelSize, fill: '#bfe8f7', 'fill-opacity': 0.58,
+              stroke: borderColor, 'stroke-width': 1
+            }),
+            svg('text', {
+              class: 'trace-variable-marker-label-text', x: labelLeft + labelSize / 2, y: 0,
+              'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial',
+              'font-size': fontSize, 'font-weight': 'bold', fill: studioObject.textColor || '#1f282d'
+            }, label),
+            point
+          );
+          object.dataset.traceMarkerBaseCellWidth = String(Math.max(1, Number(studioObject.baseCellWidth) || 40));
+          box = { x: labelLeft, y: labelTop, width: 38, height: labelSize };
+        } else if (shape === 'arrow') {
           const labelWidth = 18;
           const labelHeight = labelWidth;
           const labelLength = Math.max(1, Array.from(String(label)).length);
@@ -4077,16 +4545,75 @@
     bindings.forEach((binding, index) => {
       const targetEntry = frame.state?.[binding.targetVariableId];
       const targetItems = Array.isArray(targetEntry?.data?.items) ? targetEntry.data.items : [];
-      const targetKind = targetEntry?.data?.kind;
+      const targetKind = document.variables?.[binding.targetVariableId]?.kind
+        || targetEntry?.data?.kind;
       const indexExpression = binding.indexExpression || binding.sourceName;
       const relativeIndexOffset = relativeMarkerOffset(indexExpression, binding.sourceName);
       const rawIndexValue = window.ASMTraceRules.resolveExpression(document, frame, indexExpression);
       const resolvedIndexValue = rawIndexValue == null ? NaN : Number(rawIndexValue);
       const hasIndexValue = Number.isInteger(resolvedIndexValue);
       const indexValue = hasIndexValue ? resolvedIndexValue : null;
+      if (targetKind === 'matrix') {
+        if (binding.mode !== 'index' || !targetEntry || !hasIndexValue) return;
+        const targetObjectKey = objectKeyForVariable(frame, binding.targetVariableId);
+        const dimension = Number(binding.indexDimension) || 0;
+        const rendererOptions = frame.rendererOptions?.[binding.targetVariableId] || {};
+        if (rendererOptions.markerLayout === 'none') return;
+        let targetKey = `${targetObjectKey}:${dimension === 0 ? 'row' : 'column'}-label:${indexValue}`;
+        let targetExpression = String(indexValue);
+        let targetAxis = dimension === 0 ? 'row' : 'column';
+        if (dimension === 1 && rendererOptions.markerLayout === 'inner') {
+          const rowBinding = bindings.find(candidate => (
+            candidate.targetVariableId === binding.targetVariableId
+            && Number(candidate.indexDimension) === 0
+          ));
+          const rowValue = Number(window.ASMTraceRules.resolveExpression(
+            document, frame, rowBinding?.indexExpression || ''
+          ));
+          if (!Number.isInteger(rowValue)) return;
+          targetKey = `${targetObjectKey}#${rowValue},${indexValue}`;
+          targetExpression = `${rowValue},${indexValue}`;
+          targetAxis = '';
+        }
+        const targetPlacement = placements.get(targetKey);
+        if (!targetPlacement) return;
+        const label = binding.indexExpression || binding.sourceName || 'index';
+        const sourceVariable = document.variables?.[binding.sourceVariableId] || {};
+        const snapshotOwner = String(options.snapshotOwner || '');
+        pending.push({
+          id: `${snapshotOwner ? `${snapshotOwner}:` : ''}auto-frame-binding-${binding.sourceVariableId}-${binding.targetVariableId}-${index}`,
+          type: 'variable-marker', sourceVariableId: binding.sourceVariableId,
+          sourceVariableIds: binding.sourceVariableIds || [binding.sourceVariableId],
+          sourceSnapshotOwner: snapshotOwner,
+          sourceRuntimeIdentity: frame.state?.[binding.sourceVariableId]?.lifetime
+            || frame.state?.[binding.sourceVariableId]?.identity || '',
+          sourceVisualContinuityKey: `${snapshotOwner ? `snapshot:${snapshotOwner}:` : ''}auto-matrix-marker:${binding.sourceVariableId}:${binding.targetVariableId}:${dimension}`,
+          sourceAliasContinuityKey: '', sourceReferenceAlias: /&/.test(String(sourceVariable.cppType || '')),
+          targetVariableId: binding.targetVariableId, targetObjectKey,
+          targetRuntimeIdentity: targetEntry?.identity || '', targetPlacement,
+          baseCellWidth: 40, indexValue, unresolvedIndex: false, label,
+          markerSortOrder: index, markerSortKey: binding.sourceName || label,
+          markerSortExpression: indexExpression, relativeMarkerBase: '', relativeMarkerOffset: null,
+          indexExpression, labelWidth: 18,
+          target: {
+            variableId: binding.targetVariableId,
+            indexExpression: targetExpression,
+            ...(targetAxis ? { axis: targetAxis } : {}),
+            anchor: dimension === 0 ? 'left' : 'top'
+          },
+          pointerTarget: {
+            variableId: binding.targetVariableId,
+            indexExpression: targetExpression,
+            ...(targetAxis ? { axis: targetAxis } : {}),
+            anchor: 'center'
+          },
+          text: label, shape: dimension === 0 ? 'arrow-left' : 'arrow',
+          color: '#12a6df', stroke: '#0b7ead'
+        });
+        return;
+      }
       if (binding.mode !== 'index'
         || !targetEntry
-        || targetKind === 'matrix'
         || !targetItems.length) return;
       const markerSourceIds = new Set(binding.sourceVariableIds || [binding.sourceVariableId]);
       (frame.events || []).forEach(event => {
@@ -4343,7 +4870,9 @@
   }
 
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
-    const arrows = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
+    const current = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
+    const trails = window.ASMTraceModel?.returnTrailArrows?.(document, frame) || [];
+    const arrows = [...trails, ...current];
     const expanded = arrows.flatMap(arrow => !arrow.batch ? [arrow] : window.ASMArrowModel.expandBatch(arrow,
       (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, { ...arrow.drawLocals, ...locals }),
       (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, { ...arrow.drawLocals, ...locals }),
@@ -5161,7 +5690,7 @@
   register('graph', renderGraph);
   register('coordinate-system', renderCoordinateSystem);
   register('original-array', renderOriginal);
-  register('original-matrix', renderOriginal);
+  register('original-matrix', renderOriginalMatrix);
   register('original-cell', renderOriginal);
   register('original-heap', renderOriginal);
   register('original-segment-tree', renderOriginal);
@@ -5297,9 +5826,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-227';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-228';
   window.ASMTraceRenderers = {
-    build: 'trace-227', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-228', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,

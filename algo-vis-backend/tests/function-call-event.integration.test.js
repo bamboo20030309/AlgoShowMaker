@@ -1,3 +1,11 @@
+/**
+ * 測試模組：function-call-event.integration.test
+ *
+ * 驗證重點：function call event.integration.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -5,6 +13,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { compile } = require('./helpers/compile');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('function calls schedule code-only events before callee entry and remain controllable', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
@@ -100,7 +111,7 @@ int main() {
   assert.ok(restored.callLifecycles.length > 0);
 });
 
-test('enabled function-call code highlights while active, then turns grey', () => {
+test('enabled function-call code is grey from call start through completion', () => {
   const window = { addEventListener() {} };
   window.window = window;
   const context = vm.createContext(window);
@@ -109,15 +120,15 @@ test('enabled function-call code highlights while active, then turns grey', () =
   const events = new Map([[call.id, call]]);
   const state = (active, completed = new Set()) => window.ASMTraceCodePresenter.visualStateForIds([call.id], events, new Set(), completed, active);
   assert.equal(state('').complete, false);
-  assert.equal(state(call.id).active, true);
-  assert.equal(state(call.id).complete, false);
+  assert.equal(state(call.id).active, false);
+  assert.equal(state(call.id).complete, true);
   assert.equal(state('', new Set([call.id])).complete, true);
   const comparison = { id: 'compare', type: 'compare', enabled: true, result: true };
   events.set(comparison.id, comparison);
   const shared = window.ASMTraceCodePresenter.visualStateForIds([call.id, comparison.id], events,
     new Set([comparison.id]), new Set([comparison.id]), call.id);
-  assert.equal(shared.active, true, 'an active call keeps its yellow highlight on a shared span');
-  assert.equal(shared.complete, false);
+  assert.equal(shared.active, false, 'an active call keeps a shared span grey instead of yellow');
+  assert.equal(shared.complete, true);
   assert.equal(shared.pending, false);
   assert.equal(shared.conditionResult, undefined);
   call.enabled = false;

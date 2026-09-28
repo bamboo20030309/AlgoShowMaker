@@ -1,3 +1,11 @@
+/**
+ * 模組：三角形 primitive
+ *
+ * 責任：依中心、寬高與 style 建立 SVG polygon 與追蹤 metadata。
+ * 資料流：先換算三個頂點，再建立 group/polygon 並套用顏色、透明度與 code line。
+ * 重要不變條件：對外位置代表圖形中心，幾何不可因 stroke 寬度改變語意 anchor。
+ * 相容性：舊式 style 與缺省尺寸沿用既有預設。
+ */
 // draw_triangle.js
 ;(function () {
   const NS = "http://www.w3.org/2000/svg";
@@ -10,6 +18,9 @@
    * @param {number} width - 寬度
    * @param {object} style - 樣式物件
    */
+  // ---------------------------------------------------------------------------
+  // 區段：三角形節點建立
+  // ---------------------------------------------------------------------------
   function drawTriangle(id, pos, height, width, style = {}, codeLine = -1) {
     const vp = window.getViewport ? window.getViewport() : document.querySelector('#viewport');
     if (!vp) return;

@@ -1,8 +1,16 @@
+// -----------------------------------------------------------------------------
+// 文字行內樣式腳本
+// 解析文字中的輕量標記並產生 Fabric 樣式區段；同一套純函式同時供瀏覽器與 Node 測試使用。
+// -----------------------------------------------------------------------------
 (function (root, factory) {
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.ASMInlineScripts = api;
 })(typeof window !== 'undefined' ? window : null, function () {
+  // -----------------------------------------------------------------------------
+  // Fabric 樣式副本
+  // 先複製逐行逐字樣式，格式化只改副本，讓關閉行內腳本時可以還原使用者原設定。
+  // -----------------------------------------------------------------------------
   function copyStyles(styles) {
     const result = {};
     Object.entries(styles || {}).forEach(([line, characters]) => {
@@ -18,12 +26,20 @@
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
     : null;
 
+  // -----------------------------------------------------------------------------
+  // Unicode 字素索引
+  // 以 Intl.Segmenter 將 emoji 與組合字視為一個位置，索引語意與 Fabric grapheme 一致。
+  // -----------------------------------------------------------------------------
   function segmentGraphemes(text) {
     const value = String(text || '');
     if (!graphemeSegmenter) return Array.from(value);
     return Array.from(graphemeSegmenter.segment(value), entry => entry.segment);
   }
 
+  // -----------------------------------------------------------------------------
+  // 標記解析與樣式輸出
+  // 掃描控制標記時從可見文字移除語法，並把作用區間轉成 Fabric 的行列 style map。
+  // -----------------------------------------------------------------------------
   function format(text, baseStyles = {}, defaultFontSize = 18) {
     const styles = copyStyles(baseStyles);
     String(text || '').split('\n').forEach((sourceLine, lineIndex) => {

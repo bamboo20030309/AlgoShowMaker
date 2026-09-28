@@ -1,8 +1,19 @@
+/**
+ * 模組：條件、運算式與裝飾規則
+ *
+ * 責任：解析 @ 指令中的條件與值運算式，並把符合目前 frame 的規則轉成 highlight、文字、箭頭及版面裝飾。
+ * 資料流：resolver 從 frame state、事件 mutation 與迭代邊界取值；parser 依運算子優先序求值，evaluate 再按 scope 和順序合併規則。
+ * 重要不變條件：運算式解析不得執行任意 JavaScript；比較與索引解析使用 trace 值語意，無法解析時回傳安全的未命中結果。
+ * 相容性：舊指令的變數名稱、renderer 索引與文字切片語法仍由相容路徑解析，缺少欄位不應使整個 frame 失敗。
+ */
 (function () {
   // Event colors belong to the frame/event menus. Objects only receive styles
   // from explicit user rules created in Trace Studio.
   const DEFAULT_RULES = [];
 
+  // ---------------------------------------------------------------------------
+  // 區段：事件與 frame 查詢
+  // ---------------------------------------------------------------------------
   function eventMatches(event, match = {}) {
     if (match.eventType && event.type !== match.eventType) return false;
     if (match.signature && event.signature !== match.signature) return false;
@@ -32,6 +43,8 @@
     if (!Number.isInteger(index)) return undefined;
     if (Array.isArray(data?.items)) return data.items[index];
     if (Array.isArray(data)) return data[index];
+    const scalar = window.ASMTraceModel.scalarValue(data);
+    if (typeof scalar === 'string') return scalar[index];
     return undefined;
   }
 
@@ -47,6 +60,9 @@
     return window.ASMTraceModel.scalarValue(value);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：變數、索引與時間值解析
+  // ---------------------------------------------------------------------------
   function targetReference(document, frame, expression, locals = {}) {
     const source = String(expression || '').replace(/\s+/g, '');
     const base = source.match(/^([A-Za-z_]\w*)/)?.[1] || '';
@@ -75,6 +91,9 @@
   }
 
   function eventTargetIndex(document, frame, target) {
+    const capturedIndices = Array.isArray(target?.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
+    if (capturedIndices.length && capturedIndices.every(Number.isInteger)) return capturedIndices;
     const captured = Number(target?.resolvedIndex);
     if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
       && Number.isInteger(captured)) return [captured];
@@ -150,6 +169,9 @@
     return iterationValue(document, frame, 'first', variableName);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：受限運算式 parser
+  // ---------------------------------------------------------------------------
   function resolveExpression(document, frame, expression, locals = {}, allowTextSlices = false) {
     if (!Object.prototype.hasOwnProperty.call(locals || {}, 'recursion_depth')) {
       locals = {
@@ -296,6 +318,8 @@
         }
         if (Array.isArray(data?.items)) return data.items.length;
         if (Array.isArray(data)) return data.length;
+        const scalar = window.ASMTraceModel.scalarValue(data);
+        if (typeof scalar === 'string') return scalar.length;
         return invalid;
       }
       return knownValue(window.ASMTraceModel.scalarValue(data));
@@ -469,6 +493,9 @@
     return arrayItem && typeof scalar === 'string' ? JSON.stringify(scalar) : String(scalar);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文字模板與條件
+  // ---------------------------------------------------------------------------
   function resolveTextExpression(document, frame, expression, locals = {}) {
     return formatTextValue(resolveExpression(document, frame, expression, locals, true));
   }
@@ -582,19 +609,31 @@
   }
 
   function resolveIndex(target, frame) {
+    const capturedIndices = Array.isArray(target?.resolvedIndices)
+      ? target.resolvedIndices.map(Number) : [];
+    if (capturedIndices.length && capturedIndices.every(Number.isInteger)) {
+      return capturedIndices.length === 1 ? capturedIndices[0] : capturedIndices.join(',');
+    }
     const capturedIndex = Number(target?.resolvedIndex);
     if (Object.prototype.hasOwnProperty.call(target || {}, 'resolvedIndex')
       && Number.isInteger(capturedIndex)) return capturedIndex;
     const expression = String(target?.indexExpression || '').replace(/\s+/g, '');
     if (!expression) return null;
-    if (/^-?\d+$/.test(expression)) return Number(expression);
-    const match = expression.match(/^([A-Za-z_]\w*)([+-]\d+)?$/);
-    if (!match) return null;
-    const base = scalarStateByName(frame, match[1]);
-    if (base == null) return null;
-    return base + Number(match[2] || 0);
+    const resolvePart = part => {
+      if (/^-?\d+$/.test(part)) return Number(part);
+      const match = part.match(/^([A-Za-z_]\w*)([+-]\d+)?$/);
+      if (!match) return null;
+      const base = scalarStateByName(frame, match[1]);
+      return base == null ? null : base + Number(match[2] || 0);
+    };
+    const indices = expression.split(',').map(resolvePart);
+    if (!indices.length || indices.some(index => !Number.isInteger(index))) return null;
+    return indices.length === 1 ? indices[0] : indices.join(',');
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：規則目標定位
+  // ---------------------------------------------------------------------------
   function resolveTargetIndex(document, frame, action) {
     const expression = action?.targetIndexExpression ?? action?.targetIndex;
     if (expression == null || String(expression).trim() === '') return null;
@@ -633,6 +672,9 @@
     return next;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：規則求值與合併
+  // ---------------------------------------------------------------------------
   function evaluate(document, frame, options = {}) {
     const highlights = {};
     const rules = [...DEFAULT_RULES, ...(Array.isArray(document?.rules) ? document.rules : [])];
@@ -676,7 +718,16 @@
       AV_grey: '#cccccc',
       AV_node_grey: '#cccccc',
       AV_black: '#111827',
-      AV_white: '#ffffff'
+      AV_white: '#ffffff',
+      'AV_green!': '#a5d6a7',
+      'AV_red!': '#ef9a9a',
+      'AV_blue!': '#90caf9',
+      'AV_yellow!': '#fcff40',
+      'AV_orange!': '#ffb74d',
+      'AV_magenta!': '#e790ff',
+      'AV_black!': '#111827',
+      'AV_white!': '#ffffff',
+      'AV_grey!': '#cccccc'
     };
     for (const style of window.ASMTraceModel?.drawingDirectives?.(document, frame, 'styles') || frame?.styles || []) {
       const variableId = style.targetVariableId;
@@ -685,6 +736,56 @@
       const items = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
+        const dimensionIndices = (dimension, count) => {
+          if (dimension?.type === 'index') {
+            const value = resolveExpression(document, frame, dimension.indexExpression, style.drawLocals);
+            const index = value == null ? NaN : Number(value);
+            return Number.isInteger(index) && index >= 0 && index < count ? [index] : [];
+          }
+          if (dimension?.type === 'range') {
+            const startValue = resolveExpression(document, frame, dimension.startExpression, style.drawLocals);
+            const endValue = resolveExpression(document, frame, dimension.endExpression, style.drawLocals);
+            if (startValue == null || endValue == null) return [];
+            const start = Number(startValue);
+            const end = Number(endValue);
+            if (!Number.isInteger(start) || !Number.isInteger(end)) return [];
+            const stop = end + (dimension.endInclusive ? 1 : 0);
+            return Array.from({ length: count }, (_, index) => index)
+              .filter(index => index >= start && index < stop);
+          }
+          return [];
+        };
+        if (selector?.type === 'matrix-cell') {
+          const row = Number(resolveExpression(document, frame, selector.rowExpression, style.drawLocals));
+          const column = Number(resolveExpression(document, frame, selector.columnExpression, style.drawLocals));
+          if (!Number.isInteger(row) || !Number.isInteger(column)) return [];
+          return [`${row},${column}`];
+        }
+        if (selector?.type === 'matrix-inner-label') {
+          const rows = dimensionIndices(selector.rowSelector, items.length);
+          return rows.flatMap(row => {
+            const columns = dimensionIndices(selector.columnSelector, items[row]?.items?.length || 0);
+            return columns.map(column => `$inner-label:${row},${column}`);
+          });
+        }
+        if (selector?.type === 'matrix-axis-label') {
+          const count = selector.axis === 'row'
+            ? items.length
+            : Math.max(0, ...items.map(row => row?.items?.length || 0));
+          return dimensionIndices(selector.dimensionSelector, count)
+            .map(index => `$${selector.axis}-label:${index}`);
+        }
+        if (selector?.type === 'index-label') {
+          return dimensionIndices(selector.dimensionSelector, items.length)
+            .map(index => `$index-label:${index}`);
+        }
+        if (selector?.type === 'matrix-region') {
+          const rows = dimensionIndices(selector.rowSelector, items.length);
+          return rows.flatMap(row => {
+            const columns = dimensionIndices(selector.columnSelector, items[row]?.items?.length || 0);
+            return columns.map(column => `${row},${column}`);
+          });
+        }
         if (selector?.type === 'index') {
           const value = resolveExpression(document, frame, selector.indexExpression, style.drawLocals);
           if (value == null) return [];
@@ -708,6 +809,42 @@
         : [style.selector];
       const indices = [...new Set(selectors.flatMap(selectorIndices))];
       indices.forEach(index => {
+        if (typeof index === 'string' && /^\$(?:index|row|column|inner)-label:/.test(index)) {
+          const match = index.match(/^\$(index|row|column|inner)-label:(\d+)(?:,(\d+))?$/);
+          if (!match) return;
+          const first = Number(match[2]);
+          const second = match[3] == null ? null : Number(match[3]);
+          const locals = match[1] === 'inner'
+            ? { row: first, column: second, index: second }
+            : match[1] === 'row'
+              ? { row: first, index: first }
+              : match[1] === 'column'
+                ? { column: first, index: first }
+                : { index: first };
+          if (!expressionMatches(document, frame, style.when, { ...style.drawLocals, ...locals })) return;
+          const variableHighlights = highlights[variableId] ||= {};
+          variableHighlights[index] = mergeHighlightStyle(
+            variableHighlights[index],
+            { styleType: style.styleType, color: styleColors[style.color] || style.color },
+            { sourceStyleId: style.id || '' }
+          );
+          return;
+        }
+        if (typeof index === 'string' && index.includes(',')) {
+          const [row, column] = index.split(',').map(Number);
+          const item = items[row]?.items?.[column];
+          if (!Number.isInteger(row) || !Number.isInteger(column) || item == null) return;
+          const value = window.ASMTraceModel.scalarValue(item);
+          if (!expressionMatches(document, frame, style.when,
+            { ...style.drawLocals, value, index: column, row, column })) return;
+          const variableHighlights = highlights[variableId] ||= {};
+          variableHighlights[index] = mergeHighlightStyle(
+            variableHighlights[index],
+            { styleType: style.styleType, color: styleColors[style.color] || style.color },
+            { sourceStyleId: style.id || '' }
+          );
+          return;
+        }
         if (index < 0 || index >= items.length) return;
         const presentedValues = options.presentedValues?.get?.(variableId);
         const value = presentedValues?.has?.(index)
@@ -760,6 +897,9 @@
     return highlights;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 裝飾輸出
+  // ---------------------------------------------------------------------------
   function decorations(document, frame) {
     const output = [];
     for (const rule of document?.rules || []) {
