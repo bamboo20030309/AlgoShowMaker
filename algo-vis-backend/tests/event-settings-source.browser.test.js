@@ -40,13 +40,13 @@ int main() {
 
     await page.click('#eventSettingsBtn');
     const flowRows = page.locator('.trace-event-settings-row')
-      .filter({ hasText: '流程跳轉事件' });
+      .filter({ hasText: '流程跳轉' });
     assert.equal(await flowRows.count(), 1, 'return, break and continue share one settings row');
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '回傳' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '跳出迴圈' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '繼續下一輪' }).count(), 0);
     const assignmentRows = page.locator('.trace-event-settings-row')
-      .filter({ hasText: '賦值事件' });
+      .filter({ hasText: '賦值' });
     assert.equal(await assignmentRows.count(), 1, 'assign and write share one settings row');
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '直接／初始化賦值' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '數值更新／複合賦值' }).count(), 0);

@@ -54,8 +54,8 @@ test('return, break and continue share one control-flow setting', () => {
   assert.equal(visibleTypes.includes('continue'), false);
   for (const type of ['return', 'break', 'continue']) {
     assert.equal(api.definition(type).type, 'control-flow');
-    assert.equal(api.definition(type).label, '流程跳轉事件');
-    assert.equal(api.labels[type], '流程跳轉事件');
+    assert.equal(api.definition(type).label, '流程跳轉');
+    assert.equal(api.labels[type], '流程跳轉');
     assert.equal(api.animation(type), 'code');
   }
 
@@ -93,7 +93,7 @@ test('assign and write share one setting while retaining distinct event names', 
   assert.equal(visibleTypes.includes('write'), false);
   for (const type of ['assign', 'write']) {
     assert.equal(api.definition(type).type, 'assignment');
-    assert.equal(api.definition(type).label, '賦值事件');
+    assert.equal(api.definition(type).label, '賦值');
     assert.equal(api.animation(type), 'assign');
   }
   assert.equal(api.labels.assign, '直接／初始化賦值');

@@ -11,7 +11,7 @@
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
     { type: 'object-exit', label: '物件退場／手動退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
     { type: 'read', label: '讀取', color: '#3976b8', enabledByDefault: false, timelineByDefault: false },
-    { type: 'assignment', label: '賦值事件', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     // Whole-condition results are internal playback metadata. Comparisons are
@@ -26,7 +26,7 @@
     // caller/callee state without exposing a second editable timeline event.
     { type: 'call-return', label: '函式呼叫返回', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'return-complete', label: '完成回傳', color: '#a86524', internal: true, enabledByDefault: false, timelineByDefault: false },
-    { type: 'control-flow', label: '流程跳轉事件', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
+    { type: 'control-flow', label: '流程跳轉', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
     { type: 'branch-enter', label: '進入遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'branch-exit', label: '離開遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'function-enter', label: '進入函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false },
@@ -47,9 +47,9 @@
     'visual-exit': '手動物件退場',
     write: '數值更新／複合賦值',
     assign: '直接／初始化賦值',
-    return: '流程跳轉事件',
-    break: '流程跳轉事件',
-    continue: '流程跳轉事件'
+    return: '流程跳轉',
+    break: '流程跳轉',
+    continue: '流程跳轉'
   });
   const byType = Object.fromEntries(definitions.map(definition => [definition.type, definition]));
   const animations = Object.freeze({
