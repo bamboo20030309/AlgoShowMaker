@@ -31,13 +31,16 @@ test('old AV draw right-click code shortcuts are removed', () => {
 
 test('directive assistant supplies keyboard navigation, examples, and native context-menu fallback', () => {
   const source = publicFile('trace-directive-assist.js');
-  for (const directive of ['frame', 'object', 'let', 'keep', 'layout', 'style', 'text', 'segment', 'place', 'arrow', 'exit']) {
+  for (const directive of ['frame', 'preset', 'endpreset', 'object', 'let', 'keep', 'layout', 'branch', 'endbranch',
+    'style', 'text', 'segment', 'place', 'camera', 'events', 'arrow', 'exit', 'code', 'endcode']) {
     assert.match(source, new RegExp(`id: '${directive}'`));
   }
   assert.match(source, /event\.code === 'Space'/);
   assert.match(source, /event\.key === 'Tab'/);
   assert.match(source, /event\.key === 'ArrowDown' \|\| event\.key === 'ArrowUp'/);
   assert.match(source, /event\.key === 'Escape'/);
+  assert.match(source, /scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.match(source, /id === 'frame' && rule\[3\]\?\.startsWith\('\\n'\)/);
   assert.match(source, /\['最小', '常用', '完整'\]/);
   assert.match(source, /event\.button !== 2 \|\| window\.matchMedia/);
   assert.match(source, /if \(!byId\[id\]\) return;/);

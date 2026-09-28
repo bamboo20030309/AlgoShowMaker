@@ -34,6 +34,7 @@
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @style isprime[i] highlight\n// @endpreset\n// @frame use sieve_view when i <= n\n// @style isprime[i] point',
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset\n// @preset sieve_colors\n// @style isprime[i] highlight AV_green\n// @endpreset\n// @frame use sieve_view, sieve_colors'
     ] },
+    { id: 'endpreset', label: '@endpreset', effect: '結束目前的可重用視圖預設區塊', code: '// @endpreset', examples: ['// @preset sieve_view\n// @object isprime\n// @endpreset'] },
     { id: 'object', label: '@object', effect: '在同一個 @frame 加入另一個獨立設定的物件', code: '// @object prime', examples: [
       '// @frame\n// @object prime',
       '// @frame when i%v==0\n// @object isprime with columns(10), labels(index)\n// @object prime with labels(value)',
@@ -54,6 +55,10 @@
       '// @layout recursion as "quick_tree" at canvas.top offset(0,80)\n// @frame arr in quick_tree',
       '// @layout recursion as "quick_tree" at canvas.top offset(0,80)\n// @layout quick_tree direction top-down\n// @frame arr in quick_tree\n// @keep arr as "partition" in quick_tree'
     ] },
+    { id: 'branch', label: '@branch', effect: '在遞迴排版中建立具名的邏輯分支', code: '// @branch as "Move" in hanoi_tree', examples: [
+      '// @branch as "Move" in hanoi_tree\n// @frame value in hanoi_tree\n// @endbranch'
+    ] },
+    { id: 'endbranch', label: '@endbranch', effect: '結束目前的具名遞迴分支', code: '// @endbranch', examples: ['// @branch as "Move" in hanoi_tree\n// @endbranch'] },
     { id: 'style', label: '@style', effect: '為陣列格子設定背景、強調、焦點或指標', code: '// @style arr[i] highlight', examples: [
       '// @style arr[i] highlight',
       '// @style arr[i] highlight,point',
@@ -80,6 +85,10 @@
       '// @place pivot at arr.right',
       '// @place pivot at arr.right offset(16,0)',
       '// @frame arr,pivot\n// @place pivot at arr.right offset(16,0)\n// @text "基準值" at pivot.bottom'
+    ] },
+    { id: 'camera', label: '@camera', effect: '設定目前幀或預設區塊的自動取景與聚焦目標', code: '// @camera auto', examples: [
+      '// @camera auto',
+      '// @camera focus arr offset(0,20) zoom(1.4)'
     ] },
     { id: 'events', label: '@events', effect: '控制本幀事件動畫；資料與事件記錄仍保留', code: '// @events animate off', examples: [
       '// @frame arr\n// @events animate off',
@@ -113,7 +122,9 @@
       '// @exit i',
       '// @exit min_idx,i\n// @keep last',
       '// @frame arr[min_idx]\n// @exit min_idx,i\n// @keep last as "round"'
-    ] }
+    ] },
+    { id: 'code', label: '@code', effect: '控制程式碼片段呈現；hide 仍會執行程式但不顯示在動畫程式碼中', code: '// @code hide', examples: ['// @code hide\ninternal_state++;\n// @endcode'] },
+    { id: 'endcode', label: '@endcode', effect: '結束目前的程式碼呈現控制區塊', code: '// @endcode', examples: ['// @code hide\ninternal_state++;\n// @endcode'] }
   ];
   const byId = Object.fromEntries(commands.map(command => [command.id, command]));
   const childRules = {
@@ -254,6 +265,7 @@
   function childOptions(id, line) {
     if (!childRules[id]) return [];
     const rules = childRules[id].filter(rule => {
+      if (id === 'frame' && rule[3]?.startsWith('\n')) return false;
       if (rule[0] === 'more-preset') return /^\s*\/\/\s*@frame\s+use\s+/.test(line) && !/\bwhen\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-direction') return !/\bdirection\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-flow-arrows') return !/\bflow-arrows\b/.test(line);
@@ -318,6 +330,8 @@
       button.setAttribute('aria-selected', String(Number(button.dataset.index) === selected));
     }
     const option = options[selected];
+    popup.querySelector(`.asm-directive-choice[data-index="${selected}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
     const preview = popup.querySelector('.asm-directive-preview code');
     if (preview) {
       const layoutId = currentLayoutId(currentDirective().line);
@@ -468,6 +482,8 @@
       updateSelection();
     } else if (event.key === 'Tab' && !event.shiftKey) {
       event.preventDefault(); event.stopImmediatePropagation(); applyChoice(options[selected]);
+    } else {
+      close();
     }
   }, true);
 
