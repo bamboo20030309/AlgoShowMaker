@@ -51,6 +51,10 @@ test('playback clock estimates total time, follows rate, and restarts the curren
         ],
         variables: {}, rules: [], studio: { eventSettings: { gapMs: 100 } }
       });
+      const originalStops = window.CodeScript.get_stop_frames;
+      window.CodeScript.get_stop_frames = () => [1];
+      window.initFrameInfoFromCodeScript();
+      window.CodeScript.get_stop_frames = originalStops;
       window.speakText = (_text, options) => {
         setTimeout(() => options.onstart?.(), 0);
         setTimeout(() => options.onend?.(), 5000);
@@ -71,6 +75,37 @@ test('playback clock estimates total time, follows rate, and restarts the curren
     assert.match(layout.numeric, /tabular-nums/);
     assert.ok(layout.width >= 90);
 
+    const timelineStyle = await page.locator('#frameTimeline').evaluate(element => ({
+      progress: getComputedStyle(element).getPropertyValue('--frame-progress').trim(),
+      trackHeight: getComputedStyle(element.querySelector('.frame-track')).height,
+      playheadHeight: getComputedStyle(element.querySelector('.frame-playhead')).height,
+      markerCount: element.querySelectorAll('.frame-bar').length,
+      stopCount: element.querySelectorAll('.frame-bar.stopframe').length
+    }));
+    assert.deepEqual(timelineStyle, {
+      progress: '25%',
+      trackHeight: '6px',
+      playheadHeight: '18px',
+      markerCount: 2,
+      stopCount: 1
+    });
+    await page.locator('#frameTimeline').hover({ position: { x: 20, y: 15 } });
+    await assert.doesNotReject(() => page.locator('#frameHoverPreview').waitFor({ state: 'visible' }));
+    assert.equal(await page.locator('#frameHoverPreview').textContent(), '第 1 幀 · 第 1 行');
+    const timeColors = await clock.evaluate(element => ({
+      current: getComputedStyle(element.querySelector('.playback-time-current')).color,
+      total: getComputedStyle(element.querySelector('.playback-time-total')).color
+    }));
+    assert.notEqual(timeColors.current, timeColors.total);
+    const timelineBox = await page.locator('#frameTimeline').boundingBox();
+    await page.mouse.move(timelineBox.x + timelineBox.width * 0.25, timelineBox.y + timelineBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(timelineBox.x + timelineBox.width * 0.75, timelineBox.y + timelineBox.height / 2);
+    await page.mouse.up();
+    assert.equal(await page.locator('#frameInfo').textContent(), '2 / 2');
+    await page.locator('#frameTimeline').click({ position: { x: timelineBox.width * 0.25, y: timelineBox.height / 2 } });
+    assert.equal(await page.locator('#frameInfo').textContent(), '1 / 2');
+
     const parseSeconds = label => {
       const value = label.split('/')[1].trim().split(':').map(Number);
       return value.length === 2 ? value[0] * 60 + value[1] : value[0] * 3600 + value[1] * 60 + value[2];
@@ -90,6 +125,21 @@ test('playback clock estimates total time, follows rate, and restarts the curren
     assert.match(await clock.textContent(), /^00:01 \/ /);
     await page.locator('#playToggleBtn').click();
     assert.match(await clock.textContent(), /^00:00 \/ /);
+
+    await page.evaluate(() => {
+      const frames = Array.from({ length: 81 }, (_, index) => ({
+        id: `dense-${index}`, state: {}, source: { line: index + 1 }, texts: [], events: []
+      }));
+      window.asmApplyTraceDocument({ frames, variables: {}, rules: [], studio: {} });
+      window.CodeScript.get_key_frames = () => [0, 80];
+      window.initFrameInfoFromCodeScript();
+    });
+    assert.equal(await page.locator('#frameTimeline').getAttribute('class'), 'dense');
+    assert.equal(await page.locator('.frame-bar').count(), 81);
+    const hiddenOrdinaryMarker = await page.locator('.frame-bar').nth(10).evaluate(element => (
+      getComputedStyle(element, '::after').opacity
+    ));
+    assert.equal(hiddenOrdinaryMarker, '0');
   } finally {
     await browser?.close();
     server.kill();

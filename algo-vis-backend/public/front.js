@@ -759,6 +759,12 @@ function csGetKeyFrames() {
   return [];
 }
 
+function csGetStopFrames() {
+  if (typeof CodeScript === "undefined") return [];
+  if (typeof CodeScript.get_stop_frames === "function") return CodeScript.get_stop_frames() || [];
+  return [];
+}
+
 function csGetCurrentFrameIndex() {
   if (typeof CodeScript === "undefined") return 0;
   if (typeof CodeScript.get_current_frame_index === "function") return CodeScript.get_current_frame_index();
@@ -798,32 +804,58 @@ function buildFrameBars() {
   barsContainer.innerHTML = "";
 
   const keySet = new Set(keyFrameIndices || []);
+  const stopSet = new Set(csGetStopFrames());
+  const traceFrames = window.ASMTracePlayer?.getDocument?.()?.frames || [];
 
   for (let i = 0; i < totalFrames; i++) {
     const bar = document.createElement("div");
     bar.classList.add("frame-bar");
     if (keySet.has(i)) bar.classList.add("keyframe");
+    if (stopSet.has(i)) bar.classList.add("stopframe");
     bar.dataset.index = i;
-
-    // bar.addEventListener("click", () => {
-    //   jumpToFrame(i);
-    // });
+    const sourceLine = Number(traceFrames[i]?.source?.line);
+    bar.dataset.previewLabel = Number.isFinite(sourceLine) && sourceLine > 0
+      ? `第 ${i + 1} 幀 · 第 ${sourceLine} 行`
+      : `第 ${i + 1} 幀`;
 
     barsContainer.appendChild(bar);
   }
 
   const timeline = document.getElementById("frameTimeline");
+  timeline?.classList.toggle('dense', totalFrames > 80);
   if (timeline && !timeline.dataset.scrubBound) {
     timeline.dataset.scrubBound = "true";
     let isDraggingTimeline = false;
 
-    const scrub = (e) => {
-      if (totalFrames <= 0) return;
+    const frameAtPointer = (e) => {
+      if (totalFrames <= 0) return -1;
       const rect = timeline.getBoundingClientRect();
-      let clickX = e.clientX - rect.left;
-      clickX = Math.max(0, Math.min(clickX, rect.width));
-      const targetIdx = Math.floor((clickX / rect.width) * totalFrames);
-      const clampedIdx = Math.max(0, Math.min(targetIdx, totalFrames - 1));
+      const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      return Math.max(0, Math.min(Math.floor((clickX / rect.width) * totalFrames), totalFrames - 1));
+    };
+
+    const showPreview = (e) => {
+      const targetIdx = frameAtPointer(e);
+      if (targetIdx < 0) return;
+      const preview = document.getElementById('frameHoverPreview');
+      const bars = barsContainer.querySelectorAll('.frame-bar');
+      bars.forEach((bar, index) => bar.classList.toggle('is-preview', index === targetIdx));
+      timeline.style.setProperty('--frame-hover-position', `${((targetIdx + 0.5) / totalFrames) * 100}%`);
+      if (preview) {
+        preview.textContent = bars[targetIdx]?.dataset.previewLabel || `第 ${targetIdx + 1} 幀`;
+        preview.hidden = false;
+      }
+    };
+
+    const hidePreview = () => {
+      barsContainer.querySelectorAll('.frame-bar.is-preview').forEach(bar => bar.classList.remove('is-preview'));
+      const preview = document.getElementById('frameHoverPreview');
+      if (preview) preview.hidden = true;
+    };
+
+    const scrub = (e) => {
+      const clampedIdx = frameAtPointer(e);
+      if (clampedIdx < 0) return;
       if (clampedIdx !== currentFrame) {
         jumpToFrame(clampedIdx);
       }
@@ -835,11 +867,20 @@ function buildFrameBars() {
       scrub(e);
     });
     timeline.addEventListener("pointermove", (e) => {
+      showPreview(e);
       if (isDraggingTimeline) scrub(e);
     });
     timeline.addEventListener("pointerup", (e) => {
       isDraggingTimeline = false;
       timeline.releasePointerCapture(e.pointerId);
+    });
+    timeline.addEventListener('pointerenter', showPreview);
+    timeline.addEventListener('pointerleave', () => {
+      if (!isDraggingTimeline) hidePreview();
+    });
+    timeline.addEventListener('pointercancel', () => {
+      isDraggingTimeline = false;
+      hidePreview();
     });
   }
 
@@ -861,6 +902,9 @@ function updateFrameBarsVisual() {
       bar.classList.remove("reached");
     }
   });
+  const timeline = document.getElementById('frameTimeline');
+  const progress = totalFrames > 0 ? ((currentFrame + 0.5) / totalFrames) * 100 : 0;
+  timeline?.style.setProperty('--frame-progress', `${Math.max(0, Math.min(100, progress))}%`);
 }
 
 // 更新「第幾幀 / 總幀數」文字
@@ -868,9 +912,10 @@ function updateFrameInfoText() {
   const info = document.getElementById("frameInfo");
   if (!info) return;
 
-  const now = (currentFrame || 0) + 1;  // 顯示給使用者 1-based
   const total = totalFrames || 0;
+  const now = total > 0 ? (currentFrame || 0) + 1 : 0;  // 顯示給使用者 1-based
   info.textContent = `${now} / ${total}`;
+  info.setAttribute('aria-label', `目前第 ${now} 幀，共 ${total} 幀`);
 }
 
 // 點條碼跳到某一幀
@@ -1143,7 +1188,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const current = Math.max(0, Math.min(Number(currentMs) || 0, Math.max(playbackTimeline.totalMs, 0)));
     const currentLabel = window.ASMPlaybackTime.formatDuration(current);
     const totalLabel = window.ASMPlaybackTime.formatDuration(playbackTimeline.totalMs);
-    playbackTime.textContent = `${currentLabel} / ${totalLabel}`;
+    const currentNode = playbackTime.querySelector('.playback-time-current');
+    const totalNode = playbackTime.querySelector('.playback-time-total');
+    if (currentNode && totalNode) {
+      currentNode.textContent = currentLabel;
+      totalNode.textContent = totalLabel;
+    } else {
+      playbackTime.textContent = `${currentLabel} / ${totalLabel}`;
+    }
     playbackTime.setAttribute('aria-label', `目前播放時間 ${currentLabel}，預估總時間 ${totalLabel}`);
   }
 
