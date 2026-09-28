@@ -28,7 +28,8 @@ test('Tower of Hanoi teaching deck explains the lesson and rebuilds its final an
     assert.match(lessonText, /Édouard Lucas/);
     assert.match(lessonText, /一次只能拿一個/);
     assert.match(lessonText, /移花、搬動底盤、接木/);
-    assert.equal(animation.code, fs.readFileSync(sourcePath, 'utf8'));
+    const normalizeNewlines = value => value.replace(/\r\n/g, '\n');
+    assert.equal(normalizeNewlines(animation.code), normalizeNewlines(fs.readFileSync(sourcePath, 'utf8')));
     assert.equal(animation.input, '4\n');
 
     const port = await new Promise(resolve => {

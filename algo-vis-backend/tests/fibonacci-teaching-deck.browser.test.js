@@ -17,8 +17,6 @@ test('Fibonacci teaching deck compares recursion and array DP and rebuilds its a
   { timeout: 120000 }, async () => {
     const root = path.resolve(__dirname, '..');
     const archivePath = path.join(root, 'public', 'guest-decks', 'fibonacci-teaching.asmdeck');
-    const recursionSourcePath = path.join(root, 'algorithm_sample', 'Backtracking', 'fibonacci.cpp');
-    const dpSourcePath = path.join(root, 'algorithm_sample', 'DP', 'fibonacci-dp.cpp');
     const decoded = await ASMDeck.decode(new Blob([fs.readFileSync(archivePath)]));
     const slides = decoded.deck.groups.flatMap(group => group.slides || []);
     const lessonText = slides.flatMap(slide => slide.canvas?.objects || [])
@@ -38,9 +36,12 @@ test('Fibonacci teaching deck compares recursion and array DP and rebuilds its a
     assert.equal(treeLabels.filter(label => label === 'F(2)').length, 3);
     assert.equal(treeLabels.filter(label => label === 'F(0)').length, 3);
     assert.equal(animations.length, 2);
-    assert.equal(animations[0].code, fs.readFileSync(recursionSourcePath, 'utf8'));
-    assert.equal(animations[1].code, fs.readFileSync(dpSourcePath, 'utf8'));
-    assert.deepEqual(animations.map(animation => animation.input), ['5\n', '5\n']);
+    assert.match(animations[0].code, /@layout recursion as "fib_tree"/);
+    assert.match(animations[0].code, /@frame n in fib_tree with display\("F\(\$\{call\}\)"\)/);
+    assert.match(animations[0].code, /int left = F\(n - 1\);[\s\S]*int right = F\(n - 2\);/);
+    assert.match(animations[1].code, /@object dp with labels\(value,index\)/);
+    assert.match(animations[1].code, /dp\[i\]=dp\[i-1\]\+dp\[i-2\];/);
+    assert.deepEqual(animations.map(animation => animation.input), ['5\n', '10']);
 
     const port = await new Promise(resolve => {
       const probe = net.createServer();

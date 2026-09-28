@@ -83,21 +83,39 @@
     },
     {
       "id": "hanoi-teaching",
-      "title": "河內塔 (Tower of Hanoi)",
+      "title": "河內塔 (hanoi tower)",
       "categories": [
         "Backtracking"
       ],
       "hints": ["遞迴", "分治"],
-      "archive": "/guest-decks/hanoi-teaching.asmdeck?v=hanoi-deck-1"
+      "archive": "/guest-decks/hanoi-teaching.asmdeck?v=hanoi-deck-2"
     },
     {
       "id": "fibonacci-teaching",
-      "title": "費式數列 (Fibonacci)",
+      "title": "費式數列遞迴",
       "categories": [
         "DP"
       ],
-      "hints": ["遞迴", "動態規劃"],
-      "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=fibonacci-deck-3"
+      "hints": ["遞迴", "呼叫樹"],
+      "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=fibonacci-deck-4"
+    },
+    {
+      "id": "prefix-sum",
+      "title": "前綴和 (Prefix Sum)",
+      "categories": [
+        "Math"
+      ],
+      "hints": ["區間和", "預處理"],
+      "archive": "/guest-decks/prefix-sum.asmdeck?v=prefix-sum-deck-1"
+    },
+    {
+      "id": "lcs-teaching",
+      "title": "最長共同子序列 (LCS)",
+      "categories": [
+        "DP"
+      ],
+      "hints": ["二維動態規劃", "回溯"],
+      "archive": "/guest-decks/lcs-teaching.asmdeck?v=lcs-deck-1"
     }
   ]
 }
