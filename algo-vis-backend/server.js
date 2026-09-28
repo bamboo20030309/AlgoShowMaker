@@ -40,6 +40,7 @@ const {
 } = require('./trace-instrumenter');
 const TraceViewSource = require('./public/trace-view-source');
 const TraceProvenance = require('./public/trace-provenance');
+const TraceChunkStore = require('./trace-chunk-store');
 const SlideStorage = require('./public/slides-storage');
 const CloudContent = require('./cloud-content');
 
@@ -1899,14 +1900,10 @@ function appendFixedEvents(frames, variables = []) {
   return frames;
 }
 
-function readTraceDocument(tracePath, variables, traceRequest = {}) {
-  if (!fs.existsSync(tracePath)) return null;
-  const stat = fs.statSync(tracePath);
-  if (stat.size > 20 * 1024 * 1024) throw new Error('追蹤資料超過 20MB 上限');
-  const records = fs.readFileSync(tracePath, 'utf8')
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map(line => JSON.parse(line));
+async function readTraceDocument(tracePath, variables, traceRequest = {}) {
+  const loaded = await TraceChunkStore.read(tracePath);
+  if (!loaded) return null;
+  const {records, stats} = loaded;
   const keepDirectives = Array.isArray(traceRequest.keepDirectives)
     ? traceRequest.keepDirectives
     : [];
@@ -1944,7 +1941,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
     ...frame,
     events: (frame.events || []).map(event => {
       const source = eventSources[event.signature];
-      const enriched = source ? { ...event, source: JSON.parse(JSON.stringify(source)) } : event;
+      const enriched = source ? { ...event, source } : event;
       if (event.type !== 'keep') return enriched;
       const directive = keepDirectiveByStatementId.get(enriched.signature);
       if (!directive) return enriched;
@@ -2079,6 +2076,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   }
   return {
     schemaVersion: '1.0',
+    traceStorage: stats,
     generatedAt: new Date().toISOString(),
     loopRecords: records.filter(record => record.record === 'loop'),
     sourceCode: typeof traceRequest.sourceCode === 'string' ? traceRequest.sourceCode : '',
@@ -2284,7 +2282,7 @@ app.post('/compile', (req, res) => {
   // 定義清理函式
   const cleanup = (attempt = 0) => {
     let retryNeeded = false;
-    [sourcePath, exePath, scriptPath, tracePath].forEach(filePath => {
+    [sourcePath, exePath, scriptPath, tracePath, tracePath + '.chunks.gz', tracePath + '.chunks.gz.index.json'].forEach(filePath => {
       try {
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       } catch (e) {
@@ -2446,7 +2444,7 @@ app.post('/compile', (req, res) => {
 
     let hasResponded = false; // 防呆：確保不重複回傳
 
-    const sendResponse = (codeRun, signal, forced = false) => {
+    const sendResponse = async (codeRun, signal, forced = false) => {
       if (hasResponded) return;
       hasResponded = true;
 
@@ -2472,13 +2470,14 @@ app.post('/compile', (req, res) => {
 
       let scriptContent = '';
       let traceDocument = null;
+      let traceError = "";
       try {
         if (fs.existsSync(scriptPath)) scriptContent = fs.readFileSync(scriptPath, 'utf8');
       } catch (err) { logDebug('讀取動畫腳本失敗: ' + err.message); }
 
       if (traceEnabled) {
         try {
-          traceDocument = readTraceDocument(tracePath, traceVariables, {
+          traceDocument = await readTraceDocument(tracePath, traceVariables, {
             ...trace,
             sourceCode: code,
             sliceMode: traceSliceMode,
@@ -2492,6 +2491,7 @@ app.post('/compile', (req, res) => {
             asmView
           });
         } catch (err) {
+          traceError = '追蹤資料載入失敗：' + err.message;
           logDebug('Failed to read trace output: ' + err.message);
           runErr += `\nTrace Error: ${err.message}`;
         }
@@ -2507,11 +2507,13 @@ app.post('/compile', (req, res) => {
       else if (runErr && runErr.includes('Script Size Exceeded')) finalError = runErr.split('\n').find(l => l.includes('Script Size Exceeded')) || 'Script Size Exceeded';
       else if (codeRun !== 0 || signal) finalError = (runErr && runErr.trim() !== '') ? runErr : `Runtime Error`;
 
+      if (!finalError && traceError) finalError = traceError;
+
       if (forced) logDebug('強制回收：進程未能及時關閉，已先行回傳結果。');
 
       if (traceDocument && !finalError) traceDocument.provenance = TraceProvenance.create(code, input);
 
-      res.json({
+      try { await TraceChunkStore.sendJson(req, res, {
         output: runOut,
         error: finalError,
         traceWarning,
@@ -2521,7 +2523,11 @@ app.post('/compile', (req, res) => {
         debug_log: debugMessages,
         scriptContent: scriptContent,
         traceDocument
-      });
+      }); } catch (error) {
+        logDebug('回傳編譯結果失敗：' + error.message);
+        if (!res.headersSent) res.status(500).json({error:'無法傳送追蹤資料'});
+        else res.destroy();
+      }
     };
 
     const tleTimer = setTimeout(() => {

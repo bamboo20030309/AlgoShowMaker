@@ -183,3 +183,12 @@ fingerprint 是變更偵測，不是安全驗證；忽略原始碼行尾格式�
 `recursive-roles` 固定案例包含外層同名指標、遞迴指標與一般數值、深入和返回。
 三介面實際 RUN 驗證連續角色不被標記為入場，且指標和數值都有接續樣本；沒有樣本即失敗。
 `scene-exit-entrance-order.test.js` 另驗證不同宣告位置、兄弟呼叫、keep 分界與已消失角色不接續。
+
+## 追蹤去重及分塊（gamma，2026-09-28）
+
+- `node --test tests/trace-chunk-store.test.js`：C++ 寫出跨事件數／bytes 邊界、v1/v2 無損載入、獨立 gzip 分塊 seek、損毀／超限、JSON 回應契約。
+- `node --test tests/trace-chunks.browser.test.js`：自建隨機埠服務，以 `fixtures/trace-chunks-checkerboard.cpp` RUN；核對 96,013 事件、11,000 格、棋盤狀態與紅綠色，舊 trace 載入／儲存／重開。接著在同一隔離服務執行既有 marker availability 的小案例。截圖與摘要留 `test-results/trace-chunks/`，不提交。
+- 事件保存鍵的線性計數斷言在 `event-defaults.test.js`；矩陣 all selector 舊／新資料的條件上色以 `node --test --test-name-pattern="matrix all selector" tests/matrix-renderer.test.js` 執行。
+- Runtime 每塊至多 1,024 事件或約 256 KiB，單個大型事件可獨立成塊（事件上限 16 MiB）；後端另有限制：JSONL 128 MiB、單筆 64 MiB、gzip 32 MiB、事件展開估計 512 MiB、1,000,000 事件、100,000 分塊。
+- 內部 JSONL v2 與 `.chunks.gz`／索引是編譯請求暫存，完成或失敗均清除；HTTP 回傳相容 v1 traceDocument，接受 gzip 的客戶端使用串流 gzip。`traceStorage` 回報 trace 檔案 bytes，不是 HTTP body 或 asmdeck 大小。
+- 分塊限制讀写／壓縮暫存量；前後端事件模型仍持有完整事件，並非已實作前端按需載入或固定記憶體上限。

@@ -503,9 +503,15 @@
         if (value == null) throw new Error(`第 ${control.line || '?'} 行的 @events 條件無法解析：${control.when.expression}`);
         return Boolean(value);
       });
-      (frame.events || []).forEach((event, index) => {
+      // One pass preserves legacy occurrence keys without rescanning all prior
+      // events for every occurrence (quadratic for a large initialization frame).
+      const occurrences = new Map();
+      (frame.events || []).forEach(event => {
         delete event.directiveAnimationControl;
-        const key = eventKey(frame.events, index);
+        const base = baseEventKey(event);
+        const occurrence = occurrences.get(base) || 0;
+        occurrences.set(base, occurrence + 1);
+        const key = `${base}::${occurrence}`;
         if (event.loopBoundaryCondition === true) {
           event.loopBoundarySuppressed = settings.autoLoopBoundaryEnabled !== true;
         } else {

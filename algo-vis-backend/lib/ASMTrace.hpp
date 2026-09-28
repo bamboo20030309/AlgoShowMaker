@@ -344,9 +344,9 @@ class Recorder {
     if (!path || !*path) return;
     const char* max_frames = std::getenv("ASM_TRACE_MAX_FRAMES");
     if (max_frames) max_frames_ = std::max(1, std::atoi(max_frames));
-    output_.open(path, std::ios::out | std::ios::trunc);
+    output_.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
     enabled_ = output_.is_open();
-    if (enabled_) output_ << "{\"record\":\"meta\",\"schemaVersion\":\"1.0\"}\n";
+    if (enabled_) output_ << "{\"record\":\"meta\",\"schemaVersion\":\"2.0\"}\n";
   }
 
   bool enabled() const { return enabled_; }
@@ -361,18 +361,37 @@ class Recorder {
     if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return std::string();
     const int execution_order = event_id_++;
     const std::string event_id = std::string("event-") + std::to_string(execution_order);
-    std::ostringstream event;
-    event << "{\"id\":" << quoted(event_id)
-          << ",\"order\":" << execution_order
-          << ",\"type\":" << quoted(type)
-          << ",\"signature\":" << quoted(signature)
-          << ",\"line\":" << line;
-    if (!fields.empty()) event << ',' << fields;
-    if (fields.find("\"recursionActivationId\"") == std::string::npos) {
-      event << current_activation_source_json();
+    // Instruction and activation metadata are shared within a bounded chunk.
+    // Resetting the dictionary at each chunk makes every chunk independently readable.
+    std::ostringstream metadata;
+    metadata << "{\"type\":" << quoted(type)
+             << ",\"signature\":" << quoted(signature) << ",\"line\":" << line;
+    if (fields.find("\"recursionActivationId\"") == std::string::npos)
+      metadata << current_activation_source_json();
+    metadata << '}';
+    const std::string key = metadata.str();
+    if (!pending_events_.empty() && (pending_events_.size() >= 1024
+        || pending_bytes_ + fields.size() + key.size() + 64 > 256 * 1024)) flush_events();
+    if (!enabled_) return std::string();
+    if (fields.size() + key.size() > 16 * 1024 * 1024 || event_id_ > 1000000) {
+      fail("Trace event limit exceeded");
+      return std::string();
     }
-    event << '}';
-    pending_events_.push_back(event.str());
+    auto found = template_ids_.find(key);
+    int template_id;
+    if (found == template_ids_.end()) {
+      template_id = static_cast<int>(templates_.size());
+      template_ids_[key] = template_id;
+      templates_.push_back(key);
+      pending_bytes_ += key.size() + 1;
+    } else template_id = found->second;
+    std::string event = "[" + std::to_string(execution_order) + ","
+      + std::to_string(template_id) + ",{";
+    // fields already contains JSON members; no re-encoding or value conversion.
+    event += fields + "}]";
+    pending_bytes_ += event.size() + 1;
+    pending_events_.push_back(std::move(event));
+    ++pending_count_;
     return event_id;
   }
 
@@ -380,6 +399,8 @@ class Recorder {
   void capture(int line, const char* function_name, const char* statement_id,
                const char* statement_kind, const Values&... values) {
     if (trace_suppressed() || !enabled_ || frame_id_ >= max_frames_) return;
+    flush_events();
+    if (!enabled_) return;
     std::vector<NamedValue> state{ values... };
     output_ << "{\"record\":\"frame\",\"id\":" << quoted(std::string("frame-") + std::to_string(frame_id_++))
             << ",\"source\":{\"line\":" << line
@@ -396,19 +417,47 @@ class Recorder {
               << ",\"lifetime\":" << quoted(state[index].lifetime)
               << ",\"data\":" << state[index].json << '}';
     }
-    output_ << "},\"events\":[";
-    for (std::size_t index = 0; index < pending_events_.size(); ++index) {
-      if (index) output_ << ',';
-      output_ << pending_events_[index];
-    }
-    output_ << "]}\n";
+    output_ << "},\"events\":[],\"eventCount\":" << pending_count_ << "}\n";
     output_.flush();
-    pending_events_.clear();
+    pending_count_ = 0;
+    check_size();
   }
 
  private:
+  void fail(const char* message) {
+    output_ << "{\"record\":\"error\",\"message\":" << quoted(message) << "}\n";
+    output_.flush();
+    enabled_ = false;
+  }
+  void check_size() {
+    if (!output_) { enabled_ = false; return; }
+    if (output_.tellp() > std::streamoff(128 * 1024 * 1024)) fail("Trace byte limit exceeded");
+  }
+  void flush_events() {
+    if (pending_events_.empty() || !enabled_) return;
+    output_ << "{\"record\":\"events\",\"templates\":[";
+    for (std::size_t i = 0; i < templates_.size(); ++i) {
+      if (i) output_ << ',';
+      output_ << templates_[i];
+    }
+    output_ << "],\"events\":[";
+    for (std::size_t i = 0; i < pending_events_.size(); ++i) {
+      if (i) output_ << ',';
+      output_ << pending_events_[i];
+    }
+    output_ << "]}\n";
+    pending_events_.clear();
+    templates_.clear();
+    template_ids_.clear();
+    pending_bytes_ = 0;
+    check_size();
+  }
   std::ofstream output_;
   std::vector<std::string> pending_events_;
+  std::vector<std::string> templates_;
+  std::unordered_map<std::string, int> template_ids_;
+  std::size_t pending_bytes_ = 0;
+  std::size_t pending_count_ = 0;
   int event_id_;
   int frame_id_;
   bool enabled_;

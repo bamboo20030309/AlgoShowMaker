@@ -1945,8 +1945,16 @@
     return eventOrder >= declaredAt && eventOrder < exitedAt;
   }
 
+  // Availability probes share a short-lived marker subset. Ordinary cells can
+  // never satisfy markerMatchesEventTarget; scanning them per event is wasted.
+  // Scope this to one probe so mutable scene maps cannot leave a stale cache.
+  let availabilityMarkerIndex = null;
+  function markerCandidates(elements) {
+    return availabilityMarkerIndex?.get(elements) || elements || [];
+  }
+
   function markerVisualKey(elements, target, eventFrame = null, event = null) {
-    for (const [key, element] of elements || []) {
+    for (const [key, element] of markerCandidates(elements)) {
       // A retained @keep marker can carry the same source variable id as the
       // live marker. It is playback history, not a target for current events.
       // Match the full lifetime and scene generation so a stale snapshot can
@@ -3718,7 +3726,7 @@
     }
     if (event?.type !== 'write'
       || (event.update !== true && event.compound !== true)) return false;
-    for (const [, element] of elements || []) {
+    for (const [, element] of markerCandidates(elements)) {
       if (!(event.targets || []).some(target => markerMatchesEventTarget(element, target))) continue;
       return true;
     }
@@ -3784,7 +3792,7 @@
     const target = (event.targets || []).find(item => item.role === 'target') || event.targets?.[0];
     if (!target?.variableId) return null;
     const domains = previousObjects ? [elements, previousObjects] : [elements];
-    for (const domain of domains) for (const [key, element] of domain || []) {
+    for (const domain of domains) for (const [key, element] of markerCandidates(domain)) {
       if (markerMatchesEventTarget(element, target)
         && markerLifetimeActiveAtEvent(eventFrame, event, element)) {
         return { key, element, target };
@@ -3948,7 +3956,7 @@
       .map(target => target?.variableId)
       .filter(Boolean));
     const markers = [];
-    for (const [key, element] of elements || []) {
+    for (const [key, element] of markerCandidates(elements)) {
       const target = targets.find(item => (
         item?.role !== 'source' && markerMatchesEventTarget(element, item)
           && markerLifetimeActiveAtEvent(eventFrame, slot.event, element)
@@ -3963,7 +3971,7 @@
     if (!['assign', 'write'].includes(event?.type)) return [];
     const targets = event?.targets || [];
     const markers = [];
-    for (const [key, element] of elements || []) {
+    for (const [key, element] of markerCandidates(elements)) {
       const target = targets.find(item => (
         item?.role !== 'source'
         && eventMutatesVariable(event, item?.variableId)
@@ -5160,57 +5168,69 @@
   function updateEventAvailability(
     traceDocument, eventFrame, placements, elements, previousObjects = null
   ) {
-    let changed = false;
-    orderedEvents(eventFrame).forEach(event => {
-      if (event.type === 'condition') {
-        if (event.autoAnimationDisabled === false
-          && !event.autoAnimationUnavailableReason) return;
-        event.autoAnimationDisabled = false;
-        delete event.autoAnimationUnavailableReason;
-        changed = true;
-        return;
-      }
-      if (event.type === 'fixed') {
-        if (event.autoAnimationDisabled === false
-          && !event.autoAnimationUnavailableReason) return;
-        event.autoAnimationDisabled = false;
-        delete event.autoAnimationUnavailableReason;
-        changed = true;
-        return;
-      }
-      const animation = eventAvailabilityAnimation(event, elements, eventFrame, previousObjects);
-      const codeRenderable = eventUsesCodePanelTarget(event);
-      const animationRenderable = eventAnimationIsRenderable(animation);
-      const hasCanvasTargetDefinition = animation !== 'code'
-        && eventHasRenderableTargetDefinition(event, animation);
-      const canvasRenderable = hasCanvasTargetDefinition
-        && eventHasVisibleAnimationTargets(
-          traceDocument, eventFrame, event, animation, placements, elements, previousObjects
-        );
-      const unavailableReason = animation === 'code'
-        ? (codeRenderable && animationRenderable ? '' : 'unrenderable')
-        : !animationRenderable
-          ? 'unrenderable'
-          : !hasCanvasTargetDefinition
-            ? (codeRenderable ? 'missing-target' : 'unrenderable')
-          : !canvasRenderable ? 'missing-target' : '';
-      const autoDisabled = Boolean(unavailableReason);
-      event.codeRenderable = codeRenderable;
-      event.canvasRenderable = canvasRenderable;
-      if (event.autoAnimationDisabled === autoDisabled
-        && String(event.autoAnimationUnavailableReason || '') === unavailableReason) return;
-      event.autoAnimationDisabled = autoDisabled;
-      if (unavailableReason) event.autoAnimationUnavailableReason = unavailableReason;
-      else delete event.autoAnimationUnavailableReason;
-      changed = true;
-    });
-    if (changed) {
-      queueMicrotask(() => window.dispatchEvent(new CustomEvent(
-        'asm:trace-event-availability-changed',
-        { detail: { document: traceDocument, frameId: eventFrame?.id || '' } }
-      )));
+    const previousMarkerIndex = availabilityMarkerIndex;
+    availabilityMarkerIndex = new Map();
+    for (const domain of [elements, previousObjects]) {
+      if (!domain) continue;
+      availabilityMarkerIndex.set(domain, new Map([...domain].filter(([, element]) => (
+        Boolean(element?.dataset?.traceSourceVariableId)
+      ))));
     }
-    return changed;
+    try {
+      let changed = false;
+      orderedEvents(eventFrame).forEach(event => {
+        if (event.type === 'condition') {
+          if (event.autoAnimationDisabled === false
+            && !event.autoAnimationUnavailableReason) return;
+          event.autoAnimationDisabled = false;
+          delete event.autoAnimationUnavailableReason;
+          changed = true;
+          return;
+        }
+        if (event.type === 'fixed') {
+          if (event.autoAnimationDisabled === false
+            && !event.autoAnimationUnavailableReason) return;
+          event.autoAnimationDisabled = false;
+          delete event.autoAnimationUnavailableReason;
+          changed = true;
+          return;
+        }
+        const animation = eventAvailabilityAnimation(event, elements, eventFrame, previousObjects);
+        const codeRenderable = eventUsesCodePanelTarget(event);
+        const animationRenderable = eventAnimationIsRenderable(animation);
+        const hasCanvasTargetDefinition = animation !== 'code'
+          && eventHasRenderableTargetDefinition(event, animation);
+        const canvasRenderable = hasCanvasTargetDefinition
+          && eventHasVisibleAnimationTargets(
+            traceDocument, eventFrame, event, animation, placements, elements, previousObjects
+          );
+        const unavailableReason = animation === 'code'
+          ? (codeRenderable && animationRenderable ? '' : 'unrenderable')
+          : !animationRenderable
+            ? 'unrenderable'
+            : !hasCanvasTargetDefinition
+              ? (codeRenderable ? 'missing-target' : 'unrenderable')
+            : !canvasRenderable ? 'missing-target' : '';
+        const autoDisabled = Boolean(unavailableReason);
+        event.codeRenderable = codeRenderable;
+        event.canvasRenderable = canvasRenderable;
+        if (event.autoAnimationDisabled === autoDisabled
+          && String(event.autoAnimationUnavailableReason || '') === unavailableReason) return;
+        event.autoAnimationDisabled = autoDisabled;
+        if (unavailableReason) event.autoAnimationUnavailableReason = unavailableReason;
+        else delete event.autoAnimationUnavailableReason;
+        changed = true;
+      });
+      if (changed) {
+        queueMicrotask(() => window.dispatchEvent(new CustomEvent(
+          'asm:trace-event-availability-changed',
+          { detail: { document: traceDocument, frameId: eventFrame?.id || '' } }
+        )));
+      }
+      return changed;
+    } finally {
+      availabilityMarkerIndex = previousMarkerIndex;
+    }
   }
 
   function buildEventTimeline(
@@ -7713,10 +7733,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-256';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-257';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-256', play, cancel, updateEventAvailability,
+    build: 'trace-257', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

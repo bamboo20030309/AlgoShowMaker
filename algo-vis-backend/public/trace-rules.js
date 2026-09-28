@@ -736,6 +736,13 @@
       const items = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
+        // An unindexed matrix style visits cells, not row arrays, so `value`
+        // has the same scalar meaning as an explicitly selected matrix cell.
+        if (selector?.type === 'all' && (document.variables?.[variableId]?.kind === 'matrix'
+          || items.some(item => Array.isArray(item?.items)))) {
+          return items.flatMap((row, rowIndex) => (row?.items || [])
+            .map((_, columnIndex) => `${rowIndex},${columnIndex}`));
+        }
         const dimensionIndices = (dimension, count) => {
           if (dimension?.type === 'index') {
             const value = resolveExpression(document, frame, dimension.indexExpression, style.drawLocals);

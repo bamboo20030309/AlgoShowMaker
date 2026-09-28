@@ -205,3 +205,17 @@ test('auto fixed state follows runtime identity across aliases and batches a fra
   assert.equal(document.studio.eventInstructionStates['fixed:visit:arr@2:0'], false,
     'migration cleanup occurs when Studio serializes settings, not while normalizing playback');
 });
+
+test('large frames resolve occurrence switches in one pass and preserve legacy keys',()=>{
+ const api=eventApi();let reads=0;
+ const events=Array.from({length:10000},(_,i)=>({id:`event-${i}`,order:i,type:'assign',
+  get signature(){reads++;return `assign:main:3:value${i%2}`;}}));
+ const states={'assign:main:3:value0::4999':false,'assign:main:3:value1::0':false};
+ const doc={frames:[{id:'f',events}],studio:{eventStates:{f:states},eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false}}};
+ api.applyEnabledStates(doc);
+ assert.equal(events[9998].enabled,false);assert.equal(events[1].enabled,false);assert.equal(events[9999].enabled,true);
+ assert.ok(reads<events.length*20,`signature reads must grow linearly; got ${reads}`);
+ const reopened=JSON.parse(JSON.stringify(doc));api.applyEnabledStates(reopened);
+ assert.deepEqual(reopened.frames[0].events.map(e=>e.enabled),events.map(e=>e.enabled));
+ assert.equal(reopened.studio.eventSettings.autoFixedEnabled,false);
+});
