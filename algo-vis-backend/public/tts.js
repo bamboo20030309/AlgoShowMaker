@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 瀏覽器語音服務包裝
+// 選擇可用語音、切分朗讀工作並以可取消的 callback 回報進度，避免舊播放工作污染新一輪狀態。
+// -----------------------------------------------------------------------------
 // tts.js - 自動優先選「自然語音」(Microsoft Online Natural/Neural) 的免費方案
 ;(function () {
   const hasAPI =
@@ -12,6 +16,10 @@
     'microsoft hanhan - chinese (traditional, taiwan)'
   ]);
 
+  // -----------------------------------------------------------------------------
+  // 朗讀標記解析
+  // 把停頓與文字標記轉成順序工作，保留原文 offset 供畫面高亮對應。
+  // -----------------------------------------------------------------------------
   function parseTTSMarkup(value) {
     const source = String(value ?? "");
     let display = "";
@@ -44,6 +52,10 @@
     return { display, speech };
   }
 
+  // -----------------------------------------------------------------------------
+  // 語音清單與偏好排序
+  // 瀏覽器語音可能延後載入，因此先快取 voiceschanged，再依語系與 Natural/Neural 名稱排序。
+  // -----------------------------------------------------------------------------
   function refreshVoices() {
     if (!hasAPI) return [];
     cachedVoices = window.speechSynthesis.getVoices() || [];
@@ -136,6 +148,10 @@
    *   - requireUserGesture=true: 若無使用者互動則不主動播（避免自動播放被擋&去警告）
    *   - onstart/onend/onerror
    */
+  // -----------------------------------------------------------------------------
+  // 朗讀工作與取消機制
+  // 每次 speak 建立獨立 utterance；interrupt 會先取消前一輪，錯誤、結束與手動停止都只結算一次。
+  // -----------------------------------------------------------------------------
   async function speakText(text, options = {}) {
     if (!hasAPI) {
       console.warn("[TTS] 此瀏覽器不支援 SpeechSynthesis。");
@@ -210,6 +226,10 @@
     return hasAPI ? (cachedVoices.length ? cachedVoices : refreshVoices()) : [];
   }
 
+  // -----------------------------------------------------------------------------
+  // 產品預設與使用者啟用狀態
+  // 將 deck 設定轉成 SpeechSynthesis 參數；activated 只記錄瀏覽器是否已收到必要的使用者手勢。
+  // -----------------------------------------------------------------------------
   function getAlgoShowMakerTTSProfile(settings = {}) {
     const rate = Number(settings.rate);
     const volume = Number(settings.volume);

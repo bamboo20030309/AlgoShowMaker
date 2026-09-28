@@ -1,3 +1,11 @@
+/**
+ * 測試模組：cloud-content.test
+ *
+ * 驗證重點：cloud content.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createStore, hash } = require('../cloud-content');
@@ -66,6 +74,9 @@ const deck = value => ({ groups: [{ slides: [{ canvas: { objects: [{ src: 'data:
   } } }] }] });
 const options = f => ({ endpoint: '/api/slides/owned', fetch: f.fetch, storage: Storage, headers: {}, title: 'test' });
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('large cloud save splits every request, restores exactly and never mutates the loaded deck', async () => {
   const f = fixture(), source = deck('large'.repeat(1800000)), original = JSON.stringify(source);
   await Cloud.save(source, options(f));

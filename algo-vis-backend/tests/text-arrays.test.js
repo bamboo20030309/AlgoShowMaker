@@ -1,3 +1,11 @@
+/**
+ * 測試模組：text-arrays.test
+ *
+ * 驗證重點：text arrays.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -17,6 +25,9 @@ function rules() {
 const scalar = value => ({ kind: 'scalar', value });
 const sequence = values => ({ kind: 'sequence', items: values.map(scalar) });
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('text array slices capture base and endpoint variables, including preset and drawing locals', () => {
   const frames = findFrameDirectives(source);
   const full = frames[0];
@@ -64,6 +75,35 @@ test('malformed text slices fail analysis instead of capturing partial expressio
   for (const expression of ['a[0:1:2]', 'a[]', 'a[0:1']) {
     assert.throws(() => findFrameDirectives('int main(){int a[4]={};\n// @frame a\n// @text "\${' + expression + '}"\n}'), /運算式無效/);
   }
+});
+
+test('text segment arrays may continue across aligned line comments', () => {
+  const code = `int main(){int a[2]={3,5};
+// @frame a
+// @text [
+//   {"text": "a[0] = "},
+//   {"text": "\${a[0]}", "background": "AV_blue"}
+// ] as aligned at a.top
+}`;
+  const frame = findFrameDirectives(code)[0];
+  const text = frame.texts.find(item => item.id === 'aligned');
+  assert.ok(text);
+  assert.deepEqual(text.segments.map(segment => segment.kind), ['literal', 'expression']);
+  assert.equal(text.segments[1].background, 'AV_blue');
+  assert.equal(text.binding.targetName, 'a');
+});
+
+test('text segment arrays preserve an explicit speech override', () => {
+  const code = `int main(){int value=3;
+// @frame value
+// @text [
+//   {"text": "value[\${value}] = ", "speech": "當前值"},
+//   {"text": "\${value}", "background": "AV_blue"}
+// ] as spoken
+}`;
+  const text = findFrameDirectives(code)[0].texts.find(item => item.id === 'spoken');
+  assert.equal(text.segments[0].speech, '當前值');
+  assert.equal(text.segments.filter(segment => Object.hasOwn(segment, 'speech')).length, 1);
 });
 
 test('compiled array texts use each frame snapshot and completed loop bounds after JSON reload', async () => {

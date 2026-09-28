@@ -1,3 +1,11 @@
+/**
+ * 測試模組：event-defaults.test
+ *
+ * 驗證重點：event defaults.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -12,26 +20,163 @@ function eventApi() {
   return context.window.ASMTraceEvents;
 }
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('initial event animation and timeline defaults match the Event Settings panel', () => {
   const api = eventApi();
   const enabled = new Set([
-    'declare', 'scope-exit', 'visual-exit', 'write', 'assign', 'sequence-operation', 'compare', 'swap'
+    'declare', 'object-exit', 'assignment', 'sequence-operation', 'compare', 'swap'
   ]);
+  const animationEnabled = new Set([...enabled, 'output', 'control-flow']);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
   api.definitions.forEach(definition => {
     assert.equal(api.defaultEnabled({ type: definition.type }, document),
-      definition.type === 'fixed' || enabled.has(definition.type),
+      definition.type === 'fixed' || animationEnabled.has(definition.type),
       `${definition.type} animation default`);
     assert.equal(api.showTag(definition.type, document), enabled.has(definition.type),
       `${definition.type} timeline default`);
   });
   assert.equal(api.animation('declare'), 'declare',
     'an enabled declaration is the formal object-entrance animation');
+  document.studio.eventSettings.defaultEnabled.output = false;
+  assert.equal(api.defaultEnabled({ type: 'output' }, document), false,
+    'an explicitly disabled saved output setting remains disabled');
+});
+
+test('event settings follow the teaching-oriented display order', () => {
+  const api = eventApi();
+  const visibleLabels = api.definitions
+    .filter(definition => definition.category !== 'state' && definition.internal !== true)
+    .map(definition => definition.label);
+  assert.deepEqual(Array.from(visibleLabels), [
+    '宣告／物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
+    '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
+  ]);
+  assert.equal(api.definition('read').internal, true);
+  assert.equal(api.showTag('read'), false);
+  assert.equal(api.showInspector({ type: 'read' }), false);
+});
+
+test('return, break and continue share one control-flow setting', () => {
+  const api = eventApi();
+  const visibleTypes = api.definitions.filter(definition => definition.internal !== true)
+    .map(definition => definition.type);
+  assert.equal(visibleTypes.includes('control-flow'), true);
+  assert.equal(visibleTypes.includes('return'), false);
+  assert.equal(visibleTypes.includes('break'), false);
+  assert.equal(visibleTypes.includes('continue'), false);
+  for (const type of ['return', 'break', 'continue']) {
+    assert.equal(api.definition(type).type, 'control-flow');
+    assert.equal(api.definition(type).label, '流程跳轉');
+    assert.equal(api.labels[type], '流程跳轉');
+    assert.equal(api.animation(type), 'code');
+  }
+
+  const document = {
+    studio: {
+      eventSettings: {
+        defaultEnabled: { return: false },
+        timelineTypes: { break: true }
+      },
+      eventStates: {},
+      eventInstructionStates: {}
+    },
+    frames: [{ id: 'frame-1', events: [
+      { id: 'return-1', type: 'return', signature: 'return:main:1:0' },
+      { id: 'break-1', type: 'break', signature: 'break:main:2:break' },
+      { id: 'continue-1', type: 'continue', signature: 'continue:main:3:continue' }
+    ] }]
+  };
+  api.applyEnabledStates(document);
+  assert.equal(document.studio.eventSettings.defaultEnabled['control-flow'], false);
+  assert.equal(document.studio.eventSettings.timelineTypes['control-flow'], true);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'return'), false);
+  assert.ok(document.frames[0].events.every(event => event.enabled === false));
+  assert.equal(api.showTag('return', document), true);
+  assert.equal(api.showTag('break', document), true);
+  assert.equal(api.showTag('continue', document), true);
+});
+
+test('assign and write share one setting while retaining distinct event names', () => {
+  const api = eventApi();
+  const visibleTypes = api.definitions.filter(definition => definition.internal !== true)
+    .map(definition => definition.type);
+  assert.equal(visibleTypes.includes('assignment'), true);
+  assert.equal(visibleTypes.includes('assign'), false);
+  assert.equal(visibleTypes.includes('write'), false);
+  for (const type of ['assign', 'write']) {
+    assert.equal(api.definition(type).type, 'assignment');
+    assert.equal(api.definition(type).label, '賦值');
+    assert.equal(api.animation(type), 'assign');
+  }
+  assert.equal(api.labels.assign, '直接／初始化賦值');
+  assert.equal(api.labels.write, '數值更新／複合賦值');
+
+  const document = {
+    studio: {
+      eventSettings: {
+        defaultEnabled: { assign: false },
+        timelineTypes: { write: true }
+      },
+      eventStates: {},
+      eventInstructionStates: {}
+    },
+    frames: [{ id: 'frame-1', events: [
+      { id: 'assign-1', type: 'assign', signature: 'assign:main:1:value' },
+      { id: 'write-1', type: 'write', signature: 'write:main:2:value++' }
+    ] }]
+  };
+  api.applyEnabledStates(document);
+  assert.equal(document.studio.eventSettings.defaultEnabled.assignment, false);
+  assert.equal(document.studio.eventSettings.timelineTypes.assignment, true);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'assign'), false);
+  assert.ok(document.frames[0].events.every(event => event.enabled === false));
+  assert.equal(api.showTag('assign', document), true);
+  assert.equal(api.showTag('write', document), true);
+});
+
+test('scope and manual exits share one setting while retaining distinct event names', () => {
+  const api = eventApi();
+  const visibleTypes = api.definitions.filter(definition => definition.internal !== true)
+    .map(definition => definition.type);
+  assert.equal(visibleTypes.includes('object-exit'), true);
+  assert.equal(visibleTypes.includes('scope-exit'), false);
+  assert.equal(visibleTypes.includes('visual-exit'), false);
+  for (const type of ['scope-exit', 'visual-exit']) {
+    assert.equal(api.definition(type).type, 'object-exit');
+    assert.equal(api.definition(type).label, '物件退場／手動退場');
+    assert.equal(api.animation(type), 'exit');
+  }
+  assert.equal(api.labels['scope-exit'], '作用域結束／物件退場');
+  assert.equal(api.labels['visual-exit'], '手動物件退場');
+
+  const document = {
+    studio: {
+      eventSettings: {
+        defaultEnabled: { 'scope-exit': false },
+        timelineTypes: { 'visual-exit': true }
+      },
+      eventStates: {},
+      eventInstructionStates: {}
+    },
+    frames: [{ id: 'frame-1', events: [
+      { id: 'scope-exit-1', type: 'scope-exit', signature: 'scope-exit:main:1:value' },
+      { id: 'visual-exit-1', type: 'visual-exit', signature: 'visual-exit:main:2:value' }
+    ] }]
+  };
+  api.applyEnabledStates(document);
+  assert.equal(document.studio.eventSettings.defaultEnabled['object-exit'], false);
+  assert.equal(document.studio.eventSettings.timelineTypes['object-exit'], true);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'scope-exit'), false);
+  assert.ok(document.frames[0].events.every(event => event.enabled === false));
+  assert.equal(api.showTag('scope-exit', document), true);
+  assert.equal(api.showTag('visual-exit', document), true);
 });
 
 test('timeline labels exclude events that are disabled or cannot be shown', () => {
   const api = eventApi();
-  const document = { studio: { eventSettings: { timelineTypes: { assign: true } } } };
+  const document = { studio: { eventSettings: { timelineTypes: { assignment: true } } } };
   assert.equal(api.showTimelineEvent({ type: 'assign', enabled: true }, document), true);
   assert.equal(api.showTimelineEvent({ type: 'assign', enabled: false }, document), false,
     'events hidden by the user do not retain timeline labels');
@@ -46,10 +191,16 @@ test('internal conditions never expose saved animation or timeline controls', ()
   const api = eventApi();
   const document = { studio: { eventSettings: {
     autoFixedEnabled: false,
-    defaultEnabled: { condition: true },
-    timelineTypes: { condition: true }
-  }, eventStates: { 'frame-1': { 'condition:main:1:i < n::0': true } },
-  eventInstructionStates: { 'condition:main:1:i < n': true } }, frames: [] };
+    defaultEnabled: { condition: true, read: true },
+    timelineTypes: { condition: true, read: true }
+  }, eventStates: { 'frame-1': {
+    'condition:main:1:i < n::0': true,
+    'read:main:1:i::0': true
+  } },
+  eventInstructionStates: {
+    'condition:main:1:i < n': true,
+    'read:main:1:i': true
+  } }, frames: [] };
   assert.equal(api.defaultEnabled({ type: 'condition' }, document), false);
   assert.equal(api.showTag('condition', document), false);
   assert.equal(api.showInspector({ type: 'condition' }, document), false);
@@ -57,6 +208,8 @@ test('internal conditions never expose saved animation or timeline controls', ()
   api.applyEnabledStates(document);
   assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'condition'), false);
   assert.equal(Object.hasOwn(document.studio.eventSettings.timelineTypes, 'condition'), false);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.defaultEnabled, 'read'), false);
+  assert.equal(Object.hasOwn(document.studio.eventSettings.timelineTypes, 'read'), false);
   assert.deepEqual(Object.keys(document.studio.eventInstructionStates), []);
   assert.deepEqual(Object.keys(document.studio.eventStates['frame-1']), []);
   assert.equal(api.defaultEnabled({ type: 'fixed' }, document), false);
@@ -189,4 +342,18 @@ test('auto fixed state follows runtime identity across aliases and batches a fra
   assert.equal(api.showInspector(fixed[0]), false);
   assert.equal(document.studio.eventInstructionStates['fixed:visit:arr@2:0'], false,
     'migration cleanup occurs when Studio serializes settings, not while normalizing playback');
+});
+
+test('large frames resolve occurrence switches in one pass and preserve legacy keys',()=>{
+ const api=eventApi();let reads=0;
+ const events=Array.from({length:10000},(_,i)=>({id:`event-${i}`,order:i,type:'assign',
+  get signature(){reads++;return `assign:main:3:value${i%2}`;}}));
+ const states={'assign:main:3:value0::4999':false,'assign:main:3:value1::0':false};
+ const doc={frames:[{id:'f',events}],studio:{eventStates:{f:states},eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false}}};
+ api.applyEnabledStates(doc);
+ assert.equal(events[9998].enabled,false);assert.equal(events[1].enabled,false);assert.equal(events[9999].enabled,true);
+ assert.ok(reads<events.length*20,`signature reads must grow linearly; got ${reads}`);
+ const reopened=JSON.parse(JSON.stringify(doc));api.applyEnabledStates(reopened);
+ assert.deepEqual(reopened.frames[0].events.map(e=>e.enabled),events.map(e=>e.enabled));
+ assert.equal(reopened.studio.eventSettings.autoFixedEnabled,false);
 });

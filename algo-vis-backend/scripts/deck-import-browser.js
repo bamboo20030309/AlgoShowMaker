@@ -1,7 +1,18 @@
+/**
+ * asmdeck 匯入、修復與持久化的瀏覽器驗證。
+ *
+ * 腳本先放入帶有舊 trace 的 deck，再透過實際 UI 開啟、修復、播放、儲存與
+ * 重載，確認使用者不需手動重建投影片。預期的分析失敗會獨立收集，避免和
+ * 真正的頁面錯誤混為一談。
+ */
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// -----------------------------------------------------------------------------
+// 匯入 fixture、編輯器操作與儲存後重開
+// -----------------------------------------------------------------------------
 async function runDeckImportBrowser(browser, baseURL, output) {
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
   const page = await context.newPage();

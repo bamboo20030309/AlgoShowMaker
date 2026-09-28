@@ -1,3 +1,11 @@
+/**
+ * 測試模組：events-batch-arrows.test
+ *
+ * 驗證重點：events batch arrows.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -14,6 +22,9 @@ function traceApi() {
   return context;
 }
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('frame event controls capture conditions without leaking to another frame', () => {
   const frames = findFrameDirectives(`int main(){int i=8; int values[3]={1,2,3};
 // @frame values
@@ -40,16 +51,18 @@ test('event controls preserve metadata and values, obey frame condition and last
   source.frames[2].eventControls = [];
   const doc = api.ASMTraceModel.normalizeTraceDocument(source);
   assert.equal(doc.frames[0].events[1].enabled, true);
-  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,true,false]);
+  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,false,false],
+    'read metadata remains internal even when an old source explicitly enables it');
   assert.equal(doc.frames[2].events[1].enabled, true);
   assert.equal(doc.frames[1].state.i.data.value, 8);
   assert.equal(doc.frames[1].events[1].payload.after, 99);
   assert.equal(doc.frames[1].events.length, 4);
   api.ASMTraceEvents.applyEnabledStates(doc);
-  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,true,false]);
+  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,false,false]);
   doc.frames[1].eventControls = [{ types: ['all'], animate: true }];
   api.ASMTraceEvents.applyEnabledStates(doc);
   assert.equal(doc.frames[1].events[3].enabled, false, 'internal condition cannot be enabled');
+  assert.equal(doc.frames[1].events[2].enabled, false, 'internal read metadata cannot be enabled');
   doc.frames[1].eventControls = [{ types: ['all'], animate: false, when: { expression: 'missing>0' } }];
   assert.throws(() => api.ASMTraceEvents.applyEnabledStates(doc), /條件無法解析/);
 });

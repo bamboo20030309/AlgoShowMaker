@@ -1,3 +1,11 @@
+/**
+ * 模組：共用色彩選擇器
+ *
+ * 責任：為 trace 與 Studio 的顏色控制項提供單一 popup、即時預覽及變更事件。
+ * 資料流：控制項開啟 picker 時同步目前值；輸入後更新 swatch 與文字值，關閉前提交仍在編輯的欄位。
+ * 重要不變條件：頁面只維持一個 active control 與一個 popup，避免多個選色器同時改寫不同規則。
+ * 相容性：無效或舊式色彩字串會回退為可供 input[type=color] 使用的值。
+ */
 (function () {
   let popup = null;
   let picker = null;
@@ -5,6 +13,9 @@
   let activeDirty = false;
   let syncingPicker = false;
 
+  // ---------------------------------------------------------------------------
+  // 區段：色彩值與控制項同步
+  // ---------------------------------------------------------------------------
   function normalizeColor(value) {
     const color = String(value || '').trim();
     if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(color)) return color.toLowerCase();
@@ -37,6 +48,9 @@
     activeControl = null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：Popup 建立與生命週期
+  // ---------------------------------------------------------------------------
   function ensurePicker() {
     if (popup) return !!picker;
     popup = document.createElement('div');
@@ -66,6 +80,9 @@
     return true;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：開啟、定位與公開控制項
+  // ---------------------------------------------------------------------------
   function open(control) {
     if (!ensurePicker()) return;
     if (!popup.hidden && activeControl === control) {

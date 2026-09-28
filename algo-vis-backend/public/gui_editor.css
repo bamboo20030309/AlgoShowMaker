@@ -1,59 +1,16 @@
+/* --------------------------------------------------------------------------
+ * GUI 編輯器樣式
+ * 屬性面板、toast、色票與 SVG 行內編輯器各自使用固定層級，避免遮住畫布控制點。
+ * -------------------------------------------------------------------------- */
 /* gui_editor.css — 畫布 GUI 編輯器樣式 */
-
-/* ========================================
-   右鍵選單
-   ======================================== */
-.gui-ctx-menu {
-  position: fixed;
-  z-index: 9999;
-  min-width: 180px;
-  background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
-  padding: 4px 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  font-size: 13px;
-  color: #1f2937;
-  user-select: none;
-}
-
-.gui-ctx-menu .ctx-item {
-  padding: 7px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: background .1s;
-}
-
-.gui-ctx-menu .ctx-item:hover {
-  background: #eff6ff;
-}
-
-.gui-ctx-menu .ctx-item .ctx-icon {
-  width: 16px;
-  text-align: center;
-}
-
-.gui-ctx-menu .ctx-sep {
-  height: 1px;
-  background: #e5e7eb;
-  margin: 4px 8px;
-}
-
-.gui-ctx-menu .ctx-label {
-  padding: 5px 16px 2px;
-  font-size: 11px;
-  color: #9ca3af;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-}
 
 /* ========================================
    屬性面板 (浮動)
    ======================================== */
+/* --------------------------------------------------------------------------
+ * 屬性面板
+ * 欄位按 draw 類型動態建立；面板可捲動且保留標頭關閉控制。
+ * -------------------------------------------------------------------------- */
 .gui-prop-panel {
   position: fixed;
   z-index: 9998;
@@ -346,6 +303,10 @@
 }
 
 /* 必填欄位為空時的警示 */
+/* --------------------------------------------------------------------------
+ * 驗證、滑桿與切換控制
+ * 錯誤狀態只提示尚未提交的欄位，不改 SVG 物件的正式樣式。
+ * -------------------------------------------------------------------------- */
 .prop-input.required-empty {
   background-color: #fff1f2 !important;
   border-color: #fca5a5 !important;

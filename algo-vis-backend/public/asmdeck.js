@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 可攜式投影片封裝格式
+// 建立與驗證 asmdeck 壓縮內容；本模組只轉換資料，不直接讀寫目前開啟的 deck。
+// -----------------------------------------------------------------------------
 // Portable, compact slide archives. This file intentionally does not touch the live deck.
 (function (root, factory) {
   const api = factory(root);
@@ -16,6 +20,10 @@
   const encoder = new TextEncoder();
   const decoder = new TextDecoder('utf-8', { fatal: true });
 
+  // -----------------------------------------------------------------------------
+  // 格式常數、雜湊與相容性
+  // 內容雜湊作為資產及 trace key；engine 版本檢查決定已存 trace 能否直接重用。
+  // -----------------------------------------------------------------------------
   function cacheLimitMB() {
     let value;
     try { value = Number(root.localStorage?.getItem(CACHE_LIMIT_KEY)); } catch (_) { /* private browsing */ }
@@ -142,6 +150,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // 資產抽取與 deck 投影
+  // 大型 data URL 以雜湊去重移到 assets；deck 主體只保留參照，解包時再遞迴還原。
+  // -----------------------------------------------------------------------------
   async function extractAssets(value, assets) {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
@@ -195,13 +207,20 @@
       slide.animation = {
         mode: 'trace', code: animation.code, input: animation.input || '',
         sliceMode: animation.sliceMode || trace.sliceMode || 'auto',
-        watches: clone(animation.watches || []), rebuild
+        watches: clone(animation.watches || []), rebuild,
+        ...(animation.presentationCamera
+          ? { presentationCamera: clone(animation.presentationCamera) }
+          : {})
       };
     }
     await extractAssets(deck, assets);
     return { deck, assets, cacheSeeds };
   }
 
+  // -----------------------------------------------------------------------------
+  // 壓縮封裝與解包驗證
+  // manifest、project 與 assets 一起 gzip；decode 先驗格式版本與每個資產雜湊，拒絕毀損內容。
+  // -----------------------------------------------------------------------------
   async function gzip(bytes) {
     if (!root.CompressionStream) throw new Error('此瀏覽器不支援壓縮投影片檔。');
     const stream = new Blob([bytes]).stream().pipeThrough(new root.CompressionStream('gzip'));
@@ -276,6 +295,10 @@
     return { deck, manifest };
   }
 
+  // -----------------------------------------------------------------------------
+  // 重建 trace 快取
+  // IndexedDB 以動畫輸入與 engine 版本作 key；容量超限時依最近使用時間淘汰。
+  // -----------------------------------------------------------------------------
   function openCache() {
     return new Promise((resolve, reject) => {
       if (!root.indexedDB) return reject(new Error('IndexedDB 無法使用'));
@@ -404,6 +427,10 @@
     return compiled.traceDocument;
   }
 
+  // -----------------------------------------------------------------------------
+  // 動畫重建與漸進回報
+  // 可用快取便直接套用，否則呼叫編譯 API；每張投影片的結果透過 callback 即時交給載入頁。
+  // -----------------------------------------------------------------------------
   async function rebuildAnimation(animation) {
     if (!animation?.rebuild?.view || !animation.code?.trim()) throw new Error('演算法動畫缺少重建設定或原始碼。');
     const exact = `exact:${await animationKey(animation)}`;

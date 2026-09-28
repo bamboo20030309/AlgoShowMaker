@@ -1,8 +1,19 @@
+/**
+ * 測試模組：code-exit-presentation.test
+ *
+ * 驗證重點：code exit presentation.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const { load } = require('./helpers/compile');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('code scroll stays at zero when content fits and clamps taller content to its edges', () => {
   const context = vm.createContext({ addEventListener() {} });
   context.window = context;
@@ -63,4 +74,25 @@ test('scope exits neither extract nor highlight code, without changing runtime e
   const ids = items.flatMap(item => item.segments || []).flatMap(segment => segment.eventIds);
   assert.ok(ids.includes(write.id));
   assert.ok(!ids.includes(exit.id));
+});
+
+test('return is code-visible while return completion stays internal', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-code-model.js');
+  const sourceCode = 'int F(int n) {\n  return n;\n}\n';
+  const visible = {
+    id: 'return-start', type: 'return', line: 2,
+    source: { line: 2, from: 17, to: 26, text: 'return n;' }
+  };
+  const internal = { ...visible, id: 'return-complete', type: 'return-complete' };
+  const visiblePlan = context.ASMTraceCodeModel.planFrame(
+    { sourceCode }, { id: 'return-frame', source: { line: 2, function: 'F' }, events: [visible] }
+  );
+  const visibleIds = visiblePlan.fragments.flatMap(fragment => fragment.items)
+    .flatMap(item => item.segments || []).flatMap(segment => segment.eventIds);
+  assert.ok(visibleIds.includes(visible.id));
+  assert.equal(context.ASMTraceCodeModel.planFrame(
+    { sourceCode }, { id: 'complete-frame', source: { line: 2, function: 'F' }, events: [internal] }
+  ).fragments.length, 0);
 });

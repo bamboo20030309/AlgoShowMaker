@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace 指令提示
+ *
+ * 責任：根據游標所在的 @ 指令與已輸入參數，提供相依選項、範例及安全的文字插入。
+ * 資料流：編輯器 selection 先解析目前行與父指令，再由規則表產生 choices；使用者選取後只替換對應 token 並重開下一層提示。
+ * 重要不變條件：提示狀態必須跟著游標與編輯器內容更新；插入範例不可破壞既有縮排或其他行。
+ * 相容性：未知與舊指令不會被改寫，僅在規則表能辨識時提供建議。
+ */
 (function () {
   'use strict';
 
@@ -16,7 +24,9 @@
       '// @frame arr[i,j],key\n// @style arr[i] highlight',
       '// @frame arr[i,j],key render heap with range(1,n) at canvas.top offset(0,80)\n// @style arr[i] highlight AV_red\n// @text "正在檢查第 ${i} 格" at arr.bottom',
       '// @frame tree render heap with range(1,Tsize-1), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)',
-      '// @frame tree render segment_tree with range(1,n)'
+      '// @frame tree render segment_tree with range(1,n)',
+      '// @frame value with display("F(${call})")\n// @let call = n',
+      '// @frame arr with display("${index}: ${value}")'
     ] },
     { id: 'preset', label: '@preset', effect: '定義可重用的物件、位置與樣式；每次 @frame use 時重新計算變數', code: '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset', examples: [
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset\n// @frame use sieve_view',
@@ -24,6 +34,7 @@
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @style isprime[i] highlight\n// @endpreset\n// @frame use sieve_view when i <= n\n// @style isprime[i] point',
       '// @preset sieve_view\n// @object isprime with columns(10), labels(index)\n// @endpreset\n// @preset sieve_colors\n// @style isprime[i] highlight AV_green\n// @endpreset\n// @frame use sieve_view, sieve_colors'
     ] },
+    { id: 'endpreset', label: '@endpreset', effect: '結束目前的可重用視圖預設區塊', code: '// @endpreset', examples: ['// @preset sieve_view\n// @object isprime\n// @endpreset'] },
     { id: 'object', label: '@object', effect: '在同一個 @frame 加入另一個獨立設定的物件', code: '// @object prime', examples: [
       '// @frame\n// @object prime',
       '// @frame when i%v==0\n// @object isprime with columns(10), labels(index)\n// @object prime with labels(value)',
@@ -44,11 +55,17 @@
       '// @layout recursion as "quick_tree" at canvas.top offset(0,80)\n// @frame arr in quick_tree',
       '// @layout recursion as "quick_tree" at canvas.top offset(0,80)\n// @layout quick_tree direction top-down\n// @frame arr in quick_tree\n// @keep arr as "partition" in quick_tree'
     ] },
+    { id: 'branch', label: '@branch', effect: '在遞迴排版中建立具名的邏輯分支', code: '// @branch as "Move" in hanoi_tree', examples: [
+      '// @branch as "Move" in hanoi_tree\n// @frame value in hanoi_tree\n// @endbranch'
+    ] },
+    { id: 'endbranch', label: '@endbranch', effect: '結束目前的具名遞迴分支', code: '// @endbranch', examples: ['// @branch as "Move" in hanoi_tree\n// @endbranch'] },
     { id: 'style', label: '@style', effect: '為陣列格子設定背景、強調、焦點或指標', code: '// @style arr[i] highlight', examples: [
       '// @style arr[i] highlight',
       '// @style arr[i] highlight,point',
       '// @style arr[i] highlight,point AV_green when value>0',
       '// @style arr[0:i] background AV_green when value < key',
+      '// @style grid[0:r][0:c] background AV_blue',
+      '// @style arr[i].index-label background AV_yellow\n// @style grid.row-label[r] background AV_blue\n// @style grid.column-label[c] background AV_orange\n// @style grid[r][c].inner-label background AV_green',
       '// @style arr[i,i*2:i*2+1] highlight AV_red\n// @style arr[1:n] focus when n < Size',
       '// @style prime[0:iteration.last(j)] focus when i * value <= n'
     ] },
@@ -69,9 +86,13 @@
       '// @place pivot at arr.right offset(16,0)',
       '// @frame arr,pivot\n// @place pivot at arr.right offset(16,0)\n// @text "基準值" at pivot.bottom'
     ] },
+    { id: 'camera', label: '@camera', effect: '設定目前幀或預設區塊的自動取景與聚焦目標', code: '// @camera auto', examples: [
+      '// @camera auto',
+      '// @camera focus arr offset(0,20) zoom(1.4)'
+    ] },
     { id: 'events', label: '@events', effect: '控制本幀事件動畫；資料與事件記錄仍保留', code: '// @events animate off', examples: [
       '// @frame arr\n// @events animate off',
-      '// @frame arr\n// @events compare,read animate off when i > 7'
+      '// @frame arr\n// @events compare,assignment animate off when i > 7'
     ] },
     { id: 'automark', label: '@automark', effect: '選擇本幀顯示自動固定標記的陣列；none 隱藏全部', code: '// @automark arr', examples: [
       '// @frame isprime,prime\n// @automark isprime',
@@ -93,6 +114,7 @@
       '// @arrow for j from arr[0] to arr[j]',
       '// @arrow for j in "sieve_loop" from prime[j] to isprime[i*prime[j]]',
       '// @arrow from arr[0] to arr[1]',
+      '// @arrow from grid[x][y] to grid[x-1][y] color AV_green until return',
       '// @arrow from isprime[1] to isprime[12]',
       '// @frame arr[i,j]\n// @arrow from arr[i].bottom to arr[j].top\n// @text "從左到右" at arr.bottom'
     ] },
@@ -100,7 +122,9 @@
       '// @exit i',
       '// @exit min_idx,i\n// @keep last',
       '// @frame arr[min_idx]\n// @exit min_idx,i\n// @keep last as "round"'
-    ] }
+    ] },
+    { id: 'code', label: '@code', effect: '控制程式碼片段呈現；hide 仍會執行程式但不顯示在動畫程式碼中', code: '// @code hide', examples: ['// @code hide\ninternal_state++;\n// @endcode'] },
+    { id: 'endcode', label: '@endcode', effect: '結束目前的程式碼呈現控制區塊', code: '// @endcode', examples: ['// @code hide\ninternal_state++;\n// @endcode'] }
   ];
   const byId = Object.fromEntries(commands.map(command => [command.id, command]));
   const childRules = {
@@ -160,7 +184,9 @@
     arrow: [['as', 'as', '為箭頭命名', ' as "relation"'], ['when', 'when', '條件成立才顯示箭頭', ' when i >= 0']],
     layout: [
       ['layout-direction', 'direction', '在下一行明確指定排版 ID 與生長方向', '\n// @layout quick_tree direction top-down'],
-      ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder']
+      ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder'],
+      ['layout-flow-arrows', 'flow-arrows', '顯示 DFS 進入與返回的彎曲輔助箭頭', '\n// @layout quick_tree flow-arrows on'],
+      ['layout-branch-previews', 'branch-previews', '控制是否在執行前預先顯示同層遞迴分支', '\n// @layout quick_tree branch-previews off']
     ]
   };
   const renderTypes = [
@@ -192,6 +218,9 @@
   let exampleTier = 0;
   let exampleRow = 0;
 
+  // ---------------------------------------------------------------------------
+  // 區段：提示面板狀態
+  // ---------------------------------------------------------------------------
   function close() {
     popup.hidden = true;
     popup.replaceChildren();
@@ -213,6 +242,9 @@
     return { x: screen.pageX - window.scrollX, y: screen.pageY - window.scrollY + 22 };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：游標與指令解析
+  // ---------------------------------------------------------------------------
   function currentDirective() {
     const pos = editor.getCursorPosition();
     const line = editor.session.getLine(pos.row);
@@ -233,8 +265,11 @@
   function childOptions(id, line) {
     if (!childRules[id]) return [];
     const rules = childRules[id].filter(rule => {
+      if (id === 'frame' && rule[3]?.startsWith('\n')) return false;
       if (rule[0] === 'more-preset') return /^\s*\/\/\s*@frame\s+use\s+/.test(line) && !/\bwhen\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-direction') return !/\bdirection\b/.test(line);
+      if (id === 'layout' && rule[0] === 'layout-flow-arrows') return !/\bflow-arrows\b/.test(line);
+      if (id === 'layout' && rule[0] === 'layout-branch-previews') return !/\bbranch-previews\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-order') return !/\b(?:order|mode)\b/.test(line);
       if (rule[3]?.startsWith('\n')) return true;
       if (rule[0] === 'render' || rule[0] === 'with') return !new RegExp(`\\b${rule[0]}\\b`).test(line);
@@ -247,6 +282,9 @@
     return rules.map(makeChild);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：相依選項生成
+  // ---------------------------------------------------------------------------
   function choices() {
     const { id, line, prefix } = currentDirective();
     if (!id || !byId[id]) {
@@ -292,6 +330,8 @@
       button.setAttribute('aria-selected', String(Number(button.dataset.index) === selected));
     }
     const option = options[selected];
+    popup.querySelector(`.asm-directive-choice[data-index="${selected}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
     const preview = popup.querySelector('.asm-directive-preview code');
     if (preview) {
       const layoutId = currentLayoutId(currentDirective().line);
@@ -329,6 +369,9 @@
     place(x, y);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文字替換
+  // ---------------------------------------------------------------------------
   function applyChoice(option) {
     if (!option) return;
     const { pos, line, id } = currentDirective();
@@ -367,6 +410,9 @@
     openSuggestions();
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：範例瀏覽與插入
+  // ---------------------------------------------------------------------------
   function renderExamples() {
     popup.replaceChildren();
     const title = document.createElement('div');
@@ -436,6 +482,8 @@
       updateSelection();
     } else if (event.key === 'Tab' && !event.shiftKey) {
       event.preventDefault(); event.stopImmediatePropagation(); applyChoice(options[selected]);
+    } else {
+      close();
     }
   }, true);
 

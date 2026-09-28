@@ -1,3 +1,11 @@
+/**
+ * 雲端投影片大型內容的分片儲存層。
+ *
+ * 投影片本體只保留內容雜湊；動畫 trace、畫布素材與完整快照則按固定大小切片。
+ * 讀取時會檢查切片連續性、總容量及 SHA-256，提交時再以 deck 鎖序列化更新，
+ * 避免同一份投影片的並行上傳互相覆蓋。
+ */
+
 const { createHash } = require('node:crypto');
 const SlideStorage = require('./public/slides-storage');
 const CHUNK_CHARS = 256 * 1024;
@@ -7,6 +15,9 @@ const hash = text => createHash('sha256').update(text).digest('hex');
 const fault = (message, status = 400) => Object.assign(new Error(message), { status });
 const validKey = key => /^[a-f0-9]{64}$/.test(key);
 
+// -----------------------------------------------------------------------------
+// 與資料庫無關的內容儲存服務；repo 只需實作切片與 deck 存取介面。
+// -----------------------------------------------------------------------------
 function createStore(repo) {
   const locks = new Map();
   async function exclusive(id, action) {
@@ -109,6 +120,9 @@ function createStore(repo) {
   return { read, put, snapshot, currentSnapshot, commit, sweep };
 }
 
+// -----------------------------------------------------------------------------
+// Express／Mongoose 配接：把內容服務掛成受權限保護的 HTTP API。
+// -----------------------------------------------------------------------------
 function register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, cleanCoverThumbnail) {
   const schema = new mongoose.Schema({
     deck_uid: String, key: String, part: Number, total: Number, data: String,

@@ -1,8 +1,19 @@
+/**
+ * 模組：Trace 文件模型正規化
+ *
+ * 責任：把後端 trace、Studio 設定與舊格式資料整理成 renderer、rules 與 player 共用的文件形狀。
+ * 資料流：輸入先複製與補齊 variables/frames/skins，再套用 frame condition、迭代摘要及事件狀態；下游以 normalize 後的文件為唯一資料來源。
+ * 重要不變條件：正規化不得修改呼叫端原物件；frame、variable 與 snapshot id 必須穩定，缺值與明確 false/0 要分開處理。
+ * 相容性：renderer 別名、舊 skin 形狀與缺少衍生欄位的 trace 都在此集中遷移，避免各畫面各自猜測。
+ */
 (function () {
   function clone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：資料值正規化
+  // ---------------------------------------------------------------------------
   function normalizeData(data) {
     if (!data || typeof data !== 'object') return { kind: 'scalar', value: data ?? null };
     const kind = typeof data.kind === 'string' ? data.kind : 'object';
@@ -57,6 +68,9 @@
     return legacy[renderer] || renderer || defaultRenderer(variable);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：renderer 與 skin 相容層
+  // ---------------------------------------------------------------------------
   function normalizeSkins(variables, sourceSkins) {
     const skins = sourceSkins && typeof sourceSkins === 'object' ? clone(sourceSkins) : {};
     Object.entries(variables || {}).forEach(([variableId, variable]) => {
@@ -72,6 +86,9 @@
     return skins;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 條件與迭代摘要
+  // ---------------------------------------------------------------------------
   function applyFrameConditions(document) {
     if (!window.ASMTraceRules?.expressionMatches) return document;
     const accepted = [];
@@ -225,6 +242,9 @@
     return summaries;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文件入口正規化
+  // ---------------------------------------------------------------------------
   function normalizeTraceDocument(source = {}) {
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
@@ -267,6 +287,7 @@
       sourceCode: typeof source.sourceCode === 'string' ? source.sourceCode : '',
       sourceDeclarations: Array.isArray(source.sourceDeclarations) ? clone(source.sourceDeclarations) : [],
       sourceStructure: Array.isArray(source.sourceStructure) ? clone(source.sourceStructure) : [],
+      codeHideRanges: Array.isArray(source.codeHideRanges) ? clone(source.codeHideRanges) : [],
       provenance: source.provenance && typeof source.provenance === 'object' ? clone(source.provenance) : null,
       sliceMode: source.sliceMode === 'manual' ? 'manual' : source.sliceMode === 'full' ? 'full' : 'auto',
       variables,
@@ -282,6 +303,39 @@
       studio: source.studio && typeof source.studio === 'object' ? clone(source.studio) : {},
       asmView: source.asmView && typeof source.asmView === 'object' ? clone(source.asmView) : null
     };
+    const calls = new Map();
+    const callLifecycles = [];
+    frames.flatMap(frame => frame.events || []).sort((left, right) => (
+      Number(left?.order) - Number(right?.order)
+    )).forEach(event => {
+      if (event?.type === 'call') {
+        event.callOccurrenceId = String(event.id || '');
+        event.callerActivationId = String(event.recursionActivationId || '');
+        calls.set(event.callOccurrenceId, event);
+        callLifecycles.push(event);
+        return;
+      }
+      const callEventId = String(event?.callEventId || event?.invokedByCallEventId || '');
+      const call = calls.get(callEventId);
+      if (!call) return;
+      if (event.type === 'function-enter') {
+        call.calleeActivationId = String(event.recursionActivationId || '');
+        event.callEventId = callEventId;
+      }
+      if (event.type === 'call-return') {
+        call.returnEventId = String(event.id || '');
+        call.returnOrder = Number(event.order);
+        if (!call.calleeActivationId && event.calleeActivationId) {
+          call.calleeActivationId = String(event.calleeActivationId);
+        }
+      }
+    });
+    Object.defineProperty(normalized, 'callLifecycles', {
+      value: callLifecycles,
+      writable: true,
+      configurable: true,
+      enumerable: false
+    });
     window.ASMTraceEvents?.rebuildLoopBoundaryEvents?.(normalized);
     Object.defineProperty(normalized, 'iterationSummaries', {
       value: buildIterationSummaries(normalized),
@@ -314,6 +368,9 @@
     return JSON.stringify(normalizeData(data));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：相鄰 frame 差異
+  // ---------------------------------------------------------------------------
   function diffFrame(previous, current) {
     const changes = [];
     const ids = new Set([...Object.keys(previous?.state || {}), ...Object.keys(current?.state || {})]);
@@ -372,6 +429,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：繪圖指令查詢
+  // ---------------------------------------------------------------------------
   function drawingDirectives(document, frame, field) {
     const output = [];
     for (const item of frame?.[field] || []) {
@@ -425,8 +485,68 @@
     return output;
   }
 
+  function freezeReturnArrow(document, sourceFrame, arrow, activationId) {
+    const locals = arrow.drawLocals || {};
+    if (!window.ASMTraceRules.expressionMatches(document, sourceFrame, arrow.when, locals)) return null;
+    const freezeEndpoint = endpoint => {
+      if (!endpoint) return endpoint;
+      const expressions = endpoint.indexExpressions
+        || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
+      if (!expressions.length) return { ...endpoint };
+      const values = expressions.map(expression =>
+        window.ASMTraceRules.resolveExpression(document, sourceFrame, expression, locals));
+      if (values.some(value => !Number.isSafeInteger(value))) return null;
+      return { ...endpoint, indexExpressions: values.map(String), indexExpression: values.join(',') };
+    };
+    const from = freezeEndpoint(arrow.from), to = freezeEndpoint(arrow.to);
+    if (!from || !to) return null;
+    return {
+      ...arrow,
+      // Keep the authored ID. The renderer adds the owning activation to the
+      // runtime identity for both the source frame and inherited trail, so an
+      // edge can continue without replaying its entrance animation.
+      id: arrow.id,
+      explicitId: false,
+      from,
+      to,
+      when: null,
+      until: '',
+      trailActivationId: activationId
+    };
+  }
+
+  // `until return` arrows belong to the recursive edge that follows their
+  // source frame.  Descendant frames inherit one frozen edge from every
+  // active ancestor.  Once playback returns to that ancestor it is no longer
+  // listed as an ancestor, so the edge disappears without user-side state.
+  function returnTrailArrows(document, frame) {
+    const ancestors = Array.isArray(frame?.source?.recursionAncestorActivationIds)
+      ? frame.source.recursionAncestorActivationIds.map(String).filter(Boolean) : [];
+    if (!ancestors.length) return [];
+    const frames = Array.isArray(document?.frames) ? document.frames : [];
+    const frameIndex = frames.indexOf(frame);
+    if (frameIndex <= 0) return [];
+    const output = [];
+    for (const activationId of ancestors) {
+      for (let index = frameIndex - 1; index >= 0; index -= 1) {
+        const sourceFrame = frames[index];
+        if (String(sourceFrame?.source?.recursionActivationId || '') !== activationId) continue;
+        const arrows = drawingDirectives(document, sourceFrame, 'arrows')
+          .filter(arrow => arrow.until === 'return');
+        if (!arrows.length) continue;
+        arrows.forEach(arrow => {
+          const frozen = freezeReturnArrow(document, sourceFrame, arrow, activationId);
+          if (frozen) output.push(frozen);
+        });
+        break;
+      }
+    }
+    return output;
+  }
+
   window.ASMTraceModel = {
     drawingDirectives,
+    returnTrailArrows,
     loopSamples,
     clone,
     normalizeData,

@@ -1,21 +1,29 @@
 <!DOCTYPE html>
+<!-- -----------------------------------------------------------------------
+  演算法編輯與視覺化工作區
+  左側 Ace、右側 SVG/輸入輸出分頁共用編譯結果；頁尾腳本依基礎模型、繪圖器、互動層順序載入。
+  ------------------------------------------------------------------------ -->
 <html lang="zh-Hant">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css?v=brand-shared-6" />
+  <link rel="stylesheet" href="style.css?v=brand-shared-10" />
   <link rel="stylesheet" href="brand.css?v=hover-pill-1" />
-  <link rel="stylesheet" href="slides-embed.css?v=random-id-5" />
+  <link rel="stylesheet" href="slides-embed.css?v=random-id-6" />
   <link rel="stylesheet" href="trace.css?v=trace-36" />
   <link rel="stylesheet" href="trace-directive-assist.css?v=directive-4" />
-  <link rel="stylesheet" href="trace-studio.css?v=trace-52" />
+  <link rel="stylesheet" href="trace-studio.css?v=trace-58" />
   <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 
 <body>
+<!-- -----------------------------------------------------------------------
+  全域導覽與執行控制
+  RUN 會編譯 Ace 內容並重建播放器；其餘按鈕只切換面板或登入狀態。
+  ------------------------------------------------------------------------ -->
   <nav id="top-bar">
     <a class="brand menu-brand" href="/" aria-label="AlgoShowMaker 首頁">
       <img class="brand-mark" src="favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
@@ -55,6 +63,10 @@
       </svg>
     </a>
   </nav>
+<!-- -----------------------------------------------------------------------
+  左右工作區
+  codePanel 保存來源與游標，vizPanel 呈現衍生結果；divider 僅調整兩側比例。
+  ------------------------------------------------------------------------ -->
   <div id="main">
     <div id="codePanel">
       <header>
@@ -91,6 +103,10 @@
           <button class="tab-btn" data-tab="tab-syntax-tree">語法樹</button>
         </div>
       </div>
+<!-- -----------------------------------------------------------------------
+  畫布、播放與繪圖工具
+  時間軸控制 CodeScript frame；手繪標註覆蓋在 SVG 上並有獨立復原堆疊。
+  ------------------------------------------------------------------------ -->
       <div id="tab-canvas" class="subContent active">
         <div class="controls">
           <button id="restartBtn" title="重新播放">
@@ -142,9 +158,17 @@
           <span id="traceFreshnessNotice" class="trace-freshness-dot" data-status="empty"
             role="status" aria-live="polite" aria-label="動畫尚未更新" title="動畫尚未更新"></span>
           <div id="frameTimeline">
+            <div class="frame-track" aria-hidden="true"></div>
+            <div id="frameProgress" class="frame-progress" aria-hidden="true"></div>
             <div id="frameBars"></div>
-            <div id="frameInfo">0 / 0</div>
+            <div id="framePlayhead" class="frame-playhead" aria-hidden="true"></div>
+            <div id="frameHoverPreview" class="frame-hover-preview" hidden></div>
           </div>
+          <span id="playbackTime" class="playback-time" role="timer"
+            aria-label="目前播放時間 00:00，預估總時間 00:00"
+            title="目前播放時間 / 預估總時間"><span class="playback-time-current">00:00</span><span
+              class="playback-time-separator"> / </span><span class="playback-time-total">00:00</span></span>
+          <span id="frameInfo" class="frame-count" aria-label="目前幀 0，共 0 幀">0 / 0</span>
           <div class="speed-slider-wrapper">
             <div class="speed-track-wedge"></div>
             <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000" />
@@ -317,64 +341,71 @@
     </div>
   </div>
 
+<!-- -----------------------------------------------------------------------
+  腳本載入順序
+  基礎編輯器與模型需先於 draw/GUI/Studio；front.js 最後協調 DOM 與各模組公開 API。
+  ------------------------------------------------------------------------ -->
   <!-- 載入 Ace Editor -->
   <script src="vendor/ace/ace.js"></script>
   <script src="vendor/ace/mode-c_cpp.js"></script>
   <script src="vendor/ace/theme-monokai.js"></script>
   <!-- 載入開源的高級選色與透明度套件 iro.js -->
   <script src="vendor/iro/iro.min.js"></script>
-  <script src="trace-events.js?v=trace-48"></script>
+  <script src="trace-events.js?v=trace-60"></script>
   <script src="trace-color-picker.js?v=trace-6"></script>
   <!-- 底層繪圖與互動腳本 -->
-  <script src="canva.js?v=trace-12"></script>
-  <script src="interaction.js?v=trace-40"></script>
-  <script src="trace-view-source.js?v=trace-15"></script>
-  <script src="trace-model.js?v=trace-35"></script>
-  <script src="trace-arrow-model.js?v=arrow-8"></script>
-  <script src="trace-code-model.js?v=code-25"></script>
+  <script src="canva.js?v=trace-16"></script>
+  <script src="interaction.js?v=trace-41"></script>
+  <script src="trace-view-source.js?v=trace-17"></script>
+  <script src="trace-model.js?v=trace-39"></script>
+  <script src="trace-arrow-model.js?v=arrow-10"></script>
+  <script src="trace-code-model.js?v=code-36"></script>
   <script src="trace-event-code-tree.js?v=trace-5"></script>
-  <script src="trace-rules.js?v=trace-22"></script>
+  <script src="trace-rules.js?v=trace-29"></script>
   <script src="trace-transitions.js?v=trace-6"></script>
-  <script src="trace-frame-tween.js?v=trace-230"></script>
-<script src="trace-camera.js?v=trace-5"></script>
-  <script src="trace-code-presenter.js?v=code-29"></script>
-    <script src="trace-renderer.js?v=trace-208"></script>
-<script src="trace-player.js?v=trace-25"></script>
-  <script src="trace-debug-recorder.js?v=debug-6"></script>
-  <script src="trace-provenance.js?v=trace-9"></script>
-  <script src="algorithm-animation.js?v=animation-3"></script>
-  <script src="trace-editor.js?v=trace-25"></script>
+  <script src="trace-frame-tween.js?v=trace-258"></script>
+  <script src="trace-camera.js?v=trace-6"></script>
+  <script src="trace-code-presenter.js?v=code-33"></script>
+  <script src="trace-renderer.js?v=trace-231"></script>
+  <script src="trace-player.js?v=trace-26"></script>
+  <script src="trace-viewport-culling.js?v=2"></script>
+  <script src="trace-debug-recorder.js?v=debug-8"></script>
+  <script src="trace-provenance.js?v=trace-11"></script>
+  <script src="algorithm-animation.js?v=animation-4"></script>
+  <script src="trace-editor.js?v=trace-29"></script>
   <script src="trace-freshness.js?v=trace-2"></script>
   <script src="syntax-tree.js?v=syntax-3"></script>
-  <script src="compile.js?v=syntax-7"></script>
+  <script src="compile.js?v=syntax-8"></script>
   <script src="tts.js?v=10"></script>
+  <script src="playback-time.js?v=1"></script>
   <script src="resolve_pos.js"></script>
   <script src="animation.js?v=trace-5"></script>
-  <script src="front.js?v=random-id-36"></script>
-  <script src="trace-directive-assist.js?v=directive-21"></script>
+  <script src="front.js?v=random-id-40"></script>
+  <script src="trace-directive-assist.js?v=directive-26"></script>
   <script src="draw/draw_array_outerframe.js"></script>
   <script src="draw/draw_array_hintWidget.js?v=trace-4"></script>
-  <script src="draw/draw_array_utils.js?v=gap-1"></script>
-  <script src="draw/draw_block.js"></script>
+  <script src="draw/draw_array_utils.js?v=fit-4"></script>
+  <script src="draw/draw_block.js?v=lod-1"></script>
+  <script src="trace-structure-lod.js?v=2"></script>
   <script src="draw/draw_arrow.js?v=arrow-2"></script>
   <script src="draw/draw_array_segment_tree.js?v=segment-label-3"></script>
   <script src="draw/draw_array_normal.js?v=gap-1"></script>
   <script src="draw/draw_array_heap.js?v=gap-1"></script>
   <script src="draw/draw_array_BIT.js?v=gap-1"></script>
-  <script src="draw/draw_array_disk.js?v=gap-1"></script>
+  <script src="draw/draw_array_disk.js?v=capacity-2"></script>
   <script src="draw/draw_array_stack.js?v=gap-1"></script>
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
   <script src="draw/draw_array.js?v=trace-3"></script>
-  <script src="draw/draw_2Darray.js?v=focus-2"></script>
+  <script src="draw/draw_2Darray.js?v=matrix-labels-2"></script>
   <script src="draw/draw_circle.js"></script>
   <script src="draw/draw_triangle.js"></script>
   <script src="draw/draw_word.js"></script>
-  <script src="draw/draw_text.js?v=4"></script>
+  <script src="draw/draw_text.js?v=6"></script>
   <!-- GUI 編輯器 -->
-  <link rel="stylesheet" href="gui_editor.css" />
-  <script src="gui_editor.js?v=trace-4"></script>
-  <script src="trace-studio.js?v=trace-122"></script>
-  <script src="slides-embed.js?v=trace-10"></script>
+  <link rel="stylesheet" href="gui_editor.css?v=trace-2" />
+  <script src="gui_editor.js?v=trace-7"></script>
+  <script src="trace-studio.js?v=trace-131"></script>
+  <script src="slides-embed.js?v=trace-11"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

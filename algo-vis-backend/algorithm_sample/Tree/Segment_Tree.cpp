@@ -1,3 +1,13 @@
+/*
+ * 範例：線段樹區間操作
+ *
+ * 用途與核心步驟：以樹節點代表連續區間，完整涵蓋時直接使用節點資訊，部分重疊時將設定／加值狀態傳遞後遞迴合併結果。
+ * 輸入、輸出與複雜度：輸入區間更新與查詢；輸出區間聚合值。典型單次操作 O(log n)、空間 O(n)。
+ *
+ * 視覺化約定：`@frame`、`@layout`、`@style` 等註解由 AlgoShowMaker
+ * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
+ */
+
 // Segment_Tree Sample
 #include <bits/stdc++.h>
 using namespace std;
@@ -30,6 +40,10 @@ int Tmask, Tsize, Tdeep, n, ans = 0;
 // @style lazy[1:Tsize-1] background rgb(231,144,255) when value != 0
 // @style sets[1:Tsize-1] background rgb(255,183,77) when value != 2147483647
 // @endpreset
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 演算法與視覺化輔助程序：前者維護核心不變條件，後者只建立展示資料。
+// ─────────────────────────────────────────────────────────────────────────────
 
 void build() {
     Tmask = 1 << Hbit(n - 1), Tsize = Tmask + n, Tdeep = Hbit(n - 1) + 1;
@@ -131,6 +145,10 @@ int query(int l, int r, int L, int R, int Add, int Set, int now) {
     // @text "回到節點 ${now}，由 ${tree[left]} + ${tree[right]} 更新為 ${tree[now]}" at tree.top offset(0,-20)
     return sum;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 範例入口：準備輸入與初始畫面，執行核心算法，最後輸出結果／收尾畫面。
+// ─────────────────────────────────────────────────────────────────────────────
 
 int main() {
     int m, q, x, y, k;

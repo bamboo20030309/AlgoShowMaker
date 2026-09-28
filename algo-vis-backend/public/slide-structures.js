@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 投影片資料結構渲染器
+// 把正規化 widget 轉為 SVG 或 Canvas，涵蓋線性結構、矩陣、樹與表格；函式只讀 widget，不回寫 deck。
+// -----------------------------------------------------------------------------
 (() => {
   const NS = 'http://www.w3.org/2000/svg';
   const TREE_MODES = new Set(['binary_tree', 'heap', 'segment_tree', 'BIT']);
@@ -23,6 +27,10 @@
     stack: 'Stack',
     queue: 'Queue'
   };
+
+  function labelForWidget(widget, mode) {
+    return typeof widget?.structureName === 'string' ? widget.structureName : MODE_LABELS[mode];
+  }
   const NODE_W = 40;
   const INDEX_H = 12;
 
@@ -43,6 +51,10 @@
     return node;
   }
 
+  // -----------------------------------------------------------------------------
+  // 輸入正規化與樣式索引
+  // 把字串、陣列與舊版內容轉成穩定值陣列，並統一處理一基索引及各種標記顏色。
+  // -----------------------------------------------------------------------------
   function valuesFromContent(content) {
     if (Array.isArray(content)) return content.map(value => String(value));
     return String(content || '')
@@ -215,6 +227,10 @@
     return binary.padStart(Math.max(1, (length - 1).toString(2).length), '0');
   }
 
+  // -----------------------------------------------------------------------------
+  // 樹資料與版面計算
+  // 一般陣列與顯式節點圖先轉成共同 graph，再依模式計算位置，讓繪製階段只關心節點與邊。
+  // -----------------------------------------------------------------------------
   function treeNodes(values) {
     const isMissing = value => /^(null|nil|#)$/i.test(String(value));
     const isReachable = index => {
@@ -289,7 +305,7 @@
         visit(depth + 1, order * 2 + 1);
       };
       visit(0, 0);
-    } else if (layout === 'binary') {
+    } else if (layout === 'slots' || layout === 'binary') {
       const maxDepth = Math.max(...existing.map(item => item.depth));
       existing.forEach(item => {
         const span = (2 ** (maxDepth - item.depth)) * dx;
@@ -434,6 +450,10 @@
     return positions;
   }
 
+  // -----------------------------------------------------------------------------
+  // 樹與表格 SVG 繪製
+  // 繪製結果標記 cell 索引及角色，供 slides.js 的格子選取、動畫配對與註標功能使用。
+  // -----------------------------------------------------------------------------
   function drawTree(group, widget, values) {
     const graph = explicitTreeGraph(widget, values);
     const indexMode = clamp(Math.round(number(widget.indexMode, 0)), 0, 4);
@@ -441,8 +461,9 @@
     const nodeWidth = NODE_W;
     const nodeHeight = contentHeight;
     const gap = clamp(number(widget.gap, 0), 0, 40);
-    const layout = ['compact', 'levelorder', 'binary', 'inorder', 'preorder', 'postorder'].includes(widget.treeLayout)
-      ? widget.treeLayout
+    const requestedLayout = widget.treeLayout === 'binary' ? 'slots' : widget.treeLayout;
+    const layout = ['compact', 'levelorder', 'slots', 'inorder', 'preorder', 'postorder'].includes(requestedLayout)
+      ? requestedLayout
       : 'compact';
     const horizontal = widget.treeHorizontal === true;
     const positions = explicitTreePositions(graph, layout, horizontal, gap);
@@ -636,6 +657,10 @@
     return true;
   }
 
+  // -----------------------------------------------------------------------------
+  // 沿用演算法繪圖器的結構模式
+  // 線性、heap、segment tree 等模式復用既有 draw renderer，再把產物整理成投影片可控制的圖層。
+  // -----------------------------------------------------------------------------
   function drawWithOriginalRenderer(group, widget, rawValues) {
     const requestedMode = widget.type === 'table' ? 'table' : widget.structureMode;
     const mode = requestedMode === 'matrix' || requestedMode === 'table'
@@ -648,7 +673,7 @@
       const values = rows.flatMap(row => Array.from({ length: columns }, (_, index) => row[index] ?? ''));
       window.draw_array_normal(
         group,
-        MODE_LABELS[mode],
+        labelForWidget(widget, mode),
         values,
         originalStyles(widget, values.length, false),
         [0, values.length - 1],
@@ -674,7 +699,7 @@
     const indexMode = clamp(Math.round(number(widget.indexMode, 0)), 0, 4);
     const itemsPerRow = Math.max(0, Math.round(number(widget.itemsPerRow, 0))) || Infinity;
     const gap = clamp(number(widget.gap, 0), 0, 40);
-    const label = MODE_LABELS[mode];
+    const label = labelForWidget(widget, mode);
 
     if (mode === 'normal') renderer(group, label, source, styles, range, itemsPerRow, indexMode, gap);
     else if (mode === 'heap') renderer(group, label, source, styles, range, indexMode, gap);
@@ -744,6 +769,10 @@
     };
   }
 
+  // -----------------------------------------------------------------------------
+  // 渲染管線與圖層拆分
+  // 先建立自然尺寸 SVG，再分離框線、內容、指標與註標；拆層後 Reveal 轉場可獨立配對。
+  // -----------------------------------------------------------------------------
   function buildStructureSvg(widget) {
     const requestedMode = widget.type === 'table' ? 'table' : widget.structureMode;
     const mode = requestedMode === 'binary_tree' || requestedMode === 'matrix' || requestedMode === 'table' || ORIGINAL_RENDERERS[requestedMode]
@@ -836,6 +865,10 @@
     group.appendChild(styleLayer);
   }
 
+  // -----------------------------------------------------------------------------
+  // 公開渲染介面
+  // createSvg/render/drawCanvas 共用同一 SVG 建構結果，確保編輯器、縮圖與匯出尺寸一致。
+  // -----------------------------------------------------------------------------
   function getNaturalSize(widget) {
     const { bounds } = buildStructureSvg(widget);
     return {
@@ -855,7 +888,7 @@
     svg.setAttribute('viewBox', `${bounds.left} ${bounds.top} ${viewWidth} ${viewHeight}`);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', `${MODE_LABELS[mode]} data structure`);
+    svg.setAttribute('aria-label', `${labelForWidget(widget, mode) || MODE_LABELS[mode]} data structure`);
     svg.setAttribute('data-renderer', mode === 'binary_tree'
       ? 'original-tree-adapter'
       : (mode === 'segment_tree'

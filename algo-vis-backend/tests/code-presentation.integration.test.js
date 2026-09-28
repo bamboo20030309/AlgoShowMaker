@@ -1,3 +1,11 @@
+/**
+ * 測試模組：code-presentation.integration.test
+ *
+ * 驗證重點：code presentation.integration.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -6,11 +14,47 @@ const vm = require('node:vm');
 const { compile, load } = require('./helpers/compile');
 const { analyzeSource, instrumentSource } = require('../trace-instrumenter');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('code snippet body is fully transparent without removing event highlight backgrounds', () => {
   const css = fs.readFileSync(path.join(__dirname, '../public/trace.css'), 'utf8');
   const body = css.match(/\.asm-trace-code-body\.ace-tm\s*\{([^}]+)\}/)[1];
   assert.match(body, /background:\s*transparent\s*;/);
   assert.match(css, /\.asm-trace-code-event-span[^}]+background:/s);
+});
+
+test('@code hide removes its complete range from generated code snippets', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-code-model.js');
+  const source = `int main() {
+  int visible = 0;
+  // @code hide
+  visible = 7;
+  // @frame visible
+  // @endcode
+  visible++;
+}`;
+  const lines = context.ASMTraceCodeModel.sourceLines(source);
+  const hidden = context.ASMTraceCodeModel.presentationLineNumbers(lines);
+  assert.ok([3, 4, 5, 6].every(line => hidden.has(line)));
+  assert.equal(hidden.has(2), false);
+  assert.equal(hidden.has(7), false);
+});
+
+test('@code hide metadata survives reload while old trace documents remain compatible', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-model.js');
+  const oldDocument = context.ASMTraceModel.normalizeTraceDocument({ sourceCode: 'int main(){}' });
+  assert.deepEqual(Array.from(oldDocument.codeHideRanges), []);
+  const saved = JSON.parse(JSON.stringify({
+    sourceCode: '// @code hide\nint hidden;\n// @endcode',
+    codeHideRanges: [{ from: 0, contentFrom: 13, contentTo: 26, to: 38, line: 1, endLine: 3 }]
+  }));
+  const reopened = context.ASMTraceModel.normalizeTraceDocument(saved);
+  assert.deepEqual(JSON.parse(JSON.stringify(reopened.codeHideRanges)), saved.codeHideRanges);
 });
 
 test('runtime events retain exact source spans for expression-level code highlighting', async () => {
@@ -946,7 +990,37 @@ test('code jumps actually move the expanded page to the next focus line', () => 
   const sameLayoutStart = transformY(sameLayoutPage);
   frames.splice(0).forEach(callback => callback());
   assert.notEqual(transformY(sameLayoutPage), sameLayoutStart);
+
+  plans.thirdSameFocus = { sourceCode: 'test', layoutKey: 'L11,L12,L13', focusLine: 11,
+    fragments: [fragment('second', 11, 13, 11)] };
+  const thirdSameFocus = { id: 'thirdSameFocus', events: [] };
+  assert.equal(presenter.transitionDelay(trace, thirdSameFocus), 0,
+    'a layout cleanup on the same focused recursion line must not stall canvas motion');
+
+  plans.empty = { sourceCode: 'test', layoutKey: '', focusLine: 0, fragments: [] };
+  assert.equal(presenter.transitionDelay(trace, { id: 'empty', events: [] }), 0,
+    'an empty code plan must never stall canvas motion');
   dom.window.close();
+});
+
+test('an eventless timeline frame inherits the preceding code snippet', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-code-model.js');
+  const sourceCode = 'int main() {\n  int value = 1;\n  value++;\n}\n';
+  const first = {
+    id: 'first', source: { line: 3, function: 'main' },
+    events: [{ id: 'write-value', type: 'write', line: 3, expression: 'value++' }]
+  };
+  const second = { id: 'second', source: { line: 3, function: 'main' }, events: [] };
+  const document = { sourceCode, frames: [first, second] };
+  const firstPlan = context.ASMTraceCodeModel.planFrame(document, first);
+  const secondPlan = context.ASMTraceCodeModel.planFrame(document, second);
+  assert.ok(firstPlan.fragments.length > 0);
+  assert.equal(secondPlan.inheritedFromFrameId, first.id);
+  assert.equal(secondPlan.layoutKey, firstPlan.layoutKey);
+  assert.equal(secondPlan.focusLine, firstPlan.focusLine);
+  assert.deepEqual(secondPlan.fragments, firstPlan.fragments);
 });
 
 test('a single omitted algorithm line stays visible instead of becoming an ellipsis', () => {

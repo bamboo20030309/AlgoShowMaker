@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// SVG 畫布與鏡頭控制
+// 建立共享 viewport，維護平移、縮放、格線與相機動畫；對外 API 只操作視圖轉換，不持有演算法資料模型。
+// -----------------------------------------------------------------------------
 // canva.js
 // 畫布初始化、無限座標格、平移、縮放核心邏輯
 
@@ -9,10 +13,17 @@
   let scale = 1;                 // 邏輯縮放（腳本 / C++ 傳入的值）
   let animationId = null;        // 用於追蹤正在進行的鏡頭動畫
   let isFirstCamera = true;      // 用於判斷是否為首次設定鏡頭
+  let presentationCamera = { panXRatio: 0, panYRatio: 0, zoomFactor: 1 };
+  let presentationCameraEnabled = false;
+  let manualCameraSaveTimer = null;
   const GRID_SPACING  = 50;      // 格線間距
   const GRID_EXTENT   = 10000;   // 世界座標覆蓋範圍半徑
   const REFERENCE_HEIGHT = 900;  // 基準高度：以此高度為標準，其他高度按比例換算
 
+  // -----------------------------------------------------------------------------
+  // 畫布建立與共享圖層
+  // 初始化 SVG、格線與 viewport，並把共用存取函式掛到 window 供 draw、互動及鏡頭模組使用。
+  // -----------------------------------------------------------------------------
   function initCanvas() {
     svg = document.getElementById('arraySvg');
 
@@ -62,6 +73,10 @@
    * 套用 transform：physicalScale = scale * factor
    * translateX/Y 已經是基於 physicalScale 計算的螢幕像素值
    */
+  // -----------------------------------------------------------------------------
+  // 平移縮放狀態
+  // translate 與 scale 是唯一鏡頭狀態；所有手勢只更新這三個值，再由此函式套用 transform。
+  // -----------------------------------------------------------------------------
   function updateTransform() {
     const physicalScale = scale * getScreenScaleFactor();
     viewport.setAttribute(
@@ -70,37 +85,44 @@
     );
   }
 
+  // -----------------------------------------------------------------------------
+  // 滑鼠與觸控手勢
+  // 左鍵在非繪圖模式平移、右鍵永遠可平移；滾輪以游標位置為縮放中心以維持視覺錨點。
+  // -----------------------------------------------------------------------------
   function bindInteractions() {
     let dragging = false;
+    let dragButton = -1;
     let startX = 0, startY = 0;
 
-    svg.addEventListener('mousedown', e => {
-      // 判斷是否可拖曳：左鍵 (0) 要看是否為繪圖模式，右鍵 (2) 永遠允許拖曳
-      if (e.button === 0) {
-        if (window.isDrawingMode) return;
-        if (document.body.classList.contains('asm-trace-studio-open')
-          && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
-          return;
-        }
-      } else if (e.button === 2) {
-        // 右鍵點到 draggable-object 時讓 GUI 編輯器處理
-        if (e.target.closest && e.target.closest('.draggable-object')) return;
-      } else {
-        return; // 其他按鍵不處理
-      }
-
+    const beginDrag = e => {
+      e.preventDefault();
       stopAnimation(); // 手動操作時停止動畫
       dragging = true;
+      dragButton = e.button;
       startX = e.clientX;
       startY = e.clientY;
+    };
+
+    // 物件本身可能攔截 mousedown，因此右鍵要在捕獲階段先交給畫布。
+    svg.addEventListener('mousedown', e => {
+      if (e.button === 2) beginDrag(e);
+    }, true);
+
+    svg.addEventListener('mousedown', e => {
+      if (e.button !== 0 || window.isDrawingMode) return;
+      if (!document.body.classList.contains('asm-embed-runtime')
+        && document.body.classList.contains('asm-trace-studio-open')
+        && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
+        return;
+      }
+      beginDrag(e);
     });
 
-    // 禁用 SVG 上的右鍵選單，避免干擾右鍵拖曳（但在 draggable-object 上讓 GUI 編輯器接管）
+    // 右鍵只用於平移畫布，不開啟瀏覽器或物件選單。
     svg.addEventListener('contextmenu', e => {
-      if (e.target.closest && e.target.closest('.draggable-object')) return;
       e.preventDefault();
     });
-    svg.addEventListener('mousemove', e => {
+    const moveDrag = e => {
       if (!dragging) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
@@ -109,9 +131,26 @@
       translateX += dx;
       translateY += dy;
       updateTransform();
+    };
+    svg.addEventListener('mousemove', e => {
+      if (dragButton === 2) moveDrag(e);
+    }, true);
+    svg.addEventListener('mousemove', e => {
+      if (dragButton === 0) moveDrag(e);
     });
-    svg.addEventListener('mouseup', () => dragging = false);
-    svg.addEventListener('mouseleave', () => dragging = false);
+    const finishDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      dragButton = -1;
+      notifyManualCameraChange();
+    };
+    svg.addEventListener('mouseup', e => {
+      if (dragButton === 2) finishDrag();
+    }, true);
+    svg.addEventListener('mouseup', e => {
+      if (dragButton === 0) finishDrag();
+    });
+    svg.addEventListener('mouseleave', finishDrag);
 
     svg.addEventListener('wheel', e => {
       e.preventDefault();
@@ -134,6 +173,9 @@
       translateX = mx - newPhysical * px;
       translateY = my - newPhysical * py;
       updateTransform();
+      capturePresentationCamera();
+      clearTimeout(manualCameraSaveTimer);
+      manualCameraSaveTimer = setTimeout(notifyManualCameraChange, 180);
     });
   }
 
@@ -304,6 +346,10 @@
    * targetX, targetY: 世界座標
    * targetScale: 邏輯縮放（不含 factor）
    */
+  // -----------------------------------------------------------------------------
+  // 相機動畫與畫面取景
+  // 新相機命令先取消舊 requestAnimationFrame；取景邊界排除暫時箭頭層，避免鏡頭被過渡物件拉遠。
+  // -----------------------------------------------------------------------------
   function animateCamera(targetX, targetY, targetScale, duration = 400) {
     stopAnimation();
 
@@ -520,22 +566,99 @@
   };
 
   // 監聽視窗大小變化：重新以目前的邏輯縮放重新對齊（確保關注點不移位）
-  let lastCameraX = 0, lastCameraY = 0;
+  let lastCameraX = 0, lastCameraY = 0, lastCameraScale = 1;
+  let hasBaseCamera = false;
 
   // 包裝 setCamera，紀錄最後的目標世界座標
   const _origSetCamera = window.setCamera;
   // 注意：此處不直接覆寫，而是在 setCamera 內部紀錄
   const origSetCamera = window.setCamera;
+
+  function normalizedPresentationCamera(value) {
+    const panXRatio = Number(value?.panXRatio);
+    const panYRatio = Number(value?.panYRatio);
+    const zoomFactor = Number(value?.zoomFactor);
+    return {
+      panXRatio: Number.isFinite(panXRatio) ? panXRatio : 0,
+      panYRatio: Number.isFinite(panYRatio) ? panYRatio : 0,
+      zoomFactor: Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1
+    };
+  }
+
+  function presentationCameraTarget(x, y, baseScale) {
+    let rect = svg?.getBoundingClientRect?.();
+    if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) {
+      rect = {
+        width: svg?.parentElement?.clientWidth || 800,
+        height: svg?.parentElement?.clientHeight || 600
+      };
+    }
+    const modifier = presentationCameraEnabled
+      ? presentationCamera
+      : { panXRatio: 0, panYRatio: 0, zoomFactor: 1 };
+    const finalScale = Math.max(0.05, Number(baseScale) || 1) * modifier.zoomFactor;
+    const physicalScale = finalScale * getScreenScaleFactor();
+    const panX = modifier.panXRatio * rect.width;
+    const panY = modifier.panYRatio * rect.height;
+    return {
+      x: Number(x) - panX / Math.max(0.0001, physicalScale),
+      y: Number(y) - panY / Math.max(0.0001, physicalScale),
+      scale: finalScale
+    };
+  }
+
+  function applyStoredBaseCamera(animate = false, duration = 400) {
+    if (!hasBaseCamera) return;
+    const target = presentationCameraTarget(lastCameraX, lastCameraY, lastCameraScale);
+    origSetCamera(target.x, target.y, target.scale, animate, duration);
+  }
+
+  function capturePresentationCamera() {
+    if (!presentationCameraEnabled) return { ...presentationCamera };
+    if (!hasBaseCamera || !svg) return { ...presentationCamera };
+    const rect = svg.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) return { ...presentationCamera };
+    const baseScale = Math.max(0.0001, Number(lastCameraScale) || 1);
+    const physicalScale = scale * getScreenScaleFactor();
+    const baseTranslateX = rect.width / 2 - lastCameraX * physicalScale;
+    const baseTranslateY = rect.height / 2 - lastCameraY * physicalScale;
+    presentationCamera = normalizedPresentationCamera({
+      panXRatio: (translateX - baseTranslateX) / rect.width,
+      panYRatio: (translateY - baseTranslateY) / rect.height,
+      zoomFactor: Math.max(0.05, scale / baseScale)
+    });
+    return { ...presentationCamera };
+  }
+
+  function notifyManualCameraChange() {
+    clearTimeout(manualCameraSaveTimer);
+    manualCameraSaveTimer = null;
+    window.dispatchEvent(new CustomEvent('asm:camera-user-change', {
+      detail: { camera: capturePresentationCamera() }
+    }));
+  }
+
   window.setCamera = function (x, y, newScale, animate = true, duration = 400) {
     lastCameraX = x;
     lastCameraY = y;
-    origSetCamera(x, y, newScale, animate, duration);
+    lastCameraScale = newScale;
+    hasBaseCamera = true;
+    const target = presentationCameraTarget(x, y, newScale);
+    origSetCamera(target.x, target.y, target.scale, animate, duration);
   };
+
+  window.setPresentationCameraTransform = function (value, apply = true, enabled = true) {
+    presentationCameraEnabled = enabled === true;
+    presentationCamera = normalizedPresentationCamera(value);
+    if (apply) applyStoredBaseCamera(false);
+  };
+  window.getPresentationCameraTransform = () => ({ ...presentationCamera });
+  window.capturePresentationCameraTransform = capturePresentationCamera;
 
   window.addEventListener('resize', () => {
     if (svg && viewport) {
-      // 使用最後的目標座標與當前邏輯縮放，靜默重新對齊
-      origSetCamera(lastCameraX, lastCameraY, scale, false);
+      // 使用原始鏡頭加上展示偏移重新對齊，避免不同視窗尺寸累積誤差。
+      applyStoredBaseCamera(false);
     }
   });
 

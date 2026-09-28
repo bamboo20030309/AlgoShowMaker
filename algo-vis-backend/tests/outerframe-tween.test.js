@@ -1,3 +1,11 @@
+/**
+ * 測試模組：outerframe-tween.test
+ *
+ * 驗證重點：outerframe tween.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -44,6 +52,9 @@ function frame(window, x, y, width, height) {
   return { object, group, bg, nb, label, cell };
 }
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('outerframe bounds, name area and label resize together without changing cells', () => {
   const window = setup();
   const tween = window.ASMTraceFrameTween;
@@ -166,4 +177,65 @@ test('heap cell follows its outerframe origin while sequence width opens to the 
   assert.equal(Number(afterRect.getAttribute('x')), 0);
   assert.equal(Number(afterText.getAttribute('x')), 40);
   assert.equal(Number(afterText.getAttribute('font-size')), 16);
+});
+
+test('recursive keep moves from its current recursion node and retracts to the same point', () => {
+  const tween = setup().ASMTraceFrameTween;
+  const parent = {
+    id: 'snapshot:parent:1', objectId: 'F', layoutId: 'fib_tree',
+    recursionActivationId: 'call:1'
+  };
+  const child = {
+    id: 'snapshot:child:1', objectId: 'F_1', layoutId: 'fib_tree',
+    recursionActivationId: 'call:2', recursionParentActivationId: 'call:1'
+  };
+  const document = { snapshots: [parent, child] };
+  const parentFrame = { snapshotIds: [parent.id] };
+  const childFrame = { snapshotIds: [parent.id, child.id] };
+  const parentPlacements = new Map([['F', { x: 100, y: 40, width: 80, height: 50 }]]);
+  const childPlacements = new Map([
+    ['F', { x: 70, y: 40, width: 80, height: 50 }],
+    ['F_1', { x: 180, y: 130, width: 60, height: 30 }]
+  ]);
+
+  const forward = tween.recursionGrowthTransitions(
+    document, parentFrame, childFrame, 1, parentPlacements, childPlacements
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(forward.entering.get('F_1').placement)), {
+    x: 110, y: 50, width: 60, height: 30
+  });
+  assert.equal(forward.entering.get('F_1').parentKey, 'F');
+  assert.equal(forward.entering.get('F_1').sourceKey, 'F');
+
+  const reverse = tween.recursionGrowthTransitions(
+    document, childFrame, parentFrame, -1, childPlacements, parentPlacements
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(reverse.retracting.get('F_1').placement)), {
+    x: 110, y: 50, width: 60, height: 30
+  });
+});
+
+test('recursive return replacement is not treated as a newly grown node', () => {
+  const tween = setup().ASMTraceFrameTween;
+  const pending = {
+    id: 'snapshot:call:pending', objectId: 'F_1', layoutId: 'fib_tree',
+    recursionActivationId: 'call:2', recursionParentActivationId: 'call:1'
+  };
+  const returned = {
+    ...pending,
+    id: 'snapshot:call:returned',
+    replacesSnapshotId: pending.id
+  };
+  const document = { snapshots: [pending, returned] };
+  const placement = new Map([['F_1', { x: 180, y: 130, width: 60, height: 30 }]]);
+  const transition = tween.recursionGrowthTransitions(
+    document,
+    { snapshotIds: [pending.id] },
+    { snapshotIds: [returned.id] },
+    1,
+    placement,
+    placement
+  );
+  assert.equal(transition.entering.size, 0);
+  assert.equal(transition.retracting.size, 0);
 });

@@ -1,3 +1,11 @@
+/**
+ * 測試模組：view-source-compaction.test
+ *
+ * 驗證重點：view source compaction.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const viewSource = require('../public/trace-view-source.js');
@@ -46,6 +54,9 @@ function fixture() {
   };
 }
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('save-time view normalization removes stale/default data without mutating the live trace', () => {
   const trace = fixture();
   const before = JSON.stringify(trace);
@@ -70,6 +81,32 @@ test('save-time view normalization removes stale/default data without mutating t
     binding: { targetVariable: { name: 'arr', functionName: 'main' } },
     sourceSelectors: [{ kind: 'manual-frame', functionName: 'main', directiveKey: 'manual-frame:first:0' }]
   });
+});
+
+test('matrix label, zero-width gridline and disabled outerframe settings survive save and reopen', () => {
+  const trace = {
+    variables: { grid: { id: 'grid', name: 'grid', kind: 'matrix', functionName: 'main' } },
+    frames: [{ id: 'frame-0', source: { functionName: 'main', directiveKey: 'manual-frame:grid:0' }, state: { grid: {} } }],
+    skins: { grid: { renderer: 'original-matrix', options: {
+      gridlines: 0, outerframe: false, markerLayout: 'inner',
+      rowLabels: { mode: 'custom', values: ['', 'B'] },
+      columnLabels: { mode: 'none', values: [] },
+      innerLabels: { mode: 'index', values: [] }
+    } } },
+    rules: [], studio: {}
+  };
+  const settings = viewSource.fromTrace(trace);
+  assert.deepEqual(settings.skins.grid.options, trace.skins.grid.options);
+
+  const reopened = { ...trace, skins: {}, studio: {} };
+  viewSource.applyToTrace(reopened, JSON.parse(JSON.stringify(settings)));
+  assert.deepEqual(reopened.skins.grid.options, trace.skins.grid.options);
+
+  const legacy = { ...trace, skins: { grid: { renderer: 'original-matrix', options: {} } }, studio: {} };
+  const legacySettings = viewSource.fromTrace(legacy);
+  const legacyReopened = { ...legacy, skins: {}, studio: {} };
+  viewSource.applyToTrace(legacyReopened, legacySettings);
+  assert.deepEqual(legacyReopened.skins.grid?.options || {}, {});
 });
 
 test('file view settings keep automatic fixed marks and loop boundary events only', () => {
@@ -330,4 +367,51 @@ test('old verbose settings still load, while the next saved trace snapshot is co
   assert.equal(compact.studio.codePanelFontSize, 18);
   compact.studio.positions['frame-0'].arr.x = 999;
   assert.equal(trace.studio.positions['frame-0'].arr.x, 10, 'saved trace must not share mutable state');
+});
+
+test('per-frame code snippet overrides survive compact source settings and reload', () => {
+  const trace = fixture();
+  trace.studio.codeSnippetOverrides = {
+    'frame-0': { lineStates: { 'event:assign:main:i++#0': false } }
+  };
+  const settings = viewSource.fromTrace(trace);
+  assert.deepEqual(settings.studio.frameMaps.codeSnippetOverrides, [{
+    sourceSelectors: [{ kind: 'manual-frame', functionName: 'main', directiveKey: 'manual-frame:first:0' }],
+    value: { lineStates: { 'event:assign:main:i++#0': false } }
+  }]);
+
+  const reloaded = fixture();
+  reloaded.studio = {};
+  viewSource.applyToTrace(reloaded, settings);
+  assert.deepEqual(reloaded.studio.codeSnippetOverrides, {
+    'frame-0': { lineStates: { 'event:assign:main:i++#0': false } }
+  });
+
+  const oldTrace = fixture();
+  delete oldTrace.studio.codeSnippetOverrides;
+  const oldSettings = viewSource.fromTrace(oldTrace);
+  assert.equal(oldSettings.studio.frameMaps?.codeSnippetOverrides, undefined);
+});
+
+test('source directive code snippet choices survive source settings and shifted frame ids', () => {
+  const trace = fixture();
+  trace.studio.codeSnippetSourceOverrides = [{
+    sourceSelector: viewSource.sourceSelector(trace.frames[0]),
+    lineStates: { 'source:main:value++;#0': false }
+  }];
+  const settings = viewSource.fromTrace(trace);
+  assert.deepEqual(settings.studio.codeSnippetSourceOverrides, [{
+    sourceSelector: { kind: 'manual-frame', functionName: 'main', directiveKey: 'manual-frame:first:0' },
+    lineStates: { 'source:main:value++;#0': false }
+  }]);
+
+  const reloaded = fixture();
+  reloaded.frames[0].id = 'new-frame-id';
+  reloaded.studio = {};
+  viewSource.applyToTrace(reloaded, settings);
+  assert.deepEqual(reloaded.studio.codeSnippetSourceOverrides, settings.studio.codeSnippetSourceOverrides);
+  assert.equal(viewSource.sourceMatches(
+    reloaded.frames[0],
+    reloaded.studio.codeSnippetSourceOverrides[0].sourceSelector
+  ), true);
 });

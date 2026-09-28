@@ -1,3 +1,11 @@
+/**
+ * 測試模組：sequence-operations.integration.test
+ *
+ * 驗證重點：sequence operations.integration.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compile } = require('./helpers/compile');
@@ -14,6 +22,9 @@ int main() {
   return 0;
 }`;
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('push_back and pop_back emit ordered controllable sequence events with edge snapshots', async () => {
   const { trace, window } = await compile(source);
   assert.equal(trace.frames.length, 3);
@@ -61,4 +72,60 @@ test('sequence operation switch suppresses its slot without removing runtime met
   assert.ok(reversePresentation.some(slot => slot.event === push),
     'reverse playback retains the outgoing sequence slot when its destination cell is absent');
   assert.ok(frame.events.includes(push));
+});
+
+test('vector assign emits one assignment event for the whole container', async () => {
+  const source = `#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  int n = 1, m = 2;
+  vector<vector<int>> num;
+  // @frame num
+  num.assign(n + 1, vector<int>(m + 1, 0));
+  // @frame num
+}`;
+  const { trace } = await compile(source);
+  const events = trace.frames.flatMap(frame => frame.events || []);
+  const matching = events.filter(event => (
+    event.expression === 'num.assign(n + 1, vector<int>(m + 1, 0))'
+    || event.operation === 'assign'
+  ));
+  assert.equal(matching.length, 1, 'the assign call must map to one runtime event');
+  assert.equal(matching[0].type, 'assign');
+  assert.equal(matching[0].targets?.[0]?.expression, 'num');
+  assert.equal(events.some(event => (
+    event.type === 'sequence-operation' && event.operation === 'assign'
+  )), false, 'container assign is presented as assignment rather than a sequence operation');
+});
+
+test('comma-separated initialized declarations emit declaration then assignment per variable', async () => {
+  const source = `#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  int n=0,m=0,plain;
+  // @frame n, m, plain
+}`;
+  const { trace } = await compile(source);
+  const events = trace.frames.flatMap(frame => frame.events || []);
+  const relevant = events.filter(event => (
+    ['declare', 'assign'].includes(event.type)
+    && ['n', 'm', 'plain'].includes(event.targets?.[0]?.expression)
+  ));
+  assert.deepEqual(Array.from(relevant, event => [event.type, event.targets[0].expression]), [
+    ['declare', 'n'],
+    ['assign', 'n'],
+    ['declare', 'm'],
+    ['assign', 'm'],
+    ['declare', 'plain']
+  ]);
+  assert.equal(relevant.some(event => (
+    event.type === 'assign' && event.targets[0].expression === 'plain'
+  )), false, 'a declaration without an initializer must not invent an assignment');
+  assert.deepEqual(Array.from(relevant, event => event.source?.text), [
+    'int n',
+    'n=0',
+    'int m',
+    'm=0',
+    'int plain'
+  ]);
 });

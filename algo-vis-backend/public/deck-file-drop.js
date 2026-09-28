@@ -1,6 +1,14 @@
+// -----------------------------------------------------------------------------
+// 外部 deck 檔案拖放入口
+// 只接收 asmdeck/json 檔案，先驗證再轉交頁面匯入函式，避免攔截站內元件拖曳。
+// -----------------------------------------------------------------------------
 // Shared external-file drop handling; internal palette and slide drags stay untouched.
 (() => {
   const supported = file => /\.(asmdeck|json)$/i.test(file?.name || '');
+  // -----------------------------------------------------------------------------
+  // 外部檔案驗證
+  // 副檔名只做前置篩選，JSON 仍需確認格式；驗證完成前不呼叫頁面的匯入處理器。
+  // -----------------------------------------------------------------------------
   async function validate(file) {
     if (!supported(file)) throw new Error('請拖入 .asmdeck 或投影片 JSON 檔案');
     const data = /\.asmdeck$/i.test(file.name)
@@ -13,6 +21,10 @@
     }
     return deck;
   }
+  // -----------------------------------------------------------------------------
+  // 拖放事件生命週期
+  // dragenter 計數避免子元素切換造成閃爍，drop 後統一清除提示 class。
+  // -----------------------------------------------------------------------------
   function bind({ selector, allowed, onFile, onError }) {
     let busy = false;
     const external = event => Array.from(event.dataTransfer?.types || []).includes('Files');
@@ -45,6 +57,10 @@
     }, true);
   }
   // Bridge the original File across workspace -> editor without localStorage size limits.
+  // -----------------------------------------------------------------------------
+  // 跨頁待匯入暫存
+  // 首頁把檔案寫入短期儲存並以 key 導向 slides；目的頁讀取一次後立即清除。
+  // -----------------------------------------------------------------------------
   async function pending(action, key, file) {
     const db = await new Promise((resolve, reject) => {
       const request = indexedDB.open('asm-pending-deck-import-v1', 1);

@@ -1,7 +1,15 @@
+// -----------------------------------------------------------------------------
+// SVG 物件互動管理器
+// 統一處理選取、拖曳、控制點、對齊吸附與 Trace 綁定；所有座標先換算到 viewport，再交由來源同步或重繪流程。
+// -----------------------------------------------------------------------------
 class CanvasInteractionManager {
     /**
      * @param {SVGSVGElement} svg      - 主 SVG 容器 (#arraySvg)
      */
+    // -----------------------------------------------------------------------------
+    // 事件接線與選取狀態
+    // 一個 manager 對應一個 SVG；selected 與 externalSelected 共享生命週期，重繪後再用穩定 key 綁回新 DOM。
+    // -----------------------------------------------------------------------------
     constructor(svg) {
       this.svg = svg;
       this.selected = null;     // 當前選中的 .draggable-object
@@ -109,7 +117,6 @@ class CanvasInteractionManager {
         this.clearSelection();
         if (window.GuiEditor) {
           window.GuiEditor.hidePropPanel();
-          window.GuiEditor.hideCtxMenu();
         }
       }
     }
@@ -233,6 +240,10 @@ class CanvasInteractionManager {
     }
 
     // 動態更新選取輔助框/控制點 (對齊更方便，視覺效果類似 Draw.io)
+    // -----------------------------------------------------------------------------
+    // 控制框與端點顯示
+    // 控制框從 viewport 座標轉成畫面座標，鏡頭縮放或 DOM 替換後都需重新計算。
+    // -----------------------------------------------------------------------------
     updateSelectionOverlay() {
       this._restoreTraceBindingLayer();
       let overlay = this.svg.querySelector('#selection-overlay');
@@ -321,6 +332,10 @@ class CanvasInteractionManager {
     }
   
     // pointerdown：記錄起始位置，等 pointermove 確認有移動才真正啟動拖曳
+    // -----------------------------------------------------------------------------
+    // 拖曳起點判定
+    // pointerdown 只記錄候選物件與起點；超過門檻後才 capture，讓點擊選取與雙擊編輯不被誤當拖曳。
+    // -----------------------------------------------------------------------------
     onPointerDown(evt) {
       if (evt.button !== 0) return; // 僅處理左鍵
 
@@ -511,6 +526,10 @@ class CanvasInteractionManager {
     }
   
     // pointermove：先偵測是否要升級為拖曳，再處理物件位移
+    // -----------------------------------------------------------------------------
+    // 拖曳更新與座標同步
+    // 移動量先轉換為 SVG 世界座標，再依物件類型更新整體位移或箭頭單一端點。
+    // -----------------------------------------------------------------------------
     onPointerMove(evt) {
       if (this.mode === 'binding') {
         this._moveTraceBinding(evt);
@@ -547,8 +566,10 @@ class CanvasInteractionManager {
       const [tx, ty] = (grp.getAttribute('data-translate') || '0,0')
                         .split(',').map(Number);
       let ntx = tx + wx, nty = ty + wy;
-      const traceDrag = this._isTraceStudio() && this.selected?.dataset.traceObjectKey
-        && this.selected.tagName.toLowerCase() !== 'line';
+      const traceObjectDrag = Boolean(this.selected?.dataset.traceObjectKey
+        && this.selected.classList.contains('draggable-object')
+        && this.selected.tagName.toLowerCase() !== 'line');
+      const traceDrag = this._isTraceStudio() && traceObjectDrag;
       if (traceDrag) {
         ntx = (evt.clientX - this._dragStart.x) / s;
         nty = (evt.clientY - this._dragStart.y) / s;
@@ -663,9 +684,11 @@ class CanvasInteractionManager {
         this.updateSelectionOverlay();
       } else {
         // 讀 base-offset
-        if (traceDrag) {
+        if (traceObjectDrag) {
           grp.setAttribute('transform', `${this._traceBaseTransform} translate(${ntx},${nty})`.trim());
-          window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
+          if (traceDrag) {
+            window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
+          }
           window.ASMTraceRenderers?.refreshArrows?.();
           this.updateSelectionOverlay();
           return;
@@ -685,6 +708,10 @@ class CanvasInteractionManager {
     }
   
     // pointerup / pointercancel：結束拖曳並釋放 capture
+    // -----------------------------------------------------------------------------
+    // 拖曳提交與清理
+    // 放開時一次提交來源變更、釋放 pointer capture 並清除吸附提示，取消事件也走同一清理路徑。
+    // -----------------------------------------------------------------------------
     onPointerUp(evt) {
       this._pendingDrag = false; // 清除待拖曳狀態
       this._hideAnchors();
@@ -740,6 +767,10 @@ class CanvasInteractionManager {
       return document.body.classList.contains('asm-trace-studio-open');
     }
 
+    // -----------------------------------------------------------------------------
+    // Trace 物件綁定與對齊吸附
+    // Studio 模式用穩定 trace key 建立連線；拖曳期間只顯示候選錨點，完成後才通知來源模型。
+    // -----------------------------------------------------------------------------
     _startTraceBinding(evt, sourceKey, sourceAnchor = 'top') {
       if (!sourceKey || this.selected?.dataset.traceObjectKey !== sourceKey) return false;
       this.mode = 'binding';

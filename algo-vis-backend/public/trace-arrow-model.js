@@ -1,3 +1,11 @@
+/**
+ * 模組：箭頭資料模型與幾何解析
+ *
+ * 責任：把事件、批次指令與 DOM 目標正規化成 renderer 可消費的箭頭描述，並計算端點、箭頭頭部與配對關係。
+ * 資料流：資料由 trace target 描述進入，經 target registry 找到畫面元素，再以 presented bounds 產生幾何；批次箭頭最後展開為穩定、可比較的單一箭頭。
+ * 重要不變條件：箭頭 key、source 與目標索引共同維持跨 frame 身分；外框與儲存格使用不同錨點語意，配對時不可只依陣列位置猜測。
+ * 相容性：保留舊 trace 缺少 anchor、style 或 batch 欄位時的預設值；所有數字與顏色都先正規化，避免舊資料造成無效 SVG。
+ */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -16,13 +24,25 @@
     AV_grey: '#cccccc',
     AV_node_grey: '#cccccc',
     AV_black: '#111827',
-    AV_white: '#ffffff'
+    AV_white: '#ffffff',
+    'AV_green!': '#a5d6a7',
+    'AV_red!': '#ef9a9a',
+    'AV_blue!': '#90caf9',
+    'AV_yellow!': '#fcff40',
+    'AV_orange!': '#ffb74d',
+    'AV_magenta!': '#e790ff',
+    'AV_black!': '#111827',
+    'AV_white!': '#ffffff',
+    'AV_grey!': '#cccccc'
   });
 
   function color(value, fallback = 'black') {
     return COLORS[value] || value || fallback;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：目標描述與 registry
+  // ---------------------------------------------------------------------------
   function normalizeTarget(target = {}, fallbackAnchor = 'center') {
     const indexExpressions = Array.isArray(target.indexExpressions)
       ? target.indexExpressions.map(String)
@@ -124,6 +144,9 @@
       || (Array.isArray(target.indexExpressions) && target.indexExpressions.length)));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：呈現後邊界與箭頭幾何
+  // ---------------------------------------------------------------------------
   function presentedBounds(element, root, outerframe = false) {
     if (!element?.getScreenCTM || !root?.getScreenCTM || !element.isConnected) return null;
     if (element.closest?.('[display="none"], [data-trace-visibility="hidden"]')) return null;
@@ -207,6 +230,9 @@
 
   // IDs describe a visual role; endpoints describe its binding on this frame.
   // Legacy documents without identity metadata are matched by exact ID only.
+  // ---------------------------------------------------------------------------
+  // 區段：跨 frame 箭頭配對
+  // ---------------------------------------------------------------------------
   function pair(previous = [], current = []) {
     const matches = new Map(), used = new Set();
     const compatible = (a, b) => a.source === b.source
@@ -229,6 +255,9 @@
 
   // Expand only presentation descriptions. The caller supplies the existing
   // safe trace expression resolver; no C++ loop or runtime event is generated.
+  // ---------------------------------------------------------------------------
+  // 區段：批次箭頭展開
+  // ---------------------------------------------------------------------------
   function expandBatch(arrow, resolve, matches = () => true, loopSamples = null) {
     if (!arrow.batch) return [arrow];
     const batch = arrow.batch;

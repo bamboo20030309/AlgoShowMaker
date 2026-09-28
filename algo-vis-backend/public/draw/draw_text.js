@@ -1,3 +1,11 @@
+/**
+ * 模組：文字、彩色區段與 TTS 繪圖
+ *
+ * 責任：處理顯示文字轉換、寬度估算、一般文字與多色文字 SVG，並同步旁白訊息。
+ * 資料流：原始字串先分離顯示與 TTS 語意，再依全形字元估算版面；彩色區段逐段建立 tspan 並回報穩定幾何。
+ * 重要不變條件：顯示轉義與旁白轉換不可互相汙染；message id、物件 id 與 code line 在重繪間須可追蹤。
+ * 相容性：缺少字型量測 API、舊色彩名稱或純字串輸入時使用既有估算與色彩映射。
+ */
 // draw_text.js
 // 在畫布上畫出一個可拖曳的對話框文字元件
 /**
@@ -12,6 +20,9 @@
  *    - tts     念 B
  * 3. {xxx} 或 {沒有冒號}：畫面顯示 xxx，但 TTS 不朗讀
  */
+// ---------------------------------------------------------------------------
+// 區段：顯示文字與旁白正規化
+// ---------------------------------------------------------------------------
 function transformTextForDisplayAndTTS(raw) {
   const s = String(raw ?? "");
   let display = "";
@@ -99,6 +110,9 @@ function transformTextForDisplayAndTTS(raw) {
 
 // 取得一段文字在某個字型下的「顯示寬度」
 // [修正] 預設字型字串應與渲染時一致，避免寬度估算誤差
+// ---------------------------------------------------------------------------
+// 區段：字元寬度估算
+// ---------------------------------------------------------------------------
 function getTextWidth(text, fontSize = 14, fontFace = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif') {
   const canvas = getTextWidth._canvas || (getTextWidth._canvas = document.createElement('canvas'));
   const ctx = canvas.getContext('2d');
@@ -140,6 +154,9 @@ function isFullWidth(char) {
    * @param {string} content   - 要顯示的文字，可以用 \n 換行
    * @param {object} pos       - 位置規格，支援絕對位置和相對位置（參考 resolvePos）
    */
+  // ---------------------------------------------------------------------------
+  // 區段：一般文字與 TTS 建立
+  // ---------------------------------------------------------------------------
   function drawText(
     content,
     pos,
@@ -386,10 +403,22 @@ function isFullWidth(char) {
     'AV_grey': '#cccccc',
     'AV_node_grey': '#cccccc',
     'AV_black': 'black',
-    'AV_white': 'white'
+    'AV_white': 'white',
+    'AV_green!': '#a5d6a7',
+    'AV_red!': '#ef9a9a',
+    'AV_blue!': '#90caf9',
+    'AV_yellow!': '#fcff40',
+    'AV_orange!': '#ffb74d',
+    'AV_magenta!': '#e790ff',
+    'AV_black!': '#111827',
+    'AV_white!': '#ffffff',
+    'AV_grey!': '#cccccc'
   };
   function _resolveAVColor(c) { return (c && _AV_COLOR_MAP[c]) ? _AV_COLOR_MAP[c] : c; }
 
+  // ---------------------------------------------------------------------------
+  // 區段：多色文字區段
+  // ---------------------------------------------------------------------------
   function drawColoredText(
     segments,
     pos,

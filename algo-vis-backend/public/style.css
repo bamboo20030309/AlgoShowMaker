@@ -1,3 +1,7 @@
+/* --------------------------------------------------------------------------
+ * 演算法工作區樣式
+ * 定義暗色主題、左右面板、SVG 舞台、播放器、抽屜與手繪工具；尺寸變數由 front.js 的分割線邏輯更新。
+ * -------------------------------------------------------------------------- */
 /* =========================================
    1. 全域變數與重置 (Theme Variables)
    ========================================= */
@@ -59,6 +63,10 @@ html {
 /* =========================================
    2. 主佈局架構
    ========================================= */
+/* --------------------------------------------------------------------------
+ * 主工作區與分割版面
+ * Ace 與視覺化面板共享可調寬度，overflow 留給各自內容區處理。
+ * -------------------------------------------------------------------------- */
 #main {
   display: flex;
   width: 100%;
@@ -242,6 +250,10 @@ button.auto-stepping:hover {
 /* =========================================
    4. 左側：程式碼編輯器 (Code Panel)
    ========================================= */
+/* --------------------------------------------------------------------------
+ * 程式碼編輯面板
+ * 標頭固定、Ace 填滿其餘空間；收合狀態只保留可重新展開的控制。
+ * -------------------------------------------------------------------------- */
 #codePanel {
   width: 40%;
   min-width: 200px;
@@ -293,6 +305,10 @@ button.auto-stepping:hover {
 /* =========================================
    5. 右側：視覺化面板 (Viz Panel)
    ========================================= */
+/* --------------------------------------------------------------------------
+ * 視覺化分頁與 SVG 畫布
+ * 分頁內容共用右側高度，canvas 頁另外疊加播放、繪圖與狀態控制。
+ * -------------------------------------------------------------------------- */
 #vizPanel {
   flex: 1;
   display: flex;
@@ -510,6 +526,10 @@ button.auto-stepping:hover {
 }
 
 /* 繪圖工具列 */
+/* --------------------------------------------------------------------------
+ * 手繪標註工具
+ * 工具按鈕只反映 front.js 的 drawing mode，不與 SVG 物件選取樣式共用 active 狀態。
+ * -------------------------------------------------------------------------- */
 .drawing-toolbar {
   position: absolute;
   top: 20px;
@@ -766,24 +786,41 @@ button.auto-stepping:hover {
 /* 進度條/幀條碼區域 */
 #frameTimeline {
   position: relative;
-  flex-grow: 1;
-  /* 佔滿剩餘空間 */
-  min-width: 150px;
-  max-width: 300px;
-  height: 24px;
-  background-color: #555;
-  border-radius: 4px;
-  overflow: hidden;
+  flex-grow: 0;
+  flex-basis: 180px;
+  min-width: 100px;
+  max-width: 220px;
+  height: 30px;
   display: flex;
   align-items: center;
-  justify-content: center;
   cursor: ew-resize;
-  /* 左右拖曳游標 */
   touch-action: none;
-  margin: 0 4px 0 15px;
-  /* 增加左邊距往右移 */
+  margin: 0 2px 0 auto;
   user-select: none;
-  /* 防止文字被選取反白 */
+  --frame-progress: 0%;
+}
+
+.frame-track,
+.frame-progress {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 6px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.frame-track {
+  width: 100%;
+  background: #dbe2e9;
+  box-shadow: inset 0 0 0 1px rgba(71, 85, 105, 0.08);
+}
+
+.frame-progress {
+  width: var(--frame-progress);
+  background: var(--primary-blue);
+
 }
 
 #frameBars {
@@ -796,37 +833,74 @@ button.auto-stepping:hover {
   pointer-events: none;
 }
 
-.frame-bar {
-  flex: 1;
-  height: 100%;
-  background-color: transparent;
-}
-
-.frame-bar.reached {
-  background-color: #61e15b;
-  /* 普通幀淺綠色 */
-}
-
-.frame-bar.reached.keyframe {
-  background-color: #61e15b;
-  /* 關鍵幀紅色 */
-}
-
-#frameInfo {
-  position: relative;
-  z-index: 10;
-  font-size: 14px;
-  color: #333;
-  font-weight: 800;
-  /* 加粗字體 */
+/* --------------------------------------------------------------------------
+ * 影格時間軸
+ * 到達、關鍵幀與目前位置分開著色，寬度由影格數動態計算。
+ * -------------------------------------------------------------------------- */
+.frame-playhead {
+  position: absolute;
+  left: var(--frame-progress);
+  top: 50%;
+  z-index: 3;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--active-blue);
+  box-shadow: 0 1px 5px rgba(37, 99, 235, 0.42);
+  transform: translate(-50%, -50%);
+  transition: box-shadow 120ms ease;
   pointer-events: none;
-  /* 點擊穿透 */
-  /* 使用 更細的 text-shadow 模擬細白色外框 */
-  text-shadow:
-    -0.7px -0.7px 0 #fff,
-    0.7px -0.7px 0 #fff,
-    -0.7px 0.7px 0 #fff,
-    0.7px 0.7px 0 #fff;
+}
+
+.frame-hover-preview {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10000;
+  padding: 4px 7px;
+  border: 1px solid #d7e0e8;
+  border-radius: 6px;
+  background: #fff;
+  color: #334155;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.frame-count {
+  flex: 0 0 auto;
+  min-width: 48px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-time {
+  flex: 0 0 auto;
+  min-width: 94px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-time-current {
+  color: #1e293b;
+}
+
+.playback-time-separator,
+.playback-time-total {
+  color: #94a3b8;
 }
 
 /* 速度拉桿 */
@@ -841,7 +915,6 @@ button.auto-stepping:hover {
   width: 100px;
   height: 24px;
   margin: 0 8px;
-  margin-left: auto;
   display: flex;
   align-items: center;
 }
@@ -950,6 +1023,10 @@ button.auto-stepping:hover {
 /* =========================================
    7. 模態視窗與動畫
    ========================================= */
+/* --------------------------------------------------------------------------
+ * 通用對話框
+ * 遮罩高於工作區但低於原生瀏覽器 UI，內容區自行限制高度並捲動。
+ * -------------------------------------------------------------------------- */
 .modal {
   display: none;
   position: fixed;
@@ -1244,6 +1321,10 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
     側邊滑出式範例面板 (Side Drawer)
    ========================================= */
 
+/* --------------------------------------------------------------------------
+ * 演算法清單側欄
+ * 側欄以 transform 開關，載入期間仍保留原工作區尺寸，避免 Ace 反覆重排。
+ * -------------------------------------------------------------------------- */
 #algoSidePanel {
   position: fixed;
   /* 固定在視窗上 */

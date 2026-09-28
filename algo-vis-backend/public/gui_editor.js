@@ -1,10 +1,18 @@
-/* gui_editor.js — 畫布 GUI 編輯器 Phase 1: 攔截 + 右鍵選單 + 屬性面板 */
+// -----------------------------------------------------------------------------
+// 畫布 GUI 編輯器
+// 攔截既有 draw 呼叫建立可回寫的呼叫紀錄，並以右鍵面板或行內工具列修改來源碼；預覽與來源同步必須維持同一個 draw call。
+// -----------------------------------------------------------------------------
+/* gui_editor.js — 畫布 GUI 編輯器：繪圖攔截、屬性同步與行內編輯 */
 ; (function () {
   'use strict';
 
   // ============================================================
   //  1. Draw Call 攔截與記錄
   // ============================================================
+  // -----------------------------------------------------------------------------
+  // 繪圖呼叫登錄表
+  // 每次重繪一幀重新記錄 draw 函式、參數與來源行；DOM 物件可藉 groupID 找回可編輯的原始呼叫。
+  // -----------------------------------------------------------------------------
   const _frameRegistry = {};   // frameNum -> [ {type, args, codeLine, groupID} ]
   let _recFrame = -1;
   let _recLine = -1;
@@ -180,9 +188,8 @@
       const f = window.CodeScript.get_current_frame_index();
       startRecording(f);
     }
-    // 切換幀時自動關閉屬性面板與右鍵選單
+    // 切換幀時自動關閉屬性面板
     hidePropPanel();
-    hideCtxMenu();
     return _origClearCanvas.apply(this, arguments);
   };
 
@@ -218,6 +225,10 @@
   }
 
   // 重新渲染當前幀（即時預覽）
+  // -----------------------------------------------------------------------------
+  // 即時預覽重播
+  // 面板輸入先改記錄中的參數並重播目前幀，確認完成後才把等價內容寫回 C++。
+  // -----------------------------------------------------------------------------
   function replayCurrentFrame() {
     if (!window.CodeScript) return;
     const f = window.CodeScript.get_current_frame_index();
@@ -355,120 +366,16 @@
   let _currentPropSection = 'all';
 
   // ============================================================
-  //  3. 右鍵選單
-  // ============================================================
-  let _ctxMenu = null;
-  let _ctxTarget = null;   // 右鍵點到的 .draggable-object
-  let _ctxDrawCall = null;  // 對應的 draw call 記錄
-
-  function createCtxMenu() {
-    if (_ctxMenu) return _ctxMenu;
-    _ctxMenu = document.createElement('div');
-    _ctxMenu.className = 'gui-ctx-menu';
-    _ctxMenu.style.display = 'none';
-    document.body.appendChild(_ctxMenu);
-    return _ctxMenu;
-  }
-
-  function hideCtxMenu() {
-    if (_ctxMenu) _ctxMenu.style.display = 'none';
-    _ctxTarget = null;
-    _ctxDrawCall = null;
-  }
-
-  function showCtxMenu(e, obj, drawCall) {
-    const menu = createCtxMenu();
-    _ctxTarget = obj;
-    _ctxDrawCall = drawCall;
-
-    const id = obj.getAttribute('id') || '(無ID)';
-    const type = drawCall ? drawCall.type : '未知';
-    const line = drawCall ? drawCall.codeLine : -1;
-
-    let html = `<div class="ctx-label">${type} — ${id}</div>`;
-
-    // 自動化顯示邏輯：只要繪圖參數含有 Pos 物件，右鍵選單就自動賦予「編輯位置」區塊
-    let hasPos = false;
-    if (drawCall && drawCall.args) {
-      hasPos = drawCall.args.some(arg => isPosObject(arg));
-    }
-
-    if (hasPos) {
-      html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
-    }
-
-    if (drawCall && (drawCall.type === 'drawArray' || drawCall.type === 'draw2DArray')) {
-      html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯格子樣式</div>`;
-      html += `<div class="ctx-item" data-action="edit-layout"><span class="ctx-icon">📐</span>編輯繪製參數</div>`;
-    } else if (drawCall && drawCall.type === 'drawCircle') {
-      html += `<div class="ctx-item" data-action="edit-circle-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
-    } else if (drawCall && drawCall.type === 'drawArrow') {
-      html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
-    } else if (drawCall && (drawCall.type === 'drawText' || drawCall.type === 'drawColoredText')) {
-      html += `<div class="ctx-item" data-action="edit-text-style"><span class="ctx-icon">📝</span>編輯文字與樣式</div>`;
-    }
-
-    if (line >= 0) {
-      html += `<div class="ctx-sep"></div>`;
-      html += `<div class="ctx-item" data-action="goto-code"><span class="ctx-icon">📝</span>跳到程式碼 (行 ${line + 1})</div>`;
-    }
-
-    html += `<div class="ctx-sep"></div>`;
-    html += `<div class="ctx-item" data-action="show-info"><span class="ctx-icon">ℹ️</span>顯示完整屬性</div>`;
-
-    menu.innerHTML = html;
-    menu.style.display = 'block';
-    menu.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px';
-    menu.style.top = Math.min(e.clientY, window.innerHeight - 300) + 'px';
-
-    // 綁定事件
-    menu.querySelectorAll('.ctx-item').forEach(item => {
-      item.onclick = () => {
-        const action = item.dataset.action;
-        // 先保存引用，再隱藏選單
-        const savedTarget = _ctxTarget;
-        const savedDrawCall = _ctxDrawCall;
-        hideCtxMenu();
-        // 恢復引用供 handleCtxAction 使用
-        _ctxTarget = savedTarget;
-        _ctxDrawCall = savedDrawCall;
-        handleCtxAction(action);
-      };
-    });
-  }
-
-  function handleCtxAction(action) {
-    if (!_ctxDrawCall && action !== 'show-info') return;
-    switch (action) {
-      case 'edit-pos': _currentPropSection = 'pos'; showPropPanel('pos'); break;
-      case 'edit-style': _currentPropSection = 'style'; showPropPanel('style'); break;
-      case 'edit-layout': _currentPropSection = 'layout'; showPropPanel('layout'); break;
-      case 'edit-circle-style': _currentPropSection = 'circle-style'; showPropPanel('circle-style'); break;
-      case 'edit-text-style': _currentPropSection = 'text-style'; showPropPanel('text-style'); break;
-      case 'show-info': _currentPropSection = 'all'; showPropPanel('all'); break;
-      case 'goto-code':
-        if (_ctxDrawCall && _ctxDrawCall.codeLine >= 0) {
-          const editor = getEditor();
-          if (!editor) break;
-          const line = _ctxDrawCall.codeLine; // 1-based
-          // 先清除舊高亮，再加新的螢光色高亮
-          if (typeof clearAllEditorHighlights === 'function') clearAllEditorHighlights();
-          if (typeof addEditorHighlight === 'function') addEditorHighlight(line, true);
-          editor.gotoLine(line, 0, true);
-          editor.scrollToLine(line - 1, true, true, function () { });
-          editor.focus();
-        }
-        break;
-    }
-  }
-
-  // ============================================================
-  //  4. 屬性面板
+  //  3. 屬性面板
   // ============================================================
   let _propPanel = null;
   let _propDrawCall = null;
   let _propTarget = null;
 
+  // -----------------------------------------------------------------------------
+  // 屬性面板建構器
+  // 不同 draw 類型共用位置與樣式欄位；DOM 欄位只保存暫存值，來源碼仍是跨重編譯的真實來源。
+  // -----------------------------------------------------------------------------
   function createPropPanel() {
     if (_propPanel) return _propPanel;
     _propPanel = document.createElement('div');
@@ -484,12 +391,6 @@
 
   function showPropPanel(section) {
     const panel = createPropPanel();
-    // 只有在明確從右鍵選單觸發時才更新 _propDrawCall
-    if (_ctxDrawCall) {
-      _propDrawCall = _ctxDrawCall;
-      _propTarget = _ctxTarget;
-    }
-
     if (!_propDrawCall) {
       const id = _propTarget ? _propTarget.getAttribute('id') : '?';
       panel.innerHTML = buildHeader('物件資訊 — ' + id) +
@@ -1386,6 +1287,10 @@
   }
 
   // --- 綁定事件 ---
+  // -----------------------------------------------------------------------------
+  // 面板事件與輸入驗證
+  // 拖桿 input 提供即時預覽，change/pointerup 才提交來源；必要欄位先驗證以避免產生無法編譯的呼叫。
+  // -----------------------------------------------------------------------------
   function bindPropEvents(panel, dc) {
     const section = _currentPropSection;
     function bindSinglePosEvents(prefix, posArg, argIdx) {
@@ -2033,6 +1938,10 @@
    * 藉由將 C++ 行進行通用參數解析拆分，精確替換指定索引 (argIdx) 上的 Pos 參數，
    * 完美解決了多個 Pos 參數、自定義繪圖函式，以及巢狀表示式的回寫問題。
    */
+  // -----------------------------------------------------------------------------
+  // 來源碼定位與精準回寫
+  // 先以函式、groupID 與原參數嚴格定位，必要時逐級放寬；只替換目標參數並保留其餘排版與變數。
+  // -----------------------------------------------------------------------------
   function syncPosToCpp(dc, argIdx = 1) {
     const editor = getEditor();
     if (!editor || dc.codeLine < 0) return;
@@ -2402,6 +2311,10 @@
    * 提取函式呼叫的完整參數字串 (括號內容)
    * startIdx 應指向 '(' 的位置
    */
+  // -----------------------------------------------------------------------------
+  // C++ 引數解析工具
+  // 以括號深度與字串狀態切分頂層引數，避免物件初始值或巢狀呼叫中的逗號被誤判。
+  // -----------------------------------------------------------------------------
   function extractFnArgs(line, startIdx) {
     if (line[startIdx] !== '(') return null;
     let depth = 0;
@@ -2462,53 +2375,9 @@
     const svg = document.getElementById('arraySvg');
     if (!svg) return;
 
-    // 右鍵選單
-    svg.addEventListener('contextmenu', (e) => {
-      let obj = e.target.closest('.draggable-object');
-      let dc = null;
-
-      if (!obj) {
-        // 檢查是否點擊到箭頭
-        const line = e.target.closest('line[data-arrow-key], path[data-arrow-key], text[data-arrow-id]');
-        if (line) {
-          obj = line;
-          const arrowKey = line.getAttribute('data-arrow-key') || line.getAttribute('data-arrow-id');
-          // 透過 DOM 順序找到對應的 drawCall
-          const layer = svg.querySelector('#arrow-layer');
-          if (layer) {
-            // text 跟 line 的對應處理：統一找 line
-            const realLine = layer.querySelector(`line[data-arrow-key="${arrowKey}"], line[id="${arrowKey}"]`);
-            if (realLine) {
-              const arrowsInDOM = Array.from(layer.querySelectorAll('line[data-arrow-key]'));
-              const arrowIdx = arrowsInDOM.indexOf(realLine);
-              const arrowCalls = getCurrentFrameDrawCalls().filter(c => c.type === 'drawArrow');
-              dc = arrowCalls[arrowIdx] || null;
-            }
-          }
-        } else {
-          hideCtxMenu();
-          return;
-        }
-      } else {
-        const id = obj.getAttribute('id');
-        dc = id ? findDrawCallByGroupID(id) : null;
-      }
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      // 即使沒找到 drawCall，也可以顯示基本選單
-      showCtxMenu(e, obj, dc);
-    });
-
-    // 點其他地方關閉選單
-    document.addEventListener('mousedown', (e) => {
-      if (_ctxMenu && !_ctxMenu.contains(e.target)) hideCtxMenu();
-    });
-
     // ESC 關閉
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { hideCtxMenu(); hidePropPanel(); }
+      if (e.key === 'Escape') hidePropPanel();
     });
   });
 
@@ -2518,7 +2387,6 @@
     getCurrentDrawCalls: getCurrentFrameDrawCalls,
     replayFrame: replayCurrentFrame,
     hidePropPanel,
-    hideCtxMenu,
   };
 
   // ============================================================
@@ -2526,6 +2394,10 @@
   // ============================================================
   let _toastContainer = null;
 
+  // -----------------------------------------------------------------------------
+  // 回饋訊息與顏色選擇
+  // 共用 toast 呈現同步結果；色票同時保留 C++ 顏色名稱與實際 hex，寫回時優先維持可讀常數。
+  // -----------------------------------------------------------------------------
   function ensureToastContainer() {
     if (_toastContainer) return _toastContainer;
     _toastContainer = document.createElement('div');
@@ -2702,6 +2574,15 @@
     'AV_node_grey': '#cccccc',
     'AV_black': 'black',
     'AV_white': 'white',
+    'AV_green!': '#a5d6a7',
+    'AV_red!': '#ef9a9a',
+    'AV_blue!': '#90caf9',
+    'AV_yellow!': '#fcff40',
+    'AV_orange!': '#ffb74d',
+    'AV_magenta!': '#e790ff',
+    'AV_black!': '#111827',
+    'AV_white!': '#ffffff',
+    'AV_grey!': '#cccccc',
     'green': 'rgba(165, 214, 167, 0.6)',
     'blue': 'rgba(144, 202, 249, 0.6)',
     'red': 'rgba(239, 154, 154, 0.6)',
@@ -2801,6 +2682,10 @@
 
 
 
+  // -----------------------------------------------------------------------------
+  // SVG 文字行內編輯
+  // 以 foreignObject 暫時接管文字輸入與選取，關閉時把段落樣式合併回原 drawText 呼叫。
+  // -----------------------------------------------------------------------------
   function closeNativeInlineEditor() {
     window.isInlineEditing = false;
     if (!_currentInlineWrapper || !_currentInlineDC) return;

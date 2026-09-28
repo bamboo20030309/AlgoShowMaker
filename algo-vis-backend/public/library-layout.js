@@ -1,8 +1,16 @@
+// -----------------------------------------------------------------------------
+// 投影片庫版面純函式
+// 負責資料夾與未分類 deck 的正規化、搬移與排序，不直接存取 DOM 或網路。
+// -----------------------------------------------------------------------------
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.ASMLibraryLayout = api;
 })(typeof window !== 'undefined' ? window : null, function () {
+  // -----------------------------------------------------------------------------
+  // 版面 schema 驗證
+  // 清除重複或非法 id，並保留資料夾名稱與明確排序，產生可安全操作的副本。
+  // -----------------------------------------------------------------------------
   function validate(value) {
     if (!value || !Array.isArray(value.folders) || !Array.isArray(value.unfiled) || value.folders.length > 200) throw new Error('資料夾格式不正確');
     const folderIds = new Set(), categorized = new Set();
@@ -25,6 +33,10 @@
     if (unfiled.some(id => categorized.has(id))) throw new Error('已分類投影片不可同時列入未分類');
     return { folders, unfiled };
   }
+  // -----------------------------------------------------------------------------
+  // Deck 清單對帳
+  // 移除已不存在的 deck，新增的 id 放入未分類區；每個 id 在整個 layout 中只出現一次。
+  // -----------------------------------------------------------------------------
   function reconcile(value, ids) {
     let layout;
     try { layout = validate(value); } catch { layout = { folders: [], unfiled: [] }; }
@@ -46,6 +58,10 @@
     if (!selected.size) next.unfiled.push(id);
     return validate(next);
   }
+  // -----------------------------------------------------------------------------
+  // 搬移與資料夾刪除
+  // move 先從所有容器移除來源，再依 before 插入目的地；純函式回傳新版供 UI 提交。
+  // -----------------------------------------------------------------------------
   function move(layout, id, destination, before = null, source = null) {
     const next = validate(layout);
     const target = destination ? next.folders.find(folder => folder.id === destination)?.deckIds : next.unfiled;

@@ -1,3 +1,11 @@
+/**
+ * 測試模組：playback-parity.integration.test
+ *
+ * 驗證重點：playback parity.integration.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -72,7 +80,10 @@ function surface(mode, rate) {
   };
 }
 
-test('a changed code layout delays renderer phases and the shared camera by 500ms', () => {
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
+test('a changed code layout delays renderer phases while the shared camera starts immediately', () => {
   const s = surface('algorithm', 1);
   s.load({
     mode: 'trace',
@@ -89,7 +100,7 @@ test('a changed code layout delays renderer phases and the shared camera by 500m
   s.c.CodeScript.next();
   assert.equal(s.renders[0].options.initialDelayMs, 500);
   assert.equal(s.renders[0].options.cameraTransitionDurationMs, 520);
-  assert.ok(s.timerDelays.includes(500), 'the shared camera must wait for the code transition');
+  assert.ok(s.timerDelays.includes(0), 'the shared camera starts with the installed scene');
 });
 
 test('a keep phase starts the shared camera with retained and live layout motion', () => {

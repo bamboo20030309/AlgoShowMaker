@@ -1,7 +1,18 @@
+/**
+ * 測試模組：event-settings-source.browser.test
+ *
+ * 驗證重點：event settings source.browser.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('automatic event toggles persist in asm-view and survive RUN', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
@@ -28,6 +39,37 @@ int main() {
       code, { timeout: 30000 });
 
     await page.click('#eventSettingsBtn');
+    assert.deepEqual(
+      await page.locator('.trace-event-settings-row strong').allTextContents(),
+      [
+        '宣告／物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
+        '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
+      ]
+    );
+    const flowRows = page.locator('.trace-event-settings-row')
+      .filter({ hasText: '流程跳轉' });
+    assert.equal(await flowRows.count(), 1, 'return, break and continue share one settings row');
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '回傳' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '跳出迴圈' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '繼續下一輪' }).count(), 0);
+    const assignmentRows = page.locator('.trace-event-settings-row')
+      .filter({ hasText: '賦值' });
+    assert.equal(await assignmentRows.count(), 1, 'assign and write share one settings row');
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '直接／初始化賦值' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '數值更新／複合賦值' }).count(), 0);
+    const exitRows = page.locator('.trace-event-settings-row')
+      .filter({ hasText: '物件退場／手動退場' });
+    assert.equal(await exitRows.count(), 1, 'scope and manual exits share one settings row');
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '作用域結束／物件退場' }).count(), 0);
+    assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '手動物件退場' }).count(), 0);
+    await flowRows.locator('input').first().setChecked(false);
+    await assignmentRows.locator('input').first().setChecked(false);
+    await exitRows.locator('input').first().setChecked(false);
+    await page.waitForFunction(() => (
+      window.ASMTracePlayer.getDocument()?.studio?.eventSettings?.defaultEnabled?.['control-flow'] === false
+      && window.ASMTracePlayer.getDocument()?.studio?.eventSettings?.defaultEnabled?.assignment === false
+      && window.ASMTracePlayer.getDocument()?.studio?.eventSettings?.defaultEnabled?.['object-exit'] === false
+    ));
     await page.locator('.trace-auto-fixed-toggle').setChecked(false);
     await page.locator('.trace-auto-loop-boundary-toggle').setChecked(true);
     await page.waitForFunction(() => {

@@ -1,3 +1,11 @@
+/**
+ * 模組：Studio 設定來源碼編解碼
+ *
+ * 責任：在原始碼中的專用設定區塊與 trace.studio 文件模型之間進行精簡、可逆的轉換。
+ * 資料流：儲存時壓縮 renderer、scope、binding、camera 與 transition；載入時解析 JSON、還原 frame/variable 參照，再套入已正規化 trace。
+ * 重要不變條件：只改寫受管理的設定區塊，其他使用者原始碼須逐字保留；encode/decode 的 scope 對應必須在 frame id 改變時仍可解析。
+ * 相容性：支援舊 variable key、renderer 別名與未壓縮設定；不認得的安全資料保留或忽略，不讓整份來源無法載入。
+ */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -5,6 +13,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const BLOCK_PATTERN = /\/\*\s*@asm-view\s*\r?\n([\s\S]*?)\r?\n\s*@asm-view\s*\*\//m;
 
+  // ---------------------------------------------------------------------------
+  // 區段：設定值與 renderer 壓縮
+  // ---------------------------------------------------------------------------
   function clone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
   }
@@ -111,6 +122,9 @@
     return match ? { functionName: match[1], name: match[2] } : null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：變數參照映射
+  // ---------------------------------------------------------------------------
   function variableReferenceTable(trace, value) {
     const serialized = JSON.stringify(value || {});
     const result = {};
@@ -175,6 +189,9 @@
     return replacements;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：鏡頭規則壓縮與還原
+  // ---------------------------------------------------------------------------
   function cameraRuleForSource(rule, trace) {
     const next = clone(rule);
     const binding = next?.binding;
@@ -268,11 +285,11 @@
   }
 
   function removeEmptyStudioCollections(studio) {
-    ['objects', 'arrows', 'cameraRules', 'transitions'].forEach(key => {
+    ['objects', 'arrows', 'cameraRules', 'transitions', 'codeSnippetSourceOverrides'].forEach(key => {
       if (Array.isArray(studio[key]) && !studio[key].length) delete studio[key];
     });
     ['eventInstructionStates', 'frameMaps', 'positions', 'bindings', 'visibility',
-      'objectStyles', 'eventStates'].forEach(key => {
+      'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (isObject(studio[key]) && !Object.keys(studio[key]).length) delete studio[key];
     });
     return studio;
@@ -290,6 +307,9 @@
     return Object.keys(result).length ? result : null;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：來源管理區塊讀寫
+  // ---------------------------------------------------------------------------
   function findBlock(source) {
     const text = String(source || '');
     const match = BLOCK_PATTERN.exec(text);
@@ -340,6 +360,9 @@
     return manual?.[1] || 'global';
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame scope 編解碼
+  // ---------------------------------------------------------------------------
   function sourceSelector(frame) {
     const directiveKey = String(frame?.source?.directiveKey || '').trim();
     if (directiveKey) {
@@ -477,6 +500,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：集合與 frame map 序列化
+  // ---------------------------------------------------------------------------
   function encodeScopes(value, frames) {
     if (Array.isArray(value)) return value.map(item => encodeScopes(item, frames));
     if (!value || typeof value !== 'object') return value;
@@ -553,6 +579,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：由 trace 產生設定
+  // ---------------------------------------------------------------------------
   function fromTrace(trace) {
     const frames = trace?.frames || [];
     const studio = clone(trace?.studio || {});
@@ -569,7 +598,7 @@
       .map(rule => compactCameraRule(cameraRuleForSource(rule, trace)));
     studio.transitions = dedupeById(studio.transitions).map(compactTransition);
     const frameMaps = {};
-    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
+    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (studio[key] && Object.keys(studio[key]).length) frameMaps[key] = encodeFrameMap(studio[key], frames);
       delete studio[key];
     });
@@ -593,7 +622,7 @@
     next.skins = compactSkins(trace);
     next.studio = isObject(next.studio) ? next.studio : {};
     next.studio.eventInstructionStates = compactInstructionStates(next.studio.eventInstructionStates);
-    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
+    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (!isObject(next.studio[key])) return;
       next.studio[key] = Object.fromEntries(Object.entries(next.studio[key])
         .filter(([frameId, value]) => validFrameIds.has(frameId)
@@ -609,6 +638,9 @@
     return next;
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：設定套回 trace
+  // ---------------------------------------------------------------------------
   function applyToTrace(trace, settings) {
     if (!trace || !settings || typeof settings !== 'object') return trace;
     const replacements = resolvedVariableReplacements(settings, trace);
@@ -629,7 +661,7 @@
       studio.transitions = sanitizeTransitions(studio.transitions);
       const frameMaps = studio.frameMaps || {};
       delete studio.frameMaps;
-      ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates'].forEach(key => {
+      ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
         if (frameMaps[key]) studio[key] = decodeFrameMap(frameMaps[key], frames);
       });
       studio.cameraRules = (Array.isArray(studio.cameraRules) ? studio.cameraRules : [])

@@ -1,4 +1,8 @@
-"""Build the three editable teaching decks from the user's animation examples.
+"""從使用者提供的演算法動畫組裝三份可編輯教學投影片。
+
+流程分成四層：建立 Fabric 畫布物件、建立 code／LaTeX widget、讀取既有
+asmdeck 動畫，以及輸出含雜湊 manifest 的新套件。腳本不重新產生演算法
+動畫，而是複製來源投影片，確保既有 trace 與元件仍由 AlgoShowMaker 載入。
 
 Usage: python scripts/build-teaching-decks.py C:/Users/user/Downloads
 """
@@ -25,6 +29,10 @@ GREEN = "#dff4ef"
 PEACH = "#fae9e3"
 LINE = "#dce5e1"
 
+
+# -----------------------------------------------------------------------------
+# 基礎物件工廠：產生符合投影片持久化格式的 Fabric 物件與 widget。
+# -----------------------------------------------------------------------------
 
 def uid():
     return str(uuid.uuid4())
@@ -136,6 +144,10 @@ def cover(deck, title, subtitle, tagline, number, tags):
     return s
 
 
+# -----------------------------------------------------------------------------
+# 來源 asmdeck：解壓、擷取動畫頁與抽取可重用的 C++ 函式。
+# -----------------------------------------------------------------------------
+
 def animation_slide(source, index):
     s = copy.deepcopy(source[index])
     s["id"] = uid()
@@ -168,6 +180,10 @@ def function(code, signature):
     raise ValueError(signature)
 
 
+# -----------------------------------------------------------------------------
+# 封裝輸出：使用瀏覽器一致的 JSON.stringify 雜湊建立可驗證 manifest。
+# -----------------------------------------------------------------------------
+
 def save(name, slides):
     deck = {"ttsSettings": {}, "groups": [{"id": uid(), "slides": [s]} for s in slides]}
     body = {"deck": deck, "assets": {}}
@@ -186,6 +202,10 @@ def save(name, slides):
     target.write_bytes(b"ASMDECK1\n" + gzip.compress(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(), mtime=0))
     print(f"{target}: {len(slides)} slides, {target.stat().st_size} bytes")
 
+
+# -----------------------------------------------------------------------------
+# 載入三份來源動畫，先修正已知的範例邊界，再組裝各教學 deck。
+# -----------------------------------------------------------------------------
 
 heap_anim = animations(source_deck("heap"))
 bit_anim = animations(source_deck("Binary Indexed Tree"))

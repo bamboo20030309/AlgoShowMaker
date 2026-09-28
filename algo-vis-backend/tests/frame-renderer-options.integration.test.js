@@ -1,7 +1,18 @@
+/**
+ * 測試模組：frame-renderer-options.integration.test
+ *
+ * 驗證重點：frame renderer options.integration.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { compile } = require('./helpers/compile');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('a global array frame inside main keeps visibility and renderer options', async () => {
   const { trace } = await compile(`#include <bits/stdc++.h>
 using namespace std;
@@ -70,6 +81,36 @@ int main() {
   assert.equal(primeBinding.targetVariableId, idByName.isprime);
   assert.equal(primeBinding.anchor, 'bottom');
   assert.equal(primeBinding.offsetY, 60);
+});
+
+test('one @object target list applies the same renderer options to every object', async () => {
+  const { trace } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  int n = 4;
+  deque<int> a = {1, 2, 3, 4};
+  deque<int> b;
+  deque<int> c;
+  // @frame
+  // @object a, b, c render disk with capacity(n)
+  return 0;
+}`);
+  const frame = trace.frames[0];
+  const idByName = Object.fromEntries(
+    Object.entries(trace.variables).map(([id, variable]) => [variable.name, id])
+  );
+  assert.deepEqual(frame.source.primaryVariableId, idByName.a);
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.renderers)), {
+    [idByName.a]: 'original-disk',
+    [idByName.b]: 'original-disk',
+    [idByName.c]: 'original-disk'
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.rendererOptions)), {
+    [idByName.a]: { capacity: 4 },
+    [idByName.b]: { capacity: 4 },
+    [idByName.c]: { capacity: 4 }
+  });
+  assert.deepEqual([...frame.captureOnlyVariableIds], [idByName.n]);
 });
 
 test('blank @frame when emits only matching multi-object frames', async () => {

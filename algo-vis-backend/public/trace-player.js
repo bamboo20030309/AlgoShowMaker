@@ -1,3 +1,11 @@
+/**
+ * 模組：Trace 播放控制器
+ *
+ * 責任：管理目前 frame、前後導航、連續播放、時間線與鏡頭同步，並協調 renderer 和 code presenter。
+ * 資料流：導覽先停止舊計時器，render 目標 frame 並取得 playback plan，再依 slots 推進事件與完成通知；跳轉或反向時直接建立一致終態。
+ * 重要不變條件：同一時間只允許一個有效播放 token；隱藏分頁、快速連點與重播不得讓過期 timer 推進 frame。
+ * 相容性：沒有事件排程或轉場設定的舊 trace 仍可逐 frame 播放，速度與自動播放採既有預設。
+ */
 (function () {
   let document = null;
   let currentFrame = 0;
@@ -11,6 +19,9 @@
   let lastPlaybackPlan = null;
   let viewportRebasePendingAfterPlayback = false;
 
+  // ---------------------------------------------------------------------------
+  // 區段：frame 與鏡頭狀態
+  // ---------------------------------------------------------------------------
   function frameCount() {
     return document?.frames?.length || 0;
   }
@@ -97,6 +108,9 @@
     viewportObserver.observe(canvas);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：Frame 導覽與播放計畫
+  // ---------------------------------------------------------------------------
   function render(index, options = {}) {
     if (!document || !frameCount()) return Promise.resolve();
     const next = Math.max(0, Math.min(frameCount() - 1, index));
@@ -148,10 +162,11 @@
         plan: playbackPlan
       }
     }));
-    const cameraDelayMs = playbackPlan?.phases?.find(phase => phase.id === 'keep-transition')?.startMs
-      ?? playbackPlan?.phases?.find(phase => phase.id === 'frame-transition')?.startMs
-      ?? codeTransitionDelayMs;
-    applyPlaybackCamera(frame, previous || null, cameraDelayMs);
+    // The new scene is installed synchronously. Start auto-camera capture in
+    // the same tick so persistent objects anchored to a growing layout (and
+    // arrows attached to them) never spend the code-highlight delay outside
+    // the previous viewport.
+    applyPlaybackCamera(frame, previous || null, 0);
     if (typeof window.syncCurrentFrameFromCodeScript === 'function') window.syncCurrentFrameFromCodeScript();
     if (typeof window.clearAllEditorHighlights === 'function') window.clearAllEditorHighlights();
     if (typeof window.addEditorHighlight === 'function' && Number(frame.source?.line) > 0) {
@@ -189,6 +204,9 @@
     return render(next);
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：播放器相容介面
+  // ---------------------------------------------------------------------------
   function installCodeScript() {
     window.CodeScript = {
       next() { return nextKey(1); },
@@ -213,6 +231,9 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：文件載入與公開 API
+  // ---------------------------------------------------------------------------
   function apply(source) {
     clearTimeout(cameraTimer);
     activePlaybackPlan = null;

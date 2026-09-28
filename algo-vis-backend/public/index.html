@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- -----------------------------------------------------------------------
+  AlgoShowMaker 首頁
+  未登入顯示範例與驗證表單，登入後切換 deck 工作區；對話框由 home.js 依同一 state 控制。
+  ------------------------------------------------------------------------ -->
 <html lang="zh-Hant">
 
 <head>
@@ -12,6 +16,10 @@
 </head>
 
 <body>
+<!-- -----------------------------------------------------------------------
+  共用頁首與帳號區
+  accountArea 由登入狀態顯示；範例入口在兩種首頁視圖都維持可達。
+  ------------------------------------------------------------------------ -->
   <header class="app-header">
     <a class="brand" href="/" aria-label="AlgoShowMaker 首頁">
       <img class="brand-mark" src="favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
@@ -35,6 +43,10 @@
   </header>
 
   <main>
+<!-- -----------------------------------------------------------------------
+  訪客範例與驗證表單
+  範例資料可在未登入時瀏覽；登入成功後 home.js 隱藏此區並載入工作區。
+  ------------------------------------------------------------------------ -->
     <section id="guestView" class="guest-view">
       <section class="guest-gallery" aria-labelledby="galleryTitle">
         <span class="eyebrow">公開投影片</span>
@@ -93,6 +105,10 @@
       </section>
     </section>
 
+<!-- -----------------------------------------------------------------------
+  使用者投影片工作區
+  側欄建立內容，主區依 library layout 呈現資料夾與 deck；拖放只更新版面模型。
+  ------------------------------------------------------------------------ -->
     <section id="dashboardView" class="dashboard-view" hidden>
       <aside class="workspace-sidebar">
         <div>
@@ -173,6 +189,26 @@
     </form>
   </dialog>
 
+  <dialog id="deleteDeckDialog" class="deck-dialog" aria-labelledby="deleteDeckDialogTitle">
+    <form id="deleteDeckForm">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">投影片設定</span>
+          <h2 id="deleteDeckDialogTitle">刪除投影片</h2>
+        </div>
+        <button id="closeDeleteDeckBtn" class="icon-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <p>確定要刪除「<strong id="deleteDeckName"></strong>」嗎？</p>
+      <p class="category-help">刪除後無法復原。</p>
+      <div id="deleteDeckMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelDeleteDeckBtn" class="quiet-btn" type="button">取消</button>
+        <button id="confirmDeleteDeckBtn" class="danger-btn" type="submit">刪除投影片</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="folderDialog" class="deck-dialog" aria-labelledby="folderDialogTitle">
     <form id="folderDialogForm">
       <div class="dialog-heading">
@@ -228,27 +264,31 @@
     </form>
   </dialog>
 
+<!-- -----------------------------------------------------------------------
+  首頁縮圖與資料模組
+  縮圖需要 Fabric 與結構 renderer，因此先載入繪圖依賴，再啟動 gallery、library 與 home 控制器。
+  ------------------------------------------------------------------------ -->
   <script src="/vendor/fabric/fabric.min.js"></script>
-  <script src="draw/draw_array_utils.js?v=gap-1"></script>
-  <script src="draw/draw_block.js"></script>
+  <script src="draw/draw_array_utils.js?v=fit-4"></script>
+  <script src="draw/draw_block.js?v=lod-1"></script>
   <script src="draw/draw_array_outerframe.js"></script>
   <script src="draw/draw_array_hintWidget.js?v=trace-4"></script>
   <script src="draw/draw_array_normal.js?v=gap-1"></script>
   <script src="draw/draw_array_heap.js?v=gap-1"></script>
   <script src="draw/draw_array_segment_tree.js?v=segment-label-3"></script>
   <script src="draw/draw_array_BIT.js?v=gap-1"></script>
-  <script src="draw/draw_array_disk.js?v=gap-1"></script>
+  <script src="draw/draw_array_disk.js?v=capacity-2"></script>
   <script src="draw/draw_array_stack.js?v=gap-1"></script>
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
-  <script src="slide-structures.js?v=7"></script>
+  <script src="slide-structures.js?v=8"></script>
   <script src="deck-thumbnail.js?v=2"></script>
-  <script src="trace-provenance.js?v=trace-9"></script>
-  <script src="asmdeck.js?v=2"></script>
+  <script src="trace-provenance.js?v=trace-11"></script>
+  <script src="asmdeck.js?v=3"></script>
   <script src="guest-gallery.js?v=5"></script>
   <script src="deck-file-drop.js?v=1"></script>
   <script src="library-layout.js?v=2"></script>
   <script src="library-organizer.js?v=7"></script>
-  <script src="home.js?v=header-examples-9"></script>
+  <script src="home.js?v=delete-dialog-10"></script>
 </body>
 
 </html>

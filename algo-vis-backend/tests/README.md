@@ -11,6 +11,19 @@
 
 ## 主代理完整回歸入口
 
+### v4.11 發布候選增量驗證
+
+效能優化合併後使用下列入口核實場景重用、結構 LOD、Trace 分塊與事件窗、舊資料往返、
+矩陣 renderer，以及右鍵畫布平移：
+
+```sh
+npm run validate:release-v4.11:fresh
+```
+
+結果寫入被 Git 忽略的 `test-results/release-v4.11-state.json`。同一候選輪次修正失敗後執行
+`npm run validate:release-v4.11`，只會重跑失敗或尚未完成的測試檔；已通過檔案不重跑。
+此集合承接既有完整發布基準，不取代全部 regression 或動畫矩陣。
+
 事件控制與批次箭頭新增專項：`events-batch-arrows.test.js`（語法、條件、展開、線篩編譯與疏幀衍生值）、
 `events-batch-arrows.browser.test.js`（真實 SVG、事件排程與 JSON 重載）。
 兩者需先設定 `ASM_TEST_BASE_URL` 指向獨立測試服務，瀏覽器檔不回落到使用者開發服務。
@@ -42,16 +55,57 @@ npm run regression
 
 需要 Node.js、已安裝 npm dependencies、Git，以及 server.js 使用的 C++ 編譯器。
 指令檢查專案 JavaScript 語法、git diff --check，啟動獨立連接埠的臨時伺服器，
-執行所有 tests/*.test.js，結束後關閉自己啟動的伺服器。不會停止 localhost:3000、
+新一輪執行所有 tests/*.test.js，同一輪後續只續跑未通過部分；結束後關閉自己啟動的伺服器。不會停止 localhost:3000、
 改寫投影片或產生 server log 檔。測試完成後會接著執行無頭瀏覽器實際動畫驗證。
 Windows 預設使用已安裝的 Microsoft Edge；其他環境先執行 `npx playwright install chromium`。
 可用 `ASM_BROWSER_CHANNEL` 指定瀏覽器。瀏覽器缺少或無法啟動時會失敗，不會跳過。
 全套小測試可由主代理使用 npm test，但應設定 ASM_TEST_BASE_URL 指向獨立測試服務。
 
-單獨重跑實際動畫：`npm run regression:animation`（同樣自動啟動隔離服務）。
+### 同一輪驗證的失敗續跑
+
+完整回歸會把本輪狀態寫入 `test-results/regression-state.json`。第一次執行或以
+`npm run regression:fresh` 開始新一輪時，會建立新的 cycle；之後再次執行
+`npm run regression`，會沿用同一輪已通過的結果，只執行尚未完成或失敗的部分。
+整輪完成後再次執行也會沿用完成狀態，不會重跑已通過項目。語法檢查、差異檢查及
+隔離服務啟動仍會在每次入口執行。
+
+同一個 worktree 同時只能執行一個 regression 入口；鎖定期間啟動第二個會直接失敗，
+避免兩個程序同時覆寫 state、TAP 與動畫報告。等待原本的 regression 結束後再續跑，
+不要用另一個程序平行啟動相同入口。
+
+Node 測試以**測試檔**為續跑單位。一個檔案內只要有一項失敗，下次就會重跑該完整
+`.test.js` 檔；其他已通過檔案不重跑。若程序中斷，尚未得到結果的檔案仍列為待執行。
+`test-results/regression.tap` 是本次 attempt 的輸出，跨次判定以 state 檔為準。
+
+切換到新的 release 基準，或需要重建一份完整 release 證據時，才使用 `:fresh` 入口。
+同一 release cycle 內修正失敗後，直接執行一般入口續跑，**不要使用 `:fresh`**，否則會
+丟棄已通過結果並重跑全部項目。測試檔清單改變時，入口也會要求以 `:fresh` 開始新一輪。
+狀態與報告都位於已被 Git 忽略的 `test-results/`，不得提交。
+
+動畫階段也記錄同一輪的成功與失敗項目。若動畫案例或三個前置案例失敗，下次預設只
+重跑失敗項目；已通過的動畫不重播。若失敗發生在產生 summary 之前，無法可靠辨識失敗
+項目，下一次會重跑完整動畫階段。手動設定 `ASM_ANIMATION_CASES` 或
+`ASM_ANIMATION_PREREQUISITES` 的局部動畫驗證不會把完整 release 動畫輪次標為完成。
+
+單獨續跑本輪測試可用 `npm run regression:tests`；強制建立新測試輪次可用
+`npm run regression:tests:fresh`。單獨續跑本輪實際動畫使用
+`npm run regression:animation`，強制建立新動畫輪次則使用
+`npm run regression:animation:fresh`；這些指令都會自動啟動隔離服務。
 使用冒泡、插入、選擇、Heap、遞迴 Quick Sort，
-走實際 RUN 與 `CodeScript` 播放，另外透過投影片的同源 iframe 載入協定驗證 editor/runtime。
-此 iframe 驗證不取代完整的 slides.html 匯入、雲端儲存及手機目視驗收。
+先在 algorithm 頁實際 RUN 以產生 trace，再將同一份動畫資料透過投影片的同源 iframe
+載入協定交給 runtime，只在 runtime 執行 `CodeScript` 逐幀播放與實際 SVG 取樣。
+algorithm 頁在這項大規模動畫驗證中僅用來產生 trace，不代表其動畫播放已通過驗證。
+此 runtime iframe 驗證不取代完整的 slides.html 匯入、雲端儲存及手機目視驗收。
+
+動畫固定案例的 trace 先依序建立，再以預設 3 個 worker 平行播放。每個 worker 使用獨立
+browser context；它們共用本次回歸建立的隔離 server、同一個瀏覽器程序及同一個時間戳
+報告目錄。三個前置案例 `cloud-storage-browser`、`slide-order-toggle`、
+`deck-import-repair` 在每次需要它們的 attempt 各執行一次，不會分派給每個 worker 重複跑。
+可用 `ASM_ANIMATION_WORKERS` 調整 worker 數量；資源受限或追查競態時可設為 `1`。
+
+產品仍要維持 algorithm、Trace Studio、投影片 editor/runtime 的相容性。
+`playback-parity.integration.test.js`、`slide-animation-parity.test.js`、`entrypoints.test.js` 等相關小測試繼續保留，
+縮減的只是每個固定案例在大規模瀏覽器動畫驗證中的重複播放。
 
 報告保存在 `test-results/animation/<時間>/`，包含 summary、逐幀實錄與截圖，預設不提交 Git。
 `slide-order-toggle` 使用獨立草稿驗證左側排序按鈕、Esc 狀態同步、空白鍵、返回所選投影片、實際拖曳排序及儲存後重開；不修改使用者投影片。
@@ -63,19 +117,39 @@ keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
 
 先執行 `node --test tests/slide-storage.test.js tests/slide-cloud-storage.test.js`：檢查內容雜湊去重、獨立 Studio 設定、跨草稿參照回收、交易失敗保留舊資料，以及雲端增量結果與分享讀取。雲端路由測試使用替代資料庫，不等同實機 MongoDB 驗收。公開 HTTP 的 SHA-256 相容性亦有固定測試。
 
-`deck-import-repair` 瀏覽器案例另檢查成功 RUN 並儲存後重新載入，完整 trace 與事件間隔保持一致，且不發出分析／編譯請求。最後用 `ASM_ANIMATION_CASES=selection` 執行 `npm run regression`，核對三介面定點、步進、自動播放與 Studio 同步；不提交產生的報告與截圖。
+`deck-import-repair` 瀏覽器案例另檢查成功 RUN 並儲存後重新載入，完整 trace 與事件間隔保持一致，且不發出分析／編譯請求。最後以 PowerShell 執行以下局部動畫驗證，核對 runtime 的定點、步進與自動播放；Studio 同步由 `deck-import-repair` 及相關小測試覆蓋。不提交產生的報告與截圖。
+
+```powershell
+$env:ASM_ANIMATION_CASES = 'selection'
+$env:ASM_ANIMATION_PREREQUISITES = 'none'
+try { npm run regression:animation }
+finally {
+  Remove-Item Env:ASM_ANIMATION_CASES -ErrorAction SilentlyContinue
+  Remove-Item Env:ASM_ANIMATION_PREREQUISITES -ErrorAction SilentlyContinue
+}
+```
 
 ### 全域預設驗證項目
 
 `defaults-directives.test.js` 檢查每幀展開、preset／當幀覆寫、作用域、刪除後不殘留及拒絕流程動作，
-並透過實際編譯確認 camera 與 style 進入共用 trace。`defaults` 固定小案例驗證三個介面的實際交換播放。
+並透過實際編譯確認 camera 與 style 進入共用 trace。`defaults` 固定小案例驗證 runtime 的實際交換播放。
 可先跑 `node --test --test-name-pattern='defaults apply|removing defaults|defaults resolve|defaults reject' tests/defaults-directives.test.js` 的解析項目；
-整合項目與瀏覽器使用隔離服務，可用 `ASM_ANIMATION_CASES=defaults` 執行 `npm run regression`。
+整合項目與瀏覽器使用隔離服務；PowerShell 局部動畫驗證如下，並在結束後清除篩選環境變數：
+
+```powershell
+$env:ASM_ANIMATION_CASES = 'defaults'
+$env:ASM_ANIMATION_PREREQUISITES = 'none'
+try { npm run regression:animation }
+finally {
+  Remove-Item Env:ASM_ANIMATION_CASES -ErrorAction SilentlyContinue
+  Remove-Item Env:ASM_ANIMATION_PREREQUISITES -ErrorAction SilentlyContinue
+}
+```
 
 ### 呼叫函式固定驗證
 
 `function-call` 固定案例另驗證呼叫先於被呼叫函式進入，無畫布目標仍可排程，
-三介面呼叫片段塗灰而非黃色提示。`report.callCodeChecks` 必須取得實際呼叫通知樣本。
+runtime 呼叫片段塗灰而非黃色提示。`report.callCodeChecks` 必須取得實際呼叫通知樣本。
 
 ### style 入幀套用驗證
 
@@ -90,12 +164,12 @@ keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
 單元／整合案例另外確認關閉的賦值及 highlight／point／mark 不以事件提交作為 style 時間屏障。
 
 `quick-style-swap` 使用 `6 / 5 7 2 1 9 4`，完整 RUN 後播放前五幀。
-三介面逐次量測第 4→5 幀：交換開始前保留來源格子填色，交換中必須取得 CSS fill transition 樣本。
+runtime 逐次量測第 4→5 幀：交換開始前保留來源格子填色，交換中必須取得 CSS fill transition 樣本。
 `report.swapPaintChecks` 記錄保色樣本、變色樣本及違規；小型整合測試另確認程式碼提示時間不是交換起跑時間，關閉交換不等待。
 
 ### highlight 固定驗證
 
-`highlight-swap` 案例預設包含在 `npm run regression`，並驗證三個介面：
+`highlight-swap` 案例預設包含在 `npm run regression`，並在 runtime 驗證：
 
 - style highlight 完整包含 value＋index，不漏框或多算高度。
 - 一般陣列／heap 交換期間逐次量測實際 SVG：框不消失，位置與寬度跟隨移動、縮放的格子；必須取得移動、縮放及 heap 副本路徑樣本，沒有樣本不能通過。
@@ -103,7 +177,17 @@ keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
 - 比較事件框只包數值格的規則另外驗證，不與 style highlight 混用。
 - 顏色過渡必須取得原生 SVG fill／stroke transition 的中間進度樣本；自動播放等待有限變色動畫，但不等待無限閃爍。
 
-可先跑 `node --test tests/style-layer.test.js tests/presentation-hints.test.js`，再以 `ASM_ANIMATION_CASES=highlight-swap` 執行完整回歸。各介面報告的 `report.highlightChecks` 包含樣本數與第一批違規資料。
+可先跑 `node --test tests/style-layer.test.js tests/presentation-hints.test.js`，再以 PowerShell 執行局部動畫驗證。runtime 報告的 `report.highlightChecks` 包含樣本數與第一批違規資料。
+
+```powershell
+$env:ASM_ANIMATION_CASES = 'highlight-swap'
+$env:ASM_ANIMATION_PREREQUISITES = 'none'
+try { npm run regression:animation }
+finally {
+  Remove-Item Env:ASM_ANIMATION_CASES -ErrorAction SilentlyContinue
+  Remove-Item Env:ASM_ANIMATION_PREREQUISITES -ErrorAction SilentlyContinue
+}
+```
 
 ## 動畫實錄回歸
 
@@ -168,7 +252,7 @@ fingerprint 是變更偵測，不是安全驗證；忽略原始碼行尾格式�
 
 ## 匯入後修正驗證
 
-`arrow-identity` 三介面案例量測同 ID 改綁的中間端點、顏色及線寬、未知名箭頭唯一候選的自動配對，以及綁定未變時跟隨格子不延遲。`arrow-identity.test.js` 檢查空白行／preset 順序穩定性、ID 衝突、候選歧義和遞迴呼叫隔離。
+`arrow-identity` runtime 案例量測同 ID 改綁的中間端點、顏色及線寬、未知名箭頭唯一候選的自動配對，以及綁定未變時跟隨格子不延遲。`arrow-identity.test.js` 檢查空白行／preset 順序穩定性、ID 衝突、候選歧義和遞迴呼叫隔離。
 
 統一瀏覽器驗證會執行 `deck-import-repair`：實際匯入含第 5 行錯置 `@camera` 的 `.asmdeck`，確認其他投影片及原始碼／輸入／設定完整保留；未 RUN 即儲存、重載後仍可編輯。修正後實際 RUN，再驗證設定還原、前後步進、兩種速度播放與 Studio 縮圖／事件，最後保存正常 trace。正常保存會將還原設定寫進 `@asm-view`，因此以演算法正文及還原設定分別核對，而非要求附加區塊也與修正前字串相同。
 
@@ -181,5 +265,14 @@ fingerprint 是變更偵測，不是安全驗證；忽略原始碼行尾格式�
 ## 遞迴角色接續驗證
 
 `recursive-roles` 固定案例包含外層同名指標、遞迴指標與一般數值、深入和返回。
-三介面實際 RUN 驗證連續角色不被標記為入場，且指標和數值都有接續樣本；沒有樣本即失敗。
+runtime 實際播放驗證連續角色不被標記為入場，且指標和數值都有接續樣本；沒有樣本即失敗。
 `scene-exit-entrance-order.test.js` 另驗證不同宣告位置、兄弟呼叫、keep 分界與已消失角色不接續。
+
+## 追蹤去重及分塊（gamma，2026-09-28）
+
+- `node --test tests/trace-chunk-store.test.js`：C++ 寫出跨事件數／bytes 邊界、v1/v2 無損載入、獨立 gzip 分塊 seek、損毀／超限、JSON 回應契約。
+- `node --test tests/trace-chunks.browser.test.js`：自建隨機埠服務，以 `fixtures/trace-chunks-checkerboard.cpp` RUN；核對 96,013 事件、11,000 格、棋盤狀態與紅綠色，舊 trace 載入／儲存／重開。接著在同一隔離服務執行既有 marker availability 的小案例。截圖與摘要留 `test-results/trace-chunks/`，不提交。
+- 事件保存鍵的線性計數斷言在 `event-defaults.test.js`；矩陣 all selector 舊／新資料的條件上色以 `node --test --test-name-pattern="matrix all selector" tests/matrix-renderer.test.js` 執行。
+- Runtime 每塊至多 1,024 事件或約 256 KiB，單個大型事件可獨立成塊（事件上限 16 MiB）；後端另有限制：JSONL 128 MiB、單筆 64 MiB、gzip 32 MiB、事件展開估計 512 MiB、1,000,000 事件、100,000 分塊。
+- 內部 JSONL v2 與 `.chunks.gz`／索引是編譯請求暫存，完成或失敗均清除；HTTP 回傳相容 v1 traceDocument，接受 gzip 的客戶端使用串流 gzip。`traceStorage` 回報 trace 檔案 bytes，不是 HTTP body 或 asmdeck 大小。
+- 分塊限制讀写／壓縮暫存量；前後端事件模型仍持有完整事件，並非已實作前端按需載入或固定記憶體上限。

@@ -1,8 +1,19 @@
+/**
+ * 測試模組：entrypoints.test
+ *
+ * 驗證重點：entrypoints.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const read = name => fs.readFileSync(path.join(__dirname, '../public', name), 'utf8');
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('all algorithm surfaces load the same shared modules in dependency order', () => {
   const html = read('algorithm.html');
   const sources = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1].split('?')[0]);
@@ -23,31 +34,34 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(controlsStart >= 0 && freshnessDot > controlsStart && timeline > freshnessDot,
     'the shared freshness dot stays in the playback controls before the frame timeline');
   assert.ok(html.includes('trace-freshness.js?v=trace-2'));
-  assert.ok(html.includes('canva.js?v=trace-12'));
+  assert.ok(html.includes('canva.js?v=trace-16'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-35'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-21'));
+  assert.ok(html.includes('trace-model.js?v=trace-39'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-26'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
-  assert.ok(html.includes('trace-code-model.js?v=code-25'));
+  assert.ok(html.includes('trace-code-model.js?v=code-36'));
+  assert.ok(html.includes('trace-events.js?v=trace-60'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-258'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
-  assert.ok(html.includes('trace-code-presenter.js?v=code-29'));
-  assert.ok(html.includes('trace-view-source.js?v=trace-15'));
-  assert.ok(html.includes('trace-editor.js?v=trace-25'));
-  assert.ok(html.includes('compile.js?v=syntax-7'));
+  assert.ok(html.includes('trace-code-presenter.js?v=code-33'));
+  assert.ok(html.includes('trace-view-source.js?v=trace-17'));
+  assert.ok(html.includes('trace-editor.js?v=trace-29'));
+  assert.ok(html.includes('compile.js?v=syntax-8'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=brand-shared-6'));
+  assert.ok(html.includes('style.css?v=brand-shared-10'));
   assert.ok(html.includes('brand.css?v=hover-pill-1'));
   assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=slide-delete-action-225'));
+  assert.ok(slides.includes('slides.js?v=slides-231'));
+  assert.ok(slides.includes('trace-model.js?v=trace-39'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
@@ -59,7 +73,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
   assert.ok(slides.includes('slides.css?v=slide-delete-action-112'));
-  assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-8') < slides.indexOf('slides.js?v='));
+  assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-10') < slides.indexOf('slides.js?v='));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
   }
@@ -70,14 +84,14 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(legacy.includes('guest-gallery.js?v=5'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=7'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=header-examples-9'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=delete-dialog-10'));
   assert.match(legacy, /id="headerSlidesLink"[^>]+href="\/"[^>]*>投影片<\/a>/);
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(slides.includes('slide-structures.js?v=21'));
-  assert.ok(legacy.includes('slide-structures.js?v=7'));
-  assert.ok(html.includes('trace-arrow-model.js?v=arrow-8'));
+  assert.ok(slides.includes('slide-structures.js?v=22'));
+  assert.ok(legacy.includes('slide-structures.js?v=8'));
+  assert.ok(html.includes('trace-arrow-model.js?v=arrow-10'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
   assert.ok(read('draw/draw_arrow.js').includes('window.ASMArrowModel?.geometry'));
@@ -85,28 +99,30 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-22'));
+  assert.ok(html.includes('trace-rules.js?v=trace-29'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
-    const version = name === 'segment_tree' ? 'segment-label-3' : 'gap-1';
+    const version = name === 'segment_tree'
+      ? 'segment-label-3'
+      : name === 'disk' ? 'capacity-2' : 'gap-1';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(slides.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
-  assert.ok(html.includes('draw/draw_2Darray.js?v=focus-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-48'));
+  assert.ok(html.includes('draw/draw_2Darray.js?v=matrix-labels-2'));
+  assert.ok(html.includes('trace-events.js?v=trace-60'));
   const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
-  assert.ok(html.includes('trace-camera.js?v=trace-5'));
-  assert.ok(html.includes('trace-player.js?v=trace-25'));
-  assert.ok(html.includes('trace-debug-recorder.js?v=debug-6'));
+  assert.ok(html.includes('trace-camera.js?v=trace-6'));
+  assert.ok(html.includes('trace-player.js?v=trace-26'));
+  assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-122'));
+  assert.ok(html.includes('trace-studio.js?v=trace-131'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
-  assert.ok(html.includes('front.js?v=random-id-36'));
-  assert.ok(html.includes('slides-embed.js?v=trace-10'));
-  assert.ok(html.includes('trace-provenance.js?v=trace-9'));
+  assert.ok(html.includes('front.js?v=random-id-40'));
+  assert.ok(html.includes('slides-embed.js?v=trace-11'));
+  assert.ok(html.includes('trace-provenance.js?v=trace-11'));
   assert.ok(html.includes('trace.css?v=trace-36'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';
   assert.match(codeHighlight, /background-color:\s*rgba\(255,\s*214,\s*10,\s*0\.48\)/);
@@ -129,7 +145,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(read('interaction.js'), /selectExternal\(element\)/);
   assert.match(read('interaction.js'), /clearExternalSelection\(element = null\)/);
   assert.match(read('trace.css'), /\.asm-trace-code-panel\.selected \.asm-trace-code-body/);
-  assert.ok(html.includes('interaction.js?v=trace-40'));
+  assert.ok(html.includes('interaction.js?v=trace-41'));
   assert.match(read('trace-code-presenter.js'), /currentPlan\.layoutKey === nextPlan\.layoutKey/);
   assert.match(read('trace-code-presenter.js'), /is-transition-preparing/);
   assert.match(read('trace-code-presenter.js'), /playbackEventIds/);
@@ -148,9 +164,9 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
   assert.ok(html.includes('draw/draw_array.js?v=trace-3'));
   for (const surface of [html, slides, legacy]) {
-    assert.ok(surface.includes('draw/draw_array_utils.js?v=gap-1'));
+    assert.ok(surface.includes('draw/draw_array_utils.js?v=fit-4'));
   }
-  assert.ok(html.includes('trace-studio.css?v=trace-52'));
+  assert.ok(html.includes('trace-studio.css?v=trace-58'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,
     'the retired marker-shape controls must not return to the object inspector');
   assert.doesNotMatch(read('trace-studio.css'), /trace-studio-marker-shape/,

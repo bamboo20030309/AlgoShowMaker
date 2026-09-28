@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// 首頁與帳號工作區控制器
+// 管理登入狀態、範例瀏覽、deck CRUD 與資料夾對話框；state 是畫面重繪與 API 回應的共同來源。
+// -----------------------------------------------------------------------------
 (() => {
   const TOKEN_KEY = 'algo_jwt_token';
   const USERNAME_KEY = 'algo_username';
@@ -47,12 +51,23 @@
   const closeDeckDialogBtn = document.getElementById('closeDeckDialogBtn');
   const cancelDeckDialogBtn = document.getElementById('cancelDeckDialogBtn');
   const deleteDeckBtn = document.getElementById('deleteDeckBtn');
+  const deleteDeckDialog = document.getElementById('deleteDeckDialog');
+  const deleteDeckForm = document.getElementById('deleteDeckForm');
+  const deleteDeckName = document.getElementById('deleteDeckName');
+  const deleteDeckMessage = document.getElementById('deleteDeckMessage');
+  const closeDeleteDeckBtn = document.getElementById('closeDeleteDeckBtn');
+  const cancelDeleteDeckBtn = document.getElementById('cancelDeleteDeckBtn');
+  const confirmDeleteDeckBtn = document.getElementById('confirmDeleteDeckBtn');
   const organizer = window.ASMLibraryOrganizer({
     container: deckGrid, nav: document.getElementById('libraryFolderNav'),
     createButton: document.getElementById('createFolderBtn'),
     message: document.getElementById('libraryLayoutMessage'), api, createCard: createDeckCard
   });
 
+  // -----------------------------------------------------------------------------
+  // API 與工作階段
+  // 所有請求透過同一 token 包裝；收到未授權回應時清除本機身份並返回訪客視圖。
+  // -----------------------------------------------------------------------------
   function token() {
     return localStorage.getItem(TOKEN_KEY);
   }
@@ -121,6 +136,10 @@
     await loadDecks();
   }
 
+  // -----------------------------------------------------------------------------
+  // 登入與註冊表單
+  // mode 同時決定欄位、按鈕與驗證規則，送出成功後才切換 dashboard。
+  // -----------------------------------------------------------------------------
   function setAuthMode(mode) {
     state.authMode = mode;
     const isLogin = mode === 'login';
@@ -237,6 +256,10 @@
     showGuest();
   });
 
+  // -----------------------------------------------------------------------------
+  // Deck 卡片、縮圖與清單
+  // 清單以 state.decks 為來源；缺少縮圖時背景產生並回傳伺服器，但不阻塞卡片文字。
+  // -----------------------------------------------------------------------------
   function formatUpdatedAt(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '剛剛更新';
@@ -373,6 +396,10 @@
     }
   }
 
+  // -----------------------------------------------------------------------------
+  // Deck 建立、匯入與編輯對話框
+  // 新增或匯入成功後重新載入清單；重新命名與刪除集中在目前對話框所指 deck。
+  // -----------------------------------------------------------------------------
   async function createDeck() {
     createDeckBtn.disabled = true;
     emptyCreateBtn.disabled = true;
@@ -437,11 +464,26 @@
     deckDialog.close();
   }
 
+  function closeDeleteDeckDialog() {
+    if (deleteDeckDialog.open) deleteDeckDialog.close();
+  }
+
+  function openDeleteDeckDialog() {
+    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
+    if (!deck) return;
+    deleteDeckName.textContent = deck.title;
+    setMessage(deleteDeckMessage);
+    deleteDeckDialog.showModal();
+    requestAnimationFrame(() => cancelDeleteDeckBtn.focus());
+  }
+
   createDeckBtn.addEventListener('click', createDeck);
   emptyCreateBtn.addEventListener('click', createDeck);
   searchInput.addEventListener('input', renderDecks);
   closeDeckDialogBtn.addEventListener('click', closeDeckDialog);
   cancelDeckDialogBtn.addEventListener('click', closeDeckDialog);
+  closeDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
+  cancelDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
 
   deckDialogForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -462,20 +504,33 @@
     }
   });
 
-  deleteDeckBtn.addEventListener('click', async () => {
-    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
-    if (!deck || !confirm(`確定要刪除「${deck.title}」嗎？刪除後無法復原。`)) return;
+  deleteDeckBtn.addEventListener('click', openDeleteDeckDialog);
 
+  deleteDeckForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
+    if (!deck) return;
+
+    confirmDeleteDeckBtn.disabled = true;
+    confirmDeleteDeckBtn.textContent = '刪除中…';
     try {
       await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}`, { method: 'DELETE' });
       state.decks = state.decks.filter(item => item.deck_uid !== deck.deck_uid);
       renderDecks();
+      closeDeleteDeckDialog();
       closeDeckDialog();
     } catch (error) {
-      setMessage(deckDialogMessage, error.message);
+      setMessage(deleteDeckMessage, error.message);
+    } finally {
+      confirmDeleteDeckBtn.disabled = false;
+      confirmDeleteDeckBtn.textContent = '刪除投影片';
     }
   });
 
+  // -----------------------------------------------------------------------------
+  // 首頁啟動
+  // 先解析網址模式與現有 token，再選擇訪客或工作區，避免兩個視圖同時發出資料請求。
+  // -----------------------------------------------------------------------------
   async function initialize() {
     if (new URLSearchParams(location.search).get('examples') === '1') {
       document.body.classList.add('examples-view');

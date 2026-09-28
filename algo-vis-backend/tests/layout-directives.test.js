@@ -1,3 +1,11 @@
+/**
+ * 測試模組：layout-directives.test
+ *
+ * 驗證重點：layout directives.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -16,6 +24,9 @@ const declaration = `
 // @layout quick_tree direction top-down
 `;
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('@layout recursion requires a named target and provides documented defaults', () => {
   const [layout] = findLayoutDirectives(declaration);
   assert.equal(layout.id, 'quick_tree');
@@ -27,6 +38,9 @@ test('@layout recursion requires a named target and provides documented defaults
   assert.equal(layout.levelGap, 100);
   assert.equal(layout.degree, 2);
   assert.equal(layout.showEdges, true);
+  assert.equal(layout.showBranchPreviews, true);
+  assert.equal(layout.showFlowArrows, false);
+  assert.equal(layout.background, '');
   assert.equal(layout.edgeColor, 'black');
   assert.equal(layout.edgeWidth, 2);
   assert.equal(layout.binding.canvas, true);
@@ -51,6 +65,9 @@ test('@layout accepts explicit recursion settings and all four directions', () =
 // @layout tree align end
 // @layout tree degree 3
 // @layout tree edges off
+// @layout tree branch-previews off
+// @layout tree flow-arrows on
+// @layout tree background AV_red
 `);
     assert.equal(layout.direction, direction);
     assert.equal(layout.mode, 'inorder');
@@ -59,7 +76,21 @@ test('@layout accepts explicit recursion settings and all four directions', () =
     assert.equal(layout.align, 'end');
     assert.equal(layout.degree, 3);
     assert.equal(layout.showEdges, false);
+    assert.equal(layout.showBranchPreviews, false);
+    assert.equal(layout.showFlowArrows, true);
+    assert.equal(layout.background, 'AV_red');
   }
+  assert.throws(() => findLayoutDirectives(`${declaration}// @layout quick_tree flow-arrows maybe`),
+    /flow-arrows 必須是 on 或 off/);
+  assert.throws(() => findLayoutDirectives(`${declaration}// @layout quick_tree branch-previews maybe`),
+    /branch-previews 必須是 on 或 off/);
+});
+
+test('@layout stores slots as the canonical mode and accepts legacy binary sources', () => {
+  const [slots] = findLayoutDirectives(`${declaration}// @layout quick_tree mode slots`);
+  const [legacy] = findLayoutDirectives(`${declaration}// @layout quick_tree mode binary`);
+  assert.equal(slots.mode, 'slots');
+  assert.equal(legacy.mode, 'slots');
 });
 
 test('@keep in attaches a snapshot to an existing recursion layout', () => {
@@ -136,13 +167,17 @@ test('recursion layout coordinates grow in the selected direction', () => {
   ];
   const base = { mode: 'compact', align: 'center', siblingGap: 40, levelGap: 100, degree: 2 };
   const topDown = renderer.recursionLayoutCoordinates({ ...base, direction: 'top-down' }, nodes, { x: 300, y: 80 });
+  assert.deepEqual({ x: topDown.get('root').x + 40, y: topDown.get('root').y }, { x: 300, y: 80 });
   assert.ok(topDown.get('left').y > topDown.get('root').y);
   assert.ok(topDown.get('left').x < topDown.get('right').x);
   const bottomUp = renderer.recursionLayoutCoordinates({ ...base, direction: 'bottom-up' }, nodes, { x: 300, y: 500 });
+  assert.deepEqual({ x: bottomUp.get('root').x + 40, y: bottomUp.get('root').y + 40 }, { x: 300, y: 500 });
   assert.ok(bottomUp.get('left').y < bottomUp.get('root').y);
   const leftRight = renderer.recursionLayoutCoordinates({ ...base, direction: 'left-right' }, nodes, { x: 80, y: 300 });
+  assert.deepEqual({ x: leftRight.get('root').x, y: leftRight.get('root').y + 20 }, { x: 80, y: 300 });
   assert.ok(leftRight.get('left').x > leftRight.get('root').x);
   const rightLeft = renderer.recursionLayoutCoordinates({ ...base, direction: 'right-left' }, nodes, { x: 900, y: 300 });
+  assert.deepEqual({ x: rightLeft.get('root').x + 80, y: rightLeft.get('root').y + 20 }, { x: 900, y: 300 });
   assert.ok(rightLeft.get('left').x < rightLeft.get('root').x);
 });
 
@@ -247,7 +282,9 @@ test('complete recursion scene keeps a parent-child edge after final placement',
     animatePositions: false, animateEvents: false
   });
   const edge = window.document.querySelector('.asm-trace-layout-edge');
-  assert.ok(edge, 'renderer must keep the recursion edge in the final SVG scene');
+  assert.ok(edge, `renderer must keep the recursion edge in the final SVG scene: ${[
+    ...window.document.querySelectorAll('[data-trace-layout-node]')
+  ].map(node => `${node.dataset.traceLayoutNode}<-${node.dataset.traceLayoutParent}`).join(', ')}`);
   assert.equal(edge.getAttribute('stroke'), 'black');
   assert.equal(edge.getAttribute('stroke-width'), '2');
   assert.ok(Number(edge.getAttribute('y2')) < renderer.currentPlacement('child', false).y,
@@ -318,6 +355,134 @@ test('@keep in replaces its live @frame node without shifting the array outerfra
   assert.deepEqual(
     { x: keepOuterframe.x, y: keepOuterframe.y },
     { x: liveOuterframe.x, y: liveOuterframe.y }
+  );
+
+  const sameFrame = {
+    ...liveFrame,
+    id: 'frame-live-and-keep',
+    snapshotIds: [snapshot.id]
+  };
+  document.frames.push(sameFrame);
+  await renderer.renderFrame(document, sameFrame, keepFrame, {
+    animatePositions: false, animateEvents: false
+  });
+  const visibleObjects = [...window.document.querySelectorAll(
+    '#asm-trace-root > .asm-trace-object'
+  )];
+  assert.equal(visibleObjects.length, 1,
+    'a live recursion value and its active keep snapshot share one visible node');
+  assert.equal(visibleObjects[0].dataset.traceObjectKey, 'partition');
+  assert.deepEqual(
+    renderer.currentPlacement('arr-id', false),
+    renderer.currentPlacement('partition', false),
+    'the live variable key remains an alias for text and event bindings'
+  );
+});
+
+test('recursion layout keeps the root anchor fixed while new slots grow', () => {
+  const renderer = rendererApi();
+  const layout = {
+    mode: 'slots', direction: 'left-right', align: 'center',
+    siblingGap: 32, levelGap: 88, degree: 3
+  };
+  const root = { id: 'root', parentId: '', siblingIndex: 0, box: { width: 80, height: 40 } };
+  const first = renderer.recursionLayoutCoordinates(layout, [root], { x: 360, y: 410 });
+  const grown = renderer.recursionLayoutCoordinates(layout, [
+    root,
+    { id: 'left', parentId: 'root', siblingIndex: 0, box: { width: 70, height: 40 } },
+    { id: 'move', parentId: 'root', siblingIndex: 1, box: { width: 70, height: 40 } },
+    { id: 'right', parentId: 'root', siblingIndex: 2, box: { width: 70, height: 40 } }
+  ], { x: 360, y: 410 });
+  assert.deepEqual(first.get('root'), grown.get('root'));
+  assert.deepEqual({ x: grown.get('root').x, y: grown.get('root').y + 20 }, { x: 360, y: 410 });
+});
+
+test('semantic placement can use the complete recursion layout bounds', () => {
+  const { window, renderer } = rendererDomApi();
+  const placements = new Map([
+    ['root', { x: 100, y: 80, width: 80, height: 40 }],
+    ['child', { x: 280, y: 20, width: 70, height: 40 }]
+  ]);
+  const root = window.document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  root.dataset.traceObjectKey = 'root';
+  root.dataset.traceLayoutId = 'tree';
+  root.dataset.traceLayoutNode = 'snapshot-root';
+  const child = window.document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  child.dataset.traceObjectKey = 'child';
+  child.dataset.traceLayoutId = 'tree';
+  child.dataset.traceLayoutNode = 'snapshot-child';
+  const elements = new Map([['root', root], ['child', child]]);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(renderer.semanticTargetPlacement('tree', placements, elements))),
+    { x: 100, y: 20, width: 250, height: 100 }
+  );
+});
+
+test('slots layout preserves configured child slots and legacy binary renders identically', () => {
+  const renderer = rendererApi();
+  const nodes = [
+    { id: 'root', parentId: '', siblingIndex: 0, box: { width: 80, height: 40 } },
+    { id: 'middle', parentId: 'root', siblingIndex: 1, box: { width: 60, height: 40 } },
+    { id: 'right', parentId: 'root', siblingIndex: 2, box: { width: 60, height: 40 } }
+  ];
+  const base = {
+    direction: 'top-down', align: 'center', siblingGap: 40, levelGap: 100, degree: 3
+  };
+  const slots = renderer.recursionLayoutCoordinates({ ...base, mode: 'slots' }, nodes, { x: 300, y: 80 });
+  const legacy = renderer.recursionLayoutCoordinates({ ...base, mode: 'binary' }, nodes, { x: 300, y: 80 });
+  assert.ok(slots.get('middle').x < slots.get('right').x);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify([...slots.entries()])),
+    JSON.parse(JSON.stringify([...legacy.entries()]))
+  );
+});
+
+test('recursion flow arrows mirror their anchors across the growth axis', () => {
+  const renderer = rendererApi();
+  for (const direction of ['top-down', 'bottom-up']) {
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'enter'))),
+      { from: 'left', to: 'left', side: 'left' }
+    );
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'exit'))),
+      { from: 'right', to: 'right', side: 'right' }
+    );
+  }
+  for (const direction of ['left-right', 'right-left']) {
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'enter'))),
+      { from: 'top', to: 'top', side: 'top' }
+    );
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(renderer.recursionFlowAnchors(direction, 'exit'))),
+      { from: 'bottom', to: 'bottom', side: 'bottom' }
+    );
+  }
+
+  const left = renderer.recursionFlowQuadraticPoints(
+    { x: 100, y: 80 }, { x: 140, y: 180 }, 'left', 2
+  );
+  assert.equal(left.bend, 26);
+  assert.deepEqual(JSON.parse(JSON.stringify(left.control)), { x: 68, y: 130 });
+  assert.match(left.path, /^M 100 80 Q 68 130 140 180$/);
+  const bottom = renderer.recursionFlowQuadraticPoints(
+    { x: 80, y: 100 }, { x: 180, y: 140 }, 'bottom', 2
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(bottom.control)), { x: 130, y: 172 });
+});
+
+test('recursion layout arrows use stable depth-first preorder', () => {
+  const renderer = rendererApi();
+  const nodes = [
+    { id: 'right', parentId: 'root', siblingIndex: 1, rootIndex: 0 },
+    { id: 'left-leaf', parentId: 'left', siblingIndex: 0, rootIndex: 0 },
+    { id: 'root', parentId: '', siblingIndex: 0, rootIndex: 0 },
+    { id: 'left', parentId: 'root', siblingIndex: 0, rootIndex: 0 }
+  ];
+  assert.deepEqual(
+    Array.from(renderer.recursionLayoutPreorder(nodes), node => node.id),
+    ['root', 'left', 'left-leaf', 'right']
   );
 });
 

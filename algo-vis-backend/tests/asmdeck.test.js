@@ -1,3 +1,11 @@
+/**
+ * 測試模組：asmdeck.test
+ *
+ * 驗證重點：asmdeck.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { webcrypto } = require('node:crypto');
@@ -12,6 +20,9 @@ global.ASMTraceViewSource = require('../public/trace-view-source.js');
 global.ASMTraceModel = { normalizeTraceDocument: value => value };
 const archive = require('../public/asmdeck.js');
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('HTTP without SubtleCrypto preserves hashes, round-trips, and rejects tampering', async () => {
   const sandbox = { module: { exports: {} }, TextEncoder, TextDecoder, Uint8Array,
     ArrayBuffer, DataView, Uint32Array, Blob, Response, CompressionStream, DecompressionStream,
@@ -55,6 +66,7 @@ function fixture() {
       canvas: { objects: [{ type: 'image', src: 'data:image/png;base64,AAAA' },
         { type: 'image', src: 'data:image/png;base64,AAAA' }] },
       animation: { code, input, sliceMode: 'manual', watches: ['arr'],
+        presentationCamera: { version: 1, panXRatio: 0.1, panYRatio: -0.15, zoomFactor: 1.25 },
         traceDocument: {
           schemaVersion: '1.0', provenance: global.ASMTraceProvenance.create(code, input),
           sourceCode: code, variables: { arr: { id: 'arr', name: 'arr', kind: 'sequence', functionName: 'main' } },
@@ -88,6 +100,8 @@ test('asmdeck projection is detached, strips trace results, and retains playback
   assert.equal(Object.keys(projected.assets).length, 1);
   assert.equal(projected.cacheSeeds[0].trace.frames.length, 1);
   assert.equal(slide.animation.rebuild.view.studio.cameraRules[0].id, 'camera-main');
+  assert.deepEqual(slide.animation.presentationCamera,
+    { version: 1, panXRatio: 0.1, panYRatio: -0.15, zoomFactor: 1.25 });
   assert.ok(slide.animation.rebuild.view.studio.frameMaps.positions);
   assert.match(slide.canvas.objects[0].src, /^asm-asset:/);
   assert.equal(slide.canvas.objects[0].src, slide.canvas.objects[1].src);
@@ -251,4 +265,20 @@ test('animation normalization keeps detached pending reconstruction settings', (
   assert.equal(normalized.skins.arr.renderer, 'original-array');
   normalized.rebuild.globals.eventSettings.gapMs = 300;
   assert.equal(source.rebuild.globals.eventSettings.gapMs, 720);
+});
+
+test('animation normalization preserves a detached presentation camera and omits its identity value', () => {
+  const context = { window: {} };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../public/algorithm-animation.js'), 'utf8'), context);
+  const source = {
+    presentationCamera: { version: 1, panXRatio: 0.125, panYRatio: -0.2, zoomFactor: 1.4 }
+  };
+  const normalized = context.window.ASMAlgorithmAnimation.normalize(source);
+  assert.equal(JSON.stringify(normalized.presentationCamera), JSON.stringify(source.presentationCamera));
+  normalized.presentationCamera.panXRatio = 9;
+  assert.equal(source.presentationCamera.panXRatio, 0.125);
+  const identity = context.window.ASMAlgorithmAnimation.normalize({
+    presentationCamera: { panXRatio: 0, panYRatio: 0, zoomFactor: 1 }
+  });
+  assert.equal(identity.presentationCamera, undefined);
 });

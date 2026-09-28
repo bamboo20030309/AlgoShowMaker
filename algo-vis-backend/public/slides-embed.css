@@ -1,3 +1,7 @@
+/* --------------------------------------------------------------------------
+ * 嵌入模式覆寫
+ * 隱藏獨立頁 chrome 並讓演算法畫布填滿 iframe；父頁負責外部播放控制。
+ * -------------------------------------------------------------------------- */
 body.asm-embed-runtime #top-bar,
 body.asm-embed-runtime #codePanel,
 body.asm-embed-runtime #divider,
@@ -8,7 +12,6 @@ body.asm-embed-runtime #myCodesSidebar,
 body.asm-embed-runtime #traceStudioRail,
 body.asm-embed-runtime .trace-studio-inspector,
 body.asm-embed-runtime #traceStudioTimeline,
-body.asm-embed-runtime .gui-ctx-menu,
 body.asm-embed-runtime .gui-prop-panel {
   display: none !important;
 }
@@ -49,4 +52,11 @@ body.asm-embed-runtime #canvasWrapper {
   width: 100%;
   height: 100%;
   flex: 1 1 auto;
+}
+
+/* Runtime drawings are presentation content rather than editable objects.
+   Let pointer gestures reach the SVG canvas even when a large structure fills
+   most of the slide, so the presenter can pan from anywhere on the drawing. */
+body.asm-embed-runtime #viewport .draggable-object {
+  pointer-events: none;
 }

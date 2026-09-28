@@ -1,3 +1,19 @@
+/**
+ * AlgoShowMaker 後端服務
+ *
+ * 模組職責與請求生命週期：
+ * 1. 提供帳號、偏好設定、投影片、分享連結與程式草稿的 REST API。
+ * 2. `/trace/analyze` 與 `/syntax-tree` 只解析來源碼，不執行使用者程式。
+ * 3. `/compile` 先驗證輸入與危險語彙，再插入追蹤碼、呼叫 C++ 編譯器，
+ *    於受時間／輸出／記憶體限制的子程序中執行，最後整理成前端使用的 trace。
+ * 4. 投影片中的大型 trace 會由 CloudContent 抽離與還原；資料庫文件只保存引用，
+ *    因此任何寫入流程都必須同步維護 resource_keys，避免孤兒資源或斷裂引用。
+ *
+ * 主要不變條件：所有私人資源查詢都必須以 JWT 的 user_uid 限定擁有者；分享寫入
+ * 必須持有 edit token；子程序完成、逾時或失敗時都要回收計時器與暫存檔；回傳給
+ * 瀏覽器的錯誤不可洩漏密碼、JWT secret 或伺服器內部檔案內容。
+ */
+
 // server.js
 require('dotenv').config();
 const express = require('express');
@@ -20,12 +36,11 @@ const {
 const {
   analyzeSource,
   buildSyntaxTree,
-  findFrameDirectives,
-  findLayoutDirectives,
   instrumentSource
 } = require('./trace-instrumenter');
 const TraceViewSource = require('./public/trace-view-source');
 const TraceProvenance = require('./public/trace-provenance');
+const TraceChunkStore = require('./trace-chunk-store');
 const SlideStorage = require('./public/slides-storage');
 const CloudContent = require('./cloud-content');
 
@@ -53,6 +68,10 @@ const UserSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', UserSchema);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 持久化資料模型：投影片本體、外部 trace 引用與分享權限
+// ─────────────────────────────────────────────────────────────────────────────
 
 const SlideDeckSchema = new mongoose.Schema({
   user_uid: { type: String, required: true, index: true },
@@ -173,6 +192,12 @@ function logDebug(msg, extra = {}) {
   });
 }
 
+function usesLegacyAnimationCompiler(source) {
+  if (typeof source !== 'string') return false;
+  return /^\s*#\s*include\s*[<"]AV\.hpp[>"]/m.test(source)
+    || /\/\/\s*draw\s*\{/.test(source);
+}
+
 // 設定中間件
 app.use('/vendor/reveal', express.static(path.join(__dirname, 'node_modules', 'reveal.js', 'dist')));
 app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'fabric', 'dist')));
@@ -187,17 +212,29 @@ app.use((err, req, res, next) => {
   return next(err);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 靜態分析 API：只解析來源碼，不會編譯或執行使用者輸入
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/trace/analyze', limiter, (req, res) => {
   const code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
   try {
     const analysis = analyzeSource(code);
-    const frameDirectives = findFrameDirectives(code, analysis);
-    const layoutDirectives = findLayoutDirectives(code, analysis);
+    const instrumented = instrumentSource(code, []);
+    const frameDirectives = instrumented.frameDirectives;
+    const layoutDirectives = instrumented.layoutDirectives;
+    const branchDirectives = instrumented.branchDirectives;
     res.json({
       success: true,
       layouts: layoutDirectives,
+      branches: branchDirectives.map(directive => ({
+        type: directive.type,
+        line: directive.line,
+        label: directive.label || '',
+        layoutId: directive.layoutId || ''
+      })),
       frameDirectives: frameDirectives.map(directive => ({
         line: directive.line,
         name: directive.name || '',
@@ -234,7 +271,7 @@ app.post('/trace/analyze', limiter, (req, res) => {
         camera: directive.camera || null,
         presetDirectives: directive.presetDirectives || []
       })),
-      variables: analysis.variables.map(variable => ({
+      variables: instrumented.variables.map(variable => ({
         id: variable.id,
         name: variable.name,
         cppType: variable.type,
@@ -266,6 +303,10 @@ app.post('/syntax-tree', limiter, (req, res) => {
 // ==========================================
 
 // 1. 註冊 (Register)
+// ─────────────────────────────────────────────────────────────────────────────
+// 帳號 API：註冊、登入、重設密碼與 JWT 身分驗證
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/api/auth/register', async (req, res) => {
   const { username, password } = req.body;
 
@@ -451,6 +492,10 @@ const EVENT_SETTING_TYPES = [
 ];
 const DEFAULT_EVENT_GAP_MS = 500;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 使用者偏好：僅接受已知事件旗標，避免任意欄位寫入 preferences
+// ─────────────────────────────────────────────────────────────────────────────
+
 function cleanEventSettings(value = {}) {
   const cleanFlags = source => Object.fromEntries(EVENT_SETTING_TYPES.flatMap(type => (
     typeof source?.[type] === 'boolean' ? [[type, source[type]]] : []
@@ -494,6 +539,10 @@ app.put('/api/user/preferences/event-settings', authenticateToken, async (req, r
     res.status(500).json({ error: '無法儲存事件設定' });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 投影片 API：擁有者 CRUD、分享權限，以及外部 trace 資源的存取協調
+// ─────────────────────────────────────────────────────────────────────────────
 
 function countDeckSlides(deck) {
   if (!deck || !Array.isArray(deck.groups)) return 0;
@@ -826,6 +875,10 @@ app.delete('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
 
 const cloudContent = CloudContent.register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, cleanCoverThumbnail);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 子程序資源監控：Linux 讀取 /proc；其他平台保留可安全降級的空結果
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * 讀取 Linux /proc/<pid>/status
  */
@@ -880,6 +933,13 @@ function startMemorySampler(childPid, intervalMs = 80) {
     getPeak: () => ({ peakRssKB, peakHwmKB, peakVmsKB }),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trace 後處理：補齊 renderer、keep 物件生命週期與跨幀快照
+//
+// keep materialization 必須依原始 frame 順序執行；每一幀以複本承接前態，
+// 再套用當幀 mutation／exit，避免修改早先已交付給前端的快照。
+// ─────────────────────────────────────────────────────────────────────────────
 
 function defaultTraceRenderer(kind) {
   if (kind === 'matrix') return 'original-matrix';
@@ -982,12 +1042,19 @@ function mutationTargets(event = {}) {
 function applyKeepMutation(frame, target, value) {
   const entry = frame?.state?.[target?.variableId];
   if (!entry || value == null) return;
+  const captured = Array.isArray(target.resolvedIndices)
+    ? target.resolvedIndices.map(Number) : [];
   const resolvedIndex = Number(target.resolvedIndex);
-  const items = entry.data?.items;
-  if (Number.isInteger(resolvedIndex) && Array.isArray(items)) {
-    if (resolvedIndex >= 0 && resolvedIndex < items.length) {
-      items[resolvedIndex] = cloneTraceValue(value);
+  const indices = captured.length && captured.every(Number.isInteger)
+    ? captured : (Number.isInteger(resolvedIndex) ? [resolvedIndex] : []);
+  if (indices.length) {
+    let data = entry.data;
+    for (let depth = 0; depth < indices.length - 1; depth += 1) {
+      data = data?.items?.[indices[depth]];
     }
+    const items = data?.items;
+    const index = indices.at(-1);
+    if (Array.isArray(items) && index >= 0 && index < items.length) items[index] = cloneTraceValue(value);
     return;
   }
   entry.data = cloneTraceValue(value);
@@ -1076,9 +1143,11 @@ function materializeKeepFrameState(sourceFrame, keepOrder, pendingEvents = []) {
   return frame;
 }
 
-function materializeKeepSnapshots(frames) {
+function materializeKeepSnapshots(frames, layouts = []) {
+  const layoutsById = new Map((layouts || []).map(layout => [layout.id, layout]));
   const snapshots = [];
   const activeSnapshotIds = [];
+  const activeRecursionSnapshots = new Map();
   const counts = new Map();
   let sceneGeneration = 0;
   const usedObjectIds = new Set(frames.flatMap(frame => [
@@ -1096,9 +1165,35 @@ function materializeKeepSnapshots(frames) {
     usedObjectIds.add(id);
     return id;
   }
+  function recursionSnapshotKey(event) {
+    const layoutId = String(event?.layoutId || '');
+    const activationId = String(event?.recursionActivationId || '');
+    return layoutId && activationId ? `${layoutId}\u0000${activationId}` : '';
+  }
+  function replacedRecursionSnapshot(event) {
+    const key = recursionSnapshotKey(event);
+    const snapshotId = key ? activeRecursionSnapshots.get(key) : '';
+    return snapshotId ? snapshots.find(snapshot => snapshot.id === snapshotId) || null : null;
+  }
+  function activateSnapshot(snapshot, replacedSnapshot = null) {
+    if (replacedSnapshot) {
+      const activeIndex = activeSnapshotIds.indexOf(replacedSnapshot.id);
+      if (activeIndex >= 0) activeSnapshotIds.splice(activeIndex, 1);
+      snapshot.replacesSnapshotId = replacedSnapshot.id;
+    }
+    activeSnapshotIds.push(snapshot.id);
+    const key = snapshot.layoutId && snapshot.recursionActivationId
+      ? `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`
+      : '';
+    if (key) activeRecursionSnapshots.set(key, snapshot.id);
+  }
   function variableRenderState(frame, variableId, identity = '') {
     if (!frame) return null;
-    let sourceVariableId = frame.state?.[variableId] ? variableId : '';
+    const directEntry = frame.state?.[variableId];
+    let sourceVariableId = directEntry
+      && (!identity || String(directEntry.identity || '') === String(identity))
+      ? variableId
+      : '';
     if (!sourceVariableId && identity) {
       sourceVariableId = Object.entries(frame.state || {})
         .find(([, entry]) => String(entry?.identity || '') === String(identity))?.[0] || '';
@@ -1115,8 +1210,39 @@ function materializeKeepSnapshots(frames) {
       binding: binding ? JSON.parse(JSON.stringify(binding)) : null,
       styles: (frame.styles || [])
         .filter(style => style.targetVariableId === sourceVariableId)
-        .map(style => JSON.parse(JSON.stringify(style)))
+        .map(style => JSON.parse(JSON.stringify(style))),
+      arrows: (frame.arrows || [])
+        .filter(arrow => arrow?.from?.targetVariableId === sourceVariableId)
+        .map(arrow => JSON.parse(JSON.stringify(arrow)))
     };
+  }
+  function retainedSnapshotArrows(renderState, frame, snapshot) {
+    return (renderState?.arrows || []).map(arrow => {
+      const retained = cloneTraceValue(arrow);
+      retained.id = `${arrow.id}@${snapshot.id}`;
+      retained.explicitId = true;
+      retained.retainedFromArrowId = arrow.id;
+      retained.source = 'directive';
+      retained.from = {
+        ...retained.from,
+        targetVariableId: '',
+        targetName: '',
+        targetObjectKey: snapshot.objectId,
+        objectKey: snapshot.objectId
+      };
+      for (const endpointName of ['from', 'to']) {
+        const endpoint = retained[endpointName];
+        if (!endpoint || !Array.isArray(endpoint.indexExpressions)) continue;
+        const resolved = endpoint.indexExpressions.map(expression => (
+          resolveTraceIndexExpression(frame, expression)
+        ));
+        if (resolved.every(Number.isInteger)) {
+          endpoint.indexExpressions = resolved.map(String);
+          endpoint.indexExpression = resolved.join(',');
+        }
+      }
+      return retained;
+    });
   }
   function eventsForGeneration(events, generation, preKeepGeneration = generation) {
     return (events || []).filter(event => event?.type !== 'keep').map(event => ({
@@ -1128,8 +1254,33 @@ function materializeKeepSnapshots(frames) {
       }))
     }));
   }
-  const materializedFrames = frames.map((frame, frameIndex) => {
-    const keepEvents = (frame.events || []).filter(event => event.type === 'keep');
+  let materializedFrames = frames.map((frame, frameIndex) => {
+    const branchVariableId = String(frame.source?.primaryVariableId || '');
+    const branchEntry = branchVariableId ? frame.state?.[branchVariableId] : null;
+    const branchKeep = frame.source?.branchId && frame.source?.layoutId && branchEntry
+      ? {
+        type: 'keep',
+        order: Number((frame.events || [])[0]?.order ?? -1) - 0.25,
+        signature: `automatic-branch:${frame.source.branchId}`,
+        label: String(frame.source.branchLabel || branchEntry.name || 'Branch'),
+        layoutId: String(frame.source.layoutId),
+        recursionFunction: String(frame.source.recursionFunction || ''),
+        recursionActivationId: String(frame.source.recursionActivationId || frame.source.branchId),
+        recursionParentActivationId: String(frame.source.recursionParentActivationId || frame.source.branchOwnerActivationId || ''),
+        recursionAncestorActivationIds: cloneTraceValue(frame.source.recursionAncestorActivationIds || []),
+        recursionDepth: Number(frame.source.recursionDepth) || 0,
+        recursionSiblingIndex: Number(frame.source.recursionSiblingIndex) || 0,
+        recursionRootIndex: Number(frame.source.recursionRootIndex) || 0,
+        preserveStyle: true,
+        payload: { data: cloneTraceValue(branchEntry.data) },
+        targets: [{ variableId: branchVariableId }]
+      }
+      : null;
+    const keepEvents = [
+      ...(branchKeep ? [branchKeep] : []),
+      ...(frame.initialKeeps || []),
+      ...(frame.events || []).filter(event => event.type === 'keep')
+    ];
     const snapshotGeneration = sceneGeneration;
     const liveGeneration = keepEvents.length ? sceneGeneration + 1 : sceneGeneration;
     let keepLastFocus = false;
@@ -1142,14 +1293,17 @@ function materializeKeepSnapshots(frames) {
         const count = (counts.get('$frame') || 0) + 1;
         counts.set('$frame', count);
         const id = `snapshot:frame:${count}`;
-        const objectId = allocateObjectId(event.label || 'Frame');
-        snapshots.push({
+        const replacedSnapshot = replacedRecursionSnapshot(event);
+        const objectId = replacedSnapshot?.objectId || allocateObjectId(event.label || 'Frame');
+        const snapshot = {
           id,
           objectId,
           kind: 'frame',
           createdFrameId: frame.id,
           sourceFrameId: previousFrame.id,
-          label: objectId,
+          label: event.layoutId && event.recursionActivationId
+            ? String(event.label || 'Frame').trim() || 'Frame'
+            : objectId,
           preserveStyle,
           layoutId: String(event.layoutId || ''),
           recursionFunction: String(event.recursionFunction || ''),
@@ -1175,8 +1329,9 @@ function materializeKeepSnapshots(frames) {
             styles: preserveStyle ? JSON.parse(JSON.stringify(retainedFrame.styles || [])) : [],
             snapshotIds: []
           }
-        });
-        activeSnapshotIds.push(id);
+        };
+        snapshots.push(snapshot);
+        activateSnapshot(snapshot, replacedSnapshot);
         keepLastFocus = true;
         return;
       }
@@ -1186,22 +1341,26 @@ function materializeKeepSnapshots(frames) {
       const capturedData = event.payload?.data;
       if (!variableId || (!entry && capturedData == null)) return;
       const identity = String(entry?.identity || '');
-      const renderState = variableRenderState(frames[frameIndex - 1], variableId, identity)
-        || variableRenderState(frame, variableId, identity)
-        || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [] };
+      const currentRenderState = variableRenderState(frame, variableId, identity);
+      const previousRenderState = variableRenderState(frames[frameIndex - 1], variableId, identity);
+      const renderState = (event.layoutId && event.recursionActivationId
+        ? currentRenderState || previousRenderState
+        : previousRenderState || currentRenderState)
+        || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [], arrows: [] };
       const preserveStyle = event.preserveStyle !== false;
       const count = (counts.get(variableId) || 0) + 1;
       counts.set(variableId, count);
       const id = `snapshot:${variableId}:${count}`;
       const labelBase = String(event.label || event.name || entry.name || 'Snapshot').trim() || 'Snapshot';
-      const objectId = allocateObjectId(labelBase);
-      snapshots.push({
+      const replacedSnapshot = replacedRecursionSnapshot(event);
+      const objectId = replacedSnapshot?.objectId || allocateObjectId(labelBase);
+      const snapshot = {
         id,
         objectId,
         sourceVariableId: variableId,
         sourceFrameId: renderState.frameId,
         createdFrameId: frame.id,
-        label: objectId,
+        label: event.layoutId && event.recursionActivationId ? labelBase : objectId,
         preserveStyle,
         layoutId: String(event.layoutId || ''),
         recursionFunction: String(event.recursionFunction || ''),
@@ -1224,8 +1383,12 @@ function materializeKeepSnapshots(frames) {
         renderer: renderState.renderer,
         rendererOptions: renderState.rendererOptions,
         styles: preserveStyle ? renderState.styles : []
-      });
-      activeSnapshotIds.push(id);
+      };
+      snapshot.arrows = snapshot.layoutId
+        ? retainedSnapshotArrows(renderState, frame, snapshot)
+        : [];
+      snapshots.push(snapshot);
+      activateSnapshot(snapshot, replacedSnapshot);
     });
     sceneGeneration = liveGeneration;
     return {
@@ -1240,16 +1403,16 @@ function materializeKeepSnapshots(frames) {
   snapshots.forEach(snapshot => {
     if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
     const activationKey = `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`;
-    let parentSnapshotId = latestByActivation.get(activationKey)?.id || '';
-    if (!parentSnapshotId) {
-      const ancestors = Array.isArray(snapshot.recursionAncestorActivationIds)
-        ? [...snapshot.recursionAncestorActivationIds].reverse()
-        : [];
-      const parent = ancestors.map(activationId => (
-        latestByActivation.get(`${snapshot.layoutId}\u0000${activationId}`)
-      )).find(Boolean);
-      parentSnapshotId = parent?.id || '';
-    }
+    const ancestors = Array.isArray(snapshot.recursionAncestorActivationIds)
+      ? [...snapshot.recursionAncestorActivationIds].reverse()
+      : [];
+    const parentActivations = [snapshot.recursionParentActivationId, ...ancestors]
+      .map(value => String(value || ''))
+      .filter(value => value && value !== snapshot.recursionActivationId);
+    const parent = parentActivations.map(activationId => (
+      latestByActivation.get(`${snapshot.layoutId}\u0000${activationId}`)
+    )).find(Boolean);
+    const parentSnapshotId = parent?.id || '';
     snapshot.layoutNode = {
       layoutId: snapshot.layoutId,
       nodeId: snapshot.id,
@@ -1261,11 +1424,158 @@ function materializeKeepSnapshots(frames) {
     };
     latestByActivation.set(activationKey, snapshot);
   });
+  const initialByActivation = new Map();
+  snapshots.forEach(snapshot => {
+    if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
+    const key = `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`;
+    if (!initialByActivation.has(key)) initialByActivation.set(key, snapshot);
+  });
+  const childrenByParent = new Map();
+  for (const snapshot of initialByActivation.values()) {
+    if (!snapshot.recursionParentActivationId) continue;
+    const key = `${snapshot.layoutId}\u0000${snapshot.recursionParentActivationId}`;
+    if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+    childrenByParent.get(key).push(snapshot);
+  }
+  const previewPlans = [];
+  for (const [parentKey, children] of childrenByParent.entries()) {
+    const parent = initialByActivation.get(parentKey);
+    if (!parent || children.length < 2) continue;
+    if (layoutsById.get(parent.layoutId)?.showBranchPreviews === false) continue;
+    const ordered = [...children].sort((left, right) => (
+      Number(left.recursionSiblingIndex) - Number(right.recursionSiblingIndex)
+    ));
+    const childIndexes = ordered.map(child => (
+      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+    )).filter(index => index >= 0);
+    if (!childIndexes.length) continue;
+    const parentIndex = materializedFrames.findIndex(frame => frame.id === parent.createdFrameId);
+    const firstChildIndex = Math.min(...childIndexes);
+    if (parentIndex < 0 || firstChildIndex <= parentIndex) continue;
+    const previews = ordered.map(child => {
+      const childFrameIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
+      const subtreeActivations = new Set([...initialByActivation.values()]
+        .filter(candidate => candidate.layoutId === child.layoutId
+          && (candidate.recursionActivationId === child.recursionActivationId
+            || (candidate.recursionAncestorActivationIds || []).includes(child.recursionActivationId)))
+        .map(candidate => candidate.recursionActivationId));
+      let completionFrame = materializedFrames[childFrameIndex] || null;
+      for (let index = childFrameIndex; index < materializedFrames.length; index += 1) {
+        const candidate = materializedFrames[index];
+        const activationId = String(candidate.source?.recursionActivationId || '');
+        if (subtreeActivations.has(activationId)) {
+          completionFrame = candidate;
+        } else if (index > childFrameIndex) {
+          break;
+        }
+      }
+      return {
+        child,
+        childFrame: materializedFrames[childFrameIndex] || null,
+        completionFrame
+      };
+    });
+    previewPlans.push({ insertIndex: parentIndex + 1, parentKey, previews });
+  }
+  previewPlans.sort((left, right) => right.insertIndex - left.insertIndex).forEach(plan => {
+    const base = materializedFrames[Math.max(0, plan.insertIndex - 1)];
+    if (!base) return;
+    const firstActualChildIndex = Math.min(...plan.previews.map(({ child }) => (
+      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+    )).filter(index => index >= 0));
+    plan.previews.forEach(({ child }) => {
+      const actualIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
+      for (let index = plan.insertIndex; index < actualIndex; index += 1) {
+        const frame = materializedFrames[index];
+        if (!frame.snapshotIds.includes(child.id)) frame.snapshotIds.push(child.id);
+      }
+    });
+    const finalPreview = plan.previews[plan.previews.length - 1];
+    for (let index = plan.insertIndex; index < firstActualChildIndex; index += 1) {
+      const frame = materializedFrames[index];
+      const heldState = cloneTraceValue(frame.state || {});
+      for (const [variableId, renderer] of Object.entries(finalPreview?.childFrame?.renderers || {})) {
+        if (!/(?:^|-)disk$/.test(renderer)
+          || !finalPreview?.completionFrame?.state?.[variableId]) continue;
+        heldState[variableId] = cloneTraceValue(finalPreview.completionFrame.state[variableId]);
+      }
+      frame.state = heldState;
+    }
+    const growing = [];
+    const previewFrames = plan.previews.map(({ child, childFrame, completionFrame }, ordinal) => {
+      growing.push(child.id);
+      const authored = childFrame || base;
+      const state = cloneTraceValue(base.state || {});
+      for (const variableId of authored.captureOnlyVariableIds || []) {
+        if (authored.state?.[variableId]) state[variableId] = cloneTraceValue(authored.state[variableId]);
+      }
+      for (const [variableId, renderer] of Object.entries(authored.renderers || {})) {
+        if (!/(?:^|-)disk$/.test(renderer) || !completionFrame?.state?.[variableId]) continue;
+        state[variableId] = cloneTraceValue(completionFrame.state[variableId]);
+      }
+      return {
+        ...base,
+        objectBindings: cloneTraceValue(authored.objectBindings || {}),
+        renderers: cloneTraceValue(authored.renderers || {}),
+        rendererOptions: cloneTraceValue(authored.rendererOptions || {}),
+        captureOnlyVariableIds: cloneTraceValue(authored.captureOnlyVariableIds || []),
+        lets: cloneTraceValue(authored.lets || {}),
+        texts: cloneTraceValue(authored.texts || []),
+        styles: cloneTraceValue(authored.styles || []),
+        segments: cloneTraceValue(authored.segments || []),
+        camera: cloneTraceValue(authored.camera || base.camera || null),
+        state,
+        id: `branch-preview:${plan.parentKey.replace(/\u0000/g, ':')}:${ordinal}`,
+        source: {
+          ...(authored.source || base.source || {}),
+          systemBranchPreview: true,
+          previewSnapshotId: child.id
+        },
+        events: [],
+        snapshotIds: [...new Set([...(base.snapshotIds || []), ...growing])],
+        keepLastFocus: false
+      };
+    });
+    const transitionStyleFrameId = previewFrames.at(-1)?.id || '';
+    // Authored handoff frames deliberately show the real board without disk
+    // coloring.  Their outgoing restore motion still belongs to the final
+    // branch preview, so retain that preview as the paint source used only by
+    // the following transition.
+    for (let index = plan.insertIndex; index < firstActualChildIndex; index += 1) {
+      const frame = materializedFrames[index];
+      frame.source = {
+        ...(frame.source || {}),
+        systemBranchHandoff: true,
+        transitionStyleFrameId
+      };
+    }
+    materializedFrames.splice(plan.insertIndex, 0, ...previewFrames);
+  });
+  const snapshotsById = new Map(snapshots.map(snapshot => [snapshot.id, snapshot]));
+  materializedFrames = materializedFrames.map(frame => {
+    const retainedArrows = (frame.snapshotIds || []).flatMap(snapshotId => (
+      snapshotsById.get(snapshotId)?.arrows || []
+    ));
+    const retainedSourceIds = new Set(retainedArrows
+      .map(arrow => arrow.retainedFromArrowId)
+      .filter(Boolean));
+    return {
+      ...frame,
+      arrows: [
+        ...(frame.arrows || []).filter(arrow => !retainedSourceIds.has(arrow.id)),
+        ...retainedArrows
+      ]
+    };
+  });
   return { frames: materializedFrames, snapshots };
 }
 
 const FIXED_EVENT_KINDS = new Set(['sequence', 'stack', 'queue', 'set']);
 const FIXED_ACCESS_EVENTS = new Set(['read', 'write', 'assign', 'swap']);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 指令求值與固定標記：將分析器保留的索引表達式解析到當幀資料
+// ─────────────────────────────────────────────────────────────────────────────
 
 function traceScalarValue(data) {
   if (!data || typeof data !== 'object') return data;
@@ -1275,6 +1585,10 @@ function traceScalarValue(data) {
 function resolveTraceIndexExpression(frame, expression) {
   const source = String(expression ?? '').trim();
   if (!source) return null;
+  const directLet = (frame.lets || []).find(binding => binding?.name === source);
+  if (directLet?.expression && String(directLet.expression).trim() !== source) {
+    return resolveTraceIndexExpression(frame, directLet.expression);
+  }
   const tokens = [];
   let cursor = 0;
   while (cursor < source.length) {
@@ -1294,7 +1608,7 @@ function resolveTraceIndexExpression(frame, expression) {
       cursor += identifier[0].length;
       continue;
     }
-    if ('+-*/%()'.includes(source[cursor])) {
+    if ('+-*/%().'.includes(source[cursor])) {
       tokens.push({ type: 'operator', value: source[cursor] });
       cursor += 1;
       continue;
@@ -1326,8 +1640,23 @@ function resolveTraceIndexExpression(frame, expression) {
     if (token.type !== 'identifier') return invalid;
     position += 1;
     const match = Object.entries(frame.state || {}).find(([, entry]) => entry?.name === token.value);
-    if (!match) return invalid;
-    return traceScalarValue(match[1]?.data);
+    if (!match) {
+      const binding = (frame.lets || []).find(candidate => candidate?.name === token.value);
+      return binding?.expression ? resolveTraceIndexExpression(frame, binding.expression) : invalid;
+    }
+    const data = match[1]?.data;
+    if (peek('.')) {
+      consume('.');
+      const member = consume();
+      if (member?.type !== 'identifier' || !['length', 'size'].includes(member.value)) return invalid;
+      if (peek('(')) {
+        consume('(');
+        if (!consume(')')) return invalid;
+      }
+      const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : null;
+      return items ? items.length : invalid;
+    }
+    return traceScalarValue(data);
   }
 
   function parseUnary() {
@@ -1402,7 +1731,38 @@ function resolveFrameRendererOptions(frame, directive) {
     else if (format === 'binary') options.indexMode = 3;
     else if (format === 'binary-padded') options.indexMode = 4;
     else options.indexMode = 0;
+    if (source.labels.showValue === false && format === 'none') options.showValue = false;
   }
+  const materializeTraceValue = data => {
+    if (Array.isArray(data?.items)) return data.items.map(materializeTraceValue);
+    return traceScalarValue(data);
+  };
+  const resolveLabelSource = spec => {
+    if (!spec) return null;
+    if (spec.mode !== 'custom') return { mode: spec.mode, values: [] };
+    const values = [];
+    (spec.parts || []).forEach(part => {
+      if (part.type === 'blank') {
+        values.push(...Array.from({ length: Math.max(0, Number(part.count) || 0) }, () => ''));
+      } else if (part.type === 'literal') {
+        values.push(part.value);
+      } else if (part.type === 'variable') {
+        const entry = frame.state?.[part.variableId]
+          || Object.values(frame.state || {}).find(item => item?.name === part.name);
+        const value = materializeTraceValue(entry?.data);
+        if (Array.isArray(value)) values.push(...value);
+        else if (typeof value === 'string') values.push(...value);
+        else if (value !== undefined) values.push(value);
+      }
+    });
+    return { mode: 'custom', values };
+  };
+  ['indexLabels', 'rowLabels', 'columnLabels', 'innerLabels'].forEach(name => {
+    if (source[name]) options[name] = resolveLabelSource(source[name]);
+  });
+  if (Object.prototype.hasOwnProperty.call(source, 'gridlines')) options.gridlines = source.gridlines;
+  if (Object.prototype.hasOwnProperty.call(source, 'outerframe')) options.outerframe = source.outerframe;
+  if (source.markerLayout) options.markerLayout = source.markerLayout;
   if (source.fields) {
     options.fields = {
       names: Array.isArray(source.fields.names) ? [...source.fields.names] : [],
@@ -1426,6 +1786,16 @@ function resolveFrameRendererOptions(frame, directive) {
           variableId: entry.variableId || ''
         }))
         : []
+    };
+  }
+  if (source.capacity) {
+    const capacity = resolveTraceIndexExpression(frame, source.capacity.expression);
+    if (capacity != null && capacity >= 0) options.capacity = capacity;
+  }
+  if (source.display && typeof source.display.template === 'string') {
+    options.display = {
+      template: source.display.template,
+      expressions: Array.isArray(source.display.expressions) ? [...source.display.expressions] : []
     };
   }
   if (Object.prototype.hasOwnProperty.call(source, 'separator')) options.separator = source.separator;
@@ -1533,14 +1903,10 @@ function appendFixedEvents(frames, variables = []) {
   return frames;
 }
 
-function readTraceDocument(tracePath, variables, traceRequest = {}) {
-  if (!fs.existsSync(tracePath)) return null;
-  const stat = fs.statSync(tracePath);
-  if (stat.size > 20 * 1024 * 1024) throw new Error('追蹤資料超過 20MB 上限');
-  const records = fs.readFileSync(tracePath, 'utf8')
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map(line => JSON.parse(line));
+async function readTraceDocument(tracePath, variables, traceRequest = {}) {
+  const loaded = await TraceChunkStore.read(tracePath);
+  if (!loaded) return null;
+  const {records, stats} = loaded;
   const keepDirectives = Array.isArray(traceRequest.keepDirectives)
     ? traceRequest.keepDirectives
     : [];
@@ -1552,28 +1918,52 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   const eventSources = traceRequest.eventSources && typeof traceRequest.eventSources === 'object'
     ? traceRequest.eventSources
     : {};
+  const codeHideRanges = Array.isArray(traceRequest.codeHideRanges)
+    ? traceRequest.codeHideRanges.map(range => ({
+      from: Number(range.from) || 0,
+      contentFrom: Number(range.contentFrom) || Number(range.from) || 0,
+      contentTo: Number(range.contentTo) || Number(range.to) || 0,
+      to: Number(range.to) || 0,
+      line: Number(range.line) || 0,
+      endLine: Number(range.endLine) || 0
+    }))
+    : [];
+  const hiddenRuntimeEvent = event => {
+    if (!event || event.type === 'keep') return false;
+    const from = Number(event.source?.from);
+    const to = Number(event.source?.to);
+    const line = Number(event.source?.line || event.line);
+    return codeHideRanges.some(range => (
+      (Number.isFinite(from) && Number.isFinite(to)
+        && from < range.contentTo && to > range.contentFrom)
+      || (line > 0 && range.line > 0 && range.endLine > 0
+        && line > range.line && line < range.endLine)
+    ));
+  };
+  const enrichRuntimeEvent = event => {
+    const source = eventSources[event.signature];
+    const enriched = source ? { ...event, source } : event;
+    if (event.type !== 'keep') return enriched;
+    const directive = keepDirectiveByStatementId.get(enriched.signature);
+    if (!directive) return enriched;
+    return {
+      ...enriched,
+      ...(directive.binding
+        ? { binding: JSON.parse(JSON.stringify(directive.binding)) }
+        : {}),
+      ...(directive.placementOffset
+        ? { placementOffset: JSON.parse(JSON.stringify(directive.placementOffset)) }
+        : {}),
+      ...(directive.when
+        ? { when: JSON.parse(JSON.stringify(directive.when)) }
+        : {}),
+      ...(directive.layoutId ? { layoutId: directive.layoutId } : {})
+    };
+  };
   const allFrames = records.filter(record => record.record === 'frame').map(frame => ({
     ...frame,
-    events: (frame.events || []).map(event => {
-      const source = eventSources[event.signature];
-      const enriched = source ? { ...event, source: JSON.parse(JSON.stringify(source)) } : event;
-      if (event.type !== 'keep') return enriched;
-      const directive = keepDirectiveByStatementId.get(enriched.signature);
-      if (!directive) return enriched;
-      return {
-        ...enriched,
-        ...(directive.binding
-          ? { binding: JSON.parse(JSON.stringify(directive.binding)) }
-          : {}),
-        ...(directive.placementOffset
-          ? { placementOffset: JSON.parse(JSON.stringify(directive.placementOffset)) }
-          : {}),
-        ...(directive.when
-          ? { when: JSON.parse(JSON.stringify(directive.when)) }
-          : {}),
-        ...(directive.layoutId ? { layoutId: directive.layoutId } : {})
-      };
-    })
+    events: (frame.events || []).map(enrichRuntimeEvent).filter(event => !hiddenRuntimeEvent(event)),
+    ...(frame.initialKeeps?.length ? {initialKeeps:frame.initialKeeps.map(enrichRuntimeEvent)} : {})
   }));
   const frameDirectives = Array.isArray(traceRequest.frameDirectives)
     ? traceRequest.frameDirectives
@@ -1611,17 +2001,30 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
     const layoutIds = Object.fromEntries(objectDirectives
       .filter(object => object.primaryVariableId && object.layoutId)
       .map(object => [object.primaryVariableId, object.layoutId]));
+    const primaryLayoutId = primaryObject?.layoutId || '';
+    const branchActive = Boolean(frame.source?.branchId
+      && frame.source?.branchLayoutId === primaryLayoutId);
+    const branchAncestors = branchActive
+      ? [...(frame.source?.recursionAncestorActivationIds || []), frame.source?.branchOwnerActivationId]
+      : frame.source?.recursionAncestorActivationIds;
     return {
       ...frame,
       source: {
         ...(frame.source || {}),
+        ...(branchActive ? {
+          recursionActivationId: frame.source.branchId,
+          recursionParentActivationId: frame.source.branchOwnerActivationId,
+          recursionAncestorActivationIds: branchAncestors,
+          recursionDepth: frame.source.branchDepth,
+          recursionSiblingIndex: frame.source.branchSiblingIndex
+        } : {}),
         directiveName: directive?.name || '',
         directiveKey: directive?.sourceKey || '',
         logicalDirectiveKey: directive?.logicalSourceKey || '',
         directiveKeyAliases: directive?.sourceKeyAliases || [],
         objectId: primaryObject?.objectId || '',
         objectIds,
-        layoutId: primaryObject?.layoutId || '',
+        layoutId: primaryLayoutId,
         layoutIds,
         primaryVariableId,
         when: directive?.when || null
@@ -1654,7 +2057,10 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   // A frame snapshot must be created after derived events are complete. This
   // keeps fixed marks and every event-driven visual state in @keep last.
   const framesWithFixedEvents = appendFixedEvents(slicedFrames, variables);
-  const keepSnapshots = materializeKeepSnapshots(framesWithFixedEvents);
+  const keepSnapshots = materializeKeepSnapshots(
+    framesWithFixedEvents,
+    traceRequest.layoutDirectives
+  );
   const asmView = traceRequest.asmView && typeof traceRequest.asmView === 'object' ? traceRequest.asmView : {};
   const requestedSkins = {
     ...(traceRequest.skins && typeof traceRequest.skins === 'object' ? traceRequest.skins : {}),
@@ -1678,6 +2084,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   }
   return {
     schemaVersion: '1.0',
+    traceStorage: stats,
     generatedAt: new Date().toISOString(),
     loopRecords: records.filter(record => record.record === 'loop'),
     sourceCode: typeof traceRequest.sourceCode === 'string' ? traceRequest.sourceCode : '',
@@ -1687,6 +2094,7 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
     sourceStructure: Array.isArray(traceRequest.sourceStructure)
       ? JSON.parse(JSON.stringify(traceRequest.sourceStructure))
       : [],
+    codeHideRanges: JSON.parse(JSON.stringify(codeHideRanges)),
     sliceMode,
     variables: variableMap,
     frames: keepSnapshots.frames,
@@ -1704,7 +2112,12 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   };
 }
 
-// === 編譯＋執行 C++ 程式 ===
+// ─────────────────────────────────────────────────────────────────────────────
+// 編譯／執行 API
+//
+// 流程順序是安全邊界的一部分：驗證來源 → 插樁 → 產生暫存檔 → 編譯 →
+// 受限執行 → 解析 trace → 回收。任一分支結束時都需只回收本請求建立的資源。
+// ─────────────────────────────────────────────────────────────────────────────
 app.post('/compile', (req, res) => {
   debugMessages = []; // 每次請求重置
 
@@ -1742,6 +2155,7 @@ app.post('/compile', (req, res) => {
   let traceEventSources = {};
   let traceSourceDeclarations = [];
   let traceSourceStructure = [];
+  let traceCodeHideRanges = [];
   let traceSliceMode = trace?.sliceMode;
   let traceWarning = '';
   let asmView = null;
@@ -1749,6 +2163,11 @@ app.post('/compile', (req, res) => {
     asmView = TraceViewSource.parse(code);
   } catch (error) {
     traceWarning = error.message;
+  }
+  if (traceEnabled && usesLegacyAnimationCompiler(code)) {
+    traceEnabled = false;
+    const legacyWarning = '偵測到舊版 AV.hpp / //draw{} 動畫，已使用舊版動畫編譯器，不套用 trace 改寫。';
+    logDebug(legacyWarning);
   }
   if (traceEnabled) {
     try {
@@ -1817,6 +2236,9 @@ app.post('/compile', (req, res) => {
       traceSourceStructure = Array.isArray(instrumented.sourceStructure)
         ? instrumented.sourceStructure
         : [];
+      traceCodeHideRanges = Array.isArray(instrumented.codeHideRanges)
+        ? instrumented.codeHideRanges
+        : [];
       if (instrumented.frameDirectives.length) traceSliceMode = 'manual';
       logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);
     } catch (err) {
@@ -1832,6 +2254,7 @@ app.post('/compile', (req, res) => {
       traceEventSources = {};
       traceSourceDeclarations = [];
       traceSourceStructure = [];
+      traceCodeHideRanges = [];
       traceWarning = `追蹤分析未完成，已使用一般執行：${err.message}`;
       logDebug(traceWarning);
     }
@@ -1867,7 +2290,7 @@ app.post('/compile', (req, res) => {
   // 定義清理函式
   const cleanup = (attempt = 0) => {
     let retryNeeded = false;
-    [sourcePath, exePath, scriptPath, tracePath].forEach(filePath => {
+    [sourcePath, exePath, scriptPath, tracePath, tracePath + '.chunks.gz', tracePath + '.chunks.gz.index.json'].forEach(filePath => {
       try {
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       } catch (e) {
@@ -2029,7 +2452,7 @@ app.post('/compile', (req, res) => {
 
     let hasResponded = false; // 防呆：確保不重複回傳
 
-    const sendResponse = (codeRun, signal, forced = false) => {
+    const sendResponse = async (codeRun, signal, forced = false) => {
       if (hasResponded) return;
       hasResponded = true;
 
@@ -2055,13 +2478,14 @@ app.post('/compile', (req, res) => {
 
       let scriptContent = '';
       let traceDocument = null;
+      let traceError = "";
       try {
         if (fs.existsSync(scriptPath)) scriptContent = fs.readFileSync(scriptPath, 'utf8');
       } catch (err) { logDebug('讀取動畫腳本失敗: ' + err.message); }
 
       if (traceEnabled) {
         try {
-          traceDocument = readTraceDocument(tracePath, traceVariables, {
+          traceDocument = await readTraceDocument(tracePath, traceVariables, {
             ...trace,
             sourceCode: code,
             sliceMode: traceSliceMode,
@@ -2071,9 +2495,11 @@ app.post('/compile', (req, res) => {
             eventSources: traceEventSources,
             sourceDeclarations: traceSourceDeclarations,
             sourceStructure: traceSourceStructure,
+            codeHideRanges: traceCodeHideRanges,
             asmView
           });
         } catch (err) {
+          traceError = '追蹤資料載入失敗：' + err.message;
           logDebug('Failed to read trace output: ' + err.message);
           runErr += `\nTrace Error: ${err.message}`;
         }
@@ -2089,11 +2515,13 @@ app.post('/compile', (req, res) => {
       else if (runErr && runErr.includes('Script Size Exceeded')) finalError = runErr.split('\n').find(l => l.includes('Script Size Exceeded')) || 'Script Size Exceeded';
       else if (codeRun !== 0 || signal) finalError = (runErr && runErr.trim() !== '') ? runErr : `Runtime Error`;
 
+      if (!finalError && traceError) finalError = traceError;
+
       if (forced) logDebug('強制回收：進程未能及時關閉，已先行回傳結果。');
 
       if (traceDocument && !finalError) traceDocument.provenance = TraceProvenance.create(code, input);
 
-      res.json({
+      try { await TraceChunkStore.sendJson(req, res, {
         output: runOut,
         error: finalError,
         traceWarning,
@@ -2103,7 +2531,11 @@ app.post('/compile', (req, res) => {
         debug_log: debugMessages,
         scriptContent: scriptContent,
         traceDocument
-      });
+      }); } catch (error) {
+        logDebug('回傳編譯結果失敗：' + error.message);
+        if (!res.headersSent) res.status(500).json({error:'無法傳送追蹤資料'});
+        else res.destroy();
+      }
     };
 
     const tleTimer = setTimeout(() => {
@@ -2227,7 +2659,11 @@ function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
   return tree;
 }
 
-// 3. 定義資料結構 (Schema) - 依照你想要的欄位
+// ─────────────────────────────────────────────────────────────────────────────
+// 程式草稿與內建範例 API：草稿受 JWT 擁有者限制，範例目錄只讀
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 程式草稿資料結構
 const CodeSchema = new mongoose.Schema({
   user_uid: { type: String, required: true },  // User UID
   code_uid: { type: String, unique: true },    // Code UID (唯一)

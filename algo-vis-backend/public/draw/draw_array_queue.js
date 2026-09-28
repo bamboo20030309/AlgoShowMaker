@@ -1,3 +1,11 @@
+/**
+ * 模組：Queue 陣列繪圖器
+ *
+ * 責任：以佇列方向呈現序列，包含前後端標示、外框與元素 anchor。
+ * 資料流：樣式正規化後依 queue 順序配置 cell，再加上端點提示與可查詢的位置 metadata。
+ * 重要不變條件：視覺方向與 enqueue/dequeue 的資料索引對應必須固定；位置 API 不得反轉語意。
+ * 相容性：空佇列與缺少端點樣式時仍顯示穩定外框。
+ */
 // draw_array_queue.js
 ; (function () {
   const NS = 'http://www.w3.org/2000/svg';
@@ -5,6 +13,9 @@
   const indexBoxH = 12;
   const outerframe_padding = 8;
 
+  // ---------------------------------------------------------------------------
+  // 區段：Queue 容器與端點提示
+  // ---------------------------------------------------------------------------
   function draw_array_queue(
     g,
     groupID,
@@ -175,6 +186,9 @@
     g.setAttribute('data-index-start', String(index_range[0]));
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：Queue 元素 anchor 查詢
+  // ---------------------------------------------------------------------------
   function getQueuePosition(groupID, index, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
     const g = vp?.querySelector('#' + CSS.escape(groupID));

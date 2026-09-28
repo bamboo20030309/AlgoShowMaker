@@ -1,3 +1,11 @@
+/**
+ * 測試模組：camera-embed-parity.test
+ *
+ * 驗證重點：camera embed parity.test 相關功能的公開行為、回歸條件與錯誤邊界。
+ * 執行環境：Node.js 單元／契約測試；聚焦可重複的行為邊界。
+ * 檔案結構：先準備 fixture、替代物與共用 helper，再以具名案例驗證使用者可觀察結果。
+ * 維護原則：功能規格改變時同步更新案例理由；不得只放寬斷言來掩蓋失敗。
+ */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -46,6 +54,9 @@ function cameraSurface(childHeight, topHeight) {
   return { context, canvas };
 }
 
+// -----------------------------------------------------------------------------
+// 測試案例：下列具名案例各自描述一項可觀察契約。
+// -----------------------------------------------------------------------------
 test('each canvas keeps the original viewport-relative camera scale', () => {
   const editor = cameraSurface(650, 900);
   const runtime = cameraSurface(720, 900);
@@ -60,4 +71,32 @@ test('each canvas keeps the original viewport-relative camera scale', () => {
   );
   assert.ok(Math.abs(renderedScale(editor) - 0.92 * 650 / 900) < 1e-12);
   assert.ok(Math.abs(renderedScale(runtime) - 0.92 * 720 / 900) < 1e-12);
+});
+
+test('presentation camera composes after every base camera and can be disabled for edit mode', () => {
+  const surface = cameraSurface(720, 900);
+  const transform = () => Array.from(
+    surface.canvas.children[1].getAttribute('transform').matchAll(/-?\d+(?:\.\d+)?/g),
+    match => Number(match[0])
+  );
+  const closeTo = expected => {
+    const actual = transform();
+    assert.equal(actual.length, expected.length);
+    actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) < 1e-9,
+      `${value} should match ${expected[index]}`));
+  };
+
+  surface.context.setCamera(100, 200, 1, false);
+  surface.context.setPresentationCameraTransform({
+    panXRatio: 0.1,
+    panYRatio: -0.1,
+    zoomFactor: 1.5
+  }, true, true);
+  closeTo([648, 48, 1.2]);
+
+  surface.context.setCamera(200, 100, 0.5, false);
+  closeTo([648, 228, 0.6]);
+
+  surface.context.setPresentationCameraTransform(null, true, false);
+  closeTo([560, 320, 0.4]);
 });

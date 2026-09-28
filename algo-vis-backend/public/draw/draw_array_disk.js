@@ -1,3 +1,11 @@
+/**
+ * 模組：圓盤陣列繪圖器
+ *
+ * 責任：將陣列值呈現為垂直排列的圓盤／柱狀結構，供 Hanoi 類動畫及一般序列使用。
+ * 資料流：先統一 style list，再依值與陣列長度計算圓盤寬度、堆疊位置及外框，最後登錄每項錨點。
+ * 重要不變條件：位置查詢的 index 次序、堆疊方向與實際 SVG transform 必須一致。
+ * 相容性：空值、非數字值與舊 style 仍以最小安全寬度顯示。
+ */
 // draw_array_disk.js
 ; (function () {
   const NS = 'http://www.w3.org/2000/svg';
@@ -5,6 +13,9 @@
   const minDiskWidth = 40;
   const diskWidthStep = 20;
 
+  // ---------------------------------------------------------------------------
+  // 區段：圓盤堆疊繪製
+  // ---------------------------------------------------------------------------
   function draw_array_disk(
     g,
     groupID,
@@ -13,7 +24,8 @@
     index_range = [],
     itemsPerRow = Infinity,
     index = 0,
-    gap = 0
+    gap = 0,
+    capacity = null
   ) {
     const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
     const rowStep = rowH + gaps.vertical;
@@ -49,11 +61,16 @@
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
 
     // 計算最大盤子寬度
-    const maxVal = array.length > 0 ? Math.max(...array) : 5;
+    const configuredCapacity = Number.isFinite(Number(capacity))
+      ? Math.max(0, Math.trunc(Number(capacity)))
+      : null;
+    const maxVal = Math.max(1, configuredCapacity || 0, array.length > 0 ? Math.max(...array) : 0);
     const maxDiskWidth = minDiskWidth + (maxVal - 1) * diskWidthStep;
 
     const baseWidth = baseStyle ? parseFloat(baseStyle.color) : maxDiskWidth + 20;
-    const pegHeight = pegStyle ? parseFloat(pegStyle.color) : (maxVal + 1) * rowStep;
+    const pegHeight = pegStyle
+      ? parseFloat(pegStyle.color)
+      : ((configuredCapacity == null ? maxVal : configuredCapacity) + 1) * rowStep;
 
     const centerX = baseWidth / 2;
     const bottomY = pegHeight; // 以底座底部為 0,0 往下畫，所以 y=pegHeight 是地板
@@ -102,6 +119,12 @@
     peg.setAttribute('fill', '#e0e0e0');
     peg.setAttribute('stroke', '#333');
     peg.setAttribute('data-alive', '1');
+
+    // The stand is background infrastructure, just like an outerframe. Keep
+    // both rectangles below every disk cell and presentation decoration even
+    // when an existing disk group is reused across frames.
+    g.prepend(peg);
+    g.prepend(base);
 
     // 3. 畫盤子 (Disks)
     // 陣列 index 0 是最上方盤子，所以要從底部開始畫，index 越大 y 越大
@@ -160,6 +183,9 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // 區段：圓盤 anchor 查詢
+  // ---------------------------------------------------------------------------
   function getDiskPosition(groupID, index, anchor = "center") {
     const vp = window.getViewport && window.getViewport();
     if (!vp) return { x: 0, y: 0 };
