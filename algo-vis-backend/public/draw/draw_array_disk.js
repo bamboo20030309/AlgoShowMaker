@@ -24,7 +24,8 @@
     index_range = [],
     itemsPerRow = Infinity,
     index = 0,
-    gap = 0
+    gap = 0,
+    capacity = null
   ) {
     const gaps = window.resolveArrayGaps ? window.resolveArrayGaps(gap) : { horizontal: Number(gap) || 0, vertical: Number(gap) || 0 };
     const rowStep = rowH + gaps.vertical;
@@ -60,11 +61,16 @@
     const ranged_array = array.filter((v, i) => i >= index_range[0] && i <= index_range[1]);
 
     // 計算最大盤子寬度
-    const maxVal = array.length > 0 ? Math.max(...array) : 5;
+    const configuredCapacity = Number.isFinite(Number(capacity))
+      ? Math.max(0, Math.trunc(Number(capacity)))
+      : null;
+    const maxVal = Math.max(1, configuredCapacity || 0, array.length > 0 ? Math.max(...array) : 0);
     const maxDiskWidth = minDiskWidth + (maxVal - 1) * diskWidthStep;
 
     const baseWidth = baseStyle ? parseFloat(baseStyle.color) : maxDiskWidth + 20;
-    const pegHeight = pegStyle ? parseFloat(pegStyle.color) : (maxVal + 1) * rowStep;
+    const pegHeight = pegStyle
+      ? parseFloat(pegStyle.color)
+      : ((configuredCapacity == null ? maxVal : configuredCapacity) + 1) * rowStep;
 
     const centerX = baseWidth / 2;
     const bottomY = pegHeight; // 以底座底部為 0,0 往下畫，所以 y=pegHeight 是地板
@@ -113,6 +119,12 @@
     peg.setAttribute('fill', '#e0e0e0');
     peg.setAttribute('stroke', '#333');
     peg.setAttribute('data-alive', '1');
+
+    // The stand is background infrastructure, just like an outerframe. Keep
+    // both rectangles below every disk cell and presentation decoration even
+    // when an existing disk group is reused across frames.
+    g.prepend(peg);
+    g.prepend(base);
 
     // 3. 畫盤子 (Disks)
     // 陣列 index 0 是最上方盤子，所以要從底部開始畫，index 越大 y 越大

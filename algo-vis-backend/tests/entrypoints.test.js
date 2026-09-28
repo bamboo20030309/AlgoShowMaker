@@ -37,17 +37,17 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-12'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-36'));
+  assert.ok(html.includes('trace-model.js?v=trace-37'));
   assert.ok(html.includes('trace-directive-assist.js?v=directive-24'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
-  assert.ok(html.includes('trace-code-model.js?v=code-27'));
-  assert.ok(html.includes('trace-events.js?v=trace-51'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-241'));
+  assert.ok(html.includes('trace-code-model.js?v=code-29'));
+  assert.ok(html.includes('trace-events.js?v=trace-52'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-253'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
-  assert.ok(html.includes('trace-code-presenter.js?v=code-30'));
+  assert.ok(html.includes('trace-code-presenter.js?v=code-32'));
   assert.ok(html.includes('trace-view-source.js?v=trace-15'));
   assert.ok(html.includes('trace-editor.js?v=trace-25'));
   assert.ok(html.includes('compile.js?v=syntax-7'));
@@ -60,7 +60,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=slide-delete-action-225'));
+  assert.ok(slides.includes('slides.js?v=tree-slots-226'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
@@ -88,8 +88,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(slides.includes('slide-structures.js?v=21'));
-  assert.ok(legacy.includes('slide-structures.js?v=7'));
+  assert.ok(slides.includes('slide-structures.js?v=22'));
+  assert.ok(legacy.includes('slide-structures.js?v=8'));
   assert.ok(html.includes('trace-arrow-model.js?v=arrow-8'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
@@ -98,21 +98,23 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-24'));
+  assert.ok(html.includes('trace-rules.js?v=trace-25'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
-    const version = name === 'segment_tree' ? 'segment-label-3' : 'gap-1';
+    const version = name === 'segment_tree'
+      ? 'segment-label-3'
+      : name === 'disk' ? 'capacity-2' : 'gap-1';
     assert.ok(html.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(slides.includes(`draw/draw_array_${name}.js?v=${version}`));
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
   assert.ok(html.includes('draw/draw_2Darray.js?v=matrix-labels-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-51'));
+  assert.ok(html.includes('trace-events.js?v=trace-52'));
   const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
   assert.ok(html.includes('trace-camera.js?v=trace-6'));
-  assert.ok(html.includes('trace-player.js?v=trace-25'));
+  assert.ok(html.includes('trace-player.js?v=trace-26'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
   assert.ok(html.includes('trace-studio.js?v=trace-123'));

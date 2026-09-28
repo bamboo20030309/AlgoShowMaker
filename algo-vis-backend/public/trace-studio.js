@@ -3478,6 +3478,7 @@
     const canvasTab = document.querySelector('.tab-btn[data-tab="tab-canvas"]');
     if (canvasTab && !canvasTab.classList.contains('active')) canvasTab.click();
     ensureStudioData();
+    window.ASMTraceRenderers?.preflightEventAvailability?.(trace);
     buildUi();
     document.body.classList.add('asm-trace-studio-open');
     if (historyTrace !== trace) resetHistory();

@@ -287,6 +287,7 @@
       sourceCode: typeof source.sourceCode === 'string' ? source.sourceCode : '',
       sourceDeclarations: Array.isArray(source.sourceDeclarations) ? clone(source.sourceDeclarations) : [],
       sourceStructure: Array.isArray(source.sourceStructure) ? clone(source.sourceStructure) : [],
+      codeHideRanges: Array.isArray(source.codeHideRanges) ? clone(source.codeHideRanges) : [],
       provenance: source.provenance && typeof source.provenance === 'object' ? clone(source.provenance) : null,
       sliceMode: source.sliceMode === 'manual' ? 'manual' : source.sliceMode === 'full' ? 'full' : 'auto',
       variables,

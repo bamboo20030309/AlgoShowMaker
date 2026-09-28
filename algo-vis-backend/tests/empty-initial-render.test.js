@@ -35,7 +35,7 @@ function renderWindow() {
     cell.setAttribute('data-alive', '1');
     group.append(cell);
   };
-  for (const name of ['draw_array_outerframe.js', 'draw_array_normal.js']) {
+  for (const name of ['draw_array_outerframe.js', 'draw_array_normal.js', 'draw_array_disk.js']) {
     window.eval(fs.readFileSync(path.join(__dirname, '../public/draw', name), 'utf8'));
   }
   const renderer = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8')
@@ -79,6 +79,12 @@ int main() {
   assert.equal(array.querySelector('.outerframe-bg').getAttribute('width'), '56');
   assert.equal(array.querySelectorAll('[data-trace-index]').length, 0);
   assert.equal(array.querySelectorAll('[id^="cell-"]').length, 0);
+
+  const emptyDisk = draw(first, ids.arr, 'disk');
+  assert.equal(emptyDisk.getAttribute('data-layout'), 'disk');
+  assert.ok(emptyDisk.querySelector('.disk-base'), 'an empty disk renderer keeps its base');
+  assert.ok(emptyDisk.querySelector('.disk-peg'), 'an empty disk renderer keeps its peg');
+  assert.equal(emptyDisk.querySelectorAll('[id^="cell-"]').length, 0);
 
   const number = draw(first, ids.number, 'original-cell');
   assert.equal(number.querySelectorAll('[data-trace-index]').length, 1);

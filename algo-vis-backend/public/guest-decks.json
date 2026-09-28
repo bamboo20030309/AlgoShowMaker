@@ -80,6 +80,15 @@
       ],
       "hints": ["區間修改", "區間和"],
       "archive": "/guest-decks/segment-tree-teaching.asmdeck?v=segment-deck-2"
+    },
+    {
+      "id": "hanoi-teaching",
+      "title": "河內塔 (Tower of Hanoi)",
+      "categories": [
+        "Backtracking"
+      ],
+      "hints": ["遞迴", "分治"],
+      "archive": "/guest-decks/hanoi-teaching.asmdeck?v=hanoi-deck-1"
     }
   ]
 }

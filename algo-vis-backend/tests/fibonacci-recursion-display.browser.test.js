@@ -78,10 +78,13 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
     assert.ok(labels.returned.includes('1'), 'returned node shows the numeric result');
     assert.ok(!labels.returned.includes('F(2)'), 'returned node no longer shows the pending call');
 
-    const replacementCamera = await page.evaluate(async sourceTrace => {
+    const replacementCamera = await page.evaluate(async ({ sourceTrace, returnedId }) => {
       const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
-      const beforeFrame = document.frames[7];
-      const replacementFrame = document.frames[8];
+      const replacementIndex = document.frames.findIndex(frame => (
+        frame.snapshotIds.includes(returnedId)
+      ));
+      const beforeFrame = document.frames[Math.max(0, replacementIndex - 1)];
+      const replacementFrame = document.frames[replacementIndex];
       const read = () => {
         const bounds = window.ASMTraceRenderers.currentBounds();
         const keys = window.ASMTraceRenderers.currentObjectKeys();
@@ -111,7 +114,7 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
         animatePositions: false, animateEvents: false
       });
       return { before, replacement: read() };
-    }, trace);
+    }, { sourceTrace: trace, returnedId: returned.id });
     assert.deepEqual(replacementCamera.replacement.staleReplacementChildren, [],
       `same-activation handoff removes detached live cell aliases: ${JSON.stringify(replacementCamera)}`);
     assert.ok(Math.abs(
@@ -156,12 +159,13 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
         const nodes = [...window.document.querySelectorAll(
           `[data-trace-event-ids~="${call.id}"]`
         )];
+        await new Promise(resolve => setTimeout(resolve, 520));
+        window.ASMTraceCodePresenter.setActiveEvent(call.id, 'end');
         const result = {
           text: nodes.map(node => node.textContent).join(''),
           complete: nodes.length > 0 && nodes.every(node => node.classList.contains('is-complete')),
           frameId: frame?.id || ''
         };
-        await new Promise(resolve => setTimeout(resolve, 520));
         return result;
       };
       return {
@@ -282,8 +286,8 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
       const fromFrame = document.frames[8];
       const toFrame = document.frames[9];
       const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-      const read = () => [...window.document.querySelectorAll(
-        '.asm-trace-layout-edge[data-trace-arrow-from-key="F_3"]'
+      const read = parentKey => [...window.document.querySelectorAll(
+        `.asm-trace-layout-edge[data-trace-arrow-from-key="${parentKey}"]`
       )].map(edge => {
         const root = window.document.getElementById('asm-trace-root');
         const fromKey = edge.dataset.traceArrowFromKey;
@@ -302,8 +306,8 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
           toGap: Math.hypot(line[2] - (toBox.x + toBox.width / 2), line[3] - toBox.y)
         };
       });
-      const readFlow = () => [...window.document.querySelectorAll(
-        '.asm-trace-recursion-flow-enter[data-trace-arrow-from-key="F_3"]'
+      const readFlow = parentKey => [...window.document.querySelectorAll(
+        `.asm-trace-recursion-flow-enter[data-trace-arrow-from-key="${parentKey}"]`
       )].map(edge => {
         const root = window.document.getElementById('asm-trace-root');
         const fromKey = edge.dataset.traceArrowFromKey;
@@ -328,36 +332,48 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
       await window.ASMTraceRenderers.renderFrame(document, fromFrame, null, {
         animatePositions: false, animateEvents: false
       });
-      const before = read();
-      const beforeFlow = readFlow();
       const beforeAll = [...window.document.querySelectorAll('.asm-trace-layout-edge')]
         .map(edge => [edge.dataset.traceArrowFromKey, edge.dataset.traceArrowToKey]);
+      const childCounts = new Map();
+      beforeAll.forEach(([from]) => childCounts.set(from, (childCounts.get(from) || 0) + 1));
+      const parentKey = [...childCounts.entries()]
+        .filter(([, count]) => count === 2)
+        .sort(([left], [right]) => Number(
+          window.document.querySelector(`[data-trace-object-key="${right}"]`)
+            ?.dataset.traceLayoutDepth || 0
+        ) - Number(
+          window.document.querySelector(`[data-trace-object-key="${left}"]`)
+            ?.dataset.traceLayoutDepth || 0
+        ))[0]?.[0] || '';
+      const before = read(parentKey);
+      const beforeFlow = readFlow(parentKey);
       const transition = window.ASMTraceRenderers.renderFrame(document, toFrame, fromFrame, {
         animatePositions: true, animateEvents: false, direction: 1
       });
       await pause(20);
-      const start = read();
-      const startFlow = readFlow();
+      const start = read(parentKey);
+      const startFlow = readFlow(parentKey);
       await pause(120);
-      const middle = read();
-      const middleFlow = readFlow();
+      const middle = read(parentKey);
+      const middleFlow = readFlow(parentKey);
       await transition;
       return {
-        before, beforeAll, start, middle, end: read(),
-        beforeFlow, startFlow, middleFlow, endFlow: readFlow()
+        parentKey, targets: before.map(edge => edge.toKey),
+        before, beforeAll, start, middle, end: read(parentKey),
+        beforeFlow, startFlow, middleFlow, endFlow: readFlow(parentKey)
       };
     }, trace);
     const edgeByTarget = (items, key) => items.find(item => item.toKey === key);
     const lineDistance = (left, right) => Math.hypot(...left.line.map(
       (value, index) => value - right.line[index]
     ));
-    for (const key of ['F_4', 'F_5']) {
+    for (const key of reflowEdges.targets) {
       const before = edgeByTarget(reflowEdges.before, key);
       const start = edgeByTarget(reflowEdges.start, key);
       const middle = edgeByTarget(reflowEdges.middle, key);
       const end = edgeByTarget(reflowEdges.end, key);
       assert.ok(before && start && middle && end,
-        `F_3 keeps both child edges during reflow (${key}): ${JSON.stringify(reflowEdges)}`);
+        `${reflowEdges.parentKey} keeps both child edges during reflow (${key}): ${JSON.stringify(reflowEdges)}`);
       assert.ok([start, middle, end].every(edge => edge.fromGap < 24 && edge.toGap < 24),
         `F_3 child edge stays attached throughout frame 9 to 10: ${JSON.stringify(reflowEdges)}`);
       const total = lineDistance(before, end);

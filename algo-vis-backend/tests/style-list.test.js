@@ -35,6 +35,48 @@ test('comma style lists reject missing, unknown and repeated types', () => {
   }
 });
 
+test('comma target lists expand objects independently without splitting indexed selectors', () => {
+  const [frame] = findFrameDirectives(`int main(){int a[4]={},b[4]={},c[4]={},n=3;
+// @frame a,b,c
+// @style a, b, c background AV_red when value < n
+// @style a[0,2], b[1] highlight,point AV_green
+}`);
+  assert.deepEqual(frame.styles.slice(0, 3).map(style => [
+    style.targetName, style.selector.type, style.styleType, style.color, style.when.expression
+  ]), [
+    ['a', 'all', 'background', 'AV_red', 'value < n'],
+    ['b', 'all', 'background', 'AV_red', 'value < n'],
+    ['c', 'all', 'background', 'AV_red', 'value < n']
+  ]);
+  assert.deepEqual(frame.styles.slice(3).map(style => [
+    style.targetName, style.styleType, style.selector.type
+  ]), [
+    ['a', 'highlight', 'segments'],
+    ['a', 'point', 'segments'],
+    ['b', 'highlight', 'index'],
+    ['b', 'point', 'index']
+  ]);
+  assert.equal(new Set(frame.styles.map(style => style.id)).size, frame.styles.length);
+});
+
+test('comma target lists work inside presets and reject empty targets', () => {
+  const [frame] = findFrameDirectives(`// @preset colours
+// @object a
+// @object b
+// @style a,b background AV_green
+// @endpreset
+int main(){int a[2]={},b[2]={};
+// @frame use colours
+}`);
+  assert.deepEqual(frame.styles.map(style => [style.targetName, style.color]), [
+    ['a', 'AV_green'], ['b', 'AV_green']
+  ]);
+  assert.throws(() => findFrameDirectives(`int main(){int a[2]={},b[2]={};
+// @frame a,b
+// @style a,,b background AV_green
+}`), /目標列表無效/);
+});
+
 test('preset list styles retain independent override priority', () => {
   const frame=findFrameDirectives(`// @defaults
 // @style a[0] highlight,point AV_blue

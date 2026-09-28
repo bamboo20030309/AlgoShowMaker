@@ -8,8 +8,8 @@
  * 分析器讀取；它們描述畫面切點與呈現方式，不參與 C++ 演算法運算。
  */
 
-#include "AV.hpp"
 #include <bits/stdc++.h>
+#include "AV.hpp"
 using namespace std;
 
 int N;
@@ -55,7 +55,10 @@ void draw_all_pegs(map<int, string> disk_colors = {}) {
     for(int i=0; i<data.size(); ++i) {
         if(disk_colors.count(data[i])) color_groups[disk_colors[data[i]]].push_back(i);
     }
-    for(auto const& [color, indices] : color_groups) {
+    for(map<string, vector<int>>::const_iterator it = color_groups.begin();
+        it != color_groups.end(); ++it) {
+        const string& color = it->first;
+        const vector<int>& indices = it->second;
         styles.push_back({{"background", color}, indices});
     }
 

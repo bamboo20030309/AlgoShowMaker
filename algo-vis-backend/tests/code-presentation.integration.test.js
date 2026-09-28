@@ -24,6 +24,39 @@ test('code snippet body is fully transparent without removing event highlight ba
   assert.match(css, /\.asm-trace-code-event-span[^}]+background:/s);
 });
 
+test('@code hide removes its complete range from generated code snippets', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-code-model.js');
+  const source = `int main() {
+  int visible = 0;
+  // @code hide
+  visible = 7;
+  // @frame visible
+  // @endcode
+  visible++;
+}`;
+  const lines = context.ASMTraceCodeModel.sourceLines(source);
+  const hidden = context.ASMTraceCodeModel.presentationLineNumbers(lines);
+  assert.ok([3, 4, 5, 6].every(line => hidden.has(line)));
+  assert.equal(hidden.has(2), false);
+  assert.equal(hidden.has(7), false);
+});
+
+test('@code hide metadata survives reload while old trace documents remain compatible', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-model.js');
+  const oldDocument = context.ASMTraceModel.normalizeTraceDocument({ sourceCode: 'int main(){}' });
+  assert.deepEqual(Array.from(oldDocument.codeHideRanges), []);
+  const saved = JSON.parse(JSON.stringify({
+    sourceCode: '// @code hide\nint hidden;\n// @endcode',
+    codeHideRanges: [{ from: 0, contentFrom: 13, contentTo: 26, to: 38, line: 1, endLine: 3 }]
+  }));
+  const reopened = context.ASMTraceModel.normalizeTraceDocument(saved);
+  assert.deepEqual(JSON.parse(JSON.stringify(reopened.codeHideRanges)), saved.codeHideRanges);
+});
+
 test('runtime events retain exact source spans for expression-level code highlighting', async () => {
   const source = `#include <bits/stdc++.h>
 using namespace std;
@@ -963,7 +996,31 @@ test('code jumps actually move the expanded page to the next focus line', () => 
   const thirdSameFocus = { id: 'thirdSameFocus', events: [] };
   assert.equal(presenter.transitionDelay(trace, thirdSameFocus), 0,
     'a layout cleanup on the same focused recursion line must not stall canvas motion');
+
+  plans.empty = { sourceCode: 'test', layoutKey: '', focusLine: 0, fragments: [] };
+  assert.equal(presenter.transitionDelay(trace, { id: 'empty', events: [] }), 0,
+    'an empty code plan must never stall canvas motion');
   dom.window.close();
+});
+
+test('an eventless timeline frame inherits the preceding code snippet', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  load(context, 'trace-code-model.js');
+  const sourceCode = 'int main() {\n  int value = 1;\n  value++;\n}\n';
+  const first = {
+    id: 'first', source: { line: 3, function: 'main' },
+    events: [{ id: 'write-value', type: 'write', line: 3, expression: 'value++' }]
+  };
+  const second = { id: 'second', source: { line: 3, function: 'main' }, events: [] };
+  const document = { sourceCode, frames: [first, second] };
+  const firstPlan = context.ASMTraceCodeModel.planFrame(document, first);
+  const secondPlan = context.ASMTraceCodeModel.planFrame(document, second);
+  assert.ok(firstPlan.fragments.length > 0);
+  assert.equal(secondPlan.inheritedFromFrameId, first.id);
+  assert.equal(secondPlan.layoutKey, firstPlan.layoutKey);
+  assert.equal(secondPlan.focusLine, firstPlan.focusLine);
+  assert.deepEqual(secondPlan.fragments, firstPlan.fragments);
 });
 
 test('a single omitted algorithm line stays visible instead of becoming an ellipsis', () => {

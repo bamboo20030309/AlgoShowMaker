@@ -301,7 +301,7 @@
         visit(depth + 1, order * 2 + 1);
       };
       visit(0, 0);
-    } else if (layout === 'binary') {
+    } else if (layout === 'slots' || layout === 'binary') {
       const maxDepth = Math.max(...existing.map(item => item.depth));
       existing.forEach(item => {
         const span = (2 ** (maxDepth - item.depth)) * dx;
@@ -457,8 +457,9 @@
     const nodeWidth = NODE_W;
     const nodeHeight = contentHeight;
     const gap = clamp(number(widget.gap, 0), 0, 40);
-    const layout = ['compact', 'levelorder', 'binary', 'inorder', 'preorder', 'postorder'].includes(widget.treeLayout)
-      ? widget.treeLayout
+    const requestedLayout = widget.treeLayout === 'binary' ? 'slots' : widget.treeLayout;
+    const layout = ['compact', 'levelorder', 'slots', 'inorder', 'preorder', 'postorder'].includes(requestedLayout)
+      ? requestedLayout
       : 'compact';
     const horizontal = widget.treeHorizontal === true;
     const positions = explicitTreePositions(graph, layout, horizontal, gap);
