@@ -77,3 +77,13 @@
 - 未完成或環境阻塞：
 - 本機服務重啟：
 - Push／公開部署狀態：
+
+
+## 第二版交付（取代第一版逐幀標記設計）
+- 程式 commit：fd4ccc23d07fa1934594aea6f65b5e7509cdae73。
+- 依使用者回饋移除所有逐幀圓形／菱形／方形 DOM 與 CSS，只保留單一位置圓點與連續進度。最大寬度 220px；hover 只顯示目標／總幀數。
+- 未移除播放器原有關鍵幀導覽功能，本次僅調整幀條呈現。
+- 驗證：node --check public/front.js；node --test tests/playback-time.browser.test.js tests/entrypoints.test.js；git diff --check。
+- 結果：2 passed、0 failed、0 skipped。120 幀固定寬度、只有一個游標、首尾點選通過；既有拖曳與播放時間案例通過。
+- 無持久化欄位變更；未跑大型 regression。待主代理整合核實。
+- 3103 程序重啟仍沿用前次阻塞：未取得停止 PID 81256 的新授權，未再次嘗試強停。
