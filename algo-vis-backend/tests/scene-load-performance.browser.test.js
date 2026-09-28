@@ -55,8 +55,34 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
     setCamera(point.x,point.y,1,false);
   });
   await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='full'));
-  assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),3000);
+  await page.waitForFunction(()=>!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));
+  const populated = await page.locator('#asm-trace-root g[data-trace-index] > text').count();
+  assert.ok(populated > 0 && populated < 1000, `only nearby cells receive text: ${populated}`);
+  assert.equal(await page.evaluate(()=>{
+    const bounds=document.getElementById('arraySvg').getBoundingClientRect();
+    return [...document.querySelectorAll('#asm-trace-root g[data-trace-index]')].every(cell=>{
+      const b=cell.querySelector(':scope > rect').getBoundingClientRect();
+      return b.right<bounds.left || b.left>bounds.right || b.bottom<bounds.top || b.top>bounds.bottom || !!cell.querySelector(':scope > text');
+    });
+  }),true);
   assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').evaluateAll(nodes=>nodes.every(node=>node.textContent==='0')),true);
+  await page.evaluate(()=>{
+    window.__originalTextNodes=new Set(document.querySelectorAll('#asm-trace-root g[data-trace-index] > text'));
+    setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.599,false);
+  });
+  await page.waitForFunction(()=>!document.querySelector('#asm-trace-root g[data-trace-index] > text'));
+  await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.6,false));
+  await page.waitForFunction(()=>document.querySelector('#asm-trace-root g[data-trace-index] > text')&&!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));
+  assert.ok(await page.evaluate(()=>[...document.querySelectorAll('#asm-trace-root g[data-trace-index] > text')].some(node=>window.__originalTextNodes.has(node))),'pooled text nodes are reused');
+  assert.equal(await page.evaluate(()=>ASMStructureLOD.level(23.96)), 'simple');
+  assert.equal(await page.evaluate(()=>ASMStructureLOD.level(24)), 'full');
+  await page.evaluate(()=>{
+    const rect=document.querySelector('#asm-trace-root g[data-trace-index="30,30"] > rect'),b=rect.getBBox();
+    const point=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(rect.getScreenCTM()).matrixTransform(getViewport().getScreenCTM().inverse());
+    setCamera(point.x,point.y,1,false);
+  });
+  await page.waitForFunction(()=>document.querySelector('#asm-trace-root g[data-trace-index="30,30"] > text')&&!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));
+  assert.ok(await page.evaluate(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(g=>g._asmLod.pool.length<=256)));
   // Screenshot evidence stays local; no test-results files are committed.
   if (process.env.ASM_LOD_SCREENSHOTS === '1') {
     await page.screenshot({path:path.join(root,'test-results/culling-profile/lod-full.png')});
@@ -141,6 +167,42 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   });
   assert.equal(typography.first,typography.second);assert.equal(typography.repeatCalls,0);
   assert.ok(typography.firstCalls>0&&typography.changedCalls>0);assert.equal(typography.changed,typography.fresh);
+  // Actual cell width, rather than a fixed nominal 40px width, controls LOD.
+  await page.evaluate(()=>{
+    const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+    svg.id='lod-variable-width-fixture';svg.style.cssText='position:fixed;left:0;top:0;width:200px;height:100px';
+    document.body.append(svg);const group=document.createElementNS(ns,'g');svg.append(group);
+    group.setAttribute('transform','scale(0.4)');ASMStructureLOD.begin(group,0.4,true);
+    for(const [index,width] of [40,80].entries()){
+      const cell=document.createElementNS(ns,'g'),rect=document.createElementNS(ns,'rect');
+      cell.dataset.traceIndex=String(index);cell.append(rect);group.append(cell);
+      for(const [key,value] of Object.entries({x:index*100,y:0,width,height:40}))rect.setAttribute(key,value);
+      ASMStructureLOD.record(group,cell,'123',index*100,0,width,40);
+    }
+    ASMStructureLOD.finish(group);
+  });
+  await page.waitForFunction(()=>document.querySelector('#lod-variable-width-fixture g[data-trace-index="1"] > text'));
+  assert.equal(await page.locator('#lod-variable-width-fixture g[data-trace-index="0"] > text').count(),0);
+  await page.evaluate(()=>document.getElementById('lod-variable-width-fixture').remove());
+  const numeric=await page.evaluate(()=>{
+    const svg=document.getElementById('arraySvg'),g=document.createElementNS(svg.namespaceURI,'g');svg.append(g);
+    const proto=SVGTextContentElement.prototype,original=proto.getComputedTextLength,measured=[];
+    proto.getComputedTextLength=function(){measured.push(this.textContent);return original.call(this);};
+    try {
+      clearSvgTextFitCache();g.style.fontFamily='monospace';
+      const first=fitSvgText(g,'0123456789',1000,40),cold=measured.slice();measured.length=0;
+      fitSvgText(g,'9876543210',1000,40);const warm=measured.length;
+      g.style.letterSpacing='1px';fitSvgText(g,'0123456789',1000,40);const changed=measured.length;measured.length=0;
+      fitSvgText(g,'-12.3',1000,40);const mixed=measured.slice();measured.length=0;
+      document.fonts.dispatchEvent(new Event('loadingdone'));fitSvgText(g,'0123456789',1000,40);
+      return {first,cold,warm,changed,mixed,invalidated:measured.length};
+    }finally{proto.getComputedTextLength=original;g.remove();}
+  });
+  assert.ok(numeric.cold.length>0&&numeric.cold.length<=40);
+  assert.ok(numeric.cold.every(value=>/^[0-9]$/.test(value)));
+  assert.equal(numeric.warm,0);
+  assert.ok(numeric.changed>0&&numeric.invalidated>0);
+  assert.ok(numeric.mixed.length>0&&numeric.mixed.every(value=>value==='-12.3'));
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({studioEntryMs:entry,clone,typography}));
  }finally{await browser?.close();server.kill();}

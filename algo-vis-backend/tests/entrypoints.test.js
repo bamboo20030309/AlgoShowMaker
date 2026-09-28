@@ -43,7 +43,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-36'));
   assert.ok(html.includes('trace-events.js?v=trace-53'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-257'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-258'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
@@ -164,7 +164,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
   assert.ok(html.includes('draw/draw_array.js?v=trace-3'));
   for (const surface of [html, slides, legacy]) {
-    assert.ok(surface.includes('draw/draw_array_utils.js?v=fit-3'));
+    assert.ok(surface.includes('draw/draw_array_utils.js?v=fit-4'));
   }
   assert.ok(html.includes('trace-studio.css?v=trace-58'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,

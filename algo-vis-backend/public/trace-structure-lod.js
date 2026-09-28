@@ -2,43 +2,47 @@
 (function () {
   const groups = new Set();
   let queued = 0;
-  let settleTimer = 0;
+  let jobs = [];
+  let worker = 0;
+  let revision = 0;
   let observer;
   let observedViewport;
   const NS = 'http://www.w3.org/2000/svg';
   function level(pixels, previous) {
-    if (previous === 'full' && pixels >= 24) return 'full';
+    if (pixels >= 24) return 'full';
     if (previous === 'overview' && pixels < 10) return 'overview';
-    return pixels >= 28 ? 'full' : pixels < 8 ? 'overview' : 'simple';
+    return pixels < 8 ? 'overview' : 'simple';
   }
   function begin(group, scale, enabled) {
     if (!enabled) return;
-    group._asmLod = {level: level(40 * scale), records: [], paths: []};
+    group._asmLod = {level: level(40 * scale), records: [], paths: [], visible: new Set(), pool: []};
     group.dataset.asmLod = group._asmLod.level;
     groups.add(group);
   }
   function record(group, cell, value, x, y, width, height) {
     const state = group._asmLod;
     if (!state) return false;
-    const item = {cell, value: String(value), x, y, width, height};
+    const item = {cell, value: String(value), x, y, width, height, text: null};
     state.records.push(item);
     // Geometry is explicit even when glyphs have not been created.
     cell.setAttribute('data-outerframe-left', x);
     cell.setAttribute('data-outerframe-top', y);
     cell.setAttribute('data-outerframe-right', x + width);
     cell.setAttribute('data-outerframe-bottom', y + height);
-    return state.level !== 'full';
+    return true; // Text is populated only for visible cells after final camera placement.
   }
   function textFor(group, item) {
-    let text = item.cell.querySelector(':scope > text');
+    let text = item.text;
     if (!text) {
-      text = document.createElementNS(NS, 'text');
+      text = group._asmLod.pool.pop() || document.createElementNS(NS, 'text');
       text.setAttribute('text-anchor', 'middle');
       text.setAttribute('dominant-baseline', 'middle');
       text.setAttribute('x', item.x + item.width / 2);
       text.setAttribute('y', item.y + item.height / 2);
       if (item.cell.hasAttribute('data-trace-index')) text.setAttribute('data-trace-content-role', 'value');
+      else text.removeAttribute('data-trace-content-role');
       item.cell.append(text);
+      item.text = text;
     }
     text.textContent = item.value;
     text.setAttribute('font-size', window.fitSvgText(group, item.value, item.width, item.height));
@@ -54,12 +58,7 @@
       const rect = item.cell.querySelector(':scope > rect');
       if (!rect) continue;
       rect.removeAttribute('data-asm-lod-rect');
-      const text = item.cell.querySelector(':scope > text');
-      if (state.level === 'full') {
-        textFor(group, item);
-      } else {
-        text?.remove();
-      }
+
       if (state.level === 'overview') {
         // Merge only base cells. Independent highlight/point/mark layers remain.
         const color = rect.getAttribute('fill') || '#fff';
@@ -81,13 +80,39 @@
     }
     group.dataset.asmLod = state.level;
   }
+  function release(state, item) {
+    if (!item.text) return;
+    item.text.remove();
+    if (state.pool.length < 256) state.pool.push(item.text);
+    item.text = null;
+  }
   function finish(group) {
     if (!group._asmLod) return;
-    // Full-detail text was already fitted by draw_block.
-    if (group._asmLod.level !== 'full') paint(group);
+    paint(group);
+    schedule();
+  }
+  function pump() {
+    worker = 0;
+    const started = performance.now();
+    let count = 0;
+    while (jobs.length && performance.now() - started < 4 && count < 128) {
+      const group = jobs[0].group;
+      window.withSvgTextFitStyle(group, () => {
+        while (jobs.length && jobs[0].group === group && performance.now() - started < 4 && count < 128) {
+          const job = jobs.shift();
+          if (job.revision !== revision || !group.isConnected || !group._asmLod.visible.has(job.item)) continue;
+          textFor(group,job.item);
+          count++;
+        }
+      });
+    }
+    if (jobs.length) worker = requestAnimationFrame(pump);
+    else for (const group of groups) group.removeAttribute('data-asm-lod-pending');
   }
   function refresh() {
     queued = 0;
+    revision++;
+    jobs = [];
     const viewport = window.getViewport?.();
     if (viewport && viewport !== observedViewport) {
       observer?.disconnect(); observedViewport = viewport;
@@ -97,19 +122,36 @@
     for (const group of groups) {
       if (!group.isConnected) { groups.delete(group); continue; }
       const matrix = group.getScreenCTM();
-      if (!matrix) continue;
+      const canvas = group.ownerSVGElement;
+      if (!matrix || !canvas) continue;
+      const bounds = canvas.getBoundingClientRect();
       const state = group._asmLod;
-      const next = level(40 * Math.hypot(matrix.a, matrix.b), state.level);
-      if (next === state.level) continue;
-      state.level = next;
-      window.withSvgTextFitStyle(group, () => paint(group));
+      const scale = Math.hypot(matrix.a, matrix.b);
+      const content = state.records.find(item => item.cell.hasAttribute('data-trace-index')) || state.records[0];
+      const next = level((content?.width || 40) * scale, state.level);
+      if (next !== state.level) { state.level = next; paint(group); }
+      const wanted = new Set();
+      // Geometry comes from the draw records: no per-cell DOM measurement.
+      for (const item of state.records) {
+        if (item.width * scale + 1e-6 < 24) continue;
+        const x = matrix.a * item.x + matrix.c * item.y + matrix.e;
+        const y = matrix.b * item.x + matrix.d * item.y + matrix.f;
+        const dx = matrix.a * item.width, dy = matrix.b * item.width;
+        const ex = matrix.c * item.height, ey = matrix.d * item.height;
+        const left = Math.min(x,x+dx,x+ex,x+dx+ex), right = Math.max(x,x+dx,x+ex,x+dx+ex);
+        const top = Math.min(y,y+dy,y+ey,y+dy+ey), bottom = Math.max(y,y+dy,y+ey,y+dy+ey);
+        if (right < bounds.left-48 || left > bounds.right+48 || bottom < bounds.top-48 || top > bounds.bottom+48) continue;
+        wanted.add(item);
+      }
+      for (const item of state.visible) if (!wanted.has(item)) release(state,item);
+      state.visible = wanted;
+      for (const item of wanted) if (!item.text) jobs.push({group,item,revision});
+      group.toggleAttribute('data-asm-lod-pending', [...wanted].some(item=>!item.text));
     }
+    if (jobs.length && !worker) worker = requestAnimationFrame(pump);
   }
   function schedule() {
-    // Camera fitting may animate through high zoom on its way to overview.
-    // Wait for the transform to settle instead of building text mid-flight.
-    clearTimeout(settleTimer);
-    settleTimer = setTimeout(() => { if (!queued) queued = requestAnimationFrame(refresh); }, 80);
+    if (!queued) queued = requestAnimationFrame(refresh);
   }
   function adopt(source, clone) {
     const sourceNodes = [source, ...source.querySelectorAll('*')];
@@ -119,8 +161,10 @@
       if (!node._asmLod) continue;
       const target = mapping.get(node), state = node._asmLod;
       target._asmLod = {level:state.level,
-        records:state.records.map(item=>({...item,cell:mapping.get(item.cell)})),
+        records:state.records.map(item=>({...item,cell:mapping.get(item.cell),text:mapping.get(item.text)||null})),
+        visible:new Set(),pool:[],
         paths:state.paths.map(path=>mapping.get(path)).filter(Boolean)};
+      target._asmLod.visible = new Set(target._asmLod.records.filter(item=>item.text));
       groups.add(target);
     }
     schedule();

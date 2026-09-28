@@ -1949,6 +1949,7 @@
   // never satisfy markerMatchesEventTarget; scanning them per event is wasted.
   // Scope this to one probe so mutable scene maps cannot leave a stale cache.
   let availabilityMarkerIndex = null;
+  let availabilityExitIndex = null;
   function markerCandidates(elements) {
     return availabilityMarkerIndex?.get(elements) || elements || [];
   }
@@ -4481,9 +4482,9 @@
           const objectKey = objectKeyForVariable(eventFrame, variableId);
           if (placements?.has?.(objectKey) && elements?.has?.(objectKey)) keys.add(objectKey);
         }
-        elements?.forEach?.((element, key) => {
+        for (const [key, element] of markerCandidates(elements)) {
           if (markerMatchesEventTarget(element, target)) keys.add(key);
-        });
+        }
       }
       const operand = eventOperand(
         traceDocument, eventFrame, target, event?.payload?.after,
@@ -4497,6 +4498,14 @@
   function scopeExitVisualKeys(event, previousObjects) {
     const keys = new Set();
     const targets = (event?.targets || []).filter(target => target?.variableId);
+    const index = availabilityExitIndex?.get(previousObjects);
+    if (index) {
+      for (const target of targets) for (const [key, element] of index.get(target.variableId) || []) {
+        if (visualMatchesScopeExitTarget(element, target)) keys.add(key);
+      }
+      return keys;
+    }
+
     previousObjects?.forEach?.((element, key) => {
       const candidates = [
         element,
@@ -5169,9 +5178,31 @@
     traceDocument, eventFrame, placements, elements, previousObjects = null
   ) {
     const previousMarkerIndex = availabilityMarkerIndex;
+    const previousExitIndex = availabilityExitIndex;
+    availabilityExitIndex = new Map();
     availabilityMarkerIndex = new Map();
     for (const domain of [elements, previousObjects]) {
       if (!domain) continue;
+      const exitIndex = new Map();
+      const descendants = new WeakMap();
+      domain.forEach((element,key) => {
+        let candidates = descendants.get(element);
+        if (!candidates) {
+          candidates = [element,...(element?.querySelectorAll?.('[data-trace-source-variable-id], [data-trace-variable]') || [])];
+          if (element && typeof element === 'object') descendants.set(element,candidates);
+        }
+        for (const candidate of candidates) {
+          const ids = candidate?.dataset?.traceSourceVariableId
+            ? markerSourceVariableIds(candidate) : [candidate?.dataset?.traceVariable];
+          for (const id of ids) {
+            if (!id) continue;
+            if (!exitIndex.has(id)) exitIndex.set(id,[]);
+            exitIndex.get(id).push([key,candidate]);
+          }
+        }
+      });
+      availabilityExitIndex.set(domain,exitIndex);
+
       availabilityMarkerIndex.set(domain, new Map([...domain].filter(([, element]) => (
         Boolean(element?.dataset?.traceSourceVariableId)
       ))));
@@ -5230,6 +5261,7 @@
       return changed;
     } finally {
       availabilityMarkerIndex = previousMarkerIndex;
+      availabilityExitIndex = previousExitIndex;
     }
   }
 
@@ -7733,10 +7765,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-257';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-258';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-257', play, cancel, updateEventAvailability,
+    build: 'trace-258', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
