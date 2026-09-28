@@ -87,3 +87,9 @@
 - 結果：2 passed、0 failed、0 skipped。120 幀固定寬度、只有一個游標、首尾點選通過；既有拖曳與播放時間案例通過。
 - 無持久化欄位變更；未跑大型 regression。待主代理整合核實。
 - 3103 程序重啟仍沿用前次阻塞：未取得停止 PID 81256 的新授權，未再次嘗試強停。
+
+
+## 控制列靠右修訂
+- 使用者要求幀條、幀數、時間與語速控制整組靠右。
+- 幀條取消填滿剩餘空間，左側使用自動間距；延續 180px 基準／220px 上限，右側資訊與語速控制依既有順序靠齊。
+- 驗證：node --test tests/playback-time.browser.test.js tests/entrypoints.test.js，2 passed、0 failed；git diff --check 通過。純 CSS 版面修正，無資料格式變更，未跑大型驗證。

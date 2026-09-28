@@ -786,7 +786,7 @@ button.auto-stepping:hover {
 /* 進度條/幀條碼區域 */
 #frameTimeline {
   position: relative;
-  flex-grow: 1;
+  flex-grow: 0;
   flex-basis: 180px;
   min-width: 100px;
   max-width: 220px;
@@ -795,7 +795,7 @@ button.auto-stepping:hover {
   align-items: center;
   cursor: ew-resize;
   touch-action: none;
-  margin: 0 2px 0 12px;
+  margin: 0 2px 0 auto;
   user-select: none;
   --frame-progress: 0%;
 }
