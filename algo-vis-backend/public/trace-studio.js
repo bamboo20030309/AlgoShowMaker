@@ -3828,7 +3828,8 @@
     window.onObjectDragEnd = function (id, dx, dy, dragType, newPosSpec) {
       const object = document.getElementById(id);
       const key = object?.dataset.traceObjectKey;
-      if (trace && document.body.classList.contains('asm-trace-studio-open') && key && dragType !== 'start' && dragType !== 'end') {
+      if (trace && key && object?.classList.contains('draggable-object')
+          && dragType !== 'start' && dragType !== 'end') {
         const frameIds = frameIdsForScope();
         const currentFrameId = trace.frames[currentIndex]?.id;
         const binding = frameBinding(currentFrameId, key);

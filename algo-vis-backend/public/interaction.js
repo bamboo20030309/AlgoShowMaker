@@ -567,8 +567,10 @@ class CanvasInteractionManager {
       const [tx, ty] = (grp.getAttribute('data-translate') || '0,0')
                         .split(',').map(Number);
       let ntx = tx + wx, nty = ty + wy;
-      const traceDrag = this._isTraceStudio() && this.selected?.dataset.traceObjectKey
-        && this.selected.tagName.toLowerCase() !== 'line';
+      const traceObjectDrag = Boolean(this.selected?.dataset.traceObjectKey
+        && this.selected.classList.contains('draggable-object')
+        && this.selected.tagName.toLowerCase() !== 'line');
+      const traceDrag = this._isTraceStudio() && traceObjectDrag;
       if (traceDrag) {
         ntx = (evt.clientX - this._dragStart.x) / s;
         nty = (evt.clientY - this._dragStart.y) / s;
@@ -683,9 +685,11 @@ class CanvasInteractionManager {
         this.updateSelectionOverlay();
       } else {
         // 讀 base-offset
-        if (traceDrag) {
+        if (traceObjectDrag) {
           grp.setAttribute('transform', `${this._traceBaseTransform} translate(${ntx},${nty})`.trim());
-          window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
+          if (traceDrag) {
+            window.ASMTraceStudio?.moveBoundObjects?.(grp.dataset.traceObjectKey, ntx, nty);
+          }
           window.ASMTraceRenderers?.refreshArrows?.();
           this.updateSelectionOverlay();
           return;

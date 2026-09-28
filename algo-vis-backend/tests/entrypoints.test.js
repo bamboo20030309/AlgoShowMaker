@@ -118,7 +118,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-26'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-129'));
+  assert.ok(html.includes('trace-studio.js?v=trace-130'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
   assert.ok(html.includes('front.js?v=random-id-36'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
@@ -145,7 +145,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(read('interaction.js'), /selectExternal\(element\)/);
   assert.match(read('interaction.js'), /clearExternalSelection\(element = null\)/);
   assert.match(read('trace.css'), /\.asm-trace-code-panel\.selected \.asm-trace-code-body/);
-  assert.ok(html.includes('interaction.js?v=trace-40'));
+  assert.ok(html.includes('interaction.js?v=trace-41'));
   assert.match(read('trace-code-presenter.js'), /currentPlan\.layoutKey === nextPlan\.layoutKey/);
   assert.match(read('trace-code-presenter.js'), /is-transition-preparing/);
   assert.match(read('trace-code-presenter.js'), /playbackEventIds/);
