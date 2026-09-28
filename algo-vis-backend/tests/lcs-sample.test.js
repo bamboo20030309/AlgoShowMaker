@@ -27,7 +27,7 @@ test('LCS sample uses current matrix directives without the legacy introduction'
   assert.match(code, /set<string> ans;/);
   assert.doesNotMatch(code, /\b(?:dp|bridge|pathDirection|answerList|rowLabels|columnLabels|collectLCS)\b|_draw_/);
   assert.match(code, /void dfs\(int x,\s*int y,\s*string now\)/);
-  assert.match(code, /if\s*\(S\[x\s*-\s*1\]\s*==\s*T\[y\s*-\s*1\]\)[\s\S]*dfs\(x\s*-\s*1,\s*y\s*-\s*1,\s*now\s*\+\s*S\[x\s*-\s*1\]\)/);
+  assert.match(code, /if\s*\(S\[x\s*-\s*1\]\s*==\s*T\[y\s*-\s*1\]\)[\s\S]*dfs\(x\s*-\s*1,\s*y\s*-\s*1,\s*S\[x\s*-\s*1\]\s*\+\s*now\)/);
   assert.match(code, /else if\s*\(LCS\[x\s*-\s*1\]\[y\]\s*==\s*LCS\[x\]\[y\s*-\s*1\]\)/);
   assert.match(code, /else if\s*\(LCS\[x\s*-\s*1\]\[y\]\s*>\s*LCS\[x\]\[y\s*-\s*1\]\)/);
   assert.match(code, /LCS\[i\]\[j\]\s*=\s*max\(LCS\[i\]\[j\s*-\s*1\],\s*LCS\[i\s*-\s*1\]\[j\]\)/);
@@ -37,13 +37,20 @@ test('LCS sample uses current matrix directives without the legacy introduction'
   assert.match(code, /@object LCS\[i\]\[j\] render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
   assert.match(code, /@object LCS\[x\]\[y\] render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
   assert.match(code, /@object ans with labels\(value\)/);
+  assert.doesNotMatch(code.match(/@preset lcs_view[\s\S]*?@endpreset/)[0], /@object ans/);
+  assert.match(code, /@preset lcs_answers[\s\S]*?@object ans with labels\(value\)/);
   assert.match(code, /@style LCS\[x\]\[y\] highlight/);
   assert.match(code, /@arrow from LCS\[rr-1\]\[cc-1\] to LCS\[rr\]\[cc\]/);
+  assert.doesNotMatch(code, /@arrow from LCS\[rr-1\]\[cc-1\] to LCS\[rr\]\[cc\] as\s+/);
+  assert.equal((code.match(/color AV_green! width 3 until return/g) || []).length, 5);
   assert.match(code, /@style LCS\.row-label\[i\] background AV_green! when S\[i-1\] == T\[j-1\]/);
   assert.match(code, /@style LCS\.column-label\[j\] background AV_red! when S\[i-1\] != T\[j-1\]/);
   assert.match(code, /@for rr in \[1:rows\][\s\S]*@for cc in \[1:columns\]/);
   assert.match(code, /when S\[rr-1\] == T\[cc-1\] && LCS\[rr\]\[cc\] == LCS\[rr-1\]\[cc-1\] \+ 1/);
   assert.match(code, /@text \[[\s\S]*"background": "AV_green"/);
+  assert.match(code, /@text "字元相同，從左上取值加一"/);
+  assert.match(code, /@text "字元不相同，從左或上拿最大的過來"/);
+  assert.match(code, /目前累積字串/);
   assert.equal(findFrameDirectives(code).length, 10);
 });
 
@@ -73,6 +80,8 @@ test('LCS sample builds its matrix and lists the sample answers', async () => {
   assert.deepEqual(Array.from(dfsFrame.bindings, binding => [binding.sourceName, binding.indexDimension]), [
     ['x', 0], ['y', 1]
   ]);
+  assert.equal(buildFrame.rendererOptions[byName.ans], undefined,
+    'the answer set stays hidden while the DP table is being built');
   const maxAssignments = buildFrames.flatMap(frame => frame.events.filter(event => (
     event.selectionOperation === 'max'
   )));
@@ -123,4 +132,16 @@ test('LCS sample builds its matrix and lists the sample answers', async () => {
   assert.ok(window.ASMTraceModel.returnTrailArrows(trace, returnedFrame).length < activePath.length,
     'returning from recursion removes arrows that no longer belong to the active call path');
   assert.equal(trace.frames[0].texts[0].segments.some(segment => segment.text.includes('這是 LCS')), false);
+});
+
+test('LCS backtracking prepends matched characters to preserve subsequence order', async () => {
+  const code = fs.readFileSync(codePath, 'utf8');
+  const { trace } = await compile(code, 'abcde\nace\n');
+  const ansId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'ans');
+  const answers = trace.frames.at(-1).state[ansId].data.items.map(item => item.value);
+  assert.deepEqual(answers, ['ace']);
+  const dfsTexts = trace.frames.filter(frame => frame.source?.function === 'dfs')
+    .flatMap(frame => frame.texts || []).flatMap(text => text.segments || [])
+    .map(segment => segment.text).join('');
+  assert.match(dfsTexts, /目前累積字串/);
 });

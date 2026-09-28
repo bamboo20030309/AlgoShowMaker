@@ -502,8 +502,11 @@
     if (!from || !to) return null;
     return {
       ...arrow,
-      id: `${arrow.id}@return:${activationId}`,
-      explicitId: true,
+      // Keep the authored ID. The renderer adds the owning activation to the
+      // runtime identity for both the source frame and inherited trail, so an
+      // edge can continue without replaying its entrance animation.
+      id: arrow.id,
+      explicitId: false,
       from,
       to,
       when: null,
