@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const viewSource = require('../public/trace-view-source.js');
 
 function loadModel() {
   const context = vm.createContext({ console, Map, Set });
@@ -10,6 +11,7 @@ function loadModel() {
   context.ASMTraceEvents = {
     instructionKey(event) { return event?.signature || ''; }
   };
+  context.ASMTraceViewSource = viewSource;
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-code-model.js'), 'utf8'), context);
   return context.ASMTraceCodeModel;
 }
@@ -92,4 +94,42 @@ test('per-frame snippet overrides hide one line without changing an old trace th
 
   delete document.studio.codeSnippetOverrides;
   assert.equal(model.planFrame(document, frame).layoutKey, oldLayout);
+});
+
+test('manual snippet choices apply to every frame from the same source directive', () => {
+  const model = loadModel();
+  const { document, frame } = fixture();
+  frame.source = { ...frame.source, functionName: 'main', directiveKey: 'manual-frame:lcs-build:0' };
+  const repeated = JSON.parse(JSON.stringify(frame));
+  repeated.id = 'frame-2';
+  repeated.events[0].id = 'event-write-2';
+  const other = JSON.parse(JSON.stringify(frame));
+  other.id = 'frame-other';
+  other.source.directiveKey = 'manual-frame:lcs-finish:0';
+  other.events[0].id = 'event-write-other';
+  document.frames = [frame, repeated, other];
+
+  const rows = model.snippetEditorPlan(document, frame).fragments.flatMap(fragment => fragment.rows);
+  assert.ok(rows.every(row => typeof row.autoIncluded === 'boolean' && typeof row.included === 'boolean'),
+    'automatic filtering must always resolve each row to true or false');
+  const eventRow = rows.find(row => row.text.includes('value++'));
+  const automaticOffRow = rows.find(row => !row.autoIncluded && row.text.trim());
+  assert.ok(eventRow && automaticOffRow);
+  document.studio.codeSnippetSourceOverrides = [{
+    sourceSelector: viewSource.sourceSelector(frame),
+    lineStates: {
+      [eventRow.sourceAnchor]: false,
+      [automaticOffRow.sourceAnchor]: true
+    }
+  }];
+
+  [frame, repeated].forEach(candidate => {
+    const sharedRows = model.snippetEditorPlan(document, candidate)
+      .fragments.flatMap(fragment => fragment.rows);
+    assert.equal(sharedRows.find(row => row.sourceAnchor === eventRow.sourceAnchor).included, false);
+    assert.equal(sharedRows.find(row => row.sourceAnchor === automaticOffRow.sourceAnchor).included, true);
+  });
+  const otherRows = model.snippetEditorPlan(document, other).fragments.flatMap(fragment => fragment.rows);
+  assert.equal(otherRows.find(row => row.sourceAnchor === eventRow.sourceAnchor).included, true,
+    'a different source directive must keep its automatic result');
 });

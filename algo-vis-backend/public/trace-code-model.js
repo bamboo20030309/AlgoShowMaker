@@ -1126,6 +1126,22 @@
       : {};
   }
 
+  function snippetSourceLineStates(document, frame) {
+    const records = Array.isArray(document?.studio?.codeSnippetSourceOverrides)
+      ? document.studio.codeSnippetSourceOverrides
+      : [];
+    const matches = window.ASMTraceViewSource?.sourceMatches;
+    if (typeof matches !== 'function') return {};
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      const record = records[index];
+      if (!record?.sourceSelector || !matches(frame, record.sourceSelector)) continue;
+      return record.lineStates && typeof record.lineStates === 'object' && !Array.isArray(record.lineStates)
+        ? record.lineStates
+        : {};
+    }
+    return {};
+  }
+
   function snippetEditorHiddenLines(lines = []) {
     const hidden = new Set();
     let asmView = false;
@@ -1153,8 +1169,10 @@
 
   function snippetEditorPlan(document, frame, automatic = automaticPlanFrame(document, frame)) {
     const savedStates = snippetLineStates(document, frame);
+    const sourceStates = snippetSourceLineStates(document, frame);
     const events = new Map((frame?.events || []).map(event => [String(event?.id || ''), event]));
     const occurrences = new Map();
+    const sourceOccurrences = new Map();
     const source = String(document?.sourceCode || '');
     const lines = sourceLines(source);
     const hidden = snippetEditorHiddenLines(lines);
@@ -1185,6 +1203,10 @@
               || event?.signature || '';
           }).filter(Boolean))].sort();
           const normalized = normalizedLineText(item.text);
+          const sourceIdentity = `source:${functionName}:${normalized}`;
+          const sourceOccurrence = sourceOccurrences.get(sourceIdentity) || 0;
+          sourceOccurrences.set(sourceIdentity, sourceOccurrence + 1);
+          const sourceAnchor = `${sourceIdentity}#${sourceOccurrence}`;
           const identity = instructionKeys.length
             ? `event:${instructionKeys.join('|')}:${normalized}`
             : `source:${functionName}:${normalized}`;
@@ -1192,11 +1214,16 @@
           occurrences.set(identity, occurrence + 1);
           const anchor = `${identity}#${occurrence}`;
           const autoIncluded = automaticLines.has(Number(item.number));
-          const override = Object.prototype.hasOwnProperty.call(savedStates, anchor)
+          const sourceOverride = Object.prototype.hasOwnProperty.call(sourceStates, sourceAnchor)
+            ? Boolean(sourceStates[sourceAnchor])
+            : null;
+          const frameOverride = Object.prototype.hasOwnProperty.call(savedStates, anchor)
             ? Boolean(savedStates[anchor])
             : null;
+          const override = sourceOverride == null ? frameOverride : sourceOverride;
           return {
             anchor,
+            sourceAnchor,
             functionName,
             number: Number(item.number),
             text: item.text,
@@ -1230,7 +1257,10 @@
 
   function applySnippetOverrides(document, frame, automatic) {
     const saved = document?.studio?.codeSnippetOverrides?.[frame?.id];
-    if (!saved || typeof saved.lineStates !== 'object' || !Object.keys(saved.lineStates).length) {
+    const sourceStates = snippetSourceLineStates(document, frame);
+    const hasFrameStates = saved && typeof saved.lineStates === 'object'
+      && Object.keys(saved.lineStates).length;
+    if (!hasFrameStates && !Object.keys(sourceStates).length) {
       return automatic;
     }
     const editor = snippetEditorPlan(document, frame, automatic);

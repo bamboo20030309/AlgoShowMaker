@@ -285,7 +285,7 @@
   }
 
   function removeEmptyStudioCollections(studio) {
-    ['objects', 'arrows', 'cameraRules', 'transitions'].forEach(key => {
+    ['objects', 'arrows', 'cameraRules', 'transitions', 'codeSnippetSourceOverrides'].forEach(key => {
       if (Array.isArray(studio[key]) && !studio[key].length) delete studio[key];
     });
     ['eventInstructionStates', 'frameMaps', 'positions', 'bindings', 'visibility',
