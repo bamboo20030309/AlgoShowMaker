@@ -2,7 +2,7 @@
 // 畫布 GUI 編輯器
 // 攔截既有 draw 呼叫建立可回寫的呼叫紀錄，並以右鍵面板或行內工具列修改來源碼；預覽與來源同步必須維持同一個 draw call。
 // -----------------------------------------------------------------------------
-/* gui_editor.js — 畫布 GUI 編輯器 Phase 1: 攔截 + 右鍵選單 + 屬性面板 */
+/* gui_editor.js — 畫布 GUI 編輯器：繪圖攔截、屬性同步與行內編輯 */
 ; (function () {
   'use strict';
 
@@ -188,9 +188,8 @@
       const f = window.CodeScript.get_current_frame_index();
       startRecording(f);
     }
-    // 切換幀時自動關閉屬性面板與右鍵選單
+    // 切換幀時自動關閉屬性面板
     hidePropPanel();
-    hideCtxMenu();
     return _origClearCanvas.apply(this, arguments);
   };
 
@@ -367,119 +366,7 @@
   let _currentPropSection = 'all';
 
   // ============================================================
-  //  3. 右鍵選單
-  // ============================================================
-  let _ctxMenu = null;
-  let _ctxTarget = null;   // 右鍵點到的 .draggable-object
-  let _ctxDrawCall = null;  // 對應的 draw call 記錄
-
-  // -----------------------------------------------------------------------------
-  // 右鍵功能表
-  // 依 draw 類型與可用參數組合動作，關閉時不清除 SVG 選取，讓屬性面板可以接續操作。
-  // -----------------------------------------------------------------------------
-  function createCtxMenu() {
-    if (_ctxMenu) return _ctxMenu;
-    _ctxMenu = document.createElement('div');
-    _ctxMenu.className = 'gui-ctx-menu';
-    _ctxMenu.style.display = 'none';
-    document.body.appendChild(_ctxMenu);
-    return _ctxMenu;
-  }
-
-  function hideCtxMenu() {
-    if (_ctxMenu) _ctxMenu.style.display = 'none';
-    _ctxTarget = null;
-    _ctxDrawCall = null;
-  }
-
-  function showCtxMenu(e, obj, drawCall) {
-    const menu = createCtxMenu();
-    _ctxTarget = obj;
-    _ctxDrawCall = drawCall;
-
-    const id = obj.getAttribute('id') || '(無ID)';
-    const type = drawCall ? drawCall.type : '未知';
-    const line = drawCall ? drawCall.codeLine : -1;
-
-    let html = `<div class="ctx-label">${type} — ${id}</div>`;
-
-    // 自動化顯示邏輯：只要繪圖參數含有 Pos 物件，右鍵選單就自動賦予「編輯位置」區塊
-    let hasPos = false;
-    if (drawCall && drawCall.args) {
-      hasPos = drawCall.args.some(arg => isPosObject(arg));
-    }
-
-    if (hasPos) {
-      html += `<div class="ctx-item" data-action="edit-pos"><span class="ctx-icon">📍</span>編輯位置</div>`;
-    }
-
-    if (drawCall && (drawCall.type === 'drawArray' || drawCall.type === 'draw2DArray')) {
-      html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯格子樣式</div>`;
-      html += `<div class="ctx-item" data-action="edit-layout"><span class="ctx-icon">📐</span>編輯繪製參數</div>`;
-    } else if (drawCall && drawCall.type === 'drawCircle') {
-      html += `<div class="ctx-item" data-action="edit-circle-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
-    } else if (drawCall && drawCall.type === 'drawArrow') {
-      html += `<div class="ctx-item" data-action="edit-style"><span class="ctx-icon">🎨</span>編輯樣式</div>`;
-    } else if (drawCall && (drawCall.type === 'drawText' || drawCall.type === 'drawColoredText')) {
-      html += `<div class="ctx-item" data-action="edit-text-style"><span class="ctx-icon">📝</span>編輯文字與樣式</div>`;
-    }
-
-    if (line >= 0) {
-      html += `<div class="ctx-sep"></div>`;
-      html += `<div class="ctx-item" data-action="goto-code"><span class="ctx-icon">📝</span>跳到程式碼 (行 ${line + 1})</div>`;
-    }
-
-    html += `<div class="ctx-sep"></div>`;
-    html += `<div class="ctx-item" data-action="show-info"><span class="ctx-icon">ℹ️</span>顯示完整屬性</div>`;
-
-    menu.innerHTML = html;
-    menu.style.display = 'block';
-    menu.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px';
-    menu.style.top = Math.min(e.clientY, window.innerHeight - 300) + 'px';
-
-    // 綁定事件
-    menu.querySelectorAll('.ctx-item').forEach(item => {
-      item.onclick = () => {
-        const action = item.dataset.action;
-        // 先保存引用，再隱藏選單
-        const savedTarget = _ctxTarget;
-        const savedDrawCall = _ctxDrawCall;
-        hideCtxMenu();
-        // 恢復引用供 handleCtxAction 使用
-        _ctxTarget = savedTarget;
-        _ctxDrawCall = savedDrawCall;
-        handleCtxAction(action);
-      };
-    });
-  }
-
-  function handleCtxAction(action) {
-    if (!_ctxDrawCall && action !== 'show-info') return;
-    switch (action) {
-      case 'edit-pos': _currentPropSection = 'pos'; showPropPanel('pos'); break;
-      case 'edit-style': _currentPropSection = 'style'; showPropPanel('style'); break;
-      case 'edit-layout': _currentPropSection = 'layout'; showPropPanel('layout'); break;
-      case 'edit-circle-style': _currentPropSection = 'circle-style'; showPropPanel('circle-style'); break;
-      case 'edit-text-style': _currentPropSection = 'text-style'; showPropPanel('text-style'); break;
-      case 'show-info': _currentPropSection = 'all'; showPropPanel('all'); break;
-      case 'goto-code':
-        if (_ctxDrawCall && _ctxDrawCall.codeLine >= 0) {
-          const editor = getEditor();
-          if (!editor) break;
-          const line = _ctxDrawCall.codeLine; // 1-based
-          // 先清除舊高亮，再加新的螢光色高亮
-          if (typeof clearAllEditorHighlights === 'function') clearAllEditorHighlights();
-          if (typeof addEditorHighlight === 'function') addEditorHighlight(line, true);
-          editor.gotoLine(line, 0, true);
-          editor.scrollToLine(line - 1, true, true, function () { });
-          editor.focus();
-        }
-        break;
-    }
-  }
-
-  // ============================================================
-  //  4. 屬性面板
+  //  3. 屬性面板
   // ============================================================
   let _propPanel = null;
   let _propDrawCall = null;
@@ -504,12 +391,6 @@
 
   function showPropPanel(section) {
     const panel = createPropPanel();
-    // 只有在明確從右鍵選單觸發時才更新 _propDrawCall
-    if (_ctxDrawCall) {
-      _propDrawCall = _ctxDrawCall;
-      _propTarget = _ctxTarget;
-    }
-
     if (!_propDrawCall) {
       const id = _propTarget ? _propTarget.getAttribute('id') : '?';
       panel.innerHTML = buildHeader('物件資訊 — ' + id) +
@@ -2494,53 +2375,9 @@
     const svg = document.getElementById('arraySvg');
     if (!svg) return;
 
-    // 右鍵選單
-    svg.addEventListener('contextmenu', (e) => {
-      let obj = e.target.closest('.draggable-object');
-      let dc = null;
-
-      if (!obj) {
-        // 檢查是否點擊到箭頭
-        const line = e.target.closest('line[data-arrow-key], path[data-arrow-key], text[data-arrow-id]');
-        if (line) {
-          obj = line;
-          const arrowKey = line.getAttribute('data-arrow-key') || line.getAttribute('data-arrow-id');
-          // 透過 DOM 順序找到對應的 drawCall
-          const layer = svg.querySelector('#arrow-layer');
-          if (layer) {
-            // text 跟 line 的對應處理：統一找 line
-            const realLine = layer.querySelector(`line[data-arrow-key="${arrowKey}"], line[id="${arrowKey}"]`);
-            if (realLine) {
-              const arrowsInDOM = Array.from(layer.querySelectorAll('line[data-arrow-key]'));
-              const arrowIdx = arrowsInDOM.indexOf(realLine);
-              const arrowCalls = getCurrentFrameDrawCalls().filter(c => c.type === 'drawArrow');
-              dc = arrowCalls[arrowIdx] || null;
-            }
-          }
-        } else {
-          hideCtxMenu();
-          return;
-        }
-      } else {
-        const id = obj.getAttribute('id');
-        dc = id ? findDrawCallByGroupID(id) : null;
-      }
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      // 即使沒找到 drawCall，也可以顯示基本選單
-      showCtxMenu(e, obj, dc);
-    });
-
-    // 點其他地方關閉選單
-    document.addEventListener('mousedown', (e) => {
-      if (_ctxMenu && !_ctxMenu.contains(e.target)) hideCtxMenu();
-    });
-
     // ESC 關閉
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { hideCtxMenu(); hidePropPanel(); }
+      if (e.key === 'Escape') hidePropPanel();
     });
   });
 
@@ -2550,7 +2387,6 @@
     getCurrentDrawCalls: getCurrentFrameDrawCalls,
     replayFrame: replayCurrentFrame,
     hidePropPanel,
-    hideCtxMenu,
   };
 
   // ============================================================

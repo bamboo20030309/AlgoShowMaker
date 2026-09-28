@@ -91,36 +91,38 @@
   // -----------------------------------------------------------------------------
   function bindInteractions() {
     let dragging = false;
+    let dragButton = -1;
     let startX = 0, startY = 0;
 
-    svg.addEventListener('mousedown', e => {
-      // 判斷是否可拖曳：左鍵 (0) 要看是否為繪圖模式，右鍵 (2) 永遠允許拖曳
-      if (e.button === 0) {
-        if (window.isDrawingMode) return;
-        if (!document.body.classList.contains('asm-embed-runtime')
-          && document.body.classList.contains('asm-trace-studio-open')
-          && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
-          return;
-        }
-      } else if (e.button === 2) {
-        // 右鍵點到 draggable-object 時讓 GUI 編輯器處理
-        if (e.target.closest && e.target.closest('.draggable-object')) return;
-      } else {
-        return; // 其他按鍵不處理
-      }
-
+    const beginDrag = e => {
+      e.preventDefault();
       stopAnimation(); // 手動操作時停止動畫
       dragging = true;
+      dragButton = e.button;
       startX = e.clientX;
       startY = e.clientY;
+    };
+
+    // 物件本身可能攔截 mousedown，因此右鍵要在捕獲階段先交給畫布。
+    svg.addEventListener('mousedown', e => {
+      if (e.button === 2) beginDrag(e);
+    }, true);
+
+    svg.addEventListener('mousedown', e => {
+      if (e.button !== 0 || window.isDrawingMode) return;
+      if (!document.body.classList.contains('asm-embed-runtime')
+        && document.body.classList.contains('asm-trace-studio-open')
+        && e.target.closest?.('[data-trace-binding-handle], [data-trace-source-anchor], [data-trace-camera-frame], .asm-trace-selectable, .draggable-object')) {
+        return;
+      }
+      beginDrag(e);
     });
 
-    // 禁用 SVG 上的右鍵選單，避免干擾右鍵拖曳（但在 draggable-object 上讓 GUI 編輯器接管）
+    // 右鍵只用於平移畫布，不開啟瀏覽器或物件選單。
     svg.addEventListener('contextmenu', e => {
-      if (e.target.closest && e.target.closest('.draggable-object')) return;
       e.preventDefault();
     });
-    svg.addEventListener('mousemove', e => {
+    const moveDrag = e => {
       if (!dragging) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
@@ -129,13 +131,25 @@
       translateX += dx;
       translateY += dy;
       updateTransform();
+    };
+    svg.addEventListener('mousemove', e => {
+      if (dragButton === 2) moveDrag(e);
+    }, true);
+    svg.addEventListener('mousemove', e => {
+      if (dragButton === 0) moveDrag(e);
     });
     const finishDrag = () => {
       if (!dragging) return;
       dragging = false;
+      dragButton = -1;
       notifyManualCameraChange();
     };
-    svg.addEventListener('mouseup', finishDrag);
+    svg.addEventListener('mouseup', e => {
+      if (dragButton === 2) finishDrag();
+    }, true);
+    svg.addEventListener('mouseup', e => {
+      if (dragButton === 0) finishDrag();
+    });
     svg.addEventListener('mouseleave', finishDrag);
 
     svg.addEventListener('wheel', e => {

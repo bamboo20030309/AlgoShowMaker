@@ -12,7 +12,6 @@ body.asm-embed-runtime #myCodesSidebar,
 body.asm-embed-runtime #traceStudioRail,
 body.asm-embed-runtime .trace-studio-inspector,
 body.asm-embed-runtime #traceStudioTimeline,
-body.asm-embed-runtime .gui-ctx-menu,
 body.asm-embed-runtime .gui-prop-panel {
   display: none !important;
 }

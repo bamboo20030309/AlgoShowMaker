@@ -42,6 +42,26 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     await compilePage.click('#runBtn');
     await compilePage.waitForFunction(() => window.ASMTracePlayer.getDocument()?.frames?.length > 1,
       null, { timeout: 30000 });
+    await compilePage.evaluate(() => window.ASMTraceStudio?.close?.());
+    await compilePage.waitForFunction(() => !document.body.classList.contains('asm-trace-studio-open'));
+
+    const editorObject = compilePage.locator('#viewport .draggable-object').first();
+    const editorObjectBox = await editorObject.boundingBox();
+    assert.ok(editorObjectBox, 'fixture should render an object that previously opened the property menu');
+    const beforeRightDrag = await compilePage.locator('#viewport').getAttribute('transform');
+    await compilePage.mouse.move(editorObjectBox.x + editorObjectBox.width / 2,
+      editorObjectBox.y + editorObjectBox.height / 2);
+    await compilePage.mouse.down({ button: 'right' });
+    await compilePage.mouse.move(editorObjectBox.x + editorObjectBox.width / 2 + 64,
+      editorObjectBox.y + editorObjectBox.height / 2 + 32);
+    await compilePage.mouse.up({ button: 'right' });
+    const afterRightDrag = await compilePage.locator('#viewport').getAttribute('transform');
+    assert.notEqual(afterRightDrag, beforeRightDrag,
+      'holding the right mouse button over an object should pan the animation canvas');
+    assert.equal(await compilePage.locator('.gui-ctx-menu').count(), 0,
+      'right-clicking an animation object must not create the removed property menu');
+    assert.equal(await compilePage.getByText('顯示完整屬性', { exact: true }).count(), 0);
+
     const traceDocument = await compilePage.evaluate(() => JSON.parse(JSON.stringify(
       window.ASMTracePlayer.getDocument()
     )));

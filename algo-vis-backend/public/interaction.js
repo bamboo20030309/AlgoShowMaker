@@ -117,7 +117,6 @@ class CanvasInteractionManager {
         this.clearSelection();
         if (window.GuiEditor) {
           window.GuiEditor.hidePropPanel();
-          window.GuiEditor.hideCtxMenu();
         }
       }
     }

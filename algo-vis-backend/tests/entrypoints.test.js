@@ -34,7 +34,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(controlsStart >= 0 && freshnessDot > controlsStart && timeline > freshnessDot,
     'the shared freshness dot stays in the playback controls before the frame timeline');
   assert.ok(html.includes('trace-freshness.js?v=trace-2'));
-  assert.ok(html.includes('canva.js?v=trace-15'));
+  assert.ok(html.includes('canva.js?v=trace-16'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
   assert.ok(html.includes('trace-model.js?v=trace-39'));
