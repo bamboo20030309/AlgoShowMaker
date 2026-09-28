@@ -107,6 +107,18 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
     sharedIds:[...el.querySelectorAll('[id]')].filter(node=>document.querySelectorAll('#'+CSS.escape(node.id)).length!==1).length
   }));
   assert.deepEqual(clone,{cells:3000,culled:0,sharedIds:0});
+  // Closing/reopening the editor is a stable redraw, not an event replay.
+  for(let cycle=0;cycle<3;cycle++){
+    await page.evaluate(()=>ASMTraceStudio.close());
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(await page.locator('#asm-trace-root [data-asm-lod]').count(),2,`LOD survives Studio close ${cycle+1}`);
+    await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.6,false));
+    await page.waitForFunction(()=>document.querySelector('#asm-trace-root g[data-trace-index] > text')&&!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));
+    await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.1,false));
+    await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='overview'));
+    assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),0);
+    await page.evaluate(()=>ASMTraceStudio.open());
+  }
   // Re-running while Studio is open must preserve source and land on canvas.
   // Studio hides RUN; invoke the same handler to verify the guarded reload path.
   await page.evaluate(()=>document.getElementById('runBtn').click());

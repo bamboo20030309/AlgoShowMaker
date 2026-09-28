@@ -3772,7 +3772,9 @@
     document.body.classList.remove('asm-trace-studio-open');
     activeObjectKey = '';
     codePanelSelectionActive = false;
-    if (options.render !== false) renderPlayerFrame(currentIndex, { animatePositions: false });
+    // Leaving the editor restores a stable scene, without replaying events.
+    // Explicitly disabling event animation also preserves viewport-aware LOD.
+    if (options.render !== false) renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
   }
 
   function buildUi() {

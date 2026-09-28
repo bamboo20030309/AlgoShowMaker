@@ -22,7 +22,7 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
    return {legacy:reopened.frames[0].events.map(e=>({id:e.id,enabled:e.enabled,after:e.payload.after})),settings:reopened.studio,values:reopened.frames[0].state.a.data.items.map(v=>v.value),cells:document.querySelectorAll('#asm-trace-root g[data-trace-index]').length};
   });
   assert.deepEqual(old,{legacy:[{id:'legacy',enabled:false,after:8}],settings:{eventSettings:{autoFixedEnabled:false,autoLoopBoundaryEnabled:false,gapMs:0},eventInstructionStates:{'assign:legacy':false},customColor:'#123456'},values:[0,8],cells:2});
-  const source=fs.readFileSync(path.join(__dirname,'fixtures/trace-chunks-checkerboard.cpp'),'utf8').replace(/\r\n/g,'\n');
+  const source=fs.readFileSync(path.join(__dirname,'fixtures/trace-chunks-checkerboard.cpp'),'utf8').replace(/\r\n/g,'\n').replace(/@style grid background/g,'@style grid[0:100][0:100] background');
   const replyPromise=page.waitForResponse(r=>r.url().endsWith('/compile')&&r.request().method()==='POST');
   await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__traceStart=performance.now();document.getElementById('runBtn').click();},source);
   const response=await replyPromise;
@@ -49,6 +49,13 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
   assert.ok(result.fills.includes('rgba(165, 214, 167, 0.6)'),JSON.stringify(result.fills));
   assert.ok(result.fills.includes('rgba(239, 154, 154, 0.6)'),JSON.stringify(result.fills));
   assert.deepEqual(errors,[]);
+  for(let cycle=0;cycle<3;cycle++){
+    await page.evaluate(()=>{ASMTraceStudio.open();ASMTraceStudio.close();});
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(await page.locator('#asm-trace-root [data-asm-lod]').count(),2);
+    assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),0);
+    assert.ok(await page.locator('#asm-trace-root [data-asm-lod-batch]').count()>0);
+  }
   const out=path.join(root,'test-results/trace-chunks');fs.mkdirSync(out,{recursive:true});
   fs.writeFileSync(path.join(out,'browser-summary.json'),JSON.stringify(result,null,2));
   await page.evaluate(()=>{
