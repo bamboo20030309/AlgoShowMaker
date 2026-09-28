@@ -28,7 +28,7 @@
     // caller/callee state without exposing a second editable timeline event.
     { type: 'call-return', label: '函式呼叫返回', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'return-complete', label: '完成回傳', color: '#a86524', internal: true, enabledByDefault: false, timelineByDefault: false },
-    { type: 'control-flow', label: '流程跳轉', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
+    { type: 'control-flow', label: 'return/break/continue 流程跳轉事件', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
     { type: 'branch-enter', label: '進入遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'branch-exit', label: '離開遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'function-enter', label: '進入函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false },
@@ -40,6 +40,7 @@
     continue: 'control-flow'
   });
   const canonicalEventType = type => eventTypeAliases[type] || type;
+  const controlFlowEventLabel = '流程跳轉事件';
   const byType = Object.fromEntries(definitions.map(definition => [definition.type, definition]));
   const animations = Object.freeze({
     // Declaration and scope exit form one controllable visual lifetime. When
@@ -638,8 +639,11 @@
   window.ASMTraceEvents = {
     definitions,
     labels: Object.fromEntries([
-      ...definitions.map(definition => [definition.type, definition.label]),
-      ...Object.entries(eventTypeAliases).map(([type, canonical]) => [type, byType[canonical].label])
+      ...definitions.map(definition => [
+        definition.type,
+        definition.type === 'control-flow' ? controlFlowEventLabel : definition.label
+      ]),
+      ...Object.keys(eventTypeAliases).map(type => [type, controlFlowEventLabel])
     ]),
     colors: Object.fromEntries([
       ...definitions.map(definition => [definition.type, definition.color]),

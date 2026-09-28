@@ -39,7 +39,8 @@ int main() {
       code, { timeout: 30000 });
 
     await page.click('#eventSettingsBtn');
-    const flowRows = page.locator('.trace-event-settings-row').filter({ hasText: '流程跳轉' });
+    const flowRows = page.locator('.trace-event-settings-row')
+      .filter({ hasText: 'return/break/continue 流程跳轉事件' });
     assert.equal(await flowRows.count(), 1, 'return, break and continue share one settings row');
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '回傳' }).count(), 0);
     assert.equal(await page.locator('.trace-event-settings-row').filter({ hasText: '跳出迴圈' }).count(), 0);
