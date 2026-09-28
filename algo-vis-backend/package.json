@@ -12,7 +12,9 @@
     "regression:tests": "node scripts/regression.js --tests-only",
     "regression:tests:fresh": "node scripts/regression.js --tests-only --fresh",
     "regression:animation": "node scripts/regression.js --animation-only",
-    "regression:animation:fresh": "node scripts/regression.js --animation-only --fresh"
+    "regression:animation:fresh": "node scripts/regression.js --animation-only --fresh",
+    "validate:release-v4.11": "node scripts/release-validation-v4.11.js",
+    "validate:release-v4.11:fresh": "node scripts/release-validation-v4.11.js --fresh"
   },
   "dependencies": {
     "@jaames/iro": "^5.5.2",

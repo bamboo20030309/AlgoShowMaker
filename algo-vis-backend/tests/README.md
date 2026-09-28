@@ -11,6 +11,19 @@
 
 ## 主代理完整回歸入口
 
+### v4.11 發布候選增量驗證
+
+效能優化合併後使用下列入口核實場景重用、結構 LOD、Trace 分塊與事件窗、舊資料往返、
+矩陣 renderer，以及右鍵畫布平移：
+
+```sh
+npm run validate:release-v4.11:fresh
+```
+
+結果寫入被 Git 忽略的 `test-results/release-v4.11-state.json`。同一候選輪次修正失敗後執行
+`npm run validate:release-v4.11`，只會重跑失敗或尚未完成的測試檔；已通過檔案不重跑。
+此集合承接既有完整發布基準，不取代全部 regression 或動畫矩陣。
+
 事件控制與批次箭頭新增專項：`events-batch-arrows.test.js`（語法、條件、展開、線篩編譯與疏幀衍生值）、
 `events-batch-arrows.browser.test.js`（真實 SVG、事件排程與 JSON 重載）。
 兩者需先設定 `ASM_TEST_BASE_URL` 指向獨立測試服務，瀏覽器檔不回落到使用者開發服務。
