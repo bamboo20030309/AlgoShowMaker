@@ -27,6 +27,11 @@
     const scene = viewport.querySelector('#asm-trace-root');
     const next = new Set([...(scene?.querySelectorAll('[data-trace-object-key]') || [])]
       .filter(target => !target.parentElement?.closest('[data-trace-object-key]')));
+    // Observe cells and detached style/label layers independently. A large
+    // structure may intersect the viewport while almost all its cells do not.
+    // Retain every node: arrow geometry and event replay depend on these nodes.
+    scene?.querySelectorAll('g[data-trace-index], [data-trace-index-label], [data-trace-attached-to]')
+      .forEach(target => next.add(target));
     targets.forEach(target => {
       if (next.has(target)) return;
       observer.unobserve(target);

@@ -90,6 +90,22 @@ test('Studio mounts only visible cards and renders bounded thumbnails across 500
     assert.ok(initial.drawn.length <= initial.capacity, JSON.stringify(initial));
     assert.deepEqual(initial.scopes, [{frameIndex: 0}]);
     assert.ok(initial.indices.includes(0));
+    const timeTrack = page.locator('.trace-studio-timeline-track');
+    const timelineCount = () => timeTrack.evaluate(el => ({
+      count: el.querySelectorAll('button').length,
+      limit: Math.ceil(el.clientWidth / 45) + 3
+    }));
+    const timelineInitial = await timelineCount();
+    assert.ok(timelineInitial.count > 0 && timelineInitial.count <= timelineInitial.limit);
+    await timeTrack.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+    await page.waitForFunction(() => document.querySelector('.trace-studio-time-frame[data-frame-index="499"]'));
+    const timelineLast = await timelineCount();
+    assert.ok(timelineLast.count <= timelineLast.limit);
+    await page.locator('.trace-studio-time-frame[data-frame-index="499"]').click();
+    assert.equal(await page.evaluate(() => window.ASMTracePlayer.getCurrentFrame()), 499);
+    await page.evaluate(() => window.ASMTracePlayer.renderStable(0));
+    await page.waitForFunction(() => document.querySelector('.trace-studio-time-frame[data-frame-index="0"]'));
+
     await list.evaluate(el => { el.scrollTop = el.scrollHeight; });
     await page.waitForFunction(() => document.querySelector('.trace-studio-frame[data-frame-index="499"]'));
     await page.waitForTimeout(700);

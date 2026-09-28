@@ -89,6 +89,38 @@ test('canvas culling preserves geometry and restores offscreen objects after cam
       .hasAttribute('data-asm-viewport-culled'));
     assert.equal(await object(1).evaluate(el => getComputedStyle(el).visibility), 'hidden',
       'authored visibility remains hidden when back in viewport');
+    // A single wide structure remains visible while its individual cells cull.
+    await page.evaluate(() => {
+      const scene = document.getElementById('asm-trace-root');
+      const ns = 'http://www.w3.org/2000/svg';
+      scene.replaceChildren();
+      const group = document.createElementNS(ns, 'g');
+      group.setAttribute('data-trace-object-key', 'long-structure');
+      for (let index = 0; index < 120; index++) {
+        const cell = document.createElementNS(ns, 'g');
+        cell.id = 'nested-' + index;
+        cell.setAttribute('data-trace-index', String(index));
+        cell.setAttribute('transform', `translate(${index * 80},80)`);
+        const rect = document.createElementNS(ns, 'rect');
+        rect.setAttribute('width', '60'); rect.setAttribute('height', '40');
+        cell.append(rect); group.append(cell);
+        const style = cell.cloneNode(true);
+        style.id = 'hint-' + index;
+        style.removeAttribute('data-trace-index');
+        style.setAttribute('data-trace-attached-to', 'long-structure#' + index);
+        group.append(style);
+      }
+      scene.append(group);
+      window.ASMTraceViewportCulling.refresh();
+    });
+    await page.waitForFunction(() => document.getElementById('nested-119').hasAttribute('data-asm-viewport-culled'));
+    assert.equal(await page.locator('[data-trace-object-key="long-structure"]').getAttribute('data-asm-viewport-culled'), null);
+    assert.notEqual(await page.locator('#hint-119').getAttribute('data-asm-viewport-culled'), null);
+    assert.equal(await page.locator('#nested-119').evaluate(el => el.getBBox().width), 60);
+    await page.evaluate(() => document.getElementById('asm-trace-root').setAttribute('transform', 'translate(-9520,0)'));
+    await page.waitForFunction(() => !document.getElementById('nested-119').hasAttribute('data-asm-viewport-culled') &&
+      !document.getElementById('hint-119').hasAttribute('data-asm-viewport-culled'));
+    assert.equal(await page.locator('#nested-119').evaluate(el => getComputedStyle(el).visibility), 'visible');
     await page.evaluate(() => {
       document.getElementById('asm-trace-root').remove();
       window.ASMTraceViewportCulling.refresh();

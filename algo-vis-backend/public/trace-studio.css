@@ -1599,6 +1599,10 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
 
 .trace-studio-time-frame {
   min-width: 42px;
+  width: 42px;
+  flex: 0 0 42px;
+  box-sizing: border-box;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;

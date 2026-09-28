@@ -2483,22 +2483,61 @@
     thumbnailSyncFrame = requestAnimationFrame(syncCurrentThumbnail);
   }
 
-  function renderTimeline() {
-    const track = timeline.querySelector('.trace-studio-timeline-track');
-    track.replaceChildren();
-    trace.frames.forEach((frame, index) => {
+  const TIMELINE_PITCH = 45;
+  let timelineWindow = '';
+  let timelineScrollFrame = 0;
+
+  function mountTimelineFrames() {
+    const track = timeline?.querySelector('.trace-studio-timeline-track');
+    if (!track || !trace) return;
+    const count = trace.frames.length;
+    const start = Math.max(0, Math.floor((track.scrollLeft - 8) / TIMELINE_PITCH) - 1);
+    const end = Math.min(count, Math.ceil((track.scrollLeft + track.clientWidth - 8) / TIMELINE_PITCH) + 1);
+    const key = `${start}:${end}`;
+    if (key === timelineWindow) return;
+    timelineWindow = key;
+    const fragment = document.createDocumentFragment();
+    const spacer = width => {
+      const node = el('div', 'trace-studio-time-spacer');
+      node.style.flex = `0 0 ${Math.max(0, width)}px`;
+      node.setAttribute('aria-hidden', 'true');
+      return node;
+    };
+    if (start) fragment.append(spacer(start * TIMELINE_PITCH - 3));
+    for (let index = start; index < end; index += 1) {
+      const frame = trace.frames[index];
       const marker = el('button', 'trace-studio-time-frame');
       marker.type = 'button';
       marker.dataset.frameId = frame.id;
       marker.dataset.frameIndex = index;
+      marker.classList.toggle('is-selected', selectedFrames.has(frame.id));
+      marker.classList.toggle('is-current', index === currentIndex);
       marker.classList.toggle('has-custom-transition', Boolean(
         window.ASMTraceTransitions?.hasCustomTransition?.(trace, frame.id)
       ));
       marker.title = `幀 ${index + 1} · 程式第 ${frame.source?.line || '-'} 行`;
       marker.append(el('span', 'trace-studio-time-number', String(index + 1)), eventDots(frame));
       marker.addEventListener('click', event => selectFrame(index, event));
-      track.append(marker);
-    });
+      fragment.append(marker);
+    }
+    if (end < count) fragment.append(spacer((count - end) * TIMELINE_PITCH - 3));
+    track.replaceChildren(fragment);
+  }
+
+  function renderTimeline() {
+    timelineWindow = '';
+    mountTimelineFrames();
+  }
+
+  function revealTimelineFrame() {
+    const track = timeline?.querySelector('.trace-studio-timeline-track');
+    if (!track) return;
+    const left = 8 + currentIndex * TIMELINE_PITCH;
+    if (left < track.scrollLeft) track.scrollLeft = left;
+    else if (left + 42 > track.scrollLeft + track.clientWidth) {
+      track.scrollLeft = left + 42 - track.clientWidth;
+    }
+    mountTimelineFrames();
   }
 
   function cancelEventAvailabilityRefresh() {
@@ -2528,6 +2567,7 @@
 
   function renderSelection() {
     if (!trace) return;
+    revealTimelineFrame();
     rail.querySelectorAll('[data-frame-id]').forEach(item => {
       item.classList.toggle('is-selected', selectedFrames.has(item.dataset.frameId));
       item.classList.toggle('is-current', Number(item.dataset.frameIndex) === currentIndex);
@@ -3787,6 +3827,16 @@
     const timelineHead = el('div', 'trace-studio-timeline-head');
     timelineHead.append(el('strong', '', '事件時間線'), el('small', '', 'Ctrl 或 Shift 可跨幀選取'));
     timeline.append(timelineHead, el('div', 'trace-studio-timeline-track'));
+    const timeTrack = timeline.querySelector('.trace-studio-timeline-track');
+    timeTrack.addEventListener('scroll', () => {
+      if (timelineScrollFrame) return;
+      timelineScrollFrame = requestAnimationFrame(() => {
+        timelineScrollFrame = 0;
+        mountTimelineFrames();
+      });
+    }, { passive: true });
+    new ResizeObserver(() => mountTimelineFrames()).observe(timeTrack);
+
 
     main.insertBefore(rail, vizPanel);
     main.append(inspectorResizer, inspector);
