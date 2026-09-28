@@ -10,6 +10,8 @@
   const normalize = window.ASMAlgorithmAnimation.normalize;
   let currentAnimation = normalize();
   let runtimeVisible = mode !== 'runtime';
+  let runtimePresentationMode = false;
+  let runtimeCameraEditable = false;
   let runtimeGeometryRequest = 0;
 
   // -----------------------------------------------------------------------------
@@ -120,6 +122,11 @@
   function applyAnimation(animation = {}) {
     settleAnimationVisuals();
     currentAnimation = normalize(animation);
+    window.setPresentationCameraTransform?.(
+      runtimePresentationMode ? currentAnimation.presentationCamera : null,
+      true,
+      runtimePresentationMode
+    );
     if (typeof aceEditor !== 'undefined') {
       window.__asmEmbeddedAnimationPayload = currentAnimation;
       aceEditor.setValue(currentAnimation.code, -1);
@@ -153,6 +160,13 @@
     }
     if (event.data.type === 'asm-runtime-visibility' && mode === 'runtime') {
       runtimeVisible = event.data.visible === true;
+      runtimePresentationMode = event.data.presentationMode === true;
+      runtimeCameraEditable = runtimePresentationMode && event.data.cameraEditable === true;
+      window.setPresentationCameraTransform?.(
+        runtimePresentationMode ? currentAnimation.presentationCamera : null,
+        true,
+        runtimePresentationMode
+      );
       if (!runtimeVisible) {
         runtimeGeometryRequest += 1;
         return;
@@ -174,6 +188,18 @@
         animation: snapshotAnimation()
       }, window.location.origin);
     }
+  });
+
+  window.addEventListener('asm:camera-user-change', event => {
+    if (mode !== 'runtime' || window.parent === window
+      || !runtimePresentationMode || !runtimeCameraEditable) return;
+    const presentationCamera = window.ASMAlgorithmAnimation
+      ?.normalizePresentationCamera?.(event.detail?.camera);
+    currentAnimation = normalize({ ...currentAnimation, presentationCamera });
+    window.parent.postMessage({
+      type: 'asm-presentation-camera-change',
+      presentationCamera
+    }, window.location.origin);
   });
 
   window.addEventListener('asm:compiled-animation', event => {

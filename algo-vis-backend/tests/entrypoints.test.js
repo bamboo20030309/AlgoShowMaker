@@ -34,7 +34,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(controlsStart >= 0 && freshnessDot > controlsStart && timeline > freshnessDot,
     'the shared freshness dot stays in the playback controls before the frame timeline');
   assert.ok(html.includes('trace-freshness.js?v=trace-2'));
-  assert.ok(html.includes('canva.js?v=trace-12'));
+  assert.ok(html.includes('canva.js?v=trace-15'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
   assert.ok(html.includes('trace-model.js?v=trace-39'));
@@ -53,14 +53,14 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('compile.js?v=syntax-7'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=brand-shared-6'));
+  assert.ok(html.includes('style.css?v=brand-shared-10'));
   assert.ok(html.includes('brand.css?v=hover-pill-1'));
   assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=slides-229'));
+  assert.ok(slides.includes('slides.js?v=slides-231'));
   assert.ok(slides.includes('trace-model.js?v=trace-39'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
@@ -118,10 +118,10 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-26'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-130'));
+  assert.ok(html.includes('trace-studio.js?v=trace-131'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
-  assert.ok(html.includes('front.js?v=random-id-36'));
-  assert.ok(html.includes('slides-embed.js?v=trace-10'));
+  assert.ok(html.includes('front.js?v=random-id-40'));
+  assert.ok(html.includes('slides-embed.js?v=trace-11'));
   assert.ok(html.includes('trace-provenance.js?v=trace-11'));
   assert.ok(html.includes('trace.css?v=trace-36'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';
@@ -166,7 +166,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   for (const surface of [html, slides, legacy]) {
     assert.ok(surface.includes('draw/draw_array_utils.js?v=gap-1'));
   }
-  assert.ok(html.includes('trace-studio.css?v=trace-56'));
+  assert.ok(html.includes('trace-studio.css?v=trace-58'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,
     'the retired marker-shape controls must not return to the object inspector');
   assert.doesNotMatch(read('trace-studio.css'), /trace-studio-marker-shape/,

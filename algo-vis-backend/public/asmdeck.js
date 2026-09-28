@@ -207,7 +207,10 @@
       slide.animation = {
         mode: 'trace', code: animation.code, input: animation.input || '',
         sliceMode: animation.sliceMode || trace.sliceMode || 'auto',
-        watches: clone(animation.watches || []), rebuild
+        watches: clone(animation.watches || []), rebuild,
+        ...(animation.presentationCamera
+          ? { presentationCamera: clone(animation.presentationCamera) }
+          : {})
       };
     }
     await extractAssets(deck, assets);

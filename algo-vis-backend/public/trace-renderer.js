@@ -5607,7 +5607,7 @@
     return thumbnail;
   }
 
-  function preflightEventAvailability(document) {
+  function preflightEventAvailability(document, options = {}) {
     if (!document?.frames?.length
       || typeof window.ASMTraceFrameTween?.updateEventAvailability !== 'function') return document;
     const host = svg('svg', {
@@ -5619,19 +5619,24 @@
     window.document.body.append(host);
     let previousObjects = null;
     try {
-      document.frames.forEach((frame, index) => {
+      const requested = Number.isInteger(options.frameIndex)
+        ? Math.max(0, Math.min(document.frames.length - 1, options.frameIndex)) : null;
+      const start = requested === null ? 0 : Math.max(0, requested - 1);
+      const end = requested === null ? document.frames.length : requested + 1;
+      for (let index = start; index < end; index += 1) {
+        const frame = document.frames[index];
         host.replaceChildren();
         const result = renderScene(host, host, document, frame, document.frames[index - 1] || null, {
           idPrefix: `trace-availability-${safeKey(frame.id)}`,
           interactive: false,
-          evaluateAvailability: true,
+          evaluateAvailability: requested === null || index === requested,
           animatePositions: false,
           animateEvents: false,
           transform: '',
           availabilityPreviousObjects: previousObjects
         });
         previousObjects = result.elements;
-      });
+      }
     } finally {
       host.remove();
     }

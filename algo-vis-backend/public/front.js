@@ -759,6 +759,12 @@ function csGetKeyFrames() {
   return [];
 }
 
+function csGetStopFrames() {
+  if (typeof CodeScript === "undefined") return [];
+  if (typeof CodeScript.get_stop_frames === "function") return CodeScript.get_stop_frames() || [];
+  return [];
+}
+
 function csGetCurrentFrameIndex() {
   if (typeof CodeScript === "undefined") return 0;
   if (typeof CodeScript.get_current_frame_index === "function") return CodeScript.get_current_frame_index();
@@ -787,6 +793,7 @@ function initFrameInfoFromCodeScript() {
 
   buildFrameBars();
   updateFrameInfoText();
+  window.refreshPlaybackTimeDisplay?.({ resetToFrame: true });
 }
 
 // 建立條碼 DOM
@@ -796,33 +803,44 @@ function buildFrameBars() {
 
   barsContainer.innerHTML = "";
 
-  const keySet = new Set(keyFrameIndices || []);
-
-  for (let i = 0; i < totalFrames; i++) {
-    const bar = document.createElement("div");
-    bar.classList.add("frame-bar");
-    if (keySet.has(i)) bar.classList.add("keyframe");
-    bar.dataset.index = i;
-
-    // bar.addEventListener("click", () => {
-    //   jumpToFrame(i);
-    // });
-
-    barsContainer.appendChild(bar);
-  }
-
   const timeline = document.getElementById("frameTimeline");
   if (timeline && !timeline.dataset.scrubBound) {
     timeline.dataset.scrubBound = "true";
     let isDraggingTimeline = false;
 
-    const scrub = (e) => {
-      if (totalFrames <= 0) return;
+    const frameAtPointer = (e) => {
+      if (totalFrames <= 0) return -1;
       const rect = timeline.getBoundingClientRect();
-      let clickX = e.clientX - rect.left;
-      clickX = Math.max(0, Math.min(clickX, rect.width));
-      const targetIdx = Math.floor((clickX / rect.width) * totalFrames);
-      const clampedIdx = Math.max(0, Math.min(targetIdx, totalFrames - 1));
+      const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      return Math.max(0, Math.min(Math.floor((clickX / rect.width) * totalFrames), totalFrames - 1));
+    };
+
+    const showPreview = (e) => {
+      const targetIdx = frameAtPointer(e);
+      if (targetIdx < 0) return;
+      const preview = document.getElementById('frameHoverPreview');
+
+      if (preview) {
+        preview.textContent = `第 ${targetIdx + 1} / ${totalFrames} 幀`;
+        if (preview.parentElement !== document.body) document.body.appendChild(preview);
+        preview.hidden = false;
+        const rect = timeline.getBoundingClientRect();
+        const box = preview.getBoundingClientRect();
+        const center = rect.left + ((targetIdx + 0.5) / totalFrames) * rect.width;
+        preview.style.left = `${Math.max(8, Math.min(center - box.width / 2, window.innerWidth - box.width - 8))}px`;
+        const above = rect.top - box.height - 6;
+        preview.style.top = `${above >= 8 ? above : rect.bottom + 6}px`;
+      }
+    };
+
+    const hidePreview = () => {
+      const preview = document.getElementById('frameHoverPreview');
+      if (preview) preview.hidden = true;
+    };
+
+    const scrub = (e) => {
+      const clampedIdx = frameAtPointer(e);
+      if (clampedIdx < 0) return;
       if (clampedIdx !== currentFrame) {
         jumpToFrame(clampedIdx);
       }
@@ -834,11 +852,22 @@ function buildFrameBars() {
       scrub(e);
     });
     timeline.addEventListener("pointermove", (e) => {
+      showPreview(e);
       if (isDraggingTimeline) scrub(e);
     });
     timeline.addEventListener("pointerup", (e) => {
       isDraggingTimeline = false;
       timeline.releasePointerCapture(e.pointerId);
+    });
+    window.addEventListener('resize', hidePreview);
+    window.addEventListener('scroll', hidePreview, true);
+    timeline.addEventListener('pointerenter', showPreview);
+    timeline.addEventListener('pointerleave', () => {
+      hidePreview();
+    });
+    timeline.addEventListener('pointercancel', () => {
+      isDraggingTimeline = false;
+      hidePreview();
     });
   }
 
@@ -850,16 +879,9 @@ function updateFrameBarsVisual() {
   const barsContainer = document.getElementById("frameBars");
   if (!barsContainer) return;
 
-  const bars = barsContainer.querySelectorAll(".frame-bar");
-  bars.forEach(bar => {
-    const idx = Number(bar.dataset.index);
-    bar.classList.toggle("active", idx === currentFrame);
-    if (idx <= currentFrame) {
-      bar.classList.add("reached");
-    } else {
-      bar.classList.remove("reached");
-    }
-  });
+  const timeline = document.getElementById('frameTimeline');
+  const progress = totalFrames > 0 ? ((currentFrame + 0.5) / totalFrames) * 100 : 0;
+  timeline?.style.setProperty('--frame-progress', `${Math.max(0, Math.min(100, progress))}%`);
 }
 
 // 更新「第幾幀 / 總幀數」文字
@@ -867,9 +889,10 @@ function updateFrameInfoText() {
   const info = document.getElementById("frameInfo");
   if (!info) return;
 
-  const now = (currentFrame || 0) + 1;  // 顯示給使用者 1-based
   const total = totalFrames || 0;
+  const now = total > 0 ? (currentFrame || 0) + 1 : 0;  // 顯示給使用者 1-based
   info.textContent = `${now} / ${total}`;
+  info.setAttribute('aria-label', `目前第 ${now} 幀，共 ${total} 幀`);
 }
 
 // 點條碼跳到某一幀
@@ -879,6 +902,7 @@ function jumpToFrame(idx) {
   currentFrame = csGetCurrentFrameIndex();
   updateFrameBarsVisual();
   updateFrameInfoText();
+  window.refreshPlaybackTimeDisplay?.({ resetToFrame: true });
 }
 
 // 統一給外面用的「同步目前幀」函式
@@ -892,6 +916,7 @@ function syncCurrentFrameFromCodeScript() {
   FrameSnapshotCache.capture(currentFrame);
   updateFrameBarsVisual();
   updateFrameInfoText();
+  window.refreshPlaybackTimeDisplay?.();
   if (typeof clearDrawingCanvas === 'function') clearDrawingCanvas();
 
   // 更新關鍵影格按鈕狀態 (disabled/enabled)
@@ -1019,6 +1044,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const nextBtn = document.getElementById('nextBtn');
   const nextKeyBtn = document.getElementById('nextKeyFrameBtn');
   const finishBtn = document.getElementById('finishBtn');
+  const playbackTime = document.getElementById('playbackTime');
 
   // === 速度 ===
   let speed = +speedSlider.value;
@@ -1061,6 +1087,163 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   updateSpeedLabel();
 
+  const PLAYBACK_TIME_CALIBRATION_KEY = 'asm_playback_time_calibration_v1';
+  const playbackActualDurations = new Map();
+  const playbackTransitionDurations = new Map();
+  const playbackFrameSleeps = new Map();
+  let playbackTimeline = { durations: [], offsets: [], totalMs: 0 };
+  let playbackClockFrame = 0;
+  let playbackClockStart = 0;
+  let playbackClockBaseMs = 0;
+  let playbackClockFrozenMs = 0;
+  let playbackClockAnimation = 0;
+  let activeFrameTiming = null;
+
+  function loadPlaybackCalibration() {
+    try {
+      return JSON.parse(localStorage.getItem(PLAYBACK_TIME_CALIBRATION_KEY) || '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  const playbackCalibration = window.ASMPlaybackTime?.createCalibration?.(loadPlaybackCalibration());
+
+  function playbackProfileKey(profile, rate) {
+    return [profile?.voiceName || profile?.lang || 'default', Number(rate || 1).toFixed(1)].join(':');
+  }
+
+  function currentPlaybackProfile(rate = getTtsRate()) {
+    return window.getAlgoShowMakerTTSProfile?.({ rate, volume: TTS_ENABLED ? 0.3 : 0 }) || {
+      lang: 'zh-TW', rate, volume: TTS_ENABLED ? 0.3 : 0, pitch: 1
+    };
+  }
+
+  function resolvedSpeechByFrame() {
+    const traceDocument = window.ASMTracePlayer?.getDocument?.();
+    if (!traceDocument?.frames?.length || !window.ASMPlaybackTime) {
+      return Array.from({ length: csGetFrameCount() }, () => []);
+    }
+    return traceDocument.frames.map(frame => window.ASMPlaybackTime.resolveFrameSpeechLines(
+      traceDocument,
+      frame,
+      {
+        model: window.ASMTraceModel,
+        rules: window.ASMTraceRules,
+        parseMarkup: window.parseTTSMarkup
+      }
+    ));
+  }
+
+  function configuredEventGap() {
+    const value = Number(window.ASMTracePlayer?.getDocument?.()?.studio?.eventSettings?.gapMs);
+    return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 500;
+  }
+
+  function rebuildPlaybackTimeline() {
+    if (!window.ASMPlaybackTime) return;
+    const rate = getTtsRate();
+    const profile = currentPlaybackProfile(rate);
+    const key = playbackProfileKey(profile, rate);
+    playbackTimeline = window.ASMPlaybackTime.buildTimeline({
+      frames: resolvedSpeechByFrame(),
+      rate,
+      gapMs: configuredEventGap(),
+      calibration: playbackCalibration?.ratio?.(key) || 1,
+      actualDurations: playbackActualDurations,
+      transitionDurations: playbackTransitionDurations,
+      frameSleeps: playbackFrameSleeps
+    });
+  }
+
+  function frameOffset(frameIndex = csGetCurrentFrameIndex()) {
+    return Number(playbackTimeline.offsets[Math.max(0, Number(frameIndex) || 0)]) || 0;
+  }
+
+  function renderPlaybackTime(currentMs = playbackClockFrozenMs) {
+    if (!playbackTime || !window.ASMPlaybackTime) return;
+    const current = Math.max(0, Math.min(Number(currentMs) || 0, Math.max(playbackTimeline.totalMs, 0)));
+    const currentLabel = window.ASMPlaybackTime.formatDuration(current);
+    const totalLabel = window.ASMPlaybackTime.formatDuration(playbackTimeline.totalMs);
+    const currentNode = playbackTime.querySelector('.playback-time-current');
+    const totalNode = playbackTime.querySelector('.playback-time-total');
+    if (currentNode && totalNode) {
+      currentNode.textContent = currentLabel;
+      totalNode.textContent = totalLabel;
+    } else {
+      playbackTime.textContent = `${currentLabel} / ${totalLabel}`;
+    }
+    playbackTime.setAttribute('aria-label', `目前播放時間 ${currentLabel}，預估總時間 ${totalLabel}`);
+  }
+
+  function playbackClockTick() {
+    if (!isPlaying || !activeFrameTiming) {
+      playbackClockAnimation = 0;
+      return;
+    }
+    playbackClockFrozenMs = playbackClockBaseMs + Math.max(0, performance.now() - playbackClockStart);
+    renderPlaybackTime(playbackClockFrozenMs);
+    playbackClockAnimation = requestAnimationFrame(playbackClockTick);
+  }
+
+  function resetPlaybackClock(frameIndex = csGetCurrentFrameIndex(), running = false) {
+    playbackClockFrame = Math.max(0, Number(frameIndex) || 0);
+    playbackClockBaseMs = frameOffset(playbackClockFrame);
+    playbackClockFrozenMs = playbackClockBaseMs;
+    playbackClockStart = performance.now();
+    if (playbackClockAnimation) cancelAnimationFrame(playbackClockAnimation);
+    playbackClockAnimation = 0;
+    renderPlaybackTime(playbackClockFrozenMs);
+    if (running) playbackClockAnimation = requestAnimationFrame(playbackClockTick);
+  }
+
+  function startPlaybackFrameTiming(frameIndex, incomingTransition) {
+    const index = Math.max(0, Number(frameIndex) || 0);
+    const transitionMs = Number(incomingTransition?.playbackPlan?.totalDurationMs);
+    if (Number.isFinite(transitionMs) && transitionMs >= 0) {
+      playbackTransitionDurations.set(index, transitionMs);
+    }
+    playbackFrameSleeps.set(index, Math.max(0, Number(currentFrameSleep) || 0));
+    activeFrameTiming = { index, startedAt: performance.now() };
+    rebuildPlaybackTimeline();
+    resetPlaybackClock(index, true);
+  }
+
+  function finishPlaybackFrameTiming(frameIndex) {
+    const index = Math.max(0, Number(frameIndex) || 0);
+    if (!activeFrameTiming || activeFrameTiming.index !== index) return;
+    playbackActualDurations.set(index, Math.max(0, performance.now() - activeFrameTiming.startedAt));
+    activeFrameTiming = null;
+    if (playbackClockAnimation) cancelAnimationFrame(playbackClockAnimation);
+    playbackClockAnimation = 0;
+    rebuildPlaybackTimeline();
+    playbackClockFrozenMs = frameOffset(index) + (playbackActualDurations.get(index) || 0);
+    renderPlaybackTime(playbackClockFrozenMs);
+  }
+
+  function recordSpeechTiming(text, rate, profile, startedAt) {
+    if (!playbackCalibration || !window.ASMPlaybackTime || !startedAt) return;
+    const predicted = window.ASMPlaybackTime.estimateSpeechDurationMs(text, rate, 1);
+    playbackCalibration.record(playbackProfileKey(profile, rate), predicted, performance.now() - startedAt);
+    try {
+      localStorage.setItem(PLAYBACK_TIME_CALIBRATION_KEY, JSON.stringify(playbackCalibration.toJSON()));
+    } catch { }
+  }
+
+  window.refreshPlaybackTimeDisplay = ({ resetToFrame = false } = {}) => {
+    rebuildPlaybackTimeline();
+    const frameIndex = csGetCurrentFrameIndex();
+    if (resetToFrame || !isPlaying || frameIndex !== playbackClockFrame) {
+      resetPlaybackClock(frameIndex, isPlaying && Boolean(activeFrameTiming));
+    } else {
+      renderPlaybackTime(playbackClockFrozenMs);
+    }
+  };
+  window.addEventListener('asm:trace-frame', () => {
+    if (!isPlaying) window.refreshPlaybackTimeDisplay({ resetToFrame: true });
+    else rebuildPlaybackTimeline();
+  });
+
   // === UI 同步（整合 ▶ / ⏸）===
   function syncPlayToggleUI() {
     if (!toggleBtn) return;
@@ -1078,6 +1261,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const transitionReady = Promise.resolve(incomingTransition).catch(() => {});
     const entries = collectMessageTextInCurrentFrame();
+    startPlaybackFrameTiming(csGetCurrentFrameIndex(), incomingTransition);
 
     const advanceAfterReady = () => {
       // 再檢查一次（避免 onend 在 pause 或重新播放後才觸發）
@@ -1102,6 +1286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         : 500;
       const scheduleNextFrame = callback => setTimeout(() => {
         if (!isPlaying || runId !== TTS_RUN_ID) return;
+        finishPlaybackFrameTiming(cur);
         callback();
       }, eventInterval + (currentFrameSleep || 0));
 
@@ -1125,6 +1310,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fast = false;
         isPlaying = false;
+        finishPlaybackFrameTiming(cur);
         syncPlayToggleUI();
         if (typeof stopStepAuto === 'function') stopStepAuto();
         return;
@@ -1134,6 +1320,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (total > 0 && cur >= total - 1) {
         fast = false;
         isPlaying = false;
+        finishPlaybackFrameTiming(cur);
         syncPlayToggleUI();
         if (typeof stopStepAuto === 'function') stopStepAuto();
         return;
@@ -1177,11 +1364,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
-    const fallbackDelay = () => {
-      queueMicrotask(() => {
+    const fallbackDelay = (delayMs = 0) => {
+      setTimeout(() => {
         if (!isPlaying || runId !== TTS_RUN_ID) return;
         afterSpeak();
-      });
+      }, Math.max(0, Number(delayMs) || 0));
     };
 
     if (!entries.length) {
@@ -1191,7 +1378,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (typeof speakText !== 'function') {
       console.warn('[TTS] 找不到 speakText 函式，改用 delay 播放。');
-      fallbackDelay();
+      const rate = getTtsRate();
+      const estimate = entries.reduce((sum, entry) => (
+        sum + (window.ASMPlaybackTime?.estimateSpeechDurationMs?.(entry.text, rate) || 0)
+      ), 0);
+      fallbackDelay(estimate);
       return;
     }
 
@@ -1204,6 +1395,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // === 逐行朗讀 ===
     let entryIdx = 0;
+    let lineStartedAt = 0;
     function speakNextLine() {
       if (!isPlaying || runId !== TTS_RUN_ID) { clearTTSHighlight(); return; }
 
@@ -1224,8 +1416,13 @@ document.addEventListener('DOMContentLoaded', () => {
         volume: ttsProfile.volume,
         preferredVoiceRegex: ttsProfile.preferredVoiceRegex,
         interrupt: true,
+        onstart: () => {
+          lineStartedAt = performance.now();
+        },
         onend: () => {
           if (!isPlaying || runId !== TTS_RUN_ID) { clearTTSHighlight(); return; }
+          recordSpeechTiming(entry.text, rate, ttsProfile, lineStartedAt);
+          lineStartedAt = 0;
           entryIdx++;
           speakNextLine();
         },
@@ -1313,6 +1510,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 紀錄這次播放從哪裡開始，避免「起步即止」
     playSessionStartFrame = csGetCurrentFrameIndex();
+    rebuildPlaybackTimeline();
+    resetPlaybackClock(playSessionStartFrame, false);
 
     syncPlayToggleUI();
     playFromCurrentFrameWithTTS(myRunId);
@@ -1323,6 +1522,9 @@ document.addEventListener('DOMContentLoaded', () => {
     isPlaying = false;
     // 讓所有舊的 callback（onend / setTimeout）全部失效
     TTS_RUN_ID++;
+    if (playbackClockAnimation) cancelAnimationFrame(playbackClockAnimation);
+    playbackClockAnimation = 0;
+    activeFrameTiming = null;
 
     syncPlayToggleUI();
     clearTTSHighlight();
@@ -1337,6 +1539,10 @@ document.addEventListener('DOMContentLoaded', () => {
   speedSlider.oninput = (e) => {
     speed = +e.target.value;
     updateSpeedLabel();
+    playbackActualDurations.clear();
+    playbackTransitionDurations.clear();
+    rebuildPlaybackTimeline();
+    if (!isPlaying) resetPlaybackClock(csGetCurrentFrameIndex(), false);
     //  if (isPlaying) startTimer();
   };
 
@@ -1761,6 +1967,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 初始 UI
   syncPlayToggleUI();
   syncCurrentFrameFromCodeScript();
+  window.refreshPlaybackTimeDisplay({ resetToFrame: true });
 
 });
 

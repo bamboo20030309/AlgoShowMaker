@@ -9,12 +9,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css?v=brand-shared-6" />
+  <link rel="stylesheet" href="style.css?v=brand-shared-10" />
   <link rel="stylesheet" href="brand.css?v=hover-pill-1" />
-  <link rel="stylesheet" href="slides-embed.css?v=random-id-5" />
+  <link rel="stylesheet" href="slides-embed.css?v=random-id-6" />
   <link rel="stylesheet" href="trace.css?v=trace-36" />
   <link rel="stylesheet" href="trace-directive-assist.css?v=directive-4" />
-  <link rel="stylesheet" href="trace-studio.css?v=trace-56" />
+  <link rel="stylesheet" href="trace-studio.css?v=trace-58" />
   <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
@@ -158,9 +158,17 @@
           <span id="traceFreshnessNotice" class="trace-freshness-dot" data-status="empty"
             role="status" aria-live="polite" aria-label="動畫尚未更新" title="動畫尚未更新"></span>
           <div id="frameTimeline">
+            <div class="frame-track" aria-hidden="true"></div>
+            <div id="frameProgress" class="frame-progress" aria-hidden="true"></div>
             <div id="frameBars"></div>
-            <div id="frameInfo">0 / 0</div>
+            <div id="framePlayhead" class="frame-playhead" aria-hidden="true"></div>
+            <div id="frameHoverPreview" class="frame-hover-preview" hidden></div>
           </div>
+          <span id="playbackTime" class="playback-time" role="timer"
+            aria-label="目前播放時間 00:00，預估總時間 00:00"
+            title="目前播放時間 / 預估總時間"><span class="playback-time-current">00:00</span><span
+              class="playback-time-separator"> / </span><span class="playback-time-total">00:00</span></span>
+          <span id="frameInfo" class="frame-count" aria-label="目前幀 0，共 0 幀">0 / 0</span>
           <div class="speed-slider-wrapper">
             <div class="speed-track-wedge"></div>
             <input type="range" id="speedSlider" min="1" max="2000" step="100" value="1000" />
@@ -346,7 +354,7 @@
   <script src="trace-events.js?v=trace-59"></script>
   <script src="trace-color-picker.js?v=trace-6"></script>
   <!-- 底層繪圖與互動腳本 -->
-  <script src="canva.js?v=trace-12"></script>
+  <script src="canva.js?v=trace-15"></script>
   <script src="interaction.js?v=trace-41"></script>
   <script src="trace-view-source.js?v=trace-17"></script>
   <script src="trace-model.js?v=trace-39"></script>
@@ -360,17 +368,19 @@
   <script src="trace-code-presenter.js?v=code-33"></script>
   <script src="trace-renderer.js?v=trace-229"></script>
   <script src="trace-player.js?v=trace-26"></script>
+  <script src="trace-viewport-culling.js?v=2"></script>
   <script src="trace-debug-recorder.js?v=debug-8"></script>
   <script src="trace-provenance.js?v=trace-11"></script>
-  <script src="algorithm-animation.js?v=animation-3"></script>
+  <script src="algorithm-animation.js?v=animation-4"></script>
   <script src="trace-editor.js?v=trace-28"></script>
   <script src="trace-freshness.js?v=trace-2"></script>
   <script src="syntax-tree.js?v=syntax-3"></script>
   <script src="compile.js?v=syntax-7"></script>
   <script src="tts.js?v=10"></script>
+  <script src="playback-time.js?v=1"></script>
   <script src="resolve_pos.js"></script>
   <script src="animation.js?v=trace-5"></script>
-  <script src="front.js?v=random-id-36"></script>
+  <script src="front.js?v=random-id-40"></script>
   <script src="trace-directive-assist.js?v=directive-26"></script>
   <script src="draw/draw_array_outerframe.js"></script>
   <script src="draw/draw_array_hintWidget.js?v=trace-4"></script>
@@ -393,8 +403,8 @@
   <!-- GUI 編輯器 -->
   <link rel="stylesheet" href="gui_editor.css" />
   <script src="gui_editor.js?v=trace-6"></script>
-  <script src="trace-studio.js?v=trace-130"></script>
-  <script src="slides-embed.js?v=trace-10"></script>
+  <script src="trace-studio.js?v=trace-131"></script>
+  <script src="slides-embed.js?v=trace-11"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

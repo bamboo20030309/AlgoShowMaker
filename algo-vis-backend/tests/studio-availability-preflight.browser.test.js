@@ -5,7 +5,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 const { compile } = require('./helpers/compile');
 
-test('Studio preflights hidden events without losing marker-bound targets', { timeout: 60000 }, async () => {
+test('Studio lazily checks visited frames without losing hidden-event or marker-bound targets', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const fibonacci = await compile(fs.readFileSync(path.join(
@@ -42,6 +42,13 @@ int main() {
       window.ASMTraceStudio.close();
       const document = window.ASMTracePlayer.apply(raw);
       window.ASMTraceStudio.open(document);
+      // Availability is now evaluated when visiting each frame, not by opening
+      // every hidden scene up front. Preserve all classification assertions.
+      for (let index = 0; index < document.frames.length; index += 1) {
+        await window.ASMTracePlayer.renderStable(index);
+      }
+      await window.ASMTracePlayer.renderStable(0);
+
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const frame = document.frames[window.ASMTracePlayer.getCurrentFrame()];
       const groups = window.ASMTraceEventCodeTree.collectGroups(document, frame).map(group => ({

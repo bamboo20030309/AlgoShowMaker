@@ -72,3 +72,31 @@ test('each canvas keeps the original viewport-relative camera scale', () => {
   assert.ok(Math.abs(renderedScale(editor) - 0.92 * 650 / 900) < 1e-12);
   assert.ok(Math.abs(renderedScale(runtime) - 0.92 * 720 / 900) < 1e-12);
 });
+
+test('presentation camera composes after every base camera and can be disabled for edit mode', () => {
+  const surface = cameraSurface(720, 900);
+  const transform = () => Array.from(
+    surface.canvas.children[1].getAttribute('transform').matchAll(/-?\d+(?:\.\d+)?/g),
+    match => Number(match[0])
+  );
+  const closeTo = expected => {
+    const actual = transform();
+    assert.equal(actual.length, expected.length);
+    actual.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) < 1e-9,
+      `${value} should match ${expected[index]}`));
+  };
+
+  surface.context.setCamera(100, 200, 1, false);
+  surface.context.setPresentationCameraTransform({
+    panXRatio: 0.1,
+    panYRatio: -0.1,
+    zoomFactor: 1.5
+  }, true, true);
+  closeTo([648, 48, 1.2]);
+
+  surface.context.setCamera(200, 100, 0.5, false);
+  closeTo([648, 228, 0.6]);
+
+  surface.context.setPresentationCameraTransform(null, true, false);
+  closeTo([560, 320, 0.4]);
+});
