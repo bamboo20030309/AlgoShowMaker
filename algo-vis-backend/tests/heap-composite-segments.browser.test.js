@@ -523,13 +523,17 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
       const unwind=indexed.find(({frame,index})=>index>lazyTagged.index
         &&frame.source?.function==='query'&&(frame.arrows||[]).length===2
         &&markedNodes(frame).length>0);
-      const handoff=indexed.find(({frame,index})=>index>0
-        &&(doc.frames[index-1].segments||[]).some(segment=>segment.split?.phase==='before')
-        &&(frame.segments||[]).some(segment=>segment.split?.phase==='after')
-        &&markedNodes(frame).length>0);
+      const changedHandoffMark=({frame,index})=>{
+        const previous=new Map(markedNodes(doc.frames[index-1]||{}).map(mark=>[mark.node,mark.color]));
+        return markedNodes(frame).find(mark=>previous.has(mark.node)&&previous.get(mark.node)!==mark.color)||null;
+      };
+      const handoff=indexed.find(item=>item.index>0
+        &&(doc.frames[item.index-1].segments||[]).some(segment=>segment.split?.phase==='before')
+        &&(item.frame.segments||[]).some(segment=>segment.split?.phase==='after')
+        &&changedHandoffMark(item));
       await player.render(operation.index,{animatePositions:false,animateEvents:false});
       const operationSegments=document.querySelectorAll('#asm-trace-root .asm-trace-heap-cell-segment').length;
-      const handoffMark=markedNodes(handoff.frame)[0];
+      const handoffMark=changedHandoffMark(handoff);
       await player.render(handoff.index-1,{animatePositions:false,animateEvents:false});
       const handoffSamples=[];
       let handoffSettled=false;

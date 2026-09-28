@@ -51,16 +51,18 @@ test('event controls preserve metadata and values, obey frame condition and last
   source.frames[2].eventControls = [];
   const doc = api.ASMTraceModel.normalizeTraceDocument(source);
   assert.equal(doc.frames[0].events[1].enabled, true);
-  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,true,false]);
+  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,false,false],
+    'read metadata remains internal even when an old source explicitly enables it');
   assert.equal(doc.frames[2].events[1].enabled, true);
   assert.equal(doc.frames[1].state.i.data.value, 8);
   assert.equal(doc.frames[1].events[1].payload.after, 99);
   assert.equal(doc.frames[1].events.length, 4);
   api.ASMTraceEvents.applyEnabledStates(doc);
-  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,true,false]);
+  assert.deepEqual(Array.from(doc.frames[1].events, event => event.enabled), [false,false,false,false]);
   doc.frames[1].eventControls = [{ types: ['all'], animate: true }];
   api.ASMTraceEvents.applyEnabledStates(doc);
   assert.equal(doc.frames[1].events[3].enabled, false, 'internal condition cannot be enabled');
+  assert.equal(doc.frames[1].events[2].enabled, false, 'internal read metadata cannot be enabled');
   doc.frames[1].eventControls = [{ types: ['all'], animate: false, when: { expression: 'missing>0' } }];
   assert.throws(() => api.ASMTraceEvents.applyEnabledStates(doc), /條件無法解析/);
 });
