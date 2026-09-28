@@ -803,26 +803,7 @@ function buildFrameBars() {
 
   barsContainer.innerHTML = "";
 
-  const keySet = new Set(keyFrameIndices || []);
-  const stopSet = new Set(csGetStopFrames());
-  const traceFrames = window.ASMTracePlayer?.getDocument?.()?.frames || [];
-
-  for (let i = 0; i < totalFrames; i++) {
-    const bar = document.createElement("div");
-    bar.classList.add("frame-bar");
-    if (keySet.has(i)) bar.classList.add("keyframe");
-    if (stopSet.has(i)) bar.classList.add("stopframe");
-    bar.dataset.index = i;
-    const sourceLine = Number(traceFrames[i]?.source?.line);
-    bar.dataset.previewLabel = Number.isFinite(sourceLine) && sourceLine > 0
-      ? `第 ${i + 1} 幀 · 第 ${sourceLine} 行`
-      : `第 ${i + 1} 幀`;
-
-    barsContainer.appendChild(bar);
-  }
-
   const timeline = document.getElementById("frameTimeline");
-  timeline?.classList.toggle('dense', totalFrames > 80);
   if (timeline && !timeline.dataset.scrubBound) {
     timeline.dataset.scrubBound = "true";
     let isDraggingTimeline = false;
@@ -838,17 +819,14 @@ function buildFrameBars() {
       const targetIdx = frameAtPointer(e);
       if (targetIdx < 0) return;
       const preview = document.getElementById('frameHoverPreview');
-      const bars = barsContainer.querySelectorAll('.frame-bar');
-      bars.forEach((bar, index) => bar.classList.toggle('is-preview', index === targetIdx));
       timeline.style.setProperty('--frame-hover-position', `${((targetIdx + 0.5) / totalFrames) * 100}%`);
       if (preview) {
-        preview.textContent = bars[targetIdx]?.dataset.previewLabel || `第 ${targetIdx + 1} 幀`;
+        preview.textContent = `第 ${targetIdx + 1} / ${totalFrames} 幀`;
         preview.hidden = false;
       }
     };
 
     const hidePreview = () => {
-      barsContainer.querySelectorAll('.frame-bar.is-preview').forEach(bar => bar.classList.remove('is-preview'));
       const preview = document.getElementById('frameHoverPreview');
       if (preview) preview.hidden = true;
     };
@@ -876,7 +854,7 @@ function buildFrameBars() {
     });
     timeline.addEventListener('pointerenter', showPreview);
     timeline.addEventListener('pointerleave', () => {
-      if (!isDraggingTimeline) hidePreview();
+      hidePreview();
     });
     timeline.addEventListener('pointercancel', () => {
       isDraggingTimeline = false;
@@ -892,16 +870,6 @@ function updateFrameBarsVisual() {
   const barsContainer = document.getElementById("frameBars");
   if (!barsContainer) return;
 
-  const bars = barsContainer.querySelectorAll(".frame-bar");
-  bars.forEach(bar => {
-    const idx = Number(bar.dataset.index);
-    bar.classList.toggle("active", idx === currentFrame);
-    if (idx <= currentFrame) {
-      bar.classList.add("reached");
-    } else {
-      bar.classList.remove("reached");
-    }
-  });
   const timeline = document.getElementById('frameTimeline');
   const progress = totalFrames > 0 ? ((currentFrame + 0.5) / totalFrames) * 100 : 0;
   timeline?.style.setProperty('--frame-progress', `${Math.max(0, Math.min(100, progress))}%`);

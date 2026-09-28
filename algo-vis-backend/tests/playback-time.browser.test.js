@@ -85,13 +85,13 @@ test('playback clock estimates total time, follows rate, and restarts the curren
     assert.deepEqual(timelineStyle, {
       progress: '25%',
       trackHeight: '6px',
-      playheadHeight: '18px',
-      markerCount: 2,
-      stopCount: 1
+      playheadHeight: '10px',
+      markerCount: 0,
+      stopCount: 0
     });
     await page.locator('#frameTimeline').hover({ position: { x: 20, y: 15 } });
     await assert.doesNotReject(() => page.locator('#frameHoverPreview').waitFor({ state: 'visible' }));
-    assert.equal(await page.locator('#frameHoverPreview').textContent(), '第 1 幀 · 第 1 行');
+    assert.equal(await page.locator('#frameHoverPreview').textContent(), '第 1 / 2 幀');
     const timeColors = await clock.evaluate(element => ({
       current: getComputedStyle(element.querySelector('.playback-time-current')).color,
       total: getComputedStyle(element.querySelector('.playback-time-total')).color
@@ -127,19 +127,21 @@ test('playback clock estimates total time, follows rate, and restarts the curren
     assert.match(await clock.textContent(), /^00:00 \/ /);
 
     await page.evaluate(() => {
-      const frames = Array.from({ length: 81 }, (_, index) => ({
+      const frames = Array.from({ length: 120 }, (_, index) => ({
         id: `dense-${index}`, state: {}, source: { line: index + 1 }, texts: [], events: []
       }));
       window.asmApplyTraceDocument({ frames, variables: {}, rules: [], studio: {} });
-      window.CodeScript.get_key_frames = () => [0, 80];
+      window.CodeScript.get_key_frames = () => [0, 119];
       window.initFrameInfoFromCodeScript();
     });
-    assert.equal(await page.locator('#frameTimeline').getAttribute('class'), 'dense');
-    assert.equal(await page.locator('.frame-bar').count(), 81);
-    const hiddenOrdinaryMarker = await page.locator('.frame-bar').nth(10).evaluate(element => (
-      getComputedStyle(element, '::after').opacity
-    ));
-    assert.equal(hiddenOrdinaryMarker, '0');
+    assert.equal(await page.locator('.frame-bar').count(), 0);
+    const compactBox = await page.locator('#frameTimeline').boundingBox();
+    assert.ok(compactBox.width <= 220, '120 frames keep the timeline within 220px');
+    assert.equal(await page.locator('.frame-playhead').count(), 1);
+    await page.locator('#frameTimeline').click({ position: { x: compactBox.width - 1, y: 15 } });
+    assert.equal(await page.locator('#frameInfo').textContent(), '120 / 120');
+    await page.locator('#frameTimeline').click({ position: { x: 1, y: 15 } });
+    assert.equal(await page.locator('#frameInfo').textContent(), '1 / 120');
   } finally {
     await browser?.close();
     server.kill();

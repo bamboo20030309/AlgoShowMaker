@@ -787,8 +787,9 @@ button.auto-stepping:hover {
 #frameTimeline {
   position: relative;
   flex-grow: 1;
-  min-width: 170px;
-  max-width: 360px;
+  flex-basis: 180px;
+  min-width: 100px;
+  max-width: 220px;
   height: 30px;
   display: flex;
   align-items: center;
@@ -819,7 +820,7 @@ button.auto-stepping:hover {
 .frame-progress {
   width: var(--frame-progress);
   background: var(--primary-blue);
-  transition: width 160ms ease-out;
+
 }
 
 #frameBars {
@@ -836,73 +837,19 @@ button.auto-stepping:hover {
  * 影格時間軸
  * 到達、關鍵幀與目前位置分開著色，寬度由影格數動態計算。
  * -------------------------------------------------------------------------- */
-.frame-bar {
-  flex: 1;
-  height: 100%;
-  position: relative;
-  min-width: 0;
-}
-
-.frame-bar::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 5px;
-  height: 5px;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  background: #94a3b8;
-  box-shadow: 0 0 0 1px rgba(71, 85, 105, 0.2);
-  transform: translate(-50%, -50%);
-  transition: width 120ms ease, height 120ms ease, background-color 120ms ease,
-    box-shadow 120ms ease, transform 120ms ease;
-}
-
-.frame-bar.reached::after {
-  background: var(--primary-blue);
-  box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.24);
-}
-
-.frame-bar.keyframe::after {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.frame-bar.stopframe::after {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: #475569;
-  transform: translate(-50%, -50%);
-}
-
-.frame-bar.is-preview::after {
-  width: 10px;
-  height: 10px;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(0, 122, 204, 0.32);
-}
-
-#frameTimeline.dense .frame-bar:not(.keyframe):not(.stopframe):not(.active)::after {
-  opacity: 0;
-}
-
 .frame-playhead {
   position: absolute;
   left: var(--frame-progress);
   top: 50%;
   z-index: 3;
-  width: 4px;
-  height: 18px;
+  width: 10px;
+  height: 10px;
   border: 2px solid #fff;
   border-radius: 999px;
   background: var(--active-blue);
   box-shadow: 0 1px 5px rgba(37, 99, 235, 0.42);
   transform: translate(-50%, -50%);
-  transition: left 160ms ease-out;
+  transition: box-shadow 120ms ease;
   pointer-events: none;
 }
 
