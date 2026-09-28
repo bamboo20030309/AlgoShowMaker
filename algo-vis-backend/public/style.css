@@ -853,6 +853,18 @@ button.auto-stepping:hover {
     0.7px 0.7px 0 #fff;
 }
 
+.playback-time {
+  flex: 0 0 auto;
+  min-width: 94px;
+  color: #dbe4ee;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 速度拉桿 */
 .controls button:active {
   transform: translateY(0);
@@ -865,7 +877,6 @@ button.auto-stepping:hover {
   width: 100px;
   height: 24px;
   margin: 0 8px;
-  margin-left: auto;
   display: flex;
   align-items: center;
 }
