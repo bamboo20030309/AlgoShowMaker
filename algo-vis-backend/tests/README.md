@@ -42,18 +42,53 @@ npm run regression
 
 需要 Node.js、已安裝 npm dependencies、Git，以及 server.js 使用的 C++ 編譯器。
 指令檢查專案 JavaScript 語法、git diff --check，啟動獨立連接埠的臨時伺服器，
-執行所有 tests/*.test.js，結束後關閉自己啟動的伺服器。不會停止 localhost:3000、
+新一輪執行所有 tests/*.test.js，同一輪後續只續跑未通過部分；結束後關閉自己啟動的伺服器。不會停止 localhost:3000、
 改寫投影片或產生 server log 檔。測試完成後會接著執行無頭瀏覽器實際動畫驗證。
 Windows 預設使用已安裝的 Microsoft Edge；其他環境先執行 `npx playwright install chromium`。
 可用 `ASM_BROWSER_CHANNEL` 指定瀏覽器。瀏覽器缺少或無法啟動時會失敗，不會跳過。
 全套小測試可由主代理使用 npm test，但應設定 ASM_TEST_BASE_URL 指向獨立測試服務。
 
-單獨重跑實際動畫：`npm run regression:animation`（同樣自動啟動隔離服務）。
+### 同一輪驗證的失敗續跑
+
+完整回歸會把本輪狀態寫入 `test-results/regression-state.json`。第一次執行或以
+`npm run regression:fresh` 開始新一輪時，會建立新的 cycle；之後再次執行
+`npm run regression`，會沿用同一輪已通過的結果，只執行尚未完成或失敗的部分。
+整輪完成後再次執行也會沿用完成狀態，不會重跑已通過項目。語法檢查、差異檢查及
+隔離服務啟動仍會在每次入口執行。
+
+同一個 worktree 同時只能執行一個 regression 入口；鎖定期間啟動第二個會直接失敗，
+避免兩個程序同時覆寫 state、TAP 與動畫報告。等待原本的 regression 結束後再續跑，
+不要用另一個程序平行啟動相同入口。
+
+Node 測試以**測試檔**為續跑單位。一個檔案內只要有一項失敗，下次就會重跑該完整
+`.test.js` 檔；其他已通過檔案不重跑。若程序中斷，尚未得到結果的檔案仍列為待執行。
+`test-results/regression.tap` 是本次 attempt 的輸出，跨次判定以 state 檔為準。
+
+切換到新的 release 基準，或需要重建一份完整 release 證據時，才使用 `:fresh` 入口。
+同一 release cycle 內修正失敗後，直接執行一般入口續跑，**不要使用 `:fresh`**，否則會
+丟棄已通過結果並重跑全部項目。測試檔清單改變時，入口也會要求以 `:fresh` 開始新一輪。
+狀態與報告都位於已被 Git 忽略的 `test-results/`，不得提交。
+
+動畫階段也記錄同一輪的成功與失敗項目。若動畫案例或三個前置案例失敗，下次預設只
+重跑失敗項目；已通過的動畫不重播。若失敗發生在產生 summary 之前，無法可靠辨識失敗
+項目，下一次會重跑完整動畫階段。手動設定 `ASM_ANIMATION_CASES` 或
+`ASM_ANIMATION_PREREQUISITES` 的局部動畫驗證不會把完整 release 動畫輪次標為完成。
+
+單獨續跑本輪測試可用 `npm run regression:tests`；強制建立新測試輪次可用
+`npm run regression:tests:fresh`。單獨續跑本輪實際動畫使用
+`npm run regression:animation`，強制建立新動畫輪次則使用
+`npm run regression:animation:fresh`；這些指令都會自動啟動隔離服務。
 使用冒泡、插入、選擇、Heap、遞迴 Quick Sort，
 先在 algorithm 頁實際 RUN 以產生 trace，再將同一份動畫資料透過投影片的同源 iframe
 載入協定交給 runtime，只在 runtime 執行 `CodeScript` 逐幀播放與實際 SVG 取樣。
 algorithm 頁在這項大規模動畫驗證中僅用來產生 trace，不代表其動畫播放已通過驗證。
 此 runtime iframe 驗證不取代完整的 slides.html 匯入、雲端儲存及手機目視驗收。
+
+動畫固定案例的 trace 先依序建立，再以預設 3 個 worker 平行播放。每個 worker 使用獨立
+browser context；它們共用本次回歸建立的隔離 server、同一個瀏覽器程序及同一個時間戳
+報告目錄。三個前置案例 `cloud-storage-browser`、`slide-order-toggle`、
+`deck-import-repair` 在每次需要它們的 attempt 各執行一次，不會分派給每個 worker 重複跑。
+可用 `ASM_ANIMATION_WORKERS` 調整 worker 數量；資源受限或追查競態時可設為 `1`。
 
 產品仍要維持 algorithm、Trace Studio、投影片 editor/runtime 的相容性。
 `playback-parity.integration.test.js`、`slide-animation-parity.test.js`、`entrypoints.test.js` 等相關小測試繼續保留，
@@ -69,14 +104,34 @@ keep 可見性與數值提前提交仍檢查動畫過程中的樣本。
 
 先執行 `node --test tests/slide-storage.test.js tests/slide-cloud-storage.test.js`：檢查內容雜湊去重、獨立 Studio 設定、跨草稿參照回收、交易失敗保留舊資料，以及雲端增量結果與分享讀取。雲端路由測試使用替代資料庫，不等同實機 MongoDB 驗收。公開 HTTP 的 SHA-256 相容性亦有固定測試。
 
-`deck-import-repair` 瀏覽器案例另檢查成功 RUN 並儲存後重新載入，完整 trace 與事件間隔保持一致，且不發出分析／編譯請求。最後用 `ASM_ANIMATION_CASES=selection` 執行 `npm run regression`，核對 runtime 的定點、步進與自動播放；Studio 同步由 `deck-import-repair` 及相關小測試覆蓋。不提交產生的報告與截圖。
+`deck-import-repair` 瀏覽器案例另檢查成功 RUN 並儲存後重新載入，完整 trace 與事件間隔保持一致，且不發出分析／編譯請求。最後以 PowerShell 執行以下局部動畫驗證，核對 runtime 的定點、步進與自動播放；Studio 同步由 `deck-import-repair` 及相關小測試覆蓋。不提交產生的報告與截圖。
+
+```powershell
+$env:ASM_ANIMATION_CASES = 'selection'
+$env:ASM_ANIMATION_PREREQUISITES = 'none'
+try { npm run regression:animation }
+finally {
+  Remove-Item Env:ASM_ANIMATION_CASES -ErrorAction SilentlyContinue
+  Remove-Item Env:ASM_ANIMATION_PREREQUISITES -ErrorAction SilentlyContinue
+}
+```
 
 ### 全域預設驗證項目
 
 `defaults-directives.test.js` 檢查每幀展開、preset／當幀覆寫、作用域、刪除後不殘留及拒絕流程動作，
 並透過實際編譯確認 camera 與 style 進入共用 trace。`defaults` 固定小案例驗證 runtime 的實際交換播放。
 可先跑 `node --test --test-name-pattern='defaults apply|removing defaults|defaults resolve|defaults reject' tests/defaults-directives.test.js` 的解析項目；
-整合項目與瀏覽器使用隔離服務，可用 `ASM_ANIMATION_CASES=defaults` 執行 `npm run regression`。
+整合項目與瀏覽器使用隔離服務；PowerShell 局部動畫驗證如下，並在結束後清除篩選環境變數：
+
+```powershell
+$env:ASM_ANIMATION_CASES = 'defaults'
+$env:ASM_ANIMATION_PREREQUISITES = 'none'
+try { npm run regression:animation }
+finally {
+  Remove-Item Env:ASM_ANIMATION_CASES -ErrorAction SilentlyContinue
+  Remove-Item Env:ASM_ANIMATION_PREREQUISITES -ErrorAction SilentlyContinue
+}
+```
 
 ### 呼叫函式固定驗證
 
@@ -109,7 +164,17 @@ runtime 逐次量測第 4→5 幀：交換開始前保留來源格子填色，�
 - 比較事件框只包數值格的規則另外驗證，不與 style highlight 混用。
 - 顏色過渡必須取得原生 SVG fill／stroke transition 的中間進度樣本；自動播放等待有限變色動畫，但不等待無限閃爍。
 
-可先跑 `node --test tests/style-layer.test.js tests/presentation-hints.test.js`，再以 `ASM_ANIMATION_CASES=highlight-swap` 執行完整回歸。runtime 報告的 `report.highlightChecks` 包含樣本數與第一批違規資料。
+可先跑 `node --test tests/style-layer.test.js tests/presentation-hints.test.js`，再以 PowerShell 執行局部動畫驗證。runtime 報告的 `report.highlightChecks` 包含樣本數與第一批違規資料。
+
+```powershell
+$env:ASM_ANIMATION_CASES = 'highlight-swap'
+$env:ASM_ANIMATION_PREREQUISITES = 'none'
+try { npm run regression:animation }
+finally {
+  Remove-Item Env:ASM_ANIMATION_CASES -ErrorAction SilentlyContinue
+  Remove-Item Env:ASM_ANIMATION_PREREQUISITES -ErrorAction SilentlyContinue
+}
+```
 
 ## 動畫實錄回歸
 

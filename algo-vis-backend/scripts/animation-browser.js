@@ -8,6 +8,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { randomBytes } = require('node:crypto');
 const { chromium } = require('playwright');
 const { validate } = require('./animation-assertions');
 const root = path.resolve(__dirname, '..');
@@ -62,10 +63,33 @@ async function buildAnimation(browser, baseURL, item) {
 }
 
 async function runAnimationBrowser(baseURL) {
-  const selectedCases = cases.filter(item => !process.env.ASM_ANIMATION_CASES
-    || process.env.ASM_ANIMATION_CASES.split(',').includes(item.name));
-  if (!selectedCases.length) throw new Error('沒有匹配的動畫案例，不能視為驗證成功');
-  const output = path.join(root, 'test-results/animation', new Date().toISOString().replace(/[:.]/g, '-'));
+  const prerequisites = [
+    { label: 'cloud-storage-browser', run: require('./cloud-storage-browser').runCloudStorageBrowser },
+    { label: 'slide-order-toggle', run: require('./slide-order-browser').runSlideOrderBrowser },
+    { label: 'deck-import-repair', run: require('./deck-import-browser').runDeckImportBrowser }
+  ];
+  function selectRequested(items, key, environmentName) {
+    const raw = process.env[environmentName];
+    if (raw === undefined) return items;
+    const requested = raw.trim().toLowerCase() === 'none' ? []
+      : raw.split(',').map(value => value.trim()).filter(Boolean);
+    const available = new Set(items.map(item => item[key]));
+    const unknown = requested.filter(name => !available.has(name));
+    if (unknown.length) throw new Error(`${environmentName} 包含未知案例：${unknown.join(', ')}`);
+    const requestedSet = new Set(requested);
+    return items.filter(item => requestedSet.has(item[key]));
+  }
+  const selectedCases = selectRequested(cases, 'name', 'ASM_ANIMATION_CASES');
+  const selectedPrerequisites = selectRequested(prerequisites, 'label', 'ASM_ANIMATION_PREREQUISITES');
+  if (!selectedCases.length && !selectedPrerequisites.length) {
+    throw new Error('沒有匹配的動畫或前置案例，不能視為驗證成功');
+  }
+  const requestedWorkers = Number(process.env.ASM_ANIMATION_WORKERS || 3);
+  if (selectedCases.length && (!Number.isInteger(requestedWorkers) || requestedWorkers < 1)) {
+    throw new Error('ASM_ANIMATION_WORKERS 必須是大於 0 的整數');
+  }
+  const output = path.join(root, 'test-results/animation',
+    `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomBytes(4).toString('hex')}`);
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ headless: true,
     ...(process.env.ASM_BROWSER_CHANNEL ? { channel: process.env.ASM_BROWSER_CHANNEL } :
@@ -73,27 +97,16 @@ async function runAnimationBrowser(baseURL) {
   const failures = [];
   const results = [];
   try {
-    try {
-      results.push(await require('./cloud-storage-browser').runCloudStorageBrowser(browser, baseURL, output));
-    } catch (error) {
-      failures.push('cloud-storage-browser');
-      results.push({ label: 'cloud-storage-browser', pass: false, firstViolation: error.message });
-      console.log(`FAIL cloud-storage-browser: ${error.message}`);
+    for (const prerequisite of selectedPrerequisites) {
+      try {
+        results.push(await prerequisite.run(browser, baseURL, output));
+      } catch (error) {
+        failures.push(prerequisite.label);
+        results.push({ label: prerequisite.label, pass: false, firstViolation: error.message });
+        console.log(`FAIL ${prerequisite.label}: ${error.message}`);
+      }
     }
-    try {
-      results.push(await require('./slide-order-browser').runSlideOrderBrowser(browser, baseURL, output));
-    } catch (error) {
-      failures.push('slide-order-toggle');
-      results.push({ label: 'slide-order-toggle', pass: false, firstViolation: error.message });
-      console.log(`FAIL slide-order-toggle: ${error.message}`);
-    }
-    try {
-      results.push(await require('./deck-import-browser').runDeckImportBrowser(browser, baseURL, output));
-    } catch (error) {
-      failures.push('deck-import-repair');
-      results.push({ label: 'deck-import-repair', pass: false, firstViolation: error.message });
-      console.log(`FAIL deck-import-repair: ${error.message}`);
-    }
+    const preparedCases = [];
     for (const item of selectedCases) {
       let animation;
       try {
@@ -106,16 +119,24 @@ async function runAnimationBrowser(baseURL) {
         console.error(`FAIL ${label}: ${error.message}`);
         continue;
       }
-      for (const mode of ['runtime']) {
-        const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
-        const page = await context.newPage();
-        const errors = [];
-        page.on('pageerror', error => errors.push(error.message));
-        page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-        let target = page;
+      preparedCases.push({ item, animation });
+    }
+    let nextCaseIndex = 0;
+    async function animationWorker() {
+      while (nextCaseIndex < preparedCases.length) {
+        const { item, animation } = preparedCases[nextCaseIndex++];
+        const mode = 'runtime';
         const label = `${item.name}-${mode}`;
+        let context;
+        let page;
         console.log(`RUN ${label}`);
         try {
+          context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+          page = await context.newPage();
+          const errors = [];
+          page.on('pageerror', error => errors.push(error.message));
+          page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+          let target = page;
           // Same-origin parent uses the exact slide iframe message protocol.
           await page.route('**/asm-animation-regression-host', route => route.fulfill({
             contentType: 'text/html', body: `<html><body style="margin:0"><iframe id="animation" style="border:0;width:100vw;height:100vh" src="/algorithm.html?asmEmbed=${mode}"></iframe></body></html>`
@@ -539,15 +560,37 @@ async function runAnimationBrowser(baseURL) {
         } catch (error) {
           failures.push(label);
           results.push({ label, pass: false, error: error.message });
-          await page.screenshot({ path: path.join(output, label + '.png') }).catch(() => {});
+          await page?.screenshot({ path: path.join(output, label + '.png') }).catch(() => {});
           console.error(`FAIL ${label}: ${error.message}`);
-        } finally { await context.close(); }
+        } finally {
+          await context?.close().catch(error => console.error(`關閉 ${label} context 失敗：${error.message}`));
+        }
       }
     }
+    const workerCount = Math.min(requestedWorkers, preparedCases.length);
+    await Promise.all(Array.from({ length: workerCount }, () => animationWorker()));
   } finally { await browser.close(); }
-  fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify(results, null, 2));
+  const resultOrder = new Map([
+    'cloud-storage-browser',
+    'slide-order-toggle',
+    'deck-import-repair',
+    ...selectedCases.flatMap(item => [`${item.name}-setup`, `${item.name}-runtime`])
+  ].map((label, index) => [label, index]));
+  results.sort((left, right) => (resultOrder.get(left.label) ?? Number.MAX_SAFE_INTEGER)
+    - (resultOrder.get(right.label) ?? Number.MAX_SAFE_INTEGER)
+    || left.label.localeCompare(right.label));
+  failures.sort((left, right) => (resultOrder.get(left) ?? Number.MAX_SAFE_INTEGER)
+    - (resultOrder.get(right) ?? Number.MAX_SAFE_INTEGER)
+    || left.localeCompare(right));
+  const result = { output, summary: path.join(output, 'summary.json'), results, failures };
+  fs.writeFileSync(result.summary, JSON.stringify(results, null, 2));
   console.log(`動畫驗證報告：${output}`);
-  if (failures.length) throw new Error(`實際動畫驗證失敗：${failures.join(', ')}`);
+  if (failures.length) {
+    const error = new Error(`實際動畫驗證失敗：${failures.join(', ')}`);
+    error.result = result;
+    throw error;
+  }
+  return result;
 }
 module.exports = { runAnimationBrowser };
 if (require.main === module) runAnimationBrowser(process.env.ASM_TEST_BASE_URL || 'http://localhost:3000')
