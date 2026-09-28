@@ -4144,7 +4144,8 @@ function instrumentSource(source, watchIds = []) {
     for (let child = node.firstChild; child; child = child.nextSibling) collectSourceStructure(child);
   })(analysis.tree.topNode);
 
-  function recordEventSource(eventSignature, node, from = node?.from, to = node?.to, force = false) {
+  function recordEventSource(eventSignature, node, from = node?.from, to = node?.to, force = false,
+    textOverride = null) {
     const signatureText = String(eventSignature || '');
     const start = Math.max(0, Math.min(source.length, Number(from) || 0));
     const end = Math.max(start, Math.min(source.length, Number(to) || start));
@@ -4159,7 +4160,7 @@ function instrumentSource(source, watchIds = []) {
       column: startPoint.column,
       endLine: endPoint.line,
       endColumn: endPoint.column,
-      text: source.slice(start, end),
+      text: textOverride == null ? source.slice(start, end) : String(textOverride),
       contexts: sourceContexts(node)
     };
     return eventSignature;
@@ -4505,6 +4506,14 @@ function instrumentSource(source, watchIds = []) {
   }
 
   function declarationEvents(node) {
+    const declarationChildren = childrenOf(node);
+    const directDeclarators = declarationChildren.filter(child => (
+      DECLARATOR_NODES.has(child.name)
+      && firstDescendant(child, new Set(['Identifier']))
+    ));
+    const declarationPrefix = directDeclarators.length
+      ? source.slice(node.from, directDeclarators[0].from).trim()
+      : '';
     return selected
       .filter(variable => variable.declarationKind === 'local' && variable.declarationFrom === node.from)
       .flatMap(variable => {
@@ -4517,11 +4526,25 @@ function instrumentSource(source, watchIds = []) {
           true
         );
         const lifetimeGuard = `::asm_trace::VariableScopeExit __asm_scope_exit_${variable.nameFrom}(${analysis.lineAt(Math.max(variable.scopeFrom, variable.scopeTo - 1))}, ${cppString(scopeExitSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`;
-        const declarator = childrenOf(node).find(child => child.name === 'InitDeclarator'
+        const variableDeclarator = directDeclarators.find(child => (
+          variable.nameFrom >= child.from && variable.nameFrom < child.to
+        ));
+        const declarator = declarationChildren.find(child => child.name === 'InitDeclarator'
           && variable.nameFrom >= child.from && variable.nameFrom < child.to);
+        const declarationText = compactExpression([
+          declarationPrefix,
+          source.slice(variableDeclarator?.from ?? variable.nameFrom, variable.nameTo)
+        ].filter(Boolean).join(' '));
         if (!declarator) {
           const eventSignature = `declare:${variable.functionName}:${variable.line}:${variable.name}`;
-          recordEventSource(eventSignature, node, variable.declarationFrom, variable.declarationTo);
+          recordEventSource(
+            eventSignature,
+            variableDeclarator || node,
+            variableDeclarator?.from ?? variable.nameFrom,
+            variable.nameTo,
+            false,
+            declarationText
+          );
           return [
             lifetimeGuard,
             `::asm_trace::event_declare_uninitialized(${variable.line}, ${cppString(eventSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`
@@ -4532,7 +4555,14 @@ function instrumentSource(source, watchIds = []) {
         // facts. Keep the declaration source limited to its type and name so
         // `int i = 0` is presented as `declare: int i`, followed by the
         // initialized assignment source `i = 0` below.
-        recordEventSource(declareSignature, declarator, node.from, variable.nameTo);
+        recordEventSource(
+          declareSignature,
+          declarator,
+          variableDeclarator?.from ?? variable.nameFrom,
+          variable.nameTo,
+          false,
+          declarationText
+        );
         const events = [
           lifetimeGuard,
           `::asm_trace::event_declare(${variable.line}, ${cppString(declareSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`
@@ -4892,9 +4922,15 @@ ${loop}
         rendered = `::asm_trace::event_swap(${analysis.lineAt(node.from)}, ${cppString(signature('swap', node))}, ${indexedTargetArgs(leftTarget)}, ${indexedTargetArgs(rightTarget)}, [&]()->decltype(auto){ return (${source.slice(args[0].from, args[0].to)}); }, [&]()->decltype(auto){ return (${source.slice(args[1].from, args[1].to)}); }, [&](){ ${expression}; })`;
       } else if (mutationTarget?.variableId && MUTATING_METHODS.has(method)
         && node.parent?.name === 'ExpressionStatement') {
-        rendered = mutationVariable?.kind === 'sequence' && !mutationTarget.indexExpression
+        if (method === 'assign' && !mutationTarget.indexExpression) {
+          const emptySource = { variableId: '', expression: '', indexExpression: '' };
+          const targetAccess = source.slice(mutationBase.from, mutationBase.to);
+          rendered = `::asm_trace::event_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(mutationTarget)}, ${indexedTargetArgs(emptySource)}, ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); })`;
+        } else {
+          rendered = mutationVariable?.kind === 'sequence' && !mutationTarget.indexExpression
           ? `::asm_trace::event_sequence_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, (${source.slice(mutationBase.from, mutationBase.to)}), [&](){ ${expression}; })`
           : `::asm_trace::event_write(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(mutationTarget)}, ${cppString(method)}, [&](){ ${expression}; })`;
+        }
       } else {
         rendered = `::asm_trace::event_call_invoke(${analysis.lineAt(node.from)}, ${cppString(signature('call', node))}, ${cppString(callee)}, ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&]()->decltype(auto){ return (${expression}); })`;
       }

@@ -73,3 +73,59 @@ test('sequence operation switch suppresses its slot without removing runtime met
     'reverse playback retains the outgoing sequence slot when its destination cell is absent');
   assert.ok(frame.events.includes(push));
 });
+
+test('vector assign emits one assignment event for the whole container', async () => {
+  const source = `#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  int n = 1, m = 2;
+  vector<vector<int>> num;
+  // @frame num
+  num.assign(n + 1, vector<int>(m + 1, 0));
+  // @frame num
+}`;
+  const { trace } = await compile(source);
+  const events = trace.frames.flatMap(frame => frame.events || []);
+  const matching = events.filter(event => (
+    event.expression === 'num.assign(n + 1, vector<int>(m + 1, 0))'
+    || event.operation === 'assign'
+  ));
+  assert.equal(matching.length, 1, 'the assign call must map to one runtime event');
+  assert.equal(matching[0].type, 'assign');
+  assert.equal(matching[0].targets?.[0]?.expression, 'num');
+  assert.equal(events.some(event => (
+    event.type === 'sequence-operation' && event.operation === 'assign'
+  )), false, 'container assign is presented as assignment rather than a sequence operation');
+});
+
+test('comma-separated initialized declarations emit declaration then assignment per variable', async () => {
+  const source = `#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  int n=0,m=0,plain;
+  // @frame n, m, plain
+}`;
+  const { trace } = await compile(source);
+  const events = trace.frames.flatMap(frame => frame.events || []);
+  const relevant = events.filter(event => (
+    ['declare', 'assign'].includes(event.type)
+    && ['n', 'm', 'plain'].includes(event.targets?.[0]?.expression)
+  ));
+  assert.deepEqual(Array.from(relevant, event => [event.type, event.targets[0].expression]), [
+    ['declare', 'n'],
+    ['assign', 'n'],
+    ['declare', 'm'],
+    ['assign', 'm'],
+    ['declare', 'plain']
+  ]);
+  assert.equal(relevant.some(event => (
+    event.type === 'assign' && event.targets[0].expression === 'plain'
+  )), false, 'a declaration without an initializer must not invent an assignment');
+  assert.deepEqual(Array.from(relevant, event => event.source?.text), [
+    'int n',
+    'n=0',
+    'int m',
+    'm=0',
+    'int plain'
+  ]);
+});
