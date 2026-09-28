@@ -174,7 +174,8 @@
     layout: [
       ['layout-direction', 'direction', '在下一行明確指定排版 ID 與生長方向', '\n// @layout quick_tree direction top-down'],
       ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder'],
-      ['layout-flow-arrows', 'flow-arrows', '顯示 DFS 進入與返回的彎曲輔助箭頭', '\n// @layout quick_tree flow-arrows on']
+      ['layout-flow-arrows', 'flow-arrows', '顯示 DFS 進入與返回的彎曲輔助箭頭', '\n// @layout quick_tree flow-arrows on'],
+      ['layout-branch-previews', 'branch-previews', '控制是否在執行前預先顯示同層遞迴分支', '\n// @layout quick_tree branch-previews off']
     ]
   };
   const renderTypes = [
@@ -256,6 +257,7 @@
       if (rule[0] === 'more-preset') return /^\s*\/\/\s*@frame\s+use\s+/.test(line) && !/\bwhen\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-direction') return !/\bdirection\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-flow-arrows') return !/\bflow-arrows\b/.test(line);
+      if (id === 'layout' && rule[0] === 'layout-branch-previews') return !/\bbranch-previews\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-order') return !/\b(?:order|mode)\b/.test(line);
       if (rule[3]?.startsWith('\n')) return true;
       if (rule[0] === 'render' || rule[0] === 'with') return !new RegExp(`\\b${rule[0]}\\b`).test(line);

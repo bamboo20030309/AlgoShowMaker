@@ -89,6 +89,15 @@
       ],
       "hints": ["遞迴", "分治"],
       "archive": "/guest-decks/hanoi-teaching.asmdeck?v=hanoi-deck-1"
+    },
+    {
+      "id": "fibonacci-teaching",
+      "title": "費式數列 (Fibonacci)",
+      "categories": [
+        "DP"
+      ],
+      "hints": ["遞迴", "動態規劃"],
+      "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=fibonacci-deck-3"
     }
   ]
 }

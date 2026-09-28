@@ -14,12 +14,7 @@ using namespace std;
 // 每次 F 呼叫會成為遞迴樹的一個節點。
 // 父子關係與左右順序由實際的遞迴 activation 自動建立。
 // @layout recursion as "fib_tree" at canvas.top offset(0,80)
-// @layout fib_tree direction top-down
-// @layout fib_tree mode compact
-// @layout fib_tree sibling-gap 32
-// @layout fib_tree level-gap 88
-// @layout fib_tree degree 2
-// @layout fib_tree flow-arrows on
+// @layout fib_tree branch-previews off
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 演算法與視覺化輔助程序：前者維護核心不變條件，後者只建立展示資料。
@@ -31,7 +26,7 @@ int F(int n) {
     // @keep n as "F" in fib_tree
     // @frame n in fib_tree with display("F(${call})")
     // @let call = n
-    // @text "進入 F(${call})" at n.bottom
+    // @text "目前呼叫 F(${call})" at n.bottom
 
     if (n <= 1) {
         // @keep n as "F" in fib_tree
