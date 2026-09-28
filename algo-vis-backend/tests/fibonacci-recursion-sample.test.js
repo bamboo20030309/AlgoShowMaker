@@ -58,8 +58,12 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.deepEqual(directChildren.map(snapshot => snapshot.layoutNode.siblingIndex), [0, 1]);
 
   const recursiveFrames = trace.frames.filter(frame => frame.source?.layoutId === 'fib_tree');
-  assert.equal(recursiveFrames.length, 30,
+  const previewFrames = recursiveFrames.filter(frame => frame.source?.systemBranchPreview === true);
+  const executionFrames = recursiveFrames.filter(frame => frame.source?.systemBranchPreview !== true);
+  assert.equal(executionFrames.length, 30,
     'each of the 15 calls has one pending frame and one returned-value frame');
+  assert.equal(previewFrames.length, 14,
+    'the seven non-base calls preview both recursive branches before execution');
   assert.ok(recursiveFrames.every(frame => frame.source.recursionActivationId));
   assert.equal(recursiveFrames[0].snapshotIds.length, 1,
     'the first call is retained in the same frame instead of appearing one frame late');

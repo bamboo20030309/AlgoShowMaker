@@ -85,6 +85,7 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
     assert.equal((await savedWidget()).cellStyles['0'].highlight, colors.AV_red);
     await selectCellStyle(1, 'Highlight');
     await palette.locator('[data-av-color="AV_node_green"]').click();
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
     await page.reload();
     await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
     const saved = await savedWidget();

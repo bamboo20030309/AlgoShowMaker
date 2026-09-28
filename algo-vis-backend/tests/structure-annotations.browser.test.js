@@ -61,7 +61,7 @@ test('structure annotations follow indices, persist and retain custom colors', {
     async function selectCell(index) {
       if (await page.locator('#iroPopup').isVisible()) {
         await page.mouse.move(10, 10);
-        await page.waitForTimeout(30);
+        await page.waitForFunction(() => document.querySelector('#iroPopup')?.hidden === true);
       }
       await object.locator(`[data-structure-item-index="${index}"] > text`).click();
       await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar');
@@ -70,6 +70,8 @@ test('structure annotations follow indices, persist and retain custom colors', {
     const toolbar = page.locator('#structureContextMenu');
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
     assert.equal((await savedWidget()).highlightIndices, '0');
+    await page.mouse.move(10, 10);
+    await page.waitForFunction(() => document.querySelector('#iroPopup')?.hidden === true);
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).hover();
     assert.equal(await page.locator('#iroPopup').isVisible(), true);
     assert.equal(await toolbar.locator('[data-structure-style-type]').count(), 6);
@@ -81,6 +83,8 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(styled.cellStyles['0'].highlight, 'rgba(144, 202, 249, 0.6)');
     await selectCell(2);
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
+    await page.mouse.move(10, 10);
+    await page.waitForFunction(() => document.querySelector('#iroPopup')?.hidden === true);
     await toolbar.getByRole('button', { name: 'Highlight', exact: true }).hover();
     await page.locator('#avColorSwatches [data-av-color="AV_yellow"]').click();
     styled = await savedWidget();

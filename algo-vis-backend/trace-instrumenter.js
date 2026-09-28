@@ -4207,12 +4207,16 @@ function instrumentSource(source, watchIds = []) {
     }
     if (node.name === 'SubscriptExpression') {
       const indices = [];
+      const indexNodes = [];
       let base = node;
       while (base?.name === 'SubscriptExpression') {
         const children = childrenOf(base);
         const nextBase = children[0];
         const index = children.find(child => !['[', ']'].includes(child.name) && child !== nextBase);
-        if (index) indices.unshift(compactExpression(source.slice(index.from, index.to)));
+        if (index) {
+          indices.unshift(compactExpression(source.slice(index.from, index.to)));
+          indexNodes.unshift(index);
+        }
         base = nextBase;
       }
       const baseIdentifier = base?.name === 'Identifier'
@@ -4220,7 +4224,7 @@ function instrumentSource(source, watchIds = []) {
       const baseName = baseIdentifier ? source.slice(baseIdentifier.from, baseIdentifier.to) : '';
       const watch = watchAt(baseName, node.from);
       let numericIndex = true;
-      if (index) {
+      for (const indexNode of indexNodes) {
         (function inspectIndex(current) {
           if (!current || !numericIndex) return;
           if (current.name === 'Identifier') {
@@ -4228,7 +4232,7 @@ function instrumentSource(source, watchIds = []) {
             if (variable && variable.kind !== 'scalar') numericIndex = false;
           }
           for (let child = current.firstChild; child; child = child.nextSibling) inspectIndex(child);
-        })(index);
+        })(indexNode);
       }
       return {
         variableId: watch?.id || '',

@@ -246,6 +246,11 @@
 
   function sameSceneGeneration(current, previous) {
     if (!sameVisualDomain(current, previous)) return false;
+    const currentGeneration = Number(current?.dataset?.traceSceneGeneration);
+    const previousGeneration = Number(previous?.dataset?.traceSceneGeneration);
+    if (Number.isFinite(currentGeneration) && Number.isFinite(previousGeneration)) {
+      return currentGeneration === previousGeneration;
+    }
     if (!retainedVisualOwner(current) && !retainedVisualOwner(previous)) {
       const currentIdentity = String(current?.dataset?.traceRuntimeIdentity || '');
       const previousIdentity = String(previous?.dataset?.traceRuntimeIdentity || '');
@@ -254,11 +259,16 @@
       if ((currentIdentity && currentIdentity === previousIdentity)
         || (currentContinuity && currentContinuity === previousContinuity)) return true;
     }
-    const currentGeneration = Number(current?.dataset?.traceSceneGeneration);
-    const previousGeneration = Number(previous?.dataset?.traceSceneGeneration);
     return !Number.isFinite(currentGeneration)
       || !Number.isFinite(previousGeneration)
       || currentGeneration === previousGeneration;
+  }
+
+  function sameDataCellContinuity(current, previous) {
+    return Boolean(current?.hasAttribute?.('data-trace-index')
+      && previous?.hasAttribute?.('data-trace-index')
+      && !retainedVisualOwner(current)
+      && !retainedVisualOwner(previous));
   }
 
   function previousVisualByContinuity(
@@ -267,7 +277,8 @@
     if (!continuityKey) return null;
     const preferred = previousVisualElement(previousObjects, preferredKey);
     if (String(preferred?.dataset?.traceVisualContinuityKey || '') === continuityKey
-      && sameSceneGeneration(currentElement, preferred)) {
+      && (sameSceneGeneration(currentElement, preferred)
+        || sameDataCellContinuity(currentElement, preferred))) {
       return { key: preferredKey, element: preferred };
     }
     for (const [topKey, object] of previousObjects || []) {
@@ -277,7 +288,8 @@
       ];
       const element = candidates.find(candidate => (
         String(candidate?.dataset?.traceVisualContinuityKey || '') === continuityKey
-        && sameSceneGeneration(currentElement, candidate)
+        && (sameSceneGeneration(currentElement, candidate)
+          || sameDataCellContinuity(currentElement, candidate))
       ));
       if (!element) continue;
       return {
@@ -2035,6 +2047,13 @@
     return element;
   }
 
+  function variableOwnerId(element) {
+    const variableHost = element?.closest?.('[data-trace-variable]');
+    if (variableHost?.dataset?.traceVariable) return variableHost.dataset.traceVariable;
+    return element?.closest?.('[data-trace-animation-owner-variable]')
+      ?.dataset?.traceAnimationOwnerVariable || '';
+  }
+
   function appendBelowTextLayer(root, element) {
     const textLayer = root.querySelector?.(
       ':scope > .asm-trace-text-layer, :scope > .asm-trace-foreground-arrows'
@@ -2149,9 +2168,8 @@
             class: 'asm-trace-animation-cell-host',
             'pointer-events': 'none'
           });
-          const ownerVariableId = parent.closest?.('[data-trace-variable]')
-            ?.dataset?.traceVariable || '';
-          if (ownerVariableId) wrapper.dataset.traceVariable = ownerVariableId;
+          const ownerVariableId = variableOwnerId(parent);
+          if (ownerVariableId) wrapper.dataset.traceAnimationOwnerVariable = ownerVariableId;
           const transform = parentTransformInRoot(parent);
           if (transform) wrapper.setAttribute('transform', transform);
           layer.append(wrapper);
@@ -2663,7 +2681,7 @@
       const element = options.currentElements?.get?.(track.key);
       if (!element || element.dataset?.traceSourceVariableId) return;
       const cell = element.closest?.('[data-trace-index]') || element;
-      const variableId = cell.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const variableId = variableOwnerId(cell);
       const targetText = assignableValueText(element, variableId);
       const fixedIndex = !targetText
         && Boolean(element.querySelector?.('text[data-trace-content-role="index"]'));
@@ -2704,8 +2722,7 @@
           || (Number.isInteger(logicalIndex)
             ? cell?.parentElement?.querySelector?.(`[data-trace-index-label="${logicalIndex}"]`)
             : null);
-        const variableId = label?.closest?.('[data-trace-variable]')?.dataset?.traceVariable
-          || cell?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+        const variableId = variableOwnerId(label) || variableOwnerId(cell);
         const index = Number(label?.getAttribute?.('data-trace-index-label')
           ?? label?.dataset?.traceIndexLabel ?? cell?.dataset?.traceIndex);
         const rect = label?.querySelector?.(':scope > rect') || null;
@@ -2723,7 +2740,7 @@
       const isIndexLabel = element?.hasAttribute?.('data-trace-index-label') === true;
       const index = Number(isIndexLabel
         ? element.getAttribute('data-trace-index-label') : element?.dataset?.traceIndex);
-      const variableId = element?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+      const variableId = variableOwnerId(element);
       if (!conditionalStyleVariables.has(variableId) || !Number.isInteger(index)) return;
       const rect = element.querySelector?.(':scope > rect');
       if (!rect) return;
@@ -2758,7 +2775,7 @@
     (replayPlan?.checkpoints || []).forEach(checkpoint => {
       if (checkpoint.eventType !== 'swap' || checkpoint.mode !== 'animated') return;
       checkpoint.mutations.filter(mutation => mutation.kind === 'value').forEach(mutation => {
-        const end = Number(checkpoint.commitMs) || 0;
+        const end = Number(checkpoint.animationStartMs ?? checkpoint.startMs) || 0;
         for (const key of [mutation.visualKey || mutation.key, `${mutation.key}:index`]) {
           paintHoldEnds.set(key, Math.max(Number(paintHoldEnds.get(key)) || 0, end));
         }
@@ -2917,7 +2934,7 @@
           if (held) paint = initial;
           // Establish the replay's initial paint immediately; only subsequent
           // changes transition. Geometry continues on the cell's own tick.
-          if (rect.classList && !initializedStyleRects.has(rect)) {
+          if (rect.classList && rect.style && !initializedStyleRects.has(rect)) {
             // Start the color transition at entry, not at numeric completion.
             // A reused rect can still carry the prior playback class. Always
             // establish this transition's continuity-matched source paint
@@ -2931,10 +2948,10 @@
             window.getComputedStyle(rect).fill;
             initializedStyleRects.add(rect);
           }
-          if (held) {
+          if (held && rect.style) {
             rect.style.transition = 'none';
             heldStyleRects.add(rect);
-          } else {
+          } else if (rect.style) {
             rect.style.removeProperty('transition');
             if (heldStyleRects.has(rect)) {
               // Commit the carried source color before enabling the destination
@@ -6561,24 +6578,48 @@
         ? recursionGrowth.entering.get(topKey) || null : null;
       const keepHandoffSourceKey = keepTransition
         ? recursionGrowthEntry?.sourceKey || keepHandoffSources.get(topKey) || '' : '';
-      const sourceKey = previousAliasKey(
+      let sourceKey = previousAliasKey(
         keepHandoffSourceKey || requestedSourceKey,
         topKey,
         topElement,
         previousPlacements,
         previousIdentityKeys
       );
+      const dataCellContinuation = !swap && !keepSnapshotMember && !retainedSnapshot
+        && element.hasAttribute?.('data-trace-index')
+        ? previousVisualByContinuity(
+          previousObjects,
+          String(element.dataset?.traceVisualContinuityKey || ''),
+          sourceKey,
+          element
+        )
+        : null;
+      if (dataCellContinuation?.key) sourceKey = dataCellContinuation.key;
       const candidatePreviousVisual = redeclaredMarkerKeys.has(key)
         ? null
         : useMarkerContinuation
         ? markerContinuation.element
-        : previousVisualElement(previousObjects, sourceKey);
+        : dataCellContinuation?.element || previousVisualElement(previousObjects, sourceKey);
       const activationChanged = markerActivationChanged(element, candidatePreviousVisual);
       const previousOuterframeOwner = candidatePreviousVisual
         ?.closest?.('.asm-trace-object') || null;
+      const currentOwnerIdentity = String(topElement?.dataset?.traceRuntimeIdentity || '');
+      const previousOwnerIdentity = String(
+        previousOuterframeOwner?.dataset?.traceRuntimeIdentity || ''
+      );
+      const runtimeOwnerContinues = key === topKey
+        && !topElement?.dataset?.traceSourceVariableId
+        && !retainedVisualOwner(topElement)
+        && !retainedVisualOwner(previousOuterframeOwner)
+        && currentOwnerIdentity
+        && currentOwnerIdentity === previousOwnerIdentity;
       const objectLabelOwnerContinues = stableObjectLabel(element)
         && stableObjectLabel(candidatePreviousVisual)
-        && sameSceneGeneration(topElement, previousOuterframeOwner);
+        && (sameSceneGeneration(topElement, previousOuterframeOwner)
+          || (!retainedVisualOwner(topElement)
+            && !retainedVisualOwner(previousOuterframeOwner)
+            && currentOwnerIdentity
+            && currentOwnerIdentity === previousOwnerIdentity));
       // @keep cuts every live visual into a new scene, not only automatic
       // markers. The retained copy owns the old generation; the following
       // array/cell/object must enter independently instead of borrowing the
@@ -6587,10 +6628,13 @@
         && !keepSnapshotMember
         && !retainedSnapshot
         && !objectLabelOwnerContinues
+        && !runtimeOwnerContinues
+        && !sameDataCellContinuity(element, candidatePreviousVisual)
         && !sameSceneGeneration(element, candidatePreviousVisual);
       const sceneActivationChanged = key === topKey
         && !keepSnapshotMember
         && !retainedSnapshot
+        && !runtimeOwnerContinues
         && !continuingKeys.has(key)
         && needsSceneBoundaryEntrance(
           functionSceneChanged,
@@ -6783,10 +6827,8 @@
         ? null
         : candidatePreviousVisual;
       entry.previousVisual = previousVisual;
-      const previousOwner = String(previousVisual?.closest?.('[data-trace-variable]')
-        ?.dataset?.traceVariable || '');
-      const currentOwner = String(entry.element?.closest?.('[data-trace-variable]')
-        ?.dataset?.traceVariable || '');
+      const previousOwner = String(variableOwnerId(previousVisual));
+      const currentOwner = String(variableOwnerId(entry.element));
       entry.crossContainerMotion = Boolean(
         entry.key !== entry.topKey
         && entry.element?.dataset?.traceVisualContinuityKey
@@ -7036,7 +7078,7 @@
         startMs,
         durationMs,
         endMs: startMs + durationMs,
-        holdStyle: entry.repaintTransition === true,
+        holdStyle: entry.repaintTransition === true && entry.crossContainerMotion === true,
         blocking: true,
         enabled: true,
         source: 'automatic'
@@ -7671,10 +7713,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-254';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-256';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-254', play, cancel, updateEventAvailability,
+    build: 'trace-256', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

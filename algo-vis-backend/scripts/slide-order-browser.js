@@ -85,6 +85,7 @@ async function runSlideOrderBrowser(browser, baseURL, output) {
     await button.click();
     await page.waitForFunction(() => document.querySelector('section.asm-slide.present')?.dataset.slideId === 'b');
     await button.click();
+    await page.waitForTimeout(400);
     const source = await page.locator('.custom-overview-thumb[data-slide-id="b"]').boundingBox();
     const target = await page.locator('.custom-overview-thumb[data-slide-id="c"]').boundingBox();
     await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);

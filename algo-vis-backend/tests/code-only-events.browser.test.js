@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { compile } = require('./helpers/compile');
 
-test('function calls and output statements receive active code highlights', { timeout: 60000 }, async () => {
+test('function calls turn grey while output statements receive active code highlights', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const { trace } = await compile(`#include <bits/stdc++.h>
@@ -51,8 +51,11 @@ int main() {
         const active = [...window.document.querySelectorAll(
           '.asm-trace-code-event-span.is-active'
         )].map(node => node.textContent).join('');
-        if (root?.dataset.traceActiveEventType && active) {
-          samples.push({ type: root.dataset.traceActiveEventType, active });
+        const complete = [...window.document.querySelectorAll(
+          '.asm-trace-code-event-span.is-complete'
+        )].map(node => node.textContent).join('');
+        if (root?.dataset.traceActiveEventType && (active || complete)) {
+          samples.push({ type: root.dataset.traceActiveEventType, active, complete });
         }
         await new Promise(resolve => setTimeout(resolve, 20));
       }
@@ -65,10 +68,11 @@ int main() {
         ).length
       };
     }, trace);
-    assert.equal(result.build, 'trace-244');
+    assert.equal(result.build, 'trace-256');
     assert.ok(result.samples.some(sample => (
-      sample.type === 'call' && /visit\s*\(\s*n\s*\)/.test(sample.active)
-    )), `function call never received an active highlight: ${JSON.stringify(result)}`);
+      sample.type === 'call' && !sample.active
+        && /visit\s*\(\s*n\s*\)/.test(sample.complete)
+    )), `function call never received a completed grey highlight: ${JSON.stringify(result)}`);
     assert.ok(result.samples.some(sample => (
       sample.type === 'output' && /cout\s*<</.test(sample.active)
     )), `cout never received an active highlight: ${JSON.stringify(result.samples)}`);

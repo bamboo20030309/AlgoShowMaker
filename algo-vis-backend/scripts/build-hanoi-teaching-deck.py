@@ -255,7 +255,7 @@ add(s,
 slides.append(s)
 
 # 08 — Native algorithm animation
-source = SOURCE.read_text(encoding="utf-8")
+source = SOURCE.read_bytes().decode("utf-8")
 view_match = re.search(r"/\*\s*@asm-view\s*(\{.*?\})\s*@asm-view\s*\*/", source, re.S)
 if not view_match:
     raise RuntimeError("Hanoi source is missing @asm-view JSON")

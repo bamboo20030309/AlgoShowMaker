@@ -111,7 +111,10 @@ test('LCS matching labels stay green while +1 replaces the old target value', { 
         build: window.ASMTraceFrameTween.build,
         rowFill,
         columnFill,
-        assignment: frame.events.find(event => event.line === 113 && event.type === 'assign'),
+        assignment: frame.events.find(event => event.type === 'assign'
+          && event.binaryOperation === '+'
+          && event.targets?.[0]?.resolvedIndices?.[0] === row
+          && event.targets?.[0]?.resolvedIndices?.[1] === column),
         transferSamples: [...transferSamples],
         transferRectSeen,
         targetFills: [...targetFills],
@@ -123,7 +126,7 @@ test('LCS matching labels stay green while +1 replaces the old target value', { 
         finalTargetOpacity: finalTargetValue?.getAttribute('opacity') || ''
       };
     }, { code, input });
-    assert.equal(result.build, 'trace-238');
+    assert.equal(result.build, 'trace-256');
     assert.equal(result.rowFill, '#a5d6a7');
     assert.equal(result.columnFill, '#a5d6a7');
     assert.equal(result.assignment.binaryOperation, '+');

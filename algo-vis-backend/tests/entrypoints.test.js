@@ -43,11 +43,11 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-33'));
   assert.ok(html.includes('trace-events.js?v=trace-52'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-254'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-256'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
-  assert.ok(html.includes('trace-code-presenter.js?v=code-32'));
+  assert.ok(html.includes('trace-code-presenter.js?v=code-33'));
   assert.ok(html.includes('trace-view-source.js?v=trace-16'));
   assert.ok(html.includes('trace-editor.js?v=trace-25'));
   assert.ok(html.includes('compile.js?v=syntax-7'));
@@ -60,7 +60,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=5'));
   assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=slides-228'));
+  assert.ok(slides.includes('slides.js?v=slides-229'));
   assert.ok(slides.includes('trace-model.js?v=trace-38'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));

@@ -36,6 +36,9 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
       const diskValues = (candidate, variableId) => (
         candidate.state?.[variableId]?.data?.items || []
       ).map(item => Number(item.value));
+      const visualOwnerId = element => element?.closest('[data-trace-variable]')
+        ?.dataset.traceVariable || element?.closest('[data-trace-animation-owner-variable]')
+        ?.dataset.traceAnimationOwnerVariable || '';
       const handoffTransitionProbe = async (fromIndex, toIndex) => {
         const previous = document.frames[fromIndex];
         const current = document.frames[toIndex];
@@ -49,11 +52,11 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
         const sampleDiskTwo = elapsed => {
           const diskOne = [...window.document.querySelectorAll('[data-trace-visual-continuity-key="disk:1"]')]
             .find(cell => document.variables[
-              cell.closest('[data-trace-variable]')?.dataset.traceVariable
+              visualOwnerId(cell)
             ]?.name === 'Peg_C');
           const diskTwo = [...window.document.querySelectorAll('[data-trace-visual-continuity-key="disk:2"]')]
             .find(cell => document.variables[
-              cell.closest('[data-trace-variable]')?.dataset.traceVariable
+              visualOwnerId(cell)
             ]?.name === 'Peg_C');
           return {
             elapsed,
@@ -107,7 +110,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
           const element = [...window.document.querySelectorAll(
             `[data-trace-visual-continuity-key="disk:${value}"]`
           )].find(cell => document.variables[
-            cell.closest('[data-trace-variable]')?.dataset.traceVariable
+            visualOwnerId(cell)
           ]?.name === 'Peg_A');
           return {
             fill: element?.querySelector(':scope > rect')
@@ -207,8 +210,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
         const fill = (owner, value) => {
           const cell = [...window.document.querySelectorAll(
             `[data-trace-visual-continuity-key="disk:${value}"]`
-          )].find(candidate => candidate.closest('[data-trace-variable]')
-            ?.dataset.traceVariable === pegIds[owner]);
+          )].find(candidate => visualOwnerId(candidate) === pegIds[owner]);
           return cell?.querySelector('rect')
             ? getComputedStyle(cell.querySelector('rect')).fill : '';
         };
@@ -301,7 +303,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
         const diskColors = [...window.document.querySelectorAll(
           '[data-layout="disk"] [data-trace-visual-continuity-key]'
         )].map(cell => {
-          const ownerId = cell.closest('[data-trace-variable]')?.dataset.traceVariable || '';
+          const ownerId = visualOwnerId(cell);
           return {
             owner: document.variables[ownerId]?.name || ownerId,
             value: Number(cell.dataset.traceDataValue),
@@ -373,7 +375,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
         const cell = window.document.querySelector('[data-trace-visual-continuity-key="disk:1"]');
         transfer.push({
           continuity: cell?.dataset.traceVisualContinuityKey || '',
-          owner: cell?.closest('[data-trace-variable]')?.dataset.traceVariable || ''
+          owner: visualOwnerId(cell)
         });
       }
       const actualTransferIndex = document.frames.findIndex((candidate, index) => {
@@ -397,7 +399,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const transitionDisk = (owner, value) => [...window.document.querySelectorAll(
         `[data-trace-visual-continuity-key="disk:${value}"]`
-      )].find(cell => cell.closest('[data-trace-variable]')?.dataset.traceVariable === pegIds[owner]);
+      )].find(cell => visualOwnerId(cell) === pegIds[owner]);
       const diskOneRect = transitionDisk('Peg_B', 1)?.querySelector('rect');
       const diskTwoRect = transitionDisk('Peg_A', 2)?.querySelector('rect');
       const styleTransfer = {
@@ -420,8 +422,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
       ].map(([owner, value]) => {
         const cell = [...window.document.querySelectorAll(
           `[data-trace-visual-continuity-key="disk:${value}"]`
-        )].find(candidate => candidate.closest('[data-trace-variable]')
-          ?.dataset.traceVariable === pegIds[owner]);
+        )].find(candidate => visualOwnerId(candidate) === pegIds[owner]);
         return [`${owner}:${value}`, cell?.querySelector('rect')
           ? getComputedStyle(cell.querySelector('rect')).fill : ''];
       }));
@@ -442,18 +443,18 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
       playerSynchronizedDiskPaints.middle = synchronizedPaintSample();
       await playerSynchronizedPaintTransition;
       playerSynchronizedDiskPaints.final = synchronizedPaintSample();
-      await window.ASMTraceRenderers.renderFrame(document, document.frames[5], null, {
+      await window.ASMTraceRenderers.renderFrame(document, styleTransferPrevious, null, {
         animatePositions: false, animateEvents: false
       });
       const crossPegTransition = window.ASMTraceRenderers.renderFrame(
-        document, document.frames[6], document.frames[5],
+        document, styleTransferCurrent, styleTransferPrevious,
         { animatePositions: true, animateEvents: true }
       );
       await new Promise(resolve => setTimeout(resolve, 120));
       const effectLayer = window.document.querySelector('.asm-trace-animation-effect-layer');
       const sceneRoot = window.document.querySelector('#asm-trace-root');
-      const pegCElement = [...(sceneRoot?.children || [])].find(element => (
-        document.variables[element.dataset?.traceVariable]?.name === 'Peg_C'
+      const destinationPegElement = [...(sceneRoot?.children || [])].find(element => (
+        document.variables[element.dataset?.traceVariable]?.name === 'Peg_B'
       ));
       const crossPegLayering = {
         movedDisks: [...(effectLayer?.querySelectorAll(
@@ -463,7 +464,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
           '[data-trace-visual-continuity-key^="disk:"] rect'
         ) || [])].map(rect => getComputedStyle(rect).fill),
         effectLayerIndex: [...(sceneRoot?.children || [])].indexOf(effectLayer),
-        pegCIndex: [...(sceneRoot?.children || [])].indexOf(pegCElement)
+        pegCIndex: [...(sceneRoot?.children || [])].indexOf(destinationPegElement)
       };
       await crossPegTransition;
       crossPegLayering.finalFills = [...window.document.querySelectorAll(
@@ -479,7 +480,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
       });
       const previousDiskFour = [...window.document.querySelectorAll(
         '[data-trace-visual-continuity-key="disk:4"]'
-      )].find(cell => cell.closest('[data-trace-variable]')?.dataset.traceVariable === pegIds.Peg_A);
+      )].find(cell => visualOwnerId(cell) === pegIds.Peg_A);
       const previousDiskFourFill = previousDiskFour?.querySelector('rect')
         ? getComputedStyle(previousDiskFour.querySelector('rect')).fill : '';
       const previewTransition = window.ASMTraceRenderers.renderFrame(
@@ -491,7 +492,7 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
         if (elapsed) await new Promise(resolve => setTimeout(resolve, 60));
         const diskFour = [...window.document.querySelectorAll(
           '[data-trace-visual-continuity-key="disk:4"]'
-        )].find(cell => cell.closest('[data-trace-variable]')?.dataset.traceVariable === pegIds.Peg_A);
+        )].find(cell => visualOwnerId(cell) === pegIds.Peg_A);
         const rect = diskFour?.querySelector('rect');
         previewStyleSamples.push({
           elapsed,
@@ -769,13 +770,13 @@ test('Hanoi sample draws three disk pegs left of the completed recursion tree', 
     assert.ok(scene.crossPegLayering.movedDisks.length > 0
       && scene.crossPegLayering.effectLayerIndex > scene.crossPegLayering.pegCIndex,
     `cross-peg disks stay above the destination peg while moving: ${JSON.stringify(scene.crossPegLayering)}`);
-    assert.ok(scene.crossPegLayering.movingFills.length === 4
+    assert.ok(scene.crossPegLayering.movingFills.length === scene.crossPegLayering.movedDisks.length
       && scene.crossPegLayering.movingFills.every(Boolean),
     `handoff disks keep valid interpolated paint while moving: ${JSON.stringify(scene.crossPegLayering)}`);
     assert.deepEqual(scene.crossPegLayering.finalFills, [
-      'rgb(239, 154, 154)',
-      'rgb(239, 154, 154)',
       'rgb(165, 214, 167)',
+      'rgb(255, 255, 255)',
+      'rgb(255, 255, 255)',
       'rgb(255, 255, 255)'
     ], `destination styles commit after the disks land: ${JSON.stringify(scene.crossPegLayering)}`);
     assert.ok(scene.previewStyleSamples.every(sample => sample.fill === scene.previousDiskFourFill),

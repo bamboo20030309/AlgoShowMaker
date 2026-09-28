@@ -387,10 +387,10 @@
     const conditionResult = condition?.result
       ?? (!pendingComparison ? completedComparison?.result : undefined);
     return {
-      active,
+      active: active && !activeCall,
       pending: pendingComparison,
-      complete: conditionResult == null && !pendingComparison
-        && [...linkedIds].some(id => completed.has(id)),
+      complete: activeCall || (conditionResult == null && !pendingComparison
+        && [...linkedIds].some(id => completed.has(id))),
       conditionResult: activeCall ? undefined : conditionResult
     };
   }

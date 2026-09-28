@@ -9062,6 +9062,42 @@
     updateObjectToolbar(target.object, target.canvas);
   }
 
+  function applyPickedColor(color, target = activeColorTarget, structureCell = activeStructureStyleCell) {
+    const binding = structureColorBindings.find(item => item.target === target);
+    const value = color.rgbaString;
+    if (binding) {
+      const structureColor = color.alpha < 1 ? value : color.hexString;
+      setStructureColorButton(binding.button, structureColor);
+      structureContextMenu
+        ?.querySelector(`[data-structure-style-type="${binding.style}"] .structure-style-icon`)
+        ?.style.setProperty('--style-color', structureColor);
+      if (binding.style && structureCell?.type === binding.style) {
+        const widget = getWidget(structureCell.widgetId).widget;
+        if (widget && selectedWidgetId === structureCell.widgetId) {
+          updateSelectedStructure({
+            cellStyles: patchStructureCellStyle(
+              widget, structureCell.index, structureCell.type, structureColor
+            )
+          }, { history: false, preserveScale: true });
+        }
+      } else {
+        updateSelectedStructure({ [binding.field]: structureColor }, { history: false, preserveScale: true });
+      }
+      scheduleHistorySnapshot();
+      return;
+    }
+    if (target === 'shape-fill') {
+      applyShapeStyle({ fill: value }, { history: false });
+    } else if (target === 'shape-stroke') {
+      applyShapeStyle({ stroke: value }, { history: false });
+    } else if (target === 'text') {
+      applyTextStyle({ fill: value }, { history: false });
+    } else {
+      applyTextStyle({ textBackgroundColor: value }, { history: false });
+    }
+    scheduleHistorySnapshot();
+  }
+
   function populateAvColorSwatches() {
     if (!avColorSwatches || avColorSwatches.childElementCount) return;
     Object.entries(window.ASMArrowModel?.COLORS || {}).forEach(([name, value]) => {
@@ -9081,7 +9117,16 @@
       label.textContent = name;
       button.append(chip, label);
       button.addEventListener('click', () => {
-        iroPicker?.color.set(value);
+        const target = activeColorTarget;
+        const structureCell = activeStructureStyleCell
+          ? { ...activeStructureStyleCell } : null;
+        suppressIroChange = true;
+        try {
+          iroPicker?.color.set(value);
+        } finally {
+          suppressIroChange = false;
+        }
+        if (iroPicker?.color) applyPickedColor(iroPicker.color, target, structureCell);
         commitPendingColorHistory();
         if (!structureStylePickerHoverMode) iroPopup.hidden = true;
       });
@@ -9154,38 +9199,7 @@
       });
       iroPicker.on('color:change', color => {
         if (suppressIroChange) return;
-        const binding = structureColorBindings.find(item => item.target === activeColorTarget);
-        const value = color.rgbaString;
-        if (binding) {
-          const structureColor = color.alpha < 1 ? value : color.hexString;
-          setStructureColorButton(binding.button, structureColor);
-          structureContextMenu
-            ?.querySelector(`[data-structure-style-type="${binding.style}"] .structure-style-icon`)
-            ?.style.setProperty('--style-color', structureColor);
-          if (binding.style && activeStructureStyleCell?.type === binding.style) {
-            const context = activeStructureStyleCell;
-            const widget = getWidget(context.widgetId).widget;
-            if (widget && selectedWidgetId === context.widgetId) {
-              updateSelectedStructure({
-                cellStyles: patchStructureCellStyle(widget, context.index, context.type, structureColor)
-              }, { history: false, preserveScale: true });
-            }
-          } else {
-            updateSelectedStructure({ [binding.field]: structureColor }, { history: false, preserveScale: true });
-          }
-          scheduleHistorySnapshot();
-          return;
-        }
-        if (activeColorTarget === 'shape-fill') {
-          applyShapeStyle({ fill: value }, { history: false });
-        } else if (activeColorTarget === 'shape-stroke') {
-          applyShapeStyle({ stroke: value }, { history: false });
-        } else if (activeColorTarget === 'text') {
-          applyTextStyle({ fill: value }, { history: false });
-        } else {
-          applyTextStyle({ textBackgroundColor: value }, { history: false });
-        }
-        scheduleHistorySnapshot();
+        applyPickedColor(color);
       });
       iroPicker.on('input:end', () => {
         commitPendingColorHistory();
@@ -9234,11 +9248,21 @@
       const rect = anchor.getBoundingClientRect();
       const popupWidth = iroPopup.getBoundingClientRect().width;
       const popupHeight = iroPopup.getBoundingClientRect().height;
-      iroPopup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8))}px`;
+      let left = Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8));
       const below = rect.bottom + 8;
       const above = rect.top - popupHeight - 8;
-      const top = below + popupHeight <= window.innerHeight - 8 || above < 8 ? below : above;
-      iroPopup.style.top = `${Math.max(8, Math.min(top, window.innerHeight - popupHeight - 8))}px`;
+      const preferredTop = below + popupHeight <= window.innerHeight - 8 || above < 8 ? below : above;
+      const top = Math.max(8, Math.min(preferredTop, window.innerHeight - popupHeight - 8));
+      const overlapsAnchor = left < rect.right && left + popupWidth > rect.left
+        && top < rect.bottom && top + popupHeight > rect.top;
+      if (overlapsAnchor) {
+        const right = rect.right + 8;
+        const leftSide = rect.left - popupWidth - 8;
+        if (right + popupWidth <= window.innerWidth - 8) left = right;
+        else if (leftSide >= 8) left = leftSide;
+      }
+      iroPopup.style.left = `${left}px`;
+      iroPopup.style.top = `${top}px`;
     }
   }
 

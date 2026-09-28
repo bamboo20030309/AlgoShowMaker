@@ -83,7 +83,7 @@ function surface(mode, rate) {
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('a changed code layout delays renderer phases and the shared camera by 500ms', () => {
+test('a changed code layout delays renderer phases while the shared camera starts immediately', () => {
   const s = surface('algorithm', 1);
   s.load({
     mode: 'trace',
@@ -100,7 +100,7 @@ test('a changed code layout delays renderer phases and the shared camera by 500m
   s.c.CodeScript.next();
   assert.equal(s.renders[0].options.initialDelayMs, 500);
   assert.equal(s.renders[0].options.cameraTransitionDurationMs, 520);
-  assert.ok(s.timerDelays.includes(500), 'the shared camera must wait for the code transition');
+  assert.ok(s.timerDelays.includes(0), 'the shared camera starts with the installed scene');
 });
 
 test('a keep phase starts the shared camera with retained and live layout motion', () => {
