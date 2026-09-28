@@ -86,9 +86,13 @@ test('marquee selection includes LaTeX and code widgets', { timeout: 120000 }, a
     await page.waitForFunction(() => document.querySelectorAll('.slide-widget.is-selected').length === 0);
     assert.equal(await page.locator('#alignmentToolbar').isVisible(), false);
 
-    await page.locator('[data-widget-id="array"]').click({ position: { x: 4, y: 4 } });
-    await page.locator('[data-widget-id="array"] [data-structure-item-index="0"] text').click();
+    const firstArrayCell = page.locator('[data-widget-id="array"] [data-structure-item-index="0"] text');
     const cellSelection = page.locator('.asm-structure-cell-selection-box');
+    await firstArrayCell.click();
+    assert.equal(await page.locator('[data-widget-id="array"]').evaluate(el => el.classList.contains('is-selected')), true);
+    assert.equal(await cellSelection.isVisible(), false,
+      'the first cell click should select the complete structure');
+    await firstArrayCell.click();
     const cellVisibility = await cellSelection.evaluate(el => ({ hidden: el.hidden, cssDisplay: getComputedStyle(el).display, style: el.getAttribute('style') }));
     assert.equal(await cellSelection.isVisible(), true, JSON.stringify(cellVisibility));
     const overlayState = await cellSelection.evaluate(el => ({
@@ -101,6 +105,28 @@ test('marquee selection includes LaTeX and code widgets', { timeout: 120000 }, a
     }));
     assert.equal(overlayState.background, 'rgba(147, 197, 253, 0.16)');
     assert.ok(overlayState.overlayZ > overlayState.maxObjectZ);
+    await page.keyboard.down('Shift');
+    await page.locator('[data-widget-id="code"]').click({ position: { x: 20, y: 20 } });
+    await page.keyboard.up('Shift');
+    assert.equal(await page.locator('[data-widget-id="array"]').evaluate(el => el.classList.contains('is-selected')), true);
+    assert.equal(await page.locator('[data-widget-id="code"]').evaluate(el => el.classList.contains('is-selected')), true);
+    assert.equal(await cellSelection.isVisible(), false,
+      'shift-selecting another widget should promote the cell selection to the complete structure');
+
+    await page.mouse.click(blank.x, blank.y);
+    await firstArrayCell.click();
+    await firstArrayCell.click();
+    assert.equal(await cellSelection.isVisible(), true);
+    const fabricText = point(350, 372);
+    await page.keyboard.down('Shift');
+    await page.mouse.click(fabricText.x, fabricText.y);
+    await page.keyboard.up('Shift');
+    assert.equal(await page.locator('[data-widget-id="array"]').evaluate(el => el.classList.contains('is-selected')), true,
+      'shift-selecting a Fabric object should retain the complete structure');
+    assert.equal(await cellSelection.isVisible(), false,
+      'shift-selecting another object should leave cell-selection mode');
+    assert.equal(await page.locator('#alignmentToolbar').isVisible(), true,
+      'the complete structure and Fabric object should form a mixed selection');
     await page.mouse.click(blank.x, blank.y);
     assert.equal(await cellSelection.isVisible(), false);
     assert.equal(await page.locator('.slide-widget.is-selected').count(), 0);

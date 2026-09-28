@@ -296,6 +296,9 @@
         <option value="queue">Queue</option>
       </select>
 
+      <label class="field-label" for="structureNameInput">外框名稱</label>
+      <input id="structureNameInput" type="text" maxlength="80" placeholder="例如：Array、資料陣列" />
+
       <div id="structureTreeControls" class="structure-tree-controls" hidden>
         <label>
           <span>樹排列方式</span>
@@ -524,24 +527,6 @@
       <div id="codeAceEditor" class="code-ace-editor"></div>
     </div>
   </div>
-
-  <dialog id="slideDeleteDialog" class="share-dialog slide-delete-dialog" aria-labelledby="slideDeleteTitle">
-    <form method="dialog">
-      <div class="share-dialog-header">
-        <div>
-          <span class="share-eyebrow">刪除確認</span>
-          <h2 id="slideDeleteTitle">刪除投影片？</h2>
-        </div>
-        <button id="closeSlideDeleteDialogBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
-      </div>
-      <p id="slideDeleteMessage" class="slide-delete-message">刪除後仍可立即使用復原。</p>
-      <div class="share-dialog-actions">
-        <button id="cancelSlideDeleteBtn" type="button">取消</button>
-        <button id="confirmSlideDeleteBtn" class="slide-delete-confirm-btn" type="button">刪除</button>
-      </div>
-    </form>
-  </dialog>
-
 
   <dialog id="shareDialog" class="share-dialog">
     <form id="shareForm">
@@ -792,14 +777,14 @@
   <script src="slides-cloud.js?v=1"></script>
   <script src="tts.js?v=10"></script>
   <script src="algorithm-animation.js?v=animation-3"></script>
-  <script src="trace-view-source.js?v=trace-15"></script>
+  <script src="trace-view-source.js?v=trace-16"></script>
   <script src="trace-model.js?v=trace-38"></script>
   <script src="trace-provenance.js?v=trace-11"></script>
   <script src="asmdeck.js?v=6"></script>
   <script src="deck-file-drop.js?v=1"></script>
   <script src="slide-inline-scripts.js?v=2"></script>
   <script src="trace-arrow-model.js?v=arrow-10"></script>
-  <script src="slides.js?v=slides-227"></script>
+  <script src="slides.js?v=slides-228"></script>
   <script src="mobile-ui.js?v=mobile-4"></script>
 </body>
 

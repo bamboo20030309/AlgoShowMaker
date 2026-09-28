@@ -40,12 +40,27 @@
   const FABRIC_CUSTOM_PROPS = [
     'transitionId', 'fragmentEnabled', 'fragmentStyle', 'fragmentIndex', 'fragmentProxyId', 'cornerRadius', 'layerIndex',
     'styles', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'underline', 'linethrough', 'fill', 'textBackgroundColor',
-    'asmInlineScripts', 'asmInlineScriptBaseStyles', 'asmGraphemeVersion',
+    'asmInlineScripts', 'asmInlineScriptBaseStyles', 'asmGraphemeVersion', 'asmTextWidthMode',
     'asmShapeType', 'arrowHeadSize', 'arrowHeadStyle',
     'ttsObjectId', 'ttsScript', 'ttsScriptMode', 'ttsCarrier', 'ttsMuted', 'ttsMutedOrderIndex'
   ];
   const FRAGMENT_STYLE_CLASSES = ['fade-out', 'fade-up', 'fade-down', 'fade-left', 'fade-right', 'grow', 'shrink', 'zoom-in', 'current-visible'];
   const STRUCTURE_MODES = ['normal', 'matrix', 'binary_tree', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue'];
+  const STRUCTURE_MODE_LABELS = Object.freeze({
+    normal: 'Array',
+    matrix: '2D Array',
+    binary_tree: 'Tree',
+    heap: 'Heap',
+    segment_tree: 'Segment Tree',
+    BIT: 'Binary Indexed Tree',
+    disk: 'Disk',
+    stack: 'Stack',
+    queue: 'Queue'
+  });
+
+  function defaultStructureName(mode) {
+    return STRUCTURE_MODE_LABELS[mode] || STRUCTURE_MODE_LABELS.normal;
+  }
 
   function isCellGridType(type) {
     return type === 'structure' || type === 'table';
@@ -225,7 +240,6 @@
   let customOverviewRightMouseDown = false;
   let slideClipboard = [];
   let slideMutationInFlight = false;
-  let pendingSlideDelete = null;
   const slidePageEnteringIds = new Set();
   const overviewPageEnteringIds = new Set();
   let objectClipboard = { fabric: [], widgets: [], cut: false };
@@ -255,6 +269,7 @@
   let progressiveRebuildGeneration = 0;
   let activeStructureContext = null;
   let selectedStructureCell = null;
+  let additiveCanvasSelectionGesture = false;
   let activeStructureInlineEditor = null;
   let structureCellClickTimer = null;
   let expandedTtsObjectKey = null;
@@ -389,11 +404,6 @@
   const codeEditorModalStatus = document.getElementById('codeEditorModalStatus');
   const closeCodeEditorModalBtn = document.getElementById('closeCodeEditorModalBtn');
   const saveCodeEditorModalBtn = document.getElementById('saveCodeEditorModalBtn');
-  const slideDeleteDialog = document.getElementById('slideDeleteDialog');
-  const slideDeleteMessage = document.getElementById('slideDeleteMessage');
-  const closeSlideDeleteDialogBtn = document.getElementById('closeSlideDeleteDialogBtn');
-  const cancelSlideDeleteBtn = document.getElementById('cancelSlideDeleteBtn');
-  const confirmSlideDeleteBtn = document.getElementById('confirmSlideDeleteBtn');
   const codeLanguageSelect = document.getElementById('codeLanguageSelect');
   const latexFontSizeInput = document.getElementById('latexFontSizeInput');
   const codeFontSizeInput = document.getElementById('codeFontSizeInput');
@@ -402,6 +412,7 @@
   const exitStructureEditorBtn = document.getElementById('exitStructureEditorBtn');
   const exitTableEditorBtn = document.getElementById('exitTableEditorBtn');
   const structureModeSelect = document.getElementById('structureModeSelect');
+  const structureNameInput = document.getElementById('structureNameInput');
   const structureTreeControls = document.getElementById('structureTreeControls');
   const structureTreeLayoutSelect = document.getElementById('structureTreeLayoutSelect');
   const structureTreeDirectionSelect = document.getElementById('structureTreeDirectionSelect');
@@ -1782,6 +1793,7 @@
       fontFamily: DEFAULT_FONT_FAMILY,
       fill: '#1f282d',
       styles: {},
+      asmTextWidthMode: 'fixed',
       ttsCarrier: true,
       ttsScriptMode: 'manual',
       ttsScript: ''
@@ -2882,6 +2894,11 @@
           normalized.frameBackgroundEnabled = false;
           stripTableStructureStyles(normalized);
         }
+        if (type === 'structure') {
+          normalized.structureName = typeof widget.structureName === 'string'
+            ? widget.structureName.slice(0, 80)
+            : defaultStructureName(normalized.structureMode);
+        }
         if (type === 'structure' && normalized.structureMode === 'binary_tree') {
           normalized.treeData = normalizeTreeData(widget.treeData, normalized.content);
         }
@@ -3457,7 +3474,7 @@
       'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
     ].some(key => previousWidget[key] !== widget[key]);
     const structureChanged = isCellGridWidget(widget) && (!previousWidget || [
-      'structureMode', 'indexMode', 'indexBase', 'segmentDomainLength', 'itemsPerRow', 'gap', 'cellSize',
+      'structureMode', 'structureName', 'indexMode', 'indexBase', 'segmentDomainLength', 'itemsPerRow', 'gap', 'cellSize',
       'baseFill', 'borderColor', 'textColor', 'lineColor',
       'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
       'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
@@ -3815,6 +3832,7 @@
           event.target.__asmInlineScriptEditingFormatted = true;
         }
       }
+      fitAutoTextWidth(event.target, canvas);
       sync(event, { textEdit: true });
     });
     canvas.on('text:editing:entered', event => {
@@ -3843,7 +3861,9 @@
     });
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
-      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
+      const additive = additiveCanvasSelectionGesture
+        || !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey);
+      if (!canvas.__asmWidgetMarquee && !additive) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -3851,7 +3871,9 @@
     });
     canvas.on('selection:updated', e => {
       if (canvas.__asmSerializingSelection) return;
-      if (!canvas.__asmWidgetMarquee) exitWidgetEditorIfNeeded();
+      const additive = additiveCanvasSelectionGesture
+        || !!(e.e?.shiftKey || e.e?.ctrlKey || e.e?.metaKey);
+      if (!canvas.__asmWidgetMarquee && !additive) exitWidgetEditorIfNeeded();
       configureSelectionControls(canvas.getActiveObject());
       updateObjectToolbar(e.selected && e.selected[0], canvas);
       updateAlignmentToolbar();
@@ -4196,6 +4218,7 @@
   function configureObject(obj) {
     sanitizeFabricTextBaseline(obj);
     const animation = normalizeAnimationSettings(obj);
+    const textWidthMode = isTextObject(obj) ? inferTextWidthMode(obj) : null;
     configureSelectionControls(obj);
     obj.set({
       lockScalingFlip: true,
@@ -4212,7 +4235,7 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
-    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2 });
+    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2, asmTextWidthMode: textWidthMode });
     if (obj.asmInlineScripts && isTextObject(obj)) {
       if (!obj.asmInlineScriptBaseStyles) {
         obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
@@ -4951,6 +4974,55 @@
     });
   }
 
+  function inferTextWidthMode(obj) {
+    if (obj?.asmTextWidthMode === 'fixed' || obj?.asmTextWidthMode === 'auto') {
+      return obj.asmTextWidthMode;
+    }
+    const sourceLines = String(obj?.text || '').split('\n').length;
+    const renderedLines = Array.isArray(obj?.textLines)
+      ? obj.textLines.length
+      : (Array.isArray(obj?._textLines) ? obj._textLines.length : sourceLines);
+    return renderedLines > sourceLines ? 'fixed' : 'auto';
+  }
+
+  function naturalTextContentWidth(obj) {
+    const Fabric = f();
+    const TextClass = Fabric?.Text || Fabric?.IText;
+    if (!obj || !TextClass) return Math.max(40, Number(obj?.width) || 40);
+    const metricProperties = [
+      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
+      'charSpacing', 'stroke', 'strokeWidth', 'paintFirst', 'direction'
+    ];
+    const properties = metricProperties.reduce((result, key) => {
+      if (obj[key] !== undefined) result[key] = obj[key];
+      return result;
+    }, {});
+    const text = String(obj.text || '');
+    if (!text) return 40;
+    const probe = new TextClass(text, {
+      ...properties,
+      styles: clone(obj.styles || {})
+    });
+    probe.initDimensions?.();
+    const width = Number(probe.width) || 0;
+    return Math.max(40, Math.ceil(width + 1));
+  }
+
+  function fitAutoTextWidth(obj, canvas) {
+    if (!isTextObject(obj) || inferTextWidthMode(obj) !== 'auto') return false;
+    obj.asmTextWidthMode = 'auto';
+    const nextWidth = naturalTextContentWidth(obj);
+    if (Math.abs((Number(obj.width) || 0) - nextWidth) < 0.5
+      && Math.abs((Number(obj.scaleX) || 1) - 1) < 0.001) return false;
+    obj.set({ width: nextWidth, scaleX: 1, dynamicMinWidth: 0 });
+    obj.initDimensions?.();
+    obj.set({ width: nextWidth, scaleX: 1 });
+    obj.dirty = true;
+    obj.setCoords?.();
+    canvas?.requestRenderAll?.();
+    return true;
+  }
+
   function normalizeTextBoxResize(obj, canvas) {
     if (!isTextObject(obj)) return;
     const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
@@ -4959,7 +5031,8 @@
     obj.set({
       width: nextWidth,
       scaleX: 1,
-      scaleY: 1
+      scaleY: 1,
+      asmTextWidthMode: 'fixed'
     });
     if (obj.initDimensions) obj.initDimensions();
     obj.dirty = true;
@@ -5010,7 +5083,8 @@
           styles: {},
           asmInlineScripts: true,
           asmInlineScriptBaseStyles: {},
-          asmGraphemeVersion: 2
+          asmGraphemeVersion: 2,
+          asmTextWidthMode: 'auto'
         });
       } else {
         obj = createShape(kind, left, top);
@@ -5028,6 +5102,7 @@
 
     try {
       configureObject(obj);
+      if (kind === 'text') fitAutoTextWidth(obj, canvas);
       const slide = getSlide();
       obj.set({ layerIndex: nextUnifiedLayerIndex(slide, canvas) });
       canvas.add(obj);
@@ -5131,6 +5206,7 @@
         markIndices: '',
         backgroundIndices: ''
       });
+      if (isStructure) widget.structureName = defaultStructureName(normalizedStructureMode);
       if (isTable) {
         Object.assign(widget, {
           tableData: [
@@ -6159,6 +6235,11 @@
 
   function populateStructureEditor(widget) {
     structureModeSelect.value = widget.structureMode || 'normal';
+    if (structureNameInput) {
+      structureNameInput.value = typeof widget.structureName === 'string'
+        ? widget.structureName
+        : defaultStructureName(widget.structureMode || 'normal');
+    }
     if (structureTreeLayoutSelect) structureTreeLayoutSelect.value = widget.treeLayout || 'compact';
     if (structureTreeDirectionSelect) structureTreeDirectionSelect.value = widget.treeHorizontal ? 'horizontal' : 'vertical';
     setStructureColorButton(structureTreeArrowColorInput, widget.treeArrowColor || '#333333');
@@ -7570,16 +7651,6 @@
     shareDialog?.addEventListener('click', event => {
       if (event.target === shareDialog) closeShareDialog();
     });
-    closeSlideDeleteDialogBtn?.addEventListener('click', closeSlideDeleteDialog);
-    cancelSlideDeleteBtn?.addEventListener('click', closeSlideDeleteDialog);
-    confirmSlideDeleteBtn?.addEventListener('click', confirmPendingSlideDelete);
-    slideDeleteDialog?.addEventListener('cancel', event => {
-      event.preventDefault();
-      closeSlideDeleteDialog();
-    });
-    slideDeleteDialog?.addEventListener('click', event => {
-      if (event.target === slideDeleteDialog) closeSlideDeleteDialog();
-    });
     document.getElementById('addSlideBtn').addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddSlideBtn')?.addEventListener('click', addSlideNearCurrent);
     document.getElementById('overviewAddAlgorithmSlideBtn')?.addEventListener('click', addAlgorithmSlideNearCurrent);
@@ -7678,6 +7749,15 @@
       const found = getWidget(selectedWidgetId);
       const structureMode = structureModeSelect.value;
       const patch = { structureMode };
+      const previousMode = found.widget?.structureMode || 'normal';
+      const previousDefaultName = defaultStructureName(previousMode);
+      const currentName = typeof found.widget?.structureName === 'string'
+        ? found.widget.structureName
+        : previousDefaultName;
+      if (currentName === previousDefaultName) {
+        patch.structureName = defaultStructureName(structureMode);
+        if (structureNameInput) structureNameInput.value = patch.structureName;
+      }
       if (structureMode === 'binary_tree') {
         patch.treeData = normalizeTreeData(found.widget?.treeData, found.widget?.content || '');
       }
@@ -7710,6 +7790,7 @@
       if (structureFrameBackgroundColorInput) structureFrameBackgroundColorInput.disabled = !structureFrameBackgroundEnabledInput.checked;
       updateSelectedStructure({ frameBackgroundEnabled: structureFrameBackgroundEnabledInput.checked });
     });
+    structureNameInput?.addEventListener('input', () => updateSelectedStructure({ structureName: structureNameInput.value }));
     const updateTableDimensions = () => {
       const found = getWidget(selectedWidgetId);
       if (!found.widget || found.widget.type !== 'table') return;
@@ -7823,6 +7904,7 @@
   function bindSlideDrop() {
     let widgetDrag = null;
     let suppressWidgetClick = false;
+    let widgetPointerSelection = null;
 
     const isCodeScrollbarInteraction = (event, widgetEl) => {
       if (!widgetEl?.classList.contains('code-widget')) return false;
@@ -7836,6 +7918,8 @@
 
     const beginWidgetDrag = event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
+      additiveCanvasSelectionGesture = !!(event.shiftKey || event.ctrlKey || event.metaKey);
+      if (additiveCanvasSelectionGesture && selectedStructureCell) clearStructureCellSelection();
       let widgetEl = event.target.closest && event.target.closest('.slide-widget');
       if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) {
         widgetEl = widgetClaimableThroughCanvas(event);
@@ -7850,6 +7934,10 @@
       if (widgetEl.classList.contains('structure-widget')) {
         if (event.target.closest?.('.structure-inline-value-input')) return;
       }
+      widgetPointerSelection = {
+        widgetId: widgetEl.dataset.widgetId,
+        wasSelected: widgetEl.classList.contains('is-selected')
+      };
       if (event.shiftKey) return;
       const selectedStructureCellHit = widgetEl.classList.contains('structure-widget')
         && widgetEl.classList.contains('is-selected')
@@ -8040,12 +8128,16 @@
 
     document.addEventListener('mouseup', () => {
       endWidgetDrag();
+      additiveCanvasSelectionGesture = false;
     }, true);
 
     slidesRoot.addEventListener('pointerdown', event => beginWidgetDrag(event), true);
     document.addEventListener('pointerdown', event => beginWidgetDrag(event), true);
     document.addEventListener('pointermove', event => updateWidgetDrag(event), true);
-    document.addEventListener('pointerup', event => endWidgetDrag(event), true);
+    document.addEventListener('pointerup', event => {
+      endWidgetDrag(event);
+      additiveCanvasSelectionGesture = false;
+    }, true);
 
     slidesRoot.addEventListener('wheel', event => {
       const pre = event.target.closest?.('.code-widget pre');
@@ -8157,10 +8249,26 @@
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
       if (suppressWidgetClick) {
         suppressWidgetClick = false;
+        widgetPointerSelection = null;
         return;
       }
+      const pointerSelection = widgetPointerSelection;
+      widgetPointerSelection = null;
       const structureCell = event.target.closest?.('[data-structure-item-index]');
+      if (event.shiftKey || event.ctrlKey || event.metaKey) {
+        clearStructureCellSelection();
+        toggleWidgetSelection(widgetEl.dataset.widgetId);
+        return;
+      }
       if (structureCell && widgetEl.classList.contains('structure-widget')) {
+        const wasSelected = pointerSelection?.widgetId === widgetEl.dataset.widgetId
+          ? pointerSelection.wasSelected
+          : widgetEl.classList.contains('is-selected');
+        if (!wasSelected) {
+          clearStructureCellSelection();
+          selectWidget(widgetEl.dataset.widgetId);
+          return;
+        }
         closeStructureInlineEditor(true);
         selectStructureCell(widgetEl, structureCell);
         if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
@@ -8179,11 +8287,7 @@
         return;
       }
       clearStructureCellSelection();
-      if (event.shiftKey || event.ctrlKey || event.metaKey) {
-        toggleWidgetSelection(widgetEl.dataset.widgetId);
-      } else {
-        selectWidget(widgetEl.dataset.widgetId);
-      }
+      selectWidget(widgetEl.dataset.widgetId);
     }, true);
 
     slidesRoot.addEventListener('dragover', event => {
@@ -8224,12 +8328,6 @@
     });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && slideDeleteDialog?.open) {
-        event.preventDefault();
-        event.stopPropagation();
-        closeSlideDeleteDialog();
-        return;
-      }
       if (event.key === 'Escape' && structureContextMenu && !structureContextMenu.hidden) {
         event.preventDefault();
         event.stopPropagation();
@@ -8744,6 +8842,7 @@
       object.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(object.styles);
       applyInlineScripts(object);
     }
+    fitAutoTextWidth(object, canvas);
     canvas.requestRenderAll();
     syncCurrentSlideCanvas();
     updateObjectToolbar(object, canvas);
@@ -8784,6 +8883,7 @@
         applyInlineScripts(target.object);
       }
     }
+    fitAutoTextWidth(target.object, target.canvas);
     target.object.dirty = true;
     target.object.setCoords();
     target.canvas.requestRenderAll();
@@ -8814,6 +8914,7 @@
     if (!target.canvas || !target.object) return;
     target.object.set(style);
     if (target.object.asmInlineScripts) applyInlineScripts(target.object);
+    fitAutoTextWidth(target.object, target.canvas);
     target.object.setCoords();
     target.canvas.requestRenderAll();
     syncCurrentSlideCanvas({ history });
@@ -9405,31 +9506,6 @@
     requestAnimationFrame(() => openAlgorithmEditor(slide.id));
   }
 
-  function closeSlideDeleteDialog() {
-    pendingSlideDelete = null;
-    if (slideDeleteDialog?.open) slideDeleteDialog.close();
-  }
-
-  function confirmPendingSlideDelete() {
-    const pending = pendingSlideDelete;
-    pendingSlideDelete = null;
-    if (slideDeleteDialog?.open) slideDeleteDialog.close();
-    pending?.commit?.();
-  }
-
-  function requestSlideDeleteConfirmation(slideIds, commit) {
-    if (!slideDeleteDialog || typeof slideDeleteDialog.showModal !== 'function') return;
-    const count = slideIds.length;
-    pendingSlideDelete = { slideIds: slideIds.slice(), commit };
-    if (slideDeleteMessage) {
-      slideDeleteMessage.textContent = count === 1
-        ? '即將刪除目前選取的投影片。刪除後仍可立即使用復原。'
-        : `即將刪除選取的 ${count} 張投影片。刪除後仍可立即使用復原。`;
-    }
-    slideDeleteDialog.showModal();
-    requestAnimationFrame(() => confirmSlideDeleteBtn?.focus());
-  }
-
   function deleteOverviewSelectedSlide() {
     if (slideMutationInFlight) return;
     const ids = customOverviewOpen
@@ -9440,24 +9516,22 @@
     if (!removableIds.length) return;
     const beforeOrder = flatSlideIds();
     const firstDeletedIndex = beforeOrder.findIndex(id => removableIds.includes(id));
-    requestSlideDeleteConfirmation(removableIds, () => {
-      runSlideDeleteTransition(removableIds, () => {
-        removeSlidesByIds(removableIds);
-        const afterOrder = flatSlideIds();
-        const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
-        if (fallbackId) {
-          overviewSelectedSlideId = fallbackId;
-          overviewSelectedSlideIds = new Set([fallbackId]);
-          overviewSelectionAnchorId = fallbackId;
-          const pos = slidePositions.get(fallbackId);
-          if (pos) {
-            currentH = pos.h;
-            currentV = pos.v;
-          }
+    runSlideDeleteTransition(removableIds, () => {
+      removeSlidesByIds(removableIds);
+      const afterOrder = flatSlideIds();
+      const fallbackId = afterOrder[Math.min(Math.max(0, firstDeletedIndex), afterOrder.length - 1)] || afterOrder[0] || null;
+      if (fallbackId) {
+        overviewSelectedSlideId = fallbackId;
+        overviewSelectedSlideIds = new Set([fallbackId]);
+        overviewSelectionAnchorId = fallbackId;
+        const pos = slidePositions.get(fallbackId);
+        if (pos) {
+          currentH = pos.h;
+          currentV = pos.v;
         }
-        saveDeck();
-        renderDeck();
-      });
+      }
+      saveDeck();
+      renderDeck();
     });
   }
 

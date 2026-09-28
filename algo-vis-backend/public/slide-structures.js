@@ -27,6 +27,10 @@
     stack: 'Stack',
     queue: 'Queue'
   };
+
+  function labelForWidget(widget, mode) {
+    return typeof widget?.structureName === 'string' ? widget.structureName : MODE_LABELS[mode];
+  }
   const NODE_W = 40;
   const INDEX_H = 12;
 
@@ -669,7 +673,7 @@
       const values = rows.flatMap(row => Array.from({ length: columns }, (_, index) => row[index] ?? ''));
       window.draw_array_normal(
         group,
-        MODE_LABELS[mode],
+        labelForWidget(widget, mode),
         values,
         originalStyles(widget, values.length, false),
         [0, values.length - 1],
@@ -695,7 +699,7 @@
     const indexMode = clamp(Math.round(number(widget.indexMode, 0)), 0, 4);
     const itemsPerRow = Math.max(0, Math.round(number(widget.itemsPerRow, 0))) || Infinity;
     const gap = clamp(number(widget.gap, 0), 0, 40);
-    const label = MODE_LABELS[mode];
+    const label = labelForWidget(widget, mode);
 
     if (mode === 'normal') renderer(group, label, source, styles, range, itemsPerRow, indexMode, gap);
     else if (mode === 'heap') renderer(group, label, source, styles, range, indexMode, gap);
@@ -884,7 +888,7 @@
     svg.setAttribute('viewBox', `${bounds.left} ${bounds.top} ${viewWidth} ${viewHeight}`);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', `${MODE_LABELS[mode]} data structure`);
+    svg.setAttribute('aria-label', `${labelForWidget(widget, mode) || MODE_LABELS[mode]} data structure`);
     svg.setAttribute('data-renderer', mode === 'binary_tree'
       ? 'original-tree-adapter'
       : (mode === 'segment_tree'
