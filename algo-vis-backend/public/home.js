@@ -51,6 +51,13 @@
   const closeDeckDialogBtn = document.getElementById('closeDeckDialogBtn');
   const cancelDeckDialogBtn = document.getElementById('cancelDeckDialogBtn');
   const deleteDeckBtn = document.getElementById('deleteDeckBtn');
+  const deleteDeckDialog = document.getElementById('deleteDeckDialog');
+  const deleteDeckForm = document.getElementById('deleteDeckForm');
+  const deleteDeckName = document.getElementById('deleteDeckName');
+  const deleteDeckMessage = document.getElementById('deleteDeckMessage');
+  const closeDeleteDeckBtn = document.getElementById('closeDeleteDeckBtn');
+  const cancelDeleteDeckBtn = document.getElementById('cancelDeleteDeckBtn');
+  const confirmDeleteDeckBtn = document.getElementById('confirmDeleteDeckBtn');
   const organizer = window.ASMLibraryOrganizer({
     container: deckGrid, nav: document.getElementById('libraryFolderNav'),
     createButton: document.getElementById('createFolderBtn'),
@@ -457,11 +464,26 @@
     deckDialog.close();
   }
 
+  function closeDeleteDeckDialog() {
+    if (deleteDeckDialog.open) deleteDeckDialog.close();
+  }
+
+  function openDeleteDeckDialog() {
+    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
+    if (!deck) return;
+    deleteDeckName.textContent = deck.title;
+    setMessage(deleteDeckMessage);
+    deleteDeckDialog.showModal();
+    requestAnimationFrame(() => cancelDeleteDeckBtn.focus());
+  }
+
   createDeckBtn.addEventListener('click', createDeck);
   emptyCreateBtn.addEventListener('click', createDeck);
   searchInput.addEventListener('input', renderDecks);
   closeDeckDialogBtn.addEventListener('click', closeDeckDialog);
   cancelDeckDialogBtn.addEventListener('click', closeDeckDialog);
+  closeDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
+  cancelDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
 
   deckDialogForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -482,17 +504,26 @@
     }
   });
 
-  deleteDeckBtn.addEventListener('click', async () => {
-    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
-    if (!deck || !confirm(`確定要刪除「${deck.title}」嗎？刪除後無法復原。`)) return;
+  deleteDeckBtn.addEventListener('click', openDeleteDeckDialog);
 
+  deleteDeckForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
+    if (!deck) return;
+
+    confirmDeleteDeckBtn.disabled = true;
+    confirmDeleteDeckBtn.textContent = '刪除中…';
     try {
       await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}`, { method: 'DELETE' });
       state.decks = state.decks.filter(item => item.deck_uid !== deck.deck_uid);
       renderDecks();
+      closeDeleteDeckDialog();
       closeDeckDialog();
     } catch (error) {
-      setMessage(deckDialogMessage, error.message);
+      setMessage(deleteDeckMessage, error.message);
+    } finally {
+      confirmDeleteDeckBtn.disabled = false;
+      confirmDeleteDeckBtn.textContent = '刪除投影片';
     }
   });
 

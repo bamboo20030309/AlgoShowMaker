@@ -189,6 +189,26 @@
     </form>
   </dialog>
 
+  <dialog id="deleteDeckDialog" class="deck-dialog" aria-labelledby="deleteDeckDialogTitle">
+    <form id="deleteDeckForm">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">投影片設定</span>
+          <h2 id="deleteDeckDialogTitle">刪除投影片</h2>
+        </div>
+        <button id="closeDeleteDeckBtn" class="icon-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <p>確定要刪除「<strong id="deleteDeckName"></strong>」嗎？</p>
+      <p class="category-help">刪除後無法復原。</p>
+      <div id="deleteDeckMessage" class="form-message" role="status" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <span class="dialog-spacer"></span>
+        <button id="cancelDeleteDeckBtn" class="quiet-btn" type="button">取消</button>
+        <button id="confirmDeleteDeckBtn" class="danger-btn" type="submit">刪除投影片</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="folderDialog" class="deck-dialog" aria-labelledby="folderDialogTitle">
     <form id="folderDialogForm">
       <div class="dialog-heading">
@@ -268,7 +288,7 @@
   <script src="deck-file-drop.js?v=1"></script>
   <script src="library-layout.js?v=2"></script>
   <script src="library-organizer.js?v=7"></script>
-  <script src="home.js?v=header-examples-9"></script>
+  <script src="home.js?v=delete-dialog-10"></script>
 </body>
 
 </html>
