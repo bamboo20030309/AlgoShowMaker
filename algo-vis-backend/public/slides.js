@@ -7474,6 +7474,7 @@
       modeToggleBtn.setAttribute('aria-label', `切換到 ${nextMode} 模式`);
     }
     applyEditMode(enabled);
+    syncAlgorithmFrameVisibility();
     if (!enabled) clearSnapGuides();
     updateAlignmentToolbar();
     if (reveal) setTimeout(() => reveal.layout(), 20);
@@ -9301,7 +9302,9 @@
     if (!frame?.contentWindow || frame.hidden || !frame.getAttribute('src')?.includes('asmEmbed=runtime')) return;
     frame.contentWindow.postMessage({
       type: 'asm-runtime-visibility',
-      visible: visible === true
+      visible: visible === true,
+      presentationMode: !document.body.classList.contains('asm-edit-mode'),
+      cameraEditable: sharedAccess !== 'view'
     }, window.location.origin);
   }
 
@@ -9385,6 +9388,18 @@
       if (runtimeFrame && algorithmFrameIsCurrent(runtimeFrame)) {
         runtimeFrame.classList.remove('is-loading');
       }
+      return;
+    }
+    if (event.data.type === 'asm-presentation-camera-change') {
+      const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
+        .find(frame => frame.contentWindow === event.source);
+      const slide = runtimeFrame ? getSlideById(runtimeFrame.dataset.slideId) : null;
+      if (!slide || slide.kind !== 'algorithm-animation' || sharedAccess === 'view'
+        || document.body.classList.contains('asm-edit-mode')) return;
+      const presentationCamera = window.ASMAlgorithmAnimation
+        ?.normalizePresentationCamera?.(event.data.presentationCamera);
+      slide.animation = normalizeAlgorithmAnimation({ ...slide.animation, presentationCamera });
+      saveDeck();
       return;
     }
     if (event.data.type === 'asm-embed-ready') {

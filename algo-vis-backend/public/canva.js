@@ -13,6 +13,9 @@
   let scale = 1;                 // 邏輯縮放（腳本 / C++ 傳入的值）
   let animationId = null;        // 用於追蹤正在進行的鏡頭動畫
   let isFirstCamera = true;      // 用於判斷是否為首次設定鏡頭
+  let presentationCamera = { panXRatio: 0, panYRatio: 0, zoomFactor: 1 };
+  let presentationCameraEnabled = false;
+  let manualCameraSaveTimer = null;
   const GRID_SPACING  = 50;      // 格線間距
   const GRID_EXTENT   = 10000;   // 世界座標覆蓋範圍半徑
   const REFERENCE_HEIGHT = 900;  // 基準高度：以此高度為標準，其他高度按比例換算
@@ -126,8 +129,13 @@
       translateY += dy;
       updateTransform();
     });
-    svg.addEventListener('mouseup', () => dragging = false);
-    svg.addEventListener('mouseleave', () => dragging = false);
+    const finishDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      notifyManualCameraChange();
+    };
+    svg.addEventListener('mouseup', finishDrag);
+    svg.addEventListener('mouseleave', finishDrag);
 
     svg.addEventListener('wheel', e => {
       e.preventDefault();
@@ -150,6 +158,9 @@
       translateX = mx - newPhysical * px;
       translateY = my - newPhysical * py;
       updateTransform();
+      capturePresentationCamera();
+      clearTimeout(manualCameraSaveTimer);
+      manualCameraSaveTimer = setTimeout(notifyManualCameraChange, 180);
     });
   }
 
@@ -540,22 +551,99 @@
   };
 
   // 監聽視窗大小變化：重新以目前的邏輯縮放重新對齊（確保關注點不移位）
-  let lastCameraX = 0, lastCameraY = 0;
+  let lastCameraX = 0, lastCameraY = 0, lastCameraScale = 1;
+  let hasBaseCamera = false;
 
   // 包裝 setCamera，紀錄最後的目標世界座標
   const _origSetCamera = window.setCamera;
   // 注意：此處不直接覆寫，而是在 setCamera 內部紀錄
   const origSetCamera = window.setCamera;
+
+  function normalizedPresentationCamera(value) {
+    const panXRatio = Number(value?.panXRatio);
+    const panYRatio = Number(value?.panYRatio);
+    const zoomFactor = Number(value?.zoomFactor);
+    return {
+      panXRatio: Number.isFinite(panXRatio) ? panXRatio : 0,
+      panYRatio: Number.isFinite(panYRatio) ? panYRatio : 0,
+      zoomFactor: Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1
+    };
+  }
+
+  function presentationCameraTarget(x, y, baseScale) {
+    let rect = svg?.getBoundingClientRect?.();
+    if (!(Number(rect?.width) > 0) || !(Number(rect?.height) > 0)) {
+      rect = {
+        width: svg?.parentElement?.clientWidth || 800,
+        height: svg?.parentElement?.clientHeight || 600
+      };
+    }
+    const modifier = presentationCameraEnabled
+      ? presentationCamera
+      : { panXRatio: 0, panYRatio: 0, zoomFactor: 1 };
+    const finalScale = Math.max(0.05, Number(baseScale) || 1) * modifier.zoomFactor;
+    const physicalScale = finalScale * getScreenScaleFactor();
+    const panX = modifier.panXRatio * rect.width;
+    const panY = modifier.panYRatio * rect.height;
+    return {
+      x: Number(x) - panX / Math.max(0.0001, physicalScale),
+      y: Number(y) - panY / Math.max(0.0001, physicalScale),
+      scale: finalScale
+    };
+  }
+
+  function applyStoredBaseCamera(animate = false, duration = 400) {
+    if (!hasBaseCamera) return;
+    const target = presentationCameraTarget(lastCameraX, lastCameraY, lastCameraScale);
+    origSetCamera(target.x, target.y, target.scale, animate, duration);
+  }
+
+  function capturePresentationCamera() {
+    if (!presentationCameraEnabled) return { ...presentationCamera };
+    if (!hasBaseCamera || !svg) return { ...presentationCamera };
+    const rect = svg.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) return { ...presentationCamera };
+    const baseScale = Math.max(0.0001, Number(lastCameraScale) || 1);
+    const physicalScale = scale * getScreenScaleFactor();
+    const baseTranslateX = rect.width / 2 - lastCameraX * physicalScale;
+    const baseTranslateY = rect.height / 2 - lastCameraY * physicalScale;
+    presentationCamera = normalizedPresentationCamera({
+      panXRatio: (translateX - baseTranslateX) / rect.width,
+      panYRatio: (translateY - baseTranslateY) / rect.height,
+      zoomFactor: Math.max(0.05, scale / baseScale)
+    });
+    return { ...presentationCamera };
+  }
+
+  function notifyManualCameraChange() {
+    clearTimeout(manualCameraSaveTimer);
+    manualCameraSaveTimer = null;
+    window.dispatchEvent(new CustomEvent('asm:camera-user-change', {
+      detail: { camera: capturePresentationCamera() }
+    }));
+  }
+
   window.setCamera = function (x, y, newScale, animate = true, duration = 400) {
     lastCameraX = x;
     lastCameraY = y;
-    origSetCamera(x, y, newScale, animate, duration);
+    lastCameraScale = newScale;
+    hasBaseCamera = true;
+    const target = presentationCameraTarget(x, y, newScale);
+    origSetCamera(target.x, target.y, target.scale, animate, duration);
   };
+
+  window.setPresentationCameraTransform = function (value, apply = true, enabled = true) {
+    presentationCameraEnabled = enabled === true;
+    presentationCamera = normalizedPresentationCamera(value);
+    if (apply) applyStoredBaseCamera(false);
+  };
+  window.getPresentationCameraTransform = () => ({ ...presentationCamera });
+  window.capturePresentationCameraTransform = capturePresentationCamera;
 
   window.addEventListener('resize', () => {
     if (svg && viewport) {
-      // 使用最後的目標座標與當前邏輯縮放，靜默重新對齊
-      origSetCamera(lastCameraX, lastCameraY, scale, false);
+      // 使用原始鏡頭加上展示偏移重新對齊，避免不同視窗尺寸累積誤差。
+      applyStoredBaseCamera(false);
     }
   });
 
