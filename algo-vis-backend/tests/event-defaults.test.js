@@ -44,6 +44,17 @@ test('initial event animation and timeline defaults match the Event Settings pan
     'an explicitly disabled saved output setting remains disabled');
 });
 
+test('event settings follow the teaching-oriented display order', () => {
+  const api = eventApi();
+  const visibleLabels = api.definitions
+    .filter(definition => definition.category !== 'state' && definition.internal !== true)
+    .map(definition => definition.label);
+  assert.deepEqual(Array.from(visibleLabels), [
+    '宣告／物件入場', '物件退場／手動退場', '讀取', '比較', '賦值', '交換',
+    '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
+  ]);
+});
+
 test('return, break and continue share one control-flow setting', () => {
   const api = eventApi();
   const visibleTypes = api.definitions.filter(definition => definition.internal !== true)

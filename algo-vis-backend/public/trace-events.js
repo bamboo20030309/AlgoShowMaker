@@ -11,22 +11,22 @@
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
     { type: 'object-exit', label: '物件退場／手動退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
     { type: 'read', label: '讀取', color: '#3976b8', enabledByDefault: false, timelineByDefault: false },
-    { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
-    { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
+    { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },
+    { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
+    { type: 'output', label: '輸出', color: '#2f7d72', enabledByDefault: true, timelineByDefault: false },
+    { type: 'control-flow', label: '流程跳轉', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
+    { type: 'call', label: '呼叫函式', color: '#65737a', enabledByDefault: false, timelineByDefault: false },
     // Whole-condition results are internal playback metadata. Comparisons are
     // the user-controllable events; this record only resolves final true/false
     // code coloring and must not appear as another event or setting.
     { type: 'condition', label: '條件', color: '#7b61a8', internal: true, enabledByDefault: false, timelineByDefault: false },
-    { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },
     { type: 'fixed', label: '自動固定', color: '#4caf50', category: 'state', enabledByDefault: true, timelineByDefault: false },
-    { type: 'call', label: '呼叫函式', color: '#65737a', enabledByDefault: false, timelineByDefault: false },
-    { type: 'output', label: '輸出', color: '#2f7d72', enabledByDefault: true, timelineByDefault: false },
     // Paired with a call occurrence so recursive code presentation can retain
     // caller/callee state without exposing a second editable timeline event.
     { type: 'call-return', label: '函式呼叫返回', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'return-complete', label: '完成回傳', color: '#a86524', internal: true, enabledByDefault: false, timelineByDefault: false },
-    { type: 'control-flow', label: '流程跳轉', color: '#a86524', enabledByDefault: true, timelineByDefault: false },
     { type: 'branch-enter', label: '進入遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'branch-exit', label: '離開遞迴分支', color: '#65737a', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'function-enter', label: '進入函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false },
