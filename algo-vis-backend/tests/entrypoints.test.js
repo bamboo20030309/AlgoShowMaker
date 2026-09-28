@@ -42,15 +42,15 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-36'));
-  assert.ok(html.includes('trace-events.js?v=trace-59'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-256'));
+  assert.ok(html.includes('trace-events.js?v=trace-60'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-258'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
   assert.ok(html.includes('trace-code-presenter.js?v=code-33'));
   assert.ok(html.includes('trace-view-source.js?v=trace-17'));
-  assert.ok(html.includes('trace-editor.js?v=trace-28'));
-  assert.ok(html.includes('compile.js?v=syntax-7'));
+  assert.ok(html.includes('trace-editor.js?v=trace-29'));
+  assert.ok(html.includes('compile.js?v=syntax-8'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
   assert.ok(html.includes('style.css?v=brand-shared-10'));
@@ -99,7 +99,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-28'));
+  assert.ok(html.includes('trace-rules.js?v=trace-29'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'segment_tree'
       ? 'segment-label-3'
@@ -109,7 +109,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
   assert.ok(html.includes('draw/draw_2Darray.js?v=matrix-labels-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-59'));
+  assert.ok(html.includes('trace-events.js?v=trace-60'));
   const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
@@ -164,7 +164,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(!read('trace-code-presenter.js').includes('<header>'));
   assert.ok(html.includes('draw/draw_array.js?v=trace-3'));
   for (const surface of [html, slides, legacy]) {
-    assert.ok(surface.includes('draw/draw_array_utils.js?v=gap-1'));
+    assert.ok(surface.includes('draw/draw_array_utils.js?v=fit-4'));
   }
   assert.ok(html.includes('trace-studio.css?v=trace-58'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,

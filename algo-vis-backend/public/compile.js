@@ -95,6 +95,9 @@ document.getElementById('runBtn').addEventListener('click', async () => {
 
   try {
     const t0 = performance.now();
+    if (document.body.classList.contains('asm-trace-studio-open')) {
+      window.ASMTraceStudio?.close?.({ render: false });
+    }
     const sourceCode = aceEditor.getValue();
     const sourceInput = inputEl ? inputEl.value : '';
     window.ASMSyntaxTree?.refresh?.(sourceCode);
@@ -220,7 +223,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
         const migrateCurrentSettings = window.__asmMigrateTraceSettingsOnNextRun === true;
         window.__asmMigrateTraceSettingsOnNextRun = false;
         const traceDocument = window.ASMTraceEditor
-          ? window.ASMTraceEditor.applyTraceDocument(incomingTraceDocument, { migrateCurrentSettings })
+          ? window.ASMTraceEditor.applyTraceDocument(incomingTraceDocument, { migrateCurrentSettings, openStudio: false })
           : window.asmApplyTraceDocument(incomingTraceDocument);
         const traceSettings = window.ASMTraceEditor?.snapshot?.() || {};
         const savedTraceDocument = traceSettings.traceDocument || traceDocument;
@@ -271,9 +274,9 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     window.dispatchEvent(new CustomEvent('asm:compile-finished'));
   }
 
-  // 追蹤失敗時優先讓使用者看到原因；正常執行則維持輸出分頁。
+  // 追蹤失敗時優先讓使用者看到原因；正常執行則顯示畫布。
   const btn = document.querySelector(
-    `.tab-btn[data-tab="${showDebugAfterRun ? 'tab-debug' : 'tab-output'}"]:not([style*="display: none"])`
+    `.tab-btn[data-tab="${showDebugAfterRun ? 'tab-debug' : 'tab-canvas'}"]:not([style*="display: none"])`
   );
   if (btn) activateTab(btn);
 });

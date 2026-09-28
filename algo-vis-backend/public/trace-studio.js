@@ -3760,7 +3760,7 @@
     });
   }
 
-  function closeStudio() {
+  function closeStudio(options = {}) {
     cancelThumbnailCulling();
     cancelThumbnailRendering();
     cancelEventAvailabilityRefresh();
@@ -3774,7 +3774,9 @@
     document.body.classList.remove('asm-trace-studio-open');
     activeObjectKey = '';
     codePanelSelectionActive = false;
-    renderPlayerFrame(currentIndex, { animatePositions: false });
+    // Leaving the editor restores a stable scene, without replaying events.
+    // Explicitly disabling event animation also preserves viewport-aware LOD.
+    if (options.render !== false) renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
   }
 
   function buildUi() {
@@ -3911,7 +3913,11 @@
     renderSelection();
     renderObjectStateEditor();
     renderBindingEditor();
-    renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+    if (!window.ASMTraceRenderers?.canReuseStudioScene?.(trace, trace.frames[currentIndex])) {
+      renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
+    } else {
+      window.ASMTraceRenderers.preflightEventAvailability(trace, { frameIndex: currentIndex });
+    }
     applyCameraForFrame(currentIndex, false);
   }
 

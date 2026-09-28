@@ -251,6 +251,7 @@ function rendererApi() {
   };
   window.ASMTraceModel = { diffFrame() { return []; } };
   window.ASMTraceTransitions = { defaults() { return { duration: 0, easing: 'linear' }; } };
+  window.ASMTraceCamera = { ruleForFrame() { return null; } };
   window.SVGElement.prototype.getBBox = function getBBox() {
     const left = Number(this.getAttribute('data-outerframe-left'));
     const top = Number(this.getAttribute('data-outerframe-top'));
@@ -341,4 +342,23 @@ test('original matrix renderer keeps ragged rows and isolates axis labels from c
   assert.equal(window.document.querySelectorAll('[data-trace-label-role="column"]').length, 2);
   assert.equal(window.document.querySelectorAll('[data-trace-content-role="value"]').length, 3);
   assert.ok(window.document.querySelector('.trace-matrix-outerframe'));
+});
+
+test('matrix all selector evaluates scalar cell values, including old ragged matrix data',()=>{
+ const vm=require('node:vm');const context=vm.createContext({});context.window=context;
+ for(const file of ['trace-model.js','trace-rules.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../public',file),'utf8'),context);
+ const frame={id:'all',state:{grid:{data:{kind:'sequence',items:[{kind:'sequence',items:[{kind:'scalar',value:0},{kind:'scalar',value:1}]},{kind:'sequence',items:[{kind:'scalar',value:1}]}]}}},styles:[
+  {targetVariableId:'grid',selector:{type:'all'},styleType:'background',color:'AV_red',when:{expression:'value==0'}},
+  {targetVariableId:'grid',selector:{type:'all'},styleType:'background',color:'AV_green',when:{expression:'value==1'}}
+ ]};
+ for(const kind of ['matrix',undefined]){
+  const doc={variables:{grid:{name:'grid',kind}},frames:[frame],rules:[],studio:{eventSettings:{autoFixedEnabled:false}}};
+  for(const copy of [doc,JSON.parse(JSON.stringify(doc))]){
+   const highlights=context.ASMTraceRules.evaluate(copy,copy.frames[0]).grid;
+   assert.deepEqual(Object.keys(highlights).sort(),['0,0','0,1','1,0']);
+   assert.equal(highlights['0,0'].styleTypes.background,'rgba(239, 154, 154, 0.6)');
+   assert.equal(highlights['0,1'].styleTypes.background,'rgba(165, 214, 167, 0.6)');
+   assert.equal(highlights['1,0'].styleTypes.background,'rgba(165, 214, 167, 0.6)');
+  }
+ }
 });

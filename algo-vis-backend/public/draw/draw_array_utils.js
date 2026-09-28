@@ -30,6 +30,24 @@
   // ---------------------------------------------------------------------------
   // 區段：SVG 字級量測
   // ---------------------------------------------------------------------------
+  const fitTextCache = new Map();
+  const fitTextBatches = new WeakMap();
+  const digitWidthCache = new Map();
+  window.withSvgTextFitStyle = (group, callback) => {
+    const previous = fitTextBatches.get(group);
+    // Snapshot once before drawing writes; CSSStyleDeclaration itself is live.
+    const style = getComputedStyle(group);
+    const snapshot = Object.fromEntries(['fontFamily','fontWeight','fontStyle',
+      'fontStretch','letterSpacing','wordSpacing','fontVariant','fontFeatureSettings',
+      'fontVariationSettings','textTransform'].map(key => [key, style[key]]));
+    fitTextBatches.set(group, snapshot);
+    try { return callback(); }
+    finally { if (previous) fitTextBatches.set(group, previous); else fitTextBatches.delete(group); }
+  };
+  const clearFitTextCache = () => { fitTextCache.clear(); digitWidthCache.clear(); };
+  document.fonts?.addEventListener?.('loadingdone', clearFitTextCache);
+  document.fonts?.addEventListener?.('loadingerror', clearFitTextCache);
+  window.clearSvgTextFitCache = clearFitTextCache;
   window.fitSvgText = function(g, textContent, maxWidth, maxHeight, opts = {}) {
     const {
       maxFont = 16,
@@ -39,14 +57,60 @@
       padding = 4
     } = opts;
 
-    const dummy = document.createElementNS(NS, 'text');
-    dummy.textContent = textContent;
-    dummy.setAttribute('x', -9999);
-    dummy.setAttribute('y', -9999);
-    dummy.setAttribute('visibility', 'hidden');
-    dummy.setAttribute('font-family', family);
-    dummy.setAttribute('font-weight', fontWeight);
-    g.appendChild(dummy);
+    // Include inherited typography; do not share results across different fonts.
+    const inherited = fitTextBatches.get(g) || getComputedStyle(g);
+    const resolvedFamily = family === 'inherit' ? inherited.fontFamily : family;
+    const resolvedWeight = fontWeight === 'inherit' ? inherited.fontWeight : fontWeight;
+    const cacheKey = JSON.stringify([String(textContent), maxWidth, maxHeight,
+      maxFont, minFont, resolvedFamily, resolvedWeight, padding,
+      inherited.fontStyle, inherited.fontStretch, inherited.letterSpacing,
+      inherited.wordSpacing, inherited.fontVariant, inherited.fontFeatureSettings,
+      inherited.fontVariationSettings, inherited.textTransform]);
+    const cacheable = g.isConnected && document.fonts?.status !== 'loading';
+    if (cacheable && fitTextCache.has(cacheKey)) return fitTextCache.get(cacheKey);
+    let exactMeasurement = true;
+    let dummy = null;
+    const numeric = /^[0-9]+$/.test(String(textContent));
+    const typography = JSON.stringify([resolvedFamily,resolvedWeight,inherited.fontStyle,
+      inherited.fontStretch,inherited.letterSpacing,inherited.wordSpacing,inherited.fontVariant,
+      inherited.fontFeatureSettings,inherited.fontVariationSettings,inherited.textTransform]);
+    const measure = (text, size) => {
+      if (!dummy) {
+        dummy = document.createElementNS(NS, 'text');
+        dummy.setAttribute('x', -9999);
+        dummy.setAttribute('y', -9999);
+        dummy.setAttribute('visibility', 'hidden');
+        dummy.setAttribute('font-family', family);
+        dummy.setAttribute('font-weight', fontWeight);
+        g.appendChild(dummy);
+      }
+      dummy.textContent = text;
+      dummy.setAttribute('font-size', String(size));
+      return dummy.getComputedTextLength();
+    };
+    const widthAt = size => {
+      if (!numeric) return measure(textContent, size);
+      const key = typography + ':' + size;
+      let widths = cacheable ? digitWidthCache.get(key) : null;
+      if (!widths) {
+        widths = new Map();
+        if (cacheable) {
+          if (digitWidthCache.size >= 512) digitWidthCache.delete(digitWidthCache.keys().next().value);
+          digitWidthCache.set(key,widths);
+        }
+      }
+      let width = 0;
+      for (const digit of String(textContent)) {
+        let part = widths.get(digit);
+        if (part == null) {
+          part = measure(digit,size);
+          if (part > 0) widths.set(digit,part);
+          else { exactMeasurement = false; part = size * 0.6; }
+        }
+        width += part;
+      }
+      return width;
+    };
 
     const targetW = Math.max(1, maxWidth  - padding * 2);
     const targetH = Math.max(1, maxHeight - padding * 2);
@@ -54,13 +118,12 @@
     let lo = minFont, hi = maxFont, best = minFont;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      dummy.setAttribute('font-size', String(mid));
-      
-      let w = dummy.getComputedTextLength();
+      let w = widthAt(mid);
       
       // [修正] 如果 getComputedTextLength 回傳 0 (可能因為元素尚未渲染或在隱藏層)
       // 則使用估計值：假設平均字元寬度為字體大小的 0.6 倍
       if (w <= 0 && textContent.length > 0) {
+        exactMeasurement = false;
         w = textContent.length * mid * 0.6;
       }
 
@@ -73,7 +136,11 @@
       }
     }
 
-    g.removeChild(dummy);
+    dummy?.remove();
+    if (cacheable && exactMeasurement) {
+      if (fitTextCache.size >= 4096) fitTextCache.delete(fitTextCache.keys().next().value);
+      fitTextCache.set(cacheKey, best);
+    }
     return best;
   };
 
