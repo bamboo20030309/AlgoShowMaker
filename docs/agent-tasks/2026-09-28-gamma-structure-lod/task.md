@@ -3,7 +3,7 @@
 ## 任務資訊
 - 負責代理：gamma
 - 狀態：待交付
-- 共同基準：cdc5f94（接續上一輪 gamma 已推送版本；完整 SHA 見交付紀錄）
+- 共同基準：cdc5f940c49aa1dc02a1ffcad2730ed60b7ed34d
 - 分支：codex/2026-09-22-gamma
 - Worktree：C:\Users\user\Documents\Codex\2026-07-29\algoshowmaker-main-commit-d154dd5-slides-html\work\AlgoShowMaker\.worktrees\2026-09-22-gamma
 
