@@ -844,6 +844,9 @@ for (auto& v : prime) {
 
 - AlgoShowMaker 色名，例如 `AV_red`、`AV_green`、`AV_blue`、`AV_yellow`、
   `AV_orange`、`AV_magenta`、`AV_grey`、`AV_black`、`AV_white`。其中`AV_orange`為`rgba(255,183,77,0.65)`，`AV_magenta`為`rgba(231,144,255,0.65)`。
+- 在完整色名後加 `!` 代表不透明版本：`AV_green!`、`AV_red!`、`AV_blue!`、
+  `AV_yellow!`、`AV_orange!`、`AV_magenta!`、`AV_black!`、`AV_white!`、`AV_grey!`。
+  例如 `AV_green!` 是不透明綠色，原本的 `AV_green` 仍是半透明綠色。
 - CSS 色名，例如 `red`、`orange`。
 - Hex，例如 `#ff0000`、`#ff000080`。
 - `rgb(...)`、`rgba(...)`、`hsl(...)`、`hsla(...)`。
@@ -915,7 +918,7 @@ renderer依節點層級把格子切成 `2^k` 段；根節點涵蓋8個最小區�
 ```
 
 也可以整條寫在一行。多行延續需使用連續的普通 `//` 註解，開頭為
-`from`、`to`、`as`、`color`、`width`、`head`、`line`、`dash` 或 `when`；
+`from`、`to`、`as`、`color`、`width`、`head`、`line`、`dash`、`until` 或 `when`；
 不能跨越 C++ 敘述或另一個 `@` 指令。`when` 仍位於指令最後。
 
 - `[start:end]` 包含兩端，與樣式區間寫法一致；`step` 預設為 1，支援負步長。方向與範圍不合時產生零支箭頭。舊的 `start..end` 已移除，請改用方括號與冒號。
@@ -1041,6 +1044,16 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 // @arrow from arr[i].bottom to arr[j].top as "move_link" color AV_red width 3 head both line curve dash 6,4 when i != j
 ```
 
+遞迴路徑可以使用 `until return`：
+
+```cpp
+// @arrow from LCS[x][y] to LCS[x-1][y-1] color AV_green width 3 until return
+```
+
+這支箭頭會留在後續的子遞迴幀，並與同一條呼叫堆疊上的其他 `until return`
+箭頭一起顯示。當子呼叫返回原本層級時，該層箭頭會自動移除；上一步與下一步也會依幀狀態重建。
+`until return` 目前只支援單支箭頭，不與 `@arrow for` 批次展開併用。
+
 | 修飾詞 | 預設值 | 支援內容 |
 | --- | --- | --- |
 | `as` | 穩定指令 ID，顯示名稱如 `arrow_1` | 箭頭身分與端點分離；跨不同指令延續時建議明確命名 |
@@ -1049,6 +1062,7 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 | `head` | `end` | `start`、`end`、`both`、`none` |
 | `line` | `straight` | `straight`、`curve` |
 | `dash` | 無 | 例如 `6,4` |
+| `until` | 無 | `return`；子遞迴執行期間保留，返回原呼叫層時移除 |
 | `when` | 無 | 條件為真才顯示；請放在整條指令最後 |
 
 同 ID 的箭頭可由播放層穩定對應；layout 自動產生的父子箭頭預設使用 AV.hpp／`drawArrow` 的黑色、線寬與單向箭頭樣式，不需要另外撰寫 `@arrow`。
@@ -1642,7 +1656,9 @@ Studio 對受來源控制的事件標示 `@events` 原因並停用直接切換�
 
 複合賦值若來源與目的都能對應到可見格子，例如`sum += tree[now]`，會保留`sum`的舊值，將`tree[now]`格內的數字平移到`sum`的數字位置，抵達時提交新值並在同一個動畫更新中立即移除移動數字，不會停留在目的地。移動的是文字值，不包含來源格子的框線。全域純量在不同函式與遞迴幀之間沿用同一個runtime身分，因此只在第一次顯示時入場，不會因切換activation反覆淡入、淡出。含有副作用的目的索引（例如`arr[nextIndex()] += 2`）不會為了動畫重複求值；無法安全建立來源到目的動畫時會直接提交結果。
 
-二元加法賦值若兩側都是可見的純量或安全索引格，例如`total = a + b`或`tree[parent] = tree[left] + tree[right]`，會保留目的格舊值，將左右兩個來源的數字同步移向目的數字位置。兩個數字抵達時立即移除，目的格在同一個動畫更新中改成加總結果；來源格框線不會跟著移動。索引只接受不含函式呼叫、遞增或遞減的安全運算式，避免為了動畫重複執行副作用；其他運算式沿用一般賦值動畫。
+算式賦值若所有資料來源都是可見的純量或安全索引格，例如`total = a + b`或`tree[parent] = tree[left] + tree[right]`，會保留目的格舊值，將各來源數字同步移向目的數字位置。數值常數（包含帶正負號或括號的常數）沒有資料格來源，因此一律使用目的值相同的文字錨點，以帶運算符號的固定文字直接覆蓋目的格舊值，只隨事件顯示與消失，不做座標位移；常數顯示期間舊值隱藏，提交時再換成最終結果。多個常數會在格內稍微錯開。只有全部非 literal 資料來源都能定位時才播放位移；只要其中一個資料來源未顯示，就不播放任何來源的局部位移，而是直接提交結果。移動數字抵達時立即移除，目的格在同一個動畫更新中改成計算結果；來源格框線與背景不會跟著移動。索引只接受不含函式呼叫、遞增或遞減的安全運算式，避免為了動畫重複執行副作用；其他運算式沿用一般賦值動畫。
+
+`target = max(a,b)`與`target = min(a,b)`（包含`std::max`、`std::min`）使用單一選擇來源動畫：runtime會依實際參數值記錄勝出的來源，`max`只移動較大者，`min`只移動較小者；兩者相等時與C++函式一致，選擇第一個參數。未勝出的參數不產生位移；勝出來源是可見純量或安全索引格時只移動文字值，勝出來源未顯示時直接提交結果。勝出來源是數值常數時，則直接在目的格內顯示該數字。
 
 線段樹easy教學分成兩個可獨立RUN的範例。`algorithm_sample/Tree/Segment_Tree_easy_build.cpp`從初始化、逐筆輸入、父節點加總一路播放到根節點完成；`algorithm_sample/Tree/Segment_Tree_easy.cpp`先在無教學幀的初始化階段完成建樹，第一幀直接顯示完整樹，之後只播放查詢下降、segment分裂與sum累加。兩份範例各有自己的sample input。
 

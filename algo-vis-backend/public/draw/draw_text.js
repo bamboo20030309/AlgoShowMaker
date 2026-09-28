@@ -386,7 +386,16 @@ function isFullWidth(char) {
     'AV_grey': '#cccccc',
     'AV_node_grey': '#cccccc',
     'AV_black': 'black',
-    'AV_white': 'white'
+    'AV_white': 'white',
+    'AV_green!': '#a5d6a7',
+    'AV_red!': '#ef9a9a',
+    'AV_blue!': '#90caf9',
+    'AV_yellow!': '#fcff40',
+    'AV_orange!': '#ffb74d',
+    'AV_magenta!': '#e790ff',
+    'AV_black!': '#111827',
+    'AV_white!': '#ffffff',
+    'AV_grey!': '#cccccc'
   };
   function _resolveAVColor(c) { return (c && _AV_COLOR_MAP[c]) ? _AV_COLOR_MAP[c] : c; }
 

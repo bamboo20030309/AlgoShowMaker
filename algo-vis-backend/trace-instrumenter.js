@@ -1762,6 +1762,39 @@ function parseStyleTarget(raw, line) {
     }
     return { type: 'index', indexExpression };
   };
+  const matrixInnerLabel = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\[\s*(.*?)\s*\]\.inner-label$/);
+  if (matrixInnerLabel) {
+    return {
+      targetName: matrixInnerLabel[1],
+      selector: {
+        type: 'matrix-inner-label',
+        rowSelector: parseIndexOrRange(matrixInnerLabel[2].trim(), true, 'inner label row 範圍'),
+        columnSelector: parseIndexOrRange(matrixInnerLabel[3].trim(), true, 'inner label column 範圍')
+      }
+    };
+  }
+  const matrixAxisLabel = source.match(/^([A-Za-z_]\w*)\.(row-label|column-label)\[\s*(.*?)\s*\]$/);
+  if (matrixAxisLabel) {
+    return {
+      targetName: matrixAxisLabel[1],
+      selector: {
+        type: 'matrix-axis-label',
+        axis: matrixAxisLabel[2] === 'row-label' ? 'row' : 'column',
+        dimensionSelector: parseIndexOrRange(matrixAxisLabel[3].trim(), true,
+          `${matrixAxisLabel[2]} 範圍`)
+      }
+    };
+  }
+  const indexLabel = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\.index-label$/);
+  if (indexLabel) {
+    return {
+      targetName: indexLabel[1],
+      selector: {
+        type: 'index-label',
+        dimensionSelector: parseIndexOrRange(indexLabel[2].trim(), true, 'index label 範圍')
+      }
+    };
+  }
   const matrixCell = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\[\s*(.*?)\s*\]$/);
   if (matrixCell) {
     const rowSelector = parseIndexOrRange(matrixCell[2].trim(), true, '二維 row 範圍');
@@ -1831,7 +1864,7 @@ function styleDirectivesForSource(source, analysis) {
           if (!TRACE_STYLE_TYPES.has(styleType)) {
             throw new Error(`第 ${line} 行的 @style 樣式無效：${styleType}`);
           }
-          if (color && !/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
+          if (color && !/^(?:AV_[A-Za-z0-9_]+!?|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
             throw new Error(`第 ${line} 行的 @style 顏色無效：${color}`);
           }
           directives.push({
@@ -1921,7 +1954,14 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
       : selector?.type === 'index' ? [selector.indexExpression] : [];
     const selectorExpressions = selectors.flatMap(selector => selector?.type === 'range'
       ? [selector.startExpression, selector.endExpression]
-      : selector?.type === 'index' ? [selector.indexExpression]
+        : selector?.type === 'index' ? [selector.indexExpression]
+        : selector?.type === 'index-label' || selector?.type === 'matrix-axis-label'
+          ? dimensionExpressions(selector.dimensionSelector)
+          : selector?.type === 'matrix-inner-label'
+            ? [
+              ...dimensionExpressions(selector.rowSelector),
+              ...dimensionExpressions(selector.columnSelector)
+            ]
         : selector?.type === 'matrix-cell'
           ? [selector.rowExpression, selector.columnExpression]
           : selector?.type === 'matrix-region'
@@ -1947,7 +1987,9 @@ function attachStyleDirectives(source, analysis, frameDirectives) {
     target.styles = target.styles.filter(existing => !existing.presetName
         || existing.targetVariableId !== style.targetVariableId
         || existing.styleType !== style.styleType
-        || JSON.stringify(existing.selector) !== JSON.stringify(style.selector));
+        || JSON.stringify(existing.selector) !== JSON.stringify(style.selector)
+        || (style.presetName
+          && String(existing.when?.expression || '') !== String(style.when?.expression || '')));
     target.styles.push(style);
   });
 }
@@ -2087,7 +2129,7 @@ function attachSegmentDirectives(source, analysis, frameDirectives) {
 }
 
 const ARROW_MODIFIERS = new Set([
-  'from', 'to', 'as', 'color', 'width', 'head', 'line', 'dash', 'when'
+  'from', 'to', 'as', 'color', 'width', 'head', 'line', 'dash', 'until', 'when'
 ]);
 const ARROW_HEADS = new Set(['start', 'end', 'both', 'none']);
 const ARROW_LINES = new Set(['straight', 'curve']);
@@ -2380,7 +2422,7 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
           ? parseQuotedDirectiveId(values.get('as'), line, '@arrow as')
           : `arrow-${signature}-${occurrence}`;
         const color = String(values.get('color') || 'black').trim();
-        if (!/^(?:AV_[A-Za-z0-9_]+|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
+        if (!/^(?:AV_[A-Za-z0-9_]+!?|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
           throw new Error(`第 ${line} 行的 @arrow 顏色無效：${color}`);
         }
         const width = Number(values.get('width') || 2);
@@ -2398,6 +2440,13 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
         const dash = String(values.get('dash') || '').trim();
         if (dash && !/^\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*$/.test(dash)) {
           throw new Error(`第 ${line} 行的 @arrow dash 格式無效：${dash}`);
+        }
+        const until = String(values.get('until') || '').trim().toLowerCase();
+        if (until && until !== 'return') {
+          throw new Error(`第 ${line} 行的 @arrow until 只支援 return`);
+        }
+        if (until && batch) {
+          throw new Error(`第 ${line} 行的 @arrow until return 暫不支援批次箭頭`);
         }
         let when = null;
         if (values.has('when')) {
@@ -2423,6 +2472,7 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
           fromTarget: parseArrowTarget(values.get('from'), line, 'from'),
           toTarget: parseArrowTarget(values.get('to'), line, 'to'),
           style: { color, width, head, line: lineStyle, dash },
+          until,
           when,
           batch
         });
@@ -2531,6 +2581,7 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
       from: arrow.fromTarget,
       to: arrow.toTarget,
       style: arrow.style,
+      until: arrow.until,
       when: arrow.when,
       batch: arrow.batch,
       drawLoops: arrow.drawLoops,
@@ -3811,6 +3862,36 @@ function instrumentSource(source, watchIds = []) {
     return `${targetArgs(target)}, ${canCaptureIndex ? 'true' : 'false'}, ${resolvedIndex}`;
   }
 
+  function numericLiteralTarget(node) {
+    if (!node) return null;
+    if (node.name === 'Number') {
+      return {
+        variableId: '',
+        expression: compactExpression(source.slice(node.from, node.to)),
+        indexExpression: '',
+        literal: true
+      };
+    }
+    if (node.name === 'UnaryExpression') {
+      const children = childrenOf(node);
+      const operator = children.find(child => child.name === 'ArithOp');
+      const operand = children.find(child => child !== operator);
+      const operation = operator ? source.slice(operator.from, operator.to).trim() : '';
+      if (!['+', '-'].includes(operation) || !numericLiteralTarget(operand)) return null;
+    } else if (node.name === 'ParenthesizedExpression') {
+      const operands = childrenOf(node).filter(child => !['(', ')'].includes(child.name));
+      if (operands.length !== 1 || !numericLiteralTarget(operands[0])) return null;
+    } else {
+      return null;
+    }
+    return {
+      variableId: '',
+      expression: compactExpression(source.slice(node.from, node.to)),
+      indexExpression: '',
+      literal: true
+    };
+  }
+
   function binaryOperationSources(node) {
     if (node?.name !== 'BinaryExpression') return null;
     const children = childrenOf(node);
@@ -3820,12 +3901,19 @@ function instrumentSource(source, watchIds = []) {
     const operation = source.slice(children[operatorIndex].from, children[operatorIndex].to).trim();
     const leftNode = children[operatorIndex - 1];
     const rightNode = children[operatorIndex + 1];
-    if (!['Identifier', 'SubscriptExpression'].includes(leftNode.name)
-      || !['Identifier', 'SubscriptExpression'].includes(rightNode.name)) return null;
-    const left = targetDescriptor(leftNode);
-    const right = targetDescriptor(rightNode);
-    const safe = target => Boolean(target.variableId)
-      && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression));
+    const operand = candidate => {
+      if (['Identifier', 'SubscriptExpression'].includes(candidate?.name)) {
+        return targetDescriptor(candidate);
+      }
+      return numericLiteralTarget(candidate);
+    };
+    const left = operand(leftNode);
+    const right = operand(rightNode);
+    if (!left || !right) return null;
+    const safe = target => target.literal === true || (
+      Boolean(target.variableId)
+      && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression))
+    );
     return safe(left) && safe(right) ? { left, right, operation } : null;
   }
 
@@ -3839,6 +3927,11 @@ function instrumentSource(source, watchIds = []) {
           const target = targetDescriptor(candidate);
           if (!safe(target)) return false;
           sources.push({ target, operation });
+          return true;
+        }
+        const literalTarget = numericLiteralTarget(candidate);
+        if (literalTarget) {
+          sources.push({ target: literalTarget, operation });
           return true;
         }
         if (candidate?.name !== 'BinaryExpression') return false;
@@ -3858,6 +3951,40 @@ function instrumentSource(source, watchIds = []) {
     };
     return collectFamily(node, ['+', '-'], '+', operation => operation === '+' ? '-' : '+')
       || collectFamily(node, ['*', '/'], '*', operation => operation === '*' ? '/' : '*');
+  }
+
+  function selectionCallSources(node) {
+    if (node?.name !== 'CallExpression') return null;
+    const children = childrenOf(node);
+    const callee = children[0];
+    const argumentList = children.find(child => child.name === 'ArgumentList');
+    const calleeExpression = source.slice(callee?.from ?? 0, callee?.to ?? 0)
+      .replace(/\s+/g, '');
+    const match = calleeExpression.match(/^(?:std::)?(max|min)$/);
+    if (!match || !argumentList) return null;
+    const arguments_ = childrenOf(argumentList)
+      .filter(child => !['(', ')', ','].includes(child.name));
+    if (arguments_.length !== 2) return null;
+    const operand = candidate => {
+      if (['Identifier', 'SubscriptExpression'].includes(candidate?.name)) {
+        return targetDescriptor(candidate);
+      }
+      return numericLiteralTarget(candidate);
+    };
+    const safe = target => target?.literal === true || (
+      Boolean(target?.variableId)
+      && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression))
+    );
+    const left = operand(arguments_[0]);
+    const right = operand(arguments_[1]);
+    if (!safe(left) || !safe(right)) return null;
+    return {
+      operation: match[1],
+      left,
+      right,
+      leftExpression: compactExpression(source.slice(arguments_[0].from, arguments_[0].to)),
+      rightExpression: compactExpression(source.slice(arguments_[1].from, arguments_[1].to))
+    };
   }
 
   function multiSourceArgs(sources) {
@@ -4131,6 +4258,7 @@ ${loop}
       const sourceTarget = targetDescriptor(sourceNode);
       const binarySources = binaryOperationSources(sourceNode);
       const multiSources = multiOperationSources(sourceNode);
+      const selectionSources = selectionCallSources(sourceNode);
       const assignmentOperator = targetNode && sourceNode
         ? source.slice(targetNode.to, sourceNode.from).trim()
         : '';
@@ -4173,7 +4301,9 @@ ${loop}
           const action = chainedAssignment
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
-          if (multiSources && !chainedAssignment) {
+          if (selectionSources && !chainedAssignment) {
+            rendered = `::asm_trace::event_select_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(selectionSources.left)}, ${indexedTargetArgs(selectionSources.right)}, ${cppString(selectionSources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${selectionSources.leftExpression}); }, [&]()->decltype(auto){ return (${selectionSources.rightExpression}); }, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+          } else if (multiSources && !chainedAssignment) {
             rendered = `::asm_trace::event_multi_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${multiSourceArgs(multiSources)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else if (binarySources && !chainedAssignment) {
             rendered = `::asm_trace::event_binary_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(binarySources.left)}, ${indexedTargetArgs(binarySources.right)}, ${cppString(binarySources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;

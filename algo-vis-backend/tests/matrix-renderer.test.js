@@ -46,6 +46,77 @@ int main() {
   });
 });
 
+test('index label style selectors distinguish array, matrix axes, and inner labels', async () => {
+  const source = `
+#include <vector>
+using namespace std;
+int main() {
+  vector<int> arr = {4, 5, 6};
+  vector<vector<int>> grid = {{1, 2}, {3}};
+  int r = 1, c = 0;
+  // @frame arr, grid with inner-labels(index)
+  // @style arr[0:r].index-label background AV_yellow
+  // @style grid.row-label[r] background AV_blue
+  // @style grid.column-label[c] background AV_orange
+  // @style grid[r][c].inner-label background AV_green
+}`;
+  const [frame] = findFrameDirectives(source);
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.styles.map(style => style.selector))), [
+    { type: 'index-label', dimensionSelector: {
+      type: 'range', startExpression: '0', endExpression: 'r', endInclusive: true
+    } },
+    { type: 'matrix-axis-label', axis: 'row', dimensionSelector: {
+      type: 'index', indexExpression: 'r'
+    } },
+    { type: 'matrix-axis-label', axis: 'column', dimensionSelector: {
+      type: 'index', indexExpression: 'c'
+    } },
+    { type: 'matrix-inner-label',
+      rowSelector: { type: 'index', indexExpression: 'r' },
+      columnSelector: { type: 'index', indexExpression: 'c' } }
+  ]);
+  const { trace, window } = await compile(source);
+  const ids = Object.fromEntries(Object.entries(trace.variables)
+    .map(([id, variable]) => [variable.name, id]));
+  const highlights = window.ASMTraceRules.evaluate(trace, trace.frames[0]);
+  assert.equal(highlights[ids.arr]['$index-label:0'].styleTypes.background,
+    'rgba(252, 255, 64, 0.46)');
+  assert.equal(highlights[ids.arr]['$index-label:1'].styleTypes.background,
+    'rgba(252, 255, 64, 0.46)');
+  assert.equal(highlights[ids.grid]['$row-label:1'].styleTypes.background,
+    'rgba(144, 202, 249, 0.6)');
+  assert.equal(highlights[ids.grid]['$column-label:0'].styleTypes.background,
+    'rgba(255, 183, 77, 0.65)');
+  assert.equal(highlights[ids.grid]['$inner-label:1,0'].styleTypes.background,
+    'rgba(165, 214, 167, 0.6)');
+  assert.equal(highlights[ids.grid]['1,0'], undefined);
+});
+
+test('opaque full-name color aliases resolve consistently in styles and arrows', async () => {
+  const aliases = {
+    'AV_green!': '#a5d6a7', 'AV_red!': '#ef9a9a', 'AV_blue!': '#90caf9',
+    'AV_yellow!': '#fcff40', 'AV_orange!': '#ffb74d', 'AV_magenta!': '#e790ff',
+    'AV_black!': '#111827', 'AV_white!': '#ffffff', 'AV_grey!': '#cccccc'
+  };
+  const styleLines = Object.keys(aliases)
+    .map((alias, index) => `// @style arr[${index}] background ${alias}`)
+    .join('\n');
+  const { trace, window } = await compile(`
+#include <vector>
+using namespace std;
+int main() {
+  vector<int> arr = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  // @frame arr
+  ${styleLines}
+}`);
+  const arrId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr');
+  const highlights = window.ASMTraceRules.evaluate(trace, trace.frames[0])[arrId];
+  Object.entries(aliases).forEach(([alias, color], index) => {
+    assert.equal(highlights[String(index)].styleTypes.background, color, alias);
+    assert.equal(ArrowModel.COLORS[alias], color, `${alias} arrow`);
+  });
+});
+
 test('matrix style ranges select inclusive row and column regions', async () => {
   const source = `
 #include <vector>
@@ -217,7 +288,12 @@ test('original matrix renderer keeps ragged rows and isolates axis labels from c
       [iId]: { name: 'i', data: scalar(1) },
       [jId]: { name: 'j', data: scalar(0) }
     },
-    testHighlights: { [gridId]: { '1,0': { fill: 'pink' } } },
+    testHighlights: { [gridId]: {
+      '1,0': { fill: 'pink' },
+      '$row-label:1': { styleTypes: { background: 'skyblue' } },
+      '$column-label:0': { styleTypes: { background: 'orange' } },
+      '$inner-label:1,0': { styleTypes: { background: 'lightgreen' } }
+    } },
     events: [], bindings: [
       { mode: 'index', targetVariableId: gridId, sourceVariableId: iId, sourceVariableIds: [iId], sourceName: 'i', indexExpression: 'i', indexDimension: 0 },
       { mode: 'index', targetVariableId: gridId, sourceVariableId: jId, sourceVariableIds: [jId], sourceName: 'j', indexExpression: 'j', indexDimension: 1 }
@@ -232,8 +308,9 @@ test('original matrix renderer keeps ragged rows and isolates axis labels from c
   assert.equal(window.document.querySelectorAll('[data-trace-label-role="inner"]').length, 3);
   assert.equal(window.document.querySelector('.trace-matrix-outerframe'), null);
   assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#1,0"] > rect`).getAttribute('fill'), 'pink');
-  assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#1,0:index"] > rect`).getAttribute('fill'), '#ffffff');
-  assert.notEqual(window.document.querySelector(`[data-trace-object-key="${gridId}:row-label:1"] > rect`).getAttribute('fill'), 'pink');
+  assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}:row-label:1"] > rect`).getAttribute('fill'), 'skyblue');
+  assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}:column-label:0"] > rect`).getAttribute('fill'), 'orange');
+  assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#1,0:index"] > rect`).getAttribute('fill'), 'lightgreen');
   assert.equal(window.document.querySelector(`[data-trace-object-key="${gridId}#0,0"] > rect`).getAttribute('stroke-width'), '0');
   assert.equal(window.document.querySelectorAll('[data-trace-content-role="value"]').length, 0);
   const markerLabels = [...window.document.querySelectorAll('.trace-variable-marker-label-text')]

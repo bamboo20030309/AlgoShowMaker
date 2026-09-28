@@ -588,12 +588,27 @@ inline std::string target_json(const char* role, const char* variable_id,
   return result + '}';
 }
 
+inline std::string source_target_json(
+    const char* role, const char* variable_id,
+    const char* expression, const char* index_expression,
+    bool has_resolved_index, long long resolved_index) {
+  std::string result = target_json(
+    role, variable_id, expression, index_expression,
+    has_resolved_index, resolved_index);
+  if (!variable_id || !*variable_id) {
+    result.insert(result.size() - 1,
+      std::string(",\"literal\":true,\"literalValue\":")
+        + quoted(expression ? expression : ""));
+  }
+  return result;
+}
+
 inline std::string arithmetic_target_json(
     const char* role, const char* variable_id,
     const char* expression, const char* index_expression,
     bool has_resolved_index, long long resolved_index,
     const char* operation) {
-  std::string result = target_json(
+  std::string result = source_target_json(
     role, variable_id, expression, index_expression,
     has_resolved_index, resolved_index);
   result.insert(result.size() - 1,
@@ -851,9 +866,54 @@ void event_binary_assign(
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
           target_has_resolved_index, target_resolved_index)
-      + ',' + target_json("source-left", left_id, left_expression, left_index,
+      + ',' + arithmetic_target_json("source-left", left_id, left_expression, left_index,
+          left_has_resolved_index, left_resolved_index, operation)
+      + ',' + arithmetic_target_json("source-right", right_id, right_expression, right_index,
+          right_has_resolved_index, right_resolved_index, operation) + ']');
+}
+
+template <typename LeftFactory, typename RightFactory,
+          typename BeforeFactory, typename F, typename AfterFactory>
+void event_select_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* left_id, const char* left_expression, const char* left_index,
+    bool left_has_resolved_index, long long left_resolved_index,
+    const char* right_id, const char* right_expression, const char* right_index,
+    bool right_has_resolved_index, long long right_resolved_index,
+    const char* operation, const char* expression,
+    LeftFactory left_factory, RightFactory right_factory,
+    BeforeFactory before_factory, F action, AfterFactory after_factory,
+    bool animate = true, bool for_initializer = false) {
+  const std::string before = encode_value(before_factory());
+  const auto left_value = left_factory();
+  const auto right_value = right_factory();
+  const std::string selection = operation ? operation : "";
+  const bool select_left = selection == "max"
+    ? !(left_value < right_value)
+    : !(right_value < left_value);
+  const std::string selected_source = select_left
+    ? encode_value(left_value)
+    : encode_value(right_value);
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  recorder().add_event("assign", line, signature ? signature : "",
+    std::string("\"operation\":\"=\"")
+      + ",\"selectionOperation\":" + quoted(selection)
+      + ",\"selectedSourceRole\":" + quoted(select_left ? "source-left" : "source-right")
+      + ",\"animate\":" + (animate ? "true" : "false")
+      + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after
+      + ",\"source\":" + selected_source + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
+          target_has_resolved_index, target_resolved_index)
+      + ',' + source_target_json("source-left", left_id, left_expression, left_index,
           left_has_resolved_index, left_resolved_index)
-      + ',' + target_json("source-right", right_id, right_expression, right_index,
+      + ',' + source_target_json("source-right", right_id, right_expression, right_index,
           right_has_resolved_index, right_resolved_index) + ']');
 }
 

@@ -2042,6 +2042,21 @@
     }
   }
 
+  function elementTextAnchorInRoot(element, root) {
+    if (!element || !root) return null;
+    try {
+      const anchorElement = element.matches?.('tspan') ? element.parentElement : element;
+      const x = Number(element.getAttribute?.('x') ?? anchorElement?.getAttribute?.('x'));
+      const y = Number(element.getAttribute?.('y') ?? anchorElement?.getAttribute?.('y'));
+      const rootMatrix = root.getScreenCTM();
+      const elementMatrix = anchorElement?.getScreenCTM?.();
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !rootMatrix || !elementMatrix) return null;
+      return new DOMPoint(x, y).matrixTransform(rootMatrix.inverse().multiply(elementMatrix));
+    } catch {
+      return null;
+    }
+  }
+
   function markerCellElement(operand) {
     if (!operand?.marker) return null;
     return operand.element.querySelector?.('[data-trace-index="0"] rect')
@@ -2378,6 +2393,57 @@
           'transform',
           `translate(${x}, ${y}) scale(${scaleX}, ${scaleY}) translate(${-boxCenter.x}, ${-boxCenter.y})`
         );
+        group.setAttribute('opacity', String(opacity));
+      },
+      remove() {
+        group.remove();
+      }
+    };
+  }
+
+  function createLiteralAssignmentTransfer(
+    root, source, targetOperand, literalIndex, literalCount, operatorPrefix = ''
+  ) {
+    const targetElement = assignableTargetText(targetOperand);
+    const targetBounds = elementBoundsInRoot(targetElement, root);
+    if (!targetElement || !targetBounds) return null;
+    const targetAnchor = elementTextAnchorInRoot(targetElement, root) || {
+      x: targetBounds.x + targetBounds.width / 2,
+      y: targetBounds.y + targetBounds.height / 2
+    };
+    const fontSize = Math.max(10, Number(targetElement.getAttribute?.('font-size')) || 14);
+    const laneGap = Math.max(18, fontSize * 1.4);
+    const desiredLaneOffset = (literalIndex - (literalCount - 1) / 2) * laneGap;
+    const targetWidth = Math.max(targetBounds.width, Number(targetOperand?.point?.width) || 0);
+    const maximumLaneOffset = Math.max(0, targetWidth / 2 - fontSize * 0.55);
+    const laneOffset = Math.max(
+      -maximumLaneOffset,
+      Math.min(maximumLaneOffset, desiredLaneOffset)
+    );
+    const value = displayEventValue(source?.literalValue ?? source?.expression ?? '');
+    const displayed = formatAssignmentTransferValue(value, operatorPrefix);
+    if (!displayed) return null;
+    const group = createSvg('g', {
+      class: 'asm-trace-assign-transfer asm-trace-assign-transfer-value asm-trace-assign-literal-value',
+      opacity: 1,
+      'pointer-events': 'none'
+    });
+    const text = createSvg('text', {
+      x: targetAnchor.x + laneOffset,
+      y: targetAnchor.y,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'middle',
+      'font-family': targetElement.getAttribute?.('font-family') || 'Arial',
+      'font-size': fontSize,
+      'font-weight': targetElement.getAttribute?.('font-weight') || 'normal',
+      fill: targetElement.getAttribute?.('fill') || '#1f282d',
+      'pointer-events': 'none'
+    }, displayed);
+    group.append(text);
+    appendBelowTextLayer(root, group);
+    return {
+      group,
+      update(_progress, opacity = 1) {
         group.setAttribute('opacity', String(opacity));
       },
       remove() {
@@ -2727,8 +2793,14 @@
     rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
-    const sources = (event?.targets || []).filter(item => item.role === 'source'
+    const availableSources = (event?.targets || []).filter(item => item.role === 'source'
       || String(item.role || '').startsWith('source-'));
+    const selectionOperation = ['max', 'min'].includes(event?.selectionOperation)
+      && availableSources.length === 2;
+    const selectedSourceRole = String(event?.selectedSourceRole || '');
+    const sources = selectionOperation
+      ? availableSources.filter(item => item.role === selectedSourceRole)
+      : availableSources;
     const source = sources[0];
     const binaryOperation = ['+', '-', '*', '/'].includes(event?.binaryOperation)
       && sources.length === 2;
@@ -2809,6 +2881,12 @@
       traceDocument, eventFrame, item, sourceValue,
       placements, elements, visualKeyForSource, event
     ));
+    const arithmeticTransfer = binaryOperation || multiSourceArithmetic;
+    const valueOnlyTransfer = event?.compound === true || arithmeticTransfer || selectionOperation;
+    const allDataSourcesVisible = !(arithmeticTransfer || selectionOperation)
+      || sources.every((item, index) => (
+        item?.literal === true || Boolean(sourceOperands[index])
+      ));
     let popup = null;
     let markerIncomingText = null;
     let fallingText = null;
@@ -2816,6 +2894,7 @@
     let targetText = null;
     let finalText = '';
     let originalOpacity = null;
+    let literalCoversTarget = false;
     let landed = false;
     let popupScale = 1;
 
@@ -2844,19 +2923,40 @@
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       if (targetText) targetText.textContent = beforeValue;
-      transfers = sourceOperands.map((item, index) => createAssignmentTransfer(
-        root,
-        item,
-        operand,
-        formattedSourceValue,
-        item ? previousVisualElement(previousObjects, item.visualKey) : null,
-        {
-          valueOnly: event?.compound === true || binaryOperation || multiSourceArithmetic,
-          operatorPrefix: multiSourceArithmetic
-            ? sources[index]?.arithmeticOperator
-            : transferOperator
+      if (allDataSourcesVisible) {
+        const literalCount = sources.filter(item => item?.literal === true).length;
+        let literalIndex = 0;
+        const candidates = sources.map((sourceItem, index) => {
+          const operatorPrefix = multiSourceArithmetic
+            ? sourceItem?.arithmeticOperator
+            : transferOperator;
+          if (sourceItem?.literal === true) {
+            const transfer = createLiteralAssignmentTransfer(
+              root, sourceItem, operand, literalIndex, literalCount, operatorPrefix
+            );
+            literalIndex += 1;
+            return transfer;
+          }
+          const item = sourceOperands[index];
+          return createAssignmentTransfer(
+            root,
+            item,
+            operand,
+            formattedSourceValue,
+            item ? previousVisualElement(previousObjects, item.visualKey) : null,
+            {
+              valueOnly: valueOnlyTransfer,
+              operatorPrefix
+            }
+          );
+        });
+        if (candidates.every(Boolean)) {
+          transfers = candidates;
+          literalCoversTarget = literalCount > 0;
+          if (literalCoversTarget && targetText) targetText.setAttribute('opacity', '0');
         }
-      )).filter(Boolean);
+        else candidates.filter(Boolean).forEach(item => item.remove());
+      }
       if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
         fallingText = createSvg('text', {
@@ -2880,7 +2980,13 @@
     function landValue() {
       if (landed) return;
       landed = true;
-      if (targetText) targetText.textContent = finalText;
+      if (targetText) {
+        targetText.textContent = finalText;
+        if (literalCoversTarget) {
+          if (originalOpacity == null) targetText.removeAttribute('opacity');
+          else targetText.setAttribute('opacity', originalOpacity);
+        }
+      }
       if (popup) popup.text.textContent = afterValue;
       markerIncomingText?.setAttribute('opacity', '0');
       fallingText?.setAttribute('opacity', '0');
@@ -2936,7 +3042,7 @@
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
-          if (event?.compound === true || binaryOperation || multiSourceArithmetic) {
+          if (valueOnlyTransfer) {
             transfers.forEach(item => item.remove());
             transfers = [];
           }
@@ -7169,10 +7275,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-234';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-238';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-234', play, cancel, updateEventAvailability,
+    build: 'trace-238', play, cancel, updateEventAvailability,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

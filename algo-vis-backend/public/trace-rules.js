@@ -681,7 +681,16 @@
       AV_grey: '#cccccc',
       AV_node_grey: '#cccccc',
       AV_black: '#111827',
-      AV_white: '#ffffff'
+      AV_white: '#ffffff',
+      'AV_green!': '#a5d6a7',
+      'AV_red!': '#ef9a9a',
+      'AV_blue!': '#90caf9',
+      'AV_yellow!': '#fcff40',
+      'AV_orange!': '#ffb74d',
+      'AV_magenta!': '#e790ff',
+      'AV_black!': '#111827',
+      'AV_white!': '#ffffff',
+      'AV_grey!': '#cccccc'
     };
     for (const style of window.ASMTraceModel?.drawingDirectives?.(document, frame, 'styles') || frame?.styles || []) {
       const variableId = style.targetVariableId;
@@ -715,6 +724,24 @@
           if (!Number.isInteger(row) || !Number.isInteger(column)) return [];
           return [`${row},${column}`];
         }
+        if (selector?.type === 'matrix-inner-label') {
+          const rows = dimensionIndices(selector.rowSelector, items.length);
+          return rows.flatMap(row => {
+            const columns = dimensionIndices(selector.columnSelector, items[row]?.items?.length || 0);
+            return columns.map(column => `$inner-label:${row},${column}`);
+          });
+        }
+        if (selector?.type === 'matrix-axis-label') {
+          const count = selector.axis === 'row'
+            ? items.length
+            : Math.max(0, ...items.map(row => row?.items?.length || 0));
+          return dimensionIndices(selector.dimensionSelector, count)
+            .map(index => `$${selector.axis}-label:${index}`);
+        }
+        if (selector?.type === 'index-label') {
+          return dimensionIndices(selector.dimensionSelector, items.length)
+            .map(index => `$index-label:${index}`);
+        }
         if (selector?.type === 'matrix-region') {
           const rows = dimensionIndices(selector.rowSelector, items.length);
           return rows.flatMap(row => {
@@ -745,6 +772,27 @@
         : [style.selector];
       const indices = [...new Set(selectors.flatMap(selectorIndices))];
       indices.forEach(index => {
+        if (typeof index === 'string' && /^\$(?:index|row|column|inner)-label:/.test(index)) {
+          const match = index.match(/^\$(index|row|column|inner)-label:(\d+)(?:,(\d+))?$/);
+          if (!match) return;
+          const first = Number(match[2]);
+          const second = match[3] == null ? null : Number(match[3]);
+          const locals = match[1] === 'inner'
+            ? { row: first, column: second, index: second }
+            : match[1] === 'row'
+              ? { row: first, index: first }
+              : match[1] === 'column'
+                ? { column: first, index: first }
+                : { index: first };
+          if (!expressionMatches(document, frame, style.when, { ...style.drawLocals, ...locals })) return;
+          const variableHighlights = highlights[variableId] ||= {};
+          variableHighlights[index] = mergeHighlightStyle(
+            variableHighlights[index],
+            { styleType: style.styleType, color: styleColors[style.color] || style.color },
+            { sourceStyleId: style.id || '' }
+          );
+          return;
+        }
         if (typeof index === 'string' && index.includes(',')) {
           const [row, column] = index.split(',').map(Number);
           const item = items[row]?.items?.[column];

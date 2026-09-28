@@ -179,6 +179,75 @@ int main() {
   ]);
 });
 
+test('arithmetic assignments keep numeric literals separate from displayed data sources', async () => {
+  const { trace } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  vector<vector<int>> grid = {{2, 0}};
+  int hidden = 5, result = 0, signedResult = 0;
+  // @frame grid,result,signedResult when hidden >= 0
+  grid[0][1] = grid[0][0] + 1;
+  result = hidden + 2;
+  signedResult = grid[0][0] + (-3);
+  // @frame grid,result,signedResult when hidden >= 0
+}`);
+  const frame = trace.frames.at(-1);
+  const assignments = frame.events.filter(event => event.type === 'assign'
+    && event.binaryOperation === '+');
+  assert.equal(assignments.length, 3);
+  const matrix = assignments.find(event => event.targets[0].resolvedIndices);
+  assert.deepEqual(JSON.parse(JSON.stringify(Array.from(matrix.targets, target => ({
+    role: target.role,
+    resolvedIndices: target.resolvedIndices,
+    literal: target.literal,
+    literalValue: target.literalValue,
+    operator: target.arithmeticOperator
+  })))), [
+    { role: 'target', resolvedIndices: [0, 1] },
+    { role: 'source-left', resolvedIndices: [0, 0], operator: '+' },
+    { role: 'source-right', literal: true, literalValue: '1', operator: '+' }
+  ]);
+  const scalar = assignments.find(event => !event.targets[0].resolvedIndices);
+  assert.equal(scalar.targets[1].expression, 'hidden');
+  assert.equal(scalar.targets[2].literal, true);
+  assert.equal(scalar.targets[2].literalValue, '2');
+  const signed = assignments.find(event => event.targets[0].expression === 'signedResult');
+  assert.equal(signed.targets[1].resolvedIndices[0], 0);
+  assert.equal(signed.targets[1].resolvedIndices[1], 0);
+  assert.equal(signed.targets[2].literal, true);
+  assert.equal(signed.targets[2].literalValue, '(-3)');
+});
+
+test('max and min assignments record only the selected source role', async () => {
+  const { trace } = await compile(`#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  vector<int> values = {3, 8};
+  int maximum = 0, minimum = 0, tied = 0, literal = 0;
+  // @frame values,maximum,minimum,tied,literal
+  maximum = max(values[0], values[1]);
+  minimum = std::min(values[0], values[1]);
+  tied = max(values[0], values[0]);
+  literal = min(values[1], 5);
+  // @frame values,maximum,minimum,tied,literal
+}`);
+  const events = trace.frames.at(-1).events.filter(event => event.selectionOperation);
+  const byTarget = Object.fromEntries(events.map(event => [event.targets[0].expression, event]));
+  assert.equal(events.length, 4);
+  assert.equal(byTarget.maximum.selectionOperation, 'max');
+  assert.equal(byTarget.maximum.selectedSourceRole, 'source-right');
+  assert.equal(byTarget.maximum.targets[2].resolvedIndex, 1);
+  assert.equal(Number(byTarget.maximum.payload.source.value), 8);
+  assert.equal(byTarget.minimum.selectionOperation, 'min');
+  assert.equal(byTarget.minimum.selectedSourceRole, 'source-left');
+  assert.equal(byTarget.minimum.targets[1].resolvedIndex, 0);
+  assert.equal(Number(byTarget.minimum.payload.source.value), 3);
+  assert.equal(byTarget.tied.selectedSourceRole, 'source-left');
+  assert.equal(byTarget.literal.selectedSourceRole, 'source-right');
+  assert.equal(byTarget.literal.targets[2].literal, true);
+  assert.equal(byTarget.literal.targets[2].literalValue, '5');
+});
+
 test('capturing initializer metadata does not evaluate an index function again', async () => {
   const { trace } = await compile(`#include <bits/stdc++.h>
 using namespace std;

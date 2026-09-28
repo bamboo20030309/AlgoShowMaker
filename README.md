@@ -150,6 +150,11 @@ int main() {
 | `@arrow` | 以語意錨點連接格子、變數、keep 或 Studio 物件 | `// @arrow from arr[i].bottom to arr[j].top as "move"` |
 | `@camera` | 為目前幀設定自動鏡頭或相對目標 | `// @camera focus arr[i] zoom(1.6)` |
 
+索引標籤可獨立套用 `@style`：一維使用 `arr[i].index-label`，二維左側與上方標籤分別使用
+`grid.row-label[r]`、`grid.column-label[c]`，資料格下方的 inner label 使用
+`grid[r][c].inner-label`。方括號同樣支援包含右端點的範圍，例如
+`grid.row-label[0:r]`；選取依邏輯索引進行，不受自訂標籤顯示文字影響。
+
 常用修飾詞：
 
 - `as`：指定穩定 ID。
@@ -190,6 +195,8 @@ int main() {
 ```
 
 `background`會在每幀依條件重新套用，適合呈現lazy／set等長期狀態；條件失效時背景自然移除。需要顯示當次操作的局部範圍或遞迴分裂時，使用`@segment tree[node][L:R]`。
+
+顏色可用原本的半透明別名（如 `AV_green`）；需要不透明版本時，在完整色名後加 `!`，例如 `AV_green!`、`AV_red!`、`AV_blue!`。
 
 `@keep as` 第一次使用名稱時不加編號；重複名稱依序使用 `_1`、`_2`。所有 keep 物件的外框可透過虛擬聯集 `keep.top`、`keep.bottom` 等錨點定位。keep 預設保留來源的相對定位、Studio 位置／綁定與自動排版高度；所有未手動定位的 keep 列，預設垂直間距為 50px。明確的 `offset` 或 Studio 拖曳位置仍優先。若只想從原位置調整，可寫 `// @keep last offset(0,-24)`，正 Y 向下、負 Y 向上。
 
@@ -274,7 +281,8 @@ C++ 原始碼
 - 修正濃縮幀的 `@events animate off` 誤關自動固定；一般事件動畫開關保留固定狀態與其他繪圖動畫，`all animate on` 也不覆寫固定設定。
 - 「自動固定」與「迴圈邊界事件」會寫入目前程式的 `@asm-view`，重新 RUN 與投影片重載後仍保留；事件間隔及一般事件類型偏好維持帳號設定。
 - 複合賦值的可見來源數字抵達目的值時會立即消失並提交結果，不在目的地額外停留。
-- `target = a + b`及`tree[parent] = tree[left] + tree[right]`會讓兩個可見來源的數字同步移向目的格；抵達時兩個移動數字立即消失，目的格在同一個動畫更新中顯示加總結果。無法安全定位兩個來源時沿用一般賦值動畫。
+- `target = a + b`及`tree[parent] = tree[left] + tree[right]`會讓算式中的可見資料來源同步移向目的格；數值常數沒有資料格來源，因此直接以帶運算符號的文字覆蓋目的格原值，不從畫面外或虛構位置移入。常數顯示時原值會隱藏，計算提交後再顯示最終結果。只有全部資料來源都已顯示時才播放位移；任一資料來源未顯示時不播放任何局部位移，直接提交結果。抵達時移動數字立即消失，目的格在同一個動畫更新中顯示結果。
+- `target = max(a,b)`、`target = min(a,b)`及其`std::`寫法只會讓實際被選中的來源移向目的格；相等時依C++語意固定選第一個參數。未被選中的參數不產生位移，勝出來源未顯示時則直接提交結果。常數若勝出，會直接顯示在目的格內。
 - `render heap` 新增 `fields(...)`、逐幀 `hide(field=value)`、`separator(...)`、pair／tuple單格格式，以及style顯示層中的 `@segment tree[node][L:R] color ...` 格內區段；`with split(now)`可保留遞迴分裂後尚待處理的另一側。線段樹範例已移除AV.hpp舊繪圖程式並保留原演算法；`Segment_Tree_easy_build`完整播放輸入與由下往上的建樹，`Segment_Tree_easy`則從已建好的樹開始，只播放查詢與sum累加。
 - `render segment_tree with range(1,n)` 會以 `tree[1]` 為根，依每個節點代表的實際區間決定格子寬度，並沿用標準遞迴深度排列；非二次方長度不補假葉節點，也不把較早結束的葉節點強制推到底層。最小格為 40×40px，下方 index 格高 12px；value 一般使用 16px，tree index 平常置中，interval 靠右且比 index 小 2px。兩者碰撞時 index 會向左避讓，空間仍不足才縮小字體；兩段標籤都在 index 框內垂直置中。葉節點 `[x,x]` 簡化為 `[x]`。
 - `Segment_Tree_standard.cpp` 示範標準遞迴 lazy segment tree；輸入先給 `n m` 與 n 個初值，再以 `1 L R value` 表示區間加值、`2 L R value` 表示區間設值、`3 L R` 表示區間總和查詢。範例用 `fields(tree,sets,lazy)` 將三個欄位放進同一格，並以 `hide(sets=LM,lazy=0)` 隱藏預設標記、`format(sets=assign,lazy=signed)` 將標記顯示為 `=8`／`+3`／`-2`。更新回朔時會顯示左右子節點相加寫回父節點；查詢跨中點時則顯示左右回傳值相加的回朔幀。兩種回朔幀都以 `split(now,after)` 同步收回已完成節點的 segment。

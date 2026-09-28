@@ -16,7 +16,16 @@
     AV_grey: '#cccccc',
     AV_node_grey: '#cccccc',
     AV_black: '#111827',
-    AV_white: '#ffffff'
+    AV_white: '#ffffff',
+    'AV_green!': '#a5d6a7',
+    'AV_red!': '#ef9a9a',
+    'AV_blue!': '#90caf9',
+    'AV_yellow!': '#fcff40',
+    'AV_orange!': '#ffb74d',
+    'AV_magenta!': '#e790ff',
+    'AV_black!': '#111827',
+    'AV_white!': '#ffffff',
+    'AV_grey!': '#cccccc'
   });
 
   function color(value, fallback = 'black') {

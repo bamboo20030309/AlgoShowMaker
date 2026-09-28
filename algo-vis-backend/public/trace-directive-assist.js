@@ -50,6 +50,7 @@
       '// @style arr[i] highlight,point AV_green when value>0',
       '// @style arr[0:i] background AV_green when value < key',
       '// @style grid[0:r][0:c] background AV_blue',
+      '// @style arr[i].index-label background AV_yellow\n// @style grid.row-label[r] background AV_blue\n// @style grid.column-label[c] background AV_orange\n// @style grid[r][c].inner-label background AV_green',
       '// @style arr[i,i*2:i*2+1] highlight AV_red\n// @style arr[1:n] focus when n < Size',
       '// @style prime[0:iteration.last(j)] focus when i * value <= n'
     ] },
@@ -94,6 +95,7 @@
       '// @arrow for j from arr[0] to arr[j]',
       '// @arrow for j in "sieve_loop" from prime[j] to isprime[i*prime[j]]',
       '// @arrow from arr[0] to arr[1]',
+      '// @arrow from grid[x][y] to grid[x-1][y] color AV_green until return',
       '// @arrow from isprime[1] to isprime[12]',
       '// @frame arr[i,j]\n// @arrow from arr[i].bottom to arr[j].top\n// @text "從左到右" at arr.bottom'
     ] },

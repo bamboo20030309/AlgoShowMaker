@@ -13,7 +13,7 @@ set<string> ans;
 // @preset lcs_view
 // @let rows = S.size()
 // @let columns = T.size()
-// @object LCS render matrix with labels(value), row-labels("",S), column-labels("",T), marker-layout(none)
+// @object LCS render matrix with labels(value), row-labels("",S), column-labels("",T)
 // @object ans with labels(value)
 // @place ans.left at LCS.right offset(80,0)
 // @for rr in [1:rows]
@@ -24,11 +24,27 @@ set<string> ans;
 // @endfor
 // @endpreset
 
+// @preset lcs_build_cursor
+// @object LCS[i][j] render matrix with labels(value), row-labels("",S), column-labels("",T)
+// @style LCS.row-label[i] background AV_green! when S[i-1] == T[j-1]
+// @style LCS.column-label[j] background AV_green! when S[i-1] == T[j-1]
+// @style LCS.row-label[i] background AV_red! when S[i-1] != T[j-1]
+// @style LCS.column-label[j] background AV_red! when S[i-1] != T[j-1]
+// @endpreset
+
+// @preset lcs_dfs_cursor
+// @object LCS[x][y] render matrix with labels(value), row-labels("",S), column-labels("",T)
+// @style LCS.row-label[x] background AV_green! when x > 0 && y > 0 && S[x-1] == T[y-1]
+// @style LCS.column-label[y] background AV_green! when x > 0 && y > 0 && S[x-1] == T[y-1]
+// @style LCS.row-label[x] background AV_red! when x > 0 && y > 0 && S[x-1] != T[y-1]
+// @style LCS.column-label[y] background AV_red! when x > 0 && y > 0 && S[x-1] != T[y-1]
+// @endpreset
+
 void dfs(int x,int y,string now) {
     if (now.size()==LCS[S.size()][T.size()]){
         ans.insert(now);
 
-        // @frame use lcs_view
+        // @frame use lcs_view, lcs_dfs_cursor
         // @style LCS[x][y] highlight
         // @style ans[0:ans.size()-1] background AV_green
         // @text [
@@ -39,10 +55,10 @@ void dfs(int x,int y,string now) {
     }
     if (x==0||y==0)return;
     if (S[x-1]==T[y-1]){
-        // @frame use lcs_view
+        // @frame use lcs_view, lcs_dfs_cursor
         // @style LCS[x][y] highlight
         // @style LCS[x-1][y-1] background AV_green
-        // @arrow from LCS[x][y] to LCS[x-1][y-1] color AV_green width 3
+        // @arrow from LCS[x][y] to LCS[x-1][y-1] color AV_green width 3 until return
         // @text [
         //   {"text": "遇到字元 "},
         //   {"text": "相同", "background": "AV_green"},
@@ -51,36 +67,36 @@ void dfs(int x,int y,string now) {
 
         dfs(x-1, y-1, now+S[x-1]);
     } else if (LCS[x-1][y]==LCS[x][y-1]){
-        // @frame use lcs_view
+        // @frame use lcs_view, lcs_dfs_cursor
         // @style LCS[x][y] highlight
         // @style LCS[x-1][y] background AV_green
         // @style LCS[x][y-1] background AV_blue
-        // @arrow from LCS[x][y] to LCS[x-1][y] color AV_green width 3
+        // @arrow from LCS[x][y] to LCS[x-1][y] color AV_green width 3 until return
         // @text "字元不同，而且上方與左方一樣大；DFS 分叉，先往上走" at LCS.top offset(0,-24)
 
         dfs(x-1, y, now);
 
-        // @frame use lcs_view
+        // @frame use lcs_view, lcs_dfs_cursor
         // @style LCS[x][y] highlight
         // @style LCS[x][y-1] background AV_green
         // @style LCS[x-1][y] background AV_blue
-        // @arrow from LCS[x][y] to LCS[x][y-1] color AV_green width 3
+        // @arrow from LCS[x][y] to LCS[x][y-1] color AV_green width 3 until return
         // @text "回到剛才的分叉，這次往左走" at LCS.top offset(0,-24)
 
         dfs(x, y-1, now);
     } else if (LCS[x-1][y]>LCS[x][y-1]) {
-        // @frame use lcs_view
+        // @frame use lcs_view, lcs_dfs_cursor
         // @style LCS[x][y] highlight
         // @style LCS[x-1][y] background AV_green
-        // @arrow from LCS[x][y] to LCS[x-1][y] color AV_green width 3
+        // @arrow from LCS[x][y] to LCS[x-1][y] color AV_green width 3 until return
         // @text "字元不同，挑較大的值；這裡往上走" at LCS.top offset(0,-24)
 
         dfs(x-1, y, now);
     } else {
-        // @frame use lcs_view
+        // @frame use lcs_view, lcs_dfs_cursor
         // @style LCS[x][y] highlight
         // @style LCS[x][y-1] background AV_green
-        // @arrow from LCS[x][y] to LCS[x][y-1] color AV_green width 3
+        // @arrow from LCS[x][y] to LCS[x][y-1] color AV_green width 3 until return
         // @text "字元不同，挑較大的值；這裡往左走" at LCS.top offset(0,-24)
 
         dfs(x, y-1, now);
@@ -96,7 +112,7 @@ int main() {
                 if (S[i - 1] == T[j - 1]) {
                     LCS[i][j] = LCS[i - 1][j - 1] + 1;
 
-                    // @frame use lcs_view
+                    // @frame use lcs_view, lcs_build_cursor
                     // @events animate off when i >= 3
                     // @style LCS[i][j] highlight
                     // @style LCS[i-1][j-1] background AV_green
@@ -109,7 +125,7 @@ int main() {
                 } else {
                     LCS[i][j] = max(LCS[i][j - 1], LCS[i - 1][j]);
 
-                    // @frame use lcs_view
+                    // @frame use lcs_view, lcs_build_cursor
                     // @events animate off when i >= 3
                     // @style LCS[i][j] highlight
                     // @style LCS[i-1][j] background AV_blue

@@ -2,6 +2,9 @@
 
 ## 完成內容
 
+- 新增完整色名加 `!` 的不透明色彩語法，例如 `AV_green!`、`AV_red!`；style、文字與箭頭共用相同色值，原本半透明全名保持相容。
+- LCS 建表與回溯游標的 row／column label：字元相同使用 `AV_green!`，不同使用 `AV_red!`。
+- 修正同一 preset 內相同目標與樣式、但 `when` 條件不同時被後項誤覆寫；互斥的綠／紅 index 規則現在會同時保留，局部無條件樣式仍可覆寫 preset。
 - `original-matrix` renderer 改為直接復用原本 `draw_2Darray`，保留原有 40px 格子、藍色索引格、綠色 outerframe、`draw_block` 排版與 HintWidgets，並支援 `vector<vector<T>>`、`T[R][C]` 與 ragged rows。
 - 新增 `labels(none)`、`index-labels`、`row-labels`、`column-labels`、`inner-labels`。
 - 標籤來源支援 literal、多個一維陣列／數值／字元、`blank` 與 `blank(n)`。
@@ -20,6 +23,8 @@
 - 相關既有測試（frame renderer options、arrow、index label、view source）：40/40 通過。
 - 索引賦值與事件相容測試：14/14 通過。
 - 依 V2 分級未執行完整 regression。
+- 不透明完整色名加 `!` 的 style／arrow 解析、LCS label 色彩、文字分段背景、真實瀏覽器 SVG row／column label：通過。
+- LCS 真實瀏覽器 matching-character 幀確認 row 與 column index 均為 `#a5d6a7`：通過。
 
 ## 預覽
 
@@ -96,3 +101,47 @@
 - 第一個資料格 `(r=1,c=1)` 的四個建表幀不套用 `num` focus，維持全範圍；後續符合前半列條件的幀才聚焦 `num`。同時修正 camera runtime 原先把 expression condition 當成永遠成立的問題。
 - SVG 文字 renderer 將同一行相鄰且同背景色的插值片段合併成單一背景區段，避免 `${r}`／`${c}` 拆片造成底色重疊；片段選取與 Studio 樣式編輯仍保留。
 - beta 3102 專項驗證涵蓋前綴和 trace、真實瀏覽器鏡頭／四色背景、文字陣列 Studio 與投影片重播、camera condition 及入口版本一致性；相關測試通過，未執行完整 regression。
+
+## 2026-09-27 LCS 一般二維指標
+
+- LCS 建表幀改用一般 axis 指標顯示 `i`（row）與 `j`（column）；DFS 回溯幀顯示 `x`（row）與 `y`（column）。
+- 共用 `lcs_view` 保留矩陣、答案、橋與排版；另外以 `lcs_build_cursor`、`lcs_dfs_cursor` 疊加索引綁定，避免在每一幀重複完整視圖設定。
+- V2 最小驗證：`lcs-sample.test.js` 2/2 通過、0 skip；確認建表與 DFS frame 分別產生兩個維度的 bindings。未執行完整 regression。
+- Beta 3102 已從本 worktree 重啟為 PID `78652`，`algorithm.html` HTTP 200，前端版本 `trace-25`。
+- 舊有物件相容性：不適用；本次只修改隨附 LCS 範例與專項測試，未修改持久化格式。
+
+## 2026-09-27 index label 專用 style
+
+- 新增 `arr[i].index-label`、`grid.row-label[r]`、`grid.column-label[c]`、`grid[r][c].inner-label` 四種 `@style` 目標；全部支援既有 style 類型、`when` 與包含右端點的 range。
+- selector 依邏輯索引選取，不受自訂 label 顯示內容影響；label 專用樣式不會污染資料格，既有 `@style grid[r][c]` 仍只處理資料格及原有 inner highlight 行為。
+- LCS 建表的 `i/j` 與 DFS 的 `x/y` 對應 row／column label：字元相同時兩者為 `AV_green`，不相同時兩者為 `AV_red`。
+- V2 最小驗證：parser/runtime/renderer、LCS、指令提示與入口共 13/13 通過；真實瀏覽器 matrix SVG 1/1 通過，確認 row／column／inner label 可分別著色且未選取的 inner label 維持白色。未執行完整 regression。
+- 舊有物件相容性：新增 selector，未更動既有 selector 或持久化欄位；舊 trace 與明確既有 style 行為維持原狀。
+- LCS 的相同／不同字元 label 改用不透明 `rgb(165,214,167)`／`rgb(239,154,154)`，保留 AV_green／AV_red 色相但移除 alpha。
+- 修正算式賦值的來源位移：`LCS[i-1][j-1] + 1` 會從左上格移入純文字值，並讓常數 `+1` 一起移入，不再複製來源格的綠色背景。數值常數一律顯示；只有算式內全部非 literal 資料來源都在畫面上時才播放來源位移，任一資料來源未顯示時不做局部位移並直接提交結果。
+- V2 最小驗證補充：通過 literal／隱藏來源 integration、算式賦值瀏覽器測試、LCS 真實範例、二維前綴和四來源動畫與舊投影片重播；未執行完整 regression。Beta 3102 已從本 worktree 重啟並確認 HTTP 200。
+- `max(a,b)`／`min(a,b)`（含`std::`）新增選擇來源賦值事件：只讓實際勝出的參數移入目的格，相等時固定選第一個參數；勝出來源隱藏時不誤用另一方，常數勝出時仍顯示數字文字。
+- 本項層級V2、分類F／J：selection event integration 1/1、算式賦值與舊投影片瀏覽器專項4/4、LCS真實範例1/1通過，0 skip；確認手動事件播放中的來源文字與runtime選擇一致，LCS不相同字元分支已產生`max`選擇事件。未執行完整 regression；功能不新增持久化欄位，既有舊投影片重建與播放通過。
+- 常數運算項改為直接顯示於目的格內：`+1`等文字只淡入／淡出，不再從目的格上方的虛構來源位移；多個常數在格內使用受限的lane錯開。LCS真實瀏覽器專項實測`+1`中心位於目的格框內且父層沒有transform；算式與舊投影片瀏覽器專項4/4通過，0 skip，前端版本`trace-237`。
+- 常數顯示再改為覆蓋目的格舊值：單一`+1`使用目的值完全相同的SVG文字錨點，顯示期間隱藏原本的`0`，提交後恢復目的文字並顯示結果`1`。LCS瀏覽器專項1/1與算式／舊投影片專項4/4通過、0 skip；前端版本`trace-238`。
+
+## 2026-09-28 遞迴路徑箭頭
+
+- `@arrow` 新增 `until return`，箭頭會將端點索引固定在建立當下，並在後續子遞迴幀中保留。當播放回到原呼叫層或離開該分支後，箭頭自動移除。
+- 每個子幀會取得呼叫堆疊中每層最新的 `until return` 箭頭，因此 LCS DFS 可同時顯示完整的當前路徑；分叉回溯後不會保留前一條分支。
+- LCS 範例的五個 DFS 下降箭頭均改用 `until return`，不需另外維護 path 陣列，不修改原本遞迴邏輯。
+- 已輸出 `LCS 完整版 - 遞迴路徑箭頭.asmdeck`；15 頁、內容雜湊與第 12 頁五個路徑箭頭皆已核對，投影片動畫重新編譯得到最深 9 層路徑。
+
+### 驗證分級與選擇
+
+- 層級：V2。
+- 分類：E（arrow 指令）、G（遞迴生命週期）、J（播放與上一步／下一步狀態）。
+- 選擇依據：修改 parser、trace model 與 SVG arrow renderer，只執行箭頭生命週期與 LCS 的最小相關驗證。
+- 測試：`arrow-directives.test.js` 的 `until return` 2/2 通過；`lcs-sample.test.js` 建表與 DFS 路徑 1/1 通過；`lcs-sample.browser.test.js` 真實瀏覽器路徑建立／退回移除 1/1 通過，0 skip。
+- 驗證環境：beta 3102，從本 worktree 重啟為 PID `5516`；投影片第 12 頁原碼編譯成 22 幀，最深路徑 9 條。
+- 未執行完整 regression；依 V2 分級採直接相關專項。
+
+### 舊有物件相容性
+
+- `until` 為新的選用指令欄位；未使用的舊 `@arrow`、Studio arrow 與已儲存投影片保持原行為。
+- `.asmdeck` 儲存格式未新增欄位，指令仍保存在 `animation.code`；新檔已完成雜湊驗證、解壓、重新編譯與重開所需的重建資料核對。
