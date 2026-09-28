@@ -392,3 +392,26 @@ test('per-frame code snippet overrides survive compact source settings and reloa
   const oldSettings = viewSource.fromTrace(oldTrace);
   assert.equal(oldSettings.studio.frameMaps?.codeSnippetOverrides, undefined);
 });
+
+test('source directive code snippet choices survive source settings and shifted frame ids', () => {
+  const trace = fixture();
+  trace.studio.codeSnippetSourceOverrides = [{
+    sourceSelector: viewSource.sourceSelector(trace.frames[0]),
+    lineStates: { 'source:main:value++;#0': false }
+  }];
+  const settings = viewSource.fromTrace(trace);
+  assert.deepEqual(settings.studio.codeSnippetSourceOverrides, [{
+    sourceSelector: { kind: 'manual-frame', functionName: 'main', directiveKey: 'manual-frame:first:0' },
+    lineStates: { 'source:main:value++;#0': false }
+  }]);
+
+  const reloaded = fixture();
+  reloaded.frames[0].id = 'new-frame-id';
+  reloaded.studio = {};
+  viewSource.applyToTrace(reloaded, settings);
+  assert.deepEqual(reloaded.studio.codeSnippetSourceOverrides, settings.studio.codeSnippetSourceOverrides);
+  assert.equal(viewSource.sourceMatches(
+    reloaded.frames[0],
+    reloaded.studio.codeSnippetSourceOverrides[0].sourceSelector
+  ), true);
+});

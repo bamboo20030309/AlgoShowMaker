@@ -41,14 +41,14 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-directive-assist.js?v=directive-24'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
-  assert.ok(html.includes('trace-code-model.js?v=code-33'));
+  assert.ok(html.includes('trace-code-model.js?v=code-36'));
   assert.ok(html.includes('trace-events.js?v=trace-52'));
   assert.ok(html.includes('trace-frame-tween.js?v=trace-256'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
   assert.ok(html.includes('trace-code-presenter.js?v=code-33'));
-  assert.ok(html.includes('trace-view-source.js?v=trace-16'));
+  assert.ok(html.includes('trace-view-source.js?v=trace-17'));
   assert.ok(html.includes('trace-editor.js?v=trace-25'));
   assert.ok(html.includes('compile.js?v=syntax-7'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
@@ -84,7 +84,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(legacy.includes('guest-gallery.js?v=5'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=7'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=header-examples-9'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=delete-dialog-10'));
   assert.match(legacy, /id="headerSlidesLink"[^>]+href="\/"[^>]*>投影片<\/a>/);
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);
@@ -118,7 +118,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-26'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-125'));
+  assert.ok(html.includes('trace-studio.js?v=trace-127'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
   assert.ok(html.includes('front.js?v=random-id-36'));
   assert.ok(html.includes('slides-embed.js?v=trace-10'));
@@ -166,7 +166,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   for (const surface of [html, slides, legacy]) {
     assert.ok(surface.includes('draw/draw_array_utils.js?v=gap-1'));
   }
-  assert.ok(html.includes('trace-studio.css?v=trace-53'));
+  assert.ok(html.includes('trace-studio.css?v=trace-56'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,
     'the retired marker-shape controls must not return to the object inspector');
   assert.doesNotMatch(read('trace-studio.css'), /trace-studio-marker-shape/,

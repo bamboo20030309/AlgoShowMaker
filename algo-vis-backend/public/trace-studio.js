@@ -9,6 +9,8 @@
 (function () {
   const DEFAULT_EVENT_COLORS = window.ASMTraceEvents?.colors || {};
   const EVENT_LABELS = window.ASMTraceEvents?.labels || {};
+  const INSPECTOR_WIDTH_STORAGE_KEY = 'asm_trace_studio_inspector_width_v1';
+  const DEFAULT_INSPECTOR_WIDTH = 420;
 
   let trace = null;
   let selectedFrames = new Set();
@@ -25,6 +27,7 @@
   let rail;
   let timeline;
   let inspector;
+  let inspectorResizer;
   let selectionLabel;
   let targetVariable;
   let targetIndex;
@@ -74,7 +77,7 @@
   let frameCodeSnippetList;
   let frameCodeSnippetMeta;
   let resetCodeSnippetButton;
-  let pendingSnippetExcludeAnchor = '';
+  let snippetFocusButton;
   let activeEventCodeGroupId = '';
   let arrowFrom;
   let arrowTo;
@@ -155,6 +158,59 @@
     return node;
   }
 
+  function inspectorWidthBounds() {
+    return {
+      min: 300,
+      max: Math.max(300, Math.min(760, window.innerWidth - 250 - 420 - 12))
+    };
+  }
+
+  function setInspectorWidth(value, persist = false) {
+    const bounds = inspectorWidthBounds();
+    const width = Math.round(Math.min(
+      bounds.max,
+      Math.max(bounds.min, Number(value) || DEFAULT_INSPECTOR_WIDTH)
+    ));
+    document.getElementById('main')?.style.setProperty('--trace-studio-inspector-width', `${width}px`);
+    inspectorResizer?.setAttribute('aria-valuenow', String(width));
+    if (persist) {
+      try { localStorage.setItem(INSPECTOR_WIDTH_STORAGE_KEY, String(width)); } catch {}
+    }
+    scheduleThumbnailCulling();
+    return width;
+  }
+
+  function restoreInspectorWidth() {
+    let saved = DEFAULT_INSPECTOR_WIDTH;
+    try { saved = Number(localStorage.getItem(INSPECTOR_WIDTH_STORAGE_KEY)) || saved; } catch {}
+    setInspectorWidth(saved);
+  }
+
+  function beginInspectorResize(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const move = pointerEvent => setInspectorWidth(window.innerWidth - pointerEvent.clientX);
+    const finish = pointerEvent => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      setInspectorWidth(window.innerWidth - pointerEvent.clientX, true);
+      document.body.classList.remove('asm-trace-inspector-resizing');
+    };
+    document.body.classList.add('asm-trace-inspector-resizing');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  }
+
+  function setSnippetFocus(active) {
+    document.body.classList.toggle('asm-trace-snippet-focus', Boolean(active));
+    if (!snippetFocusButton) return;
+    snippetFocusButton.setAttribute('aria-pressed', String(Boolean(active)));
+    snippetFocusButton.textContent = active ? '縮回' : '專注檢視';
+    snippetFocusButton.title = active ? '退出程式碼片段專注檢視' : '放大程式碼片段編輯區';
+  }
+
   function colorControl(value, title) {
     if (window.ASMTraceColorPicker?.create) return window.ASMTraceColorPicker.create(value, title);
     const input = document.createElement('input');
@@ -194,6 +250,12 @@
     trace.studio.eventInstructionStates ||= {};
     if (!trace.studio.codeSnippetOverrides || typeof trace.studio.codeSnippetOverrides !== 'object'
       || Array.isArray(trace.studio.codeSnippetOverrides)) trace.studio.codeSnippetOverrides = {};
+    trace.studio.codeSnippetSourceOverrides = Array.isArray(trace.studio.codeSnippetSourceOverrides)
+      ? trace.studio.codeSnippetSourceOverrides.filter(record => (
+        record?.sourceSelector
+        && record.lineStates && typeof record.lineStates === 'object' && !Array.isArray(record.lineStates)
+      ))
+      : [];
     trace.studio.eventSettings ||= { gapMs: 500, autoFixedEnabled: true, defaultEnabled: {}, timelineTypes: {} };
     trace.studio.eventSettings.defaultEnabled ||= {};
     trace.studio.eventSettings.timelineTypes ||= {};
@@ -1870,29 +1932,71 @@
     return saved || null;
   }
 
+  function snippetSourceOverrideForFrame(frame, create = false) {
+    ensureStudioData();
+    const sourceSelector = window.ASMTraceViewSource?.sourceSelector?.(frame);
+    const sourceMatches = window.ASMTraceViewSource?.sourceMatches;
+    if (!sourceSelector || typeof sourceMatches !== 'function') return null;
+    let saved = trace.studio.codeSnippetSourceOverrides.find(record => (
+      record?.sourceSelector && sourceMatches(frame, record.sourceSelector)
+    ));
+    if (!saved && create) {
+      saved = { sourceSelector, lineStates: {} };
+      trace.studio.codeSnippetSourceOverrides.push(saved);
+    }
+    if (saved && (!saved.lineStates || typeof saved.lineStates !== 'object')) saved.lineStates = {};
+    return saved || null;
+  }
+
+  function snippetFramesForSource(frame) {
+    const selector = window.ASMTraceViewSource?.sourceSelector?.(frame);
+    const sourceMatches = window.ASMTraceViewSource?.sourceMatches;
+    if (!selector || typeof sourceMatches !== 'function') return frame ? [frame] : [];
+    const matches = trace.frames.filter(candidate => sourceMatches(candidate, selector));
+    return matches.length ? matches : [frame];
+  }
+
+  function clearLegacySnippetLineStates(frames, sourceAnchor) {
+    frames.forEach(frame => {
+      const saved = trace.studio.codeSnippetOverrides?.[frame.id];
+      if (!saved?.lineStates) return;
+      const row = window.ASMTraceCodeModel?.snippetEditorPlan?.(trace, frame)
+        ?.fragments?.flatMap(fragment => fragment.rows || [])
+        .find(candidate => candidate.sourceAnchor === sourceAnchor);
+      if (row?.anchor) delete saved.lineStates[row.anchor];
+      if (!Object.keys(saved.lineStates).length) delete trace.studio.codeSnippetOverrides[frame.id];
+    });
+  }
+
   function saveSnippetLineState(row, included) {
     const frame = trace?.frames?.[currentIndex];
-    if (!frame || !row?.anchor) return;
-    const saved = snippetOverrideForFrame(frame.id, true);
-    if (Boolean(included) === Boolean(row.autoIncluded)) delete saved.lineStates[row.anchor];
-    else saved.lineStates[row.anchor] = Boolean(included);
-    if (!Object.keys(saved.lineStates).length) delete trace.studio.codeSnippetOverrides[frame.id];
-    pendingSnippetExcludeAnchor = '';
+    if (!frame || !row?.anchor || !row?.sourceAnchor) return;
+    const sourceSaved = snippetSourceOverrideForFrame(frame, true);
+    if (sourceSaved) {
+      const frames = snippetFramesForSource(frame);
+      clearLegacySnippetLineStates(frames, row.sourceAnchor);
+      sourceSaved.lineStates[row.sourceAnchor] = Boolean(included);
+    } else {
+      const saved = snippetOverrideForFrame(frame.id, true);
+      saved.lineStates[row.anchor] = Boolean(included);
+    }
     recordHistory();
     renderCodeSnippetEditor();
     renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
-    scheduleThumbnailSync();
   }
 
   function resetCurrentCodeSnippet() {
     const frame = trace?.frames?.[currentIndex];
-    if (!frame || !trace.studio?.codeSnippetOverrides?.[frame.id]) return;
-    delete trace.studio.codeSnippetOverrides[frame.id];
-    pendingSnippetExcludeAnchor = '';
+    if (!frame) return;
+    const frames = snippetFramesForSource(frame);
+    const sourceMatches = window.ASMTraceViewSource?.sourceMatches;
+    trace.studio.codeSnippetSourceOverrides = trace.studio.codeSnippetSourceOverrides.filter(record => (
+      !record?.sourceSelector || typeof sourceMatches !== 'function' || !sourceMatches(frame, record.sourceSelector)
+    ));
+    frames.forEach(candidate => delete trace.studio.codeSnippetOverrides[candidate.id]);
     recordHistory();
     renderCodeSnippetEditor();
     renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
-    scheduleThumbnailSync();
   }
 
   function appendSnippetCode(row, code) {
@@ -1940,44 +2044,22 @@
     button.classList.toggle('is-enabled', row.included);
     button.classList.add('is-available');
     button.dataset.snippetAnchor = row.anchor;
+    button.dataset.snippetSourceAnchor = row.sourceAnchor;
     button.dataset.sourceLine = String(row.number);
     button.dataset.eventIds = row.eventIds.join(' ');
     button.setAttribute('aria-pressed', String(row.included));
     button.setAttribute('aria-label', `第 ${row.number} 行：${row.included ? '已收錄' : '未收錄'}`);
-    button.title = row.eventIds.length && row.included
-      ? '此行包含本幀事件動畫；排除前會再次確認'
-      : (row.included ? '點擊後不收錄此行' : '點擊後收錄此行');
+    button.title = row.included ? '點擊後不收錄此行' : '點擊後收錄此行';
     const marker = el('span', 'trace-studio-event-code-marker');
     marker.style.background = row.included ? '#42c77a' : 'transparent';
     const lineNumber = el('span', 'trace-studio-snippet-line-number', String(row.number));
     const code = el('code', 'trace-studio-event-code-text trace-studio-snippet-code');
     appendSnippetCode(row, code);
-    button.append(marker, lineNumber, code);
-    button.addEventListener('click', () => {
-      if (row.included && row.eventIds.length) {
-        pendingSnippetExcludeAnchor = row.anchor;
-        renderCodeSnippetEditor();
-        return;
-      }
-      saveSnippetLineState(row, !row.included);
-    });
+    const gutter = el('span', 'trace-studio-snippet-gutter');
+    gutter.append(marker, lineNumber);
+    button.append(gutter, code);
+    button.addEventListener('click', () => saveSnippetLineState(row, !row.included));
     wrapper.append(button);
-    if (pendingSnippetExcludeAnchor === row.anchor) {
-      const confirmation = el('div', 'trace-studio-snippet-confirm');
-      confirmation.append(el('span', '', '這一行包含目前幀的事件動畫'));
-      const keep = el('button', '', '保留');
-      keep.type = 'button';
-      keep.addEventListener('click', () => {
-        pendingSnippetExcludeAnchor = '';
-        renderCodeSnippetEditor();
-      });
-      const exclude = el('button', 'is-danger', '仍要排除');
-      exclude.type = 'button';
-      exclude.addEventListener('click', () => saveSnippetLineState(row, false));
-      confirmation.append(keep, exclude);
-      wrapper.append(confirmation);
-      requestAnimationFrame(() => keep.focus());
-    }
     return wrapper;
   }
 
@@ -1990,16 +2072,18 @@
     const rows = fragments.flatMap(fragment => fragment.rows || []);
     const eventRows = rows.filter(row => row.eventIds.length);
     const hiddenEventRows = eventRows.filter(row => !row.included);
+    const sourceFrameCount = snippetFramesForSource(frame).length;
     const functionNames = [...new Set(fragments.map(fragment => fragment.functionName).filter(Boolean))];
     if (frameCodeSnippetMeta) {
       const location = `${frame?.source?.function || frame?.source?.functionName || functionNames[0] || 'global'}:${frame?.source?.line || '-'}`;
       frameCodeSnippetMeta.textContent = hiddenEventRows.length
-        ? `${location} · ${hiddenEventRows.length} 個事件行未收錄`
-        : `${location} · 自動片段 ${rows.filter(row => row.autoIncluded).length} 行`;
+        ? `${location} · ${hiddenEventRows.length} 個事件行未收錄 · 同指令 ${sourceFrameCount} 幀`
+        : `${location} · 自動片段 ${rows.filter(row => row.autoIncluded).length} 行 · 同指令 ${sourceFrameCount} 幀`;
       frameCodeSnippetMeta.classList.toggle('has-warning', hiddenEventRows.length > 0);
     }
     if (resetCodeSnippetButton) {
-      resetCodeSnippetButton.disabled = !trace.studio?.codeSnippetOverrides?.[frame?.id];
+      resetCodeSnippetButton.disabled = !snippetSourceOverrideForFrame(frame)
+        && !snippetFramesForSource(frame).some(candidate => trace.studio?.codeSnippetOverrides?.[candidate.id]);
     }
     if (!rows.length) {
       frameCodeSnippetList.append(el('div', 'trace-studio-empty', '目前行為沒有可編輯的程式碼片段'));
@@ -2425,7 +2509,6 @@
       codePanelFontSizeValue.textContent = `${size}px`;
     }
     renderFrameEventsEditor();
-    pendingSnippetExcludeAnchor = '';
     renderCodeSnippetEditor();
     renderTransitionEditor();
   }
@@ -3195,8 +3278,22 @@
     resetCodeSnippetButton = el('button', 'trace-studio-snippet-reset', '恢復自動篩選');
     resetCodeSnippetButton.type = 'button';
     resetCodeSnippetButton.addEventListener('click', resetCurrentCodeSnippet);
-    snippetHeader.append(frameCodeSnippetMeta, resetCodeSnippetButton);
+    snippetFocusButton = el('button', 'trace-studio-snippet-focus', '專注檢視');
+    snippetFocusButton.type = 'button';
+    snippetFocusButton.setAttribute('aria-pressed', 'false');
+    snippetFocusButton.title = '放大程式碼片段編輯區';
+    snippetFocusButton.addEventListener('click', () => setSnippetFocus(
+      !document.body.classList.contains('asm-trace-snippet-focus')
+    ));
+    const snippetActions = el('div', 'trace-studio-snippet-actions');
+    snippetActions.append(resetCodeSnippetButton, snippetFocusButton);
+    snippetHeader.append(frameCodeSnippetMeta, snippetActions);
     frameCodeSnippetList = el('div', 'trace-studio-frame-events trace-studio-code-snippet-list');
+    frameCodeSnippetList.addEventListener('wheel', event => {
+      if (!event.shiftKey || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      frameCodeSnippetList.scrollLeft += event.deltaY;
+    }, { passive: false });
     frameCodeSnippetEditor.append(snippetHeader, frameCodeSnippetList);
     inspectorCodePanel.append(frameCodeSnippetEditor);
     renderCodeSnippetEditor();
@@ -3589,6 +3686,7 @@
     closeCameraFrame(true);
     writeSourceSettings();
     window.ASMTraceCodePresenter?.clearSelection?.();
+    setSnippetFocus(false);
     document.body.classList.remove('asm-trace-studio-open');
     activeObjectKey = '';
     codePanelSelectionActive = false;
@@ -3623,6 +3721,25 @@
     rail.append(railHeader, frameList);
 
     inspector = buildInspector();
+    inspectorResizer = el('div', 'trace-studio-inspector-resizer');
+    inspectorResizer.id = 'traceStudioInspectorResizer';
+    inspectorResizer.tabIndex = 0;
+    inspectorResizer.setAttribute('role', 'separator');
+    inspectorResizer.setAttribute('aria-label', '調整 Trace Studio 右側欄寬度');
+    inspectorResizer.setAttribute('aria-orientation', 'vertical');
+    inspectorResizer.setAttribute('aria-valuemin', '300');
+    inspectorResizer.setAttribute('aria-valuemax', '760');
+    inspectorResizer.title = '拖曳調整右側欄寬度；雙擊恢復預設';
+    inspectorResizer.addEventListener('pointerdown', beginInspectorResize);
+    inspectorResizer.addEventListener('dblclick', () => setInspectorWidth(DEFAULT_INSPECTOR_WIDTH, true));
+    inspectorResizer.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+      event.preventDefault();
+      const current = Number(inspectorResizer.getAttribute('aria-valuenow')) || DEFAULT_INSPECTOR_WIDTH;
+      setInspectorWidth(event.key === 'Home'
+        ? DEFAULT_INSPECTOR_WIDTH
+        : current + (event.key === 'ArrowLeft' ? 24 : -24), true);
+    });
     timeline = el('div', 'trace-studio-timeline');
     timeline.id = 'traceStudioTimeline';
     const timelineHead = el('div', 'trace-studio-timeline-head');
@@ -3630,9 +3747,17 @@
     timeline.append(timelineHead, el('div', 'trace-studio-timeline-track'));
 
     main.insertBefore(rail, vizPanel);
-    main.append(inspector);
+    main.append(inspectorResizer, inspector);
+    restoreInspectorWidth();
     vizPanel.append(timeline);
     window.addEventListener('resize', scheduleThumbnailCulling);
+    window.addEventListener('resize', restoreInspectorWidth);
+    window.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && document.body.classList.contains('asm-trace-snippet-focus')) {
+        event.preventDefault();
+        setSnippetFocus(false);
+      }
+    });
 
     const canvas = document.getElementById('arraySvg');
     canvas?.addEventListener('pointerdown', beginTextSelection, true);
