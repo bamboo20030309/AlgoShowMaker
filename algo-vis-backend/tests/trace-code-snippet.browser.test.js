@@ -169,14 +169,12 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
     const eventRow = rows.filter({ has: page.locator('mark.trace-studio-snippet-event-source') }).first();
     assert.equal(await eventRow.evaluate(button => button.classList.contains('is-enabled')), true);
     await eventRow.click();
-    await page.getByText(/這一行包含.*事件動畫/).waitFor();
-    assert.equal(await eventRow.evaluate(button => button.classList.contains('is-enabled')), true,
-      'the first click must not accidentally exclude an event line');
-    await page.getByRole('button', { name: '仍要排除' }).click();
     await page.waitForFunction(() => {
       const mark = document.querySelector('.trace-studio-snippet-event-source');
       return mark && !mark.closest('button').classList.contains('is-enabled');
     });
+    assert.equal(await page.locator('.trace-studio-snippet-confirm').count(), 0,
+      'event lines should close immediately without a confirmation warning');
     assert.match(await page.locator('.trace-studio-snippet-meta').textContent(), /事件行未收錄/);
     assert.ok(await page.evaluate(() => {
       const settings = window.ASMTraceViewSource.parse(ace.edit('editor').getValue());

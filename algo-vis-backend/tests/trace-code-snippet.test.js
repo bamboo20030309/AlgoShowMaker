@@ -136,3 +136,49 @@ test('manual snippet choices apply to every frame from the same source directive
   assert.equal(otherRows.find(row => row.sourceAnchor === eventRow.sourceAnchor).included, true,
     'a different source directive must keep its automatic result');
 });
+
+test('snippet ellipses ignore blank and comment-only gaps but preserve hidden code gaps', () => {
+  const model = loadModel();
+  const sourceCode = `int main() {
+  int first = 1;
+
+  // explanation only
+  int second = 2;
+  int hidden = 3;
+  int third = 4;
+}`;
+  const functionContext = {
+    type: 'FunctionDefinition', functionName: 'main', from: 0, to: sourceCode.length,
+    headerFrom: 0, headerTo: sourceCode.indexOf('{'), openLine: 1, closeLine: 8
+  };
+  const from = sourceCode.indexOf('int second');
+  const frame = {
+    id: 'frame-gap',
+    source: { functionName: 'main', line: 5, directiveKey: 'manual-frame:gap:0' },
+    events: [{
+      id: 'event-gap', type: 'write', signature: 'write:main:5:second', enabled: true,
+      source: {
+        functionName: 'main', from, to: from + 'int second = 2;'.length,
+        line: 5, endLine: 5, text: 'int second = 2;', contexts: [functionContext]
+      }
+    }],
+    state: {}
+  };
+  const document = {
+    sourceCode, sourceStructure: [functionContext], frames: [frame], studio: {}
+  };
+  const rows = model.snippetEditorPlan(document, frame).fragments.flatMap(fragment => fragment.rows);
+  const includedLines = new Set([2, 5, 7]);
+  document.studio.codeSnippetSourceOverrides = [{
+    sourceSelector: viewSource.sourceSelector(frame),
+    lineStates: Object.fromEntries(rows.map(row => [row.sourceAnchor, includedLines.has(row.number)]))
+  }];
+
+  const items = model.planFrame(document, frame).fragments.flatMap(fragment => fragment.items);
+  assert.deepEqual(Array.from(items, item => item.kind === 'line' ? `line:${item.number}` : item.kind), [
+    'line:2',
+    'line:5',
+    'ellipsis',
+    'line:7'
+  ]);
+});

@@ -1251,7 +1251,12 @@
     rows.filter(row => row.included).forEach(row => {
       const previous = items.at(-1);
       const previousLine = previous?.kind === 'line' ? Number(previous.number) : 0;
-      if (previousLine && row.number > previousLine + 1) items.push({ kind: 'ellipsis' });
+      const omittedCode = previousLine && rows.some(candidate => (
+        !candidate.included
+        && candidate.number > previousLine
+        && candidate.number < row.number
+      ));
+      if (omittedCode) items.push({ kind: 'ellipsis' });
       items.push(row.item);
     });
     return items;

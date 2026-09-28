@@ -78,7 +78,6 @@
   let frameCodeSnippetMeta;
   let resetCodeSnippetButton;
   let snippetFocusButton;
-  let pendingSnippetExcludeAnchor = '';
   let activeEventCodeGroupId = '';
   let arrowFrom;
   let arrowTo;
@@ -1969,16 +1968,6 @@
     });
   }
 
-  function snippetAffectedEventFrameCount(row) {
-    const frame = trace?.frames?.[currentIndex];
-    if (!frame || !row?.sourceAnchor) return 0;
-    return snippetFramesForSource(frame).filter(candidate => (
-      window.ASMTraceCodeModel?.snippetEditorPlan?.(trace, candidate)
-        ?.fragments?.flatMap(fragment => fragment.rows || [])
-        .find(item => item.sourceAnchor === row.sourceAnchor)?.eventIds?.length
-    )).length;
-  }
-
   function saveSnippetLineState(row, included) {
     const frame = trace?.frames?.[currentIndex];
     if (!frame || !row?.anchor || !row?.sourceAnchor) return;
@@ -1991,7 +1980,6 @@
       const saved = snippetOverrideForFrame(frame.id, true);
       saved.lineStates[row.anchor] = Boolean(included);
     }
-    pendingSnippetExcludeAnchor = '';
     recordHistory();
     renderCodeSnippetEditor();
     renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
@@ -2006,7 +1994,6 @@
       !record?.sourceSelector || typeof sourceMatches !== 'function' || !sourceMatches(frame, record.sourceSelector)
     ));
     frames.forEach(candidate => delete trace.studio.codeSnippetOverrides[candidate.id]);
-    pendingSnippetExcludeAnchor = '';
     recordHistory();
     renderCodeSnippetEditor();
     renderPlayerFrame(currentIndex, { animateEvents: false, animatePositions: false });
@@ -2062,9 +2049,7 @@
     button.dataset.eventIds = row.eventIds.join(' ');
     button.setAttribute('aria-pressed', String(row.included));
     button.setAttribute('aria-label', `第 ${row.number} 行：${row.included ? '已收錄' : '未收錄'}`);
-    button.title = row.eventIds.length && row.included
-      ? '此行包含本幀事件動畫；排除前會再次確認'
-      : (row.included ? '點擊後不收錄此行' : '點擊後收錄此行');
+    button.title = row.included ? '點擊後不收錄此行' : '點擊後收錄此行';
     const marker = el('span', 'trace-studio-event-code-marker');
     marker.style.background = row.included ? '#42c77a' : 'transparent';
     const lineNumber = el('span', 'trace-studio-snippet-line-number', String(row.number));
@@ -2073,34 +2058,8 @@
     const gutter = el('span', 'trace-studio-snippet-gutter');
     gutter.append(marker, lineNumber);
     button.append(gutter, code);
-    button.addEventListener('click', () => {
-      if (row.included && row.eventIds.length) {
-        pendingSnippetExcludeAnchor = row.sourceAnchor;
-        renderCodeSnippetEditor();
-        return;
-      }
-      saveSnippetLineState(row, !row.included);
-    });
+    button.addEventListener('click', () => saveSnippetLineState(row, !row.included));
     wrapper.append(button);
-    if (pendingSnippetExcludeAnchor === row.sourceAnchor) {
-      const confirmation = el('div', 'trace-studio-snippet-confirm');
-      const eventFrameCount = snippetAffectedEventFrameCount(row);
-      confirmation.append(el('span', '', eventFrameCount > 1
-        ? `這一行包含 ${eventFrameCount} 個同指令幀的事件動畫`
-        : '這一行包含目前幀的事件動畫'));
-      const keep = el('button', '', '保留');
-      keep.type = 'button';
-      keep.addEventListener('click', () => {
-        pendingSnippetExcludeAnchor = '';
-        renderCodeSnippetEditor();
-      });
-      const exclude = el('button', 'is-danger', '仍要排除');
-      exclude.type = 'button';
-      exclude.addEventListener('click', () => saveSnippetLineState(row, false));
-      confirmation.append(keep, exclude);
-      wrapper.append(confirmation);
-      requestAnimationFrame(() => keep.focus());
-    }
     return wrapper;
   }
 
@@ -2550,7 +2509,6 @@
       codePanelFontSizeValue.textContent = `${size}px`;
     }
     renderFrameEventsEditor();
-    pendingSnippetExcludeAnchor = '';
     renderCodeSnippetEditor();
     renderTransitionEditor();
   }
