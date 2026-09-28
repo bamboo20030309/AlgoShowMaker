@@ -29,11 +29,15 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
 
   assert.doesNotMatch(code, /AV\.hpp|\bAV\s+av\b|TreeLayout|\/\/draw\{|frame_draw|tree\.paint/);
   assert.match(code, /@layout recursion as "fib_tree"/);
+  assert.match(code, /@layout fib_tree branch-previews off/);
+  assert.doesNotMatch(code, /@layout fib_tree (?:direction top-down|mode compact|sibling-gap\b|level-gap\b|degree 2|flow-arrows\b)/,
+    'the sample omits default layout settings and does not use flow arrows');
   assert.doesNotMatch(code, /string\s+call|@frame\s+(?:left|right|result)|@frame\s+left,right,result/);
   assert.match(code, /int F\(int n\)/);
   assert.match(code, /@frame n in fib_tree with display\("F\(\$\{call\}\)"\)/);
   assert.match(code, /@frame sum in fib_tree/);
   assert.match(code, /@let call = n/);
+  assert.match(code, /@text "目前呼叫 F\(\$\{call\}\)" at n\.bottom/);
   assert.match(code, /@keep (?:n|sum) as "F" in fib_tree/);
   assert.match(code, /int left = F\(n - 1\);\s+int right = F\(n - 2\);/s,
     'the sample explicitly sequences the left subtree before the right subtree');
@@ -41,7 +45,8 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   const { trace } = await compile(code, input);
   assert.equal(trace.layouts.length, 1);
   assert.equal(trace.layouts[0].id, 'fib_tree');
-  assert.equal(trace.layouts[0].showFlowArrows, true);
+  assert.equal(trace.layouts[0].showBranchPreviews, false);
+  assert.equal(trace.layouts[0].showFlowArrows, false);
   const finalSnapshotIds = new Set(trace.frames.at(-1).snapshotIds);
   const finalSnapshots = trace.snapshots.filter(snapshot => finalSnapshotIds.has(snapshot.id));
   assert.equal(finalSnapshots.length, 15, 'F(5) leaves one active node for every call');
@@ -62,11 +67,21 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   const executionFrames = recursiveFrames.filter(frame => frame.source?.systemBranchPreview !== true);
   assert.equal(executionFrames.length, 30,
     'each of the 15 calls has one pending frame and one returned-value frame');
-  assert.equal(previewFrames.length, 14,
-    'the seven non-base calls preview both recursive branches before execution');
+  assert.equal(previewFrames.length, 0,
+    'recursive children appear only when their calls actually begin');
   assert.ok(recursiveFrames.every(frame => frame.source.recursionActivationId));
   assert.equal(recursiveFrames[0].snapshotIds.length, 1,
     'the first call is retained in the same frame instead of appearing one frame late');
+
+  const initialSnapshots = trace.snapshots.filter(snapshot => !snapshot.replacesSnapshotId);
+  const rootPending = initialSnapshots.find(snapshot => !snapshot.recursionParentActivationId);
+  const rootChildren = initialSnapshots.filter(snapshot => (
+    snapshot.recursionParentActivationId === rootPending.recursionActivationId
+  )).sort((left, right) => left.recursionSiblingIndex - right.recursionSiblingIndex);
+  const leftCreationFrame = trace.frames.find(frame => frame.id === rootChildren[0].createdFrameId);
+  assert.ok(leftCreationFrame.snapshotIds.includes(rootChildren[0].id));
+  assert.ok(!leftCreationFrame.snapshotIds.includes(rootChildren[1].id),
+    'the right recursive child is not drawn while the left subtree starts');
 
   const rootActivation = recursiveFrames[0].source.recursionActivationId;
   const rootCalls = trace.callLifecycles.filter(event => (
@@ -79,7 +94,7 @@ test('Fibonacci sample uses the current recursion layout and preserves call rela
   assert.ok(rootCalls.every(event => event.calleeActivationId),
     'each code-call occurrence links to the recursion node it creates');
 
-  const pendingSnapshots = trace.snapshots.filter(snapshot => !snapshot.replacesSnapshotId);
+  const pendingSnapshots = initialSnapshots;
   assert.deepEqual(pendingSnapshots.map(snapshot => (
     `${snapshot.objectId}=F(${snapshot.data.value})`
   )), [

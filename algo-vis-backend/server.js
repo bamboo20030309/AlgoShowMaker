@@ -1142,7 +1142,8 @@ function materializeKeepFrameState(sourceFrame, keepOrder, pendingEvents = []) {
   return frame;
 }
 
-function materializeKeepSnapshots(frames) {
+function materializeKeepSnapshots(frames, layouts = []) {
+  const layoutsById = new Map((layouts || []).map(layout => [layout.id, layout]));
   const snapshots = [];
   const activeSnapshotIds = [];
   const activeRecursionSnapshots = new Map();
@@ -1438,6 +1439,7 @@ function materializeKeepSnapshots(frames) {
   for (const [parentKey, children] of childrenByParent.entries()) {
     const parent = initialByActivation.get(parentKey);
     if (!parent || children.length < 2) continue;
+    if (layoutsById.get(parent.layoutId)?.showBranchPreviews === false) continue;
     const ordered = [...children].sort((left, right) => (
       Number(left.recursionSiblingIndex) - Number(right.recursionSiblingIndex)
     ));
@@ -2055,7 +2057,10 @@ function readTraceDocument(tracePath, variables, traceRequest = {}) {
   // A frame snapshot must be created after derived events are complete. This
   // keeps fixed marks and every event-driven visual state in @keep last.
   const framesWithFixedEvents = appendFixedEvents(slicedFrames, variables);
-  const keepSnapshots = materializeKeepSnapshots(framesWithFixedEvents);
+  const keepSnapshots = materializeKeepSnapshots(
+    framesWithFixedEvents,
+    traceRequest.layoutDirectives
+  );
   const asmView = traceRequest.asmView && typeof traceRequest.asmView === 'object' ? traceRequest.asmView : {};
   const requestedSkins = {
     ...(traceRequest.skins && typeof traceRequest.skins === 'object' ? traceRequest.skins : {}),

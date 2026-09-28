@@ -38,6 +38,7 @@ test('@layout recursion requires a named target and provides documented defaults
   assert.equal(layout.levelGap, 100);
   assert.equal(layout.degree, 2);
   assert.equal(layout.showEdges, true);
+  assert.equal(layout.showBranchPreviews, true);
   assert.equal(layout.showFlowArrows, false);
   assert.equal(layout.background, '');
   assert.equal(layout.edgeColor, 'black');
@@ -64,6 +65,7 @@ test('@layout accepts explicit recursion settings and all four directions', () =
 // @layout tree align end
 // @layout tree degree 3
 // @layout tree edges off
+// @layout tree branch-previews off
 // @layout tree flow-arrows on
 // @layout tree background AV_red
 `);
@@ -74,11 +76,14 @@ test('@layout accepts explicit recursion settings and all four directions', () =
     assert.equal(layout.align, 'end');
     assert.equal(layout.degree, 3);
     assert.equal(layout.showEdges, false);
+    assert.equal(layout.showBranchPreviews, false);
     assert.equal(layout.showFlowArrows, true);
     assert.equal(layout.background, 'AV_red');
   }
   assert.throws(() => findLayoutDirectives(`${declaration}// @layout quick_tree flow-arrows maybe`),
     /flow-arrows 必須是 on 或 off/);
+  assert.throws(() => findLayoutDirectives(`${declaration}// @layout quick_tree branch-previews maybe`),
+    /branch-previews 必須是 on 或 off/);
 });
 
 test('@layout stores slots as the canonical mode and accepts legacy binary sources', () => {

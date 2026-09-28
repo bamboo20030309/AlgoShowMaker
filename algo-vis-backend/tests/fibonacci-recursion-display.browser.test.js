@@ -22,7 +22,11 @@ test('Fibonacci recursion node changes from F(n) to its returned value', { timeo
   const code = fs.readFileSync(path.join(
     __dirname, '../algorithm_sample/Backtracking/fibonacci.cpp'
   ), 'utf8');
-  const { trace } = await compile(code, '5\n');
+  const flowCode = code.replace(
+    '// @layout fib_tree branch-previews off',
+    '// @layout fib_tree branch-previews off\n// @layout fib_tree flow-arrows on'
+  );
+  const { trace } = await compile(flowCode, '5\n');
   const pending = trace.snapshots.find(snapshot => (
     !snapshot.replacesSnapshotId && Number(snapshot.data?.value) === 2
   ));

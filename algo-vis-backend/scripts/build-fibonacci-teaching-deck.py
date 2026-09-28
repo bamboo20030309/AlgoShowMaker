@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "public" / "guest-decks" / "fibonacci-teaching.asmdeck"
 SOURCE = ROOT / "algorithm_sample" / "Backtracking" / "fibonacci.cpp"
+DP_SOURCE = ROOT / "algorithm_sample" / "DP" / "fibonacci-dp.cpp"
 
 BG = "#fbfcfa"
 INK = "#1f282d"
@@ -178,31 +179,8 @@ for i, (title, formula, result) in enumerate(steps):
 number_row(s, [0, 1, 1, 2, 3, 5], 250, 498, 132, active=5)
 slides.append(s)
 
-# 04 — Recursion tree
-s = base(4, "RECURSION", "遞迴：把公式直接翻成函式",
-         "F(5) 會先要求 F(4) 與 F(3)；每個尚未到底的呼叫再做同一件事。")
-edges = [
-    (640, 255, 430, 350), (640, 255, 850, 350),
-    (430, 350, 315, 445), (430, 350, 545, 445),
-    (850, 350, 735, 445), (850, 350, 965, 445),
-    (315, 445, 245, 540), (315, 445, 385, 540),
-]
-for edge in edges:
-    add(s, line(*edge, "#b6c7c2", 3))
-tree_node(s, "F(5)", 640, 255, GOLD, 104)
-for label, x, y in [("F(4)", 430, 350), ("F(3)", 850, 350),
-                    ("F(3)", 315, 445), ("F(2)", 545, 445),
-                    ("F(2)", 735, 445), ("F(1)", 965, 445),
-                    ("F(2)", 245, 540), ("F(1)", 385, 540)]:
-    tree_node(s, label, x, y, PEACH if label == "F(3)" else GREEN)
-add(s,
-    txt("同一個 F(3)、F(2) 會在不同分支重新計算。",
-        112, 598, 740, 20, ACCENT, True),
-    txt("這就是單純遞迴變慢的核心原因。", 806, 598, 370, 18, MUTED))
-slides.append(s)
-
-# 05 — Recursive code
-s = base(5, "RECURSIVE CODE", "遞迴寫法：短，但會重複工作",
+# 04 — Recursive code
+s = base(4, "RECURSIVE CODE", "遞迴：把公式直接寫成函式",
          "基本情況讓遞迴停止；其餘情況照定義呼叫兩個更小的問題。")
 recursive_code = """int F(int n) {
     if (n <= 1) return n;
@@ -220,8 +198,79 @@ add(s, txt("程式很接近數學定義，因此容易理解；代價是大量�
            82, 600, 1110, 18, MUTED))
 slides.append(s)
 
-# 06 — DP idea
-s = base(6, "DYNAMIC PROGRAMMING", "動態規劃：把算過的答案存進陣列",
+# 05 — Native recursion animation
+with SOURCE.open("r", encoding="utf-8", newline="") as source_file:
+    recursion_source = source_file.read()
+
+
+def animation_slide(code, input_text):
+    return {
+        "id": uid(), "kind": "algorithm-animation", "ttsScript": "", "ttsOrder": [],
+        "canvas": {"objects": []}, "widgets": [],
+        "animation": {
+            "mode": "trace", "code": code, "input": input_text,
+            "sliceMode": "manual", "watches": [],
+            "rebuild": {
+                "view": {"version": 1, "rules": [], "skins": {}, "studio": {
+                    "eventSettings": {
+                        "autoFixedEnabled": False,
+                        "autoLoopBoundaryEnabled": False
+                    }
+                }},
+                "globals": {
+                    "eventSettings": {
+                        "gapMs": 500,
+                        "autoFixedEnabled": False,
+                        "autoLoopBoundaryEnabled": False,
+                        "defaultEnabled": {"declare": True},
+                        "timelineTypes": {"declare": True, "read": False}
+                    }
+                }
+            }
+        }
+    }
+
+
+slides.append(animation_slide(recursion_source, "5\n"))
+
+# 06 — Full recursion tree and repeated work
+s = base(6, "WHY RECURSION IS SLOW", "完整展開後，重複計算會非常明顯",
+         "每個 F(2) 都會繼續呼叫 F(1) 與 F(0)；相同子問題不會共享答案。")
+tree_edges = []
+tree_nodes = []
+leaf_index = 0
+
+
+def build_fib_tree(n, depth):
+    global leaf_index
+    y = 230 + depth * 76
+    if n <= 1:
+        x = 150 + leaf_index * 140
+        leaf_index += 1
+    else:
+        left_x = build_fib_tree(n - 1, depth + 1)
+        right_x = build_fib_tree(n - 2, depth + 1)
+        x = (left_x + right_x) / 2
+        child_y = 230 + (depth + 1) * 76
+        tree_edges.extend([(x, y, left_x, child_y), (x, y, right_x, child_y)])
+    tree_nodes.append((n, x, y))
+    return x
+
+
+build_fib_tree(5, 0)
+for edge in tree_edges:
+    add(s, line(*edge, "#b6c7c2", 2))
+for n, x, y in tree_nodes:
+    fill = GOLD if n == 5 else PEACH if n == 3 else BLUE if n == 2 else GREEN
+    tree_node(s, f"F({n})", x, y, fill, 68)
+add(s,
+    txt("三個 F(2) 都各自展開成 F(1) 與 F(0)。",
+        108, 589, 610, 20, ACCENT, True),
+    txt("n 越大，重複的整棵子樹越多。", 782, 589, 390, 18, MUTED))
+slides.append(s)
+
+# 07 — DP idea
+s = base(7, "DYNAMIC PROGRAMMING", "動態規劃：把算過的答案存進陣列",
          "每一格只依賴左邊兩格；算過一次後就不再展開遞迴樹。")
 number_row(s, [0, 1, 1, 2, 3, 5, 8], 146, 284, 142, active=6,
            label_prefix="dp")
@@ -240,29 +289,29 @@ add(s,
         244, 568, 790, 21, MUTED, False, "center"))
 slides.append(s)
 
-# 07 — DP code
-s = base(7, "DP CODE", "用陣列做簡單的動態規劃",
+# 08 — Concise DP code
+s = base(8, "DP CODE", "用陣列做簡單的動態規劃",
          "先放入兩個已知答案，再由索引 2 一路算到 n。")
-dp_code = """long long fibonacci_dp(int n) {
-    vector<long long> dp(n + 1);
-    dp[0] = 0;
-    if (n >= 1) dp[1] = 1;
-
-    for (int i = 2; i <= n; i++) {
-        dp[i] = dp[i - 1] + dp[i - 2];
-    }
-    return dp[n];
-}"""
-s["widgets"].append(widget("code", dp_code, 64, 215, 742, 385, 18))
+dp_code = """vector<int> dp(n+1);
+dp[1]=1;
+for(int i=2;i<=n;i++) dp[i]=dp[i-1]+dp[i-2];"""
+s["widgets"].append(widget("code", dp_code, 64, 235, 742, 285, 22))
 card(s, "陣列中的意義",
      "dp[i] 表示 F(i) 的答案。\n\n"
      "當迴圈走到 i 時，dp[i−1] 與 dp[i−2] 已經存在，所以只做一次加法。\n\n"
      "這種由小問題往大問題填表的方式，稱為「由下而上」。",
-     846, 215, 370, 385, GREEN, 18)
+     846, 215, 370, 350, GREEN, 18)
+add(s, txt("vector<int> 初始化時，dp[0] 自動為 0。",
+           82, 590, 700, 18, MUTED))
 slides.append(s)
 
-# 08 — Complexity comparison
-s = base(8, "COMPLEXITY", "複雜度比較：差別來自有沒有重複計算",
+# 09 — Native DP animation
+with DP_SOURCE.open("r", encoding="utf-8", newline="") as source_file:
+    dp_source = source_file.read()
+slides.append(animation_slide(dp_source, "5\n"))
+
+# 10 — Complexity comparison
+s = base(10, "COMPLEXITY", "複雜度比較：差別來自有沒有重複計算",
          "兩種方法得到相同答案，但執行成本非常不同。")
 headers = ["方法", "時間複雜度", "空間複雜度", "原因"]
 xs = [64, 292, 548, 778]
@@ -288,53 +337,6 @@ add(s,
     txt("φ ≈ 1.618（黃金比例）。若只保留前兩個值，DP 空間還可降為 O(1)。",
         82, 593, 1110, 17, MUTED))
 slides.append(s)
-
-# 09 — Animation guide
-s = base(9, "ANIMATION GUIDE", "接著觀察 F(5) 的遞迴樹",
-         "動畫會依實際 DFS 執行順序建立節點，並在答案確定後把 F(n) 改成數值。")
-card(s, "進入呼叫",
-     "尚未計算完成時，節點顯示 F(n)。新呼叫會從父節點長到自己的位置。",
-     64, 228, 354, 290, GREEN, 19)
-card(s, "到底回傳",
-     "F(0)=0、F(1)=1 是基本情況；它們不再展開子節點。",
-     463, 228, 354, 290, PEACH, 19)
-card(s, "合併答案",
-     "左右子樹都返回後，父節點將 F(n) 更新為實際數值。注意相同子問題出現多次。",
-     862, 228, 354, 290, GREEN, 19)
-add(s,
-    txt("操作提示：下一頁可逐幀前進／後退，並開啟程式碼面板對照目前事件。",
-        82, 558, 1110, 19, MUTED),
-    txt("輸入：n = 5", 82, 604, 260, 20, ACCENT, True))
-slides.append(s)
-
-# 10 — Native recursion animation
-with SOURCE.open("r", encoding="utf-8", newline="") as source_file:
-    source = source_file.read()
-slides.append({
-    "id": uid(), "kind": "algorithm-animation", "ttsScript": "", "ttsOrder": [],
-    "canvas": {"objects": []}, "widgets": [],
-    "animation": {
-        "mode": "trace", "code": source, "input": "5\n", "sliceMode": "manual",
-        "watches": [],
-        "rebuild": {
-            "view": {"version": 1, "rules": [], "skins": {}, "studio": {
-                "eventSettings": {
-                    "autoFixedEnabled": False,
-                    "autoLoopBoundaryEnabled": False
-                }
-            }},
-            "globals": {
-                "eventSettings": {
-                    "gapMs": 500,
-                    "autoFixedEnabled": False,
-                    "autoLoopBoundaryEnabled": False,
-                    "defaultEnabled": {"declare": True},
-                    "timelineTypes": {"declare": True, "read": False}
-                }
-            }
-        }
-    }
-})
 
 
 deck = {"ttsSettings": {}, "groups": [{"id": uid(), "slides": [slide]} for slide in slides]}

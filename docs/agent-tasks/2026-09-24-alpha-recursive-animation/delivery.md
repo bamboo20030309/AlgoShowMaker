@@ -445,3 +445,43 @@
 ### 舊有物件相容性
 
 - 同步未新增持久化欄位；Fibonacci deck 依目前 `10/1` 引擎重新封裝，既有 deck 仍由 asmdeck 的同格式相容規則載入，不需資料遷移。
+
+## 2026-09-28：重排 Fibonacci 教學流程並新增 DP 動畫
+
+- 依使用者指定將教學順序改為：定義與手算 → 遞迴程式碼 → 遞迴動畫 → 重複計算原因 → DP 陣列概念 → 精簡 DP 程式碼 → DP 動畫 → 複雜度比較。
+- 重畫完整 `F(5)` 遞迴樹；三個 `F(2)` 都繼續展開成各自的 `F(1)` 與 `F(0)`，用顏色標示重複子問題。
+- DP 程式碼頁改為使用者指定的三行短版：`vector<int> dp(n+1);`、`dp[1]=1;`、單行 `for` 更新。
+- 新增 `algorithm_sample/DP/fibonacci-dp.cpp` 與第二段原生動畫；輸入 `5`，逐幀呈現 dp 陣列初始化、基本答案、每格由前兩格相加與完成結果。
+- deck 維持 10 頁，其中第 5 頁是遞迴動畫、第 9 頁是 DP 動畫、第 10 頁才比較複雜度；範例 cache key 更新為 `fibonacci-deck-2`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（frame/style）、D（動畫設定還原）、投影片範例載入。
+- `fibonacci-teaching-deck.browser.test.js`：1/1 通過；確認 10 頁、三個完整展開的 `F(2)`／`F(0)`、精簡 DP 程式碼、兩段動畫原始碼與輸入，且獨立服務完成動畫重建 2/2，無瀏覽器錯誤。
+- 以獨立 headless 瀏覽器檢查第 4–10 頁：完整遞迴樹無裁切、精簡程式碼可讀，DP 動畫正確建立 `dp[0...5]` 並顯示 7 幀，複雜度表格無重疊。
+- alpha 3101 已重啟為 PID `16140`；正式預覽載入 10 頁、兩段動畫重建 2/2，無瀏覽器錯誤。
+- 未執行完整 regression 或無關演算法動畫。
+
+### 舊有物件相容性
+
+- 本次重建既有範例 deck 並新增獨立 DP 範例原始碼，沒有修改投影片或動畫持久化格式；其他既有 deck 不需遷移。
+
+## 2026-09-28：Fibonacci 遞迴改為依實際執行顯示分支
+
+- 新增 recursion layout 設定 `branch-previews on|off`；預設維持 `on` 以相容既有河內塔與已儲存範例，Fibonacci 明確設為 `off`。
+- `branch-previews off` 不再建立執行前的系統預覽幀；左子樹開始時右子節點尚未出現，只有真正執行 `F(n - 2)` 時才建立。
+- Fibonacci 範例移除預設的 `direction top-down`、`mode compact`、`sibling-gap`、`level-gap`、`degree 2`，移除 `flow-arrows on`；進入節點文字改為「目前呼叫 F(n)」。
+- 重建 10 頁 Fibonacci 教學 deck，內嵌遞迴動畫同步套用新行為，cache key 更新為 `fibonacci-deck-3`。
+
+### 驗證分級與選擇
+
+- 層級：V2；分類：E（layout/frame）、G（recursion keep 生命週期）、J（實際瀏覽器播放）。
+- 獨立 3197 服務執行 `layout-directives.test.js`、`directive-assist.test.js`、`fibonacci-recursion-sample.test.js`、`fibonacci-recursion-display.browser.test.js`、`fibonacci-teaching-deck.browser.test.js`：22/22 通過，0 skip。
+- 契約斷言確認系統預覽幀為 0，且根節點的左孩子建立幀不含右孩子；投影片兩段動畫重建 2/2。
+- `node --check` 與 `git diff --check` 通過，只有 Windows LF/CRLF 提示。未執行完整 regression 或無關演算法動畫。
+- alpha 3101 已確認停止舊 PID `16140`，從本 worktree 重啟為 PID `43556`；HTTP 200，正式 3101 再驗證 Fibonacci 範例與 deck 2/2 通過。
+
+### 舊有物件相容性
+
+- 新建 layout 未指定時預設為 `showBranchPreviews: true`。
+- 舊 trace/layout 缺少欄位時，server 只在值明確為 `false` 時關閉預覽，因此舊物件行為不變；明確關閉的 Fibonacci 重新分析後仍保留 `false`。
