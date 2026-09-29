@@ -1651,6 +1651,7 @@
         if (!snapshotBox) return null;
         return {
           key: node.snapshotId,
+          element: node.sourceElement || elements.get(node.snapshotId),
           placement: {
             x: snapshotBox.x + node.relative.x,
             y: snapshotBox.y + node.relative.y,
@@ -1659,7 +1660,7 @@
           }
         };
       }).filter(Boolean);
-      stages.push({ key: currentKey, placement: current });
+      stages.push({ key: currentKey, element: elements.get(currentKey), placement: current });
 
       for (let index = 0; index < stages.length - 1; index += 1) {
         const fromStage = stages[index];
@@ -1693,6 +1694,8 @@
           'data-trace-keep-source': fromStage.key,
           'data-trace-keep-target': toStage.key
         });
+        line._asmKeepSourceElement = fromStage.element || null;
+        line._asmKeepTargetElement = toStage.element || null;
         layer.append(line);
         placements.set(key, {
           x: Math.min(points.start.x, points.end.x),
@@ -1704,6 +1707,41 @@
       }
     });
     if (layer.childElementCount) root.prepend(layer);
+  }
+
+  function refreshPresentedKeepArrows(root) {
+    const model = window.ASMArrowModel;
+    if (!root?.isConnected || !model?.presentedBounds) return;
+    root.querySelectorAll('.asm-trace-keep-arrow').forEach(arrow => {
+      const fromBox = model.presentedBounds(arrow._asmKeepSourceElement, root, true);
+      const toBox = model.presentedBounds(arrow._asmKeepTargetElement, root, true);
+      if (!fromBox || !toBox) return;
+      const points = closestEdgePoints(fromBox, toBox);
+      const geometry = model.geometry(
+        points.start,
+        points.end,
+        { outerframe: true },
+        { outerframe: true },
+        {
+          color: arrow.getAttribute('stroke'),
+          width: Number(arrow.getAttribute('stroke-width')) || 4,
+          headStart: 'none',
+          headEnd: 'arrow'
+        }
+      );
+      if (!geometry) {
+        const center = anchorPoint(fromBox, 'center');
+        arrow.setAttribute('x1', center.x);
+        arrow.setAttribute('y1', center.y);
+        arrow.setAttribute('x2', center.x);
+        arrow.setAttribute('y2', center.y);
+        return;
+      }
+      arrow.setAttribute('x1', geometry.x1);
+      arrow.setAttribute('y1', geometry.y1);
+      arrow.setAttribute('x2', geometry.x2);
+      arrow.setAttribute('y2', geometry.y2);
+    });
   }
 
   function arrowVisible(arrow, frame) {
@@ -5032,6 +5070,7 @@
               snapshotId: objectKey,
               variableId,
               runtimeIdentity: snapshot.frame.state?.[variableId]?.identity || '',
+              sourceElement,
               relative: {
                 x: sourcePlacement.x - contentBox.x,
                 y: sourcePlacement.y - contentBox.y,
@@ -5145,6 +5184,7 @@
           snapshotId: objectKey,
           variableId: snapshot.sourceVariableId,
           runtimeIdentity: snapshotRuntimeIdentity(document, snapshot),
+          sourceElement: object,
           relative: {
             x: contentBox.x - box.x,
             y: contentBox.y - box.y,
@@ -5356,6 +5396,7 @@
     settleAnimationEffectLayer(root);
     settlePointerLayer(root);
     refreshPresentedArrows(root, elements);
+    refreshPresentedKeepArrows(root);
     return { root, placements, elements, height: y };
   }
 
@@ -5941,9 +5982,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-232';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-233';
   window.ASMTraceRenderers = {
-    build: 'trace-232', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-233', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
@@ -5964,6 +6005,7 @@
       const root = window.document.getElementById('asm-trace-root');
       refreshPresentedStyles(root);
       refreshPresentedArrows(root, currentScene?.elements || new Map());
+      refreshPresentedKeepArrows(root);
     }
   };
 })();

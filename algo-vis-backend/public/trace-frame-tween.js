@@ -925,6 +925,53 @@
     return sources;
   }
 
+  function keepLiveGrowthTransitions(
+    keepSnapshots, previousPlacements, currentPlacements,
+    previousObjects, currentElements, root
+  ) {
+    const transitions = new Map();
+    const centeredPlacement = (source, target) => ({
+      x: (Number(source.x) || 0)
+        + ((Number(source.width) || 0) - (Number(target.width) || 0)) / 2,
+      y: (Number(source.y) || 0)
+        + ((Number(source.height) || 0) - (Number(target.height) || 0)) / 2,
+      width: Number(target.width) || 0,
+      height: Number(target.height) || 0
+    });
+    keepSnapshots.forEach(({ key: snapshotKey, snapshot }) => {
+      // Recursion layouts already have their own parent-to-child growth
+      // contract. This transition covers the ordinary live object created
+      // beside a newly retained @keep snapshot.
+      if (snapshot?.layoutId) return;
+      const sourceKey = keepSnapshotSourceKeys(snapshot)
+        .find(candidate => previousPlacements?.has?.(candidate));
+      const sourcePlacement = sourceKey ? previousPlacements.get(sourceKey) : null;
+      if (!sourceKey || !sourcePlacement) return;
+      const previousElement = previousVisualElement(previousObjects, sourceKey);
+      const runtimeIdentity = String(previousElement?.dataset?.traceRuntimeIdentity || '');
+      let targetKey = currentPlacements?.has?.(sourceKey) ? sourceKey : '';
+      if (!targetKey && runtimeIdentity) {
+        currentElements?.forEach?.((element, candidateKey) => {
+          if (targetKey || element?.closest?.('[data-trace-snapshot]')) return;
+          if (topLevelKey(element, root) !== candidateKey) return;
+          if (String(element.dataset?.traceRuntimeIdentity || '') === runtimeIdentity) {
+            targetKey = candidateKey;
+          }
+        });
+      }
+      const targetPlacement = targetKey ? currentPlacements?.get?.(targetKey) : null;
+      const targetElement = targetKey ? currentElements?.get?.(targetKey) : null;
+      if (!targetKey || !targetPlacement || !targetElement
+        || targetElement.closest?.('[data-trace-snapshot]')) return;
+      transitions.set(targetKey, {
+        sourceKey,
+        snapshotKey,
+        placement: centeredPlacement(sourcePlacement, targetPlacement)
+      });
+    });
+    return transitions;
+  }
+
   function previousVisualRetainedByEnteringKeep(
     key, element, sourceKeys = new Set(), runtimeIdentities = new Set()
   ) {
@@ -6292,6 +6339,14 @@
     const keepSnapshotIds = new Set(keepSnapshots.map(snapshot => snapshot.id));
     const keepTransitionKeys = new Set(keepSnapshots.map(snapshot => snapshot.key));
     const keepHandoffSources = keepSnapshotHandoffSources(keepSnapshots, previousPlacements);
+    const keepLiveGrowth = keepLiveGrowthTransitions(
+      keepSnapshots,
+      previousPlacements,
+      currentPlacements,
+      previousObjects,
+      currentElements,
+      root
+    );
     const recursionGrowth = recursionGrowthTransitions(
       traceDocument, options.previousFrame, frame, options.direction,
       options.previousRecursionPlacements || previousPlacements,
@@ -6659,6 +6714,8 @@
       const keepTransition = keepSnapshotMember && key === topKey;
       const recursionGrowthEntry = key === topKey
         ? recursionGrowth.entering.get(topKey) || null : null;
+      const keepGrowthEntry = key === topKey
+        ? keepLiveGrowth.get(topKey) || null : null;
       const keepHandoffSourceKey = keepTransition
         ? recursionGrowthEntry?.sourceKey || keepHandoffSources.get(topKey) || '' : '';
       let sourceKey = previousAliasKey(
@@ -6724,12 +6781,18 @@
           topElement,
           candidatePreviousVisual
         );
-      const previous = recursionGrowthEntry?.placement
-        || (redeclaredMarkerKeys.has(key) || activationChanged || generationChanged
+      const continuityPrevious = redeclaredMarkerKeys.has(key)
+        || activationChanged || generationChanged
         ? null
         : (useMarkerContinuation
           ? markerContinuation.placement
-          : previousPlacements?.get(sourceKey)));
+          : previousPlacements?.get(sourceKey));
+      // Existing live geometry is the exact handoff point shared with the
+      // entering snapshot. Only fall back to the centered keep source when a
+      // scene/key change removed that ordinary continuity information.
+      const previous = recursionGrowthEntry?.placement
+        || continuityPrevious
+        || keepGrowthEntry?.placement;
       const mode = previous && plan.requestedMode === 'auto'
         ? 'move'
         : plan.mode || (previous ? 'move' : 'lift');
@@ -6771,6 +6834,7 @@
         key, sourceKey, element, current, previous, plan, mode, topKey,
         keepTransition, keepSnapshotMember, retainedSnapshot,
         recursionGrowth: recursionGrowthEntry,
+        keepGrowth: keepGrowthEntry,
         keepHandoff: Boolean(keepHandoffSourceKey && previous),
         sceneBoundaryEntrance: generationChanged || sceneActivationChanged,
         lifecycleKind: keepTransition ? 'keep-snapshot' : visualLifecycleKind(element),
@@ -7364,7 +7428,8 @@
         const adjustedY = (adjustment.absolute === true
           ? (Number(adjustment.y) || 0) + (entry.appearing ? dy : 0)
           : dy + (Number(adjustment.y) || 0)) + exitOffsetY;
-        const recursionScale = entry.recursionGrowth
+        const growthTransition = entry.recursionGrowth || entry.keepGrowth;
+        const recursionScale = growthTransition
           ? 0.72 + 0.28 * localEased : 1;
         motionStates.set(entry.key, {
           x: adjustedX,
@@ -7437,9 +7502,11 @@
         if (entry.markerPointPath && markerArrowState) {
           entry.markerPointPath.setAttribute('d', markerArrowPath(entry, markerArrowState));
         }
-        if (entry.recursionGrowth) {
-          entry.element.dataset.traceRecursionGrowth = '1';
-          entry.target.dataset.traceRecursionGrowth = '1';
+        if (entry.recursionGrowth || entry.keepGrowth) {
+          const growthAttribute = entry.recursionGrowth
+            ? 'traceRecursionGrowth' : 'traceKeepGrowth';
+          entry.element.dataset[growthAttribute] = '1';
+          entry.target.dataset[growthAttribute] = '1';
           entry.target.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
           entry.attachedVisuals.forEach(attachment => {
             attachment.wrapper.setAttribute('opacity', String(0.35 + 0.65 * state.localEased));
@@ -7659,6 +7726,8 @@
         delete entry.target.dataset.traceAppearing;
         delete entry.element.dataset.traceRecursionGrowth;
         delete entry.target.dataset.traceRecursionGrowth;
+        delete entry.element.dataset.traceKeepGrowth;
+        delete entry.target.dataset.traceKeepGrowth;
         applyIndexLabelGrowth(entry.indexLabelGeometry, 1);
         const markerAdjustment = entry.markerPointPath
           ? events?.adjustments?.get?.(entry.key)
@@ -7790,17 +7859,21 @@
     document.querySelectorAll('[data-trace-recursion-growth]').forEach(element => {
       delete element.dataset.traceRecursionGrowth;
     });
+    document.querySelectorAll('[data-trace-keep-growth]').forEach(element => {
+      delete element.dataset.traceKeepGrowth;
+    });
     document.querySelectorAll('[data-trace-playback-plan-id]').forEach(element => {
       delete element.dataset.tracePlaybackPhase;
     });
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-259';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-260';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-259', play, cancel, updateEventAvailability,
+    build: 'trace-260', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
+    keepLiveGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,
     sameRuntimeVisual, needsSceneBoundaryEntrance,

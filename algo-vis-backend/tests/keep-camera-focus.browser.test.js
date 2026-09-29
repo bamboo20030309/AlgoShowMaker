@@ -66,10 +66,23 @@ int main() {
         if (!snapshot || !live) continue;
         const snapshotBox = snapshot.getBoundingClientRect();
         const liveBox = live.getBoundingClientRect();
+        const motion = live.querySelector(':scope > .asm-trace-motion');
+        const motionTransform = motion?.getAttribute('transform') || '';
+        const scaleMatch = motionTransform.match(/scale\(([-\d.]+)\)/);
+        const arrow = root.querySelector('.asm-trace-keep-arrow');
+        const x1 = Number(arrow?.getAttribute('x1'));
+        const y1 = Number(arrow?.getAttribute('y1'));
+        const x2 = Number(arrow?.getAttribute('x2'));
+        const y2 = Number(arrow?.getAttribute('y2'));
         samples.push({
           phase: root.dataset.tracePlaybackPhase || '',
           snapshotCenterX: snapshotBox.x + snapshotBox.width / 2,
-          liveCenterX: liveBox.x + liveBox.width / 2
+          liveCenterX: liveBox.x + liveBox.width / 2,
+          keepGrowth: live.dataset.traceKeepGrowth === '1',
+          scale: scaleMatch ? Number(scaleMatch[1]) : 1,
+          opacity: Number(motion?.getAttribute('opacity') || 1),
+          arrowLength: [x1, y1, x2, y2].every(Number.isFinite)
+            ? Math.hypot(x2 - x1, y2 - y1) : 0
         });
       }
       await next;
@@ -83,6 +96,15 @@ int main() {
     assert.ok(keepTransitionSamples.every(sample => (
       Math.abs(sample.snapshotCenterX - sample.liveCenterX) < 2
     )), `keep snapshot must not enter from the side: ${JSON.stringify(keepTransitionSamples)}`);
+    assert.ok(keepTransitionSamples.some(sample => sample.keepGrowth),
+      `the live object should use keep growth: ${JSON.stringify(keepTransitionSamples)}`);
+    assert.ok(keepTransitionSamples[0].scale < keepTransitionSamples.at(-1).scale,
+      `the live object should grow toward full size: ${JSON.stringify(keepTransitionSamples)}`);
+    assert.ok(keepTransitionSamples[0].opacity < keepTransitionSamples.at(-1).opacity,
+      `the live object should fade toward full opacity: ${JSON.stringify(keepTransitionSamples)}`);
+    assert.ok(keepTransitionSamples[0].arrowLength
+      < keepTransitionSamples.at(-1).arrowLength,
+    `the keep arrow should extend with the live object: ${JSON.stringify(keepTransitionSamples)}`);
     await page.waitForFunction(index => window.ASMTracePlayer.getCurrentFrame() === index,
       destinationIndex);
 

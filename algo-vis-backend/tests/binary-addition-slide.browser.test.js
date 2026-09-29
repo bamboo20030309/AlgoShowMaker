@@ -74,7 +74,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     ));
     let runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
     assert.ok(runtime, 'algorithm slide runtime iframe loaded');
-    assert.match(runtime.url(), /v=trace-runtime-42/);
+    assert.match(runtime.url(), /v=trace-runtime-43/);
     assert.equal(await runtime.evaluate(() => (
       window.ASMTracePlayer.getDocument().frames.some(frame => (
         (frame.events || []).some(event => event.binaryOperation === '+')
@@ -155,7 +155,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
         playbackDurationMs: player.getLastPlaybackPlan()?.totalDurationMs
       };
     });
-    assert.equal(result.build, 'trace-259');
+    assert.equal(result.build, 'trace-260');
     assert.deepEqual(result.event?.targets, [
       ['target', 15], ['source-left', 30], ['source-right', 31]
     ]);

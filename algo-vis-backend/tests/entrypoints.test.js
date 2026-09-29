@@ -24,7 +24,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(sources.indexOf('trace-camera.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(sources.indexOf('algorithm-animation.js') < sources.indexOf('trace-editor.js'));
   for (const mode of ['runtime', 'editor']) {
-    assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-42'));
+    assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-43'));
   }
   assert.ok(read('front.js').includes("if (!new URLSearchParams(window.location.search).has('asmEmbed'))"),
     'embedded animation surfaces wait for the parent payload instead of painting the bundled sample');
@@ -43,7 +43,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-36'));
   assert.ok(html.includes('trace-events.js?v=trace-60'));
-    assert.ok(html.includes('trace-frame-tween.js?v=trace-259'));
+    assert.ok(html.includes('trace-frame-tween.js?v=trace-260'));
+    assert.ok(html.includes('trace-renderer.js?v=trace-233'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));

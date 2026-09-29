@@ -127,7 +127,7 @@ test('LCS matching labels stay green while +1 replaces the old target value', { 
         finalTargetOpacity: finalTargetValue?.getAttribute('opacity') || ''
       };
     }, { code, input });
-    assert.equal(result.build, 'trace-259');
+    assert.equal(result.build, 'trace-260');
     assert.equal(result.rowFill, '#a5d6a7');
     assert.equal(result.columnFill, '#a5d6a7');
     assert.equal(result.answerRendered, false, 'the build-table frame must not render ans');

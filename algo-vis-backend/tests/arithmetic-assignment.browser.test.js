@@ -84,7 +84,7 @@ int main() {
         samples: [...samples]
       };
     });
-    assert.equal(result.build, 'trace-259');
+    assert.equal(result.build, 'trace-260');
     assert.deepEqual(result.operations, ['+', '-', '*', '/']);
     assert.deepEqual(result.multiSource, [
       [['a', '+'], ['b', '+'], ['c', '-'], ['d', '+']],
@@ -265,7 +265,7 @@ int main() {
           .map(([expression, values]) => [expression, [...values]]))
       };
     });
-    assert.equal(result.build, 'trace-259');
+    assert.equal(result.build, 'trace-260');
     const maximum = result.events.find(event => event.expression.startsWith('maximum ='));
     const minimum = result.events.find(event => event.expression.startsWith('minimum ='));
     const hidden = result.events.find(event => event.expression.startsWith('hiddenMaximum ='));
