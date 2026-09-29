@@ -5809,6 +5809,23 @@
     return point ? { x: point.x + currentScene.rootOffset.x, y: point.y + currentScene.rootOffset.y } : null;
   }
 
+  function currentCameraAnchor(target) {
+    if (!currentScene) return null;
+    // Frame tweens temporarily move the rendered SVG element from its previous
+    // position to the destination. Camera motion must use the destination
+    // placement stored by renderScene, otherwise @camera focus follows the
+    // element's transient start position and is left behind after @keep last
+    // moves the live object below the retained snapshot.
+    const point = resolveAnchor(
+      currentScene.document,
+      currentScene.frame,
+      target,
+      currentScene.placements,
+      null
+    );
+    return point ? { x: point.x + currentScene.rootOffset.x, y: point.y + currentScene.rootOffset.y } : null;
+  }
+
   function currentBounds(options = {}) {
     if (!currentScene?.placements?.size) return null;
     const snapshotsById = new Map((currentScene.document?.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
@@ -5924,12 +5941,12 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-231';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-232';
   window.ASMTraceRenderers = {
-    build: 'trace-231', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-232', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
-    resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
+    resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,
     runtimeIdentityToken, recursionLayoutCoordinates, recursionLayoutPreorder, recursionLayoutEdgePoints,

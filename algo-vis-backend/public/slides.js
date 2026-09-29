@@ -3402,7 +3402,7 @@
           class="algorithm-slide-frame${hasScript ? ' is-loading' : ''}"
           data-slide-id="${slide.id}"
           title="Algorithm animation"
-          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-40' : 'about:blank'}"
+          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-41' : 'about:blank'}"
           ${hasScript ? '' : 'hidden'}
         ></iframe>
         <div class="algorithm-slide-placeholder" ${hasScript ? 'hidden' : ''}>
@@ -9342,7 +9342,7 @@
     }
 
     frame.classList.add('is-loading');
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-40';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-41';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -9439,7 +9439,7 @@
     if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在載入動畫…';
     algorithmEditorModal.classList.add('is-loading');
     algorithmEditorModal.hidden = false;
-    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-40';
+    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-41';
   }
 
   function closeAlgorithmEditor() {

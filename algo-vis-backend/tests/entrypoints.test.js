@@ -24,7 +24,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(sources.indexOf('trace-camera.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(sources.indexOf('algorithm-animation.js') < sources.indexOf('trace-editor.js'));
   for (const mode of ['runtime', 'editor']) {
-    assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-40'));
+    assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-41'));
   }
   assert.ok(read('front.js').includes("if (!new URLSearchParams(window.location.search).has('asmEmbed'))"),
     'embedded animation surfaces wait for the parent payload instead of painting the bundled sample');
@@ -114,7 +114,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
-  assert.ok(html.includes('trace-camera.js?v=trace-6'));
+  assert.ok(html.includes('trace-camera.js?v=trace-7'));
   assert.ok(html.includes('trace-player.js?v=trace-26'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
