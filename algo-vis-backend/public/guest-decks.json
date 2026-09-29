@@ -94,7 +94,7 @@
       "id": "fibonacci-teaching",
       "title": "費式數列遞迴",
       "categories": [
-        "DP"
+        "Backtracking"
       ],
       "hints": ["遞迴", "呼叫樹"],
       "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=fibonacci-deck-4"

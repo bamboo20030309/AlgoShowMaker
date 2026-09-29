@@ -148,6 +148,11 @@ test('every bundled guest deck remains decodable after engine upgrades', async (
   const publicRoot = path.resolve(__dirname, '../public');
   const catalog = JSON.parse(fs.readFileSync(path.join(publicRoot, 'guest-decks.json'), 'utf8'));
   assert.ok(catalog.decks.length > 0);
+  assert.deepEqual(
+    catalog.decks.find(entry => entry.id === 'fibonacci-teaching')?.categories,
+    ['Backtracking'],
+    'the recursive Fibonacci deck belongs to the backtracking gallery'
+  );
   for (const entry of catalog.decks) {
     const archivePath = entry.archive.replace(/^\//, '').split('?')[0];
     const bytes = fs.readFileSync(path.join(publicRoot, archivePath));
