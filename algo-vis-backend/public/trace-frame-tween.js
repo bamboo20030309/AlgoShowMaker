@@ -1116,9 +1116,40 @@
     const origin = motionPosition(element, fallback);
     const geometry = outerframeGeometry(element);
     if (!origin || !geometry?.backgroundBox) return null;
+    // Frame snapshots wrap the frozen source scene inside the snapshot group.
+    // Its outerframe therefore inherits one or more nested SVG transforms
+    // (for example, the source array's authored x position).  Reading only
+    // the rect's x/y loses that offset and makes the snapshot borrow it again
+    // as tween motion, which appears as a sideways entrance.  Resolve the
+    // outerframe point into the owning object's local coordinates first.
+    let point = {
+      x: Number(geometry.backgroundBox.x) || 0,
+      y: Number(geometry.backgroundBox.y) || 0
+    };
+    let current = geometry.background;
+    try {
+      while (current && current !== element) {
+        const matrix = current.transform?.baseVal?.consolidate?.()?.matrix;
+        if (matrix) {
+          point = {
+            x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+            y: matrix.b * point.x + matrix.d * point.y + matrix.f
+          };
+        }
+        current = current.parentElement;
+      }
+    } catch (_error) {
+      current = null;
+    }
+    if (current !== element) {
+      point = {
+        x: Number(geometry.backgroundBox.x) || 0,
+        y: Number(geometry.backgroundBox.y) || 0
+      };
+    }
     return {
-      x: (Number(origin.x) || 0) + (Number(geometry.backgroundBox.x) || 0),
-      y: (Number(origin.y) || 0) + (Number(geometry.backgroundBox.y) || 0)
+      x: (Number(origin.x) || 0) + point.x,
+      y: (Number(origin.y) || 0) + point.y
     };
   }
 
@@ -7765,10 +7796,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-258';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-259';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-258', play, cancel, updateEventAvailability,
+    build: 'trace-259', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

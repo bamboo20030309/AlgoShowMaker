@@ -68,7 +68,7 @@ int main() {
         ).length
       };
     }, trace);
-    assert.equal(result.build, 'trace-256');
+    assert.equal(result.build, 'trace-259');
     assert.ok(result.samples.some(sample => (
       sample.type === 'call' && !sample.active
         && /visit\s*\(\s*n\s*\)/.test(sample.complete)

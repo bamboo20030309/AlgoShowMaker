@@ -50,8 +50,39 @@ int main() {
     await page.evaluate(async index => {
       window.asmSetAnimationPlaybackRate?.(4);
       await window.CodeScript.reset();
-      for (let frame = 0; frame < index; frame += 1) await window.CodeScript.next();
+      for (let frame = 0; frame < index - 1; frame += 1) await window.CodeScript.next();
+      window.asmSetAnimationPlaybackRate?.(1);
     }, destinationIndex);
+
+    const keepMotion = await page.evaluate(async () => {
+      const samples = [];
+      const next = window.CodeScript.next();
+      for (let index = 0; index < 8; index += 1) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const root = document.querySelector('#asm-trace-root');
+        const snapshot = root?.querySelector(':scope > [data-trace-snapshot]');
+        const live = [...(root?.querySelectorAll(':scope > [data-trace-object-key]') || [])]
+          .find(element => !element.hasAttribute('data-trace-snapshot'));
+        if (!snapshot || !live) continue;
+        const snapshotBox = snapshot.getBoundingClientRect();
+        const liveBox = live.getBoundingClientRect();
+        samples.push({
+          phase: root.dataset.tracePlaybackPhase || '',
+          snapshotCenterX: snapshotBox.x + snapshotBox.width / 2,
+          liveCenterX: liveBox.x + liveBox.width / 2
+        });
+      }
+      await next;
+      return samples;
+    });
+    const keepTransitionSamples = keepMotion.filter(sample => (
+      sample.phase === 'keep-transition'
+    ));
+    assert.ok(keepTransitionSamples.length > 0,
+      `expected keep-transition samples: ${JSON.stringify(keepMotion)}`);
+    assert.ok(keepTransitionSamples.every(sample => (
+      Math.abs(sample.snapshotCenterX - sample.liveCenterX) < 2
+    )), `keep snapshot must not enter from the side: ${JSON.stringify(keepTransitionSamples)}`);
     await page.waitForFunction(index => window.ASMTracePlayer.getCurrentFrame() === index,
       destinationIndex);
 
