@@ -26,7 +26,7 @@ function storage() {
   };
 }
 
-function page(local, session, pathname = '/algorithm.html', search = '') {
+function page(local, session, pathname = '/algorithm.html', search = '', sourceFingerprint = null) {
   const editorState = { code: '', input: '', cursor: { row: 0, column: 0 }, scrollTop: 0 };
   const inputArea = { get value() { return editorState.input; }, set value(value) { editorState.input = value; } };
   const aceEditor = {
@@ -43,7 +43,8 @@ function page(local, session, pathname = '/algorithm.html', search = '') {
   };
   const window = {
     location: { pathname, search },
-    addEventListener() {}
+    addEventListener() {},
+    ASMTraceProvenance: sourceFingerprint ? { create: () => ({ sourceFingerprint }) } : undefined
   };
   const context = vm.createContext({
     aceEditor, window, localStorage: local, sessionStorage: session,
@@ -108,4 +109,25 @@ test('the old shared local draft migrates once without deleting the old copy', (
     version: 2, code: 'newer old tab', input: '8\n', updatedAt: 1001
   }));
   assert.equal(page(local, secondSession).editorState.code, 'newer old tab');
+});
+
+test('the retired built-in sample is discarded while edited drafts remain', () => {
+  const local = storage();
+  const retiredSession = storage();
+  retiredSession.setItem('asm_algorithm_draft_v2:page:%2Falgorithm.html:standalone', JSON.stringify({
+    version: 2, code: 'retired bundled sample', input: '', updatedAt: 1000
+  }));
+  const retired = page(local, retiredSession, '/algorithm.html', '', '2081:1848552950:2124267204');
+  assert.equal(retired.editorState.code, '');
+  assert.equal(retired.draft.restored(), false);
+  assert.equal(retiredSession.keys().length, 0);
+
+  const editedSession = storage();
+  editedSession.setItem('asm_algorithm_draft_v2:page:%2Falgorithm.html:standalone', JSON.stringify({
+    version: 2, code: 'user edited sample', input: '9', updatedAt: 1001
+  }));
+  const edited = page(local, editedSession, '/algorithm.html', '', 'different');
+  assert.equal(edited.editorState.code, 'user edited sample');
+  assert.equal(edited.editorState.input, '9');
+  assert.equal(edited.draft.restored(), true);
 });

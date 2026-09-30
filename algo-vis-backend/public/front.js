@@ -73,6 +73,7 @@ const algorithmDraftPage = encodeURIComponent(window.location.pathname || '/algo
 const ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:page:${algorithmDraftPage}:${algorithmDraftMode}`;
 const LEGACY_ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:${algorithmDraftMode}`;
 const ALGORITHM_DRAFT_MIGRATION_KEY = `${ALGORITHM_DRAFT_STORAGE_KEY}:legacy-migrated`;
+const LEGACY_BUILTIN_SAMPLE_FINGERPRINT = '2081:1848552950:2124267204';
 let algorithmDraftSaveTimer = null;
 let algorithmDraftRestored = false;
 let algorithmDraftApplying = false;
@@ -106,6 +107,11 @@ function readAlgorithmDraft() {
     if (!raw) return null;
     const draft = JSON.parse(raw);
     if (draft?.version !== ALGORITHM_DRAFT_STORAGE_VERSION || typeof draft.code !== 'string') return null;
+    const sourceFingerprint = window.ASMTraceProvenance?.create?.(draft.code, '')?.sourceFingerprint;
+    if (algorithmDraftMode === 'standalone' && sourceFingerprint === LEGACY_BUILTIN_SAMPLE_FINGERPRINT) {
+      sessionStorage.removeItem(ALGORITHM_DRAFT_STORAGE_KEY);
+      return null;
+    }
     return draft;
   } catch (error) {
     console.warn('無法讀取演算法草稿', error);
