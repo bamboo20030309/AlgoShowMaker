@@ -63,7 +63,7 @@ test('algorithm slide embeds expose and switch the original result tabs',
         if (mode === 'runtime') {
           await page.waitForFunction(() => (
             getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor
-              === 'rgba(78, 113, 109, 0.08)'
+              === 'rgb(251, 252, 250)'
           ));
         }
 
@@ -73,12 +73,18 @@ test('algorithm slide embeds expose and switch the original result tabs',
           const backgrounds = await page.evaluate(() => ({
             tabs: getComputedStyle(document.getElementById('subTabs')).backgroundColor,
             slide: getComputedStyle(document.getElementById('canvasWrapper')).backgroundColor,
-            active: getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor
+            active: getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor,
+            underline: getComputedStyle(
+              document.querySelector('#subTabs .tab-btn.active'),
+              '::after'
+            ).backgroundColor
           }));
           assert.equal(backgrounds.tabs, backgrounds.slide,
             'runtime tab frame uses the same background as the slide');
-          assert.notEqual(backgrounds.active, 'rgb(255, 255, 255)',
-            'the active runtime tab does not introduce a white block');
+          assert.equal(backgrounds.active, backgrounds.slide,
+            'the active runtime tab continues the slide background');
+          assert.equal(backgrounds.underline, 'rgb(0, 122, 204)',
+            'the active runtime tab restores the original blue underline');
         }
         await page.locator('.tab-btn[data-tab="tab-input"]').click();
         assert.equal(await page.locator('#tab-input').evaluate(element => element.classList.contains('active')), true,

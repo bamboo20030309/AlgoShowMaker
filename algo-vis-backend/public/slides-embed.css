@@ -53,15 +53,15 @@ body.asm-embed-runtime #subTabs .tab-btn:hover {
 }
 
 body.asm-embed-runtime #subTabs .tab-btn.active {
-  background: rgba(78, 113, 109, 0.08);
-  color: #355d59;
+  background: #fbfcfa;
+  color: var(--primary-blue);
 }
 
 body.asm-embed-runtime #subTabs .tab-btn::after {
   right: 14px;
   left: 14px;
   height: 2px;
-  background: #4e716d;
+  background: var(--primary-blue);
 }
 
 body.asm-embed-runtime #tab-canvas {
