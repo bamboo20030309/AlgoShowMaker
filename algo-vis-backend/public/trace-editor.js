@@ -415,7 +415,7 @@
   async function analyze(code = sourceCode()) {
     const response = await fetch('/trace/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(window.ASMCompileSession?.headers?.() || {}) },
       body: JSON.stringify({ code })
     });
     const data = await response.json().catch(() => ({}));

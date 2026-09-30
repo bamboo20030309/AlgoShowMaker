@@ -26,6 +26,14 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017/algo_vis_db
       TRUST_PROXY_HOPS: 1
+      # 單核心／1 GB 部署先維持一個編譯工作者；其餘請求由後端公平排隊。
+      COMPILE_CONCURRENCY: 1
+      COMPILE_MAX_QUEUED: 150
+      COMPILE_MAX_QUEUED_PER_OWNER: 3
+      COMPILE_MAX_ACTIVE_PER_OWNER: 1
+      COMPILE_OWNER_RATE_LIMIT_PER_MINUTE: 120
+      COMPILE_IP_RATE_LIMIT_PER_MINUTE: 600
+      TRACE_ANALYSIS_CACHE_MAX: 100
     # 自動重啟：當機或重開機後會自動爬起來
     restart: unless-stopped
 

@@ -22,7 +22,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { performance } = require('perf_hooks');
 //引入 crypto uuid
-const { randomUUID: uuidv4 } = require('crypto');
+const { createHash, randomUUID: uuidv4 } = require('crypto');
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');            //資料庫溝通套件
 const bcrypt = require('bcryptjs');            //密碼加密套件
@@ -43,6 +43,17 @@ const TraceProvenance = require('./public/trace-provenance');
 const TraceChunkStore = require('./trace-chunk-store');
 const SlideStorage = require('./public/slides-storage');
 const CloudContent = require('./cloud-content');
+const { resolveCompileOwner } = require('./compile-owner');
+const {
+  CompileJobQueue,
+  CompileQueueCancelledError,
+  CompileQueueError,
+} = require('./compile-job-queue');
+const {
+  getCompileDebugMessages,
+  logCompileDebug,
+  runWithCompileContext,
+} = require('./compile-context');
 
 // JWT 密鑰必須由部署環境提供；缺少或使用公開預設值時直接停止啟動。
 const JWT_SECRET = loadJwtSecret();
@@ -154,16 +165,141 @@ if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
 }
 const PORT = process.env.PORT || 3000;
 
-// 2. 設定限制器
-const limiter = rateLimit({
+function positiveIntegerEnv(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function attachCompileOwner(req, res, next) {
+  req.compileOwnerId = resolveCompileOwner(req, res, {
+    secret: JWT_SECRET,
+    verifyBearer: token => jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS),
+  });
+  next();
+}
+
+// 共用網路只做寬鬆的濫用保護；公平性與每人上限使用帳號或簽章瀏覽器 session。
+const ipAbuseLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 分鐘內
-  max: 20, // 每個 IP 最多只能送 20 次請求
+  max: positiveIntegerEnv('COMPILE_IP_RATE_LIMIT_PER_MINUTE', 600),
   message: { error: '請求過於頻繁，請稍後再試' },
+  standardHeaders: false,
+  legacyHeaders: false,
   skip: () => process.env.ASM_REGRESSION === '1'
 });
 
-// 3. 套用限制器到 /compile
-app.use('/compile', limiter);
+const ownerRateLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: positiveIntegerEnv('COMPILE_OWNER_RATE_LIMIT_PER_MINUTE', 120),
+  keyGenerator: req => req.compileOwnerId,
+  message: { error: '你的編譯請求過於頻繁，請稍後再試' },
+  skip: () => process.env.ASM_REGRESSION === '1'
+});
+
+// 先建立公平排程身分，再套用個人與全站濫用限制。
+app.use('/compile', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter);
+
+const compileQueue = new CompileJobQueue({
+  concurrency: positiveIntegerEnv('COMPILE_CONCURRENCY', 1),
+  maxPending: positiveIntegerEnv('COMPILE_MAX_QUEUED', 150),
+  maxPendingPerOwner: positiveIntegerEnv('COMPILE_MAX_QUEUED_PER_OWNER', 3),
+  maxActivePerOwner: positiveIntegerEnv('COMPILE_MAX_ACTIVE_PER_OWNER', 1),
+});
+
+function compilePriority(req) {
+  const purpose = String(req.headers['x-compile-purpose'] || '').toLowerCase();
+  if (purpose === 'manual' || purpose === 'current-slide') return 'interactive';
+  if (purpose === 'nearby-slide') return 'normal';
+  if (purpose === 'background') return 'background';
+  return 'normal';
+}
+
+/**
+ * Keep the existing synchronous HTTP contract while serializing the expensive
+ * compiler/runtime section. The queue slot is released only after the response
+ * finishes, so the next request cannot overlap g++, the sandbox, or trace load.
+ */
+function queueCompileRequest(req, res, next) {
+  if (req.method !== 'POST') return next();
+  const queuedAt = performance.now();
+  let started = false;
+  let ticket;
+
+  try {
+    ticket = compileQueue.enqueue({
+      ownerId: req.compileOwnerId,
+      priority: compilePriority(req),
+      // HTTP response streaming is still request-bound. Cross-request result
+      // deduplication is enabled in the scheduler API after compile execution is
+      // extracted into a reusable result object; do not share a response here.
+      run: ({ jobId }) => new Promise((resolve) => {
+        started = true;
+        req.compileWorkSpawned = false;
+        req.compileJobId = jobId;
+        const waitMs = Math.max(0, Math.round(performance.now() - queuedAt));
+        if (!res.headersSent) {
+          res.setHeader('X-Compile-Job-Id', jobId);
+          res.setHeader('X-Compile-Queue-Wait-Ms', String(waitMs));
+        }
+
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
+          resolve();
+        };
+        req.once('asm:compile-work-complete', release);
+        res.once('finish', () => {
+          if (!req.compileWorkSpawned) release();
+        });
+        res.once('close', () => {
+          if (!req.compileWorkSpawned) release();
+        });
+        next();
+      }),
+    });
+  } catch (error) {
+    if (error instanceof CompileQueueError) {
+      const status = error.code === 'COMPILE_QUEUE_FULL' ? 503 : error.statusCode;
+      res.setHeader('Retry-After', '5');
+      return res.status(status).json({
+        error: error.code === 'COMPILE_QUEUE_FULL'
+          ? '編譯佇列已滿，請稍後再試'
+          : '你已有太多等待中的編譯工作',
+        code: error.code,
+      });
+    }
+    return next(error);
+  }
+
+  const cancelIfWaiting = () => {
+    if (!started) ticket.cancel();
+  };
+  req.once('aborted', cancelIfWaiting);
+  res.once('close', () => {
+    if (!res.writableEnded) cancelIfWaiting();
+  });
+
+  ticket.promise.catch((error) => {
+    if (error instanceof CompileQueueCancelledError) return;
+    if (!res.headersSent) next(error);
+    else res.destroy(error);
+  });
+}
+
+// Queue before JSON parsing so waiting requests do not each retain an up-to-8MB
+// parsed body inside the 1 GB backend container.
+app.use('/compile', queueCompileRequest);
+
+app.get('/api/compile/queue', (req, res) => {
+  const state = compileQueue.snapshot();
+  res.json({
+    active: state.active,
+    pending: state.pending,
+    concurrency: state.concurrency,
+    maxPending: state.maxPending,
+  });
+});
 
 // 設定目錄路徑
 const SAMPLE_DIR = path.join(__dirname, 'tmp', 'algorithm_sample');
@@ -173,23 +309,40 @@ if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR);
 }
 
-let debugMessages = [];
-
 // === 限制設定 ===
 const LIMITS = {
   TIME_MS: 5000,
   MEMORY_MB: 256,
   OUTPUT_SIZE: 64 * 1024,
+  COMPILE_TIME_MS: 20 * 1000,
+  COMPILE_STDERR_SIZE: 256 * 1024,
   HTTP_JSON_SIZE: '8mb',
 };
 
+// Static trace analysis is deterministic for a source string. Keeping a small
+// process-local LRU avoids repeating the same parser/instrumenter CPU work when
+// many browsers open the same public example deck.
+const TRACE_ANALYSIS_CACHE_MAX = positiveIntegerEnv('TRACE_ANALYSIS_CACHE_MAX', 100);
+const traceAnalysisCache = new Map();
+
+function getCachedTraceAnalysis(key) {
+  const value = traceAnalysisCache.get(key);
+  if (!value) return null;
+  traceAnalysisCache.delete(key);
+  traceAnalysisCache.set(key, value);
+  return value;
+}
+
+function setCachedTraceAnalysis(key, value) {
+  traceAnalysisCache.set(key, value);
+  while (traceAnalysisCache.size > TRACE_ANALYSIS_CACHE_MAX) {
+    traceAnalysisCache.delete(traceAnalysisCache.keys().next().value);
+  }
+}
+
 // 記錄 debug 訊息
 function logDebug(msg, extra = {}) {
-  debugMessages.push({
-    time: new Date().toISOString(),
-    msg,
-    ...extra,
-  });
+  logCompileDebug(msg, extra);
 }
 
 function usesLegacyAnimationCompiler(source) {
@@ -216,17 +369,23 @@ app.use((err, req, res, next) => {
 // 靜態分析 API：只解析來源碼，不會編譯或執行使用者輸入
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.post('/trace/analyze', limiter, (req, res) => {
+app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, (req, res) => {
   const code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  const cacheKey = createHash('sha256').update(code).digest('base64url');
+  const cached = getCachedTraceAnalysis(cacheKey);
+  if (cached) {
+    res.setHeader('X-Trace-Analysis-Cache', 'HIT');
+    return res.json(cached);
+  }
   try {
     const analysis = analyzeSource(code);
     const instrumented = instrumentSource(code, []);
     const frameDirectives = instrumented.frameDirectives;
     const layoutDirectives = instrumented.layoutDirectives;
     const branchDirectives = instrumented.branchDirectives;
-    res.json({
+    const responseBody = {
       success: true,
       layouts: layoutDirectives,
       branches: branchDirectives.map(directive => ({
@@ -280,14 +439,17 @@ app.post('/trace/analyze', limiter, (req, res) => {
         functionName: variable.functionName,
         supported: variable.supported
       }))
-    });
+    };
+    setCachedTraceAnalysis(cacheKey, responseBody);
+    res.setHeader('X-Trace-Analysis-Cache', 'MISS');
+    res.json(responseBody);
   } catch (err) {
     console.error('Failed to analyze trace source:', err);
     res.status(400).json({ error: `無法分析 C++ 程式碼：${err.message}` });
   }
 });
 
-app.post('/syntax-tree', limiter, (req, res) => {
+app.post('/syntax-tree', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, (req, res) => {
   const code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
@@ -2118,9 +2280,13 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
 // 流程順序是安全邊界的一部分：驗證來源 → 插樁 → 產生暫存檔 → 編譯 →
 // 受限執行 → 解析 trace → 回收。任一分支結束時都需只回收本請求建立的資源。
 // ─────────────────────────────────────────────────────────────────────────────
-app.post('/compile', (req, res) => {
-  debugMessages = []; // 每次請求重置
-
+app.post('/compile', (req, res) => runWithCompileContext(() => {
+  let compileWorkCompleted = false;
+  const markCompileWorkComplete = () => {
+    if (compileWorkCompleted) return;
+    compileWorkCompleted = true;
+    req.emit('asm:compile-work-complete');
+  };
   const { code, input, trace } = req.body || {};
   let traceEnabled = trace?.enabled === true;
 
@@ -2131,7 +2297,7 @@ app.post('/compile', (req, res) => {
       compileTime: null,
       runTime: null,
       memoryKB: null,
-      debug_log: debugMessages,
+      debug_log: getCompileDebugMessages(),
     });
   }
 
@@ -2143,7 +2309,7 @@ app.post('/compile', (req, res) => {
       compileTime: null,
       runTime: null,
       memoryKB: null,
-      debug_log: debugMessages,
+      debug_log: getCompileDebugMessages(),
     });
   }
 
@@ -2273,7 +2439,7 @@ app.post('/compile', (req, res) => {
               compileTime: null,
               runTime: null,
               memoryKB: null,
-              debug_log: debugMessages,
+              debug_log: getCompileDebugMessages(),
           });
       }
   }
@@ -2311,7 +2477,7 @@ app.post('/compile', (req, res) => {
     return res.status(500).json({
       output: '',
       error: '無法寫入暫存檔：' + err.message,
-      debug_log: debugMessages,
+      debug_log: getCompileDebugMessages(),
     });
   }
   logDebug(`原始碼寫入完成: ${path.basename(sourcePath)}`);
@@ -2328,25 +2494,97 @@ app.post('/compile', (req, res) => {
   if (!isWindows) compileArgs.splice(7, 0, '-I', '/tmp');
 
   const compileStart = performance.now();
-  const gpp = spawn('g++', compileArgs, { cwd: __dirname });
+  const compileHardTimeoutMs = LIMITS.COMPILE_TIME_MS + 250;
+  const compileHardTimeoutSeconds = `${(compileHardTimeoutMs / 1000).toFixed(3)}s`;
+  const compilerMemoryKB = 512 * 1024;
+  req.compileWorkSpawned = true;
+  const gpp = isWindows
+    ? spawn('g++', compileArgs, { cwd: __dirname })
+    : spawn('sh', [
+        '-c',
+        `ulimit -v ${compilerMemoryKB} && exec timeout --signal=TERM --kill-after=1s ${compileHardTimeoutSeconds} g++ "$@"`,
+        'g++',
+        ...compileArgs,
+      ], { cwd: __dirname, detached: true });
 
   let compileErr = '';
-  gpp.stderr.on('data', (data) => { compileErr += data.toString(); });
+  let compileTimedOut = false;
+  let compileOutputExceeded = false;
+  let compileSettled = false;
+  const terminateCompilerTree = () => {
+    try {
+      if (isWindows && gpp.pid) {
+        spawn('taskkill', ['/F', '/T', '/PID', String(gpp.pid)]);
+      } else if (gpp.pid) {
+        process.kill(-gpp.pid, 'SIGKILL');
+      }
+    } catch (error) {
+      logDebug(`編譯程序樹終止失敗，等待外部 watchdog 回收: ${error.message}`, {
+        code: error.code || '',
+      });
+    }
+  };
+  const compileTimer = setTimeout(() => {
+    compileTimedOut = true;
+    logDebug(`編譯超過 ${LIMITS.COMPILE_TIME_MS}ms，強制終止`, { pid: gpp.pid });
+    terminateCompilerTree();
+  }, LIMITS.COMPILE_TIME_MS);
+
+  gpp.stderr.on('data', (data) => {
+    if (compileOutputExceeded) return;
+    const chunk = data.toString();
+    const remaining = LIMITS.COMPILE_STDERR_SIZE - compileErr.length;
+    if (chunk.length > remaining) {
+      if (remaining > 0) compileErr += chunk.slice(0, remaining);
+      compileErr += '\n... [Compiler Output Limit Exceeded]';
+      compileOutputExceeded = true;
+      logDebug('編譯器錯誤輸出超過限制，強制終止', { pid: gpp.pid });
+      terminateCompilerTree();
+      return;
+    }
+    compileErr += chunk;
+  });
+
+  gpp.on('error', (error) => {
+    if (compileSettled) return;
+    compileSettled = true;
+    clearTimeout(compileTimer);
+    logDebug('無法啟動編譯器：' + error.message);
+    cleanup();
+    res.status(500).json({
+      output: '',
+      error: '編譯服務暫時無法使用',
+      verdict: 'INFRA',
+      compileTime: +((performance.now() - compileStart).toFixed(1)),
+      runTime: null,
+      memoryKB: null,
+      debug_log: getCompileDebugMessages(),
+    });
+    markCompileWorkComplete();
+  });
 
   gpp.on('close', (codeExit) => {
+    if (compileSettled) return;
+    compileSettled = true;
+    clearTimeout(compileTimer);
     const compileTime = +((performance.now() - compileStart).toFixed(1));
 
     if (codeExit !== 0) {
       logDebug('編譯失敗，退出碼：' + codeExit);
       cleanup();
-      return res.status(400).json({
+      res.status(400).json({
         output: '',
-        error: compileErr || ('編譯失敗，退出碼：' + codeExit),
+        error: compileTimedOut
+          ? `編譯逾時 (> ${LIMITS.COMPILE_TIME_MS}ms)`
+          : compileErr || ('編譯失敗，退出碼：' + codeExit),
+        verdict: compileTimedOut ? 'INFRA' : 'CE',
         compileTime,
         runTime: null,
         memoryKB: null,
-        debug_log: debugMessages,
+        debug_log: getCompileDebugMessages(),
       });
+      markCompileWorkComplete();
+      return;
     }
 
     logDebug('編譯成功，耗時 ' + compileTime + ' ms');
@@ -2358,7 +2596,9 @@ app.post('/compile', (req, res) => {
       } catch (err) {
         logDebug('權限設定失敗: ' + err.message);
         cleanup();
-        return res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.' });
+        res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.', verdict: 'INFRA' });
+        markCompileWorkComplete();
+        return;
       }
     }
 
@@ -2510,10 +2750,24 @@ app.post('/compile', (req, res) => {
       const memoryKB = (peakMem.peakRssKB > 0) ? peakMem.peakRssKB : (peakMem.peakHwmKB > 0 ? peakMem.peakHwmKB : null);
 
       let finalError = '';
-      if (isTLE) finalError = `Time Limit Exceeded (> ${LIMITS.TIME_MS}ms)`;
-      else if (isOLE) finalError = `Output Limit Exceeded (> ${LIMITS.OUTPUT_SIZE / 1024}KB)`;
-      else if (runErr && runErr.includes('Script Size Exceeded')) finalError = runErr.split('\n').find(l => l.includes('Script Size Exceeded')) || 'Script Size Exceeded';
-      else if (codeRun !== 0 || signal) finalError = (runErr && runErr.trim() !== '') ? runErr : `Runtime Error`;
+      let verdict = 'OK';
+      const memoryLimitPattern = /(std::bad_alloc|cannot allocate memory|out of memory|memory limit exceeded)/i;
+      if (isTLE) {
+        verdict = 'TLE';
+        finalError = `Time Limit Exceeded (> ${LIMITS.TIME_MS}ms)`;
+      } else if (isOLE) {
+        verdict = 'OLE';
+        finalError = `Output Limit Exceeded (> ${LIMITS.OUTPUT_SIZE / 1024}KB)`;
+      } else if (runErr && runErr.includes('Script Size Exceeded')) {
+        verdict = 'OLE';
+        finalError = runErr.split('\n').find(l => l.includes('Script Size Exceeded')) || 'Script Size Exceeded';
+      } else if (memoryLimitPattern.test(runErr)) {
+        verdict = 'MLE';
+        finalError = `Memory Limit Exceeded (> ${LIMITS.MEMORY_MB}MB)`;
+      } else if (codeRun !== 0 || signal) {
+        verdict = 'RE';
+        finalError = (runErr && runErr.trim() !== '') ? runErr : `Runtime Error`;
+      }
 
       if (!finalError && traceError) finalError = traceError;
 
@@ -2521,17 +2775,22 @@ app.post('/compile', (req, res) => {
 
       if (traceDocument && !finalError) traceDocument.provenance = TraceProvenance.create(code, input);
 
-      try { await TraceChunkStore.sendJson(req, res, {
+      const responseBody = {
         output: runOut,
         error: finalError,
+        verdict,
         traceWarning,
         compileTime,
         runTime,
         memoryKB,
-        debug_log: debugMessages,
+        debug_log: getCompileDebugMessages(),
         scriptContent: scriptContent,
         traceDocument
-      }); } catch (error) {
+      };
+      // At this point the child has closed and trace parsing is complete. Free
+      // the expensive-work slot before a slow client finishes downloading.
+      markCompileWorkComplete();
+      try { await TraceChunkStore.sendJson(req, res, responseBody); } catch (error) {
         logDebug('回傳編譯結果失敗：' + error.message);
         if (!res.headersSent) res.status(500).json({error:'無法傳送追蹤資料'});
         else res.destroy();
@@ -2555,8 +2814,6 @@ app.post('/compile', (req, res) => {
         });
       }
 
-      // [核心修正]：超時 1 秒後若 process.on('close') 仍然沒反應，強迫回傳 
-      setTimeout(() => { if (!hasResponded) sendResponse(null, 'SIGKILL', true); }, 1000);
     }, LIMITS.TIME_MS);
 
     if (typeof input === 'string' && input.length > 0) {
@@ -2579,18 +2836,12 @@ app.post('/compile', (req, res) => {
       if (!hasResponded) sendResponse(null, null);
     });
 
-    // 改監聽 exit 比較即時，且透過 sendResponse 內的防呆防止與 close 重複
-    child.on('exit', (codeRun, signal) => {
-      clearTimeout(tleTimer);
-      sendResponse(codeRun, signal);
-    });
-
     child.on('close', (codeRun, signal) => {
       clearTimeout(tleTimer);
       sendResponse(codeRun, signal);
     });
   });
-});
+}));
 
 // 每小時執行一次：清理殘留檔案
 setInterval(() => {

@@ -406,7 +406,7 @@
 
   async function runTrace(animation) {
     const analysisResponse = await fetch('/trace/analyze', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(root.ASMCompileSession?.headers?.() || {}) },
       body: JSON.stringify({ code: animation.code })
     });
     const analysis = await analysisResponse.json().catch(() => ({}));
@@ -415,7 +415,7 @@
     const watches = (animation.watches || []).map(watch => typeof watch === 'string' ? watch : watch.id)
       .filter(id => available.has(id));
     const compileResponse = await fetch('/compile', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(root.ASMCompileSession?.headers?.('background') || {}) },
       body: JSON.stringify({ code: animation.code, input: animation.input,
         trace: { enabled: true, sliceMode: animation.sliceMode, watches,
           skins: animation.rebuild.view.skins || {}, rules: animation.rebuild.view.rules || [] } })

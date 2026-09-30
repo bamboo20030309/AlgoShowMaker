@@ -117,7 +117,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
 
     const res = await fetch('/compile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(window.ASMCompileSession?.headers?.('manual') || {}) },
       body: JSON.stringify({
         code: sourceCode,                         // 保留原本欄位名 code
         input: sourceInput,                      // stdin captured with this RUN
