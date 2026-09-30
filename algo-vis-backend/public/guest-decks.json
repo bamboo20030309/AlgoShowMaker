@@ -7,7 +7,7 @@
         "Sorting"
       ],
       "hints": ["分治", "原地排序"],
-      "archive": "/guest-decks/quick-sort.asmdeck"
+      "archive": "/guest-decks/quick-sort.asmdeck?v=prebuilt-10"
     },
     {
       "id": "bubble-sort",
@@ -16,7 +16,7 @@
         "Sorting"
       ],
       "hints": ["相鄰交換"],
-      "archive": "/guest-decks/bubble-sort.asmdeck"
+      "archive": "/guest-decks/bubble-sort.asmdeck?v=prebuilt-10"
     },
     {
       "id": "selection-sort",
@@ -25,7 +25,7 @@
         "Sorting"
       ],
       "hints": ["選取最小值"],
-      "archive": "/guest-decks/selection-sort.asmdeck"
+      "archive": "/guest-decks/selection-sort.asmdeck?v=prebuilt-10"
     },
     {
       "id": "insertion-sort",
@@ -34,7 +34,7 @@
         "Sorting"
       ],
       "hints": ["逐步插入"],
-      "archive": "/guest-decks/insertion-sort.asmdeck"
+      "archive": "/guest-decks/insertion-sort.asmdeck?v=prebuilt-10"
     },
     {
       "id": "heap-sort",
@@ -43,7 +43,7 @@
         "Sorting"
       ],
       "hints": ["堆積", "原地排序"],
-      "archive": "/guest-decks/heap-sort.asmdeck"
+      "archive": "/guest-decks/heap-sort.asmdeck?v=prebuilt-10"
     },
     {
       "id": "linear-sieve",
@@ -52,7 +52,7 @@
         "Math"
       ],
       "hints": ["質數篩"],
-      "archive": "/guest-decks/linear-sieve.asmdeck"
+      "archive": "/guest-decks/linear-sieve.asmdeck?v=prebuilt-10"
     },
     {
       "id": "heap-teaching",
@@ -61,7 +61,7 @@
         "Data_Structure"
       ],
       "hints": ["優先佇列", "最大值／最小值"],
-      "archive": "/guest-decks/heap-teaching.asmdeck"
+      "archive": "/guest-decks/heap-teaching.asmdeck?v=prebuilt-10"
     },
     {
       "id": "binary-indexed-tree-teaching",
@@ -70,7 +70,7 @@
         "Data_Structure"
       ],
       "hints": ["單點修改", "區間和"],
-      "archive": "/guest-decks/binary-indexed-tree-teaching.asmdeck"
+      "archive": "/guest-decks/binary-indexed-tree-teaching.asmdeck?v=prebuilt-10"
     },
     {
       "id": "segment-tree-teaching",
@@ -79,7 +79,7 @@
         "Data_Structure"
       ],
       "hints": ["區間修改", "區間和"],
-      "archive": "/guest-decks/segment-tree-teaching.asmdeck?v=segment-deck-2"
+      "archive": "/guest-decks/segment-tree-teaching.asmdeck?v=prebuilt-10"
     },
     {
       "id": "hanoi-teaching",
@@ -88,7 +88,7 @@
         "Backtracking"
       ],
       "hints": ["遞迴", "分治"],
-      "archive": "/guest-decks/hanoi-teaching.asmdeck?v=hanoi-deck-2"
+      "archive": "/guest-decks/hanoi-teaching.asmdeck?v=prebuilt-10"
     },
     {
       "id": "fibonacci-teaching",
@@ -97,7 +97,7 @@
         "Backtracking"
       ],
       "hints": ["遞迴", "呼叫樹"],
-      "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=fibonacci-deck-4"
+      "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=prebuilt-10"
     },
     {
       "id": "prefix-sum",
@@ -106,7 +106,7 @@
         "Math"
       ],
       "hints": ["區間和", "預處理"],
-      "archive": "/guest-decks/prefix-sum.asmdeck?v=prefix-sum-deck-1"
+      "archive": "/guest-decks/prefix-sum.asmdeck?v=prebuilt-10"
     },
     {
       "id": "lcs-teaching",
@@ -115,7 +115,7 @@
         "DP"
       ],
       "hints": ["二維動態規劃", "回溯"],
-      "archive": "/guest-decks/lcs-teaching.asmdeck?v=lcs-deck-1"
+      "archive": "/guest-decks/lcs-teaching.asmdeck?v=prebuilt-10"
     }
   ]
 }

@@ -1,5 +1,6 @@
 node_modules
 tmp
+artifact-cache-data
 test-results
 .env
 .env.*

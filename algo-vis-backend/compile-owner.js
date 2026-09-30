@@ -43,8 +43,8 @@ function appendSetCookie(res, value) {
 /**
  * Resolve the fairness identity used by the compile queue.
  * Authenticated users share one queue identity across devices. Anonymous users
- * receive a signed browser cookie so a school NAT does not collapse everyone
- * into the same queue owner.
+ * receive a server-signed HttpOnly cookie so a school NAT does not collapse
+ * everyone into the same queue owner and clients cannot mint queue identities.
  */
 function resolveCompileOwner(req, res, { secret, verifyBearer }) {
   const authHeader = String(req.headers.authorization || '');
@@ -56,11 +56,6 @@ function resolveCompileOwner(req, res, { secret, verifyBearer }) {
     } catch {
       // An invalid optional login token must not block anonymous compilation.
     }
-  }
-
-  const browserSession = String(req.headers['x-asm-session'] || '');
-  if (SESSION_PATTERN.test(browserSession)) {
-    return `browser:${browserSession.toLowerCase()}`;
   }
 
   const cookies = parseCookies(req.headers.cookie);

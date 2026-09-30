@@ -14,7 +14,9 @@
     "regression:animation": "node scripts/regression.js --animation-only",
     "regression:animation:fresh": "node scripts/regression.js --animation-only --fresh",
     "validate:release-v4.11": "node scripts/release-validation-v4.11.js",
-    "validate:release-v4.11:fresh": "node scripts/release-validation-v4.11.js --fresh"
+    "validate:release-v4.11:fresh": "node scripts/release-validation-v4.11.js --fresh",
+    "prebuild:guest-decks": "node scripts/prebuild-guest-decks.js",
+    "loadtest:compile": "node scripts/compile-load-test.js"
   },
   "dependencies": {
     "@jaames/iro": "^5.5.2",

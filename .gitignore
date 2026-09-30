@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 algo-vis-backend/tmp/
+algo-vis-backend/artifact-cache-data/
 algo-vis-backend/test-results/
 .env
 algo-vis-backend/server.out.log

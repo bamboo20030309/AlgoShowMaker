@@ -1,5 +1,3 @@
-version: '3'
-
 # =============================================================================
 # 本機／單機部署拓樸：Mongo → Node backend → Nginx
 # =============================================================================
@@ -34,6 +32,23 @@ services:
       COMPILE_OWNER_RATE_LIMIT_PER_MINUTE: 120
       COMPILE_IP_RATE_LIMIT_PER_MINUTE: 600
       TRACE_ANALYSIS_CACHE_MAX: 100
+      TRACE_ANALYSIS_WORKERS: 1
+      TRACE_ANALYSIS_MAX_QUEUED: 150
+      # 編譯執行檔與成功 trace 使用磁碟 LRU；不占用容器的 1 GB 記憶體預算。
+      ARTIFACT_CACHE_DIR: /usr/src/app/artifact-cache
+      ARTIFACT_CACHE_MAX_MB: 512
+      ARTIFACT_CACHE_TTL_HOURS: 168
+      ASM_COMPILER_FINGERPRINT: g++-docker-c++17-v1
+      ASYNC_COMPILE_DISPATCH_CONCURRENCY: 2
+      ASYNC_COMPILE_REQUEST_TTL_MINUTES: 120
+      ASYNC_COMPILE_RESULT_TTL_MINUTES: 10
+      ASYNC_COMPILE_MAX_RESULTS: 100
+      ASYNC_COMPILE_RESULT_MAX_MB: 128
+      ASYNC_COMPILE_TIMEOUT_MS: 420000
+      ASYNC_COMPILE_POLL_RATE_LIMIT_PER_MINUTE: 600
+      ASYNC_COMPILE_RESULT_RATE_LIMIT_PER_MINUTE: 30
+      ASYNC_COMPILE_RESULT_STREAMS: 8
+      ASYNC_COMPILE_RESULT_STREAMS_PER_OWNER: 2
     # 自動重啟：當機或重開機後會自動爬起來
     restart: unless-stopped
 
@@ -79,6 +94,9 @@ services:
       # 這樣既能寫入，重開機後資料又會自動清空，非常適合你的需求
       - /usr/src/app/tmp
 
+      # C++ 執行檔與共用 trace 跨容器重建保留，由後端依 TTL/LRU 控制容量。
+      - artifact-cache:/usr/src/app/artifact-cache
+
     # 暫存資料夾設定 (選用，但推薦)
     # 因為 read_only: true 會讓 /tmp 也變唯讀，導致某些 Linux 指令失效
     # 所以我們要配給它一個暫時的寫入區
@@ -115,3 +133,4 @@ services:
 # =============================================================================
 volumes:
   mongo-data:
+  artifact-cache:

@@ -107,6 +107,55 @@ test('asmdeck projection is detached, strips trace results, and retains playback
   assert.equal(slide.canvas.objects[0].src, slide.canvas.objects[1].src);
 });
 
+test('official archive embeds a verified prebuilt trace and rebuild uses it without HTTP', async () => {
+  const projected = await archive.project(fixture(), null, { includePrebuiltTraces: true });
+  const traceIds = Object.keys(projected.prebuiltTraces);
+  assert.equal(traceIds.length, 1);
+  assert.equal(projected.deck.groups[0].slides[0].animation.prebuilt.traceId, traceIds[0]);
+  const decoded = await archive.decode(await archive.encode(projected));
+  const animation = decoded.deck.groups[0].slides[0].animation;
+  assert.equal(animation.traceDocument.frames.length, 1);
+  const priorFetch = global.fetch;
+  global.fetch = async () => { throw new Error('prebuilt trace must not call HTTP'); };
+  try {
+    const kinds = [];
+    const rebuilt = await archive.rebuildDeck(decoded.deck, () => {}, (_slide, kind) => kinds.push(kind));
+    assert.deepEqual(kinds, ['prebuilt']);
+    assert.equal(rebuilt.groups[0].slides[0].animation.traceDocument.frames.length, 1);
+  } finally { global.fetch = priorFetch; }
+});
+
+test('prebuilt trace is ignored after input or engine identity changes', async () => {
+  const blob = await archive.encode(await archive.project(fixture(), null, { includePrebuiltTraces: true }));
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  const payload = JSON.parse(gunzipSync(bytes.subarray(archive.MAGIC.length)));
+  const animation = payload.body.deck.groups[0].slides[0].animation;
+  animation.prebuilt.engineVersion = '0/1';
+  payload.manifest.contentHash = await archive.sha256(JSON.stringify(payload.body));
+  const staleEngine = await archive.decode(new Blob([
+    archive.MAGIC, gzipSync(Buffer.from(JSON.stringify(payload)))
+  ]));
+  assert.equal(staleEngine.deck.groups[0].slides[0].animation.traceDocument, undefined);
+
+  const decoded = await archive.decode(blob);
+  decoded.deck.groups[0].slides[0].animation.input = 'changed input';
+  const requests = [];
+  const priorFetch = global.fetch;
+  const priorWarn = console.warn;
+  console.warn = () => {};
+  global.fetch = async url => {
+    requests.push(url);
+    return { ok: true, json: async () => url === '/trace/analyze'
+      ? { variables: [{ id: 'arr' }] }
+      : { traceDocument: fixture().groups[0].slides[0].animation.traceDocument } };
+  };
+  try {
+    const rebuilt = await archive.rebuildAnimation(decoded.deck.groups[0].slides[0].animation);
+    assert.equal(rebuilt.cacheKind, 'run');
+    assert.deepEqual(requests, ['/trace/analyze', '/compile']);
+  } finally { global.fetch = priorFetch; console.warn = priorWarn; }
+});
+
 test('asmdeck gzip round-trip checks hashes and restores both deduplicated images', async () => {
   const projected = await archive.project(fixture());
   const blob = await archive.encode(projected);
@@ -158,6 +207,12 @@ test('every bundled guest deck remains decodable after engine upgrades', async (
     const bytes = fs.readFileSync(path.join(publicRoot, archivePath));
     const decoded = await archive.decode(new Blob([bytes]));
     assert.ok(decoded.deck.groups?.length > 0, entry.id);
+    const animations = decoded.deck.groups.flatMap(group => group.slides || [])
+      .filter(slide => slide.kind === 'algorithm-animation');
+    assert.equal(decoded.manifest.prebuiltTraceHashes?.length, animations.length,
+      `${entry.id} must publish one prebuilt trace per animation`);
+    assert.ok(animations.every(slide => slide.animation.traceDocument?.frames?.length),
+      `${entry.id} prebuilt traces must match the current engine and provenance`);
   }
 });
 

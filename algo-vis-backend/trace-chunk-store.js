@@ -8,8 +8,11 @@ const {promisify} = require('node:util');
 const {Readable} = require('node:stream');
 const {pipeline} = require('node:stream/promises');
 const zip = promisify(gzip), unzip = promisify(gunzip);
-const LIMITS = Object.freeze({file:128*1024*1024, record:64*1024*1024,
-  compressed:32*1024*1024, expanded:512*1024*1024, events:1000000, records:100000});
+// A 64 MB JSON trace can occupy several times that size as JavaScript objects.
+// Keep the expanded contract well below the 1 GB container ceiling so one
+// pathological program cannot restart the shared classroom backend.
+const LIMITS = Object.freeze({file:64*1024*1024, record:8*1024*1024,
+  compressed:16*1024*1024, expanded:64*1024*1024, events:100000, records:25000});
 
 async function* lines(file, limits = LIMITS) {
   let parts = [], length = 0, total = 0;

@@ -167,7 +167,46 @@ class CompileJobQueue {
       deduplicated,
       promise,
       cancel: () => this._cancelSubscriber(job, subscriber),
+      getState: () => job.state,
+      getQueuePosition: () => this._pendingPosition(job),
     };
+  }
+
+  _pendingPosition(job) {
+    if (job.state !== 'pending') return job.state === 'active' ? 0 : null;
+    // Produce the same fair round-robin order the scheduler will use after the
+    // current active batch finishes. With concurrency > 1, positions within a
+    // batch are estimates because the actual completion order is unknowable.
+    const queues = new Map();
+    for (const [ownerId, jobs] of this.pendingByOwner) queues.set(ownerId, [...jobs]);
+    const lastServed = new Map(this.ownerLastServed);
+    let dispatchSequence = this.dispatchSequence;
+
+    for (let position = 1; position <= this.pendingCount; position += 1) {
+      let selectedOwner = null;
+      let oldestDispatch = Number.POSITIVE_INFINITY;
+      for (const ownerId of this.ownerOrder) {
+        const jobs = queues.get(ownerId);
+        const ownerDispatch = lastServed.get(ownerId) || 0;
+        if (jobs?.length > 0 && ownerDispatch < oldestDispatch) {
+          selectedOwner = ownerId;
+          oldestDispatch = ownerDispatch;
+        }
+      }
+      if (selectedOwner === null) return null;
+      lastServed.set(selectedOwner, ++dispatchSequence);
+
+      const ownerQueue = queues.get(selectedOwner);
+      let selectedIndex = 0;
+      for (let index = 1; index < ownerQueue.length; index += 1) {
+        if (this._compareJobs(ownerQueue[index], ownerQueue[selectedIndex]) < 0) {
+          selectedIndex = index;
+        }
+      }
+      const [selectedJob] = ownerQueue.splice(selectedIndex, 1);
+      if (selectedJob === job) return position;
+    }
+    return null;
   }
 
   _cancelSubscriber(job, subscriber) {

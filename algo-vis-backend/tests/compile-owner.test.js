@@ -39,13 +39,16 @@ test('anonymous browsers receive distinct signed queue sessions behind one IP', 
   assert.match(firstRes.getHeader('Set-Cookie')[0], /HttpOnly; SameSite=Lax/);
 });
 
-test('a browser-provided UUID is stable across the first parallel request burst', () => {
+test('an unsigned browser UUID is ignored in favor of a signed cookie session', () => {
   const browserId = '550e8400-e29b-41d4-a716-446655440000';
-  const owners = [responseStub(), responseStub()].map(res => resolveCompileOwner({
+  const responses = [responseStub(), responseStub()];
+  const owners = responses.map(res => resolveCompileOwner({
     headers: { 'x-asm-session': browserId },
     secure: false,
   }, res, { secret }));
-  assert.deepEqual(owners, [`browser:${browserId}`, `browser:${browserId}`]);
+  assert.notEqual(owners[0], owners[1]);
+  assert.ok(owners.every(owner => owner.startsWith('session:')));
+  assert.ok(responses.every(res => res.getHeader('Set-Cookie')));
 });
 
 test('a valid signed session remains the same owner and tampering is rejected', () => {

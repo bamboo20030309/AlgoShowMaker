@@ -19,7 +19,10 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const { EventEmitter } = require('node:events');
+const { Readable, Transform } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
 const { performance } = require('perf_hooks');
 //引入 crypto uuid
 const { createHash, randomUUID: uuidv4 } = require('crypto');
@@ -34,7 +37,6 @@ const {
   loadJwtSecret
 } = require('./jwt-config');
 const {
-  analyzeSource,
   buildSyntaxTree,
   instrumentSource
 } = require('./trace-instrumenter');
@@ -54,6 +56,18 @@ const {
   logCompileDebug,
   runWithCompileContext,
 } = require('./compile-context');
+const { TraceAnalysisPool, TraceAnalysisQueueError } = require('./trace-analysis-pool');
+const {
+  ArtifactCache,
+  createExecutableKey,
+  createTraceKey,
+  canonicalStringify,
+  sha256Canonical,
+} = require('./artifact-cache');
+const {
+  CompileJobRegistry,
+  CompileJobRegistryError,
+} = require('./compile-job-registry');
 
 // JWT 密鑰必須由部署環境提供；缺少或使用公開預設值時直接停止啟動。
 const JWT_SECRET = loadJwtSecret();
@@ -164,6 +178,7 @@ if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
   app.set('trust proxy', trustProxyHops);
 }
 const PORT = process.env.PORT || 3000;
+const INTERNAL_COMPILE_TOKEN = uuidv4();
 
 function positiveIntegerEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -171,6 +186,11 @@ function positiveIntegerEnv(name, fallback) {
 }
 
 function attachCompileOwner(req, res, next) {
+  if (req.headers['x-asm-internal-token'] === INTERNAL_COMPILE_TOKEN) {
+    req.isInternalCompileRequest = true;
+    req.compileOwnerId = String(req.headers['x-asm-internal-owner'] || 'internal:async');
+    return next();
+  }
   req.compileOwnerId = resolveCompileOwner(req, res, {
     secret: JWT_SECRET,
     verifyBearer: token => jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS),
@@ -185,7 +205,7 @@ const ipAbuseLimiter = rateLimit({
   message: { error: '請求過於頻繁，請稍後再試' },
   standardHeaders: false,
   legacyHeaders: false,
-  skip: () => process.env.ASM_REGRESSION === '1'
+  skip: req => process.env.ASM_REGRESSION === '1' || req.isInternalCompileRequest
 });
 
 const ownerRateLimiter = rateLimit({
@@ -193,8 +213,47 @@ const ownerRateLimiter = rateLimit({
   max: positiveIntegerEnv('COMPILE_OWNER_RATE_LIMIT_PER_MINUTE', 120),
   keyGenerator: req => req.compileOwnerId,
   message: { error: '你的編譯請求過於頻繁，請稍後再試' },
-  skip: () => process.env.ASM_REGRESSION === '1'
+  skip: req => process.env.ASM_REGRESSION === '1' || req.isInternalCompileRequest
 });
+
+const compileJobPollLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: positiveIntegerEnv('ASYNC_COMPILE_POLL_RATE_LIMIT_PER_MINUTE', 600),
+  keyGenerator: req => req.compileOwnerId,
+  message: { error: '工作狀態查詢過於頻繁，請稍後再試' },
+  standardHeaders: false,
+  legacyHeaders: false,
+  skip: () => process.env.ASM_REGRESSION === '1',
+});
+
+const compileResultLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: positiveIntegerEnv('ASYNC_COMPILE_RESULT_RATE_LIMIT_PER_MINUTE', 30),
+  keyGenerator: req => req.compileOwnerId,
+  message: { error: '編譯結果下載過於頻繁，請稍後再試' },
+  standardHeaders: false,
+  legacyHeaders: false,
+  skip: () => process.env.ASM_REGRESSION === '1',
+});
+
+const resultStreamState = { active: 0, byOwner: new Map() };
+function acquireResultStream(ownerId) {
+  const globalLimit = positiveIntegerEnv('ASYNC_COMPILE_RESULT_STREAMS', 8);
+  const ownerLimit = positiveIntegerEnv('ASYNC_COMPILE_RESULT_STREAMS_PER_OWNER', 2);
+  const ownerActive = resultStreamState.byOwner.get(ownerId) || 0;
+  if (resultStreamState.active >= globalLimit || ownerActive >= ownerLimit) return null;
+  resultStreamState.active += 1;
+  resultStreamState.byOwner.set(ownerId, ownerActive + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    resultStreamState.active -= 1;
+    const remaining = (resultStreamState.byOwner.get(ownerId) || 1) - 1;
+    if (remaining > 0) resultStreamState.byOwner.set(ownerId, remaining);
+    else resultStreamState.byOwner.delete(ownerId);
+  };
+}
 
 // 先建立公平排程身分，再套用個人與全站濫用限制。
 app.use('/compile', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter);
@@ -204,6 +263,20 @@ const compileQueue = new CompileJobQueue({
   maxPending: positiveIntegerEnv('COMPILE_MAX_QUEUED', 150),
   maxPendingPerOwner: positiveIntegerEnv('COMPILE_MAX_QUEUED_PER_OWNER', 3),
   maxActivePerOwner: positiveIntegerEnv('COMPILE_MAX_ACTIVE_PER_OWNER', 1),
+});
+
+// Async callers release their browser connection immediately and poll a small
+// owner-scoped record. A few loopback submissions may wait on the authoritative
+// compileQueue, while the remaining burst stays as lightweight registry data.
+const compileJobRegistry = new CompileJobRegistry({
+  queueOptions: {
+    concurrency: positiveIntegerEnv('ASYNC_COMPILE_DISPATCH_CONCURRENCY', 2),
+    maxPending: positiveIntegerEnv('COMPILE_MAX_QUEUED', 150),
+    maxPendingPerOwner: positiveIntegerEnv('COMPILE_MAX_QUEUED_PER_OWNER', 3),
+    maxActivePerOwner: 1,
+  },
+  ttlMs: positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 10) * 60 * 1000,
+  maxResults: positiveIntegerEnv('ASYNC_COMPILE_MAX_RESULTS', 100),
 });
 
 function compilePriority(req) {
@@ -291,13 +364,41 @@ function queueCompileRequest(req, res, next) {
 // parsed body inside the 1 GB backend container.
 app.use('/compile', queueCompileRequest);
 
-app.get('/api/compile/queue', (req, res) => {
+app.get('/api/compile/queue', async (req, res) => {
   const state = compileQueue.snapshot();
+  const asyncState = compileJobRegistry.metrics();
+  const asyncQueue = asyncState.queue;
+  await artifactCacheReady;
   res.json({
     active: state.active,
     pending: state.pending,
     concurrency: state.concurrency,
     maxPending: state.maxPending,
+    asyncJobs: {
+      queued: asyncState.queued,
+      running: asyncState.running,
+      completed: asyncState.completed,
+      failed: asyncState.failed,
+      cancelled: asyncState.cancelled,
+      retained: asyncState.retained,
+      counters: asyncState.counters,
+      queue: {
+        concurrency: asyncQueue.concurrency,
+        maxActivePerOwner: asyncQueue.maxActivePerOwner,
+        maxPendingPerOwner: asyncQueue.maxPendingPerOwner,
+        maxPending: asyncQueue.maxPending,
+        active: asyncQueue.active,
+        pending: asyncQueue.pending,
+        inFlightKeys: asyncQueue.inFlightKeys,
+      },
+    },
+    traceAnalysis: traceAnalysisPool.snapshot(),
+    traceAnalysisCacheEntries: traceAnalysisCache.size,
+    resultStreams: {
+      active: resultStreamState.active,
+      max: positiveIntegerEnv('ASYNC_COMPILE_RESULT_STREAMS', 8),
+    },
+    artifacts: artifactCache.stats(),
   });
 });
 
@@ -308,6 +409,40 @@ const TEMP_DIR = path.join(__dirname, 'tmp');
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR);
 }
+
+function computeCompilerFingerprint() {
+  const hash = createHash('sha256');
+  hash.update(process.env.ASM_COMPILER_FINGERPRINT || `${process.platform}-${process.arch}-g++`);
+  for (const args of [['--version'], ['-dumpmachine'], ['-dumpfullversion', '-dumpversion']]) {
+    const result = spawnSync('g++', args, { encoding: 'utf8', timeout: 3000, windowsHide: true });
+    hash.update(result.stdout || '');
+    hash.update(result.stderr || '');
+    hash.update(String(result.status));
+  }
+  for (const relativePath of ['trace-instrumenter.js', 'lib/ASMTrace.hpp', 'lib/AV.hpp']) {
+    hash.update(relativePath);
+    hash.update(fs.readFileSync(path.join(__dirname, relativePath)));
+  }
+  return `asm-compiler-v2-${hash.digest('hex')}`;
+}
+
+const COMPILER_FINGERPRINT = computeCompilerFingerprint();
+
+const artifactCache = new ArtifactCache({
+  rootDir: process.env.ARTIFACT_CACHE_DIR || path.join(__dirname, 'artifact-cache-data'),
+  maxBytes: positiveIntegerEnv('ARTIFACT_CACHE_MAX_MB', 512) * 1024 * 1024,
+  defaultTtlMs: positiveIntegerEnv('ARTIFACT_CACHE_TTL_HOURS', 168) * 60 * 60 * 1000,
+});
+const artifactCacheReady = artifactCache.init().catch((error) => {
+  console.error('Artifact cache initialization failed:', error.message);
+  return null;
+});
+
+const artifactMaintenanceTimer = setInterval(() => {
+  compileJobRegistry.metrics();
+  artifactCache.prune().catch(error => console.error('Artifact cache prune failed:', error.message));
+}, 60_000);
+artifactMaintenanceTimer.unref();
 
 // === 限制設定 ===
 const LIMITS = {
@@ -324,6 +459,10 @@ const LIMITS = {
 // many browsers open the same public example deck.
 const TRACE_ANALYSIS_CACHE_MAX = positiveIntegerEnv('TRACE_ANALYSIS_CACHE_MAX', 100);
 const traceAnalysisCache = new Map();
+const traceAnalysisPool = new TraceAnalysisPool({
+  size: positiveIntegerEnv('TRACE_ANALYSIS_WORKERS', 1),
+  maxPending: positiveIntegerEnv('TRACE_ANALYSIS_MAX_QUEUED', 150),
+});
 
 function getCachedTraceAnalysis(key) {
   const value = traceAnalysisCache.get(key);
@@ -357,19 +496,247 @@ app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'f
 app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaames', 'iro', 'dist')));
 app.use('/vendor/ace', express.static(path.join(__dirname, 'node_modules', 'ace-builds', 'src-min-noconflict')));
 app.use(express.static(path.join(__dirname, 'public')));
+// Async jobs are spooled to disk, but bounding each request also limits the
+// short interval between JSON parsing and the spool write during a burst.
+app.use('/api/compile/jobs', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: LIMITS.HTTP_JSON_SIZE }));
 app.use((err, req, res, next) => {
   if (err?.type === 'entity.too.large') {
+    if (req.path?.startsWith('/api/compile/jobs')) {
+      return res.status(413).json({ error: '非同步編譯請求超過 512 KB 上限' });
+    }
     return res.status(413).json({ error: '請求內容超過 8 MB 上限' });
   }
   return next(err);
+});
+
+function sendCompileJobError(res, error) {
+  if (error instanceof CompileJobRegistryError || error instanceof CompileQueueError) {
+    if (error.code === 'COMPILE_QUEUE_FULL') res.setHeader('Retry-After', '5');
+    return res.status(error.statusCode || 500).json({ error: error.message, code: error.code });
+  }
+  console.error('Async compile job failed:', error);
+  return res.status(500).json({ error: '非同步編譯工作暫時無法使用', code: 'ASYNC_COMPILE_ERROR' });
+}
+
+function forwardedCompileHeaders(req) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Compile-Cache': 'shared',
+    'X-Compile-Purpose': String(req.headers['x-compile-purpose'] || 'background'),
+    'X-ASM-Internal-Token': INTERNAL_COMPILE_TOKEN,
+    'X-ASM-Internal-Owner': req.compileOwnerId,
+  };
+  return headers;
+}
+
+async function spoolFetchResponse(response, ttlMs) {
+  const maximumBytes = positiveIntegerEnv('ASYNC_COMPILE_RESULT_MAX_MB', 128) * 1024 * 1024;
+  const declaredBytes = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredBytes) && declaredBytes > maximumBytes) {
+    throw new Error(`非同步編譯結果超過 ${maximumBytes / 1024 / 1024} MB 上限`);
+  }
+  const stagingDirectory = path.join(artifactCache.rootDir, '.staging');
+  await fs.promises.mkdir(stagingDirectory, { recursive: true });
+  const temporaryPath = path.join(stagingDirectory, `async_result_${uuidv4()}.json`);
+  const hash = createHash('sha256').update('async-compile-result-v1\0');
+  let bytes = 0;
+  const limiter = new Transform({
+    transform(chunk, encoding, callback) {
+      bytes += chunk.length;
+      if (bytes > maximumBytes) return callback(new Error(`非同步編譯結果超過 ${maximumBytes / 1024 / 1024} MB 上限`));
+      hash.update(chunk);
+      callback(null, chunk);
+    },
+  });
+  try {
+    const source = response.body ? Readable.fromWeb(response.body) : Readable.from([]);
+    await pipeline(source, limiter, fs.createWriteStream(temporaryPath, { flags: 'wx' }));
+    const sharedTraceId = String(response.headers.get('x-compile-trace-id') || '');
+    if (/^[a-f0-9]{64}$/.test(sharedTraceId)) {
+      const sharedTrace = await artifactCache.lookup('trace', sharedTraceId);
+      if (sharedTrace) {
+        return {
+          statusCode: response.status,
+          resultArtifactId: sharedTraceId,
+          contentType: response.headers.get('content-type') || 'application/json',
+        };
+      }
+    }
+    const resultArtifactId = hash.digest('hex');
+    await artifactCache.putFile('trace', resultArtifactId, temporaryPath, {
+      ttlMs,
+      metadata: {
+        asyncCompileResult: true,
+        statusCode: response.status,
+        contentType: response.headers.get('content-type') || 'application/json',
+      },
+    });
+    return {
+      statusCode: response.status,
+      resultArtifactId,
+      contentType: response.headers.get('content-type') || 'application/json',
+    };
+  } finally {
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => {});
+  }
+}
+
+async function storeJsonArtifact(key, body, options = {}) {
+  const stagingDirectory = path.join(artifactCache.rootDir, '.staging');
+  await fs.promises.mkdir(stagingDirectory, { recursive: true });
+  const temporaryPath = path.join(stagingDirectory, `cached_response_${uuidv4()}.json`);
+  try {
+    await pipeline(
+      Readable.from(TraceChunkStore.jsonParts(body)),
+      fs.createWriteStream(temporaryPath, { flags: 'wx' }),
+    );
+    return await artifactCache.putFile('trace', key, temporaryPath, options);
+  } finally {
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => {});
+  }
+}
+
+// Optional non-blocking API for bursty classrooms. Existing clients may keep
+// using POST /compile; new clients can submit once, poll status, then download
+// the owner-scoped result without holding a long HTTP connection open.
+app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, async (req, res) => {
+  if (typeof req.body?.code !== 'string') return res.status(400).json({ error: 'code 必須是字串' });
+  if (!await artifactCacheReady) return res.status(503).json({ error: '編譯結果儲存區尚未就緒' });
+  const requestBody = { ...req.body, cachePolicy: 'shared' };
+  const asyncResultTtlMs = positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 10) * 60 * 1000;
+  const asyncRequestTtlMs = positiveIntegerEnv('ASYNC_COMPILE_REQUEST_TTL_MINUTES', 120) * 60 * 1000;
+  const requestArtifactId = sha256Canonical({
+    namespace: 'async-compile-request-v1',
+    requestBody,
+    engine: `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`,
+    compiler: COMPILER_FINGERPRINT,
+  });
+  const compileHeaders = forwardedCompileHeaders(req);
+  const priority = compilePriority(req);
+  try {
+    await artifactCache.put('trace', requestArtifactId, canonicalStringify(requestBody), {
+      ttlMs: asyncRequestTtlMs,
+      metadata: { asyncCompileRequest: true },
+    });
+    const handle = compileJobRegistry.submit({
+      ownerId: req.compileOwnerId,
+      key: requestArtifactId,
+      priority,
+      metadata: { requestArtifactId },
+      run: async () => {
+        const requestArtifact = await artifactCache.read('trace', requestArtifactId);
+        if (!requestArtifact) {
+          const error = new Error('排隊中的編譯內容已過期，請重新送出工作');
+          error.code = 'ASYNC_COMPILE_REQUEST_EXPIRED';
+          error.statusCode = 410;
+          throw error;
+        }
+        try {
+          const response = await fetch(`http://127.0.0.1:${PORT}/compile`, {
+            method: 'POST',
+            headers: compileHeaders,
+            body: requestArtifact.data,
+            signal: AbortSignal.timeout(positiveIntegerEnv('ASYNC_COMPILE_TIMEOUT_MS', 420_000)),
+          });
+          if (response.status === 429 || response.status >= 500) {
+            await response.body?.cancel().catch(() => {});
+            const error = new Error(`內部編譯服務回應 ${response.status}`);
+            error.code = 'ASYNC_COMPILE_UPSTREAM_ERROR';
+            error.statusCode = response.status;
+            throw error;
+          }
+          return await spoolFetchResponse(response, asyncResultTtlMs);
+        } finally {
+          await artifactCache.remove('trace', requestArtifactId).catch(() => {});
+        }
+      },
+    });
+    const snapshot = compileJobRegistry.getSnapshot(handle.jobId, req.compileOwnerId);
+    res.status(202).json({
+      jobId: handle.jobId,
+      state: snapshot.state,
+      queuePosition: snapshot.queuePosition,
+      deduplicated: handle.deduplicated,
+      statusUrl: `/api/compile/jobs/${handle.jobId}`,
+      resultUrl: `/api/compile/jobs/${handle.jobId}/result`,
+    });
+  } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      console.error('Async compile result stream failed:', error.message);
+      if (!res.destroyed) res.destroy(error);
+      return undefined;
+    }
+    return sendCompileJobError(res, error);
+  }
+});
+
+app.get('/api/compile/jobs/:jobId', attachCompileOwner, compileJobPollLimiter, (req, res) => {
+  try {
+    const snapshot = compileJobRegistry.getSnapshot(req.params.jobId, req.compileOwnerId);
+    res.json({
+      ...snapshot,
+      resultUrl: snapshot.state === 'completed'
+        ? `/api/compile/jobs/${snapshot.jobId}/result`
+        : null,
+    });
+  } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      console.error('Async compile result stream failed:', error.message);
+      if (!res.destroyed) res.destroy(error);
+      return undefined;
+    }
+    return sendCompileJobError(res, error);
+  }
+});
+
+app.get('/api/compile/jobs/:jobId/result', attachCompileOwner, compileResultLimiter, async (req, res) => {
+  const releaseStream = acquireResultStream(req.compileOwnerId);
+  if (!releaseStream) {
+    res.setHeader('Retry-After', '2');
+    return res.status(429).json({ error: '目前下載中的大型結果過多，請稍後再試' });
+  }
+  try {
+    const snapshot = compileJobRegistry.getSnapshot(req.params.jobId, req.compileOwnerId);
+    if (snapshot.state !== 'completed') {
+      return res.status(409).json({ error: '編譯工作尚未完成', state: snapshot.state });
+    }
+    const lease = await artifactCache.acquire('trace', snapshot.result.resultArtifactId);
+    if (!lease) return res.status(410).json({ error: '編譯結果已過期，請重新送出工作' });
+    res.status(snapshot.result.statusCode);
+    res.type(snapshot.result.contentType || 'application/json');
+    res.setHeader('Content-Length', String(lease.entry.size));
+    try {
+      await pipeline(fs.createReadStream(lease.entry.path), res);
+    } finally {
+      await lease.release();
+    }
+    return undefined;
+  } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      console.error('Async compile result stream failed:', error.message);
+      if (!res.destroyed) res.destroy(error);
+      return undefined;
+    }
+    return sendCompileJobError(res, error);
+  } finally {
+    releaseStream();
+  }
+});
+
+app.delete('/api/compile/jobs/:jobId', attachCompileOwner, (req, res) => {
+  try {
+    res.json(compileJobRegistry.cancel(req.params.jobId, req.compileOwnerId));
+  } catch (error) {
+    return sendCompileJobError(res, error);
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 靜態分析 API：只解析來源碼，不會編譯或執行使用者輸入
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, (req, res) => {
+app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, async (req, res) => {
   const code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
@@ -380,70 +747,15 @@ app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter,
     return res.json(cached);
   }
   try {
-    const analysis = analyzeSource(code);
-    const instrumented = instrumentSource(code, []);
-    const frameDirectives = instrumented.frameDirectives;
-    const layoutDirectives = instrumented.layoutDirectives;
-    const branchDirectives = instrumented.branchDirectives;
-    const responseBody = {
-      success: true,
-      layouts: layoutDirectives,
-      branches: branchDirectives.map(directive => ({
-        type: directive.type,
-        line: directive.line,
-        label: directive.label || '',
-        layoutId: directive.layoutId || ''
-      })),
-      frameDirectives: frameDirectives.map(directive => ({
-        line: directive.line,
-        name: directive.name || '',
-        objectId: directive.objectId || '',
-        layoutId: directive.layoutId || '',
-        names: directive.names,
-        variableIds: directive.variables.map(variable => variable.id),
-        captureOnlyVariableIds: directive.captureOnlyVariableIds || [],
-        lets: directive.lets || [],
-        bindings: directive.bindings || [],
-        objectBinding: directive.objectBinding || null,
-        placeBindings: directive.placeBindings || [],
-        renderer: directive.renderer || '',
-        rendererOptions: directive.rendererOptions || {},
-        objects: (directive.objects || []).map(object => ({
-          line: object.line,
-          frameSpec: object.frameSpec || '',
-          objectId: object.objectId || '',
-          layoutId: object.layoutId || '',
-          primaryVariableId: object.primaryVariableId || '',
-          primaryName: object.primaryName || '',
-          displayVariableIds: object.displayVariableIds || [],
-          renderer: object.renderer || '',
-          rendererOptions: object.rendererOptions || {},
-          objectBinding: object.objectBinding || null
-        })),
-        when: directive.when || null,
-        texts: directive.texts || [],
-        styles: directive.styles || [],
-        segments: directive.segments || [],
-        arrows: directive.arrows || [],
-        eventControls: directive.eventControls || [],
-        autoMarkVariableIds: directive.autoMarkVariableIds,
-        camera: directive.camera || null,
-        presetDirectives: directive.presetDirectives || []
-      })),
-      variables: instrumented.variables.map(variable => ({
-        id: variable.id,
-        name: variable.name,
-        cppType: variable.type,
-        kind: variable.kind,
-        line: variable.line,
-        functionName: variable.functionName,
-        supported: variable.supported
-      }))
-    };
+    const responseBody = await traceAnalysisPool.analyze(code);
     setCachedTraceAnalysis(cacheKey, responseBody);
     res.setHeader('X-Trace-Analysis-Cache', 'MISS');
     res.json(responseBody);
   } catch (err) {
+    if (err instanceof TraceAnalysisQueueError) {
+      res.setHeader('Retry-After', '2');
+      return res.status(503).json({ error: '追蹤分析佇列已滿，請稍後再試', code: err.code });
+    }
     console.error('Failed to analyze trace source:', err);
     res.status(400).json({ error: `無法分析 C++ 程式碼：${err.message}` });
   }
@@ -2280,7 +2592,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
 // 流程順序是安全邊界的一部分：驗證來源 → 插樁 → 產生暫存檔 → 編譯 →
 // 受限執行 → 解析 trace → 回收。任一分支結束時都需只回收本請求建立的資源。
 // ─────────────────────────────────────────────────────────────────────────────
-app.post('/compile', (req, res) => runWithCompileContext(() => {
+app.post('/compile', (req, res) => runWithCompileContext(async () => {
   let compileWorkCompleted = false;
   const markCompileWorkComplete = () => {
     if (compileWorkCompleted) return;
@@ -2426,6 +2738,51 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
     }
   }
 
+  const engineFingerprint = `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`;
+  const compilerFingerprint = COMPILER_FINGERPRINT;
+  const executableKey = createExecutableKey({
+    source: sourceCode,
+    compiler: compilerFingerprint,
+    flags: [traceEnabled ? '-O0' : '-O2', process.platform === 'win32' ? '-std=c++1z' : '-std=c++17'],
+    engine: engineFingerprint,
+  });
+  const traceCacheKey = createTraceKey({
+    executableKey,
+    input: typeof input === 'string' ? input : '',
+    traceConfig: { ...trace, enabled: traceEnabled, sliceMode: traceSliceMode },
+    engine: engineFingerprint,
+  });
+  const sharedCache = req.headers['x-compile-cache'] === 'shared' || req.body?.cachePolicy === 'shared';
+  const cacheAvailable = Boolean(await artifactCacheReady);
+  if (sharedCache) res.setHeader('X-Compile-Trace-Id', traceCacheKey);
+
+  if (sharedCache && cacheAvailable) {
+    let cachedLease = null;
+    try {
+      cachedLease = await artifactCache.acquire('trace', traceCacheKey);
+      if (cachedLease) {
+        res.setHeader('X-Compile-Trace-Cache', 'HIT');
+        res.type('application/json');
+        res.setHeader('Content-Length', String(cachedLease.entry.size));
+        // Parsing and execution are already complete. Release the single
+        // expensive-work slot before streaming to a slow browser.
+        markCompileWorkComplete();
+        await pipeline(fs.createReadStream(cachedLease.entry.path), res);
+        return undefined;
+      }
+      res.setHeader('X-Compile-Trace-Cache', 'MISS');
+    } catch (error) {
+      if (res.headersSent) {
+        logDebug('傳送追蹤快取失敗：' + error.message);
+        res.destroy(error);
+        return undefined;
+      }
+      logDebug('讀取追蹤快取失敗，改用一般編譯：' + error.message);
+    } finally {
+      if (cachedLease) await cachedLease.release();
+    }
+  }
+
   /*
   // 關鍵字過濾
   for (const keyword of BLACKLIST_KEYWORDS) {
@@ -2498,14 +2855,46 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
   const compileHardTimeoutSeconds = `${(compileHardTimeoutMs / 1000).toFixed(3)}s`;
   const compilerMemoryKB = 512 * 1024;
   req.compileWorkSpawned = true;
-  const gpp = isWindows
-    ? spawn('g++', compileArgs, { cwd: __dirname })
-    : spawn('sh', [
-        '-c',
-        `ulimit -v ${compilerMemoryKB} && exec timeout --signal=TERM --kill-after=1s ${compileHardTimeoutSeconds} g++ "$@"`,
-        'g++',
-        ...compileArgs,
-      ], { cwd: __dirname, detached: true });
+  let executableCacheHit = false;
+  if (cacheAvailable) {
+    let lease = null;
+    try {
+      lease = await artifactCache.acquire('executable', executableKey);
+      if (lease) {
+        fs.copyFileSync(lease.entry.path, exePath);
+        executableCacheHit = true;
+        res.setHeader('X-Compile-Executable-Cache', 'HIT');
+        logDebug('EXECUTABLE_CACHE_HIT: 重用已編譯執行檔');
+      } else {
+        res.setHeader('X-Compile-Executable-Cache', 'MISS');
+      }
+    } catch (error) {
+      logDebug('讀取執行檔快取失敗，改用一般編譯：' + error.message);
+    } finally {
+      if (lease) await lease.release();
+    }
+  }
+
+  let gpp;
+  if (executableCacheHit) {
+    // Keep the normal post-compile path intact while skipping the compiler.
+    // The cached binary is copied into this request's private temp path so the
+    // normal sandbox permissions and cleanup rules still apply.
+    gpp = new EventEmitter();
+    gpp.stderr = new EventEmitter();
+    gpp.pid = null;
+    gpp.kill = () => false;
+    setImmediate(() => gpp.emit('close', 0));
+  } else {
+    gpp = isWindows
+      ? spawn('g++', compileArgs, { cwd: __dirname })
+      : spawn('sh', [
+          '-c',
+          `ulimit -v ${compilerMemoryKB} && exec timeout --signal=TERM --kill-after=1s ${compileHardTimeoutSeconds} g++ "$@"`,
+          'g++',
+          ...compileArgs,
+        ], { cwd: __dirname, detached: true });
+  }
 
   let compileErr = '';
   let compileTimedOut = false;
@@ -2524,7 +2913,7 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
       });
     }
   };
-  const compileTimer = setTimeout(() => {
+  const compileTimer = executableCacheHit ? null : setTimeout(() => {
     compileTimedOut = true;
     logDebug(`編譯超過 ${LIMITS.COMPILE_TIME_MS}ms，強制終止`, { pid: gpp.pid });
     terminateCompilerTree();
@@ -2563,7 +2952,7 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
     markCompileWorkComplete();
   });
 
-  gpp.on('close', (codeExit) => {
+  gpp.on('close', async (codeExit) => {
     if (compileSettled) return;
     compileSettled = true;
     clearTimeout(compileTimer);
@@ -2587,7 +2976,9 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
       return;
     }
 
-    logDebug('編譯成功，耗時 ' + compileTime + ' ms');
+    logDebug(executableCacheHit
+      ? `執行檔快取載入完成，耗時 ${compileTime} ms`
+      : `編譯成功，耗時 ${compileTime} ms`);
 
     if (!isWindows) {
       // 確保 sandboxuser (UID 1000) 有權限執行這個 root 產生的檔案
@@ -2599,6 +2990,17 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
         res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.', verdict: 'INFRA' });
         markCompileWorkComplete();
         return;
+      }
+    }
+
+    if (!executableCacheHit && cacheAvailable) {
+      try {
+        await artifactCache.putFile('executable', executableKey, exePath, {
+          metadata: { compilerFingerprint, engineFingerprint },
+        });
+        logDebug('EXECUTABLE_CACHE_STORED: 已保存可重用執行檔');
+      } catch (error) {
+        logDebug('保存執行檔快取失敗，繼續執行本次程式：' + error.message);
       }
     }
 
@@ -2785,8 +3187,26 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
         memoryKB,
         debug_log: getCompileDebugMessages(),
         scriptContent: scriptContent,
-        traceDocument
+        traceDocument,
+        cache: {
+          trace: sharedCache ? 'STORED' : 'BYPASS',
+          executable: executableCacheHit ? 'HIT' : 'MISS',
+          executableId: executableKey,
+          traceId: traceCacheKey,
+        },
       };
+      if (sharedCache && cacheAvailable && traceDocument && !finalError) {
+        try {
+          await storeJsonArtifact(traceCacheKey, responseBody, {
+            metadata: { executableKey, engineFingerprint },
+          });
+          logDebug('TRACE_CACHE_STORED: 已保存共用追蹤結果');
+          responseBody.debug_log = getCompileDebugMessages();
+        } catch (error) {
+          logDebug('保存追蹤快取失敗，繼續回傳本次結果：' + error.message);
+          responseBody.debug_log = getCompileDebugMessages();
+        }
+      }
       // At this point the child has closed and trace parsing is complete. Free
       // the expensive-work slot before a slow client finishes downloading.
       markCompileWorkComplete();

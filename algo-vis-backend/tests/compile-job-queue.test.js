@@ -116,6 +116,24 @@ test('owners are dispatched round-robin while preserving each owner queue', asyn
   assert.deepEqual(order, ['A1', 'B1', 'A2', 'B2']);
 });
 
+test('subscriber handles report fair queue position instead of raw insertion order', async () => {
+  const queue = new CompileJobQueue();
+  const blocker = deferred();
+  const active = queue.enqueue({ ownerId: 'A', run: () => blocker.promise });
+  const a2 = queue.enqueue({ ownerId: 'A', run: () => 'A2' });
+  const b1 = queue.enqueue({ ownerId: 'B', run: () => 'B1' });
+
+  assert.equal(active.getState(), 'active');
+  assert.equal(active.getQueuePosition(), 0);
+  assert.equal(b1.getQueuePosition(), 1);
+  assert.equal(a2.getQueuePosition(), 2);
+
+  blocker.resolve('A1');
+  await Promise.all([active.promise, a2.promise, b1.promise]);
+  assert.equal(a2.getState(), 'completed');
+  assert.equal(a2.getQueuePosition(), null);
+});
+
 test('round-robin cursor skips active owners without restarting at the first owner', async () => {
   const queue = new CompileJobQueue({ concurrency: 2 });
   const a1Gate = deferred();

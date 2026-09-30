@@ -190,10 +190,11 @@
       animation.watches]));
   }
 
-  async function project(liveDeck, editorDraft = null) {
+  async function project(liveDeck, editorDraft = null, options = {}) {
     const deck = clone(liveDeck);
     const liveSlides = new Map(algorithmSlides(liveDeck).map(slide => [slide.id, slide]));
     const assets = {};
+    const prebuiltTraces = {};
     const cacheSeeds = [];
     for (const slide of algorithmSlides(deck)) {
       const live = liveSlides.get(slide.id);
@@ -204,17 +205,30 @@
       const rebuild = presentationFor(trace);
       const exact = await animationKey({ ...animation, rebuild });
       cacheSeeds.push({ key: `exact:${exact}`, trace: clone(trace) });
+      let prebuilt;
+      if (options.includePrebuiltTraces) {
+        const traceId = await sha256(JSON.stringify(trace));
+        const provenance = root.ASMTraceProvenance.create(animation.code, animation.input || '');
+        prebuiltTraces[traceId] = clone(trace);
+        prebuilt = {
+          traceId,
+          engineVersion: engineVersion(),
+          sourceFingerprint: provenance.sourceFingerprint,
+          inputFingerprint: provenance.inputFingerprint
+        };
+      }
       slide.animation = {
         mode: 'trace', code: animation.code, input: animation.input || '',
         sliceMode: animation.sliceMode || trace.sliceMode || 'auto',
         watches: clone(animation.watches || []), rebuild,
+        ...(prebuilt ? { prebuilt } : {}),
         ...(animation.presentationCamera
           ? { presentationCamera: clone(animation.presentationCamera) }
           : {})
       };
     }
     await extractAssets(deck, assets);
-    return { deck, assets, cacheSeeds };
+    return { deck, assets, prebuiltTraces, cacheSeeds };
   }
 
   // -----------------------------------------------------------------------------
@@ -250,14 +264,18 @@
   }
 
   async function encode(projected) {
-    const body = { deck: projected.deck, assets: projected.assets };
+    const prebuiltTraces = projected.prebuiltTraces || {};
+    const body = { deck: projected.deck, assets: projected.assets, ...(Object.keys(prebuiltTraces).length
+      ? { prebuiltTraces } : {}) };
     const bodyText = JSON.stringify(body);
     if (encoder.encode(bodyText).length > MAX_JSON_BYTES) throw new Error('精簡投影片資料超過 128 MB 上限。');
     const manifest = {
       format: 'AlgoShowMaker.asmdeck', packageVersion: PACKAGE_VERSION,
       engineVersion: engineVersion(), exportedAt: new Date().toISOString(),
       contentHash: await sha256(bodyText),
-      assetHashes: Object.keys(projected.assets).sort()
+      assetHashes: Object.keys(projected.assets).sort(),
+      ...(Object.keys(prebuiltTraces).length
+        ? { prebuiltTraceHashes: Object.keys(prebuiltTraces).sort() } : {})
     };
     const compressed = await gzip(encoder.encode(JSON.stringify({ manifest, body })));
     if (compressed.length + MAGIC.length > MAX_ARCHIVE_BYTES) throw new Error('壓縮檔超過 32 MB 匯出上限。');
@@ -290,8 +308,36 @@
         throw new Error(`圖片素材 ${id} 驗證失敗。`);
       }
     }
+    const prebuiltTraces = body.prebuiltTraces || {};
+    if (!prebuiltTraces || typeof prebuiltTraces !== 'object' || Array.isArray(prebuiltTraces)) {
+      throw new Error('預建動畫資料格式錯誤。');
+    }
+    const prebuiltHashes = Object.keys(prebuiltTraces).sort();
+    if (JSON.stringify(prebuiltHashes) !== JSON.stringify(manifest.prebuiltTraceHashes || [])) {
+      throw new Error('預建動畫清單不符。');
+    }
+    for (const id of prebuiltHashes) {
+      const trace = prebuiltTraces[id];
+      if (!trace?.frames?.length || await sha256(JSON.stringify(trace)) !== id) {
+        throw new Error(`預建動畫 ${id} 驗證失敗。`);
+      }
+    }
     const deck = clone(body.deck);
     restoreAssets(deck, body.assets);
+    const currentEngine = engineVersion();
+    for (const slide of algorithmSlides(deck)) {
+      const animation = slide.animation;
+      const descriptor = animation?.prebuilt;
+      if (!descriptor) continue;
+      const trace = prebuiltTraces[descriptor.traceId];
+      if (!trace) throw new Error(`匯出檔缺少預建動畫 ${descriptor.traceId}。`);
+      const expected = root.ASMTraceProvenance.create(animation.code, animation.input || '');
+      const matches = descriptor.engineVersion === currentEngine
+        && descriptor.sourceFingerprint === expected.sourceFingerprint
+        && descriptor.inputFingerprint === expected.inputFingerprint
+        && root.ASMTraceProvenance.status(trace, animation.code, animation.input || '').kind === 'current';
+      if (matches) animation.traceDocument = clone(trace);
+    }
     return { deck, manifest };
   }
 
@@ -415,7 +461,11 @@
     const watches = (animation.watches || []).map(watch => typeof watch === 'string' ? watch : watch.id)
       .filter(id => available.has(id));
     const compileResponse = await fetch('/compile', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...(root.ASMCompileSession?.headers?.('background') || {}) },
+      method: 'POST', headers: {
+        'Content-Type': 'application/json',
+        'X-Compile-Cache': 'shared',
+        ...(root.ASMCompileSession?.headers?.('background') || {})
+      },
       body: JSON.stringify({ code: animation.code, input: animation.input,
         trace: { enabled: true, sliceMode: animation.sliceMode, watches,
           skins: animation.rebuild.view.skins || {}, rules: animation.rebuild.view.rules || [] } })
@@ -433,6 +483,10 @@
   // -----------------------------------------------------------------------------
   async function rebuildAnimation(animation) {
     if (!animation?.rebuild?.view || !animation.code?.trim()) throw new Error('演算法動畫缺少重建設定或原始碼。');
+    if (animation.traceDocument?.frames?.length
+      && root.ASMTraceProvenance.status(animation.traceDocument, animation.code, animation.input || '').kind === 'current') {
+      return { ...animation, traceDocument: clone(animation.traceDocument), rebuild: undefined, cacheKind: 'prebuilt' };
+    }
     const exact = `exact:${await animationKey(animation)}`;
     const cached = await cacheGet(exact);
     if (cached?.frames?.length && root.ASMTraceProvenance.status(cached, animation.code, animation.input).kind === 'current') {
