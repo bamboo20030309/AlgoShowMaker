@@ -57,11 +57,29 @@ test('algorithm slide embeds expose and switch the original result tabs',
 
       for (const mode of ['runtime', 'editor']) {
         const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-        await page.goto(`${base}/algorithm.html?asmEmbed=${mode}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${base}/algorithm.html?asmEmbed=${mode}`, { waitUntil: 'networkidle' });
         await page.waitForFunction(expected => document.body.classList.contains(`asm-embed-${expected}`), mode);
+
+        if (mode === 'runtime') {
+          await page.waitForFunction(() => (
+            getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor
+              === 'rgba(78, 113, 109, 0.08)'
+          ));
+        }
 
         assert.equal(await page.locator('#subTabs').isVisible(), true,
           `${mode} embed displays the result tab frame`);
+        if (mode === 'runtime') {
+          const backgrounds = await page.evaluate(() => ({
+            tabs: getComputedStyle(document.getElementById('subTabs')).backgroundColor,
+            slide: getComputedStyle(document.getElementById('canvasWrapper')).backgroundColor,
+            active: getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor
+          }));
+          assert.equal(backgrounds.tabs, backgrounds.slide,
+            'runtime tab frame uses the same background as the slide');
+          assert.notEqual(backgrounds.active, 'rgb(255, 255, 255)',
+            'the active runtime tab does not introduce a white block');
+        }
         await page.locator('.tab-btn[data-tab="tab-input"]').click();
         assert.equal(await page.locator('#tab-input').evaluate(element => element.classList.contains('active')), true,
           `${mode} embed can select input`);

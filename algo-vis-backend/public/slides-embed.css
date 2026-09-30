@@ -29,8 +29,39 @@ body.asm-embed-runtime #vizPanel {
 /* Algorithm slides keep the original result tabs so the slide itself can
    switch between the canvas, input, output, debug log and syntax tree. */
 body.asm-embed-runtime #subTabs {
-  flex: 0 0 40px;
+  flex: 0 0 42px;
+  height: 42px;
   box-sizing: border-box;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 4px 14px 0;
+  border-bottom-color: rgba(78, 113, 109, 0.14);
+  background: #fbfcfa;
+}
+
+body.asm-embed-runtime #subTabs .tab-btn {
+  margin-top: 0;
+  padding: 7px 14px 8px;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #687774;
+}
+
+body.asm-embed-runtime #subTabs .tab-btn:hover {
+  background: rgba(78, 113, 109, 0.06);
+  color: #355d59;
+}
+
+body.asm-embed-runtime #subTabs .tab-btn.active {
+  background: rgba(78, 113, 109, 0.08);
+  color: #355d59;
+}
+
+body.asm-embed-runtime #subTabs .tab-btn::after {
+  right: 14px;
+  left: 14px;
+  height: 2px;
+  background: #4e716d;
 }
 
 body.asm-embed-runtime #tab-canvas {
