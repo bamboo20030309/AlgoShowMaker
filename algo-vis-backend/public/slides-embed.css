@@ -35,8 +35,8 @@ body.asm-embed-runtime #subTabs {
   align-items: flex-end;
   gap: 2px;
   padding: 4px 14px 0;
-  border-bottom-color: rgba(78, 113, 109, 0.14);
-  background: #fbfcfa;
+  border-bottom-color: #eeeeee;
+  background: #ffffff;
 }
 
 body.asm-embed-runtime #subTabs .tab-btn {
@@ -53,7 +53,7 @@ body.asm-embed-runtime #subTabs .tab-btn:hover {
 }
 
 body.asm-embed-runtime #subTabs .tab-btn.active {
-  background: #fbfcfa;
+  background: #ffffff;
   color: var(--primary-blue);
 }
 

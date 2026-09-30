@@ -63,7 +63,7 @@ test('algorithm slide embeds expose and switch the original result tabs',
         if (mode === 'runtime') {
           await page.waitForFunction(() => (
             getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor
-              === 'rgb(251, 252, 250)'
+              === 'rgb(255, 255, 255)'
           ));
         }
 
@@ -72,7 +72,7 @@ test('algorithm slide embeds expose and switch the original result tabs',
         if (mode === 'runtime') {
           const backgrounds = await page.evaluate(() => ({
             tabs: getComputedStyle(document.getElementById('subTabs')).backgroundColor,
-            slide: getComputedStyle(document.getElementById('canvasWrapper')).backgroundColor,
+            slide: getComputedStyle(document.querySelector('.controls')).backgroundColor,
             active: getComputedStyle(document.querySelector('#subTabs .tab-btn.active')).backgroundColor,
             underline: getComputedStyle(
               document.querySelector('#subTabs .tab-btn.active'),
@@ -80,7 +80,7 @@ test('algorithm slide embeds expose and switch the original result tabs',
             ).backgroundColor
           }));
           assert.equal(backgrounds.tabs, backgrounds.slide,
-            'runtime tab frame uses the same background as the slide');
+            'runtime tab frame uses the same background as the slide controls below');
           assert.equal(backgrounds.active, backgrounds.slide,
             'the active runtime tab continues the slide background');
           assert.equal(backgrounds.underline, 'rgb(0, 122, 204)',
