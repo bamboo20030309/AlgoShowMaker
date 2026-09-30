@@ -1,0 +1,22 @@
+{
+  "format": "AlgoShowMaker.default-animation",
+  "packageVersion": 1,
+  "engineVersion": "10/1",
+  "id": "linear-sieve",
+  "sourceSlideId": "linear-sieve-teaching-22",
+  "totalFrames": 116,
+  "sourceFingerprint": "3675:2681097115:796953991",
+  "inputFingerprint": "3:1731450012:193358996",
+  "preview": {
+    "url": "/default-animation/linear-sieve-preview.asmtrace",
+    "contentHash": "b4157e48b5ff544afab645d7fff0dde74ba47ccbcf8893c23bfd16a3de0d7c52",
+    "bytes": 10590,
+    "jsonBytes": 131338
+  },
+  "full": {
+    "url": "/default-animation/linear-sieve-full.asmtrace",
+    "contentHash": "a173ded3bd8cf0f4807695383735ccb7f2c28a744b72380e243e488db4472b15",
+    "bytes": 371634,
+    "jsonBytes": 6208492
+  }
+}

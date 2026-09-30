@@ -35,6 +35,8 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   // [新增] 防呆：如果已經在 loading (按鈕變暗轉圈中)，就直接忽略這次點擊
   if (runBtn.classList.contains('loading')) return;
 
+  window.ASMDefaultAlgorithm?.cancel?.('run');
+
   // [新增] 1. 開始 loading 狀態
   runBtn.classList.add('loading');
 

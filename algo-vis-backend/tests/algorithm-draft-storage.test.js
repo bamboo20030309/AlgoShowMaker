@@ -130,4 +130,19 @@ test('the retired built-in sample is discarded while edited drafts remain', () =
   assert.equal(edited.editorState.code, 'user edited sample');
   assert.equal(edited.editorState.input, '9');
   assert.equal(edited.draft.restored(), true);
+
+  const currentDefaultSession = storage();
+  currentDefaultSession.setItem('asm_algorithm_draft_v2:page:%2Falgorithm.html:standalone', JSON.stringify({
+    version: 2, code: 'linear sieve default', input: '100', updatedAt: 1002
+  }));
+  const currentDefault = page(local, currentDefaultSession, '/algorithm.html', '', '3675:2681097115:796953991');
+  assert.equal(currentDefault.draft.restored(), false);
+
+  const changedInputSession = storage();
+  changedInputSession.setItem('asm_algorithm_draft_v2:page:%2Falgorithm.html:standalone', JSON.stringify({
+    version: 2, code: 'linear sieve default', input: '50', updatedAt: 1003
+  }));
+  const changedInput = page(local, changedInputSession, '/algorithm.html', '', '3675:2681097115:796953991');
+  assert.equal(changedInput.editorState.input, '50');
+  assert.equal(changedInput.draft.restored(), true);
 });

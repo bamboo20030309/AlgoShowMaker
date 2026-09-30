@@ -29,6 +29,7 @@ global.indexedDB = require('fake-indexeddb').indexedDB;
 const nativeFetch = global.fetch;
 global.fetch = (input, init) => nativeFetch(new URL(String(input), baseUrl), init);
 const ASMDeck = require('../public/asmdeck.js');
+const { buildDefaultAlgorithmAssets } = require('./default-algorithm-assets.js');
 
 async function main() {
   const catalog = JSON.parse(await fs.readFile(path.join(publicRoot, 'guest-decks.json'), 'utf8'));
@@ -50,6 +51,9 @@ async function main() {
     const temporary = `${target}.prebuild-${process.pid}.tmp`;
     await fs.writeFile(temporary, output);
     await fs.rename(temporary, target);
+    if (entry.id === 'linear-sieve') {
+      await buildDefaultAlgorithmAssets(rebuilt, { publicRoot, engineVersion: ASMDeck.engineVersion() });
+    }
     const count = Object.keys(projected.prebuiltTraces).length;
     console.log(`${entry.id}: ${count} 個預建動畫，${output.length} bytes`);
   }
