@@ -524,7 +524,7 @@
     return currentTrace;
   }
 
-  function loadAnimation(animation = {}) {
+  function loadAnimation(animation = {}, options = {}) {
     animation = window.ASMAlgorithmAnimation.normalize(animation);
     pendingAnimation = animation.rebuild && !animation.traceDocument?.frames?.length ? animation : null;
     pendingViewBaseline = pendingAnimation ? sourceViewBlock(editorSource()) : null;
@@ -536,7 +536,7 @@
         sliceMode: animation.sliceMode || animation.traceDocument.sliceMode,
         skins: animation.skins || animation.traceDocument.skins,
         rules: animation.rules || animation.traceDocument.rules
-      }, { preserveEventSettings: true });
+      }, { preserveEventSettings: true, openStudio: options.openStudio });
     } else {
       currentTrace = null;
       sourceViewBaseline = null;

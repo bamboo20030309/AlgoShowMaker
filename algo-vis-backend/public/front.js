@@ -514,52 +514,62 @@ function csGetCurrentLine() {
 }
 
 
-// ====== 注入初始程式碼：從 sample_code.cpp 讀取並貼到 Editor ======
-fetch('sample_code.cpp')
-  .then(response => {
-    if (!response.ok) throw new Error('無法讀取 sample_code.cpp');
-    return response.text();
-  })
-  .then(code => {
-    if (window.__asmEmbeddedAnimationPayload || algorithmDraftRestored || algorithmEditorChangedSinceStartup) return;
-    aceEditor.setValue(code, -1);
-    // 一載入就自動把 //draw 區塊摺疊起來
+// -----------------------------------------------------------------------------
+// 預設演算法動畫
+// 直接從官方線篩投影片的預建 Trace 載入，首次開啟即可播放，不送出 analyze／compile。
+// 使用者在此分頁留下的草稿仍優先，嵌入投影片時則完全交由父頁提供動畫。
+// -----------------------------------------------------------------------------
+const DEFAULT_ALGORITHM_ARCHIVE = 'guest-decks/linear-sieve.asmdeck?v=prebuilt-10';
+const DEFAULT_ALGORITHM_SLIDE_ID = 'linear-sieve-teaching-22';
+
+function canApplyDefaultAlgorithm() {
+  return !window.__asmEmbeddedAnimationPayload
+    && !algorithmDraftRestored
+    && !algorithmEditorChangedSinceStartup;
+}
+
+async function loadDefaultAlgorithm() {
+  if (!canApplyDefaultAlgorithm()) return;
+  try {
+    const response = await fetch(DEFAULT_ALGORITHM_ARCHIVE);
+    if (!response.ok) throw new Error(`無法讀取預設線篩動畫 (${response.status})`);
+    const decoded = await window.ASMDeck.decode(await response.blob());
+    const slide = (decoded.deck.groups || []).flatMap(group => group.slides || [])
+      .find(item => item.id === DEFAULT_ALGORITHM_SLIDE_ID);
+    const animation = slide?.animation;
+    if (!animation?.traceDocument?.frames?.length) throw new Error('預設線篩動畫缺少預建 Trace');
+    if (!canApplyDefaultAlgorithm()) return;
+
+    algorithmDraftApplying = true;
+    aceEditor.setValue(animation.code, -1);
+    const inputArea = document.getElementById('inputArea');
+    if (inputArea) inputArea.value = animation.input || '';
+    algorithmDraftApplying = false;
+    window.ASMTraceEditor?.loadAnimation(animation, { openStudio: false });
     setTimeout(foldDrawBlocks, 0);
-  })
-  .catch(err => {
-    console.error(err);
-    if (window.__asmEmbeddedAnimationPayload || algorithmDraftRestored || algorithmEditorChangedSinceStartup) return;
-    // 若讀檔失敗，再 fallback 回原本的初始範例
-    const fallbackCode = `#include <bits/stdc++.h>
-#include "AV.hpp"
-using namespace std;
-AV av;
-int main() {
-    vector<int> num={0};
-    av.start_draw();
-    for (int i = 0; i < 20; i++) {
-        num.push_back(i+1);
-        av.start_frame_draw();
-        av.frame_draw("num", Pos(0,0), num, {{{"highlight"},{i}}, {{"focus"},{i}}, {{"point"},{i}}, {{"mark"},{i}}, {{"background"},{i}}}, {0},  "normal", 0, 1);
-        av.frame_draw("heap", Pos("num","raw bottom-left",0,100), num, {{{"highlight"},{i-1}}, {{"focus"},{i-1}}, {{"point"},{i-1}}, {{"mark"},{i-1}}, {{"background"},{i-1}}}, {0},  "heap", 10, 1);
-        av.frame_draw("BIT", Pos("heap","raw bottom-left",0,100), num, {{{"highlight"},{i-1}}, {{"focus"},{i-1}}, {{"point"},{i-1}}, {{"mark"},{i-1}}, {{"background"},{i-1}}}, {0},  "BIT", 10, 1);
-        av.arrow( Pos("num","bottom"), Pos("heap","top"), {{"color","black"},{"width","3"}});
-        av.arrow( Pos("num",i+1), Pos("BIT",i));
-        if(i==3 || i==7 || i==13) {
-            av.key_frame_draw("num", Pos(0,0), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i}}, {{"point"},{i}}, {{"focus"},{i}}, {{"background"},{i}}}, {0},  "normal", 0, 1);
-            av.key_frame_draw("heap", Pos("num","raw bottom-left",0,100), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i-1}}, {{"point"},{i-1}}, {{"focus"},{i-1}}, {{"background"},{i-1}}}, {0},  "heap", 10, 1);
-            av.key_frame_draw("BIT", Pos("heap","raw bottom-left",0,100), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i-1}}, {{"point"},{i-1}}, {{"focus"},{i-1}}, {{"background"},{i-1}}}, {0},  "BIT", 10, 1);
-        }
-        av.auto_camera();
-        av.end_frame_draw();
+  } catch (error) {
+    algorithmDraftApplying = false;
+    console.error('預設線篩動畫載入失敗', error);
+    if (!canApplyDefaultAlgorithm()) return;
+    try {
+      const response = await fetch('sample_code.cpp');
+      if (!response.ok) throw new Error('無法讀取線篩範例程式碼');
+      const code = await response.text();
+      if (!canApplyDefaultAlgorithm()) return;
+      algorithmDraftApplying = true;
+      aceEditor.setValue(code, -1);
+      const inputArea = document.getElementById('inputArea');
+      if (inputArea) inputArea.value = '100';
+      algorithmDraftApplying = false;
+      setTimeout(foldDrawBlocks, 0);
+    } catch (fallbackError) {
+      algorithmDraftApplying = false;
+      console.error(fallbackError);
     }
-    av.end_draw();
-    return 0;
-}`;
-    aceEditor.setValue(fallbackCode, -1);
-    // fallback 也一樣一開始就摺疊
-    setTimeout(foldDrawBlocks, 0);
-  });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadDefaultAlgorithm);
 
 
 
