@@ -5,7 +5,6 @@
 body.asm-embed-runtime #top-bar,
 body.asm-embed-runtime #codePanel,
 body.asm-embed-runtime #divider,
-body.asm-embed-runtime #subTabs,
 body.asm-embed-runtime #drawingToolbar,
 body.asm-embed-runtime #algoSidePanel,
 body.asm-embed-runtime #myCodesSidebar,
@@ -25,6 +24,13 @@ body.asm-embed-runtime #vizPanel {
   width: 100%;
   height: 100%;
   background: #fbfcfa;
+}
+
+/* Algorithm slides keep the original result tabs so the slide itself can
+   switch between the canvas, input, output, debug log and syntax tree. */
+body.asm-embed-runtime #subTabs {
+  flex: 0 0 40px;
+  box-sizing: border-box;
 }
 
 body.asm-embed-runtime #tab-canvas {
