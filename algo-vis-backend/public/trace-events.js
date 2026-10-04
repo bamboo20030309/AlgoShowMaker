@@ -9,6 +9,7 @@
 (function () {
   const definitions = [
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
+    { type: 'visual-enter', label: '物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
     { type: 'object-exit', label: '物件退場／手動退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
     // Reads remain internal access metadata for automatic fixed markers. They
     // are not a user-facing event, animation, timeline entry or Studio item.
@@ -46,7 +47,7 @@
   const canonicalEventType = type => eventTypeAliases[type] || type;
   const aliasedEventLabels = Object.freeze({
     'scope-exit': '作用域結束／物件退場',
-    'visual-exit': '手動物件退場',
+    'visual-exit': '物件退場',
     write: '數值更新／複合賦值',
     assign: '直接／初始化賦值',
     return: '流程跳轉',
@@ -59,6 +60,7 @@
     // their switches are disabled the frame jumps directly to the resulting
     // visible/absent state without an entrance/exit animation.
     declare: 'declare',
+    'visual-enter': 'declare',
     'object-exit': 'exit',
     read: 'none',
     assignment: 'assign',
@@ -321,7 +323,8 @@
         && (!Number.isFinite(keepOrder) || entry.order < keepOrder)
       ))
       .map(entry => entry.event)
-      .filter(event => event?.type === 'scope-exit' || event?.type === 'visual-exit' || (
+      .filter(event => event?.type === 'scope-exit'
+        || (event?.type === 'visual-exit' && event?.automaticVisibility !== true) || (
         event?.loopBoundary === true
         && event.enabled === true
         && event.loopBoundarySuppressed !== true
@@ -342,7 +345,8 @@
       segments: cloneValue(snapshot.frame.segments || [])
     };
     boundaryEvents.forEach(event => {
-      if (event?.type === 'scope-exit' || event?.type === 'visual-exit') {
+      if (event?.type === 'scope-exit'
+        || (event?.type === 'visual-exit' && event?.automaticVisibility !== true)) {
         (event.targets || []).forEach(target => {
           const variableId = String(target?.variableId || '');
           const lifetime = String(target?.lifetimeIdentity || event.lifetimeIdentity || '');
@@ -512,6 +516,207 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 區段：畫面顯示生命週期事件
+  // ---------------------------------------------------------------------------
+  function rebuildVisualLifecycleEvents(document) {
+    const frames = Array.isArray(document?.frames) ? document.frames : [];
+    const variables = document?.variables || {};
+    const sourceCode = String(document?.sourceCode || '');
+    const lineStarts = [0];
+    for (let offset = 0; offset < sourceCode.length; offset += 1) {
+      if (sourceCode[offset] === '\n') lineStarts.push(offset + 1);
+    }
+    const sourceForFrame = frame => {
+      const line = Math.max(1, Number(frame?.source?.line) || 1);
+      const from = lineStarts[line - 1] ?? 0;
+      const rawEnd = lineStarts[line] == null ? sourceCode.length : lineStarts[line] - 1;
+      const to = rawEnd > from && sourceCode[rawEnd - 1] === '\r' ? rawEnd - 1 : rawEnd;
+      return {
+        functionName: String(frame?.source?.function || 'global'),
+        from,
+        to,
+        line,
+        column: 1,
+        endLine: line,
+        endColumn: Math.max(1, to - from + 1),
+        text: sourceCode.slice(from, to).trim(),
+        contexts: (document?.sourceStructure || []).filter(context => (
+          Number(context?.from) <= from && from < Number(context?.to)
+        ))
+      };
+    };
+    const sourceForDeclaration = variableId => {
+      const variable = variables?.[variableId] || {};
+      const declaration = (document?.sourceDeclarations || []).find(candidate => (
+        candidate?.name === variable.name
+        && Number(candidate?.line) === Number(variable.line)
+        && String(candidate?.functionName || '') === String(variable.functionName || '')
+      ));
+      const line = Math.max(1, Number(declaration?.line) || Number(variable.line) || 1);
+      const fallbackFrom = lineStarts[line - 1] ?? 0;
+      const fallbackRawEnd = lineStarts[line] == null ? sourceCode.length : lineStarts[line] - 1;
+      const fallbackTo = fallbackRawEnd > fallbackFrom && sourceCode[fallbackRawEnd - 1] === '\r'
+        ? fallbackRawEnd - 1
+        : fallbackRawEnd;
+      const from = declaration
+        ? Math.max(0, Number(declaration.from) || 0)
+        : fallbackFrom;
+      const to = declaration
+        ? Math.max(from, Number(declaration.to) || from)
+        : fallbackTo;
+      const endLine = line + (sourceCode.slice(from, to).match(/\n/g) || []).length;
+      return {
+        functionName: String(declaration?.functionName || variable.functionName || 'global'),
+        from,
+        to,
+        line,
+        column: 1,
+        endLine,
+        endColumn: Math.max(1, to - (lineStarts[endLine - 1] ?? from) + 1),
+        text: sourceCode.slice(from, to).trim(),
+        contexts: (document?.sourceStructure || []).filter(context => (
+          Number(context?.from) <= from && from < Number(context?.to)
+        ))
+      };
+    };
+    frames.forEach(frame => {
+      frame.events = (frame.events || []).filter(event => event?.automaticVisibility !== true);
+    });
+    const hiddenIds = frame => new Set(frame?.captureOnlyVariableIds || []);
+    const stableTarget = (frame, variableId, entry) => ({
+      role: 'target',
+      sceneGeneration: Number(frame?.sceneGeneration) || 0,
+      variableId,
+      runtimeIdentity: String(entry?.identity || ''),
+      lifetimeIdentity: String(entry?.lifetime || ''),
+      expression: String(entry?.name || variables?.[variableId]?.name || variableId)
+    });
+    const sameRuntimeObject = (before, after) => {
+      if (!before || !after) return false;
+      const beforeLifetime = String(before.lifetime || '');
+      const afterLifetime = String(after.lifetime || '');
+      if (beforeLifetime || afterLifetime) return beforeLifetime === afterLifetime;
+      const beforeIdentity = String(before.identity || '');
+      const afterIdentity = String(after.identity || '');
+      return !beforeIdentity || !afterIdentity || beforeIdentity === afterIdentity;
+    };
+    const lastOrder = frame => (frame?.events || []).reduce((result, event) => (
+      Number.isFinite(Number(event?.order)) ? Math.max(result, Number(event.order)) : result
+    ), -1);
+    const firstOrder = frame => (frame?.events || []).reduce((result, event) => (
+      Number.isFinite(Number(event?.order)) ? Math.min(result, Number(event.order)) : result
+    ), Infinity);
+    const lifetimeKey = target => {
+      const identity = String(target?.lifetimeIdentity || target?.runtimeIdentity || '');
+      return `${String(target?.variableId || '')}:${identity}`;
+    };
+    const visibleLifetimes = new Set();
+    const declaredLifetimes = new Set();
+    const rememberDeclarations = frame => {
+      const current = new Set();
+      (frame?.events || []).forEach(event => {
+        if (event?.type !== 'declare' || event?.automaticVisibility === true) return;
+        (event.targets || []).forEach(target => {
+          const key = lifetimeKey(target);
+          current.add(key);
+          declaredLifetimes.add(key);
+        });
+      });
+      return current;
+    };
+    const rememberVisible = frame => {
+      const hidden = hiddenIds(frame);
+      Object.entries(frame?.state || {}).forEach(([variableId, entry]) => {
+        if (hidden.has(variableId)) return;
+        visibleLifetimes.add(lifetimeKey(stableTarget(frame, variableId, entry)));
+      });
+    };
+    rememberDeclarations(frames[0]);
+    rememberVisible(frames[0]);
+    for (let index = 1; index < frames.length; index += 1) {
+      const previous = frames[index - 1];
+      const frame = frames[index];
+      const previousHidden = hiddenIds(previous);
+      const currentHidden = hiddenIds(frame);
+      const currentDeclarations = rememberDeclarations(frame);
+      const manualExitIds = new Set((frame.events || []).filter(event => (
+        event?.type === 'visual-exit' && event?.automaticVisibility !== true
+      )).flatMap(event => (event.targets || []).map(target => String(target?.variableId || ''))));
+      const declaring = [];
+      const entering = [];
+      const exiting = [];
+      Object.entries(frame.state || {}).forEach(([variableId, entry]) => {
+        const before = previous?.state?.[variableId];
+        if (!sameRuntimeObject(before, entry)) return;
+        if (previousHidden.has(variableId) && !currentHidden.has(variableId)) {
+          const target = stableTarget(frame, variableId, entry);
+          const key = lifetimeKey(target);
+          if (!visibleLifetimes.has(key) && !declaredLifetimes.has(key)) declaring.push(target);
+          else if (!currentDeclarations.has(key)) entering.push(target);
+        } else if (!previousHidden.has(variableId) && currentHidden.has(variableId)
+          && !manualExitIds.has(variableId)) {
+          exiting.push(stableTarget(previous, variableId, before));
+        }
+      });
+      if (!declaring.length && !entering.length && !exiting.length) {
+        rememberVisible(frame);
+        continue;
+      }
+      const currentFirst = firstOrder(frame);
+      const previousLast = lastOrder(previous);
+      const baseOrder = Number.isFinite(currentFirst)
+        ? currentFirst - 0.002
+        : previousLast + 0.001;
+      const append = (type, targets, order, options = {}) => {
+        if (!targets.length) return;
+        const names = targets.map(target => target.expression).join(',');
+        const functionName = String(frame.source?.function || 'global');
+        const directiveKey = String(frame.source?.logicalDirectiveKey
+          || frame.source?.directiveKey || frame.id || index);
+        const signature = options.signature || `${type}:${functionName}:${directiveKey}:${names}`;
+        frame.events.push({
+          id: `${signature}:${index}`,
+          type,
+          signature,
+          automaticVisibility: true,
+          stateChange: true,
+          sceneGeneration: Number(frame.sceneGeneration) || 0,
+          line: Number(options.source?.line ?? frame.source?.line) || 0,
+          order,
+          phase: 'before',
+          name: names,
+          source: options.source || sourceForFrame(frame),
+          targets
+        });
+      };
+      append('visual-exit', exiting, baseOrder);
+      let entranceOrder = baseOrder + (exiting.length ? 0.001 : 0);
+      declaring.forEach(target => {
+        const variable = variables?.[target.variableId] || {};
+        const source = sourceForDeclaration(target.variableId);
+        const functionName = String(variable.functionName || frame.source?.function || 'global');
+        const line = Number(variable.line || source?.line || 0);
+        const name = String(variable.name || target.expression || target.variableId);
+        append('declare', [target], entranceOrder, {
+          source,
+          signature: `declare:${functionName}:${line}:${name}`
+        });
+        declaredLifetimes.add(lifetimeKey(target));
+        entranceOrder += 0.0001;
+      });
+      append('visual-enter', entering, entranceOrder);
+      frame.events.sort((left, right) => (
+        Number(left?.order) - Number(right?.order)
+        || String(left?.signature || left?.id || '').localeCompare(
+          String(right?.signature || right?.id || '')
+        )
+      ));
+      rememberVisible(frame);
+    }
+    return document;
+  }
+
+  // ---------------------------------------------------------------------------
   // 區段：啟用狀態套用
   // ---------------------------------------------------------------------------
   function applyEnabledStates(document) {
@@ -644,6 +849,7 @@
   }
 
   function showTimelineEvent(event = {}, document = null) {
+    if (event.declarationInitializer === true && event.parameterInitializer !== true) return false;
     return event.enabled !== false
       && event.autoAnimationDisabled !== true
       && showTag(event.type, document);
@@ -692,6 +898,7 @@
     },
     defaultEnabled,
     rebuildAutoFixedEvents,
+    rebuildVisualLifecycleEvents,
     rebuildLoopBoundaryEvents,
     keepSnapshotFrame,
     applyEnabledStates,
@@ -704,6 +911,10 @@
       // initialization commit is runtime bookkeeping, not a second operation.
       if (event.bitwiseCommit === true && event.animate === false) return false;
       if (event.type === 'fixed') return false;
+      // Source declarations with initializers are presented as one declaration
+      // instruction. The raw assignment remains in the trace and replay model,
+      // but does not create a second Studio row.
+      if (event.declarationInitializer === true && event.parameterInitializer !== true) return false;
       if (event.loopBoundarySuppressed === true) return false;
       if (byType[canonicalEventType(event.type)]?.internal === true) return false;
       // The function definition is the root control in Trace Studio's event

@@ -12,6 +12,7 @@
   let variables = [];
   let frameDirectives = [];
   let analyzedCode = '';
+  let drawingEnabled = true;
   let currentTrace = null;
   let studioButton = null;
   let eventSettingsButton = null;
@@ -422,6 +423,7 @@
     if (!response.ok) throw new Error(data.error || '無法分析 C++ 程式碼');
 
     variables = Array.isArray(data.variables) ? data.variables : [];
+    drawingEnabled = data.drawingEnabled !== false;
     frameDirectives = Array.isArray(data.frameDirectives) ? data.frameDirectives : [];
     sliceMode = frameDirectives.length ? 'manual' : 'auto';
     analyzedCode = code;
@@ -447,7 +449,7 @@
     }]));
 
     return {
-      enabled: true,
+      enabled: drawingEnabled,
       sliceMode,
       watches: watches.map(variable => variable.id),
       skins,

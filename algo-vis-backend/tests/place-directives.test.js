@@ -116,6 +116,9 @@ function rendererDomApi(conditionMatches) {
   };
   window.ASMTraceModel = { diffFrame() { return []; } };
   window.ASMTraceTransitions = { defaults() { return { duration: 0, easing: 'linear' }; } };
+  // Match the real entrypoint: the renderer now delegates camera rules to
+  // the shared camera module rather than keeping a private implementation.
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-camera.js'), 'utf8'));
   window.eval(rendererSource);
   return { window, renderer: window.ASMTraceRenderers };
 }

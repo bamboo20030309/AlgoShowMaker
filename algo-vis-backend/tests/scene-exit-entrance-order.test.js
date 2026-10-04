@@ -181,6 +181,39 @@ test('a recursive reference parameter scope exit does not clone the continuing c
   ), false, 'a recursive local with a new lifetime must still leave and enter');
 });
 
+test('a natural reference-container exit does not remove the caller-owned visual', () => {
+  const tween = loadTween();
+  const referenceId = 'sort:num@12';
+  const localId = 'sort:temp@30';
+  const document = { variables: {
+    [referenceId]: {
+      id: referenceId, name: 'num', cppType: 'vector<int>&', kind: 'sequence'
+    },
+    [localId]: {
+      id: localId, name: 'temp', cppType: 'vector<int>', kind: 'sequence'
+    }
+  } };
+  const event = variableId => ({
+    id: `exit:${variableId}`,
+    order: 1,
+    type: 'scope-exit',
+    enabled: true,
+    targets: [{ role: 'target', variableId }],
+    source: { from: 0, to: 1, text: '}' }
+  });
+  const referenceExit = event(referenceId);
+  const localExit = event(localId);
+  assert.equal(tween.naturalReferenceContainerScopeExit(document, referenceExit), true);
+  assert.equal(tween.naturalReferenceContainerScopeExit(document, localExit), false);
+  const replay = tween.createForwardReplayPlan(
+    document, { id: 'frame', events: [referenceExit, { ...localExit, order: 2 }] }, [], 1
+  );
+  assert.deepEqual(Array.from(replay.checkpoints[0].mutations), [],
+    'forward replay keeps the caller-owned reference target present');
+  assert.equal(replay.checkpoints[1].mutations[0].after, false,
+    'forward replay still removes an owned local container');
+});
+
 test('scene boundaries still introduce genuinely new local and recursive objects', () => {
   const tween = loadTween();
   assert.equal(tween.needsSceneBoundaryEntrance(true, {

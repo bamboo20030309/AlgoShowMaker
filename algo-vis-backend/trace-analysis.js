@@ -5,6 +5,7 @@ function analyzeTraceSource(code) {
   const instrumented = instrumentSource(code, []);
   return {
     success: true,
+    drawingEnabled: instrumented.drawingEnabled,
     layouts: instrumented.layoutDirectives,
     branches: instrumented.branchDirectives.map(directive => ({
       type: directive.type,

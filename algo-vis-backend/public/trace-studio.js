@@ -92,6 +92,7 @@
   let cameraFrameButton;
   let codePanelFontSize;
   let codePanelFontSizeValue;
+  const codePanelRanges = new Map();
   let trackingSource;
   let trackingTarget;
   let trackingEffect;
@@ -1613,6 +1614,7 @@
   }
 
   function eventLabel(event) {
+    if (event?.type === 'visual-exit' && event?.automaticVisibility === true) return '物件退場';
     return event?.loopBoundary === true
       ? '迴圈邊界'
       : event?.type === 'sequence-operation'
@@ -1639,7 +1641,8 @@
       const dot = el('i', 'trace-studio-event-dot');
       dot.style.background = eventColorFor(event);
       const label = eventLabel(event);
-      dot.title = label;
+      const summary = eventSummary(event);
+      dot.title = summary ? `${label}：${summary}` : label;
       dots.append(dot);
     });
     return dots;
@@ -1677,6 +1680,9 @@
     }
     if (event?.type === 'scope-exit' || event?.type === 'visual-exit') {
       const name = String(event.name || expression(targets[0]) || event.expression || '').trim();
+      if (event?.type === 'visual-exit' && event?.automaticVisibility === true) {
+        return name || '物件';
+      }
       return name ? `${name} 退場` : '物件退場';
     }
     if (event?.type === 'declare') {
@@ -1688,7 +1694,9 @@
   }
 
   function eventDisplayText(event, sourceText = '') {
-    if (event?.type === 'scope-exit' || event?.type === 'visual-exit') return eventSummary(event);
+    if (event?.type === 'visual-enter'
+      || event?.type === 'scope-exit'
+      || event?.type === 'visual-exit') return eventSummary(event);
     const text = String(sourceText || event?.source?.text || eventSummary(event) || '').trim();
     if (event?.type === 'declare' && event?.parameterDeclaration === true && text) {
       return /;\s*$/.test(text) ? text : `${text};`;
@@ -1742,7 +1750,7 @@
     node.setAttribute('tabindex', '0');
     node.setAttribute('aria-pressed', String(primary.enabled));
     node.setAttribute('aria-disabled', String(typeof primary.event.directiveAnimationControl === 'boolean'));
-    node.setAttribute('aria-label', `${primary.label}：${eventDisplayText(primary.event)}`);
+    node.setAttribute('aria-label', `${eventLabel(primary.event)}：${eventDisplayText(primary.event)}`);
     node.title = eventCodeStatusTitle(primary);
     const toggle = event => {
       event.preventDefault();
@@ -1773,7 +1781,7 @@
     button.type = 'button';
     const marker = el('span', 'trace-studio-event-code-marker');
     marker.style.background = eventColorFor(group.event);
-    const label = el('span', 'trace-studio-event-code-type', group.label);
+    const label = el('span', 'trace-studio-event-code-type', eventLabel(group.event));
     const text = eventDisplayText(group.event, sourceText) || group.label;
     button.append(marker, label, el('code', 'trace-studio-event-code-text', text));
     configureEventCodeButton(button, group, [group], groupTokens);
@@ -2592,6 +2600,11 @@
       codePanelFontSize.value = String(size);
       codePanelFontSizeValue.textContent = `${size}px`;
     }
+    codePanelRanges.forEach(({input,output,normalize,suffix}, key) => {
+      const value = normalize(trace?.studio?.[key]);
+      input.value = String(value);
+      output.textContent = `${value}${suffix}`;
+    });
     renderFrameEventsEditor();
     renderCodeSnippetEditor();
     renderTransitionEditor();
@@ -3659,7 +3672,7 @@
     codePanelFontSize = document.createElement('input');
     codePanelFontSize.type = 'range';
     codePanelFontSize.min = '8';
-    codePanelFontSize.max = '32';
+    codePanelFontSize.max = '64';
     codePanelFontSize.step = '1';
     const savedCodeFontSize = window.ASMTraceCodePresenter?.normalizeFontSize?.(
       trace?.studio?.codePanelFontSize
@@ -3678,6 +3691,34 @@
     });
     codePanelFontSize.addEventListener('change', recordHistory);
     codePanel.append(field('字體大小', codeFontSizeRow));
+    codePanelRanges.clear();
+    [
+      {key:'codePanelScrollMs',label:'片段滾動時間',min:0,max:2000,step:20,suffix:' ms',
+        normalize:value => window.ASMTraceCodePresenter.normalizeScrollMs(value)},
+      {key:'codePanelWidthPercent',label:'最大寬度',min:20,max:95,step:1,suffix:'%',
+        normalize:value => window.ASMTraceCodePresenter.normalizePanelPercent(value,48)},
+      {key:'codePanelHeightPercent',label:'最大高度',min:20,max:95,step:1,suffix:'%',
+        normalize:value => window.ASMTraceCodePresenter.normalizePanelPercent(value,78)}
+    ].forEach(setting => {
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(setting.min); input.max = String(setting.max); input.step = String(setting.step);
+      input.dataset.codePanelSetting = setting.key;
+      const value = setting.normalize(trace?.studio?.[setting.key]);
+      input.value = String(value);
+      const output = el('output','trace-studio-range-value',`${value}${setting.suffix}`);
+      const row = el('div','trace-studio-range-row'); row.append(input,output);
+      codePanelRanges.set(setting.key,{...setting,input,output});
+      input.addEventListener('input', () => {
+        trace.studio ||= {};
+        const value = setting.normalize(input.value);
+        trace.studio[setting.key] = value;
+        output.textContent = `${value}${setting.suffix}`;
+        window.ASMTraceCodePresenter.applyPresentationSettings(trace);
+      });
+      input.addEventListener('change',recordHistory);
+      codePanel.append(field(setting.label,row));
+    });
     inspectorCameraPanel.append(camera);
     inspectorObjectPanel.append(codePanel);
 
@@ -3888,13 +3929,17 @@
     cancelEventAvailabilityRefresh();
     trace = source || window.ASMTracePlayer?.getDocument?.();
     if (!trace?.frames?.length) return;
+    currentIndex = Math.max(0, window.ASMTracePlayer?.getCurrentFrame?.() || 0);
+    // Compute the current frame before the inspector is created. Previously
+    // buildUi rendered the first-frame buttons from stale/default availability
+    // and they stayed green until that frame was visited through playback.
+    window.ASMTraceRenderers?.preflightEventAvailability?.(trace, { frameIndex: currentIndex });
     const canvasTab = document.querySelector('.tab-btn[data-tab="tab-canvas"]');
     if (canvasTab && !canvasTab.classList.contains('active')) canvasTab.click();
     ensureStudioData();
     buildUi();
     document.body.classList.add('asm-trace-studio-open');
     if (historyTrace !== trace) resetHistory();
-    currentIndex = Math.max(0, window.ASMTracePlayer?.getCurrentFrame?.() || 0);
     activeBinding = null;
     activeObjectKey = '';
     codePanelSelectionActive = false;

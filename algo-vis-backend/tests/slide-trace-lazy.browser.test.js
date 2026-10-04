@@ -70,7 +70,7 @@ test('slides fetch Trace only upon visiting its page, save IDs and play after re
       assert.equal(traceFetches, 1);
       await page.reload();
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
-      await page.getByRole('button', { name: 'next slide', exact: true }).click();
+      assert.equal(await page.evaluate(() => Reveal.getIndices().h), 1, 'refresh retains the animation page');
       await page.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.CodeScript?.get_frame_count() === 3);
       assert.equal(traceFetches, 1, 'reopening uses IndexedDB result cache');
       const downloadPromise = page.waitForEvent('download');
@@ -102,7 +102,7 @@ test('slides fetch Trace only upon visiting its page, save IDs and play after re
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
       await page.reload();
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
-      await page.getByRole('button', { name: 'next slide', exact: true }).click();
+      assert.equal(await page.evaluate(() => Reveal.getIndices().h), 1, 'refresh retains the animation page');
       await page.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.CodeScript?.get_frame_count() === 2);
       await page.locator('#importDeckInput').setInputFiles(path.join(root, 'drafts/eight-queens-teaching.asmdeck'));
       await page.waitForFunction(() => document.body.dataset.asmdeckRebuild === 'ready'

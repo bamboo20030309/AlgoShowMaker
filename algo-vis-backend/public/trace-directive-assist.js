@@ -14,11 +14,18 @@
   if (!editor) return;
 
   const commands = [
-    { id: 'defaults', label: '@defaults', effect: '全域呈現預設：每幀自動套用；當幀指令與 preset 可覆寫', code: '// @defaults\n// @camera auto\n// @enddefaults', examples: [
-      '// @defaults\n// @camera focus arr offset(0,20) zoom(2.0)\n// @enddefaults',
-      '// @defaults\n// @camera auto\n// @enddefaults'
+    { id: 'pointer', label: '@pointer', effect: '獨立指標：綁定陣列或layout節點（root、current、nodes、leaves、children、level、side），依原始索引與range定位；越界時隱藏', code: '// @pointer i at arr', examples: [
+      '// @pointer i at arr',
+      '// @pointer i at merge_tree.children[0]\n// @pointer j at merge_tree.children[1]',
+      '// @pointer i at arr[i]',
+      '// @pointer i at merge_tree.root\n// @pointer j at merge_tree.leaves[1]',
+      '// @pointer i at merge_tree.children[0][i-L]\n// @pointer j at merge_tree.children[1][j-mid-1]'
     ] },
-    { id: 'enddefaults', label: '@enddefaults', effect: '結束全域呈現預設區塊', code: '// @enddefaults', examples: ['// @defaults\n// @camera auto\n// @enddefaults'] },
+    { id: 'default', label: '@default', effect: '全域呈現預設：每幀自動套用；當幀指令與 preset 可覆寫', code: '// @default\n// @camera auto\n// @enddefault', examples: [
+      '// @default\n// @camera focus arr offset(0,20) zoom(2.0)\n// @enddefault',
+      '// @default\n// @camera auto\n// @enddefault'
+    ] },
+    { id: 'enddefault', label: '@enddefault', effect: '結束全域呈現預設區塊', code: '// @enddefault', examples: ['// @default\n// @camera auto\n// @enddefault'] },
     { id: 'frame', label: '@frame', effect: '擷取此刻的動畫幀並選擇要顯示的變數', code: '// @frame arr', examples: [
       '// @frame arr',
       '// @frame arr[i,j],key\n// @style arr[i] highlight',
@@ -53,10 +60,12 @@
       '// @keep board as "Q" in queen_tree use board_view, board_colors',
       '// @keep last as "round" in quick_tree when i > 0\n// @text "本輪完成" at round.bottom'
     ] },
-    { id: 'layout', label: '@layout', effect: '建立或設定具名的遞迴排版', code: '// @layout recursion as "quick_tree" at canvas.top offset(0,80)', examples: [
+    { id: 'layout', label: '@layout', effect: '建立、設定或組合具名排版', code: '// @layout recursion as "quick_tree" at canvas.top offset(0,80)', examples: [
       '// @layout recursion as "quick_tree"',
       '// @layout recursion as "quick_tree" at canvas.top offset(0,80)\n// @frame arr in quick_tree',
-      '// @layout recursion as "quick_tree" at canvas.top offset(0,80)\n// @layout quick_tree direction top-down\n// @frame arr in quick_tree\n// @keep arr as "partition" in quick_tree'
+      '// @layout recursion as "quick_tree" at canvas.top offset(0,80)\n// @layout quick_tree direction top-down\n// @frame arr in quick_tree\n// @keep arr as "partition" in quick_tree',
+      '// @layout linear as merge_passes at canvas.center\n// @layout merge_passes direction top-down\n// @layout merge_passes align center\n// @layout merge_passes gap 70\n// @keep num as "merge pass" in merge_passes\n// @frame num in merge_passes',
+      '// @layout linear as scene\n// @layout scene gap 64\n// @layout recursion as split_tree in scene\n// @layout recursion as merge_tree in scene'
     ] },
     { id: 'branch', label: '@branch', effect: '在遞迴排版中建立具名的邏輯分支', code: '// @branch as "Move" in hanoi_tree', examples: [
       '// @branch as "Move" in hanoi_tree\n// @frame value in hanoi_tree\n// @endbranch'
@@ -184,12 +193,15 @@
     ],
     segment: [['when', 'when', '只在條件成立時標示區間', ' when low <= high']],
     place: [['offset', 'offset', '在錨點上加入位移', ' offset(16,0)'], ['when', 'when', '條件成立才放置', ' when i >= 0']],
-    arrow: [['as', 'as', '為箭頭命名', ' as "relation"'], ['when', 'when', '條件成立才顯示箭頭', ' when i >= 0']],
+    arrow: [['as', 'as', '為箭頭命名', ' as "relation"'], ['in', 'in', '把跨排版箭頭放入 linear', ' in scene'], ['when', 'when', '條件成立才顯示箭頭', ' when i >= 0']],
     layout: [
       ['layout-direction', 'direction', '在下一行明確指定排版 ID 與生長方向', '\n// @layout quick_tree direction top-down'],
+      ['layout-gap', 'gap', '設定 linear 內各排版的間距', '\n// @layout scene gap 64'],
       ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder'],
       ['layout-flow-arrows', 'flow-arrows', '顯示 DFS 進入與返回的彎曲輔助箭頭', '\n// @layout quick_tree flow-arrows on'],
-      ['layout-branch-previews', 'branch-previews', '控制是否在執行前預先顯示同層遞迴分支', '\n// @layout quick_tree branch-previews off']
+      ['layout-branch-previews', 'branch-previews', '控制是否在執行前預先顯示同層遞迴分支', '\n// @layout quick_tree branch-previews off'],
+      ['layout-grow-from', 'grow-from', '從根端或葉端擴張，預設 root；leaves 不跨層拉長父子間距', '\n// @layout quick_tree grow-from leaves'],
+      ['layout-reserve', 'reserve', '預留完整樹的位置但不新增預覽節點，預設 off', '\n// @layout quick_tree reserve on']
     ]
   };
   const renderTypes = [
@@ -259,7 +271,7 @@
 
   function currentLayoutId(line) {
     return (line.match(/\bas\s+["']?([\w-]+)/) || [])[1]
-      || (line.match(/@layout\s+(?!recursion\b)([\w-]+)/) || [])[1]
+      || (line.match(/@layout\s+(?!(?:recursion|linear|line|group)\b)([\w-]+)/) || [])[1]
       || 'quick_tree';
   }
 
@@ -275,6 +287,8 @@
       if (id === 'layout' && rule[0] === 'layout-direction') return !/\bdirection\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-flow-arrows') return !/\bflow-arrows\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-branch-previews') return !/\bbranch-previews\b/.test(line);
+      if (id === 'layout' && rule[0] === 'layout-grow-from') return !/\bgrow-from\b/.test(line);
+      if (id === 'layout' && rule[0] === 'layout-reserve') return !/\breserve\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-order') return !/\b(?:order|mode)\b/.test(line);
       if (rule[3]?.startsWith('\n')) return true;
       if (rule[0] === 'render' || rule[0] === 'with') return !new RegExp(`\\b${rule[0]}\\b`).test(line);

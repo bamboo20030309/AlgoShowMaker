@@ -122,10 +122,97 @@ int main() {
     event.type === 'assign' && event.targets[0].expression === 'plain'
   )), false, 'a declaration without an initializer must not invent an assignment');
   assert.deepEqual(Array.from(relevant, event => event.source?.text), [
-    'int n',
-    'n=0',
-    'int m',
-    'm=0',
-    'int plain'
+    'int n=0',
+    'n = 0',
+    'int … m=0',
+    'm = 0',
+    'int … plain'
   ]);
+  assert.deepEqual(Array.from(relevant.filter(event => event.type === 'declare'), event => (
+    Array.from(event.source?.ranges || [], range => range.role)
+  )), [['type', 'declarator'], ['type', 'declarator'], ['type', 'declarator']]);
+  assert.equal(new Set(relevant.map(event => event.source?.declaratorId)).size, 3,
+    'each comma-separated declarator owns one declaration/initializer group');
+});
+
+test('visible sequence sources and insertion destinations are captured for value transfer', async () => {
+  const source = `#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  vector<int> num = {8, 5, 3};
+  vector<int> temp;
+  int l = 1;
+  // @frame num, temp
+  temp.push_back(num[l]);
+  // @frame num, temp
+  temp.insert(temp.begin(), num[2]);
+  // @frame num, temp
+}`;
+  const { trace } = await compile(source);
+  const push = trace.frames[1].events.find(event => event.operation === 'push_back');
+  const insert = trace.frames[2].events.find(event => event.operation === 'insert');
+  assert.ok(push && insert);
+  assert.deepEqual([
+    push.payload.edge,
+    push.payload.insertedValue?.value,
+    push.targets.find(target => target.role === 'source')?.expression,
+    push.targets.find(target => target.role === 'source')?.resolvedIndex
+  ], ['back', 5, 'num[l]', 1]);
+  assert.deepEqual([
+    insert.payload.edge,
+    insert.payload.insertIndex,
+    insert.payload.insertedValue?.value,
+    insert.targets.find(target => target.role === 'source')?.expression,
+    insert.targets.find(target => target.role === 'source')?.resolvedIndex
+  ], ['index', 0, 3, 'num[2]', 2]);
+});
+
+test('sequence insertion captures side-effecting source indices without replaying the update', async () => {
+  const code = `#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  vector<int> num = {4, 9, 7};
+  vector<int> temp;
+  int i = 1;
+  // @frame num,temp
+  temp.push_back(num[i++]);
+  // @frame num,temp
+}`;
+  const { trace } = await compile(code);
+  const push = trace.frames[1].events.find(event => (
+    event.type === 'sequence-operation' && event.operation === 'push_back'
+  ));
+  const source = push?.targets?.find(target => target.role === 'source');
+  assert.equal(source?.indexExpression, 'i++');
+  assert.equal(source?.resolvedIndex, 1,
+    'the transfer starts at the element selected before post-increment');
+  const iId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'i');
+  assert.equal(trace.frames[1].state[iId].data.value, 2,
+    'capturing the visual index does not execute i++ a second time');
+});
+
+test('stack and queue push operations preserve their visual insertion edge and source', async () => {
+  const source = `#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  vector<int> num = {4, 9};
+  stack<int> pending;
+  queue<int> ready;
+  // @frame num, pending, ready
+  pending.push(num[0]);
+  ready.push(num[1]);
+  pending.emplace(num[1]);
+  // @frame num, pending, ready
+}`;
+  const { trace } = await compile(source);
+  const pushes = trace.frames[1].events.filter(event => event.operation === 'push');
+  assert.equal(pushes.length, 2);
+  assert.deepEqual(Array.from(pushes, event => event.payload.edge), ['back', 'back']);
+  assert.deepEqual(Array.from(pushes, event => event.payload.insertedValue?.value), [4, 9]);
+  assert.deepEqual(Array.from(pushes, event => (
+    event.targets.find(target => target.role === 'source')?.resolvedIndex
+  )), [0, 1]);
+  const emplace = trace.frames[1].events.find(event => event.operation === 'emplace');
+  assert.equal(emplace?.payload?.insertedValue?.value, 9);
+  assert.equal(emplace?.targets.find(target => target.role === 'source')?.resolvedIndex, 1);
 });

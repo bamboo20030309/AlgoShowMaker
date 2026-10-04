@@ -405,9 +405,11 @@ app.get('/api/compile/queue', async (req, res) => {
 // 設定目錄路徑
 const SAMPLE_DIR = path.join(__dirname, 'tmp', 'algorithm_sample');
 // 確保暫存目錄存在
-const TEMP_DIR = path.join(__dirname, 'tmp');
+const TEMP_DIR = process.env.ASM_TEMP_DIR
+  ? path.resolve(process.env.ASM_TEMP_DIR)
+  : path.join(__dirname, 'tmp');
 if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR);
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
 function computeCompilerFingerprint() {
@@ -1683,7 +1685,8 @@ function materializeKeepSnapshots(frames, layouts = []) {
   function recursionSnapshotKey(event) {
     const layoutId = String(event?.layoutId || '');
     const activationId = String(event?.recursionActivationId || '');
-    return layoutId && activationId ? `${layoutId}\u0000${activationId}` : '';
+    return layoutsById.get(layoutId)?.type === 'recursion' && activationId
+      ? `${layoutId}\u0000${activationId}` : '';
   }
   function replacedRecursionSnapshot(event) {
     const key = recursionSnapshotKey(event);
@@ -1697,7 +1700,8 @@ function materializeKeepSnapshots(frames, layouts = []) {
       snapshot.replacesSnapshotId = replacedSnapshot.id;
     }
     activeSnapshotIds.push(snapshot.id);
-    const key = snapshot.layoutId && snapshot.recursionActivationId
+    const key = layoutsById.get(snapshot.layoutId)?.type === 'recursion'
+      && snapshot.recursionActivationId
       ? `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`
       : '';
     if (key) activeRecursionSnapshots.set(key, snapshot.id);
@@ -1732,21 +1736,36 @@ function materializeKeepSnapshots(frames, layouts = []) {
     };
   }
   function retainedSnapshotArrows(renderState, frame, snapshot) {
-    return (renderState?.arrows || []).map(arrow => {
+    const layoutArrows = (frame?.arrows || []).filter(arrow => (
+      arrow?.ownerLayoutId
+      || [arrow?.from, arrow?.to].some(endpoint => (
+        endpoint?.type === 'layout'
+        && endpoint.layoutSelector === 'current'
+        && endpoint.layoutId === snapshot.layoutId
+      ))
+    ));
+    const sourceArrows = [...(renderState?.arrows || []), ...layoutArrows]
+      .filter((arrow, index, all) => all.findIndex(candidate => candidate.id === arrow.id) === index);
+    return sourceArrows.map(arrow => {
       const retained = cloneTraceValue(arrow);
       retained.id = `${arrow.id}@${snapshot.id}`;
       retained.explicitId = true;
       retained.retainedFromArrowId = arrow.id;
       retained.source = 'directive';
-      retained.from = {
-        ...retained.from,
-        targetVariableId: '',
-        targetName: '',
-        targetObjectKey: snapshot.objectId,
-        objectKey: snapshot.objectId
-      };
+      if (retained.from?.type !== 'layout') {
+        retained.from = {
+          ...retained.from,
+          targetVariableId: '',
+          targetName: '',
+          targetObjectKey: snapshot.objectId,
+          objectKey: snapshot.objectId
+        };
+      }
       for (const endpointName of ['from', 'to']) {
         const endpoint = retained[endpointName];
+        if (endpoint?.type === 'layout' && endpoint.layoutSelector === 'current') {
+          endpoint.layoutActivationId = String(snapshot.recursionActivationId || '');
+        }
         if (!endpoint || !Array.isArray(endpoint.indexExpressions)) continue;
         const resolved = endpoint.indexExpressions.map(expression => (
           resolveTraceIndexExpression(frame, expression)
@@ -1845,6 +1864,12 @@ function materializeKeepSnapshots(frames, layouts = []) {
             snapshotIds: []
           }
         };
+        if (snapshot.layoutId) {
+          snapshot.arrows = retainedSnapshotArrows(
+            { arrows: retainedFrame.arrows || [] }, retainedFrame, snapshot
+          );
+          snapshot.frame.arrows = [];
+        }
         snapshots.push(snapshot);
         activateSnapshot(snapshot, replacedSnapshot);
         keepLastFocus = true;
@@ -1934,7 +1959,8 @@ function materializeKeepSnapshots(frames, layouts = []) {
   });
   const latestByActivation = new Map();
   snapshots.forEach(snapshot => {
-    if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
+    if (layoutsById.get(snapshot.layoutId)?.type !== 'recursion'
+      || !snapshot.recursionActivationId) return;
     const activationKey = `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`;
     const ancestors = Array.isArray(snapshot.recursionAncestorActivationIds)
       ? [...snapshot.recursionAncestorActivationIds].reverse()
@@ -1985,14 +2011,14 @@ function materializeKeepSnapshots(frames, layouts = []) {
       Number(left.recursionSiblingIndex) - Number(right.recursionSiblingIndex)
     ));
     const childIndexes = ordered.map(child => (
-      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+      materializedFrames.findIndex(frame => frame.id === child.sourceFrameId)
     )).filter(index => index >= 0);
     if (!childIndexes.length) continue;
-    const parentIndex = materializedFrames.findIndex(frame => frame.id === parent.createdFrameId);
+    const parentIndex = materializedFrames.findIndex(frame => frame.id === parent.sourceFrameId);
     const firstChildIndex = Math.min(...childIndexes);
     if (parentIndex < 0 || firstChildIndex <= parentIndex) continue;
     const previews = ordered.map(child => {
-      const childFrameIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
+      const childFrameIndex = materializedFrames.findIndex(frame => frame.id === child.sourceFrameId);
       const subtreeActivations = new Set([...initialByActivation.values()]
         .filter(candidate => candidate.layoutId === child.layoutId
           && (candidate.recursionActivationId === child.recursionActivationId
@@ -2014,17 +2040,17 @@ function materializeKeepSnapshots(frames, layouts = []) {
         completionFrame
       };
     });
-    previewPlans.push({ insertIndex: parentIndex + 1, parentKey, previews });
+    previewPlans.push({ insertIndex: parentIndex + 1, parentKey, parentSnapshotId: parent.id, previews });
   }
   previewPlans.sort((left, right) => right.insertIndex - left.insertIndex).forEach(plan => {
     const base = materializedFrames[Math.max(0, plan.insertIndex - 1)];
     if (!base) return;
     const firstActualChildIndex = Math.min(...plan.previews.map(({ child }) => (
-      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+      materializedFrames.findIndex(frame => frame.id === child.sourceFrameId)
     )).filter(index => index >= 0));
     plan.previews.forEach(({ child }) => {
-      const actualIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
-      for (let index = plan.insertIndex; index < actualIndex; index += 1) {
+      const actualIndex = materializedFrames.findIndex(frame => frame.id === child.sourceFrameId);
+      for (let index = plan.insertIndex; index <= actualIndex; index += 1) {
         const frame = materializedFrames[index];
         if (!frame.snapshotIds.includes(child.id)) frame.snapshotIds.push(child.id);
       }
@@ -2071,7 +2097,7 @@ function materializeKeepSnapshots(frames, layouts = []) {
           previewSnapshotId: child.id
         },
         events: [],
-        snapshotIds: [...new Set([...(base.snapshotIds || []), ...growing])],
+        snapshotIds: [...new Set([...(base.snapshotIds || []), plan.parentSnapshotId, ...growing])],
         keepLastFocus: false
       };
     });
@@ -2096,6 +2122,11 @@ function materializeKeepSnapshots(frames, layouts = []) {
       snapshotsById.get(snapshotId)?.arrows || []
     ));
     const retainedSourceIds = new Set(retainedArrows
+      .filter(arrow => [arrow.from, arrow.to].every(endpoint => (
+        !endpoint?.layoutActivationId
+          || endpoint.layoutActivationId === frame.source?.recursionActivationId
+
+      )))
       .map(arrow => arrow.retainedFromArrowId)
       .filter(Boolean));
     return {
@@ -2201,11 +2232,13 @@ function resolveTraceIndexExpression(frame, expression) {
   function parseUnary() {
     if (peek('+')) {
       consume('+');
-      return Number(parseUnary());
+      const value = parseUnary();
+      return value === invalid ? invalid : Number(value);
     }
     if (peek('-')) {
       consume('-');
-      return -Number(parseUnary());
+      const value = parseUnary();
+      return value === invalid ? invalid : -Number(value);
     }
     return parsePrimary();
   }
@@ -2724,6 +2757,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
   if (traceEnabled) {
     try {
       const instrumented = instrumentSource(code, Array.isArray(trace.watches) ? trace.watches : []);
+      traceEnabled = instrumented.drawingEnabled !== false;
       sourceCode = instrumented.code;
       traceVariables = instrumented.variables;
       traceFrameDirectives = instrumented.frameDirectives.map((directive, index) => ({
@@ -2798,7 +2832,9 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       if (instrumented.frameDirectives.some(directive => !directive.silentKeepView)) {
         traceSliceMode = 'manual';
       }
-      logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);
+      logDebug(traceEnabled
+        ? `Trace instrumentation enabled for ${traceVariables.length} variables`
+        : 'No drawing directives: using normal compilation without animation tracing');
     } catch (err) {
       // Trace analysis must not prevent the original program from running.
       // Fall back to the normal compiler path when the parser cannot rewrite

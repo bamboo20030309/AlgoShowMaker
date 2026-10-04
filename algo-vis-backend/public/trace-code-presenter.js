@@ -23,18 +23,27 @@
   let syntaxByLine = new Map();
   let transitionTimers = [];
   let transitionFinalPage = null;
+  let transitionPromise = Promise.resolve();
+  let resolveTransition = null;
   let dragState = null;
   let viewportObserver = null;
   let observedViewport = null;
   let appliedPositionKey = null;
   const eventNodes = new Map();
-  const CODE_TRANSITION_MS = 500;
   const CODE_SCROLL_MS = 460;
   const CODE_PANEL_REFERENCE_WIDTH = 1600;
   const CODE_PANEL_REFERENCE_HEIGHT = 900;
   const DEFAULT_CODE_PANEL_FONT_SIZE = 20;
   const MIN_CODE_PANEL_FONT_SIZE = 8;
-  const MAX_CODE_PANEL_FONT_SIZE = 32;
+  const MAX_CODE_PANEL_FONT_SIZE = 64;
+
+  function normalizeScrollMs(value) {
+    return Math.round(clamp(value == null || !Number.isFinite(Number(value)) ? CODE_SCROLL_MS : Number(value), 0, 2000));
+  }
+
+  function normalizePanelPercent(value, fallback) {
+    return clamp(value == null || !Number.isFinite(Number(value)) ? fallback : Number(value), 20, 95);
+  }
 
   // ---------------------------------------------------------------------------
   // 區段：面板生命週期與使用者偏好
@@ -110,6 +119,13 @@
     panel.dataset.codePanelRenderedFontSize = String(
       Math.round(scaledFontSize(preferred, viewport.height, viewport.width) * 100) / 100
     );
+    const studio = currentDocument?.studio || {};
+    const scrollMs = normalizeScrollMs(studio.codePanelScrollMs);
+    panel.style.setProperty('--asm-code-scroll-duration', `${scrollMs}ms`);
+    // Leave legacy maximums unchanged until a size is explicitly authored.
+    panel.style.maxWidth = studio.codePanelWidthPercent == null ? '' : `${normalizePanelPercent(studio.codePanelWidthPercent,48)}%`;
+    panel.style.maxHeight = studio.codePanelHeightPercent == null ? '' : `${normalizePanelPercent(studio.codePanelHeightPercent,78)}%`;
+    body.style.maxHeight = studio.codePanelHeightPercent == null ? '' : `${viewport.height * normalizePanelPercent(studio.codePanelHeightPercent,78) / 100}px`;
   }
 
   function setPanelPixels(left, top) {
@@ -488,6 +504,8 @@
   function finishPageTransition() {
     transitionTimers.forEach(timer => clearTimeout(timer));
     transitionTimers = [];
+    resolveTransition?.();
+    resolveTransition = null;
     if (transitionFinalPage && body) body.replaceChildren(transitionFinalPage);
     transitionFinalPage = null;
     body?.classList.remove('is-switching', 'is-code-expanding', 'is-code-scrolling', 'is-code-collapsing');
@@ -650,7 +668,8 @@
       expandedPage.classList.add('is-transition-scrolling');
       expandedPage.style.transform = `translateY(${targetOffset}px)`;
     });
-    scheduleTransition(finishPageTransition, CODE_TRANSITION_MS);
+    transitionPromise = new Promise(resolve => { resolveTransition = resolve; });
+    scheduleTransition(finishPageTransition, normalizeScrollMs(currentDocument?.studio?.codePanelScrollMs) + 40);
     return true;
   }
 
@@ -709,17 +728,18 @@
     if (currentFocusLine === nextFocusLine) return 0;
     return currentPlan?.layoutKey && (currentPlan.layoutKey !== nextPlan.layoutKey
       || focusNeedsScroll(nextFocusLine))
-      ? CODE_TRANSITION_MS
+      ? normalizeScrollMs(trace?.studio?.codePanelScrollMs) + (normalizeScrollMs(trace?.studio?.codePanelScrollMs) ? 40 : 0)
       : 0;
   }
 
   // ---------------------------------------------------------------------------
   // 區段：frame 呈現入口
   // ---------------------------------------------------------------------------
-  function renderFrame(trace, frame, playbackPlan = null) {
+  function renderFrame(trace, frame, playbackPlan = null, options = {}) {
     ensurePanel();
     const wasPanelHidden = panel?.hidden !== false;
-    const animate = Boolean(currentDocument === trace && currentFrame && currentFrame.id !== frame?.id && !dragState);
+    const animate = Boolean(options.stable !== true && normalizeScrollMs(trace?.studio?.codePanelScrollMs) > 0
+      && currentDocument === trace && currentFrame && currentFrame.id !== frame?.id && !dragState);
     const previousDocument = currentDocument;
     currentDocument = trace;
     applyStoredFontSize();
@@ -782,7 +802,7 @@
 
   window.addEventListener('asm:trace-frame', event => {
     if (!event.detail?.document || !event.detail?.frame) return;
-    renderFrame(event.detail.document, event.detail.frame, event.detail.plan || null);
+    renderFrame(event.detail.document, event.detail.frame, event.detail.plan || null, {stable:event.detail.stable});
   });
 
   window.addEventListener('asm:trace-active-event', event => {
@@ -816,9 +836,12 @@
     visualStateForIds,
     safeInsetLeft,
     normalizeFontSize,
+    normalizeScrollMs,
+    normalizePanelPercent,
+    waitForTransition: () => transitionPromise,
     scaledFontSize,
     boundedScrollOffset,
-    scrollDuration: CODE_SCROLL_MS,
+    get scrollDuration() { return normalizeScrollMs(currentDocument?.studio?.codePanelScrollMs); },
     applyPresentationSettings,
     clearSelection,
     getPanel: () => ensurePanel()

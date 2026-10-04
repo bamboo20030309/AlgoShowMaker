@@ -17,14 +17,15 @@ const read = name => fs.readFileSync(path.join(__dirname, '../public', name), 'u
 test('all algorithm surfaces load the same shared modules in dependency order', () => {
   const html = read('algorithm.html');
   const sources = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1].split('?')[0]);
-  for (const name of ['trace-code-model.js', 'trace-event-code-tree.js', 'trace-code-presenter.js', 'trace-camera.js', 'trace-renderer.js', 'trace-player.js', 'trace-debug-recorder.js', 'trace-provenance.js',
+  for (const name of ['trace-code-model.js', 'trace-event-code-tree.js', 'trace-code-presenter.js', 'trace-camera.js', 'trace-pointer-model.js', 'trace-renderer.js', 'trace-player.js', 'trace-debug-recorder.js', 'trace-provenance.js',
     'algorithm-animation.js', 'trace-editor.js', 'trace-freshness.js', 'trace-studio.js', 'slides-embed.js']) {
     assert.equal(sources.filter(s => s === name).length, 1, name);
   }
   assert.ok(sources.indexOf('trace-camera.js') < sources.indexOf('trace-renderer.js'));
+  assert.ok(sources.indexOf('trace-pointer-model.js') < sources.indexOf('trace-frame-tween.js'));
   assert.ok(sources.indexOf('algorithm-animation.js') < sources.indexOf('trace-editor.js'));
   for (const mode of ['runtime', 'editor']) {
-    const runtimeVersion = mode === 'editor' ? 44 : 43;
+    const runtimeVersion = mode === 'editor' ? 46 : 45;
     assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-' + runtimeVersion));
   }
   assert.ok(read('front.js').includes("if (!new URLSearchParams(window.location.search).has('asmEmbed'))"),
@@ -38,20 +39,21 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-16'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-39'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-29'));
+  assert.ok(html.includes('trace-model.js?v=trace-40'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-33'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
-  assert.ok(html.includes('trace-code-model.js?v=code-36'));
-  assert.ok(html.includes('trace-events.js?v=trace-61'));
-    assert.ok(html.includes('trace-frame-tween.js?v=trace-269'));
-    assert.ok(html.includes('trace-renderer.js?v=trace-240'));
-  assert.ok(html.includes('trace-event-code-tree.js?v=trace-5'));
+  assert.ok(html.includes('trace-code-model.js?v=code-38'));
+  assert.ok(html.includes('trace-events.js?v=trace-63'));
+  assert.ok(html.includes('trace-pointer-model.js?v=pointer-4'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-293'));
+  assert.ok(html.includes('trace-renderer.js?v=trace-262'));
+  assert.ok(html.includes('trace-event-code-tree.js?v=trace-9'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
-  assert.ok(html.includes('trace-code-presenter.js?v=code-33'));
+  assert.ok(html.includes('trace-code-presenter.js?v=code-34'));
   assert.ok(html.includes('trace-view-source.js?v=trace-17'));
-  assert.ok(html.includes('trace-editor.js?v=trace-29'));
+  assert.ok(html.includes('trace-editor.js?v=trace-30'));
   assert.ok(html.includes('compile.js?v=syntax-9'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
@@ -60,10 +62,10 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
-  assert.ok(slides.includes('slides-storage.js?v=5'));
-  assert.ok(slides.includes('slides-cloud.js?v=1'));
-  assert.ok(slides.includes('slides.js?v=slides-232'));
-  assert.ok(slides.includes('trace-model.js?v=trace-39'));
+  assert.ok(slides.includes('slides-storage.js?v=6'));
+  assert.ok(slides.includes('slides-cloud.js?v=2'));
+  assert.ok(slides.includes('slides.js?v=slides-264'));
+  assert.ok(slides.includes('trace-model.js?v=trace-40'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
@@ -74,8 +76,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(surface.includes('rel="noopener noreferrer"'));
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
-  assert.ok(slides.includes('slides.css?v=slide-delete-action-112'));
-  assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-10') < slides.indexOf('slides.js?v='));
+  assert.ok(slides.includes('slides.css?v=color-swatches-118'));
+  assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-11') < slides.indexOf('slides.js?v='));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
   }
@@ -91,9 +93,9 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(slides.includes('slide-structures.js?v=22'));
+  assert.ok(slides.includes('slide-structures.js?v=point-selection-1'));
   assert.ok(legacy.includes('slide-structures.js?v=8'));
-  assert.ok(html.includes('trace-arrow-model.js?v=arrow-10'));
+  assert.ok(html.includes('trace-arrow-model.js?v=arrow-11'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
   assert.ok(read('draw/draw_arrow.js').includes('window.ASMArrowModel?.geometry'));
@@ -111,7 +113,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(legacy.includes(`draw/draw_array_${name}.js?v=${version}`));
   }
   assert.ok(html.includes('draw/draw_2Darray.js?v=matrix-labels-2'));
-  assert.ok(html.includes('trace-events.js?v=trace-61'));
+  assert.ok(html.includes('trace-events.js?v=trace-63'));
   const tweenBuild = html.match(/trace-frame-tween\.js\?v=(trace-\d+)/)?.[1];
   assert.ok(tweenBuild);
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
@@ -121,17 +123,17 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-27'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-131'));
+  assert.ok(html.includes('trace-studio.js?v=trace-138'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
-  assert.ok(html.includes('front.js?v=random-id-45'));
+  assert.ok(html.includes('front.js?v=random-id-46'));
   assert.ok(html.includes('slides-embed.js?v=trace-12'));
-  assert.ok(html.includes('trace-provenance.js?v=trace-13'));
-  assert.ok(html.includes('trace.css?v=trace-36'));
+  assert.ok(html.includes('trace-provenance.js?v=trace-14'));
+  assert.ok(html.includes('trace.css?v=trace-37'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';
   assert.match(codeHighlight, /background-color:\s*rgba\(255,\s*214,\s*10,\s*0\.48\)/);
   assert.doesNotMatch(codeHighlight, /(?:^|[;\s])color\s*:/,
     'event emphasis must preserve ACE token foreground colors and use only a background highlight');
-  assert.match(read('trace.css'), /\.asm-trace-code-page\s*\{[^}]*transform 460ms/s);
+  assert.match(read('trace.css'), /\.asm-trace-code-page\s*\{[^}]*transform var\(--asm-code-scroll-duration, 460ms\)/s);
   assert.match(read('trace-code-presenter.js'), /codePanelPosition/);
   assert.match(read('trace-code-presenter.js'), /codePanelFontSize/);
   assert.match(read('trace-code-presenter.js'), /CODE_PANEL_REFERENCE_HEIGHT\s*=\s*900/);
@@ -169,7 +171,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   for (const surface of [html, slides, legacy]) {
     assert.ok(surface.includes('draw/draw_array_utils.js?v=fit-4'));
   }
-  assert.ok(html.includes('trace-studio.css?v=trace-58'));
+  assert.ok(html.includes('trace-studio.css?v=trace-63'));
   assert.doesNotMatch(read('trace-studio.js'), /section\('註標形狀'\)/,
     'the retired marker-shape controls must not return to the object inspector');
   assert.doesNotMatch(read('trace-studio.css'), /trace-studio-marker-shape/,
@@ -197,6 +199,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(read('trace-studio.css').includes('.trace-studio-frame-event.is-unrenderable'));
   assert.ok(read('trace-studio.css').includes('.trace-studio-event-outline'));
   assert.ok(read('trace-studio.css').includes('.trace-studio-event-code-button.is-enabled.is-available'));
+  assert.ok(!read('trace-studio.css').includes('.trace-studio-event-code-button.is-current.is-available'));
   assert.ok(read('trace-studio.js').includes("section('事件程式碼')"));
   const saveHandler = read('slides.js').match(/function handleAlgorithmEmbedMessage[\s\S]*?function openAlgorithmEditor/)?.[0] || '';
   assert.ok(saveHandler.includes('refreshAlgorithmSlideInPlace(slide)'));

@@ -18,9 +18,9 @@ using namespace std;
 vector<int> tree;
 int Tmask, Tsize, Tdeep, Tcapacity, n;
 
-// @defaults
+// @default
 // @camera focus tree offset(0,35) zoom(1.05)
-// @enddefaults
+// @enddefault
 
 // @preset build_view
 // @object tree render heap with range(1,Tcapacity)

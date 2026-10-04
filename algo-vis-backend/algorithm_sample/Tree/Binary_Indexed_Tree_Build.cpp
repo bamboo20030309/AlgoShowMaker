@@ -15,9 +15,9 @@ using namespace std;
 int n;
 vector<int> num, BIT;
 
-// @defaults
+// @default
 // @camera auto zoom(1.05)
-// @enddefaults
+// @enddefault
 
 // num[0] 保留為 0；實際資料與 BIT 都從 index 1 開始。
 // @preset binary_indexed_tree_view

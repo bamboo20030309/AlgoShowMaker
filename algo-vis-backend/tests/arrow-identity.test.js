@@ -46,4 +46,13 @@ test('arrow pairing is conservative, scope-aware and explicit-role controlled', 
   assert.equal(pair([explicit], [arrow('different', { explicitId: true })]).size, 0);
   const survivor = arrow('survivor');
   assert.equal(pair([old, survivor], [survivor]).get(survivor), survivor);
+  const retained = arrow('one@snapshot:frame:5', {
+    explicitId: true,
+    handoffFromId: 'one'
+  });
+  assert.equal(pair([old], [retained]).get(retained), old,
+    'a live arrow hands off once to its snapshot-qualified retained identity');
+  const laterRetained = { ...retained };
+  assert.equal(pair([retained], [laterRetained]).get(laterRetained), retained,
+    'later frames keep pairing by the permanent snapshot-qualified identity');
 });

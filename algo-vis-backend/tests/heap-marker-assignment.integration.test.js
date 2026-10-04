@@ -374,7 +374,7 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
   assert.equal(legacyTimeline[0].markerAssignment, false);
 });
 
-test('a declared marker with an initializer enters directly at its assigned position', async () => {
+test('a declared marker with an initializer enters unresolved before assignment moves it', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -406,8 +406,8 @@ int main() {
   ]);
   assert.equal(
     window.ASMTraceFrameTween.markerTargetBeforeFrameEvents(trace, initializerFrame, marker),
-    marker.dataset.traceBindingTarget,
-    'the declaration entrance starts at the initializer result rather than unresolved parking'
+    `unresolved:${Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr')}`,
+    'the declaration entrance starts at unresolved parking before the initializer assignment'
   );
   const timeline = window.ASMTraceFrameTween.buildEventTimeline(
     trace, { id: 'declared-marker', events: [initializer], state: {} },

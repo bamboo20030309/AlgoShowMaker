@@ -32,8 +32,8 @@ for (const name of ['bubble', 'insertion']) {
           'for declaration initialization is explicitly position-only');
         assert.ok(initializer.source?.contexts?.some(context => context.type === 'ForStatement'),
           'for initializer must retain its AST context');
-        assert.equal(window.ASMTraceEvents.showInspector(initializer, trace), true,
-          'for initializer must remain visible in the Studio right inspector');
+        assert.equal(window.ASMTraceEvents.showInspector(initializer, trace), false,
+          'the raw initializer must be represented by its declaration row');
         assert.match(initializer.source?.text || '', /^[ij]\s*=\s*0$/,
           'initialized assignment source excludes its declaration type');
         const targetId = initializer.targets.find(target => target.role === 'target')?.variableId;
@@ -44,8 +44,8 @@ for (const name of ['bubble', 'insertion']) {
         assert.equal(initializer.targets.find(target => target.role === 'target')?.lifetimeIdentity,
           declaration.lifetimeIdentity,
           'declaration and initialized assignment share one visual lifetime');
-        assert.match(declaration.source?.text || '', /^int\s+[ij]$/,
-          'declaration source contains only the type and variable name');
+        assert.match(declaration.source?.text || '', /^int\s+[ij]\s*=\s*0$/,
+          'declaration source contains the complete initialized declarator');
       }
       const forConditions = events.filter(event => (
         event.type === 'condition' && event.conditionKind === 'ForStatement'

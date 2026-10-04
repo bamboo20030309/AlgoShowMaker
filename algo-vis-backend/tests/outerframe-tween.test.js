@@ -215,6 +215,45 @@ test('recursive keep moves from its current recursion node and retracts to the s
   });
 });
 
+test('recursive keep with a visible live source does not regrow from its parent', () => {
+  const tween = setup().ASMTraceFrameTween;
+  const parent = {
+    id: 'snapshot:parent:1', objectId: 'split', layoutId: 'split_tree',
+    recursionActivationId: 'call:1'
+  };
+  const child = {
+    id: 'snapshot:child:1', objectId: 'split_1', layoutId: 'split_tree',
+    sourceVariableId: 'merge_sort:part@366',
+    recursionActivationId: 'call:2', recursionParentActivationId: 'call:1',
+    frame: { id: 'frame:child' }
+  };
+  const document = { snapshots: [parent, child] };
+  const previousPlacements = new Map([
+    ['split', { x: 100, y: 40, width: 80, height: 50 }],
+    ['merge_sort:part@366', { x: 180, y: 130, width: 60, height: 30 }]
+  ]);
+  const currentPlacements = new Map([
+    ['split', { x: 70, y: 40, width: 80, height: 50 }],
+    ['split_1', { x: 180, y: 130, width: 60, height: 30 }]
+  ]);
+
+  const transition = tween.recursionGrowthTransitions(
+    document,
+    { snapshotIds: [parent.id] },
+    { snapshotIds: [parent.id, child.id] },
+    1,
+    previousPlacements,
+    currentPlacements
+  );
+  assert.equal(transition.entering.size, 0,
+    'the live object handoff owns the keep transition');
+  const preview = tween.recursionGrowthTransitions(document,
+    { snapshotIds: [parent.id], source: { layoutId: 'split_tree', recursionActivationId: 'call:1' } },
+    { snapshotIds: [parent.id, child.id] }, 1, previousPlacements, currentPlacements);
+  assert.equal(preview.entering.size, 1,
+    'the same variable key in a different call is not a live child handoff');
+});
+
 test('recursive return replacement is not treated as a newly grown node', () => {
   const tween = setup().ASMTraceFrameTween;
   const pending = {

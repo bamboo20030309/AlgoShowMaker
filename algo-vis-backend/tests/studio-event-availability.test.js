@@ -49,6 +49,10 @@ function studioHarness(count = 200) {
     addEventListener: (name, fn) => listeners.set(name, fn),
     requestIdleCallback: fn => { const id = nextId++; idleScheduled.set(id, fn); return id; },
     cancelIdleCallback: id => idleScheduled.delete(id),
+    ASMTraceEvents: { labels: {
+      'visual-enter': '物件入場',
+      'visual-exit': '物件退場'
+    } },
     ASMTraceRenderers: { createThumbnail(document, frame, previous) {
       assert.equal(document, trace);
       assert.equal(previous, trace.frames[trace.frames.indexOf(frame) - 1] || null);
@@ -68,6 +72,7 @@ function studioHarness(count = 200) {
         eventDots = frame => { calls.dots++; return frame.events.map(e => e.autoAnimationDisabled); };
       }, cancelEventAvailabilityRefresh, cancelThumbnailRendering, thumbnailWithinViewport,
       thumbnailPriority, cacheThumbnail, takeCachedThumbnail,
+      eventLabel, eventSummary, eventDisplayText,
       thumbnailCacheSize() { return thumbnailCache.size; },
       queueThumbnails(jobs, priority = 'visible') {
         pendingThumbnails = jobs.map(job => ({ ...job, priority }));
@@ -92,6 +97,9 @@ function studioHarness(count = 200) {
     thumbnailPriority: window.testStudio.thumbnailPriority,
     cacheThumbnail: window.testStudio.cacheThumbnail,
     takeCachedThumbnail: window.testStudio.takeCachedThumbnail,
+    eventLabel: window.testStudio.eventLabel,
+    eventSummary: window.testStudio.eventSummary,
+    eventDisplayText: window.testStudio.eventDisplayText,
     thumbnailCacheSize: window.testStudio.thumbnailCacheSize,
     queueThumbnails: (priority = 'visible') => window.testStudio.queueThumbnails(trace.frames.map((frame, index) => ({
       frame, index, placeholder: {
@@ -116,6 +124,24 @@ function studioHarness(count = 200) {
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
+test('visual lifecycle labels identify the affected object instead of the frame directive', () => {
+  const h = studioHarness(1);
+  const target = { role: 'target', variableId: 'mergesort:temp@1', expression: 'temp' };
+  const enter = {
+    type: 'visual-enter', name: 'temp', source: { text: '// @frame use merge_step' }, targets: [target]
+  };
+  const exit = {
+    type: 'visual-exit', automaticVisibility: true, name: 'temp',
+    source: { text: '// @frame num' }, targets: [target]
+  };
+  assert.equal(h.eventLabel(enter), '物件入場');
+  assert.equal(h.eventSummary(enter), 'temp');
+  assert.equal(h.eventDisplayText(enter), 'temp');
+  assert.equal(h.eventLabel(exit), '物件退場');
+  assert.equal(h.eventSummary(exit), 'temp');
+  assert.equal(h.eventDisplayText(exit), 'temp');
+});
+
 test('200 thumbnail notifications coalesce without recreating any scenes or timeline buttons', () => {
   const h = studioHarness();
   const previews = h.railItems.map(item => item.preview);

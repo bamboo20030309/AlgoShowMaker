@@ -24,6 +24,7 @@
 #include <deque>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <list>
 #include <map>
 #include <queue>
@@ -384,9 +385,15 @@ class Recorder {
 
   ~Recorder() {
     if (!output_.is_open()) return;
-    // Retain the final interval even without a following capture. The reader
-    // attaches these events to the last visible frame in execution order.
-    flush_events();
+    // Commit the final event interval only when a visible frame can own it.
+    // Preserve the recorder's existing limit/error handling in flush_events().
+    if (frame_id_ > 0 && enabled_) {
+      flush_events();
+      if (enabled_) {
+        output_ << "{\"record\":\"tail\",\"eventCount\":" << pending_count_ << "}\n";
+        output_.flush();
+      }
+    }
     output_.close();
   }
   bool enabled() const { return enabled_; }
@@ -1077,25 +1084,91 @@ void event_write(int line, const char* signature, const char* variable_id,
           has_resolved_index, resolved_index) + ']'; });
 }
 
+template <typename Collection>
+std::string sequence_front_value(const Collection& collection) {
+  return collection.empty() ? "null" : encode_value(collection.front());
+}
+
+template <typename Collection>
+std::string sequence_back_value(const Collection& collection) {
+  return collection.empty() ? "null" : encode_value(collection.back());
+}
+
+template <typename T, typename Container>
+std::string sequence_front_value(const std::stack<T, Container>& collection) {
+  return collection.empty() ? "null" : encode_value(collection.top());
+}
+
+template <typename T, typename Container>
+std::string sequence_back_value(const std::stack<T, Container>& collection) {
+  return collection.empty() ? "null" : encode_value(collection.top());
+}
+
 template <typename Collection, typename F>
 void event_sequence_operation(int line, const char* signature,
                               const char* variable_id, const char* expression,
-                              const char* operation, Collection& collection, F action) {
+                              const char* operation, const char* edge,
+                              const char* source_id, const char* source_expression,
+                              const char* source_index, bool source_has_resolved_index,
+                              long long source_resolved_index,
+                              Collection& collection, F action) {
   const std::size_t before_size = collection.size();
-  const std::string before_front = before_size ? encode_value(collection.front()) : "null";
-  const std::string before_back = before_size ? encode_value(collection.back()) : "null";
+  const std::string before_front = sequence_front_value(collection);
+  const std::string before_back = sequence_back_value(collection);
   action();
   const std::size_t after_size = collection.size();
-  const std::string after_front = after_size ? encode_value(collection.front()) : "null";
-  const std::string after_back = after_size ? encode_value(collection.back()) : "null";
+  const std::string after_front = sequence_front_value(collection);
+  const std::string after_back = sequence_back_value(collection);
+  const bool front_edge = std::string(edge ? edge : "back") == "front";
+  const std::string inserted_value = after_size > before_size
+    ? (front_edge ? after_front : after_back) : "null";
   recorder().add_event_lazy("sequence-operation", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"payload\":{\"beforeSize\":" + std::to_string(before_size)
       + ",\"afterSize\":" + std::to_string(after_size)
+      + ",\"edge\":" + quoted(edge ? edge : "back")
       + ",\"beforeFront\":" + before_front
       + ",\"beforeBack\":" + before_back
       + ",\"afterFront\":" + after_front
-      + ",\"afterBack\":" + after_back + "}"
-      + ",\"targets\":[" + target_json("target", variable_id, expression, "") + ']'; });
+      + ",\"afterBack\":" + after_back
+      + ",\"insertedValue\":" + inserted_value + "}"
+      + ",\"targets\":[" + target_json("target", variable_id, expression, "")
+      + ',' + source_target_json("source", source_id, source_expression, source_index,
+          source_has_resolved_index, source_resolved_index) + ']'; });
+}
+
+template <typename Collection, typename F>
+void event_sequence_insert_operation(
+    int line, const char* signature,
+    const char* variable_id, const char* expression,
+    const char* operation,
+    const char* source_id, const char* source_expression,
+    const char* source_index, bool source_has_resolved_index,
+    long long source_resolved_index,
+    Collection& collection, F action) {
+  const std::size_t before_size = collection.size();
+  const std::string before_front = sequence_front_value(collection);
+  const std::string before_back = sequence_back_value(collection);
+  auto inserted = action();
+  const std::size_t after_size = collection.size();
+  const std::string after_front = sequence_front_value(collection);
+  const std::string after_back = sequence_back_value(collection);
+  const long long insert_index = static_cast<long long>(
+    std::distance(collection.begin(), inserted));
+  const std::string inserted_value = inserted == collection.end()
+    ? "null" : encode_value(*inserted);
+  recorder().add_event_lazy("sequence-operation", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
+      + ",\"payload\":{\"beforeSize\":" + std::to_string(before_size)
+      + ",\"afterSize\":" + std::to_string(after_size)
+      + ",\"edge\":\"index\""
+      + ",\"insertIndex\":" + std::to_string(insert_index)
+      + ",\"beforeFront\":" + before_front
+      + ",\"beforeBack\":" + before_back
+      + ",\"afterFront\":" + after_front
+      + ",\"afterBack\":" + after_back
+      + ",\"insertedValue\":" + inserted_value + "}"
+      + ",\"targets\":[" + target_json("target", variable_id, expression, "")
+      + ',' + source_target_json("source", source_id, source_expression, source_index,
+          source_has_resolved_index, source_resolved_index) + ']'; });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>

@@ -37,6 +37,18 @@ test('v1 old files and explicit false/zero/custom data survive loading and savin
  const result=await store.read(write(dir,old));assert.deepEqual(result.records,old);
  assert.deepEqual((await store.read(write(dir,JSON.parse(JSON.stringify(result.records))))).records,old);
 });
+test('older v2 files without a tail marker preserve trailing events after the captured state',async t=>{
+ const dir=workspace(t);
+ const trailing={record:'events',templates:[{type:'assign',line:9,signature:'legacy-tail'}],events:[
+  [2,0,{payload:{before:2,after:3}}]
+ ]};
+ const result=await store.read(write(dir,[meta,chunk,frame,trailing]));
+ const decoded=result.records.find(record=>record.record==='frame');
+ assert.equal(decoded.events.length,3);
+ assert.equal(decoded.captureOrder,1);
+ assert.equal(decoded.events[2].afterCapture,true);
+ assert.equal(result.stats.events,3);
+});
 test('bad references, incomplete frames, corrupt gzip and resource limits fail explicitly',async t=>{
  const dir=workspace(t);
  await assert.rejects(store.read(write(dir,[meta,{...chunk,events:[[0,99,{}]]},frame])),/參照/);
@@ -79,7 +91,8 @@ int main(){
   assert.ok(frames[2].events.slice(2).every(event=>event.signature==='after-last'&&event.afterCapture===true));
   assert.equal(result.stats.events,4103);
   const raw=fs.readFileSync(file,'utf8').trim().split('\n').map(JSON.parse);
-  assert.equal(raw.at(-1).record,'events');
+  assert.equal(raw.at(-1).record,'tail');
+  assert.equal(raw.at(-1).eventCount,2050);
   assert.ok(JSON.stringify(raw).includes('after-last'));
   assert.ok(JSON.stringify(raw).includes('before-first'));
   assert.ok(raw.filter(r=>r.record==='events').length>=5);
@@ -110,7 +123,7 @@ int main(int argc,char** argv){
 }`);
  execFileSync('g++',['-std=c++17',cpp,'-I',path.join(__dirname,'../lib'),'-o',exe],{windowsHide:true,timeout:30000});
  const run=args=>{const file=path.join(dir,'trace-'+(args[0]||'none')+'.jsonl');execFileSync(exe,args,{env:{...process.env,ASM_TRACE_FILE:file},windowsHide:true,timeout:10000});return file;};
- const none=await store.read(run([]));assert.equal(none.stats.events,1);assert.equal(none.records.filter(r=>r.record==='frame').length,0);
+ const none=await store.read(run([]));assert.equal(none.stats.events,0);assert.equal(none.records.length,1);
  await assert.rejects(store.read(run(['tail'])),/Trace event limit exceeded/);
  await assert.rejects(store.read(run(['middle'])),/Trace event limit exceeded/);
 });

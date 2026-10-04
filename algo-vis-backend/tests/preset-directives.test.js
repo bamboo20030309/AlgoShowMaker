@@ -146,9 +146,10 @@ int main()`).replace('@frame use sieve_view',
   assert.equal(frame.when.expression, 'i <= n');
   assert.equal(frame.styles.find(style => style.styleType === 'highlight').color, 'AV_green');
   assert.deepEqual(frame.objects.map(object => object.primaryName), ['isprime', 'prime']);
-  assert.throws(() => findFrameDirectives(onlyStyle.replace(
-    'use sieve_view, color_view', 'use color_view')),
-  /@frame 至少需要一個緊接的 @object/);
+  const [empty] = findFrameDirectives(onlyStyle.replace(
+    'use sieve_view, color_view', 'use color_view'));
+  assert.deepEqual(empty.objects, []);
+  assert.ok(empty.styles.some(style => style.styleType === 'highlight'));
 });
 
 test('preset definitions retain every directive without executing control actions', () => {
