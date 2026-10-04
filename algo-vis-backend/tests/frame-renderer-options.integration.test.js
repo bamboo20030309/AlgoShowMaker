@@ -153,13 +153,15 @@ int main() {
   }
 });
 
-test('blank @frame when still requires a consecutive @object', () => {
+test('blank @frame when is valid without a consecutive @object', () => {
   const { findFrameDirectives } = require('../trace-instrumenter');
-  assert.throws(() => findFrameDirectives(`#include <bits/stdc++.h>
+  const [frame] = findFrameDirectives(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
   int i = 1;
   // @frame when i > 0
   return 0;
-}`), /至少需要一個緊接的 @object/);
+}`);
+  assert.deepEqual(frame.objects, []);
+  assert.equal(frame.when.expression, 'i > 0');
 });

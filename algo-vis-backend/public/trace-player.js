@@ -125,9 +125,6 @@
       ? document.frames[fromIndex] : null;
     currentFrame = next;
     const frame = document.frames[currentFrame];
-    const codeTransitionDelayMs = Math.max(0, Number(
-      window.ASMTraceCodePresenter?.transitionDelay?.(document, frame)
-    ) || 0);
     const cameraTransitionDurationMs = Math.max(0, Number(
       window.ASMTraceCamera?.transitionDuration?.(document, frame, previous || null)
     ) || 0);
@@ -138,7 +135,7 @@
       fromIndex,
       toIndex: currentFrame,
       direction,
-      initialDelayMs: codeTransitionDelayMs,
+      initialDelayMs: 0,
       cameraTransitionDurationMs
     });
     const playbackPlan = transition?.playbackPlan || null;
@@ -159,6 +156,7 @@
         index: currentFrame,
         fromIndex,
         direction,
+        stable,
         plan: playbackPlan
       }
     }));
@@ -172,8 +170,9 @@
     if (typeof window.addEditorHighlight === 'function' && Number(frame.source?.line) > 0) {
       window.addEditorHighlight(Number(frame.source.line));
     }
-    if (!playbackPlan) return transition;
-    const trackedTransition = Promise.resolve(transition).finally(() => {
+    const parallelTransition = Promise.all([transition, window.ASMTraceCodePresenter?.waitForTransition?.()]);
+    if (!playbackPlan) return parallelTransition;
+    const trackedTransition = parallelTransition.finally(() => {
       if (activePlaybackPlan !== playbackPlan) return;
       activePlaybackPlan = null;
       window.dispatchEvent(new CustomEvent('asm:trace-playback-plan-complete', {

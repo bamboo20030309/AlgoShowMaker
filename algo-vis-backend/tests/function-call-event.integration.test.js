@@ -62,8 +62,8 @@ int main() {
     && event.targets?.[0]?.expression === 'dp'
   ));
   assert.deepEqual(Array.from(dpEvents, event => [event.type, event.source?.text]), [
-    ['declare', 'vector<vector<int>> dp'],
-    ['assign', 'dp(n,vector<int>(m,0))']
+    ['declare', 'vector<vector<int>> dp(n,vector<int>(m,0))'],
+    ['assign', 'dp = (n,vector<int>(m,0))']
   ]);
   assert.equal(events.some(event => (
     event.type === 'call' && /vector\s*<\s*int\s*>/.test(event.callee || '')

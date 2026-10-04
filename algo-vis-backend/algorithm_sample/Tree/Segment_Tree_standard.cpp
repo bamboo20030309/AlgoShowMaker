@@ -17,9 +17,9 @@ using namespace std;
 vector<int> values, tree, lazy, sets;
 int n, sum = 0;
 
-// @defaults
+// @default
 // @camera focus tree offset(0,35) zoom(1.05)
-// @enddefaults
+// @enddefault
 
 // @preset operation_view
 // @object tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)

@@ -87,7 +87,9 @@ async function read(file, limits = LIMITS) {
   const packed = await pack(file, limits);
   const records = [];
   let pending = [], events = 0, expanded = 0, version = null, lastOrder = -1;
+  let tailSeen = false;
   for await (const record of readChunks(packed.archive, packed.entries, limits)) {
+    if (tailSeen) throw new Error('追蹤尾端記錄之後仍有資料');
     if (record.record === 'meta') {
       if (version !== null || !['1.0','2.0'].includes(record.schemaVersion)) throw new Error('不支援的追蹤格式');
       version = record.schemaVersion;
@@ -120,10 +122,19 @@ async function read(file, limits = LIMITS) {
         if (events > limits.events) throw new Error('追蹤事件數量超過上限');
         records.push(record);
       }
+    } else if (record.record === 'tail') {
+      if (version !== '2.0' || !Number.isSafeInteger(record.eventCount)
+          || record.eventCount !== pending.length) throw new Error('追蹤尾端的事件數量不符');
+      const lastFrame = [...records].reverse().find(item => item.record === 'frame');
+      if (!lastFrame) throw new Error('追蹤尾端缺少可附加的幀');
+      lastFrame.events = [...(lastFrame.events || []), ...pending];
+      pending = [];
+      tailSeen = true;
     } else records.push(record);
   }
   if (version === null) throw new Error('追蹤檔案沒有格式標頭');
-  // As in v1, events after the final @frame are not attached to a displayed frame.
+  // Older v2 writers have no explicit tail record. Preserve their historical
+  // behavior by discarding an uncommitted trailing interval.
   return {records, stats:{...packed.stats, events:events-pending.length}};
 }
 

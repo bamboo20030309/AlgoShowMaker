@@ -679,7 +679,7 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   max-width: 100%;
   opacity: 1;
   transform: translateY(0);
-  transition: transform 460ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: transform var(--asm-code-scroll-duration, 460ms) cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .asm-trace-code-page.is-transition-preparing {
@@ -687,7 +687,7 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
 }
 
 .asm-trace-code-page.is-transition-scrolling {
-  transition: transform 460ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: transform var(--asm-code-scroll-duration, 460ms) cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .asm-trace-code-page.is-transition-expanded .asm-trace-code-line.is-transition-entering {
@@ -695,7 +695,7 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
   max-height: 0;
   overflow: hidden;
   opacity: 0;
-  transition: max-height 460ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 180ms ease;
+  transition: max-height var(--asm-code-scroll-duration, 460ms) cubic-bezier(0.25, 0.1, 0.25, 1), opacity 180ms ease;
 }
 
 .asm-trace-code-page.is-transition-expanded.is-transition-scrolling .asm-trace-code-line.is-transition-entering {

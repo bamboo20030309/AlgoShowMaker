@@ -18,9 +18,9 @@ int r1, c1, r2, c2;
 int ans;
 vector<vector<int>> num, pre;
 
-// @defaults
+// @default
 // @camera auto zoom(1)
-// @enddefaults
+// @enddefault
 
 // num 與 pre 都在第 0 列、第 0 欄補 0，實際資料從 [1][1] 開始。
 // matrix 預設會顯示數值、row／column index、格線與 outerframe，因此不必重複寫 with。

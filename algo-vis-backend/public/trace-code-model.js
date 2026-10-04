@@ -151,7 +151,7 @@
       if (/\/\*\s*@asm-view\b/i.test(text)) asmView = true;
       if (asmView) hidden.add(line.number);
       if (/@asm-view\s*\*\//i.test(text)) asmView = false;
-      if (/^\s*\/\/.*@(?:frame|object|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|defaults|enddefaults|camera|asm(?:[-\w]*)?)\b/i.test(text)) {
+      if (/^\s*\/\/.*@(?:frame|object|pointer|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|defaults|enddefaults|camera|asm(?:[-\w]*)?)\b/i.test(text)) {
         hidden.add(line.number);
       }
       if (!String(displayLines.get(line.number) || '').trim()) hidden.add(line.number);
@@ -234,6 +234,14 @@
         ...recorded,
         from: Math.max(0, Math.min(source.length, from)),
         to: Math.max(0, Math.min(source.length, to)),
+        ranges: (Array.isArray(recorded.ranges) ? recorded.ranges : [])
+          .map(range => ({
+            ...range,
+            from: Math.max(0, Math.min(source.length, Number(range?.from))),
+            to: Math.max(0, Math.min(source.length, Number(range?.to)))
+          }))
+          .filter(range => Number.isFinite(range.from)
+            && Number.isFinite(range.to) && range.to > range.from),
         contexts: Array.isArray(recorded.contexts) ? recorded.contexts : []
       }
       : fallbackEventSource(event, lines, source);
@@ -626,11 +634,15 @@
   }
 
   function segmentsForLine(line, cluster) {
-    const ranges = cluster.map(source => ({
-      eventId: String(source.event?.id || ''),
-      start: Math.max(line.start, source.from) - line.start,
-      end: Math.min(line.end, source.to) - line.start
-    })).filter(range => range.eventId && range.end > range.start);
+    const ranges = cluster.flatMap(source => {
+      const sourceRanges = Array.isArray(source.ranges) && source.ranges.length
+        ? source.ranges : [{ from: source.from, to: source.to }];
+      return sourceRanges.map(range => ({
+        eventId: String(source.event?.id || ''),
+        start: Math.max(line.start, Number(range.from)) - line.start,
+        end: Math.min(line.end, Number(range.to)) - line.start
+      }));
+    }).filter(range => range.eventId && range.end > range.start);
     const boundaries = new Set([0, line.text.length]);
     ranges.forEach(range => {
       boundaries.add(Math.max(0, Math.min(line.text.length, range.start)));
@@ -1152,7 +1164,7 @@
       if (/\/\*\s*@asm-view\b/i.test(text)) asmView = true;
       if (asmView) hidden.add(line.number);
       if (/@asm-view\s*\*\//i.test(text)) asmView = false;
-      if (/^\s*\/\/.*@(?:frame|object|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|defaults|enddefaults|camera|asm(?:[-\w]*)?)\b/i.test(text)) {
+      if (/^\s*\/\/.*@(?:frame|object|pointer|keep|exit|text|style|segment|place|arrow|layout|preset|endpreset|defaults|enddefaults|camera|asm(?:[-\w]*)?)\b/i.test(text)) {
         hidden.add(line.number);
       }
     });

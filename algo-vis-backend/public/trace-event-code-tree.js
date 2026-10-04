@@ -77,21 +77,98 @@
     return 'available';
   }
 
-  function checked(events = []) {
-    return events.some(event => {
-      const control = window.ASMTraceEvents?.controlState?.(event);
-      return control ? control.checked : event.enabled !== false;
+  function finiteSourceRanges(source = {}) {
+    const ranges = Array.isArray(source?.ranges) ? source.ranges : [];
+    const normalized = ranges.map(range => {
+      const from = Number(range?.from);
+      const to = Number(range?.to);
+      return Number.isFinite(from) && Number.isFinite(to) && to > from
+        ? { ...range, from, to }
+        : null;
+    }).filter(Boolean);
+    const fallback = finiteRange(source);
+    return normalized.length ? normalized : (fallback ? [fallback] : []);
+  }
+
+  function groupSourceRanges(group = {}) {
+    return finiteSourceRanges(group.event?.source);
+  }
+
+  function frameDisplaysVariable(frame, variableId) {
+    if (!frame?.state?.[variableId]) return false;
+    if (!(frame.captureOnlyVariableIds || []).includes(variableId)) return true;
+    // Index bindings hide the scalar box but still draw the variable as a
+    // marker. That marker is a visible event target, not a missing object.
+    return (frame.bindings || []).some(binding => {
+      const ids = binding.sourceVariableIds || [binding.sourceVariableId];
+      return binding.mode === 'index' && ids.includes(variableId);
     });
   }
 
-  function checkedForAvailability(events = [], kind = 'available') {
-    if (kind === 'available') return checked(events);
-    // A source instruction may be available in another frame while its current
-    // occurrence is missing a canvas target or has no supported animation.
-    // Do not let that green occurrence turn the current yellow/red button on.
-    // controlState still returns true for an explicitly saved user choice, so
-    // manual overrides remain visible and editable.
-    return checked(events.filter(event => availability([event]) === kind));
+  function occurrenceDisplaysTargets(frame, event, requireAll = false) {
+    if (availability([event]) === 'unrenderable') return false;
+    const ids = [...new Set((event?.targets || [])
+      .map(target => target?.variableId)
+      .filter(Boolean))];
+    if (!ids.length) return availability([event]) === 'available';
+    const displayed = ids.map(id => frameDisplaysVariable(frame, id));
+    return requireAll ? displayed.every(Boolean) : displayed.some(Boolean);
+  }
+
+  function groupAvailability(document, group) {
+    const occurrences = group.occurrences || [];
+    if (group.type === 'compare') {
+      // A comparison needs every operand. One hidden operand makes the source
+      // instruction yellow, even if another execution happened to be visible.
+      if (occurrences.some(({ frame, event }) => (
+        !occurrenceDisplaysTargets(frame, event, true)
+      ))) return 'missing-target';
+      return availability(group.events);
+    }
+    const targetIds = [...new Set(group.events.flatMap(event => (
+      (event?.targets || []).map(target => target?.variableId).filter(Boolean)
+    )))];
+    if (!targetIds.length) {
+      return group.events.some(event => availability([event]) === 'available')
+        ? 'available'
+        : availability(group.events);
+    }
+    // Declaration and lifecycle events often occur before/after the frame that
+    // actually shows their object. Search the complete trace, not only the
+    // frames where this exact instruction executed.
+    if (targetIds.some(variableId => (
+      (document?.frames || []).some(frame => frameDisplaysVariable(frame, variableId))
+    ))) {
+      return 'available';
+    }
+    return availability(group.events) === 'unrenderable'
+      ? 'unrenderable'
+      : 'missing-target';
+  }
+
+  function groupEnabled(document, group, statusAvailability) {
+    const directiveEvent = group.currentEvents.find(event => (
+      typeof event?.directiveAnimationControl === 'boolean'
+    )) || group.events.find(event => typeof event?.directiveAnimationControl === 'boolean');
+    if (directiveEvent) return directiveEvent.directiveAnimationControl;
+
+    const instructionStates = document?.studio?.eventInstructionStates || {};
+    const canonical = window.ASMTraceEvents?.canonicalInstructionKey;
+    let saved = null;
+    Object.entries(instructionStates).forEach(([key, value]) => {
+      const normalized = canonical ? canonical(key) : key;
+      if (normalized === group.key) saved = value !== false;
+    });
+    if (saved != null) return saved;
+
+    // Missing/unrenderable instructions start closed. Their raw event.enabled
+    // preference may remain true so availability checks never erase a user's
+    // saved choice, but it must not color the button until explicitly opened.
+    if (statusAvailability !== 'available') return false;
+    return group.events.some(event => (
+      window.ASMTraceEvents?.controlState?.(event)?.checked
+      ?? event.enabled !== false
+    ));
   }
 
   // ---------------------------------------------------------------------------
@@ -113,6 +190,7 @@
             key: window.ASMTraceEvents?.instructionKey?.(event) || event.signature || event.type,
             event,
             events: [],
+            occurrences: [],
             currentEvents: [],
             from: range.from,
             to: range.to,
@@ -123,18 +201,15 @@
         }
         const group = groups.get(id);
         group.events.push(event);
+        group.occurrences.push({ frame: item, event });
         if (currentEvents.has(event)) group.currentEvents.push(event);
       });
     });
     return [...groups.values()].map(group => {
-      const statusEvents = group.currentEvents.length ? group.currentEvents : group.events;
-      const statusAvailability = availability(statusEvents);
+      const statusAvailability = groupAvailability(document, group);
       return {
         ...group,
-        enabled: checkedForAvailability(
-          statusAvailability === 'available' ? group.events : statusEvents,
-          statusAvailability
-        ),
+        enabled: groupEnabled(document, group, statusAvailability),
         availability: statusAvailability,
         current: group.currentEvents.length > 0
       };
@@ -289,16 +364,23 @@
   // 區段：程式碼行事件標記
   // ---------------------------------------------------------------------------
   function segmentsForLine(line, groups) {
-    const ranges = groups.filter(group => group.from < line.end && group.to > line.start);
+    const ranges = groups.filter(group => groupSourceRanges(group).some(range => (
+      range.from < line.end && range.to > line.start
+    )));
     const boundaries = new Set([line.start, line.end]);
     ranges.forEach(group => {
-      boundaries.add(Math.max(line.start, group.from));
-      boundaries.add(Math.min(line.end, group.to));
+      groupSourceRanges(group).forEach(range => {
+        if (range.from >= line.end || range.to <= line.start) return;
+        boundaries.add(Math.max(line.start, range.from));
+        boundaries.add(Math.min(line.end, range.to));
+      });
     });
     const points = [...boundaries].sort((left, right) => left - right);
     return points.slice(0, -1).map((from, index) => {
       const to = points[index + 1];
-      const candidates = ranges.filter(group => group.from <= from && group.to >= to);
+      const candidates = ranges.filter(group => groupSourceRanges(group).some(range => (
+        range.from <= from && range.to >= to
+      )));
       return {
         text: line.text.slice(from - line.start, to - line.start),
         from,
@@ -319,7 +401,9 @@
     const groups = collectGroups(document, frame);
     const selected = new Set();
     groups.forEach(group => {
-      lineNumbersForRange(lines, group.from, group.to).forEach(number => selected.add(number));
+      groupSourceRanges(group).forEach(range => {
+        lineNumbersForRange(lines, range.from, range.to).forEach(number => selected.add(number));
+      });
       (group.event.source?.contexts || []).forEach(context => addContextLines(selected, context, lines));
     });
     const hidden = window.ASMTraceCodeModel?.presentationLineNumbers

@@ -37,6 +37,16 @@ test('v1 old files and explicit false/zero/custom data survive loading and savin
  const result=await store.read(write(dir,old));assert.deepEqual(result.records,old);
  assert.deepEqual((await store.read(write(dir,JSON.parse(JSON.stringify(result.records))))).records,old);
 });
+test('older v2 files without a tail marker keep discarding an uncommitted trailing interval',async t=>{
+ const dir=workspace(t);
+ const trailing={record:'events',templates:[{type:'assign',line:9,signature:'legacy-tail'}],events:[
+  [2,0,{payload:{before:2,after:3}}]
+ ]};
+ const result=await store.read(write(dir,[meta,chunk,frame,trailing]));
+ const decoded=result.records.find(record=>record.record==='frame');
+ assert.equal(decoded.events.length,2);
+ assert.equal(result.stats.events,2);
+});
 test('bad references, incomplete frames, corrupt gzip and resource limits fail explicitly',async t=>{
  const dir=workspace(t);
  await assert.rejects(store.read(write(dir,[meta,{...chunk,events:[[0,99,{}]]},frame])),/參照/);
@@ -71,14 +81,17 @@ int main(){
  const file=path.join(dir,'trace.jsonl');execFileSync(exe,[],{env:{...process.env,ASM_TRACE_FILE:file},windowsHide:true,timeout:10000});
  return store.read(file).then(result=>{
   const frames=result.records.filter(r=>r.record==='frame');assert.equal(frames.length,3);
-  assert.equal(frames[0].events.length,0);
-  assert.equal(frames[1].events.length,2050);assert.equal(frames[2].events.length,2);
-  frames[1].events.forEach((event,i)=>{assert.equal(event.order,i);assert.equal(event.value,i);assert.equal(event.enabled,false);});
-  assert.equal(frames[2].events[0].text.length,300000);assert.equal(frames[2].events[1].order,2051);
+  assert.equal(frames[0].events.length,1);assert.equal(frames[0].events[0].signature,'before-first');
+  assert.equal(frames[1].events.length,2050);assert.equal(frames[2].events.length,2052);
+  frames[1].events.forEach((event,i)=>{assert.equal(event.order,i+1);assert.equal(event.value,i);assert.equal(event.enabled,false);});
+  assert.equal(frames[2].events[0].text.length,300000);assert.equal(frames[2].events[1].order,2052);
+  assert.equal(frames[2].events[2].signature,'after-last');
+  assert.equal(frames[2].events.at(-1).order,4102);
   const raw=fs.readFileSync(file,'utf8').trim().split('\n').map(JSON.parse);
-  assert.equal(raw.at(-1).record,'frame');
-  assert.ok(!JSON.stringify(raw).includes('after-last'));
-  assert.ok(!JSON.stringify(raw).includes('before-first'));
+  assert.equal(raw.at(-1).record,'tail');
+  assert.equal(raw.at(-1).eventCount,2050);
+  assert.ok(JSON.stringify(raw).includes('after-last'));
+  assert.ok(JSON.stringify(raw).includes('before-first'));
   assert.ok(raw.filter(r=>r.record==='events').length>=5);
   assert.ok(raw.filter(r=>r.record==='events').every(r=>r.events.length<=1024));
  });
@@ -89,23 +102,23 @@ test('streamed JSON is identical to JSON.stringify for response contract',()=>{
 });
 
 
-test('C++ event window discards no-frame and tail-only failures but reports consumed failures',async t=>{
+test('C++ event window discards no-frame data and reports failures after the final frame',async t=>{
  const dir=workspace(t),cpp=path.join(dir,'window.cpp'),exe=path.join(dir,process.platform==='win32'?'window.exe':'window');
  fs.writeFileSync(cpp,`#include "ASMTrace.hpp"
 int main(int argc,char** argv){
  auto& r=asm_trace::recorder();
  int builds=0;
- r.add_event_lazy("assign",1,"initial",[&](){++builds;return std::string(17*1024*1024,'x');});
- if(builds!=0)return 3;
+ r.add_event_lazy("assign",1,"initial",[&](){++builds;return std::string("\\\"value\\\":0");});
+ if(builds!=1)return 3;
  if(argc==1)return 0;
  r.capture(2,"main","first","manual");
  r.add_event_lazy("assign",3,"tail",[&](){++builds;return std::string(17*1024*1024,'x');});
- if(builds!=1)return 4;
+ if(builds!=2)return 4;
  if(std::string(argv[1])=="middle")r.capture(4,"main","second","manual");
 }`);
  execFileSync('g++',['-std=c++17',cpp,'-I',path.join(__dirname,'../lib'),'-o',exe],{windowsHide:true,timeout:30000});
  const run=args=>{const file=path.join(dir,'trace-'+(args[0]||'none')+'.jsonl');execFileSync(exe,args,{env:{...process.env,ASM_TRACE_FILE:file},windowsHide:true,timeout:10000});return file;};
  const none=await store.read(run([]));assert.equal(none.stats.events,0);assert.equal(none.records.length,1);
- const tail=await store.read(run(['tail']));assert.equal(tail.stats.events,0);assert.equal(tail.records.filter(r=>r.record==='frame').length,1);
+ await assert.rejects(store.read(run(['tail'])),/Trace event limit exceeded/);
  await assert.rejects(store.read(run(['middle'])),/Trace event limit exceeded/);
 });

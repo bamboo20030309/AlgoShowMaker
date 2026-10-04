@@ -353,6 +353,7 @@
     normalized.viewSettingsApplied = Boolean(source.viewSettingsApplied
       || (normalized.asmView && window.ASMTraceViewSource?.applyToTrace));
     applyFrameConditions(normalized);
+    window.ASMTraceEvents?.rebuildVisualLifecycleEvents?.(normalized);
     window.ASMTraceEvents?.rebuildAutoFixedEvents?.(normalized);
     window.ASMTraceEvents?.applyEnabledStates?.(normalized);
     return normalized;
