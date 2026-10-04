@@ -39,8 +39,16 @@ test('old, future, incomplete and unknown-format traces warn without mutation', 
   }
   assert.equal(api.status(null, '', '').kind, 'empty');
 });
-test('the previous engine generation is outdated after segment style was removed', () => {
+test('the previous engine generation is outdated when boundary events are restored', () => {
   const previous = trace();
-  previous.provenance.engineVersion = 7;
+  previous.provenance.engineVersion = 10;
   assert.equal(api.status(previous, 'int x = 1;\n', '1\n').kind, 'outdated');
+});
+test('pre-shift traces need RUN to obtain shift metadata without changing saved settings', () => {
+  const previous = trace();
+  previous.provenance.engineVersion = 11;
+  previous.studio = { eventSettings: { autoFixedEnabled: false } };
+  const before = JSON.stringify(previous);
+  assert.equal(api.status(previous, 'int x = 1;\n', '1\n').kind, 'outdated');
+  assert.equal(JSON.stringify(previous), before);
 });

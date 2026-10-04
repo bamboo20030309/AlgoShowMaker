@@ -264,6 +264,9 @@
   // 區段：原始資料與序列 renderer
   // ---------------------------------------------------------------------------
   function renderOriginal(group, entry, context) {
+    if (context.skin?.options?.dataTransform?.type === 'bits') {
+      return renderOriginalMatrix(group, entry, context);
+    }
     if (typeof window.draw_array_normal !== 'function') {
       return Array.isArray(entry.data?.items) ? renderSequence(group, entry, context) : renderScalar(group, entry, context);
     }
@@ -590,6 +593,43 @@
   // ---------------------------------------------------------------------------
   // 區段：矩陣 renderer
   // ---------------------------------------------------------------------------
+  function bitsMatrixEntry(entry, context) {
+    const transform = context.skin?.options?.dataTransform;
+    if (transform?.type !== 'bits') return { entry, context };
+    const width = Math.max(1, Math.trunc(Number(transform.width) || 1));
+    const sourceRows = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
+    const scalar = value => Number(window.ASMTraceModel?.scalarValue?.(value) ?? value?.value ?? value) || 0;
+    const rows = sourceRows.map(source => ({
+      kind: 'sequence',
+      items: Array.from({ length: width }, (_, column) => ({
+        kind: 'scalar',
+        value: Math.floor(Math.abs(scalar(source)) / (2 ** (width - 1 - column))) % 2
+      }))
+    }));
+    const highlights = {};
+    Object.entries(context.highlights || {}).forEach(([key, value]) => {
+      if (/^\d+$/.test(key)) {
+        for (let column = 0; column < width; column += 1) highlights[`${key},${column}`] = value;
+      } else highlights[key] = value;
+    });
+    return {
+      entry: { ...entry, data: { kind: 'matrix', items: rows } },
+      context: { ...context, highlights }
+    };
+  }
+
+  function matrixCellDisplay(item, context, locals) {
+    const options = context.skin?.options || {};
+    const raw = Number(window.ASMTraceModel?.scalarValue?.(item));
+    const symbols = Array.isArray(options.symbols) ? options.symbols : null;
+    const fallback = symbols && (raw === 0 || raw === 1)
+      ? symbols[raw]
+      : formatDisplayValue(item, options, context.variable?.name || '', context.variableId);
+    return renderedDisplayValue(item, context, locals, fallback);
+  }
+
+
+
   function renderMatrix(group, entry, context) {
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
     let height = 0;
@@ -612,7 +652,8 @@
     const options = context.skin?.options || {};
     const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
     const defaultIndices = indexMode !== 0 && options.showIndex !== false;
-    const showValue = options.showValue !== false && indexMode !== 2;
+    const showValue = Boolean(options.display) || Array.isArray(options.symbols)
+      || (options.showValue !== false && indexMode !== 2);
     const rowSpec = options.rowLabels
       || (defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
     const columnSpec = options.columnLabels
@@ -623,11 +664,11 @@
         spec.mode === 'index' ? index : spec.values?.[index] ?? ''
       ));
     const matrix = rows.map((row, rowIndex) => (row?.items || []).map((item, columnIndex) => (
-      renderedDisplayValue(item, context, {
+      matrixCellDisplay(item, context, {
         index: columnIndex,
         row: rowIndex,
         column: columnIndex
-      }, formatDisplayValue(item, options, context.variable?.name || '', context.variableId))
+      })
     )));
     const rowLabels = labelValues(rowSpec, rows.length);
     const maxColumns = Math.max(0, ...matrix.map(row => row.length));
@@ -710,6 +751,7 @@
             key: cellKey, objectKey, objectLabel: context.variable?.name || context.variableId,
             indices: [rowIndex, columnIndex], kind: 'matrix-cell'
           });
+
         }
         const inner = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-${columnIndex}-inner`)}`);
         if (inner) {
@@ -773,6 +815,7 @@
   }
 
   function renderOriginalMatrix(group, entry, context) {
+    ({ entry, context } = bitsMatrixEntry(entry, context));
     const drawnHeight = renderOriginalMatrixWithDraw2DArray(group, entry, context);
     if (drawnHeight != null) return drawnHeight;
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
@@ -783,7 +826,8 @@
     const gridlines = Math.max(0, Number.isFinite(Number(options.gridlines))
       ? Number(options.gridlines) : 1);
     const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
-    const showValue = options.showValue !== false && indexMode !== 2;
+    const showValue = Boolean(options.display) || Array.isArray(options.symbols)
+      || (options.showValue !== false && indexMode !== 2);
     const defaultIndices = indexMode !== 0 && options.showIndex !== false;
     const maxColumns = Math.max(0, ...rows.map(row => Array.isArray(row?.items) ? row.items.length : 0));
     const labelSpec = (name, fallback) => options[name] || fallback;
@@ -893,8 +937,11 @@
           cell.append(svg('text', {
             x: cellSize / 2, y: cellSize / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
             'font-family': 'Arial', 'font-size': 16, fill: '#1f282d', 'data-trace-content-role': 'value'
-          }, formatDisplayValue(item, options, context.variable?.name || '', context.variableId)));
+          }, matrixCellDisplay(item, context, {
+            index: columnIndex, row: rowIndex, column: columnIndex
+          })));
         }
+
         group.append(cell);
         if (showInner) {
           const inner = labelGroup(`${cellKey}:index`, x, y + cellSize, cellSize, innerHeight,
@@ -4994,6 +5041,10 @@
     return '';
   }
 
+  function supportsCellLevelLod(rendererName) {
+    return ['original-array', 'original-matrix'].includes(String(rendererName || ''));
+  }
+
   function renderSnapshots(root, document, frame, startY, placements, elements, options = {}, keepNodes = []) {
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
     const visibilityStates = document.studio?.visibility?.[frame.id] || {};
@@ -5004,6 +5055,30 @@
       const objectKey = snapshotObjectKey(snapshot);
       const visibility = visibilityStates[objectKey] || visibilityStates[snapshotId];
       if (!snapshot || !objectKey || (!editingVisibility && visibility === 'hidden')) return;
+      const reusable = options.reusableSnapshots?.get?.(snapshotId) || null;
+      if (reusable) {
+        const position = snapshotStudioPosition(document, frame, snapshot);
+        const baseX = position.x;
+        const baseY = position.absolute ? position.y : y + position.y;
+        reusable.setAttribute('transform', `translate(${baseX}, ${baseY})`);
+        reusable.setAttribute('data-base-offset', `${baseX},${baseY}`);
+        reusable.dataset.tracePositionApplied = '1';
+        reusable.dataset.tracePositionSpace = 'origin';
+        reusable.dataset.tracePositionX = String(baseX);
+        reusable.dataset.tracePositionY = String(baseY);
+        reusable.dataset.traceIncrementalReuse = '1';
+        root.append(reusable);
+        const content = reusable.querySelector(':scope > .asm-trace-motion') || reusable;
+        const box = measuredBox(reusable, { x: 0, y: -20, width: 180, height: 76 });
+        placements.set(objectKey, {
+          x: baseX + box.x, y: baseY + box.y,
+          width: box.width, height: box.height
+        });
+        elements.set(objectKey, reusable);
+        collectElementPlacements(content, baseX, baseY, placements, elements);
+        if (!snapshot.layoutId) y += Math.max(76, box.height) + KEEP_SNAPSHOT_GAP;
+        return;
+      }
       if (snapshot.kind === 'frame' && snapshot.frame) {
         const position = snapshotStudioPosition(document, frame, snapshot);
         const baseX = position.x;
@@ -5085,26 +5160,48 @@
       }
       const sourceVariable = document.variables?.[snapshot.sourceVariableId] || {};
       const variable = { ...sourceVariable, id: objectKey, name: snapshot.label || sourceVariable.name || 'Snapshot' };
-      const entry = { name: variable.name, data: snapshot.data };
+      const activeSnapshot = frame.source?.systemBranchPreview
+        ? frame.source.previewSnapshotId === snapshot.id
+        : String(frame.source?.recursionActivationId || '') === String(snapshot.recursionActivationId || '');
+      const frameLayoutId = frame.source?.layoutIds?.[snapshot.sourceVariableId]
+        || (frame.source?.primaryVariableId === snapshot.sourceVariableId ? frame.source?.layoutId : '');
+      const activeFrameObject = activeSnapshot
+        && frameLayoutId === snapshot.layoutId
+        && Boolean(frame.state?.[snapshot.sourceVariableId]);
+      // A recursion keep is the persistent identity of the current node, not a
+      // permanently frozen copy while that activation is still executing.
+      // Render the active node from the current @frame, while returned and
+      // sibling activations continue using their frozen snapshot data.
+      const entry = {
+        name: variable.name,
+        data: activeFrameObject ? frame.state[snapshot.sourceVariableId].data : snapshot.data
+      };
       const baseSkin = document.skins?.[snapshot.sourceVariableId] || {};
       const skin = {
         ...baseSkin,
-        options: { ...(baseSkin.options || {}), ...(snapshot.rendererOptions || {}) }
+        options: {
+          ...(baseSkin.options || {}),
+          ...(snapshot.rendererOptions || {}),
+          ...(activeFrameObject ? frame.rendererOptions?.[snapshot.sourceVariableId] || {} : {})
+        }
       };
-      const rendererName = snapshot.renderer
+      const rendererName = (activeFrameObject ? frame.renderers?.[snapshot.sourceVariableId] : '')
+        || snapshot.renderer
         || skin.renderer || variable.kind || entry.data?.kind || 'object';
       const renderer = renderers.get(rendererName) || renderers.get(entry.data?.kind) || renderObject;
       const sourceFrame = snapshot.sourceFrameId
         ? document.frames?.find(item => item.id === snapshot.sourceFrameId)
         : null;
-      const activeSnapshot = frame.source?.systemBranchPreview
-        ? frame.source.previewSnapshotId === snapshot.id
-        : String(frame.source?.recursionActivationId || '') === String(snapshot.recursionActivationId || '');
+      const snapshotSourceFrame = snapshot.styleFrame || sourceFrame;
+      const activeFrameStyles = activeFrameObject
+        ? (frame.styles || []).filter(style => style.targetVariableId === snapshot.sourceVariableId)
+        : [];
       const visibleSnapshotStyles = activeSnapshot
-        ? snapshot.styles
+        ? [...(snapshot.styles || []), ...activeFrameStyles]
         : (snapshot.styles || []).filter(style => !['highlight', 'point'].includes(style.styleType));
-      const snapshotStyleFrame = sourceFrame && Array.isArray(snapshot.styles)
-        ? { ...sourceFrame, events: [], styles: visibleSnapshotStyles }
+      const styleStateFrame = activeFrameObject ? frame : snapshotSourceFrame;
+      const snapshotStyleFrame = styleStateFrame && Array.isArray(snapshot.styles)
+        ? { ...styleStateFrame, events: [], styles: visibleSnapshotStyles }
         : null;
       const snapshotAllHighlights = snapshotStyleFrame
         ? window.ASMTraceRules.evaluate({ ...document, rules: [] }, snapshotStyleFrame)
@@ -5120,7 +5217,7 @@
       if (layoutBackground && !hasExplicitBackground) {
         snapshotHighlights.$object = { styleTypes: { background: layoutBackground } };
       }
-      const snapshotRenderFrame = snapshotStyleFrame || sourceFrame || frame;
+      const snapshotRenderFrame = snapshotStyleFrame || snapshotSourceFrame || frame;
       const position = snapshotStudioPosition(document, frame, snapshot);
       const baseX = position.x;
       const baseY = position.absolute ? position.y : y + position.y;
@@ -5145,12 +5242,18 @@
       motion.append(content);
       object.append(motion);
       root.append(object);
+      window.ASMStructureLOD?.begin(
+        content,
+        Number(options.lodScale) || 1,
+        supportsCellLevelLod(rendererName)
+      );
       let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
         variable, variableId: objectKey, skin, rendererName,
         highlights: snapshotHighlights, diff: [],
         document, frame: snapshotRenderFrame, allHighlights: snapshotAllHighlights,
         idPrefix: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`, interactive: options.interactive
       }));
+      window.ASMStructureLOD?.finish(content);
       removeScalarIndexLabels(content, variable, rendererName);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
@@ -5295,10 +5398,8 @@
       root.append(object);
       const canLod = window.ASMStructureLOD && (!previousFrame || options.interactive === false)
         && options.animateEvents === false
-        && ['sequence','matrix'].includes(entry.data?.kind)
-        && ['sequence','matrix','original-array','original-matrix'].includes(rendererName)
+        && supportsCellLevelLod(rendererName)
         && !skin.options.display && !skin.options.fields && !skin.options.indexLabels
-        && !skin.options.labels && !skin.options.indexMode
         && !Object.keys(document.studio?.objectStyles?.[frame.id] || {}).length;
       window.ASMStructureLOD?.begin(content, lodScale, canLod);
       let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
@@ -5397,6 +5498,7 @@
     settlePointerLayer(root);
     refreshPresentedArrows(root, elements);
     refreshPresentedKeepArrows(root);
+    window.ASMStructureLOD?.observe(root);
     return { root, placements, elements, height: y };
   }
 
@@ -5410,6 +5512,40 @@
       rootSvg, previousMotionPositions
     );
     const previousObjects = captureTopLevelObjects(rootSvg);
+    const reusableSnapshots = new Map();
+    const previousRoot = rootSvg.querySelector('#asm-trace-root');
+    const frameIndex = document.frames?.indexOf?.(frame) ?? -1;
+    const previousIndex = document.frames?.indexOf?.(previousFrame) ?? -1;
+    const adjacentForward = currentScene?.document === document
+      && currentScene?.frame === previousFrame
+      && frameIndex === previousIndex + 1
+      && Number(options.direction) >= 0
+      && currentScene.settled;
+    if (adjacentForward && previousRoot) {
+      const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
+      const currentIds = new Set(frame.snapshotIds || []);
+      const previousIds = new Set(previousFrame?.snapshotIds || []);
+      const activeId = candidateFrame => {
+        if (candidateFrame?.source?.systemBranchPreview) return String(candidateFrame.source.previewSnapshotId || '');
+        const activationId = String(candidateFrame?.source?.recursionActivationId || '');
+        return [...(candidateFrame?.snapshotIds || [])].reverse().find(id => (
+          String(snapshotsById.get(id)?.recursionActivationId || '') === activationId
+        )) || '';
+      };
+      const excluded = new Set([activeId(previousFrame), activeId(frame)].filter(Boolean));
+      const previousVisibility = document.studio?.visibility?.[previousFrame.id] || {};
+      const currentVisibility = document.studio?.visibility?.[frame.id] || {};
+      previousRoot.querySelectorAll(':scope > [data-trace-snapshot]').forEach(element => {
+        const snapshotId = String(element.dataset.traceSnapshot || '');
+        const snapshot = snapshotsById.get(snapshotId);
+        const objectKey = snapshotObjectKey(snapshot);
+        if (!snapshot || !currentIds.has(snapshotId)
+          || !previousIds.has(snapshotId) || excluded.has(snapshotId)
+          || previousVisibility[objectKey] === 'hidden' || currentVisibility[objectKey] === 'hidden') return;
+        element.remove();
+        reusableSnapshots.set(snapshotId, element);
+      });
+    }
     const sourceKeys = new Set(previousPositions.keys());
     const transitionForKey = key => previousFrame
       ? window.ASMTraceTransitions?.resolve?.(document, previousFrame, frame, key, sourceKeys)
@@ -5435,7 +5571,8 @@
       deferLifecycleEvents: useFrameTween,
       // Use the same current/previous visual pair for the initial inspector
       // status and the playback timeline so diagnostic colors do not flicker.
-      availabilityPreviousObjects: previousFrame ? previousObjects : null
+      availabilityPreviousObjects: previousFrame ? previousObjects : null,
+      reusableSnapshots
     });
     const delayedMarks = delayedCurrentFixedMarks(result.root, document, frame, useFrameTween);
     let transition = Promise.resolve();
@@ -5982,9 +6119,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-233';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-240';
   window.ASMTraceRenderers = {
-    build: 'trace-233', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-240', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

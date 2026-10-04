@@ -100,6 +100,15 @@
       "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=prebuilt-10"
     },
     {
+      "id": "eight-queens-teaching",
+      "title": "八皇后問題 (Eight Queens)",
+      "categories": [
+        "Backtracking"
+      ],
+      "hints": ["回溯", "位元遮罩", "遞迴樹"],
+      "archive": "/guest-decks/eight-queens-teaching.asmdeck?v=prebuilt-1"
+    },
+    {
       "id": "prefix-sum",
       "title": "前綴和 (Prefix Sum)",
       "categories": [

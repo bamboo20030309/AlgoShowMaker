@@ -126,8 +126,17 @@ async function read(file, limits = LIMITS) {
     } else records.push(record);
   }
   if (version === null) throw new Error('追蹤檔案沒有格式標頭');
-  // As in v1, events after the final @frame are not attached to a displayed frame.
-  return {records, stats:{...packed.stats, events:events-pending.length}};
+  if (pending.length) {
+    const lastFrame = records.findLast(record => record.record === 'frame');
+    if (lastFrame) {
+      // Keep the captured state and frame count unchanged. These events occur
+      // after that state's capture, unlike the interval consumed by a frame.
+      lastFrame.captureOrder = (lastFrame.events || []).reduce((order, event) =>
+        Math.max(order, Number(event.order)), -1);
+      lastFrame.events = [...lastFrame.events, ...pending.map(event => ({...event, afterCapture:true}))];
+    }
+  }
+  return {records, stats:{...packed.stats, events}};
 }
 
 // Stream the large arrays instead of building another full JSON string in memory.

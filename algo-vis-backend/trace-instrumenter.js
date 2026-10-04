@@ -240,9 +240,9 @@ function buildSyntaxTree(source) {
 
 function inferKind(type, declaratorText = '', arrayDimensions = 0) {
   const normalized = `${type} ${declaratorText}`.replace(/\s+/g, ' ');
-  if (arrayDimensions >= 2 || /vector\s*<\s*vector\s*</.test(normalized)) return 'matrix';
+  if (arrayDimensions >= 2 || /vector\s*<\s*(?:vector|(?:std::)?bitset)\s*</.test(normalized)) return 'matrix';
   if (arrayDimensions === 1 || /vector\s*</.test(normalized) || /deque\s*</.test(normalized) || /list\s*</.test(normalized)
-    || /array\s*</.test(normalized)) return 'sequence';
+    || /array\s*</.test(normalized) || /bitset\s*</.test(normalized)) return 'sequence';
   if (/map\s*</.test(normalized) || /unordered_map\s*</.test(normalized)) return 'map';
   if (/set\s*</.test(normalized) || /unordered_set\s*</.test(normalized)) return 'set';
   if (/stack\s*</.test(normalized)) return 'stack';
@@ -539,7 +539,7 @@ function cppString(value) {
 
 const TEMPORAL_TRACE_FUNCTIONS = new Set(['before', 'prev', 'changed', 'assigned']);
 
-function parseTraceExpression(expression, allowCondition = false, allowTextSlices = false) {
+function parseTraceExpression(expression, allowCondition = false, allowTextSlices = false, allowDisplay = false) {
   const source = String(expression || '').trim();
   const tokens = [];
   const temporalFunctions = [];
@@ -549,6 +549,13 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
   while (cursor < source.length) {
     if (/\s/.test(source[cursor])) {
       cursor += 1;
+      continue;
+    }
+    if (allowDisplay && /["']/.test(source[cursor])) {
+      const literal = source.slice(cursor).match(/^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/);
+      if (!literal) return { valid: false, identifiers: [], temporalFunctions: [] };
+      tokens.push({ type: 'string', value: literal[0] });
+      cursor += literal[0].length;
       continue;
     }
     const number = source.slice(cursor).match(/^\d+(?:\.\d+)?/);
@@ -574,7 +581,8 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
       cursor += compoundOperator[0].length;
       continue;
     }
-    if ('+-*/%&|^~()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
+    if ('+-*/%&|^~()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')
+      || (allowDisplay && '?:'.includes(source[cursor]))) {
       tokens.push({ type: 'operator', value: source[cursor] });
       cursor += 1;
       continue;
@@ -593,12 +601,12 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
   function parsePrimary() {
     if (peek('(')) {
       consume('(');
-      if (!(allowCondition ? parseLogicalOr() : parseBitwiseOr()) || !consume(')')) return false;
+      if (!(allowDisplay ? parseConditional() : allowCondition ? parseLogicalOr() : parseBitwiseOr()) || !consume(')')) return false;
       return true;
     }
     const token = tokens[position];
     if (!token) return false;
-    if (token.type === 'number') {
+    if (token.type === 'number' || (allowDisplay && token.type === 'string')) {
       position += 1;
       return true;
     }
@@ -745,8 +753,15 @@ function parseTraceExpression(expression, allowCondition = false, allowTextSlice
     return true;
   }
 
+  function parseConditional() {
+    if (!parseLogicalOr()) return false;
+    if (!peek('?')) return true;
+    consume('?');
+    return parseConditional() && Boolean(consume(':')) && parseConditional();
+  }
+
   const valid = tokens.length > 0
-    && (allowCondition ? parseLogicalOr() : parseBitwiseOr())
+    && (allowDisplay ? parseConditional() : allowCondition ? parseLogicalOr() : parseBitwiseOr())
     && position === tokens.length;
   return {
     valid,
@@ -813,7 +828,7 @@ function splitTopLevel(value, delimiter = ',') {
 
 const DIRECTIVE_MODIFIERS = new Set(['as', 'at', 'when', 'offset', 'render', 'with', 'without']);
 const FRAME_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'in']);
-const KEEP_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'in']);
+const KEEP_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'in', 'use']);
 const SEGMENT_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'color']);
 const PLACE_DIRECTIVE_MODIFIERS = new Set(['at', 'offset', 'when']);
 const DIRECTIVE_ANCHORS = new Set([
@@ -975,6 +990,27 @@ function parseRendererOptions(value, line, directiveName) {
       continue;
     }
 
+    if (name === 'symbols') {
+      if (args.parts.length !== 2) {
+        throw new Error(`第 ${line} 行的 ${directiveName} symbols 必須是 symbols(zero,one)`);
+      }
+      const parseSymbol = raw => {
+        try {
+          if (raw.startsWith('"')) return JSON.parse(raw);
+          const single = raw.match(/^'([^']*)'$/s);
+          return single ? single[1] : null;
+        } catch {
+          return null;
+        }
+      };
+      const symbols = args.parts.map(parseSymbol);
+      if (symbols.some(symbol => typeof symbol !== 'string')) {
+        throw new Error(`第 ${line} 行的 ${directiveName} symbols 參數必須是引號字串`);
+      }
+      options.symbols = symbols;
+      continue;
+    }
+
     const labelOptionNames = {
       'index-labels': 'indexLabels',
       'row-labels': 'rowLabels',
@@ -1133,7 +1169,7 @@ function parseRendererOptions(value, line, directiveName) {
       }
       const parsedExpressions = [...template.matchAll(/\$\{([^{}]+)\}/g)].map(expressionMatch => {
         const expression = expressionMatch[1].trim();
-        const parsed = parseTraceExpression(expression, false, true);
+        const parsed = parseTraceExpression(expression, true, true, true);
         if (!expression || !parsed.valid) {
           throw new Error(`第 ${line} 行的 ${directiveName} display 變數運算式無效：${expressionMatch[0]}`);
         }
@@ -1337,11 +1373,12 @@ function parseKeepModifiers(payload, line) {
       binding: null,
       placementOffset: null,
       preserveStyle: true,
-      when: null
+      when: null,
+      presetNames: []
     };
   }
 
-  const allowed = new Set(['as', 'at', 'offset', 'without', 'when', 'in']);
+  const allowed = new Set(['as', 'at', 'offset', 'without', 'when', 'in', 'use']);
   const unsupported = positions.find(position => !allowed.has(position.name));
   if (unsupported) {
     throw new Error(`第 ${line} 行的 @keep 不支援 ${unsupported.name}`);
@@ -1411,6 +1448,15 @@ function parseKeepModifiers(payload, line) {
     }
     preserveStyle = false;
   }
+  const presetNames = values.has('use')
+    ? values.get('use').split(',').map(name => name.trim())
+    : [];
+  if (presetNames.some(name => !/^[A-Za-z_]\w*$/.test(name))) {
+    throw new Error(`第 ${line} 行的 @keep use 格式應為：@keep variable ... use preset_name[,preset_name]`);
+  }
+  if (new Set(presetNames).size !== presetNames.length) {
+    throw new Error(`第 ${line} 行的 @keep use 不可重複套用同一預設`);
+  }
   let when = null;
   if (values.has('when')) {
     const expression = values.get('when');
@@ -1425,7 +1471,39 @@ function parseKeepModifiers(payload, line) {
       temporalFunctions: []
     };
   }
-  return { payload: base, label, layoutId, binding, placementOffset, preserveStyle, when };
+  return {
+    payload: base, label, layoutId, binding, placementOffset,
+    preserveStyle, when, presetNames
+  };
+}
+
+function keepAttachedStylePositions(source, analysis) {
+  if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
+  const comments = [];
+  (function visit(node) {
+    if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+      comments.push({
+        from: node.from,
+        to: node.to,
+        text: source.slice(node.from, node.to)
+      });
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+  })(analysis.tree.topNode);
+  comments.sort((left, right) => left.from - right.from);
+  const positions = new Set();
+  comments.forEach((comment, index) => {
+    if (!/^\/\/\s*@keep\b/i.test(comment.text)) return;
+    let boundary = comment.to;
+    for (let cursor = index + 1; cursor < comments.length; cursor += 1) {
+      const candidate = comments[cursor];
+      if (!/^\s*$/.test(source.slice(boundary, candidate.from))) break;
+      if (!/^\/\/\s*@style\b/i.test(candidate.text)) break;
+      positions.add(candidate.from);
+      boundary = candidate.to;
+    }
+  });
+  return positions;
 }
 
 const RECURSION_LAYOUT_DEFAULTS = Object.freeze({
@@ -1592,15 +1670,16 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
 
 function parseFrameSpec(raw) {
   const text = String(raw || '').trim();
-  if (!text) return { names: [], displayNames: [], bindings: [] };
+  if (!text) return { names: [], displayNames: [], bindings: [], transforms: [] };
   const split = splitTopLevel(text);
   if (!split.valid || split.parts.some(part => !part)) {
-    return { names: [], bindings: [], invalidExpression: text };
+    return { names: [], bindings: [], transforms: [], invalidExpression: text };
   }
 
   const names = [];
   const displayNames = [];
   const bindings = [];
+  const transforms = [];
   const addName = name => {
     if (name && !names.includes(name)) names.push(name);
   };
@@ -1610,6 +1689,29 @@ function parseFrameSpec(raw) {
   };
 
   for (const part of split.parts) {
+    const bits = part.match(/^bits\s*\((.*)\)$/s);
+    if (bits) {
+      const argumentsList = splitTopLevel(bits[1]);
+      if (!argumentsList.valid || argumentsList.parts.length !== 2
+        || argumentsList.parts.some(argument => !argument)) {
+        return { names, displayNames, bindings, transforms, invalidExpression: part };
+      }
+      const sourceName = argumentsList.parts[0].trim();
+      const widthExpression = argumentsList.parts[1].trim();
+      const parsedWidth = parseFrameExpression(widthExpression);
+      if (!/^[A-Za-z_]\w*$/.test(sourceName) || !parsedWidth.valid) {
+        return { names, displayNames, bindings, transforms, invalidExpression: part };
+      }
+      addDisplayName(sourceName);
+      parsedWidth.identifiers.forEach(addName);
+      transforms.push({
+        type: 'bits',
+        sourceName,
+        widthExpression,
+        identifiers: parsedWidth.identifiers || []
+      });
+      continue;
+    }
     const target = part.match(/^([A-Za-z_]\w*)/);
     const indexGroups = [];
     let cursor = target?.[0].length || 0;
@@ -1654,7 +1756,7 @@ function parseFrameSpec(raw) {
       return expressions.valid && expressions.parts.every(Boolean) ? expressions.parts : [null];
     });
     if (expressionParts.some(expression => expression == null)) {
-      return { names: [targetName], bindings: [], invalidExpression: part };
+      return { names: [targetName], bindings: [], transforms, invalidExpression: part };
     }
     const parsedExpressions = expressionParts.map((expression, indexDimension) => ({
       expression,
@@ -1663,7 +1765,7 @@ function parseFrameSpec(raw) {
     }));
     const invalidExpression = parsedExpressions.find(item => !item.parsed.valid)?.expression || '';
     if (invalidExpression) {
-      return { names: [targetName], bindings: [], invalidExpression };
+      return { names: [targetName], bindings: [], transforms, invalidExpression };
     }
 
     addDisplayName(targetName);
@@ -1678,7 +1780,7 @@ function parseFrameSpec(raw) {
     })));
   }
 
-  return { names, displayNames, bindings };
+  return { names, displayNames, bindings, transforms };
 }
 
 function normalizeTextSegments(value, line) {
@@ -1908,7 +2010,7 @@ function attachTextDirectives(source, analysis, frameDirectives) {
 }
 
 const TRACE_STYLE_TYPES = new Set(['highlight', 'focus', 'mark', 'point', 'background']);
-const TRACE_STYLE_LOCALS = new Set(['value', 'index']);
+const TRACE_STYLE_LOCALS = new Set(['value', 'index', 'row', 'column']);
 const TRACE_FRAME_LOCALS = new Set([
   'recursion_depth', 'recursion_branch', 'recursion_root', 'recursion_preview'
 ]);
@@ -2032,7 +2134,8 @@ function styleDirectivesForSource(source, analysis) {
   const directives = [];
 
   function visit(node) {
-    if (node.name === 'LineComment' && !presetContains(analysis, node.from)) {
+    if (node.name === 'LineComment' && !presetContains(analysis, node.from)
+      && !analysis.keepViewStylePositions?.has(node.from)) {
       const text = source.slice(node.from, node.to);
       const match = text.match(/^\/\/\s*@style\b\s*(.*?)\s*$/i);
       if (match) {
@@ -2041,15 +2144,14 @@ function styleDirectivesForSource(source, analysis) {
         if (modifiers.binding) throw new Error(`第 ${line} 行的 @style 不支援 at，請把 at 寫在物件指令上`);
         if (modifiers.renderer) throw new Error(`第 ${line} 行的 @style 不支援 render`);
         if (Object.keys(modifiers.rendererOptions || {}).length) throw new Error(`第 ${line} 行的 @style 不支援 with`);
-        const styleMatch = modifiers.payload.match(/^(.*?)\s+((?:highlight|focus|mark|point|background)(?:\s*,\s*[A-Za-z_]\w*)*)(?:\s+(.+))?$/i);
+                const styleMatch = modifiers.payload.match(/^(.*?)\s+((?:highlight|focus|mark|point|background)(?:\s*,\s*[A-Za-z_]\w*)*)(?:\s+(.+))?$/i);
         if (!styleMatch) {
           throw new Error(`第 ${line} 行的 @style 格式應為：目標 樣式[,樣式...] [顏色]`);
         }
         const styleTargets = parseStyleTargets(styleMatch[1], line);
-        const styleTypes = styleMatch[2].split(',').map(type => type.trim().toLowerCase());
-        if (new Set(styleTypes).size !== styleTypes.length) throw new Error(`第 ${line} 行的 @style 樣式不可重複`);
-        for (const [targetIndex, styleTarget] of styleTargets.entries()) {
-          for (const styleType of styleTypes) {
+          const styleTypes = styleMatch[2].split(',').map(type => type.trim().toLowerCase());
+          if (new Set(styleTypes).size !== styleTypes.length) throw new Error(`第 ${line} 行的 @style 樣式不可重複`);
+          const styleSpecs = styleTypes.map(styleType => {
             const specifiedColor = String(styleMatch[3] || '').trim();
             const color = specifiedColor || (styleType === 'focus' ? 'AV_grey' : '');
             if (!TRACE_STYLE_TYPES.has(styleType)) {
@@ -2058,17 +2160,22 @@ function styleDirectivesForSource(source, analysis) {
             if (color && !/^(?:AV_[A-Za-z0-9_]+!?|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(color)) {
               throw new Error(`第 ${line} 行的 @style 顏色無效：${color}`);
             }
+            return { styleType, color };
+          });
+        for (const [targetIndex, styleTarget] of styleTargets.entries()) {
+          for (const { styleType, color } of styleSpecs) {
             directives.push({
               from: node.from,
               to: node.to,
               line,
               id: (modifiers.objectId || `style-line-${line}`)
                 + (styleTargets.length > 1 ? `:target-${targetIndex + 1}` : '')
-                + (styleTypes.length > 1 ? `:${styleType}` : ''),
+                + (styleSpecs.length > 1 ? `:${styleType}` : ''),
               drawLoops: drawingScopesAt(source, analysis, node.from),
               ...styleTarget,
               styleType,
               color,
+
               when: modifiers.when
             });
           }
@@ -2452,7 +2559,7 @@ function attachLetDirectives(source, analysis, frameDirectives) {
     if (!match) throw new Error(`第 ${line} 行的 @let 格式應為：@let 名稱 = 運算式`);
     const name = match[1];
     const expression = match[2].trim();
-    const parsed = parseConditionExpression(expression);
+    const parsed = parseTraceExpression(expression, true, true, true);
     if (!parsed.valid) throw new Error(`第 ${line} 行的 @let 運算式無效：${expression}`);
     if (TRACE_STYLE_LOCALS.has(name) || TRACE_FRAME_LOCALS.has(name)) {
       throw new Error(`第 ${line} 行的 @let 名稱不可使用 ${name}`);
@@ -2468,7 +2575,7 @@ function attachLetDirectives(source, analysis, frameDirectives) {
       throw new Error(`第 ${binding.line} 行的 @let 名稱與可見 C++ 變數重複：${binding.name}`);
     }
     for (const name of binding.identifiers) {
-      if (frameLet(frame, name) || TRACE_FRAME_LOCALS.has(name)) continue;
+      if (frameLet(frame, name) || TRACE_FRAME_LOCALS.has(name) || TRACE_STYLE_LOCALS.has(name)) continue;
       const variable = resolveVariable(name, frame.from);
       if (!variable) throw new Error(`第 ${binding.line} 行的 @let 找不到可見變數或先前別名：${name}`);
       if (!frame.variables.some(existing => existing.id === variable.id)) frame.variables.push(variable);
@@ -3261,6 +3368,9 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
   drawingScopesAt(source, analysis, -1);
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
+  if (!analysis.keepViewStylePositions) {
+    analysis.keepViewStylePositions = keepAttachedStylePositions(source, analysis);
+  }
   const directives = [];
   let openFrame = null;
   let continuationEnd = -1;
@@ -3316,6 +3426,9 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       }
       return variable;
     };
+    (parsed.transforms || []).forEach(transform => {
+      (transform.identifiers || []).forEach(includeDependency);
+    });
     (modifiers.when?.identifiers || []).forEach(includeDependency);
     Object.entries(modifiers.rendererOptions || {}).forEach(([name, option]) => {
       if (name === 'display') return;
@@ -3393,6 +3506,9 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         indexDimension: binding.indexDimension
       };
     });
+    const dataTransform = parsed.transforms.find(transform => (
+      transform.sourceName === sourceVariable.name
+    )) || null;
     return {
       from: node.from,
       to: node.to,
@@ -3408,6 +3524,10 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       captureOnlyVariableIds,
       renderer: modifiers.renderer,
       rendererOptions: modifiers.rendererOptions,
+      dataTransform: dataTransform ? {
+        ...dataTransform,
+        sourceVariableId: sourceVariable.id
+      } : null,
       when: modifiers.when,
       objectBinding: modifiers.binding ? {
         ...modifiers.binding,
@@ -3452,6 +3572,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       displayVariableIds: [...object.displayVariableIds],
       renderer: object.renderer,
       rendererOptions: object.rendererOptions,
+      dataTransform: object.dataTransform,
       objectBinding: object.objectBinding,
       presetName: object.presetName || ''
     };
@@ -3476,6 +3597,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
       frame.layoutId = object.layoutId;
       frame.renderer = object.renderer;
       frame.rendererOptions = object.rendererOptions;
+      frame.dataTransform = object.dataTransform;
       frame.when = frame.when || object.when;
       frame.objectBinding = object.objectBinding;
     }
@@ -3541,7 +3663,12 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
           const objects = parseFrameObjects(node, objectMatch[1], '@object');
           objects.forEach(object => {
             if (object.when) throw new Error(`第 ${line} 行的 @object 暫不支援 when，請將條件寫在 @frame`);
-            if (object.layoutId) throw new Error(`第 ${line} 行的 @object 暫不支援 in，請將遞迴排版寫在主要 @frame 物件`);
+            const presetObject = openFrame.objects.find(existing => (
+              existing.presetName && existing.primaryVariableId === object.primaryVariableId
+            ));
+            if (object.layoutId && presetObject?.layoutId !== object.layoutId) {
+              throw new Error(`第 ${line} 行的 @object in 必須沿用被覆寫 preset 物件的遞迴排版`);
+            }
             appendFrameObject(openFrame, object, true);
           });
           continuationEnd = node.to;
@@ -3593,9 +3720,6 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
   });
   const usedNames = new Set();
   directives.forEach(directive => {
-    if (!directive.objects.length) {
-      throw new Error(`第 ${directive.line} 行的 @frame 至少需要一個緊接的 @object`);
-    }
     const displayedIds = new Set(directive.objects.flatMap(object => object.displayVariableIds || []));
     directive.objects.flatMap(object => object.rendererOptions?.display?.identifiers || [])
       .forEach(name => {
@@ -3642,6 +3766,10 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
 
 function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = null, suppliedFrames = null) {
   const analysis = suppliedAnalysis || analyzeSource(source);
+  if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
+  if (!analysis.keepViewStylePositions) {
+    analysis.keepViewStylePositions = keepAttachedStylePositions(source, analysis);
+  }
   const directives = [];
   const layouts = suppliedLayouts || findLayoutDirectives(source, analysis);
   const layoutIds = new Set(layouts.map(layout => layout.id));
@@ -3655,6 +3783,37 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
       .sort((left, right) => (left.scopeTo - left.scopeFrom) - (right.scopeTo - right.scopeFrom))[0] || null;
   }
 
+  function keepViewFrame(node, modifiers) {
+    const hasAttachedStyles = [...analysis.keepViewStylePositions]
+      .some(position => position > node.to && /^\s*$/.test(source.slice(node.to, position)));
+    if (!modifiers.presetNames.length && !hasAttachedStyles) return null;
+    if (modifiers.payload === 'last') {
+      throw new Error(`第 ${analysis.lineAt(node.from)} 行的 @keep last 不支援 use 或附屬 @style`);
+    }
+    modifiers.presetNames.forEach(name => {
+      if (!analysis.presetDefinitions.has(name)) {
+        throw new Error(`第 ${analysis.lineAt(node.from)} 行的 @keep use 找不到預設：${name}`);
+      }
+    });
+    const framePayload = modifiers.presetNames.length
+      ? `use ${modifiers.presetNames.join(', ')}`
+      : [modifiers.payload, modifiers.layoutId ? `in ${modifiers.layoutId}` : '']
+        .filter(Boolean).join(' ');
+    const replacement = `//@frame ${framePayload}`
+      + (modifiers.when?.expression ? ` when ${modifiers.when.expression}` : '');
+    const originalLength = node.to - node.from;
+    if (replacement.length > originalLength) {
+      throw new Error(`第 ${analysis.lineAt(node.from)} 行的 @keep use 內容過長，無法建立內部視圖`);
+    }
+    const virtualSource = source.slice(0, node.from)
+      + replacement.padEnd(originalLength, ' ')
+      + source.slice(node.to);
+    const frame = findFrameDirectives(virtualSource)
+      .find(candidate => candidate.from === node.from);
+    if (!frame) throw new Error(`第 ${analysis.lineAt(node.from)} 行的 @keep use 無法建立保存視圖`);
+    return { ...frame, silentKeepView: true };
+  }
+
   function visit(node) {
     if (node.name === 'LineComment') {
       const text = source.slice(node.from, node.to);
@@ -3665,6 +3824,7 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
           throw new Error(`第 ${line} 行的 @keep in 找不到排版 ID：${modifiers.layoutId}`);
         }
         if (modifiers.payload === 'last') {
+          const viewFrame = keepViewFrame(node, modifiers);
           const enclosing = analysis.variables
             .filter(variable => variable.scopeFrom <= node.from && node.from < variable.scopeTo)
             .sort((left, right) => (left.scopeTo - left.scopeFrom) - (right.scopeTo - right.scopeFrom))[0];
@@ -3684,6 +3844,8 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
             placementOffset: modifiers.placementOffset,
             preserveStyle: modifiers.preserveStyle,
             when: modifiers.when,
+            presetNames: modifiers.presetNames,
+            viewFrame,
             functionName: enclosing?.functionName || 'global',
             variable: null
           });
@@ -3720,6 +3882,8 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
           placementOffset: modifiers.placementOffset,
           preserveStyle: modifiers.preserveStyle,
           when: modifiers.when,
+          presetNames: modifiers.presetNames,
+          viewFrame: keepViewFrame(node, modifiers),
           functionName: variable.functionName || 'global',
           variable
         });
@@ -3910,7 +4074,16 @@ function findBranchDirectives(source, suppliedAnalysis = null, suppliedLayouts =
 function instrumentSource(source, watchIds = []) {
   const analysis = analyzeSource(source);
   const codeHideRanges = findCodeHideRanges(source, analysis);
-  const frameDirectives = findFrameDirectives(source, analysis);
+  const authoredFrameDirectives = findFrameDirectives(source, analysis);
+  const layoutDirectives = findLayoutDirectives(source, analysis);
+  const keepDirectives = findKeepDirectives(
+    source, analysis, layoutDirectives, authoredFrameDirectives
+  );
+  const keepViewFrameDirectives = keepDirectives
+    .map(directive => directive.viewFrame)
+    .filter(Boolean);
+  const frameDirectives = [...authoredFrameDirectives, ...keepViewFrameDirectives]
+    .sort((left, right) => left.from - right.from);
   const arrowLoops = sourceLoops(source, analysis);
   const sampledLoops = new Map();
   frameDirectives.forEach(frame => [...frame.arrows, ...frame.styles, ...frame.texts].forEach(item => {
@@ -3922,7 +4095,6 @@ function instrumentSource(source, watchIds = []) {
     }
   }));
   const trackedLoops = arrowLoops.filter(loop => sampledLoops.has(loop.id));
-  const layoutDirectives = findLayoutDirectives(source, analysis);
   const branchDirectives = findBranchDirectives(source, analysis, layoutDirectives);
   const layoutIds = new Set(layoutDirectives.map(layout => layout.id));
   frameDirectives.forEach(directive => {
@@ -3930,9 +4102,8 @@ function instrumentSource(source, watchIds = []) {
       throw new Error(`第 ${directive.line} 行的 @frame in 找不到排版 ID：${directive.layoutId}`);
     }
   });
-  const keepDirectives = findKeepDirectives(source, analysis, layoutDirectives, frameDirectives);
   const exitDirectives = findExitDirectives(source, analysis);
-  const manualFrames = frameDirectives.length > 0;
+  const manualFrames = authoredFrameDirectives.length > 0;
   const selectedIds = new Set((watchIds || []).map(item => typeof item === 'string' ? item : item.id));
   frameDirectives.forEach(directive => directive.variables.forEach(variable => selectedIds.add(variable.id)));
   keepDirectives.forEach(directive => {
@@ -4400,6 +4571,46 @@ function instrumentSource(source, watchIds = []) {
     return safe(left) && safe(right) ? { left, right, operation } : null;
   }
 
+  function bitwiseOperand(node) {
+    while (node?.name === 'ParenthesizedExpression') {
+      node = childrenOf(node).find(child => !['(', ')'].includes(child.name));
+    }
+    return node;
+  }
+
+  function bitwiseTree(node) {
+    node = bitwiseOperand(node);
+    if (node?.name !== 'BinaryExpression') return null;
+    const children = childrenOf(node);
+    const index = children.findIndex(child => ['|', '&', '^'].includes(source.slice(child.from, child.to).trim()));
+    if (index <= 0 || index >= children.length - 1) return null;
+    const left = children[index - 1], right = children[index + 1];
+    const safe = candidate => {
+      candidate = bitwiseOperand(candidate);
+      return bitwiseTree(candidate) || numericLiteralTarget(candidate)
+        || (['Identifier', 'SubscriptExpression'].includes(candidate?.name)
+          && targetDescriptor(candidate).variableId
+          && (!targetDescriptor(candidate).indexExpression
+            || canCaptureIndexExpression(targetDescriptor(candidate).indexExpression)));
+    };
+    return safe(left) && safe(right)
+      ? { left, right, operation: source.slice(children[index].from, children[index].to).trim() } : null;
+  }
+
+  function renderBitwise(node, target, context, castResult = false) {
+    const tree = bitwiseTree(node);
+    if (!tree) return rebuild(node, context);
+    const leftTree = bitwiseTree(tree.left), rightTree = bitwiseTree(tree.right);
+    const left = leftTree ? target : targetDescriptor(bitwiseOperand(tree.left));
+    const right = rightTree ? target : targetDescriptor(bitwiseOperand(tree.right));
+    const sig = signature('bitwise', node);
+    recordEventSource(sig, node, node.from, node.to);
+    const result = castResult
+      ? `static_cast<typename std::decay<decltype(${target.expression})>::type>(a ${tree.operation} b)`
+      : `a ${tree.operation} b`;
+    return `::asm_trace::event_bitwise_value(${analysis.lineAt(node.from)}, ${cppString(sig)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(left)}, ${indexedTargetArgs(right)}, ${cppString(tree.operation)}, ${leftTree ? 'true' : 'false'}, ${rightTree ? 'true' : 'false'}, [&](){ return (${renderBitwise(tree.left, target, context)}); }, [&](){ return (${renderBitwise(tree.right, target, context)}); }, [&](const auto& a, const auto& b){ return ${result}; })`;
+  }
+
   function multiOperationSources(node) {
     const safe = target => Boolean(target.variableId)
       && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression));
@@ -4586,7 +4797,7 @@ function instrumentSource(source, watchIds = []) {
         recordEventSource(assignSignature, declarator, variable.nameFrom, initializer.to);
         const target = { variableId: variable.id, expression: variable.name, indexExpression: '' };
         events.push(
-          `::asm_trace::event_initialized_assign(${variable.line}, ${cppString(assignSignature)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(assignment)}, (${variable.name}), ${node.parent?.name === 'ForStatement' ? 'true' : 'false'});`
+          `::asm_trace::event_initialized_assign(${variable.line}, ${cppString(assignSignature)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(assignment)}, (${variable.name}), ${node.parent?.name === 'ForStatement' ? 'true' : 'false'}, false, ${bitwiseTree(initializer) ? 'false' : 'true'}, ${bitwiseTree(initializer) ? 'true' : 'false'});`
         );
         return events;
       })
@@ -4738,7 +4949,11 @@ ${loop}
       rendered = `${source.slice(node.from, node.to)}\n${visibleDirectiveOperation(operation, context, node.from)}`;
     } else if (node.name === 'LineComment' && directiveByPosition.has(node.from)) {
       const directive = directiveByPosition.get(node.from);
-      const operation = directiveCaptureCall(node, directive);
+      const keepDirective = keepDirectiveByPosition.get(node.from);
+      const operation = [
+        keepDirective ? keepOperationCall(node, keepDirective) : '',
+        directiveCaptureCall(node, directive)
+      ].filter(Boolean).join('\n');
       rendered = `${source.slice(node.from, node.to)}\n${visibleDirectiveOperation(operation, context, node.from)}`;
     } else if (node.name === 'LineComment' && keepDirectiveByPosition.has(node.from)) {
       const directive = keepDirectiveByPosition.get(node.from);
@@ -4807,17 +5022,27 @@ ${loop}
           ? `${source.slice(node.from, expressionNode.from)}${expression}${source.slice(expressionNode.to, node.to)}`
           : `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(conditionKind)}, [&](){ return static_cast<bool>(${initializedExpression}); }))`;
       }
+    } else if (node.name === 'InitDeclarator' && !suppressEvents && bitwiseTree(children.at(-1))) {
+      const variable = selected.find(item => item.nameFrom >= node.from && item.nameFrom < node.to);
+      if (variable) {
+        const initializer = children.at(-1);
+        const target = { variableId: variable.id, expression: variable.name, indexExpression: '' };
+        rendered = source.slice(node.from, initializer.from)
+          + renderBitwise(initializer, target, nestedContext, !/\bauto\b/.test(variable.type)) + source.slice(initializer.to, node.to);
+      }
     } else if (node.name === 'AssignmentExpression' || node.name === 'UpdateExpression') {
       const targetNode = node.name === 'AssignmentExpression' ? children[0] : children.find(child => containsSelectedReference(child));
       const target = targetDescriptor(targetNode);
       const sourceNode = node.name === 'AssignmentExpression' ? children[children.length - 1] : null;
       const sourceTarget = targetDescriptor(sourceNode);
+      const bitwiseSourceTarget = targetDescriptor(bitwiseOperand(sourceNode));
       const binarySources = binaryOperationSources(sourceNode);
       const multiSources = multiOperationSources(sourceNode);
       const selectionSources = selectionCallSources(sourceNode);
       const assignmentOperator = targetNode && sourceNode
         ? source.slice(targetNode.to, sourceNode.from).trim()
         : '';
+      const bitwiseAssignment = assignmentOperator === '=' && bitwiseTree(sourceNode);
       let chainRoot = node;
       while (chainRoot.parent?.name === 'AssignmentExpression'
         && childrenOf(chainRoot.parent).at(-1)?.from === chainRoot.from
@@ -4836,7 +5061,9 @@ ${loop}
       let cursor = node.from;
       for (const child of children) {
         parts.push(source.slice(cursor, child.from));
-        parts.push(rebuild(child, { ...nestedContext, suppressRead: child === targetNode }));
+        parts.push(child === sourceNode && bitwiseAssignment && target.variableId && !suppressEvents
+          ? renderBitwise(child, target, nestedContext, true)
+          : rebuild(child, { ...nestedContext, suppressRead: child === targetNode }));
         cursor = child.to;
       }
       parts.push(source.slice(cursor, node.to));
@@ -4857,7 +5084,9 @@ ${loop}
           const action = chainedAssignment
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
-          if (selectionSources && !chainedAssignment) {
+          if (bitwiseAssignment && !chainedAssignment) {
+            rendered = `::asm_trace::event_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, false, ${forInitializerAssignment ? 'true' : 'false'})`;
+          } else if (selectionSources && !chainedAssignment) {
             rendered = `::asm_trace::event_select_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(selectionSources.left)}, ${indexedTargetArgs(selectionSources.right)}, ${cppString(selectionSources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${selectionSources.leftExpression}); }, [&]()->decltype(auto){ return (${selectionSources.rightExpression}); }, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else if (multiSources && !chainedAssignment) {
             rendered = `::asm_trace::event_multi_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${multiSourceArgs(multiSources)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
@@ -4866,6 +5095,21 @@ ${loop}
           } else {
             rendered = `::asm_trace::${chainedAssignment ? 'event_assign_expr' : 'event_assign'}(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           }
+        } else if (node.name === 'AssignmentExpression' && repeatableCompoundTarget
+          && ['|=', '&=', '^='].includes(assignmentOperator)
+          && (bitwiseTree(sourceNode) || bitwiseSourceTarget.variableId || numericLiteralTarget(sourceNode))) {
+          const sig = signature('bitwise', node);
+          recordEventSource(sig, node, node.from, node.to);
+          const intermediate = Boolean(bitwiseTree(sourceNode));
+          const rhs = renderBitwise(sourceNode, target, nestedContext);
+          const operation = assignmentOperator[0];
+          rendered = `(${targetAccess} = ::asm_trace::event_bitwise_value(${analysis.lineAt(node.from)}, ${cppString(sig)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(intermediate ? target : bitwiseSourceTarget)}, ${cppString(operation)}, false, ${intermediate ? 'true' : 'false'}, [&](){ return (${targetAccess}); }, [&](){ return (${rhs}); }, [](const auto& a, const auto& b){ return static_cast<typename std::decay<decltype(a)>::type>(a ${operation} b); }))`;
+        } else if (node.name === 'AssignmentExpression' && repeatableCompoundTarget
+          && ['<<=', '>>='].includes(assignmentOperator)) {
+          const amountExpression = rebuild(sourceNode, nestedContext);
+          let shiftAmountName = `asm_shift_amount_${node.from}`;
+          while (source.includes(shiftAmountName)) shiftAmountName += '_';
+          rendered = `::asm_trace::event_shift_assign(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(target)}, ${cppString(sourceExpression)}, ${cppString(assignmentOperator === '<<=' ? 'left' : 'right')}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ return (${amountExpression}); }, [&](auto ${shiftAmountName}){ ${targetAccess} ${assignmentOperator} ${shiftAmountName}; }, [&]()->decltype(auto){ return (${targetAccess}); })`;
         } else if (node.name === 'AssignmentExpression' && repeatableCompoundTarget) {
           rendered = `::asm_trace::event_compound_assign(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&](){ ${expression}; }, [&]()->decltype(auto){ return (${targetAccess}); }, true)`;
         } else if (node.name === 'UpdateExpression') {

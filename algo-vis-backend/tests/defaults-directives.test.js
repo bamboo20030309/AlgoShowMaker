@@ -65,6 +65,36 @@ int main() {
   frames.forEach(frame => assert.equal(frame.camera.target.variableId, frame.objects[0].primaryVariableId));
 });
 
+test('a bare frame is a scene checkpoint and local camera overrides defaults', () => {
+  const frames = findFrameDirectives(`// @defaults
+// @camera focus board
+// @enddefaults
+int board[1] = {1};
+int main() {
+ // @frame board
+ // @keep board as saved
+ // @frame
+ // @camera auto
+ // @text "overview" at canvas.top
+}`);
+  assert.equal(frames.length, 2);
+  assert.equal(frames[1].objects.length, 0);
+  assert.equal(frames[1].frameSpec, '');
+  assert.equal(frames[1].camera.autoCapture, true);
+  assert.equal(frames[1].camera.target, null);
+  assert.equal(frames[1].texts.length, 1);
+
+  const [empty] = findFrameDirectives('int main() {\n // @frame\n}');
+  assert.equal(empty.objects.length, 0, 'a checkpoint is also valid before any keep exists');
+
+  for (const modifier of ['as view', 'in tree', 'at canvas.center', 'render matrix', 'with columns(2)']) {
+    assert.throws(
+      () => findFrameDirectives(`int main() {\n // @frame ${modifier}\n}`),
+      /\u7a7a\u767d @frame \u4e0d\u652f\u63f4\u7269\u4ef6\u8a2d\u5b9a|\u7f3a\u5c11\u7269\u4ef6/
+    );
+  }
+});
+
 test('defaults reject flow actions, nesting and mismatched terminators', () => {
   for (const action of ['keep last', 'exit arr', 'frame arr', 'layout recursion as tree']) {
     assert.throws(() => findFrameDirectives(source.replace('@camera focus arr offset(0,20) zoom(2)', `@${action}`)), /只支援呈現指令/);

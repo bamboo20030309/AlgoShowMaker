@@ -700,6 +700,9 @@
     showTag,
     showTimelineEvent,
     showInspector(event = {}, document = null) {
+      // The operator event owns the animation and toggle. Its following
+      // initialization commit is runtime bookkeeping, not a second operation.
+      if (event.bitwiseCommit === true && event.animate === false) return false;
       if (event.type === 'fixed') return false;
       if (event.loopBoundarySuppressed === true) return false;
       if (byType[canonicalEventType(event.type)]?.internal === true) return false;

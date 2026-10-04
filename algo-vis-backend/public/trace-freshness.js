@@ -43,7 +43,10 @@
     timer = setTimeout(refresh, 120);
   }
   document.addEventListener('DOMContentLoaded', () => {
-    if (typeof aceEditor !== 'undefined') aceEditor.session.on('change', schedule);
+    if (typeof aceEditor !== 'undefined') {
+      aceEditor.on('change', schedule);
+      aceEditor.on('changeSession', schedule);
+    }
     document.getElementById('inputArea')?.addEventListener('input', schedule);
     refresh();
   });

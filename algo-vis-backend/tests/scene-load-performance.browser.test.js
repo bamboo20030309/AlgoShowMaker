@@ -45,6 +45,8 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   const geometryBefore=await page.evaluate(()=>[...document.querySelectorAll('#asm-trace-root g[data-trace-index]')].map(el=>({key:el.dataset.traceObjectKey,bounds:ASMTraceRenderers.currentPlacement(el.dataset.traceObjectKey,false)})));
   assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),0);
   assert.ok(await page.locator('#asm-trace-root [data-asm-lod-batch]').count()>0);
+  assert.equal(await page.locator('#asm-trace-root [data-asm-lod-detail]').count(),2);
+  assert.equal(await page.locator('#asm-trace-root [data-asm-lod-grid]').count(),2);
   await page.evaluate(()=>{
     const cell=document.querySelector('#asm-trace-root g[data-trace-index*=","]');
     const rect=cell.querySelector(':scope > rect');
@@ -56,6 +58,7 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   });
   await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='full'));
   await page.waitForFunction(()=>!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));
+  assert.equal(await page.locator('#asm-trace-root [data-asm-lod-detail]').count(),0);
   const populated = await page.locator('#asm-trace-root g[data-trace-index] > text').count();
   assert.ok(populated > 0 && populated < 1000, `only nearby cells receive text: ${populated}`);
   assert.equal(await page.evaluate(()=>{

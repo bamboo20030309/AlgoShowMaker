@@ -188,9 +188,15 @@
         value: true,
         enumerable: false
       });
+      const cellAliases = new Set();
       for (const binding of frame.lets) {
-        const value = resolveExpression(document, frame, binding.expression, resolvedLocals, allowTextSlices);
-        if (value == null) return null;
+        const cellScoped = (binding.identifiers || []).some(name =>
+          ['value', 'index', 'row', 'column'].includes(name) || cellAliases.has(name));
+        if (cellScoped) cellAliases.add(binding.name);
+        const value = resolveExpression(document, frame, binding.expression, resolvedLocals, true);
+        // Cell aliases are evaluated with each cell's locals. They must not
+        // prevent unrelated frame text/placement from resolving without them.
+        if (value == null && !cellScoped) return null;
         resolvedLocals[binding.name] = value;
       }
       locals = resolvedLocals;
@@ -202,6 +208,19 @@
     while (cursor < source.length) {
       if (/\s/.test(source[cursor])) {
         cursor += 1;
+        continue;
+      }
+      if (allowTextSlices && /["']/.test(source[cursor])) {
+        const literal = source.slice(cursor).match(/^(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/);
+        if (!literal) return null;
+        const raw = literal[0];
+        let value;
+        try {
+          value = raw[0] === '"' ? JSON.parse(raw)
+            : raw.slice(1, -1).replace(/\\([\\'])/g, '$1');
+        } catch { return null; }
+        tokens.push({ type: 'string', value });
+        cursor += raw.length;
         continue;
       }
       const number = source.slice(cursor).match(/^\d+(?:\.\d+)?/);
@@ -225,7 +244,7 @@
         cursor += compoundOperator[0].length;
         continue;
       }
-      if ('+-*/%&|^~()[].<>!'.includes(source[cursor]) || (allowTextSlices && source[cursor] === ':')) {
+      if ('+-*/%&|^~()[].<>!'.includes(source[cursor]) || (allowTextSlices && '?:'.includes(source[cursor]))) {
         tokens.push({ type: 'operator', value: source[cursor] });
         cursor += 1;
         continue;
@@ -236,7 +255,7 @@
     let position = 0;
     const invalid = Symbol('invalid-expression');
     const knownValue = value => value == null ? invalid : value;
-    const peek = value => tokens[position]?.value === value;
+    const peek = value => tokens[position]?.type === 'operator' && tokens[position]?.value === value;
     const consume = value => {
       if (value && !peek(value)) return null;
       return tokens[position++] || null;
@@ -245,7 +264,7 @@
     function parsePrimary() {
       if (peek('(')) {
         consume('(');
-        const value = parseLogicalOr();
+        const value = parseConditional();
         if (value === invalid || !consume(')')) return invalid;
         return value;
       }
@@ -254,6 +273,10 @@
       if (token.type === 'number') {
         position += 1;
         return Number(token.value);
+      }
+      if (token.type === 'string') {
+        position += 1;
+        return token.value;
       }
       if (token.type !== 'identifier') return invalid;
       position += 1;
@@ -368,7 +391,9 @@
         const operator = consume().value;
         const right = parseMultiplicative();
         if (value === invalid || right === invalid) return invalid;
-        value = operator === '+' ? Number(value) + Number(right) : Number(value) - Number(right);
+        value = operator === '+' && (typeof value === 'string' || typeof right === 'string')
+          ? String(value) + String(right)
+          : operator === '+' ? Number(value) + Number(right) : Number(value) - Number(right);
       }
       return value;
     }
@@ -478,7 +503,18 @@
       return value;
     }
 
-    const value = parseLogicalOr();
+    function parseConditional() {
+      const condition = parseLogicalOr();
+      if (!peek('?')) return condition;
+      consume('?');
+      const yes = parseConditional();
+      if (!consume(':')) return invalid;
+      const no = parseConditional();
+      if (condition === invalid) return invalid;
+      return Boolean(condition) ? yes : no;
+    }
+
+    const value = parseConditional();
     if (value === invalid || position !== tokens.length) return null;
     return value;
   }
@@ -645,6 +681,7 @@
     const next = { ...current, ...style, ...extra };
     const styleType = String(style?.styleType || '').trim();
     const color = style?.color;
+
     // Empty color means the renderer's own default. Preserve the style type
     // so the draw layer can still create its background/hint decoration.
     if (styleType && color !== undefined && color !== null) {
@@ -734,10 +771,19 @@
       const entry = frame?.state?.[variableId];
       if (!variableId || !entry) continue;
       const items = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
+      const dataTransform = frame?.rendererOptions?.[variableId]?.dataTransform;
+      const bitWidth = dataTransform?.type === 'bits'
+        ? Math.max(1, Math.trunc(Number(dataTransform.width) || 1))
+        : 0;
       const allIndices = items.map((_, index) => index);
       const selectorIndices = selector => {
         // An unindexed matrix style visits cells, not row arrays, so `value`
         // has the same scalar meaning as an explicitly selected matrix cell.
+        if (selector?.type === 'all' && bitWidth) {
+          return items.flatMap((_, row) => Array.from(
+            { length: bitWidth }, (_, column) => `${row},${column}`
+          ));
+        }
         if (selector?.type === 'all' && (document.variables?.[variableId]?.kind === 'matrix'
           || items.some(item => Array.isArray(item?.items)))) {
           return items.flatMap((row, rowIndex) => (row?.items || [])
@@ -771,14 +817,15 @@
         if (selector?.type === 'matrix-inner-label') {
           const rows = dimensionIndices(selector.rowSelector, items.length);
           return rows.flatMap(row => {
-            const columns = dimensionIndices(selector.columnSelector, items[row]?.items?.length || 0);
+            const columns = dimensionIndices(selector.columnSelector,
+              bitWidth || items[row]?.items?.length || 0);
             return columns.map(column => `$inner-label:${row},${column}`);
           });
         }
         if (selector?.type === 'matrix-axis-label') {
           const count = selector.axis === 'row'
             ? items.length
-            : Math.max(0, ...items.map(row => row?.items?.length || 0));
+            : bitWidth || Math.max(0, ...items.map(row => row?.items?.length || 0));
           return dimensionIndices(selector.dimensionSelector, count)
             .map(index => `$${selector.axis}-label:${index}`);
         }
@@ -789,7 +836,8 @@
         if (selector?.type === 'matrix-region') {
           const rows = dimensionIndices(selector.rowSelector, items.length);
           return rows.flatMap(row => {
-            const columns = dimensionIndices(selector.columnSelector, items[row]?.items?.length || 0);
+            const columns = dimensionIndices(selector.columnSelector,
+              bitWidth || items[row]?.items?.length || 0);
             return columns.map(column => `${row},${column}`);
           });
         }
@@ -815,7 +863,12 @@
         ? style.selector.segments || []
         : [style.selector];
       const indices = [...new Set(selectors.flatMap(selectorIndices))];
-      indices.forEach(index => {
+      const expandedIndices = bitWidth
+        ? indices.flatMap(index => typeof index === 'number'
+          ? Array.from({ length: bitWidth }, (_, column) => `${index},${column}`)
+          : [index])
+        : indices;
+      [...new Set(expandedIndices)].forEach(index => {
         if (typeof index === 'string' && /^\$(?:index|row|column|inner)-label:/.test(index)) {
           const match = index.match(/^\$(index|row|column|inner)-label:(\d+)(?:,(\d+))?$/);
           if (!match) return;
@@ -832,22 +885,32 @@
           const variableHighlights = highlights[variableId] ||= {};
           variableHighlights[index] = mergeHighlightStyle(
             variableHighlights[index],
-            { styleType: style.styleType, color: styleColors[style.color] || style.color },
+            {
+              styleType: style.styleType,
+              color: styleColors[style.color] || style.color
+            },
             { sourceStyleId: style.id || '' }
           );
           return;
         }
         if (typeof index === 'string' && index.includes(',')) {
           const [row, column] = index.split(',').map(Number);
-          const item = items[row]?.items?.[column];
-          if (!Number.isInteger(row) || !Number.isInteger(column) || item == null) return;
-          const value = window.ASMTraceModel.scalarValue(item);
+          const item = bitWidth ? items[row] : items[row]?.items?.[column];
+          if (!Number.isInteger(row) || !Number.isInteger(column) || item == null
+            || (bitWidth && (column < 0 || column >= bitWidth))) return;
+          const sourceValue = window.ASMTraceModel.scalarValue(item);
+          const value = bitWidth
+            ? Math.floor(Math.abs(Number(sourceValue) || 0) / (2 ** (bitWidth - 1 - column))) % 2
+            : sourceValue;
           if (!expressionMatches(document, frame, style.when,
             { ...style.drawLocals, value, index: column, row, column })) return;
           const variableHighlights = highlights[variableId] ||= {};
           variableHighlights[index] = mergeHighlightStyle(
             variableHighlights[index],
-            { styleType: style.styleType, color: styleColors[style.color] || style.color },
+            {
+              styleType: style.styleType,
+              color: styleColors[style.color] || style.color
+            },
             { sourceStyleId: style.id || '' }
           );
           return;

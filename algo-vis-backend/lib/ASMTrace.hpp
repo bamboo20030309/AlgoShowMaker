@@ -18,16 +18,11 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cstdlib>
 #include <cstdint>
 #include <deque>
 #include <fstream>
-#include <fcntl.h>
-#ifdef _WIN32
-#include <io.h>
-#else
-#include <unistd.h>
-#endif
 #include <iomanip>
 #include <list>
 #include <map>
@@ -113,12 +108,16 @@ encode_value(const T& value);
 
 template <typename T, typename Alloc>
 std::string encode_value(const std::vector<T, Alloc>& value);
+template <typename Alloc>
+std::string encode_value(const std::vector<bool, Alloc>& value);
 template <typename T, typename Alloc>
 std::string encode_value(const std::deque<T, Alloc>& value);
 template <typename T, typename Alloc>
 std::string encode_value(const std::list<T, Alloc>& value);
 template <typename T, std::size_t N>
 std::string encode_value(const std::array<T, N>& value);
+template <std::size_t N>
+std::string encode_value(const std::bitset<N>& value);
 template <typename T, std::size_t N>
 std::string encode_value(const T (&value)[N]);
 template <typename A, typename B>
@@ -127,9 +126,11 @@ template <typename... T>
 std::string encode_value(const std::tuple<T...>& value);
 
 template <typename Iterator>
-std::string encode_sequence(Iterator begin, Iterator end, const char* kind = "sequence") {
+std::string encode_sequence(Iterator begin, Iterator end, const char* kind = "sequence", bool bit_array = false) {
   std::ostringstream out;
-  out << "{\"kind\":" << quoted(kind) << ",\"items\":[";
+  out << "{\"kind\":" << quoted(kind);
+  if (bit_array) out << ",\"bitArray\":true,\"bitOrder\":\"msb-first\"";
+  out << ",\"items\":[";
   bool first = true;
   for (Iterator it = begin; it != end; ++it) {
     if (!first) out << ',';
@@ -143,17 +144,41 @@ std::string encode_sequence(Iterator begin, Iterator end, const char* kind = "se
 template <typename T, typename Alloc>
 std::string encode_value(const std::vector<T, Alloc>& value) { return encode_sequence(value.begin(), value.end()); }
 
-template <typename T, typename Alloc>
-std::string encode_value(const std::deque<T, Alloc>& value) { return encode_sequence(value.begin(), value.end()); }
+template <typename Alloc>
+std::string encode_value(const std::vector<bool, Alloc>& value) {
+  std::ostringstream out;
+  out << "{\"kind\":\"sequence\",\"bitArray\":true,\"bitOrder\":\"msb-first\",\"items\":[";
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    if (i) out << ',';
+    out << encode_value(static_cast<bool>(value[i]));
+  }
+  out << "]}";
+  return out.str();
+}
+
+template <std::size_t N>
+std::string encode_value(const std::bitset<N>& value) {
+  std::ostringstream out;
+  out << "{\"kind\":\"sequence\",\"bitArray\":true,\"bitOrder\":\"msb-first\",\"items\":[";
+  for (std::size_t i = 0; i < N; ++i) {
+    if (i) out << ',';
+    out << encode_value(static_cast<int>(value[N - 1 - i]));
+  }
+  out << "]}";
+  return out.str();
+}
 
 template <typename T, typename Alloc>
-std::string encode_value(const std::list<T, Alloc>& value) { return encode_sequence(value.begin(), value.end()); }
+std::string encode_value(const std::deque<T, Alloc>& value) { return encode_sequence(value.begin(), value.end(), "sequence", std::is_same<T, bool>::value); }
+
+template <typename T, typename Alloc>
+std::string encode_value(const std::list<T, Alloc>& value) { return encode_sequence(value.begin(), value.end(), "sequence", std::is_same<T, bool>::value); }
 
 template <typename T, std::size_t N>
-std::string encode_value(const std::array<T, N>& value) { return encode_sequence(value.begin(), value.end()); }
+std::string encode_value(const std::array<T, N>& value) { return encode_sequence(value.begin(), value.end(), "sequence", std::is_same<T, bool>::value); }
 
 template <typename T, std::size_t N>
-std::string encode_value(const T (&value)[N]) { return encode_sequence(value, value + N); }
+std::string encode_value(const T (&value)[N]) { return encode_sequence(value, value + N, "sequence", std::is_same<T, bool>::value); }
 
 template <typename T, typename Compare, typename Alloc>
 std::string encode_value(const std::set<T, Compare, Alloc>& value) { return encode_sequence(value.begin(), value.end(), "set"); }
@@ -350,43 +375,23 @@ class Recorder {
     if (!path || !*path) return;
     const char* max_frames = std::getenv("ASM_TRACE_MAX_FRAMES");
     if (max_frames) max_frames_ = std::max(1, std::atoi(max_frames));
-    path_ = path;
     output_.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
     enabled_ = output_.is_open();
     if (enabled_) {
       output_ << "{\"record\":\"meta\",\"schemaVersion\":\"2.0\"}\n";
-      committed_bytes_ = output_.tellp();
     }
   }
 
   ~Recorder() {
-    if (path_.empty() || !output_.is_open()) return;
-    // Only capture commits an interval. Discard flushed chunks and loop metadata
-    // after the final frame as well as the still-buffered tail.
+    if (!output_.is_open()) return;
+    // Retain the final interval even without a following capture. The reader
+    // attaches these events to the last visible frame in execution order.
+    flush_events();
     output_.close();
-    // Support the project's older MinGW as well as Linux without filesystem.
-    int status = -1;
-#ifdef _WIN32
-    const int file = _open(path_.c_str(), _O_RDWR | _O_BINARY);
-    if (file >= 0) {
-      status = _chsize(file, static_cast<long>(committed_bytes_));
-      _close(file);
-    }
-#else
-    const int file = open(path_.c_str(), O_RDWR);
-    if (file >= 0) {
-      status = ftruncate(file, static_cast<off_t>(committed_bytes_));
-      close(file);
-    }
-#endif
-    if (status != 0) {
-      std::ofstream failure(path_, std::ios::app | std::ios::binary);
-      failure << "{\"record\":\"error\",\"message\":\"Could not discard trailing trace interval\"}\n";
-    }
   }
   bool enabled() const { return enabled_; }
   bool recording_events() const {
-    return !trace_suppressed() && enabled_ && frame_id_ > 0 && frame_id_ < max_frames_;
+    return !trace_suppressed() && enabled_ && frame_id_ < max_frames_;
   }
   bool recording_initial_keep(const std::string& type) const {
     return type == "keep" && !trace_suppressed() && enabled_ && frame_id_ == 0;
@@ -459,14 +464,9 @@ class Recorder {
   void capture(int line, const char* function_name, const char* statement_id,
                const char* statement_kind, const Values&... values) {
     if (trace_suppressed() || frame_id_ >= max_frames_) return;
-    // A resource error matters only if another frame consumes this interval.
-    // A tail-only error is rolled back by the destructor with that interval.
-    if (!enabled_) {
-      if (failed_) committed_bytes_ = output_.tellp();
-      return;
-    }
+    if (!enabled_) return;
     flush_events();
-    if (!enabled_) { committed_bytes_ = output_.tellp(); return; }
+    if (!enabled_) return;
     std::vector<NamedValue> state{ values... };
     output_ << "{\"record\":\"frame\",\"id\":" << quoted(std::string("frame-") + std::to_string(frame_id_++))
             << ",\"source\":{\"line\":" << line
@@ -497,12 +497,10 @@ class Recorder {
     output_.flush();
     pending_count_ = 0;
     check_size();
-    committed_bytes_ = output_.tellp();
   }
 
  private:
   void fail(const char* message) {
-    failed_ = true;
     output_ << "{\"record\":\"error\",\"message\":" << quoted(message) << "}\n";
     output_.flush();
     enabled_ = false;
@@ -531,9 +529,6 @@ class Recorder {
     check_size();
   }
   std::ofstream output_;
-  std::string path_;
-  std::uintmax_t committed_bytes_ = 0;
-  bool failed_ = false;
   std::vector<std::string> initial_keeps_;
   std::size_t initial_keep_bytes_ = 0;
   std::vector<std::string> pending_events_;
@@ -1040,7 +1035,8 @@ void event_initialized_assign(int line, const char* signature,
                               bool source_has_resolved_index, long long source_resolved_index,
                               const char* expression, const T& value,
                               bool for_initializer = false,
-                              bool parameter_initializer = false) {
+                              bool parameter_initializer = false, bool animate = true,
+                              bool bitwise_commit = false) {
   mark_initialized(target_id, value);
   const std::string encoded = encode_value(value);
   const std::string lifetime = current_lifetime(target_id, value);
@@ -1048,8 +1044,9 @@ void event_initialized_assign(int line, const char* signature,
     target_has_resolved_index, target_resolved_index);
   target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
   recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
-      + ",\"animate\":true"
+      + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"declarationInitializer\":true"
+      + ",\"bitwiseCommit\":" + (bitwise_commit ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"parameterInitializer\":" + (parameter_initializer ? "true" : "false")
       + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
@@ -1145,6 +1142,31 @@ void event_compound_assign(
       + ',' + target_json(
           "source", source_id, source_expression, source_index,
           source_has_resolved_index, source_resolved_index) + ']'; });
+}
+
+// Keep the assignment category: renderer metadata, not C++ syntax alone,
+// decides whether a shift is a scalar assignment or a bit-content movement.
+template <typename BeforeFactory, typename AmountFactory, typename F, typename AfterFactory>
+void event_shift_assign(int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* expression, const char* direction, BeforeFactory before_factory,
+    AmountFactory amount_factory, F action, AfterFactory after_factory) {
+  const std::string before = encode_value(before_factory());
+  const auto amount = amount_factory();
+  action(amount);
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  recorder().add_event_lazy("write", line, signature ? signature : "", [&]() {
+    return std::string("\"operation\":") + quoted(expression ? expression : "")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"animate\":true,\"compound\":true,\"bitShift\":{\"direction\":"
+      + quoted(direction ? direction : "") + ",\"amount\":" + std::to_string(amount) + "}"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression,
+          target_index, target_has_resolved_index, target_resolved_index) + ']';
+  });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1318,6 +1340,41 @@ decltype(auto) event_assign_expr(int line, const char* signature,
   };
   return assign_expr_action(action, record_after,
     typename std::is_reference<decltype(action())>::type{});
+}
+
+// Capture operands at evaluation time, including intermediate results. Never
+// recover them from the destination frame (which may contain later writes).
+template <typename LeftFactory, typename RightFactory, typename Operation>
+auto event_bitwise_value(int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* left_id, const char* left_expression, const char* left_index,
+    bool left_has_resolved_index, long long left_resolved_index,
+    const char* right_id, const char* right_expression, const char* right_index,
+    bool right_has_resolved_index, long long right_resolved_index,
+    const char* operation, bool left_intermediate, bool right_intermediate,
+    LeftFactory left_factory, RightFactory right_factory, Operation evaluate) {
+  const auto left = left_factory();
+  const auto right = right_factory();
+  const auto result = evaluate(left, right);
+  const std::string left_value = encode_value(left);
+  const std::string right_value = encode_value(right);
+  const std::string after = encode_value(result);
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() {
+    return std::string("\"operation\":\"=\",\"animate\":true,\"bitwise\":{")
+      + "\"operator\":" + quoted(operation ? operation : "")
+      + ",\"leftIntermediate\":" + (left_intermediate ? "true" : "false")
+      + ",\"rightIntermediate\":" + (right_intermediate ? "true" : "false") + "}"
+      + ",\"payload\":{\"before\":" + left_value + ",\"left\":" + left_value
+      + ",\"right\":" + right_value + ",\"after\":" + after + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression,
+        target_index, target_has_resolved_index, target_resolved_index)
+      + ',' + target_json("source-left", left_id, left_expression, left_index,
+        left_has_resolved_index, left_resolved_index)
+      + ',' + target_json("source-right", right_id, right_expression, right_index,
+        right_has_resolved_index, right_resolved_index) + ']';
+  });
+  return result;
 }
 
 template <typename LeftFactory, typename RightFactory, typename Compare>

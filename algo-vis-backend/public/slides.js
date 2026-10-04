@@ -9286,6 +9286,7 @@
     if (!frame?.contentWindow || !slide || slide.kind !== 'algorithm-animation') return;
     frame.contentWindow.postMessage({
       type: 'asm-load-animation',
+      editorSessionKey: slide.id,
       animation: preparedAnimation || normalizeAlgorithmAnimation(slide.animation)
     }, window.location.origin);
   }
@@ -9439,14 +9440,18 @@
     if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在載入動畫…';
     algorithmEditorModal.classList.add('is-loading');
     algorithmEditorModal.hidden = false;
-    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-43';
+    if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
+      sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
+    } else {
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-44';
+    }
   }
 
   function closeAlgorithmEditor() {
     if (!algorithmEditorModal || !algorithmEditorFrame) return;
     algorithmEditorModal.hidden = true;
     algorithmEditorModal.classList.remove('is-loading');
-    algorithmEditorFrame.src = 'about:blank';
+    algorithmEditorFrame.contentWindow?.postMessage({ type: 'asm-editor-hidden' }, window.location.origin);
     editingAlgorithmSlideId = null;
   }
 

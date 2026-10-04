@@ -1719,7 +1719,7 @@
       const target = (slot.event?.targets || []).find(item => item.role === 'target')
         || slot.event?.targets?.[0];
       const key = eventTargetKey(traceDocument, eventFrame, target);
-      const commitAt = (Number(slot.effectStart) || Number(slot.start) || 0)
+      const commitAt = slot.bitwiseAnimation ? Number(slot.end) : (Number(slot.effectStart) || Number(slot.start) || 0)
         + ASSIGN_TIMING.frame
         + (slot.markerAssignment ? ASSIGN_TIMING.valueHold : 0)
         + ASSIGN_TIMING.drop;
@@ -1807,6 +1807,7 @@
 
   function forwardReplayCommitTime(slot) {
     if (!slot) return 0;
+    if (slot.bitwiseAnimation) return Number(slot.end) || 0;
     if (slot.animation === 'assign') {
       return (Number(slot.effectStart) || Number(slot.start) || 0)
         + ASSIGN_TIMING.frame
@@ -2797,6 +2798,76 @@
         applied: Symbol('unapplied'), currentValue: track.initial });
     });
     const styleTargets = tracks.filter(track => track.styleRect);
+    // A scalar shown through bits() is a whole rendered row, not its scalar
+    // value cell. Replay every bit (including identity @let aliases) between
+    // compound-expression events, so removing an OR overlay cannot reveal
+    // the destination frame's eventual assignment value.
+    const bitRows = [];
+    const bitPaints = new Map();
+    const seenBitCells = new Set();
+    const bitElements = new Map();
+    options.currentElements?.forEach?.((element, key) => {
+      if (element.dataset?.traceVariable && !retainedSnapshotVisual(element)) {
+        bitElements.set(key, element);
+      }
+    });
+    (replayPlan?.valueTracks || []).filter(track => track.kind === 'value').forEach(track => {
+      const row = bitwiseRow(options.document, eventFrame, track.target, bitElements);
+      if (!row || row.cells.some(cell => seenBitCells.has(cell))) return;
+      row.cells.forEach(cell => seenBitCells.add(cell));
+      bitRows.push({ track, row, applied: Symbol('unapplied') });
+    });
+    const applyBits = (entry, value) => {
+      const { row, track } = entry;
+      const signature = JSON.stringify(value);
+      if (entry.applied === signature) return;
+      entry.applied = signature;
+      const state = { ...styleFrame.state };
+      for (const id of new Set([row.variableId, track.target.variableId])) {
+        const source = state[id];
+        if (!source) continue;
+        let data = value || { kind: 'scalar', value: 0 };
+        if (Number.isInteger(track.target.resolvedIndex) && source.data?.items) {
+          const items = [...source.data.items];
+          items[track.target.resolvedIndex] = data;
+          data = { ...source.data, items };
+        }
+        state[id] = { ...source, data };
+      }
+      const phaseFrame = { ...styleFrame, state };
+      const highlights = window.ASMTraceRules?.evaluate?.(options.document, phaseFrame) || {};
+      const renderer = { ...options.document.skins?.[row.variableId]?.options,
+        ...styleFrame.rendererOptions?.[row.variableId] };
+      let bits;
+      if (value?.items) bits = value.items.map(item => window.ASMTraceModel.scalarValue(item));
+      else {
+        let raw = 0n;
+        try { raw = BigInt.asUintN(row.cells.length, BigInt(window.ASMTraceModel.scalarValue(value) || 0)); }
+        catch { /* An uninitialized row has no committed bits yet. */ }
+        bits = row.cells.map((_, column) => Number((raw >> BigInt(row.order === 'lsb-first'
+          ? column : row.cells.length - 1 - column)) & 1n));
+      }
+      row.cells.forEach((cell, column) => {
+        const bit = Number(bits[column]) || 0;
+        const indices = String(cell.dataset.traceIndex).split(',').map(Number);
+        const template = cell.getAttribute('data-trace-display-template') ?? renderer.display?.template;
+        const fallback = renderer.symbols?.[bit] ?? (renderer.showValue === false ? '' : String(bit));
+        const display = typeof template === 'string'
+          ? window.ASMTraceRenderers.renderDisplayTemplate(template, { kind: 'scalar', value: bit },
+            options.document, phaseFrame, { row: indices.length > 1 ? indices[0] : 0,
+              column: indices.at(-1), index: indices.at(-1) }, fallback)
+          : fallback;
+        const text = cell.querySelector(':scope > text');
+        if (text) text.textContent = display;
+        const lod = cell.closest('[data-asm-lod]')?._asmLod;
+        const record = lod?.records.find(item => item.cell === cell);
+        if (record) record.value = display;
+        const rect = cell.querySelector(':scope > rect');
+        const rule = highlights[row.variableId]?.[cell.dataset.traceIndex]
+          || highlights[row.variableId]?.$object || {};
+        if (rect) bitPaints.set(rect, rule.fill || rule.styleTypes?.background || '#ffffff');
+      });
+    };
     // Value cells are visual nodes that may swap positions. Their index labels
     // stay at logical array indices, so labels must replay the logical value
     // tracks rather than inheriting the moving node's value.
@@ -2983,6 +3054,13 @@
     };
     const update = elapsed => {
       styleElapsed = Number(elapsed) || 0;
+      bitRows.forEach(entry => {
+        let value = entry.track.initial;
+        entry.track.steps.forEach(step => {
+          if (step.mode !== 'ignored' && elapsed >= Number(step.commitMs)) value = step.after;
+        });
+        applyBits(entry, value);
+      });
       // Numeric commits remain ordered; style is independent of these commits.
       [...tracks, ...indexTracks].forEach(track => {
         let value = track.initial;
@@ -3005,7 +3083,7 @@
     return {
       update,
       ownsPaint(rect) {
-        return seenStyleRects.has(rect) || seenIndexRects.has(rect);
+        return bitPaints.has(rect) || seenStyleRects.has(rect) || seenIndexRects.has(rect);
       },
       applyStyles() {
         refreshStyles();
@@ -3073,9 +3151,14 @@
             options.currentElements?.get?.(track.key), highlight, track.key
           );
         });
+        bitPaints.forEach((fill, rect) => rect.setAttribute('fill', fill));
       },
       finish() {
         styleElapsed = Infinity;
+        bitRows.forEach(entry => {
+          const steps = entry.track.steps.filter(step => step.mode !== 'ignored');
+          applyBits(entry, steps.length ? steps.at(-1).after : entry.track.initial);
+        });
 
         [...tracks, ...indexTracks].forEach(track => {
           const committed = track.steps.filter(step => step.mode !== 'ignored');
@@ -3093,6 +3176,371 @@
         });
         // Completion releases every geometry/style barrier.
         stylesDirty = true;
+      }
+    };
+  }
+
+  const BIT_SHIFT_DURATION = 520;
+
+  function bitShiftSourceId(document, frame, variableId, seen = new Set()) {
+    if (!variableId || seen.has(variableId)) return '';
+    seen.add(variableId);
+    const variable = document.variables?.[variableId];
+    const binding = (frame.lets || []).find(item => item.variable?.id === variableId
+      || item.name === variable?.name);
+    if (!binding) return variableId;
+    // Only identity aliases can stand in for the shifted storage. Derived
+    // unions/arithmetic must update normally, not pretend to shift that value.
+    const expression = String(binding.expression || '').trim();
+    if (!/^[A-Za-z_]\w*$/.test(expression)) return '';
+    const parentBinding = (frame.lets || []).find(item => item.name === expression);
+    const parentId = parentBinding?.variable?.id || Object.keys(frame.state || {})
+      .find(id => document.variables?.[id]?.name === expression);
+    return bitShiftSourceId(document, frame, parentId, seen);
+  }
+
+  function bitShiftTargets(document, frame, event, elements) {
+    const shift = event?.bitShift;
+    if (!['left', 'right'].includes(shift?.direction)
+      || !Number.isSafeInteger(Number(shift.amount)) || Number(shift.amount) < 0) return [];
+    const target = event.targets?.find(item => item.role === 'target');
+    if (!target?.variableId) return [];
+    const found = [], seen = new Set();
+    for (const [, element] of elements || []) {
+      const id = element?.dataset?.traceVariable;
+      if (!id || seen.has(element) || retainedSnapshotVisual(element)) continue;
+      seen.add(element);
+      if (bitShiftSourceId(document, frame, id) !== target.variableId) continue;
+      const data = frame.state?.[id]?.data;
+      const transform = frame.rendererOptions?.[id]?.dataTransform
+        || document.skins?.[id]?.options?.dataTransform;
+      const bitRows = data?.items?.some(row => row?.bitArray === true);
+      if (transform?.type !== 'bits' && data?.bitArray !== true && !bitRows) continue;
+      const cells = [...(element.querySelectorAll?.('[data-trace-index]') || [])]
+        .filter(cell => !cell.hasAttribute('data-trace-index-label'));
+      if (!cells.length) continue;
+      const matrix = cells.some(cell => String(cell.dataset.traceIndex).includes(','));
+      const row = Number.isInteger(target.resolvedIndex) && matrix ? target.resolvedIndex : null;
+      found.push({ element, variableId: id, cells: row == null ? cells : cells.filter(cell =>
+        Number(String(cell.dataset.traceIndex).split(',')[0]) === row),
+        order: transform?.order || data?.bitOrder || 'msb-first', target });
+    }
+    return found.filter(item => item.cells.length);
+  }
+
+  function bitwiseRow(document, frame, operand, elements) {
+    if (!operand?.variableId) return null;
+    const rows = bitShiftTargets(document, frame, {
+      bitShift: { direction: 'left', amount: 0 }, targets: [{ ...operand, role: 'target' }]
+    }, elements);
+    for (const row of rows) {
+      const matrix = row.cells.some(cell => String(cell.dataset.traceIndex).includes(','));
+      if (matrix && !Number.isInteger(operand.resolvedIndex)
+        && new Set(row.cells.map(cell => String(cell.dataset.traceIndex).split(',')[0])).size > 1) continue;
+      if (!matrix && Number.isInteger(operand.resolvedIndex)
+        && frame.state?.[row.variableId]?.data?.bitArray === true) {
+        row.cells = row.cells.filter(cell => Number(cell.dataset.traceIndex) === operand.resolvedIndex);
+      }
+      row.cells.sort((a, b) => Number(String(a.dataset.traceIndex).split(',').at(-1))
+        - Number(String(b.dataset.traceIndex).split(',').at(-1)));
+      if (row.cells.length) return row;
+    }
+    return null;
+  }
+
+  function bitwisePlan(document, frame, event, elements) {
+    if (!['|', '&', '^'].includes(event?.bitwise?.operator)) return null;
+    const target = bitwiseRow(document, frame, event.targets?.find(t => t.role === 'target'), elements);
+    const leftOperand = event.targets?.find(t => t.role === 'source-left');
+    let left = bitwiseRow(document, frame, leftOperand, elements);
+    // A persistent row can change its identity alias from L to nextL in the
+    // destination frame. Reuse that row's previous binding, not an unrelated
+    // hidden variable or retained snapshot. Captured left bits supply its data.
+    if (!left && target) {
+      const previousFrame = document.frames?.[document.frames.indexOf(frame) - 1];
+      const previousLeft = previousFrame && bitwiseRow(document, previousFrame, leftOperand, elements);
+      if (previousLeft?.element === target.element
+        && (previousFrame.rendererOptions?.[previousLeft.variableId]
+          || previousFrame.renderers?.[previousLeft.variableId])
+        && !previousFrame.captureOnlyVariableIds?.includes(previousLeft.variableId)) left = previousLeft;
+    }
+    const right = bitwiseRow(document, frame, event.targets?.find(t => t.role === 'source-right'), elements);
+    if (!target || !left || !right) return null;
+    return { target, left, right };
+  }
+
+  function bitwiseTargetIsBits(document, frame, event) {
+    const id = event.targets?.find(t => t.role === 'target')?.variableId;
+    return Object.keys(frame.state || {}).some(key => {
+      if (bitShiftSourceId(document, frame, key) !== id) return false;
+      const data = frame.state[key]?.data;
+      const transform = frame.rendererOptions?.[key]?.dataTransform || document.skins?.[key]?.options?.dataTransform;
+      return transform?.type === 'bits' || data?.bitArray === true || data?.items?.some(row => row?.bitArray === true);
+    });
+  }
+
+  function createBitwiseEffect(event, document, frame, elements) {
+    const plan = bitwisePlan(document, frame, event, elements);
+    if (!plan) return null;
+    const root = plan.target.element.ownerSVGElement?.querySelector('#asm-trace-root');
+    if (!root?.getCTM?.()) return null;
+    const overlay = createSvg('g', { 'data-trace-bitwise': event.id || '', 'pointer-events': 'none' });
+    const base = createSvg('g', { 'data-trace-bitwise-base': '1' });
+    const moving = createSvg('g', { 'data-trace-bitwise-motion': '1' });
+    overlay.append(base, moving); root.append(overlay);
+    const saved = [];
+    for (const cell of plan.target.cells) {
+      saved.push([cell, cell.style.visibility]); cell.style.visibility = 'hidden';
+    }
+    const phaseFrame = value => {
+      const state = { ...frame.state };
+      for (const [row, captured] of [[plan.left, event.payload.left], [plan.right, event.payload.right], [plan.target, value]]) {
+        for (const id of new Set([row.variableId, row.target.variableId])) {
+          const entry = state[id];
+          if (!entry) continue;
+          let data = captured;
+          if (Number.isInteger(row.target.resolvedIndex) && entry.data?.items) {
+            const items = [...entry.data.items]; items[row.target.resolvedIndex] = captured;
+            data = { ...entry.data, items };
+          }
+          state[id] = { ...entry, data };
+        }
+      }
+      return { ...frame, state };
+    };
+    const beforeFrame = phaseFrame(event.payload.left), afterFrame = phaseFrame(event.payload.after);
+    const rightFrame = plan.right.target.variableId === plan.target.target.variableId
+      ? phaseFrame(event.payload.right) : beforeFrame;
+    const beforeStyles = window.ASMTraceRules?.evaluate?.(document, beforeFrame) || {};
+    const rightStyles = window.ASMTraceRules?.evaluate?.(document, rightFrame) || {};
+    const afterStyles = window.ASMTraceRules?.evaluate?.(document, afterFrame) || {};
+    const bits = (value, row) => {
+      if (value?.items) return value.items.map(item => window.ASMTraceModel.scalarValue(item));
+      const number = window.ASMTraceModel.scalarValue(value);
+      try {
+        const raw = BigInt.asUintN(row.cells.length, BigInt(number));
+        return row.cells.map((_, column) => Number((raw >> BigInt(row.order === 'lsb-first'
+          ? column : row.cells.length - 1 - column)) & 1n));
+      } catch { return row.cells.map(() => 0); }
+    };
+    const leftBits = bits(event.payload.left, plan.target), rightBits = bits(event.payload.right, plan.right);
+    const resultBits = bits(event.payload.after, plan.target);
+    const geometry = cell => {
+      const matrix = root.getCTM().inverse().multiply(cell.getCTM());
+      const rect = cell.querySelector(':scope > rect');
+      const x = Number(rect.getAttribute('x')) || 0, y = Number(rect.getAttribute('y')) || 0;
+      matrix.e += matrix.a * x + matrix.c * y;
+      matrix.f += matrix.b * x + matrix.d * y;
+      return { matrix, rect, text: cell.querySelector(':scope > text'), x, y };
+    };
+    const clone = (cell, row, value, at, styles, viewFrame) => {
+      const { rect, text, x, y } = geometry(cell);
+      const copy = createSvg('g', { transform: `matrix(${at.a} ${at.b} ${at.c} ${at.d} ${at.e} ${at.f})` });
+      const fill = rect.cloneNode(true);
+      fill.setAttribute('x', '0'); fill.setAttribute('y', '0');
+      fill.removeAttribute('id'); fill.style.fill = ''; fill.style.fillOpacity = ''; fill.style.transition = 'none';
+      fill.classList.remove('asm-trace-style-paint');
+      const rule = styles[row.variableId]?.[cell.dataset.traceIndex] || styles[row.variableId]?.$object || {};
+      const paint = parseColor(rule.fill || rule.styleTypes?.background || '#ffffff');
+      fill.setAttribute('fill', paint ? `rgb(${paint.r},${paint.g},${paint.b})` : '#ffffff');
+      fill.setAttribute('fill-opacity', String(paint?.a ?? 1)); copy.append(fill);
+      const item = { kind: 'scalar', value };
+      const coordinates = String(cell.dataset.traceIndex).split(',').map(Number);
+      const options = { ...document.skins?.[row.variableId]?.options, ...frame.rendererOptions?.[row.variableId] };
+      const template = cell.getAttribute('data-trace-display-template') ?? options.display?.template;
+      const fallback = options.symbols?.[value] ?? (options.showValue === false ? '' : String(value));
+      const label = text?.cloneNode(true);
+      if (label) {
+        label.removeAttribute('id');
+        label.setAttribute('x', String((Number(label.getAttribute('x')) || 0) - x));
+        label.setAttribute('y', String((Number(label.getAttribute('y')) || 0) - y));
+        label.textContent = typeof template === 'string'
+          ? window.ASMTraceRenderers.renderDisplayTemplate(template, item, document, viewFrame,
+            { row: coordinates.length > 1 ? coordinates[0] : 0, column: coordinates.at(-1), index: coordinates.at(-1) }, fallback)
+          : fallback;
+        copy.append(label);
+      }
+      return { copy, fill, label, paint: paint || { r: 255, g: 255, b: 255, a: 1 } };
+    };
+    const layers = plan.target.cells.map((cell, column) => {
+      const destination = geometry(cell).matrix;
+      const bit = plan.target.order === 'lsb-first' ? column : plan.target.cells.length - 1 - column;
+      const sourceColumn = plan.right.order === 'lsb-first' ? bit : plan.right.cells.length - 1 - bit;
+      const sourceCell = plan.right.cells[sourceColumn];
+      const start = clone(cell, plan.target, leftBits[column], destination, beforeStyles, beforeFrame);
+      const finish = clone(cell, plan.target, resultBits[column], destination, afterStyles, afterFrame);
+      const incoming = sourceCell
+        ? clone(sourceCell, plan.right, rightBits[sourceColumn], geometry(sourceCell).matrix, rightStyles, rightFrame) : null;
+      base.append(start.copy);
+      if (incoming) moving.append(incoming.copy);
+      return { start, finish, incoming, cell, sourceCell };
+    });
+    return {
+      stage() {
+        // Only the destination's old bits may cover its frame-final value
+        // before this event starts. The incoming row can belong to a newly
+        // declared object whose outerframe has not entered yet.
+        this.update(0);
+        moving.style.opacity = '0';
+      },
+      update(elapsed) {
+        const progress = clamp01(elapsed / BIT_SHIFT_DURATION);
+        const travel = clamp01(progress / 0.65), smooth = travel * travel * (3 - 2 * travel);
+        const arrival = BIT_SHIFT_DURATION * 0.65;
+        const fadeStart = arrival + 100;
+        moving.style.opacity = String(1 - clamp01((elapsed - fadeStart) / (BIT_SHIFT_DURATION - fadeStart)));
+        layers.forEach(layer => {
+          const destination = geometry(layer.cell).matrix;
+          const atTarget = `matrix(${destination.a} ${destination.b} ${destination.c} ${destination.d} ${destination.e} ${destination.f})`;
+          layer.start.copy.setAttribute('transform', atTarget);
+          layer.finish.copy.setAttribute('transform', atTarget);
+          if (layer.incoming) {
+            const origin = geometry(layer.sourceCell).matrix;
+            layer.incoming.copy.setAttribute('transform', `matrix(${destination.a} ${destination.b} ${destination.c} ${destination.d} ${origin.e + (destination.e - origin.e) * smooth} ${origin.f + (destination.f - origin.f) * smooth})`);
+          }
+          const result = clamp01((progress - 0.7) / 0.3);
+          const paint = interpolateColor(layer.start.paint, layer.finish.paint, result);
+          layer.start.fill.setAttribute('fill', `rgb(${paint.r},${paint.g},${paint.b})`);
+          layer.start.fill.setAttribute('fill-opacity', String(paint.a));
+          layer.start.copy.style.opacity = '1';
+          if (progress >= 1 && layer.start.label && layer.finish.label) {
+            layer.start.label.textContent = layer.finish.label.textContent;
+          }
+        });
+      },
+      remove() { overlay.remove(); saved.forEach(([cell, visibility]) => { cell.style.visibility = visibility; }); }
+    };
+  }
+
+  function createBitShiftEffect(event, document, frame, elements, previousObjects = new Map()) {
+    const targets = bitShiftTargets(document, frame, event, elements);
+    if (!targets.length) return null;
+    const layers = [], hidden = [];
+    const beforeFrame = { ...frame, state: { ...frame.state } };
+    const targetId = event.targets.find(item => item.role === 'target').variableId;
+    for (const id of new Set([targetId, ...targets.map(item => item.variableId)])) {
+      const entry = frame.state?.[id];
+      if (!entry) continue;
+      let data = event.payload?.before;
+      if (Number.isInteger(event.targets[0]?.resolvedIndex) && entry.data?.items) {
+        const items = [...entry.data.items];
+        items[event.targets[0].resolvedIndex] = data;
+        data = { ...entry.data, items };
+      }
+      beforeFrame.state[id] = { ...entry, data };
+    }
+    const styles = window.ASMTraceRules?.evaluate?.(document, beforeFrame) || {};
+    let clipOrdinal = 0;
+    for (const target of targets) {
+      const rows = new Map();
+      for (const cell of target.cells) {
+        const index = String(cell.dataset.traceIndex);
+        const row = index.includes(',') ? Number(index.split(',')[0]) : 0;
+        if (!rows.has(row)) rows.set(row, []);
+        rows.get(row).push(cell);
+      }
+      const oldObject = previousObjects.get(target.element.dataset.traceObjectKey);
+      const transform = frame.rendererOptions?.[target.variableId]?.dataTransform
+        || document.skins?.[target.variableId]?.options?.dataTransform;
+      const data = beforeFrame.state?.[target.variableId]?.data;
+      for (const [row, cells] of rows) {
+        cells.sort((a, b) => Number(String(a.dataset.traceIndex).split(',').at(-1))
+          - Number(String(b.dataset.traceIndex).split(',').at(-1)));
+        const outer = createSvg('g', { 'data-trace-bit-shift': event.id || '', 'pointer-events': 'none' });
+        const moving = createSvg('g', { 'data-trace-bit-shift-motion': '1' });
+        const grid = createSvg('g', { 'data-trace-bit-shift-grid': '1' });
+        const defs = createSvg('defs');
+        const clipId = `asm-bit-shift-${String(event.id || 'event').replace(/\W/g, '')}-${clipOrdinal++}`;
+        const clip = createSvg('clipPath', { id: clipId, clipPathUnits: 'userSpaceOnUse' });
+        let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+        for (let column = 0; column < cells.length; column++) {
+          const cell = cells[column], rect = cell.querySelector(':scope > rect');
+          const text = cell.querySelector(':scope > text');
+          if (!rect || !target.element.getCTM?.() || !cell.getCTM?.()) continue;
+          const matrix = target.element.getCTM().inverse().multiply(cell.getCTM());
+          const x = matrix.e + (Number(rect.getAttribute('x')) || 0);
+          const y = matrix.f + (Number(rect.getAttribute('y')) || 0);
+          const width = Number(rect.getAttribute('width')) || 40;
+          const height = Number(rect.getAttribute('height')) || 40;
+          left = Math.min(left, x); top = Math.min(top, y);
+          right = Math.max(right, x + width); bottom = Math.max(bottom, y + height);
+          const copy = createSvg('g', { transform: `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})` });
+          const oldCell = oldObject?.querySelector?.(`[data-trace-index="${cell.dataset.traceIndex}"]`);
+          const fill = (oldCell?.querySelector(':scope > rect') || rect).cloneNode(true);
+          fill.removeAttribute('id'); fill.setAttribute('stroke', 'none');
+          fill.style.fill = '';
+          fill.style.fillOpacity = '';
+          fill.style.transition = 'none';
+          fill.classList.remove('asm-trace-style-paint');
+          const rules = styles[target.variableId] || {};
+          const rule = rules[cell.dataset.traceIndex] || rules.$object || {};
+          const paint = parseColor(rule.fill || rule.styleTypes?.background || '#ffffff');
+          fill.setAttribute('fill', paint ? `rgb(${paint.r},${paint.g},${paint.b})` : '#ffffff');
+          fill.setAttribute('fill-opacity', String(paint?.a ?? 1));
+          copy.append(fill);
+          if (text) {
+            const label = (oldCell?.querySelector(':scope > text') || text).cloneNode(true);
+            label.removeAttribute('id');
+            // Derive each bit from this event, not an older frame's clone:
+            // several shifts can execute in the same captured frame.
+            let item;
+            if (transform?.type === 'bits') {
+              const source = data?.items ? data.items[row] : data;
+              const number = Number(window.ASMTraceModel?.scalarValue?.(source) ?? source?.value ?? source) || 0;
+              const bit = target.order === 'lsb-first' ? column : cells.length - 1 - column;
+              item = { kind: 'scalar', value: Math.floor(Math.abs(number) / 2 ** bit) % 2 };
+            } else item = data?.items?.[row]?.items?.[column] || data?.items?.[column];
+            const viewOptions = { ...document.skins?.[target.variableId]?.options,
+              ...frame.rendererOptions?.[target.variableId] };
+            const template = cell.getAttribute('data-trace-display-template') ?? viewOptions.display?.template;
+            const value = window.ASMTraceModel?.scalarValue?.(item) ?? item?.value;
+            const fallback = Array.isArray(viewOptions.symbols) && (Number(value) === 0 || Number(value) === 1)
+              ? viewOptions.symbols[Number(value)] : String(value ?? '');
+            if (item) label.textContent = typeof template === 'string'
+              ? window.ASMTraceRenderers.renderDisplayTemplate(template, item, document, beforeFrame,
+                { row, column, index: column }, fallback)
+              : fallback;
+            copy.append(label);
+            hidden.push([text, text.style.visibility, 'visibility']); text.style.visibility = 'hidden';
+          }
+          hidden.push([rect, rect.style.fill, 'fill']); rect.style.fill = 'transparent';
+          moving.append(copy);
+          // Only paint travels; cell boundaries remain stationary on top.
+          const border = rect.cloneNode(true);
+          border.removeAttribute('id'); border.style.fill = 'none'; border.setAttribute('fill', 'none');
+          const fixed = createSvg('g', { transform: copy.getAttribute('transform') });
+          fixed.append(border); grid.append(fixed);
+        }
+        if (!Number.isFinite(left)) continue;
+        clip.append(createSvg('rect', { x: left, y: top, width: right - left, height: bottom - top }));
+        const zeroFill = createSvg('rect', { x: left, y: top, width: 0, height: bottom - top,
+          fill: '#ffffff', stroke: 'none', 'data-trace-bit-shift-zero-fill': '1' });
+        defs.append(clip); outer.append(defs, zeroFill, moving, grid); outer.setAttribute('clip-path', `url(#${clipId})`);
+        target.element.append(outer);
+        const step = (right - left) / cells.length;
+        const sign = (event.bitShift.direction === 'left' ? -1 : 1)
+          * (target.order === 'lsb-first' ? -1 : 1);
+        layers.push({ outer, moving, zeroFill, left, right,
+          distance: sign * step * Math.min(cells.length, Number(event.bitShift.amount)) });
+      }
+    }
+    return {
+      update(elapsed) {
+        const raw = clamp01(elapsed / BIT_SHIFT_DURATION);
+        const progress = raw * raw * (3 - 2 * raw);
+        layers.forEach(layer => {
+          const distance = layer.distance * progress;
+          layer.moving.setAttribute('transform', `translate(${distance},0)`);
+          // White belongs only to newly introduced zero bits. Painting a
+          // white backing under the whole row changes translucent AV colors.
+          const width = Math.abs(distance);
+          layer.zeroFill.setAttribute('x', String(distance < 0 ? layer.right - width : layer.left));
+          layer.zeroFill.setAttribute('width', String(width));
+        });
+      },
+      remove() {
+        layers.forEach(layer => layer.outer.remove());
+        hidden.forEach(([node, value, property]) => { node.style[property] = value; });
       }
     };
   }
@@ -5156,6 +5604,10 @@
       key => key
     ));
     if (animation === 'assign') {
+      if (event.bitwise && bitwiseTargetIsBits(traceDocument, eventFrame, event)) {
+        return Boolean(bitwisePlan(traceDocument, eventFrame, event, elements));
+      }
+      if (bitShiftTargets(traceDocument, eventFrame, event, elements).length) return true;
       const target = targets.find(item => item.role === 'target') || targets[0];
       const variableTargets = targets.filter(item => item?.variableId);
       const targetOperand = target ? eventOperand(
@@ -5387,6 +5839,7 @@
         : (standaloneUpdate ? 'assign' : eventAnimation(traceDocument, event.type));
       let duration = 0;
       let effectDuration = 0;
+      let bitwiseAnimation = false;
       let markerAssignment = null;
       let declarationMarkerMotionDuration = 0;
       if (positionOnly) duration = swapDuration;
@@ -5461,8 +5914,15 @@
         ));
         if (markerAssignment) seenMarkerAssignments.add(markerAssignment.key);
         effectDuration = assignmentEffectDuration(Boolean(markerAssignment));
+        const bitwise = bitwisePlan(traceDocument, eventFrame, event, elements);
+        bitwiseAnimation = Boolean(bitwise);
+        if (bitwise) {
+          effectDuration = BIT_SHIFT_DURATION;
+        } else if (bitShiftTargets(traceDocument, eventFrame, event, elements).length) {
+          effectDuration = Math.max(effectDuration, BIT_SHIFT_DURATION);
+        }
         duration = effectDuration
-          + (!standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
+          + (!bitwise && !standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
       if (event.type === 'compare' && animation === 'compare') {
         duration = COMPARE_DURATION;
@@ -5516,7 +5976,7 @@
       slots.push({
         event, type: event.type, animation,
         promptStart, codePromptDuration, visualStart, start: visualStart,
-        effectStart, motionStart, effectDuration,
+        effectStart, motionStart, effectDuration, bitwiseAnimation,
         declarationEntranceDelay,
         declarationMarkerMotionDuration: animation === 'declare'
           ? declarationMarkerMotionDuration || MARKER_REFLOW_TIMING.duration
@@ -5779,6 +6239,30 @@
       }
     );
     const combinedAdjustments = new Map();
+    const bitShiftEffects = new Map();
+    const stagedShiftVariables = new Set();
+    if (Number(options.direction) >= 0) {
+      for (const slot of eventTimeline.filter(item => item.animation === 'assign'
+        && (item.event?.bitShift || item.event?.bitwise))) {
+        const id = slot.event.targets?.find(item => item.role === 'target')?.variableId;
+        if (!id || stagedShiftVariables.has(id)) continue;
+        stagedShiftVariables.add(id);
+        // Do not reveal the destination bits while the code highlight plays.
+        // If an earlier write owns this variable, wait for that write instead.
+        if (logicalEvents.some(event => Number(event.order) < Number(slot.event.order)
+          && ['assign', 'write', 'swap', 'sequence', 'declare'].includes(event.type)
+          && event.targets?.some(target => target.role === 'target' && target.variableId === id))) continue;
+        const effect = slot.event.bitwise
+          ? createBitwiseEffect(slot.event, options.document, eventFrame, options.currentElements)
+          : createBitShiftEffect(slot.event, options.document, eventFrame,
+            options.currentElements, options.previousObjects);
+        if (effect) {
+          if (effect.stage) effect.stage();
+          else effect.update(0);
+          bitShiftEffects.set(slot, effect);
+        }
+      }
+    }
     const sequenceEffects = new Map(eventTimeline.filter(slot => (
       slot.animation === 'sequence'
     )).map(slot => [slot, createSequenceOperationEffect(
@@ -5852,16 +6336,35 @@
           ...(options.previousObjects || new Map()),
           ...(options.currentElements || new Map())
         ]);
+        if (slot.event?.bitwise && Number(options.direction) >= 0) {
+          const effect = bitShiftEffects.get(slot)
+            || createBitwiseEffect(slot.event, options.document, eventFrame, options.currentElements);
+          if (effect) return {
+            update(elapsed) { effect.update(elapsed); },
+            remove() { effect.remove(); bitShiftEffects.delete(slot); }
+          };
+        }
         const assignmentPlacements = new Map([
           ...(options.previousPlacements || new Map()),
           ...(options.currentPlacements || new Map())
         ]);
-        return createAssignEffect(
+        const assignment = createAssignEffect(
           options.root, slot.event, options.document, eventFrame,
           assignmentPlacements, assignmentElements, options.rawDeltas,
           options.appearingKeys, options.previousObjects, visualKeyAtEvent,
           options.currentElements
         );
+        const shift = Number(options.direction) < 0 ? null : bitShiftEffects.get(slot) || createBitShiftEffect(
+          slot.event, options.document, eventFrame, options.currentElements, options.previousObjects
+        );
+        if (!shift) return assignment;
+        return {
+          get adjustments() { return assignment?.adjustments || new Map(); },
+          get opacities() { return assignment?.opacities || new Map(); },
+          update(elapsed) { assignment?.update?.(elapsed); shift.update(elapsed); },
+          syncPosition() { assignment?.syncPosition?.(); },
+          remove() { assignment?.remove?.(); shift.remove(); bitShiftEffects.delete(slot); }
+        };
       }
       if (slot.animation === 'sequence') return sequenceEffects.get(slot) || null;
       if (GENERIC_EVENT_DURATION[slot.animation]) {
@@ -5909,6 +6412,14 @@
             options.root.dataset.traceActiveEventId = String(slot.event?.id || '');
             options.root.dataset.traceActiveEventType = String(slot.type || '');
             announce(slot, 'start');
+            if (slot.animation === 'assign' && (slot.event?.bitShift || slot.event?.bitwise)
+              && Number(options.direction) >= 0 && !bitShiftEffects.has(slot)) {
+              const effect = slot.event.bitwise
+                ? createBitwiseEffect(slot.event, options.document, eventFrame, options.currentElements)
+                : createBitShiftEffect(slot.event, options.document, eventFrame,
+                  options.currentElements, options.previousObjects);
+              if (effect) { effect.update(0); bitShiftEffects.set(slot, effect); }
+            }
           } else {
             const nextSlot = eventTimeline.find(item => (
               elapsed < Number(item.promptStart ?? item.start)
@@ -5953,6 +6464,8 @@
         else queueMicrotask(announceCompletion);
         activeEffect?.remove?.();
         sequenceEffects.forEach(effect => effect.remove());
+        bitShiftEffects.forEach(effect => effect.remove());
+        bitShiftEffects.clear();
         activeEffect = null;
         activeEffectStarted = false;
         activeAnimatedElements = [];
@@ -7868,10 +8381,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-260';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-269';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-260', play, cancel, updateEventAvailability,
+    build: 'trace-269', play, cancel, updateEventAvailability,
     recursionGrowthTransitions,
     keepLiveGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
@@ -7888,6 +8401,7 @@
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
     createForwardReplayPlan, prepareForwardValues,
-    assignmentTransferOperator, formatAssignmentTransferValue
+    assignmentTransferOperator, formatAssignmentTransferValue,
+    bitShiftTargets, createBitShiftEffect, bitwisePlan, createBitwiseEffect
   };
 })();

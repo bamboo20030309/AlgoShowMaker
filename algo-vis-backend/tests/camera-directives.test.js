@@ -31,6 +31,37 @@ test('an unresolved focus target uses automatic capture instead of the previous 
   assert.equal(automatic, 1);
 });
 
+test('a resolved focus target uses its center and explicit zoom instead of whole-scene bounds', () => {
+  const calls = [];
+  const window = {
+    document: { documentElement: {} },
+    ASMTraceRules: { conditionMatches: () => true },
+    ASMTraceRenderers: {
+      currentCameraAnchor: () => ({ x: 120, y: 80 }),
+      currentAnchor: () => assert.fail('destination camera anchor should be preferred'),
+      fitCurrentObjectsCamera: () => assert.fail('resolved focus must not fit the whole scene')
+    },
+    setCamera: (...args) => calls.push(args)
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/trace-camera.js'), 'utf8'), {
+    window, getComputedStyle: () => ({ getPropertyValue: () => '' })
+  });
+  const result = window.ASMTraceCamera.apply({}, {
+    id: 'frame-1',
+    camera: {
+      autoCapture: false,
+      target: { variableId: 'board', anchor: 'center' },
+      zoom: 1.25,
+      offsetX: 4,
+      offsetY: -8
+    }
+  });
+  assert.deepEqual(calls, [[124, 72, 1.25, false, 520]]);
+  assert.equal(result.centerX, 124);
+  assert.equal(result.centerY, 72);
+  assert.equal(result.scale, 1.25);
+});
+
 test('@camera auto and focus attach to a frame with semantic center defaults', () => {
   const source = `#include <bits/stdc++.h>
 using namespace std;

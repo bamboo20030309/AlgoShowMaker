@@ -97,6 +97,8 @@ arr[i] = key;
 ```
 
 這一幀會看到賦值完成後的陣列狀態，並包含從上一幀到這一幀之間發生的事件。
+
+第一個 `@frame` 之前的事件也會追蹤並歸入第一幀；最後一個 `@frame` 之後的事件會按執行順序接到最後一幀，不另建影格或改寫該幀捕捉時的狀態。不需要追蹤的初始化或收尾邏輯請用 `@code hide`／`@endcode` 包起來。舊動畫需要重新 RUN 才能補回先前未記錄的首尾事件。
 若要呈現賦值前狀態，必須在賦值前另外放一個 `@frame`。
 
 ### 附屬指令套用到前一個 `@frame`
@@ -165,6 +167,7 @@ arr[i] = key;
 | `with` | 傳入 renderer 選項 | `with range(1,n), labels(value,index)` |
 | `without style` | `@keep` 保留資料但不保存當下樣式 | `@keep arr as plain without style` |
 | `in` | 把 live `@frame` 或 `@keep` 快照加入具名遞迴排版 | `@frame arr in quick_tree`、`@keep last as part in quick_tree` |
+| `use` | `@keep` 在保存當下套用一個或多個 preset，但不建立時間線幀 | `@keep board as Q use board_view, board_colors` |
 
 ### ID 命名規則
 
@@ -193,6 +196,18 @@ arr[i] = key;
 
 ```cpp
 // @frame 變數或索引綁定[,其他變數] [修飾詞...]
+```
+
+若畫布上已經有 `@keep` 保留的物件，也可以只寫裸的 `// @frame`
+建立一個「場景檢查點」。這種幀不會新增 live 物件，但會保留當時所有累積的
+keep snapshots，並可附加 `@camera`、`@text` 或其他場景指令。即使之前沒有
+keep，裸 `@frame` 仍是合法的空場景檢查點。
+
+```cpp
+dfs(0, 0, 0, 0);
+
+// @frame
+// @camera auto
 ```
 
 支援的基本寫法：
@@ -234,9 +249,10 @@ arr[i] = key;
 繪製後依相依順序定位，因此後面的 `prime` 可以直接綁定前面的 `isprime`。
 
 `@object` 和前一行之間只能有空白；若中間已有 C++ 敘述，必須重新建立 `@frame`。
-空白 `@frame` 至少要緊接一個 `@object`。整幀的 `when` 寫在 `@frame`，
-不能寫在 `@object`；`in` 也不能寫在 `@object`，需要遞迴排版時沿用單行主要
-`@frame ... in ...`。
+整幀的 `when` 寫在 `@frame`，不能寫在 `@object`；`in` 也不能寫在 `@object`，
+需要遞迴排版時沿用單行主要 `@frame ... in ...`。裸 `@frame` 沒有主要物件，
+因此不能直接使用 `as`、`in`、`at`、`render` 或 `with`；需要這些設定時請加入
+`@object` 或在單行 `@frame` 指定物件。
 
 `arr[i,j]` 顯示一份 `arr`，並建立 `i`、`j` 兩個陣列指標。索引支援運算式，
 因此也可以使用 `arr[i*2]`、`arr[2*i+1]`。
@@ -412,6 +428,7 @@ for (int i=2; i<=n; i++) {
 - 每次程式執行到該幀時，會依該幀捕捉的 C++ 狀態重新求值；上一步或時間線跳轉也從穩定幀重建。
 - 後面的 `@let` 可以引用前面已宣告的別名。名稱不可重複、不可使用 `value`／`index`，也不可與該幀可見的 C++ 變數同名。
 - 運算式可使用算術、位元、比較與邏輯運算；比較結果可直接供 `when` 條件使用。
+- 亦可使用字串、三元條件與字串 `+` 串接；引用 `value`／`index`／`row`／`column` 的別名會在各格子的上下文求值，例如 `@let cell_text = value == 1 ? '♕' : ''`，再寫 `with display("${cell_text}")`。逐格別名不妨礙不使用該別名的整幀文字或位置運算。
 - 字串支援以 `[index]` 讀取單一字元，以及使用 `.size()`／`.length` 取得長度。
 - 可寫在 `@preset` 或 `@defaults` 中，在每個使用位置重新求值。
 - 手動繪圖迴圈的範圍可引用同幀先前宣告的別名，例如先寫 `@let last = arr.size() - 1`，再寫 `@for i in [0:last]`。
@@ -430,6 +447,33 @@ for (int i=2; i<=n; i++) {
 ```
 
 預設會一起凍結該物件當下的 renderer、range 與 style。
+
+### 不建立幀，直接保存 preset 視圖
+
+```cpp
+// @preset board_view
+// @object board render matrix with labels(none)
+// @style board background AV_red when value == 0 && attacked[row]
+// @style board background AV_green when value == 1
+// @endpreset
+
+// @keep board as "Q" in search_tree use board_view
+```
+
+`@keep ... use` 可依序套用多個 preset，合併規則與 `@frame use` 相同。它會在 keep 執行當下
+建立不出現在時間線的內部視圖捕捉，保存 renderer options、所有適用的 `@style`，以及 style
+條件所依賴的區域變數。後續只建立一個正式 `@frame`，仍能一次顯示所有已保存的節點。
+
+也可以在 keep 後緊接任意數量的 style；這些 style 只屬於該 keep，不會附加到後面的 frame：
+
+```cpp
+// @keep board as "Q" in search_tree use board_view, board_colors
+// @style board mark AV_blue when value > limit
+// @style board background grey when value == 1
+```
+
+快照保存的是當次執行已捕捉的條件依賴，不會等到最後一幀才使用其他 activation 的 `n`、
+`attacked` 等值重新判斷。`@keep last` 是完整畫面快照，因此不支援 `use` 或附屬 style。
 
 ### 保留上一個完整畫面
 
@@ -760,6 +804,16 @@ return value;
 需要依局部端點切開、分裂或顯示當次操作範圍時，使用獨立的`@segment tree[node][L:R]`指令。
 
 所有 `point` 與 `highlight` 共用同一套系統時間節奏；畫布更新、切換幀或產生縮圖時不會各自重新起跳。
+
+### 指定格內顯示文字
+
+labels(none) 隱藏預設的值與索引；明確指定 with display("模板") 時仍顯示模板內容。每格分別以 value、index、row、column 計算，亦可讀取作用域內其他變數、陣列與 @let。依賴變數自動捕捉，不會額外畫出物件。
+
+```cpp
+// @object bits(board, N) render matrix with labels(none), display("${value == 1 ? '♕' : ''}")
+```
+
+模板的插值支援條件、三元運算與引號字串，例如 ${row == n ? '↓' : ''}。多個插值依順序拼接，能在同一格顯示多個方向文字；文字跟隨格子、縮圖與 LOD。display 優先於 symbols 的預設文字，原始資料值與 style 的 value 維持原值。
 
 ### 一次套用多個樣式
 
@@ -1269,12 +1323,57 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 `pair`與`tuple`本身仍是一個元素，因此`vector<pair<...>>`及`vector<tuple<...>>`每個元素只畫一格。
 成員預設以同一separator連接且保留零；pair可用`hide(first=value,second=value)`隱藏指定成員。
 
-### `labels(...)`
+### `bits(value,width)`：將整數展開成位元格
+
+`bits` 是可直接放進 `@frame` 或 `@object` 的資料轉換函式，不是 renderer 的 `with` 設定：
+
+```cpp
+// @frame bits(mask, 8)
+// @object bits(board, 8) render matrix
+```
+
+單一整數會轉成一列；一維整數陣列則每個元素各轉成一列。位元由左至右採高位元優先。
+寬度可使用目前作用域可見的安全整數運算式。原變數仍是事件與樣式的資料來源，
+轉換後的畫布物件也維持原名，因此仍可直接寫 `@camera focus board`、`at board.top`。
+只有明確寫出 `as chess_board` 時，才另外指定畫布物件 ID。不必在 C++ 另外建立二維陣列。
+對結果套用 `@style` 時可使用 `row`、`column`、`value`、`index`；
+`value` 是目前格的 0 或 1，`row` 與 `index` 都是來源元素索引。
+
+### 位元移位動畫
+
+追蹤 `<<=`、`>>=` 時沿用賦值事件；一般數字仍使用賦值動畫。畫布物件經 `bits()` 展開，或資料明確來自 `std::bitset`／bool 位元陣列時，才平移格內文字與背景，外框與格線固定。不會僅因一般整數陣列的值都是 0／1 就當成位元陣列。
+
+```cpp
+int mask = 3;
+// @frame bits(mask, 8)
+mask <<= 1;
+// @frame bits(mask, 8)
+```
+
+高位元在左時，`<<=` 向左、`>>=` 向右；超出顯示寬度的內容離場，空位補零。二維位元資料按列移動，`board[i] <<= 1` 只影響第 i 列。指向原變數的 identity `@let` 別名也支援，算術／聯集衍生值則正常更新，不假裝是同一個被移位的變數。舊動畫缺少移位事件 metadata 時仍可播放，但須重新 RUN 才有此效果。
+
+### 位元 OR／AND／XOR 動畫
+
+`|`、`&`、`^` 的賦值運算及 `|=`、`&=`、`^=` 沿用 assignment 事件，不需額外繪圖指令。結果目標與兩個運算元都顯示為 `bits()` 或原生位元列（例如 `bitset`）時，複製右運算元的一排格子移到結果列，抵達後顯示逐位運算結果。來源物件不移走；二維資料只影響指定列。一般數字仍使用一般賦值動畫。
+
+```cpp
+int x = 9, y = 6;
+// @frame bits(x, 4), bits(y, 4)
+x |= y;
+// @frame bits(x, 4), bits(y, 4)
+```
+
+缺少必要的位元列時，事件標為黃色，僅反白程式碼；不從皇后格或其他物件猜測來源。一般 0／1 整數陣列不會自動被認定為位元陣列。各步使用 runtime 保存的左右值與結果，不讀取下一幀的最終值；`x = a | b | c` 按實際運算順序呈現中間結果。指向原變數的 identity `@let` 別名可作為顯示物件，已保存的 keep 節點不會被改寫。
+
+舊 trace 缺少 `bitwise` metadata 時維持原有播放，重新 RUN 才會建立新運算動畫。使用者的事件關閉與自訂 display／style 保留；本功能不新增 C++ 容器的運算子，例如 `vector<bool>` 本身仍不能直接寫 `a |= b`。
+
+### `labels(...)` 與 `symbols(...)`
 
 ```cpp
 // @frame arr render bit with labels(value,index)
 // @frame arr render bit with labels(value,binary-index)
 // @frame arr render bit with labels(value,binary-index-padded)
+// @object bits(board, N) render matrix with labels(none), symbols("", "♕")
 ```
 
 可用標籤：
@@ -1286,6 +1385,8 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 - `none`：資料值與索引都不顯示；資料格仍保留。
 
 一次最多選擇一種索引格式，不可同時指定 `index` 和 `binary-index`。
+`symbols(zero,one)` 可替 `bits` 的 0 與 1 指定顯示文字。符號只改變畫面文字；
+樣式條件與事件仍使用原始的 0／1。
 
 ### 一維與二維自訂標籤
 
@@ -1955,6 +2056,7 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 
 | 日期 | 基準 | 內容 |
 | --- | --- | --- |
+| 2026/10/01 | 工作樹 | 裸 `@frame` 可作為不新增 live 物件的場景檢查點，保留已累積的 keep snapshots，並可附加 camera、text 與其他場景指令。 |
 | 2026/09/24 | 工作樹 | 同一 recursion activation 的後續 `@keep` 會原地替換既有節點；補充 `@keep` 置於 `@frame` 前方可在同一幀更新回傳值，且不重複繪製 live 物件。 |
 | 2026/09/16 | `AV_V4.7` | 整理多行物件、preset、camera、arrow、iteration 摘要與 `.asmdeck` 使用說明；補充文字物件大小與片段格式的分工，以及同幀預覽保留選取的操作規則。 |
 | 2026/09/14 | 工作樹 | 新增 `@place` 同幀物件定位；多物件 recursion frame 僅由第一個主要物件建立節點，次要物件可用來源／目標錨點獨立貼附。 |

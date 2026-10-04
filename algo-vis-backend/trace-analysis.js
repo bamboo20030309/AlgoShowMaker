@@ -12,7 +12,9 @@ function analyzeTraceSource(code) {
       label: directive.label || '',
       layoutId: directive.layoutId || '',
     })),
-    frameDirectives: instrumented.frameDirectives.map(directive => ({
+    frameDirectives: instrumented.frameDirectives
+      .filter(directive => directive.silentKeepView !== true)
+      .map(directive => ({
       line: directive.line,
       name: directive.name || '',
       objectId: directive.objectId || '',
@@ -26,6 +28,7 @@ function analyzeTraceSource(code) {
       placeBindings: directive.placeBindings || [],
       renderer: directive.renderer || '',
       rendererOptions: directive.rendererOptions || {},
+      dataTransform: directive.dataTransform || null,
       objects: (directive.objects || []).map(object => ({
         line: object.line,
         frameSpec: object.frameSpec || '',
@@ -36,6 +39,7 @@ function analyzeTraceSource(code) {
         displayVariableIds: object.displayVariableIds || [],
         renderer: object.renderer || '',
         rendererOptions: object.rendererOptions || {},
+        dataTransform: object.dataTransform || null,
         objectBinding: object.objectBinding || null,
       })),
       when: directive.when || null,
