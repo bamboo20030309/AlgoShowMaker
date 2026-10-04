@@ -50,7 +50,7 @@ function createStore(repo) {
       await repo.put(id, key, part, total, data);
     });
   }
-  async function snapshot(id, key) {
+  async function snapshot(id, key, { lazyTraces = false } = {}) {
     let record;
     try { record = JSON.parse(await read(id, key)); }
     catch (error) { throw error.status ? error : fault('儲存快照格式無效'); }
@@ -60,6 +60,7 @@ function createStore(repo) {
     const traces = {}, assets = {};
     let bytes = Buffer.byteLength(JSON.stringify(record));
     for (const resource of keys.slice(1)) {
+      if (lazyTraces && !record.asset_keys.includes(resource)) continue;
       const text = await read(id, resource);
       bytes += Buffer.byteLength(text);
       if (bytes > MAX_DECK_BYTES) throw fault('投影片總容量超過 512 MB', 413);
@@ -70,7 +71,14 @@ function createStore(repo) {
         assets[resource] = value;
       } else traces[resource] = value;
     }
-    const complete = await SlideStorage.merge({ deck: record.deck, references: record.references, traces });
+    const complete = lazyTraces ? null
+      : await SlideStorage.merge({ deck: record.deck, references: record.references, traces });
+    const lazyDeck = lazyTraces ? JSON.parse(JSON.stringify(record.deck)) : null;
+    if (lazyDeck) for (const ref of record.references) {
+      const animation = lazyDeck.groups?.[ref.groupIndex]?.slides?.[ref.slideIndex]?.animation;
+      if (!animation || animation.traceRef !== ref.key || !validKey(ref.key)) throw fault('動畫參照不一致');
+      animation.traceView = ref.view || {};
+    }
     function restore(value) {
       if (!value || typeof value !== 'object') return value;
       if (!Array.isArray(value) && Object.keys(value).length === 1 && Object.hasOwn(value, '$asmAsset')) {
@@ -80,12 +88,37 @@ function createStore(repo) {
       for (const name of Object.keys(value)) value[name] = restore(value[name]);
       return value;
     }
-    return { record, keys, traces, deck: restore(SlideStorage.hydrate(complete)) };
+    return { record, keys, traces, deck: restore(lazyDeck || SlideStorage.hydrate(complete)) };
   }
   async function commit(id, query, key, metadata) {
     return exclusive(id, async () => {
       const old = await repo.deck(query);
       if (!old) throw fault('找不到投影片或已無編輯權限', 403);
+      // Upgrade legacy results on the server. Editing a title must not download
+      // every old animation into the browser just to upload it again.
+      if (!old.cloud_snapshot) {
+        const manifest = JSON.parse(await read(id, key));
+        const legacy = old.trace_references?.length
+          ? { traces: old.trace_results || {} }
+          : await SlideStorage.project(old.deck || { groups: [] });
+        for (const ref of manifest.references || []) {
+          if (!Object.hasOwn(legacy.traces, ref.key)) continue;
+          const text = SlideStorage.canonical(legacy.traces[ref.key]);
+          if (hash(text) !== ref.key || Buffer.byteLength(text) > MAX_BYTES) throw fault('舊動畫結果驗證失敗');
+          const parts = [];
+          for (let start = 0; start < text.length;) {
+            let end = Math.min(start + CHUNK_CHARS, text.length);
+            if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
+            parts.push(text.slice(start, end)); start = end;
+          }
+          const existing = await repo.parts(id, ref.key);
+          for (const [part, data] of parts.entries()) {
+            const previous = existing.find(value => value.part === part);
+            if (previous && (previous.data !== data || previous.total !== parts.length)) throw fault('舊動畫分塊內容衝突', 409);
+            if (!previous) await repo.put(id, ref.key, part, parts.length, data);
+          }
+        }
+      }
       const next = await snapshot(id, key);
       // Pin before switching the durable reference. A failed commit never removes old data.
       await repo.pin(id, next.keys);
@@ -97,7 +130,7 @@ function createStore(repo) {
       });
       if (!saved) throw fault('投影片已由其他頁面更新，請重新儲存', 409);
       const unused = (old.resource_keys || []).filter(value => !next.keys.includes(value));
-      try { await repo.remove(id, unused); }
+      try { if (!next.record.retainHistory) await repo.remove(id, unused); }
       catch (error) { console.error('Deferred unused slide resource cleanup:', error.message); }
       return saved;
     });
@@ -110,11 +143,11 @@ function createStore(repo) {
       await repo.sweep(id, deck?.resource_keys || [], cutoff);
     });
   }
-  async function currentSnapshot(id) {
+  async function currentSnapshot(id, options = {}) {
     return exclusive(id, async () => {
       const current = await repo.deck({ deck_uid: id });
       if (!current?.cloud_snapshot) throw fault('投影片已刪除或儲存狀態已改變', 409);
-      return snapshot(id, current.cloud_snapshot);
+      return snapshot(id, current.cloud_snapshot, options);
     });
   }
   return { read, put, snapshot, currentSnapshot, commit, sweep };
@@ -175,7 +208,14 @@ function register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, c
   }
   const timer = setInterval(() => store.sweep().catch(error => console.error('Slide resource cleanup:', error.message)), 3600 * 1000);
   timer.unref();
-  return { restore: async slide => store.currentSnapshot(slide.deck_uid),
+  return { restore: async (slide, options) => store.currentSnapshot(slide.deck_uid, options),
+    trace: async (slide, key, { history = false } = {}) => {
+      const current = await store.currentSnapshot(slide.deck_uid, { lazyTraces: true });
+      if (!history && !current.record.references.some(ref => ref.key === key)) throw fault('動畫參照不存在', 404);
+      const trace = JSON.parse(await store.read(slide.deck_uid, key));
+      if (!Array.isArray(trace.frames)) throw fault('動畫結果格式無效');
+      return trace;
+    },
     remove: id => Chunk.deleteMany({ deck_uid: id }) };
 }
 module.exports = { createStore, register, hash, CHUNK_CHARS };

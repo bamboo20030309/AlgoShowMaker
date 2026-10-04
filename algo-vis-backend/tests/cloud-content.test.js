@@ -11,6 +11,8 @@ const assert = require('node:assert/strict');
 const { createStore, hash } = require('../cloud-content');
 const Cloud = require('../public/slides-cloud');
 const Storage = require('../public/slides-storage');
+const TraceStore = require('../public/slide-trace-store');
+const { IDBFactory } = require('fake-indexeddb');
 
 function fixture() {
   const decks = new Map([['owned', { deck_uid: 'owned', user_uid: 'owner', deck: { groups: [] },
@@ -73,6 +75,38 @@ const deck = value => ({ groups: [{ slides: [{ canvas: { objects: [{ src: 'data:
     sourceCode: 'cpp', frames: [{ state: { arr: [value] } }], studio: { zoom: 2 }
   } } }] }] });
 const options = f => ({ endpoint: '/api/slides/owned', fetch: f.fetch, storage: Storage, headers: {}, title: 'test' });
+
+test('reference-only saves reuse results and lazy cloud reads omit execution payloads', async () => {
+  const f = fixture(), traces = TraceStore.create(Storage, Storage.create(new IDBFactory(), null));
+  const compact = await traces.detachDeck(deck(7), { upload: true });
+  await Cloud.save(compact, { ...options(f), traceStore: traces });
+  const snapshot = await f.store.currentSnapshot('owned', { lazyTraces: true });
+  assert.equal(snapshot.deck.groups[0].slides[0].animation.traceDocument, undefined);
+  assert.equal(Object.keys(snapshot.traces).length, 0);
+  const ref = compact.groups[0].slides[0].animation.traceRef;
+  assert.equal(JSON.parse(await f.store.read('owned', ref)).frames[0].state.arr[0], 7);
+  f.requests.length = 0;
+  compact.title = 'renamed';
+  await Cloud.save(compact, { ...options(f), traceStore: traces });
+  assert.ok(f.requests.every(request => !request.url.includes(ref)), 'metadata edit never serializes or uploads unchanged Trace');
+  await Cloud.save({ groups: [] }, { ...options(f), traceStore: traces });
+  assert.ok(f.rows.some(row => row.key === ref), 'undo can restore a removed animation');
+  await Cloud.save(compact, { ...options(f), traceStore: traces });
+  assert.deepEqual((await f.store.currentSnapshot('owned')).deck, { ...deck(7), title: 'renamed' });
+});
+
+test('legacy cloud results migrate on the server without a browser Trace download', async () => {
+  const f = fixture(), source = deck(9), old = await Storage.project(source);
+  Object.assign(f.decks.get('owned'), { deck: old.deck, trace_references: old.references, trace_results: old.traces });
+  const traces = TraceStore.create(Storage, Storage.create(new IDBFactory(), null), () => {
+    throw Error('metadata migration must not download Trace');
+  });
+  const compact = JSON.parse(JSON.stringify(old.deck));
+  compact.groups[0].slides[0].animation.traceView = old.references[0].view;
+  await traces.detachDeck(compact);
+  await Cloud.save(compact, { ...options(f), traceStore: traces });
+  assert.deepEqual((await f.store.currentSnapshot('owned')).deck, source);
+});
 
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。

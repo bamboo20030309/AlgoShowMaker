@@ -1,0 +1,57 @@
+#include <bits/stdc++.h>
+using namespace std;
+int N, ans=0;
+vector<vector<int>> board;
+// @layout recursion as "array_tree"
+// @layout array_tree branch-previews off
+// @preset array_scene
+// @object board render matrix with labels(none), display("${value ? '♕' : '　'}") in array_tree
+// @style board background grey when value == 1
+// @object L, M, R
+// @place L.top-left at board.top-right offset(40,0)
+// @place M.top-left at L.bottom-left offset(0,25)
+// @place R.top-left at M.bottom-left offset(0,25)
+// @style L, M, R background AV_red when value == 1
+// @endpreset
+// @defaults
+// @camera focus board
+// @enddefaults
+void dfs(int row, vector<int> L, vector<int> M, vector<int> R) {
+    // @keep board as "Q" in array_tree use array_scene
+    // @frame use array_scene
+    // @text "第 ${row} 列：只嘗試尚未受到攻擊的欄位" at board.top when row < N
+    // @text "每一列都已放置皇后，找到一組解" at board.top when row == N
+    if(row==N) { ans++; return; }
+    for(int col=0;col<N;col++) {
+        if(L[col] || M[col] || R[col]) continue;
+        board[row][col]=1;
+        vector<int> nextL(N,0), nextM=M, nextR(N,0);
+        nextM[col]=1;
+        for(int j=0;j<N;j++) {
+            if(j+1<N) nextL[j]=L[j+1] || j+1==col;
+            if(j>0) nextR[j]=R[j-1] || j-1==col;
+        }
+        // @frame use array_scene
+        // @object nextL, nextM, nextR
+        // @place nextL.top-left at L.top-right offset(30,0)
+        // @place nextM.top-left at M.top-right offset(30,0)
+        // @place nextR.top-left at R.top-right offset(30,0)
+        // @style nextL, nextM, nextR background AV_red when value == 1
+        // @style board[row][col] highlight
+        // @text "放置皇后後，逐格計算下一列的攻擊狀態" at board.top
+        dfs(row+1,nextL,nextM,nextR);
+        board[row][col]=0;
+        // @frame use array_scene
+        // @text "移除第 ${row} 列的皇后，繼續嘗試下一欄" at board.top
+    }
+}
+int main() {
+    N=4; cin>>N;
+    board.assign(N,vector<int>(N,0));
+    dfs(0,vector<int>(N,0),vector<int>(N,0),vector<int>(N,0));
+    // @frame
+    // @camera auto
+    // @text "已搜尋所有分支，共 ${ans} 組解" at array_tree.top
+    cout<<"Total Solutions: "<<ans<<endl;
+    return 0;
+}

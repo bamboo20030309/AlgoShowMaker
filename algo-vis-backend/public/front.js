@@ -3609,7 +3609,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   let iroPicker = null;
-  let currentColorStr = 'rgba(255, 0, 0, 1)';
+  let currentColorStr = ASMColorPickerPolicy.last('rgba(255, 0, 0, 1)');
 
   const colorToggleBtn = document.getElementById('colorToggleBtn');
   const sizeSlider = document.getElementById('drawSize');
@@ -3651,6 +3651,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     iroPicker.on('color:change', function (color) {
       currentColorStr = color.rgbaString;
+      ASMColorPickerPolicy.remember(currentColorStr);
       if (colorToggleBtn) {
         colorToggleBtn.style.backgroundColor = currentColorStr;
       }
@@ -3670,11 +3671,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (iroPicker) {
+    const refresh = ASMColorPickerPolicy.swatches(document.getElementById('v3-color-picker').parentElement,
+      (alias, value) => iroPicker.color.set(value));
+    iroPicker.on('input:end', color => { ASMColorPickerPolicy.remember(color.rgbaString, true); refresh(); });
+  }
   if (colorToggleBtn && slidersPopup) {
     // 點擊顏色選取器時，打開拉桿選單
-    colorToggleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      slidersPopup.style.display = slidersPopup.style.display === 'none' ? 'flex' : 'none';
+    ASMColorPickerPolicy.bind(colorToggleBtn, {
+      open: () => { if (iroPicker) iroPicker.color.set(ASMColorPickerPolicy.last(currentColorStr)); slidersPopup.style.display = 'flex'; },
+      apply: value => iroPicker?.color.set(value),
+      paint: value => { colorToggleBtn.style.backgroundColor = value; }
     });
     // 點擊畫布其他地方自動關閉彈出視窗
     document.addEventListener('click', (e) => {

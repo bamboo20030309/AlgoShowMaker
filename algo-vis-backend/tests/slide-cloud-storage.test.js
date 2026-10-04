@@ -34,15 +34,42 @@ function routes(previous) {
     cleanDeckTitle: value => value, countDeckSlides: deck => deck.groups.flatMap(g => g.slides).length,
     cleanCoverThumbnail: value => value, console: { error() {} }
   });
-  async function invoke(path, body = {}) {
+  async function invoke(path, body = {}, overrides = {}) {
     const response = { statusCode: 200, status(code) { this.statusCode = code; return this; },
       json(value) { this.body = value; return this; } };
     await handlers[path]({ body, params: { deck_uid: 'owned', share_token: 'edit' },
-      user: { id: 'owner' } }, response);
+      user: { id: 'owner' }, ...overrides }, response);
     return response;
   }
   return { invoke, writes, queries };
 }
+
+test('lazy owner/shared deck reads return IDs and result endpoints enforce deck/share scope', async () => {
+  const source = { groups: [{ slides: [{ animation: { traceDocument: { frames: [{ state: {} }],
+    studio: { enabled: false } } } }] }] };
+  const record = await SlideStorage.project(source), key = record.references[0].key;
+  const previous = () => ({ deck: structuredClone(record.deck), trace_references: record.references,
+    trace_results: record.traces, share_view_token: 'view', share_edit_token: 'edit', share_mode: 'edit' });
+  for (const path of ['GET /api/slides/:deck_uid', 'GET /api/shared-slides/:share_token']) {
+    const response = await routes(previous()).invoke(path, {}, { query: { traceMode: 'lazy' } });
+    assert.equal(response.statusCode, 200);
+    const animation = response.body.slide.deck.groups[0].slides[0].animation;
+    assert.equal(animation.traceDocument, undefined);
+    assert.equal(animation.traceRef, key);
+    assert.equal(animation.traceView.studio.enabled, false);
+  }
+  const owned = routes(previous());
+  const route = 'GET /api/slides/:deck_uid/traces/:key';
+  const result = await owned.invoke(route, {}, { params: { deck_uid: 'owned', key } });
+  assert.deepEqual(result.body.trace, record.traces[key]);
+  assert.deepEqual(JSON.parse(JSON.stringify(owned.queries[0])), { deck_uid: 'owned', user_uid: 'owner' });
+  assert.equal((await owned.invoke(route, {}, { params: { deck_uid: 'owned', key: 'a'.repeat(64) } })).statusCode, 404);
+  assert.equal((await owned.invoke(route, {}, { params: { deck_uid: 'owned', key: 'invalid' } })).statusCode, 400);
+  const shared = 'GET /api/shared-slides/:share_token/traces/:key';
+  assert.equal((await routes(previous()).invoke(shared, {}, { params: { share_token: 'view', key } })).statusCode, 200);
+  assert.equal((await routes({ ...previous(), share_mode: 'off' }).invoke(shared, {}, { params: { share_token: 'view', key } })).statusCode, 404);
+  assert.equal((await routes(previous()).invoke(shared, {}, { params: { share_token: 'other', key } })).statusCode, 404);
+});
 
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。

@@ -1147,11 +1147,20 @@ app.put('/api/slides/:deck_uid/share', authenticateToken, async (req, res) => {
   }
 });
 
-async function restoreSlideDeck(slide) {
+async function restoreSlideDeck(slide, { lazyTraces = false } = {}) {
   if (slide.cloud_snapshot) {
-    const restored = await cloudContent.restore(slide);
+    const restored = await cloudContent.restore(slide, { lazyTraces });
     slide.trace_keys = restored.record.references.map(ref => ref.key);
     return restored.deck;
+  }
+  if (lazyTraces) {
+    const record = slide.trace_references?.length
+      ? { deck: slide.deck, references: slide.trace_references }
+      : await SlideStorage.project(slide.deck);
+    const deck = JSON.parse(JSON.stringify(record.deck));
+    for (const ref of record.references) deck.groups[ref.groupIndex].slides[ref.slideIndex].animation.traceView = ref.view || {};
+    slide.trace_keys = record.references.map(ref => ref.key);
+    return deck;
   }
   return SlideStorage.hydrate({ deck: slide.deck, references: slide.trace_references || [],
     traces: slide.trace_results || {} });
@@ -1185,6 +1194,37 @@ async function prepareTraceSave(body, query, updates) {
   return unset;
 }
 
+async function readSlideTrace(slide, key, history = false) {
+  if (!/^[a-f0-9]{64}$/.test(key)) throw Object.assign(new Error('動畫 ID 無效'), { status: 400 });
+  if (slide.cloud_snapshot) return cloudContent.trace(slide, key, { history });
+  const owned = slide.trace_references?.length
+    ? { references: slide.trace_references, traces: slide.trace_results || {} }
+    : await SlideStorage.project(slide.deck);
+  if (!owned.references.some(ref => ref.key === key) || !Object.hasOwn(owned.traces, key))
+    throw Object.assign(new Error('找不到這份投影片的動畫結果'), { status: 404 });
+  return owned.traces[key];
+}
+
+app.get('/api/slides/:deck_uid/traces/:key', authenticateToken, async (req, res) => {
+  try {
+    const slide = await SlideDeck.findOne({ deck_uid: req.params.deck_uid, user_uid: req.user.id }).lean();
+    if (!slide) return res.status(404).json({ error: '找不到投影片' });
+    res.json({ trace: await readSlideTrace(slide, req.params.key, true) });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
+app.get('/api/shared-slides/:share_token/traces/:key', async (req, res) => {
+  try {
+    const token = req.params.share_token;
+    const slide = await SlideDeck.findOne({ $or: [{ share_view_token: token }, { share_edit_token: token }] })
+      .select('deck_uid deck cloud_snapshot trace_references trace_results share_mode +share_view_token +share_edit_token');
+    const editor = slide && slide.share_edit_token === token && slide.share_mode === 'edit';
+    const viewer = slide && slide.share_view_token === token && ['view', 'edit'].includes(slide.share_mode);
+    if (!editor && !viewer) return res.status(404).json({ error: '分享連結無效或已停止分享' });
+    res.json({ trace: await readSlideTrace(slide, req.params.key, editor) });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
 app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
   try {
     const slide = await SlideDeck.findOne({
@@ -1197,7 +1237,7 @@ app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
     }
 
     slide.trace_keys = Object.keys(slide.trace_results || {});
-    slide.deck = await restoreSlideDeck(slide);
+    slide.deck = await restoreSlideDeck(slide, { lazyTraces: req.query?.traceMode === 'lazy' });
     delete slide.trace_results;
     delete slide.trace_references;
     delete slide.cloud_snapshot;
@@ -1274,7 +1314,7 @@ app.get('/api/shared-slides/:share_token', async (req, res) => {
       success: true,
       slide: {
         title: slide.title,
-        deck: await restoreSlideDeck(slide),
+        deck: await restoreSlideDeck(slide, { lazyTraces: req.query?.traceMode === 'lazy' }),
         trace_keys: slide.trace_keys || Object.keys(slide.trace_results || {}),
         cover_thumbnail: slide.cover_thumbnail,
         slide_count: slide.slide_count,

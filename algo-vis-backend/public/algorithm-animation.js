@@ -57,6 +57,9 @@
       skins: skins && typeof skins === 'object' ? clone(skins) : {},
       rules: Array.isArray(rules) ? clone(rules) : [],
       traceDocument,
+      ...(typeof animation.traceRef === 'string' ? {
+        traceRef: animation.traceRef, traceView: clone(animation.traceView || {})
+      } : {}),
       ...(presentationCamera ? { presentationCamera } : {}),
       ...(animation.rebuild ? { rebuild: clone(animation.rebuild) } : {}),
       ...(typeof animation.rebuildError === 'string' ? { rebuildError: animation.rebuildError } : {})

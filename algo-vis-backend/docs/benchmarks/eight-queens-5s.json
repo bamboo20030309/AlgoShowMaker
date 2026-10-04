@@ -1,0 +1,297 @@
+{
+  "generatedAt": "2026-10-04T15:18:16.359Z",
+  "cpu": "Intel(R) Core(TM) i7-14700F",
+  "logicalCores": 28,
+  "compiler": "g++ (MinGW.org GCC-6.3.0-1) 6.3.0",
+  "flags": "-O2 -std=c++11",
+  "limitSeconds": 5,
+  "protocol": "單執行緒、計算全部解、不使用對稱剪枝；邊界 N 重跑三次取中位數。計時不包含編譯、Trace、繪圖與 I/O。",
+  "summaries": [
+    {
+      "method": "loop",
+      "n": 9,
+      "seconds": 1.445074,
+      "solutions": 352,
+      "nextN": 10,
+      "repeats": [
+        1.441165,
+        1.445074,
+        1.47384
+      ]
+    },
+    {
+      "method": "array",
+      "n": 13,
+      "seconds": 1.215654,
+      "solutions": 73712,
+      "nextN": 14,
+      "repeats": [
+        1.191259,
+        1.215654,
+        1.218016
+      ]
+    },
+    {
+      "method": "bits",
+      "n": 15,
+      "seconds": 1.543198,
+      "solutions": 2279184,
+      "nextN": 16,
+      "repeats": [
+        1.538364,
+        1.543198,
+        1.562448
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "method": "loop",
+      "n": 4,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 2,
+      "work": 256
+    },
+    {
+      "method": "loop",
+      "n": 5,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 10,
+      "work": 3125
+    },
+    {
+      "method": "loop",
+      "n": 6,
+      "complete": true,
+      "seconds": 0.001002,
+      "solutions": 4,
+      "work": 46656
+    },
+    {
+      "method": "loop",
+      "n": 7,
+      "complete": true,
+      "seconds": 0.002998,
+      "solutions": 40,
+      "work": 823543
+    },
+    {
+      "method": "loop",
+      "n": 8,
+      "complete": true,
+      "seconds": 0.062556,
+      "solutions": 92,
+      "work": 16777216
+    },
+    {
+      "method": "loop",
+      "n": 9,
+      "complete": true,
+      "seconds": 1.47384,
+      "solutions": 352,
+      "work": 387420489
+    },
+    {
+      "method": "loop",
+      "n": 10,
+      "complete": false,
+      "seconds": 5.001744,
+      "solutions": 64,
+      "work": 1151827968
+    },
+    {
+      "method": "array",
+      "n": 4,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 2,
+      "work": 17
+    },
+    {
+      "method": "array",
+      "n": 5,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 10,
+      "work": 54
+    },
+    {
+      "method": "array",
+      "n": 6,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 4,
+      "work": 153
+    },
+    {
+      "method": "array",
+      "n": 7,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 40,
+      "work": 552
+    },
+    {
+      "method": "array",
+      "n": 8,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 92,
+      "work": 2057
+    },
+    {
+      "method": "array",
+      "n": 9,
+      "complete": true,
+      "seconds": 0.001999,
+      "solutions": 352,
+      "work": 8394
+    },
+    {
+      "method": "array",
+      "n": 10,
+      "complete": true,
+      "seconds": 0.009504,
+      "solutions": 724,
+      "work": 35539
+    },
+    {
+      "method": "array",
+      "n": 11,
+      "complete": true,
+      "seconds": 0.038755,
+      "solutions": 2680,
+      "work": 166926
+    },
+    {
+      "method": "array",
+      "n": 12,
+      "complete": true,
+      "seconds": 0.19321,
+      "solutions": 14200,
+      "work": 856189
+    },
+    {
+      "method": "array",
+      "n": 13,
+      "complete": true,
+      "seconds": 1.218016,
+      "solutions": 73712,
+      "work": 4674890
+    },
+    {
+      "method": "array",
+      "n": 14,
+      "complete": false,
+      "seconds": 5.001423,
+      "solutions": 252355,
+      "work": 17715200
+    },
+    {
+      "method": "bits",
+      "n": 4,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 2,
+      "work": 17
+    },
+    {
+      "method": "bits",
+      "n": 5,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 10,
+      "work": 54
+    },
+    {
+      "method": "bits",
+      "n": 6,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 4,
+      "work": 153
+    },
+    {
+      "method": "bits",
+      "n": 7,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 40,
+      "work": 552
+    },
+    {
+      "method": "bits",
+      "n": 8,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 92,
+      "work": 2057
+    },
+    {
+      "method": "bits",
+      "n": 9,
+      "complete": true,
+      "seconds": 0.001507,
+      "solutions": 352,
+      "work": 8394
+    },
+    {
+      "method": "bits",
+      "n": 10,
+      "complete": true,
+      "seconds": 0,
+      "solutions": 724,
+      "work": 35539
+    },
+    {
+      "method": "bits",
+      "n": 11,
+      "complete": true,
+      "seconds": 0.000998,
+      "solutions": 2680,
+      "work": 166926
+    },
+    {
+      "method": "bits",
+      "n": 12,
+      "complete": true,
+      "seconds": 0.007506,
+      "solutions": 14200,
+      "work": 856189
+    },
+    {
+      "method": "bits",
+      "n": 13,
+      "complete": true,
+      "seconds": 0.042761,
+      "solutions": 73712,
+      "work": 4674890
+    },
+    {
+      "method": "bits",
+      "n": 14,
+      "complete": true,
+      "seconds": 0.238258,
+      "solutions": 365596,
+      "work": 27358553
+    },
+    {
+      "method": "bits",
+      "n": 15,
+      "complete": true,
+      "seconds": 1.562448,
+      "solutions": 2279184,
+      "work": 171129072
+    },
+    {
+      "method": "bits",
+      "n": 16,
+      "complete": false,
+      "seconds": 5.001723,
+      "solutions": 7073164,
+      "work": 547725312
+    }
+  ]
+}
