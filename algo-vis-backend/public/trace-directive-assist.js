@@ -22,6 +22,7 @@
     { id: 'frame', label: '@frame', effect: '擷取此刻的動畫幀並選擇要顯示的變數', code: '// @frame arr', examples: [
       '// @frame arr',
       '// @frame arr[i,j],key\n// @style arr[i] highlight',
+      '// @frame bits(mask, 8) with labels(none), symbols("", "♕")',
       '// @frame arr[i,j],key render heap with range(1,n) at canvas.top offset(0,80)\n// @style arr[i] highlight AV_red\n// @text "正在檢查第 ${i} 格" at arr.bottom',
       '// @frame tree render heap with range(1,Tsize-1), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)',
       '// @frame tree render segment_tree with range(1,n)',
@@ -38,7 +39,8 @@
     { id: 'object', label: '@object', effect: '在同一個 @frame 加入另一個獨立設定的物件', code: '// @object prime', examples: [
       '// @frame\n// @object prime',
       '// @frame when i%v==0\n// @object isprime with columns(10), labels(index)\n// @object prime with labels(value)',
-      '// @frame\n// @object isprime with range(1,n), columns(10), labels(index)\n// @object prime with columns(10), labels(value)\n// @place prime.top-left at isprime.bottom-left offset(0,60)'
+      '// @frame\n// @object isprime with range(1,n), columns(10), labels(index)\n// @object prime with columns(10), labels(value)\n// @place prime.top-left at isprime.bottom-left offset(0,60)',
+      '// @frame\n// @object bits(board, N) render matrix with labels(none), symbols("", "♕")'
     ] },
     { id: 'let', label: '@let', effect: '建立本幀唯讀的繪圖運算別名，不產生 C++ 變數或事件', code: '// @let lb = i & -i', examples: [
       '// @let lb = i & -i',
@@ -48,6 +50,7 @@
     { id: 'keep', label: '@keep', effect: '保存上一幀或指定物件的快照，供後續畫面使用', code: '// @keep last', examples: [
       '// @keep last',
       '// @keep arr as "original"',
+      '// @keep board as "Q" in queen_tree use board_view, board_colors',
       '// @keep last as "round" in quick_tree when i > 0\n// @text "本輪完成" at round.bottom'
     ] },
     { id: 'layout', label: '@layout', effect: '建立或設定具名的遞迴排版', code: '// @layout recursion as "quick_tree" at canvas.top offset(0,80)', examples: [
@@ -201,7 +204,9 @@
     ['columns', '長陣列每列格數', 'columns(10)'],
     ['gap', '設定水平與垂直間距', 'gap(10,24)'],
     ['labels-index', '只顯示索引標籤', 'labels(index)'],
-    ['labels-value', '顯示資料值標籤', 'labels(value)']
+    ['labels-value', '顯示資料值標籤', 'labels(value)'],
+    ['labels-none', '隱藏資料值與索引標籤', 'labels(none)'],
+    ['symbols', '指定 bits 的 0／1 顯示字串', 'symbols("", "♕")']
   ];
 
   const popup = document.createElement('div');

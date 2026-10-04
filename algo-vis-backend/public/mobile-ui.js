@@ -55,7 +55,14 @@
       const selectionStart = input.selectionStart;
       const selectionEnd = input.selectionEnd;
       syncingFromNative = true;
-      editor.session.setValue(input.value);
+      const session = editor.session;
+      if (editor.getValue() !== input.value) {
+        session.markUndoGroup();
+        const last = session.getLength() - 1;
+        session.replace({ start: { row: 0, column: 0 },
+          end: { row: last, column: session.getLine(last).length } }, input.value);
+        session.markUndoGroup();
+      }
       const start = sourcePositionAt(input.value, selectionStart);
       const end = sourcePositionAt(input.value, selectionEnd);
       editor.selection?.setSelectionRange?.({ start, end });
@@ -64,10 +71,11 @@
     input.addEventListener('focus', () => {
       if (input.value !== editor.getValue()) input.value = editor.getValue();
     });
-    editor.session.on('change', () => {
+    editor.on('change', () => {
       if (syncingFromNative || document.activeElement === input) return;
       input.value = editor.getValue();
     });
+    editor.on('changeSession', () => { input.value = editor.getValue(); });
     container.appendChild(input);
     return input;
   }

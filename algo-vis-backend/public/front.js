@@ -160,7 +160,34 @@ function restoreAlgorithmDraft() {
   return true;
 }
 
-aceEditor.session.on('change', () => scheduleAlgorithmDraftSave(true));
+// Loading the same source must not reset Ace's undo manager. Changed source
+// is one undoable replacement, separated from preceding and following typing.
+window.asmReplaceEditorCode = function(code, cursor = -1) {
+  code = String(code ?? '');
+  if (aceEditor.getValue() === code) return false;
+  const session = aceEditor.session;
+  session.markUndoGroup();
+  const last = session.getLength() - 1;
+  session.replace(new (ace.require('ace/range').Range)(0, 0, last, session.getLine(last).length), code);
+  session.markUndoGroup();
+  if (cursor === 1) aceEditor.navigateFileEnd();
+  else aceEditor.navigateFileStart();
+  aceEditor.clearSelection();
+  return true;
+};
+const algorithmEditorSessions = new Map();
+window.asmUseEditorSession = function(key, code) {
+  let session = algorithmEditorSessions.get(key);
+  if (!session) {
+    session = ace.createEditSession(String(code ?? ''), aceEditor.session.getMode().$id);
+    session.setTabSize(aceEditor.session.getTabSize());
+    session.setUseSoftTabs(aceEditor.session.getUseSoftTabs());
+    session.setUseWrapMode(aceEditor.session.getUseWrapMode());
+    algorithmEditorSessions.set(key, session);
+  }
+  if (aceEditor.session !== session) aceEditor.setSession(session);
+};
+aceEditor.on('change', () => scheduleAlgorithmDraftSave(true));
 restoreAlgorithmDraft();
 window.addEventListener('pagehide', saveAlgorithmDraft);
 window.addEventListener('beforeunload', saveAlgorithmDraft);
@@ -522,7 +549,7 @@ fetch('sample_code.cpp')
   })
   .then(code => {
     if (window.__asmEmbeddedAnimationPayload || algorithmDraftRestored || algorithmEditorChangedSinceStartup) return;
-    aceEditor.setValue(code, -1);
+    window.asmReplaceEditorCode(code, -1);
     // 一載入就自動把 //draw 區塊摺疊起來
     setTimeout(foldDrawBlocks, 0);
   })
@@ -556,7 +583,7 @@ int main() {
     av.end_draw();
     return 0;
 }`;
-    aceEditor.setValue(fallbackCode, -1);
+    window.asmReplaceEditorCode(fallbackCode, -1);
     // fallback 也一樣一開始就摺疊
     setTimeout(foldDrawBlocks, 0);
   });
@@ -1853,6 +1880,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, +1);
 
   window.ASMPlaybackNavigation = {
+    pause: () => { stopStepAuto(); pause(); },
     fastStepWindowMs: FAST_STEP_WINDOW_MS,
     fastStepThreshold: FAST_STEP_THRESHOLD,
     requestForwardStep,
@@ -2782,7 +2810,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const targetCode = data.code;
       if (!targetCode) throw new Error("資料格式錯誤");
 
-      if (aceEditor) aceEditor.setValue(targetCode.content, 1);
+      if (aceEditor) window.asmReplaceEditorCode(targetCode.content, 1);
 
       const inputArea = document.getElementById("inputArea");
       if (inputArea) {
@@ -3269,14 +3297,12 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       // 1. 載入程式碼
       if (codePath) {
-        if (aceEditor) aceEditor.setValue("// 讀取中...", -1);
-
         const res = await fetch(`/api/samples?filename=${encodeURIComponent(codePath)}`);
         if (!res.ok) throw new Error(`無法讀取程式碼: ${codePath}`);
         const codeText = await res.text();
 
         if (aceEditor) {
-          aceEditor.setValue(codeText, 1);
+          window.asmReplaceEditorCode(codeText, 1);
           if (typeof foldDrawBlocks === 'function') setTimeout(foldDrawBlocks, 100);
         }
       }

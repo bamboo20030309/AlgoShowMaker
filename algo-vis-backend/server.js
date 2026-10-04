@@ -382,7 +382,8 @@ app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter,
   try {
     const analysis = analyzeSource(code);
     const instrumented = instrumentSource(code, []);
-    const frameDirectives = instrumented.frameDirectives;
+    const frameDirectives = instrumented.frameDirectives
+      .filter(directive => directive.silentKeepView !== true);
     const layoutDirectives = instrumented.layoutDirectives;
     const branchDirectives = instrumented.branchDirectives;
     const responseBody = {
@@ -408,6 +409,7 @@ app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter,
         placeBindings: directive.placeBindings || [],
         renderer: directive.renderer || '',
         rendererOptions: directive.rendererOptions || {},
+        dataTransform: directive.dataTransform || null,
         objects: (directive.objects || []).map(object => ({
           line: object.line,
           frameSpec: object.frameSpec || '',
@@ -418,6 +420,7 @@ app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter,
           displayVariableIds: object.displayVariableIds || [],
           renderer: object.renderer || '',
           rendererOptions: object.rendererOptions || {},
+          dataTransform: object.dataTransform || null,
           objectBinding: object.objectBinding || null
         })),
         when: directive.when || null,
@@ -1134,9 +1137,10 @@ function assignKeepBoundaryEvents(frames) {
   // events that the captured state already contains.
   frames.forEach(frame => {
     const orders = (frame.events || [])
+      .filter(event => event.afterCapture !== true)
       .map(event => Number(event?.order))
       .filter(Number.isFinite);
-    frame.captureOrder = orders.length ? Math.max(...orders) : -1;
+    frame.captureOrder = orders.reduce((order, value) => Math.max(order, value), -1);
   });
   for (let frameIndex = 1; frameIndex < frames.length; frameIndex += 1) {
     const frame = frames[frameIndex];
@@ -1516,6 +1520,16 @@ function materializeKeepSnapshots(frames, layouts = []) {
       const labelBase = String(event.label || event.name || entry.name || 'Snapshot').trim() || 'Snapshot';
       const replacedSnapshot = replacedRecursionSnapshot(event);
       const objectId = replacedSnapshot?.objectId || allocateObjectId(labelBase);
+      const styleVariableIds = new Set([
+        variableId,
+        ...Object.keys(frame.renderers || {}),
+        ...(frame.captureOnlyVariableIds || [])
+      ]);
+      const styleFrameState = Object.fromEntries(Object.entries(frame.state || {})
+        .filter(([stateVariableId]) => styleVariableIds.has(stateVariableId))
+        .map(([stateVariableId, stateEntry]) => [
+          stateVariableId, cloneTraceValue(stateEntry)
+        ]));
       const snapshot = {
         id,
         objectId,
@@ -1544,7 +1558,15 @@ function materializeKeepSnapshots(frames, layouts = []) {
         data: JSON.parse(JSON.stringify(capturedData ?? entry.data)),
         renderer: renderState.renderer,
         rendererOptions: renderState.rendererOptions,
-        styles: preserveStyle ? renderState.styles : []
+        styles: preserveStyle ? renderState.styles : [],
+        styleFrame: frame.source?.silentKeepView === true ? {
+          id: frame.id,
+          state: styleFrameState,
+          lets: cloneTraceValue(frame.lets || []),
+          renderers: cloneTraceValue(frame.renderers || {}),
+          rendererOptions: cloneTraceValue(frame.rendererOptions || {}),
+          captureOnlyVariableIds: cloneTraceValue(frame.captureOnlyVariableIds || [])
+        } : null
       };
       snapshot.arrows = snapshot.layoutId
         ? retainedSnapshotArrows(renderState, frame, snapshot)
@@ -1586,6 +1608,12 @@ function materializeKeepSnapshots(frames, layouts = []) {
     };
     latestByActivation.set(activationKey, snapshot);
   });
+  // `@keep ... use ...` captures a presentation state without creating a
+  // user-visible frame. Later authored frames already carry the accumulated
+  // snapshotIds, so the internal capture records can be removed here.
+  materializedFrames = materializedFrames.filter(frame => (
+    frame.source?.silentKeepView !== true
+  ));
   const initialByActivation = new Map();
   snapshots.forEach(snapshot => {
     if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
@@ -1960,6 +1988,13 @@ function resolveFrameRendererOptions(frame, directive) {
       expressions: Array.isArray(source.display.expressions) ? [...source.display.expressions] : []
     };
   }
+  if (Array.isArray(source.symbols)) options.symbols = [...source.symbols];
+  if (directive?.dataTransform?.type === 'bits') {
+    const width = resolveTraceIndexExpression(frame, directive.dataTransform.widthExpression);
+    if (width != null && width > 0) {
+      options.dataTransform = { type: 'bits', width, order: 'msb-first' };
+    }
+  }
   if (Object.prototype.hasOwnProperty.call(source, 'separator')) options.separator = source.separator;
   return options;
 }
@@ -2137,7 +2172,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
   }));
   const tracedFrames = allFrames.map(frame => {
     const directive = directiveByStatementId.get(frame.source?.statementId);
-    const objectDirectives = Array.isArray(directive?.objects) && directive.objects.length
+    const objectDirectives = Array.isArray(directive?.objects)
       ? directive.objects
       : (directive?.variableIds?.[0] ? [{
         objectId: directive.objectId || '',
@@ -2145,6 +2180,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
         primaryVariableId: directive.variableIds[0],
         renderer: directive.renderer || '',
         rendererOptions: directive.rendererOptions || {},
+        dataTransform: directive.dataTransform || null,
         objectBinding: directive.objectBinding || null
       }] : []);
     const primaryObject = objectDirectives[0] || null;
@@ -2184,6 +2220,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
         directiveKey: directive?.sourceKey || '',
         logicalDirectiveKey: directive?.logicalSourceKey || '',
         directiveKeyAliases: directive?.sourceKeyAliases || [],
+        silentKeepView: directive?.silentKeepView === true,
         objectId: primaryObject?.objectId || '',
         objectIds,
         layoutId: primaryLayoutId,
@@ -2354,11 +2391,13 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
         lets: directive.lets || [],
         functionName: directive.functionName || directive.variables[0]?.functionName || 'global',
         index: directive.index ?? index,
+        silentKeepView: directive.silentKeepView === true,
         bindings: directive.bindings || [],
         objectBinding: directive.objectBinding || null,
         placeBindings: directive.placeBindings || [],
         renderer: directive.renderer || '',
         rendererOptions: directive.rendererOptions || {},
+        dataTransform: directive.dataTransform || null,
         objects: (directive.objects || []).map(object => ({
           line: object.line,
           frameSpec: object.frameSpec || '',
@@ -2369,6 +2408,7 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
           displayVariableIds: object.displayVariableIds || [],
           renderer: object.renderer || '',
           rendererOptions: object.rendererOptions || {},
+          dataTransform: object.dataTransform || null,
           objectBinding: object.objectBinding || null
         })),
         when: directive.when || null,
@@ -2389,6 +2429,7 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
         binding: directive.binding || null,
         placementOffset: directive.placementOffset || null,
         when: directive.when || null,
+        presetNames: directive.presetNames || [],
         functionName: directive.functionName || directive.variable?.functionName || 'global',
         index: directive.index ?? index
       }));
@@ -2405,7 +2446,9 @@ app.post('/compile', (req, res) => runWithCompileContext(() => {
       traceCodeHideRanges = Array.isArray(instrumented.codeHideRanges)
         ? instrumented.codeHideRanges
         : [];
-      if (instrumented.frameDirectives.length) traceSliceMode = 'manual';
+      if (instrumented.frameDirectives.some(directive => !directive.silentKeepView)) {
+        traceSliceMode = 'manual';
+      }
       logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);
     } catch (err) {
       // Trace analysis must not prevent the original program from running.

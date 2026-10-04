@@ -374,6 +374,80 @@ int main() {
   assert.equal(snapshots.plain_frame.frame.styles.length, 0);
 });
 
+test('@keep use captures multiple preset and attached styles without adding frames', async () => {
+  assert.throws(() => findKeepDirectives(`
+int main() {
+  int a = 1;
+  // @keep a use missing_view
+}
+`), /@keep use 找不到預設：missing_view/);
+  assert.throws(() => findKeepDirectives(`
+// @preset v
+// @object a
+// @endpreset
+int main() {
+  int a = 1;
+  // @keep a use v, v
+}
+`), /@keep use 不可重複套用同一預設/);
+
+  const [directOnly] = findKeepDirectives(`
+int main() {
+  int a = 1;
+  // @keep a
+  // @style a background AV_red
+  // @frame a
+}
+`);
+  assert.equal(directOnly.viewFrame.styles.length, 1,
+    'attached styles also create a silent keep view without a preset');
+
+  const source = `
+#include <bits/stdc++.h>
+using namespace std;
+// @preset kept_shape
+// @object arr render normal with labels(none)
+// @endpreset
+// @preset kept_colors
+// @style arr background AV_red when value < threshold
+// @style arr background AV_green when value == threshold
+// @endpreset
+int main() {
+  int threshold = 2;
+  vector<int> arr = {1, 2, 3};
+  int answer = 0;
+  // @keep arr as "styled" use kept_shape, kept_colors
+  // @style arr mark AV_blue when value > threshold
+  // @keep arr as "plain" use kept_shape, kept_colors without style
+  // @frame answer
+}
+`;
+  const [directive, plainDirective] = findKeepDirectives(source);
+  assert.deepEqual(directive.presetNames, ['kept_shape', 'kept_colors']);
+  assert.equal(directive.viewFrame.silentKeepView, true);
+  assert.equal(directive.viewFrame.styles.length, 3);
+  assert.deepEqual(new Set(directive.viewFrame.styles.map(style => style.styleType)),
+    new Set(['background', 'mark']));
+  assert.equal(plainDirective.preserveStyle, false);
+  assert.equal(plainDirective.viewFrame.styles.length, 2,
+    'without style disables persistence, not preset parsing');
+
+  const { trace } = await compile(source);
+  assert.equal(trace.frames.length, 1, 'the internal keep view is not a timeline frame');
+  assert.equal(trace.snapshots.length, 2);
+  const snapshot = trace.snapshots.find(item => item.objectId === 'styled');
+  const plainSnapshot = trace.snapshots.find(item => item.objectId === 'plain');
+  assert.equal(snapshot.renderer, 'original-array');
+  assert.equal(snapshot.styles.length, 3);
+  assert.equal(plainSnapshot.renderer, 'original-array');
+  assert.equal(plainSnapshot.styles.length, 0);
+  assert.ok(snapshot.styleFrame?.state,
+    'style dependencies are frozen with the snapshot');
+  assert.ok(Object.values(snapshot.styleFrame.state).some(entry => (
+    entry.name === 'threshold' && Number(entry.data?.value) === 2
+  )));
+});
+
 test('@keep last commits post-frame state and excludes lifetimes that already exited', async () => {
   const lifecycleSource = `
 #include <bits/stdc++.h>

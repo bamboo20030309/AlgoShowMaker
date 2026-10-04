@@ -27,7 +27,8 @@ test('mobile mode delegates Ace long-press clipboard actions to the operating sy
   const mobileCss = read('mobile-ui.css');
   assert.match(mobileSource, /setOption\('enableMobileMenu', !query\.matches\)/);
   assert.match(mobileSource, /createElement\('textarea'\)/);
-  assert.match(mobileSource, /editor\.session\.setValue\(input\.value\)/);
+  assert.match(mobileSource, /session\.replace\(/);
+  assert.doesNotMatch(mobileSource, /editor\.session\.setValue\(input\.value\)/);
   assert.match(mobileCss, /#editor \.asm-mobile-code-input[\s\S]*-webkit-user-select: text/);
   assert.match(mobileCss, /-webkit-touch-callout: default/);
 });
