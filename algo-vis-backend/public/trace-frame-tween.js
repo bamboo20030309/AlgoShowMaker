@@ -4051,7 +4051,18 @@
       placements, elements, visualKeyForSource, event
     ));
     const arithmeticTransfer = binaryOperation || multiSourceArithmetic;
-    const valueOnlyTransfer = event?.declarationValueOnlyTransfer === true
+    // A scalar initialized from one visible array cell copies its frame too.
+    // Keep the declaration's timing separate from the transfer's appearance:
+    // arithmetic and container initializers still transfer values only.
+    const declarationCellTransfer = event?.declarationValueOnlyTransfer === true
+      && sources.length === 1 && !arithmeticTransfer && !selectionOperation
+      && event?.compound !== true
+      && !target.indexExpression && !Number.isInteger(target.resolvedIndex)
+      && !Array.isArray(target.resolvedIndices)
+      && Boolean(sourceOperands[0]?.element?.querySelector?.('rect'))
+      && (Boolean(source?.indexExpression) || Number.isInteger(source?.resolvedIndex)
+        || Array.isArray(source?.resolvedIndices));
+    const valueOnlyTransfer = (event?.declarationValueOnlyTransfer === true && !declarationCellTransfer)
       || event?.compound === true || arithmeticTransfer || selectionOperation;
     const allDataSourcesVisible = !(arithmeticTransfer || selectionOperation)
       || sources.every((item, index) => (
@@ -4226,7 +4237,7 @@
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
-          if (valueOnlyTransfer) {
+          if (valueOnlyTransfer || declarationCellTransfer) {
             transfers.forEach(item => item.remove());
             transfers = [];
           }
@@ -9735,10 +9746,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-299';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-300';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-299', play, cancel, updateEventAvailability,
+    build: 'trace-300', play, cancel, updateEventAvailability,
     captureAssignmentSourceGeometry,
     recursionGrowthTransitions,
     keepLiveGrowthTransitions,
