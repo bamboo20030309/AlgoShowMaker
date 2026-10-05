@@ -9,8 +9,9 @@
   let observer;
   let observedViewport;
   const NS = 'http://www.w3.org/2000/svg';
+  const FULL_DETAIL_MIN_PX = 14;
   function level(pixels, previous) {
-    if (pixels >= 24) return 'full';
+    if (pixels >= FULL_DETAIL_MIN_PX) return 'full';
     if (previous === 'overview' && pixels < 10) return 'overview';
     return pixels < 8 ? 'overview' : 'simple';
   }
@@ -220,7 +221,7 @@
       const wanted = new Set();
       // Geometry comes from the draw records: no per-cell DOM measurement.
       for (const item of state.records) {
-        if (item.width * scale + 1e-6 < 24) continue;
+        if (item.width * scale + 1e-6 < FULL_DETAIL_MIN_PX) continue;
         const x = matrix.a * item.x + matrix.c * item.y + matrix.e;
         const y = matrix.b * item.x + matrix.d * item.y + matrix.f;
         const dx = matrix.a * item.width, dy = matrix.b * item.width;

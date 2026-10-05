@@ -16,6 +16,31 @@ int main() {
 {"version":1,"rules":[],"skins":{},"studio":{"eventSettings":{"autoFixedEnabled":false,"autoLoopBoundaryEnabled":false}}}
 @asm-view */`;
 
+test('LOD numbers appear at 14px and disappear below that boundary', {timeout:30000}, async()=>{
+ const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
+ try{
+  const page=await browser.newPage();
+  await page.setContent('<svg id="arraySvg" width="400" height="200"><g id="lod-fixture"></g></svg>');
+  await page.evaluate(()=>{window.withSvgTextFitStyle=(_g,fn)=>fn();window.fitSvgText=()=>16;});
+  await page.addScriptTag({path:path.resolve(__dirname,'../public/trace-structure-lod.js')});
+  await page.evaluate(()=>{
+   const ns='http://www.w3.org/2000/svg',g=document.getElementById('lod-fixture');
+   g.setAttribute('transform','scale(0.35)');ASMStructureLOD.begin(g,0.35,true);
+   const cell=document.createElementNS(ns,'g'),rect=document.createElementNS(ns,'rect');
+   cell.dataset.traceIndex='0';g.append(cell);cell.append(rect);
+   for(const [name,value] of Object.entries({x:0,y:0,width:40,height:40}))rect.setAttribute(name,value);
+   ASMStructureLOD.record(g,cell,'123',0,0,40,40);ASMStructureLOD.finish(g);ASMStructureLOD.observe(g);
+  });
+  const value=page.locator('#lod-fixture [data-trace-index="0"] > text');
+  await value.waitFor({state:'visible'});assert.equal(await value.textContent(),'123');
+  assert.equal(await page.evaluate(()=>ASMStructureLOD.level(14)),'full');
+  await page.evaluate(()=>{document.getElementById('lod-fixture').setAttribute('transform','scale(0.349)');ASMStructureLOD.refresh();});
+  await value.waitFor({state:'detached'});assert.equal(await page.evaluate(()=>ASMStructureLOD.level(13.96)),'simple');
+  await page.evaluate(()=>{document.getElementById('lod-fixture').setAttribute('transform','scale(0.35)');ASMStructureLOD.refresh();});
+  await value.waitFor({state:'visible'});assert.equal(await value.textContent(),'123');
+ }finally{await browser.close();}
+});
+
 test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; text fitting caches exact typography', {timeout:120000}, async()=>{
  const root=path.resolve(__dirname,'..');
  const port=await new Promise(resolve=>{const s=net.createServer().listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
@@ -71,14 +96,14 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').evaluateAll(nodes=>nodes.every(node=>node.textContent==='0')),true);
   await page.evaluate(()=>{
     window.__originalTextNodes=new Set(document.querySelectorAll('#asm-trace-root g[data-trace-index] > text'));
-    setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.599,false);
+    setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.349,false);
   });
   await page.waitForFunction(()=>!document.querySelector('#asm-trace-root g[data-trace-index] > text'));
-  await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.6,false));
+  await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.35,false));
   await page.waitForFunction(()=>document.querySelector('#asm-trace-root g[data-trace-index] > text')&&!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));
   assert.ok(await page.evaluate(()=>[...document.querySelectorAll('#asm-trace-root g[data-trace-index] > text')].some(node=>window.__originalTextNodes.has(node))),'pooled text nodes are reused');
-  assert.equal(await page.evaluate(()=>ASMStructureLOD.level(23.96)), 'simple');
-  assert.equal(await page.evaluate(()=>ASMStructureLOD.level(24)), 'full');
+  assert.equal(await page.evaluate(()=>ASMStructureLOD.level(13.96)), 'simple');
+  assert.equal(await page.evaluate(()=>ASMStructureLOD.level(14)), 'full');
   await page.evaluate(()=>{
     const rect=document.querySelector('#asm-trace-root g[data-trace-index="30,30"] > rect'),b=rect.getBBox();
     const point=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(rect.getScreenCTM()).matrixTransform(getViewport().getScreenCTM().inverse());
@@ -93,7 +118,7 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   assert.equal(await page.locator('#asm-trace-root [data-asm-lod-batch]').count(),0);
   const geometryAfter=await page.evaluate(()=>[...document.querySelectorAll('#asm-trace-root g[data-trace-index]')].map(el=>({key:el.dataset.traceObjectKey,bounds:ASMTraceRenderers.currentPlacement(el.dataset.traceObjectKey,false)})));
   assert.deepEqual(geometryAfter,geometryBefore,'LOD does not move any cell anchor');
-  await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.4,false));
+  await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.3,false));
   await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='simple'));
   assert.equal(await page.locator('#asm-trace-root g[data-trace-index] > text').count(),0);
   await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.1,false));
@@ -115,7 +140,7 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
     await page.evaluate(()=>ASMTraceStudio.close());
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     assert.equal(await page.locator('#asm-trace-root [data-asm-lod]').count(),2,`LOD survives Studio close ${cycle+1}`);
-    await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.6,false));
+    await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.35,false));
     await page.waitForFunction(()=>document.querySelector('#asm-trace-root g[data-trace-index] > text')&&!document.querySelector('#asm-trace-root [data-asm-lod-pending]'));
     await page.evaluate(()=>setCamera(window.__lodCameraPoint.x,window.__lodCameraPoint.y,0.1,false));
     await page.waitForFunction(()=>[...document.querySelectorAll('#asm-trace-root [data-asm-lod]')].every(el=>el.dataset.asmLod==='overview'));
@@ -187,7 +212,7 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
     const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
     svg.id='lod-variable-width-fixture';svg.style.cssText='position:fixed;left:0;top:0;width:200px;height:100px';
     document.body.append(svg);const group=document.createElementNS(ns,'g');svg.append(group);
-    group.setAttribute('transform','scale(0.4)');ASMStructureLOD.begin(group,0.4,true);
+    group.setAttribute('transform','scale(0.3)');ASMStructureLOD.begin(group,0.3,true);
     for(const [index,width] of [40,80].entries()){
       const cell=document.createElementNS(ns,'g'),rect=document.createElementNS(ns,'rect');
       cell.dataset.traceIndex=String(index);cell.append(rect);group.append(cell);

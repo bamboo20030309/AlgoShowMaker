@@ -64,7 +64,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=6'));
   assert.ok(slides.includes('slides-cloud.js?v=2'));
-  assert.ok(slides.includes('slides.js?v=slides-264'));
+  assert.ok(slides.includes('slides.js?v=slides-265'));
   assert.ok(slides.includes('trace-model.js?v=trace-40'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
@@ -119,7 +119,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(read('trace-frame-tween.js').includes(`build: '${tweenBuild}'`));
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
   assert.ok(html.includes('trace-camera.js?v=trace-8'));
-  assert.ok(html.includes('trace-structure-lod.js?v=5'));
+  assert.ok(html.includes('trace-structure-lod.js?v=6'));
   assert.ok(html.includes('trace-player.js?v=trace-27'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-8'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
