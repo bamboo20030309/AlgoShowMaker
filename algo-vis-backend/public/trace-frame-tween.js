@@ -214,6 +214,33 @@
     return states;
   }
 
+  // Geometry is transient playback state, never persisted into trace documents.
+  const capturedAssignmentBounds = new WeakMap();
+
+  function captureAssignmentSourceGeometry(traceDocument, eventFrame, root, previousObjects) {
+    const capturedKeys = new Set();
+    for (const event of orderedEvents(eventFrame)) {
+      if (!['assign', 'write'].includes(event?.type)) continue;
+      for (const target of event.targets || []) {
+        if (!String(target.role || '').startsWith('source')) continue;
+        const key = eventTargetKey(traceDocument, eventFrame, target);
+        if (!key || capturedKeys.has(key)) continue;
+        capturedKeys.add(key);
+        const clone = previousVisualElement(previousObjects, key);
+        const live = root?.querySelector?.(`[data-trace-object-key="${CSS.escape(key)}"]`);
+        if (!clone || !live?.isConnected) continue;
+        try {
+          const box = live.getBBox();
+          if (box.width > 0 && box.height > 0) {
+            capturedAssignmentBounds.set(clone, {
+              x: box.x, y: box.y, width: box.width, height: box.height
+            });
+          }
+        } catch { /* Missing geometry falls back to the live source at playback. */ }
+      }
+    }
+  }
+
   function previousVisualElement(previousObjects, sourceKey) {
     if (!sourceKey) return null;
     for (const [topKey, object] of previousObjects || []) {
@@ -2861,11 +2888,15 @@
     const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
     if (!sourceElement || (valueOnly && !targetElement)) return null;
 
-    let box;
-    try {
-      box = sourceElement.getBBox();
-    } catch (error) {
-      return null;
+    // Detached previous-frame clones preserve the old appearance, but cannot
+    // reliably answer getBBox(). Measure geometry separately; never replace
+    // their contents with the final frame's value or style.
+    let box = capturedAssignmentBounds.get(sourceElement);
+    if (!box) {
+      const geometryElement = sourceElement.isConnected ? sourceElement : sourceOperand.element;
+      try {
+        if (geometryElement?.isConnected) box = geometryElement.getBBox();
+      } catch { /* The ordinary numeric assignment fallback remains available. */ }
     }
     if (!(box?.width > 0) || !(box?.height > 0)) return null;
 
@@ -3304,6 +3335,28 @@
     };
     const initializedStyleRects = new WeakSet();
     const heldStyleRects = new WeakSet();
+    const assignmentPaintKeys = new Set();
+    const excludedPaintKeys = new Set();
+    for (const checkpoint of replayPlan?.checkpoints || []) {
+      const event = checkpoint.event;
+      const keys = (checkpoint.mutations || []).filter(item => item.kind === 'value')
+        .map(item => item.visualKey || item.key);
+      if (event?.type === 'swap' || event?.bitwise || event?.bitShift) {
+        keys.forEach(key => excludedPaintKeys.add(key));
+      } else if (['assign', 'write'].includes(event?.type)) {
+        const target = event.targets?.find(item => item.role === 'target') || event.targets?.[0];
+        if (Number.isInteger(target?.resolvedIndex)) keys.forEach(key => assignmentPaintKeys.add(key));
+      }
+    }
+    const valueBackgroundVariables = new Set((styleFrame?.styles || []).filter(style => (
+      style.styleType === 'background'
+      && /\bvalue\b/.test(String(style.when?.expression || style.when || ''))
+    )).map(style => style.targetVariableId));
+    const committedPaintTracks = styleTargets.filter(track => (
+      assignmentPaintKeys.has(track.key) && !excludedPaintKeys.has(track.key)
+      && valueBackgroundVariables.has(track.variableId)
+      && !seenBitCells.has(options.currentElements?.get?.(track.key))
+    ));
     const refreshStyles = () => {
       if (!stylesDirty) return;
       stylesDirty = false;
@@ -3330,17 +3383,38 @@
       const backgroundPaint = highlight => Object.hasOwn(highlight.styleTypes || {}, 'background')
         ? highlight.styleTypes.background || 'rgb(231, 144, 255)'
         : highlight.fill || '#ffffff';
+      // Only ordinary indexed assignments use committed values for conditional
+      // backgrounds. Static styles, swap paint and bit-row replay keep their
+      // existing destination-frame semantics. Do not delay an entire object.
+      let committedBackgrounds = null;
+      if (committedPaintTracks.length) {
+        const presentedValues = new Map();
+        for (const track of committedPaintTracks) {
+          if (!presentedValues.has(track.variableId)) presentedValues.set(track.variableId, new Map());
+          presentedValues.get(track.variableId).set(track.index, track.currentValue);
+        }
+        const backgroundFrame = { ...styleFrame,
+          styles: (styleFrame.styles || []).filter(style => style.styleType === 'background') };
+        committedBackgrounds = window.ASMTraceRules.evaluate(options.document, backgroundFrame, { presentedValues });
+        window.ASMTraceRenderers?.applyFixedEventStyles?.(options.document, backgroundFrame, committedBackgrounds);
+      }
       stylePaints = new Map([
         ...styleTargets.map(track => {
-          const highlight = visualHighlights(track.variableId)
-            ?.[String(track.styleIndex ?? track.index)] || {};
+          const highlights = committedBackgrounds && committedPaintTracks.includes(track)
+            ? renderedHighlights(committedBackgrounds, track.variableId) : visualHighlights(track.variableId);
+          const highlight = highlights?.[String(track.styleIndex ?? track.index)] || {};
           return [track.styleRect, {
             fill: backgroundPaint(highlight),
             opacity: '1'
           }];
         }),
         ...indexTracks.map(track => {
-          const highlight = visualHighlights(track.variableId)?.[String(track.index)] || {};
+          const committed = committedBackgrounds && committedPaintTracks.some(item => (
+            item.variableId === track.variableId && item.index === track.index
+          ));
+          const highlights = committed
+            ? renderedHighlights(committedBackgrounds, track.variableId) : visualHighlights(track.variableId);
+          const highlight = highlights?.[String(track.index)] || {};
           return [track.rect, {
             fill: backgroundPaint(highlight),
             opacity: '1'
@@ -3362,9 +3436,12 @@
           fallback
         ) ?? fallback
         : fallback;
+      // display() can hide a numeric change (e.g. both values render as a
+      // blank). Conditional paint still has to see the committed data value.
+      if (track.currentValue !== value && (styleTargets.length || indexTracks.length)) stylesDirty = true;
+      track.currentValue = value;
       if (track.applied === displayed) return;
       track.applied = displayed;
-      track.currentValue = value;
       if (styleTargets.length || indexTracks.length) stylesDirty = true;
       if (track.targetCell) track.targetCell.dataset.traceDataValue = displayed;
       else track.targetText.textContent = displayed;
@@ -3378,7 +3455,8 @@
         });
         applyBits(entry, value);
       });
-      // Numeric commits remain ordered; style is independent of these commits.
+      // Numeric commits stay ordered. Ordinary assignment value-backgrounds
+      // consume these committed values; other paint paths remain independent.
       [...tracks, ...indexTracks].forEach(track => {
         let value = track.initial;
         track.steps.forEach(step => {
@@ -3997,7 +4075,20 @@
       targetText = assignableTargetText(operand);
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
-      if (targetText) targetText.textContent = beforeValue;
+      const targetTemplate = operand.element.getAttribute?.('data-trace-display-template');
+      const formatTargetValue = (value, fallback) => {
+        if (typeof targetTemplate !== 'string') return fallback;
+        const locals = {};
+        for (const name of ['index', 'row', 'column']) {
+          const attribute = `data-trace-display-${name}`;
+          if (operand.element.hasAttribute?.(attribute)) locals[name] = Number(operand.element.getAttribute(attribute));
+        }
+        return window.ASMTraceRenderers?.renderDisplayTemplate?.(
+          targetTemplate, value, traceDocument, eventFrame, locals, fallback
+        ) ?? fallback;
+      };
+      finalText = formatTargetValue(event?.payload?.after, afterValue);
+      if (targetText) targetText.textContent = formatTargetValue(event?.payload?.before, beforeValue);
       if (allDataSourcesVisible) {
         const literalCount = sources.filter(item => item?.literal === true).length;
         let literalIndex = 0;
@@ -9600,10 +9691,11 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-293';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-295';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-293', play, cancel, updateEventAvailability,
+    build: 'trace-295', play, cancel, updateEventAvailability,
+    captureAssignmentSourceGeometry,
     recursionGrowthTransitions,
     keepLiveGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,

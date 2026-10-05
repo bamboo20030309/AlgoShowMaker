@@ -6294,6 +6294,9 @@
       rootSvg, previousMotionPositions
     );
     const previousObjects = captureTopLevelObjects(rootSvg);
+    window.ASMTraceFrameTween?.captureAssignmentSourceGeometry?.(
+      document, frame, rootSvg.querySelector('#asm-trace-root'), previousObjects
+    );
     const reusableSnapshots = new Map();
     const previousRoot = rootSvg.querySelector('#asm-trace-root');
     const frameIndex = document.frames?.indexOf?.(frame) ?? -1;
@@ -6901,9 +6904,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-262';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-263';
   window.ASMTraceRenderers = {
-    build: 'trace-262', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-263', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
