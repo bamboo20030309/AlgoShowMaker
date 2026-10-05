@@ -114,18 +114,23 @@ flowchart LR
 
 ## 測試
 
+先查看驗證索引，這個指令不執行測試：
+
 ```bash
 cd algo-vis-backend
-npm test
+npm run test:inventory
 ```
 
-動畫回歸、分類方式與測試環境請參考 [測試說明](algo-vis-backend/tests/README.md)。
+依改動選最小相關測試；純前端／投影片修改不啟動演算法動畫集。續跑會保留有效的通過結果，只重跑失敗、未完成或因依賴修改而失效的項目。
+
+指令、隔離環境、報告與故障處理見 [驗證集使用手冊](docs/驗證集使用手冊.md)。大型驗證由主代理依風險執行，PR 目前不會自動觸發。
 
 ## 相關文件
 
 - [演算法視覺化指令手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)
 - [安裝與部署指南](SETUP_GUIDE.md)
-- [測試說明](algo-vis-backend/tests/README.md)
+- [驗證集使用手冊](docs/驗證集使用手冊.md)
+- [驗證集設計與覆蓋範圍](docs/驗證集設計.md)
 
 ## 授權
 
