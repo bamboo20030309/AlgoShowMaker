@@ -10,6 +10,13 @@
       "archive": "/guest-decks/quick-sort.asmdeck?v=prebuilt-10"
     },
     {
+      "id": "merge-sort",
+      "title": "合併排序",
+      "categories": ["Sorting"],
+      "hints": ["分治", "合併"],
+      "archive": "/guest-decks/merge-sort.asmdeck?v=20261006-1"
+    },
+    {
       "id": "bubble-sort",
       "title": "冒泡排序",
       "categories": [
@@ -42,7 +49,7 @@
       "categories": [
         "Sorting"
       ],
-      "hints": ["堆積", "原地排序"],
+      "hints": ["堆積"],
       "archive": "/guest-decks/heap-sort.asmdeck?v=prebuilt-10"
     },
     {
@@ -91,12 +98,19 @@
       "archive": "/guest-decks/hanoi-teaching.asmdeck?v=prebuilt-10"
     },
     {
+      "id": "eight-queens-teaching",
+      "title": "八皇后問題 (8queen)",
+      "categories": ["Backtracking"],
+      "hints": ["遞迴", "剪枝"],
+      "archive": "/guest-decks/eight-queens-teaching.asmdeck?v=20261006-1"
+    },
+    {
       "id": "fibonacci-teaching",
       "title": "費式數列遞迴",
       "categories": [
         "Backtracking"
       ],
-      "hints": ["遞迴", "呼叫樹"],
+      "hints": ["遞迴"],
       "archive": "/guest-decks/fibonacci-teaching.asmdeck?v=prebuilt-10"
     },
     {
