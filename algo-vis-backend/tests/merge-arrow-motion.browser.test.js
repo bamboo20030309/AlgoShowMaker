@@ -7,7 +7,7 @@ const { compile } = require('./helpers/compile');
 test('merge subtree arrows follow presented node anchors throughout reflow and keep handoff', { timeout: 120000 }, async () => {
   // Keep this historical frame-25/26 fixture unchanged when the interactive
   // sample gains an explicit initial pointer frame.
-  const original = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8')
+  const original = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8').replace(/\r\n?/g, '\n')
     .replace(/    \/\/ @frame merged in merge_tree\r?\n    \/\/ @pointer i[^\r\n]*\r?\n    \/\/ @pointer j[^\r\n]*\r?\n    \/\/ @text "合併左右子樹" at merged.bottom\r?\n/, '')
     .replace(/^\s*\/\/ @pointer[^\r\n]*\r?\n/gm, '');
   const code = original

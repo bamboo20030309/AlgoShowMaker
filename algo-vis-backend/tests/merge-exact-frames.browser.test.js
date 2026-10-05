@@ -6,7 +6,7 @@ const { compile } = require('./helpers/compile');
 
 test('exact merge frames preserve preview geometry, empty declaration and insertion source',
   { timeout: 120000 }, async () => {
-    const code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8').replace(/\r\n/g, '\n').replace(/    \/\/ @frame num\n    \/\/ @place num.top-left at split_tree.root.top-left\n    \/\/ @text [^\n]*\n/, '').replace('void merge_sort(vector<int>& num, int L, int R) {', 'void merge_sort(vector<int>& num, int L, int R) {\n    vector<int> part(num.begin()+L,num.begin()+R+1);').replaceAll('@frame num with range(L,R)', '@frame part').replaceAll('@frame num as merged with range(L,R)', '@frame part');
+    const code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8').replace(/\r\n?/g, '\n').replace(/\r\n/g, '\n').replace(/    \/\/ @frame num\n    \/\/ @place num.top-left at split_tree.root.top-left\n    \/\/ @text [^\n]*\n/, '').replace('void merge_sort(vector<int>& num, int L, int R) {', 'void merge_sort(vector<int>& num, int L, int R) {\n    vector<int> part(num.begin()+L,num.begin()+R+1);').replaceAll('@frame num with range(L,R)', '@frame part').replaceAll('@frame num as merged with range(L,R)', '@frame part');
     const browser = await chromium.launch({ headless: true,
       ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
     try {

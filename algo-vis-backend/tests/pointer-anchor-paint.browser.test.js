@@ -94,8 +94,8 @@ test('part(38) pointer anchors stay unpainted across frames 8 to 9 and the follo
     }, trace);
     assert.ok(report.samples > 30 && report.anchors > 30, JSON.stringify(report));
     assert.deepEqual(report.violations, []);
-    assert.equal(report.renderer, 'trace-258');
-    assert.equal(report.tween, 'trace-291');
+    assert.equal(report.renderer, require('./helpers/builds').RENDERER_BUILD);
+    assert.equal(report.tween, require('./helpers/builds').TWEEN_BUILD);
     assert.equal(report.autoplayRuns, 2);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }

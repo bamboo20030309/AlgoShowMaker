@@ -48,7 +48,8 @@ int main() {
     await page.goto(`${base}/algorithm.html`);
     const inspect = sourceTrace => page.evaluate(async raw => {
       window.ASMTraceStudio.close();
-      const document = window.ASMTracePlayer.apply(raw);
+      const document = window.ASMTraceEditor.applyTraceDocument(raw, { openStudio: false, preserveEventSettings: true });
+      await new Promise(resolve => setTimeout(resolve, 0));
       window.ASMTraceStudio.open(document);
       // Availability is now evaluated when visiting each frame, not by opening
       // every hidden scene up front. Preserve all classification assertions.
@@ -86,13 +87,13 @@ int main() {
 
     const fib = await inspect(fibonacci.trace);
     const leftDeclaration = fib.groups.find(group => (
-      group.type === 'declare' && group.source === 'int left'
+      group.type === 'declare' && group.name === 'left'
     ));
     const leftExit = fib.groups.find(group => (
       group.type === 'scope-exit' && group.name === 'left'
     ));
     for (const group of [leftDeclaration, leftExit]) {
-      assert.ok(group);
+      assert.ok(group, JSON.stringify(fib.groups));
       assert.equal(group.availability, 'missing-target');
       assert.equal(group.enabled, false,
         'an unavailable instruction stays visually closed until explicitly enabled');
@@ -130,7 +131,7 @@ int main() {
     ));
     const indexAssignmentButton = bound.buttons.find(button => button.text.includes('index = 1'));
     const hiddenDeclaration = bound.groups.find(group => (
-      group.type === 'declare' && group.source === 'int hidden'
+      group.type === 'declare' && group.name === 'hidden'
     ));
     const shownExit = bound.groups.find(group => (
       group.type === 'scope-exit' && group.name === 'shown'
@@ -168,7 +169,7 @@ int main() {
       group.type === 'declare' && group.source === 'vector<int> temp'
     ));
     const hiddenWidth = mergeState.groups.find(group => (
-      group.type === 'declare' && group.source === 'int width'
+      group.type === 'declare' && group.name === 'width'
     ));
     const tempButton = mergeState.buttons.find(button => button.text.includes('vector<int> temp'));
     const widthButton = mergeState.buttons.find(button => button.text.includes('int width'));

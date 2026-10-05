@@ -44,6 +44,8 @@ test('an invisible caller marker never shifts the outgoing heap parameter label'
         && window.ASMTracePlayer.getDocument()?.frames?.length === 34
       ), code, { timeout: 30000 });
 
+      await page.locator('#editAnimationBtn').click();
+      await page.evaluate(() => ASMTracePlayer.renderStable(4));
       await page.locator('.trace-studio-frame[data-frame-index="4"]').click();
       await page.waitForTimeout(700);
       await page.evaluate(() => {

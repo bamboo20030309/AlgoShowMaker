@@ -9,6 +9,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
@@ -25,7 +26,7 @@ test('visible-source declaration enters blank and receives the copied value in o
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${base}/algorithm.html`);
-    await page.waitForFunction(() => window.ASMTraceFrameTween?.build === 'trace-280');
+    await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>
 using namespace std;
@@ -139,7 +140,7 @@ test('push_back copies a visible source cell into the new destination cell', { t
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${base}/algorithm.html`);
-    await page.waitForFunction(() => window.ASMTraceFrameTween?.build === 'trace-280');
+    await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
     const result = await page.evaluate(async () => {
       const code = `#include <bits/stdc++.h>
 using namespace std;
@@ -309,6 +310,7 @@ int main() {
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`${base}/algorithm.html`);
       const samples = await page.evaluate(async ({ sourceTrace, targetId }) => {
+        window.ASMTracePlayer.apply(sourceTrace);
         const previous = sourceTrace.frames[0];
         const frame = sourceTrace.frames[1];
         await window.ASMTraceRenderers.renderFrame(sourceTrace, previous, null, {
@@ -416,7 +418,7 @@ int main() {
         samples: [...samples]
       };
     });
-    assert.equal(result.build, 'trace-275');
+    assert.equal(result.build, TWEEN_BUILD);
     assert.deepEqual(result.operations, ['+', '-', '*', '/']);
     assert.deepEqual(result.multiSource, [
       [['a', '+'], ['b', '+'], ['c', '-'], ['d', '+']],
@@ -597,7 +599,7 @@ int main() {
           .map(([expression, values]) => [expression, [...values]]))
       };
     });
-    assert.equal(result.build, 'trace-275');
+    assert.equal(result.build, TWEEN_BUILD);
     const maximum = result.events.find(event => event.expression.startsWith('maximum ='));
     const minimum = result.events.find(event => event.expression.startsWith('minimum ='));
     const hidden = result.events.find(event => event.expression.startsWith('hiddenMaximum ='));

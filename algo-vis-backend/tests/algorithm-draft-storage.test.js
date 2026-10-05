@@ -30,6 +30,7 @@ function page(local, session, pathname = '/algorithm.html', search = '', sourceF
   const editorState = { code: '', input: '', cursor: { row: 0, column: 0 }, scrollTop: 0 };
   const inputArea = { get value() { return editorState.input; }, set value(value) { editorState.input = value; } };
   const aceEditor = {
+    on() {}, // Ace exposes change/input listeners on the editor as well as its session.
     getValue: () => editorState.code,
     setValue: value => { editorState.code = value; },
     getCursorPosition: () => editorState.cursor,

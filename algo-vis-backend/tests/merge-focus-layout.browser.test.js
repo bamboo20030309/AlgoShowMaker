@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 const { compile } = require('./helpers/compile');
 
 test('focus camera must not change recursive merge world layout', { timeout: 240000 }, async () => {
-  const baseline = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8');
+  const baseline = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8').replace(/\r\n?/g, '\n');
   const focused = baseline.replace(/(\/\/ @text "(?:合併左右子樹|比較兩側開頭，將較小值放入結果|補上左側剩餘元素|補上右側剩餘元素)")/g,
     '// @camera focus merged offset(0,-40)\n        $1');
   const { trace } = await compile(focused, '10\n5 7 2 1 9 3 6 8 10 4\n');

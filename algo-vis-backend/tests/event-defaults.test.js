@@ -20,6 +20,20 @@ function eventApi() {
   return context.window.ASMTraceEvents;
 }
 
+test('legacy visibility entrances share declaration switches while explicit canonical settings win', () => {
+  const api = eventApi();
+  for (const saved of [false, true]) {
+    const document = JSON.parse(JSON.stringify({ studio: { eventSettings: {
+      defaultEnabled: { 'visual-enter': saved } } } }));
+    api.applyEnabledStates(document); // Loading a document migrates its legacy settings.
+    assert.equal(api.defaultEnabled({ type: 'visual-enter' }, document), saved);
+    assert.equal(api.defaultEnabled({ type: 'declare' }, document), saved);
+    document.studio.eventSettings.defaultEnabled.declare = !saved;
+    assert.equal(api.defaultEnabled({ type: 'visual-enter' }, document), !saved);
+    assert.equal(api.defaultEnabled({ type: 'declare' }, document), !saved);
+  }
+});
+
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------

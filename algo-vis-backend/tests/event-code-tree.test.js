@@ -33,7 +33,7 @@ int main() {
     }
   }
 }`;
-  const instrumented = instrumentSource(source);
+  const instrumented = instrumentSource(source + '\n// @layout linear as validation_scene\n');
   const sourceEntry = (type, text) => {
     const compact = value => String(value || '').replace(/\s+/g, '');
     const entry = Object.entries(instrumented.eventSources).find(([key, value]) => (
@@ -173,7 +173,7 @@ test('comma-separated declarators keep separate declaration rows with shared typ
   const source = `int main(){
   int n=5, m=6, t;
 }`;
-  const instrumented = instrumentSource(source);
+  const instrumented = instrumentSource(source + '\n// @layout linear as validation_scene\n');
   const declarations = Object.entries(instrumented.eventSources)
     .filter(([signature]) => signature.startsWith('declare:main:'))
     .sort(([, left], [, right]) => left.declaratorIndex - right.declaratorIndex);
@@ -214,7 +214,7 @@ test('comma-separated declarators keep separate declaration rows with shared typ
 
 test('comparison stays yellow when any compared variable is absent from a frame', () => {
   const source = 'int main(){ int a=1,b=2; if(a<b){} }';
-  const instrumented = instrumentSource(source);
+  const instrumented = instrumentSource(source + '\n// @layout linear as validation_scene\n');
   const eventSource = Object.values(instrumented.eventSources)
     .find(entry => entry.text.replace(/\s+/g, '') === 'a<b');
   assert.ok(eventSource);

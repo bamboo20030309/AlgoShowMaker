@@ -40,7 +40,8 @@ test('slide editor uses chunked cloud saves and preserves actionable server erro
 test('new slide exports use a detached compressed asmdeck projection', () => {
   const slides = read(path.join('public', 'slides.js'));
   const exportDeck = slides.match(/function exportDeckJson\(\)[\s\S]*?function importDeckJsonText/)?.[0] || '';
-  assert.match(exportDeck, /ASMDeck\.project\(deck, draft\)/);
+  assert.match(exportDeck, /ASMDeck\.project\(await traceStore\.materializeDeck\(deck\), draft/);
+  assert.match(exportDeck, /includePrebuiltTraces:\s*true/);
   assert.match(exportDeck, /ASMDeck\.encode\(projected\)/);
   assert.match(exportDeck, /\.asmdeck/);
   assert.doesNotMatch(exportDeck, /JSON\.stringify\(payload/);

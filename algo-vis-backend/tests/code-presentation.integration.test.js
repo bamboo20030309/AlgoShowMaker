@@ -294,7 +294,7 @@ test('event ranges show the complete non-main function around the enclosing loop
   }
 }`;
   const analysis = analyzeSource(source);
-  const instrumented = instrumentSource(source, analysis.variables.map(variable => variable.id));
+  const instrumented = instrumentSource(source + '\n// @layout linear as validation_scene\n', analysis.variables.map(variable => variable.id));
   const context = { window: {} };
   context.window = context;
   const vm = require('node:vm');

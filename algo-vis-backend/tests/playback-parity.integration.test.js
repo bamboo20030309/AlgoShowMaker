@@ -20,7 +20,8 @@ const plain = value => JSON.parse(JSON.stringify(value));
 // this checks playback contracts, not visual pixel equality.
 function surface(mode, rate) {
   const callbacks = new Map(), timers = new Map(), timerDelays = [], renders = [], cameras = [];
-  const canvas = {};
+  let viewportWidth = 1280, viewportHeight = 720;
+  const canvas = { getBoundingClientRect: () => ({ width: viewportWidth, height: viewportHeight }) };
   let serial = 0, studioOpen = mode === 'studio', resizeCallback = null;
   const promise = Promise.resolve();
   const c = vm.createContext({
@@ -69,7 +70,7 @@ function surface(mode, rate) {
     c.ASMTraceStudio.open = () => {};
   }
   return { c, cameras, renders, promise, timerDelays,
-    resize(width, height) { resizeCallback?.([{ target: canvas, contentRect: { width, height } }]); },
+    resize(width, height) { viewportWidth = width; viewportHeight = height; resizeCallback?.([{ target: canvas, contentRect: { width, height } }]); },
     flush() { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); },
     load(animation) {
       c.ASMTraceEditor.loadAnimation(plain(animation));
@@ -83,7 +84,7 @@ function surface(mode, rate) {
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('a changed code layout delays renderer phases while the shared camera starts immediately', () => {
+test('code layout changes overlap renderer phases and the shared camera starts immediately', () => {
   const s = surface('algorithm', 1);
   s.load({
     mode: 'trace',
@@ -98,7 +99,7 @@ test('a changed code layout delays renderer phases while the shared camera start
   s.renders.length = 0;
   s.timerDelays.length = 0;
   s.c.CodeScript.next();
-  assert.equal(s.renders[0].options.initialDelayMs, 500);
+  assert.equal(s.renders[0].options.initialDelayMs, 0);
   assert.equal(s.renders[0].options.cameraTransitionDurationMs, 520);
   assert.ok(s.timerDelays.includes(0), 'the shared camera starts with the installed scene');
 });
@@ -142,7 +143,7 @@ for (const name of ['bubble', 'insertion']) test(`${name}: save/reopen routes id
       // Sequential forward playback, then previous and jump/replay paths.
       for (let i = 1; i < trace.frames.length; i++) {
         const completion = s.c.CodeScript.next();
-        assert.equal(completion, s.promise, 'controls must receive and await renderer completion');
+        assert.equal(typeof completion?.then, 'function', 'controls expose asynchronous completion');
         await completion; s.flush();
       }
       await s.c.CodeScript.prev(); s.flush();
@@ -184,4 +185,35 @@ test('camera is recalculated after a hidden slide iframe receives its final size
   assert.equal(s.cameras.length, 0, 'hidden zero-sized iframe must not commit a camera');
   s.resize(1280, 720);
   assert.deepEqual(s.cameras.pop(), ['manual', 40, 50, 1.6, false, 520]);
+});
+
+test('frame completion awaits both SVG playback and the parallel code presenter', async () => {
+  for (const first of ['svg', 'code']) {
+    const s = surface('algorithm', 1);
+    s.load({ mode: 'trace', code: '', input: '', traceDocument: {
+      frames: [{ id: 'a', state: {} }, { id: 'b', state: {} }], studio: {} } });
+    const resolve = {};
+    const svg = new Promise(done => { resolve.svg = done; });
+    const code = new Promise(done => { resolve.code = done; });
+    s.c.ASMTraceRenderers.renderFrame = () => svg;
+    s.c.ASMTraceCodePresenter = { waitForTransition: () => code };
+    let complete = false;
+    const pending = s.c.CodeScript.next().then(() => { complete = true; });
+    resolve[first](); await new Promise(setImmediate);
+    assert.equal(complete, false, `finishing ${first} alone must not advance playback`);
+    resolve[first === 'svg' ? 'code' : 'svg'](); await pending;
+    assert.equal(complete, true);
+  }
+});
+
+test('late viewport refresh preserves a manually panned subtab camera until navigation', async () => {
+  const s = surface('algorithm', 1);
+  s.load({ mode: 'trace', code: '', input: '', traceDocument: {
+    frames: [{ id: 'a', state: {} }, { id: 'b', state: {} }],
+    studio: { cameraRules: [{ manualFrame: true, centerX: 40, centerY: 50, zoom: 1.6 }] } } });
+  s.c.ASMTracePlayer.preserveViewportCamera({ centerX: 321, centerY: -147, scale: 1.73 });
+  s.resize(1280, 720); s.flush(); await new Promise(setImmediate);
+  assert.deepEqual(s.cameras.at(-1), ['manual', 321, -147, 1.73, false]);
+  await s.c.CodeScript.next(); s.flush();
+  assert.deepEqual(s.cameras.at(-1), ['manual', 40, 50, 1.6, true, 520], 'navigation resumes animated authored cameras');
 });

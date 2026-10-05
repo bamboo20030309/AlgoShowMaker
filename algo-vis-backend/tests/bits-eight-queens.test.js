@@ -37,8 +37,8 @@ test('bits(source, width) is a frame data transform with hidden labels and symbo
   assert.deepEqual(keep.presetNames, ['queen_board_base_view']);
   assert.equal(keep.viewFrame?.silentKeepView, true);
   assert.equal(keep.viewFrame?.styles?.length, 1);
-  assert.equal(frames.length, 10);
-  assert.deepEqual([frames[3], frames[5], frames[6]].map(item => (
+  assert.equal(frames.length, 11, 'includes the explicit P == 0 dead-end frame');
+  assert.deepEqual([frames[4], frames[6], frames[7]].map(item => (
     item.lets.find(binding => binding.name === 'directions').expression
   )), ['1', '2', '3']);
   assert.doesNotMatch(code, /@style board symbol/);
@@ -74,8 +74,20 @@ test('eight queens sample renders transformed boards in a recursive tree',
     const nId = variable('n');
     const widthId = variable('N');
     assert.ok(boardId && nId && widthId);
-    assert.equal(trace.frames.length, 145,
-      'mask previews, lowbit choices and next-recursion masks become explicit teaching frames');
+    // Independent board search: no Trace or bit-mask parser participates.
+    let visits = 0, choices = 0, solutions = 0, deadEnds = 0;
+    function search(columns) {
+      visits++;
+      if (columns.length === 4) { solutions++; return; }
+      const legal = Array.from({ length: 4 }, (_, c) => c).filter(c =>
+        columns.every((old, row) => old !== c && Math.abs(old - c) !== columns.length - row));
+      if (!legal.length) deadEnds++;
+      for (const c of legal) { choices++; search([...columns, c]); }
+    }
+    search([]);
+    assert.deepEqual({ visits, choices, solutions, deadEnds }, { visits: 17, choices: 16, solutions: 2, deadEnds: 4 });
+    assert.equal(trace.frames.length, visits + (visits - solutions) + choices * 7 + deadEnds + 1,
+      'each visit, mask, seven choice stages, dead-end and final frame is present');
     assert.equal(trace.layouts.length, 1);
     assert.equal(trace.snapshots.length, 17, 'every dfs activation becomes one tree node');
     const roots = trace.snapshots.filter(snapshot => !snapshot.layoutNode?.parentSnapshotId);

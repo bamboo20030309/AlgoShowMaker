@@ -844,20 +844,21 @@ test('each renderable sourced event prompts in code before its visual response',
   );
   assert.equal(timeline.length, 1);
   assert.equal(timeline[0].promptStart, 0);
-  assert.equal(timeline[0].codePromptDuration, 400);
-  assert.equal(timeline[0].visualStart, 400);
-  assert.equal(timeline[0].start, 400);
-  assert.equal(timeline[0].end, 620);
+  // Code scroll overlaps the event instead of adding a separate prompt delay.
+  assert.equal(timeline[0].codePromptDuration, 0);
+  assert.equal(timeline[0].visualStart, 0);
+  assert.equal(timeline[0].start, 0);
+  assert.equal(timeline[0].end, 220);
 
   const plan = promptContext.window.ASMTraceFrameTween.createPlaybackPlan({
     frame, direction: 1, eventTimeline: timeline
   });
   const step = plan.phases.find(phase => phase.id === 'trace-events').steps[0];
   assert.equal(step.startMs, 0, 'the code highlight owns the formal event start');
-  assert.equal(step.codePromptDurationMs, 400);
-  assert.equal(step.visualStartMs, 400);
+  assert.equal(step.codePromptDurationMs, 0);
+  assert.equal(step.visualStartMs, 0);
   assert.equal(step.visualDurationMs, 220);
-  assert.equal(step.durationMs, 620);
+  assert.equal(step.durationMs, 220);
 });
 
 test('a for-header code range does not substitute for a missing canvas target', () => {
@@ -2536,8 +2537,9 @@ test('compare marker followers use the event checkpoint rather than the final re
   const source = fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8');
   assert.doesNotMatch(source, /function markerMatchesCompareOperand\(/);
   assert.doesNotMatch(source, /markerMotion\.targetStates/);
-  assert.match(source,
-    /const targetKey = bindingTargetForMarker\?\.\(element\) \?\? element\?\.dataset\?\.traceBindingTarget;[\s\S]*?this\.logicalAdjustments\.has\(targetKey\)/);
+  assert.ok(source.includes('bindingTargetForMarker?.(element)'));
+  const compareLookup = source.slice(source.indexOf('const comparedOperandForBinding ='), source.indexOf('const highlights = []', source.indexOf('const comparedOperandForBinding =')));
+  assert.match(compareLookup, /logicalOperand[\s\S]*?logicalKey === targetKey/);
 });
 
 test('j and j+1 follow their comparison-time cells before a later j--', () => {

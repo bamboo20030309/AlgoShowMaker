@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 const { compile } = require('./helpers/compile');
 
 test('frame 11 to 12 marks belong to their cells, not same-alias kept leaves', { timeout: 120000 }, async () => {
-  let code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8')
+  let code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8').replace(/\r\n?/g, '\n')
     .replace(/as res\b/g, 'as merged')
     .replace('int i = L;\n    int j = mid + 1;', 'int i = L, j = mid + 1;')
     .replace('merged.push_back(num[i++]);', 'merged.push_back(num[i]);\n            i++;')
@@ -17,14 +17,18 @@ test('frame 11 to 12 marks belong to their cells, not same-alias kept leaves', {
     .replace('// @text "補上右側剩餘元素"', '// @style merged[0:merged.size()-2] mark\n        // @text "補上右側剩餘元素"');
   code += '\n/* @asm-view\n{"version":1,"rules":[],"skins":{},"studio":{"eventSettings":{"autoFixedEnabled":false,"autoLoopBoundaryEnabled":false}}}\n@asm-view */';
   const { trace } = await compile(code, '10\n38 27 43 3 9 82 10 19 84 60\n');
-  assert.equal(trace.frames[11].styles[0].styleType, 'mark');
+  const targetIndex = trace.frames.findIndex(f => f.styles.some(s => s.styleType === 'mark'
+    && s.selector?.type === 'range' && s.targetName === 'num')
+    && Object.values(f.state).find(v => v.name === 'L')?.data?.value === 0
+    && Object.values(f.state).find(v => v.name === 'R')?.data?.value === 1);
+  assert.ok(targetIndex > 0, 'the first completed two-cell merge is marked');
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   try {
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(process.env.ASM_TEST_BASE_URL + '/algorithm.html');
-    const result = await page.evaluate(async trace => {
+    const result = await page.evaluate(async ({ trace, targetIndex }) => {
       const visible = node => {
         for (let p = node; p && p.id !== 'asm-trace-root'; p = p.parentElement) {
           const style = getComputedStyle(p);
@@ -39,12 +43,12 @@ test('frame 11 to 12 marks belong to their cells, not same-alias kept leaves', {
       for (const speed of [1, 4]) for (const autoplay of [false, true]) {
         const copy = JSON.parse(JSON.stringify(trace));
         if (autoplay) {
-          copy.frames = copy.frames.slice(10, 12);
+          copy.frames = copy.frames.slice(targetIndex - 1, targetIndex + 1);
           copy.frames.forEach(f => { f.texts = []; });
         }
         ASMTracePlayer.apply(copy);
         window.asmGetAnimationPlaybackRate = () => speed;
-        const index = autoplay ? 1 : 11;
+        const index = autoplay ? 1 : targetIndex;
         await ASMTracePlayer.render(index, { stable: true });
         const stable = marks();
         await ASMTracePlayer.render(index - 1, { stable: true });
@@ -75,7 +79,7 @@ test('frame 11 to 12 marks belong to their cells, not same-alias kept leaves', {
         .map(v => ({ kind: v.dataset.traceAttachmentKind, color: v.getAttribute(v.dataset.traceAttachmentKind === 'point' ? 'fill' : 'stroke'), visible: visible(v) }));
       ASMTraceRenderers.updatePresentedHints(cell, {}, 'merged#0');
       return { reports, custom, keptUnchanged: kept.every((v, i) => v.outerHTML === before[i]), disabled: ASMTracePlayer.getDocument().studio.eventSettings.autoFixedEnabled === false };
-    }, trace);
+    }, { trace, targetIndex });
     for (const report of result.reports) for (const phase of ['stable', 'after']) {
       const marks = report[phase];
       assert.equal(marks.filter(m => m.live).length, 2, JSON.stringify(report));

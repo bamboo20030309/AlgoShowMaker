@@ -31,7 +31,7 @@ test('exported deck filename uses the workspace title', { timeout: 120000 }, asy
     const page = await browser.newPage();
     await page.addInitScript(() => localStorage.setItem('algo_jwt_token', 'fixture'));
     let title = '';
-    await page.route('**/api/slides/filename-test', route => route.fulfill({ json: { slide: { title, deck } } }));
+    await page.route('**/api/slides/filename-test?traceMode=lazy', route => route.fulfill({ json: { slide: { title, deck } } }));
     for (const [source, expected] of [
       ['線性篩教學', '線性篩教學.asmdeck'],
       ['My algorithm', 'My algorithm.asmdeck'],

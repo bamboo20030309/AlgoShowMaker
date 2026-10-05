@@ -31,6 +31,7 @@ function context(mode = 'editor') {
     aceEditor: { value: '', getValue() { return this.value; }, setValue(value) { this.value = value; } }
   });
   c.window = c;
+  c.asmReplaceEditorCode = value => c.aceEditor.setValue(value, -1);
   c.load = name => vm.runInContext(fs.readFileSync(path.join(__dirname, '../public', name), 'utf8'), c);
   for (const name of ['algorithm-animation.js', 'trace-view-source.js', 'trace-events.js', 'trace-rules.js', 'trace-model.js']) c.load(name);
   c.asmApplyTraceDocument = source => c.ASMTraceModel.normalizeTraceDocument(source);

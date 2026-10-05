@@ -266,6 +266,10 @@ function rendererApi() {
       width: Number(rect?.getAttribute('width')) || 40, height: Number(rect?.getAttribute('height')) || 40
     };
   };
+  window.SVGElement.prototype.getComputedTextLength = function () {
+    return String(this.textContent || '').length * 8;
+  };
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-pointer-model.js'), 'utf8'));
   window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8'));
   return { window, renderer: window.ASMTraceRenderers };
 }

@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 const { compile } = require('./helpers/compile');
 
 test('recursive merge pointers address the retained direct children, survive reload, and hide past the end', { timeout: 120000 }, async () => {
@@ -74,7 +75,7 @@ test('recursive merge pointers address the retained direct children, survive rel
     assert.ok(result.checked > 20, JSON.stringify(result));
     assert.ok(result.hidden > 0, JSON.stringify(result));
     assert.equal(result.transitions, 3);
-    assert.equal(result.build, 'trace-260');
+    assert.equal(result.build, RENDERER_BUILD);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

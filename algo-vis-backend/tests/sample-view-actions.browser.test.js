@@ -89,7 +89,7 @@ test('public sample viewer can export and share its viewing link', { timeout: 12
     await page.waitForFunction(() => document.body.classList.contains('examples-view'));
 
     const sharedPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    await sharedPage.route('**/api/shared-slides/fixture', route => route.fulfill({
+    await sharedPage.route('**/api/shared-slides/fixture?traceMode=lazy', route => route.fulfill({
       json: { slide: { deck, title: 'Shared Deck' }, access: 'view' }
     }));
     await sharedPage.goto(`${base}/slides.html?share=fixture`);

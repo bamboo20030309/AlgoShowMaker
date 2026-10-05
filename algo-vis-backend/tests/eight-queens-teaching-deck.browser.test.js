@@ -16,6 +16,7 @@ test('eight queens draft has three vertical method chapters and prebuilt animati
     const root = path.resolve(__dirname, '..');
     const archive = path.join(root, 'drafts/eight-queens-teaching.asmdeck');
     const decoded = await ASMDeck.decode(new Blob([fs.readFileSync(archive)]));
+    const rawArchive = JSON.parse(require('node:zlib').gunzipSync(fs.readFileSync(archive).subarray(9)));
     assert.deepEqual(decoded.deck.groups.map(group => group.slides.length), [4, 5, 6, 6, 5]);
 
     const slides = decoded.deck.groups.flatMap(group => group.slides);
@@ -41,18 +42,23 @@ test('eight queens draft has three vertical method chapters and prebuilt animati
 
     const animations = slides.filter(slide => slide.animation);
     assert.equal(animations.length, 3);
-    const sources = [
-      '8queen-loop-teaching.cpp', '8queen-array-teaching.cpp', '8queen_recursion.cpp'
-    ].map(file => fs.readFileSync(path.join(root, 'algorithm_sample/Backtracking', file), 'utf8'));
-    assert.deepEqual(animations.map(slide => slide.animation.code), sources);
+    assert.equal(animations.length, 3);
+    // This archived draft predates later sample edits. Verify each stored
+    // Trace belongs to its own code/input, rather than today's mutable files.
+    for (const { animation } of animations) {
+      const storedTrace = rawArchive.body.prebuiltTraces[animation.prebuilt.traceId];
+      assert.ok(storedTrace?.frames?.length > 10, 'the portable bundle contains the complete animation');
+      assert.notEqual(ASMTraceProvenance.status(storedTrace, animation.code, animation.input).kind, 'dirty');
+    }
     assert.ok(animations.every(slide => typeof slide.animation.prebuilt?.traceId === 'string'));
-    assert.ok(animations.every(slide => slide.animation.traceDocument?.frames?.length > 10));
+    assert.ok(animations.every(slide => slide.animation.rebuild?.view || slide.animation.traceDocument?.frames?.length > 10),
+      'older engine bundles are retained as rebuildable source');
 
     const catalog = JSON.parse(fs.readFileSync(path.join(root, 'public/guest-decks.json'), 'utf8'));
-    assert.equal(catalog.decks.some(entry => entry.id === 'eight-queens-teaching'), false,
-      'draft must not appear in the public sample gallery');
-    assert.equal(fs.existsSync(path.join(root,
-      'public/guest-decks/eight-queens-teaching.asmdeck')), false);
+    assert.equal(catalog.decks.find(entry => entry.id === 'eight-queens-teaching')?.title, '八皇后問題 (8queen)',
+      'the user subsequently published the separate final deck');
+    assert.notDeepEqual(fs.readFileSync(path.join(root, 'public/guest-decks/eight-queens-teaching.asmdeck')),
+      fs.readFileSync(archive), 'the private draft is not substituted for the published deck');
 
     const report = JSON.parse(fs.readFileSync(path.join(root,
       'docs/benchmarks/eight-queens-5s.json'), 'utf8'));
@@ -60,16 +66,15 @@ test('eight queens draft has three vertical method chapters and prebuilt animati
       loop: 9, array: 13, bits: 15
     });
 
-    const projected = await ASMDeck.project(decoded.deck, null, { includePrebuiltTraces: true });
-    const reopened = await ASMDeck.decode(await ASMDeck.encode(projected));
-    assert.deepEqual(reopened.deck, decoded.deck, 'draft survives save and reopen');
+    await assert.rejects(ASMDeck.project(decoded.deck, null, { includePrebuiltTraces: true }),
+      /缺少可重建|尚未更新/, 'an old-engine deck must rebuild before exporting a current bundle');
 
     const base = process.env.ASM_TEST_BASE_URL;
     assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
     const browser = await chromium.launch({ headless: true,
       ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
     try {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`${base}/slides.html`, { waitUntil: 'domcontentloaded' });
@@ -80,6 +85,13 @@ test('eight queens draft has three vertical method chapters and prebuilt animati
       assert.ok(await page.locator('.structure-widget').count() >= 18);
       assert.equal(await page.locator('.algorithm-slide-frame:not([hidden])').count(), 3);
       assert.deepEqual(errors, []);
+      const [download] = await Promise.all([page.waitForEvent('download'), page.locator('#exportDeckBtn').click()]);
+      const reopened = await ASMDeck.decode(new Blob([fs.readFileSync(await download.path())]));
+      const restoredAnimations = reopened.deck.groups.flatMap(g => g.slides).filter(s => s.animation).map(s => s.animation);
+      assert.equal(restoredAnimations.length, 3);
+      assert.ok(restoredAnimations.every(a => a.traceDocument?.frames?.length > 10));
+      assert.deepEqual(restoredAnimations.map(a => ASMTraceProvenance.create(a.code, a.input)),
+        animations.map(s => ASMTraceProvenance.create(s.animation.code, s.animation.input)), 'rebuild/export retains each original program and input');
       const previewDir = path.join(root, 'test-results/eight-queens-draft');
       fs.mkdirSync(previewDir, { recursive: true });
       await page.screenshot({ path: path.join(previewDir, 'hanoi-layout-cover.png') });

@@ -279,7 +279,12 @@ async function runAnimationBrowser(baseURL) {
                   checks.failures.push({ kind: 'untouched-index-painted', frame: window.ASMTracePlayer.getCurrentFrame()+1, color: b });
                 }
                 if (a?.length === b?.length && a.some((channel,j) => Math.abs(channel-b[j]) > (j===3 ? 0.01 : 1))) {
-                  checks.failures.push({ kind: 'value-index-color-progress', frame: window.ASMTracePlayer.getCurrentFrame()+1, index:i, value:a, label:b });
+                  checks.failures.push({ kind: 'value-index-color-progress', frame: window.ASMTracePlayer.getCurrentFrame()+1, index:i, value:a, label:b,
+                    valueAttributes:[...value.attributes].map(a=>[a.name,a.value]),
+                    indexAttributes:[...index.attributes].map(a=>[a.name,a.value]),
+                    phase:root.dataset.traceActiveEventType,
+                    valueAnimations:value.getAnimations().map(a=>({time:a.currentTime,timing:a.effect?.getComputedTiming()})),
+                    indexAnimations:index.getAnimations().map(a=>({time:a.currentTime,timing:a.effect?.getComputedTiming()})) });
                 }
                 if ([value,index].some(rect => rect.getAnimations().some(animation => animation.transitionProperty === 'fill'))) checks.transitions++;
               }

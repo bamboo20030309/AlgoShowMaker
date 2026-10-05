@@ -1890,6 +1890,16 @@
     return String(value.label || value.type || value.kind || '');
   }
 
+  // Pointer expressions perform arithmetic. Display strings such as "1"
+  // must become numbers before evaluating j+1, while missing values remain
+  // unresolved and nonnumeric values keep their original type.
+  function markerExpressionValue(value) {
+    const scalar = value && typeof value === 'object'
+      && Object.prototype.hasOwnProperty.call(value, 'value') ? value.value : value;
+    return typeof scalar === 'string' && scalar.trim() !== ''
+      && Number.isFinite(Number(scalar)) ? Number(scalar) : scalar;
+  }
+
   function displayEventFieldValue(value, frame, variableId) {
     if (!variableId || typeof window.ASMTraceRenderers?.formatDisplayValue !== 'function') {
       return displayEventValue(value);
@@ -2270,7 +2280,9 @@
         if (String(target?.variableId || '') !== variableId
           || String(target?.lifetimeIdentity || '') !== lifetime) return;
         if (candidate.type === 'declare') declaredAt = Math.max(declaredAt, order);
-        if (candidate.type === 'scope-exit' || candidate.type === 'visual-exit') {
+        // @exit removes a visual presentation, not the C++ variable. A later
+        // i++ in the same lifetime must still update the newly captured pointer.
+        if (candidate.type === 'scope-exit') {
           exitedAt = Math.min(exitedAt, order);
         }
       });
@@ -3272,10 +3284,8 @@
     (options.visualMoveEvents || []).forEach(event => {
       if (event?.holdStyle !== true) return;
       (event.targetKeys || [event.targetKey]).filter(Boolean).forEach(key => {
-        paintHoldEnds.set(
-          String(key),
-          Math.max(Number(paintHoldEnds.get(String(key))) || 0, Number(event.endMs) || 0)
-        );
+        paintHoldEnds.set(String(key),
+          Math.max(Number(paintHoldEnds.get(String(key))) || 0, Number(event.endMs) || 0));
       });
     });
     (replayPlan?.checkpoints || []).forEach(checkpoint => {
@@ -3334,6 +3344,7 @@
       return paint;
     };
     const initializedStyleRects = new WeakSet();
+    const initialPaintTicks = new WeakMap();
     const heldStyleRects = new WeakSet();
     const assignmentPaintKeys = new Set();
     const excludedPaintKeys = new Set();
@@ -3507,6 +3518,7 @@
             rect.style.removeProperty('transition');
             window.getComputedStyle(rect).fill;
             initializedStyleRects.add(rect);
+            initialPaintTicks.set(rect, window.document.timeline.currentTime);
           }
           if (held && rect.style) {
             rect.style.transition = 'none';
@@ -3520,8 +3532,13 @@
               heldStyleRects.delete(rect);
             }
           }
-          rect.setAttribute('fill', paint.fill);
-          rect.setAttribute('fill-opacity', paint.opacity);
+          // Newly inserted value rects have no before-change CSS style until
+          // the next animation tick. Keep value and index at the shared source
+          // paint for that tick; otherwise only the reused index transitions.
+          const firstTick = initialPaintTicks.get(rect) === window.document.timeline.currentTime;
+          const presentedPaint = firstTick ? initial : paint;
+          rect.setAttribute('fill', presentedPaint.fill);
+          rect.setAttribute('fill-opacity', presentedPaint.opacity);
         });
         const focusColors = new Map();
         Object.entries(evaluatedHighlights).forEach(([id, highlights]) => {
@@ -4169,9 +4186,10 @@
       },
       update(elapsed) {
         const frameProgress = easeOutCubic(clamp01(elapsed / ASSIGN_TIMING.frame));
-        const dropStart = operand.marker
-          ? ASSIGN_TIMING.frame + ASSIGN_TIMING.valueHold
-          : 0;
+        // The transfer must land at the same commit time used by replay and
+        // conditional styles, including the initial frame phase for scalars.
+        const dropStart = (event?.declarationValueOnlyTransfer === true ? 0 : ASSIGN_TIMING.frame)
+          + (operand.marker ? ASSIGN_TIMING.valueHold : 0);
         const dropProgress = easeOutCubic(clamp01((elapsed - dropStart) / ASSIGN_TIMING.drop));
         const exitStart = ASSIGN_TIMING.frame
           + (operand.marker ? ASSIGN_TIMING.valueHold : 0)
@@ -4385,7 +4403,7 @@
       const stateKey = `value:${key}`;
       if (!Object.prototype.hasOwnProperty.call(checkpoint.beforeState, stateKey)) return;
       const name = traceDocument?.variables?.[variableId]?.name;
-      if (name) locals[name] = displayEventValue(checkpoint.beforeState[stateKey]);
+      if (name) locals[name] = markerExpressionValue(checkpoint.beforeState[stateKey]);
     });
     // Indexed reads carry the exact index captured at execution. In
     // particular postfix increments can already affect the captured frame
@@ -4437,6 +4455,13 @@
     // anchor proxies. Static C++ IDs alone cannot distinguish recursive keeps.
     const comparedOperandForBinding = targetKey => {
       const anchor = elements?.get?.(targetKey);
+      // A captured frame can already contain the result of a later swap.
+      // Replay maps logical indices to the physical value-carrying SVG nodes.
+      // Prefer the execution-time logical index before looking at those nodes;
+      // otherwise arr[j]'s marker follows arr[j+1]'s comparison scale.
+      const logicalOperand = operands.find(operand => operand.logicalKey === targetKey
+        && !retainedSnapshotVisual(operand.element));
+      if (logicalOperand) return logicalOperand;
       return operands.find(operand => {
         const cell = operand.element;
         const snapshot = cell.dataset.traceCompareSnapshot
@@ -5183,7 +5208,7 @@
       if (value === '') return phase === 'before'
         ? `unresolved:${parts.prefix}`
         : '';
-      const locals = variableName ? { [variableName]: value } : {};
+      const locals = variableName ? { [variableName]: markerExpressionValue(slot.event?.payload?.[phase]) } : {};
       const rawResolved = window.ASMTraceRules?.resolveExpression?.(
         traceDocument, eventFrame, item.indexExpression || item.sortKey, locals
       );
@@ -6163,7 +6188,7 @@
       const value = displayEventValue(slot.event?.payload?.[phase]);
       if (value === '') return '';
       const variableName = traceDocument?.variables?.[target.variableId]?.name;
-      const locals = variableName ? { [variableName]: value } : {};
+      const locals = variableName ? { [variableName]: markerExpressionValue(slot.event?.payload?.[phase]) } : {};
       const resolved = Number(window.ASMTraceRules?.resolveExpression?.(
         traceDocument, eventFrame, expression, locals
       ));
@@ -7991,6 +8016,10 @@
         pointerTransitionByCurrentKey.set(key, transition);
         currentEntry.element.dataset.tracePointerTransition = transition.type;
         if (transition.type === window.ASMTracePointerModel.transitions.ENTER) {
+          // The array may continue while its loop-local index has a new
+          // lifetime. Do not inherit the parent's continuing status: that
+          // bypasses the declaration barrier and exposes the new pointer early.
+          continuingKeys.delete(key);
           enteringMarkerKeys.add(key);
           return;
         }
@@ -8281,6 +8310,14 @@
       currentElements, previousObjects, previousIdentityKeys
     );
     const sequenceEntrances = new Map();
+    const disabledSequenceCells = new Set();
+    (eventFrame.events || []).filter(event => event.type === 'sequence-operation'
+      && event.enabled === false).forEach(event => {
+      sequenceCellKeys(traceDocument, eventFrame, event, Number(options.direction) < 0 ? false : true).forEach(key => {
+        disabledSequenceCells.add(key);
+        disabledSequenceCells.add(`${key}:index`);
+      });
+    });
     const sequenceResizeSlots = new Map();
     playbackEventTimeline.filter(slot => slot.animation === 'sequence').forEach(slot => {
       const insertedKeys = Number(options.direction) < 0
@@ -8594,6 +8631,13 @@
         // The insertion effect owns both the cell and its index. A container
         // declaration must not reveal future elements from the final frame.
         entry.sequenceEntrance = sequenceEntrance;
+        entry.dx = entry.dy = 0;
+      }
+      // An explicitly muted insertion already commits its cell and index.
+      // Generic object entrance must not add a second fade after that commit.
+      if (!entry.keepSnapshotMember && !entry.retainedSnapshot && disabledSequenceCells.has(entry.key)) {
+        entry.appearing = false;
+        entry.indexLabelEntrance = false;
         entry.dx = entry.dy = 0;
       }
       // A new ordinary object (including @text) belongs to the visual phase,
@@ -9691,10 +9735,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-295';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-299';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-295', play, cancel, updateEventAvailability,
+    build: 'trace-299', play, cancel, updateEventAvailability,
     captureAssignmentSourceGeometry,
     recursionGrowthTransitions,
     keepLiveGrowthTransitions,

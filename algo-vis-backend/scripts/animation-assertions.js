@@ -84,6 +84,7 @@ function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
     for (const sample of frameSamples) {
       const elapsed = sample.playbackElapsedMs;
       const expected = new Map();
+      const committing = new Set();
       for (const checkpoint of checkpoints) {
         for (const mutation of checkpoint.mutations || []) {
           if (mutation.kind !== 'value' || checkpoint.mode === 'ignored') continue;
@@ -95,10 +96,13 @@ function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
           if (elapsed >= commitMs + 40 && checkpoint.eventType !== 'swap') {
             expected.set(key, mutation.after);
           }
-          if (Math.abs(elapsed - commitMs) < 40) expected.delete(key);
+          // A later write to the same cell must not reinsert its "before"
+          // value while the current write is inside the commit window.
+          if (Math.abs(elapsed - commitMs) < 40) committing.add(key);
         }
       }
       for (const [key, value] of expected) {
+        if (committing.has(key)) continue;
         const object = sample.objects?.find(item => item.key === key);
         if (!object || object.retained || object.effectiveOpacity <= opacityThreshold
           || object.displayValue == null || value == null) continue;

@@ -21,7 +21,7 @@ test('code panel sizes and independent scrolling persist in source and old trace
   await page.goto(process.env.ASM_TEST_BASE_URL+'/algorithm.html');
   await page.evaluate(async({trace,code})=>{
    ace.edit('editor').setValue(code,-1);
-   window.ASMTracePlayer.apply(trace);
+   window.ASMTraceEditor.applyTraceDocument(trace, {openStudio:false,preserveEventSettings:true});
    await window.ASMTracePlayer.render(0,{stable:true});
    window.ASMTraceStudio.open();
   },{trace,code});

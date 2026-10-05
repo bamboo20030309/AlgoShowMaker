@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const {chromium}=require('playwright');
 const {compile}=require('./helpers/compile');
 test('recursive previews preserve source ownership and connect visible leaves', {timeout:60000},async()=>{
- const code=fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp','utf8').replace('branch-previews off','branch-previews on');
+ const code=fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp','utf8').replace(/\r\n?/g, '\n').replace('branch-previews off','branch-previews on');
  const {trace}=await compile(code,'8\n82 38 27 43 3 9 10 15\n');
  const snapshots=new Map(trace.snapshots.map(s=>[s.id,s]));
  for(const frame of trace.frames.filter(f=>f.source.systemBranchPreview)){
@@ -38,7 +38,8 @@ test('recursive previews preserve source ownership and connect visible leaves', 
    }await transition;
    reports.push({index:index+1,samples,arrows:trace.frames[index].arrows.length});
   }
-  const leafIndex=trace.frames.findIndex(f=>!f.source.systemBranchPreview&&f.source.layoutId==='merge_tree'&&f.arrows.length===2&&/part/.test(f.source.primaryVariableId));
+  const leafIndex=trace.frames.findIndex(f=>!f.source.systemBranchPreview&&f.source.layoutId==='merge_tree'&&f.arrows.length===2&&f.source.objectId==='merged'&&/:num@/.test(f.source.primaryVariableId));
+  if(leafIndex<0) throw new Error('missing two-linked merge leaf fixture');
   await window.ASMTracePlayer.render(leafIndex,{stable:true});
   reports.push({leafIndex:leafIndex+1,visibleLinks:document.querySelectorAll('#asm-trace-root [data-trace-arrow-source="directive"]').length});
   return reports;

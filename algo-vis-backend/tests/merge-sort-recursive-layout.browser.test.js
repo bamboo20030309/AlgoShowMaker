@@ -194,7 +194,10 @@ test('retained recursive keep nodes do not replay an entrance when a child is ad
         .liveNodes.find(node => node.activationId === expectedActivation);
       const settledParent = report.samples.find(sample => sample.label === 'after')
         .nodes.find(node => node.id === 'snapshot:frame:1');
-      const scaleRatio = growingLive.outerframe.width / settledChild.outerframe.width;
+      // Screen widths also include the concurrent auto-camera zoom. The kept
+      // parent has fixed world geometry, so its ratio removes that camera scale.
+      const cameraRatio = retainedParent.width / settledParent.width;
+      const scaleRatio = growingLive.outerframe.width / settledChild.outerframe.width / cameraRatio;
       assert.ok(scaleRatio > 0.68 && scaleRatio < 0.76,
         `the child outerframe uses the same 0.72 structural scale (${scaleRatio})`);
       assert.ok(settledChild.outerframe.centerY

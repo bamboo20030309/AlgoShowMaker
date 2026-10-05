@@ -33,6 +33,7 @@ test('dragging populated relative ans preserves its top-left anchor and rendered
     await page.click('#runBtn');
     await page.waitForFunction(source => window.ASMTracePlayer.getDocument()?.sourceCode === source,
       code, { timeout: 30000 });
+    await page.locator('#editAnimationBtn').click();
     await page.waitForFunction(() => document.body.classList.contains('asm-trace-studio-open'));
 
     const objectInfo = await page.evaluate(async () => {
@@ -127,6 +128,7 @@ test('dragging ans on frame 40 after closing the animation editor preserves its 
     await page.click('#runBtn');
     await page.waitForFunction(source => window.ASMTracePlayer.getDocument()?.sourceCode === source,
       code, { timeout: 30000 });
+    await page.locator('#editAnimationBtn').click();
     await page.waitForFunction(() => document.body.classList.contains('asm-trace-studio-open'));
 
     const objectInfo = await page.evaluate(async () => {

@@ -571,8 +571,10 @@ const DEFAULT_ANIMATION_CONTROL_IDS = [
   'nextBtn', 'nextKeyFrameBtn', 'finishBtn', 'ttsAvBtn'
 ];
 
+let defaultAlgorithmLoadCancelled = false;
 function canApplyDefaultAlgorithm() {
   return !window.__asmEmbeddedAnimationPayload
+    && !defaultAlgorithmLoadCancelled
     && !algorithmDraftRestored
     && !algorithmEditorChangedSinceStartup
     && !algorithmInputChangedSinceStartup;
@@ -593,6 +595,9 @@ function setDefaultAnimationState(state, totalFrameCount = 0) {
 }
 
 function cancelDefaultAlgorithmLoad(reason = 'cancelled') {
+  // An externally applied Trace may arrive before DOMContentLoaded creates
+  // the controller. Remember that cancellation as well as aborting downloads.
+  defaultAlgorithmLoadCancelled = true;
   if (defaultAlgorithmLoadController) {
     defaultAlgorithmLoadController.abort(reason);
     defaultAlgorithmLoadController = null;
@@ -718,6 +723,8 @@ function activateTab(btn) {
   btn.classList.add('active');
   document.getElementById(nextTab).classList.add('active');
   if (nextTab === 'tab-canvas') {
+    // Delayed viewport rebases must preserve the view restored by this tab.
+    window.ASMTracePlayer?.preserveViewportCamera?.(preservedCanvasCamera);
     requestAnimationFrame(() => {
       if (preservedCanvasCamera && window.setCamera) {
         window.setCamera(

@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 
 test('browser renderer uses canonical pointer states without a silent legacy fallback', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
@@ -21,10 +22,10 @@ test('browser renderer uses canonical pointer states without a silent legacy fal
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base + '/algorithm.html');
-    await page.waitForFunction(() => (
+    await page.waitForFunction(build => (
       window.ASMTracePointerModel?.build === 'pointer-4'
-      && window.ASMTraceRenderers?.build === 'trace-241'
-    ));
+      && window.ASMTraceRenderers?.build === build
+    ), RENDERER_BUILD);
     const result = await page.evaluate(async () => {
       const scalar = value => ({ kind: 'scalar', value });
       const traceDocument = {
@@ -167,7 +168,7 @@ test('bottom-up merge markers exit, then initialized declarations enter at their
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base + '/algorithm.html');
-    await page.waitForFunction(() => window.ASMTraceFrameTween?.build === 'trace-291');
+    await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
     const result = await page.evaluate(async ({ code, input }) => {
       const analysis = await fetch('/trace/analyze', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
@@ -347,7 +348,7 @@ test('bottom-up merge markers exit, then initialized declarations enter at their
         && marker.groupSize === '1'
       )), `${label} must leave as a centered single marker after l/r separate`);
     }
-    assert.equal(result.build, 'trace-291');
+    assert.equal(result.build, TWEEN_BUILD);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
@@ -370,7 +371,7 @@ test('frame 11 to 12 recenters both markers after r leaves their shared cell', {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base + '/algorithm.html');
-    await page.waitForFunction(() => window.ASMTraceFrameTween?.build === 'trace-291');
+    await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build, TWEEN_BUILD);
     const result = await page.evaluate(async ({ code, input }) => {
       const analysis = await fetch('/trace/analyze', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })

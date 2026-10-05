@@ -5,7 +5,8 @@ const { chromium } = require('playwright');
 const { compile } = require('./helpers/compile');
 
 test('text on the final empty merge frame resolves the kept root and survives reopening', { timeout: 60000 }, async () => {
-  let code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8')
+  let code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8').replace(/\r\n?/g, '\n')
+    .replace(/\/\/ @defaults[\s\S]*?\/\/ @enddefaults\r?\n/, '')
     .replace(/as res\b/g, 'as merged')
     .replace('int i = L;\n    int j = mid + 1;', 'int i = L, j = mid + 1;')
     .replace('merged.push_back(num[i++]);', 'merged.push_back(num[i]);\n            i++;')
@@ -28,7 +29,7 @@ test('text on the final empty merge frame resolves the kept root and survives re
     const result = await page.evaluate(async trace => {
       const inspect = () => {
         const root = document.querySelector('#asm-trace-root');
-        const rootActivation = trace.frames[0].source.recursionActivationId;
+        const rootActivation = trace.frames.find(f => f.source.layoutId === 'split_tree').source.recursionActivationId;
         const node = [...root.querySelectorAll('[data-trace-layout-id="merge_tree"]')]
           .find(e => e.dataset.traceLayoutActivation === rootActivation);
         const rect = node?.querySelector('.outerframe-bg');

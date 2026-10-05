@@ -4248,7 +4248,7 @@ function findBranchDirectives(source, suppliedAnalysis = null, suppliedLayouts =
         active.boundary = node.from;
         directives.push({ type: 'end', from: node.from, to: node.to, line, functionName });
         activeByFunction.delete(functionName);
-      } else if (/^\/\/\s*@frame\b/i.test(text)) {
+      } else if (/^\/\/\s*(?:[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*)?@frame\b/i.test(text)) {
         const active = activeByFunction.get(functionName);
         if (active) active.hasFrame = true;
       }
@@ -4267,7 +4267,9 @@ function instrumentSource(source, watchIds = []) {
   const analysis = analyzeSource(source);
   let drawingEnabled = false;
   function visitDrawingDirective(node) {
-    if (node.name === 'LineComment' && /^\/\/\s*@(frame|object|keep|layout|text|style|arrow|segment|pointer|place|camera|branch|automark)\b/i.test(source.slice(node.from, node.to))) {
+    if (node.name === 'LineComment' && (
+      /^\/\/\s*(?:[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*)?@frame\b/i.test(source.slice(node.from, node.to))
+      || /^\/\/\s*@(object|keep|layout|text|style|arrow|segment|pointer|place|camera|branch|automark)\b/i.test(source.slice(node.from, node.to)))) {
       drawingEnabled = true;
     }
     for (let child = node.firstChild; child; child = child.nextSibling) visitDrawingDirective(child);

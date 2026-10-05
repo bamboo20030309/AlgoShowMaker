@@ -13,6 +13,7 @@ int main() {
     // @style arr[0:2] focus when value > 0
     total += arr[2];
     // @frame arr
+    // @events scope-exit animate off
     // @style arr[0:2] focus when value > 0
     cout << total;
 }

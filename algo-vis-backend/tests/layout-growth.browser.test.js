@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 const { compile } = require('./helpers/compile');
 
 test('reserved split slots and leaf-growing merge tree use actual SVG geometry after reload', { timeout: 120000 }, async () => {
@@ -32,7 +33,10 @@ test('reserved split slots and leaf-growing merge tree use actual SVG geometry a
       const lastSplit = trace.frames.findLastIndex(f => f.source.layoutId === 'split_tree');
       const firstParent = trace.frames.findIndex(f => f.source.layoutId === 'merge_tree'
         && Object.values(f.state || {}).some(entry => entry.name === 'merged' && entry.data?.items?.length === 2));
-      const indices = [...new Set([0, 1, lastSplit, firstParent, trace.frames.length - 1])].sort((a,b) => a-b);
+      const firstSplit = trace.frames.findIndex(f => f.source.layoutId === 'split_tree');
+      const secondSplit = trace.frames.findIndex((f, i) => i > firstSplit && f.source.layoutId === 'split_tree');
+      if (firstSplit < 0 || secondSplit < 0 || firstParent < 0) throw new Error('missing split/merge fixture stages');
+      const indices = [...new Set([firstSplit, secondSplit, lastSplit, firstParent, trace.frames.length - 1])].sort((a,b) => a-b);
       const reports = [];
       for (const index of indices) {
         await window.ASMTracePlayer.render(index, { stable: true });
@@ -60,7 +64,7 @@ test('reserved split slots and leaf-growing merge tree use actual SVG geometry a
       await window.ASMTracePlayer.render(1, { stable: true });
       return { reports, reopened, old, disabled: saved.layouts, build: window.ASMTraceRenderers.build };
     }, trace);
-    assert.equal(reports.build, 'trace-258');
+    assert.equal(reports.build, RENDERER_BUILD);
     const final = reports.reports.at(-1);
     const rootNode = final.nodes.find(n => n.layout === 'split_tree' && !n.parent);
     const firstRoot = reports.reports[0].nodes.find(n => n.layout === 'split_tree' && n.activation === rootNode.activation);

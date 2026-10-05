@@ -35,6 +35,7 @@
     'call', 'control-flow', 'function-enter', 'function-exit'
   ];
   const LEGACY_EVENT_SETTING_ALIASES = Object.freeze({
+    'visual-enter': 'declare',
     'scope-exit': 'object-exit',
     'visual-exit': 'object-exit',
     write: 'assignment',
@@ -301,6 +302,7 @@
     list.replaceChildren();
     window.ASMTraceEvents.definitions.filter(definition => (
       definition.category !== 'state' && definition.internal !== true
+      && definition.type !== 'visual-enter'
     )).forEach(definition => {
       const row = document.createElement('div');
       row.className = 'trace-event-settings-row';

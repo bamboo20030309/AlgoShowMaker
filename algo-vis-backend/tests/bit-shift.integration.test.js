@@ -188,12 +188,18 @@ test('shifted paint matches the stationary cell on the actual canvas', { timeout
     await page.waitForFunction(() => window.asmApplyTraceDocument);
     await page.evaluate(trace => asmApplyTraceDocument(trace), trace);
     await page.evaluate(() => ASMTracePlayer.renderStable(0));
+    // Isolate cell paint from glyph antialiasing when comparing one pixel.
+    // The arrow symbol can otherwise touch the selected background pixel.
+    await page.addStyleTag({ content: '[data-trace-object-key="binary"] text { visibility: hidden !important; }'
+      + '[data-trace-object-key="binary"] .outerframe-bg { fill: #224466 !important; fill-opacity: 1 !important; opacity: 1 !important; }' });
     const point = selector => page.evaluate(selector => {
       const box = document.querySelector(selector).getBoundingClientRect();
       return { x: Math.floor(box.left + box.width * .75), y: Math.floor(box.top + box.height * .2), width: 1, height: 1 };
     }, selector);
     const pixel = async selector => {
-      const bytes = [...await page.screenshot({ clip: await point(selector) })];
+      // Compare settled paint, not two different moments of the CSS style
+      // transition. Exact RGBA equality remains required.
+      const bytes = [...await page.screenshot({ clip: await point(selector), animations: 'disabled' })];
       return page.evaluate(async bytes => {
         const image = await createImageBitmap(new Blob([Uint8Array.from(bytes)], { type: 'image/png' }));
         const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
@@ -202,6 +208,19 @@ test('shifted paint matches the stationary cell on the actual canvas', { timeout
       }, bytes);
     };
     const before = await pixel('[data-trace-object-key="binary"] [data-trace-index="0,0"] > rect');
+    await page.evaluate(() => document.querySelector('[data-trace-object-key="binary"] [data-trace-index="0,0"] > rect').style.visibility = 'hidden');
+    const beforeBackdrop = await pixel('[data-trace-object-key="binary"] [data-trace-index="0,0"] > rect');
+    await page.evaluate(() => document.querySelector('[data-trace-object-key="binary"] [data-trace-index="0,0"] > rect').style.visibility = '');
+    const stationaryPaint = await page.evaluate(() => {
+      const rect = document.querySelector('[data-trace-object-key="binary"] [data-trace-index="0,0"] > rect');
+      const layers = [];
+      for (let n = rect; n; n = n.parentElement) {
+        const s = getComputedStyle(n);
+        layers.push({ tag: n.tagName, class: n.getAttribute('class'), fill: s.fill,
+          fillOpacity: s.fillOpacity, opacity: s.opacity, background: s.backgroundColor });
+      }
+      return { markup: rect.outerHTML, layers };
+    });
     await page.evaluate(async () => {
       const doc = ASMTracePlayer.getDocument(), frame = doc.frames[1];
       const elements = () => new Map([...document.querySelectorAll('#asm-trace-root > .asm-trace-object')]
@@ -213,7 +232,11 @@ test('shifted paint matches the stationary cell on the actual canvas', { timeout
       pixelShift.update(260);
     });
     const during = await pixel('[data-trace-object-key="binary"] [data-trace-bit-shift-motion] > g:first-child > rect');
-    assert.deepEqual(during, before, 'the moving red bit must preserve its compositing backdrop');
+    await page.evaluate(() => document.querySelector('[data-trace-object-key="binary"] [data-trace-bit-shift-motion] > g:first-child > rect').style.visibility = 'hidden');
+    const duringBackdrop = await pixel('[data-trace-object-key="binary"] [data-trace-bit-shift-motion] > g:first-child > rect');
+    assert.deepEqual(duringBackdrop, beforeBackdrop, 'compare cell alpha on identical opaque backdrops');
+    await page.evaluate(() => document.querySelector('[data-trace-object-key="binary"] [data-trace-bit-shift-motion] > g:first-child > rect').style.visibility = '');
+    assert.deepEqual(during, before, 'the moving red bit must preserve its compositing backdrop: ' + JSON.stringify({beforeBackdrop,duringBackdrop,stationaryPaint}));
     assert.deepEqual(await pixel('[data-trace-object-key="binary"] [data-trace-bit-shift-zero-fill]'),
       [255, 255, 255, 255], 'only the incoming zero-bit region is backed by opaque white');
     await page.evaluate(() => pixelShift.remove());

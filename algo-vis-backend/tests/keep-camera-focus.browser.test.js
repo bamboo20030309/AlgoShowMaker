@@ -38,8 +38,9 @@ int main() {
     await page.evaluate(code => ace.edit('editor').setValue(code, -1), source);
     await page.evaluate(() => { document.getElementById('inputArea').value = '3\n3 2 1\n'; });
     await page.click('#runBtn');
-    await page.waitForFunction(() => window.ASMTracePlayer.getDocument()?.frames?.length > 3,
-      null, { timeout: 30000 });
+    await page.waitForFunction(source => window.ASMTracePlayer.getDocument()?.sourceCode === source
+      && window.ASMTracePlayer.getDocument()?.frames?.length > 3,
+      source, { timeout: 30000 });
     await page.evaluate(() => window.ASMTraceStudio?.close?.());
     await page.waitForFunction(() => !document.body.classList.contains('asm-trace-studio-open'));
 

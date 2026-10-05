@@ -72,7 +72,10 @@ test('queen sample exposes both OR operands and animates L, M and R results',
           return { buttons, available: event.autoAnimationDisabled !== true, plan: !!plan,
             effect: !!effect, moved, held, clean: !document.querySelector('[data-trace-bitwise]') };
         }, item);
-        assert.ok(probe.buttons.length && probe.buttons.every(button => button.green), JSON.stringify(probe));
+        const bitwiseButtons = probe.buttons.filter(button => button.green);
+        assert.equal(bitwiseButtons.length, 1, 'the initializer has one available bitwise expression row: ' + JSON.stringify(probe));
+        assert.ok(probe.buttons.filter(button => !button.green).every(button => button.yellow && button.text.startsWith('宣告／物件入場')),
+          'the separate declaration may lack a visible target: ' + JSON.stringify(probe));
         delete probe.buttons;
         assert.deepEqual(probe, { available: true, plan: true, effect: true, moved: true, held: true, clean: true }, item.name);
       }

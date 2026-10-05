@@ -32,7 +32,7 @@ empty.push_back(9);
 test('recursive merge push lifecycle keeps empty name, cell and index in event order', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base);
-  const code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8');
+  const code = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout.cpp', 'utf8').replace(/\r\n?/g, '\n');
   const input = fs.readFileSync('algorithm_sample/Sorting/merge_sort_recursive_layout-sample_input.txt', 'utf8');
   const { trace } = await compile(code, input);
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
@@ -45,6 +45,7 @@ test('recursive merge push lifecycle keeps empty name, cell and index in event o
       window.asmGetAnimationPlaybackRate = () => 2;
       window.ASMTracePlayer.apply(trace);
       const indices = [trace.frames.findIndex((f,i)=>i>5&&f.source.layoutId==='split_tree'&&trace.frames[i-1].source.layoutId==='merge_tree'&&f.source.primaryVariableId===trace.frames[i-1].source.primaryVariableId), trace.frames.findIndex(f=>f.events.some(e=>e.type==='declare'&&e.name==='merged')), trace.frames.findIndex(f=>f.events.some(e=>e.operation==='push_back'&&e.payload.beforeSize===2))];
+      indices.splice(2, 0, indices[1] + 1);
       const reports = [];
       for (const index of [...new Set(indices)]) {
         await window.ASMTracePlayer.render(index - 1, { stable: true });
@@ -56,7 +57,7 @@ test('recursive merge push lifecycle keeps empty name, cell and index in event o
         const samples = [];
         for (let count = 0; count < 900 && !done; count++) {
           await new Promise(resolve => requestAnimationFrame(resolve));
-          const owner = [...document.querySelectorAll(`[data-trace-object-key="${primary}"]`)].find(el=>!el.closest('.asm-trace-snapshot'));
+          const owner = [...document.querySelectorAll(`.asm-trace-object[data-trace-variable="${primary}"]`)].find(el=>!el.closest('.asm-trace-snapshot'));
           const bg = owner?.querySelector('.outerframe-bg');
           const label = owner?.querySelector('.outerframe-label');
           const rect = bg?.getBoundingClientRect();
@@ -68,7 +69,7 @@ test('recursive merge push lifecycle keeps empty name, cell and index in event o
           if(!samples.length || JSON.stringify(snapshot)!==JSON.stringify(samples.at(-1))) samples.push(snapshot);
         }
         await transition;
-        reports.push({index:index+1,source:frame.source,before,events:frame.events.map(e=>({id:e.id,type:e.type,operation:e.operation,name:e.name,expression:e.expression,payload:e.payload,targets:e.targets})),samples});
+        reports.push({index:index+1,source:frame.source,before,objectKey:document.querySelector(`.asm-trace-object[data-trace-variable="${primary}"]`)?.dataset.traceObjectKey,events:frame.events.map(e=>({id:e.id,type:e.type,operation:e.operation,name:e.name,expression:e.expression,payload:e.payload,targets:e.targets})),samples});
       }
       return reports;
     }, trace);
@@ -84,11 +85,12 @@ test('recursive merge push lifecycle keeps empty name, cell and index in event o
     assert.ok(declarationSamples.every(s=>s.cells.every(c=>!c.visible)), 'empty declaration shows no data or index cells');
     for(const report of result.slice(1)) {
       const push = report.events.find(e=>e.operation==='push_back');
+      if (!push) continue; // Declaration and first push now have separate authored frames.
       const samples = report.samples.filter(s=>s.event===push.id);
       assert.ok(samples.some(s=>s.transfer), `visible retained source transfers a full cell at frame ${report.index}`);
       assert.ok(samples.every(s=>s.name==='merged'&&s.nameVisible), 'name survives every sequence tick');
       const index = push.payload.beforeSize;
-      const keys = [`${report.source.primaryVariableId}#${index}`,`${report.source.primaryVariableId}#${index}:index`];
+      const keys = [`${report.objectKey}#${index}`,`${report.objectKey}#${index}:index`];
       for(const sample of samples) {
         for(const cell of sample.cells.filter(c=>keys.includes(c.key))) {
           assert.ok(!cell.transform || cell.transform==='translate(0, 0)', 'source transfer has no additional edge motion');

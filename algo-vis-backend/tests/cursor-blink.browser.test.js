@@ -30,21 +30,34 @@ test('text cursor blinks with binary opacity and stops after editing', { timeout
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
     const deck = { groups: [{ id: 'g1', slides: [{ id: 's1', canvas: { objects: [{ type: 'textbox', text: 'Cursor blink', left: 400, top: 220, width: 600, fontSize: 48 }] }, widgets: [] }] }] };
     const errors = []; page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/slides.js?*', route => route.fulfill({ contentType: 'application/javascript',
+      body: `const fixtureLoad = fabric.Canvas.prototype.loadFromJSON;
+        fabric.Canvas.prototype.loadFromJSON = function(...args) {
+          window.fixtureCanvas = this; return fixtureLoad.apply(this, args);
+        };\n` + fs.readFileSync(path.join(root, 'public/slides.js'), 'utf8') }));
     await page.addInitScript(deck => localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(deck)), deck);
     await page.goto(base + '/slides.html'); await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    if (!(await page.locator('body').evaluate(el => el.classList.contains('asm-edit-mode')))) await page.locator('#modeToggleBtn').click();
     await page.evaluate(() => {
       window.cursorSamples = [];
-      const original = fabric.IText.prototype.renderCursorOrSelection;
-      fabric.IText.prototype.renderCursorOrSelection = function (...args) {
+      const text = fixtureCanvas.getObjects().find(o => o.type === 'textbox');
+      // Layer routing wraps the method on each instance when it is added.
+      const original = text.renderCursorOrSelection;
+      text.renderCursorOrSelection = function (...args) {
         if (this.isEditing && this.selectionStart === this.selectionEnd) { window.cursorText = this; window.cursorSamples.push({ opacity: this._currentCursorOpacity, time: performance.now() }); }
         return original.apply(this, args);
       };
     });
-    const point = await page.evaluate(() => { const rect = document.querySelector('#fabric-s1').getBoundingClientRect(); const scale = rect.width / 1640; return { x: rect.left + 620 * scale, y: rect.top + 425 * scale }; });
-    await page.mouse.dblclick(point.x, point.y); await page.keyboard.press('End');
+    // Address the actual loaded object rather than stale bleed-offset pixels.
+    await page.evaluate(() => {
+      const text = fixtureCanvas.getObjects().find(o => o.type === 'textbox');
+      fixtureCanvas.setActiveObject(text); text.enterEditing();
+    });
+    await page.keyboard.press('End');
     await page.waitForTimeout(1600);
     const samples = await page.evaluate(() => window.cursorSamples);
-    assert.ok(samples.some(sample => sample.opacity === 0)); assert.ok(samples.some(sample => sample.opacity === 1));
+    assert.ok(samples.length > 0, 'the fixture text must enter editing before sampling cursor paint');
+    assert.ok(samples.some(sample => sample.opacity === 0), JSON.stringify(samples)); assert.ok(samples.some(sample => sample.opacity === 1));
     assert.ok(samples.every(sample => sample.opacity === 0 || sample.opacity === 1));
     const transitions = samples.filter((sample, index) => index === 0 || sample.opacity !== samples[index - 1].opacity);
     assert.ok(transitions.length >= 3);

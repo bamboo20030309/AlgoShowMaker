@@ -5696,7 +5696,13 @@
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
     const retained = (frame.snapshotIds || []).flatMap(id => snapshotsById.get(id)?.arrows || []);
     const arrows = [...new Map([...trails, ...retained, ...current]
-      .map(arrow => [String(arrow?.id || ''), arrow])).values()];
+      .map(arrow => {
+        // The same directive runs once per recursive activation. Collapsing
+        // by authored ID alone drops ancestor edges from the active path.
+        const activation = arrow.trailActivationId
+          || (arrow.until === 'return' ? frame.source?.recursionActivationId : '');
+        return [`${String(arrow?.id || '')}${activation ? `@${activation}` : ''}`, arrow];
+      })).values()];
     const expanded = arrows.flatMap(arrow => !arrow.batch ? [arrow] : window.ASMArrowModel.expandBatch(arrow,
       (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, { ...arrow.drawLocals, ...locals }),
       (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, { ...arrow.drawLocals, ...locals }),
@@ -6946,9 +6952,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-266';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-267';
   window.ASMTraceRenderers = {
-    build: 'trace-266', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-267', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

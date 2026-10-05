@@ -6965,7 +6965,10 @@
     const rect = (cell.querySelector(':scope > rect') || cell).getBoundingClientRect();
     structureContextMenu.hidden = false;
     const menu = structureContextMenu.getBoundingClientRect();
-    positionStructureContextMenu(rect.left + rect.width / 2 - menu.width / 2, rect.top - menu.height - 8);
+    // Stay above the grid, not merely above the selected cell: for a lower
+    // matrix/tree row the old position covered cells users need to click next.
+    const gridTop = Math.min(rect.top, widgetEl.getBoundingClientRect().top);
+    positionStructureContextMenu(rect.left + rect.width / 2 - menu.width / 2, gridTop - menu.height - 8);
   }
 
   function positionStructureContextMenu(clientX, clientY) {
@@ -7934,7 +7937,7 @@
         if (currentCell) {
           selectWidget(widgetId);
           selectStructureCell(currentWidget, currentCell, event);
-          hideStructureContextMenu();
+          openStructureStyleToolbar(widgetId);
           if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
           structureCellClickTimer = null;
           switchedCellClickUntil = performance.now() + 250;

@@ -36,6 +36,7 @@
     { type: 'function-exit', label: '離開函式', color: '#59656b', enabledByDefault: false, timelineByDefault: false }
   ];
   const eventTypeAliases = Object.freeze({
+    'visual-enter': 'declare',
     'scope-exit': 'object-exit',
     'visual-exit': 'object-exit',
     write: 'assignment',
@@ -402,6 +403,15 @@
     if (typeof configured === 'boolean') return configured;
     const legacyConfigured = eventSettings(document).defaultEnabled?.[event.type];
     if (typeof legacyConfigured === 'boolean') return legacyConfigured;
+    // Function cleanup after the last authored capture is runtime metadata,
+    // not a request to erase the completed demonstration. Explicit settings
+    // above (and per-instruction/frame controls) still take precedence.
+    const lastFrame = document?.frames?.at(-1);
+    const legacyCleanupAfterCapture = lastFrame?.source?.statementKind === 'manual-frame'
+      && Number(event.source?.line) > Number(lastFrame.source.line);
+    if (event.type === 'scope-exit'
+      && (event.afterCapture === true || legacyCleanupAfterCapture)
+      && lastFrame?.events?.includes(event)) return false;
     return byType[type]?.enabledByDefault !== false;
   }
 
@@ -654,6 +664,11 @@
           if (!visibleLifetimes.has(key) && !declaredLifetimes.has(key)) declaring.push(target);
           else if (!currentDeclarations.has(key)) entering.push(target);
         } else if (!previousHidden.has(variableId) && currentHidden.has(variableId)
+          // captureOnly hides the standalone number; an arr[index] binding
+          // can still present that same lifetime as a visible pointer.
+          && !(previous.bindings || []).some(binding => binding.sourceVariableId === variableId
+            && (frame.bindings || []).some(current => current.sourceVariableId === variableId
+              && current.targetVariableId === binding.targetVariableId))
           && !manualExitIds.has(variableId)) {
           exiting.push(stableTarget(previous, variableId, before));
         }

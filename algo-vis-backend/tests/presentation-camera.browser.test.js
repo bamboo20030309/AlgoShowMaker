@@ -40,8 +40,9 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     await compilePage.evaluate(source => ace.edit('editor').setValue(source, -1), code);
     await compilePage.evaluate(() => { document.getElementById('inputArea').value = '4\n4 3 2 1\n'; });
     await compilePage.click('#runBtn');
-    await compilePage.waitForFunction(() => window.ASMTracePlayer.getDocument()?.frames?.length > 1,
-      null, { timeout: 30000 });
+    await compilePage.waitForFunction(source => window.ASMTracePlayer.getDocument()?.sourceCode === source
+      && window.ASMTracePlayer.getDocument()?.frames?.length > 1,
+      code, { timeout: 30000 });
     await compilePage.evaluate(() => window.ASMTraceStudio?.close?.());
     await compilePage.waitForFunction(() => !document.body.classList.contains('asm-trace-studio-open'));
 
@@ -123,7 +124,7 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     assert.ok(saved.zoomFactor > 1, 'wheel zoom should be saved without opening another interface');
 
     const acrossFrames = await runtime.evaluate(async expected => {
-      await window.ASMTracePlayer.render(1, { animatePositions: false, animateEvents: false });
+      await window.ASMTracePlayer.renderStable(1);
       const afterFrame = window.getPresentationCameraTransform();
       const withPresentation = document.querySelector('#viewport').getAttribute('transform');
       window.setPresentationCameraTransform(null, true, false);

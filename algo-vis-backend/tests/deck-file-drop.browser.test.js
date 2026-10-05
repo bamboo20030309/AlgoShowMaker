@@ -52,7 +52,7 @@ test('external deck files drop onto import and add controls, workspace creates a
     assert.equal(await page.locator('section.asm-slide[data-slide-id="compact-2"]').count(), 1);
     await drop('#importDeckBtn', 'notes.txt', 'text');
     await page.waitForFunction(() => document.getElementById('cloudSaveStatus').textContent.includes('.asmdeck'));
-    await page.route('**/api/shared-slides/view-fixture', route => route.fulfill({ json: { access: 'view', slide: { title: 'viewer', deck: fixture('viewer') } } }));
+    await page.route('**/api/shared-slides/view-fixture?traceMode=lazy', route => route.fulfill({ json: { access: 'view', slide: { title: 'viewer', deck: fixture('viewer') } } }));
     await page.goto(base + '/slides.html?share=view-fixture');
     await page.waitForSelector('body.shared-view-only');
     await drop('#importDeckBtn', 'denied.json', fixture('denied'));
@@ -65,7 +65,7 @@ test('external deck files drop onto import and add controls, workspace creates a
       if (route.request().method() === 'POST') { created++; return route.fulfill({ json: { slide: { deck_uid: 'dropped-deck' } } }); }
       return route.fulfill({ json: { slides: [] } });
     });
-    await page.route('**/api/slides/dropped-deck', route => route.fulfill({ json: { slide: { title: 'workspace', deck: saved || { groups: [] } } } }));
+    await page.route('**/api/slides/dropped-deck?traceMode=lazy', route => route.fulfill({ json: { slide: { title: 'workspace', deck: saved || { groups: [] } } } }));
     await page.route('**/api/slides/dropped-deck/resources/**', route => {
       const pieces = new URL(route.request().url()).pathname.split('/'); const index = pieces.indexOf('resources'); const key = pieces[index + 1];
       if (route.request().method() === 'GET') return route.fulfill({ json: { total: 0, parts: [] } });

@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD, RUNTIME_BUILD } = require('./helpers/builds');
 
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
@@ -74,7 +75,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
     ));
     let runtime = slidePage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
     assert.ok(runtime, 'algorithm slide runtime iframe loaded');
-    assert.match(runtime.url(), /v=trace-runtime-43/);
+    assert.equal(new URL(runtime.url()).searchParams.get('v'), RUNTIME_BUILD);
     assert.equal(await runtime.evaluate(() => (
       window.ASMTracePlayer.getDocument().frames.some(frame => (
         (frame.events || []).some(event => event.binaryOperation === '+')
@@ -155,7 +156,7 @@ test('an outdated segment tree slide rebuilds and animates its first parent sum'
         playbackDurationMs: player.getLastPlaybackPlan()?.totalDurationMs
       };
     });
-    assert.equal(result.build, 'trace-260');
+    assert.equal(result.build, TWEEN_BUILD);
     assert.deepEqual(result.event?.targets, [
       ['target', 15], ['source-left', 30], ['source-right', 31]
     ]);

@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 const { compile } = require('./helpers/compile');
 
 test('legacy, independent and matrix pointers default to opaque labels without overwriting stored colors', { timeout: 60000 }, async () => {
@@ -46,7 +47,7 @@ return 0;}`);
       assert.equal(custom.actual, custom.expected);
       assert.equal(custom.disabled, false);
     }
-    assert.equal(result.build, 'trace-258');
+    assert.equal(result.build, RENDERER_BUILD);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

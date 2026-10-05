@@ -12,6 +12,7 @@
   let cameraTimer = null;
   let viewportResizeFrame = null;
   let viewportObserver = null;
+  let preservedViewportCamera = null;
   let viewportSize = '';
   let viewportGeometryReady = false;
   let runtimeVisibilityConfirmed = false;
@@ -38,6 +39,11 @@
   function refreshViewportCamera() {
     viewportResizeFrame = null;
     if (!document?.frames?.length) return;
+    if (preservedViewportCamera) {
+      const camera = preservedViewportCamera;
+      window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
+      return;
+    }
     if (window.document.body.classList.contains('asm-trace-studio-open')
       && window.ASMTraceStudio?.refreshViewport) {
       window.ASMTraceStudio.refreshViewport();
@@ -78,7 +84,10 @@
     });
     return Promise.resolve(transition).then(() => {
       viewportGeometryReady = true;
-      window.ASMTraceCamera?.apply?.(document, frame, null, false);
+      if (preservedViewportCamera) {
+        const camera = preservedViewportCamera;
+        window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
+      } else window.ASMTraceCamera?.apply?.(document, frame, null, false);
       window.dispatchEvent(new CustomEvent('asm:trace-geometry-ready', {
         detail: { document, frame, index: currentFrame }
       }));
@@ -112,6 +121,7 @@
   // 區段：Frame 導覽與播放計畫
   // ---------------------------------------------------------------------------
   function render(index, options = {}) {
+    preservedViewportCamera = null;
     if (!document || !frameCount()) return Promise.resolve();
     const next = Math.max(0, Math.min(frameCount() - 1, index));
     const requestedFrom = Number.isInteger(options.fromIndex) ? options.fromIndex : currentFrame;
@@ -283,6 +293,12 @@
     previewTransition,
     rebaseCurrentFrame,
     renderStable,
+    preserveViewportCamera(camera) {
+      if (camera && [camera.centerX, camera.centerY, camera.scale].every(Number.isFinite)) {
+        clearTimeout(cameraTimer);
+        preservedViewportCamera = { centerX: camera.centerX, centerY: camera.centerY, scale: camera.scale };
+      }
+    },
     setRules,
     setSkins,
     isActive: () => Boolean(document?.frames?.length),

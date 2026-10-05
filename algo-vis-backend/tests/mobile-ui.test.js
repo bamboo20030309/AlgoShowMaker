@@ -71,10 +71,15 @@ test('mobile algorithm editor enables native long-press clipboard handling', () 
     window.document.getElementById('editor').env = {
       editor: {
         getValue: () => sourceValue,
+        on(name, listener) { sessionListeners[name] = listener; },
         setOption(name, value) {
           optionCalls.push([name, value]);
         },
         session: {
+          markUndoGroup() {},
+          getLength: () => sourceValue.split('\n').length,
+          getLine: row => sourceValue.split('\n')[row],
+          replace(_range, value) { sourceValue = value; sessionListeners.change?.(); },
           on(name, listener) {
             sessionListeners[name] = listener;
           },

@@ -14,7 +14,10 @@ test('slides fetch Trace only upon visiting its page, save IDs and play after re
     const archive = JSON.parse(gunzipSync(fs.readFileSync(path.join(root,
       'drafts/eight-queens-teaching.asmdeck')).subarray(9)));
     const existing = archive.body.deck.groups[1].slides.at(-1).animation;
-    const trace = archive.body.prebuiltTraces[existing.prebuilt.traceId];
+    // The storage/export fixture needs a current compiler result; the archived
+    // draft's obsolete engine provenance correctly requires rebuilding.
+    const { compile } = require('./helpers/compile');
+    const { trace } = await compile(existing.code, existing.input);
     trace.frames = trace.frames.slice(0, 3);
     const animation = { ...existing, traceDocument: trace }; delete animation.prebuilt;
     const source = { groups: [

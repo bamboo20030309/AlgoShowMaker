@@ -27,7 +27,8 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
   await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__traceStart=performance.now();document.getElementById('runBtn').click();},source);
   const response=await replyPromise;
   assert.equal(response.headers()['content-encoding'],'gzip');
-  await page.waitForFunction(()=>!document.getElementById('runBtn').classList.contains('loading'),{},{timeout:90000});
+  await page.waitForFunction(code=>ASMTracePlayer.getDocument()?.sourceCode===code
+   && Object.values(ASMTracePlayer.getDocument()?.variables||{}).some(v=>v.name==='grid'),source,{timeout:90000});
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const result=await page.evaluate(()=>{
    const doc=ASMTracePlayer.getDocument(),frame=doc.frames[0];

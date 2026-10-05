@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 
 test('LCS matching labels stay green while +1 replaces the old target value', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
@@ -127,7 +128,7 @@ test('LCS matching labels stay green while +1 replaces the old target value', { 
         finalTargetOpacity: finalTargetValue?.getAttribute('opacity') || ''
       };
     }, { code, input });
-    assert.equal(result.build, 'trace-260');
+    assert.equal(result.build, TWEEN_BUILD);
     assert.equal(result.rowFill, '#a5d6a7');
     assert.equal(result.columnFill, '#a5d6a7');
     assert.equal(result.answerRendered, false, 'the build-table frame must not render ans');
@@ -178,6 +179,7 @@ test('LCS DFS draws the active path and removes returned edges', { timeout: 6000
       }).then(response => response.json());
       const trace = window.ASMTraceModel.normalizeTraceDocument(compiled.traceDocument || compiled.trace);
       const dfsFrames = trace.frames.filter(frame => frame.source?.function === 'dfs');
+      window.ASMTracePlayer.apply(trace);
       const deepest = [...dfsFrames].sort((left, right) =>
         (right.source.recursionAncestorActivationIds?.length || 0)
         - (left.source.recursionAncestorActivationIds?.length || 0))[0];
@@ -216,8 +218,21 @@ test('LCS DFS draws the active path and removes returned edges', { timeout: 6000
         .map(node => node.getAttribute('stroke'));
       const deepestView = await renderAndInspect(deepest);
       const returnedView = await renderAndInspect(returned);
+      const saved = JSON.parse(JSON.stringify(trace));
+      saved.frames.flatMap(f => f.arrows || []).filter(a => a.until === 'return').forEach(a => { a.style = { ...a.style, color: '#123456' }; });
+      const reopened = window.ASMTracePlayer.apply(saved);
+      await window.ASMTracePlayer.renderStable(deepestIndex);
+      const reopenedArrows = [...document.querySelectorAll('[data-trace-arrow-runtime-id*="@activation-"]')];
+      const reopenedCount = reopenedArrows.length;
+      const reopenedColors = reopenedArrows.map(a => a.getAttribute('stroke'));
+      const disabled = JSON.parse(JSON.stringify(reopened));
+      disabled.frames.flatMap(f => f.arrows || []).forEach(a => { a.until = ''; });
+      window.ASMTracePlayer.apply(disabled);
+      await window.ASMTracePlayer.renderStable(deepestIndex);
+      const disabledCount = document.querySelectorAll('[data-trace-arrow-runtime-id*="@activation-"]').length;
       return {
         expectedDeepest: deepest.source.recursionAncestorActivationIds.length,
+        reopenedCount, reopenedColors, disabledCount,
         deepestCount: deepestView.count,
         deepestText: deepestView.text,
         returnedCount: returnedView.count,
@@ -226,6 +241,9 @@ test('LCS DFS draws the active path and removes returned edges', { timeout: 6000
       };
     }, { code, input });
     assert.equal(result.deepestCount, result.expectedDeepest, JSON.stringify(result));
+    assert.equal(result.reopenedCount, result.expectedDeepest, 'saved ancestor arrows survive reopening');
+    assert.ok(result.reopenedColors.every(color => color === '#123456'), JSON.stringify(result));
+    assert.equal(result.disabledCount, 0, 'explicitly disabling return trails removes ancestor arrows');
     assert.match(result.deepestText, /目前累積字串就是 LCS：「ace」/, JSON.stringify(result));
     assert.ok(result.returnedCount < result.deepestCount, JSON.stringify(result));
     assert.deepEqual(result.missingContinuingKeys, [], JSON.stringify(result));

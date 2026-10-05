@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 const { compile } = require('./helpers/compile');
 
 // -----------------------------------------------------------------------------
@@ -132,12 +133,12 @@ int main() {
       const errors = [];
       page.on('pageerror', error => errors.push(error.stack || error.message));
       await page.goto(base + '/algorithm.html');
-      await page.waitForFunction(() => (
+      await page.waitForFunction(({ tween, renderer }) => (
         window.ASMTracePlayer
         && window.asmApplyTraceDocument
-        && window.ASMTraceFrameTween?.build === 'trace-280'
-        && window.ASMTraceRenderers?.build === 'trace-246'
-      ));
+        && window.ASMTraceFrameTween?.build === tween
+        && window.ASMTraceRenderers?.build === renderer
+      ), { tween: TWEEN_BUILD, renderer: RENDERER_BUILD });
       await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
       await page.evaluate(() => window.ASMTracePlayer.renderStable(0));
       await page.evaluate(() => {
@@ -211,12 +212,12 @@ test('bottom-up merge sort keeps its final num array after the last frame finish
       const errors = [];
       page.on('pageerror', error => errors.push(error.stack || error.message));
       await page.goto(base + '/algorithm.html');
-      await page.waitForFunction(() => (
+      await page.waitForFunction(({ tween, renderer }) => (
         window.ASMTracePlayer
         && window.asmApplyTraceDocument
-        && window.ASMTraceFrameTween?.build === 'trace-280'
-        && window.ASMTraceRenderers?.build === 'trace-246'
-      ));
+        && window.ASMTraceFrameTween?.build === tween
+        && window.ASMTraceRenderers?.build === renderer
+      ), { tween: TWEEN_BUILD, renderer: RENDERER_BUILD });
       await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
       await page.evaluate(index => window.ASMTracePlayer.renderStable(index), frameIndex - 1);
       await page.evaluate(index => {
