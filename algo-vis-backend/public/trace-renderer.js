@@ -6321,7 +6321,12 @@
         const snapshotId = String(element.dataset.traceSnapshot || '');
         const snapshot = snapshotsById.get(snapshotId);
         const objectKey = snapshotObjectKey(snapshot);
-        if (!snapshot || !currentIds.has(snapshotId)
+        // A kept frame contains a nested scene with its own layout/binding
+        // transforms. Reusing that already-positioned DOM as fresh local
+        // geometry applies those offsets again in the outer layout. Rebuild
+        // frame contents from the frozen model; stable snapshot keys still
+        // preserve transition identity. Simple object snapshots remain reusable.
+        if (!snapshot || snapshot.kind === 'frame' || !currentIds.has(snapshotId)
           || !previousIds.has(snapshotId) || excluded.has(snapshotId)
           || previousVisibility[objectKey] === 'hidden' || currentVisibility[objectKey] === 'hidden') return;
         element.remove();
@@ -6901,9 +6906,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-262';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-263';
   window.ASMTraceRenderers = {
-    build: 'trace-262', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-263', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
