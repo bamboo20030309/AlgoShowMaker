@@ -6369,7 +6369,7 @@
     if (!button) return;
     const value = color || '#ffffff';
     button.dataset.color = value;
-    button.style.setProperty('--structure-color', rememberedStyleColor(value));
+    button.style.setProperty('--structure-color', normalizeColor(value));
   }
 
   function populateStructureEditor(widget) {
@@ -6875,7 +6875,7 @@
       button.dataset.structureStyleType = type;
       button.setAttribute('aria-pressed', activeCount > 0 && !isActive ? 'mixed' : String(isActive));
       const currentColor = structureCellStyleColor(found.widget, index, type, binding);
-      const icon = structureStyleIcon(type, activeCount ? currentColor : rememberedStyleColor(currentColor, type));
+      const icon = structureStyleIcon(type, rememberedStyleColor(currentColor, type));
       icon.setAttribute('aria-hidden', 'true');
       button.appendChild(icon);
       button.addEventListener('click', () => {
@@ -8084,7 +8084,7 @@
     tableHeaderRowInput?.addEventListener('change', () => updateSelectedStructure({ tableHeaderRow: tableHeaderRowInput.checked }, { preserveScale: true }));
     tableHeaderColumnInput?.addEventListener('change', () => updateSelectedStructure({ tableHeaderColumn: tableHeaderColumnInput.checked }, { preserveScale: true }));
     structureColorBindings.forEach(binding => {
-      bindRememberedColorButton(binding.button, binding.target);
+      bindCurrentColorButton(binding.button, binding.target);
     });
     openCodeEditorBtn?.addEventListener('click', openCodeEditorModal);
     closeCodeEditorModalBtn?.addEventListener('click', closeCodeEditorModal);
@@ -8132,10 +8132,10 @@
     inlineScriptsBtn?.addEventListener('click', toggleInlineScripts);
     alignCycleBtn.addEventListener('click', cycleTextAlign);
     listStyleBtn.addEventListener('click', cycleTextList);
-    bindRememberedColorButton(textColorBtn, 'text');
-    bindRememberedColorButton(bgColorBtn, 'background');
-    bindRememberedColorButton(shapeStrokeBtn, 'shape-stroke');
-    bindRememberedColorButton(shapeColorBtn, 'shape-fill');
+    bindCurrentColorButton(textColorBtn, 'text');
+    bindCurrentColorButton(bgColorBtn, 'background');
+    bindCurrentColorButton(shapeStrokeBtn, 'shape-stroke');
+    bindCurrentColorButton(shapeColorBtn, 'shape-fill');
     shapeChoiceButtons.forEach(button => {
       button.addEventListener('click', () => replaceSelectedShape(button.dataset.shapeChoice));
     });
@@ -9080,10 +9080,10 @@
       const cornerRadius = Number.isFinite(Number(obj.cornerRadius)) ? Number(obj.cornerRadius) : (Number(obj.rx) || 0);
       const strokeColor = normalizeColor(obj.stroke || '#875bc7');
       const fillColor = normalizeColor(obj.fill || '#eee7fb');
-      shapeStrokeBtn.style.setProperty('--shape-stroke-color', rememberedStyleColor(strokeColor));
+      shapeStrokeBtn.style.setProperty('--shape-stroke-color', strokeColor);
       shapeStrokeBtn.style.setProperty('--shape-stroke-width', `${Math.max(1, Math.min(9, strokeWidth))}px`);
       shapeStrokeBtn.style.setProperty('--shape-corner-radius', `${Math.min(12, cornerRadius)}px`);
-      shapeColorBtn.style.setProperty('--shape-fill-color', rememberedStyleColor(fillColor));
+      shapeColorBtn.style.setProperty('--shape-fill-color', fillColor);
       shapeStrokeWidthInput.value = String(strokeWidth);
       shapeStrokeWidthValue.value = String(strokeWidth);
       shapeCornerRadiusControls.hidden = obj.type !== 'rect';
@@ -9447,29 +9447,32 @@
     const colors = textFillColorsForTarget(obj);
     const icon = textColorBtn.querySelector('.text-color-icon');
     textColorBtn.classList.toggle('is-mixed-color', colors.length > 1);
-    icon?.style.setProperty('--text-color-current', rememberedStyleColor(colors.length === 1 ? colors[0] : '#ef3829'));
+    icon?.style.setProperty('--text-color-current', colors.length === 1 ? colors[0] : '#ef3829');
+    const backgrounds = textFillColorsForTarget(obj, 'textBackgroundColor', 'rgba(0,0,0,0)');
+    bgColorBtn?.classList.toggle('is-mixed-color', backgrounds.length > 1);
+    bgColorBtn?.querySelector('.text-bg-icon')?.style.setProperty('background-color', backgrounds.length === 1 ? backgrounds[0] : 'rgba(0,0,0,0)');
   }
 
-  function textFillColorsForTarget(obj) {
-    if (!obj || !obj.getSelectionStyles) return [normalizeColor(obj?.fill || '#1f282d')];
+  function textFillColorsForTarget(obj, property = 'fill', fallback = '#1f282d') {
+    if (!obj || !obj.getSelectionStyles) return [normalizeColor(obj?.[property] || fallback)];
     const start = Number(obj.selectionStart) || 0;
     const end = Number(obj.selectionEnd) || start;
     if (start !== end) {
       const colors = new Set();
       const styles = obj.getSelectionStyles(start, end) || [];
-      styles.forEach(style => colors.add(normalizeColor(style.fill || obj.fill || '#1f282d')));
-      if (!colors.size) colors.add(normalizeColor(obj.fill || '#1f282d'));
+      styles.forEach(style => colors.add(normalizeColor(style[property] || obj[property] || fallback)));
+      if (!colors.size) colors.add(normalizeColor(obj[property] || fallback));
       return Array.from(colors);
     }
-    return [textFillColorAtCursor(obj, start)];
+    return [textFillColorAtCursor(obj, start, property, fallback)];
   }
 
-  function textFillColorAtCursor(obj, cursor = 0) {
+  function textFillColorAtCursor(obj, cursor = 0, property = 'fill', fallback = '#1f282d') {
     const textLength = typeof obj.text === 'string' ? obj.text.length : 0;
-    if (!textLength) return normalizeColor(obj.fill || '#1f282d');
+    if (!textLength) return normalizeColor(obj[property] || fallback);
     const probe = Math.max(0, Math.min(textLength - 1, cursor - 1));
     const style = obj.getSelectionStyles?.(probe, probe + 1)?.[0] || {};
-    return normalizeColor(style.fill || obj.fill || '#1f282d');
+    return normalizeColor(style[property] || obj[property] || fallback);
   }
 
   function cycleTextList() {
@@ -9504,22 +9507,22 @@
   }
 
   let customPickedColors = [];
-  function bindRememberedColorButton(button, target) {
-    window.ASMColorPickerPolicy.bind(button, {
-      open: () => openIro(target, button, null, { forceOpen: true }),
-      apply: value => { applyPickedColor(new iro.Color(value), target, null); commitPendingColorHistory(); },
-      paint: value => {
-        button.style.setProperty('--structure-color', value);
-        button.style.setProperty('--shape-fill-color', value);
-        button.style.setProperty('--shape-stroke-color', value);
-        button.querySelector('.text-color-icon')?.style.setProperty('--text-color-current', value);
-        button.querySelector('.text-bg-icon')?.style.setProperty('background-color', value);
-      }
+  function bindCurrentColorButton(button, target) {
+    if (!button) return;
+    // Ordinary property buttons describe the selected object. Only cell-style
+    // buttons represent a reusable preference; global color history must not
+    // repaint these buttons or apply an unrelated object's previous color.
+    const open = () => openIro(target, button, null, { forceOpen: true });
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('pointerenter', open);
+    button.addEventListener('click', event => { event.preventDefault(); open(); });
+    button.addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); open(); }
     });
   }
   function rememberedStyleColor(fallback, type = null) {
     try {
-      const color = new window.iro.Color(type ? window.ASMColorPickerPolicy.styleLast(type, fallback) : window.ASMColorPickerPolicy.last(fallback));
+      const color = new window.iro.Color(type ? window.ASMColorPickerPolicy.styleLast(type, fallback) : fallback);
       return color.alpha < 1 ? color.rgbaString : color.hexString;
     } catch { return fallback; }
   }
@@ -9721,10 +9724,10 @@
         ? (active?.stroke || 'rgba(135, 91, 199, 1)')
       : activeColorTarget === 'text'
         ? (style.fill || active?.fill || 'rgba(31, 40, 45, 1)')
-        : (style.textBackgroundColor || 'rgba(255, 255, 255, 1)');
+        : (style.textBackgroundColor || active?.textBackgroundColor || 'rgba(0, 0, 0, 0)');
     suppressIroChange = true;
     try {
-      try { iroPicker.color.set(normalizeColor(structureBinding?.style ? window.ASMColorPickerPolicy.styleLast(structureBinding.style, current) : window.ASMColorPickerPolicy.last(current))); }
+      try { iroPicker.color.set(normalizeColor(structureBinding?.style ? window.ASMColorPickerPolicy.styleLast(structureBinding.style, current) : current)); }
       catch { refreshLastColorSwatch(); iroPicker.color.set(normalizeColor(current)); }
     } finally {
       suppressIroChange = false;
