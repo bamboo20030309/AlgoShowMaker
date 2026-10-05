@@ -650,13 +650,18 @@ async function loadDefaultAlgorithm() {
     }
 
     const previewPromise = fetchDefaultAnimationBundle(manifest.preview, manifest, 'preview', signal);
-    const fullPromise = fetchDefaultAnimationBundle(manifest.full, manifest, 'full', signal);
+    // Observe both parallel downloads immediately. An edit can abort them while
+    // preview is still pending; leaving full unobserved creates pageerror 'edited'.
+    const fullPromise = fetchDefaultAnimationBundle(manifest.full, manifest, 'full', signal)
+      .then(value => ({ value }), error => ({ error }));
     const preview = await previewPromise;
     if (signal.aborted) return;
     previewApplied = applyDefaultAnimation(preview, 'loading', 'preview');
     if (!previewApplied) return;
 
-    const full = await fullPromise;
+    const fullResult = await fullPromise;
+    if (fullResult.error) throw fullResult.error;
+    const full = fullResult.value;
     if (!applyDefaultAnimation(full, 'ready', 'network')) return;
     document.body.dataset.defaultAnimationCache = 'storing';
     window.ASMTraceBundle.cachePut(manifest, full).then(stored => {

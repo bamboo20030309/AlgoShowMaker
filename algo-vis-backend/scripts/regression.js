@@ -12,30 +12,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const root = path.resolve(__dirname, '..');
+const manifest = require('./validation-manifest');
+const { captureEvidence, reconcileEvidence } = require('./validation-evidence');
 const REGRESSION_JWT_SECRET = randomBytes(32).toString('base64url');
 const TEST_RESULTS_DIR = path.join(root, 'test-results');
 const TEST_STATE_FILE = path.join(TEST_RESULTS_DIR, 'regression-state.json');
 const REGRESSION_LOCK_FILE = path.join(TEST_RESULTS_DIR, 'regression-state.lock');
-const ANIMATION_PREREQUISITES = new Set([
-  'cloud-storage-browser',
-  'slide-order-toggle',
-  'deck-import-repair'
-]);
-const ANIMATION_CASES = [
-  'arrow-identity',
-  'quick-style-swap',
-  'insertion-style-labels',
-  'defaults',
-  'style-frame-completion',
-  'recursive-roles',
-  'function-call',
-  'highlight-swap',
-  'bubble',
-  'insertion',
-  'selection',
-  'heap',
-  'quick-recursion'
-];
+const ANIMATION_PREREQUISITES = new Set(manifest.prerequisites.map(item => item.label));
+const ANIMATION_CASES = manifest.animationCases.map(item => item.name);
 const EXPECTED_ANIMATION_ITEMS = [...ANIMATION_PREREQUISITES, ...ANIMATION_CASES];
 
 function now() {
@@ -103,6 +87,7 @@ function readTestState(allFiles, { fresh = false, stateFile = TEST_STATE_FILE } 
   if (fresh || !fs.existsSync(stateFile)) {
     const startedAt = now();
     return {
+      evidence: captureEvidence(root, allFiles),
       version: 1,
       cycleId: startedAt.replace(/[:.]/g, '-'),
       status: 'running',
@@ -134,29 +119,42 @@ function readTestState(allFiles, { fresh = false, stateFile = TEST_STATE_FILE } 
   if (state.version !== 1 || !Array.isArray(state.testFiles) || !Array.isArray(state.failedFiles)) {
     throw new Error(`續跑狀態格式不相容：${path.relative(root, stateFile)}。請用 --fresh 開始新一輪。`);
   }
-  if (state.testFiles.length !== allFiles.length || state.testFiles.some((file, index) => file !== allFiles[index])) {
-    throw new Error('測試檔清單已改變；請用 --fresh 開始新一輪，避免沿用不完整的通過結果。');
+  const added = allFiles.filter(file => !state.testFiles.includes(file));
+  state.testFiles = [...allFiles];
+  for (const field of ['passedFiles', 'failedFiles', 'remainingFiles']) state[field] = (Array.isArray(state[field]) ? state[field] : []).filter(file => allFiles.includes(file));
+  if (added.length) {
+    state.remainingFiles = [...new Set([...state.remainingFiles, ...added])];
+    state.status = 'running'; state.completedAt = null;
   }
   state.passedFiles = Array.isArray(state.passedFiles) ? state.passedFiles : [];
   state.remainingFiles = Array.isArray(state.remainingFiles) ? state.remainingFiles : [];
   state.attempts = Array.isArray(state.attempts) ? state.attempts : [];
   if (!state.animation || typeof state.animation !== 'object'
     || !Array.isArray(state.animation.expectedItems)
-    || state.animation.expectedItems.length !== EXPECTED_ANIMATION_ITEMS.length
-    || state.animation.expectedItems.some((item, index) => item !== EXPECTED_ANIMATION_ITEMS[index])) {
+    ) {
     throw new Error('動畫驗證案例清單已改變；請用 --fresh 開始新一輪，避免沿用不完整的通過結果。');
   }
+  const addedAnimationItems = EXPECTED_ANIMATION_ITEMS.filter(item => !state.animation.expectedItems.includes(item));
+  state.animation.expectedItems = [...EXPECTED_ANIMATION_ITEMS];
   state.animation.passedItems = Array.isArray(state.animation.passedItems) ? state.animation.passedItems : [];
   state.animation.failedCases = Array.isArray(state.animation.failedCases) ? state.animation.failedCases : [];
   state.animation.failedPrerequisites = Array.isArray(state.animation.failedPrerequisites)
     ? state.animation.failedPrerequisites : [];
   state.animation.attempts = Array.isArray(state.animation.attempts) ? state.animation.attempts : [];
-  return state;
+  state.animation.passedItems = state.animation.passedItems.filter(item => EXPECTED_ANIMATION_ITEMS.includes(item));
+  state.animation.failedCases = state.animation.failedCases.filter(item => ANIMATION_CASES.includes(item));
+  state.animation.failedPrerequisites = state.animation.failedPrerequisites.filter(item => ANIMATION_PREREQUISITES.has(item));
+  if (addedAnimationItems.length && state.animation.status !== 'pending') {
+    state.animation.status = 'failed';
+    state.animation.failedCases.push(...addedAnimationItems.filter(item => !ANIMATION_PREREQUISITES.has(item)));
+    state.animation.failedPrerequisites.push(...addedAnimationItems.filter(item => ANIMATION_PREREQUISITES.has(item)));
+  }
+  return reconcileEvidence(state, captureEvidence(root, allFiles));
 }
 
 function prepareTestState(allFiles, { fresh = false, stateFile = TEST_STATE_FILE } = {}) {
   const state = readTestState(allFiles, { fresh, stateFile });
-  if (fresh) writeTestState(state, stateFile);
+  writeTestState(state, stateFile);
   return state;
 }
 

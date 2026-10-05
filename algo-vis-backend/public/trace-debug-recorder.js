@@ -12,6 +12,14 @@
   if (root) root.ASMTraceDebugRecorder = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   const SCHEMA_VERSION = 'asm-animation-debug/v1';
+  const retainedIdentities = new WeakMap();
+  function retainedIdentity(element) {
+    const owner = element?.closest?.('[data-trace-snapshot]');
+    if (owner) retainedIdentities.set(element, `${owner.dataset.traceSnapshot}/${element.dataset.traceObjectKey}`);
+    // Comparison temporarily lifts the same SVG node out of its snapshot.
+    // Track physical identity across reparenting; clones receive no identity.
+    return retainedIdentities.get(element) || '';
+  }
   const SVG_PRIMITIVES = 'rect,circle,ellipse,line,polyline,polygon,path,text';
   const EFFECT_SELECTOR = [
     '.asm-trace-compare-highlight', '.asm-trace-compare-operator',
@@ -125,7 +133,23 @@
     };
   }
 
+  function lodPaintForCell(element) {
+    for (let group = element?.parentElement; group; group = group.parentElement) {
+      const state = group._asmLod;
+      if (state?.level !== 'overview') continue;
+      const item = state.records?.find(record => record.cell === element);
+      if (!item) continue;
+      const geometry = `M${item.x} ${item.y}h${item.width}v${item.height}h${-item.width}Z`;
+      // Check the real batch geometry; a missing/removed path must still fail.
+      return state.paths?.find(path => path.isConnected
+        && path.dataset?.asmLodBatch === 'grid'
+        && path.getAttribute('d')?.includes(geometry)) || null;
+    }
+    return null;
+  }
+
   function objectState(element, index, canvasRect, includeDetails = true) {
+    const keepIdentity = retainedIdentity(element);
     const parent = element?.parentElement?.closest?.('[data-trace-object-key]');
     let computed = null;
     try { computed = root?.getComputedStyle?.(element) || null; } catch {}
@@ -138,11 +162,19 @@
     // Opacity can be applied to an inner motion wrapper, not the selectable
     // outer group. Measure the actual painted label/cell and all its ancestors.
     let effectiveOpacity = 1;
-    const paintNode = label || valueText || element?.querySelector?.(SVG_PRIMITIVES) || element;
+    let intrinsicOpacity = 1;
+    // LOD may remove/hide glyphs while the cell/grid is still painted. Measure
+    // the cell rectangle rather than an offscreen text/index label in that case.
+    const cellPaint = element?.dataset?.traceIndex != null ? element.querySelector?.('rect') : null;
+    const lodPaint = lodPaintForCell(element);
+    const paintNode = label || lodPaint || cellPaint || valueText || element?.querySelector?.(SVG_PRIMITIVES) || element;
+    if (lodPaint && !label) computed = root?.getComputedStyle?.(lodPaint) || computed;
     for (let ancestor = paintNode; ancestor; ancestor = ancestor.parentElement) {
       const style = root?.getComputedStyle?.(ancestor);
       if (style?.display === 'none' || style?.visibility === 'hidden') effectiveOpacity = 0;
       effectiveOpacity *= Number(style?.opacity || 1);
+      intrinsicOpacity *= Number(style?.opacity || 1);
+      if (style?.display === 'none') intrinsicOpacity = 0;
       if (ancestor === canvasElement()) break;
     }
     const state = {
@@ -155,10 +187,12 @@
       bindingTarget: String(element?.dataset?.traceBindingTarget || ''),
       text: textValue(element?.textContent),
       effectiveOpacity: round(effectiveOpacity, 5),
-      retained: Boolean(element?.closest?.('[data-trace-snapshot]'))
+      intrinsicOpacity: round(intrinsicOpacity, 5),
+      viewportCulled: Boolean(element?.closest?.('[data-asm-viewport-culled]')),
+      retained: Boolean(keepIdentity)
         || element?.classList?.contains?.('asm-trace-keep-arrow') === true,
-      retainedKey: element?.closest?.('[data-trace-snapshot]')
-        ? `${element.closest('[data-trace-snapshot]').dataset.traceSnapshot}/${element.dataset.traceObjectKey}`
+      retainedKey: keepIdentity
+        ? keepIdentity
         : element?.classList?.contains?.('asm-trace-keep-arrow') ? String(element.dataset.traceObjectKey) : '',
       markerLabel: label ? rectangle(label, canvasRect) : null,
       displayValue: valueText && valueText.dataset?.traceContentRole !== 'index'
@@ -233,7 +267,8 @@
     const canvas = canvasElement();
     const rect = canvas?.getBoundingClientRect?.();
     const rootElement = canvas?.querySelector?.('#asm-trace-root');
-    const keyed = Array.from(rootElement?.querySelectorAll?.('[data-trace-object-key]') || []);
+    const keyed = Array.from(rootElement?.querySelectorAll?.('[data-trace-object-key]') || [])
+      .filter(element => !element.closest?.('[data-trace-anchor-only="1"]'));
     const occurrences = new Map();
     return {
       size: rect ? { width: round(rect.width), height: round(rect.height) } : null,
@@ -754,6 +789,8 @@
 
   return {
     SCHEMA_VERSION,
+    retainedIdentity,
+    lodPaintForCell,
     start,
     stop,
     mark,

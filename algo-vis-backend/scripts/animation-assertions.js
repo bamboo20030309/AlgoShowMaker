@@ -29,10 +29,20 @@ function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
     const visible = object => object.effectiveOpacity > opacityThreshold
       && object.computed?.display !== 'none' && object.computed?.visibility !== 'hidden';
     const growingRecursion = object => object?.attributes?.['data-trace-recursion-growth'] === '1';
+    const outsideCulledViewport = object => {
+      const rect = object?.screen, viewport = sample.size;
+      if (!object?.viewportCulled || object.intrinsicOpacity < 0.99 || !rect || !viewport) return false;
+      if (![rect.x, rect.y, rect.right, rect.bottom, viewport.width, viewport.height].every(Number.isFinite)) return false;
+      // Match the renderer's 160px observer margin. Keep nodes must remain
+      // present and fully opaque; only deliberate offscreen culling is exempt.
+      return rect.right < -160 || rect.bottom < -160
+        || rect.x > viewport.width + 160 || rect.y > viewport.height + 160;
+    };
     const present = new Map(objects.filter(object => object.retained)
       .map(object => [object.retainedKey || object.key, object]));
     for (const key of retained) {
       const object = present.get(key);
+      if (outsideCulledViewport(object)) continue;
       if (!object || !visible(object) || (!growingRecursion(object) && object.effectiveOpacity < 0.99)) {
         fail(sample, 'keep-visibility', { key, opacity: object?.effectiveOpacity });
       }
@@ -78,13 +88,14 @@ function validate(report, { tolerancePx = 1, opacityThreshold = 0.1 } = {}) {
         for (const mutation of checkpoint.mutations || []) {
           if (mutation.kind !== 'value' || checkpoint.mode === 'ignored') continue;
           const key = mutation.visualKey || mutation.key;
+          const commitMs = Number.isFinite(mutation.commitMs) ? mutation.commitMs : checkpoint.commitMs;
           if (!expected.has(key)) expected.set(key, mutation.before);
           // Swap changes the logical-to-physical permutation, not the text
           // carried by the moving physical cell.
-          if (elapsed >= checkpoint.commitMs + 40 && checkpoint.eventType !== 'swap') {
+          if (elapsed >= commitMs + 40 && checkpoint.eventType !== 'swap') {
             expected.set(key, mutation.after);
           }
-          if (Math.abs(elapsed - checkpoint.commitMs) < 40) expected.delete(key);
+          if (Math.abs(elapsed - commitMs) < 40) expected.delete(key);
         }
       }
       for (const [key, value] of expected) {

@@ -12,26 +12,12 @@ const { randomBytes } = require('node:crypto');
 const { chromium } = require('playwright');
 const { validate } = require('./animation-assertions');
 const root = path.resolve(__dirname, '..');
-const fixture = name => fs.readFileSync(path.join(root, 'tests/fixtures', name + '.cpp'), 'utf8');
+const manifest = require('./validation-manifest');
 
 // -----------------------------------------------------------------------------
 // 固定案例清單與輸入
 // -----------------------------------------------------------------------------
-const cases = [
-  { name: 'arrow-identity', code: fixture('arrow-identity'), input: '' },
-  { name: 'quick-style-swap', code: fixture('quick-style-swap'), input: '6\n5 7 2 1 9 4\n', frameLimit: 5 },
-  { name: 'insertion-style-labels', code: fixture('insertion-style-labels'), input: '6\n1 8 7 2 6 5\n', frameLimit: 6 },
-  { name: 'defaults', code: fixture('defaults'), input: '' },
-  { name: 'style-frame-completion', code: fixture('style-frame-completion'), input: '' },
-  { name: 'recursive-roles', code: fixture('recursive-roles'), input: '' },
-  { name: 'function-call', code: fixture('function-call'), input: '' },
-  { name: 'highlight-swap', code: fixture('highlight-swap'), input: '' },
-  { name: 'bubble', code: fixture('bubble'), input: '4\n4 1 3 2\n' },
-  { name: 'insertion', code: fixture('insertion'), input: '4\n4 1 3 2\n' },
-  { name: 'selection', code: fixture('selection'), input: '4\n4 1 3 2\n' },
-  { name: 'heap', code: fixture('heap'), input: '4\n4 1 3 2\n' },
-  { name: 'quick-recursion', code: fixture('quick-recursion'), input: '4\n4 1 3 2\n' }
-];
+const cases = manifest.animationCases.map(item => ({ ...item, code: fs.readFileSync(path.join(root, item.fixture), 'utf8') }));
 
 // -----------------------------------------------------------------------------
 // 真實 RUN 準備、runtime 執行與報告彙整
@@ -51,8 +37,23 @@ async function buildAnimation(browser, baseURL, item) {
       document.getElementById('inputArea').value = input;
     }, item);
     await page.locator('#runBtn').click();
-    await page.waitForFunction(() => window.ASMTracePlayer?.getDocument?.()?.frames?.length > 1,
+    await page.waitForFunction(() => !document.getElementById('runBtn').classList.contains('loading')
+      && window.ASMTracePlayer?.getDocument?.()?.frames?.length > 1
+      && (ASMTracePlayer.getDocument().sourceCode || '').replace(/\r\n?/g, '\n') === aceEditor.getValue().replace(/\r\n?/g, '\n'),
       null, { timeout: 60000 });
+    if (item.expectedOutput !== undefined) {
+      const actual = await page.locator('#outputArea').textContent();
+      if (actual.trim().replace(/\s+/g, ' ') !== item.expectedOutput) throw new Error(`演算法最終輸出不符：${actual}`);
+    }
+    if (item.expectedState) {
+      const values = await page.evaluate(({variable}) => {
+        const trace = ASMTracePlayer.getDocument();
+        const ids = Object.keys(trace.variables).filter(id => trace.variables[id].name === variable);
+        const value = trace.frames.slice().reverse().flatMap(frame => ids.map(id => frame.state[id]?.data || frame.state[id])).find(value => value?.items);
+        return value?.items.map(item => Number(item.value ?? item));
+      }, item.expectedState);
+      if (JSON.stringify(values) !== JSON.stringify(item.expectedState.items)) throw new Error(`最終陣列不符：${JSON.stringify(values)}`);
+    }
     const animation = await page.evaluate(() => ({ ...window.ASMTraceEditor.snapshot(),
       code: aceEditor.getValue(), input: document.getElementById('inputArea').value }));
     if (errors.length) throw new Error(`RUN 準備發生 console 錯誤：${errors.join(' | ')}`);
@@ -63,11 +64,7 @@ async function buildAnimation(browser, baseURL, item) {
 }
 
 async function runAnimationBrowser(baseURL) {
-  const prerequisites = [
-    { label: 'cloud-storage-browser', run: require('./cloud-storage-browser').runCloudStorageBrowser },
-    { label: 'slide-order-toggle', run: require('./slide-order-browser').runSlideOrderBrowser },
-    { label: 'deck-import-repair', run: require('./deck-import-browser').runDeckImportBrowser }
-  ];
+  const prerequisites = manifest.prerequisites.map(item => ({ label: item.label, run: require(item.module)[item.entry] }));
   function selectRequested(items, key, environmentName) {
     const raw = process.env[environmentName];
     if (raw === undefined) return items;
@@ -116,7 +113,7 @@ async function runAnimationBrowser(baseURL) {
         const label = `${item.name}-setup`;
         failures.push(label);
         results.push({ label, pass: false, error: error.message });
-        console.error(`FAIL ${label}: ${error.message}`);
+        console.error(`FAIL ${label}: ${error.stack || error.message}`);
         continue;
       }
       preparedCases.push({ item, animation });
@@ -445,15 +442,19 @@ async function runAnimationBrowser(baseURL) {
               return result;
             };
           });
+          if (item.playbackRate) await target.evaluate(rate => { window.asmGetAnimationPlaybackRate = () => rate; }, item.playbackRate);
           let recordingTimeout;
           const report = await Promise.race([
-            target.evaluate(async label => {
+            target.evaluate(async ({ label, includePrimitives }) => {
               return window.ASMTraceDebugRecorder.recordAllFrames({ label, sampleIntervalMs: 16,
-                maxSamples: 30000, includeTraceDocument: false });
-            }, label),
+                maxSamples: 30000, includeTraceDocument: false, includePrimitives });
+            }, { label, includePrimitives: !item.name.startsWith('queens-') }),
             new Promise((_, reject) => { recordingTimeout = setTimeout(() => reject(
               new Error('動畫播放超過 180 秒，可能有未完成的等待或排程')), 180000); })
           ]).finally(() => clearTimeout(recordingTimeout));
+          if (!report || !Array.isArray(report.samples)) {
+            throw new Error('動畫錄製資料無法完整序列化；請保留失敗紀錄並縮小代表輸入／錄製範圍');
+          }
           const verdict = validate(report);
           if (item.name === 'arrow-identity') {
             const checks = await target.evaluate(() => window.__arrowChecks);
@@ -552,7 +553,7 @@ async function runAnimationBrowser(baseURL) {
               samples: index < 0 ? [] : report.samples.slice(Math.max(0, index - 3), index + 4)
             }, null, 2));
           }
-          await page.screenshot({ path: path.join(output, label + '.png') });
+          await page.screenshot({ path: path.join(output, label + '.png'), animations: 'disabled', caret: 'hide' });
           results.push({ label, pass: verdict.pass, sampleCount: report.samples.length,
             firstViolation: verdict.firstViolation || verdict.violations[0] || null });
           if (!verdict.pass) failures.push(label);
@@ -560,8 +561,8 @@ async function runAnimationBrowser(baseURL) {
         } catch (error) {
           failures.push(label);
           results.push({ label, pass: false, error: error.message });
-          await page?.screenshot({ path: path.join(output, label + '.png') }).catch(() => {});
-          console.error(`FAIL ${label}: ${error.message}`);
+          await page?.screenshot({ path: path.join(output, label + '.png'), animations: 'disabled', caret: 'hide' }).catch(() => {});
+          console.error(`FAIL ${label}: ${error.stack || error.message}`);
         } finally {
           await context?.close().catch(error => console.error(`關閉 ${label} context 失敗：${error.message}`));
         }

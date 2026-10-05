@@ -47,24 +47,37 @@ test('test cycle selects all, then only failed and remaining files, and fresh re
   });
 });
 
-test('test cycle rejects a changed file inventory until a fresh cycle starts', () => {
+test('adding a test schedules the new file without discarding unchanged passing files', () => {
   withTemporaryState(stateFile => {
     const files = ['tests/a.test.js'];
-    writeTestState(readTestState(files, { fresh: true, stateFile }), stateFile);
-    assert.throws(
-      () => readTestState([...files, 'tests/b.test.js'], { stateFile }),
-      /--fresh/
-    );
+    const state = readTestState(files, { fresh: true, stateFile });
+    recordFileResult(state, files[0], true); state.status = 'complete';
+    writeTestState(state, stateFile);
+    const resumed = readTestState([...files, 'tests/b.test.js'], { stateFile });
+    assert.deepEqual(resumed.passedFiles, files);
+    assert.deepEqual(filesForAttempt(resumed), ['tests/b.test.js']);
   });
 });
 
-test('test cycle rejects a changed animation inventory until a fresh cycle starts', () => {
+test('new animation inventory is pending while malformed inventory still fails clearly', () => {
   withTemporaryState(stateFile => {
     const files = ['tests/a.test.js'];
     const state = readTestState(files, { fresh: true, stateFile });
     state.animation.expectedItems.pop();
     writeTestState(state, stateFile);
-    assert.throws(() => readTestState(files, { stateFile }), /動畫驗證案例清單已改變.*--fresh/);
+    const resumed = readTestState(files, { stateFile });
+    assert.ok(resumed.animation.expectedItems.length > state.animation.expectedItems.length);
+    for (const status of ['complete', 'failed']) {
+      const previous = readTestState(files, { fresh: true, stateFile });
+      const added = previous.animation.expectedItems.pop();
+      previous.animation.status = status;
+      previous.animation.passedItems = [...previous.animation.expectedItems];
+      writeTestState(previous, stateFile);
+      const updated = readTestState(files, { stateFile });
+      assert.equal(updated.animation.status, 'failed');
+      assert.ok(updated.animation.failedCases.includes(added));
+      assert.deepEqual(updated.animation.passedItems, previous.animation.passedItems);
+    }
     assert.doesNotThrow(() => readTestState(files, { fresh: true, stateFile }));
     const missing = readTestState(files, { fresh: true, stateFile });
     delete missing.animation.expectedItems;

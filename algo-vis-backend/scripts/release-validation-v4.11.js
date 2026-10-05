@@ -13,6 +13,7 @@ const net = require('node:net');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
+const { captureEvidence, reconcileEvidence } = require('./validation-evidence');
 const resultsDir = path.join(root, 'test-results');
 const stateFile = path.join(resultsDir, 'release-v4.11-state.json');
 const definition = 'v4.11-performance-rc1';
@@ -67,6 +68,7 @@ function writeState(state) {
 
 function newState() {
   return {
+    evidence: captureEvidence(root, testFiles, { animation: false }),
     definition,
     status: 'running',
     startedAt: new Date().toISOString(),
@@ -85,7 +87,7 @@ function readState() {
     || JSON.stringify(state.testFiles) !== JSON.stringify(testFiles)) {
     throw new Error('v4.11 驗證集定義已改變，請使用 npm run validate:release-v4.11:fresh。');
   }
-  return state;
+  return reconcileEvidence(state, captureEvidence(root, testFiles, { animation: false }));
 }
 
 function countTests(output) {
@@ -127,7 +129,7 @@ async function main() {
   if (whitespace.status !== 0) throw new Error('git diff --check 失敗。');
 
   const state = readState();
-  if (fresh || !fs.existsSync(stateFile)) writeState(state);
+  writeState(state);
   const pending = testFiles.filter(file => !state.passedFiles.includes(file));
   if (!pending.length) {
     console.log(`v4.11 增量驗證已完成；沿用 ${state.passedFiles.length} 個通過檔案。`);

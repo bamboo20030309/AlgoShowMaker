@@ -18,6 +18,15 @@
     return `${provenance?.ENGINE_VERSION}/${provenance?.FORMAT_VERSION}`;
   }
 
+  // Saved snapshots remain playable when only the producer engine has advanced.
+  // Keep format/schema and source checks strict; never accept future producers.
+  function compatibleEngineVersion(version) {
+    if (!/^\d+\/\d+$/.test(String(version))) return false;
+    const [engine, format] = version.split('/').map(Number);
+    const [current, currentFormat] = currentEngineVersion().split('/').map(Number);
+    return engine >= 1 && engine <= current && format === currentFormat;
+  }
+
   async function ungzip(bytes) {
     if (!root.DecompressionStream) throw new Error('此瀏覽器不支援預建動畫解壓縮。');
     const stream = new Blob([bytes]).stream().pipeThrough(new root.DecompressionStream('gzip'));
@@ -37,7 +46,13 @@
       payload.animation.code,
       payload.animation.input || ''
     );
-    if (status?.kind !== 'current') throw new Error(`預建動畫 ${expectedKind} 與程式碼版本不一致。`);
+    const saved = trace?.provenance;
+    const expected = root.ASMTraceProvenance?.create?.(payload.animation.code, payload.animation.input || '');
+    const reusableOlder = trace?.schemaVersion === '1.0' && saved && expected
+      && compatibleEngineVersion(`${saved.engineVersion}/${saved.formatVersion}`)
+      && saved.sourceFingerprint === expected.sourceFingerprint
+      && saved.inputFingerprint === expected.inputFingerprint;
+    if (status?.kind !== 'current' && !reusableOlder) throw new Error(`預建動畫 ${expectedKind} 與程式碼版本不一致。`);
     if (descriptor && !descriptor.contentHash) throw new Error('預建動畫缺少內容雜湊。');
     return payload;
   }
@@ -67,7 +82,7 @@
   }
 
   async function cacheGet(manifest) {
-    if (manifest.engineVersion !== currentEngineVersion()) return null;
+    if (!compatibleEngineVersion(manifest.engineVersion)) return null;
     let database;
     try {
       database = await openCache();
@@ -111,12 +126,12 @@
 
   function validateManifest(manifest) {
     if (manifest?.format !== FORMAT || manifest.packageVersion !== PACKAGE_VERSION
-      || manifest.engineVersion !== currentEngineVersion() || !Number.isInteger(manifest.totalFrames)
+      || !compatibleEngineVersion(manifest.engineVersion) || !Number.isInteger(manifest.totalFrames)
       || manifest.totalFrames < 1 || !manifest.preview?.url || !manifest.full?.url) {
       throw new Error('預設動畫清單與目前引擎不相容。');
     }
     return manifest;
   }
 
-  return { decode, cacheGet, cachePut, validateManifest, currentEngineVersion, FORMAT, PACKAGE_VERSION, MAGIC };
+  return { decode, cacheGet, cachePut, validateManifest, currentEngineVersion, compatibleEngineVersion, FORMAT, PACKAGE_VERSION, MAGIC };
 });

@@ -8,7 +8,34 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+
+test('retained physical identity survives temporary lift but is never inherited by a clone', () => {
+  const { retainedIdentity } = require('../public/trace-debug-recorder');
+  const owner = { dataset: { traceSnapshot: 'keep-1' } };
+  let parent = owner;
+  const node = { dataset: { traceObjectKey: 'cell' }, closest: () => parent };
+  assert.equal(retainedIdentity(node), 'keep-1/cell');
+  parent = null;
+  assert.equal(retainedIdentity(node), 'keep-1/cell');
+  const clone = { dataset: { ...node.dataset }, closest: () => null };
+  assert.equal(retainedIdentity(clone), '');
+});
 const recorder = require('../public/trace-debug-recorder');
+
+test('overview cells measure their actual grid path and reject missing geometry', () => {
+  const path = { isConnected: true, dataset: { asmLodBatch: 'grid' }, getAttribute: () => 'M0 0h40v40h-40Z' };
+  const group = { _asmLod: { level: 'overview', records: [], paths: [path] } };
+  const cell = { parentElement: group };
+  group._asmLod.records.push({ cell, x: 0, y: 0, width: 40, height: 40 });
+  assert.equal(recorder.lodPaintForCell(cell), path);
+  path.isConnected = false;
+  assert.equal(recorder.lodPaintForCell(cell), null);
+  path.isConnected = true;
+  path.getAttribute = () => 'M40 0h40v40h-40Z';
+  assert.equal(recorder.lodPaintForCell(cell), null);
+  group._asmLod.level = 'full';
+  assert.equal(recorder.lodPaintForCell(cell), null);
+});
 
 function report({
   timeOffset = 0, xOffset = 0, eventType = 'assign', replayAfter = 1

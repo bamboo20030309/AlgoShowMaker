@@ -9,6 +9,69 @@ const { randomBytes } = require('node:crypto');
 const net = require('node:net');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { startIsolatedServer } = require('./helpers/isolated-server');
+
+test('older default traces with missing optional settings load, play, cache and reopen without overriding explicit values', { timeout: 60000 }, async t => {
+  const fs = require('node:fs'), { gunzipSync, gzipSync } = require('node:zlib'), { createHash } = require('node:crypto');
+  const { base } = await startIsolatedServer(t);
+  const publicRoot = path.resolve(__dirname, '../public');
+  const manifest = JSON.parse(fs.readFileSync(path.join(publicRoot, 'default-animation/manifest.json')));
+  const version = `${require('../public/trace-provenance').ENGINE_VERSION - 1}/1`;
+  const assets = {};
+  manifest.engineVersion = version;
+  for (const kind of ['preview','full']) {
+    const descriptor = manifest[kind];
+    const bytes = fs.readFileSync(path.join(publicRoot, descriptor.url));
+    const payload = JSON.parse(gunzipSync(bytes.subarray(10)));
+    payload.engineVersion = version;
+    payload.animation.traceDocument.provenance.engineVersion -= 1;
+    delete payload.animation.traceDocument.studio.eventInstructionStates;
+    Object.assign(payload.animation.traceDocument.studio.eventSettings, { autoFixedEnabled: false, gapMs: 333 });
+    const json = JSON.stringify(payload);
+    assets[descriptor.url] = Buffer.concat([Buffer.from('ASMTRACE1\n'), gzipSync(json)]);
+    Object.assign(descriptor, { bytes: assets[descriptor.url].length, contentHash: createHash('sha256').update(json).digest('hex') });
+  }
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  t.after(() => browser.close());
+  const page = await browser.newPage(), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/default-animation/manifest.json', route => route.fulfill({ json: manifest }));
+  await page.route(/\/default-animation\/linear-sieve-(preview|full)\.asmtrace/, route => route.fulfill({ body: assets[new URL(route.request().url()).pathname] }));
+  await page.route(/\/(compile|trace\/analyze|api\/compile\/jobs)$/, route => { errors.push('unexpected compiler request'); return route.abort(); });
+  await page.goto(`${base}/algorithm.html`);
+  await page.waitForFunction(() => document.body.dataset.defaultAnimationCache === 'stored');
+  await page.locator('#nextBtn').click();
+  await page.waitForFunction(() => ASMTracePlayer.getCurrentFrame() > 0);
+  const settings = () => page.evaluate(() => ({ fixed: ASMTracePlayer.getDocument().studio.eventSettings.autoFixedEnabled,
+    gap: ASMTracePlayer.getDocument().studio.eventSettings.gapMs }));
+  assert.deepEqual(await settings(), { fixed: false, gap: 333 });
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.defaultAnimationSource === 'indexeddb');
+  assert.deepEqual(await settings(), { fixed: false, gap: 333 });
+  assert.deepEqual(errors, []);
+});
+
+test('editing while preview/full downloads are pending cancels both without unhandled rejections', { timeout: 60000 }, async t => {
+  const { base } = await startIsolatedServer(t);
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  t.after(() => browser.close());
+  const page = await browser.newPage(), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  const requested = new Set();
+  await page.route(/\/default-animation\/linear-sieve-(preview|full)\.asmtrace/, async route => {
+    requested.add(route.request().url().includes('-preview') ? 'preview' : 'full');
+    await gate; await route.continue().catch(() => {});
+  });
+  await page.goto(`${base}/algorithm.html`, { waitUntil: 'domcontentloaded' });
+  for (let i = 0; i < 100 && requested.size < 2; i++) await page.waitForTimeout(20);
+  assert.equal(requested.size, 2, 'both parallel asset downloads really started');
+  await page.evaluate(() => aceEditor.setValue('int main(){return 42;}', -1));
+  release(); await page.waitForTimeout(250);
+  assert.equal(await page.evaluate(() => aceEditor.getValue()), 'int main(){return 42;}');
+  assert.deepEqual(errors, []);
+});
 
 test('algorithm workspace paints a preview, loads the standalone trace, then reuses IndexedDB', { timeout: 120000 }, async () => {
   const root = path.resolve(__dirname, '..');
