@@ -5784,6 +5784,25 @@
     return ['original-array', 'original-matrix'].includes(String(rendererName || ''));
   }
 
+  function snapshotAppearanceSignature(document, frame, snapshot) {
+    const key = snapshotObjectKey(snapshot);
+    const related = values => Object.entries(values || {}).filter(([candidate]) => (
+      candidate === key || candidate.startsWith(`${key}#`) || candidate.startsWith(`${key}:`)
+    )).sort(([a], [b]) => a.localeCompare(b));
+    const sourceFrame = snapshot.styleFrame
+      || document.frames?.find(item => item.id === snapshot.sourceFrameId);
+    return JSON.stringify([
+      snapshot, document.variables?.[snapshot.sourceVariableId],
+      document.skins?.[snapshot.sourceVariableId],
+      sourceFrame?.state, sourceFrame?.styles,
+      related(document.studio?.objectStyles?.[frame.id]),
+      related(document.studio?.visibility?.[frame.id]),
+      related(document.studio?.positions?.[frame.id]),
+      related(document.studio?.bindings?.[frame.id]),
+      (document.layouts || []).find(layout => layout.id === snapshot.layoutId)
+    ]);
+  }
+
   function renderSnapshots(root, document, frame, startY, placements, elements, options = {}, keepNodes = []) {
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
     const layoutTypes = new Map((document.layouts || []).map(layout => [layout.id, layout.type]));
@@ -5792,13 +5811,34 @@
     );
     const visibilityStates = document.studio?.visibility?.[frame.id] || {};
     const editingVisibility = window.document.body.classList.contains('asm-trace-studio-open');
+    // Registration is frame-local even when the painted DOM is cached. Both
+    // paths must contribute the same descendants, geometry and keep endpoints.
+    const registerObjectSnapshot = (snapshot, object, motion, box, contentBox, baseX, baseY) => {
+      const objectKey = snapshotObjectKey(snapshot);
+      placements.set(objectKey, { x: baseX + box.x, y: baseY + box.y, width: box.width, height: box.height });
+      elements.set(objectKey, object);
+      collectElementPlacements(motion, baseX, baseY, placements, elements);
+      if (usesAutomaticKeepArrows(snapshot)) keepNodes.push({
+        snapshotId: objectKey,
+        variableId: snapshot.sourceVariableId,
+        runtimeIdentity: snapshotRuntimeIdentity(document, snapshot),
+        sourceElement: object,
+        relative: {
+          x: contentBox.x - box.x, y: contentBox.y - box.y,
+          width: contentBox.width, height: contentBox.height
+        }
+      });
+    };
     let y = startY;
     (frame.snapshotIds || []).forEach(snapshotId => {
       const snapshot = snapshotsById.get(snapshotId);
       const objectKey = snapshotObjectKey(snapshot);
       const visibility = visibilityStates[objectKey] || visibilityStates[snapshotId];
       if (!snapshot || !objectKey || (!editingVisibility && visibility === 'hidden')) return;
-      const reusable = options.reusableSnapshots?.get?.(snapshotId) || null;
+      const signature = snapshot.kind === 'frame' ? '' : snapshotAppearanceSignature(document, frame, snapshot);
+      const candidate = options.reusableSnapshots?.get?.(snapshotId) || null;
+      const reusable = candidate?._asmSnapshotAppearance === signature && candidate?._asmSnapshotGeometry
+        ? candidate : null;
       if (reusable) {
         const position = snapshotStudioPosition(document, frame, snapshot);
         const baseX = position.x;
@@ -5812,14 +5852,9 @@
         reusable.dataset.traceIncrementalReuse = '1';
         root.append(reusable);
         const content = reusable.querySelector(':scope > .asm-trace-motion') || reusable;
-        const box = measuredBox(reusable, { x: 0, y: -20, width: 180, height: 76 });
-        placements.set(objectKey, {
-          x: baseX + box.x, y: baseY + box.y,
-          width: box.width, height: box.height
-        });
-        elements.set(objectKey, reusable);
-        collectElementPlacements(content, baseX, baseY, placements, elements);
-        if (!snapshot.layoutId) y += Math.max(76, box.height) + KEEP_SNAPSHOT_GAP;
+        const { box, contentBox, height } = reusable._asmSnapshotGeometry;
+        registerObjectSnapshot(snapshot, reusable, content, box, contentBox, baseX, baseY);
+        if (!snapshot.layoutId) y += Math.max(76, height) + KEEP_SNAPSHOT_GAP;
         return;
       }
       if (snapshot.kind === 'frame' && snapshot.frame) {
@@ -5903,12 +5938,21 @@
       }
       const sourceVariable = document.variables?.[snapshot.sourceVariableId] || {};
       const variable = { ...sourceVariable, id: objectKey, name: snapshot.label || sourceVariable.name || 'Snapshot' };
-      // Only recursion nodes track the live activation. Linear keeps are
-      // frozen copies: absent activation IDs must not make every copy active.
-      const activeSnapshot = layoutTypes.get(snapshot.layoutId) === 'recursion'
-        && (frame.source?.systemBranchPreview
-          ? frame.source.previewSnapshotId === snapshot.id
-          : String(frame.source?.recursionActivationId || '') === String(snapshot.recursionActivationId || ''));
+      const recursionSnapshot = layoutTypes.get(snapshot.layoutId) === 'recursion';
+      const activationId = String(frame.source?.recursionActivationId || '');
+      // Only a recursion layout has a live retained node. Linear keeps are
+      // immutable history even when all captures share one function activation.
+      // An absent activation must never match another absent activation either.
+      const currentNodeId = recursionSnapshot && activationId
+        ? [...(frame.snapshotIds || [])].reverse().find(id => {
+          const candidate = snapshotsById.get(id);
+          return candidate?.layoutId === snapshot.layoutId
+            && candidate.sourceVariableId === snapshot.sourceVariableId
+            && String(candidate.recursionActivationId || '') === activationId;
+        }) : '';
+      const activeSnapshot = recursionSnapshot && (frame.source?.systemBranchPreview
+        ? frame.source.previewSnapshotId === snapshot.id
+        : Boolean(activationId) && snapshot.id === currentNodeId);
       const frameLayoutId = frame.source?.layoutIds?.[snapshot.sourceVariableId]
         || (frame.source?.primaryVariableId === snapshot.sourceVariableId ? frame.source?.layoutId : '');
       const activeFrameObject = activeSnapshot
@@ -6026,23 +6070,13 @@
         width: contentBox.width,
         height: Math.max(76, Number(height) || 76, contentBox.height)
       });
-      placements.set(objectKey, { x: baseX + box.x, y: baseY + box.y, width: box.width, height: box.height });
-      elements.set(objectKey, object);
-      collectElementPlacements(motion, baseX, baseY, placements, elements);
-      if (usesAutomaticKeepArrows(snapshot)) {
-        keepNodes.push({
-          snapshotId: objectKey,
-          variableId: snapshot.sourceVariableId,
-          runtimeIdentity: snapshotRuntimeIdentity(document, snapshot),
-          sourceElement: object,
-          relative: {
-            x: contentBox.x - box.x,
-            y: contentBox.y - box.y,
-            width: contentBox.width,
-            height: contentBox.height
-          }
-        });
-      }
+      object._asmSnapshotAppearance = signature;
+      object._asmSnapshotGeometry = {
+        box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        contentBox: { x: contentBox.x, y: contentBox.y, width: contentBox.width, height: contentBox.height },
+        height: Number(height) || 76
+      };
+      registerObjectSnapshot(snapshot, object, motion, box, contentBox, baseX, baseY);
       if (!snapshot.layoutId) y += Math.max(76, Number(height) || 76) + KEEP_SNAPSHOT_GAP;
     });
     return y;
@@ -6912,9 +6946,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-265';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-266';
   window.ASMTraceRenderers = {
-    build: 'trace-265', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-266', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
