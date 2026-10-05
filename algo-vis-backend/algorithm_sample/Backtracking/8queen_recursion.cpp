@@ -130,7 +130,7 @@ void dfs(int n, int L, int M, int R) {
     // @keep board as "Q" in queen_tree use queen_board_base_view
     // @frame use current_masks, queen_scene_view
     // @let directions = 0
-    // @text "{dfs(${n})}：已放置 ${n} 個皇后，嘗試在第 ${n} 列放置下一個皇后" at chess_board.top when n < N
+    // @text "dfs(${n})：已放置 ${n} 個皇后，嘗試在第 ${n} 列放置下一個皇后" at chess_board.top when n < N
     // @text "已放置 N 個互不攻擊的皇后，找到一組解" at chess_board.top when n == N
 
     if (n == N) {
@@ -142,7 +142,11 @@ void dfs(int n, int L, int M, int R) {
     int P = ((1 << N) - 1) & ~(L | M | R);
     // @frame use p_masks, queen_scene_view, union_view, p_board_view
     // @let directions = 3
-    // @text "{L | M | R: 目前} 的 1 表示受攻擊、不能放皇后。\n取反後，未受攻擊的位置變成 1，成為可選位置；\n再與 {(1 << N) - 1:一轉轉N檢一} 做 {AND:且運算}，只保留棋盤的 N 個位元。" at chess_board.top
+    // @text "L | M | R 的 1 表示受攻擊、不能放皇后。\n取反後，未受攻擊的位置變成 1，成為可選位置；\n再與 (1 << N) - 1 做 AND，只保留棋盤的 N 個位元。" at chess_board.top
+
+    // @frame use p_masks, queen_scene_view, union_view, p_board_view when P == 0
+    // @let directions = 3
+    // @text "第 ${n} 列沒有可放皇后的位置，這個分支無法完成。\n返回上一列，嘗試其他欄位。" at chess_board.top
 
     while (P > 0) {
         int p = P & -P;
@@ -155,34 +159,34 @@ void dfs(int n, int L, int M, int R) {
         // @frame use p_masks, queen_scene_view, union_view, p_board_view, lowbit_view
         // @let directions = 3
         // @style board[n][selected_column] highlight
-        // @text "透過 {p = P & -P:p等於P且負P}：取出最右側的 1，選擇第 ${selected_column} 欄\n利用 {P ^= p:P X OR 等於 p}：移除這個最小的 1 的位置，之後再嘗試其他位置" at chess_board.top
+        // @text "p = P & -P：取出最右側的 1，選擇第 ${selected_column} 欄\nP ^= p：移除這個候選位置，之後再嘗試其他位置" at chess_board.top
 
         int nextL = L | p;
         // @frame use nextL_masks, queen_scene_view, lowbit_view
         // @style board[n][selected_column] highlight
-        // @text "{nextL = L | p:下一個L 等於 目前的L先 或 p後}：把新皇后的位置加入左斜線攻擊遮罩" at chess_board.top
+        // @text "nextL = L | p：把新皇后的位置加入左斜線攻擊遮罩" at chess_board.top
         nextL <<= 1;
         // @frame use nextL_masks, queen_scene_view, lowbit_view
         // @style board[n][selected_column] highlight
-        // @text "{nextL <<= 1:再左移一個位元}：因為進入下一列時，左斜線攻擊位置會往左移一欄" at chess_board.top
+        // @text "nextL <<= 1：進入下一列時，左斜線攻擊位置往左移一欄" at chess_board.top
 
         int nextM = M | p;
         // @frame use nextM_masks, queen_scene_view, lowbit_view
         // @style board[n][selected_column] highlight
-        // @text "{nextM = M | p:下一個M 等於 目前的M 或 p}：新皇后封鎖這一排，下一輪這排就不能再放了" at chess_board.top
+        // @text "nextM = M | p：新皇后封鎖同一欄，下一列仍不能放在這一欄" at chess_board.top
 
         int nextR = R | p;
         // @frame use nextR_masks, queen_scene_view, lowbit_view
         // @style board[n][selected_column] highlight
-        // @text "{nextR = R | p:下一個R 等於 目前的R先 或 p後}：把新皇后的位置加入右斜線攻擊遮罩" at chess_board.top
+        // @text "nextR = R | p：把新皇后的位置加入右斜線攻擊遮罩" at chess_board.top
         nextR >>= 1;
         // @frame use nextR_masks, queen_scene_view, lowbit_view
         // @style board[n][selected_column] highlight
-        // @text "{nextR >>= 1:再右移一個位元}：因為進入下一列時，右斜線攻擊位置會往右移一欄" at chess_board.top
+        // @text "nextR >>= 1：進入下一列時，右斜線攻擊位置往右移一欄" at chess_board.top
 
         // @frame use nextR_merged_masks, queen_scene_view
         // @style board[n][selected_column] highlight
-        // @text "把 {nextL、nextM、nextR:新的下一列的攻擊範圍} 傳入 {dfs(n + 1):遞迴}，\n繼續搜尋下一列可放皇后的位置" at chess_board.top
+        // @text "把 nextL、nextM、nextR 傳入 dfs(n + 1)，\n繼續搜尋下一列可放皇后的位置" at chess_board.top
 
         dfs(n + 1, nextL, nextM, nextR);
         board[n] = 0;
