@@ -33,4 +33,4 @@ viewport culling 專項修正其測試準備流程：先等待預設動畫完成
 
 八皇后陣列最後失敗項修正後通過（987 樣本）：test-results/animation/2026-10-05T17-45-56-556Z-1708d4c7。位元版通過（288 樣本）：2026-10-05T17-33-48-339Z-5ce49b68。Merge Sort 兩種、BIT、Segment Tree、LCS 與箭頭／函式代表通過紀錄：2026-10-05T17-17-42-498Z-a65ac990。
 
-最終提交與 3100 HTTP 檢查由本輪完成步驟核對。
+實作提交 a8a74cb 已推送 origin/intergration。只停止已核實的 3100 整合服務（原 PID 22968），從 intergration/algo-vis-backend 重啟；algorithm.html HTTP 200，實際提供的 trace-debug-recorder.js 內容與此 worktree 一致。main／其他代理服務未操作。
