@@ -19,6 +19,8 @@ vector<vector<int>> board;
 void dfs(int row, vector<int> L, vector<int> M, vector<int> R) {
     // @keep board as "Q" in array_tree use array_scene
     // @frame use array_scene
+    // @style board[row][0:N-1] background AV_green when !(L[column] || M[column] || R[column])
+    // @style board[row][0:N-1] background AV_red when L[column] || M[column] || R[column]
     // @text "第 ${row} 列：只嘗試尚未受到攻擊的欄位" at board.top when row < N
     // @text "每一列都已放置皇后，找到一組解" at board.top when row == N
     if(row==N) { ans++; return; }
@@ -52,6 +54,8 @@ void dfs(int row, vector<int> L, vector<int> M, vector<int> R) {
         // @place nextM.top-left at M.top-right offset(30,0)
         // @place nextR.top-left at R.top-right offset(30,0)
         // @style nextL, nextM, nextR background AV_red when value == 1
+        // @style board[row+1][0:N-1] background AV_green when !(nextL[column] || nextM[column] || nextR[column])
+        // @style board[row+1][0:N-1] background AV_red when nextL[column] || nextM[column] || nextR[column]
         // @style board[row][col] highlight
         // @text "放置皇后後，逐格計算下一列的攻擊狀態" at board.top
         dfs(row+1,nextL,nextM,nextR);

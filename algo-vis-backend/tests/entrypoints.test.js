@@ -46,8 +46,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-code-model.js?v=code-38'));
   assert.ok(html.includes('trace-events.js?v=trace-63'));
   assert.ok(html.includes('trace-pointer-model.js?v=pointer-4'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-293'));
-  assert.ok(html.includes('trace-renderer.js?v=trace-263'));
+  assert.ok(html.includes('trace-frame-tween.js?v=trace-295'));
+  assert.ok(html.includes('trace-renderer.js?v=trace-264'));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-9'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
