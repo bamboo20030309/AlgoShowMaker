@@ -5903,9 +5903,12 @@
       }
       const sourceVariable = document.variables?.[snapshot.sourceVariableId] || {};
       const variable = { ...sourceVariable, id: objectKey, name: snapshot.label || sourceVariable.name || 'Snapshot' };
-      const activeSnapshot = frame.source?.systemBranchPreview
-        ? frame.source.previewSnapshotId === snapshot.id
-        : String(frame.source?.recursionActivationId || '') === String(snapshot.recursionActivationId || '');
+      // Only recursion nodes track the live activation. Linear keeps are
+      // frozen copies: absent activation IDs must not make every copy active.
+      const activeSnapshot = layoutTypes.get(snapshot.layoutId) === 'recursion'
+        && (frame.source?.systemBranchPreview
+          ? frame.source.previewSnapshotId === snapshot.id
+          : String(frame.source?.recursionActivationId || '') === String(snapshot.recursionActivationId || ''));
       const frameLayoutId = frame.source?.layoutIds?.[snapshot.sourceVariableId]
         || (frame.source?.primaryVariableId === snapshot.sourceVariableId ? frame.source?.layoutId : '');
       const activeFrameObject = activeSnapshot
@@ -6909,9 +6912,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-264';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-265';
   window.ASMTraceRenderers = {
-    build: 'trace-264', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-265', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
