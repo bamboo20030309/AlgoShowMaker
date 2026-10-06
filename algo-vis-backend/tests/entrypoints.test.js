@@ -126,7 +126,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
   assert.ok(html.includes('trace-studio.js?v=trace-138'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
-  assert.ok(html.includes('front.js?v=random-id-49'));
+  assert.ok(html.includes('front.js?v=random-id-50'));
   assert.ok(html.includes('slides-embed.js?v=trace-13'));
   assert.ok(html.indexOf('runtime-local-editor.js?') > html.indexOf('trace-editor.js?'));
   assert.ok(html.indexOf('runtime-local-editor.js?') < html.indexOf('slides-embed.js?'));

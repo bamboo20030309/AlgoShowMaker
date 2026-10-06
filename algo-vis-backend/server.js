@@ -37,6 +37,7 @@ const {
   loadJwtSecret
 } = require('./jwt-config');
 const {
+  normalizeSource,
   buildSyntaxTree,
   instrumentSource
 } = require('./trace-instrumenter');
@@ -740,9 +741,10 @@ app.delete('/api/compile/jobs/:jobId', attachCompileOwner, (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, async (req, res) => {
-  const code = req.body?.code;
+  let code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  code = normalizeSource(code);
   const cacheKey = createHash('sha256').update(code).digest('base64url');
   const cached = getCachedTraceAnalysis(cacheKey);
   if (cached) {
@@ -765,9 +767,10 @@ app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter,
 });
 
 app.post('/syntax-tree', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, (req, res) => {
-  const code = req.body?.code;
+  let code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  code = normalizeSource(code);
   try {
     res.json({ success: true, ...buildSyntaxTree(code) });
   } catch (error) {
@@ -2710,7 +2713,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     compileWorkCompleted = true;
     req.emit('asm:compile-work-complete');
   };
-  const { code, input, trace } = req.body || {};
+  let { code, input, trace } = req.body || {};
   let traceEnabled = trace?.enabled === true;
 
   if (typeof code !== 'string') {
@@ -2744,6 +2747,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     });
   }
 
+  code = normalizeSource(code);
   let sourceCode = code;
   let traceVariables = [];
   let traceFrameDirectives = [];
