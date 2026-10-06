@@ -106,5 +106,3 @@ test('editing scaled old text preserves its transforms and styles', { timeout: 6
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-
-

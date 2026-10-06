@@ -81,5 +81,3 @@ test('refresh restores horizontal/vertical position by slide ID without changing
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-
-

@@ -81,4 +81,3 @@ test('plain text pastes directly into a selected structure cell and preserves di
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-

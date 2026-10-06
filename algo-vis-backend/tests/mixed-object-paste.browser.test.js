@@ -221,5 +221,3 @@ for (const [plainOnly, tableVariant] of [[false,false], [true,false], [false,tru
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-
-

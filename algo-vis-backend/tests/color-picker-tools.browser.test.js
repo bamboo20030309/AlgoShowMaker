@@ -9,7 +9,7 @@ test('algorithm drawing and GUI tools share remembered colors without changing c
     for(let i=0;i<150;i++){try{if((await fetch(base)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
     browser=await chromium.launch({headless:true,channel:'msedge'});const page=await browser.newPage({viewport:{width:1400,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>localStorage.setItem('asm_slide_last_picked_color_v1','rgba(12, 45, 78, 0.4)'));
-    await page.route('**/gui_editor.js?*',route=>route.fulfill({contentType:'application/javascript',body:fs.readFileSync('public/gui_editor.js','utf8').replace('window._guiToast = showToast;', 
+    await page.route('**/gui_editor.js?*',route=>route.fulfill({contentType:'application/javascript',body:fs.readFileSync('public/gui_editor.js','utf8').replace('window._guiToast = showToast;',
       'window.testBindGui = button => bindGuiColorButton(button,event => openColorPalette(event,button,(name,value,final) => { window.guiColorResult={name,value,final}; })); window._guiToast = showToast;')}));
     await page.goto(base+'/algorithm.html?asmEmbed=runtime',{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>window.testBindGui && window.ASMColorPickerPolicy);

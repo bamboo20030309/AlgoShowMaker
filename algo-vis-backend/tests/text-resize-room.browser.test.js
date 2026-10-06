@@ -95,5 +95,3 @@ test('text shrinking retains right-side room without adding a wrapped line', { t
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-
-

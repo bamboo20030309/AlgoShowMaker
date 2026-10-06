@@ -99,5 +99,3 @@ test('adding Fabric objects never lifts old backgrounds over structure, LaTeX an
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-
-

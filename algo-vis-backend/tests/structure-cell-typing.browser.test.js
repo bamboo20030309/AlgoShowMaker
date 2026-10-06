@@ -117,4 +117,3 @@ test('selected structure cells accept replacement typing, native IME startup, an
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-

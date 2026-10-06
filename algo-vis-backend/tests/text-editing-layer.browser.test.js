@@ -93,4 +93,3 @@ test('old lower-layer text keeps visible selection controls, highlighted text an
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-

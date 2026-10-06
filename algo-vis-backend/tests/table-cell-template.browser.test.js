@@ -117,6 +117,3 @@ test('shared cell template supports table selection, direct typing, clipboard, r
       assert.deepEqual(errors, []);
     } finally { await browser?.close(); server.kill(); }
   });
-
-
-
