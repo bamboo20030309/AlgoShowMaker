@@ -8261,7 +8261,8 @@
         widget.skewX = Math.atan(Math.tan(transform.skewX*Math.PI/180)*sx/Math.max(0.00001,sy))*180/Math.PI;
         if (Math.abs(sx-1)>0.00001 || Math.abs(sy-1)>0.00001) {
           widget.manualSize=true;
-          if(widget.type==='code') widget.fontSize=original.fontSize*sy;
+          // Code handles resize the viewport; typography is controlled separately.
+          if(widget.type==='code') widget.fontSize=original.fontSize;
           if(widget.type==='latex') widget.scale=original.scale*Math.min(sx,sy);
         }
         const el = document.querySelector(`.slide-widget[data-widget-id="${CSS.escape(widget.id)}"]`);

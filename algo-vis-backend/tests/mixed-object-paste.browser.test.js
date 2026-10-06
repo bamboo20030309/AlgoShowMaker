@@ -180,6 +180,8 @@ for (const [plainOnly, tableVariant] of [[false,false], [true,false], [false,tru
         assert.ok(ratio > 1.05, 'group handle enlarges the selection');
         assert.ok(Math.abs(scaled.canvas.objects[2].scaleX / widgetMoved.canvas.objects[2].scaleX - ratio) < 0.01);
         assert.ok(Math.abs(scaled.widgets[3].w / widgetMoved.widgets[3].w - ratio) < 0.01);
+        assert.equal(scaled.widgets[3].fontSize, widgetMoved.widgets[3].fontSize,
+          'mixed group resizing preserves code typography');
         await assertGroup(4);
         const rotateHandle = await controlPoint('mtr');
         await page.mouse.move(rotateHandle.x,rotateHandle.y); await page.mouse.down();

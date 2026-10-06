@@ -1,0 +1,19 @@
+# Code 選取框只調整容器邊界
+
+## 任務與結果
+
+使用者要求 code 選取框縮放只調整物件邊界，不連動內容比例。原先 Fabric 選取框的高度縮放比例會乘到 code 的 fontSize；現已保留原字體大小，僅更新容器寬高、位置與手動尺寸。既有旋轉、LaTeX 與 structure 的縮放行為保留。
+
+適用單一 code 物件與含 code 的混合選取。沒有新增資料欄位，舊物件不需遷移；既有自訂 fontSize、scale、程式內容與 showLineNumbers:false 保留。縮小容器不會自動縮小字體以容納程式碼。
+
+## 驗證紀錄（V1）
+
+- 新增 code-boundary-resize.browser.test.js：隔離服務與瀏覽器，實際拖曳角落放大、右侧控制點縮小，核對容器尺寸改變而字體、行距與內容不變；涵蓋介面新建、缺少 manualSize 的舊物件、自訂字體及明確關閉行號，儲存與重開。
+- 修正前可重現 fontSize 從 23 變成 27.35956340610431；修正後維持 23。第一輪修正後的測試在新建階段因屬性側欄遮住元件按鈕而失敗，補上退出編輯側欄的正常操作後通過，未放寬產品斷言。
+- mixed-object-paste.browser.test.js：三個相關案例通過，新增混合群組縮放保留 code 字體的斷言。
+- entrypoints.test.js 通過；slides.js 與新增測試的語法檢查、git diff --check 通過。
+- 本次為投影片編輯行為，未啟動演算法動畫或大型驗證集。
+
+## 交付
+
+整合分支 intergration；更新 slides.js 快取版本為 slides-275，完成後重啟並核對 3100 預覽。未合併 main 或發布 release。
