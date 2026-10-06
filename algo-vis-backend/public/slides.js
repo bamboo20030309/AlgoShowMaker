@@ -239,6 +239,7 @@
 
   let pendingTool = null;
   let slideViewportZoom = 1;
+  let overviewViewportZoom = 1;
   let suppressCanvasSave = false;
   let suppressHistory = false;
   let activeColorTarget = 'text';
@@ -7622,15 +7623,44 @@
   // 編輯模式、縮放與主介面綁定
   // 縮放只改編輯視窗比例，Reveal 頁面座標仍維持 1280×720；所有 chrome 事件由 bindChrome 一次註冊。
   // -----------------------------------------------------------------------------
+  // 單頁與排序總覽各自保留檢視比例；不修改 deck 或物件座標。
+  function refreshSlideZoomControls(value) {
+    if (slideZoomValue) slideZoomValue.value = `${Math.round(value * 100)}%`;
+    if (slideZoomOutBtn) slideZoomOutBtn.disabled = value <= SLIDE_ZOOM_MIN;
+    if (slideZoomInBtn) slideZoomInBtn.disabled = value >= SLIDE_ZOOM_MAX;
+    if (slideZoomResetBtn) slideZoomResetBtn.disabled = Math.abs(value - 1) < 0.001;
+  }
+
+  function setOverviewViewportZoom(value) {
+    const selected = customOverviewBoard?.querySelector('.custom-overview-thumb.is-selected');
+    const before = selected?.getBoundingClientRect();
+    overviewViewportZoom = Math.round(clampSlideViewportZoom(value) * 100) / 100;
+    const style = document.documentElement.style;
+    style.setProperty('--overview-thumb-w', `${360 * overviewViewportZoom}px`);
+    style.setProperty('--overview-thumb-h', `${202.5 * overviewViewportZoom}px`);
+    style.setProperty('--overview-thumb-scale', String(0.28125 * overviewViewportZoom));
+    style.setProperty('--overview-column-gap', `${44 * overviewViewportZoom}px`);
+    style.setProperty('--overview-row-gap', `${34 * overviewViewportZoom}px`);
+    document.body.dataset.overviewZoom = String(overviewViewportZoom);
+    refreshSlideZoomControls(overviewViewportZoom);
+    // 縮放後保持所選縮圖的螢幕位置，避免總覽突然跳到另一端。
+    const after = selected?.getBoundingClientRect();
+    if (before && after && customOverviewViewport) {
+      customOverviewViewport.scrollLeft += after.x + after.width / 2 - before.x - before.width / 2;
+      customOverviewViewport.scrollTop += after.y + after.height / 2 - before.y - before.height / 2;
+    }
+  }
+
   function setSlideViewportZoom(value) {
+    if (customOverviewOpen) {
+      setOverviewViewportZoom(value);
+      return;
+    }
     slideViewportZoom = Math.round(clampSlideViewportZoom(value) * 100) / 100;
     document.documentElement.style.setProperty('--slide-user-zoom', String(slideViewportZoom));
     document.documentElement.style.setProperty('--edit-slide-zoom-scale', String(EDIT_SLIDE_BASE_SCALE * slideViewportZoom));
     document.body.dataset.slideZoom = String(slideViewportZoom);
-    if (slideZoomValue) slideZoomValue.value = `${Math.round(slideViewportZoom * 100)}%`;
-    if (slideZoomOutBtn) slideZoomOutBtn.disabled = slideViewportZoom <= SLIDE_ZOOM_MIN;
-    if (slideZoomInBtn) slideZoomInBtn.disabled = slideViewportZoom >= SLIDE_ZOOM_MAX;
-    if (slideZoomResetBtn) slideZoomResetBtn.disabled = Math.abs(slideViewportZoom - 1) < 0.001;
+    refreshSlideZoomControls(slideViewportZoom);
     clearSnapGuides();
     scheduleFabricResolution();
     requestAnimationFrame(() => {
@@ -7641,7 +7671,7 @@
   }
 
   function adjustSlideViewportZoom(delta) {
-    setSlideViewportZoom(slideViewportZoom + delta);
+    setSlideViewportZoom((customOverviewOpen ? overviewViewportZoom : slideViewportZoom) + delta);
   }
 
   function isSlideZoomTypingTarget(target) {
@@ -7649,10 +7679,11 @@
   }
 
   function handleSlideZoomWheel(event) {
-    if (!(event.ctrlKey || event.metaKey) || isOverviewEditing()) return;
-    if (!event.target.closest?.('.reveal')) return;
+    if (!(event.ctrlKey || event.metaKey) || !event.deltaY) return;
+    const surface = customOverviewOpen ? '#customOverview' : '.reveal';
+    if (!event.target.closest?.(surface)) return;
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
     const direction = event.deltaY < 0 ? 1 : -1;
     adjustSlideViewportZoom(direction * SLIDE_ZOOM_STEP);
   }
@@ -10350,6 +10381,7 @@
       canvas.discardActiveObject();
     });
     renderCustomOverview();
+    setOverviewViewportZoom(overviewViewportZoom);
     requestAnimationFrame(() => scrollCustomOverviewSelectionIntoView());
   }
 
@@ -10361,6 +10393,7 @@
       currentV = pos.v;
     }
     customOverviewOpen = false;
+    refreshSlideZoomControls(slideViewportZoom);
     syncSlideOrderToggle();
     customOverviewDrag = null;
     clearDropPreview();

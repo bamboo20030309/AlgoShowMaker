@@ -2005,7 +2005,7 @@ body.custom-overview-open #codeEditorPanel {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 44px;
+  gap: var(--overview-column-gap, 44px);
   width: max-content;
   min-width: 100%;
   min-height: 100%;
@@ -2017,7 +2017,7 @@ body.custom-overview-open #codeEditorPanel {
 .custom-overview-column {
   display: flex;
   flex-direction: column;
-  gap: 34px;
+  gap: var(--overview-row-gap, 34px);
 }
 
 .custom-overview-thumb {

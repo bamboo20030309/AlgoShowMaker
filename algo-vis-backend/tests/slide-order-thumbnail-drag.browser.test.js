@@ -17,7 +17,7 @@ const { chromium } = require('playwright');
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('slide order drag uses static thumbnails and still reorders slides', { timeout: 90000 }, async () => {
+test('slide order zoom preserves geometry and static thumbnail drag ordering', { timeout: 90000 }, async () => {
   const root = path.resolve(__dirname, '..');
   const port = await new Promise(resolve => {
     const probe = net.createServer();
@@ -62,12 +62,61 @@ test('slide order drag uses static thumbnails and still reorders slides', { time
     await page.waitForSelector('#customOverview:not([hidden])');
     await page.waitForFunction(() => [...document.querySelectorAll('.custom-overview-thumb')].every(thumb => thumb.dataset.thumbnailReady === 'true'));
 
+    const storageSnapshot = () => page.evaluate(async () => ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5'));
+    const before = await storageSnapshot();
+    const zoom = () => page.locator('#slideZoomValue').evaluate(el => el.value);
+    const width = () => page.locator('.custom-overview-thumb').first().evaluate(el => el.getBoundingClientRect().width);
+    assert.equal(await zoom(), '100%');
+    assert.equal(await width(), 360);
+    await page.locator('#slideZoomInBtn').click();
+    assert.equal(await zoom(), '110%');
+    assert.ok(Math.abs(await width() - 396) < 0.1);
+    await page.keyboard.press('Control+=');
+    assert.equal(await zoom(), '120%');
+    await page.keyboard.press('Control+-');
+    assert.equal(await zoom(), '110%');
+    const wheelTarget = await page.locator('.custom-overview-thumb.is-selected').boundingBox();
+    await page.mouse.move(wheelTarget.x + wheelTarget.width / 2, wheelTarget.y + wheelTarget.height / 2);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -100);
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => document.body.dataset.overviewZoom === '1.2');
+    await page.mouse.wheel(0, 100);
+    assert.equal(await zoom(), '120%');
+    await page.keyboard.press('Control+0');
+    assert.equal(await zoom(), '100%');
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Control+-');
+    assert.equal(await zoom(), '50%');
+    assert.equal(await page.locator('#slideZoomOutBtn').isDisabled(), true);
+    for (let i = 0; i < 20; i++) await page.keyboard.press('Control+=');
+    assert.equal(await zoom(), '200%');
+    assert.equal(await page.locator('#slideZoomInBtn').isDisabled(), true);
+    await page.locator('#slideZoomResetBtn').click();
+    await page.locator('#slideOrderToggleBtn').click();
+    assert.equal(await zoom(), '100%');
+    await page.keyboard.press('Control+=');
+    assert.equal(await zoom(), '110%');
+    assert.equal(await page.evaluate(() => document.body.dataset.slideZoom), '1.1');
+    await page.mouse.move(900, 400);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -100);
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => document.body.dataset.slideZoom === '1.2');
+    assert.equal(await zoom(), '120%');
+    await page.locator('#slideOrderToggleBtn').click();
+    assert.equal(await zoom(), '100%');
+    await page.locator('#slideZoomOutBtn').click();
+    assert.equal(await zoom(), '90%');
+    assert.ok(Math.abs(await width() - 324) < 0.1);
+    assert.deepEqual(await storageSnapshot(), before);
+
     const sourceMarkup = await page.locator('.custom-overview-thumb').first().evaluate(thumb => ({
       images: thumb.querySelectorAll('.custom-overview-snapshot').length,
       interactive: thumb.querySelectorAll('canvas, input, select, textarea, a, .widget-layer, .slide-widget').length
     }));
     assert.deepEqual(sourceMarkup, { images: 1, interactive: 0 });
 
+    await page.locator('.custom-overview-thumb').nth(1).scrollIntoViewIfNeeded();
     const source = await page.locator('.custom-overview-thumb').nth(0).boundingBox();
     const target = await page.locator('.custom-overview-thumb').nth(1).boundingBox();
     assert.ok(source && target);
@@ -93,6 +142,14 @@ test('slide order drag uses static thumbnails and still reorders slides', { time
       const stored = await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5');
       return stored.groups.flatMap(group => group.slides).map(slide => slide.id).join(',') === 'slide-second,slide-first,slide-third';
     });
+    await page.reload();
+    await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    const reopened = await storageSnapshot();
+    for (const oldSlide of before.groups.flatMap(group => group.slides)) {
+      const actual = reopened.groups.flatMap(group => group.slides).find(slide => slide.id === oldSlide.id);
+      assert.deepEqual(actual.canvas.objects, oldSlide.canvas.objects);
+      assert.deepEqual(actual.widgets, oldSlide.widgets);
+    }
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();
