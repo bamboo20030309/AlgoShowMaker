@@ -35,6 +35,8 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   // [新增] 防呆：如果已經在 loading (按鈕變暗轉圈中)，就直接忽略這次點擊
   if (runBtn.classList.contains('loading')) return;
 
+  window.ASMDefaultAlgorithm?.cancel?.('run');
+
   // [新增] 1. 開始 loading 狀態
   runBtn.classList.add('loading');
 
@@ -117,7 +119,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
 
     const res = await fetch('/compile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(window.ASMCompileSession?.headers?.('manual') || {}) },
       body: JSON.stringify({
         code: sourceCode,                         // 保留原本欄位名 code
         input: sourceInput,                      // stdin captured with this RUN

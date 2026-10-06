@@ -2144,9 +2144,6 @@ body.custom-overview-open #codeEditorPanel {
   pointer-events: none;
 }
 
-.custom-overview-mini .widget-edge-handle {
-  display: none !important;
-}
 
 .algorithm-overview-preview {
   position: absolute;
@@ -2594,26 +2591,22 @@ body.custom-overview-open .reveal .controls {
 }
 
 .asm-av-swatch-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .asm-av-swatch {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  min-height: 27px;
-  padding: 3px 5px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 2px;
   border: 1px solid var(--chrome-line);
   border-radius: 5px;
   background: transparent;
-  color: var(--chrome-text);
   cursor: pointer;
-  font: inherit;
-  font-size: 10px;
-  text-align: left;
 }
 
 .asm-av-swatch:hover,
@@ -2624,19 +2617,12 @@ body.custom-overview-open .reveal .controls {
 }
 
 .asm-av-swatch-chip {
-  flex: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: 1px solid rgba(128, 128, 128, 0.7);
   border-radius: 3px;
   background: linear-gradient(var(--av-swatch-color), var(--av-swatch-color)),
     repeating-conic-gradient(#d0d4d8 0 25%, #fff 0 50%) 0 / 8px 8px;
-}
-
-.asm-av-swatch-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .shape-style-controls {
@@ -3322,38 +3308,7 @@ body.asm-edit-mode .slide-widget.fragment {
   visibility: visible !important;
 }
 
-body.asm-edit-mode .slide-widget:hover,
-body.asm-edit-mode .slide-widget.is-selected {
-  border-color: #1d8f83;
-}
 
-body.asm-edit-mode .code-widget:hover,
-body.asm-edit-mode .code-widget.is-selected {
-  border-color: transparent;
-  box-shadow: inset 0 0 0 1px #1d8f83;
-}
-
-body.asm-edit-mode .structure-widget:hover,
-body.asm-edit-mode .structure-widget.is-selected {
-  border-color: transparent;
-  box-shadow: inset 0 0 0 1px #1d8f83;
-}
-
-body.asm-edit-mode .latex-widget:hover,
-body.asm-edit-mode .latex-widget.is-selected {
-  border-color: transparent;
-}
-
-body.asm-edit-mode .latex-widget:hover::after,
-body.asm-edit-mode .latex-widget.is-selected::after {
-  content: "";
-  position: absolute;
-  inset: -8px;
-  border: 2px solid #1d8f83;
-  border-radius: 0;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.74);
-  pointer-events: none;
-}
 
 .latex-widget {
   display: block;
@@ -3434,9 +3389,7 @@ body.asm-edit-mode .latex-widget.is-selected::after {
   user-select: text;
 }
 
-.structure-widget.is-resizing {
-  box-shadow: inset 0 0 0 1px #1d8f83;
-}
+
 
 .code-widget .code-frame {
   position: absolute;
@@ -3560,85 +3513,10 @@ body.asm-edit-mode .latex-widget.is-selected::after {
   contain: paint;
 }
 
-.code-widget.is-resizing {
-  box-shadow: inset 0 0 0 1px #1d8f83;
-}
+
 
 .code-widget code.asm-hide-line-numbers .hljs-ln-numbers {
   display: none;
-}
-
-.widget-edge-handle {
-  position: absolute;
-  display: none;
-  width: 8px;
-  height: 8px;
-  box-sizing: border-box;
-  background: #1d8f83;
-  border: 0;
-  opacity: 1;
-  z-index: 4;
-  border-radius: 50%;
-  box-shadow: none;
-  pointer-events: auto;
-}
-
-body.asm-edit-mode .slide-widget.is-selected .widget-edge-handle {
-  display: block;
-}
-
-.widget-edge-handle[data-resize-edge="top"],
-.widget-edge-handle[data-resize-edge="bottom"] {
-  left: 50%;
-  transform: translateX(-50%);
-  cursor: ns-resize;
-}
-
-.widget-edge-handle[data-resize-edge="top"] {
-  top: -4px;
-}
-
-.widget-edge-handle[data-resize-edge="bottom"] {
-  bottom: -4px;
-}
-
-.widget-edge-handle[data-resize-edge="left"],
-.widget-edge-handle[data-resize-edge="right"] {
-  top: 50%;
-  transform: translateY(-50%);
-  cursor: ew-resize;
-}
-
-.widget-edge-handle[data-resize-edge="left"] {
-  left: -4px;
-}
-
-.widget-edge-handle[data-resize-edge="right"] {
-  right: -4px;
-}
-
-.widget-edge-handle[data-resize-edge="top-left"] {
-  top: -4px;
-  left: -4px;
-  cursor: nwse-resize;
-}
-
-.widget-edge-handle[data-resize-edge="top-right"] {
-  top: -4px;
-  right: -4px;
-  cursor: nesw-resize;
-}
-
-.widget-edge-handle[data-resize-edge="bottom-left"] {
-  bottom: -4px;
-  left: -4px;
-  cursor: nesw-resize;
-}
-
-.widget-edge-handle[data-resize-edge="bottom-right"] {
-  right: -4px;
-  bottom: -4px;
-  cursor: nwse-resize;
 }
 
 .fabric-host canvas,

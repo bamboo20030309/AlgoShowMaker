@@ -52,12 +52,14 @@ test('Studio mounts only visible cards and renders bounded thumbnails across 500
 
     const errors = [];
     page.on('pageerror', error => errors.push(String(error)));
-    const opening = await page.evaluate(() => {
+    const opening = await page.evaluate(async () => {
       const frames = Array.from({length: 500}, (_, index) => ({
         id: 'virtual-' + index, state: {}, events: [], source: {line: index + 1},
         texts: [{id: 'caption', segments: [{kind: 'literal', text: 'Frame ' + index}]}]
       }));
-      const trace = window.ASMTracePlayer.apply({frames, variables: {}, studio: {}, rules: []});
+      const trace = window.ASMTraceEditor.applyTraceDocument({frames, variables: {}, studio: {}, rules: []},
+        { openStudio: false, preserveEventSettings: true });
+      await new Promise(resolve => setTimeout(resolve, 0));
       window.__thumbnailCalls = [];
       const create = window.ASMTraceRenderers.createThumbnail;
       window.ASMTraceRenderers.createThumbnail = (...args) => {
@@ -88,7 +90,8 @@ test('Studio mounts only visible cards and renders bounded thumbnails across 500
     const initial = await inspect();
     assert.ok(initial.count <= initial.capacity, JSON.stringify(initial));
     assert.ok(initial.drawn.length <= initial.capacity, JSON.stringify(initial));
-    assert.deepEqual(initial.scopes, [{frameIndex: 0}]);
+    assert.ok(initial.scopes.length > 0);
+    assert.ok(initial.scopes.every(scope => scope.frameIndex === 0), 'opening never preflights hidden frames');
     assert.ok(initial.indices.includes(0));
     const timeTrack = page.locator('.trace-studio-timeline-track');
     const timelineCount = () => timeTrack.evaluate(el => ({

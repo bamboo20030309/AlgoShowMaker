@@ -44,6 +44,7 @@ test('automatic keep arrows render without stealing pointer events', async () =>
   };
   window.ASMTraceModel = { diffFrame() { return []; } };
   window.ASMTraceTransitions = { defaults() { return { duration: 0, easing: 'linear' }; } };
+  window.ASMTraceCamera = { ruleForFrame() { return null; } };
   window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8'));
   const renderer = window.ASMTraceRenderers;
   await renderer.renderFrame(trace, trace.frames[0], null, {

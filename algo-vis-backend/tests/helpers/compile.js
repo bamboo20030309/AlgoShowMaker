@@ -13,8 +13,10 @@ const vm = require('node:vm');
 const publicDir = path.join(__dirname, '../../public');
 function load(c, name) { vm.runInContext(fs.readFileSync(path.join(publicDir, name), 'utf8'), c); }
 async function compile(code, input = '') {
+  const baseURL = process.env.ASM_TEST_BASE_URL;
+  if (!baseURL) throw new Error('請設定 ASM_TEST_BASE_URL 指向隔離服務；禁止回落到使用者的 3000。');
   async function post(endpoint, body) {
-    const response = await fetch(`${process.env.ASM_TEST_BASE_URL || 'http://localhost:3000'}${endpoint}`, {
+    const response = await fetch(`${baseURL}${endpoint}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       signal: AbortSignal.timeout(30000)
     });

@@ -264,6 +264,9 @@
   // 區段：原始資料與序列 renderer
   // ---------------------------------------------------------------------------
   function renderOriginal(group, entry, context) {
+    if (context.skin?.options?.dataTransform?.type === 'bits') {
+      return renderOriginalMatrix(group, entry, context);
+    }
     if (typeof window.draw_array_normal !== 'function') {
       return Array.isArray(entry.data?.items) ? renderSequence(group, entry, context) : renderScalar(group, entry, context);
     }
@@ -510,7 +513,7 @@
       group.querySelectorAll(':scope > .outerframe-bg, :scope > .outerframe-nb').forEach(node => node.remove());
     }
     group.querySelectorAll(':scope > .outerframe-label').forEach(label => {
-      label.textContent = context.variable?.name || '';
+      label.textContent = context.displayName ?? context.variable?.name ?? '';
       label.setAttribute('font-family', 'Arial');
       label.setAttribute('font-size', '16');
       label.setAttribute('font-weight', 'bold');
@@ -590,6 +593,43 @@
   // ---------------------------------------------------------------------------
   // 區段：矩陣 renderer
   // ---------------------------------------------------------------------------
+  function bitsMatrixEntry(entry, context) {
+    const transform = context.skin?.options?.dataTransform;
+    if (transform?.type !== 'bits') return { entry, context };
+    const width = Math.max(1, Math.trunc(Number(transform.width) || 1));
+    const sourceRows = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
+    const scalar = value => Number(window.ASMTraceModel?.scalarValue?.(value) ?? value?.value ?? value) || 0;
+    const rows = sourceRows.map(source => ({
+      kind: 'sequence',
+      items: Array.from({ length: width }, (_, column) => ({
+        kind: 'scalar',
+        value: Math.floor(Math.abs(scalar(source)) / (2 ** (width - 1 - column))) % 2
+      }))
+    }));
+    const highlights = {};
+    Object.entries(context.highlights || {}).forEach(([key, value]) => {
+      if (/^\d+$/.test(key)) {
+        for (let column = 0; column < width; column += 1) highlights[`${key},${column}`] = value;
+      } else highlights[key] = value;
+    });
+    return {
+      entry: { ...entry, data: { kind: 'matrix', items: rows } },
+      context: { ...context, highlights }
+    };
+  }
+
+  function matrixCellDisplay(item, context, locals) {
+    const options = context.skin?.options || {};
+    const raw = Number(window.ASMTraceModel?.scalarValue?.(item));
+    const symbols = Array.isArray(options.symbols) ? options.symbols : null;
+    const fallback = symbols && (raw === 0 || raw === 1)
+      ? symbols[raw]
+      : formatDisplayValue(item, options, context.variable?.name || '', context.variableId);
+    return renderedDisplayValue(item, context, locals, fallback);
+  }
+
+
+
   function renderMatrix(group, entry, context) {
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
     let height = 0;
@@ -612,7 +652,8 @@
     const options = context.skin?.options || {};
     const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
     const defaultIndices = indexMode !== 0 && options.showIndex !== false;
-    const showValue = options.showValue !== false && indexMode !== 2;
+    const showValue = Boolean(options.display) || Array.isArray(options.symbols)
+      || (options.showValue !== false && indexMode !== 2);
     const rowSpec = options.rowLabels
       || (defaultIndices ? { mode: 'index', values: [] } : { mode: 'none', values: [] });
     const columnSpec = options.columnLabels
@@ -623,11 +664,11 @@
         spec.mode === 'index' ? index : spec.values?.[index] ?? ''
       ));
     const matrix = rows.map((row, rowIndex) => (row?.items || []).map((item, columnIndex) => (
-      renderedDisplayValue(item, context, {
+      matrixCellDisplay(item, context, {
         index: columnIndex,
         row: rowIndex,
         column: columnIndex
-      }, formatDisplayValue(item, options, context.variable?.name || '', context.variableId))
+      })
     )));
     const rowLabels = labelValues(rowSpec, rows.length);
     const maxColumns = Math.max(0, ...matrix.map(row => row.length));
@@ -670,7 +711,7 @@
     const drawId = `${context.idPrefix || 'trace-original'}-${safeKey(context.variableId)}`;
     window.draw_2Darray(drawId, { x: 0, y: 0 }, matrix, style, {}, 'normal', 0, -1, {
       targetGroup: group,
-      objectLabel: context.variable?.name || '',
+      objectLabel: context.displayName ?? context.variable?.name ?? '',
       rowLabels,
       columnLabels,
       innerLabels,
@@ -710,6 +751,7 @@
             key: cellKey, objectKey, objectLabel: context.variable?.name || context.variableId,
             indices: [rowIndex, columnIndex], kind: 'matrix-cell'
           });
+
         }
         const inner = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-${columnIndex}-inner`)}`);
         if (inner) {
@@ -773,6 +815,7 @@
   }
 
   function renderOriginalMatrix(group, entry, context) {
+    ({ entry, context } = bitsMatrixEntry(entry, context));
     const drawnHeight = renderOriginalMatrixWithDraw2DArray(group, entry, context);
     if (drawnHeight != null) return drawnHeight;
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
@@ -783,7 +826,8 @@
     const gridlines = Math.max(0, Number.isFinite(Number(options.gridlines))
       ? Number(options.gridlines) : 1);
     const indexMode = Number.isFinite(Number(options.indexMode)) ? Number(options.indexMode) : 1;
-    const showValue = options.showValue !== false && indexMode !== 2;
+    const showValue = Boolean(options.display) || Array.isArray(options.symbols)
+      || (options.showValue !== false && indexMode !== 2);
     const defaultIndices = indexMode !== 0 && options.showIndex !== false;
     const maxColumns = Math.max(0, ...rows.map(row => Array.isArray(row?.items) ? row.items.length : 0));
     const labelSpec = (name, fallback) => options[name] || fallback;
@@ -893,8 +937,11 @@
           cell.append(svg('text', {
             x: cellSize / 2, y: cellSize / 2, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
             'font-family': 'Arial', 'font-size': 16, fill: '#1f282d', 'data-trace-content-role': 'value'
-          }, formatDisplayValue(item, options, context.variable?.name || '', context.variableId)));
+          }, matrixCellDisplay(item, context, {
+            index: columnIndex, row: rowIndex, column: columnIndex
+          })));
         }
+
         group.append(cell);
         if (showInner) {
           const inner = labelGroup(`${cellKey}:index`, x, y + cellSize, cellSize, innerHeight,
@@ -912,7 +959,7 @@
     group.append(markSelectable(svg('text', {
       class: 'outerframe-label', x: 0, y: totalHeight + 22,
       'font-family': 'Arial', 'font-size': 16, 'font-weight': 'bold', fill: '#1f282d'
-    }, context.variable?.name || ''), `${context.variableId}:label`, context, context.variableId));
+    }, context.displayName ?? context.variable?.name ?? ''), `${context.variableId}:label`, context, context.variableId));
     group.setAttribute('data-layout', 'matrix');
     group.setAttribute('data-box-size', String(cellSize));
     group.setAttribute('data-matrix-origin-x', String(originX));
@@ -1572,7 +1619,10 @@
       const top = Math.min(...boxes.map(box => box.y));
       const right = Math.max(...boxes.map(box => box.x + box.width));
       const bottom = Math.max(...boxes.map(box => box.y + box.height));
-      return { x: left, y: top, width: right - left, height: bottom - top };
+      const box = { x: left, y: top, width: right - left, height: bottom - top };
+      if (fallback?.reservedCrossAxis === 'x') { box.x = fallback.x; box.width = fallback.width; }
+      if (fallback?.reservedCrossAxis === 'y') { box.y = fallback.y; box.height = fallback.height; }
+      return box;
     }
     // A semantic object anchor such as arr.right belongs to the object's
     // stable outerframe. Transient point/highlight/marker decorations may
@@ -1651,6 +1701,7 @@
         if (!snapshotBox) return null;
         return {
           key: node.snapshotId,
+          element: node.sourceElement || elements.get(node.snapshotId),
           placement: {
             x: snapshotBox.x + node.relative.x,
             y: snapshotBox.y + node.relative.y,
@@ -1659,7 +1710,7 @@
           }
         };
       }).filter(Boolean);
-      stages.push({ key: currentKey, placement: current });
+      stages.push({ key: currentKey, element: elements.get(currentKey), placement: current });
 
       for (let index = 0; index < stages.length - 1; index += 1) {
         const fromStage = stages[index];
@@ -1693,6 +1744,8 @@
           'data-trace-keep-source': fromStage.key,
           'data-trace-keep-target': toStage.key
         });
+        line._asmKeepSourceElement = fromStage.element || null;
+        line._asmKeepTargetElement = toStage.element || null;
         layer.append(line);
         placements.set(key, {
           x: Math.min(points.start.x, points.end.x),
@@ -1704,6 +1757,41 @@
       }
     });
     if (layer.childElementCount) root.prepend(layer);
+  }
+
+  function refreshPresentedKeepArrows(root) {
+    const model = window.ASMArrowModel;
+    if (!root?.isConnected || !model?.presentedBounds) return;
+    root.querySelectorAll('.asm-trace-keep-arrow').forEach(arrow => {
+      const fromBox = model.presentedBounds(arrow._asmKeepSourceElement, root, true);
+      const toBox = model.presentedBounds(arrow._asmKeepTargetElement, root, true);
+      if (!fromBox || !toBox) return;
+      const points = closestEdgePoints(fromBox, toBox);
+      const geometry = model.geometry(
+        points.start,
+        points.end,
+        { outerframe: true },
+        { outerframe: true },
+        {
+          color: arrow.getAttribute('stroke'),
+          width: Number(arrow.getAttribute('stroke-width')) || 4,
+          headStart: 'none',
+          headEnd: 'arrow'
+        }
+      );
+      if (!geometry) {
+        const center = anchorPoint(fromBox, 'center');
+        arrow.setAttribute('x1', center.x);
+        arrow.setAttribute('y1', center.y);
+        arrow.setAttribute('x2', center.x);
+        arrow.setAttribute('y2', center.y);
+        return;
+      }
+      arrow.setAttribute('x1', geometry.x1);
+      arrow.setAttribute('y1', geometry.y1);
+      arrow.setAttribute('x2', geometry.x2);
+      arrow.setAttribute('y2', geometry.y2);
+    });
   }
 
   function arrowVisible(arrow, frame) {
@@ -1744,6 +1832,75 @@
       indexExpression: target?.indexExpression
         || (Array.isArray(target?.indexExpressions) ? target.indexExpressions.join(',') : '')
     }, elements);
+  }
+
+  function arrowEndpointOwnerIdentity(element, key) {
+    const node = element?.matches?.('[data-trace-layout-node]') ? element
+      : element?.closest?.('[data-trace-layout-node]');
+    const layoutId = node?.dataset?.traceLayoutId;
+    const activation = node?.dataset?.traceLayoutActivation;
+    if (!layoutId || !activation) return '';
+    const variable = element?.closest?.('[data-trace-variable]')?.dataset?.traceVariable;
+    const preferred = node.dataset.traceLayoutPreferredVariable;
+    if (element !== node && preferred && variable && variable !== preferred) return '';
+    // Variable aliases and retained snapshots are presentation keys, not
+    // new recursion nodes. Cell suffixes must still distinguish cell targets.
+    const suffix = String(key || '').includes('#') ? String(key).slice(String(key).indexOf('#')) : '';
+    return JSON.stringify([layoutId, activation, suffix]);
+  }
+
+  function fitObjectNames(group) {
+    group?.querySelectorAll?.('.outerframe-label').forEach(label => {
+      const owner = label.parentElement;
+      const box = owner.querySelector(':scope > .outerframe-nb');
+      const width = box ? Number(box.getAttribute('width'))
+        : Number(owner.getAttribute('data-outerframe-right')) - Number(owner.getAttribute('data-outerframe-left'));
+      if (!(width > 0)) return;
+      const height = box ? Number(box.getAttribute('height')) : 24;
+      const maxFont = Number(label.dataset.traceNameFontLimit) || 16;
+      const typography = getComputedStyle(label);
+      label.removeAttribute('textLength');
+      label.removeAttribute('lengthAdjust');
+      const size = typeof window.fitSvgText === 'function'
+        ? window.fitSvgText(owner, label.textContent, width, height, {
+          maxFont, minFont: 1, family: typography.fontFamily,
+          fontWeight: typography.fontWeight, padding: 4
+        }) : Math.min(maxFont, Math.max(1, (width - 8) / Math.max(1,label.textContent.length * 0.65)));
+      label.setAttribute('font-size', String(size));
+      const availableWidth = Math.max(1,width - 8);
+      const availableHeight = Math.max(1,height - 4);
+      // Check the real glyph bounds as well as advance width: browser font
+      // metrics and bold overhangs can exceed the measurement helper's width.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const glyph = label.getBBox();
+        const ratio = Math.min(1, availableWidth / Math.max(1,glyph.width),
+          availableHeight / Math.max(1,glyph.height));
+        if (ratio >= 1) break;
+        label.setAttribute('font-size', String(Math.max(1,Number(label.getAttribute('font-size')) * ratio * 0.99)));
+      }
+      // Keep the complete ID even when an exceptionally long name cannot fit
+      // at the smallest font. Never let it inflate layout/camera bounds.
+      if (label.getComputedTextLength() > availableWidth) {
+        label.setAttribute('textLength', String(availableWidth));
+        label.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      }
+      if (box) {
+        const glyph = label.getBBox();
+        label.setAttribute('x', String(Number(label.getAttribute('x'))
+          + Number(box.getAttribute('x')) + width / 2 - glyph.x - glyph.width / 2));
+        label.setAttribute('y', String(Number(label.getAttribute('y'))
+          + Number(box.getAttribute('y')) + height / 2 - glyph.y - glyph.height / 2));
+      }
+    });
+  }
+
+  function sameArrowEndpointBinding(previous, current, role) {
+    const oldOwner = previous?.dataset?.[`traceArrow${role}Owner`];
+    const nextOwner = current?.dataset?.[`traceArrow${role}Owner`];
+    const sameOwner = oldOwner && nextOwner ? oldOwner === nextOwner
+      : previous?.dataset?.[`traceArrow${role}Key`] === current?.dataset?.[`traceArrow${role}Key`];
+    return Boolean(sameOwner) && ['Anchor', 'Dx', 'Dy', 'Cell'].every(field =>
+      previous?.dataset?.[`traceArrow${role}${field}`] === current?.dataset?.[`traceArrow${role}${field}`]);
   }
 
   function renderArrowModels(rootSvg, root, document, frame, placements, elements,
@@ -1804,6 +1961,7 @@
         'data-trace-arrow-runtime-id': runtimeId,
         'data-trace-arrow-name': arrow.displayName || arrow.id,
         'data-trace-arrow-identity': JSON.stringify({ id: arrow.id, source: arrow.source,
+          handoffFromId: arrow.retainedFromArrowId || '',
           explicitId: recursiveLifetime ? false
             : arrow.explicitId ?? (arrow.source === 'studio' ? true : undefined),
           scope: arrow.source === 'directive' && recursiveLifetime ? activation : '',
@@ -1814,6 +1972,12 @@
         'data-trace-arrow-layer': arrow.layer,
         'data-trace-arrow-from-key': resolvedTargetKey(document, frame, arrow.from, placements),
         'data-trace-arrow-to-key': resolvedTargetKey(document, frame, arrow.to, placements),
+        'data-trace-arrow-from-owner': arrowEndpointOwnerIdentity(
+          elements.get(resolvedTargetKey(document, frame, arrow.from, placements)),
+          resolvedTargetKey(document, frame, arrow.from, placements)),
+        'data-trace-arrow-to-owner': arrowEndpointOwnerIdentity(
+          elements.get(resolvedTargetKey(document, frame, arrow.to, placements)),
+          resolvedTargetKey(document, frame, arrow.to, placements)),
         'data-trace-arrow-from-cell': String(Boolean(arrow.from.indexExpression)),
         'data-trace-arrow-to-cell': String(Boolean(arrow.to.indexExpression)),
         'data-trace-arrow-from-anchor': arrow.from.anchor || 'center',
@@ -1900,6 +2064,14 @@
       if (tween) {
         const progress = tween.progress;
         const oldPoint = (role, fallback) => {
+          // Previous arrow coordinates are frozen in the preceding scene.
+          // Resolve them before consulting the current element map: recursive
+          // locals reuse variable keys across activations, so looking up an
+          // old live `part` key in the new scene can incorrectly return the
+          // newly-created descendant and drag an ancestor edge with it.
+          const x = Number(tween.previous.dataset[`traceArrow${role}X`]);
+          const y = Number(tween.previous.dataset[`traceArrow${role}Y`]);
+          if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
           const key = tween.previous.dataset[`traceArrow${role}Key`];
           const oldElement = elements.get(key);
           const oldBox = model.presentedBounds(oldElement, root,
@@ -1909,12 +2081,9 @@
             return { x: point.x + Number(tween.previous.dataset[`traceArrow${role}Dx`] || 0),
               y: point.y + Number(tween.previous.dataset[`traceArrow${role}Dy`] || 0) };
           }
-          const x = Number(tween.previous.dataset[`traceArrow${role}X`]);
-          const y = Number(tween.previous.dataset[`traceArrow${role}Y`]);
-          return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : fallback;
+          return fallback;
         };
-        const sameBinding = role => ['Key', 'Anchor', 'Dx', 'Dy'].every(field =>
-          tween.previous.dataset[`traceArrow${role}${field}`] === arrow.dataset[`traceArrow${role}${field}`]);
+        const sameBinding = role => sameArrowEndpointBinding(tween.previous, arrow, role);
         const blend = (old, target) => ({ x: old.x + (target.x - old.x) * progress,
           y: old.y + (target.y - old.y) * progress });
         if (!sameBinding('From')) start = blend(oldPoint('From', start), start);
@@ -2031,6 +2200,12 @@
     const authoredHints = new Map();
     root.querySelectorAll('[data-trace-attached-to]').forEach(visual => {
       if (visual.getAttribute('data-trace-attached-to') !== key || visual._asmLiveHint) return;
+      // Kept nodes can reuse a live alias/index. Decoration ownership is
+      // the actual cell, not that public key; never adopt or hide another
+      // node's hint merely because its alias matches.
+      const attachedCell = visual.closest('.asm-trace-style-decoration')?._asmStyleCell
+        || visual.closest('[data-trace-index]');
+      if (attachedCell !== cell) return;
       const kind = visual.getAttribute('data-trace-attachment-kind') || '';
       if (kind && !authoredHints.has(kind)) authoredHints.set(kind, visual);
       else visual.setAttribute('display', 'none');
@@ -2155,14 +2330,16 @@
   }
 
   function settlePointerLayer(root) {
-    const layer = svg('g', { class: 'asm-trace-pointer-layer' });
+    const layer = [...root.children].find(node => node.classList?.contains('asm-trace-pointer-layer'))
+      || svg('g', { class: 'asm-trace-pointer-layer' });
     // Automatic pointer hosts already use root-space coordinates. Keep their
     // IDs and motion groups intact so event scheduling and drag stay unchanged.
     [...root.children].filter(node => node.classList?.contains('asm-trace-bound-object')
       && node.querySelector('.trace-variable-marker-point'))
       .forEach(node => layer.append(node));
-    const arrows = [...root.children].find(node => node.classList?.contains('asm-trace-foreground-arrows'));
-    root.insertBefore(layer, arrows || null);
+    // SVG paints later siblings on top: pointers must stay above all arrow
+    // layers, including explicitly foreground arrows.
+    root.append(layer);
   }
 
   function studioObjectVisible(object, frame) {
@@ -2183,6 +2360,12 @@
 
   function targetPlacement(document, frame, placements, target = {}, elements = null) {
     const requestedObjectKey = target.objectKey || target.targetObjectKey || target.key;
+    // Semantic bindings (text/place/camera) share the arrow node resolver.
+    // Resolve persisted dotted targets too, without requiring new trace fields.
+    const layoutNode = layoutTargetDescriptor(document, target, placements);
+    if (layoutNode && elements) return materializeLayoutEndpoint(
+      document, frame, layoutNode, placements, elements
+    ).placement || null;
     const objectKey = requestedObjectKey === 'recursion_parent'
       ? recursionParentObjectKey(document, frame)
       : requestedObjectKey;
@@ -2333,7 +2516,11 @@
     ), target?.anchor);
   }
 
-  function resolvedTargetKey(document, frame, target, placements = currentScene?.placements || new Map()) {
+  function resolvedTargetKey(document, frame, target, placements = currentScene?.placements || new Map(), elements = currentScene?.elements) {
+    const layoutNode = layoutTargetDescriptor(document, target, placements);
+    if (layoutNode && elements) return materializeLayoutEndpoint(
+      document, frame, layoutNode, placements, elements
+    ).endpoint?.objectKey || '';
     const requestedObjectKey = target?.objectKey || target?.targetObjectKey || target?.key;
     const objectKey = requestedObjectKey === 'recursion_parent'
       ? recursionParentObjectKey(document, frame)
@@ -2724,12 +2911,17 @@
   }
 
   function shiftPlacementTree(source, dx, dy, placements, elements) {
+    const movedElements = new Set();
     elements.forEach((element, key) => {
       if (element !== source && !source.contains(element)) return;
       const placement = placements.get(key);
       if (!placement) return;
       const shifted = { ...placement, x: placement.x + dx, y: placement.y + dy };
       placements.set(key, shifted);
+      // Canonical snapshot and live alias keys may share one SVG node.
+      // Shift each registry box, but its actual origin only once.
+      if (movedElements.has(element)) return;
+      movedElements.add(element);
       // Layout/binding placement is applied after objects and child cells are
       // measured. Keep both coordinate spaces synchronized: bounds store the
       // shifted measured box, while origin stores the shifted group origin.
@@ -2882,7 +3074,10 @@
         const textTargets = element.matches?.('text')
           ? [element]
           : [...element.querySelectorAll('text')];
-        textTargets.forEach(target => target.setAttribute('font-size', String(fontSize)));
+        textTargets.forEach(target => {
+          target.setAttribute('font-size', String(fontSize));
+          if (target.classList.contains('outerframe-label')) target.dataset.traceNameFontLimit = String(fontSize);
+        });
       }
     });
   }
@@ -2915,7 +3110,7 @@
           objectKey: binding.targetObjectKey,
           variableId: binding.targetVariableId,
           indexExpression: (binding.indexExpressions || []).join(',')
-        }, placements);
+        }, placements, elements);
       if (!sourceKey || !targetKey) return;
       const anchor = String(binding.anchor || 'center').toLowerCase();
       const vertical = anchor.includes('top') ? 'bottom' : anchor.includes('bottom') ? 'top' : '';
@@ -2963,15 +3158,15 @@
       const sourcePlacement = binding.semanticDirective
         ? semanticTargetPlacement(key, placements, elements)
         : placements.get(key);
-      const targetPlacement = targetKey === '$canvas'
+      const boundPlacement = targetKey === '$canvas'
         ? { x: 0, y: 0, width: 1100, height: 620 }
         : targetKey === '$keep'
           ? keepAnchorPlacement(document, frame, placements, elements,
             snapshotObjectKeys.has(key) ? key : '')
-          : semanticTargetPlacement(targetKey, placements, elements);
-      if (sourcePlacement && targetPlacement && targetKey !== key) {
+          : targetPlacement(document, frame, placements, { objectKey: targetKey }, elements);
+      if (sourcePlacement && boundPlacement && targetKey !== key) {
         const sourcePoint = anchorPoint(sourcePlacement, binding.sourceAnchor || 'top');
-        const targetPoint = anchorPoint(targetPlacement, binding.targetAnchor || 'center');
+        const targetPoint = anchorPoint(boundPlacement, binding.targetAnchor || 'center');
         const dx = targetPoint.x + (Number(binding.dx) || 0) - sourcePoint.x;
         const dy = targetPoint.y + (Number(binding.dy) || 0) - sourcePoint.y;
         if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
@@ -3137,10 +3332,26 @@
       mainOffsets[depth] = mainCursor;
       mainCursor += Math.max(...level.map(mainSize)) + levelGap;
     });
+    const fromLeaves = layout?.growFrom === 'leaves';
+    if (fromLeaves) {
+      // Pack each actual subtree independently. A shallow root is not placed
+      // at the deepest forest level. Every child-root/parent edge has exactly
+      // levelGap, even for ragged trees or differently sized nodes.
+      const span = node => {
+        const height = mainSize(node) + (node.children.length
+          ? levelGap + Math.max(...node.children.map(span)) : 0);
+        return height;
+      };
+      const place = (node, main) => {
+        node.leafMain = main;
+        node.children.forEach(child => place(child, main - levelGap - mainSize(child)));
+      };
+      roots.forEach(node => place(node, span(node) - mainSize(node)));
+    }
     const logical = nodes.map(node => ({
       node,
       cross: node.crossCenter - crossSize(node) / 2,
-      main: mainOffsets[node.depth] || 0
+      main: fromLeaves ? node.leafMain : mainOffsets[node.depth] || 0
     }));
     const crossMin = Math.min(...logical.map(item => item.cross));
     const crossMax = Math.max(...logical.map(item => item.cross + crossSize(item.node)));
@@ -3159,7 +3370,12 @@
       const main = item.main;
       let x;
       let y;
-      if (direction === 'bottom-up') {
+      if (fromLeaves) {
+        if (direction === 'bottom-up') { x = cross; y = mainAnchor + main; }
+        else if (direction === 'top-down') { x = cross; y = mainAnchor - main - item.node.height; }
+        else if (direction === 'right-left') { x = mainAnchor + main; y = cross; }
+        else { x = mainAnchor - main - item.node.width; y = cross; }
+      } else if (direction === 'bottom-up') {
         x = cross;
         y = mainAnchor - main - item.node.height;
       } else if (direction === 'left-right') {
@@ -3179,7 +3395,7 @@
     // the root-facing edge remains pinned to the authored anchor.
     const root = roots[0];
     const rootBox = root ? result.get(root.id) : null;
-    if (rootBox) {
+    if (rootBox && !fromLeaves) {
       const rootAnchorName = direction === 'bottom-up'
         ? 'bottom'
         : direction === 'left-right'
@@ -3225,6 +3441,248 @@
     return result;
   }
 
+  function recursionLayoutNodeEntries(layoutId, placements, elements) {
+    const byNodeId = new Map();
+    [...elements.entries()].forEach(([fallbackKey, element]) => {
+      if (String(element?.dataset?.traceLayoutId || '') !== String(layoutId || '')) return;
+      const nodeId = String(element?.dataset?.traceLayoutNode || '');
+      const objectKey = String(element?.dataset?.traceObjectKey || fallbackKey || '');
+      if (!nodeId || !objectKey || byNodeId.has(nodeId)) return;
+      const box = recursionOuterframePlacement(
+        element,
+        placements.get(objectKey),
+        element.parentElement,
+        String(element.dataset.traceLayoutPreferredVariable || '')
+      ) || placements.get(objectKey);
+      if (!box) return;
+      byNodeId.set(nodeId, {
+        id: nodeId,
+        objectKey,
+        element,
+        box,
+        activationId: String(element.dataset.traceLayoutActivation || ''),
+        parentId: String(element.dataset.traceLayoutParent || ''),
+        depth: Number(element.dataset.traceLayoutDepth) || 0,
+        siblingIndex: Number(element.dataset.traceLayoutSiblingIndex) || 0,
+        rootIndex: Number(element.dataset.traceLayoutRootIndex) || 0
+      });
+    });
+    return recursionLayoutPreorder([...byNodeId.values()]);
+  }
+
+  // All positioning directives share this interpretation of persisted dotted
+  // target names. No migration or new fields are required for legacy bindings.
+  function layoutTargetDescriptor(document, target, placements) {
+    if (target?.type === 'layout') return target;
+    const key = target?.objectKey || target?.targetObjectKey || target?.key || target?.targetName;
+    if (!key || placements?.has(key)) return null;
+    const match = String(key).match(/^(.+)\.(box|root|current|nodes|leaves|children|level\(([^)]+)\)|side\((left|right|top|bottom)\))$/i);
+    if (!match || !(document.layouts || []).some(layout => layout.id === match[1])) return null;
+    return { type: 'layout', layoutId: match[1],
+      layoutSelector: match[2].match(/^[A-Za-z]+/)[0].toLowerCase(),
+      layoutLevelExpression: match[3] || '', layoutSide: match[4] || '',
+      indexExpressions: target.indexExpressions || (String(target.indexExpression ?? '').trim()
+        ? [String(target.indexExpression)] : []) };
+  }
+
+  function bindingTargetPlacement(document, frame, binding, placements, elements) {
+    if (binding.canvas) return { x: 0, y: 0, width: 1100, height: 620 };
+    return targetPlacement(document, frame, placements, {
+      objectKey: binding.targetObjectKey || (!binding.targetVariableId ? binding.targetName : ''),
+      variableId: binding.targetVariableId,
+      indexExpression: (binding.indexExpressions || []).join(',')
+    }, elements);
+  }
+
+  function layoutNodeCollection(document, frame, descriptor, placements, elements) {
+    const nodes = recursionLayoutNodeEntries(descriptor.layoutId, placements, elements);
+    const selector = String(descriptor.layoutSelector || 'nodes').toLowerCase();
+    if (selector === 'nodes') return nodes;
+    if (selector === 'root') return nodes.filter(node => !node.parentId).slice(0, 1);
+    if (selector === 'current') {
+      const activationId = String(descriptor.layoutActivationId
+        || frame?.source?.recursionActivationId || '');
+      return nodes.filter(node => node.activationId === activationId).slice(-1);
+    }
+    if (selector === 'children') {
+      const activationId = String(descriptor.layoutActivationId || frame?.source?.recursionActivationId || '');
+      return nodes.filter(node => String(node.element.dataset.traceRecursionParentActivation
+        || node.element.dataset.traceLayoutParentActivation || '') === activationId
+        || nodes.some(parent => parent.activationId === activationId && node.parentId === parent.id))
+        .sort((a, b) => a.siblingIndex - b.siblingIndex);
+    }
+    if (selector === 'leaves') {
+      const parentIds = new Set(nodes.map(node => node.parentId).filter(Boolean));
+      return nodes.filter(node => !parentIds.has(node.id));
+    }
+    if (selector === 'level') {
+      const depth = Number(window.ASMTraceRules.resolveExpression(
+        document, frame, descriptor.layoutLevelExpression || '0'
+      ));
+      return Number.isInteger(depth) ? nodes.filter(node => node.depth === depth) : [];
+    }
+    if (selector === 'side') {
+      const side = String(descriptor.layoutSide || 'right').toLowerCase();
+      const bands = new Map();
+      nodes.forEach(node => {
+        const key = side === 'left' || side === 'right'
+          ? node.depth : Math.round((node.box.x + node.box.width / 2) / 4);
+        const previous = bands.get(key);
+        const score = side === 'left' ? node.box.x
+          : side === 'right' ? node.box.x + node.box.width
+            : side === 'top' ? node.box.y : node.box.y + node.box.height;
+        const previousScore = previous?.score;
+        const preferred = previous == null
+          || ((side === 'left' || side === 'top') ? score < previousScore : score > previousScore);
+        if (preferred) bands.set(key, { node, score });
+      });
+      return [...bands.values()].map(entry => entry.node).sort((left, right) => (
+        side === 'left' || side === 'right'
+          ? left.depth - right.depth || left.box.y - right.box.y
+          : left.box.x - right.box.x
+      ));
+    }
+    return [];
+  }
+
+  function materializeLayoutEndpoint(document, frame, endpoint, placements, elements) {
+    if (endpoint?.type !== 'layout') return { endpoint };
+    if (endpoint.layoutSelector === 'box') {
+      return { endpoint: { ...endpoint, objectKey: endpoint.layoutId },
+        placement: semanticTargetPlacement(endpoint.layoutId, placements, elements) };
+    }
+    const nodes = layoutNodeCollection(document, frame, endpoint, placements, elements);
+    const rawIndex = endpoint.indexExpressions?.[0];
+    const resolvedIndex = rawIndex == null || rawIndex === '' ? 0
+      : window.ASMTraceRules.resolveExpression(document, frame, rawIndex);
+    const index = Number(resolvedIndex);
+    const node = Number.isInteger(index) ? nodes[index] : null;
+    if (!node) {
+      // A reserved root has geometry but no displayed data/node yet. It is a
+      // positioning anchor only; pointers must not treat it as a visible cell.
+      const reserved = endpoint.layoutSelector === 'root' && index === 0
+        ? [...elements.entries()].find(([, element]) => element?.dataset?.traceReservedLayoutRoot === endpoint.layoutId)
+        : null;
+      return reserved ? { endpoint: { ...endpoint, objectKey: reserved[0] }, placement: placements.get(reserved[0]) } : { endpoint };
+    }
+    return { endpoint: {
+      objectKey: node.objectKey,
+      indexExpressions: [],
+      indexExpression: '',
+      anchor: endpoint.anchor,
+      offsetX: endpoint.offsetX,
+      offsetY: endpoint.offsetY
+    }, placement: node.box, node };
+  }
+
+  const reservedLayoutMeasurements = new WeakMap();
+  function reservedRecursionNodes(root, document, layout) {
+    let cache = reservedLayoutMeasurements.get(document);
+    if (!cache) reservedLayoutMeasurements.set(document, cache = new Map());
+    const candidates = new Map();
+    (document.frames || []).forEach(frame => {
+      if (frame.source?.layoutId !== layout.id || !frame.source?.recursionActivationId) return;
+      const variableId = frame.source.primaryVariableId;
+      const entry = frame.state?.[variableId];
+      if (entry) candidates.set(String(frame.source.recursionActivationId), {
+        frame, variableId, entry, source: frame.source
+      });
+    });
+    (document.snapshots || []).filter(snapshot => snapshot.layoutId === layout.id).forEach(snapshot => {
+      const frame = snapshot.frame || document.frames?.find(f => f.id === snapshot.sourceFrameId);
+      const variableId = snapshot.sourceVariableId || frame?.source?.primaryVariableId;
+      const entry = snapshot.data ? { data: snapshot.data } : frame?.state?.[variableId];
+      if (!entry || !snapshot.recursionActivationId) return;
+      candidates.set(String(snapshot.recursionActivationId), { frame, variableId, entry,
+        source: { ...snapshot, recursionSiblingIndex: snapshot.layoutNode?.siblingIndex,
+          recursionRootIndex: snapshot.layoutNode?.rootIndex }, snapshot });
+    });
+    return [...candidates.entries()].map(([activationId, item]) => {
+      const variable = document.variables?.[item.variableId] || { id: item.variableId, name: item.variableId };
+      const skin = { ...(document.skins?.[item.variableId] || {}), options: {
+        ...(document.skins?.[item.variableId]?.options || {}),
+        ...(item.frame?.rendererOptions?.[item.variableId] || {}),
+        ...(item.snapshot?.rendererOptions || {})
+      } };
+      const rendererName = item.snapshot?.renderer || item.frame?.renderers?.[item.variableId]
+        || skin.renderer || variable.kind || item.entry.data?.kind;
+      const signature = JSON.stringify([layout.id, activationId, rendererName, skin, item.entry.data]);
+      let box = cache.get(signature);
+      if (!box) {
+        const group = svg('g', { visibility: 'hidden', 'pointer-events': 'none' });
+        root.append(group);
+        try {
+          const renderer = renderers.get(rendererName) || renderers.get(item.entry.data?.kind) || renderObject;
+          renderer(group, { ...item.entry, name: variable.name }, { variable, variableId: item.variableId,
+            skin, rendererName, document, frame: item.frame || {}, highlights: {}, allHighlights: {},
+            diff: [], interactive: false, idPrefix: 'reserve-measure' });
+          box = recursionOuterframePlacement(group, measuredBox(group, { x: 0, y: 0, width: 180, height: 76 }), root);
+          cache.set(signature, box);
+        } finally { group.remove(); }
+      }
+      return { id: `reserve:${activationId}`, activationId,
+        parentId: item.source.recursionParentActivationId ? `reserve:${item.source.recursionParentActivationId}` : '',
+        siblingIndex: item.source.recursionSiblingIndex, rootIndex: item.source.recursionRootIndex, box };
+    });
+  }
+
+  function prepareReservedRootAnchors(root, document, frame, placements, elements) {
+    const requested = [
+      ...(frame.objectBindings || []).map(binding => binding.targetObjectKey || binding.targetName),
+      ...(frame.texts || []).map(text => text.binding?.targetObjectKey || text.binding?.targetName),
+      frame.camera?.target?.objectKey
+    ];
+    (document.layouts || []).filter(layout => layout.type === 'recursion' && layout.reserve === true
+      && requested.includes(`${layout.id}.root`)).forEach(layout => {
+      if (frame.source?.layoutId === layout.id && frame.source?.recursionActivationId) return;
+      if ((document.snapshots || []).some(snapshot => snapshot.layoutId === layout.id
+        && (frame.snapshotIds || []).includes(snapshot.id))) return;
+      const nodes = reservedRecursionNodes(root, document, layout);
+      const rootNode = nodes.find(node => !node.parentId || !nodes.some(parent => parent.id === node.parentId));
+      if (!rootNode) return;
+      const binding = layout.binding || DEFAULT_LIVE_OBJECT_BINDING;
+      const target = bindingTargetPlacement(document, frame, binding, placements, elements);
+      const point = anchorPoint(target, binding.anchor || 'top');
+      if (!point) return;
+      const coordinates = recursionLayoutCoordinates(layout, nodes, {
+        x: point.x + (Number(binding.offsetX) || 0),
+        y: point.y + (Number(binding.offsetY) || 0)
+      });
+      const reservedSlot = coordinates.get(rootNode.id);
+      if (!reservedSlot) return;
+      const firstRootFrame = (document.frames || []).find(candidate => candidate.source?.layoutId === layout.id
+        && candidate.source?.recursionActivationId === rootNode.activationId);
+      const rootBox = firstRootFrame ? reservedRecursionNodes(root, {
+        ...document, frames: [firstRootFrame], snapshots: []
+      }, layout)[0]?.box : rootNode.box;
+      if (!rootBox) return;
+      const vertical = !['left-right', 'right-left'].includes(layout.direction);
+      // Reserve slots may have been measured from retained snapshots. Match
+      // the real live root's outerframe size and the exact centering adjustment
+      // used in applyRecursionLayouts, rather than borrowing its slot width.
+      const slot = { ...reservedSlot, width: rootBox.width, height: rootBox.height,
+        ...(vertical ? { x: reservedSlot.x + (reservedSlot.width - rootBox.width) / 2 }
+          : { y: reservedSlot.y + (reservedSlot.height - rootBox.height) / 2 }) };
+      const key = `reserved-root:${layout.id}`;
+      const anchor = svg('g', { 'data-trace-object-key': key,
+        'data-trace-layout-id': layout.id, 'data-trace-reserved-layout-root': layout.id,
+        'data-trace-anchor-only': '1', visibility: 'hidden', 'pointer-events': 'none' });
+      anchor.append(svg('rect', { x: slot.x, y: slot.y, width: slot.width, height: slot.height,
+        fill: 'none', stroke: 'none' }));
+      root.append(anchor);
+      elements.set(key, anchor); placements.set(key, { ...slot });
+      // Match the first real root frame: reserve the cross-axis width, not
+      // future levels on the growth axis. Parent linear layouts then apply
+      // the same translation to this anchor as to the displayed root.
+      const slots = [...coordinates.values()];
+      const start = Math.min(...slots.map(box => vertical ? box.x : box.y));
+      const end = Math.max(...slots.map(box => vertical ? box.x + box.width : box.y + box.height));
+      placements.set(layout.id, vertical
+        ? { ...slot, x: start, width: end - start }
+        : { ...slot, y: start, height: end - start });
+    });
+  }
+
   function applyRecursionLayouts(rootSvg, root, document, frame, placements, elements, options = {}) {
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
     const visibleSnapshots = (frame.snapshotIds || []).map(id => snapshotsById.get(id)).filter(Boolean);
@@ -3241,14 +3699,14 @@
           objectKey: binding.targetObjectKey || binding.targetName,
           variableId: binding.targetVariableId,
           indexExpression: (binding.indexExpressions || []).join(',')
-        }, placements);
+        }, placements, elements);
       const target = targetKey === '$canvas'
         ? { x: 0, y: 0, width: 1100, height: 620 }
         : targetKey === '$keep'
           ? keepAnchorPlacement(
             document, frame, placements, elements, snapshotObjectKey(snapshots[0])
           )
-        : semanticTargetPlacement(targetKey, placements, elements);
+        : bindingTargetPlacement(document, frame, binding, placements, elements);
       if (!target) return;
       const targetAnchor = anchorPoint(target, binding.anchor || 'top');
       const anchor = {
@@ -3261,6 +3719,10 @@
           latestByActivation.set(String(snapshot.recursionActivationId), snapshot);
         }
       });
+      const liveActivationId = liveLayout
+        ? String(frame.source.recursionActivationId || '') : '';
+      const liveNodeId = liveActivationId
+        ? `layout-live:${layout.id}:${liveActivationId}` : '';
       const activeParentSnapshot = snapshot => {
         const ancestors = Array.isArray(snapshot?.recursionAncestorActivationIds)
           ? [...snapshot.recursionAncestorActivationIds].reverse()
@@ -3275,6 +3737,10 @@
         const element = elements.get(objectKey);
         const fallbackBox = placements.get(objectKey);
         const parentSnapshot = activeParentSnapshot(snapshot);
+        const directParentIsLive = Boolean(liveNodeId
+          && !latestByActivation.has(liveActivationId)
+          && String(snapshot.recursionParentActivationId || '') === liveActivationId
+          && String(snapshot.recursionActivationId || '') !== liveActivationId);
         const preferredVariableId = snapshot.kind === 'frame'
           ? String(snapshot.frame?.source?.primaryVariableId || '')
           : String(snapshot.sourceVariableId || '');
@@ -3283,10 +3749,10 @@
           objectKey,
           snapshot,
           preferredVariableId,
-          parentId: parentSnapshot?.id
+          parentId: directParentIsLive ? liveNodeId : parentSnapshot?.id
             || String(snapshot.layoutNode?.parentSnapshotId || ''),
           activationId: String(snapshot.recursionActivationId || ''),
-          parentActivationId: String(parentSnapshot?.recursionActivationId
+          parentActivationId: directParentIsLive ? liveActivationId : String(parentSnapshot?.recursionActivationId
             || snapshot.recursionParentActivationId || ''),
           recursionDepth: Number(snapshot.recursionDepth) || 0,
           siblingIndex: snapshot.layoutNode?.siblingIndex,
@@ -3305,14 +3771,18 @@
       }).filter(node => node.objectKey && node.box && elements.has(node.objectKey));
       let liveReplacement = null;
       if (liveLayout) {
-        const activationId = String(frame.source.recursionActivationId || '');
+        const activationId = liveActivationId;
         const sameActivation = latestByActivation.get(activationId);
         if (sameActivation) {
           const liveObjectKey = objectKeyForVariable(frame, frame.source.primaryVariableId);
           const retainedObjectKey = snapshotObjectKey(sameActivation);
           const liveElement = elements.get(liveObjectKey);
           const retainedElement = elements.get(retainedObjectKey);
-          if (liveObjectKey && retainedObjectKey && liveObjectKey !== retainedObjectKey && retainedElement) {
+          // Reused snapshot descendants share the source variable key with
+          // live recursion calls. A preview has no live object to replace;
+          // never detach that key's frozen node from an older snapshot.
+          if (liveObjectKey && retainedObjectKey && liveObjectKey !== retainedObjectKey && retainedElement
+            && !liveElement?.closest?.('.asm-trace-snapshot')) {
             const liveTreeKeys = liveElement
               ? [...elements.entries()].filter(([, candidate]) => (
                 candidate === liveElement || liveElement.contains(candidate)
@@ -3329,7 +3799,11 @@
           const ancestors = Array.isArray(frame.source.recursionAncestorActivationIds)
             ? [...frame.source.recursionAncestorActivationIds].reverse()
             : [];
-          const parentSnapshot = ancestors.map(id => latestByActivation.get(id)).find(Boolean) || null;
+          const parentCandidates = [frame.source.recursionParentActivationId, ...ancestors]
+            .map(value => String(value || ''))
+            .filter(value => value && value !== activationId);
+          const parentSnapshot = parentCandidates
+            .map(id => latestByActivation.get(id)).find(Boolean) || null;
           const objectKey = objectKeyForVariable(frame, frame.source.primaryVariableId);
           const element = elements.get(objectKey);
           const fallbackBox = placements.get(objectKey);
@@ -3341,7 +3815,7 @@
           );
           if (box && element) {
             sourceNodes.push({
-              id: `layout-live:${layout.id}:${activationId}`,
+              id: liveNodeId,
               objectKey,
               live: true,
               preferredVariableId: frame.source.primaryVariableId,
@@ -3358,6 +3832,32 @@
         }
       }
       const coordinates = recursionLayoutCoordinates(layout, sourceNodes, anchor);
+      let reservedCross = null;
+      if (layout.reserve === true) {
+        const reservedNodes = reservedRecursionNodes(root, document, layout);
+        const reserved = recursionLayoutCoordinates(layout, reservedNodes, anchor);
+        const vertical = !['left-right', 'right-left'].includes(layout.direction);
+        const slots = [...reserved.values()];
+        if (slots.length) reservedCross = vertical
+          ? { reservedCrossAxis: 'x', x: Math.min(...slots.map(box => box.x)),
+            width: Math.max(...slots.map(box => box.x + box.width)) - Math.min(...slots.map(box => box.x)) }
+          : { reservedCrossAxis: 'y', y: Math.min(...slots.map(box => box.y)),
+            height: Math.max(...slots.map(box => box.y + box.height)) - Math.min(...slots.map(box => box.y)) };
+        sourceNodes.forEach(node => {
+          const slot = reserved.get(`reserve:${node.activationId}`);
+          const actual = coordinates.get(node.id);
+          if (!slot || !actual) return;
+          const vertical = !['left-right', 'right-left'].includes(layout.direction);
+          if (vertical) actual.x = slot.x + (slot.width - actual.width) / 2;
+          else actual.y = slot.y + (slot.height - actual.height) / 2;
+          // Leaf growth must not reserve absent ancestor rows: that would
+          // turn a missing level into an oversized gap.
+          if (layout.growFrom !== 'leaves') {
+            if (vertical) actual.y = slot.y;
+            else actual.x = slot.x;
+          }
+        });
+      }
       const positions = document.studio?.positions?.[frame.id] || {};
       sourceNodes.forEach(node => {
         const snapshot = snapshotsById.get(node.id);
@@ -3398,6 +3898,198 @@
           placements.set(liveReplacement.liveObjectKey, { ...retainedPlacement });
         }
       }
+      const layoutBox = semanticTargetPlacement(layout.id, placements, elements);
+      if (layoutBox) placements.set(layout.id, { ...layoutBox, ...reservedCross });
+    });
+  }
+
+  function isLineLayout(layout) {
+    return layout?.type === 'linear' || layout?.type === 'line' || layout?.type === 'group';
+  }
+
+  function applyLayoutBindings(document, frame, placements, elements) {
+    const layouts = new Map((document.layouts || []).map(layout => [layout.id, layout]));
+    const applied = new Set(), visiting = new Set();
+    const belongsTo = (id, ancestor) => {
+      const seen = new Set();
+      while (id && !seen.has(id)) {
+        if (id === ancestor) return true;
+        seen.add(id);
+        id = layouts.get(id)?.parentLayoutId;
+      }
+      return false;
+    };
+    function apply(id) {
+      if (applied.has(id) || visiting.has(id)) return;
+      const layout = layouts.get(id), binding = layout?.placeBinding;
+      if (!binding) return;
+      visiting.add(id);
+      const targetId = binding.targetObjectKey || binding.targetName;
+      if (layouts.has(targetId)) apply(targetId);
+      const source = semanticTargetPlacement(id, placements, elements);
+      const target = bindingTargetPlacement(document, frame, binding, placements, elements);
+      if (source && target) {
+        const a = anchorPoint(source, binding.sourceAnchor || 'top');
+        const b = anchorPoint(target, binding.anchor || 'center');
+        const dx = b.x + (Number(binding.offsetX) || 0) - a.x;
+        const dy = b.y + (Number(binding.offsetY) || 0) - a.y;
+        const members = [...new Set([...elements.values()].filter(element => (
+          (element?.dataset?.traceLayoutNode || element?.dataset?.traceReservedLayoutRoot)
+            && belongsTo(element.dataset.traceLayoutId, id)
+        )))];
+        members.filter(element => !members.some(other => other !== element && other.contains(element)))
+          .forEach(element => {
+            translatedTransform(element, dx, dy);
+            shiftPlacementTree(element, dx, dy, placements, elements);
+          });
+        layouts.forEach(child => {
+          const box = placements.get(child.id);
+          if (box && belongsTo(child.id, id)) placements.set(child.id, {
+            ...box, x: box.x + dx, y: box.y + dy
+          });
+        });
+      }
+      visiting.delete(id);
+      applied.add(id);
+    }
+    layouts.forEach(layout => apply(layout.id));
+  }
+
+  function applyLineLayouts(rootSvg, root, document, frame, placements, elements) {
+    const layouts = Array.isArray(document.layouts) ? document.layouts : [];
+    const byId = new Map(layouts.map(layout => [layout.id, layout]));
+    const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
+    const visibleSnapshots = (frame.snapshotIds || []).map(id => snapshotsById.get(id)).filter(Boolean);
+    // `line` and `group` remain readable for trace documents saved before the
+    // public syntax was renamed to `linear`.
+    const groups = layouts.filter(isLineLayout);
+    const depthOf = layout => {
+      let depth = 0;
+      let current = layout;
+      const seen = new Set();
+      while (current?.parentLayoutId && !seen.has(current.id)) {
+        seen.add(current.id);
+        depth += 1;
+        current = byId.get(current.parentLayoutId);
+      }
+      return depth;
+    };
+    const membersByGroup = new Map();
+    [...groups].sort((a, b) => depthOf(b) - depthOf(a)).forEach(group => {
+      const childLayouts = layouts.filter(layout => layout.parentLayoutId === group.id)
+        .map(layout => ({
+          kind: 'layout', layout, key: layout.id,
+          box: semanticTargetPlacement(layout.id, placements, elements)
+        }))
+        .filter(entry => entry.box);
+      const snapshotMembers = visibleSnapshots.filter(snapshot => snapshot.layoutId === group.id)
+        .map(snapshot => {
+          const key = snapshotObjectKey(snapshot);
+          return {
+            kind: 'object', key, element: elements.get(key),
+            box: semanticTargetPlacement(key, placements, elements)
+          };
+        })
+        .filter(entry => entry.key && entry.element && entry.box);
+      const liveMembers = Object.entries(frame.source?.layoutIds || {})
+        .filter(([, layoutId]) => layoutId === group.id)
+        .map(([variableId]) => {
+          const key = objectKeyForVariable(frame, variableId);
+          return {
+            kind: 'object', key, element: elements.get(key),
+            box: semanticTargetPlacement(key, placements, elements)
+          };
+        })
+        .filter(entry => entry.key && entry.element && entry.box);
+      const seen = new Set();
+      const children = [...childLayouts, ...snapshotMembers, ...liveMembers]
+        .filter(entry => !seen.has(entry.key) && seen.add(entry.key));
+      if (!children.length) return;
+      const direction = String(group.direction || 'top-down').toLowerCase();
+      const vertical = direction === 'top-down' || direction === 'bottom-up';
+      const gap = Math.max(0, Number(group.gap) || 0);
+      const align = String(group.align || 'center').toLowerCase();
+      const mainSize = entry => vertical ? entry.box.height : entry.box.width;
+      const crossSize = entry => vertical ? entry.box.width : entry.box.height;
+      const totalMain = children.reduce((sum, entry) => sum + mainSize(entry), 0) + gap * (children.length - 1);
+      const totalCross = Math.max(...children.map(crossSize));
+      let cursor = 0;
+      const arranged = children.map(entry => {
+        const cross = align === 'start' ? 0 : align === 'end'
+          ? totalCross - crossSize(entry) : (totalCross - crossSize(entry)) / 2;
+        const position = vertical
+          ? { x: cross, y: cursor, width: entry.box.width, height: entry.box.height }
+          : { x: cursor, y: cross, width: entry.box.width, height: entry.box.height };
+        cursor += mainSize(entry) + gap;
+        return { ...entry, position };
+      });
+      if (direction === 'bottom-up' || direction === 'right-left') {
+        arranged.forEach(entry => {
+          if (vertical) entry.position.y = totalMain - entry.position.y - entry.position.height;
+          else entry.position.x = totalMain - entry.position.x - entry.position.width;
+        });
+      }
+      const binding = group.binding;
+      let origin = { x: 0, y: 0 };
+      if (binding) {
+        const target = bindingTargetPlacement(document, frame, binding, placements, elements);
+        const targetPoint = anchorPoint(target, binding.anchor || 'center');
+        const ownBox = { x: 0, y: 0,
+          width: vertical ? totalCross : totalMain,
+          height: vertical ? totalMain : totalCross };
+        const authoredAnchor = String(binding.anchor || 'center').toLowerCase();
+        const authoredPoint = anchorPoint(ownBox, authoredAnchor);
+        // A growing linear layout is pinned at the edge opposite its growth
+        // direction. Preserve the authored cross-axis alignment, but do not
+        // recenter the whole box whenever its main-axis size changes.
+        const ownPoint = authoredPoint && {
+          x: vertical
+            ? authoredPoint.x
+            : direction === 'right-left' ? ownBox.width : 0,
+          y: vertical
+            ? direction === 'bottom-up' ? ownBox.height : 0
+            : authoredPoint.y
+        };
+        if (targetPoint && ownPoint) origin = {
+          x: targetPoint.x + (Number(binding.offsetX) || 0) - ownPoint.x,
+          y: targetPoint.y + (Number(binding.offsetY) || 0) - ownPoint.y
+        };
+      }
+      const groupMembers = [];
+      arranged.forEach(entry => {
+        const destination = { ...entry.position,
+          x: entry.position.x + origin.x, y: entry.position.y + origin.y };
+        const dx = destination.x - entry.box.x;
+        const dy = destination.y - entry.box.y;
+        const members = entry.kind === 'object'
+          ? [entry.element]
+          : isLineLayout(entry.layout)
+            ? membersByGroup.get(entry.layout.id) || []
+            : [...new Set([...elements.values()].filter(element => (
+              String(element?.dataset?.traceLayoutId || '') === String(entry.layout.id)
+              && (element?.dataset?.traceLayoutNode || element?.dataset?.traceReservedLayoutRoot)
+            )))];
+        const topMembers = members.filter(element => !members.some(candidate => (
+          candidate !== element && candidate.contains?.(element)
+        )));
+        if (entry.kind === 'object' && entry.element?.dataset) {
+          entry.element.dataset.traceLayoutId = group.id;
+          entry.element.dataset.traceLayoutNode = entry.key;
+        }
+        topMembers.forEach(element => {
+          translatedTransform(element, dx, dy);
+          shiftPlacementTree(element, dx, dy, placements, elements);
+        });
+        groupMembers.push(...topMembers);
+        if (entry.kind === 'layout') placements.set(entry.layout.id, {
+          ...placements.get(entry.layout.id), ...destination
+        });
+      });
+      const box = { x: origin.x, y: origin.y,
+        width: vertical ? totalCross : totalMain,
+        height: vertical ? totalMain : totalCross };
+      placements.set(group.id, box);
+      membersByGroup.set(group.id, [...new Set(groupMembers)]);
     });
   }
 
@@ -3426,6 +4118,7 @@
         sourceNodesById.set(id, {
           id,
           parentId: element?.dataset?.traceLayoutParent || '',
+          activationId: String(element?.dataset?.traceLayoutActivation || ''),
           preferredVariableId: element?.dataset?.traceLayoutPreferredVariable || '',
           siblingIndex: Number(element?.dataset?.traceLayoutSiblingIndex) || 0,
           rootIndex: Number(element?.dataset?.traceLayoutRootIndex) || 0,
@@ -3461,7 +4154,12 @@
             : direction === 'right-left' ? ['left', 'right']
               : ['bottom', 'top'];
         models.push({
-          id: `${layout.id}:${parentNode.objectKey}:${node.objectKey}`,
+          // Live recursion nodes and the @keep snapshots that replace them
+          // have different object keys but the same activation identity. A
+          // stable edge id prevents the old edge from becoming a temporary
+          // exit ghost during that handoff.
+          id: `${layout.id}:${parentNode.activationId || parentNode.id}`
+            + `:${node.activationId || node.id}`,
           source: 'layout',
           className: 'asm-trace-layout-edge',
           from: { objectKey: parentNode.objectKey, anchor: anchors[0] },
@@ -4221,6 +4919,19 @@
       object.dataset.tracePositionY = String(
         studioObject.type === 'variable-marker' ? baseY : position.y
       );
+      if (studioObject.pointerId) {
+        object.dataset.tracePointerId = String(studioObject.pointerId);
+        object.dataset.tracePointerInstanceId = String(
+          studioObject.pointerInstanceId || studioObject.pointerId
+        );
+        object.dataset.tracePointerStatus = String(studioObject.status || 'resolved');
+        object.dataset.tracePointerLane = String(studioObject.lane || 'top');
+        object.dataset.tracePointerTargetKey = String(studioObject.targetKey || '');
+        object.dataset.traceBindingTarget = String(studioObject.targetKey || '');
+        object.dataset.tracePointerSlot = String(Number(studioObject.slot) || 0);
+        object.dataset.tracePointerGroupSize = String(Number(studioObject.groupSize) || 1);
+        object.dataset.tracePointerOffsetX = String(Number(studioObject.offsetX) || 0);
+      }
       if (studioObject.sourceVariableId) {
         object.dataset.traceSourceVariableId = studioObject.sourceVariableId;
       }
@@ -4300,7 +5011,7 @@
           motion.append(
             svg('rect', {
               class: 'trace-variable-marker-label-box', x: labelLeft, y: labelTop,
-              width: labelSize, height: labelSize, fill: '#bfe8f7', 'fill-opacity': 0.58,
+              width: labelSize, height: labelSize, fill: '#bfe8f7', 'fill-opacity': 1,
               stroke: borderColor, 'stroke-width': 1
             }),
             svg('text', {
@@ -4356,7 +5067,7 @@
               height: labelHeight,
               rx: 0,
               fill: '#bfe8f7',
-              'fill-opacity': 0.58,
+              'fill-opacity': 1,
               stroke: borderColor,
               'stroke-width': borderWidth
             }),
@@ -4514,8 +5225,73 @@
     };
   }
 
+  // Legacy fallback kept intentionally until the canonical pointer model has
+  // been user-validated. Do not remove this path as part of incidental cleanup.
+  function legacyLayoutFrameBindingPointers(pending, placements) {
+    const groups = new Map();
+    pending.forEach(item => {
+      const target = item.targetPlacement;
+      const groupKey = item.unresolvedIndex
+        ? `unresolved:${item.targetObjectKey}`
+        : target
+        ? [target.x, target.y, target.width, target.height]
+          .map(value => Math.round((Number(value) || 0) * 10) / 10)
+          .join(':')
+        : `${item.targetRuntimeIdentity || item.targetObjectKey || item.targetVariableId}#${item.indexValue}`;
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey).push(item);
+    });
+
+    const objects = [];
+    groups.forEach(group => {
+      const orderedGroup = [...group].sort((left, right) => {
+        const byDeclaration = Number(left.markerSortOrder) - Number(right.markerSortOrder);
+        return byDeclaration || String(left.id).localeCompare(String(right.id));
+      });
+      const gap = 8;
+      const totalWidth = orderedGroup.reduce((total, item) => total + item.labelWidth, 0)
+        + Math.max(0, orderedGroup.length - 1) * gap;
+      const targetPlacement = orderedGroup[0].targetPlacement || placements.get(
+        `${orderedGroup[0].targetObjectKey}#${orderedGroup[0].indexValue}`
+      );
+      const targetWidth = Math.max(0, Number(targetPlacement?.width) || 0);
+      const baseCellWidth = Math.max(1, Number(orderedGroup[0].baseCellWidth) || 40);
+      const unresolved = orderedGroup[0].unresolvedIndex;
+      const relativeLayout = unresolved
+        ? unresolvedRelativeLayout(orderedGroup, targetPlacement, baseCellWidth, gap)
+        : null;
+      const markerPlacement = relativeLayout?.markerPlacement || (unresolved ? {
+        ...targetPlacement,
+        x: targetPlacement.x - gap - totalWidth / 2 - targetPlacement.width / 2
+      } : null);
+      const keepArrowsVertical = targetWidth > baseCellWidth + 0.5;
+      let cursor = -totalWidth / 2;
+      orderedGroup.forEach(item => {
+        item.offsetX = relativeLayout?.offsets.get(item) ?? (cursor + item.labelWidth / 2);
+        item.pointerTargetOffsetX = relativeLayout ? item.offsetX
+          : keepArrowsVertical ? item.offsetX : 0;
+        cursor += item.labelWidth + gap;
+        const {
+          targetVariableId, targetObjectKey, targetRuntimeIdentity,
+          targetPlacement: ignoredTargetPlacement,
+          indexValue, unresolvedIndex, labelWidth, label, markerSortExpression,
+          relativeMarkerBase, relativeMarkerOffset, ...object
+        } = item;
+        if (unresolvedIndex) {
+          object.markerUnresolved = true;
+          object.markerPlacement = markerPlacement;
+          delete object.target;
+          delete object.pointerTarget;
+        }
+        objects.push(object);
+      });
+    });
+    return objects;
+  }
+
   function renderFrameBindings(root, document, frame, placements, elements, options = {}) {
-    const authoredBindings = Array.isArray(frame.bindings) ? frame.bindings : [];
+    const authoredBindings = (Array.isArray(frame.bindings) ? frame.bindings : [])
+      .filter(binding => !options.snapshotOwner || !binding.explicitPointer);
     if (!authoredBindings.length) return;
     const bindings = [];
     const authoredSourceIds = new Set(authoredBindings.map(binding => binding.sourceVariableId));
@@ -4552,7 +5328,47 @@
     const visualContinuityOrdinals = new Map();
 
     bindings.forEach((binding, index) => {
-      const targetEntry = frame.state?.[binding.targetVariableId];
+      let retainedTarget = null;
+      if (binding.layoutChild || binding.layoutTarget) {
+        const descriptor = binding.layoutTarget || { layoutId: binding.layoutChild.layoutId,
+          layoutSelector: 'children', indexExpressions: [binding.layoutChild.childExpression] };
+        const selected = materializeLayoutEndpoint(document, frame, { type: 'layout', ...descriptor }, placements, elements);
+        const owner = selected.node?.element;
+        const snapshotId = owner?.dataset.traceSnapshot || owner?.closest('[data-trace-snapshot]')?.dataset.traceSnapshot;
+        const snapshot = (document.snapshots || []).find(candidate => candidate.id === snapshotId)
+          || (owner ? { id: selected.node.objectKey, frame, sourceVariableId: owner.dataset.traceLayoutPreferredVariable
+            || owner.dataset.traceVariable || frame.source?.primaryVariableId } : null);
+        const variableId = snapshot?.sourceVariableId || snapshot?.frame?.source?.primaryVariableId;
+        const primary = owner && [owner, ...owner.querySelectorAll('[data-trace-variable]')]
+          .find(element => element.dataset.traceVariable === variableId);
+        if (!snapshot || !primary) return;
+        retainedTarget = { snapshot, primary, variableId, objectKey: `${snapshot.id}:pointer-target` };
+        binding = { ...binding, targetVariableId: variableId };
+        // Read geometry from the selected child's actual SVG, never from a
+        // different recursive activation that happens to share the C++ name.
+        [primary, ...primary.querySelectorAll('[data-trace-object-key]')].forEach(element => {
+          const sourceKey = element.dataset.traceObjectKey;
+          const suffix = sourceKey?.startsWith(`${primary.dataset.traceObjectKey}#`)
+            ? sourceKey.slice(primary.dataset.traceObjectKey.length) : element === primary ? '' : null;
+          if (suffix == null) return;
+          const key = retainedTarget.objectKey + suffix;
+          if (elements.get(key)?.closest('[data-trace-snapshot]') === owner) return;
+          // Frozen frames share static C++ variable IDs. Give their pointer
+          // anchors snapshot-local keys so event playback cannot select a
+          // same-named cell from an ancestor or the other child.
+          const proxy = svg('g', { 'data-trace-object-key': key,
+            'data-trace-anchor-only': '1', 'pointer-events': 'none' });
+          const box = element.getBBox();
+          proxy.append(svg('rect', { x: box.x, y: box.y, width: box.width, height: box.height,
+            fill: 'none', stroke: 'none' }));
+          element.append(proxy);
+          const presented = window.ASMArrowModel?.presentedBounds(proxy, root, true);
+          if (presented) { placements.set(key, presented); elements.set(key, proxy); }
+        });
+      }
+      const targetEntry = retainedTarget
+        ? retainedTarget.snapshot.frame?.state?.[binding.targetVariableId]
+        : frame.state?.[binding.targetVariableId];
       const targetItems = Array.isArray(targetEntry?.data?.items) ? targetEntry.data.items : [];
       const targetKind = document.variables?.[binding.targetVariableId]?.kind
         || targetEntry?.data?.kind;
@@ -4563,15 +5379,16 @@
       const hasIndexValue = Number.isInteger(resolvedIndexValue);
       const indexValue = hasIndexValue ? resolvedIndexValue : null;
       if (targetKind === 'matrix') {
-        if (binding.mode !== 'index' || !targetEntry || !hasIndexValue) return;
+        if (binding.mode !== 'index' || !targetEntry) return;
         const targetObjectKey = objectKeyForVariable(frame, binding.targetVariableId);
         const dimension = Number(binding.indexDimension) || 0;
         const rendererOptions = frame.rendererOptions?.[binding.targetVariableId] || {};
         if (rendererOptions.markerLayout === 'none') return;
-        let targetKey = `${targetObjectKey}:${dimension === 0 ? 'row' : 'column'}-label:${indexValue}`;
+        const axisName = dimension === 0 ? 'row' : 'column';
+        let targetKey = `${targetObjectKey}:${axisName}-label:${indexValue}`;
         let targetExpression = String(indexValue);
-        let targetAxis = dimension === 0 ? 'row' : 'column';
-        if (dimension === 1 && rendererOptions.markerLayout === 'inner') {
+        let targetAxis = axisName;
+        if (hasIndexValue && dimension === 1 && rendererOptions.markerLayout === 'inner') {
           const rowBinding = bindings.find(candidate => (
             candidate.targetVariableId === binding.targetVariableId
             && Number(candidate.indexDimension) === 0
@@ -4583,6 +5400,19 @@
           targetKey = `${targetObjectKey}#${rowValue},${indexValue}`;
           targetExpression = `${rowValue},${indexValue}`;
           targetAxis = '';
+        }
+        if (!hasIndexValue) {
+          const prefix = `${targetObjectKey}:${axisName}-label:`;
+          const firstAxisEntry = [...placements.entries()]
+            .filter(([key]) => String(key).startsWith(prefix))
+            .sort(([left], [right]) => {
+              const leftIndex = Number(String(left).slice(prefix.length));
+              const rightIndex = Number(String(right).slice(prefix.length));
+              return leftIndex - rightIndex;
+            })[0];
+          if (!firstAxisEntry) return;
+          [targetKey] = firstAxisEntry;
+          targetExpression = '0';
         }
         const targetPlacement = placements.get(targetKey);
         if (!targetPlacement) return;
@@ -4596,11 +5426,11 @@
           sourceSnapshotOwner: snapshotOwner,
           sourceRuntimeIdentity: frame.state?.[binding.sourceVariableId]?.lifetime
             || frame.state?.[binding.sourceVariableId]?.identity || '',
-          sourceVisualContinuityKey: `${snapshotOwner ? `snapshot:${snapshotOwner}:` : ''}auto-matrix-marker:${binding.sourceVariableId}:${binding.targetVariableId}:${dimension}`,
+          sourceVisualContinuityKey: `${snapshotOwner ? `snapshot:${snapshotOwner}:` : ''}auto-matrix-marker:${sourceVariable.functionName || 'global'}:${sourceVariable.name || binding.sourceName}:${document.variables?.[binding.targetVariableId]?.name || binding.targetVariableId}:${dimension}`,
           sourceAliasContinuityKey: '', sourceReferenceAlias: /&/.test(String(sourceVariable.cppType || '')),
           targetVariableId: binding.targetVariableId, targetObjectKey,
           targetRuntimeIdentity: targetEntry?.identity || '', targetPlacement,
-          baseCellWidth: 40, indexValue, unresolvedIndex: false, label,
+          baseCellWidth: 40, indexValue, unresolvedIndex: !hasIndexValue, label,
           markerSortOrder: index, markerSortKey: binding.sourceName || label,
           markerSortExpression: indexExpression, relativeMarkerBase: '', relativeMarkerOffset: null,
           indexExpression, labelWidth: 18,
@@ -4625,7 +5455,7 @@
         || !targetEntry
         || !targetItems.length) return;
       const markerSourceIds = new Set(binding.sourceVariableIds || [binding.sourceVariableId]);
-      (frame.events || []).forEach(event => {
+      (binding.explicitPointer ? [] : frame.events || []).forEach(event => {
         if (!['assign', 'write'].includes(event?.type)) return;
         const eventTarget = (event.targets || []).find(target => target?.role !== 'source'
           && markerSourceIds.has(target?.variableId));
@@ -4642,7 +5472,8 @@
       const unresolvedReference = hasIndexValue ? null : leftmostVisibleIndexPlacement(
         frame, binding.targetVariableId, placements, elements
       );
-      if (hasIndexValue ? !ensureLinearIndexPlacement(
+      if (binding.explicitPointer && (!hasIndexValue || indexValue < 0 || indexValue >= targetItems.length)) return;
+      if (binding.explicitPointer ? !placements.has(`${retainedTarget?.objectKey || objectKeyForVariable(frame, binding.targetVariableId)}#${indexValue}`) : hasIndexValue ? !ensureLinearIndexPlacement(
         frame,
         binding.targetVariableId,
         indexValue,
@@ -4651,11 +5482,11 @@
         elements
       ) : !unresolvedReference) return;
 
-      const label = binding.indexExpression
+      const label = binding.label || binding.indexExpression
         || binding.sourceName
         || document.variables?.[binding.sourceVariableId]?.name
         || 'index';
-      const targetObjectKey = objectKeyForVariable(frame, binding.targetVariableId);
+      const targetObjectKey = retainedTarget?.objectKey || objectKeyForVariable(frame, binding.targetVariableId);
       const targetKey = unresolvedReference?.key || `${targetObjectKey}#${indexValue}`;
       const targetPlacement = unresolvedReference?.placement || placements.get(targetKey);
       const targetElement = elements.get(targetKey);
@@ -4663,11 +5494,14 @@
         targetElement?.closest?.('[data-layout]')?.getAttribute?.('data-box-size')
       ) || 40;
       const snapshotOwner = String(options.snapshotOwner || '');
+      const semanticSourceVariable = document.variables?.[binding.sourceVariableId] || {};
+      const semanticTargetVariable = document.variables?.[binding.targetVariableId] || {};
       const visualContinuityBase = [
         ...(snapshotOwner ? ['snapshot', snapshotOwner] : []),
         'auto-marker',
-        binding.sourceVariableId,
-        binding.targetVariableId,
+        semanticSourceVariable.functionName || 'global',
+        semanticSourceVariable.name || binding.sourceName || binding.sourceVariableId,
+        semanticTargetVariable.name || binding.targetVariableId,
         binding.sourceName || binding.indexExpression || ''
       ].join(':');
       const visualContinuityOrdinal = visualContinuityOrdinals.get(visualContinuityBase) || 0;
@@ -4718,11 +5552,13 @@
         indexExpression,
         labelWidth: 18,
         target: {
+          ...(binding.explicitPointer ? { objectKey: targetObjectKey } : {}),
           variableId: binding.targetVariableId,
           indexExpression: String(indexValue),
           anchor: 'top'
         },
         pointerTarget: {
+          ...(binding.explicitPointer ? { objectKey: targetObjectKey } : {}),
           variableId: binding.targetVariableId,
           indexExpression: String(indexValue),
           anchor: 'center'
@@ -4748,71 +5584,44 @@
       }
     });
 
-    const groups = new Map();
-    pending.forEach(item => {
-      const target = item.targetPlacement;
-      const groupKey = item.unresolvedIndex
-        ? `unresolved:${item.targetObjectKey}`
-        : target
-        ? [target.x, target.y, target.width, target.height]
-          .map(value => Math.round((Number(value) || 0) * 10) / 10)
-          .join(':')
-        : `${item.targetRuntimeIdentity || item.targetObjectKey || item.targetVariableId}#${item.indexValue}`;
-      if (!groups.has(groupKey)) groups.set(groupKey, []);
-      groups.get(groupKey).push(item);
-    });
-
-    const objects = [];
-    groups.forEach(group => {
-      const orderedGroup = [...group].sort((left, right) => {
-        const byDeclaration = Number(left.markerSortOrder) - Number(right.markerSortOrder);
-        return byDeclaration || String(left.id).localeCompare(String(right.id));
-      });
-      const gap = 8;
-      const totalWidth = orderedGroup.reduce((total, item) => total + item.labelWidth, 0)
-        + Math.max(0, orderedGroup.length - 1) * gap;
-      const targetPlacement = orderedGroup[0].targetPlacement || placements.get(
-        `${orderedGroup[0].targetObjectKey}#${orderedGroup[0].indexValue}`
-      );
-      const targetWidth = Math.max(0, Number(targetPlacement?.width) || 0);
-      const baseCellWidth = Math.max(1, Number(orderedGroup[0].baseCellWidth) || 40);
-      const unresolved = orderedGroup[0].unresolvedIndex;
-      const relativeLayout = unresolved
-        ? unresolvedRelativeLayout(orderedGroup, targetPlacement, baseCellWidth, gap)
-        : null;
-      // Move the entire group horizontally, preserving the reference cell's
-      // top/center anchors. The rightmost label ends 8px before its left edge.
-      const markerPlacement = relativeLayout?.markerPlacement || (unresolved ? {
-        ...targetPlacement,
-        x: targetPlacement.x - gap - totalWidth / 2 - targetPlacement.width / 2
-      } : null);
-      const keepArrowsVertical = targetWidth > baseCellWidth + 0.5;
-      let cursor = -totalWidth / 2;
-      orderedGroup.forEach(item => {
-        item.offsetX = relativeLayout?.offsets.get(item) ?? (cursor + item.labelWidth / 2);
-        item.pointerTargetOffsetX = relativeLayout ? item.offsetX
-          : keepArrowsVertical ? item.offsetX : 0;
-        cursor += item.labelWidth + gap;
-        const {
-          targetVariableId, targetObjectKey, targetRuntimeIdentity,
-          targetPlacement: ignoredTargetPlacement,
-          indexValue, unresolvedIndex, labelWidth, label, markerSortExpression,
-          relativeMarkerBase, relativeMarkerOffset, ...object
-        } = item;
-        if (unresolvedIndex) {
-          object.markerUnresolved = true;
-          object.markerPlacement = markerPlacement;
-          delete object.target;
-          delete object.pointerTarget;
+    let objects = [];
+    const pointerModel = window.ASMTracePointerModel;
+    if (pointerModel?.enabled?.()) {
+      try {
+        const states = pointerModel.layout(pending, {
+          gap: 8,
+          resolveTargetKey: target => resolvedTargetKey(document, frame, target, placements),
+          resolvePlacement: target => {
+            const key = resolvedTargetKey(document, frame, target, placements);
+            return key ? placements.get(key) : null;
+          },
+          placementForKey: key => placements.get(key)
+        });
+        objects = states.map(pointerModel.toRendererObject);
+        if (window.document?.documentElement) {
+          window.document.documentElement.dataset.asmTracePointerSystem = 'canonical';
         }
-        objects.push(object);
-      });
-    });
+      } catch (error) {
+        console.error('Canonical pointer layout failed; legacy fallback is disabled.', error);
+        if (window.document?.documentElement) {
+          window.document.documentElement.dataset.asmTracePointerSystem = 'canonical-error';
+        }
+      }
+    } else {
+      // Canonical-only validation deliberately leaves the old renderer call
+      // disconnected. Keep the implementation above until visual approval:
+      // objects = legacyLayoutFrameBindingPointers(pending, placements);
+      if (window.document?.documentElement) {
+        window.document.documentElement.dataset.asmTracePointerSystem = 'canonical-unavailable';
+      }
+    }
 
     if (objects.length) renderStudioObjects(root, document, frame, placements, elements, options, objects);
   }
 
-  function applyCompletedScopeExits(frame, elements, deferLifecycleEvents = false) {
+  function applyCompletedScopeExits(
+    traceDocument, frame, elements, deferLifecycleEvents = false
+  ) {
     if (deferLifecycleEvents) return;
     (frame?.events || []).filter(event => (
       (event?.type === 'scope-exit' || event?.type === 'visual-exit')
@@ -4820,6 +5629,9 @@
       && event.autoAnimationDisabled !== true
     )).forEach(event => {
       (event.targets || []).forEach(target => {
+        if (window.ASMTraceFrameTween?.naturalReferenceContainerExitTarget?.(
+          traceDocument, event, target
+        )) return;
         const variableId = String(target?.variableId || '');
         const lifetime = String(target?.lifetimeIdentity || event.lifetimeIdentity || '');
         const targetGeneration = Number(target?.sceneGeneration ?? event?.sceneGeneration);
@@ -4881,13 +5693,31 @@
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
     const current = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
     const trails = window.ASMTraceModel?.returnTrailArrows?.(document, frame) || [];
-    const arrows = [...trails, ...current];
+    const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
+    const retained = (frame.snapshotIds || []).flatMap(id => snapshotsById.get(id)?.arrows || []);
+    const arrows = [...new Map([...trails, ...retained, ...current]
+      .map(arrow => {
+        // The same directive runs once per recursive activation. Collapsing
+        // by authored ID alone drops ancestor edges from the active path.
+        const activation = arrow.trailActivationId
+          || (arrow.until === 'return' ? frame.source?.recursionActivationId : '');
+        return [`${String(arrow?.id || '')}${activation ? `@${activation}` : ''}`, arrow];
+      })).values()];
     const expanded = arrows.flatMap(arrow => !arrow.batch ? [arrow] : window.ASMArrowModel.expandBatch(arrow,
       (expression, locals) => window.ASMTraceRules.resolveExpression(document, frame, expression, { ...arrow.drawLocals, ...locals }),
       (condition, locals) => window.ASMTraceRules.expressionMatches(document, frame, condition, { ...arrow.drawLocals, ...locals }),
-      batch => window.ASMTraceModel.loopSamples(document, frame, batch)));
+      batch => batch.kind === 'layout'
+        ? layoutNodeCollection(document, frame, batch, placements, elements)
+          .map((node, ordinal) => ({ value: ordinal, ordinal, instanceId: node.activationId || node.id }))
+        : window.ASMTraceModel.loopSamples(document, frame, batch)));
+    const materialized = expanded.map(arrow => {
+      const from = materializeLayoutEndpoint(document, frame, arrow.from, placements, elements);
+      const to = materializeLayoutEndpoint(document, frame, arrow.to, placements, elements);
+      return { ...arrow, from: from.endpoint, to: to.endpoint,
+        _fromPlacement: from.placement, _toPlacement: to.placement };
+    });
     const ids = new Set();
-    expanded.forEach(arrow => {
+    materialized.forEach(arrow => {
       const recursiveLifetime = arrow.until === 'return' || Boolean(arrow.trailActivationId);
       const activation = String(arrow.trailActivationId
         || frame.source?.recursionActivationId || frame.source?.function || '');
@@ -4896,7 +5726,7 @@
       ids.add(runtimeId);
     });
     renderArrowModels(rootSvg, root, document, frame, placements, elements,
-      expanded.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
+      materialized.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
   }
 
   function renderDecorations(root, document, frame, startY, placements, elements, options = {}) {
@@ -4956,16 +5786,83 @@
     return '';
   }
 
+  function supportsCellLevelLod(rendererName) {
+    return ['original-array', 'original-matrix'].includes(String(rendererName || ''));
+  }
+
+  function snapshotAppearanceSignature(document, frame, snapshot) {
+    const key = snapshotObjectKey(snapshot);
+    const related = values => Object.entries(values || {}).filter(([candidate]) => (
+      candidate === key || candidate.startsWith(`${key}#`) || candidate.startsWith(`${key}:`)
+    )).sort(([a], [b]) => a.localeCompare(b));
+    const sourceFrame = snapshot.styleFrame
+      || document.frames?.find(item => item.id === snapshot.sourceFrameId);
+    return JSON.stringify([
+      snapshot, document.variables?.[snapshot.sourceVariableId],
+      document.skins?.[snapshot.sourceVariableId],
+      sourceFrame?.state, sourceFrame?.styles,
+      related(document.studio?.objectStyles?.[frame.id]),
+      related(document.studio?.visibility?.[frame.id]),
+      related(document.studio?.positions?.[frame.id]),
+      related(document.studio?.bindings?.[frame.id]),
+      (document.layouts || []).find(layout => layout.id === snapshot.layoutId)
+    ]);
+  }
+
   function renderSnapshots(root, document, frame, startY, placements, elements, options = {}, keepNodes = []) {
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
+    const layoutTypes = new Map((document.layouts || []).map(layout => [layout.id, layout.type]));
+    const usesAutomaticKeepArrows = snapshot => (
+      !snapshot.layoutId || ['linear', 'line', 'group'].includes(layoutTypes.get(snapshot.layoutId))
+    );
     const visibilityStates = document.studio?.visibility?.[frame.id] || {};
     const editingVisibility = window.document.body.classList.contains('asm-trace-studio-open');
+    // Registration is frame-local even when the painted DOM is cached. Both
+    // paths must contribute the same descendants, geometry and keep endpoints.
+    const registerObjectSnapshot = (snapshot, object, motion, box, contentBox, baseX, baseY) => {
+      const objectKey = snapshotObjectKey(snapshot);
+      placements.set(objectKey, { x: baseX + box.x, y: baseY + box.y, width: box.width, height: box.height });
+      elements.set(objectKey, object);
+      collectElementPlacements(motion, baseX, baseY, placements, elements);
+      if (usesAutomaticKeepArrows(snapshot)) keepNodes.push({
+        snapshotId: objectKey,
+        variableId: snapshot.sourceVariableId,
+        runtimeIdentity: snapshotRuntimeIdentity(document, snapshot),
+        sourceElement: object,
+        relative: {
+          x: contentBox.x - box.x, y: contentBox.y - box.y,
+          width: contentBox.width, height: contentBox.height
+        }
+      });
+    };
     let y = startY;
     (frame.snapshotIds || []).forEach(snapshotId => {
       const snapshot = snapshotsById.get(snapshotId);
       const objectKey = snapshotObjectKey(snapshot);
       const visibility = visibilityStates[objectKey] || visibilityStates[snapshotId];
       if (!snapshot || !objectKey || (!editingVisibility && visibility === 'hidden')) return;
+      const signature = snapshot.kind === 'frame' ? '' : snapshotAppearanceSignature(document, frame, snapshot);
+      const candidate = options.reusableSnapshots?.get?.(snapshotId) || null;
+      const reusable = candidate?._asmSnapshotAppearance === signature && candidate?._asmSnapshotGeometry
+        ? candidate : null;
+      if (reusable) {
+        const position = snapshotStudioPosition(document, frame, snapshot);
+        const baseX = position.x;
+        const baseY = position.absolute ? position.y : y + position.y;
+        reusable.setAttribute('transform', `translate(${baseX}, ${baseY})`);
+        reusable.setAttribute('data-base-offset', `${baseX},${baseY}`);
+        reusable.dataset.tracePositionApplied = '1';
+        reusable.dataset.tracePositionSpace = 'origin';
+        reusable.dataset.tracePositionX = String(baseX);
+        reusable.dataset.tracePositionY = String(baseY);
+        reusable.dataset.traceIncrementalReuse = '1';
+        root.append(reusable);
+        const content = reusable.querySelector(':scope > .asm-trace-motion') || reusable;
+        const { box, contentBox, height } = reusable._asmSnapshotGeometry;
+        registerObjectSnapshot(snapshot, reusable, content, box, contentBox, baseX, baseY);
+        if (!snapshot.layoutId) y += Math.max(76, height) + KEEP_SNAPSHOT_GAP;
+        return;
+      }
       if (snapshot.kind === 'frame' && snapshot.frame) {
         const position = snapshotStudioPosition(document, frame, snapshot);
         const baseX = position.x;
@@ -5027,11 +5924,12 @@
           const sourcePlacement = frozenScene.placements.get(sourceKey);
           const sourceElement = frozenScene.elements.get(sourceKey);
           if (!sourcePlacement || !sourceElement) return;
-          if (!snapshot.layoutId) {
+          if (usesAutomaticKeepArrows(snapshot)) {
             keepNodes.push({
               snapshotId: objectKey,
               variableId,
               runtimeIdentity: snapshot.frame.state?.[variableId]?.identity || '',
+              sourceElement,
               relative: {
                 x: sourcePlacement.x - contentBox.x,
                 y: sourcePlacement.y - contentBox.y,
@@ -5046,26 +5944,60 @@
       }
       const sourceVariable = document.variables?.[snapshot.sourceVariableId] || {};
       const variable = { ...sourceVariable, id: objectKey, name: snapshot.label || sourceVariable.name || 'Snapshot' };
-      const entry = { name: variable.name, data: snapshot.data };
+      const recursionSnapshot = layoutTypes.get(snapshot.layoutId) === 'recursion';
+      const activationId = String(frame.source?.recursionActivationId || '');
+      // Only a recursion layout has a live retained node. Linear keeps are
+      // immutable history even when all captures share one function activation.
+      // An absent activation must never match another absent activation either.
+      const currentNodeId = recursionSnapshot && activationId
+        ? [...(frame.snapshotIds || [])].reverse().find(id => {
+          const candidate = snapshotsById.get(id);
+          return candidate?.layoutId === snapshot.layoutId
+            && candidate.sourceVariableId === snapshot.sourceVariableId
+            && String(candidate.recursionActivationId || '') === activationId;
+        }) : '';
+      const activeSnapshot = recursionSnapshot && (frame.source?.systemBranchPreview
+        ? frame.source.previewSnapshotId === snapshot.id
+        : Boolean(activationId) && snapshot.id === currentNodeId);
+      const frameLayoutId = frame.source?.layoutIds?.[snapshot.sourceVariableId]
+        || (frame.source?.primaryVariableId === snapshot.sourceVariableId ? frame.source?.layoutId : '');
+      const activeFrameObject = activeSnapshot
+        && frameLayoutId === snapshot.layoutId
+        && Boolean(frame.state?.[snapshot.sourceVariableId]);
+      // A recursion keep is the persistent identity of the current node, not a
+      // permanently frozen copy while that activation is still executing.
+      // Render the active node from the current @frame, while returned and
+      // sibling activations continue using their frozen snapshot data.
+      const entry = {
+        name: variable.name,
+        data: activeFrameObject ? frame.state[snapshot.sourceVariableId].data : snapshot.data
+      };
       const baseSkin = document.skins?.[snapshot.sourceVariableId] || {};
       const skin = {
         ...baseSkin,
-        options: { ...(baseSkin.options || {}), ...(snapshot.rendererOptions || {}) }
+        options: {
+          ...(baseSkin.options || {}),
+          ...(snapshot.rendererOptions || {}),
+          ...(activeFrameObject ? frame.rendererOptions?.[snapshot.sourceVariableId] || {} : {})
+        }
       };
-      const rendererName = snapshot.renderer
+      const rendererName = (activeFrameObject ? frame.renderers?.[snapshot.sourceVariableId] : '')
+        || snapshot.renderer
         || skin.renderer || variable.kind || entry.data?.kind || 'object';
       const renderer = renderers.get(rendererName) || renderers.get(entry.data?.kind) || renderObject;
       const sourceFrame = snapshot.sourceFrameId
         ? document.frames?.find(item => item.id === snapshot.sourceFrameId)
         : null;
-      const activeSnapshot = frame.source?.systemBranchPreview
-        ? frame.source.previewSnapshotId === snapshot.id
-        : String(frame.source?.recursionActivationId || '') === String(snapshot.recursionActivationId || '');
+      const snapshotSourceFrame = snapshot.styleFrame || sourceFrame;
+      const activeFrameStyles = activeFrameObject
+        ? (frame.styles || []).filter(style => style.targetVariableId === snapshot.sourceVariableId)
+        : [];
       const visibleSnapshotStyles = activeSnapshot
-        ? snapshot.styles
+        ? [...(snapshot.styles || []), ...activeFrameStyles]
         : (snapshot.styles || []).filter(style => !['highlight', 'point'].includes(style.styleType));
-      const snapshotStyleFrame = sourceFrame && Array.isArray(snapshot.styles)
-        ? { ...sourceFrame, events: [], styles: visibleSnapshotStyles }
+      const styleStateFrame = activeFrameObject ? frame : snapshotSourceFrame;
+      const snapshotStyleFrame = styleStateFrame && Array.isArray(snapshot.styles)
+        ? { ...styleStateFrame, events: [], styles: visibleSnapshotStyles }
         : null;
       const snapshotAllHighlights = snapshotStyleFrame
         ? window.ASMTraceRules.evaluate({ ...document, rules: [] }, snapshotStyleFrame)
@@ -5081,7 +6013,7 @@
       if (layoutBackground && !hasExplicitBackground) {
         snapshotHighlights.$object = { styleTypes: { background: layoutBackground } };
       }
-      const snapshotRenderFrame = snapshotStyleFrame || sourceFrame || frame;
+      const snapshotRenderFrame = snapshotStyleFrame || snapshotSourceFrame || frame;
       const position = snapshotStudioPosition(document, frame, snapshot);
       const baseX = position.x;
       const baseY = position.absolute ? position.y : y + position.y;
@@ -5106,13 +6038,20 @@
       motion.append(content);
       object.append(motion);
       root.append(object);
+      window.ASMStructureLOD?.begin(
+        content,
+        Number(options.lodScale) || 1,
+        supportsCellLevelLod(rendererName)
+      );
       let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
         variable, variableId: objectKey, skin, rendererName,
         highlights: snapshotHighlights, diff: [],
         document, frame: snapshotRenderFrame, allHighlights: snapshotAllHighlights,
         idPrefix: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`, interactive: options.interactive
       }));
+      window.ASMStructureLOD?.finish(content);
       removeScalarIndexLabels(content, variable, rendererName);
+      fitObjectNames(content);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
         const labelY = Math.max(Number(height) || 0, contentBox.y + contentBox.height) + 20;
@@ -5137,23 +6076,14 @@
         width: contentBox.width,
         height: Math.max(76, Number(height) || 76, contentBox.height)
       });
-      placements.set(objectKey, { x: baseX + box.x, y: baseY + box.y, width: box.width, height: box.height });
-      elements.set(objectKey, object);
-      collectElementPlacements(motion, baseX, baseY, placements, elements);
-      if (!snapshot.layoutId) {
-        keepNodes.push({
-          snapshotId: objectKey,
-          variableId: snapshot.sourceVariableId,
-          runtimeIdentity: snapshotRuntimeIdentity(document, snapshot),
-          relative: {
-            x: contentBox.x - box.x,
-            y: contentBox.y - box.y,
-            width: contentBox.width,
-            height: contentBox.height
-          }
-        });
-        y += Math.max(76, Number(height) || 76) + KEEP_SNAPSHOT_GAP;
-      }
+      object._asmSnapshotAppearance = signature;
+      object._asmSnapshotGeometry = {
+        box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        contentBox: { x: contentBox.x, y: contentBox.y, width: contentBox.width, height: contentBox.height },
+        height: Number(height) || 76
+      };
+      registerObjectSnapshot(snapshot, object, motion, box, contentBox, baseX, baseY);
+      if (!snapshot.layoutId) y += Math.max(76, Number(height) || 76) + KEEP_SNAPSHOT_GAP;
     });
     return y;
   }
@@ -5175,6 +6105,14 @@
       .filter(object => object.hideSource && object.sourceVariableId && studioObjectVisible(object, frame))
       .map(object => object.sourceVariableId));
     (frame.captureOnlyVariableIds || []).forEach(variableId => hiddenVariables.add(variableId));
+    // A system branch preview materializes the selected recursive call through
+    // previewSnapshotId.  Its authored frame still supplies values for text,
+    // styles and other scene objects, but rendering the primary variable again
+    // would place a second live copy below the kept recursion node.
+    if (frame.source?.systemBranchPreview && frame.source?.previewSnapshotId
+      && frame.source?.primaryVariableId) {
+      hiddenVariables.add(frame.source.primaryVariableId);
+    }
     (frame.bindings || []).forEach(binding => {
       if (binding.mode !== 'index') return;
       const sourceVariableIds = binding.sourceVariableIds || [binding.sourceVariableId];
@@ -5212,6 +6150,9 @@
       const objectKey = objectKeyForVariable(frame, variableId);
       if (!entry || hiddenVariables.has(variableId)
         || (!editingVisibility && visibilityStates[objectKey] === 'hidden')) return;
+      const displayName = frame.source?.objectIds?.[variableId]
+        || (frame.source?.primaryVariableId === variableId ? frame.source?.objectId : '')
+        || variable.name;
       const baseSkin = document.skins?.[variableId] || {};
       const frameOptions = frame.rendererOptions?.[variableId] || {};
       const skin = {
@@ -5255,20 +6196,39 @@
       root.append(object);
       const canLod = window.ASMStructureLOD && (!previousFrame || options.interactive === false)
         && options.animateEvents === false
-        && ['sequence','matrix'].includes(entry.data?.kind)
-        && ['sequence','matrix','original-array','original-matrix'].includes(rendererName)
+        && supportsCellLevelLod(rendererName)
         && !skin.options.display && !skin.options.fields && !skin.options.indexLabels
-        && !skin.options.labels && !skin.options.indexMode
         && !Object.keys(document.studio?.objectStyles?.[frame.id] || {}).length;
       window.ASMStructureLOD?.begin(content, lodScale, canLod);
       let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
-        variable, variableId: objectKey, skin, rendererName,
+        variable, variableId: objectKey, displayName, skin, rendererName,
         highlights: highlights[variableId] || {}, diff,
         document, frame, allHighlights: highlights,
         idPrefix: `${idPrefix}-original`, interactive: options.interactive
       }));
       window.ASMStructureLOD?.finish(content);
+      // Authored aliases identify a visual slot, not its backing C++ value.
+      // Scope the slot to the recursive call; slices retain logical indices
+      // for selection but continue visually by their displayed ordinal.
+      const authoredAlias = frame.source?.objectIds?.[variableId]
+        || (frame.source?.primaryVariableId === variableId ? frame.source?.objectId : '');
+      if (authoredAlias) {
+        const slot = JSON.stringify([authoredAlias, frame.source?.layoutId || '',
+          frame.source?.recursionActivationId || frame.source?.branchId || '']);
+        object.dataset.traceAuthoredContinuity = `${slot}:object`;
+        let ordinal = 0;
+        const cellOrdinals = new Map();
+        content.querySelectorAll('[data-trace-index]').forEach(cell => {
+          cellOrdinals.set(cell.dataset.traceIndex, ordinal);
+          cell.dataset.traceAuthoredContinuity = `${slot}:cell:${ordinal++}`;
+        });
+        content.querySelectorAll('[data-trace-index-label]').forEach(label => {
+          const index = cellOrdinals.get(label.dataset.traceIndexLabel);
+          if (index != null) label.dataset.traceAuthoredContinuity = `${slot}:index:${index}`;
+        });
+      }
       removeScalarIndexLabels(content, variable, rendererName);
+      fitObjectNames(content);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
         const labelY = Math.max(Number(height) || 0, contentBox.y + contentBox.height) + 20;
@@ -5281,7 +6241,7 @@
           'font-size': 16,
           'font-weight': 'bold',
           fill: '#384348'
-        }, variable.name), `${objectKey}:label`, options, variableId));
+        }, displayName), `${objectKey}:label`, options, variableId));
         height = Math.max(Number(height) || 0, labelY + 8);
       } else {
         height = Math.max(Number(height) || 0, contentBox.y + contentBox.height);
@@ -5300,11 +6260,14 @@
       y += Math.max(76, Number(height) || 76) + 28;
     });
     applyDefaultLiveObjectPlacement(document, frame, placements, elements, liveObjectKeys, options.initialY);
+    prepareReservedRootAnchors(root, document, frame, placements, elements);
     // Resolve frame/keep/Studio object placement before drawing anything that
     // is anchored to those objects. Otherwise @text, segments, arrows, and
     // automatic markers read the pre-offset coordinates from placements.
     applyBindings(document, frame, placements, elements);
     applyRecursionLayouts(rootSvg, root, document, frame, placements, elements, options);
+    applyLineLayouts(rootSvg, root, document, frame, placements, elements);
+    applyLayoutBindings(document, frame, placements, elements);
     // A binding may target the complete bounds of a recursion layout. Those
     // bounds only exist after its nodes have reached their automatic slots.
     applyBindings(document, frame, placements, elements);
@@ -5335,13 +6298,16 @@
       element.dataset.traceSceneGeneration = sceneGeneration;
     });
     applyObjectColorStyles(document, frame, elements);
+    fitObjectNames(root);
     applyVisibilityStates(document, frame, elements);
     if (options.interactive !== false || options.evaluateAvailability === true) {
       window.ASMTraceFrameTween?.updateEventAvailability?.(
         document, frame, placements, elements, options.availabilityPreviousObjects ?? null
       );
     }
-    applyCompletedScopeExits(frame, elements, options.deferLifecycleEvents === true);
+    applyCompletedScopeExits(
+      document, frame, elements, options.deferLifecycleEvents === true
+    );
     const textLayer = root.querySelector(':scope > .asm-trace-text-layer');
     if (textLayer) root.append(textLayer);
     const transitionEventFrame = Number(options.direction) < 0 && previousFrame ? previousFrame : frame;
@@ -5356,6 +6322,8 @@
     settleAnimationEffectLayer(root);
     settlePointerLayer(root);
     refreshPresentedArrows(root, elements);
+    refreshPresentedKeepArrows(root);
+    window.ASMStructureLOD?.observe(root);
     return { root, placements, elements, height: y };
   }
 
@@ -5369,6 +6337,48 @@
       rootSvg, previousMotionPositions
     );
     const previousObjects = captureTopLevelObjects(rootSvg);
+    window.ASMTraceFrameTween?.captureAssignmentSourceGeometry?.(
+      document, frame, rootSvg.querySelector('#asm-trace-root'), previousObjects
+    );
+    const reusableSnapshots = new Map();
+    const previousRoot = rootSvg.querySelector('#asm-trace-root');
+    const frameIndex = document.frames?.indexOf?.(frame) ?? -1;
+    const previousIndex = document.frames?.indexOf?.(previousFrame) ?? -1;
+    const adjacentForward = currentScene?.document === document
+      && currentScene?.frame === previousFrame
+      && frameIndex === previousIndex + 1
+      && Number(options.direction) >= 0
+      && currentScene.settled;
+    if (adjacentForward && previousRoot) {
+      const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
+      const currentIds = new Set(frame.snapshotIds || []);
+      const previousIds = new Set(previousFrame?.snapshotIds || []);
+      const activeId = candidateFrame => {
+        if (candidateFrame?.source?.systemBranchPreview) return String(candidateFrame.source.previewSnapshotId || '');
+        const activationId = String(candidateFrame?.source?.recursionActivationId || '');
+        return [...(candidateFrame?.snapshotIds || [])].reverse().find(id => (
+          String(snapshotsById.get(id)?.recursionActivationId || '') === activationId
+        )) || '';
+      };
+      const excluded = new Set([activeId(previousFrame), activeId(frame)].filter(Boolean));
+      const previousVisibility = document.studio?.visibility?.[previousFrame.id] || {};
+      const currentVisibility = document.studio?.visibility?.[frame.id] || {};
+      previousRoot.querySelectorAll(':scope > [data-trace-snapshot]').forEach(element => {
+        const snapshotId = String(element.dataset.traceSnapshot || '');
+        const snapshot = snapshotsById.get(snapshotId);
+        const objectKey = snapshotObjectKey(snapshot);
+        // A kept frame contains a nested scene with its own layout/binding
+        // transforms. Reusing that already-positioned DOM as fresh local
+        // geometry applies those offsets again in the outer layout. Rebuild
+        // frame contents from the frozen model; stable snapshot keys still
+        // preserve transition identity. Simple object snapshots remain reusable.
+        if (!snapshot || snapshot.kind === 'frame' || !currentIds.has(snapshotId)
+          || !previousIds.has(snapshotId) || excluded.has(snapshotId)
+          || previousVisibility[objectKey] === 'hidden' || currentVisibility[objectKey] === 'hidden') return;
+        element.remove();
+        reusableSnapshots.set(snapshotId, element);
+      });
+    }
     const sourceKeys = new Set(previousPositions.keys());
     const transitionForKey = key => previousFrame
       ? window.ASMTraceTransitions?.resolve?.(document, previousFrame, frame, key, sourceKeys)
@@ -5394,7 +6404,8 @@
       deferLifecycleEvents: useFrameTween,
       // Use the same current/previous visual pair for the initial inspector
       // status and the playback timeline so diagnostic colors do not flicker.
-      availabilityPreviousObjects: previousFrame ? previousObjects : null
+      availabilityPreviousObjects: previousFrame ? previousObjects : null,
+      reusableSnapshots
     });
     const delayedMarks = delayedCurrentFixedMarks(result.root, document, frame, useFrameTween);
     let transition = Promise.resolve();
@@ -5809,6 +6820,23 @@
     return point ? { x: point.x + currentScene.rootOffset.x, y: point.y + currentScene.rootOffset.y } : null;
   }
 
+  function currentCameraAnchor(target) {
+    if (!currentScene) return null;
+    // Frame tweens temporarily move the rendered SVG element from its previous
+    // position to the destination. Camera motion must use the destination
+    // placement stored by renderScene, otherwise @camera focus follows the
+    // element's transient start position and is left behind after @keep last
+    // moves the live object below the retained snapshot.
+    const point = resolveAnchor(
+      currentScene.document,
+      currentScene.frame,
+      target,
+      currentScene.placements,
+      null
+    );
+    return point ? { x: point.x + currentScene.rootOffset.x, y: point.y + currentScene.rootOffset.y } : null;
+  }
+
   function currentBounds(options = {}) {
     if (!currentScene?.placements?.size) return null;
     const snapshotsById = new Map((currentScene.document?.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
@@ -5924,15 +6952,17 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-231';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-267';
   window.ASMTraceRenderers = {
-    build: 'trace-231', updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-267', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
-    displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer,
-    resolveAnchor, currentAnchor, currentBounds, fitCurrentObjectsCamera,
+    displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
+    resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,
     runtimeIdentityToken, recursionLayoutCoordinates, recursionLayoutPreorder, recursionLayoutEdgePoints,
+    recursionLayoutNodeEntries, layoutNodeCollection, materializeLayoutEndpoint,
+    isLineLayout,
     recursionFlowAnchors, recursionFlowQuadraticPoints,
     defaultLiveObjectPlacementDelta, shiftPlacementTree, semanticTargetPlacement,
     keepAnchorPlacement,
@@ -5947,6 +6977,7 @@
       const root = window.document.getElementById('asm-trace-root');
       refreshPresentedStyles(root);
       refreshPresentedArrows(root, currentScene?.elements || new Map());
+      refreshPresentedKeepArrows(root);
     }
   };
 })();

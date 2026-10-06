@@ -19,9 +19,9 @@ using namespace std;
 vector<int> tree, lazy, sets;
 int Tmask, Tsize, Tdeep, n, ans = 0;
 
-// @defaults
+// @default
 // @camera focus tree offset(0,40) zoom(1.02)
-// @enddefaults
+// @enddefault
 
 // 操作時在樹下方顯示 query 已累加的答案。
 // @preset operation_view

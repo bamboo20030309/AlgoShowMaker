@@ -62,6 +62,7 @@ int main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     await page.goto(`${base}/algorithm.html`);
     const rendered = await page.evaluate(async ({ sourceTrace, mutationSourceTrace, variableIds }) => {
+      window.ASMDefaultAlgorithm?.cancel?.('renderer-fixture');
       const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
       const values = async (frame, variableId) => {
         await window.ASMTraceRenderers.renderFrame(document, frame, null, {

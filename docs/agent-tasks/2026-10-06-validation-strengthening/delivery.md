@@ -1,0 +1,36 @@
+# 驗證集補強交付
+
+日期：2026-10-06；目標分支：intergration；基準：480dc72。保留既有私人 Merge Sort 草稿，未修改 main／發布 release。
+
+## 範圍與結果
+
+1. 共用驗證 manifest：247 個小測試檔，20 個動畫代表案例，3 個前置契約。分類索引只作選擇輔助，不授權子代理啟動 V3。
+2. regression／發布候選續跑加入內容與環境指紋；包含未提交修改、測試、fixture、依賴、Node／編譯器／瀏覽器與相關設定。新增案例補進待跑，未變更的已通過證據續用。動態瀏覽器／服務依賴保守失效。
+3. 核對 15 份正式教材資產與 Trace ID；檢查新 Merge Sort／八皇后的卡片、縮圖、開啟免編譯，以及缺失 ID 報錯。沒有宣稱全部舊教材已免編譯。
+4. Linux 隔離 Docker 的 CE／TLE／OLE／MLE、滿佇列、取消、權限隔離、訊息隔離、正常工作恢復、程序／暫存與配額回落：6 個子案例通過。Windows MLE 不適用，明確分列；未降低判準。
+5. 50-client 快取情境 50／50 成功，執行槽峰值 2、排隊峰值 48，最終佇列與資源計數歸零；8-client 不同錯誤訊息隔離成功。這是本機隔離服務測量，不能推論学校硬體或 50 份不同大型冷編譯的吞吐。
+6. 長時間 60 次程式切換後舊節點全部斷開，現有 16 格／74 節點維持固定；GC heap 約 10.39～10.55 MB。首幀約 621 ms、完整約 691 ms，僅作本次環境基準，不設定憑空的時間／heap 門檻。
+7. 沿用 mixed-object-paste.browser 三個案例：混合 text＋structure＋code、排版／style／scale、undo／redo、儲存重開。預設線篩涵蓋新資料、缺欄位舊 Trace、明確 false／自訂值、IndexedDB 重開及取消下載。
+
+## 驗證與發現
+
+- 證據／續跑／動畫斷言／錄製器相關 26 個單元案例通過。
+- 正式教材資產與 Trace bundle 4 個單元契約通過；預設動畫資產 2 個案例通過。
+- gallery browser 1、default sieve browser 3、mixed paste browser 3、resource lifecycle browser 1，皆在隔離服務／瀏覽器通過。
+- 動畫新增七項使用小輸入；Merge Sort 遞迴／倍增、BIT、Segment Tree、LCS，以及既有箭頭／函式代表已通過；八皇后結果見下方最終核實。八皇后錄製保留逐次取樣的物件、幾何、透明度、事件及程式欄，但省略重複的 SVG 子圖元清單，避免多層棋盤快照造成數百 MB 報告。
+- 修正驗證器誤取預設 Trace、使用序列入口而非個別 mutation 的提交時間、keep 暫時抬升後失去物理身分的問題。LOD 可見性必須核對實際批次網格路徑；viewport culling 需同時驗證裁切標記、節點存在、完整透明度和超出畫布 160px 邊界，畫布內隱藏／節點消失仍失敗。
+- 新測試發現預設線篩資產版本落後與提前取消下載的未處理 Promise 錯誤；重建 engine 13 的 116 幀 Trace 與首幀資產，並修正取消流程。
+
+## 界限與後續
+
+viewport culling 專項修正其測試準備流程：先等待預設動畫完成，再移除原場景後插入測試場景；畫布內可見性、相機移回恢復與作者設定 hidden 保留均已通過。
+
+未執行全部 247 個測試或全部 20 個動畫，不把檔案數當通過數。尚未新增 GitHub Actions；PR 不會自動觸發大型動畫。主代理依改動風險選 V3，子代理仍只執行最小分類測試。
+
+報告均保留於忽略的 algo-vis-backend/test-results；Linux 容器自動移除，測試未開公開埠、不使用使用者資料庫或分頁。此次只推送 intergration，重啟其 3100。
+
+## 最終核實
+
+八皇后陣列最後失敗項修正後通過（987 樣本）：test-results/animation/2026-10-05T17-45-56-556Z-1708d4c7。位元版通過（288 樣本）：2026-10-05T17-33-48-339Z-5ce49b68。Merge Sort 兩種、BIT、Segment Tree、LCS 與箭頭／函式代表通過紀錄：2026-10-05T17-17-42-498Z-a65ac990。
+
+實作提交 a8a74cb 已推送 origin/intergration。只停止已核實的 3100 整合服務（原 PID 22968），從 intergration/algo-vis-backend 重啟；algorithm.html HTTP 200，實際提供的 trace-debug-recorder.js 內容與此 worktree 一致。main／其他代理服務未操作。

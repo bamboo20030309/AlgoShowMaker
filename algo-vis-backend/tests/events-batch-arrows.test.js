@@ -102,6 +102,29 @@ test('batch arrow parses multiline ranges, captures dependencies and shadows C++
   assert.throws(() => findArrowDirectives('// @arrow for iteration in [0:3] from a[iteration] to b[iteration]'), /保留名稱/);
 });
 
+test('layout collection batches expand with stable node identities', () => {
+  const arrow = {
+    id: 'leaf-links', displayName: 'leaf-links', line: 1,
+    from: { indexExpressions: ['k'] },
+    to: { indexExpressions: ['k'] },
+    batch: { kind: 'layout', variable: 'k', layoutId: 'tree', layoutSelector: 'leaves' }
+  };
+  const expanded = arrows.expandBatch(
+    arrow,
+    (expression, locals) => Object.prototype.hasOwnProperty.call(locals, expression)
+      ? locals[expression] : Number(expression),
+    () => true,
+    () => [
+      { value: 0, ordinal: 0, instanceId: 'call-a' },
+      { value: 1, ordinal: 1, instanceId: 'call-b' }
+    ]
+  );
+  assert.deepEqual(expanded.map(item => item.id), [
+    'leaf-links@call-a[0]', 'leaf-links@call-b[1]'
+  ]);
+  assert.deepEqual(expanded.map(item => item.from.indexExpression), ['0', '1']);
+});
+
 test('batch expansion evaluates nested indices, per-arrow conditions and stable IDs', () => {
   const api = traceApi();
   const doc = { variables: { p: { name: 'prime' }, i: { name: 'i' } } };

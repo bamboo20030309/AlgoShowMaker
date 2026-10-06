@@ -74,6 +74,7 @@ test('subtabs preserve the canvas camera and syntax tree zoom has no UI limits',
       }));
       await page.goto(`${base}/algorithm.html`);
       await page.waitForFunction(() => window.setCamera && window.getCameraViewport && window.ASMSyntaxTree);
+      await page.waitForFunction(() => document.body.dataset.defaultAnimationState === 'ready');
       const expected = await page.evaluate(() => {
         window.setCamera(321.25, -147.5, 1.73, false);
         return window.getCameraViewport();
@@ -84,7 +85,7 @@ test('subtabs preserve the canvas camera and syntax tree zoom has no UI limits',
         await page.locator('.tab-btn[data-tab="tab-canvas"]').click();
         await page.evaluate(() => new Promise(requestAnimationFrame));
         const actual = await page.evaluate(() => window.getCameraViewport());
-        assert.ok(Math.abs(actual.centerX - expected.centerX) < 0.001, `${tab} keeps camera x`);
+        assert.ok(Math.abs(actual.centerX - expected.centerX) < 0.001, `${tab} keeps camera x: ${JSON.stringify({ expected, actual })}`);
         assert.ok(Math.abs(actual.centerY - expected.centerY) < 0.001, `${tab} keeps camera y`);
         assert.ok(Math.abs(actual.scale - expected.scale) < 0.001, `${tab} keeps camera scale`);
       }

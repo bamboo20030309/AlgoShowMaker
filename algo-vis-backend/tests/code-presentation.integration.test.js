@@ -294,7 +294,7 @@ test('event ranges show the complete non-main function around the enclosing loop
   }
 }`;
   const analysis = analyzeSource(source);
-  const instrumented = instrumentSource(source, analysis.variables.map(variable => variable.id));
+  const instrumented = instrumentSource(source + '\n// @layout linear as validation_scene\n', analysis.variables.map(variable => variable.id));
   const context = { window: {} };
   context.window = context;
   const vm = require('node:vm');
@@ -471,7 +471,7 @@ int main() {
     'showing the loop boundary restores the condition evaluation highlights');
 });
 
-test('for declaration initializers split declaration and assignment before their first comparison', async () => {
+test('for declaration initializers keep raw order but present one declaration before comparison', async () => {
   const source = `#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -501,16 +501,19 @@ int main() {
   assert.ok(initializer.order < comparison.order && comparison.order < condition.order,
     'initializer, comparison and whole-condition result must follow runtime order');
   assert.equal(initializer.enabled, true);
+  assert.equal(initializer.declarationInitializer, true);
   assert.equal(condition.enabled, false);
   assert.equal(context.ASMTraceEvents.showTag('condition', trace), false);
   assert.equal(context.ASMTraceEvents.showInspector(condition, trace), false);
+  assert.equal(context.ASMTraceEvents.showInspector(initializer, trace), false,
+    'the raw initializer remains replay data without creating a second Studio row');
   assert.equal(initializer.source?.text, 'i = 0');
   const declaration = frame.events.find(event => (
     event.type === 'declare' && /:i$/.test(event.signature || '')
   ));
-  assert.equal(declaration?.source?.text, 'int i');
+  assert.equal(declaration?.source?.text, 'int i = 0');
   assert.equal(declaration?.enabled, true,
-    'declaration/object entrance is enabled independently from initializer pointer motion');
+    'the declaration is the single user-facing initializer control');
 });
 
 test('nested sorting loops keep initializers and comparisons visible while conditions stay internal', async () => {
@@ -530,10 +533,13 @@ test('nested sorting loops keep initializers and comparisons visible while condi
   const visible = trace.frames.flatMap(frame => frame.events || []).filter(event => (
     context.ASMTraceEvents.showInspector(event, trace) !== false
   ));
-  assert.ok(visible.some(event => event.type === 'assign' && /:i\s*=\s*0$/.test(event.signature || '')),
-    'the outer for initializer must appear in the event inspector');
-  assert.ok(visible.some(event => event.type === 'assign' && /:j\s*=\s*0$/.test(event.signature || '')),
-    'the inner for initializer must appear in the event inspector');
+  assert.ok(visible.some(event => event.type === 'declare' && /:i$/.test(event.signature || '')),
+    'the outer for declaration must represent its initializer in the inspector');
+  assert.ok(visible.some(event => event.type === 'declare' && /:j$/.test(event.signature || '')),
+    'the inner for declaration must represent its initializer in the inspector');
+  assert.equal(visible.some(event => (
+    event.type === 'assign' && event.declarationInitializer === true
+  )), false, 'paired raw initializer assignments must not create duplicate inspector rows');
   assert.ok(visible.some(event => event.type === 'compare' && /:i\s*</.test(event.signature || '')),
     'the outer for comparison must appear in the event inspector');
   assert.ok(visible.some(event => event.type === 'compare' && /:j\s*</.test(event.signature || '')),
@@ -722,7 +728,7 @@ test('saved code font size follows the 1600x900 canvas viewport in every surface
   assert.equal(presenter.normalizeFontSize(undefined), 20);
   assert.equal(presenter.normalizeFontSize(14), 14);
   assert.equal(presenter.normalizeFontSize(4), 8);
-  assert.equal(presenter.normalizeFontSize(80), 32);
+  assert.equal(presenter.normalizeFontSize(80), 64);
   assert.equal(presenter.scaledFontSize(18, 900), 18);
   assert.equal(presenter.scaledFontSize(18, 450), 9);
   assert.equal(presenter.scaledFontSize(18, 1125), 22.5);
@@ -1184,7 +1190,7 @@ test('code transitions use one continuous wheel-like scroll interval', () => {
   assert.equal(presenterContext.window.ASMTraceCodePresenter.scrollDuration, 460);
   const css = fs.readFileSync(path.join(__dirname, '../public/trace.css'), 'utf8');
   assert.match(css,
-    /\.asm-trace-code-page\.is-transition-scrolling\s*\{[^}]*transform 460ms cubic-bezier\(0\.25, 0\.1, 0\.25, 1\)/s);
+    /\.asm-trace-code-page\.is-transition-scrolling\s*\{[^}]*transform var\(--asm-code-scroll-duration, 460ms\) cubic-bezier\(0\.25, 0\.1, 0\.25, 1\)/s);
   assert.match(css,
     /is-transition-scrolling \.asm-trace-code-line\.is-transition-leaving\s*\{[^}]*max-height:\s*1\.58em;[^}]*opacity:\s*0/s);
   assert.doesNotMatch(css, /translateY\((?:-)?30px\)/,

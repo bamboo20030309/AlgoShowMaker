@@ -73,10 +73,15 @@ const algorithmDraftPage = encodeURIComponent(window.location.pathname || '/algo
 const ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:page:${algorithmDraftPage}:${algorithmDraftMode}`;
 const LEGACY_ALGORITHM_DRAFT_STORAGE_KEY = `asm_algorithm_draft_v${ALGORITHM_DRAFT_STORAGE_VERSION}:${algorithmDraftMode}`;
 const ALGORITHM_DRAFT_MIGRATION_KEY = `${ALGORITHM_DRAFT_STORAGE_KEY}:legacy-migrated`;
+const LEGACY_BUILTIN_SAMPLE_FINGERPRINT = '2081:1848552950:2124267204';
+const LINEAR_SIEVE_BUILTIN_FINGERPRINT = '3675:2681097115:796953991';
 let algorithmDraftSaveTimer = null;
 let algorithmDraftRestored = false;
 let algorithmDraftApplying = false;
 let algorithmEditorChangedSinceStartup = false;
+let algorithmInputChangedSinceStartup = false;
+let defaultAlgorithmLoadController = null;
+let activeBuiltinDefault = null;
 
 function readAlgorithmDraft() {
   try {
@@ -106,6 +111,13 @@ function readAlgorithmDraft() {
     if (!raw) return null;
     const draft = JSON.parse(raw);
     if (draft?.version !== ALGORITHM_DRAFT_STORAGE_VERSION || typeof draft.code !== 'string') return null;
+    const sourceFingerprint = window.ASMTraceProvenance?.create?.(draft.code, '')?.sourceFingerprint;
+    const savedBuiltin = sourceFingerprint === LEGACY_BUILTIN_SAMPLE_FINGERPRINT
+      || (sourceFingerprint === LINEAR_SIEVE_BUILTIN_FINGERPRINT && String(draft.input || '').trim() === '100');
+    if (algorithmDraftMode === 'standalone' && savedBuiltin) {
+      sessionStorage.removeItem(ALGORITHM_DRAFT_STORAGE_KEY);
+      return null;
+    }
     return draft;
   } catch (error) {
     console.warn('無法讀取演算法草稿', error);
@@ -120,6 +132,10 @@ function saveAlgorithmDraft() {
   const input = document.getElementById('inputArea')?.value || '';
   if (code.trim() === '// 讀取中...') return false;
   try {
+    if (activeBuiltinDefault && code === activeBuiltinDefault.code && input === activeBuiltinDefault.input) {
+      sessionStorage.removeItem(ALGORITHM_DRAFT_STORAGE_KEY);
+      return true;
+    }
     const cursor = aceEditor.getCursorPosition();
     sessionStorage.setItem(ALGORITHM_DRAFT_STORAGE_KEY, JSON.stringify({
       version: ALGORITHM_DRAFT_STORAGE_VERSION,
@@ -138,7 +154,10 @@ function saveAlgorithmDraft() {
 
 function scheduleAlgorithmDraftSave(editorChanged = false) {
   if (algorithmDraftApplying) return;
-  if (editorChanged) algorithmEditorChangedSinceStartup = true;
+  if (editorChanged) {
+    algorithmEditorChangedSinceStartup = true;
+    cancelDefaultAlgorithmLoad('edited');
+  }
   clearTimeout(algorithmDraftSaveTimer);
   algorithmDraftSaveTimer = setTimeout(saveAlgorithmDraft, ALGORITHM_DRAFT_SAVE_DELAY);
 }
@@ -160,7 +179,34 @@ function restoreAlgorithmDraft() {
   return true;
 }
 
-aceEditor.session.on('change', () => scheduleAlgorithmDraftSave(true));
+// Loading the same source must not reset Ace's undo manager. Changed source
+// is one undoable replacement, separated from preceding and following typing.
+window.asmReplaceEditorCode = function(code, cursor = -1) {
+  code = String(code ?? '');
+  if (aceEditor.getValue() === code) return false;
+  const session = aceEditor.session;
+  session.markUndoGroup();
+  const last = session.getLength() - 1;
+  session.replace(new (ace.require('ace/range').Range)(0, 0, last, session.getLine(last).length), code);
+  session.markUndoGroup();
+  if (cursor === 1) aceEditor.navigateFileEnd();
+  else aceEditor.navigateFileStart();
+  aceEditor.clearSelection();
+  return true;
+};
+const algorithmEditorSessions = new Map();
+window.asmUseEditorSession = function(key, code) {
+  let session = algorithmEditorSessions.get(key);
+  if (!session) {
+    session = ace.createEditSession(String(code ?? ''), aceEditor.session.getMode().$id);
+    session.setTabSize(aceEditor.session.getTabSize());
+    session.setUseSoftTabs(aceEditor.session.getUseSoftTabs());
+    session.setUseWrapMode(aceEditor.session.getUseWrapMode());
+    algorithmEditorSessions.set(key, session);
+  }
+  if (aceEditor.session !== session) aceEditor.setSession(session);
+};
+aceEditor.on('change', () => scheduleAlgorithmDraftSave(true));
 restoreAlgorithmDraft();
 window.addEventListener('pagehide', saveAlgorithmDraft);
 window.addEventListener('beforeunload', saveAlgorithmDraft);
@@ -514,52 +560,151 @@ function csGetCurrentLine() {
 }
 
 
-// ====== 注入初始程式碼：從 sample_code.cpp 讀取並貼到 Editor ======
-fetch('sample_code.cpp')
-  .then(response => {
-    if (!response.ok) throw new Error('無法讀取 sample_code.cpp');
-    return response.text();
-  })
-  .then(code => {
-    if (window.__asmEmbeddedAnimationPayload || algorithmDraftRestored || algorithmEditorChangedSinceStartup) return;
-    aceEditor.setValue(code, -1);
-    // 一載入就自動把 //draw 區塊摺疊起來
-    setTimeout(foldDrawBlocks, 0);
-  })
-  .catch(err => {
-    console.error(err);
-    if (window.__asmEmbeddedAnimationPayload || algorithmDraftRestored || algorithmEditorChangedSinceStartup) return;
-    // 若讀檔失敗，再 fallback 回原本的初始範例
-    const fallbackCode = `#include <bits/stdc++.h>
-#include "AV.hpp"
-using namespace std;
-AV av;
-int main() {
-    vector<int> num={0};
-    av.start_draw();
-    for (int i = 0; i < 20; i++) {
-        num.push_back(i+1);
-        av.start_frame_draw();
-        av.frame_draw("num", Pos(0,0), num, {{{"highlight"},{i}}, {{"focus"},{i}}, {{"point"},{i}}, {{"mark"},{i}}, {{"background"},{i}}}, {0},  "normal", 0, 1);
-        av.frame_draw("heap", Pos("num","raw bottom-left",0,100), num, {{{"highlight"},{i-1}}, {{"focus"},{i-1}}, {{"point"},{i-1}}, {{"mark"},{i-1}}, {{"background"},{i-1}}}, {0},  "heap", 10, 1);
-        av.frame_draw("BIT", Pos("heap","raw bottom-left",0,100), num, {{{"highlight"},{i-1}}, {{"focus"},{i-1}}, {{"point"},{i-1}}, {{"mark"},{i-1}}, {{"background"},{i-1}}}, {0},  "BIT", 10, 1);
-        av.arrow( Pos("num","bottom"), Pos("heap","top"), {{"color","black"},{"width","3"}});
-        av.arrow( Pos("num",i+1), Pos("BIT",i));
-        if(i==3 || i==7 || i==13) {
-            av.key_frame_draw("num", Pos(0,0), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i}}, {{"point"},{i}}, {{"focus"},{i}}, {{"background"},{i}}}, {0},  "normal", 0, 1);
-            av.key_frame_draw("heap", Pos("num","raw bottom-left",0,100), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i-1}}, {{"point"},{i-1}}, {{"focus"},{i-1}}, {{"background"},{i-1}}}, {0},  "heap", 10, 1);
-            av.key_frame_draw("BIT", Pos("heap","raw bottom-left",0,100), num, {{{"mark"},AV::AtoB(0,i)}, {{"highlight"},{i-1}}, {{"point"},{i-1}}, {{"focus"},{i-1}}, {{"background"},{i-1}}}, {0},  "BIT", 10, 1);
-        }
-        av.auto_camera();
-        av.end_frame_draw();
+// -----------------------------------------------------------------------------
+// 預設演算法動畫
+// 先套用獨立的單幀預覽，再於背景載入完整 Trace 並寫入 IndexedDB。
+// 使用者在此分頁留下的草稿仍優先，嵌入投影片時則完全交由父頁提供動畫。
+// -----------------------------------------------------------------------------
+const DEFAULT_ALGORITHM_MANIFEST = '/default-animation/manifest.json';
+const DEFAULT_ANIMATION_CONTROL_IDS = [
+  'restartBtn', 'prevKeyFrameBtn', 'prevBtn', 'playToggleBtn',
+  'nextBtn', 'nextKeyFrameBtn', 'finishBtn', 'ttsAvBtn'
+];
+
+let defaultAlgorithmLoadCancelled = false;
+function canApplyDefaultAlgorithm() {
+  return !window.__asmEmbeddedAnimationPayload
+    && !defaultAlgorithmLoadCancelled
+    && !algorithmDraftRestored
+    && !algorithmEditorChangedSinceStartup
+    && !algorithmInputChangedSinceStartup;
+}
+
+function setDefaultAnimationState(state, totalFrameCount = 0) {
+  document.body.dataset.defaultAnimationState = state;
+  const blocked = state === 'loading' || state === 'error';
+  for (const id of DEFAULT_ANIMATION_CONTROL_IDS) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = blocked;
+  }
+  const info = document.getElementById('frameInfo');
+  if (!info || !totalFrameCount || !['loading', 'error'].includes(state)) return;
+  const suffix = state === 'loading' ? '載入中' : '載入失敗';
+  info.textContent = `1 / ${totalFrameCount} · ${suffix}`;
+  info.setAttribute('aria-label', `目前第 1 幀，共 ${totalFrameCount} 幀，${suffix}`);
+}
+
+function cancelDefaultAlgorithmLoad(reason = 'cancelled') {
+  // An externally applied Trace may arrive before DOMContentLoaded creates
+  // the controller. Remember that cancellation as well as aborting downloads.
+  defaultAlgorithmLoadCancelled = true;
+  if (defaultAlgorithmLoadController) {
+    defaultAlgorithmLoadController.abort(reason);
+    defaultAlgorithmLoadController = null;
+  }
+  if (['loading', 'error'].includes(document.body?.dataset.defaultAnimationState)) {
+    setDefaultAnimationState('cancelled');
+  }
+}
+
+async function fetchDefaultAnimationBundle(descriptor, manifest, kind, signal) {
+  const url = `${descriptor.url}?v=${descriptor.contentHash.slice(0, 16)}`;
+  const response = await fetch(url, { signal, cache: 'force-cache' });
+  if (!response.ok) throw new Error(`無法讀取預設線篩 ${kind} 動畫 (${response.status})`);
+  return window.ASMTraceBundle.decode(await response.blob(), descriptor, manifest, kind);
+}
+
+function applyDefaultAnimation(payload, state, source) {
+  if (!canApplyDefaultAlgorithm()) return false;
+  const animation = payload.animation;
+  activeBuiltinDefault = { code: animation.code, input: animation.input || '' };
+  algorithmDraftApplying = true;
+  aceEditor.setValue(animation.code, -1);
+  const inputArea = document.getElementById('inputArea');
+  if (inputArea) inputArea.value = animation.input || '';
+  algorithmDraftApplying = false;
+  window.__asmApplyingBuiltinDefault = true;
+  try {
+    window.ASMTraceEditor?.loadAnimation(animation, { openStudio: false });
+  } finally {
+    window.__asmApplyingBuiltinDefault = false;
+  }
+  document.body.dataset.defaultAnimationSource = source;
+  setDefaultAnimationState(state, payload.totalFrames);
+  setTimeout(foldDrawBlocks, 0);
+  return true;
+}
+
+async function loadDefaultAlgorithm() {
+  if (!canApplyDefaultAlgorithm()) return;
+  defaultAlgorithmLoadController = new AbortController();
+  const { signal } = defaultAlgorithmLoadController;
+  let previewApplied = false;
+  try {
+    const manifestResponse = await fetch(DEFAULT_ALGORITHM_MANIFEST, { signal, cache: 'no-store' });
+    if (!manifestResponse.ok) throw new Error(`無法讀取預設線篩動畫清單 (${manifestResponse.status})`);
+    const manifest = window.ASMTraceBundle.validateManifest(await manifestResponse.json());
+    if (!canApplyDefaultAlgorithm()) return;
+
+    const cached = await window.ASMTraceBundle.cacheGet(manifest);
+    if (signal.aborted || !canApplyDefaultAlgorithm()) return;
+    if (cached) {
+      applyDefaultAnimation(cached, 'ready', 'indexeddb');
+      document.body.dataset.defaultAnimationCache = 'hit';
+      return;
     }
-    av.end_draw();
-    return 0;
-}`;
-    aceEditor.setValue(fallbackCode, -1);
-    // fallback 也一樣一開始就摺疊
-    setTimeout(foldDrawBlocks, 0);
-  });
+
+    const previewPromise = fetchDefaultAnimationBundle(manifest.preview, manifest, 'preview', signal);
+    // Observe both parallel downloads immediately. An edit can abort them while
+    // preview is still pending; leaving full unobserved creates pageerror 'edited'.
+    const fullPromise = fetchDefaultAnimationBundle(manifest.full, manifest, 'full', signal)
+      .then(value => ({ value }), error => ({ error }));
+    const preview = await previewPromise;
+    if (signal.aborted) return;
+    previewApplied = applyDefaultAnimation(preview, 'loading', 'preview');
+    if (!previewApplied) return;
+
+    const fullResult = await fullPromise;
+    if (fullResult.error) throw fullResult.error;
+    const full = fullResult.value;
+    if (!applyDefaultAnimation(full, 'ready', 'network')) return;
+    document.body.dataset.defaultAnimationCache = 'storing';
+    window.ASMTraceBundle.cachePut(manifest, full).then(stored => {
+      document.body.dataset.defaultAnimationCache = stored ? 'stored' : 'unavailable';
+    });
+  } catch (error) {
+    algorithmDraftApplying = false;
+    if (error?.name === 'AbortError' || signal.aborted) return;
+    console.error('預設線篩動畫載入失敗', error);
+    if (previewApplied) {
+      setDefaultAnimationState('error', Number(document.getElementById('frameInfo')?.textContent.match(/\/\s*(\d+)/)?.[1]));
+      return;
+    }
+    if (!canApplyDefaultAlgorithm()) return;
+    try {
+      const response = await fetch('sample_code.cpp');
+      if (!response.ok) throw new Error('無法讀取線篩範例程式碼');
+      const code = await response.text();
+      if (!canApplyDefaultAlgorithm()) return;
+      activeBuiltinDefault = { code, input: '100' };
+      algorithmDraftApplying = true;
+      aceEditor.setValue(code, -1);
+      const inputArea = document.getElementById('inputArea');
+      if (inputArea) inputArea.value = '100';
+      algorithmDraftApplying = false;
+      setDefaultAnimationState('error');
+      setTimeout(foldDrawBlocks, 0);
+    } catch (fallbackError) {
+      algorithmDraftApplying = false;
+      console.error(fallbackError);
+    }
+  } finally {
+    if (defaultAlgorithmLoadController?.signal === signal) defaultAlgorithmLoadController = null;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadDefaultAlgorithm);
+window.ASMDefaultAlgorithm = { cancel: cancelDefaultAlgorithmLoad };
 
 
 
@@ -578,6 +723,8 @@ function activateTab(btn) {
   btn.classList.add('active');
   document.getElementById(nextTab).classList.add('active');
   if (nextTab === 'tab-canvas') {
+    // Delayed viewport rebases must preserve the view restored by this tab.
+    window.ASMTracePlayer?.preserveViewportCamera?.(preservedCanvasCamera);
     requestAnimationFrame(() => {
       if (preservedCanvasCamera && window.setCamera) {
         window.setCamera(
@@ -1005,6 +1152,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     inputArea.addEventListener('input', () => {
+      algorithmInputChangedSinceStartup = true;
+      cancelDefaultAlgorithmLoad('input-edited');
       scheduleAlgorithmDraftSave();
       if (historyManager.isApplying) return;
       clearTimeout(historyManager.timer);
@@ -1853,6 +2002,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, +1);
 
   window.ASMPlaybackNavigation = {
+    pause: () => { stopStepAuto(); pause(); },
     fastStepWindowMs: FAST_STEP_WINDOW_MS,
     fastStepThreshold: FAST_STEP_THRESHOLD,
     requestForwardStep,
@@ -2782,7 +2932,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const targetCode = data.code;
       if (!targetCode) throw new Error("資料格式錯誤");
 
-      if (aceEditor) aceEditor.setValue(targetCode.content, 1);
+      if (aceEditor) window.asmReplaceEditorCode(targetCode.content, 1);
 
       const inputArea = document.getElementById("inputArea");
       if (inputArea) {
@@ -3269,14 +3419,12 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       // 1. 載入程式碼
       if (codePath) {
-        if (aceEditor) aceEditor.setValue("// 讀取中...", -1);
-
         const res = await fetch(`/api/samples?filename=${encodeURIComponent(codePath)}`);
         if (!res.ok) throw new Error(`無法讀取程式碼: ${codePath}`);
         const codeText = await res.text();
 
         if (aceEditor) {
-          aceEditor.setValue(codeText, 1);
+          window.asmReplaceEditorCode(codeText, 1);
           if (typeof foldDrawBlocks === 'function') setTimeout(foldDrawBlocks, 100);
         }
       }
@@ -3473,7 +3621,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   let iroPicker = null;
-  let currentColorStr = 'rgba(255, 0, 0, 1)';
+  let currentColorStr = ASMColorPickerPolicy.last('rgba(255, 0, 0, 1)');
 
   const colorToggleBtn = document.getElementById('colorToggleBtn');
   const sizeSlider = document.getElementById('drawSize');
@@ -3515,6 +3663,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     iroPicker.on('color:change', function (color) {
       currentColorStr = color.rgbaString;
+      ASMColorPickerPolicy.remember(currentColorStr);
       if (colorToggleBtn) {
         colorToggleBtn.style.backgroundColor = currentColorStr;
       }
@@ -3534,11 +3683,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  if (iroPicker) {
+    const refresh = ASMColorPickerPolicy.swatches(document.getElementById('v3-color-picker').parentElement,
+      (alias, value) => iroPicker.color.set(value));
+    iroPicker.on('input:end', color => { ASMColorPickerPolicy.remember(color.rgbaString, true); refresh(); });
+  }
   if (colorToggleBtn && slidersPopup) {
     // 點擊顏色選取器時，打開拉桿選單
-    colorToggleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      slidersPopup.style.display = slidersPopup.style.display === 'none' ? 'flex' : 'none';
+    ASMColorPickerPolicy.bind(colorToggleBtn, {
+      open: () => { if (iroPicker) iroPicker.color.set(ASMColorPickerPolicy.last(currentColorStr)); slidersPopup.style.display = 'flex'; },
+      apply: value => iroPicker?.color.set(value),
+      paint: value => { colorToggleBtn.style.backgroundColor = value; }
     });
     // 點擊畫布其他地方自動關閉彈出視窗
     document.addEventListener('click', (e) => {

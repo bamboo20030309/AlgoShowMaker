@@ -27,7 +27,8 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
   await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__traceStart=performance.now();document.getElementById('runBtn').click();},source);
   const response=await replyPromise;
   assert.equal(response.headers()['content-encoding'],'gzip');
-  await page.waitForFunction(()=>!document.getElementById('runBtn').classList.contains('loading'),{},{timeout:90000});
+  await page.waitForFunction(code=>ASMTracePlayer.getDocument()?.sourceCode===code
+   && Object.values(ASMTracePlayer.getDocument()?.variables||{}).some(v=>v.name==='grid'),source,{timeout:90000});
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const result=await page.evaluate(()=>{
    const doc=ASMTracePlayer.getDocument(),frame=doc.frames[0];
@@ -37,12 +38,13 @@ test('chunked checkerboard trace reaches canvas; legacy documents reopen; marker
    const fills=[...new Set([...document.querySelectorAll('#asm-trace-root [fill]')].map(c=>c.getAttribute('fill')))];
    return {elapsed:performance.now()-window.__traceStart,frames:doc.frames.length,events:frame.events.length,
     increasing:frame.events.every((e,i)=>i===0||e.order>frame.events[i-1].order),
+    hasOutput:frame.events.some(event=>event.type==='output'&&event.afterCapture===true),
     arrLength:frame.state[arr.id].data.items.length,rows:data.length,
     checkerboard:data.every((row,i)=>row.items.length===100&&row.items.every((v,j)=>v.value===(i+j)%2)),
     cells:cells.length,fills,settings:doc.studio.eventSettings,output:document.getElementById('outputArea').textContent,
     studio:document.body.classList.contains('asm-trace-studio-open')};
   });
-  assert.equal(result.output,'完成');assert.equal(result.frames,1);assert.equal(result.events,0);
+  assert.equal(result.output,'完成');assert.equal(result.frames,1);assert.ok(result.events>0);assert.equal(result.hasOutput,true);
   assert.equal(result.increasing,true);assert.equal(result.arrLength,1000);assert.equal(result.rows,100);
   assert.equal(result.checkerboard,true);assert.equal(result.cells,11000);assert.equal(result.studio,false);
   assert.equal(result.settings.autoFixedEnabled,false);assert.equal(result.settings.autoLoopBoundaryEnabled,false);
@@ -96,10 +98,11 @@ int main(){
   assert.equal(interval.output,'999');assert.equal(doc.frames.length,3);
   const variable=Object.values(doc.variables).find(v=>v.name==='x');
   assert.deepEqual(doc.frames.map(f=>f.state[variable.id].data.value),[5,6,7]);
-  assert.equal(doc.frames[0].events.length,0);
+  const initialLine=windowSource.split('\n').indexOf(' x += 5;')+1;
+  const trailingLine=windowSource.split('\n').indexOf(' x = 999;')+1;
+  assert.ok(doc.frames[0].events.some(event=>event.line===initialLine));
+  assert.ok(doc.frames.at(-1).events.some(event=>event.line===trailingLine&&event.afterCapture===true));
   assert.ok(doc.frames.slice(1).every(f=>f.events.some(e=>e.type==='write'||e.type==='assign')));
-  const forbidden=[windowSource.split('\n').indexOf(' x += 5;')+1,windowSource.split('\n').indexOf(' x = 999;')+1];
-  assert.ok(doc.frames.every(f=>f.events.every(e=>!forbidden.includes(e.line))));
   assert.ok(doc.frames.every(f=>f.events.every((e,i,a)=>Number.isFinite(e.order)&&(i===0||a[i-1].order<e.order))));
   const seed=doc.snapshots.find(snapshot=>snapshot.label.startsWith('seed'));
   assert.equal(seed?.data.value,5,'initial keep is scene data, not an initial animation');

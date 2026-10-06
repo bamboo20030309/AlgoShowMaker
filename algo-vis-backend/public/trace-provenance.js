@@ -13,7 +13,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   // Bump ENGINE_VERSION when newly generated events/state require a new RUN.
   // Renderer-only improvements do not invalidate saved trace data.
-  const ENGINE_VERSION = 10;
+  const ENGINE_VERSION = 13;
   const FORMAT_VERSION = 1;
   const text = value => String(value ?? '').replace(/\r\n?/g, '\n');
   // ---------------------------------------------------------------------------

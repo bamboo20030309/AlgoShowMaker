@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 const { compile } = require('./helpers/compile');
 
 // -----------------------------------------------------------------------------
@@ -86,6 +87,182 @@ test('reference aliases preserve focus paint and automatic fixed marks across a 
         )), 'automatic fixed mark must remain visible at ' + delay + 'ms');
       }
       await page.evaluate(() => window.__aliasFocusTransition);
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
+test('a reference parameter scope exit keeps the caller-owned final array visible',
+  { timeout: 30000 }, async () => {
+    const base = process.env.ASM_TEST_BASE_URL;
+    assert.ok(base, 'ASM_TEST_BASE_URL must point to the isolated beta service');
+    const code = `
+#include <bits/stdc++.h>
+using namespace std;
+
+void finish(vector<int>& num) {
+    // @frame num
+    num[0] = 1;
+    // @frame num
+}
+
+int main() {
+    vector<int> num = {2, 3};
+    finish(num);
+    return 0;
+}
+`;
+    const { trace } = await compile(code);
+    assert.equal(trace.frames.length, 2);
+    const frameIndex = trace.frames.length - 1;
+    const finalFrame = trace.frames.at(-1);
+    const referenceId = finalFrame.source.primaryVariableId;
+    assert.match(trace.variables[referenceId].cppType, /&/);
+    assert.ok((finalFrame.events || []).some(event => (
+      event.type === 'scope-exit'
+      && event.targets?.some(target => target.variableId === referenceId)
+    )), 'fixture must retain the natural reference-parameter scope exit');
+
+    const browser = await chromium.launch({
+      headless: true,
+      ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+    });
+    try {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.stack || error.message));
+      await page.goto(base + '/algorithm.html');
+      await page.waitForFunction(({ tween, renderer }) => (
+        window.ASMTracePlayer
+        && window.asmApplyTraceDocument
+        && window.ASMTraceFrameTween?.build === tween
+        && window.ASMTraceRenderers?.build === renderer
+      ), { tween: TWEEN_BUILD, renderer: RENDERER_BUILD });
+      await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(() => window.ASMTracePlayer.renderStable(0));
+      await page.evaluate(() => {
+        window.__referenceFinalTransition = window.ASMTracePlayer.render(1, { fromIndex: 0 });
+      });
+      await page.evaluate(() => window.__referenceFinalTransition);
+
+      const presentation = await page.evaluate(variableId => {
+        const object = [...document.querySelectorAll('.asm-trace-object[data-trace-variable]')]
+          .find(node => node.dataset.traceVariable === variableId);
+        const bounds = object?.getBoundingClientRect?.();
+        return object && {
+          opacity: Number(getComputedStyle(object).opacity),
+          display: getComputedStyle(object).display,
+          width: bounds.width,
+          height: bounds.height
+        };
+      }, referenceId);
+      assert.ok(presentation, 'the final reference-backed array must remain in the scene');
+      assert.equal(presentation.opacity, 1);
+      assert.notEqual(presentation.display, 'none');
+      assert.ok(presentation.width > 0 && presentation.height > 0);
+
+      await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(() => window.CodeScript.goto(-1));
+      const soughtPresentation = await page.evaluate(variableId => {
+        const object = [...document.querySelectorAll('.asm-trace-object[data-trace-variable]')]
+          .find(node => node.dataset.traceVariable === variableId);
+        const bounds = object?.getBoundingClientRect?.();
+        return object && {
+          opacity: Number(getComputedStyle(object).opacity),
+          display: getComputedStyle(object).display,
+          width: bounds.width,
+          height: bounds.height,
+          frame: window.CodeScript.get_current_frame_index()
+        };
+      }, referenceId);
+      assert.ok(soughtPresentation, 'frame-bar seek must keep the final num array in the scene');
+      assert.equal(soughtPresentation.frame, frameIndex);
+      assert.equal(soughtPresentation.opacity, 1);
+      assert.notEqual(soughtPresentation.display, 'none');
+      assert.ok(soughtPresentation.width > 0 && soughtPresentation.height > 0);
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
+test('bottom-up merge sort keeps its final num array after the last frame finishes',
+  { timeout: 30000 }, async () => {
+    const base = process.env.ASM_TEST_BASE_URL;
+    assert.ok(base, 'ASM_TEST_BASE_URL must point to the isolated beta service');
+    const sampleDir = path.join(__dirname, '..', 'algorithm_sample', 'Sorting');
+    const code = fs.readFileSync(path.join(sampleDir, 'merge_sort_bottom_up.cpp'), 'utf8');
+    const input = fs.readFileSync(
+      path.join(sampleDir, 'merge_sort_bottom_up-sample_input.txt'), 'utf8'
+    );
+    const { trace } = await compile(code, input);
+    assert.equal(trace.frames.length, 39);
+    const frameIndex = trace.frames.length - 1;
+    const finalFrame = trace.frames[frameIndex];
+    const referenceId = finalFrame.source.primaryVariableId;
+    assert.match(trace.variables[referenceId].cppType, /&/);
+
+    const browser = await chromium.launch({
+      headless: true,
+      ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
+    });
+    try {
+      const page = await browser.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.stack || error.message));
+      await page.goto(base + '/algorithm.html');
+      await page.waitForFunction(({ tween, renderer }) => (
+        window.ASMTracePlayer
+        && window.asmApplyTraceDocument
+        && window.ASMTraceFrameTween?.build === tween
+        && window.ASMTraceRenderers?.build === renderer
+      ), { tween: TWEEN_BUILD, renderer: RENDERER_BUILD });
+      await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(index => window.ASMTracePlayer.renderStable(index), frameIndex - 1);
+      await page.evaluate(index => {
+        window.asmGetAnimationPlaybackRate = () => 4;
+        window.__mergeFinalTransition = window.ASMTracePlayer.render(index, {
+          fromIndex: index - 1
+        });
+      }, frameIndex);
+      await page.evaluate(() => window.__mergeFinalTransition);
+
+      const presentation = await page.evaluate(variableId => {
+        const object = [...document.querySelectorAll('.asm-trace-object[data-trace-variable]')]
+          .find(node => node.dataset.traceVariable === variableId);
+        const bounds = object?.getBoundingClientRect?.();
+        return object && {
+          opacity: Number(getComputedStyle(object).opacity),
+          display: getComputedStyle(object).display,
+          width: bounds.width,
+          height: bounds.height
+        };
+      }, referenceId);
+      assert.ok(presentation, 'the formal sample final num array must remain in the scene');
+      assert.equal(presentation.opacity, 1);
+      assert.notEqual(presentation.display, 'none');
+      assert.ok(presentation.width > 0 && presentation.height > 0);
+
+      await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
+      await page.evaluate(() => window.CodeScript.goto(-1));
+      const soughtPresentation = await page.evaluate(variableId => {
+        const object = [...document.querySelectorAll('.asm-trace-object[data-trace-variable]')]
+          .find(node => node.dataset.traceVariable === variableId);
+        const bounds = object?.getBoundingClientRect?.();
+        return object && {
+          opacity: Number(getComputedStyle(object).opacity),
+          display: getComputedStyle(object).display,
+          width: bounds.width,
+          height: bounds.height,
+          frame: window.CodeScript.get_current_frame_index()
+        };
+      }, referenceId);
+      assert.ok(soughtPresentation, 'formal frame-bar seek must keep final num visible');
+      assert.equal(soughtPresentation.frame, frameIndex);
+      assert.equal(soughtPresentation.opacity, 1);
+      assert.notEqual(soughtPresentation.display, 'none');
+      assert.ok(soughtPresentation.width > 0 && soughtPresentation.height > 0);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

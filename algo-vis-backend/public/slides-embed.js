@@ -119,7 +119,7 @@
   // 父子頁資料套用
   // 先更新來源與輸入，再選擇 trace 或傳統腳本播放，最後重設畫布及導覽狀態。
   // -----------------------------------------------------------------------------
-  function applyAnimation(animation = {}) {
+  function applyAnimation(animation = {}, editorSessionKey = null) {
     settleAnimationVisuals();
     currentAnimation = normalize(animation);
     window.setPresentationCameraTransform?.(
@@ -129,7 +129,10 @@
     );
     if (typeof aceEditor !== 'undefined') {
       window.__asmEmbeddedAnimationPayload = currentAnimation;
-      aceEditor.setValue(currentAnimation.code, -1);
+      if (mode === 'editor' && editorSessionKey != null) {
+        window.asmUseEditorSession(editorSessionKey, currentAnimation.code);
+      }
+      window.asmReplaceEditorCode(currentAnimation.code, -1);
       if (typeof foldDrawBlocks === 'function') setTimeout(foldDrawBlocks, 0);
     }
     const input = document.getElementById('inputArea');
@@ -151,11 +154,16 @@
   window.addEventListener('message', event => {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-load-animation') {
-      const refresh = applyAnimation(event.data.animation);
+      const refresh = applyAnimation(event.data.animation, event.data.editorSessionKey);
       const applied = refresh && typeof refresh.finally === 'function'
         ? refresh.finally(notifyAnimationApplied)
         : (notifyAnimationApplied(), Promise.resolve());
       if (mode === 'runtime' && runtimeVisible) Promise.resolve(applied).then(prepareRuntimeGeometry);
+      return;
+    }
+    if (event.data.type === 'asm-editor-hidden' && mode === 'editor') {
+      window.ASMPlaybackNavigation?.pause?.();
+      settleAnimationVisuals();
       return;
     }
     if (event.data.type === 'asm-runtime-visibility' && mode === 'runtime') {

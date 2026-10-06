@@ -98,6 +98,38 @@ int main() {
     /@let 找不到可見變數或先前別名/);
 });
 
+test('@let cell text supports ternary strings, concatenation and independent frame text', () => {
+  const source = `int main() {
+  int board[4] = {};
+  int n = 1, N = 4, L = 2, M = 2, R = 2;
+  // @frame board with display("\${cell_text}")
+  // @let cell_text = (value == 1 ? '♕' : '') + (row == n && (L & (1 << (N - 1 - column))) ? '↙' : '') + (row == n && (M & (1 << (N - 1 - column))) ? '↓' : '') + (row == n && (R & (1 << (N - 1 - column))) ? '↘' : '')
+  // @let wrapped = '[' + cell_text + ']'
+}`;
+  const [frame] = findFrameDirectives(source);
+  const document = { variables: Object.fromEntries(frame.variables.map(variable => [variable.id, variable])) };
+  const values = { n: 1, N: 4, L: 2, M: 2, R: 2 };
+  const runtimeFrame = { lets: frame.lets, state: Object.fromEntries(frame.variables
+    .filter(variable => variable.name in values)
+    .map(variable => [variable.id, { data: { kind: 'scalar', value: values[variable.name] } }])) };
+  const context = rulesContext();
+  const resolve = (expression, locals = {}) => context.ASMTraceRules.resolveExpression(document, runtimeFrame, expression, locals, true);
+  assert.equal(resolve('cell_text', { value: 0, row: 1, column: 2 }), '↙↓↘');
+  assert.equal(resolve('wrapped', { value: 0, row: 1, column: 2 }), '[↙↓↘]');
+  assert.equal(resolve('cell_text', { value: 1, row: 0, column: 2 }), '♕');
+  assert.equal(resolve('cell_text', { value: 0, row: 0, column: 0 }), '');
+  assert.equal(resolve('n'), 1, 'frame text still resolves without cell locals');
+  assert.equal(resolve('cell_text'), null, 'cell aliases do not invent missing coordinates');
+  assert.equal(resolve('1 + 2'), 3);
+  assert.equal(resolve("'column ' + 2"), 'column 2');
+  assert.equal(resolve("'(' + '+' + '*' + ')'"), '(+*)', 'quoted operator glyphs are literal content');
+  assert.equal(context.ASMTraceRules.resolveExpression(document, runtimeFrame, 'cell_text',
+    { value: 0, row: 1, column: 2 }), '↙↓↘', 'aliases also resolve outside the text-only entry point');
+  assert.equal(frame.variables.some(variable => variable.name === 'cell_text'), false);
+  assert.throws(() => findFrameDirectives(source.replace("(value == 1 ? '♕' : '')", 'unknown(value)')),
+    /@let 運算式無效/);
+});
+
 test('@let resolves string size and character subscripts', () => {
   const context = rulesContext();
   const document = { variables: { text: { name: 'text' } } };

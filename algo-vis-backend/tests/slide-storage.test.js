@@ -181,7 +181,10 @@ test('trace hash ignores object property order but not execution data', async ()
   assert.deepEqual(Object.keys((await SlideStorage.project(first)).traces),
     Object.keys((await SlideStorage.project(reordered)).traces));
   const incomplete = await SlideStorage.project(first);
-  await assert.rejects(SlideStorage.project(incomplete.deck), /完整動畫/);
+  const referenceOnly = await SlideStorage.project(incomplete.deck);
+  assert.equal(Object.keys(referenceOnly.traces).length, 0);
+  const client = SlideStorage.create(new IDBFactory(), memoryStorage());
+  await assert.rejects(client.saveDeck('missing', JSON.stringify(referenceOnly.deck)), /取消|Abort/);
 });
 
 function memoryStorage(initial = {}, beforeSet = null) {

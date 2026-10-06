@@ -8,9 +8,9 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-// @defaults
+// @default
 // @camera auto zoom(1.15)
-// @enddefaults
+// @enddefault
 
 // @preset fibonacci_dp_view
 // @object dp with labels(value,index)

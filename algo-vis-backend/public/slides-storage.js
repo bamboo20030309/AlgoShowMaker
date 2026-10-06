@@ -98,21 +98,30 @@
   }
 
   async function project(source) {
-    const deck = JSON.parse(JSON.stringify(source));
+    // Clone only the lightweight slide metadata. Large traces are handled once,
+    // separately, rather than serialized as part of every text/position edit.
+    const deck = JSON.parse(JSON.stringify(source, (key, value) => key === 'traceDocument' ? undefined : value));
     const references = [], traces = {};
     for (const [groupIndex, group] of (deck.groups || []).entries()) {
       for (const [slideIndex, slide] of (group.slides || []).entries()) {
-        const trace = slide.animation?.traceDocument;
+        const original = source.groups[groupIndex].slides[slideIndex].animation;
+        const trace = original?.traceDocument;
         if (!trace) {
-          if (slide.animation?.traceRef) throw new Error('請先載入完整動畫結果再儲存');
+          if (slide.animation?.traceRef) {
+            if (!/^[a-f0-9]{64}$/.test(slide.animation.traceRef)) throw new Error('動畫參照格式無效');
+            references.push({ groupIndex, slideIndex, key: slide.animation.traceRef,
+              view: slide.animation.traceView || {} });
+            delete slide.animation.traceView;
+          }
           continue;
         }
+        const result = JSON.parse(JSON.stringify(trace));
         const view = {};
         for (const field of ['studio', 'skins', 'rules']) {
-          if (Object.hasOwn(trace, field)) { view[field] = trace[field]; delete trace[field]; }
+          if (Object.hasOwn(result, field)) { view[field] = result[field]; delete result[field]; }
         }
-        const key = await digest(canonical(trace));
-        traces[key] = trace;
+        const key = await digest(canonical(result));
+        traces[key] = result;
         references.push({ groupIndex, slideIndex, key, view });
         delete slide.animation.traceDocument;
         slide.animation.traceRef = key;
@@ -182,7 +191,7 @@
       }).catch(error => { database = null; throw error; });
       return database;
     }
-    async function write(storageKey, serializedDeck) {
+    async function write(storageKey, serializedDeck, retainedTraceKeys = [], { allowMissingTraces = false } = {}) {
       const { deck, references, traces: results } = await project(JSON.parse(serializedDeck));
       const db = await open();
       await new Promise((resolve, reject) => {
@@ -193,33 +202,40 @@
         const decks = tx.objectStore('decks'), traces = tx.objectStore('traces');
         const allDecks = decks.getAll(), allKeys = decks.getAllKeys();
         allKeys.onsuccess = () => {
-          const retained = new Set(references.map(ref => ref.key));
+          const retained = new Set([...references.map(ref => ref.key), ...retainedTraceKeys]);
+          const previous = new Set();
           for (let index = 0; index < allDecks.result.length; index++) {
-            if (allKeys.result[index] === storageKey) continue;
+            if (allKeys.result[index] === storageKey) {
+              for (const ref of allDecks.result[index].references || []) previous.add(ref.key);
+              continue;
+            }
             for (const ref of allDecks.result[index].references || []) retained.add(ref.key);
           }
-          const cursor = traces.openKeyCursor();
-          cursor.onsuccess = () => {
-            if (!cursor.result) return;
-            if (!retained.has(cursor.result.key)) traces.delete(cursor.result.key);
-            cursor.result.continue();
-          }
+          // New imports may be staged in another tab before their deck is saved.
+          // Collect only results removed by this save, never unrelated staged IDs.
+          for (const key of previous) if (!retained.has(key)) traces.delete(key);
           for (const [key, trace] of Object.entries(results)) {
             const existing = traces.getKey(key);
             existing.onsuccess = () => { if (existing.result === undefined) traces.put(trace, key); };
+          }
+          for (const ref of references) if (!allowMissingTraces && !Object.hasOwn(results, ref.key)) {
+            const existing = traces.getKey(ref.key);
+            existing.onsuccess = () => {
+              if (existing.result === undefined) tx.abort();
+            };
           }
           decks.put({ deck, references }, storageKey);
         };
       });
       return true;
     }
-    function saveDeck(storageKey, serializedDeck) {
+    function saveDeck(storageKey, serializedDeck, retainedTraceKeys = [], options = {}) {
       // Serialize writes in request order; failures must not poison later saves.
-      const result = queue.then(() => write(storageKey, serializedDeck));
+      const result = queue.then(() => write(storageKey, serializedDeck, retainedTraceKeys, options));
       queue = result.catch(() => {});
       return result;
     }
-    async function loadDeck(storageKey, legacyKeys = []) {
+    async function loadDeck(storageKey, legacyKeys = [], { lazyTraces = false } = {}) {
       await queue;
       const db = await open();
       const record = await new Promise((resolve, reject) => {
@@ -232,6 +248,10 @@
           value = request.result;
           if (!value) return;
           for (const ref of value.references || []) {
+            if (lazyTraces) {
+              value.deck.groups[ref.groupIndex].slides[ref.slideIndex].animation.traceView = ref.view;
+              continue;
+            }
             const traceRequest = tx.objectStore('traces').get(ref.key);
             traceRequest.onsuccess = () => {
               if (!traceRequest.result) { tx.abort(); return; }
@@ -252,11 +272,32 @@
         for (const oldKey of legacyKeys) {
           try { storage.removeItem(oldKey); } catch (_) { /* safe to retry later */ }
         }
-        return legacyDeck;
+        return lazyTraces ? loadDeck(storageKey, [], { lazyTraces: true }) : legacyDeck;
       }
       return null;
     }
-    return { saveDeck, loadDeck };
+    async function putTrace(key, trace) {
+      if (!/^[a-f0-9]{64}$/.test(key) || await digest(canonical(trace)) !== key)
+        throw new Error('動畫結果雜湊不符');
+      const db = await open();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('traces', 'readwrite');
+        tx.oncomplete = resolve;
+        tx.onabort = () => reject(tx.error || new Error('動畫儲存失敗'));
+        const store = tx.objectStore('traces');
+        const request = store.getKey(key);
+        request.onsuccess = () => { if (request.result === undefined) store.put(trace, key); };
+      });
+    }
+    async function loadTrace(key) {
+      const db = await open();
+      return new Promise((resolve, reject) => {
+        const request = db.transaction('traces', 'readonly').objectStore('traces').get(key);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    return { saveDeck, loadDeck, putTrace, loadTrace };
   }
 
   return { isQuotaExceeded, save, create, project, hydrate, merge, digest, canonical };

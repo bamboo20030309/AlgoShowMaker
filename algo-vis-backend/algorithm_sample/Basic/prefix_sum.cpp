@@ -15,9 +15,9 @@ using namespace std;
 int n;
 vector<int> num, pre;
 
-// @defaults
+// @default
 // @camera auto zoom(1.05)
-// @enddefaults
+// @enddefault
 
 // num[0] 與 pre[0] 是保留格，實際資料從 index 1 開始。
 // @preset prefix_sum_view

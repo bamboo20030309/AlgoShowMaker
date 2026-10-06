@@ -241,6 +241,19 @@
       const candidates = previous.filter(a => !used.has(a) && a.id === b.id && compatible(a, b));
       if (candidates.length === 1) { matches.set(b, candidates[0]); used.add(candidates[0]); }
     });
+    // @keep gives a retained arrow a snapshot-qualified permanent ID.  On
+    // the one frame where the live arrow hands off to that retained copy,
+    // pair it through the authored source ID so the live arrow does not also
+    // become a temporary exit ghost.  Later frames match the qualified ID in
+    // the exact-ID pass above, keeping separate snapshots independent.
+    current.filter(b => !matches.has(b) && b.handoffFromId).forEach(b => {
+      const candidates = previous.filter(a => !used.has(a)
+        && a.source === b.source && a.id === b.handoffFromId);
+      if (candidates.length === 1) {
+        matches.set(b, candidates[0]);
+        used.add(candidates[0]);
+      }
+    });
     const family = a => JSON.stringify([a.source, a.scope,
       a.fromObject, a.toObject, a.line, a.headStart, a.headEnd]);
     current.filter(b => !matches.has(b) && b.explicitId === false).forEach(b => {
@@ -268,7 +281,7 @@
     const fail = message => { throw new Error(`第 ${arrow.line || '?'} 行的 @arrow for ${message}`); };
     const limit = Math.floor(2048 / (arrow.drawCandidateCount || 1));
     let samples;
-    if (batch.kind === 'loop') {
+    if (batch.kind === 'loop' || batch.kind === 'layout') {
       if (!loopSamples) fail('缺少迴圈執行資料');
       samples = loopSamples(batch);
     } else {

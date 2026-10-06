@@ -1435,7 +1435,7 @@
       });
 
       panel.querySelectorAll('.seg-color-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        bindGuiColorButton(btn, (e) => {
           const idx = parseInt(btn.dataset.idx);
           const type = btn.dataset.type;
           const segments = dc.type === 'drawText' ? dc._textSegments : dc.args[0];
@@ -1634,7 +1634,7 @@
 
     // 顏色按鈕點擊事件
     panel.querySelectorAll('.color-picker-btn:not(.arrow-color-picker-btn)').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      bindGuiColorButton(btn, (e) => {
         const item = btn.closest('.array-style-item');
         openColorPalette(e, btn, (colorName, hex, isFinal) => {
           btn.style.background = hex;
@@ -1707,7 +1707,7 @@
 
     // 箭頭顏色選取器
     panel.querySelectorAll('.arrow-color-picker-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      bindGuiColorButton(btn, (e) => {
         const item = btn.closest('.arrow-style-item');
         openColorPalette(e, btn, (colorName, hex, isFinal) => {
           btn.style.background = hex;
@@ -2450,7 +2450,24 @@
    * @param {HTMLElement} anchorBtn 觸發按鈕
    * @param {Function} onSelect 回呼函數 (colorName, hex, isFinal)
    */
+  function bindGuiColorButton(button, handler) {
+    const event = type => ({ type, preventDefault() {}, stopPropagation() {} });
+    ASMColorPickerPolicy.bind(button, {
+      open: () => handler(event('pointerenter')),
+      apply: () => handler(event('click')),
+      paint: color => { button.style.backgroundColor = color; }
+    });
+  }
   function openColorPalette(evt, anchorBtn, onSelect) {
+    if (evt.type !== 'pointerenter' && ASMColorPickerPolicy.last()) {
+      const value = ASMColorPickerPolicy.last();
+      const alias = Object.entries(AV_MAP).find(([name,color]) => name.startsWith('AV_') && ASMColorPickerPolicy.normalize(color) === ASMColorPickerPolicy.normalize(value));
+      onSelect(alias?.[0] || value, value, true);
+      return;
+    }
+    const select = onSelect;
+    onSelect = (name, value, final) => { ASMColorPickerPolicy.remember(value, final); select(name, value, final); };
+
     // 移除已存在的
     const existing = document.getElementById('gui-color-palette');
     if (existing) existing.remove();
@@ -2465,30 +2482,9 @@
       display: flex; flex-direction: column; gap: 10px;
     `;
 
-    // 1. AV 常用常量區
-    const constLabel = document.createElement('div');
-    constLabel.innerText = '常用 AV 顏色';
-    constLabel.style.cssText = 'font-size: 11px; color: #6b7280; font-weight: 600;';
-    palette.appendChild(constLabel);
-
-    const constGrid = document.createElement('div');
-    constGrid.style.cssText = 'display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;';
-    AV_COLORS.forEach(c => {
-      const swatch = document.createElement('div');
-      swatch.style.cssText = `
-        width: 24px; height: 24px; border-radius: 4px; cursor: pointer;
-        border: 1px solid rgba(0,0,0,0.1); background: ${c.hex};
-      `;
-      swatch.title = c.name;
-      swatch.addEventListener('mousedown', (e) => {
-        e.preventDefault(); // 防止失去焦點
-        onSelect(c.name, c.hex, true); // 快選按鈕：直接觸發 Final
-        palette.remove();
-      });
-      constGrid.appendChild(swatch);
+    const refreshSwatches = ASMColorPickerPolicy.swatches(palette, (name, value) => {
+      onSelect(name, value, true); palette.remove();
     });
-    palette.appendChild(constGrid);
-
     // 2. 分隔線
     const divider = document.createElement('div');
     divider.style.cssText = 'height: 1px; background: #f3f4f6; margin: 4px 0;';
@@ -2526,7 +2522,7 @@
 
       const picker = new iro.ColorPicker(pickerMount, {
         width: 150,
-        color: initialColor,
+        color: ASMColorPickerPolicy.last(initialColor),
         borderWidth: 1,
         borderColor: "#e5e7eb",
         layout: [
@@ -2538,12 +2534,14 @@
 
       picker.on('color:change', (color) => {
         // 即時預覽：isFinal = false
-        onSelect(color.hexString, color.hexString, false);
+        const value = color.alpha < 1 ? color.rgbaString : color.hexString;
+        onSelect(value, value, false);
       });
 
       picker.on('input:end', (color) => {
         // 放開滑鼠：isFinal = true
-        onSelect(color.hexString, color.hexString, true);
+        const value = color.alpha < 1 ? color.rgbaString : color.hexString;
+        onSelect(value, value, true); refreshSwatches();
       });
     } else {
       pickerMount.innerHTML = '<div style="font-size:10px;color:#999;text-align:center">無法載入選色器庫</div>';
@@ -2824,7 +2822,7 @@
       fcBtn.id = 'inline-fc-btn';
       fcBtn.style.cssText = `width:16px; height:16px; border-radius:50%; background:#fff; cursor:pointer; border:1px solid #666; margin:0 4px;`;
       fcBtn.title = "文字顏色";
-      fcBtn.onmousedown = (e) => { 
+      bindGuiColorButton(fcBtn, (e) => {
         e.preventDefault(); 
         e.stopPropagation(); 
         openColorPalette(e, fcBtn, (cName, hex, isFinal) => { 
@@ -2832,13 +2830,13 @@
           fcBtn.dataset.initialColor = hex;
           changeInlineStyle('foreColor', hex, isFinal); 
         }); 
-      };
+      });
 
       const bgBtn = document.createElement('div');
       bgBtn.id = 'inline-bg-btn';
       bgBtn.style.cssText = `width:16px; height:16px; border-radius:50%; background:transparent; cursor:pointer; border:1px dashed #aaa; margin:0 4px;`;
       bgBtn.title = "背景顏色";
-      bgBtn.onmousedown = (e) => { 
+      bindGuiColorButton(bgBtn, (e) => {
         e.preventDefault(); 
         e.stopPropagation(); 
         openColorPalette(e, bgBtn, (cName, hex, isFinal) => { 
@@ -2847,7 +2845,7 @@
           bgBtn.dataset.initialColor = hex;
           changeInlineStyle('bgColor', hex, isFinal); 
         }); 
-      };
+      });
 
       _inlineToolbar.appendChild(sizeSelect);
       _inlineToolbar.appendChild(fcBtn);

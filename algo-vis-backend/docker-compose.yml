@@ -1,18 +1,22 @@
-version: '3'
-
 # =============================================================================
 # 本機／單機部署拓樸：Mongo → Node backend → Nginx
 # =============================================================================
 services:
   # MongoDB 服務
   mongo:
-    image: mongo:latest
+    image: mongo:4.4
     container_name: mongodb_container
     restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 2G
+          pids: 256
 
   # ---------------------------------------------------------------------------
   # Node.js API、C++ 編譯與 trace 分析服務
@@ -24,8 +28,35 @@ services:
       - .env
     # 容器內的 localhost 是 backend 自己；Mongo 必須使用 Compose service 名稱。
     environment:
+      # Nginx 在 Compose 網路內固定代理到 backend:3000，不受開發用 .env PORT 影響。
+      PORT: 3000
       MONGO_URI: mongodb://mongo:27017/algo_vis_db
       TRUST_PROXY_HOPS: 1
+      # 四核心主機保留資源給 Node、MongoDB 與 Nginx；兩個昂貴工作同時執行。
+      COMPILE_CONCURRENCY: 2
+      COMPILE_MAX_QUEUED: 150
+      COMPILE_MAX_QUEUED_PER_OWNER: 3
+      COMPILE_MAX_ACTIVE_PER_OWNER: 1
+      COMPILE_OWNER_RATE_LIMIT_PER_MINUTE: 60
+      COMPILE_IP_RATE_LIMIT_PER_MINUTE: 600
+      TRACE_ANALYSIS_CACHE_MAX: 200
+      TRACE_ANALYSIS_WORKERS: 2
+      TRACE_ANALYSIS_MAX_QUEUED: 150
+      # 編譯執行檔與成功 trace 使用磁碟 LRU，不常駐占用同等大小的 RAM。
+      ARTIFACT_CACHE_DIR: /usr/src/app/artifact-cache
+      ARTIFACT_CACHE_MAX_MB: 2048
+      ARTIFACT_CACHE_TTL_HOURS: 168
+      ASM_COMPILER_FINGERPRINT: g++-docker-c++17-v1
+      ASYNC_COMPILE_DISPATCH_CONCURRENCY: 2
+      ASYNC_COMPILE_REQUEST_TTL_MINUTES: 120
+      ASYNC_COMPILE_RESULT_TTL_MINUTES: 10
+      ASYNC_COMPILE_MAX_RESULTS: 150
+      ASYNC_COMPILE_RESULT_MAX_MB: 128
+      ASYNC_COMPILE_TIMEOUT_MS: 420000
+      ASYNC_COMPILE_POLL_RATE_LIMIT_PER_MINUTE: 600
+      ASYNC_COMPILE_RESULT_RATE_LIMIT_PER_MINUTE: 30
+      ASYNC_COMPILE_RESULT_STREAMS: 12
+      ASYNC_COMPILE_RESULT_STREAMS_PER_OWNER: 2
     # 自動重啟：當機或重開機後會自動爬起來
     restart: unless-stopped
 
@@ -36,16 +67,14 @@ services:
     depends_on:
       - mongo
     
-    # [安全設定 2] 資源限制：防止 C++ 編譯把伺服器操爆
-    # 注意：這能防止惡意程式耗盡資源導致你無法 SSH 進伺服器救火
+    # 四核心／16 GB 主機仍保留一顆核心與約 5 GB 給系統及其他服務。
     deploy:
       resources:
         limits:
-          cpus: '0.50'    # 限制最多用 50% CPU (依你主機核心數調整，0.5 代表半顆核心)
-          memory: 1G    # 限制最多用 1G RAM
-          # 限制行程數量 (防 Fork Bomb)
-          # 限制這個容器最多只能同時跑 128 個程式，超過就開不起來
-          pids: 128
+          cpus: '3.0'
+          memory: 8G
+          # 限制容器總行程數，防止使用者程式大量建立行程。
+          pids: 256
 
     # 2. 安全性增強 (Security Opts)
     # 拿掉所有 Linux 特權，讓容器更安全
@@ -66,23 +95,20 @@ services:
       # A. 前端靜態檔：設為 :ro (Read-Only)，防止被竄改
       - ./public:/usr/src/app/public:ro
 
-      # B. 暫存編譯區：這是 server.js 唯一需要寫入的地方
-      # 我們把它掛載為一個 "tmpfs" (記憶體暫存區) 或 "一般 volume"
-      # 這樣既能寫入，重開機後資料又會自動清空，非常適合你的需求
-      - /usr/src/app/tmp
+      # B. C++ 執行檔與共用 trace 跨容器重建保留，由後端依 TTL/LRU 控制容量。
+      - artifact-cache:/usr/src/app/artifact-cache
 
     # 暫存資料夾設定 (選用，但推薦)
     # 因為 read_only: true 會讓 /tmp 也變唯讀，導致某些 Linux 指令失效
     # 所以我們要配給它一個暫時的寫入區
     tmpfs:
-      # 你的應用程式暫存區 (限制大小)
-      - /usr/src/app/tmp:size=64M,mode=1777,exec
+      # 編譯、執行與 trace 暫存；只在實際使用時占用記憶體。
+      - /usr/src/app/tmp:size=1G,mode=1777,exec
       
-      # 系統預設暫存區 (建議也加上 mode=1777，避免權限問題)
-      - /tmp:mode=1777
+      # 系統預設暫存區與 runtime 資料。
+      - /tmp:size=512M,mode=1777
       
-      # 系統運行區
-      - /run
+      - /run:size=64M
 
   # ---------------------------------------------------------------------------
   # 對外入口：提供靜態檔並將動態端點反向代理給 backend
@@ -101,9 +127,16 @@ services:
       - ./public:/usr/share/nginx/html
     depends_on:
       - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+          pids: 64
 
 # =============================================================================
 # 持久化資料卷；程式與暫存編譯內容不寫入此卷。
 # =============================================================================
 volumes:
   mongo-data:
+  artifact-cache:

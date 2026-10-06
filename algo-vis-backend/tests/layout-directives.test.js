@@ -15,7 +15,8 @@ const { JSDOM } = require('jsdom');
 const ArrowModel = require('../public/trace-arrow-model');
 const {
   findKeepDirectives,
-  findLayoutDirectives
+  findLayoutDirectives,
+  instrumentSource
 } = require('../trace-instrumenter');
 const { compile } = require('./helpers/compile');
 
@@ -93,6 +94,115 @@ test('@layout stores slots as the canonical mode and accepts legacy binary sourc
   assert.equal(legacy.mode, 'slots');
 });
 
+test('@layout linear composes recursion layouts and line/group remain legacy aliases', () => {
+  const layouts = findLayoutDirectives(`
+// @layout linear as scene
+// @layout scene direction top-down
+// @layout scene gap 64
+// @layout recursion as split_tree in scene
+// @layout recursion as merge_tree in scene
+// @layout merge_tree direction bottom-up
+`);
+  const scene = layouts.find(layout => layout.id === 'scene');
+  const split = layouts.find(layout => layout.id === 'split_tree');
+  const merge = layouts.find(layout => layout.id === 'merge_tree');
+  assert.deepEqual({ type: scene.type, direction: scene.direction, gap: scene.gap },
+    { type: 'linear', direction: 'top-down', gap: 64 });
+  assert.equal(split.parentLayoutId, 'scene');
+  assert.equal(split.binding, null);
+  assert.equal(split.mode, 'compact');
+  assert.equal(merge.parentLayoutId, 'scene');
+  assert.equal(merge.direction, 'bottom-up');
+  assert.equal(findLayoutDirectives(`
+// @layout linear as packed
+// @layout packed gap 0
+`)[0].gap, 0);
+  assert.equal(findLayoutDirectives('// @layout line as legacy_line')[0].type, 'linear');
+  assert.equal(findLayoutDirectives('// @layout group as legacy_group')[0].type, 'linear');
+  assert.throws(() => findLayoutDirectives(`
+// @layout recursion as tree
+// @layout recursion as child in tree
+  `), /只能指定 linear/);
+  assert.throws(() => findLayoutDirectives('// @layout linear as scene in missing'), /找不到上層 ID/);
+});
+
+test('@arrow accepts layout node selectors and layout collection batches', () => {
+  const result = instrumentSource(`
+// @layout linear as scene
+// @layout recursion as split_tree in scene
+// @layout recursion as merge_tree in scene
+void sort(int value) {
+  // @frame value in merge_tree
+  // @arrow for k in split_tree.leaves from split_tree.leaves[k].bottom
+  //        to merge_tree.leaves[k].top in scene color AV_green!
+}
+`);
+  const arrow = result.frameDirectives[0].arrows[0];
+  assert.equal(arrow.batch.kind, 'layout');
+  assert.equal(arrow.batch.layoutId, 'split_tree');
+  assert.equal(arrow.batch.layoutSelector, 'leaves');
+  assert.equal(arrow.from.type, 'layout');
+  assert.equal(arrow.from.layoutSelector, 'leaves');
+  assert.deepEqual(arrow.from.indexExpressions, ['k']);
+  assert.equal(arrow.to.layoutId, 'merge_tree');
+  assert.equal(arrow.ownerLayoutId, 'scene');
+});
+
+test('frame snapshots retain and freeze cross-layout current arrows', async () => {
+  assert.ok(process.env.ASM_TEST_BASE_URL, 'set ASM_TEST_BASE_URL to an isolated server');
+  const source = `
+// @layout linear as scene
+// @layout recursion as split_tree in scene
+// @layout recursion as merge_tree in scene
+void split(int value) {
+  int part[1] = {value};
+  // @frame part in split_tree
+  // @keep last as "split" in split_tree
+  // @frame part in merge_tree
+  // @arrow from split_tree.current.bottom
+  //        to merge_tree.current.top
+  //        in scene color AV_green!
+  // @keep last as "merge" in merge_tree
+}
+int main() {
+  split(7);
+  int done = 1;
+  // @frame done
+}
+`;
+  const { trace } = await compile(source);
+  const snapshot = trace.snapshots.find(item => item.layoutId === 'merge_tree');
+  assert.equal(snapshot.arrows.length, 1);
+  assert.equal(snapshot.arrows[0].ownerLayoutId, 'scene');
+  assert.equal(snapshot.arrows[0].style.color, 'AV_green!');
+  assert.match(snapshot.arrows[0].from.layoutActivationId, /^activation-/);
+  assert.equal(snapshot.arrows[0].from.layoutActivationId,
+    snapshot.arrows[0].to.layoutActivationId);
+  assert.equal(snapshot.frame.arrows.length, 0);
+});
+
+test('linear layout keeps accumulate within one function activation', async () => {
+  assert.ok(process.env.ASM_TEST_BASE_URL, 'set ASM_TEST_BASE_URL to an isolated server');
+  const source = `
+#include <vector>
+// @layout linear as merge_passes at canvas.center
+int main() {
+  std::vector<int> num = {2, 1};
+  // @frame num in merge_passes
+  // @keep num as "merge pass" in merge_passes
+  num = {1, 2};
+  // @frame num in merge_passes
+  // @keep num as "merge pass" in merge_passes
+  // @frame num as current in merge_passes
+}
+`;
+  const { trace } = await compile(source);
+  assert.equal(trace.snapshots.length, 2);
+  assert.equal(new Set(trace.snapshots.map(snapshot => snapshot.objectId)).size, 2);
+  assert.equal(trace.frames.at(-1).snapshotIds.length, 2);
+  assert.ok(trace.snapshots.every(snapshot => snapshot.layoutId === 'merge_passes'));
+});
+
 test('@keep in attaches a snapshot to an existing recursion layout', () => {
   const source = `
 ${declaration}
@@ -127,6 +237,31 @@ void split(std::vector<int>& arr) {
   ), /不可同時使用 in 與 at/);
 });
 
+test('@frame and preset objects can join a linear layout directly', () => {
+  const source = `
+// @layout linear as merge_passes at canvas.center
+// @layout merge_passes direction top-down
+// @layout merge_passes align center
+// @layout merge_passes gap 70
+// @preset merge_step
+// @object num in merge_passes
+// @object temp at num.bottom offset(0,72)
+// @endpreset
+#include <vector>
+int main() {
+  std::vector<int> num = {3, 1, 2};
+  std::vector<int> temp;
+  // @frame use merge_step
+  // @keep num as "pass" in merge_passes
+  // @frame num as current in merge_passes
+}
+`;
+  const frames = require('../trace-instrumenter').instrumentSource(source).frameDirectives;
+  assert.equal(frames[0].layoutId, 'merge_passes');
+  assert.equal(frames[0].objects[0].layoutId, 'merge_passes');
+  assert.equal(frames[1].layoutId, 'merge_passes');
+});
+
 function rendererApi() {
   const source = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8');
   const context = vm.createContext({
@@ -154,9 +289,122 @@ function rendererDomApi() {
   };
   window.ASMTraceModel = { diffFrame() { return []; } };
   window.ASMTraceTransitions = { defaults() { return { duration: 0, easing: 'linear' }; } };
+  window.ASMTraceCamera = { ruleForFrame() { return null; } };
   window.eval(source);
   return { dom, window, renderer: window.ASMTraceRenderers };
 }
+
+test('linear layout aligns keep snapshots and the live object without overlapping', async () => {
+  const { window, renderer } = rendererDomApi();
+  const sequence = values => ({
+    kind: 'sequence',
+    items: values.map(value => ({ kind: 'scalar', value }))
+  });
+  const snapshots = [
+    {
+      id: 'snapshot-pass-1', objectId: 'pass-1', sourceVariableId: 'num-id',
+      sourceIdentity: 'num-runtime', label: 'merge pass', data: sequence([2, 1, 4, 3]),
+      layoutId: 'merge_passes'
+    },
+    {
+      id: 'snapshot-pass-2', objectId: 'pass-2', sourceVariableId: 'num-id',
+      sourceIdentity: 'num-runtime', label: 'merge pass', data: sequence([1, 2, 3, 4]),
+      layoutId: 'merge_passes'
+    }
+  ];
+  const frame = {
+    id: 'frame-current',
+    source: {
+      layoutId: 'merge_passes', layoutIds: { 'num-id': 'merge_passes' },
+      primaryVariableId: 'num-id', objectId: 'current', objectIds: { 'num-id': 'current' }
+    },
+    state: { 'num-id': { name: 'num', identity: 'num-runtime', data: sequence([1, 2, 3, 4]) } },
+    events: [], bindings: [], objectBindings: [], renderers: {}, rendererOptions: {},
+    captureOnlyVariableIds: [], texts: [], styles: [], segments: [],
+    snapshotIds: snapshots.map(snapshot => snapshot.id)
+  };
+  const document = {
+    variables: { 'num-id': { id: 'num-id', name: 'num', kind: 'sequence' } },
+    skins: {}, snapshots,
+    layouts: [{
+      id: 'merge_passes', type: 'linear', direction: 'top-down', align: 'center', gap: 70,
+      binding: { canvas: true, anchor: 'center', offsetX: 0, offsetY: 0 }
+    }],
+    studio: {}, frames: [frame]
+  };
+
+  await renderer.renderFrame(document, frame, null, {
+    animatePositions: false, animateEvents: false
+  });
+
+  const boxes = ['pass-1', 'pass-2', 'current'].map(key => renderer.currentPlacement(key, false));
+  const layoutBox = renderer.currentPlacement('merge_passes', false);
+  const centers = boxes.map(box => box.x + box.width / 2);
+  assert.ok(centers.every(center => Math.abs(center - centers[0]) < 0.01));
+  assert.equal(layoutBox.y, 310,
+    'top-down linear growth keeps its top edge at the authored canvas anchor');
+  assert.equal(boxes[0].y, layoutBox.y,
+    'adding lower members does not push the first member upward');
+  assert.ok(boxes[1].y >= boxes[0].y + boxes[0].height + 70 - 0.01);
+  assert.ok(boxes[2].y >= boxes[1].y + boxes[1].height + 70 - 0.01);
+  const arrows = [...window.document.querySelectorAll('.asm-trace-keep-arrow')];
+  assert.equal(arrows.length, 2);
+  arrows.forEach(arrow => {
+    assert.ok(Math.abs(Number(arrow.getAttribute('x1')) - Number(arrow.getAttribute('x2'))) < 0.01);
+  });
+});
+
+test('renderer accepts current and legacy saved linear layout data', () => {
+  const renderer = rendererApi();
+  assert.equal(renderer.isLineLayout({ type: 'linear' }), true);
+  assert.equal(renderer.isLineLayout({ type: 'line' }), true);
+  assert.equal(renderer.isLineLayout({ type: 'group' }), true);
+  assert.equal(renderer.isLineLayout({ type: 'recursion' }), false);
+});
+
+test('linear joins the full bottom of one recursion layout to the top of the next', async () => {
+  assert.ok(process.env.ASM_TEST_BASE_URL, 'set ASM_TEST_BASE_URL to an isolated server');
+  const source = `
+#include <vector>
+// @layout linear as scene at canvas.center
+// @layout scene gap 48
+// @layout recursion as split_tree in scene
+// @layout recursion as merge_tree in scene
+// @layout merge_tree direction bottom-up
+void visit(std::vector<int>& num, int depth) {
+  std::vector<int> part = {depth};
+  // @frame part in split_tree
+  // @keep last as "split" in split_tree
+  if (depth < 1) {
+    visit(num, depth + 1);
+    visit(num, depth + 1);
+  }
+  // @frame part in merge_tree
+  // @keep last as "merge" in merge_tree
+}
+int main() {
+  std::vector<int> num = {2, 1};
+  visit(num, 0);
+  // @frame num in scene
+}
+`;
+  const { trace } = await compile(source);
+  const { renderer } = rendererDomApi();
+  const frame = trace.frames.at(-1);
+  await renderer.renderFrame(trace, frame, trace.frames.at(-2), {
+    animatePositions: false, animateEvents: false
+  });
+  const split = renderer.currentPlacement('split_tree', false);
+  const merge = renderer.currentPlacement('merge_tree', false);
+  const currentKey = frame.source.objectIds?.[frame.source.primaryVariableId]
+    || frame.source.primaryVariableId;
+  const current = renderer.currentPlacement(currentKey, false);
+  assert.ok(split && merge && current);
+  assert.ok(Math.abs(merge.y - (split.y + split.height + 48)) < 0.01,
+    'the second tree starts after the complete bottom edge of the first tree');
+  assert.ok(current.y >= merge.y + merge.height + 48 - 0.01,
+    'the final result advances to the next line slot after both trees');
+});
 
 test('recursion layout coordinates grow in the selected direction', () => {
   const renderer = rendererApi();
@@ -395,6 +643,30 @@ test('recursion layout keeps the root anchor fixed while new slots grow', () => 
   ], { x: 360, y: 410 });
   assert.deepEqual(first.get('root'), grown.get('root'));
   assert.deepEqual({ x: grown.get('root').x, y: grown.get('root').y + 20 }, { x: 360, y: 410 });
+});
+
+test('top-down and bottom-up recursion layouts pin their root-facing edge', () => {
+  const renderer = rendererApi();
+  const root = { id: 'root', parentId: '', siblingIndex: 0, box: { width: 80, height: 40 } };
+  const child = { id: 'child', parentId: 'root', siblingIndex: 0,
+    box: { width: 70, height: 40 } };
+  const base = { mode: 'compact', align: 'center', siblingGap: 32, levelGap: 88, degree: 2 };
+  const topFirst = renderer.recursionLayoutCoordinates(
+    { ...base, direction: 'top-down' }, [root], { x: 360, y: 110 }
+  );
+  const topGrown = renderer.recursionLayoutCoordinates(
+    { ...base, direction: 'top-down' }, [root, child], { x: 360, y: 110 }
+  );
+  const bottomFirst = renderer.recursionLayoutCoordinates(
+    { ...base, direction: 'bottom-up' }, [root], { x: 360, y: 510 }
+  );
+  const bottomGrown = renderer.recursionLayoutCoordinates(
+    { ...base, direction: 'bottom-up' }, [root, child], { x: 360, y: 510 }
+  );
+  assert.deepEqual(topFirst.get('root'), topGrown.get('root'));
+  assert.deepEqual(bottomFirst.get('root'), bottomGrown.get('root'));
+  assert.equal(topGrown.get('root').y, 110);
+  assert.equal(bottomGrown.get('root').y + bottomGrown.get('root').height, 510);
 });
 
 test('semantic placement can use the complete recursion layout bounds', () => {

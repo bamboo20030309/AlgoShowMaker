@@ -42,17 +42,45 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
     }
     browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
     const widget = { id: 'array', type: 'structure', structureMode: 'normal', content: '0, 0, 0', x: 180, y: 140, w: 500, h: 150, structureFrameVersion: 4 };
-    const deck = { groups: [{ id: 'g1', slides: [{ id: 's1', canvas: { objects: [] }, widgets: [widget] }] }] };
+    const deck = { groups: [{ id: 'g1', slides: [{ id: 's1', canvas: { objects: [
+      {type:'textbox',text:'Old red text',left:80,top:50,width:250,fontSize:24,fill:'#c12345',textBackgroundColor:'rgba(0,0,0,0)'},
+      {type:'textbox',text:'Old blue text',left:80,top:100,width:250,fontSize:24,fill:'#1234ab',textBackgroundColor:'#aabbcc'},
+      {type:'rect',left:80,top:600,width:100,height:60,fill:'#987654',stroke:'#456789',strokeWidth:2}
+    ] }, widgets: [widget,
+      { id: 'old-table', type: 'table', tableData: [['A','B'],['1','2']], content: 'A | B\n1 | 2', x: 650, y: 430, w: 380, h: 160, tableHeaderRow: false, tableBodyFill: '#abcdef' },
+      { id: 'old-tree', type: 'structure', structureMode: 'binary_tree', content: '1,2,3', x: 830, y: 60, w: 270, h: 200, frameBackgroundEnabled: false, textColor: '#123456' }
+    ] }] }] };
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/color-picker-policy.js?*', route=>route.fulfill({contentType:'application/javascript',body:
+      fs.readFileSync(path.join(root,'public/color-picker-policy.js'),'utf8')+`
+      const fixtureLoad=fabric.Canvas.prototype.loadFromJSON;
+      fabric.Canvas.prototype.loadFromJSON=function(...args){window.colorFixtureCanvas=this;return fixtureLoad.apply(this,args);};`
+    }));
     await page.addInitScript(value => {
       if (sessionStorage.getItem('av-palette-fixture-installed')) return;
       localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify(value));
+      localStorage.setItem('asm_slide_last_picked_color_v1', '#abcdef');
       sessionStorage.setItem('av-palette-fixture-installed', '1');
     }, deck);
     await page.goto(`${base}/slides.html`);
     await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    if (!await page.evaluate(()=>document.body.classList.contains('asm-edit-mode'))) await page.locator('#modeToggleBtn').click();
+    const selectFabric=async index=>page.evaluate(index=>colorFixtureCanvas.setActiveObject(colorFixtureCanvas.getObjects()[index]),index);
+    const textChip=()=>page.locator('#textColorBtn .text-color-icon').evaluate(e=>e.style.getPropertyValue('--text-color-current'));
+    await selectFabric(0); assert.equal(await textChip(),'#c12345','old text displays its actual fill instead of global color memory');
+    assert.equal(await page.locator('#bgColorBtn .text-bg-icon').evaluate(e=>e.style.backgroundColor),'rgba(0, 0, 0, 0)','explicit transparent background remains transparent');
+    await selectFabric(1); assert.equal(await textChip(),'#1234ab','switching text updates current color');
+    assert.equal(await page.locator('#bgColorBtn .text-bg-icon').evaluate(e=>e.style.backgroundColor),'rgb(170, 187, 204)');
+    await page.evaluate(()=>ASMColorPickerPolicy.remember('#fedcba',true));
+    assert.equal(await textChip(),'#1234ab','changing shared color history does not repaint the selected text');
+    await page.locator('#textColorBtn').click();
+    assert.equal(await textChip(),'#1234ab','opening ordinary picker does not apply last color');
+    await page.mouse.click(1550,950);await selectFabric(2);
+    assert.equal(await page.locator('#shapeColorBtn').evaluate(e=>e.style.getPropertyValue('--shape-fill-color')),'#987654');
+    assert.equal(await page.locator('#shapeStrokeBtn').evaluate(e=>e.style.getPropertyValue('--shape-stroke-color')),'#456789');
+    await page.evaluate(()=>{localStorage.removeItem('asm_slide_custom_colors_v1');colorFixtureCanvas.discardActiveObject();});
     const object = page.locator('[data-widget-id="array"]');
     await object.click();
     if (!(await page.locator('#structureLengthInput').isVisible())) {
@@ -63,17 +91,25 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
     const selectCellStyle = async (index, style) => {
       if (await page.locator('#iroPopup').isVisible()) {
         await page.mouse.move(10, 10);
-        await page.waitForTimeout(30);
+        await page.locator('#iroPopup').waitFor({ state: 'hidden' });
       }
-      await object.locator(`[data-structure-item-index="${index}"] > text`).click();
+      const box = await object.locator(`[data-structure-item-index="${index}"] > text`).boundingBox();
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      // Switching cells consumes the first click; reopen the style toolbar on the selected cell.
+      await page.waitForTimeout(300);
+      if (!(await toolbar.isVisible())) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar');
       await toolbar.getByRole('button', { name: style, exact: true }).click();
+      await page.mouse.move(10, 10);
       await toolbar.getByRole('button', { name: style, exact: true }).hover();
     };
     await selectCellStyle(0, 'Highlight');
+    assert.equal(await toolbar.getByRole('button',{name:'Highlight',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')),'#ff0000','unselected style uses its own default, not the legacy global color');
     const palette = page.locator('#avColorSwatches');
     const colors = await page.evaluate(() => window.ASMArrowModel.COLORS);
     assert.deepEqual(await palette.locator('[data-av-color]').evaluateAll(buttons => buttons.map(button => button.dataset.avColor)), Object.keys(colors));
+    assert.equal((await palette.innerText()).trim(), '', 'common colors show swatches without labels');
+    assert.equal(await palette.locator('[title]').count(), 0, 'hover does not expose internal color names');
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'test-results/slides-av-color-palette.png') });
     await palette.locator('[data-av-color="AV_red"]').click();
@@ -83,15 +119,116 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
       return saved.groups[0].slides[0].widgets[0];
     });
     assert.equal((await savedWidget()).cellStyles['0'].highlight, colors.AV_red);
+    await selectCellStyle(0, 'Focus');
+    assert.equal((await savedWidget()).cellStyles['0'].focus, '#808080', 'Focus has its own unchosen default');
+    await palette.locator('[data-av-color="AV_blue"]').click();
+    await selectCellStyle(0, 'Point');
+    assert.equal((await savedWidget()).cellStyles['0'].point, '#ff0000', 'Point does not inherit Focus');
+    await palette.locator('[data-av-color="AV_yellow"]').click();
     await selectCellStyle(1, 'Highlight');
+    assert.equal((await savedWidget()).cellStyles['1'].highlight, colors.AV_red, 'Highlight retains red after Focus and Point change');
     await palette.locator('[data-av-color="AV_node_green"]').click();
     await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
     await page.reload();
     await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
     const saved = await savedWidget();
+    assert.equal(saved.cellStyles['0'].focus, colors.AV_blue);
+    assert.equal(saved.cellStyles['0'].point, colors.AV_yellow);
+    assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('asm_slide_style_colors_v1'))), {highlight: colors.AV_node_green, focus: colors.AV_blue, point: colors.AV_yellow}, 'independent preferences survive reload');
     assert.equal(saved.cellStyles['0'].highlight, colors.AV_red);
     assert.equal(saved.cellStyles['1'].highlight, colors.AV_node_green);
     assert.equal(saved.highlightColor, '#ff0000');
+    // Opening on another old cell must retain its current color, while the
+    // recent swatch survives reload and applies the remembered color explicitly.
+    await object.click();
+    await selectCellStyle(2, 'Highlight');
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+    assert.equal((await savedWidget()).cellStyles['2'].highlight, colors.AV_node_green, 'new style immediately inherits last picked color after reload');
+    const history = page.locator('#customColorSwatches');
+    assert.equal(await history.locator('button').count(), 0, 'AV aliases are not duplicated into custom history');
+    await page.locator('#iroPicker .IroBox').first().click({ position: { x: 91, y: 37 } });
+    await page.waitForFunction(() => document.querySelectorAll('#customColorSwatches button').length === 1);
+    const remembered = await page.evaluate(() => localStorage.getItem('asm_slide_last_picked_color_v1'));
+    const expected = await page.evaluate(value => new iro.Color(value).hexString, remembered);
+    await selectCellStyle(2, 'Highlight'); // Disable the active style to preview the next default.
+    const highlight = toolbar.getByRole('button', { name: 'Highlight', exact: true });
+    assert.equal(await highlight.getAttribute('aria-pressed'), 'false');
+    assert.equal(await highlight.locator('.structure-style-icon').evaluate(icon => icon.style.getPropertyValue('--style-color')), expected);
+    await highlight.click();
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+    assert.equal((await savedWidget()).cellStyles['2'].highlight, expected, 'button applies the color it previews');
+    assert.equal((await savedWidget()).cellStyles['0'].highlight, colors.AV_red, 'existing colors remain intact');
+    await page.mouse.move(10, 10); await highlight.hover(); await history.locator('button').first().click();
+    assert.equal(await history.locator('button').count(), 1, 'reusing a custom color does not duplicate it');
+    await page.mouse.click(1550, 950);
+    await page.locator('[data-tool="text"]').click(); await page.keyboard.insertText('新文字'); await page.locator('#textColorBtn').click(); await page.mouse.move(10,10); await page.locator('#textColorBtn').hover();
+    await history.locator('button').first().click();
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+    const fill = await page.evaluate(async () => {
+      const deck = await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5');
+      return deck.groups[0].slides[0].canvas.objects.at(-1).fill;
+    });
+    assert.equal(fill, remembered, 'text can reuse saved custom colors');
+    await page.locator('#bgColorBtn').click();
+    await history.locator('button').first().click();
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+    const background = await page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].canvas.objects.at(-1).textBackgroundColor);
+    assert.equal(background, remembered, 'text background reuses custom color through an explicit swatch choice');
+    await page.reload();
+    await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    const firstCell = await object.locator('[data-structure-item-index="0"] > text').boundingBox();
+    await page.mouse.click(firstCell.x + firstCell.width / 2, firstCell.y + firstCell.height / 2);
+    await selectCellStyle(0, 'Focus');
+    assert.equal(await toolbar.getByRole('button',{name:'Highlight',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')),expected,'active style previews its own last color rather than another cell\'s saved color');
+    assert.equal(await history.locator('button').count(), 1, 'custom history persists after reload');
+    assert.equal(await toolbar.getByRole('button',{name:'Focus',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')), colors.AV_blue, 'disabled Focus previews its own memory');
+    assert.equal(await toolbar.getByRole('button',{name:'Mark',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')), '#22c55e', 'unchosen Mark previews its own default');
+    await page.screenshot({path:path.join(root,'test-results/style-color-memory.png')});
+    assert.equal((await savedWidget()).cellStyles['0'].highlight, colors.AV_red);
+    await page.mouse.click(1550,950);
+    { const cell = await page.locator('[data-widget-id="old-table"] [data-structure-item-index] > text').first().boundingBox(); await page.mouse.click(cell.x+cell.width/2,cell.y+cell.height/2); }
+    await page.locator('#tableTextColorInput').click();
+    assert.equal(await page.locator('#tableTextColorInput').evaluate(b=>b.style.getPropertyValue('--structure-color')),'#1f282d','ordinary table button displays its current default');
+    await history.locator('button').first().click();
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+    await page.mouse.move(10,10); await page.locator('#iroPopup').waitFor({ state: 'hidden' });
+    { const cell = await page.locator('[data-widget-id="old-tree"] [data-structure-item-index] > text').first().boundingBox(); await page.mouse.click(cell.x+cell.width/2,cell.y+cell.height/2); }
+    await page.locator('#structureTreeArrowColorInput').click();
+    assert.equal(await page.locator('#structureTreeArrowColorInput').evaluate(b=>b.style.getPropertyValue('--structure-color')),'#333333','tree arrow button displays its current default');
+    await history.locator('button').first().click();
+    await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
+    await page.reload();
+    await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready') && Reveal.isReady());
+    const persisted = await page.evaluate(async () => (await ASMSlideStorage.create(indexedDB,localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].widgets);
+    const table = persisted.find(w=>w.id==='old-table'), tree = persisted.find(w=>w.id==='old-tree');
+    assert.equal(table.tableTextColor, expected, 'table color button applies remembered color');
+    assert.equal(table.tableBodyFill, '#abcdef'); assert.equal(table.tableHeaderRow, false);
+    assert.equal(tree.treeArrowColor, expected, 'tree arrow shares remembered color');
+    assert.equal(tree.textColor, '#123456'); assert.equal(tree.frameBackgroundEnabled, false);
+    { const cell = await page.locator('[data-widget-id="old-tree"] [data-structure-item-index] > text').first().boundingBox(); await page.mouse.click(cell.x+cell.width/2,cell.y+cell.height/2); }
+    await page.locator('#structureTreeArrowColorInput').hover();
+    assert.equal((await palette.innerText()).trim(), '', 'tree arrow picker shows only color chips');
+    assert.equal(await palette.locator('[title]').count(), 0, 'tree color picker does not expose alias names');
+    const persistedText=await page.evaluate(async()=> (await ASMSlideStorage.create(indexedDB,localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].canvas.objects);
+    assert.equal(persistedText[0].fill,'#c12345');assert.equal(persistedText[0].textBackgroundColor,'rgba(0,0,0,0)');
+    assert.equal(persistedText[1].fill,'#1234ab');assert.equal(persistedText[1].textBackgroundColor,'#aabbcc');
+    await page.mouse.click(1550,950);await selectFabric(0);assert.equal(await textChip(),'#c12345','reopened old text retains its actual button color');
+    await selectFabric(1);assert.equal(await textChip(),'#1234ab');
+    await selectFabric(persistedText.length-1);
+    assert.equal(await textChip(),remembered,'new text displays its saved custom color after reopening');
+    await page.screenshot({path:path.join(root,'test-results/tree-color-picker-current.png')});
+    await page.mouse.click(1550,950);
+    await page.addScriptTag({url: base+'/trace-color-picker.js'});
+    await page.evaluate(() => {
+      const button=ASMTraceColorPicker.create('#112233');button.id='test-trace-color';button.style.cssText='position:fixed;top:20px;right:20px;z-index:10000';document.body.append(button);
+      window.traceColorEvents=[];button.addEventListener('change',()=>traceColorEvents.push(button.value));
+    });
+    await page.locator('#test-trace-color').click();
+    assert.equal(await page.locator('#test-trace-color').evaluate(b=>b.value),expected);
+    assert.equal(await page.evaluate(()=>traceColorEvents.length),1);
+    await page.mouse.move(10,10); await page.locator('#test-trace-color').hover();
+    assert.ok(await page.locator('.trace-iro-popup .asm-shared-color-swatch').count()>1);
+    assert.equal((await page.locator('.trace-iro-popup .asm-shared-color-swatch').allTextContents()).join(''),'');
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

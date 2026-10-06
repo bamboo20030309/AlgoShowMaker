@@ -87,6 +87,11 @@ test('Binary Indexed Tree renders padded binary labels and aligned wide cells',
       await page.waitForFunction(() => window.ASMTracePlayer && window.asmApplyTraceDocument);
       await page.evaluate(source => window.asmApplyTraceDocument(source), trace);
       await page.evaluate(() => window.ASMTracePlayer.renderStable(0));
+      await page.evaluate(() => {
+        const camera = window.getCameraViewport();
+        window.setCamera(camera.centerX, camera.centerY, 2, false);
+      });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const initialNum = await page.evaluate(numId => {
         const num = document.querySelector(`[data-trace-variable="${CSS.escape(numId)}"]`);
         const cell = num?.querySelector('[data-trace-index="0"]');

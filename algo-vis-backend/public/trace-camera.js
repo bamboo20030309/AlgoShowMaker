@@ -84,16 +84,24 @@
         Number(rule?.offsetX) || 0, Number(rule?.offsetY) || 0, true);
       if (target) return target;
     }
-    const focus = rule?.target ? renderer?.currentAnchor?.(rule.target) : null;
-    const bounds = focus ? renderer?.currentBounds?.() : null;
-    const dx = (Number(rule?.offsetX) || 0) + (focus && bounds ? focus.x - bounds.centerX : 0);
-    const dy = (Number(rule?.offsetY) || 0) + (focus && bounds ? focus.y - bounds.centerY : 0);
+    const focus = rule?.target
+      ? (renderer?.currentCameraAnchor?.(rule.target) || renderer?.currentAnchor?.(rule.target))
+      : null;
+    if (focus) {
+      const scale = Math.max(0.05, Math.min(4, Number(rule?.zoom) || 0.92));
+      const centerX = focus.x + (Number(rule?.offsetX) || 0);
+      const centerY = focus.y + (Number(rule?.offsetY) || 0);
+      window.setCamera?.(centerX, centerY, scale, moving, ms);
+      return { centerX, centerY, scale };
+    }
     if (rule?.autoCapture === false && (!rule.target || focus)) {
       const view = window.getCameraViewport?.(zoom);
       window.setCamera?.((focus?.x ?? view?.centerX ?? 0) + (Number(rule.offsetX) || 0),
         (focus?.y ?? view?.centerY ?? 0) + (Number(rule.offsetY) || 0), zoom, moving, ms);
       return;
     }
+    const dx = Number(rule?.offsetX) || 0;
+    const dy = Number(rule?.offsetY) || 0;
     return renderer?.fitCurrentObjectsCamera?.(zoom, moving, ms, dx, dy, true)
       || window.setAutoCamera?.(zoom, moving, dx, dy, ms);
   }

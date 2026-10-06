@@ -12,6 +12,7 @@
   let cameraTimer = null;
   let viewportResizeFrame = null;
   let viewportObserver = null;
+  let preservedViewportCamera = null;
   let viewportSize = '';
   let viewportGeometryReady = false;
   let runtimeVisibilityConfirmed = false;
@@ -38,6 +39,11 @@
   function refreshViewportCamera() {
     viewportResizeFrame = null;
     if (!document?.frames?.length) return;
+    if (preservedViewportCamera) {
+      const camera = preservedViewportCamera;
+      window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
+      return;
+    }
     if (window.document.body.classList.contains('asm-trace-studio-open')
       && window.ASMTraceStudio?.refreshViewport) {
       window.ASMTraceStudio.refreshViewport();
@@ -78,7 +84,10 @@
     });
     return Promise.resolve(transition).then(() => {
       viewportGeometryReady = true;
-      window.ASMTraceCamera?.apply?.(document, frame, null, false);
+      if (preservedViewportCamera) {
+        const camera = preservedViewportCamera;
+        window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
+      } else window.ASMTraceCamera?.apply?.(document, frame, null, false);
       window.dispatchEvent(new CustomEvent('asm:trace-geometry-ready', {
         detail: { document, frame, index: currentFrame }
       }));
@@ -112,6 +121,7 @@
   // 區段：Frame 導覽與播放計畫
   // ---------------------------------------------------------------------------
   function render(index, options = {}) {
+    preservedViewportCamera = null;
     if (!document || !frameCount()) return Promise.resolve();
     const next = Math.max(0, Math.min(frameCount() - 1, index));
     const requestedFrom = Number.isInteger(options.fromIndex) ? options.fromIndex : currentFrame;
@@ -125,9 +135,6 @@
       ? document.frames[fromIndex] : null;
     currentFrame = next;
     const frame = document.frames[currentFrame];
-    const codeTransitionDelayMs = Math.max(0, Number(
-      window.ASMTraceCodePresenter?.transitionDelay?.(document, frame)
-    ) || 0);
     const cameraTransitionDurationMs = Math.max(0, Number(
       window.ASMTraceCamera?.transitionDuration?.(document, frame, previous || null)
     ) || 0);
@@ -138,7 +145,7 @@
       fromIndex,
       toIndex: currentFrame,
       direction,
-      initialDelayMs: codeTransitionDelayMs,
+      initialDelayMs: 0,
       cameraTransitionDurationMs
     });
     const playbackPlan = transition?.playbackPlan || null;
@@ -159,6 +166,7 @@
         index: currentFrame,
         fromIndex,
         direction,
+        stable,
         plan: playbackPlan
       }
     }));
@@ -172,8 +180,9 @@
     if (typeof window.addEditorHighlight === 'function' && Number(frame.source?.line) > 0) {
       window.addEditorHighlight(Number(frame.source.line));
     }
-    if (!playbackPlan) return transition;
-    const trackedTransition = Promise.resolve(transition).finally(() => {
+    const parallelTransition = Promise.all([transition, window.ASMTraceCodePresenter?.waitForTransition?.()]);
+    if (!playbackPlan) return parallelTransition;
+    const trackedTransition = parallelTransition.finally(() => {
       if (activePlaybackPlan !== playbackPlan) return;
       activePlaybackPlan = null;
       window.dispatchEvent(new CustomEvent('asm:trace-playback-plan-complete', {
@@ -235,6 +244,9 @@
   // 區段：文件載入與公開 API
   // ---------------------------------------------------------------------------
   function apply(source) {
+    if (!window.__asmApplyingBuiltinDefault) {
+      window.ASMDefaultAlgorithm?.cancel?.('external-trace');
+    }
     clearTimeout(cameraTimer);
     activePlaybackPlan = null;
     lastPlaybackPlan = null;
@@ -281,6 +293,12 @@
     previewTransition,
     rebaseCurrentFrame,
     renderStable,
+    preserveViewportCamera(camera) {
+      if (camera && [camera.centerX, camera.centerY, camera.scale].every(Number.isFinite)) {
+        clearTimeout(cameraTimer);
+        preservedViewportCamera = { centerX: camera.centerX, centerY: camera.centerY, scale: camera.scale };
+      }
+    },
     setRules,
     setSkins,
     isActive: () => Boolean(document?.frames?.length),

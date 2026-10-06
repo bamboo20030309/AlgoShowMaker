@@ -12,6 +12,7 @@
   let variables = [];
   let frameDirectives = [];
   let analyzedCode = '';
+  let drawingEnabled = true;
   let currentTrace = null;
   let studioButton = null;
   let eventSettingsButton = null;
@@ -34,6 +35,7 @@
     'call', 'control-flow', 'function-enter', 'function-exit'
   ];
   const LEGACY_EVENT_SETTING_ALIASES = Object.freeze({
+    'visual-enter': 'declare',
     'scope-exit': 'object-exit',
     'visual-exit': 'object-exit',
     write: 'assignment',
@@ -300,6 +302,7 @@
     list.replaceChildren();
     window.ASMTraceEvents.definitions.filter(definition => (
       definition.category !== 'state' && definition.internal !== true
+      && definition.type !== 'visual-enter'
     )).forEach(definition => {
       const row = document.createElement('div');
       row.className = 'trace-event-settings-row';
@@ -415,13 +418,14 @@
   async function analyze(code = sourceCode()) {
     const response = await fetch('/trace/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(window.ASMCompileSession?.headers?.() || {}) },
       body: JSON.stringify({ code })
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || '無法分析 C++ 程式碼');
 
     variables = Array.isArray(data.variables) ? data.variables : [];
+    drawingEnabled = data.drawingEnabled !== false;
     frameDirectives = Array.isArray(data.frameDirectives) ? data.frameDirectives : [];
     sliceMode = frameDirectives.length ? 'manual' : 'auto';
     analyzedCode = code;
@@ -447,7 +451,7 @@
     }]));
 
     return {
-      enabled: true,
+      enabled: drawingEnabled,
       sliceMode,
       watches: watches.map(variable => variable.id),
       skins,
@@ -524,7 +528,7 @@
     return currentTrace;
   }
 
-  function loadAnimation(animation = {}) {
+  function loadAnimation(animation = {}, options = {}) {
     animation = window.ASMAlgorithmAnimation.normalize(animation);
     pendingAnimation = animation.rebuild && !animation.traceDocument?.frames?.length ? animation : null;
     pendingViewBaseline = pendingAnimation ? sourceViewBlock(editorSource()) : null;
@@ -536,7 +540,7 @@
         sliceMode: animation.sliceMode || animation.traceDocument.sliceMode,
         skins: animation.skins || animation.traceDocument.skins,
         rules: animation.rules || animation.traceDocument.rules
-      }, { preserveEventSettings: true });
+      }, { preserveEventSettings: true, openStudio: options.openStudio });
     } else {
       currentTrace = null;
       sourceViewBaseline = null;

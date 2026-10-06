@@ -27,7 +27,7 @@ test('automark limits each frame SVG and keeps manual marks through tween, Studi
     const code = fs.readFileSync(path.join(__dirname, 'fixtures/automark.cpp'), 'utf8');
     await page.evaluate(code => ace.edit('editor').setValue(code, -1), code);
     await page.click('#runBtn');
-    await page.waitForFunction(code => window.ASMTracePlayer.getDocument()?.sourceCode === code, code, { timeout: 30000 });
+    await page.waitForFunction(code => !document.getElementById('runBtn').classList.contains('loading') && window.ASMTracePlayer.getDocument()?.provenance?.sourceFingerprint === window.ASMTraceProvenance.create(code, '').sourceFingerprint, code, { timeout: 30000 });
     const result = await page.evaluate(async () => {
       const player = window.ASMTracePlayer, source = JSON.parse(JSON.stringify(player.getDocument()));
       const read = (color = '#4caf50') => [...document.querySelectorAll('#asm-trace-root .asm-trace-style-decoration')]

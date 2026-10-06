@@ -12,8 +12,9 @@
   // 雲端 deck 投影
   // 重用本機 storage 的內容定址規則，把大型 trace 拆成可獨立上傳的 references。
   // -----------------------------------------------------------------------------
-  async function project(source, storage) {
+  async function project(source, storage, traceStore = null) {
     const projected = await storage.project(source);
+    if (traceStore) Object.assign(projected.traces, await traceStore.uploadTraces(projected.references));
     const assets = {};
     async function extract(value) {
       if (typeof value === 'string' && value.startsWith('data:')) {
@@ -28,7 +29,8 @@
     const resources = {};
     for (const [key, trace] of Object.entries(projected.traces)) resources[key] = storage.canonical(trace);
     const deck = await extract(projected.deck);
-    const record = { version: 1, deck, references: projected.references, asset_keys: Object.keys(assets) };
+    const record = { version: 1, deck, references: projected.references, asset_keys: Object.keys(assets),
+      ...(traceStore ? { retainHistory: true } : {}) };
     Object.assign(resources, assets);
     const text = JSON.stringify(record), snapshot = await storage.digest(text);
     resources[snapshot] = text;
@@ -59,8 +61,8 @@
   // 分段上傳交易
   // 先建立或更新 deck metadata，再逐塊上傳引用內容；任一步失敗都回報明確 API 錯誤。
   // -----------------------------------------------------------------------------
-  async function save(source, { endpoint, headers, fetch, storage, title, cover_thumbnail }) {
-    const projected = await project(source, storage);
+  async function save(source, { endpoint, headers, fetch, storage, title, cover_thumbnail, traceStore }) {
+    const projected = await project(source, storage, traceStore);
     async function request(url, options) {
       const response = await fetch(url, { headers, ...options });
       const data = await response.json().catch(() => ({}));
@@ -76,8 +78,10 @@
           { method: 'PUT', body: JSON.stringify({ total: parts.length, data }) });
       }
     }
-    return request(endpoint + '/content', { method: 'PUT',
+    const result = await request(endpoint + '/content', { method: 'PUT',
       body: JSON.stringify({ snapshot: projected.snapshot, title, cover_thumbnail }) });
+    traceStore?.uploaded(Object.keys(projected.resources));
+    return result;
   }
   return { project, chunks, save };
 });

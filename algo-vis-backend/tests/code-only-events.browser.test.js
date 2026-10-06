@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 const { compile } = require('./helpers/compile');
 
 test('function calls turn grey while output statements receive active code highlights', { timeout: 60000 }, async () => {
@@ -25,6 +26,12 @@ int main() {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${base}/algorithm.html`);
     const result = await page.evaluate(async sourceTrace => {
+      // This renderer fixture does not load through Player.apply, so explicitly
+      // cancel the asynchronous built-in sample before painting its own scene.
+      window.ASMDefaultAlgorithm?.cancel?.('renderer-fixture');
+      sourceTrace.studio ||= {};
+      sourceTrace.studio.eventSettings ||= {};
+      sourceTrace.studio.eventSettings.defaultEnabled = { call: true, output: true };
       const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
       const frameIndex = document.frames.findIndex(frame => (
         frame.events.some(event => event.type === 'output')
@@ -68,7 +75,7 @@ int main() {
         ).length
       };
     }, trace);
-    assert.equal(result.build, 'trace-256');
+    assert.equal(result.build, TWEEN_BUILD);
     assert.ok(result.samples.some(sample => (
       sample.type === 'call' && !sample.active
         && /visit\s*\(\s*n\s*\)/.test(sample.complete)

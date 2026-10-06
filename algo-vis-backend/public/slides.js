@@ -200,12 +200,42 @@
   const DRAFT_KEY = deckUid ? `${STORAGE_KEY}:deck:${deckUid}`
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
+  const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
+    if (!deckUid && !shareToken) throw new Error('本機動畫結果不存在，請重新匯入');
+    const response = await fetch(`${remoteDeckEndpoint()}/traces/${encodeURIComponent(key)}`, {
+      headers: deckUid ? { Authorization: `Bearer ${authToken()}` } : {}
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '動畫載入失敗');
+    return result.trace;
+  });
   let deck = normalizeDeck(clone(defaultDeck));
   let localSaveRevision = 0;
   let reveal = null;
   let revealReady = false;
   let currentH = 0;
   let currentV = 0;
+  // Navigation belongs to this browser tab and deck, not to shared deck content.
+  // Keep stable slide IDs so reordering does not restore an unrelated slide.
+  const POSITION_KEY = `${DRAFT_KEY}:position`;
+  function rememberSlidePosition() {
+    const slideId = getSlide()?.id;
+    if (!slideId) return;
+    try { sessionStorage.setItem(POSITION_KEY, JSON.stringify({ slideId })); } catch {}
+  }
+
+  function restoreSlidePosition() {
+    try {
+      const position = JSON.parse(sessionStorage.getItem(POSITION_KEY) || 'null');
+      if (!position?.slideId) return;
+      for (let h = 0; h < deck.groups.length; h++) {
+        const v = deck.groups[h].slides.findIndex(slide => slide.id === position.slideId);
+        if (v >= 0) { currentH = h; currentV = v; return; }
+      }
+    } catch {}
+    // Missing/deleted slides and unavailable storage safely use the first slide.
+  }
+
   let pendingTool = null;
   let slideViewportZoom = 1;
   let suppressCanvasSave = false;
@@ -221,6 +251,7 @@
   let pendingHistoryTimer = null;
   let textSelection = null;
   let selectedWidgetId = null;
+  const selectedWidgetKeys = new Set();
   let overviewSelectedSlideId = null;
   let overviewSelectedSlideIds = new Set();
   let overviewSelectionAnchorId = null;
@@ -613,7 +644,9 @@
     document.body.dataset.lastDeckSaveHistory = String(pushHistory);
     document.body.dataset.localDeckSave = 'pending';
     document.body.dataset.localDeckChars = String(serializedDeck.length);
-    const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck).then(() => {
+    const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck, traceStore.retainedKeys(), {
+      allowMissingTraces: Boolean(deckUid || shareToken)
+    }).then(() => {
       if (revision === localSaveRevision) {
         document.body.dataset.localDeckSave = 'saved';
         if (!deckUid && !shareToken) setCloudStatus('saved', '本機已儲存');
@@ -693,7 +726,7 @@
       if (!response.ok) throw new Error('公開投影片載入失敗');
       const archiveBlob = await response.blob();
       const archive = await window.ASMDeck.decode(archiveBlob);
-      deck = normalizeDeck(archive.deck);
+      deck = normalizeDeck(await traceStore.detachDeck(archive.deck));
       sampleArchiveBlob = archiveBlob;
       pendingProgressiveRebuild = { mode: 'sample' };
       cloudDeckTitle = entry.title;
@@ -716,7 +749,7 @@
 
     setCloudStatus('loading', '正在載入...');
     const headers = deckUid ? { Authorization: `Bearer ${authToken()}` } : {};
-    const response = await fetch(remoteDeckEndpoint(), { headers });
+    const response = await fetch(`${remoteDeckEndpoint()}?traceMode=lazy`, { headers });
     const data = await response.json().catch(() => ({}));
 
     if (deckUid && (response.status === 401 || response.status === 403)) {
@@ -730,7 +763,7 @@
       throw new Error(data.error || 'Failed to load deck');
     }
 
-    deck = normalizeDeck(data.slide.deck);
+    deck = normalizeDeck(await traceStore.detachDeck(data.slide.deck));
     cloudDeckTitle = data.slide.title || '未命名投影片';
     sharedAccess = shareToken ? data.access : null;
     cloudDeckReady = true;
@@ -770,7 +803,9 @@
 
   function prioritizeProgressiveRebuild(h = currentH, v = currentV) {
     const session = progressiveRebuildSession;
-    if (!session) return;
+    // Once rebuilding is finished, the status belongs to persistence. Merely
+    // changing slides must not replace pending/saving/error with "imported".
+    if (!session || session.completed >= session.total) return;
     const focus = orderedDeckSlides().findIndex(entry => entry.h === h && entry.v === v);
     if (focus >= 0) session.focusOrder = focus;
     updateProgressiveRebuildStatus(session, session.active);
@@ -804,7 +839,9 @@
         delete animation.rebuild;
         const current = getSlideById(entry.slide.id);
         if (current) {
-          current.animation = animation;
+          const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: true });
+          if (progressiveRebuildSession !== session) return;
+          current.animation = detached.groups[0].slides[0].animation;
           refreshAlgorithmSlideInPlace(current);
         }
         session.stats[cacheKind] += 1;
@@ -836,6 +873,7 @@
     const entries = allSlides.map((entry, order) => ({ ...entry, order, state: 'pending' }))
       .filter(entry => entry.slide.kind === 'algorithm-animation'
         && entry.slide.animation?.rebuild
+        && !entry.slide.animation?.traceRef
         && !entry.slide.animation?.traceDocument?.frames?.length);
     const currentOrder = allSlides.findIndex(entry => entry.h === currentH && entry.v === currentV);
     const session = {
@@ -885,7 +923,7 @@
       if (deckUid) headers.Authorization = `Bearer ${authToken()}`;
       await ASMSlideCloud.save(snapshot, {
         endpoint: remoteDeckEndpoint(), headers, fetch: window.fetch.bind(window),
-        storage: ASMSlideStorage, title: cloudDeckTitle, cover_thumbnail: coverThumbnail
+        storage: ASMSlideStorage, traceStore, title: cloudDeckTitle, cover_thumbnail: coverThumbnail
       });
       if (pendingWorkspaceImport) {
         await window.ASMDeckFileDrop.remove(pendingWorkspaceImport);
@@ -1080,7 +1118,8 @@
       let blob = sampleId ? sampleArchiveBlob : null;
       if (!blob) {
         const draft = await editorAnimationExportSnapshot();
-        const projected = await window.ASMDeck.project(deck, draft);
+        const projected = await window.ASMDeck.project(await traceStore.materializeDeck(deck), draft,
+          { includePrebuiltTraces: true });
         blob = await window.ASMDeck.encode(projected);
         // Reuse the already-loaded result locally without putting a second trace in the archive.
         for (const seed of projected.cacheSeeds) await window.ASMDeck.cachePut(seed.key, seed.trace);
@@ -1103,8 +1142,9 @@
   async function importDeckJsonText(text) {
     const parsed = JSON.parse(text);
     const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
-    const nextDeck = normalizeDeck(importedDeck);
-    await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck));
+    const nextDeck = normalizeDeck(await traceStore.detachDeck(importedDeck, { upload: true }));
+    await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
+      { allowMissingTraces: Boolean(deckUid || shareToken) });
     const previousDeck = deck;
     deck = nextDeck;
     currentH = 0;
@@ -1122,9 +1162,10 @@
       await window.ASMDeckFileDrop.validate(file);
       if (/\.asmdeck$/i.test(file.name)) {
         const packageData = await window.ASMDeck.decode(file);
-        const nextDeck = normalizeDeck(packageData.deck);
+        const nextDeck = normalizeDeck(await traceStore.detachDeck(packageData.deck, { upload: true }));
         const previousDeck = deck;
-        await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck));
+        await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
+          { allowMissingTraces: Boolean(deckUid || shareToken) });
         deck = nextDeck;
         currentH = 0; currentV = 0;
         saveDeck({ cloud: false });
@@ -2815,6 +2856,8 @@
         y: Number.isFinite(widget.y) ? widget.y : 160,
         w: Number.isFinite(widget.w) ? widget.w : defaultWidth,
         h: Number.isFinite(widget.h) ? widget.h : defaultHeight,
+        angle: Number.isFinite(widget.angle) ? widget.angle : 0,
+        skewX: Number.isFinite(widget.skewX) ? widget.skewX : 0,
         language: typeof widget.language === 'string' ? widget.language : 'cpp',
         fontSize: Number.isFinite(widget.fontSize) ? widget.fontSize : defaultFontSize,
         focusLines: typeof widget.focusLines === 'string' ? widget.focusLines : '',
@@ -3019,7 +3062,11 @@
       for (const slide of group.slides) {
         const section = document.querySelector(`section.asm-slide[data-slide-id="${slide.id}"]`);
         applySlideAutoAnimateAttributes(section, slide);
-        if (slide.kind === 'algorithm-animation') continue;
+        if (slide.kind === 'algorithm-animation') {
+          const before = previousSlides.get(slide.id);
+          if (JSON.stringify(before?.animation) !== JSON.stringify(slide.animation)) refreshAlgorithmSlideInPlace(slide);
+          continue;
+        }
         reconcileSlideWidgets(section?.querySelector('.widget-layer'), slide, previousSlides.get(slide.id));
         const canvas = fabricCanvases.get(slide.id);
         if (!canvas) continue;
@@ -3273,8 +3320,14 @@
       const content = el.querySelector('.latex-content');
       const rendered = content && (content.querySelector('.katex') || content);
       if (!content || !rendered) return;
-      const renderedRect = rendered.getBoundingClientRect();
-      const contentRect = content.getBoundingClientRect();
+      const found = getWidget(el.dataset.widgetId);
+      if (!found.widget || found.widget.manualSize) return;
+      // CSS rotation changes the screen AABB, not the formula's intrinsic size.
+      const savedTransform = el.style.transform;
+      el.style.transform = '';
+      let renderedRect, contentRect;
+      try { renderedRect = rendered.getBoundingClientRect(); contentRect = content.getBoundingClientRect(); }
+      finally { el.style.transform = savedTransform; }
       const layerRect = el.closest('.widget-layer').getBoundingClientRect();
       if (layerRect.width <= 1 || layerRect.height <= 1) return;
       const scaleX = layerRect.width / SLIDE_W;
@@ -3283,8 +3336,7 @@
       const rawOffsetY = (renderedRect.top - contentRect.top) / scaleY;
       const width = Math.max(20, renderedRect.width / scaleX);
       const height = Math.max(20, renderedRect.height / scaleY);
-      const found = getWidget(el.dataset.widgetId);
-      if (!found.widget) return;
+
       const changedWidget = Math.abs((found.widget.w || 0) - width) > 0.5
         || Math.abs((found.widget.h || 0) - height) > 0.5
         || Math.abs((found.widget.cropX || 0) - rawOffsetX) > 0.5
@@ -3382,6 +3434,7 @@
           <div class="widget-layer" data-slide-id="${slide.id}"></div>
           <div class="asm-selection-overlay-layer" data-slide-id="${slide.id}" aria-hidden="true">
             <div class="asm-marquee-selection-box" hidden></div>
+
             <div class="asm-structure-cell-selection-box" hidden></div>
           </div>
         </div>
@@ -3394,7 +3447,7 @@
 
   function renderAlgorithmSlide(section, slide) {
     const animation = normalizeAlgorithmAnimation(slide.animation);
-    const hasScript = !!animation.scriptContent || !!animation.traceDocument?.frames?.length;
+    const hasScript = !!animation.scriptContent || !!animation.traceRef || !!animation.traceDocument?.frames?.length;
     const rebuildPending = !hasScript && animation.rebuild && !animation.rebuildError;
     section.innerHTML = `
       <div class="asm-slide-frame-content">
@@ -3402,7 +3455,7 @@
           class="algorithm-slide-frame${hasScript ? ' is-loading' : ''}"
           data-slide-id="${slide.id}"
           title="Algorithm animation"
-          src="${hasScript ? 'algorithm.html?asmEmbed=runtime&v=trace-runtime-40' : 'about:blank'}"
+          src="about:blank"
           ${hasScript ? '' : 'hidden'}
         ></iframe>
         <div class="algorithm-slide-placeholder" ${hasScript ? 'hidden' : ''}>
@@ -3489,7 +3542,7 @@
     ].some(key => previousWidget[key] !== widget[key]));
     if (contentChanged || structureChanged) refreshWidgetElement(el, widget);
     else positionWidgetContent(el, widget);
-    el.classList.toggle('is-selected', el.dataset.widgetId === selectedWidgetId);
+    el.classList.toggle('is-selected', selectedWidgetKeys.has(el.dataset.widgetId));
   }
 
   function createWidgetElement(widget) {
@@ -3514,6 +3567,7 @@
     const slide = getSlide();
     const layer = slide && document.querySelector(`.widget-layer[data-slide-id="${slide.id}"]`);
     if (!layer) return;
+    selectedWidgetKeys.clear();
     document.querySelectorAll('.slide-widget.is-selected').forEach(el => el.classList.remove('is-selected'));
     widgets.forEach(widget => layer.appendChild(createWidgetElement(widget)));
   }
@@ -3540,16 +3594,7 @@
       renderMathWidgets(content);
     }
     positionWidgetContent(el, widget);
-    const handles = widget.type === 'code' || isCellGridWidget(widget)
-      ? ['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left']
-        .map(edge => ['widget-edge-handle', 'resizeEdge', edge])
-      : [];
-    handles.forEach(([className, dataKey, value]) => {
-      const handle = document.createElement('span');
-      handle.className = className;
-      handle.dataset[dataKey] = value;
-      el.appendChild(handle);
-    });
+
   }
 
   function paintStructureWidget(el, widget) {
@@ -3566,6 +3611,8 @@
   }
 
   function positionWidgetContent(el, widget) {
+    el.style.transformOrigin = 'center center';
+    el.style.transform = (widget.angle || widget.skewX) ? `rotate(${widget.angle || 0}deg) skewX(${widget.skewX || 0}deg)` : '';
     const content = el.querySelector('.widget-content');
     if (!content) return;
     if (widget.type === 'code' || isCellGridWidget(widget)) {
@@ -3662,6 +3709,7 @@
             backgroundColor: 'rgba(0,0,0,0)',
             preserveObjectStacking: true,
             selection: true,
+            selectionKey: ['shiftKey', 'ctrlKey', 'metaKey'],
             selectionColor: 'rgba(0, 0, 0, 0)',
             selectionBorderColor: 'rgba(0, 0, 0, 0)',
             targetFindTolerance: 8,
@@ -3671,6 +3719,7 @@
           });
 
           configureFabricResolution(canvas);
+          window.ASMSlideFabricLayers.install(canvas, () => getSlideById(slide.id)?.widgets || [], FABRIC_BLEED);
           fabricCanvases.set(slide.id, canvas);
           blockRevealNavigationWhileEditing(canvas);
           wireCanvas(canvas, slide);
@@ -3833,6 +3882,7 @@
         }
       }
       fitAutoTextWidth(event.target, canvas);
+      refreshEditingTextCursor(event.target);
       sync(event, { textEdit: true });
     });
     canvas.on('text:editing:entered', event => {
@@ -3859,6 +3909,29 @@
       sync(event, { deferSave: true });
       finishTextEditSession();
     });
+    // Fabric clears/replaces its active selection after exiting text editing.
+    // Wait until that transition finishes so an empty text still being edited,
+    // or retained in a multi-selection, is never removed prematurely.
+    const removeDeselectedEmptyText = event => {
+      if (suppressCanvasSave || canvas.__asmSerializingSelection) return;
+      const candidates = event?.deselected || (event?.target ? [event.target] : []);
+      queueMicrotask(() => {
+        if (suppressCanvasSave || canvas.__asmSerializingSelection) return;
+        const selected = canvas.getActiveObjects();
+        candidates.forEach(object => {
+          if (isTextObject(object) && !String(object.text || '').trim()
+            && !object.isEditing && !selected.includes(object)
+            && canvas.getObjects().includes(object)) {
+            // Use the normal removal path to persist the deletion and support undo.
+            canvas.remove(object);
+            canvas.requestRenderAll();
+          }
+        });
+      });
+    };
+    canvas.on('text:editing:exited', removeDeselectedEmptyText);
+    canvas.on('selection:updated', removeDeselectedEmptyText);
+    canvas.on('selection:cleared', removeDeselectedEmptyText);
     canvas.on('selection:created', e => {
       if (canvas.__asmSerializingSelection) return;
       const additive = additiveCanvasSelectionGesture
@@ -3901,6 +3974,10 @@
       }
       if (e.target) {
         enableTextInteractionCache(e.target);
+        if (isTextObject(e.target)) {
+          const widths = (e.target._textLines || []).map((_, index) => e.target.getLineWidth(index));
+          e.target.__asmTextResizeMinWidth = Math.ceil(Math.max(0, ...widths) + 10);
+        }
         e.target.__asmMoveOrigin = {
           left: e.target.left || 0,
           top: e.target.top || 0
@@ -3923,14 +4000,17 @@
       canvas.__asmWidgetMarquee.end = end;
       updateMarqueeSelectionOverlay(slide.id, canvas.__asmWidgetMarquee.start, end);
     });
-    canvas.on('object:scaling', e => {
+    const onTextOrObjectResize = e => {
       enableTextInteractionCache(e.target);
       canvas.__asmInteractionDirty = true;
       keepShapeStrokeUniform(e.target, canvas);
       normalizeTextBoxResize(e.target, canvas);
       applyFabricResizeSnap(e, canvas);
+      normalizeTextBoxResize(e.target, canvas);
       updateObjectToolbar(e.target, canvas);
-    });
+    };
+    canvas.on('object:scaling', onTextOrObjectResize);
+    canvas.on('object:resizing', onTextOrObjectResize);
     canvas.on('object:rotating', e => {
       enableTextInteractionCache(e.target);
       canvas.__asmInteractionDirty = true;
@@ -3952,6 +4032,7 @@
       }
       clearSnapGuides();
       canvas.getObjects().forEach(obj => {
+        delete obj.__asmTextResizeMinWidth;
         obj.__asmMoveOrigin = null;
         obj.__asmShiftLockAxis = null;
       });
@@ -4003,7 +4084,10 @@
       hideObjectToolbar({ keepAnimation: true });
       showFabricObjectEditor(canvas.getActiveObject());
     });
-    canvas.on('after:render', () => drawEditingTextControls(canvas));
+    canvas.on('after:render', () => {
+      drawEditingTextControls(canvas);
+      if (canvas === currentFabricCanvas()) updateGroupSelectionOverlay();
+    });
   }
 
   function drawEditingTextControls(canvas) {
@@ -5005,18 +5089,17 @@
     });
     probe.initDimensions?.();
     const width = Number(probe.width) || 0;
-    return Math.max(40, Math.ceil(width + 1));
+    return Math.max(40, Math.ceil(width + 10));
   }
 
   function fitAutoTextWidth(obj, canvas) {
     if (!isTextObject(obj) || inferTextWidthMode(obj) !== 'auto') return false;
     obj.asmTextWidthMode = 'auto';
     const nextWidth = naturalTextContentWidth(obj);
-    if (Math.abs((Number(obj.width) || 0) - nextWidth) < 0.5
-      && Math.abs((Number(obj.scaleX) || 1) - 1) < 0.001) return false;
-    obj.set({ width: nextWidth, scaleX: 1, dynamicMinWidth: 0 });
+    if (Math.abs((Number(obj.width) || 0) - nextWidth) < 0.5) return false;
+    obj.set({ width: nextWidth, dynamicMinWidth: 0 });
     obj.initDimensions?.();
-    obj.set({ width: nextWidth, scaleX: 1 });
+    obj.set({ width: nextWidth });
     obj.dirty = true;
     obj.setCoords?.();
     canvas?.requestRenderAll?.();
@@ -5026,8 +5109,10 @@
   function normalizeTextBoxResize(obj, canvas) {
     if (!isTextObject(obj)) return;
     const scaleX = Number.isFinite(obj.scaleX) ? obj.scaleX : 1;
-    if (Math.abs(scaleX - 1) < 0.001 && Math.abs((obj.scaleY || 1) - 1) < 0.001) return;
-    const nextWidth = Math.max(40, (obj.width || 40) * scaleX);
+    const minWidth = obj.__asmTextResizeMinWidth || 40;
+    const nextWidth = Math.max(40, minWidth, (obj.width || 40) * scaleX);
+    if (Math.abs(scaleX - 1) < 0.001 && Math.abs((obj.scaleY || 1) - 1) < 0.001
+      && Math.abs(nextWidth - obj.width) < 0.001) return;
     obj.set({
       width: nextWidth,
       scaleX: 1,
@@ -5047,7 +5132,7 @@
   // 新增元件與媒體
   // 工具列動作建立具預設樣式的 Fabric 或 widget 物件，完成後統一選取、存檔並刷新編輯面板。
   // -----------------------------------------------------------------------------
-  function addObject(kind, point) {
+  function addObject(kind, point, text = 'New text', richText = null) {
     if (kind === 'latex' || kind === 'code' || kind === 'table') {
       addWidget(kind, point);
       return;
@@ -5072,7 +5157,7 @@
       if (kind === 'text') {
         const Fabric = f();
         const TextClass = Fabric.Textbox || Fabric.IText || Fabric.Text;
-        obj = new TextClass('New text', {
+        obj = new TextClass(text, {
           left,
           top,
           width: 360,
@@ -5101,6 +5186,12 @@
     }
 
     try {
+      if (kind === 'text' && richText) {
+        obj.set(richText.base);
+        // Fabric accepts one declaration per call for selection styles.
+        (richText.authoredStyles || richText.styles).forEach((style, index) => obj.setSelectionStyles(style, index, index + 1));
+        obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
+      }
       configureObject(obj);
       if (kind === 'text') fitAutoTextWidth(obj, canvas);
       const slide = getSlide();
@@ -5405,10 +5496,7 @@
       candidates.push(snapBounds({
         kind: 'widget',
         id: widget.id,
-        left: widget.x,
-        top: widget.y,
-        width: widget.w,
-        height: widget.h
+        ...widgetSlideBounds(widget)
       }));
     });
     return candidates;
@@ -5784,11 +5872,33 @@
     renderSnapGuides(useX ? result.xGuides : result.yGuides);
   }
 
+  // Fabric ActiveSelection stores children in group-local coordinates. Widget
+  // positions are slide coordinates, so transform child corners before unioning.
+  function fabricSlideBounds(object) {
+    let corners = object.getCoords(true, true);
+    if (object.group) {
+      const matrix = object.group.calcTransformMatrix();
+      corners = corners.map(point => f().util.transformPoint(point, matrix));
+    }
+    return f().util.makeBoundingBoxFromPoints(corners);
+  }
+
+  function widgetSlideBounds(widget) {
+    const matrix = f().util.composeMatrix({translateX:widget.x+widget.w/2, translateY:widget.y+widget.h/2,
+      angle:widget.angle || 0, skewX:widget.skewX || 0});
+    const box = ['structure','table'].includes(widget.type) ? window.AlgoStructureRenderer.getSelectionRect(widget)
+      : { left:0, top:0, width:widget.w, height:widget.h };
+    const l=box.left-widget.w/2, t=box.top-widget.h/2, r=l+box.width, b=t+box.height;
+    const points = [[l,t],[r,t],[r,b],[l,b]]
+      .map(([x,y]) => f().util.transformPoint(new (f().Point)(x,y),matrix));
+    return f().util.makeBoundingBoxFromPoints(points);
+  }
+
   function selectedAlignmentItems() {
     const items = [];
     const canvas = currentFabricCanvas();
     activeFabricObjects().forEach(object => {
-      const bounds = object.getBoundingRect(true, true);
+      const bounds = fabricSlideBounds(object);
       items.push({
         kind: 'fabric',
         object,
@@ -5806,16 +5916,22 @@
       items.push({
         kind: 'widget',
         widget,
-        left: widget.x,
-        top: widget.y,
-        width: widget.w,
-        height: widget.h
+        ...widgetSlideBounds(widget)
       });
     });
     return { canvas, items };
   }
 
+  function updateGroupSelectionOverlay() {
+    const {canvas,items} = selectedAlignmentItems();
+    const hasWidgets = items.some(item=>item.kind==='widget');
+    if (canvas) canvas.__asmMixedSelection = hasWidgets;
+    document.body.classList.toggle('asm-group-selection-active',hasWidgets);
+    syncNativeSelectionControls(canvas,items);
+  }
+
   function updateAlignmentToolbar() {
+    updateGroupSelectionOverlay();
     if (!alignmentToolbar) return;
     const count = selectedAlignmentItems().items.length;
     alignmentToolbar.hidden = count < 2 || !document.body.classList.contains('asm-edit-mode');
@@ -5931,8 +6047,22 @@
     objectClipboard = {
       fabric: serializeClipboardFabricObjects(canvas, fabricObjects),
       widgets: normalizeWidgets(slide?.widgets).filter(widget => widgetIds.includes(widget.id)).map(widget => clone(widget)),
-      cut: false
+      cut: false,
+      token: randomId()
     };
+    // Mark native clipboard copies so a later external text copy cannot be
+    // mistaken for our older in-memory object selection.
+    const write = event => {
+      if (!event.clipboardData) return;
+      event.clipboardData.setData('application/x-algoshowmaker-objects', objectClipboard.token);
+      event.clipboardData.setData('text/plain', `AlgoShowMaker objects:${objectClipboard.token}`);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    document.addEventListener('copy', write, true);
+    try { objectClipboard.nativeCopied = document.execCommand('copy'); }
+    catch (_) { objectClipboard.nativeCopied = false; }
+    finally { document.removeEventListener('copy', write, true); }
   }
 
   function cutCurrentObjects() {
@@ -5945,15 +6075,22 @@
     const canvas = currentFabricCanvas();
     const slide = getSlide();
     if (!slide || (!objectClipboard.fabric.length && !objectClipboard.widgets.length)) return;
+    // Rebase the unified selection together so interleaved Fabric/widget layers
+    // retain their relative order instead of placing every widget over the text.
+    const ordered = [
+      ...objectClipboard.fabric.map((object, index) => ({ kind: 'fabric', index, layer: Number(object.layerIndex) || FABRIC_LAYER_INDEX })),
+      ...objectClipboard.widgets.map((widget, index) => ({ kind: 'widget', index, layer: Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE }))
+    ].sort((a, b) => a.layer - b.layer);
+    const pasteLayers = { fabric: [], widget: [] };
+    const baseLayer = nextUnifiedLayerIndex(slide, canvas);
+    ordered.forEach((item, index) => { pasteLayers[item.kind][item.index] = baseLayer + index * STACK_LAYER_STEP; });
     let changed = false;
     if (canvas && objectClipboard.fabric.length) {
       const objects = await enlivenFabricObjects(objectClipboard.fabric);
-      let nextLayer = nextUnifiedLayerIndex(slide, canvas);
       suppressCanvasSave = true;
       try {
-        objects.forEach(obj => {
-          obj.set?.({ fragmentProxyId: randomId(), ttsObjectId: randomId(), layerIndex: nextLayer });
-          nextLayer += STACK_LAYER_STEP;
+        objects.forEach((obj, index) => {
+          obj.set?.({ fragmentProxyId: randomId(), ttsObjectId: randomId(), layerIndex: pasteLayers.fabric[index] });
           configureObject(obj);
           obj.setCoords?.();
           canvas.add(obj);
@@ -5975,20 +6112,14 @@
     }
     if (objectClipboard.widgets.length) {
       slide.widgets = normalizeWidgets(slide.widgets);
-      const pastedWidgets = objectClipboard.widgets.map(widget => ({
-        ...clone(widget),
-        id: randomId(),
-        layerIndex: 0
+      const pastedWidgets = objectClipboard.widgets.map((widget, index) => ({
+        ...clone(widget), id: randomId(), layerIndex: pasteLayers.widget[index]
       }));
-      let nextLayer = nextUnifiedLayerIndex(slide, canvas);
-      pastedWidgets.forEach(widget => {
-        widget.layerIndex = nextLayer;
-        nextLayer += STACK_LAYER_STEP;
-      });
       slide.widgets.push(...pastedWidgets);
-      selectedWidgetId = pastedWidgets.length === 1 ? pastedWidgets[0].id : null;
+      selectedWidgetId = pastedWidgets.length === 1 && !objectClipboard.fabric.length ? pastedWidgets[0].id : null;
       appendWidgetsToCurrentSlide(pastedWidgets);
       pastedWidgets.forEach(widget => {
+        selectedWidgetKeys.add(widget.id);
         document.querySelector(`.slide-widget[data-widget-id="${widget.id}"]`)?.classList.add('is-selected');
       });
       if (selectedWidgetId) showWidgetEditor(selectedWidgetId);
@@ -5997,8 +6128,10 @@
       changed = pastedWidgets.length > 0 || changed;
     }
     if (changed) {
+      clearStructureCellSelection();
       syncUnifiedLayerStyles(slide, canvas);
       saveDeck();
+      updateAlignmentToolbar();
     }
     objectClipboard.cut = false;
   }
@@ -6054,8 +6187,10 @@
     }
     hideObjectToolbar();
     selectedWidgetId = widgetId;
+    selectedWidgetKeys.clear();
     document.querySelectorAll('.slide-widget.is-selected').forEach(el => el.classList.remove('is-selected'));
     const el = document.querySelector(`.slide-widget[data-widget-id="${widgetId}"]`);
+    selectedWidgetKeys.add(widgetId);
     if (el) el.classList.add('is-selected');
     showWidgetEditor(widgetId);
     updateAlignmentToolbar();
@@ -6063,6 +6198,7 @@
 
   function clearWidgetSelection() {
     selectedWidgetId = null;
+    selectedWidgetKeys.clear();
     document.querySelectorAll('.slide-widget.is-selected').forEach(el => el.classList.remove('is-selected'));
     if (codeEditorModal && !codeEditorModal.hidden) closeCodeEditorModal();
     showDefaultPanel();
@@ -6073,10 +6209,11 @@
     const el = document.querySelector(`.slide-widget[data-widget-id="${widgetId}"]`);
     if (!el) return;
     const selecting = !el.classList.contains('is-selected');
+    if (selecting) selectedWidgetKeys.add(widgetId); else selectedWidgetKeys.delete(widgetId);
     el.classList.toggle('is-selected', selecting);
     const ids = selectedWidgetIdsInCurrentSlide();
-    selectedWidgetId = ids.length === 1 ? ids[0] : null;
-    if (ids.length === 1) showWidgetEditor(ids[0]);
+    selectedWidgetId = ids.length === 1 && !activeFabricObjects().length ? ids[0] : null;
+    if (selectedWidgetId) showWidgetEditor(selectedWidgetId);
     else showDefaultPanel();
     updateAlignmentToolbar();
   }
@@ -6084,9 +6221,7 @@
   function selectedWidgetIdsInCurrentSlide() {
     const slide = getSlide();
     if (!slide) return [];
-    const selectedIds = Array.from(document.querySelectorAll(`.widget-layer[data-slide-id="${slide.id}"] .slide-widget.is-selected`))
-      .map(el => el.dataset.widgetId)
-      .filter(Boolean);
+    const selectedIds = [...selectedWidgetKeys];
     if (selectedWidgetId && !selectedIds.includes(selectedWidgetId)) selectedIds.push(selectedWidgetId);
     const existingIds = new Set(normalizeWidgets(slide.widgets).map(widget => widget.id));
     return selectedIds.filter(id => existingIds.has(id));
@@ -6139,13 +6274,16 @@
     const layer = document.querySelector(`.widget-layer[data-slide-id="${CSS.escape(slide.id)}"]`);
     if (!layer) return;
     if (!marquee.additive) {
+      selectedWidgetKeys.clear();
       layer.querySelectorAll('.slide-widget.is-selected').forEach(el => el.classList.remove('is-selected'));
       selectedWidgetId = null;
     }
     normalizeWidgets(slide.widgets).forEach(widget => {
-      const intersects = widget.x < right && widget.x + widget.w > left
-        && widget.y < bottom && widget.y + widget.h > top;
+      const b = widgetSlideBounds(widget);
+      const intersects = b.left < right && b.left + b.width > left
+        && b.top < bottom && b.top + b.height > top;
       if (!intersects) return;
+      selectedWidgetKeys.add(widget.id);
       layer.querySelector(`.slide-widget[data-widget-id="${CSS.escape(widget.id)}"]`)?.classList.add('is-selected');
     });
     const ids = selectedWidgetIdsInCurrentSlide();
@@ -6160,9 +6298,10 @@
     if (!slide) return [];
     const ids = normalizeWidgets(slide.widgets).map(widget => widget.id);
     document.querySelectorAll(`.widget-layer[data-slide-id="${slide.id}"] .slide-widget`).forEach(el => {
+      selectedWidgetKeys.add(el.dataset.widgetId);
       el.classList.add('is-selected');
     });
-    selectedWidgetId = ids.length === 1 ? ids[0] : null;
+    selectedWidgetId = ids.length === 1 && !activeFabricObjects().length ? ids[0] : null;
     if (ids.length !== 1) showDefaultPanel();
     updateAlignmentToolbar();
     return ids;
@@ -6230,7 +6369,7 @@
     if (!button) return;
     const value = color || '#ffffff';
     button.dataset.color = value;
-    button.style.setProperty('--structure-color', value);
+    button.style.setProperty('--structure-color', normalizeColor(value));
   }
 
   function populateStructureEditor(widget) {
@@ -6297,7 +6436,7 @@
     setStructureColorButton(tableTextColorInput, widget.tableTextColor || '#1f282d');
   }
 
-  function updateSelectedStructure(patch, { history = true, preserveScale = false } = {}) {
+  function updateSelectedStructure(patch, { history = true, preserveScale = true } = {}) {
     const found = getWidget(selectedWidgetId);
     if (!found.widget || !isCellGridWidget(found.widget)) return;
     const preview = { ...found.widget, ...patch, structureFrameVersion: 4 };
@@ -6305,22 +6444,45 @@
     if (preserveScale && window.AlgoStructureRenderer?.getNaturalSize) {
       const before = window.AlgoStructureRenderer.getNaturalSize(found.widget);
       const after = window.AlgoStructureRenderer.getNaturalSize(preview);
-      const scale = Math.min(found.widget.w / before.width, found.widget.h / before.height);
-      const boundedScale = Math.min(scale, SLIDE_W / after.width, SLIDE_H / after.height);
+      // Editing a value/style with unchanged geometry must not refit the box,
+      // round its dimensions or move a manually scaled legacy object.
+      if (before.width === after.width && before.height === after.height) {
+        updateSelectedWidget({ ...patch, structureFrameVersion: 4 }, { history });
+        return;
+      }
+
       size = {
-        width: Math.max(40, Math.round(after.width * boundedScale)),
-        height: Math.max(40, Math.round(after.height * boundedScale))
+        width: after.width * found.widget.w / Math.max(1, before.width),
+        height: after.height * found.widget.h / Math.max(1, before.height)
       };
     } else {
       size = constrainedStructureSize(preview);
+    }
+    let x = found.widget.x, y = found.widget.y;
+    // The extra Point viewport belongs above the body. Anchor the body's center
+    // while changing that viewport, including rotated/skewed/scaled objects.
+    if ('pointIndices' in patch || 'cellStyles' in patch) {
+      const next = { ...preview, w:size.width, h:size.height };
+      const beforeRect = window.AlgoStructureRenderer.getSelectionRect(found.widget);
+      const afterRect = window.AlgoStructureRenderer.getSelectionRect(next);
+      if (beforeRect.top !== afterRect.top || beforeRect.left !== afterRect.left) {
+        const center = (widget, box) => {
+          const matrix = f().util.composeMatrix({ translateX:widget.x+widget.w/2,
+            translateY:widget.y+widget.h/2, angle:widget.angle || 0, skewX:widget.skewX || 0 });
+          return f().util.transformPoint(new (f().Point)(box.left+box.width/2-widget.w/2,
+            box.top+box.height/2-widget.h/2),matrix);
+        };
+        const oldCenter=center(found.widget,beforeRect), newCenter=center(next,afterRect);
+        x += oldCenter.x-newCenter.x; y += oldCenter.y-newCenter.y;
+      }
     }
     updateSelectedWidget({
       ...patch,
       structureFrameVersion: 4,
       w: size.width,
       h: size.height,
-      x: Math.max(0, Math.min(found.widget.x, SLIDE_W - size.width)),
-      y: Math.max(0, Math.min(found.widget.y, SLIDE_H - size.height)),
+      x,
+      y,
       manualSize: true
     }, { history });
   }
@@ -6385,7 +6547,7 @@
     if (!widgetEl || !cell) return null;
     const found = getWidget(widgetEl.dataset.widgetId);
     if (!found.widget || !isCellGridWidget(found.widget)) return null;
-    const mode = found.widget.structureMode || 'normal';
+    const mode = found.widget.type === 'table' ? 'table' : (found.widget.structureMode || 'normal');
     const treeNode = cell.closest?.('[data-tree-node-id]');
     if (mode === 'binary_tree') {
       if (!treeNode) return null;
@@ -6451,9 +6613,40 @@
 
   function restoreStructureCellSelection(widgetEl) {
     if (!selectedStructureCell || selectedStructureCell.widgetId !== widgetEl?.dataset.widgetId) return;
-    const cell = structureCellForKey(widgetEl, selectedStructureCell.key);
-    cell?.classList.add('is-structure-cell-selected');
-    updateStructureCellSelectionOverlay(widgetEl, cell);
+    for (const key of selectedStructureCell.keys || [selectedStructureCell.key]) {
+      structureCellForKey(widgetEl, key)?.classList.add('is-structure-cell-selected');
+    }
+    updateStructureCellSelectionOverlay(widgetEl, structureCellForKey(widgetEl, selectedStructureCell.key));
+  }
+
+  function isAdditiveCellSelection(widgetEl) {
+    return selectedStructureCell?.widgetId === widgetEl?.dataset.widgetId
+      && activeFabricObjects().length === 0 && selectedWidgetIdsInCurrentSlide().length === 1;
+  }
+
+  function structureCellFromEvent(event, widgetEl) {
+    const direct = event.target.closest?.('[data-structure-item-index]');
+    if (direct || !widgetEl?.classList.contains('structure-widget')) return direct;
+    // A transparent foreground canvas may receive a visible lower SVG cell's
+    // pointer. Recover that cell without changing its stored layer order.
+    return [...widgetEl.querySelectorAll('[data-structure-item-index]')].find(cell => {
+      const rect = (cell.querySelector(':scope > rect') || cell).getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    }) || null;
+  }
+
+  function selectedStructureStyleIndices(widgetId) {
+    if (selectedStructureCell?.widgetId !== widgetId) return [];
+    const widgetEl = document.querySelector(`section.present .structure-widget[data-widget-id="${CSS.escape(widgetId)}"]`);
+    return [...new Set((selectedStructureCell.keys || [selectedStructureCell.key]).map(key => {
+      const cell = structureCellForKey(widgetEl, key);
+      return cell ? Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex) : NaN;
+    }).filter(Number.isInteger))];
+  }
+
+  function patchStructureCellsStyle(widget, indices, type, color) {
+    return indices.reduce((styles, index) => patchStructureCellStyle({ cellStyles: styles }, index, type, color), widget.cellStyles);
   }
 
   function hideStructureCellSelectionOverlay() {
@@ -6477,11 +6670,22 @@
     }
     const scaleX = SLIDE_W / frameRect.width;
     const scaleY = SLIDE_H / frameRect.height;
-    box.style.left = `${(targetRect.left - frameRect.left) * scaleX}px`;
-    box.style.top = `${(targetRect.top - frameRect.top) * scaleY}px`;
-    box.style.width = `${targetRect.width * scaleX}px`;
-    box.style.height = `${targetRect.height * scaleY}px`;
-    box.hidden = false;
+    hideStructureCellSelectionOverlay();
+    const keys = selectedStructureCell?.widgetId === widgetEl.dataset.widgetId
+      ? (selectedStructureCell.keys || [selectedStructureCell.key]) : [];
+    const boxes = [...box.parentElement.querySelectorAll('.asm-structure-cell-selection-box')];
+    keys.forEach((key, index) => {
+      const selected = structureCellForKey(widgetEl, key);
+      if (!selected) return;
+      const rect = (selected.querySelector(':scope > rect:first-of-type') || selected).getBoundingClientRect();
+      let overlay = boxes[index];
+      if (!overlay) { overlay = box.cloneNode(false); box.parentElement.appendChild(overlay); }
+      overlay.style.left = `${(rect.left - frameRect.left) * scaleX}px`;
+      overlay.style.top = `${(rect.top - frameRect.top) * scaleY}px`;
+      overlay.style.width = `${rect.width * scaleX}px`;
+      overlay.style.height = `${rect.height * scaleY}px`;
+      overlay.hidden = false;
+    });
   }
 
   function clearStructureCellSelection({ closeEditor = true } = {}) {
@@ -6496,15 +6700,20 @@
     if (closeEditor) closeStructureInlineEditor(true);
   }
 
-  function selectStructureCell(widgetEl, cell) {
+  function selectStructureCell(widgetEl, cell, modifiers = {}) {
     const details = structureCellContext(widgetEl, cell);
     if (!details) return null;
+    closeStructureStyleHoverPicker();
+    const previous = selectedStructureCell?.widgetId === details.widget.id ? selectedStructureCell : null;
+    const items = [...widgetEl.querySelectorAll('[data-structure-item-index]')]
+      .map(item => structureCellContext(widgetEl, item)).filter(Boolean);
+    const { keys, anchor } = window.ASMSlideCellInteractions.selectKeys(details, previous, items, modifiers);
     document.querySelectorAll('.is-structure-cell-selected').forEach(item => {
       item.classList.remove('is-structure-cell-selected');
     });
-    selectedStructureCell = { widgetId: details.widget.id, key: details.key };
-    details.cell.classList.add('is-structure-cell-selected');
-    updateStructureCellSelectionOverlay(widgetEl, details.cell);
+    if (!keys.length) { clearStructureCellSelection(); return details; }
+    selectedStructureCell = { widgetId: details.widget.id, key: keys.includes(details.key) ? details.key : keys.at(-1), keys, anchor };
+    restoreStructureCellSelection(widgetEl);
     return details;
   }
 
@@ -6525,6 +6734,23 @@
     editor.style.fontSize = `${Math.max(8, Math.min(Number(widget.fontSize) || 18, height * 0.52))}px`;
   }
 
+  const cellInteractions = window.ASMSlideCellInteractions.create({
+    enabled: () => document.body.classList.contains('asm-edit-mode') && !isOverviewEditing()
+      && !isTypingInFabric(currentFabricCanvas()),
+    selected: () => {
+      if (!selectedStructureCell || selectedStructureCell.widgetId !== selectedWidgetId) return null;
+      const widgetEl = document.querySelector(`section.present .structure-widget[data-widget-id="${CSS.escape(selectedWidgetId)}"]`);
+      return structureCellContext(widgetEl, structureCellForKey(widgetEl, selectedStructureCell.key));
+    },
+    edit: details => openStructureInlineEditor(details.cell.closest('.structure-widget'), details.cell),
+    write: (details, value) => {
+      const context = { ...details.context, value };
+      if (context.mode === 'binary_tree') applyTreeContextAction('tree-save', context, details.widget);
+      else if (context.mode === 'matrix' || context.mode === 'table') applyMatrixContextAction('matrix-save', context, details.widget);
+      else applyItemContextAction('item-save', context, details.widget);
+    }
+  });
+
   function closeStructureInlineEditor(commit = true) {
     const editor = activeStructureInlineEditor;
     if (!editor || editor.closing) return;
@@ -6535,13 +6761,10 @@
     if (!commit) return;
     const found = getWidget(editor.context.widgetId);
     if (!found.widget) return;
-    editor.context.value = value;
-    if (editor.context.mode === 'binary_tree') applyTreeContextAction('tree-save', editor.context, found.widget);
-    else if (editor.context.mode === 'matrix' || editor.context.mode === 'table') applyMatrixContextAction('matrix-save', editor.context, found.widget);
-    else applyItemContextAction('item-save', editor.context, found.widget);
+    cellInteractions.commit({ context: editor.context, widget: found.widget }, value);
   }
 
-  function openStructureInlineEditor(widgetEl, cell) {
+  function openStructureInlineEditor(widgetEl, cell, caretClientX = null) {
     if (!document.body.classList.contains('asm-edit-mode')) return false;
     hideStructureContextMenu();
     const details = structureCellContext(widgetEl, cell);
@@ -6572,6 +6795,25 @@
     input.addEventListener('blur', () => closeStructureInlineEditor(true));
     input.focus();
     input.select();
+    if (Number.isFinite(caretClientX)) {
+      const rect = input.getBoundingClientRect();
+      const style = getComputedStyle(input);
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const padding = parseFloat(style.paddingLeft) || 0;
+      const width = ctx.measureText(input.value).width;
+      const contentWidth = input.clientWidth - padding - (parseFloat(style.paddingRight) || 0);
+      const offset = style.textAlign === 'center' ? (contentWidth - width) / 2
+        : style.textAlign === 'right' ? contentWidth - width : 0;
+      const x = (caretClientX - rect.left) * input.offsetWidth / rect.width - padding - offset;
+      let position = 0, distance = Math.abs(x);
+      for (let index = 0; index < input.value.length;) {
+        index += String.fromCodePoint(input.value.codePointAt(index)).length;
+        const next = Math.abs(ctx.measureText(input.value.slice(0, index)).width - x);
+        if (next < distance) { position = index; distance = next; }
+      }
+      input.setSelectionRange(position, position);
+    }
     return true;
   }
 
@@ -6614,6 +6856,8 @@
     }
     const index = Number(cell.closest('[data-tree-index]')?.dataset.treeIndex ?? cell.dataset.structureItemIndex);
     if (!Number.isInteger(index)) return;
+    const selectedIndices = selectedStructureStyleIndices(widgetId);
+    if (!selectedIndices.length) return;
     structureContextMenu.replaceChildren();
     activeStructureContext = null;
     structureContextMenu.classList.add('structure-cell-style-toolbar');
@@ -6622,41 +6866,44 @@
     for (const [type, label] of styleTypes) {
       const indices = new Set(window.AlgoStructureRenderer.parseIndices(found.widget[`${type}Indices`]));
       const binding = structureColorBindings.find(item => item.style === type);
-      const hasCellStyle = typeof found.widget.cellStyles?.[String(index)]?.[type] === 'string';
-      const isActive = indices.has(index) || hasCellStyle;
-      hasSelectedStyle ||= isActive;
+      const activeCount = selectedIndices.filter(item => indices.has(item)
+        || typeof found.widget.cellStyles?.[String(item)]?.[type] === 'string').length;
+      const isActive = activeCount === selectedIndices.length;
+      hasSelectedStyle ||= activeCount > 0;
       const button = document.createElement('button');
       button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
       button.dataset.structureStyleType = type;
-      button.setAttribute('aria-pressed', String(isActive));
-      const icon = structureStyleIcon(type, structureCellStyleColor(found.widget, index, type, binding));
+      button.setAttribute('aria-pressed', activeCount > 0 && !isActive ? 'mixed' : String(isActive));
+      const currentColor = structureCellStyleColor(found.widget, index, type, binding);
+      const icon = structureStyleIcon(type, rememberedStyleColor(currentColor, type));
       icon.setAttribute('aria-hidden', 'true');
       button.appendChild(icon);
       button.addEventListener('click', () => {
         const current = getWidget(widgetId).widget;
         if (!current) return;
         const currentIndices = new Set(window.AlgoStructureRenderer.parseIndices(current[`${type}Indices`]));
-        const currentlyActive = currentIndices.has(index)
-          || typeof current.cellStyles?.[String(index)]?.[type] === 'string';
+        const currentlyActive = selectedIndices.every(item => currentIndices.has(item)
+          || typeof current.cellStyles?.[String(item)]?.[type] === 'string');
         const patch = {};
         if (currentlyActive) {
-          currentIndices.delete(index);
+          selectedIndices.forEach(item => currentIndices.delete(item));
           patch[`${type}Indices`] = [...currentIndices].sort((a, b) => a - b).join(',');
-          patch.cellStyles = patchStructureCellStyle(current, index, type, null);
+          patch.cellStyles = patchStructureCellsStyle(current, selectedIndices, type, null);
           if (activeStructureStyleCell?.widgetId === widgetId
             && activeStructureStyleCell.index === index
             && activeStructureStyleCell.type === type) {
             closeStructureStyleHoverPicker();
           }
         } else {
-          currentIndices.add(index);
+          selectedIndices.forEach(item => currentIndices.add(item));
           patch[`${type}Indices`] = [...currentIndices].sort((a, b) => a - b).join(',');
-          patch.cellStyles = patchStructureCellStyle(
-            current,
-            index,
-            type,
-            structureCellStyleColor(current, index, type, binding)
-          );
+          const defaultColor = rememberedStyleColor(structureCellStyleColor(current, index, type, binding), type);
+          // Enabling a mixed selection fills only unstyled cells. Existing
+          // explicit colors remain intact until the user picks a batch color.
+          const newlyEnabled = selectedIndices.filter(item => !window.AlgoStructureRenderer
+            .parseIndices(current[`${type}Indices`]).includes(item)
+            && typeof current.cellStyles?.[String(item)]?.[type] !== 'string');
+          patch.cellStyles = patchStructureCellsStyle(current, newlyEnabled, type, defaultColor);
         }
         updateSelectedStructure(patch, { preserveScale: true });
         openStructureStyleToolbar(widgetId);
@@ -6664,14 +6911,14 @@
       button.addEventListener('pointerenter', () => {
         const current = getWidget(widgetId).widget;
         const activeIndices = new Set(window.AlgoStructureRenderer.parseIndices(current?.[`${type}Indices`]));
-        const active = activeIndices.has(index)
-          || typeof current?.cellStyles?.[String(index)]?.[type] === 'string';
+        const active = selectedIndices.some(item => activeIndices.has(item)
+          || typeof current?.cellStyles?.[String(item)]?.[type] === 'string');
         if (!active || !binding) {
           scheduleStructureStylePickerClose(0);
           return;
         }
         cancelStructureStylePickerClose();
-        openIro(binding.target, button, { widgetId, index, type }, { forceOpen: true, hoverMode: true });
+        openIro(binding.target, button, { widgetId, index, indices: selectedIndices, type }, { forceOpen: true, hoverMode: true });
       });
       button.addEventListener('pointerleave', event => {
         if (iroPopup.contains(event.relatedTarget)) return;
@@ -6690,11 +6937,11 @@
         const patch = {};
         styleTypes.forEach(([type]) => {
           const remaining = window.AlgoStructureRenderer.parseIndices(getWidget(widgetId).widget[`${type}Indices`])
-            .filter(item => item !== index);
+            .filter(item => !selectedIndices.includes(item));
           patch[`${type}Indices`] = remaining.join(',');
         });
         patch.cellStyles = styleTypes.reduce(
-          (styles, [type]) => patchStructureCellStyle({ cellStyles: styles }, index, type, null),
+          (styles, [type]) => patchStructureCellsStyle({ cellStyles: styles }, selectedIndices, type, null),
           getWidget(widgetId).widget.cellStyles
         );
         updateSelectedStructure(patch, { preserveScale: true });
@@ -6702,14 +6949,14 @@
       });
       structureContextMenu.appendChild(clearButton);
     }
-    if (window.AlgoStructureRenderer.parseIndices(found.widget.annotationIndices).includes(index)) {
+    if (selectedIndices.some(item => window.AlgoStructureRenderer.parseIndices(found.widget.annotationIndices).includes(item))) {
       const input = document.createElement('input');
       input.type = 'text'; input.maxLength = 80; input.placeholder = '註標文字';
       input.setAttribute('aria-label', '此格註標文字');
       input.value = found.widget.annotationLabels?.[index] || '';
       input.addEventListener('input', () => {
         const labels = { ...getWidget(widgetId).widget.annotationLabels };
-        if (input.value) labels[index] = input.value; else delete labels[index];
+        selectedIndices.forEach(item => { if (input.value) labels[item] = input.value; else delete labels[item]; });
         updateSelectedStructure({ annotationLabels: labels }, { preserveScale: true });
       });
       input.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
@@ -6718,7 +6965,10 @@
     const rect = (cell.querySelector(':scope > rect') || cell).getBoundingClientRect();
     structureContextMenu.hidden = false;
     const menu = structureContextMenu.getBoundingClientRect();
-    positionStructureContextMenu(rect.left + rect.width / 2 - menu.width / 2, rect.top - menu.height - 8);
+    // Stay above the grid, not merely above the selected cell: for a lower
+    // matrix/tree row the old position covered cells users need to click next.
+    const gridTop = Math.min(rect.top, widgetEl.getBoundingClientRect().top);
+    positionStructureContextMenu(rect.left + rect.width / 2 - menu.width / 2, gridTop - menu.height - 8);
   }
 
   function positionStructureContextMenu(clientX, clientY) {
@@ -6739,13 +6989,13 @@
   // -----------------------------------------------------------------------------
   function openStructureContextMenu(event) {
     if (!document.body.classList.contains('asm-edit-mode') || !structureContextMenu) return;
-    const widgetEl = event.target.closest?.('.structure-widget');
+    const widgetEl = event.target.closest?.('.structure-widget') || widgetClaimableThroughCanvas(event);
     if (!widgetEl) return;
     const found = getWidget(widgetEl.dataset.widgetId);
     if (!found.widget || !isCellGridWidget(found.widget)) return;
     const mode = found.widget.structureMode || 'normal';
-    const treeNode = event.target.closest?.('[data-tree-node-id]');
-    const cell = event.target.closest?.('[data-structure-item-index]');
+    const cell = structureCellFromEvent(event, widgetEl);
+    const treeNode = event.target.closest?.('[data-tree-node-id]') || cell?.closest('[data-tree-node-id]');
     if ((mode === 'binary_tree' && !treeNode) || (mode !== 'binary_tree' && !cell)) return;
     const editableCell = cell || treeNode?.querySelector('[data-structure-item-index]');
     const details = structureCellContext(widgetEl, editableCell);
@@ -6795,7 +7045,7 @@
   function commitTreeStructure(widget, treeData) {
     const normalized = normalizeTreeData(treeData, widget.content);
     const content = treeContentSummary(normalized);
-    updateSelectedStructure({ treeData: normalized, content });
+    updateSelectedStructure({ treeData: normalized, content }, { preserveScale: true });
   }
 
   function applyTreeContextAction(action, context, widget) {
@@ -6866,10 +7116,10 @@
     }
     const content = isTable ? tableContentSummary(rows) : matrixStructureContent(rows);
     if (!isTable) {
-      updateSelectedStructure({ content });
+      updateSelectedStructure({ content }, { preserveScale: true });
       return;
     }
-    updateSelectedStructure({ tableData: rows, content });
+    updateSelectedStructure({ tableData: rows, content }, { preserveScale: true });
   }
 
   function applyItemContextAction(action, context, widget) {
@@ -7101,6 +7351,7 @@
       }
     });
     if (host) host.style.zIndex = String(fabricZ ?? 0);
+    canvas?.requestRenderAll?.();
   }
 
   function unifiedLayerEntries(slide, canvas = currentFabricCanvas()) {
@@ -7299,9 +7550,6 @@
     if (!selectedWidgetId) return;
     const found = getWidget(selectedWidgetId);
     if (!found.widget) return;
-    if (found.widget.type === 'latex' && ('content' in patch || 'fontSize' in patch)) {
-      patch.manualSize = false;
-    }
     Object.assign(found.widget, patch);
     saveDeck({ history });
     const el = document.querySelector(`.slide-widget[data-widget-id="${selectedWidgetId}"]`);
@@ -7317,9 +7565,11 @@
       if (found.widget.type !== 'code') {
         updateWidgetContentElement(el, found.widget);
       }
+      selectedWidgetKeys.add(found.widget.id);
       el.classList.add('is-selected');
       syncSlideAutoAnimate(found.slide);
       refreshWidgetElement(el, found.widget);
+      updateGroupSelectionOverlay();
     }
   }
 
@@ -7668,11 +7918,43 @@
     document.addEventListener('mousedown', event => {
       if (!event.target.closest?.('#structureContextMenu')) hideStructureContextMenu();
     });
+    let switchedCellClickUntil = 0;
     document.addEventListener('pointerdown', event => {
-      if (!activeStructureInlineEditor || event.target.closest?.('.structure-inline-value-input')) return;
+      if (event.button !== 0 || event.target.closest?.('.structure-inline-value-input')) return;
+      const widgetEl = event.target.closest?.('.structure-widget') || widgetClaimableThroughCanvas(event);
+      const cell = widgetEl && structureCellFromEvent(event, widgetEl);
+      const details = cell && structureCellContext(widgetEl, cell);
+      const differentCell = details && selectedStructureCell && (selectedStructureCell.widgetId !== details.widget.id
+        || selectedStructureCell.key !== details.key);
+      if (differentCell && ((!event.ctrlKey && !event.metaKey && !event.shiftKey)
+        || (activeStructureInlineEditor && selectedStructureCell.widgetId === details.widget.id))) {
+        // Commit can replace the entire SVG. Remember the destination by key,
+        // then resolve its new element rather than using the detached event target.
+        const widgetId = details.widget.id, key = details.key;
+        closeStructureInlineEditor(true);
+        const currentWidget = document.querySelector(`.structure-widget[data-widget-id="${CSS.escape(widgetId)}"]`);
+        const currentCell = structureCellForKey(currentWidget, key);
+        if (currentCell) {
+          selectWidget(widgetId);
+          selectStructureCell(currentWidget, currentCell, event);
+          openStructureStyleToolbar(widgetId);
+          if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
+          structureCellClickTimer = null;
+          switchedCellClickUntil = performance.now() + 250;
+          event.preventDefault(); event.stopImmediatePropagation();
+        }
+        return;
+      }
+      if (!activeStructureInlineEditor) return;
       const keepsCellSelection = event.target.closest?.('[data-structure-item-index], #structureContextMenu');
       closeStructureInlineEditor(true);
       if (!keepsCellSelection) clearStructureCellSelection({ closeEditor: false });
+    }, true);
+    document.addEventListener('click', event => {
+      if (performance.now() < switchedCellClickUntil) {
+        switchedCellClickUntil = 0;
+        event.preventDefault(); event.stopImmediatePropagation();
+      }
     }, true);
     document.addEventListener('mousedown', event => {
       if (iroPopup.hidden) return;
@@ -7805,7 +8087,7 @@
     tableHeaderRowInput?.addEventListener('change', () => updateSelectedStructure({ tableHeaderRow: tableHeaderRowInput.checked }, { preserveScale: true }));
     tableHeaderColumnInput?.addEventListener('change', () => updateSelectedStructure({ tableHeaderColumn: tableHeaderColumnInput.checked }, { preserveScale: true }));
     structureColorBindings.forEach(binding => {
-      binding.button?.addEventListener('click', () => openIro(binding.target));
+      bindCurrentColorButton(binding.button, binding.target);
     });
     openCodeEditorBtn?.addEventListener('click', openCodeEditorModal);
     closeCodeEditorModalBtn?.addEventListener('click', closeCodeEditorModal);
@@ -7853,10 +8135,10 @@
     inlineScriptsBtn?.addEventListener('click', toggleInlineScripts);
     alignCycleBtn.addEventListener('click', cycleTextAlign);
     listStyleBtn.addEventListener('click', cycleTextList);
-    textColorBtn.addEventListener('click', () => openIro('text'));
-    bgColorBtn.addEventListener('click', () => openIro('background'));
-    shapeStrokeBtn.addEventListener('click', () => openIro('shape-stroke'));
-    shapeColorBtn.addEventListener('click', () => openIro('shape-fill'));
+    bindCurrentColorButton(textColorBtn, 'text');
+    bindCurrentColorButton(bgColorBtn, 'background');
+    bindCurrentColorButton(shapeStrokeBtn, 'shape-stroke');
+    bindCurrentColorButton(shapeColorBtn, 'shape-fill');
     shapeChoiceButtons.forEach(button => {
       button.addEventListener('click', () => replaceSelectedShape(button.dataset.shapeChoice));
     });
@@ -7902,6 +8184,80 @@
     return item.dataset.tool;
   }
 
+  // One gesture controller for a selection spanning canvas objects and DOM widgets.
+  // Snapshots are in slide coordinates; each renderer only adapts the final transform.
+  let nativeSelectionControls = null;
+  let nativeSelectionMain = null;
+  let nativeSelectionSnapshots = [], nativeSelectionChanged = false;
+  function syncNativeSelectionControls(canvas, items) {
+    if (!canvas) { nativeSelectionControls?.dispose(); nativeSelectionControls=null; nativeSelectionMain=null; return; }
+    if (nativeSelectionMain !== canvas) {
+      nativeSelectionControls?.dispose(); nativeSelectionMain=canvas;
+      nativeSelectionControls = window.ASMFabricSelection.create(canvas, {
+        configure: configureSelectionControls,
+        items: () => selectedAlignmentItems().items,
+        allow: event => !isOverviewEditing() && !isTypingInFabric(canvas)
+          && !event.target.closest?.('input,textarea,[contenteditable="true"],#editorChrome,#controlChrome,#alignmentToolbar,#structureContextMenu'),
+        bodyHit: event => {
+          const currentItems = selectedAlignmentItems().items;
+          if (currentItems.length===1 && currentItems[0].kind==='widget' && isCellGridWidget(currentItems[0].widget)) return false;
+          const widget = event.target.closest?.('.slide-widget') || widgetClaimableThroughCanvas(event);
+          const object = widget ? null : fabricObjectAtPoint(event);
+          return selectedAlignmentItems().items.some(item => item.kind==='widget'
+            ? item.widget.id===widget?.dataset.widgetId : item.object===object || object===canvas.getActiveObject());
+        },
+        start: () => {
+          nativeSelectionChanged=false;
+          const selected=selectedAlignmentItems().items;
+          nativeSelectionSnapshots=withAbsoluteFabricSelection(canvas, () => selected.map(item => item.kind==='fabric'
+            ? {kind:'fabric', object:item.object, matrix:item.object.calcTransformMatrix().slice()}
+            : {kind:'widget', id:item.widget.id, value:clone(item.widget)}));
+          clearStructureCellSelection();
+        },
+        transform: matrix => applyNativeSelectionTransform(canvas, nativeSelectionSnapshots, matrix),
+        end: () => { if(nativeSelectionChanged) syncCurrentSlideCanvas(); updateAlignmentToolbar(); }
+      }, FABRIC_BLEED);
+      canvas.__asmSelectionControls = nativeSelectionControls.canvas;
+    }
+    nativeSelectionControls.sync(items);
+  }
+  function applyNativeSelectionTransform(canvas, snapshots, matrix) {
+    nativeSelectionChanged=true;
+      withAbsoluteFabricSelection(canvas, () => snapshots.forEach(snapshot => {
+        if (snapshot.kind === 'fabric') {
+          const transform = f().util.qrDecompose(f().util.multiplyTransformMatrices(matrix, snapshot.matrix));
+          snapshot.object.set({ angle: transform.angle, scaleX: Math.abs(transform.scaleX), scaleY: Math.abs(transform.scaleY),
+            skewX: transform.skewX, skewY: 0, flipX: transform.scaleX < 0, flipY: transform.scaleY < 0 });
+          snapshot.object.setPositionByOrigin(new (f().Point)(transform.translateX, transform.translateY), 'center', 'center');
+          snapshot.object.setCoords();
+          return;
+        }
+        const widget = getWidget(snapshot.id).widget, original = snapshot.value;
+        if (!widget) return;
+        const originalMatrix = f().util.composeMatrix({translateX:original.x+original.w/2,
+          translateY:original.y+original.h/2, angle:original.angle || 0, skewX:original.skewX || 0});
+        const transform = f().util.qrDecompose(f().util.multiplyTransformMatrices(matrix,originalMatrix));
+        const sx = Math.abs(transform.scaleX), sy = Math.abs(transform.scaleY);
+        widget.w = original.w * sx; widget.h = original.h * sy;
+        widget.x = transform.translateX-widget.w/2; widget.y = transform.translateY-widget.h/2;
+        widget.angle = transform.angle;
+        widget.skewX = Math.atan(Math.tan(transform.skewX*Math.PI/180)*sx/Math.max(0.00001,sy))*180/Math.PI;
+        if (Math.abs(sx-1)>0.00001 || Math.abs(sy-1)>0.00001) {
+          widget.manualSize=true;
+          if(widget.type==='code') widget.fontSize=original.fontSize*sy;
+          if(widget.type==='latex') widget.scale=original.scale*Math.min(sx,sy);
+        }
+        const el = document.querySelector(`.slide-widget[data-widget-id="${CSS.escape(widget.id)}"]`);
+        if (el) {
+          el.style.left = `${widget.x}px`; el.style.top = `${widget.y}px`;
+          el.style.width = `${widget.w}px`; el.style.height = `${widget.h}px`;
+          el.style.fontSize = `${widget.fontSize}px`; el.dataset.manualSize = String(widget.manualSize);
+          positionWidgetContent(el, widget);
+        }
+      }));
+    canvas.requestRenderAll();
+  }
+
   function bindSlideDrop() {
     let widgetDrag = null;
     let suppressWidgetClick = false;
@@ -7918,9 +8274,11 @@
     };
 
     const beginWidgetDrag = event => {
+      if (event.type==='pointerdown' && nativeSelectionControls?.down(event)) return;
       if (!document.body.classList.contains('asm-edit-mode')) return;
       additiveCanvasSelectionGesture = !!(event.shiftKey || event.ctrlKey || event.metaKey);
-      if (additiveCanvasSelectionGesture && selectedStructureCell) clearStructureCellSelection();
+      const modifierCell = structureCellFromEvent(event, event.target.closest?.('.structure-widget') || widgetClaimableThroughCanvas(event));
+      if (additiveCanvasSelectionGesture && selectedStructureCell && !modifierCell) clearStructureCellSelection();
       let widgetEl = event.target.closest && event.target.closest('.slide-widget');
       if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) {
         widgetEl = widgetClaimableThroughCanvas(event);
@@ -7939,10 +8297,14 @@
         widgetId: widgetEl.dataset.widgetId,
         wasSelected: widgetEl.classList.contains('is-selected')
       };
+      if (modifierCell && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) {
+        event.stopPropagation(); event.preventDefault(); event.stopImmediatePropagation?.();
+      }
+      if (modifierCell && additiveCanvasSelectionGesture) return;
       if (event.shiftKey) return;
       const selectedStructureCellHit = widgetEl.classList.contains('structure-widget')
         && widgetEl.classList.contains('is-selected')
-        && !!event.target.closest?.('[data-structure-item-index]');
+        && !!structureCellFromEvent(event, widgetEl);
       if (!selectedStructureCellHit) {
         event.stopPropagation();
         event.preventDefault();
@@ -7967,8 +8329,8 @@
         resetCodeWidgetRuntimeStyles(widgetEl, found.widget);
       }
       const dragIds = preserveGroup ? selectedIds : [widgetEl.dataset.widgetId];
-      const resizable = dragIds.length === 1 && (found.widget.type === 'code' || isCellGridWidget(found.widget));
-      const edge = resizable ? (event.target.dataset.resizeEdge || inferResizeEdge(widgetEl, event)) : null;
+      // Resize controls are owned by the native Fabric selection canvas.
+      const edge = null;
       const layerRect = widgetEl.closest('.widget-layer').getBoundingClientRect();
       const scaleX = layerRect.width / SLIDE_W;
       const scaleY = layerRect.height / SLIDE_H;
@@ -7996,27 +8358,6 @@
       };
       widgetEl.classList.toggle('is-resizing', !!edge);
     };
-
-    function inferResizeEdge(widgetEl, event) {
-      if (!widgetEl.classList.contains('is-selected')) return null;
-      const rect = widgetEl.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const pad = 10;
-      const nearTop = Math.abs(y) <= pad;
-      const nearBottom = Math.abs(y - rect.height) <= pad;
-      const nearLeft = Math.abs(x) <= pad;
-      const nearRight = Math.abs(x - rect.width) <= pad;
-      if (nearTop && nearLeft) return 'top-left';
-      if (nearTop && nearRight) return 'top-right';
-      if (nearBottom && nearLeft) return 'bottom-left';
-      if (nearBottom && nearRight) return 'bottom-right';
-      if (nearTop && x > rect.width * 0.25 && x < rect.width * 0.75) return 'top';
-      if (nearBottom && x > rect.width * 0.25 && x < rect.width * 0.75) return 'bottom';
-      if (nearLeft && y > rect.height * 0.25 && y < rect.height * 0.75) return 'left';
-      if (nearRight && y > rect.height * 0.25 && y < rect.height * 0.75) return 'right';
-      return null;
-    }
 
     const updateWidgetDrag = event => {
       if (!widgetDrag) return;
@@ -8097,6 +8438,7 @@
         positionWidgetContent(el, target);
         if (widgetDrag.mode === 'resize') void el.offsetHeight;
       });
+      updateGroupSelectionOverlay();
     };
 
     const endWidgetDrag = event => {
@@ -8223,12 +8565,13 @@
           : null
       );
       if (!widgetEl || isOverviewEditing()) return;
-      const structureCell = event.target.closest?.('[data-structure-item-index]');
+      const structureCell = structureCellFromEvent(event, widgetEl);
       if (structureCell && widgetEl.classList.contains('structure-widget')
         && document.body.classList.contains('asm-edit-mode')) {
         event.preventDefault();
         event.stopPropagation();
-        openStructureInlineEditor(widgetEl, structureCell);
+        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+        openStructureInlineEditor(widgetEl, structureCell, event.clientX);
         return;
       }
       event.preventDefault();
@@ -8255,7 +8598,17 @@
       }
       const pointerSelection = widgetPointerSelection;
       widgetPointerSelection = null;
-      const structureCell = event.target.closest?.('[data-structure-item-index]');
+      const structureCell = structureCellFromEvent(event, widgetEl);
+      if (structureCell && widgetEl.classList.contains('structure-widget') && isAdditiveCellSelection(widgetEl)
+        && (event.shiftKey || event.ctrlKey || event.metaKey)) {
+        closeStructureInlineEditor(true);
+        selectWidget(widgetEl.dataset.widgetId);
+        selectStructureCell(widgetEl, structureCell, event);
+        if (structureCellClickTimer) clearTimeout(structureCellClickTimer);
+        structureCellClickTimer = null;
+        openStructureStyleToolbar(widgetEl.dataset.widgetId);
+        return;
+      }
       if (event.shiftKey || event.ctrlKey || event.metaKey) {
         clearStructureCellSelection();
         toggleWidgetSelection(widgetEl.dataset.widgetId);
@@ -8276,7 +8629,6 @@
         const widgetId = widgetEl.dataset.widgetId;
         if (getWidget(widgetId).widget?.type === 'table') {
           hideStructureContextMenu();
-          selectWidget(widgetId);
           return;
         }
         structureCellClickTimer = setTimeout(() => {
@@ -8315,11 +8667,93 @@
       addObject(pendingTool, slidePointFromEvent(event));
     });
 
+    const richTextMime = 'application/x-algoshowmaker-rich-text';
+    const textStyleFields = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fill',
+      'stroke', 'strokeWidth', 'underline', 'overline', 'linethrough', 'textBackgroundColor', 'deltaY'];
+    const pickTextStyle = source => Object.fromEntries(textStyleFields
+      .filter(key => typeof source?.[key] === 'string' || typeof source?.[key] === 'number' || typeof source?.[key] === 'boolean')
+      .map(key => [key, source[key]]));
+    document.addEventListener('copy', event => {
+      const object = currentFabricCanvas()?.getActiveObject();
+      if (!object?.isEditing || event.target !== object.hiddenTextarea
+        || object.selectionStart === object.selectionEnd || !event.clipboardData) return;
+      const previousStyles = object.styles;
+      try {
+        // Copy authored styles rather than generated superscript/subscript sizes.
+        if (object.asmInlineScripts) object.styles = object.asmInlineScriptBaseStyles || object.styles;
+        const text = object.getSelectedText();
+        const authoredStyles = object.getSelectionStyles(object.selectionStart, object.selectionEnd, true).map(pickTextStyle);
+        object.styles = previousStyles;
+        const styles = object.getSelectionStyles(object.selectionStart, object.selectionEnd, true).map(pickTextStyle);
+        const base = { ...pickTextStyle(object), textAlign: object.textAlign, lineHeight: object.lineHeight,
+          asmInlineScripts: object.asmInlineScripts !== false };
+        event.clipboardData.setData('text/plain', text);
+        event.clipboardData.setData(richTextMime, JSON.stringify({ version: 1, text, styles, authoredStyles, base }));
+        event.preventDefault();
+      } finally { object.styles = previousStyles; }
+    }, true);
+    document.addEventListener('paste', event => {
+      if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing()) return;
+      let payload;
+      try { payload = JSON.parse(event.clipboardData?.getData(richTextMime) || 'null'); } catch { return; }
+      if (payload?.version !== 1 || typeof payload.text !== 'string' || payload.text !== event.clipboardData?.getData('text/plain')
+        || !Array.isArray(payload.styles) || payload.styles.length !== f().util.string.graphemeSplit(payload.text).length) return;
+      const object = currentFabricCanvas()?.getActiveObject();
+      const editing = object?.isEditing && event.target === object.hiddenTextarea;
+      // Editable DOM fields and selected structure cells retain their native/value paste behavior.
+      if ((!editing && isEditableDomTarget(event)) || (!editing && selectedStructureCell)) return;
+      payload.styles = payload.styles.map(pickTextStyle);
+      payload.authoredStyles = Array.isArray(payload.authoredStyles) && payload.authoredStyles.length === payload.styles.length
+        ? payload.authoredStyles.map(pickTextStyle) : payload.styles;
+      payload.base = { ...pickTextStyle(payload.base),
+        textAlign: ['left', 'center', 'right', 'justify'].includes(payload.base?.textAlign) ? payload.base.textAlign : 'left',
+        lineHeight: Number.isFinite(payload.base?.lineHeight) ? payload.base.lineHeight : 1.16,
+        asmInlineScripts: payload.base?.asmInlineScripts !== false };
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (editing) {
+        restoreInlineScriptEditingBase(object);
+        const start = object.selectionStart;
+        object.insertChars(payload.text, object.asmInlineScripts ? payload.authoredStyles : payload.styles, start, object.selectionEnd);
+        object.selectionStart = object.selectionEnd = start + payload.styles.length;
+        object._updateTextarea(); object.hiddenTextarea.focus();
+        currentFabricCanvas().fire('text:changed', { target: object });
+        currentFabricCanvas().requestRenderAll();
+      } else {
+        exitWidgetEditorIfNeeded();
+        addObject('text', { x: SLIDE_W / 2, y: SLIDE_H / 2 }, payload.text, payload);
+      }
+    }, true);
     document.addEventListener('paste', event => {
       if (!document.body.classList.contains('asm-edit-mode')) return;
+      if (isEditableDomTarget(event) || isTypingInFabric(currentFabricCanvas()) || isOverviewEditing()) return;
+      const clipboard = event.clipboardData;
+      const token = clipboard?.getData('application/x-algoshowmaker-objects');
+      const text = clipboard?.getData('text/plain');
+      // Clipboard bridges can strip custom MIME data. An exact plain-text token
+      // preserves object paste without mistaking unrelated copied text for objects.
+      const plainObjectToken = objectClipboard.token && text === `AlgoShowMaker objects:${objectClipboard.token}`;
+      if ((token && token === objectClipboard.token) || plainObjectToken) {
+        event.preventDefault();
+        void pasteCurrentObjects();
+        return;
+      }
+      if (text && cellInteractions.paste(text)) {
+        event.preventDefault();
+        return;
+      }
       const items = Array.from(event.clipboardData && event.clipboardData.items || []);
       const imageItem = items.find(item => item.type && item.type.startsWith('image/'));
-      if (!imageItem) return;
+      if (!imageItem) {
+        if (text) {
+          event.preventDefault();
+          exitWidgetEditorIfNeeded();
+          addObject('text', { x: SLIDE_W / 2, y: SLIDE_H / 2 }, text.replace(/\r\n?/g, '\n'));
+        } else if (!token && objectClipboard.nativeCopied === false) {
+          event.preventDefault();
+          void pasteCurrentObjects();
+        }
+        return;
+      }
       event.preventDefault();
       const file = imageItem.getAsFile();
       if (!file) return;
@@ -8385,12 +8819,13 @@
       }
       if (isEditableDomTarget(event)) return;
 
+      if (cellInteractions.type(event)) return;
+
       if (document.body.classList.contains('asm-edit-mode') && !isOverviewEditing() && (event.ctrlKey || event.metaKey) && !isEditableDomTarget(event)) {
         const canvas = currentFabricCanvas();
         if (!canvas || !isTypingInFabric(canvas)) {
           const key = event.key.toLowerCase();
           const hasSelection = activeFabricObjects().length > 0 || selectedWidgetIdsInCurrentSlide().length > 0;
-          const hasClipboard = objectClipboard.fabric.length > 0 || objectClipboard.widgets.length > 0;
           if (key === 'a') {
             event.preventDefault();
             selectAllCurrentObjects();
@@ -8406,11 +8841,7 @@
             cutCurrentObjects();
             return;
           }
-          if (key === 'v' && hasClipboard) {
-            event.preventDefault();
-            pasteCurrentObjects();
-            return;
-          }
+          // Native paste decides between external text/images and our object token.
         }
       }
 
@@ -8738,7 +9169,7 @@
     const y = ((event.clientY - rect.top) / rect.height) * SLIDE_H;
     return canvas.getObjects().slice().reverse().find(obj => {
       if (!obj.visible) return false;
-      const bounds = obj.getBoundingRect(true, true);
+      const bounds = fabricSlideBounds(obj);
       return x >= bounds.left && x <= bounds.left + bounds.width && y >= bounds.top && y <= bounds.top + bounds.height;
     }) || null;
   }
@@ -8825,7 +9256,19 @@
     obj.initDimensions();
     obj.setCoords();
     obj.dirty = true;
+    refreshEditingTextCursor(obj);
     obj.canvas?.requestRenderAll();
+  }
+
+  function refreshEditingTextCursor(obj) {
+    if (!isTextObject(obj) || !obj.isEditing) return;
+    // Fabric calculates a cursor before our inline formatting / auto width.
+    // Discard those offsets after dimensions change without changing the native
+    // textarea selection, which is also the source of IME composition state.
+    obj.cursorOffsetCache = {};
+    obj.updateTextareaPosition?.();
+    if (obj.canvas?.contextTop) obj.canvas.clearContext(obj.canvas.contextTop);
+    obj.renderCursorOrSelection?.();
   }
 
   function toggleInlineScripts() {
@@ -9008,28 +9451,31 @@
     const icon = textColorBtn.querySelector('.text-color-icon');
     textColorBtn.classList.toggle('is-mixed-color', colors.length > 1);
     icon?.style.setProperty('--text-color-current', colors.length === 1 ? colors[0] : '#ef3829');
+    const backgrounds = textFillColorsForTarget(obj, 'textBackgroundColor', 'rgba(0,0,0,0)');
+    bgColorBtn?.classList.toggle('is-mixed-color', backgrounds.length > 1);
+    bgColorBtn?.querySelector('.text-bg-icon')?.style.setProperty('background-color', backgrounds.length === 1 ? backgrounds[0] : 'rgba(0,0,0,0)');
   }
 
-  function textFillColorsForTarget(obj) {
-    if (!obj || !obj.getSelectionStyles) return [normalizeColor(obj?.fill || '#1f282d')];
+  function textFillColorsForTarget(obj, property = 'fill', fallback = '#1f282d') {
+    if (!obj || !obj.getSelectionStyles) return [normalizeColor(obj?.[property] || fallback)];
     const start = Number(obj.selectionStart) || 0;
     const end = Number(obj.selectionEnd) || start;
     if (start !== end) {
       const colors = new Set();
       const styles = obj.getSelectionStyles(start, end) || [];
-      styles.forEach(style => colors.add(normalizeColor(style.fill || obj.fill || '#1f282d')));
-      if (!colors.size) colors.add(normalizeColor(obj.fill || '#1f282d'));
+      styles.forEach(style => colors.add(normalizeColor(style[property] || obj[property] || fallback)));
+      if (!colors.size) colors.add(normalizeColor(obj[property] || fallback));
       return Array.from(colors);
     }
-    return [textFillColorAtCursor(obj, start)];
+    return [textFillColorAtCursor(obj, start, property, fallback)];
   }
 
-  function textFillColorAtCursor(obj, cursor = 0) {
+  function textFillColorAtCursor(obj, cursor = 0, property = 'fill', fallback = '#1f282d') {
     const textLength = typeof obj.text === 'string' ? obj.text.length : 0;
-    if (!textLength) return normalizeColor(obj.fill || '#1f282d');
+    if (!textLength) return normalizeColor(obj[property] || fallback);
     const probe = Math.max(0, Math.min(textLength - 1, cursor - 1));
     const style = obj.getSelectionStyles?.(probe, probe + 1)?.[0] || {};
-    return normalizeColor(style.fill || obj.fill || '#1f282d');
+    return normalizeColor(style[property] || obj[property] || fallback);
   }
 
   function cycleTextList() {
@@ -9063,9 +9509,62 @@
     updateObjectToolbar(target.object, target.canvas);
   }
 
+  let customPickedColors = [];
+  function bindCurrentColorButton(button, target) {
+    if (!button) return;
+    // Ordinary property buttons describe the selected object. Only cell-style
+    // buttons represent a reusable preference; global color history must not
+    // repaint these buttons or apply an unrelated object's previous color.
+    const open = () => openIro(target, button, null, { forceOpen: true });
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('pointerenter', open);
+    button.addEventListener('click', event => { event.preventDefault(); open(); });
+    button.addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); open(); }
+    });
+  }
+  function rememberedStyleColor(fallback, type = null) {
+    try {
+      const color = new window.iro.Color(type ? window.ASMColorPickerPolicy.styleLast(type, fallback) : fallback);
+      return color.alpha < 1 ? color.rgbaString : color.hexString;
+    } catch { return fallback; }
+  }
+  function rememberCustomColor(color) {
+    window.ASMColorPickerPolicy.remember(color.rgbaString, true);
+    refreshLastColorSwatch();
+  }
+  function refreshLastColorSwatch() {
+    customPickedColors = window.ASMColorPickerPolicy.history();
+    const row = document.getElementById('customColorSwatches');
+    if (!row) return;
+    row.parentElement.hidden = !customPickedColors.length;
+    row.replaceChildren();
+    customPickedColors.forEach(value => {
+      let color;
+      try { color = new window.iro.Color(value); } catch { return; }
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'asm-av-swatch';
+      button.dataset.customColor = color.rgbaString;
+      button.setAttribute('aria-label', `套用自訂顏色 ${color.rgbaString}`);
+      button.style.setProperty('--av-swatch-color', color.rgbaString);
+      const chip = document.createElement('span'); chip.className = 'asm-av-swatch-chip';
+      chip.setAttribute('aria-hidden', 'true'); button.appendChild(chip);
+      button.addEventListener('click', () => {
+        suppressIroChange = true;
+        try { iroPicker.color.set(value); } finally { suppressIroChange = false; }
+        applyPickedColor(iroPicker.color); rememberCustomColor(iroPicker.color);
+        commitPendingColorHistory();
+        if (!structureStylePickerHoverMode) iroPopup.hidden = true;
+      });
+      row.appendChild(button);
+    });
+  }
+
   function applyPickedColor(color, target = activeColorTarget, structureCell = activeStructureStyleCell) {
     const binding = structureColorBindings.find(item => item.target === target);
     const value = color.rgbaString;
+    window.ASMColorPickerPolicy.remember(value);
+    if (binding?.style) window.ASMColorPickerPolicy.rememberStyle(binding.style, value);
     if (binding) {
       const structureColor = color.alpha < 1 ? value : color.hexString;
       setStructureColorButton(binding.button, structureColor);
@@ -9076,8 +9575,8 @@
         const widget = getWidget(structureCell.widgetId).widget;
         if (widget && selectedWidgetId === structureCell.widgetId) {
           updateSelectedStructure({
-            cellStyles: patchStructureCellStyle(
-              widget, structureCell.index, structureCell.type, structureColor
+            cellStyles: patchStructureCellsStyle(
+              widget, structureCell.indices || [structureCell.index], structureCell.type, structureColor
             )
           }, { history: false, preserveScale: true });
         }
@@ -9107,16 +9606,12 @@
       button.type = 'button';
       button.className = 'asm-av-swatch';
       button.dataset.avColor = name;
-      button.title = `${name} · ${value}`;
-      button.setAttribute('aria-label', name);
+      button.setAttribute('aria-label', `選擇顏色 ${value}`);
       button.style.setProperty('--av-swatch-color', value);
       const chip = document.createElement('span');
       chip.className = 'asm-av-swatch-chip';
       chip.setAttribute('aria-hidden', 'true');
-      const label = document.createElement('span');
-      label.className = 'asm-av-swatch-name';
-      label.textContent = name;
-      button.append(chip, label);
+      button.append(chip);
       button.addEventListener('click', () => {
         const target = activeColorTarget;
         const structureCell = activeStructureStyleCell
@@ -9185,6 +9680,7 @@
       return;
     }
     populateAvColorSwatches();
+    refreshLastColorSwatch();
     shapeStyleControls.hidden = activeColorTarget !== 'shape-stroke';
     if (!iroPicker) {
       iroPicker = new window.iro.ColorPicker('#iroPicker', {
@@ -9203,6 +9699,7 @@
         applyPickedColor(color);
       });
       iroPicker.on('input:end', () => {
+        rememberCustomColor(iroPicker.color);
         commitPendingColorHistory();
         requestAnimationFrame(() => {
           if (selectedWidgetId && structureColorBindings.some(item => item.target === activeColorTarget)) {
@@ -9230,10 +9727,11 @@
         ? (active?.stroke || 'rgba(135, 91, 199, 1)')
       : activeColorTarget === 'text'
         ? (style.fill || active?.fill || 'rgba(31, 40, 45, 1)')
-        : (style.textBackgroundColor || 'rgba(255, 255, 255, 1)');
+        : (style.textBackgroundColor || active?.textBackgroundColor || 'rgba(0, 0, 0, 0)');
     suppressIroChange = true;
     try {
-      iroPicker.color.set(normalizeColor(current));
+      try { iroPicker.color.set(normalizeColor(structureBinding?.style ? window.ASMColorPickerPolicy.styleLast(structureBinding.style, current) : current)); }
+      catch { refreshLastColorSwatch(); iroPicker.color.set(normalizeColor(current)); }
     } finally {
       suppressIroChange = false;
     }
@@ -9282,11 +9780,29 @@
     return pos && deck.groups[pos.h]?.slides[pos.v];
   }
 
-  function sendAlgorithmAnimationToFrame(frame, slide, preparedAnimation = null) {
+  async function sendAlgorithmAnimationToFrame(frame, slide, preparedAnimation = null) {
     if (!frame?.contentWindow || !slide || slide.kind !== 'algorithm-animation') return;
+    const animation = preparedAnimation || slide.animation;
+    const targetWindow = frame.contentWindow;
+    let materialized;
+    try { materialized = await traceStore.materializeAnimation(animation); }
+    catch (error) {
+      frame.classList.remove('is-loading');
+      if (frame === algorithmEditorFrame && algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫載入失敗：${error.message}`;
+      const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
+      if (placeholder) {
+        placeholder.hidden = false;
+        placeholder.querySelector('span').textContent = `動畫載入失敗：${error.message}；切回本頁可重試`;
+      }
+      frame.dataset.traceLoadFailed = 'true';
+      return;
+    }
+    if (!frame.isConnected || frame.contentWindow !== targetWindow
+      || (slide.animation !== animation && !preparedAnimation)) return;
     frame.contentWindow.postMessage({
       type: 'asm-load-animation',
-      animation: preparedAnimation || normalizeAlgorithmAnimation(slide.animation)
+      editorSessionKey: slide.id,
+      animation: normalizeAlgorithmAnimation(materialized)
     }, window.location.origin);
   }
 
@@ -9313,8 +9829,28 @@
 
   function syncAlgorithmFrameVisibility() {
     document.querySelectorAll('.algorithm-slide-frame').forEach(frame => {
+      const slide = getSlideById(frame.dataset.slideId);
+      if (slide && algorithmFrameIsCurrent(frame) && !frame.hidden) {
+        frame.dataset.lastActivated = String(performance.now());
+        const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
+        if (frame.dataset.traceLoadFailed === 'true') {
+          delete frame.dataset.traceLoadFailed;
+          void sendAlgorithmAnimationToFrame(frame, slide);
+        }
+        if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
+          frame.classList.add('is-loading');
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-45';
+        }
+        if (placeholder) placeholder.hidden = true;
+      }
       sendAlgorithmFrameVisibility(frame);
     });
+    // Keep the active player and one recent player; visiting a long deck must
+    // not leave every previously viewed runtime and full Trace resident.
+    Array.from(document.querySelectorAll('.algorithm-slide-frame'))
+      .filter(frame => frame.getAttribute('src')?.includes('asmEmbed=runtime'))
+      .sort((a, b) => Number(b.dataset.lastActivated || 0) - Number(a.dataset.lastActivated || 0))
+      .slice(2).forEach(frame => { frame.src = 'about:blank'; frame.classList.add('is-loading'); });
   }
 
   function refreshAlgorithmSlideInPlace(slide) {
@@ -9325,7 +9861,7 @@
     if (!frame || !placeholder) return;
 
     const animation = slide.animation || normalizeAlgorithmAnimation();
-    const hasAnimation = !!animation.scriptContent || !!animation.traceDocument?.frames?.length;
+    const hasAnimation = !!animation.scriptContent || !!animation.traceRef || !!animation.traceDocument?.frames?.length;
     frame.hidden = !hasAnimation;
     placeholder.hidden = hasAnimation;
 
@@ -9342,7 +9878,8 @@
     }
 
     frame.classList.add('is-loading');
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-40';
+    if (!algorithmFrameIsCurrent(frame)) return;
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-45';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -9360,7 +9897,7 @@
   // 演算法 iframe 通訊
   // 以 slideId 與 frame 來源核對訊息，把編輯結果與可見性送到正確的嵌入頁，避免背景 iframe 搶走狀態。
   // -----------------------------------------------------------------------------
-  function handleAlgorithmEmbedMessage(event) {
+  async function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-export-animation-snapshot'
       && event.source === pendingAlgorithmExportSnapshot?.source
@@ -9377,7 +9914,7 @@
         const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
           .find(frame => frame.contentWindow === event.source);
         const slide = runtimeFrame ? getSlideById(runtimeFrame.dataset.slideId) : null;
-        if (!slide?.animation?.traceDocument?.frames?.length) {
+        if (!slide?.animation?.traceRef && !slide?.animation?.traceDocument?.frames?.length) {
           runtimeFrame?.classList.remove('is-loading');
         } else {
           sendAlgorithmFrameVisibility(runtimeFrame);
@@ -9425,7 +9962,17 @@
       if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
       return;
     }
-    slide.animation = normalizeAlgorithmAnimation(event.data.animation);
+    let detached;
+    try {
+      detached = await traceStore.detachDeck({ groups: [{ slides: [{
+        animation: normalizeAlgorithmAnimation(event.data.animation)
+      }] }] }, { upload: true });
+    } catch (error) {
+      if (algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫儲存失敗：${error.message}`;
+      return;
+    }
+    if (getSlideById(slide.id) !== slide) return;
+    slide.animation = detached.groups[0].slides[0].animation;
     saveDeck();
     refreshAlgorithmSlideInPlace(slide);
     closeAlgorithmEditor();
@@ -9439,14 +9986,18 @@
     if (algorithmEditorStatus) algorithmEditorStatus.textContent = '正在載入動畫…';
     algorithmEditorModal.classList.add('is-loading');
     algorithmEditorModal.hidden = false;
-    algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-40';
+    if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
+      sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
+    } else {
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-46';
+    }
   }
 
   function closeAlgorithmEditor() {
     if (!algorithmEditorModal || !algorithmEditorFrame) return;
     algorithmEditorModal.hidden = true;
     algorithmEditorModal.classList.remove('is-loading');
-    algorithmEditorFrame.src = 'about:blank';
+    algorithmEditorFrame.contentWindow?.postMessage({ type: 'asm-editor-hidden' }, window.location.origin);
     editingAlgorithmSlideId = null;
   }
 
@@ -11256,6 +11807,8 @@
       ].filter(Boolean)
     }).then(() => {
       revealReady = true;
+      reveal.slide(currentH, currentV);
+      rememberSlidePosition();
       scheduleCurrentSlideCodeFocus();
       scheduleFabricResolution();
       reveal.on('resize', scheduleFabricResolution);
@@ -11266,6 +11819,10 @@
         hideStructureContextMenu();
         currentH = event.indexh;
         currentV = event.indexv || 0;
+        rememberSlidePosition();
+        selectedWidgetKeys.clear();
+        selectedWidgetId = null;
+        updateGroupSelectionOverlay();
         prioritizeProgressiveRebuild(currentH, currentV);
         scheduleFabricResolution();
         scheduleCurrentSlideCodeFocus();
@@ -11293,8 +11850,8 @@
   async function bootstrap() {
     try {
       const localDeck = await draftStore.loadDeck(DRAFT_KEY,
-        !deckUid && !shareToken ? [STORAGE_KEY, OLD_STORAGE_KEY] : []);
-      if (localDeck) deck = normalizeDeck(localDeck);
+        !deckUid && !shareToken ? [STORAGE_KEY, OLD_STORAGE_KEY] : [], { lazyTraces: true });
+      if (localDeck) deck = normalizeDeck(await traceStore.detachDeck(localDeck));
       await loadCloudDeck();
       const importId = pendingWorkspaceImport;
       if (importId && deckUid) {
@@ -11319,12 +11876,16 @@
     });
     bindCustomOverview();
     bindOverviewDrag();
-    window.addEventListener('beforeunload', () => stopTtsPlayback());
+    window.addEventListener('beforeunload', () => { rememberSlidePosition(); stopTtsPlayback(); });
+    restoreSlidePosition();
     renderDeck();
     updateAlgorithmEditButton();
-    await saveDeck({ history: false, cloud: false });
-    pushHistorySnapshot();
     initReveal();
+    // A large prebuilt trace may take time to write to IndexedDB. Start the
+    // presentation immediately; saveDeck still reports the actual write result.
+    const initialSave = saveDeck({ history: false, cloud: false });
+    pushHistorySnapshot();
+    await initialSave;
     if (pendingProgressiveRebuild) {
       const options = pendingProgressiveRebuild;
       pendingProgressiveRebuild = null;

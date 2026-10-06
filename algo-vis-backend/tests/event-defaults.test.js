@@ -20,13 +20,27 @@ function eventApi() {
   return context.window.ASMTraceEvents;
 }
 
+test('legacy visibility entrances share declaration switches while explicit canonical settings win', () => {
+  const api = eventApi();
+  for (const saved of [false, true]) {
+    const document = JSON.parse(JSON.stringify({ studio: { eventSettings: {
+      defaultEnabled: { 'visual-enter': saved } } } }));
+    api.applyEnabledStates(document); // Loading a document migrates its legacy settings.
+    assert.equal(api.defaultEnabled({ type: 'visual-enter' }, document), saved);
+    assert.equal(api.defaultEnabled({ type: 'declare' }, document), saved);
+    document.studio.eventSettings.defaultEnabled.declare = !saved;
+    assert.equal(api.defaultEnabled({ type: 'visual-enter' }, document), !saved);
+    assert.equal(api.defaultEnabled({ type: 'declare' }, document), !saved);
+  }
+});
+
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
 test('initial event animation and timeline defaults match the Event Settings panel', () => {
   const api = eventApi();
   const enabled = new Set([
-    'declare', 'object-exit', 'assignment', 'sequence-operation', 'compare', 'swap'
+    'declare', 'visual-enter', 'object-exit', 'assignment', 'sequence-operation', 'compare', 'swap'
   ]);
   const animationEnabled = new Set([...enabled, 'output', 'control-flow']);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
@@ -39,6 +53,8 @@ test('initial event animation and timeline defaults match the Event Settings pan
   });
   assert.equal(api.animation('declare'), 'declare',
     'an enabled declaration is the formal object-entrance animation');
+  assert.equal(api.animation('visual-enter'), 'declare',
+    'a frame visibility entrance reuses the object-entrance animation');
   document.studio.eventSettings.defaultEnabled.output = false;
   assert.equal(api.defaultEnabled({ type: 'output' }, document), false,
     'an explicitly disabled saved output setting remains disabled');
@@ -50,7 +66,7 @@ test('event settings follow the teaching-oriented display order', () => {
     .filter(definition => definition.category !== 'state' && definition.internal !== true)
     .map(definition => definition.label);
   assert.deepEqual(Array.from(visibleLabels), [
-    '宣告／物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
+    '宣告／物件入場', '物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
     '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
   ]);
   assert.equal(api.definition('read').internal, true);
@@ -149,7 +165,7 @@ test('scope and manual exits share one setting while retaining distinct event na
     assert.equal(api.animation(type), 'exit');
   }
   assert.equal(api.labels['scope-exit'], '作用域結束／物件退場');
-  assert.equal(api.labels['visual-exit'], '手動物件退場');
+  assert.equal(api.labels['visual-exit'], '物件退場');
 
   const document = {
     studio: {

@@ -12,6 +12,7 @@
   let activeControl = null;
   let activeDirty = false;
   let syncingPicker = false;
+  let refreshSwatches = () => {};
 
   // ---------------------------------------------------------------------------
   // 區段：色彩值與控制項同步
@@ -57,6 +58,10 @@
     popup.className = 'trace-iro-popup';
     popup.hidden = true;
     const mount = document.createElement('div');
+    refreshSwatches = ASMColorPickerPolicy.swatches(popup, (alias, value) => {
+      if (!activeControl) return;
+      activeDirty = true; updateControl(activeControl, value, true); commitActiveControl(); closePopup();
+    });
     popup.append(mount);
     document.body.append(popup);
 
@@ -73,9 +78,10 @@
     picker.on('color:change', color => {
       if (!activeControl || syncingPicker) return;
       activeDirty = true;
+      ASMColorPickerPolicy.remember(color.rgbaString);
       updateControl(activeControl, color.alpha < 1 ? color.rgbaString : color.hexString, true);
     });
-    picker.on('input:end', commitActiveControl);
+    picker.on('input:end', color => { ASMColorPickerPolicy.remember(color.rgbaString, true); refreshSwatches(); commitActiveControl(); });
     popup.addEventListener('pointerup', () => queueMicrotask(commitActiveControl), true);
     return true;
   }
@@ -85,19 +91,17 @@
   // ---------------------------------------------------------------------------
   function open(control) {
     if (!ensurePicker()) return;
-    if (!popup.hidden && activeControl === control) {
-      closePopup();
-      return;
-    }
+    if (!popup.hidden && activeControl === control) return;
     commitActiveControl();
     activeControl = control;
     activeDirty = false;
     syncingPicker = true;
-    try { picker.color.set(control.value); } finally { syncingPicker = false; }
+    try { picker.color.set(ASMColorPickerPolicy.last(control.value)); } finally { syncingPicker = false; }
     popup.hidden = false;
+    refreshSwatches();
     const rect = control.getBoundingClientRect();
     const width = 230;
-    const height = 315;
+    const height = popup.getBoundingClientRect().height || 315;
     popup.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
     popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - height - 8))}px`;
   }
@@ -116,9 +120,13 @@
       set: value => updateControl(control, value)
     });
     control.value = initialColor;
-    control.addEventListener('click', event => {
-      event.stopPropagation();
-      open(control);
+    ASMColorPickerPolicy.bind(control, {
+      open: () => open(control),
+      apply: value => {
+        commitActiveControl(); activeControl = control; activeDirty = true;
+        updateControl(control, value, true); commitActiveControl();
+      },
+      paint: value => control.style.setProperty('--trace-picker-color', value)
     });
     return control;
   }

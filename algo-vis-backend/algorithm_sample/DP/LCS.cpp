@@ -17,9 +17,9 @@ string S,T;
 vector<vector<int>> LCS;
 set<string> ans;
 
-// @defaults
+// @default
 // @camera auto zoom(1.2) offset(0,-20)
-// @enddefaults
+// @enddefault
 
 // @preset lcs_view
 // @let rows = S.size()

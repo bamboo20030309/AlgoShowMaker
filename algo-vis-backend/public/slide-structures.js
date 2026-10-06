@@ -522,10 +522,12 @@
       window.draw_array_normal(node, `tree_${index}`, [content], nodeStyles, [0, 0], 1, indexMode, 0);
       node.querySelectorAll(':scope > .outerframe-bg, :scope > .outerframe-nb, :scope > .outerframe-label')
         .forEach(element => element.remove());
-      node.querySelectorAll(':scope > g[id^="cell-"]').forEach(cell => {
-        const transform = cell.getAttribute('transform');
-        cell.setAttribute('transform', `${transform ? `${transform} ` : ''}translate(-8 -8)`);
-      });
+      // The array renderer adds 8px of frame padding. Strip that padding
+      // from the entire node content, including sibling highlight/point/mark
+      // visuals, so every hint stays aligned with its cell.
+      const nodeContent = element('g', { class: 'tree-node-content', transform: 'translate(-8 -8)' });
+      while (node.firstChild) nodeContent.appendChild(node.firstChild);
+      node.appendChild(nodeContent);
       tagEditableCells(node, 'binary_tree');
     });
 
@@ -877,6 +879,24 @@
     };
   }
 
+  // Point is painted outside the body. Keep its SVG/export viewport, but exclude
+  // only the space it adds from editing controls (including saved old objects).
+  function getSelectionRect(widget) {
+    const width = Math.max(40, number(widget.w, 320)), height = Math.max(40, number(widget.h, 160));
+    if (!parseIndices(widget.pointIndices).length && !Object.values(widget.cellStyles || {}).some(styles => typeof styles?.point === 'string' && styles.point)) return { left:0, top:0, width, height };
+    const cellStyles = Object.fromEntries(Object.entries(widget.cellStyles || {}).map(([key, styles]) => {
+      const clean = { ...styles }; delete clean.point; return [key, clean];
+    }));
+    const painted = buildStructureSvg(widget).bounds;
+    const body = buildStructureSvg({ ...widget, pointIndices: '', cellStyles }).bounds;
+    const scale = Math.min(width / (painted.right-painted.left), height / (painted.bottom-painted.top));
+    const left = Math.max(0, (body.left-painted.left)*scale);
+    const top = Math.max(0, (body.top-painted.top)*scale);
+    const right = Math.max(0, (painted.right-body.right)*scale);
+    const bottom = Math.max(0, (painted.bottom-body.bottom)*scale);
+    return { left, top, width: width-left-right, height: height-top-bottom };
+  }
+
   function createSvg(widget) {
     const width = Math.max(40, number(widget.w, 320));
     const height = Math.max(40, number(widget.h, 160));
@@ -930,6 +950,7 @@
     createSvg,
     drawCanvas,
     getNaturalSize,
+    getSelectionRect,
     parseIndices,
     cellStyleColor,
     render,

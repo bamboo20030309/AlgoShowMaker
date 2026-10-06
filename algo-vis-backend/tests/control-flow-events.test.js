@@ -11,9 +11,9 @@ int main() {
   }
   return 0;
 }
-`);
-  assert.ok(result.code.includes('"continue", "for-update")'));
-  assert.ok(result.code.includes('"break", "loop-exit")'));
+` + '\n// @layout linear as validation_scene\n');
+  assert.match(result.code, /"continue",\s*"for-update"(?:\s*,|\))/);
+  assert.match(result.code, /"break",\s*"loop-exit"(?:\s*,|\))/);
   assert.ok(Object.keys(result.eventSources).some(key => key.startsWith('continue:')));
   assert.ok(Object.keys(result.eventSources).some(key => key.startsWith('break:')));
 });

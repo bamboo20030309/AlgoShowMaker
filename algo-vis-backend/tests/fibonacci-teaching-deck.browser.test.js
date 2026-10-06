@@ -85,7 +85,7 @@ test('Fibonacci teaching deck compares recursion and array DP and rebuilds its a
       await page.waitForFunction(() => document.body.dataset.asmdeckRebuild === 'ready', null,
         { timeout: 90000 });
       assert.equal(await page.locator('.slides section').count(), 10);
-      assert.equal(await page.locator('body').getAttribute('data-asmdeck-rebuild-progress'), '2/2');
+      assert.equal(await page.locator('body').getAttribute('data-asmdeck-rebuild-progress'), '0/0', 'prebuilt animations need no recompilation');
       assert.equal(await page.locator('.algorithm-slide-frame:not([hidden])').count(), 2);
       assert.deepEqual(errors, []);
     } finally {

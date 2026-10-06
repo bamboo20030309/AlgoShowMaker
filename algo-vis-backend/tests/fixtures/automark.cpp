@@ -21,5 +21,6 @@ int main() {
     // @automark none
     // @style b[0] mark blue
     // @frame a,b
+    // @events scope-exit animate off
     cout << total;
 }

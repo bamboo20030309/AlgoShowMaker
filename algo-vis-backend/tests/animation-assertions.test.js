@@ -76,3 +76,29 @@ test('retained and live cells may share a key but not keep identity', () => {
     retained: true, retainedKey: 'snapshot-1/cell'
   }), object('cell', { effectiveOpacity: 0 })])] }).pass, true);
 });
+
+test('offscreen culling preserves keep nodes but never excuses onscreen hiding or removal', () => {
+  const initial = sample(0, [object('keep', { retained: true })]);
+  const culled = object('keep', { retained: true, effectiveOpacity: 0, intrinsicOpacity: 1,
+    viewportCulled: true, computed: { visibility: 'hidden' },
+    screen: { x: 20, y: -240, right: 60, bottom: -200 } });
+  const check = obj => validate({ samples: [initial,
+    { ...sample(16, obj ? [obj] : []), size: { width: 800, height: 600 } }, initial] });
+  assert.equal(check(culled).pass, true);
+  assert.equal(check({ ...culled, screen: { x: 20, y: 20, right: 60, bottom: 60 } }).pass, false);
+  assert.equal(check({ ...culled, intrinsicOpacity: 0 }).pass, false);
+  assert.equal(check({ ...culled, viewportCulled: false }).pass, false);
+  assert.equal(check(null).pass, false);
+});
+
+test('value mutations commit at their own time, not the sequence entrance time', () => {
+  const report = { plans: [{ frameId: 'frame-1', timeMs: 0, plan: { forwardReplay: {
+    checkpoints: [{ eventType: 'sequence-operation', mode: 'animated', commitMs: 0,
+      mutations: [{ kind: 'value', key: 'cell', before: { value: 3 }, after: { value: 9 }, commitMs: 500 }] }]
+  } } }], samples: [{ ...sample(100, [object('cell', { displayValue: '3' })]),
+    playbackPhase: 'trace-events', playbackElapsedMs: 100 }] };
+  assert.equal(validate(report).pass, true);
+  report.samples[0].objects[0].displayValue = '9';
+  assert.equal(validate(report).firstViolation.kind, 'early-value', 'early data is still rejected');
+  report.samples[0].playbackElapsedMs = 600; assert.equal(validate(report).pass, true);
+});

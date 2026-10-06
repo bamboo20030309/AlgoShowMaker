@@ -40,11 +40,13 @@ test('canvas culling preserves geometry and restores offscreen objects after cam
       ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
     });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    await page.goto(`${base}/algorithm.html?asmEmbed=runtime`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${base}/algorithm.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.asmApplyTraceDocument && window.ASMPlaybackTime);
+    await page.waitForFunction(() => document.body.dataset.defaultAnimationState === 'ready');
 
     await page.evaluate(() => {
       const svg = document.getElementById('arraySvg');
+      svg.querySelector('#asm-trace-root')?.remove();
       const ns = 'http://www.w3.org/2000/svg';
       const scene = document.createElementNS(ns, 'g');
       scene.id = 'asm-trace-root';

@@ -374,7 +374,7 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
   assert.equal(legacyTimeline[0].markerAssignment, false);
 });
 
-test('a declared marker with an initializer enters directly at its assigned position', async () => {
+test('a declared marker with an initializer enters unresolved before assignment moves it', async () => {
   const { trace, window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -406,8 +406,8 @@ int main() {
   ]);
   assert.equal(
     window.ASMTraceFrameTween.markerTargetBeforeFrameEvents(trace, initializerFrame, marker),
-    marker.dataset.traceBindingTarget,
-    'the declaration entrance starts at the initializer result rather than unresolved parking'
+    `unresolved:${Object.keys(trace.variables).find(id => trace.variables[id].name === 'arr')}`,
+    'the declaration entrance starts at unresolved parking before the initializer assignment'
   );
   const timeline = window.ASMTraceFrameTween.buildEventTimeline(
     trace, { id: 'declared-marker', events: [initializer], state: {} },
@@ -608,22 +608,31 @@ int main() {
   for (int i = 0; i < 2; i++) {
     // @frame arr
   }
-}`);
+}
+/* @asm-view
+{"version":1,"rules":[],"skins":{},"studio":{"eventSettings":{"autoLoopBoundaryEnabled":true}}}
+@asm-view */`);
   const event = trace.frames.flatMap(frame => frame.events || [])
     .find(item => item.type === 'assign' && item.expression === 'i = 0');
   const comparison = trace.frames.flatMap(frame => frame.events || [])
     .find(item => item.type === 'compare' && item.source?.text === 'i < 2');
   assert.ok(event);
   assert.ok(comparison);
+  window.ASMTraceEvents.applyEnabledStates(trace);
   window.ASMTraceFrameTween.updateEventAvailability(
     trace, { id: 'frame-for-initializer', events: [event, comparison] }, new Map(), new Map()
   );
   assert.equal(event.autoAnimationDisabled, true);
   assert.equal(event.autoAnimationUnavailableReason, 'missing-target');
   assert.equal(comparison.autoAnimationDisabled, true,
-    'a comparison still requires its operands to be visible on the canvas');
+    'an enabled comparison still needs visible operands for its canvas animation');
+  assert.equal(comparison.canvasRenderable, false);
   assert.equal(comparison.autoAnimationUnavailableReason, 'missing-target');
-  assert.equal(window.ASMTraceEvents.showInspector(event, trace), true);
+  assert.equal(window.ASMTraceEvents.showInspector(event, trace), false,
+    'initialization metadata shares its declaration row instead of duplicating it');
+  const declaration = trace.frames.flatMap(frame => frame.events || []).find(e => e.type === 'declare' && e.name === 'i');
+  assert.ok(declaration);
+  assert.equal(window.ASMTraceEvents.showInspector(declaration, trace), true);
   assert.equal(window.ASMTraceEvents.showInspector(comparison, trace), true);
 
   const ordinary = {
@@ -719,7 +728,7 @@ int main() {
   const largestId = variableId('largest');
   assert.ok(iId && largestId);
   const heapFrames = trace.frames.filter(frame => frame.state[iId]?.identity);
-  assert.ok(heapFrames.length >= 2);
+  assert.ok(heapFrames.length >= 2, JSON.stringify({ iId, variables: trace.variables, frames: trace.frames.map(f => ({ source: f.source, state: f.state })) }));
   const identities = heapFrames.map(frame => frame.state[iId]?.identity).filter(Boolean);
   assert.ok(new Set(identities).size >= 2, 'recursive i activations must remain distinguishable');
   heapFrames.forEach(frame => {

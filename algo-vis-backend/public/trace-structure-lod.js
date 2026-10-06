@@ -1,6 +1,7 @@
 // Transient presentation detail. Model values, cell anchors and styles stay intact.
 (function () {
   const groups = new Set();
+  const objects = new Set();
   let queued = 0;
   let jobs = [];
   let worker = 0;
@@ -8,14 +9,18 @@
   let observer;
   let observedViewport;
   const NS = 'http://www.w3.org/2000/svg';
+  const FULL_DETAIL_MIN_PX = 14;
   function level(pixels, previous) {
-    if (pixels >= 24) return 'full';
+    if (pixels >= FULL_DETAIL_MIN_PX) return 'full';
     if (previous === 'overview' && pixels < 10) return 'overview';
     return pixels < 8 ? 'overview' : 'simple';
   }
   function begin(group, scale, enabled) {
     if (!enabled) return;
-    group._asmLod = {level: level(40 * scale), records: [], paths: [], visible: new Set(), pool: []};
+    group._asmLod = {
+      level: level(40 * scale), records: [], paths: [], detailHosts: [],
+      visible: new Set(), pool: []
+    };
     group.dataset.asmLod = group._asmLod.level;
     groups.add(group);
   }
@@ -48,36 +53,99 @@
     text.setAttribute('font-size', window.fitSvgText(group, item.value, item.width, item.height));
     return text;
   }
+  function restoreDetails(state) {
+    for (const host of state.detailHosts || []) {
+      const parent = host?.parentNode;
+      if (!parent) continue;
+      while (host.firstChild) parent.insertBefore(host.firstChild, host);
+      host.remove();
+    }
+    state.detailHosts = [];
+  }
+  function unloadDetails(state) {
+    if ((state.detailHosts || []).some(host => host?.isConnected)) return;
+    const byParent = new Map();
+    for (const item of state.records) {
+      const parent = item.cell?.parentNode;
+      if (!parent || parent.hasAttribute?.('data-asm-lod-detail')) continue;
+      if (!byParent.has(parent)) byParent.set(parent, []);
+      byParent.get(parent).push(item.cell);
+    }
+    state.detailHosts = [];
+    for (const [parent, cells] of byParent) {
+      const ordered = [...new Set(cells)].sort((left, right) => {
+        if (left === right) return 0;
+        return left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+      });
+      const first = ordered[0];
+      if (!first || first.parentNode !== parent) continue;
+      const host = document.createElementNS(NS, 'g');
+      host.setAttribute('data-asm-lod-detail', '1');
+      host.setAttribute('display', 'none');
+      parent.insertBefore(host, first);
+      ordered.forEach(cell => {
+        if (cell.parentNode === parent) host.append(cell);
+      });
+      state.detailHosts.push(host);
+    }
+  }
   function paint(group) {
     const state = group._asmLod;
     if (!state) return;
     state.paths.forEach(path => path.remove());
     state.paths = [];
+    if (state.level !== 'overview') restoreDetails(state);
     const batches = new Map();
+    const grids = new Map();
     for (const item of state.records) {
       const rect = item.cell.querySelector(':scope > rect');
       if (!rect) continue;
       rect.removeAttribute('data-asm-lod-rect');
 
       if (state.level === 'overview') {
-        // Merge only base cells. Independent highlight/point/mark layers remain.
+        // Paint the complete board with a small number of paths. Cells with
+        // identical backgrounds share one fill path; every cell boundary is
+        // retained in a batched grid path so overview never becomes a solid
+        // color block.
         const color = rect.getAttribute('fill') || '#fff';
-        const key = color;
         const d = `M${item.x} ${item.y}h${item.width}v${item.height}h${-item.width}Z`;
-        batches.set(key, (batches.get(key) || '') + d);
+        batches.set(color, (batches.get(color) || '') + d);
+        const stroke = rect.getAttribute('stroke') || '#333';
+        const strokeWidth = rect.getAttribute('stroke-width') || '1';
+        const gridKey = `${stroke}\u0000${strokeWidth}`;
+        const grid = grids.get(gridKey) || { stroke, strokeWidth, d: '' };
+        grid.d += d;
+        grids.set(gridKey, grid);
         rect.setAttribute('data-asm-lod-rect', '1');
       }
     }
+    const directCell = state.records.map(item => item.cell)
+      .find(cell => cell?.parentNode === group) || null;
+    const existingHost = (state.detailHosts || []).find(host => host?.parentNode === group) || null;
+    const anchor = directCell || existingHost;
     for (const [fill, d] of batches) {
       const path = document.createElementNS(NS, 'path');
       path.setAttribute('d', d); path.setAttribute('fill', fill);
       path.setAttribute('pointer-events', 'none');
-      path.dataset.asmLodBatch = '1';
+      path.dataset.asmLodBatch = 'fill';
       // Base fills behind all cell styles, but above the outerframe background.
-      const firstCell = state.records[0]?.cell;
-      group.insertBefore(path, firstCell || null);
+      group.insertBefore(path, anchor);
       state.paths.push(path);
     }
+    for (const {stroke, strokeWidth, d} of grids.values()) {
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', stroke);
+      path.setAttribute('stroke-width', strokeWidth);
+      path.setAttribute('pointer-events', 'none');
+      path.setAttribute('shape-rendering', 'crispEdges');
+      path.dataset.asmLodBatch = 'grid';
+      path.dataset.asmLodGrid = '1';
+      group.insertBefore(path, anchor);
+      state.paths.push(path);
+    }
+    if (state.level === 'overview') unloadDetails(state);
     group.dataset.asmLod = state.level;
   }
   function release(state, item) {
@@ -89,6 +157,26 @@
   function finish(group) {
     if (!group._asmLod) return;
     paint(group);
+    schedule();
+  }
+  function observe(root) {
+    if (!root) return;
+    const objectCandidates = [...root.querySelectorAll('.asm-trace-object, [data-trace-object-key]')];
+    const arrowCandidates = [...root.querySelectorAll(
+      '[data-trace-arrow], .asm-trace-layout-edge, .asm-trace-keep-arrow, .asm-trace-recursion-flow-arrow'
+    )];
+    const arrows = new Set(arrowCandidates);
+    for (const element of [...objectCandidates, ...arrowCandidates]) {
+      if (!element?._asmObjectLod) {
+        element._asmObjectLod = {unit: 40, level: 'full'};
+        element.toggleAttribute('data-asm-lod-has-geometry', Boolean(
+          element.matches?.('rect,path,circle,ellipse,line,polyline,polygon,use,image')
+          || element.querySelector('rect,path,circle,ellipse,line,polyline,polygon,use,image')
+        ));
+      }
+      if (arrows.has(element)) element.dataset.asmLodKind = 'arrow';
+      objects.add(element);
+    }
     schedule();
   }
   function pump() {
@@ -133,7 +221,7 @@
       const wanted = new Set();
       // Geometry comes from the draw records: no per-cell DOM measurement.
       for (const item of state.records) {
-        if (item.width * scale + 1e-6 < 24) continue;
+        if (item.width * scale + 1e-6 < FULL_DETAIL_MIN_PX) continue;
         const x = matrix.a * item.x + matrix.c * item.y + matrix.e;
         const y = matrix.b * item.x + matrix.d * item.y + matrix.f;
         const dx = matrix.a * item.width, dy = matrix.b * item.width;
@@ -147,6 +235,15 @@
       state.visible = wanted;
       for (const item of wanted) if (!item.text) jobs.push({group,item,revision});
       group.toggleAttribute('data-asm-lod-pending', [...wanted].some(item=>!item.text));
+    }
+    for (const element of objects) {
+      if (!element.isConnected) { objects.delete(element); continue; }
+      const matrix = element.getScreenCTM?.();
+      if (!matrix) continue;
+      const state = element._asmObjectLod;
+      const next = level(state.unit * Math.hypot(matrix.a, matrix.b), state.level);
+      state.level = next;
+      element.dataset.asmObjectLod = next;
     }
     if (jobs.length && !worker) worker = requestAnimationFrame(pump);
   }
@@ -163,15 +260,34 @@
       target._asmLod = {level:state.level,
         records:state.records.map(item=>({...item,cell:mapping.get(item.cell),text:mapping.get(item.text)||null})),
         visible:new Set(),pool:[],
-        paths:state.paths.map(path=>mapping.get(path)).filter(Boolean)};
+        paths:state.paths.map(path=>mapping.get(path)).filter(Boolean),
+        detailHosts:(state.detailHosts||[]).map(host=>mapping.get(host)).filter(Boolean)};
       target._asmLod.visible = new Set(target._asmLod.records.filter(item=>item.text));
       groups.add(target);
+    }
+    for (const node of sourceNodes) {
+      if (!node._asmObjectLod) continue;
+      const target = mapping.get(node);
+      target._asmObjectLod = {...node._asmObjectLod};
+      target.dataset.asmObjectLod = node.dataset.asmObjectLod || node._asmObjectLod.level;
+      objects.add(target);
     }
     schedule();
   }
   const style = document.createElement('style');
   // Keep rect geometry and hit targets without painting individual grid lines.
-  style.textContent = '[data-asm-lod-rect] {fill-opacity:0 !important;stroke-opacity:0 !important;pointer-events:all;}';
+  style.textContent = `
+    [data-asm-lod-rect] {fill-opacity:0 !important;stroke-opacity:0 !important;pointer-events:all;}
+    [data-asm-lod-detail] {display:none;}
+    [data-asm-object-lod="simple"] .asm-trace-object-label,
+    [data-asm-object-lod="simple"] [data-trace-label-role],
+    [data-asm-object-lod="simple"] [data-trace-index-label],
+    [data-asm-object-lod="simple"] [data-trace-index] > text {display:none;}
+    [data-asm-object-lod="overview"][data-asm-lod-has-geometry] text {display:none;}
+    [data-asm-object-lod="overview"][data-asm-lod-kind="arrow"] {
+      stroke-dasharray:none !important;
+    }
+  `;
   document.head.append(style);
   window.addEventListener('asm:trace-rendered', () => {
     const viewport = window.getViewport?.();
@@ -184,5 +300,5 @@
   });
   window.addEventListener('resize', schedule);
   window.addEventListener('asm:camera-user-change', schedule);
-  window.ASMStructureLOD = {begin,record,finish,refresh,level,adopt};
+  window.ASMStructureLOD = {begin,record,finish,observe,refresh,level,adopt};
 })();

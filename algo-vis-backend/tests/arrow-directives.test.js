@@ -256,6 +256,7 @@ function rendererDomApi() {
   };
   window.ASMTraceModel = { diffFrame() { return []; } };
   window.ASMTraceTransitions = { defaults() { return { duration: 0, easing: 'linear' }; } };
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-camera.js'), 'utf8'));
   window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8'));
   return { window, renderer: window.ASMTraceRenderers };
 }
@@ -471,8 +472,12 @@ int main() {
     animatePositions: false, animateEvents: false
   });
   assert.equal(window.document.querySelector('#asm-trace-root')?.getAttribute('data-trace-directive-arrow-unresolved'), '0');
-  const foreground = window.document.querySelector('#asm-trace-root')?.lastElementChild;
+  const foreground = window.document.querySelector('#asm-trace-root > .asm-trace-foreground-arrows');
   assert.equal(foreground?.classList.contains('asm-trace-foreground-arrows'), true);
+  const objects = window.document.querySelectorAll('#asm-trace-root > .asm-trace-object');
+  assert.ok(objects.length > 0);
+  for (const object of objects) assert.ok(object.compareDocumentPosition(foreground)
+    & window.Node.DOCUMENT_POSITION_FOLLOWING, 'arrows paint above primary objects');
   assert.ok(foreground.querySelector('.asm-trace-directive-arrows'));
   assert.ok(window.document.querySelector('.asm-trace-directive-arrows line'), JSON.stringify({
     arrow: frame.arrows[0], targets: renderer.currentArrowTargets()

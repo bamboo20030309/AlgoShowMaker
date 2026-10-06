@@ -249,6 +249,8 @@
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
       id: frame.id || `frame-${index}`,
+      ...(frame.captureOrder != null && Number.isFinite(Number(frame.captureOrder))
+        ? { captureOrder: Number(frame.captureOrder) } : {}),
       sceneGeneration: Number.isFinite(Number(frame.sceneGeneration))
         ? Number(frame.sceneGeneration)
         : 0,
@@ -353,6 +355,7 @@
     normalized.viewSettingsApplied = Boolean(source.viewSettingsApplied
       || (normalized.asmView && window.ASMTraceViewSource?.applyToTrace));
     applyFrameConditions(normalized);
+    window.ASMTraceEvents?.rebuildVisualLifecycleEvents?.(normalized);
     window.ASMTraceEvents?.rebuildAutoFixedEvents?.(normalized);
     window.ASMTraceEvents?.applyEnabledStates?.(normalized);
     return normalized;

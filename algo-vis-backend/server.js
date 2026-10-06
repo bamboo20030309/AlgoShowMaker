@@ -19,10 +19,13 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const { EventEmitter } = require('node:events');
+const { Readable, Transform } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
 const { performance } = require('perf_hooks');
 //引入 crypto uuid
-const { randomUUID: uuidv4 } = require('crypto');
+const { createHash, randomUUID: uuidv4 } = require('crypto');
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');            //資料庫溝通套件
 const bcrypt = require('bcryptjs');            //密碼加密套件
@@ -34,7 +37,6 @@ const {
   loadJwtSecret
 } = require('./jwt-config');
 const {
-  analyzeSource,
   buildSyntaxTree,
   instrumentSource
 } = require('./trace-instrumenter');
@@ -43,6 +45,29 @@ const TraceProvenance = require('./public/trace-provenance');
 const TraceChunkStore = require('./trace-chunk-store');
 const SlideStorage = require('./public/slides-storage');
 const CloudContent = require('./cloud-content');
+const { resolveCompileOwner } = require('./compile-owner');
+const {
+  CompileJobQueue,
+  CompileQueueCancelledError,
+  CompileQueueError,
+} = require('./compile-job-queue');
+const {
+  getCompileDebugMessages,
+  logCompileDebug,
+  runWithCompileContext,
+} = require('./compile-context');
+const { TraceAnalysisPool, TraceAnalysisQueueError } = require('./trace-analysis-pool');
+const {
+  ArtifactCache,
+  createExecutableKey,
+  createTraceKey,
+  canonicalStringify,
+  sha256Canonical,
+} = require('./artifact-cache');
+const {
+  CompileJobRegistry,
+  CompileJobRegistryError,
+} = require('./compile-job-registry');
 
 // JWT 密鑰必須由部署環境提供；缺少或使用公開預設值時直接停止啟動。
 const JWT_SECRET = loadJwtSecret();
@@ -153,43 +178,312 @@ if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
   app.set('trust proxy', trustProxyHops);
 }
 const PORT = process.env.PORT || 3000;
+const INTERNAL_COMPILE_TOKEN = uuidv4();
 
-// 2. 設定限制器
-const limiter = rateLimit({
+function positiveIntegerEnv(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function attachCompileOwner(req, res, next) {
+  if (req.headers['x-asm-internal-token'] === INTERNAL_COMPILE_TOKEN) {
+    req.isInternalCompileRequest = true;
+    req.compileOwnerId = String(req.headers['x-asm-internal-owner'] || 'internal:async');
+    return next();
+  }
+  req.compileOwnerId = resolveCompileOwner(req, res, {
+    secret: JWT_SECRET,
+    verifyBearer: token => jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS),
+  });
+  next();
+}
+
+// 共用網路只做寬鬆的濫用保護；公平性與每人上限使用帳號或簽章瀏覽器 session。
+const ipAbuseLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 分鐘內
-  max: 20, // 每個 IP 最多只能送 20 次請求
+  max: positiveIntegerEnv('COMPILE_IP_RATE_LIMIT_PER_MINUTE', 600),
   message: { error: '請求過於頻繁，請稍後再試' },
-  skip: () => process.env.ASM_REGRESSION === '1'
+  standardHeaders: false,
+  legacyHeaders: false,
+  skip: req => process.env.ASM_REGRESSION === '1' || req.isInternalCompileRequest
 });
 
-// 3. 套用限制器到 /compile
-app.use('/compile', limiter);
+const ownerRateLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: positiveIntegerEnv('COMPILE_OWNER_RATE_LIMIT_PER_MINUTE', 120),
+  keyGenerator: req => req.compileOwnerId,
+  message: { error: '你的編譯請求過於頻繁，請稍後再試' },
+  skip: req => process.env.ASM_REGRESSION === '1' || req.isInternalCompileRequest
+});
+
+const compileJobPollLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: positiveIntegerEnv('ASYNC_COMPILE_POLL_RATE_LIMIT_PER_MINUTE', 600),
+  keyGenerator: req => req.compileOwnerId,
+  message: { error: '工作狀態查詢過於頻繁，請稍後再試' },
+  standardHeaders: false,
+  legacyHeaders: false,
+  skip: () => process.env.ASM_REGRESSION === '1',
+});
+
+const compileResultLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: positiveIntegerEnv('ASYNC_COMPILE_RESULT_RATE_LIMIT_PER_MINUTE', 30),
+  keyGenerator: req => req.compileOwnerId,
+  message: { error: '編譯結果下載過於頻繁，請稍後再試' },
+  standardHeaders: false,
+  legacyHeaders: false,
+  skip: () => process.env.ASM_REGRESSION === '1',
+});
+
+const resultStreamState = { active: 0, byOwner: new Map() };
+function acquireResultStream(ownerId) {
+  const globalLimit = positiveIntegerEnv('ASYNC_COMPILE_RESULT_STREAMS', 8);
+  const ownerLimit = positiveIntegerEnv('ASYNC_COMPILE_RESULT_STREAMS_PER_OWNER', 2);
+  const ownerActive = resultStreamState.byOwner.get(ownerId) || 0;
+  if (resultStreamState.active >= globalLimit || ownerActive >= ownerLimit) return null;
+  resultStreamState.active += 1;
+  resultStreamState.byOwner.set(ownerId, ownerActive + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    resultStreamState.active -= 1;
+    const remaining = (resultStreamState.byOwner.get(ownerId) || 1) - 1;
+    if (remaining > 0) resultStreamState.byOwner.set(ownerId, remaining);
+    else resultStreamState.byOwner.delete(ownerId);
+  };
+}
+
+// 先建立公平排程身分，再套用個人與全站濫用限制。
+app.use('/compile', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter);
+
+const compileQueue = new CompileJobQueue({
+  concurrency: positiveIntegerEnv('COMPILE_CONCURRENCY', 1),
+  maxPending: positiveIntegerEnv('COMPILE_MAX_QUEUED', 150),
+  maxPendingPerOwner: positiveIntegerEnv('COMPILE_MAX_QUEUED_PER_OWNER', 3),
+  maxActivePerOwner: positiveIntegerEnv('COMPILE_MAX_ACTIVE_PER_OWNER', 1),
+});
+
+// Async callers release their browser connection immediately and poll a small
+// owner-scoped record. A few loopback submissions may wait on the authoritative
+// compileQueue, while the remaining burst stays as lightweight registry data.
+const compileJobRegistry = new CompileJobRegistry({
+  queueOptions: {
+    concurrency: positiveIntegerEnv('ASYNC_COMPILE_DISPATCH_CONCURRENCY', 2),
+    maxPending: positiveIntegerEnv('COMPILE_MAX_QUEUED', 150),
+    maxPendingPerOwner: positiveIntegerEnv('COMPILE_MAX_QUEUED_PER_OWNER', 3),
+    maxActivePerOwner: 1,
+  },
+  ttlMs: positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 10) * 60 * 1000,
+  maxResults: positiveIntegerEnv('ASYNC_COMPILE_MAX_RESULTS', 100),
+});
+
+function compilePriority(req) {
+  const purpose = String(req.headers['x-compile-purpose'] || '').toLowerCase();
+  if (purpose === 'manual' || purpose === 'current-slide') return 'interactive';
+  if (purpose === 'nearby-slide') return 'normal';
+  if (purpose === 'background') return 'background';
+  return 'normal';
+}
+
+/**
+ * Keep the existing synchronous HTTP contract while serializing the expensive
+ * compiler/runtime section. The queue slot is released only after the response
+ * finishes, so the next request cannot overlap g++, the sandbox, or trace load.
+ */
+function queueCompileRequest(req, res, next) {
+  if (req.method !== 'POST') return next();
+  const queuedAt = performance.now();
+  let started = false;
+  let ticket;
+
+  try {
+    ticket = compileQueue.enqueue({
+      ownerId: req.compileOwnerId,
+      priority: compilePriority(req),
+      // HTTP response streaming is still request-bound. Cross-request result
+      // deduplication is enabled in the scheduler API after compile execution is
+      // extracted into a reusable result object; do not share a response here.
+      run: ({ jobId }) => new Promise((resolve) => {
+        started = true;
+        req.compileWorkSpawned = false;
+        req.compileJobId = jobId;
+        const waitMs = Math.max(0, Math.round(performance.now() - queuedAt));
+        if (!res.headersSent) {
+          res.setHeader('X-Compile-Job-Id', jobId);
+          res.setHeader('X-Compile-Queue-Wait-Ms', String(waitMs));
+        }
+
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
+          resolve();
+        };
+        req.once('asm:compile-work-complete', release);
+        res.once('finish', () => {
+          if (!req.compileWorkSpawned) release();
+        });
+        res.once('close', () => {
+          if (!req.compileWorkSpawned) release();
+        });
+        next();
+      }),
+    });
+  } catch (error) {
+    if (error instanceof CompileQueueError) {
+      const status = error.code === 'COMPILE_QUEUE_FULL' ? 503 : error.statusCode;
+      res.setHeader('Retry-After', '5');
+      return res.status(status).json({
+        error: error.code === 'COMPILE_QUEUE_FULL'
+          ? '編譯佇列已滿，請稍後再試'
+          : '你已有太多等待中的編譯工作',
+        code: error.code,
+      });
+    }
+    return next(error);
+  }
+
+  const cancelIfWaiting = () => {
+    if (!started) ticket.cancel();
+  };
+  req.once('aborted', cancelIfWaiting);
+  res.once('close', () => {
+    if (!res.writableEnded) cancelIfWaiting();
+  });
+
+  ticket.promise.catch((error) => {
+    if (error instanceof CompileQueueCancelledError) return;
+    if (!res.headersSent) next(error);
+    else res.destroy(error);
+  });
+}
+
+// Queue before JSON parsing so waiting requests do not each retain an up-to-8MB
+// parsed body inside the 1 GB backend container.
+app.use('/compile', queueCompileRequest);
+
+app.get('/api/compile/queue', async (req, res) => {
+  const state = compileQueue.snapshot();
+  const asyncState = compileJobRegistry.metrics();
+  const asyncQueue = asyncState.queue;
+  await artifactCacheReady;
+  res.json({
+    active: state.active,
+    pending: state.pending,
+    concurrency: state.concurrency,
+    maxPending: state.maxPending,
+    asyncJobs: {
+      queued: asyncState.queued,
+      running: asyncState.running,
+      completed: asyncState.completed,
+      failed: asyncState.failed,
+      cancelled: asyncState.cancelled,
+      retained: asyncState.retained,
+      counters: asyncState.counters,
+      queue: {
+        concurrency: asyncQueue.concurrency,
+        maxActivePerOwner: asyncQueue.maxActivePerOwner,
+        maxPendingPerOwner: asyncQueue.maxPendingPerOwner,
+        maxPending: asyncQueue.maxPending,
+        active: asyncQueue.active,
+        pending: asyncQueue.pending,
+        inFlightKeys: asyncQueue.inFlightKeys,
+      },
+    },
+    traceAnalysis: traceAnalysisPool.snapshot(),
+    traceAnalysisCacheEntries: traceAnalysisCache.size,
+    resultStreams: {
+      active: resultStreamState.active,
+      max: positiveIntegerEnv('ASYNC_COMPILE_RESULT_STREAMS', 8),
+    },
+    artifacts: artifactCache.stats(),
+  });
+});
 
 // 設定目錄路徑
 const SAMPLE_DIR = path.join(__dirname, 'tmp', 'algorithm_sample');
 // 確保暫存目錄存在
-const TEMP_DIR = path.join(__dirname, 'tmp');
+const TEMP_DIR = process.env.ASM_TEMP_DIR
+  ? path.resolve(process.env.ASM_TEMP_DIR)
+  : path.join(__dirname, 'tmp');
 if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR);
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-let debugMessages = [];
+function computeCompilerFingerprint() {
+  const hash = createHash('sha256');
+  hash.update(process.env.ASM_COMPILER_FINGERPRINT || `${process.platform}-${process.arch}-g++`);
+  for (const args of [['--version'], ['-dumpmachine'], ['-dumpfullversion', '-dumpversion']]) {
+    const result = spawnSync('g++', args, { encoding: 'utf8', timeout: 3000, windowsHide: true });
+    hash.update(result.stdout || '');
+    hash.update(result.stderr || '');
+    hash.update(String(result.status));
+  }
+  for (const relativePath of ['trace-instrumenter.js', 'lib/ASMTrace.hpp', 'lib/AV.hpp']) {
+    hash.update(relativePath);
+    hash.update(fs.readFileSync(path.join(__dirname, relativePath)));
+  }
+  return `asm-compiler-v2-${hash.digest('hex')}`;
+}
+
+const COMPILER_FINGERPRINT = computeCompilerFingerprint();
+
+const artifactCache = new ArtifactCache({
+  rootDir: process.env.ARTIFACT_CACHE_DIR || path.join(__dirname, 'artifact-cache-data'),
+  maxBytes: positiveIntegerEnv('ARTIFACT_CACHE_MAX_MB', 512) * 1024 * 1024,
+  defaultTtlMs: positiveIntegerEnv('ARTIFACT_CACHE_TTL_HOURS', 168) * 60 * 60 * 1000,
+});
+const artifactCacheReady = artifactCache.init().catch((error) => {
+  console.error('Artifact cache initialization failed:', error.message);
+  return null;
+});
+
+const artifactMaintenanceTimer = setInterval(() => {
+  compileJobRegistry.metrics();
+  artifactCache.prune().catch(error => console.error('Artifact cache prune failed:', error.message));
+}, 60_000);
+artifactMaintenanceTimer.unref();
 
 // === 限制設定 ===
 const LIMITS = {
   TIME_MS: 5000,
   MEMORY_MB: 256,
   OUTPUT_SIZE: 64 * 1024,
+  COMPILE_TIME_MS: 20 * 1000,
+  COMPILE_STDERR_SIZE: 256 * 1024,
   HTTP_JSON_SIZE: '8mb',
 };
 
+// Static trace analysis is deterministic for a source string. Keeping a small
+// process-local LRU avoids repeating the same parser/instrumenter CPU work when
+// many browsers open the same public example deck.
+const TRACE_ANALYSIS_CACHE_MAX = positiveIntegerEnv('TRACE_ANALYSIS_CACHE_MAX', 100);
+const traceAnalysisCache = new Map();
+const traceAnalysisPool = new TraceAnalysisPool({
+  size: positiveIntegerEnv('TRACE_ANALYSIS_WORKERS', 1),
+  maxPending: positiveIntegerEnv('TRACE_ANALYSIS_MAX_QUEUED', 150),
+});
+
+function getCachedTraceAnalysis(key) {
+  const value = traceAnalysisCache.get(key);
+  if (!value) return null;
+  traceAnalysisCache.delete(key);
+  traceAnalysisCache.set(key, value);
+  return value;
+}
+
+function setCachedTraceAnalysis(key, value) {
+  traceAnalysisCache.set(key, value);
+  while (traceAnalysisCache.size > TRACE_ANALYSIS_CACHE_MAX) {
+    traceAnalysisCache.delete(traceAnalysisCache.keys().next().value);
+  }
+}
+
 // 記錄 debug 訊息
 function logDebug(msg, extra = {}) {
-  debugMessages.push({
-    time: new Date().toISOString(),
-    msg,
-    ...extra,
-  });
+  logCompileDebug(msg, extra);
 }
 
 function usesLegacyAnimationCompiler(source) {
@@ -204,90 +498,272 @@ app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'f
 app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaames', 'iro', 'dist')));
 app.use('/vendor/ace', express.static(path.join(__dirname, 'node_modules', 'ace-builds', 'src-min-noconflict')));
 app.use(express.static(path.join(__dirname, 'public')));
+// Async jobs are spooled to disk, but bounding each request also limits the
+// short interval between JSON parsing and the spool write during a burst.
+app.use('/api/compile/jobs', express.json({ limit: '512kb' }));
 app.use(express.json({ limit: LIMITS.HTTP_JSON_SIZE }));
 app.use((err, req, res, next) => {
   if (err?.type === 'entity.too.large') {
+    if (req.path?.startsWith('/api/compile/jobs')) {
+      return res.status(413).json({ error: '非同步編譯請求超過 512 KB 上限' });
+    }
     return res.status(413).json({ error: '請求內容超過 8 MB 上限' });
   }
   return next(err);
+});
+
+function sendCompileJobError(res, error) {
+  if (error instanceof CompileJobRegistryError || error instanceof CompileQueueError) {
+    if (error.code === 'COMPILE_QUEUE_FULL') res.setHeader('Retry-After', '5');
+    return res.status(error.statusCode || 500).json({ error: error.message, code: error.code });
+  }
+  console.error('Async compile job failed:', error);
+  return res.status(500).json({ error: '非同步編譯工作暫時無法使用', code: 'ASYNC_COMPILE_ERROR' });
+}
+
+function forwardedCompileHeaders(req) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Compile-Cache': 'shared',
+    'X-Compile-Purpose': String(req.headers['x-compile-purpose'] || 'background'),
+    'X-ASM-Internal-Token': INTERNAL_COMPILE_TOKEN,
+    'X-ASM-Internal-Owner': req.compileOwnerId,
+  };
+  return headers;
+}
+
+async function spoolFetchResponse(response, ttlMs) {
+  const maximumBytes = positiveIntegerEnv('ASYNC_COMPILE_RESULT_MAX_MB', 128) * 1024 * 1024;
+  const declaredBytes = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredBytes) && declaredBytes > maximumBytes) {
+    throw new Error(`非同步編譯結果超過 ${maximumBytes / 1024 / 1024} MB 上限`);
+  }
+  const stagingDirectory = path.join(artifactCache.rootDir, '.staging');
+  await fs.promises.mkdir(stagingDirectory, { recursive: true });
+  const temporaryPath = path.join(stagingDirectory, `async_result_${uuidv4()}.json`);
+  const hash = createHash('sha256').update('async-compile-result-v1\0');
+  let bytes = 0;
+  const limiter = new Transform({
+    transform(chunk, encoding, callback) {
+      bytes += chunk.length;
+      if (bytes > maximumBytes) return callback(new Error(`非同步編譯結果超過 ${maximumBytes / 1024 / 1024} MB 上限`));
+      hash.update(chunk);
+      callback(null, chunk);
+    },
+  });
+  try {
+    const source = response.body ? Readable.fromWeb(response.body) : Readable.from([]);
+    await pipeline(source, limiter, fs.createWriteStream(temporaryPath, { flags: 'wx' }));
+    const sharedTraceId = String(response.headers.get('x-compile-trace-id') || '');
+    if (/^[a-f0-9]{64}$/.test(sharedTraceId)) {
+      const sharedTrace = await artifactCache.lookup('trace', sharedTraceId);
+      if (sharedTrace) {
+        return {
+          statusCode: response.status,
+          resultArtifactId: sharedTraceId,
+          contentType: response.headers.get('content-type') || 'application/json',
+        };
+      }
+    }
+    const resultArtifactId = hash.digest('hex');
+    await artifactCache.putFile('trace', resultArtifactId, temporaryPath, {
+      ttlMs,
+      metadata: {
+        asyncCompileResult: true,
+        statusCode: response.status,
+        contentType: response.headers.get('content-type') || 'application/json',
+      },
+    });
+    return {
+      statusCode: response.status,
+      resultArtifactId,
+      contentType: response.headers.get('content-type') || 'application/json',
+    };
+  } finally {
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => {});
+  }
+}
+
+async function storeJsonArtifact(key, body, options = {}) {
+  const stagingDirectory = path.join(artifactCache.rootDir, '.staging');
+  await fs.promises.mkdir(stagingDirectory, { recursive: true });
+  const temporaryPath = path.join(stagingDirectory, `cached_response_${uuidv4()}.json`);
+  try {
+    await pipeline(
+      Readable.from(TraceChunkStore.jsonParts(body)),
+      fs.createWriteStream(temporaryPath, { flags: 'wx' }),
+    );
+    return await artifactCache.putFile('trace', key, temporaryPath, options);
+  } finally {
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => {});
+  }
+}
+
+// Optional non-blocking API for bursty classrooms. Existing clients may keep
+// using POST /compile; new clients can submit once, poll status, then download
+// the owner-scoped result without holding a long HTTP connection open.
+app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, async (req, res) => {
+  if (typeof req.body?.code !== 'string') return res.status(400).json({ error: 'code 必須是字串' });
+  if (!await artifactCacheReady) return res.status(503).json({ error: '編譯結果儲存區尚未就緒' });
+  const requestBody = { ...req.body, cachePolicy: 'shared' };
+  const asyncResultTtlMs = positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 10) * 60 * 1000;
+  const asyncRequestTtlMs = positiveIntegerEnv('ASYNC_COMPILE_REQUEST_TTL_MINUTES', 120) * 60 * 1000;
+  const requestArtifactId = sha256Canonical({
+    namespace: 'async-compile-request-v1',
+    requestBody,
+    engine: `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`,
+    compiler: COMPILER_FINGERPRINT,
+  });
+  const compileHeaders = forwardedCompileHeaders(req);
+  const priority = compilePriority(req);
+  try {
+    await artifactCache.put('trace', requestArtifactId, canonicalStringify(requestBody), {
+      ttlMs: asyncRequestTtlMs,
+      metadata: { asyncCompileRequest: true },
+    });
+    const handle = compileJobRegistry.submit({
+      ownerId: req.compileOwnerId,
+      key: requestArtifactId,
+      priority,
+      metadata: { requestArtifactId },
+      run: async () => {
+        const requestArtifact = await artifactCache.read('trace', requestArtifactId);
+        if (!requestArtifact) {
+          const error = new Error('排隊中的編譯內容已過期，請重新送出工作');
+          error.code = 'ASYNC_COMPILE_REQUEST_EXPIRED';
+          error.statusCode = 410;
+          throw error;
+        }
+        try {
+          const response = await fetch(`http://127.0.0.1:${PORT}/compile`, {
+            method: 'POST',
+            headers: compileHeaders,
+            body: requestArtifact.data,
+            signal: AbortSignal.timeout(positiveIntegerEnv('ASYNC_COMPILE_TIMEOUT_MS', 420_000)),
+          });
+          if (response.status === 429 || response.status >= 500) {
+            await response.body?.cancel().catch(() => {});
+            const error = new Error(`內部編譯服務回應 ${response.status}`);
+            error.code = 'ASYNC_COMPILE_UPSTREAM_ERROR';
+            error.statusCode = response.status;
+            throw error;
+          }
+          return await spoolFetchResponse(response, asyncResultTtlMs);
+        } finally {
+          await artifactCache.remove('trace', requestArtifactId).catch(() => {});
+        }
+      },
+    });
+    const snapshot = compileJobRegistry.getSnapshot(handle.jobId, req.compileOwnerId);
+    res.status(202).json({
+      jobId: handle.jobId,
+      state: snapshot.state,
+      queuePosition: snapshot.queuePosition,
+      deduplicated: handle.deduplicated,
+      statusUrl: `/api/compile/jobs/${handle.jobId}`,
+      resultUrl: `/api/compile/jobs/${handle.jobId}/result`,
+    });
+  } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      console.error('Async compile result stream failed:', error.message);
+      if (!res.destroyed) res.destroy(error);
+      return undefined;
+    }
+    return sendCompileJobError(res, error);
+  }
+});
+
+app.get('/api/compile/jobs/:jobId', attachCompileOwner, compileJobPollLimiter, (req, res) => {
+  try {
+    const snapshot = compileJobRegistry.getSnapshot(req.params.jobId, req.compileOwnerId);
+    res.json({
+      ...snapshot,
+      resultUrl: snapshot.state === 'completed'
+        ? `/api/compile/jobs/${snapshot.jobId}/result`
+        : null,
+    });
+  } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      console.error('Async compile result stream failed:', error.message);
+      if (!res.destroyed) res.destroy(error);
+      return undefined;
+    }
+    return sendCompileJobError(res, error);
+  }
+});
+
+app.get('/api/compile/jobs/:jobId/result', attachCompileOwner, compileResultLimiter, async (req, res) => {
+  const releaseStream = acquireResultStream(req.compileOwnerId);
+  if (!releaseStream) {
+    res.setHeader('Retry-After', '2');
+    return res.status(429).json({ error: '目前下載中的大型結果過多，請稍後再試' });
+  }
+  try {
+    const snapshot = compileJobRegistry.getSnapshot(req.params.jobId, req.compileOwnerId);
+    if (snapshot.state !== 'completed') {
+      return res.status(409).json({ error: '編譯工作尚未完成', state: snapshot.state });
+    }
+    const lease = await artifactCache.acquire('trace', snapshot.result.resultArtifactId);
+    if (!lease) return res.status(410).json({ error: '編譯結果已過期，請重新送出工作' });
+    res.status(snapshot.result.statusCode);
+    res.type(snapshot.result.contentType || 'application/json');
+    res.setHeader('Content-Length', String(lease.entry.size));
+    try {
+      await pipeline(fs.createReadStream(lease.entry.path), res);
+    } finally {
+      await lease.release();
+    }
+    return undefined;
+  } catch (error) {
+    if (res.headersSent || res.destroyed) {
+      console.error('Async compile result stream failed:', error.message);
+      if (!res.destroyed) res.destroy(error);
+      return undefined;
+    }
+    return sendCompileJobError(res, error);
+  } finally {
+    releaseStream();
+  }
+});
+
+app.delete('/api/compile/jobs/:jobId', attachCompileOwner, (req, res) => {
+  try {
+    res.json(compileJobRegistry.cancel(req.params.jobId, req.compileOwnerId));
+  } catch (error) {
+    return sendCompileJobError(res, error);
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 靜態分析 API：只解析來源碼，不會編譯或執行使用者輸入
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.post('/trace/analyze', limiter, (req, res) => {
+app.post('/trace/analyze', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, async (req, res) => {
   const code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  const cacheKey = createHash('sha256').update(code).digest('base64url');
+  const cached = getCachedTraceAnalysis(cacheKey);
+  if (cached) {
+    res.setHeader('X-Trace-Analysis-Cache', 'HIT');
+    return res.json(cached);
+  }
   try {
-    const analysis = analyzeSource(code);
-    const instrumented = instrumentSource(code, []);
-    const frameDirectives = instrumented.frameDirectives;
-    const layoutDirectives = instrumented.layoutDirectives;
-    const branchDirectives = instrumented.branchDirectives;
-    res.json({
-      success: true,
-      layouts: layoutDirectives,
-      branches: branchDirectives.map(directive => ({
-        type: directive.type,
-        line: directive.line,
-        label: directive.label || '',
-        layoutId: directive.layoutId || ''
-      })),
-      frameDirectives: frameDirectives.map(directive => ({
-        line: directive.line,
-        name: directive.name || '',
-        objectId: directive.objectId || '',
-        layoutId: directive.layoutId || '',
-        names: directive.names,
-        variableIds: directive.variables.map(variable => variable.id),
-        captureOnlyVariableIds: directive.captureOnlyVariableIds || [],
-        lets: directive.lets || [],
-        bindings: directive.bindings || [],
-        objectBinding: directive.objectBinding || null,
-        placeBindings: directive.placeBindings || [],
-        renderer: directive.renderer || '',
-        rendererOptions: directive.rendererOptions || {},
-        objects: (directive.objects || []).map(object => ({
-          line: object.line,
-          frameSpec: object.frameSpec || '',
-          objectId: object.objectId || '',
-          layoutId: object.layoutId || '',
-          primaryVariableId: object.primaryVariableId || '',
-          primaryName: object.primaryName || '',
-          displayVariableIds: object.displayVariableIds || [],
-          renderer: object.renderer || '',
-          rendererOptions: object.rendererOptions || {},
-          objectBinding: object.objectBinding || null
-        })),
-        when: directive.when || null,
-        texts: directive.texts || [],
-        styles: directive.styles || [],
-        segments: directive.segments || [],
-        arrows: directive.arrows || [],
-        eventControls: directive.eventControls || [],
-        autoMarkVariableIds: directive.autoMarkVariableIds,
-        camera: directive.camera || null,
-        presetDirectives: directive.presetDirectives || []
-      })),
-      variables: instrumented.variables.map(variable => ({
-        id: variable.id,
-        name: variable.name,
-        cppType: variable.type,
-        kind: variable.kind,
-        line: variable.line,
-        functionName: variable.functionName,
-        supported: variable.supported
-      }))
-    });
+    const responseBody = await traceAnalysisPool.analyze(code);
+    setCachedTraceAnalysis(cacheKey, responseBody);
+    res.setHeader('X-Trace-Analysis-Cache', 'MISS');
+    res.json(responseBody);
   } catch (err) {
+    if (err instanceof TraceAnalysisQueueError) {
+      res.setHeader('Retry-After', '2');
+      return res.status(503).json({ error: '追蹤分析佇列已滿，請稍後再試', code: err.code });
+    }
     console.error('Failed to analyze trace source:', err);
     res.status(400).json({ error: `無法分析 C++ 程式碼：${err.message}` });
   }
 });
 
-app.post('/syntax-tree', limiter, (req, res) => {
+app.post('/syntax-tree', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, (req, res) => {
   const code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
@@ -673,11 +1149,20 @@ app.put('/api/slides/:deck_uid/share', authenticateToken, async (req, res) => {
   }
 });
 
-async function restoreSlideDeck(slide) {
+async function restoreSlideDeck(slide, { lazyTraces = false } = {}) {
   if (slide.cloud_snapshot) {
-    const restored = await cloudContent.restore(slide);
+    const restored = await cloudContent.restore(slide, { lazyTraces });
     slide.trace_keys = restored.record.references.map(ref => ref.key);
     return restored.deck;
+  }
+  if (lazyTraces) {
+    const record = slide.trace_references?.length
+      ? { deck: slide.deck, references: slide.trace_references }
+      : await SlideStorage.project(slide.deck);
+    const deck = JSON.parse(JSON.stringify(record.deck));
+    for (const ref of record.references) deck.groups[ref.groupIndex].slides[ref.slideIndex].animation.traceView = ref.view || {};
+    slide.trace_keys = record.references.map(ref => ref.key);
+    return deck;
   }
   return SlideStorage.hydrate({ deck: slide.deck, references: slide.trace_references || [],
     traces: slide.trace_results || {} });
@@ -711,6 +1196,37 @@ async function prepareTraceSave(body, query, updates) {
   return unset;
 }
 
+async function readSlideTrace(slide, key, history = false) {
+  if (!/^[a-f0-9]{64}$/.test(key)) throw Object.assign(new Error('動畫 ID 無效'), { status: 400 });
+  if (slide.cloud_snapshot) return cloudContent.trace(slide, key, { history });
+  const owned = slide.trace_references?.length
+    ? { references: slide.trace_references, traces: slide.trace_results || {} }
+    : await SlideStorage.project(slide.deck);
+  if (!owned.references.some(ref => ref.key === key) || !Object.hasOwn(owned.traces, key))
+    throw Object.assign(new Error('找不到這份投影片的動畫結果'), { status: 404 });
+  return owned.traces[key];
+}
+
+app.get('/api/slides/:deck_uid/traces/:key', authenticateToken, async (req, res) => {
+  try {
+    const slide = await SlideDeck.findOne({ deck_uid: req.params.deck_uid, user_uid: req.user.id }).lean();
+    if (!slide) return res.status(404).json({ error: '找不到投影片' });
+    res.json({ trace: await readSlideTrace(slide, req.params.key, true) });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
+app.get('/api/shared-slides/:share_token/traces/:key', async (req, res) => {
+  try {
+    const token = req.params.share_token;
+    const slide = await SlideDeck.findOne({ $or: [{ share_view_token: token }, { share_edit_token: token }] })
+      .select('deck_uid deck cloud_snapshot trace_references trace_results share_mode +share_view_token +share_edit_token');
+    const editor = slide && slide.share_edit_token === token && slide.share_mode === 'edit';
+    const viewer = slide && slide.share_view_token === token && ['view', 'edit'].includes(slide.share_mode);
+    if (!editor && !viewer) return res.status(404).json({ error: '分享連結無效或已停止分享' });
+    res.json({ trace: await readSlideTrace(slide, req.params.key, editor) });
+  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
 app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
   try {
     const slide = await SlideDeck.findOne({
@@ -723,7 +1239,7 @@ app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {
     }
 
     slide.trace_keys = Object.keys(slide.trace_results || {});
-    slide.deck = await restoreSlideDeck(slide);
+    slide.deck = await restoreSlideDeck(slide, { lazyTraces: req.query?.traceMode === 'lazy' });
     delete slide.trace_results;
     delete slide.trace_references;
     delete slide.cloud_snapshot;
@@ -800,7 +1316,7 @@ app.get('/api/shared-slides/:share_token', async (req, res) => {
       success: true,
       slide: {
         title: slide.title,
-        deck: await restoreSlideDeck(slide),
+        deck: await restoreSlideDeck(slide, { lazyTraces: req.query?.traceMode === 'lazy' }),
         trace_keys: slide.trace_keys || Object.keys(slide.trace_results || {}),
         cover_thumbnail: slide.cover_thumbnail,
         slide_count: slide.slide_count,
@@ -972,9 +1488,10 @@ function assignKeepBoundaryEvents(frames) {
   // events that the captured state already contains.
   frames.forEach(frame => {
     const orders = (frame.events || [])
+      .filter(event => event.afterCapture !== true)
       .map(event => Number(event?.order))
       .filter(Number.isFinite);
-    frame.captureOrder = orders.length ? Math.max(...orders) : -1;
+    frame.captureOrder = orders.reduce((order, value) => Math.max(order, value), -1);
   });
   for (let frameIndex = 1; frameIndex < frames.length; frameIndex += 1) {
     const frame = frames[frameIndex];
@@ -1168,7 +1685,8 @@ function materializeKeepSnapshots(frames, layouts = []) {
   function recursionSnapshotKey(event) {
     const layoutId = String(event?.layoutId || '');
     const activationId = String(event?.recursionActivationId || '');
-    return layoutId && activationId ? `${layoutId}\u0000${activationId}` : '';
+    return layoutsById.get(layoutId)?.type === 'recursion' && activationId
+      ? `${layoutId}\u0000${activationId}` : '';
   }
   function replacedRecursionSnapshot(event) {
     const key = recursionSnapshotKey(event);
@@ -1182,7 +1700,8 @@ function materializeKeepSnapshots(frames, layouts = []) {
       snapshot.replacesSnapshotId = replacedSnapshot.id;
     }
     activeSnapshotIds.push(snapshot.id);
-    const key = snapshot.layoutId && snapshot.recursionActivationId
+    const key = layoutsById.get(snapshot.layoutId)?.type === 'recursion'
+      && snapshot.recursionActivationId
       ? `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`
       : '';
     if (key) activeRecursionSnapshots.set(key, snapshot.id);
@@ -1217,21 +1736,36 @@ function materializeKeepSnapshots(frames, layouts = []) {
     };
   }
   function retainedSnapshotArrows(renderState, frame, snapshot) {
-    return (renderState?.arrows || []).map(arrow => {
+    const layoutArrows = (frame?.arrows || []).filter(arrow => (
+      arrow?.ownerLayoutId
+      || [arrow?.from, arrow?.to].some(endpoint => (
+        endpoint?.type === 'layout'
+        && endpoint.layoutSelector === 'current'
+        && endpoint.layoutId === snapshot.layoutId
+      ))
+    ));
+    const sourceArrows = [...(renderState?.arrows || []), ...layoutArrows]
+      .filter((arrow, index, all) => all.findIndex(candidate => candidate.id === arrow.id) === index);
+    return sourceArrows.map(arrow => {
       const retained = cloneTraceValue(arrow);
       retained.id = `${arrow.id}@${snapshot.id}`;
       retained.explicitId = true;
       retained.retainedFromArrowId = arrow.id;
       retained.source = 'directive';
-      retained.from = {
-        ...retained.from,
-        targetVariableId: '',
-        targetName: '',
-        targetObjectKey: snapshot.objectId,
-        objectKey: snapshot.objectId
-      };
+      if (retained.from?.type !== 'layout') {
+        retained.from = {
+          ...retained.from,
+          targetVariableId: '',
+          targetName: '',
+          targetObjectKey: snapshot.objectId,
+          objectKey: snapshot.objectId
+        };
+      }
       for (const endpointName of ['from', 'to']) {
         const endpoint = retained[endpointName];
+        if (endpoint?.type === 'layout' && endpoint.layoutSelector === 'current') {
+          endpoint.layoutActivationId = String(snapshot.recursionActivationId || '');
+        }
         if (!endpoint || !Array.isArray(endpoint.indexExpressions)) continue;
         const resolved = endpoint.indexExpressions.map(expression => (
           resolveTraceIndexExpression(frame, expression)
@@ -1330,6 +1864,12 @@ function materializeKeepSnapshots(frames, layouts = []) {
             snapshotIds: []
           }
         };
+        if (snapshot.layoutId) {
+          snapshot.arrows = retainedSnapshotArrows(
+            { arrows: retainedFrame.arrows || [] }, retainedFrame, snapshot
+          );
+          snapshot.frame.arrows = [];
+        }
         snapshots.push(snapshot);
         activateSnapshot(snapshot, replacedSnapshot);
         keepLastFocus = true;
@@ -1354,6 +1894,16 @@ function materializeKeepSnapshots(frames, layouts = []) {
       const labelBase = String(event.label || event.name || entry.name || 'Snapshot').trim() || 'Snapshot';
       const replacedSnapshot = replacedRecursionSnapshot(event);
       const objectId = replacedSnapshot?.objectId || allocateObjectId(labelBase);
+      const styleVariableIds = new Set([
+        variableId,
+        ...Object.keys(frame.renderers || {}),
+        ...(frame.captureOnlyVariableIds || [])
+      ]);
+      const styleFrameState = Object.fromEntries(Object.entries(frame.state || {})
+        .filter(([stateVariableId]) => styleVariableIds.has(stateVariableId))
+        .map(([stateVariableId, stateEntry]) => [
+          stateVariableId, cloneTraceValue(stateEntry)
+        ]));
       const snapshot = {
         id,
         objectId,
@@ -1382,7 +1932,15 @@ function materializeKeepSnapshots(frames, layouts = []) {
         data: JSON.parse(JSON.stringify(capturedData ?? entry.data)),
         renderer: renderState.renderer,
         rendererOptions: renderState.rendererOptions,
-        styles: preserveStyle ? renderState.styles : []
+        styles: preserveStyle ? renderState.styles : [],
+        styleFrame: frame.source?.silentKeepView === true ? {
+          id: frame.id,
+          state: styleFrameState,
+          lets: cloneTraceValue(frame.lets || []),
+          renderers: cloneTraceValue(frame.renderers || {}),
+          rendererOptions: cloneTraceValue(frame.rendererOptions || {}),
+          captureOnlyVariableIds: cloneTraceValue(frame.captureOnlyVariableIds || [])
+        } : null
       };
       snapshot.arrows = snapshot.layoutId
         ? retainedSnapshotArrows(renderState, frame, snapshot)
@@ -1401,7 +1959,8 @@ function materializeKeepSnapshots(frames, layouts = []) {
   });
   const latestByActivation = new Map();
   snapshots.forEach(snapshot => {
-    if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
+    if (layoutsById.get(snapshot.layoutId)?.type !== 'recursion'
+      || !snapshot.recursionActivationId) return;
     const activationKey = `${snapshot.layoutId}\u0000${snapshot.recursionActivationId}`;
     const ancestors = Array.isArray(snapshot.recursionAncestorActivationIds)
       ? [...snapshot.recursionAncestorActivationIds].reverse()
@@ -1424,6 +1983,12 @@ function materializeKeepSnapshots(frames, layouts = []) {
     };
     latestByActivation.set(activationKey, snapshot);
   });
+  // `@keep ... use ...` captures a presentation state without creating a
+  // user-visible frame. Later authored frames already carry the accumulated
+  // snapshotIds, so the internal capture records can be removed here.
+  materializedFrames = materializedFrames.filter(frame => (
+    frame.source?.silentKeepView !== true
+  ));
   const initialByActivation = new Map();
   snapshots.forEach(snapshot => {
     if (!snapshot.layoutId || !snapshot.recursionActivationId) return;
@@ -1446,14 +2011,14 @@ function materializeKeepSnapshots(frames, layouts = []) {
       Number(left.recursionSiblingIndex) - Number(right.recursionSiblingIndex)
     ));
     const childIndexes = ordered.map(child => (
-      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+      materializedFrames.findIndex(frame => frame.id === child.sourceFrameId)
     )).filter(index => index >= 0);
     if (!childIndexes.length) continue;
-    const parentIndex = materializedFrames.findIndex(frame => frame.id === parent.createdFrameId);
+    const parentIndex = materializedFrames.findIndex(frame => frame.id === parent.sourceFrameId);
     const firstChildIndex = Math.min(...childIndexes);
     if (parentIndex < 0 || firstChildIndex <= parentIndex) continue;
     const previews = ordered.map(child => {
-      const childFrameIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
+      const childFrameIndex = materializedFrames.findIndex(frame => frame.id === child.sourceFrameId);
       const subtreeActivations = new Set([...initialByActivation.values()]
         .filter(candidate => candidate.layoutId === child.layoutId
           && (candidate.recursionActivationId === child.recursionActivationId
@@ -1475,17 +2040,17 @@ function materializeKeepSnapshots(frames, layouts = []) {
         completionFrame
       };
     });
-    previewPlans.push({ insertIndex: parentIndex + 1, parentKey, previews });
+    previewPlans.push({ insertIndex: parentIndex + 1, parentKey, parentSnapshotId: parent.id, previews });
   }
   previewPlans.sort((left, right) => right.insertIndex - left.insertIndex).forEach(plan => {
     const base = materializedFrames[Math.max(0, plan.insertIndex - 1)];
     if (!base) return;
     const firstActualChildIndex = Math.min(...plan.previews.map(({ child }) => (
-      materializedFrames.findIndex(frame => frame.id === child.createdFrameId)
+      materializedFrames.findIndex(frame => frame.id === child.sourceFrameId)
     )).filter(index => index >= 0));
     plan.previews.forEach(({ child }) => {
-      const actualIndex = materializedFrames.findIndex(frame => frame.id === child.createdFrameId);
-      for (let index = plan.insertIndex; index < actualIndex; index += 1) {
+      const actualIndex = materializedFrames.findIndex(frame => frame.id === child.sourceFrameId);
+      for (let index = plan.insertIndex; index <= actualIndex; index += 1) {
         const frame = materializedFrames[index];
         if (!frame.snapshotIds.includes(child.id)) frame.snapshotIds.push(child.id);
       }
@@ -1532,7 +2097,7 @@ function materializeKeepSnapshots(frames, layouts = []) {
           previewSnapshotId: child.id
         },
         events: [],
-        snapshotIds: [...new Set([...(base.snapshotIds || []), ...growing])],
+        snapshotIds: [...new Set([...(base.snapshotIds || []), plan.parentSnapshotId, ...growing])],
         keepLastFocus: false
       };
     });
@@ -1557,6 +2122,11 @@ function materializeKeepSnapshots(frames, layouts = []) {
       snapshotsById.get(snapshotId)?.arrows || []
     ));
     const retainedSourceIds = new Set(retainedArrows
+      .filter(arrow => [arrow.from, arrow.to].every(endpoint => (
+        !endpoint?.layoutActivationId
+          || endpoint.layoutActivationId === frame.source?.recursionActivationId
+
+      )))
       .map(arrow => arrow.retainedFromArrowId)
       .filter(Boolean));
     return {
@@ -1662,11 +2232,13 @@ function resolveTraceIndexExpression(frame, expression) {
   function parseUnary() {
     if (peek('+')) {
       consume('+');
-      return Number(parseUnary());
+      const value = parseUnary();
+      return value === invalid ? invalid : Number(value);
     }
     if (peek('-')) {
       consume('-');
-      return -Number(parseUnary());
+      const value = parseUnary();
+      return value === invalid ? invalid : -Number(value);
     }
     return parsePrimary();
   }
@@ -1797,6 +2369,13 @@ function resolveFrameRendererOptions(frame, directive) {
       template: source.display.template,
       expressions: Array.isArray(source.display.expressions) ? [...source.display.expressions] : []
     };
+  }
+  if (Array.isArray(source.symbols)) options.symbols = [...source.symbols];
+  if (directive?.dataTransform?.type === 'bits') {
+    const width = resolveTraceIndexExpression(frame, directive.dataTransform.widthExpression);
+    if (width != null && width > 0) {
+      options.dataTransform = { type: 'bits', width, order: 'msb-first' };
+    }
   }
   if (Object.prototype.hasOwnProperty.call(source, 'separator')) options.separator = source.separator;
   return options;
@@ -1975,7 +2554,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
   }));
   const tracedFrames = allFrames.map(frame => {
     const directive = directiveByStatementId.get(frame.source?.statementId);
-    const objectDirectives = Array.isArray(directive?.objects) && directive.objects.length
+    const objectDirectives = Array.isArray(directive?.objects)
       ? directive.objects
       : (directive?.variableIds?.[0] ? [{
         objectId: directive.objectId || '',
@@ -1983,6 +2562,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
         primaryVariableId: directive.variableIds[0],
         renderer: directive.renderer || '',
         rendererOptions: directive.rendererOptions || {},
+        dataTransform: directive.dataTransform || null,
         objectBinding: directive.objectBinding || null
       }] : []);
     const primaryObject = objectDirectives[0] || null;
@@ -2022,6 +2602,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
         directiveKey: directive?.sourceKey || '',
         logicalDirectiveKey: directive?.logicalSourceKey || '',
         directiveKeyAliases: directive?.sourceKeyAliases || [],
+        silentKeepView: directive?.silentKeepView === true,
         objectId: primaryObject?.objectId || '',
         objectIds,
         layoutId: primaryLayoutId,
@@ -2118,9 +2699,13 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
 // 流程順序是安全邊界的一部分：驗證來源 → 插樁 → 產生暫存檔 → 編譯 →
 // 受限執行 → 解析 trace → 回收。任一分支結束時都需只回收本請求建立的資源。
 // ─────────────────────────────────────────────────────────────────────────────
-app.post('/compile', (req, res) => {
-  debugMessages = []; // 每次請求重置
-
+app.post('/compile', (req, res) => runWithCompileContext(async () => {
+  let compileWorkCompleted = false;
+  const markCompileWorkComplete = () => {
+    if (compileWorkCompleted) return;
+    compileWorkCompleted = true;
+    req.emit('asm:compile-work-complete');
+  };
   const { code, input, trace } = req.body || {};
   let traceEnabled = trace?.enabled === true;
 
@@ -2131,7 +2716,7 @@ app.post('/compile', (req, res) => {
       compileTime: null,
       runTime: null,
       memoryKB: null,
-      debug_log: debugMessages,
+      debug_log: getCompileDebugMessages(),
     });
   }
 
@@ -2143,7 +2728,7 @@ app.post('/compile', (req, res) => {
       compileTime: null,
       runTime: null,
       memoryKB: null,
-      debug_log: debugMessages,
+      debug_log: getCompileDebugMessages(),
     });
   }
 
@@ -2172,6 +2757,7 @@ app.post('/compile', (req, res) => {
   if (traceEnabled) {
     try {
       const instrumented = instrumentSource(code, Array.isArray(trace.watches) ? trace.watches : []);
+      traceEnabled = instrumented.drawingEnabled !== false;
       sourceCode = instrumented.code;
       traceVariables = instrumented.variables;
       traceFrameDirectives = instrumented.frameDirectives.map((directive, index) => ({
@@ -2188,11 +2774,13 @@ app.post('/compile', (req, res) => {
         lets: directive.lets || [],
         functionName: directive.functionName || directive.variables[0]?.functionName || 'global',
         index: directive.index ?? index,
+        silentKeepView: directive.silentKeepView === true,
         bindings: directive.bindings || [],
         objectBinding: directive.objectBinding || null,
         placeBindings: directive.placeBindings || [],
         renderer: directive.renderer || '',
         rendererOptions: directive.rendererOptions || {},
+        dataTransform: directive.dataTransform || null,
         objects: (directive.objects || []).map(object => ({
           line: object.line,
           frameSpec: object.frameSpec || '',
@@ -2203,6 +2791,7 @@ app.post('/compile', (req, res) => {
           displayVariableIds: object.displayVariableIds || [],
           renderer: object.renderer || '',
           rendererOptions: object.rendererOptions || {},
+          dataTransform: object.dataTransform || null,
           objectBinding: object.objectBinding || null
         })),
         when: directive.when || null,
@@ -2223,6 +2812,7 @@ app.post('/compile', (req, res) => {
         binding: directive.binding || null,
         placementOffset: directive.placementOffset || null,
         when: directive.when || null,
+        presetNames: directive.presetNames || [],
         functionName: directive.functionName || directive.variable?.functionName || 'global',
         index: directive.index ?? index
       }));
@@ -2239,8 +2829,12 @@ app.post('/compile', (req, res) => {
       traceCodeHideRanges = Array.isArray(instrumented.codeHideRanges)
         ? instrumented.codeHideRanges
         : [];
-      if (instrumented.frameDirectives.length) traceSliceMode = 'manual';
-      logDebug(`Trace instrumentation enabled for ${traceVariables.length} variables`);
+      if (instrumented.frameDirectives.some(directive => !directive.silentKeepView)) {
+        traceSliceMode = 'manual';
+      }
+      logDebug(traceEnabled
+        ? `Trace instrumentation enabled for ${traceVariables.length} variables`
+        : 'No drawing directives: using normal compilation without animation tracing');
     } catch (err) {
       // Trace analysis must not prevent the original program from running.
       // Fall back to the normal compiler path when the parser cannot rewrite
@@ -2260,6 +2854,51 @@ app.post('/compile', (req, res) => {
     }
   }
 
+  const engineFingerprint = `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`;
+  const compilerFingerprint = COMPILER_FINGERPRINT;
+  const executableKey = createExecutableKey({
+    source: sourceCode,
+    compiler: compilerFingerprint,
+    flags: [traceEnabled ? '-O0' : '-O2', process.platform === 'win32' ? '-std=c++1z' : '-std=c++17'],
+    engine: engineFingerprint,
+  });
+  const traceCacheKey = createTraceKey({
+    executableKey,
+    input: typeof input === 'string' ? input : '',
+    traceConfig: { ...trace, enabled: traceEnabled, sliceMode: traceSliceMode },
+    engine: engineFingerprint,
+  });
+  const sharedCache = req.headers['x-compile-cache'] === 'shared' || req.body?.cachePolicy === 'shared';
+  const cacheAvailable = Boolean(await artifactCacheReady);
+  if (sharedCache) res.setHeader('X-Compile-Trace-Id', traceCacheKey);
+
+  if (sharedCache && cacheAvailable) {
+    let cachedLease = null;
+    try {
+      cachedLease = await artifactCache.acquire('trace', traceCacheKey);
+      if (cachedLease) {
+        res.setHeader('X-Compile-Trace-Cache', 'HIT');
+        res.type('application/json');
+        res.setHeader('Content-Length', String(cachedLease.entry.size));
+        // Parsing and execution are already complete. Release the single
+        // expensive-work slot before streaming to a slow browser.
+        markCompileWorkComplete();
+        await pipeline(fs.createReadStream(cachedLease.entry.path), res);
+        return undefined;
+      }
+      res.setHeader('X-Compile-Trace-Cache', 'MISS');
+    } catch (error) {
+      if (res.headersSent) {
+        logDebug('傳送追蹤快取失敗：' + error.message);
+        res.destroy(error);
+        return undefined;
+      }
+      logDebug('讀取追蹤快取失敗，改用一般編譯：' + error.message);
+    } finally {
+      if (cachedLease) await cachedLease.release();
+    }
+  }
+
   /*
   // 關鍵字過濾
   for (const keyword of BLACKLIST_KEYWORDS) {
@@ -2273,7 +2912,7 @@ app.post('/compile', (req, res) => {
               compileTime: null,
               runTime: null,
               memoryKB: null,
-              debug_log: debugMessages,
+              debug_log: getCompileDebugMessages(),
           });
       }
   }
@@ -2311,7 +2950,7 @@ app.post('/compile', (req, res) => {
     return res.status(500).json({
       output: '',
       error: '無法寫入暫存檔：' + err.message,
-      debug_log: debugMessages,
+      debug_log: getCompileDebugMessages(),
     });
   }
   logDebug(`原始碼寫入完成: ${path.basename(sourcePath)}`);
@@ -2328,28 +2967,134 @@ app.post('/compile', (req, res) => {
   if (!isWindows) compileArgs.splice(7, 0, '-I', '/tmp');
 
   const compileStart = performance.now();
-  const gpp = spawn('g++', compileArgs, { cwd: __dirname });
+  const compileHardTimeoutMs = LIMITS.COMPILE_TIME_MS + 250;
+  const compileHardTimeoutSeconds = `${(compileHardTimeoutMs / 1000).toFixed(3)}s`;
+  const compilerMemoryKB = 512 * 1024;
+  req.compileWorkSpawned = true;
+  let executableCacheHit = false;
+  if (cacheAvailable) {
+    let lease = null;
+    try {
+      lease = await artifactCache.acquire('executable', executableKey);
+      if (lease) {
+        fs.copyFileSync(lease.entry.path, exePath);
+        executableCacheHit = true;
+        res.setHeader('X-Compile-Executable-Cache', 'HIT');
+        logDebug('EXECUTABLE_CACHE_HIT: 重用已編譯執行檔');
+      } else {
+        res.setHeader('X-Compile-Executable-Cache', 'MISS');
+      }
+    } catch (error) {
+      logDebug('讀取執行檔快取失敗，改用一般編譯：' + error.message);
+    } finally {
+      if (lease) await lease.release();
+    }
+  }
+
+  let gpp;
+  if (executableCacheHit) {
+    // Keep the normal post-compile path intact while skipping the compiler.
+    // The cached binary is copied into this request's private temp path so the
+    // normal sandbox permissions and cleanup rules still apply.
+    gpp = new EventEmitter();
+    gpp.stderr = new EventEmitter();
+    gpp.pid = null;
+    gpp.kill = () => false;
+    setImmediate(() => gpp.emit('close', 0));
+  } else {
+    gpp = isWindows
+      ? spawn('g++', compileArgs, { cwd: __dirname })
+      : spawn('sh', [
+          '-c',
+          `ulimit -v ${compilerMemoryKB} && exec timeout --signal=TERM --kill-after=1s ${compileHardTimeoutSeconds} g++ "$@"`,
+          'g++',
+          ...compileArgs,
+        ], { cwd: __dirname, detached: true });
+  }
 
   let compileErr = '';
-  gpp.stderr.on('data', (data) => { compileErr += data.toString(); });
+  let compileTimedOut = false;
+  let compileOutputExceeded = false;
+  let compileSettled = false;
+  const terminateCompilerTree = () => {
+    try {
+      if (isWindows && gpp.pid) {
+        spawn('taskkill', ['/F', '/T', '/PID', String(gpp.pid)]);
+      } else if (gpp.pid) {
+        process.kill(-gpp.pid, 'SIGKILL');
+      }
+    } catch (error) {
+      logDebug(`編譯程序樹終止失敗，等待外部 watchdog 回收: ${error.message}`, {
+        code: error.code || '',
+      });
+    }
+  };
+  const compileTimer = executableCacheHit ? null : setTimeout(() => {
+    compileTimedOut = true;
+    logDebug(`編譯超過 ${LIMITS.COMPILE_TIME_MS}ms，強制終止`, { pid: gpp.pid });
+    terminateCompilerTree();
+  }, LIMITS.COMPILE_TIME_MS);
 
-  gpp.on('close', (codeExit) => {
+  gpp.stderr.on('data', (data) => {
+    if (compileOutputExceeded) return;
+    const chunk = data.toString();
+    const remaining = LIMITS.COMPILE_STDERR_SIZE - compileErr.length;
+    if (chunk.length > remaining) {
+      if (remaining > 0) compileErr += chunk.slice(0, remaining);
+      compileErr += '\n... [Compiler Output Limit Exceeded]';
+      compileOutputExceeded = true;
+      logDebug('編譯器錯誤輸出超過限制，強制終止', { pid: gpp.pid });
+      terminateCompilerTree();
+      return;
+    }
+    compileErr += chunk;
+  });
+
+  gpp.on('error', (error) => {
+    if (compileSettled) return;
+    compileSettled = true;
+    clearTimeout(compileTimer);
+    logDebug('無法啟動編譯器：' + error.message);
+    cleanup();
+    res.status(500).json({
+      output: '',
+      error: '編譯服務暫時無法使用',
+      verdict: 'INFRA',
+      compileTime: +((performance.now() - compileStart).toFixed(1)),
+      runTime: null,
+      memoryKB: null,
+      debug_log: getCompileDebugMessages(),
+    });
+    markCompileWorkComplete();
+  });
+
+  gpp.on('close', async (codeExit) => {
+    if (compileSettled) return;
+    compileSettled = true;
+    clearTimeout(compileTimer);
     const compileTime = +((performance.now() - compileStart).toFixed(1));
 
     if (codeExit !== 0) {
       logDebug('編譯失敗，退出碼：' + codeExit);
       cleanup();
-      return res.status(400).json({
+      res.status(400).json({
         output: '',
-        error: compileErr || ('編譯失敗，退出碼：' + codeExit),
+        error: compileTimedOut
+          ? `編譯逾時 (> ${LIMITS.COMPILE_TIME_MS}ms)`
+          : compileErr || ('編譯失敗，退出碼：' + codeExit),
+        verdict: compileTimedOut ? 'INFRA' : 'CE',
         compileTime,
         runTime: null,
         memoryKB: null,
-        debug_log: debugMessages,
+        debug_log: getCompileDebugMessages(),
       });
+      markCompileWorkComplete();
+      return;
     }
 
-    logDebug('編譯成功，耗時 ' + compileTime + ' ms');
+    logDebug(executableCacheHit
+      ? `執行檔快取載入完成，耗時 ${compileTime} ms`
+      : `編譯成功，耗時 ${compileTime} ms`);
 
     if (!isWindows) {
       // 確保 sandboxuser (UID 1000) 有權限執行這個 root 產生的檔案
@@ -2358,7 +3103,20 @@ app.post('/compile', (req, res) => {
       } catch (err) {
         logDebug('權限設定失敗: ' + err.message);
         cleanup();
-        return res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.' });
+        res.status(500).json({ output: '', error: 'Server Error: Unable to set permissions.', verdict: 'INFRA' });
+        markCompileWorkComplete();
+        return;
+      }
+    }
+
+    if (!executableCacheHit && cacheAvailable) {
+      try {
+        await artifactCache.putFile('executable', executableKey, exePath, {
+          metadata: { compilerFingerprint, engineFingerprint },
+        });
+        logDebug('EXECUTABLE_CACHE_STORED: 已保存可重用執行檔');
+      } catch (error) {
+        logDebug('保存執行檔快取失敗，繼續執行本次程式：' + error.message);
       }
     }
 
@@ -2510,10 +3268,24 @@ app.post('/compile', (req, res) => {
       const memoryKB = (peakMem.peakRssKB > 0) ? peakMem.peakRssKB : (peakMem.peakHwmKB > 0 ? peakMem.peakHwmKB : null);
 
       let finalError = '';
-      if (isTLE) finalError = `Time Limit Exceeded (> ${LIMITS.TIME_MS}ms)`;
-      else if (isOLE) finalError = `Output Limit Exceeded (> ${LIMITS.OUTPUT_SIZE / 1024}KB)`;
-      else if (runErr && runErr.includes('Script Size Exceeded')) finalError = runErr.split('\n').find(l => l.includes('Script Size Exceeded')) || 'Script Size Exceeded';
-      else if (codeRun !== 0 || signal) finalError = (runErr && runErr.trim() !== '') ? runErr : `Runtime Error`;
+      let verdict = 'OK';
+      const memoryLimitPattern = /(std::bad_alloc|cannot allocate memory|out of memory|memory limit exceeded)/i;
+      if (isTLE) {
+        verdict = 'TLE';
+        finalError = `Time Limit Exceeded (> ${LIMITS.TIME_MS}ms)`;
+      } else if (isOLE) {
+        verdict = 'OLE';
+        finalError = `Output Limit Exceeded (> ${LIMITS.OUTPUT_SIZE / 1024}KB)`;
+      } else if (runErr && runErr.includes('Script Size Exceeded')) {
+        verdict = 'OLE';
+        finalError = runErr.split('\n').find(l => l.includes('Script Size Exceeded')) || 'Script Size Exceeded';
+      } else if (memoryLimitPattern.test(runErr)) {
+        verdict = 'MLE';
+        finalError = `Memory Limit Exceeded (> ${LIMITS.MEMORY_MB}MB)`;
+      } else if (codeRun !== 0 || signal) {
+        verdict = 'RE';
+        finalError = (runErr && runErr.trim() !== '') ? runErr : `Runtime Error`;
+      }
 
       if (!finalError && traceError) finalError = traceError;
 
@@ -2521,17 +3293,40 @@ app.post('/compile', (req, res) => {
 
       if (traceDocument && !finalError) traceDocument.provenance = TraceProvenance.create(code, input);
 
-      try { await TraceChunkStore.sendJson(req, res, {
+      const responseBody = {
         output: runOut,
         error: finalError,
+        verdict,
         traceWarning,
         compileTime,
         runTime,
         memoryKB,
-        debug_log: debugMessages,
+        debug_log: getCompileDebugMessages(),
         scriptContent: scriptContent,
-        traceDocument
-      }); } catch (error) {
+        traceDocument,
+        cache: {
+          trace: sharedCache ? 'STORED' : 'BYPASS',
+          executable: executableCacheHit ? 'HIT' : 'MISS',
+          executableId: executableKey,
+          traceId: traceCacheKey,
+        },
+      };
+      if (sharedCache && cacheAvailable && traceDocument && !finalError) {
+        try {
+          await storeJsonArtifact(traceCacheKey, responseBody, {
+            metadata: { executableKey, engineFingerprint },
+          });
+          logDebug('TRACE_CACHE_STORED: 已保存共用追蹤結果');
+          responseBody.debug_log = getCompileDebugMessages();
+        } catch (error) {
+          logDebug('保存追蹤快取失敗，繼續回傳本次結果：' + error.message);
+          responseBody.debug_log = getCompileDebugMessages();
+        }
+      }
+      // At this point the child has closed and trace parsing is complete. Free
+      // the expensive-work slot before a slow client finishes downloading.
+      markCompileWorkComplete();
+      try { await TraceChunkStore.sendJson(req, res, responseBody); } catch (error) {
         logDebug('回傳編譯結果失敗：' + error.message);
         if (!res.headersSent) res.status(500).json({error:'無法傳送追蹤資料'});
         else res.destroy();
@@ -2555,8 +3350,6 @@ app.post('/compile', (req, res) => {
         });
       }
 
-      // [核心修正]：超時 1 秒後若 process.on('close') 仍然沒反應，強迫回傳 
-      setTimeout(() => { if (!hasResponded) sendResponse(null, 'SIGKILL', true); }, 1000);
     }, LIMITS.TIME_MS);
 
     if (typeof input === 'string' && input.length > 0) {
@@ -2579,18 +3372,12 @@ app.post('/compile', (req, res) => {
       if (!hasResponded) sendResponse(null, null);
     });
 
-    // 改監聽 exit 比較即時，且透過 sendResponse 內的防呆防止與 close 重複
-    child.on('exit', (codeRun, signal) => {
-      clearTimeout(tleTimer);
-      sendResponse(codeRun, signal);
-    });
-
     child.on('close', (codeRun, signal) => {
       clearTimeout(tleTimer);
       sendResponse(codeRun, signal);
     });
   });
-});
+}));
 
 // 每小時執行一次：清理殘留檔案
 setInterval(() => {

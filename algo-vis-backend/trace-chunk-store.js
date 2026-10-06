@@ -8,8 +8,11 @@ const {promisify} = require('node:util');
 const {Readable} = require('node:stream');
 const {pipeline} = require('node:stream/promises');
 const zip = promisify(gzip), unzip = promisify(gunzip);
-const LIMITS = Object.freeze({file:128*1024*1024, record:64*1024*1024,
-  compressed:32*1024*1024, expanded:512*1024*1024, events:1000000, records:100000});
+// A 64 MB JSON trace can occupy several times that size as JavaScript objects.
+// Keep the expanded contract well below the 1 GB container ceiling so one
+// pathological program cannot restart the shared classroom backend.
+const LIMITS = Object.freeze({file:64*1024*1024, record:8*1024*1024,
+  compressed:16*1024*1024, expanded:64*1024*1024, events:100000, records:25000});
 
 async function* lines(file, limits = LIMITS) {
   let parts = [], length = 0, total = 0;
@@ -87,7 +90,9 @@ async function read(file, limits = LIMITS) {
   const packed = await pack(file, limits);
   const records = [];
   let pending = [], events = 0, expanded = 0, version = null, lastOrder = -1;
+  let tailSeen = false;
   for await (const record of readChunks(packed.archive, packed.entries, limits)) {
+    if (tailSeen) throw new Error('追蹤尾端記錄之後仍有資料');
     if (record.record === 'meta') {
       if (version !== null || !['1.0','2.0'].includes(record.schemaVersion)) throw new Error('不支援的追蹤格式');
       version = record.schemaVersion;
@@ -120,11 +125,30 @@ async function read(file, limits = LIMITS) {
         if (events > limits.events) throw new Error('追蹤事件數量超過上限');
         records.push(record);
       }
+    } else if (record.record === 'tail') {
+      if (version !== '2.0' || !Number.isSafeInteger(record.eventCount)
+          || record.eventCount !== pending.length) throw new Error('追蹤尾端的事件數量不符');
+      const lastFrame = [...records].reverse().find(item => item.record === 'frame');
+      if (!lastFrame) throw new Error('追蹤尾端缺少可附加的幀');
+      lastFrame.captureOrder = (lastFrame.events || []).reduce((order, event) =>
+        Math.max(order, Number(event.order)), -1);
+      lastFrame.events = [...(lastFrame.events || []), ...pending.map(event => ({...event, afterCapture:true}))];
+      pending = [];
+      tailSeen = true;
     } else records.push(record);
   }
   if (version === null) throw new Error('追蹤檔案沒有格式標頭');
-  // As in v1, events after the final @frame are not attached to a displayed frame.
-  return {records, stats:{...packed.stats, events:events-pending.length}};
+  if (pending.length) {
+    const lastFrame = records.findLast(record => record.record === 'frame');
+    if (lastFrame) {
+      // Keep the captured state and frame count unchanged. These events occur
+      // after that state's capture, unlike the interval consumed by a frame.
+      lastFrame.captureOrder = (lastFrame.events || []).reduce((order, event) =>
+        Math.max(order, Number(event.order)), -1);
+      lastFrame.events = [...lastFrame.events, ...pending.map(event => ({...event, afterCapture:true}))];
+    }
+  }
+  return {records, stats:{...packed.stats, events:events - (records.some(record => record.record === 'frame') ? 0 : pending.length)}};
 }
 
 // Stream the large arrays instead of building another full JSON string in memory.

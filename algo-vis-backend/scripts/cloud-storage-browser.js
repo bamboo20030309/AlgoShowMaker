@@ -18,6 +18,7 @@ async function runCloudStorageBrowser(browser, baseURL, output) {
   const page = await context.newPage(), errors = [], rows = [];
   let current = { deck_uid: 'cloud-browser', updated_at: new Date(1), resource_keys: [] }, commits = 0, runs = 0;
   const bodies = [];
+  let stage = 'prepare-animation';
   const store = createStore({
     parts: async (id, key) => rows.filter(row => row.key === key).sort((a, b) => a.part - b.part),
     usage: async () => rows.reduce((sum, row) => sum + Buffer.byteLength(row.data), 0),
@@ -44,13 +45,20 @@ async function runCloudStorageBrowser(browser, baseURL, output) {
       document.getElementById('inputArea').value = '';
     });
     await page.locator('#runBtn').click();
-    await page.waitForFunction(() => ASMTracePlayer.getDocument()?.frames?.length > 1, null, { timeout: 60000 });
+    await page.waitForFunction(() => !document.getElementById('runBtn').classList.contains('loading')
+      && ASMTracePlayer.getDocument()?.frames?.length > 1
+      && ASMTracePlayer.getDocument().provenance?.sourceFingerprint
+        === ASMTraceProvenance.create(aceEditor.getValue(), '').sourceFingerprint,
+    null, { timeout: 60000 });
     const animation = await page.evaluate(() => ({ ...ASMTraceEditor.snapshot(), code: aceEditor.getValue(), input: '' }));
     animation.traceDocument.cloudRegressionPayload = 'x'.repeat(9 * 1024 * 1024);
     const source = { groups: ['a', 'b', 'c'].map(id => ({ id: 'group-' + id, slides: [{
       id, canvas: { objects: [] }, widgets: [],
       ...(id === 'a' ? { kind: 'algorithm-animation', animation } : {})
     }] })) };
+    // The real legacy repository owns the old inline Trace. commit() migrates
+    // it on the server, so the mock must retain the same source deck too.
+    current.deck = source;
     let loaded = source;
     await page.route('**/api/slides/cloud-browser**', async route => {
       const request = route.request(), url = new URL(request.url()), body = request.postData();
@@ -79,8 +87,10 @@ async function runCloudStorageBrowser(browser, baseURL, output) {
     });
     await page.addInitScript(() => localStorage.setItem('algo_jwt_token', 'isolated-test'));
     const runsBefore = runs;
+    stage = 'load-cloud-deck';
     await page.goto(baseURL + '/slides.html?deck=cloud-browser');
     await page.waitForFunction(() => document.body.dataset.slideCount === '3');
+    stage = 'reorder-slides';
     await page.locator('#slideOrderToggleBtn').click();
     await page.waitForFunction(() => document.querySelectorAll('.custom-overview-thumb').length === 3);
     const a = await page.locator('.custom-overview-thumb[data-slide-id="b"]').boundingBox();
@@ -89,6 +99,7 @@ async function runCloudStorageBrowser(browser, baseURL, output) {
     await page.mouse.down();
     await page.mouse.move(b.x + b.width - 3, b.y + b.height / 2, { steps: 15 });
     await page.mouse.up();
+    stage = 'wait-cloud-commit';
     await page.waitForFunction(() => document.getElementById('cloudSaveStatus').dataset.state === 'saved');
     await page.waitForTimeout(1500);
     assert.ok(commits > 0, 'real editor autosave must commit cloud content');
@@ -96,6 +107,7 @@ async function runCloudStorageBrowser(browser, baseURL, output) {
     assert.deepEqual(loaded.groups[0].slides[0].animation.traceDocument, animation.traceDocument);
     assert.ok(bodies.every(bytes => bytes < 8 * 1024 * 1024));
     await page.reload();
+    stage = 'reopen-cloud-deck';
     await page.waitForFunction(() => document.body.dataset.slideCount === '3');
     assert.equal(runs, runsBefore, 'cloud reopen must not RUN or analyze again');
     assert.deepEqual(errors, []);
@@ -104,6 +116,14 @@ async function runCloudStorageBrowser(browser, baseURL, output) {
     fs.writeFileSync(path.join(output, 'cloud-storage-browser.json'), JSON.stringify(result, null, 2));
     console.log('PASS cloud-storage-browser');
     return result;
+  } catch (error) {
+    const state = await page.evaluate(() => ({url:location.href,
+      slides:document.body.dataset.slideCount,
+      save:document.getElementById('cloudSaveStatus')?.dataset.state,
+      text:document.body.innerText.slice(0, 2000)})).catch(() => null);
+    fs.writeFileSync(path.join(output, 'cloud-storage-failure.json'),
+      JSON.stringify({stage,state,errors,commits,runs,bodySizes:bodies,message:error.message}, null, 2));
+    throw new Error(stage + ': ' + error.message, {cause:error});
   } finally { await context.close(); }
 }
 module.exports = { runCloudStorageBrowser };

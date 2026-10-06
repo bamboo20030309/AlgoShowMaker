@@ -17,7 +17,7 @@ const { chromium } = require('playwright');
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('sample deck enters before animation compilation and finishes rebuilding in the background', { timeout: 120000 }, async () => {
+test('prebuilt sample deck opens with playable animations without analyze or compile requests', { timeout: 120000 }, async () => {
   const root = path.resolve(__dirname, '..');
   const port = await new Promise(resolve => {
     const probe = net.createServer();
@@ -44,25 +44,21 @@ test('sample deck enters before animation compilation and finishes rebuilding in
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-    let releaseCompile;
-    const compileGate = new Promise(resolve => { releaseCompile = resolve; });
-    await page.route('**/compile', async route => {
-      await compileGate;
-      await route.continue();
+    const dynamicRequests = [];
+    await page.route(/\/(compile|trace\/analyze)$/, route => {
+      dynamicRequests.push(route.request().url());
+      return route.abort();
     });
 
     await page.goto(`${base}/slides.html?sample=quick-sort`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.title.includes('快速排序'));
     await page.waitForSelector('.slides section');
-    assert.equal(await page.locator('body').getAttribute('data-asmdeck-rebuild'), 'loading');
-    assert.ok(await page.locator('.slides section').count() > 1, 'deck is visible while compilation is blocked');
-    assert.ok(await page.locator('.algorithm-slide-placeholder:not([hidden])').count() > 0,
-      'pending algorithm slides show an in-deck loading state');
-
-    releaseCompile();
-    await page.waitForFunction(() => document.body.dataset.asmdeckRebuild === 'ready', null, { timeout: 90000 });
-    assert.equal(await page.locator('body').getAttribute('data-asmdeck-rebuild-progress'), '2/2');
+    await page.waitForFunction(() => document.body.dataset.asmdeckRebuild === 'ready');
+    assert.ok(await page.locator('.slides section').count() > 1);
+    assert.equal(await page.locator('body').getAttribute('data-asmdeck-rebuild-progress'), '0/0');
+    assert.equal(await page.locator('.algorithm-slide-placeholder:not([hidden])').count(), 0);
     assert.equal(await page.locator('.algorithm-slide-frame:not([hidden])').count(), 2);
+    assert.deepEqual(dynamicRequests, []);
     assert.deepEqual(errors, []);
   } finally {
     if (browser) await browser.close();

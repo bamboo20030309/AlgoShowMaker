@@ -153,13 +153,21 @@ int main() {
   }
 });
 
-test('blank @frame when still requires a consecutive @object', () => {
+test('blank @frame when creates a conditional scene checkpoint without an object', async () => {
   const { findFrameDirectives } = require('../trace-instrumenter');
-  assert.throws(() => findFrameDirectives(`#include <bits/stdc++.h>
+  const source = `#include <bits/stdc++.h>
 using namespace std;
 int main() {
   int i = 1;
   // @frame when i > 0
   return 0;
-}`), /至少需要一個緊接的 @object/);
+}`;
+  const [frame] = findFrameDirectives(source);
+  assert.equal(frame.objects.length, 0);
+  assert.equal(frame.when.expression, 'i > 0');
+  assert.equal(frame.variables.some(variable => variable.name === 'i'), true);
+  const { trace } = await compile(source);
+  assert.equal(trace.frames.length, 1);
+  assert.equal(trace.frames[0].source.primaryVariableId, '');
+  assert.equal(trace.frames[0].snapshotIds.length, 0);
 });

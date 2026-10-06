@@ -64,7 +64,14 @@ test('structure annotations follow indices, persist and retain custom colors', {
         await page.waitForFunction(() => document.querySelector('#iroPopup')?.hidden === true);
       }
       await object.locator(`[data-structure-item-index="${index}"] > text`).click();
-      await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar');
+      await page.waitForSelector('#structureContextMenu.structure-cell-style-toolbar').catch(async error => {
+        throw new Error(error.message + '\n' + JSON.stringify(await page.evaluate(() => ({
+          menu: document.querySelector('#structureContextMenu')?.outerHTML,
+          active: document.activeElement?.tagName,
+          selected: [...document.querySelectorAll('.is-structure-cell-selected')].map(e => e.dataset.structureItemIndex),
+          overlay: document.querySelector('.asm-cell-text-editor')?.outerHTML
+        }))));
+      });
     }
     await selectCell(0);
     const toolbar = page.locator('#structureContextMenu');
