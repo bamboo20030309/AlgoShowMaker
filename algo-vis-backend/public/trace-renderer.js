@@ -5006,13 +5006,14 @@
         const sourceEntry = frame.state?.[studioObject.sourceVariableId];
         const label = studioObject.text || source?.name || 'index';
         const shape = studioObject.shape || 'array';
+        const pointerColor = traceTextColor(studioObject.pointerColor || '');
         if (shape === 'arrow-left') {
           const labelSize = 18;
           const labelLeft = -40;
           const labelTop = -labelSize / 2;
           const labelLength = Math.max(1, Array.from(String(label)).length);
           const fontSize = Math.max(4, Math.min(8, (labelSize - 4) / (labelLength * 0.62)));
-          const borderColor = '#333';
+          const borderColor = pointerColor || '#333';
           const point = svg('g', { class: 'trace-variable-marker-point' });
           point.append(
             svg('path', {
@@ -5023,7 +5024,7 @@
           motion.append(
             svg('rect', {
               class: 'trace-variable-marker-label-box', x: labelLeft, y: labelTop,
-              width: labelSize, height: labelSize, fill: '#bfe8f7', 'fill-opacity': 1,
+              width: labelSize, height: labelSize, fill: pointerColor || '#bfe8f7', 'fill-opacity': 1,
               stroke: borderColor, 'stroke-width': 1
             }),
             svg('text', {
@@ -5041,7 +5042,7 @@
           const labelLength = Math.max(1, Array.from(String(label)).length);
           const fontSize = Math.max(4, Math.min(8, (labelWidth - 4) / (labelLength * 0.62)));
           // Mirrors a normal draw_array cell: #333 with a 1px outline.
-          const borderColor = '#333';
+          const borderColor = pointerColor || '#333';
           const borderWidth = 1;
           const labelTop = -40;
           const labelBottom = labelTop + labelHeight;
@@ -5078,7 +5079,7 @@
               width: labelWidth,
               height: labelHeight,
               rx: 0,
-              fill: '#bfe8f7',
+              fill: pointerColor || '#bfe8f7',
               'fill-opacity': 1,
               stroke: borderColor,
               'stroke-width': borderWidth
@@ -5396,12 +5397,12 @@
         const targetObjectKey = objectKeyForVariable(frame, binding.targetVariableId);
         const dimension = Number(binding.indexDimension) || 0;
         const rendererOptions = frame.rendererOptions?.[binding.targetVariableId] || {};
-        if (rendererOptions.markerLayout === 'none') return;
+        if (rendererOptions.markerLayout === 'none' && !binding.explicitPointer) return;
         const axisName = dimension === 0 ? 'row' : 'column';
         let targetKey = `${targetObjectKey}:${axisName}-label:${indexValue}`;
         let targetExpression = String(indexValue);
         let targetAxis = axisName;
-        if (hasIndexValue && dimension === 1 && rendererOptions.markerLayout === 'inner') {
+        if (hasIndexValue && dimension === 1 && !binding.pointerAxis && rendererOptions.markerLayout === 'inner') {
           const rowBinding = bindings.find(candidate => (
             candidate.targetVariableId === binding.targetVariableId
             && Number(candidate.indexDimension) === 0
@@ -5441,7 +5442,7 @@
             || frame.state?.[binding.sourceVariableId]?.identity || '',
           sourceVisualContinuityKey: `${snapshotOwner ? `snapshot:${snapshotOwner}:` : ''}auto-matrix-marker:${sourceVariable.functionName || 'global'}:${sourceVariable.name || binding.sourceName}:${document.variables?.[binding.targetVariableId]?.name || binding.targetVariableId}:${dimension}`,
           sourceAliasContinuityKey: '', sourceReferenceAlias: /&/.test(String(sourceVariable.cppType || '')),
-          targetVariableId: binding.targetVariableId, targetObjectKey,
+          targetVariableId: binding.targetVariableId, targetObjectKey, targetKey,
           targetRuntimeIdentity: targetEntry?.identity || '', targetPlacement,
           baseCellWidth: 40, indexValue, unresolvedIndex: !hasIndexValue, label,
           markerSortOrder: index, markerSortKey: binding.sourceName || label,
@@ -5460,7 +5461,7 @@
             anchor: 'center'
           },
           text: label, shape: dimension === 0 ? 'arrow-left' : 'arrow',
-          color: '#12a6df', stroke: '#0b7ead'
+          pointerColor: binding.pointerColor || '', color: '#12a6df', stroke: '#0b7ead'
         });
         return;
       }
@@ -5578,6 +5579,7 @@
         },
         text: label,
         shape: 'arrow',
+        pointerColor: binding.pointerColor || '',
         color: '#12a6df',
         stroke: '#0b7ead'
       });
@@ -6965,9 +6967,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-269';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-270';
   window.ASMTraceRenderers = {
-    build: 'trace-269', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-270', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

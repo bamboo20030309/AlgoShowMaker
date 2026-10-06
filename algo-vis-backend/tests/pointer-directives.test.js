@@ -70,3 +70,56 @@ void f(){int a[6]; int i=3;
   assert.equal(bindings[2].implicitIndex, false);
   assert.equal(bindings[2].indexExpression, 'i-2');
 });
+
+test('matrix axes infer indices and preserve the authored matrix options', () => {
+  const [frame] = findFrameDirectives(`void f(){int dp[2][3];int i=1,j=2;
+// @frame dp render matrix with labels(none), marker-layout(none)
+// @pointer i at dp.row color AV_blue
+// @pointer j at dp.column color #ff0088
+}`);
+  assert.deepEqual(frame.bindings.map(b => [b.pointerAxis,b.indexDimension,b.indexExpression,b.pointerColor]),
+    [['row',0,'i','AV_blue'],['column',1,'j','#ff0088']]);
+  assert.equal(frame.rendererOptions.markerLayout,'none');
+  assert.deepEqual(frame.rendererOptions.labels, { showValue:false, indexFormat:'none' });
+  assert.throws(()=>findFrameDirectives(`void f(){int a[3];int i=0;\n// @frame a\n// @pointer i at a.row\n}`),/必須指定二維矩陣/);
+});
+
+test('colors apply to array and every layout pointer selector; invalid colors are explicit errors', () => {
+  const source=`// @layout recursion as tree
+void f(){int a[3];int i=0;
+// @frame a in tree
+// @pointer i at a color red
+// @pointer i at tree.root color #123456
+// @pointer i at tree.children[0] color rgba(1, 2, 3, 0.5)
+// @pointer i at tree.current color AV_green!
+}`;
+  assert.deepEqual(findFrameDirectives(source)[0].bindings.map(b=>b.pointerColor),['red','#123456','rgba(1, 2, 3, 0.5)','AV_green!']);
+  assert.throws(()=>findFrameDirectives(source.replace('color red','color not-a-color')),/顏色無效/);
+});
+
+
+test('axis pointers work in composable presets without replacing custom matrix settings', () => {
+  const [frame]=findFrameDirectives(`// @preset cursor
+// @pointer i at dp.row color orange
+// @pointer j at dp.column
+// @endpreset
+void f(){std::vector<std::vector<int>> dp;int i=0,j=1;
+// @frame dp render matrix with labels(value), marker-layout(inner)
+// @pointer i at dp.row color orange
+// @pointer j at dp.column
+}`);
+  assert.equal(frame.variables.find(v=>v.name==='dp').kind,'matrix');
+  assert.equal(frame.rendererOptions.markerLayout,'inner');
+  const [preset]=findFrameDirectives(`// @preset base
+// @object dp render matrix with labels(value), marker-layout(inner)
+// @endpreset
+// @preset cursor
+// @pointer i at dp.row color orange
+// @pointer j at dp.column
+// @endpreset
+void f(){int dp[2][3];int i=0,j=1;
+// @frame use base, cursor
+}`);
+  assert.equal(preset.bindings[1].indexDimension,1);
+  assert.equal(preset.bindings[0].pointerColor,'orange');
+});

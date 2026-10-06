@@ -14,8 +14,9 @@
   if (!editor) return;
 
   const commands = [
-    { id: 'pointer', label: '@pointer', effect: '獨立指標：綁定陣列或layout節點（root、current、nodes、leaves、children、level、side），依原始索引與range定位；越界時隱藏', code: '// @pointer i at arr', examples: [
-      '// @pointer i at arr',
+    { id: 'pointer', label: '@pointer', effect: '獨立指標：綁定陣列、矩陣.row/.column或layout節點（root、current、nodes、leaves、children、level、side），可加color指定顏色；省略索引時使用指標變數值，越界時隱藏', code: '// @pointer i at arr', examples: [
+      '// @pointer i at arr color AV_blue',
+      '// @pointer i at dp.row\n// @pointer j at dp.column color AV_red',
       '// @pointer i at merge_tree.children[0]\n// @pointer j at merge_tree.children[1]',
       '// @pointer i at arr[i]',
       '// @pointer i at merge_tree.root\n// @pointer j at merge_tree.leaves[1]',

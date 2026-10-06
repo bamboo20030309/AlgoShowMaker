@@ -242,7 +242,7 @@ function buildSyntaxTree(source) {
 
 function inferKind(type, declaratorText = '', arrayDimensions = 0) {
   const normalized = `${type} ${declaratorText}`.replace(/\s+/g, ' ');
-  if (arrayDimensions >= 2 || /vector\s*<\s*(?:vector|(?:std::)?bitset)\s*</.test(normalized)) return 'matrix';
+  if (arrayDimensions >= 2 || /vector\s*<\s*(?:std::)?(?:vector|bitset)\s*</.test(normalized)) return 'matrix';
   if (arrayDimensions === 1 || /vector\s*</.test(normalized) || /deque\s*</.test(normalized) || /list\s*</.test(normalized)
     || /array\s*</.test(normalized) || /bitset\s*</.test(normalized)) return 'sequence';
   if (/map\s*</.test(normalized) || /unordered_map\s*</.test(normalized)) return 'map';
@@ -2043,19 +2043,27 @@ function attachPointerDirectives(source, analysis, frames) {
   items.forEach(item => {
     const frame = [...frames].filter(candidate => candidate.from < item.from).sort((a, b) => b.from - a.from)[0];
     if (!frame) throw new Error(`第 ${item.line} 行的 @pointer 前面找不到 @frame`);
-    const match = item.payload.match(/^([A-Za-z_]\w*)\s+at\s+([A-Za-z_]\w*)(?:\.(children|root|current|nodes|leaves|level\(([^)]+)\)|side\((left|right|top|bottom)\))(?:\[([^\]]+)\])?)?(?:\[([^\]]+)\])?$/i);
+    const colorMatch = item.payload.match(/\s+color\s+(.+)$/i);
+    const pointerColor = colorMatch ? colorMatch[1].trim() : '';
+    if (pointerColor && !/^(?:AV_[A-Za-z0-9_]+!?|#[0-9A-Fa-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)$/.test(pointerColor)) {
+      throw new Error(`第 ${item.line} 行的 @pointer 顏色無效：${pointerColor}`);
+    }
+    const pointerPayload = colorMatch ? item.payload.slice(0, colorMatch.index) : item.payload;
+    const match = pointerPayload.match(/^([A-Za-z_]\w*)\s+at\s+([A-Za-z_]\w*)(?:\.(row|column|children|root|current|nodes|leaves|level\(([^)]+)\)|side\((left|right|top|bottom)\))(?:\[([^\]]+)\])?)?(?:\[([^\]]+)\])?$/i);
     if (!match) throw new Error(`第 ${item.line} 行的 @pointer 語法無效`);
     const [, name, targetName, selector, levelExpression, side, selectedIndex, cellIndex] = match;
+    const pointerAxis = /^(row|column)$/i.test(selector || '') ? selector.toLowerCase() : '';
+    const isLayout = Boolean(selector && !pointerAxis);
     const childExpression = selector?.toLowerCase() === 'children' ? selectedIndex : null;
     if (selector?.toLowerCase() === 'children' && childExpression == null) throw new Error(`第 ${item.line} 行的 @pointer children 缺少節點索引`);
     const singleton = /^(root|current)$/i.test(selector || '');
-    const suppliedIndex = selector ? (singleton ? cellIndex ?? selectedIndex : cellIndex) : selectedIndex ?? cellIndex;
+    const suppliedIndex = pointerAxis ? selectedIndex ?? cellIndex : selector ? (singleton ? cellIndex ?? selectedIndex : cellIndex) : selectedIndex ?? cellIndex;
     const indexExpression = suppliedIndex == null ? name : suppliedIndex;
     const expressions = [indexExpression, ...[selectedIndex, levelExpression].filter(value => value != null)];
     const parsed = expressions.map(parseFrameExpression);
     if (parsed.some(expression => !expression.valid)) throw new Error(`第 ${item.line} 行的 @pointer 索引運算式無效`);
-    if (selector && !layouts.has(targetName)) throw new Error(`第 ${item.line} 行的 @pointer 找不到 layout：${targetName}`);
-    const names = new Set([name, ...parsed.flatMap(expression => expression.identifiers), ...(selector ? [] : [targetName])]);
+    if (isLayout && !layouts.has(targetName)) throw new Error(`第 ${item.line} 行的 @pointer 找不到 layout：${targetName}`);
+    const names = new Set([name, ...parsed.flatMap(expression => expression.identifiers), ...(isLayout ? [] : [targetName])]);
     const variables = new Map();
     names.forEach(identifier => {
       const variable = frame.variables.find(candidate => candidate.name === identifier) || resolve(identifier, item.from);
@@ -2066,11 +2074,16 @@ function attachPointerDirectives(source, analysis, frames) {
         frame.captureOnlyVariableIds.push(variable.id);
       }
     });
+    if (pointerAxis && variables.get(targetName)?.kind !== 'matrix') {
+      throw new Error(`第 ${item.line} 行的 @pointer ${pointerAxis} 必須指定二維矩陣：${targetName}`);
+    }
     frame.bindings.push({ mode: 'index', explicitPointer: true, implicitIndex: suppliedIndex == null,
+      ...(pointerAxis ? { pointerAxis, indexDimension: pointerAxis === 'row' ? 0 : 1 } : {}),
+      ...(pointerColor ? { pointerColor } : {}),
       label: name, sourceName: name,
       sourceVariableId: variables.get(name).id, sourceVariableIds: [variables.get(name).id],
       targetName, targetVariableId: variables.get(targetName)?.id || '', indexExpression,
-      ...(selector && childExpression == null ? { layoutTarget: {
+      ...(isLayout && childExpression == null ? { layoutTarget: {
         layoutId: targetName, layoutSelector: selector.match(/^[A-Za-z]+/)[0].toLowerCase(),
         indexExpressions: singleton || selectedIndex == null ? [] : [selectedIndex],
         layoutLevelExpression: levelExpression || '', layoutSide: side || ''

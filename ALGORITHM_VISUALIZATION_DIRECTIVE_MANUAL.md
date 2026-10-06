@@ -2095,3 +2095,19 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 | 2026/09/08 | 工作樹 | `int i = 0` 拆分宣告與初始化；缺少畫布變數的 `for` 比較標黃；完整 condition 改為無 UI、無時間的內部著色資料；三行內的 false 分支仍完整呈現。 |
 | 2026/09/07 | 工作樹 | 程式碼片段改用最外層控制子樹；首幀反查初始化；複合條件依短路順序逐段高亮，完成後整段連續保留真／假色。 |
 | 2026/09/07 | `fe5782c` | 建立第一版手冊；整理 `@frame`、`@keep`、`@text`、`@style`、`@segment`、所有修飾詞、renderer、條件、事件及六類案例。 |
+
+## 獨立指標：矩陣列／欄與顏色
+
+```cpp
+// @frame dp render matrix
+// @pointer i at dp.row
+// @pointer j at dp.column color AV_red
+```
+
+- `.row` 使用 `i` 的值選擇列，顯示在該列左側；`.column` 使用 `j` 選擇欄，顯示在該欄上方。無須重複寫 `[i]` 或 `[j]`，索引超出矩陣範圍時隱藏。
+- 不改變原本矩陣的標籤、範圍、顯示格式與其他 renderer 設定；隱藏列欄標籤時也可透過透明定位點呈現指標。
+- 明確寫 `.row/.column` 即指定外側列欄位置，不依賴 `marker-layout(inner)` 的自動格子定位；`marker-layout(none)` 仍關閉自動指標，但明寫的 `@pointer` 會顯示。
+- 所有 `@pointer` 目標均可加 `color`，包括一維陣列與 layout 的 root/current/nodes/leaves/children/level/side。顏色套用到標籤底色、外框與箭頭線；文字保留原有深色。
+- 支援 AV 顏色別名、CSS 顏色名稱、十六進位、rgb/rgba/hsl/hsla；例如 `@pointer i at arr color #e65100`。
+- 未指定 `color` 時維持原本預設。舊 Trace 缺少顏色欄位亦維持預設，不需遷移。
+- 可放在 preset 中與原本矩陣 preset 組合，不用重新宣告矩陣物件。
