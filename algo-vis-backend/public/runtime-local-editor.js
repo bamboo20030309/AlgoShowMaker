@@ -4,7 +4,23 @@
   if (new URLSearchParams(location.search).get('asmEmbed') !== 'runtime') return;
   let bridge, key = '', original = null, draft = null, applying = false;
   let generation = 0, timer = null, databasePromise = null, writes = Promise.resolve();
-  let toggle, reset, status;
+  let reset, status;
+
+  function notifyEditorState() {
+    window.parent.postMessage({ type: 'asm-runtime-code-editor-state',
+      open: document.body.classList.contains('asm-runtime-local-edit') }, location.origin);
+  }
+  function toggleCodeEditor() {
+    const open = !document.body.classList.contains('asm-runtime-local-edit');
+    if (!open) {
+      save(bridge.snapshot());
+      window.ASMTraceStudio?.close?.();
+    }
+    document.body.classList.toggle('asm-runtime-local-edit', open);
+    if (open) document.getElementById('codePanel').classList.remove('collapsed');
+    notifyEditorState();
+    requestAnimationFrame(() => { aceEditor.resize(); window.ASMTracePlayer?.rebaseCurrentFrame?.({ confirmVisible: true }); });
+  }
 
   function database() {
     if (!databasePromise) databasePromise = new Promise((resolve, reject) => {
@@ -68,32 +84,22 @@
     try { await bridge.apply(draft || original); }
     finally { applying = false; }
     status.textContent = draft ? '已載入本機修改' : '本機修改不會更動原投影片';
+    notifyEditorState();
   }
   function init(options) {
     bridge = options;
     const controls = document.createElement('div');
     controls.className = 'runtime-local-controls';
-    toggle = document.createElement('button');
-    toggle.id = 'runtimeLocalEditBtn'; toggle.type = 'button'; toggle.textContent = '本機編輯';
-    toggle.setAttribute('aria-expanded', 'false');
     const studio = document.getElementById('editAnimationBtn');
     const settings = document.getElementById('eventSettingsBtn');
     reset = document.createElement('button');
     reset.id = 'runtimeLocalResetBtn'; reset.type = 'button'; reset.textContent = '還原原版';
     status = document.createElement('span'); status.id = 'runtimeLocalStatus'; status.setAttribute('role', 'status');
-    controls.append(toggle, studio, ...(settings ? [settings] : []), reset, status);
+    controls.append(studio, ...(settings ? [settings] : []), reset, status);
     document.getElementById('subTabs').append(controls);
-    toggle.addEventListener('click', () => {
-      const open = !document.body.classList.contains('asm-runtime-local-edit');
-      if (!open) {
-        save(bridge.snapshot());
-        window.ASMTraceStudio?.close?.();
-      }
-      document.body.classList.toggle('asm-runtime-local-edit', open);
-      if (open) document.getElementById('codePanel').classList.remove('collapsed');
-      toggle.textContent = open ? '收起編輯' : '本機編輯';
-      toggle.setAttribute('aria-expanded', String(open));
-      requestAnimationFrame(() => { aceEditor.resize(); window.ASMTracePlayer?.rebaseCurrentFrame?.({ confirmVisible: true }); });
+    window.addEventListener('message', event => {
+      if (event.origin !== location.origin || event.source !== window.parent) return;
+      if (event.data?.type === 'asm-runtime-toggle-code-editor' && key) toggleCodeEditor();
     });
     reset.addEventListener('click', async () => {
       if (!key || !original || document.getElementById('runBtn').disabled) return;

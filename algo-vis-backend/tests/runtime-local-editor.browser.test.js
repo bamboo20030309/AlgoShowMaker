@@ -48,8 +48,19 @@ test('presentation editor stores code, input and animation locally, survives reo
     return frame;
   }
   let frame = await runtime();
+  async function toggleCodeEditor() {
+    const wasOpen=await frame.evaluate(()=>document.body.classList.contains('asm-runtime-local-edit'));
+    await page.click('#algorithmCodeEditSlideBtn');
+    await frame.waitForFunction(open=>document.body.classList.contains('asm-runtime-local-edit')===open,!wasOpen);
+    await page.waitForFunction(open=>document.getElementById('algorithmCodeEditSlideBtn').getAttribute('aria-expanded')===String(open),!wasOpen);
+  }
+  assert.equal(await frame.locator('#runtimeLocalEditBtn').count(), 0);
+  assert.equal(await page.locator('#controlChrome #algorithmCodeEditSlideBtn').count(), 1);
   assert.equal(await frame.locator('#codePanel').isVisible(), false);
-  await frame.click('#runtimeLocalEditBtn');
+  await page.click('#modeToggleBtn');
+  await page.waitForFunction(()=>!document.body.classList.contains('asm-edit-mode'));
+  assert.equal(await page.getByRole('button',{name:'編輯程式碼',exact:true}).isVisible(),true);
+  await toggleCodeEditor();
   assert.equal(await frame.locator('#runBtn').isVisible(), true);
   assert.equal(await frame.locator('#forceRunBtn').count(), 0);
   const changed = code.replace('std::cout<<n;', 'std::cout<<n+1;');
@@ -69,8 +80,10 @@ test('presentation editor stores code, input and animation locally, survives reo
     window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed', { detail: { document: trace } }));
   });
   await frame.getByRole('button', { name: '返回程式碼', exact: true }).click();
-  await frame.click('#runtimeLocalEditBtn');
+  await toggleCodeEditor();
   await frame.waitForFunction(() => document.getElementById('runtimeLocalStatus').textContent === '已保存在本機');
+  assert.equal(await frame.locator('#runtimeLocalEditBtn').count(), 0);
+  assert.equal(await page.locator('#controlChrome #algorithmCodeEditSlideBtn').count(), 1);
   assert.equal(await frame.locator('#codePanel').isVisible(), false);
   const originalBeforeReload = await page.evaluate(async () => {
     const storage = ASMSlideStorage.create(indexedDB, localStorage);
@@ -87,6 +100,8 @@ test('presentation editor stores code, input and animation locally, survives reo
   assert.equal(await frame.locator('#inputArea').inputValue(), '23');
   assert.equal(await frame.evaluate(() => ASMTracePlayer.getDocument().studio.codePanelFontSize), 21);
   assert.equal(await frame.evaluate(() => ASMTracePlayer.getDocument().studio.eventSettings.autoFixedEnabled), false);
+  assert.equal(await frame.locator('#runtimeLocalEditBtn').count(), 0);
+  assert.equal(await page.locator('#controlChrome #algorithmCodeEditSlideBtn').count(), 1);
   assert.equal(await frame.locator('#codePanel').isVisible(), false);
   // A different slide with the exact same initial source must not inherit
   // this slide's local code, input or styles.
@@ -97,7 +112,7 @@ test('presentation editor stores code, input and animation locally, survives reo
   await frame.evaluate(animation => window.postMessage({ type: 'asm-load-animation', editorSessionKey: 'local-slide', animation }, location.origin), animation);
   await frame.waitForFunction(() => aceEditor.getValue().includes('std::cout<<n+1;'));
   assert.equal(await frame.locator('#inputArea').inputValue(), '23');
-  await frame.click('#runtimeLocalEditBtn');
+  await toggleCodeEditor();
   await frame.click('#runtimeLocalResetBtn');
   await frame.waitForFunction(code => aceEditor.getValue() === code, code);
   assert.equal(await frame.locator('#inputArea').inputValue(), '7');

@@ -498,6 +498,7 @@
   const fragmentStyleSelect = document.getElementById('fragmentStyleSelect');
   const fragmentIndexInput = document.getElementById('fragmentIndexInput');
   const algorithmEditSlideBtn = document.getElementById('algorithmEditSlideBtn');
+  const algorithmCodeEditSlideBtn = document.getElementById('algorithmCodeEditSlideBtn');
   const algorithmEditorModal = document.getElementById('algorithmEditorModal');
   const algorithmEditorFrame = document.getElementById('algorithmEditorFrame');
   const algorithmEditorStatus = document.getElementById('algorithmEditorStatus');
@@ -7174,8 +7175,17 @@
   }
 
   function updateAlgorithmEditButton() {
-    if (!algorithmEditSlideBtn) return;
-    algorithmEditSlideBtn.hidden = getSlide()?.kind !== 'algorithm-animation';
+    const slide = getSlide();
+    const isAlgorithm = slide?.kind === 'algorithm-animation';
+    if (algorithmEditSlideBtn) algorithmEditSlideBtn.hidden = !isAlgorithm;
+    if (algorithmCodeEditSlideBtn) {
+      const frame = isAlgorithm ? document.querySelector(`.algorithm-slide-frame[data-slide-id="${CSS.escape(slide.id)}"]`) : null;
+      algorithmCodeEditSlideBtn.hidden = !isAlgorithm;
+      algorithmCodeEditSlideBtn.disabled = !frame?.dataset.localEditorReady;
+      const open = frame?.dataset.localCodeEditorOpen === 'true';
+      algorithmCodeEditSlideBtn.setAttribute('aria-expanded', String(open));
+      algorithmCodeEditSlideBtn.setAttribute('aria-pressed', String(open));
+    }
   }
 
   // -----------------------------------------------------------------------------
@@ -7909,6 +7919,12 @@
     algorithmEditSlideBtn?.addEventListener('click', () => {
       const slide = getSlide();
       if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
+    });
+    algorithmCodeEditSlideBtn?.addEventListener('click', () => {
+      const slide = getSlide();
+      if (slide?.kind !== 'algorithm-animation') return;
+      const frame = document.querySelector(`.algorithm-slide-frame[data-slide-id="${CSS.escape(slide.id)}"]`);
+      if (frame?.dataset.localEditorReady) frame.contentWindow?.postMessage({ type: 'asm-runtime-toggle-code-editor' }, window.location.origin);
     });
     document.getElementById('saveAlgorithmEditorBtn')?.addEventListener('click', saveAlgorithmEditor);
     window.addEventListener('message', handleAlgorithmEmbedMessage);
@@ -9522,6 +9538,7 @@
     button.addEventListener('keydown', event => {
       if (event.key === 'ArrowDown') { event.preventDefault(); open(); }
     });
+
   }
   function rememberedStyleColor(fallback, type = null) {
     try {
@@ -9899,6 +9916,15 @@
   // -----------------------------------------------------------------------------
   async function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
+    if (event.data.type === 'asm-runtime-code-editor-state') {
+      const frame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
+        .find(frame => frame.contentWindow === event.source);
+      if (!frame) return;
+      frame.dataset.localEditorReady = 'true';
+      frame.dataset.localCodeEditorOpen = String(event.data.open === true);
+      updateAlgorithmEditButton();
+      return;
+    }
     if (event.data.type === 'asm-export-animation-snapshot'
       && event.source === pendingAlgorithmExportSnapshot?.source
       && event.data.requestId === pendingAlgorithmExportSnapshot.requestId) {

@@ -2596,6 +2596,12 @@ body.custom-overview-open .reveal .controls {
   gap: 6px;
 }
 
+#algorithmCodeEditSlideBtn[hidden] { display: none; }
+#algorithmCodeEditSlideBtn[aria-pressed="true"] {
+  background: rgba(29, 143, 131, 0.5);
+  border-color: #61c9bc;
+}
+
 .asm-av-swatch {
   display: grid;
   place-items: center;
