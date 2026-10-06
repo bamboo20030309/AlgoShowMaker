@@ -186,6 +186,8 @@
   }
 
   function scheduleAccountEventSettingsSave() {
+    // Presentation edits belong to the browser overlay, never account state.
+    if (embedMode === 'runtime') return;
     const token = localStorage.getItem('algo_jwt_token') || '';
     if (!token || !currentTrace) return;
     accountEventSettings = cleanEventSettings(currentTrace.studio?.eventSettings || { gapMs: DEFAULT_EVENT_GAP_MS });
@@ -558,6 +560,7 @@
     } else {
       currentTrace = null;
       sourceViewBaseline = null;
+      window.ASMTracePlayer?.clear?.();
       updateStudioButton();
     }
     window.dispatchEvent(new CustomEvent('asm:trace-loaded'));

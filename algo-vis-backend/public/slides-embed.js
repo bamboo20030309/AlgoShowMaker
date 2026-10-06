@@ -91,7 +91,8 @@
       watches: traceSettings.watches || currentAnimation.watches || [],
       skins: traceSettings.skins || currentAnimation.skins || {},
       rules: traceSettings.rules || currentAnimation.rules || [],
-      traceDocument: traceSettings.traceDocument || currentAnimation.traceDocument || null,
+      traceDocument: Object.hasOwn(traceSettings, 'traceDocument')
+        ? traceSettings.traceDocument : currentAnimation.traceDocument || null,
       ...(traceSettings.rebuild ? { rebuild: traceSettings.rebuild,
         rebuildError: traceSettings.rebuildError } : {})
     };
@@ -154,7 +155,9 @@
   window.addEventListener('message', event => {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-load-animation') {
-      const refresh = applyAnimation(event.data.animation, event.data.editorSessionKey);
+      const refresh = mode === 'runtime' && window.ASMRuntimeLocalEditor
+        ? window.ASMRuntimeLocalEditor.load(event.data.animation, event.data.editorSessionKey)
+        : applyAnimation(event.data.animation, event.data.editorSessionKey);
       const applied = refresh && typeof refresh.finally === 'function'
         ? refresh.finally(notifyAnimationApplied)
         : (notifyAnimationApplied(), Promise.resolve());
@@ -200,6 +203,7 @@
 
   window.addEventListener('asm:camera-user-change', event => {
     if (mode !== 'runtime' || window.parent === window
+      || window.ASMRuntimeLocalEditor?.hasChanges?.()
       || !runtimePresentationMode || !runtimeCameraEditable) return;
     const presentationCamera = window.ASMAlgorithmAnimation
       ?.normalizePresentationCamera?.(event.detail?.camera);
@@ -211,6 +215,11 @@
   });
 
   window.addEventListener('asm:compiled-animation', event => {
+    if (mode === 'runtime') {
+      currentAnimation = normalize(event.detail || {});
+      window.ASMRuntimeLocalEditor?.save?.(snapshotAnimation());
+      return;
+    }
     if (mode !== 'editor' || window.parent === window) return;
     currentAnimation = normalize(event.detail || {});
     window.parent.postMessage({
@@ -218,6 +227,8 @@
       animation: currentAnimation
     }, window.location.origin);
   });
+
+  window.ASMRuntimeLocalEditor?.init?.({ apply: applyAnimation, snapshot: snapshotAnimation });
 
   window.addEventListener('load', () => {
     if (window.parent === window) return;

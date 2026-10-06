@@ -3,15 +3,15 @@
  * 隱藏獨立頁 chrome 並讓演算法畫布填滿 iframe；父頁負責外部播放控制。
  * -------------------------------------------------------------------------- */
 body.asm-embed-runtime #top-bar,
-body.asm-embed-runtime #codePanel,
-body.asm-embed-runtime #divider,
+body.asm-embed-runtime:not(.asm-runtime-local-edit) #codePanel,
+body.asm-embed-runtime:not(.asm-runtime-local-edit) #divider,
 body.asm-embed-runtime #drawingToolbar,
 body.asm-embed-runtime #algoSidePanel,
 body.asm-embed-runtime #myCodesSidebar,
-body.asm-embed-runtime #traceStudioRail,
-body.asm-embed-runtime .trace-studio-inspector,
-body.asm-embed-runtime #traceStudioTimeline,
-body.asm-embed-runtime .gui-prop-panel {
+body.asm-embed-runtime:not(.asm-runtime-local-edit) #traceStudioRail,
+body.asm-embed-runtime:not(.asm-runtime-local-edit) .trace-studio-inspector,
+body.asm-embed-runtime:not(.asm-runtime-local-edit) #traceStudioTimeline,
+body.asm-embed-runtime:not(.asm-runtime-local-edit) .gui-prop-panel {
   display: none !important;
 }
 
@@ -96,4 +96,52 @@ body.asm-embed-runtime #canvasWrapper {
    most of the slide, so the presenter can pan from anywhere on the drawing. */
 body.asm-embed-runtime #viewport .draggable-object {
   pointer-events: none;
+}
+
+/* The presentation's local edit strip is part of the existing result tabs.
+   Code and Studio become visible only when explicitly opened. */
+body.asm-embed-runtime #subTabs {
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 42px;
+}
+
+.runtime-local-controls {
+  flex: 0 0 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid #eeeeee;
+}
+
+.runtime-local-controls button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 1px solid #d5dedc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #355d59;
+  cursor: pointer;
+}
+
+.runtime-local-controls button:disabled { opacity: 0.5; cursor: default; }
+.runtime-local-controls button:hover:not(:disabled) { background: #eef4f3; }
+#runtimeLocalStatus { font-size: 11px; color: #687774; }
+
+body.asm-embed-runtime:not(.asm-runtime-local-edit) .runtime-local-controls #editAnimationBtn,
+body.asm-embed-runtime:not(.asm-runtime-local-edit) .runtime-local-controls #eventSettingsBtn,
+body.asm-embed-runtime:not(.asm-runtime-local-edit) #runtimeLocalResetBtn { display: none; }
+
+body.asm-embed-runtime.asm-runtime-local-edit #codePanel {
+  flex: 0 1 42%;
+  width: 42%;
+  min-width: 220px;
+}
+body.asm-embed-runtime.asm-runtime-local-edit #vizPanel { width: auto; min-width: 0; flex: 1; }
+body.asm-embed-runtime.asm-runtime-local-edit.asm-trace-studio-open #viewport .draggable-object {
+  pointer-events: auto;
 }
