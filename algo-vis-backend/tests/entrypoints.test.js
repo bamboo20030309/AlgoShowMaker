@@ -55,7 +55,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-code-presenter.js?v=code-34'));
   assert.ok(html.includes('trace-view-source.js?v=trace-17'));
   assert.ok(html.includes('trace-editor.js?v=trace-33'));
-  assert.ok(html.includes('compile.js?v=syntax-12'));
+  assert.ok(html.includes('compile.js?v=syntax-13'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
   assert.ok(html.includes('style.css?v=brand-shared-12'));

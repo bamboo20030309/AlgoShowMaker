@@ -5,7 +5,7 @@ test('RUN reports syntax, analysis, trace and drawing failures without hiding th
  const {base}=await startIsolatedServer(t);const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/algorithm.html');await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');
  const good='#include <iostream>\nint main(){int n=1;\n// @frame n\nstd::cout<<n;}';
  async function run(code=good){await page.evaluate(code=>{aceEditor.setValue(code,-1);window.__runDone=false;window.addEventListener('asm:compile-finished',()=>window.__runDone=true,{once:true});document.querySelector('#runBtn').click();},code);await page.waitForFunction(()=>window.__runDone,{},{timeout:60000});return page.locator('#compileWarnings').textContent();}
- async function expectNotice(pattern){assert.match(await page.locator('#compileWarnings').textContent(),pattern);assert.equal(await page.locator('#compileWarnings').isVisible(),true);await page.click('[data-tab="tab-canvas"]');assert.equal(await page.locator('#compileWarnings').isVisible(),true);}
+ async function expectNotice(pattern){await page.click('[data-tab="tab-debug"]');assert.match(await page.locator('#compileWarnings').textContent(),pattern);assert.equal(await page.locator('#compileWarnings').isVisible(),true);await page.click('[data-tab="tab-debug"]');assert.equal(await page.locator('#compileWarnings').isVisible(),true);await page.click('[data-tab="tab-canvas"]');assert.equal(await page.locator('#compileWarnings').isVisible(),false);}
  await run();assert.equal(await page.locator('#compileWarnings').isVisible(),false);
  await page.route('**/syntax-tree',route=>route.fulfill({status:503,json:{error:'語法樹服務暫時無法使用'}}),{times:1});await run();await expectNotice(/語法樹.*服務暫時無法使用/);assert.equal((await page.locator('#outputArea').textContent()).trim(),'1');
  await page.route('**/syntax-tree',async route=>{const response=await route.fetch(),payload=await response.json();payload.root.children.push({id:'test-error',type:'Error',line:2,text:'?',depth:1,children:[]});await route.fulfill({response,json:payload});},{times:1});await run();await expectNotice(/語法樹.*第 2 行/);
@@ -19,4 +19,20 @@ test('RUN reports syntax, analysis, trace and drawing failures without hiding th
  const kmp=fs.readFileSync(require('node:path').join(__dirname,'fixtures/kmp-source-newlines.cpp'),'utf8');await run(kmp);await page.evaluate(()=>ASMTracePlayer.renderStable(3));await expectNotice(/事件動畫[\s\S]*畫面目標[\s\S]*s\[i\]/);
  await page.screenshot({path:'test-results/compile-pipeline-warning.png'});
  assert.deepEqual(errors,[]);
+});
+test('pipeline warnings appear only in debug records and reset on the next RUN',{timeout:60000},async t=>{
+ const {base}=await startIsolatedServer(t);
+ const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());
+ const page=await browser.newPage();await page.goto(base+'/algorithm.html');
+ await page.waitForFunction(()=>document.body.dataset.defaultAnimationCache==='stored');
+ assert.equal(await page.locator('#tab-debug #compileWarnings').count(),1);
+ await page.evaluate(()=>{ASMCompileWarnings.report('語法樹','測試解析警告');ASMCompileWarnings.report('動畫解析','測試動畫警告');});
+ await page.click('[data-tab="tab-canvas"]');assert.equal(await page.locator('#compileWarnings').isVisible(),false);
+ await page.click('[data-tab="tab-debug"]');assert.equal(await page.locator('#compileWarnings').isVisible(),true);
+ assert.match(await page.locator('#compileWarnings').textContent(),/語法樹：測試解析警告[\s\S]*動畫解析：測試動畫警告/);
+ await page.route('**/compile',route=>route.fulfill({status:200,json:{output:'1',error:'',debug_log:[{time:'test',msg:'本輪獨立除錯紀錄'}]}}));
+ await page.evaluate(()=>{aceEditor.setValue('int main(){return 0;}',-1);window.__warningDone=false;window.addEventListener('asm:compile-finished',()=>window.__warningDone=true,{once:true});document.querySelector('#runBtn').click();});
+ await page.waitForFunction(()=>window.__warningDone);
+ await page.click('[data-tab="tab-debug"]');assert.equal(await page.locator('#compileWarnings').isVisible(),false,await page.locator('#compileWarnings').textContent());
+ assert.match(await page.locator('#debugArea').textContent(),/本輪獨立除錯紀錄/);
 });

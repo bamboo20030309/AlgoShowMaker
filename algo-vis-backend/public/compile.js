@@ -28,7 +28,7 @@ window.asmApplyAnimationScript = function (scriptContent) {
 
 // 前端：送 code ＋ input 給 /compile，並更新「輸出」與「debug log」
 
-// Keep failures visible across canvas/output/debug tabs until the next RUN.
+// Keep pipeline warnings in the debug record tab until the next RUN.
 window.ASMCompileWarnings = (() => {
   const stages = new Map();
   function render() {
