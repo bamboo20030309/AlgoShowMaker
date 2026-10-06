@@ -1510,6 +1510,9 @@
 
   function previousAliasKey(sourceKey, topKey, topElement, previousPlacements, identityKeys) {
     if (!sourceKey) return sourceKey;
+    // 同一來源變數可同時指向不同容器。指標由 canonical role 配對延續，
+    // 不可使用純量 lifetime 的通用 alias 找另一個容器上的指標當入場原點。
+    if (topElement?.dataset?.tracePointerInstanceId) return sourceKey;
     const identity = topElement?.dataset?.traceRuntimeIdentity || '';
     const previousTopKey = identity ? identityKeys.get(identity) : '';
     if (previousTopKey && topKey) {
@@ -9746,10 +9749,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-300';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-301';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-300', play, cancel, updateEventAvailability,
+    build: 'trace-301', play, cancel, updateEventAvailability,
     captureAssignmentSourceGeometry,
     recursionGrowthTransitions,
     keepLiveGrowthTransitions,
