@@ -186,8 +186,8 @@
   }
 
   function scheduleAccountEventSettingsSave() {
-    // Presentation edits belong to the browser overlay, never account state.
-    if (embedMode === 'runtime') return;
+    // A sample copy must not write the signed-in user's account preferences.
+    if (embedMode === 'runtime' || new URLSearchParams(location.search).get('localOnly') === '1') return;
     const token = localStorage.getItem('algo_jwt_token') || '';
     if (!token || !currentTrace) return;
     accountEventSettings = cleanEventSettings(currentTrace.studio?.eventSettings || { gapMs: DEFAULT_EVENT_GAP_MS });

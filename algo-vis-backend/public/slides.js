@@ -201,7 +201,7 @@
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
   const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
-    if (!deckUid && !shareToken) throw new Error('本機動畫結果不存在，請重新匯入');
+    if (sampleId || (!deckUid && !shareToken)) throw new Error('本機動畫結果不存在，請重新匯入');
     const response = await fetch(`${remoteDeckEndpoint()}/traces/${encodeURIComponent(key)}`, {
       headers: deckUid ? { Authorization: `Bearer ${authToken()}` } : {}
     });
@@ -292,7 +292,6 @@
   let cloudSaveInFlight = false;
   let cloudSaveQueued = false;
   let cloudDeckTitle = '未命名投影片';
-  let sampleArchiveBlob = null;
   let sharedAccess = null;
   let currentShareSettings = { mode: 'private', view_token: null, edit_token: null };
   let pendingProgressiveRebuild = null;
@@ -498,7 +497,6 @@
   const fragmentStyleSelect = document.getElementById('fragmentStyleSelect');
   const fragmentIndexInput = document.getElementById('fragmentIndexInput');
   const algorithmEditSlideBtn = document.getElementById('algorithmEditSlideBtn');
-  const algorithmCodeEditSlideBtn = document.getElementById('algorithmCodeEditSlideBtn');
   const algorithmEditorModal = document.getElementById('algorithmEditorModal');
   const algorithmEditorFrame = document.getElementById('algorithmEditorFrame');
   const algorithmEditorStatus = document.getElementById('algorithmEditorStatus');
@@ -650,7 +648,7 @@
     }).then(() => {
       if (revision === localSaveRevision) {
         document.body.dataset.localDeckSave = 'saved';
-        if (!deckUid && !shareToken) setCloudStatus('saved', '本機已儲存');
+        if (sampleId || (!deckUid && !shareToken)) setCloudStatus('saved', sampleId ? '範例本機副本已儲存' : '本機已儲存');
       }
       return true;
     }).catch(error => {
@@ -690,7 +688,7 @@
   }
 
   function canSaveRemoteDeck() {
-    return Boolean(deckUid || (shareToken && sharedAccess === 'edit'));
+    return !sampleId && Boolean(deckUid || (shareToken && sharedAccess === 'edit'));
   }
 
   function remoteDeckEndpoint() {
@@ -701,13 +699,13 @@
 
   function applySharedAccessUi() {
     if (!shareToken || !sharedAccess) return;
-    const canEdit = sharedAccess === 'edit';
+    const canEdit = Boolean(sampleId) || sharedAccess === 'edit';
     document.body.classList.toggle('shared-view-only', !canEdit);
     document.body.classList.toggle('shared-edit-access', canEdit);
     if (!canEdit) document.body.classList.remove('asm-edit-mode');
     if (sharedAccessBadge) {
       sharedAccessBadge.hidden = false;
-      sharedAccessBadge.textContent = canEdit ? '共享編輯模式' : '觀賞模式';
+      sharedAccessBadge.textContent = sampleId ? '範例本機副本' : canEdit ? '共享編輯模式' : '觀賞模式';
     }
   }
 
@@ -715,7 +713,7 @@
   // 雲端載入、漸進重建與同步
   // 遠端 deck 先進入可操作狀態，再按目前頁面優先逐張重建重型動畫，避免大型簡報阻塞首次呈現。
   // -----------------------------------------------------------------------------
-  async function loadCloudDeck() {
+  async function loadCloudDeck(localDeck) {
     if (sampleId) {
       setCloudStatus('loading', '正在載入公開投影片…');
       const catalogResponse = await fetch('/guest-decks.json');
@@ -723,15 +721,16 @@
       const catalog = await catalogResponse.json();
       const entry = catalog.decks.find(item => item.id === sampleId);
       if (!entry) throw new Error('找不到指定的公開投影片');
-      const response = await fetch(entry.archive);
-      if (!response.ok) throw new Error('公開投影片載入失敗');
-      const archiveBlob = await response.blob();
-      const archive = await window.ASMDeck.decode(archiveBlob);
-      deck = normalizeDeck(await traceStore.detachDeck(archive.deck));
-      sampleArchiveBlob = archiveBlob;
+      // Each sample has its own browser draft. Never replace local edits on reload.
+      if (!localDeck) {
+        const response = await fetch(entry.archive);
+        if (!response.ok) throw new Error('公開投影片載入失敗');
+        const archive = await window.ASMDeck.decode(await response.blob());
+        deck = normalizeDeck(await traceStore.detachDeck(archive.deck));
+      }
       pendingProgressiveRebuild = { mode: 'sample' };
       cloudDeckTitle = entry.title;
-      sharedAccess = 'view';
+      sharedAccess = 'local';
       applySharedAccessUi();
       if (shareDeckBtn) shareDeckBtn.hidden = false;
       document.body.classList.add('sample-deck-ready');
@@ -779,11 +778,11 @@
   }
 
   function progressiveRebuildLabel(session, active = null) {
-    if (!session.total) return session.mode === 'sample' ? '公開投影片・僅供觀賞' : '精簡投影片已匯入';
+    if (!session.total) return session.mode === 'sample' ? '範例本機副本已儲存' : '精簡投影片已匯入';
     if (session.completed >= session.total) {
       if (session.mode === 'sample') return session.pending
         ? `公開投影片・${session.pending} 張動畫需要重新 RUN`
-        : '公開投影片・僅供觀賞';
+        : '範例本機副本已儲存';
       return session.pending
         ? `投影片已匯入；${session.pending} 張動畫請修正程式後 RUN`
         : '精簡投影片已匯入';
@@ -840,7 +839,7 @@
         delete animation.rebuild;
         const current = getSlideById(entry.slide.id);
         if (current) {
-          const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: true });
+          const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: !sampleId });
           if (progressiveRebuildSession !== session) return;
           current.animation = detached.groups[0].slides[0].animation;
           refreshAlgorithmSlideInPlace(current);
@@ -1116,7 +1115,7 @@
     if (exportDeckBtn?.disabled) return;
     exportDeckBtn.disabled = true;
     try {
-      let blob = sampleId ? sampleArchiveBlob : null;
+      let blob = null;
       if (!blob) {
         const draft = await editorAnimationExportSnapshot();
         const projected = await window.ASMDeck.project(await traceStore.materializeDeck(deck), draft,
@@ -7178,14 +7177,6 @@
     const slide = getSlide();
     const isAlgorithm = slide?.kind === 'algorithm-animation';
     if (algorithmEditSlideBtn) algorithmEditSlideBtn.hidden = !isAlgorithm;
-    if (algorithmCodeEditSlideBtn) {
-      const frame = isAlgorithm ? document.querySelector(`.algorithm-slide-frame[data-slide-id="${CSS.escape(slide.id)}"]`) : null;
-      algorithmCodeEditSlideBtn.hidden = !isAlgorithm;
-      algorithmCodeEditSlideBtn.disabled = !frame?.dataset.localEditorReady;
-      const open = frame?.dataset.localCodeEditorOpen === 'true';
-      algorithmCodeEditSlideBtn.setAttribute('aria-expanded', String(open));
-      algorithmCodeEditSlideBtn.setAttribute('aria-pressed', String(open));
-    }
   }
 
   // -----------------------------------------------------------------------------
@@ -7919,12 +7910,6 @@
     algorithmEditSlideBtn?.addEventListener('click', () => {
       const slide = getSlide();
       if (slide?.kind === 'algorithm-animation') openAlgorithmEditor(slide.id);
-    });
-    algorithmCodeEditSlideBtn?.addEventListener('click', () => {
-      const slide = getSlide();
-      if (slide?.kind !== 'algorithm-animation') return;
-      const frame = document.querySelector(`.algorithm-slide-frame[data-slide-id="${CSS.escape(slide.id)}"]`);
-      if (frame?.dataset.localEditorReady) frame.contentWindow?.postMessage({ type: 'asm-runtime-toggle-code-editor' }, window.location.origin);
     });
     document.getElementById('saveAlgorithmEditorBtn')?.addEventListener('click', saveAlgorithmEditor);
     window.addEventListener('message', handleAlgorithmEmbedMessage);
@@ -9916,15 +9901,6 @@
   // -----------------------------------------------------------------------------
   async function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
-    if (event.data.type === 'asm-runtime-code-editor-state') {
-      const frame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
-        .find(frame => frame.contentWindow === event.source);
-      if (!frame) return;
-      frame.dataset.localEditorReady = 'true';
-      frame.dataset.localCodeEditorOpen = String(event.data.open === true);
-      updateAlgorithmEditButton();
-      return;
-    }
     if (event.data.type === 'asm-export-animation-snapshot'
       && event.source === pendingAlgorithmExportSnapshot?.source
       && event.data.requestId === pendingAlgorithmExportSnapshot.requestId) {
@@ -9992,7 +9968,7 @@
     try {
       detached = await traceStore.detachDeck({ groups: [{ slides: [{
         animation: normalizeAlgorithmAnimation(event.data.animation)
-      }] }] }, { upload: true });
+      }] }] }, { upload: !sampleId });
     } catch (error) {
       if (algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫儲存失敗：${error.message}`;
       return;
@@ -10015,7 +9991,7 @@
     if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
       sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
     } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-46';
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-47' + (sampleId ? '&localOnly=1' : '');
     }
   }
 
@@ -11878,7 +11854,7 @@
       const localDeck = await draftStore.loadDeck(DRAFT_KEY,
         !deckUid && !shareToken ? [STORAGE_KEY, OLD_STORAGE_KEY] : [], { lazyTraces: true });
       if (localDeck) deck = normalizeDeck(await traceStore.detachDeck(localDeck));
-      await loadCloudDeck();
+      await loadCloudDeck(localDeck);
       const importId = pendingWorkspaceImport;
       if (importId && deckUid) {
         const file = await window.ASMDeckFileDrop.get(importId);

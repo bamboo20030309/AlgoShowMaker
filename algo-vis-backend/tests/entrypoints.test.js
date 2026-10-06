@@ -26,7 +26,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(sources.indexOf('trace-pointer-model.js') < sources.indexOf('trace-frame-tween.js'));
   assert.ok(sources.indexOf('algorithm-animation.js') < sources.indexOf('trace-editor.js'));
   for (const mode of ['runtime', 'editor']) {
-    const runtimeVersion = mode === 'editor' ? 46 : 45;
+    const runtimeVersion = mode === 'editor' ? 47 : 45;
     assert.ok(read('slides.js').includes('algorithm.html?asmEmbed=' + mode + '&v=trace-runtime-' + runtimeVersion));
   }
   assert.ok(read('front.js').includes("if (!new URLSearchParams(window.location.search).has('asmEmbed'))"),
@@ -54,7 +54,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
   assert.ok(html.includes('trace-code-presenter.js?v=code-34'));
   assert.ok(html.includes('trace-view-source.js?v=trace-17'));
-  assert.ok(html.includes('trace-editor.js?v=trace-33'));
+  assert.ok(html.includes('trace-editor.js?v=trace-34'));
   assert.ok(html.includes('compile.js?v=syntax-13'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
@@ -65,7 +65,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=6'));
   assert.ok(slides.includes('slides-cloud.js?v=2'));
-  assert.ok(slides.includes('slides.js?v=slides-267'));
+  assert.ok(slides.includes('slides.js?v=slides-268'));
   assert.ok(slides.includes('trace-model.js?v=trace-42'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
@@ -77,7 +77,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
     assert.ok(surface.includes('rel="noopener noreferrer"'));
     assert.ok(surface.includes('viewBox="0 0 16 16"'));
   }
-  assert.ok(slides.includes('slides.css?v=color-swatches-119'));
+  assert.ok(slides.includes('slides.css?v=color-swatches-120'));
   assert.ok(slides.indexOf('trace-arrow-model.js?v=arrow-11') < slides.indexOf('slides.js?v='));
   for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-provenance.js', 'asmdeck.js']) {
     assert.ok(slides.includes(`<script src="${name}?`), `${name} must load in the slide editor`);
@@ -127,9 +127,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-studio.js?v=trace-138'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-4'));
   assert.ok(html.includes('front.js?v=random-id-52'));
-  assert.ok(html.includes('slides-embed.js?v=trace-13'));
-  assert.ok(html.indexOf('runtime-local-editor.js?') > html.indexOf('trace-editor.js?'));
-  assert.ok(html.indexOf('runtime-local-editor.js?') < html.indexOf('slides-embed.js?'));
+  assert.ok(html.includes('slides-embed.js?v=trace-14'));
   assert.ok(html.includes('trace-provenance.js?v=trace-14'));
   assert.ok(html.includes('trace.css?v=trace-37'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';
