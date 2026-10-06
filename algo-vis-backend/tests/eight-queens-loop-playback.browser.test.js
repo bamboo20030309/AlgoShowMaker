@@ -83,11 +83,36 @@ test('loop sample covers all 256 configurations without event-heavy skipped inte
         return document.frames[20].events.filter(event => event.enabled).map(event => event.type);
       });
       assert.ok(!enabled.some(type => ['assign', 'write', 'declare', 'compare'].includes(type)));
+      // This case measures frame/event playback, not spoken-caption duration.
+      // Complete speech callbacks deterministically; real TTS has separate tests.
+      await page.evaluate(() => {
+        window.fixtureSpeechCalls = 0;
+        window.speakText = (_text, options) => {
+          window.fixtureSpeechCalls++;
+          options.onstart?.();
+          setTimeout(() => options.onend?.(), 0);
+        };
+      });
       await page.locator('#playToggleBtn').click();
-      await page.waitForFunction(() => window.CodeScript.get_current_frame_index() >= 23,
-        null, { timeout: 10000 });
+      try {
+        await page.waitForFunction(() => window.CodeScript.get_current_frame_index() >= 23,
+          null, { timeout: 10000 });
+      } catch (error) {
+        const state = await page.evaluate(() => ({
+          frame: CodeScript.get_current_frame_index(),
+          pressed: document.getElementById('playToggleBtn').getAttribute('aria-pressed'),
+          activeEvent: document.querySelector('[data-trace-active-event-id]')?.dataset,
+          enabled: ASMTracePlayer.getDocument().frames[CodeScript.get_current_frame_index()].events
+            .filter(e => e.enabled).map(e => ({ type: e.type, source: e.source?.text, unavailable: e.autoAnimationDisabled })),
+          hidden: document.hidden, visibility: document.body.dataset
+        }));
+        console.log(JSON.stringify({ timings, state }));
+        throw error;
+      }
       await page.locator('#playToggleBtn').click();
       assert.equal(await page.locator('#playToggleBtn').getAttribute('aria-pressed'), 'false');
+      assert.ok(await page.evaluate(() => window.fixtureSpeechCalls > 0),
+        'caption callbacks are exercised without measuring spoken text length');
       assert.deepEqual(errors, []);
       const output = path.join(root, 'test-results/eight-queens-draft');
       fs.mkdirSync(output, { recursive: true });

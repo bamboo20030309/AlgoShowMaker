@@ -6,6 +6,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const { chromium } = require('playwright');
+const { TWEEN_BUILD } = require('./helpers/builds');
 
 test('detached assignment copies retain appearance and commit only after movement', { timeout: 120000 }, async () => {
   const root = path.resolve(__dirname, '..');
@@ -32,7 +33,7 @@ test('detached assignment copies retain appearance and commit only after movemen
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${base}/algorithm.html`);
-    await page.waitForFunction(() => window.ASMTraceFrameTween?.build === 'trace-295' && window.ace);
+    await page.waitForFunction(build => window.ASMTraceFrameTween?.build === build && window.ace, TWEEN_BUILD);
     await page.waitForTimeout(800);
 
     async function run(code, rate, noCapture = false, roundtrip = false) {

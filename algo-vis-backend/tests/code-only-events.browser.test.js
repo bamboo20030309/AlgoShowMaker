@@ -26,6 +26,9 @@ int main() {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${base}/algorithm.html`);
     const result = await page.evaluate(async sourceTrace => {
+      // This renderer fixture does not load through Player.apply, so explicitly
+      // cancel the asynchronous built-in sample before painting its own scene.
+      window.ASMDefaultAlgorithm?.cancel?.('renderer-fixture');
       sourceTrace.studio ||= {};
       sourceTrace.studio.eventSettings ||= {};
       sourceTrace.studio.eventSettings.defaultEnabled = { call: true, output: true };

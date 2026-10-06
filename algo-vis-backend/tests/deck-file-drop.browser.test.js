@@ -79,6 +79,10 @@ test('external deck files drop onto import and add controls, workspace creates a
     });
     await page.evaluate(() => localStorage.setItem('algo_jwt_token', 'fixture-token'));
     await page.goto(base); await page.waitForSelector('#dashboardView:not([hidden])');
+    // The dashboard becomes visible before the async library load completes.
+    // Wait for its rendered fixture so it cannot clear the drop error message.
+    await page.waitForFunction(() => document.getElementById('deckCount').textContent === '共 0 份'
+      && !document.getElementById('libraryMessage').textContent);
     await drop('#emptyCreateBtn', 'invalid.json', '{}');
     await page.waitForFunction(() => document.getElementById('libraryMessage').textContent.includes('不是有效')); assert.equal(created, 0);
     await page.evaluate(() => {

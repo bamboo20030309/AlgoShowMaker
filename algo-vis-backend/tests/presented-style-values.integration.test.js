@@ -8,7 +8,14 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { compile } = require('./helpers/compile');
+const { compile: compileSource } = require('./helpers/compile');
+async function compile(code, input) {
+  const result = await compileSource(code, input);
+  // Paint presentation reads the browser's shared animation tick. This VM
+  // fixture has no DOM, so provide the same document timeline interface.
+  result.window.document = { timeline: { currentTime: 0 } };
+  return result;
+}
 
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。

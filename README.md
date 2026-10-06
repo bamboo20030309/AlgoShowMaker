@@ -3,7 +3,7 @@
 AlgoShowMaker 是一套演算法教學與簡報製作工具。你可以在 C++ 程式碼中加入少量視覺化指令，執行後產生可播放、可編輯的動畫，再把動畫、文字、LaTeX、程式碼與資料結構排成教學投影片。
 
 - 介面語言：繁體中文
-- 穩定版本：AV_V4.11
+- 穩定版本：AV_V4.12
 - 專案首頁：[GitHub](https://github.com/bamboo20030309/AlgoShowMaker)
 
 ## 核心功能
@@ -31,7 +31,7 @@ AlgoShowMaker 是一套演算法教學與簡報製作工具。你可以在 C++ �
 
 需求：
 
-- Node.js 18 以上
+- Node.js 20.19 以上（建議 Node.js 22）
 - MongoDB
 - 可編譯 C++17 的編譯器
 

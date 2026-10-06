@@ -10,6 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 const read = name => fs.readFileSync(path.join(__dirname, '../public', name), 'utf8');
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
@@ -46,8 +47,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-code-model.js?v=code-38'));
   assert.ok(html.includes('trace-events.js?v=trace-65'));
   assert.ok(html.includes('trace-pointer-model.js?v=pointer-4'));
-  assert.ok(html.includes('trace-frame-tween.js?v=trace-299'));
-  assert.ok(html.includes('trace-renderer.js?v=trace-267'));
+  assert.ok(html.includes(`trace-frame-tween.js?v=${TWEEN_BUILD}`));
+  assert.ok(html.includes(`trace-renderer.js?v=${RENDERER_BUILD}`));
   assert.ok(html.includes('trace-event-code-tree.js?v=trace-9'));
   assert.ok(sources.indexOf('trace-code-model.js') < sources.indexOf('trace-event-code-tree.js'));
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
