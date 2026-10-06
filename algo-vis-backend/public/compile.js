@@ -215,6 +215,14 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     // -----------------------------------------------------------------------------
     if (data.traceDocument) {
       try {
+        // Do not label another source's animation as the current RUN, even
+        // if a stale response or cache entry is returned by the server.
+        const returnedSource = data.traceDocument.sourceCode;
+        if (typeof returnedSource === 'string' && returnedSource
+          && returnedSource.replace(/\r\n/g, '\n') !== sourceCode.replace(/\r\n/g, '\n')) {
+          window.ASMTraceEditor?.clearAnimation?.();
+          throw new Error('回傳動畫與本次程式碼不一致，已停止套用舊動畫。');
+        }
         const incomingTraceDocument = {
           ...data.traceDocument,
           sourceCode: typeof data.traceDocument.sourceCode === 'string'
@@ -261,6 +269,16 @@ document.getElementById('runBtn').addEventListener('click', async () => {
         console.error("動畫腳本執行失敗:", e);
         if (dbg) dbg.textContent += '\n[前端錯誤] 動畫腳本執行失敗: ' + e.message;
       }
+    } else {
+      // Plain execution (or a failed compilation) must not leave the previous
+      // Trace in the player or the snapshot exported to an embedded slide.
+      window.ASMTraceEditor?.clearAnimation?.();
+      window.dispatchEvent(new CustomEvent('asm:compiled-animation', {
+        detail: {
+          mode: 'manual', code: sourceCode, input: sourceInput,
+          traceDocument: null, scriptContent: ''
+        }
+      }));
     }
 
   } catch (err) {

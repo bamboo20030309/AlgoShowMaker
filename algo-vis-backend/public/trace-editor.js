@@ -528,6 +528,20 @@
     return currentTrace;
   }
 
+  function clearAnimation() {
+    window.ASMTraceStudio?.close?.({ render: false });
+    currentTrace = null;
+    pendingAnimation = null;
+    pendingViewBaseline = null;
+    sourceViewBaseline = null;
+    mode = 'manual';
+    sliceMode = 'auto';
+    if (eventSettingsPanel) eventSettingsPanel.hidden = true;
+    updateStudioButton();
+    window.ASMTracePlayer?.clear?.();
+    window.dispatchEvent(new CustomEvent('asm:trace-loaded'));
+  }
+
   function loadAnimation(animation = {}, options = {}) {
     animation = window.ASMAlgorithmAnimation.normalize(animation);
     pendingAnimation = animation.rebuild && !animation.traceDocument?.frames?.length ? animation : null;
@@ -640,6 +654,7 @@
     ensureAnalysis: analyze,
     getCompileConfig,
     applyTraceDocument,
+    clearAnimation,
     loadAnimation,
     sourceViewWasEdited,
     noteSourceViewWritten: () => { sourceViewBaseline = sourceViewBlock(editorSource()); },

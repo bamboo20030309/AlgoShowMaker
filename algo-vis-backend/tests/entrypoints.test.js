@@ -54,8 +54,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(sources.indexOf('trace-event-code-tree.js') < sources.indexOf('trace-studio.js'));
   assert.ok(html.includes('trace-code-presenter.js?v=code-34'));
   assert.ok(html.includes('trace-view-source.js?v=trace-17'));
-  assert.ok(html.includes('trace-editor.js?v=trace-31'));
-  assert.ok(html.includes('compile.js?v=syntax-9'));
+  assert.ok(html.includes('trace-editor.js?v=trace-32'));
+  assert.ok(html.includes('compile.js?v=syntax-10'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
   assert.ok(html.includes('style.css?v=brand-shared-10'));
@@ -121,7 +121,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
   assert.ok(html.includes('trace-camera.js?v=trace-8'));
   assert.ok(html.includes('trace-structure-lod.js?v=6'));
-  assert.ok(html.includes('trace-player.js?v=trace-28'));
+  assert.ok(html.includes('trace-player.js?v=trace-29'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-9'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
   assert.ok(html.includes('trace-studio.js?v=trace-138'));

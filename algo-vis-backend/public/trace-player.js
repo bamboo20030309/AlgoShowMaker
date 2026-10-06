@@ -263,6 +263,31 @@
     return document;
   }
 
+  // A normal run has no replacement animation. Release the old document and
+  // stop its timers as well as its SVG, so navigation cannot revive that run.
+  function clear() {
+    window.ASMPlaybackNavigation?.pause?.();
+    window.ASMTraceFrameTween?.cancel?.();
+    clearTimeout(cameraTimer);
+    document = null;
+    currentFrame = 0;
+    activePlaybackPlan = null;
+    lastPlaybackPlan = null;
+    preservedViewportCamera = null;
+    viewportRebasePendingAfterPlayback = false;
+    installCodeScript();
+    window.resetArrows?.();
+    window.resetMessageCounter?.();
+    window.clearCanvas?.();
+    window.document.querySelector('#asm-trace-root')?.remove();
+    window.ASMTraceCodePresenter?.renderFrame?.(
+      { sourceCode: '', frames: [], variables: {} }, null, null, { stable: true }
+    );
+    window.clearAllEditorHighlights?.();
+    window.initFrameInfoFromCodeScript?.();
+    window.syncCurrentFrameFromCodeScript?.();
+  }
+
   function setRules(rules) {
     if (!document) return;
     document.rules = Array.isArray(rules) ? window.ASMTraceModel.clone(rules) : [];
@@ -289,6 +314,7 @@
   window.asmApplyTraceDocument = apply;
   window.ASMTracePlayer = {
     apply,
+    clear,
     render,
     previewTransition,
     rebaseCurrentFrame,
