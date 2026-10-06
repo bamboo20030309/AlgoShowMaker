@@ -15,8 +15,11 @@ test('char string cells, pointers, events, styles and saved snapshots keep sourc
   const code = `#include <iostream>
 #include <string>
 using namespace std;
+// @preset char_view
+// @object char(s)[i,j] with labels(value,index)
+// @endpreset
 int main(){string s; cin>>s; int i=0,j=2;
-// @frame char(s)[i,j]
+// @frame use char_view
 // @style s[0:2] background AV_green when value == s[0]
 // @keep s as "original"
 if(s[i]==s[j]) s[i]=s[j];
@@ -60,6 +63,14 @@ cout<<s;
   assert.ok(first.keys.every((key,i)=>key===`${id}#${i}`));
   assert.ok(first.pointers.some(text=>text.includes('i')) && first.pointers.some(text=>text.includes('j')));
   const changed=await inspect(1); assert.deepEqual(changed.values,['a','z','a']); assert.ok(changed.snapshots>0);
+  assert.equal(await page.locator(`#asm-trace-root > [data-trace-variable="${id}"] [data-trace-index-label]`).count(), 3,
+    'labels(value,index) keeps indices on the live char view');
+  assert.equal(await page.locator('#asm-trace-root > [data-trace-snapshot] [data-trace-index-label]').count(), 3,
+    'kept char view retains its sequence indices');
+  const reopened = JSON.parse(JSON.stringify(trace));
+  await page.evaluate(async trace => { asmApplyTraceDocument(trace); await ASMTracePlayer.renderStable(1); }, reopened);
+  assert.equal(await page.locator(`#asm-trace-root > [data-trace-variable="${id}"] [data-trace-index-label]`).count(), 3,
+    'saved char view retains explicit index settings after reopen');
   const playback=await page.evaluate(async ({trace,id})=>{
     asmApplyTraceDocument(trace); await ASMTracePlayer.renderStable(0);
     let settled=false; const samples=[];
@@ -76,6 +87,7 @@ cout<<s;
   assert.ok(playback.samples.some(s=>s.compare),'indexed string comparison animates: '+JSON.stringify(playback.events));
   assert.ok(playback.samples.some(s=>s.assign),'indexed string assignment animates: '+JSON.stringify(playback.events));
   const old=await inspect(2); assert.deepEqual(old.values,['aza'], 'ordinary string display remains a single cell');
+  assert.equal(await page.locator(`#asm-trace-root > [data-trace-variable="${id}"] [data-trace-index-label]`).count(), 0);
   // Reopen serialized trace: transforms and explicit customization survive.
   const saved=JSON.parse(JSON.stringify(trace));
   saved.frames[1].rendererOptions[id].showIndex=false;

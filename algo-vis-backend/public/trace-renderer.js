@@ -233,7 +233,9 @@
       || ['scalar', 'string'].includes(variable?.kind);
   }
 
-  function removeScalarIndexLabels(content, variable, rendererName) {
+  function removeScalarIndexLabels(content, variable, rendererName, rendererOptions = {}) {
+    // char(s) 保留 C++ 字串身分，但顯示已轉成序列；不可用來源 kind 刪除索引。
+    if (rendererOptions.dataTransform?.type === 'char') return;
     if (!isScalarRenderer(variable, rendererName)) return;
     content.querySelectorAll('[id$="-index"], [data-trace-index-label]').forEach(label => label.remove());
   }
@@ -406,7 +408,7 @@
     }
     group.setAttribute('data-trace-range-start', String(rangeStart));
     group.setAttribute('data-trace-range-end', String(rangeEndExclusive));
-    removeScalarIndexLabels(group, context.variable, requested);
+    removeScalarIndexLabels(group, context.variable, requested, rendererOptions);
     Array.from({ length: visibleCount }, (_, localIndex) => rangeStart + localIndex).forEach((logicalIndex, localIndex) => {
       const cell = group.querySelector(`#${CSS.escape(`cell-${id}-${localIndex}`)}`);
       const cellKey = isMatrix
@@ -6065,7 +6067,7 @@
         idPrefix: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`, interactive: options.interactive
       }));
       window.ASMStructureLOD?.finish(content);
-      removeScalarIndexLabels(content, variable, rendererName);
+      removeScalarIndexLabels(content, variable, rendererName, skin?.options);
       fitObjectNames(content);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
@@ -6242,7 +6244,7 @@
           if (index != null) label.dataset.traceAuthoredContinuity = `${slot}:index:${index}`;
         });
       }
-      removeScalarIndexLabels(content, variable, rendererName);
+      removeScalarIndexLabels(content, variable, rendererName, skin?.options);
       fitObjectNames(content);
       const contentBox = measuredBox(content, { x: 0, y: 0, width: 180, height: Number(height) || 76 });
       if (!content.querySelector(':scope > .outerframe-label')) {
@@ -6967,9 +6969,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-270';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-271';
   window.ASMTraceRenderers = {
-    build: 'trace-270', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-271', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
