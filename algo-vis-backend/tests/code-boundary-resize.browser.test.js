@@ -51,13 +51,19 @@ test('code selection handles resize boundaries without changing text size, inclu
     await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
     const verify = async id => {
       const before = await saved(id), look = await appearance(id);
-      await resize(id, 'br', 65, 40);
+      await resize(id, 'br', 65, 0);
       const grown = await saved(id);
-      assert.ok(grown.w > before.w && grown.h > before.h, 'corner changes the container dimensions');
+      assert.ok(grown.w > before.w, 'horizontal corner drag changes the width');
+      assert.ok(Math.abs(grown.h - before.h) < 1, 'horizontal corner drag leaves height unchanged');
       assert.equal(grown.fontSize, before.fontSize, 'resizing must preserve the authored font size');
       assert.equal(grown.scale, before.scale); assert.equal(grown.showLineNumbers, before.showLineNumbers);
       assert.equal(grown.content, before.content); assert.equal(grown.manualSize, true);
       assert.deepEqual(await appearance(id), look, 'rendered code stays at its original size');
+      await resize(id, 'br', 0, 40);
+      const taller = await saved(id);
+      assert.ok(taller.h > grown.h, 'vertical corner drag changes the height');
+      assert.ok(Math.abs(taller.w - grown.w) < 1, 'vertical corner drag leaves width unchanged');
+      assert.deepEqual(await appearance(id), look);
       await resize(id, 'mr', -35, 0);
       assert.ok((await saved(id)).w < grown.w, 'side handle can shrink the boundary');
       assert.deepEqual(await appearance(id), look);

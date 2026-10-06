@@ -26,6 +26,9 @@
       enabled = items.some(item => item.kind === 'widget') && document.body.classList.contains('asm-edit-mode');
       canvas.wrapperEl.hidden = !enabled;
       if (!enabled) return;
+      // A code viewport has independent width and height, unlike a scaled group.
+      canvas.uniformScaling = !(items.length === 1 && items[0].kind === 'widget'
+        && items[0].widget.type === 'code');
       const key = fingerprint(items);
       if (key === signature) return;
       signature = key;
