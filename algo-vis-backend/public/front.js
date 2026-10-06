@@ -728,6 +728,12 @@ function activateTab(btn) {
     // Delayed viewport rebases must preserve the view restored by this tab.
     window.ASMTracePlayer?.preserveViewportCamera?.(preservedCanvasCamera);
     requestAnimationFrame(() => {
+      // RUN can create the first frame while another tab hides the SVG.
+      // Refit its names after visibility returns without rebuilding the
+      // scene, replaying events, or changing the user's object positions.
+      window.ASMTraceRenderers?.fitObjectNames?.(
+        document.getElementById('asm-trace-root')
+      );
       if (preservedCanvasCamera && window.setCamera) {
         window.setCamera(
           preservedCanvasCamera.centerX,

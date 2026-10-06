@@ -1856,6 +1856,12 @@
       const width = box ? Number(box.getAttribute('width'))
         : Number(owner.getAttribute('data-outerframe-right')) - Number(owner.getAttribute('data-outerframe-left'));
       if (!(width > 0)) return;
+      // display:none ancestors make SVG glyph bounds zero. Applying the
+      // centering delta then would repeatedly add the name-box center.
+      // Fit again once the canvas tab is visible, retaining existing values
+      // while geometry is unavailable.
+      const visibleGlyph = label.getBBox();
+      if (!(visibleGlyph.width > 0) || !(visibleGlyph.height > 0)) return;
       const height = box ? Number(box.getAttribute('height')) : 24;
       const maxFont = Number(label.dataset.traceNameFontLimit) || 16;
       const typography = getComputedStyle(label);
@@ -6952,9 +6958,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-267';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-268';
   window.ASMTraceRenderers = {
-    build: 'trace-267', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-268', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
