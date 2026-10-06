@@ -56,7 +56,7 @@ test('structure annotations follow indices, persist and retain custom colors', {
     const defaults = await savedWidget();
     assert.deepEqual(
       [defaults.highlightColor, defaults.focusColor, defaults.pointColor, defaults.markColor],
-      ['#ff0000', '#808080', '#ff0000', '#22c55e']
+      ['#ff0000', '#cccccc', '#ff0000', '#32cd32']
     );
     async function selectCell(index) {
       if (await page.locator('#iroPopup').isVisible()) {
@@ -157,7 +157,7 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(saved.annotationText, 'i');
     assert.deepEqual(saved.annotationLabels, { 1: 'left', 3: 'right' });
     assert.equal(saved.cellStyles['2'].highlight, 'rgba(252, 255, 64, 0.46)');
-    assert.equal(saved.cellStyles['2'].mark, '#22c55e');
+    assert.equal(saved.cellStyles['2'].mark, '#32cd32');
     assert.equal(await object.locator('#highlight-Array-2').getAttribute('stroke'), saved.cellStyles['2'].highlight);
     assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'left');
     assert.equal(saved.annotationColor, '#ffffff');

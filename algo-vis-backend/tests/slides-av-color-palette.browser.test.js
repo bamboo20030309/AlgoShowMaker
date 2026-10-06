@@ -120,7 +120,7 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
     });
     assert.equal((await savedWidget()).cellStyles['0'].highlight, colors.AV_red);
     await selectCellStyle(0, 'Focus');
-    assert.equal((await savedWidget()).cellStyles['0'].focus, '#808080', 'Focus has its own unchosen default');
+    assert.equal((await savedWidget()).cellStyles['0'].focus, '#cccccc', 'Focus has its own unchosen default');
     await palette.locator('[data-av-color="AV_blue"]').click();
     await selectCellStyle(0, 'Point');
     assert.equal((await savedWidget()).cellStyles['0'].point, '#ff0000', 'Point does not inherit Focus');
@@ -182,7 +182,7 @@ test('slide color picker offers AV colors and saves transparent and opaque swatc
     assert.equal(await toolbar.getByRole('button',{name:'Highlight',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')),expected,'active style previews its own last color rather than another cell\'s saved color');
     assert.equal(await history.locator('button').count(), 1, 'custom history persists after reload');
     assert.equal(await toolbar.getByRole('button',{name:'Focus',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')), colors.AV_blue, 'disabled Focus previews its own memory');
-    assert.equal(await toolbar.getByRole('button',{name:'Mark',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')), '#22c55e', 'unchosen Mark previews its own default');
+    assert.equal(await toolbar.getByRole('button',{name:'Mark',exact:true}).locator('.structure-style-icon').evaluate(icon=>icon.style.getPropertyValue('--style-color')), '#32cd32', 'unchosen Mark previews its own default');
     await page.screenshot({path:path.join(root,'test-results/style-color-memory.png')});
     assert.equal((await savedWidget()).cellStyles['0'].highlight, colors.AV_red);
     await page.mouse.click(1550,950);

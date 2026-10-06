@@ -4,6 +4,18 @@
 // -----------------------------------------------------------------------------
 (() => {
   const NS = 'http://www.w3.org/2000/svg';
+  // Match the original animation renderers' omitted-color behavior.
+  function getStyleDefaults(widget = {}) {
+    const mode = typeof widget === 'string' ? widget : widget.structureMode;
+    return {
+      highlight: '#ff0000', focus: '#cccccc', point: '#ff0000', mark: '#32cd32',
+      background: mode === 'stack' ? 'rgba(255, 200, 200, 0.8)'
+        : mode === 'queue' ? 'rgba(200, 255, 200, 0.8)'
+        : mode === 'disk' || mode === 'segment_tree' ? '#ffffff' : '#e790ff',
+      annotation: '#000000'
+    };
+  }
+
   const TREE_MODES = new Set(['binary_tree', 'heap', 'segment_tree', 'BIT']);
   const ONE_BASED_MODES = new Set(['heap', 'segment_tree', 'BIT']);
   const ORIGINAL_RENDERERS = {
@@ -152,11 +164,11 @@
       elements: styledIndices(widget, type, source, length)
     });
     return {
-      highlight: entry('highlight', widget.highlightColor || '#ff0000', widget.highlightIndices),
-      focus: entry('focus', widget.focusColor || '#cccccc', widget.focusIndices),
-      point: entry('point', widget.pointColor || '#ff0000', widget.pointIndices),
-      mark: entry('mark', widget.markColor || '#22c55e', widget.markIndices),
-      background: entry('background', widget.backgroundColor || '#10b981', widget.backgroundIndices)
+      highlight: entry('highlight', widget.highlightColor || getStyleDefaults(widget).highlight, widget.highlightIndices),
+      focus: entry('focus', widget.focusColor || getStyleDefaults(widget).focus, widget.focusIndices),
+      point: entry('point', widget.pointColor || getStyleDefaults(widget).point, widget.pointIndices),
+      mark: entry('mark', widget.markColor || getStyleDefaults(widget).mark, widget.markIndices),
+      background: entry('background', widget.backgroundColor || getStyleDefaults(widget).background, widget.backgroundIndices)
     };
   }
 
@@ -995,6 +1007,7 @@
 
   window.AlgoStructureRenderer = {
     TREE_MODES,
+    getStyleDefaults,
     createSvg,
     drawCanvas,
     getNaturalSize,

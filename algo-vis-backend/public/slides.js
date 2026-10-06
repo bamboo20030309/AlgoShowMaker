@@ -3,6 +3,7 @@
 // 管理 deck 狀態、Reveal/Fabric/widget 的同步、編輯歷史、TTS、排序與匯入匯出；所有可持久化變更最後都由 saveDeck 收斂。
 // -----------------------------------------------------------------------------
 (function () {
+  const structureStyleDefaults = window.AlgoStructureRenderer.getStyleDefaults;
   const STORAGE_KEY = 'asm_reveal_fabric_deck_v5';
   const OLD_STORAGE_KEY = 'asm_reveal_fabric_deck_v4';
   const TOKEN_KEY = 'algo_jwt_token';
@@ -479,11 +480,11 @@
     { target: 'table-body-fill', button: tableBodyFillInput, field: 'tableBodyFill', fallback: '#ffffff' },
     { target: 'table-border', button: tableBorderColorInput, field: 'tableBorderColor', fallback: '#344247' },
     { target: 'table-text', button: tableTextColorInput, field: 'tableTextColor', fallback: '#1f282d' },
-    { target: 'structure-highlight', field: 'highlightColor', style: 'highlight', fallback: '#ff0000' },
-    { target: 'structure-focus', field: 'focusColor', style: 'focus', fallback: '#808080' },
-    { target: 'structure-point', field: 'pointColor', style: 'point', fallback: '#ff0000' },
-    { target: 'structure-mark', field: 'markColor', style: 'mark', fallback: '#22c55e' },
-    { target: 'structure-background', field: 'backgroundColor', style: 'background', fallback: '#10b981' }
+    { target: 'structure-highlight', field: 'highlightColor', style: 'highlight', fallback: structureStyleDefaults().highlight },
+    { target: 'structure-focus', field: 'focusColor', style: 'focus', fallback: structureStyleDefaults().focus },
+    { target: 'structure-point', field: 'pointColor', style: 'point', fallback: structureStyleDefaults().point },
+    { target: 'structure-mark', field: 'markColor', style: 'mark', fallback: structureStyleDefaults().mark },
+    { target: 'structure-background', field: 'backgroundColor', style: 'background', fallback: structureStyleDefaults().background }
   ];
   const animationEditorPanel = document.getElementById('animationEditorPanel');
   const layerToTopBtn = document.getElementById('layerToTopBtn');
@@ -2889,11 +2890,11 @@
           borderColor: widget.borderColor || '#344247',
           textColor: widget.textColor || '#1f282d',
           lineColor: widget.lineColor || '#66767b',
-          highlightColor: widget.highlightColor || '#ff0000',
-          focusColor: widget.focusColor || '#808080',
-          pointColor: widget.pointColor || '#ff0000',
-          markColor: widget.markColor || '#22c55e',
-          backgroundColor: widget.backgroundColor || '#10b981',
+          highlightColor: widget.highlightColor || structureStyleDefaults(widget).highlight,
+          focusColor: widget.focusColor || structureStyleDefaults(widget).focus,
+          pointColor: widget.pointColor || structureStyleDefaults(widget).point,
+          markColor: widget.markColor || structureStyleDefaults(widget).mark,
+          backgroundColor: widget.backgroundColor || structureStyleDefaults(widget).background,
           frameBackgroundEnabled: widget.frameBackgroundEnabled !== false,
           frameBackgroundColor: !widget.frameBackgroundColor || widget.frameBackgroundColor === '#d1e6ac'
             ? DEFAULT_STRUCTURE_FRAME_BACKGROUND
@@ -5270,11 +5271,11 @@
         borderColor: '#344247',
         textColor: '#1f282d',
         lineColor: '#66767b',
-        highlightColor: '#ff0000',
-        focusColor: '#808080',
-        pointColor: '#ff0000',
-        markColor: '#22c55e',
-        backgroundColor: '#10b981',
+        highlightColor: structureStyleDefaults(normalizedStructureMode).highlight,
+        focusColor: structureStyleDefaults(normalizedStructureMode).focus,
+        pointColor: structureStyleDefaults(normalizedStructureMode).point,
+        markColor: structureStyleDefaults(normalizedStructureMode).mark,
+        backgroundColor: structureStyleDefaults(normalizedStructureMode).background,
         frameBackgroundEnabled: true,
         frameBackgroundColor: DEFAULT_STRUCTURE_FRAME_BACKGROUND,
         treeLayout: 'compact',
