@@ -1242,7 +1242,9 @@ function parseAtBinding(value, line, directiveName, offsetX = 0, offsetY = 0) {
   if (!anchorMatch) {
     throw new Error(`第 ${line} 行的 ${directiveName} 定位格式無效：${raw}`);
   }
-  const targetExpression = anchorMatch[1].trim();
+  const authoredTargetExpression = anchorMatch[1].trim();
+  const indexLabel = /\]\.index-label$/i.test(authoredTargetExpression);
+  const targetExpression = indexLabel ? authoredTargetExpression.replace(/\.index-label$/i, '') : authoredTargetExpression;
   const anchor = normalizeDirectiveAnchor(anchorMatch[2]);
   if (!DIRECTIVE_ANCHORS.has(anchor)) {
     throw new Error(`第 ${line} 行的 ${directiveName} 定位錨點無效：${anchor}`);
@@ -1288,6 +1290,7 @@ function parseAtBinding(value, line, directiveName, offsetX = 0, offsetY = 0) {
   }
   return {
     type: 'semantic',
+    ...(indexLabel ? { indexLabel: true } : {}),
     targetExpression,
     targetName: target?.[1] || '',
     indexExpressions,
@@ -3545,6 +3548,7 @@ function attachCameraDirectives(source, analysis, frameDirectives) {
         ...(variable
           ? { variableId: variable.id }
           : { objectKey: camera.binding.targetName }),
+        ...(camera.binding.indexLabel === true ? { indexLabel: true } : {}),
         indexExpression: (camera.binding.indexExpressions || []).join(','),
         anchor: camera.binding.anchor || 'center'
       };

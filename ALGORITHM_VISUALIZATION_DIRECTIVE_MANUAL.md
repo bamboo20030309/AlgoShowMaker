@@ -1504,6 +1504,21 @@ bottom-left  bottom  bottom-right
 
 若 keep 與 Studio 物件使用同名 ID，keep 優先。若 C++ 變數也同名，C++ 變數優先。
 
+### 定位到索引格子
+
+一維索引格子可使用 `arr[i].index-label`，後面接標準錨點。這是共用定位目標，適用於 `@arrow`、`@place`、`@text at` 與 `@camera focus`，不是 arrow 專用語法。
+
+```cpp
+// @arrow from p[j-1] to s[p[j-1]].index-label.bottom
+// @place other.top at s[i].index-label.bottom offset(0,30)
+// @text "索引位置" at s[i].index-label.bottom
+// @camera focus s[i].index-label zoom(2)
+```
+
+arrow 省略錨點時預設為 center；其他指令按各自的語法要求指定錨點。來源索引仍使用安全運算式，`char(s)` 的名稱仍是 s。目標必須在當前畫面存在且已顯示索引；索引被明確關閉或越界時不可退回指向值格子。`@style arr[i].index-label` 沿用樣式選取語法。
+
+此擴充尚未包含矩陣的 row-label／column-label／inner-label 定位；不得假設所有 style 的範圍選取都等同單一端點。
+
 ### 定位到特定格子
 
 ```cpp

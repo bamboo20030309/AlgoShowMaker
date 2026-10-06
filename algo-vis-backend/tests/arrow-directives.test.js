@@ -519,3 +519,23 @@ int main() {
     JSON.stringify({ arrow: frame.arrows[0], targets: renderer.currentArrowTargets() }));
   assert.ok(window.document.querySelector('.asm-trace-directive-arrows line'));
 });
+
+// 索引格子端點與一般值格子不可共用同一 target key。
+test('@arrow index-label endpoints preserve nested expressions and normalized targets', () => {
+  const code = `#include <string>
+#include <vector>
+int main(){std::string s="aba";std::vector<int> p(3);int j=2;
+// @frame char(s),p
+// @arrow from p[j].index-label to s[p[j-1]].index-label.bottom as "fallback"
+// @arrow from p[j] to s[0].top as "ordinary"
+}`;
+  const [frame] = findFrameDirectives(code);
+  assert.equal(frame.arrows[0].from.indexLabel, true);
+  assert.equal(frame.arrows[0].from.anchor, 'center');
+  assert.equal(frame.arrows[0].to.indexLabel, true);
+  assert.deepEqual(frame.arrows[0].to.indexExpressions, ['p[j-1]']);
+  assert.equal(frame.arrows[0].to.anchor, 'bottom');
+  assert.equal(ArrowModel.normalize(frame.arrows[0]).to.indexLabel, true);
+  assert.equal(ArrowModel.normalize(frame.arrows[1]).to.indexLabel, undefined);
+  assert.throws(() => findFrameDirectives(code.replace('p[j-1]].index-label', 'p[j-1]++].index-label')));
+});

@@ -64,6 +64,7 @@
       anchor: String(target.anchor || fallbackAnchor).toLowerCase(),
       dx: Number(target.dx ?? target.offsetX) || 0,
       dy: Number(target.dy ?? target.offsetY) || 0,
+      ...(target.indexLabel === true ? { indexLabel: true } : {}),
       canvas: target.canvas === true
     };
   }

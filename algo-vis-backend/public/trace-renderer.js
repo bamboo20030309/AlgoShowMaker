@@ -2414,7 +2414,7 @@
         return { x: cell.x, y: cell.y + cell.height + 3, width: cell.width, height: 16 };
       }
       const key = `${targetObjectKey}#${indices.join(',')}`;
-      if (target.indexLabel === true) return placements.get(`${key}:index`) || placements.get(key) || null;
+      if (target.indexLabel === true) return placements.get(`${key}:index`) || null;
       return placements.get(key) || null;
     }
     return elements
@@ -2549,7 +2549,7 @@
         window.ASMTraceRules.resolveExpression(document, frame, part.trim())
       ));
       if (!indices.length || indices.some(index => !Number.isInteger(index))) return targetObjectKey;
-      return `${targetObjectKey}#${indices.join(',')}`;
+      return `${targetObjectKey}#${indices.join(',')}${target?.indexLabel === true ? ':index' : ''}`;
     }
     const variableId = target?.variableId || target?.targetVariableId;
     if (!variableId) return '';
@@ -2560,7 +2560,7 @@
       window.ASMTraceRules.resolveExpression(document, frame, part.trim())
     ));
     if (!indices.length || indices.some(index => !Number.isInteger(index))) return targetObjectKey;
-    return `${targetObjectKey}#${indices.join(',')}`;
+    return `${targetObjectKey}#${indices.join(',')}${target?.indexLabel === true ? ':index' : ''}`;
   }
 
   function translateWithin(element, stop) {
@@ -3120,11 +3120,7 @@
         || objectKeyForVariable(frame, binding.sourceVariableId);
       const targetKey = binding.canvas
         ? '$canvas'
-        : resolvedTargetKey(document, frame, {
-          objectKey: binding.targetObjectKey,
-          variableId: binding.targetVariableId,
-          indexExpression: (binding.indexExpressions || []).join(',')
-        }, placements, elements);
+        : resolvedTargetKey(document, frame, semanticBindingTarget(binding), placements, elements);
       if (!sourceKey || !targetKey) return;
       const anchor = String(binding.anchor || 'center').toLowerCase();
       const vertical = anchor.includes('top') ? 'bottom' : anchor.includes('bottom') ? 'top' : '';
@@ -3499,13 +3495,18 @@
         ? [String(target.indexExpression)] : []) };
   }
 
-  function bindingTargetPlacement(document, frame, binding, placements, elements) {
-    if (binding.canvas) return { x: 0, y: 0, width: 1100, height: 620 };
-    return targetPlacement(document, frame, placements, {
+  // 所有語意定位共用同一份端點描述，避免轉接時遺失子目標設定。
+  function semanticBindingTarget(binding) {
+    return { ...binding,
       objectKey: binding.targetObjectKey || (!binding.targetVariableId ? binding.targetName : ''),
       variableId: binding.targetVariableId,
       indexExpression: (binding.indexExpressions || []).join(',')
-    }, elements);
+    };
+  }
+
+  function bindingTargetPlacement(document, frame, binding, placements, elements) {
+    if (binding.canvas) return { x: 0, y: 0, width: 1100, height: 620 };
+    return targetPlacement(document, frame, placements, semanticBindingTarget(binding), elements);
   }
 
   function layoutNodeCollection(document, frame, descriptor, placements, elements) {
@@ -3709,11 +3710,7 @@
       const binding = layout.binding || { canvas: true, anchor: 'top', offsetX: 0, offsetY: 80 };
       const targetKey = binding.canvas
         ? '$canvas'
-        : resolvedTargetKey(document, frame, {
-          objectKey: binding.targetObjectKey || binding.targetName,
-          variableId: binding.targetVariableId,
-          indexExpression: (binding.indexExpressions || []).join(',')
-        }, placements, elements);
+        : resolvedTargetKey(document, frame, semanticBindingTarget(binding), placements, elements);
       const target = targetKey === '$canvas'
         ? { x: 0, y: 0, width: 1100, height: 620 }
         : targetKey === '$keep'
@@ -4852,11 +4849,7 @@
       const indexExpression = (binding.indexExpressions || []).join(',');
       const target = binding.canvas
         ? canvas
-        : targetPlacement(document, frame, placements, {
-          objectKey: binding.targetObjectKey,
-          variableId: binding.targetVariableId,
-          indexExpression
-        }, elements);
+        : bindingTargetPlacement(document, frame, binding, placements, elements);
       if (!target) {
         source.setAttribute('display', 'none');
         source.dataset.traceBindingUnavailable = '1';
@@ -4881,11 +4874,7 @@
       source.dataset.traceBound = '1';
       source.dataset.traceBindingTarget = binding.canvas
         ? 'canvas'
-        : resolvedTargetKey(document, frame, {
-          objectKey: binding.targetObjectKey,
-          variableId: binding.targetVariableId,
-          indexExpression
-        }, placements);
+        : resolvedTargetKey(document, frame, semanticBindingTarget(binding), placements);
       source.dataset.traceSemanticBinding = '1';
       source.dataset.traceBindingAnchor = binding.anchor || 'center';
       source.dataset.traceBindingLine = String(descriptor.line || '');
@@ -6969,9 +6958,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-271';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-272';
   window.ASMTraceRenderers = {
-    build: 'trace-271', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-272', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
