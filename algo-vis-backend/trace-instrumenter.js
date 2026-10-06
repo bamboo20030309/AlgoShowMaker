@@ -2052,17 +2052,24 @@ function attachPointerDirectives(source, analysis, frames) {
       throw new Error(`第 ${item.line} 行的 @pointer 顏色無效：${pointerColor}`);
     }
     const pointerPayload = colorMatch ? item.payload.slice(0, colorMatch.index) : item.payload;
-    const match = pointerPayload.match(/^([A-Za-z_]\w*)\s+at\s+([A-Za-z_]\w*)(?:\.(row|column|children|root|current|nodes|leaves|level\(([^)]+)\)|side\((left|right|top|bottom)\))(?:\[([^\]]+)\])?)?(?:\[([^\]]+)\])?$/i);
+    const match = pointerPayload.match(/^(.+?)\s+at\s+([A-Za-z_]\w*)(?:\.(row|column|children|root|current|nodes|leaves|level\(([^)]+)\)|side\((left|right|top|bottom)\))(?:\[([^\]]+)\])?)?(?:\[([^\]]+)\])?$/i);
     if (!match) throw new Error(`第 ${item.line} 行的 @pointer 語法無效`);
-    const [, name, targetName, selector, levelExpression, side, selectedIndex, cellIndex] = match;
+    const [, rawLabel, targetName, selector, levelExpression, side, selectedIndex, cellIndex] = match;
+    const label = rawLabel.trim();
+    // 與物件索引使用同一個安全運算式解析器，來源依賴決定事件與生命週期。
+    const labelExpression = parseFrameExpression(label);
+    if (!labelExpression.valid || !labelExpression.identifiers.length) {
+      throw new Error(`第 ${item.line} 行的 @pointer 指標運算式無效：${label}`);
+    }
+    const name = labelExpression.identifiers[0];
     const pointerAxis = /^(row|column)$/i.test(selector || '') ? selector.toLowerCase() : '';
     const isLayout = Boolean(selector && !pointerAxis);
     const childExpression = selector?.toLowerCase() === 'children' ? selectedIndex : null;
     if (selector?.toLowerCase() === 'children' && childExpression == null) throw new Error(`第 ${item.line} 行的 @pointer children 缺少節點索引`);
     const singleton = /^(root|current)$/i.test(selector || '');
     const suppliedIndex = pointerAxis ? selectedIndex ?? cellIndex : selector ? (singleton ? cellIndex ?? selectedIndex : cellIndex) : selectedIndex ?? cellIndex;
-    const indexExpression = suppliedIndex == null ? name : suppliedIndex;
-    const expressions = [indexExpression, ...[selectedIndex, levelExpression].filter(value => value != null)];
+    const indexExpression = suppliedIndex == null ? label : suppliedIndex;
+    const expressions = [label, indexExpression, ...[selectedIndex, levelExpression].filter(value => value != null)];
     const parsed = expressions.map(parseFrameExpression);
     if (parsed.some(expression => !expression.valid)) throw new Error(`第 ${item.line} 行的 @pointer 索引運算式無效`);
     if (isLayout && !layouts.has(targetName)) throw new Error(`第 ${item.line} 行的 @pointer 找不到 layout：${targetName}`);
@@ -2083,8 +2090,9 @@ function attachPointerDirectives(source, analysis, frames) {
     frame.bindings.push({ mode: 'index', explicitPointer: true, implicitIndex: suppliedIndex == null,
       ...(pointerAxis ? { pointerAxis, indexDimension: pointerAxis === 'row' ? 0 : 1 } : {}),
       ...(pointerColor ? { pointerColor } : {}),
-      label: name, sourceName: name,
-      sourceVariableId: variables.get(name).id, sourceVariableIds: [variables.get(name).id],
+      label, sourceName: name,
+      sourceVariableId: variables.get(name).id,
+      sourceVariableIds: labelExpression.identifiers.map(identifier => variables.get(identifier).id),
       targetName, targetVariableId: variables.get(targetName)?.id || '', indexExpression,
       ...(isLayout && childExpression == null ? { layoutTarget: {
         layoutId: targetName, layoutSelector: selector.match(/^[A-Za-z]+/)[0].toLowerCase(),

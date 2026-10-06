@@ -2126,3 +2126,13 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 - 支援 AV 顏色別名、CSS 顏色名稱、十六進位、rgb/rgba/hsl/hsla；例如 `@pointer i at arr color #e65100`。
 - 未指定 `color` 時維持原本預設。舊 Trace 缺少顏色欄位亦維持預設，不需遷移。
 - 可放在 preset 中與原本矩陣 preset 組合，不用重新宣告矩陣物件。
+
+### 獨立指標的運算式標籤
+
+```cpp
+// @pointer i-1 at p
+// @pointer i+j at p color AV_green!
+// @pointer i-1 at p[i+1]
+```
+
+pointer 前段可以是引用可見變數的安全索引運算式，標籤保留原運算式；省略目標索引時，以同一運算式計算位置。例如 i=3 時，第一行顯示 i-1 並指向 p[2]，與 @object p[i-1] 的指標行為一致。明確寫目標 [i+1] 時，仍顯示 i-1，但位置由 i+1 決定。所有來源變數都納入依賴與捕捉，不新增繪圖專用 C++ 變數；拒絕遞增、賦值等有副作用的運算式。既有 @pointer i at p 寫法與顏色設定維持相容。

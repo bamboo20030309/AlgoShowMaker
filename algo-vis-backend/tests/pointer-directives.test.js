@@ -123,3 +123,29 @@ void f(){int dp[2][3];int i=0,j=1;
   assert.equal(preset.bindings[1].indexDimension,1);
   assert.equal(preset.bindings[0].pointerColor,'orange');
 });
+
+
+test('pointer expressions match object index dependencies and keep their authored labels', () => {
+  const [frame] = findFrameDirectives(`void f(){int p[8];int i=3,j=1;
+// @frame p[i-1]
+// @pointer i-1 at p color AV_green!
+// @pointer i + j at p
+// @pointer i-1 at p[i+1]
+}`);
+  const [object, same, sum, explicit] = frame.bindings;
+  assert.equal(same.label,'i-1');
+  assert.equal(same.indexExpression,object.indexExpression);
+  assert.equal(same.sourceName,object.sourceName);
+  assert.deepEqual(same.sourceVariableIds,object.sourceVariableIds);
+  assert.equal(same.pointerColor,'AV_green!');
+  assert.equal(sum.label,'i + j');
+  assert.equal(sum.sourceVariableIds.length,2);
+  assert.equal(explicit.label,'i-1');
+  assert.equal(explicit.indexExpression,'i+1');
+  for (const label of ['i++','i = 2','missing-1']) {
+    assert.throws(()=>findFrameDirectives(`void f(){int p[8];int i=3;
+// @frame p
+// @pointer ${label} at p
+}`));
+  }
+});
