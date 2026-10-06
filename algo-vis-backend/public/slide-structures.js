@@ -1009,6 +1009,11 @@
   async function drawCanvas(context, widget, scale = 1) {
     const svg = createSvg(widget);
     const { paint, transform } = getWidgetGeometry(widget);
+    // DOM offsets place the SVG inside its widget. A standalone SVG image
+    // already uses its viewBox; keeping those offsets clips it a second time.
+    svg.style.removeProperty('position');
+    svg.style.removeProperty('left');
+    svg.style.removeProperty('top');
     const serialized = new XMLSerializer().serializeToString(svg);
     const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
     const image = new Image();

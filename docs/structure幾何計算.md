@@ -48,3 +48,8 @@ code／LaTeX 仍使用原本容器範圍，但共享容器到投影片的變換�
 ## 各種結構的主體範圍
 
 共用的是量測結果、變換與選取介面，不是把所有結構套入同一個矩形公式。陣列、矩陣、樹與表格使用各自 renderer 產生的主體／外框 metadata；disk 沒有一般陣列的 outerframe，使用盤子、柱子、底座矩形的聯集，包含負座標。disk 的主體頂部不能固定為 0，否則會裁掉柱子原點上方的盤子。Point 與註標仍單獨計入 paintBounds，不影響 bodyBounds 與選區。
+
+
+## 縮圖／Canvas 序列化
+
+createSvg 的 position/left/top 僅供 DOM widget 內定位。drawCanvas 在把 SVG 序列化為獨立圖片前移除這三項 CSS，由共用 paint 與 transform 單獨定位，避免 SVG 图片內再次偏移而裁切。width/height、viewBox 與實際繪圖尺寸仍保留。
