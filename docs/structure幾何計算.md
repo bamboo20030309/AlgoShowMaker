@@ -34,3 +34,12 @@ code／LaTeX 仍使用原本容器範圍，但共享容器到投影片的變換�
 ## 局部驗證
 
 `algo-vis-backend/tests/structure-geometry.browser.test.js` 對照實際 SVG 的 outerframe、screen CTM 與 Fabric 代理頂點，驗證不同容器比例、旋轉、斜切、point、非等比例縮放、編輯、舊資料儲存重開、新建矩陣，以及 point 的實際 Canvas 繪製。另以混合貼上、格子拖曳、框選、註標及樹 highlight 案例檢查操作相容性；本變更不涉及演算法 Trace／事件播放。
+
+
+## 選取命中與框選
+
+`containsSlidePoint(widget, point)` 以共用主體四角判斷投影片座標中的點；`intersectsSlideRect(widget, rect)` 以分離軸檢查框選矩形與實際四邊形。旋轉／傾斜後的外接矩形僅供對齊與排版，不用來判斷滑鼠命中。
+
+单擊、雙擊、右鍵、拖曳及多物件拖曳一律由 `widgetAtEvent` 解析實際主體與圖層順序。DOM 容器空白處將事件傳給底下 Fabric 畫布，可取消選取或開始框選。物件操作中的指標捕捉及輸入欄位不轉送。
+
+格子命中使用 `getScreenCTM().inverse()` 將滑鼠轉回 SVG 格子座標；格子選取框使用相同 SVG 變換，避免旋轉後呈現外接矩形。

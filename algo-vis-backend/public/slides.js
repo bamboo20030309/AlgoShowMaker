@@ -6268,9 +6268,7 @@
       selectedWidgetId = null;
     }
     normalizeWidgets(slide.widgets).forEach(widget => {
-      const b = widgetSlideBounds(widget);
-      const intersects = b.left < right && b.left + b.width > left
-        && b.top < bottom && b.top + b.height > top;
+      const intersects = window.AlgoStructureRenderer.intersectsSlideRect(widget, { left, top, right, bottom });
       if (!intersects) return;
       selectedWidgetKeys.add(widget.id);
       layer.querySelector(`.slide-widget[data-widget-id="${CSS.escape(widget.id)}"]`)?.classList.add('is-selected');
@@ -6598,14 +6596,17 @@
   }
 
   function structureCellFromEvent(event, widgetEl) {
-    const direct = event.target.closest?.('[data-structure-item-index]');
-    if (direct || !widgetEl?.classList.contains('structure-widget')) return direct;
-    // A transparent foreground canvas may receive a visible lower SVG cell's
-    // pointer. Recover that cell without changing its stored layer order.
+    if (!widgetEl?.classList.contains('structure-widget')) return null;
+    // Convert the screen pointer to each cell's SVG coordinates. Screen AABBs
+    // include empty corners under rotation/skew and cannot identify a cell.
     return [...widgetEl.querySelectorAll('[data-structure-item-index]')].find(cell => {
-      const rect = (cell.querySelector(':scope > rect') || cell).getBoundingClientRect();
-      return event.clientX >= rect.left && event.clientX <= rect.right
-        && event.clientY >= rect.top && event.clientY <= rect.bottom;
+      const shape = cell.querySelector(':scope > rect') || cell;
+      const matrix = shape.getScreenCTM?.();
+      if (!matrix) return false;
+      const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+      const box = shape.getBBox();
+      return point.x >= box.x && point.x <= box.x + box.width
+        && point.y >= box.y && point.y <= box.y + box.height;
     }) || null;
   }
 
@@ -6650,13 +6651,19 @@
     keys.forEach((key, index) => {
       const selected = structureCellForKey(widgetEl, key);
       if (!selected) return;
-      const rect = (selected.querySelector(':scope > rect:first-of-type') || selected).getBoundingClientRect();
+      const shape = selected.querySelector(':scope > rect:first-of-type') || selected;
+      const matrix = shape.getScreenCTM?.();
+      if (!matrix) return;
+      const bounds = shape.getBBox();
+      const origin = new DOMPoint(bounds.x, bounds.y).matrixTransform(matrix);
       let overlay = boxes[index];
       if (!overlay) { overlay = box.cloneNode(false); box.parentElement.appendChild(overlay); }
-      overlay.style.left = `${(rect.left - frameRect.left) * scaleX}px`;
-      overlay.style.top = `${(rect.top - frameRect.top) * scaleY}px`;
-      overlay.style.width = `${rect.width * scaleX}px`;
-      overlay.style.height = `${rect.height * scaleY}px`;
+      overlay.style.left = `${(origin.x - frameRect.left) * scaleX}px`;
+      overlay.style.top = `${(origin.y - frameRect.top) * scaleY}px`;
+      overlay.style.width = `${bounds.width}px`;
+      overlay.style.height = `${bounds.height}px`;
+      overlay.style.transformOrigin = '0 0';
+      overlay.style.transform = `matrix(${matrix.a * scaleX},${matrix.b * scaleY},${matrix.c * scaleX},${matrix.d * scaleY},0,0)`;
       overlay.hidden = false;
     });
   }
@@ -6962,7 +6969,7 @@
   // -----------------------------------------------------------------------------
   function openStructureContextMenu(event) {
     if (!document.body.classList.contains('asm-edit-mode') || !structureContextMenu) return;
-    const widgetEl = event.target.closest?.('.structure-widget') || widgetClaimableThroughCanvas(event);
+    const widgetEl = widgetAtEvent(event);
     if (!widgetEl) return;
     const found = getWidget(widgetEl.dataset.widgetId);
     if (!found.widget || !isCellGridWidget(found.widget)) return;
@@ -7895,7 +7902,7 @@
     let switchedCellClickUntil = 0;
     document.addEventListener('pointerdown', event => {
       if (event.button !== 0 || event.target.closest?.('.structure-inline-value-input')) return;
-      const widgetEl = event.target.closest?.('.structure-widget') || widgetClaimableThroughCanvas(event);
+      const widgetEl = widgetAtEvent(event);
       const cell = widgetEl && structureCellFromEvent(event, widgetEl);
       const details = cell && structureCellContext(widgetEl, cell);
       const differentCell = details && selectedStructureCell && (selectedStructureCell.widgetId !== details.widget.id
@@ -8175,7 +8182,7 @@
         bodyHit: event => {
           const currentItems = selectedAlignmentItems().items;
           if (currentItems.length===1 && currentItems[0].kind==='widget' && isCellGridWidget(currentItems[0].widget)) return false;
-          const widget = event.target.closest?.('.slide-widget') || widgetClaimableThroughCanvas(event);
+          const widget = widgetAtEvent(event);
           const object = widget ? null : fabricObjectAtPoint(event);
           return selectedAlignmentItems().items.some(item => item.kind==='widget'
             ? item.widget.id===widget?.dataset.widgetId : item.object===object || object===canvas.getActiveObject());
@@ -8238,6 +8245,25 @@
 
   function bindSlideDrop() {
     let widgetDrag = null;
+    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(type => {
+      document.addEventListener(type, event => {
+        if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing() || widgetDrag
+          || nativeSelectionMain?.__asmNativeSelectionEditing) return;
+        const el = event.target.closest?.('.slide-widget');
+        if (!el || event.target.closest?.('input,textarea,[contenteditable="true"]') || widgetElementAtPoint(event)) return;
+        const canvas = currentFabricCanvas()?.upperCanvasEl;
+        if (!canvas) return;
+        const EventType = type.startsWith('pointer') ? PointerEvent : MouseEvent;
+        canvas.dispatchEvent(new EventType(type, {
+          bubbles: true, cancelable: true, clientX: event.clientX, clientY: event.clientY,
+          button: event.button, buttons: event.buttons, ctrlKey: event.ctrlKey, metaKey: event.metaKey,
+          shiftKey: event.shiftKey, altKey: event.altKey, detail: event.detail,
+          pointerId: event.pointerId, pointerType: event.pointerType, isPrimary: event.isPrimary
+        }));
+        event.preventDefault(); event.stopImmediatePropagation();
+      }, true);
+    });
+
     let suppressWidgetClick = false;
     let widgetPointerSelection = null;
 
@@ -8255,9 +8281,9 @@
       if (event.type==='pointerdown' && nativeSelectionControls?.down(event)) return;
       if (!document.body.classList.contains('asm-edit-mode')) return;
       additiveCanvasSelectionGesture = !!(event.shiftKey || event.ctrlKey || event.metaKey);
-      const modifierCell = structureCellFromEvent(event, event.target.closest?.('.structure-widget') || widgetClaimableThroughCanvas(event));
+      const modifierCell = structureCellFromEvent(event, widgetAtEvent(event));
       if (additiveCanvasSelectionGesture && selectedStructureCell && !modifierCell) clearStructureCellSelection();
-      let widgetEl = event.target.closest && event.target.closest('.slide-widget');
+      let widgetEl = widgetAtEvent(event);
       if (!widgetEl && event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) {
         widgetEl = widgetClaimableThroughCanvas(event);
         if (!widgetEl && fabricObjectAtPoint(event)) return;
@@ -8537,11 +8563,7 @@
     }
 
     slidesRoot.addEventListener('dblclick', event => {
-      const widgetEl = event.target.closest('.slide-widget') || (
-        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')
-          ? widgetClaimableThroughCanvas(event)
-          : null
-      );
+      const widgetEl = widgetAtEvent(event);
       if (!widgetEl || isOverviewEditing()) return;
       const structureCell = structureCellFromEvent(event, widgetEl);
       if (structureCell && widgetEl.classList.contains('structure-widget')
@@ -8560,11 +8582,7 @@
     });
 
     slidesRoot.addEventListener('click', event => {
-      const widgetEl = event.target.closest('.slide-widget') || (
-        event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')
-          ? widgetClaimableThroughCanvas(event)
-          : null
-      );
+      const widgetEl = widgetAtEvent(event);
       if (!widgetEl || isOverviewEditing() || !document.body.classList.contains('asm-edit-mode')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -9147,8 +9165,10 @@
     const y = ((event.clientY - rect.top) / rect.height) * SLIDE_H;
     return canvas.getObjects().slice().reverse().find(obj => {
       if (!obj.visible) return false;
-      const bounds = fabricSlideBounds(obj);
-      return x >= bounds.left && x <= bounds.left + bounds.width && y >= bounds.top && y <= bounds.top + bounds.height;
+      const point = f().util.transformPoint(new (f().Point)(x, y), f().util.invertTransform(obj.calcTransformMatrix()));
+      const halfWidth = (obj.width + (obj.strokeWidth || 0)) / 2;
+      const halfHeight = (obj.height + (obj.strokeWidth || 0)) / 2;
+      return Math.abs(point.x) <= halfWidth && Math.abs(point.y) <= halfHeight;
     }) || null;
   }
 
@@ -9174,14 +9194,18 @@
         const widget = slide.widgets.find(value => value.id === el.dataset.widgetId);
         if (!widget) return false;
         const rect = layer.getBoundingClientRect();
-        const geometry = window.AlgoStructureRenderer.getWidgetGeometry(widget);
-        const point = f().util.transformPoint(new (f().Point)((event.clientX-rect.left)*SLIDE_W/rect.width,
-          (event.clientY-rect.top)*SLIDE_H/rect.height), f().util.invertTransform(geometry.transform));
-        const box = geometry.selection;
-        const x = point.x + widget.w/2, y = point.y + widget.h/2;
-        return x >= box.left && x <= box.left+box.width && y >= box.top && y <= box.top+box.height;
+        if (!rect.width || !rect.height || widget.visible === false) return false;
+        return window.AlgoStructureRenderer.containsSlidePoint(widget, {
+          x: (event.clientX - rect.left) * SLIDE_W / rect.width,
+          y: (event.clientY - rect.top) * SLIDE_H / rect.height
+        });
       })
       .sort((a, b) => widgetZIndex(b) - widgetZIndex(a))[0] || null;
+  }
+
+  function widgetAtEvent(event) {
+    if (!event.target.closest?.('.slide-widget, .upper-canvas, .lower-canvas, .fabric-host')) return null;
+    return topWidgetAboveFabricAtPoint(event);
   }
 
   function topWidgetAboveFabricAtPoint(event) {
@@ -9194,10 +9218,7 @@
   function widgetClaimableThroughCanvas(event) {
     if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing()) return null;
     if (!event.target.closest?.('.upper-canvas, .lower-canvas, .fabric-host')) return null;
-    const widgetHit = widgetElementAtPoint(event);
-    if (!widgetHit) return null;
-    const fabricHit = fabricObjectBoundsAtPoint(event);
-    return !fabricHit || widgetZIndex(widgetHit) >= fabricZIndex(fabricHit) ? widgetHit : null;
+    return widgetAtEvent(event);
   }
 
   function isTextObject(obj) {

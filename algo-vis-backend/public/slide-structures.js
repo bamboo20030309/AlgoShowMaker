@@ -917,6 +917,29 @@
       bodyBounds: body, paintBounds: bounds, selection, paint, scaleX, scaleY, ...inSlide(widget, selection) };
   }
 
+  // Exact convex body hit testing in slide coordinates (including rotation/skew).
+  function containsSlidePoint(widget, point) {
+    const corners = getWidgetGeometry(widget).corners;
+    return corners.every((a, index) => {
+      const b = corners[(index + 1) % corners.length];
+      return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x) >= -1e-7;
+    });
+  }
+
+  function intersectsSlideRect(widget, rect) {
+    const body = getWidgetGeometry(widget).corners;
+    const box = [{ x: rect.left, y: rect.top }, { x: rect.right, y: rect.top },
+      { x: rect.right, y: rect.bottom }, { x: rect.left, y: rect.bottom }];
+    // Separating-axis test avoids selecting empty corners of a rotated AABB.
+    return [body, box].every(polygon => polygon.every((a, index) => {
+      const b = polygon[(index + 1) % polygon.length];
+      const axis = { x: -(b.y - a.y), y: b.x - a.x };
+      const project = points => points.map(p => p.x * axis.x + p.y * axis.y);
+      const first = project(body), second = project(box);
+      return Math.max(...first) >= Math.min(...second) && Math.max(...second) >= Math.min(...first);
+    }));
+  }
+
   function getNaturalSize(widget) { return getWidgetGeometry(widget).naturalSize; }
   function getSelectionRect(widget) { return getWidgetGeometry(widget).selection; }
 
@@ -977,6 +1000,8 @@
     getNaturalSize,
     getWidgetGeometry,
     getSelectionRect,
+    containsSlidePoint,
+    intersectsSlideRect,
     parseIndices,
     cellStyleColor,
     render,
