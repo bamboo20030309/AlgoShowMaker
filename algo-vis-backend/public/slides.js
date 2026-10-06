@@ -472,7 +472,7 @@
   const tableBorderColorInput = document.getElementById('tableBorderColorInput');
   const tableTextColorInput = document.getElementById('tableTextColorInput');
   const structureColorBindings = [
-    { target: 'structure-annotation', field: 'annotationColor', style: 'annotation', fallback: '#ffffff' },
+    { target: 'structure-annotation', field: 'annotationColor', style: 'annotation', fallback: '#000000' },
     { target: 'structure-tree-arrow', button: structureTreeArrowColorInput, field: 'treeArrowColor' },
     { target: 'structure-frame-background', button: structureFrameBackgroundColorInput, field: 'frameBackgroundColor' },
     { target: 'table-header-fill', button: tableHeaderFillInput, field: 'tableHeaderFill', fallback: '#d9efeb' },
@@ -2915,7 +2915,7 @@
           treeRendererVersion: 3,
           structureFrameVersion: Number(widget.structureFrameVersion) || 0,
           annotationIndices: typeof widget.annotationIndices === 'string' ? widget.annotationIndices : '',
-          annotationColor: widget.annotationColor || '#ffffff',
+          annotationColor: widget.annotationColor || '#000000',
           annotationText: typeof widget.annotationText === 'string' ? widget.annotationText.slice(0, 80) : '',
           annotationLabels: Object.fromEntries(Object.entries(widget.annotationLabels || {}).filter(([key, value]) => /^\d+$/.test(key) && typeof value === 'string').map(([key, value]) => [key, value.slice(0, 80)])),
           cellStyles: normalizeStructureCellStyles(widget.cellStyles),
@@ -5283,7 +5283,7 @@
         treeRendererVersion: 3,
         structureFrameVersion: 4,
         annotationIndices: '',
-        annotationColor: '#ffffff',
+        annotationColor: '#000000',
         annotationText: '',
         annotationLabels: {},
         cellStyles: {},

@@ -811,7 +811,9 @@
       const label = widget.annotationLabels?.[actualIndex] || widget.annotationText || String(actualIndex);
       window.draw_block(marker, x - 9, y - 40, label, 18, 18, '#bfe8f7', `annotation-${actualIndex}`);
       marker.querySelector('rect')?.setAttribute('fill-opacity', '0.58');
-      const annotationColor = cellStyleColor(widget, actualIndex, 'annotation', widget.annotationColor || '#ffffff');
+      // 舊投影片曾以白色儲存預設註標線條；統一改為黑色，保留其他自訂色。
+      const storedAnnotationColor = cellStyleColor(widget, actualIndex, 'annotation', widget.annotationColor || '#000000');
+      const annotationColor = /^(#fff(?:fff)?|white)$/i.test(storedAnnotationColor) ? '#000000' : storedAnnotationColor;
       marker.querySelector('rect')?.setAttribute('stroke', annotationColor);
       const text = marker.querySelector('text');
       if (text) { text.setAttribute('font-size', String(Math.max(4, Math.min(8, 14 / (Array.from(label).length * 0.62))))); text.setAttribute('font-weight', 'bold'); }

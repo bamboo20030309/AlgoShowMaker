@@ -65,7 +65,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=6'));
   assert.ok(slides.includes('slides-cloud.js?v=2'));
-  assert.ok(slides.includes('slides.js?v=slides-269'));
+  assert.ok(slides.includes('slides.js?v=slides-270'));
   assert.ok(slides.includes('trace-model.js?v=trace-42'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
@@ -94,8 +94,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(slides.includes('slide-structures.js?v=geometry-1'));
-  assert.ok(legacy.includes('slide-structures.js?v=geometry-1'));
+  assert.ok(slides.includes('slide-structures.js?v=geometry-2'));
+  assert.ok(legacy.includes('slide-structures.js?v=geometry-2'));
   assert.ok(html.includes('trace-arrow-model.js?v=arrow-11'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));

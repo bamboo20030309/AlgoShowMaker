@@ -27,7 +27,7 @@ test('structure annotations follow indices, persist and retain custom colors', {
     const base = `http://127.0.0.1:${port}`;
     for (let i = 0; i < 80; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(resolve => setTimeout(resolve, 200)); }
     browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
-    const widget = { id: 'structure', type: 'structure', structureMode: 'normal', content: '10,20,30,40', annotationIndices: '1', x: 180, y: 140, w: 600, h: 260 };
+    const widget = { id: 'structure', type: 'structure', structureMode: 'normal', content: '10,20,30,40', annotationIndices: '1', annotationColor: '#ffffff', x: 180, y: 140, w: 600, h: 260 };
     const deck = { groups: [{ id: 'g1', slides: [{ id: 's1', canvas: { objects: [] }, widgets: [widget] }] }] };
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     const errors = []; page.on('pageerror', error => errors.push(error.stack || error.message));
@@ -41,7 +41,7 @@ test('structure annotations follow indices, persist and retain custom colors', {
     const annotations = () => object.locator('[data-structure-annotation-index]').evaluateAll(items => items.map(item => item.dataset.structureAnnotationIndex));
     const savedWidget = () => page.evaluate(async () => (await ASMSlideStorage.create(indexedDB, localStorage).loadDeck('asm_reveal_fabric_deck_v5')).groups[0].slides[0].widgets[0]);
     assert.deepEqual(await annotations(), ['1']);
-    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), '#ffffff');
+    assert.equal(await object.locator('[data-structure-annotation-index] > path').first().getAttribute('stroke'), '#000000');
     await object.click();
     if (!(await page.locator('#structureLengthInput').isVisible())) { await page.locator('#modeToggleBtn').click(); await object.click(); }
     assert.equal(await page.locator('#structureEditorPanel .structure-style-list').count(), 0);
@@ -129,7 +129,7 @@ test('structure annotations follow indices, persist and retain custom colors', {
     const annotationColor = (await savedWidget()).cellStyles['0'].annotation;
     assert.notEqual(annotationColor, '#ffffff');
     assert.equal(await object.locator('[data-structure-annotation-index="0"] > path').getAttribute('stroke'), annotationColor);
-    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#ffffff');
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#000000');
     await selectCell(0);
     await toolbar.getByRole('button', { name: '清除格子樣式', exact: true }).click();
     assert.deepEqual(await annotations(), ['1']);
@@ -161,12 +161,18 @@ test('structure annotations follow indices, persist and retain custom colors', {
     assert.equal(await object.locator('#highlight-Array-2').getAttribute('stroke'), saved.cellStyles['2'].highlight);
     assert.equal(await object.locator('[data-structure-annotation-index="1"] text').textContent(), 'left');
     assert.equal(saved.annotationColor, '#ffffff');
-    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#ffffff');
+    assert.equal(await object.locator('[data-structure-annotation-index="1"] > path').getAttribute('stroke'), '#000000');
     const custom = await page.evaluate(widget => {
       const svg = AlgoStructureRenderer.createSvg({ ...widget, highlightColor: '#123456', highlightIndices: '0' });
       return svg.querySelector('.highlight-blink').getAttribute('stroke');
     }, widget);
     assert.equal(custom, '#123456');
+    const pointerColors = await page.evaluate(widget => [undefined, '#ffffff', '#123456'].map(annotationColor => {
+      const svg = AlgoStructureRenderer.createSvg({ ...widget, annotationColor });
+      const marker = svg.querySelector('[data-structure-annotation-index]');
+      return [marker.querySelector('rect').getAttribute('stroke'), marker.querySelector('path').getAttribute('stroke')];
+    }), widget);
+    assert.deepEqual(pointerColors, [['#000000', '#000000'], ['#000000', '#000000'], ['#123456', '#123456']]);
     fs.mkdirSync(path.join(root, 'test-results'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'test-results/structure-annotations.png') });
     const canvasDraw = await page.evaluate(async widget => {
