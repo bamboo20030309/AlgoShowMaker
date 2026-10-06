@@ -18,7 +18,7 @@ pre[i] = pre[i - 1] + a[i];
 // @frame a[i,j],key
 // @text "比較位置 ${i} 和 ${j}" at a.bottom
 // @style a[i] highlight AV_red
-// @style a[0:i] focus AV_blue
+// @style a[0:i] focus
 ```
 
 `[start:end]` 範圍含兩端。使用範圍前確認合法索引；陣列從 0 或 1 開始都須依實作說明。`${...}` 是畫面文字中的運算式插值。
