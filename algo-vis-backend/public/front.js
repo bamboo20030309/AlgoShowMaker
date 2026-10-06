@@ -59,6 +59,8 @@ let TTS_HIGHLIGHT_REQUEST = 0;
 const aceEditor = ace.edit("editor");
 aceEditor.setTheme("ace/theme/monokai");
 aceEditor.session.setMode("ace/mode/c_cpp");
+// Loaded files, pastes and drafts all expose LF to analysis and compilation.
+aceEditor.session.setNewLineMode("unix");
 aceEditor.setOptions({
   fontSize: "14pt",
   wrap: true,

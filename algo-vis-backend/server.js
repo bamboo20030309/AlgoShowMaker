@@ -34,6 +34,7 @@ const {
   loadJwtSecret
 } = require('./jwt-config');
 const {
+  normalizeSource,
   analyzeSource,
   buildSyntaxTree,
   instrumentSource
@@ -217,9 +218,10 @@ app.use((err, req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.post('/trace/analyze', limiter, (req, res) => {
-  const code = req.body?.code;
+  let code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  code = normalizeSource(code);
   try {
     const analysis = analyzeSource(code);
     const instrumented = instrumentSource(code, []);
@@ -288,9 +290,10 @@ app.post('/trace/analyze', limiter, (req, res) => {
 });
 
 app.post('/syntax-tree', limiter, (req, res) => {
-  const code = req.body?.code;
+  let code = req.body?.code;
   if (typeof code !== 'string') return res.status(400).json({ error: '程式碼必須是字串' });
   if (code.length > 64 * 1024) return res.status(400).json({ error: '程式碼不可超過 64KB' });
+  code = normalizeSource(code);
   try {
     res.json({ success: true, ...buildSyntaxTree(code) });
   } catch (error) {
@@ -2116,7 +2119,7 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
 app.post('/compile', (req, res) => {
   debugMessages = []; // 每次請求重置
 
-  const { code, input, trace } = req.body || {};
+  let { code, input, trace } = req.body || {};
   let traceEnabled = trace?.enabled === true;
 
   if (typeof code !== 'string') {
@@ -2142,6 +2145,7 @@ app.post('/compile', (req, res) => {
     });
   }
 
+  code = normalizeSource(code);
   let sourceCode = code;
   let traceVariables = [];
   let traceFrameDirectives = [];

@@ -16,6 +16,7 @@
  */
 
 const { parser } = require('@lezer/cpp');
+const { normalize: normalizeSource } = require('./public/source-normalization');
 
 const DECLARATOR_NODES = new Set([
   'Identifier', 'InitDeclarator', 'ArrayDeclarator', 'PointerDeclarator', 'ReferenceDeclarator'
@@ -207,6 +208,7 @@ function syntaxNodeEventType(node, source) {
 }
 
 function buildSyntaxTree(source) {
+  source = normalizeSource(source);
   const tree = parser.parse(source);
   const lineAt = lineMap(source);
   let nextId = 0;
@@ -351,6 +353,7 @@ function rangeLoopVariables(node, source) {
 }
 
 function analyzeSource(source) {
+  source = normalizeSource(source);
   const tree = parser.parse(source);
   const lineAt = lineMap(source);
   const variables = [];
@@ -1446,6 +1449,7 @@ function parseQuotedDirectiveId(raw, line, directiveName) {
 }
 
 function findLayoutDirectives(source, suppliedAnalysis = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   const entries = [];
   const declarationModifiers = new Set(['as', 'at', 'offset']);
@@ -2541,6 +2545,7 @@ function sourceLoops(source, analysis) {
 }
 
 function findArrowDirectives(source, suppliedAnalysis = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
   const directives = [];
@@ -2797,6 +2802,7 @@ const EVENT_CONTROL_TYPES = new Set(['declare', 'scope-exit', 'visual-exit', 're
   'function-enter', 'function-exit']);
 
 function findEventControlDirectives(source, suppliedAnalysis = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
   const controls = [];
@@ -2924,6 +2930,7 @@ function parsePlaceSource(value, line) {
 }
 
 function findPlaceDirectives(source, suppliedAnalysis = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
   const directives = [];
@@ -3246,6 +3253,7 @@ function attachCameraDirectives(source, analysis, frameDirectives) {
 }
 
 function findFrameDirectives(source, suppliedAnalysis = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   drawingScopesAt(source, analysis, -1);
   if (!analysis.presetDefinitions) findPresetDirectives(source, analysis);
@@ -3629,6 +3637,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
 }
 
 function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = null, suppliedFrames = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   const directives = [];
   const layouts = suppliedLayouts || findLayoutDirectives(source, analysis);
@@ -3728,6 +3737,7 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
 // ─────────────────────────────────────────────────────────────────────────────
 
 function findExitDirectives(source, suppliedAnalysis = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   const directives = [];
 
@@ -3775,6 +3785,7 @@ function findExitDirectives(source, suppliedAnalysis = null) {
 }
 
 function findCodeHideRanges(source, suppliedAnalysis = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   const ranges = [];
   const openRanges = [];
@@ -3820,6 +3831,7 @@ function findCodeHideRanges(source, suppliedAnalysis = null) {
 }
 
 function findBranchDirectives(source, suppliedAnalysis = null, suppliedLayouts = null) {
+  source = normalizeSource(source);
   const analysis = suppliedAnalysis || analyzeSource(source);
   const layouts = suppliedLayouts || findLayoutDirectives(source, analysis);
   const layoutIds = new Set(layouts.filter(layout => layout.type === 'recursion').map(layout => layout.id));
@@ -3896,6 +3908,7 @@ function findBranchDirectives(source, suppliedAnalysis = null, suppliedLayouts =
 }
 
 function instrumentSource(source, watchIds = []) {
+  source = normalizeSource(source);
   const analysis = analyzeSource(source);
   const codeHideRanges = findCodeHideRanges(source, analysis);
   const frameDirectives = findFrameDirectives(source, analysis);
@@ -5031,6 +5044,7 @@ ${loop}
 }
 
 module.exports = {
+  normalizeSource,
   analyzeSource,
   buildSyntaxTree,
   findFrameDirectives,
