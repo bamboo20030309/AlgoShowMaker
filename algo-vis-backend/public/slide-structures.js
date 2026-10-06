@@ -746,7 +746,27 @@
     return true;
   }
 
+  // Disk coordinates may extend above the stand origin (negative Y). Its
+  // body is the union of disks, peg and base, not an array-style outerframe.
+  function diskBodyBounds(group) {
+    const rectangles = [...group.querySelectorAll('.disk-base, .disk-peg, [data-structure-item-index] > rect')]
+      .map(rect => ({ x: number(rect.getAttribute('x'), NaN), y: number(rect.getAttribute('y'), NaN),
+        width: number(rect.getAttribute('width'), NaN), height: number(rect.getAttribute('height'), NaN) }))
+      .filter(rect => Object.values(rect).every(Number.isFinite) && rect.width >= 0 && rect.height >= 0);
+    if (!rectangles.length) return null;
+    return {
+      left: Math.min(...rectangles.map(rect => rect.x)), top: Math.min(...rectangles.map(rect => rect.y)),
+      right: Math.max(...rectangles.map(rect => rect.x + rect.width)),
+      bottom: Math.max(...rectangles.map(rect => rect.y + rect.height))
+    };
+  }
+
   function originalBounds(group, mode) {
+    if (mode === 'disk') {
+      const bounds = diskBodyBounds(group);
+      if (bounds) return bounds;
+    }
+
     const left = number(group.getAttribute('data-outerframe-left'), NaN);
     const top = number(group.getAttribute('data-outerframe-top'), NaN);
     const right = number(group.getAttribute('data-outerframe-right'), NaN);

@@ -94,8 +94,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
-  assert.ok(slides.includes('slide-structures.js?v=geometry-5'));
-  assert.ok(legacy.includes('slide-structures.js?v=geometry-5'));
+  assert.ok(slides.includes('slide-structures.js?v=geometry-6'));
+  assert.ok(legacy.includes('slide-structures.js?v=geometry-6'));
   assert.ok(html.includes('trace-arrow-model.js?v=arrow-11'));
   assert.ok(sources.indexOf('trace-arrow-model.js') < sources.indexOf('trace-renderer.js'));
   assert.ok(html.includes('draw/draw_arrow.js?v=arrow-2'));
