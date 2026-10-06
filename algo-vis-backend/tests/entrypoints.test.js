@@ -55,10 +55,10 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-code-presenter.js?v=code-34'));
   assert.ok(html.includes('trace-view-source.js?v=trace-17'));
   assert.ok(html.includes('trace-editor.js?v=trace-33'));
-  assert.ok(html.includes('compile.js?v=syntax-11'));
+  assert.ok(html.includes('compile.js?v=syntax-12'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=brand-shared-11'));
+  assert.ok(html.includes('style.css?v=brand-shared-12'));
   assert.ok(html.includes('brand.css?v=hover-pill-1'));
   assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
@@ -125,8 +125,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-9'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
   assert.ok(html.includes('trace-studio.js?v=trace-138'));
-  assert.ok(html.includes('syntax-tree.js?v=syntax-3'));
-  assert.ok(html.includes('front.js?v=random-id-50'));
+  assert.ok(html.includes('syntax-tree.js?v=syntax-4'));
+  assert.ok(html.includes('front.js?v=random-id-51'));
   assert.ok(html.includes('slides-embed.js?v=trace-13'));
   assert.ok(html.indexOf('runtime-local-editor.js?') > html.indexOf('trace-editor.js?'));
   assert.ok(html.indexOf('runtime-local-editor.js?') < html.indexOf('slides-embed.js?'));

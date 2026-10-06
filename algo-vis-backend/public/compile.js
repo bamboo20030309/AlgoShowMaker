@@ -28,28 +28,61 @@ window.asmApplyAnimationScript = function (scriptContent) {
 
 // 前端：送 code ＋ input 給 /compile，並更新「輸出」與「debug log」
 
-async function runProgram({ forceRecompile = false } = {}) {
+// Keep failures visible across canvas/output/debug tabs until the next RUN.
+window.ASMCompileWarnings = (() => {
+  const stages = new Map();
+  function render() {
+    const notice = document.getElementById('compileWarnings');
+    if (!notice) return;
+    notice.textContent = [...stages].map(([stage, message]) => `⚠ ${stage}：${message}`).join('\n');
+    notice.hidden = stages.size === 0;
+  }
+  return {
+    clear() { stages.clear(); render(); },
+    clearStage(stage) { stages.delete(stage); render(); },
+    report(stage, message) { stages.set(stage, String(message)); render(); }
+  };
+})();
+
+// Explain an otherwise silent frame: all requested canvas events lack targets.
+window.addEventListener('asm:trace-rendered', event => {
+  const trace = event.detail?.document;
+  const frame = event.detail?.frame;
+  if (!trace || !frame || window.ASMTracePlayer?.getDocument?.() !== trace) return;
+  const index = trace.frames.indexOf(frame);
+  const canvasTypes = new Set(['declare', 'assign', 'write', 'compare', 'swap', 'sequence-operation']);
+  const events = (frame.events || []).filter(item => item.enabled !== false && canvasTypes.has(item.type));
+  if (index > 0 && events.length && events.every(item => item.autoAnimationDisabled === true)
+    && events.some(item => item.autoAnimationUnavailableReason === 'missing-target')) {
+    const names = [...new Set(events.flatMap(item => (item.targets || [])
+      .filter(target => target.variableId).map(target => target.expression).filter(Boolean)))];
+    window.ASMCompileWarnings.report('事件動畫', `第 ${index + 1} 幀的事件找不到完整的畫面目標，已略過事件動畫。請確認相關變數／指標有顯示，且程式操作的是畫面上的同一個物件。${names.length ? `\n相關目標：${names.slice(0, 6).join('、')}` : ''}`);
+  } else {
+    window.ASMCompileWarnings.clearStage('事件動畫');
+  }
+});
+
+async function runProgram() {
   const runBtn = document.getElementById('runBtn');
-  const forceRunBtn = document.getElementById('forceRunBtn');
-  const activeRunBtn = forceRecompile && forceRunBtn ? forceRunBtn : runBtn;
   let showDebugAfterRun = false;
+  let syntaxRequest = null;
 
   // [新增] 防呆：如果已經在 loading (按鈕變暗轉圈中)，就直接忽略這次點擊
   if (runBtn.disabled || runBtn.classList.contains('loading')) return;
+  window.ASMCompileWarnings.clear();
 
   window.ASMDefaultAlgorithm?.cancel?.('run');
 
   // [新增] 1. 開始 loading 狀態
   runBtn.disabled = true;
-  if (forceRunBtn) forceRunBtn.disabled = true;
-  activeRunBtn.classList.add('loading');
+  runBtn.classList.add('loading');
 
   const out     = document.getElementById('outputArea');
   const dbg     = document.getElementById('debugArea');
   const inputEl = document.getElementById('inputArea');
   window.ASMAlgorithmDraft?.save?.();
 
-  if (out) out.textContent = forceRecompile ? '強制重新編譯執行中⋯⋯' : '編譯執行中⋯⋯';
+  if (out) out.textContent = '編譯執行中⋯⋯';
   if (dbg) dbg.textContent = '等待 debug 訊息⋯⋯';
 
   // TLE 門檻（顯示用；實際判定以後端 error 為主）
@@ -106,7 +139,7 @@ async function runProgram({ forceRecompile = false } = {}) {
     }
     const sourceCode = aceEditor.getValue();
     const sourceInput = inputEl ? inputEl.value : '';
-    window.ASMSyntaxTree?.refresh?.(sourceCode);
+    syntaxRequest = window.ASMSyntaxTree?.refresh?.(sourceCode);
     let traceConfig = { enabled: true, sliceMode: 'auto', watches: [], skins: {}, rules: [] };
     let traceAnalyzeWarning = '';
     try {
@@ -118,6 +151,7 @@ async function runProgram({ forceRecompile = false } = {}) {
       // a valid C++ construct. The compiler remains the source of truth.
       traceConfig = { enabled: false };
       traceAnalyzeWarning = `追蹤分析未完成，先使用一般執行：${error.message}`;
+      window.ASMCompileWarnings.report('追蹤分析', `${error.message}\n已改用一般執行，本次不會建立動畫。`);
       showDebugAfterRun = true;
     }
 
@@ -127,8 +161,7 @@ async function runProgram({ forceRecompile = false } = {}) {
       body: JSON.stringify({
         code: sourceCode,                         // 保留原本欄位名 code
         input: sourceInput,                      // stdin captured with this RUN
-        trace: traceConfig,
-        forceRecompile
+        trace: traceConfig
       })
     });
 
@@ -149,10 +182,17 @@ async function runProgram({ forceRecompile = false } = {}) {
     const memoryKB    = data.memoryKB;
     const debug_log   = data.debug_log;
     const traceWarning = [traceAnalyzeWarning, data.traceWarning].filter(Boolean).join('\n');
-    if (traceWarning) showDebugAfterRun = true;
+    if (traceWarning) {
+      showDebugAfterRun = true;
+      if (data.traceWarning) window.ASMCompileWarnings.report('動畫解析', data.traceWarning);
+    }
 
     // 統一判定（TLE / OLE / MLE / RE / OK）
     const judge = judgeResult(data);
+    if (!res.ok || judge.kind !== 'OK') {
+      window.ASMCompileWarnings.report('編譯／執行', judge.message || `伺服器回傳 HTTP ${res.status}`);
+      showDebugAfterRun = true;
+    }
 
     // === 顯示輸出（重點：TLE 也要顯示已產生的 output） ===
     const rawOutput = (data.output || '').toString();
@@ -220,6 +260,9 @@ async function runProgram({ forceRecompile = false } = {}) {
     // -----------------------------------------------------------------------------
     if (data.traceDocument) {
       try {
+        if (!Array.isArray(data.traceDocument.frames) || !data.traceDocument.frames.length) {
+          throw new Error('回傳的動畫資料沒有可播放的影格。');
+        }
         // Do not label another source's animation as the current RUN, even
         // if a stale response or cache entry is returned by the server.
         const returnedSource = data.traceDocument.sourceCode;
@@ -256,6 +299,8 @@ async function runProgram({ forceRecompile = false } = {}) {
         }));
       } catch (e) {
         console.error('Failed to render trace:', e);
+        window.ASMTraceEditor?.clearAnimation?.();
+        window.ASMCompileWarnings.report('動畫載入／繪製', e.message);
         if (dbg) dbg.textContent += '\n[Trace] Failed to render trace: ' + e.message;
         showDebugAfterRun = true;
       }
@@ -272,9 +317,16 @@ async function runProgram({ forceRecompile = false } = {}) {
         }));
       } catch (e) {
         console.error("動畫腳本執行失敗:", e);
+        window.ASMTraceEditor?.clearAnimation?.();
+        window.ASMCompileWarnings.report('動畫腳本', e.message);
+        showDebugAfterRun = true;
         if (dbg) dbg.textContent += '\n[前端錯誤] 動畫腳本執行失敗: ' + e.message;
       }
     } else {
+      if (traceConfig.enabled && judge.kind === 'OK' && !traceWarning) {
+        window.ASMCompileWarnings.report('動畫資料', '程式已執行，但伺服器沒有回傳動畫資料。請查看除錯紀錄。');
+        showDebugAfterRun = true;
+      }
       // Plain execution (or a failed compilation) must not leave the previous
       // Trace in the player or the snapshot exported to an embedded slide.
       window.ASMTraceEditor?.clearAnimation?.();
@@ -288,15 +340,25 @@ async function runProgram({ forceRecompile = false } = {}) {
 
   } catch (err) {
     console.log(err);
-    if (out) out.textContent = 'Request 失敗：\n' + err;
-    if (dbg) dbg.textContent = 'Request 失敗，請確認伺服器是否有啟動。';
+    window.ASMTraceEditor?.clearAnimation?.();
+    window.ASMCompileWarnings.report('編譯請求', err.message || String(err));
+    if (out) out.textContent = '編譯請求失敗：\n' + err;
+    if (dbg) dbg.textContent = '編譯請求失敗：' + (err.message || String(err));
     showDebugAfterRun = true;
   } finally {
+    if (syntaxRequest) {
+      try {
+        const syntaxResult = await syntaxRequest;
+        if (syntaxResult?.ok === false) showDebugAfterRun = true;
+      } catch (error) {
+        window.ASMCompileWarnings.report('語法樹', error.message);
+        showDebugAfterRun = true;
+      }
+    }
     // [新增] 2. 結束 loading 狀態（無論成功或失敗都會執行）
     // 讓按鈕恢復可點擊、顏色恢復、轉圈圈消失
-    activeRunBtn.classList.remove('loading');
+    runBtn.classList.remove('loading');
     runBtn.disabled = false;
-    if (forceRunBtn) forceRunBtn.disabled = false;
     window.__asmMigrateTraceSettingsOnNextRun = false;
     window.dispatchEvent(new CustomEvent('asm:compile-finished'));
   }
@@ -309,4 +371,3 @@ async function runProgram({ forceRecompile = false } = {}) {
 }
 
 document.getElementById('runBtn').addEventListener('click', () => runProgram());
-document.getElementById('forceRunBtn')?.addEventListener('click', () => runProgram({ forceRecompile: true }));

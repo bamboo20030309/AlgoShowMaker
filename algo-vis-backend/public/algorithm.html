@@ -9,7 +9,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css?v=brand-shared-11" />
+  <link rel="stylesheet" href="style.css?v=brand-shared-12" />
   <link rel="stylesheet" href="brand.css?v=hover-pill-1" />
   <link rel="stylesheet" href="slides-embed.css?v=random-id-11" />
   <link rel="stylesheet" href="trace.css?v=trace-37" />
@@ -74,7 +74,6 @@
 
         <div class="header-buttons">
           <button id="runBtn" class="btn-run" title="編譯執行（Ctrl＋Enter）">▶ RUN</button>
-          <button id="forceRunBtn" class="btn-run btn-force-run" title="略過快取，強制重新編譯並執行（Ctrl＋Shift＋Enter）" aria-keyshortcuts="Control+Shift+Enter Meta+Shift+Enter">↻ 重編譯</button>
 
           <button id="panelToggleBtn" title="摺疊程式碼面板">◀</button>
         </div>
@@ -87,6 +86,7 @@
     <div id="divider"></div>
 
     <div id="vizPanel">
+      <div id="compileWarnings" class="compile-warnings" role="alert" hidden></div>
       <div id="subTabs">
         <div class="subTab">
           <button class="tab-btn active" data-tab="tab-canvas">畫布</button>
@@ -380,13 +380,13 @@
   <script src="compile-session.js?v=2"></script>
   <script src="trace-editor.js?v=trace-33"></script>
   <script src="trace-freshness.js?v=trace-3"></script>
-  <script src="syntax-tree.js?v=syntax-3"></script>
-  <script src="compile.js?v=syntax-11"></script>
+  <script src="syntax-tree.js?v=syntax-4"></script>
+  <script src="compile.js?v=syntax-12"></script>
   <script src="tts.js?v=10"></script>
   <script src="playback-time.js?v=1"></script>
   <script src="resolve_pos.js"></script>
   <script src="animation.js?v=trace-5"></script>
-  <script src="front.js?v=random-id-50"></script>
+  <script src="front.js?v=random-id-51"></script>
   <script src="trace-directive-assist.js?v=directive-33"></script>
   <script src="draw/draw_array_outerframe.js"></script>
   <script src="draw/draw_array_hintWidget.js?v=trace-4"></script>

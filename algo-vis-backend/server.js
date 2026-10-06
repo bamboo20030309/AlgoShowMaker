@@ -3264,7 +3264,11 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       let traceError = "";
       try {
         if (fs.existsSync(scriptPath)) scriptContent = fs.readFileSync(scriptPath, 'utf8');
-      } catch (err) { logDebug('讀取動畫腳本失敗: ' + err.message); }
+      } catch (err) {
+        const warning = '讀取動畫腳本失敗：' + err.message;
+        traceWarning = [traceWarning, warning].filter(Boolean).join('\n');
+        logDebug(warning);
+      }
 
       if (traceEnabled) {
         try {
@@ -3283,6 +3287,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
           });
         } catch (err) {
           traceError = '追蹤資料載入失敗：' + err.message;
+          traceWarning = [traceWarning, traceError].filter(Boolean).join('\n');
           logDebug('Failed to read trace output: ' + err.message);
           runErr += `\nTrace Error: ${err.message}`;
         }

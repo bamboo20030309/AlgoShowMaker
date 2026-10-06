@@ -234,6 +234,7 @@
     const code = String(source ?? '');
     lastSource = code;
     const sequence = ++requestSequence;
+    window.ASMCompileWarnings?.clearStage('語法樹');
     status.textContent = '正在產生語法樹...';
     status.hidden = false;
     try {
@@ -245,7 +246,18 @@
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || '無法建立語法樹');
       if (sequence !== requestSequence) return;
+      if (!payload.root) throw new Error('伺服器回傳的語法樹缺少根節點。');
       render(payload);
+      const errors = collectNodes(payload.root).filter(node => node.type === 'Error' || node.type === '⚠');
+      if (errors.length) {
+        const lines = [...new Set(errors.map(node => node.line).filter(Number.isFinite))];
+        const message = `解析器發現 ${errors.length} 個無法解析的節點${lines.length ? `（第 ${lines.slice(0, 5).join('、')} 行）` : ''}。語法樹或動畫追蹤可能不完整；C++ 是否能執行仍以編譯結果為準。`;
+        status.textContent = message;
+        status.hidden = false;
+        window.ASMCompileWarnings?.report('語法樹', message);
+        return { ok: false, message };
+      }
+      return { ok: true };
     } catch (error) {
       if (sequence !== requestSequence) return;
       svg.replaceChildren();
@@ -253,6 +265,8 @@
       currentView = null;
       status.textContent = error.message || '無法建立語法樹';
       status.hidden = false;
+      window.ASMCompileWarnings?.report('語法樹', status.textContent);
+      return { ok: false, message: status.textContent };
     }
   }
 

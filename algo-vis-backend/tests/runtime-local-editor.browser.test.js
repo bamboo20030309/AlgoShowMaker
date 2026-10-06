@@ -51,7 +51,7 @@ test('presentation editor stores code, input and animation locally, survives reo
   assert.equal(await frame.locator('#codePanel').isVisible(), false);
   await frame.click('#runtimeLocalEditBtn');
   assert.equal(await frame.locator('#runBtn').isVisible(), true);
-  assert.equal(await frame.locator('#forceRunBtn').isVisible(), true);
+  assert.equal(await frame.locator('#forceRunBtn').count(), 0);
   const changed = code.replace('std::cout<<n;', 'std::cout<<n+1;');
   await frame.evaluate(code => { aceEditor.setValue(code, -1); document.getElementById('inputArea').value = '23'; }, changed);
   await frame.click('#runBtn');

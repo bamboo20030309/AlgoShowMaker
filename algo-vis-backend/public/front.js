@@ -3164,13 +3164,13 @@ document.addEventListener('DOMContentLoaded', function () {
 // ==========================================
 document.addEventListener('keydown', function (e) {
   // 偵測 Ctrl + Enter (Mac 則是 Cmd + Enter)
-  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'Enter') {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === 'Enter') {
     // 只有當焦點不在「輸入/輸出框」時才阻止預設換行？
     // 或是乾脆直接攔截執行（通常 RUN 的優先級較高）
     // 這裡選擇直接執行，但保留 preventDefault 以免在輸入框內產生多餘換行
     e.preventDefault();
 
-    const runBtn = document.getElementById(e.shiftKey ? 'forceRunBtn' : 'runBtn');
+    const runBtn = document.getElementById('runBtn');
     e.stopPropagation();
 
     // 確保按鈕存在，且不在 loading 狀態 (避免重複送出)

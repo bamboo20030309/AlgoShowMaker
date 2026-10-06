@@ -1,0 +1,6 @@
+'use strict';
+const {test}=require('node:test');const assert=require('node:assert/strict');const path=require('node:path');const {startIsolatedServer}=require('./helpers/isolated-server');
+test('animation file and trace read failures reach API warnings without losing stdout or terminating the server',{timeout:30000},async t=>{
+ const fixture=path.join(__dirname,'fixtures/pipeline-read-fault.cjs');const {base}=await startIsolatedServer(t,{NODE_OPTIONS:`--require ${JSON.stringify(fixture)}`});
+ const code='#include <iostream>\nint main(){int n=1;\n// @frame n\nstd::cout<<n;}';const response=await fetch(base+'/compile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,trace:{enabled:true}})});assert.equal(response.status,200);const result=await response.json();assert.equal(result.output.trim(),'1');assert.match(result.traceWarning,/讀取動畫腳本失敗.*fixture script read failure/);assert.match(result.traceWarning,/追蹤資料載入失敗.*fixture trace read failure/);assert.equal(result.traceDocument,null);assert.match(result.error,/追蹤資料載入失敗/);assert.equal((await fetch(base+'/algorithm.html')).status,200);
+});
