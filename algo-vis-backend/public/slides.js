@@ -27,7 +27,7 @@
   const SLIDE_ZOOM_MAX = 2;
   const SLIDE_ZOOM_STEP = 0.1;
   const DEFAULT_FONT_FAMILY = 'Arial';
-  const DEFAULT_STRUCTURE_FRAME_BACKGROUND = 'rgba(209, 230, 172, 0.5)';
+  const DEFAULT_STRUCTURE_FRAME_BACKGROUND = structureStyleDefaults().outerframe;
   const fabricCanvases = new Map();
   const slidePositions = new Map();
   const MAX_HISTORY = 80;

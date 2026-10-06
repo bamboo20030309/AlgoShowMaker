@@ -12,7 +12,7 @@
       background: mode === 'stack' ? 'rgba(255, 200, 200, 0.8)'
         : mode === 'queue' ? 'rgba(200, 255, 200, 0.8)'
         : mode === 'disk' || mode === 'segment_tree' ? '#ffffff' : '#e790ff',
-      annotation: '#000000'
+      annotation: '#000000', outerframe: window.draw_array_outerframe.defaultBackgroundColor
     };
   }
 
@@ -571,7 +571,7 @@
       }
       return;
     }
-    if (widget.frameBackgroundColor) background.setAttribute('fill', widget.frameBackgroundColor);
+    background.setAttribute('fill', widget.frameBackgroundColor || getStyleDefaults(widget).outerframe);
   }
 
   function tagEditableCells(group, mode, columns = 0) {

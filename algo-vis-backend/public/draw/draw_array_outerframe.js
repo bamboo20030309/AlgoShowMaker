@@ -9,6 +9,7 @@
 // draw_array_outerframe.js
 ;(function() {
   const NS = 'http://www.w3.org/2000/svg';
+  const DEFAULT_BACKGROUND_COLOR = 'rgba(209,230,172,0.5)';
   const baseBoxSize = 40;
   const indexBoxH   = 12;
   const outerframe_padding = 8;
@@ -28,7 +29,7 @@
     groupID,
     height,
     width,
-    bgColor = 'rgba(209,230,172,0.5)',
+    bgColor = DEFAULT_BACKGROUND_COLOR,
     offsetY = 0
   ) {
     const pad = 8;
@@ -138,6 +139,7 @@
     return { x: baseX + dx + xLocal, y: baseY + dy + yLocal };
   }
 
+  draw_array_outerframe.defaultBackgroundColor = DEFAULT_BACKGROUND_COLOR;
   window.draw_array_outerframe = draw_array_outerframe;
   window.getOuterframePosition = getOuterframePosition;
 })();

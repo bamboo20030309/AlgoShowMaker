@@ -27,7 +27,7 @@ test('slide default style colors match omitted-color animation renderers',
           + fs.readFileSync(path.join(root,'public/slides.js'),'utf8') }));
       const original = { id:'array', type:'structure', structureMode:'normal', content:'1,2,3,4',
         x:220,y:230,w:760.5,h:240.25,manualSize:false,frameBackgroundEnabled:false,
-        structureName:'data',highlightColor:'#123456',indexMode:0,cellStyles:{},angle:12,skewX:8 };
+        structureName:'data',frameBackgroundColor:'#abcdef',highlightColor:'#123456',indexMode:0,cellStyles:{},angle:12,skewX:8 };
       const deck = { groups:[{id:'g',slides:[{id:'s',widgets:[original],canvas:{objects:[
         {type:'textbox',text:'Heading',left:120,top:100,width:230,fontSize:28,fill:'#234567'}
       ]}}]}] };
@@ -72,6 +72,19 @@ test('slide default style colors match omitted-color animation renderers',
         return results;
       });
       for(const result of colors)assert.equal(result.slide,result.animation,`${result.mode} ${result.type}`);
+      const frames=await page.evaluate(()=>{
+        const source=document.createElementNS('http://www.w3.org/2000/svg','g');
+        draw_array_outerframe(source,'animation',40,80);
+        const pick=root=>({fill:root.querySelector('.outerframe-bg')?.getAttribute('fill'),stroke:root.querySelector('.outerframe-bg')?.getAttribute('stroke')});
+        const widget={type:'structure',structureMode:'normal',content:'1,2',x:0,y:0,w:500,h:200};
+        return {animation:pick(source),missing:pick(AlgoStructureRenderer.createSvg(widget)),
+          custom:pick(AlgoStructureRenderer.createSvg({...widget,frameBackgroundColor:'#123456'})),
+          disabled:!!AlgoStructureRenderer.createSvg({...widget,frameBackgroundEnabled:false}).querySelector('.outerframe-bg')};
+      });
+      assert.deepEqual(frames.missing,frames.animation);
+      assert.equal(frames.custom.fill,'#123456');assert.equal(frames.custom.stroke,frames.animation.stroke);
+      assert.equal(frames.disabled,false);
+
 
       await page.locator('#structureMenuBtn').click();
       await page.locator('#structureMenu [data-structure-mode="normal"]').click();
@@ -82,8 +95,10 @@ test('slide default style colors match omitted-color animation renderers',
       const created=persisted.find(w=>w.id!=='array'),legacy=persisted.find(w=>w.id==='array');
       assert.deepEqual([created.highlightColor,created.focusColor,created.pointColor,created.markColor,created.backgroundColor],
         ['#ff0000','#cccccc','#ff0000','#32cd32','#e790ff']);
+      assert.equal(created.frameBackgroundColor,frames.animation.fill,'new outerframe persists the animation default');
       assert.equal(legacy.highlightColor,'#123456','explicit custom color remains intact');
       assert.equal(legacy.frameBackgroundEnabled,false,'explicit disabled setting remains intact');
+      assert.equal(legacy.frameBackgroundColor,'#abcdef','custom outerframe color remains after save/reopen');
       assert.deepEqual(errors,[]);
     } finally { await browser?.close(); server.kill(); }
   });
