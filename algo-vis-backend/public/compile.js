@@ -28,24 +28,28 @@ window.asmApplyAnimationScript = function (scriptContent) {
 
 // 前端：送 code ＋ input 給 /compile，並更新「輸出」與「debug log」
 
-document.getElementById('runBtn').addEventListener('click', async () => {
+async function runProgram({ forceRecompile = false } = {}) {
   const runBtn = document.getElementById('runBtn');
+  const forceRunBtn = document.getElementById('forceRunBtn');
+  const activeRunBtn = forceRecompile && forceRunBtn ? forceRunBtn : runBtn;
   let showDebugAfterRun = false;
 
   // [新增] 防呆：如果已經在 loading (按鈕變暗轉圈中)，就直接忽略這次點擊
-  if (runBtn.classList.contains('loading')) return;
+  if (runBtn.disabled || runBtn.classList.contains('loading')) return;
 
   window.ASMDefaultAlgorithm?.cancel?.('run');
 
   // [新增] 1. 開始 loading 狀態
-  runBtn.classList.add('loading');
+  runBtn.disabled = true;
+  if (forceRunBtn) forceRunBtn.disabled = true;
+  activeRunBtn.classList.add('loading');
 
   const out     = document.getElementById('outputArea');
   const dbg     = document.getElementById('debugArea');
   const inputEl = document.getElementById('inputArea');
   window.ASMAlgorithmDraft?.save?.();
 
-  if (out) out.textContent = '編譯執行中⋯⋯';
+  if (out) out.textContent = forceRecompile ? '強制重新編譯執行中⋯⋯' : '編譯執行中⋯⋯';
   if (dbg) dbg.textContent = '等待 debug 訊息⋯⋯';
 
   // TLE 門檻（顯示用；實際判定以後端 error 為主）
@@ -123,7 +127,8 @@ document.getElementById('runBtn').addEventListener('click', async () => {
       body: JSON.stringify({
         code: sourceCode,                         // 保留原本欄位名 code
         input: sourceInput,                      // stdin captured with this RUN
-        trace: traceConfig
+        trace: traceConfig,
+        forceRecompile
       })
     });
 
@@ -289,7 +294,9 @@ document.getElementById('runBtn').addEventListener('click', async () => {
   } finally {
     // [新增] 2. 結束 loading 狀態（無論成功或失敗都會執行）
     // 讓按鈕恢復可點擊、顏色恢復、轉圈圈消失
-    runBtn.classList.remove('loading');
+    activeRunBtn.classList.remove('loading');
+    runBtn.disabled = false;
+    if (forceRunBtn) forceRunBtn.disabled = false;
     window.__asmMigrateTraceSettingsOnNextRun = false;
     window.dispatchEvent(new CustomEvent('asm:compile-finished'));
   }
@@ -299,4 +306,7 @@ document.getElementById('runBtn').addEventListener('click', async () => {
     `.tab-btn[data-tab="${showDebugAfterRun ? 'tab-debug' : 'tab-canvas'}"]:not([style*="display: none"])`
   );
   if (btn) activateTab(btn);
-});
+}
+
+document.getElementById('runBtn').addEventListener('click', () => runProgram());
+document.getElementById('forceRunBtn')?.addEventListener('click', () => runProgram({ forceRecompile: true }));

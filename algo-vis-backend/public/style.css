@@ -664,7 +664,8 @@ button.auto-stepping:hover {
 /* --- 特殊按鈕 --- */
 
 /* RUN 按鈕 (在深色背景上要顯眼) */
-#runBtn.btn-run {
+#runBtn.btn-run,
+#forceRunBtn.btn-run {
   background-color: var(--success-green);
   color: white;
   border: none;
@@ -676,6 +677,21 @@ button.auto-stepping:hover {
 
 #runBtn.btn-run:hover {
   background-color: var(--hover-green);
+}
+
+#forceRunBtn.btn-force-run {
+  background-color: var(--accent-blue, #3b82f6);
+  padding-inline: 10px;
+  white-space: nowrap;
+}
+
+#forceRunBtn.btn-force-run:hover {
+  filter: brightness(0.9);
+}
+
+.header-buttons .btn-run:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 /* 定義旋轉動畫 */
@@ -690,7 +706,8 @@ button.auto-stepping:hover {
 }
 
 /* Loading 狀態下的按鈕本體 */
-#runBtn.loading {
+#runBtn.loading,
+#forceRunBtn.loading {
   background-color: #14532d !important;
   /* 改成深綠色 */
   color: transparent !important;
@@ -705,7 +722,8 @@ button.auto-stepping:hover {
 }
 
 /* 用偽元素製作轉圈圈 Spinner */
-#runBtn.loading::after {
+#runBtn.loading::after,
+#forceRunBtn.loading::after {
   content: "";
   position: absolute;
   top: 50%;

@@ -2880,8 +2880,17 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     traceConfig: { ...trace, enabled: traceEnabled, sliceMode: traceSliceMode },
     engine: engineFingerprint,
   });
-  const sharedCache = req.headers['x-compile-cache'] === 'shared' || req.body?.cachePolicy === 'shared';
+  // Explicit true affects this request only: it still uses the normal queue,
+  // limits and sandbox, but neither reads nor writes shared compilation caches.
+  const forceRecompile = req.body?.forceRecompile === true;
+  const sharedCache = !forceRecompile
+    && (req.headers['x-compile-cache'] === 'shared' || req.body?.cachePolicy === 'shared');
   const cacheAvailable = Boolean(await artifactCacheReady);
+  if (forceRecompile) {
+    res.setHeader('X-Compile-Trace-Cache', 'BYPASS');
+    res.setHeader('X-Compile-Executable-Cache', 'BYPASS');
+    logDebug('FORCE_RECOMPILE: 略過執行檔與 Trace 快取，重新編譯並執行');
+  }
   if (sharedCache) res.setHeader('X-Compile-Trace-Id', traceCacheKey);
 
   if (sharedCache && cacheAvailable) {
@@ -2984,7 +2993,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
   const compilerMemoryKB = 512 * 1024;
   req.compileWorkSpawned = true;
   let executableCacheHit = false;
-  if (cacheAvailable) {
+  if (cacheAvailable && !forceRecompile) {
     let lease = null;
     try {
       lease = await artifactCache.acquire('executable', executableKey);
@@ -3121,7 +3130,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       }
     }
 
-    if (!executableCacheHit && cacheAvailable) {
+    if (!executableCacheHit && cacheAvailable && !forceRecompile) {
       try {
         await artifactCache.putFile('executable', executableKey, exePath, {
           metadata: { compilerFingerprint, engineFingerprint },
@@ -3318,7 +3327,7 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
         traceDocument,
         cache: {
           trace: sharedCache ? 'STORED' : 'BYPASS',
-          executable: executableCacheHit ? 'HIT' : 'MISS',
+          executable: forceRecompile ? 'BYPASS' : executableCacheHit ? 'HIT' : 'MISS',
           executableId: executableKey,
           traceId: traceCacheKey,
         },

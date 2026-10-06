@@ -3162,16 +3162,17 @@ document.addEventListener('DOMContentLoaded', function () {
 // ==========================================
 document.addEventListener('keydown', function (e) {
   // 偵測 Ctrl + Enter (Mac 則是 Cmd + Enter)
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'Enter') {
     // 只有當焦點不在「輸入/輸出框」時才阻止預設換行？
     // 或是乾脆直接攔截執行（通常 RUN 的優先級較高）
     // 這裡選擇直接執行，但保留 preventDefault 以免在輸入框內產生多餘換行
     e.preventDefault();
 
-    const runBtn = document.getElementById('runBtn');
+    const runBtn = document.getElementById(e.shiftKey ? 'forceRunBtn' : 'runBtn');
+    e.stopPropagation();
 
     // 確保按鈕存在，且不在 loading 狀態 (避免重複送出)
-    if (runBtn && !runBtn.classList.contains('loading')) {
+    if (runBtn && !runBtn.disabled && !runBtn.classList.contains('loading') && !e.repeat) {
       // 模擬點擊
       runBtn.click();
 
@@ -3180,7 +3181,7 @@ document.addEventListener('keydown', function (e) {
       setTimeout(() => runBtn.style.transform = "", 100);
     }
   }
-});
+}, true);
 
 // ==========================================
 //  演算法範例集 - 側邊滑出面板邏輯
