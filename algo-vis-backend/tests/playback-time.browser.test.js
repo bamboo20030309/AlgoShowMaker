@@ -83,7 +83,7 @@ test('playback clock estimates total time, follows rate, and restarts the curren
       stopCount: element.querySelectorAll('.frame-bar.stopframe').length
     }));
     assert.deepEqual(timelineStyle, {
-      progress: '25%',
+      progress: '0%',
       trackHeight: '6px',
       playheadHeight: '10px',
       markerCount: 0,
@@ -148,10 +148,46 @@ test('playback clock estimates total time, follows rate, and restarts the curren
     const compactBox = await page.locator('#frameTimeline').boundingBox();
     assert.ok(compactBox.width <= 220, '120 frames keep the timeline within 220px');
     assert.equal(await page.locator('.frame-playhead').count(), 1);
-    await page.locator('#frameTimeline').click({ position: { x: compactBox.width - 1, y: 15 } });
+    await page.locator('#frameTimeline').click({ position: { x: compactBox.width - 0.1, y: 15 } });
     assert.equal(await page.locator('#frameInfo').textContent(), '120 / 120');
-    await page.locator('#frameTimeline').click({ position: { x: 1, y: 15 } });
+    await page.locator('#frameTimeline').click({ position: { x: 0.1, y: 15 } });
     assert.equal(await page.locator('#frameInfo').textContent(), '1 / 120');
+
+    // Three frames use independent endpoint answers, including actual playhead geometry.
+    for (const count of [3, 1, 0]) {
+      await page.evaluate(count => {
+        const frames = Array.from({ length: count }, (_, index) => ({
+          id: `endpoint-${index}`, state: {}, source: { line: index + 1 }, texts: [], events: []
+        }));
+        window.asmApplyTraceDocument({ frames, variables: {}, rules: [], studio: {} });
+        window.initFrameInfoFromCodeScript();
+      }, count);
+      const bar = page.locator('#frameTimeline');
+      const box = await bar.boundingBox();
+      for (const [ratio, frame, progress] of count === 3
+        ? [[0, 1, 0], [0.5, 2, 50], [1, 3, 100]]
+        : [[0, count, 0], [0.5, count, 0], [1, count, 0]]) {
+        // Pointer capture also checks dragging beyond the hit area reaches the endpoint.
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width * ratio, box.y + box.height / 2);
+        await page.mouse.up();
+        assert.equal(await page.locator('#frameInfo').textContent(), `${frame} / ${count}`);
+        const actual = await bar.evaluate(element => {
+          const track = element.getBoundingClientRect();
+          const head = element.querySelector('.frame-playhead').getBoundingClientRect();
+          return {
+            progress: element.style.getPropertyValue('--frame-progress'),
+            ratio: ((head.left + head.right) / 2 - track.left) / track.width
+          };
+        });
+        assert.equal(actual.progress, `${progress}%`);
+        assert.ok(Math.abs(actual.ratio - progress / 100) < 0.001);
+        if (count === 3) {
+          assert.equal(await page.locator('#frameHoverPreview').textContent(), `第 ${frame} / 3 幀`);
+        }
+      }
+    }
   } finally {
     await browser?.close();
     server.kill();

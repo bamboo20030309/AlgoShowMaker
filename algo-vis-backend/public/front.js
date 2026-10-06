@@ -951,6 +951,11 @@ function initFrameInfoFromCodeScript() {
   window.refreshPlaybackTimeDisplay?.({ resetToFrame: true });
 }
 
+// 首尾幀對齊時間軸端點；零幀／單幀固定在左端，避免除以零。
+function frameTimelineRatio(index) {
+  return totalFrames > 1 ? Math.max(0, Math.min(1, index / (totalFrames - 1))) : 0;
+}
+
 // 建立條碼 DOM
 function buildFrameBars() {
   const barsContainer = document.getElementById("frameBars");
@@ -967,7 +972,7 @@ function buildFrameBars() {
       if (totalFrames <= 0) return -1;
       const rect = timeline.getBoundingClientRect();
       const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      return Math.max(0, Math.min(Math.floor((clickX / rect.width) * totalFrames), totalFrames - 1));
+      return Math.max(0, Math.min(Math.round((clickX / Math.max(1, rect.width)) * (totalFrames - 1)), totalFrames - 1));
     };
 
     const showPreview = (e) => {
@@ -981,7 +986,7 @@ function buildFrameBars() {
         preview.hidden = false;
         const rect = timeline.getBoundingClientRect();
         const box = preview.getBoundingClientRect();
-        const center = rect.left + ((targetIdx + 0.5) / totalFrames) * rect.width;
+        const center = rect.left + frameTimelineRatio(targetIdx) * rect.width;
         preview.style.left = `${Math.max(8, Math.min(center - box.width / 2, window.innerWidth - box.width - 8))}px`;
         const above = rect.top - box.height - 6;
         preview.style.top = `${above >= 8 ? above : rect.bottom + 6}px`;
@@ -1035,7 +1040,7 @@ function updateFrameBarsVisual() {
   if (!barsContainer) return;
 
   const timeline = document.getElementById('frameTimeline');
-  const progress = totalFrames > 0 ? ((currentFrame + 0.5) / totalFrames) * 100 : 0;
+  const progress = frameTimelineRatio(currentFrame) * 100;
   timeline?.style.setProperty('--frame-progress', `${Math.max(0, Math.min(100, progress))}%`);
 }
 
