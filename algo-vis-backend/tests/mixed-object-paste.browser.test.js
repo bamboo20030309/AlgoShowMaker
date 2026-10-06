@@ -58,7 +58,10 @@ for (const [plainOnly, tableVariant] of [[false,false], [true,false], [false,tru
       const click = (x,y) => page.mouse.click(host.x + x * host.width / 1280, host.y + y * host.height / 720);
       await click(130,95);
       await page.keyboard.down('Control');
-      await click(520,140); await click(130,185); await click(875,375);
+      // Select painted cells, rather than a legacy container's empty letterbox.
+      const structureCell=await page.locator('[data-widget-id="array"] [data-structure-item-index] > text').first().boundingBox();
+      await page.mouse.click(structureCell.x+structureCell.width/2,structureCell.y+structureCell.height/2);
+      await click(130,185); await click(875,375);
       await page.keyboard.up('Control');
       assert.equal(await page.evaluate(() => fixtureCanvas.getActiveObjects().length), 2, 'both texts remain selected');
       assert.equal(await page.locator('.slide-widget.is-selected').count(), 2, 'structure and code join the same selection');
@@ -89,6 +92,11 @@ for (const [plainOnly, tableVariant] of [[false,false], [true,false], [false,tru
               width: b.width * host.width / fixtureCanvas.width, height: b.height * host.height / fixtureCanvas.height };
           });
           const widgets = [...document.querySelectorAll('.slide-widget.is-selected')].map(el => {
+            const svg=el.querySelector('.structure-content > svg');
+            if(svg){
+              // The painted viewport is the body here (fixture has no point/annotations).
+              const b=svg.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height};
+            }
             const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, height: b.height };
           });
           return [...fabricBounds, ...widgets];

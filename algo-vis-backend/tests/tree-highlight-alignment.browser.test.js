@@ -64,11 +64,13 @@ test('tree highlights share node coordinates for old, customized and newly creat
       const geometries = await page.evaluate(() => ['normal','matrix','binary_tree','segment_tree'].map(mode=>{
         const base={type:'structure',structureMode:mode,content:mode==='matrix'?'1,2\n3,4':'1,2,3,4',frameBackgroundEnabled:false};
         const plain=AlgoStructureRenderer.getNaturalSize(base), painted=AlgoStructureRenderer.getNaturalSize({...base,pointIndices:'0'});
-        const box=AlgoStructureRenderer.getSelectionRect({...base,pointIndices:'0',w:painted.width*1.5,h:painted.height*1.5});
-        return {mode,plain,painted,box};
+        const geometry=AlgoStructureRenderer.getWidgetGeometry({...base,pointIndices:'0',w:painted.width*1.5,h:painted.height*1.5});
+        return {mode,plain,painted,box:geometry.selection,paint:geometry.paint};
       }));
-      for(const {mode,plain,painted,box} of geometries){
-        assert.ok(painted.height>plain.height,mode+' retains paint/export space for Point');
+      for(const {mode,plain,painted,box,paint} of geometries){
+        // Point grows the painting viewport, not the natural body used for fitting.
+        assert.deepEqual(painted,plain,mode+' Point leaves body dimensions unchanged');
+        assert.ok(paint.top<box.top,mode+' retains paint/export space for Point');
         assert.ok(Math.abs(box.height-plain.height*1.5)<0.01,mode+' selection excludes Point');
         assert.ok(Math.abs(box.width-plain.width*1.5)<0.01,mode+' width preserved');
       }

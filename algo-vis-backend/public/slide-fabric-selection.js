@@ -13,9 +13,8 @@
     canvas.setViewportTransform(main.viewportTransform.slice());
     let enabled = false, editing = false, signature = '', initialMatrix;
     const ids = new WeakMap(); let nextId = 0;
-    const selectionRect = item => item.kind === 'widget' && ['structure','table'].includes(item.widget.type)
-      ? window.AlgoStructureRenderer.getSelectionRect(item.widget)
-      : { left:0, top:0, width:item.widget?.w, height:item.widget?.h };
+    const selectionRect = item => item.kind === 'widget'
+      ? window.AlgoStructureRenderer.getWidgetGeometry(item.widget).selection : {};
     const fingerprint = items => JSON.stringify(items.map(item => {
       if (item.kind === 'widget') return ['w',item.widget.id,item.widget.x,item.widget.y,item.widget.w,item.widget.h,item.widget.angle || 0,item.widget.skewX || 0,selectionRect(item)];
       if (!ids.has(item.object)) ids.set(item.object,++nextId);
@@ -38,10 +37,7 @@
           height:item.kind==='widget' ? box.height : item.object.height + (item.object.strokeWidth || 0),
           excludeFromExport:true });
         if (item.kind === 'widget') {
-          const matrix = fabric.util.composeMatrix({ translateX:item.widget.x+item.widget.w/2,
-            translateY:item.widget.y+item.widget.h/2, angle:item.widget.angle || 0, skewX:item.widget.skewX || 0 });
-          const center = fabric.util.transformPoint(new fabric.Point(box.left+box.width/2-item.widget.w/2,
-            box.top+box.height/2-item.widget.h/2), matrix);
+          const center = window.AlgoStructureRenderer.getWidgetGeometry(item.widget).center;
           rect.set({ left:center.x, top:center.y, angle:item.widget.angle || 0, skewX:item.widget.skewX || 0 });
         }
         else {

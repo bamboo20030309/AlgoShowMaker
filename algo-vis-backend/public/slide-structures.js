@@ -871,42 +871,62 @@
   // 公開渲染介面
   // createSvg/render/drawCanvas 共用同一 SVG 建構結果，確保編輯器、縮圖與匯出尺寸一致。
   // -----------------------------------------------------------------------------
-  function getNaturalSize(widget) {
-    const { bounds } = buildStructureSvg(widget);
-    return {
-      width: Math.max(40, Math.ceil(bounds.right - bounds.left)),
-      height: Math.max(40, Math.ceil(bounds.bottom - bounds.top))
-    };
+  // Geometry is shared by SVG, raster export and Fabric editing controls.
+  // External decorations expand painting only; they never refit the body.
+  function inSlide(widget, selection) {
+    const angle = number(widget.angle, 0) * Math.PI / 180, skew = Math.tan(number(widget.skewX, 0) * Math.PI / 180);
+    const c = Math.cos(angle), s = Math.sin(angle), width = number(widget.w, 320), height = number(widget.h, 160);
+    const transform = [c, s, c * skew - s, s * skew + c, number(widget.x, 0) + width / 2, number(widget.y, 0) + height / 2];
+    const point = (x, y) => ({ x: transform[0] * x + transform[2] * y + transform[4],
+      y: transform[1] * x + transform[3] * y + transform[5] });
+    const l = selection.left - width / 2, t = selection.top - height / 2;
+    const corners = [[l,t],[l+selection.width,t],[l+selection.width,t+selection.height],[l,t+selection.height]].map(([x,y]) => point(x,y));
+    const left = Math.min(...corners.map(p => p.x)), top = Math.min(...corners.map(p => p.y));
+    return { transform, corners, center: point(l+selection.width/2,t+selection.height/2),
+      slideBounds: { left, top, width: Math.max(...corners.map(p=>p.x))-left, height: Math.max(...corners.map(p=>p.y))-top } };
   }
 
-  // Point is painted outside the body. Keep its SVG/export viewport, but exclude
-  // only the space it adds from editing controls (including saved old objects).
-  function getSelectionRect(widget) {
-    const width = Math.max(40, number(widget.w, 320)), height = Math.max(40, number(widget.h, 160));
-    if (!parseIndices(widget.pointIndices).length && !Object.values(widget.cellStyles || {}).some(styles => typeof styles?.point === 'string' && styles.point)) return { left:0, top:0, width, height };
-    const cellStyles = Object.fromEntries(Object.entries(widget.cellStyles || {}).map(([key, styles]) => {
-      const clean = { ...styles }; delete clean.point; return [key, clean];
-    }));
-    const painted = buildStructureSvg(widget).bounds;
-    const body = buildStructureSvg({ ...widget, pointIndices: '', cellStyles }).bounds;
-    const scale = Math.min(width / (painted.right-painted.left), height / (painted.bottom-painted.top));
-    const left = Math.max(0, (body.left-painted.left)*scale);
-    const top = Math.max(0, (body.top-painted.top)*scale);
-    const right = Math.max(0, (painted.right-body.right)*scale);
-    const bottom = Math.max(0, (painted.bottom-body.bottom)*scale);
-    return { left, top, width: width-left-right, height: height-top-bottom };
-  }
-
-  function createSvg(widget) {
+  function getWidgetGeometry(widget, built = null) {
     const width = Math.max(40, number(widget.w, 320));
     const height = Math.max(40, number(widget.h, 160));
-    const { svg, mode, bounds } = buildStructureSvg(widget);
-    const viewWidth = Math.max(1, bounds.right - bounds.left);
-    const viewHeight = Math.max(1, bounds.bottom - bounds.top);
-    svg.setAttribute('width', width);
-    svg.setAttribute('height', height);
-    svg.setAttribute('viewBox', `${bounds.left} ${bounds.top} ${viewWidth} ${viewHeight}`);
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    if (widget.type && !['structure', 'table'].includes(widget.type)) {
+      const selection = { left: 0, top: 0, width: number(widget.w, 320), height: number(widget.h, 160) };
+      return { selection, ...inSlide(widget, selection) };
+    }
+    const painted = built || buildStructureSvg(widget);
+    const cellStyles = Object.fromEntries(Object.entries(widget.cellStyles || {}).map(([key, styles]) => {
+      const clean = { ...styles }; delete clean.point; delete clean.annotation; return [key, clean];
+    }));
+    const decorated = parseIndices(widget.pointIndices).length || parseIndices(widget.annotationIndices).length
+      || Object.values(widget.cellStyles || {}).some(styles => styles?.point || styles?.annotation);
+    const body = decorated ? buildStructureSvg({ ...widget, pointIndices: '', annotationIndices: '', cellStyles }).bounds : painted.bounds;
+    const naturalWidth = Math.max(1, body.right - body.left), naturalHeight = Math.max(1, body.bottom - body.top);
+    const fit = Math.min(width / naturalWidth, height / naturalHeight);
+    const scaleX = number(widget.structureScaleX, fit) > 0 ? number(widget.structureScaleX, fit) : fit;
+    const scaleY = number(widget.structureScaleY, fit) > 0 ? number(widget.structureScaleY, fit) : fit;
+    const selection = { left: (width - naturalWidth * scaleX) / 2,
+      top: (height - naturalHeight * scaleY) / 2, width: naturalWidth * scaleX, height: naturalHeight * scaleY };
+    const bounds = { left: Math.min(body.left, painted.bounds.left), top: Math.min(body.top, painted.bounds.top),
+      right: Math.max(body.right, painted.bounds.right), bottom: Math.max(body.bottom, painted.bounds.bottom) };
+    const paint = { left: selection.left + (bounds.left - body.left) * scaleX,
+      top: selection.top + (bounds.top - body.top) * scaleY,
+      width: (bounds.right - bounds.left) * scaleX, height: (bounds.bottom - bounds.top) * scaleY };
+    return { naturalSize: { width: Math.max(40, Math.ceil(naturalWidth)), height: Math.max(40, Math.ceil(naturalHeight)) },
+      bodyBounds: body, paintBounds: bounds, selection, paint, scaleX, scaleY, ...inSlide(widget, selection) };
+  }
+
+  function getNaturalSize(widget) { return getWidgetGeometry(widget).naturalSize; }
+  function getSelectionRect(widget) { return getWidgetGeometry(widget).selection; }
+
+  function createSvg(widget) {
+    const built = buildStructureSvg(widget);
+    const { svg, mode } = built;
+    const geometry = getWidgetGeometry(widget, built);
+    const { paint, paintBounds: bounds } = geometry;
+    svg.setAttribute('width', paint.width);
+    svg.setAttribute('height', paint.height);
+    svg.setAttribute('viewBox', `${bounds.left} ${bounds.top} ${bounds.right - bounds.left} ${bounds.bottom - bounds.top}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', `${labelForWidget(widget, mode) || MODE_LABELS[mode]} data structure`);
     svg.setAttribute('data-renderer', mode === 'binary_tree'
@@ -915,8 +935,11 @@
         ? 'standard-segment-tree'
         : (mode === 'table' ? 'presentation-table' : 'original-draw-array')));
     svg.style.display = 'block';
-    svg.style.width = '100%';
-    svg.style.height = '100%';
+    svg.style.position = 'absolute';
+    svg.style.left = `${paint.left}px`;
+    svg.style.top = `${paint.top}px`;
+    svg.style.width = `${paint.width}px`;
+    svg.style.height = `${paint.height}px`;
     svg.style.overflow = 'hidden';
     return svg;
   }
@@ -928,6 +951,7 @@
 
   async function drawCanvas(context, widget, scale = 1) {
     const svg = createSvg(widget);
+    const { paint, transform } = getWidgetGeometry(widget);
     const serialized = new XMLSerializer().serializeToString(svg);
     const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
     const image = new Image();
@@ -936,13 +960,12 @@
       image.onerror = reject;
       image.src = source;
     });
-    context.drawImage(
-      image,
-      number(widget.x, 0) * scale,
-      number(widget.y, 0) * scale,
-      number(widget.w, 320) * scale,
-      number(widget.h, 160) * scale
-    );
+    context.save();
+    try {
+      context.transform(...transform.map((value, index) => index >= 4 ? value * scale : value));
+      context.drawImage(image, (paint.left - number(widget.w, 320) / 2) * scale,
+        (paint.top - number(widget.h, 160) / 2) * scale, paint.width * scale, paint.height * scale);
+    } finally { context.restore(); }
   }
 
   window.AlgoStructureRenderer = {
@@ -950,6 +973,7 @@
     createSvg,
     drawCanvas,
     getNaturalSize,
+    getWidgetGeometry,
     getSelectionRect,
     parseIndices,
     cellStyleColor,

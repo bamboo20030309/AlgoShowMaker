@@ -2875,6 +2875,8 @@
       }
       if (isCellGridType(type)) {
         Object.assign(normalized, {
+          structureScaleX: Number.isFinite(widget.structureScaleX) && widget.structureScaleX > 0 ? widget.structureScaleX : undefined,
+          structureScaleY: Number.isFinite(widget.structureScaleY) && widget.structureScaleY > 0 ? widget.structureScaleY : undefined,
           structureMode: type === 'table'
             ? 'table'
             : (STRUCTURE_MODES.includes(widget.structureMode) ? widget.structureMode : 'normal'),
@@ -2951,15 +2953,9 @@
           normalized.content = normalizeSegmentValues(values, normalized.segmentDomainLength).join(', ');
         }
         if (normalized.structureFrameVersion < 4) {
-          const size = constrainedStructureSize(normalized);
-          const centerX = normalized.x + normalized.w / 2;
-          const centerY = normalized.y + normalized.h / 2;
-          normalized.w = size.width;
-          normalized.h = size.height;
-          normalized.x = Math.max(0, Math.min(centerX - size.width / 2, SLIDE_W - size.width));
-          normalized.y = Math.max(0, Math.min(centerY - size.height / 2, SLIDE_H - size.height));
+          // Shared geometry understands legacy containers. Do not refit an
+          // imported author's dimensions/position to repair editing controls.
           normalized.structureFrameVersion = 4;
-          normalized.manualSize = true;
         }
       }
       return normalized;
@@ -3538,7 +3534,7 @@
       'tableHeaderFill', 'tableBodyFill', 'tableBorderColor', 'tableTextColor',
       'frameBackgroundEnabled', 'frameBackgroundColor', 'treeLayout', 'treeArrowColor',
       'treeData', 'structureFrameVersion',
-      'w', 'h'
+      'w', 'h', 'structureScaleX', 'structureScaleY'
     ].some(key => previousWidget[key] !== widget[key]));
     if (contentChanged || structureChanged) refreshWidgetElement(el, widget);
     else positionWidgetContent(el, widget);
@@ -5884,14 +5880,7 @@
   }
 
   function widgetSlideBounds(widget) {
-    const matrix = f().util.composeMatrix({translateX:widget.x+widget.w/2, translateY:widget.y+widget.h/2,
-      angle:widget.angle || 0, skewX:widget.skewX || 0});
-    const box = ['structure','table'].includes(widget.type) ? window.AlgoStructureRenderer.getSelectionRect(widget)
-      : { left:0, top:0, width:widget.w, height:widget.h };
-    const l=box.left-widget.w/2, t=box.top-widget.h/2, r=l+box.width, b=t+box.height;
-    const points = [[l,t],[r,t],[r,b],[l,b]]
-      .map(([x,y]) => f().util.transformPoint(new (f().Point)(x,y),matrix));
-    return f().util.makeBoundingBoxFromPoints(points);
+    return window.AlgoStructureRenderer.getWidgetGeometry(widget).slideBounds;
   }
 
   function selectedAlignmentItems() {
@@ -6459,23 +6448,7 @@
       size = constrainedStructureSize(preview);
     }
     let x = found.widget.x, y = found.widget.y;
-    // The extra Point viewport belongs above the body. Anchor the body's center
-    // while changing that viewport, including rotated/skewed/scaled objects.
-    if ('pointIndices' in patch || 'cellStyles' in patch) {
-      const next = { ...preview, w:size.width, h:size.height };
-      const beforeRect = window.AlgoStructureRenderer.getSelectionRect(found.widget);
-      const afterRect = window.AlgoStructureRenderer.getSelectionRect(next);
-      if (beforeRect.top !== afterRect.top || beforeRect.left !== afterRect.left) {
-        const center = (widget, box) => {
-          const matrix = f().util.composeMatrix({ translateX:widget.x+widget.w/2,
-            translateY:widget.y+widget.h/2, angle:widget.angle || 0, skewX:widget.skewX || 0 });
-          return f().util.transformPoint(new (f().Point)(box.left+box.width/2-widget.w/2,
-            box.top+box.height/2-widget.h/2),matrix);
-        };
-        const oldCenter=center(found.widget,beforeRect), newCenter=center(next,afterRect);
-        x += oldCenter.x-newCenter.x; y += oldCenter.y-newCenter.y;
-      }
-    }
+    // Body dimensions exclude point/annotations. Style changes need no position correction.
     updateSelectedWidget({
       ...patch,
       structureFrameVersion: 4,
@@ -8235,10 +8208,14 @@
         }
         const widget = getWidget(snapshot.id).widget, original = snapshot.value;
         if (!widget) return;
-        const originalMatrix = f().util.composeMatrix({translateX:original.x+original.w/2,
-          translateY:original.y+original.h/2, angle:original.angle || 0, skewX:original.skewX || 0});
+        const originalMatrix = window.AlgoStructureRenderer.getWidgetGeometry(original).transform;
         const transform = f().util.qrDecompose(f().util.multiplyTransformMatrices(matrix,originalMatrix));
         const sx = Math.abs(transform.scaleX), sy = Math.abs(transform.scaleY);
+        if (isCellGridWidget(original)) {
+          const geometry = window.AlgoStructureRenderer.getWidgetGeometry(original);
+          widget.structureScaleX = geometry.scaleX * sx;
+          widget.structureScaleY = geometry.scaleY * sy;
+        }
         widget.w = original.w * sx; widget.h = original.h * sy;
         widget.x = transform.translateX-widget.w/2; widget.y = transform.translateY-widget.h/2;
         widget.angle = transform.angle;
@@ -9194,11 +9171,15 @@
     if (!layer) return null;
     return Array.from(layer.querySelectorAll('.slide-widget'))
       .filter(el => {
-        const rect = el.getBoundingClientRect();
-        return event.clientX >= rect.left
-          && event.clientX <= rect.right
-          && event.clientY >= rect.top
-          && event.clientY <= rect.bottom;
+        const widget = slide.widgets.find(value => value.id === el.dataset.widgetId);
+        if (!widget) return false;
+        const rect = layer.getBoundingClientRect();
+        const geometry = window.AlgoStructureRenderer.getWidgetGeometry(widget);
+        const point = f().util.transformPoint(new (f().Point)((event.clientX-rect.left)*SLIDE_W/rect.width,
+          (event.clientY-rect.top)*SLIDE_H/rect.height), f().util.invertTransform(geometry.transform));
+        const box = geometry.selection;
+        const x = point.x + widget.w/2, y = point.y + widget.h/2;
+        return x >= box.left && x <= box.left+box.width && y >= box.top && y <= box.top+box.height;
       })
       .sort((a, b) => widgetZIndex(b) - widgetZIndex(a))[0] || null;
   }

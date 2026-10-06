@@ -3288,7 +3288,8 @@ body:not(.asm-edit-mode) .asm-selection-overlay-layer,
   position: absolute;
   min-width: 20px;
   min-height: 20px;
-  border: 1px solid transparent;
+  /* Fabric owns the selection border. A DOM border offsets the SVG by 1px. */
+  border: 0;
   border-radius: 0;
   padding: 0;
   color: #1f282d;
