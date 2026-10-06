@@ -44,6 +44,25 @@
     return clone(data);
   }
 
+  // Read-only presentation transform: never replace the saved string or its
+  // variable ID. Byte indexes follow std::string, including UTF-8 input.
+  function characterItems(data) {
+    if (data?.kind !== 'string' || typeof data.value !== 'string') return [];
+    return Array.from(data.value).flatMap(character => {
+      const code = character.codePointAt(0);
+      const width = code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+      return Array.from({ length: width }, (_, byte) => ({
+        kind: 'string', value: byte === 0 ? character : '',
+        characterContinuation: byte > 0
+      }));
+    });
+  }
+
+  function presentationItems(data, options = {}) {
+    return options.dataTransform?.type === 'char'
+      ? characterItems(data) : (Array.isArray(data?.items) ? data.items : []);
+  }
+
   function defaultRenderer(variable = {}) {
     if (variable.kind === 'matrix') return 'original-matrix';
     if (variable.kind === 'stack') return 'original-stack';
@@ -548,6 +567,8 @@
   }
 
   window.ASMTraceModel = {
+    characterItems,
+    presentationItems,
     drawingDirectives,
     returnTrailArrows,
     loopSamples,

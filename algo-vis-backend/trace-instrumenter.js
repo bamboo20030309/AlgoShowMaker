@@ -1778,7 +1778,16 @@ function parseFrameSpec(raw) {
     if (name && !displayNames.includes(name)) displayNames.push(name);
   };
 
-  for (const part of split.parts) {
+  for (let part of split.parts) {
+    // A character view keeps the original string identity. Optional pointer
+    // suffixes reuse the same index parser as ordinary array frame targets.
+    const chars = part.match(/^char\s*\(\s*([A-Za-z_]\w*)\s*\)(.*)$/s);
+    if (chars) {
+      transforms.push({ type: 'char', sourceName: chars[1], identifiers: [] });
+      part = chars[1] + chars[2];
+    } else if (/^char\s*\(/.test(part)) {
+      return { names, displayNames, bindings, transforms, invalidExpression: part };
+    }
     const bits = part.match(/^bits\s*\((.*)\)$/s);
     if (bits) {
       const argumentsList = splitTopLevel(bits[1]);
@@ -3706,6 +3715,9 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     const dataTransform = parsed.transforms.find(transform => (
       transform.sourceName === sourceVariable.name
     )) || null;
+    if (dataTransform?.type === 'char' && sourceVariable.kind !== 'string') {
+      throw new Error(`第 ${line} 行的 ${directiveName} char() 必須使用字串變數：${sourceVariable.name}`);
+    }
     return {
       from: node.from,
       to: node.to,
@@ -3719,7 +3731,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         .filter(Boolean),
       variables,
       captureOnlyVariableIds,
-      renderer: modifiers.renderer,
+      renderer: modifiers.renderer || (dataTransform?.type === 'char' ? 'original-array' : ''),
       rendererOptions: modifiers.rendererOptions,
       dataTransform: dataTransform ? {
         ...dataTransform,

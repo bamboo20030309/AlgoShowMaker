@@ -2375,6 +2375,9 @@ function resolveFrameRendererOptions(frame, directive) {
     };
   }
   if (Array.isArray(source.symbols)) options.symbols = [...source.symbols];
+  if (directive?.dataTransform?.type === 'char') {
+    options.dataTransform = { type: 'char' };
+  }
   if (directive?.dataTransform?.type === 'bits') {
     const width = resolveTraceIndexExpression(frame, directive.dataTransform.widthExpression);
     if (width != null && width > 0) {

@@ -770,7 +770,9 @@
       const variableId = style.targetVariableId;
       const entry = frame?.state?.[variableId];
       if (!variableId || !entry) continue;
-      const items = Array.isArray(entry.data?.items) ? entry.data.items : [entry.data];
+      const presentation = window.ASMTraceModel.presentationItems(entry.data, frame?.rendererOptions?.[variableId]);
+      const items = frame?.rendererOptions?.[variableId]?.dataTransform?.type === 'char'
+        || Array.isArray(entry.data?.items) ? presentation : [entry.data];
       const dataTransform = frame?.rendererOptions?.[variableId]?.dataTransform;
       const bitWidth = dataTransform?.type === 'bits'
         ? Math.max(1, Math.trunc(Number(dataTransform.width) || 1))

@@ -264,6 +264,12 @@
   // 區段：原始資料與序列 renderer
   // ---------------------------------------------------------------------------
   function renderOriginal(group, entry, context) {
+    if (context.skin?.options?.dataTransform?.type === 'char') {
+      entry = { ...entry, data: { kind: 'sequence', items:
+        window.ASMTraceModel.presentationItems(entry.data, context.skin.options) } };
+      context = { ...context, variable: { ...context.variable, kind: 'sequence' },
+        rendererName: context.rendererName === 'original-cell' ? 'original-array' : context.rendererName };
+    }
     if (context.skin?.options?.dataTransform?.type === 'bits') {
       return renderOriginalMatrix(group, entry, context);
     }
@@ -2598,7 +2604,7 @@
       if (!window.ASMTraceRules?.expressionMatches?.(document, frame, descriptor?.when)) return;
       const variableId = descriptor?.targetVariableId;
       const entry = frame.state?.[variableId];
-      const items = entry?.data?.items;
+      const items = window.ASMTraceModel.presentationItems(entry?.data, frame.rendererOptions?.[variableId]);
       if (!variableId || !Array.isArray(items)) return;
 
       const targetKey = objectKeyForVariable(frame, variableId);
@@ -5375,7 +5381,8 @@
       const targetEntry = retainedTarget
         ? retainedTarget.snapshot.frame?.state?.[binding.targetVariableId]
         : frame.state?.[binding.targetVariableId];
-      const targetItems = Array.isArray(targetEntry?.data?.items) ? targetEntry.data.items : [];
+      const targetItems = window.ASMTraceModel.presentationItems(targetEntry?.data,
+        (retainedTarget ? retainedTarget.snapshot.frame : frame)?.rendererOptions?.[binding.targetVariableId]);
       const targetKind = document.variables?.[binding.targetVariableId]?.kind
         || targetEntry?.data?.kind;
       const indexExpression = binding.indexExpression || binding.sourceName;
@@ -6958,9 +6965,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-268';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-269';
   window.ASMTraceRenderers = {
-    build: 'trace-268', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-269', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

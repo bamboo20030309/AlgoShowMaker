@@ -1323,6 +1323,29 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 `pair`與`tuple`本身仍是一個元素，因此`vector<pair<...>>`及`vector<tuple<...>>`每個元素只畫一格。
 成員預設以同一separator連接且保留零；pair可用`hide(first=value,second=value)`隱藏指定成員。
 
+### `char(s)`：將字串展開成字元格
+
+`char` 與 `bits` 一樣是物件的唯讀資料轉換，可放在 `@frame`、`@object`、preset 或 defaults 中。
+不建立額外 C++ 陣列；名稱、變數 ID 與索引事件仍對應原始字串 `s`。
+
+```cpp
+// @frame char(s)[i,j]
+// @style s[i] highlight
+// @text "比較 s[${i}] 與 s[${j}]" at s.bottom
+
+// @frame p
+// @object char(s) with labels(value,index)
+// @place s.bottom-left at p.top-left offset(0,-90)
+```
+
+只需要逐字顯示時寫 `@frame char(s)`；獨立指標也可寫 `@pointer i at s`。
+style、arrow、place、camera 的目標繼續寫 `s`／`s[i]`，不用包 `char()`。
+支援既有 range、columns、labels、display 與 keep 快照；空字串不產生字元格。
+未使用 `char()` 的舊字串保持整串單格顯示，已保存的自訂設定不會被轉換覆蓋。
+輸入必須是字串變數，數字或多參數會報錯。
+
+索引沿用 C++ `std::string` 的位元組位置。ASCII 每格一字；UTF-8 多位元組字元在首位元組格顯示完整字形，後續位元組格留空，避免移動 C++ 索引位置。它不是 Unicode 字元索引轉換。
+
 ### `bits(value,width)`：將整數展開成位元格
 
 `bits` 是可直接放進 `@frame` 或 `@object` 的資料轉換函式，不是 renderer 的 `with` 設定：

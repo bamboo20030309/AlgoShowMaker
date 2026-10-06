@@ -40,8 +40,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('canva.js?v=trace-16'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
-  assert.ok(html.includes('trace-model.js?v=trace-41'));
-  assert.ok(html.includes('trace-directive-assist.js?v=directive-33'));
+  assert.ok(html.includes('trace-model.js?v=trace-42'));
+  assert.ok(html.includes('trace-directive-assist.js?v=directive-34'));
   assert.ok(html.includes('<script src="vendor/ace/mode-c_cpp.js"></script>'));
   assert.ok(html.includes('<script src="vendor/ace/theme-monokai.js"></script>'));
   assert.ok(html.includes('trace-code-model.js?v=code-38'));
@@ -66,7 +66,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(slides.includes('slides-storage.js?v=6'));
   assert.ok(slides.includes('slides-cloud.js?v=2'));
   assert.ok(slides.includes('slides.js?v=slides-266'));
-  assert.ok(slides.includes('trace-model.js?v=trace-41'));
+  assert.ok(slides.includes('trace-model.js?v=trace-42'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
   assert.ok(!slides.includes('id="deckCacheBtn"'));
@@ -104,7 +104,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(rendererBuild);
   assert.ok(read('trace-renderer.js').includes(`build: '${rendererBuild}'`));
   assert.ok(read('trace-renderer.js').includes(`asmTraceRendererBuild = '${rendererBuild}'`));
-  assert.ok(html.includes('trace-rules.js?v=trace-33'));
+  assert.ok(html.includes('trace-rules.js?v=trace-34'));
   for (const name of ['normal', 'heap', 'segment_tree', 'BIT', 'disk', 'stack', 'queue']) {
     const version = name === 'segment_tree'
       ? 'segment-label-3'
