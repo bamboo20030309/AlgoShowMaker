@@ -604,6 +604,7 @@ async function storeJsonArtifact(key, body, options = {}) {
 // the owner-scoped result without holding a long HTTP connection open.
 app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimiter, async (req, res) => {
   if (typeof req.body?.code !== 'string') return res.status(400).json({ error: 'code 必須是字串' });
+  if (!req.body.code.trim()) return res.status(400).json({ error: '程式碼不能為空白', code: 'EMPTY_SOURCE' });
   if (!await artifactCacheReady) return res.status(503).json({ error: '編譯結果儲存區尚未就緒' });
   const requestBody = { ...req.body, cachePolicy: 'shared' };
   const asyncResultTtlMs = positiveIntegerEnv('ASYNC_COMPILE_RESULT_TTL_MINUTES', 10) * 60 * 1000;
@@ -2700,6 +2701,9 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
 // 受限執行 → 解析 trace → 回收。任一分支結束時都需只回收本請求建立的資源。
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/compile', (req, res) => runWithCompileContext(async () => {
+  // Express 4 does not catch rejected async route Promises. Keep preparation
+  // failures inside this request instead of allowing Node to terminate.
+  try {
   let compileWorkCompleted = false;
   const markCompileWorkComplete = () => {
     if (compileWorkCompleted) return;
@@ -2717,6 +2721,14 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       runTime: null,
       memoryKB: null,
       debug_log: getCompileDebugMessages(),
+    });
+  }
+
+  if (!code.trim()) {
+    return res.status(400).json({
+      output: '', error: '程式碼不能為空白', code: 'EMPTY_SOURCE',
+      compileTime: null, runTime: null, memoryKB: null,
+      debug_log: getCompileDebugMessages(), traceDocument: null, scriptContent: '',
     });
   }
 
@@ -3377,6 +3389,17 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
       sendResponse(codeRun, signal);
     });
   });
+  } catch (error) {
+    logDebug('編譯準備失敗：' + error.message);
+    req.emit('asm:compile-work-complete');
+    if (!res.headersSent && !res.destroyed) {
+      res.status(500).json({
+        output: '', error: '編譯準備失敗，請重試。', code: 'COMPILE_PREPARATION_ERROR',
+        compileTime: null, runTime: null, memoryKB: null,
+        debug_log: getCompileDebugMessages(), traceDocument: null, scriptContent: '',
+      });
+    } else if (!res.destroyed) res.destroy();
+  }
 }));
 
 // 每小時執行一次：清理殘留檔案

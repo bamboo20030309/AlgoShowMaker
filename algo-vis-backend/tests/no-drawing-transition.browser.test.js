@@ -79,5 +79,20 @@ test('plain RUN releases old animation, then edited KMP source creates its own t
   await run(full, true);
   await assertCleared();
   assert.match(await page.locator('#debugArea').textContent(), /回傳動畫與本次程式碼不一致/);
+  // An empty editor follows the same RUN path and must show a request error,
+  // clear the old scene, and leave the server available for the next RUN.
+  await page.evaluate(() => {
+    aceEditor.setValue('', -1);
+    window.__transitionFinished = false;
+    window.addEventListener('asm:compile-finished', () => window.__transitionFinished = true, { once: true });
+  });
+  const emptyPending = page.waitForResponse(response => new URL(response.url()).pathname === '/compile');
+  await page.click('#runBtn');
+  assert.equal((await emptyPending).status(), 400);
+  await page.waitForFunction(() => window.__transitionFinished);
+  assert.match(await page.locator('#outputArea').textContent(), /程式碼不能為空白/);
+  await assertCleared();
+  await run(full, true);
+  assert.equal(await page.evaluate(() => CodeScript.get_frame_count()), 34);
   assert.deepEqual(errors, []);
 });
