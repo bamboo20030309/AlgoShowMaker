@@ -8,15 +8,19 @@
   const OLD_STORAGE_KEY = 'asm_reveal_fabric_deck_v4';
   const TOKEN_KEY = 'algo_jwt_token';
   const urlParams = new URLSearchParams(window.location.search);
-  const sampleId = urlParams.get('sample');
+  const temporaryDeckId = urlParams.get('temporary');
+  const temporaryDecks = {
+    workshop: { title: 'AlgoShowMaker 工作坊', archive: '/temporary-decks/workshop-renumbered.asmdeck?v=20261007-1' }
+  };
+  const sampleId = temporaryDeckId ? `temporary:${temporaryDeckId}` : urlParams.get('sample');
   const deckUid = sampleId ? null : urlParams.get('deck');
   let pendingWorkspaceImport = urlParams.get('importFile');
   const shareToken = sampleId ? 'sample:' + sampleId : urlParams.get('share');
   const chromeHomeLink = document.getElementById('chromeHomeLink');
   if (sampleId && chromeHomeLink) {
-    chromeHomeLink.href = '/?examples=1';
-    chromeHomeLink.title = '返回範例投影片';
-    chromeHomeLink.setAttribute('aria-label', '返回範例投影片');
+    chromeHomeLink.href = temporaryDeckId ? '/' : '/?examples=1';
+    chromeHomeLink.title = temporaryDeckId ? '回到首頁' : '返回範例投影片';
+    chromeHomeLink.setAttribute('aria-label', chromeHomeLink.title);
   }
   const SLIDE_W = 1280;
   const SLIDE_H = 720;
@@ -707,7 +711,7 @@
     if (!canEdit) document.body.classList.remove('asm-edit-mode');
     if (sharedAccessBadge) {
       sharedAccessBadge.hidden = false;
-      sharedAccessBadge.textContent = sampleId ? '範例本機副本' : canEdit ? '共享編輯模式' : '觀賞模式';
+      sharedAccessBadge.textContent = sampleId ? (temporaryDeckId ? '投影片本機副本' : '範例本機副本') : canEdit ? '共享編輯模式' : '觀賞模式';
     }
   }
 
@@ -718,10 +722,16 @@
   async function loadCloudDeck(localDeck) {
     if (sampleId) {
       setCloudStatus('loading', '正在載入公開投影片…');
-      const catalogResponse = await fetch('/guest-decks.json');
-      if (!catalogResponse.ok) throw new Error('公開投影片清單載入失敗');
-      const catalog = await catalogResponse.json();
-      const entry = catalog.decks.find(item => item.id === sampleId);
+      let entry;
+      if (temporaryDeckId) {
+        entry = temporaryDecks[temporaryDeckId];
+        if (!Object.hasOwn(temporaryDecks, temporaryDeckId)) entry = null;
+      } else {
+        const catalogResponse = await fetch('/guest-decks.json');
+        if (!catalogResponse.ok) throw new Error('公開投影片清單載入失敗');
+        const catalog = await catalogResponse.json();
+        entry = catalog.decks.find(item => item.id === sampleId);
+      }
       if (!entry) throw new Error('找不到指定的公開投影片');
       // Each sample has its own browser draft. Never replace local edits on reload.
       if (!localDeck) {
@@ -1020,7 +1030,7 @@
   function openSampleShareDialog() {
     if (!sampleId || !sampleShareDialog || !sampleShareUrl) return;
     const url = new URL('/slides.html', window.location.origin);
-    url.searchParams.set('sample', sampleId);
+    url.searchParams.set(temporaryDeckId ? 'temporary' : 'sample', temporaryDeckId || sampleId);
     sampleShareUrl.value = url.toString();
     if (sampleShareStatus) sampleShareStatus.textContent = '';
     sampleShareDialog.showModal();
