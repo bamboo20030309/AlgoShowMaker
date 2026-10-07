@@ -63,6 +63,9 @@ test('homepage asks for deck deletion in an in-page dialog', { timeout: 60000 },
 
     assert.equal(await page.locator('#deleteDeckDialog').evaluate(dialog => dialog.open), true);
     assert.equal(await page.locator('#deleteDeckName').textContent(), '快速排序');
+    const deleteButton = await page.locator('#confirmDeleteDeckBtn').boundingBox();
+    const cancelButton = await page.locator('#cancelDeleteDeckBtn').boundingBox();
+    assert.ok(deleteButton.x + deleteButton.width <= cancelButton.x, 'delete is left of cancel');
     assert.equal(await page.locator('#cancelDeleteDeckBtn').evaluate(button => button === document.activeElement), true);
     assert.deepEqual(nativeDialogs, []);
 
