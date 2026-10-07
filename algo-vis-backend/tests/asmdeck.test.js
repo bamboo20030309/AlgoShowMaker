@@ -20,6 +20,18 @@ global.ASMTraceViewSource = require('../public/trace-view-source.js');
 global.ASMTraceModel = { normalizeTraceDocument: value => value };
 const archive = require('../public/asmdeck.js');
 
+// Build the old wire format only to verify backward-compatible imports.
+async function legacyArchive(projected) {
+  const body = { deck: projected.deck, assets: projected.assets, prebuiltTraces: projected.prebuiltTraces };
+  const hash = value => require('node:crypto').createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  return new Blob(['ASMDECK1\n', gzipSync(Buffer.from(JSON.stringify({ manifest: {
+    format: 'AlgoShowMaker.asmdeck', packageVersion: 1,
+    engineVersion: projected.deck.groups[0].slides[0].animation.prebuilt.engineVersion,
+    contentHash: hash(body), assetHashes: Object.keys(body.assets).sort(),
+    prebuiltTraceHashes: Object.keys(body.prebuiltTraces).sort()
+  }, body })))]);
+}
+
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
@@ -93,6 +105,10 @@ test('asmdeck projection is detached, strips trace results, and retains playback
   assert.equal(JSON.stringify(live), before);
   const slide = projected.deck.groups[0].slides[0];
   assert.equal(slide.animation.traceDocument, undefined);
+  assert.match(slide.animation.traceRef, /^[a-f0-9]{64}$/);
+  const seed = projected.cacheSeeds.find(seed => seed.key === slide.animation.traceRef);
+  assert.ok(seed.trace.frames.length, 'full result is retained independently');
+  assert.equal(slide.animation.traceView.studio.eventSettings.autoFixedEnabled, false);
   assert.equal(slide.animation.rebuild.globals.eventSettings.gapMs, 720);
   assert.deepEqual(slide.animation.rebuild.view.studio.eventInstructionStates, {
     'assign:main:i++': true
@@ -107,12 +123,13 @@ test('asmdeck projection is detached, strips trace results, and retains playback
   assert.equal(slide.canvas.objects[0].src, slide.canvas.objects[1].src);
 });
 
-test('official archive embeds a verified prebuilt trace and rebuild uses it without HTTP', async () => {
+test('legacy archive imports a verified embedded trace and rebuild uses it without HTTP', async () => {
   const projected = await archive.project(fixture(), null, { includePrebuiltTraces: true });
   const traceIds = Object.keys(projected.prebuiltTraces);
   assert.equal(traceIds.length, 1);
   assert.equal(projected.deck.groups[0].slides[0].animation.prebuilt.traceId, traceIds[0]);
-  const decoded = await archive.decode(await archive.encode(projected));
+  await assert.rejects(archive.encode(projected), /Trace/);
+  const decoded = await archive.decode(await legacyArchive(projected));
   const animation = decoded.deck.groups[0].slides[0].animation;
   assert.equal(animation.traceDocument.frames.length, 1);
   const priorFetch = global.fetch;
@@ -126,7 +143,7 @@ test('official archive embeds a verified prebuilt trace and rebuild uses it with
 });
 
 test('prebuilt trace is ignored after input or engine identity changes', async () => {
-  const blob = await archive.encode(await archive.project(fixture(), null, { includePrebuiltTraces: true }));
+  const blob = await legacyArchive(await archive.project(fixture(), null, { includePrebuiltTraces: true }));
   const bytes = Buffer.from(await blob.arrayBuffer());
   const payload = JSON.parse(gunzipSync(bytes.subarray(archive.MAGIC.length)));
   const animation = payload.body.deck.groups[0].slides[0].animation;

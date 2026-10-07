@@ -13,3 +13,7 @@ workshop-entry.browser 與 entrypoints 通過：實際開啟、48 頁本機載�
 ## 交付与撤除
 
 交付 intergration、重啟 3100；預覽 http://localhost:3100/workshop.html。未合併 main 或部署公開站。往後合併部署後同一路徑即可使用。結束使用時移除 workshop.html、temporary-decks/workshop-renumbered.asmdeck 與 slides.js 的 workshop 註冊資料；刪除專屬入口不影響個人投影片。
+
+## 後續格式更新
+
+2026-10-07 改為 Trace ID 引用格式：上述雜湊屬於最初原始檔，現行網站檔已轉換為 63452 bytes，13 份 Trace 分拆至 public/deck-traces。使用者 Downloads 原檔未修改。細節與新增驗證見 2026-10-07-asmdeck-trace-references.md。

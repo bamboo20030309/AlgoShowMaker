@@ -45,7 +45,12 @@ async function main() {
       if (kind === 'pending') failures.push(`${slide.id}: ${slide.animation?.rebuildError || '重建失敗'}`);
     });
     if (failures.length) throw new Error(`${entry.id} 預建失敗\n${failures.join('\n')}`);
-    const projected = await ASMDeck.project(rebuilt, null, { includePrebuiltTraces: true });
+    const projected = await ASMDeck.project(rebuilt, null, { includePrebuiltTraces: false });
+    const traceDirectory = path.join(publicRoot, 'deck-traces');
+    await fs.mkdir(traceDirectory, { recursive: true });
+    for (const seed of projected.cacheSeeds) if (/^[a-f0-9]{64}$/.test(seed.key)) {
+      await fs.writeFile(path.join(traceDirectory, seed.key + '.json'), JSON.stringify(seed.trace));
+    }
     const blob = await ASMDeck.encode(projected);
     const output = Buffer.from(await blob.arrayBuffer());
     const temporary = `${target}.prebuild-${process.pid}.tmp`;
@@ -54,7 +59,7 @@ async function main() {
     if (entry.id === 'linear-sieve') {
       await buildDefaultAlgorithmAssets(rebuilt, { publicRoot, engineVersion: ASMDeck.engineVersion() });
     }
-    const count = Object.keys(projected.prebuiltTraces).length;
+    const count = projected.cacheSeeds.filter(seed => /^[a-f0-9]{64}$/.test(seed.key)).length;
     console.log(`${entry.id}: ${count} 個預建動畫，${output.length} bytes`);
   }
 }

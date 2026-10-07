@@ -18,11 +18,15 @@ test('sample copies use normal editing, persist locally and export edits without
   // Existing objects without any new local-edit fields are intentionally used.
   const original = {groups:[{id:'sample-group',slides:[{id:'sample-animation',kind:'algorithm-animation',
     animation:{mode:'trace',code,input:'7',traceDocument:compiled.traceDocument},canvas:{objects:[]},widgets:[]}]}]};
-  const blob = await archive.encode(await archive.project(original,null,{includePrebuiltTraces:true}));
+  const projected = await archive.project(original);
+  const blob = await archive.encode(projected);
   const buffer = Buffer.from(await blob.arrayBuffer());
   const browser = await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   t.after(()=>browser.close());
   const context = await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
+  for (const seed of projected.cacheSeeds.filter(seed => /^[a-f0-9]{64}$/.test(seed.key))) {
+    await context.route('**/deck-traces/'+seed.key+'.json', route=>route.fulfill({json:seed.trace}));
+  }
   const writes=[],errors=[];
   await context.route('**/guest-decks.json',route=>route.fulfill({json:{decks:[
     {id:'local-fixture',title:'本機測試範例',archive:'/fixture.asmdeck'},

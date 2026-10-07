@@ -20,12 +20,17 @@ const ASMDeck = require('../public/asmdeck.js');
     if (kind === 'pending') failures.push(`${slide.id}: ${slide.animation?.rebuildError || '重建失敗'}`);
   });
   if (failures.length) throw new Error(failures.join('\n'));
-  const projected = await ASMDeck.project(rebuilt, null, { includePrebuiltTraces: true });
+  const projected = await ASMDeck.project(rebuilt, null, { includePrebuiltTraces: false });
+  const traceDirectory = path.join(root, 'public', 'deck-traces');
+  await fs.mkdir(traceDirectory, { recursive: true });
+  for (const seed of projected.cacheSeeds) if (/^[a-f0-9]{64}$/.test(seed.key)) {
+    await fs.writeFile(path.join(traceDirectory, seed.key + '.json'), JSON.stringify(seed.trace));
+  }
   const output = Buffer.from(await (await ASMDeck.encode(projected)).arrayBuffer());
   const temporary = `${target}.${process.pid}.tmp`;
   await fs.writeFile(temporary, output);
   await fs.rename(temporary, target);
-  console.log(`draft: ${Object.keys(projected.prebuiltTraces).length} animations, ${output.length} bytes`);
+  console.log(`draft: ${projected.cacheSeeds.filter(seed => /^[a-f0-9]{64}$/.test(seed.key)).length} animations, ${output.length} bytes`);
 })().catch(error => {
   console.error(error?.stack || error);
   process.exitCode = 1;

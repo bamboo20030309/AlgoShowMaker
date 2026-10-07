@@ -26,7 +26,7 @@ repo 範例來源：
 
 動畫頁使用 `kind: 'algorithm-animation'`，其 `animation` 包含 `mode: 'trace'`、`code`、`input` 及相應重建設定；複用既有頁时保留 trace provenance 與設定。建立頁面後要在實際應用載入，不能只看 JSON 是否能解析。
 
-`.asmdeck` 是 `ASMDECK1\n` 檔頭加 gzip 壓縮的套件，不是純 JSON。套件包含 manifest 與 body；body 包含 deck、assets 及可選 prebuiltTraces。manifest 有格式、套件／引擎版本、body 的 SHA-256 等資料。使用既有 serializer／經閱讀的 builder 產生，勿手填 hash 或版本。JSON 序列化順序也會影響內容雜湊。
+`.asmdeck` 是 `ASMDECK1\n` 檔頭加 gzip 壓縮的套件，不是純 JSON。套件包含 manifest 與 body；新匯出的 body 包含 deck 與 assets；動畫只保存 traceRef（Trace ID）與 traceView（顯示設定），完整 Trace 留在獨立儲存，不內嵌 prebuiltTraces 或 traceDocument。舊檔的內嵌 Trace 仍可匯入。使用者看到動畫頁才讀取對應 ID；找不到結果時提示重新 RUN，不能默默重新編譯全部教材。跨電腦使用引用型檔案時，必須提供可存取的獨立 Trace 來源。manifest 有格式、套件／引擎版本、body 的 SHA-256 等資料。使用既有 serializer／經閱讀的 builder 產生，勿手填 hash 或版本。JSON 序列化順序也會影響內容雜湊。
 
 ## 驗證與交付
 

@@ -200,11 +200,25 @@
       const live = liveSlides.get(slide.id);
       if (editorDraft?.slideId === slide.id) slide.animation = clone(editorDraft.animation);
       const animation = slide.animation;
+      if (animation?.traceRef && !animation.traceDocument) {
+        if (!/^[a-f0-9]{64}$/.test(animation.traceRef) || !animation.code?.trim()) throw new Error('動畫 Trace ID 或原始碼無效。');
+        delete animation.prebuilt;
+        continue;
+      }
       checkAnimation(animation, slide.id);
       const trace = animation.traceDocument;
+      // Use the same immutable result identity as the independent slide trace store.
+      const result = { ...trace }, traceView = {};
+      for (const name of ['studio', 'skins', 'rules']) {
+        if (Object.hasOwn(result, name)) { traceView[name] = clone(result[name]); delete result[name]; }
+      }
+      const canonical = value => Array.isArray(value) ? '[' + value.map(canonical).join(',') + ']'
+        : value && typeof value === 'object' ? '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonical(value[k])).join(',') + '}' : JSON.stringify(value);
+      const traceRef = await sha256(canonical(result));
       const rebuild = presentationFor(trace);
       const exact = await animationKey({ ...animation, rebuild });
       cacheSeeds.push({ key: `exact:${exact}`, trace: clone(trace) });
+      cacheSeeds.push({ key: traceRef, trace: clone(result) });
       let prebuilt;
       if (options.includePrebuiltTraces) {
         const traceId = await sha256(JSON.stringify(trace));
@@ -221,6 +235,7 @@
         mode: 'trace', code: animation.code, input: animation.input || '',
         sliceMode: animation.sliceMode || trace.sliceMode || 'auto',
         watches: clone(animation.watches || []), rebuild,
+        traceRef, traceView,
         ...(prebuilt ? { prebuilt } : {}),
         ...(animation.presentationCamera
           ? { presentationCamera: clone(animation.presentationCamera) }
@@ -265,6 +280,11 @@
 
   async function encode(projected) {
     const prebuiltTraces = projected.prebuiltTraces || {};
+    if (Object.keys(prebuiltTraces).length) throw new Error('新 .asmdeck 不再內嵌完整 Trace；請將動畫保存到獨立儲存並只匯出 Trace ID。');
+    for (const slide of algorithmSlides(projected.deck)) {
+      if (slide.animation?.traceDocument || slide.animation?.prebuilt) throw new Error('新 .asmdeck 不允許內嵌完整 Trace。');
+      if (slide.animation?.traceRef && !/^[a-f0-9]{64}$/.test(slide.animation.traceRef)) throw new Error('動畫 Trace ID 格式無效。');
+    }
     const body = { deck: projected.deck, assets: projected.assets, ...(Object.keys(prebuiltTraces).length
       ? { prebuiltTraces } : {}) };
     const bodyText = JSON.stringify(body);

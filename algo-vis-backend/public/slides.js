@@ -10,7 +10,7 @@
   const urlParams = new URLSearchParams(window.location.search);
   const temporaryDeckId = urlParams.get('temporary');
   const temporaryDecks = {
-    workshop: { title: 'AlgoShowMaker 工作坊', archive: '/temporary-decks/workshop-renumbered.asmdeck?v=20261007-1' }
+    workshop: { title: 'AlgoShowMaker 工作坊', archive: '/temporary-decks/workshop-renumbered.asmdeck?v=20261007-2' }
   };
   const sampleId = temporaryDeckId ? `temporary:${temporaryDeckId}` : urlParams.get('sample');
   const deckUid = sampleId ? null : urlParams.get('deck');
@@ -206,7 +206,11 @@
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
   const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
-    if (sampleId || (!deckUid && !shareToken)) throw new Error('本機動畫結果不存在，請重新匯入');
+    if (sampleId || (!deckUid && !shareToken)) {
+      const response = await fetch(`/deck-traces/${encodeURIComponent(key)}.json`);
+      if (!response.ok) throw new Error('找不到動畫 Trace，請在編輯器重新 RUN 並儲存。');
+      return response.json();
+    }
     const response = await fetch(`${remoteDeckEndpoint()}/traces/${encodeURIComponent(key)}`, {
       headers: deckUid ? { Authorization: `Bearer ${authToken()}` } : {}
     });
@@ -650,7 +654,7 @@
     document.body.dataset.localDeckSave = 'pending';
     document.body.dataset.localDeckChars = String(serializedDeck.length);
     const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck, traceStore.retainedKeys(), {
-      allowMissingTraces: Boolean(deckUid || shareToken)
+      allowMissingTraces: true
     }).then(() => {
       if (revision === localSaveRevision) {
         document.body.dataset.localDeckSave = 'saved';
@@ -1130,11 +1134,14 @@
       let blob = null;
       if (!blob) {
         const draft = await editorAnimationExportSnapshot();
-        const projected = await window.ASMDeck.project(await traceStore.materializeDeck(deck), draft,
-          { includePrebuiltTraces: true });
+        const projected = await window.ASMDeck.project(deck, draft,
+          { includePrebuiltTraces: false });
         blob = await window.ASMDeck.encode(projected);
         // Reuse the already-loaded result locally without putting a second trace in the archive.
-        for (const seed of projected.cacheSeeds) await window.ASMDeck.cachePut(seed.key, seed.trace);
+        for (const seed of projected.cacheSeeds) {
+          if (/^[a-f0-9]{64}$/.test(seed.key)) await draftStore.putTrace(seed.key, seed.trace);
+          else await window.ASMDeck.cachePut(seed.key, seed.trace);
+        }
       }
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -1156,7 +1163,7 @@
     const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
     const nextDeck = normalizeDeck(await traceStore.detachDeck(importedDeck, { upload: true }));
     await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
-      { allowMissingTraces: Boolean(deckUid || shareToken) });
+      { allowMissingTraces: true });
     const previousDeck = deck;
     deck = nextDeck;
     currentH = 0;
@@ -1177,7 +1184,7 @@
         const nextDeck = normalizeDeck(await traceStore.detachDeck(packageData.deck, { upload: true }));
         const previousDeck = deck;
         await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
-          { allowMissingTraces: Boolean(deckUid || shareToken) });
+          { allowMissingTraces: true });
         deck = nextDeck;
         currentH = 0; currentV = 0;
         saveDeck({ cloud: false });
@@ -9835,7 +9842,13 @@
     try { materialized = await traceStore.materializeAnimation(animation); }
     catch (error) {
       frame.classList.remove('is-loading');
-      if (frame === algorithmEditorFrame && algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫載入失敗：${error.message}`;
+      if (frame === algorithmEditorFrame) {
+        if (algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫載入失敗：${error.message}`;
+        // Missing immutable results must still allow editing the saved source and RUN.
+        const { traceRef, traceView, traceDocument, ...source } = animation;
+        frame.contentWindow.postMessage({ type: 'asm-load-animation', editorSessionKey: slide.id,
+          animation: normalizeAlgorithmAnimation(source) }, window.location.origin);
+      }
       const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
       if (placeholder) {
         placeholder.hidden = false;
