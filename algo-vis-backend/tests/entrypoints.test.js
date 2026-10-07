@@ -89,7 +89,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(legacy.includes('guest-gallery.js?v=5'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=7'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=delete-dialog-10'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=thumbnail-cache-11'));
   assert.match(legacy, /id="headerSlidesLink"[^>]+href="\/"[^>]*>投影片<\/a>/);
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);

@@ -1052,6 +1052,12 @@ app.get('/api/slides', authenticateToken, async (req, res) => {
       .select('deck_uid title cover_thumbnail slide_count format version created_at updated_at')
       .sort({ updated_at: -1 })
       .lean();
+    if (req.get('X-ASM-Thumbnail-Mode') === 'lazy') {
+      slides.forEach(slide => {
+        slide.has_thumbnail = Boolean(slide.cover_thumbnail);
+        delete slide.cover_thumbnail;
+      });
+    }
     res.json({ success: true, slides });
   } catch (err) {
     console.error('Failed to list slide decks:', err);
@@ -1229,6 +1235,16 @@ app.get('/api/shared-slides/:share_token/traces/:key', async (req, res) => {
     if (!editor && !viewer) return res.status(404).json({ error: '分享連結無效或已停止分享' });
     res.json({ trace: await readSlideTrace(slide, req.params.key, editor) });
   } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+});
+
+app.get('/api/slides/:deck_uid/thumbnail', authenticateToken, async (req, res) => {
+  try {
+    const slide = await SlideDeck.findOne({ deck_uid: req.params.deck_uid, user_uid: req.user.id })
+      .select('cover_thumbnail updated_at').lean();
+    if (!slide) return res.status(404).json({ error: '找不到這份投影片' });
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ thumbnail: slide.cover_thumbnail || '', updated_at: slide.updated_at });
+  } catch (error) { res.status(500).json({ error: '無法讀取縮圖，請稍後再試' }); }
 });
 
 app.get('/api/slides/:deck_uid', authenticateToken, async (req, res) => {

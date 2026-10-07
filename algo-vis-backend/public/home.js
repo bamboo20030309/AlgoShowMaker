@@ -5,6 +5,23 @@
 (() => {
   const TOKEN_KEY = 'algo_jwt_token';
   const USERNAME_KEY = 'algo_username';
+  let thumbnailCache = new Map();
+  const thumbnailJobs = new Map();
+  const thumbnailOwner = () => String(state.user?.id || state.user?.user_uid || state.user?.username || '');
+  let thumbnailActive = 0;
+  const thumbnailQueue = [];
+  function queueThumbnail(job) {
+    return new Promise((resolve, reject) => {
+      thumbnailQueue.push({ job, resolve, reject }); drainThumbnails();
+    });
+  }
+  function drainThumbnails() {
+    while (thumbnailActive < 3 && thumbnailQueue.length) {
+      const entry = thumbnailQueue.shift(); thumbnailActive++;
+      Promise.resolve().then(entry.job).then(entry.resolve, entry.reject).finally(() => { thumbnailActive--; drainThumbnails(); });
+    }
+  }
+
   const state = {
     authMode: 'login',
     decks: [],
@@ -294,20 +311,43 @@
 
   async function buildMissingThumbnail(deck, preview) {
     if (!window.AlgoDeckThumbnail || deck.cover_thumbnail) return;
+    const owner = thumbnailOwner();
     preview.classList.add('is-loading');
     try {
       const data = await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}`);
       const thumbnail = await window.AlgoDeckThumbnail.create(data.slide.deck);
+      if (owner !== thumbnailOwner()) return;
       deck.cover_thumbnail = thumbnail;
       showDeckThumbnail(preview, thumbnail);
-      await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}`, {
+      const saved = await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}`, {
         method: 'PUT',
         body: JSON.stringify({ cover_thumbnail: thumbnail })
       });
+      await window.ASMHomeThumbnailCache?.put(owner, deck.deck_uid, saved.slide?.updated_at || deck.updated_at, thumbnail);
     } catch (error) {
       preview.classList.remove('is-loading');
       console.warn('Failed to build deck thumbnail', error);
     }
+  }
+
+  async function loadDeckThumbnail(deck, preview) {
+    const owner = thumbnailOwner(), key = JSON.stringify([owner, deck.deck_uid, deck.updated_at]);
+    preview.classList.add('is-loading');
+    try {
+      if (!thumbnailJobs.has(key)) thumbnailJobs.set(key, queueThumbnail(async () => {
+        if (owner !== thumbnailOwner()) throw new Error('Workspace account changed');
+        const data = await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}/thumbnail`);
+        if (data.thumbnail) await window.ASMHomeThumbnailCache?.put(owner, deck.deck_uid, data.updated_at, data.thumbnail);
+        return data;
+      }).finally(() => thumbnailJobs.delete(key)));
+      const data = await thumbnailJobs.get(key);
+      if (owner !== thumbnailOwner() || !preview.isConnected) return;
+      if (data.thumbnail) {
+        deck.cover_thumbnail = data.thumbnail;
+        showDeckThumbnail(preview, data.thumbnail);
+      } else await buildMissingThumbnail(deck, preview);
+    } catch (error) { console.warn('Failed to load deck thumbnail', error); }
+    finally { preview.classList.remove('is-loading'); }
   }
 
   function renderDecks() {
@@ -341,7 +381,9 @@
       const preview = document.createElement('div');
       preview.className = 'deck-preview';
       preview.style.setProperty('--preview-accent', previewColor(deck.deck_uid));
-      if (deck.cover_thumbnail) showDeckThumbnail(preview, deck.cover_thumbnail);
+      const cachedThumbnail = thumbnailCache.get(deck.deck_uid);
+      if (deck.cover_thumbnail || cachedThumbnail) showDeckThumbnail(preview, deck.cover_thumbnail || cachedThumbnail);
+      else if (deck.has_thumbnail !== undefined) loadDeckThumbnail(deck, preview);
       else buildMissingThumbnail(deck, preview);
 
       const slideNumber = document.createElement('span');
@@ -382,8 +424,12 @@
   async function loadDecks() {
     setMessage(libraryMessage, '正在讀取投影片...');
     try {
-      const data = await api('/api/slides');
+      const data = await api('/api/slides', { headers: { 'X-ASM-Thumbnail-Mode': 'lazy' } });
       state.decks = data.slides || [];
+      thumbnailCache = await window.ASMHomeThumbnailCache?.load(thumbnailOwner(), state.decks) || new Map();
+      for (const deck of state.decks) if (deck.cover_thumbnail) {
+        window.ASMHomeThumbnailCache?.put(thumbnailOwner(), deck.deck_uid, deck.updated_at, deck.cover_thumbnail);
+      }
       await organizer.load(state.decks);
       renderDecks();
     } catch (error) {
