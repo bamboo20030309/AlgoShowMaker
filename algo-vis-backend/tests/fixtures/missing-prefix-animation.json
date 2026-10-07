@@ -1,0 +1,22 @@
+{
+  "code": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n    vector<int> num = {0, 2, 1, 3, 4, 2, 5, 1, 3, 4};\n    vector<int> pre(10, 0);\n    for (int i = 1; i <= 9; i++) {\n        pre[i] = pre[i - 1] + num[i];\n        // @frame num[i] at canvas.top offset(0,70)\n        // @object pre[i]\n        // @place pre.top at num.bottom offset(0,80)\n        // @style num[0:i],pre[i] background AV_green\n        // @style pre[0:i] focus\n        // @style pre[i] highlight\n        // @arrow from num[i] to pre[i]\n        // @arrow from pre[i-1] to pre[i]\n        // @text \"pre[${i}]=${pre[i]}\" at pre.bottom\n    }\n}\n\n/* @asm-view\n{\n  \"version\": 1,\n  \"rules\": [],\n  \"skins\": {},\n  \"studio\": {\n    \"eventSettings\": {\n      \"autoFixedEnabled\": false,\n      \"autoLoopBoundaryEnabled\": false\n    }\n  }\n}\n@asm-view */",
+  "input": "",
+  "traceRef": "a5eda25362199bed27580efb52dba89450ac150d053d685854b0fc234c8367cf",
+  "traceView": {
+    "studio": {
+      "eventSettings": {
+        "gapMs": 500,
+        "autoFixedEnabled": false,
+        "autoLoopBoundaryEnabled": false,
+        "defaultEnabled": {
+          "declare": true
+        },
+        "timelineTypes": {
+          "declare": true
+        }
+      }
+    },
+    "skins": {},
+    "rules": []
+  }
+}

@@ -5,10 +5,13 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.ASMSlideTraceStore = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
-  function create(storage, client, fetchRemote = null) {
+  function create(storage, client, fetchRemote = null, recoverMissing = null) {
     const retained = new Set();
     const loads = new Map();
     const pendingUploads = new Set();
+    // Share one recovery per saved animation revision, including failures. A
+    // navigation/iframe ready message must not repeatedly compile broken code.
+    const recoveries = new Map();
     const clone = value => JSON.parse(JSON.stringify(value));
     async function detachDeck(source, { upload = false } = {}) {
       const deck = JSON.parse(JSON.stringify(source, (key, value) => key === 'traceDocument' ? undefined : value));
@@ -42,7 +45,7 @@
             trace = await fetchRemote(key);
             await client.putTrace(key, trace);
           }
-          if (!trace) throw new Error('找不到動畫結果，請重新匯入或 RUN');
+          if (!trace) throw Object.assign(new Error('找不到動畫結果，請重新匯入或 RUN'), { code: 'TRACE_NOT_FOUND' });
           return trace;
         })();
         loads.set(key, promise);
@@ -54,7 +57,24 @@
     }
     async function materializeAnimation(animation) {
       if (!animation?.traceRef) return animation;
-      const trace = await load(animation.traceRef);
+      let trace;
+      try { trace = await load(animation.traceRef); }
+      catch (error) {
+        if (error.code !== 'TRACE_NOT_FOUND' || !recoverMissing) throw error;
+        const revision = storage.canonical(animation);
+        if (!recoveries.has(revision)) {
+          const recovery = Promise.resolve().then(() => recoverMissing(animation)).then(async recovered => {
+            // Retain only the replacement ID/settings, not another full Trace
+            // for every slide; normal lazy loading still holds at most two.
+            const detached = await detachDeck({ groups: [{ slides: [{ animation: recovered }] }] });
+            return detached.groups[0].slides[0].animation;
+          });
+          recoveries.set(revision, recovery);
+          // Observe failures even if the requesting iframe has been removed.
+          recovery.catch(() => {});
+        }
+        return materializeAnimation(await recoveries.get(revision));
+      }
       const { traceRef, traceView, ...settings } = animation;
       return { ...settings, traceDocument: { ...trace, ...traceView } };
     }

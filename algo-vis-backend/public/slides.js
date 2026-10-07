@@ -204,15 +204,37 @@
   const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
     if (sampleId || (!deckUid && !shareToken)) {
       const response = await fetch(`/deck-traces/${encodeURIComponent(key)}.json`);
-      if (!response.ok) throw new Error('找不到動畫 Trace，請在編輯器重新 RUN 並儲存。');
+      if (!response.ok) throw Object.assign(new Error(`動畫 Trace 讀取失敗（HTTP ${response.status}）`), {
+        code: response.status === 404 ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
+      });
       return response.json();
     }
     const response = await fetch(`${remoteDeckEndpoint()}/traces/${encodeURIComponent(key)}`, {
       headers: deckUid ? { Authorization: `Bearer ${authToken()}` } : {}
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || '動畫載入失敗');
+    if (!response.ok) throw Object.assign(new Error(result.error || '動畫載入失敗'), {
+      code: response.status === 404 ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
+    });
     return result.trace;
+  }, async animation => {
+    setCloudStatus('loading', '動畫結果遺失，正在重新編譯執行…');
+    try {
+      const rebuilt = await window.ASMDeck.rebuildMissingAnimation(animation);
+      const current = orderedDeckSlides().filter(entry => entry.slide.animation === animation);
+      if (!current.length) return rebuilt; // Never overwrite a newer edit/import.
+      const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation: rebuilt }] }] },
+        { upload: canSaveRemoteDeck() });
+      // Keep the same object identity so waiting iframe messages remain valid.
+      for (const key of Object.keys(animation)) delete animation[key];
+      Object.assign(animation, detached.groups[0].slides[0].animation);
+      delete animation.cacheKind;
+      await saveDeck({ history: false });
+      return rebuilt;
+    } catch (error) {
+      setCloudStatus('error', `動畫自動重建失敗：${error.message}`);
+      throw new Error(`Trace 遺失後自動重建失敗：${error.message}；請在編輯器修正後 RUN`);
+    }
   });
   let deck = normalizeDeck(clone(defaultDeck));
   let lastSavedDeckJson = null;

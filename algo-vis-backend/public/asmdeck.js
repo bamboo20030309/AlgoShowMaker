@@ -588,6 +588,24 @@
     return { ...animation, traceDocument: trace, rebuild: undefined, cacheKind };
   }
 
+  async function rebuildMissingAnimation(animation) {
+    if (!animation?.code?.trim()) throw new Error('動畫結果遺失，且沒有可重新執行的程式碼。');
+    const source = clone(animation);
+    delete source.traceRef;
+    delete source.traceDocument;
+    delete source.rebuildError;
+    if (source.rebuild?.view) return rebuildAnimation(source);
+    // Older ID-only exports lack portable rebuild metadata. Compile the actual
+    // saved source first, then restore its saved view against the new frames.
+    source.rebuild = { view: { skins: source.skins || {}, rules: source.rules || [] }, globals: {} };
+    const raw = await runTrace(source);
+    const saved = source.traceView || {};
+    const restored = { ...raw, ...saved, studio: { ...raw.studio, ...saved.studio } };
+    source.rebuild = presentationFor(restored);
+    const trace = applyPresentation(raw, source);
+    return { ...source, traceDocument: trace, rebuild: undefined, cacheKind: 'run' };
+  }
+
   async function rebuildDeck(compactDeck, onProgress = () => {}, onResult = () => {}) {
     const deck = clone(compactDeck);
     for (const slide of algorithmSlides(deck)) {
@@ -609,7 +627,7 @@
     return deck;
   }
 
-  return { project, encode, decode, readCover, readCoverURL, rebuildAnimation, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
+  return { project, encode, decode, readCover, readCoverURL, rebuildAnimation, rebuildMissingAnimation, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
     cacheLimitMB, setCacheLimitMB, sha256,
     animationKey, baseKey, engineVersion, MAGIC, COVER_MAGIC, PACKAGE_VERSION };
 });

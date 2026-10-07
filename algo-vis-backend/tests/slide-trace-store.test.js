@@ -76,3 +76,44 @@ test('an unrelated metadata save cannot collect a newly staged animation in anot
   await other.saveDeck('import', JSON.stringify(staged));
   assert.ok(await other.loadTrace(staged.groups[0].slides[0].animation.traceRef));
 });
+
+test('missing IDs recover once per revision and the replacement survives save/reopen', async () => {
+  const db = new IDBFactory(), client = Storage.create(db, null);
+  const animation = { code: 'saved source', input: '7', traceRef: 'a'.repeat(64),
+    traceView: { studio: { eventSettings: { autoFixedEnabled: false }, codePanelFontSize: 19 } } };
+  let runs = 0;
+  const traces = TraceStore.create(Storage, client, async () => {
+    throw Object.assign(Error('404'), { code: 'TRACE_NOT_FOUND' });
+  }, async saved => {
+    runs++;
+    const result = { ...saved, traceDocument: { frames: [{ id: 'new' }], ...saved.traceView } };
+    const detached = await traces.detachDeck({ groups: [{ slides: [{ animation: result }] }] }, { upload: true });
+    Object.assign(saved, detached.groups[0].slides[0].animation);
+    return result;
+  });
+  const [first, second] = await Promise.all([traces.materializeAnimation(animation), traces.materializeAnimation(animation)]);
+  assert.equal(runs, 1); assert.deepEqual(first, second);
+  assert.notEqual(animation.traceRef, 'a'.repeat(64));
+  const deck = { groups: [{ slides: [{ animation }] }] };
+  await client.saveDeck('recovered', JSON.stringify(deck), traces.retainedKeys());
+  const reopened = Storage.create(db, null);
+  const loaded = await TraceStore.create(Storage, reopened).materializeDeck(await reopened.loadDeck('recovered', [], { lazyTraces: true }));
+  assert.equal(loaded.groups[0].slides[0].animation.traceDocument.studio.eventSettings.autoFixedEnabled, false);
+  assert.equal(loaded.groups[0].slides[0].animation.traceDocument.studio.codePanelFontSize, 19);
+  assert.equal(Object.keys(await traces.uploadTraces([{ key: animation.traceRef }])).length, 1);
+});
+
+test('permission/network errors never compile; failed recovery does not loop on navigation', async () => {
+  const client = Storage.create(new IDBFactory(), null);
+  const animation = { code: 'bad source', traceRef: 'b'.repeat(64) };
+  let runs = 0;
+  for (const failure of [Error('network'), Object.assign(Error('403'), { code: 'TRACE_LOAD_FAILED' })]) {
+    const traces = TraceStore.create(Storage, client, async () => { throw failure; }, async () => { runs++; });
+    await assert.rejects(traces.materializeAnimation(animation));
+  }
+  assert.equal(runs, 0);
+  const missing = TraceStore.create(Storage, client, null, async () => { runs++; throw Error('compile failed'); });
+  await assert.rejects(missing.materializeAnimation(animation), /compile failed/);
+  await assert.rejects(missing.materializeAnimation(animation), /compile failed/);
+  assert.equal(runs, 1);
+});
