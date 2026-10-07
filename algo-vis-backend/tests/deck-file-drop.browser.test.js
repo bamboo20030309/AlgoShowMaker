@@ -92,6 +92,7 @@ test('external deck files drop onto import and add controls, workspace creates a
     });
     await page.waitForFunction(() => document.getElementById('libraryMessage').textContent.includes('每次請拖入一份'));
     assert.equal(created, 0);
+    await page.evaluate(() => { ASMDeck.decode = async () => { throw new Error('workspace must read only the header'); }; });
     await drop('#createDeckBtn', 'workspace.asmdeck', fixture('workspace'), 'asmdeck');
     await page.waitForURL('**/slides.html?deck=dropped-deck&importFile=*');
     await page.waitForSelector('[data-slide-id="workspace-2"]');

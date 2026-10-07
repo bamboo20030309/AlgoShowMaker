@@ -215,6 +215,24 @@
     return result.trace;
   });
   let deck = normalizeDeck(clone(defaultDeck));
+  let lastSavedDeckJson = null;
+  let archiveCover = {};
+  try { archiveCover = JSON.parse(localStorage.getItem(`${DRAFT_KEY}:cover`) || '{}'); } catch {}
+  let coverSourceKey = archiveCover.thumbnailSourceHash || null;
+  let coverThumbnail = archiveCover.thumbnail || '';
+
+  async function getCoverThumbnail() {
+    const first = deck.groups.find(group => group.slides?.length)?.slides[0];
+    const key = await window.ASMDeck.sha256(JSON.stringify(first || null));
+    if (key !== coverSourceKey) {
+      coverThumbnail = window.AlgoDeckThumbnail ? await window.AlgoDeckThumbnail.create(deck) : '';
+      coverSourceKey = key;
+    }
+    archiveCover.thumbnail = coverThumbnail;
+    archiveCover.thumbnailSourceHash = coverSourceKey;
+    try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
+    return coverThumbnail;
+  }
   let localSaveRevision = 0;
   let reveal = null;
   let revealReady = false;
@@ -643,6 +661,9 @@
 
   function saveDeck({ history: pushHistory = true, cloud = true } = {}) {
     const serializedDeck = JSON.stringify(deck);
+    if (lastSavedDeckJson !== null && lastSavedDeckJson !== serializedDeck) archiveCover.updatedAt = new Date().toISOString();
+    lastSavedDeckJson = serializedDeck;
+    try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
     const revision = ++localSaveRevision;
     document.body.dataset.localDeckRevision = String(revision);
     document.body.dataset.lastDeckSaveCloud = String(cloud);
@@ -779,6 +800,13 @@
     if (isLocalCopy()) document.body.classList.remove('asm-edit-mode');
     deck = normalizeDeck(await traceStore.detachDeck(isLocalCopy() && localDeck ? localDeck : data.slide.deck));
     cloudDeckTitle = data.slide.title || '未命名投影片';
+    if (!isLocalCopy() || !localDeck) {
+      let card = {};
+      try { card = JSON.parse(sessionStorage.getItem(`asm-deck-card:${deckUid}`) || '{}'); } catch {}
+      archiveCover = { ...archiveCover, title: cloudDeckTitle,
+        updatedAt: data.slide.updated_at || null, thumbnail: data.slide.cover_thumbnail || '',
+        categories: card.categories?.map(category => category.title) || archiveCover.categories || [] };
+    }
     cloudDeckReady = true;
     document.title = `${cloudDeckTitle} - AlgoShowMaker`;
     if (shareDeckBtn && deckUid) shareDeckBtn.hidden = false;
@@ -929,9 +957,7 @@
     setCloudStatus('saving', '儲存中...');
     try {
       const snapshot = JSON.parse(JSON.stringify(deck));
-      const coverThumbnail = window.AlgoDeckThumbnail
-        ? await window.AlgoDeckThumbnail.create(deck)
-        : '';
+      const coverThumbnail = await getCoverThumbnail();
       const headers = { 'Content-Type': 'application/json' };
       if (deckUid) headers.Authorization = `Bearer ${authToken()}`;
       await ASMSlideCloud.save(snapshot, {
@@ -1133,6 +1159,8 @@
         const draft = await editorAnimationExportSnapshot();
         const projected = await window.ASMDeck.project(deck, draft,
           { includePrebuiltTraces: false });
+        projected.cover = { ...archiveCover, title: cloudDeckTitle,
+          thumbnail: await getCoverThumbnail() };
         blob = await window.ASMDeck.encode(projected);
         // Reuse the already-loaded result locally without putting a second trace in the archive.
         for (const seed of projected.cacheSeeds) {
@@ -1178,6 +1206,7 @@
       await window.ASMDeckFileDrop.validate(file);
       if (/\.asmdeck$/i.test(file.name)) {
         const packageData = await window.ASMDeck.decode(file);
+        if (packageData.cover) archiveCover = { ...packageData.cover };
         const nextDeck = normalizeDeck(await traceStore.detachDeck(packageData.deck, { upload: canSaveRemoteDeck() }));
         const previousDeck = deck;
         await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),

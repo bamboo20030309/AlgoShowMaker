@@ -1045,20 +1045,23 @@ function cleanCoverThumbnail(value) {
 
 // List metadata only. The large Fabric canvas payload is fetched when a deck is opened.
 require('./slide-library')(app, { authenticateToken, User, SlideDeck });
+const SlideLibraryLayout = require('./public/library-layout');
 
 app.get('/api/slides', authenticateToken, async (req, res) => {
   try {
-    const slides = await SlideDeck.find({ user_uid: req.user.id })
+    const [slides, user] = await Promise.all([SlideDeck.find({ user_uid: req.user.id })
       .select('deck_uid title cover_thumbnail slide_count format version created_at updated_at')
       .sort({ updated_at: -1 })
-      .lean();
-    if (req.get('X-ASM-Thumbnail-Mode') === 'lazy') {
-      slides.forEach(slide => {
-        slide.has_thumbnail = Boolean(slide.cover_thumbnail);
-        delete slide.cover_thumbnail;
-      });
+      .lean(), User.findById(req.user.id).select('preferences').lean()]);
+    const layout = SlideLibraryLayout.reconcile(user?.preferences?.slideLibrary, slides.map(slide => slide.deck_uid));
+    for (const slide of slides) {
+      slide.cover_thumbnail = slide.cover_thumbnail || '';
+      slide.has_thumbnail = Boolean(slide.cover_thumbnail);
+      slide.categories = layout.folders.filter(folder => folder.deckIds.includes(slide.deck_uid))
+        .map(folder => ({ id: folder.id, title: folder.title }));
     }
-    res.json({ success: true, slides });
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ success: true, slides, layout });
   } catch (err) {
     console.error('Failed to list slide decks:', err);
     res.status(500).json({ error: '無法讀取投影片，請稍後再試' });

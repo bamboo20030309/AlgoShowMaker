@@ -54,7 +54,7 @@ test('HTTP without SubtleCrypto preserves hashes, round-trips, and rejects tampe
     const blob = await fallback.encode(projected);
     assert.equal(JSON.stringify(await fallback.decode(blob)), JSON.stringify(await archive.decode(blob)));
     const bytes = Buffer.from(await blob.arrayBuffer());
-    const payload = JSON.parse(gunzipSync(bytes.subarray(archive.MAGIC.length)));
+    const payload = JSON.parse(gunzipSync(bytes.subarray((await archive.readCover(blob))?.bodyOffset || archive.MAGIC.length)));
     payload.body.deck.groups[0].slides[0].animation.input += 'tampered';
     await assert.rejects(() => fallback.decode(new Blob([
       archive.MAGIC, gzipSync(Buffer.from(JSON.stringify(payload)))
@@ -145,7 +145,7 @@ test('legacy archive imports a verified embedded trace and rebuild uses it witho
 test('prebuilt trace is ignored after input or engine identity changes', async () => {
   const blob = await legacyArchive(await archive.project(fixture(), null, { includePrebuiltTraces: true }));
   const bytes = Buffer.from(await blob.arrayBuffer());
-  const payload = JSON.parse(gunzipSync(bytes.subarray(archive.MAGIC.length)));
+  const payload = JSON.parse(gunzipSync(bytes.subarray((await archive.readCover(blob))?.bodyOffset || archive.MAGIC.length)));
   const animation = payload.body.deck.groups[0].slides[0].animation;
   animation.prebuilt.engineVersion = '0/1';
   payload.manifest.contentHash = await archive.sha256(JSON.stringify(payload.body));
@@ -183,7 +183,7 @@ test('asmdeck gzip round-trip checks hashes and restores both deduplicated image
   const corrupt = new Blob([archive.MAGIC, new Uint8Array([1, 2, 3])]);
   await assert.rejects(() => archive.decode(corrupt), /無法解壓或解析/);
   const bytes = Buffer.from(await blob.arrayBuffer());
-  const payload = JSON.parse(gunzipSync(bytes.subarray(archive.MAGIC.length)));
+  const payload = JSON.parse(gunzipSync(bytes.subarray((await archive.readCover(blob))?.bodyOffset || archive.MAGIC.length)));
   payload.body.deck.groups[0].slides[0].animation.input = 'tampered';
   await assert.rejects(() => archive.decode(new Blob([
     archive.MAGIC, gzipSync(Buffer.from(JSON.stringify(payload)))
@@ -194,7 +194,7 @@ test('older engine archives rebuild on the current engine while newer or differe
   const projected = await archive.project(fixture());
   const blob = await archive.encode(projected);
   const bytes = Buffer.from(await blob.arrayBuffer());
-  const payload = JSON.parse(gunzipSync(bytes.subarray(archive.MAGIC.length)));
+  const payload = JSON.parse(gunzipSync(bytes.subarray((await archive.readCover(blob))?.bodyOffset || archive.MAGIC.length)));
   const [currentEngine, currentFormat] = archive.engineVersion().split('/').map(Number);
 
   payload.manifest.engineVersion = `${Math.max(0, currentEngine - 1)}/${currentFormat}`;

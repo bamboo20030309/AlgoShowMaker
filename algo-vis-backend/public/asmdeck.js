@@ -9,6 +9,9 @@
   if (root) root.ASMDeck = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   const MAGIC = 'ASMDECK1\n';
+  const COVER_MAGIC = 'ASMDECK2\n';
+  const COVER_PREFIX_BYTES = COVER_MAGIC.length + 4;
+  const MAX_COVER_BYTES = 512 * 1024;
   const PACKAGE_VERSION = 1;
   const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;
   const MAX_JSON_BYTES = 128 * 1024 * 1024;
@@ -278,6 +281,52 @@
     return output;
   }
 
+  function validateCover(cover) {
+    if (!cover || cover.version !== 2 || typeof cover.title !== 'string'
+      || !Array.isArray(cover.categories) || !Array.isArray(cover.tags)
+      || ![...cover.categories, ...cover.tags].every(value => typeof value === 'string')
+      || !Number.isSafeInteger(cover.slideCount) || cover.slideCount < 0
+      || (cover.updatedAt !== null && !Number.isFinite(Date.parse(cover.updatedAt)))
+      || typeof cover.thumbnail !== 'string'
+      || (cover.thumbnail && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(cover.thumbnail))
+      || !/^[a-f0-9]{64}$/.test(cover.contentHash)) throw new Error('投影片封面資訊無效。');
+    return cover;
+  }
+
+  // Reading a cover never decompresses the body or loads any slide/Trace.
+  async function readCover(file) {
+    const prefix = new Uint8Array(await file.slice(0, COVER_PREFIX_BYTES).arrayBuffer());
+    const magic = decoder.decode(prefix.slice(0, MAGIC.length));
+    if (magic === MAGIC) return null; // Legacy archives are migrated only on full import/save.
+    if (magic !== COVER_MAGIC || prefix.length !== COVER_PREFIX_BYTES) throw new Error('不是有效的 .asmdeck 封面檔頭。');
+    const length = new DataView(prefix.buffer, prefix.byteOffset + COVER_MAGIC.length, 4).getUint32(0, true);
+    if (!length || length > MAX_COVER_BYTES || COVER_PREFIX_BYTES + length >= file.size) throw new Error('投影片封面長度無效。');
+    const bytes = await file.slice(COVER_PREFIX_BYTES, COVER_PREFIX_BYTES + length).arrayBuffer();
+    const cover = validateCover(JSON.parse(decoder.decode(bytes)));
+    return { ...cover, bodyOffset: COVER_PREFIX_BYTES + length };
+  }
+
+  async function readCoverURL(url, fetcher = root.fetch.bind(root)) {
+    async function range(start, end) {
+      const response = await fetcher(url, { headers: { Range: `bytes=${start}-${end}` } });
+      if (response.status !== 206) {
+        await response.body?.cancel();
+        throw new Error('此來源不支援只讀封面，請由投影片清單 API 取得卡片資訊。');
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length !== end - start + 1) throw new Error('封面範圍回應長度無效。');
+      return bytes;
+    }
+    const prefix = await range(0, COVER_PREFIX_BYTES - 1);
+    const magic = decoder.decode(prefix.slice(0, MAGIC.length));
+    if (magic === MAGIC) return null;
+    if (magic !== COVER_MAGIC) throw new Error('不是有效的 .asmdeck 封面檔頭。');
+    const length = new DataView(prefix.buffer, prefix.byteOffset + COVER_MAGIC.length, 4).getUint32(0, true);
+    if (!length || length > MAX_COVER_BYTES) throw new Error('投影片封面長度無效。');
+    const bytes = await range(COVER_PREFIX_BYTES, COVER_PREFIX_BYTES + length - 1);
+    return { ...validateCover(JSON.parse(decoder.decode(bytes))), bodyOffset: COVER_PREFIX_BYTES + length };
+  }
+
   async function encode(projected) {
     const prebuiltTraces = projected.prebuiltTraces || {};
     if (Object.keys(prebuiltTraces).length) throw new Error('新 .asmdeck 不再內嵌完整 Trace；請將動畫保存到獨立儲存並只匯出 Trace ID。');
@@ -297,19 +346,35 @@
       ...(Object.keys(prebuiltTraces).length
         ? { prebuiltTraceHashes: Object.keys(prebuiltTraces).sort() } : {})
     };
+    const info = projected.cover || {};
+    const cover = validateCover({ version: 2, title: info.title || projected.deck.title || '未命名投影片',
+      categories: info.categories || [], tags: info.tags || [],
+      slideCount: projected.deck.groups.reduce((sum, group) => sum + (group.slides?.length || 0), 0),
+      updatedAt: info.updatedAt || null, thumbnail: info.thumbnail || '', contentHash: manifest.contentHash });
+    const coverBytes = encoder.encode(JSON.stringify(cover));
+    manifest.coverHash = await sha256(coverBytes);
+    if (coverBytes.length > MAX_COVER_BYTES) throw new Error('投影片封面超過 512 KB 上限。');
+    const lengthBytes = new Uint8Array(4);
+    new DataView(lengthBytes.buffer).setUint32(0, coverBytes.length, true);
     const compressed = await gzip(encoder.encode(JSON.stringify({ manifest, body })));
-    if (compressed.length + MAGIC.length > MAX_ARCHIVE_BYTES) throw new Error('壓縮檔超過 32 MB 匯出上限。');
-    return new Blob([MAGIC, compressed], { type: 'application/octet-stream' });
+    if (compressed.length + COVER_PREFIX_BYTES + coverBytes.length > MAX_ARCHIVE_BYTES) throw new Error('壓縮檔超過 32 MB 匯出上限。');
+    return new Blob([COVER_MAGIC, lengthBytes, coverBytes, compressed], { type: 'application/octet-stream' });
   }
 
   async function decode(file) {
     if (file.size > MAX_ARCHIVE_BYTES) throw new Error('匯入檔超過 32 MB 安全上限。');
+    const cover = await readCover(file);
+    const bodyOffset = cover?.bodyOffset || MAGIC.length;
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (decoder.decode(bytes.slice(0, MAGIC.length)) !== MAGIC) throw new Error('不是有效的 .asmdeck 壓縮檔。');
     let packageData;
-    try { packageData = JSON.parse(decoder.decode(await ungzip(bytes.slice(MAGIC.length)))); }
+    try { packageData = JSON.parse(decoder.decode(await ungzip(bytes.slice(bodyOffset)))); }
     catch (error) { throw new Error(`匯出檔無法解壓或解析：${error.message}`); }
     const { manifest, body } = packageData || {};
+    if (cover && cover.contentHash !== manifest?.contentHash) throw new Error('封面與投影片內容雜湊不符。');
+    if (cover) {
+      const { bodyOffset: _offset, ...coverInfo } = cover;
+      if (await sha256(JSON.stringify(coverInfo)) !== manifest?.coverHash) throw new Error('投影片封面雜湊不符。');
+    }
     if (manifest?.format !== 'AlgoShowMaker.asmdeck' || manifest.packageVersion !== PACKAGE_VERSION) {
       throw new Error('不支援此投影片檔格式版本。');
     }
@@ -358,7 +423,8 @@
         && root.ASMTraceProvenance.status(trace, animation.code, animation.input || '').kind === 'current';
       if (matches) animation.traceDocument = clone(trace);
     }
-    return { deck, manifest };
+    if (cover && cover.slideCount !== deck.groups.reduce((sum, group) => sum + (group.slides?.length || 0), 0)) throw new Error('封面頁數與投影片內容不符。');
+    return { deck, manifest, ...(cover ? { cover } : {}) };
   }
 
   // -----------------------------------------------------------------------------
@@ -543,7 +609,7 @@
     return deck;
   }
 
-  return { project, encode, decode, rebuildAnimation, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
+  return { project, encode, decode, readCover, readCoverURL, rebuildAnimation, rebuildDeck, cachePut, cacheGet, clearCache, trimCache,
     cacheLimitMB, setCacheLimitMB, sha256,
-    animationKey, baseKey, engineVersion, MAGIC, PACKAGE_VERSION };
+    animationKey, baseKey, engineVersion, MAGIC, COVER_MAGIC, PACKAGE_VERSION };
 });

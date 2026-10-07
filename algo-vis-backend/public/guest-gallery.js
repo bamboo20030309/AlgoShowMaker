@@ -34,15 +34,13 @@
 
   // -----------------------------------------------------------------------------
   // 範例封面載入
-  // 優先使用索引中的封面，缺少時載入 asmdeck 產生縮圖；失敗保留預設色塊。
+  // 只使用建置時寫入索引的封面；首頁不下載或解析投影片內容。
   // -----------------------------------------------------------------------------
   async function showCover(entry, preview) {
     try {
       if (!thumbnails.has(entry.id)) thumbnails.set(entry.id, (async () => {
-        const response = await fetch(entry.archive);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const archive = await window.ASMDeck.decode(await response.blob());
-        return window.AlgoDeckThumbnail.create(archive.deck);
+        if (!entry.cover_thumbnail) throw new Error('範例尚未建立封面快取');
+        return entry.cover_thumbnail;
       })());
       const src = await thumbnails.get(entry.id);
       const image = document.createElement('img');

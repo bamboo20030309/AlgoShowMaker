@@ -65,7 +65,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=6'));
   assert.ok(slides.includes('slides-cloud.js?v=2'));
-  assert.ok(slides.includes('slides.js?v=slides-278'));
+  assert.ok(slides.includes('slides.js?v=slides-279'));
   assert.ok(slides.includes('trace-model.js?v=trace-42'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
@@ -86,10 +86,10 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
   assert.ok(legacy.includes('home.css?v=delete-button-18'));
   assert.ok(legacy.includes('brand.css?v=hover-pill-1'));
-  assert.ok(legacy.includes('guest-gallery.js?v=5'));
+  assert.ok(legacy.includes('guest-gallery.js?v=6'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
-  assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=7'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=7') < legacy.indexOf('home.js?v=thumbnail-cache-11'));
+  assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=8'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=8') < legacy.indexOf('home.js?v=card-list-12'));
   assert.match(legacy, /id="headerSlidesLink"[^>]+href="\/"[^>]*>投影片<\/a>/);
   assert.match(legacy, /id="headerExamplesLink"[^>]+href="\/\?examples=1"[^>]*>範例投影片<\/a>/);
   assert.match(legacy, /id="workspaceExamplesNav"[^>]+href="\/\?examples=1"/);

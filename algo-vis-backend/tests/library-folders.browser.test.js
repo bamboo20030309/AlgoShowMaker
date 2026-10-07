@@ -61,8 +61,9 @@ test('workspace folders persist drag ordering, support mobile controls and recov
       if (!failSave) await saved();
     }
     await page.goto(base); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
-    await page.waitForSelector('[data-deck-id="c"] .deck-cover-image');
-    assert.equal(await page.locator('[data-deck-id="c"] .deck-cover-image').evaluate(el => el.draggable), false);
+    await page.waitForSelector('[data-deck-id="a"] .deck-cover-image');
+    assert.equal(await page.locator('[data-deck-id="a"] .deck-cover-image').evaluate(el => el.draggable), false);
+    assert.equal(await page.locator('[data-deck-id="c"] .deck-cover-image').count(), 0, 'missing covers stay placeholders without loading deck bodies');
     const borders = () => page.locator('.gallery-folder:visible').first().evaluate(el => { const style = getComputedStyle(el); return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.borderRadius]; });
     assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
     await page.locator('#createFolderBtn').click();
@@ -94,7 +95,7 @@ test('workspace folders persist drag ordering, support mobile controls and recov
       ['a', '.deck-meta', ['a', 'c', 'b']],
       ['c', '.deck-title', ['c', 'a', 'b']],
       ['a', '', ['a', 'c', 'b']],
-      ['c', '.deck-cover-image', ['c', 'a', 'b']],
+      ['c', '.deck-preview', ['c', 'a', 'b']],
       ['a', '.deck-settings', ['a', 'c', 'b']],
       ['c', '.library-drag-handle', ['c', 'a', 'b']]
     ]) {

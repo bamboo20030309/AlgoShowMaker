@@ -9,8 +9,13 @@
   // 外部檔案驗證
   // 副檔名只做前置篩選，JSON 仍需確認格式；驗證完成前不呼叫頁面的匯入處理器。
   // -----------------------------------------------------------------------------
-  async function validate(file) {
+  async function validate(file, { previewOnly = false } = {}) {
     if (!supported(file)) throw new Error('請拖入 .asmdeck 或投影片 JSON 檔案');
+    if (previewOnly && /\.asmdeck$/i.test(file.name)) {
+      // Workspace reads just the cover. Full validation happens in the editor
+      // before the imported body is committed to the cloud deck.
+      return window.ASMDeck.readCover(file);
+    }
     const data = /\.asmdeck$/i.test(file.name)
       ? await window.ASMDeck.decode(file) : JSON.parse(await file.text());
     const deck = data?.deck || data;
@@ -25,7 +30,7 @@
   // 拖放事件生命週期
   // dragenter 計數避免子元素切換造成閃爍，drop 後統一清除提示 class。
   // -----------------------------------------------------------------------------
-  function bind({ selector, allowed, onFile, onError }) {
+  function bind({ selector, allowed, onFile, onError, previewOnly = false }) {
     let busy = false;
     const external = event => Array.from(event.dataTransfer?.types || []).includes('Files');
     const target = event => event.target.closest?.(selector);
@@ -51,7 +56,7 @@
       const files = Array.from(event.dataTransfer.files || []);
       if (files.length !== 1) { onError(new Error('每次請拖入一份完整投影片檔案')); return; }
       busy = true;
-      try { await validate(files[0]); await onFile(files[0]); }
+      try { await validate(files[0], { previewOnly }); await onFile(files[0]); }
       catch (error) { onError(error); }
       finally { busy = false; }
     }, true);
