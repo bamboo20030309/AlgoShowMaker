@@ -55,11 +55,14 @@ test('public sample viewer can export and share its viewing link', { timeout: 12
     }));
     await page.goto(`${base}/slides.html?sample=fixture`);
     await page.waitForSelector('body.sample-deck-ready');
+    await page.waitForFunction(() => document.body.dataset.fabricBuild?.startsWith('ready'));
+    if (await page.locator('body').evaluate(el => el.classList.contains('asm-edit-mode'))) await page.click('#modeToggleBtn');
+    await page.waitForFunction(() => !document.body.classList.contains('mode-layout-animating'));
     assert.equal(await page.locator('body').evaluate(el => el.classList.contains('asm-edit-mode')), false);
-    assert.equal(await page.locator('#editorChrome').isVisible(), false);
+    assert.equal(await page.locator('#editorChrome').evaluate(el => getComputedStyle(el).opacity), '0');
     assert.equal(await page.locator('#exportDeckBtn').isVisible(), true);
     assert.equal(await page.locator('#shareDeckBtn').isVisible(), true);
-    assert.equal(await page.locator('#importDeckBtn').isVisible(), false);
+    assert.equal(await page.locator('#importDeckBtn').isVisible(), true);
 
     await page.locator('#shareDeckBtn').click();
     assert.equal(await page.locator('#sampleShareDialog').evaluate(el => el.open), true);
@@ -77,9 +80,12 @@ test('public sample viewer can export and share its viewing link', { timeout: 12
     ]);
     assert.equal(download.suggestedFilename(), 'Public Sample.asmdeck');
     const exportedBytes = Buffer.concat(await (await download.createReadStream()).toArray());
-    assert.deepEqual(exportedBytes, archive);
     const exported = await ASMDeck.decode(new Blob([exportedBytes]));
+    assert.equal(exported.deck.groups.length, 1);
     assert.equal(exported.deck.groups[0].slides.length, 1);
+    assert.equal(exported.deck.groups[0].slides[0].id, 'sample-slide');
+    assert.deepEqual(exported.deck.groups[0].slides[0].canvas.objects, deck.groups[0].slides[0].canvas.objects);
+    assert.deepEqual(exported.deck.groups[0].slides[0].widgets, deck.groups[0].slides[0].widgets);
 
     const homeLink = page.locator('#chromeHomeLink');
     assert.equal(await homeLink.getAttribute('href'), '/?examples=1');
@@ -93,9 +99,10 @@ test('public sample viewer can export and share its viewing link', { timeout: 12
       json: { slide: { deck, title: 'Shared Deck' }, access: 'view' }
     }));
     await sharedPage.goto(`${base}/slides.html?share=fixture`);
-    await sharedPage.waitForSelector('body.shared-view-only');
+    await sharedPage.waitForSelector('body.shared-edit-access');
     await sharedPage.waitForFunction(() => document.title === 'Shared Deck - AlgoShowMaker');
-    assert.equal(await sharedPage.locator('#exportDeckBtn').isVisible(), false);
+    assert.equal(await sharedPage.locator('#exportDeckBtn').isVisible(), true);
+    assert.equal(await sharedPage.locator('#sharedAccessBadge').textContent(), '分享本機副本');
     assert.equal(await sharedPage.locator('#shareDeckBtn').isVisible(), false);
     assert.equal(await sharedPage.locator('#sampleShareDialog').evaluate(el => el.open), false);
     assert.equal(await sharedPage.locator('#chromeHomeLink').getAttribute('href'), '/');

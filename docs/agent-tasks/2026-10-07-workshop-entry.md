@@ -17,3 +17,7 @@ workshop-entry.browser 與 entrypoints 通過：實際開啟、48 頁本機載�
 ## 後續格式更新
 
 2026-10-07 改為 Trace ID 引用格式：上述雜湊屬於最初原始檔，現行網站檔已轉換為 63452 bytes，13 份 Trace 分拆至 public/deck-traces。使用者 Downloads 原檔未修改。細節與新增驗證見 2026-10-07-asmdeck-trace-references.md。
+
+## 入口撤除
+
+使用者於 2026-10-07 要求撤除本入口，改用原分享觀看連結並可編輯本機副本。workshop.html、temporary 註冊及網站工作坊檔案已移除；詳見 2026-10-07-shared-local-edit.md。

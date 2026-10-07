@@ -8,18 +8,14 @@
   const OLD_STORAGE_KEY = 'asm_reveal_fabric_deck_v4';
   const TOKEN_KEY = 'algo_jwt_token';
   const urlParams = new URLSearchParams(window.location.search);
-  const temporaryDeckId = urlParams.get('temporary');
-  const temporaryDecks = {
-    workshop: { title: 'AlgoShowMaker 工作坊', archive: '/temporary-decks/workshop-renumbered.asmdeck?v=20261007-2' }
-  };
-  const sampleId = temporaryDeckId ? `temporary:${temporaryDeckId}` : urlParams.get('sample');
+  const sampleId = urlParams.get('sample');
   const deckUid = sampleId ? null : urlParams.get('deck');
   let pendingWorkspaceImport = urlParams.get('importFile');
   const shareToken = sampleId ? 'sample:' + sampleId : urlParams.get('share');
   const chromeHomeLink = document.getElementById('chromeHomeLink');
   if (sampleId && chromeHomeLink) {
-    chromeHomeLink.href = temporaryDeckId ? '/' : '/?examples=1';
-    chromeHomeLink.title = temporaryDeckId ? '回到首頁' : '返回範例投影片';
+    chromeHomeLink.href = '/?examples=1';
+    chromeHomeLink.title = '返回範例投影片';
     chromeHomeLink.setAttribute('aria-label', chromeHomeLink.title);
   }
   const SLIDE_W = 1280;
@@ -658,7 +654,7 @@
     }).then(() => {
       if (revision === localSaveRevision) {
         document.body.dataset.localDeckSave = 'saved';
-        if (sampleId || (!deckUid && !shareToken)) setCloudStatus('saved', sampleId ? '範例本機副本已儲存' : '本機已儲存');
+        if (isLocalCopy() || (!deckUid && !shareToken)) setCloudStatus('saved', sampleId ? '範例本機副本已儲存' : '本機已儲存');
       }
       return true;
     }).catch(error => {
@@ -698,7 +694,11 @@
   }
 
   function canSaveRemoteDeck() {
-    return !sampleId && Boolean(deckUid || (shareToken && sharedAccess === 'edit'));
+    return !sampleId && (shareToken ? sharedAccess === 'edit' : Boolean(deckUid));
+  }
+
+  function isLocalCopy() {
+    return Boolean(sampleId) || (Boolean(shareToken) && sharedAccess === 'local');
   }
 
   function remoteDeckEndpoint() {
@@ -709,13 +709,13 @@
 
   function applySharedAccessUi() {
     if (!shareToken || !sharedAccess) return;
-    const canEdit = Boolean(sampleId) || sharedAccess === 'edit';
+    const canEdit = isLocalCopy() || sharedAccess === 'edit';
     document.body.classList.toggle('shared-view-only', !canEdit);
     document.body.classList.toggle('shared-edit-access', canEdit);
     if (!canEdit) document.body.classList.remove('asm-edit-mode');
     if (sharedAccessBadge) {
       sharedAccessBadge.hidden = false;
-      sharedAccessBadge.textContent = sampleId ? (temporaryDeckId ? '投影片本機副本' : '範例本機副本') : canEdit ? '共享編輯模式' : '觀賞模式';
+      sharedAccessBadge.textContent = sampleId ? '範例本機副本' : isLocalCopy() ? '分享本機副本' : canEdit ? '共享編輯模式' : '觀賞模式';
     }
   }
 
@@ -726,16 +726,10 @@
   async function loadCloudDeck(localDeck) {
     if (sampleId) {
       setCloudStatus('loading', '正在載入公開投影片…');
-      let entry;
-      if (temporaryDeckId) {
-        entry = temporaryDecks[temporaryDeckId];
-        if (!Object.hasOwn(temporaryDecks, temporaryDeckId)) entry = null;
-      } else {
-        const catalogResponse = await fetch('/guest-decks.json');
-        if (!catalogResponse.ok) throw new Error('公開投影片清單載入失敗');
-        const catalog = await catalogResponse.json();
-        entry = catalog.decks.find(item => item.id === sampleId);
-      }
+      const catalogResponse = await fetch('/guest-decks.json');
+      if (!catalogResponse.ok) throw new Error('公開投影片清單載入失敗');
+      const catalog = await catalogResponse.json();
+      const entry = catalog.decks.find(item => item.id === sampleId);
       if (!entry) throw new Error('找不到指定的公開投影片');
       // Each sample has its own browser draft. Never replace local edits on reload.
       if (!localDeck) {
@@ -779,14 +773,17 @@
       throw new Error(data.error || 'Failed to load deck');
     }
 
-    deck = normalizeDeck(await traceStore.detachDeck(data.slide.deck));
+    // Read permission is still checked remotely on every open. View links edit
+    // only their token-scoped browser draft, while edit links keep cloud syncing.
+    sharedAccess = shareToken ? (data.access === 'view' ? 'local' : data.access) : null;
+    if (isLocalCopy()) document.body.classList.remove('asm-edit-mode');
+    deck = normalizeDeck(await traceStore.detachDeck(isLocalCopy() && localDeck ? localDeck : data.slide.deck));
     cloudDeckTitle = data.slide.title || '未命名投影片';
-    sharedAccess = shareToken ? data.access : null;
     cloudDeckReady = true;
     document.title = `${cloudDeckTitle} - AlgoShowMaker`;
     if (shareDeckBtn && deckUid) shareDeckBtn.hidden = false;
     applySharedAccessUi();
-    setCloudStatus('saved', sharedAccess === 'view' ? '僅供觀賞' : '已儲存');
+    setCloudStatus('saved', isLocalCopy() ? '本機已儲存' : '已儲存');
   }
 
   function orderedDeckSlides() {
@@ -855,7 +852,7 @@
         delete animation.rebuild;
         const current = getSlideById(entry.slide.id);
         if (current) {
-          const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: !sampleId });
+          const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation }] }] }, { upload: canSaveRemoteDeck() });
           if (progressiveRebuildSession !== session) return;
           current.animation = detached.groups[0].slides[0].animation;
           refreshAlgorithmSlideInPlace(current);
@@ -1034,7 +1031,7 @@
   function openSampleShareDialog() {
     if (!sampleId || !sampleShareDialog || !sampleShareUrl) return;
     const url = new URL('/slides.html', window.location.origin);
-    url.searchParams.set(temporaryDeckId ? 'temporary' : 'sample', temporaryDeckId || sampleId);
+    url.searchParams.set('sample', sampleId);
     sampleShareUrl.value = url.toString();
     if (sampleShareStatus) sampleShareStatus.textContent = '';
     sampleShareDialog.showModal();
@@ -1161,7 +1158,7 @@
   async function importDeckJsonText(text) {
     const parsed = JSON.parse(text);
     const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
-    const nextDeck = normalizeDeck(await traceStore.detachDeck(importedDeck, { upload: true }));
+    const nextDeck = normalizeDeck(await traceStore.detachDeck(importedDeck, { upload: canSaveRemoteDeck() }));
     await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
       { allowMissingTraces: true });
     const previousDeck = deck;
@@ -1181,7 +1178,7 @@
       await window.ASMDeckFileDrop.validate(file);
       if (/\.asmdeck$/i.test(file.name)) {
         const packageData = await window.ASMDeck.decode(file);
-        const nextDeck = normalizeDeck(await traceStore.detachDeck(packageData.deck, { upload: true }));
+        const nextDeck = normalizeDeck(await traceStore.detachDeck(packageData.deck, { upload: canSaveRemoteDeck() }));
         const previousDeck = deck;
         await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
           { allowMissingTraces: true });
@@ -10026,7 +10023,7 @@
     try {
       detached = await traceStore.detachDeck({ groups: [{ slides: [{
         animation: normalizeAlgorithmAnimation(event.data.animation)
-      }] }] }, { upload: !sampleId });
+      }] }] }, { upload: canSaveRemoteDeck() });
     } catch (error) {
       if (algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫儲存失敗：${error.message}`;
       return;
@@ -10049,7 +10046,7 @@
     if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
       sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
     } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-47' + (sampleId ? '&localOnly=1' : '');
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-47' + (isLocalCopy() ? '&localOnly=1' : '');
     }
   }
 

@@ -54,10 +54,10 @@ test('external deck files drop onto import and add controls, workspace creates a
     await page.waitForFunction(() => document.getElementById('cloudSaveStatus').textContent.includes('.asmdeck'));
     await page.route('**/api/shared-slides/view-fixture?traceMode=lazy', route => route.fulfill({ json: { access: 'view', slide: { title: 'viewer', deck: fixture('viewer') } } }));
     await page.goto(base + '/slides.html?share=view-fixture');
-    await page.waitForSelector('body.shared-view-only');
+    await page.waitForSelector('body.shared-edit-access');
     await drop('#importDeckBtn', 'denied.json', fixture('denied'));
-    assert.equal(await page.locator('section.asm-slide[data-slide-id="viewer-1"]').count(), 1);
-    assert.equal(await page.locator('section.asm-slide[data-slide-id="denied-1"]').count(), 0);
+    await page.waitForSelector('[data-slide-id="denied-1"]');
+    assert.equal(await page.locator('section.asm-slide[data-slide-id="denied-1"]').count(), 1);
     let created = 0, saved = null; const resources = new Map();
     await page.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture' } } }));
     await page.route('**/api/slide-library', route => route.fulfill({ json: { layout: { folders: [], unfiled: [] } } }));

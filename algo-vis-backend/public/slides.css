@@ -3660,6 +3660,7 @@ body.shared-view-only .mode-switch,
 body.shared-view-only #importDeckBtn,
 body.shared-view-only #shareDeckBtn { display: none; }
 body.shared-view-only #exportDeckBtn { display: none; }
+.deck-io-btn[hidden] { display: none; }
 body.shared-view-only.sample-deck-ready #exportDeckBtn,
 body.shared-view-only.sample-deck-ready #shareDeckBtn:not([hidden]) { display: grid; }
 body.shared-view-only .shared-access-badge { left: auto; right: 14px; }

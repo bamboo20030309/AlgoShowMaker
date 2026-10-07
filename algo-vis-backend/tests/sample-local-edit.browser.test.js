@@ -93,11 +93,43 @@ test('sample copies use normal editing, persist locally and export edits without
   const otherFrame=await (await other.waitForSelector('#algorithmEditorFrame')).contentFrame();
   await otherFrame.waitForFunction(code=>aceEditor.getValue()===code,code);
   assert.equal(await otherFrame.locator('#inputArea').inputValue(),'7');
-  // Ordinary shared view links stay read-only; sample editing does not grant server access.
+  // View links edit only a token-scoped local copy, including animation source.
   await context.route('**/api/shared-slides/view-fixture?*',route=>route.fulfill({json:{access:'view',slide:{title:'唯讀分享',deck:original}}}));
   const viewer=await context.newPage();await viewer.goto(base+'/slides.html?share=view-fixture');
   await viewer.waitForFunction(()=>document.body.dataset.slideCount==='1');
-  assert.equal(await viewer.locator('#modeToggleBtn').isVisible(),false);
-  assert.equal(await viewer.locator('#sharedAccessBadge').textContent(),'觀賞模式');
+  assert.equal(await viewer.locator('#modeToggleBtn').isVisible(),true);
+  assert.equal(await viewer.locator('#sharedAccessBadge').textContent(),'分享本機副本');
+  if(!await viewer.evaluate(()=>document.body.classList.contains('asm-edit-mode'))) await viewer.click('#modeToggleBtn');
+  await viewer.click('#algorithmEditSlideBtn');
+  const viewerEditor=await (await viewer.waitForSelector('#algorithmEditorFrame')).contentFrame();
+  await viewerEditor.waitForFunction(()=>Boolean(ASMTracePlayer.getDocument()?.frames?.length));
+  assert.ok(viewerEditor.url().includes('localOnly=1'));
+  await viewerEditor.evaluate(()=>document.getElementById('inputArea').value='11');
+  await viewer.click('#saveAlgorithmEditorBtn');
+  await viewer.waitForFunction(()=>document.getElementById('algorithmEditorModal').hidden);
+  await viewer.click('section.present > .slide-edge-add-right');
+  await viewer.click('[data-tool="text"]');
+  await viewer.click('#modeToggleBtn');
+  await viewer.waitForFunction(()=>document.body.dataset.localDeckSave==='saved');
+  await viewer.reload();
+  await viewer.waitForFunction(()=>document.body.dataset.slideCount==='2');
+  const localShared = await viewer.evaluate(async()=>ASMSlideStorage.create(indexedDB,localStorage)
+    .loadDeck('asm_reveal_fabric_deck_v5:share:view-fixture',[],{lazyTraces:true}));
+  assert.ok(localShared.groups.flatMap(g=>g.slides).some(s=>s.canvas?.objects?.some(o=>o.type==='textbox')));
+  assert.equal(original.groups[0].slides.length,1);
+  assert.equal(original.groups[0].slides[0].animation.input,'7');
+  const cleanContext=await browser.newContext();
+  await cleanContext.route('**/api/shared-slides/view-fixture?*',route=>route.fulfill({json:{access:'view',slide:{title:'唯讀分享',deck:original}}}));
+  const cleanViewer=await cleanContext.newPage();await cleanViewer.goto(base+'/slides.html?share=view-fixture');
+  await cleanViewer.waitForFunction(()=>document.body.dataset.slideCount==='1');
+  assert.equal(await cleanViewer.locator('#sharedAccessBadge').textContent(),'分享本機副本');
+  if(!await cleanViewer.evaluate(()=>document.body.classList.contains('asm-edit-mode'))) await cleanViewer.click('#modeToggleBtn');
+  await cleanViewer.click('section.present > .slide-edge-add-right');
+  await cleanViewer.waitForFunction(()=>document.body.dataset.slideCount==='2');
+  await cleanContext.close();
+  await viewer.route('**/api/shared-slides/view-fixture?*',route=>route.fulfill({status:404,json:{error:'分享已停止'}}));
+  await viewer.reload();
+  await viewer.waitForFunction(()=>document.getElementById('cloudSaveStatus').textContent.includes('分享已停止'));
+  assert.equal(await viewer.locator('section.asm-slide').count(),0,'revoked link cannot render the saved local copy through this entry');
   assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
