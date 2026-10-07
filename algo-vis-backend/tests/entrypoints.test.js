@@ -84,7 +84,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   }
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
-  assert.ok(legacy.includes('home.css?v=brand-favicon-17'));
+  assert.ok(legacy.includes('home.css?v=delete-button-18'));
   assert.ok(legacy.includes('brand.css?v=hover-pill-1'));
   assert.ok(legacy.includes('guest-gallery.js?v=5'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));

@@ -66,6 +66,15 @@ test('homepage asks for deck deletion in an in-page dialog', { timeout: 60000 },
     const deleteButton = await page.locator('#confirmDeleteDeckBtn').boundingBox();
     const cancelButton = await page.locator('#cancelDeleteDeckBtn').boundingBox();
     assert.ok(deleteButton.x + deleteButton.width <= cancelButton.x, 'delete is left of cancel');
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const left = await page.locator('#confirmDeleteDeckBtn').boundingBox();
+      const right = await page.locator('#cancelDeleteDeckBtn').boundingBox();
+      const row = await page.locator('#deleteDeckDialog .dialog-actions').boundingBox();
+      assert.ok(Math.abs(left.x - row.x) < 1, 'delete aligns with the left edge');
+      assert.ok(Math.abs(right.x + right.width - row.x - row.width) < 1, 'cancel aligns with the right edge');
+      assert.ok(Math.abs(left.y - right.y) < 1, 'both buttons stay on the same row');
+    }
     assert.equal(await page.locator('#cancelDeleteDeckBtn').evaluate(button => button === document.activeElement), true);
     assert.deepEqual(nativeDialogs, []);
 
