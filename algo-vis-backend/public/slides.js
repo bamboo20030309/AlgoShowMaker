@@ -214,7 +214,7 @@
     });
     const result = await response.json();
     if (!response.ok) throw Object.assign(new Error(result.error || '動畫載入失敗'), {
-      code: response.status === 404 ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
+      code: response.status === 404 || result.code === 'RESOURCE_INCOMPLETE' ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
     });
     return result.trace;
   }, async animation => {
@@ -984,7 +984,16 @@
       if (deckUid) headers.Authorization = `Bearer ${authToken()}`;
       await ASMSlideCloud.save(snapshot, {
         endpoint: remoteDeckEndpoint(), headers, fetch: window.fetch.bind(window),
-        storage: ASMSlideStorage, traceStore, title: cloudDeckTitle, cover_thumbnail: coverThumbnail
+        storage: ASMSlideStorage, traceStore, title: cloudDeckTitle, cover_thumbnail: coverThumbnail,
+        async onRecovered({ groupIndex, slideIndex, before, animation }) {
+          const live = deck.groups[groupIndex]?.slides[slideIndex];
+          // A slow save must not overwrite a newer RUN or edit in the live deck.
+          if (!live || live.id !== snapshot.groups[groupIndex]?.slides[slideIndex]?.id
+            || ASMSlideStorage.canonical(live.animation) !== ASMSlideStorage.canonical(before)) return;
+          live.animation = animation;
+          await saveDeck({ history: false, cloud: false });
+          refreshAlgorithmSlideInPlace(live);
+        }
       });
       if (pendingWorkspaceImport) {
         await window.ASMDeckFileDrop.remove(pendingWorkspaceImport);

@@ -52,8 +52,7 @@ function fixture() {
       const match = url.match(/resources\/([a-f0-9]+)(?:\/(\d+))?$/);
       let data;
       if (match && options.method === 'GET') {
-        const parts = rows.filter(row => row.id === 'owned' && row.key === match[1]);
-        data = { parts: parts.map(row => row.part), total: parts[0]?.total };
+        data = await store.status('owned', match[1], { deck_uid: 'owned', user_uid: 'owner' });
       } else if (match) {
         uploads++;
         if (failPart && uploads === 3) throw Object.assign(new Error('interrupted'), { status: 503 });
@@ -88,11 +87,71 @@ test('reference-only saves reuse results and lazy cloud reads omit execution pay
   f.requests.length = 0;
   compact.title = 'renamed';
   await Cloud.save(compact, { ...options(f), traceStore: traces });
-  assert.ok(f.requests.every(request => !request.url.includes(ref)), 'metadata edit never serializes or uploads unchanged Trace');
+  assert.ok(f.requests.every(request => !request.url.includes(ref) || !request.body),
+    'metadata edit checks availability without uploading unchanged Trace');
   await Cloud.save({ groups: [] }, { ...options(f), traceStore: traces });
   assert.ok(f.rows.some(row => row.key === ref), 'undo can restore a removed animation');
   await Cloud.save(compact, { ...options(f), traceStore: traces });
   assert.deepEqual((await f.store.currentSnapshot('owned')).deck, { ...deck(7), title: 'renamed' });
+});
+
+test('imported unmarked local IDs upload without RUN and partial chunks resume', async () => {
+  const f = fixture(), client = Storage.create(new IDBFactory(), null);
+  const traces = TraceStore.create(Storage, client, null, () => { throw Error('must not compile'); });
+  const source = deck('x'.repeat(350000));
+  source.groups[0].slides[0].animation.traceDocument.studio.eventSettings = { autoFixedEnabled: false };
+  const compact = await traces.detachDeck(source); // Deliberately no pending upload marker.
+  const key = compact.groups[0].slides[0].animation.traceRef;
+  const text = Storage.canonical(await client.loadTrace(key)), pieces = Cloud.chunks(text);
+  await f.store.put('owned', key, 0, pieces.length, pieces[0]);
+  const original = JSON.stringify(compact);
+  await Cloud.save(compact, { ...options(f), traceStore: traces });
+  assert.equal(JSON.stringify(compact), original);
+  assert.deepEqual((await f.store.currentSnapshot('owned')).deck, source);
+  assert.equal(f.requests.filter(r => r.url.endsWith('/'+key+'/0') && r.body).length, 0);
+  const uploadCount = f.uploads();
+  await Cloud.save(compact, { ...options(f), traceStore: TraceStore.create(Storage, Storage.create(new IDBFactory(), null)) });
+  assert.equal(f.uploads(), uploadCount, 'complete remote Trace needs no local cache or RUN');
+});
+
+test('save repairs every missing reference and updates IDs before cloud commit', async () => {
+  const f = fixture(), client = Storage.create(new IDBFactory(), null);
+  let runs = 0;
+  const traces = TraceStore.create(Storage, client, null, async animation => {
+    runs++;
+    return { ...animation, traceDocument: { sourceCode: animation.code,
+      frames: [{ state: { value: Number(animation.input) } }], ...animation.traceView } };
+  });
+  const compact = { groups: [{ slides: [1,2].map(value => ({ id: 's'+value,
+    animation: { code: 'cpp', input: String(value), traceRef: String(value).repeat(64),
+      traceView: { studio: { eventSettings: { autoFixedEnabled: false }, codePanelFontSize: 19 } } } })) }] };
+  const original = JSON.stringify(compact), updates=[];
+  await Cloud.save(compact, { ...options(f), traceStore: traces, onRecovered: update => updates.push(update) });
+  assert.equal(JSON.stringify(compact), original, 'snapshot caller is not mutated');
+  assert.equal(runs, 2); assert.equal(updates.length, 2);
+  const saved = (await f.store.currentSnapshot('owned', { lazyTraces: true })).deck;
+  for (const update of updates) {
+    assert.notEqual(update.animation.traceRef, update.before.traceRef);
+    assert.equal(saved.groups[0].slides[update.slideIndex].animation.traceRef, update.animation.traceRef);
+    compact.groups[0].slides[update.slideIndex].animation = update.animation;
+  }
+  await Cloud.save(compact, { ...options(f), traceStore: traces });
+  assert.equal(runs, 2);
+  const loaded = (await f.store.currentSnapshot('owned')).deck;
+  assert.equal(loaded.groups[0].slides[1].animation.traceDocument.studio.codePanelFontSize, 19);
+  assert.equal(loaded.groups[0].slides[1].animation.traceDocument.studio.eventSettings.autoFixedEnabled, false);
+});
+
+test('failed repair names the page and keeps the previous committed result', async () => {
+  const f = fixture(); await Cloud.save(deck(8), options(f));
+  const old = f.decks.get('owned');
+  const traces = TraceStore.create(Storage, Storage.create(new IDBFactory(), null), null, async () => { throw Error('compile failed'); });
+  const broken = { groups: [{ slides: [{}, { animation: { code: 'bad', traceRef: 'f'.repeat(64) } }] }] };
+  await assert.rejects(Cloud.save(broken, { ...options(f), traceStore: traces }), /第 2 張.*ffffffffffff.*compile failed/);
+  assert.equal(f.decks.get('owned'), old);
+  assert.equal(broken.groups[0].slides[1].animation.traceRef, 'f'.repeat(64));
+  await assert.rejects(f.store.read('owned', 'a'.repeat(64)), error => error.code === 'RESOURCE_INCOMPLETE'
+    && error.resourceKey === 'a'.repeat(64));
 });
 
 test('legacy cloud results migrate on the server without a browser Trace download', async () => {

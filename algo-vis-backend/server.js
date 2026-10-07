@@ -1225,7 +1225,7 @@ app.get('/api/slides/:deck_uid/traces/:key', authenticateToken, async (req, res)
     const slide = await SlideDeck.findOne({ deck_uid: req.params.deck_uid, user_uid: req.user.id }).lean();
     if (!slide) return res.status(404).json({ error: '找不到投影片' });
     res.json({ trace: await readSlideTrace(slide, req.params.key, true) });
-  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+  } catch (error) { res.status(error.status || 500).json({ error: error.message, ...(error.code ? { code: error.code, resourceKey: error.resourceKey } : {}) }); }
 });
 
 app.get('/api/shared-slides/:share_token/traces/:key', async (req, res) => {
@@ -1237,7 +1237,7 @@ app.get('/api/shared-slides/:share_token/traces/:key', async (req, res) => {
     const viewer = slide && slide.share_view_token === token && ['view', 'edit'].includes(slide.share_mode);
     if (!editor && !viewer) return res.status(404).json({ error: '分享連結無效或已停止分享' });
     res.json({ trace: await readSlideTrace(slide, req.params.key, editor) });
-  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
+  } catch (error) { res.status(error.status || 500).json({ error: error.message, ...(error.code ? { code: error.code, resourceKey: error.resourceKey } : {}) }); }
 });
 
 app.get('/api/slides/:deck_uid/thumbnail', authenticateToken, async (req, res) => {

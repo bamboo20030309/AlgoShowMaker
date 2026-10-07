@@ -32,11 +32,29 @@ function createStore(repo) {
     const parts = await repo.parts(id, key);
     if (!parts.length || parts.length !== parts[0].total
       || parts.some((part, index) => part.part !== index || part.total !== parts[0].total)) {
-      throw fault('動畫或素材尚未完整上傳，請重試');
+      throw Object.assign(fault('動畫或素材尚未完整上傳，請重試'), {
+        code: 'RESOURCE_INCOMPLETE', resourceKey: key
+      });
     }
     const text = parts.map(part => part.data).join('');
     if (Buffer.byteLength(text) > MAX_BYTES || hash(text) !== key) throw fault('資源雜湊或容量驗證失敗');
     return text;
+  }
+  async function status(id, key, query) {
+    if (!validKey(key)) throw fault('資源 ID 無效');
+    const parts = await (repo.partStatus || repo.parts)(id, key);
+    const result = { parts: parts.map(part => part.part), total: parts[0]?.total };
+    if (!parts.length) {
+      const previous = await repo.deck(query);
+      // Legacy results are already durable, but not chunked yet. The normal
+      // commit migrates them; clients need not download and reupload them.
+      if (previous && !previous.cloud_snapshot) {
+        const legacy = previous.trace_references?.length
+          ? previous.trace_results || {} : (await SlideStorage.project(previous.deck || { groups: [] })).traces;
+        if (Object.hasOwn(legacy, key)) result.legacyAvailable = hash(SlideStorage.canonical(legacy[key])) === key;
+      }
+    }
+    return result;
   }
   async function put(id, key, part, total, data) {
     if (!validKey(key) || !Number.isInteger(part) || !Number.isInteger(total)
@@ -150,7 +168,7 @@ function createStore(repo) {
       return snapshot(id, current.cloud_snapshot, options);
     });
   }
-  return { read, put, snapshot, currentSnapshot, commit, sweep };
+  return { read, status, put, snapshot, currentSnapshot, commit, sweep };
 }
 
 // -----------------------------------------------------------------------------
@@ -165,6 +183,7 @@ function register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, c
   const Chunk = mongoose.model('SlideResourceChunk', schema);
   const store = createStore({
     parts: (id, key) => Chunk.find({ deck_uid: id, key }).sort({ part: 1 }).lean(),
+    partStatus: (id, key) => Chunk.find({ deck_uid: id, key }).select('part total').sort({ part: 1 }).lean(),
     usage: async id => (await Chunk.aggregate([{ $match: { deck_uid: id } },
       { $group: { _id: null, size: { $sum: { $strLenBytes: '$data' } } } }]))[0]?.size || 0,
     put: (id, key, part, total, data) => Chunk.updateOne({ deck_uid: id, key, part },
@@ -186,14 +205,13 @@ function register(app, mongoose, SlideDeck, authenticateToken, cleanDeckTitle, c
       if (!deck) throw fault('找不到投影片或已無編輯權限', 403);
       await handler(req, res, deck.deck_uid, query);
     } catch (error) {
-      res.status(error.status || 500).json({ error: error.status ? error.message : '雲端資源儲存失敗，請重試' });
+      res.status(error.status || 500).json({ error: error.status ? error.message : '雲端資源儲存失敗，請重試',
+        ...(error.status && error.code ? { code: error.code, resourceKey: error.resourceKey } : {}) });
     }
   };
   for (const [base, middleware] of [['/api/slides/:deck_uid', [authenticateToken]], ['/api/shared-slides/:share_token', []]]) {
-    app.get(base + '/resources/:key', ...middleware, protect(async (req, res, id) => {
-      if (!validKey(req.params.key)) throw fault('資源 ID 無效');
-      const parts = await Chunk.find({ deck_uid: id, key: req.params.key }).select('part total').lean();
-      res.json({ parts: parts.map(part => part.part), total: parts[0]?.total });
+    app.get(base + '/resources/:key', ...middleware, protect(async (req, res, id, query) => {
+      res.json(await store.status(id, req.params.key, query));
     }));
     app.put(base + '/resources/:key/:part', ...middleware, protect(async (req, res, id) => {
       await store.put(id, req.params.key, Number(req.params.part), req.body.total, req.body.data);
