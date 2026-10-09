@@ -37,7 +37,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(controlsStart >= 0 && freshnessDot > controlsStart && timeline > freshnessDot,
     'the shared freshness dot stays in the playback controls before the frame timeline');
   assert.ok(html.includes('trace-freshness.js?v=trace-3'));
-  assert.ok(html.includes('canva.js?v=trace-16'));
+  assert.ok(html.includes('canva.js?v=trace-17'));
+  assert.ok(sources.indexOf('local-camera.js') < sources.indexOf('canva.js'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
   assert.ok(html.includes('trace-model.js?v=trace-42'));
@@ -63,9 +64,9 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
-  assert.ok(slides.includes('slides-storage.js?v=6'));
+  assert.ok(slides.includes('slides-storage.js?v=7'));
   assert.ok(slides.includes('slides-cloud.js?v=3'));
-  assert.ok(slides.includes('slides.js?v=slides-281'));
+  assert.ok(slides.includes('slides.js?v=slides-282'));
   assert.ok(slides.includes('trace-model.js?v=trace-42'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
@@ -124,10 +125,10 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('trace-player.js?v=trace-29'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-9'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
-  assert.ok(html.includes('trace-studio.js?v=trace-138'));
+  assert.ok(html.includes('trace-studio.js?v=trace-139'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-4'));
-  assert.ok(html.includes('front.js?v=frame-endpoints-53'));
-  assert.ok(html.includes('slides-embed.js?v=trace-14'));
+  assert.ok(html.includes('front.js?v=frame-endpoints-54'));
+  assert.ok(html.includes('slides-embed.js?v=trace-15'));
   assert.ok(html.includes('trace-provenance.js?v=trace-14'));
   assert.ok(html.includes('trace.css?v=trace-37'));
   const codeHighlight = read('trace.css').match(/\.ace-tm \.asm-trace-code-event-span\.is-active,[^{]*\{([^}]*)\}/)?.[1] || '';

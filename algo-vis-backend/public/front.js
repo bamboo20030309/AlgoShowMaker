@@ -2244,10 +2244,10 @@ function initTopMenuBar() {
   const resetViewBtn = document.getElementById('menuResetView');
   if (resetViewBtn) {
     resetViewBtn.onclick = () => {
-      // 假設 canva.js 暴露了 resetTransform 變數，如果沒有，我們手動重置
-      // 這裡直接修改 canva.js 內部變數的 workaround 需要 canva.js 支援
-      // 建議在 canva.js 暴露 window.resetCanvasView()
-      if (window.resetCanvasView) {
+      // 只清除目前介面的本機後偏移，回到程式碼／Trace 指定的正式鏡頭。
+      if (window.resetTemporaryCamera) {
+        window.resetTemporaryCamera();
+      } else if (window.resetCanvasView) {
         window.resetCanvasView();
       } else {
         console.warn("需在 canva.js 實作 window.resetCanvasView");

@@ -14,7 +14,10 @@
   let animationId = null;        // 用於追蹤正在進行的鏡頭動畫
   let isFirstCamera = true;      // 用於判斷是否為首次設定鏡頭
   let presentationCamera = { panXRatio: 0, panYRatio: 0, zoomFactor: 1 };
-  let presentationCameraEnabled = false;
+  let presentationCameraEnabled = true;
+  let cameraSurface = 'algorithm';
+  let cameraStudio = false;
+  const cameraScope = () => cameraSurface + (cameraStudio ? ':studio' : ':playback');
   let manualCameraSaveTimer = null;
   const GRID_SPACING  = 50;      // 格線間距
   const GRID_EXTENT   = 10000;   // 世界座標覆蓋範圍半徑
@@ -634,7 +637,7 @@
     clearTimeout(manualCameraSaveTimer);
     manualCameraSaveTimer = null;
     window.dispatchEvent(new CustomEvent('asm:camera-user-change', {
-      detail: { camera: capturePresentationCamera() }
+      detail: { camera: window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera()) || capturePresentationCamera() }
     }));
   }
 
@@ -651,6 +654,31 @@
     presentationCameraEnabled = enabled === true;
     presentationCamera = normalizedPresentationCamera(value);
     if (apply) applyStoredBaseCamera(false);
+  };
+  // Interface and animation identity are separate from the authored camera target.
+  // Switching surfaces cancels a pending gesture save so it cannot leak into the next scope.
+  function restoreLocalCamera() {
+    clearTimeout(manualCameraSaveTimer);
+    manualCameraSaveTimer = null;
+    window.setPresentationCameraTransform(window.ASMLocalCamera?.read(cameraScope()), true, true);
+  }
+  window.setLocalCameraSurface = function (surface) {
+    if (cameraSurface === surface) return;
+    if (manualCameraSaveTimer) window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera());
+    cameraSurface = String(surface);
+    restoreLocalCamera();
+  };
+  window.setLocalCameraStudio = function (enabled) {
+    if (cameraStudio === (enabled === true)) return;
+    if (manualCameraSaveTimer) window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera());
+    cameraStudio = enabled === true;
+    restoreLocalCamera();
+  };
+  presentationCamera = normalizedPresentationCamera(window.ASMLocalCamera?.read(cameraScope()));
+  window.resetTemporaryCamera = function () {
+    window.ASMLocalCamera?.write(cameraScope(), null);
+    restoreLocalCamera();
+    if (!hasBaseCamera) window.resetCanvasView();
   };
   window.getPresentationCameraTransform = () => ({ ...presentationCamera });
   window.capturePresentationCameraTransform = capturePresentationCamera;

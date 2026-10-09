@@ -203,6 +203,7 @@
       const live = liveSlides.get(slide.id);
       if (editorDraft?.slideId === slide.id) slide.animation = clone(editorDraft.animation);
       const animation = slide.animation;
+      if (animation) delete animation.presentationCamera;
       if (animation?.traceRef && !animation.traceDocument) {
         if (!/^[a-f0-9]{64}$/.test(animation.traceRef) || !animation.code?.trim()) throw new Error('動畫 Trace ID 或原始碼無效。');
         delete animation.prebuilt;
@@ -239,10 +240,7 @@
         sliceMode: animation.sliceMode || trace.sliceMode || 'auto',
         watches: clone(animation.watches || []), rebuild,
         traceRef, traceView,
-        ...(prebuilt ? { prebuilt } : {}),
-        ...(animation.presentationCamera
-          ? { presentationCamera: clone(animation.presentationCamera) }
-          : {})
+        ...(prebuilt ? { prebuilt } : {})
       };
     }
     await extractAssets(deck, assets);

@@ -10,8 +10,6 @@
   const normalize = window.ASMAlgorithmAnimation.normalize;
   let currentAnimation = normalize();
   let runtimeVisible = mode !== 'runtime';
-  let runtimePresentationMode = false;
-  let runtimeCameraEditable = false;
   let runtimeGeometryRequest = 0;
 
   // -----------------------------------------------------------------------------
@@ -120,14 +118,10 @@
   // 父子頁資料套用
   // 先更新來源與輸入，再選擇 trace 或傳統腳本播放，最後重設畫布及導覽狀態。
   // -----------------------------------------------------------------------------
-  function applyAnimation(animation = {}, editorSessionKey = null) {
+  function applyAnimation(animation = {}, editorSessionKey = null, cameraSurface = editorSessionKey) {
     settleAnimationVisuals();
     currentAnimation = normalize(animation);
-    window.setPresentationCameraTransform?.(
-      runtimePresentationMode ? currentAnimation.presentationCamera : null,
-      true,
-      runtimePresentationMode
-    );
+    window.setLocalCameraSurface?.(`slides:${mode}:${cameraSurface || 'default'}`);
     if (typeof aceEditor !== 'undefined') {
       window.__asmEmbeddedAnimationPayload = currentAnimation;
       if (mode === 'editor' && editorSessionKey != null) {
@@ -155,7 +149,7 @@
   window.addEventListener('message', event => {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-load-animation') {
-      const refresh = applyAnimation(event.data.animation, event.data.editorSessionKey);
+      const refresh = applyAnimation(event.data.animation, event.data.editorSessionKey, event.data.cameraSurface);
       const applied = refresh && typeof refresh.finally === 'function'
         ? refresh.finally(notifyAnimationApplied)
         : (notifyAnimationApplied(), Promise.resolve());
@@ -169,13 +163,8 @@
     }
     if (event.data.type === 'asm-runtime-visibility' && mode === 'runtime') {
       runtimeVisible = event.data.visible === true;
-      runtimePresentationMode = event.data.presentationMode === true;
-      runtimeCameraEditable = runtimePresentationMode && event.data.cameraEditable === true;
-      window.setPresentationCameraTransform?.(
-        runtimePresentationMode ? currentAnimation.presentationCamera : null,
-        true,
-        runtimePresentationMode
-      );
+      if (event.data.cameraSurface) window.setLocalCameraSurface?.(`slides:${mode}:${event.data.cameraSurface}`);
+
       if (!runtimeVisible) {
         runtimeGeometryRequest += 1;
         return;
@@ -197,18 +186,6 @@
         animation: snapshotAnimation()
       }, window.location.origin);
     }
-  });
-
-  window.addEventListener('asm:camera-user-change', event => {
-    if (mode !== 'runtime' || window.parent === window
-      || !runtimePresentationMode || !runtimeCameraEditable) return;
-    const presentationCamera = window.ASMAlgorithmAnimation
-      ?.normalizePresentationCamera?.(event.detail?.camera);
-    currentAnimation = normalize({ ...currentAnimation, presentationCamera });
-    window.parent.postMessage({
-      type: 'asm-presentation-camera-change',
-      presentationCamera
-    }, window.location.origin);
   });
 
   window.addEventListener('asm:compiled-animation', event => {

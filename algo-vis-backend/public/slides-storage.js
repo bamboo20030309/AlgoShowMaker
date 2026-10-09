@@ -3,10 +3,10 @@
 // 以 IndexedDB 為主、localStorage 為退路保存大型 deck；公開 API 隱藏版本遷移與儲存後端差異。
 // -----------------------------------------------------------------------------
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.ASMSlideStorage = api;
-})(typeof window !== 'undefined' ? window : globalThis, function () {
+})(typeof window !== 'undefined' ? window : globalThis, function (root) {
   // -----------------------------------------------------------------------------
   // localStorage 相容層
   // 同步儲存只作退路；寫入失敗時保留舊值並回報 quota 狀態，不讓清理流程誤刪草稿。
@@ -97,6 +97,14 @@
     return JSON.stringify(value);
   }
 
+  // Migrate before lightweight projection removes the obsolete persisted field.
+  function migrateTemporaryCameras(deck, storageKey) {
+    for (const group of deck?.groups || []) for (const slide of group.slides || []) {
+      if (slide.id && slide.animation?.presentationCamera) root.ASMLocalCamera?.migrate(
+        `slides:runtime:${storageKey}:${slide.id}:presentation:playback`, slide.animation.presentationCamera);
+    }
+  }
+
   async function project(source) {
     // Clone only the lightweight slide metadata. Large traces are handled once,
     // separately, rather than serialized as part of every text/position edit.
@@ -104,6 +112,7 @@
     const references = [], traces = {};
     for (const [groupIndex, group] of (deck.groups || []).entries()) {
       for (const [slideIndex, slide] of (group.slides || []).entries()) {
+        if (slide.animation) delete slide.animation.presentationCamera;
         const original = source.groups[groupIndex].slides[slideIndex].animation;
         const trace = original?.traceDocument;
         if (!trace) {
@@ -262,11 +271,15 @@
           }
         };
       });
-      if (record) return record.deck;
+      if (record) {
+        migrateTemporaryCameras(record.deck, storageKey);
+        return record.deck;
+      }
       for (const key of legacyKeys) {
         const saved = storage?.getItem(key);
         if (!saved) continue;
         const legacyDeck = JSON.parse(saved);
+        migrateTemporaryCameras(legacyDeck, storageKey);
         await saveDeck(storageKey, saved);
         // Only remove old drafts after the IndexedDB transaction commits.
         for (const oldKey of legacyKeys) {

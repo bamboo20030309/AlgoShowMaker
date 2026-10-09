@@ -46,7 +46,6 @@
     const sliceMode = traceDocument?.sliceMode || animation.sliceMode;
     const skins = traceDocument?.skins ?? animation.skins ?? animation.rebuild?.view?.skins;
     const rules = traceDocument?.rules ?? animation.rules ?? animation.rebuild?.view?.rules;
-    const presentationCamera = normalizePresentationCamera(animation.presentationCamera);
     return {
       mode: hasTrace || animation.mode === 'trace' ? 'trace' : 'legacy',
       code: typeof animation.code === 'string' ? animation.code : '',
@@ -60,7 +59,6 @@
       ...(typeof animation.traceRef === 'string' ? {
         traceRef: animation.traceRef, traceView: clone(animation.traceView || {})
       } : {}),
-      ...(presentationCamera ? { presentationCamera } : {}),
       ...(animation.rebuild ? { rebuild: clone(animation.rebuild) } : {}),
       ...(typeof animation.rebuildError === 'string' ? { rebuildError: animation.rebuildError } : {})
     };

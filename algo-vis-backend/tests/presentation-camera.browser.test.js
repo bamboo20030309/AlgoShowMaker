@@ -6,8 +6,10 @@ const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 const { chromium } = require('playwright');
+global.ASMTraceProvenance = require('../public/trace-provenance');
+const archive = require('../public/asmdeck');
 
-test('presentation canvas gestures save one slide-wide camera without changing edit mode', { timeout: 90000 }, async () => {
+test('temporary camera gestures stay local, survive reload, and isolate each interface', { timeout: 90000 }, async () => {
   const root = path.resolve(__dirname, '..');
   const port = await new Promise(resolve => {
     const probe = net.createServer();
@@ -36,13 +38,13 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     const compilePage = await browser.newPage();
     await compilePage.goto(`${base}/algorithm.html`);
     await compilePage.waitForFunction(() => window.ace && window.ASMTracePlayer);
-    const code = fs.readFileSync(path.join(__dirname, 'fixtures/bubble.cpp'), 'utf8');
+    const code = '#include <vector>\nusing namespace std;\nint main() {\nvector<int> arr(4, 0);\n// @frame arr\narr[0] = 1;\n// @frame arr\n}';
     await compilePage.evaluate(source => ace.edit('editor').setValue(source, -1), code);
     await compilePage.evaluate(() => { document.getElementById('inputArea').value = '4\n4 3 2 1\n'; });
     await compilePage.click('#runBtn');
     await compilePage.waitForFunction(source => window.ASMTracePlayer.getDocument()?.sourceCode === source
       && window.ASMTracePlayer.getDocument()?.frames?.length > 1,
-      code, { timeout: 30000 });
+      code, { timeout: 30000 }).catch(async error => { console.error(await compilePage.locator('body').innerText()); throw error; });
     await compilePage.evaluate(() => window.ASMTraceStudio?.close?.());
     await compilePage.waitForFunction(() => !document.body.classList.contains('asm-trace-studio-open'));
 
@@ -66,6 +68,22 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     const traceDocument = await compilePage.evaluate(() => JSON.parse(JSON.stringify(
       window.ASMTracePlayer.getDocument()
     )));
+    const standaloneCamera = await compilePage.evaluate(() => getPresentationCameraTransform());
+    assert.ok(Math.abs(standaloneCamera.panXRatio) > .01);
+    await compilePage.evaluate(() => ASMTraceStudio.open());
+    assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()),
+      { panXRatio: 0, panYRatio: 0, zoomFactor: 1 }, 'studio has its own temporary camera');
+    const studioBox = await compilePage.locator('#arraySvg').boundingBox();
+    await compilePage.mouse.move(studioBox.x + studioBox.width / 2, studioBox.y + studioBox.height / 2);
+    await compilePage.mouse.wheel(0, -120);
+    await compilePage.waitForFunction(() => getPresentationCameraTransform().zoomFactor > 1);
+    await compilePage.waitForTimeout(220);
+    const studioCamera = await compilePage.evaluate(() => getPresentationCameraTransform());
+    await compilePage.evaluate(() => ASMTraceStudio.close());
+    assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), standaloneCamera);
+    await compilePage.evaluate(() => ASMTraceStudio.open());
+    assert.deepEqual(await compilePage.evaluate(() => getPresentationCameraTransform()), studioCamera);
+    await compilePage.evaluate(() => ASMTraceStudio.close());
     await compilePage.close();
 
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -107,15 +125,15 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     await page.mouse.move(drawnObjectBox.x + drawnObjectBox.width / 2 + 72,
       drawnObjectBox.y + drawnObjectBox.height / 2 + 36);
     await page.mouse.up();
-    await page.waitForFunction(revision => Number(document.body.dataset.localDeckRevision || 0) > revision,
-      beforeRevision);
+    await runtime.waitForFunction(() => Math.abs(window.getPresentationCameraTransform().panXRatio) > .01);
     await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
 
     const dragRevision = Number(await page.locator('body').getAttribute('data-local-deck-revision'));
     await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
     await page.mouse.wheel(0, -120);
-    await page.waitForFunction(revision => Number(document.body.dataset.localDeckRevision || 0) > revision,
-      dragRevision);
+    await runtime.waitForFunction(() => window.getPresentationCameraTransform().zoomFactor > 1);
+    await page.waitForTimeout(240);
+    assert.equal(Number(await page.locator('body').getAttribute('data-local-deck-revision')), beforeRevision, 'camera gestures must not dirty or save the deck');
     await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
 
     const saved = await runtime.evaluate(() => window.getPresentationCameraTransform());
@@ -143,11 +161,9 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     assert.notEqual(acrossFrames.editBase, acrossFrames.withPresentation);
 
     await page.click('#modeToggleBtn');
-    await runtime.waitForFunction(expected => {
-      const camera = window.getPresentationCameraTransform?.();
-      return camera && Math.abs(camera.panXRatio - expected.panXRatio) < 1e-6
-        && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6;
-    }, saved);
+    await runtime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1);
+    assert.deepEqual(await runtime.evaluate(() => getPresentationCameraTransform()),
+      { panXRatio: 0, panYRatio: 0, zoomFactor: 1 }, 'presentation and slide-edit canvases are independent');
 
     await page.click('#modeToggleBtn');
     await runtime.waitForFunction(expected => {
@@ -164,6 +180,17 @@ test('presentation canvas gestures save one slide-wide camera without changing e
     const editorCamera = await editor.evaluate(() => window.getPresentationCameraTransform?.());
     assert.deepEqual(editorCamera, { panXRatio: 0, panYRatio: 0, zoomFactor: 1 },
       'the algorithm-animation editor must not inherit the slide presentation camera');
+    const editorBox = await editor.locator('#arraySvg').boundingBox();
+    await page.mouse.move(editorBox.x + editorBox.width / 2, editorBox.y + editorBox.height / 2);
+    await page.mouse.wheel(0, -120);
+    await editor.waitForFunction(() => getPresentationCameraTransform().zoomFactor > 1);
+    await page.waitForTimeout(220);
+    const changedEditorCamera = await editor.evaluate(() => getPresentationCameraTransform());
+    assert.deepEqual(await runtime.evaluate(() => getPresentationCameraTransform()), saved);
+    await page.keyboard.press('Escape');
+    await page.click('#algorithmEditSlideBtn');
+    await page.waitForFunction(() => !document.getElementById('algorithmEditorModal').classList.contains('is-loading'));
+    assert.deepEqual(await editor.evaluate(() => getPresentationCameraTransform()), changedEditorCamera);
     await page.keyboard.press('Escape');
 
     await page.reload();
@@ -176,6 +203,44 @@ test('presentation canvas gestures save one slide-wide camera without changing e
         && Math.abs(camera.panYRatio - expected.panYRatio) < 1e-6
         && Math.abs(camera.zoomFactor - expected.zoomFactor) < 1e-6;
     }, saved);
+    const downloadEvent = page.waitForEvent('download');
+    await page.click('#exportDeckBtn');
+    const exported = await archive.decode(new Blob([fs.readFileSync(await (await downloadEvent).path())]));
+    assert.equal(exported.deck.groups[0].slides[0].animation.presentationCamera, undefined);
+
+    // Old decks with an explicit modifier migrate once, then save/reopen without it.
+    const legacyContext = await browser.newContext();
+    const legacyPage = await legacyContext.newPage();
+    const legacyCamera = { panXRatio: .12, panYRatio: -.08, zoomFactor: 1.2 };
+    await legacyPage.addInitScript(({ code, traceDocument, legacyCamera }) => {
+      traceDocument.studio ||= {};
+      traceDocument.studio.eventSettings = { autoFixedEnabled: false, autoLoopBoundaryEnabled: false };
+      traceDocument.studio.codePanelFontSize = 19;
+      localStorage.setItem('asm_reveal_fabric_deck_v5', JSON.stringify({ groups: [{ id: 'legacy', slides: [{
+        id: 'old', kind: 'algorithm-animation', canvas: { objects: [] }, widgets: [],
+        animation: { code, mode: 'trace', traceDocument, presentationCamera: legacyCamera }
+      }] }] }));
+    }, { code, traceDocument, legacyCamera });
+    await legacyPage.goto(base + '/slides.html');
+    await legacyPage.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
+    await legacyPage.click('#modeToggleBtn');
+    let legacyRuntime = legacyPage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
+    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1.2);
+    const legacyTrace = await legacyRuntime.evaluate(() => ASMTracePlayer.getDocument());
+    assert.equal(legacyTrace.studio.eventSettings.autoFixedEnabled, false);
+    assert.equal(legacyTrace.studio.codePanelFontSize, 19);
+    const legacyDownload = legacyPage.waitForEvent('download');
+    await legacyPage.evaluate(() => document.getElementById('exportDeckBtn').click());
+    const migrated = await archive.decode(new Blob([fs.readFileSync(await (await legacyDownload).path())]));
+    assert.equal(migrated.deck.groups[0].slides[0].animation.presentationCamera, undefined);
+    await legacyPage.reload();
+    await legacyPage.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.ASMTracePlayer?.getDocument()?.frames?.length > 1);
+    if (await legacyPage.locator('body').evaluate(body => body.classList.contains('asm-edit-mode'))) await legacyPage.click('#modeToggleBtn');
+    legacyRuntime = legacyPage.frames().find(frame => frame.url().includes('asmEmbed=runtime'));
+    await legacyRuntime.waitForFunction(() => getPresentationCameraTransform().zoomFactor === 1.2);
+    await legacyRuntime.evaluate(() => resetTemporaryCamera());
+    assert.equal(await legacyRuntime.evaluate(() => getPresentationCameraTransform().zoomFactor), 1);
+    await legacyContext.close();
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

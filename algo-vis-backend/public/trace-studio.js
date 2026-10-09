@@ -3813,6 +3813,7 @@
     window.ASMTraceCodePresenter?.clearSelection?.();
     setSnippetFocus(false);
     document.body.classList.remove('asm-trace-studio-open');
+    window.setLocalCameraStudio?.(false);
     activeObjectKey = '';
     codePanelSelectionActive = false;
     // Leaving the editor restores a stable scene, without replaying events.
@@ -3939,6 +3940,7 @@
     ensureStudioData();
     buildUi();
     document.body.classList.add('asm-trace-studio-open');
+    window.setLocalCameraStudio?.(true);
     if (historyTrace !== trace) resetHistory();
     activeBinding = null;
     activeObjectKey = '';

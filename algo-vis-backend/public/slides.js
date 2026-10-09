@@ -2691,6 +2691,7 @@
     };
     if (slide.kind === 'algorithm-animation') {
       normalized.kind = 'algorithm-animation';
+      window.ASMLocalCamera?.migrate(`slides:runtime:${DRAFT_KEY}:${id}:presentation:playback`, slide.animation?.presentationCamera);
       normalized.animation = normalizeAlgorithmAnimation(slide.animation);
     }
     return normalized;
@@ -9891,6 +9892,12 @@
     return pos && deck.groups[pos.h]?.slides[pos.v];
   }
 
+  function algorithmCameraSurface(frame, slideId) {
+    const view = frame === algorithmEditorFrame ? 'animation-editor'
+      : document.body.classList.contains('asm-edit-mode') ? 'slide-editor' : 'presentation';
+    return `${DRAFT_KEY}:${slideId}:${view}`;
+  }
+
   async function sendAlgorithmAnimationToFrame(frame, slide, preparedAnimation = null) {
     if (!frame?.contentWindow || !slide || slide.kind !== 'algorithm-animation') return;
     const animation = preparedAnimation || slide.animation;
@@ -9903,7 +9910,7 @@
         if (algorithmEditorStatus) algorithmEditorStatus.textContent = `動畫載入失敗：${error.message}`;
         // Missing immutable results must still allow editing the saved source and RUN.
         const { traceRef, traceView, traceDocument, ...source } = animation;
-        frame.contentWindow.postMessage({ type: 'asm-load-animation', editorSessionKey: slide.id,
+        frame.contentWindow.postMessage({ type: 'asm-load-animation', editorSessionKey: slide.id, cameraSurface: algorithmCameraSurface(frame, slide.id),
           animation: normalizeAlgorithmAnimation(source) }, window.location.origin);
       }
       const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
@@ -9918,7 +9925,7 @@
       || (slide.animation !== animation && !preparedAnimation)) return;
     frame.contentWindow.postMessage({
       type: 'asm-load-animation',
-      editorSessionKey: slide.id,
+      editorSessionKey: slide.id, cameraSurface: algorithmCameraSurface(frame, slide.id),
       animation: normalizeAlgorithmAnimation(materialized)
     }, window.location.origin);
   }
@@ -9936,6 +9943,7 @@
     frame.contentWindow.postMessage({
       type: 'asm-runtime-visibility',
       visible: visible === true,
+      cameraSurface: algorithmCameraSurface(frame, frame.dataset.slideId),
       // The embedded runtime is the slide's presentation surface even while
       // the outer slide editor sidebar is visible. Only asmEmbed=editor is the
       // algorithm-animation editor and must stay independent of this camera.
@@ -10045,17 +10053,6 @@
       if (runtimeFrame && algorithmFrameIsCurrent(runtimeFrame)) {
         runtimeFrame.classList.remove('is-loading');
       }
-      return;
-    }
-    if (event.data.type === 'asm-presentation-camera-change') {
-      const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
-        .find(frame => frame.contentWindow === event.source);
-      const slide = runtimeFrame ? getSlideById(runtimeFrame.dataset.slideId) : null;
-      if (!slide || slide.kind !== 'algorithm-animation' || sharedAccess === 'view') return;
-      const presentationCamera = window.ASMAlgorithmAnimation
-        ?.normalizePresentationCamera?.(event.data.presentationCamera);
-      slide.animation = normalizeAlgorithmAnimation({ ...slide.animation, presentationCamera });
-      saveDeck();
       return;
     }
     if (event.data.type === 'asm-embed-ready') {
