@@ -11,7 +11,7 @@
 - 起始指令與後綴分開；with、render 繼續提示下一層選項。
 - Tab、Enter、上下選取、原生捲動及 Esc；文字引號內不跳出繪圖補全。
 - 一般 C++ 保留關鍵字與文字基本補全來源，不提供完整 C++ 語意 IntelliSense。
-- docs/繪圖指令清單.md 列出 26 個起始指令、別名、畫法、with 選項、位置與運算，附兩張隔離瀏覽器截圖。
+- docs/drawing-directives-guide.md 列出 26 個起始指令、別名、畫法、with 選項、位置與運算，附兩張隔離瀏覽器截圖。
 - ext-language_tools.js 取自已安裝 ace-builds 1.44.0，隨附 BSD 3-Clause LICENSE，不依賴 CDN。
 
 ## 核實
