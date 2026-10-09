@@ -37,10 +37,9 @@ test('directive assistant supplies keyboard navigation, examples, and native con
   }
   assert.match(source, /event\.code === 'Space'/);
   assert.match(source, /event\.key === 'Tab'/);
-  assert.match(source, /event\.key === 'ArrowDown' \|\| event\.key === 'ArrowUp'/);
-  assert.match(source, /event\.key === 'Escape'/);
-  assert.match(source, /scrollIntoView\(\{ block: 'nearest' \}\)/);
-  assert.match(source, /id === 'frame' && rule\[3\]\?\.startsWith\('\\n'\)/);
+  assert.match(source, /ace\/ext\/language_tools/);
+  assert.match(source, /completion\.showPopup\(editor\)/);
+  assert.match(source, /if \(rule\[3\]\?\.startsWith\('\\n'\)\) return false/);
   assert.match(source, /\['最小', '常用', '完整'\]/);
   assert.match(source, /event\.button !== 2 \|\| window\.matchMedia/);
   assert.match(source, /if \(!byId\[id\]\) return;/);

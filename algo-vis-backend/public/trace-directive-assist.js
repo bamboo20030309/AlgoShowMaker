@@ -141,6 +141,9 @@
     { id: 'code', label: '@code', effect: '控制程式碼片段呈現；hide 仍會執行程式但不顯示在動畫程式碼中', code: '// @code hide', examples: ['// @code hide\ninternal_state++;\n// @endcode'] },
     { id: 'endcode', label: '@endcode', effect: '結束目前的程式碼呈現控制區塊', code: '// @endcode', examples: ['// @code hide\ninternal_state++;\n// @endcode'] }
   ];
+  const priority = ['frame', 'object', 'pointer', 'style', 'text', 'camera', 'place', 'arrow', 'keep', 'layout'];
+  commands.sort((a, b) => (priority.includes(a.id) ? priority.indexOf(a.id) : 100)
+    - (priority.includes(b.id) ? priority.indexOf(b.id) : 100));
   const byId = Object.fromEntries(commands.map(command => [command.id, command]));
   const childRules = {
     frame: [
@@ -207,6 +210,19 @@
       ['layout-reserve', 'reserve', '預留完整樹的位置但不新增預覽節點，預設 off', '\n// @layout quick_tree reserve on']
     ]
   };
+  Object.assign(childRules, {
+    pointer: [['at', 'at', '指定陣列、矩陣列／欄或排版端點', ' at arr'], ['color', 'color', '指標顏色', ' color AV_blue']],
+    camera: [['auto', 'auto', '自動取景', ' auto'], ['focus', 'focus', '聚焦物件', ' focus arr'], ['zoom', 'zoom', '倍率', ' zoom(1.6)'], ['offset', 'offset', '正式鏡頭位移', ' offset(0,20)']],
+    code: [['hide', 'hide', '隱藏輔助程式片段', ' hide']],
+    events: [['animate', 'animate', '本幀事件動畫開關', ' animate off']],
+    for: [['in', 'in', '繪圖範圍或具名迴圈', ' in [0:n-1]'], ['step', 'step', '繪圖步長', ' step 2']],
+    loop: [['as', 'as', '替下一個 C++ 迴圈命名', ' as "scan"']]
+  });
+  childRules.layout = childRules.layout.map(rule => [rule[0], rule[1], rule[2],
+    rule[3].replace(/^\n\/\/ @layout (?:quick_tree|scene)/, '')]);
+  childRules.arrow.push(['color', 'color', '箭頭顏色', ' color AV_red'], ['width', 'width', '線寬', ' width 2'],
+    ['head', 'head', '箭頭端', ' head end'], ['line', 'line', '直線或曲線', ' line curve'],
+    ['dash', 'dash', '虛線節奏', ' dash 6,4'], ['until', 'until', '保留至遞迴返回', ' until return']);
   const renderTypes = [
     ['normal', '一般陣列', ' render normal'], ['heap', 'Heap 樹形', ' render heap'],
     ['stack', 'Stack 堆疊', ' render stack'], ['queue', 'Queue 佇列', ' render queue'],
@@ -220,6 +236,17 @@
     ['gap', '設定水平與垂直間距', 'gap(10,24)'],
     ['labels-index', '只顯示索引標籤', 'labels(index)'],
     ['labels-value', '顯示資料值標籤', 'labels(value)'],
+    ['labels-both', '顯示值與索引', 'labels(value,index)'],
+    ['display', '自訂格子文字', 'display("${value}")'],
+    ['row-labels', '矩陣列標籤', 'row-labels("",S)'],
+    ['column-labels', '矩陣欄標籤', 'column-labels("",T)'],
+    ['fields', '同一節點合併多個陣列', 'fields(tree,lazy)'],
+    ['hide', '隱藏指定欄位值', 'hide(lazy=0)'],
+    ['format', '欄位格式', 'format(lazy=signed)'],
+    ['separator', '欄位分隔文字', 'separator(" | ")'],
+    ['gridlines', '格線寬度', 'gridlines(1)'],
+    ['outerframe', '物件外框開關', 'outerframe(false)'],
+    ['marker-layout', '矩陣指標位置', 'marker-layout(axis)'],
     ['labels-none', '隱藏資料值與索引標籤', 'labels(none)'],
     ['symbols', '指定 bits 的 0／1 顯示字串', 'symbols("", "♕")']
   ];
@@ -232,8 +259,6 @@
   popup.hidden = true;
   document.body.appendChild(popup);
   let mode = null;
-  let options = [];
-  let selected = 0;
   let exampleCommand = null;
   let exampleTier = 0;
   let exampleRow = 0;
@@ -268,7 +293,7 @@
   function currentDirective() {
     const pos = editor.getCursorPosition();
     const line = editor.session.getLine(pos.row);
-    const match = line.match(/^\s*\/\/\s*@([\w-]*)/);
+    const match = line.slice(0, pos.column).match(/^\s*(?:\/\/\s*)?@([\w-]*)/);
     return { pos, line, id: match?.[1] || null, prefix: match ? line.slice(0, pos.column) : '' };
   }
 
@@ -285,7 +310,7 @@
   function childOptions(id, line) {
     if (!childRules[id]) return [];
     const rules = childRules[id].filter(rule => {
-      if (id === 'frame' && rule[3]?.startsWith('\n')) return false;
+      if (rule[3]?.startsWith('\n')) return false;
       if (rule[0] === 'more-preset') return /^\s*\/\/\s*@frame\s+use\s+/.test(line) && !/\bwhen\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-direction') return !/\bdirection\b/.test(line);
       if (id === 'layout' && rule[0] === 'layout-flow-arrows') return !/\bflow-arrows\b/.test(line);
@@ -317,7 +342,7 @@
     if (/\bwith\s*$/.test(prefix)) return withTypes.map(([label, effect, code]) => ({
       id: 'with-type', label: label.startsWith('labels-') ? code : label, effect, code
     }));
-    if (/\bwith\s+\w+\(/.test(line)) {
+    if (/\bwith\s+[\w-]+\(/.test(prefix)) {
       const additional = withTypes.filter(([label]) => {
         if (label.startsWith('labels-')) return !/\blabels\(/.test(line);
         return !new RegExp(`\\b${label}\\(`).test(line);
@@ -329,66 +354,66 @@
     return childOptions(id, line);
   }
 
-  function makeButton(option, index, onChoose) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'asm-directive-choice';
-    button.dataset.index = String(index);
-    button.setAttribute('role', 'option');
-    button.setAttribute('aria-selected', String(index === selected));
-    const label = document.createElement('strong');
-    label.textContent = option.label;
-    const effect = document.createElement('span');
-    effect.textContent = option.effect;
-    button.append(label, effect);
-    button.addEventListener('mouseenter', () => { selected = index; updateSelection(); });
-    button.addEventListener('mousedown', event => event.preventDefault());
-    button.addEventListener('click', () => onChoose(option));
-    return button;
-  }
+  const languageTools = window.ace.require('ace/ext/language_tools');
+  const Autocomplete = window.ace.require('ace/autocomplete').Autocomplete;
+  const completion = Autocomplete.for(editor);
+  completion.autoInsert = false;
+  completion.autoSelect = true;
 
-  function updateSelection() {
-    for (const button of popup.querySelectorAll('.asm-directive-choice')) {
-      button.setAttribute('aria-selected', String(Number(button.dataset.index) === selected));
+  function isDirective() { return Boolean(currentDirective().prefix); }
+  function completionOptions() {
+    const { id, prefix } = currentDirective();
+    if (!prefix) return [];
+    if (/@[\w-]*$/.test(prefix)) {
+      const token = prefix.match(/@([\w-]*)$/)[1];
+      return commands.filter(command => command.id.startsWith(token)).map(command => ({ ...command, root: true }));
     }
-    const option = options[selected];
-    popup.querySelector(`.asm-directive-choice[data-index="${selected}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
-    const preview = popup.querySelector('.asm-directive-preview code');
-    if (preview) {
-      const layoutId = currentLayoutId(currentDirective().line);
-      preview.textContent = option?.id?.startsWith('layout-')
-        ? option.code.replace('quick_tree', layoutId).trimStart()
-        : option?.code || `${option?.label || ''} …`;
+    if (!byId[id]) return [];
+    // Text being entered inside quotes is content, not a modifier keyword.
+    let quote = null, escaped = false;
+    for (const character of prefix) {
+      if (escaped) { escaped = false; continue; }
+      if (character === '\\') { escaped = true; continue; }
+      if (quote) { if (character === quote) quote = null; }
+      else if (character === '"' || character === "'") quote = character;
     }
+    if (quote || /\bwhen\s/.test(prefix)) return [];
+    // A suffix belongs to its own directive and never inserts another @ line.
+    const partial = prefix.match(/\s([a-zA-Z][\w-]*)$/)?.[1] || '';
+    let result = ['frame', 'object'].includes(id) && /\bwith\s+[\w-]*$/.test(prefix) ? withTypes.map(([label, effect, code]) => ({
+      id: 'with-type', label: label.startsWith('labels-') ? code : label, effect, code
+    })) : choices();
+    if (partial) {
+      // choices() uses the full prefix; remove a partially typed keyword only for filtering.
+      result = result.filter(option => option.label.startsWith(partial));
+    }
+    return result.filter(option => !option.code?.startsWith('\n'));
   }
-
-  function renderSuggestions() {
-    popup.replaceChildren();
-    const title = document.createElement('div');
-    title.className = 'asm-directive-title';
-    title.textContent = '視覺化指令 · Tab 插入 · ↑↓ 選擇 · Esc 關閉';
-    const list = document.createElement('div');
-    list.className = 'asm-directive-list';
-    list.setAttribute('role', 'listbox');
-    options.forEach((option, index) => list.appendChild(makeButton(option, index, applyChoice)));
-    const preview = document.createElement('div');
-    preview.className = 'asm-directive-preview';
-    preview.append('將插入：', document.createElement('code'));
-    popup.append(title, list, preview);
-    updateSelection();
-  }
+  const directiveCompleter = {
+    id: 'asm-directives', identifierRegexps: [/[a-zA-Z0-9_@-]/],
+    getCompletions(_editor, _session, _position, _prefix, callback) {
+      callback(null, completionOptions().map((option, index) => ({
+        caption: option.label, value: option.label, meta: option.root ? '繪圖指令' : '參數',
+        score: 10000 - index, docText: `${option.effect}\n\n範例：\n${option.code || option.label}`,
+        option, completer: directiveCompleter
+      })));
+    },
+    insertMatch(_editor, item) {
+      completion.detach();
+      applyChoice(item.option);
+    }
+  };
+  editor.setOptions({ enableBasicAutocompletion: true, enableLiveAutocompletion: false });
+  editor.completers = [directiveCompleter, ...[languageTools.keyWordCompleter, languageTools.textCompleter]
+    .filter(Boolean).map(source => ({ getCompletions(ed, session, position, prefix, callback) {
+      if (isDirective()) callback(null, []);
+      else source.getCompletions(ed, session, position, prefix, callback);
+    } }))];
 
   function openSuggestions() {
-    options = choices();
-    if (!options.length) { close(); return; }
-    selected = 0;
-    mode = 'suggestions';
-    popup.dataset.mode = mode;
-    renderSuggestions();
-    popup.hidden = false;
-    const { x, y } = cursorPosition();
-    place(x, y);
+    close();
+    if (!completionOptions().length) { completion.detach(); return; }
+    completion.showPopup(editor);
   }
 
   // ---------------------------------------------------------------------------
@@ -396,23 +421,35 @@
   // ---------------------------------------------------------------------------
   function applyChoice(option) {
     if (!option) return;
-    const { pos, line, id } = currentDirective();
+    let { pos, line, id } = currentDirective();
+    if (!option.root) {
+      const partial = line.slice(0, pos.column).match(/\s([a-zA-Z][\w-]*)$/)?.[1];
+      if (partial && option.label.startsWith(partial)) {
+        editor.session.remove(new window.ace.Range(pos.row, pos.column - partial.length, pos.row, pos.column));
+        pos = editor.getCursorPosition();
+      }
+    }
     const Range = window.ace.Range;
-    if (byId[option.id] && (!id || !byId[id])) {
-      const start = line.indexOf('//');
-      editor.session.replace(new Range(pos.row, start, pos.row, pos.column), option.code);
-      editor.moveCursorTo(pos.row, start + option.code.length);
+    if (option.root) {
+      const at = line.indexOf('@');
+      const plain = !/^\s*\/\//.test(line);
+      const start = plain ? line.search(/\S/) : at;
+      const text = `${plain ? '// ' : ''}@${option.id} `;
+      editor.session.replace(new Range(pos.row, start, pos.row, pos.column), text);
+      editor.moveCursorTo(pos.row, start + text.length);
     } else if (option.id === 'render' || option.id === 'with') {
-      editor.session.insert(pos, ` ${option.id} `);
-      editor.moveCursorTo(pos.row, pos.column + option.id.length + 2);
+      const text = `${/\s$/.test(editor.session.getLine(pos.row).slice(0, pos.column)) ? '' : ' '}${option.id} `;
+      editor.session.insert(pos, text);
+      editor.moveCursorTo(pos.row, pos.column + text.length);
     } else if (option.id === 'render-type') {
       // The parent "render " is already on this line.
       const text = option.code.trim().replace(/^render\s+/, '');
       editor.session.insert(pos, text);
       editor.moveCursorTo(pos.row, pos.column + text.length);
     } else if (option.id === 'with-type' || option.id === 'with-next') {
-      editor.session.insert(pos, option.code);
-      editor.moveCursorTo(pos.row, pos.column + option.code.length);
+      const text = /\s$/.test(editor.session.getLine(pos.row).slice(0, pos.column)) ? option.code.trimStart() : option.code;
+      editor.session.insert(pos, text);
+      editor.moveCursorTo(pos.row, pos.column + text.length);
     } else if (option.code?.startsWith('\n')) {
       const indent = line.match(/^\s*/)?.[0] || '';
       const end = { row: pos.row, column: line.length };
@@ -425,8 +462,9 @@
       editor.session.insert(end, text);
       editor.moveCursorTo(pos.row + 1, text.slice(text.lastIndexOf('\n') + 1).length);
     } else if (option.code) {
-      editor.session.insert(pos, option.code);
-      editor.moveCursorTo(pos.row, pos.column + option.code.length);
+      const text = /\s$/.test(editor.session.getLine(pos.row).slice(0, pos.column)) ? option.code.trimStart() : option.code;
+      editor.session.insert(pos, text);
+      editor.moveCursorTo(pos.row, pos.column + text.length);
     }
     editor.focus();
     openSuggestions();
@@ -486,27 +524,12 @@
   }
 
   container.addEventListener('keydown', event => {
-    if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
-      const { line } = currentDirective();
-      if (/^\s*\/\/\s*@/.test(line)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        openSuggestions();
-      }
-      return;
+    if (((event.ctrlKey || event.metaKey) && event.code === 'Space')
+      || (event.key === 'Tab' && !event.shiftKey && !completion.activated && isDirective())) {
+      if (!isDirective()) return;
+      event.preventDefault(); event.stopImmediatePropagation(); openSuggestions();
     }
-    if (popup.hidden || mode !== 'suggestions') return;
-    if (event.key === 'Escape') {
-      event.preventDefault(); event.stopImmediatePropagation(); close();
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault(); event.stopImmediatePropagation();
-      selected = (selected + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-      updateSelection();
-    } else if (event.key === 'Tab' && !event.shiftKey) {
-      event.preventDefault(); event.stopImmediatePropagation(); applyChoice(options[selected]);
-    } else {
-      close();
-    }
+    // Ace owns ↑↓, Tab/Enter insertion, Escape and scrolling in the native popup.
   }, true);
 
   document.addEventListener('keydown', event => {
@@ -519,12 +542,8 @@
   editor.on('change', () => {
     queueMicrotask(() => {
       if (document.activeElement !== editor.textInput.getElement()) return;
-      const { prefix, line } = currentDirective();
-      if (/^\s*\/\/\s*@$/.test(prefix)) openSuggestions();
-      else if (mode === 'suggestions') {
-        if (/^\s*\/\/\s*@/.test(line)) openSuggestions();
-        else close();
-      }
+      if (isDirective()) openSuggestions();
+      else completion.detach();
     });
   });
 
@@ -544,11 +563,9 @@
     if (!popup.hidden && !popup.contains(event.target) && !container.contains(event.target)) close();
   });
   editor.on('changeSelection', () => {
-    if (mode === 'suggestions' && !popup.hidden) {
-      const { line } = currentDirective();
-      if (!/^\s*\/\/\s*@/.test(line)) close();
-    }
+    // Let Ace finish its cursor-change listeners before closing their completion base.
+    queueMicrotask(() => { if (!isDirective()) completion.detach(); });
   });
 
-  window.ASMDirectiveAssist = { commands, openSuggestions, close };
+  window.ASMDirectiveAssist = { commands, childRules, renderTypes, withTypes, choices: completionOptions, openSuggestions, close: () => { close(); completion.detach(); } };
 })();

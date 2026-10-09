@@ -109,3 +109,7 @@
     border-top: 1px solid #414b58;
   }
 }
+
+/* Ace owns suggestion selection, scrolling and positioning; examples keep their separate panel. */
+.ace_autocomplete { z-index: 12000 !important; border-radius: 6px; }
+.ace_doc-tooltip { z-index: 12001 !important; white-space: pre-wrap; max-width: 400px; font-size: 13px; line-height: 1.5; }
