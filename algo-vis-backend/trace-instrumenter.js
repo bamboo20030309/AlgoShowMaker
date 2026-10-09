@@ -1782,8 +1782,8 @@ function parseFrameSpec(raw) {
   };
 
   for (let part of split.parts) {
-    // A character view keeps the original string identity. Optional pointer
-    // suffixes reuse the same index parser as ordinary array frame targets.
+    // A character view keeps the original string identity. Optional brackets
+    // select data, just like ordinary array frame targets; they are not cursors.
     const chars = part.match(/^char\s*\(\s*([A-Za-z_]\w*)\s*\)(.*)$/s);
     if (chars) {
       transforms.push({ type: 'char', sourceName: chars[1], identifiers: [] });
@@ -1855,7 +1855,9 @@ function parseFrameSpec(raw) {
     const targetName = target[1];
     const expressionParts = indexGroups.flatMap(group => {
       const expressions = splitTopLevel(group);
-      return expressions.valid && expressions.parts.every(Boolean) ? expressions.parts : [null];
+      // Brackets select exactly one element per dimension. Multiple cursors
+      // belong to independent @pointer directives, never to a value selector.
+      return expressions.valid && expressions.parts.length === 1 && expressions.parts.every(Boolean) ? expressions.parts : [null];
     });
     if (expressionParts.some(expression => expression == null)) {
       return { names: [targetName], bindings: [], transforms, invalidExpression: part };
@@ -1872,14 +1874,10 @@ function parseFrameSpec(raw) {
 
     addDisplayName(targetName);
     parsedExpressions.flatMap(item => item.parsed.identifiers).forEach(addName);
-    bindings.push(...parsedExpressions.map(item => ({
-      targetName,
-      sourceName: item.parsed.identifiers[0] || '',
-      sourceNames: item.parsed.identifiers,
-      indexExpression: item.expression,
-      indexDimension: item.indexDimension,
-      mode: 'index'
-    })));
+    transforms.push({ type: 'element', sourceName: targetName,
+      indexExpressions: parsedExpressions.map(item => item.expression),
+      identifiers: [...new Set(parsedExpressions.flatMap(item => item.parsed.identifiers))],
+      expression: `${targetName}${indexGroups.map(group => `[${group}]`).join('')}` });
   }
 
   return { names, displayNames, bindings, transforms };
@@ -2058,10 +2056,10 @@ function attachPointerDirectives(source, analysis, frames) {
     const label = rawLabel.trim();
     // 與物件索引使用同一個安全運算式解析器，來源依賴決定事件與生命週期。
     const labelExpression = parseFrameExpression(label);
-    if (!labelExpression.valid || !labelExpression.identifiers.length) {
+    if (!labelExpression.valid) {
       throw new Error(`第 ${item.line} 行的 @pointer 指標運算式無效：${label}`);
     }
-    const name = labelExpression.identifiers[0];
+    const name = labelExpression.identifiers[0] || '';
     const pointerAxis = /^(row|column)$/i.test(selector || '') ? selector.toLowerCase() : '';
     const isLayout = Boolean(selector && !pointerAxis);
     const childExpression = selector?.toLowerCase() === 'children' ? selectedIndex : null;
@@ -2073,7 +2071,7 @@ function attachPointerDirectives(source, analysis, frames) {
     const parsed = expressions.map(parseFrameExpression);
     if (parsed.some(expression => !expression.valid)) throw new Error(`第 ${item.line} 行的 @pointer 索引運算式無效`);
     if (isLayout && !layouts.has(targetName)) throw new Error(`第 ${item.line} 行的 @pointer 找不到 layout：${targetName}`);
-    const names = new Set([name, ...parsed.flatMap(expression => expression.identifiers), ...(isLayout ? [] : [targetName])]);
+    const names = new Set([name, ...parsed.flatMap(expression => expression.identifiers), ...(isLayout ? [] : [targetName])].filter(Boolean));
     const variables = new Map();
     names.forEach(identifier => {
       const variable = frame.variables.find(candidate => candidate.name === identifier) || resolve(identifier, item.from);
@@ -2091,7 +2089,7 @@ function attachPointerDirectives(source, analysis, frames) {
       ...(pointerAxis ? { pointerAxis, indexDimension: pointerAxis === 'row' ? 0 : 1 } : {}),
       ...(pointerColor ? { pointerColor } : {}),
       label, sourceName: name,
-      sourceVariableId: variables.get(name).id,
+      sourceVariableId: variables.get(name)?.id || '',
       sourceVariableIds: labelExpression.identifiers.map(identifier => variables.get(identifier).id),
       targetName, targetVariableId: variables.get(targetName)?.id || '', indexExpression,
       ...(isLayout && childExpression == null ? { layoutTarget: {
@@ -3623,7 +3621,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     const parsed = parseFrameSpec(frameSpec);
     if (!frameSpec) throw new Error(`第 ${line} 行的 ${directiveName} 缺少物件`);
     if (parsed.invalidExpression) {
-      throw new Error(`第 ${line} 行的 ${directiveName} 索引運算式無效：${parsed.invalidExpression}`);
+      throw new Error(`第 ${line} 行的 ${directiveName} 索引取值語法無效：${parsed.invalidExpression}；多指標請分別使用 @pointer i at arr`);
     }
     const names = [...parsed.names];
     const invalid = names.find(name => !/^[A-Za-z_]\w*$/.test(name));
@@ -3737,7 +3735,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         indexDimension: binding.indexDimension
       };
     });
-    const dataTransform = parsed.transforms.find(transform => (
+    const dataTransform = [...parsed.transforms].reverse().find(transform => (
       transform.sourceName === sourceVariable.name
     )) || null;
     if (dataTransform?.type === 'char' && sourceVariable.kind !== 'string') {
@@ -3756,7 +3754,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         .filter(Boolean),
       variables,
       captureOnlyVariableIds,
-      renderer: modifiers.renderer || (dataTransform?.type === 'char' ? 'original-array' : ''),
+      renderer: modifiers.renderer || (dataTransform?.type === 'element' ? 'original-cell' : dataTransform?.type === 'char' ? 'original-array' : ''),
       rendererOptions: modifiers.rendererOptions,
       dataTransform: dataTransform ? {
         ...dataTransform,

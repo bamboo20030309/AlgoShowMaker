@@ -26,7 +26,9 @@ int main() {
   std::vector<char> rows = {'A', 'B'};
   std::vector<int> columns = {7, 8};
   int i = 0, j = 1;
-  // @frame grid[i][j] with labels(none), row-labels("",rows), column-labels(blank(1),columns), inner-labels(index), gridlines(0), outerframe(false), marker-layout(inner)
+  // @frame grid with labels(none), row-labels("",rows), column-labels(blank(1),columns), inner-labels(index), gridlines(0), outerframe(false), marker-layout(inner)
+  // @pointer i at grid.row
+  // @pointer j at grid.column
 }`);
   assert.equal(frame.bindings.length, 2);
   assert.deepEqual(frame.bindings.map(binding => binding.indexDimension), [0, 1]);
@@ -188,7 +190,9 @@ int main() {
   vector<int> columns = {7, 6};
   vector<vector<int>> inner = {{0, 1}, {0}};
   int i = 1, j = 0;
-  // @frame grid[i][j] with row-labels("",rows), column-labels(blank(1),columns), inner-labels(inner), gridlines(0), outerframe(false)
+  // @frame grid with row-labels("",rows), column-labels(blank(1),columns), inner-labels(inner), gridlines(0), outerframe(false)
+  // @pointer i at grid.row
+  // @pointer j at grid.column
   // @style grid[i][j] highlight AV_red
   // @frame fixed
   // @frame arr with index-labels("",columns), gridlines(0), outerframe(false)
@@ -218,9 +222,13 @@ using namespace std;
 int main() {
   vector<vector<int>> grid = {{1, 2}, {3}};
   int i = 1, j = 0;
-  // @frame grid[i][j]
+  // @frame grid
+  // @pointer i at grid.row
+  // @pointer j at grid.column
   grid[i][j] = 9;
-  // @frame grid[i][j]
+  // @frame grid
+  // @pointer i at grid.row
+  // @pointer j at grid.column
 }`);
   const gridId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'grid');
   const assign = trace.frames[1].events.find(event => event.type === 'assign'
@@ -249,7 +257,8 @@ function rendererApi() {
       return entry?.data?.value ?? (/^-?\d+$/.test(String(expression)) ? Number(expression) : null);
     }
   };
-  window.ASMTraceModel = { diffFrame() { return []; } };
+  window.eval(fs.readFileSync(path.join(__dirname, '../public/trace-model.js'), 'utf8'));
+  window.ASMTraceModel.diffFrame = () => [];
   window.ASMTraceTransitions = { defaults() { return { duration: 0, easing: 'linear' }; } };
   window.ASMTraceCamera = { ruleForFrame() { return null; } };
   window.SVGElement.prototype.getBBox = function getBBox() {

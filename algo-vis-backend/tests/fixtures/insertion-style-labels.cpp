@@ -12,21 +12,29 @@ int main() {
     for (int i=1; i<n; i++) {
         int j=i-1;
         int key=arr[i];
-        // @frame arr[j,j+1],key
+        // @frame arr,key
+        // @pointer j at arr
+        // @pointer j+1 at arr
         // @style arr[0:i] background AV_red when value <= key && index != j+1
         // @style arr[0:i] background AV_green when value > key && index != j+1
         while (j >= 0 && arr[j] > key) {
-            // @frame arr[j,j+1],key
+            // @frame arr,key
+            // @pointer j at arr
+            // @pointer j+1 at arr
             // @style arr[0:i] background AV_red when value <= key && index != j+1
             // @style arr[0:i] background AV_green when value > key && index != j+1
             arr[j+1]=arr[j];
-            // @frame arr[j,j+1],key
+            // @frame arr,key
+            // @pointer j at arr
+            // @pointer j+1 at arr
             // @style arr[0:i] background AV_red when value <= key && index != j
             // @style arr[0:i] background AV_green when value > key && index != j
             j--;
         }
         arr[j+1]=key;
-        // @frame arr[j,j+1],key
+        // @frame arr,key
+        // @pointer j at arr
+        // @pointer j+1 at arr
         // @style arr[0:i] background AV_red when value <= key && index != j+1
         // @style arr[0:i] background AV_green when value > key && index != j+1
     }

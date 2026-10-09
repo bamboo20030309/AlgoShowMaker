@@ -55,7 +55,8 @@ int main() {
     // @text "開始排序" at arr.bottom
 
     for (int i = 0; i < n; i++) {
-        // @frame arr[i]
+        // @frame arr
+        // @pointer i at arr
         // @style arr[i] highlight AV_red
         // @text "正在查看第 ${i} 格" at arr.bottom
     }
@@ -93,7 +94,8 @@ int main() {
 
 ```cpp
 arr[i] = key;
-// @frame arr[i],key
+// @frame arr,key
+// @pointer i at arr
 ```
 
 這一幀會看到賦值完成後的陣列狀態，並包含從上一幀到這一幀之間發生的事件。
@@ -107,15 +109,15 @@ arr[i] = key;
 建議緊接著書寫，避免日後移動程式碼時造成誤解。
 
 ```cpp
-// @frame arr[i],key
+// @frame arr,key
+// @pointer i at arr
 // @style arr[i] point AV_red
 // @text "目前是第 ${i} 格" at arr.bottom
 ```
 
 ### 顯示變數與只捕捉變數
 
-`@frame arr[i],key` 會顯示 `arr` 和 `key`。`i` 是計算指標位置所需的相依變數，
-系統會捕捉它，但不會另外把它畫成一般數值框。
+`@frame arr[i],key` 只顯示 `arr[i]` 的值和 `key`，不顯示完整陣列，也不建立指標。`i` 是索引運算的相依變數，系統會捕捉它，但不會另外把它畫成一般數值框。要顯示整個陣列與游標，寫 `@frame arr,key` 再加 `@pointer i at arr`。
 
 `when`、`${...}`、`range(...)` 及索引運算式引用到的變數也會自動捕捉，不必重複列在
 `@frame` 後面。
@@ -195,7 +197,7 @@ arr[i] = key;
 ### 基本格式
 
 ```cpp
-// @frame 變數或索引綁定[,其他變數] [修飾詞...]
+// @frame 變數或索引取值[,其他變數] [修飾詞...]
 ```
 
 若畫布上已經有 `@keep` 保留的物件，也可以只寫裸的 `// @frame`
@@ -216,8 +218,15 @@ dfs(0, 0, 0, 0);
 // @frame arr
 // @frame arr,key
 // @frame arr[i]
-// @frame arr[i,j],key
-// @frame arr[i+1,j-1],pivot
+// @frame arr[i+1],key
+// @frame dp[r][c]
+// @frame s[i]
+// @frame arr,key
+// @pointer i at arr
+// @pointer j at arr
+// @frame arr,pivot
+// @pointer i+1 at arr
+// @pointer j-1 at arr
 ```
 
 ### 同一幀顯示多個獨立設定的物件
@@ -235,8 +244,9 @@ dfs(0, 0, 0, 0);
 
 ```cpp
 // @frame when i%v==0
-// @object isprime[i] with range(1,n), columns(10), labels(index)
+// @object isprime with range(1,n), columns(10), labels(index)
 // @object prime with columns(10), labels(value)
+// @pointer i at isprime
 // @place prime.top-left at isprime.bottom-left offset(0,60)
 ```
 
@@ -267,8 +277,12 @@ dfs(0, 0, 0, 0);
 冒號前的名稱是「指令名稱」，適合讓 Trace Studio 或鏡頭規則識別同一類幀：
 
 ```cpp
-// compare: @frame arr[i,j],pivot
-// swap: @frame arr[i,j]
+// compare: @frame arr,pivot
+// @pointer i at arr
+// @pointer j at arr
+// swap: @frame arr
+// @pointer i at arr
+// @pointer j at arr
 ```
 
 同一個指令名稱在原始碼中只能宣告一次，但該行可在迴圈或遞迴中執行很多次。
@@ -276,7 +290,9 @@ dfs(0, 0, 0, 0);
 這和 `as` 不同：
 
 ```cpp
-// compare: @frame arr[i,j] as partition_view
+// compare: @frame arr as partition_view
+// @pointer i at arr
+// @pointer j at arr
 ```
 
 - `compare`：這一行 `@frame` 的語意名稱，用來選取它的所有執行結果。
@@ -285,7 +301,9 @@ dfs(0, 0, 0, 0);
 ### 改變畫法與位置
 
 ```cpp
-// heap: @frame arr[i,largest] as heap_view render heap with range(1,n) at canvas.center offset(0,40)
+// heap: @frame arr as heap_view render heap with range(1,n) at canvas.center offset(0,40)
+// @pointer i at arr
+// @pointer largest at arr
 ```
 
 使用 `at`、`render` 或 `with` 時，`@frame` 必須至少指定一個主要顯示物件。
@@ -293,7 +311,8 @@ dfs(0, 0, 0, 0);
 ### 條件式產生幀
 
 ```cpp
-// @frame arr[i] when i >= 0 && i < n
+// @frame arr when i >= 0 && i < n
+// @pointer i at arr
 // @frame arr when changed(arr)
 ```
 
@@ -415,7 +434,8 @@ for (int i=2; i<=n; i++) {
 `@let` 可替同一幀內重複使用的安全運算式命名，指令名稱固定使用小寫：
 
 ```cpp
-// @frame BIT[i]
+// @frame BIT
+// @pointer i at BIT
 // @let lb = i & -i
 // @let left = i - lb + 1
 // @let deduct = iteration.first(i) == L - 1
@@ -478,7 +498,9 @@ for (int i=2; i<=n; i++) {
 ### 保留上一個完整畫面
 
 ```cpp
-// @frame arr[i,j],key
+// @frame arr,key
+// @pointer i at arr
+// @pointer j at arr
 // @text "完成本輪" at arr.bottom
 // @keep last as "round"
 ```
@@ -499,7 +521,8 @@ for (int i=2; i<=n; i++) {
 for (int i = 0; i < n - 1; i++) {
     // 第一輪不保存；從第二輪開始保存上一輪
     // @keep last as "round" when i > 0
-    // @frame arr[i]
+    // @frame arr
+    // @pointer i at arr
 }
 ```
 
@@ -665,7 +688,9 @@ return value;
 `@exit` 只結束指定變數的視覺呈現，不會改變真正的 C++ 作用域或數值：
 
 ```cpp
-// @frame arr[min_idx,i]
+// @frame arr
+// @pointer min_idx at arr
+// @pointer i at arr
 // @exit min_idx
 // @keep last as "round"
 ```
@@ -931,7 +956,9 @@ for (auto& v : prime) {
 `@segment` 會在陣列或其他序列畫法上標出一段範圍。
 
 ```cpp
-// @frame arr[i,j]
+// @frame arr
+// @pointer i at arr
+// @pointer j at arr
 // @segment arr[low:high]
 ```
 
@@ -1006,7 +1033,8 @@ renderer依節點層級把格子切成 `2^k` 段；根節點涵蓋8個最小區�
 使用者自行編寫線篩濃縮幀，可以放在內層 `j` 迴圈結束後：
 
 ```cpp
-// @frame isprime[i],prime when i > 7
+// @frame isprime,prime when i > 7
+// @pointer i at isprime
 // @events animate off
 // @arrow for k in [0:iteration.last(j)]
 //   from prime[k].bottom to isprime[i*prime[k]].top
@@ -1031,7 +1059,8 @@ for(int j=0;j<n;j++){ /* 演算法 */ }
 若上下兩個迴圈都使用 `j`，會報歧義錯誤，使用 `@loop as` 命名並明確指名：
 
 ```cpp
-// @frame isprime[i],prime when i > 7
+// @frame isprime,prime when i > 7
+// @pointer i at isprime
 // @events animate off
 // @arrow for j in "sieve_loop"
 //   from prime[j].bottom to isprime[i*prime[j]].top
@@ -1088,7 +1117,9 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 `@arrow` 把兩個語意目標連起來，並附屬到它上方最近的 `@frame`。它和 Trace Studio 箭頭、遞迴 layout 自動箭頭共用 Arrow Model，實際線段邊距與箭頭頭部沿用原本 `drawArrow` 的幾何邏輯。
 
 ```cpp
-// @frame arr[i,j]
+// @frame arr
+// @pointer i at arr
+// @pointer j at arr
 // @arrow from arr[i].bottom to arr[j].top as "compare_link"
 ```
 
@@ -1162,7 +1193,8 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 `@place` 將最近一個 `@frame` 已經顯示的來源物件，綁到另一個物件的語意錨點。它只改變位置，不會建立 keep 快照，也不會把來源加入 recursion layout 的父子節點。
 
 ```cpp
-// @frame arr[i],pivot with range(low,high) in quick_tree
+// @frame arr,pivot with range(low,high) in quick_tree
+// @pointer i at arr
 // @place pivot at arr.right
 // @place pivot.left at arr.right offset(16,0)
 ```
@@ -1190,7 +1222,7 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 - `when` 為假時只略過該位置綁定，不會隱藏來源物件。
 - Trace Studio 的明確位置／綁定仍具有較高優先權。
 
-多物件的 `@frame arr[i],pivot ... in quick_tree` 只以第一個主要物件 `arr` 代表遞迴節點；`i` 是 `arr` 的指標，`pivot` 是可由 `@place` 獨立安排的次要物件。
+多物件的 `@frame arr,pivot ... in quick_tree` 只以第一個主要物件 `arr` 代表遞迴節點；使用 `@pointer i at arr` 加上游標，`pivot` 是可由 `@place` 獨立安排的次要物件。`@frame arr[i]` 是單一元素取值，不能用來建立整個陣列的遞迴節點。
 
 ## `render` 與 `with`：選擇資料結構畫法
 
@@ -1214,7 +1246,8 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 ### `range(start,end)`
 
 ```cpp
-// @frame arr[i] render heap with range(1,n)
+// @frame arr render heap with range(1,n)
+// @pointer i at arr
 ```
 
 `range` 的開始與結束都包含在內，因此上例顯示 `arr[1...n]`。
@@ -1224,13 +1257,16 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 
 ```cpp
 int displaySize = arr.size() - 1;
-// @frame arr[1,i] render heap with range(1,displaySize)
+// @frame arr render heap with range(1,displaySize)
+// @pointer 1 at arr
+// @pointer i at arr
 ```
 
 ### 標準線段樹的 `range`
 
 ```cpp
-// @frame tree[now] render segment_tree with range(1,n)
+// @frame tree render segment_tree with range(1,n)
+// @pointer now at tree
 ```
 
 對 `render segment_tree` 而言，`range(start,end)` 同時指定根節點代表的資料區間，
@@ -1329,7 +1365,9 @@ heap 與標準 segment tree 只有在垂直 gap 大於 0 時繪製父子連線�
 不建立額外 C++ 陣列；名稱、變數 ID 與索引事件仍對應原始字串 `s`。
 
 ```cpp
-// @frame char(s)[i,j]
+// @frame char(s)
+// @pointer i at s
+// @pointer j at s
 // @style s[i] highlight
 // @text "比較 s[${i}] 與 s[${j}]" at s.bottom
 
@@ -1415,7 +1453,9 @@ x |= y;
 
 ```cpp
 // @frame arr with index-labels("",labels)
-// @frame grid[row][column] with row-labels("",rowNames), column-labels(blank(1),columnNames), inner-labels(index)
+// @frame grid with row-labels("",rowNames), column-labels(blank(1),columnNames), inner-labels(index)
+// @pointer row at grid.row
+// @pointer column at grid.column
 ```
 
 - `index-labels(...)`：一維陣列的索引標籤。
@@ -1434,8 +1474,12 @@ x |= y;
 ### 二維格線、外框與索引指標
 
 ```cpp
-// @frame grid[i][j] with gridlines(0), outerframe(false), marker-layout(axis)
-// @frame grid[i][j] with marker-layout(inner)
+// @frame grid with gridlines(0), outerframe(false), marker-layout(axis)
+// @pointer i at grid.row
+// @pointer j at grid.column
+// @frame grid with marker-layout(inner)
+// @pointer i at grid.row
+// @pointer j at grid.column
 ```
 
 - `gridlines(width)`：設定資料格與標籤格線寬；`0` 隱藏線條但保留可互動區域。
@@ -1443,7 +1487,7 @@ x |= y;
 - `marker-layout(axis)`：`i` 在最左側垂直移動，`j` 在上方共用欄軸水平移動，為預設。
 - `marker-layout(inner)`：列指標仍在左側，欄指標移到 `i` 所在列後水平移動。
 
-`grid[i][j]` 的第一個括號固定代表 row／垂直方向，第二個括號代表 column／水平方向。
+`@frame grid[i][j]` 只顯示一格資料；要顯示整個矩陣及列／欄游標，使用 `@frame grid` 與獨立的 `.row`、`.column` 指標。明確指定 `.row`、`.column` 的指標固定在外側軸，不受 `marker-layout(inner)` 改變。
 `@style grid[i][j] highlight` 只標示資料格與該格 inner label，不標示 row／column label。
 本版不擴充 `range(start,end)`；它仍維持原本的一維範圍語意。
 
@@ -1571,7 +1615,8 @@ arrow 省略錨點時預設為 center；其他指令按各自的語法要求指�
 範例：
 
 ```cpp
-// @frame arr[i] when i >= 0 && i < arr.size()
+// @frame arr when i >= 0 && i < arr.size()
+// @pointer i at arr
 // @text "左子樹完整" at arr.bottom when i*2+1 <= n
 // @style arr[low:high] background AV_green when value < pivot and index != high
 ```
@@ -1629,7 +1674,9 @@ for (int i = 0; i < n - 1; i++) {
             swap(arr[j], arr[j + 1]);
         }
 
-        // compare: @frame arr[j,j+1]
+        // compare: @frame arr
+        // @pointer j at arr
+        // @pointer j+1 at arr
         // @style arr[0:n-i-1) focus
         // @text "比較第 ${j} 與 ${j+1} 格" at arr.bottom
     }
@@ -1652,19 +1699,25 @@ for (int i = 1; i < n; i++) {
     int key = arr[i];
     int j = i - 1;
 
-    // pick: @frame arr[i,j],key
+    // pick: @frame arr,key
+    // @pointer i at arr
+    // @pointer j at arr
     // @text "取出 ${key}" at arr.bottom
 
     while (j >= 0 && arr[j] > key) {
         arr[j + 1] = arr[j];
         j--;
 
-        // shift: @frame arr[i,j],key
+        // shift: @frame arr,key
+        // @pointer i at arr
+        // @pointer j at arr
         // @style arr[j+1] highlight AV_red
     }
 
     arr[j + 1] = key;
-    // insert: @frame arr[i,j],key
+    // insert: @frame arr,key
+    // @pointer i at arr
+    // @pointer j at arr
     // @style arr[0:i] focus
 }
 ```
@@ -1677,7 +1730,8 @@ for (int i = 1; i < n; i++) {
 int pivot = arr[high];
 int i = low;
 
-// partition_start: @frame arr[i],pivot
+// partition_start: @frame arr,pivot
+// @pointer i at arr
 // @segment arr[low:high]
 // @style arr[high] point AV_red
 
@@ -1687,7 +1741,9 @@ for (int j = low; j < high; j++) {
         i++;
     }
 
-    // partition_step: @frame arr[i,j],pivot
+    // partition_step: @frame arr,pivot
+    // @pointer i at arr
+    // @pointer j at arr
     // @segment arr[low:high]
     // @style arr[low:j] background AV_green when value < pivot
     // @style arr[low:j] background AV_red when value > pivot
@@ -1712,13 +1768,17 @@ void heapify(vector<int>& arr, int heapSize, int i) {
     if (right <= heapSize && arr[right] > arr[largest]) largest = right;
 
     if (largest != i) {
-        // before_swap: @frame arr[i,largest] render heap with range(1,displaySize)
+        // before_swap: @frame arr render heap with range(1,displaySize)
+        // @pointer i at arr
+        // @pointer largest at arr
         // @style arr[i,i*2:i*2+1] highlight AV_red
         // @style arr[1:heapSize] focus
 
         swap(arr[i], arr[largest]);
 
-        // after_swap: @frame arr[i,largest] render heap with range(1,displaySize)
+        // after_swap: @frame arr render heap with range(1,displaySize)
+        // @pointer i at arr
+        // @pointer largest at arr
         // @style arr[largest] point AV_red
         // @style arr[1:heapSize] focus
 
@@ -2015,13 +2075,15 @@ if (i < n && arr[i] > key) {
 
 ```cpp
 // @style arr[i] highlight red
-// @frame arr[i]
+// @frame arr
+// @pointer i at arr
 ```
 
 正確：
 
 ```cpp
-// @frame arr[i]
+// @frame arr
+// @pointer i at arr
 // @style arr[i] highlight red
 ```
 
@@ -2039,7 +2101,8 @@ if (i < n && arr[i] > key) {
 請把位置寫在物件指令上：
 
 ```cpp
-// @frame arr[i] at canvas.center
+// @frame arr at canvas.center
+// @pointer i at arr
 // @style arr[i] highlight red
 ```
 
@@ -2058,7 +2121,8 @@ if (i < n && arr[i] > key) {
 指令必須是 C++ 的單行註解，且 `render` 位於 `@frame` 修飾詞區：
 
 ```cpp
-// @frame arr[i] render heap with range(1,n)
+// @frame arr render heap with range(1,n)
+// @pointer i at arr
 ```
 
 Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編輯器當作程式碼。
@@ -2135,4 +2199,19 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 // @pointer i-1 at p[i+1]
 ```
 
-pointer 前段可以是引用可見變數的安全索引運算式，標籤保留原運算式；省略目標索引時，以同一運算式計算位置。例如 i=3 時，第一行顯示 i-1 並指向 p[2]，與 @object p[i-1] 的指標行為一致。明確寫目標 [i+1] 時，仍顯示 i-1，但位置由 i+1 決定。所有來源變數都納入依賴與捕捉，不新增繪圖專用 C++ 變數；拒絕遞增、賦值等有副作用的運算式。既有 @pointer i at p 寫法與顏色設定維持相容。
+pointer 前段可以是引用可見變數的安全索引運算式，標籤保留原運算式；省略目標索引時，以同一運算式計算位置。例如 i=3 時，第一行顯示 i-1 並指向 p[2]。`@object p[i-1]` 現在只顯示該元素的值，不建立指標。明確寫目標 [i+1] 時，仍顯示 i-1，但位置由 i+1 決定。所有來源變數都納入依賴與捕捉，不新增繪圖專用 C++ 變數；拒絕遞增、賦值等有副作用的運算式。既有 @pointer i at p 寫法與顏色設定維持相容。
+
+## 索引取值與舊教材遷移
+
+自追蹤引擎 14 起，`@frame arr[i]`、`@object arr[i]` 只呈現元素，不再表示「整個陣列加上 i 指標」。`dp[r][c]` 選擇矩陣的一格，`s[i]` 選擇字串的一個 C++ 字元；`arr[i,j]` 多指標寫法會明確報錯。
+
+```cpp
+// 顯示值
+// @frame arr[i]
+// 顯示整個陣列與指標
+// @frame arr
+// @pointer i at arr
+// @pointer j at arr
+```
+
+索引依目前幀的變數值求解。負索引、越界或無法求值時不虛構資料格；使用 `when` 限制合法範圍。取值只影響呈現，原始 Trace 仍保存來源資料與事件；已保存 Trace 不會因改版被重解讀成新語意。舊程式若重新 RUN，必須先遷移；可使用 `node algo-vis-backend/scripts/migrate-indexed-pointers.js --write your-example.cpp`。矩陣舊指標改為 `.row`、`.column`，完整陣列的樣式與箭頭端點寫法不變。

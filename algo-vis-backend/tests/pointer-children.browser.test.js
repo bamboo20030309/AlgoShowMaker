@@ -83,9 +83,11 @@ test('recursive merge pointers address the retained direct children, survive rel
 test('legacy and independent array pointers render together', { timeout: 60000 }, async () => {
   const { trace } = await compile(`#include <vector>
 int main(){ std::vector<int> a={1,2,3}; int i=0,j=2;
-// @frame a[i]
+// @frame a
+// @pointer i at a
 // @pointer j at a
-// @frame a[i]
+// @frame a
+// @pointer i at a
 // @pointer j at a[j]
 return 0; }`);
   // Simulate a stored explicit binding from before implicitIndex existed.

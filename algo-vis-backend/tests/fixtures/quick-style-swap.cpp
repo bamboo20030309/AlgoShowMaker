@@ -4,7 +4,8 @@ void quick_sort(vector<int>& arr, int low, int high) {
   if (low >= high) return;
   int pivot = arr[high];
   int i = low;
-  // @frame arr[i],pivot
+  // @frame arr,pivot
+  // @pointer i at arr
   // @segment arr[low:high]
   // @style arr[high] point red
   for (int j=low; j<high; j++) {
@@ -12,13 +13,17 @@ void quick_sort(vector<int>& arr, int low, int high) {
       if (i != j) swap(arr[i],arr[j]);
       i++;
     }
-    // @frame arr[i,j],pivot
+    // @frame arr,pivot
+    // @pointer i at arr
+    // @pointer j at arr
     // @segment arr[low:high]
     // @style arr[low:j] background AV_green when value < pivot
     // @style arr[low:j] background AV_red when value > pivot
   }
   if (i != high) swap(arr[i],arr[high]);
-  // @frame arr[i,high],pivot
+  // @frame arr,pivot
+  // @pointer i at arr
+  // @pointer high at arr
   quick_sort(arr,low,i-1);
   quick_sort(arr,i+1,high);
 }

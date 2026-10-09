@@ -4,10 +4,14 @@ void heapify(vector<int>& arr,int n,int i) {
   int largest=i,l=2*i,r=2*i+1;
   if(l<=n && arr[l]>arr[largest]) largest=l;
   if(r<=n && arr[r]>arr[largest]) largest=r;
-  // @frame arr[i,largest] render heap with range(1,arr.size()-1)
+  // @frame arr render heap with range(1,arr.size()-1)
+  // @pointer i at arr
+  // @pointer largest at arr
   if(largest!=i) {
     swap(arr[i],arr[largest]);
-    // @frame arr[i,largest] render heap with range(1,arr.size()-1)
+    // @frame arr render heap with range(1,arr.size()-1)
+    // @pointer i at arr
+    // @pointer largest at arr
     heapify(arr,n,largest);
   }
 }

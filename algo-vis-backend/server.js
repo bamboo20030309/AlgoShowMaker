@@ -2397,6 +2397,13 @@ function resolveFrameRendererOptions(frame, directive) {
   if (directive?.dataTransform?.type === 'char') {
     options.dataTransform = { type: 'char' };
   }
+  if (directive?.dataTransform?.type === 'element') {
+    options.dataTransform = {
+      type: 'element',
+      indices: directive.dataTransform.indexExpressions.map(expression => resolveTraceIndexExpression(frame, expression)),
+      expression: directive.dataTransform.expression
+    };
+  }
   if (directive?.dataTransform?.type === 'bits') {
     const width = resolveTraceIndexExpression(frame, directive.dataTransform.widthExpression);
     if (width != null && width > 0) {

@@ -27,18 +27,23 @@ void quick_sort(vector<int>& arr, int low, int high) {
   if (low >= high) return;
   int pivot = arr[high];
   int i = low;
-  // @frame arr[i],pivot
+  // @frame arr,pivot
+  // @pointer i at arr
   for (int j=low; j<high; j++) {
     if (arr[j] < pivot) {
       if (i != j) swap(arr[i], arr[j]);
       i++;
     }
-    // @frame arr[i,j],pivot
+    // @frame arr,pivot
+    // @pointer i at arr
+    // @pointer j at arr
     // @style arr[low:j] background AV_green when value < pivot
     // @style arr[low:j] background AV_red when value > pivot
   }
   if (i != high) swap(arr[i], arr[high]);
-  // @frame arr[i,high],pivot
+  // @frame arr,pivot
+  // @pointer i at arr
+  // @pointer high at arr
 }
 int main() {
   int n; cin >> n;

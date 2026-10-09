@@ -46,7 +46,8 @@ void quick_sort(vector<int>& arr, int low, int high) {
     if (i != high) swap(arr[i], arr[high]);
 
     // 每次 partition 完成後，只顯示這次遞迴負責的區間並保存成樹節點。
-    // partition: @frame arr[i] with range(low,high) in quick_tree
+    // partition: @frame arr with range(low,high) in quick_tree
+    // @pointer i at arr
     // @style arr[i] point red
     // @style arr[low:i-1] background AV_green when low < i
     // @style arr[i+1:high] background AV_red when i < high

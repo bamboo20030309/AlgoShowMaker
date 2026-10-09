@@ -20,10 +20,12 @@ int main() {
   int hidden = 7;
   {
     int shown = 5;
-    // @frame arr[index],shown
+    // @frame arr,shown
+    // @pointer index at arr
   }
   index = 1;
-  // @frame arr[index]
+  // @frame arr
+  // @pointer index at arr
   return 0;
 }`);
   const merge = await compile(

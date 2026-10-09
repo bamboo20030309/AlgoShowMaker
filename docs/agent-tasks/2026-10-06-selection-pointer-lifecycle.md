@@ -36,3 +36,5 @@
 - JavaScript 語法及 git diff --check 通過。
 - 3100 重啟成功，PID 50912，MongoDB 連線成功；algorithm.html 與 tween 腳本確認為整合 worktree 的 trace-297／trace-64／trace-41。
 - 本次不提交、不推送，不合併 main，不發布。完整 V3 的舊失敗清單尚未重新核實。
+
+> 語法遷移註記（引擎 14）：以上為當時的錯誤重現紀錄，保留原始寫法供追溯。現行教材已改成完整 `@frame arr` 加各自的 `@pointer`；`arr[i,j]` 舊多指標語法不再接受，單索引 `arr[i]` 現在代表只呈現該元素。詳見 `docs/indexed-value-migration.md`。

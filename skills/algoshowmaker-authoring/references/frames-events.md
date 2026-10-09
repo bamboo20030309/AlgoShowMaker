@@ -16,13 +16,16 @@ frame 是程式執行到指定位置時的狀態；事件是狀態演進中的�
 ## 事件動畫控制
 
 ```cpp
-// @frame a[i],pre[i]
+// @frame a,pre
+// @pointer i at a
+// @pointer i at pre
 // @events compare,read animate off
 // @events write animate on
 ```
 
 ```cpp
-// @frame a[i]
+// @frame a
+// @pointer i at a
 // @events compare,read animate off when i > 7
 ```
 

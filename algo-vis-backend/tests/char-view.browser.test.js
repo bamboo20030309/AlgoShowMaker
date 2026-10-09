@@ -16,7 +16,9 @@ test('char string cells, pointers, events, styles and saved snapshots keep sourc
 #include <string>
 using namespace std;
 // @preset char_view
-// @object char(s)[i,j] with labels(value,index)
+// @object char(s) with labels(value,index)
+// @pointer i at s
+// @pointer j at s
 // @endpreset
 int main(){string s; cin>>s; int i=0,j=2;
 // @frame use char_view
@@ -24,7 +26,9 @@ int main(){string s; cin>>s; int i=0,j=2;
 // @keep s as "original"
 if(s[i]==s[j]) s[i]=s[j];
 s[1]='z';
-// @frame char(s)[i,j] with labels(value,index)
+// @frame char(s) with labels(value,index)
+// @pointer i at s
+// @pointer j at s
 // @style s[1] highlight
 // @frame s
 string empty="";

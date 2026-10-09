@@ -28,7 +28,8 @@ int Tmask, Tsize, Tdeep, Tcapacity, n;
 
 // 建樹迴圈中以實際變數 i 作為 tree 的陣列指標。
 // @preset build_pointer_view
-// @object tree[i] render heap with range(1,Tcapacity)
+// @object tree render heap with range(1,Tcapacity)
+// @pointer i at tree
 // @endpreset
 
 // ─────────────────────────────────────────────────────────────────────────────

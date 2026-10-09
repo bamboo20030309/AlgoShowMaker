@@ -75,7 +75,9 @@ int main() {
             if (a[j] > a[j + 1]) {
                 swap(a[j], a[j + 1]);
             }
-            // @frame a[j,j+1]
+            // @frame a
+            // @pointer j at a
+            // @pointer j+1 at a
             // @style a[j,j+1] highlight
         }
     }

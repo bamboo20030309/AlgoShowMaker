@@ -56,3 +56,5 @@ node --test --test-concurrency=1 tests/insertion-relative-index.browser.test.js 
 ```
 
 交付記錄需寫：T 編號、fixture／輸入、人工推導答案、採樣幀／事件／速度、是否測新舊與重開、首個實際違規及報告路徑、執行環境與通過／失敗／未執行。只引用 replay 計畫時需注明「時序一致性」，不得寫成獨立標準答案。
+
+T21「索引取值與指標分離」：引擎 14 的 `@frame arr[i]`／`@object arr[i]` 只顯示指定元素，保留來源索引身分，不自動產生指標；`arr[i,j]` 明確報錯。整陣列游標使用獨立 `@pointer`，不得覆寫矩陣既有設定。核對一維、二維、字串與 IndexedDB 保存重開；入口：`indexed-value.browser.test.js`、`indexed-pointer-migration.test.js`。公開範例的程式碼、Trace 指紋與引用須同步更新，由 `guest-gallery-assets.test.js` 核對。

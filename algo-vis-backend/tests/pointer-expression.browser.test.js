@@ -8,11 +8,13 @@ test('expression pointers display i-1 and track the same cells as object binding
  t.after(()=>{if(previous)process.env.ASM_TEST_BASE_URL=previous;else delete process.env.ASM_TEST_BASE_URL;});
  const code=`#include <vector>
 int main(){std::vector<int> p(8);int i=1,j=1;
-// @frame p[i-1]
+// @frame p
+// @pointer i-1 at p
 // @frame p
 // @pointer i-1 at p color #123456
 i++;
-// @frame p[i-1]
+// @frame p
+// @pointer i-1 at p
 // @frame p
 // @pointer i-1 at p color #123456
 // @frame p

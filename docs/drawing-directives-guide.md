@@ -29,7 +29,8 @@
 3. `with`、`at`、`when` 等是同一行的後綴，不能當作新的 `@` 指令使用。不同指令支援的後綴不同，例如 `@style` 不能加 `at`，定位請用 `@place`。
 
 ```cpp
-// @frame arr[i]
+// @frame arr
+// @pointer i at arr
 // @style arr[0:i] focus
 // @text "目前走到第 ${i} 格" at arr.bottom
 ```
@@ -73,6 +74,8 @@
 
 擷取此刻的動畫幀並選擇要顯示的變數。
 
+`@frame arr` 顯示整個陣列；`@frame arr[i]` 只顯示該元素的數值。`@frame dp[r][c]` 選擇矩陣的一格，`@frame s[i]` 選擇一個字元。這些索引不再建立指標；需要游標時另外寫 `@pointer i at arr`。舊版 `arr[i,j]` 多指標寫法已移除。
+
 ```cpp
 // @frame arr
 ```
@@ -80,7 +83,9 @@
 常用寫法：
 
 ```cpp
-// @frame arr[i,j],key
+// @frame arr,key
+// @pointer i at arr
+// @pointer j at arr
 // @style arr[i] highlight
 ```
 
@@ -661,9 +666,11 @@ internal_state++;
 它們是物件顯示轉換或 with 選項，不是新的 `@` 起始指令。
 
 ```cpp
-// @frame char(s)[i,j] with labels(value,index)
+// @frame char(s) with labels(value,index)
 // @object bits(mask,8) with labels(none), symbols("", "♕")
 // @object arr with display("${index}: ${value}")
+// @pointer i at s
+// @pointer j at s
 ```
 
 `char(s)` 把原字串拆成字元格，名稱與定位仍使用 `s`，不用建立另一個專門顯示的陣列；`bits` 展開位元；`display` 改變格內文字而不更動演算法資料。

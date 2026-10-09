@@ -32,7 +32,9 @@ vector<vector<int>> num, pre;
 
 // 保留 r、c 與 pre[r][c] 的追蹤關係，但這個範例不畫索引指標。
 // @preset prefix_sum_2d_cursor
-// @object pre[r][c] render matrix with marker-layout(none)
+// @object pre render matrix with marker-layout(none)
+// @pointer r at pre.row
+// @pointer c at pre.column
 // @endpreset
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -18,7 +18,8 @@ test('enabled function entry schedules a code-only header highlight without canv
 using namespace std;
 
 void visit(vector<int>& arr, int i) {
-  // @frame arr[i]
+  // @frame arr
+  // @pointer i at arr
 }
 
 int main() {

@@ -124,8 +124,9 @@ int main() {
   for (int i = 1; i <= 4; i++) {
     int v = 2;
     // @frame when i%v==0
-    // @object isprime[i] with range(1,n), columns(10), labels(index)
+    // @object isprime with range(1,n), columns(10), labels(index)
     // @object prime with columns(10), labels(value)
+    // @pointer i at isprime
     // @place prime.top-left at isprime.bottom-left offset(0,60)
     // @style isprime[i,i*prime[prime_idx+1]] highlight
     // @arrow from isprime[i] to prime[prime_idx] color rgba(255, 0, 0, 0.7) width 3

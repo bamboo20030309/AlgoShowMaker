@@ -29,10 +29,10 @@
     { id: 'enddefault', label: '@enddefault', effect: '結束全域呈現預設區塊', code: '// @enddefault', examples: ['// @default\n// @camera auto\n// @enddefault'] },
     { id: 'frame', label: '@frame', effect: '擷取此刻的動畫幀並選擇要顯示的變數', code: '// @frame arr', examples: [
       '// @frame arr',
-      '// @frame arr[i,j],key\n// @style arr[i] highlight',
-      '// @frame char(s)[i,j]\n// @style s[i] highlight',
+      "// @frame arr,key\n// @pointer i at arr\n// @pointer j at arr\n// @style arr[i] highlight",
+      "// @frame char(s)\n// @pointer i at s\n// @pointer j at s\n// @style s[i] highlight",
       '// @frame bits(mask, 8) with labels(none), symbols("", "♕")',
-      '// @frame arr[i,j],key render heap with range(1,n) at canvas.top offset(0,80)\n// @style arr[i] highlight AV_red\n// @text "正在檢查第 ${i} 格" at arr.bottom',
+      "// @frame arr,key render heap with range(1,n) at canvas.top offset(0,80)\n// @pointer i at arr\n// @pointer j at arr\n// @style arr[i] highlight AV_red\n// @text \"正在檢查第 ${i} 格\" at arr.bottom",
       '// @frame tree render heap with range(1,Tsize-1), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)',
       '// @frame tree render segment_tree with range(1,n)',
       '// @frame value with display("F(${call})")\n// @let call = n',
@@ -55,7 +55,7 @@
     { id: 'let', label: '@let', effect: '建立本幀唯讀的繪圖運算別名，不產生 C++ 變數或事件', code: '// @let lb = i & -i', examples: [
       '// @let lb = i & -i',
       '// @let left = i - lb + 1\n// @style num[left:i] background AV_blue',
-      '// @preset bit_view\n// @object BIT[i]\n// @let lb = i & -i\n// @text "區間 ${i-lb+1}~${i}" at BIT.bottom\n// @endpreset'
+      "// @preset bit_view\n// @object BIT\n// @pointer i at BIT\n// @let lb = i & -i\n// @text \"區間 ${i-lb+1}~${i}\" at BIT.bottom\n// @endpreset"
     ] },
     { id: 'keep', label: '@keep', effect: '保存上一幀或指定物件的快照，供後續畫面使用', code: '// @keep last', examples: [
       '// @keep last',
@@ -94,7 +94,7 @@
       '// @segment arr[low:high] when low <= high',
       '// @segment tree[now][L:R] color AV_green as active_range when L <= R',
       '// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)',
-      '// @frame arr[i]\n// @segment arr[low:high]\n// @text "處理目前區間" at arr.bottom'
+      "// @frame arr\n// @pointer i at arr\n// @segment arr[low:high]\n// @text \"處理目前區間\" at arr.bottom"
     ] },
     { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件', code: '// @place pivot at arr.right offset(16,0)', examples: [
       '// @place pivot at arr.right',
@@ -131,12 +131,12 @@
       '// @arrow from arr[0] to arr[1]',
       '// @arrow from grid[x][y] to grid[x-1][y] color AV_green until return',
       '// @arrow from isprime[1] to isprime[12]',
-      '// @frame arr[i,j]\n// @arrow from arr[i].bottom to arr[j].top\n// @text "從左到右" at arr.bottom'
+      "// @frame arr\n// @pointer i at arr\n// @pointer j at arr\n// @arrow from arr[i].bottom to arr[j].top\n// @text \"從左到右\" at arr.bottom"
     ] },
     { id: 'exit', label: '@exit', effect: '提早讓指定變數或指標退場', code: '// @exit i', examples: [
       '// @exit i',
       '// @exit min_idx,i\n// @keep last',
-      '// @frame arr[min_idx]\n// @exit min_idx,i\n// @keep last as "round"'
+      "// @frame arr\n// @pointer min_idx at arr\n// @exit min_idx,i\n// @keep last as \"round\""
     ] },
     { id: 'code', label: '@code', effect: '控制程式碼片段呈現；hide 仍會執行程式但不顯示在動畫程式碼中', code: '// @code hide', examples: ['// @code hide\ninternal_state++;\n// @endcode'] },
     { id: 'endcode', label: '@endcode', effect: '結束目前的程式碼呈現控制區塊', code: '// @endcode', examples: ['// @code hide\ninternal_state++;\n// @endcode'] }

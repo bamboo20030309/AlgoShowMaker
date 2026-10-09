@@ -7,8 +7,10 @@ using namespace std;
 // @layout merge_passes gap 70
 
 // @preset merge_step
-// @object num[l,r] with range(0,n-1) in merge_passes
+// @object num with range(0,n-1) in merge_passes
 // @object temp with range(0,n-1)
+// @pointer l at num
+// @pointer r at num
 // @place temp.top-left at num.bottom-left offset(0,72)
 // @endpreset
 

@@ -30,8 +30,9 @@ int Tmask, Tsize, Tdeep, Tcapacity, n, sum = 0;
 
 // 遞迴查詢期間用 now 作為 tree 的實際陣列指標。
 // @preset query_pointer_view
-// @object tree[now] render heap with range(1,Tsize-1)
+// @object tree render heap with range(1,Tsize-1)
 // @object sum render cell
+// @pointer now at tree
 // @place sum.top at tree.bottom offset(0,45)
 // @endpreset
 

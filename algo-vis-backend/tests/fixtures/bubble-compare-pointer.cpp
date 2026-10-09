@@ -12,7 +12,9 @@ int main() {
             if (arr[j] > arr[j + 1]) {
                 swap(arr[j], arr[j + 1]);
             }
-            // @frame arr[j,j+1]
+            // @frame arr
+            // @pointer j at arr
+            // @pointer j+1 at arr
             // @text "兩兩比較 左邊比右邊大就交換" at arr.bottom
             // @camera focus arr zoom(2.0)
         }

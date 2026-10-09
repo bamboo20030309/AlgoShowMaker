@@ -21,7 +21,8 @@ const source = `
 void quick(std::vector<int>& arr, int low, int high) {
   int i = low;
   int pivot = arr[high];
-  // @frame arr[i],pivot with range(low,high) in quick_tree
+  // @frame arr,pivot with range(low,high) in quick_tree
+  // @pointer i at arr
   // @place pivot at arr.right offset(16,0) when low <= high
 }
 int main() {
@@ -56,8 +57,8 @@ test('@place supports an explicit source anchor and rejects hidden C++ sources',
     'left'
   );
   assert.throws(() => findFrameDirectives(source.replace(
-    '// @frame arr[i],pivot',
-    '// @frame arr[i]'
+    "// @frame arr,pivot\n// @pointer i at arr",
+    "// @frame arr\n// @pointer i at arr"
   )), /來源變數未由前一個 @frame 顯示：pivot/);
 });
 

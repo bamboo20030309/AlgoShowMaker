@@ -10,23 +10,29 @@ void sift_down(int now) {
         int right = left + 1;
         int largest = now;
 
-        // @frame heap[now] render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @frame heap render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @pointer now at heap
         // @style heap[now,left] highlight
         // @style heap[right] highlight when right <= n
 
         if (heap[left] > heap[largest]) largest = left;
         if (right <= n && heap[right] > heap[largest]) largest = right;
         if (largest == now) {
-            // @frame heap[now] render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+            // @frame heap render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+            // @pointer now at heap
             // @style heap[now] highlight
             break;
         }
 
-        // @frame heap[now,largest] render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @frame heap render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @pointer now at heap
+        // @pointer largest at heap
         // @style heap[now,largest] highlight
         swap(heap[now], heap[largest]);
 
-        // @frame heap[now,largest] render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @frame heap render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @pointer now at heap
+        // @pointer largest at heap
         // @style heap[now,largest] highlight
         now = largest;
     }
@@ -41,11 +47,13 @@ int main() {
     // @events animate off
 
     for (int i = n / 2; i >= 1; --i) {
-        // @frame heap[i] render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @frame heap render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @pointer i at heap
         // @style heap[i] highlight
         sift_down(i);
 
-        // @frame heap[i] render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @frame heap render heap with range(1,n), labels(value,index) at canvas.top offset(0,80)
+        // @pointer i at heap
         // @style heap[i] highlight
     }
 

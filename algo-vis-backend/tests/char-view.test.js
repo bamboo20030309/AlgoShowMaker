@@ -6,7 +6,9 @@ const { findFrameDirectives } = require('../trace-instrumenter');
 test('char view preserves source name, identity and index bindings', () => {
   const frames = findFrameDirectives(`#include <string>
 int main(){std::string s="abc"; int i=0,j=2;
-// @frame char(s)[i,j]
+// @frame char(s)
+// @pointer i at s
+// @pointer j at s
 // @style s[i] highlight
 // @frame s
 }`);
