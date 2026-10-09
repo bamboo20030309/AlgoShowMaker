@@ -41,7 +41,8 @@
     if (!document?.frames?.length) return;
     if (preservedViewportCamera) {
       const camera = preservedViewportCamera;
-      window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
+      if (window.restoreCameraViewport) window.restoreCameraViewport(camera);
+      else window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
       return;
     }
     if (window.document.body.classList.contains('asm-trace-studio-open')
@@ -86,7 +87,8 @@
       viewportGeometryReady = true;
       if (preservedViewportCamera) {
         const camera = preservedViewportCamera;
-        window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
+        if (window.restoreCameraViewport) window.restoreCameraViewport(camera);
+        else window.setCamera?.(camera.centerX, camera.centerY, camera.scale, false);
       } else window.ASMTraceCamera?.apply?.(document, frame, null, false);
       window.dispatchEvent(new CustomEvent('asm:trace-geometry-ready', {
         detail: { document, frame, index: currentFrame }

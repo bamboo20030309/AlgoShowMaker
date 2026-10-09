@@ -734,7 +734,9 @@ function activateTab(btn) {
       window.ASMTraceRenderers?.fitObjectNames?.(
         document.getElementById('asm-trace-root')
       );
-      if (preservedCanvasCamera && window.setCamera) {
+      if (preservedCanvasCamera && window.restoreCameraViewport) {
+        window.restoreCameraViewport(preservedCanvasCamera);
+      } else if (preservedCanvasCamera && window.setCamera) {
         window.setCamera(
           preservedCanvasCamera.centerX,
           preservedCanvasCamera.centerY,

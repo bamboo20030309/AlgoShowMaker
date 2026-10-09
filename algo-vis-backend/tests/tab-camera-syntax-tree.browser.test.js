@@ -77,6 +77,7 @@ test('subtabs preserve the canvas camera and syntax tree zoom has no UI limits',
       await page.waitForFunction(() => document.body.dataset.defaultAnimationState === 'ready');
       const expected = await page.evaluate(() => {
         window.setCamera(321.25, -147.5, 1.73, false);
+        window.setPresentationCameraTransform({ panXRatio: .12, panYRatio: -.08, zoomFactor: 1.3 });
         return window.getCameraViewport();
       });
 
@@ -89,6 +90,22 @@ test('subtabs preserve the canvas camera and syntax tree zoom has no UI limits',
         assert.ok(Math.abs(actual.centerY - expected.centerY) < 0.001, `${tab} keeps camera y`);
         assert.ok(Math.abs(actual.scale - expected.scale) < 0.001, `${tab} keeps camera scale`);
       }
+
+      // A real standalone wheel gesture must persist only in this tab's local camera scope.
+      const canvasBox = await page.locator('#arraySvg').boundingBox();
+      await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+      await page.mouse.wheel(0, -120);
+      await page.waitForFunction(() => sessionStorage.getItem('asm:temporary-camera:v1:algorithm:playback') !== null);
+      const localCamera = await page.evaluate(() => getPresentationCameraTransform());
+      await page.reload();
+      await page.waitForFunction(() => document.body.dataset.defaultAnimationState === 'ready');
+      assert.deepEqual(await page.evaluate(() => getPresentationCameraTransform()), localCamera,
+        'standalone algorithm.html retains its own post-offset after reload');
+      const traceBefore = await page.evaluate(() => JSON.stringify(ASMTracePlayer.getDocument()));
+      await page.evaluate(() => resetTemporaryCamera());
+      assert.equal(await page.evaluate(() => getPresentationCameraTransform().zoomFactor), 1);
+      assert.equal(await page.evaluate(() => JSON.stringify(ASMTracePlayer.getDocument())), traceBefore,
+        'resetting the local post-offset must not alter the Trace');
 
       await page.locator('.tab-btn[data-tab="tab-syntax-tree"]').click();
       await page.waitForFunction(() => document.getElementById('syntaxTreeSvg')?.dataset.nodeCount === '3');

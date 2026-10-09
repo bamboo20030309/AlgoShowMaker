@@ -650,6 +650,13 @@
     origSetCamera(target.x, target.y, target.scale, animate, duration);
   };
 
+  // A tab/viewport snapshot already contains the local modifier. Restore it directly,
+  // without recording it as a new authored target or composing the modifier twice.
+  window.restoreCameraViewport = function (camera) {
+    if (!camera || ![camera.centerX, camera.centerY, camera.scale].every(Number.isFinite)) return;
+    origSetCamera(camera.centerX, camera.centerY, camera.scale, false);
+  };
+
   window.setPresentationCameraTransform = function (value, apply = true, enabled = true) {
     presentationCameraEnabled = enabled === true;
     presentationCamera = normalizedPresentationCamera(value);

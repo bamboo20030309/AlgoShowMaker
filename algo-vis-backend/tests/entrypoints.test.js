@@ -37,7 +37,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(controlsStart >= 0 && freshnessDot > controlsStart && timeline > freshnessDot,
     'the shared freshness dot stays in the playback controls before the frame timeline');
   assert.ok(html.includes('trace-freshness.js?v=trace-3'));
-  assert.ok(html.includes('canva.js?v=trace-17'));
+  assert.ok(html.includes('canva.js?v=trace-18'));
   assert.ok(sources.indexOf('local-camera.js') < sources.indexOf('canva.js'));
   assert.ok(html.includes('<script src="vendor/ace/ace.js"></script>'));
   assert.ok(!html.includes('cdnjs.cloudflare.com/ajax/libs/ace'));
@@ -122,12 +122,12 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(read('trace-frame-tween.js').includes(`asmTraceFrameTweenBuild = '${tweenBuild}'`));
   assert.ok(html.includes('trace-camera.js?v=trace-8'));
   assert.ok(html.includes('trace-structure-lod.js?v=6'));
-  assert.ok(html.includes('trace-player.js?v=trace-29'));
+  assert.ok(html.includes('trace-player.js?v=trace-30'));
   assert.ok(html.includes('trace-debug-recorder.js?v=debug-9'));
   assert.ok(sources.indexOf('trace-player.js') < sources.indexOf('trace-debug-recorder.js'));
   assert.ok(html.includes('trace-studio.js?v=trace-139'));
   assert.ok(html.includes('syntax-tree.js?v=syntax-4'));
-  assert.ok(html.includes('front.js?v=frame-endpoints-54'));
+  assert.ok(html.includes('front.js?v=frame-endpoints-55'));
   assert.ok(html.includes('slides-embed.js?v=trace-15'));
   assert.ok(html.includes('trace-provenance.js?v=trace-14'));
   assert.ok(html.includes('trace.css?v=trace-37'));

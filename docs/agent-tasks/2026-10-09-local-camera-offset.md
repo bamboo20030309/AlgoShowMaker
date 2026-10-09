@@ -22,3 +22,9 @@
 隔離瀏覽器使用小型雙幀陣列經實際 analyze／compile：右鍵拖曳、滾輪縮放、跨幀維持、Studio 開關及獨立縮放、投影片編輯／展示切換、動畫編輯器獨立縮放／重開、重新整理與實際 asmdeck 下載解碼。畫布手勢不改變 deck revision。舊偏移實際載入／遷移／匯出／重開，字體 19 與 autoFixedEnabled=false 保留；重置後只恢復當前介面。雲端投影另外核對 inline Trace 與 ID-only 兩路均不帶偏移。
 
 最初瀏覽器案例使用的程式未被追蹤器接受，導致等待動畫逾時；改為支援的一般 vector 宣告與兩個手動幀，未修改產品解析規則或放寬畫面斷言。入口快取版號斷言隨實際腳本更新同步。
+
+## algorithm.html 補強
+
+使用者追加確認獨立演算法頁也要套用後偏移。補測發現：輸入／輸出／除錯／語法樹切回畫布時，舊還原路徑把已含偏移的 viewport 當成正式鏡頭，再度套用偏移，造成平移與縮放累加。測試先重現縮放從 2.249 錯誤增加到 2.9237，再修正共用 `restoreCameraViewport`，還原最終 viewport 而不改寫正式目標。
+
+相關 5 個案例通過（camera-embed-parity 2、entrypoints 1、tab-camera-syntax-tree.browser 1、presentation-camera.browser 1）。實際獨立頁滾輪後重新整理保留本機偏移、四個分頁往返不累加、重置不修改 Trace；原投影片、Studio 及動畫編輯器隔離案例仍通過。語法與 git diff --check 通過，未啟動大型驗證。
