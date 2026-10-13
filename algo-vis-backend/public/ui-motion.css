@@ -1,0 +1,267 @@
+/* UI motion adapted from transitions.dev skills (modal, dropdown, tabs).
+ * These selectors only target application chrome, never slide or Trace objects. */
+
+:root {
+  --modal-open-dur: 250ms;
+  --modal-close-dur: 150ms;
+  --modal-scale: 0.96;
+  --modal-scale-close: 0.96;
+  --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+
+.t-modal {
+  transform-origin: center;
+  transform: scale(var(--modal-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-open-dur) var(--modal-ease),
+    opacity   var(--modal-open-dur) var(--modal-ease);
+  will-change: transform, opacity;
+}
+.t-modal.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-modal.is-closing {
+  transform: scale(var(--modal-scale-close));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-close-dur) var(--modal-ease),
+    opacity   var(--modal-close-dur) var(--modal-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-modal { transition: none !important; }
+}
+
+
+:root {
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+
+.t-dropdown {
+  transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-dropdown { transition: none !important; }
+}
+
+
+:root {
+  --tabs-dur: 250ms;
+  --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tabs-text-muted: rgba(15, 15, 15, 0.8);
+  --tabs-text-active: #0f0f0f;
+  --tabs-bar-bg: #f1f1f1;
+  --tabs-pill-bg: #ffffff;
+}
+
+
+/* The bar is just a flex container with padding for the pill
+   to sit inside. Tabs sit on z-index: 1, the pill on z-index: 0,
+   so labels read above the pill background. */
+.t-tabs {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 48px;
+  background: var(--tabs-bar-bg);
+}
+.t-tab {
+  position: relative;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  height: 30px;
+  padding: 4px 12px;
+  color: var(--tabs-text-muted);
+  cursor: pointer;
+  border-radius: 48px;
+  z-index: 1;
+  transition: color var(--tabs-dur) var(--tabs-ease);
+}
+.t-tab:not([aria-selected="true"]):hover,
+.t-tab[aria-selected="true"] {
+  color: var(--tabs-text-active);
+}
+
+/* The pill: width + transform are written inline by JS so
+   the transition tweens between the previous and next
+   measured positions. */
+.t-tabs-pill {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  height: 30px;
+  width: 0;
+  background: var(--tabs-pill-bg);
+  border-radius: 48px;
+  transform: translateX(0);
+  transition:
+    transform var(--tabs-dur) var(--tabs-ease),
+    width     var(--tabs-dur) var(--tabs-ease);
+  will-change: transform, width;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-tabs-pill, .t-tab { transition: none !important; }
+}
+
+/* Shared semantic timing: quick dismissals, deliberate but brief entrances. */
+:root {
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --modal-open-dur: var(--duration-fast);
+  --modal-close-dur: var(--duration-quick);
+  --dropdown-open-dur: var(--duration-fast);
+  --dropdown-close-dur: var(--duration-quick);
+  --tabs-dur: var(--duration-fast);
+}
+
+/* Native dialog owns focus, Escape, form submission and returnValue. Discrete
+ * display/overlay transitions keep the exit visible without delaying close()
+ * or its close event. Older browsers safely fall back to immediate dismissal. */
+dialog.t-modal {
+  transform: scale(var(--modal-scale-close));
+  transition-property: transform, opacity, display, overlay;
+  transition-duration: var(--modal-close-dur);
+  transition-timing-function: var(--modal-ease);
+  transition-behavior: allow-discrete;
+}
+dialog.t-modal[open] {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+  transition-duration: var(--modal-open-dur);
+}
+dialog.t-modal::backdrop {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--modal-close-dur) var(--modal-ease),
+    display var(--modal-close-dur) allow-discrete,
+    overlay var(--modal-close-dur) allow-discrete;
+}
+dialog.t-modal[open]::backdrop {
+  opacity: 1;
+  pointer-events: auto;
+  transition-duration: var(--modal-open-dur);
+}
+
+/* Existing hover menus and hidden palettes retain their own display modes.
+ * No event handler or timer changes the application's visibility state. */
+.t-dropdown {
+  transition-property: transform, opacity, display;
+  transition-duration: var(--dropdown-close-dur);
+  transition-timing-function: var(--dropdown-ease);
+  transition-behavior: allow-discrete;
+}
+.t-dropdown.is-open:not([hidden]),
+.menu-item:is(:hover, :focus-within) > .t-dropdown {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+  transition-duration: var(--dropdown-open-dur);
+}
+.menu-item:focus-within > .dropdown-content { display: block; }
+.menu-item:not(:hover):not(:focus-within) > .t-dropdown {
+  transform: scale(var(--dropdown-closing-scale));
+}
+.t-dropdown[hidden] {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--dropdown-close-dur);
+}
+
+@starting-style {
+  dialog.t-modal[open] { transform: scale(var(--modal-scale)); opacity: 0; }
+  dialog.t-modal[open]::backdrop { opacity: 0; }
+  .t-dropdown.is-open:not([hidden]),
+  .menu-item:is(:hover, :focus-within) > .t-dropdown {
+    transform: scale(var(--dropdown-pre-scale));
+    opacity: 0;
+  }
+}
+
+/* Adapt the sliding pill to the existing flat, blue-underlined auth tabs. */
+.auth-tabs.t-tabs {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  --tabs-text-muted: var(--text-muted);
+  --tabs-text-active: #fff;
+  --tabs-pill-bg: var(--blue);
+}
+.auth-tabs .t-tab { height: auto; padding: 0; border-radius: 0; }
+.auth-tabs.t-tabs .auth-tab.is-active { border-bottom-color: transparent; }
+.auth-tabs .t-tabs-pill { top: auto; bottom: -1px; height: 2px; border-radius: 0; }
+
+/* Polish existing chrome only; no geometry changes on editor objects. */
+.deck-card {
+  transition: border-color var(--duration-quick) var(--ease-smooth-out),
+    transform var(--duration-fast) var(--ease-smooth-out),
+    box-shadow var(--duration-fast) var(--ease-smooth-out);
+}
+.subTab .tab-btn {
+  transition: background-color var(--duration-quick) var(--ease-smooth-out),
+    color var(--duration-quick) var(--ease-smooth-out);
+}
+.subTab .tab-btn::after {
+  transition: opacity var(--tabs-dur) var(--ease-smooth-out),
+    transform var(--tabs-dur) var(--ease-smooth-out);
+}
+.deck-cover-image { animation: ui-cover-reveal var(--duration-fast) var(--ease-smooth-out); }
+@keyframes ui-cover-reveal { from { opacity: 0; } to { opacity: 1; } }
+
+/* Covers existing skeleton pulses as well as all newly introduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  dialog.t-modal, dialog.t-modal::backdrop, .t-dropdown,
+  .deck-card, .subTab .tab-btn, .subTab .tab-btn::after {
+    transition: none !important;
+  }
+  .deck-cover-image, .deck-preview.is-loading::before { animation: none !important; }
+}
+

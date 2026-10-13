@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="trace-directive-assist.css?v=directive-5" />
   <link rel="stylesheet" href="trace-studio.css?v=trace-63" />
   <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
+  <link rel="stylesheet" href="ui-motion.css?v=1" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 
@@ -36,7 +37,7 @@
 
     <div class="menu-item">
       <span class="menu-label">畫布設定</span>
-      <div class="dropdown-content">
+      <div class="dropdown-content t-dropdown" data-origin="top-left">
         <div class="dropdown-item" id="menuResetView">重置視角</div>
         <div class="dropdown-item" id="menuToggleGrid">切換格線</div>
       </div>
@@ -44,7 +45,7 @@
 
     <div class="menu-item">
       <span class="menu-label">編輯器</span>
-      <div class="dropdown-content">
+      <div class="dropdown-content t-dropdown" data-origin="top-left">
         <div class="dropdown-item" onclick="aceEditor.setFontSize(12)">字體大小: 小</div>
         <div class="dropdown-item" onclick="aceEditor.setFontSize(16)">字體大小: 中</div>
         <div class="dropdown-item" onclick="aceEditor.setFontSize(20)">字體大小: 大</div>
