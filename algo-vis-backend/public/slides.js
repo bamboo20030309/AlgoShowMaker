@@ -6271,6 +6271,20 @@
     updateAlignmentToolbar();
   }
 
+  function clearSlideObjectSelection() {
+    // Clear before currentH/currentV changes so pending cell edits still commit
+    // to their source slide. Cached canvases must not restore stale selections.
+    clearStructureCellSelection();
+    fabricCanvases.forEach(canvas => {
+      if (!canvas.getActiveObject()) return;
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+    });
+    textSelection = null;
+    clearWidgetSelection();
+    hideObjectToolbar();
+  }
+
   function toggleWidgetSelection(widgetId) {
     const el = document.querySelector(`.slide-widget[data-widget-id="${widgetId}"]`);
     if (!el) return;
@@ -11932,12 +11946,10 @@
       document.body.dataset.revealPlugins = Object.keys(reveal.getPlugins ? reveal.getPlugins() : {}).join(',');
       reveal.on('slidechanged', event => {
         if (pointerDrag) return;
-        hideStructureContextMenu();
+        clearSlideObjectSelection();
         currentH = event.indexh;
         currentV = event.indexv || 0;
         rememberSlidePosition();
-        selectedWidgetKeys.clear();
-        selectedWidgetId = null;
         updateGroupSelectionOverlay();
         prioritizeProgressiveRebuild(currentH, currentV);
         scheduleFabricResolution();
