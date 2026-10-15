@@ -5873,10 +5873,27 @@
     const target = event?.target;
     const corner = event?.transform?.corner;
     if (!target || !corner || snapBypassRequested(event?.e)) {
+      if (event?.transform) delete event.transform.__asmUniformResizeSnap;
       clearSnapGuides();
       return;
     }
     const flags = resizeEdgeFlags(corner);
+    const uniform = !isTextObject(target) && (flags.left || flags.right) && (flags.top || flags.bottom)
+      && event.transform.action === 'scale'
+      && Boolean(canvas.uniformScaling) !== Boolean(event.e?.[canvas.uniScaleKey]);
+    const locked = event.transform.__asmUniformResizeSnap;
+    if (uniform && locked && Number.isFinite(event.e?.[locked.pointerKey])
+      && Math.abs(event.e[locked.pointerKey] - locked.pointer) <= locked.threshold) {
+      // While the pointer travels along the guide, hold the entire geometry,
+      // not just one dimension. Fabric has already applied this move's raw scale.
+      target.set(locked.geometry);
+      target.setCoords();
+      target.dirty = true;
+      canvas.requestRenderAll();
+      renderSnapGuides(locked.guides, canvas);
+      return;
+    }
+    delete event.transform.__asmUniformResizeSnap;
     const resizeEdge = isTextObject(target)
       ? (flags.left ? 'left' : (flags.right ? 'right' : ''))
       : corner;
@@ -5897,12 +5914,16 @@
     const nextFlags = resizeEdgeFlags(resizeEdge);
     const anchorX = nextFlags.left ? current.right : (nextFlags.right ? current.left : current.centerX);
     const anchorY = nextFlags.top ? current.bottom : (nextFlags.bottom ? current.top : current.centerY);
-    if (Number.isFinite(result.distanceX) && current.width > 0) {
+    const useX = Number.isFinite(result.distanceX) && result.distanceX <= result.distanceY;
+    if (uniform && current.width > 0 && current.height > 0) {
+      const ratio = Math.max(0.01, useX ? next.width / current.width : next.height / current.height);
+      target.set({ scaleX: target.scaleX * ratio, scaleY: target.scaleY * ratio });
+    } else if (Number.isFinite(result.distanceX) && current.width > 0) {
       const ratioX = Math.max(0.01, next.width / current.width);
       if (isTextObject(target)) target.set({ width: Math.max(40, (Number(target.width) || 40) * ratioX) });
       else target.set({ scaleX: (Number(target.scaleX) || 1) * ratioX });
     }
-    if (Number.isFinite(result.distanceY) && current.height > 0 && !isTextObject(target)) {
+    if (!uniform && Number.isFinite(result.distanceY) && current.height > 0 && !isTextObject(target)) {
       const ratioY = Math.max(0.01, next.height / current.height);
       target.set({ scaleY: (Number(target.scaleY) || 1) * ratioY });
     }
@@ -5917,7 +5938,18 @@
     target.setCoords();
     target.dirty = true;
     canvas.requestRenderAll();
-    renderSnapGuides(result.guides, canvas);
+    const guides = uniform ? (useX ? result.xGuides : result.yGuides) : result.guides;
+    if (uniform) {
+      const pointerKey = useX ? 'clientX' : 'clientY';
+      const rect = fabricSlideRect(canvas);
+      event.transform.__asmUniformResizeSnap = {
+        pointerKey, pointer: event.e?.[pointerKey],
+        threshold: SNAP_THRESHOLD * (rect ? (useX ? rect.width / SLIDE_W : rect.height / SLIDE_H) : 1),
+        geometry: { left: target.left, top: target.top, scaleX: target.scaleX, scaleY: target.scaleY },
+        guides
+      };
+    }
+    renderSnapGuides(guides, canvas);
   }
 
   function applyWidgetResizeSnap(widget, drag) {
