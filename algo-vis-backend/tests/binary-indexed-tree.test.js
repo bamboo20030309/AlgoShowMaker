@@ -34,7 +34,8 @@ test('directive expressions parse and evaluate C++ bitwise precedence', () => {
   const [frame] = findFrameDirectives(`int main() {
     int i = 12, mask = 5;
     int arr[32] = {};
-    // @frame arr[i & -i]
+    // @frame arr
+    // @pointer i & -i at arr
     // @style arr[(i >> 1):(i | mask)] background AV_green when (mask & 1) != 0
   }`);
   assert.equal(frame.bindings[0].indexExpression, 'i & -i');
@@ -231,9 +232,11 @@ using namespace std;
 int main() {
   vector<int> arr(9, 0);
   int i = 12;
-  // @frame arr[i & -i]
+  // @frame arr
+  // @pointer i & -i at arr
   arr[i & -i] += 7;
-  // @frame arr[i & -i]
+  // @frame arr
+  // @pointer i & -i at arr
 }`;
   const analyzeResponse = await fetch(base + '/trace/analyze', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code })

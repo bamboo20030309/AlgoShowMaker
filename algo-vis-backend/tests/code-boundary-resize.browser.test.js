@@ -3,11 +3,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
-const { startIsolatedServer } = require('./helpers/isolated-server');
+const { startStaticUiServer } = require('./helpers/static-ui-server');
 
 test('code selection handles resize boundaries without changing text size, including saved legacy widgets',
   { timeout: 60000 }, async t => {
-    const { base } = await startIsolatedServer(t);
+    const { base } = await startStaticUiServer(t);
     const browser = await chromium.launch({ headless: true,
       ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
     t.after(() => browser.close());

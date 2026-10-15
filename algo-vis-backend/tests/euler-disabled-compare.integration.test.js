@@ -25,20 +25,23 @@ void prime_table() {
   // @style isprime[1] highlight
   for(int i=2;i<=n;i++){
     // @frame
-    // @object isprime[i] with range(1,n), columns(10), labels(index)
+    // @object isprime with range(1,n), columns(10), labels(index)
     // @object prime with columns(10), labels(value)
+    // @pointer i at isprime
     // @place prime.top-left at isprime.bottom-left offset(0,60)
     // @style isprime[1:n] focus when value == 1
     if(isprime[i])prime.push_back(i);
     // @frame
-    // @object isprime[i] with range(1,n), columns(10), labels(index)
+    // @object isprime with range(1,n), columns(10), labels(index)
     // @object prime with columns(10), labels(value)
+    // @pointer i at isprime
     // @place prime.top-left at isprime.bottom-left offset(0,60)
     // @style isprime[1:n] focus when value == 1
     for(int j=0;j<prime.size();j++){
       // @frame
-      // @object isprime[i] with range(1,n), columns(10), labels(index)
+      // @object isprime with range(1,n), columns(10), labels(index)
       // @object prime with columns(10), labels(value)
+      // @pointer i at isprime
       // @place prime.top-left at isprime.bottom-left offset(0,60)
       // @style isprime[1:n] focus when value == 1
       // @style isprime[i,i*prime[j]] highlight
@@ -47,8 +50,9 @@ void prime_table() {
       if(i*prime[j]>n)break;
       isprime[i*prime[j]]=0;
       // @frame when i%prime[j]==0 && j<prime.size()-1
-      // @object isprime[i] with range(1,n), columns(10), labels(index)
+      // @object isprime with range(1,n), columns(10), labels(index)
       // @object prime with columns(10), labels(value)
+      // @pointer i at isprime
       // @place prime.top-left at isprime.bottom-left offset(0,60)
       // @style isprime[1:n] focus when value == 1
       // @style isprime[i,i*prime[j+1]] highlight

@@ -5,16 +5,17 @@ const { chromium } = require('playwright');
 const { startIsolatedServer } = require('./helpers/isolated-server');
 const { compile } = require('./helpers/compile');
 const { TWEEN_BUILD } = require('./helpers/builds');
+const { readPackage, savedTrace } = require('./helpers/deck-package');
 
 test('insertion frame 11 evaluates j+1 numerically in fresh and saved traces', { timeout: 90000 }, async t => {
   const { base } = await startIsolatedServer(t);
   const bytes = fs.readFileSync(require('node:path').join(__dirname, '../public/guest-decks/insertion-sort.asmdeck'));
-  const body = JSON.parse(gunzipSync(bytes.subarray(9))).body;
+  const body = readPackage(bytes).body;
   const slide = body.deck.groups.flatMap(group => group.slides).find(item => item.animation);
   const animation = slide.animation;
   const input = '10\n1 8 7 2 6 5 3 9 10 12';
   assert.equal(animation.input.trim(), input, 'the saved example uses the reported input');
-  const saved = body.prebuiltTraces[animation.prebuilt.traceId];
+  const saved = savedTrace(body, animation);
   const oldBase = process.env.ASM_TEST_BASE_URL;
   let fresh;
   try { process.env.ASM_TEST_BASE_URL = base; fresh = (await compile(animation.code, input)).trace; }

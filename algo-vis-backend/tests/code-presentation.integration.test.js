@@ -66,7 +66,8 @@ int main() {
   // @frame arr
   for (int i = 0; i < n; i++) {
     if (arr[i] > 0) arr[i]--;
-    // @frame arr[i]
+    // @frame arr
+    // @pointer i at arr
     // @style arr[i] point red
   }
   return 0;
@@ -123,7 +124,8 @@ int main() {
   vector<int> arr(n);
   // @frame arr
   for (int i = 0; i < n; i++) {
-    // @frame arr[i]
+    // @frame arr
+    // @pointer i at arr
   }
 }`;
   const { trace, context } = await compile(source, '3\n1 2 3\n');
@@ -158,7 +160,8 @@ test('later bubble-sort swap frames do not repeat the already visible array decl
 test('drawing directives are removed silently while omitted algorithm code uses ellipsis', () => {
   const source = `int main() {
   int i = 0;
-  // @frame arr[i]
+  // @frame arr
+  // @pointer i at arr
   // @style arr[i] point red
   i++;
   int unrelated = 1;
@@ -208,7 +211,8 @@ int main() {
     if (arr[i] > 0) {
       arr[i]--;
     }
-    // @frame arr[i]
+    // @frame arr
+    // @pointer i at arr
   }
   return 0;
 }`;
@@ -376,7 +380,8 @@ int main() {
   vector<int> arr = {3, 1};
   // @frame arr,n
   for (int i = 0; i < n && n > 0; i++) {
-    // @frame arr[i],n
+    // @frame arr,n
+    // @pointer i at arr
   }
   // @frame arr,n
 }`;
@@ -404,7 +409,8 @@ int main() {
   vector<int> arr = {3, 2};
   // @frame arr
   for (int j = 0; j < 2; j++) {
-    // @frame arr[j]
+    // @frame arr
+    // @pointer j at arr
   }
   // @frame arr
 }`;
@@ -478,7 +484,8 @@ int main() {
   vector<int> arr = {3, 2, 1};
   // @frame arr
   for (int i = 0; i < 3; i++) {
-    // @frame arr[i]
+    // @frame arr
+    // @pointer i at arr
   }
 }`;
   const { trace, context } = await compile(source);
@@ -1255,7 +1262,9 @@ int main() {
       if (arr[j] > arr[j + 1]) {
         swap(arr[j], arr[j + 1]);
       }
-      // @frame arr[j,j+1]
+      // @frame arr
+      // @pointer j at arr
+      // @pointer j+1 at arr
     }
   }
 }`;
@@ -1295,7 +1304,9 @@ int main() {
       if (arr[j] > arr[j + 1]) {
         swap(arr[j], arr[j + 1]);
       }
-      // @frame arr[j,j+1]
+      // @frame arr
+      // @pointer j at arr
+      // @pointer j+1 at arr
     }
   }
 }`;
@@ -1332,18 +1343,23 @@ void quick_sort(vector<int>& arr, int low, int high) {
   if (low >= high) return;
   int pivot = arr[high];
   int i = low;
-  // @frame arr[i],pivot
+  // @frame arr,pivot
+  // @pointer i at arr
   // @segment arr[low:high]
   for (int j=low; j<high; j++) {
     if (arr[j] < pivot) {
       if (i != j) swap(arr[i], arr[j]);
       i++;
     }
-    // @frame arr[i,j],pivot
+    // @frame arr,pivot
+    // @pointer i at arr
+    // @pointer j at arr
     // @segment arr[low:high]
   }
   if (i != high) swap(arr[i], arr[high]);
-  // @frame arr[i,high],pivot
+  // @frame arr,pivot
+  // @pointer i at arr
+  // @pointer high at arr
   // @segment arr[low:high]
   quick_sort(arr, low, i - 1);
   quick_sort(arr, i + 1, high);

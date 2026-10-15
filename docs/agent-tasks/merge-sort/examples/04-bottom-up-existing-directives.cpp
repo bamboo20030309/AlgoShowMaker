@@ -7,8 +7,11 @@ vector<ll> num(500005, 0);
 
 // 比較過程固定顯示原陣列與暫存陣列，避免每一幀重複寫位置設定。
 // @preset merge_step
-// @object num[left,right] with range(0,n-1) at canvas.top offset(0,80)
-// @object temp[t] with range(0,n-1) at num.bottom offset(0,72)
+// @object num with range(0,n-1) at canvas.top offset(0,80)
+// @object temp with range(0,n-1) at num.bottom offset(0,72)
+// @pointer left at num
+// @pointer right at num
+// @pointer t at temp
 // @endpreset
 
 void mergesort(ll n) {

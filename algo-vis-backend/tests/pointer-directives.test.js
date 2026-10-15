@@ -21,13 +21,14 @@ void f(){int a[3]; int i=0,depth=1;
   assert.throws(() => findFrameDirectives(source.replace('tree.root', 'missing.root')), /找不到 layout/);
 });
 
-test('separate pointers coexist with legacy frame pointers and capture only their dependencies', () => {
+test('independent pointers share a view and capture only their dependencies', () => {
   const [frame] = findFrameDirectives(`void f(){int a[3]; int i=0,j=1;
-// @frame a[i]
+// @frame a
+// @pointer i at a
 // @pointer j at a[j]
 }`);
   assert.equal(frame.bindings.length, 2);
-  assert.equal(frame.bindings[0].explicitPointer, undefined);
+  assert.equal(frame.bindings[0].explicitPointer, true);
   assert.equal(frame.bindings[1].label, 'j');
   assert.ok(frame.captureOnlyVariableIds.includes(frame.bindings[1].sourceVariableId));
 });
@@ -127,7 +128,8 @@ void f(){int dp[2][3];int i=0,j=1;
 
 test('pointer expressions match object index dependencies and keep their authored labels', () => {
   const [frame] = findFrameDirectives(`void f(){int p[8];int i=3,j=1;
-// @frame p[i-1]
+// @frame p
+// @pointer i-1 at p
 // @pointer i-1 at p color AV_green!
 // @pointer i + j at p
 // @pointer i-1 at p[i+1]

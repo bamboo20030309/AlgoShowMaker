@@ -39,7 +39,9 @@ set<string> ans;
 // @endpreset
 
 // @preset lcs_build_cursor
-// @object LCS[i][j] render matrix with labels(value), row-labels("",S), column-labels("",T)
+// @object LCS render matrix with labels(value), row-labels("",S), column-labels("",T)
+// @pointer i at LCS.row
+// @pointer j at LCS.column
 // @style LCS.row-label[i] background AV_green! when S[i-1] == T[j-1]
 // @style LCS.column-label[j] background AV_green! when S[i-1] == T[j-1]
 // @style LCS.row-label[i] background AV_red! when S[i-1] != T[j-1]
@@ -47,7 +49,9 @@ set<string> ans;
 // @endpreset
 
 // @preset lcs_dfs_cursor
-// @object LCS[x][y] render matrix with labels(value), row-labels("",S), column-labels("",T)
+// @object LCS render matrix with labels(value), row-labels("",S), column-labels("",T)
+// @pointer x at LCS.row
+// @pointer y at LCS.column
 // @style LCS.row-label[x] background AV_green! when x > 0 && y > 0 && S[x-1] == T[y-1]
 // @style LCS.column-label[y] background AV_green! when x > 0 && y > 0 && S[x-1] == T[y-1]
 // @style LCS.row-label[x] background AV_red! when x > 0 && y > 0 && S[x-1] != T[y-1]

@@ -5,18 +5,19 @@ const { chromium } = require('playwright');
 const { startIsolatedServer } = require('./helpers/isolated-server');
 const { compile } = require('./helpers/compile');
 const { TWEEN_BUILD } = require('./helpers/builds');
+const { readPackage, savedTrace } = require('./helpers/deck-package');
 
 test('insertion key initializer copies the visible cell, preserves its source and supports saved traces', { timeout: 120000 }, async t => {
   const { base } = await startIsolatedServer(t);
   const bytes = fs.readFileSync(path.join(__dirname, '../public/guest-decks/insertion-sort.asmdeck'));
-  const body = JSON.parse(gunzipSync(bytes.subarray(9))).body;
+  const body = readPackage(bytes).body;
   const animation = body.deck.groups.flatMap(g => g.slides).find(s => s.animation).animation;
   const input = '10\n1 8 7 2 6 5 3 9 10 12';
   const oldBase = process.env.ASM_TEST_BASE_URL;
   let fresh;
   try { process.env.ASM_TEST_BASE_URL = base; fresh = (await compile(animation.code, input)).trace; }
   finally { if (oldBase === undefined) delete process.env.ASM_TEST_BASE_URL; else process.env.ASM_TEST_BASE_URL = oldBase; }
-  const saved = body.prebuiltTraces[animation.prebuilt.traceId];
+  const saved = savedTrace(body, animation);
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

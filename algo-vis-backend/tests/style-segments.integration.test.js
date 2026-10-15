@@ -55,7 +55,8 @@ using namespace std;
 int main() {
   vector<int> arr = {0, 5, 7, 2, 1, 9, 4};
   int i = 1;
-  // @frame arr[i] render heap with range(1,6)
+  // @frame arr render heap with range(1,6)
+  // @pointer i at arr
   // @style arr[i] point red
   // @style arr[i,i*2:i*2+1] highlight red
   return 0;

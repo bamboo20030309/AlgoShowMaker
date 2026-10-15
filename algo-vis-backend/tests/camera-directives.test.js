@@ -68,7 +68,8 @@ using namespace std;
 int main() {
   vector<int> arr = {3, 1, 2};
   int i = 1;
-  // @frame arr[i]
+  // @frame arr
+  // @pointer i at arr
   // @camera focus arr[i] zoom(1.6) offset(4,-8) when i >= 0
   // @frame arr
   // @camera auto zoom(0.8)

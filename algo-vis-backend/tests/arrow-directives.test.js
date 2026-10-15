@@ -20,7 +20,8 @@ const source = `
 int main() {
   std::vector<int> arr = {3, 1};
   int i = 0;
-  // @frame arr[i]
+  // @frame arr
+  // @pointer i at arr
   // @arrow from arr[i].bottom offset(0,8) to arr[1].top offset(0,-8) as "move_link" color AV_red! width 2 head both line curve dash 6,4 when i == 0
 }
 `;

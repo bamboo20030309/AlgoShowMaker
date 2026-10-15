@@ -50,7 +50,8 @@ using namespace std;
 int main() {
   int i = 1;
   vector<int> arr = {3, 1, 2};
-  // @frame arr[i]
+  // @frame arr
+  // @pointer i at arr
   // @keep last as "round" at canvas.top when i > 0
 }
 `;
@@ -86,7 +87,8 @@ int main() {
   vector<int> arr = {3, 1, 2};
   for (int i = 0; i < 3; i++) {
     // @keep last as "round" when i > 0
-    // @frame arr[i]
+    // @frame arr
+    // @pointer i at arr
   }
 }
 `;
@@ -104,7 +106,8 @@ int main() {
   vector<int> arr = {3, 1};
   for (int i = 0; i < 2; i++) {
     int min_idx = i;
-    // @frame arr[min_idx]
+    // @frame arr
+    // @pointer min_idx at arr
     // @keep last as "round"
   }
   // @frame arr
@@ -136,7 +139,8 @@ int main() {
   vector<int> arr = {3, 1};
   {
     int min_idx = 0;
-    // @frame arr[min_idx]
+    // @frame arr
+    // @pointer min_idx at arr
     // @keep last as "before_change"
     min_idx++;
   }
@@ -161,7 +165,8 @@ using namespace std;
 int main() {
   vector<int> arr = {3, 1};
   int min_idx = 0;
-  // @frame arr[min_idx]
+  // @frame arr
+  // @pointer min_idx at arr
   // @exit min_idx
   // @keep last as "without_min"
   // @frame arr
@@ -456,7 +461,8 @@ int main() {
   vector<int> arr = {1, 2};
   {
     int i = 0;
-    // @frame arr[i]
+    // @frame arr
+    // @pointer i at arr
     swap(arr[0], arr[1]);
     arr[0] = 9;
     i++;

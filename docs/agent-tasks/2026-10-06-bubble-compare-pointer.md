@@ -22,3 +22,5 @@
 - `truthy-compare.integration.test.js`：單值條件與一般雙值比較、線篩比較事件。
 - 合計 4 個具名案例通過；瀏覽器無 pageerror，語法與 git diff --check 通過。
 - 只執行相關局部驗證，完整 V3 尚未重新驗收；不合併 main 或發布。
+
+> 語法遷移註記（引擎 14）：以上為當時的錯誤重現紀錄，保留原始寫法供追溯。現行教材已改成完整 `@frame arr` 加各自的 `@pointer`；`arr[i,j]` 舊多指標語法不再接受，單索引 `arr[i]` 現在代表只呈現該元素。詳見 `docs/indexed-value-migration.md`。

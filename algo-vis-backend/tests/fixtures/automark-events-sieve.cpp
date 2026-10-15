@@ -11,8 +11,9 @@ using namespace std;
 // @style isprime[1:n] focus when value == 1
 // @endpreset
 // @preset sieve_view_i
-// @object isprime[i] with range(1,n), columns(10), labels(index)
+// @object isprime with range(1,n), columns(10), labels(index)
 // @object prime with columns(10), labels(value)
+// @pointer i at isprime
 // @place prime.top-left at isprime.bottom-left offset(0,60)
 // @style isprime[1:n] focus when value == 1
 // @style prime[0:iteration.last(j)] focus when i * value <= n

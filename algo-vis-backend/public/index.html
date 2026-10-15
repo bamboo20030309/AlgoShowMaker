@@ -13,6 +13,8 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="home.css?v=delete-button-18" />
   <link rel="stylesheet" href="brand.css?v=hover-pill-1" />
+  <link rel="stylesheet" href="ui-motion.css?v=1" />
+  <script src="ui-motion.js?v=1" defer></script>
 </head>
 
 <body>
@@ -168,7 +170,7 @@
     </section>
   </main>
 
-  <dialog id="deckDialog" class="deck-dialog">
+  <dialog id="deckDialog" class="deck-dialog t-modal">
     <form id="deckDialogForm" method="dialog">
       <div class="dialog-heading">
         <div>
@@ -189,7 +191,7 @@
     </form>
   </dialog>
 
-  <dialog id="deleteDeckDialog" class="deck-dialog" aria-labelledby="deleteDeckDialogTitle">
+  <dialog id="deleteDeckDialog" class="deck-dialog t-modal" aria-labelledby="deleteDeckDialogTitle">
     <form id="deleteDeckForm">
       <div class="dialog-heading">
         <div>
@@ -208,7 +210,7 @@
     </form>
   </dialog>
 
-  <dialog id="folderDialog" class="deck-dialog" aria-labelledby="folderDialogTitle">
+  <dialog id="folderDialog" class="deck-dialog t-modal" aria-labelledby="folderDialogTitle">
     <form id="folderDialogForm">
       <div class="dialog-heading">
         <div>
@@ -228,7 +230,7 @@
     </form>
   </dialog>
 
-  <dialog id="deleteFolderDialog" class="deck-dialog" aria-labelledby="deleteFolderTitle">
+  <dialog id="deleteFolderDialog" class="deck-dialog t-modal" aria-labelledby="deleteFolderTitle">
     <form id="deleteFolderForm">
       <div class="dialog-heading">
         <div><span class="eyebrow">投影片整理</span><h2 id="deleteFolderTitle">移除資料夾</h2></div>
@@ -245,7 +247,7 @@
     </form>
   </dialog>
 
-  <dialog id="categoryDialog" class="deck-dialog" aria-labelledby="categoryTitle">
+  <dialog id="categoryDialog" class="deck-dialog t-modal" aria-labelledby="categoryTitle">
     <form id="categoryForm">
       <div class="dialog-heading">
         <div><span class="eyebrow">投影片整理</span><h2 id="categoryTitle">選擇分類</h2></div>
@@ -281,7 +283,7 @@
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
   <script src="slide-structures.js?v=geometry-7"></script>
   <script src="deck-thumbnail.js?v=2"></script>
-  <script src="trace-provenance.js?v=trace-13"></script>
+  <script src="trace-provenance.js?v=indexed-value-14"></script>
   <script src="compile-session.js?v=2"></script>
   <script src="asmdeck.js?v=11"></script>
   <script src="guest-gallery.js?v=6"></script>

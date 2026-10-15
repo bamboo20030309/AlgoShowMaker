@@ -41,7 +41,8 @@ int main()`).replace('@frame use sieve_view', '@frame use sieve_view, compact_vi
 const completeDrawingPresetSource = `#include <bits/stdc++.h>
 using namespace std;
 // @preset complete_view
-// @object arr[i] with range(0,n-1), columns(4), labels(index)
+// @object arr with range(0,n-1), columns(4), labels(index)
+// @pointer i at arr
 // @segment arr[0:i] as active_range
 // @style arr[i] highlight AV_green
 // @place arr.top at canvas.top offset(0,80)

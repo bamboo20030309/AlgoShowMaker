@@ -10,10 +10,12 @@ using namespace std;
 void merge_step(vector<int>& num) {
   int i = 0;
   vector<int> merged;
-  // @frame num[i],merged
+  // @frame num,merged
+  // @pointer i at num
   merged.push_back(num[i]);
   i++;
-  // @frame num[i],merged
+  // @frame num,merged
+  // @pointer i at num
 }
 int main() {
   vector<int> num = {27,38};

@@ -66,7 +66,9 @@ void heapify(vector<int>& arr, int n, int i) {
   int r = 2 * i + 1;
   if (l <= n && arr[l] > arr[largest]) largest = l;
   if (r <= n && arr[r] > arr[largest]) largest = r;
-  // @frame arr[i,largest] render heap with range(1,n)
+  // @frame arr render heap with range(1,n)
+  // @pointer i at arr
+  // @pointer largest at arr
 }
 int main() {
   vector<int> arr = {0, 1, 2, 3};
@@ -108,7 +110,8 @@ int main() {
   vector<int> arr = {3, 2, 1};
   int i = 0;
   i++;
-  // @frame arr[i]
+  // @frame arr
+  // @pointer i at arr
 }`);
   const frame = trace.frames.at(-1);
   const event = frame.events.find(item => item.type === 'write' && item.update === true);
@@ -380,7 +383,8 @@ using namespace std;
 int main() {
   vector<int> arr = {3, 2, 1};
   int i = 0;
-  // @frame arr[i]
+  // @frame arr
+  // @pointer i at arr
 }`);
   const initializer = trace.frames.flatMap(frame => frame.events || []).find(event => (
     event.type === 'assign' && event.expression === 'i = 0'
@@ -716,7 +720,9 @@ void heapify(vector<int>& arr, int n, int i) {
   if (largest != i) {
     swap(arr[i], arr[largest]);
   }
-  // heap: @frame arr[i,largest] render heap with range(0,n-1)
+  // heap: @frame arr render heap with range(0,n-1)
+  // @pointer i at arr
+  // @pointer largest at arr
   if (largest != i) heapify(arr, n, largest);
 }
 int main() {

@@ -4,18 +4,22 @@
 
 ```cpp
 pre[i] = pre[i - 1] + a[i];
-// @frame a[i],pre[i]
+// @frame a,pre
+// @pointer i at a
+// @pointer i at pre
 // @style a[i] highlight AV_red
 // @style pre[i] highlight AV_green
 // @text "pre[${i}] = pre[${i-1}] + a[${i}]" at pre.bottom
 ```
 
-`a[i]` 選擇陣列並使用 i 作為索引標記，不表示只剩一格。需要顯示 i 的數值時另外加入 i。
+`@frame a[i]` 與 `@object a[i]` 只顯示該元素的值，不建立指標。要顯示整個陣列與游標，使用 `@frame a` 加上 `@pointer i at a`。`a[i,j]` 不再是多指標語法；每個指標獨立寫一條 `@pointer`。
 
 ## 物件、文字與位置
 
 ```cpp
-// @frame a[i,j],key
+// @frame a,key
+// @pointer i at a
+// @pointer j at a
 // @text "比較位置 ${i} 和 ${j}" at a.bottom
 // @style a[i] highlight AV_red
 // @style a[0:i] focus

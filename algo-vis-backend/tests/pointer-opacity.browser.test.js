@@ -8,7 +8,10 @@ test('legacy, independent and matrix pointers default to opaque labels without o
   const { trace } = await compile(`#include <vector>
 using namespace std;
 int main(){vector<int> a={1,2};vector<vector<int>> grid={{1,2},{3,4}};int i=0,j=1,r=0,c=1;
-// @frame a[i],grid[r][c]
+// @frame a,grid
+// @pointer i at a
+// @pointer r at grid.row
+// @pointer c at grid.column
 // @pointer j at a
 return 0;}`);
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });

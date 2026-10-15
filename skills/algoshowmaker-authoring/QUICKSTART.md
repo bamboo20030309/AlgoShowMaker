@@ -16,7 +16,9 @@
 
 ```cpp
 pre[i] = pre[i - 1] + a[i];
-// @frame a[i],pre[i]
+// @frame a,pre
+// @pointer i at a
+// @pointer i at pre
 // @style a[i] highlight AV_red
 // @style pre[i] highlight AV_green
 // @text "pre[${i}] = pre[${i-1}] + a[${i}]" at pre.bottom

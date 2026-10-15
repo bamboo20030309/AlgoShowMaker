@@ -10,7 +10,9 @@ int main() {
             if (arr[j] > arr[j + 1]) {
                 swap(arr[j], arr[j + 1]);
             }
-            // swap: @frame arr[j,j+1]
+            // swap: @frame arr
+            // @pointer j at arr
+            // @pointer j+1 at arr
         }
         // @keep last
     }

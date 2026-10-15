@@ -139,7 +139,9 @@ int main() {
   vector<int> columnNames = {10,20,30,40};
   vector<vector<int>> innerNames = {{0,1,2,3},{0,1},{0,1,2}};
   int row = 1; int column = 0;
-  // @frame grid[row][column]
+  // @frame grid
+  // @pointer row at grid.row
+  // @pointer column at grid.column
   // with labels(value,index),
   //      row-labels(rowNames),
   //      column-labels(columnNames),
@@ -150,7 +152,9 @@ int main() {
   // @style grid[row][column] highlight
   grid[row][column] = 99;
   row = 2; column = 1;
-  // @frame grid[row][column] with labels(value,index), row-labels(rowNames), column-labels(columnNames), inner-labels(index), gridlines(0), outerframe(false), marker-layout(axis)
+  // @frame grid with labels(value,index), row-labels(rowNames), column-labels(columnNames), inner-labels(index), gridlines(0), outerframe(false), marker-layout(axis)
+  // @pointer row at grid.row
+  // @pointer column at grid.column
   // @style grid[row][column] background AV_yellow
 }`;
       const analyzed = await fetch('/trace/analyze', {

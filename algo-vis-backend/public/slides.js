@@ -3792,6 +3792,9 @@
           });
 
           configureFabricResolution(canvas);
+          window.ASMFabricSelection.installDragThreshold(canvas, (object, event) => {
+            if (!selectObjectInsideGroup(event)) placeTextCaret(object, event);
+          });
           window.ASMSlideFabricLayers.install(canvas, () => getSlideById(slide.id)?.widgets || [], FABRIC_BLEED);
           fabricCanvases.set(slide.id, canvas);
           blockRevealNavigationWhileEditing(canvas);
@@ -4392,7 +4395,14 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
-    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2, asmTextWidthMode: textWidthMode });
+    if (isTextObject(obj)) {
+      obj.set({ asmGraphemeVersion: 2, asmTextWidthMode: textWidthMode });
+      if (!obj.__asmCaretDoubleClick) {
+        obj.off('mousedblclick', obj.doubleClickHandler);
+        obj.on('mousedblclick', ({ e }) => placeTextCaret(obj, e));
+        obj.__asmCaretDoubleClick = true;
+      }
+    }
     if (obj.asmInlineScripts && isTextObject(obj)) {
       if (!obj.asmInlineScriptBaseStyles) {
         obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
@@ -4414,6 +4424,50 @@
         if (document.body.classList.contains('asm-edit-mode')) event.stopPropagation();
       });
     });
+  }
+
+  function placeTextCaret(object, event) {
+    if (!isTextObject(object) || object.editable === false || !event
+      || event.shiftKey || event.ctrlKey || event.metaKey) return;
+    object.enterEditing(event);
+    const index = object.getSelectionStartFromPointer(event);
+    object.selectionStart = object.selectionEnd = index;
+    object._fireSelectionChanged();
+    object._updateTextarea();
+    object.hiddenTextarea?.focus({ preventScroll: true });
+    refreshEditingTextCursor(object);
+  }
+
+  function selectObjectInsideGroup(event) {
+    if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing()
+      || event.shiftKey || event.ctrlKey || event.metaKey
+      || !event.target.closest?.('.slide-widget, .upper-canvas, .lower-canvas, .fabric-host')) return false;
+    const { canvas, items } = selectedAlignmentItems();
+    if (!canvas || items.length < 2) return false;
+    // findTarget normally returns the ActiveSelection itself. Hit-test real
+    // scene objects instead; their full matrices include any selection transform.
+    const objects = canvas.getObjects().filter(object => object.selectable !== false && object.evented !== false)
+      .sort((a, b) => fabricZIndex(a) - fabricZIndex(b));
+    const object = fabricObjectBoundsAtPoint(event, canvas, objects);
+    const widget = widgetElementAtPoint(event);
+    const hitWidget = widget && (!object || widgetZIndex(widget) > fabricZIndex(object));
+    if (!object && !widget) return false;
+    clearStructureCellSelection();
+    canvas.discardActiveObject();
+    textSelection = null;
+    clearWidgetSelection();
+    if (hitWidget) {
+      selectWidget(widget.dataset.widgetId);
+      const cell = structureCellFromEvent(event, widget);
+      if (cell && widget.classList.contains('structure-widget')) openStructureInlineEditor(widget, cell, event.clientX);
+      else if (getWidget(widget.dataset.widgetId).widget?.type === 'code') openCodeEditorModal();
+    } else {
+      canvas.setActiveObject(object);
+      placeTextCaret(object, event);
+      updateObjectToolbar(object, canvas);
+    }
+    canvas.requestRenderAll();
+    return true;
   }
 
   function keepShapeStrokeUniform(obj, canvas) {
@@ -5853,10 +5907,27 @@
     const target = event?.target;
     const corner = event?.transform?.corner;
     if (!target || !corner || snapBypassRequested(event?.e)) {
+      if (event?.transform) delete event.transform.__asmUniformResizeSnap;
       clearSnapGuides();
       return;
     }
     const flags = resizeEdgeFlags(corner);
+    const uniform = !isTextObject(target) && (flags.left || flags.right) && (flags.top || flags.bottom)
+      && event.transform.action === 'scale'
+      && Boolean(canvas.uniformScaling) !== Boolean(event.e?.[canvas.uniScaleKey]);
+    const locked = event.transform.__asmUniformResizeSnap;
+    if (uniform && locked && Number.isFinite(event.e?.[locked.pointerKey])
+      && Math.abs(event.e[locked.pointerKey] - locked.pointer) <= locked.threshold) {
+      // While the pointer travels along the guide, hold the entire geometry,
+      // not just one dimension. Fabric has already applied this move's raw scale.
+      target.set(locked.geometry);
+      target.setCoords();
+      target.dirty = true;
+      canvas.requestRenderAll();
+      renderSnapGuides(locked.guides, canvas);
+      return;
+    }
+    delete event.transform.__asmUniformResizeSnap;
     const resizeEdge = isTextObject(target)
       ? (flags.left ? 'left' : (flags.right ? 'right' : ''))
       : corner;
@@ -5877,12 +5948,16 @@
     const nextFlags = resizeEdgeFlags(resizeEdge);
     const anchorX = nextFlags.left ? current.right : (nextFlags.right ? current.left : current.centerX);
     const anchorY = nextFlags.top ? current.bottom : (nextFlags.bottom ? current.top : current.centerY);
-    if (Number.isFinite(result.distanceX) && current.width > 0) {
+    const useX = Number.isFinite(result.distanceX) && result.distanceX <= result.distanceY;
+    if (uniform && current.width > 0 && current.height > 0) {
+      const ratio = Math.max(0.01, useX ? next.width / current.width : next.height / current.height);
+      target.set({ scaleX: target.scaleX * ratio, scaleY: target.scaleY * ratio });
+    } else if (Number.isFinite(result.distanceX) && current.width > 0) {
       const ratioX = Math.max(0.01, next.width / current.width);
       if (isTextObject(target)) target.set({ width: Math.max(40, (Number(target.width) || 40) * ratioX) });
       else target.set({ scaleX: (Number(target.scaleX) || 1) * ratioX });
     }
-    if (Number.isFinite(result.distanceY) && current.height > 0 && !isTextObject(target)) {
+    if (!uniform && Number.isFinite(result.distanceY) && current.height > 0 && !isTextObject(target)) {
       const ratioY = Math.max(0.01, next.height / current.height);
       target.set({ scaleY: (Number(target.scaleY) || 1) * ratioY });
     }
@@ -5897,7 +5972,18 @@
     target.setCoords();
     target.dirty = true;
     canvas.requestRenderAll();
-    renderSnapGuides(result.guides, canvas);
+    const guides = uniform ? (useX ? result.xGuides : result.yGuides) : result.guides;
+    if (uniform) {
+      const pointerKey = useX ? 'clientX' : 'clientY';
+      const rect = fabricSlideRect(canvas);
+      event.transform.__asmUniformResizeSnap = {
+        pointerKey, pointer: event.e?.[pointerKey],
+        threshold: SNAP_THRESHOLD * (rect ? (useX ? rect.width / SLIDE_W : rect.height / SLIDE_H) : 1),
+        geometry: { left: target.left, top: target.top, scaleX: target.scaleX, scaleY: target.scaleY },
+        guides
+      };
+    }
+    renderSnapGuides(guides, canvas);
   }
 
   function applyWidgetResizeSnap(widget, drag) {
@@ -6269,6 +6355,20 @@
     if (codeEditorModal && !codeEditorModal.hidden) closeCodeEditorModal();
     showDefaultPanel();
     updateAlignmentToolbar();
+  }
+
+  function clearSlideObjectSelection() {
+    // Clear before currentH/currentV changes so pending cell edits still commit
+    // to their source slide. Cached canvases must not restore stale selections.
+    clearStructureCellSelection();
+    fabricCanvases.forEach(canvas => {
+      if (!canvas.getActiveObject()) return;
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+    });
+    textSelection = null;
+    clearWidgetSelection();
+    hideObjectToolbar();
   }
 
   function toggleWidgetSelection(widgetId) {
@@ -8353,6 +8453,12 @@
 
   function bindSlideDrop() {
     let widgetDrag = null;
+    // Run before selection-control and DOM-widget forwarding intercept the event.
+    window.addEventListener('dblclick', event => {
+      if (!selectObjectInsideGroup(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
     ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(type => {
       document.addEventListener(type, event => {
         if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing() || widgetDrag
@@ -8482,8 +8588,8 @@
       const clientY = Number.isFinite(event.clientY) ? event.clientY : (Number.isFinite(event.pageY) ? event.pageY : widgetDrag.startY);
       const dx = (clientX - widgetDrag.startX) / widgetDrag.scaleX;
       const dy = (clientY - widgetDrag.startY) / widgetDrag.scaleY;
-      const movedPixels = Math.abs(clientX - widgetDrag.startX) + Math.abs(clientY - widgetDrag.startY);
-      if (!widgetDrag.moved && movedPixels < 5) return;
+      const movedPixels = Math.hypot(clientX - widgetDrag.startX, clientY - widgetDrag.startY);
+      if (!widgetDrag.moved && movedPixels <= window.ASMFabricSelection.DRAG_DISTANCE) return;
       widgetDrag.moved = true;
       if (widgetDrag.pendingModifierSelection) {
         selectWidget(widgetDrag.widgetId);
@@ -8819,6 +8925,10 @@
         const start = object.selectionStart;
         object.insertChars(payload.text, object.asmInlineScripts ? payload.authoredStyles : payload.styles, start, object.selectionEnd);
         object.selectionStart = object.selectionEnd = start + payload.styles.length;
+        // insertChars updates the Fabric model, while _updateTextarea only
+        // synchronizes selection/position. Update the native value first so
+        // the next input cannot replace the pasted fragment with stale text.
+        object.hiddenTextarea.value = object.text;
         object._updateTextarea(); object.hiddenTextarea.focus();
         currentFabricCanvas().fire('text:changed', { target: object });
         currentFabricCanvas().requestRenderAll();
@@ -9265,13 +9375,13 @@
     return fabricObjectBoundsAtPoint(event, canvas);
   }
 
-  function fabricObjectBoundsAtPoint(event, canvas = currentFabricCanvas()) {
+  function fabricObjectBoundsAtPoint(event, canvas = currentFabricCanvas(), objects = null) {
     if (!canvas) return null;
     const rect = fabricSlideRect(canvas);
     if (!rect) return null;
     const x = ((event.clientX - rect.left) / rect.width) * SLIDE_W;
     const y = ((event.clientY - rect.top) / rect.height) * SLIDE_H;
-    return canvas.getObjects().slice().reverse().find(obj => {
+    return (objects || canvas.getObjects()).slice().reverse().find(obj => {
       if (!obj.visible) return false;
       const point = f().util.transformPoint(new (f().Point)(x, y), f().util.invertTransform(obj.calcTransformMatrix()));
       const halfWidth = (obj.width + (obj.strokeWidth || 0)) / 2;
@@ -11932,12 +12042,10 @@
       document.body.dataset.revealPlugins = Object.keys(reveal.getPlugins ? reveal.getPlugins() : {}).join(',');
       reveal.on('slidechanged', event => {
         if (pointerDrag) return;
-        hideStructureContextMenu();
+        clearSlideObjectSelection();
         currentH = event.indexh;
         currentV = event.indexv || 0;
         rememberSlidePosition();
-        selectedWidgetKeys.clear();
-        selectedWidgetId = null;
         updateGroupSelectionOverlay();
         prioritizeProgressiveRebuild(currentH, currentV);
         scheduleFabricResolution();

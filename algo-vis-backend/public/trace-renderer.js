@@ -266,6 +266,22 @@
   // 區段：原始資料與序列 renderer
   // ---------------------------------------------------------------------------
   function renderOriginal(group, entry, context) {
+    const selection = context.skin?.options?.dataTransform;
+    if (selection?.type === 'element') {
+      let data = entry.data;
+      for (const index of selection.indices || []) {
+        if (!Number.isInteger(index) || index < 0) return 0;
+        if (data?.kind === 'string') {
+          data = window.ASMTraceModel.characterItems(data)[index];
+        } else data = data?.items?.[index];
+        if (!data) return 0;
+      }
+      entry = { ...entry, data };
+      context = { ...context, variable: { ...context.variable, kind: data.kind },
+        rendererName: Array.isArray(data.items) ? 'original-array' : 'original-cell',
+        displayName: selection.expression,
+        highlights: { 0: context.highlights?.[selection.indices.join(',')] || {}, $object: context.highlights?.$object || {} } };
+    }
     if (context.skin?.options?.dataTransform?.type === 'char') {
       entry = { ...entry, data: { kind: 'sequence', items:
         window.ASMTraceModel.presentationItems(entry.data, context.skin.options) } };
@@ -411,11 +427,13 @@
     removeScalarIndexLabels(group, context.variable, requested, rendererOptions);
     Array.from({ length: visibleCount }, (_, localIndex) => rangeStart + localIndex).forEach((logicalIndex, localIndex) => {
       const cell = group.querySelector(`#${CSS.escape(`cell-${id}-${localIndex}`)}`);
-      const cellKey = isMatrix
+      const cellKey = selection?.type === 'element' && !Array.isArray(entry.data?.items)
+        ? `${context.variableId}#${selection.indices.join(',')}` : isMatrix
         ? `${context.variableId}#${Math.floor(logicalIndex / itemsPerRow)},${logicalIndex % itemsPerRow}`
         : `${context.variableId}#${logicalIndex}`;
       if (cell) {
-        cell.setAttribute('data-trace-index', String(logicalIndex));
+        cell.setAttribute('data-trace-index', selection?.type === 'element' && !Array.isArray(entry.data?.items)
+          ? selection.indices.join(',') : String(logicalIndex));
         // labels(index) renders the index in the cell's visible <text>.
         // Keep that label immutable while retaining the underlying data
         // value as a separate target for event replay and assignment effects.
@@ -461,7 +479,8 @@
           }
         }
         markSelectable(cell, cellKey, context, context.variableId);
-        const indices = isMatrix
+        const indices = selection?.type === 'element' && !Array.isArray(entry.data?.items)
+          ? selection.indices : isMatrix
           ? [Math.floor(logicalIndex / itemsPerRow), logicalIndex % itemsPerRow]
           : [logicalIndex];
         markArrowTarget(cell, {
@@ -5295,7 +5314,7 @@
 
   function renderFrameBindings(root, document, frame, placements, elements, options = {}) {
     const authoredBindings = (Array.isArray(frame.bindings) ? frame.bindings : [])
-      .filter(binding => !options.snapshotOwner || !binding.explicitPointer);
+      .filter(binding => !options.snapshotOwner || !(binding.layoutTarget || binding.layoutChild));
     if (!authoredBindings.length) return;
     const bindings = [];
     const authoredSourceIds = new Set(authoredBindings.map(binding => binding.sourceVariableId));
@@ -6958,9 +6977,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-272';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-273';
   window.ASMTraceRenderers = {
-    build: 'trace-272', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-273', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

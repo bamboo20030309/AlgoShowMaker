@@ -29,7 +29,8 @@ vector<int> num, BIT;
 
 // @preset binary_indexed_tree_pointer_view
 // @object num with labels(value,index)
-// @object BIT[i] render binary indexed tree with range(1,n), labels(value,binary-index-padded)
+// @object BIT render binary indexed tree with range(1,n), labels(value,binary-index-padded)
+// @pointer i at BIT
 // @style num[0] background AV_grey
 // @place num.left-bottom at BIT.left-top offset(-40,-70)
 // @let lb = i & -i

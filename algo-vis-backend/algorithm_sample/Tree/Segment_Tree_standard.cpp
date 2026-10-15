@@ -30,8 +30,9 @@ int n, sum = 0;
 // @endpreset
 
 // @preset operation_pointer_view
-// @object tree[now] render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
+// @object tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)
 // @object sum render cell
+// @pointer now at tree
 // @place sum.top at tree.bottom offset(0,45)
 // @style lazy[1:4*n+4] background rgb(231,144,255) when value != 0
 // @style sets[1:4*n+4] background rgb(255,183,77) when value != 2147483647

@@ -25,7 +25,8 @@ void heap_push(int value) {
     int heapSize = heap.size() - 1;
     int now = heapSize;
 
-    // @frame heap[now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+    // @frame heap render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+    // @pointer now at heap
     // @style heap[now] highlight
     // @text "先把 ${value} 加到 heap 的最後一格" at heap.bottom
 
@@ -33,19 +34,25 @@ void heap_push(int value) {
         int parent = now / 2;
 
         if (heap[parent] >= heap[now]) {
-            // @frame heap[parent,now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+            // @frame heap render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+            // @pointer parent at heap
+            // @pointer now at heap
             // @style heap[parent,now] highlight
             // @text "父節點 ${heap[parent]} 不小於子節點 ${heap[now]}，停止向上調整" at heap.bottom
             break;
         }
 
-        // @frame heap[parent,now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+        // @frame heap render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+        // @pointer parent at heap
+        // @pointer now at heap
         // @style heap[parent,now] highlight
         // @text "子節點 ${heap[now]} 較大，與父節點 ${heap[parent]} 交換" at heap.bottom
 
         swap(heap[parent], heap[now]);
 
-        // @frame heap[parent,now] render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+        // @frame heap render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
+        // @pointer parent at heap
+        // @pointer now at heap
         // @style heap[parent,now] highlight
         // @text "較大的值已上移，繼續檢查新的父節點" at heap.bottom
 
@@ -57,7 +64,8 @@ int heap_top() {
     int heapSize = heap.size() - 1;
     if (heapSize == 0) return 0;
 
-    // @frame heap[1] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @pointer 1 at heap
     // @style heap[1] highlight
     // @text "最大值 ${heap[1]} 位於根節點" at heap.bottom
 
@@ -68,13 +76,17 @@ void heap_pop() {
     int heapSize = heap.size() - 1;
     if (heapSize == 0) return;
 
-    // @frame heap[1,heapSize] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @pointer 1 at heap
+    // @pointer heapSize at heap
     // @style heap[1,heapSize] highlight
     // @text "先把根節點與最後一格交換" at heap.bottom
 
     swap(heap[1], heap[heapSize]);
 
-    // @frame heap[1,heapSize] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+    // @pointer 1 at heap
+    // @pointer heapSize at heap
     // @style heap[1,heapSize] highlight
     // @text "移除已經換到最後一格的最大值 ${heap[heapSize]}" at heap.bottom
 
@@ -90,7 +102,8 @@ void heap_pop() {
         int right = now * 2 + 1;
 
         if (left > heapSize) {
-            // @frame heap[now] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+            // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+            // @pointer now at heap
             // @style heap[now] highlight
             // @text "節點 ${now} 已經沒有子節點，向下調整完成" at heap.bottom
             break;
@@ -101,19 +114,26 @@ void heap_pop() {
         if (right <= heapSize && heap[right] > heap[largest]) largest = right;
 
         if (largest == now) {
-            // @frame heap[now,left,right] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+            // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+            // @pointer now at heap
+            // @pointer left at heap
+            // @pointer right at heap
             // @style heap[now,left,right] highlight
             // @text "父節點 ${heap[now]} 已不小於現有子節點，停止向下調整" at heap.bottom
             break;
         }
 
-        // @frame heap[now,largest] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+        // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+        // @pointer now at heap
+        // @pointer largest at heap
         // @style heap[now,largest] highlight
         // @text "將較大的子節點 ${heap[largest]} 與父節點 ${heap[now]} 交換" at heap.bottom
 
         swap(heap[now], heap[largest]);
 
-        // @frame heap[now,largest] render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+        // @frame heap render heap with range(1,heapSize), labels(value,index) at keep.bottom offset(0,40)
+        // @pointer now at heap
+        // @pointer largest at heap
         // @style heap[now,largest] highlight
         // @text "較小的值已下沉，繼續檢查它的新位置" at heap.bottom
 

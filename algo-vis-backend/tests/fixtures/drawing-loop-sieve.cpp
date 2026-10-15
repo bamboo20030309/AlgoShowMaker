@@ -27,7 +27,8 @@ int main() {
     for(int j=0;j<prime.size();j++) {
       if(i*prime[j]>n) break;
       isprime[i*prime[j]]=0;
-      // @frame isprime[i],prime when i<=7
+      // @frame isprime,prime when i<=7
+      // @pointer i at isprime
       if(i%prime[j]==0) break;
     }
   }

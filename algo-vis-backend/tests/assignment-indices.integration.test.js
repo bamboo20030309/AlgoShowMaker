@@ -19,10 +19,12 @@ using namespace std;
 int main() {
  vector<int> arr = {3, 1, 2};
  int j = 0;
- // @frame arr[j]
+ // @frame arr
+ // @pointer j at arr
  arr[j+1] = arr[j];
  j--;
- // @frame arr[j]
+ // @frame arr
+ // @pointer j at arr
 }`);
   const frame = trace.frames.at(-1);
   const assignment = frame.events.find(event => event.type === 'assign');
@@ -51,12 +53,14 @@ using namespace std;
 int main() {
  vector<int> arr = {3, 1, 2};
  int j = 0;
- // @frame arr[j]
+ // @frame arr
+ // @pointer j at arr
  int key = arr[j];
  arr[j]++;
  arr[j] += 2;
  j++;
- // @frame arr[j],key
+ // @frame arr,key
+ // @pointer j at arr
 }`);
   const frame = trace.frames.at(-1);
   const initializer = frame.events.find(event => event.type === 'assign');

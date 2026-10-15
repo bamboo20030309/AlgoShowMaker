@@ -16,7 +16,7 @@
 
 ## 原字串的逐字顯示：`char(s)`
 
-- 字串比對需要逐字格子及索引游標時，直接用 `@frame char(s)[i,j]`，讓原字串 s 以字元陣列呈現。避免為 KMP 等演算法另建 vector<string> pat，造成比較事件操作 s、畫面卻只顯示 pat。
+- 字串比對需要逐字格子及索引游標時，用 `@frame char(s)` 加上 `@pointer i at s`、`@pointer j at s`。避免為 KMP 等演算法另建 vector<string> pat，造成比較事件操作 s、畫面卻只顯示 pat。`@frame s[i]` 是單一字元取值。
 - char(s) 保留來源物件名稱與身分；後續樣式與指標仍以 s 為目標，例如 `@style s[i] highlight` 或 `@pointer i at s`。演算法本身仍使用 string 與原本的 s[i] 讀寫。
 - 一般 `@frame s` 維持整串單格；`char(s)` 才是逐字顯示轉換，不接受任意非字串型態。非 ASCII 文字須核對 C++ 字串位元組索引與字形顯示的對應，不假設 std::string 的索引就是 Unicode 字元序號。
 

@@ -1,28 +1,16 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
-const net = require('node:net');
+const { startStaticUiServer } = require('./helpers/static-ui-server');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
 test('deletion keeps the visible cursor aligned; plain clipboard text creates one editable text object',
-  { timeout: 60000 }, async () => {
+  { timeout: 60000 }, async t => {
     const root = path.resolve(__dirname, '..');
-    const port = await new Promise(resolve => {
-      const server = net.createServer(); server.listen(0, '127.0.0.1', () => {
-        const port = server.address().port; server.close(() => resolve(port));
-      });
-    });
-    const server = spawn(process.execPath, ['server.js'], { cwd: root, windowsHide: true, stdio: 'ignore',
-      env: { ...process.env, PORT: String(port), ASM_REGRESSION: '1' } });
+    const { base } = await startStaticUiServer(t);
     let browser;
     try {
-      const base = `http://127.0.0.1:${port}`;
-      for (let i = 0; i < 80; i++) {
-        try { if ((await fetch(base)).ok) break; } catch {}
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
       browser = await chromium.launch({ headless: true,
         ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
       const page = await browser.newPage({ viewport: { width: 1600, height: 1000 },
@@ -94,6 +82,8 @@ test('deletion keeps the visible cursor aligned; plain clipboard text creates on
       await page.keyboard.press('Control+v');
       await page.waitForFunction(() => fixtureCanvas.getObjects()[3].text === '外來文本追加');
       assert.equal(await page.evaluate(() => fixtureCanvas.getObjects().length), 4);
+      await page.keyboard.type('!');
+      assert.equal(await page.evaluate(() => fixtureCanvas.getObjects()[3].text), '外來文本追加!');
       for (const value of ['甲乙丙丁\nA m_1 é', 'ABC 1^nX\n換行文字', 'A👨‍👩‍👧‍👦B é m_1X']) {
         await page.evaluate(value => {
           const object = fixtureCanvas.getObjects()[3];
@@ -117,5 +107,5 @@ test('deletion keeps the visible cursor aligned; plain clipboard text creates on
         }
       }
       assert.deepEqual(errors, []);
-    } finally { await browser?.close(); server.kill(); }
+    } finally { await browser?.close(); }
   });
