@@ -3792,7 +3792,9 @@
           });
 
           configureFabricResolution(canvas);
-          window.ASMFabricSelection.installDragThreshold(canvas, placeTextCaret);
+          window.ASMFabricSelection.installDragThreshold(canvas, (object, event) => {
+            if (!selectObjectInsideGroup(event)) placeTextCaret(object, event);
+          });
           window.ASMSlideFabricLayers.install(canvas, () => getSlideById(slide.id)?.widgets || [], FABRIC_BLEED);
           fabricCanvases.set(slide.id, canvas);
           blockRevealNavigationWhileEditing(canvas);
@@ -4434,6 +4436,38 @@
     object._updateTextarea();
     object.hiddenTextarea?.focus({ preventScroll: true });
     refreshEditingTextCursor(object);
+  }
+
+  function selectObjectInsideGroup(event) {
+    if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing()
+      || event.shiftKey || event.ctrlKey || event.metaKey
+      || !event.target.closest?.('.slide-widget, .upper-canvas, .lower-canvas, .fabric-host')) return false;
+    const { canvas, items } = selectedAlignmentItems();
+    if (!canvas || items.length < 2) return false;
+    // findTarget normally returns the ActiveSelection itself. Hit-test real
+    // scene objects instead; their full matrices include any selection transform.
+    const objects = canvas.getObjects().filter(object => object.selectable !== false && object.evented !== false)
+      .sort((a, b) => fabricZIndex(a) - fabricZIndex(b));
+    const object = fabricObjectBoundsAtPoint(event, canvas, objects);
+    const widget = widgetElementAtPoint(event);
+    const hitWidget = widget && (!object || widgetZIndex(widget) > fabricZIndex(object));
+    if (!object && !widget) return false;
+    clearStructureCellSelection();
+    canvas.discardActiveObject();
+    textSelection = null;
+    clearWidgetSelection();
+    if (hitWidget) {
+      selectWidget(widget.dataset.widgetId);
+      const cell = structureCellFromEvent(event, widget);
+      if (cell && widget.classList.contains('structure-widget')) openStructureInlineEditor(widget, cell, event.clientX);
+      else if (getWidget(widget.dataset.widgetId).widget?.type === 'code') openCodeEditorModal();
+    } else {
+      canvas.setActiveObject(object);
+      placeTextCaret(object, event);
+      updateObjectToolbar(object, canvas);
+    }
+    canvas.requestRenderAll();
+    return true;
   }
 
   function keepShapeStrokeUniform(obj, canvas) {
@@ -8419,6 +8453,12 @@
 
   function bindSlideDrop() {
     let widgetDrag = null;
+    // Run before selection-control and DOM-widget forwarding intercept the event.
+    window.addEventListener('dblclick', event => {
+      if (!selectObjectInsideGroup(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
     ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'contextmenu'].forEach(type => {
       document.addEventListener(type, event => {
         if (!document.body.classList.contains('asm-edit-mode') || isOverviewEditing() || widgetDrag
@@ -9335,13 +9375,13 @@
     return fabricObjectBoundsAtPoint(event, canvas);
   }
 
-  function fabricObjectBoundsAtPoint(event, canvas = currentFabricCanvas()) {
+  function fabricObjectBoundsAtPoint(event, canvas = currentFabricCanvas(), objects = null) {
     if (!canvas) return null;
     const rect = fabricSlideRect(canvas);
     if (!rect) return null;
     const x = ((event.clientX - rect.left) / rect.width) * SLIDE_W;
     const y = ((event.clientY - rect.top) / rect.height) * SLIDE_H;
-    return canvas.getObjects().slice().reverse().find(obj => {
+    return (objects || canvas.getObjects()).slice().reverse().find(obj => {
       if (!obj.visible) return false;
       const point = f().util.transformPoint(new (f().Point)(x, y), f().util.invertTransform(obj.calcTransformMatrix()));
       const halfWidth = (obj.width + (obj.strokeWidth || 0)) / 2;
