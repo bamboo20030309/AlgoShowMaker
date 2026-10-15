@@ -1,12 +1,41 @@
 // Native Fabric controls over geometry-only proxies. Content stays in its renderer;
 // this editor-only canvas is never part of the saved deck or exported slide.
 (function () {
+  const DRAG_DISTANCE = 6; // CSS screen pixels, independent of slide zoom.
+  function installDragThreshold(canvas, onDoubleClick) {
+    let gesture = null, lastClick = null;
+    const transform = canvas._transformObject;
+    canvas.on('mouse:down', ({ e, target }) => {
+      if (e.button !== 0) return;
+      gesture = { x: e.clientX, y: e.clientY, target, control: !!target?.__corner, moved: false };
+    });
+    canvas._transformObject = function (event) {
+      if (gesture && this._currentTransform?.action === 'drag' && !gesture.moved) {
+        if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= DRAG_DISTANCE) return;
+        gesture.moved = true;
+      }
+      return transform.call(this, event);
+    };
+    canvas.on('mouse:up', ({ e }) => {
+      const click = gesture;
+      gesture = null;
+      if (!click || click.control || click.moved || !click.target || e.button !== 0
+        || Math.hypot(e.clientX - click.x, e.clientY - click.y) > DRAG_DISTANCE) { lastClick = null; return; }
+      const now = performance.now();
+      if (lastClick?.target === click.target && now - lastClick.time <= 350
+        && Math.hypot(e.clientX - lastClick.x, e.clientY - lastClick.y) <= DRAG_DISTANCE) {
+        lastClick = null;
+        onDoubleClick?.(click.target, e);
+      } else lastClick = { target: click.target, x: e.clientX, y: e.clientY, time: now };
+    });
+  }
   function create(main, adapter, bleed) {
     const element = document.createElement('canvas');
     const host = main.lowerCanvasEl.closest('.fabric-host');
     host.parentElement.appendChild(element);
     const canvas = new fabric.Canvas(element, { width: main.width, height: main.height,
       selection: false, preserveObjectStacking: true, renderOnAddRemove: false });
+    installDragThreshold(canvas);
     canvas.wrapperEl.classList.add('asm-native-selection-controls');
     Object.assign(canvas.wrapperEl.style, { position:'absolute', left:`${-bleed}px`, top:`${-bleed}px`, zIndex:'100002', pointerEvents:'none' });
     canvas.upperCanvasEl.style.pointerEvents = 'none';
@@ -77,10 +106,12 @@
     canvas.on('object:moving',changed); canvas.on('object:scaling',changed); canvas.on('object:rotating',changed);
     function up(e) {
       if (!editing) return;
+      const nativeMoved = !!canvas._currentTransform?.actionPerformed;
       canvas._onMouseUp(e);
       adapter.end(); signature = fingerprint(adapter.items());
       editing = false; main.__asmNativeSelectionEditing = false;
-      suppressClickUntil = performance.now()+250; stop(e);
+      // Tiny click jitter must not consume the click/double-click that opens an editor.
+      suppressClickUntil = nativeMoved ? performance.now()+250 : 0; stop(e);
     }
     const click = e => { if(performance.now()<suppressClickUntil) { suppressClickUntil=0; stop(e); } };
     const mouse = e => { if(editing) stop(e); };
@@ -95,5 +126,5 @@
       document.removeEventListener('click',click,true); canvas.dispose(); canvas.wrapperEl?.remove();
     } };
   }
-  window.ASMFabricSelection = {create};
+  window.ASMFabricSelection = {create, installDragThreshold, DRAG_DISTANCE};
 })();

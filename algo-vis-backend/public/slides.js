@@ -3792,6 +3792,7 @@
           });
 
           configureFabricResolution(canvas);
+          window.ASMFabricSelection.installDragThreshold(canvas, placeTextCaret);
           window.ASMSlideFabricLayers.install(canvas, () => getSlideById(slide.id)?.widgets || [], FABRIC_BLEED);
           fabricCanvases.set(slide.id, canvas);
           blockRevealNavigationWhileEditing(canvas);
@@ -4392,7 +4393,14 @@
       layerIndex: Number.isFinite(Number(obj.layerIndex)) ? Number(obj.layerIndex) : FABRIC_LAYER_INDEX,
       cornerRadius: Number.isFinite(Number(obj.cornerRadius)) ? Math.max(0, Number(obj.cornerRadius)) : (Number(obj.rx) || 0)
     });
-    if (isTextObject(obj)) obj.set({ asmGraphemeVersion: 2, asmTextWidthMode: textWidthMode });
+    if (isTextObject(obj)) {
+      obj.set({ asmGraphemeVersion: 2, asmTextWidthMode: textWidthMode });
+      if (!obj.__asmCaretDoubleClick) {
+        obj.off('mousedblclick', obj.doubleClickHandler);
+        obj.on('mousedblclick', ({ e }) => placeTextCaret(obj, e));
+        obj.__asmCaretDoubleClick = true;
+      }
+    }
     if (obj.asmInlineScripts && isTextObject(obj)) {
       if (!obj.asmInlineScriptBaseStyles) {
         obj.asmInlineScriptBaseStyles = window.ASMInlineScripts.copyStyles(obj.styles);
@@ -4414,6 +4422,18 @@
         if (document.body.classList.contains('asm-edit-mode')) event.stopPropagation();
       });
     });
+  }
+
+  function placeTextCaret(object, event) {
+    if (!isTextObject(object) || object.editable === false || !event
+      || event.shiftKey || event.ctrlKey || event.metaKey) return;
+    object.enterEditing(event);
+    const index = object.getSelectionStartFromPointer(event);
+    object.selectionStart = object.selectionEnd = index;
+    object._fireSelectionChanged();
+    object._updateTextarea();
+    object.hiddenTextarea?.focus({ preventScroll: true });
+    refreshEditingTextCursor(object);
   }
 
   function keepShapeStrokeUniform(obj, canvas) {
@@ -8496,8 +8516,8 @@
       const clientY = Number.isFinite(event.clientY) ? event.clientY : (Number.isFinite(event.pageY) ? event.pageY : widgetDrag.startY);
       const dx = (clientX - widgetDrag.startX) / widgetDrag.scaleX;
       const dy = (clientY - widgetDrag.startY) / widgetDrag.scaleY;
-      const movedPixels = Math.abs(clientX - widgetDrag.startX) + Math.abs(clientY - widgetDrag.startY);
-      if (!widgetDrag.moved && movedPixels < 5) return;
+      const movedPixels = Math.hypot(clientX - widgetDrag.startX, clientY - widgetDrag.startY);
+      if (!widgetDrag.moved && movedPixels <= window.ASMFabricSelection.DRAG_DISTANCE) return;
       widgetDrag.moved = true;
       if (widgetDrag.pendingModifierSelection) {
         selectWidget(widgetDrag.widgetId);
