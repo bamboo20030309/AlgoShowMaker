@@ -25,6 +25,7 @@ description: 為 AlgoShowMaker 撰寫 C++ 演算法視覺化註解、設計幀�
 | 輔助繪圖、原始變數、事件目標或箭頭 | [繪圖邏輯與事件呈現](references/event-presentation.md) |
 | 選結構或教學輸入 | [結構與範例](references/structures-examples.md) |
 | 製作 asmdeck | [原生投影片](references/slides.md)；含動畫時再讀相關指令指南 |
+| 安排投影片敘述、分類、圖表與研究證據 | [投影片內容與講述](references/slide-storytelling.md) |
 
 只能提供單檔提示時使用 [QUICKSTART.md](QUICKSTART.md)。本包核心語法依 `cda1219` 整理；`char(s)`、矩陣獨立指標與 pointer color 已在 intergration 的 `cde8028` 實作。遇到版本差異，查專案根目錄 `ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md` 與 parser；無 repo 時查 [核心版本手冊](https://github.com/bamboo20030309/AlgoShowMaker/blob/cda1219eb407845e8ebbae22d7a30580b0ec7f1f/ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)，不要假設舊部署具備新功能。
 
@@ -33,6 +34,10 @@ description: 為 AlgoShowMaker 撰寫 C++ 演算法視覺化註解、設計幀�
 - 先確認輸入、輸出、索引起點、變數意義及關鍵分支，再設計「畫面／程式位置／原因／預期結果」。小輸入涵蓋正常與重要例外路徑。
 - 保留演算法、型別、邊界及 stdout；必要的邏輯修改說明原因與差異。投影片依「問題 → 狀態表示 → 規則／不變量 → 程式 → 動畫 → 練習 → 檢核」安排，沿用使用者指定模板。
 - 使用既有可編輯元件：文字用 text、程式用 code、公式用 LaTeX、資料結構用 structure、動畫用既有播放元件；不將程式、公式或整頁烘焙成圖片。
+
+## 投影片內容與講述
+
+每頁以標題、承接前頁的導言與收束理解的小結形成完整敘述。先交代問題，再引入概念；依內容關係安排比較與圖表，區分研究證據、推論與講者備註。製作或修訂投影片時，讀取 [投影片內容與講述](references/slide-storytelling.md) 的 12 項完整說明，按當頁內容套用，不為一般教學硬加研究資訊。
 
 ## text 自動尺寸
 

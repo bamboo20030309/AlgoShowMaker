@@ -66,7 +66,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   const legacy = read('index.html');
   assert.ok(slides.includes('slides-storage.js?v=7'));
   assert.ok(slides.includes('slides-cloud.js?v=3'));
-  assert.ok(slides.includes('slides.js?v=slides-282'));
+  // The slide interaction fixes ship together under this cache-busting build.
+  assert.ok(slides.includes('slides.js?v=slides-287'));
   assert.ok(slides.includes('trace-model.js?v=trace-42'));
   assert.ok(slides.includes('slide-inline-scripts.js?v=2'));
   assert.ok(slides.includes('id="slideOrderToggleBtn"'));
