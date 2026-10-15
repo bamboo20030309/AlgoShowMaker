@@ -8833,6 +8833,10 @@
         const start = object.selectionStart;
         object.insertChars(payload.text, object.asmInlineScripts ? payload.authoredStyles : payload.styles, start, object.selectionEnd);
         object.selectionStart = object.selectionEnd = start + payload.styles.length;
+        // insertChars updates the Fabric model, while _updateTextarea only
+        // synchronizes selection/position. Update the native value first so
+        // the next input cannot replace the pasted fragment with stale text.
+        object.hiddenTextarea.value = object.text;
         object._updateTextarea(); object.hiddenTextarea.focus();
         currentFabricCanvas().fire('text:changed', { target: object });
         currentFabricCanvas().requestRenderAll();

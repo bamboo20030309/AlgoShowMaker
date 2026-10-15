@@ -1,28 +1,16 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
-const net = require('node:net');
+const { startStaticUiServer } = require('./helpers/static-ui-server');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
 test('rich text fragments preserve base and per-character styles in new and existing text objects',
-  { timeout: 60000 }, async () => {
+  { timeout: 60000 }, async t => {
     const root = path.resolve(__dirname, '..');
-    const port = await new Promise(resolve => {
-      const server = net.createServer(); server.listen(0, '127.0.0.1', () => {
-        const port = server.address().port; server.close(() => resolve(port));
-      });
-    });
-    const server = spawn(process.execPath, ['server.js'], { cwd: root, windowsHide: true, stdio: 'ignore',
-      env: { ...process.env, PORT: String(port), ASM_REGRESSION: '1' } });
+    const { base } = await startStaticUiServer(t);
     let browser;
     try {
-      const base = `http://127.0.0.1:${port}`;
-      for (let i = 0; i < 80; i++) {
-        try { if ((await fetch(base)).ok) break; } catch {}
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
       browser = await chromium.launch({ headless: true,
         ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
       const page = await browser.newPage({ viewport: { width: 1600, height: 1000 },
@@ -75,12 +63,44 @@ test('rich text fragments preserve base and per-character styles in new and exis
       const appended = await inspect(1);
       for (const index of [0,1,2,4]) for (const field of ['fill','fontFamily','fontSize','fontWeight','fontStyle','underline'])
         assert.equal(appended.styles[index + 1][field], source.styles[index][field], `existing object ${index} ${field}`);
+      const cursor = await page.evaluate(() => {
+        const object = fixtureCanvas.getObjects()[1];
+        return { text: object.hiddenTextarea.value, start: object.selectionStart,
+          end: object.selectionEnd, length: object._text.length,
+          nativeStart: object.hiddenTextarea.selectionStart, nativeEnd: object.hiddenTextarea.selectionEnd };
+      });
+      assert.equal(cursor.text, appended.text, 'native input must contain the pasted text before further typing');
+      assert.equal(cursor.start, cursor.length);
+      assert.equal(cursor.end, cursor.length);
+      assert.equal(cursor.nativeStart, appended.text.length);
+      assert.equal(cursor.nativeEnd, appended.text.length);
+      await page.keyboard.type('!');
+      assert.equal((await inspect(1)).text, appended.text + '!', 'typing after paste appends instead of replacing the fragment');
       await page.evaluate(() => fixtureCanvas.getActiveObject().exitEditing());
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
       await page.reload(); await ready();
       assert.equal((await inspect(1)).styles[3].fill, '#0000ff');
       assert.equal((await inspect(2)).styles[2].underline, true);
       assert.equal((await inspect(0)).inline, false);
+      // The default inline-formatting path must also collapse a replaced range,
+      // including the different UTF-16/grapheme offsets around an emoji.
+      await page.evaluate(() => {
+        const object = fixtureCanvas.getObjects()[1];
+        object.set({ asmInlineScripts: true });
+        fixtureCanvas.setActiveObject(object); object.enterEditing();
+        object.selectionStart = 1; object.selectionEnd = 3;
+        object._updateTextarea(); object.hiddenTextarea.focus();
+      });
+      await page.keyboard.press('Control+v');
+      assert.equal((await inspect(1)).text, 'XA🙂B\nCB\nC!');
+      const replaced = await page.evaluate(() => {
+        const object = fixtureCanvas.getObjects()[1];
+        return { value: object.hiddenTextarea.value, start: object.selectionStart, end: object.selectionEnd,
+          nativeStart: object.hiddenTextarea.selectionStart, nativeEnd: object.hiddenTextarea.selectionEnd };
+      });
+      assert.deepEqual(replaced, { value: 'XA🙂B\nCB\nC!', start: 6, end: 6, nativeStart: 7, nativeEnd: 7 });
+      await page.keyboard.type('Z');
+      assert.equal((await inspect(1)).text, 'XA🙂B\nCZB\nC!', 'typing continues at the end of the replacement');
       assert.deepEqual(errors, []);
-    } finally { await browser?.close(); server.kill(); }
+    } finally { await browser?.close(); }
   });
