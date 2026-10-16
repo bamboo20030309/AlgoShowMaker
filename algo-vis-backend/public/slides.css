@@ -2816,7 +2816,7 @@ body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) {
   background: #fbfcfa;
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.18);
   transform-origin: center;
-  transition: transform 320ms ease, opacity 220ms ease, translate 220ms ease;
+  transition: opacity 220ms ease, translate 220ms ease;
 }
 
 .asm-slide.is-page-entering .asm-slide-frame-content {
@@ -2839,11 +2839,17 @@ body.asm-edit-mode:not(.custom-overview-open) > .reveal:not(.overview) {
 
 body.asm-edit-mode .asm-slide-frame-content {
   overflow: visible;
-  transform: scale(var(--edit-slide-zoom-scale));
+  transform: translate(var(--slide-pan-x, 0px), var(--slide-pan-y, 0px)) scale(var(--edit-slide-zoom-scale));
 }
 
 body:not(.asm-edit-mode) .asm-slide-frame-content {
-  transform: scale(var(--slide-user-zoom));
+  transform: translate(var(--slide-pan-x, 0px), var(--slide-pan-y, 0px)) scale(var(--slide-user-zoom));
+}
+
+body.slide-viewport-panning,
+body.slide-viewport-panning * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }
 
 .slide-edge-add-right {

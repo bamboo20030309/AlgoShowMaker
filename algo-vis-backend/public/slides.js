@@ -3748,16 +3748,18 @@
       canvas.__asmRasterScale = scale;
       canvas.setDimensions({ width: canvas.width, height: canvas.height });
       canvas.lowerCanvasEl.dataset.rasterScale = String(scale);
-      canvas.requestRenderAll();
+      // Resizing clears the bitmap. Paint in this same task so the compositor
+      // never presents an empty canvas between resizing and the next RAF.
+      canvas.renderAll();
     }
   }
 
-  function scheduleFabricResolution() {
+  function scheduleFabricResolution(settleZoom = false) {
     cancelAnimationFrame(fabricResolutionFrame);
-    fabricResolutionFrame = requestAnimationFrame(refreshFabricResolution);
+    if (settleZoom !== true) fabricResolutionFrame = requestAnimationFrame(refreshFabricResolution);
     clearTimeout(fabricResolutionTimer);
     // Mode and zoom transforms animate for 320ms; redraw again at their final size.
-    fabricResolutionTimer = setTimeout(refreshFabricResolution, 400);
+    fabricResolutionTimer = setTimeout(refreshFabricResolution, settleZoom === true ? 180 : 400);
   }
   // -----------------------------------------------------------------------------
   // Fabric 畫布建立與事件接線
@@ -7803,7 +7805,8 @@
     if (slideZoomValue) slideZoomValue.value = `${Math.round(value * 100)}%`;
     if (slideZoomOutBtn) slideZoomOutBtn.disabled = value <= SLIDE_ZOOM_MIN;
     if (slideZoomInBtn) slideZoomInBtn.disabled = value >= SLIDE_ZOOM_MAX;
-    if (slideZoomResetBtn) slideZoomResetBtn.disabled = Math.abs(value - 1) < 0.001;
+    if (slideZoomResetBtn) slideZoomResetBtn.disabled = Math.abs(value - 1) < 0.001
+      && (customOverviewOpen || (Math.abs(slideViewportPan.x) < 0.001 && Math.abs(slideViewportPan.y) < 0.001));
   }
 
   function setOverviewViewportZoom(value) {
@@ -7826,18 +7829,51 @@
     }
   }
 
-  function setSlideViewportZoom(value) {
+  let slideViewportPan = { x: 0, y: 0 };
+  let slideViewportMouse = null;
+  let slideViewportDrag = null;
+  let slideViewportSpace = false;
+
+  function currentSlideViewportFrame() {
+    return reveal?.getCurrentSlide()?.querySelector('.asm-slide-frame-content');
+  }
+
+  function applySlideViewportPan() {
+    const style = document.documentElement.style;
+    style.setProperty('--slide-pan-x', `${slideViewportPan.x}px`);
+    style.setProperty('--slide-pan-y', `${slideViewportPan.y}px`);
+    if (!customOverviewOpen) refreshSlideZoomControls(slideViewportZoom);
+  }
+
+  function slideViewportParentScale(frame) {
+    return frame.closest('section.asm-slide').getBoundingClientRect().width / SLIDE_W || 1;
+  }
+
+  function setSlideViewportZoom(value, anchor = slideViewportMouse) {
     if (customOverviewOpen) {
       setOverviewViewportZoom(value);
       return;
     }
+    const frame = currentSlideViewportFrame();
+    const before = frame?.getBoundingClientRect();
+    const viewport = document.querySelector('body > .reveal')?.getBoundingClientRect();
+    const point = anchor || (viewport && { x: viewport.left + viewport.width / 2, y: viewport.top + viewport.height / 2 });
     slideViewportZoom = Math.round(clampSlideViewportZoom(value) * 100) / 100;
     document.documentElement.style.setProperty('--slide-user-zoom', String(slideViewportZoom));
     document.documentElement.style.setProperty('--edit-slide-zoom-scale', String(EDIT_SLIDE_BASE_SCALE * slideViewportZoom));
     document.body.dataset.slideZoom = String(slideViewportZoom);
+    if (before?.width && point) {
+      const after = frame.getBoundingClientRect();
+      const scale = slideViewportParentScale(frame);
+      // Keep the same logical slide point under the cursor. Pan is in slide
+      // coordinates, independent of Reveal's responsive outer scale.
+      slideViewportPan.x += (point.x - after.left - (point.x - before.left) * after.width / before.width) / scale;
+      slideViewportPan.y += (point.y - after.top - (point.y - before.top) * after.height / before.height) / scale;
+      applySlideViewportPan();
+    }
     refreshSlideZoomControls(slideViewportZoom);
     clearSnapGuides();
-    scheduleFabricResolution();
+    scheduleFabricResolution(true);
     requestAnimationFrame(() => {
       const canvas = currentFabricCanvas();
       if (canvas?.getActiveObject()) updateObjectToolbar(canvas.getActiveObject(), canvas);
@@ -7845,8 +7881,76 @@
     });
   }
 
-  function adjustSlideViewportZoom(delta) {
-    setSlideViewportZoom((customOverviewOpen ? overviewViewportZoom : slideViewportZoom) + delta);
+  function adjustSlideViewportZoom(delta, anchor = slideViewportMouse) {
+    setSlideViewportZoom((customOverviewOpen ? overviewViewportZoom : slideViewportZoom) + delta, anchor);
+  }
+
+  function resetSlideViewport() {
+    setSlideViewportZoom(1, null);
+    slideViewportPan = { x: 0, y: 0 };
+    applySlideViewportPan();
+  }
+
+  function bindSlideViewportPan() {
+    const surface = document.querySelector('body > .reveal');
+    const finish = () => {
+      if (!slideViewportDrag) return;
+      slideViewportDrag = null;
+      document.body.classList.remove('slide-viewport-panning');
+      const canvas = currentFabricCanvas();
+      canvas?.calcOffset();
+      if (canvas?.getActiveObject()) updateObjectToolbar(canvas.getActiveObject(), canvas);
+      updateAlignmentToolbar();
+    };
+    window.addEventListener('pointerdown', event => {
+      if (customOverviewOpen || !surface?.contains(event.target) || isSlideZoomTypingTarget(event.target)) return;
+      if (event.button !== 1 && event.button !== 2 && !(event.button === 0 && slideViewportSpace)) return;
+      const frame = currentSlideViewportFrame();
+      if (!frame) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      slideViewportDrag = { id: event.pointerId, x: event.clientX, y: event.clientY,
+        pan: { ...slideViewportPan }, scale: slideViewportParentScale(frame) };
+      surface.setPointerCapture(event.pointerId);
+      document.body.classList.add('slide-viewport-panning');
+    }, true);
+    window.addEventListener('pointermove', event => {
+      if (surface?.contains(event.target)) slideViewportMouse = { x: event.clientX, y: event.clientY };
+      if (!slideViewportDrag || event.pointerId !== slideViewportDrag.id) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      slideViewportPan.x = slideViewportDrag.pan.x + (event.clientX - slideViewportDrag.x) / slideViewportDrag.scale;
+      slideViewportPan.y = slideViewportDrag.pan.y + (event.clientY - slideViewportDrag.y) / slideViewportDrag.scale;
+      applySlideViewportPan();
+    }, true);
+    for (const type of ['pointerup', 'pointercancel']) window.addEventListener(type, event => {
+      if (!slideViewportDrag || event.pointerId !== slideViewportDrag.id) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
+      finish();
+    }, true);
+    window.addEventListener('mousedown', event => {
+      if (!slideViewportDrag) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    surface?.addEventListener('pointerleave', () => { if (!slideViewportDrag) slideViewportMouse = null; });
+    window.addEventListener('contextmenu', event => {
+      if (!customOverviewOpen && surface?.contains(event.target)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    }, true);
+    window.addEventListener('keydown', event => {
+      if (event.code !== 'Space' || event.ctrlKey || event.metaKey || event.altKey || customOverviewOpen
+        || isSlideZoomTypingTarget(event.target) || event.target.closest?.('button, a, dialog, [role="button"]')) return;
+      slideViewportSpace = true;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    window.addEventListener('keyup', event => { if (event.code === 'Space') slideViewportSpace = false; }, true);
+    window.addEventListener('blur', () => { slideViewportSpace = false; finish(); });
   }
 
   function isSlideZoomTypingTarget(target) {
@@ -7860,7 +7964,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     const direction = event.deltaY < 0 ? 1 : -1;
-    adjustSlideViewportZoom(direction * SLIDE_ZOOM_STEP);
+    adjustSlideViewportZoom(direction * SLIDE_ZOOM_STEP, { x: event.clientX, y: event.clientY });
   }
 
   function handleSlideZoomKeydown(event) {
@@ -7868,7 +7972,7 @@
     const key = event.key;
     if (key === '0') {
       event.preventDefault();
-      setSlideViewportZoom(1);
+      resetSlideViewport();
     } else if (key === '+' || key === '=') {
       event.preventDefault();
       adjustSlideViewportZoom(SLIDE_ZOOM_STEP);
@@ -7948,7 +8052,8 @@
     });
     slideZoomOutBtn?.addEventListener('click', () => adjustSlideViewportZoom(-SLIDE_ZOOM_STEP));
     slideZoomInBtn?.addEventListener('click', () => adjustSlideViewportZoom(SLIDE_ZOOM_STEP));
-    slideZoomResetBtn?.addEventListener('click', () => setSlideViewportZoom(1));
+    slideZoomResetBtn?.addEventListener('click', resetSlideViewport);
+    bindSlideViewportPan();
     document.addEventListener('wheel', handleSlideZoomWheel, { passive: false, capture: true });
     document.addEventListener('keydown', handleSlideZoomKeydown, true);
     setSlideViewportZoom(1);
