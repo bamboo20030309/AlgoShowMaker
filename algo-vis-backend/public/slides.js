@@ -3856,6 +3856,29 @@
     const proto = Fabric?.IText?.prototype;
     if (!proto || proto.__asmCompositionUnderlinePatched || typeof proto.renderSelection !== 'function') return;
     const original = proto.renderSelection;
+    const originalCompositionEnd = proto.onCompositionEnd;
+    proto.onCompositionEnd = function (...args) {
+      const result = originalCompositionEnd.apply(this, args);
+      const textarea = this.hiddenTextarea;
+      // Fabric 5 only flips inCompositionMode. A confirming Enter may have no
+      // subsequent input event, so clear the transient overlay here, including
+      // dashed strokes outside Fabric's usual text-area clearing rectangle.
+      // Keep native selection (UTF-16) separate from Fabric's grapheme offsets.
+      if (textarea && textarea.value === this.text) {
+        const selection = this.fromStringToGraphemeSelection(
+          textarea.selectionStart, textarea.selectionEnd, this.text
+        );
+        this.selectionStart = selection.selectionStart;
+        this.selectionEnd = selection.selectionEnd;
+      }
+      this.compositionStart = this.compositionEnd = textarea?.selectionStart ?? 0;
+      if (this.isEditing) {
+        this.initDelayedCursor();
+        refreshEditingTextCursor(this);
+        this.canvas?.requestRenderAll();
+      }
+      return result;
+    };
     proto.renderSelection = function (boundaries, ctx) {
       if (!this.inCompositionMode) return original.call(this, boundaries, ctx);
       try {
