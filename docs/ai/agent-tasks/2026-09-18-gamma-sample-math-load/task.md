@@ -39,7 +39,7 @@
 - [x] 既有LaTeX同ID匯入、編輯與undo/redo通過。
 
 ## 驗證計畫
-- V1，A/B/C；讀取最新主根子代理驗證分級通知.md與整合分支與預覽設定.md。
+- V1，A/B/C；讀取最新主根docs/ai/validation-levels.md與docs/ai/integration-preview.md。
 - 隔離隨機埠ASM_REGRESSION、合成公式deck、獨立Edge，延遲catalog及封鎖https。
 - 只跑本次載入專項、latex-refresh與入口測試，不啟動演算法集。
 - gamma重啟並核實3103；不操作3000、3100及其他代理服務。

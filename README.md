@@ -133,8 +133,9 @@ npm run test:inventory
 
 ## 相關文件
 
+- [AI 協作、教材 skill 與交付紀錄](docs/ai/README.md)
 - [演算法視覺化指令手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)
-- [AI 教材製作 skill](skills/algoshowmaker-authoring/SKILL.md)／[單檔精簡指南](skills/algoshowmaker-authoring/QUICKSTART.md)
+- [AI 教材製作 skill](docs/ai/skills/algoshowmaker-authoring/SKILL.md)／[單檔精簡指南](docs/ai/skills/algoshowmaker-authoring/QUICKSTART.md)
 - [安裝與部署指南](SETUP_GUIDE.md)
 - [驗證集使用手冊](docs/驗證集使用手冊.md)
 - [驗證集設計與覆蓋範圍](docs/驗證集設計.md)

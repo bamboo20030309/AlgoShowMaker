@@ -6,7 +6,7 @@
 
 ## 驗證分工（2026-09-18 更新）
 
-開始前讀取專案根目錄的 [子代理驗證分級通知.md](../../子代理驗證分級通知.md)，依 V0～V3 分級與 A～M 分類選擇驗證。
+開始前讀取專案根目錄的 [docs/ai/validation-levels.md](../../docs/ai/validation-levels.md)，依 V0～V3 分級與 A～M 分類選擇驗證。
 非動畫的前端／投影片修改不啟動演算法驗證集；只做必要的局部確認與直接相關的小測試。
 
 持久化物件新增功能時必須驗證舊資料：新建物件、刪除新欄位的舊 fixture、既有自訂值／明確關閉設定，以及儲存或匯出後重開。已登錄案例可用 `npm run test:legacy-objects` 執行；新增功能仍須先加入對應 fixture 與斷言，不能用既有案例代替本次功能驗證。
@@ -15,18 +15,7 @@
 
 ## 主代理完整回歸入口
 
-### v4.11 發布候選增量驗證
-
-效能優化合併後使用下列入口核實場景重用、結構 LOD、Trace 分塊與事件窗、舊資料往返、
-矩陣 renderer，以及右鍵畫布平移：
-
-```sh
-npm run validate:release-v4.11:fresh
-```
-
-結果寫入被 Git 忽略的 `test-results/release-v4.11-state.json`。同一候選輪次修正失敗後執行
-`npm run validate:release-v4.11`，只會重跑失敗或尚未完成的測試檔；內容與環境未變更的已通過檔案不重跑；受影響紀錄自動失效。
-此集合承接既有完整發布基準，不取代全部 regression 或動畫矩陣。
+目前使用 `npm run regression` 與其 `:tests`／`:animation` 入口，按影響範圍選擇並續跑有效輪次。v4.11 專用發布候選入口已移除，其驗證結果保留在歷史交付紀錄，不作為日常執行指令。
 
 事件控制與批次箭頭新增專項：`events-batch-arrows.test.js`（語法、條件、展開、線篩編譯與疏幀衍生值）、
 `events-batch-arrows.browser.test.js`（真實 SVG、事件排程與 JSON 重載）。

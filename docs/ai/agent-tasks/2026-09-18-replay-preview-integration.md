@@ -20,7 +20,7 @@ node --test --test-concurrency=1 tests/style-replay.browser.test.js tests/presen
 
 - 原3101／3102／3103無listener，按使用者要求啟動：Alpha events-arrows 3101 PID4420、Beta 3102 PID18288、Gamma 3103 PID36332。
 - 各 worktree 使用被忽略的 .env（復用主專案本機設定，不提交），PORT 由程序指定，服務共享本機 Mongo／雲端deck；不做破壞性私人資料測試。
-- 三埠 slides.html HTTP200，SHA-256 與各自 worktree 一致。端口對應已記入整合分支與預覽設定.md。
+- 三埠 slides.html HTTP200，SHA-256 與各自 worktree 一致。端口對應已記入docs/ai/integration-preview.md。
 - 3100 重啟後 PID24068，algorithm.html／trace-frame-tween.js HTTP200 且SHA-256與受測內容一致。
 - 3000／3101／3102／3103均HTTP200；main 保持ddfe5b6081261a05b437a61a546861151d4618e5。main及Docker未重啟／合併。
 - 依持續授權將程式與紀錄push至GitHub bamboo20030309/AlgoShowMaker 的 origin/intergration；最終以遠端SHA核對為準，不發布release或部署。

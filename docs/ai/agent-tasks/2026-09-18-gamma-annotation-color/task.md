@@ -34,7 +34,7 @@
 - [x] 設定圖示只有註標箭頭，沒有下方元素格子。
 
 ## 驗證計畫
-- V1，分類A/B/C；讀取主根目錄子代理驗證分級通知.md。
+- V1，分類A/B/C；讀取主根目錄docs/ai/validation-levels.md。
 - JS語法、diff、既有structure專項瀏覽器及入口測試。
 - 隨機埠ASM_REGRESSION、合成deck、獨立Edge；不跑演算法驗證集。
 - 主代理核實與整合驗收。

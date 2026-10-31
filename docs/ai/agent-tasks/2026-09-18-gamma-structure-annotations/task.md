@@ -41,7 +41,7 @@
 
 ## 驗證計畫
 - V1、分類A/B/C：JS語法、diff、最小專項瀏覽器與入口測試。
-- 讀取主根目錄子代理驗證分級通知.md；worktree無該檔，以最新主根通知為準。
+- 讀取主根目錄docs/ai/validation-levels.md；worktree無該檔，以最新主根通知為準。
 - 隔離：隨機埠ASM_REGRESSION、合成deck、獨立無頭Edge，不使用主服務與真實資料。
 - 主代理整合：核對實際structure編輯、儲存、輸出及多行排列；本次不啟動演算法驗證集。
 

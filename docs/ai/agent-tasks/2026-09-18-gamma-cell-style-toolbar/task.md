@@ -39,7 +39,7 @@
 - [ ] 離開編輯／切換投影片關閉工具列：已實作，尚未專項驗證。
 
 ## 驗證計畫
-- V1，A/B/C；最新主根目錄子代理驗證分級通知.md。
+- V1，A/B/C；最新主根目錄docs/ai/validation-levels.md。
 - JS語法及diff，最小structure專項與入口測試。
 - 隔離：隨機埠ASM_REGRESSION、合成deck、獨立無頭Edge、既有CDN依賴。
 - 主代理補驗：undo/redo、多結構實際選取、手機布局、雙擊值及右鍵操作。

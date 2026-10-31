@@ -2,11 +2,11 @@
 
 更新日期：2026-10-06。依使用者最新指示，本規則適用於所有開發代理，包括獨立 Codex 任務與主代理建立的子代理。
 
-現有設計、執行時機與待補強項目見 [驗證集設計](docs/驗證集設計.md)。目前沒有 PR 自動大型驗證；續跑入口會按內容與環境指紋使受影響紀錄失效；主代理仍須核實驗證範圍。小測試索引可用 algo-vis-backend 的 npm run test:inventory 查看，只列清單，不執行測試。
+現有設計、執行時機與待補強項目見 [驗證集設計](../驗證集設計.md)。目前沒有 PR 自動大型驗證；續跑入口會按內容與環境指紋使受影響紀錄失效；主代理仍須核實驗證範圍。小測試索引可用 algo-vis-backend 的 npm run test:inventory 查看，只列清單，不執行測試。
 
 ## 一、先判斷影響範圍，再選驗證
 
-Trace／指標／標籤歷史問題參照 [固定行為規則](docs/Trace固定行為規則.md) 的 T01～T20，交付記錄寫清固定答案與實際 SVG 證據。T19 核對明確關閉陣列插入後的值格／索引立即到位，入口為 `sequence-commit.browser.test.js`；T20 核對索引格子初始化純量時複製框與數字，入口為 `declaration-cell-copy.browser.test.js`。這份索引不授權執行所有案例；只跑受影響分類的最小測試。`scripts/trace-behavior-rules.js` 為独立答案入口，缺失標籤或幾何不可當作通過，播放計畫只能作時序一致性佐證。
+Trace／指標／標籤歷史問題參照 [固定行為規則](../Trace固定行為規則.md) 的 T01～T20，交付記錄寫清固定答案與實際 SVG 證據。T19 核對明確關閉陣列插入後的值格／索引立即到位，入口為 `sequence-commit.browser.test.js`；T20 核對索引格子初始化純量時複製框與數字，入口為 `declaration-cell-copy.browser.test.js`。這份索引不授權執行所有案例；只跑受影響分類的最小測試。`scripts/trace-behavior-rules.js` 為独立答案入口，缺失標籤或幾何不可當作通過，播放計畫只能作時序一致性佐證。
 
 不要因為修改了 JavaScript、前端、slides.js 或投影片，就啟動完整驗證集。
 依實際修改的函式、資料流與行為分類，不以檔名判斷是否涉及動畫。
@@ -66,7 +66,7 @@ V0／V1 不需要啟用演算法驗證集，也不必為了完成純介面修正
 | 瀏覽器專項 helper | `algo-vis-backend/scripts/slide-order-browser.js`、`deck-import-browser.js`、`cloud-storage-browser.js` |
 | 完整小測試執行紀錄 | `algo-vis-backend/test-results/regression.tap` |
 | 大動畫報告、截圖與逐幀記錄 | `algo-vis-backend/test-results/animation/<時間>/`，包含 `summary.json` |
-| 任務／交付文件 | `docs/agent-tasks/<任務代號>/task.md`、`delivery.md` |
+| 任務／交付文件 | `docs/ai/agent-tasks/<任務代號>/task.md`、`delivery.md` |
 
 主工作目錄的小測試絕對位置：
 
