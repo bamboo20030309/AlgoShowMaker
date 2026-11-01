@@ -55,7 +55,9 @@
   }
 
   function sourceViewBlock(source) {
-    return window.ASMTraceViewSource?.findBlock?.(source)?.text || null;
+    // Ace normalizes CRLF when loading saved Windows source. A line-ending
+    // conversion is not a settings edit and must not replace the saved view.
+    return window.ASMTraceViewSource?.findBlock?.(source)?.text?.replace(/\r\n?/g, '\n') || null;
   }
 
   function sourceViewWasEdited() {

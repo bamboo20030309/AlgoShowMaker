@@ -43,3 +43,6 @@ Thumbs.db
 #==========================
 dist/
 build/
+!algo-vis-backend/scripts/build/
+!algo-vis-backend/scripts/build/*.js
+!algo-vis-backend/scripts/build/*.py

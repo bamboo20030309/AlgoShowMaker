@@ -5,6 +5,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { gzipSync } = require('node:zlib');
+const { readPackage, savedTrace } = require('./helpers/deck-package');
 
 const root = path.resolve(__dirname, '..');
 const publicRoot = path.join(root, 'public');
@@ -30,8 +32,17 @@ test('standalone linear-sieve assets contain one preview frame and the complete 
   assert.equal(preview.animation.input, '100');
   assert.equal(full.animation.traceDocument.sourceCode, full.animation.code);
   assert.ok(manifest.preview.bytes < 30 * 1024, 'first-frame preview should remain lightweight');
-  assert.ok(manifest.full.bytes < fs.statSync(path.join(publicRoot, 'guest-decks/linear-sieve.asmdeck')).size,
-    'standalone animation should remain smaller than the complete teaching deck');
+  // The deck now contains IDs only. Compare the standalone transfer with the
+  // complete teaching deck plus its external, compressed animation payloads.
+  const deckBytes = fs.readFileSync(path.join(publicRoot, 'guest-decks/linear-sieve.asmdeck'));
+  const body = readPackage(deckBytes).body;
+  const animations = body.deck.groups.flatMap(group => group.slides || []).filter(slide => slide.animation);
+  const traces = new Map(animations.map(slide => [slide.animation.traceRef,
+    savedTrace(body, slide.animation, { presentation: false })]));
+  const completeBytes = deckBytes.length + [...traces.values()].reduce((sum, trace) =>
+    sum + gzipSync(Buffer.from(JSON.stringify(trace))).length, 0);
+  assert.ok(manifest.full.bytes < completeBytes,
+    'standalone animation should remain smaller than the complete teaching deck and its external traces');
 });
 
 test('guest deck prebuild regenerates the standalone default animation', () => {

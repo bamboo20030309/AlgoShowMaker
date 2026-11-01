@@ -168,7 +168,8 @@ test('algorithm workspace paints a preview, loads the standalone trace, then reu
     assert.doesNotMatch(state.code, /#include "AV\.hpp"/);
     assert.equal(state.input, '100');
     assert.equal(state.frames, 116);
-    assert.equal(state.traceSource, state.code);
+    assert.equal(state.traceSource.replace(/\r\n?/g, '\n'), state.code.replace(/\r\n?/g, '\n'),
+      'Ace line-ending normalization preserves the same source');
     assert.equal(state.freshness, 'current');
     assert.equal(state.studioOpen, false);
     assert.equal(state.frameInfo, '1 / 116');

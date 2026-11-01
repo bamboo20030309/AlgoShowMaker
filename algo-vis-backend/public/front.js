@@ -134,7 +134,9 @@ function saveAlgorithmDraft() {
   const input = document.getElementById('inputArea')?.value || '';
   if (code.trim() === '// 讀取中...') return false;
   try {
-    if (activeBuiltinDefault && code === activeBuiltinDefault.code && input === activeBuiltinDefault.input) {
+    if (activeBuiltinDefault
+      && code.replace(/\r\n?/g, '\n') === activeBuiltinDefault.code.replace(/\r\n?/g, '\n')
+      && input === activeBuiltinDefault.input) {
       sessionStorage.removeItem(ALGORITHM_DRAFT_STORAGE_KEY);
       return true;
     }
