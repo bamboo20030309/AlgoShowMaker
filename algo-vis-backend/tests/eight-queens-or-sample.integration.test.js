@@ -7,8 +7,7 @@ const { compile } = require('./helpers/compile');
 
 test('queen sample exposes both OR operands and animates L, M and R results',
   { timeout: 90000 }, async () => {
-    const code = fs.readFileSync(path.join(__dirname,
-      '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
+    const code = fs.readFileSync(path.join(__dirname, '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
     assert.ok(!code.includes('or_source'));
     const { trace } = await compile(code, '4');
     const commits = trace.frames.flatMap(frame => frame.events).filter(event => event.bitwiseCommit);

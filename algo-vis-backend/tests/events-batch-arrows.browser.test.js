@@ -25,7 +25,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'fixtures/events-batch-sieve.cpp'),'utf8');
+    const code=fs.readFileSync(path.join(__dirname, 'fixtures/events-batch-sieve.cpp'),'utf8');
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),code);
     await page.click('#runBtn');
     await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
@@ -72,7 +72,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     }
     assert.deepEqual(result.repeated.arrows,result.nine.arrows);
     assert.deepEqual(result.reloaded.arrows,result.nine.arrows,'JSON round trip retains controls and batch description');
-    const loopCode=fs.readFileSync(path.join(__dirname,'fixtures/loop-batch-sieve.cpp'),'utf8');
+    const loopCode=fs.readFileSync(path.join(__dirname, 'fixtures/loop-batch-sieve.cpp'),'utf8');
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),loopCode);
@@ -95,7 +95,7 @@ test('user-written compact sieve frames render batch SVG arrows without detail e
     assert.ok(loops.states.every(state=>state.steps===0));
     assert.equal(new Set(loops.states[1].arrows.map(arrow=>arrow.id)).size,2);
     assert.deepEqual(loops.reloaded,loops.states[1]);
-    const drawingCode=fs.readFileSync(path.join(__dirname,'fixtures/drawing-loop-sieve.cpp'),'utf8');
+    const drawingCode=fs.readFileSync(path.join(__dirname, 'fixtures/drawing-loop-sieve.cpp'),'utf8');
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),drawingCode);

@@ -6,16 +6,22 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { gunzipSync } = require('node:zlib');
 const { chromium } = require('playwright');
+const { readPackage, savedTrace } = require('./helpers/deck-package');
 
 test('loop sample covers all 256 configurations without event-heavy skipped intervals',
   { timeout: 90000 }, async () => {
     const root = path.resolve(__dirname, '..');
-    const archive = JSON.parse(gunzipSync(fs.readFileSync(path.join(root,
-      'drafts/eight-queens-teaching.asmdeck')).subarray(9)));
-    const animation = archive.body.deck.groups[1].slides.at(-1).animation;
-    const trace = archive.body.prebuiltTraces[animation.prebuilt.traceId];
-    assert.equal(trace.sourceCode, fs.readFileSync(path.join(root,
-      'algorithm_sample/Backtracking/8queen-loop-teaching.cpp'), 'utf8'));
+    const archive = readPackage(fs.readFileSync(path.join(root,
+      'public/guest-decks/eight-queens-teaching.asmdeck')));
+    const animation = archive.body.deck.groups.flatMap(group => group.slides).find(slide => slide.animation).animation;
+    const trace = savedTrace(archive.body, animation);
+    // This performance scenario explicitly disables automatic statement
+    // animations. The published sample's settings differ from the retired
+    // draft: change only this copy, retaining the strict assertion below.
+    Object.assign(trace.studio.eventSettings.defaultEnabled, {
+      declare: false, assign: false, write: false, compare: false
+    });
+    assert.equal(trace.provenance.sourceFingerprint, require('../public/trace-provenance').create(animation.code, animation.input).sourceFingerprint);
     assert.equal(trace.frames.length, 257);
     const value = (frame, name) => Object.values(frame.state)
       .find(item => item.name === name)?.data;
@@ -82,7 +88,7 @@ test('loop sample covers all 256 configurations without event-heavy skipped inte
         const document = window.ASMTracePlayer.getDocument();
         return document.frames[20].events.filter(event => event.enabled).map(event => event.type);
       });
-      assert.ok(!enabled.some(type => ['assign', 'write', 'declare', 'compare'].includes(type)));
+      assert.ok(!enabled.some(type => ['assign', 'write', 'declare', 'compare'].includes(type)), JSON.stringify(enabled));
       // This case measures frame/event playback, not spoken-caption duration.
       // Complete speech callbacks deterministically; real TTS has separate tests.
       await page.evaluate(() => {

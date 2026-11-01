@@ -35,7 +35,7 @@ test('standalone linear-sieve assets contain one preview frame and the complete 
 });
 
 test('guest deck prebuild regenerates the standalone default animation', () => {
-  const script = fs.readFileSync(path.join(root, 'scripts/prebuild-guest-decks.js'), 'utf8');
+  const script = fs.readFileSync(path.join(root, 'scripts/build/prebuild-guest-decks.js'), 'utf8');
   assert.match(script, /entry\.id === 'linear-sieve'/);
   assert.match(script, /buildDefaultAlgorithmAssets\(rebuilt/);
 });

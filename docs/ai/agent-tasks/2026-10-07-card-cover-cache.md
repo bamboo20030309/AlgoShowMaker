@@ -20,7 +20,7 @@ asmdeck 格式與舊檔相容測試、asmdeck-cover 的局部讀取／中繼資�
 
 ## 載入效能
 
-入口：algo-vis-backend 的 node scripts/benchmark-card-loading.js。使用獨立伺服器與 headless Edge、固定資料，沒有操作使用者瀏覽器／投影片。以 7347375 的前端作基準。每組 3 次取中位數；API fixture 每次回應延遲 20 ms。50 張工作區卡片與實際 15 份範例分開測量，避免另一區初始化混入工作區結果。包含介面顯示與圖片解碼時間，不等同純 API 回應時間，也不是公開站 WAN 或 50 人併發壓測。
+入口：algo-vis-backend 的 node scripts/benchmarks/benchmark-card-loading.js。使用獨立伺服器與 headless Edge、固定資料，沒有操作使用者瀏覽器／投影片。以 7347375 的前端作基準。每組 3 次取中位數；API fixture 每次回應延遲 20 ms。50 張工作區卡片與實際 15 份範例分開測量，避免另一區初始化混入工作區結果。包含介面顯示與圖片解碼時間，不等同純 API 回應時間，也不是公開站 WAN 或 50 人併發壓測。
 
 | 情境 | 修改前 | 修改後 |
 | --- | ---: | ---: |

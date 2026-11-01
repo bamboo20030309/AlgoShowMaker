@@ -71,4 +71,4 @@ preset 定義版面，不建立播放幀；在變數存在的作用域用 `@fram
 
 ## 查證來源
 
-repo 根目錄 `ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md`；parser 位於 `algo-vis-backend/trace-instrumenter.js`。本包未列出的選項，查手冊後才能使用；無法查證就交付核心語法版本。
+repo 根目錄 `docs/reference/algorithm-visualization-directives.md`；parser 位於 `algo-vis-backend/trace-instrumenter.js`。本包未列出的選項，查手冊後才能使用；無法查證就交付核心語法版本。

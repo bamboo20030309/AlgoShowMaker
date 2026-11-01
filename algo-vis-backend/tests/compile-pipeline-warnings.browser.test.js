@@ -16,7 +16,7 @@ test('RUN reports syntax, analysis, trace and drawing failures without hiding th
  await page.route('**/compile',route=>route.fulfill({status:200,json:{output:'1',error:'',scriptContent:'throw new Error("舊動畫腳本解析失敗")'}}),{times:1});await run();await expectNotice(/動畫腳本.*舊動畫腳本解析失敗/);
  await page.route('**/compile',route=>route.fulfill({status:200,contentType:'application/json',body:'{'}),{times:1});await run();await expectNotice(/編譯請求/);
  await run();assert.equal(await page.locator('#compileWarnings').isVisible(),false);
- const kmp=fs.readFileSync(require('node:path').join(__dirname,'fixtures/kmp-source-newlines.cpp'),'utf8');await run(kmp);await page.evaluate(()=>ASMTracePlayer.renderStable(3));await expectNotice(/事件動畫[\s\S]*畫面目標[\s\S]*s\[i\]/);
+ const kmp=fs.readFileSync(require('node:path').join(__dirname, 'fixtures/kmp-source-newlines.cpp'),'utf8');await run(kmp);await page.evaluate(()=>ASMTracePlayer.renderStable(3));await expectNotice(/事件動畫[\s\S]*畫面目標[\s\S]*s\[i\]/);
  await page.screenshot({path:'test-results/compile-pipeline-warning.png'});
  assert.deepEqual(errors,[]);
 });

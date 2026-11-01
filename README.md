@@ -56,7 +56,7 @@ cd algo-vis-backend
 npm start
 ```
 
-開啟 `http://localhost:3000`。若需要 Windows、Docker、MongoDB 或部署設定，請參考 [安裝與部署指南](SETUP_GUIDE.md)。
+開啟 `http://localhost:3000`。若需要 Windows、Docker、MongoDB 或部署設定，請參考 [安裝與部署指南](docs/guides/setup.md)。
 
 ## 建立第一段動畫
 
@@ -84,7 +84,7 @@ int main() {
 }
 ```
 
-常用指令包含 `@frame`、`@style`、`@text`、`@keep`、`@arrow` 與 `@camera`。完整語法、作用範圍與範例集中在 [演算法視覺化指令手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)。
+常用指令包含 `@frame`、`@style`、`@text`、`@keep`、`@arrow` 與 `@camera`。完整語法、作用範圍與範例集中在 [演算法視覺化指令手冊](docs/reference/algorithm-visualization-directives.md)。
 
 ## 製作教學投影片
 
@@ -129,16 +129,17 @@ npm run test:inventory
 
 依改動選最小相關測試；純前端／投影片修改不啟動演算法動畫集。續跑會保留有效的通過結果，只重跑失敗、未完成或因依賴修改而失效的項目。
 
-指令、隔離環境、報告與故障處理見 [驗證集使用手冊](docs/驗證集使用手冊.md)。大型驗證由主代理依風險執行，PR 目前不會自動觸發。
+指令、隔離環境、報告與故障處理見 [驗證集使用手冊](docs/guides/validation.md)。大型驗證由主代理依風險執行，PR 目前不會自動觸發。
 
 ## 相關文件
 
+- [文件分類索引](docs/README.md)
 - [AI 協作、教材 skill 與交付紀錄](docs/ai/README.md)
-- [演算法視覺化指令手冊](ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)
+- [演算法視覺化指令手冊](docs/reference/algorithm-visualization-directives.md)
 - [AI 教材製作 skill](docs/ai/skills/algoshowmaker-authoring/SKILL.md)／[單檔精簡指南](docs/ai/skills/algoshowmaker-authoring/QUICKSTART.md)
-- [安裝與部署指南](SETUP_GUIDE.md)
-- [驗證集使用手冊](docs/驗證集使用手冊.md)
-- [驗證集設計與覆蓋範圍](docs/驗證集設計.md)
+- [安裝與部署指南](docs/guides/setup.md)
+- [驗證集使用手冊](docs/guides/validation.md)
+- [驗證集設計與覆蓋範圍](docs/development/validation-design.md)
 - [AV_V4.12.1 版本說明](docs/releases/v4.12.1.md)
 
 ## 授權

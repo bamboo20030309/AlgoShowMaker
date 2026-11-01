@@ -62,7 +62,7 @@ test('insertion frame 11 evaluates j+1 numerically in fresh and saved traces', {
       await player.render(10);
       return { before, expected, after, backward, reopened: read(), samples };
     }, { source, speed });
-    const { validateBehavior } = require('../scripts/trace-behavior-rules');
+    const { validateBehavior } = require('../scripts/validation/trace-behavior-rules');
     for (const state of [result.after, result.reopened]) {
       const fixedRule = validateBehavior({ markers: [{ label: 'j+1', ...state }] }, { bindings: { 'j+1': 2 } });
       assert.equal(fixedRule.pass, true, mode + ': ' + JSON.stringify(fixedRule.firstViolation));

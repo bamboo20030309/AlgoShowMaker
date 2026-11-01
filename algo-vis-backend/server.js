@@ -498,6 +498,7 @@ app.use('/vendor/reveal', express.static(path.join(__dirname, 'node_modules', 'r
 app.use('/vendor/fabric', express.static(path.join(__dirname, 'node_modules', 'fabric', 'dist')));
 app.use('/vendor/iro', express.static(path.join(__dirname, 'node_modules', '@jaames', 'iro', 'dist')));
 app.use('/vendor/ace', express.static(path.join(__dirname, 'node_modules', 'ace-builds', 'src-min-noconflict')));
+require('./sample-trace-route').registerSampleTraceRoute(app, path.join(__dirname, 'public'));
 app.use(express.static(path.join(__dirname, 'public')));
 // Async jobs are spooled to disk, but bounding each request also limits the
 // short interval between JSON parsing and the spool write during a burst.
@@ -3473,7 +3474,7 @@ setInterval(() => {
 
 
 
-const SAMPLES_DIR = path.join(__dirname, '/algorithm_sample');
+const SAMPLES_DIR = path.join(__dirname, '../../algorithm_sample');
 
 // 遞迴讀取目錄結構
 function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {

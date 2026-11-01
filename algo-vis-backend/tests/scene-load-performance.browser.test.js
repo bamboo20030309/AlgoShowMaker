@@ -22,7 +22,7 @@ test('LOD numbers appear at 14px and disappear below that boundary', {timeout:30
   const page=await browser.newPage();
   await page.setContent('<svg id="arraySvg" width="400" height="200"><g id="lod-fixture"></g></svg>');
   await page.evaluate(()=>{window.withSvgTextFitStyle=(_g,fn)=>fn();window.fitSvgText=()=>16;});
-  await page.addScriptTag({path:path.resolve(__dirname,'../public/trace-structure-lod.js')});
+  await page.addScriptTag({path:path.resolve(__dirname, '../public/trace-structure-lod.js')});
   await page.evaluate(()=>{
    const ns='http://www.w3.org/2000/svg',g=document.getElementById('lod-fixture');
    g.setAttribute('transform','scale(0.35)');ASMStructureLOD.begin(g,0.35,true);
@@ -42,7 +42,7 @@ test('LOD numbers appear at 14px and disappear below that boundary', {timeout:30
 });
 
 test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; text fitting caches exact typography', {timeout:120000}, async()=>{
- const root=path.resolve(__dirname,'..');
+ const root=path.resolve(__dirname, '..');
  const port=await new Promise(resolve=>{const s=net.createServer().listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
  const server=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),ASM_REGRESSION:'1',JWT_SECRET:require('node:crypto').randomBytes(32).toString('hex')},windowsHide:true,stdio:'ignore'});
  let browser;

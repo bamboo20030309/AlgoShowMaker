@@ -12,7 +12,7 @@
 - 已確認根因與證據：既有 heap／舊 segment-tree renderer 以完整二元樹層級與固定格寬定位，無法讓 n=10 的 3/2 子區間反映長度，也無法保留深度 3 與深度 4 葉節點的自然遞迴位置。n=11 第 55 幀的 trace 仍保存 `tree[6]=21`、`sets[6]=7`，靜態 render 顯示 `21,7`；從第 54 幀播放賦值動畫後只剩 `21`，證明動畫收尾誤將複合 `<text>` 容器整體覆寫。二元加法進入 value-only 搬移時又只傳入來源格元素，遺失 source target 的 variableId，因此無法選到 tree 對應的 `<tspan>`，會把 `5,=13`／`7,+3` 整串複製。
 - 修正方式與行為變化：新增 `render segment_tree with range(start,end)`；range 同時指定資料區間，並以起點推導 tree 根索引；依標準中點拆分建立實際節點，水平寬度按區間長度，垂直位置按真實遞迴深度。最小 value 格固定 40×40px、index 格高 12px；新增 `gap(horizontal,vertical)`，單參數沿用雙軸，垂直 gap 為 0 時 heap／segment tree 不畫父子線。下方標籤將 tree index 平常置中、interval 靠右；碰撞時依 SVG 實測字寬將 index 向左避讓，空間仍不足才縮字，兩者垂直置中。葉節點 `[x,x]` 簡化為 `[x]`。value 一般使用一致的 16px，interval 比 index 小 2px。標準範例現支援區間 modify、set 與 query，並在同一 tree 格合併顯示 lazy/set 標記。賦值事件現在依 target variable 選取複合格內對應的 `<tspan>`，不再刪除同格其他欄位；二元加法的來源也保留各自 variableId，只建立 tree 數字的飛行文字。第一版 `format(...)` 在 renderer 與事件 replay 共用格式器；標準範例依語意顯示 set `=value` 與 modify 的帶號數值。每個格內 segment 另繪左右 1px 灰色虛線，邊界幾何與色塊的寬度補間、split 入場及退場同步。
 - 修改檔案及用途：instrumenter/server 解析並解析 renderer 與 gap 選項；trace renderer 分派新排版、split 與格內 segment；各陣列 renderer 套用水平／垂直間距；入口快取及提示同步；手冊與專項測試補充幾何規則。
-- README／版本紀錄／使用說明更新：README 與 `ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md` 已加入語法、排版規則與查詢 segment 範例。
+- README／版本紀錄／使用說明更新：README 與 `docs/reference/algorithm-visualization-directives.md` 已加入語法、排版規則與查詢 segment 範例。
 - 與 task.md 的差異：無
 
 ## 驗收條件對照

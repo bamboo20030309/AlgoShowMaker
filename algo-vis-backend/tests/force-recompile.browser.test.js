@@ -3,7 +3,7 @@ const {test}=require('node:test');const assert=require('node:assert/strict');
 const path=require('node:path');const {chromium}=require('playwright');
 const {startIsolatedServer}=require('./helpers/isolated-server');
 test('normal RUN caches binaries, force remains API-only and removed shortcuts submit nothing',{timeout:90000},async t=>{
- const preload=path.join(__dirname,'fixtures/count-compiler-spawns.cjs');
+ const preload=path.join(__dirname, 'fixtures/count-compiler-spawns.cjs');
  const {base,logs}=await startIsolatedServer(t,{NODE_OPTIONS:`--require ${JSON.stringify(preload)}`});
  const launches=()=> (logs.join('').match(/ASM_TEST_COMPILER_SPAWN/g)||[]).length;
  const browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());

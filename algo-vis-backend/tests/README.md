@@ -1,8 +1,8 @@
 # AlgoShowMaker 回歸驗收
 
-日常操作先看 [驗證集使用手冊](../../docs/驗證集使用手冊.md)：選擇最小範圍、隔離服務、增量續跑、Linux 故障恢復與報告判讀。本頁保留各專項的技術說明。
+日常操作先看 [驗證集使用手冊](../../docs/guides/validation.md)：選擇最小範圍、隔離服務、增量續跑、Linux 故障恢復與報告判讀。本頁保留各專項的技術說明。
 
-現行總覽與待補強項目：[驗證集設計](../../docs/驗證集設計.md)（2026-10-06）。PR 目前不會自動啟動大型驗證。續跑證據已綁定程式、測試、fixture 與環境指紋；只重跑失敗、未完成或因修改失效的項目。用 npm run test:inventory 查看共用索引。
+現行總覽與待補強項目：[驗證集設計](../../docs/development/validation-design.md)（2026-10-06）。PR 目前不會自動啟動大型驗證。續跑證據已綁定程式、測試、fixture 與環境指紋；只重跑失敗、未完成或因修改失效的項目。用 npm run test:inventory 查看共用索引。
 
 ## 驗證分工（2026-09-18 更新）
 
@@ -253,7 +253,7 @@ fingerprint 是變更偵測，不是安全驗證；忽略原始碼行尾格式�
 
 `node --test tests/cloud-content.test.js tests/slide-cloud-storage.test.js` 檢查分塊／續傳、未修改原 deck、替換回收、提交失敗保留、跨 deck 拒絕及中斷暫存回收。
 統一瀏覽器驗證額外執行 `cloud-storage-browser`：實際 RUN 後附加 9 MB 測試資料，再由編輯頁拖曳排序觸發真實自動儲存，核對請求小於 8 MB、動畫完整保留與重開不 RUN。此案例攔截雲端 API，用真實儲存核心驗證，不寫正式資料。
-手動執行 `node scripts/cloud-storage-mongo.js` 可使用 MONGO_URI 做真實 Mongo／HTTP 驗證；僅建立隨機命名 `asm_cloud_regression_*` 資料庫，結束自行刪除，核對 >8 MB、去重、分享編輯與跨使用者拒絕、替換回收及失敗安全。
+手動執行 `node scripts/validation/cloud-storage-mongo.js` 可使用 MONGO_URI 做真實 Mongo／HTTP 驗證；僅建立隨機命名 `asm_cloud_regression_*` 資料庫，結束自行刪除，核對 >8 MB、去重、分享編輯與跨使用者拒絕、替換回收及失敗安全。
 
 ## 遞迴角色接續驗證
 

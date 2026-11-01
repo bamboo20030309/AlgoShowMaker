@@ -32,4 +32,4 @@ Linux 資源與 MLE 驗收尚未完成。本次只更新文件，依 V0 執行�
 4. `npm run validate:backend-linux`：在隔離 Docker Linux 環境驗證後端限制與故障恢復；需要可用 Docker 與對應映像。
 5. 全部必要驗收完成，再依使用者正式發布指示合併 main、更新穩定版本、建立 v4.12 tag 與 Release，並核對重啟服務的實際來源與版本。
 
-完整環境及指令說明見 [驗證集使用手冊](../../驗證集使用手冊.md)。本輪推送仍只到 intergration，不操作 main 3000 或其他代理服务。
+完整環境及指令說明見 [驗證集使用手冊](../../guides/validation.md)。本輪推送仍只到 intergration，不操作 main 3000 或其他代理服务。

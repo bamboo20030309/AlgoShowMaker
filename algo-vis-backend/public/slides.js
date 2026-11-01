@@ -201,13 +201,10 @@
   const DRAFT_KEY = deckUid ? `${STORAGE_KEY}:deck:${deckUid}`
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
+  const loadSampleTrace = window.ASMSampleTraceAssets.createLoader();
   const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
     if (sampleId || (!deckUid && !shareToken)) {
-      const response = await fetch(`/deck-traces/${encodeURIComponent(key)}.json`);
-      if (!response.ok) throw Object.assign(new Error(`動畫 Trace 讀取失敗（HTTP ${response.status}）`), {
-        code: response.status === 404 ? 'TRACE_NOT_FOUND' : 'TRACE_LOAD_FAILED'
-      });
-      return response.json();
+      return loadSampleTrace(key);
     }
     const response = await fetch(`${remoteDeckEndpoint()}/traces/${encodeURIComponent(key)}`, {
       headers: deckUid ? { Authorization: `Bearer ${authToken()}` } : {}

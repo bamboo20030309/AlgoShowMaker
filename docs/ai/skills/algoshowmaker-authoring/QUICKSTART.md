@@ -53,7 +53,7 @@ pre[i] = pre[i - 1] + a[i];
 
 安排「問題 → 狀態表示 → 規則／不變量 → 程式 → 動畫 → 練習 → 檢核」。每幀說明比較或更新的原因，對照程式位置；需要更新前後狀態時分幀或保留快照。每頁只處理一個主要問題。
 
-AlgoShowMaker 原生投影片使用可編輯文字、`code`、`latex`、`structure` 元件與 `algorithm-animation` 頁面。不要把整頁或程式烘焙成圖片。原生檔 `.asmdeck` 有專用封裝、壓縮與 hash；不能把 JSON 改副檔名充當原生檔。能讀 repo 時先閱讀 `algo-vis-backend/public/asmdeck.js` 與 `scripts/build-eight-queens-teaching-deck.js`（scripts 在 algo-vis-backend 下），使用既有格式並實際匯入檢查。不能產檔時交付明確標示的逐頁故事板。
+AlgoShowMaker 原生投影片使用可編輯文字、`code`、`latex`、`structure` 元件與 `algorithm-animation` 頁面。不要把整頁或程式烘焙成圖片。原生檔 `.asmdeck` 有專用封裝、壓縮與 hash；不能把 JSON 改副檔名充當原生檔。能讀 repo 時先閱讀 `algo-vis-backend/public/asmdeck.js` 與 `scripts/build/build-teaching-decks.py`（scripts 在 algo-vis-backend 下），使用既有格式並實際匯入檢查。不能產檔時交付明確標示的逐頁故事板。
 
 KMP 範例只展示 pi 建表：pi[i] 是 s[0..i] 的最長相等真前後綴長度。示範 `abababca` → `0 0 1 2 3 4 0 1`；i=6 失配時 j 從 4→2→0，i 不跟著前移。練習 `aabaaab` → `0 1 0 1 2 2 3`。畫面顯示比較位置、候選長度、回退理由及寫入 pi；字元資料能否直接呈現須依實際 trace 能力確認。
 

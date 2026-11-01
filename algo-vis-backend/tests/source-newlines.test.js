@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {normalizeSource,analyzeSource,buildSyntaxTree,instrumentSource,findFrameDirectives}=require('../trace-instrumenter');
-const source=fs.readFileSync(path.join(__dirname,'fixtures/kmp-source-newlines.cpp'),'utf8').replace(/\r\n?/g,'\n');
+const source=fs.readFileSync(path.join(__dirname, 'fixtures/kmp-source-newlines.cpp'),'utf8').replace(/\r\n?/g,'\n');
 const variants=source=>{let i=0;return [source,source.replace(/\n/g,'\r\n'),source.replace(/\n/g,'\r'),source.replace(/\n/g,()=>i++%2?'\n':'\r\n')];};
 test('KMP includes, directives, tree offsets and generated C++ are identical for all newline formats',()=>{
  const tree=buildSyntaxTree(source),generated=instrumentSource(source,[]);

@@ -24,7 +24,7 @@ test('kept heap snapshots render through every frame', {timeout:60000}, async ()
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'fixtures/heap.cpp'),'utf8').replace(/\r\n?/g,'\n');
+    const code=fs.readFileSync(path.join(__dirname, 'fixtures/heap.cpp'),'utf8').replace(/\r\n?/g,'\n');
     await page.evaluate(code=>{
       ace.edit('editor').setValue(code,-1);
       document.getElementById('inputArea').value='4\n4 1 3 2\n';
@@ -58,7 +58,7 @@ test('heap fields and local segments render at root and child coordinates', {tim
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'fixtures/heap-composite-segments.cpp'),'utf8').replace(/\r\n?/g,'\n');
+    const code=fs.readFileSync(path.join(__dirname, 'fixtures/heap-composite-segments.cpp'),'utf8').replace(/\r\n?/g,'\n');
     await page.evaluate(code=>ace.edit('editor').setValue(code,-1),code);
     await page.click('#runBtn');
     await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
@@ -228,7 +228,7 @@ test('standalone segment tree build animates every input and parent sum', {timeo
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree_easy_build.cpp'),'utf8')
+    const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_easy_build.cpp'),'utf8')
       .replace(/\r\n?/g,'\n');
     await page.evaluate(code=>{
       ace.edit('editor').setValue(code,-1);
@@ -316,7 +316,7 @@ test('standalone segment tree query descends, removes accepted pieces and accumu
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree_easy.cpp'),'utf8')
+    const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree_easy.cpp'),'utf8')
       .replace(/\r\n?/g,'\n').replace('    // @keep tree as "built_tree"\n','');
     await page.evaluate(code=>{
       ace.edit('editor').setValue(code,-1);
@@ -491,9 +491,9 @@ test('full segment tree sample merges lazy and set state into cell backgrounds',
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace&&window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree.cpp'),'utf8')
+    const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree.cpp'),'utf8')
       .replace(/\r\n?/g,'\n');
-    const input=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree/Segment_Tree-sample_input.txt'),'utf8');
+    const input=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree/Segment_Tree-sample_input.txt'),'utf8');
     await page.evaluate(({code,input})=>{
       ace.edit('editor').setValue(code,-1);
       document.querySelector('#inputArea').value=input;

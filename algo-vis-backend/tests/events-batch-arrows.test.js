@@ -280,7 +280,7 @@ test('iteration.last works after an uncaptured normally-completed loop and respe
 });
 
 test('compiled linear sieve preserves results and uses iteration.last for user-written compact arrows', async () => {
-  const code = fs.readFileSync(path.join(__dirname,'fixtures/events-batch-sieve.cpp'),'utf8');
+  const code = fs.readFileSync(path.join(__dirname, 'fixtures/events-batch-sieve.cpp'),'utf8');
   const { trace, window } = await compile(code);
   const compact = trace.frames.filter(frame => frame.eventControls.length);
   assert.equal(compact.length,23);
@@ -301,7 +301,7 @@ test('compiled linear sieve preserves results and uses iteration.last for user-w
 });
 
 test('compact sieve frame before inner loop uses its actual entries without ranges or algorithm replay', async () => {
-  const code=fs.readFileSync(path.join(__dirname,'fixtures/loop-batch-sieve.cpp'),'utf8');
+  const code=fs.readFileSync(path.join(__dirname, 'fixtures/loop-batch-sieve.cpp'),'utf8');
   const {trace,window}=await compile(code);
   const compact=trace.frames.filter(frame=>frame.eventControls.length);
   assert.equal(compact.length,23);

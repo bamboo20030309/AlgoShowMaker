@@ -6,8 +6,7 @@ const { chromium } = require('playwright');
 
 test('compound bit rows retain committed intermediate values instead of exposing frame-final bits',
   { timeout: 90000 }, async () => {
-    const sample = fs.readFileSync(path.join(__dirname,
-      '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
+    const sample = fs.readFileSync(path.join(__dirname, '../algorithm_sample/Backtracking/8queen_recursion.cpp'), 'utf8');
     assert.ok(sample.includes('int P = ((1 << N) - 1) & ~(L | M | R);'));
     const split = sample.replace('int P = ((1 << N) - 1) & ~(L | M | R);',
       'int P = L | M | R;\n    P = ((1 << N) - 1) & ~P;');

@@ -23,7 +23,7 @@ test('sieve frame styles follow forward, backward and repeated playback',{timeou
     page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/algorithm.html');
     await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname,'fixtures/style-replay-sieve.cpp'),'utf8');
+    const code=fs.readFileSync(path.join(__dirname, 'fixtures/style-replay-sieve.cpp'),'utf8');
     await page.evaluate(code=>{ace.edit('editor').setValue(code,-1);document.querySelector('#inputArea').value='30';},code);
     await page.click('#runBtn');
     await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});

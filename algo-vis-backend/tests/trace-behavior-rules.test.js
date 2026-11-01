@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateBehavior } = require('../scripts/trace-behavior-rules');
+const { validateBehavior } = require('../scripts/validation/trace-behavior-rules');
 const check = (snapshot, contract) => validateBehavior(snapshot, contract);
 
 test('j=1 means j+1 points to index 2, never string-concatenated index 11', () => {

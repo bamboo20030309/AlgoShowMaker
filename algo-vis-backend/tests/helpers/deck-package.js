@@ -8,8 +8,10 @@ function readPackage(bytes) {
   return JSON.parse(gunzipSync(bytes.subarray(offset)));
 }
 function savedTrace(body, animation, { presentation = true } = {}) {
+  const directory = path.join(__dirname, '../../public/deck-traces');
+  const index = JSON.parse(fs.readFileSync(path.join(directory, 'index.json'), 'utf8'));
   const result = animation.traceRef
-    ? JSON.parse(fs.readFileSync(path.join(__dirname, '../../public/deck-traces', animation.traceRef + '.json')))
+    ? JSON.parse(fs.readFileSync(path.join(directory, require('../../public/sample-trace-assets').filenameFor(index, animation.traceRef))))
     : body.prebuiltTraces[animation.prebuilt.traceId];
   // The content-addressed result excludes per-slide presentation settings.
   // Rehydrate those settings just as the slide loader does before playback.

@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {chromium}=require('playwright');
 const {startIsolatedServer}=require('./helpers/isolated-server');
-const source=fs.readFileSync(path.join(__dirname,'fixtures/kmp-source-newlines.cpp'),'utf8').replace(/\r\n?/g,'\n');
+const source=fs.readFileSync(path.join(__dirname, 'fixtures/kmp-source-newlines.cpp'),'utf8').replace(/\r\n?/g,'\n');
 test('KMP CRLF API requests and editor imports preserve LF positions and old saved settings',{timeout:120000},async t=>{
  const {base}=await startIsolatedServer(t);
  let browser;

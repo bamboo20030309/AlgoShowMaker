@@ -359,7 +359,7 @@ test('original matrix renderer keeps ragged rows and isolates axis labels from c
 
 test('matrix all selector evaluates scalar cell values, including old ragged matrix data',()=>{
  const vm=require('node:vm');const context=vm.createContext({});context.window=context;
- for(const file of ['trace-model.js','trace-rules.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../public',file),'utf8'),context);
+ for(const file of ['trace-model.js','trace-rules.js'])vm.runInContext(fs.readFileSync(path.join(__dirname, '../public',file),'utf8'),context);
  const frame={id:'all',state:{grid:{data:{kind:'sequence',items:[{kind:'sequence',items:[{kind:'scalar',value:0},{kind:'scalar',value:1}]},{kind:'sequence',items:[{kind:'scalar',value:1}]}]}}},styles:[
   {targetVariableId:'grid',selector:{type:'all'},styleType:'background',color:'AV_red',when:{expression:'value==0'}},
   {targetVariableId:'grid',selector:{type:'all'},styleType:'background',color:'AV_green',when:{expression:'value==1'}}

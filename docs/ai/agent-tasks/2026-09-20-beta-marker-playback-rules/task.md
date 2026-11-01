@@ -10,7 +10,7 @@
 ## 問題與預期結果
 - 情境與操作：陣列或 heap 上有多個 index marker、marker 指派與進退場、heap push/pop 尺寸變化，以及上一步、時間線跳轉、短時間連按下一步、長按快轉、分頁隱藏與事件開關等播放操作。
 - 目前行為：marker 排序及讓位時機不完全符合已確認規則；上一步仍建構反向動畫；快速連按會中斷而非依門檻切到穩定幀；部分播放狀態可能在返回舊幀後殘留。
-- 使用者希望的結果：依 `docs/marker-layout-decision-table.md` 已確認項目統一 marker 排版、移動與生命週期，並以穩定幀重建處理上一步、時間線跳轉與快轉。
+- 使用者希望的結果：依 `docs/reference/marker-layout.md` 已確認項目統一 marker 排版、移動與生命週期，並以穩定幀重建處理上一步、時間線跳轉與快轉。
 - 本次範圍與必要限制：修改 trace renderer、frame tween、player、前端播放控制與必要的 TTS 可見性協調；只做 V2 最小相關驗證，不執行完整 regression、全部測試或大規模演算法動畫驗證。
 
 ## 需求確認

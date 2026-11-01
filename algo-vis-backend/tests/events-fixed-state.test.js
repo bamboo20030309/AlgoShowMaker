@@ -56,7 +56,7 @@ test('all animate on preserves fixed switches while an explicit fixed control re
 });
 
 test('post-loop sieve compact frames keep fixed metadata enabled while timed events remain off', async () => {
-  const source = fs.readFileSync(path.join(__dirname,'fixtures/automark-events-sieve.cpp'),'utf8');
+  const source = fs.readFileSync(path.join(__dirname, 'fixtures/automark-events-sieve.cpp'),'utf8');
   const {trace,window} = await compile(source,'30');
   const iId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'i');
   const compact = trace.frames.filter(frame => frame.eventControls.length);

@@ -13,7 +13,7 @@
 - 移除透明 DOM 邊框造成的 1px 原點偏移；Fabric 保留原生控制框，斜切時控制框仍採原生包覆方式。
 - 非等比例縮放保存可選的 `structureScaleX/Y`；舊物件缺少欄位時按主體比例適配原容器。舊版本載入不再重設 x/y/w/h 或 manualSize。
 - 新建結構既有自然尺寸入口使用相同主體計算。教材製作指南要求沿用實際 renderer 量測，保留作者設定，不以手改選區方式補救。
-- 邊界契約與教材建立方式見 `docs/structure幾何計算.md`。
+- 邊界契約與教材建立方式見 `docs/reference/structure-geometry.md`。
 
 ## 驗證
 

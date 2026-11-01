@@ -6,9 +6,8 @@
 |---|---|---|---|
 | 已驗收版本 | main | http://localhost:3000 | 原專案根目錄的 algo-vis-backend |
 | 主代理整合與預覽 | intergration | http://localhost:3100 | .worktrees/intergration/algo-vis-backend |
-| Alpha 開發預覽 | codex/2026-09-18-alpha-events-arrows | http://localhost:3101 | .worktrees/2026-09-18-alpha-events-arrows/algo-vis-backend |
-| Beta 開發預覽 | codex/2026-09-18-beta | http://localhost:3102 | .worktrees/2026-09-18-beta/algo-vis-backend |
-| Gamma 開發預覽 | codex/2026-09-18-gamma | http://localhost:3103 | .worktrees/2026-09-18-gamma/algo-vis-backend |
+
+2026-11-01 已封存 18 個舊開發 worktree，目前只保留 main 與 intergration。Alpha／Beta／Gamma 預留 3101／3102／3103；新任務應依共同基準建立新的分支與 worktree，不再使用已封存的舊目錄。舊分支未刪除，未提交修改、本機設定與未追蹤檔案也已另行備份。
 
 整合分支名稱依使用者指定為 `intergration`，不要自行改名。建立基準為 main 的 ddfe5b6081261a05b437a61a546861151d4618e5。
 

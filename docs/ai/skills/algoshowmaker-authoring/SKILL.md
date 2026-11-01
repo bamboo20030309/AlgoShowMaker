@@ -27,7 +27,7 @@ description: 為 AlgoShowMaker 撰寫 C++ 演算法視覺化註解、設計幀�
 | 製作 asmdeck | [原生投影片](references/slides.md)；含動畫時再讀相關指令指南 |
 | 安排投影片敘述、分類、圖表與研究證據 | [投影片內容與講述](references/slide-storytelling.md) |
 
-只能提供單檔提示時使用 [QUICKSTART.md](QUICKSTART.md)。本包核心語法依 `cda1219` 整理；`char(s)`、矩陣獨立指標與 pointer color 已在 intergration 的 `cde8028` 實作。遇到版本差異，查專案根目錄 `ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md` 與 parser；無 repo 時查 [核心版本手冊](https://github.com/bamboo20030309/AlgoShowMaker/blob/cda1219eb407845e8ebbae22d7a30580b0ec7f1f/ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)，不要假設舊部署具備新功能。
+只能提供單檔提示時使用 [QUICKSTART.md](QUICKSTART.md)。本包核心語法依 `cda1219` 整理；`char(s)`、矩陣獨立指標與 pointer color 已在 intergration 的 `cde8028` 實作。遇到版本差異，查專案根目錄 `docs/reference/algorithm-visualization-directives.md` 與 parser；無 repo 時查 [核心版本手冊](https://github.com/bamboo20030309/AlgoShowMaker/blob/cda1219eb407845e8ebbae22d7a30580b0ec7f1f/ALGORITHM_VISUALIZATION_DIRECTIVE_MANUAL.md)，不要假設舊部署具備新功能。
 
 ## 教材與元件
 

@@ -394,7 +394,7 @@
 
 - 新增 8 頁原生 `.asmdeck` 教學範例，依序說明 Édouard Lucas 於 1883 年推出的河內塔、64 個黃金盤子的遊戲傳說、三項移動規則、遞迴觀念、移花／搬動底盤／接木、程式碼與複雜度，以及動畫閱讀方式。
 - 最後一頁直接引用 `algorithm_sample/Backtracking/hanoi-recursion.cpp`，輸入固定為 `4`，可逐幀播放左側盤面、右側遞迴樹與搬運紀錄。
-- 新增 `scripts/build-hanoi-teaching-deck.py`，可由同一份範例程式重新產生 `public/guest-decks/hanoi-teaching.asmdeck`；並在訪客範例清單登記為 `Backtracking` 類別。
+- 新增 `scripts/build/build-hanoi-teaching-deck.py`，可由同一份範例程式重新產生 `public/guest-decks/hanoi-teaching.asmdeck`；並在訪客範例清單登記為 `Backtracking` 類別。
 - 中文文字方塊啟用逐字換行，避免沒有空白的中文長句超出規則卡片。
 
 ### 驗證分級與選擇
@@ -414,7 +414,7 @@
 - 新增 10 頁原生 `.asmdeck` 教學範例，依序說明費式數列定義、由左到右手算 `F(5)`、遞迴樹與重複子問題、遞迴程式碼、陣列 DP 填表、DP 程式碼，以及兩種方法的時間／空間複雜度。
 - 複雜度頁明確區分：單純遞迴時間 `O(φⁿ)`（常見上界 `O(2ⁿ)`）、空間 `O(n)`；陣列 DP 時間與空間皆為 `O(n)`，並補充只保留前兩項可降為 `O(1)` 空間。
 - 最後一頁直接引用 `algorithm_sample/Backtracking/fibonacci.cpp`，輸入固定為 `5`，可逐幀觀察 DFS 呼叫、基本情況回傳，以及節點由 `F(n)` 更新為結果值。
-- 新增 `scripts/build-fibonacci-teaching-deck.py`，可由同一份 Fibonacci 範例重新產生 `public/guest-decks/fibonacci-teaching.asmdeck`；並在訪客範例清單登記為 `DP` 類別。
+- 新增 `scripts/build/build-fibonacci-teaching-deck.py`，可由同一份 Fibonacci 範例重新產生 `public/guest-decks/fibonacci-teaching.asmdeck`；並在訪客範例清單登記為 `DP` 類別。
 
 ### 驗證分級與選擇
 

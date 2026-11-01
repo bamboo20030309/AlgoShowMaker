@@ -12,12 +12,12 @@
 
 ## 實際格式與查證位置
 
-製作 structure 時，沿用 `AlgoStructureRenderer.getNaturalSize(widget)`／`getWidgetGeometry(widget)` 的實際量測結果，依自然比例適配版面；不要另外猜格子總寬高或手動修選取框。舊容器比例不同時，選取框仍應對齊實際主體。point／外部註標不參與主體縮放，詳見專案根目錄 `docs/structure幾何計算.md`；完成後實際選取、縮放、編輯並儲存重開確認。
+製作 structure 時，沿用 `AlgoStructureRenderer.getNaturalSize(widget)`／`getWidgetGeometry(widget)` 的實際量測結果，依自然比例適配版面；不要另外猜格子總寬高或手動修選取框。舊容器比例不同時，選取框仍應對齊實際主體。point／外部註標不參與主體縮放，詳見專案根目錄 `docs/reference/structure-geometry.md`；完成後實際選取、縮放、編輯並儲存重開確認。
 
 repo 範例來源：
 
-- `algo-vis-backend/scripts/build-eight-queens-teaching-deck.js`：可編輯文字、code、latex、structure 和動畫頁。
-- `algo-vis-backend/scripts/build-teaching-decks.py`：組裝既有動畫與教學頁。
+- `algo-vis-backend/public/guest-decks/eight-queens-teaching.asmdeck`：已發布的可編輯文字、code、latex、structure 和動畫教材。
+- `algo-vis-backend/scripts/build/build-teaching-decks.py`：組裝既有動畫與教學頁。
 - `algo-vis-backend/public/asmdeck.js`：原生封裝與匯入檢核。
 - `algo-vis-backend/public/trace-provenance.js`：當前引擎版本與 trace 格式。
 - `algo-vis-backend/public/guest-decks/`：可參考的已建置教材。

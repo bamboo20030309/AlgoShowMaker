@@ -9,7 +9,7 @@
 | V0～V3 分級與測試分類 | [驗證分級](validation-levels.md) |
 | main／intergration 與預覽服務分工 | [整合與預覽](integration-preview.md) |
 | 教材製作技能包 | [SKILL.md](skills/algoshowmaker-authoring/SKILL.md) |
-| 歷史任務與驗證證據 | [agent-tasks/](agent-tasks/) |
-| 補充交接 | [agent-handoffs/](agent-handoffs/) |
+| 歷史任務與驗證證據 | [agent-tasks/](agent-tasks) |
+| 補充交接 | [agent-handoffs/](agent-handoffs) |
 
 歷史紀錄記載當時的行為與測試結果，不取代現行手冊與驗收規範。新增交付紀錄放在 agent-tasks；不將測試輸出、伺服器 log 或臨時產物加入此處。

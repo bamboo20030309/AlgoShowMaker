@@ -14,8 +14,8 @@ const path = require('node:path');
 async function runSample(name) {
   const base=process.env.ASM_TEST_BASE_URL;
   assert.ok(base,'set ASM_TEST_BASE_URL to an isolated server');
-  const code=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree',`${name}.cpp`),'utf8');
-  const input=fs.readFileSync(path.join(__dirname,'../algorithm_sample/Tree',`${name}-sample_input.txt`),'utf8');
+  const code=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree',`${name}.cpp`),'utf8');
+  const input=fs.readFileSync(path.join(__dirname, '../algorithm_sample/Tree',`${name}-sample_input.txt`),'utf8');
   const analyze=await fetch(base+'/trace/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code})});
   const analysis=await analyze.json();
   assert.equal(analyze.ok,true,JSON.stringify(analysis));

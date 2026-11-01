@@ -7,19 +7,18 @@ const path = require('node:path');
 const { gunzipSync } = require('node:zlib');
 const { chromium } = require('playwright');
 const Storage = require('../public/slides-storage');
+const { readPackage, savedTrace } = require('./helpers/deck-package');
 
 test('slides fetch Trace only upon visiting its page, save IDs and play after reopen/export',
   { timeout: 90000 }, async () => {
     const root = path.resolve(__dirname, '..');
-    const archive = JSON.parse(gunzipSync(fs.readFileSync(path.join(root,
-      'drafts/eight-queens-teaching.asmdeck')).subarray(9)));
-    const existing = archive.body.deck.groups[1].slides.at(-1).animation;
-    // The storage/export fixture needs a current compiler result; the archived
-    // draft's obsolete engine provenance correctly requires rebuilding.
-    const { compile } = require('./helpers/compile');
-    const { trace } = await compile(existing.code, existing.input);
+    const publicDeck = path.join(root, 'public/guest-decks/eight-queens-teaching.asmdeck');
+    const archive = readPackage(fs.readFileSync(publicDeck));
+    const existing = archive.body.deck.groups.flatMap(group => group.slides).find(slide => slide.animation).animation;
+    const trace = savedTrace(archive.body, existing);
     trace.frames = trace.frames.slice(0, 3);
-    const animation = { ...existing, traceDocument: trace }; delete animation.prebuilt;
+    const animation = { ...existing, traceDocument: trace };
+    delete animation.prebuilt; delete animation.traceRef; delete animation.traceView;
     const source = { groups: [
       { id: 'cover-group', slides: [{ id: 'cover', canvas: { objects: [] }, widgets: [] }] },
       { id: 'animation-group', slides: [{ id: 'animation', kind: 'algorithm-animation',
@@ -79,10 +78,11 @@ test('slides fetch Trace only upon visiting its page, save IDs and play after re
       const downloadPromise = page.waitForEvent('download');
       await page.locator('#exportDeckBtn').click();
       const download = await downloadPromise;
-      const exported = JSON.parse(gunzipSync(fs.readFileSync(await download.path()).subarray(9)));
+      const exported = readPackage(fs.readFileSync(await download.path()));
       const exportedAnimation = exported.body.deck.groups[1].slides[0].animation;
-      assert.ok(exportedAnimation.prebuilt?.traceId, 'portable export includes an independent Trace bundle');
-      assert.equal(exported.body.prebuiltTraces[exportedAnimation.prebuilt.traceId].frames.length, 3);
+      assert.equal(exportedAnimation.traceRef, key, 'export preserves the latest immutable result ID');
+      assert.equal(exportedAnimation.prebuilt, undefined);
+      assert.equal(exported.body.prebuiltTraces, undefined, 'export never embeds complete Trace payloads');
       await page.goto(`${base}/slides.html`);
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
       await page.locator('#importDeckInput').setInputFiles({ name: 'fixture.asmdeck',
@@ -107,14 +107,14 @@ test('slides fetch Trace only upon visiting its page, save IDs and play after re
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
       assert.equal(await page.evaluate(() => Reveal.getIndices().h), 1, 'refresh retains the animation page');
       await page.waitForFunction(() => document.querySelector('.algorithm-slide-frame')?.contentWindow?.CodeScript?.get_frame_count() === 2);
-      await page.locator('#importDeckInput').setInputFiles(path.join(root, 'drafts/eight-queens-teaching.asmdeck'));
+      await page.locator('#importDeckInput').setInputFiles(publicDeck);
       await page.waitForFunction(() => document.body.dataset.asmdeckRebuild === 'ready'
         && document.body.dataset.localDeckSave === 'saved', null, { timeout: 45000 });
       const compactChars = Number(await page.locator('body').getAttribute('data-local-deck-chars'));
       assert.ok(compactChars < 300000, `the large teaching deck saves only ${compactChars} metadata characters`);
       assert.equal(await page.locator('.algorithm-slide-frame[src="about:blank"]').count(), 3);
       console.log(JSON.stringify({ eightQueensEditableDeckChars: compactChars,
-        archiveBytes: fs.statSync(path.join(root, 'drafts/eight-queens-teaching.asmdeck')).size }));
+        archiveBytes: fs.statSync(publicDeck).size }));
       await page.reload();
       await page.waitForFunction(() => document.body.dataset.localDeckSave === 'saved');
       assert.equal(await page.locator('.algorithm-slide-frame[src="about:blank"]').count(), 3);

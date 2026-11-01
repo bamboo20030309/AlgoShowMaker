@@ -17,7 +17,7 @@ main 工作目錄的未追蹤研究文件、投影片修訂、圖片、PDF 與�
 - 協作、分級、預覽規則 → `docs/ai/collaboration.md`、`validation-levels.md`、`integration-preview.md`。
 - 原 AGENTS.md 規則與使用者三項待辦 → `docs/ai/development-instructions.md`；根目錄保留自動發現入口，不刪除待辦。
 - 教材 skill → `docs/ai/skills/algoshowmaker-authoring/`，完整保留套件內部結構。
-- Layout 實作狀態 → `docs/layout-roadmap.md`，保留仍有效的技術規劃。
+- Layout 實作狀態 → `docs/reference/layout-roadmap.md`，保留仍有效的技術規劃。
 - README、版本說明、手冊與交付紀錄的相對連結／repo 路徑同步更新；新增 AI 文件索引。
 
 移除 Git 已追蹤的 `lib/pch.hpp.gch`、未引用的八皇后 revised 草稿、git.txt、v4.12-draft.md，以及 v4.11 專用驗證腳本與兩個 npm 別名。舊發布草稿連結改到正式 v4.12 說明；歷史紀錄中的當時驗證名稱保留其歷史意義。
