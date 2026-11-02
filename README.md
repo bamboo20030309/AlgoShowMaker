@@ -138,7 +138,7 @@ npm run test:inventory
 - [演算法視覺化指令手冊](docs/reference/algorithm-visualization-directives.md)
 - [AI 教材製作 skill](docs/ai/skills/algoshowmaker-authoring/SKILL.md)／[單檔精簡指南](docs/ai/skills/algoshowmaker-authoring/QUICKSTART.md)
 - [安裝與部署指南](docs/guides/setup.md)
-- [驗證集使用手冊](docs/guides/validation.md)
+- [驗證集使用手冊](docs/guides/validation.md)／[事件與動畫驗證](docs/guides/event-validation.md)
 - [驗證集設計與覆蓋範圍](docs/development/validation-design.md)
 - [AV_V4.12.1 版本說明](docs/releases/v4.12.1.md)
 

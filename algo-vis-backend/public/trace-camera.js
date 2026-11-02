@@ -43,7 +43,9 @@
     const cssRate = Number(getComputedStyle(window.document.documentElement)
       .getPropertyValue('--asm-animation-playback-rate'));
     const rate = Math.max(0.25, Math.min(4, Number(window.asmGetAnimationPlaybackRate?.()) || cssRate || 1));
-    return Math.max(1, (Number(value) || 520) / rate);
+    const base = value != null && Number.isFinite(Number(value))
+      ? Math.max(0, Number(value)) : 300;
+    return base / rate;
   }
   // ---------------------------------------------------------------------------
   // 區段：鏡頭轉場解析
@@ -57,7 +59,8 @@
     if (!frame || !previousFrame || !animate) return 0;
     const transition = transitionFor(trace, frame, previousFrame);
     if (transition?.mode === 'instant') return 0;
-    return Math.max(0, Number(transition?.duration) || 520);
+    return transition?.duration != null && Number.isFinite(Number(transition.duration))
+      ? Math.max(0, Number(transition.duration)) : 300;
   }
   // ---------------------------------------------------------------------------
   // 區段：viewport 幾何套用

@@ -1303,7 +1303,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function configuredEventGap() {
     const value = Number(window.ASMTracePlayer?.getDocument?.()?.studio?.eventSettings?.gapMs);
-    return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 500;
+    return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 0;
   }
 
   function rebuildPlaybackTimeline() {
@@ -1449,7 +1449,7 @@ document.addEventListener('DOMContentLoaded', () => {
       );
       const eventInterval = Number.isFinite(configuredInterval)
         ? Math.max(0, Math.min(2000, configuredInterval))
-        : 500;
+        : 0;
       const scheduleNextFrame = callback => setTimeout(() => {
         if (!isPlaying || runId !== TTS_RUN_ID) return;
         finishPlaybackFrameTiming(cur);
@@ -1667,6 +1667,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // === 播放/暫停 公用函式 ===
   function play() {
     if (isPlaying) return;
+    const continuingTransition = window.ASMTraceFrameTween?.isPaused?.()
+      ? window.ASMTraceFrameTween.waitForCompletion?.() : null;
+    window.ASMTraceFrameTween?.resume?.();
     isPlaying = true;
     fast = false; // 按下 Play 重新回到普通模式
     //startTimer();
@@ -1680,10 +1683,13 @@ document.addEventListener('DOMContentLoaded', () => {
     resetPlaybackClock(playSessionStartFrame, false);
 
     syncPlayToggleUI();
-    playFromCurrentFrameWithTTS(myRunId);
+    playFromCurrentFrameWithTTS(myRunId, continuingTransition);
   }
 
   function pause() {
+    // Autoplay and frame effects share one pause boundary. In particular a
+    // manually started frame can still be moving while isPlaying is false.
+    window.ASMTraceFrameTween?.pause?.();
     if (!isPlaying) return;
     isPlaying = false;
     // 讓所有舊的 callback（onend / setTimeout）全部失效

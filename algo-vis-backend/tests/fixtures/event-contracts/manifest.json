@@ -1,0 +1,2170 @@
+{
+  "schemaVersion": 1,
+  "title": "事件與基本動作固定答案",
+  "answerOrigin": "依 2026-11-01 使用者確認規格手寫；不由 renderer、playback plan 或實際 Trace 產生。",
+  "timing1x": {
+    "enter": 180,
+    "exit": 180,
+    "transfer": 300,
+    "swap": 400,
+    "compareApproach": 180,
+    "compareResult": 240,
+    "compareReset": 180,
+    "emphasis": 240,
+    "camera": 300,
+    "eventGap": 0
+  },
+  "fixtures": [
+    {
+      "id": "assignment",
+      "file": "assignment.cpp",
+      "input": "",
+      "stdout": "6 3 4 4\n"
+    },
+    {
+      "id": "visibility",
+      "file": "visibility.cpp",
+      "input": "",
+      "stdout": "11 3 3\n"
+    },
+    {
+      "id": "selection",
+      "file": "selection.cpp",
+      "input": "",
+      "stdout": "3 3 8 2 1\n"
+    },
+    {
+      "id": "containers",
+      "file": "containers.cpp",
+      "input": "",
+      "stdout": "3 8 5 \n"
+    },
+    {
+      "id": "functions",
+      "file": "functions.cpp",
+      "input": "",
+      "stdout": "8 2\n"
+    },
+    {
+      "id": "pointers",
+      "file": "pointers.cpp",
+      "input": "",
+      "stdout": "2 3 1\n"
+    },
+    {
+      "id": "layout",
+      "file": "layout.cpp",
+      "input": "",
+      "stdout": "5 9\n"
+    }
+  ],
+  "cases": [
+    {
+      "id": "E01",
+      "fixture": "assignment",
+      "marker": "E01",
+      "eventTypes": [
+        "declare"
+      ],
+      "expression": "int uninitialized;",
+      "expected": {
+        "target": "uninitialized",
+        "initialized": false
+      },
+      "visual": {
+        "transfer": "none",
+        "stages": [
+          "enter-blank"
+        ],
+        "assignmentEventCount": 0
+      },
+      "timing": {
+        "durationMs": 180
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E02",
+      "fixture": "assignment",
+      "marker": "E02",
+      "eventTypes": [
+        "declare",
+        "assign"
+      ],
+      "expression": "int initialized = b;",
+      "expected": {
+        "target": "initialized",
+        "after": 3,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "stages": [
+          "enter-blank",
+          "copy",
+          "transfer",
+          "commit",
+          "cleanup"
+        ],
+        "distinctDeclarationAndAssignment": true
+      },
+      "timing": {
+        "durationMs": 480,
+        "assignmentCommitMs": 480
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E02_CONTAINER",
+      "fixture": "assignment",
+      "marker": "E02_CONTAINER",
+      "eventTypes": [
+        "declare",
+        "assign"
+      ],
+      "expression": "vector<int> copied = arr;",
+      "expected": {
+        "target": "copied",
+        "after": [
+          4,
+          7
+        ],
+        "sources": [
+          {
+            "expression": "arr",
+            "value": [
+              4,
+              7
+            ]
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "parallelTransfers": 2,
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "distinctDeclarationAndAssignment": true
+      },
+      "timing": {
+        "durationMs": 480,
+        "assignmentCommitMs": 480
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E03",
+      "fixture": "assignment",
+      "marker": "E03",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = b;",
+      "expected": {
+        "target": "a",
+        "before": 1,
+        "after": 3,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "readHighlight": [
+          "b"
+        ],
+        "stages": [
+          "copy",
+          "transfer",
+          "commit",
+          "cleanup"
+        ]
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E04",
+      "fixture": "assignment",
+      "marker": "E04",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "arr[1] = arr[0];",
+      "expected": {
+        "target": "arr[1]",
+        "before": 7,
+        "after": 4,
+        "sources": [
+          {
+            "expression": "arr[0]",
+            "value": 4
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "readHighlight": [
+          "arr[0]"
+        ],
+        "excludedReadHighlight": [
+          "1",
+          "0"
+        ]
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E05",
+      "fixture": "assignment",
+      "marker": "E05",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = b + c;",
+      "expected": {
+        "target": "a",
+        "before": 3,
+        "after": 11,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "parallelTransfers": 2,
+        "readHighlight": [
+          "b",
+          "c"
+        ],
+        "separateExpressionArea": false,
+        "commitCount": 1
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E06",
+      "fixture": "assignment",
+      "marker": "E06",
+      "eventTypes": [
+        "write"
+      ],
+      "expression": "a += b;",
+      "expected": {
+        "target": "a",
+        "before": 11,
+        "after": 14,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "stationaryOldTarget": true,
+        "readHighlight": [
+          "a",
+          "b"
+        ]
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E07",
+      "fixture": "assignment",
+      "marker": "E07",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = 8;",
+      "expected": {
+        "target": "a",
+        "before": 14,
+        "after": 8,
+        "sources": [
+          {
+            "expression": "8",
+            "value": 8,
+            "literal": true
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "literalFrom": "above-target",
+        "readHighlight": []
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E08",
+      "fixture": "assignment",
+      "marker": "E08",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = b + b;",
+      "expected": {
+        "target": "a",
+        "before": 8,
+        "after": 6,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "b",
+            "value": 3
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "parallelTransfers": 2,
+        "readHighlight": [
+          "b"
+        ],
+        "readHighlightCount": 1
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E09",
+      "fixture": "assignment",
+      "marker": "E09",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = a;",
+      "expected": {
+        "target": "a",
+        "before": 6,
+        "after": 6,
+        "sources": [
+          {
+            "expression": "a",
+            "value": 6
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "none",
+        "stages": [
+          "emphasize"
+        ],
+        "eventRetained": true
+      },
+      "timing": {
+        "durationMs": 240
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E10",
+      "fixture": "containers",
+      "marker": "E10",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = b;",
+      "expected": {
+        "target": "a",
+        "before": [
+          1,
+          2
+        ],
+        "after": [
+          3,
+          8,
+          5
+        ],
+        "sources": [
+          {
+            "expression": "b",
+            "value": [
+              3,
+              8,
+              5
+            ]
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "parallelTransfers": 3,
+        "containerNameMoves": false,
+        "containerFrameMoves": false,
+        "stages": [
+          "resize",
+          "copy",
+          "transfer",
+          "commit",
+          "cleanup"
+        ]
+      },
+      "timing": {
+        "transferDurationMs": 300,
+        "commitAfterAllTransfers": true
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E11",
+      "fixture": "functions",
+      "marker": "E11",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "ans = solve(source);",
+      "expected": {
+        "target": "ans",
+        "before": 0,
+        "after": 8
+      },
+      "visual": {
+        "transfer": "value",
+        "origin": "visible-return-or-above-target",
+        "commitCount": 1
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E12",
+      "fixture": "visibility",
+      "marker": "E12",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = b;",
+      "expected": {
+        "target": "a",
+        "before": 1,
+        "after": 3,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3,
+            "visible": false
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "literalFrom": "above-target",
+        "temporarySourceCell": false
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E13",
+      "fixture": "visibility",
+      "marker": "E13",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = b + c;",
+      "expected": {
+        "target": "a",
+        "before": 3,
+        "after": 11,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3,
+            "visible": true
+          },
+          {
+            "expression": "c",
+            "value": 8,
+            "visible": false
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "literalFrom": "above-target",
+        "parallelTransfers": 2,
+        "temporarySourceCell": false
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E14",
+      "fixture": "visibility",
+      "marker": "E14",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "c = b;",
+      "expected": {
+        "target": "c",
+        "before": 8,
+        "after": 3,
+        "targetVisible": false,
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3,
+            "visible": true
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "none",
+        "temporaryTargetCell": false,
+        "codePrompt": true
+      },
+      "timing": {
+        "durationMs": 0
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E15",
+      "fixture": "selection",
+      "marker": "E15",
+      "eventTypes": [
+        "compare"
+      ],
+      "expression": "result = b < c;",
+      "expected": {
+        "left": 3,
+        "right": 8,
+        "operation": "<",
+        "result": true,
+        "relation": "<"
+      },
+      "visual": {
+        "stages": [
+          "approach",
+          "relation-and-size",
+          "reset"
+        ],
+        "larger": "right",
+        "leftMoves": "down",
+        "rightMoves": "up",
+        "returnsToBase": true
+      },
+      "timing": {
+        "durationMs": 600,
+        "approachMs": 180,
+        "resultMs": 240,
+        "resetMs": 180
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E16",
+      "fixture": "selection",
+      "marker": "E16",
+      "eventTypes": [
+        "compare"
+      ],
+      "expression": "result = b != c;",
+      "expected": {
+        "left": 3,
+        "right": 8,
+        "operation": "!=",
+        "result": true,
+        "relation": "≠"
+      },
+      "visual": {
+        "stages": [
+          "approach",
+          "relation",
+          "reset"
+        ],
+        "verticalMotion": 0,
+        "returnsToBase": true
+      },
+      "timing": {
+        "durationMs": 600
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E17",
+      "fixture": "selection",
+      "marker": "E17",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = min(b, c);",
+      "expected": {
+        "target": "a",
+        "before": 0,
+        "after": 3,
+        "selectionOperation": "min",
+        "selectedSource": "b",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "stages": [
+          "compare",
+          "select",
+          "copy",
+          "transfer",
+          "commit",
+          "cleanup"
+        ],
+        "readHighlight": [
+          "b",
+          "c"
+        ]
+      },
+      "timing": {
+        "compareMs": 600,
+        "transferMs": 300,
+        "durationMs": 900,
+        "commitMs": 900
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E17_MAX",
+      "fixture": "selection",
+      "marker": "E17_MAX",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = max(b, c);",
+      "expected": {
+        "target": "a",
+        "before": 3,
+        "after": 8,
+        "selectionOperation": "max",
+        "selectedSource": "c",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "stages": [
+          "compare",
+          "select",
+          "copy",
+          "transfer",
+          "commit",
+          "cleanup"
+        ]
+      },
+      "timing": {
+        "durationMs": 900,
+        "commitMs": 900
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E18",
+      "fixture": "selection",
+      "marker": "E18",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = result ? b : c;",
+      "expected": {
+        "target": "a",
+        "before": 8,
+        "after": 3,
+        "condition": true,
+        "selectedSource": "b",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          }
+        ],
+        "notRead": [
+          "c"
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "stages": [
+          "condition-result",
+          "copy",
+          "transfer",
+          "commit",
+          "cleanup"
+        ],
+        "unselectedBranchAnimated": false
+      },
+      "timing": {
+        "transferMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E19",
+      "fixture": "selection",
+      "marker": "E19",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = min(b, c) + d;",
+      "expected": {
+        "target": "a",
+        "before": 3,
+        "after": 5,
+        "selectionOperation": "min",
+        "selectedSource": "b",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          },
+          {
+            "expression": "d",
+            "value": 2
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "stages": [
+          "compare",
+          "select",
+          "parallel-value-transfer",
+          "commit",
+          "cleanup"
+        ],
+        "parallelTransfers": 2,
+        "commitCount": 1
+      },
+      "timing": {
+        "durationMs": 900,
+        "commitMs": 900
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E20",
+      "fixture": "selection",
+      "marker": "E20",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "result = false && (++d > 0);",
+      "expected": {
+        "target": "result",
+        "before": true,
+        "after": false,
+        "unchanged": {
+          "d": 2
+        },
+        "notExecuted": [
+          "++d",
+          "d > 0"
+        ]
+      },
+      "visual": {
+        "unexecutedBranchAnimated": false,
+        "unexecutedBranchHighlighted": false
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E20_OR",
+      "fixture": "selection",
+      "marker": "E20_OR",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "result = true || (++d > 0);",
+      "expected": {
+        "target": "result",
+        "before": false,
+        "after": true,
+        "unchanged": {
+          "d": 2
+        },
+        "notExecuted": [
+          "++d",
+          "d > 0"
+        ]
+      },
+      "visual": {
+        "unexecutedBranchAnimated": false,
+        "unexecutedBranchHighlighted": false
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E16_EQUAL",
+      "fixture": "selection",
+      "marker": "E16_EQUAL",
+      "eventTypes": [
+        "compare"
+      ],
+      "expression": "result = b == b;",
+      "expected": {
+        "left": 3,
+        "right": 3,
+        "operation": "==",
+        "result": true,
+        "relation": "="
+      },
+      "visual": {
+        "verticalMotion": 0,
+        "returnsToBase": true
+      },
+      "timing": {
+        "durationMs": 600
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E17_TIE",
+      "fixture": "selection",
+      "marker": "E17_TIE",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = min(b, b);",
+      "expected": {
+        "target": "a",
+        "before": 5,
+        "after": 3,
+        "selectionOperation": "min",
+        "selectedSourceRole": "source-left",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "b",
+            "value": 3
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "cell",
+        "sourceRetained": true,
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
+        "tieWinner": "first",
+        "readHighlightCount": 1
+      },
+      "timing": {
+        "durationMs": 900,
+        "commitMs": 900
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E21",
+      "fixture": "containers",
+      "marker": "E21",
+      "eventTypes": [
+        "swap"
+      ],
+      "expression": "swap(a[0], a[1]);",
+      "expected": {
+        "target": "a",
+        "before": [
+          3,
+          8,
+          5
+        ],
+        "after": [
+          8,
+          3,
+          5
+        ]
+      },
+      "visual": {
+        "stages": [
+          "parallel-swap",
+          "commit",
+          "cleanup"
+        ],
+        "parallelTransfers": 2,
+        "allowCrossingDuringMotion": true
+      },
+      "timing": {
+        "durationMs": 400,
+        "commitMs": 400
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E22",
+      "fixture": "containers",
+      "marker": "E22",
+      "eventTypes": [
+        "swap"
+      ],
+      "expression": "swap(same[0], same[1]);",
+      "expected": {
+        "target": "same",
+        "before": [
+          8,
+          8
+        ],
+        "after": [
+          8,
+          8
+        ]
+      },
+      "visual": {
+        "stages": [
+          "parallel-swap",
+          "commit",
+          "cleanup"
+        ],
+        "parallelTransfers": 2
+      },
+      "timing": {
+        "durationMs": 400,
+        "commitMs": 400
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E23",
+      "fixture": "containers",
+      "marker": "E23",
+      "eventTypes": [
+        "swap"
+      ],
+      "expression": "swap(a[0], a[0]);",
+      "expected": {
+        "target": "a",
+        "before": [
+          8,
+          3,
+          5
+        ],
+        "after": [
+          8,
+          3,
+          5
+        ]
+      },
+      "visual": {
+        "transfer": "none",
+        "stages": [
+          "emphasize"
+        ]
+      },
+      "timing": {
+        "durationMs": 240
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E24",
+      "fixture": "containers",
+      "marker": "E24",
+      "eventTypes": [
+        "sequence"
+      ],
+      "expression": "a.insert(a.begin() + 1, 9);",
+      "expected": {
+        "target": "a",
+        "before": [
+          8,
+          3,
+          5
+        ],
+        "after": [
+          8,
+          9,
+          3,
+          5
+        ],
+        "insertIndex": 1
+      },
+      "visual": {
+        "stages": [
+          "parallel-make-room",
+          "enter",
+          "commit"
+        ],
+        "indexLabelsMatch": true
+      },
+      "timing": {
+        "moveMs": 300,
+        "enterMs": 180,
+        "durationMs": 480
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E25",
+      "fixture": "containers",
+      "marker": "E25",
+      "eventTypes": [
+        "sequence"
+      ],
+      "expression": "a.erase(a.begin() + 1);",
+      "expected": {
+        "target": "a",
+        "before": [
+          8,
+          9,
+          3,
+          5
+        ],
+        "after": [
+          8,
+          3,
+          5
+        ],
+        "removeIndex": 1
+      },
+      "visual": {
+        "stages": [
+          "exit",
+          "parallel-close-gap",
+          "commit"
+        ],
+        "indexLabelsMatch": true
+      },
+      "timing": {
+        "exitMs": 180,
+        "moveMs": 300,
+        "durationMs": 480
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E26",
+      "fixture": "containers",
+      "marker": "E26",
+      "eventTypes": [
+        "sequence"
+      ],
+      "expression": "a.resize(5, 6);",
+      "expected": {
+        "target": "a",
+        "before": [
+          8,
+          3,
+          5
+        ],
+        "after": [
+          8,
+          3,
+          5,
+          6,
+          6
+        ]
+      },
+      "visual": {
+        "stages": [
+          "parallel-enter",
+          "commit"
+        ],
+        "newCells": 2
+      },
+      "timing": {
+        "durationMs": 180
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E27",
+      "fixture": "containers",
+      "marker": "E27",
+      "eventTypes": [
+        "sequence"
+      ],
+      "expression": "a.clear();",
+      "expected": {
+        "target": "a",
+        "before": [
+          8,
+          3,
+          5,
+          6,
+          6
+        ],
+        "after": []
+      },
+      "visual": {
+        "stages": [
+          "parallel-exit",
+          "commit"
+        ],
+        "containerVisibleAfter": true,
+        "nameVisibleAfter": true
+      },
+      "timing": {
+        "durationMs": 180
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E28",
+      "fixture": "containers",
+      "marker": "E28",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a.assign(3, 7);",
+      "expected": {
+        "target": "a",
+        "before": [],
+        "after": [
+          7,
+          7,
+          7
+        ],
+        "semanticEventCount": 1
+      },
+      "visual": {
+        "stages": [
+          "resize",
+          "parallel-value-transfer",
+          "commit"
+        ],
+        "irrelevantConstructorCall": false
+      },
+      "timing": {
+        "transferMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E29",
+      "fixture": "containers",
+      "marker": "E29",
+      "eventTypes": [
+        "assign"
+      ],
+      "expression": "a = move(b);",
+      "expected": {
+        "target": "a",
+        "before": [
+          7,
+          7,
+          7
+        ],
+        "after": [
+          3,
+          8,
+          5
+        ],
+        "sourceStatePolicy": "actual-runtime-state",
+        "sources": [
+          {
+            "expression": "b",
+            "value": [
+              3,
+              8,
+              5
+            ]
+          }
+        ]
+      },
+      "visual": {
+        "stages": [
+          "transfer-ownership",
+          "commit"
+        ],
+        "assumeSourceEmpty": false
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E30",
+      "fixture": "functions",
+      "marker": "E30",
+      "eventTypes": [
+        "call"
+      ],
+      "expression": "ans = solve(source);",
+      "expected": {
+        "callee": "solve",
+        "arguments": [
+          7
+        ]
+      },
+      "visual": {
+        "codePrompt": true,
+        "stages": [
+          "call",
+          "enter-function"
+        ]
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E31",
+      "fixture": "functions",
+      "marker": "E31",
+      "eventTypes": [
+        "function-enter",
+        "declare"
+      ],
+      "expression": "int local = value + 1;",
+      "expected": {
+        "activation": "solve",
+        "argumentValues": {
+          "value": 7
+        },
+        "target": "local",
+        "after": 8
+      },
+      "visual": {
+        "stages": [
+          "enter-function",
+          "declare",
+          "compute"
+        ]
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E32",
+      "fixture": "functions",
+      "marker": "E32",
+      "eventTypes": [
+        "function-exit"
+      ],
+      "expression": "return 0;",
+      "expected": {
+        "activation": "main"
+      },
+      "visual": {
+        "stages": [
+          "exit-function"
+        ],
+        "finalTeachingFramePreserved": true
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E33",
+      "fixture": "functions",
+      "marker": "E33",
+      "eventTypes": [
+        "return"
+      ],
+      "expression": "return local;",
+      "expected": {
+        "activation": "solve",
+        "returnValue": 8
+      },
+      "visual": {
+        "stages": [
+          "return-value",
+          "exit-function"
+        ],
+        "readHighlight": [
+          "local"
+        ]
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E34_CONTINUE",
+      "fixture": "functions",
+      "marker": "E34_CONTINUE",
+      "eventTypes": [
+        "continue"
+      ],
+      "expression": "if (i == 1) continue;",
+      "expected": {
+        "when": {
+          "i": 1
+        },
+        "total": 0
+      },
+      "visual": {
+        "codePrompt": true,
+        "unexecutedFollowingStatement": false
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E34_BREAK",
+      "fixture": "functions",
+      "marker": "E34_BREAK",
+      "eventTypes": [
+        "break"
+      ],
+      "expression": "if (i == 3) break;",
+      "expected": {
+        "when": {
+          "i": 3
+        },
+        "total": 2
+      },
+      "visual": {
+        "codePrompt": true,
+        "loopExited": true
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E35",
+      "fixture": "functions",
+      "marker": "E35",
+      "eventTypes": [
+        "output"
+      ],
+      "expression": "cout << ans << ' ' << total << '\\n';",
+      "expected": {
+        "output": "8 2\n"
+      },
+      "visual": {
+        "codePrompt": true,
+        "readHighlight": [
+          "ans",
+          "total"
+        ]
+      },
+      "timing": {},
+      "assertionKind": "event"
+    },
+    {
+      "id": "E36",
+      "fixture": "assignment",
+      "marker": "E05",
+      "eventTypes": [
+        "read"
+      ],
+      "expression": "a = b + c;",
+      "expected": {
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          }
+        ]
+      },
+      "visual": {
+        "owner": "E05",
+        "independentPlaybackStep": false,
+        "readHighlight": [
+          "b",
+          "c"
+        ],
+        "blink": false
+      },
+      "timing": {
+        "addedDurationMs": 0
+      },
+      "assertionKind": "read"
+    },
+    {
+      "id": "P01",
+      "fixture": "pointers",
+      "marker": "P01",
+      "eventTypes": [
+        "declare"
+      ],
+      "expression": "int j = 1;",
+      "expected": {
+        "target": "j",
+        "before": null,
+        "after": 1
+      },
+      "visual": {
+        "stages": [
+          "enter-at-initial-index"
+        ],
+        "targetIndex": 1
+      },
+      "timing": {
+        "durationMs": 180
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P02",
+      "fixture": "pointers",
+      "marker": "P02",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "i++;",
+      "expected": {
+        "target": "i",
+        "before": 0,
+        "after": 1
+      },
+      "visual": {
+        "stages": [
+          "commit",
+          "move"
+        ],
+        "targetIndex": 1
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 0
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P03",
+      "fixture": "pointers",
+      "marker": "P03",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "j = i - 1;",
+      "expected": {
+        "target": "j",
+        "before": 1,
+        "after": 0
+      },
+      "visual": {
+        "stages": [
+          "value-prompt",
+          "commit",
+          "move"
+        ],
+        "targetIndex": 0
+      },
+      "timing": {
+        "transferMs": 300,
+        "moveMs": 300,
+        "durationMs": 600,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P04",
+      "fixture": "pointers",
+      "marker": "P04",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "j = p[2];",
+      "expected": {
+        "target": "j",
+        "before": 0,
+        "after": 1,
+        "sources": [
+          {
+            "expression": "p[2]",
+            "value": 1
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "value",
+        "stages": [
+          "transfer-value",
+          "commit",
+          "move"
+        ],
+        "targetIndex": 1
+      },
+      "timing": {
+        "transferMs": 300,
+        "moveMs": 300,
+        "durationMs": 600,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P05",
+      "fixture": "pointers",
+      "marker": "P05",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "j = 0;",
+      "expected": {
+        "target": "j",
+        "before": 1,
+        "after": 0
+      },
+      "visual": {
+        "literalFrom": "above-value-prompt",
+        "stages": [
+          "literal-drop",
+          "commit",
+          "move"
+        ],
+        "targetIndex": 0
+      },
+      "timing": {
+        "transferMs": 300,
+        "moveMs": 300,
+        "durationMs": 600,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P06",
+      "fixture": "pointers",
+      "marker": "P06",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "j = 2;",
+      "expected": {
+        "target": "j",
+        "before": 0,
+        "after": 2
+      },
+      "visual": {
+        "bindings": [
+          "s",
+          "p"
+        ],
+        "oneValuePrompt": true,
+        "synchronizedMotion": true,
+        "targetIndex": 2
+      },
+      "timing": {
+        "transferMs": 300,
+        "moveMs": 300,
+        "durationMs": 600,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P07",
+      "fixture": "pointers",
+      "marker": "P07",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "i++;",
+      "expected": {
+        "target": "i",
+        "before": 1,
+        "after": 2,
+        "derivedExpression": "i-1",
+        "derivedValue": 1
+      },
+      "visual": {
+        "bindings": [
+          "s",
+          "p"
+        ],
+        "derivedPointerIndex": 1,
+        "extraAssignmentEvents": 0
+      },
+      "timing": {
+        "durationMs": 300,
+        "commitMs": 0
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P08",
+      "fixture": "pointers",
+      "marker": "P08",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "j = -1;",
+      "expected": {
+        "target": "j",
+        "before": 2,
+        "after": -1
+      },
+      "visual": {
+        "side": "left",
+        "hidden": false
+      },
+      "timing": {
+        "transferMs": 300,
+        "moveMs": 300,
+        "durationMs": 600,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P08_RIGHT",
+      "fixture": "pointers",
+      "marker": "P08_RIGHT",
+      "eventTypes": [
+        "write",
+        "assign"
+      ],
+      "expression": "j = 3;",
+      "expected": {
+        "target": "j",
+        "before": -1,
+        "after": 3
+      },
+      "visual": {
+        "side": "right",
+        "hidden": false
+      },
+      "timing": {
+        "transferMs": 300,
+        "moveMs": 300,
+        "durationMs": 600,
+        "commitMs": 300
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P09",
+      "fixture": "pointers",
+      "marker": "P09",
+      "eventTypes": [
+        "compare"
+      ],
+      "expression": "bool ordered = i < j;",
+      "expected": {
+        "target": "ordered",
+        "after": true,
+        "left": 2,
+        "right": 3,
+        "operation": "<",
+        "result": true
+      },
+      "visual": {
+        "stages": [
+          "compare",
+          "reset"
+        ],
+        "baseIndicesAfter": {
+          "i": 2,
+          "j": 3
+        }
+      },
+      "timing": {
+        "durationMs": 600
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "P10",
+      "fixture": "pointers",
+      "marker": "P10",
+      "eventTypes": [
+        "visual-exit"
+      ],
+      "expression": "// @exit j",
+      "expected": {
+        "target": "j",
+        "before": 3,
+        "after": 3
+      },
+      "visual": {
+        "stages": [
+          "fade-out"
+        ],
+        "visibleAfter": false
+      },
+      "timing": {
+        "durationMs": 180
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "L01",
+      "fixture": "layout",
+      "marker": "L01",
+      "eventTypes": [
+        "keep"
+      ],
+      "expression": "arr[0] = 5;",
+      "expected": {
+        "snapshot": [
+          3,
+          8
+        ],
+        "liveAfter": [
+          5,
+          8
+        ]
+      },
+      "visual": {
+        "snapshotFrozen": true,
+        "oldPositionsPreserved": true,
+        "extendDirection": "top-down"
+      },
+      "timing": {},
+      "assertionKind": "layout"
+    },
+    {
+      "id": "L02",
+      "fixture": "layout",
+      "marker": "L02",
+      "eventTypes": [
+        "camera"
+      ],
+      "expression": "arr[1] = 9;",
+      "expected": {
+        "snapshots": [
+          [
+            3,
+            8
+          ],
+          [
+            5,
+            8
+          ]
+        ],
+        "liveAfter": [
+          5,
+          9
+        ]
+      },
+      "visual": {
+        "stages": [
+          "camera",
+          "operation"
+        ],
+        "cameraTarget": "live-arr",
+        "snapshotsFrozen": true
+      },
+      "timing": {
+        "cameraMs": 300
+      },
+      "assertionKind": "layout"
+    },
+    {
+      "id": "C01",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "暫停與續播",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "atMs": 150,
+        "resumeSameProgress": true,
+        "preserveReadHighlight": true
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C02",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "上一幀",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "restoreDirectly": true,
+        "reverseAnimation": false
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C03",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "跨幀跳轉",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "restoreDirectly": true,
+        "temporaryCopiesAfter": 0
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C04",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "快速連按",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "requests": [
+          1,
+          2,
+          3
+        ],
+        "finalFrame": 3,
+        "queueAllAnimations": false
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C05",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "速度切換",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "changeDuringEvent": {
+          "from": 1,
+          "to": 2
+        },
+        "currentDurationMs": 300,
+        "nextDurationMs": 150
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C06",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "離頁與返回",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "cancelOnLeave": true,
+        "temporaryCopiesAfter": 0,
+        "restoreStableFrameOnReturn": true
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C07",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "明確關閉動畫",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "enabled": false,
+        "after": 11,
+        "transferCount": 0,
+        "eventRetained": true
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C08",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "舊資料缺少新欄位",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "removeFields": [
+          "semantics",
+          "readOwner"
+        ],
+        "loadable": true,
+        "reopenRequired": true
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C09",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "自訂樣式與明確false/0",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "customFill": "#123456",
+        "enabled": false,
+        "gapMs": 0,
+        "valuesPreservedAfterReopen": true
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C10",
+      "fixture": "assignment",
+      "marker": "E05",
+      "title": "讀取與手寫highlight共存",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "autoHighlightEnds": true,
+        "authoredHighlightPreserved": true,
+        "blink": false
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E05",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    },
+    {
+      "id": "C11",
+      "fixture": "assignment",
+      "marker": "E08",
+      "title": "重複來源讀取",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "readHighlightCount": 1,
+        "transferCount": 2,
+        "blink": false
+      },
+      "eventSpec": {
+        "fixture": "assignment",
+        "marker": "E08",
+        "target": "a",
+        "before": 8,
+        "after": 6
+      }
+    },
+    {
+      "id": "C12",
+      "fixture": "visibility",
+      "marker": "E13",
+      "title": "隱藏與可見來源混合",
+      "eventTypes": [],
+      "visual": {
+        "controlScenario": true
+      },
+      "timing": {},
+      "execution": "browser-scenario",
+      "assertionKind": "control",
+      "controlSpec": {
+        "visibleSource": "b",
+        "hiddenSource": "c",
+        "visibleOrigin": "b",
+        "hiddenOrigin": "above-target",
+        "commitAfterAllTransfers": true
+      },
+      "eventSpec": {
+        "fixture": "visibility",
+        "marker": "E13",
+        "target": "a",
+        "before": 3,
+        "after": 11
+      }
+    }
+  ]
+}

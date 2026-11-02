@@ -290,6 +290,23 @@
     window.syncCurrentFrameFromCodeScript?.();
   }
 
+  function abandonHiddenPlayback() {
+    if (!window.document.hidden || !document?.frames?.length) return;
+    clearTimeout(cameraTimer);
+    window.ASMPlaybackNavigation?.pause?.();
+    // A hidden page must not keep a paused half-completed scene alive. Render
+    // its destination directly; returning to the page never resumes that run.
+    renderStable(currentFrame, { pageLeave: true });
+  }
+
+  window.document.addEventListener?.('visibilitychange', abandonHiddenPlayback);
+  window.addEventListener?.('pagehide', () => {
+    if (!document?.frames?.length) return;
+    clearTimeout(cameraTimer);
+    window.ASMPlaybackNavigation?.pause?.();
+    renderStable(currentFrame, { pageLeave: true });
+  });
+
   function setRules(rules) {
     if (!document) return;
     document.rules = Array.isArray(rules) ? window.ASMTraceModel.clone(rules) : [];

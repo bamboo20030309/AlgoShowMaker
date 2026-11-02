@@ -44,7 +44,7 @@
     break: 'control-flow',
     continue: 'control-flow'
   });
-  const DEFAULT_EVENT_GAP_MS = 500;
+  const DEFAULT_EVENT_GAP_MS = 0;
 
   // ---------------------------------------------------------------------------
   // 區段：來源與 presentation 區塊

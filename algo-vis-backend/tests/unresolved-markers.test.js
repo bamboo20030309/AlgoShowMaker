@@ -27,6 +27,9 @@ vm.runInContext(
   fs.readFileSync(path.join(__dirname, '../public/trace-pointer-model.js'), 'utf8'),
   context
 );
+// The binding adapter now derives presentation items through the shared model.
+// Load that real dependency instead of leaving the old harness incomplete.
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-model.js'), 'utf8'), context);
 vm.runInContext(source, context);
 
 // -----------------------------------------------------------------------------
@@ -337,7 +340,7 @@ test('a moved swap container settles before its swap event can start', () => {
     'the second timeline pass starts swap only after the container movement');
 });
 
-test('text and marker lifecycles use distinct shared motion profiles', () => {
+test('text and marker lifecycles fade at their bound positions', () => {
   const {
     visualLifecycleKind: kind,
     visualLifecycleOffsetY: offsetY,
@@ -376,9 +379,9 @@ test('text and marker lifecycles use distinct shared motion profiles', () => {
   assert.equal(kind(object), 'object');
   assert.equal(offsetY('text', 'enter', 0), 0, 'text fades in without moving');
   assert.equal(offsetY('text', 'removed', 1), 0, 'text fades out without moving');
-  assert.equal(offsetY('marker', 'enter', 0), -16, 'marker begins above its final position');
+  assert.equal(offsetY('marker', 'enter', 0), 0, 'marker fades in at its bound position');
   assert.equal(offsetY('marker', 'enter', 1), 0, 'marker finishes at its bound position');
-  assert.equal(offsetY('marker', 'exit', 1), -16, 'marker rises while fading out');
+  assert.equal(offsetY('marker', 'exit', 1), 0, 'marker fades out without a directional rise');
   assert.equal(offsetY('array', 'enter', 0), 0, 'arrays fade in at their rendered position');
   assert.equal(offsetY('array', 'exit', 1), 0, 'array scope exits stay in place');
   assert.equal(offsetY('array', 'removed', 1), 0, 'removed arrays fade out in place');
@@ -848,7 +851,7 @@ test('each renderable sourced event prompts in code before its visual response',
   assert.equal(timeline[0].codePromptDuration, 0);
   assert.equal(timeline[0].visualStart, 0);
   assert.equal(timeline[0].start, 0);
-  assert.equal(timeline[0].end, 220);
+  assert.equal(timeline[0].end, 180);
 
   const plan = promptContext.window.ASMTraceFrameTween.createPlaybackPlan({
     frame, direction: 1, eventTimeline: timeline
@@ -857,8 +860,8 @@ test('each renderable sourced event prompts in code before its visual response',
   assert.equal(step.startMs, 0, 'the code highlight owns the formal event start');
   assert.equal(step.codePromptDurationMs, 0);
   assert.equal(step.visualStartMs, 0);
-  assert.equal(step.visualDurationMs, 220);
-  assert.equal(step.durationMs, 220);
+  assert.equal(step.visualDurationMs, 180);
+  assert.equal(step.durationMs, 180);
 });
 
 test('a for-header code range does not substitute for a missing canvas target', () => {
@@ -1084,8 +1087,8 @@ test('one multi-target @exit batch finishes in parallel before keep appears', ()
   assert.equal(timeline.length, 2);
   assert.equal(timeline[0].start, 500);
   assert.equal(timeline[1].start, 500);
-  assert.equal(timeline[0].end, 720);
-  assert.equal(timeline[1].end, 720);
+  assert.equal(timeline[0].end, 680);
+  assert.equal(timeline[1].end, 680);
 
   const plan = batchContext.window.ASMTraceFrameTween.createPlaybackPlan({
     frame,
@@ -1097,10 +1100,10 @@ test('one multi-target @exit batch finishes in parallel before keep appears', ()
   });
   const exitPhase = plan.phases.find(phase => phase.id === 'pre-keep-exit');
   const keepPhase = plan.phases.find(phase => phase.id === 'keep-transition');
-  assert.equal(exitPhase.durationMs, 220);
+  assert.equal(exitPhase.durationMs, 180);
   assert.equal(exitPhase.steps[0].startMs, 500);
   assert.equal(exitPhase.steps[1].startMs, 500);
-  assert.equal(keepPhase.startMs, 720);
+  assert.equal(keepPhase.startMs, 680);
   assert.equal(keepPhase.steps[0].subtype, 'in-place-fade');
 });
 
@@ -1228,8 +1231,10 @@ test('a visible event between exits preserves runtime order and starts a new exi
   );
 
   assert.equal(timeline.length, 3);
-  assert.ok(timeline[0].end < timeline[1].start);
-  assert.ok(timeline[1].end < timeline[2].start);
+  assert.equal(timeline[0].end, timeline[1].start,
+    'the next event begins immediately after the exit when the default gap is zero');
+  assert.equal(timeline[1].end, timeline[2].start,
+    'the second exit stays after the intervening event without an extra default wait');
   assert.notEqual(timeline[0].start, timeline[2].start,
     'exit batches must not jump across another visible event');
 });
@@ -1277,7 +1282,8 @@ test('forward replay checkpoints isolate every mutation from later frame state',
   assert.equal(display(plan.initialState['value:arr#0']), '5');
   assert.equal(display(plan.initialState['value:arr#1']), '7');
   assert.equal(plan.checkpoints[0].mode, 'animated');
-  assert.equal(plan.checkpoints[0].commitMs, 660);
+  assert.equal(plan.checkpoints[0].commitMs, 300,
+    'assignment commits after the shared 300ms transfer, before the custom 760ms slot ends');
   assert.equal(display(plan.checkpoints[0].afterState['value:arr#0']), '3');
   assert.equal(plan.checkpoints[1].mode, 'instant');
   assert.equal(plan.checkpoints[1].commitMs, 760);
@@ -1382,7 +1388,8 @@ test('a declaration initializer stays blank until its paired assignment commits'
   assert.equal(track.steps[0].after, null,
     'the declaration controls presence only when a paired initializer assignment exists');
   assert.equal(track.steps[1].after.value, 9);
-  assert.equal(track.steps[1].commitMs, 880);
+  assert.equal(track.steps[1].commitMs, 520,
+    'the deliberately supplied 220ms declaration is followed by a 300ms assignment transfer');
 });
 
 test('a newly declared marker starts in the unresolved group before assignment motion', () => {
@@ -1682,8 +1689,8 @@ test('same-cell marker reflow starts with the overlapping entrance, then frame e
   assert.equal(preEventPlan.phases.find(phase => phase.id === 'frame-transition').startMs, 0);
   assert.equal(preEventPlan.phases.find(phase => phase.id === 'object-entrance').startMs, 0,
     'the incoming marker appears when its peers begin making room');
-  assert.equal(preEventPlan.preEventDurationMs, 220,
-    'the simultaneous 180 ms reflow and 220 ms entrance finish at 220 ms');
+  assert.equal(preEventPlan.preEventDurationMs, 180,
+    'the simultaneous 180ms reflow and 180ms entrance finish together');
 
   const event = { id: 'compare-after-j-entry', type: 'compare', order: 3 };
   const plan = context.window.ASMTraceFrameTween.createPlaybackPlan({
@@ -1726,8 +1733,8 @@ test('same-cell marker reflow starts with the overlapping entrance, then frame e
   assert.equal(declarationTimeline[0].declarationEntranceDelay, 80);
   assert.deepEqual(
     { start: declarationTimeline[0].start, end: declarationTimeline[0].end },
-    { start: 0, end: 300 },
-    'a declaration-owned marker also waits for the make-room head start'
+    { start: 0, end: 260 },
+    'a declaration-owned marker keeps its 80ms make-room lead plus the shared 180ms entrance'
   );
 });
 
@@ -1783,7 +1790,8 @@ test('a caller marker waits for the outgoing same-cell marker to move and exit',
   assert.equal(events.startMs, 0);
   assert.equal(entrance.startMs, 740);
   assert.equal(entrance.steps[0].targetKey, 'marker-i');
-  assert.equal(plan.totalDurationMs, 960);
+  assert.equal(plan.totalDurationMs, 920,
+    'the custom exit barrier at 740ms is followed by the shared 180ms entrance');
 });
 
 test('a hidden caller marker does not move an outgoing same-cell parameter sideways', () => {
@@ -2104,7 +2112,7 @@ test('an exiting marker makes room for a marker that remains on its destination 
   }], 'the existing marker makes room while the arriving marker moves');
 });
 
-test('a declaration initializer occupies one declaration slot and only waits for visible sources', () => {
+test('declaration and initializer keep separate slots for visible sources and literals', () => {
   const c = vm.createContext({
     window: {}, document: { documentElement: { dataset: {} } },
     queueMicrotask() {}, CustomEvent: function CustomEvent() {}
@@ -2145,11 +2153,16 @@ test('a declaration initializer occupies one declaration slot and only waits for
     new Map(), placements, elements, 0, null, null,
     { skipAvailability: true }
   );
-  assert.equal(timeline.length, 1);
+  assert.equal(timeline.length, 2);
   assert.equal(timeline[0].event, declaration);
-  assert.equal(timeline[0].initializerEvent, initializer);
   assert.equal(timeline[0].animation, 'declare');
-  assert.equal(timeline[0].declarationInitializerTransfer, true);
+  assert.equal(timeline[0].duration, 180);
+  assert.equal(timeline[0].declarationInitializerTransfer, false);
+  assert.equal(timeline[1].event, initializer);
+  assert.equal(timeline[1].animation, 'assign');
+  assert.equal(timeline[1].start, 180);
+  assert.equal(timeline[1].duration, 300);
+  assert.equal(timeline[1].end, 480);
   const replay = c.window.ASMTraceFrameTween.createForwardReplayPlan(
     { variables: { x: { name: 'x' }, a: { name: 'a' } } }, frame, timeline, 1
   );
@@ -2163,16 +2176,19 @@ test('a declaration initializer occupies one declaration slot and only waits for
     new Map(), placements, elements, 0, null, null,
     { skipAvailability: true }
   );
-  assert.equal(literalTimeline.length, 1);
+  assert.equal(literalTimeline.length, 2);
   assert.equal(literalTimeline[0].declarationInitializerTransfer, false);
+  assert.equal(literalTimeline[1].event, initializer);
+  assert.equal(literalTimeline[1].start, 180);
+  assert.equal(literalTimeline[1].end, 480);
   const literalReplay = c.window.ASMTraceFrameTween.createForwardReplayPlan(
     { variables: { x: { name: 'x' } } }, frame, literalTimeline, 1
   );
-  assert.equal(literalReplay.checkpoints.find(item => item.event === initializer).mode, 'instant');
+  assert.equal(literalReplay.checkpoints.find(item => item.event === initializer).mode, 'animated');
   assert.equal(literalReplay.valueTracks.find(track => (
     track.kind === 'value' && track.key === 'x'
-  )).initial.value, 7,
-    'a literal initializer is already filled when the object enters');
+  )).initial, null,
+    'a literal initializer remains blank until its separate falling-value assignment commits');
 });
 
 test('renderer gives recursive activations one stable pointer role and distinct instances', () => {
@@ -2463,7 +2479,7 @@ test('a moving declaration continuation uses the standard cross-cell duration', 
     new Map([['marker-i', visual('parent-i', 'arr#1', 60)]]), null,
     { continuingKeys: new Set(['marker-i']), skipAvailability: true }
   );
-  assert.equal(stationarySlots[0].duration, 220);
+  assert.equal(stationarySlots[0].duration, 180);
   assert.equal(stationarySlots[0].declarationMarkerMotionDuration, 180);
 });
 

@@ -367,7 +367,8 @@
       return;
     }
 
-    // 延遲 100ms 後開始動畫
+    // Start in the next task without a separate delay: the event plan reserves
+    // exactly this camera duration before allowing data effects to begin.
     delayTimeoutId = setTimeout(() => {
       delayTimeoutId = null;
 
@@ -381,9 +382,19 @@
       const startX = (centerX - translateX) / physicalScale;
       const startY = (centerY - translateY) / physicalScale;
       const startScale = scale;
-      const startTime = performance.now();
+      let startTime = performance.now();
+      let previousTime = startTime;
 
       function step(currentTime) {
+        // Camera and event effects share the pause boundary. Shift the origin
+        // while paused instead of jumping to the wall-clock destination later.
+        if (window.ASMTraceFrameTween?.isPaused?.()) {
+          startTime += Math.max(0, currentTime - previousTime);
+          previousTime = currentTime;
+          animationId = requestAnimationFrame(step);
+          return;
+        }
+        previousTime = currentTime;
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
 
@@ -413,7 +424,7 @@
       }
 
       animationId = requestAnimationFrame(step);
-    }, 100);
+    }, 0);
   }
 
   /**

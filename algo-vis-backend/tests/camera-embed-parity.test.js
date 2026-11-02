@@ -30,7 +30,7 @@ function element(tagName, rect = { width: 1280, height: 720 }) {
   };
 }
 
-function cameraSurface(childHeight, topHeight) {
+function cameraSurface(childHeight, topHeight, scheduler = {}) {
   const canvas = element('svg');
   const document = {
     documentElement: { clientHeight: childHeight },
@@ -43,11 +43,11 @@ function cameraSurface(childHeight, topHeight) {
     innerHeight: childHeight,
     top: { document: { documentElement: { clientHeight: topHeight } }, innerHeight: topHeight },
     addEventListener() {},
-    requestAnimationFrame: callback => { callback(0); return 1; },
-    cancelAnimationFrame() {},
-    setTimeout: callback => { callback(); return 1; },
+    requestAnimationFrame: scheduler.requestAnimationFrame || (callback => { callback(0); return 1; }),
+    cancelAnimationFrame: scheduler.cancelAnimationFrame || (() => {}),
+    setTimeout: scheduler.setTimeout || (callback => { callback(); return 1; }),
     clearTimeout() {},
-    performance: { now: () => 0 }
+    performance: { now: scheduler.now || (() => 0) }
   });
   context.window = context;
   vm.runInContext(canvaSource, context);
@@ -99,4 +99,34 @@ test('presentation camera composes after every base camera and can be disabled f
 
   surface.context.setPresentationCameraTransform(null, true, false);
   closeTo([560, 320, 0.4]);
+});
+
+test('camera starts without a hidden delay and paused wall time never advances its transform', () => {
+  let clock = 0, pending = null;
+  const timerDelays = [];
+  const surface = cameraSurface(720, 900, {
+    now: () => clock,
+    requestAnimationFrame: callback => { pending = callback; return 1; },
+    cancelAnimationFrame: () => { pending = null; },
+    setTimeout: (callback, delay) => { timerDelays.push(delay); callback(); return 1; }
+  });
+  const tick = time => { clock = time; const callback = pending; pending = null; callback(time); };
+  const transform = () => surface.canvas.children[1].getAttribute('transform');
+  let paused = false;
+  surface.context.ASMTraceFrameTween = { isPaused: () => paused };
+  surface.context.setCamera(0, 0, 1, false);
+  surface.context.setCamera(300, 0, 1, true, 300);
+  assert.equal(timerDelays.at(-1), 0, 'camera must fit inside its declared 300ms event precondition');
+  tick(100);
+  const beforePause = transform();
+  paused = true;
+  tick(150);
+  tick(250);
+  assert.equal(transform(), beforePause);
+  paused = false;
+  tick(300);
+  assert.notEqual(transform(), beforePause);
+  tick(450); // 300ms active time + 150ms paused wall time.
+  assert.equal(surface.context.getCameraViewport().centerX, 300);
+  assert.equal(pending, null, 'camera finishes at 300ms of active time');
 });

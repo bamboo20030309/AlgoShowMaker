@@ -1034,6 +1034,116 @@ void event_declare_uninitialized(int line, const char* signature, const char* va
       + ",\"targets\":[" + target + ']'; });
 }
 
+struct SelectionCapture {
+  std::string expression, operation, left, right, source, selected_role, selected_target, json;
+  bool condition = false;
+};
+struct ArithmeticCapture {
+  std::vector<std::string> values;
+  std::vector<SelectionCapture> selections;
+};
+inline std::vector<ArithmeticCapture*>& arithmetic_capture_stack() {
+  // The recorder is process-scoped. Match its ownership; old MinGW builds
+  // have unreliable non-trivial thread_local destruction during process exit.
+  static std::vector<ArithmeticCapture*> stack;
+  return stack;
+}
+struct ArithmeticCaptureScope {
+  ArithmeticCapture capture;
+  ArithmeticCaptureScope() { arithmetic_capture_stack().push_back(&capture); }
+  ~ArithmeticCaptureScope() { arithmetic_capture_stack().pop_back(); }
+};
+template <typename T>
+decltype(auto) capture_operand(std::size_t index, T&& value) {
+  auto& stack = arithmetic_capture_stack();
+  if (!stack.empty()) {
+    auto& values = stack.back()->values;
+    if (values.size() <= index) values.resize(index + 1, "null");
+    values[index] = encode_value(value);
+  }
+  return std::forward<T>(value);
+}
+inline std::string captured_value(const ArithmeticCapture& capture, std::size_t index) {
+  return capture.values.size() > index ? capture.values[index] : "null";
+}
+inline std::string selection_steps_json(const ArithmeticCapture& capture) {
+  std::string json = "[";
+  for (const auto& selection : capture.selections) { if (json.size() > 1) json += ','; json += selection.json; }
+  return json + ']';
+}
+inline std::string resolve_captured_target(std::string target, const ArithmeticCapture& capture) {
+  for (const auto& selection : capture.selections) {
+    if (target.find("\"expression\":" + ::asm_trace::quoted(selection.expression)) == std::string::npos) continue;
+    const auto begin = target.find("\"role\":\"");
+    const auto end = begin == std::string::npos ? std::string::npos : target.find('"', begin + 8);
+    if (end == std::string::npos) return target;
+    const std::string role = target.substr(begin + 8, end - begin - 8);
+    target = selection.selected_target;
+    const auto selected_begin = target.find("\"role\":\"");
+    const auto selected_end = target.find('"', selected_begin + 8);
+    target.replace(selected_begin + 8, selected_end - selected_begin - 8, role);
+    return target;
+  }
+  return target;
+}
+template <typename LeftFactory, typename RightFactory>
+auto capture_selected_value(const char* expression, const char* operation,
+    const std::string& left_target, const std::string& right_target,
+    LeftFactory left_factory, RightFactory right_factory) {
+  const auto left_value = left_factory();
+  const auto right_value = right_factory();
+  const bool left = std::string(operation) == "max" ? !(left_value < right_value) : !(right_value < left_value);
+  if (!arithmetic_capture_stack().empty()) {
+    SelectionCapture selection;
+    selection.expression = expression; selection.operation = operation;
+    selection.left = encode_value(left_value); selection.right = encode_value(right_value);
+    selection.source = left ? selection.left : selection.right;
+    selection.selected_role = left ? "source-left" : "source-right";
+    selection.selected_target = left ? left_target : right_target;
+    selection.json = "{\"operation\":" + ::asm_trace::quoted(operation) + ",\"expression\":" + ::asm_trace::quoted(expression)
+      + ",\"left\":" + selection.left + ",\"right\":" + selection.right
+      + ",\"source\":" + selection.source + ",\"selectedSourceRole\":" + ::asm_trace::quoted(selection.selected_role)
+      + ",\"targets\":[" + left_target + ',' + right_target + "]}";
+    arithmetic_capture_stack().back()->selections.push_back(selection);
+  }
+  return left ? left_value : right_value;
+}
+template <typename ConditionFactory, typename LeftFactory, typename RightFactory>
+auto capture_conditional_value(const char* expression,
+    const std::string& left_target, const std::string& right_target,
+    ConditionFactory condition_factory, LeftFactory left_factory, RightFactory right_factory)
+    -> typename std::common_type<typename std::decay<decltype(left_factory())>::type,
+        typename std::decay<decltype(right_factory())>::type>::type {
+  const bool condition = static_cast<bool>(condition_factory());
+  const auto record = [&](const auto& value, bool selected_condition) {
+    if (arithmetic_capture_stack().empty()) return;
+    SelectionCapture selection;
+    selection.expression = expression; selection.operation = "conditional";
+    selection.condition = selected_condition; selection.source = encode_value(value);
+    selection.left = selected_condition ? selection.source : "null";
+    selection.right = selected_condition ? "null" : selection.source;
+    selection.selected_role = selected_condition ? "source-left" : "source-right";
+    selection.selected_target = selected_condition ? left_target : right_target;
+    selection.json = "{\"operation\":\"conditional\",\"conditionResult\":" + std::string(selected_condition ? "true" : "false")
+      + ",\"selectedSourceRole\":" + ::asm_trace::quoted(selection.selected_role)
+      + ",\"source\":" + selection.source + ",\"targets\":[" + left_target + ',' + right_target + "]}";
+    arithmetic_capture_stack().back()->selections.push_back(selection);
+  };
+  if (condition) { auto value = left_factory(); record(value, true); return value; }
+  auto value = right_factory(); record(value, false); return value;
+}
+inline std::map<std::string, ArithmeticCapture>& initialized_operand_values() {
+  static std::map<std::string, ArithmeticCapture> values;
+  return values;
+}
+template <typename Evaluate>
+auto initialize_arithmetic_value(const char* variable_id, Evaluate evaluate) {
+  ArithmeticCaptureScope operands;
+  auto value = evaluate();
+  initialized_operand_values()[variable_id ? variable_id : ""] = operands.capture;
+  return value;
+}
+
 template <typename T>
 void event_initialized_assign(int line, const char* signature,
                               const char* target_id, const char* target_expression, const char* target_index,
@@ -1043,25 +1153,48 @@ void event_initialized_assign(int line, const char* signature,
                               const char* expression, const T& value,
                               bool for_initializer = false,
                               bool parameter_initializer = false, bool animate = true,
-                              bool bitwise_commit = false) {
+                              bool bitwise_commit = false,
+                              const std::vector<std::string>& source_targets = {},
+                              const char* computation_operator = "",
+                              const char* selection_operation = "") {
   mark_initialized(target_id, value);
   const std::string encoded = encode_value(value);
   const std::string lifetime = current_lifetime(target_id, value);
   std::string target = target_json("target", target_id, target_expression, target_index,
     target_has_resolved_index, target_resolved_index);
+  std::string sources;
+  const auto captured = initialized_operand_values().find(target_id ? target_id : "");
+  const ArithmeticCapture operands = captured == initialized_operand_values().end() ? ArithmeticCapture{} : captured->second;
+  if (captured != initialized_operand_values().end()) initialized_operand_values().erase(captured);
+  for (std::size_t index = 0; index < source_targets.size(); ++index) {
+    std::string source = resolve_captured_target(source_targets[index], operands);
+    source.insert(source.size() - 1, ",\"value\":" + captured_value(operands, index));
+    sources += ',' + source;
+  }
+  if (sources.empty()) sources = ',' + target_json("source", source_id, source_expression, source_index,
+    source_has_resolved_index, source_resolved_index);
   target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
   recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"declarationInitializer\":true"
+      + (std::string(selection_operation).empty() || operands.selections.empty() ? ""
+        : (std::string(selection_operation) == "conditional" ? ",\"conditionalSelection\":true,\"conditionResult\":" + std::string(operands.selections.back().condition ? "true" : "false")
+          : ",\"selectionOperation\":" + ::asm_trace::quoted(selection_operation))
+          + ",\"selectedSourceRole\":" + ::asm_trace::quoted(operands.selections.back().selected_role))
+      + (operands.selections.empty() ? "" : ",\"selectionSteps\":" + selection_steps_json(operands))
+      + (std::string(computation_operator).empty() ? "" : ",\"binaryOperation\":" + quoted(computation_operator))
+      + (source_targets.size() > 2 ? ",\"multiSourceArithmetic\":true" : "")
       + ",\"bitwiseCommit\":" + (bitwise_commit ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"parameterInitializer\":" + (parameter_initializer ? "true" : "false")
       + ",\"lifetimeIdentity\":" + ::asm_trace::quoted(lifetime)
       + ",\"expression\":" + quoted(expression ? expression : "")
-      + ",\"payload\":{\"before\":null,\"after\":" + encoded + ",\"source\":" + encoded + "}"
+      + ",\"payload\":{\"before\":null,\"after\":" + encoded + ",\"source\":"
+      + (!std::string(selection_operation).empty() && !operands.selections.empty() ? operands.selections.back().source : source_targets.empty() ? operands.values.empty() ? encoded : captured_value(operands, 0) : "null")
+      + ",\"left\":" + (!std::string(selection_operation).empty() && !operands.selections.empty() ? operands.selections.back().left : captured_value(operands, 0))
+      + ",\"right\":" + (!std::string(selection_operation).empty() && !operands.selections.empty() ? operands.selections.back().right : captured_value(operands, 1)) + "}"
       + ",\"targets\":[" + target
-      + ',' + target_json("source", source_id, source_expression, source_index,
-          source_has_resolved_index, source_resolved_index) + ']'; });
+      + sources + ']'; });
 }
 
 template <typename F>
@@ -1112,10 +1245,13 @@ void event_sequence_operation(int line, const char* signature,
                               const char* source_index, bool source_has_resolved_index,
                               long long source_resolved_index,
                               Collection& collection, F action) {
+  const bool recording = recorder().recording_events();
+  const std::string before = recording ? encode_value(collection) : "null";
   const std::size_t before_size = collection.size();
   const std::string before_front = sequence_front_value(collection);
   const std::string before_back = sequence_back_value(collection);
   action();
+  const std::string after = recording ? encode_value(collection) : "null";
   const std::size_t after_size = collection.size();
   const std::string after_front = sequence_front_value(collection);
   const std::string after_back = sequence_back_value(collection);
@@ -1124,6 +1260,7 @@ void event_sequence_operation(int line, const char* signature,
     ? (front_edge ? after_front : after_back) : "null";
   recorder().add_event_lazy("sequence-operation", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"payload\":{\"beforeSize\":" + std::to_string(before_size)
+      + ",\"before\":" + before + ",\"after\":" + after
       + ",\"afterSize\":" + std::to_string(after_size)
       + ",\"edge\":" + quoted(edge ? edge : "back")
       + ",\"beforeFront\":" + before_front
@@ -1145,22 +1282,28 @@ void event_sequence_insert_operation(
     const char* source_index, bool source_has_resolved_index,
     long long source_resolved_index,
     Collection& collection, F action) {
+  const bool recording = recorder().recording_events();
+  const std::string before = recording ? encode_value(collection) : "null";
   const std::size_t before_size = collection.size();
   const std::string before_front = sequence_front_value(collection);
   const std::string before_back = sequence_back_value(collection);
   auto inserted = action();
+  const std::string after = recording ? encode_value(collection) : "null";
   const std::size_t after_size = collection.size();
   const std::string after_front = sequence_front_value(collection);
   const std::string after_back = sequence_back_value(collection);
   const long long insert_index = static_cast<long long>(
     std::distance(collection.begin(), inserted));
-  const std::string inserted_value = inserted == collection.end()
+  const std::string inserted_value = after_size <= before_size || inserted == collection.end()
     ? "null" : encode_value(*inserted);
   recorder().add_event_lazy("sequence-operation", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"payload\":{\"beforeSize\":" + std::to_string(before_size)
+      + ",\"before\":" + before + ",\"after\":" + after
       + ",\"afterSize\":" + std::to_string(after_size)
       + ",\"edge\":\"index\""
       + ",\"insertIndex\":" + std::to_string(insert_index)
+      + (after_size < before_size ? ",\"removeIndex\":" + std::to_string(insert_index)
+        + ",\"removeCount\":" + std::to_string(before_size - after_size) : "")
       + ",\"beforeFront\":" + before_front
       + ",\"beforeBack\":" + before_back
       + ",\"afterFront\":" + after_front
@@ -1200,6 +1343,7 @@ void event_compound_assign(
     const char* expression, BeforeFactory before_factory, F action,
     AfterFactory after_factory, bool animate = true) {
   const std::string before = encode_value(before_factory());
+  ArithmeticCaptureScope operands;
   action();
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
@@ -1208,7 +1352,8 @@ void event_compound_assign(
       + ",\"expression\":" + quoted(expression ? expression : "")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"compound\":true"
-      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after
+      + ",\"source\":" + captured_value(operands.capture, 0) + "}"
       + ",\"targets\":[" + target_json(
           "target", target_id, target_expression, target_index,
           target_has_resolved_index, target_resolved_index)
@@ -1251,6 +1396,7 @@ void event_assign(int line, const char* signature,
                    const char* expression, BeforeFactory before_factory, F action, AfterFactory after_factory,
                    bool animate = true, bool for_initializer = false) {
   const std::string before = encode_value(before_factory());
+  ArithmeticCaptureScope operands;
   action();
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
@@ -1259,11 +1405,40 @@ void event_assign(int line, const char* signature,
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
-      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + after + "}"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":"
+      + (operands.capture.values.empty() ? after : captured_value(operands.capture, 0)) + "}"
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
           target_has_resolved_index, target_resolved_index)
       + ',' + target_json("source", source_id, source_expression, source_index,
           source_has_resolved_index, source_resolved_index) + ']'; });
+}
+
+template <typename BeforeFactory, typename SourceFactory, typename F, typename AfterFactory>
+void event_move_assign(int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* source_id, const char* source_expression, const char* source_index,
+    bool source_has_resolved_index, long long source_resolved_index,
+    const char* expression, BeforeFactory before_factory, SourceFactory source_factory,
+    F action, AfterFactory after_factory) {
+  const std::string before = encode_value(before_factory());
+  auto&& source_reference = source_factory();
+  const std::string source_before = encode_value(source_reference);
+  action();
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  const std::string source_after = encode_value(source_reference);
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() {
+    return std::string("\"operation\":\"=\",\"move\":true,\"animate\":true")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after
+      + ",\"source\":" + source_before + ",\"sourceAfter\":" + source_after + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
+          target_has_resolved_index, target_resolved_index)
+      + ',' + target_json("source", source_id, source_expression, source_index,
+          source_has_resolved_index, source_resolved_index) + ']';
+  });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1279,22 +1454,26 @@ void event_binary_assign(
     BeforeFactory before_factory, F action, AfterFactory after_factory,
     bool animate = true, bool for_initializer = false) {
   const std::string before = encode_value(before_factory());
+  ArithmeticCaptureScope operands;
   action();
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
   const std::string after = encode_value(after_value);
   recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"binaryOperation\":" + quoted(operation ? operation : "")
+      + (operands.capture.selections.empty() ? "" : ",\"selectionSteps\":" + selection_steps_json(operands.capture))
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
-      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after
+      + ",\"left\":" + captured_value(operands.capture, 0)
+      + ",\"right\":" + captured_value(operands.capture, 1) + "}"
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
           target_has_resolved_index, target_resolved_index)
-      + ',' + arithmetic_target_json("source-left", left_id, left_expression, left_index,
-          left_has_resolved_index, left_resolved_index, operation)
-      + ',' + arithmetic_target_json("source-right", right_id, right_expression, right_index,
-          right_has_resolved_index, right_resolved_index, operation) + ']'; });
+      + ',' + resolve_captured_target(arithmetic_target_json("source-left", left_id, left_expression, left_index,
+          left_has_resolved_index, left_resolved_index, operation), operands.capture)
+      + ',' + resolve_captured_target(arithmetic_target_json("source-right", right_id, right_expression, right_index,
+          right_has_resolved_index, right_resolved_index, operation), operands.capture) + ']'; });
 }
 
 template <typename LeftFactory, typename RightFactory,
@@ -1332,13 +1511,56 @@ void event_select_assign(
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
       + ",\"payload\":{\"before\":" + before + ",\"after\":" + after
-      + ",\"source\":" + selected_source + "}"
+      + ",\"source\":" + selected_source
+      + ",\"left\":" + encode_value(left_value)
+      + ",\"right\":" + encode_value(right_value) + "}"
       + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
           target_has_resolved_index, target_resolved_index)
       + ',' + source_target_json("source-left", left_id, left_expression, left_index,
           left_has_resolved_index, left_resolved_index)
       + ',' + source_target_json("source-right", right_id, right_expression, right_index,
           right_has_resolved_index, right_resolved_index) + ']'; });
+}
+
+// Evaluate a conditional exactly once. Only the selected factory runs, so a
+// branch containing a read or side effect cannot be observed speculatively.
+template <typename ConditionFactory, typename LeftFactory, typename RightFactory,
+          typename BeforeFactory, typename Action, typename AfterFactory>
+void event_conditional_assign(
+    int line, const char* signature,
+    const char* target_id, const char* target_expression, const char* target_index,
+    bool target_has_resolved_index, long long target_resolved_index,
+    const char* left_id, const char* left_expression, const char* left_index,
+    bool left_has_resolved_index, long long left_resolved_index,
+    const char* right_id, const char* right_expression, const char* right_index,
+    bool right_has_resolved_index, long long right_resolved_index,
+    const char* expression, ConditionFactory condition_factory,
+    LeftFactory left_factory, RightFactory right_factory,
+    BeforeFactory before_factory, Action action, AfterFactory after_factory) {
+  const std::string before = encode_value(before_factory());
+  const bool condition = static_cast<bool>(condition_factory());
+  std::string selected;
+  const auto consume = [&](auto&& value) {
+    selected = encode_value(value);
+    action(std::forward<decltype(value)>(value));
+  };
+  if (condition) consume(left_factory()); else consume(right_factory());
+  auto&& after_value = after_factory();
+  mark_initialized(target_id, after_value);
+  const std::string after = encode_value(after_value);
+  recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() {
+    return std::string("\"operation\":\"=\",\"conditionalSelection\":true,\"animate\":true")
+      + ",\"conditionResult\":" + (condition ? "true" : "false")
+      + ",\"selectedSourceRole\":" + quoted(condition ? "source-left" : "source-right")
+      + ",\"expression\":" + quoted(expression ? expression : "")
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + selected + "}"
+      + ",\"targets\":[" + target_json("target", target_id, target_expression, target_index,
+          target_has_resolved_index, target_resolved_index)
+      + ',' + source_target_json("source-left", left_id, left_expression, left_index,
+          left_has_resolved_index, left_resolved_index)
+      + ',' + source_target_json("source-right", right_id, right_expression, right_index,
+          right_has_resolved_index, right_resolved_index) + ']';
+  });
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1351,6 +1573,7 @@ void event_multi_assign(
     BeforeFactory before_factory, F action, AfterFactory after_factory,
     bool animate = true, bool for_initializer = false) {
   const std::string before = encode_value(before_factory());
+  ArithmeticCaptureScope operands;
   action();
   auto&& after_value = after_factory();
   mark_initialized(target_id, after_value);
@@ -1358,11 +1581,14 @@ void event_multi_assign(
   std::string targets = target_json(
     "target", target_id, target_expression, target_index,
     target_has_resolved_index, target_resolved_index);
-  for (const std::string& source_target : source_targets) {
+  for (std::size_t index = 0; index < source_targets.size(); ++index) {
+    std::string source_target = resolve_captured_target(source_targets[index], operands.capture);
+    source_target.insert(source_target.size() - 1, ",\"value\":" + captured_value(operands.capture, index));
     targets += ',' + source_target;
   }
   recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"multiSourceArithmetic\":true"
+      + (operands.capture.selections.empty() ? "" : ",\"selectionSteps\":" + selection_steps_json(operands.capture))
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")

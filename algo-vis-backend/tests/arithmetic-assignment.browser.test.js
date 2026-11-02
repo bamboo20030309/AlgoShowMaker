@@ -14,7 +14,7 @@ const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('visible-source declaration enters blank and receives the copied value in one slot', { timeout: 45000 }, async () => {
+test('visible-source initialization has a blank declaration followed by an independent whole-cell assignment', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -60,10 +60,17 @@ int main() {
       const copyDeclaration = frame.events.find(event => (
         event.type === 'declare' && event.targets?.some(target => target.variableId === copyId)
       ));
+      const copyInitializer = frame.events.find(event => event.type === 'assign'
+        && event.targets?.some(target => target.role === 'target' && target.variableId === copyId));
       await window.ASMTraceRenderers.renderFrame(trace, trace.frames[0], null, {
         animatePositions: false, animateEvents: false
       });
       window.asmGetAnimationPlaybackRate = () => 4;
+      window.ASMTraceDebugRecorder = { isRecording: () => true };
+      const slots = [];
+      const listener = e => { if (e.detail.phase === 'start') slots.push({ id:e.detail.event.id,
+        start:e.detail.slot.start, duration:e.detail.slot.duration, end:e.detail.slot.end }); };
+      window.addEventListener('asm:trace-active-event',listener);
       const samples = [];
       let settled = false;
       const transition = window.ASMTraceRenderers.renderFrame(trace, frame, trace.frames[0], {
@@ -79,6 +86,8 @@ int main() {
             .map(node => node.textContent) : null,
           transfers: [...document.querySelectorAll('.asm-trace-assign-transfer text')]
             .map(node => node.textContent),
+          copiedCells: [...document.querySelectorAll('.asm-trace-assign-transfer')]
+            .filter(node => node.querySelector('rect')).map(node => node.textContent),
           falling: [...document.querySelectorAll('.asm-trace-assign-falling-value')]
             .map(node => node.textContent),
           copyValues: copyObject ? [...copyObject.querySelectorAll(
@@ -87,11 +96,12 @@ int main() {
         });
       }
       await transition;
+      window.removeEventListener('asm:trace-active-event',listener);
       const finalObject = document.querySelector(`[data-trace-variable="${xId}"]`);
       const finalCopy = document.querySelector(`[data-trace-variable="${copyId}"]`);
       return {
         declarationId: declaration?.id || '', initializerId: initializer?.id || '',
-        copyDeclarationId: copyDeclaration?.id || '', samples,
+        copyDeclarationId: copyDeclaration?.id || '', copyInitializerId:copyInitializer?.id || '', samples,slots,
         initializer: initializer ? {
           enabled: initializer.enabled, disabled: initializer.autoAnimationDisabled,
           targets: initializer.targets, payload: initializer.payload
@@ -109,14 +119,31 @@ int main() {
     });
     const declarationSamples = result.samples.filter(sample => sample.eventId === result.declarationId);
     assert.ok(result.declarationId && result.initializerId);
-    assert.deepEqual(result.rows, ['declare']);
-    assert.ok(declarationSamples.some(sample => (
-      !sample.values?.includes('7') && sample.transfers.includes('7')
+    const initializerSamples=result.samples.filter(sample=>sample.eventId===result.initializerId);
+    assert.deepEqual(result.rows, ['declare','assign']);
+    const declarationSlot=result.slots.find(slot=>slot.id===result.declarationId);
+    const initializerSlot=result.slots.find(slot=>slot.id===result.initializerId);
+    assert.equal(declarationSlot.duration,180);
+    assert.equal(initializerSlot.duration,300);
+    assert.equal(initializerSlot.start,declarationSlot.end);
+    assert.ok(declarationSamples.length>0);
+    assert.ok(declarationSamples.every(sample=>!sample.values?.includes('7')&&!sample.transfers.length),
+      'the declaration is blank and does not also perform the assignment');
+    assert.ok(initializerSamples.some(sample => (
+      !sample.values?.includes('7') && sample.transfers.includes('7') && sample.copiedCells.some(text=>text.includes('7'))
     )),
-      JSON.stringify({ initializer: result.initializer, declarationSamples }));
+      JSON.stringify({ initializer: result.initializer, initializerSamples }));
     assert.ok(result.finalValues.includes('7'),
       'x receives 7 when the transfer lands');
-    const copySamples = result.samples.filter(sample => sample.eventId === result.copyDeclarationId);
+    const copyDeclarationSamples=result.samples.filter(sample=>sample.eventId===result.copyDeclarationId);
+    assert.ok(copyDeclarationSamples.length>0&&copyDeclarationSamples.every(sample=>!sample.transfers.length),
+      'container declaration is separate from its initialization transfer');
+    const copySamples = result.samples.filter(sample => sample.eventId === result.copyInitializerId);
+    const copyDeclarationSlot=result.slots.find(slot=>slot.id===result.copyDeclarationId);
+    const copyInitializerSlot=result.slots.find(slot=>slot.id===result.copyInitializerId);
+    assert.equal(copyDeclarationSlot.duration,180);
+    assert.equal(copyInitializerSlot.duration,300);
+    assert.equal(copyInitializerSlot.start,copyDeclarationSlot.end);
     assert.ok(copySamples.some(sample => (
       !sample.copyValues?.includes('4') && !sample.copyValues?.includes('7')
       && sample.transfers.includes('4') && sample.transfers.includes('7')
@@ -228,6 +255,7 @@ int main() {
         literalSamples.push({
           eventId: document.querySelector('[data-trace-active-event-id]')?.dataset.traceActiveEventId || '',
           hasCellTransfer: Boolean(document.querySelector('.asm-trace-sequence-cell-transfer')),
+          opacity: destinationElement ? Number(getComputedStyle(destinationElement).opacity) : null,
           destinationCenterX: destinationRect
             ? destinationRect.x + destinationRect.width / 2 : null
         });
@@ -270,11 +298,13 @@ int main() {
       sample => sample.eventId === result.literalEventId
     );
     assert.equal(literalEventSamples.some(sample => sample.hasCellTransfer), false,
-      'a literal push keeps the generic edge insertion instead of inventing a source cell');
+      'a literal insertion does not invent a source cell');
     const literalPositions = literalEventSamples
       .map(sample => sample.destinationCenterX).filter(Number.isFinite);
-    assert.ok(Math.max(...literalPositions) - Math.min(...literalPositions) > 20,
-      'the literal destination retains the original right-edge entrance motion');
+    assert.ok(Math.max(...literalPositions) - Math.min(...literalPositions) < 1,
+      'the literal cell fades into its final slot without a right-edge fly-in');
+    assert.ok(literalEventSamples.some(sample=>sample.opacity>0&&sample.opacity<1),
+      'the literal cell has an observable in-place fade');
     assert.equal(result.finalValue, '5');
     assert.equal(result.finalLiteralValue, '9');
     assert.deepEqual(errors, []);
@@ -347,7 +377,7 @@ int main() {
     }
   });
 
-test('binary and compound arithmetic transfers show their operators', { timeout: 45000 }, async () => {
+test('binary and compound arithmetic transfer operand numbers directly without operator-prefixed values', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -393,7 +423,9 @@ int main() {
         animatePositions: false, animateEvents: false
       });
       window.asmGetAnimationPlaybackRate = () => 4;
-      const samples = new Set();
+      const assignments=trace.frames[1].events.filter(event=>['assign','write'].includes(event.type));
+      const expressions=Object.fromEntries(assignments.map(event=>[event.id,event.expression.replace(/\s/g,'')]));
+      const samples = Object.fromEntries(assignments.map(event=>[event.expression.replace(/\s/g,''),new Set()]));
       let settled = false;
       const transition = window.ASMTraceRenderers.renderFrame(
         trace, trace.frames[1], trace.frames[0],
@@ -403,7 +435,8 @@ int main() {
         await new Promise(resolve => requestAnimationFrame(resolve));
         const values = [...document.querySelectorAll('.asm-trace-assign-transfer-value text')]
           .map(node => node.textContent).sort();
-        if (values.length) samples.add(JSON.stringify(values));
+        const expression=expressions[document.querySelector('[data-trace-active-event-id]')?.dataset.traceActiveEventId];
+        if (values.length&&expression) samples[expression].add(JSON.stringify(values));
       }
       await transition;
       return {
@@ -415,7 +448,7 @@ int main() {
           .filter(event => event.multiSourceArithmetic)
           .map(event => event.targets.filter(target => String(target.role).startsWith('source-'))
             .map(target => [target.expression, target.arithmeticOperator])),
-        samples: [...samples]
+        samples: Object.fromEntries(Object.entries(samples).map(([expression,values])=>[expression,[...values]]))
       };
     });
     assert.equal(result.build, TWEEN_BUILD);
@@ -424,12 +457,12 @@ int main() {
       [['a', '+'], ['b', '+'], ['c', '-'], ['d', '+']],
       [['a', '*'], ['b', '*'], ['c', '/'], ['d', '*']]
     ]);
-    for (const values of [
-      ['+12', '+3'], ['-12', '-3'], ['*12', '*3'], ['/12', '/3'],
-      ['+3'], ['-3'], ['*3'], ['/3'],
-      ['+12', '+3', '-4', '+5'], ['*12', '*3', '/4', '*5']
-    ]) {
-      assert.ok(result.samples.includes(JSON.stringify([...values].sort())), JSON.stringify(result));
+    for (const [expression,values] of Object.entries({
+      'result=a+b':['12','3'],'result=a-b':['12','3'],'result=a*b':['12','3'],'result=a/b':['12','3'],
+      'result+=b':['3'],'result-=b':['3'],'result*=b':['3'],'result/=b':['3'],
+      'result=a+b-c+d':['12','3','4','5'],'result=a*b/c*d':['12','3','4','5']
+    })) {
+      assert.ok(result.samples[expression]?.includes(JSON.stringify([...values].sort())), JSON.stringify(result));
     }
     assert.deepEqual(errors, []);
   } finally {
@@ -437,7 +470,7 @@ int main() {
   }
 });
 
-test('literal operands display while a hidden data source disables all source transfers', { timeout: 45000 }, async () => {
+test('literal and hidden operands retain their actual numbers and fall in from above', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -519,11 +552,12 @@ int main() {
     const hidden = result.events.find(event => event.sources[0].expression === 'hidden');
     assert.equal(visible.sources[1].literal, true);
     assert.equal(visible.sources[1].literalValue, '1');
-    assert.ok(result.samples[visible.expression].transfers.includes(JSON.stringify(['+1', '+4'])),
+    assert.ok(result.samples[visible.expression].transfers.includes(JSON.stringify(['1', '4'])),
       JSON.stringify(result));
-    assert.ok(result.samples[constants.expression].transfers.includes(JSON.stringify(['+1', '+2'])),
+    assert.ok(result.samples[constants.expression].transfers.includes(JSON.stringify(['1', '2'])),
       JSON.stringify(result));
-    assert.deepEqual(result.samples[hidden.expression].transfers, []);
+    assert.ok(result.samples[hidden.expression].transfers.includes(JSON.stringify(['2','7'])),
+      'hidden 7 is retained as a source value rather than suppressing the event or replacing both operands with 9');
     assert.equal(result.finalValue, '9');
     assert.deepEqual(errors, []);
   } finally {
@@ -531,7 +565,7 @@ int main() {
   }
 });
 
-test('max and min move only the selected visible source', { timeout: 45000 }, async () => {
+test('max and min compare for 600ms before copying the selected source during the final 300ms', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -569,10 +603,16 @@ int main() {
       const selections = frame.events.filter(event => event.selectionOperation);
       const expressions = Object.fromEntries(selections.map(event => [event.id, event.expression]));
       const samples = Object.fromEntries(selections.map(event => [event.expression, new Set()]));
+      const phases=Object.fromEntries(selections.map(event=>[event.expression,[]]));
+      const slots=[];
       await window.ASMTraceRenderers.renderFrame(trace, trace.frames[0], null, {
         animatePositions: false, animateEvents: false
       });
       window.asmGetAnimationPlaybackRate = () => 4;
+      window.ASMTraceDebugRecorder={isRecording:()=>true};
+      const listener=e=>{if(e.detail.phase==='start'&&expressions[e.detail.event.id])slots.push({id:e.detail.event.id,
+        start:e.detail.slot.start,duration:e.detail.slot.duration,commit:e.detail.slot.actionPlan.commitMs});};
+      window.addEventListener('asm:trace-active-event',listener);
       let settled = false;
       const transition = window.ASMTraceRenderers.renderFrame(
         trace, frame, trace.frames[0],
@@ -583,20 +623,25 @@ int main() {
         const root = document.querySelector('[data-trace-active-event-id]');
         const expression = expressions[root?.dataset?.traceActiveEventId];
         if (!expression) continue;
-        const values = [...document.querySelectorAll('.asm-trace-assign-transfer-value text')]
+        const values = [...document.querySelectorAll('.asm-trace-assign-transfer text')]
           .map(node => node.textContent).sort();
         if (values.length) samples[expression].add(JSON.stringify(values));
+        phases[expression].push({elapsed:Number(document.getElementById('asm-trace-root')?.dataset.traceDebugElapsedMs||0),
+          values,hasCell:Boolean(document.querySelector('.asm-trace-assign-transfer rect')),
+          relation:[...document.querySelectorAll('.asm-trace-compare-operator text')].map(node=>node.textContent)});
       }
       await transition;
+      window.removeEventListener('asm:trace-active-event',listener);
       return {
         build: window.ASMTraceFrameTween.build,
         events: selections.map(event => ({
+          id:event.id,
           expression: event.expression,
           operation: event.selectionOperation,
           selectedSourceRole: event.selectedSourceRole
         })),
         samples: Object.fromEntries(Object.entries(samples)
-          .map(([expression, values]) => [expression, [...values]]))
+          .map(([expression, values]) => [expression, [...values]])),phases,slots
       };
     });
     assert.equal(result.build, TWEEN_BUILD);
@@ -607,7 +652,19 @@ int main() {
     assert.equal(minimum.selectedSourceRole, 'source-left');
     assert.ok(result.samples[maximum.expression].includes(JSON.stringify(['8'])), JSON.stringify(result));
     assert.ok(result.samples[minimum.expression].includes(JSON.stringify(['3'])), JSON.stringify(result));
-    assert.deepEqual(result.samples[hidden.expression], []);
+    assert.ok(result.samples[hidden.expression].includes(JSON.stringify(['9'])),
+      'the selected hidden value drops from above instead of disabling the assignment');
+    for(const selection of [maximum,minimum,hidden]){
+      const slot=result.slots.find(slot=>slot.id===selection.id);
+      assert.ok(slot,'selection has a recorded slot');
+      assert.equal(slot.duration,900);
+      assert.equal(slot.commit,900);
+      assert.ok(result.phases[selection.expression].filter(sample=>sample.values.length)
+        .every(sample=>sample.elapsed-slot.start>=600),
+        'the selected value cannot fly before comparison and selection finish');
+    }
+    assert.ok(result.phases[maximum.expression].some(sample=>sample.values.includes('8')&&sample.hasCell));
+    assert.ok(result.phases[minimum.expression].some(sample=>sample.values.includes('3')&&sample.hasCell));
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

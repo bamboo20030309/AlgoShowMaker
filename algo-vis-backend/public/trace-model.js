@@ -261,6 +261,89 @@
     return summaries;
   }
 
+  // Normalize facts once, before any renderer builds a plan. Legacy traces use
+  // recorded operation flags; never guess an operand from an equal data value.
+  function normalizeEventSemantics(document) {
+    const sourcesOf = event => (event.targets || []).filter(target =>
+      String(target.role || '').startsWith('source'));
+    const unique = targets => {
+      const seen = new Set();
+      return targets.filter(target => {
+        if (!target?.variableId) return false;
+        const key = JSON.stringify([target.variableId, target.resolvedIndices,
+          target.resolvedIndex, target.indexExpression || '', target.lifetimeIdentity || '']);
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      }).map(target => ({ ...target, role: 'read' }));
+    };
+    for (const frame of document.frames || []) {
+      const events = [...(frame.events || [])].sort((a, b) => Number(a.order) - Number(b.order));
+      for (const event of events) {
+        const sources = sourcesOf(event);
+        const assignment = ['assign', 'write'].includes(event.type);
+        const explicitKind = event.source?.operationKind || event.semantics?.kind;
+        let kind = explicitKind || event.type;
+        if (assignment && !explicitKind) {
+          kind = event.selectionOperation ? 'select'
+            : event.conditionalSelection ? 'conditional'
+            : event.compound || event.update || event.binaryOperation || event.multiSourceArithmetic || event.bitwise ? 'compute'
+            : sources.length === 1 && sources[0].literal ? 'literal'
+            : sources.length === 1 && sources[0].variableId ? 'copy' : 'unknown';
+        }
+        const sourceReads = event.conditionalSelection
+          ? sources.filter(target => target.role === event.selectedSourceRole)
+          : sources.some(target => target.variableId) ? sources : event.source?.readSources || [];
+        let reads = assignment || event.type === 'sequence-operation' ? sourceReads : ['compare', 'swap', 'output', 'return', 'call'].includes(event.type)
+          ? event.targets || [] : [];
+        if (event.selectionSteps?.length) reads = [...reads, ...event.selectionSteps.flatMap(step =>
+          (step.targets || []).filter(target => step.operation !== 'conditional' || target.role === step.selectedSourceRole))];
+        if (event.compound || event.update) reads = [...reads, ...(event.targets || []).filter(target => target.role === 'target')];
+        event.semantics = { ...(event.semantics || {}), version: 1, kind, reads: unique(reads) };
+        delete event.semantics.ownerEventId;
+        delete event.semantics.readEventIds;
+        if (event.selectedSourceRole) event.semantics.selectedSourceRole = event.selectedSourceRole;
+      }
+      // Associate an executed read with its enclosing operation in the same
+      // activation. A return/call may open before its operand is evaluated.
+      for (const read of events.filter(event => event.type === 'read')) {
+        const start = Number(read.source?.from), end = Number(read.source?.to);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+        const opensBeforeRead = event => ['return', 'call'].includes(event.type)
+          && Number(event.order) < Number(read.order) && events.some(completion =>
+            (event.type === 'return' ? completion.type === 'return-complete' && completion.returnEventId === event.id
+              : completion.type === 'call-return' && completion.callEventId === event.id)
+            && Number(completion.order) > Number(read.order));
+        const owners = events.filter(event => event.type !== 'read' && event.type !== 'declare'
+          && event.type !== 'condition' && (Number(event.order) > Number(read.order) || opensBeforeRead(event))
+          && String(event.recursionActivationId || '') === String(read.recursionActivationId || '')
+          && Number(event.source?.from) <= start && Number(event.source?.to) >= end)
+          .sort((a, b) => (Number(a.source.to) - Number(a.source.from)) - (Number(b.source.to) - Number(b.source.from))
+            || Number(a.order) - Number(b.order));
+        const owner = owners[0];
+        if (!owner) continue;
+        read.semantics.ownerEventId = String(owner.id || '');
+        // Read records can include address/index calculation. The operation's
+        // precise source targets remain the authoritative visual read set.
+        owner.semantics.readEventIds ||= [];
+        owner.semantics.readEventIds.push(String(read.id || ''));
+      }
+      // Calls/returns can open before their operand is evaluated. Output has
+      // no synthetic source targets. Use only executed, owned read records as
+      // their fallback; do not scan source text for a potentially unrun branch.
+      for (const owner of events.filter(event => ['return', 'output', 'call'].includes(event.type)
+        && !sourcesOf(event).some(target => target.variableId))) {
+        const owned = events.filter(read => read.type === 'read' && read.semantics.ownerEventId === String(owner.id || ''));
+        const valueReads = owned.filter(read => !owned.some(other => other !== read
+          && (other.targets || []).some(target => target.indexExpression)
+          && Number(other.source?.from) <= Number(read.source?.from)
+          && Number(other.source?.to) >= Number(read.source?.to)
+          && (Number(other.source.from) < Number(read.source.from) || Number(other.source.to) > Number(read.source.to))));
+        owner.semantics.reads = unique([...owner.semantics.reads, ...valueReads.flatMap(read => read.targets || [])]);
+      }
+    }
+    return document;
+  }
+
   // ---------------------------------------------------------------------------
   // 區段：文件入口正規化
   // ---------------------------------------------------------------------------
@@ -377,6 +460,7 @@
     window.ASMTraceEvents?.rebuildVisualLifecycleEvents?.(normalized);
     window.ASMTraceEvents?.rebuildAutoFixedEvents?.(normalized);
     window.ASMTraceEvents?.applyEnabledStates?.(normalized);
+    normalizeEventSemantics(normalized);
     return normalized;
   }
 

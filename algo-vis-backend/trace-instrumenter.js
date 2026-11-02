@@ -4660,7 +4660,9 @@ function instrumentSource(source, watchIds = []) {
 
   function signature(type, node) {
     const value = `${type}:${functionNameAt(node)}:${analysis.lineAt(node.from)}:${compactExpression(source.slice(node.from, node.to))}`;
-    return recordEventSource(value, node);
+    const metadata = ['assign', 'write'].includes(type) && node.name === 'AssignmentExpression'
+      ? { ...operationMetadata(childrenOf(node).at(-1)), ...(type === 'write' ? { operationKind: 'compute' } : {}) } : null;
+    return recordEventSource(value, node, node.from, node.to, false, null, metadata);
   }
 
   function targetDescriptor(node) {
@@ -4847,16 +4849,19 @@ function instrumentSource(source, watchIds = []) {
       if (['Identifier', 'SubscriptExpression'].includes(candidate?.name)) {
         return targetDescriptor(candidate);
       }
+      if (selectionCallSources(candidate)) return {
+        variableId: '', expression: compactExpression(source.slice(candidate.from, candidate.to)), indexExpression: '', selection: true
+      };
       return numericLiteralTarget(candidate);
     };
     const left = operand(leftNode);
     const right = operand(rightNode);
     if (!left || !right) return null;
-    const safe = target => target.literal === true || (
+    const safe = target => target.literal === true || target.selection === true || (
       Boolean(target.variableId)
       && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression))
     );
-    return safe(left) && safe(right) ? { left, right, operation } : null;
+    return safe(left) && safe(right) ? { left, right, leftNode, rightNode, operation } : null;
   }
 
   function bitwiseOperand(node) {
@@ -4905,15 +4910,19 @@ function instrumentSource(source, watchIds = []) {
     const collectFamily = (current, operations, identity, opposite) => {
       const sources = [];
       const collect = (candidate, operation = identity) => {
+        if (selectionCallSources(candidate)) {
+          sources.push({ target: { variableId: '', expression: compactExpression(source.slice(candidate.from, candidate.to)), indexExpression: '', selection: true }, operation, node: candidate });
+          return true;
+        }
         if (['Identifier', 'SubscriptExpression'].includes(candidate?.name)) {
           const target = targetDescriptor(candidate);
           if (!safe(target)) return false;
-          sources.push({ target, operation });
+          sources.push({ target, operation, node: candidate });
           return true;
         }
         const literalTarget = numericLiteralTarget(candidate);
         if (literalTarget) {
-          sources.push({ target: literalTarget, operation });
+          sources.push({ target: literalTarget, operation, node: candidate });
           return true;
         }
         if (candidate?.name !== 'BinaryExpression') return false;
@@ -4964,9 +4973,80 @@ function instrumentSource(source, watchIds = []) {
       operation: match[1],
       left,
       right,
+      leftNode: arguments_[0],
+      rightNode: arguments_[1],
       leftExpression: compactExpression(source.slice(arguments_[0].from, arguments_[0].to)),
       rightExpression: compactExpression(source.slice(arguments_[1].from, arguments_[1].to))
     };
+  }
+
+  function operationMetadata(node) {
+    node = bitwiseOperand(node);
+    if (!node) return { operationKind: 'unknown', readSources: [] };
+    const selection = selectionCallSources(node);
+    if (selection) return { operationKind: 'select', readSources: [selection.left, selection.right] };
+    const binary = binaryOperationSources(node);
+    if (binary) return { operationKind: 'compute', readSources: [binary.left, binary.right], binaryOperation: binary.operation };
+    const multiple = multiOperationSources(node);
+    if (multiple) return { operationKind: 'compute', readSources: multiple.map(item => item.target), multiSourceArithmetic: true };
+    if (numericLiteralTarget(node) || ['String', 'Char', 'Bool', 'Null'].includes(node.name)) {
+      return { operationKind: 'literal', readSources: [] };
+    }
+    if (['Identifier', 'SubscriptExpression'].includes(node.name)) {
+      return { operationKind: 'copy', readSources: [targetDescriptor(node)] };
+    }
+    if (node.name === 'ConditionalExpression') {
+      const choice = conditionalSources(node);
+      return { operationKind: 'conditional', readSources: choice ? [choice.left, choice.right] : [] };
+    }
+    const moved = moveSource(node);
+    if (moved) return { operationKind: 'move', readSources: [moved.target] };
+    // Unknown expressions retain execution results without inventing a source.
+    return { operationKind: node.name === 'BinaryExpression' || node.name === 'UnaryExpression' ? 'compute' : 'unknown', readSources: [] };
+  }
+
+  function moveSource(node) {
+    node = bitwiseOperand(node);
+    if (node?.name !== 'CallExpression') return null;
+    const children = childrenOf(node), callee = children[0];
+    if (!/^(?:std::)?move$/.test(source.slice(callee.from, callee.to).replace(/\s/g, ''))) return null;
+    const arguments_ = childrenOf(children.find(child => child.name === 'ArgumentList'))
+      .filter(child => !['(', ')', ','].includes(child.name));
+    if (arguments_.length !== 1 || !['Identifier', 'SubscriptExpression'].includes(arguments_[0].name)) return null;
+    const target = targetDescriptor(arguments_[0]);
+    return target.variableId && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression))
+      ? { target, node: arguments_[0] } : null;
+  }
+
+  function initializedSourceArgs(metadata) {
+    return `std::vector<std::string>{${(metadata.readSources || []).map((target, index) =>
+      `::asm_trace::source_target_json(${cppString(index === 0 ? 'source-left' : index === 1 ? 'source-right' : `source-${index}`)}, ${indexedTargetArgs(target)})`).join(', ')}}`;
+  }
+
+  function conditionalSources(node) {
+    node = bitwiseOperand(node);
+    if (node?.name !== 'ConditionalExpression') return null;
+    const parts = childrenOf(node).filter(child => !['?', ':'].includes(child.name));
+    if (parts.length !== 3) return null;
+    const operand = child => ['Identifier', 'SubscriptExpression'].includes(child.name)
+      ? targetDescriptor(child) : numericLiteralTarget(child);
+    const safe = target => target && (target.literal || target.variableId
+      && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression)));
+    const left = operand(parts[1]), right = operand(parts[2]);
+    return safe(left) && safe(right) ? { condition: parts[0], leftNode: parts[1], rightNode: parts[2], left, right } : null;
+  }
+
+  function renderConditionalAssignment(node, targetNode, conditional, context) {
+    const target = targetDescriptor(targetNode);
+    if (!target.variableId || target.indexExpression && !canCaptureIndexExpression(target.indexExpression)) return null;
+    const sig = signature('assign', node);
+    recordEventSource(sig, node, node.from, node.to, true, null, { operationKind: 'conditional' });
+    const access = compactExpression(source.slice(targetNode.from, targetNode.to));
+    const condition = rebuild(conditional.condition, context);
+    const left = rebuild(conditional.leftNode, context), right = rebuild(conditional.rightNode, context);
+    let parameter = `asm_selected_${node.from}`;
+    while (source.includes(parameter)) parameter += '_';
+    return `::asm_trace::event_conditional_assign(${analysis.lineAt(node.from)}, ${cppString(sig)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(conditional.left)}, ${indexedTargetArgs(conditional.right)}, ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&](){ return static_cast<bool>(${condition}); }, [&]()->decltype(auto){ return (${left}); }, [&]()->decltype(auto){ return (${right}); }, [&]()->decltype(auto){ return (${access}); }, [&](auto&& ${parameter}){ ${access} = std::forward<decltype(${parameter})>(${parameter}); }, [&]()->decltype(auto){ return (${access}); })`;
   }
 
   function multiSourceArgs(sources) {
@@ -5101,6 +5181,9 @@ function instrumentSource(source, watchIds = []) {
           : null;
         if (!initializer) return events;
         const sourceTarget = targetDescriptor(initializer);
+        const operation = operationMetadata(initializer);
+        const selection = selectionCallSources(bitwiseOperand(initializer));
+        const conditional = conditionalSources(initializer);
         const assignment = `${variable.name} = ${compactExpression(source.slice(initializer.from, initializer.to))}`;
         const assignSignature = `assign:${variable.functionName}:${variable.line}:${assignment}`;
         recordEventSource(
@@ -5110,11 +5193,11 @@ function instrumentSource(source, watchIds = []) {
           initializer.to,
           false,
           `${variable.name} = ${compactExpression(source.slice(initializer.from, initializer.to))}`,
-          { ...declarationSourceMetadata, declarationInitializer: true }
+          { ...declarationSourceMetadata, declarationInitializer: true, ...operation }
         );
         const target = { variableId: variable.id, expression: variable.name, indexExpression: '' };
         events.push(
-          `::asm_trace::event_initialized_assign(${variable.line}, ${cppString(assignSignature)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(assignment)}, (${variable.name}), ${node.parent?.name === 'ForStatement' ? 'true' : 'false'}, false, ${bitwiseTree(initializer) ? 'false' : 'true'}, ${bitwiseTree(initializer) ? 'true' : 'false'});`
+          `::asm_trace::event_initialized_assign(${variable.line}, ${cppString(assignSignature)}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(assignment)}, (${variable.name}), ${node.parent?.name === 'ForStatement' ? 'true' : 'false'}, false, ${bitwiseTree(initializer) ? 'false' : 'true'}, ${bitwiseTree(initializer) ? 'true' : 'false'}, ${['compute', 'select', 'conditional'].includes(operation.operationKind) ? initializedSourceArgs(operation) : 'std::vector<std::string>{}'}, ${cppString(operation.binaryOperation || '')}, ${cppString(conditional ? 'conditional' : selection?.operation || '')});`
         );
         return events;
       })
@@ -5222,6 +5305,35 @@ ${operation}
       }
       : context);
     let rendered;
+    if (context.recordSelections && conditionalSources(node)) {
+      const choice = conditionalSources(node);
+      const expression = compactExpression(source.slice(node.from, node.to));
+      return `::asm_trace::capture_conditional_value(${cppString(expression)}, ::asm_trace::source_target_json("source-left", ${indexedTargetArgs(choice.left)}), ::asm_trace::source_target_json("source-right", ${indexedTargetArgs(choice.right)}), [&](){ return static_cast<bool>(${rebuild(choice.condition, nestedContext)}); }, [&]()->decltype(auto){ return (${rebuild(choice.leftNode, nestedContext)}); }, [&]()->decltype(auto){ return (${rebuild(choice.rightNode, nestedContext)}); })`;
+    }
+    if (context.recordSelections && selectionCallSources(node)) {
+      const selection = selectionCallSources(node);
+      const expression = compactExpression(source.slice(node.from, node.to));
+      const left = rebuild(selection.leftNode, nestedContext), right = rebuild(selection.rightNode, nestedContext);
+      let selected = `::asm_trace::capture_selected_value(${cppString(expression)}, ${cppString(selection.operation)}, ::asm_trace::source_target_json("source-left", ${indexedTargetArgs(selection.left)}), ::asm_trace::source_target_json("source-right", ${indexedTargetArgs(selection.right)}), [&]()->decltype(auto){ return (${left}); }, [&]()->decltype(auto){ return (${right}); })`;
+      const position = `${node.from}:${node.to}`;
+      if (context.arithmeticCapturePositions?.has(position)) selected = `::asm_trace::capture_operand(${context.arithmeticCapturePositions.get(position)}, (${selected}))`;
+      return selected;
+    }
+
+    // Lezer groups `a = condition ? b : c` as `(a = condition) ? b : c`.
+    // Repair only this proven assignment shape, retaining C++ precedence and
+    // single evaluation; parenthesized conditionals use the ordinary branch.
+    if (!suppressEvents && node.name === 'ConditionalExpression' && node.parent?.name === 'ExpressionStatement') {
+      const parts = children.filter(child => !['?', ':'].includes(child.name));
+      const assignment = parts[0]?.name === 'AssignmentExpression' ? childrenOf(parts[0]) : [];
+      if (assignment.length >= 2 && source.slice(assignment[0].to, assignment.at(-1).from).trim() === '=') {
+        const choice = conditionalSources(node);
+        if (choice) {
+          const fixed = renderConditionalAssignment(node, assignment[0], { ...choice, condition: assignment.at(-1) }, nestedContext);
+          if (fixed) return fixed;
+        }
+      }
+    }
 
     if (node.name === 'ForStatement' && forInitializer && forInitializationEvents
       && context.rewrittenForInitializerFrom !== node.from) {
@@ -5339,6 +5451,21 @@ ${loop}
           ? `${source.slice(node.from, expressionNode.from)}${expression}${source.slice(expressionNode.to, node.to)}`
           : `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(conditionKind)}, [&](){ return static_cast<bool>(${initializedExpression}); }))`;
       }
+    } else if (node.name === 'InitDeclarator' && !suppressEvents
+      && (binaryOperationSources(bitwiseOperand(children.at(-1))) || multiOperationSources(bitwiseOperand(children.at(-1))) || selectionCallSources(bitwiseOperand(children.at(-1)))
+        || conditionalSources(children.at(-1)) || ['Identifier', 'SubscriptExpression'].includes(bitwiseOperand(children.at(-1))?.name))) {
+      const variable = selected.find(item => item.nameFrom >= node.from && item.nameFrom < node.to);
+      const initializer = children.at(-1);
+      if (variable && variable.kind === 'scalar' && !/[&]|\bvolatile\b/.test(variable.type)) {
+        const expression = bitwiseOperand(initializer);
+        const binary = binaryOperationSources(expression), multiple = multiOperationSources(expression), selection = selectionCallSources(expression), conditional = conditionalSources(expression);
+        const operands = multiple ? multiple.map(item => item.node) : binary ? [binary.leftNode, binary.rightNode]
+          : selection || conditional ? [] : [expression];
+        const arithmeticCapturePositions = new Map(operands.map((operand, index) => [`${operand.from}:${operand.to}`, index]));
+        rendered = source.slice(node.from, initializer.from)
+          + `::asm_trace::initialize_arithmetic_value(${cppString(variable.id)}, [&](){ return (${rebuild(initializer, { ...nestedContext, arithmeticCapturePositions, recordSelections: true })}); })`
+          + source.slice(initializer.to, node.to);
+      }
     } else if (node.name === 'InitDeclarator' && !suppressEvents && bitwiseTree(children.at(-1))) {
       const variable = selected.find(item => item.nameFrom >= node.from && item.nameFrom < node.to);
       if (variable) {
@@ -5356,6 +5483,8 @@ ${loop}
       const binarySources = binaryOperationSources(sourceNode);
       const multiSources = multiOperationSources(sourceNode);
       const selectionSources = selectionCallSources(sourceNode);
+      const moved = moveSource(sourceNode);
+      const conditional = conditionalSources(sourceNode);
       const assignmentOperator = targetNode && sourceNode
         ? source.slice(targetNode.to, sourceNode.from).trim()
         : '';
@@ -5374,13 +5503,18 @@ ${loop}
         && chainRoot.parent?.name === 'ExpressionStatement';
       const standalone = node.parent?.name === 'ExpressionStatement'
         || forHeaderWrite || chainedAssignment;
+      const capturedOperands = multiSources ? multiSources.map(item => item.node)
+        : binarySources ? [binarySources.leftNode, binarySources.rightNode]
+        : sourceNode && (['Identifier', 'SubscriptExpression'].includes(sourceNode.name) || numericLiteralTarget(sourceNode)) ? [sourceNode] : [];
+      const capturePositions = new Map(capturedOperands.map((operand, index) => [`${operand.from}:${operand.to}`, index]));
       const parts = [];
       let cursor = node.from;
       for (const child of children) {
         parts.push(source.slice(cursor, child.from));
         parts.push(child === sourceNode && bitwiseAssignment && target.variableId && !suppressEvents
           ? renderBitwise(child, target, nestedContext, true)
-          : rebuild(child, { ...nestedContext, suppressRead: child === targetNode }));
+          : rebuild(child, { ...nestedContext, suppressRead: child === targetNode,
+            ...(child === sourceNode && capturePositions.size ? { arithmeticCapturePositions: capturePositions, recordSelections: true } : {}) }));
         cursor = child.to;
       }
       parts.push(source.slice(cursor, node.to));
@@ -5401,7 +5535,12 @@ ${loop}
           const action = chainedAssignment
             ? `[&]()->decltype(auto){ return (${expression}); }`
             : `[&](){ ${expression}; }`;
-          if (bitwiseAssignment && !chainedAssignment) {
+          if (moved && !chainedAssignment) {
+            const movedExpression = source.slice(moved.node.from, moved.node.to);
+            rendered = `::asm_trace::event_move_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(moved.target)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, [&]()->decltype(auto){ return (${movedExpression}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); })`;
+          } else if (conditional && !chainedAssignment) {
+            rendered = renderConditionalAssignment(node, targetNode, conditional, nestedContext) || expression;
+          } else if (bitwiseAssignment && !chainedAssignment) {
             rendered = `::asm_trace::event_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, false, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else if (selectionSources && !chainedAssignment) {
             rendered = `::asm_trace::event_select_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(selectionSources.left)}, ${indexedTargetArgs(selectionSources.right)}, ${cppString(selectionSources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${selectionSources.leftExpression}); }, [&]()->decltype(auto){ return (${selectionSources.rightExpression}); }, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
@@ -5500,6 +5639,8 @@ ${loop}
             && !/priority_queue\s*</.test(String(mutationVariable?.type || ''));
           const insertWithPosition = mutationVariable?.kind === 'sequence'
             && ['insert', 'emplace'].includes(method) && args.length === 2;
+          const eraseWithPosition = mutationVariable?.kind === 'sequence'
+            && method === 'erase' && args.length >= 1 && args.length <= 2;
           const sourceNode = insertWithPosition
             ? args[1]
             : ['push', 'push_back', 'push_front', 'emplace', 'emplace_back', 'emplace_front']
@@ -5510,7 +5651,7 @@ ${loop}
           const edge = /_front$/.test(method)
             || (mutationVariable?.kind === 'queue' && method === 'pop')
             ? 'front' : 'back';
-          if (sequenceLike && !mutationTarget.indexExpression && insertWithPosition) {
+          if (sequenceLike && !mutationTarget.indexExpression && (insertWithPosition || eraseWithPosition)) {
             rendered = `::asm_trace::event_sequence_insert_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, ${indexedTargetArgs(sourceTarget)}, (${source.slice(mutationBase.from, mutationBase.to)}), [&]()->decltype(auto){ return (${expression}); })`;
           } else if (sequenceLike && !mutationTarget.indexExpression) {
             rendered = `::asm_trace::event_sequence_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, ${cppString(edge)}, ${indexedTargetArgs(sourceTarget)}, (${source.slice(mutationBase.from, mutationBase.to)}), [&](){ ${expression}; })`;
@@ -5627,6 +5768,10 @@ ${loop}
     const ownLoop = trackedLoops.find(loop => loop.from === node.from && loop.to === node.to);
     if (ownLoop && !suppressEvents && context.rewrittenForInitializerFrom !== node.from) {
       rendered = `{\n::asm_trace::LoopScope __asm_loop_${node.from}(${cppString(ownLoop.id)});\n${rendered}\n}`;
+    }
+    const capturePosition = `${node.from}:${node.to}`;
+    if (context.arithmeticCapturePositions?.has(capturePosition)) {
+      rendered = `::asm_trace::capture_operand(${context.arithmeticCapturePositions.get(capturePosition)}, (${rendered}))`;
     }
     return rendered;
   }

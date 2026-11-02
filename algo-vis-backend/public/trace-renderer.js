@@ -5496,8 +5496,8 @@
       const unresolvedReference = hasIndexValue ? null : leftmostVisibleIndexPlacement(
         frame, binding.targetVariableId, placements, elements
       );
-      if (binding.explicitPointer && (!hasIndexValue || indexValue < 0 || indexValue >= targetItems.length)) return;
-      if (binding.explicitPointer ? !placements.has(`${retainedTarget?.objectKey || objectKeyForVariable(frame, binding.targetVariableId)}#${indexValue}`) : hasIndexValue ? !ensureLinearIndexPlacement(
+      if (binding.explicitPointer && !hasIndexValue) return;
+      if (retainedTarget ? !placements.has(`${retainedTarget.objectKey}#${indexValue}`) : hasIndexValue ? !ensureLinearIndexPlacement(
         frame,
         binding.targetVariableId,
         indexValue,
@@ -6977,9 +6977,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-273';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-274';
   window.ASMTraceRenderers = {
-    build: 'trace-273', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-274', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

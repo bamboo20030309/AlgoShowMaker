@@ -17,6 +17,7 @@
     "prebuild:default-algorithm": "node scripts/build/prebuild-default-algorithm.js",
     "loadtest:compile": "node scripts/benchmarks/compile-load-test.js",
     "test:inventory": "node scripts/validation/validation-manifest.js",
+    "test:events": "node scripts/validation/event-contracts.js",
     "validate:backend-linux": "node scripts/validation/validate-backend-linux.js"
   },
   "dependencies": {

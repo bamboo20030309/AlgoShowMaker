@@ -864,7 +864,6 @@
   }
 
   function showTimelineEvent(event = {}, document = null) {
-    if (event.declarationInitializer === true && event.parameterInitializer !== true) return false;
     return event.enabled !== false
       && event.autoAnimationDisabled !== true
       && showTag(event.type, document);
@@ -926,10 +925,8 @@
       // initialization commit is runtime bookkeeping, not a second operation.
       if (event.bitwiseCommit === true && event.animate === false) return false;
       if (event.type === 'fixed') return false;
-      // Source declarations with initializers are presented as one declaration
-      // instruction. The raw assignment remains in the trace and replay model,
-      // but does not create a second Studio row.
-      if (event.declarationInitializer === true && event.parameterInitializer !== true) return false;
+      // Declaration and assignment are distinct actions. Keep both editable,
+      // including saved traces produced before the shared event contract.
       if (event.loopBoundarySuppressed === true) return false;
       if (byType[canonicalEventType(event.type)]?.internal === true) return false;
       // The function definition is the root control in Trace Studio's event

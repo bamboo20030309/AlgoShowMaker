@@ -16,9 +16,13 @@ function playerHarness(options = {}) {
   const harnessOptions = options;
   const renders = [];
   let cancellations = 0;
+  let pauses = 0;
+  const documentListeners = new Map();
+  const windowListeners = new Map();
   const browserDocument = {
     hidden: false,
     body: { classList: { contains: () => false } },
+    addEventListener: (name, callback) => documentListeners.set(name, callback),
     getElementById: () => ({
       getBoundingClientRect: () => ({ width: 800, height: 600 })
     })
@@ -40,11 +44,12 @@ function playerHarness(options = {}) {
       }
     },
     ASMTraceFrameTween: { cancel() { cancellations += 1; } },
+    ASMPlaybackNavigation: { pause() { pauses += 1; } },
     ASMTraceCamera: { apply() {}, transitionDuration: () => 0 },
     ASMTraceCodePresenter: { transitionDelay: () => 0 },
     dispatchEvent() {},
     requestAnimationFrame: callback => callback(),
-    addEventListener() {}
+    addEventListener: (name, callback) => windowListeners.set(name, callback)
   };
   const context = vm.createContext({
     window,
@@ -63,7 +68,8 @@ function playerHarness(options = {}) {
     frames: [{ id: 'f0', source: {} }, { id: 'f1', source: {} }, { id: 'f2', source: {} }]
   });
   renders.length = 0;
-  return { window, browserDocument, renders, cancellations: () => cancellations };
+  return { window, browserDocument, renders, cancellations: () => cancellations,
+    pauses: () => pauses, documentListeners, windowListeners };
 }
 
 // -----------------------------------------------------------------------------
@@ -118,4 +124,33 @@ test('next during playback settles the current frame before animating the follow
     { frame: 'f2', previous: 'f1', stable: false, interrupted: false }
   ]);
   assert.equal(cancellations(), 1);
+});
+
+test('leaving the visible page cancels its active run and retains the destination as a stable frame', async () => {
+  const { window, browserDocument, renders, documentListeners, pauses } = playerHarness({ playbackPlans: true });
+  const transition = window.CodeScript.next();
+  browserDocument.hidden = true;
+  documentListeners.get('visibilitychange')();
+  await transition;
+  assert.equal(pauses(), 1);
+  assert.equal(window.CodeScript.get_current_frame_index(), 1);
+  assert.equal(renders.at(-1).frame.id, 'f1');
+  assert.equal(renders.at(-1).previousFrame, null);
+  assert.equal(renders.at(-1).options.pageLeave, true);
+  assert.equal(renders.at(-1).options.animateEvents, false);
+  const count = renders.length;
+  browserDocument.hidden = false;
+  documentListeners.get('visibilitychange')();
+  assert.equal(renders.length, count, 'returning must not replay the abandoned transition');
+});
+
+test('pagehide settles the current destination even before document.hidden changes', async () => {
+  const { window, renders, windowListeners, pauses } = playerHarness({ playbackPlans: true });
+  const transition = window.CodeScript.next();
+  windowListeners.get('pagehide')();
+  await transition;
+  assert.equal(pauses(), 1);
+  assert.equal(renders.at(-1).frame.id, 'f1');
+  assert.equal(renders.at(-1).options.animatePositions, false);
+  assert.equal(window.ASMTracePlayer.getActivePlaybackPlan(), null);
 });
