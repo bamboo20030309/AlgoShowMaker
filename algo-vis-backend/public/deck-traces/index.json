@@ -250,181 +250,397 @@
       "legacy": true
     },
     "0c8a08e0adeeaf75ca473481633b9488cb77a2d0893a62ca6e02d7ee1915de6c": {
+      "file": "legacy/quick-sort-previous-0c8a08e0adee.json",
+      "deck": "quick-sort.asmdeck",
+      "slideId": "quick-teaching-23",
+      "legacy": true
+    },
+    "51bee5c73d4f3af143fe5b9d6f9bb522c10d1919ec985ead66995e834133a967": {
+      "file": "legacy/quick-sort-previous-51bee5c73d4f.json",
+      "deck": "quick-sort.asmdeck",
+      "slideId": "quick-teaching-31",
+      "legacy": true
+    },
+    "b5485a4cca9ed8294fb3c7d916780575c01367d378b076a7c78bc9ece48a4a7e": {
+      "file": "legacy/merge-sort-previous-b5485a4cca9e.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5",
+      "legacy": true
+    },
+    "c23ae02cb7dbb9c88488374a97f8421b4b4471fc859f2ded10c5a803950ac45f": {
+      "file": "legacy/merge-sort-previous-c23ae02cb7db.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f",
+      "legacy": true
+    },
+    "290990abfb3dfdc78136d390bc9ed8dab5fac081e114810e7263cc847f8e11eb": {
+      "file": "legacy/merge-sort-previous-290990abfb3d.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "df651625-0eef-4981-aa60-1d1fd9c1f083",
+      "legacy": true
+    },
+    "5a8771e8514d334555c39c1cf9f230371ee72afa29eb00af94711faa70e13f50": {
+      "file": "legacy/merge-sort-previous-5a8771e8514d.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "718d5119-6f4f-46f5-8247-7fe2e78ff61d",
+      "legacy": true
+    },
+    "a6c14a0cce8cef5bbf8277cf66cd19ed5f2d9f831b907c5680b2afd5a06c4b39": {
+      "file": "legacy/bubble-sort-previous-a6c14a0cce8c.json",
+      "deck": "bubble-sort.asmdeck",
+      "slideId": "bubble-teaching-27",
+      "legacy": true
+    },
+    "647a1db0f05545b0457d410b97ece84db9495edb3bcb69c8ec39fe9df7764cea": {
+      "file": "legacy/bubble-sort-previous-647a1db0f055.json",
+      "deck": "bubble-sort.asmdeck",
+      "slideId": "bubble-teaching-36",
+      "legacy": true
+    },
+    "285d457115a9c47a78aa23a0bcdc6b1f9d8b007e69e99b91454f294f200c46d3": {
+      "file": "legacy/selection-sort-previous-285d457115a9.json",
+      "deck": "selection-sort.asmdeck",
+      "slideId": "selection-teaching-24",
+      "legacy": true
+    },
+    "e67827276a6b0cfcfc3baef6c8c0ba0b4c38ef48c868ba4500affa1ade36931c": {
+      "file": "legacy/selection-sort-previous-e67827276a6b.json",
+      "deck": "selection-sort.asmdeck",
+      "slideId": "selection-teaching-33",
+      "legacy": true
+    },
+    "d5f79139c2b04072d33ec5f4064fdcd834c9f14661b7adace14dd61ef43d6f6a": {
+      "file": "legacy/insertion-sort-previous-d5f79139c2b0.json",
+      "deck": "insertion-sort.asmdeck",
+      "slideId": "insertion-teaching-24",
+      "legacy": true
+    },
+    "1ac60a7b3a24afca68e9d9111efbd7b2625bf3e329f94743a30501e6caa9d8cd": {
+      "file": "legacy/insertion-sort-previous-1ac60a7b3a24.json",
+      "deck": "insertion-sort.asmdeck",
+      "slideId": "insertion-teaching-33",
+      "legacy": true
+    },
+    "a1f04b917b6c88ecd3c2d79a5d04266116628c61d602781ad81285c72445951f": {
+      "file": "legacy/heap-sort-previous-a1f04b917b6c.json",
+      "deck": "heap-sort.asmdeck",
+      "slideId": "heap-teaching-17",
+      "legacy": true
+    },
+    "b58764f9af8ccadfec51c8fcd509b01838776879957578da0ff4722e52e4ce5e": {
+      "file": "legacy/heap-sort-previous-b58764f9af8c.json",
+      "deck": "heap-sort.asmdeck",
+      "slideId": "heap-teaching-25",
+      "legacy": true
+    },
+    "66fb27507a2b03ccbcd1f0f0c0acf971802ea203d5b7ad2a8b36bd36df6a6d21": {
+      "file": "legacy/linear-sieve-previous-66fb27507a2b.json",
+      "deck": "linear-sieve.asmdeck",
+      "slideId": "linear-sieve-teaching-19",
+      "legacy": true
+    },
+    "7b55b3d6bda36f7dd0f3cbcc75ef2f1a8cb8132b3130bc4f805bacbe678a1dcf": {
+      "file": "legacy/linear-sieve-previous-7b55b3d6bda3.json",
+      "deck": "linear-sieve.asmdeck",
+      "slideId": "linear-sieve-teaching-22",
+      "legacy": true
+    },
+    "f3f7b82604b5296a6674907078ba30eca962c9e3778598bc90cb93c4e4c84c0c": {
+      "file": "legacy/heap-teaching-previous-f3f7b82604b5.json",
+      "deck": "heap-teaching.asmdeck",
+      "slideId": "d8cb5a69-8eba-4da8-9208-2190bbb79f28",
+      "legacy": true
+    },
+    "70b8987d98317054285cdc4cfdf9469272e178144877d7aaa93bd319764e0376": {
+      "file": "legacy/heap-teaching-previous-70b8987d9831.json",
+      "deck": "heap-teaching.asmdeck",
+      "slideId": "5a0e4f26-556b-4d36-876f-e493beba18cb",
+      "legacy": true
+    },
+    "4ee3c5d5ebcd313b79b84077613d74bf8f76c3468be8b7f325a693cfcd55ca5a": {
+      "file": "legacy/heap-teaching-previous-4ee3c5d5ebcd.json",
+      "deck": "heap-teaching.asmdeck",
+      "slideId": "22eff962-012c-4a73-b762-2a0c7a947bb8",
+      "legacy": true
+    },
+    "df80444d91795621557d5db5063157aedb3989369bab19bf2d393c562ea4e766": {
+      "file": "legacy/binary-indexed-tree-teaching-previous-df80444d9179.json",
+      "deck": "binary-indexed-tree-teaching.asmdeck",
+      "slideId": "51381dfe-2cec-4cd0-b551-df91db0d7a45",
+      "legacy": true
+    },
+    "6f87216ff3f7b35c8c429995da6ac4260bab7b48ec3c780a035bb2ee350ad43e": {
+      "file": "legacy/binary-indexed-tree-teaching-previous-6f87216ff3f7.json",
+      "deck": "binary-indexed-tree-teaching.asmdeck",
+      "slideId": "3ffef918-21e4-4414-88b9-db4ed9592247",
+      "legacy": true
+    },
+    "20bd1e3fd60263d3fb2670bd3fa282e77a68fd860a8f0e4b5c7c1224dae2766a": {
+      "file": "legacy/binary-indexed-tree-teaching-previous-20bd1e3fd602.json",
+      "deck": "binary-indexed-tree-teaching.asmdeck",
+      "slideId": "6cfe0248-7ea0-4ddc-a2e8-75bf30fa1e0e",
+      "legacy": true
+    },
+    "8cbc691156a6082f950f8d380f3ab2735db6fc1329d7e6483be88839ee00e08d": {
+      "file": "legacy/segment-tree-teaching-previous-8cbc691156a6.json",
+      "deck": "segment-tree-teaching.asmdeck",
+      "slideId": "949c4def-848e-4108-ab02-ec3668728ee4",
+      "legacy": true
+    },
+    "9c6abff11fe087b846ced1d707d50fcea73b060e6bf3eeb341d4363408c42746": {
+      "file": "legacy/segment-tree-teaching-previous-9c6abff11fe0.json",
+      "deck": "segment-tree-teaching.asmdeck",
+      "slideId": "76f3ec41-66ed-4cce-8aac-5353ed18dc88",
+      "legacy": true
+    },
+    "72839ca502fa031eb32fb9df1b4607f5cc24fae0151e9da5ce5e979059a9686f": {
+      "file": "legacy/segment-tree-teaching-previous-72839ca502fa.json",
+      "deck": "segment-tree-teaching.asmdeck",
+      "slideId": "c65e4ee7-8308-4033-be40-906ff9c296f0",
+      "legacy": true
+    },
+    "e7aa6bd3784aa15e170f0b311d620dbda7a898cf63c5bf0684538f3fb42f9805": {
+      "file": "legacy/segment-tree-teaching-previous-e7aa6bd3784a.json",
+      "deck": "segment-tree-teaching.asmdeck",
+      "slideId": "a54d09a3-5d8c-473a-8ad3-f81d1f0fee63",
+      "legacy": true
+    },
+    "ab75962458c46b5ccb618ce82d435df0a4d9fd187de40fdf526dd47174f131b4": {
+      "file": "legacy/hanoi-teaching-previous-ab75962458c4.json",
+      "deck": "hanoi-teaching.asmdeck",
+      "slideId": "24cbe5b0-08b7-438a-83f2-dddabc6e57c7",
+      "legacy": true
+    },
+    "2e0ec5f6b8161e9e4f565d0069056d9667ec93ae48f25c0d88252f7b277cb8ed": {
+      "file": "legacy/eight-queens-teaching-previous-2e0ec5f6b816.json",
+      "deck": "eight-queens-teaching.asmdeck",
+      "slideId": "01b3a3d6-557b-442d-99d5-18c5293d2c3c",
+      "legacy": true
+    },
+    "6ffa70dbe08b1b0afce688ec4cb5a54111f9cb548e0fbc2e3fff46c1b9bfb8ce": {
+      "file": "legacy/eight-queens-teaching-previous-6ffa70dbe08b.json",
+      "deck": "eight-queens-teaching.asmdeck",
+      "slideId": "76a59dd3-b8e5-4a55-9671-b2c9f90e9096",
+      "legacy": true
+    },
+    "a264f89ceff6797cd3753f14140696e2e106665d9b643ef0bbbb29f4ecdaf140": {
+      "file": "legacy/eight-queens-teaching-previous-a264f89ceff6.json",
+      "deck": "eight-queens-teaching.asmdeck",
+      "slideId": "c5bc5221-8cab-42a9-b995-19a33b331492",
+      "legacy": true
+    },
+    "2bba2b6c8103f4401060dc4e61713588f64aab639c9294e2fc4fd34e3fa922bf": {
+      "file": "legacy/fibonacci-teaching-previous-2bba2b6c8103.json",
+      "deck": "fibonacci-teaching.asmdeck",
+      "slideId": "193927ee-af90-42a0-ac16-e3563171e552",
+      "legacy": true
+    },
+    "1a5be843a3814eddf7c3143c1c459baea1ec9acd05916454b55447eeaa335322": {
+      "file": "legacy/fibonacci-teaching-previous-1a5be843a381.json",
+      "deck": "fibonacci-teaching.asmdeck",
+      "slideId": "c3629930-a160-4fa4-831f-8cd14ab8e373",
+      "legacy": true
+    },
+    "b85f4d026157168ccc9fedbe57f06aea7eb3fb35763f5b44e436a383401f3811": {
+      "file": "legacy/prefix-sum-previous-b85f4d026157.json",
+      "deck": "prefix-sum.asmdeck",
+      "slideId": "a7744971-5657-44a8-b6a2-854e679a19a1",
+      "legacy": true
+    },
+    "8b03c559b7de2f1ded9eb87c8971902691f641d8f1d39055d89b55a3047659af": {
+      "file": "legacy/prefix-sum-previous-8b03c559b7de.json",
+      "deck": "prefix-sum.asmdeck",
+      "slideId": "0f62b2f3-6a26-4900-a1a0-308020e49dfc",
+      "legacy": true
+    },
+    "e6cff74605dbf11350c3730baeffad85ae730a920abfa982c3e2ae16e21a09c2": {
+      "file": "legacy/lcs-teaching-previous-e6cff74605db.json",
+      "deck": "lcs-teaching.asmdeck",
+      "slideId": "lcs-slide-09",
+      "legacy": true
+    },
+    "14731707ebaf93f3bee3fe52b4f36cc420237eb8dd710a94208663c346877b20": {
+      "file": "legacy/lcs-teaching-previous-14731707ebaf.json",
+      "deck": "lcs-teaching.asmdeck",
+      "slideId": "lcs-slide-12",
+      "legacy": true
+    },
+    "4c0acff428004606e01e747c454581d8a8720ba48122551619130ad85a57e450": {
       "file": "quick-sort-01.json",
       "deck": "quick-sort.asmdeck",
       "slideId": "quick-teaching-23"
     },
-    "51bee5c73d4f3af143fe5b9d6f9bb522c10d1919ec985ead66995e834133a967": {
+    "5411dc8d54e14f7fdc93d07b85e193a7def2faac5e78155338daa8b4deb1d92c": {
       "file": "quick-sort-02.json",
       "deck": "quick-sort.asmdeck",
       "slideId": "quick-teaching-31"
     },
-    "b5485a4cca9ed8294fb3c7d916780575c01367d378b076a7c78bc9ece48a4a7e": {
+    "d9437e7065dd5d02196b2f26d468d07a980ba99097b8317c1a7dcb311e0acb85": {
       "file": "merge-sort-01.json",
       "deck": "merge-sort.asmdeck",
       "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5"
     },
-    "c23ae02cb7dbb9c88488374a97f8421b4b4471fc859f2ded10c5a803950ac45f": {
+    "dc4ce2c3e95bd3154b3c10413b9e278aad587a56e6af97c247382a0cd5d3ba3b": {
       "file": "merge-sort-02.json",
       "deck": "merge-sort.asmdeck",
       "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f"
     },
-    "290990abfb3dfdc78136d390bc9ed8dab5fac081e114810e7263cc847f8e11eb": {
+    "68a6b0accfd4d4ae028c43d0a574abbc79b4128fcd428aaa42ca74bc0d5879d3": {
       "file": "merge-sort-03.json",
       "deck": "merge-sort.asmdeck",
       "slideId": "df651625-0eef-4981-aa60-1d1fd9c1f083"
     },
-    "5a8771e8514d334555c39c1cf9f230371ee72afa29eb00af94711faa70e13f50": {
+    "e2acba335b32c9ffdb3325b3018b741ed55062ca2b81459965be30717b2f1738": {
       "file": "merge-sort-04.json",
       "deck": "merge-sort.asmdeck",
       "slideId": "718d5119-6f4f-46f5-8247-7fe2e78ff61d"
     },
-    "a6c14a0cce8cef5bbf8277cf66cd19ed5f2d9f831b907c5680b2afd5a06c4b39": {
+    "ee282b864018bc05713dc79b3cb6aa319f959810974e1ce2b92c0749cfdda59d": {
       "file": "bubble-sort-01.json",
       "deck": "bubble-sort.asmdeck",
       "slideId": "bubble-teaching-27"
     },
-    "647a1db0f05545b0457d410b97ece84db9495edb3bcb69c8ec39fe9df7764cea": {
+    "673fed2a2382a6fe16a30cb2766ff50b0d66e93885cefe1207e27cd16b19dc3d": {
       "file": "bubble-sort-02.json",
       "deck": "bubble-sort.asmdeck",
       "slideId": "bubble-teaching-36"
     },
-    "285d457115a9c47a78aa23a0bcdc6b1f9d8b007e69e99b91454f294f200c46d3": {
+    "f6051f4159aa4036340443fc96dd37dca38edb26ccdb2df09a080ff031441706": {
       "file": "selection-sort-01.json",
       "deck": "selection-sort.asmdeck",
       "slideId": "selection-teaching-24"
     },
-    "e67827276a6b0cfcfc3baef6c8c0ba0b4c38ef48c868ba4500affa1ade36931c": {
+    "c67529635dee92690812859e541bdb58ee73c82a66057b12a0c34cd402da9bd4": {
       "file": "selection-sort-02.json",
       "deck": "selection-sort.asmdeck",
       "slideId": "selection-teaching-33"
     },
-    "d5f79139c2b04072d33ec5f4064fdcd834c9f14661b7adace14dd61ef43d6f6a": {
+    "daca1ffee609ca21351ee78bd865d02563335b1a8cbc166ed32d37c2caeffdf0": {
       "file": "insertion-sort-01.json",
       "deck": "insertion-sort.asmdeck",
       "slideId": "insertion-teaching-24"
     },
-    "1ac60a7b3a24afca68e9d9111efbd7b2625bf3e329f94743a30501e6caa9d8cd": {
+    "c784bbe44c981e9b7d0fa47d3bbb85b3d4180ff513514f8e99925b789d888db3": {
       "file": "insertion-sort-02.json",
       "deck": "insertion-sort.asmdeck",
       "slideId": "insertion-teaching-33"
     },
-    "a1f04b917b6c88ecd3c2d79a5d04266116628c61d602781ad81285c72445951f": {
+    "1b23d50b5dedf27f01bd8af696626f0324f4346c7fd68e0b44c7ccbe3b804c56": {
       "file": "heap-sort-01.json",
       "deck": "heap-sort.asmdeck",
       "slideId": "heap-teaching-17"
     },
-    "b58764f9af8ccadfec51c8fcd509b01838776879957578da0ff4722e52e4ce5e": {
+    "d8ca6c96f1a8267b880e73f9aca64aefe84551ca826b6ffba1ba2da778200e20": {
       "file": "heap-sort-02.json",
       "deck": "heap-sort.asmdeck",
       "slideId": "heap-teaching-25"
     },
-    "66fb27507a2b03ccbcd1f0f0c0acf971802ea203d5b7ad2a8b36bd36df6a6d21": {
+    "14919ec68f1f722d71821dc687c0f5db0fba68cf6bc851d85eedd67611a3e0c0": {
       "file": "linear-sieve-01.json",
       "deck": "linear-sieve.asmdeck",
       "slideId": "linear-sieve-teaching-19"
     },
-    "7b55b3d6bda36f7dd0f3cbcc75ef2f1a8cb8132b3130bc4f805bacbe678a1dcf": {
+    "38ee80b87b2fd6d4a3ff476800e1b56b75f3346f274f752c8fe4d3e264951c2c": {
       "file": "linear-sieve-02.json",
       "deck": "linear-sieve.asmdeck",
       "slideId": "linear-sieve-teaching-22"
     },
-    "f3f7b82604b5296a6674907078ba30eca962c9e3778598bc90cb93c4e4c84c0c": {
+    "8124f02e594a4e848601bba42d7b5d8f83a5d4bd43630de2261470672f09b5bb": {
       "file": "heap-teaching-01.json",
       "deck": "heap-teaching.asmdeck",
       "slideId": "d8cb5a69-8eba-4da8-9208-2190bbb79f28"
     },
-    "70b8987d98317054285cdc4cfdf9469272e178144877d7aaa93bd319764e0376": {
+    "9f74aaf6fa1603b40316949aec9af33083be6ea976bb06a724c531ac6462d6af": {
       "file": "heap-teaching-02.json",
       "deck": "heap-teaching.asmdeck",
       "slideId": "5a0e4f26-556b-4d36-876f-e493beba18cb"
     },
-    "4ee3c5d5ebcd313b79b84077613d74bf8f76c3468be8b7f325a693cfcd55ca5a": {
+    "4d92bc5a5954ba8357071901195904df7d6889ded4c5e65352e68aa9528b302b": {
       "file": "heap-teaching-03.json",
       "deck": "heap-teaching.asmdeck",
       "slideId": "22eff962-012c-4a73-b762-2a0c7a947bb8"
     },
-    "df80444d91795621557d5db5063157aedb3989369bab19bf2d393c562ea4e766": {
+    "98c7f77df64315be1b2bdebf83c9aa47fb3b9a35c1f7cc21042e0b9221c1bef7": {
       "file": "binary-indexed-tree-teaching-01.json",
       "deck": "binary-indexed-tree-teaching.asmdeck",
       "slideId": "51381dfe-2cec-4cd0-b551-df91db0d7a45"
     },
-    "6f87216ff3f7b35c8c429995da6ac4260bab7b48ec3c780a035bb2ee350ad43e": {
+    "2f4cda35fa53a5b149d9c72e1edefa3a1720b69ab0157287cb545bd38cb0076e": {
       "file": "binary-indexed-tree-teaching-02.json",
       "deck": "binary-indexed-tree-teaching.asmdeck",
       "slideId": "3ffef918-21e4-4414-88b9-db4ed9592247"
     },
-    "20bd1e3fd60263d3fb2670bd3fa282e77a68fd860a8f0e4b5c7c1224dae2766a": {
+    "f878a5180a4fa28af64c4ee0f1c59fd798c6b4aae357eed0b1f4389bb308d8fa": {
       "file": "binary-indexed-tree-teaching-03.json",
       "deck": "binary-indexed-tree-teaching.asmdeck",
       "slideId": "6cfe0248-7ea0-4ddc-a2e8-75bf30fa1e0e"
     },
-    "8cbc691156a6082f950f8d380f3ab2735db6fc1329d7e6483be88839ee00e08d": {
+    "9924e4be32ddb49b9b0fd4f047bed260e5b400c84f6204fb322de0f3caaa2aff": {
       "file": "segment-tree-teaching-01.json",
       "deck": "segment-tree-teaching.asmdeck",
       "slideId": "949c4def-848e-4108-ab02-ec3668728ee4"
     },
-    "9c6abff11fe087b846ced1d707d50fcea73b060e6bf3eeb341d4363408c42746": {
+    "5fc301803b177b5b8b9c83a9d3d9edb9a2ddea9046c1af48563ea8adbee8d83f": {
       "file": "segment-tree-teaching-02.json",
       "deck": "segment-tree-teaching.asmdeck",
       "slideId": "76f3ec41-66ed-4cce-8aac-5353ed18dc88"
     },
-    "72839ca502fa031eb32fb9df1b4607f5cc24fae0151e9da5ce5e979059a9686f": {
+    "25c60524e84cf77ff16b462abd93c098f3d370e86b23c6fbbb29ba76672dc759": {
       "file": "segment-tree-teaching-03.json",
       "deck": "segment-tree-teaching.asmdeck",
       "slideId": "c65e4ee7-8308-4033-be40-906ff9c296f0"
     },
-    "e7aa6bd3784aa15e170f0b311d620dbda7a898cf63c5bf0684538f3fb42f9805": {
+    "4a00177a20df84ad2da9633083377aec166562f8ea08d70895cd4df76626cfff": {
       "file": "segment-tree-teaching-04.json",
       "deck": "segment-tree-teaching.asmdeck",
       "slideId": "a54d09a3-5d8c-473a-8ad3-f81d1f0fee63"
     },
-    "ab75962458c46b5ccb618ce82d435df0a4d9fd187de40fdf526dd47174f131b4": {
+    "4d69f7feef1311f15f05a35efbe740e54e26f0bb516ba813b10cbf86edc3a5eb": {
       "file": "hanoi-teaching-01.json",
       "deck": "hanoi-teaching.asmdeck",
       "slideId": "24cbe5b0-08b7-438a-83f2-dddabc6e57c7"
     },
-    "2e0ec5f6b8161e9e4f565d0069056d9667ec93ae48f25c0d88252f7b277cb8ed": {
+    "592255fd464f2c58a96b6d2d23fcd6c61baa4fc87bc49021b5f4e4c39a4937e4": {
       "file": "eight-queens-teaching-01.json",
       "deck": "eight-queens-teaching.asmdeck",
       "slideId": "01b3a3d6-557b-442d-99d5-18c5293d2c3c"
     },
-    "6ffa70dbe08b1b0afce688ec4cb5a54111f9cb548e0fbc2e3fff46c1b9bfb8ce": {
+    "5aba559393a30e3f80b63b2a4e0bbbf84f7e31a26bb551505b7b149bd9ee28e1": {
       "file": "eight-queens-teaching-02.json",
       "deck": "eight-queens-teaching.asmdeck",
       "slideId": "76a59dd3-b8e5-4a55-9671-b2c9f90e9096"
     },
-    "a264f89ceff6797cd3753f14140696e2e106665d9b643ef0bbbb29f4ecdaf140": {
+    "2f223cf02f51df80dadd64ebf500cb655793a5a6880a8f8ff09186bd54569fd3": {
       "file": "eight-queens-teaching-03.json",
       "deck": "eight-queens-teaching.asmdeck",
       "slideId": "c5bc5221-8cab-42a9-b995-19a33b331492"
     },
-    "2bba2b6c8103f4401060dc4e61713588f64aab639c9294e2fc4fd34e3fa922bf": {
+    "e78ef80d9a32227296590ac447b6dbe5ea99f3fbfa8d45456fa5fa70eaf405f1": {
       "file": "fibonacci-teaching-01.json",
       "deck": "fibonacci-teaching.asmdeck",
       "slideId": "193927ee-af90-42a0-ac16-e3563171e552"
     },
-    "1a5be843a3814eddf7c3143c1c459baea1ec9acd05916454b55447eeaa335322": {
+    "5e9b87f708eaf465bf511c1e9ea5df0de32d12ee363697a861aea0f0f70e4c70": {
       "file": "fibonacci-teaching-02.json",
       "deck": "fibonacci-teaching.asmdeck",
       "slideId": "c3629930-a160-4fa4-831f-8cd14ab8e373"
     },
-    "b85f4d026157168ccc9fedbe57f06aea7eb3fb35763f5b44e436a383401f3811": {
+    "ac45e5d53a0607dc146e28c21a7f95ae9c1d8038082a81cff3f9d3d87e0246bb": {
       "file": "prefix-sum-01.json",
       "deck": "prefix-sum.asmdeck",
       "slideId": "a7744971-5657-44a8-b6a2-854e679a19a1"
     },
-    "8b03c559b7de2f1ded9eb87c8971902691f641d8f1d39055d89b55a3047659af": {
+    "a1601aaf4cd794fb5aceff10acde77e3f7024ded5ab3268afaf15c4054f0ffb9": {
       "file": "prefix-sum-02.json",
       "deck": "prefix-sum.asmdeck",
       "slideId": "0f62b2f3-6a26-4900-a1a0-308020e49dfc"
     },
-    "e6cff74605dbf11350c3730baeffad85ae730a920abfa982c3e2ae16e21a09c2": {
+    "78a8cd4f0e6b3aafcbc2ec7b02a60f423e2b7caa06b82790425d1e3cbcccba67": {
       "file": "lcs-teaching-01.json",
       "deck": "lcs-teaching.asmdeck",
       "slideId": "lcs-slide-09"
     },
-    "14731707ebaf93f3bee3fe52b4f36cc420237eb8dd710a94208663c346877b20": {
+    "73681072b06293583053272e799086296f969c1d630f6ef8aabfc8a08baa2dd1": {
       "file": "lcs-teaching-02.json",
       "deck": "lcs-teaching.asmdeck",
       "slideId": "lcs-slide-12"

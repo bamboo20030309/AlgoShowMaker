@@ -69,6 +69,8 @@ async function main() {
     }
     if (failures.length) throw new Error(`${entry.id} 預建失敗\n${failures.join('\n')}`);
     const projected = await ASMDeck.project(rebuilt, null, { includePrebuiltTraces: false });
+    // 重新 RUN 只更新動畫結果；封面縮圖、分類與編輯時間沿用原檔。
+    if (decoded.cover) projected.cover = decoded.cover;
     registerDeckTraces(publicRoot, entry, projected.deck, projected.cacheSeeds);
     const blob = await ASMDeck.encode(projected);
     const output = Buffer.from(await blob.arrayBuffer());
