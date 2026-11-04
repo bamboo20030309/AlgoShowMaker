@@ -2897,16 +2897,16 @@
     const leftCenterY = left.operand.point.y + left.operand.point.height / 2;
     const rightCenterY = right.operand.point.y + right.operand.point.height / 2;
     const sharedCenterY = (leftCenterY + rightCenterY) / 2;
-    const verticalGap = 0;
+    const verticalGap = equalValues ? 0 : 5;
     const targets = [];
     targets[left.index] = {
       x: contactX - leftWidth / 2 - left.operand.point.x,
-      alignY: 0,
+      alignY: sharedCenterY - leftCenterY,
       splitY: -verticalGap
     };
     targets[right.index] = {
       x: contactX + rightWidth / 2 - right.operand.point.x,
-      alignY: 0,
+      alignY: sharedCenterY - rightCenterY,
       splitY: verticalGap
     };
     return targets;
@@ -3032,12 +3032,9 @@
     const top = Number.isFinite(preferredTop)
       ? preferredTop
       : Math.min(operands[0].point.y, operands[1].point.y) - 15;
-    const equality = ['==', '!='].includes(String(event?.operation || ''));
-    const operation = equality ? (compareValuesEqual(operands) ? '=' : '≠')
-      : displayOperator(event?.operation);
+    const operation = displayOperator(event?.operation);
     const left = `${operands[0].target?.expression || 'left'}(${operands[0].value})`;
-    const right = `${operands[1].target?.expression || 'right'}(${operands[1].value})`
-      + (!equality && typeof event?.result === 'boolean' ? ` → ${event.result}` : '');
+    const right = `${operands[1].target?.expression || 'right'}(${operands[1].value})`;
     const fontSize = 14;
     const fallbackWidth = value => Math.max(fontSize * 0.58, Array.from(value).length * fontSize * 0.58);
     const gap = 6;
@@ -3073,6 +3070,15 @@
     leftText.setAttribute('x', String(startX));
     operationText.setAttribute('x', String(operationX));
     rightText.setAttribute('x', String(startX + leftWidth + gap + operationWidth + gap));
+    if (event?.result !== true) {
+      group.append(createSvg('line', {
+        x1: operationX - operationWidth / 2 - 2, y1: -8,
+        x2: operationX + operationWidth / 2 + 2, y2: 8,
+        stroke: color,
+        'stroke-width': 2,
+        'stroke-linecap': 'square'
+      }));
+    }
     return group;
   }
 
@@ -4654,7 +4660,7 @@
           item.wrapper.setAttribute('opacity', String(amount));
           item.wrapper.setAttribute(
             'transform',
-            `translate(${item.direction * splitDistance * amount}, ${item.direction * verticalGap * split * stay})`
+            `translate(${item.direction * splitDistance * amount}, ${(-15 * lift + item.direction * verticalGap * split) * stay})`
           );
         });
       },
@@ -4745,7 +4751,7 @@
     });
     const equalValues = compareValuesEqual(operands);
     const equalityComparison = ['==', '!='].includes(String(event?.operation || ''));
-    let contactTargets = compareContactTargets(operands, equalValues);
+    let contactTargets = equalityComparison ? compareContactTargets(operands, equalValues) : [];
     const scaleTargets = equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
     const selfCompare = operands.length >= 2 && operands[0].visualKey === operands[1].visualKey;
     const selfSplitDistance = selfCompare
@@ -4809,7 +4815,7 @@
       operand.element.setAttribute('transform', `matrix(${local.a} ${local.b} ${local.c} ${local.d} ${local.e} ${local.f})`);
     };
     const selfSplit = selfCompare && !operands[0].marker
-      ? createSelfCompareSplit(operands[0], selfSplitDistance, 0)
+      ? createSelfCompareSplit(operands[0], selfSplitDistance, equalValues ? 0 : 5)
       : null;
     let expression = null;
     let compareElapsed = 0;
@@ -4911,13 +4917,15 @@
         });
         if (!changed) return;
         popupStartsSynchronized = true;
-        contactTargets = compareContactTargets(operands, equalValues);
+        contactTargets = equalityComparison ? compareContactTargets(operands, equalValues) : [];
 
-        const popupReveal = easeOutCubic(timedProgress(compareElapsed, COMPARE_TIMING.popup));
+        const popupReveal = easeOutCubic(clamp01(compareElapsed / COMPARE_TIMING.popup));
         const sizeElapsed = Math.max(0, compareElapsed - waitEnd);
-        const alignProgress = 0;
+        const alignProgress = equalityComparison
+          ? easeOutCubic(clamp01(sizeElapsed / (COMPARE_TIMING.size / 2)))
+          : 0;
         const contactProgress = equalityComparison
-          ? easeOutCubic(clamp01(sizeElapsed / COMPARE_TIMING.size))
+          ? easeOutCubic(clamp01((sizeElapsed - COMPARE_TIMING.size / 2) / (COMPARE_TIMING.size / 2)))
           : 0;
         operands.forEach((operand, index) => {
           const popup = popups.get(popupKey(operand, index));
@@ -4938,24 +4946,26 @@
         const sizeEnd = waitEnd + COMPARE_TIMING.size;
         const resultEnd = sizeEnd + COMPARE_TIMING.result;
         const resetEnd = resultEnd + COMPARE_TIMING.reset;
-        const popupReveal = easeOutCubic(timedProgress(elapsed, COMPARE_TIMING.popup));
+        const popupReveal = easeOutCubic(clamp01(elapsed / COMPARE_TIMING.popup));
         const lift = popupReveal;
         if (lift > 0) suspendAuthoredHighlights();
         const size = elapsed < waitEnd
           ? 0
           : easeOutCubic(clamp01((elapsed - waitEnd) / COMPARE_TIMING.size));
         const sizeElapsed = Math.max(0, elapsed - waitEnd);
-        const alignProgress = 0;
+        const alignProgress = equalityComparison
+          ? easeOutCubic(clamp01(sizeElapsed / (COMPARE_TIMING.size / 2)))
+          : size;
         const contactProgress = equalityComparison
-          ? easeOutCubic(clamp01(sizeElapsed / COMPARE_TIMING.size))
-          : 0;
+          ? easeOutCubic(clamp01((sizeElapsed - COMPARE_TIMING.size / 2) / (COMPARE_TIMING.size / 2)))
+          : size;
         const reset = elapsed < resultEnd
           ? 0
           : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
         ensurePopups();
-        if (elapsed >= sizeEnd) {
+        if (elapsed >= waitEnd) {
           showResult();
-          setResultOpacity(1 - reset);
+          setResultOpacity(size * (1 - reset));
         }
         const stay = 1 - reset;
         this.adjustments.clear();
@@ -4967,8 +4977,7 @@
             x: operand.marker ? 0 : contact.x * contactProgress * stay,
             y: operand.marker ? 0 : (equalityComparison
               ? (contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
-              : (compareValuesEqual(operands) ? 0
-                : ((scaleTargets[index] || 1) > 1 ? -12 : (scaleTargets[index] || 1) < 1 ? 12 : 0) * size) * stay),
+              : (-15 * lift) * stay),
             scale: operand.marker
               ? 1
               : 1 + ((scaleTargets[index] || 1) - 1) * size * stay
@@ -5062,12 +5071,13 @@
         if (!highlight) return;
         const waitEnd = COMPARE_TIMING.popup + COMPARE_TIMING.wait;
         const resultEnd = waitEnd + COMPARE_TIMING.size + COMPARE_TIMING.result;
+        const reveal = easeOutCubic(clamp01(elapsed / COMPARE_TIMING.popup));
         const size = elapsed < waitEnd ? 0
           : easeOutCubic(clamp01((elapsed - waitEnd) / COMPARE_TIMING.size));
         const reset = elapsed < resultEnd ? 0
           : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
         const stay = 1 - reset;
-        highlight.setAttribute('opacity', String(elapsed >= waitEnd + COMPARE_TIMING.size ? stay : 0));
+        highlight.setAttribute('opacity', String(reveal * stay));
         adjustments.set(operand.visualKey, {
           x: 0, y: 0, scale: 1 + COMPARE_SCALE_DELTA * size * stay
         });
@@ -10250,10 +10260,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-311';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-312';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-311', play, cancel, updateEventAvailability,
+    build: 'trace-312', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

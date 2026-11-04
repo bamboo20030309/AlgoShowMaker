@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "title": "事件與基本動作固定答案",
-  "answerOrigin": "依使用者確認規格手寫；2026-11-04 恢復舊節奏，數值在飛入抵達時提交，保留新版動作順序。",
+  "answerOrigin": "依使用者確認規格手寫；2026-11-04 使用目前事件排程，恢復 504d51c 原始比較視覺，保留已恢復的作用時間及抵達提交。",
   "timing1x": {
     "enter": 220,
     "exit": 220,
@@ -624,9 +624,10 @@
           "reset"
         ],
         "larger": "right",
-        "leftMoves": "down",
+        "leftMoves": "up",
         "rightMoves": "up",
-        "returnsToBase": true
+        "returnsToBase": true,
+        "commonLiftPx": 15
       },
       "timing": {
         "durationMs": 1560,
@@ -659,8 +660,8 @@
           "relation",
           "reset"
         ],
-        "verticalMotion": 0,
-        "returnsToBase": true
+        "returnsToBase": true,
+        "verticalSplitPx": 5
       },
       "timing": {
         "durationMs": 1560
@@ -929,8 +930,8 @@
         "relation": "="
       },
       "visual": {
-        "verticalMotion": 0,
-        "returnsToBase": true
+        "returnsToBase": true,
+        "selfCloneLiftPx": 15
       },
       "timing": {
         "durationMs": 1560

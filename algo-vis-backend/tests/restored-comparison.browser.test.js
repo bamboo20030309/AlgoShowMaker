@@ -4,7 +4,7 @@ const {chromium}=require('playwright');
 const {compile}=require('./helpers/compile');
 const {startIsolatedServer}=require('./helpers/isolated-server');
 
-test('restored comparisons keep source operators, full approach time and delayed results at 1x and 2x', {timeout:120000},async t=>{
+test('original comparison visuals run on the current scheduler at 1x and 2x', {timeout:120000},async t=>{
  const {base}=await startIsolatedServer(t);const previous=process.env.ASM_TEST_BASE_URL;let trace;
  try{process.env.ASM_TEST_BASE_URL=base;({trace}=await compile(`#include <vector>
 int main(){std::vector<int> a(3);a[0]=8;a[1]=5;a[2]=3;int i=0,j=2;
@@ -49,7 +49,7 @@ result=a[i]==a[i];
    const root=()=>document.querySelector('#asm-trace-root');
    const cell=n=>[...document.querySelectorAll('[data-trace-object-key]')].find(el=>el.dataset.traceObjectKey===id+'#'+n&&!el.closest('[data-trace-snapshot]'));
    const geometry=n=>{const el=cell(n);if(!el)throw Error('Missing cell '+n);const rect=el.querySelector('rect');const b=rect.getBBox();const m=root().getScreenCTM().inverse().multiply(rect.getScreenCTM());const center=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(m);return {x:center.x,y:center.y,width:b.width*Math.hypot(m.a,m.b)};};
-   const read=()=>({left:geometry(0),right:geometry(2),expression:[...document.querySelectorAll('.asm-trace-compare-operator')].map(n=>n.textContent).join(''),fill:cell(0).querySelector('rect').getAttribute('fill'),clones:[...document.querySelectorAll('.asm-trace-compare-self-clone')].map(el=>{const m=el.transform.baseVal.consolidate()?.matrix;return {x:m?.e,y:m?.f,opacity:Number(el.getAttribute('opacity'))};})});
+   const read=()=>({left:geometry(0),right:geometry(2),expression:[...document.querySelectorAll('.asm-trace-compare-operator')].map(n=>n.textContent).join(''),resultOpacity:Number(document.querySelector('.asm-trace-compare-operator')?.getAttribute('opacity')||0),slashes:document.querySelectorAll('.asm-trace-compare-operator line').length,fill:cell(0).querySelector('rect').getAttribute('fill'),clones:[...document.querySelectorAll('.asm-trace-compare-self-clone')].map(el=>{const m=el.transform.baseVal.consolidate()?.matrix;return {x:m?.e,y:m?.f,opacity:Number(el.getAttribute('opacity'))};})});
    await ASMTracePlayer.render(0,{stable:true});await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
    const baseline=read(),native={raf:window.requestAnimationFrame,cancel:window.cancelAnimationFrame,now:Object.getOwnPropertyDescriptor(performance,'now'),rate:window.asmGetAnimationPlaybackRate};
    let time=performance.now(),elapsed=0,serial=0;const callbacks=new Map();
@@ -58,7 +58,7 @@ result=a[i]==a[i];
    const advance=async target=>{while(elapsed<target){const delta=Math.min(10,target-elapsed);elapsed+=delta;time+=delta;const pending=[...callbacks.values()];callbacks.clear();pending.forEach(cb=>cb(time));for(let i=0;i<8;i++)await Promise.resolve();}};
    try{
     const pending=CodeScript.next();const samples={};
-    for(const at of [180,580,730,879,880,1000,1560]){await advance(at/rate);samples[at]=read();}
+    for(const at of [180,579,580,581,730,879,880,1000,1560]){await advance(at/rate);samples[at]=read();}
     await advance(1800/rate);await pending;
     reports.push({mode,rate,operation,baseline,samples,final:read(),remaining:document.querySelectorAll('.asm-trace-compare-operator,.asm-trace-compare-highlight,.asm-trace-compare-self-clone').length});
    }finally{ASMTraceFrameTween.cancel();callbacks.clear();window.requestAnimationFrame=native.raf;window.cancelAnimationFrame=native.cancel;if(native.now)Object.defineProperty(performance,'now',native.now);else delete performance.now;window.asmGetAnimationPlaybackRate=native.rate;}
@@ -67,20 +67,24 @@ result=a[i]==a[i];
  },trace);
  const near=(a,b,label)=>assert.ok(Math.abs(a-b)<0.01,label+': '+JSON.stringify({a,b}));
  for(const r of reports){const label=r.mode+' '+r.operation+' '+r.rate+'x',mid=r.samples[730],peak=r.samples[1000];
-  assert.equal(r.samples[879].expression,'',label+' result hidden until approach finishes');
-  assert.ok(r.samples[880].expression.length>0,label+' result appears at 880ms');
+  assert.equal(r.samples[579].expression,'',label+' wait before comparing');
+  assert.equal(r.samples[580].resultOpacity,0,label+' result starts hidden');
+  assert.ok(r.samples[581].resultOpacity>0&&r.samples[581].resultOpacity<1,label+' old gradual result reveal starts with scaling');
+  near(r.samples[880].resultOpacity,1,label+' result fully shown at 880ms');
   if(r.operation==='<'){
    near(mid.left.x,r.baseline.left.x,label+' larger cell stays in its column');near(mid.right.x,r.baseline.right.x,label+' smaller cell stays in its column');
-   assert.ok(peak.left.y<r.baseline.left.y&&peak.right.y>r.baseline.right.y,label+' larger up, smaller down');
-   assert.match(peak.expression,/<.*false/,label+' preserve original false condition');
+   near(peak.left.y,r.baseline.left.y-15,label+' left joins common 15px lift');near(peak.right.y,r.baseline.right.y-15,label+' right joins common 15px lift');
+   near(peak.left.width/r.baseline.left.width,1.14,label+' larger grows');near(peak.right.width/r.baseline.right.width,.86,label+' smaller shrinks');
+   assert.match(peak.expression,/</,label+' original condition operator');assert.doesNotMatch(peak.expression,/true|false/);assert.equal(peak.slashes,1,label+' false condition crosses its operator');
   }else if(r.operation==='self'){
    assert.equal(peak.clones.length,2,label+' two presentations of the same source');
-   assert.ok(peak.clones.every(c=>c.y===0&&c.opacity>0),label+' self-compare clones never lift');
+   assert.ok(peak.clones.every(c=>c.y===-15&&c.opacity>0),label+' original self-compare split lifts both presentations');
    assert.match(peak.expression,/=/);
   }else{
-   near(mid.left.y,r.baseline.left.y,label+' no vertical displacement left');near(mid.right.y,r.baseline.right.y,label+' no vertical displacement right');
-   assert.ok(mid.left.x>r.baseline.left.x&&mid.left.x<peak.left.x,label+' approach already moving halfway');
-   assert.ok(mid.right.x<r.baseline.right.x&&mid.right.x>peak.right.x,label+' full approach duration');
+   near(mid.left.x,r.baseline.left.x,label+' first half aligns before moving left source');near(mid.right.x,r.baseline.right.x,label+' first half aligns before moving right source');
+   assert.ok(peak.left.x>mid.left.x&&peak.right.x<mid.right.x,label+' second half brings sources together');
+   const split=r.operation==='!='?5:0;
+   near(peak.left.y,r.baseline.left.y-split,label+' original vertical split left');near(peak.right.y,r.baseline.right.y+split,label+' original vertical split right');
    assert.match(peak.expression,r.operation==='!='?/≠/:/=/,label+' equality symbol');
   }
   near(r.final.left.x,r.baseline.left.x,label+' restored x');near(r.final.left.y,r.baseline.left.y,label+' restored y');
