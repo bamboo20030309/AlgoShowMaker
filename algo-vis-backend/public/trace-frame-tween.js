@@ -3178,6 +3178,7 @@
           || computedSource?.fill || '#1f282d'
       }, sourceElement.textContent)
       : sourceElement.cloneNode(true);
+    if (!valueOnly) window.ASMTraceRenderers?.copyCellStyles?.(sourceElement, clone);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
       node.removeAttribute?.('data-trace-object-key');
@@ -4641,6 +4642,7 @@
         'pointer-events': 'none'
       });
       const clone = original.cloneNode(true);
+      window.ASMTraceRenderers?.copyCellStyles?.(original, clone);
       [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
         node.removeAttribute?.('id');
         node.removeAttribute?.('data-trace-object-key');
@@ -7479,6 +7481,7 @@
       if (value == null) return;
       const wrapper = createSvg('g', { class: 'asm-trace-sequence-entry', 'pointer-events': 'none', opacity: 0 });
       const clone = destination.cloneNode(true);
+      window.ASMTraceRenderers?.copyCellStyles?.(destination, clone);
       removeAnimationNodes(clone);
       [clone, ...clone.querySelectorAll('[id], [data-trace-object-key], [data-trace-index]')].forEach(node => {
         ['id', 'data-trace-object-key', 'data-trace-index'].forEach(name => node.removeAttribute(name));

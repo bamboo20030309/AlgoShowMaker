@@ -1236,6 +1236,12 @@
     const root = rootSvg.querySelector('#asm-trace-root');
     const captured = new Map();
     if (!root) return captured;
+    const stylesByCell = new Map();
+    root.querySelectorAll('.asm-trace-style-decoration').forEach(wrapper => {
+      const owner = wrapper._asmStyleCell;
+      if (!stylesByCell.has(owner)) stylesByCell.set(owner, []);
+      stylesByCell.get(owner).push(wrapper);
+    });
     root.querySelectorAll('[data-trace-object-key]').forEach(element => {
       const parentObject = element.parentElement?.closest?.('[data-trace-object-key]');
       if (parentObject && root.contains(parentObject)) return;
@@ -1246,6 +1252,13 @@
       const key = element.dataset.traceObjectKey;
       if (!key || captured.has(key)) return;
       const clone = element.cloneNode(true);
+      // 外層 style 不在物件 DOM 子樹內；先保存格子局部模板，供事件複本使用。
+      // 此處不插入可見節點，避免 point／mark 影響後續量測的格子尺寸。
+      const sourceCells = [element, ...element.querySelectorAll('[data-trace-index]')];
+      const capturedCells = [clone, ...clone.querySelectorAll('[data-trace-index]')];
+      sourceCells.forEach((cell, index) => {
+        capturedCells[index]._asmCapturedCellStyles = cellStyleTemplates(cell, stylesByCell.get(cell) || []);
+      });
       clone.querySelectorAll('animate, animateTransform, animateMotion').forEach(animation => animation.remove());
       [clone, ...clone.querySelectorAll('[id]')].forEach(node => node.removeAttribute?.('id'));
       clone.removeAttribute('data-trace-object-key');
@@ -2224,6 +2237,36 @@
     wrapper.append(visual);
     layer.append(wrapper);
     return true;
+  }
+
+  function cellStyleTemplates(cell, wrappers = null) {
+    if (cell?._asmCapturedCellStyles) return cell._asmCapturedCellStyles;
+    const root = cell?.closest?.('#asm-trace-root');
+    if (!root) return [];
+    return (wrappers || [...root.querySelectorAll('.asm-trace-style-decoration')])
+      .filter(wrapper => wrapper._asmStyleCell === cell
+        && !wrapper.classList.contains('asm-trace-style-compare'))
+      .map(wrapper => ({
+        basis: wrapper._asmStyleBasis,
+        visual: wrapper.firstElementChild?.cloneNode(true)
+      })).filter(item => item.basis && item.visual);
+  }
+
+  function copyCellStyles(source, target) {
+    if (!source || !target || target.querySelector?.(':scope > .asm-trace-cell-style-copy')) return;
+    cellStyleTemplates(source).forEach(({ basis, visual }) => {
+      const wrapper = svg('g', {
+        class: 'asm-trace-cell-style-copy', 'pointer-events': 'none',
+        transform: `matrix(${basis.a} ${basis.b} ${basis.c} ${basis.d} ${basis.e} ${basis.f})`
+      });
+      const copy = visual.cloneNode(true);
+      [copy, ...copy.querySelectorAll('[id], [data-trace-object-key], [data-trace-attached-to]')].forEach(node => {
+        ['id', 'data-trace-object-key', 'data-trace-attached-to'].forEach(name => node.removeAttribute(name));
+      });
+      // 和格子共用同一個 transform；不另做位移／縮放，也不加入選取或定位資料。
+      wrapper.append(copy);
+      target.append(wrapper);
+    });
   }
 
   function updatePresentedHints(cell, highlight, key) {
@@ -6992,6 +7035,7 @@
     defaultLiveObjectPlacementDelta, shiftPlacementTree, semanticTargetPlacement,
     keepAnchorPlacement,
     recursionOuterframePlacement,
+    copyCellStyles,
     attachStyleVisual: (visual, cell, kind) => {
       const root = cell?.closest?.('#asm-trace-root');
       const attached = attachStyleVisual(root, visual, cell, kind);
