@@ -407,14 +407,14 @@
         ]
       },
       "visual": {
-        "transfer": "none",
-        "stages": [
-          "emphasize"
-        ],
+        "transfer": "cell",
+        "targetStylePreserved": true,
+        "temporaryCopiesAfter": 0,
         "eventRetained": true
       },
       "timing": {
-        "durationMs": 240
+        "durationMs": 300,
+        "commitMs": 300
       },
       "assertionKind": "event"
     },

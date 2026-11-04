@@ -829,6 +829,21 @@ function splitTopLevel(value, delimiter = ',') {
   return { parts, valid: true };
 }
 
+// 同一參數位置的項目共用這個入口；括號、索引與引號內的逗點不分項。
+// 不接受空項，避免漏寫目標卻靜默丟失其中一個操作。
+function parseDirectiveList(value, line, role) {
+  const list = splitTopLevel(value);
+  if (!list.valid || list.parts.some(part => !part)) {
+    throw new Error(`第 ${line} 行的 ${role} 列表無效：${value}`);
+  }
+  return list.parts;
+}
+
+// 多個參數位置皆為列表時採全部組合；順序固定，供指標及箭頭保持穩定身份。
+function combineDirectiveLists(left, right) {
+  return left.flatMap(first => right.map(second => [first, second]));
+}
+
 const DIRECTIVE_MODIFIERS = new Set(['as', 'at', 'when', 'offset', 'render', 'with', 'without']);
 const FRAME_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'in']);
 const KEEP_DIRECTIVE_MODIFIERS = new Set([...DIRECTIVE_MODIFIERS, 'in', 'use']);
@@ -2050,54 +2065,59 @@ function attachPointerDirectives(source, analysis, frames) {
       throw new Error(`第 ${item.line} 行的 @pointer 顏色無效：${pointerColor}`);
     }
     const pointerPayload = colorMatch ? item.payload.slice(0, colorMatch.index) : item.payload;
-    const match = pointerPayload.match(/^(.+?)\s+at\s+([A-Za-z_]\w*)(?:\.(row|column|children|root|current|nodes|leaves|level\(([^)]+)\)|side\((left|right|top|bottom)\))(?:\[([^\]]+)\])?)?(?:\[([^\]]+)\])?$/i);
+    const match = pointerPayload.match(/^(.+?)\s+at\s+(.+)$/i);
     if (!match) throw new Error(`第 ${item.line} 行的 @pointer 語法無效`);
-    const [, rawLabel, targetName, selector, levelExpression, side, selectedIndex, cellIndex] = match;
-    const label = rawLabel.trim();
-    // 與物件索引使用同一個安全運算式解析器，來源依賴決定事件與生命週期。
-    const labelExpression = parseFrameExpression(label);
-    if (!labelExpression.valid) {
-      throw new Error(`第 ${item.line} 行的 @pointer 指標運算式無效：${label}`);
-    }
-    const name = labelExpression.identifiers[0] || '';
-    const pointerAxis = /^(row|column)$/i.test(selector || '') ? selector.toLowerCase() : '';
-    const isLayout = Boolean(selector && !pointerAxis);
-    const childExpression = selector?.toLowerCase() === 'children' ? selectedIndex : null;
-    if (selector?.toLowerCase() === 'children' && childExpression == null) throw new Error(`第 ${item.line} 行的 @pointer children 缺少節點索引`);
-    const singleton = /^(root|current)$/i.test(selector || '');
-    const suppliedIndex = pointerAxis ? selectedIndex ?? cellIndex : selector ? (singleton ? cellIndex ?? selectedIndex : cellIndex) : selectedIndex ?? cellIndex;
-    const indexExpression = suppliedIndex == null ? label : suppliedIndex;
-    const expressions = [label, indexExpression, ...[selectedIndex, levelExpression].filter(value => value != null)];
-    const parsed = expressions.map(parseFrameExpression);
-    if (parsed.some(expression => !expression.valid)) throw new Error(`第 ${item.line} 行的 @pointer 索引運算式無效`);
-    if (isLayout && !layouts.has(targetName)) throw new Error(`第 ${item.line} 行的 @pointer 找不到 layout：${targetName}`);
-    const names = new Set([name, ...parsed.flatMap(expression => expression.identifiers), ...(isLayout ? [] : [targetName])].filter(Boolean));
-    const variables = new Map();
-    names.forEach(identifier => {
-      const variable = frame.variables.find(candidate => candidate.name === identifier) || resolve(identifier, item.from);
-      if (!variable) throw new Error(`第 ${item.line} 行的 @pointer 找不到可見變數：${identifier}`);
-      variables.set(identifier, variable);
-      if (!frame.variables.some(candidate => candidate.id === variable.id)) {
-        frame.variables.push(variable);
-        frame.captureOnlyVariableIds.push(variable.id);
+    const labels = parseDirectiveList(match[1], item.line, '@pointer 指標');
+    const targets = parseDirectiveList(match[2], item.line, '@pointer 目標');
+    combineDirectiveLists(labels, targets).forEach(([label, target]) => {
+      const targetMatch = target.match(/^([A-Za-z_]\w*)(?:\.(row|column|children|root|current|nodes|leaves|level\(([^)]+)\)|side\((left|right|top|bottom)\))(?:\[([^\]]+)\])?)?(?:\[([^\]]+)\])?$/i);
+      if (!targetMatch) throw new Error(`第 ${item.line} 行的 @pointer 目標無效：${target}`);
+      const [, targetName, selector, levelExpression, side, selectedIndex, cellIndex] = targetMatch;
+      // 與物件索引使用同一個安全運算式解析器，來源依賴決定事件與生命週期。
+      const labelExpression = parseFrameExpression(label);
+      if (!labelExpression.valid) {
+        throw new Error(`第 ${item.line} 行的 @pointer 指標運算式無效：${label}`);
       }
+      const name = labelExpression.identifiers[0] || '';
+      const pointerAxis = /^(row|column)$/i.test(selector || '') ? selector.toLowerCase() : '';
+      const isLayout = Boolean(selector && !pointerAxis);
+      const childExpression = selector?.toLowerCase() === 'children' ? selectedIndex : null;
+      if (selector?.toLowerCase() === 'children' && childExpression == null) throw new Error(`第 ${item.line} 行的 @pointer children 缺少節點索引`);
+      const singleton = /^(root|current)$/i.test(selector || '');
+      const suppliedIndex = pointerAxis ? selectedIndex ?? cellIndex : selector ? (singleton ? cellIndex ?? selectedIndex : cellIndex) : selectedIndex ?? cellIndex;
+      const indexExpression = suppliedIndex == null ? label : suppliedIndex;
+      const expressions = [label, indexExpression, ...[selectedIndex, levelExpression].filter(value => value != null)];
+      const parsed = expressions.map(parseFrameExpression);
+      if (parsed.some(expression => !expression.valid)) throw new Error(`第 ${item.line} 行的 @pointer 索引運算式無效`);
+      if (isLayout && !layouts.has(targetName)) throw new Error(`第 ${item.line} 行的 @pointer 找不到 layout：${targetName}`);
+      const names = new Set([name, ...parsed.flatMap(expression => expression.identifiers), ...(isLayout ? [] : [targetName])].filter(Boolean));
+      const variables = new Map();
+      names.forEach(identifier => {
+        const variable = frame.variables.find(candidate => candidate.name === identifier) || resolve(identifier, item.from);
+        if (!variable) throw new Error(`第 ${item.line} 行的 @pointer 找不到可見變數：${identifier}`);
+        variables.set(identifier, variable);
+        if (!frame.variables.some(candidate => candidate.id === variable.id)) {
+          frame.variables.push(variable);
+          frame.captureOnlyVariableIds.push(variable.id);
+        }
+      });
+      if (pointerAxis && variables.get(targetName)?.kind !== 'matrix') {
+        throw new Error(`第 ${item.line} 行的 @pointer ${pointerAxis} 必須指定二維矩陣：${targetName}`);
+      }
+      frame.bindings.push({ mode: 'index', explicitPointer: true, implicitIndex: suppliedIndex == null,
+        ...(pointerAxis ? { pointerAxis, indexDimension: pointerAxis === 'row' ? 0 : 1 } : {}),
+        ...(pointerColor ? { pointerColor } : {}),
+        label, sourceName: name,
+        sourceVariableId: variables.get(name)?.id || '',
+        sourceVariableIds: labelExpression.identifiers.map(identifier => variables.get(identifier).id),
+        targetName, targetVariableId: variables.get(targetName)?.id || '', indexExpression,
+        ...(isLayout && childExpression == null ? { layoutTarget: {
+          layoutId: targetName, layoutSelector: selector.match(/^[A-Za-z]+/)[0].toLowerCase(),
+          indexExpressions: singleton || selectedIndex == null ? [] : [selectedIndex],
+          layoutLevelExpression: levelExpression || '', layoutSide: side || ''
+        } } : {}),
+        ...(childExpression == null ? {} : { layoutChild: { layoutId: targetName, childExpression } }) });
     });
-    if (pointerAxis && variables.get(targetName)?.kind !== 'matrix') {
-      throw new Error(`第 ${item.line} 行的 @pointer ${pointerAxis} 必須指定二維矩陣：${targetName}`);
-    }
-    frame.bindings.push({ mode: 'index', explicitPointer: true, implicitIndex: suppliedIndex == null,
-      ...(pointerAxis ? { pointerAxis, indexDimension: pointerAxis === 'row' ? 0 : 1 } : {}),
-      ...(pointerColor ? { pointerColor } : {}),
-      label, sourceName: name,
-      sourceVariableId: variables.get(name)?.id || '',
-      sourceVariableIds: labelExpression.identifiers.map(identifier => variables.get(identifier).id),
-      targetName, targetVariableId: variables.get(targetName)?.id || '', indexExpression,
-      ...(isLayout && childExpression == null ? { layoutTarget: {
-        layoutId: targetName, layoutSelector: selector.match(/^[A-Za-z]+/)[0].toLowerCase(),
-        indexExpressions: singleton || selectedIndex == null ? [] : [selectedIndex],
-        layoutLevelExpression: levelExpression || '', layoutSide: side || ''
-      } } : {}),
-      ...(childExpression == null ? {} : { layoutChild: { layoutId: targetName, childExpression } }) });
   });
 }
 
@@ -2294,12 +2314,7 @@ function parseStyleTarget(raw, line) {
 }
 
 function splitDirectiveTargetList(raw, line, directiveName) {
-  const source = String(raw || '');
-  const split = splitTopLevel(source);
-  if (!split.valid || !split.parts.length || split.parts.some(part => !part.trim())) {
-    throw new Error(`第 ${line} 行的 ${directiveName} 目標列表無效：${source.trim()}`);
-  }
-  return split.parts.map(part => part.trim());
+  return parseDirectiveList(raw, line, `${directiveName} 目標`);
 }
 
 function parseStyleTargets(raw, line) {
@@ -2983,24 +2998,27 @@ function findArrowDirectives(source, suppliedAnalysis = null) {
             temporalFunctions: parsed.temporalFunctions || []
           };
         }
-        directives.push({
+        const endpointPairs = combineDirectiveLists(
+          parseDirectiveList(values.get('from'), line, '@arrow from'),
+          parseDirectiveList(values.get('to'), line, '@arrow to'));
+        endpointPairs.forEach(([from, to], pairIndex) => directives.push({
           from: node.from,
           to: node.to,
           line,
-          id,
+          id: endpointPairs.length === 1 ? id : `${id}-list-${pairIndex + 1}`,
           signature,
           explicitId: values.has('as'),
           drawLoops: drawingScopesAt(source, analysis, node.from),
           displayName: values.has('as') ? id : `arrow_${directives.length + 1}`,
           source: 'directive',
-          fromTarget: parseArrowTarget(values.get('from'), line, 'from'),
-          toTarget: parseArrowTarget(values.get('to'), line, 'to'),
+          fromTarget: parseArrowTarget(from, line, 'from'),
+          toTarget: parseArrowTarget(to, line, 'to'),
           style: { color, width, head, line: lineStyle, dash },
           ownerLayoutId,
           until,
           when,
           batch
-        });
+        }));
       }
     }
     for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
@@ -3037,19 +3055,21 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
         .filter(item => item.name === 'arrow').map(item => ({ ...item, presetName: name })) || []);
     presetArrows.forEach((item, index) => {
       const sourceText = `// @arrow ${item.payload}`;
-      const parsed = findArrowDirectives(sourceText, {
+      const parsedArrows = findArrowDirectives(sourceText, {
         tree: parser.parse(sourceText), lineAt: () => item.line,
         presetDefinitions: new Map(), presetRanges: []
-      })[0];
+      });
       const position = frame.from + (index + 1) / (presetArrows.length + 1);
-      const generatedId = !parsed.explicitId;
-      arrows.push({
-        ...parsed,
-        from: position,
-        to: position,
-        presetName: item.presetName,
-        drawLoops: item.drawLoops || [],
-        id: generatedId ? `preset-${item.presetName}-${parsed.id}-${presetArrows.slice(0, index).filter(previous => previous.presetName === item.presetName && previous.payload === item.payload).length}` : parsed.id
+      parsedArrows.forEach(parsed => {
+        const generatedId = !parsed.explicitId;
+        arrows.push({
+          ...parsed,
+          from: position,
+          to: position,
+          presetName: item.presetName,
+          drawLoops: item.drawLoops || [],
+          id: generatedId ? `preset-${item.presetName}-${parsed.id}-${presetArrows.slice(0, index).filter(previous => previous.presetName === item.presetName && previous.payload === item.payload).length}` : parsed.id
+        });
       });
     });
   });
@@ -3287,7 +3307,8 @@ function findPlaceDirectives(source, suppliedAnalysis = null) {
         if (!positions.length || positions[0].name !== 'at') {
           throw new Error(`第 ${line} 行的 @place 格式應為：@place source at target.anchor`);
         }
-        const sourceTarget = parsePlaceSource(payload.slice(0, positions[0].index), line);
+        const sourceTargets = parseDirectiveList(payload.slice(0, positions[0].index), line, '@place 來源')
+          .map(value => parsePlaceSource(value, line));
         const values = new Map();
         positions.forEach((position, index) => {
           if (values.has(position.name)) {
@@ -3317,19 +3338,23 @@ function findPlaceDirectives(source, suppliedAnalysis = null) {
             temporalFunctions: parsed.temporalFunctions || []
           };
         }
-        directives.push({
+        const targets = parseDirectiveList(values.get('at'), line, '@place at');
+        // 同一物件同時定位到多個位置會互相覆寫，因此直接指出衝突。
+        // 多來源仍可共用一個定位端點；多端點應分別用 @place 或 @for 描述。
+        if (targets.length > 1) throw new Error(`第 ${line} 行的 @place 每個物件只能有一個定位目標`);
+        sourceTargets.forEach(sourceTarget => directives.push({
           from: node.from,
           to: node.to,
           line,
           ...sourceTarget,
           binding: {
-            ...parseAtBinding(values.get('at'), line, '@place', offsetX, offsetY),
+            ...parseAtBinding(targets[0], line, '@place', offsetX, offsetY),
             sourceName: sourceTarget.sourceName,
             sourceAnchor: sourceTarget.sourceAnchor,
             when
           },
           when
-        });
+        }));
       }
     }
     for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
@@ -3363,11 +3388,11 @@ function attachPlaceDirectives(source, analysis, frameDirectives) {
         .filter(item => item.name === 'place').map(item => ({ ...item, presetName: name })) || []);
     presetPlaces.forEach((item, index) => {
       const text = `// @place ${item.payload}`;
-      const parsed = findPlaceDirectives(text, {
+      const parsedPlaces = findPlaceDirectives(text, {
         tree: parser.parse(text), lineAt: () => item.line
-      })[0];
+      });
       const position = frame.from + (index + 1) / (presetPlaces.length + 1);
-      places.push({ ...parsed, from: position, to: position, presetName: item.presetName });
+      parsedPlaces.forEach(parsed => places.push({ ...parsed, from: position, to: position, presetName: item.presetName }));
     });
   });
   places.sort((left, right) => left.from - right.from).forEach(place => {

@@ -57,14 +57,6 @@
     return event?.selectionOperation && event.payload?.left != null && event.payload?.right != null ? COMPARE_DURATION : 0;
   }
 
-  function unchangedAssignment(event) {
-    if (selectionDuration(event)) return false;
-    const { before, after } = event?.payload || {};
-    return ['assign', 'write', 'swap'].includes(event?.type) && before != null && after != null
-      && !Array.isArray(before?.items) && !Array.isArray(after?.items)
-      && JSON.stringify(before) === JSON.stringify(after);
-  }
-
   // Public, inspectable action DAG. An edge is a dependency; actions sharing
   // a stage have identical start/end and may execute in parallel.
   function eventActionPlan(event, { marker = false } = {}) {
@@ -80,14 +72,11 @@
       add('approach', 180, ['move']); add('relation', 240, ['hint', 'emphasize']); add('restore', 180, ['move']);
     } else if (event?.type === 'swap') add('swap', MOTION_TIME.swap, ['move']);
     else if (['assign', 'write'].includes(event?.type)) {
-      if (unchangedAssignment(event)) add('unchanged', MOTION_TIME.emphasize, ['emphasize']);
-      else {
-        for (let i = 0; i < selectionDuration(event) / COMPARE_DURATION; i++) {
-          add('select-approach', 180, ['move']); add('select-result', 240, ['hint', 'emphasize']); add('select-restore', 180, ['move']);
-        }
-        add('transfer', MOTION_TIME.move, kind === 'literal' ? ['hint', 'move'] : ['copy', 'move']);
-        if (marker) add('pointer-motion', MOTION_TIME.move, ['move']);
+      for (let i = 0; i < selectionDuration(event) / COMPARE_DURATION; i++) {
+        add('select-approach', 180, ['move']); add('select-result', 240, ['hint', 'emphasize']); add('select-restore', 180, ['move']);
       }
+      add('transfer', MOTION_TIME.move, kind === 'literal' ? ['hint', 'move'] : ['copy', 'move']);
+      if (marker) add('pointer-motion', MOTION_TIME.move, ['move']);
     } else if (event?.type === 'sequence-operation') {
       const inserting = Number(event.payload?.afterSize) > Number(event.payload?.beforeSize);
       add(inserting ? 'make-room' : 'remove', inserting ? 300 : 180, inserting ? ['move'] : ['exit']);
@@ -2942,7 +2931,7 @@
     visualKeyForSource = key => key, appearingKeys = null, previousObjects = null) {
     const settings = traceDocument?.studio?.eventSettings || {};
     if (settings.readHighlightEnabled !== true) return { update() {}, remove() {} };
-    const configuredColor = settings.readHighlightColor || 'AV_red';
+    const configuredColor = settings.readHighlightColor || 'red';
     const color = configuredColor === 'AV_red'
       ? 'rgba(239, 154, 154, 0.6)' : configuredColor;
     const targets = event?.semantics?.reads || (event?.targets || []).filter(target => (
@@ -3010,16 +2999,6 @@
     const index = (traceDocument?.frames || []).findIndex(item => item.id === frame?.id);
     const before = traceDocument?.frames?.[index - 1];
     return Boolean(before?.captureOnlyVariableIds?.includes(target.variableId) && !operand?.marker);
-  }
-
-  function createEmphasisEffect(event, traceDocument, frame, placements, elements) {
-    const highlights = [];
-    for (const target of (event?.targets || []).filter(t => t.role === 'target').slice(0, 1)) {
-      const operand = eventOperand(traceDocument, frame, target, null, placements, elements, key => key, event);
-      const visual = operand && addHighlight(operand.element, '#333333');
-      if (visual) { visual.classList.add('asm-trace-event-emphasis'); highlights.push(visual); }
-    }
-    return { update() {}, remove() { highlights.forEach(h => h.remove()); } };
   }
 
   function displayOperator(operation) {
@@ -3135,7 +3114,7 @@
     // Transferring a clone of it would animate the index instead of the value.
     if (!valueOnly
       && sourceOperand.element.querySelector?.('text[data-trace-content-role="index"]')) return null;
-    if (sourceOperand.visualKey === targetOperand.visualKey) return null;
+    if (sourceOperand.visualKey === targetOperand.visualKey && options.allowSameTarget !== true) return null;
     if (sourceOperand.element.closest?.('[data-trace-visibility="hidden"]')
       || (!options.allowPendingTarget && targetOperand.element.closest?.('[data-trace-visibility="hidden"]'))) return null;
 
@@ -4422,6 +4401,8 @@
             item ? previousVisualElement(previousObjects, item.visualKey) : null,
             {
               valueOnly: valueOnlyTransfer,
+              // 自我賦值仍建立正常複本；複合賦值保留原本「舊目標不搬移」的規則。
+              allowSameTarget: event.compound !== true,
               operatorPrefix
             }
           );
@@ -7144,8 +7125,7 @@
           || Math.abs(Number(markerDelta?.y) || 0) > 0.1
         ));
         if (markerAssignment) seenMarkerAssignments.add(markerAssignment.key);
-        effectDuration = unchangedAssignment(event) ? MOTION_TIME.emphasize
-          : selectionDuration(event) + assignmentEffectDuration(Boolean(markerAssignment));
+        effectDuration = selectionDuration(event) + assignmentEffectDuration(Boolean(markerAssignment));
         const bitwise = bitwisePlan(traceDocument, eventFrame, event, elements);
         bitwiseAnimation = Boolean(bitwise);
         if (bitwise) {
@@ -7685,10 +7665,6 @@
       const visualKeyAtEvent = key => checkpoint?.visualBindingsBefore?.[key]
         || options.visualKeyForSource?.(key)
         || key;
-      if (slot.animation === 'assign' && unchangedAssignment(slot.event)) {
-        return createEmphasisEffect(slot.event, options.document, eventFrame,
-          options.currentPlacements, options.currentElements);
-      }
       if (slot.animation === 'assign' && selectionDuration(slot.event)) {
         const event = slot.event;
         const selections = event.selectionSteps?.length ? event.selectionSteps : [{
@@ -10254,10 +10230,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-308';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-309';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-308', play, cancel, updateEventAvailability,
+    build: 'trace-309', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

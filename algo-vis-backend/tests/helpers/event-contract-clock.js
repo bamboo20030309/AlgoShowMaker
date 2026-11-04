@@ -147,7 +147,6 @@ async function runClockProbe({ page, trace, item, observation }) {
             + Math.min(120, (commitMs / rate) / 2);
         await advanceTo(sampleAt);
         observed.during = snapshot(targetKey, sourceKeys);
-        if (item.id === 'E09') equal('emphasisWithoutTransfer', observed.during.transfers.length, 0);
         if (item.visual?.transfer === 'cell') {
           equal('wholeCellTransferObserved', observed.during.transfers.some(node => node.rectCount > 0 && !node.valueOnly), true);
         } else if (item.visual?.transfer === 'value') {
@@ -163,12 +162,6 @@ async function runClockProbe({ page, trace, item, observation }) {
         await advanceTo(commitMs / rate);
         observed.atCommit = readCell(targetKey);
         equal('valueAtCommit', observed.atCommit.text, String(item.expected.after));
-        // Self-assignment has no frame geometry to move. Its 240 ms emphasis
-        // must finish here, without the old generic 520 ms frame floor.
-        if (item.id === 'E09') {
-          for (let microtask = 0; microtask < 10; microtask++) await Promise.resolve();
-          equal('noIdleAfterEmphasis', completed, true);
-        }
         if (item.visual?.targetStylePreserved === true) equal('targetFillAtCommit', observed.atCommit.fill, '#123456');
         await advanceTo(commitMs / rate + 1500);
         await animation;

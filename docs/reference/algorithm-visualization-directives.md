@@ -229,6 +229,14 @@ dfs(0, 0, 0, 0);
 // @pointer j-1 at arr
 ```
 
+### 同一參數位置的多項列表
+
+逗點列出同一語法角色的多項，後綴共同套用。新增 `@pointer j,j+1 at arr`、`@pointer i,j at a,b color red`、`@arrow from a,b to c,d` 與 `@place a.top,b.top at canvas.top`。兩邊多項採全部組合，後兩個 pointer／arrow 例子各產生四個綁定／箭頭；來源順序優先、目的地順序次之。原有單項寫法及 Trace 結構不變。
+
+列表解析遵守括號、索引及字串邊界，`offset(0,20)`、`bits(mask,8)`、`s[p[j-1]]` 不會被錯拆。空項、括號不完整與非法項目會明確回報行號。preset 內也會保留展開後的每一項。多支具名箭頭由 `as "links"` 產生 `links-list-1` ~ `links-list-N`，單支仍沿用原名稱。
+
+此規則作用於多物件／多操作的位置，不把單值選項變成列表。place 可有多來源，但每個來源只能有一個定位目的地；否則會報定位衝突。完整列表與範例見 [指令速查](../guides/drawing-directives.md#用逗點列出多個同類項目)。
+
 ### 同一幀顯示多個獨立設定的物件
 
 需要讓同一幀的不同物件使用各自的畫法、範圍、標籤或位置時，可以先用空白

@@ -37,6 +37,35 @@
 
 這會顯示陣列與 i 指標，保留已走訪區段，淡化後方尚未走訪的格子。焦點、標記及指示樣式優先省略顏色，使用引擎預設；陣列遍歷優先使用指標，而非每一步重塗背景。
 
+## 用逗點列出多個同類項目
+
+同一參數位置可用逗點列多項，後綴設定共同套用。若兩個位置都有多項，採**全部組合**，不是依序配對。這裡的「同類」指同一語法角色，例如指標運算式、顯示目標或箭頭端點，不要求 C++ 變數型別相同。
+
+```cpp
+// @frame arr,temp
+// @pointer j,j+1 at arr color AV_blue
+// @pointer i,j at arr,temp
+// @style arr[i],temp[j] highlight,point
+// @arrow from arr[0],arr[1] to temp[0],temp[1] as "links"
+```
+
+第二行建立兩個指標；第三行在 arr、temp 上各建立 i、j，共四個指標。最後一行建立四支箭頭，ID 依序為 `links-list-1` ~ `links-list-4`；若要各支箭頭有獨立設定，仍分行寫。
+
+| 可列多項的位置 | 例子 |
+| --- | --- |
+| frame／object 的顯示目標 | `@object char(s),p with labels(value,index)` |
+| pointer 的指標與綁定目標 | `@pointer i,i+1 at dp.row,dp.column color red` |
+| style 的目標與效果 | `@style a[i],b[j] highlight,point` |
+| segment 的區段目標 | `@segment a[0:2],b[0:2]` |
+| arrow 的 from／to 端點 | `@arrow from a,b to c,d`，產生四支箭頭 |
+| place 的來源物件 | `@place a.top,b.top at canvas.top offset(0,60)` |
+| exit／automark 的目標 | `@exit i,j`、`@automark a,b` |
+| use 的 preset 名稱、events 的事件種類 | `@frame use view,cursor`、`@events compare,assignment animate off` |
+
+`preset` 內遵循相同規則。逗點不會拆開 `bits(mask,8)`、`offset(0,20)`、`rgb(255,0,0)`、陣列索引或引號內的內容；空項（如 `j,,j+1`）會報出行號與列表錯誤。`arr[i,j]` 不會恢復成舊版指標寫法，要指標請明確寫 `@pointer i,j at arr`。
+
+需要唯一結果的設定仍為單值，例如顏色、zoom、名稱，以及一個物件的定位目的地。`@place a,b at c.top` 會把兩者放到同一位置，並不自動排開；`@place a at b.top,c.top` 則會警告定位衝突。這類排版需要搭配 `@layout` 或分行設定。
+
 ## 起始指令總覽
 
 | 指令 | 用途 |

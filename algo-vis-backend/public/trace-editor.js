@@ -131,7 +131,7 @@
       autoLoopBoundaryEnabled: value.autoLoopBoundaryEnabled === true,
       readHighlightEnabled: value.readHighlightEnabled === true,
       readHighlightColor: typeof value.readHighlightColor === 'string' && value.readHighlightColor.trim()
-        ? value.readHighlightColor.trim().slice(0, 128) : 'AV_red',
+        ? value.readHighlightColor.trim().slice(0, 128) : 'red',
       defaultEnabled: cleanFlags(value.defaultEnabled),
       timelineTypes: cleanFlags(value.timelineTypes)
     };

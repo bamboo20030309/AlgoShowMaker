@@ -57,8 +57,8 @@ test('@place supports an explicit source anchor and rejects hidden C++ sources',
     'left'
   );
   assert.throws(() => findFrameDirectives(source.replace(
-    "// @frame arr,pivot\n// @pointer i at arr",
-    "// @frame arr\n// @pointer i at arr"
+    '// @frame arr,pivot with',
+    '// @frame arr with'
   )), /來源變數未由前一個 @frame 顯示：pivot/);
 });
 

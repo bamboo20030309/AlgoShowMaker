@@ -14,8 +14,10 @@
   if (!editor) return;
 
   const commands = [
-    { id: 'pointer', label: '@pointer', effect: '獨立指標：綁定陣列、矩陣.row/.column或layout節點（root、current、nodes、leaves、children、level、side），可加color指定顏色；省略索引時使用指標變數值，越界時隱藏', code: '// @pointer i at arr', examples: [
+    { id: 'pointer', label: '@pointer', effect: '獨立指標：指標與目標可用逗點列多項，兩邊多項採全部組合；綁定陣列、矩陣.row/.column或layout節點，可加color共用顏色；省略索引時使用指標值，越界時隱藏', code: '// @pointer i at arr', examples: [
       '// @pointer i at arr color AV_blue',
+      '// @pointer j,j+1 at arr color AV_blue',
+      '// @pointer i,j at arr,temp',
       '// @pointer i at dp.row\n// @pointer j at dp.column color AV_red',
       '// @pointer i at merge_tree.children[0]\n// @pointer j at merge_tree.children[1]',
       '// @pointer i at arr[i]',
@@ -96,8 +98,9 @@
       '// @segment tree[1][L-Tmask:R-Tmask] color AV_green as active_range with split(now)',
       "// @frame arr\n// @pointer i at arr\n// @segment arr[low:high]\n// @text \"處理目前區間\" at arr.bottom"
     ] },
-    { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件', code: '// @place pivot at arr.right offset(16,0)', examples: [
+    { id: 'place', label: '@place', effect: '把同幀物件的外框錨點綁到另一物件；來源可用逗點列多項，共用一個目的地', code: '// @place pivot at arr.right offset(16,0)', examples: [
       '// @place pivot at arr.right',
+      '// @place a.top,b.top at canvas.top offset(0,60)',
       '// @place pivot at arr.right offset(16,0)',
       '// @frame arr,pivot\n// @place pivot at arr.right offset(16,0)\n// @text "基準值" at pivot.bottom'
     ] },
@@ -124,7 +127,9 @@
       '// @loop as "sieve_loop"\nfor(int j=0;j<n;j++){ }',
       '// @loop as "scan"\nwhile(j<n){j++;}'
     ] },
-    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；for 可按範圍或實際迴圈值展開多支箭頭', code: '// @arrow from arr[0] to arr[1]', examples: [
+    { id: 'arrow', label: '@arrow', effect: '連接物件或格子；from/to 可用逗點列多項，兩邊多項採全部組合；for 可按範圍或實際迴圈值展開', code: '// @arrow from arr[0] to arr[1]', examples: [
+      '// @arrow from arr[i],arr[j] to temp[0] color AV_green',
+      '// @arrow from a[0],a[1] to b[0],b[1] as "links"',
       '// @arrow for k in [0:n-1] step 2 from arr[0].bottom to arr[k].top as "links"',
       '// @arrow for j from arr[0] to arr[j]',
       '// @arrow for j in "sieve_loop" from prime[j] to isprime[i*prime[j]]',

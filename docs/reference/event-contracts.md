@@ -40,7 +40,7 @@
 | E06 | `a += b;` | 11+3=14；a 舊值不搬移，b 數字飛入 |
 | E07 | `a = 8;` | a：14→8；8 從目標上方落入 |
 | E08 | `a = b + b;` | 3+3=6；兩份數字，b 的讀取 highlight 只有一份 |
-| E09 | `a = a;` | a=6 不變；只強調，不搬移，事件仍保留 |
+| E09 | `a = a;` | a=6 不變；仍按一般整格複製賦值播放 300 ms，不以值相同略過動畫 |
 | E10 | 容器 `a = b;` | [1,2]→[3,8,5]；調整格數，各格同步複製，名稱與外框不搬移 |
 | E11 | `ans = solve(source);` | source=7、return=8、ans：0→8；從可見回傳位置飛入，否則從目標上方落入 |
 | E12 | b 不可見，`a = b;` | a：1→3；數字從 a 上方落入，不臨時建立 b 格子 |
@@ -160,4 +160,4 @@ insert／push_back 的入場階段須同時呈現格子與數字。可見來源�
 
 ## 讀取強調預設（2026-11-04）
 
-讀取仍附著於所屬操作，不增加獨立停頓。顯示預設關閉；事件設定面板的「讀取強調」開啟後才建立 highlight，預設顏色為 AV_red。設定保存於 studio.eventSettings.readHighlightEnabled（布林值）與 readHighlightColor（預設 AV_red）。缺少欄位的舊資料視為關閉；明確 true／false 與自訂色保留，設定可隨 @asm-view、投影片、Trace 引用與帳號偏好保存。不恢復已移除的逐步讀取事件開關。
+讀取仍附著於所屬操作，不增加獨立停頓。顯示預設關閉；事件設定面板的「讀取強調」開啟後才建立 highlight，預設顏色為純紅色 red（#ff0000）。設定保存於 studio.eventSettings.readHighlightEnabled（布林值）與 readHighlightColor（預設 red）。缺少欄位的舊資料視為關閉；明確 true／false 與自訂色保留，設定可隨 @asm-view、投影片、Trace 引用與帳號偏好保存。不恢復已移除的逐步讀取事件開關。
