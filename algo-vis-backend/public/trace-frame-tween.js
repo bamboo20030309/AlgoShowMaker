@@ -122,6 +122,19 @@
     return sequenceEdge(event) === 'front' ? 0 : (inserted ? before : after);
   }
 
+  // 外框只跟隨騰位／補位階段；新增格子入場和刪除格子退場時不伸縮。
+  // resize、clear、整體 assign 保留各自的批次事件規則。
+  function sequenceOuterframeProgress(slot, elapsed) {
+    const event = slot?.event;
+    const before = Number(event?.payload?.beforeSize);
+    const after = Number(event?.payload?.afterSize);
+    const phased = Number.isFinite(before) && Number.isFinite(after) && before !== after
+      && !/resize|clear|assign/.test(String(event?.operation || ''));
+    const start = (Number(slot?.start) || 0) + (phased && after < before ? MOTION_TIME.exit : 0);
+    const duration = phased ? MOTION_TIME.move : Math.max(1, Number(slot?.duration) || 1);
+    return easeOutCubic(clamp01((elapsed - start) / duration));
+  }
+
   function sequenceDataStates(traceDocument, frame, event) {
     const payload = event?.payload || {};
     if (Array.isArray(payload.before?.items) && Array.isArray(payload.after?.items)) return payload;
@@ -7429,7 +7442,8 @@
       adjustments, opacities,
       update(elapsed) {
         const progress = easeOutCubic(clamp01(elapsed / Math.max(1, slot.duration)));
-        const insertStart = hasShift ? MOTION_TIME.move : 0;
+        const insertStart = after > before && !/resize|assign/.test(String(event.operation || ''))
+          ? MOTION_TIME.move : 0;
         const insertProgress = easeOutCubic(timedProgress(elapsed - insertStart,
           Math.max(1, slot.duration - insertStart)));
         const shiftProgress = easeOutCubic(timedProgress(elapsed - (after < before ? MOTION_TIME.exit : 0), MOTION_TIME.move));
@@ -8120,7 +8134,7 @@
     const rowHeight = Number(content.dataset.rowHeight) || 40;
     const colWidth = Number(content.dataset.colWidth) || 40;
     const index = content.querySelector('[data-trace-index-label]') || rowHeight >= 52 ? 1 : 0;
-    const columns = Number(content.dataset.itemsPerRow);
+    const columns = Number(content.dataset.outerframeColumns ?? content.dataset.itemsPerRow);
     window.draw_array_normal(group, name, Array(Math.max(0, size)).fill(''), [],
       [0, size - 1], Number.isFinite(columns) && columns > 0 ? columns : Infinity,
       index, { horizontal: Math.max(0, colWidth - 40), vertical: Math.max(0, rowHeight - 40 - (index ? 12 : 0)) });
@@ -9683,7 +9697,8 @@
           : '';
         entry.target.setAttribute('transform', [translate, entry.baseTransform, scaleTransform].filter(Boolean).join(' '));
         if (entry.sequenceRectGeometry?.length) {
-          applyLeftAnchoredRectGeometry(entry.sequenceRectGeometry, state.localEased);
+          applyLeftAnchoredRectGeometry(entry.sequenceRectGeometry,
+            entry.sequenceGeometrySlot ? sequenceOuterframeProgress(entry.sequenceGeometrySlot, elapsed) : state.localEased);
         }
         applyIndexLabelGrowth(entry.indexLabelGeometry, state.appearEased);
         if (entry.sequenceOuterframes?.length) {
@@ -9692,7 +9707,7 @@
           for (const item of timeline) {
             if (elapsed < Number(item.slot.start)) break;
             if (elapsed < Number(item.slot.end)) {
-              const progress = easeOutCubic(clamp01((elapsed - Number(item.slot.start)) / Math.max(1, Number(item.slot.duration))));
+              const progress = sequenceOuterframeProgress(item.slot, elapsed);
               applyOuterframeGeometry({ ...item.after, group: entry.currentOuterframeGeometry.group,
                 background: entry.currentOuterframeGeometry.background }, item.before, progress);
               geometry = null;
@@ -9704,8 +9719,7 @@
         } else if (entry.previousOuterframeGeometry) {
           const resizeSlot = entry.outerframeResizeSlot;
           const geometryProgress = resizeSlot
-            ? easeOutCubic(clamp01((elapsed - Number(resizeSlot.start))
-              / Math.max(1, Number(resizeSlot.duration))))
+            ? sequenceOuterframeProgress(resizeSlot, elapsed)
             : state.localEased;
           applyOuterframeGeometry(
             entry.currentOuterframeGeometry,
@@ -10143,10 +10157,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-303';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-304';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-303', play, cancel, updateEventAvailability,
+    build: 'trace-304', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

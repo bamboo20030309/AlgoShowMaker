@@ -84,6 +84,11 @@
     const verticalGap = gaps.vertical;
     const colW = baseBoxSize + horizontalGap;  // 每格水平步進（格子寬 + 水平間距）
     const rowH = baseBoxSize + (index == 1 || index == 3 || index == 4? indexBoxH : 0) + verticalGap;
+    // Preserve the authored wrapping policy separately from today's row size.
+    // Otherwise shrinking 4 cells to 3 incorrectly reconstructs the old row
+    // as a 3-column matrix during its exit animation.
+    g.setAttribute('data-outerframe-columns', String(
+      isFinite(itemsPerRow) && itemsPerRow >= 1 ? itemsPerRow : Infinity));
     if (!isFinite(itemsPerRow) || itemsPerRow < 1) itemsPerRow = ranged_array.length;
     let cols = Math.min(ranged_array.length, itemsPerRow);                              //列寬
     let rows = Math.ceil(ranged_array.length / itemsPerRow);                            //行高

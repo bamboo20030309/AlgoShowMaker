@@ -135,3 +135,7 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 報告位於 algo-vis-backend/test-results/event-contracts/summary.json；逐條預期值、實際值、畫面與時鐘證據在同目錄 records.json。pass 表示本案例要求的已實作檢查通過，clock.applicable=false 明確表示該案例沒有精確時鐘探針，不能據此宣稱時間全面通過。
 
 舊 Trace 缺少 min/max 的兩個運算元時，保留可證明的選值複製，並在除錯紀錄提示重新 RUN，不憑空產生比較。舊容器 Trace 若無法從前後狀態確認插入／刪除內容，保留已儲存結果並警告重新 RUN，不猜造中間值。既有自訂設定與明確 false／0 仍保留。
+
+## 外框擴縮階段
+
+在 algo-vis-backend 執行 `node --test tests/sequence-outerframe-phases.browser.test.js`。測試自行啟動隔離服務與瀏覽器，檢查 normal 的 insert、erase、push_back、pop_back，在 1／2 倍速依固定時間核對真實外框尺寸。這是 67 個事件案例以外新增的專項，不代表其他 render 的全組合均已驗證。
