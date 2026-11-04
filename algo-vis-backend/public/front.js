@@ -937,7 +937,7 @@ function csGetCurrentFrameIndex() {
 function csGotoFrame(idx) {
   if (typeof CodeScript === "undefined") return;
   // 快照恢復：跳轉前先嘗試還原最近的快照
-  FrameSnapshotCache.restore(idx);
+  if (!CodeScript.isTracePlayer) FrameSnapshotCache.restore(idx);
   if (typeof CodeScript.goto === "function") return CodeScript.goto(idx);
   if (typeof CodeScript.set_frame === "function") return CodeScript.set_frame(idx);
 }
@@ -1077,7 +1077,7 @@ let playSessionStartFrame = -1;
 function syncCurrentFrameFromCodeScript() {
   currentFrame = csGetCurrentFrameIndex();
   // 快照捕捉：每次影格渲染完成後自動存儲
-  FrameSnapshotCache.capture(currentFrame);
+  if (!window.CodeScript?.isTracePlayer) FrameSnapshotCache.capture(currentFrame);
   updateFrameBarsVisual();
   updateFrameInfoText();
   window.refreshPlaybackTimeDisplay?.();
@@ -1124,12 +1124,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Embedded algorithm slides receive their animation from the parent window.
   // Loading the bundled code_script.js first briefly paints its sample arrows,
   // then leaves them fading over the saved slide when the payload arrives.
-  if (!new URLSearchParams(window.location.search).has('asmEmbed')) {
-    reloadAfterRun();
-  } else {
-    window.resetArrows?.();
-    window.clearCanvas?.();
-  }
+  // The prebuilt default loader (or an embedded payload) owns startup.
+  // Never race it with the retired bundled code_script.js. Legacy RUN can
+  // still explicitly call reloadAfterRun when it has generated a script.
+  window.resetArrows?.();
+  window.clearCanvas?.();
 
   // === 輸入框 (inputArea) 歷史紀錄管理 (Undo/Redo) ===
   const inputArea = document.getElementById('inputArea');

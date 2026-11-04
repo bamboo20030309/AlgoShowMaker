@@ -17,7 +17,8 @@ test('normal sequence cells enter with visible numbers; outerframe phases remain
  await page.goto(base+'/algorithm.html?asmEmbed=runtime');await page.waitForFunction(()=>window.asmApplyTraceDocument);
  const results=await page.evaluate(async trace=>{
   const reports=[];
-  for(const rate of [1,2])for(const operation of ['insert','erase','push_back','pop_back','visible_push','hidden_push']){
+  for(const untraced of [false,true])for(const rate of [1,2])for(const operation of ['insert','erase','push_back','pop_back','visible_push','hidden_push']){
+   if(untraced&&['insert','erase'].includes(operation))continue;
    const runtimeOperation=operation.endsWith('_push')?'push_back':operation;
    const expectedInserted=operation==='visible_push'?7:operation==='hidden_push'?11:operation==='push_back'?8:9;
    const index=trace.frames.findIndex(f=>f.events.some(e=>e.operation===runtimeOperation && (!operation.includes('push')||e.payload?.insertedValue?.value===expectedInserted)));
@@ -25,7 +26,7 @@ test('normal sequence cells enter with visible numbers; outerframe phases remain
    const selected=trace.frames[index].events.filter(e=>e.operation===runtimeOperation);
    const copy=JSON.parse(JSON.stringify(trace));copy.frames=[copy.frames[index-1],copy.frames[index]];
    copy.studio||={};copy.studio.cameraRules=[];
-   const doc=asmApplyTraceDocument(copy);const ids=new Set(selected.map(e=>e.id));doc.frames[1].events=doc.frames[1].events.filter(e=>ids.has(e.id));
+   const doc=asmApplyTraceDocument(copy);const ids=new Set(selected.map(e=>e.id));doc.frames[1].events=untraced?[]:doc.frames[1].events.filter(e=>ids.has(e.id));
    const camera=window.ASMTraceCamera;window.ASMTraceCamera={...camera,apply(){},transitionDuration:()=>0};
    await CodeScript.goto(1);
    const arrayId=Object.keys(trace.variables).find(id=>trace.variables[id].name==='a');
@@ -44,14 +45,14 @@ test('normal sequence cells enter with visible numbers; outerframe phases remain
     const entry=()=>[...document.querySelectorAll('.asm-trace-sequence-entry,.asm-trace-sequence-cell-transfer')].map(node=>{let opacity=1;for(let p=node;p&&p!==document.body;p=p.parentElement)opacity*=Number(getComputedStyle(p).opacity);const value=node.querySelector('text[data-trace-content-role="value"],text:not([data-trace-content-role="index"])');const effective=el=>{if(!el)return 0;let a=1;for(let p=el;p&&p!==document.body;p=p.parentElement){const style=getComputedStyle(p);if(style.display==='none'||style.visibility==='hidden')return 0;a*=Number(style.opacity);}return a;};const rect=node.querySelector('rect');return {text:value?.textContent,opacity,textOpacity:effective(value),rectOpacity:effective(rect),rectWidth:rect?.getBoundingClientRect().width,glyphWidth:value?.getBoundingClientRect().width,rect:!!rect,kind:node.classList.contains('asm-trace-sequence-cell-transfer')?'copy':'entry'};});
     for(const at of [0,90,179,180,299,300,390,480]){await advance((start+at)/rate);samples[at]=width();entrySamples[at]=entry();}
     await advance((start+1200)/rate);await pending;
-    reports.push({operation,rate,before,final,samples,entrySamples,expectedInserted,active,events:doc.frames[1].events,after:width(),remaining:document.querySelectorAll('.asm-trace-sequence-entry,.asm-trace-sequence-cell-transfer').length});
+    reports.push({operation,rate,untraced,before,final,samples,entrySamples,expectedInserted,active,events:doc.frames[1].events,after:width(),remaining:document.querySelectorAll('.asm-trace-sequence-entry,.asm-trace-sequence-cell-transfer').length});
    }finally{ASMTraceFrameTween.cancel();callbacks.clear();window.removeEventListener('asm:trace-active-event',listen);window.requestAnimationFrame=raf;window.cancelAnimationFrame=cancel;if(now)Object.defineProperty(performance,'now',now);else delete performance.now;window.asmGetAnimationPlaybackRate=getRate;window.ASMTraceCamera=camera;}
   }
   return reports;
  },trace);
  require('fs').mkdirSync('test-results',{recursive:true});require('fs').writeFileSync('test-results/sequence-outerframe-phases.json',JSON.stringify(results,null,2));
  const near=(actual,expected,label)=>assert.ok(Math.abs(actual-expected)<0.01,label+' '+JSON.stringify({actual,expected}));
- for(const r of results){const label=r.operation+' @'+r.rate+'x';near(r.samples[0],r.before,label+' starts at old width');near(r.after,r.final,label+' final');
+ for(const r of results){const label=r.operation+' @'+r.rate+'x '+(r.untraced?'state-only':'runtime');near(r.samples[0],r.before,label+' starts at old width');near(r.after,r.final,label+' final');
   if(r.operation==='insert'||r.operation.includes('push')){
    const mid=r.entrySamples[390];assert.ok(mid.some(c=>c.textOpacity>0&&c.rectOpacity>0&&c.rectWidth>0&&c.glyphWidth>0),label+' actual glyph and rectangle visible '+JSON.stringify(mid));assert.ok(mid.some(c=>c.text===String(r.expectedInserted)&&c.rect&&c.opacity>0&&c.opacity<1 || r.operation==='visible_push'&&c.text===String(r.expectedInserted)&&c.rect&&c.opacity>0),label+' number and box visible before commit '+JSON.stringify(mid));
    assert.equal(r.remaining,0,label+' temporary entry removed after commit');

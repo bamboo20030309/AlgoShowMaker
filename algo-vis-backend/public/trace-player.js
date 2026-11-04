@@ -220,6 +220,7 @@
   // ---------------------------------------------------------------------------
   function installCodeScript() {
     window.CodeScript = {
+      isTracePlayer: true,
       next() { return nextKey(1); },
       next_stable() { return renderStable(currentFrame + 1); },
       prev() { return renderStable(currentFrame - 1); },
@@ -246,6 +247,7 @@
   // 區段：文件載入與公開 API
   // ---------------------------------------------------------------------------
   function apply(source) {
+    window.resetArrows?.();
     if (!window.__asmApplyingBuiltinDefault) {
       window.ASMDefaultAlgorithm?.cancel?.('external-trace');
     }

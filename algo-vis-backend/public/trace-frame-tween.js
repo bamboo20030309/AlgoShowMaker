@@ -135,6 +135,43 @@
     return easeOutCubic(clamp01((elapsed - start) / duration));
   }
 
+  // Hidden C++ has no runtime operation events. Known prefix growth/shrink
+  // still needs the same visual lifecycle, without inventing a push/pop call
+  // or writing synthetic operations into the saved Trace.
+  function visualSequenceFrame(frame, previousFrame, currentElements, previousPlacements, previousObjects) {
+    if (!previousFrame) return frame;
+    const events = frame.events || [];
+    const visual = [];
+    const lastOrder = events.reduce((order, event) => Math.max(order, Number(event.order) || 0), 0);
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    for (const [id, state] of Object.entries(frame.state || {})) {
+      const before = previousFrame.state?.[id]?.data;
+      const after = state?.data;
+      if (!Array.isArray(before?.items) || !Array.isArray(after?.items)
+        || before.items.length === after.items.length) continue;
+      // An authored event, including an explicitly disabled one, owns this
+      // change. The visual fallback must never re-enable it.
+      if (events.some(event => ['declare', 'assign', 'write', 'swap', 'sequence-operation', 'visual-exit'].includes(event.type)
+        && (event.targets || []).some(target => target.variableId === id && !/^source/.test(target.role || '')))) continue;
+      const count = Math.min(before.items.length, after.items.length);
+      if (!before.items.slice(0, count).every((item, index) => same(item, after.items[index]))) continue;
+      const key = objectKeyForVariable(frame, id);
+      if (!currentElements?.has?.(key) || !previousPlacements?.has?.(key)) continue;
+      const current = currentElements.get(key);
+      const previous = previousVisualElement(previousObjects, key);
+      if (current?.dataset?.traceRuntimeIdentity && previous?.dataset?.traceRuntimeIdentity
+        && !sameRuntimeVisual(current, previous)) continue;
+      visual.push({ id: `visual-sequence:${frame.id}:${id}`, type: 'sequence-operation',
+        operation: after.items.length > before.items.length ? 'visual-insert' : 'visual-remove',
+        presentationOnly: true, enabled: true,
+        order: lastOrder + visual.length + 1,
+        targets: [{ role: 'target', variableId: id, expression: id, indexExpression: '' }],
+        payload: { before, after, beforeSize: before.items.length, afterSize: after.items.length,
+          edge: 'back', insertedValue: after.items[before.items.length] ?? null } });
+    }
+    return visual.length ? { ...frame, events: [...events, ...visual] } : frame;
+  }
+
   function sequenceDataStates(traceDocument, frame, event) {
     const payload = event?.payload || {};
     if (Array.isArray(payload.before?.items) && Array.isArray(payload.after?.items)) return payload;
@@ -8647,8 +8684,11 @@
       keepTransitionDurationMs: keepTransitionDuration,
       cameraTransitionDurationMs: options.cameraTransitionDurationMs
     });
+    const lifecycleFrame = Number(options.direction) > 0
+      ? visualSequenceFrame(eventFrame, options.previousFrame, currentElements, previousPlacements, previousObjects)
+      : eventFrame;
     const regularEventTimeline = buildEventTimeline(
-      traceDocument, eventFrame, options.direction, duration,
+      traceDocument, lifecycleFrame, options.direction, duration,
       previousPlacements, currentPlacements, currentElements,
       Math.max(preEventPlan.preEventDurationMs, markerReflowDuration),
       previousObjects, event => event?.preKeepExit !== true,
@@ -10204,10 +10244,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-305';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-306';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-305', play, cancel, updateEventAvailability,
+    build: 'trace-306', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

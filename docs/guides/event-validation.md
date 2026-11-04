@@ -141,3 +141,9 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 在 algo-vis-backend 執行 `node --test tests/sequence-outerframe-phases.browser.test.js`。測試自行啟動隔離服務與瀏覽器，檢查 normal 的 insert、erase、push_back、pop_back，在 1／2 倍速依固定時間核對真實外框尺寸。這是 67 個事件案例以外新增的專項，不代表其他 render 的全組合均已驗證。
 
 外框專項現擴充為 6 個情境 × 1／2 倍速，共 12 組：insert、erase、常數 push_back、pop_back、可見來源 push_back、隱藏來源 push_back。入場階段除了外框尺寸，另檢查提交前的數字、格子、字形尺寸及所有祖先的有效透明度，完成後不得殘留入場複本。
+
+## 河內塔與預設工作區
+
+- `node --test tests/hanoi-hidden-sequence.browser.test.js`：使用河內塔完整測資，確認 @code hide 下 ans 的直向外框先擴大，格子與文字才入場；1／2 倍速，並確認沒有把暫時視覺操作寫進 Trace。
+- `node --test tests/algorithm-default-sieve.browser.test.js`：確認啟動、IndexedDB 重開及重新整理使用預建線篩，不載入退休的 code_script.js；實際拖曳幀條不得恢復舊 SVG 快照與箭頭。既有使用者編輯草稿仍保留。
+- 外框專項另包含移除操作事件的尾端增減，涵蓋有／無 runtime 事件的同一套階段。
