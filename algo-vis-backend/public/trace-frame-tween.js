@@ -142,7 +142,7 @@
     if (!previousFrame) return frame;
     const events = frame.events || [];
     const visual = [];
-    const lastOrder = events.reduce((order, event) => Math.max(order, Number(event.order) || 0), 0);
+    const firstOrder = events.reduce((order, event) => Math.min(order, Number(event.order) || 0), 0);
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     for (const [id, state] of Object.entries(frame.state || {})) {
       const before = previousFrame.state?.[id]?.data;
@@ -159,12 +159,17 @@
       if (!currentElements?.has?.(key) || !previousPlacements?.has?.(key)) continue;
       const current = currentElements.get(key);
       const previous = previousVisualElement(previousObjects, key);
+      // This fallback describes normal array cells only. Disk/heap renderers
+      // already own their identity-based movement between containers.
+      if (!current?.querySelector?.('[data-layout="normal"]')) continue;
       if (current?.dataset?.traceRuntimeIdentity && previous?.dataset?.traceRuntimeIdentity
         && !sameRuntimeVisual(current, previous)) continue;
       visual.push({ id: `visual-sequence:${frame.id}:${id}`, type: 'sequence-operation',
         operation: after.items.length > before.items.length ? 'visual-insert' : 'visual-remove',
         presentationOnly: true, enabled: true,
-        order: lastOrder + visual.length + 1,
+        // State-only geometry belongs to the frame handoff, not after later
+        // output/call hints whose hidden source statements cannot order it.
+        order: firstOrder - 1,
         targets: [{ role: 'target', variableId: id, expression: id, indexExpression: '' }],
         payload: { before, after, beforeSize: before.items.length, afterSize: after.items.length,
           edge: 'back', insertedValue: after.items[before.items.length] ?? null } });
@@ -10244,10 +10249,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-306';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-307';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-306', play, cancel, updateEventAvailability,
+    build: 'trace-307', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

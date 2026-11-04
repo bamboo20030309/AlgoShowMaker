@@ -147,3 +147,5 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 - `node --test tests/hanoi-hidden-sequence.browser.test.js`：使用河內塔完整測資，確認 @code hide 下 ans 的直向外框先擴大，格子與文字才入場；1／2 倍速，並確認沒有把暫時視覺操作寫進 Trace。
 - `node --test tests/algorithm-default-sieve.browser.test.js`：確認啟動、IndexedDB 重開及重新整理使用預建線篩，不載入退休的 code_script.js；實際拖曳幀條不得恢復舊 SVG 快照與箭頭。既有使用者編輯草稿仍保留。
 - 外框專項另包含移除操作事件的尾端增減，涵蓋有／無 runtime 事件的同一套階段。
+
+河內塔專項已擴充至前三次搬盤 × 1／2 倍速，共 6 組。除了 ans 入場，會以盤子穩定身分核對跨柱前後位置，在 90 ms 動作時鐘檢查圓盤可見、已離開起點且尚未抵達終點；關閉鏡頭的探針另限制視覺補排程不等待後續 output／call 提示。
