@@ -1,17 +1,22 @@
 {
   "schemaVersion": 1,
   "title": "事件與基本動作固定答案",
-  "answerOrigin": "依 2026-11-01 使用者確認規格手寫；不由 renderer、playback plan 或實際 Trace 產生。",
+  "answerOrigin": "依使用者確認規格手寫；2026-11-04 恢復舊節奏，數值在飛入抵達時提交，保留新版動作順序。",
   "timing1x": {
-    "enter": 180,
-    "exit": 180,
-    "transfer": 300,
-    "swap": 400,
-    "compareApproach": 180,
-    "compareResult": 240,
-    "compareReset": 180,
-    "emphasis": 240,
-    "camera": 300,
+    "enter": 220,
+    "exit": 220,
+    "transfer": 500,
+    "assignmentPrepare": 160,
+    "assignmentHold": 500,
+    "assignmentCleanup": 100,
+    "swap": 520,
+    "comparePrepare": 180,
+    "compareWait": 400,
+    "compareApproach": 300,
+    "compareResult": 420,
+    "compareReset": 260,
+    "emphasis": 400,
+    "camera": 520,
     "eventGap": 0
   },
   "fixtures": [
@@ -79,7 +84,7 @@
         "assignmentEventCount": 0
       },
       "timing": {
-        "durationMs": 180
+        "durationMs": 220
       },
       "assertionKind": "event"
     },
@@ -117,8 +122,8 @@
         "distinctDeclarationAndAssignment": true
       },
       "timing": {
-        "durationMs": 480,
-        "assignmentCommitMs": 480
+        "durationMs": 1480,
+        "assignmentCommitMs": 880
       },
       "assertionKind": "event"
     },
@@ -156,8 +161,8 @@
         "distinctDeclarationAndAssignment": true
       },
       "timing": {
-        "durationMs": 480,
-        "assignmentCommitMs": 480
+        "durationMs": 1480,
+        "assignmentCommitMs": 880
       },
       "assertionKind": "event"
     },
@@ -196,8 +201,8 @@
         ]
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -234,8 +239,8 @@
         ]
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -275,8 +280,8 @@
         "commitCount": 1
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -310,8 +315,8 @@
         ]
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -343,8 +348,8 @@
         "readHighlight": []
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -382,8 +387,8 @@
         "readHighlightCount": 1
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -413,8 +418,8 @@
         "eventRetained": true
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -465,7 +470,7 @@
         ]
       },
       "timing": {
-        "transferDurationMs": 300,
+        "transferDurationMs": 500,
         "commitAfterAllTransfers": true
       },
       "assertionKind": "event"
@@ -489,8 +494,8 @@
         "commitCount": 1
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -522,8 +527,8 @@
         "temporarySourceCell": false
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -561,8 +566,8 @@
         "temporarySourceCell": false
       },
       "timing": {
-        "durationMs": 300,
-        "commitMs": 300
+        "durationMs": 1260,
+        "commitMs": 660
       },
       "assertionKind": "event"
     },
@@ -624,10 +629,12 @@
         "returnsToBase": true
       },
       "timing": {
-        "durationMs": 600,
-        "approachMs": 180,
-        "resultMs": 240,
-        "resetMs": 180
+        "durationMs": 1560,
+        "approachMs": 300,
+        "resultMs": 420,
+        "resetMs": 260,
+        "prepareMs": 180,
+        "waitMs": 400
       },
       "assertionKind": "event"
     },
@@ -656,7 +663,7 @@
         "returnsToBase": true
       },
       "timing": {
-        "durationMs": 600
+        "durationMs": 1560
       },
       "assertionKind": "event"
     },
@@ -704,10 +711,10 @@
         ]
       },
       "timing": {
-        "compareMs": 600,
-        "transferMs": 300,
-        "durationMs": 900,
-        "commitMs": 900
+        "compareMs": 1560,
+        "transferMs": 500,
+        "durationMs": 2820,
+        "commitMs": 2220
       },
       "assertionKind": "event"
     },
@@ -751,8 +758,10 @@
         ]
       },
       "timing": {
-        "durationMs": 900,
-        "commitMs": 900
+        "compareMs": 1560,
+        "transferMs": 500,
+        "durationMs": 2820,
+        "commitMs": 2220
       },
       "assertionKind": "event"
     },
@@ -795,7 +804,7 @@
         "unselectedBranchAnimated": false
       },
       "timing": {
-        "transferMs": 300
+        "transferMs": 500
       },
       "assertionKind": "event"
     },
@@ -843,8 +852,10 @@
         "commitCount": 1
       },
       "timing": {
-        "durationMs": 900,
-        "commitMs": 900
+        "compareMs": 1560,
+        "transferMs": 500,
+        "durationMs": 2820,
+        "commitMs": 2220
       },
       "assertionKind": "event"
     },
@@ -922,7 +933,7 @@
         "returnsToBase": true
       },
       "timing": {
-        "durationMs": 600
+        "durationMs": 1560
       },
       "assertionKind": "event"
     },
@@ -960,8 +971,10 @@
         "readHighlightCount": 1
       },
       "timing": {
-        "durationMs": 900,
-        "commitMs": 900
+        "compareMs": 1560,
+        "transferMs": 500,
+        "durationMs": 2820,
+        "commitMs": 2220
       },
       "assertionKind": "event"
     },
@@ -996,8 +1009,8 @@
         "allowCrossingDuringMotion": true
       },
       "timing": {
-        "durationMs": 400,
-        "commitMs": 400
+        "durationMs": 520,
+        "commitMs": 520
       },
       "assertionKind": "event"
     },
@@ -1029,8 +1042,8 @@
         "parallelTransfers": 2
       },
       "timing": {
-        "durationMs": 400,
-        "commitMs": 400
+        "durationMs": 520,
+        "commitMs": 520
       },
       "assertionKind": "event"
     },
@@ -1062,7 +1075,7 @@
         ]
       },
       "timing": {
-        "durationMs": 240
+        "durationMs": 400
       },
       "assertionKind": "event"
     },
@@ -1099,8 +1112,8 @@
       },
       "timing": {
         "moveMs": 300,
-        "enterMs": 180,
-        "durationMs": 480
+        "enterMs": 220,
+        "durationMs": 520
       },
       "assertionKind": "event"
     },
@@ -1136,9 +1149,9 @@
         "indexLabelsMatch": true
       },
       "timing": {
-        "exitMs": 180,
+        "exitMs": 220,
         "moveMs": 300,
-        "durationMs": 480
+        "durationMs": 520
       },
       "assertionKind": "event"
     },
@@ -1173,7 +1186,7 @@
         "newCells": 2
       },
       "timing": {
-        "durationMs": 180
+        "durationMs": 220
       },
       "assertionKind": "event"
     },
@@ -1205,7 +1218,7 @@
         "nameVisibleAfter": true
       },
       "timing": {
-        "durationMs": 180
+        "durationMs": 220
       },
       "assertionKind": "event"
     },
@@ -1236,7 +1249,7 @@
         "irrelevantConstructorCall": false
       },
       "timing": {
-        "transferMs": 300
+        "transferMs": 500
       },
       "assertionKind": "event"
     },
@@ -1494,7 +1507,7 @@
         "targetIndex": 1
       },
       "timing": {
-        "durationMs": 180
+        "durationMs": 220
       },
       "assertionKind": "event"
     },
@@ -1520,7 +1533,7 @@
         "targetIndex": 1
       },
       "timing": {
-        "durationMs": 300,
+        "durationMs": 520,
         "commitMs": 0
       },
       "assertionKind": "event"
@@ -1548,10 +1561,12 @@
         "targetIndex": 0
       },
       "timing": {
-        "transferMs": 300,
-        "moveMs": 300,
-        "durationMs": 600,
-        "commitMs": 300
+        "transferMs": 500,
+        "prepareMs": 160,
+        "sourceHoldMs": 500,
+        "moveMs": 520,
+        "durationMs": 2280,
+        "commitMs": 1160
       },
       "assertionKind": "event"
     },
@@ -1585,10 +1600,12 @@
         "targetIndex": 1
       },
       "timing": {
-        "transferMs": 300,
-        "moveMs": 300,
-        "durationMs": 600,
-        "commitMs": 300
+        "transferMs": 500,
+        "prepareMs": 160,
+        "sourceHoldMs": 500,
+        "moveMs": 520,
+        "durationMs": 2280,
+        "commitMs": 1160
       },
       "assertionKind": "event"
     },
@@ -1616,10 +1633,12 @@
         "targetIndex": 0
       },
       "timing": {
-        "transferMs": 300,
-        "moveMs": 300,
-        "durationMs": 600,
-        "commitMs": 300
+        "transferMs": 500,
+        "prepareMs": 160,
+        "sourceHoldMs": 500,
+        "moveMs": 520,
+        "durationMs": 2280,
+        "commitMs": 1160
       },
       "assertionKind": "event"
     },
@@ -1647,10 +1666,12 @@
         "targetIndex": 2
       },
       "timing": {
-        "transferMs": 300,
-        "moveMs": 300,
-        "durationMs": 600,
-        "commitMs": 300
+        "transferMs": 500,
+        "prepareMs": 160,
+        "sourceHoldMs": 500,
+        "moveMs": 520,
+        "durationMs": 2280,
+        "commitMs": 1160
       },
       "assertionKind": "event"
     },
@@ -1679,7 +1700,7 @@
         "extraAssignmentEvents": 0
       },
       "timing": {
-        "durationMs": 300,
+        "durationMs": 520,
         "commitMs": 0
       },
       "assertionKind": "event"
@@ -1703,10 +1724,12 @@
         "hidden": false
       },
       "timing": {
-        "transferMs": 300,
-        "moveMs": 300,
-        "durationMs": 600,
-        "commitMs": 300
+        "transferMs": 500,
+        "prepareMs": 160,
+        "sourceHoldMs": 500,
+        "moveMs": 520,
+        "durationMs": 2280,
+        "commitMs": 1160
       },
       "assertionKind": "event"
     },
@@ -1729,10 +1752,12 @@
         "hidden": false
       },
       "timing": {
-        "transferMs": 300,
-        "moveMs": 300,
-        "durationMs": 600,
-        "commitMs": 300
+        "transferMs": 500,
+        "prepareMs": 160,
+        "sourceHoldMs": 500,
+        "moveMs": 520,
+        "durationMs": 2280,
+        "commitMs": 1160
       },
       "assertionKind": "event"
     },
@@ -1763,7 +1788,7 @@
         }
       },
       "timing": {
-        "durationMs": 600
+        "durationMs": 1560
       },
       "assertionKind": "event"
     },
@@ -1787,7 +1812,7 @@
         "visibleAfter": false
       },
       "timing": {
-        "durationMs": 180
+        "durationMs": 220
       },
       "assertionKind": "event"
     },
@@ -1850,7 +1875,7 @@
         "snapshotsFrozen": true
       },
       "timing": {
-        "cameraMs": 300
+        "cameraMs": 520
       },
       "assertionKind": "layout"
     },
@@ -1867,7 +1892,7 @@
       "execution": "browser-scenario",
       "assertionKind": "control",
       "controlSpec": {
-        "atMs": 150,
+        "atMs": 410,
         "resumeSameProgress": true,
         "preserveReadHighlight": true
       },
@@ -1973,8 +1998,10 @@
           "from": 1,
           "to": 2
         },
-        "currentDurationMs": 300,
-        "nextDurationMs": 150
+        "currentDurationMs": 1260,
+        "nextDurationMs": 630,
+        "currentCommitMs": 660,
+        "nextCommitMs": 330
       },
       "eventSpec": {
         "fixture": "assignment",

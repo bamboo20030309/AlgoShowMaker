@@ -122,7 +122,7 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         equal('pausedReadHighlight', readHighlights().map(node => node.dataset.traceReadSource), beforeRead);
         equal('beforeCommit', value(), String(item.eventSpec.before));
         ASMTraceFrameTween.resume();
-        await advance(149);
+        await advance(249);
         equal('stillBeforeCommit', value(), String(item.eventSpec.before));
         await step(1);
         equal('afterResumeCommit', value(), String(item.eventSpec.after));
@@ -153,11 +153,12 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         const next = required('next assignment frame', full.frames[index + 1]);
         current.frames[1] = { ...clone(next), id: targetFrame.id,
           events: [...clone(targetFrame.events), ...clone(next.events)] };
-        await start(); await advance(150); rate = item.controlSpec.changeDuringEvent.to;
-        await advance(149); equal('currentBefore300ms', value(), '3');
-        await step(1); equal('currentAt300ms', value(), '11');
-        await advance(149); equal('nextBefore150ms', value(), '11');
-        await step(1); equal('nextAt150ms', value(), '14');
+        await start(); await advance(410); rate = item.controlSpec.changeDuringEvent.to;
+        await advance(249); equal('currentBefore660ms', value(), '3');
+        await step(1); equal('currentAt660ms', value(), '11');
+        await advance(600); // 第一個事件仍按 1 倍完成停留與清理，總計 1260 ms。
+        await advance(329); equal('nextBefore330ms', value(), '11');
+        await step(1); equal('nextAt330ms', value(), '14');
         await finish();
       } else if (item.id === 'C06') {
         await start(); await advance(150); required('active transfer', transfers()[0]);
@@ -239,7 +240,7 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
         const hiddenTransfer = required('hidden numeric transfer', centers.find(node => node.literal));
         equal('visibleOriginAtSource', Math.abs(visibleTransfer.x - (visible.x + visible.width / 2)) < 1, true);
         equal('hiddenOriginAboveTarget', hiddenTransfer.y < target.y + target.height / 2, true);
-        await advance(298); equal('beforeAllArrive', value(), String(item.eventSpec.before));
+        await advance(658); equal('beforeAllArrive', value(), String(item.eventSpec.before));
         await step(1); equal('afterAllArrive', value(), String(item.eventSpec.after));
         await finish();
       } else throw Error('Unsupported control case: ' + item.id);

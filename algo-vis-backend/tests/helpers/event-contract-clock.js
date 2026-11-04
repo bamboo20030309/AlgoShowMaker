@@ -142,9 +142,8 @@ async function runClockProbe({ page, trace, item, observation }) {
         const animation = CodeScript.next();
         await step(0);
         ASMTraceFrameTween.waitForCompletion().then(() => { completed = true; });
-        const sampleAt = item.id === 'E02' ? (180 + 150) / rate
-          : (item.timing?.compareMs || (['E17', 'E19'].includes(item.id) ? 600 : 0)) / rate
-            + Math.min(120, (commitMs / rate) / 2);
+        // 手寫答案的抵達前 250 ms 為飛入中點；包含宣告與 min/max 前置階段。
+        const sampleAt = (commitMs - 250) / rate;
         await advanceTo(sampleAt);
         observed.during = snapshot(targetKey, sourceKeys);
         if (item.visual?.transfer === 'cell') {

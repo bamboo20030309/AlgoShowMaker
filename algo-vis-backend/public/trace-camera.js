@@ -44,7 +44,7 @@
       .getPropertyValue('--asm-animation-playback-rate'));
     const rate = Math.max(0.25, Math.min(4, Number(window.asmGetAnimationPlaybackRate?.()) || cssRate || 1));
     const base = value != null && Number.isFinite(Number(value))
-      ? Math.max(0, Number(value)) : 300;
+      ? Math.max(0, Number(value)) : 520;
     return base / rate;
   }
   // ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@
     const transition = transitionFor(trace, frame, previousFrame);
     if (transition?.mode === 'instant') return 0;
     return transition?.duration != null && Number.isFinite(Number(transition.duration))
-      ? Math.max(0, Number(transition.duration)) : 300;
+      ? Math.max(0, Number(transition.duration)) : 520;
   }
   // ---------------------------------------------------------------------------
   // 區段：viewport 幾何套用

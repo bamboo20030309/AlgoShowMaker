@@ -105,7 +105,7 @@ test('single-value if produces ordered, controllable one-target compare events w
   const highlight = cell.querySelector('.asm-trace-truthy-highlight');
   assert.ok(highlight);
   assert.equal(highlight.getAttribute('stroke'), 'rgb(165, 214, 167)');
-  assert.equal(highlight.getAttribute('opacity'), '1');
+  assert.equal(highlight.getAttribute('opacity'), '0');
   assert.equal(effect.adjustments.get(cellKey)?.scale, 1);
   effect.update(580);
   assert.equal(effect.adjustments.get(cellKey)?.scale, 1);
@@ -113,6 +113,7 @@ test('single-value if produces ordered, controllable one-target compare events w
   assert.ok(effect.adjustments.get(cellKey)?.scale > 1);
   assert.ok(effect.adjustments.get(cellKey)?.scale < 1.14);
   effect.update(880);
+  assert.equal(highlight.getAttribute('opacity'), '1');
   assert.ok(Math.abs(effect.adjustments.get(cellKey)?.scale - 1.14) < 0.001);
   assert.equal(cell.getAttribute('transform'), null);
   assert.equal(window.document.querySelectorAll('.asm-trace-compare-marker-popup, .asm-trace-compare-self-clone').length, 0);

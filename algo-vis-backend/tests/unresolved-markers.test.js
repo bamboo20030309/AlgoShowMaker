@@ -2156,13 +2156,13 @@ test('declaration and initializer keep separate slots for visible sources and li
   assert.equal(timeline.length, 2);
   assert.equal(timeline[0].event, declaration);
   assert.equal(timeline[0].animation, 'declare');
-  assert.equal(timeline[0].duration, 180);
+  assert.equal(timeline[0].duration, 220);
   assert.equal(timeline[0].declarationInitializerTransfer, false);
   assert.equal(timeline[1].event, initializer);
   assert.equal(timeline[1].animation, 'assign');
-  assert.equal(timeline[1].start, 180);
-  assert.equal(timeline[1].duration, 300);
-  assert.equal(timeline[1].end, 480);
+  assert.equal(timeline[1].start, 220);
+  assert.equal(timeline[1].duration, 1260);
+  assert.equal(timeline[1].end, 1480);
   const replay = c.window.ASMTraceFrameTween.createForwardReplayPlan(
     { variables: { x: { name: 'x' }, a: { name: 'a' } } }, frame, timeline, 1
   );
@@ -2179,8 +2179,8 @@ test('declaration and initializer keep separate slots for visible sources and li
   assert.equal(literalTimeline.length, 2);
   assert.equal(literalTimeline[0].declarationInitializerTransfer, false);
   assert.equal(literalTimeline[1].event, initializer);
-  assert.equal(literalTimeline[1].start, 180);
-  assert.equal(literalTimeline[1].end, 480);
+  assert.equal(literalTimeline[1].start, 220);
+  assert.equal(literalTimeline[1].end, 1480);
   const literalReplay = c.window.ASMTraceFrameTween.createForwardReplayPlan(
     { variables: { x: { name: 'x' } } }, frame, literalTimeline, 1
   );
@@ -2479,7 +2479,7 @@ test('a moving declaration continuation uses the standard cross-cell duration', 
     new Map([['marker-i', visual('parent-i', 'arr#1', 60)]]), null,
     { continuingKeys: new Set(['marker-i']), skipAvailability: true }
   );
-  assert.equal(stationarySlots[0].duration, 180);
+  assert.equal(stationarySlots[0].duration, 220);
   assert.equal(stationarySlots[0].declarationMarkerMotionDuration, 180);
 });
 

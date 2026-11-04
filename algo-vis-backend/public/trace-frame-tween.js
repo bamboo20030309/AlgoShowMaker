@@ -26,20 +26,20 @@
   });
   // One 1x motion vocabulary. Dependencies live in event plans, not in
   // algorithm-specific timers. Read emphasis runs concurrently with its owner.
-  const MOTION_TIME = Object.freeze({ enter: 180, exit: 180, move: 300,
-    swap: 400, compareApproach: 180, compareHold: 240, compareReset: 180,
-    emphasize: 240, camera: 300 });
-  const COMPARE_TIMING = Object.freeze({ popup: 0, wait: 0, size: 180, result: 240, reset: 180 });
+  const MOTION_TIME = Object.freeze({ enter: 220, exit: 220, move: 520, reflow: 300,
+    swap: 520, compareApproach: 300, compareHold: 420, compareReset: 260,
+    emphasize: 400, camera: 520 });
+  const COMPARE_TIMING = Object.freeze({ popup: 180, wait: 400, size: 300, result: 420, reset: 260 });
   const COMPARE_DURATION = Object.values(COMPARE_TIMING).reduce((sum, value) => sum + value, 0);
   const COMPARE_SCALE_DELTA = 0.14;
-  const ASSIGN_TIMING = Object.freeze({ frame: 0, valueHold: 0, drop: 300, hold: 0, exit: 0 });
-  const GENERIC_EVENT_DURATION = Object.freeze({ lift: 240, pulse: 240, fade: 180, code: 240 });
-  const APPEAR_TIMING = Object.freeze({ duration: 180, offsetY: 0 });
+  const ASSIGN_TIMING = Object.freeze({ frame: 160, valueHold: 500, drop: 500, hold: 500, exit: 100 });
+  const GENERIC_EVENT_DURATION = Object.freeze({ lift: 340, pulse: 400, fade: 440, code: 400 });
+  const APPEAR_TIMING = Object.freeze({ duration: 220, offsetY: 0 });
   const STYLE_PAINT_DURATION = 180;
   const HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION = 320;
   const MARKER_REFLOW_TIMING = Object.freeze({ duration: 180, entranceDelay: 80 });
   const EXIT_OFFSET_Y = 0;
-  const SEQUENCE_TIMING = Object.freeze({ duration: 480, travel: 0 });
+  const SEQUENCE_TIMING = Object.freeze({ duration: MOTION_TIME.reflow + MOTION_TIME.enter, travel: 0 });
 
   function operationKind(event) {
     if (event?.semantics?.kind) return event.semantics.kind;
@@ -66,22 +66,33 @@
       const start = stages.at(-1)?.endMs || 0;
       stages.push({ id, startMs: start, endMs: start + duration, durationMs: duration, actions });
     };
+    const compareStages = prefix => {
+      add(prefix + 'prepare', COMPARE_TIMING.popup, ['enter']);
+      add(prefix + 'observe', COMPARE_TIMING.wait, ['hint']);
+      add(prefix + 'approach', COMPARE_TIMING.size, ['move']);
+      add(prefix + 'relation', COMPARE_TIMING.result, ['hint', 'emphasize']);
+      add(prefix + 'restore', COMPARE_TIMING.reset, ['move']);
+    };
     if (event?.type === 'declare' || event?.type === 'visual-enter') add('enter', MOTION_TIME.enter, ['enter']);
     else if (['scope-exit', 'visual-exit'].includes(event?.type)) add('exit', MOTION_TIME.exit, ['exit']);
     else if (event?.type === 'compare') {
-      add('approach', 180, ['move']); add('relation', 240, ['hint', 'emphasize']); add('restore', 180, ['move']);
+      compareStages('');
     } else if (event?.type === 'swap') add('swap', MOTION_TIME.swap, ['move']);
     else if (['assign', 'write'].includes(event?.type)) {
       for (let i = 0; i < selectionDuration(event) / COMPARE_DURATION; i++) {
-        add('select-approach', 180, ['move']); add('select-result', 240, ['hint', 'emphasize']); add('select-restore', 180, ['move']);
+        compareStages('select-');
       }
-      add('transfer', MOTION_TIME.move, kind === 'literal' ? ['hint', 'move'] : ['copy', 'move']);
+      add('prepare', ASSIGN_TIMING.frame, ['enter']);
+      if (marker) add('source-hold', ASSIGN_TIMING.valueHold, ['hint']);
+      add('transfer', ASSIGN_TIMING.drop, kind === 'literal' ? ['hint', 'move'] : ['copy', 'move']);
+      add('result-hold', ASSIGN_TIMING.hold, ['hint']);
+      add('cleanup', ASSIGN_TIMING.exit, ['exit']);
       if (marker) add('pointer-motion', MOTION_TIME.move, ['move']);
     } else if (event?.type === 'sequence-operation') {
       const inserting = Number(event.payload?.afterSize) > Number(event.payload?.beforeSize);
-      add(inserting ? 'make-room' : 'remove', inserting ? 300 : 180, inserting ? ['move'] : ['exit']);
-      add(inserting ? 'insert' : 'close-gap', inserting ? 180 : 300, inserting ? ['enter'] : ['move']);
-    } else add('code', 240, ['hint']);
+      add(inserting ? 'make-room' : 'remove', inserting ? MOTION_TIME.reflow : MOTION_TIME.exit, inserting ? ['move'] : ['exit']);
+      add(inserting ? 'insert' : 'close-gap', inserting ? MOTION_TIME.enter : MOTION_TIME.reflow, inserting ? ['enter'] : ['move']);
+    } else add('code', event?.type === 'return' ? 260 : GENERIC_EVENT_DURATION.code, ['hint']);
     const transfer = stages.find(s => s.id === 'transfer');
     return { version: 1, kind, primitives: ['enter', 'exit', 'copy', 'move', 'emphasize', 'hint', 'camera'],
       stages, readHighlight: 'owner', commitMs: transfer?.endMs ?? stages.at(-1)?.endMs ?? 0,
@@ -120,7 +131,7 @@
     const phased = Number.isFinite(before) && Number.isFinite(after) && before !== after
       && !/resize|clear|assign/.test(String(event?.operation || ''));
     const start = (Number(slot?.start) || 0) + (phased && after < before ? MOTION_TIME.exit : 0);
-    const duration = phased ? MOTION_TIME.move : Math.max(1, Number(slot?.duration) || 1);
+    const duration = phased ? MOTION_TIME.reflow : Math.max(1, Number(slot?.duration) || 1);
     return easeOutCubic(clamp01((elapsed - start) / duration));
   }
 
@@ -3022,12 +3033,11 @@
       ? preferredTop
       : Math.min(operands[0].point.y, operands[1].point.y) - 15;
     const equality = ['==', '!='].includes(String(event?.operation || ''));
-    const numeric = operands.every(operand => Number.isFinite(operand.numericValue));
     const operation = equality ? (compareValuesEqual(operands) ? '=' : '≠')
-      : numeric ? (operands[0].numericValue === operands[1].numericValue ? '='
-        : operands[0].numericValue < operands[1].numericValue ? '<' : '>') : displayOperator(event?.operation);
+      : displayOperator(event?.operation);
     const left = `${operands[0].target?.expression || 'left'}(${operands[0].value})`;
-    const right = `${operands[1].target?.expression || 'right'}(${operands[1].value})`;
+    const right = `${operands[1].target?.expression || 'right'}(${operands[1].value})`
+      + (!equality && typeof event?.result === 'boolean' ? ` → ${event.result}` : '');
     const fontSize = 14;
     const fallbackWidth = value => Math.max(fontSize * 0.58, Array.from(value).length * fontSize * 0.58);
     const gap = 6;
@@ -4473,7 +4483,7 @@
         const frameProgress = easeOutCubic(timedProgress(elapsed, ASSIGN_TIMING.frame));
         // The transfer must land at the same commit time used by replay and
         // conditional styles, including the initial frame phase for scalars.
-        const dropStart = (event?.declarationValueOnlyTransfer === true ? 0 : ASSIGN_TIMING.frame)
+        const dropStart = ASSIGN_TIMING.frame
           + (operand.marker ? ASSIGN_TIMING.valueHold : 0);
         const dropProgress = easeOutCubic(clamp01((elapsed - dropStart) / ASSIGN_TIMING.drop));
         const exitStart = ASSIGN_TIMING.frame
@@ -4644,7 +4654,7 @@
           item.wrapper.setAttribute('opacity', String(amount));
           item.wrapper.setAttribute(
             'transform',
-            `translate(${item.direction * splitDistance * amount}, ${(-15 * lift + item.direction * verticalGap * split) * stay})`
+            `translate(${item.direction * splitDistance * amount}, ${item.direction * verticalGap * split * stay})`
           );
         });
       },
@@ -4905,11 +4915,9 @@
 
         const popupReveal = easeOutCubic(timedProgress(compareElapsed, COMPARE_TIMING.popup));
         const sizeElapsed = Math.max(0, compareElapsed - waitEnd);
-        const alignProgress = equalityComparison
-          ? easeOutCubic(clamp01(sizeElapsed / (COMPARE_TIMING.size / 2)))
-          : 0;
+        const alignProgress = 0;
         const contactProgress = equalityComparison
-          ? easeOutCubic(clamp01((sizeElapsed - COMPARE_TIMING.size / 2) / (COMPARE_TIMING.size / 2)))
+          ? easeOutCubic(clamp01(sizeElapsed / COMPARE_TIMING.size))
           : 0;
         operands.forEach((operand, index) => {
           const popup = popups.get(popupKey(operand, index));
@@ -4937,19 +4945,17 @@
           ? 0
           : easeOutCubic(clamp01((elapsed - waitEnd) / COMPARE_TIMING.size));
         const sizeElapsed = Math.max(0, elapsed - waitEnd);
-        const alignProgress = equalityComparison
-          ? easeOutCubic(clamp01(sizeElapsed / (COMPARE_TIMING.size / 2)))
-          : size;
+        const alignProgress = 0;
         const contactProgress = equalityComparison
-          ? easeOutCubic(clamp01((sizeElapsed - COMPARE_TIMING.size / 2) / (COMPARE_TIMING.size / 2)))
-          : size;
+          ? easeOutCubic(clamp01(sizeElapsed / COMPARE_TIMING.size))
+          : 0;
         const reset = elapsed < resultEnd
           ? 0
           : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
         ensurePopups();
-        if (elapsed >= waitEnd) {
+        if (elapsed >= sizeEnd) {
           showResult();
-          setResultOpacity(size * (1 - reset));
+          setResultOpacity(1 - reset);
         }
         const stay = 1 - reset;
         this.adjustments.clear();
@@ -4962,7 +4968,7 @@
             y: operand.marker ? 0 : (equalityComparison
               ? (contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
               : (compareValuesEqual(operands) ? 0
-                : ((scaleTargets[index] || 1) > 1 ? -12 : 12) * size) * stay),
+                : ((scaleTargets[index] || 1) > 1 ? -12 : (scaleTargets[index] || 1) < 1 ? 12 : 0) * size) * stay),
             scale: operand.marker
               ? 1
               : 1 + ((scaleTargets[index] || 1) - 1) * size * stay
@@ -5056,13 +5062,12 @@
         if (!highlight) return;
         const waitEnd = COMPARE_TIMING.popup + COMPARE_TIMING.wait;
         const resultEnd = waitEnd + COMPARE_TIMING.size + COMPARE_TIMING.result;
-        const reveal = easeOutCubic(timedProgress(elapsed, COMPARE_TIMING.popup));
         const size = elapsed < waitEnd ? 0
           : easeOutCubic(clamp01((elapsed - waitEnd) / COMPARE_TIMING.size));
         const reset = elapsed < resultEnd ? 0
           : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
         const stay = 1 - reset;
-        highlight.setAttribute('opacity', String(reveal * stay));
+        highlight.setAttribute('opacity', String(elapsed >= waitEnd + COMPARE_TIMING.size ? stay : 0));
         adjustments.set(operand.visualKey, {
           x: 0, y: 0, scale: 1 + COMPARE_SCALE_DELTA * size * stay
         });
@@ -7167,7 +7172,7 @@
           : /assign/.test(event.operation) ? MOTION_TIME.move
           : SEQUENCE_TIMING.duration;
       }
-      if (event.type === 'return' && animation === 'code') duration = MOTION_TIME.emphasize;
+      if (event.type === 'return' && animation === 'code') duration = 260;
       if (!duration && GENERIC_EVENT_DURATION[animation]) duration = GENERIC_EVENT_DURATION[animation];
       if (!duration) return;
       const preKeepBatchKey = event?.type === 'visual-exit'
@@ -7523,10 +7528,10 @@
       update(elapsed) {
         const progress = easeOutCubic(clamp01(elapsed / Math.max(1, slot.duration)));
         const insertStart = after > before && !/resize|assign/.test(String(event.operation || ''))
-          ? MOTION_TIME.move : 0;
+          ? MOTION_TIME.reflow : 0;
         const insertProgress = easeOutCubic(timedProgress(elapsed - insertStart,
           Math.max(1, slot.duration - insertStart)));
-        const shiftProgress = easeOutCubic(timedProgress(elapsed - (after < before ? MOTION_TIME.exit : 0), MOTION_TIME.move));
+        const shiftProgress = easeOutCubic(timedProgress(elapsed - (after < before ? MOTION_TIME.exit : 0), MOTION_TIME.reflow));
         adjustments.clear();
         opacities.clear();
         inserted.forEach(cellKey => {
@@ -7719,7 +7724,7 @@
               hint.textContent = selections[index].operation;
               comparisons[index]?.update(elapsed - index * COMPARE_DURATION);
               valueHints.forEach(({group,key,x,y})=>{const delta=comparisons[index]?.adjustments?.get(key);group.setAttribute('transform',`translate(${x+(delta?.x||0)},${y+(delta?.y||0)})`);});
-              if (elapsed - index * COMPARE_DURATION >= MOTION_TIME.compareApproach && !winnerHighlights[index]) {
+              if (elapsed - index * COMPARE_DURATION >= COMPARE_TIMING.popup + COMPARE_TIMING.wait + COMPARE_TIMING.size && !winnerHighlights[index]) {
                 const selection = selections[index];
                 const role = selection.selectedSourceRole || event.selectedSourceRole;
                 const target = (selection.targets || []).find(target => target.role === role);
@@ -10245,10 +10250,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-310';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-311';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-310', play, cancel, updateEventAvailability,
+    build: 'trace-311', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

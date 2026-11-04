@@ -19,11 +19,11 @@ function harness(transition, rate = 1) {
   return { camera: window.ASMTraceCamera, calls };
 }
 
-test('automatic camera uses a 300ms base duration shared with the event precondition', () => {
+test('automatic camera restores the 520ms base duration shared with the event precondition', () => {
   const { camera, calls } = harness(null);
-  assert.equal(camera.transitionDuration({}, { id: 'after' }, { id: 'before' }), 300);
+  assert.equal(camera.transitionDuration({}, { id: 'after' }, { id: 'before' }), 520);
   camera.apply({}, { id: 'after' }, { id: 'before' });
-  assert.equal(calls[0][4], 300);
+  assert.equal(calls[0][4], 520);
 });
 
 test('custom and explicit zero camera durations survive old and new settings', () => {

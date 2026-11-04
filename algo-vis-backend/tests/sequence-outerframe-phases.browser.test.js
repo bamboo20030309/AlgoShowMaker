@@ -4,7 +4,7 @@ const {chromium}=require('playwright');
 const {startIsolatedServer}=require('./helpers/isolated-server');
 const {compile}=require('./helpers/compile');
 
-// 固定答案直接來自使用者確認的 300+180 / 180+300 ms，
+// 固定答案直接來自使用者確認的 300+220 / 220+300 ms，
 // 不讀取產品動作計畫來產生預期時間。
 test('normal sequence cells enter with visible numbers; outerframe phases remain ordered', {timeout:120000},async t=>{
  const {base}=await startIsolatedServer(t),previous=process.env.ASM_TEST_BASE_URL;
@@ -43,7 +43,7 @@ test('normal sequence cells enter with visible numbers; outerframe phases remain
    try{
     const pending=CodeScript.next();await step(0);const samples={},entrySamples={};
     const entry=()=>[...document.querySelectorAll('.asm-trace-sequence-entry,.asm-trace-sequence-cell-transfer')].map(node=>{let opacity=1;for(let p=node;p&&p!==document.body;p=p.parentElement)opacity*=Number(getComputedStyle(p).opacity);const value=node.querySelector('text[data-trace-content-role="value"],text:not([data-trace-content-role="index"])');const effective=el=>{if(!el)return 0;let a=1;for(let p=el;p&&p!==document.body;p=p.parentElement){const style=getComputedStyle(p);if(style.display==='none'||style.visibility==='hidden')return 0;a*=Number(style.opacity);}return a;};const rect=node.querySelector('rect');return {text:value?.textContent,opacity,textOpacity:effective(value),rectOpacity:effective(rect),rectWidth:rect?.getBoundingClientRect().width,glyphWidth:value?.getBoundingClientRect().width,rect:!!rect,kind:node.classList.contains('asm-trace-sequence-cell-transfer')?'copy':'entry'};});
-    for(const at of [0,90,179,180,299,300,390,480]){await advance((start+at)/rate);samples[at]=width();entrySamples[at]=entry();}
+    for(const at of [0,110,219,220,299,300,410,520]){await advance((start+at)/rate);samples[at]=width();entrySamples[at]=entry();}
     await advance((start+1200)/rate);await pending;
     reports.push({operation,rate,untraced,before,final,samples,entrySamples,expectedInserted,active,events:doc.frames[1].events,after:width(),remaining:document.querySelectorAll('.asm-trace-sequence-entry,.asm-trace-sequence-cell-transfer').length});
    }finally{ASMTraceFrameTween.cancel();callbacks.clear();window.removeEventListener('asm:trace-active-event',listen);window.requestAnimationFrame=raf;window.cancelAnimationFrame=cancel;if(now)Object.defineProperty(performance,'now',now);else delete performance.now;window.asmGetAnimationPlaybackRate=getRate;window.ASMTraceCamera=camera;}
@@ -54,14 +54,14 @@ test('normal sequence cells enter with visible numbers; outerframe phases remain
  const near=(actual,expected,label)=>assert.ok(Math.abs(actual-expected)<0.01,label+' '+JSON.stringify({actual,expected}));
  for(const r of results){const label=r.operation+' @'+r.rate+'x '+(r.untraced?'state-only':'runtime');near(r.samples[0],r.before,label+' starts at old width');near(r.after,r.final,label+' final');
   if(r.operation==='insert'||r.operation.includes('push')){
-   const mid=r.entrySamples[390];assert.ok(mid.some(c=>c.textOpacity>0&&c.rectOpacity>0&&c.rectWidth>0&&c.glyphWidth>0),label+' actual glyph and rectangle visible '+JSON.stringify(mid));assert.ok(mid.some(c=>c.text===String(r.expectedInserted)&&c.rect&&c.opacity>0&&c.opacity<1 || r.operation==='visible_push'&&c.text===String(r.expectedInserted)&&c.rect&&c.opacity>0),label+' number and box visible before commit '+JSON.stringify(mid));
+   const mid=r.entrySamples[410];assert.ok(mid.some(c=>c.textOpacity>0&&c.rectOpacity>0&&c.rectWidth>0&&c.glyphWidth>0),label+' actual glyph and rectangle visible '+JSON.stringify(mid));assert.ok(mid.some(c=>c.text===String(r.expectedInserted)&&c.rect&&c.opacity>0&&c.opacity<1 || r.operation==='visible_push'&&c.text===String(r.expectedInserted)&&c.rect&&c.opacity>0),label+' number and box visible before commit '+JSON.stringify(mid));
    assert.equal(r.remaining,0,label+' temporary entry removed after commit');
    if(r.operation!=='visible_push')assert.ok(r.entrySamples[299].every(c=>c.opacity===0),label+' entry waits for expansion');
-   assert.ok(r.final>r.before,label+' grows');assert.ok(r.samples[90]>r.before&&r.samples[90]<r.final,label+' expands during make room');
-   near(r.samples[300],r.final,label+' expanded by 300ms');near(r.samples[390],r.final,label+' fixed during entry');near(r.samples[480],r.final,label+' entry complete');
+   assert.ok(r.final>r.before,label+' grows');assert.ok(r.samples[110]>r.before&&r.samples[110]<r.final,label+' expands during make room');
+   near(r.samples[300],r.final,label+' expanded by 300ms');near(r.samples[410],r.final,label+' fixed during entry');near(r.samples[520],r.final,label+' entry complete');
   }else{
-   assert.ok(r.final<r.before,label+' shrinks');near(r.samples[90],r.before,label+' fixed during exit');near(r.samples[179],r.before,label+' fixed before exit completes');near(r.samples[180],r.before,label+' shrink starts after exit');
-   assert.ok(r.samples[300]<r.before&&r.samples[300]>r.final,label+' shrinks during close gap');near(r.samples[480],r.final,label+' closed by 480ms');
+   assert.ok(r.final<r.before,label+' shrinks');near(r.samples[110],r.before,label+' fixed during exit');near(r.samples[219],r.before,label+' fixed before exit completes');near(r.samples[220],r.before,label+' shrink starts after exit');
+   assert.ok(r.samples[300]<r.before&&r.samples[300]>r.final,label+' shrinks during close gap');near(r.samples[520],r.final,label+' closed by 520ms');
   }
  }
  assert.deepEqual(errors,[]);
