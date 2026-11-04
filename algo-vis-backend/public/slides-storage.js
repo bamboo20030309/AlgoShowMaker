@@ -310,7 +310,19 @@
         request.onerror = () => reject(request.error);
       });
     }
-    return { saveDeck, loadDeck, putTrace, loadTrace };
+    async function deleteDeck(storageKey) {
+      const db = await open();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('decks', 'readwrite');
+        tx.oncomplete = resolve;
+        tx.onabort = () => reject(tx.error || new Error('無法清理舊範例副本'));
+        tx.objectStore('decks').delete(storageKey);
+      });
+      storage?.removeItem?.(storageKey);
+      // Trace cache is shared by other decks. Removing a sample draft must
+      // not delete a result another project still references.
+    }
+    return { saveDeck, loadDeck, putTrace, loadTrace, deleteDeck };
   }
 
   return { isQuotaExceeded, save, create, project, hydrate, merge, digest, canonical };

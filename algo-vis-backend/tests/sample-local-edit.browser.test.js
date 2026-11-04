@@ -8,7 +8,7 @@ global.ASMTraceViewSource = require('../public/trace-view-source');
 global.ASMTraceModel = { normalizeTraceDocument: value => value };
 const archive = require('../public/asmdeck');
 
-test('sample copies use normal editing, persist locally and export edits without remote writes', { timeout: 90000 }, async t => {
+test('sample copies edit temporarily, export edits and reset on reload without remote writes', { timeout: 90000 }, async t => {
   const { base } = await startIsolatedServer(t);
   const code = '#include <iostream>\nint main(){int n;std::cin>>n;\n// @frame n\nstd::cout<<n;}\n'
     + '/* @asm-view\n{"version":1,"rules":[],"skins":{},"studio":{"eventSettings":{"autoFixedEnabled":false},"codePanelFontSize":19}}\n@asm-view */';
@@ -36,6 +36,8 @@ test('sample copies use normal editing, persist locally and export edits without
   context.on('request',r=>{if(!['GET','HEAD'].includes(r.method())&&!['/compile','/trace/analyze','/syntax-tree'].includes(new URL(r.url()).pathname)) writes.push(r.url());});
   await context.addInitScript(()=>localStorage.setItem('algo_jwt_token','fixture-token'));
   const page = await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(base+'/algorithm.html?asmEmbed=runtime');await page.addScriptTag({url:base+'/slides-storage.js'});
+  await page.evaluate(async original=>{const old=JSON.parse(JSON.stringify(original));old.groups[0].slides[0].animation.code='// @frame arr[j,j+1]\nint main(){}';await ASMSlideStorage.create(indexedDB,localStorage).saveDeck('asm_reveal_fabric_deck_v5:share:sample:local-fixture',JSON.stringify(old));},original);
   await page.goto(base+'/slides.html?sample=local-fixture');
   await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');
   assert.equal(await page.locator('#algorithmCodeEditSlideBtn').count(),0);
@@ -43,7 +45,7 @@ test('sample copies use normal editing, persist locally and export edits without
   assert.equal(await runtime.locator('.runtime-local-controls').count(),0);
   assert.equal(await runtime.locator('#codePanel').isVisible(),false);
   assert.equal(await page.locator('#modeToggleBtn').isVisible(),true);
-  assert.equal(await page.locator('#sharedAccessBadge').textContent(),'範例本機副本');
+  assert.equal(await page.locator('#sharedAccessBadge').count(),0);assert.match(await page.locator('#cloudSaveStatus').textContent(),/僅本次開啟/);
   if(!await page.evaluate(()=>document.body.classList.contains('asm-edit-mode'))) await page.click('#modeToggleBtn');
   await page.click('#algorithmEditSlideBtn');
   const frame = await (await page.waitForSelector('#algorithmEditorFrame')).contentFrame();
@@ -59,18 +61,7 @@ test('sample copies use normal editing, persist locally and export edits without
     window.dispatchEvent(new CustomEvent('asm:trace-event-settings-changed',{detail:{document:trace}}));});
   await page.click('#saveAlgorithmEditorBtn');
   await page.waitForFunction(()=>document.getElementById('algorithmEditorModal').hidden&&document.body.dataset.localDeckSave==='saved');
-  await page.reload();
-  await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');
-  if(!await page.evaluate(()=>document.body.classList.contains('asm-edit-mode'))) await page.click('#modeToggleBtn');
-  await page.click('#algorithmEditSlideBtn');
-  const reopened=await (await page.waitForSelector('#algorithmEditorFrame')).contentFrame();
-  await reopened.waitForFunction(()=>aceEditor.getValue().includes('std::cout<<n+1;'));
-  assert.equal(await reopened.locator('#inputArea').inputValue(),'23');
-  assert.equal(await reopened.evaluate(()=>ASMTracePlayer.getDocument().studio.eventSettings.autoFixedEnabled),false);
-  assert.equal(await reopened.evaluate(()=>ASMTracePlayer.getDocument().studio.codePanelFontSize),19);
-  // Close via the existing editor save and export the actual local copy.
-  await page.click('#saveAlgorithmEditorBtn');
-  await page.waitForFunction(()=>document.getElementById('algorithmEditorModal').hidden);
+  // Export the in-memory edits before leaving the temporary sample.
   const pending=page.waitForEvent('download');await page.click('#exportDeckBtn');const download=await pending;
   const exported=await archive.decode(new Blob([fs.readFileSync(await download.path())]));
   assert.ok(exported.deck.groups[0].slides[0].animation.code.includes('std::cout<<n+1;')); 
@@ -81,11 +72,17 @@ test('sample copies use normal editing, persist locally and export edits without
   await page.click('[data-tool="text"]');
   await page.click('#modeToggleBtn');
   await page.waitForFunction(()=>document.body.dataset.localDeckSave==='saved');
-  await page.reload();await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');
   const nextDownload=page.waitForEvent('download');await page.click('#exportDeckBtn');
   const roundTrip=await archive.decode(new Blob([fs.readFileSync(await (await nextDownload).path())]));
   assert.ok(roundTrip.deck.groups.flatMap(g=>g.slides).some(s=>s.canvas?.objects?.some(o=>o.type==='textbox')));
   assert.ok(roundTrip.deck.groups.flatMap(g=>g.slides).find(s=>s.id==='sample-animation').animation.code.includes('std::cout<<n+1;'));
+  assert.equal(await page.evaluate(async()=>Boolean(await ASMSlideStorage.create(indexedDB,localStorage).loadDeck('asm_reveal_fabric_deck_v5:share:sample:local-fixture',[],{lazyTraces:true}))),false);
+  await page.reload();await page.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');
+  assert.equal(await page.evaluate(()=>document.body.dataset.slideCount),'1');
+  if(!await page.evaluate(()=>document.body.classList.contains('asm-edit-mode'))) await page.click('#modeToggleBtn');
+  await page.click('#algorithmEditSlideBtn');const reset=await (await page.waitForSelector('#algorithmEditorFrame')).contentFrame();
+  await reset.waitForFunction(code=>aceEditor.getValue()===code,code);assert.equal(await reset.locator('#inputArea').inputValue(),'7');
+  await page.click('#saveAlgorithmEditorBtn');await page.waitForFunction(()=>document.getElementById('algorithmEditorModal').hidden);
   const other=await context.newPage();await other.goto(base+'/slides.html?sample=other-fixture');
   await other.waitForFunction(()=>document.body.dataset.asmdeckRebuild==='ready');
   if(!await other.evaluate(()=>document.body.classList.contains('asm-edit-mode'))) await other.click('#modeToggleBtn');

@@ -253,3 +253,10 @@ test('an unrecoverable local quota failure is reported without throwing', () => 
   assert.equal(result.recoveredFromQuota, false);
   assert.equal(result.error?.name, 'QuotaExceededError');
 });
+
+
+test('deleting an obsolete sample removes only that draft, preserving shared traces and other decks',async()=>{
+ const db=new IDBFactory(),legacy=memoryStorage(),client=SlideStorage.create(db,legacy);
+ await client.saveDeck('sample',JSON.stringify(draft('sample')));await client.saveDeck('project',JSON.stringify(draft('project')));legacy.setItem('sample','old fallback');
+ await client.deleteDeck('sample');assert.equal(await client.loadDeck('sample'),null);assert.equal(legacy.getItem('sample'),null);assert.deepEqual(await client.loadDeck('project'),draft('project'));assert.equal((await inspect(db,'traces')).length,1);
+});

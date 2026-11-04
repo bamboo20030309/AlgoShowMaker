@@ -155,3 +155,9 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 - `node --test tests/template-pointer-syntax.test.js`：掃描全部隨附 C++、預設程式碼及 15 份公開投影片的 36 個動畫，共 75 份程式碼來源；實際 frame/object 指令不使用舊索引指標寫法。條件中的陣列取值及舊設定識別字串不當作執行指令改寫。
 - `node --test tests/read-highlight-defaults.browser.test.js`：驗證缺欄位的舊資料與新建資料預設不顯示、開啟後 AV_red、自訂色、明確關閉、IndexedDB 儲存重開、@asm-view 設定及實際 UI 開關。
 - 原本專門檢查讀取 highlight 的固定答案探針，現在明確設定 readHighlightEnabled=true 再驗，避免把「可選功能開啟時的規則」與產品預設混在一起。
+
+## 範例頁面暫存
+
+範例投影片不再保存永久本機副本；每次開啟或重新整理讀取官方範例。可在頁面中編輯、RUN、undo／redo 及匯出保留修改，離開後不還原修改。開啟範例時只清理該範例的舊草稿，不刪除其他投影片或共用 Trace 快取。一般工作區與分享草稿的既有保存方式保留。
+
+`node --test tests/sample-local-edit.browser.test.js tests/slide-storage.test.js` 驗證：舊語法副本不再覆蓋新版來源、頁面中修改可匯出、刷新還原、範例沒有持久化 deck、黑色範例標籤不存在，以及其他草稿與共用 Trace 不受影響。

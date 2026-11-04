@@ -236,7 +236,7 @@
   let deck = normalizeDeck(clone(defaultDeck));
   let lastSavedDeckJson = null;
   let archiveCover = {};
-  try { archiveCover = JSON.parse(localStorage.getItem(`${DRAFT_KEY}:cover`) || '{}'); } catch {}
+  if (!sampleId) try { archiveCover = JSON.parse(localStorage.getItem(`${DRAFT_KEY}:cover`) || '{}'); } catch {}
   let coverSourceKey = archiveCover.thumbnailSourceHash || null;
   let coverThumbnail = archiveCover.thumbnail || '';
 
@@ -249,7 +249,7 @@
     }
     archiveCover.thumbnail = coverThumbnail;
     archiveCover.thumbnailSourceHash = coverSourceKey;
-    try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
+    if (!sampleId) try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
     return coverThumbnail;
   }
   let localSaveRevision = 0;
@@ -387,6 +387,7 @@
   const sampleShareStatus = document.getElementById('sampleShareStatus');
   const copySampleShareUrlBtn = document.getElementById('copySampleShareUrlBtn');
   const sharedAccessBadge = document.getElementById('sharedAccessBadge');
+  if (sampleId) sharedAccessBadge?.remove();
   const shareDialog = document.getElementById('shareDialog');
   const shareForm = document.getElementById('shareForm');
   const closeShareDialogBtn = document.getElementById('closeShareDialogBtn');
@@ -682,19 +683,20 @@
     const serializedDeck = JSON.stringify(deck);
     if (lastSavedDeckJson !== null && lastSavedDeckJson !== serializedDeck) archiveCover.updatedAt = new Date().toISOString();
     lastSavedDeckJson = serializedDeck;
-    try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
+    if (!sampleId) try { localStorage.setItem(`${DRAFT_KEY}:cover`, JSON.stringify(archiveCover)); } catch {}
     const revision = ++localSaveRevision;
     document.body.dataset.localDeckRevision = String(revision);
     document.body.dataset.lastDeckSaveCloud = String(cloud);
     document.body.dataset.lastDeckSaveHistory = String(pushHistory);
     document.body.dataset.localDeckSave = 'pending';
     document.body.dataset.localDeckChars = String(serializedDeck.length);
-    const localSave = draftStore.saveDeck(DRAFT_KEY, serializedDeck, traceStore.retainedKeys(), {
+    document.body.dataset.deckPersistence = sampleId ? 'page' : 'persistent';
+    const localSave = (sampleId ? Promise.resolve() : draftStore.saveDeck(DRAFT_KEY, serializedDeck, traceStore.retainedKeys(), {
       allowMissingTraces: true
-    }).then(() => {
+    })).then(() => {
       if (revision === localSaveRevision) {
         document.body.dataset.localDeckSave = 'saved';
-        if (isLocalCopy() || (!deckUid && !shareToken)) setCloudStatus('saved', sampleId ? '範例本機副本已儲存' : '本機已儲存');
+        if (isLocalCopy() || (!deckUid && !shareToken)) setCloudStatus('saved', sampleId ? '僅本次開啟，重新整理後還原' : '本機已儲存');
       }
       return true;
     }).catch(error => {
@@ -753,9 +755,9 @@
     document.body.classList.toggle('shared-view-only', !canEdit);
     document.body.classList.toggle('shared-edit-access', canEdit);
     if (!canEdit) document.body.classList.remove('asm-edit-mode');
-    if (sharedAccessBadge) {
+    if (sharedAccessBadge && !sampleId) {
       sharedAccessBadge.hidden = false;
-      sharedAccessBadge.textContent = sampleId ? '範例本機副本' : isLocalCopy() ? '分享本機副本' : canEdit ? '共享編輯模式' : '觀賞模式';
+      sharedAccessBadge.textContent = isLocalCopy() ? '分享本機副本' : canEdit ? '共享編輯模式' : '觀賞模式';
     }
   }
 
@@ -766,14 +768,14 @@
   async function loadCloudDeck(localDeck) {
     if (sampleId) {
       setCloudStatus('loading', '正在載入公開投影片…');
-      const catalogResponse = await fetch('/guest-decks.json');
+      const catalogResponse = await fetch('/guest-decks.json', { cache: 'no-store' });
       if (!catalogResponse.ok) throw new Error('公開投影片清單載入失敗');
       const catalog = await catalogResponse.json();
       const entry = catalog.decks.find(item => item.id === sampleId);
       if (!entry) throw new Error('找不到指定的公開投影片');
-      // Each sample has its own browser draft. Never replace local edits on reload.
-      if (!localDeck) {
-        const response = await fetch(entry.archive);
+      // Samples always open the current official archive; edits live only in memory.
+      {
+        const response = await fetch(entry.archive, { cache: 'no-cache' });
         if (!response.ok) throw new Error('公開投影片載入失敗');
         const archive = await window.ASMDeck.decode(await response.blob());
         deck = normalizeDeck(await traceStore.detachDeck(archive.deck));
@@ -838,11 +840,11 @@
   }
 
   function progressiveRebuildLabel(session, active = null) {
-    if (!session.total) return session.mode === 'sample' ? '範例本機副本已儲存' : '精簡投影片已匯入';
+    if (!session.total) return session.mode === 'sample' ? '僅本次開啟，重新整理後還原' : '精簡投影片已匯入';
     if (session.completed >= session.total) {
       if (session.mode === 'sample') return session.pending
         ? `公開投影片・${session.pending} 張動畫需要重新 RUN`
-        : '範例本機副本已儲存';
+        : '僅本次開啟，重新整理後還原';
       return session.pending
         ? `投影片已匯入；${session.pending} 張動畫請修正程式後 RUN`
         : '精簡投影片已匯入';
@@ -1215,7 +1217,7 @@
     const parsed = JSON.parse(text);
     const importedDeck = parsed && parsed.deck ? parsed.deck : parsed;
     const nextDeck = normalizeDeck(await traceStore.detachDeck(importedDeck, { upload: canSaveRemoteDeck() }));
-    await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
+    if (!sampleId) await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
       { allowMissingTraces: true });
     const previousDeck = deck;
     deck = nextDeck;
@@ -1237,7 +1239,7 @@
         if (packageData.cover) archiveCover = { ...packageData.cover };
         const nextDeck = normalizeDeck(await traceStore.detachDeck(packageData.deck, { upload: canSaveRemoteDeck() }));
         const previousDeck = deck;
-        await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
+        if (!sampleId) await draftStore.saveDeck(DRAFT_KEY, JSON.stringify(nextDeck), traceStore.retainedKeys(),
           { allowMissingTraces: true });
         deck = nextDeck;
         currentH = 0; currentV = 0;
@@ -12198,7 +12200,11 @@
 
   async function bootstrap() {
     try {
-      const localDeck = await draftStore.loadDeck(DRAFT_KEY,
+      if (sampleId) {
+        try { await draftStore.deleteDeck(DRAFT_KEY); localStorage.removeItem(`${DRAFT_KEY}:cover`); }
+        catch (error) { console.warn('無法清理舊範例副本，仍載入官方範例', error); }
+      }
+      const localDeck = sampleId ? null : await draftStore.loadDeck(DRAFT_KEY,
         !deckUid && !shareToken ? [STORAGE_KEY, OLD_STORAGE_KEY] : [], { lazyTraces: true });
       if (localDeck) deck = normalizeDeck(await traceStore.detachDeck(localDeck));
       await loadCloudDeck(localDeck);
