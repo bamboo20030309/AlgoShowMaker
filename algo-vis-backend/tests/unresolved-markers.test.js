@@ -340,7 +340,9 @@ test('a moved swap container settles before its swap event can start', () => {
     'the second timeline pass starts swap only after the container movement');
 });
 
-test('text and marker lifecycles fade at their bound positions', () => {
+test('legacy lifecycle motion is preserved without moving text or array containers', () => {
+  // This case must also run alone, without another test loading the tween module.
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
   const {
     visualLifecycleKind: kind,
     visualLifecycleOffsetY: offsetY,
@@ -379,9 +381,11 @@ test('text and marker lifecycles fade at their bound positions', () => {
   assert.equal(kind(object), 'object');
   assert.equal(offsetY('text', 'enter', 0), 0, 'text fades in without moving');
   assert.equal(offsetY('text', 'removed', 1), 0, 'text fades out without moving');
-  assert.equal(offsetY('marker', 'enter', 0), 0, 'marker fades in at its bound position');
+  assert.equal(offsetY('marker', 'enter', 0), -16, 'marker enters from the original sixteen-pixel offset');
+  assert.equal(offsetY('marker', 'enter', 0.5), -8);
   assert.equal(offsetY('marker', 'enter', 1), 0, 'marker finishes at its bound position');
-  assert.equal(offsetY('marker', 'exit', 1), 0, 'marker fades out without a directional rise');
+  assert.equal(offsetY('marker', 'exit', 1), -16, 'marker restores its original upward exit');
+  assert.equal(offsetY('object', 'enter', 0), -16, 'ordinary scalar entrance follows the old motion');
   assert.equal(offsetY('array', 'enter', 0), 0, 'arrays fade in at their rendered position');
   assert.equal(offsetY('array', 'exit', 1), 0, 'array scope exits stay in place');
   assert.equal(offsetY('array', 'removed', 1), 0, 'removed arrays fade out in place');

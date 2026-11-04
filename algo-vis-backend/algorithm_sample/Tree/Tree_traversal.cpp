@@ -264,7 +264,10 @@ void levelorder(Node* root) {
         av.auto_camera(0.85, 0, 20);
         av.end_frame_draw();
         //}
-        auto [node, d, o] = q.front(); q.pop();
+        // 與專案目前使用的 GCC 6 相容；保留原本節點、深度與順序的意義。
+        const auto entry = q.front(); q.pop();
+        Node* node = get<0>(entry);
+        int d = get<1>(entry), o = get<2>(entry);
         //draw{
         q_val.pop();
         //}

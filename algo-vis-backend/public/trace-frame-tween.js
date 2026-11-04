@@ -34,11 +34,11 @@
   const COMPARE_SCALE_DELTA = 0.14;
   const ASSIGN_TIMING = Object.freeze({ frame: 160, valueHold: 500, drop: 500, hold: 500, exit: 100 });
   const GENERIC_EVENT_DURATION = Object.freeze({ lift: 340, pulse: 400, fade: 440, code: 400 });
-  const APPEAR_TIMING = Object.freeze({ duration: 220, offsetY: 0 });
+  const APPEAR_TIMING = Object.freeze({ duration: 220, offsetY: -16 });
   const STYLE_PAINT_DURATION = 180;
   const HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION = 320;
   const MARKER_REFLOW_TIMING = Object.freeze({ duration: 180, entranceDelay: 80 });
-  const EXIT_OFFSET_Y = 0;
+  const EXIT_OFFSET_Y = -16;
   const SEQUENCE_TIMING = Object.freeze({ duration: MOTION_TIME.reflow + MOTION_TIME.enter, travel: 0 });
 
   function operationKind(event) {
@@ -59,7 +59,7 @@
 
   // Public, inspectable action DAG. An edge is a dependency; actions sharing
   // a stage have identical start/end and may execute in parallel.
-  function eventActionPlan(event, { marker = false } = {}) {
+  function eventActionPlan(event, { marker = false, motionMs = MOTION_TIME.move } = {}) {
     const kind = operationKind(event);
     const stages = [];
     const add = (id, duration, actions) => {
@@ -77,7 +77,7 @@
     else if (['scope-exit', 'visual-exit'].includes(event?.type)) add('exit', MOTION_TIME.exit, ['exit']);
     else if (event?.type === 'compare') {
       compareStages('');
-    } else if (event?.type === 'swap') add('swap', MOTION_TIME.swap, ['move']);
+    } else if (event?.type === 'swap') add('swap', motionMs, ['move']);
     else if (['assign', 'write'].includes(event?.type)) {
       for (let i = 0; i < selectionDuration(event) / COMPARE_DURATION; i++) {
         compareStages('select-');
@@ -87,7 +87,7 @@
       add('transfer', ASSIGN_TIMING.drop, kind === 'literal' ? ['hint', 'move'] : ['copy', 'move']);
       add('result-hold', ASSIGN_TIMING.hold, ['hint']);
       add('cleanup', ASSIGN_TIMING.exit, ['exit']);
-      if (marker) add('pointer-motion', MOTION_TIME.move, ['move']);
+      if (marker) add('pointer-motion', motionMs, ['move']);
     } else if (event?.type === 'sequence-operation') {
       const inserting = Number(event.payload?.afterSize) > Number(event.payload?.beforeSize);
       add(inserting ? 'make-room' : 'remove', inserting ? MOTION_TIME.reflow : MOTION_TIME.exit, inserting ? ['move'] : ['exit']);
@@ -6748,7 +6748,8 @@
         traceDocument,
         eventFrame,
         source,
-        initializer?.payload?.source ?? initializer?.payload?.after ?? initializer?.payload?.insertedValue,
+        // push/insert 的 after 是整個容器，來源匹配必須用本次插入的單格值。
+        initializer?.payload?.source ?? initializer?.payload?.insertedValue ?? initializer?.payload?.after,
         placements,
         elements,
         visualKeyForSource,
@@ -7068,7 +7069,7 @@
       let sequenceSourceTransfer = false;
       // Initial position is established by declaration entry, not a second
       // invisible movement after the pointer has already arrived.
-      if (positionOnly) duration = isDeclarationInitializerAssignment(event) ? 0 : MOTION_TIME.move;
+      if (positionOnly) duration = isDeclarationInitializerAssignment(event) ? 0 : swapDuration;
       let declarationEntranceDelay = 0;
       if (animation === 'declare') {
         if (initializerEvent) {
@@ -7159,7 +7160,7 @@
           effectDuration = Math.max(effectDuration, BIT_SHIFT_DURATION);
         }
         duration = effectDuration
-          + (!bitwise && !standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? MOTION_TIME.move : 0);
+          + (!bitwise && !standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
       if (event.type === 'compare' && animation === 'compare') {
         duration = COMPARE_DURATION;
@@ -7168,7 +7169,7 @@
         const pair = event.targets || [];
         const sameCell = pair.length >= 2 && eventTargetKey(traceDocument, eventFrame, pair[0])
           === eventTargetKey(traceDocument, eventFrame, pair[1]);
-        duration = sameCell ? MOTION_TIME.emphasize : MOTION_TIME.swap;
+        duration = sameCell ? MOTION_TIME.emphasize : swapDuration;
       }
       if (animation === 'sequence') {
         const beforeSize = Number(event?.payload?.beforeSize);
@@ -7228,7 +7229,8 @@
         event, type: event.type, animation,
         actionPlan: positionOnly
           ? { ...eventActionPlan(event), commitMs: 0 }
-          : eventActionPlan(event, { marker: Boolean(markerAssignment) }),
+          : eventActionPlan(event, { marker: Boolean(markerAssignment),
+            motionMs: event.type === 'swap' ? duration : swapDuration }),
         initializerEvent,
         memberEvents: initializerEvent ? [initializerEvent] : [],
         replayMemberEvents: declarationInitializerTransfer && initializerEvent
