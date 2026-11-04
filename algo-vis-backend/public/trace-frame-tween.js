@@ -899,7 +899,7 @@
     deferredMarkerEntranceKeys = [], deferredMarkerEntranceStartMs = 0,
     deferredMarkerReflowKeys = [],
     initialDelayMs = 0, keepTransitionKeys = [], keepTransitionDurationMs = 0,
-    cameraTransitionDurationMs = 0
+    cameraTransitionDurationMs = 0, eventGapAfterMs = 0
   } = {}) {
     const initialDelay = Math.max(0, Number(initialDelayMs) || 0);
     const preKeepSlots = eventTimeline.filter(slot => slot?.event?.preKeepExit === true);
@@ -965,6 +965,10 @@
     const eventEnd = regularSlots.reduce(
       (end, slot) => Math.max(end, Number(slot.end) || 0), eventStart
     );
+    // 幀內由事件槽位保留間隔；最後一個事件到下一幀也需要同一段等待。
+    // 放進播放計畫而非 setTimeout，讓暫停、倍速、取消都共用原本時鐘。
+    const eventGapAfter = eventTimeline.length
+      ? Math.max(0, Math.min(2000, Number(eventGapAfterMs) || 0)) : 0;
     const deferredEntranceTargets = [...new Set(deferredMarkerEntranceKeys)].filter(Boolean);
     const deferredEntranceStart = deferredEntranceTargets.length
       ? Math.max(eventStart, Number(deferredMarkerEntranceStartMs) || 0)
@@ -977,7 +981,7 @@
       frameId: String(frame?.id || ''),
       direction: Number(direction) || 0,
       preEventDurationMs: eventStart,
-      totalDurationMs: Math.max(preKeepEnd, eventStart, eventEnd, deferredEntranceEnd),
+      totalDurationMs: Math.max(preKeepEnd, eventStart, eventEnd + eventGapAfter, deferredEntranceEnd),
       phases: [
         ...(initialDelay ? [{
           id: 'code-transition',
@@ -1054,6 +1058,12 @@
           durationMs: Math.max(0, eventEnd - eventStart),
           steps: eventSteps
         },
+        ...(eventGapAfter ? [{
+          id: 'event-gap', mode: 'sequence', startMs: eventEnd,
+          durationMs: eventGapAfter,
+          steps: [{ id: 'event-gap-after-frame', kind: 'event-gap',
+            durationMs: eventGapAfter, blocking: true, enabled: true, source: 'settings' }]
+        }] : []),
         ...(deferredEntranceTargets.length ? [{
           id: 'deferred-object-entrance',
           mode: 'parallel',
@@ -8737,7 +8747,12 @@
       initialDelayMs: initialDelay,
       keepTransitionKeys,
       keepTransitionDurationMs: keepTransitionDuration,
-      cameraTransitionDurationMs: options.cameraTransitionDurationMs
+      cameraTransitionDurationMs: options.cameraTransitionDurationMs,
+      // 最後一幀沒有後續事件，跳幀與反向也不應額外等待。
+      eventGapAfterMs: options.direction > 0
+        && (traceDocument.frames || []).some((candidate, index, frames) =>
+          candidate.id === frame.id && index < frames.length - 1)
+        ? eventGap(traceDocument) : 0
     });
     const forwardReplayPlan = createForwardReplayPlan(
       traceDocument, eventFrame, eventTimeline, options.direction
@@ -10230,10 +10245,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-309';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-310';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-309', play, cancel, updateEventAvailability,
+    build: 'trace-310', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
