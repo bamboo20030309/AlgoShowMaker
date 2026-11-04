@@ -255,7 +255,9 @@ int main() {
         literalSamples.push({
           eventId: document.querySelector('[data-trace-active-event-id]')?.dataset.traceActiveEventId || '',
           hasCellTransfer: Boolean(document.querySelector('.asm-trace-sequence-cell-transfer')),
-          opacity: destinationElement ? Number(getComputedStyle(destinationElement).opacity) : null,
+          opacity: Number(getComputedStyle(document.querySelector('.asm-trace-sequence-entry') || destinationElement).opacity),
+          entryText: document.querySelector('.asm-trace-sequence-entry text[data-trace-content-role="value"],.asm-trace-sequence-entry text')?.textContent,
+          entryHasRect: Boolean(document.querySelector('.asm-trace-sequence-entry rect')),
           destinationCenterX: destinationRect
             ? destinationRect.x + destinationRect.width / 2 : null
         });
@@ -303,8 +305,8 @@ int main() {
       .map(sample => sample.destinationCenterX).filter(Number.isFinite);
     assert.ok(Math.max(...literalPositions) - Math.min(...literalPositions) < 1,
       'the literal cell fades into its final slot without a right-edge fly-in');
-    assert.ok(literalEventSamples.some(sample=>sample.opacity>0&&sample.opacity<1),
-      'the literal cell has an observable in-place fade');
+    assert.ok(literalEventSamples.some(sample=>sample.opacity>0&&sample.opacity<1&&sample.entryText==='9'&&sample.entryHasRect),
+      'the literal cell and its number fade together before the formal commit');
     assert.equal(result.finalValue, '5');
     assert.equal(result.finalLiteralValue, '9');
     assert.deepEqual(errors, []);

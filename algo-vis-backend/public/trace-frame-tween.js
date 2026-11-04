@@ -7414,6 +7414,49 @@
     }
     const usesSourceCellTransfer = Boolean(transfer);
 
+    // 入場外觀與正式資料提交分開：常數／隱藏來源也先顯示完整格子及數字。
+    // 正式目標仍由 replay 在完成時提交，不能提早改動後續事件讀到的值。
+    const enteringCells = [];
+    if (!reverse && !usesSourceCellTransfer && content) inserted.forEach(cellKey => {
+      const destination = elements?.get?.(cellKey);
+      if (!destination) return;
+      const index = Number(cellKey.slice(cellKey.lastIndexOf('#') + 1));
+      const value = sequenceStates?.after?.items?.[index] ?? event?.payload?.insertedValue;
+      if (value == null) return;
+      const wrapper = createSvg('g', { class: 'asm-trace-sequence-entry', 'pointer-events': 'none', opacity: 0 });
+      const clone = destination.cloneNode(true);
+      removeAnimationNodes(clone);
+      [clone, ...clone.querySelectorAll('[id], [data-trace-object-key], [data-trace-index]')].forEach(node => {
+        ['id', 'data-trace-object-key', 'data-trace-index'].forEach(name => node.removeAttribute(name));
+      });
+      clone.removeAttribute('opacity');
+      clone.removeAttribute('display');
+      clone.style.removeProperty('opacity');
+      let text = clone.querySelector('text[data-trace-content-role="value"], text:not([data-trace-content-role="index"]):not(.outerframe-label)');
+      if (!text) {
+        const rect = destination.querySelector('rect');
+        const box = rect?.getBBox?.();
+        if (box) {
+          text = createSvg('text', { x: box.x + box.width / 2, y: box.y + box.height / 2,
+            'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-family': 'Arial',
+            'font-size': Math.max(10, Math.min(24, box.height * 0.48)), fill: '#1f282d',
+            'data-trace-content-role': 'value' });
+          clone.append(text);
+        }
+      }
+      if (text) {
+        const fallback = displayEventValue(value);
+        const template = destination.getAttribute('data-trace-display-template');
+        text.textContent = template && window.ASMTraceRenderers?.renderDisplayTemplate
+          ? window.ASMTraceRenderers.renderDisplayTemplate(template, value, traceDocument, eventFrame,
+            { index, row: Number(destination.dataset.traceDisplayRow), column: Number(destination.dataset.traceDisplayColumn) }, fallback)
+          : fallback;
+      }
+      wrapper.append(clone);
+      content.append(wrapper);
+      enteringCells.push({ wrapper, cellKey });
+    });
+
     if (content && removed.length) {
       removed.forEach(cellKey => {
         const oldCell = previousVisualElement(previousObjects, cellKey);
@@ -7463,10 +7506,13 @@
               adjustments.set(key, {
                 x: direction * SEQUENCE_TIMING.travel * (1 - progress), y: 0, scale: 1
               });
-              opacities.set(key, insertProgress);
+              opacities.set(key, enteringCells.some(item => item.cellKey === key)
+                ? (insertProgress >= 1 ? 1 : 0) : insertProgress);
             }
           });
         });
+        enteringCells.forEach(({ wrapper }) => wrapper.setAttribute('opacity',
+          String(insertProgress >= 1 ? 0 : insertProgress)));
         ghosts.forEach(({ wrapper }) => {
           wrapper.setAttribute('opacity', String(1 - easeOutCubic(timedProgress(elapsed, MOTION_TIME.exit))));
         });
@@ -7483,6 +7529,7 @@
         adjustments.clear();
         opacities.clear();
         ghosts.forEach(({ wrapper }) => wrapper.remove());
+        enteringCells.forEach(({ wrapper }) => wrapper.remove());
         transfer?.remove();
         shifts.forEach(shift=>shift.remove());
         transfer = null;
@@ -10135,7 +10182,7 @@
       + '.asm-trace-assign-falling-value, .asm-trace-assign-transfer, '
       + '.asm-trace-compare-self-clone, .asm-trace-transition-ghost-motion, '
       + '.asm-trace-transition-ghost, .asm-trace-heap-resize-ghost, '
-      + '.asm-trace-sequence-ghost'
+      + '.asm-trace-sequence-ghost, .asm-trace-sequence-entry'
     ).forEach(element => element.remove());
     document.querySelectorAll('[data-trace-heap-resize-current]').forEach(wrapper => {
       const heap = wrapper.querySelector(':scope > [data-layout="heap"]');
@@ -10157,10 +10204,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-304';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-305';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-304', play, cancel, updateEventAvailability,
+    build: 'trace-305', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

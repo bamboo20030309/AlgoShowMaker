@@ -139,3 +139,5 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 ## 外框擴縮階段
 
 在 algo-vis-backend 執行 `node --test tests/sequence-outerframe-phases.browser.test.js`。測試自行啟動隔離服務與瀏覽器，檢查 normal 的 insert、erase、push_back、pop_back，在 1／2 倍速依固定時間核對真實外框尺寸。這是 67 個事件案例以外新增的專項，不代表其他 render 的全組合均已驗證。
+
+外框專項現擴充為 6 個情境 × 1／2 倍速，共 12 組：insert、erase、常數 push_back、pop_back、可見來源 push_back、隱藏來源 push_back。入場階段除了外框尺寸，另檢查提交前的數字、格子、字形尺寸及所有祖先的有效透明度，完成後不得殘留入場複本。
