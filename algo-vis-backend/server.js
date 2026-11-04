@@ -989,6 +989,9 @@ function cleanEventSettings(value = {}) {
       ? value.autoFixedEnabled
       : (typeof value.defaultEnabled?.fixed === 'boolean' ? value.defaultEnabled.fixed : true),
     autoLoopBoundaryEnabled: value.autoLoopBoundaryEnabled === true,
+    readHighlightEnabled: value.readHighlightEnabled === true,
+    readHighlightColor: typeof value.readHighlightColor === 'string' && value.readHighlightColor.trim()
+      ? value.readHighlightColor.trim().slice(0, 128) : 'AV_red',
     defaultEnabled: cleanFlags(value.defaultEnabled),
     timelineTypes: cleanFlags(value.timelineTypes)
   };

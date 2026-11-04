@@ -6,6 +6,8 @@ async function runVisualCase({ page, trace, item, observation }) {
   const result = await page.evaluate(async ({ trace, item, frameIndex, sourceLine }) => {
     trace = ASMTraceModel.normalizeTraceDocument(trace);
     trace.studio ||= {}; trace.studio.eventSettings ||= {};
+    // These contracts explicitly exercise read emphasis, which is off by default.
+    trace.studio.eventSettings.readHighlightEnabled = true;
     trace.studio.eventSettings.gapMs = 0;
     let frame = trace.frames[frameIndex], previous = trace.frames[Math.max(0, frameIndex - 1)];
     if (!frame) throw Error('Case has no frame');

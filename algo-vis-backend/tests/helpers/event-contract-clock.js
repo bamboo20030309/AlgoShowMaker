@@ -95,7 +95,7 @@ async function runClockProbe({ page, trace, item, observation }) {
         const targetFrame = { ...clone(sourceFrame), events: selected };
         loaded.frames = [clone(loaded.frames[frameIndex - 1]), targetFrame];
         loaded.studio ||= {}; loaded.studio.eventSettings = { ...(loaded.studio.eventSettings || {}),
-          gapMs: 0, autoFixedEnabled: false, autoLoopBoundaryEnabled: false };
+          readHighlightEnabled: true, gapMs: 0, autoFixedEnabled: false, autoLoopBoundaryEnabled: false };
         window.ASMTraceCamera = { ...native.camera, apply() {}, transitionDuration: () => 0 };
         // Keep values above the product's 14px LOD threshold. This probe
         // measures event commits, not camera fitting or detail suppression.

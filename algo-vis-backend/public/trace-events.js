@@ -13,7 +13,7 @@
     { type: 'object-exit', label: '物件退場／手動退場', color: '#7b5b45', enabledByDefault: true, timelineByDefault: true },
     // Reads remain internal access metadata for automatic fixed markers. They
     // are not a user-facing event, animation, timeline entry or Studio item.
-    { type: 'read', label: '讀取', color: '#3976b8', internal: true, enabledByDefault: false, timelineByDefault: false },
+    { type: 'read', label: '讀取', color: 'rgba(239, 154, 154, 0.6)', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },

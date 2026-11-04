@@ -157,3 +157,7 @@ insert／push_back 的入場階段須同時呈現格子與數字。可見來源�
 ## render 的生命週期分工（2026-11-04）
 
 無 runtime 事件的尾端增減補排程目前只作用於 render normal。disk 的圓盤由連續身分追蹤跨柱位置，不能套用一般陣列的新格入場／退場遮罩；heap 等其他 renderer 也保留既有幾何規則。暫時視覺補排程在 frame handoff 的前段執行，不排在後續 output／call 提示之後；原本真實事件之間的執行順序不改變。鏡頭、結構或新節點入場所需的既有 barrier 仍保留。
+
+## 讀取強調預設（2026-11-04）
+
+讀取仍附著於所屬操作，不增加獨立停頓。顯示預設關閉；事件設定面板的「讀取強調」開啟後才建立 highlight，預設顏色為 AV_red。設定保存於 studio.eventSettings.readHighlightEnabled（布林值）與 readHighlightColor（預設 AV_red）。缺少欄位的舊資料視為關閉；明確 true／false 與自訂色保留，設定可隨 @asm-view、投影片、Trace 引用與帳號偏好保存。不恢復已移除的逐步讀取事件開關。

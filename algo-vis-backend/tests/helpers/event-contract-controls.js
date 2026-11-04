@@ -96,7 +96,7 @@ async function runControlCase({ page, trace, item, allTraces = {} }) {
       targetId = required('target variable', owner.targets?.find(target => target.role === 'target')?.variableId);
       current = { ...full, frames: [clone(full.frames[index - 1]), clone(full.frames[index])] };
       current.studio ||= {};
-      current.studio.eventSettings = { ...(current.studio.eventSettings || {}), gapMs: 0,
+      current.studio.eventSettings = { ...(current.studio.eventSettings || {}), gapMs: 0, readHighlightEnabled: true,
         autoFixedEnabled: false, autoLoopBoundaryEnabled: false };
       targetFrame = current.frames[1];
       // Deterministic animation time, while DOM and IndexedDB remain real.

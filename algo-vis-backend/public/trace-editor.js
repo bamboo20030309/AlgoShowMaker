@@ -129,15 +129,20 @@
         ? value.autoFixedEnabled
         : (typeof value.defaultEnabled?.fixed === 'boolean' ? value.defaultEnabled.fixed : true),
       autoLoopBoundaryEnabled: value.autoLoopBoundaryEnabled === true,
+      readHighlightEnabled: value.readHighlightEnabled === true,
+      readHighlightColor: typeof value.readHighlightColor === 'string' && value.readHighlightColor.trim()
+        ? value.readHighlightColor.trim().slice(0, 128) : 'AV_red',
       defaultEnabled: cleanFlags(value.defaultEnabled),
       timelineTypes: cleanFlags(value.timelineTypes)
     };
   }
 
   function documentEventSettings(value = {}) {
-    return Object.fromEntries(['autoFixedEnabled', 'autoLoopBoundaryEnabled'].flatMap(key => (
+    const flags = Object.fromEntries(['autoFixedEnabled', 'autoLoopBoundaryEnabled', 'readHighlightEnabled'].flatMap(key => (
       typeof value?.[key] === 'boolean' ? [[key, value[key]]] : []
     )));
+    if (typeof value?.readHighlightColor === 'string') flags.readHighlightColor = value.readHighlightColor;
+    return flags;
   }
 
   function applyAccountEventSettings() {
@@ -340,6 +345,7 @@
     autoFixed.checked = settings.autoFixedEnabled !== false;
     const autoLoopBoundary = eventSettingsPanel.querySelector('.trace-auto-loop-boundary-toggle');
     autoLoopBoundary.checked = settings.autoLoopBoundaryEnabled === true;
+    eventSettingsPanel.querySelector('.trace-read-highlight-toggle').checked = settings.readHighlightEnabled === true;
     const gap = eventSettingsPanel.querySelector('.trace-event-gap');
     gap.value = String(settings.gapMs);
     gap.title = `間隔時間 ${settings.gapMs} ms`;
@@ -414,7 +420,24 @@
     const gapValue = document.createElement('output');
     gapValue.className = 'trace-event-gap-value';
     gapRow.append(gap, gapValue);
-    panel.append(head, list, autoFixedRow, autoLoopBoundaryRow, gapRow);
+    const readRow = document.createElement('label');
+    readRow.className = 'trace-auto-fixed-settings';
+    const readCopy = document.createElement('span');
+    const readTitle = document.createElement('strong');
+    readTitle.textContent = '讀取強調';
+    const readHint = document.createElement('small');
+    readHint.textContent = '以 AV_red 強調目前使用的資料，隨所屬操作顯示，不增加步驟';
+    readCopy.append(readTitle, readHint);
+    const readToggle = document.createElement('input');
+    readToggle.type = 'checkbox';
+    readToggle.className = 'trace-read-highlight-toggle';
+    readToggle.addEventListener('change', () => {
+      ensureEventSettings().readHighlightEnabled = readToggle.checked;
+      sourceEventSettingOverrides.readHighlightEnabled = readToggle.checked;
+      saveEventSettings({ persistDocument: true });
+    });
+    readRow.append(readCopy, readToggle);
+    panel.append(head, list, autoFixedRow, autoLoopBoundaryRow, readRow, gapRow);
     document.body.append(panel);
     return panel;
   }

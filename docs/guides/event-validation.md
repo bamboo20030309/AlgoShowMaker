@@ -149,3 +149,9 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 - 外框專項另包含移除操作事件的尾端增減，涵蓋有／無 runtime 事件的同一套階段。
 
 河內塔專項已擴充至前三次搬盤 × 1／2 倍速，共 6 組。除了 ans 入場，會以盤子穩定身分核對跨柱前後位置，在 90 ms 動作時鐘檢查圓盤可見、已離開起點且尚未抵達終點；關閉鏡頭的探針另限制視覺補排程不等待後續 output／call 提示。
+
+## 讀取強調與範本語法
+
+- `node --test tests/template-pointer-syntax.test.js`：掃描全部隨附 C++、預設程式碼及 15 份公開投影片的 36 個動畫，共 75 份程式碼來源；實際 frame/object 指令不使用舊索引指標寫法。條件中的陣列取值及舊設定識別字串不當作執行指令改寫。
+- `node --test tests/read-highlight-defaults.browser.test.js`：驗證缺欄位的舊資料與新建資料預設不顯示、開啟後 AV_red、自訂色、明確關閉、IndexedDB 儲存重開、@asm-view 設定及實際 UI 開關。
+- 原本專門檢查讀取 highlight 的固定答案探針，現在明確設定 readHighlightEnabled=true 再驗，避免把「可選功能開啟時的規則」與產品預設混在一起。

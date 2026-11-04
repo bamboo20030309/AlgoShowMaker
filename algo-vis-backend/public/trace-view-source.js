@@ -304,6 +304,10 @@
     if (typeof value.autoLoopBoundaryEnabled === 'boolean') {
       result.autoLoopBoundaryEnabled = value.autoLoopBoundaryEnabled;
     }
+    if (typeof value.readHighlightEnabled === 'boolean') result.readHighlightEnabled = value.readHighlightEnabled;
+    if (typeof value.readHighlightColor === 'string' && value.readHighlightColor.trim()) {
+      result.readHighlightColor = value.readHighlightColor;
+    }
     return Object.keys(result).length ? result : null;
   }
 

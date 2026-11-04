@@ -2940,6 +2940,11 @@
 
   function createReadEmphasis(root, event, traceDocument, frame, placements, elements,
     visualKeyForSource = key => key, appearingKeys = null, previousObjects = null) {
+    const settings = traceDocument?.studio?.eventSettings || {};
+    if (settings.readHighlightEnabled !== true) return { update() {}, remove() {} };
+    const configuredColor = settings.readHighlightColor || 'AV_red';
+    const color = configuredColor === 'AV_red'
+      ? 'rgba(239, 154, 154, 0.6)' : configuredColor;
     const targets = event?.semantics?.reads || (event?.targets || []).filter(target => (
       String(target.role || '').startsWith('source') || event?.type === 'compare'
     ));
@@ -2975,7 +2980,7 @@
         host.setAttribute('transform', `translate(${operand.point.x - box.x - box.width / 2},${operand.point.y - box.y})`);
         operand = { ...operand, element: clone }; sourceGhosts.push(host);
       }
-      const highlight = addHighlight(operand.element, '#333333');
+      const highlight = addHighlight(operand.element, color);
       if (!highlight) continue;
       highlight.classList.add('asm-trace-read-highlight');
       highlight.dataset.traceReadOwner = String(event.id || '');
@@ -10249,10 +10254,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-307';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-308';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-307', play, cancel, updateEventAvailability,
+    build: 'trace-308', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
