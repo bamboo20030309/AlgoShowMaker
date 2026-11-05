@@ -2328,13 +2328,21 @@
   }
 
   function refreshPresentedStyles(root) {
-    const layer = [...(root?.children || [])].find(child => child.classList?.contains('asm-trace-style-layer'));
     const rootMatrix = root?.getScreenCTM?.();
-    if (!layer || !rootMatrix) return;
-    let inverse;
-    try { inverse = rootMatrix.inverse(); } catch { return; }
-    [...layer.children].forEach(wrapper => {
+    if (!rootMatrix) return;
+    const inverses = new Map();
+    // @keep frame 的 style 層位於巢狀 scene 內。格子被提升到動畫層後，
+    // 仍須更新這些 style，並用實際 style 父層的座標反算，不能只更新根層。
+    root.querySelectorAll('.asm-trace-style-decoration').forEach(wrapper => {
       if (!wrapper.firstElementChild) { wrapper.remove(); return; }
+      const parent = wrapper.parentElement;
+      if (!parent) return;
+      if (!inverses.has(parent)) {
+        try { inverses.set(parent, (parent.getScreenCTM?.() || rootMatrix).inverse()); }
+        catch { inverses.set(parent, null); }
+      }
+      const inverse = inverses.get(parent);
+      if (!inverse) return;
       const sourceCell = wrapper._asmStyleCell;
       const cell = sourceCell?._asmStylePresentationCell || sourceCell;
       const basis = wrapper._asmStyleBasis;

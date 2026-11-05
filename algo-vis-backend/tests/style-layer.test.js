@@ -127,6 +127,28 @@ test('highlight includes the index row and follows the visible swap cell until i
   assert.equal(hint.getAttribute('height'), '48');
 });
 
+test('nested keep style layers follow a cell promoted outside their snapshot', () => {
+  const dom = new JSDOM(`<!doctype html><svg><g id="asm-trace-root">
+    <g id="snapshot"><g id="cell"><rect width="40" height="40"/></g>
+      <path id="mark" d="M 26 30 l 3 3 l 6 -6"/>
+      <g class="asm-trace-style-layer" id="nested"/>
+    </g><g id="effect"/>
+  </g></svg>`, { runScripts: 'outside-only' });
+  const {window}=dom,root=window.document.getElementById('asm-trace-root');
+  const cell=window.document.getElementById('cell'),mark=window.document.getElementById('mark');
+  const snapshot=window.document.getElementById('snapshot'),layer=window.document.getElementById('nested');
+  root.getScreenCTM=snapshot.getScreenCTM=cell.getScreenCTM=()=>new Matrix();
+  window.eval(fs.readFileSync(path.join(__dirname,'../public/trace-renderer.js'),'utf8'));
+  window.ASMTraceRenderers.attachStyleVisual(mark,cell,'mark');
+  const wrapper=mark.parentElement;layer.append(wrapper);
+  layer.getScreenCTM=()=>new Matrix(1,0,0,1,100,20);
+  window.document.getElementById('effect').append(cell);
+  cell.getScreenCTM=()=>new Matrix(1.5,0,0,1.5,120,70);
+  window.ASMTraceRenderers.refreshArrows();
+  assert.equal(wrapper.getAttribute('transform'),'matrix(1.5 0 0 1.5 20 50)');
+  assert.equal(wrapper.hasAttribute('display'),false);
+});
+
 test('compare frame only surrounds the value cell, while style highlight also surrounds the index', () => {
   const dom = new JSDOM(`<!doctype html><svg><g id="asm-trace-root">
     <g id="object"><g id="cell" data-trace-index="0"><rect width="40" height="30"/></g>
