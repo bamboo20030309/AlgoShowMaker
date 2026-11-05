@@ -4646,6 +4646,16 @@ function instrumentSource(source, watchIds = []) {
       endColumn: endPoint.column,
       text: textOverride == null ? source.slice(start, end) : String(textOverride),
       contexts: sourceContexts(node),
+      expressionPath: (() => {
+        const path = [];
+        for (let current = node?.parent; current; current = current.parent) {
+          if (/^(?:Call|Subscript|Assignment|Update|Conditional|Binary)Expression$/.test(current.name)) {
+            path.push({ type: current.name, from: current.from, to: current.to });
+          }
+          if (current.name.endsWith('Statement') || current.name === 'Declaration') break;
+        }
+        return path;
+      })(),
       ...(metadata && typeof metadata === 'object' ? metadata : {})
     };
     return eventSignature;
@@ -5291,7 +5301,50 @@ ${operation}
 }`;
   }
 
+  // Expression mutations share one value-preserving path regardless of their
+  // parent (argument, index, conditional, initializer, return, or another write).
+  // Keep the native operator and bind its target once; C++17 evaluates an
+  // assignment's RHS before its LHS. Never recover a side-effecting index by
+  // evaluating the user's index expression again for trace metadata.
+  function renderNestedMutation(node, targetNode, sourceNode, context) {
+    const target = targetDescriptor(targetNode);
+    if (!target.variableId) return null;
+    let prefix = `__asm_nested_${node.from}`;
+    while (source.includes(prefix)) prefix += '_';
+    const update = node.name === 'UpdateExpression';
+    const operator = update ? (source.slice(node.from, node.to).includes('++') ? '++' : '--')
+      : source.slice(targetNode.to, sourceNode.from).trim();
+    const postfix = update && targetNode.from === node.from;
+    const sourceTarget = sourceNode && ['Identifier', 'SubscriptExpression'].includes(sourceNode.name)
+      ? targetDescriptor(sourceNode) : { variableId: '', expression: '', indexExpression: '' };
+    const captures = new Map();
+    if (target.indexExpression && target.numericIndex !== false) captures.set(`${targetNode.from}:${targetNode.to}`, `${prefix}_target_indices`);
+    if (sourceTarget.indexExpression && sourceTarget.numericIndex !== false) captures.set(`${sourceNode.from}:${sourceNode.to}`, `${prefix}_source_indices`);
+    const nested = { ...context, captureSubscriptIndices: captures };
+    const access = rebuild(targetNode, { ...nested, suppressRead: true });
+    const rhs = sourceNode ? rebuild(sourceNode, nested) : '';
+    const descriptor = (role, value, indices) => {
+      const index = value.indexExpression && value.numericIndex !== false
+        ? `!${indices}.empty(), (${indices}.size()==2 ? static_cast<long long>((static_cast<unsigned long long>(static_cast<unsigned int>(${indices}[0]))<<32) | static_cast<unsigned int>(${indices}[1])) : ${indices}.empty() ? 0LL : ${indices}[0])`
+        : 'false, 0LL';
+      return `::asm_trace::target_json(${cppString(role)}, ${targetArgs(value)}, ${index})`;
+    };
+    const action = update
+      ? postfix ? `${prefix}_target${operator}` : `${operator}${prefix}_target`
+      : `${prefix}_target ${operator} std::forward<decltype(${prefix}_rhs)>(${prefix}_rhs)`;
+    const expression = compactExpression(source.slice(node.from, node.to));
+    const eventSignature = signature(operator === '=' ? 'assign' : 'write', node);
+    return `([&]()->decltype(auto){ std::vector<long long> ${prefix}_target_indices, ${prefix}_source_indices;
+${sourceNode ? `auto&& ${prefix}_rhs = (${rhs});` : ''}
+return ::asm_trace::event_nested_mutation(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(target.variableId)}, ${cppString(expression)}, ${operator === '=' ? 'true' : 'false'}, ${update ? 'true' : 'false'}, [&]()->decltype(auto){ return (${access}); }, [&](auto&& ${prefix}_target)->decltype(auto){ return (${action}); }, [&](){ return std::string("[") + ${descriptor('target', target, `${prefix}_target_indices`)} + "," + ${descriptor('source', sourceTarget, `${prefix}_source_indices`)} + "]"; }${sourceNode ? `, ::asm_trace::encode_value(${prefix}_rhs)` : ''}); }())`;
+  }
+
   function rebuild(node, context = {}) {
+    // These operands are not evaluated by C++; no runtime events or lambdas
+    // may be injected into them (lambdas in unevaluated contexts require C++20).
+    if (['SizeofExpression', 'AlignofExpression', 'Decltype', 'NoexceptExpression'].includes(node.name)) {
+      return source.slice(node.from, node.to);
+    }
     const hiddenRange = codeHideRanges.find(range => (
       node.from >= range.contentFrom && node.to <= range.contentTo
     ));
@@ -5313,16 +5366,14 @@ ${operation}
       && enclosingForCondition.to === node.to
       && (!enclosingForCondition.node || enclosingForCondition.node.name === node.name));
     const forHeaderWrite = forHeaderExpression
+      && node.parent?.name === 'ForStatement'
       && (node.name === 'AssignmentExpression' || node.name === 'UpdateExpression');
     const inheritedSuppression = context.codeHidden === true || (context.suppressEvents === true
       && !(forHeaderWrite && context.suppressForHeaderEvents === true));
-    const suppressEvents = inheritedSuppression || (forHeaderExpression
-      && !forHeaderWrite
-      && !forHeaderCondition
-      && context.allowForConditionEvents !== true);
+    const suppressEvents = inheritedSuppression;
     const nestedContext = forHeaderCondition && !context.codeHidden
       ? { ...context, suppressEvents: false, allowForConditionEvents: true }
-      : (suppressEvents || forHeaderWrite
+      : (suppressEvents
       ? {
         ...context,
         suppressEvents: true,
@@ -5366,7 +5417,7 @@ ${operation}
       // header. Move it into an equivalent surrounding scope, emit its normal
       // declaration/initialized-assignment events, then leave an empty for
       // initializer. This preserves loop scope and continue/break behavior.
-      const initializer = source.slice(forInitializer.from, forInitializer.to);
+      const initializer = rebuild(forInitializer, context);
       const loop = rebuild(node, {
         ...context,
         rewrittenForInitializerFrom: node.from,
@@ -5433,16 +5484,24 @@ ${loop}
     } else if (node.name === 'SubscriptExpression') {
       const target = targetDescriptor(node);
       const parts = [];
+      const capturedIndices = context.captureSubscriptIndices?.get(`${node.from}:${node.to}`);
+      // A matrix target records both coordinates in base-to-outer order.
+      const propagatedCaptures = capturedIndices ? new Map(context.captureSubscriptIndices) : context.captureSubscriptIndices;
+      if (capturedIndices && children[0]?.name === 'SubscriptExpression') propagatedCaptures.set(`${children[0].from}:${children[0].to}`, capturedIndices);
       let cursor = node.from;
       for (const child of children) {
         parts.push(source.slice(cursor, child.from));
-        parts.push(rebuild(child, { ...nestedContext, suppressRead: child === children[0] }));
+        const rebuilt = rebuild(child, { ...nestedContext, captureSubscriptIndices: propagatedCaptures,
+          suppressRead: child === children[0] || context.suppressRead });
+        parts.push(capturedIndices && child !== children[0] && !['[', ']'].includes(child.name)
+          ? `([&](){ auto __asm_index_value = (${rebuilt}); ${capturedIndices}.push_back(static_cast<long long>(__asm_index_value)); return __asm_index_value; }())`
+          : rebuilt);
         cursor = child.to;
       }
       parts.push(source.slice(cursor, node.to));
       const expression = parts.join('');
       if (target.variableId && !suppressEvents && !context.suppressRead) {
-        rendered = `(::asm_trace::event_read(${analysis.lineAt(node.from)}, ${cppString(signature('read', node))}, ${targetArgs(target)}), (${expression}))`;
+        rendered = `::asm_trace::event_read_value(${analysis.lineAt(node.from)}, ${cppString(signature('read', node))}, ${targetArgs(target)}, [&]()->decltype(auto){ return (${expression}); })`;
       } else {
         rendered = expression;
       }
@@ -5528,6 +5587,13 @@ ${loop}
         && chainRoot.parent?.name === 'ExpressionStatement';
       const standalone = node.parent?.name === 'ExpressionStatement'
         || forHeaderWrite || chainedAssignment;
+      const sideEffectingTarget = target.indexExpression && /(?:\+\+|--|[^=!<>]=|\w\s*\()/.test(target.indexExpression);
+      const containsMutation = current => current && (['AssignmentExpression', 'UpdateExpression'].includes(current.name)
+        || childrenOf(current).some(containsMutation));
+      if (!suppressEvents && target.variableId && (!standalone || sideEffectingTarget || (containsMutation(sourceNode) && !conditional && sourceNode?.name !== 'AssignmentExpression'))) {
+        const nested = renderNestedMutation(node, targetNode, sourceNode, nestedContext);
+        if (nested) return nested;
+      }
       const capturedOperands = multiSources ? multiSources.map(item => item.node)
         : binarySources ? [binarySources.leftNode, binarySources.rightNode]
         : sourceNode && (['Identifier', 'SubscriptExpression'].includes(sourceNode.name) || numericLiteralTarget(sourceNode)) ? [sourceNode] : [];
@@ -5649,12 +5715,11 @@ ${loop}
         rendered = expression;
       } else if (isPrintfCallee(callee)) {
         rendered = `::asm_trace::event_output_invoke(${analysis.lineAt(node.from)}, ${cppString(signature('output', node))}, "printf", ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&]()->decltype(auto){ return (${expression}); })`;
-      } else if (/(?:^|::)swap$/.test(callee) && node.parent?.name === 'ExpressionStatement' && args.length >= 2) {
+      } else if (/(?:^|::)swap$/.test(callee) && args.length >= 2) {
         const leftTarget = targetDescriptor(args[0]);
         const rightTarget = targetDescriptor(args[1]);
-        rendered = `::asm_trace::event_swap(${analysis.lineAt(node.from)}, ${cppString(signature('swap', node))}, ${indexedTargetArgs(leftTarget)}, ${indexedTargetArgs(rightTarget)}, [&]()->decltype(auto){ return (${source.slice(args[0].from, args[0].to)}); }, [&]()->decltype(auto){ return (${source.slice(args[1].from, args[1].to)}); }, [&](){ ${expression}; })`;
-      } else if (mutationTarget?.variableId && MUTATING_METHODS.has(method)
-        && node.parent?.name === 'ExpressionStatement') {
+        rendered = `::asm_trace::event_swap(${analysis.lineAt(node.from)}, ${cppString(signature('swap', node))}, ${indexedTargetArgs(leftTarget)}, ${indexedTargetArgs(rightTarget)}, [&]()->decltype(auto){ return (${rebuild(args[0], nestedContext)}); }, [&]()->decltype(auto){ return (${rebuild(args[1], nestedContext)}); }, [&](auto&& __asm_left, auto&& __asm_right){ ${callee}(__asm_left, __asm_right); })`;
+      } else if (mutationTarget?.variableId && MUTATING_METHODS.has(method)) {
         if (method === 'assign' && !mutationTarget.indexExpression) {
           const emptySource = { variableId: '', expression: '', indexExpression: '' };
           const targetAccess = source.slice(mutationBase.from, mutationBase.to);
@@ -5673,15 +5738,29 @@ ${loop}
           const sourceTarget = sourceNode
             ? targetDescriptor(sourceNode)
             : { variableId: '', expression: '', indexExpression: '' };
+          let indexCapture = `__asm_source_indices_${node.from}`;
+          while (source.includes(indexCapture)) indexCapture += '_';
+          const captureSourceIndex = sourceNode?.name === 'SubscriptExpression' && sourceTarget.numericIndex !== false;
+          const capturedExpression = captureSourceIndex ? children.map(child => rebuild(child, {
+            ...nestedContext, suppressRead: child === calleeNode,
+            captureSubscriptIndices: new Map([[`${sourceNode.from}:${sourceNode.to}`, indexCapture]])
+          })).join('') : expression;
+          const sourceFactory = captureSourceIndex
+            ? `, [&](){ return ::asm_trace::source_target_json("source", ${targetArgs(sourceTarget)}, !${indexCapture}.empty(), (${indexCapture}.size()==2 ? static_cast<long long>((static_cast<unsigned long long>(static_cast<unsigned int>(${indexCapture}[0]))<<32) | static_cast<unsigned int>(${indexCapture}[1])) : ${indexCapture}.empty() ? 0LL : ${indexCapture}[0])); }`
+            : '';
+          const sequenceSourceArgs = captureSourceIndex ? `${targetArgs(sourceTarget)}, false, 0LL` : indexedTargetArgs(sourceTarget);
           const edge = /_front$/.test(method)
             || (mutationVariable?.kind === 'queue' && method === 'pop')
             ? 'front' : 'back';
           if (sequenceLike && !mutationTarget.indexExpression && (insertWithPosition || eraseWithPosition)) {
-            rendered = `::asm_trace::event_sequence_insert_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, ${indexedTargetArgs(sourceTarget)}, (${source.slice(mutationBase.from, mutationBase.to)}), [&]()->decltype(auto){ return (${expression}); })`;
+            rendered = `::asm_trace::event_sequence_insert_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, ${sequenceSourceArgs}, (${source.slice(mutationBase.from, mutationBase.to)}), [&]()->decltype(auto){ return (${capturedExpression}); }${sourceFactory})`;
           } else if (sequenceLike && !mutationTarget.indexExpression) {
-            rendered = `::asm_trace::event_sequence_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, ${cppString(edge)}, ${indexedTargetArgs(sourceTarget)}, (${source.slice(mutationBase.from, mutationBase.to)}), [&](){ ${expression}; })`;
+            rendered = `::asm_trace::event_sequence_operation(${analysis.lineAt(node.from)}, ${cppString(signature('sequence-operation', node))}, ${cppString(mutationTarget.variableId)}, ${cppString(mutationTarget.expression)}, ${cppString(method)}, ${cppString(edge)}, ${sequenceSourceArgs}, (${source.slice(mutationBase.from, mutationBase.to)}), [&]()->decltype(auto){ return (${capturedExpression}); }${sourceFactory})`;
           } else {
-            rendered = `::asm_trace::event_write(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(mutationTarget)}, ${cppString(method)}, [&](){ ${expression}; })`;
+            rendered = `::asm_trace::event_write(${analysis.lineAt(node.from)}, ${cppString(signature('write', node))}, ${indexedTargetArgs(mutationTarget)}, ${cppString(method)}, [&]()->decltype(auto){ return (${expression}); })`;
+          }
+          if (captureSourceIndex && sequenceLike && !mutationTarget.indexExpression) {
+            rendered = `([&]()->decltype(auto){ std::vector<long long> ${indexCapture}; return ${rendered}; }())`;
           }
         }
       } else {

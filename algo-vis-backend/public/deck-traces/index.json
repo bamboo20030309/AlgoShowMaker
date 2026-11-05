@@ -692,24 +692,28 @@
       "slideId": "quick-teaching-31"
     },
     "2922d815590c17764bcbc4916cadfca8312ac94dc56adfbb95a225ecfa708351": {
-      "file": "merge-sort-01.json",
+      "file": "legacy/merge-sort-previous-2922d815590c.json",
       "deck": "merge-sort.asmdeck",
-      "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5"
+      "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5",
+      "legacy": true
     },
     "ee55f8a3ae415a06f313ce425d504a41a6c21267b00e11781b52c419ff7bee9c": {
-      "file": "merge-sort-02.json",
+      "file": "legacy/merge-sort-previous-ee55f8a3ae41.json",
       "deck": "merge-sort.asmdeck",
-      "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f"
+      "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f",
+      "legacy": true
     },
     "522202efb37cdf689bb6309a033b2ce738f99ded082f13bcb77e6c6721b61930": {
-      "file": "merge-sort-03.json",
+      "file": "legacy/merge-sort-previous-522202efb37c.json",
       "deck": "merge-sort.asmdeck",
-      "slideId": "df651625-0eef-4981-aa60-1d1fd9c1f083"
+      "slideId": "df651625-0eef-4981-aa60-1d1fd9c1f083",
+      "legacy": true
     },
     "7230c8ef27ba7013b28e513f6aca0472546d8e36d6dbf22b339d0069a7556585": {
-      "file": "merge-sort-04.json",
+      "file": "legacy/merge-sort-previous-7230c8ef27ba.json",
       "deck": "merge-sort.asmdeck",
-      "slideId": "718d5119-6f4f-46f5-8247-7fe2e78ff61d"
+      "slideId": "718d5119-6f4f-46f5-8247-7fe2e78ff61d",
+      "legacy": true
     },
     "df2994140f00add70f4a037d7e5395561d8897765dd586537ad6e45e71780cdb": {
       "file": "bubble-sort-01.json",
@@ -860,6 +864,26 @@
       "file": "lcs-teaching-02.json",
       "deck": "lcs-teaching.asmdeck",
       "slideId": "lcs-slide-12"
+    },
+    "c042765a00abd4af340f5e36ec824efb12f4e192f2cec9dc26be216d8f4e763f": {
+      "file": "merge-sort-01.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5"
+    },
+    "6dd73e9b42730df2d42bdae0d6d12c7b354bf5b81203b42820d893e596df6ffe": {
+      "file": "merge-sort-02.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f"
+    },
+    "8ac94ee18c0c39a9e9ba2ab0ecdf48cf0941c979cc4b2e663ce1797d55199287": {
+      "file": "merge-sort-03.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "df651625-0eef-4981-aa60-1d1fd9c1f083"
+    },
+    "d0fb4e1bbc1656b8c36236f59da8dafc4d5561802dfd5e08ed96a60367eca1f4": {
+      "file": "merge-sort-04.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "718d5119-6f4f-46f5-8247-7fe2e78ff61d"
     }
   }
 }

@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <deque>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iterator>
 #include <list>
@@ -1205,16 +1206,42 @@ bool event_condition(int line, const char* signature, const char* condition_kind
   return result;
 }
 
+// Preserve void, value and reference results while recording completion only
+// after a successful evaluation. Nested expressions must execute exactly once.
+template <typename F, typename Record>
+auto complete_expression(F action, Record record)
+    -> typename std::enable_if<std::is_void<decltype(action())>::value, void>::type {
+  action();
+  record();
+}
+
+template <typename F, typename Record>
+auto complete_expression(F action, Record record)
+    -> typename std::enable_if<!std::is_void<decltype(action())>::value, decltype(action())>::type {
+  decltype(auto) result = action();
+  record();
+  return std::forward<decltype(result)>(result);
+}
+
 template <typename F>
-void event_write(int line, const char* signature, const char* variable_id,
+decltype(auto) event_read_value(int line, const char* signature, const char* variable_id,
+    const char* expression, const char* index_expression, F action) {
+  return complete_expression(action, [&]() {
+    event_read(line, signature, variable_id, expression, index_expression);
+  });
+}
+
+template <typename F>
+decltype(auto) event_write(int line, const char* signature, const char* variable_id,
                  const char* expression, const char* index_expression,
                  bool has_resolved_index, long long resolved_index,
                  const char* operation, F action, bool animate = true) {
-  action();
-  recorder().add_event_lazy("write", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
+  return complete_expression(action, [&]() {
+  if (recorder().recording_events()) recorder().add_event("write", line, signature ? signature : "", std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"targets\":[" + target_json("target", variable_id, expression, index_expression,
-          has_resolved_index, resolved_index) + ']'; });
+          has_resolved_index, resolved_index) + ']');
+  });
 }
 
 template <typename Collection>
@@ -1237,20 +1264,43 @@ std::string sequence_back_value(const std::stack<T, Container>& collection) {
   return collection.empty() ? "null" : encode_value(collection.top());
 }
 
+// The caller binds the target once, after evaluating the RHS (C++17 assignment
+// sequencing). Metadata factories run after that binding, including index side
+// effects; they never evaluate the original source expression a second time.
+template <typename TargetFactory, typename Action, typename TargetsFactory>
+decltype(auto) event_nested_mutation(int line, const char* signature,
+    const char* variable_id, const char* expression, bool assignment, bool update,
+    TargetFactory target_factory, Action action, TargetsFactory targets_factory,
+    const std::string& source_value = "null") {
+  auto&& target = target_factory();
+  const std::string before = encode_value(target);
+  return complete_expression([&]()->decltype(auto) { return action(target); }, [&]() {
+    mark_initialized(variable_id, target);
+    const std::string after = encode_value(target);
+    if (recorder().recording_events()) recorder().add_event(assignment ? "assign" : "write", line, signature ? signature : "", std::string("\"operation\":") + quoted(expression ? expression : "")
+        + ",\"expression\":" + quoted(expression ? expression : "")
+        + ",\"animate\":true,\"nestedExpression\":true"
+        + (update ? ",\"update\":true" : assignment ? "" : ",\"compound\":true")
+        + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + ",\"source\":" + (update ? after : source_value) + "}"
+        + ",\"targets\":" + targets_factory());
+  });
+}
+
 template <typename Collection, typename F>
-void event_sequence_operation(int line, const char* signature,
+decltype(auto) event_sequence_operation(int line, const char* signature,
                               const char* variable_id, const char* expression,
                               const char* operation, const char* edge,
                               const char* source_id, const char* source_expression,
                               const char* source_index, bool source_has_resolved_index,
                               long long source_resolved_index,
-                              Collection& collection, F action) {
+                              Collection& collection, F action,
+                              std::function<std::string()> source_factory = {}) {
   const bool recording = recorder().recording_events();
   const std::string before = recording ? encode_value(collection) : "null";
   const std::size_t before_size = collection.size();
   const std::string before_front = sequence_front_value(collection);
   const std::string before_back = sequence_back_value(collection);
-  action();
+  return complete_expression(action, [&]() {
   const std::string after = recording ? encode_value(collection) : "null";
   const std::size_t after_size = collection.size();
   const std::string after_front = sequence_front_value(collection);
@@ -1258,7 +1308,7 @@ void event_sequence_operation(int line, const char* signature,
   const bool front_edge = std::string(edge ? edge : "back") == "front";
   const std::string inserted_value = after_size > before_size
     ? (front_edge ? after_front : after_back) : "null";
-  recorder().add_event_lazy("sequence-operation", line, signature ? signature : "", [&]() { return std::string("\"operation\":") + quoted(operation ? operation : "")
+  if (recorder().recording_events()) recorder().add_event("sequence-operation", line, signature ? signature : "", std::string("\"operation\":") + quoted(operation ? operation : "")
       + ",\"payload\":{\"beforeSize\":" + std::to_string(before_size)
       + ",\"before\":" + before + ",\"after\":" + after
       + ",\"afterSize\":" + std::to_string(after_size)
@@ -1269,19 +1319,21 @@ void event_sequence_operation(int line, const char* signature,
       + ",\"afterBack\":" + after_back
       + ",\"insertedValue\":" + inserted_value + "}"
       + ",\"targets\":[" + target_json("target", variable_id, expression, "")
-      + ',' + source_target_json("source", source_id, source_expression, source_index,
-          source_has_resolved_index, source_resolved_index) + ']'; });
+      + ',' + (source_factory ? source_factory() : source_target_json("source", source_id, source_expression, source_index,
+          source_has_resolved_index, source_resolved_index)) + ']');
+  });
 }
 
 template <typename Collection, typename F>
-void event_sequence_insert_operation(
+auto event_sequence_insert_operation(
     int line, const char* signature,
     const char* variable_id, const char* expression,
     const char* operation,
     const char* source_id, const char* source_expression,
     const char* source_index, bool source_has_resolved_index,
     long long source_resolved_index,
-    Collection& collection, F action) {
+    Collection& collection, F action,
+    std::function<std::string()> source_factory = {}) {
   const bool recording = recorder().recording_events();
   const std::string before = recording ? encode_value(collection) : "null";
   const std::size_t before_size = collection.size();
@@ -1310,8 +1362,9 @@ void event_sequence_insert_operation(
       + ",\"afterBack\":" + after_back
       + ",\"insertedValue\":" + inserted_value + "}"
       + ",\"targets\":[" + target_json("target", variable_id, expression, "")
-      + ',' + source_target_json("source", source_id, source_expression, source_index,
-          source_has_resolved_index, source_resolved_index) + ']'; });
+      + ',' + (source_factory ? source_factory() : source_target_json("source", source_id, source_expression, source_index,
+          source_has_resolved_index, source_resolved_index)) + ']'; });
+  return inserted;
 }
 
 template <typename BeforeFactory, typename F, typename AfterFactory>
@@ -1724,7 +1777,7 @@ void event_swap(int line, const char* signature,
   auto&& right = right_factory();
   const std::string left_before = encode_value(left);
   const std::string right_before = encode_value(right);
-  action();
+  action(left, right);
   recorder().add_event_lazy("swap", line, signature ? signature : "", [&]() { return std::string("\"payload\":{\"leftBefore\":") + left_before
       + ",\"rightBefore\":" + right_before
       + ",\"leftAfter\":" + encode_value(left)
