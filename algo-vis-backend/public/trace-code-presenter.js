@@ -454,9 +454,9 @@
     if (phase === 'start' && id) startedEventIds.add(id);
     if ((phase === 'end' || phase === 'complete') && id
       && (event?.type === 'condition' || scheduledEventIds.has(id))) completedEventIds.add(id);
-    if (phase === 'start') {
+    if (phase === 'start' && (slot || activeEventId !== id)) {
       activeMemberIds = new Set((slot?.memberEvents || []).map(event => String(event.id || '')));
-    } else if (activeEventId === id) {
+    } else if (phase !== 'start' && activeEventId === id) {
       activeMemberIds.forEach(memberId => completedEventIds.add(memberId));
       activeMemberIds.clear();
     }
@@ -749,13 +749,22 @@
     const animate = Boolean(options.stable !== true && normalizeScrollMs(trace?.studio?.codePanelScrollMs) > 0
       && currentDocument === trace && currentFrame && currentFrame.id !== frame?.id && !dragState);
     const previousDocument = currentDocument;
+    // Rebuilding the same code panel is presentation work, not a fresh
+    // playback. Preserve the active compound event and its progress until
+    // the scheduler announces its end; otherwise only the declaration name
+    // survives and the initializer loses its yellow highlight mid-event.
+    const preservePlayback = options.stable !== true && currentDocument === trace
+      && currentFrame?.id === frame?.id;
     currentDocument = trace;
     applyStoredFontSize();
-    activeEventId = '';
-    startedEventIds = new Set();
-    completedEventIds = new Set();
+    if (!preservePlayback) {
+      activeEventId = '';
+      activeMemberIds = new Set();
+      startedEventIds = new Set();
+      completedEventIds = new Set();
+    }
     currentEvents = new Map((frame?.events || []).map(event => [String(event?.id || ''), event]));
-    scheduledEventIds = playbackEventIds(playbackPlan);
+    if (playbackPlan || !preservePlayback) scheduledEventIds = playbackEventIds(playbackPlan);
     if (!scheduledEventIds.size) {
       currentEvents.forEach((event, id) => {
         if (id && event?.type === 'condition') completedEventIds.add(id);

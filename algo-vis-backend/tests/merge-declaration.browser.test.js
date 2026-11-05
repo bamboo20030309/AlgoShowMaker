@@ -16,7 +16,9 @@ test('saved Merge Sort frame 26 joins each initialized declaration and preserves
   await page.waitForFunction(() => window.ASMTracePlayer);
   const body = readPackage(fs.readFileSync(path.join(__dirname, '../public/guest-decks/merge-sort.asmdeck'))).body;
   const animation = body.deck.groups.flatMap(group => group.slides || []).find(slide => slide.animation).animation;
-  for (const settings of [{ gap: 500, rate: 1 }, { gap: 0, rate: 1 }, { gap: 500, rate: 2 }, { gap: 500, rate: 1, disabled: true }]) {
+  for (const settings of [{ gap: 500, rate: 1 }, { gap: 0, rate: 1 }, { gap: 500, rate: 2 },
+    { gap: 500, rate: 1, disabled: true }, { gap: 500, rate: 1, rebuild: true },
+    { gap: 500, rate: 2, rebuild: true, withoutPlan: true }]) {
     const result = await page.evaluate(async ({ trace, settings }) => {
       trace.studio.eventSettings.gapMs = settings.gap;
       const doc = ASMTracePlayer.apply(trace);
@@ -29,7 +31,7 @@ test('saved Merge Sort frame 26 joins each initialized declaration and preserves
       await ASMTracePlayer.render(24, { stable: true });
       const native = { raf: requestAnimationFrame, cancel: cancelAnimationFrame, now: Object.getOwnPropertyDescriptor(performance, 'now') };
       let clock = performance.now(), elapsed = 0, serial = 0;
-      const callbacks = new Map(), events = [];
+      const callbacks = new Map(), events = [], samples = [], rebuilt = new Set();
       window.requestAnimationFrame = callback => { callbacks.set(++serial, callback); return serial; };
       window.cancelAnimationFrame = id => callbacks.delete(id);
       Object.defineProperty(performance, 'now', { configurable: true, value: () => clock });
@@ -51,20 +53,43 @@ test('saved Merge Sort frame 26 joins each initialized declaration and preserves
           elapsed += 10; clock += 10;
           const batch = [...callbacks.values()]; callbacks.clear(); batch.forEach(callback => callback(clock));
           for (let n = 0; n < 10; n++) await Promise.resolve();
+          const active = events.at(-1);
+          if (settings.rebuild && active && elapsed >= active.at + 50 && !rebuilt.has(active.start)) {
+            rebuilt.add(active.start);
+            ASMTraceCodePresenter.renderFrame(doc, frame, settings.withoutPlan ? null : ASMTracePlayer.getLastPlaybackPlan());
+          }
+          if (settings.rebuild && active && elapsed >= active.at + active.duration / settings.rate + 50
+            && !rebuilt.has(`gap-${active.start}`)) {
+            rebuilt.add(`gap-${active.start}`);
+            ASMTraceCodePresenter.renderFrame(doc, frame, settings.withoutPlan ? null : ASMTracePlayer.getLastPlaybackPlan());
+          }
+          samples.push({ at: elapsed,
+            text: [...document.querySelectorAll('#traceCodePanel .is-active')].map(node => node.textContent).join('').replace(/\s+/g, '') });
         }
         document.querySelectorAll('#asm-trace-root *').forEach(node => node.getAnimations?.().forEach(a => { if (a.transitionProperty) a.finish(); }));
         restore(); await pending;
-        return { events };
+        return { events, samples };
       } finally { restore(); window.removeEventListener('asm:trace-active-event', listener); ASMTraceFrameTween.cancel(); }
     }, { trace: savedTrace(body, animation), settings });
     const events = result.events;
     assert.deepEqual(events.map(event => event.text), settings.disabled ? ['inti', 'intj'] : ['inti=L', 'intj=mid+1']);
     assert.deepEqual(events.map(event => event.duration), [220, 220]);
+    for (const event of events) {
+      const during = result.samples.filter(sample => sample.at >= event.at
+        && sample.at < event.at + event.duration / settings.rate);
+      assert.ok(during.length > 3);
+      assert.ok(during.every(sample => sample.text === event.text),
+        `highlight must stay whole for the entire event: ${JSON.stringify({ settings, event, during })}`);
+    }
     for (let i = 1; i < events.length; i++) {
       assert.equal(events[i].start - events[i - 1].end, settings.gap);
       assert.ok(Math.abs(events[i].at - events[i - 1].at
         - (events[i - 1].duration + settings.gap) / settings.rate) <= 10,
       'wall-clock playback follows speed while logical event clocks stay unchanged');
+      const gap = result.samples.filter(sample => sample.at >= events[i - 1].at + events[i - 1].duration / settings.rate
+        && sample.at < events[i].at);
+      assert.ok(gap.every(sample => sample.text === ''),
+        'the configured gap stays free of yellow highlighting, including after a panel rebuild');
     }
   }
 });
