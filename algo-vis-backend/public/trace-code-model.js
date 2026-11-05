@@ -246,6 +246,20 @@
       }
       : fallbackEventSource(event, lines, source);
     if (!candidate || candidate.to <= candidate.from) return null;
+    // Keep execution spans intact in Trace; project only the code highlight.
+    // Older saved traces also contain these AST declarator/type ranges.
+    if (candidate.ranges?.some(range => range.role === 'declarator')) {
+      if (event.type === 'assign') {
+        candidate.ranges = candidate.ranges.filter(range => range.role !== 'type');
+      } else if (event.type === 'declare') {
+        const name = String(event.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        candidate.ranges = candidate.ranges.map(range => {
+          if (range.role !== 'declarator' || !name) return range;
+          const match = new RegExp(`\\b${name}\\b`).exec(source.slice(range.from, range.to));
+          return match ? { ...range, to: range.from + match.index + match[0].length } : range;
+        });
+      }
+    }
     const lineNumber = Number(candidate.line) || Number(event.line) || 0;
     if (!lineNumber || hidden.has(lineNumber)) return null;
     return { event, ...candidate, line: lineNumber };

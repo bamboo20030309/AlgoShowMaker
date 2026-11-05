@@ -322,7 +322,7 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
     'the scalar cell remains controlled by the same declaration event');
 });
 
-test('for initializer assignment is pointer motion without an assignment value box', async () => {
+test('for initializer assignment has a value animation without extra pointer travel', async () => {
   const { window } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() { vector<int> arr = {3, 2, 1}; // @frame arr
@@ -351,9 +351,10 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
     1, 520, new Map(), placements, elements
   );
   assert.equal(timeline.length, 1);
-  assert.equal(timeline[0].animation, 'position');
-  assert.equal(timeline[0].markerAssignment, false,
-    'position-only initialization cannot create the assignment popup');
+  assert.equal(timeline[0].animation, 'assign');
+  assert.ok(timeline[0].markerAssignment, 'initialization must animate its assigned value');
+  assert.equal(timeline[0].duration, 1760);
+  assert.equal(timeline[0].actionPlan.durationMs, 1760);
 
   const legacyInitializer = {
     ...initializer,
@@ -372,9 +373,10 @@ int main() { vector<int> arr = {3, 2, 1}; // @frame arr
     { id: 'legacy-frame-init', events: [legacyInitializer], state: {} },
     1, 520, new Map(), placements, elements
   );
-  assert.equal(legacyTimeline[0].animation, 'position',
+  assert.equal(legacyTimeline[0].animation, 'assign',
     'older saved traces infer the same initializer mode from their AST span');
-  assert.equal(legacyTimeline[0].markerAssignment, false);
+  assert.ok(legacyTimeline[0].markerAssignment);
+  assert.equal(legacyTimeline[0].duration, 1760);
 });
 
 test('a declared marker with an initializer enters unresolved before assignment moves it', async () => {

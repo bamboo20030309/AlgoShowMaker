@@ -5136,17 +5136,9 @@
   }
 
   function updateTargetsMarker(event, elements, eventFrame = null, previousObjects = null) {
-    // A declaration initializer in a for header is a pointer-position event,
-    // just like ++/--. Use semantic trace/AST metadata instead of matching the
-    // source spelling, so old saved traces and all three playback surfaces
-    // select the same position-only animation without an assignment value box.
-    // A declaration initializer already determines the marker's first real
-    // position. Enter there directly instead of showing an assignment box or
-    // briefly parking the new marker beside the array first.
-    if (isForInitializerAssignment(event)) return true;
-    if (isDeclarationInitializerAssignment(event)) {
-      return Boolean(assignmentTargetMarker(event, elements, eventFrame, previousObjects));
-    }
+    // Initialization is a real assignment step, including for-loop headers.
+    // The marker enters at its initial target; its value still needs playback.
+    if (isDeclarationInitializerAssignment(event) || isForInitializerAssignment(event)) return false;
     if (event?.type !== 'write'
       || (event.update !== true && event.compound !== true)) return false;
     for (const [, element] of markerCandidates(elements)) {
@@ -7071,7 +7063,7 @@
       let sequenceSourceTransfer = false;
       // Initial position is established by declaration entry, not a second
       // invisible movement after the pointer has already arrived.
-      if (positionOnly) duration = isDeclarationInitializerAssignment(event) ? 0 : swapDuration;
+      if (positionOnly) duration = swapDuration;
       let declarationEntranceDelay = 0;
       if (animation === 'declare') {
         if (initializerEvent) {
@@ -7162,7 +7154,8 @@
           effectDuration = Math.max(effectDuration, BIT_SHIFT_DURATION);
         }
         duration = effectDuration
-          + (!bitwise && !standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
+          + (!bitwise && !standaloneUpdate && !isDeclarationInitializerAssignment(event)
+            && !isForInitializerAssignment(event) && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
       if (event.type === 'compare' && animation === 'compare') {
         duration = COMPARE_DURATION;
@@ -7232,7 +7225,8 @@
         actionPlan: positionOnly
           ? { ...eventActionPlan(event), commitMs: 0 }
           : eventActionPlan(event, { marker: Boolean(markerAssignment),
-            motionMs: event.type === 'swap' ? duration : swapDuration }),
+            motionMs: isDeclarationInitializerAssignment(event) || isForInitializerAssignment(event)
+              ? 0 : event.type === 'swap' ? duration : swapDuration }),
         initializerEvent,
         memberEvents: initializerEvent ? [initializerEvent] : [],
         replayMemberEvents: declarationInitializerTransfer && initializerEvent

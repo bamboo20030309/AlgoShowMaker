@@ -44,7 +44,7 @@ int main() {
   };
   const makeEvent = (type, text, id, order) => {
     const [signature, eventSource] = sourceEntry(type, text);
-    return { id, order, type, signature, source: eventSource, enabled: true,
+    return { id, order, type, name: type === 'declare' ? 'i' : undefined, signature, source: eventSource, enabled: true,
       declarationInitializer: eventSource.declarationInitializer === true };
   };
   const events = [
@@ -78,9 +78,8 @@ int main() {
   const overlapOffset = source.indexOf('int i = 0') + 'int '.length;
   const overlap = visible.flatMap(line => line.segments)
     .find(segment => segment.from === overlapOffset && segment.text === 'i = 0');
-  assert.ok(overlap, 'the initialized declarator should be an independent atomic segment');
-  assert.equal(overlap.groups.length, 1, 'the initializer is folded into its declaration row');
-  assert.equal(overlap.primary.type, 'declare', 'the declaration owns the combined source range');
+  assert.ok(overlap, 'Studio preserves the full source span for selecting an instruction');
+  assert.deepEqual(Array.from(overlap.groups, group => group.type).sort(), ['assign', 'declare']);
 
   const outline = context.ASMTraceEventCodeTree.buildOutline(trace, trace.frames[0]);
   const flatten = (items, result = []) => {
@@ -109,13 +108,13 @@ int main() {
 
   const forEvents = forContext.children.filter(item => item.kind === 'event');
   assert.deepEqual(
-    Array.from(forEvents.slice(0, 2), item => item.group.type),
-    ['declare', 'compare'],
-    'a declaration initializer is presented as one declaration row'
+    Array.from(forEvents.slice(0, 3), item => item.group.type),
+    ['declare', 'assign', 'compare'],
+    'declaration and initialization remain independently selectable events'
   );
   assert.deepEqual(
-    Array.from(forEvents.slice(0, 2), item => item.group.event.source.text),
-    ['int i = 0', 'i < n']
+    Array.from(forEvents.slice(0, 3), item => item.group.event.source.text),
+    ['int i = 0', 'i = 0', 'i < n']
   );
 
   const repeated = events[4];
