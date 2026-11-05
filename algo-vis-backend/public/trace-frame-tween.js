@@ -2227,6 +2227,7 @@
 
   function forwardReplayCommitTime(slot) {
     if (!slot) return 0;
+    if (slot.declarationInitializerDirect) return Number(slot.start) || 0;
     if (slot.bitwiseAnimation) return Number(slot.end) || 0;
     if (slot.animation === 'declare' && slot.declarationInitializerTransfer) {
       return Number(slot.declarationInitializerCommitMs)
@@ -2264,7 +2265,10 @@
         || event?.type === 'condition';
       const slot = ignored ? null : timelineSlotByEvent.get(event) || null;
       const mutations = ignored ? [] : forwardReplayMutations(traceDocument, eventFrame, event)
-        .filter(mutation => mutation.key);
+        .filter(mutation => mutation.key).map(mutation => (
+          slot?.declarationInitializerDirect && event.type === 'declare' && mutation.kind === 'value'
+            ? { ...mutation, after: slot.initializerEvent.payload.after } : mutation
+        ));
       const mode = ignored ? 'ignored' : slot ? 'animated' : 'instant';
       const commitMs = slot ? forwardReplayCommitTime(slot) : logicalTime;
       mutations.forEach(mutation => {
@@ -3015,8 +3019,16 @@
     };
   }
 
-  function sourcePresentationWasHidden(traceDocument, frame, target, operand) {
+  function sourceDeclaredBeforeEvent(frame, event, target) {
+    return Boolean(event && target?.variableId && orderedEvents(frame).some(candidate => (
+      candidate.type === 'declare' && Number(candidate.order) < Number(event.order)
+      && (candidate.targets || []).some(item => item.role === 'target' && item.variableId === target.variableId)
+    )));
+  }
+
+  function sourcePresentationWasHidden(traceDocument, frame, target, operand, event = null) {
     if (retainedSnapshotVisual(operand?.element)) return false;
+    if (sourceDeclaredBeforeEvent(frame, event, target)) return false;
     const index = (traceDocument?.frames || []).findIndex(item => item.id === frame?.id);
     const before = traceDocument?.frames?.[index - 1];
     return Boolean(before?.captureOnlyVariableIds?.includes(target.variableId) && !operand?.marker);
@@ -4315,10 +4327,10 @@
     const sourceOperands = sources.map(item => {
       const operand = eventOperand(traceDocument, eventFrame, item, sourceValue,
         placements, elements, visualKeyForSource, event);
-      if (sourcePresentationWasHidden(traceDocument, eventFrame, item, operand)) return null;
+      if (sourcePresentationWasHidden(traceDocument, eventFrame, item, operand, event)) return null;
       // A newly introduced presentation was not a visible source when the
       // preceding statement executed. Use its captured numeric value instead.
-      return operand && appearingKeys?.has?.(operand.visualKey)
+      return operand && !sourceDeclaredBeforeEvent(eventFrame, event, item) && appearingKeys?.has?.(operand.visualKey)
         && !previousVisualElement(previousObjects, operand.visualKey) ? null : operand;
     });
     const arithmeticTransfer = binaryOperation || multiSourceArithmetic;
@@ -4550,6 +4562,9 @@
   }
 
   function forwardReplayMutationCommitTime(slot, mutation) {
+    if (slot?.animation === 'declare' && slot.initializerEvent && mutation?.kind === 'presence') {
+      return Number(slot.start) || 0;
+    }
     if (slot?.animation === 'sequence' && slot.sequenceSourceTransfer) {
       if (mutation?.kind === 'presence') return Number(slot.end) || Number(slot.start) || 0;
       if (mutation?.kind === 'value') return Number(slot.end) || Number(slot.start) || 0;
@@ -4571,7 +4586,11 @@
       traceDocument, eventFrame, target, event?.payload?.after,
       placements, elements, visualKeyForSource, event
     );
-    if (!targetOperand || targetOperand.marker) return null;
+    if (!targetOperand) return null;
+    if (targetOperand.marker) return createAssignEffect(
+      root, event, traceDocument, eventFrame, placements, elements,
+      rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements
+    );
     const container = targetOperand.element?.querySelector?.('.outerframe-bg');
     if (!container) {
       return createAssignEffect(
@@ -5128,6 +5147,7 @@
   function isDeclarationInitializerAssignment(event) {
     return event?.type === 'assign' && (
       event.declarationInitializer === true
+      || event.source?.declarationInitializer === true
       || event.forInitializer === true
       || (event.parameterInitializer !== true
         && event?.payload?.before == null
@@ -5467,8 +5487,9 @@
     eventTimeline.forEach(slot => {
       if (slot.event && !logicalEvents.includes(slot.event)) logicalEvents.push(slot.event);
     });
+    logicalEvents.sort((left, right) => Number(left.order) - Number(right.order));
     let logicalCursor = 0;
-    const logicalMotionSlots = logicalEvents.map(event => {
+    const logicalMotionSlots = logicalEvents.flatMap(event => {
       const visibleSlot = timelineSlotByEvent.get(event);
       const slot = visibleSlot || {
         event,
@@ -5482,10 +5503,15 @@
         ? markersForMotionSlot(slot, elements, eventFrame)
         : markersForLogicalEvent(event, elements, eventFrame);
       if (visibleSlot) logicalCursor = Math.max(logicalCursor, Number(visibleSlot.end) || 0);
-      return {
+      const item = {
         slot,
         markers: markers.filter(marker => metadata.has(marker.key))
       };
+      // A joined declaration still owns a later pointer movement phase. Do
+      // not discard that phase when its initializer is absent as a solo slot.
+      return slot.declarationInitializerTransfer && slot.declarationInitializerMarker
+        ? [item, { ...item, slot: { ...slot, event: slot.initializerEvent, animation: 'assign' } }]
+        : [item];
     }).filter(item => item.markers.length);
 
     const finalState = new Map([...metadata].map(([key, item]) => [key, item.currentTarget]));
@@ -5750,7 +5776,9 @@
         const item = metadata.get(marker.key);
         const afterTarget = slot.animation === 'declare'
           ? slot.initializerEvent
-            ? markerTargetForEvent(item, { ...slot, event: slot.initializerEvent }, 'after')
+            ? slot.declarationInitializerTransfer
+              ? `unresolved:${markerTargetParts(item.currentTarget)?.prefix}`
+              : markerTargetForEvent(item, { ...slot, event: slot.initializerEvent }, 'after')
             : markerTargetBeforeFrameEvents(traceDocument, eventFrame, elements.get(marker.key))
           : markerTargetForEvent(item, slot, 'after');
         if (afterTarget) nextState.set(marker.key, afterTarget);
@@ -6716,11 +6744,16 @@
         const candidateTarget = targetOf(candidate);
         if (!candidateTarget || candidateTarget.variableId !== target?.variableId) return false;
         const candidateId = String(candidate?.source?.declaratorId || '');
-        if (declaratorId && candidateId) return declaratorId === candidateId;
         const candidateLifetime = String(
           candidateTarget.lifetimeIdentity || candidate?.lifetimeIdentity || ''
         );
-        return !lifetime || !candidateLifetime || lifetime === candidateLifetime;
+        if (lifetime && candidateLifetime && lifetime !== candidateLifetime) return false;
+        if (declaratorId && candidateId) return declaratorId === candidateId;
+        // Legacy traces need a real declaration initializer, not just the next
+        // assignment to an uninitialized variable in the same frame.
+        return (initializer.declarationInitializer === true || initializer.forInitializer === true
+          || initializer.source?.declarationInitializer === true || isForInitializerAssignment(initializer))
+          && Number(candidate.line) === Number(initializer.line);
       });
       if (!declaration) return;
       initializerByDeclaration.set(declaration, initializer);
@@ -6735,10 +6768,9 @@
     const sources = (initializer?.targets || []).filter(target => (
       target?.role === 'source' || String(target?.role || '').startsWith('source-')
     ));
-    return sources.filter(source => (
-      source?.literal !== true
-      && Boolean(source?.variableId)
-      && Boolean(eventOperand(
+    return sources.filter(source => {
+      if (source?.literal === true || !source?.variableId) return false;
+      const operand = eventOperand(
         traceDocument,
         eventFrame,
         source,
@@ -6748,8 +6780,24 @@
         elements,
         visualKeyForSource,
         initializer
-      ))
-    ));
+      );
+      return Boolean(operand) && !sourcePresentationWasHidden(traceDocument, eventFrame, source, operand, initializer);
+    });
+  }
+
+  function initializerPresentation(traceDocument, eventFrame, initializer, placements, elements) {
+    if (!initializer) return 'none';
+    const source = (initializer.targets || []).find(target => target.role === 'source');
+    // Count/fill construction is not value copying: n in vector(n, 0) is a
+    // dimension, not a value that should fly into every cell. This fallback
+    // uses saved constructor syntax for old traces without adding required data.
+    const countConstruction = Array.isArray(initializer.payload?.after?.items)
+      && (initializer.semantics?.kind || initializer.source?.operationKind) === 'unknown'
+      && String(source?.expression || '').trim().startsWith('(')
+      && traceDocument?.variables?.[source?.variableId]?.kind === 'scalar';
+    if (countConstruction) return 'direct';
+    return visibleInitializerSources(traceDocument, eventFrame, initializer, placements, elements).length
+      ? 'transfer' : 'direct';
   }
 
   function previousMarkerLayoutState(schedule, elapsed, initial = null) {
@@ -7025,9 +7073,18 @@
       String(target?.sceneGeneration ?? '')
     ].join('|');
     const ordered = orderedEvents(eventFrame);
-    // Declarations and their assignments are two ordered events. The replay
-    // layer holds a newly declared value blank until its assignment commits.
-    const initializerPairs = { declarationByInitializer: new Map(), initializerByDeclaration: new Map() };
+    // Preserve both runtime facts, but combine enabled declaration/initializer
+    // pairs into one presentation slot. Explicitly disabled events stay separate.
+    const initializerPairs = declarationInitializerPairs(eventFrame);
+    for (const [declaration, initializer] of initializerPairs.initializerByDeclaration) {
+      const playable = event => event.enabled !== false
+        && (timelineOptions.ignoreAutoDisabled === true || event.autoAnimationDisabled !== true)
+        && (!eventFilter || eventFilter(event));
+      if (!playable(declaration) || !playable(initializer)) {
+        initializerPairs.initializerByDeclaration.delete(declaration);
+        initializerPairs.declarationByInitializer.delete(initializer);
+      }
+    }
     const manualPreKeepExitIdentities = new Set(ordered.filter(event => (
       event?.type === 'visual-exit'
       && event?.manualVisualExit === true
@@ -7060,6 +7117,7 @@
       let declarationMarkerMotionDuration = 0;
       let declarationInitializerTransfer = false;
       let declarationInitializerMarker = false;
+      let initializationEffectDuration = 0;
       let sequenceSourceTransfer = false;
       // Initial position is established by declaration entry, not a second
       // invisible movement after the pointer has already arrived.
@@ -7070,11 +7128,14 @@
           declarationInitializerMarker = Boolean(assignmentTargetMarker(
             initializerEvent, elements, eventFrame, previousObjects
           ));
-          declarationInitializerTransfer = !declarationInitializerMarker
-            && visibleInitializerSources(
-              traceDocument, eventFrame, initializerEvent,
-              currentPlacements, elements
-            ).length > 0;
+          declarationInitializerTransfer = initializerPresentation(
+            traceDocument, eventFrame, initializerEvent, currentPlacements, elements
+          ) === 'transfer';
+          if (declarationInitializerTransfer) {
+            bitwiseAnimation = Boolean(bitwisePlan(traceDocument, eventFrame, initializerEvent, elements));
+            initializationEffectDuration = bitwiseAnimation ? BIT_SHIFT_DURATION
+              : selectionDuration(initializerEvent) + assignmentEffectDuration(declarationInitializerMarker);
+          }
         }
         const declarationKeys = [...eventTargetVisualKeys(
           traceDocument, eventFrame, event, currentPlacements, elements
@@ -7107,7 +7168,8 @@
         duration = Math.max(
           APPEAR_TIMING.duration + declarationEntranceDelay,
           movingContinuation ? swapDuration : 0,
-          declarationInitializerTransfer ? assignmentEffectDuration(false) : 0
+          declarationInitializerTransfer ? APPEAR_TIMING.duration + initializationEffectDuration
+            + (declarationInitializerMarker ? swapDuration : 0) : 0
         );
         declarationMarkerMotionDuration = movingContinuation
           ? swapDuration : MARKER_REFLOW_TIMING.duration;
@@ -7139,6 +7201,7 @@
           : null;
         const markerMovesWithinFrame = Boolean(markerAssignment && (
           seenMarkerAssignments.has(markerAssignment.key)
+          || isDeclarationInitializerAssignment(event)
           || (event?.payload?.before != null && event?.payload?.after != null
             && displayEventValue(event.payload.before) !== displayEventValue(event.payload.after))
           || Math.abs(Number(markerDelta?.x) || 0) > 0.1
@@ -7154,8 +7217,7 @@
           effectDuration = Math.max(effectDuration, BIT_SHIFT_DURATION);
         }
         duration = effectDuration
-          + (!bitwise && !standaloneUpdate && !isDeclarationInitializerAssignment(event)
-            && !isForInitializerAssignment(event) && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
+          + (!bitwise && !standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
       if (event.type === 'compare' && animation === 'compare') {
         duration = COMPARE_DURATION;
@@ -7218,24 +7280,44 @@
       // pre-animation wait. The code presenter owns its independent clock.
       const codePromptDuration = 0;
       const visualStart = promptStart + codePromptDuration;
-      const effectStart = visualStart;
-      const motionStart = visualStart + (animation === 'assign' ? effectDuration : 0);
+      const effectStart = visualStart + (declarationInitializerTransfer ? APPEAR_TIMING.duration : 0);
+      const motionStart = declarationInitializerTransfer && declarationInitializerMarker
+        ? effectStart + initializationEffectDuration
+        : visualStart + (animation === 'assign' ? effectDuration : 0);
+      let actionPlan = positionOnly
+        ? { ...eventActionPlan(event), commitMs: 0 }
+        : eventActionPlan(event, { marker: Boolean(markerAssignment),
+          motionMs: markerAssignment ? Math.max(0, duration - effectDuration)
+            : event.type === 'swap' ? duration : swapDuration });
+      if (declarationInitializerTransfer) {
+        const assignmentPlan = eventActionPlan(initializerEvent, {
+          marker: declarationInitializerMarker, motionMs: declarationInitializerMarker ? swapDuration : 0
+        });
+        actionPlan = { ...assignmentPlan, kind: 'initialize',
+          stages: [...eventActionPlan(event).stages, ...assignmentPlan.stages.map(stage => ({
+            ...stage, startMs: stage.startMs + APPEAR_TIMING.duration,
+            endMs: stage.endMs + APPEAR_TIMING.duration
+          }))],
+          commitMs: assignmentPlan.commitMs + APPEAR_TIMING.duration,
+          durationMs: assignmentPlan.durationMs + APPEAR_TIMING.duration };
+        if (bitwiseAnimation) actionPlan = { ...actionPlan,
+          stages: [...eventActionPlan(event).stages, { id: 'bitwise', startMs: APPEAR_TIMING.duration,
+            endMs: duration, durationMs: initializationEffectDuration, actions: ['move'] }],
+          commitMs: duration, durationMs: duration };
+      }
       slots.push({
         event, type: event.type, animation,
-        actionPlan: positionOnly
-          ? { ...eventActionPlan(event), commitMs: 0 }
-          : eventActionPlan(event, { marker: Boolean(markerAssignment),
-            motionMs: isDeclarationInitializerAssignment(event) || isForInitializerAssignment(event)
-              ? 0 : event.type === 'swap' ? duration : swapDuration }),
+        actionPlan,
         initializerEvent,
         memberEvents: initializerEvent ? [initializerEvent] : [],
-        replayMemberEvents: declarationInitializerTransfer && initializerEvent
-          ? [initializerEvent] : [],
+        replayMemberEvents: initializerEvent ? [initializerEvent] : [],
         declarationInitializerTransfer,
         declarationInitializerMarker,
         sequenceSourceTransfer,
+        declarationInitializerDirect: Boolean(initializerEvent && !declarationInitializerTransfer),
         declarationInitializerCommitMs: declarationInitializerTransfer
-          ? visualStart + ASSIGN_TIMING.drop : 0,
+          ? effectStart + selectionDuration(initializerEvent) + ASSIGN_TIMING.frame
+            + (declarationInitializerMarker ? ASSIGN_TIMING.valueHold : 0) + ASSIGN_TIMING.drop : 0,
         promptStart, codePromptDuration, visualStart, start: visualStart,
         effectStart, motionStart, effectDuration, bitwiseAnimation,
         declarationEntranceDelay,
@@ -7685,6 +7767,12 @@
     }
     function effectFor(slot) {
       if (!slot) return null;
+      // Share the ordinary assignment factory (selection, bitwise, array and
+      // scalar transfer). Joining initialization must not drop its sub-actions.
+      if (slot.animation === 'declare' && slot.declarationInitializerTransfer) {
+        return effectFor({ ...slot, event: slot.initializerEvent, type: 'assign', animation: 'assign',
+          initializerEvent: null, declarationInitializerTransfer: false });
+      }
       const checkpoint = replayPlan.checkpoints.find(item => item.event === slot.event);
       const visualKeyAtEvent = key => checkpoint?.visualBindingsBefore?.[key]
         || options.visualKeyForSource?.(key)
@@ -7781,24 +7869,6 @@
             ...(options.comparisonExitMarkers || new Map())]), visualKeyAtEvent,
           markerPositionAtCompare,
           element => markerTargetAtCheckpoint(options.document, eventFrame, element, checkpoint)
-        );
-      }
-      if (slot.animation === 'declare' && slot.declarationInitializerTransfer) {
-        const initializer = slot.initializerEvent;
-        if (!initializer) return null;
-        const assignmentElements = new Map([
-          ...(options.previousObjects || new Map()),
-          ...(options.currentElements || new Map())
-        ]);
-        const assignmentPlacements = new Map([
-          ...(options.previousPlacements || new Map()),
-          ...(options.currentPlacements || new Map())
-        ]);
-        return createDeclarationInitializerEffect(
-          options.root, initializer, options.document, eventFrame,
-          assignmentPlacements, assignmentElements, options.rawDeltas,
-          options.appearingKeys, options.previousObjects, visualKeyAtEvent,
-          options.currentElements
         );
       }
       if (slot.animation === 'assign') {
@@ -7968,7 +8038,7 @@
             const connected = options.root.querySelector(`[data-trace-object-key="${CSS.escape(key)}"]`);
             if (connected) readElements.set(key, connected);
           });
-          activeReadEmphasis = createReadEmphasis(options.root, slot.event, options.document, eventFrame,
+          activeReadEmphasis = createReadEmphasis(options.root, slot.initializerEvent || slot.event, options.document, eventFrame,
             new Map([...(options.previousPlacements || new Map()), ...options.currentPlacements]), readElements,
             key => checkpoint?.visualBindingsBefore?.[key] || options.visualKeyForSource?.(key) || key,
             options.appearingKeys, options.previousObjects);
@@ -10259,10 +10329,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-312';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-316';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-312', play, cancel, updateEventAvailability,
+    build: 'trace-316', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

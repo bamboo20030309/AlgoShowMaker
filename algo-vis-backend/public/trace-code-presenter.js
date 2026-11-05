@@ -15,6 +15,7 @@
   let currentFocusLine = 0;
   let currentEvents = new Map();
   let activeEventId = '';
+  let activeMemberIds = new Set();
   let startedEventIds = new Set();
   let completedEventIds = new Set();
   let scheduledEventIds = new Set();
@@ -383,7 +384,8 @@
     const activeEvent = events.get(String(activeId || ''));
     const suppressWholeConditionPulse = activeEvent?.type === 'condition'
       && conditionContainsComparison(activeEvent, events);
-    const active = Boolean(activeId) && linkedIds.has(String(activeId))
+    const active = Boolean(activeId) && (linkedIds.has(String(activeId))
+      || (activeId === activeEventId && [...activeMemberIds].some(id => linkedIds.has(id))))
       && !suppressWholeConditionPulse;
     const activeCall = active && activeEvent?.type === 'call';
     // A split condition can contain unchecked slices. Those slices must not
@@ -445,13 +447,19 @@
     });
   }
 
-  function setActiveEvent(eventId = '', phase = 'start') {
+  function setActiveEvent(eventId = '', phase = 'start', slot = null) {
     const id = String(eventId || '');
     const event = currentEvents.get(id);
     if (event?.type === 'compare' && !comparisonCanPlay(event)) return;
     if (phase === 'start' && id) startedEventIds.add(id);
     if ((phase === 'end' || phase === 'complete') && id
       && (event?.type === 'condition' || scheduledEventIds.has(id))) completedEventIds.add(id);
+    if (phase === 'start') {
+      activeMemberIds = new Set((slot?.memberEvents || []).map(event => String(event.id || '')));
+    } else if (activeEventId === id) {
+      activeMemberIds.forEach(memberId => completedEventIds.add(memberId));
+      activeMemberIds.clear();
+    }
     activeEventId = phase === 'start' ? id : (activeEventId === id ? '' : activeEventId);
     applyEventClasses();
   }
@@ -807,7 +815,7 @@
 
   window.addEventListener('asm:trace-active-event', event => {
     if (event.detail?.document !== currentDocument || event.detail?.frame !== currentFrame) return;
-    setActiveEvent(event.detail?.event?.id || '', event.detail?.phase || 'start');
+    setActiveEvent(event.detail?.event?.id || '', event.detail?.phase || 'start', event.detail?.slot);
   });
 
   window.addEventListener('asm:trace-event-availability-changed', event => {
