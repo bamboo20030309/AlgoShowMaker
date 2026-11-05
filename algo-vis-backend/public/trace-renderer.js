@@ -2327,6 +2327,38 @@
     });
   }
 
+  function styleForeground(root) {
+    let layer=[...root.children].find(child=>child.classList?.contains('asm-trace-style-layer'));
+    if (!layer) {
+      layer=svg('g',{class:'asm-trace-style-layer','data-trace-style-layer':'foreground','pointer-events':'none'});
+      root.insertBefore(layer,[...root.children].find(child=>child.classList?.contains('asm-trace-foreground-arrows'))||null);
+    }
+    return layer;
+  }
+
+  function presentedStyleParent(root,wrapper,cell) {
+    const promoted=Boolean(cell.closest('.asm-trace-animation-effect-layer'));
+    const home=wrapper._asmStyleHome;
+    if (promoted) {
+      const foreground=styleForeground(root);
+      if (wrapper.parentElement!==foreground) {
+        if (!home) {
+          const parent=wrapper.parentElement,placeholder=window.document.createComment('asm-trace-style-home');
+          parent.insertBefore(placeholder,wrapper);
+          wrapper._asmStyleHome={parent,placeholder};
+        }
+        foreground.append(wrapper);
+      }
+    } else if (home) {
+      if (home.parent?.isConnected&&root.contains(home.parent)) {
+        home.parent.insertBefore(wrapper,home.placeholder.parentNode===home.parent?home.placeholder:null);
+      }
+      home.placeholder.remove();
+      delete wrapper._asmStyleHome;
+    }
+    return wrapper.parentElement;
+  }
+
   function refreshPresentedStyles(root) {
     const rootMatrix = root?.getScreenCTM?.();
     if (!rootMatrix) return;
@@ -2334,15 +2366,10 @@
     // @keep frame 的 style 層位於巢狀 scene 內。格子被提升到動畫層後，
     // 仍須更新這些 style，並用實際 style 父層的座標反算，不能只更新根層。
     root.querySelectorAll('.asm-trace-style-decoration').forEach(wrapper => {
-      if (!wrapper.firstElementChild) { wrapper.remove(); return; }
-      const parent = wrapper.parentElement;
-      if (!parent) return;
-      if (!inverses.has(parent)) {
-        try { inverses.set(parent, (parent.getScreenCTM?.() || rootMatrix).inverse()); }
-        catch { inverses.set(parent, null); }
+      if (!wrapper.firstElementChild) {
+        wrapper._asmStyleHome?.placeholder?.remove();
+        wrapper.remove(); return;
       }
-      const inverse = inverses.get(parent);
-      if (!inverse) return;
       const sourceCell = wrapper._asmStyleCell;
       const cell = sourceCell?._asmStylePresentationCell || sourceCell;
       const basis = wrapper._asmStyleBasis;
@@ -2350,6 +2377,16 @@
         wrapper.setAttribute('display', 'none');
         return;
       }
+      // 座標同步仍不足以保證可見：格子在動畫前景時，style 也必須畫在它上面。
+      // 回復／取消動畫後移回原本快照層，讓 keep 重用及層次維持原樣。
+      const parent = presentedStyleParent(root,wrapper,cell);
+      if (!parent) return;
+      if (!inverses.has(parent)) {
+        try { inverses.set(parent, (parent.getScreenCTM?.() || rootMatrix).inverse()); }
+        catch { inverses.set(parent, null); }
+      }
+      const inverse = inverses.get(parent);
+      if (!inverse) return;
       const cellMatrix = cell.getScreenCTM?.();
       if (!cellMatrix) { wrapper.setAttribute('display', 'none'); return; }
       const matrix = inverse.multiply(cellMatrix).multiply(basis);

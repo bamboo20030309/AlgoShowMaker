@@ -147,6 +147,15 @@ test('nested keep style layers follow a cell promoted outside their snapshot', (
   window.ASMTraceRenderers.refreshArrows();
   assert.equal(wrapper.getAttribute('transform'),'matrix(1.5 0 0 1.5 20 50)');
   assert.equal(wrapper.hasAttribute('display'),false);
+  window.document.getElementById('effect').classList.add('asm-trace-animation-effect-layer');
+  window.ASMTraceRenderers.refreshArrows();
+  assert.equal(wrapper.parentElement.parentElement,root,'mark paints above the promoted cell');
+  assert.equal(wrapper.getAttribute('transform'),'matrix(1.5 0 0 1.5 120 70)');
+  snapshot.append(cell);
+  window.ASMTraceRenderers.refreshArrows();
+  assert.equal(wrapper.parentElement,layer,'the original snapshot layer is restored');
+  assert.equal(wrapper.getAttribute('transform'),'matrix(1.5 0 0 1.5 20 50)');
+  assert.equal(wrapper._asmStyleHome,undefined);
 });
 
 test('compare frame only surrounds the value cell, while style highlight also surrounds the index', () => {
