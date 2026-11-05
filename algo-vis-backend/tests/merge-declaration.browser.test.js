@@ -18,10 +18,15 @@ test('saved Merge Sort frame 26 joins each initialized declaration and preserves
   const animation = body.deck.groups.flatMap(group => group.slides || []).find(slide => slide.animation).animation;
   for (const settings of [{ gap: 500, rate: 1 }, { gap: 0, rate: 1 }, { gap: 500, rate: 2 },
     { gap: 500, rate: 1, disabled: true }, { gap: 500, rate: 1, rebuild: true },
-    { gap: 500, rate: 2, rebuild: true, withoutPlan: true }]) {
+    { gap: 500, rate: 2, rebuild: true, withoutPlan: true },
+    { rate: 1, expectedGap: 500, loadThroughEditor: true }]) {
     const result = await page.evaluate(async ({ trace, settings }) => {
       trace.studio.eventSettings.gapMs = settings.gap;
-      const doc = ASMTracePlayer.apply(trace);
+      if (settings.loadThroughEditor) {
+        ace.edit('editor').setValue(trace.sourceCode, -1);
+        ASMTraceEditor.loadAnimation({ mode: 'trace', code: trace.sourceCode, traceDocument: trace }, { openStudio: false });
+      }
+      const doc = settings.loadThroughEditor ? ASMTracePlayer.getDocument() : ASMTracePlayer.apply(trace);
       const frame = doc.frames[25];
       const selected = frame.events.filter(event => ['i', 'j'].includes(event.name)
         || ['i = L', 'j = mid + 1'].includes(event.expression));
@@ -82,9 +87,10 @@ test('saved Merge Sort frame 26 joins each initialized declaration and preserves
         `highlight must stay whole for the entire event: ${JSON.stringify({ settings, event, during })}`);
     }
     for (let i = 1; i < events.length; i++) {
-      assert.equal(events[i].start - events[i - 1].end, settings.gap);
+      const expectedGap = settings.expectedGap ?? settings.gap;
+      assert.equal(events[i].start - events[i - 1].end, expectedGap);
       assert.ok(Math.abs(events[i].at - events[i - 1].at
-        - (events[i - 1].duration + settings.gap) / settings.rate) <= 10,
+        - (events[i - 1].duration + expectedGap) / settings.rate) <= 10,
       'wall-clock playback follows speed while logical event clocks stay unchanged');
       const gap = result.samples.filter(sample => sample.at >= events[i - 1].at + events[i - 1].duration / settings.rate
         && sample.at < events[i].at);

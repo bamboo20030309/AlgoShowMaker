@@ -1301,8 +1301,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function configuredEventGap() {
-    const value = Number(window.ASMTracePlayer?.getDocument?.()?.studio?.eventSettings?.gapMs);
-    return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 0;
+    const trace = window.ASMTracePlayer?.getDocument?.();
+    if (!trace) return 0;
+    if (window.ASMTraceEvents?.eventGapMs) return window.ASMTraceEvents.eventGapMs(trace);
+    const value = Number(trace.studio?.eventSettings?.gapMs);
+    return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 500;
   }
 
   function rebuildPlaybackTimeline() {

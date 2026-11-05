@@ -51,7 +51,7 @@ a=b;
     window.ASMTraceCamera=camera;return results;
   },trace);
   for(const [index,result] of observations.entries()){
-    const gap=index===2?600:0;assert.equal(result.initial,gap);assert.equal(result.gap,gap);assert.equal(result.reopenedGap,gap);
+    const gap=index===2?600:0;assert.equal(result.initial,index===0?500:gap);assert.equal(result.gap,gap);assert.equal(result.reopenedGap,gap);
     assert.equal(result.finalValue.data.value,3);
     assert.equal(result.finalPlan.phases.some(p=>p.id==='event-gap'),false,'no unnecessary wait after the final frame');
     const events=result.plan.phases.find(p=>p.id==='trace-events').steps;

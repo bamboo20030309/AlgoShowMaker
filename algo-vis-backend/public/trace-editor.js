@@ -44,7 +44,7 @@
     break: 'control-flow',
     continue: 'control-flow'
   });
-  const DEFAULT_EVENT_GAP_MS = 0;
+  const DEFAULT_EVENT_GAP_MS = window.ASMTraceEvents?.defaultEventGapMs ?? 500;
 
   // ---------------------------------------------------------------------------
   // 區段：來源與 presentation 區塊
@@ -122,9 +122,7 @@
       return flags;
     };
     return {
-      gapMs: Number.isFinite(Number(value.gapMs))
-        ? Math.max(0, Math.min(2000, Number(value.gapMs)))
-        : DEFAULT_EVENT_GAP_MS,
+      gapMs: window.ASMTraceEvents.normalizeEventGapMs(value.gapMs),
       autoFixedEnabled: typeof value.autoFixedEnabled === 'boolean'
         ? value.autoFixedEnabled
         : (typeof value.defaultEnabled?.fixed === 'boolean' ? value.defaultEnabled.fixed : true),
@@ -272,7 +270,7 @@
     delete settings.timelineTypes.fixed;
     delete settings.defaultEnabled.condition;
     delete settings.timelineTypes.condition;
-    if (!Number.isFinite(Number(settings.gapMs))) settings.gapMs = DEFAULT_EVENT_GAP_MS;
+    settings.gapMs = window.ASMTraceEvents.normalizeEventGapMs(settings.gapMs);
     return settings;
   }
 

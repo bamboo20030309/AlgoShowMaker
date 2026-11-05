@@ -7,6 +7,16 @@
  * 相容性：舊文件沒有 instructionStates 或設定欄位時採既有預設；明確關閉的事件必須保留。
  */
 (function () {
+  const DEFAULT_EVENT_GAP_MS = 500;
+  function normalizeEventGapMs(value) {
+    const valid = (typeof value === 'number' || typeof value === 'string')
+      && String(value).trim() !== '' && Number.isFinite(Number(value));
+    return valid ? Math.max(0, Math.min(2000, Number(value))) : DEFAULT_EVENT_GAP_MS;
+  }
+
+  function eventGapMs(trace) {
+    return normalizeEventGapMs(trace?.studio?.eventSettings?.gapMs);
+  }
   const definitions = [
     { type: 'declare', label: '宣告／物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
     { type: 'visual-enter', label: '物件入場', color: '#25824d', enabledByDefault: true, timelineByDefault: true },
@@ -883,6 +893,9 @@
   }
 
   window.ASMTraceEvents = {
+    defaultEventGapMs: DEFAULT_EVENT_GAP_MS,
+    normalizeEventGapMs,
+    eventGapMs,
     definitions,
     labels: Object.fromEntries([
       ...definitions.map(definition => [definition.type, definition.label]),

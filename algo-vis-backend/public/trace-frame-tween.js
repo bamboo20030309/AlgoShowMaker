@@ -2647,8 +2647,9 @@
   }
 
   function eventGap(traceDocument) {
+    if (window.ASMTraceEvents?.eventGapMs) return window.ASMTraceEvents.eventGapMs(traceDocument);
     const value = Number(traceDocument?.studio?.eventSettings?.gapMs);
-    return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 0;
+    return Number.isFinite(value) ? Math.max(0, Math.min(2000, value)) : 500;
   }
 
   function createSvg(name, attributes = {}, text = '') {
@@ -10329,10 +10330,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-316';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-317';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-316', play, cancel, updateEventAvailability,
+    build: 'trace-317', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
