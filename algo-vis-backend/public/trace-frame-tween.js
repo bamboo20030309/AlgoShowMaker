@@ -5162,8 +5162,9 @@
     if (isDeclarationInitializerAssignment(event) || isForInitializerAssignment(event)) return false;
     if (event?.type !== 'write'
       || (event.update !== true && event.compound !== true)) return false;
-    for (const [, element] of markerCandidates(elements)) {
-      if (!(event.targets || []).some(target => markerMatchesEventTarget(element, target))) continue;
+    for (const domain of [elements, previousObjects]) for (const [, element] of markerCandidates(domain)) {
+      if (!(event.targets || []).some(target => markerMatchesEventTarget(element, target)
+        && markerLifetimeActiveAtEvent(eventFrame, event, element))) continue;
       return true;
     }
     return false;
@@ -6828,7 +6829,10 @@
         traceDocument, eventFrame, event, placements, elements
       )].some(key => placements?.has?.(key) && elements?.has?.(key));
     }
-    if (animation === 'position') return Boolean(markerForMotionSlot({ animation, event }, elements));
+    if (animation === 'position') return Boolean(
+      markersForMotionSlot({ animation, event }, elements, eventFrame).length
+      || markersForMotionSlot({ animation, event }, previousObjects, eventFrame).length
+    );
     if (animation === 'sequence') {
       if (sequenceEdge(event)==='index' && !sequenceDataStates(traceDocument,eventFrame,event)) {
         window.ASMCompileWarnings?.report?.('舊版事件', '此舊 Trace 的區段插入／刪除缺少中間狀態，已直接顯示保存結果；重新 RUN 後可使用完整事件動畫。');
@@ -9552,7 +9556,8 @@
         markerKeepArrowVertical: Number(markerGeometry?.width) > (Number(markerVisual?.dataset?.traceMarkerBaseCellWidth) || 40) + 0.5,
         comparisonRemovalStart: markerSlots.length ? Math.max(...markerSlots.map(slot => slot.end)) : 0,
         assignmentSchedule: previousMarkerAssignmentSchedule({traceDocument: options.document,
-          eventFrame, eventTimeline: playbackEventTimeline, visual: markerVisual, placements: currentPlacements}),
+          eventFrame, eventTimeline: playbackEventTimeline, visual: markerVisual,
+          placements: new Map([...(previousPlacements || new Map()), ...currentPlacements])}),
         scopeExitSlot: null,
         lifecycleKind: visualLifecycleKind(clone),
         retainedByEnteringKeep,
@@ -9703,7 +9708,25 @@
       return Math.max(end, start + HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION
         + APPEAR_TIMING.duration);
     }, 0);
+    // An outbound index update still owns a visible movement slot even when
+    // the destination frame omits that pointer. Its fade follows the update,
+    // including when the user explicitly chooses a zero event gap.
+    const outboundMarkerExitEnd = ghosts.reduce((end, ghost) => (
+      ghost.markerVisual && !ghost.scopeExitSlot && !ghost.retainedByEnteringKeep
+        ? Math.max(end, (Number(ghost.comparisonRemovalStart) || 0) + APPEAR_TIMING.duration)
+        : end
+    ), 0);
+    if (outboundMarkerExitEnd > playbackPlan.totalDurationMs) {
+      const start = Math.max(0, outboundMarkerExitEnd - APPEAR_TIMING.duration);
+      playbackPlan.phases.push({ id: 'outbound-pointer-exit', startMs: start,
+        endMs: outboundMarkerExitEnd, durationMs: APPEAR_TIMING.duration,
+        steps: [{ id: 'outbound-pointer-exit', kind: 'visual-exit', startMs: start,
+          endMs: outboundMarkerExitEnd, durationMs: APPEAR_TIMING.duration,
+          blocking: true, enabled: true }] });
+      playbackPlan.totalDurationMs = outboundMarkerExitEnd;
+    }
     const totalDuration = Math.max(
+      outboundMarkerExitEnd,
       eventTimelineDuration,
       motionDuration,
       backgroundHandoffDuration,
@@ -10339,10 +10362,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-318';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-319';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-318', play, cancel, updateEventAvailability,
+    build: 'trace-319', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
