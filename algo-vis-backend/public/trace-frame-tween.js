@@ -7977,6 +7977,7 @@
       ownsPaint(rect) { return forwardValues.ownsPaint(rect); },
       syncPositions() { activeEffect?.syncPosition?.(); },
       update(elapsed) {
+        if (finished) return;
         markerMotion.update(elapsed);
         if (!announcementsReady) return;
         eventTimeline.forEach(item => {
@@ -9530,12 +9531,16 @@
         .map(id => options.document?.variables?.[id]?.name).filter(Boolean) : [];
       const markerSlots = markerVisual ? playbackEventTimeline.filter(slot =>
         markerLifetimeActiveAtEvent(eventFrame, slot.event, markerVisual)
-        && (['assign','position'].includes(slot.animation)
-          ? slot.event?.targets?.some(target => markerMatchesEventTarget(markerVisual, target))
-          : slot.type === 'compare' && slot.event?.targets?.some(target => {
-            const indexName = String(target.expression || '').match(/\[\s*([A-Za-z_]\w*)\s*\]$/)?.[1];
-            return markerNames.includes(indexName);
-          }))) : [];
+        && slot.event?.targets?.some(target => {
+          if (['assign','position'].includes(slot.animation)
+            && markerMatchesEventTarget(markerVisual, target)) return true;
+          // A disappearing binding may still supply an index to a later
+          // copy/push/assignment. Keep it through that operation, not merely
+          // through the last comparison. Index expressions also cover i+1.
+          const index = String(target.indexExpression ||
+            (String(target.expression || '').match(/\[[^\]]*\]/g) || []).join(' '));
+          return (index.match(/[A-Za-z_]\w*/g) || []).some(name => markerNames.includes(name));
+        })) : [];
       ghosts.push({
         wrapper,
         comparisonKey: `compare-removed:${key}`,
@@ -9750,6 +9755,10 @@
       if (elapsed < styleTimelineDuration) {
         events?.update(elapsed);
       } else {
+        // rAF can land on or skip past the last event's exact end. Publish
+        // its committed cell visibility before removing the travelling clone;
+        // the post-event gap must not retain the previous hidden state.
+        events?.update(styleTimelineDuration);
         events?.finish();
       }
       heapResizeStages.update(elapsed, events?.adjustments);
@@ -10330,10 +10339,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-317';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-318';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-317', play, cancel, updateEventAvailability,
+    build: 'trace-318', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
