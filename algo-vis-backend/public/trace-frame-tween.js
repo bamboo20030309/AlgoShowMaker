@@ -2253,7 +2253,7 @@
       [slot.event, ...(slot.replayMemberEvents || [])].filter(Boolean)
         .forEach(event => timelineSlotByEvent.set(event, slot));
     });
-    const events = orderedEvents(eventFrame);
+    const events = presentationEvents(traceDocument, eventFrame);
     const initialState = new Map();
     const currentState = new Map();
     const valueTracks = new Map();
@@ -5130,6 +5130,11 @@
       .map(item => item.event);
   }
 
+  function presentationEvents(document, frame) {
+    return window.ASMTraceEvents?.presentationOrdered?.(frame?.events || [], document)
+      || orderedEvents(frame);
+  }
+
   function isForInitializerAssignment(event) {
     if (event?.type !== 'assign') return false;
     if (event.forInitializer === true) return true;
@@ -5248,8 +5253,8 @@
     return targets.some(target => target?.variableId === variableId && target.role !== 'source');
   }
 
-  function variableChangedBeforeEvent(eventFrame, currentEvent, variableId) {
-    const events = orderedEvents(eventFrame);
+  function variableChangedBeforeEvent(eventFrame, currentEvent, variableId, document) {
+    const events = presentationEvents(document, eventFrame);
     const currentIndex = events.indexOf(currentEvent);
     if (currentIndex <= 0) return false;
     return events.slice(0, currentIndex)
@@ -5483,13 +5488,14 @@
       ?.filter(checkpoint => checkpoint.mode !== 'ignored')
       .map(checkpoint => checkpoint.event)
       .filter(event => event && !initializerPairs.declarationByInitializer.has(event));
-    const logicalEvents = replayEvents || orderedEvents(eventFrame)
+    const logicalEvents = replayEvents || presentationEvents(traceDocument, eventFrame)
       .filter(event => !initializerPairs.declarationByInitializer.has(event))
       .filter(event => event?.loopBoundarySuppressed !== true);
     eventTimeline.forEach(slot => {
       if (slot.event && !logicalEvents.includes(slot.event)) logicalEvents.push(slot.event);
     });
-    logicalEvents.sort((left, right) => Number(left.order) - Number(right.order));
+    const presentationRank = new Map(presentationEvents(traceDocument, eventFrame).map((event, index) => [event, index]));
+    logicalEvents.sort((left, right) => (presentationRank.get(left) ?? Infinity) - (presentationRank.get(right) ?? Infinity));
     let logicalCursor = 0;
     const logicalMotionSlots = logicalEvents.flatMap(event => {
       const visibleSlot = timelineSlotByEvent.get(event);
@@ -7077,7 +7083,7 @@
       String(target?.lifetimeIdentity || ''),
       String(target?.sceneGeneration ?? '')
     ].join('|');
-    const ordered = orderedEvents(eventFrame);
+    const ordered = presentationEvents(traceDocument, eventFrame);
     // Preserve both runtime facts, but combine enabled declaration/initializer
     // pairs into one presentation slot. Explicitly disabled events stay separate.
     const initializerPairs = declarationInitializerPairs(eventFrame);
@@ -7676,8 +7682,9 @@
   }
 
   function eventSequence(options, eventFrame, eventTimeline) {
-    const logicalEvents = orderedEvents(eventFrame)
+    const logicalEvents = presentationEvents(options.document, eventFrame)
       .filter(event => event?.loopBoundarySuppressed !== true);
+    const logicalRank = new Map(logicalEvents.map((event, index) => [event, index]));
     // A frame can have no runtime event while its persisted objects still
     // move and change conditional style. Keep the replay/style controller
     // alive so paint can wait for that geometry transition.
@@ -7711,7 +7718,7 @@
         stagedShiftVariables.add(id);
         // Do not reveal the destination bits while the code highlight plays.
         // If an earlier write owns this variable, wait for that write instead.
-        if (logicalEvents.some(event => Number(event.order) < Number(slot.event.order)
+        if (logicalEvents.some(event => logicalRank.get(event) < logicalRank.get(slot.event)
           && ['assign', 'write', 'swap', 'sequence', 'declare'].includes(event.type)
           && event.targets?.some(target => target.role === 'target' && target.variableId === id))) continue;
         const effect = slot.event.bitwise
@@ -7761,9 +7768,10 @@
       }
       announceEvent(slot.event, phase, slot);
     }
-    function completeLogicalEventsBefore(order = Infinity) {
+    function completeLogicalEventsBefore(currentEvent = null) {
+      const cutoff = currentEvent ? logicalRank.get(currentEvent) ?? Infinity : Infinity;
       logicalEvents.forEach(event => {
-        if (!(Number(event?.order) < Number(order))) return;
+        if (!(logicalRank.get(event) < cutoff)) return;
         const id = String(event?.id || '');
         if (!id || completedLogicalEventIds.has(id)) return;
         completedLogicalEventIds.add(id);
@@ -7865,7 +7873,7 @@
           const liveAdjustment = markerMotion.adjustments.get(operand.visualKey);
           if (liveAdjustment) return liveAdjustment;
           const variableId = String(operand.element?.dataset?.traceSourceVariableId || '');
-          const movedEarlier = variableChangedBeforeEvent(eventFrame, slot.event, variableId);
+          const movedEarlier = variableChangedBeforeEvent(eventFrame, slot.event, variableId, options.document);
           return movedEarlier ? null : options.rawDeltas?.get?.(operand.visualKey);
         };
         return createCompareEffect(
@@ -8013,7 +8021,7 @@
           activeEffectStarted = false;
           activeAnimatedElements = [];
           if (slot) {
-            completeLogicalEventsBefore(slot.event?.order);
+            completeLogicalEventsBefore(slot.event);
             options.root.dataset.traceActiveEventId = String(slot.event?.id || '');
             options.root.dataset.traceActiveEventType = String(slot.type || '');
             announce(slot, 'start');
@@ -8029,7 +8037,7 @@
             const nextSlot = eventTimeline.find(item => (
               elapsed < Number(item.promptStart ?? item.start)
             )) || null;
-            completeLogicalEventsBefore(nextSlot?.event?.order ?? Infinity);
+            completeLogicalEventsBefore(nextSlot?.event);
             delete options.root.dataset.traceActiveEventId;
             delete options.root.dataset.traceActiveEventType;
           }
@@ -8075,7 +8083,7 @@
         finished = true;
         const announceCompletion = () => {
           announce(activeSlot, 'end');
-          completeLogicalEventsBefore(Infinity);
+          completeLogicalEventsBefore();
         };
         if (announcementsReady) announceCompletion();
         else queueMicrotask(announceCompletion);
@@ -10362,10 +10370,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-319';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-320';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-319', play, cancel, updateEventAvailability,
+    build: 'trace-320', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

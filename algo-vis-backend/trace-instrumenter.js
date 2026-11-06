@@ -4695,8 +4695,27 @@ function instrumentSource(source, watchIds = []) {
 
   function signature(type, node) {
     const value = `${type}:${functionNameAt(node)}:${analysis.lineAt(node.from)}:${compactExpression(source.slice(node.from, node.to))}`;
-    const metadata = ['assign', 'write'].includes(type) && node.name === 'AssignmentExpression'
+    let metadata = ['assign', 'write'].includes(type) && node.name === 'AssignmentExpression'
       ? { ...operationMetadata(childrenOf(node).at(-1)), ...(type === 'write' ? { operationKind: 'compute' } : {}) } : null;
+    if (type === 'write' && node.name === 'UpdateExpression') {
+      const postfix = childrenOf(node).at(-1)?.name === 'UpdateOp';
+      const consumers = [];
+      if (postfix) for (let child = node, parent = node.parent; parent; child = parent, parent = parent.parent) {
+        const parts = childrenOf(parent);
+        const operands = parts.filter(part => !['(', ')', ',', '?', ':', ';'].includes(part.name));
+        // Do not carry a delayed visual update across a C++ sequencing point.
+        // The next comma operand / logical branch may already use the new value.
+        if ((parent.name === 'CommaExpression' && child.from !== operands.at(-1)?.from)
+          || (parent.name === 'BinaryExpression' && parts.some(part => part.name === 'LogicOp') && child.from === operands[0]?.from)
+          || (parent.name === 'ConditionalExpression' && child.from === operands[0]?.from)) break;
+        if (/^(?:Call|Subscript|Assignment|Update|Binary)Expression$/.test(parent.name)
+          || ['InitDeclarator', 'ConditionClause', 'ReturnStatement', 'ExpressionStatement'].includes(parent.name)) {
+          consumers.push({ from: parent.from, to: parent.to });
+        }
+        if (parent.name.endsWith('Statement') || parent.name === 'Declaration') break;
+      }
+      metadata = { ...metadata, updateForm: postfix ? 'postfix' : 'prefix', postfixConsumerRanges: consumers };
+    }
     return recordEventSource(value, node, node.from, node.to, false, null, metadata);
   }
 
