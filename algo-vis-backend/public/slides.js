@@ -12139,6 +12139,7 @@
       hash: false,
       controls: true,
       progress: true,
+      mouseWheel: false,
       overview: true,
       center: false,
       width: SLIDE_W,
@@ -12161,6 +12162,9 @@
     }).then(() => {
       revealReady = true;
       reveal.slide(currentH, currentV);
+      window.ASMSlidePresentation.install({ reveal,
+        groupSizes: () => deck.groups.map(group => group.slides.length),
+        overviewOpen: () => customOverviewOpen });
       rememberSlidePosition();
       scheduleCurrentSlideCodeFocus();
       scheduleFabricResolution();
