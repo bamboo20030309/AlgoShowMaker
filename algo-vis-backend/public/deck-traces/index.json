@@ -866,14 +866,16 @@
       "slideId": "lcs-slide-12"
     },
     "c042765a00abd4af340f5e36ec824efb12f4e192f2cec9dc26be216d8f4e763f": {
-      "file": "merge-sort-01.json",
+      "file": "legacy/merge-sort-previous-c042765a00ab.json",
       "deck": "merge-sort.asmdeck",
-      "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5"
+      "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5",
+      "legacy": true
     },
     "6dd73e9b42730df2d42bdae0d6d12c7b354bf5b81203b42820d893e596df6ffe": {
-      "file": "merge-sort-02.json",
+      "file": "legacy/merge-sort-previous-6dd73e9b4273.json",
       "deck": "merge-sort.asmdeck",
-      "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f"
+      "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f",
+      "legacy": true
     },
     "8ac94ee18c0c39a9e9ba2ab0ecdf48cf0941c979cc4b2e663ce1797d55199287": {
       "file": "merge-sort-03.json",
@@ -884,6 +886,16 @@
       "file": "merge-sort-04.json",
       "deck": "merge-sort.asmdeck",
       "slideId": "718d5119-6f4f-46f5-8247-7fe2e78ff61d"
+    },
+    "644855f148002f7239f5128abacb528043e8a9431350348cbee74198b881fbfd": {
+      "file": "merge-sort-01.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "32beb953-8fc5-4c57-97e6-f53e7edea1f5"
+    },
+    "eb7182f52ca88aa1b76fdf9780369acc33161e56139cede89fb1f9e8a5dec79c": {
+      "file": "merge-sort-02.json",
+      "deck": "merge-sort.asmdeck",
+      "slideId": "28869a0f-7a64-4090-be05-1f63e7f6b91f"
     }
   }
 }
