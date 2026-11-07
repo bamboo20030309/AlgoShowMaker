@@ -206,3 +206,7 @@ insert／push_back 的入場階段須同時呈現格子與數字。可見來源�
 ## 讀取強調預設（2026-11-04）
 
 讀取仍附著於所屬操作，不增加獨立停頓。顯示預設關閉；事件設定面板的「讀取強調」開啟後才建立 highlight，預設顏色為純紅色 red（#ff0000）。設定保存於 studio.eventSettings.readHighlightEnabled（布林值）與 readHighlightColor（預設 red）。缺少欄位的舊資料視為關閉；明確 true／false 與自訂色保留，設定可隨 @asm-view、投影片、Trace 引用與帳號偏好保存。不恢復已移除的逐步讀取事件開關。
+
+## 遞迴節點入場（2026-11-08）
+
+新遞迴節點使用所屬參數或區域變數的宣告事件作為入場時鐘：先反白停留 200ms，再以宣告入場的 220ms 長出完整節點。layout 決定幾何，不另行提前生長。以 activation／變數 ID 綁定事件，舊資料可用 lifetime 核實；關閉宣告動畫時直接到位。格子、名稱、索引、style 與新連線共用此時鐘；父節點重新排版時，生長起點跟著父節點當前位置。keep 交接不重播。純繪圖快照沒有 runtime 宣告時，保留既有 layout 行為，不製造宣告事件。固定答案與實際 SVG 驗證入口為 tests/recursion-declaration-clock.test.js、tests/recursion-declaration-clock.browser.test.js。

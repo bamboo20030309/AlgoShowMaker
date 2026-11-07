@@ -6281,6 +6281,29 @@
     return { declaredKeys, slotsByKey };
   }
 
+  // 遞迴排版提供幾何，該次呼叫的宣告提供時鐘；不能只按變數名稱
+  // 把父呼叫或另一層遞迴的宣告接過來。舊 Trace 可用 lifetime 核實同一對象。
+  function recursionDeclarationClock(element, growth, frame, eventTimeline) {
+    if (!growth) return null;
+    const snapshot = growth.childSnapshot;
+    const variableId = element?.dataset?.traceLayoutPreferredVariable
+      || snapshot?.frame?.source?.primaryVariableId || frame?.source?.primaryVariableId;
+    const activation = element?.dataset?.traceLayoutActivation
+      || snapshot?.recursionActivationId || frame?.source?.recursionActivationId;
+    const lifetime = (snapshot?.frame || frame)?.state?.[variableId]?.lifetime;
+    const declaration = orderedEvents(frame).find(event => event.type === 'declare'
+      && (event.targets || []).some(target => target.variableId === variableId
+        && (event.recursionActivationId ? event.recursionActivationId === activation
+          : lifetime && target.lifetimeIdentity === lifetime)));
+    if (!declaration) return null; // 純繪圖快照無 runtime 宣告，保留既有生長行為。
+    const slot = (eventTimeline || []).find(slot => slot.animation === 'declare'
+      && (slot.event?.id === declaration.id || slot.memberEvents?.some(event => event.id === declaration.id)));
+    if (!slot) return { eventId: declaration.id, start: 0, duration: 0, instant: true };
+    return { eventId: declaration.id,
+      start: (Number(slot.visualStart ?? slot.start) || 0) + (Number(slot.declarationEntranceDelay) || 0),
+      duration: Math.min(APPEAR_TIMING.duration, Math.max(1, Number(slot.duration) || APPEAR_TIMING.duration)), instant: false };
+  }
+
   function markerReflowPeerKeys({
     traceDocument, eventFrame, enteringKey, currentElements,
     previousPlacements, currentPlacements, previousObjects
@@ -9153,6 +9176,26 @@
 
     const entriesByKey = new Map(entries.map(entry => [entry.key, entry]));
     entries.forEach(entry => {
+      if (entry.recursionGrowth) entry.recursionDeclarationClock = recursionDeclarationClock(
+        entry.element, entry.recursionGrowth, eventFrame, eventTimeline
+      );
+      if (entry.recursionDeclarationClock && !entry.recursionDeclarationClock.instant) {
+        const parent = currentElements.get(entry.recursionGrowth.parentKey);
+        const parentBox = parent && window.ASMArrowModel?.presentedBounds?.(parent, root, true);
+        const childBox = window.ASMArrowModel?.presentedBounds?.(entry.element, root, true);
+        if (parentBox && childBox) {
+          const old = rawDeltas.get(entry.key) || { x: 0, y: 0 };
+          const dx = parentBox.x + parentBox.width / 2 - childBox.x - childBox.width / 2 - old.x;
+          const dy = parentBox.y + parentBox.height / 2 - childBox.y - childBox.height / 2 - old.y;
+          // 先以父節點終點建立相對路徑，每個 tick 再加上父節點尚未完成的位移。
+          entries.filter(child => child.topKey === entry.key).forEach(child => {
+            const raw = rawDeltas.get(child.key) || { x: 0, y: 0 };
+            rawDeltas.set(child.key, { x: raw.x + dx, y: raw.y + dy });
+          });
+        }
+      }
+    });
+    entries.forEach(entry => {
       entry.isIndexLabel = entry.element?.hasAttribute?.('data-trace-index-label') === true;
       entry.indexLabelEntrance = indexLabelGrowthCandidate(
         entry, previousPlacements, previousObjects
@@ -9164,6 +9207,11 @@
         && !declarationSchedule.slotsByKey.has(entry.key);
       const topEntry = entriesByKey.get(entry.topKey);
       const structuralGrowth = Boolean(topEntry?.recursionGrowth || topEntry?.keepGrowth);
+      entry.recursionDeclarationClock = topEntry?.recursionDeclarationClock || null;
+      if (entry.recursionDeclarationClock) {
+        entry.motionDelay = entry.recursionDeclarationClock.start;
+        if (entry.recursionDeclarationClock.instant) { entry.dx = entry.dy = 0; entry.mode = 'instant'; }
+      }
       // Reference parameters can give the same container a new source key in
       // another function/recursion. The top-level runtime identity still
       // proves continuity, but a nested cell may have no independently keyed
@@ -9262,6 +9310,16 @@
         entry.compareCenter = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
       } catch (error) {
         entry.compareCenter = { x: 0, y: 0 };
+      }
+      if (entry.recursionGrowth) {
+        // 以主體外框為生長中心，point／mark 等裝飾不能移動縮放樞紐。
+        const geometry = outerframeGeometry(entry.element);
+        if (geometry?.bounds) try {
+          const [left, top, right, bottom] = geometry.bounds;
+          const transform = entry.target.getCTM().inverse().multiply(geometry.group.getCTM());
+          const center = new DOMPoint((left + right) / 2, (top + bottom) / 2).matrixTransform(transform);
+          entry.structuralCenter = { x: center.x, y: center.y };
+        } catch (_error) { /* 無可測量幾何時沿用原有中心。 */ }
       }
       entry.rects = visualRects(entry.element);
       entry.indexLabelGeometry = entry.indexLabelEntrance
@@ -9590,7 +9648,7 @@
     // movement can occur in an eventless authored frame. Consumers such as
     // style timing only read these events and never repeat the geometry test.
     const visualMoveEvents = entries.flatMap(entry => {
-      if (!entry.previous || entry.appearing) return [];
+      if (!entry.previous || entry.appearing || entry.recursionDeclarationClock?.instant) return [];
       const raw = rawDeltas.get(entry.key) || { x: 0, y: 0 };
       const distance = Math.hypot(Number(raw.x) || 0, Number(raw.y) || 0);
       const visiblyMoves = distance > 0.5
@@ -9599,7 +9657,8 @@
       if (!visiblyMoves) return [];
       const durationMs = Math.max(
         1,
-        Number(entry.sequenceMotionSlot?.duration)
+        Number(entry.recursionDeclarationClock?.duration)
+          || Number(entry.sequenceMotionSlot?.duration)
           || Number(entry.declarationReflow?.duration)
           || Number(entry.exitReflow?.duration)
           || Number(entry.markerGroupReflowDuration)
@@ -9695,7 +9754,8 @@
     const motionDuration = entries.reduce((end, entry) => {
       const localDuration = Math.max(
           1,
-          Number(entry.sequenceMotionSlot?.duration)
+          Number(entry.recursionDeclarationClock?.duration)
+          || Number(entry.sequenceMotionSlot?.duration)
           || Number(entry.declarationReflow?.duration)
           || Number(entry.exitReflow?.duration)
           || Number(entry.markerGroupReflowDuration)
@@ -9801,14 +9861,16 @@
         const motionElapsed = Math.max(0, elapsed - entry.motionDelay);
         const localDuration = Math.max(
           1,
-          Number(entry.sequenceMotionSlot?.duration)
+          Number(entry.recursionDeclarationClock?.duration)
+            || Number(entry.sequenceMotionSlot?.duration)
             || Number(entry.declarationReflow?.duration)
             || Number(entry.exitReflow?.duration)
             || Number(entry.markerGroupReflowDuration)
             || Number(entry.plan?.duration)
             || duration
         );
-        const localProgress = Math.max(0, Math.min(1, motionElapsed / localDuration));
+        const localProgress = entry.recursionDeclarationClock?.instant
+          ? 1 : Math.max(0, Math.min(1, motionElapsed / localDuration));
         const localEased = easeOutCubic(localProgress);
         const appearElapsed = Math.max(0, elapsed - entry.appearanceStart);
         const appearProgress = clamp01(
@@ -9877,6 +9939,14 @@
       // frame movement, outerframe resizing and repainting stay in the normal
       // object layer; promoting every transitioning entry can lift a whole
       // container and then its cells, changing child order and z-order.
+      entries.forEach(entry => {
+        if (!entry.recursionGrowth || !entry.recursionDeclarationClock || entry.recursionDeclarationClock.instant) return;
+        const state = motionStates.get(entry.key), parent = motionStates.get(entry.recursionGrowth.parentKey);
+        if (state && parent) {
+          state.x += parent.x * (1 - state.localEased);
+          state.y += parent.y * (1 - state.localEased);
+        }
+      });
       const animatedVisuals = [];
       nestedLifecycleVisuals.forEach(({ element, declarationSlot, exitSlot }) => {
         const entranceStart = (Number(declarationSlot?.start) || 0)
@@ -9906,7 +9976,7 @@
           ? `translate(${adjustedX}, ${adjustedY})`
           : '';
         const scale = state.scale;
-        const pivot = entry.compareCenter || { x: 0, y: 0 };
+        const pivot = entry.structuralCenter || entry.compareCenter || { x: 0, y: 0 };
         const scaleTransform = Math.abs(scale - 1) > 0.001
           ? `translate(${pivot.x}, ${pivot.y}) scale(${scale}) translate(${-pivot.x}, ${-pivot.y})`
           : '';
@@ -9948,6 +10018,14 @@
         const markerArrowState = events?.markerArrowStates?.get?.(entry.key);
         if (entry.markerPointPath && markerArrowState) {
           entry.markerPointPath.setAttribute('d', markerArrowPath(entry, markerArrowState));
+        }
+        if (entry.recursionDeclarationClock && elapsed >= entry.recursionDeclarationClock.start) {
+          if (entry.baseOpacity != null) entry.target.setAttribute('opacity', entry.baseOpacity);
+          else entry.target.removeAttribute('opacity');
+          entry.attachedVisuals.forEach(attachment => {
+            if (attachment.baseOpacity != null) attachment.wrapper.setAttribute('opacity', attachment.baseOpacity);
+            else attachment.wrapper.removeAttribute('opacity');
+          });
         }
         if (entry.recursionGrowth || entry.keepGrowth) {
           const growthAttribute = entry.recursionGrowth
@@ -9992,6 +10070,11 @@
           entry.attachedVisuals.forEach(attachment => {
             attachment.wrapper.setAttribute('opacity', String(lifecycleOpacity));
           });
+        }
+        // 包含格子、名稱、標籤及獨立 style 層；任何事件 opacity 都不能提早揭露。
+        if (entry.recursionDeclarationClock && elapsed < entry.recursionDeclarationClock.start) {
+          entry.target.setAttribute('opacity', '0');
+          entry.attachedVisuals.forEach(attachment => attachment.wrapper.setAttribute('opacity', '0'));
         }
 
         entry.rects.forEach((rect, index) => {
@@ -10081,13 +10164,17 @@
       events?.syncPositions?.();
       const arrowProgress = easeOutCubic(clamp01((elapsed - initialDelay) / duration));
       newArrows.forEach(({ element }) => {
+        const growthClock = !element._asmArrowTween && [element.dataset.traceArrowFromKey, element.dataset.traceArrowToKey]
+          .map(key => entriesByKey.get(key)?.recursionDeclarationClock).find(Boolean);
+        const edgeProgress = growthClock ? (growthClock.instant ? 1
+          : easeOutCubic(clamp01((elapsed - growthClock.start) / Math.max(1, growthClock.duration)))) : null;
         if (element._asmArrowTween) element._asmArrowTween.progress = arrowProgress;
         const draws = !element._asmArrowTween && element.dataset.traceArrowDraw === 'true';
         const drawDuration = Math.max(1,
           Math.min(duration, Number(element.dataset.traceArrowDrawDuration) || duration));
-        const drawProgress = draws
+        const drawProgress = edgeProgress ?? (draws
           ? easeOutCubic(clamp01((elapsed - initialDelay) / drawDuration))
-          : arrowProgress;
+          : arrowProgress);
         if (draws) element.setAttribute('stroke-dashoffset', String(1 - drawProgress));
         element.setAttribute('opacity', element._asmArrowTween ? '1' : String(drawProgress));
       });
@@ -10372,10 +10459,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-320';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-322';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-320', play, cancel, updateEventAvailability,
+    build: 'trace-322', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
@@ -10383,6 +10470,7 @@
     motionTime: MOTION_TIME, eventActionPlan, operationKind,
     captureAssignmentSourceGeometry,
     recursionGrowthTransitions,
+    recursionDeclarationClock,
     keepLiveGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

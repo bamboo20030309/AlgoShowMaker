@@ -5,7 +5,7 @@
 - recursion layout 新增 arrow-direction，支援 up／down／left／right／parent-to-child／child-to-parent。direction 仍負責節點位置，arrow-direction 只切換連線的箭頭端，不改邊 ID、端點錨點與幾何綁定。預設及舊 Trace 缺欄位時為 parent-to-child；reset 恢復此預設。edges off 繼續關閉箭頭。DFS flow-arrows 保留實際進入／返回語意，不受此設定改寫。
 - 使用者確認「先黃色反白，稍等再播放格子／指標」。有有效程式來源範圍的畫布動作在 promptStart 反白，200ms 後才到 visualStart；速度 2 倍即約 100ms。動作本身時間與事件間隔不變。純反白事件已有停留時間、缺來源範圍的舊事件不追加無意義等待。
 - 程式碼捲動仍用獨立時鐘，不累加整段捲動時間。新行為由前端播放時計算，舊 Trace 不必重 RUN 才有閱讀停留。新 arrow-direction 指令需 RUN 以保存解析結果。
-- 此次未變更遞迴節點宣告入場的排程；前次討論的結構生長與宣告排程統一尚未實作。
+- 此輪原先未變更遞迴節點宣告入場排程；後續已於 2026-11-08 完成，見 [遞迴節點宣告排程](recursion-declaration-clock-2026-11-08.md)。
 
 ## 驗證
 
