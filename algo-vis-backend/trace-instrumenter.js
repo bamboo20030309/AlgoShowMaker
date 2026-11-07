@@ -1548,6 +1548,7 @@ const RECURSION_LAYOUT_DEFAULTS = Object.freeze({
   levelGap: 100,
   degree: 2,
   showEdges: true,
+  arrowDirection: 'parent-to-child',
   showBranchPreviews: true,
   showFlowArrows: false,
   background: '',
@@ -1654,7 +1655,7 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     const targetMatch = payload.match(/^([A-Za-z_][A-Za-z0-9_.-]*)\s+(.+)$/s);
     if (!targetMatch) throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID`);
     const id = targetMatch[1];
-    if (/^(?:grow-from|reserve|direction|mode|order|align|gap|sibling-gap|level-gap|degree|edges|branch-previews|flow-arrows|background|reset)$/i.test(id)) {
+    if (/^(?:grow-from|reserve|direction|arrow-direction|mode|order|align|gap|sibling-gap|level-gap|degree|edges|branch-previews|flow-arrows|background|reset)$/i.test(id)) {
       throw new Error(`第 ${line} 行的 @layout 設定必須指定排版 ID 在設定名稱前，例如：@layout quick_tree ${payload}`);
     }
     const layout = layouts.get(id);
@@ -1664,7 +1665,7 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
       Object.assign(layout, layout.type === 'linear' ? LINEAR_LAYOUT_DEFAULTS : RECURSION_LAYOUT_DEFAULTS);
       return;
     }
-    const settingMatch = setting.match(/^(grow-from|reserve|direction|mode|order|align|gap|sibling-gap|level-gap|degree|edges|branch-previews|flow-arrows|background)\s+(.+)$/i);
+    const settingMatch = setting.match(/^(grow-from|reserve|direction|arrow-direction|mode|order|align|gap|sibling-gap|level-gap|degree|edges|branch-previews|flow-arrows|background)\s+(.+)$/i);
     if (!settingMatch) throw new Error(`第 ${line} 行的 @layout ${id} 設定無效：${setting}`);
     const name = settingMatch[1].toLowerCase();
     const rawValue = settingMatch[2].trim();
@@ -1675,6 +1676,11 @@ function findLayoutDirectives(source, suppliedAnalysis = null) {
     if (name === 'grow-from') {
       if (!['root', 'leaves'].includes(value)) throw new Error(`第 ${line} 行的 @layout grow-from 必須是 root 或 leaves`);
       layout.growFrom = value;
+    } else if (name === 'arrow-direction') {
+      if (!['up', 'down', 'left', 'right', 'parent-to-child', 'child-to-parent'].includes(value)) {
+        throw new Error(`第 ${line} 行的 @layout arrow-direction 必須是 up、down、left、right、parent-to-child 或 child-to-parent`);
+      }
+      layout.arrowDirection = value;
     } else if (name === 'reserve') {
       if (!['on', 'off'].includes(value)) throw new Error(`第 ${line} 行的 @layout reserve 必須是 on 或 off`);
       layout.reserve = value === 'on';

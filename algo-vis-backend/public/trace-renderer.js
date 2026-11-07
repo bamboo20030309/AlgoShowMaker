@@ -4271,6 +4271,15 @@
           : direction === 'left-right' ? ['right', 'left']
             : direction === 'right-left' ? ['left', 'right']
               : ['bottom', 'top'];
+        const arrowDirection = layout.arrowDirection || 'parent-to-child';
+        // 排版方向與箭頭方向互相獨立；保留端點、邊 ID 與移動綁定，僅切換箭頭端。
+        const dx = to.x + to.width / 2 - from.x - from.width / 2;
+        const dy = to.y + to.height / 2 - from.y - from.height / 2;
+        const reversed = arrowDirection === 'child-to-parent'
+          || (arrowDirection === 'up' && dy > 0)
+          || (arrowDirection === 'down' && dy < 0)
+          || (arrowDirection === 'left' && dx > 0)
+          || (arrowDirection === 'right' && dx < 0);
         models.push({
           // Live recursion nodes and the @keep snapshots that replace them
           // have different object keys but the same activation identity. A
@@ -4285,7 +4294,7 @@
           style: {
             color: layout.edgeColor || 'black',
             width: Math.max(0.5, Number(layout.edgeWidth) || 2),
-            head: 'end',
+            head: reversed ? 'start' : 'end',
             line: 'straight'
           },
           _fromPlacement: from,

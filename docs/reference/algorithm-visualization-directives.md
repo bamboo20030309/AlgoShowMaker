@@ -669,6 +669,7 @@ return value;
 | `level-gap` | 正數像素 | 父子層之間的額外間距，預設 100 |
 | `degree` | 正整數 | `binary` 模式的每個節點槽位數，預設 2 |
 | `edges` | `on`、`off` | 顯示或隱藏黑色 2px 父子箭頭，預設開啟 |
+| `arrow-direction` | `up`、`down`、`left`、`right`、`parent-to-child`、`child-to-parent` | 獨立設定父子連線箭頭方向，預設父指向子，不改變節點排版；例如 `@layout merge_tree arrow-direction up`。上下方向用於垂直排版，左右用於水平排版；父／子方向不受排版軸影響 |
 | `flow-arrows` | `on`、`off` | 顯示遞迴 DFS 進入／返回的半透明灰色二次貝茲箭頭，預設關閉 |
 | `reset` | 無值 | 將上述排列設定恢復預設，保留名稱與根錨點 |
 

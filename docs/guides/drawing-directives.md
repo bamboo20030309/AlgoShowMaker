@@ -346,6 +346,7 @@
 | 後綴 | 用途 |
 | --- | --- |
 | `direction` | 在下一行明確指定排版 ID 與生長方向 |
+| `arrow-direction` | 樹連線箭頭可設 up／down／left／right 或 parent-to-child／child-to-parent，與節點排版獨立；未設定維持父指向子 |
 | `gap` | 設定 linear 內各排版的間距 |
 | `order` | 在下一行明確指定排版 ID 與 preorder／inorder／postorder |
 | `flow-arrows` | 顯示 DFS 進入與返回的彎曲輔助箭頭 |

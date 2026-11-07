@@ -207,6 +207,7 @@
     arrow: [['as', 'as', '為箭頭命名', ' as "relation"'], ['in', 'in', '把跨排版箭頭放入 linear', ' in scene'], ['when', 'when', '條件成立才顯示箭頭', ' when i >= 0']],
     layout: [
       ['layout-direction', 'direction', '在下一行明確指定排版 ID 與生長方向', '\n// @layout quick_tree direction top-down'],
+      ['layout-arrow-direction', 'arrow-direction', '設定樹連線箭頭方向，不改變節點排版', '\n// @layout quick_tree arrow-direction up'],
       ['layout-gap', 'gap', '設定 linear 內各排版的間距', '\n// @layout scene gap 64'],
       ['layout-order', 'order', '在下一行明確指定排版 ID 與 preorder／inorder／postorder', '\n// @layout quick_tree order preorder'],
       ['layout-flow-arrows', 'flow-arrows', '顯示 DFS 進入與返回的彎曲輔助箭頭', '\n// @layout quick_tree flow-arrows on'],

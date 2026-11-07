@@ -851,21 +851,21 @@ test('each renderable sourced event prompts in code before its visual response',
   );
   assert.equal(timeline.length, 1);
   assert.equal(timeline[0].promptStart, 0);
-  // Code scroll overlaps the event instead of adding a separate prompt delay.
-  assert.equal(timeline[0].codePromptDuration, 0);
-  assert.equal(timeline[0].visualStart, 0);
-  assert.equal(timeline[0].start, 0);
-  assert.equal(timeline[0].end, 180);
+  // 黃色提示先保留 200ms；原有宣告動作仍為 220ms。
+  assert.equal(timeline[0].codePromptDuration, 200);
+  assert.equal(timeline[0].visualStart, 200);
+  assert.equal(timeline[0].start, 200);
+  assert.equal(timeline[0].end, 420);
 
   const plan = promptContext.window.ASMTraceFrameTween.createPlaybackPlan({
     frame, direction: 1, eventTimeline: timeline
   });
   const step = plan.phases.find(phase => phase.id === 'trace-events').steps[0];
   assert.equal(step.startMs, 0, 'the code highlight owns the formal event start');
-  assert.equal(step.codePromptDurationMs, 0);
-  assert.equal(step.visualStartMs, 0);
-  assert.equal(step.visualDurationMs, 180);
-  assert.equal(step.durationMs, 180);
+  assert.equal(step.codePromptDurationMs, 200);
+  assert.equal(step.visualStartMs, 200);
+  assert.equal(step.visualDurationMs, 220);
+  assert.equal(step.durationMs, 420);
 });
 
 test('a for-header code range does not substitute for a missing canvas target', () => {

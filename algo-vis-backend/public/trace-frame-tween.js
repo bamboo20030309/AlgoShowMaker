@@ -26,7 +26,7 @@
   });
   // One 1x motion vocabulary. Dependencies live in event plans, not in
   // algorithm-specific timers. Read emphasis runs concurrently with its owner.
-  const MOTION_TIME = Object.freeze({ enter: 220, exit: 220, move: 520, reflow: 300,
+  const MOTION_TIME = Object.freeze({ codePrompt: 200, enter: 220, exit: 220, move: 520, reflow: 300,
     swap: 520, compareApproach: 300, compareHold: 420, compareReset: 260,
     emphasize: 400, camera: 520 });
   const COMPARE_TIMING = Object.freeze({ popup: 180, wait: 400, size: 300, result: 420, reset: 260 });
@@ -7287,9 +7287,11 @@
       const promptStart = parallelWithPrevious
         ? Number(previousSlot.promptStart) || 0
         : cursor;
-      // Code highlighting and scrolling are presentation, not a serial
-      // pre-animation wait. The code presenter owns its independent clock.
-      const codePromptDuration = 0;
+      // 先顯示黃色程式碼提示，再開始畫布動作；純反白事件已有自己的停留時間。
+      // 捲動仍使用獨立時鐘，這裡不累加整段程式碼捲動時間。
+      const hasCodeRange = Number.isFinite(event.source?.from)
+        && Number.isFinite(event.source?.to) && event.source.to > event.source.from;
+      const codePromptDuration = animation !== 'code' && hasCodeRange ? MOTION_TIME.codePrompt : 0;
       const visualStart = promptStart + codePromptDuration;
       const effectStart = visualStart + (declarationInitializerTransfer ? APPEAR_TIMING.duration : 0);
       const motionStart = declarationInitializerTransfer && declarationInitializerMarker

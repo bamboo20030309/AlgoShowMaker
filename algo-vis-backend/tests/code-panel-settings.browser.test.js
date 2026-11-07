@@ -112,7 +112,12 @@ test('code scroll and event animation overlap instead of accumulating their dura
      scrolled ||= scrolling;
      const root=document.querySelector('#asm-trace-root');
      eventSeen ||= root.dataset.traceActiveEventType==='compare'&&!!root.querySelector('.asm-trace-compare-highlight');
-     overlap ||= scrolling&&root.dataset.traceActiveEventType==='compare'&&!!root.querySelector('.asm-trace-compare-highlight');
+     // 比較色塊只在結果階段出現，不代表整個比較動作的起點。
+     // 閱讀停留後的正式動作起點仍須落在獨立捲動期間；特效另由 eventSeen 核對。
+     const livePlan=window.ASMTracePlayer.getLastPlaybackPlan();
+     const compareStep=livePlan?.phases.flatMap(p=>p.steps||[]).find(s=>s.eventType==='compare');
+     overlap ||= scrolling&&root.dataset.traceActiveEventType==='compare'
+      &&compareStep&&(performance.now()-start)*speed>=compareStep.visualStartMs;
      if(mode==='autoplay'){
       plan=window.ASMTracePlayer.getLastPlaybackPlan();
       done=button.getAttribute('aria-pressed')!=='true';
@@ -126,7 +131,7 @@ test('code scroll and event animation overlap instead of accumulating their dura
    window.ASMTraceCodeModel.planFrame=original;
    return outcomes;
   },trace);
-  for(const run of result){assert.equal(run.scrolled,run.mode!=='instant',JSON.stringify(run));assert.equal(run.overlap,run.mode!=='instant',JSON.stringify(run));assert.equal(run.eventSeen,true,JSON.stringify(run));assert.ok(run.prompts.every(n=>n===0),JSON.stringify(run));assert.equal(run.remaining,false);}
+  for(const run of result){assert.equal(run.scrolled,run.mode!=='instant',JSON.stringify(run));assert.equal(run.overlap,run.mode!=='instant',JSON.stringify(run));assert.equal(run.eventSeen,true,JSON.stringify(run));assert.ok(run.prompts.includes(200)&&run.prompts.every(n=>n===0||n===200),JSON.stringify(run));assert.equal(run.remaining,false);}
   assert.deepEqual(errors,[]);
  }finally{await browser.close();}
 });
