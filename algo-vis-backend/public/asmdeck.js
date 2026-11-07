@@ -184,12 +184,12 @@
 
   async function animationKey(animation, engine = engineVersion()) {
     const rebuild = animation.rebuild || {};
-    return sha256(JSON.stringify([engine, animation.code, animation.input, animation.sliceMode,
+    return sha256(JSON.stringify([engine, root.ASMTraceProvenance.generationFingerprint, animation.code, animation.input, animation.sliceMode,
       animation.watches, rebuild.view, rebuild.globals]));
   }
 
   async function baseKey(animation, engine = engineVersion()) {
-    return sha256(JSON.stringify([engine, animation.code, animation.input, animation.sliceMode,
+    return sha256(JSON.stringify([engine, root.ASMTraceProvenance.generationFingerprint, animation.code, animation.input, animation.sliceMode,
       animation.watches]));
   }
 
@@ -528,13 +528,16 @@
     trace.studio ||= {};
     Object.assign(trace.studio, clone(animation.rebuild.globals || {}));
     trace.sourceCode = animation.code;
-    trace.provenance = root.ASMTraceProvenance.create(animation.code, animation.input);
+    // 呈現設定不能把舊 runtime 結果重新標成目前引擎。
+    trace.provenance = { ...root.ASMTraceProvenance.create(animation.code, animation.input),
+      generationFingerprint: rawTrace.provenance?.generationFingerprint };
     trace.viewSettingsApplied = true;
     if (!trace.frames?.length) throw new Error('重建的動畫沒有任何畫面。');
     return trace;
   }
 
   async function runTrace(animation) {
+    if (root.document) await root.ASMTraceProvenance.ready();
     const analysisResponse = await fetch('/trace/analyze', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...(root.ASMCompileSession?.headers?.() || {}) },
       body: JSON.stringify({ code: animation.code })
@@ -544,7 +547,7 @@
     const available = new Set((analysis.variables || []).map(variable => variable.id));
     const watches = (animation.watches || []).map(watch => typeof watch === 'string' ? watch : watch.id)
       .filter(id => available.has(id));
-    const compileResponse = await fetch('/compile', {
+    const request = {
       method: 'POST', headers: {
         'Content-Type': 'application/json',
         'X-Compile-Cache': 'shared',
@@ -553,7 +556,24 @@
       body: JSON.stringify({ code: animation.code, input: animation.input,
         trace: { enabled: true, sliceMode: animation.sliceMode, watches,
           skins: animation.rebuild.view.skins || {}, rules: animation.rebuild.view.rules || [] } })
-    });
+    };
+    // 瀏覽器重建使用既有全站工作合併，避免同一動畫被多人重複編譯。
+    // Node 預建工具逐份執行，維持直接請求以免依賴瀏覽器的身份 cookie。
+    let compileResponse;
+    if (root.document) {
+      const submitted = await fetch('/api/compile/jobs', request);
+      const job = await submitted.json();
+      if (!submitted.ok) throw new Error(job.error || '動畫更新排隊失敗');
+      const deadline = Date.now() + 420000;
+      for (;;) {
+        if (Date.now() > deadline) throw new Error('動畫更新等待逾時，請稍後重試');
+        await new Promise(resolve => setTimeout(resolve, 750));
+        const response = await fetch(job.statusUrl, { cache: 'no-store' });
+        const state = await response.json();
+        if (!response.ok || ['failed', 'cancelled'].includes(state.state)) throw new Error(state.error?.message || state.error || '動畫更新失敗');
+        if (state.state === 'completed') { compileResponse = await fetch(job.resultUrl); break; }
+      }
+    } else compileResponse = await fetch('/compile', request);
     const compiled = await compileResponse.json().catch(() => ({}));
     if (!compileResponse.ok || compiled.error || !compiled.traceDocument?.frames?.length) {
       throw new Error(compiled.error || compiled.traceWarning || 'RUN 未能產生可播放的追蹤畫面');
@@ -566,6 +586,7 @@
   // 可用快取便直接套用，否則呼叫編譯 API；每張投影片的結果透過 callback 即時交給載入頁。
   // -----------------------------------------------------------------------------
   async function rebuildAnimation(animation) {
+    if (root.document) await root.ASMTraceProvenance.ready();
     if (!animation?.rebuild?.view || !animation.code?.trim()) throw new Error('演算法動畫缺少重建設定或原始碼。');
     if (animation.traceDocument?.frames?.length
       && root.ASMTraceProvenance.status(animation.traceDocument, animation.code, animation.input || '').kind === 'current') {
@@ -578,6 +599,7 @@
     }
     const base = `base:${await baseKey(animation)}`;
     let rawTrace = await cacheGet(base);
+    if (rawTrace && root.ASMTraceProvenance.status(rawTrace, animation.code, animation.input).kind !== 'current') rawTrace = null;
     const cacheKind = rawTrace?.frames?.length ? 'base' : 'run';
     if (!rawTrace?.frames?.length) rawTrace = await runTrace(animation);
     const trace = applyPresentation(rawTrace, animation);

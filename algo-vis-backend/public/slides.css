@@ -367,6 +367,14 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal {
   background: #e35d6a;
 }
 
+.cloud-save-status[data-trace-state="outdated"] .cloud-status-dot,
+.cloud-save-status[data-trace-state="dirty"] .cloud-status-dot,
+.cloud-save-status[data-trace-state="updating"] .cloud-status-dot,
+.cloud-save-status[data-trace-state="error"] .cloud-status-dot {
+  background: #ff3b30;
+  animation: none;
+}
+
 /* --------------------------------------------------------------------------
  * 側欄面板與元件編輯器
  * 面板互斥顯示；內部表單尺寸需維持側欄可捲動，避免把舞台推出視窗。

@@ -202,6 +202,8 @@
     : shareToken ? `${STORAGE_KEY}:share:${shareToken}` : STORAGE_KEY;
   const draftStore = window.ASMSlideStorage.create(window.indexedDB, window.localStorage);
   const loadSampleTrace = window.ASMSampleTraceAssets.createLoader();
+  const traceRefreshStates = new Map();
+  let lastCloudStatus = { state: 'loading', text: '正在載入…' };
   const traceStore = window.ASMSlideTraceStore.create(window.ASMSlideStorage, draftStore, async key => {
     if (sampleId || (!deckUid && !shareToken)) {
       return loadSampleTrace(key);
@@ -215,11 +217,15 @@
     });
     return result.trace;
   }, async animation => {
-    setCloudStatus('loading', '動畫結果遺失，正在重新編譯執行…');
+    const sourceRevision = JSON.stringify(animation);
+    setCloudStatus('loading', '動畫需要更新，正在取得新版結果…');
     try {
       const rebuilt = await window.ASMDeck.rebuildMissingAnimation(animation);
+      if (window.ASMTraceProvenance.status(rebuilt.traceDocument, rebuilt.code, rebuilt.input).kind !== 'current') {
+        throw new Error('更新結果版本仍不相符，請重新整理後重試');
+      }
       const current = orderedDeckSlides().filter(entry => entry.slide.animation === animation);
-      if (!current.length) return rebuilt; // Never overwrite a newer edit/import.
+      if (!current.length || JSON.stringify(animation) !== sourceRevision) return rebuilt; // Never overwrite a newer edit/import.
       const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation: rebuilt }] }] },
         { upload: canSaveRemoteDeck() });
       // Keep the same object identity so waiting iframe messages remain valid.
@@ -230,7 +236,17 @@
       return rebuilt;
     } catch (error) {
       setCloudStatus('error', `動畫自動重建失敗：${error.message}`);
-      throw new Error(`Trace 遺失後自動重建失敗：${error.message}；請在編輯器修正後 RUN`);
+      throw new Error(`Trace 自動更新失敗：${error.message}；請按重試，或在編輯器 RUN`);
+    }
+  }, {
+    status: async (trace, animation) => {
+      await window.ASMTraceProvenance.ready();
+      return window.ASMTraceProvenance.status(trace, animation.code, animation.input);
+    },
+    onState: (animation, status) => {
+      if (status.kind === 'current') traceRefreshStates.delete(animation);
+      else traceRefreshStates.set(animation, status);
+      renderCloudStatus();
     }
   });
   let deck = normalizeDeck(clone(defaultDeck));
@@ -724,7 +740,19 @@
   }
 
   function setCloudStatus(state, text) {
+    lastCloudStatus = { state, text };
+    renderCloudStatus();
+  }
+
+  function renderCloudStatus() {
     if (!cloudSaveStatus) return;
+    const { state } = lastCloudStatus;
+    let { text } = lastCloudStatus;
+    const liveAnimations = new Set(orderedDeckSlides().map(entry => entry.slide.animation));
+    for (const animation of traceRefreshStates.keys()) if (!liveAnimations.has(animation)) traceRefreshStates.delete(animation);
+    const traceState = [...traceRefreshStates.values()][0];
+    cloudSaveStatus.dataset.traceState = traceState?.kind || '';
+    if (traceState) text = traceState.message || '動畫需要更新';
     cloudSaveStatus.dataset.state = state;
     const label = cloudSaveStatus.querySelector('.cloud-status-text');
     if (label) label.textContent = text;
@@ -10153,13 +10181,28 @@
       const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
       if (placeholder) {
         placeholder.hidden = false;
-        placeholder.querySelector('span').textContent = `動畫載入失敗：${error.message}；切回本頁可重試`;
+        placeholder.querySelector('span').textContent = `動畫載入失敗：${error.message}`;
+        let retry = placeholder.querySelector('.trace-refresh-retry');
+        if (!retry) {
+          retry = document.createElement('button'); retry.className = 'trace-refresh-retry'; retry.textContent = '重試更新動畫';
+          retry.addEventListener('click', async () => {
+            retry.disabled = true;
+            traceStore.retry(slide.animation);
+            try { await sendAlgorithmAnimationToFrame(frame, slide); }
+            finally { retry.disabled = false; }
+          });
+          placeholder.appendChild(retry);
+        }
       }
       frame.dataset.traceLoadFailed = 'true';
       return;
     }
     if (!frame.isConnected || frame.contentWindow !== targetWindow
       || (slide.animation !== animation && !preparedAnimation)) return;
+    if (!preparedAnimation && (materialized.code !== slide.animation.code || materialized.input !== slide.animation.input)) return;
+    delete frame.dataset.traceLoadFailed;
+    const placeholder = frame.closest('section.asm-slide')?.querySelector('.algorithm-slide-placeholder');
+    if (placeholder) placeholder.hidden = true;
     frame.contentWindow.postMessage({
       type: 'asm-load-animation',
       editorSessionKey: slide.id, cameraSurface: algorithmCameraSurface(frame, slide.id),
@@ -10201,7 +10244,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-71';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-72';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10241,7 +10284,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-71';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-72';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10340,7 +10383,7 @@
     if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
       sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
     } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-71' + (isLocalCopy() ? '&localOnly=1' : '');
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-72' + (isLocalCopy() ? '&localOnly=1' : '');
     }
   }
 

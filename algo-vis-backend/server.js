@@ -430,6 +430,13 @@ function computeCompilerFingerprint() {
 }
 
 const COMPILER_FINGERPRINT = computeCompilerFingerprint();
+const TRACE_GENERATION_FINGERPRINT = require('./trace-generation').generationFingerprint();
+TraceProvenance.configure({ generationFingerprint: TRACE_GENERATION_FINGERPRINT });
+app.get('/api/trace/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ engineVersion: TraceProvenance.ENGINE_VERSION, formatVersion: TraceProvenance.FORMAT_VERSION,
+    generationFingerprint: TRACE_GENERATION_FINGERPRINT });
+});
 
 const artifactCache = new ArtifactCache({
   rootDir: process.env.ARTIFACT_CACHE_DIR || path.join(__dirname, 'artifact-cache-data'),
@@ -613,6 +620,7 @@ app.post('/api/compile/jobs', attachCompileOwner, ipAbuseLimiter, ownerRateLimit
   const asyncRequestTtlMs = positiveIntegerEnv('ASYNC_COMPILE_REQUEST_TTL_MINUTES', 120) * 60 * 1000;
   const requestArtifactId = sha256Canonical({
     namespace: 'async-compile-request-v1',
+    generation: TRACE_GENERATION_FINGERPRINT,
     requestBody,
     engine: `${TraceProvenance.ENGINE_VERSION}/${TraceProvenance.FORMAT_VERSION}`,
     compiler: COMPILER_FINGERPRINT,
@@ -2915,11 +2923,12 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     executableKey,
     input: typeof input === 'string' ? input : '',
     traceConfig: { ...trace, enabled: traceEnabled, sliceMode: traceSliceMode },
-    engine: engineFingerprint,
+    engine: `${engineFingerprint}:${TRACE_GENERATION_FINGERPRINT}`,
   });
   // Explicit true affects this request only: it still uses the normal queue,
   // limits and sandbox, but neither reads nor writes shared compilation caches.
   const forceRecompile = req.body?.forceRecompile === true;
+  const refreshTrace = req.body?.refreshTrace === true;
   const sharedCache = !forceRecompile
     && (req.headers['x-compile-cache'] === 'shared' || req.body?.cachePolicy === 'shared');
   const cacheAvailable = Boolean(await artifactCacheReady);
@@ -2929,8 +2938,9 @@ app.post('/compile', (req, res) => runWithCompileContext(async () => {
     logDebug('FORCE_RECOMPILE: 略過執行檔與 Trace 快取，重新編譯並執行');
   }
   if (sharedCache) res.setHeader('X-Compile-Trace-Id', traceCacheKey);
+  if (sharedCache && refreshTrace) res.setHeader('X-Compile-Trace-Cache', 'REFRESH');
 
-  if (sharedCache && cacheAvailable) {
+  if (sharedCache && cacheAvailable && !refreshTrace) {
     let cachedLease = null;
     try {
       cachedLease = await artifactCache.acquire('trace', traceCacheKey);

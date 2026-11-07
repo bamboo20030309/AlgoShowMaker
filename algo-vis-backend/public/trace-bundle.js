@@ -52,7 +52,9 @@
       && compatibleEngineVersion(`${saved.engineVersion}/${saved.formatVersion}`)
       && saved.sourceFingerprint === expected.sourceFingerprint
       && saved.inputFingerprint === expected.inputFingerprint;
-    if (status?.kind !== 'current' && !reusableOlder) throw new Error(`預建動畫 ${expectedKind} 與程式碼版本不一致。`);
+    const expectedGeneration = root.ASMTraceProvenance?.generationFingerprint;
+    const legacyRead = !expectedGeneration || manifest.generationFingerprint !== expectedGeneration;
+    if (status?.kind !== 'current' && !(reusableOlder && legacyRead)) throw new Error(`預建動畫 ${expectedKind} 與程式碼版本不一致。`);
     if (descriptor && !descriptor.contentHash) throw new Error('預建動畫缺少內容雜湊。');
     return payload;
   }

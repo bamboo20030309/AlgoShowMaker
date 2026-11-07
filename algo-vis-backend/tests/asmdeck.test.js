@@ -225,10 +225,16 @@ test('every bundled guest deck remains decodable after engine upgrades', async (
     assert.ok(decoded.deck.groups?.length > 0, entry.id);
     const animations = decoded.deck.groups.flatMap(group => group.slides || [])
       .filter(slide => slide.kind === 'algorithm-animation');
-    assert.equal(decoded.manifest.prebuiltTraceHashes?.length, animations.length,
-      `${entry.id} must publish one prebuilt trace per animation`);
-    assert.ok(animations.every(slide => slide.animation.traceDocument?.frames?.length),
-      `${entry.id} prebuilt traces must match the current engine and provenance`);
+    assert.equal(decoded.manifest.prebuiltTraceHashes, undefined, `${entry.id} must not embed trace payloads`);
+    const index = JSON.parse(fs.readFileSync(path.join(publicRoot, 'deck-traces/index.json'), 'utf8'));
+    for (const slide of animations) {
+      assert.match(slide.animation.traceRef, /^[a-f0-9]{64}$/);
+      assert.equal(slide.animation.traceDocument, undefined);
+      const file = require('../public/sample-trace-assets').filenameFor(index, slide.animation.traceRef);
+      const trace = JSON.parse(fs.readFileSync(path.join(publicRoot, 'deck-traces', file), 'utf8'));
+      assert.ok(trace.frames?.length, `${entry.id} external trace must exist`);
+      assert.equal(ASMTraceProvenance.status(trace, slide.animation.code, slide.animation.input).kind, 'current');
+    }
   }
 });
 

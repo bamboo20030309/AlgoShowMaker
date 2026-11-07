@@ -7,6 +7,16 @@ const bundle = require('../public/trace-bundle');
 const { createHash } = require('node:crypto');
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/default-animation/manifest.json')));
 
+test('a current manifest cannot relabel an old generation payload as fresh', async () => {
+  const vm = require('node:vm');
+  const context = { Blob, Response, DecompressionStream, TextDecoder, Uint8Array, ASMDeck: global.ASMDeck, crypto: require('node:crypto').webcrypto };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/trace-provenance.js'), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/trace-bundle.js'), 'utf8'), context);
+  context.ASMTraceProvenance.configure({ generationFingerprint: 'f'.repeat(64) });
+  await assert.rejects(() => context.ASMTraceBundle.decode(new Blob([fs.readFileSync(path.join(__dirname, '../public', manifest.full.url))]),
+    manifest.full, { ...manifest, generationFingerprint: 'f'.repeat(64) }, 'full'), /版本不一致/);
+});
+
 test('stored older default preview/full traces remain readable and round-trip through IndexedDB', async () => {
   global.indexedDB = require('fake-indexeddb').indexedDB;
   bundle.validateManifest(manifest);

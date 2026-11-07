@@ -22,8 +22,8 @@ test('standalone linear-sieve assets contain one preview frame and the complete 
   const decode = async (name, descriptor, kind) => traceBundle.decode(
     new Blob([fs.readFileSync(path.join(directory, name))]), descriptor, manifest, kind
   );
-  const preview = await decode('linear-sieve-preview.asmtrace', manifest.preview, 'preview');
-  const full = await decode('linear-sieve-full.asmtrace', manifest.full, 'full');
+  const preview = await decode(path.basename(manifest.preview.url), manifest.preview, 'preview');
+  const full = await decode(path.basename(manifest.full.url), manifest.full, 'full');
 
   assert.equal(manifest.totalFrames, 116);
   assert.equal(preview.animation.traceDocument.frames.length, 1);
@@ -45,8 +45,16 @@ test('standalone linear-sieve assets contain one preview frame and the complete 
     'standalone animation should remain smaller than the complete teaching deck and its external traces');
 });
 
-test('guest deck prebuild regenerates the standalone default animation', () => {
-  const script = fs.readFileSync(path.join(root, 'scripts/build/prebuild-guest-decks.js'), 'utf8');
-  assert.match(script, /entry\.id === 'linear-sieve'/);
-  assert.match(script, /buildDefaultAlgorithmAssets\(rebuilt/);
+test('standalone default builder publishes immutable preview/full files before its manifest', async t => {
+  const target = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'asm-default-assets-'));
+  t.after(() => fs.rmSync(target, { recursive: true, force: true }));
+  const original = JSON.parse(fs.readFileSync(path.join(publicRoot, 'default-animation/manifest.json')));
+  const full = await traceBundle.decode(new Blob([fs.readFileSync(path.join(publicRoot, original.full.url))]), original.full, original, 'full');
+  const manifest = await require('../scripts/build/default-algorithm-assets').buildDefaultAlgorithmAssets({ groups: [{ slides: [{ id: original.sourceSlideId, animation: full.animation }] }] },
+    { publicRoot: target, engineVersion: original.engineVersion, immutable: true });
+  for (const descriptor of [manifest.preview, manifest.full]) {
+    assert.match(descriptor.url, /-[a-f0-9]{64}\.asmtrace$/);
+    assert.equal(fs.statSync(path.join(target, descriptor.url)).size, descriptor.bytes);
+  }
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(target, 'default-animation/manifest.json'))), manifest);
 });

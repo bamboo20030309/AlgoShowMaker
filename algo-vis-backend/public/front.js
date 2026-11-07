@@ -577,7 +577,8 @@ const DEFAULT_ANIMATION_CONTROL_IDS = [
 
 let defaultAlgorithmLoadCancelled = false;
 function canApplyDefaultAlgorithm() {
-  return !window.__asmEmbeddedAnimationPayload
+  return !new URLSearchParams(window.location.search).has('asmEmbed')
+    && !window.__asmEmbeddedAnimationPayload
     && !defaultAlgorithmLoadCancelled
     && !algorithmDraftRestored
     && !algorithmEditorChangedSinceStartup
@@ -648,7 +649,18 @@ async function loadDefaultAlgorithm() {
     const manifestResponse = await fetch(DEFAULT_ALGORITHM_MANIFEST, { signal, cache: 'no-store' });
     if (!manifestResponse.ok) throw new Error(`無法讀取預設線篩動畫清單 (${manifestResponse.status})`);
     const manifest = window.ASMTraceBundle.validateManifest(await manifestResponse.json());
+    await window.ASMTraceProvenance.ready();
     if (!canApplyDefaultAlgorithm()) return;
+
+    if (manifest.generationFingerprint !== window.ASMTraceProvenance.generationFingerprint) {
+      setDefaultAnimationState('loading', manifest.totalFrames);
+      // 舊封裝僅供取回原始碼與輸入，不先顯示過期的第一幀。
+      const source = await fetchDefaultAnimationBundle(manifest.preview, manifest, 'preview', signal);
+      const rebuilt = await window.ASMDeck.rebuildMissingAnimation(source.animation);
+      if (signal.aborted || !canApplyDefaultAlgorithm()) return;
+      applyDefaultAnimation({ ...source, animation: rebuilt, totalFrames: rebuilt.traceDocument.frames.length }, 'ready', 'rebuilt');
+      return;
+    }
 
     const cached = await window.ASMTraceBundle.cacheGet(manifest);
     if (signal.aborted || !canApplyDefaultAlgorithm()) return;

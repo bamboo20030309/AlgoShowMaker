@@ -21,6 +21,7 @@
 - 只有使用者要求階段發布／合併 main 時，才將已驗收的整合版本合併 main，重啟 3000 與範圍內本機 Docker。
 - 依使用者 2026-09-18 授權，每次整合驗證通過、紀錄提交與服務核實完成後，push intergration 到 origin/intergration；不得 force push。推送不代表授權合併 main。
 - Release 與公開部署另依使用者授權執行，不因整合推送自動發布。
+- 依 2026-11-08 確認的快取流程，每個階段準備發布時，主代理須順序重跑全部公開範例 Trace（`prebuild:guest-decks -- --rerun`），再執行 `--verify-only`；保留相容執行檔快取，任一失敗不得切換半套清單。此為發布準備規則，不授權自動發布 Release。工具與指紋規則見 [Trace 快取更新](../guides/trace-cache-updates.md)。
 - 每輪新任務以主代理指定的完整 checkpoint commit 為基準，各自獨立分支與 worktree。
 
 ## 本機設定

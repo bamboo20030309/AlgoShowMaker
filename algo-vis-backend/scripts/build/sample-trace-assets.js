@@ -4,11 +4,11 @@ const { validId, validFile } = require('../../public/sample-trace-assets');
 
 // Register one rebuilt deck without changing the ID contract or losing earlier
 // results still referenced by user decks. Payloads remain separate from asmdeck.
-function registerDeckTraces(publicRoot, entry, deck, seeds) {
+function registerDeckTraces(publicRoot, entry, deck, seeds, options = {}) {
   const directory = path.resolve(publicRoot, 'deck-traces');
   const indexFile = path.join(directory, 'index.json');
   const index = fs.existsSync(indexFile) ? JSON.parse(fs.readFileSync(indexFile, 'utf8')) : { schema: 1, traces: {} };
-  const stem = path.basename(entry.archive.split('?')[0], '.asmdeck');
+  const stem = options.stem || path.basename(entry.archive.split('?')[0], '.asmdeck');
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(stem)) throw new Error('Invalid public deck filename');
   const resolve = file => {
     if (!validFile(file)) throw new Error('Invalid sample trace filename');
@@ -26,7 +26,7 @@ function registerDeckTraces(publicRoot, entry, deck, seeds) {
   for (const slide of deck.groups.flatMap(group => group.slides || []).filter(slide => slide.animation?.traceRef)) {
     const id = slide.animation.traceRef;
     if (!validId(id)) throw new Error('Invalid trace ID');
-    const file = `${stem}-${String(++count).padStart(2, '0')}.json`;
+    const file = `${stem}-${String(++count).padStart(2, '0')}${options.immutable ? '-' + id : ''}.json`;
     for (const [oldId, old] of Object.entries(index.traces)) {
       if (oldId === id || old.file !== file) continue;
       const previous = `legacy/${stem}-previous-${oldId.slice(0, 12)}.json`;

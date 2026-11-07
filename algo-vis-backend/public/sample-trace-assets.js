@@ -33,7 +33,7 @@
     return async function load(id, retry = false) {
       if (!validId(id)) throw new Error('動畫 Trace ID 格式無效');
       const file = filenameFor(await index(), id);
-      const response = await fetcher('/deck-traces/' + file);
+      const response = await fetcher('/deck-traces/' + file, { cache: /-[a-f0-9]{64}\.json$/.test(file) ? 'force-cache' : 'no-cache' });
       if (response.status === 404 && !retry) {
         pendingIndex = null;
         return load(id, true);

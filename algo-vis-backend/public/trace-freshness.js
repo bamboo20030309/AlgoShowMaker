@@ -24,7 +24,9 @@
     const trace = window.ASMTraceEditor?.snapshot?.().traceDocument;
     const code = typeof aceEditor !== 'undefined' ? aceEditor.getValue() : '';
     const input = document.getElementById('inputArea')?.value || '';
-    const status = window.ASMTraceProvenance.status(trace, code, input);
+    const status = window.ASMTraceProvenance.generationFingerprint
+      ? window.ASMTraceProvenance.status(trace, code, input)
+      : { kind: 'outdated', message: '尚未確認追蹤引擎版本，正在檢查…' };
     const kind = ['current', 'dirty', 'outdated'].includes(status.kind)
       ? status.kind
       : 'empty';
@@ -49,6 +51,10 @@
     }
     document.getElementById('inputArea')?.addEventListener('input', schedule);
     refresh();
+    window.ASMTraceProvenance.ready().then(refresh).catch(error => {
+      const indicator = document.getElementById('traceFreshnessNotice');
+      if (indicator) { indicator.dataset.status = 'outdated'; indicator.title = error.message; indicator.setAttribute('aria-label', error.message); }
+    });
   });
   window.addEventListener('asm:trace-loaded', schedule);
   window.addEventListener('asm:compiled-animation', schedule);

@@ -74,26 +74,29 @@ async function buildDefaultAlgorithmAssets(deck, options = {}) {
 
   const directory = path.join(publicRoot, 'default-animation');
   await fs.mkdir(directory, { recursive: true });
-  await atomicWrite(path.join(directory, 'linear-sieve-preview.asmtrace'), preview.bytes);
-  await atomicWrite(path.join(directory, 'linear-sieve-full.asmtrace'), full.bytes);
+  const previewFile = options.immutable ? `linear-sieve-preview-${preview.contentHash}.asmtrace` : 'linear-sieve-preview.asmtrace';
+  const fullFile = options.immutable ? `linear-sieve-full-${full.contentHash}.asmtrace` : 'linear-sieve-full.asmtrace';
+  await atomicWrite(path.join(directory, previewFile), preview.bytes);
+  await atomicWrite(path.join(directory, fullFile), full.bytes);
   const provenance = fullTrace.provenance || {};
   const manifest = {
     format: FORMAT,
     packageVersion: PACKAGE_VERSION,
     engineVersion,
     id: 'linear-sieve',
+    ...(fullTrace.provenance?.generationFingerprint ? { generationFingerprint: fullTrace.provenance.generationFingerprint } : {}),
     sourceSlideId: slideId,
     totalFrames,
     sourceFingerprint: provenance.sourceFingerprint,
     inputFingerprint: provenance.inputFingerprint,
     preview: {
-      url: '/default-animation/linear-sieve-preview.asmtrace',
+      url: '/default-animation/' + previewFile,
       contentHash: preview.contentHash,
       bytes: preview.bytes.length,
       jsonBytes: preview.jsonBytes
     },
     full: {
-      url: '/default-animation/linear-sieve-full.asmtrace',
+      url: '/default-animation/' + fullFile,
       contentHash: full.contentHash,
       bytes: full.bytes.length,
       jsonBytes: full.jsonBytes

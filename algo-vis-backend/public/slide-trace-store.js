@@ -5,7 +5,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.ASMSlideTraceStore = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
-  function create(storage, client, fetchRemote = null, recoverMissing = null) {
+  function create(storage, client, fetchRemote = null, recoverMissing = null, options = {}) {
     const retained = new Set();
     const loads = new Map();
     const pendingUploads = new Set();
@@ -56,25 +56,43 @@
       return loads.get(key);
     }
     async function materializeAnimation(animation) {
-      if (!animation?.traceRef) return animation;
+      if (!animation?.traceRef && !animation?.traceDocument) return animation;
       let trace;
-      try { trace = await load(animation.traceRef); }
+      try {
+        trace = animation.traceDocument || await load(animation.traceRef);
+        const status = await options.status?.(trace, animation);
+        if (status && status.kind !== 'current') {
+          options.onState?.(animation, status);
+          throw Object.assign(new Error(status.message || '動畫版本已過期'), { code: 'TRACE_OUTDATED' });
+        }
+      }
       catch (error) {
-        if (error.code !== 'TRACE_NOT_FOUND' || !recoverMissing) throw error;
+        if (!['TRACE_NOT_FOUND', 'TRACE_OUTDATED'].includes(error.code) || !recoverMissing) {
+          options.onState?.(animation, { kind: 'error', message: error.message });
+          throw error;
+        }
         const revision = storage.canonical(animation);
         if (!recoveries.has(revision)) {
-          const recovery = Promise.resolve().then(() => recoverMissing(animation)).then(async recovered => {
+          options.onState?.(animation, { kind: 'updating', message: '動畫需要更新，正在取得新版結果…' });
+          const recovery = Promise.resolve().then(() => recoverMissing(animation, { reason: error.code })).then(async recovered => {
+            const status = await options.status?.(recovered.traceDocument, recovered);
+            if (status && status.kind !== 'current') throw new Error('重新執行後的動畫仍不符合目前引擎，請重新整理後重試');
             // Retain only the replacement ID/settings, not another full Trace
             // for every slide; normal lazy loading still holds at most two.
             const detached = await detachDeck({ groups: [{ slides: [{ animation: recovered }] }] });
             return detached.groups[0].slides[0].animation;
           });
           recoveries.set(revision, recovery);
-          // Observe failures even if the requesting iframe has been removed.
-          recovery.catch(() => {});
+          // 導覽訊息不重複提交失敗工作；明確重試才清除此紀錄。
+          recovery.catch(failure => {
+            options.onState?.(animation, { kind: 'error', message: failure.message });
+          });
         }
-        return materializeAnimation(await recoveries.get(revision));
+        const result = await materializeAnimation(await recoveries.get(revision));
+        options.onState?.(animation, { kind: 'current', message: '' });
+        return result;
       }
+      options.onState?.(animation, { kind: 'current', message: '' });
       const { traceRef, traceView, ...settings } = animation;
       return { ...settings, traceDocument: { ...trace, ...traceView } };
     }
@@ -91,6 +109,7 @@
       return traces;
     }
     return { detachDeck, load, materializeAnimation, materializeDeck, uploadTraces,
+      retry: animation => recoveries.delete(storage.canonical(animation)),
       retainedKeys: () => [...retained],
       uploaded: keys => keys.forEach(key => pendingUploads.delete(key)) };
   }
