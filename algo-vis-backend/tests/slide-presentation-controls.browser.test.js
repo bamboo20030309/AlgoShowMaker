@@ -64,6 +64,29 @@ test('wheel visits vertical slides before horizontal groups; laser works in slid
   const frame=page.frameLocator('#embedded-fixture');
   await frame.locator('#stage').waitFor();
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('#embedded-fixture').contentDocument.body).cursor.includes('data:image/svg+xml'));
+  // 與正式播放器相同的畫布容器：普通滾輪交給鏡頭，不翻頁。
+  await frame.locator('#stage').evaluate(stage=>{
+    const canvas=document.createElement('div');canvas.id='canvasWrapper';
+    canvas.style.cssText='position:absolute;inset:0;background:white;cursor:grab';
+    stage.append(canvas);window.cameraZoom=1;
+    canvas.addEventListener('wheel',event=>{event.preventDefault();window.cameraZoom*=event.deltaY>0?.9:1.1;},{passive:false});
+  });
+  for(const editing of [false,true]) {
+    if(editing)await page.locator('#modeToggleBtn').click();
+    await page.waitForFunction(editing=>document.body.classList.contains('asm-edit-mode')===editing,editing);
+    await frame.locator('#canvasWrapper').hover();await page.mouse.wheel(0,100);
+    await page.waitForFunction(()=>document.querySelector('#embedded-fixture').contentWindow.cameraZoom<1);
+    await expectAt(1,0);
+    if(editing){
+      await page.waitForFunction(()=>!document.querySelector('#embedded-fixture').contentDocument.documentElement.classList.contains('asm-slide-laser-frame'));
+      assert.equal(await frame.locator('#canvasWrapper').evaluate(e=>getComputedStyle(e).cursor),'grab','editor preserves native canvas cursor');
+      assert.doesNotMatch(await page.locator('section.asm-slide.present canvas').first().evaluate(e=>getComputedStyle(e).cursor),/data:image\/svg\+xml/);
+    }
+    await frame.locator('#canvasWrapper').evaluate(()=>{window.cameraZoom=1;});
+  }
+  await page.locator('#modeToggleBtn').click();
+  await page.waitForFunction(()=>document.body.classList.contains('asm-slide-laser-mode'));
+  await frame.locator('#canvasWrapper').evaluate(e=>{e.remove();window.wheels=0;});
   await frame.locator('#stage').hover();await page.mouse.wheel(0,100);await expectAt(1,1);
   assert.equal(await page.locator('#embedded-fixture').evaluate(e=>e.contentWindow.wheels),0,'page wheel does not also reach an embedded camera');
   await page.waitForTimeout(500);await page.evaluate(()=>Reveal.slide(1,0));await page.waitForTimeout(550);

@@ -6,7 +6,7 @@
   function install({ reveal, groupSizes, overviewOpen = () => false }) {
     if (installed.has(reveal)) return installed.get(reveal);
     const frames = new Set(), documents = new WeakSet();
-    const frameStyles = new URL('slide-presentation-controls.css?v=1', document.baseURI).href;
+    const frameStyles = new URL('slide-presentation-controls.css?v=2', document.baseURI).href;
     let accumulated = 0, previousDirection = 0, lastWheel = 0, lockedUntil = 0;
     const modalOpen = () => !!document.querySelector('dialog[open], #algorithmEditorModal:not([hidden]), #codeEditorModal:not([hidden])');
     const available = () => reveal.isReady() && !overviewOpen() && !reveal.isOverview() && !reveal.isPaused() && !modalOpen();
@@ -41,9 +41,14 @@
       if (!available() || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
         || !event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       if (frame ? !activeFrame(frame) : !event.target.closest?.('body > .reveal')) return;
+      // 動畫畫布擁有自己的鏡頭縮放；不攔截、不累積成稍後的切頁。
+      // iframe 內的播放列等其他區域仍沿用投影片切頁操作。
+      if (frame && event.target.closest?.('#canvasWrapper, #arraySvg')) {
+        accumulated = 0;
+        return;
+      }
       if (scrollable(event.target)) return;
-      // Capture before canvas/iframe wheel handlers so a page turn cannot also
-      // move an algorithm camera. Ctrl/Command wheel remains owned by zoom.
+      // 只攔截由投影片負責的區域，避免同一次滾輪觸發兩種操作。
       event.preventDefault();
       event.stopImmediatePropagation();
       const now = performance.now(), direction = Math.sign(event.deltaY);

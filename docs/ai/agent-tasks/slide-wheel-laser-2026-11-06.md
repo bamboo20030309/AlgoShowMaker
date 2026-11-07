@@ -11,7 +11,7 @@
 
 展示的整個 Reveal 檢視區使用固定 32px 原生 SVG 游標，中心為紅色光點，配白色輪廓、暗色外緣與淡紅光暈，深淺底皆可辨識。切回編輯或進入總覽時還原原游標，保留編輯器自身的文字、拖曳及縮放游標。
 
-同源 algorithm-slide-frame 在每次載入時安裝相同樣式與滾輪處理，普通滾輪在動畫鏡頭前攔截，避免切頁同時縮放鏡頭；Ctrl／Command 滾輪繼續交給 iframe。只處理目前頁面的 runtime，不修改動畫編輯對話框或獨立 algorithm.html。監聽 iframe load 與既有 Reveal／body 模式狀態，不監看每次 SVG 繪製。
+同源 algorithm-slide-frame 在每次載入時安裝相同樣式與滾輪處理。依 2026-11-07 使用者修正，動畫畫布（canvasWrapper／arraySvg）內的普通滾輪優先交給原有鏡頭縮放，不累積切頁；播放列等畫布外區域仍可切頁。Ctrl／Command 滾輪繼續交給 iframe。只處理目前頁面的 runtime，不修改動畫編輯對話框或獨立 algorithm.html。監聽 iframe load 與既有 Reveal／body 模式狀態，不監看每次 SVG 繪製。
 
 不新增 deck／widget 設定欄位，不保存游標或滾輪暫態；既有物件位置、縮放與自訂樣式不變。這次沒有實作塗鴉或展示選取工具。
 
@@ -25,3 +25,10 @@
 ## 交付
 
 新增 slide-presentation-controls.js／css，沿用既有頁面、編輯模式及 iframe。slides-315 更新入口；整合完成後推送 intergration 並重啟核對 3100，不合併 main、不發布 release。
+
+## 2026-11-07 操作優先級修正
+
+- 畫布縮放優先於投影片切頁；保留畫布外的原切頁規則。
+- 雷射 CSS 明確排除編輯模式；切回編輯時主頁及 iframe 還原原本游標。
+- controls JS／CSS 更新為 v2。局部瀏覽器測試通過，涵蓋展示與編輯模式的畫布滾輪、原生 grab 游標還原及畫布外切頁。測試使用同源可控鏡頭 fixture，沒有重跑演算法 Trace。
+- 首次瀏覽器受執行環境限制未能啟動；改以允許啟動獨立瀏覽器的方式執行後通過。語法與差異檢查通過。
