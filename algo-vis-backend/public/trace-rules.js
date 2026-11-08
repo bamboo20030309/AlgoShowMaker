@@ -792,6 +792,7 @@
             .map((_, columnIndex) => `${rowIndex},${columnIndex}`));
         }
         const dimensionIndices = (dimension, count) => {
+          if (window.ASMTraceSelection && dimension) return window.ASMTraceSelection.indices(dimension,count,expression => resolveExpression(document,frame,expression,style.drawLocals));
           if (dimension?.type === 'index') {
             const value = resolveExpression(document, frame, dimension.indexExpression, style.drawLocals);
             const index = value == null ? NaN : Number(value);
@@ -851,7 +852,7 @@
         }
         if (selector?.type === 'range') {
           const startValue = resolveExpression(document, frame, selector.startExpression, style.drawLocals);
-          const endValue = resolveExpression(document, frame, selector.endExpression, style.drawLocals);
+          const endValue = selector.endExpression ? resolveExpression(document, frame, selector.endExpression, style.drawLocals) : allIndices.length-1;
           if (startValue == null || endValue == null) return [];
           const start = Number(startValue);
           const end = Number(endValue);

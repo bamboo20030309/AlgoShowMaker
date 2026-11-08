@@ -422,7 +422,7 @@ function computeCompilerFingerprint() {
     hash.update(result.stderr || '');
     hash.update(String(result.status));
   }
-  for (const relativePath of ['trace-instrumenter.js', 'lib/ASMTrace.hpp', 'lib/AV.hpp']) {
+  for (const relativePath of ['trace-instrumenter.js', 'public/trace-selection.js', 'lib/ASMTrace.hpp', 'lib/AV.hpp']) {
     hash.update(relativePath);
     hash.update(fs.readFileSync(path.join(__dirname, relativePath)));
   }
@@ -1918,7 +1918,7 @@ function materializeKeepSnapshots(frames, layouts = []) {
       const identity = String(entry?.identity || '');
       const currentRenderState = variableRenderState(frame, variableId, identity);
       const previousRenderState = variableRenderState(frames[frameIndex - 1], variableId, identity);
-      const renderState = (event.layoutId && event.recursionActivationId
+      const renderState = (frame.source?.silentKeepView === true || (event.layoutId && event.recursionActivationId)
         ? currentRenderState || previousRenderState
         : previousRenderState || currentRenderState)
         || { frameId: '', sourceVariableId: variableId, renderer: '', rendererOptions: {}, binding: null, styles: [], arrows: [] };
@@ -2408,6 +2408,11 @@ function resolveFrameRendererOptions(frame, directive) {
   if (Array.isArray(source.symbols)) options.symbols = [...source.symbols];
   if (directive?.dataTransform?.type === 'char') {
     options.dataTransform = { type: 'char' };
+  }
+  if (directive?.dataTransform?.type === 'slice') {
+    options.selection = directive.dataTransform.dimensions.map(dimension => require('./public/trace-selection').freeze(
+      dimension, expression => resolveTraceIndexExpression(frame, expression)));
+    if (directive.dataTransform.characterView) options.dataTransform = { type: 'char' };
   }
   if (directive?.dataTransform?.type === 'element') {
     options.dataTransform = {

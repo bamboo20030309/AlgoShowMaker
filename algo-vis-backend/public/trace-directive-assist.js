@@ -31,6 +31,9 @@
     { id: 'enddefault', label: '@enddefault', effect: '結束全域呈現預設區塊', code: '// @enddefault', examples: ['// @default\n// @camera auto\n// @enddefault'] },
     { id: 'frame', label: '@frame', effect: '擷取此刻的動畫幀並選擇要顯示的變數', code: '// @frame arr', examples: [
       '// @frame arr',
+      '// @frame arr[1:n-1]',
+      '// @frame arr[:]',
+      '// @frame dp[1:n][1:m]',
       "// @frame arr,key\n// @pointer i at arr\n// @pointer j at arr\n// @style arr[i] highlight",
       "// @frame char(s)\n// @pointer i at s\n// @pointer j at s\n// @style s[i] highlight",
       '// @frame bits(mask, 8) with labels(none), symbols("", "♕")',
@@ -49,6 +52,8 @@
     { id: 'endpreset', label: '@endpreset', effect: '結束目前的可重用視圖預設區塊', code: '// @endpreset', examples: ['// @preset sieve_view\n// @object isprime\n// @endpreset'] },
     { id: 'object', label: '@object', effect: '在同一個 @frame 加入另一個獨立設定的物件', code: '// @object prime', examples: [
       '// @frame\n// @object prime',
+      '// @frame\n// @object arr[l:r]',
+      '// @frame\n// @object char(s)[1:]',
       '// @frame\n// @object char(s) with labels(value,index)',
       '// @frame when i%v==0\n// @object isprime with columns(10), labels(index)\n// @object prime with labels(value)',
       '// @frame\n// @object isprime with range(1,n), columns(10), labels(index)\n// @object prime with columns(10), labels(value)\n// @place prime.top-left at isprime.bottom-left offset(0,60)',

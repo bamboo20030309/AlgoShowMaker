@@ -307,6 +307,10 @@
       const target = endpoint => {
         const indices = endpoint.indexExpressions?.length
           ? endpoint.indexExpressions : endpoint.indexExpression ? [endpoint.indexExpression] : [];
+        if (typeof globalThis.ASMTraceSelection !== 'undefined') {
+          const values = indices.map(expression => globalThis.ASMTraceSelection.stringify(globalThis.ASMTraceSelection.freeze(globalThis.ASMTraceSelection.dimension(expression), value => resolve(value,locals))));
+          return { ...endpoint,indexExpressions:values,indexExpression:values.join(',') };
+        }
         const resolved = indices.map(expression => resolve(expression, locals));
         if (resolved.some(index => index == null || !Number.isSafeInteger(index))) fail(`索引無法解析（${batch.variable}=${value}）`);
         return { ...endpoint, indexExpressions: resolved.map(String), indexExpression: resolved.join(',') };

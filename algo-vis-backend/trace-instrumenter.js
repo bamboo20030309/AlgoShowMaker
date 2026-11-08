@@ -16,6 +16,7 @@
  */
 
 const { parser } = require('@lezer/cpp');
+const TraceSelection = require('./public/trace-selection');
 const { normalize: normalizeSource } = require('./public/source-normalization');
 
 const DECLARATOR_NODES = new Set([
@@ -1248,7 +1249,7 @@ function topLevelModifierPositions(value, acceptedModifiers = DIRECTIVE_MODIFIER
 
 function bindingDependencyExpressions(binding) {
   const level = String(binding?.targetName || '').match(/\.level\(([^)]+)\)$/i);
-  return [...(binding?.indexExpressions || []), ...(level ? [level[1]] : [])];
+  return [...(binding?.indexExpressions || []).flatMap(value => TraceSelection.expressions(TraceSelection.dimension(value))), ...(level ? [level[1]] : [])];
 }
 
 function parseAtBinding(value, line, directiveName, offsetX = 0, offsetY = 0) {
@@ -1296,10 +1297,8 @@ function parseAtBinding(value, line, directiveName, offsetX = 0, offsetY = 0) {
         throw new Error(`第 ${line} 行的 ${directiveName} 定位目標無效：${targetExpression}`);
       }
       const expression = targetExpression.slice(start, cursor - 1).trim();
-      const parsedIndex = parseFrameExpression(expression);
-      if (!parsedIndex.valid) {
-        throw new Error(`第 ${line} 行的 ${directiveName} 索引運算式無效：${expression}`);
-      }
+      try { TraceSelection.dimension(expression, value => parseFrameExpression(value).valid); }
+      catch { throw new Error(`第 ${line} 行的 ${directiveName} 索引／區間運算式無效：${expression}`); }
       indexExpressions.push(expression);
     }
   }
@@ -1883,21 +1882,20 @@ function parseFrameSpec(raw) {
     if (expressionParts.some(expression => expression == null)) {
       return { names: [targetName], bindings: [], transforms, invalidExpression: part };
     }
-    const parsedExpressions = expressionParts.map((expression, indexDimension) => ({
-      expression,
-      indexDimension,
-      parsed: parseFrameExpression(expression)
-    }));
-    const invalidExpression = parsedExpressions.find(item => !item.parsed.valid)?.expression || '';
-    if (invalidExpression) {
-      return { names: [targetName], bindings: [], transforms, invalidExpression };
-    }
-
+    let dimensions;
+    try { dimensions = expressionParts.map(expression => TraceSelection.dimension(expression,
+      value => parseFrameExpression(value).valid)); }
+    catch { return { names: [targetName], bindings: [], transforms, invalidExpression: part }; }
+    const range = dimensions.some(dimension => dimension.type === 'range');
     addDisplayName(targetName);
-    parsedExpressions.flatMap(item => item.parsed.identifiers).forEach(addName);
-    transforms.push({ type: 'element', sourceName: targetName,
-      indexExpressions: parsedExpressions.map(item => item.expression),
-      identifiers: [...new Set(parsedExpressions.flatMap(item => item.parsed.identifiers))],
+    const identifiers = [...new Set(dimensions.flatMap(TraceSelection.expressions)
+      .flatMap(expression => parseFrameExpression(expression).identifiers || []))];
+    identifiers.forEach(addName);
+    if (range) {
+      transforms.push({ type: 'slice', sourceName: targetName, dimensions, identifiers,
+        characterView: Boolean(chars), expression: `${targetName}${indexGroups.map(group => `[${group}]`).join('')}` });
+    } else transforms.push({ type: 'element', sourceName: targetName,
+      indexExpressions: dimensions.map(dimension => dimension.indexExpression), identifiers,
       expression: `${targetName}${indexGroups.map(group => `[${group}]`).join('')}` });
   }
 
@@ -2091,8 +2089,15 @@ function attachPointerDirectives(source, analysis, frames) {
       if (selector?.toLowerCase() === 'children' && childExpression == null) throw new Error(`第 ${item.line} 行的 @pointer children 缺少節點索引`);
       const singleton = /^(root|current)$/i.test(selector || '');
       const suppliedIndex = pointerAxis ? selectedIndex ?? cellIndex : selector ? (singleton ? cellIndex ?? selectedIndex : cellIndex) : selectedIndex ?? cellIndex;
-      const indexExpression = suppliedIndex == null ? label : suppliedIndex;
-      const expressions = [label, indexExpression, ...[selectedIndex, levelExpression].filter(value => value != null)];
+      let targetSelection = null;
+      if (suppliedIndex != null) {
+        try { const dimension = TraceSelection.dimension(suppliedIndex, value => parseFrameExpression(value).valid);
+          if (dimension.type === 'range') targetSelection = dimension;
+        } catch { throw new Error(`第 ${item.line} 行的 @pointer 目標索引／區間無效`); }
+      }
+      if (targetSelection && isLayout) throw new Error(`第 ${item.line} 行的 @pointer 必須選取單一 layout 節點；資料區間可寫在陣列／矩陣目標`);
+      const indexExpression = suppliedIndex == null || targetSelection ? label : suppliedIndex;
+      const expressions = [label, indexExpression, ...(targetSelection ? TraceSelection.expressions(targetSelection) : [selectedIndex].filter(value => value != null)), ...[levelExpression].filter(value => value != null)];
       const parsed = expressions.map(parseFrameExpression);
       if (parsed.some(expression => !expression.valid)) throw new Error(`第 ${item.line} 行的 @pointer 索引運算式無效`);
       if (isLayout && !layouts.has(targetName)) throw new Error(`第 ${item.line} 行的 @pointer 找不到 layout：${targetName}`);
@@ -2110,7 +2115,7 @@ function attachPointerDirectives(source, analysis, frames) {
       if (pointerAxis && variables.get(targetName)?.kind !== 'matrix') {
         throw new Error(`第 ${item.line} 行的 @pointer ${pointerAxis} 必須指定二維矩陣：${targetName}`);
       }
-      frame.bindings.push({ mode: 'index', explicitPointer: true, implicitIndex: suppliedIndex == null,
+      frame.bindings.push({ mode: 'index', ...(targetSelection ? { targetSelection } : {}), explicitPointer: true, implicitIndex: suppliedIndex == null,
         ...(pointerAxis ? { pointerAxis, indexDimension: pointerAxis === 'row' ? 0 : 1 } : {}),
         ...(pointerColor ? { pointerColor } : {}),
         label, sourceName: name,
@@ -2222,26 +2227,9 @@ const TRACE_FRAME_LOCALS = new Set([
 function parseStyleTarget(raw, line) {
   const source = String(raw || '').trim();
   const parseIndexOrRange = (part, endInclusive, label = '範圍') => {
-    const range = splitTopLevel(part, ':');
-    if (!range.valid || range.parts.length > 2
-      || range.parts.some((value, index) => index > 0 && !value)) {
-      throw new Error(`第 ${line} 行的 @style ${label}無效：${part}`);
-    }
-    if (range.parts.length === 2) {
-      const startExpression = range.parts[0].trim() || '0';
-      const endExpression = range.parts[1].trim();
-      for (const expression of [startExpression, endExpression]) {
-        if (!parseFrameExpression(expression).valid) {
-          throw new Error(`第 ${line} 行的 @style ${label}運算式無效：${expression}`);
-        }
-      }
-      return { type: 'range', startExpression, endExpression, endInclusive };
-    }
-    const indexExpression = part.trim();
-    if (!indexExpression || !parseFrameExpression(indexExpression).valid) {
-      throw new Error(`第 ${line} 行的 @style 索引運算式無效：${indexExpression}`);
-    }
-    return { type: 'index', indexExpression };
+    try { return { ...TraceSelection.dimension(part, value => parseFrameExpression(value).valid),
+      ...(TraceSelection.dimension(part).type === 'range' ? { endInclusive } : {}) }; }
+    catch (error) { throw new Error(`第 ${line} 行的 @style ${label}無效：${part}（${error.message}）`); }
   };
   const matrixInnerLabel = source.match(/^([A-Za-z_]\w*)\[\s*(.*?)\s*\]\[\s*(.*?)\s*\]\.inner-label$/);
   if (matrixInnerLabel) {
@@ -3110,7 +3098,7 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
         const variable = captureIdentifier(endpoint.targetName, endpoint);
         if (!variable) endpoint.targetObjectKey = endpoint.targetName;
       }
-      (endpoint.indexExpressions || []).forEach(expression => {
+      (endpoint.indexExpressions || []).flatMap(value => TraceSelection.expressions(TraceSelection.dimension(value))).forEach(expression => {
         (parseFrameExpression(expression).identifiers || []).forEach(name => captureIdentifier(name));
       });
     }
@@ -3284,6 +3272,10 @@ function attachAutoMarkDirectives(source, analysis, frames) {
 
 function parsePlaceSource(value, line) {
   const raw = String(value || '').trim();
+  if (raw.includes('[')) {
+    const target = parseAtBinding(/\.(?:top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom)$/i.test(raw)?raw:`${raw}.center`,line,'@place');
+    return {sourceName:target.targetName,sourceAnchor:target.anchor,sourceIndexExpressions:target.indexExpressions};
+  }
   const match = raw.match(/^([A-Za-z_][A-Za-z0-9_.-]*?)(?:\.(top-left|left-top|top|top-right|right-top|left|center|right|bottom-left|left-bottom|bottom|bottom-right|right-bottom))?$/i);
   if (!match) throw new Error(`第 ${line} 行的 @place 來源格式無效：${raw}`);
   return {
@@ -3357,6 +3349,7 @@ function findPlaceDirectives(source, suppliedAnalysis = null) {
             ...parseAtBinding(targets[0], line, '@place', offsetX, offsetY),
             sourceName: sourceTarget.sourceName,
             sourceAnchor: sourceTarget.sourceAnchor,
+            ...(sourceTarget.sourceIndexExpressions ? { sourceIndexExpressions: sourceTarget.sourceIndexExpressions } : {}),
             when
           },
           when
@@ -3437,7 +3430,7 @@ function attachPlaceDirectives(source, analysis, frameDirectives) {
       if (targetVariable) binding.targetVariableId = targetVariable.id;
       else binding.targetObjectKey = binding.targetName;
     }
-    bindingDependencyExpressions(binding).forEach(expression => {
+    [...bindingDependencyExpressions(binding),...(binding.sourceIndexExpressions||[]).flatMap(value=>TraceSelection.expressions(TraceSelection.dimension(value)))].forEach(expression => {
       (parseFrameExpression(expression).identifiers || []).forEach(name => captureDependency(name, 'index'));
     });
     (place.when?.identifiers || []).forEach(name => captureDependency(name, 'condition'));
@@ -3654,6 +3647,9 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     if (parsed.invalidExpression) {
       throw new Error(`第 ${line} 行的 ${directiveName} 索引取值語法無效：${parsed.invalidExpression}；多指標請分別使用 @pointer i at arr`);
     }
+    if (parsed.transforms.some(item => item.type === 'slice') && modifiers.rendererOptions?.range) {
+      throw new Error(`第 ${line} 行的 ${directiveName} 請勿同時使用 [:] 與 with range`);
+    }
     const names = [...parsed.names];
     const invalid = names.find(name => !/^[A-Za-z_]\w*$/.test(name));
     if (invalid) throw new Error(`第 ${line} 行的 ${directiveName} 變數名稱無效：${invalid}`);
@@ -3742,7 +3738,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         entry.variableId = variables.find(variable => variable.name === entry.field)?.id || '';
       });
     }
-    if (modifiers.renderer === 'original-segment-tree' && !modifiers.rendererOptions?.range) {
+    if (modifiers.renderer === 'original-segment-tree' && !modifiers.rendererOptions?.range && !parsed.transforms.some(item => item.type === 'slice')) {
       throw new Error(`第 ${line} 行的 ${directiveName} render segment_tree 必須指定 with range(start,end)`);
     }
     if (modifiers.rendererOptions?.fields
@@ -3769,7 +3765,11 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
     const dataTransform = [...parsed.transforms].reverse().find(transform => (
       transform.sourceName === sourceVariable.name
     )) || null;
-    if (dataTransform?.type === 'char' && sourceVariable.kind !== 'string') {
+    if (dataTransform?.type === 'slice' && (dataTransform.dimensions.length > 2 || (sourceVariable.kind !== 'matrix' && dataTransform.dimensions.length > 1))) {
+      throw new Error(`第 ${line} 行的 ${directiveName} 區間維度與變數不符；一維資料用 [l:r]，矩陣用 [r1:r2][c1:c2]`);
+    }
+    if (dataTransform?.type === 'slice' && sourceVariable.kind === 'string') dataTransform.characterView = true;
+    if ((dataTransform?.type === 'char' || dataTransform?.characterView) && sourceVariable.kind !== 'string') {
       throw new Error(`第 ${line} 行的 ${directiveName} char() 必須使用字串變數：${sourceVariable.name}`);
     }
     return {
@@ -3785,7 +3785,7 @@ function findFrameDirectives(source, suppliedAnalysis = null) {
         .filter(Boolean),
       variables,
       captureOnlyVariableIds,
-      renderer: modifiers.renderer || (dataTransform?.type === 'element' ? 'original-cell' : dataTransform?.type === 'char' ? 'original-array' : ''),
+      renderer: modifiers.renderer || (dataTransform?.type === 'element' ? 'original-cell' : (dataTransform?.type === 'char' || dataTransform?.characterView) ? 'original-array' : ''),
       rendererOptions: modifiers.rendererOptions,
       dataTransform: dataTransform ? {
         ...dataTransform,
@@ -4053,7 +4053,7 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
   function keepViewFrame(node, modifiers) {
     const hasAttachedStyles = [...analysis.keepViewStylePositions]
       .some(position => position > node.to && /^\s*$/.test(source.slice(node.to, position)));
-    if (!modifiers.presetNames.length && !hasAttachedStyles) return null;
+    if (!modifiers.presetNames.length && !hasAttachedStyles && !modifiers.payload.includes('[')) return null;
     if (modifiers.payload === 'last') {
       throw new Error(`第 ${analysis.lineAt(node.from)} 行的 @keep last 不支援 use 或附屬 @style`);
     }
@@ -4118,9 +4118,9 @@ function findKeepDirectives(source, suppliedAnalysis = null, suppliedLayouts = n
           });
           return;
         }
-        const match = modifiers.payload.match(/^([A-Za-z_]\w*)$/);
-        if (!match) throw new Error(`第 ${line} 行的 @keep 語法無效`);
-        const name = match[1];
+        const selected = parseFrameSpec(modifiers.payload);
+        if (selected.invalidExpression || selected.displayNames?.length !== 1) throw new Error(`第 ${line} 行的 @keep 索引／區間語法無效`);
+        const name = selected.displayNames[0];
         let variable = resolveVariable(name, node.from);
         if (!variable && Array.isArray(suppliedFrames)) {
           const functionName = lexicalFunctionName(source, analysis, node.from);
@@ -5526,7 +5526,7 @@ ${loop}
       parts.push(source.slice(cursor, node.to));
       const expression = parts.join('');
       if (target.variableId && !suppressEvents && !context.suppressRead) {
-        rendered = `::asm_trace::event_read_value(${analysis.lineAt(node.from)}, ${cppString(signature('read', node))}, ${targetArgs(target)}, [&]()->decltype(auto){ return (${expression}); })`;
+        rendered = `(::asm_trace::event_read_value(${analysis.lineAt(node.from)}, ${cppString(signature('read', node))}, ${targetArgs(target)}, [&]()->decltype(auto){ return (${expression}); }))`;
       } else {
         rendered = expression;
       }

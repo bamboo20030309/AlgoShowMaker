@@ -56,8 +56,8 @@ test('a resolved focus target uses its center and explicit zoom instead of whole
       offsetY: -8
     }
   });
-  // The shared event timing spec uses 300ms when no camera duration is saved.
-  assert.deepEqual(calls, [[124, 72, 1.25, false, 300]]);
+  // event-contracts.md and event-camera-timing.test.js restore the approved 520ms base.
+  assert.deepEqual(calls, [[124, 72, 1.25, false, 520]]);
   assert.equal(result.centerX, 124);
   assert.equal(result.centerY, 72);
   assert.equal(result.scale, 1.25);

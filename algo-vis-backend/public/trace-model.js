@@ -571,6 +571,10 @@
         const resolveIndices = endpoint => {
           if (!endpoint) return endpoint;
           const expressions = endpoint.indexExpressions || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
+          if (window.ASMTraceSelection) {
+            const values = expressions.map(expression => window.ASMTraceSelection.stringify(window.ASMTraceSelection.freeze(window.ASMTraceSelection.dimension(expression), value => window.ASMTraceRules.resolveExpression(document,frame,value,locals))));
+            return { ...endpoint, indexExpressions: values, indexExpression: values.join(',') };
+          }
           const values = expressions.map(expression => window.ASMTraceRules.resolveExpression(document, frame, expression, locals));
           if (values.some(value => !Number.isSafeInteger(value))) fail('端點索引無法解析為安全整數');
           return { ...endpoint, indexExpressions: values.map(String), indexExpression: values.join(',') };
@@ -599,6 +603,11 @@
       const expressions = endpoint.indexExpressions
         || (endpoint.indexExpression ? [endpoint.indexExpression] : []);
       if (!expressions.length) return { ...endpoint };
+      if (window.ASMTraceSelection) {
+        try { const values = expressions.map(expression => window.ASMTraceSelection.stringify(window.ASMTraceSelection.freeze(window.ASMTraceSelection.dimension(expression), value => window.ASMTraceRules.resolveExpression(document,sourceFrame,value,locals))));
+          return { ...endpoint, indexExpressions:values, indexExpression:values.join(',') };
+        } catch { return null; }
+      }
       const values = expressions.map(expression =>
         window.ASMTraceRules.resolveExpression(document, sourceFrame, expression, locals));
       if (values.some(value => !Number.isSafeInteger(value))) return null;
