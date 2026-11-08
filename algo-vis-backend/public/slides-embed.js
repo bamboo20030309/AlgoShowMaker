@@ -96,24 +96,6 @@
     };
   }
 
-  function refreshOutdatedEditorTrace(animation) {
-    if (mode !== 'editor' || !animation.traceDocument?.frames?.length) return null;
-    const status = window.ASMTraceProvenance?.status?.(
-      animation.traceDocument,
-      animation.code,
-      animation.input
-    );
-    if (status?.kind !== 'outdated') return null;
-    const runButton = document.getElementById('runBtn');
-    if (!runButton || runButton.classList.contains('loading')) return null;
-    window.__asmMigrateTraceSettingsOnNextRun = true;
-    return new Promise(resolve => {
-      const finish = () => resolve(true);
-      window.addEventListener('asm:compile-finished', finish, { once: true });
-      runButton.click();
-    });
-  }
-
   // -----------------------------------------------------------------------------
   // 父子頁資料套用
   // 先更新來源與輸入，再選擇 trace 或傳統腳本播放，最後重設畫布及導覽狀態。
@@ -135,7 +117,8 @@
     window.ASMTraceEditor?.loadAnimation?.(currentAnimation);
     if (currentAnimation.traceDocument?.frames?.length) {
       if (!window.ASMTraceEditor) window.asmApplyTraceDocument?.(currentAnimation.traceDocument);
-      return refreshOutdatedEditorTrace(currentAnimation);
+      // 新鮮度模組統一處理，避免此處與載入監聽重複提交 RUN。
+      return null;
     }
     if (currentAnimation.scriptContent && typeof window.asmApplyAnimationScript === 'function') {
       window.asmApplyAnimationScript(currentAnimation.scriptContent);

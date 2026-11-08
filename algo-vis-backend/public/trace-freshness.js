@@ -1,62 +1,101 @@
-/**
- * 模組：Trace 新鮮度提示
- *
- * 責任：監看來源、設定與目前 trace 是否仍相符，排程更新需要重新 RUN 的介面狀態。
- * 資料流：多個快速變更合併到下一個 refresh，避免每次鍵入都重算；判定結果只更新提示，不直接觸發分析。
- * 重要不變條件：同一輪事件只能存在一個待處理刷新，且卸載或缺少 editor 時必須安全返回。
- * 相容性：舊頁面沒有 freshness hooks 時不影響主要編輯流程。
- */
+/** 載入時核實引擎版本；只自動重建過期結果，使用者改碼仍由 RUN 決定。 */
 (function () {
-  let timer;
-  const fallbackMessages = {
-    empty: '動畫尚未更新，請先 RUN。',
-    current: '動畫已更新。',
-    dirty: '程式或輸入已修改，動畫尚未更新。請重新 RUN。',
-    outdated: '動畫資料版本過舊，請重新 RUN。'
-  };
+  let timer, versionRequest, active, failedTrace, revision = 0;
+  let versionError = '';
+  const provenance = window.ASMTraceProvenance;
+  const source = () => ({ code: typeof aceEditor !== 'undefined' ? aceEditor.getValue() : '',
+    input: document.getElementById('inputArea')?.value || '' });
+  const currentTrace = () => window.ASMTraceEditor?.getTraceDocument?.();
 
-  // ---------------------------------------------------------------------------
-  // 區段：新鮮度判定與提示更新
-  // ---------------------------------------------------------------------------
-  function refresh() {
+  function paint(kind, message, blocked = false) {
     const indicator = document.getElementById('traceFreshnessNotice');
     if (!indicator) return;
-    const trace = window.ASMTraceEditor?.snapshot?.().traceDocument;
-    const code = typeof aceEditor !== 'undefined' ? aceEditor.getValue() : '';
-    const input = document.getElementById('inputArea')?.value || '';
-    const status = window.ASMTraceProvenance.generationFingerprint
-      ? window.ASMTraceProvenance.status(trace, code, input)
-      : { kind: 'outdated', message: '尚未確認追蹤引擎版本，正在檢查…' };
-    const kind = ['current', 'dirty', 'outdated'].includes(status.kind)
-      ? status.kind
-      : 'empty';
-    const message = status.message || fallbackMessages[kind];
     indicator.textContent = '';
     indicator.dataset.status = kind;
     indicator.title = message;
     indicator.setAttribute('aria-label', `動畫狀態：${message}`);
     indicator.hidden = false;
+    document.body.classList.toggle('asm-trace-outdated', blocked);
+    if (blocked) window.ASMPlaybackNavigation?.pause?.();
   }
-  // ---------------------------------------------------------------------------
-  // 區段：合併式刷新排程
-  // ---------------------------------------------------------------------------
-  function schedule() {
-    clearTimeout(timer);
-    timer = setTimeout(refresh, 120);
+
+  // 每次重新載入動畫、回到頁面都重新詢問；同時抵達的檢查共用請求。
+  // 不修改生成指紋模組，以免把純介面修正誤判成所有 Trace 都需重建。
+  function checkVersion() {
+    if (!versionRequest) versionRequest = fetch('/api/trace/version', { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw Error('無法確認追蹤引擎版本，請稍後重試');
+        provenance.configure(await response.json());
+        versionError = '';
+      }).catch(error => { versionError = error.message; })
+      .finally(() => { versionRequest = null; });
+    return versionRequest;
+  }
+
+  async function refresh() {
+    const trace = currentTrace();
+    if (versionError || !provenance.generationFingerprint) {
+      paint('outdated', versionError || '正在確認動畫版本…', !!trace);
+      return;
+    }
+    const { code, input } = source();
+    const status = provenance.status(trace, code, input);
+    if (status.kind !== 'outdated') {
+      paint(status.kind, status.message || (status.kind === 'current' ? '動畫已更新。' : '動畫尚未更新，請先 RUN。'));
+      return;
+    }
+    paint('outdated', failedTrace === trace ? '動畫更新失敗，點擊狀態圓點重試；詳見除錯紀錄。' : '動畫版本過舊，正在重新載入…', true);
+    if (active || failedTrace === trace || !code.trim()) return;
+    const runButton = document.getElementById('runBtn');
+    if (runButton?.classList.contains('loading')) return;
+    const token = revision;
+    const settings = window.ASMTraceEditor.snapshot();
+    active = trace;
+    try {
+      const animation = await window.ASMDeck.rebuildMissingAnimation({ ...settings, code, input,
+        traceView: trace });
+      // 切換動畫、改碼、改輸入或手動 RUN 後，背景舊結果不得覆寫目前內容。
+      const now = source();
+      if (token !== revision || currentTrace() !== trace || now.code !== code || now.input !== input) return;
+      if (provenance.status(animation.traceDocument, code, input).kind !== 'current') throw Error('更新結果版本不符，請重新整理頁面');
+      const updated = window.ASMTraceEditor.applyTraceDocument(animation.traceDocument,
+        { migrateCurrentSettings: true, preserveEventSettings: true, openStudio: false });
+      window.dispatchEvent(new CustomEvent('asm:compiled-animation', { detail: { ...animation, traceDocument: updated } }));
+      window.ASMAlgorithmDraft?.save?.();
+    } catch (error) {
+      if (token === revision && currentTrace() === trace) {
+        failedTrace = trace;
+        const debug = document.getElementById('debugOutput') || document.getElementById('debugArea');
+        if (debug) debug.textContent += `\n動畫自動更新失敗：${error.message}\n`;
+        console.warn('動畫自動更新失敗', error);
+      }
+    } finally { active = null; schedule(); }
+  }
+  function schedule() { clearTimeout(timer); timer = setTimeout(refresh, 120); }
+  function changed() { revision++; schedule(); }
+  async function loaded() {
+    revision++;
+    const trace = currentTrace(), value = source();
+    if (trace && provenance.status(trace, value.code, value.input).kind === 'outdated') {
+      paint('outdated', '動畫版本過舊，正在重新載入…', true);
+    }
+    await checkVersion();
+    schedule();
   }
   document.addEventListener('DOMContentLoaded', () => {
-    if (typeof aceEditor !== 'undefined') {
-      aceEditor.on('change', schedule);
-      aceEditor.on('changeSession', schedule);
-    }
-    document.getElementById('inputArea')?.addEventListener('input', schedule);
-    refresh();
-    window.ASMTraceProvenance.ready().then(refresh).catch(error => {
-      const indicator = document.getElementById('traceFreshnessNotice');
-      if (indicator) { indicator.dataset.status = 'outdated'; indicator.title = error.message; indicator.setAttribute('aria-label', error.message); }
-    });
+    const style = document.createElement('style');
+    style.textContent = '.asm-trace-outdated #asm-trace-root{visibility:hidden}';
+    document.head.append(style);
+    if (typeof aceEditor !== 'undefined') { aceEditor.on('change', changed); aceEditor.on('changeSession', changed); }
+    document.getElementById('inputArea')?.addEventListener('input', changed);
+    document.getElementById('runBtn')?.addEventListener('click', changed);
+    document.getElementById('traceFreshnessNotice')?.addEventListener('click', () => { failedTrace = null; loaded(); });
+    paint('outdated', '正在確認動畫版本…');
+    loaded();
   });
-  window.addEventListener('asm:trace-loaded', schedule);
-  window.addEventListener('asm:compiled-animation', schedule);
-  window.ASMTraceFreshness = { refresh };
+  window.addEventListener('asm:trace-loaded', loaded);
+  window.addEventListener('asm:compiled-animation', changed);
+  window.addEventListener('asm:compile-finished', schedule);
+  window.addEventListener('focus', loaded);
+  window.ASMTraceFreshness = { refresh, checkVersion };
 })();

@@ -679,6 +679,7 @@
     analyze,
     ensureAnalysis: analyze,
     getCompileConfig,
+    getTraceDocument: () => currentTrace,
     applyTraceDocument,
     clearAnimation,
     loadAnimation,
