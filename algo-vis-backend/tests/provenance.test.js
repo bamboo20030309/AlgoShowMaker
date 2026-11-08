@@ -24,6 +24,18 @@ test('Studio settings and CRLF do not demand another RUN', () => {
   assert.equal(api.status(trace(), 'int x = 1;\r\n\r\n/* @asm-view\r\n{}\r\n@asm-view */\r\n', '1\n').kind, 'current');
   assert.equal(api.status(trace(), 'int x = 1;', '1\r\n').kind, 'dirty', 'stdin is byte-sensitive');
 });
+
+test('CRLF editor text is valid but a CRLF overwrite of LF event coordinates is outdated', () => {
+  const code = 'int main(){\n  int a=1;\n  a++;\n}';
+  const t = { schemaVersion: '1.0', sourceCode: code, frames: [{}], provenance: api.create(code, '') };
+  assert.equal(api.status(t, code.replace(/\n/g, '\r\n'), '').kind, 'current');
+  const broken = JSON.parse(JSON.stringify(t));
+  broken.sourceCode = code.replace(/\n/g, '\r\n');
+  assert.equal(api.status(broken, code, '').kind, 'outdated');
+  assert.equal(api.status(JSON.parse(JSON.stringify(broken)), code, '').kind, 'outdated');
+  const wrong = { ...t, sourceCode: code.replace('a++', 'a--') };
+  assert.equal(api.status(wrong, code, '').kind, 'outdated');
+});
 test('multiple view blocks cannot hide executable source changes', () => {
   const code = 'int x = 1;\n/* @asm-view\n{}\n@asm-view */\nint y = 2;\n/* @asm-view\n{}\n@asm-view */';
   const t = { ...trace(), provenance: api.create(code, '') };

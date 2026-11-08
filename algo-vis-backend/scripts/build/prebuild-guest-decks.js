@@ -31,6 +31,7 @@ async function verify(catalog,root=publicRoot){
    const trace=JSON.parse(await fs.readFile(path.join(root,'deck-traces',file),'utf8'));
    if(await A.sha256(require('../../public/slides-storage').canonical(trace))!==a.traceRef)throw Error(`${entry.id}/${slide.id} Trace 雜湊不符`);
    if(ASMTraceProvenance.status(trace,a.code,a.input).kind!=='current')throw Error(`${entry.id}/${slide.id} Trace 過期`);
+   require('../validation/trace-source-coordinates').verifySourceCoordinates(trace);
    count++;
   }
  }return count;

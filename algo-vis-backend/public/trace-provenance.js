@@ -72,6 +72,12 @@
         (saved.sourceFingerprint !== current.sourceFingerprint || saved.inputFingerprint !== current.inputFingerprint)) {
       return { kind: 'dirty', message: '程式或輸入已修改，動畫尚未更新。請 RUN 後再儲存；目前播放的是上次執行結果。' };
     }
+    // 插樁座標固定以 LF 計算。舊封裝曾把 CRLF 編輯文字覆蓋回 sourceCode，
+    // 來源摘要因正規化而相同，但反白座標已錯位，不能當成可播放的最新結果。
+    if (typeof trace.sourceCode === 'string' &&
+        (trace.sourceCode.includes('\r') || sourceText(trace.sourceCode) !== sourceText(code))) {
+      return { kind: 'outdated', message: '動畫程式碼與事件來源座標不一致，正在等待重新建立。' };
+    }
     if (!saved || (generationFingerprint && saved.generationFingerprint !== generationFingerprint)
         || saved.engineVersion !== ENGINE_VERSION || saved.formatVersion !== FORMAT_VERSION ||
         trace.schemaVersion !== '1.0' || !saved.sourceFingerprint || !saved.inputFingerprint) {

@@ -527,10 +527,10 @@
     root.ASMTraceViewSource.applyToTrace(trace, animation.rebuild.view);
     trace.studio ||= {};
     Object.assign(trace.studio, clone(animation.rebuild.globals || {}));
-    trace.sourceCode = animation.code;
-    // 呈現設定不能把舊 runtime 結果重新標成目前引擎。
-    trace.provenance = { ...root.ASMTraceProvenance.create(animation.code, animation.input),
-      generationFingerprint: rawTrace.provenance?.generationFingerprint };
+    // 事件的 from/to 是編譯時 LF 原始碼的座標；不得用 CRLF 編輯文字覆蓋。
+    // 呈現設定也不能替 runtime 結果重新簽發來源／引擎證明。
+    trace.sourceCode = rawTrace.sourceCode ?? String(animation.code).replace(/\r\n?/g, '\n');
+    trace.provenance = clone(rawTrace.provenance || {});
     trace.viewSettingsApplied = true;
     if (!trace.frames?.length) throw new Error('重建的動畫沒有任何畫面。');
     return trace;
