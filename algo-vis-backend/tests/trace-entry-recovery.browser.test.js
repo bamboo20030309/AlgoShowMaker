@@ -48,16 +48,18 @@ test('slide focus rechecks version; Merge Sort saved and manual results agree an
   if(!geometry.rule?.target)assert.ok(geometry.top>=19&&geometry.bottom>=19,JSON.stringify(geometry));
  }
 });
-test('local camera modifier explains frame 21 crop and reset restores auto fit without changing trace',{timeout:30000},async t=>{
+test('local camera modifier is discarded on reload and frame 21 returns to auto fit without a badge',{timeout:30000},async t=>{
  const {base}=await startIsolatedServer(t),browser=await launch();t.after(()=>browser.close());const p=await browser.newPage();
  const body=readPackage(fs.readFileSync('public/guest-decks/merge-sort.asmdeck')).body;const animation=body.deck.groups.flatMap(g=>g.slides).find(s=>s.animation).animation;animation.traceDocument=savedTrace(body,animation);
  await p.goto(base+'/algorithm.html?asmEmbed=runtime');await p.evaluate(async a=>{asmReplaceEditorCode(a.code,-1);document.getElementById('inputArea').value=a.input;ASMTraceEditor.loadAnimation(a,{openStudio:false});await ASMTracePlayer.renderStable(20);},animation);
  await p.waitForFunction(()=>document.querySelector('#traceFreshnessNotice').dataset.status==='current');
  await p.evaluate(()=>{ASMLocalCamera.write('test-camera:playback',{zoomFactor:1.1,panXRatio:.01,panYRatio:-.01});ASMLocalCamera.write('other-camera:playback',{zoomFactor:1.7});setLocalCameraSurface('test-camera');});
- assert.ok(await p.locator('#temporaryCameraResetBtn').isVisible());assert.match(await p.locator('#temporaryCameraResetBtn').textContent(),/110%/);
+ assert.equal(await p.locator('#temporaryCameraResetBtn').count(),0);
  const measure=()=>p.evaluate(()=>{const svg=document.getElementById('arraySvg').getBoundingClientRect();const nodes=[...document.querySelectorAll('#asm-trace-root rect.outerframe-bg')].map(e=>e.getBoundingClientRect());return{top:Math.min(...nodes.map(r=>r.top))-svg.top,bottom:svg.bottom-Math.max(...nodes.map(r=>r.bottom))};});
  const cropped=await measure();assert.ok(cropped.top<0||cropped.bottom<0,JSON.stringify(cropped));
- await p.locator('#temporaryCameraResetBtn').click();assert.equal(await p.locator('#temporaryCameraResetBtn').isVisible(),false);
- const fit=await measure();assert.ok(fit.top>=19&&fit.bottom>=19,JSON.stringify(fit));assert.equal(await p.evaluate(()=>ASMLocalCamera.read('other-camera:playback').zoomFactor),1.7);
+ await p.reload();await p.evaluate(async a=>{asmReplaceEditorCode(a.code,-1);document.getElementById('inputArea').value=a.input;ASMTraceEditor.loadAnimation(a,{openStudio:false});setLocalCameraSurface('test-camera');await ASMTracePlayer.renderStable(20);},animation);
+ await p.waitForFunction(()=>document.querySelector('#traceFreshnessNotice').dataset.status==='current');
+ assert.equal(await p.locator('#temporaryCameraResetBtn').count(),0);
+ const fit=await measure();assert.ok(fit.top>=19&&fit.bottom>=19,JSON.stringify(fit));assert.equal(await p.evaluate(()=>ASMLocalCamera.read('other-camera:playback').zoomFactor),1);
  assert.equal(await p.evaluate(()=>ASMTraceEditor.getTraceDocument().frames.length),83);assert.equal(await p.locator('#traceFreshnessNotice').getAttribute('data-status'),'current');
 });

@@ -91,16 +91,17 @@ test('subtabs preserve the canvas camera and syntax tree zoom has no UI limits',
         assert.ok(Math.abs(actual.scale - expected.scale) < 0.001, `${tab} keeps camera scale`);
       }
 
-      // A real standalone wheel gesture must persist only in this tab's local camera scope.
+      // Wheel gestures remain local to this document and must be discarded on reload.
       const canvasBox = await page.locator('#arraySvg').boundingBox();
       await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
       await page.mouse.wheel(0, -120);
-      await page.waitForFunction(() => sessionStorage.getItem('asm:temporary-camera:v1:algorithm:playback') !== null);
+      await page.waitForFunction(() => Math.abs(getPresentationCameraTransform().zoomFactor - 1.3) > .001);
       const localCamera = await page.evaluate(() => getPresentationCameraTransform());
       await page.reload();
       await page.waitForFunction(() => document.body.dataset.defaultAnimationState === 'ready');
-      assert.deepEqual(await page.evaluate(() => getPresentationCameraTransform()), localCamera,
-        'standalone algorithm.html retains its own post-offset after reload');
+      assert.notDeepEqual(await page.evaluate(() => getPresentationCameraTransform()), localCamera);
+      assert.deepEqual(await page.evaluate(() => getPresentationCameraTransform()), { panXRatio: 0, panYRatio: 0, zoomFactor: 1 },
+        'standalone algorithm.html discards its post-offset after reload');
       const traceBefore = await page.evaluate(() => JSON.stringify(ASMTracePlayer.getDocument()));
       await page.evaluate(() => resetTemporaryCamera());
       assert.equal(await page.evaluate(() => getPresentationCameraTransform().zoomFactor), 1);

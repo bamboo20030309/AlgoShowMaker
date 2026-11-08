@@ -807,7 +807,3 @@ body.asm-trace-studio-open *::-webkit-scrollbar-corner {
     transition: none;
   }
 }
-
-/* 使用既有控制列按鈕的外觀；僅在本機鏡頭後偏移作用時出現。 */
-#temporaryCameraResetBtn { font-size: 12px; white-space: nowrap; padding: 4px 8px; }
-#temporaryCameraResetBtn[hidden] { display: none !important; }

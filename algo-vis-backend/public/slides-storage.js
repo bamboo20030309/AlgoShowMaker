@@ -97,14 +97,6 @@
     return JSON.stringify(value);
   }
 
-  // Migrate before lightweight projection removes the obsolete persisted field.
-  function migrateTemporaryCameras(deck, storageKey) {
-    for (const group of deck?.groups || []) for (const slide of group.slides || []) {
-      if (slide.id && slide.animation?.presentationCamera) root.ASMLocalCamera?.migrate(
-        `slides:runtime:${storageKey}:${slide.id}:presentation:playback`, slide.animation.presentationCamera);
-    }
-  }
-
   async function project(source) {
     // Clone only the lightweight slide metadata. Large traces are handled once,
     // separately, rather than serialized as part of every text/position edit.
@@ -272,14 +264,12 @@
         };
       });
       if (record) {
-        migrateTemporaryCameras(record.deck, storageKey);
         return record.deck;
       }
       for (const key of legacyKeys) {
         const saved = storage?.getItem(key);
         if (!saved) continue;
         const legacyDeck = JSON.parse(saved);
-        migrateTemporaryCameras(legacyDeck, storageKey);
         await saveDeck(storageKey, saved);
         // Only remove old drafts after the IndexedDB transaction commits.
         for (const oldKey of legacyKeys) {
