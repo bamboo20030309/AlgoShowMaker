@@ -56,9 +56,10 @@
       return loads.get(key);
     }
     async function materializeAnimation(animation) {
-      if (!animation?.traceRef && !animation?.traceDocument) return animation;
+      if (!animation?.traceRef && !animation?.traceDocument && !animation?.rebuild) return animation;
       let trace;
       try {
+        if (!animation.traceDocument && !animation.traceRef) throw Object.assign(new Error('動畫尚無執行結果'), { code: 'TRACE_NOT_FOUND' });
         trace = animation.traceDocument || await load(animation.traceRef);
         const status = await options.status?.(trace, animation);
         if (status && status.kind !== 'current') {

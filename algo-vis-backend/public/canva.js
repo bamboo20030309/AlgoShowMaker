@@ -672,6 +672,7 @@
     presentationCameraEnabled = enabled === true;
     presentationCamera = normalizedPresentationCamera(value);
     if (apply) applyStoredBaseCamera(false);
+    window.dispatchEvent(new CustomEvent('asm:temporary-camera-change'));
   };
   // Interface and animation identity are separate from the authored camera target.
   // Switching surfaces cancels a pending gesture save so it cannot leak into the next scope.

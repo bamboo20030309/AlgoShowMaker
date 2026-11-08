@@ -569,7 +569,7 @@
 
   function loadAnimation(animation = {}, options = {}) {
     animation = window.ASMAlgorithmAnimation.normalize(animation);
-    pendingAnimation = animation.rebuild && !animation.traceDocument?.frames?.length ? animation : null;
+    pendingAnimation = (animation.rebuild || animation.traceRef) && !animation.traceDocument?.frames?.length ? animation : null;
     pendingViewBaseline = pendingAnimation ? sourceViewBlock(editorSource()) : null;
     mode = animation.mode === 'trace' || animation.traceDocument ? 'trace' : 'manual';
     sliceMode = animation.sliceMode === 'manual' ? 'manual' : animation.sliceMode === 'full' ? 'full' : 'auto';
@@ -611,7 +611,8 @@
       rules: savedTrace?.rules || pendingAnimation?.rules || [],
       traceDocument: savedTrace,
       ...(pendingAnimation ? {
-        rebuild: JSON.parse(JSON.stringify(pendingAnimation.rebuild)),
+        ...(pendingAnimation.rebuild ? { rebuild: JSON.parse(JSON.stringify(pendingAnimation.rebuild)) } : {}),
+        ...(pendingAnimation.traceRef ? { traceRef: pendingAnimation.traceRef, traceView: pendingAnimation.traceView } : {}),
         rebuildError: pendingAnimation.rebuildError
       } : {})
     };
@@ -680,6 +681,7 @@
     ensureAnalysis: analyze,
     getCompileConfig,
     getTraceDocument: () => currentTrace,
+    getPendingAnimation: () => pendingAnimation,
     applyTraceDocument,
     clearAnimation,
     loadAnimation,

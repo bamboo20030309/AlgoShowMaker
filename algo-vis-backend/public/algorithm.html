@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="style.css?v=brand-shared-12" />
   <link rel="stylesheet" href="brand.css?v=hover-pill-1" />
   <link rel="stylesheet" href="slides-embed.css?v=random-id-12" />
-  <link rel="stylesheet" href="trace.css?v=trace-37" />
+  <link rel="stylesheet" href="trace.css?v=trace-38" />
   <link rel="stylesheet" href="trace-directive-assist.css?v=directive-5" />
   <link rel="stylesheet" href="trace-studio.css?v=trace-63" />
   <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
@@ -158,6 +158,7 @@
           <button id="ttsAvBtn" class="btn-tts" title="播放聲音">🔊</button>
           <span id="traceFreshnessNotice" class="trace-freshness-dot" data-status="empty"
             role="status" aria-live="polite" aria-label="動畫尚未更新" title="動畫尚未更新"></span>
+          <button id="temporaryCameraResetBtn" class="temporary-camera-reset" type="button" hidden></button>
           <div id="frameTimeline">
             <div class="frame-track" aria-hidden="true"></div>
             <div id="frameProgress" class="frame-progress" aria-hidden="true"></div>
@@ -359,7 +360,7 @@
   <script src="trace-color-picker.js?v=trace-7"></script>
   <!-- 底層繪圖與互動腳本 -->
   <script src="local-camera.js?v=1"></script>
-  <script src="canva.js?v=trace-19"></script>
+  <script src="canva.js?v=trace-20"></script>
   <script src="interaction.js?v=trace-41"></script>
   <script src="trace-view-source.js?v=trace-18"></script>
   <script src="trace-model.js?v=trace-43"></script>
@@ -377,12 +378,14 @@
   <script src="trace-viewport-culling.js?v=2"></script>
   <script src="trace-debug-recorder.js?v=debug-9"></script>
   <script src="trace-provenance.js?v=generation-1"></script>
+  <script src="trace-version-check.js?v=1"></script>
   <script src="algorithm-animation.js?v=animation-6"></script>
   <script src="asmdeck.js?v=13"></script>
   <script src="trace-bundle.js?v=3"></script>
   <script src="compile-session.js?v=2"></script>
-  <script src="trace-editor.js?v=trace-40"></script>
-  <script src="trace-freshness.js?v=trace-5"></script>
+  <script src="trace-editor.js?v=trace-41"></script>
+  <script src="trace-freshness.js?v=trace-6"></script>
+  <script src="temporary-camera-status.js?v=1"></script>
   <script src="syntax-tree.js?v=syntax-4"></script>
   <script src="compile.js?v=syntax-13"></script>
   <script src="tts.js?v=10"></script>

@@ -240,7 +240,7 @@
     }
   }, {
     status: async (trace, animation) => {
-      await window.ASMTraceProvenance.ready();
+      await window.ASMTraceVersionCheck.check();
       return window.ASMTraceProvenance.status(trace, animation.code, animation.input);
     },
     onState: (animation, status) => {
@@ -752,7 +752,7 @@
     for (const animation of traceRefreshStates.keys()) if (!liveAnimations.has(animation)) traceRefreshStates.delete(animation);
     const traceState = [...traceRefreshStates.values()][0];
     cloudSaveStatus.dataset.traceState = traceState?.kind || '';
-    if (traceState) text = traceState.message || '動畫需要更新';
+    if (traceState && state !== 'error') text = traceState.message || '動畫需要更新';
     cloudSaveStatus.dataset.state = state;
     const label = cloudSaveStatus.querySelector('.cloud-status-text');
     if (label) label.textContent = text;
@@ -1215,6 +1215,22 @@
       let blob = null;
       if (!blob) {
         const draft = await editorAnimationExportSnapshot();
+        await window.ASMTraceVersionCheck.check({ force: true });
+        // 匯出才逐頁核實所有引用；平常仍依目前頁面延遲載入，不把完整 Trace 塞進檔案。
+        for (const [pageIndex, entry] of orderedDeckSlides().entries()) {
+          const animation = entry.slide.animation;
+          if (!animation || entry.slide.kind !== 'algorithm-animation') continue;
+          try {
+            if (draft?.slideId === entry.slide.id) {
+              traceStore.retry(draft.animation);
+              const checked = await traceStore.materializeAnimation(draft.animation);
+              draft.animation = checked;
+            } else {
+              traceStore.retry(animation);
+              await traceStore.materializeAnimation(animation);
+            }
+          } catch (error) { throw new Error(`第 ${pageIndex + 1} 頁動畫未能更新：${error.message}`); }
+        }
         const projected = await window.ASMDeck.project(deck, draft,
           { includePrebuiltTraces: false });
         projected.cover = { ...archiveCover, title: cloudDeckTitle,
@@ -10244,7 +10260,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-73';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-74';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10284,7 +10300,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-73';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-74';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10353,7 +10369,7 @@
     const slide = getSlideById(editingAlgorithmSlideId);
     if (!slide || slide.kind !== 'algorithm-animation') return;
     if (event.data.type === 'asm-animation-compiled') {
-      if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
+      if (algorithmEditorStatus) algorithmEditorStatus.textContent = '動畫已更新，尚未套回投影片，請按儲存。';
       return;
     }
     let detached;
@@ -10383,7 +10399,7 @@
     if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
       sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
     } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-73' + (isLocalCopy() ? '&localOnly=1' : '');
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-74' + (isLocalCopy() ? '&localOnly=1' : '');
     }
   }
 
@@ -10397,7 +10413,7 @@
 
   function saveAlgorithmEditor() {
     if (!algorithmEditorFrame?.contentWindow || !editingAlgorithmSlideId) return;
-    if (algorithmEditorStatus) algorithmEditorStatus.textContent = 'Algorithm editor status updated.';
+    if (algorithmEditorStatus) algorithmEditorStatus.textContent = '動畫已更新，尚未套回投影片，請按儲存。';
     algorithmEditorFrame.contentWindow.postMessage({
       type: 'asm-request-save-animation'
     }, window.location.origin);
@@ -12294,6 +12310,27 @@
       startProgressiveDeckRebuild(options);
     }
   }
+
+  window.addEventListener('focus', async () => {
+    try {
+      const previous = window.ASMTraceProvenance.generationFingerprint;
+      await window.ASMTraceVersionCheck.check({ force: true });
+      if (previous && previous !== window.ASMTraceProvenance.generationFingerprint) {
+        for (const { slide } of orderedDeckSlides()) if (slide.animation) {
+          traceRefreshStates.set(slide.animation, { kind: 'outdated', message: '引擎已更新，動畫將於開啟時重新載入' });
+        }
+        renderCloudStatus();
+        for (const frame of document.querySelectorAll('.algorithm-slide-frame')) {
+          if (algorithmFrameIsCurrent(frame) && frame.src.includes('asmEmbed=')) {
+            await sendAlgorithmAnimationToFrame(frame, getSlideById(frame.dataset.slideId));
+          }
+        }
+        if (algorithmEditorFrame && !algorithmEditorModal.hidden) {
+          await sendAlgorithmAnimationToFrame(algorithmEditorFrame, getSlideById(editingAlgorithmSlideId));
+        }
+      }
+    } catch (error) { setCloudStatus('error', error.message); }
+  });
 
   bootstrap();
 })();
