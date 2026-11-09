@@ -1496,6 +1496,16 @@
       "file": "lcs-teaching-02-28e7bec1515722cd24c7aa8be0b32fde2fcd42a4314a93035edf665466d15b04.json",
       "deck": "lcs-teaching-5fbd2c8f82ee7c958e4212d9f0759f408828207cc79e380544e0b1a0358ec544.asmdeck",
       "slideId": "lcs-slide-12"
+    },
+    "c06dcfd718a88bcdc6069d0b8e064a7bc6e873e0fd4102832ea7eb5b8c466b23": {
+      "file": "selection-sort-01-c06dcfd718a88bcdc6069d0b8e064a7bc6e873e0fd4102832ea7eb5b8c466b23.json",
+      "deck": "selection-sort-83f7d7af9a0e356e88a2008fbbec076b39ee114d8784447372a2672eaf47d374.asmdeck",
+      "slideId": "selection-teaching-24"
+    },
+    "ef6c19937115d66a9403deaec8e9b33aaa2293662edf413a89c1aa154ab9385e": {
+      "file": "selection-sort-02-ef6c19937115d66a9403deaec8e9b33aaa2293662edf413a89c1aa154ab9385e.json",
+      "deck": "selection-sort-83f7d7af9a0e356e88a2008fbbec076b39ee114d8784447372a2672eaf47d374.asmdeck",
+      "slideId": "selection-teaching-33"
     }
   }
 }
