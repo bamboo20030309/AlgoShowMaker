@@ -5221,7 +5221,9 @@
           const labelTop = -labelSize / 2;
           const labelLength = Math.max(1, Array.from(String(label)).length);
           const fontSize = Math.max(4, Math.min(8, (labelSize - 4) / (labelLength * 0.62)));
-          const borderColor = pointerColor || '#333';
+          // @pointer color affects only the label fill; lines keep their
+          // normal paint and can still receive explicit saved style overrides.
+          const borderColor = '#333';
           const point = svg('g', { class: 'trace-variable-marker-point' });
           point.append(
             svg('path', {
@@ -5250,7 +5252,7 @@
           const labelLength = Math.max(1, Array.from(String(label)).length);
           const fontSize = Math.max(4, Math.min(8, (labelWidth - 4) / (labelLength * 0.62)));
           // Mirrors a normal draw_array cell: #333 with a 1px outline.
-          const borderColor = pointerColor || '#333';
+          const borderColor = '#333';
           const borderWidth = 1;
           const labelTop = -40;
           const labelBottom = labelTop + labelHeight;
@@ -7185,9 +7187,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-280';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-281';
   window.ASMTraceRenderers = {
-    build: 'trace-280', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-281', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

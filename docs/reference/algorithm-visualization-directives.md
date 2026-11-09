@@ -2195,7 +2195,7 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 - `.row` 使用 `i` 的值選擇列，顯示在該列左側；`.column` 使用 `j` 選擇欄，顯示在該欄上方。無須重複寫 `[i]` 或 `[j]`，索引超出矩陣範圍時隱藏。
 - 不改變原本矩陣的標籤、範圍、顯示格式與其他 renderer 設定；隱藏列欄標籤時也可透過透明定位點呈現指標。
 - 明確寫 `.row/.column` 即指定外側列欄位置，不依賴 `marker-layout(inner)` 的自動格子定位；`marker-layout(none)` 仍關閉自動指標，但明寫的 `@pointer` 會顯示。
-- 所有 `@pointer` 目標均可加 `color`，包括一維陣列與 layout 的 root/current/nodes/leaves/children/level/side。顏色套用到標籤底色、外框與箭頭線；文字保留原有深色。
+- 所有 `@pointer` 目標均可加 `color`，包括一維陣列與 layout 的 root/current/nodes/leaves/children/level/side。顏色只套用到標籤格子的背景；不改變外框、箭頭線與文字的顏色。
 - 支援 AV 顏色別名、CSS 顏色名稱、十六進位、rgb/rgba/hsl/hsla；例如 `@pointer i at arr color #e65100`。
 - 未指定 `color` 時維持原本預設。舊 Trace 缺少顏色欄位亦維持預設，不需遷移。
 - 可放在 preset 中與原本矩陣 preset 組合，不用重新宣告矩陣物件。
