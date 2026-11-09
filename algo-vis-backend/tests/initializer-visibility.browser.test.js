@@ -49,7 +49,14 @@ test('initializer visibility controls joined entry; pointer assignment moves con
         }
         const object = [...document.querySelectorAll('#asm-trace-root [data-trace-variable]')]
           .find(node => node.dataset.traceVariable === id);
-        return { values: [...(object?.querySelectorAll('text[data-trace-content-role="value"]') || [])].map(node => node.textContent) };
+        const values = [...(object?.querySelectorAll('text[data-trace-content-role="value"]') || [])];
+        let opacity = values.length ? 1 : 0;
+        for (let node = values[0]; node?.nodeType === 1; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (style.visibility === 'hidden' || style.display === 'none') { opacity = 0; break; }
+          opacity *= Number(style.opacity);
+        }
+        return { values: values.map(node => node.textContent), visible: opacity > .001 };
       };
       const runs = [];
       for (const step of [1, 2, 3, 'cancel']) {
@@ -119,19 +126,24 @@ test('initializer visibility controls joined entry; pointer assignment moves con
       assert.ok(slot?.direct, `${mode}: ${name} enters with its initialized value`);
       assert.equal(slot.duration, 220, `${mode}: ${name} has one entry slot`);
     }
-    for (const name of ['copied', 'computed', 'cloned', 'k', 'fromNew']) {
+    const pointerInit = slots.find(slot => slot.name === 'k');
+    assert.ok(pointerInit?.direct && !pointerInit.transfer, `${mode}: pointer initializes directly at its target`);
+    assert.equal(pointerInit.duration, 300, `${mode}: shared-cell initialization keeps the existing 80ms make-room delay and 220ms entrance`);
+    for (const name of ['copied', 'computed', 'cloned', 'fromNew']) {
       const slot = slots.find(slot => slot.name === name);
       assert.ok(slot?.transfer, `${mode}: ${name} receives a visible source`);
-      assert.equal(slot.duration, name === 'k' ? 2500 : 1480);
+      assert.equal(slot.duration, 1480);
     }
     assert.equal(slots.filter(slot => slot.expression && /^(literal|hidden|copied|computed|repeated|values|cloned|i|k)\s*=/.test(slot.expression)).length, 0,
       'paired assignments are not replayed as extra events');
     assert.ok(result.runs[0].samples.some(sample => sample.active === 'copied' && sample.copies.some(copy => copy.cell)), 'copy initialization moves the source cell');
     const entry = result.runs[0];
-    assert.deepEqual(entry.samples.find(sample => sample.active === 'literal').literal.values, ['9']);
-    assert.deepEqual(entry.samples.find(sample => sample.active === 'repeated').repeated.values, ['0', '0', '0', '0', '0']);
-    assert.deepEqual(entry.samples.find(sample => sample.active === 'values').values.values, ['1', '2', '3']);
-    assert.deepEqual(entry.samples.find(sample => sample.active === 'grid').grid.values, ['0', '0', '0', '0', '0', '0']);
+    // Active code includes the 200ms prompt before entrance. Check initialized
+    // contents when the actual SVG first becomes visible, not while hidden.
+    assert.deepEqual(entry.samples.find(sample => sample.active === 'literal' && sample.literal.visible).literal.values, ['9']);
+    assert.deepEqual(entry.samples.find(sample => sample.active === 'repeated' && sample.repeated.visible).repeated.values, ['0', '0', '0', '0', '0']);
+    assert.deepEqual(entry.samples.find(sample => sample.active === 'values' && sample.values.visible).values.values, ['1', '2', '3']);
+    assert.deepEqual(entry.samples.find(sample => sample.active === 'grid' && sample.grid.visible).grid.values, ['0', '0', '0', '0', '0', '0']);
     assert.ok(entry.samples.filter(sample => sample.active === 'repeated').every(sample => sample.copies.length === 0));
     assert.ok(!entry.samples.find(sample => sample.active === 'copied').copied.values.includes('8'), 'visible-source target begins empty');
     assert.ok(entry.samples.some(sample => sample.active === 'cloned' && sample.copies.length === 5), 'all five array cells copy in one initialization');
@@ -144,7 +156,10 @@ test('initializer visibility controls joined entry; pointer assignment moves con
     assert.ok(entry.samples.some(sample => sample.active === 'selected' && sample.comparisons > 0),
       'joining initialization preserves min/max comparison before transferring its selected result');
     const kPositions = new Set(entry.samples.filter(sample => sample.active === 'k').map(sample => sample.k.x.toFixed(2)));
-    assert.ok(kPositions.size > 5, 'visible-source pointer initialization moves from its unbound entry');
+    assert.ok(kPositions.size <= 2, 'pointer enters at its target instead of travelling from an unbound slot');
+    assert.ok(entry.samples.filter(sample => sample.active === 'k')
+      .every(sample => Math.abs(sample.k.x - entry.final.k.x) < 0.5),
+      'pointer initialization stays at its final target throughout entry');
     assert.ok(result.runs[0].samples.every(sample => sample.formula === 0), 'no additional floating formula panel');
     const movement = result.runs[1];
     assert.equal(movement.slots.find(slot => slot.expression === 'i=4').duration, 2280);

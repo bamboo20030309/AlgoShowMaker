@@ -7352,7 +7352,10 @@
           declarationInitializerMarker = Boolean(assignmentTargetMarker(
             initializerEvent, elements, eventFrame, previousObjects
           ));
-          declarationInitializerTransfer = initializerPresentation(
+          // A newly declared pointer enters at its initialized target. A
+          // visible source does not require an unresolved entry followed by
+          // a second trip; ordinary value objects still copy that source.
+          declarationInitializerTransfer = !declarationInitializerMarker && initializerPresentation(
             traceDocument, eventFrame, initializerEvent, currentPlacements, elements
           ) === 'transfer';
           if (declarationInitializerTransfer) {
@@ -10716,10 +10719,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-327';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-328';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-327', play, cancel, updateEventAvailability,
+    build: 'trace-328', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

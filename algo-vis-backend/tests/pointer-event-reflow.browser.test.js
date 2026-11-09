@@ -20,6 +20,20 @@ async function sample(page,trace,from,speed){return page.evaluate(async({trace,f
  return{before,samples,after:read()};
 },{trace,from,speed});}
 
+test('selection min_idx initializes at i without travelling from an unresolved slot',{timeout:45000},async t=>{
+ const body=readPackage(fs.readFileSync('public/guest-decks/selection-sort.asmdeck')).body;
+ const trace=savedTrace(body,body.deck.groups.flatMap(g=>g.slides).find(s=>s.animation).animation);
+ const {base}=await startIsolatedServer(t),browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});t.after(()=>browser.close());
+ const page=await browser.newPage();await page.goto(base+'/algorithm.html?asmEmbed=runtime');await page.waitForFunction(()=>window.ASMTracePlayer);
+ for(const speed of [1,4]){
+  const result=await sample(page,trace,0,speed),final=result.after.markers.min_idx;
+  assert.ok(final);assert.ok(final.target.endsWith('#0'));
+  const visible=result.samples.filter(s=>s.markers.min_idx);
+  assert.ok(visible.length>2);
+  assert.ok(visible.every(s=>Math.abs(s.markers.min_idx.x-final.x)<.5),'min_idx must enter beside i at arr[0]');
+ }
+});
+
 test('quick sort 18 to 19 recenters i with j exit, never during the preceding frame phase',{timeout:60000},async t=>{
  const body=readPackage(fs.readFileSync('public/guest-decks/quick-sort.asmdeck')).body;
  const trace=savedTrace(body,body.deck.groups.flatMap(g=>g.slides).find(s=>s.animation).animation);
