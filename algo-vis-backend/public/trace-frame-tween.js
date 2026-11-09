@@ -6452,6 +6452,44 @@
     return matches;
   }
 
+  function referenceContainerContinuations(traceDocument, previousFrame, frame, previousObjects, elements) {
+    const matches = new Map();
+    const alias = (sourceFrame, id) => {
+      const value = objectKeyForVariable(sourceFrame, id);
+      return value === id ? '' : value;
+    };
+    const isReference = id => /&/.test(String(traceDocument?.variables?.[id]?.cppType || ''));
+    elements?.forEach?.((element, key) => {
+      if (!element.matches?.('.asm-trace-object') || retainedSnapshotVisual(element)
+        || element.dataset?.traceSourceVariableId) return;
+      const id = element.dataset?.traceVariable;
+      const identity = element.dataset?.traceRuntimeIdentity;
+      if (!id || !identity || traceDocument?.variables?.[id]?.kind === 'scalar') return;
+      for (const [previousKey, previous] of previousObjects || []) {
+        const previousId = previous?.dataset?.traceVariable;
+        if (!previous?.matches?.('.asm-trace-object') || retainedSnapshotVisual(previous)
+          || previous.dataset?.traceSourceVariableId
+          || (element.dataset.traceLayoutId || '') !== (previous.dataset.traceLayoutId || '')
+          || (element.dataset.traceLayoutNode || '') !== (previous.dataset.traceLayoutNode || '')
+          || (element.dataset.traceLayoutActivation || '') !== (previous.dataset.traceLayoutActivation || '')
+          || previous.dataset?.traceRuntimeIdentity !== identity
+          || !sameSceneGeneration(element, previous)
+          || (!isReference(id) && !isReference(previousId))
+          || alias(frame, id) !== alias(previousFrame, previousId)
+          || previous.getAttribute('opacity') === '0' || previous.getAttribute('display') === 'none') continue;
+        // Explicit authored lifetimes and layout nodes remain separate, even
+        // when they refer to the same C++ container.
+        if (orderedEvents(frame).some(event => (event.targets || []).some(target => (
+          ['visual-enter', 'visual-exit'].includes(event.type) && [id, previousId].includes(target.variableId)
+        ) || (event.type === 'scope-exit' && target.variableId === previousId
+          && !naturalReferenceContainerExitTarget(traceDocument, event, target))))) continue;
+        matches.set(key, { key: previousKey, element: previous });
+        break;
+      }
+    });
+    return matches;
+  }
+
   function declarationVisualSchedule(
     traceDocument, eventFrame, eventTimeline, placements, elements, continuingKeys = new Set()
   ) {
@@ -8784,7 +8822,12 @@
     const recursiveContinuations = recursiveRoleContinuations(
       traceDocument, options.previousFrame, frame, previousObjects, currentElements
     );
-    const continuingKeys = new Set(recursiveContinuations.keys());
+    const referenceContinuations = referenceContainerContinuations(
+      traceDocument, options.previousFrame, frame, previousObjects, currentElements
+    );
+    // Container continuity is not pointer-role continuity: a callee's local
+    // index still owns its own lifetime and declaration entrance.
+    const continuingKeys = new Set([...recursiveContinuations.keys(), ...referenceContinuations.keys()]);
     // A layout may expose its newest snapshot under the live alias in the
     // element map. Lifecycle ownership must still inspect the live DOM slot.
     const liveAuthoredSlots = new Set([...root.querySelectorAll('[data-trace-authored-continuity]')]
@@ -10719,10 +10762,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-328';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-329';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-328', play, cancel, updateEventAvailability,
+    build: 'trace-329', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
@@ -10731,6 +10774,7 @@
     captureAssignmentSourceGeometry,
     recursionGrowthTransitions,
     recursionDeclarationClock,
+    referenceContainerContinuations,
     keepLiveGrowthTransitions,
     createPlaybackPlan, recursiveMarkerTransitionSteps, swapContainerPlacementTransitionSteps,
     buildEventTimeline, enabledExitBarrierEnd, frameSceneBoundaryChanged,

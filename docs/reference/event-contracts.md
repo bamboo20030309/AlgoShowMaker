@@ -228,3 +228,9 @@ insert／push_back 的入場階段須同時呈現格子與數字。可見來源�
 只改顯示、不改 C++ lifetime 的指標增減，使用暫時的視覺入退場時鐘；不產生持久化的假 runtime 事件。若新指標必須等待舊指標退場，等待期間不預留新指標槽位。離場複本、存續指標與比較跟隨共用同一套位置／箭頭狀態，避免重複疊加舊版重排。矩陣列／欄標籤與二維格子沿用各自的座標鍵，不將缺失二維格子當成一維索引推算。
 
 固定畫面答案見 `tests/pointer-event-reflow.browser.test.js`：快速排序第 18→19 幀在 j 完全可見時 i 的 x 不變，j 淡出時 i 才移動；另查宣告、移動、純顯示移除、矩陣列指標及延後替換入場。取樣實際 SVG 標籤位置與有效透明度，不以播放計畫自身當作標準答案。
+
+## 引用容器的呼叫交接（2026-11-10）
+
+引用參數的宣告不代表建立新的容器。如果前後畫面具有相同 runtime 儲存身分、同一 scene、相同作者別名與 layout 節點，且前一容器仍可見，沿用整體容器及其格子／標籤，不重播宣告入場。此規則適用跨函式、返回呼叫者與遞迴；指標／純量仍按自己的 lifetime 處理，容器延續不能直接當成指標角色延續。
+
+不能只比名稱或物件 ID：不同儲存身分、新的值容器、明確 visual-enter／visual-exit、已結束的擁有者、keep／新 scene、不同別名或新的遞迴 layout 節點，都保留獨立生命週期。缺少新欄位不另加必填資料，沿用既有型別及 runtime metadata。驗證入口為 `reference-container-continuity.test.js`、`heap-reference-continuity.browser.test.js`，另以 `recursion-declaration-clock` 兩檔檢查新節點入場未被抑制。
