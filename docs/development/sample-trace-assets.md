@@ -18,6 +18,14 @@ merge-sort.asmdeck
 
 ## 建置與舊版本
 
+### 2026-11-09 現況核對
+
+以 intergration `c7e55e4` 的現行清單唯讀核對：15 份教材引用 36 個 Trace（114.34 MiB），索引共 280 筆，另外 244 個歷史結果（722.66 MiB）；其中 122 筆標記 legacy，122 筆未標記。下方 2026-11-01 的 80 筆是當日快照，不是現行數量。
+
+新版 prebuild 使用 `--immutable`，輸出 `<教材>-<序號>-<完整內容 ID>.json`，並讓公開清單改指向含 archive 雜湊的新檔。`registerDeckTraces` 原有 legacy 搬移只在「相同檔名要被不同內容取代」時執行；不可變檔名不碰撞，所以歷史項目仍可位於根目錄且未標 legacy。這是舊說明未涵蓋新版建置策略，不代表這些 ID 已失效或可刪。legacy 旗標也不是引用存在與否的判斷依據。
+
+使用者已要求評估將全部 Trace 移出 Git，方案見 [Trace 外部儲存評估](trace-storage-migration-plan.md)。目前僅評估，不移動、不刪除既有結果，仍保留舊 ID／分享引用；本次未聲稱已重新盤點所有本機及雲端引用。
+
 `scripts/build/prebuild-guest-decks.js` 使用 `registerDeckTraces` 寫入命名檔與索引。相同名稱的新結果取代舊結果前，先把舊 ID 對應的結果保留到 legacy 子資料夾；內容 ID 不因檔案搬移而改變。
 
 本輪只搬移檔案，沒有重新編譯或變更 36 份現行動畫的 Trace 內容。另保留 8 份仍被舊投影片引用的結果，共 44 份。

@@ -1243,6 +1243,7 @@
   }
 
   function objectKeyForVariable(frame, variableId) {
+    if (window.ASMTraceModel?.objectKeyForVariable) return window.ASMTraceModel.objectKeyForVariable(frame, variableId);
     const source = frame?.source || {};
     if (source.objectIds?.[variableId]) return source.objectIds[variableId];
     if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
@@ -7187,9 +7188,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-281';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-282';
   window.ASMTraceRenderers = {
-    build: 'trace-281', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-282', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

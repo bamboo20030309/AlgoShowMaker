@@ -82,14 +82,19 @@
 
 詳細步驟、驗證層級與禁止事項見 [交接文件](../agent-handoffs/code-audit-2026-11-09.md)。
 
-- [ ] 收進 intergration：cherry-pick 本分支的 docs commit（主代理，V0）。
-- [ ] A：移除第一節的未使用程式與檔案（開發代理，V1）。
-- [ ] B：重現第三節兩項；確認後才修正（開發代理，V2）。
-- [ ] C：Trace 保留規則與倉庫大小——**先問使用者**；決定前不移動、不刪除任何 Trace。
+- [x] 收進 intergration：只 cherry-pick 文件提交，未合併文件來源分支。
+- [x] A：使用者明確批准後合入既有清理交付；差異審查、殘留引用與隔離介面核實完成。
+- [x] B：兩項都已重現並修正，固定答案與實際 SVG 驗證通過。
+- [x] C：已核對現況、解釋 immutable 檔名與 legacy 標記差異；使用者選擇評估全部 Trace 移出 Git，已交付[評估方案](../../development/trace-storage-migration-plan.md)，尚未執行移動或刪除。
 - [ ] D：`showToast` 合併、`deck-thumbnail.js` 快取參數統一；`normalizeIndex` 先查呼叫端再決定——先問使用者是否要做。
 - [ ] E：舊版 `AV.hpp` 流程去留——**先問使用者**；決定前不動。
 - [ ] F：清理 `.git` 的 `tmp_obj_*`——先問使用者，且在沒有其他代理操作 git 時執行。
 
 ## 主代理核實與整合（由主代理填寫）
 
-- 狀態：尚未核實
+- 狀態：2026-11-09 主代理核實完成；整合詳見 [本輪交付](code-audit-followup-2026-11-09/delivery.md)。
+- 文件提交：640e501、77a4394；核對原分支只有兩個 docs commit，未帶入 main 的 682698a。
+- A 清理：核對 91c344c，已明確取得使用者批准，合併為 029cdd71db91fdc391b8cd298f444a03ad472ede。
+- B 證據：副物件 right_after 原本找不到 right_before；索引 5 原定位 (208,180)，實際首格 (128,128)。修正後配對與座標一致。
+- C 現況：索引 280、現行 36、歷史 244；本輪未移動／刪除 Trace。
+- D／E／F 尚未執行，不將選項預選視為批准。

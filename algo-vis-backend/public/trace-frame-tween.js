@@ -2008,7 +2008,9 @@
   }
 
   function objectKeyForVariable(frame, variableId) {
+    if (window.ASMTraceModel?.objectKeyForVariable) return window.ASMTraceModel.objectKeyForVariable(frame, variableId);
     const source = frame?.source || {};
+    if (source.objectIds?.[variableId]) return source.objectIds[variableId];
     if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
     return variableId;
   }
@@ -10714,10 +10716,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-326';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-327';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-326', play, cancel, updateEventAvailability,
+    build: 'trace-327', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

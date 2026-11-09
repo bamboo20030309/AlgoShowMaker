@@ -11,6 +11,15 @@
     return value == null ? value : JSON.parse(JSON.stringify(value));
   }
 
+  // Rendering, Studio and playback must agree on aliases of secondary
+  // objects, not just the primary object named by @frame.
+  function objectKeyForVariable(frame, variableId) {
+    const source = frame?.source || {};
+    if (source.objectIds?.[variableId]) return source.objectIds[variableId];
+    if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
+    return variableId;
+  }
+
   // ---------------------------------------------------------------------------
   // 區段：資料值正規化
   // ---------------------------------------------------------------------------
@@ -660,6 +669,7 @@
   }
 
   window.ASMTraceModel = {
+    objectKeyForVariable,
     characterItems,
     presentationItems,
     drawingDirectives,

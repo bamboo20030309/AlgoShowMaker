@@ -378,6 +378,7 @@
   }
 
   function frameObjectKey(frame, variableId) {
+    if (window.ASMTraceModel?.objectKeyForVariable) return window.ASMTraceModel.objectKeyForVariable(frame, variableId);
     const source = frame?.source || {};
     if (source.objectIds?.[variableId]) return source.objectIds[variableId];
     if (source.objectId && source.primaryVariableId === variableId) return source.objectId;
