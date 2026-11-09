@@ -4796,6 +4796,13 @@
           || cell.closest('[data-trace-snapshot]')?.dataset.traceSnapshot;
         if (snapshot) return targetKey === `${snapshot}:pointer-target#${cell.dataset.traceIndex}`
           || anchor === cell || cell.contains(anchor);
+        // A later swap can reuse this physical node for another logical index.
+        // Matching the node alone must not attach an unrelated pointer to the
+        // earlier comparison. Aliases may share a node, but must share its
+        // execution-time cell index as well.
+        const targetIndex = String(targetKey).split('#').slice(1).join('#');
+        const operandIndex = String(operand.logicalKey).split('#').slice(1).join('#');
+        if (targetIndex && operandIndex && targetIndex !== operandIndex) return false;
         return anchor ? anchor === cell || cell.contains(anchor) : operand.logicalKey === targetKey;
       });
     };
@@ -10459,10 +10466,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-322';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-323';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-322', play, cancel, updateEventAvailability,
+    build: 'trace-323', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

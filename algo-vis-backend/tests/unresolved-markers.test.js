@@ -2563,6 +2563,8 @@ test('compare marker followers use the event checkpoint rather than the final re
 });
 
 test('j and j+1 follow their comparison-time cells before a later j--', () => {
+  // This case must also run by name without relying on earlier tests to load it.
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
   const doc = { variables: { j: { name: 'j', kind: 'scalar' } } };
   const frame = { state: {} };
   const checkpoint = { beforeState: { 'value:j#0': { kind: 'scalar', value: 2 } } };
