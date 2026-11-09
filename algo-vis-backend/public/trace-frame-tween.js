@@ -641,42 +641,18 @@
       || markerActivationChanged(element, previousVisual);
   }
 
+  let initialExecution = null;
   function markerTargetBeforeFrameEvents(traceDocument, eventFrame, element) {
-    const currentTarget = String(element?.dataset?.traceBindingTarget || '');
-    const currentParts = markerTargetParts(currentTarget);
-    if (!currentParts) return currentTarget;
-    const sourceVariableIds = markerSourceVariableIds(element);
-    if (!sourceVariableIds.length) return currentTarget;
-    let startsUnresolved = false;
-    for (const event of orderedEvents(eventFrame)) {
-      const target = (event?.targets || []).find(candidate => (
-        candidate?.role !== 'source'
-        && sourceVariableIds.includes(candidate?.variableId)
-        && markerMatchesEventTarget(element, candidate)
-        && markerLifetimeActiveAtEvent(eventFrame, event, element)
-        && eventMutatesVariable(event, candidate?.variableId)
-      ));
-      if (!target) continue;
-      const initialValue = displayEventValue(event?.payload?.before);
-      if (initialValue === '') {
-        startsUnresolved = true;
-        continue;
-      }
-      const variableName = traceDocument?.variables?.[target.variableId]?.name;
-      const locals = variableName ? { [variableName]: initialValue } : {};
-      const expression = String(
-        element.dataset.traceMarkerIndexExpression
-        || element.dataset.traceMarkerSortKey
-        || ''
-      );
-      const rawResolved = window.ASMTraceRules?.resolveExpression?.(
-        traceDocument, eventFrame, expression, locals
-      );
-      const resolved = rawResolved == null ? NaN : Number(rawResolved);
-      if (Number.isInteger(resolved)) return `${currentParts.prefix}#${resolved}`;
+    // One render preparation can query many peers. Retain only the latest
+    // frame's context, not one context per saved frame for the entire deck.
+    if (initialExecution?.document !== traceDocument || initialExecution.frame !== eventFrame
+        || initialExecution.events !== eventFrame?.events || initialExecution.count !== eventFrame?.events?.length) {
+      const plan = createForwardReplayPlan(traceDocument, eventFrame, []);
+      initialExecution = { document: traceDocument, frame: eventFrame, events: eventFrame?.events,
+        count: eventFrame?.events?.length, first: plan.checkpoints[0]?.event,
+        context: createExecutionContext(traceDocument, eventFrame, plan) };
     }
-    if (startsUnresolved) return `unresolved:${currentParts.prefix}`;
-    return currentTarget;
+    return initialExecution.context.pointerTarget(element, initialExecution.first);
   }
 
   function markerGroupReflowDuration({
@@ -4721,35 +4697,197 @@
   }
 
   function markerTargetAtCheckpoint(traceDocument, eventFrame, element, checkpoint) {
-    const target = String(element?.dataset?.traceBindingTarget || '');
-    const parts = markerTargetParts(target);
-    const expression = String(element?.dataset?.traceMarkerIndexExpression || '');
-    if (!parts || !expression || !checkpoint?.beforeState) return target;
-    const locals = {};
-    markerSourceVariableIds(element).forEach(variableId => {
-      const key = eventTargetKey(traceDocument, eventFrame, { variableId });
-      const stateKey = `value:${key}`;
-      if (!Object.prototype.hasOwnProperty.call(checkpoint.beforeState, stateKey)) return;
-      const name = traceDocument?.variables?.[variableId]?.name;
-      if (name) locals[name] = markerExpressionValue(checkpoint.beforeState[stateKey]);
+    // Compatibility adapter for callers that kept a checkpoint. Resolution
+    // still goes through the common full-state evaluator, not partial locals.
+    const mutations = Object.entries(checkpoint?.beforeState || {}).map(([key, value]) => {
+      const split = key.indexOf(':');
+      return { kind: key.slice(0, split), key: key.slice(split + 1), before: value, after: value };
     });
-    // Indexed reads carry the exact index captured at execution. In
-    // particular postfix increments can already affect the captured frame
-    // state; never use that later value to aim a pointer during the read.
-    if (checkpoint.event?.type === 'compare') {
-      (checkpoint.event.targets || []).forEach(read => {
-        const indexName = String(read.expression || '').match(/\[\s*([A-Za-z_]\w*)\s*\]$/)?.[1];
-        if (indexName && read.resolvedIndex != null && Number.isInteger(Number(read.resolvedIndex))) locals[indexName] = Number(read.resolvedIndex);
+    const event = checkpoint?.event || {};
+    return createExecutionContext(traceDocument, eventFrame, { checkpoints: [{ event, mutations }] })
+      .pointerTarget(element, event);
+  }
+
+  // One chronological state source for every effect. Presentation baselines
+  // may reveal disabled initializers immediately, but must never supply the
+  // logical values used by an earlier event.
+  function createExecutionContext(traceDocument, eventFrame, replayPlan) {
+    eventFrame ||= { state: {}, events: [] };
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const checkpoints = replayPlan?.checkpoints || [];
+    // @exit changes a view's visibility, not the C++ variable's lifetime.
+    const logicalMutations = checkpoint => (checkpoint.mutations || []).filter(mutation =>
+      !(checkpoint.event?.type === 'visual-exit' && mutation.kind === 'presence'));
+    const values = new Map();
+    checkpoints.forEach(checkpoint => logicalMutations(checkpoint).forEach(mutation => {
+      const key = `${mutation.kind}:${mutation.key}`;
+      if (!values.has(key)) values.set(key, mutation.before);
+    }));
+    const byEvent = new Map();
+    const snapshots = new WeakMap();
+    checkpoints.forEach(checkpoint => {
+      const before = new Map(values);
+      logicalMutations(checkpoint).forEach(mutation => values.set(`${mutation.kind}:${mutation.key}`, mutation.after));
+      byEvent.set(checkpoint.event, { checkpoint, before, after: new Map(values) });
+    });
+    const asData = value => value && typeof value === 'object'
+      ? clone(value) : { kind: 'scalar', value: value ?? null };
+    function materialize(state) {
+      if (snapshots.has(state)) return snapshots.get(state);
+      const frame = { ...eventFrame, state: { ...eventFrame.state } };
+      Object.keys(traceDocument?.variables || {}).forEach(id => {
+        const key = objectKeyForVariable(eventFrame, id);
+        if (!frame.state[id] && (state.has(`value:${key}`) || state.has(`value:${key}#0`))) {
+          frame.state[id] = { name: traceDocument.variables[id].name, data: { kind: 'scalar', value: null } };
+        }
       });
+      const cloned = new Set();
+      const ensure = id => {
+        if (!cloned.has(id)) {
+          const entry = frame.state[id] || { name: traceDocument?.variables?.[id]?.name || id };
+          frame.state[id] = { ...entry, data: clone(entry.data || { kind: 'scalar', value: null }) };
+          cloned.add(id);
+        }
+        return frame.state[id];
+      };
+      // Only values untouched by every event may use the captured baseline.
+      // Changed values are always replaced by this event's chronological state.
+      state.forEach((value, trackKey) => {
+        if (!trackKey.startsWith('value:')) return;
+        const key = trackKey.slice(6);
+        const ownerId = Object.keys(frame.state).find(id => {
+          const prefix = objectKeyForVariable(eventFrame, id);
+          return key === prefix || key.startsWith(prefix + '#');
+        });
+        const owner = frame.state[ownerId];
+        for (const id of Object.keys(frame.state)) {
+          const ownKey = objectKeyForVariable(eventFrame, id);
+          const alias = value != null && owner?.identity && frame.state[id]?.identity === owner.identity
+            && frame.state[id]?.lifetime === owner.lifetime;
+          if (key !== ownKey && !key.startsWith(ownKey + '#') && !alias) continue;
+          const objectKey = alias ? objectKeyForVariable(eventFrame, ownerId) : ownKey;
+          const entry = ensure(id);
+          const indexText = key === objectKey ? '' : key.slice(objectKey.length + 1);
+          if (indexText && traceDocument?.variables?.[id]?.kind === 'string'
+              && typeof entry.data?.value === 'string') {
+            const index = Number(indexText), characters = Array.from(entry.data.value);
+            if (Number.isInteger(index) && index >= 0) {
+              characters[index] = displayEventValue(value);
+              entry.data = { ...entry.data, value: characters.join('') };
+            }
+            continue;
+          }
+          if (!indexText || (!Array.isArray(entry.data?.items) && indexText === '0'
+              && traceDocument?.variables?.[id]?.kind !== 'sequence')) {
+            entry.data = asData(value);
+          } else {
+            const indices = indexText.split(',').map(Number);
+            if (indices.some(index => !Number.isInteger(index) || index < 0)) continue;
+            let data = entry.data;
+            indices.forEach((index, depth) => {
+              data.kind = 'sequence'; data.items ||= [];
+              if (depth === indices.length - 1) data.items[index] = asData(value);
+              else data = data.items[index] ||= { kind: 'sequence', items: [] };
+            });
+          }
+        }
+      });
+      // Presence also belongs to the logical snapshot: a future appended cell
+      // must not affect size()/empty() or nested indexing before its event.
+      state.forEach((present, trackKey) => {
+        if (!trackKey.startsWith('presence:') || present !== false) return;
+        const key = trackKey.slice(9);
+        const ownerId = Object.keys(frame.state).find(id => {
+          const prefix = objectKeyForVariable(eventFrame, id);
+          return key === prefix || key.startsWith(prefix + '#');
+        });
+        const owner = frame.state[ownerId], ownerKey = objectKeyForVariable(eventFrame, ownerId);
+        for (const id of Object.keys(frame.state)) {
+          const ownKey = objectKeyForVariable(eventFrame, id);
+          const alias = key !== ownerKey && owner?.identity && frame.state[id]?.identity === owner.identity
+            && frame.state[id]?.lifetime === owner.lifetime;
+          if (key !== ownKey && !key.startsWith(ownKey + '#') && !alias) continue;
+          const prefix = alias ? ownerKey : ownKey;
+          const entry = ensure(id), indexText = key === prefix ? '' : key.slice(prefix.length + 1);
+          if (!indexText || (indexText === '0' && !Array.isArray(entry.data?.items))) {
+            entry.data = { kind: 'scalar', value: null }; continue;
+          }
+          const indices = indexText.split(',').map(Number);
+          let data = entry.data;
+          for (let depth = 0; depth < indices.length; depth++) {
+            if (!Array.isArray(data?.items)) break;
+            const index = indices[depth];
+            if (depth === indices.length - 1) {
+              data.items[index] = undefined;
+              while (data.items.length && data.items.at(-1) === undefined) data.items.pop();
+            } else data = data.items[index];
+          }
+        }
+      });
+      snapshots.set(state, frame);
+      return frame;
     }
-    const raw = window.ASMTraceRules?.resolveExpression?.(traceDocument, eventFrame, expression, locals);
-    const index = raw == null || raw === '' ? NaN : Number(raw);
-    return Number.isInteger(index) ? `${parts.prefix}#${index}` : `unresolved:${parts.prefix}`;
+    const initial = checkpoints.length ? byEvent.get(checkpoints[0].event).before : new Map();
+    return {
+      frame(event, phase = 'before') {
+        const entry = byEvent.get(event);
+        return materialize(entry?.[phase] || initial);
+      },
+      checkpoint(event) { return byEvent.get(event)?.checkpoint; },
+      visualKey(event, key) {
+        return byEvent.get(event)?.checkpoint?.visualBindingsBefore?.[key] || key;
+      },
+      cellIdentity(key, event) {
+        const split = String(key).lastIndexOf('#');
+        if (split < 0) return key;
+        const prefix = key.slice(0, split), index = key.slice(split + 1);
+        const frame = this.frame(event);
+        const id = Object.keys(frame.state).find(id => objectKeyForVariable(eventFrame, id) === prefix);
+        const entry = frame.state[id];
+        return entry?.identity ? `${entry.identity}:${entry.lifetime || ''}#${index}` : key;
+      },
+      pointerTarget(element, event, phase = 'before') {
+        const target = String(element?.dataset?.traceBindingTarget || '');
+        const axis = target.match(/^(.*:(?:row|column)-label:)-?\d+$/);
+        const matrix = target.match(/^(.*#)-?\d+,-?\d+$/);
+        const parts = markerTargetParts(target) || ((axis || matrix) && { prefix: (axis || matrix)[1] });
+        const expression = String(element?.dataset?.traceMarkerIndexExpression || '');
+        if (!parts || !expression) return target;
+        const state = byEvent.get(event)?.[phase] || initial;
+        if (markerSourceVariableIds(element).some(id =>
+          state.get(`presence:${eventTargetKey(traceDocument, eventFrame, { variableId: id })}`) === false)) {
+          return `unresolved:${parts.prefix}`;
+        }
+        const frame = this.frame(event, phase);
+        const locals = {};
+        Object.entries(frame.state).forEach(([id, entry]) => {
+          if (!Array.isArray(entry.data?.items)) locals[entry.name || traceDocument?.variables?.[id]?.name || id] = markerExpressionValue(entry.data);
+        });
+        let expressions;
+        try { expressions = JSON.parse(element?.dataset?.traceMarkerIndexExpressions || 'null'); } catch {}
+        const selected = Array.isArray(expressions) ? expressions : [expression];
+        const indices = selected.map(expression => window.ASMTraceRules?.resolveExpression?.(traceDocument, frame, expression, locals));
+        return indices.every(raw => raw != null && raw !== '' && Number.isInteger(Number(raw)))
+          ? `${axis || matrix ? parts.prefix : parts.prefix + '#'}${indices.map(Number).join(',')}`
+          : `unresolved:${parts.prefix}`;
+      },
+      pointersByCell(elements, event, phase = 'before') {
+        const bindings = new Map();
+        elements?.forEach?.((element, key) => {
+          if (!element?.dataset?.traceSourceVariableId || !markerLifetimeActiveAtEvent(eventFrame, event, element)) return;
+          const target = this.pointerTarget(element, event, phase);
+          if (!target || target.startsWith('unresolved:')) return;
+          if (!bindings.has(target)) bindings.set(target, []);
+          bindings.get(target).push(key);
+        });
+        return bindings;
+      }
+    };
   }
 
   function createCompareEffect(
     root, event, traceDocument, eventFrame, placements, elements,
-    visualKeyForSource, positionAdjustments, bindingTargetForMarker
+    visualKeyForSource, positionAdjustments, bindingTargetForMarker, cellIdentity = key => key
   ) {
     const color = COMPARE_COLORS[String(event?.result === true)];
     const values = [event?.payload?.left, event?.payload?.right];
@@ -4782,28 +4920,20 @@
     // Resolve bindings to the actual visual cell, including snapshot-local
     // anchor proxies. Static C++ IDs alone cannot distinguish recursive keeps.
     const comparedOperandForBinding = targetKey => {
-      const anchor = elements?.get?.(targetKey);
       // A captured frame can already contain the result of a later swap.
       // Replay maps logical indices to the physical value-carrying SVG nodes.
       // Prefer the execution-time logical index before looking at those nodes;
       // otherwise arr[j]'s marker follows arr[j+1]'s comparison scale.
-      const logicalOperand = operands.find(operand => operand.logicalKey === targetKey
+      const logicalOperand = operands.find(operand => cellIdentity(operand.logicalKey) === cellIdentity(targetKey)
         && !retainedSnapshotVisual(operand.element));
       if (logicalOperand) return logicalOperand;
       return operands.find(operand => {
         const cell = operand.element;
         const snapshot = cell.dataset.traceCompareSnapshot
           || cell.closest('[data-trace-snapshot]')?.dataset.traceSnapshot;
-        if (snapshot) return targetKey === `${snapshot}:pointer-target#${cell.dataset.traceIndex}`
-          || anchor === cell || cell.contains(anchor);
-        // A later swap can reuse this physical node for another logical index.
-        // Matching the node alone must not attach an unrelated pointer to the
-        // earlier comparison. Aliases may share a node, but must share its
-        // execution-time cell index as well.
-        const targetIndex = String(targetKey).split('#').slice(1).join('#');
-        const operandIndex = String(operand.logicalKey).split('#').slice(1).join('#');
-        if (targetIndex && operandIndex && targetIndex !== operandIndex) return false;
-        return anchor ? anchor === cell || cell.contains(anchor) : operand.logicalKey === targetKey;
+        // A retained view has an explicit snapshot-local semantic cell key.
+        // Node equality/containment never decides pointer ownership.
+        return snapshot && targetKey === `${snapshot}:pointer-target#${cell.dataset.traceIndex}`;
       });
     };
     const highlights = [];
@@ -5436,6 +5566,8 @@
     traceDocument, eventFrame, eventTimeline, placements, elements, markerEntries = [],
     frameReflow = {}
   ) {
+    const execution = frameReflow.execution || createExecutionContext(traceDocument, eventFrame,
+      frameReflow.replayPlan || createForwardReplayPlan(traceDocument, eventFrame, eventTimeline));
     const metadata = new Map();
     markerEntries.forEach(entry => {
       if (!entry.markerPointPath) return;
@@ -5536,25 +5668,7 @@
       else if (markerTargetParts(item.previousTarget)) initialState.set(key, item.previousTarget);
     });
     const markerTargetForEvent = (item, slot, phase) => {
-      const parts = markerTargetParts(item.currentTarget);
-      if (!parts) return '';
-      const target = (slot.event?.targets || []).find(candidate => (
-        candidate?.role !== 'source' && item.variableIds.includes(candidate?.variableId)
-      ));
-      const variableName = traceDocument?.variables?.[target?.variableId]?.name;
-      const value = displayEventValue(slot.event?.payload?.[phase]);
-      // A missing before/after snapshot is not permission to fall back to the
-      // frame's final value. That made a newly-entering marker start from the
-      // last assignment in the frame and visually skip earlier movements.
-      if (value === '') return phase === 'before'
-        ? `unresolved:${parts.prefix}`
-        : '';
-      const locals = variableName ? { [variableName]: markerExpressionValue(slot.event?.payload?.[phase]) } : {};
-      const rawResolved = window.ASMTraceRules?.resolveExpression?.(
-        traceDocument, eventFrame, item.indexExpression || item.sortKey, locals
-      );
-      const resolved = rawResolved == null ? NaN : Number(rawResolved);
-      return Number.isInteger(resolved) ? `${parts.prefix}#${resolved}` : '';
+      return execution.pointerTarget(item.element, slot.event, phase);
     };
     const initializedMarkers = new Set();
     logicalMotionSlots.forEach(({ slot, markers }) => {
@@ -5794,7 +5908,7 @@
             ? slot.declarationInitializerTransfer
               ? `unresolved:${markerTargetParts(item.currentTarget)?.prefix}`
               : markerTargetForEvent(item, { ...slot, event: slot.initializerEvent }, 'after')
-            : markerTargetBeforeFrameEvents(traceDocument, eventFrame, elements.get(marker.key))
+            : execution.pointerTarget(item.element, slot.event, 'after')
           : markerTargetForEvent(item, slot, 'after');
         if (afterTarget) nextState.set(marker.key, afterTarget);
       });
@@ -6543,6 +6657,8 @@
       || ''
     );
     if (!expression) return [];
+    const execution = createExecutionContext(traceDocument, eventFrame,
+      createForwardReplayPlan(traceDocument, eventFrame, eventTimeline));
     const resolveTarget = (slot, phase) => {
       const target = (slot.event?.targets || []).find(candidate => (
         candidate?.role !== 'source'
@@ -6551,14 +6667,7 @@
         && markerLifetimeActiveAtEvent(eventFrame, slot.event, visual)
       ));
       if (!target) return '';
-      const value = displayEventValue(slot.event?.payload?.[phase]);
-      if (value === '') return '';
-      const variableName = traceDocument?.variables?.[target.variableId]?.name;
-      const locals = variableName ? { [variableName]: markerExpressionValue(slot.event?.payload?.[phase]) } : {};
-      const resolved = Number(window.ASMTraceRules?.resolveExpression?.(
-        traceDocument, eventFrame, expression, locals
-      ));
-      return Number.isInteger(resolved) ? `${binding.prefix}#${resolved}` : '';
+      return execution.pointerTarget(visual, slot.event, phase);
     };
     let offset = { x: 0, y: 0 };
     const steps = [];
@@ -7723,6 +7832,7 @@
     const replayPlan = options.forwardReplayPlan || createForwardReplayPlan(
       options.document, eventFrame, eventTimeline, options.direction
     );
+    const execution = createExecutionContext(options.document, eventFrame, replayPlan);
     // A backward step uses the outgoing frame only to identify transition
     // events. Persistent styles belong to the destination frame; evaluating
     // them against the outgoing frame would recreate highlights that should
@@ -7736,7 +7846,7 @@
         keys: options.markerReflowKeys,
         duration: options.markerReflowDuration,
         exitReflows: options.exitReflowSchedule,
-        replayPlan
+        replayPlan, execution
       }
     );
     const combinedAdjustments = new Map();
@@ -7754,8 +7864,8 @@
           && ['assign', 'write', 'swap', 'sequence', 'declare'].includes(event.type)
           && event.targets?.some(target => target.role === 'target' && target.variableId === id))) continue;
         const effect = slot.event.bitwise
-          ? createBitwiseEffect(slot.event, options.document, eventFrame, options.currentElements)
-          : createBitShiftEffect(slot.event, options.document, eventFrame,
+          ? createBitwiseEffect(slot.event, options.document, execution.frame(slot.event), options.currentElements)
+          : createBitShiftEffect(slot.event, options.document, execution.frame(slot.event),
             options.currentElements, options.previousObjects);
         if (effect) {
           if (effect.stage) effect.stage();
@@ -7818,10 +7928,16 @@
         return effectFor({ ...slot, event: slot.initializerEvent, type: 'assign', animation: 'assign',
           initializerEvent: null, declarationInitializerTransfer: false });
       }
-      const checkpoint = replayPlan.checkpoints.find(item => item.event === slot.event);
-      const visualKeyAtEvent = key => checkpoint?.visualBindingsBefore?.[key]
-        || options.visualKeyForSource?.(key)
-        || key;
+      const checkpoint = execution.checkpoint(slot.event);
+      const eventFrame = execution.frame(slot.event);
+      const visualKeyAtEvent = key => execution.visualKey(slot.event, key);
+      const markerPositionAtEvent = operand => {
+        const liveAdjustment = markerMotion.adjustments.get(operand.visualKey);
+        if (liveAdjustment) return liveAdjustment;
+        const variableId = String(operand.element?.dataset?.traceSourceVariableId || '');
+        const movedEarlier = variableChangedBeforeEvent(eventFrame, slot.event, variableId, options.document);
+        return movedEarlier ? null : options.rawDeltas?.get?.(operand.visualKey);
+      };
       if (slot.animation === 'assign' && selectionDuration(slot.event)) {
         const event = slot.event;
         const selections = event.selectionSteps?.length ? event.selectionSteps : [{
@@ -7849,7 +7965,9 @@
         const comparisons = displaySelections.map(selection => createCompareEffect(options.root, { ...event, type: 'compare',
           operation: selection.operation === 'min' ? '<=' : '>=', result: true,
           targets: selection.targets, payload: { left: selection.left, right: selection.right } },
-          options.document, eventFrame, comparisonPlacements, comparisonElements, visualKeyAtEvent));
+          options.document, eventFrame, comparisonPlacements, comparisonElements, visualKeyAtEvent,
+          markerPositionAtEvent, element => execution.pointerTarget(element, slot.event),
+          key => execution.cellIdentity(key, slot.event)));
         const hint = createSvg('text', { class: 'asm-trace-selection-label', x: 20, y: 24,
           'font-size': 16, 'font-weight': 'bold', fill: '#333333', 'pointer-events': 'none' }, selections[0].operation);
         options.root.append(hint);
@@ -7858,6 +7976,7 @@
         return {
           get adjustments() { return assignment?.adjustments || comparisons.find(c=>c?.adjustments?.size)?.adjustments || new Map(); },
           get markerArrowOffsets() { return comparisons.find(c=>c?.markerArrowOffsets?.size)?.markerArrowOffsets || new Map(); },
+          syncPosition() { comparisons.forEach(comparison => comparison?.syncPosition?.()); assignment?.syncPosition?.(); },
           update(elapsed) {
             const selectionMs = selectionDuration(event);
             if (elapsed < selectionMs) {
@@ -7901,19 +8020,13 @@
             options.currentPlacements, options.currentElements, visualKeyAtEvent
           );
         }
-        const markerPositionAtCompare = operand => {
-          const liveAdjustment = markerMotion.adjustments.get(operand.visualKey);
-          if (liveAdjustment) return liveAdjustment;
-          const variableId = String(operand.element?.dataset?.traceSourceVariableId || '');
-          const movedEarlier = variableChangedBeforeEvent(eventFrame, slot.event, variableId, options.document);
-          return movedEarlier ? null : options.rawDeltas?.get?.(operand.visualKey);
-        };
         return createCompareEffect(
           options.root, slot.event, options.document, eventFrame,
           options.currentPlacements, new Map([...options.currentElements,
             ...(options.comparisonExitMarkers || new Map())]), visualKeyAtEvent,
-          markerPositionAtCompare,
-          element => markerTargetAtCheckpoint(options.document, eventFrame, element, checkpoint)
+          markerPositionAtEvent,
+          element => execution.pointerTarget(element, slot.event),
+          key => execution.cellIdentity(key, slot.event)
         );
       }
       if (slot.animation === 'assign') {
@@ -7983,11 +8096,10 @@
       return null;
     }
     function animatedElementsFor(slot) {
-      const checkpoint = replayPlan.checkpoints.find(item => item.event === slot.event);
-      const visualKeyAtEvent = key => checkpoint?.visualBindingsBefore?.[key]
-        || options.visualKeyForSource?.(key) || key;
       const targetEvent = slot.declarationInitializerTransfer && slot.initializerEvent
         ? slot.initializerEvent : slot.event;
+      const eventFrame = execution.frame(targetEvent);
+      const visualKeyAtEvent = key => execution.visualKey(targetEvent, key);
       return (targetEvent?.targets || []).map((target,index) => eventOperand(
         options.document, eventFrame, target, targetEvent.type === 'compare'
           ? (index === 0 ? targetEvent.payload?.left : targetEvent.payload?.right) : null,
@@ -8060,8 +8172,8 @@
             if (slot.animation === 'assign' && (slot.event?.bitShift || slot.event?.bitwise)
               && Number(options.direction) >= 0 && !bitShiftEffects.has(slot)) {
               const effect = slot.event.bitwise
-                ? createBitwiseEffect(slot.event, options.document, eventFrame, options.currentElements)
-                : createBitShiftEffect(slot.event, options.document, eventFrame,
+                ? createBitwiseEffect(slot.event, options.document, execution.frame(slot.event), options.currentElements)
+                : createBitShiftEffect(slot.event, options.document, execution.frame(slot.event),
                   options.currentElements, options.previousObjects);
               if (effect) { effect.update(0); bitShiftEffects.set(slot, effect); }
             }
@@ -8084,9 +8196,10 @@
             const connected = options.root.querySelector(`[data-trace-object-key="${CSS.escape(key)}"]`);
             if (connected) readElements.set(key, connected);
           });
-          activeReadEmphasis = createReadEmphasis(options.root, slot.initializerEvent || slot.event, options.document, eventFrame,
+          const readEvent = slot.initializerEvent || slot.event;
+          activeReadEmphasis = createReadEmphasis(options.root, readEvent, options.document, execution.frame(readEvent),
             new Map([...(options.previousPlacements || new Map()), ...options.currentPlacements]), readElements,
-            key => checkpoint?.visualBindingsBefore?.[key] || options.visualKeyForSource?.(key) || key,
+            key => execution.visualKey(readEvent, key),
             options.appearingKeys, options.previousObjects);
           if (activeEffect) activeAnimatedElements = animatedElementsFor(slot);
         }
@@ -10428,6 +10541,7 @@
   }
 
   function cancel() {
+    initialExecution = null;
     playbackPaused = false;
     activeRun += 1;
     finishActiveRun?.();
@@ -10466,10 +10580,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-323';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-324';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-323', play, cancel, updateEventAvailability,
+    build: 'trace-324', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
@@ -10493,7 +10607,7 @@
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
-    createForwardReplayPlan, prepareForwardValues,
+    createForwardReplayPlan, createExecutionContext, prepareForwardValues,
     assignmentTransferOperator, formatAssignmentTransferValue,
     bitShiftTargets, createBitShiftEffect, bitwisePlan, createBitwiseEffect
   };

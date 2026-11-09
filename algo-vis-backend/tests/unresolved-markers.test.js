@@ -31,6 +31,7 @@ vm.runInContext(
 // Load that real dependency instead of leaving the old harness incomplete.
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-model.js'), 'utf8'), context);
 vm.runInContext(source, context);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-frame-tween.js'), 'utf8'), context);
 
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
@@ -2559,7 +2560,9 @@ test('compare marker followers use the event checkpoint rather than the final re
   assert.doesNotMatch(source, /markerMotion\.targetStates/);
   assert.ok(source.includes('bindingTargetForMarker?.(element)'));
   const compareLookup = source.slice(source.indexOf('const comparedOperandForBinding ='), source.indexOf('const highlights = []', source.indexOf('const comparedOperandForBinding =')));
-  assert.match(compareLookup, /logicalOperand[\s\S]*?logicalKey === targetKey/);
+  assert.match(compareLookup, /cellIdentity\(operand.logicalKey\) === cellIdentity\(targetKey\)/);
+  assert.doesNotMatch(compareLookup, /anchor === cell|cell\.contains\(anchor\)/,
+    'physical node reuse cannot establish pointer ownership');
 });
 
 test('j and j+1 follow their comparison-time cells before a later j--', () => {
@@ -2573,9 +2576,7 @@ test('j and j+1 follow their comparison-time cells before a later j--', () => {
     traceSourceVariableId: 'j', traceMarkerIndexExpression: expression
   } });
   const originalRules = context.window.ASMTraceRules;
-  context.window.ASMTraceRules = { resolveExpression: (doc, frame, expression, locals) => (
-    Number(locals.j) + (expression === 'j+1' ? 1 : 0)
-  ) };
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/trace-rules.js'), 'utf8'), context);
   try {
     assert.equal(context.window.ASMTraceFrameTween.markerTargetAtCheckpoint(doc, frame, marker('j'), checkpoint), 'arr#2');
     assert.equal(context.window.ASMTraceFrameTween.markerTargetAtCheckpoint(doc, frame, marker('j+1'), checkpoint), 'arr#3');

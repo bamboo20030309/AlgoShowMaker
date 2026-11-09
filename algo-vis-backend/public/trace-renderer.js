@@ -5176,6 +5176,9 @@
       if (studioObject.indexExpression) {
         object.dataset.traceMarkerIndexExpression = studioObject.indexExpression;
       }
+      if (studioObject.indexExpressions) {
+        object.dataset.traceMarkerIndexExpressions = JSON.stringify(studioObject.indexExpressions);
+      }
       const boundTargetKey = markerPlacement ? '' : resolvedTargetKey(document, frame, studioObject.target, placements);
       if (boundTargetKey) object.dataset.traceBindingTarget = boundTargetKey;
       if (markerPlacement) {
@@ -5615,6 +5618,7 @@
         let targetKey = `${targetObjectKey}:${axisName}-label:${indexValue}`;
         let targetExpression = String(indexValue);
         let targetAxis = axisName;
+        let indexExpressions = [indexExpression];
         if (hasIndexValue && dimension === 1 && !binding.pointerAxis && rendererOptions.markerLayout === 'inner') {
           const rowBinding = bindings.find(candidate => (
             candidate.targetVariableId === binding.targetVariableId
@@ -5627,6 +5631,7 @@
           targetKey = `${targetObjectKey}#${rowValue},${indexValue}`;
           targetExpression = `${rowValue},${indexValue}`;
           targetAxis = '';
+          indexExpressions = [rowBinding?.indexExpression || '', indexExpression];
         }
         if (!hasIndexValue) {
           const prefix = `${targetObjectKey}:${axisName}-label:`;
@@ -5660,7 +5665,7 @@
           baseCellWidth: 40, indexValue, unresolvedIndex: !hasIndexValue, label,
           markerSortOrder: index, markerSortKey: binding.sourceName || label,
           markerSortExpression: indexExpression, relativeMarkerBase: '', relativeMarkerOffset: null,
-          indexExpression, labelWidth: 18,
+          indexExpression, indexExpressions, labelWidth: 18,
           target: {
             variableId: binding.targetVariableId,
             indexExpression: targetExpression,
@@ -7180,9 +7185,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-274';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-280';
   window.ASMTraceRenderers = {
-    build: 'trace-274', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-280', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
