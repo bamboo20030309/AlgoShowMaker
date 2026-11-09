@@ -5,7 +5,8 @@
 - 負責代理：Claude（Claude Code 桌面版）
 - 狀態：盤點完成，尚未修改任何程式；清理需使用者另行授權
 - 盤點對象：intergration `b54de29`（fix: restrict pointer color to label background）
-- 本紀錄所在：分支 `claude/project-overview-3e7a15`，worktree `.claude/worktrees/project-overview-3e7a15`，基於 main `682698a`。本分支只新增本檔；要收進 intergration 請 **cherry-pick 本檔的單一 commit**，不要 merge 整個分支（會帶入 main 的 `682698a` 合併 commit）。
+- 本紀錄所在：分支 `claude/project-overview-3e7a15`，worktree `.claude/worktrees/project-overview-3e7a15`，基於 main `682698a`。本分支只新增本檔與交接文件；要收進 intergration 請在 intergration worktree 執行 `git cherry-pick main..claude/project-overview-3e7a15`，不要 merge 整個分支（會帶入 main 的 `682698a` 合併 commit）。
+- 接手操作步驟：見 [交接文件](../agent-handoffs/code-audit-2026-11-09.md)。
 - 日期：2026-11-09
 
 ## 做了什麼
@@ -76,6 +77,18 @@
 - 第三節兩項僅靜態判斷，未實際重現。
 - 動態組字串呼叫的函式可能被誤判為未使用；第一節各項已逐一打開確認，但移除前仍應全文搜尋一次。
 - 本盤點未讀 `tests/`、`node_modules/`、`vendor/` 內部邏輯。
+
+## 待辦
+
+詳細步驟、驗證層級與禁止事項見 [交接文件](../agent-handoffs/code-audit-2026-11-09.md)。
+
+- [ ] 收進 intergration：cherry-pick 本分支的 docs commit（主代理，V0）。
+- [ ] A：移除第一節的未使用程式與檔案（開發代理，V1）。
+- [ ] B：重現第三節兩項；確認後才修正（開發代理，V2）。
+- [ ] C：Trace 保留規則與倉庫大小——**先問使用者**；決定前不移動、不刪除任何 Trace。
+- [ ] D：`showToast` 合併、`deck-thumbnail.js` 快取參數統一；`normalizeIndex` 先查呼叫端再決定——先問使用者是否要做。
+- [ ] E：舊版 `AV.hpp` 流程去留——**先問使用者**；決定前不動。
+- [ ] F：清理 `.git` 的 `tmp_obj_*`——先問使用者，且在沒有其他代理操作 git 時執行。
 
 ## 主代理核實與整合（由主代理填寫）
 
