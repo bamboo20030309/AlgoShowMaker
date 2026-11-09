@@ -5535,10 +5535,6 @@
     return `M 0 ${arrowTop} L ${pointerX} ${pointerY} M ${headLeftX} ${headLeftY} L ${pointerX} ${pointerY} L ${headRightX} ${headRightY}`;
   }
 
-  function markerForMotionSlot(slot, elements) {
-    return markersForMotionSlot(slot, elements)[0] || null;
-  }
-
   function markersForMotionSlot(slot, elements, eventFrame = null) {
     if (!['assign', 'position', 'declare'].includes(slot.animation)) return [];
     const targets = slot.event?.targets || [];

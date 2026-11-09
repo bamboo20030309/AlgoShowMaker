@@ -292,12 +292,6 @@
     popup.style.top = `${Math.max(8, Math.min(preferredY, window.innerHeight - height - 8))}px`;
   }
 
-  function cursorPosition() {
-    const cursor = editor.getCursorPosition();
-    const screen = editor.renderer.textToScreenCoordinates(cursor.row, cursor.column);
-    return { x: screen.pageX - window.scrollX, y: screen.pageY - window.scrollY + 22 };
-  }
-
   // ---------------------------------------------------------------------------
   // 區段：游標與指令解析
   // ---------------------------------------------------------------------------
