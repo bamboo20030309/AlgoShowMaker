@@ -506,34 +506,6 @@ function addEditorHighlight(lineNum, isManual = false) {
 }
 
 /**
- * 一次高亮多行，回傳所有 markerId 的陣列
- * @param {number[]} lineNums - 行號陣列 (1-based)
- * @returns {number[]} markerIds
- */
-function addEditorHighlights(lineNums) {
-  if (!Array.isArray(lineNums)) return [];
-
-  const ids = [];
-  for (const lineNum of lineNums) {
-    const id = addEditorHighlight(lineNum);
-    if (id !== null) ids.push(id);
-  }
-  return ids;
-}
-
-/**
- * 移除指定的高亮
- * @param {number} markerId - addEditorHighlight 回傳的 id
- */
-function removeEditorHighlight(markerId) {
-  if (markerId === null || markerId === undefined) return;
-
-  const session = aceEditor.getSession();
-  session.removeMarker(markerId);
-  delete editorMarkers[markerId];
-}
-
-/**
  * 移除目前所有「自訂」的高亮
  * （不會動到 currentMarkerId，那個還是給你原本的單一高亮用）
  */
@@ -927,12 +899,6 @@ function csGetFrameCount() {
 function csGetKeyFrames() {
   if (typeof CodeScript === "undefined") return [];
   if (typeof CodeScript.get_key_frames === "function") return CodeScript.get_key_frames() || [];
-  return [];
-}
-
-function csGetStopFrames() {
-  if (typeof CodeScript === "undefined") return [];
-  if (typeof CodeScript.get_stop_frames === "function") return CodeScript.get_stop_frames() || [];
   return [];
 }
 

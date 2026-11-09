@@ -1664,26 +1664,6 @@
     return segments.filter(segment => segment.type !== 'speech' || segment.text);
   }
 
-  function slideTextEntries(slide) {
-    if (!slide) return [];
-    const canvas = fabricCanvases.get(slide.id);
-    const roots = canvas ? canvas.getObjects() : (slide.canvas?.objects || []);
-    const entries = [];
-    const visit = (object, parentLeft = 0, parentTop = 0) => {
-      if (!object || object.visible === false) return;
-      const left = parentLeft + (Number(object.left) || 0);
-      const top = parentTop + (Number(object.top) || 0);
-      const type = String(object.type || '').toLowerCase();
-      if (typeof object.text === 'string' && type.includes('text') && object.text.trim()) {
-        entries.push({ text: object.text.trim(), object, left, top });
-      }
-      const children = Array.isArray(object._objects) ? object._objects : object.objects;
-      if (Array.isArray(children)) children.forEach(child => visit(child, left, top));
-    };
-    roots.forEach(object => visit(object));
-    return entries.sort((a, b) => a.top - b.top || a.left - b.left);
-  }
-
   function automaticTtsScript(slide) {
     return ttsNarrationEntries(slide)
       .map(entry => entry.autoText)
@@ -9529,10 +9509,6 @@
   function exitWidgetEditorIfNeeded() {
     if (!selectedWidgetIdsInCurrentSlide().length) return;
     clearWidgetSelection();
-  }
-
-  function pointHitsFabricObject(event) {
-    return !!fabricObjectAtPoint(event);
   }
 
   function fabricObjectAtPoint(event) {

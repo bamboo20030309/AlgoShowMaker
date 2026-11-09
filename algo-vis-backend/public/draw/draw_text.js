@@ -1,112 +1,13 @@
 /**
  * 模組：文字、彩色區段與 TTS 繪圖
  *
- * 責任：處理顯示文字轉換、寬度估算、一般文字與多色文字 SVG，並同步旁白訊息。
- * 資料流：原始字串先分離顯示與 TTS 語意，再依全形字元估算版面；彩色區段逐段建立 tspan 並回報穩定幾何。
+ * 責任：處理寬度估算、一般文字與多色文字 SVG，並同步旁白訊息。
+ * 資料流：依字型量測估算版面；彩色區段逐段建立 tspan 並回報穩定幾何。
  * 重要不變條件：顯示轉義與旁白轉換不可互相汙染；message id、物件 id 與 code line 在重繪間須可追蹤。
  * 相容性：缺少字型量測 API、舊色彩名稱或純字串輸入時使用既有估算與色彩映射。
  */
 // draw_text.js
 // 在畫布上畫出一個可拖曳的對話框文字元件
-/**
- * 將原始文字拆成：
- *  - display：畫在畫布上的文字
- *  - tts    ：給 TTS 念的文字
- *
- * 規則：
- * 1. ( ... )  小括號整段不念，但仍顯示
- * 2. {A:B}    大括號中有冒號：
- *    - display 顯示 A
- *    - tts     念 B
- * 3. {xxx} 或 {沒有冒號}：畫面顯示 xxx，但 TTS 不朗讀
- */
-// ---------------------------------------------------------------------------
-// 區段：顯示文字與旁白正規化
-// ---------------------------------------------------------------------------
-function transformTextForDisplayAndTTS(raw) {
-  const s = String(raw ?? "");
-  let display = "";
-  let tts = "";
-
-  let i = 0;
-  const n = s.length;
-
-  while (i < n) {
-    const ch = s[i];
-
-    // 規則 1 & 2 & 3：處理 (...) 與 {...}
-    if (ch === '(' || ch === '{') {
-      const open = ch;
-      const close = (ch === '(' ? ')' : '}');
-      let j = i + 1;
-      let inQuote = false;
-      let escaped = false;
-
-      // 往後搜尋結束符號，同時跳過雙引號內容與處理轉義字元
-      while (j < n) {
-        const c = s[j];
-        if (escaped) {
-          escaped = false;
-        } else if (c === '\\') {
-          escaped = true;
-        } else if (c === '"') {
-          inQuote = !inQuote;
-        } else if (!inQuote && c === close) {
-          break;
-        }
-        j++;
-      }
-
-      if (j < n) {
-        if (open === '(') {
-          // 規則 1：小括號 (...) → display 有，tts 不要
-          display += s.slice(i, j + 1);
-        } else {
-          // 處理 {...}
-          const inner = s.slice(i + 1, j);
-          let colonPos = -1;
-          let subInQuote = false;
-          let subEscaped = false;
-
-          // 在大括號內容中尋找冒號，同樣需考慮引號
-          for (let k = 0; k < inner.length; k++) {
-            const c = inner[k];
-            if (subEscaped) {
-              subEscaped = false;
-            } else if (c === '\\') {
-              subEscaped = true;
-            } else if (c === '"') {
-              subInQuote = !subInQuote;
-            } else if (!subInQuote && c === ':') {
-              colonPos = k;
-              break;
-            }
-          }
-
-          if (colonPos !== -1) {
-            // 規則 2：有冒號 → display=左邊、tts=右邊
-            display += inner.slice(0, colonPos);
-            tts += inner.slice(colonPos + 1);
-          } else {
-            // 規則 3：沒有冒號 → display 有，但 tts 不念
-            display += inner;
-          }
-        }
-        i = j + 1;
-        continue;
-      }
-    }
-
-    // 一般字元
-    display += ch;
-    tts += ch;
-    i++;
-  }
-
-  tts = tts.replace(/\s+/g, ' ').trim();
-  return { display, tts };
-}
-
 
 // 取得一段文字在某個字型下的「顯示寬度」
 // [修正] 預設字型字串應與渲染時一致，避免寬度估算誤差
@@ -119,21 +20,6 @@ function getTextWidth(text, fontSize = 14, fontFace = 'system-ui, -apple-system,
   ctx.font = `${fontSize}px ${fontFace}`;
   const metrics = ctx.measureText(text);
   return metrics.width;
-}
-
-// 判斷全形字（中文、日文、韓文）
-function isFullWidth(char) {
-  const code = char.codePointAt(0);
-  return (
-    (code >= 0x1100 && code <= 0x115F) || // 韓文 Jamo
-    (code >= 0x2E80 && code <= 0xA4CF) || // CJK、日文、中文
-    (code >= 0xAC00 && code <= 0xD7A3) || // 韓文音節
-    (code >= 0xF900 && code <= 0xFAFF) || // CJK 相容表意文字
-    (code >= 0xFE10 && code <= 0xFE19) || // 直書標點
-    (code >= 0xFE30 && code <= 0xFE6F) || // 全形符號
-    (code >= 0xFF00 && code <= 0xFF60) || // 全形 ASCII、全形標點
-    (code >= 0xFFE0 && code <= 0xFFE6)    // 全形貨幣符號
-  );
 }
 
 

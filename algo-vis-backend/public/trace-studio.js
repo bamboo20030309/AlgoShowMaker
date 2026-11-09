@@ -81,9 +81,6 @@
   let resetCodeSnippetButton;
   let snippetFocusButton;
   let activeEventCodeGroupId = '';
-  let arrowFrom;
-  let arrowTo;
-  let arrowColor;
   let effectsList;
   let effectsSection;
   let cameraZoom;
@@ -93,17 +90,8 @@
   let codePanelFontSize;
   let codePanelFontSizeValue;
   const codePanelRanges = new Map();
-  let trackingSource;
-  let trackingTarget;
-  let trackingEffect;
-  let trackingIndexExpression;
-  let trackingText;
-  let trackingAnchor;
   let bindingEditor;
   let bindingRelation;
-  let bindingTargetText;
-  let bindingModeValue;
-  let bindingModeRelative;
   let bindingIndexExpression;
   let bindingIndexField;
   let bindingEmpty;
@@ -121,8 +109,6 @@
   let transitionSourceKey;
   let transitionMode;
   let activeObjectKey = '';
-  let arrowFromIndex;
-  let arrowToIndex;
   let cameraTimer = null;
   let undoButton;
   let redoButton;
@@ -140,7 +126,6 @@
   let cameraDraftId = '';
   let autoSaveTimer = null;
   let pendingAutoSave = null;
-  let suppressAutoSave = false;
   let liveBindingDrag = null;
   let textStylePreviewFrame = 0;
 
@@ -1309,42 +1294,6 @@
     renderBindingEditor();
   }
 
-  function setBindingMode(mode) {
-    if (!activeBinding || !trace) return;
-    const { sourceKey } = activeBinding;
-    const targetKey = activeBinding.targetKey || activeBinding.binding?.targetKey;
-    if (mode === 'value' && !canUseValueBinding(sourceKey, targetKey)) return;
-    frameIdsForScope().forEach(frameId => {
-      const binding = frameBinding(frameId, sourceKey) || activeBinding.binding || {};
-      trace.studio.bindings[frameId] ||= {};
-      trace.studio.bindings[frameId][sourceKey] = {
-        ...binding,
-        targetKey: binding.targetKey || targetKey,
-        sourceAnchor: binding.sourceAnchor || 'top',
-        targetAnchor: binding.targetAnchor || 'center',
-        mode,
-        indexExpression: binding.indexExpression || variableName(sourceKey),
-        markerShape: binding.markerShape || 'array'
-      };
-    });
-    if (mode === 'value') {
-      const expression = activeBinding.binding?.indexExpression || variableName(sourceKey);
-      const shape = activeBinding.binding?.markerShape || 'array';
-      syncTrackingFromBinding(sourceKey, targetKey, expression, shape);
-    }
-    else removeTrackingForBinding(sourceKey, targetKey);
-    activeBinding.binding = {
-      ...(activeBinding.binding || {}),
-      targetKey,
-      mode,
-      indexExpression: activeBinding.binding?.indexExpression || variableName(sourceKey),
-      markerShape: activeBinding.binding?.markerShape || 'array'
-    };
-    refreshAfterPositionChange();
-    renderEffects();
-    renderBindingEditor();
-  }
-
   function setBindingIndexExpression() {
     if (!activeBinding || !trace) return;
     const sourceKey = activeBinding.sourceKey;
@@ -1419,14 +1368,6 @@
     const index = trace.studio.objects.findIndex(item => item.id === id);
     if (index >= 0) trace.studio.objects[index] = marker;
     else trace.studio.objects.push(marker);
-    suppressAutoSave = true;
-    if (trackingSource) trackingSource.value = sourceKey;
-    if (trackingTarget) trackingTarget.value = targetId;
-    if (trackingEffect) trackingEffect.value = 'marker';
-    if (trackingIndexExpression) trackingIndexExpression.value = expression;
-    if (trackingText) trackingText.value = sourceName;
-    if (trackingAnchor) trackingAnchor.value = 'top';
-    suppressAutoSave = false;
   }
 
   function refreshAfterPositionChange() {
@@ -2611,32 +2552,14 @@
   }
 
   function refreshVariableOptions() {
-    const selects = [
-      [targetVariable, false], [arrowFrom, false], [arrowTo, false],
-      [trackingSource, '選擇變數'], [trackingTarget, '選擇物件']
-    ].filter(([select]) => select);
-    selects.forEach(([select, allowEmpty]) => {
-      const previous = select.value;
-      select.replaceChildren();
-      if (allowEmpty) select.append(option('', typeof allowEmpty === 'string' ? allowEmpty : '不設定條件'));
-      const allVariables = variables();
-      const collectionKinds = new Set(['sequence', 'matrix', 'stack', 'queue', 'set', 'map', 'node-graph', 'graph', 'coordinate-system']);
-      const scalarVariables = allVariables.filter(([, variable]) => !collectionKinds.has(variable.kind));
-      const collectionVariables = allVariables.filter(([, variable]) => collectionKinds.has(variable.kind));
-      const choices = select === trackingSource && scalarVariables.length
-        ? scalarVariables
-        : select === trackingTarget && collectionVariables.length
-          ? collectionVariables
-          : allVariables;
-      choices.forEach(([id, variable]) => select.append(option(id, variable.name)));
-      if ([...select.options].some(item => item.value === previous)) select.value = previous;
-    });
-    if (arrowTo?.options.length > 1 && arrowTo.value === arrowFrom?.value) arrowTo.selectedIndex = 1;
-    syncTrackingDefaults(false);
+    if (!targetVariable) return;
+    const previous = targetVariable.value;
+    targetVariable.replaceChildren();
+    variables().forEach(([id, variable]) => targetVariable.append(option(id, variable.name)));
+    if ([...targetVariable.options].some(item => item.value === previous)) targetVariable.value = previous;
   }
 
   function scheduleAutoSave(callback, delay = 260) {
-    if (suppressAutoSave) return;
     clearTimeout(autoSaveTimer);
     pendingAutoSave = callback;
     autoSaveTimer = setTimeout(() => {
@@ -2711,81 +2634,6 @@
     return trace?.variables?.[variableId]?.name || variableId || '';
   }
 
-  function syncTrackingDefaults(force = true) {
-    if (!trackingSource || !trackingTarget) return;
-    const sourceName = variableName(trackingSource.value);
-    const targetName = variableName(trackingTarget.value);
-    const targetKind = trace?.variables?.[trackingTarget.value]?.kind;
-    const matrixMarker = targetKind === 'matrix' && trackingEffect?.value === 'marker';
-    const indexExpression = targetKind === 'matrix' && !matrixMarker
-      ? (sourceName.toLowerCase() === 'j' ? `0,${sourceName}` : `${sourceName},0`)
-      : sourceName;
-    if (force || !trackingIndexExpression.value.trim()) trackingIndexExpression.value = indexExpression;
-    if (force || !trackingText.value.trim()) trackingText.value = sourceName;
-  }
-
-  function trackingKey(effect = trackingEffect?.value) {
-    return `${trackingSource?.value || ''}:${trackingTarget?.value || ''}:${effect || ''}`
-      .replace(/[^A-Za-z0-9_-]/g, '-');
-  }
-
-  function saveTrackingEffect(targetVariableId = '') {
-    if (targetVariableId) trackingTarget.value = targetVariableId;
-    if (!trackingSource.value || !trackingTarget.value) return;
-    const id = `tracking-${trackingKey()}`;
-    const frameIds = frameIdsForScope();
-    const condition = activeCondition();
-    const indexExpression = trackingIndexExpression.value.trim() || variableName(trackingSource.value);
-    const target = {
-      variableId: trackingTarget.value,
-      indexExpression,
-      anchor: trackingAnchor.value,
-      indexLabel: trackingEffect.value === 'marker'
-    };
-    if (trackingEffect.value === 'marker' && trace.variables[trackingTarget.value]?.kind === 'matrix') {
-      target.axis = variableName(trackingSource.value).toLowerCase() === 'j' ? 'column' : 'row';
-    }
-    if (trackingEffect.value === 'highlight') {
-      const rule = {
-        id: `studio-${id}`,
-        name: `${variableName(trackingTarget.value)}[${indexExpression}] 動態填色`,
-        match: { frameIds, stateCondition: condition },
-        actions: [{
-          type: 'style',
-          targetVariableId: trackingTarget.value,
-          targetIndexExpression: indexExpression,
-          style: { styleType: 'background', color: '#10b981' },
-          animation: 'trace-lift'
-        }]
-      };
-      const ruleIndex = trace.rules.findIndex(item => item.id === rule.id);
-      if (ruleIndex >= 0) trace.rules[ruleIndex] = rule;
-      else trace.rules.push(rule);
-      commitRules();
-      return;
-    }
-    const existingObject = trace.studio.objects.find(item => item.id === id);
-    const studioObject = {
-      id,
-      type: 'variable-marker',
-      sourceVariableId: trackingSource.value,
-      hideSource: trackingEffect.value === 'marker',
-      target,
-      text: trackingText.value.trim() || variableName(trackingSource.value),
-      shape: existingObject?.shape || 'array',
-      color: '#12a6df',
-      stroke: '#0b7ead',
-      frameIds,
-      condition,
-      offsetX: 0,
-      offsetY: 0
-    };
-    const objectIndex = trace.studio.objects.findIndex(item => item.id === id);
-    if (objectIndex >= 0) trace.studio.objects[objectIndex] = studioObject;
-    else trace.studio.objects.push(studioObject);
-    commitStudio();
-  }
-
   function viewportPoint(clientX, clientY) {
     const canvas = document.getElementById('arraySvg');
     const viewport = window.getViewport?.() || canvas;
@@ -2794,33 +2642,6 @@
     point.x = clientX;
     point.y = clientY;
     try { return point.matrixTransform(viewport.getScreenCTM().inverse()); } catch { return point; }
-  }
-
-  function addArrow() {
-    if (!arrowFrom.value || !arrowTo.value) return;
-    if (arrowFrom.value === arrowTo.value && arrowFromIndex.value.trim() === arrowToIndex.value.trim()) return;
-    const withinSameObject = arrowFrom.value === arrowTo.value
-      && arrowFromIndex.value.trim() && arrowToIndex.value.trim();
-    trace.studio.arrows.push({
-      id: `arrow-${Date.now().toString(36)}`,
-      fromVariableId: arrowFrom.value,
-      toVariableId: arrowTo.value,
-      from: {
-        variableId: arrowFrom.value,
-        indexExpression: arrowFromIndex.value.trim(),
-        anchor: withinSameObject ? 'top' : 'right'
-      },
-      to: {
-        variableId: arrowTo.value,
-        indexExpression: arrowToIndex.value.trim(),
-        anchor: withinSameObject ? 'top' : 'left'
-      },
-      frameIds: frameIdsForScope(),
-      condition: activeCondition(),
-      color: arrowColor.value,
-      width: 3
-    });
-    commitStudio();
   }
 
   function saveCameraRule(immediate = false) {
@@ -3906,7 +3727,6 @@
       const object = event.target.closest('[data-trace-variable]');
       if (!object?.dataset.traceVariable) return;
       if (targetVariable) targetVariable.value = object.dataset.traceVariable;
-      if (trackingTarget) trackingTarget.value = object.dataset.traceVariable;
       const cell = event.target.closest('[data-trace-index]');
       if (cell?.dataset.traceIndex != null && targetIndex) targetIndex.value = cell.dataset.traceIndex;
     });
