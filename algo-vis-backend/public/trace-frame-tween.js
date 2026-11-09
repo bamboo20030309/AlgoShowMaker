@@ -4876,7 +4876,7 @@
         const selected = Array.isArray(expressions) ? expressions : [expression];
         const indices = selected.map(expression => window.ASMTraceRules?.resolveExpression?.(traceDocument, frame, expression, locals));
         return indices.every(raw => raw != null && raw !== '' && Number.isInteger(Number(raw)))
-          ? `${axis || matrix ? parts.prefix : parts.prefix + '#'}${indices.map(Number).join(',')}`
+          ? `${axis?.[1] || matrix?.[1] || parts.prefix + '#'}${indices.map(Number).join(',')}`
           : `unresolved:${parts.prefix}`;
       },
       pointersByCell(elements, event, phase = 'before') {
@@ -5423,10 +5423,12 @@
 
   function markerTargetParts(targetKey) {
     const source = String(targetKey || '');
+    const axis = source.match(/^(.*:(?:row|column)-label:)(-?\d+)$/);
+    if (axis) return { prefix: axis[1], index: Number(axis[2]), axis: true };
     const separator = source.lastIndexOf('#');
-    const index = Number(source.slice(separator + 1));
-    return separator >= 0 && Number.isInteger(index)
-      ? { prefix: source.slice(0, separator), index }
+    const indices = source.slice(separator + 1).split(',').map(Number);
+    return separator >= 0 && indices.length <= 2 && indices.every(Number.isInteger)
+      ? { prefix: source.slice(0, separator), index: indices.at(-1), indices }
       : null;
   }
 
@@ -5439,6 +5441,8 @@
       };
     }
     const requested = markerTargetParts(targetKey);
+    // Missing matrix cells must not be extrapolated as a one-dimensional row.
+    if (requested?.indices?.length > 1) return null;
     if (!requested) return null;
     const siblings = [];
     placements?.forEach?.((placement, key) => {
@@ -5570,6 +5574,32 @@
     return markers;
   }
 
+  function pointerEventReflowKeys(traceDocument, eventFrame, events, execution, entries) {
+    const owned = new Set();
+    for (const event of events) {
+      const lifecycle = ['declare', 'visual-enter', 'scope-exit', 'visual-exit'].includes(event?.type);
+      if (!lifecycle && !['assign', 'write'].includes(event?.type)) continue;
+      const affected = new Set();
+      entries.forEach(item => {
+        if (!(event.targets || []).some(target => target.role !== 'source'
+          && markerMatchesEventTarget(item.element, target))) return;
+        if (!lifecycle && !markerLifetimeActiveAtEvent(eventFrame, event, item.element)) return;
+        const before = execution.pointerTarget(item.element, event);
+        const after = execution.pointerTarget(item.element, event, 'after');
+        if (!lifecycle && before === after) return;
+        for (const key of [before, after, item.previousTarget]) {
+          if (key && !key.startsWith('unresolved:')) affected.add(key);
+        }
+        owned.add(item.key);
+      });
+      entries.forEach(item => {
+        if (affected.has(execution.pointerTarget(item.element, event))
+          || affected.has(item.previousTarget)) owned.add(item.key);
+      });
+    }
+    return owned;
+  }
+
   function markerAssignmentMotion(
     traceDocument, eventFrame, eventTimeline, placements, elements, markerEntries = [],
     frameReflow = {}
@@ -5588,6 +5618,9 @@
       metadata.set(entry.key, {
         key: entry.key,
         element: entry.element,
+        outgoing: entry.outgoing === true,
+        topologyExitSlot: entry.topologyExitSlot,
+        topologyEnterSlot: entry.topologyEnterSlot,
         variableId: String(entry.element.dataset.traceSourceVariableId || ''),
         variableIds: markerSourceVariableIds(entry.element),
         indexExpression: String(entry.element.dataset.traceMarkerIndexExpression || ''),
@@ -5629,6 +5662,8 @@
       };
     }
 
+    const motionElements = new Map([...elements]);
+    metadata.forEach(item => motionElements.set(item.key, item.element));
     const timelineSlotByEvent = new Map(eventTimeline.map(slot => [slot.event, slot]));
     const initializerPairs = declarationInitializerPairs(eventFrame);
     const replayEvents = frameReflow.replayPlan?.checkpoints
@@ -5654,9 +5689,14 @@
         end: logicalCursor,
         logicalOnly: true
       };
-      const markers = visibleSlot
-        ? markersForMotionSlot(slot, elements, eventFrame)
-        : markersForLogicalEvent(event, elements, eventFrame);
+      const exits = ['scope-exit', 'visual-exit'].includes(event?.type);
+      const markers = exits
+        ? [...metadata.values()].filter(item => (event.targets || []).some(target =>
+          markerMatchesEventTarget(item.element, target))
+          && (event.type !== 'visual-exit' || item.outgoing))
+          .map(item => ({ key: item.key, element: item.element }))
+        : visibleSlot ? markersForMotionSlot(slot, motionElements, eventFrame)
+          : markersForLogicalEvent(event, motionElements, eventFrame);
       if (visibleSlot) logicalCursor = Math.max(logicalCursor, Number(visibleSlot.end) || 0);
       const item = {
         slot,
@@ -5668,16 +5708,32 @@
         ? [item, { ...item, slot: { ...slot, event: slot.initializerEvent, animation: 'assign' } }]
         : [item];
     }).filter(item => item.markers.length);
+    metadata.forEach(item => {
+      for (const slot of [item.topologyEnterSlot, item.topologyExitSlot].filter(Boolean)) {
+        logicalMotionSlots.push({ slot, markers: [{ key: item.key, element: item.element }] });
+      }
+    });
+    logicalMotionSlots.sort((left, right) => Number(left.slot.visualStart ?? left.slot.start)
+      - Number(right.slot.visualStart ?? right.slot.start));
 
-    const finalState = new Map([...metadata].map(([key, item]) => [key, item.currentTarget]));
+    const finalState = new Map([...metadata].filter(([,item]) => !item.outgoing)
+      .map(([key, item]) => [key, item.currentTarget]));
     const initialState = new Map(finalState);
     metadata.forEach((item, key) => {
+      if (item.outgoing) initialState.set(key, item.currentTarget);
       if (item.previousUnresolvedTarget && item.previousBase) initialState.set(key, `unresolved:${key}`);
       else if (markerTargetParts(item.previousTarget)) initialState.set(key, item.previousTarget);
     });
     const markerTargetForEvent = (item, slot, phase) => {
+      if (slot.event?.type === 'visual-enter') {
+        return execution.pointerTarget(item.element, slot.anchorEvent, slot.anchorEvent ? 'after' : 'before');
+      }
       return execution.pointerTarget(item.element, slot.event, phase);
     };
+    // Group membership changes belong to the event that causes them. Peers
+    // must not consume the destination frame's REFLOW at time zero.
+    const eventReflowKeys = pointerEventReflowKeys(traceDocument,eventFrame,
+      logicalMotionSlots.map(item=>item.slot.event),execution,[...metadata.values()]);
     const initializedMarkers = new Set();
     logicalMotionSlots.forEach(({ slot, markers }) => {
       if (slot.animation === 'declare') return;
@@ -5876,6 +5932,10 @@
         start, end, from: { ...from }, to: { ...to }, fromTarget, toTarget, instant
       });
     };
+    metadata.forEach((item,key) => {
+      if (item.outgoing) addStep(key,0,0,initialPositions.get(key),initialPositions.get(key),
+        initialState.get(key),initialState.get(key),true,true);
+    });
 
     const frameReflowKeys = frameReflow.keys instanceof Set
       ? frameReflow.keys
@@ -5883,6 +5943,7 @@
     const frameReflowDuration = Math.max(0, Number(frameReflow.duration) || 0);
     if (frameReflowDuration > 0) {
       frameReflowKeys.forEach(key => {
+        if (eventReflowKeys.has(key)) return;
         const from = initialPositions.get(key);
         const to = settledFramePositions.get(key);
         if (!from || !to) return;
@@ -5895,9 +5956,12 @@
     const declarationHolds = new Map();
     const checkpointTimeline = [];
     logicalMotionSlots.forEach(({ slot, markers }, slotIndex) => {
+      const exiting = ['scope-exit','visual-exit'].includes(slot.event?.type);
       let beforeStateChanged = false;
       markers.forEach(marker => {
-        if (slot.animation === 'declare') return;
+        if (slot.animation === 'declare' || exiting) return;
+        const waiting=metadata.get(marker.key)?.topologyEnterSlot;
+        if(waiting&&Number(slot.start)<Number(waiting.start))return;
         if (initializedAtDeclaration.has(marker.key)
           && displayEventValue(slot.event?.payload?.before) === '') return;
         const item = metadata.get(marker.key);
@@ -5910,13 +5974,15 @@
       if (slotIndex > 0 && beforeStateChanged) currentPositions = positionsForState(state);
       const nextState = new Map(state);
       markers.forEach(marker => {
+        if (exiting) { nextState.delete(marker.key); return; }
         const item = metadata.get(marker.key);
+        if(item.topologyEnterSlot&&slot!==item.topologyEnterSlot&&Number(slot.start)<Number(item.topologyEnterSlot.start))return;
         const afterTarget = slot.animation === 'declare'
           ? slot.initializerEvent
             ? slot.declarationInitializerTransfer
               ? `unresolved:${markerTargetParts(item.currentTarget)?.prefix}`
               : markerTargetForEvent(item, { ...slot, event: slot.initializerEvent }, 'after')
-            : execution.pointerTarget(item.element, slot.event, 'after')
+            : markerTargetForEvent(item,slot,'after')
           : markerTargetForEvent(item, slot, 'after');
         if (afterTarget) nextState.set(marker.key, afterTarget);
       });
@@ -5978,7 +6044,7 @@
         if (type === window.ASMTracePointerModel.transitions.EXIT) return;
         const stepStart = start;
         const stepEnd = type === window.ASMTracePointerModel.transitions.REFLOW
-          ? Math.min(end, start + MARKER_REFLOW_TIMING.duration)
+          ? Math.min(end, start + (exiting ? Number(slot.exitDuration) || APPEAR_TIMING.duration : MARKER_REFLOW_TIMING.duration))
           : end;
         const declarationHold = declarationHolds.get(key);
         if (declarationHold && stepStart > declarationHold.start) {
@@ -6121,6 +6187,8 @@
       arrowStates,
       committedTargets,
       checkpointTimeline,
+      duration:Math.max(0,...[...tracks.values()].flatMap(steps=>steps.map(step=>step.end))),
+      outgoingKeys: new Set([...metadata].filter(([,item])=>item.outgoing).map(([key])=>key)),
       update: publishPosition,
       // The rendered frame is the state at @frame time, but trailing events
       // (for example the final j++ before @keep last) can move a marker after
@@ -7849,7 +7917,16 @@
     const forwardValues = prepareForwardValues(options, replayPlan, eventFrame, styleFrame);
     const markerMotion = markerAssignmentMotion(
       options.document, eventFrame, eventTimeline,
-      options.currentPlacements, options.currentElements, options.markerEntries,
+      new Map([...(options.previousPlacements || new Map()),...options.currentPlacements]), options.currentElements,
+      [...(options.markerEntries || []).map(entry=>{
+        if(!entry.markerPointPath||!entry.appearing||!(Number(entry.appearanceStart)>0)
+          ||markerDeclaredInFrame(eventFrame,entry.element))return entry;
+        const start=Number(entry.appearanceStart);
+        const anchorEvent=replayPlan.checkpoints.filter(checkpoint=>Number(checkpoint.commitMs)<=start).at(-1)?.event;
+        return{...entry,topologyEnterSlot:{event:{id:`pointer-view-enter:${entry.key}`,type:'visual-enter',presentationOnly:true,
+          targets:markerSourceVariableIds(entry.element).map(variableId=>({variableId,role:'target'}))},
+          animation:'declare',start,visualStart:start,motionStart:start,end:start+APPEAR_TIMING.duration,anchorEvent}};
+      }),...(options.outgoingPointerEntries || [])],
       {
         keys: options.markerReflowKeys,
         duration: options.markerReflowDuration,
@@ -8132,6 +8209,8 @@
         return states;
       },
       get markerTargets() { return markerMotion.committedTargets; },
+      get outgoingMarkerKeys() { return markerMotion.outgoingKeys; },
+      get pointerMotionDuration() { return markerMotion.duration || 0; },
       get opacities() {
         const states = new Map(committedSequenceOpacities);
         activeEffect?.opacities?.forEach((value, key) => states.set(key, value));
@@ -8854,6 +8933,15 @@
     });
     const markerReflowKeys = new Set();
     if (canonicalPointersOnly) {
+      const topologyEntries=pointerTransitions.flatMap(transition=>{
+        const entry=transition.current||transition.previous;
+        return entry?[{key:entry.key,element:entry.element,
+          previousTarget:transition.previous?.state?.targetKey||''}]:[];
+      });
+      const execution=createExecutionContext(traceDocument,eventFrame,
+        createForwardReplayPlan(traceDocument,eventFrame,provisionalEventTimeline));
+      pointerEventReflowKeys(traceDocument,eventFrame,presentationEvents(traceDocument,eventFrame),execution,topologyEntries)
+        .forEach(key=>eventControlledKeys.add(key));
       pointerTransitions.forEach(transition => {
         if (transition.type !== window.ASMTracePointerModel.transitions.REFLOW
           || !transition.current?.key
@@ -9857,6 +9945,18 @@
     }
     const events = eventSequence({
       ...options,
+      outgoingPointerEntries: ghosts.filter(item => item.markerVisual && !item.retainedByEnteringKeep
+        && !entries.some(entry=>entry.element?.dataset?.tracePointerInstanceId
+          && entry.element.dataset.tracePointerInstanceId===item.markerVisual.dataset.tracePointerInstanceId))
+        .map(item=>{
+          const start=Math.max(removedVisualStartMs(item.lifecycleKind,initialDelay,keepSettlementDuration)
+            +(item.backgroundHandoff?HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION:0),Number(item.comparisonRemovalStart)||0);
+          return {key:item.comparisonKey,element:item.markerVisual,previousVisual:item.markerVisual,
+            markerPointPath:item.markerPointPath,markerLabelBox:item.markerLabelBox,outgoing:true,
+            topologyExitSlot:item.scopeExitSlot?null:{event:{id:`pointer-view-exit:${item.comparisonKey}`,type:'visual-exit',presentationOnly:true,
+              targets:markerSourceVariableIds(item.markerVisual).map(variableId=>({variableId,role:'target'}))},
+              animation:'exit',start,visualStart:start,motionStart:start,end:start+APPEAR_TIMING.duration,exitDuration:APPEAR_TIMING.duration}};
+        }),
       comparisonExitMarkers: new Map(ghosts.filter(item => item.markerVisual)
         .map(item => [item.comparisonKey, item.markerVisual])),
       rawDeltas,
@@ -9923,7 +10023,21 @@
           blocking: true, enabled: true }] });
       playbackPlan.totalDurationMs = outboundMarkerExitEnd;
     }
+    // A delayed pointer entrance can outlive the last runtime event. Its
+    // peer reflow remains part of the shared completion/phase contract.
+    const pointerMotionEnd = Number(events?.pointerMotionDuration) || 0;
+    if (pointerMotionEnd > playbackPlan.totalDurationMs) {
+      const start = Number(playbackPlan.totalDurationMs) || 0;
+      playbackPlan.phases.push({ id: 'pointer-group-settlement', mode: 'parallel',
+        startMs: start, durationMs: pointerMotionEnd - start, steps: [{
+          id: 'pointer-group-settlement', kind: 'marker-reflow', startMs: start,
+          endMs: pointerMotionEnd, durationMs: pointerMotionEnd - start,
+          blocking: true, enabled: true
+        }] });
+      playbackPlan.totalDurationMs = pointerMotionEnd;
+    }
     const totalDuration = Math.max(
+      pointerMotionEnd,
       outboundMarkerExitEnd,
       eventTimelineDuration,
       motionDuration,
@@ -10356,6 +10470,14 @@
           ghost.setAttribute('opacity', String(1 - ghostProgress));
           const offsetY = heapSplitExit ? 0
             : visualLifecycleOffsetY(lifecycleKind, 'exit', ghostProgress);
+          if (events?.outgoingMarkerKeys?.has?.(comparisonKey)) {
+            const motion = events.adjustments.get(comparisonKey) || {};
+            ghost.setAttribute('transform', `translate(${Number(motion.x)||0},${(Number(motion.y)||0)+offsetY})`);
+            const arrow = events.markerArrowStates.get(comparisonKey);
+            if (markerPointPath && arrow) markerPointPath.setAttribute('d',markerArrowPath({markerPointPath,markerLabelBox},
+              {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y}));
+            return;
+          }
           const holdOffsetX = Number(exitReflow?.ghostOffsetX) || 0;
           const arrivalStart = Number(exitReflow?.arrivalStart) || 0;
           const arrivalEnd = Number(exitReflow?.arrivalEnd) || arrivalStart;
@@ -10425,6 +10547,14 @@
         }
         else if (markerPointPath && markerPointBasePath) markerPointPath.setAttribute('d',markerPointBasePath);
         const assignmentOffset = previousMarkerAssignmentOffset(assignmentSchedule, elapsed);
+        if(events?.outgoingMarkerKeys?.has?.(comparisonKey)){
+          const motion=events.adjustments.get(comparisonKey)||{};
+          ghost.setAttribute('transform',`translate(${Number(motion.x)||0},${(Number(motion.y)||0)+offsetY})`);
+          const arrow=events.markerArrowStates.get(comparisonKey);
+          if(markerPointPath&&arrow)markerPointPath.setAttribute('d',markerArrowPath({markerPointPath,markerLabelBox},
+            {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y}));
+          applyHeapSplitVerticalFade(heapSplitExit,ghostProgress,'exit');return;
+        }
         const x = assignmentOffset.x + (Number(compareOffset?.x) || 0);
         const y = offsetY + assignmentOffset.y + (Number(compareOffset?.y) || 0);
         if (Math.abs(x) > 0.01 || Math.abs(y) > 0.01) ghost.setAttribute('transform', `translate(${x}, ${y})`);
@@ -10588,10 +10718,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-325';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-326';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-325', play, cancel, updateEventAvailability,
+    build: 'trace-326', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
