@@ -3133,9 +3133,17 @@
     if (sourceOperand.element.closest?.('[data-trace-visibility="hidden"]')
       || (!options.allowPendingTarget && targetOperand.element.closest?.('[data-trace-visibility="hidden"]'))) return null;
 
+    // A historical clone is only a fallback for a departed source. A live
+    // source already has its currently presented paint (including a new
+    // recursive view's styles); copying the previous frame would mismatch it.
+    let liveSourceVisible = sourceOperand.element.isConnected;
+    for (let node = sourceOperand.element; liveSourceVisible && node?.nodeType === 1; node = node.parentElement) {
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) liveSourceVisible = false;
+    }
     const sourceElement = valueOnly
       ? assignableTargetText(sourceOperand)
-      : (sourceVisual || sourceOperand.element);
+      : (liveSourceVisible ? sourceOperand.element : sourceVisual || sourceOperand.element);
     const targetElement = valueOnly ? assignableTargetText(targetOperand) : null;
     if (!sourceElement || (valueOnly && !targetElement)) return null;
 
@@ -10580,10 +10588,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-324';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-325';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-324', play, cancel, updateEventAvailability,
+    build: 'trace-325', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

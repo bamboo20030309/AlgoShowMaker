@@ -48,11 +48,20 @@ target=a[0];
    let time=performance.now(),elapsed=0,serial=0;const callbacks=new Map();window.requestAnimationFrame=cb=>{callbacks.set(++serial,cb);return serial;};window.cancelAnimationFrame=id=>callbacks.delete(id);Object.defineProperty(performance,'now',{configurable:true,value:()=>time});window.asmGetAnimationPlaybackRate=()=>rate;
    const advance=async target=>{while(elapsed<target){const delta=Math.min(10,target-elapsed);time+=delta;elapsed+=delta;const pending=[...callbacks.values()];callbacks.clear();pending.forEach(cb=>cb(time));for(let n=0;n<10;n++)await Promise.resolve();}};
    try{
-    const pending=CodeScript.next();await advance(1000/rate);
+    let comparisonSlot;
+    const started=event=>{if(event.detail?.event?.type==='compare'&&event.detail.phase==='start')comparisonSlot=event.detail.slot;};
+    window.addEventListener('asm:trace-active-event',started);
+    const pending=CodeScript.next();
+    while(!comparisonSlot&&elapsed<2000/rate)await advance(elapsed+10/rate);
+    window.removeEventListener('asm:trace-active-event',started);
+    if(!comparisonSlot)throw Error('Comparison did not start');
+    // Locate the visual phase after the code-highlight lead-in. The expected
+    // scale/matrices below remain independent fixed answers.
+    await advance((Number(comparisonSlot.effectStart??comparisonSlot.start)+1000)/rate);
     const root=document.querySelector('#asm-trace-root'),inverse=root.getScreenCTM().inverse();
     const decorations=[...root.querySelectorAll('.asm-trace-style-decoration')].filter(w=>w._asmStyleCell?.isConnected).map(w=>({kind:w.className.baseVal,actual:components(w.getScreenCTM()),expected:components(w._asmStyleCell.getScreenCTM().multiply(w._asmStyleBasis)),ownerScale:Math.hypot(inverse.multiply(w._asmStyleCell.getScreenCTM()).a,inverse.multiply(w._asmStyleCell.getScreenCTM()).b)}));
     const clones=[...root.querySelectorAll('.asm-trace-compare-self-clone')].map(w=>({marks:w.querySelectorAll('[data-trace-attachment-kind="mark"]').length,points:w.querySelectorAll('[data-trace-attachment-kind="point"]').length,styleCopies:w.querySelectorAll('.asm-trace-cell-style-copy').length,colors:[...w.querySelectorAll('.asm-trace-cell-style-copy [data-trace-attachment-kind]')].map(el=>[el.dataset.traceAttachmentKind,el.getAttribute(el.dataset.traceAttachmentKind==='point'?'fill':'stroke')]).sort((a,b)=>a[0].localeCompare(b[0]))}));
-    await advance(1800/rate);await pending;
+    await advance((Number(comparisonSlot.end)+300)/rate);await pending;
     reports.push({saved,rate,self,decorations,clones,remaining:root.querySelectorAll('.asm-trace-compare-self-clone').length});
    }finally{ASMTraceFrameTween.cancel();window.requestAnimationFrame=native.raf;window.cancelAnimationFrame=native.cancel;if(native.now)Object.defineProperty(performance,'now',native.now);else delete performance.now;window.asmGetAnimationPlaybackRate=native.rate;}
   }

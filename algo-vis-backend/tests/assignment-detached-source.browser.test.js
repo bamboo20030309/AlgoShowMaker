@@ -84,13 +84,17 @@ test('detached assignment copies retain appearance and commit only after movemen
           const targetKey = `${target.variableId}#${target.resolvedIndex}`;
           const transfers = [...document.querySelectorAll('.asm-trace-assign-transfer')];
           const node = document.querySelector(`[data-trace-object-key="${CSS.escape(targetKey)}"]`);
-          const record = seen[event.id] ||= { transforms: [], texts: [], targetValues: [], targetFills: [], fills: [] };
+          const record = seen[event.id] ||= { transforms: [], texts: [], targetValues: [], targetFills: [], fills: [], sourceFills: [], hasCells: [], targetPaintSamples: [] };
+          record.targetPaintSamples.push({ fill: node?.querySelector('rect')?.getAttribute('fill'), hasCopy: transfers.length > 0 });
           for (const transfer of transfers) {
             const opacity = Number(transfer.getAttribute('opacity'));
             if (!(opacity > 0.2)) continue;
             record.transforms.push(transfer.getAttribute('transform'));
             record.texts.push(transfer.querySelector('text')?.textContent);
             record.fills.push(transfer.querySelector('rect')?.getAttribute('fill'));
+            record.hasCells.push(Boolean(transfer.querySelector('rect')));
+            const sourceKey = transfer.dataset.traceTransferSourceKey;
+            record.sourceFills.push(document.querySelector(`[data-trace-object-key="${CSS.escape(sourceKey)}"] rect`)?.getAttribute('fill'));
             record.targetValues.push(node?.querySelector('text')?.textContent);
             record.targetFills.push(node?.querySelector('rect')?.getAttribute('fill'));
           }
@@ -125,12 +129,16 @@ int main(){
     for (const rate of [2, 4]) {
       const result = await run(consecutive, rate, false, rate === 4);
       assert.equal(result.assignments.length, 2);
+      assert.equal(result.oldFill, 'rgba(239, 154, 154, 0.6)');
       for (const event of result.assignments) {
         const seen = result.seen[event.id];
         assert.ok(seen?.texts.length, `${event.text} needs an actual flying cell`);
         assert.ok(new Set(seen.transforms).size > 2, 'transfer must move rather than remain stationary');
         assert.deepEqual([...new Set(seen.texts)], [String(event.source)], 'copy the event source, not the previous/final value');
-        assert.deepEqual([...new Set(seen.fills)], [result.oldFill], 'keep the previous appearance, not the final green style');
+        // The new frame explicitly colors the visible source green. The copy
+        // must match that source, rather than retain the departed red view.
+        assert.ok(seen.sourceFills.every(fill => fill === 'rgba(165, 214, 167, 0.6)'));
+        assert.deepEqual(seen.fills, seen.sourceFills, 'copy the currently visible source appearance');
         assert.ok(seen.targetValues.includes(String(event.before)), 'destination must retain its old value during flight');
         const firstAfter = seen.targetValues.indexOf(String(event.after));
         assert.ok(firstAfter < 0 || firstAfter > 0, 'result must not appear from the start');
@@ -167,11 +175,14 @@ int main(){
  // @frame b
 }`, 4);
     assert.equal(departing.assignments.length, 1);
-    // Availability deliberately requires both endpoints in the presented
-    // scene. Captured geometry must not revive an intentionally hidden source.
-    assert.equal(departing.assignments[0].disabled, true);
-    assert.equal(departing.assignments[0].reason, 'missing-target');
-    assert.deepEqual(departing.seen, {});
+    // E12: a visible destination still receives a numeric assignment when its
+    // source is hidden. Do not revive the source's historical cell rectangle.
+    assert.equal(departing.assignments[0].disabled, false);
+    assert.equal(departing.assignments[0].reason ?? '', '');
+    const hiddenSource = departing.seen[departing.assignments[0].id];
+    assert.ok(hiddenSource?.texts.length);
+    assert.ok(hiddenSource.texts.every(text => text === '5'));
+    assert.ok(hiddenSource.hasCells.every(value => value === false));
     assert.deepEqual(departing.final, ['5']);
 
     const customDisplay = await run(`#include <bits/stdc++.h>
@@ -194,7 +205,9 @@ int main(){
         assert.match(customFlight.targetFills[i], /^(#fff(?:fff)?|white|rgb\(255, 255, 255\))$/);
       }
     }
-    assert.ok(customFlight.targetFills.some(fill => fill.includes('239, 154, 154')),
+    // A completed transfer is removed in the same tick as the commit. Observe
+    // the target after that handoff rather than requiring a stale flying copy.
+    assert.ok(customFlight.targetPaintSamples.some(sample => !sample.hasCopy && sample.fill?.includes('239, 154, 154')),
       'value-dependent paint changes on commit even when display text stays x');
 
     // Reproduce the user's recursion scene, including disabled declarations.
@@ -218,7 +231,7 @@ int main(){
     }
     console.log('Array queens N=4: 2 solutions; all six L/R copies have moving SVG transforms.');
     assert.deepEqual(errors, []);
-    console.log('Verified old appearance, sequential values 7/8, landing commits, two speeds, new targets, departing sources, geometry fallback, and recursive zero copies.');
+    console.log('Verified visible source appearance, sequential values 7/8, landing commits, two speeds, new targets, hidden-source numeric transfers, geometry fallback, and recursive zero copies.');
   } finally {
     if (browser) await browser.close();
     server.kill();
