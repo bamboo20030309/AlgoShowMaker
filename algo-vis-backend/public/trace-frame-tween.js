@@ -4978,6 +4978,15 @@
         Object.entries(frame.state).forEach(([id, entry]) => {
           if (!Array.isArray(entry.data?.items)) locals[entry.name || traceDocument?.variables?.[id]?.name || id] = markerExpressionValue(entry.data);
         });
+        // Pointer expressions are bound to declaration IDs, not the last
+        // same-named local encountered in a snapshot. A helper's exited
+        // parameter must not shadow the recursive caller's live parameter.
+        markerSourceVariableIds(element).forEach(id => {
+          const entry = frame.state[id];
+          if (entry && !Array.isArray(entry.data?.items)) {
+            locals[entry.name || traceDocument?.variables?.[id]?.name || id] = markerExpressionValue(entry.data);
+          }
+        });
         let expressions;
         try { expressions = JSON.parse(element?.dataset?.traceMarkerIndexExpressions || 'null'); } catch {}
         const selected = Array.isArray(expressions) ? expressions : [expression];
@@ -10982,10 +10991,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-335';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-336';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-335', play, cancel, updateEventAvailability,
+    build: 'trace-336', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
