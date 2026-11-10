@@ -41,7 +41,14 @@ test('normal sequence cells enter with visible numbers; outerframe phases remain
    let elapsed=0;const step=async delta=>{time+=delta;elapsed+=delta;const batch=[...callbacks.values()];callbacks.clear();for(const cb of batch)cb(time);for(let i=0;i<5;i++)await Promise.resolve();};
    const advance=async target=>{while(elapsed<target)await step(Math.min(5,target-elapsed));};
    try{
-    const pending=CodeScript.next();await step(0);const samples={},entrySamples={};
+    const pending=CodeScript.next();await step(0);
+    // The code prompt is announced after a microtask. Wait for its clock
+    // before sampling offsets, rather than measuring the first 110ms from
+    // zero and subsequent samples from the newly announced start.
+    for(let flush=0;flush<20&&!active.length;flush++)await step(0);
+    while(!active.length&&elapsed<2000)await step(5);
+    if(!active.length)throw Error('Sequence clock was not announced');
+    const samples={},entrySamples={};
     const entry=()=>[...document.querySelectorAll('.asm-trace-sequence-entry,.asm-trace-sequence-cell-transfer')].map(node=>{let opacity=1;for(let p=node;p&&p!==document.body;p=p.parentElement)opacity*=Number(getComputedStyle(p).opacity);const value=node.querySelector('text[data-trace-content-role="value"],text:not([data-trace-content-role="index"])');const effective=el=>{if(!el)return 0;let a=1;for(let p=el;p&&p!==document.body;p=p.parentElement){const style=getComputedStyle(p);if(style.display==='none'||style.visibility==='hidden')return 0;a*=Number(style.opacity);}return a;};const rect=node.querySelector('rect');return {text:value?.textContent,opacity,textOpacity:effective(value),rectOpacity:effective(rect),rectWidth:rect?.getBoundingClientRect().width,glyphWidth:value?.getBoundingClientRect().width,rect:!!rect,kind:node.classList.contains('asm-trace-sequence-cell-transfer')?'copy':'entry'};});
     for(const at of [0,110,219,220,299,300,410,520]){await advance((start+at)/rate);samples[at]=width();entrySamples[at]=entry();}
     await advance((start+1200)/rate);await pending;

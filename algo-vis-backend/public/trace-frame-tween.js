@@ -2174,6 +2174,7 @@
       const initializedLater = target && orderedEvents(eventFrame).some(candidate => {
         if (Number(candidate?.order) <= Number(event?.order)
           || candidate?.type !== 'assign'
+          || candidate?.enabled === false
           || candidate?.payload?.before != null) return false;
         const assigned = (candidate.targets || []).find(item => item?.role === 'target')
           || candidate.targets?.[0];
@@ -2187,8 +2188,9 @@
         targetMutation(target, false, true, 'presence'),
         // Runtime capture happens after a C++ declaration initializer has
         // evaluated, so the declaration payload already contains the final
-        // value.  When instrumentation also emitted the paired assignment,
-        // keep the entering object blank until that assignment commits.
+        // value. When the paired assignment animates, keep the entering
+        // object blank until that assignment commits. A disabled initializer
+        // instead enters with its captured value, including pointer position.
         targetMutation(target, null, initializedLater ? null : event.payload?.value, 'value')
       ] : [];
     }
@@ -8030,6 +8032,40 @@
       }
     }
     const sequenceEffects = new Map();
+    // The destination SVG has already dropped deleted cells. Retain the old
+    // cell during the code prompt and earlier events; the sequence effect
+    // takes ownership at its own visual start, then fades it before reflow.
+    // This applies to every renderer, including heap nodes with an index
+    // outside the destination frame's displayed range.
+    const pendingSequenceRemovals = [];
+    eventTimeline.filter(slot => slot.animation === 'sequence').forEach(slot => {
+      const reverse = Number(options.direction) < 0;
+      const before = Number(slot.event?.payload?.beforeSize);
+      const after = Number(slot.event?.payload?.afterSize);
+      if (!(reverse ? after > before : before > after)) return;
+      const target = slot.event.targets?.find(item => item.role === 'target') || slot.event.targets?.[0];
+      const key = target && eventTargetKey(options.document, eventFrame, target);
+      const content = options.currentElements?.get(key)?.querySelector('.outerframe-bg')?.parentElement;
+      if (!content) return;
+      sequenceCellKeys(options.document, eventFrame, slot.event, reverse).forEach(cellKey => {
+        const oldCell = previousVisualElement(options.previousObjects, cellKey);
+        if (!oldCell) return;
+        const wrapper = createSvg('g', { class: 'asm-trace-sequence-pending-removal', 'pointer-events': 'none' });
+        const oldIndex = Number(cellKey.slice(cellKey.lastIndexOf('#') + 1));
+        const label = oldIndex >= (reverse ? before : after)
+          ? previousVisualElement(options.previousObjects, `${cellKey}:index`) : null;
+        [oldCell, ...(label ? [label] : [])].forEach(source => {
+          const clone = source.cloneNode(true);
+          removeAnimationNodes(clone);
+          [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
+            node.removeAttribute('id'); node.removeAttribute('data-trace-object-key');
+          });
+          wrapper.append(clone);
+        });
+        content.append(wrapper);
+        pendingSequenceRemovals.push({ wrapper, start: Number(slot.visualStart ?? slot.start) });
+      });
+    });
     // Destination visibility is event state, not temporary effect state.
     // Commit completed insertions even when RAF skips the exact final tick;
     // later pointer/write slots must not inherit a stale opacity of zero.
@@ -8360,6 +8396,9 @@
             options.appearingKeys, options.previousObjects);
           if (activeEffect) activeAnimatedElements = animatedElementsFor(slot);
         }
+        pendingSequenceRemovals.forEach(item => {
+          if (elapsed >= item.start) item.wrapper.remove();
+        });
         if (slot && activeEffect) activeEffect.update(Math.max(0, elapsed - (slot.effectStart ?? slot.start)));
         if (slot) activeReadEmphasis?.update?.(Math.max(0, elapsed - (slot.effectStart ?? slot.start)));
         // The DOM is rendered from the destination frame, but visible values
@@ -8392,6 +8431,7 @@
         activeEffect?.remove?.();
         activeReadEmphasis?.remove(); activeReadEmphasis = null;
         sequenceEffects.forEach(effect => effect.remove());
+        pendingSequenceRemovals.forEach(item => item.wrapper.remove());
         bitShiftEffects.forEach(effect => effect.remove());
         bitShiftEffects.clear();
         activeEffect = null;
@@ -10776,7 +10816,7 @@
       + '.asm-trace-assign-falling-value, .asm-trace-assign-transfer, '
       + '.asm-trace-compare-self-clone, .asm-trace-transition-ghost-motion, '
       + '.asm-trace-transition-ghost, .asm-trace-heap-resize-ghost, '
-      + '.asm-trace-sequence-ghost, .asm-trace-sequence-entry'
+      + '.asm-trace-sequence-ghost, .asm-trace-sequence-entry, .asm-trace-sequence-pending-removal'
     ).forEach(element => element.remove());
     document.querySelectorAll('[data-trace-heap-resize-current]').forEach(wrapper => {
       const heap = wrapper.querySelector(':scope > [data-layout="heap"]');
@@ -10798,10 +10838,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-331';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-332';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-331', play, cancel, updateEventAvailability,
+    build: 'trace-332', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
