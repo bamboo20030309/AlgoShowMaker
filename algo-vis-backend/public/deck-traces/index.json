@@ -1506,6 +1506,16 @@
       "file": "selection-sort-02-ef6c19937115d66a9403deaec8e9b33aaa2293662edf413a89c1aa154ab9385e.json",
       "deck": "selection-sort-83f7d7af9a0e356e88a2008fbbec076b39ee114d8784447372a2672eaf47d374.asmdeck",
       "slideId": "selection-teaching-33"
+    },
+    "c0e58ea31ae663b3e20250f06f4725f0f7a923209e80f672e9b9a7643c15b12a": {
+      "file": "heap-sort-01-c0e58ea31ae663b3e20250f06f4725f0f7a923209e80f672e9b9a7643c15b12a.json",
+      "deck": "heap-sort-210c5cb9be4f6661cab554e075f250659d4e71336e500215398cfbdac85924a6.asmdeck",
+      "slideId": "heap-teaching-17"
+    },
+    "56383ceb19adff5827478a89cf786f0f660603bcdb5e6bcdd9b011ae9423a02a": {
+      "file": "heap-sort-02-56383ceb19adff5827478a89cf786f0f660603bcdb5e6bcdd9b011ae9423a02a.json",
+      "deck": "heap-sort-210c5cb9be4f6661cab554e075f250659d4e71336e500215398cfbdac85924a6.asmdeck",
+      "slideId": "heap-teaching-25"
     }
   }
 }
