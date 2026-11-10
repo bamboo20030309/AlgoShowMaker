@@ -88,6 +88,23 @@
   - 相關測試：`home-navigation`、`auth-center`、`sample-view-actions`、`library-folders` 4 項通過；`entrypoints.test.js` 中本次新增／修改的 18 條斷言單獨執行通過（整檔仍因既有的 `slides.js` runtime 版本與 `sample-trace-assets.js?v=1` 舊斷言失敗，兩者在基準即過期，與本次無關）。
 - 未做：`front.js` 中已無作用的舊登入視窗程式仍保留，留待 H5 一併移除；未以真實帳號登入驗證。
 
+## 追加：預覽回饋修正（2026-11-11，使用者指示）
+
+使用者在 3104 預覽後提出四點，全部處理：
+
+- 程式修正 commit：d230938f32ed27fd456cfc513a1bb5470eefdf17
+- 修改：
+  1. **點目前所在的模式不重新載入**：`home.js` 攔截「投影片」點擊——工作區時就地切回「我的投影片」分頁；訪客首頁不動；訪客範例全頁仍回首頁登入框（屬不同畫面）。`top-account.js` 在程式碼頁攔截「程式碼」，避免丟失編輯中的程式。Ctrl／Shift／中鍵開新分頁不攔截。
+  2. **訪客首頁捲軸位置與樣式**：寬螢幕（≥901px）時 `.guest-view` 固定為視窗高度、範例欄位自己捲動，捲軸落在登入框左側；首頁捲軸改為細的深色樣式（`scrollbar-color`＋WebKit 偽元素）。黏性分類列在捲動容器內以 `top: -40px` 抵銷欄位上內距，保持貼齊欄位頂端。窄螢幕維持整頁捲動。
+  3. **移除左側工作區側欄**：只保留上方分頁；工作區內容改為置中、最大寬度 1440px；刪除側欄的 CSS（`.workspace-sidebar`、`.sidebar-*`、`.storage-note`、`.status-dot`），`setWorkspaceTab()` 的側欄分支一併移除。原側欄底部的「已啟用雲端儲存」提示也隨之移除。
+  4. **新增資料夾改為圖示按鈕**：資料夾線條、右上角加號（SVG），`aria-label`／`title` 為「新增資料夾」；手機上靠右不拉滿。
+  - 版本：`home.css?v=workspace-tabs-2`、`home.js?v=workspace-tabs-3`、`top-account.js?v=2`。
+- 驗證：
+  - 探針：寬螢幕訪客首頁整頁不捲動、範例欄位 `overflow-y: auto`、欄位右緣 972 ≤ 登入框左緣 986；點「回溯」分類後區段標題在分類列下方（分類列貼齊欄位頂端）；900px 與 390px 維持整頁捲動且無水平溢出；工作區無側欄，資料夾按鈕 40×40。
+  - 3104 預覽（使用者已登入的真實帳號，僅檢視、未操作資料）：工作區無側欄、分頁在上方、資料夾圖示正常顯示。無頭瀏覽器不繪製捲軸，捲軸外觀以樣式設定核對，未能截圖確認。
+  - 測試：`home-navigation`（新增：點目前模式不重新載入、範例欄位為捲動容器且在登入框左側、無側欄、資料夾按鈕無可見文字但有名稱、程式碼頁點「程式碼」不重新載入）、`auth-center`、`library-folders`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`deck-file-drop` 共 8 項通過；`entrypoints.test.js` 本次相關 19 條斷言單獨執行通過（整檔仍因基準既有的過期斷言失敗）。
+  - `auth-center` 測試修改：原本以 `minHeight: 5000px` 撐高範例欄位並捲動視窗；新設計中範例欄位是捲動容器，改為在欄位內加入 5000px 內容並捲動欄位，並新增「欄位確實捲動」的檢查。登入框位置（top 52、bottom 1000、置中）的判準不變。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
