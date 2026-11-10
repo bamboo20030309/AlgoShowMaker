@@ -234,3 +234,9 @@ insert／push_back 的入場階段須同時呈現格子與數字。可見來源�
 引用參數的宣告不代表建立新的容器。如果前後畫面具有相同 runtime 儲存身分、同一 scene、相同作者別名與 layout 節點，且前一容器仍可見，沿用整體容器及其格子／標籤，不重播宣告入場。此規則適用跨函式、返回呼叫者與遞迴；指標／純量仍按自己的 lifetime 處理，容器延續不能直接當成指標角色延續。
 
 不能只比名稱或物件 ID：不同儲存身分、新的值容器、明確 visual-enter／visual-exit、已結束的擁有者、keep／新 scene、不同別名或新的遞迴 layout 節點，都保留獨立生命週期。缺少新欄位不另加必填資料，沿用既有型別及 runtime metadata。驗證入口為 `reference-container-continuity.test.js`、`heap-reference-continuity.browser.test.js`，另以 `recursion-declaration-clock` 兩檔檢查新節點入場未被抑制。
+
+## 退場箭頭的幾何交接（2026-11-10）
+
+繪製器公布指標的實際端點與錨點模式：固定指向格子，或隨同格標籤的水平位置對齊。退場排程用退出前的成員狀態校正標籤與端點，不能因它已不在目的幀的 finalState，就漏算原本 layout／座標偏移。heap 原本直向的箭頭應在淡出時保持直向；正常陣列仍依原錨點跟隨位移與讓位，不一律凍結所有箭頭。
+
+重新計算箭頭時保留原本連接標籤的邊：上方標籤從底邊出發，矩陣列標籤從右邊出發。前一幀事件提交若已移動指標，完成時同步更新呈現端點，下一幀退場不能讀回較舊的端點。這些都是暫時 DOM／播放器資料，不新增 Trace 必填欄位。固定答案見 `tests/pointer-exit-arrow.browser.test.js`，另以指標重排與模型案例核對既有路徑。

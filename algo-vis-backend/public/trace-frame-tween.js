@@ -5516,16 +5516,22 @@
     const labelTop = Number(entry.markerLabelBox?.getAttribute?.('y')) || -40;
     const labelHeight = Number(entry.markerLabelBox?.getAttribute?.('height')) || 18;
     const arrowTop = labelTop + labelHeight;
-    const directionX = (Number(state.targetX) || 0) - (Number(state.x) || 0);
-    const directionY = (Number(state.targetY) || 0) - (Number(state.y) || 0) - arrowTop;
+    // Preserve the renderer's attachment edge: top pointers start below the
+    // label, matrix row pointers start to its right. Only the endpoint moves.
+    const move = String(entry.markerPointPath.getAttribute('d') || '')
+      .match(/^\s*M\s*([-+\d.eE]+)[,\s]+([-+\d.eE]+)/);
+    const startX = move && Number.isFinite(Number(move[1])) ? Number(move[1]) : 0;
+    const startY = move && Number.isFinite(Number(move[2])) ? Number(move[2]) : arrowTop;
+    const directionX = (Number(state.targetX) || 0) - (Number(state.x) || 0) - startX;
+    const directionY = (Number(state.targetY) || 0) - (Number(state.y) || 0) - startY;
     const directionLength = Math.max(0.001, Math.hypot(directionX, directionY));
     const unitX = directionX / directionLength;
     const unitY = directionY / directionLength;
     const perpendicularX = -unitY;
     const perpendicularY = unitX;
     const arrowLength = 20;
-    const pointerX = unitX * arrowLength;
-    const pointerY = arrowTop + unitY * arrowLength;
+    const pointerX = startX + unitX * arrowLength;
+    const pointerY = startY + unitY * arrowLength;
     const headLength = 6;
     const headHalfWidth = 3;
     const headBaseX = pointerX - unitX * headLength;
@@ -5534,7 +5540,7 @@
     const headLeftY = headBaseY + perpendicularY * headHalfWidth;
     const headRightX = headBaseX - perpendicularX * headHalfWidth;
     const headRightY = headBaseY - perpendicularY * headHalfWidth;
-    return `M 0 ${arrowTop} L ${pointerX} ${pointerY} M ${headLeftX} ${headLeftY} L ${pointerX} ${pointerY} L ${headRightX} ${headRightY}`;
+    return `M ${startX} ${startY} L ${pointerX} ${pointerY} M ${headLeftX} ${headLeftY} L ${pointerX} ${pointerY} L ${headRightX} ${headRightY}`;
   }
 
   function markersForMotionSlot(slot, elements, eventFrame = null) {
@@ -5617,6 +5623,13 @@
         key: entry.key,
         element: entry.element,
         outgoing: entry.outgoing === true,
+        arrowAnchorMode: entry.element.dataset.tracePointerArrowAnchorMode || 'target',
+        renderedTarget: entry.element.hasAttribute('data-trace-marker-target-x')
+          && entry.element.hasAttribute('data-trace-marker-target-y') ? {
+            x: Number(entry.element.dataset.traceMarkerTargetX),
+            y: Number(entry.element.dataset.traceMarkerTargetY)
+          } : null,
+        targetBias: { x: 0, y: 0 },
         topologyExitSlot: entry.topologyExitSlot,
         topologyEnterSlot: entry.topologyEnterSlot,
         variableId: String(entry.element.dataset.traceSourceVariableId || ''),
@@ -5824,15 +5837,19 @@
         const unresolved = pointer.status === 'unresolved';
         const x = anchorX + pointer.offsetX + (unresolved ? 0 : item.bias.x);
         const y = markerPlacement.y + (unresolved ? 0 : item.bias.y);
-        const keepArrowsVertical = target.width > item.baseCellWidth + 0.5;
+        const labelAnchored = item.outgoing && item.arrowAnchorMode === 'label';
+        const keepArrowsVertical = labelAnchored || target.width > item.baseCellWidth + 0.5;
         positions.set(pointer.key, {
           x,
           y,
           offsetX: pointer.offsetX,
           slot: pointer.slot,
           groupSize: pointer.groupSize,
-          targetX: unresolved || keepArrowsVertical ? x : anchorX,
-          targetY: target.y + target.height / 2
+          targetX: unresolved || keepArrowsVertical
+            ? x + (labelAnchored && item.renderedTarget && item.previousBase
+              ? item.renderedTarget.x - item.previousBase.x : 0)
+            : anchorX + item.targetBias.x,
+          targetY: target.y + target.height / 2 + item.targetBias.y
         });
       });
       return positions;
@@ -5888,13 +5905,22 @@
     );
 
     const unbiasedFinal = positionsForState(finalState);
+    const unbiasedInitial = positionsForState(initialState);
     metadata.forEach(item => {
-      const expected = unbiasedFinal.get(item.key);
+      const expected = (item.outgoing ? unbiasedInitial : unbiasedFinal).get(item.key);
       if (!expected) return;
+      const base = item.outgoing && item.previousBase ? item.previousBase : item.finalBase;
       item.bias = {
-        x: item.finalBase.x - expected.x,
-        y: item.finalBase.y - expected.y
+        x: base.x - expected.x,
+        y: base.y - expected.y
       };
+      if (item.outgoing && item.renderedTarget
+        && Number.isFinite(item.renderedTarget.x) && Number.isFinite(item.renderedTarget.y)) {
+        item.targetBias = {
+          x: item.renderedTarget.x - expected.targetX,
+          y: item.renderedTarget.y - expected.targetY
+        };
+      }
     });
 
     const state = new Map(initialState);
@@ -10680,6 +10706,10 @@
           const committedArrowState = commitMarker
             ? events?.markerArrowStates?.get?.(entry.key)
             : null;
+          if (committedArrowState) {
+            entry.element.dataset.traceMarkerTargetX = String(committedArrowState.targetX);
+            entry.element.dataset.traceMarkerTargetY = String(committedArrowState.targetY);
+          }
           entry.markerPointPath.setAttribute(
             'd',
             committedArrowState
@@ -10762,10 +10792,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-329';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-330';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-329', play, cancel, updateEventAvailability,
+    build: 'trace-330', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

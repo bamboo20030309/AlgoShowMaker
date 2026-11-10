@@ -5184,8 +5184,13 @@
       if (boundTargetKey) object.dataset.traceBindingTarget = boundTargetKey;
       if (markerPlacement) {
         object.dataset.traceMarkerUnresolved = '1';
+      }
+      // Publish the actual rendered anchor, including layout offsets. Exit
+      // ghosts must not reconstruct it from a differently sized cell box.
+      if (studioObject.type === 'variable-marker' && pointerTarget) {
         object.dataset.traceMarkerTargetX = String(pointerTarget.x + (Number(studioObject.pointerTargetOffsetX) || 0));
         object.dataset.traceMarkerTargetY = String(pointerTarget.y);
+        object.dataset.tracePointerArrowAnchorMode = studioObject.pointerArrowAnchorMode || 'target';
       }
       const motion = svg('g', { class: 'asm-trace-motion' });
       object.append(motion);
@@ -5494,6 +5499,7 @@
         item.offsetX = relativeLayout?.offsets.get(item) ?? (cursor + item.labelWidth / 2);
         item.pointerTargetOffsetX = relativeLayout ? item.offsetX
           : keepArrowsVertical ? item.offsetX : 0;
+        item.pointerArrowAnchorMode = relativeLayout || keepArrowsVertical ? 'label' : 'target';
         cursor += item.labelWidth + gap;
         const {
           targetVariableId, targetObjectKey, targetRuntimeIdentity,
@@ -7188,9 +7194,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-282';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-283';
   window.ASMTraceRenderers = {
-    build: 'trace-282', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-283', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

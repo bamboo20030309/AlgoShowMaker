@@ -194,6 +194,7 @@
           groupSize: ordered.length,
           offsetX,
           pointerTargetOffsetX: relativeLayout ? offsetX : keepArrowsVertical ? offsetX : 0,
+          pointerArrowAnchorMode: relativeLayout || keepArrowsVertical ? 'label' : 'target',
           markerPlacement
         });
         cursor += state.labelWidth + gap;
@@ -309,7 +310,7 @@
   }
 
   window.ASMTracePointerModel = Object.freeze({
-    build: 'pointer-4',
+    build: 'pointer-5',
     transitions: TRANSITIONS,
     canonicalOnly: () => CANONICAL_ONLY,
     enabled: () => true,
