@@ -68,3 +68,44 @@
     transition: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+ * 共用模式導覽（投影片 / 程式碼）
+ * 首頁與程式碼頁使用同一份標記與樣式；嵌入投影片的 iframe 不顯示。
+ * -------------------------------------------------------------------------- */
+.mode-nav {
+  display: flex;
+  align-self: stretch;
+  gap: 4px;
+  margin-left: 34px;
+}
+
+.mode-nav .nav-link {
+  display: grid;
+  place-items: center;
+  border-bottom: 2px solid transparent;
+  padding: 0 14px;
+  color: var(--text, var(--text-main, #cccccc));
+  font-family: Arial, "Noto Sans TC", sans-serif;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.mode-nav .nav-link:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mode-nav .nav-link.is-active {
+  border-bottom-color: var(--blue, #007acc);
+  color: #ffffff;
+}
+
+.mode-nav .nav-link:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: -2px;
+}
+
+body[class*="asm-embed-"] .mode-nav {
+  display: none;
+}

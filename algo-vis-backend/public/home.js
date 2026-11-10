@@ -20,10 +20,12 @@
   const accountArea = document.getElementById('accountArea');
   const accountName = document.getElementById('accountName');
   const logoutBtn = document.getElementById('logoutBtn');
-  const headerSlidesLink = document.getElementById('headerSlidesLink');
-  const headerExamplesLink = document.getElementById('headerExamplesLink');
-  const workspaceSlidesNav = document.getElementById('workspaceSlidesNav');
-  const workspaceExamplesNav = document.getElementById('workspaceExamplesNav');
+  const headerLoginBtn = document.getElementById('headerLoginBtn');
+  const authPanel = document.querySelector('.auth-panel');
+  const galleryPanel = document.querySelector('.guest-gallery');
+  const workspaceMinePanel = document.getElementById('workspaceMinePanel');
+  const workspaceExamplesPanel = document.getElementById('workspaceExamplesPanel');
+  const workspaceTabControls = [...document.querySelectorAll('[data-workspace-tab]')];
   const authTitle = document.getElementById('authTitle');
   const authSubtitle = document.getElementById('authSubtitle');
   const authTabs = document.getElementById('authTabs');
@@ -101,19 +103,58 @@
     state.user = null;
   }
 
-  function setNavigationActive(element, active) {
-    if (!element) return;
-    element.classList.toggle('is-active', active);
-    if (active) element.setAttribute('aria-current', 'page');
-    else element.removeAttribute('aria-current');
+  // -----------------------------------------------------------------------------
+  // 工作區分頁：我的投影片 / 範例投影片
+  // 進入首頁預設「我的投影片」；只有網址帶 examples=1 才開範例分頁。分頁同步寫回網址，
+  // 重新整理停在同一分頁，但不跨次造訪記憶，確保一進來就看到自己的投影片。
+  // -----------------------------------------------------------------------------
+  function examplesRequested() {
+    return new URLSearchParams(location.search).get('examples') === '1';
   }
 
-  function syncHomeNavigation() {
-    const examplesActive = new URLSearchParams(location.search).get('examples') === '1';
-    setNavigationActive(headerSlidesLink, !examplesActive);
-    setNavigationActive(headerExamplesLink, examplesActive);
-    setNavigationActive(workspaceSlidesNav, !examplesActive);
-    setNavigationActive(workspaceExamplesNav, examplesActive);
+  function setWorkspaceTab(tab, { updateUrl = true, focus = false } = {}) {
+    const examples = tab === 'examples';
+    workspaceMinePanel.hidden = examples;
+    workspaceExamplesPanel.hidden = !examples;
+    createDeckBtn.hidden = examples;
+    workspaceTabControls.forEach(control => {
+      const active = control.dataset.workspaceTab === tab;
+      control.classList.toggle('is-active', active);
+      if (control.getAttribute('role') === 'tab') {
+        control.setAttribute('aria-selected', String(active));
+        control.tabIndex = active ? 0 : -1;
+        if (active && focus) control.focus();
+      } else if (active) control.setAttribute('aria-current', 'page');
+      else control.removeAttribute('aria-current');
+    });
+    if (!updateUrl) return;
+    const url = new URL(location.href);
+    if (examples) url.searchParams.set('examples', '1');
+    else url.searchParams.delete('examples');
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  workspaceTabControls.forEach(control => {
+    control.addEventListener('click', () => setWorkspaceTab(control.dataset.workspaceTab));
+  });
+
+  document.querySelector('.workspace-tabs')?.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+    const current = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true');
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? tabs.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    setWorkspaceTab(tabs[next].dataset.workspaceTab, { focus: true });
+  });
+
+  // The public gallery is one component. Guests see it beside the login form;
+  // signed-in users see the same element inside the examples tab.
+  function placeGallery(signedIn) {
+    if (!galleryPanel) return;
+    if (signedIn) workspaceExamplesPanel.append(galleryPanel);
+    else guestView.insertBefore(galleryPanel, authPanel);
   }
 
   function safeNextPath() {
@@ -122,22 +163,38 @@
   }
 
   function showGuest() {
-    syncHomeNavigation();
+    placeGallery(false);
     guestView.hidden = false;
     dashboardView.hidden = true;
     accountArea.hidden = true;
+    headerLoginBtn.hidden = false;
     setAuthMode(new URLSearchParams(location.search).has('reset_token') ? 'reset' : 'login');
   }
 
   async function showDashboard(user) {
-    syncHomeNavigation();
+    document.body.classList.remove('examples-view');
+    placeGallery(true);
+    setWorkspaceTab(examplesRequested() ? 'examples' : 'mine', { updateUrl: false });
     state.user = user;
     guestView.hidden = true;
     dashboardView.hidden = false;
     accountArea.hidden = false;
+    headerLoginBtn.hidden = true;
     accountName.textContent = user.username;
     await loadDecks();
   }
+
+  // 訪客：在範例全頁模式回到首頁登入框；一般首頁則捲動並聚焦到登入框。
+  headerLoginBtn.addEventListener('click', () => {
+    if (document.body.classList.contains('examples-view')) {
+      location.href = '/';
+      return;
+    }
+    setAuthMode('login');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    authPanel.scrollIntoView({ behavior: reduce ? 'instant' : 'smooth', block: 'start' });
+    emailInput.focus({ preventScroll: true });
+  });
 
   // -----------------------------------------------------------------------------
   // 登入與註冊表單
@@ -256,6 +313,11 @@
   logoutBtn.addEventListener('click', () => {
     clearSession();
     state.decks = [];
+    // 登出回到一般訪客首頁（範例＋登入框），不沿用工作區分頁的 examples 參數。
+    const url = new URL(location.href);
+    url.searchParams.delete('examples');
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    document.body.classList.remove('examples-view');
     showGuest();
   });
 
@@ -527,20 +589,21 @@
   // 首頁啟動
   // 先解析網址模式與現有 token，再選擇訪客或工作區，避免兩個視圖同時發出資料請求。
   // -----------------------------------------------------------------------------
+  // 訪客的 /?examples=1 維持原本的範例全頁；已登入者改在工作區的範例分頁開啟。
+  function showGuestHome() {
+    document.body.classList.toggle('examples-view', examplesRequested());
+    showGuest();
+  }
+
   async function initialize() {
-    if (new URLSearchParams(location.search).get('examples') === '1') {
-      document.body.classList.add('examples-view');
-      showGuest();
-      return;
-    }
     const resetMode = new URLSearchParams(location.search).has('reset_token');
-    if (resetMode) {
+    if (resetMode && !examplesRequested()) {
       showGuest();
       return;
     }
 
     if (!token()) {
-      showGuest();
+      showGuestHome();
       return;
     }
 
@@ -549,7 +612,7 @@
       await showDashboard(data.user);
     } catch {
       clearSession();
-      showGuest();
+      showGuestHome();
     }
   }
 

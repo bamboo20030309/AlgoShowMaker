@@ -40,7 +40,9 @@ async function startServer() {
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('header and workspace sample navigation share their target and active state',
+// 2026-11-11 規格變更：頂部只留「投影片／程式碼」兩種模式；範例改為登入後工作區的分頁，
+// 訪客首頁與訪客的 /?examples=1 維持原樣。
+test('home offers two modes and signed-in users switch between their decks and examples',
   { timeout: 90000 }, async () => {
     const { server, base } = await startServer();
     let browser;
@@ -49,33 +51,66 @@ test('header and workspace sample navigation share their target and active state
         headless: true,
         ...(process.platform === 'win32' ? { channel: 'msedge' } : {})
       });
+
+      // Guest: two modes only; the login panel stays beside the gallery.
+      const guest = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await guest.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [] } }));
+      await guest.goto(base);
+      const modes = guest.locator('.mode-nav .nav-link');
+      assert.deepEqual(await modes.allTextContents(), ['投影片', '程式碼']);
+      assert.deepEqual(await modes.evaluateAll(links => links.map(link => link.getAttribute('href'))),
+        ['/', '/algorithm.html']);
+      assert.equal(await modes.first().getAttribute('aria-current'), 'page');
+      assert.equal(await guest.locator('.auth-panel').isVisible(), true);
+      assert.equal(await guest.locator('#headerLoginBtn').isVisible(), true);
+
+      // Guest /?examples=1 keeps the full-page gallery; the header login returns to the login panel.
+      await guest.goto(`${base}/?examples=1`);
+      assert.equal(await guest.locator('.auth-panel').isVisible(), false);
+      await guest.locator('#headerLoginBtn').click();
+      await guest.waitForURL(`${base}/`);
+      assert.equal(await guest.locator('.auth-panel').isVisible(), true);
+
+      // Signed in (API stubbed, no database writes): "my decks" is the default entry.
       const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await page.addInitScript(() => localStorage.setItem('algo_jwt_token', 'fixture-token'));
       await page.route('**/guest-decks.json', route => route.fulfill({ json: { decks: [] } }));
+      await page.route('**/api/auth/me', route => route.fulfill({
+        json: { user: { id: 'fixture', username: 'fixture@example.test' } }
+      }));
+      await page.route('**/api/slides', route => route.fulfill({ json: { slides: [], layout: null } }));
       await page.goto(base);
+      await page.waitForSelector('#dashboardView:not([hidden])');
+      const mineTab = page.locator('#workspaceMineTab');
+      const examplesTab = page.locator('#workspaceExamplesTab');
+      assert.equal(await mineTab.getAttribute('aria-selected'), 'true');
+      assert.equal(await page.locator('#workspaceMinePanel').isVisible(), true);
+      assert.equal(await page.locator('#workspaceExamplesPanel').isVisible(), false);
+      assert.equal(await page.locator('#createDeckBtn').isVisible(), true);
+      assert.equal(await page.locator('#headerLoginBtn').isVisible(), false);
 
-      const headerSlides = page.locator('#headerSlidesLink');
-      const headerExamples = page.locator('#headerExamplesLink');
-      const workspaceSlides = page.locator('#workspaceSlidesNav');
-      const workspaceExamples = page.locator('#workspaceExamplesNav');
-      assert.equal(await headerExamples.getAttribute('href'), '/?examples=1');
-      assert.equal(await workspaceExamples.getAttribute('href'), '/?examples=1');
-      assert.equal(await headerSlides.getAttribute('aria-current'), 'page');
-      assert.equal(await workspaceSlides.getAttribute('aria-current'), 'page');
-      assert.equal(await headerExamples.getAttribute('aria-current'), null);
-      assert.equal(await workspaceExamples.getAttribute('aria-current'), null);
-
-      await headerExamples.click();
+      await examplesTab.click();
       await page.waitForURL(`${base}/?examples=1`);
-      assert.equal(await headerSlides.getAttribute('aria-current'), null);
-      assert.equal(await workspaceSlides.getAttribute('aria-current'), null);
-      assert.equal(await headerExamples.getAttribute('aria-current'), 'page');
-      assert.equal(await workspaceExamples.getAttribute('aria-current'), 'page');
-      assert.equal(await page.locator('.auth-panel').isVisible(), false);
+      assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
+      assert.equal(await page.locator('#workspaceExamplesPanel .guest-gallery').count(), 1);
+      assert.equal(await page.locator('#workspaceExamplesPanel').isVisible(), true);
+      assert.equal(await page.locator('#createDeckBtn').isVisible(), false);
+      assert.equal(await page.locator('#workspaceExamplesNav').getAttribute('aria-current'), 'page');
 
-      await headerSlides.click();
+      // The URL keeps the tab on reload; signed-in /?examples=1 opens the tab directly.
+      await page.reload();
+      await page.waitForSelector('#dashboardView:not([hidden])');
+      assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
+
+      // Sidebar entries and arrow keys drive the same tabs.
+      await page.locator('#workspaceSlidesNav').click();
       await page.waitForURL(`${base}/`);
-      assert.equal(await headerSlides.getAttribute('aria-current'), 'page');
-      assert.equal(await workspaceSlides.getAttribute('aria-current'), 'page');
+      assert.equal(await mineTab.getAttribute('aria-selected'), 'true');
+      assert.equal(await page.locator('#workspaceSlidesNav').getAttribute('aria-current'), 'page');
+      await mineTab.focus();
+      await page.keyboard.press('ArrowRight');
+      assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'workspaceExamplesTab');
     } finally {
       await browser?.close();
       server.kill();

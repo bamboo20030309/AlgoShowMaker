@@ -11,8 +11,8 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=delete-button-18" />
-  <link rel="stylesheet" href="brand.css?v=hover-pill-1" />
+  <link rel="stylesheet" href="home.css?v=workspace-tabs-1" />
+  <link rel="stylesheet" href="brand.css?v=mode-nav-1" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
 </head>
@@ -27,10 +27,9 @@
       <img class="brand-mark" src="favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
       <span>AlgoShowMaker</span>
     </a>
-    <nav class="header-nav" aria-label="主要導覽">
-      <a id="headerSlidesLink" class="nav-link is-active" href="/" aria-current="page">投影片</a>
-      <a id="headerExamplesLink" class="nav-link" href="/?examples=1">範例投影片</a>
-      <a class="nav-link" href="/algorithm.html">演算法動畫</a>
+    <nav class="mode-nav" aria-label="模式">
+      <a class="nav-link is-active" href="/" aria-current="page">投影片</a>
+      <a class="nav-link" href="/algorithm.html">程式碼</a>
     </nav>
     <a class="header-github-link" href="https://github.com/bamboo20030309/AlgoShowMaker" target="_blank"
       rel="noopener noreferrer" title="前往 AlgoShowMaker GitHub" aria-label="前往 AlgoShowMaker GitHub（另開新視窗）">
@@ -38,6 +37,7 @@
         <path d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.64 5.47 7.71.4.08.55-.17.55-.39 0-.19-.01-.7-.01-1.38-2.23.49-2.7-1.09-2.7-1.09-.36-.94-.89-1.19-.89-1.19-.73-.5.05-.49.05-.49.81.06 1.23.84 1.23.84.72 1.25 1.88.89 2.34.68.07-.53.28-.89.51-1.09-1.78-.2-3.65-.9-3.65-4.02 0-.89.31-1.61.82-2.18-.08-.2-.36-1.03.08-2.15 0 0 .67-.22 2.2.83A7.5 7.5 0 0 1 8 3.94a7.5 7.5 0 0 1 2 .27c1.53-1.05 2.2-.83 2.2-.83.44 1.12.16 1.95.08 2.15.51.57.82 1.29.82 2.18 0 3.13-1.88 3.81-3.66 4.01.29.25.54.75.54 1.51 0 1.09-.01 1.97-.01 2.24 0 .22.14.47.55.39A8.04 8.04 0 0 0 16 8.13C16 3.64 12.42 0 8 0Z" />
       </svg>
     </a>
+    <button id="headerLoginBtn" class="quiet-btn header-login-btn" type="button" hidden>登入</button>
     <div id="accountArea" class="account-area" hidden>
       <span id="accountName" class="account-name"></span>
       <button id="logoutBtn" class="quiet-btn" type="button">登出</button>
@@ -115,15 +115,15 @@
       <aside class="workspace-sidebar">
         <div>
           <span class="sidebar-label">工作區</span>
-          <button id="workspaceSlidesNav" class="sidebar-item is-active" type="button" aria-current="page">
-            <span class="sidebar-icon">▤</span>
+          <button id="workspaceSlidesNav" class="sidebar-item is-active" type="button" aria-current="page"
+            data-workspace-tab="mine">
+            <span class="sidebar-icon" aria-hidden="true">▤</span>
             我的投影片
           </button>
-          <a id="workspaceExamplesNav" class="sidebar-item" href="/?examples=1"><span class="sidebar-icon" aria-hidden="true">▤</span>範例投影片</a>
-          <a class="sidebar-item" href="/algorithm.html">
-            <span class="sidebar-icon">▶</span>
-            演算法動畫
-          </a>
+          <button id="workspaceExamplesNav" class="sidebar-item" type="button" data-workspace-tab="examples">
+            <span class="sidebar-icon" aria-hidden="true">▤</span>
+            範例投影片
+          </button>
         </div>
         <div class="storage-note">
           <span class="status-dot"></span>
@@ -133,17 +133,21 @@
 
       <div class="library">
         <div class="library-heading">
-          <div>
-            <span class="eyebrow">投影片工作區</span>
-            <h1>我的投影片</h1>
+          <h1 class="visually-hidden">投影片工作區</h1>
+          <div class="workspace-tabs" role="tablist" aria-label="投影片列表">
+            <button id="workspaceMineTab" class="workspace-tab is-active" type="button" role="tab"
+              aria-selected="true" aria-controls="workspaceMinePanel" data-workspace-tab="mine">我的投影片</button>
+            <button id="workspaceExamplesTab" class="workspace-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="workspaceExamplesPanel" tabindex="-1"
+              data-workspace-tab="examples">範例投影片</button>
           </div>
-          <a class="examples-workspace-entry" href="/?examples=1">範例投影片</a>
           <button id="createDeckBtn" class="primary-btn create-btn" type="button">
             <span aria-hidden="true">＋</span>
             新增投影片
           </button>
         </div>
 
+        <div id="workspaceMinePanel" role="tabpanel" aria-labelledby="workspaceMineTab">
         <div class="library-toolbar">
           <label class="search-field" for="searchInput">
             <span aria-hidden="true">⌕</span>
@@ -166,6 +170,11 @@
           <p>新增後會自動儲存到你的帳號。</p>
           <button id="emptyCreateBtn" class="primary-btn" type="button">新增投影片</button>
         </div>
+        </div>
+
+        <!-- 範例分頁：home.js 在登入後把訪客視圖的 .guest-gallery 移入此處，兩種狀態共用同一份範例列表。 -->
+        <div id="workspaceExamplesPanel" class="workspace-examples" role="tabpanel"
+          aria-labelledby="workspaceExamplesTab" hidden></div>
       </div>
     </section>
   </main>
@@ -291,7 +300,7 @@
   <script src="library-layout.js?v=2"></script>
   <script src="library-organizer.js?v=8"></script>
   <script src="home-thumbnail-cache.js?v=1"></script>
-  <script src="home.js?v=card-list-12"></script>
+  <script src="home.js?v=workspace-tabs-1"></script>
 </body>
 
 </html>

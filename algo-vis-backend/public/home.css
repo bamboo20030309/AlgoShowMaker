@@ -69,31 +69,16 @@ input:focus-visible {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
-.header-nav {
-  display: flex;
-  align-self: stretch;
-  gap: 4px;
-  margin-left: 34px;
+/* 模式導覽 .mode-nav／.nav-link 的樣式在 brand.css，與程式碼頁共用。 */
+
+.header-login-btn {
+  margin-left: 10px;
 }
 
-.nav-link {
-  display: grid;
-  place-items: center;
-  border-bottom: 2px solid transparent;
-  padding: 0 14px;
-  color: var(--text);
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.nav-link:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.nav-link.is-active {
-  border-bottom-color: var(--blue);
-  color: #fff;
+.header-login-btn,
+#logoutBtn,
+.mode-nav .nav-link {
+  white-space: nowrap;
 }
 
 .header-github-link {
@@ -977,8 +962,22 @@ input:focus-visible {
     padding: 0 12px;
   }
 
-  .header-nav {
+  /* 窄螢幕仍保留兩種模式入口，改收掉 GitHub 圖示騰出空間。 */
+  .app-header .mode-nav {
+    margin-left: 10px;
+  }
+
+  .app-header .mode-nav .nav-link {
+    padding: 0 8px;
+  }
+
+  .header-github-link {
     display: none;
+  }
+
+  .header-login-btn,
+  .account-area {
+    margin-left: auto;
   }
 
   .account-name {
@@ -1086,7 +1085,6 @@ body.examples-view .auth-panel { display: none; }
 body.examples-view .guest-gallery { border-right: 0; max-width: 1440px; width: 100%; margin: 0 auto; }
 .gallery-workspace-link { display: none; }
 body.examples-view .gallery-workspace-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; text-decoration: none; }
-.examples-workspace-entry { padding: 10px 14px; color: var(--text-bright); border: 1px solid var(--border); border-radius: 6px; text-decoration: none; }
 .gallery-categories { position: sticky; top: var(--header-h); z-index: 10; padding: 12px 0; background: var(--bg-main); }
 .gallery-folders { display: flex; flex-direction: column; gap: 18px; }
 .gallery-folder { border: 0; border-top: 1px solid var(--border); border-radius: 0; scroll-margin-top: calc(var(--header-h) + 140px); }
@@ -1126,3 +1124,96 @@ body.examples-view .gallery-workspace-link { display: inline-flex; align-items: 
 }
 
 .deck-file-drop-active { outline: 3px solid #55b9f3; outline-offset: 3px; background: #1d8f83 !important; }
+
+/* --------------------------------------------------------------------------
+ * 登入後工作區分頁：我的投影片 / 範例投影片
+ * 範例分頁沿用訪客視圖的 .guest-gallery（由 home.js 移入），只收掉它的訪客標題區。
+ * -------------------------------------------------------------------------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.library-heading {
+  align-items: center;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-tabs {
+  display: flex;
+  gap: 6px;
+  align-self: stretch;
+}
+
+.workspace-tab {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  padding: 10px 6px 12px;
+  margin-right: 18px;
+  background: transparent;
+  color: var(--text-muted);
+  font: 700 22px Arial, "Noto Sans TC", sans-serif;
+  cursor: pointer;
+}
+
+.workspace-tab:hover {
+  color: var(--text-bright);
+}
+
+.workspace-tab.is-active {
+  border-bottom-color: var(--blue);
+  color: var(--text-bright);
+}
+
+.workspace-tab:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+.library-heading .create-btn {
+  margin-bottom: 8px;
+}
+
+.workspace-examples .guest-gallery {
+  padding: 0;
+  border: 0;
+}
+
+.workspace-examples .guest-gallery > .eyebrow,
+.workspace-examples .guest-gallery > h1,
+.workspace-examples .guest-gallery > .gallery-intro,
+.workspace-examples .gallery-workspace-link {
+  display: none;
+}
+
+.workspace-examples .gallery-categories {
+  margin-top: 0;
+}
+
+@media (max-width: 620px) {
+  .library-heading {
+    align-items: stretch;
+  }
+
+  .workspace-tab {
+    margin-right: 8px;
+    font-size: 18px;
+  }
+
+  .library-heading .create-btn {
+    margin-bottom: 12px;
+  }
+}
+
+/* 極窄螢幕：品牌只留圖示，讓模式入口與登入／登出不溢出。 */
+@media (max-width: 420px) {
+  .app-header .brand > span {
+    display: none;
+  }
+}
