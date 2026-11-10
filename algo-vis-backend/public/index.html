@@ -11,8 +11,8 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=workspace-tabs-2" />
-  <link rel="stylesheet" href="brand.css?v=mode-nav-1" />
+  <link rel="stylesheet" href="home.css?v=site-header-1" />
+  <link rel="stylesheet" href="brand.css?v=site-header-1" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
 </head>
@@ -20,9 +20,9 @@
 <body>
 <!-- -----------------------------------------------------------------------
   共用頁首與帳號區
-  accountArea 由登入狀態顯示；範例入口在兩種首頁視圖都維持可達。
+  與程式碼頁共用 .site-header（brand.css），版面完全相同；accountArea 由登入狀態顯示。
   ------------------------------------------------------------------------ -->
-  <header class="app-header">
+  <header class="app-header site-header">
     <a class="brand" href="/" aria-label="AlgoShowMaker 首頁">
       <img class="brand-mark" src="favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
       <span>AlgoShowMaker</span>
@@ -31,16 +31,18 @@
       <a class="nav-link is-active" href="/" aria-current="page">投影片</a>
       <a class="nav-link" href="/algorithm.html">程式碼</a>
     </nav>
-    <a class="header-github-link" href="https://github.com/bamboo20030309/AlgoShowMaker" target="_blank"
+    <a class="site-github-link" href="https://github.com/bamboo20030309/AlgoShowMaker" target="_blank"
       rel="noopener noreferrer" title="前往 AlgoShowMaker GitHub" aria-label="前往 AlgoShowMaker GitHub（另開新視窗）">
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.64 5.47 7.71.4.08.55-.17.55-.39 0-.19-.01-.7-.01-1.38-2.23.49-2.7-1.09-2.7-1.09-.36-.94-.89-1.19-.89-1.19-.73-.5.05-.49.05-.49.81.06 1.23.84 1.23.84.72 1.25 1.88.89 2.34.68.07-.53.28-.89.51-1.09-1.78-.2-3.65-.9-3.65-4.02 0-.89.31-1.61.82-2.18-.08-.2-.36-1.03.08-2.15 0 0 .67-.22 2.2.83A7.5 7.5 0 0 1 8 3.94a7.5 7.5 0 0 1 2 .27c1.53-1.05 2.2-.83 2.2-.83.44 1.12.16 1.95.08 2.15.51.57.82 1.29.82 2.18 0 3.13-1.88 3.81-3.66 4.01.29.25.54.75.54 1.51 0 1.09-.01 1.97-.01 2.24 0 .22.14.47.55.39A8.04 8.04 0 0 0 16 8.13C16 3.64 12.42 0 8 0Z" />
       </svg>
     </a>
-    <button id="headerLoginBtn" class="quiet-btn header-login-btn" type="button" hidden>登入</button>
-    <div id="accountArea" class="account-area" hidden>
-      <span id="accountName" class="account-name"></span>
-      <button id="logoutBtn" class="quiet-btn" type="button">登出</button>
+    <div class="site-account">
+      <button id="headerLoginBtn" class="site-account-btn" type="button" hidden>登入</button>
+      <span id="accountArea" class="site-account-signed-in" hidden>
+        <span id="accountName" class="site-account-name"></span>
+        <button id="logoutBtn" class="site-account-btn" type="button">登出</button>
+      </span>
     </div>
   </header>
 
@@ -135,7 +137,7 @@
             <input id="searchInput" type="search" placeholder="搜尋投影片" autocomplete="off" />
           </label>
           <span id="deckCount" class="deck-count"></span>
-          <button id="createFolderBtn" class="quiet-btn icon-action-btn" type="button" disabled
+          <button id="createFolderBtn" class="icon-action-btn" type="button" disabled
             aria-label="新增資料夾" title="新增資料夾">
             <!-- 資料夾，右上角加號 -->
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"

@@ -56,71 +56,7 @@ input:focus-visible {
   display: none !important;
 }
 
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  min-height: var(--header-h);
-  border-bottom: 1px solid var(--border);
-  padding: 0 20px;
-  background: var(--bg-header);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-}
-
-/* 模式導覽 .mode-nav／.nav-link 的樣式在 brand.css，與程式碼頁共用。 */
-
-.header-login-btn {
-  margin-left: 10px;
-}
-
-.header-login-btn,
-#logoutBtn,
-.mode-nav .nav-link {
-  white-space: nowrap;
-}
-
-.header-github-link {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-left: auto;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text);
-  text-decoration: none;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
-}
-
-.header-github-link svg {
-  width: 22px;
-  height: 22px;
-  fill: currentColor;
-}
-
-.header-github-link:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-
-.account-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: 12px;
-}
-
-.account-name {
-  max-width: 260px;
-  overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* 頂部列（品牌、模式導覽、GitHub、帳號區）的樣式在 brand.css 的 .site-header，與程式碼頁共用。 */
 
 .primary-btn,
 .quiet-btn,
@@ -883,36 +819,6 @@ input:focus-visible {
 }
 
 @media (max-width: 620px) {
-  .app-header {
-    padding: 0 12px;
-  }
-
-  /* 窄螢幕仍保留兩種模式入口，改收掉 GitHub 圖示騰出空間。 */
-  .app-header .mode-nav {
-    margin-left: 10px;
-  }
-
-  .app-header .mode-nav .nav-link {
-    padding: 0 8px;
-  }
-
-  .header-github-link {
-    display: none;
-  }
-
-  .header-login-btn,
-  .account-area {
-    margin-left: auto;
-  }
-
-  .account-name {
-    display: none;
-  }
-
-  .brand {
-    font-size: 15px;
-  }
-
   .guest-preview {
     min-height: 330px;
     padding: 34px 20px;
@@ -1136,13 +1042,6 @@ body.examples-view .gallery-workspace-link { display: inline-flex; align-items: 
   }
 }
 
-/* 極窄螢幕：品牌只留圖示，讓模式入口與登入／登出不溢出。 */
-@media (max-width: 420px) {
-  .app-header .brand > span {
-    display: none;
-  }
-}
-
 /* --------------------------------------------------------------------------
  * 訪客首頁：範例清單在自己的欄位內捲動，捲軸落在登入框左側。
  * 窄螢幕（≤900px）上下排列，仍使用整頁捲動。
@@ -1219,7 +1118,7 @@ html::-webkit-scrollbar-thumb:hover,
   margin: 0 auto;
 }
 
-/* 新增資料夾：圖示按鈕（資料夾＋右上角加號），名稱由 aria-label／title 提供。 */
+/* 新增資料夾：只有圖示、沒有外框（資料夾＋右上角加號），名稱由 aria-label／title 提供。 */
 .icon-action-btn {
   display: inline-grid;
   place-items: center;
@@ -1227,7 +1126,21 @@ html::-webkit-scrollbar-thumb:hover,
   height: 40px;
   min-width: 40px;
   padding: 0;
+  border: 0;
   border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-bright);
+}
+
+.icon-action-btn:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
 }
 
 .icon-action-btn:disabled {

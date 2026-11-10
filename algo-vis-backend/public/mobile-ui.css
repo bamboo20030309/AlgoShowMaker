@@ -68,14 +68,9 @@
   }
 
   /* Algorithm editor / player */
-  body:has(#arraySvg) #top-bar {
-    height: var(--asm-mobile-header-h);
-    padding: 0 8px;
-  }
-
-  body:has(#arraySvg) #top-bar .menu-brand {
-    margin-right: auto;
-    font-size: 16px;
+  /* 程式碼頁頂部列與首頁共用 .site-header（brand.css），手機上同樣 52px 高、模式導覽緊貼品牌。 */
+  body:has(#arraySvg):not([class*="asm-embed-"]) {
+    --asm-mobile-header-h: 52px;
   }
 
   body:has(#arraySvg) #top-bar .menu-item,

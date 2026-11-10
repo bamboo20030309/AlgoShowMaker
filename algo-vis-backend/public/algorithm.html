@@ -9,13 +9,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css?v=mode-nav-2" />
-  <link rel="stylesheet" href="brand.css?v=mode-nav-1" />
+  <link rel="stylesheet" href="style.css?v=site-header-1" />
+  <link rel="stylesheet" href="brand.css?v=site-header-1" />
   <link rel="stylesheet" href="slides-embed.css?v=random-id-12" />
   <link rel="stylesheet" href="trace.css?v=trace-39" />
   <link rel="stylesheet" href="trace-directive-assist.css?v=directive-5" />
   <link rel="stylesheet" href="trace-studio.css?v=trace-64" />
-  <link rel="stylesheet" href="mobile-ui.css?v=mobile-4" />
+  <link rel="stylesheet" href="mobile-ui.css?v=site-header-1" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
@@ -25,7 +25,7 @@
   全域導覽與執行控制
   RUN 會編譯 Ace 內容並重建播放器；其餘按鈕只切換面板或登入狀態。
   ------------------------------------------------------------------------ -->
-  <nav id="top-bar">
+  <nav id="top-bar" class="site-header">
     <a class="brand menu-brand" href="/" aria-label="AlgoShowMaker 首頁">
       <img class="brand-mark" src="favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
       <span>AlgoShowMaker</span>
@@ -63,17 +63,17 @@
     <button id="eventSettingsBtn" class="top-action-button" type="button" title="設定事件顯示與動畫預設" disabled>
       事件設定
     </button>
-    <a class="top-github-link" href="https://github.com/bamboo20030309/AlgoShowMaker" target="_blank"
+    <a class="top-github-link site-github-link" href="https://github.com/bamboo20030309/AlgoShowMaker" target="_blank"
       rel="noopener noreferrer" title="前往 AlgoShowMaker GitHub" aria-label="前往 AlgoShowMaker GitHub（另開新視窗）">
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.64 5.47 7.71.4.08.55-.17.55-.39 0-.19-.01-.7-.01-1.38-2.23.49-2.7-1.09-2.7-1.09-.36-.94-.89-1.19-.89-1.19-.73-.5.05-.49.05-.49.81.06 1.23.84 1.23.84.72 1.25 1.88.89 2.34.68.07-.53.28-.89.51-1.09-1.78-.2-3.65-.9-3.65-4.02 0-.89.31-1.61.82-2.18-.08-.2-.36-1.03.08-2.15 0 0 .67-.22 2.2.83A7.5 7.5 0 0 1 8 3.94a7.5 7.5 0 0 1 2 .27c1.53-1.05 2.2-.83 2.2-.83.44 1.12.16 1.95.08 2.15.51.57.82 1.29.82 2.18 0 3.13-1.88 3.81-3.66 4.01.29.25.54.75.54 1.51 0 1.09-.01 1.97-.01 2.24 0 .22.14.47.55.39A8.04 8.04 0 0 0 16 8.13C16 3.64 12.42 0 8 0Z" />
       </svg>
     </a>
     <!-- 帳號區：登入一律導向首頁登入框（?next= 帶回本頁），由 top-account.js 依登入狀態切換。 -->
-    <div class="top-account">
-      <a id="topLoginLink" class="top-account-button" href="/?next=%2Falgorithm.html" hidden>登入</a>
-      <span id="topAccountName" class="top-account-name" hidden></span>
-      <button id="topLogoutBtn" class="top-account-button" type="button" hidden>登出</button>
+    <div class="top-account site-account">
+      <a id="topLoginLink" class="site-account-btn" href="/?next=%2Falgorithm.html" hidden>登入</a>
+      <span id="topAccountName" class="site-account-name" hidden></span>
+      <button id="topLogoutBtn" class="site-account-btn" type="button" hidden>登出</button>
     </div>
   </nav>
 <!-- -----------------------------------------------------------------------

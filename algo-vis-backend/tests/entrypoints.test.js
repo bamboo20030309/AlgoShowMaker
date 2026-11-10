@@ -59,8 +59,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('compile.js?v=syntax-13'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=mode-nav-2'));
-  assert.ok(html.includes('brand.css?v=mode-nav-1'));
+  assert.ok(html.includes('style.css?v=site-header-1'));
+  assert.ok(html.includes('brand.css?v=site-header-1'));
   assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
   const legacy = read('index.html');
@@ -88,8 +88,8 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   }
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
-  assert.ok(legacy.includes('home.css?v=workspace-tabs-2'));
-  assert.ok(legacy.includes('brand.css?v=mode-nav-1'));
+  assert.ok(legacy.includes('home.css?v=site-header-1'));
+  assert.ok(legacy.includes('brand.css?v=site-header-1'));
   assert.ok(legacy.includes('guest-gallery.js?v=6'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=8'));
@@ -101,9 +101,12 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(!modeNav(legacy).includes('examples=1'), 'examples are a workspace tab, not a top-level mode');
   assert.match(modeNav(html), /class="nav-link" href="\/">投影片<\/a>/);
   assert.match(modeNav(html), /class="nav-link is-active" href="\/algorithm\.html" aria-current="page">程式碼<\/a>/);
-  assert.ok(html.includes('brand.css?v=mode-nav-1'));
+  assert.ok(html.includes('brand.css?v=site-header-1'));
   assert.match(legacy, /id="workspaceExamplesTab"[^>]+role="tab"/);
   assert.ok(!legacy.includes('workspace-sidebar'), 'the tabs replace the old workspace sidebar');
+  // One shared top bar (brand.css .site-header) on both pages so switching modes does not shift it.
+  assert.match(legacy, /<header class="app-header site-header">/);
+  assert.match(html, /<nav id="top-bar" class="site-header">/);
   assert.match(legacy, /id="createFolderBtn"[^>]+aria-label="新增資料夾"/);
   // The code page has no login form of its own; its login entry goes to the home login with ?next=.
   assert.match(html, /id="topLoginLink"[^>]+href="\/\?next=%2Falgorithm\.html"/);

@@ -70,9 +70,35 @@
 }
 
 /* --------------------------------------------------------------------------
- * 共用模式導覽（投影片 / 程式碼）
- * 首頁與程式碼頁使用同一份標記與樣式；嵌入投影片的 iframe 不顯示。
+ * 共用頂部列（首頁、程式碼頁）
+ * 兩個頁面套用同一個 .site-header：高度、內距、品牌、「投影片 / 程式碼」、
+ * GitHub 與帳號區的位置與外觀完全相同，切換頁面時不跳動。
+ * 頁面各自的功能選單（例如程式碼頁的「演算法範例集」）放在模式導覽之後。
+ * 嵌入投影片的 iframe 不顯示模式導覽與帳號區。
  * -------------------------------------------------------------------------- */
+.site-header {
+  --site-header-h: 52px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--site-header-h);
+  min-height: var(--site-header-h);
+  border-bottom: 1px solid #454545;
+  padding: 0 20px;
+  background: #333333;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-family: Arial, "Noto Sans TC", sans-serif;
+  font-size: 14px;
+}
+
+.site-header .brand {
+  margin-right: 0;
+  font-size: 17px;
+}
+
 .mode-nav {
   display: flex;
   align-self: stretch;
@@ -85,10 +111,11 @@
   place-items: center;
   border-bottom: 2px solid transparent;
   padding: 0 14px;
-  color: var(--text, var(--text-main, #cccccc));
+  color: #cccccc;
   font-family: Arial, "Noto Sans TC", sans-serif;
   font-size: 14px;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .mode-nav .nav-link:hover {
@@ -97,7 +124,7 @@
 }
 
 .mode-nav .nav-link.is-active {
-  border-bottom-color: var(--blue, #007acc);
+  border-bottom-color: #007acc;
   color: #ffffff;
 }
 
@@ -106,6 +133,132 @@
   outline-offset: -2px;
 }
 
-body[class*="asm-embed-"] .mode-nav {
+.site-header .site-github-link {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #cccccc;
+  text-decoration: none;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.site-header .site-github-link svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.site-header .site-github-link:hover {
+  border-color: #454545;
+  background: #3d3d3f;
+  color: #ffffff;
+}
+
+.site-header .site-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 12px;
+}
+
+.site-header .site-account[hidden],
+.site-header .site-account [hidden],
+.site-header .site-account-btn[hidden] {
+  display: none;
+}
+
+.site-header .site-account-name {
+  max-width: 260px;
+  overflow: hidden;
+  color: #cccccc;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-header .site-account-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  margin: 0;
+  border: 1px solid #595959;
+  border-radius: 5px;
+  padding: 0 14px;
+  background: #3a3a3a;
+  color: #ffffff;
+  font: 15px Arial, "Noto Sans TC", sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.site-header .site-account-btn:hover {
+  background: #444444;
+}
+
+.site-header .site-account-btn:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+/* 未登入時的「登入」按鈕不在 .site-account 內，間距與其一致。 */
+.site-header > .site-account-btn {
+  margin-left: 12px;
+}
+
+body[class*="asm-embed-"] .mode-nav,
+body[class*="asm-embed-"] .site-account {
+  display: none;
+}
+
+/* 窄螢幕（與 mobile-ui.css 同一斷點）：保留兩種模式與登入／登出，收起 GitHub 與名稱。 */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
+  .site-header {
+    padding: 0 12px;
+  }
+
+  .site-header .brand {
+    margin-right: 0;
+    font-size: 15px;
+  }
+
+  .site-header .mode-nav {
+    margin-left: 10px;
+  }
+
+  .site-header .mode-nav .nav-link {
+    padding: 0 8px;
+  }
+
+  .site-header .site-github-link,
+  .site-header .site-account-name {
+    display: none;
+  }
+
+  .site-header .site-account,
+  .site-header > .site-account-btn {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .site-header .brand > span {
+    display: none;
+  }
+}
+
+/* 已登入時的名稱＋登出群組（首頁以單一元素切換顯示）。 */
+.site-header .site-account-signed-in {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.site-header .site-account-signed-in[hidden] {
   display: none;
 }
