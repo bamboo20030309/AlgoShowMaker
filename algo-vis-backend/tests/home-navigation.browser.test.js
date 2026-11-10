@@ -64,6 +64,24 @@ test('home offers two modes and signed-in users switch between their decks and e
       assert.equal(await guest.locator('.auth-panel').isVisible(), true);
       assert.equal(await guest.locator('#headerLoginBtn').isVisible(), true);
 
+      // Clicking the mode you are already in does not reload the page.
+      await guest.evaluate(() => { window.__homeMarker = true; });
+      await modes.first().click();
+      await guest.waitForTimeout(300);
+      assert.equal(await guest.evaluate(() => window.__homeMarker === true), true);
+
+      // On wide screens the gallery scrolls in its own column, left of the login panel.
+      const columns = await guest.evaluate(() => {
+        const gallery = document.querySelector('.guest-view > .guest-gallery');
+        return { overflowY: getComputedStyle(gallery).overflowY,
+          galleryRight: gallery.getBoundingClientRect().right,
+          authLeft: document.querySelector('.auth-panel').getBoundingClientRect().left,
+          pageScrolls: document.documentElement.scrollHeight > innerHeight };
+      });
+      assert.equal(columns.overflowY, 'auto');
+      assert.ok(columns.galleryRight <= columns.authLeft + 1, JSON.stringify(columns));
+      assert.equal(columns.pageScrolls, false);
+
       // Guest /?examples=1 keeps the full-page gallery; the header login returns to the login panel.
       await guest.goto(`${base}/?examples=1`);
       assert.equal(await guest.locator('.auth-panel').isVisible(), false);
@@ -95,22 +113,35 @@ test('home offers two modes and signed-in users switch between their decks and e
       assert.equal(await page.locator('#workspaceExamplesPanel .guest-gallery').count(), 1);
       assert.equal(await page.locator('#workspaceExamplesPanel').isVisible(), true);
       assert.equal(await page.locator('#createDeckBtn').isVisible(), false);
-      assert.equal(await page.locator('#workspaceExamplesNav').getAttribute('aria-current'), 'page');
+      assert.equal(await page.locator('.workspace-sidebar').count(), 0, 'tabs replace the old left sidebar');
 
       // The URL keeps the tab on reload; signed-in /?examples=1 opens the tab directly.
       await page.reload();
       await page.waitForSelector('#dashboardView:not([hidden])');
       assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
 
-      // Sidebar entries and arrow keys drive the same tabs.
-      await page.locator('#workspaceSlidesNav').click();
+      // The 投影片 mode link returns to "my decks" in place, without a reload.
+      await page.evaluate(() => { window.__dashboardMarker = true; });
+      await page.locator('.mode-nav .nav-link').first().click();
       await page.waitForURL(`${base}/`);
+      assert.equal(await page.evaluate(() => window.__dashboardMarker === true), true);
       assert.equal(await mineTab.getAttribute('aria-selected'), 'true');
-      assert.equal(await page.locator('#workspaceSlidesNav').getAttribute('aria-current'), 'page');
+
+      // The folder action is an icon button with an accessible name.
+      assert.equal(await page.locator('#createFolderBtn').getAttribute('aria-label'), '新增資料夾');
+      assert.equal((await page.locator('#createFolderBtn').innerText()).trim(), '');
       await mineTab.focus();
       await page.keyboard.press('ArrowRight');
       assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'workspaceExamplesTab');
+
+      // On the code page, clicking 程式碼 keeps the page (and any unsaved code) instead of reloading.
+      const code = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await code.goto(`${base}/algorithm.html`);
+      await code.evaluate(() => { window.__codeMarker = true; });
+      await code.locator('.mode-nav .nav-link.is-active').click();
+      await code.waitForTimeout(300);
+      assert.equal(await code.evaluate(() => window.__codeMarker === true), true);
     } finally {
       await browser?.close();
       server.kill();

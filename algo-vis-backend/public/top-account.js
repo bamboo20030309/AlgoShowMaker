@@ -38,6 +38,14 @@
     nameLabel.title = signedIn ? username : '';
   }
 
+  // 已在程式碼頁時再點「程式碼」不重新載入（避免丟失編輯中的程式與播放狀態）。
+  document.querySelectorAll('.mode-nav .nav-link').forEach(link => {
+    link.addEventListener('click', event => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      if (new URL(link.href).pathname === location.pathname) event.preventDefault();
+    });
+  });
+
   logoutBtn.addEventListener('click', () => {
     clear();
     // Account-level settings (e.g. event preferences) were loaded with the old

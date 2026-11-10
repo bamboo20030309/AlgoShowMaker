@@ -120,12 +120,9 @@
     workspaceTabControls.forEach(control => {
       const active = control.dataset.workspaceTab === tab;
       control.classList.toggle('is-active', active);
-      if (control.getAttribute('role') === 'tab') {
-        control.setAttribute('aria-selected', String(active));
-        control.tabIndex = active ? 0 : -1;
-        if (active && focus) control.focus();
-      } else if (active) control.setAttribute('aria-current', 'page');
-      else control.removeAttribute('aria-current');
+      control.setAttribute('aria-selected', String(active));
+      control.tabIndex = active ? 0 : -1;
+      if (active && focus) control.focus();
     });
     if (!updateUrl) return;
     const url = new URL(location.href);
@@ -147,6 +144,22 @@
       : event.key === 'End' ? tabs.length - 1
         : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
     setWorkspaceTab(tabs[next].dataset.workspaceTab, { focus: true });
+  });
+
+  // 已在投影片模式時再點「投影片」不重新載入：工作區回到「我的投影片」分頁，訪客首頁維持不動。
+  // 訪客的範例全頁是另一個畫面，仍照常回到首頁登入框。新分頁開啟（Ctrl／中鍵）不攔截。
+  document.querySelectorAll('.mode-nav .nav-link').forEach(link => {
+    link.addEventListener('click', event => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      if (new URL(link.href).pathname !== location.pathname) return;
+      if (!dashboardView.hidden) {
+        event.preventDefault();
+        setWorkspaceTab('mine');
+        return;
+      }
+      if (document.body.classList.contains('examples-view')) return;
+      event.preventDefault();
+    });
   });
 
   // The public gallery is one component. Guests see it beside the login form;

@@ -88,12 +88,12 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   }
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
-  assert.ok(legacy.includes('home.css?v=workspace-tabs-1'));
+  assert.ok(legacy.includes('home.css?v=workspace-tabs-2'));
   assert.ok(legacy.includes('brand.css?v=mode-nav-1'));
   assert.ok(legacy.includes('guest-gallery.js?v=6'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=2') < legacy.indexOf('library-organizer.js?v=8'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=8') < legacy.indexOf('home.js?v=workspace-tabs-2'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=8') < legacy.indexOf('home.js?v=workspace-tabs-3'));
   // Two entry modes share one navigation: slides (home) and code (algorithm page).
   const modeNav = page => page.match(/<nav class="mode-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] || '';
   assert.match(modeNav(legacy), /class="nav-link is-active" href="\/" aria-current="page">投影片<\/a>/);
@@ -103,10 +103,11 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(modeNav(html), /class="nav-link is-active" href="\/algorithm\.html" aria-current="page">程式碼<\/a>/);
   assert.ok(html.includes('brand.css?v=mode-nav-1'));
   assert.match(legacy, /id="workspaceExamplesTab"[^>]+role="tab"/);
-  assert.match(legacy, /id="workspaceExamplesNav"[^>]+data-workspace-tab="examples"/);
+  assert.ok(!legacy.includes('workspace-sidebar'), 'the tabs replace the old workspace sidebar');
+  assert.match(legacy, /id="createFolderBtn"[^>]+aria-label="新增資料夾"/);
   // The code page has no login form of its own; its login entry goes to the home login with ?next=.
   assert.match(html, /id="topLoginLink"[^>]+href="\/\?next=%2Falgorithm\.html"/);
-  assert.ok(html.includes('top-account.js?v=1'));
+  assert.ok(html.includes('top-account.js?v=2'));
   assert.ok(slides.indexOf('algorithm-animation.js?') < slides.indexOf('slides.js?'));
   assert.ok(slides.includes('slide-structures.js?v=geometry-7'));
   assert.ok(legacy.includes('slide-structures.js?v=geometry-7'));

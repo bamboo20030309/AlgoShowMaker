@@ -225,8 +225,7 @@ input:focus-visible {
 }
 
 .preview-kicker,
-.eyebrow,
-.sidebar-label {
+.eyebrow {
   display: block;
   color: #62c4ba;
   font-size: 12px;
@@ -510,74 +509,7 @@ input:focus-visible {
 }
 
 .dashboard-view {
-  display: grid;
-  grid-template-columns: 218px minmax(0, 1fr);
   min-height: calc(100vh - var(--header-h));
-}
-
-.workspace-sidebar {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  border-right: 1px solid var(--border);
-  padding: 26px 14px 18px;
-  background: var(--bg-panel);
-}
-
-.sidebar-label {
-  margin: 0 11px 12px;
-  color: var(--text-muted);
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  width: 100%;
-  min-height: 42px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0 12px;
-  background: transparent;
-  color: var(--text);
-  font-size: 14px;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.sidebar-item:hover {
-  background: var(--bg-hover);
-  color: #fff;
-}
-
-.sidebar-item.is-active {
-  background: #373f43;
-  color: #fff;
-}
-
-.sidebar-icon {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  color: #74bde7;
-}
-
-.storage-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 11px;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
 }
 
 .library {
@@ -948,13 +880,6 @@ input:focus-visible {
     padding-bottom: 48px;
   }
 
-  .dashboard-view {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-sidebar {
-    display: none;
-  }
 }
 
 @media (max-width: 620px) {
@@ -1215,5 +1140,103 @@ body.examples-view .gallery-workspace-link { display: inline-flex; align-items: 
 @media (max-width: 420px) {
   .app-header .brand > span {
     display: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * 訪客首頁：範例清單在自己的欄位內捲動，捲軸落在登入框左側。
+ * 窄螢幕（≤900px）上下排列，仍使用整頁捲動。
+ * -------------------------------------------------------------------------- */
+:root {
+  --scrollbar-thumb: #4b5357;
+  --scrollbar-thumb-hover: #5e686c;
+  --scrollbar-track: transparent;
+}
+
+html,
+.guest-view > .guest-gallery,
+.auth-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+html::-webkit-scrollbar,
+.guest-view > .guest-gallery::-webkit-scrollbar,
+.auth-panel::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html::-webkit-scrollbar-track,
+.guest-view > .guest-gallery::-webkit-scrollbar-track,
+.auth-panel::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+html::-webkit-scrollbar-thumb,
+.guest-view > .guest-gallery::-webkit-scrollbar-thumb,
+.auth-panel::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+.guest-view > .guest-gallery::-webkit-scrollbar-thumb:hover,
+.auth-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) padding-box;
+}
+
+@media (min-width: 901px) {
+  body:not(.examples-view) .guest-view {
+    height: calc(100vh - var(--header-h));
+    height: calc(100dvh - var(--header-h));
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body:not(.examples-view) .guest-view > .guest-gallery {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* 捲動容器內的黏性分類列貼齊欄位頂端，而非頁首下緣。
+     黏性位置會從容器內距起算，因此以負值抵銷 .guest-gallery 的上內距（40px）。 */
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-categories {
+    top: -40px;
+  }
+
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-folder {
+    scroll-margin-top: 90px;
+  }
+}
+
+/* 工作區不再有左側欄：內容置中，寬度與範例全頁一致。 */
+.dashboard-view > .library {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* 新增資料夾：圖示按鈕（資料夾＋右上角加號），名稱由 aria-label／title 提供。 */
+.icon-action-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.icon-action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 620px) {
+  .library-toolbar .icon-action-btn {
+    align-self: flex-end;
   }
 }

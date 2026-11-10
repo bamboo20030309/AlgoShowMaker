@@ -11,7 +11,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=workspace-tabs-1" />
+  <link rel="stylesheet" href="home.css?v=workspace-tabs-2" />
   <link rel="stylesheet" href="brand.css?v=mode-nav-1" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
@@ -109,28 +109,9 @@
 
 <!-- -----------------------------------------------------------------------
   使用者投影片工作區
-  側欄建立內容，主區依 library layout 呈現資料夾與 deck；拖放只更新版面模型。
+  上方分頁切換「我的投影片／範例投影片」；主區依 library layout 呈現資料夾與 deck；拖放只更新版面模型。
   ------------------------------------------------------------------------ -->
     <section id="dashboardView" class="dashboard-view" hidden>
-      <aside class="workspace-sidebar">
-        <div>
-          <span class="sidebar-label">工作區</span>
-          <button id="workspaceSlidesNav" class="sidebar-item is-active" type="button" aria-current="page"
-            data-workspace-tab="mine">
-            <span class="sidebar-icon" aria-hidden="true">▤</span>
-            我的投影片
-          </button>
-          <button id="workspaceExamplesNav" class="sidebar-item" type="button" data-workspace-tab="examples">
-            <span class="sidebar-icon" aria-hidden="true">▤</span>
-            範例投影片
-          </button>
-        </div>
-        <div class="storage-note">
-          <span class="status-dot"></span>
-          已啟用雲端儲存
-        </div>
-      </aside>
-
       <div class="library">
         <div class="library-heading">
           <h1 class="visually-hidden">投影片工作區</h1>
@@ -154,7 +135,17 @@
             <input id="searchInput" type="search" placeholder="搜尋投影片" autocomplete="off" />
           </label>
           <span id="deckCount" class="deck-count"></span>
-          <button id="createFolderBtn" class="quiet-btn" type="button" disabled>＋ 新增資料夾</button>
+          <button id="createFolderBtn" class="quiet-btn icon-action-btn" type="button" disabled
+            aria-label="新增資料夾" title="新增資料夾">
+            <!-- 資料夾，右上角加號 -->
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M13 19H4.5A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5h4l2 2.5H13" />
+              <path d="M3 9.5h11" />
+              <path d="M18.5 3.5v6M15.5 6.5h6" />
+              <path d="M21 12.5v5a1.5 1.5 0 0 1-1.5 1.5H13" />
+            </svg>
+          </button>
         </div>
 
         <div id="libraryMessage" class="library-message" role="status" aria-live="polite"></div>
@@ -300,7 +291,7 @@
   <script src="library-layout.js?v=2"></script>
   <script src="library-organizer.js?v=8"></script>
   <script src="home-thumbnail-cache.js?v=1"></script>
-  <script src="home.js?v=workspace-tabs-2"></script>
+  <script src="home.js?v=workspace-tabs-3"></script>
 </body>
 
 </html>
