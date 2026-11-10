@@ -13,6 +13,87 @@
   let playbackPaused = false;
   let visibilityResumeAt = 0;
   const markerEntrancesByFrame = new Map();
+  const cellTextScaleRecords = new Map();
+  const cellTextScaleControllers = new Set();
+
+  // Event geometry may resize a cell independently on each axis. Cancel only
+  // those transient scales on its text; camera and saved object scales remain.
+  // Multiple owners (container + cell) compose instead of overwriting each
+  // other's compensation, and the original text transform is restored exactly.
+  function preserveCellTextSize(owner, allText = false) {
+    if (!owner) return null;
+    const texts = [ ...(owner.matches?.('text') ? [owner] : []), ...owner.querySelectorAll('text') ]
+      .filter(text => allText || text.hasAttribute('data-trace-content-role')
+        || text.closest('[data-trace-index]'));
+    if (!texts.length) return null;
+    const token = Symbol('cell-text-scale'), originalOwnerTransform = owner.getAttribute('transform');
+    const records = texts.map(text => {
+      let record = cellTextScaleRecords.get(text);
+      if (!record) {
+        const box = svgBox(text);
+        record = { text, base: text.getAttribute('transform'), x: box ? box.x + box.width / 2 : 0,
+          y: box ? box.y + box.height / 2 : 0, scales: new Map() };
+        cellTextScaleRecords.set(text, record);
+      }
+      record.scales.set(token, { x: 1, y: 1 });
+      return record;
+    });
+    const render = record => {
+      let x = 1, y = 1;record.scales.forEach(scale => { x *= scale.x; y *= scale.y; });
+      const inverse = Math.abs(x - 1) > .000001 || Math.abs(y - 1) > .000001
+        ? `translate(${record.x}, ${record.y}) scale(${1 / x}, ${1 / y}) translate(${-record.x}, ${-record.y})` : '';
+      const transform = [record.base, inverse].filter(Boolean).join(' ');
+      if (transform) record.text.setAttribute('transform', transform); else record.text.removeAttribute('transform');
+    };
+    let lastX = 1, lastY = 1, removed = false;
+    const controller = {
+      update(x = 1, y = x) {
+        if (removed) return;
+        x = Math.max(.001, Number(x) || 1); y = Math.max(.001, Number(y) || 1);
+        if (x === lastX && y === lastY) return;
+        lastX = x; lastY = y;
+        records.forEach(record => {
+          const box = svgBox(record.text);
+          if (box) { record.x = box.x + box.width / 2; record.y = box.y + box.height / 2; }
+          record.scales.set(token, { x, y }); render(record);
+        });
+      },
+      remove(restoreOwner = false) {
+        if (removed) return; removed = true;
+        if (restoreOwner) {
+          if (originalOwnerTransform == null) owner.removeAttribute('transform');
+          else owner.setAttribute('transform', originalOwnerTransform);
+        }
+        records.forEach(record => {
+          record.scales.delete(token); render(record);
+          if (!record.scales.size) cellTextScaleRecords.delete(record.text);
+        });
+        cellTextScaleControllers.delete(controller);
+      }
+    };
+    cellTextScaleControllers.add(controller);
+    return controller;
+  }
+
+  function cloneWithoutCellTextScale(source) {
+    const clone = source.cloneNode(true);
+    const originals = [...(source.matches?.('text') ? [source] : []), ...source.querySelectorAll('text')];
+    const copies = [...(clone.matches?.('text') ? [clone] : []), ...clone.querySelectorAll('text')];
+    originals.forEach((text, index) => {
+      const record = cellTextScaleRecords.get(text), copy = copies[index];
+      if (!copy) return;
+      if (record) {
+        if (record.base == null) copy.removeAttribute('transform'); else copy.setAttribute('transform', record.base);
+      }
+      if (text.isConnected) {
+        const font = window.getComputedStyle(text);
+        for (const property of ['font-size','font-family','font-weight','font-style','letter-spacing']) {
+          copy.style.setProperty(property, font.getPropertyValue(property));
+        }
+      }
+    });
+    return clone;
+  }
 
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
     document.addEventListener('visibilitychange', () => {
@@ -1788,6 +1869,7 @@
       if (presentationOverlay) appendBelowTraceIndicators(root, presentationOverlay);
 
       const ghostHeap = heapLayoutElement(ghost);
+      const ghostTextSize = preserveCellTextSize(ghost, true);
       const ghostCellStates = new Map();
       [...ghostHeap.querySelectorAll('[data-trace-index]')].forEach(cell => {
         const index = Number(cell.dataset.traceIndex);
@@ -1797,6 +1879,7 @@
           cell,
           box,
           baseTransform: cell.getAttribute('transform') || '',
+          textSize: preserveCellTextSize(cell, true),
           eventTransforms: [],
           highlight: null
         });
@@ -1832,7 +1915,7 @@
         const rect = cell.querySelector(':scope > rect');
         return { rect };
       });
-      const counterScaledElements = [...ghostHeap.querySelectorAll('text, path')].map(element => {
+      const counterScaledElements = [...ghostHeap.querySelectorAll('path')].map(element => {
         const box = svgBox(element);
         return {
           element,
@@ -1875,6 +1958,7 @@
         targetCellBoxes,
         cellVisuals,
         counterScaledElements,
+        ghostTextSize,
         baseTransforms,
         ghostHeap,
         ghostHeapBaseTransform,
@@ -1926,6 +2010,7 @@
             state.cell.setAttribute(
               'transform', [eventTranslate, state.baseTransform, eventScaleTransform].filter(Boolean).join(' ')
             );
+            state.textSize?.update(eventScale);
 
             const sourceHighlight = this.currentCellsByIndex.get(index)
               ?.querySelector?.(':scope > .asm-trace-compare-highlight');
@@ -1978,6 +2063,7 @@
               : '';
             element.setAttribute('transform', [baseTransform, counterScale].filter(Boolean).join(' '));
           });
+          this.ghostTextSize?.update(scaleX, 1);
           const finished = swapProgress >= 1;
           stylePresentationCells.forEach((presentationCell, cell) => {
             if (finished) delete cell._asmStylePresentationCell;
@@ -1988,6 +2074,8 @@
           this.resizeWrapper.removeAttribute('transform');
         },
         remove() {
+          this.ghostTextSize?.remove();
+          this.ghostCellStates.forEach(state => state.textSize?.remove());
           stylePresentationCells.forEach((_, cell) => { delete cell._asmStylePresentationCell; });
           this.presentationOverlay?.remove();
           this.ghost.remove();
@@ -3100,7 +3188,12 @@
     }, operand.value);
     group.append(rect, text);
     appendBelowTextLayer(root, group);
-    return { group, rect, text, width, height };
+    const textSizes = [preserveCellTextSize(text, true)];
+    return { group, rect, text, width, height,
+      trackText(text) { textSizes.push(preserveCellTextSize(text, true)); },
+      updateScale(scale) { textSizes.forEach(size => size?.update(scale)); },
+      remove() { textSizes.forEach(size => size?.remove()); group.remove(); }
+    };
   }
 
   function assignableValueText(element, variableId = '') {
@@ -3178,7 +3271,7 @@
         fill: sourceElement.getAttribute('fill') || sourceText?.getAttribute?.('fill')
           || computedSource?.fill || '#1f282d'
       }, sourceElement.textContent)
-      : sourceElement.cloneNode(true);
+      : cloneWithoutCellTextScale(sourceElement);
     if (!valueOnly) window.ASMTraceRenderers?.copyCellStyles?.(sourceElement, clone);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
@@ -3261,6 +3354,12 @@
       targetCenter.y - sourceCenter.y
     );
     const arcHeight = options.linear === true ? 0 : Math.min(32, Math.max(10, distance * 0.14));
+    const textSize = valueOnly ? null : preserveCellTextSize(clone, true);
+    let sourceGlyphScale = sourceScale;
+    if (textSize && sourceElement.isConnected) {
+      const matrix = root.getScreenCTM()?.inverse().multiply(sourceElement.getScreenCTM());
+      if (matrix) sourceGlyphScale = { x: Math.hypot(matrix.a,matrix.b), y: Math.hypot(matrix.c,matrix.d) };
+    }
 
     return {
       group,
@@ -3275,8 +3374,10 @@
           `translate(${x}, ${y}) scale(${scaleX}, ${scaleY}) translate(${-boxCenter.x}, ${-boxCenter.y})`
         );
         group.setAttribute('opacity', String(opacity));
+        textSize?.update(scaleX / sourceGlyphScale.x, scaleY / sourceGlyphScale.y);
       },
       remove() {
+        textSize?.remove();
         group.remove();
       }
     };
@@ -4371,6 +4472,7 @@
         'pointer-events': 'none'
       }, sourceLabel);
       popup.group.append(markerIncomingText);
+      popup.trackText(markerIncomingText);
       const incoming = sourceOperands[0];
       if (incoming && !incoming.marker) {
         const transfer = createAssignmentTransfer(root, incoming,
@@ -4516,6 +4618,7 @@
             markerIncomingText.setAttribute('y', String(sourceY));
             markerIncomingText.setAttribute('opacity', String(sourceOpacity));
           }
+          popup.updateScale(popupScale);
         }
         if (fallingText) {
           const targetY = Number(fallingText.dataset.targetY) || y;
@@ -4541,7 +4644,7 @@
           if (originalOpacity == null) targetText.removeAttribute('opacity');
           else targetText.setAttribute('opacity', originalOpacity);
         }
-        popup?.group.remove();
+        popup?.remove();
         conditionHint?.remove();
         fallingText?.remove();
         transfers.forEach(item => item.remove());
@@ -4649,7 +4752,7 @@
         opacity: 0,
         'pointer-events': 'none'
       });
-      const clone = original.cloneNode(true);
+      const clone = cloneWithoutCellTextScale(original);
       window.ASMTraceRenderers?.copyCellStyles?.(original, clone);
       [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
         node.removeAttribute?.('id');
@@ -4962,6 +5065,7 @@
       const originalTransform = element.getAttribute('transform');
       const base = element.transform?.baseVal?.consolidate?.()?.matrix;
       retainedMotions.set(element, {
+        textSize: preserveCellTextSize(element, true),
         parent: element.parentElement,
         transform: originalTransform,
         base: base ? new DOMMatrix([base.a,base.b,base.c,base.d,base.e,base.f]) : new DOMMatrix(),
@@ -4984,6 +5088,7 @@
         .translate(-record.center.x,-record.center.y);
       const local = parentToRoot.inverse().multiply(motion).multiply(parentToRoot).multiply(record.base);
       operand.element.setAttribute('transform', `matrix(${local.a} ${local.b} ${local.c} ${local.d} ${local.e} ${local.f})`);
+      record.textSize?.update(adjustment.scale);
     };
     const selfSplit = selfCompare && !operands[0].marker
       ? createSelfCompareSplit(operands[0], selfSplitDistance, equalValues ? 0 : 5)
@@ -5107,6 +5212,7 @@
             'transform',
             `translate(${operand.point.x + contact.x * contactProgress}, ${operand.point.y + contact.alignY * alignProgress + contact.splitY * contactProgress}) scale(${0.82 + 0.18 * popupReveal})`
           );
+          popup.updateScale(0.82 + 0.18 * popupReveal);
         });
         if (compareElapsed >= waitEnd) popupStartsLocked = true;
       },
@@ -5170,6 +5276,7 @@
               'transform',
               `translate(${operand.point.x + splitX}, ${operand.point.y + contactY}) scale(${popupScale * compareScale})`
             );
+            popup.updateScale(popupScale * compareScale);
           }
         });
         selfSplit?.update(lift, equalityComparison ? contactProgress : size, stay);
@@ -5192,7 +5299,7 @@
       remove() {
         highlights.forEach(highlight => highlight.remove());
         expression?.remove();
-        popups.forEach(popup => popup.group.remove());
+        popups.forEach(popup => popup.remove());
         selfSplit?.remove();
         retainedMotions.forEach((record, element) => {
           // Restore ownership before the following event resolves its source;
@@ -5200,6 +5307,7 @@
           if (record.parent?.isConnected && element.parentElement !== record.parent) record.parent.append(element);
           if (record.transform == null) element.removeAttribute('transform');
           else element.setAttribute('transform',record.transform);
+          record.textSize?.remove();
           delete element.dataset.traceCompareMotion;
           delete element.dataset.traceCompareSnapshot;
         });
@@ -8841,6 +8949,7 @@
     const finishRun = () => {
       if (!resolveRun) return;
       animationEffectLayer.clear();
+      [...cellTextScaleControllers].forEach(controller => controller.remove(runId !== activeRun));
       newArrows.forEach(({ element }) => {
         const tween = element._asmArrowTween;
         if (tween) {
@@ -9741,6 +9850,7 @@
         ? alignedRectStates(previousVisual, entry.element, entry.topKey)
         : (previousTop ? rectStates(previousTop, entry.topKey) : new Map());
       entry.currentRectStates = rectStates(entry.element, entry.topKey);
+      entry.textSize = entry.lifecycleKind === 'marker' ? null : preserveCellTextSize(entry.target);
       entry.geometryTransition = outerframeGeometryChanged(
         entry.previousOuterframeGeometry, entry.currentOuterframeGeometry
       ) || (entry.previousSegmentGeometry && entry.currentSegmentGeometry
@@ -10003,6 +10113,7 @@
     // must not lower an exiting label beneath the retained cells or arrows.
     const pointerLayer = root.querySelector(':scope > .asm-trace-pointer-layer');
     if (pointerLayer) ghosts.filter(item => item.markerVisual).forEach(item => pointerLayer.append(item.wrapper));
+    ghosts.forEach(item => { item.textSize = item.markerVisual ? null : preserveCellTextSize(item.wrapper); });
 
     const appearingKeys = new Set(entries.filter(entry => entry.appearing).map(entry => entry.key));
     // Convert verified visual movement into internal playback events. Runtime
@@ -10370,6 +10481,7 @@
           ? `translate(${pivot.x}, ${pivot.y}) scale(${scale}) translate(${-pivot.x}, ${-pivot.y})`
           : '';
         entry.target.setAttribute('transform', [translate, entry.baseTransform, scaleTransform].filter(Boolean).join(' '));
+        entry.textSize?.update(scale);
         if (entry.sequenceRectGeometry?.length) {
           applyLeftAnchoredRectGeometry(entry.sequenceRectGeometry,
             entry.sequenceGeometrySlot ? sequenceOuterframeProgress(entry.sequenceGeometrySlot, elapsed) : state.localEased);
@@ -10578,7 +10690,7 @@
         assignmentSchedule, assignmentPeerSchedule, initialMarkerLayout,
         markerVisual, markerPointPath, markerPointBasePath, markerLabelBox,
         markerTargetHeight, markerKeepArrowVertical, backgroundHandoff, comparisonKey, comparisonRemovalStart,
-        recursionRetraction, previousPlacement
+        recursionRetraction, previousPlacement, textSize
       }) => {
         if (retainedByEnteringKeep) {
           ghost.setAttribute('opacity', '1');
@@ -10607,6 +10719,7 @@
             `scale(${scale})`,
             `translate(${-fromCenter.x}, ${-fromCenter.y})`
           ].join(' '));
+          textSize?.update(scale);
           return;
         }
         if (scopeExitSlot) {
@@ -10805,7 +10918,7 @@
         if (baseTransform) element.setAttribute('transform', baseTransform);
         else element.removeAttribute('transform');
       });
-      ghosts.forEach(({ wrapper }) => wrapper.remove());
+      ghosts.forEach(({ wrapper, textSize }) => { textSize?.remove(); wrapper.remove(); });
       heapResizeStages.finish();
       window.ASMTraceRenderers?.refreshArrows?.();
       markerEntrancesByFrame.delete(frame.id);
@@ -10869,10 +10982,11 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-334';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-335';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-334', play, cancel, updateEventAvailability,
+    build: 'trace-335', play, cancel, updateEventAvailability,
+    preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
