@@ -5845,7 +5845,9 @@
         const unresolved = pointer.status === 'unresolved';
         const x = anchorX + pointer.offsetX + (unresolved ? 0 : item.bias.x);
         const y = markerPlacement.y + (unresolved ? 0 : item.bias.y);
-        const labelAnchored = item.outgoing && item.arrowAnchorMode === 'label';
+        // Live peers and exit copies share the renderer's anchor mode.
+        // A label-anchored arrow moves with its own label during reflow.
+        const labelAnchored = item.arrowAnchorMode === 'label';
         const keepArrowsVertical = labelAnchored || target.width > item.baseCellWidth + 0.5;
         positions.set(pointer.key, {
           x,
@@ -5854,7 +5856,7 @@
           slot: pointer.slot,
           groupSize: pointer.groupSize,
           targetX: unresolved || keepArrowsVertical
-            ? x + (labelAnchored && item.renderedTarget && item.previousBase
+            ? x + (labelAnchored && item.outgoing && item.renderedTarget && item.previousBase
               ? item.renderedTarget.x - item.previousBase.x : 0)
             : anchorX + item.targetBias.x,
           targetY: target.y + target.height / 2 + item.targetBias.y
@@ -8011,7 +8013,9 @@
       options.document, eventFrame, eventTimeline,
       new Map([...(options.previousPlacements || new Map()),...options.currentPlacements]), options.currentElements,
       [...(options.markerEntries || []).map(entry=>{
-        if(!entry.markerPointPath||!entry.appearing||!(Number(entry.appearanceStart)>0)
+        // Zero is a valid entrance time. Even an immediate view-only entry
+        // must add its peer slot through the common pointer event schedule.
+        if(!entry.markerPointPath||!entry.appearing||!Number.isFinite(Number(entry.appearanceStart))
           ||markerDeclaredInFrame(eventFrame,entry.element))return entry;
         const start=Number(entry.appearanceStart);
         const anchorEvent=replayPlan.checkpoints.filter(checkpoint=>Number(checkpoint.commitMs)<=start).at(-1)?.event;
@@ -8348,7 +8352,14 @@
       update(elapsed) {
         if (finished) return;
         markerMotion.update(elapsed);
-        if (!announcementsReady) return;
+        if (!announcementsReady) {
+          // Publish the initial event-state positions before any nonzero
+          // entrance opacity can be painted. Announcements wait for callers
+          // to attach listeners; pointer geometry must not wait with them.
+          combinedAdjustments.clear();
+          markerMotion.adjustments.forEach((value, key) => combinedAdjustments.set(key, value));
+          return;
+        }
         eventTimeline.forEach(item => {
           if (item.animation !== 'sequence' || elapsed < item.end
             || completedSequenceSlots.has(item)) return;
@@ -10858,10 +10869,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-333';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-334';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-333', play, cancel, updateEventAvailability,
+    build: 'trace-334', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
