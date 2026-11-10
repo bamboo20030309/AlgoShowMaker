@@ -67,6 +67,27 @@
 - 本機服務：未重啟任何服務；3100 屬主代理。測試用隨機埠服務已結束。
 - 未 push。
 
+## 追加：程式碼頁登入入口（2026-11-11，使用者指示）
+
+使用者在 3104 預覽時指出「algorithm.html 沒有登入按鈕，這按鈕應該導向同一個頁面」。屬第二批 H4／H5 的一部分，依使用者要求提前加入本分支。
+
+- 程式修正 commit：b3f84a6a57bb1e2a03e59b834714e7b819df19c0
+- 調查：程式碼頁的舊登入視窗（`loginModal`、`loginTriggerBtn`）標記早已不在 `algorithm.html`，`front.js` 相關程式因找不到元素而不執行；「我的程式碼」、「儲存程式碼」按鈕也已不在頁面上。程式碼頁目前只有 `trace-editor.js` 會用 token 讀寫帳號的事件設定偏好。
+- 修改：
+  - `public/algorithm.html`：頂部列右側新增 `.top-account`（`#topLoginLink`、`#topAccountName`、`#topLogoutBtn`），載入新檔 `top-account.js?v=1`。
+  - `public/top-account.js`（新）：未登入顯示「登入」，連到 `/?next=<目前路徑與查詢>`；已登入顯示名稱與「登出」；以 `/api/auth/me` 核對 token，401／403 時清除並改回訪客；登出清除 `algo_jwt_token`／`algo_username` 後重新載入，讓帳號相關設定以訪客狀態重來。
+  - `public/home.js`：已登入且帶合法 `next` 時直接 `location.replace(next)`；`safeNextPath()` 加強，排除 `/\host`、控制字元與解析後不同 origin 的值（原本只擋 `//host`）。
+  - `public/style.css`：帳號區樣式；嵌入模式隱藏；手機斷點隱藏名稱、≤420px 品牌只留圖示。
+  - 版本：`home.js?v=workspace-tabs-2`、`style.css?v=mode-nav-2`；`entrypoints.test.js` 新增 `topLoginLink` 與 `top-account.js` 斷言。
+- 驗證（隔離服務＋Edge，登入以攔截 `/api/auth/login`、`/api/auth/me` 模擬）：
+  - 訪客開 `/algorithm.html?sample=demo`：顯示「登入」，連結 `/?next=%2Falgorithm.html%3Fsample%3Ddemo`。
+  - 點「登入」到首頁登入框；送出後回到 `/algorithm.html?sample=demo`，顯示名稱與「登出」。
+  - 已登入開 `/?next=%2Falgorithm.html`：直接回 `/algorithm.html`。
+  - `/?next=%2F%5Cevil.com`：留在首頁。`safeNextPath` 另以 10 組值核對：站內路徑保留；`//evil.com`、`/\evil.com`、`https://evil.com`、含 tab、`javascript:` 皆回空字串。
+  - 登出後顯示「登入」、token 已清除；`?asmEmbed=editor` 下帳號區 `display:none`；390px 無水平溢出，品牌圖示、兩種模式與「登入」皆可見。
+  - 相關測試：`home-navigation`、`auth-center`、`sample-view-actions`、`library-folders` 4 項通過；`entrypoints.test.js` 中本次新增／修改的 18 條斷言單獨執行通過（整檔仍因既有的 `slides.js` runtime 版本與 `sample-trace-assets.js?v=1` 舊斷言失敗，兩者在基準即過期，與本次無關）。
+- 未做：`front.js` 中已無作用的舊登入視窗程式仍保留，留待 H5 一併移除；未以真實帳號登入驗證。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
