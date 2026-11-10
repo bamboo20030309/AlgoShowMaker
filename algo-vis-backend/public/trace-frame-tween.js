@@ -5524,8 +5524,12 @@
       .match(/^\s*M\s*([-+\d.eE]+)[,\s]+([-+\d.eE]+)/);
     const startX = move && Number.isFinite(Number(move[1])) ? Number(move[1]) : 0;
     const startY = move && Number.isFinite(Number(move[2])) ? Number(move[2]) : arrowTop;
-    const directionX = (Number(state.targetX) || 0) - (Number(state.x) || 0) - startX;
-    const directionY = (Number(state.targetY) || 0) - (Number(state.y) || 0) - startY;
+    // Virtual index placements support travel outside the current array, but
+    // are not cells to aim at. Keep a missing target's arrow straight down.
+    const directionX = state.targetMissing ? 0
+      : (Number(state.targetX) || 0) - (Number(state.x) || 0) - startX;
+    const directionY = state.targetMissing ? 1
+      : (Number(state.targetY) || 0) - (Number(state.y) || 0) - startY;
     const directionLength = Math.max(0.001, Math.hypot(directionX, directionY));
     const unitX = directionX / directionLength;
     const unitY = directionY / directionLength;
@@ -6168,10 +6172,12 @@
         // own vertical exit. A parallel peer exit must not recenter it midway.
         const motionTime = Math.min(elapsed, item.exitStart);
         let point = initialPositions.get(key) || item?.finalBase;
+        let targetKey = initialState.get(key);
         for (const step of track) {
           if (motionTime < step.start) break;
           if (step.instant) {
             point = step.to;
+            targetKey = step.toTarget;
             continue;
           }
           if (motionTime < step.end) {
@@ -6197,19 +6203,33 @@
                     - (step.from.targetY - step.from.y)) * progress
                 : step.from.targetY + (step.to.targetY - step.from.targetY) * progress
             };
+            targetKey = step.fromTarget || step.toTarget;
             break;
           }
           point = step.to;
+          targetKey = step.toTarget;
         }
         if (!item) return;
         if (point) {
+          const axisTarget = markerTargetParts(targetKey)?.axis;
+          const axisOwner = axisTarget ? String(targetKey).replace(/:(?:row|column)-label:-?\d+$/, '') : '';
+          // Matrix row/column anchors are real geometry on their live matrix,
+          // although their keys need not have a separate SVG element.
+          const hasTarget = axisTarget
+            ? placements.has(targetKey) && elements.get(axisOwner)?.isConnected
+            : elements.get(targetKey)?.isConnected;
           adjustments.set(key, {
             x: point.x - item.finalBase.x,
             y: point.y - item.finalBase.y,
             scale: 1,
             absolute: true
           });
-          arrowStates.set(key, point);
+          arrowStates.set(key, { ...point,
+            // Target identity comes from the chronological motion track;
+            // SVG presence only distinguishes a real cell from an extrapolated
+            // position. Never choose a different target from final-frame DOM.
+            targetMissing: !hasTarget
+          });
         }
       });
     };
@@ -10591,7 +10611,7 @@
             ghost.setAttribute('transform', `translate(${Number(motion.x)||0},${(Number(motion.y)||0)+offsetY})`);
             const arrow = events.markerArrowStates.get(comparisonKey);
             if (markerPointPath && arrow) markerPointPath.setAttribute('d',markerArrowPath({markerPointPath,markerLabelBox},
-              {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y}));
+              {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y,targetMissing:arrow.targetMissing}));
             return;
           }
           const holdOffsetX = Number(exitReflow?.ghostOffsetX) || 0;
@@ -10668,7 +10688,7 @@
           ghost.setAttribute('transform',`translate(${Number(motion.x)||0},${(Number(motion.y)||0)+offsetY})`);
           const arrow=events.markerArrowStates.get(comparisonKey);
           if(markerPointPath&&arrow)markerPointPath.setAttribute('d',markerArrowPath({markerPointPath,markerLabelBox},
-            {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y}));
+            {x:0,y:0,targetX:arrow.targetX-arrow.x,targetY:arrow.targetY-arrow.y,targetMissing:arrow.targetMissing}));
           applyHeapSplitVerticalFade(heapSplitExit,ghostProgress,'exit');return;
         }
         const x = assignmentOffset.x + (Number(compareOffset?.x) || 0);
@@ -10838,10 +10858,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-332';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-333';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-332', play, cancel, updateEventAvailability,
+    build: 'trace-333', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },

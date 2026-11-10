@@ -39,11 +39,12 @@ test('saved Heap keeps the removed tail until pop and initializes a disabled-ass
      const centers=[1,2].map(i=>{const n=cells.find(n=>Number(n.dataset.traceIndex)===i);const r=n?.getBoundingClientRect();return r?new DOMPoint(r.x+r.width/2,r.y+r.height/2).matrixTransform(root.getScreenCTM().inverse()).x:null;});
      const sizeMarker=[...root.querySelectorAll('[data-trace-source-variable-id]')].find(n=>n.querySelector('.trace-variable-marker-label-text')?.textContent==='heapSize');
      const sizeLabel=sizeMarker?.querySelector('.trace-variable-marker-label-box'),sizeRect=sizeLabel?.getBoundingClientRect();
+     const arrowNumbers=sizeMarker?.querySelector('.trace-variable-marker-point path')?.getAttribute('d')?.match(/[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/gi)?.map(Number)||[];
      const sizePoint=sizeRect?new DOMPoint(sizeRect.x+sizeRect.width/2,sizeRect.y+sizeRect.height/2).matrixTransform(root.getScreenCTM().inverse()):null;
      let sizeOpacity=sizeLabel?1:0;for(let n=sizeLabel;n?.nodeType===1;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'){sizeOpacity=0;break;}sizeOpacity*=Number(s.opacity);}
      const ninth=cells.find(n=>Number(n.dataset.traceIndex)===9),ninthRect=ninth?.getBoundingClientRect();
      const ninthPoint=ninthRect?new DOMPoint(ninthRect.x+ninthRect.width/2,ninthRect.y+ninthRect.height/2).matrixTransform(root.getScreenCTM().inverse()):null;
-     samples.push({at:elapsed,tail:!!tail,x,centers,heapSize:sizePoint?{x:sizePoint.x,y:sizePoint.y,opacity:sizeOpacity}:null,ninth:ninthPoint?{x:ninthPoint.x,y:ninthPoint.y}:null,active:slots.at(-1)?.expression||slots.at(-1)?.name});
+     samples.push({at:elapsed,tail:!!tail,x,centers,heapSize:sizePoint?{x:sizePoint.x,y:sizePoint.y,opacity:sizeOpacity,dx:arrowNumbers[2]-arrowNumbers[0],dy:arrowNumbers[3]-arrowNumbers[1]}:null,ninth:ninthPoint?{x:ninthPoint.x,y:ninthPoint.y}:null,active:slots.at(-1)?.expression||slots.at(-1)?.name});
     }
     window.requestAnimationFrame=native.raf;window.cancelAnimationFrame=native.cancel;if(native.now)Object.defineProperty(performance,'now',native.now);else delete performance.now;
     await pending;runs.push({from,slots,samples});
@@ -68,6 +69,7 @@ test('saved Heap keeps the removed tail until pop and initializes a disabled-ass
  assert.equal(runs[0].samples.at(-1).tail,false);
  const sizeFinal=runs[0].samples.at(-1);
  assert.ok(runs[0].samples.every(s=>s.heapSize?.opacity>.999),'temporary missing cell must not fade the recovering pointer');
+ assert.ok(runs[0].samples.filter(s=>!s.tail).every(s=>Math.abs(s.heapSize.dx)<.001&&s.heapSize.dy>0),'missing-target heapSize arrow must stay vertically downward');
  assert.ok(sizeFinal.heapSize?.opacity>.999,'recovering heapSize must remain visible after decrement');
  assert.ok(Math.abs(sizeFinal.heapSize.x-sizeFinal.ninth.x)<1,'heapSize must arrive at heap[9]');
  const sizeStart=runs[0].samples[0].heapSize.x;

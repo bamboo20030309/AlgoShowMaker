@@ -10,7 +10,7 @@ async function inspect(page,trace,from,speed){return page.evaluate(async({trace,
   let opacity=1;for(let n=label;n?.nodeType===1;n=n.parentElement){const style=getComputedStyle(n);if(style.display==='none'||style.visibility==='hidden'){opacity=0;break;}opacity*=Number(style.opacity);}
   const root=document.getElementById('asm-trace-root'),box=label.getBoundingClientRect();
   const point=new DOMPoint(box.x+box.width/2,box.y+box.height/2).matrixTransform(root.getScreenCTM().inverse());
-  return{id:node.dataset.tracePointerInstanceId,name:label?.textContent,opacity,ghost:!!node.closest('.asm-trace-transition-ghost-motion'),
+  return{id:node.dataset.tracePointerInstanceId,name:label?.textContent,target:node.dataset.traceBindingTarget,opacity,ghost:!!node.closest('.asm-trace-transition-ghost-motion'),
    x:point.x,y:point.y,start:points.slice(0,2),dx:points[2]-points[0],dy:points[3]-points[1]};
  });
  const before=read(),samples=[];let done=false;const pending=player.render(from+1).finally(()=>done=true);
@@ -58,9 +58,10 @@ int main(){std::vector<std::vector<int>>a={{1,2},{3,4}};int i=0;
  const browser=await chromium.launch({headless:true,channel:'msedge'});t.after(()=>browser.close());
  const page=await browser.newPage();await page.goto(base+'/algorithm.html?asmEmbed=runtime');await page.waitForFunction(()=>window.ASMTracePlayer);
  const result=await inspect(page,trace,1,1),before=result.before.find(p=>p.name==='j');assert.ok(before);
+ assert.ok(before.target.endsWith(':row-label:0'),'keep the canonical row anchor instead of a fictitious #0 cell');
  const outgoing=result.samples.flat().filter(p=>p.id===before.id&&p.ghost&&p.opacity>.01);assert.ok(outgoing.length>2);
  assert.ok(outgoing.some(p=>p.opacity<.9));
- assert.ok(outgoing.every(p=>Math.abs(p.dy)<.001&&p.dx>0),'row pointer must not acquire a top-pointer attachment');
+ assert.ok(outgoing.every(p=>Math.abs(p.dy)<.001&&p.dx>0),'row pointer must not acquire a top-pointer attachment '+JSON.stringify(outgoing.find(p=>Math.abs(p.dy)>=.001||p.dx<=0)));
  assert.ok(outgoing.every(p=>p.start[0]===before.start[0]&&p.start[1]===before.start[1]));
 });
 

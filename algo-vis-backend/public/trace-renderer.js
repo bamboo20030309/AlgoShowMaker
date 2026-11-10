@@ -5181,7 +5181,12 @@
         object.dataset.traceMarkerIndexExpressions = JSON.stringify(studioObject.indexExpressions);
       }
       const boundTargetKey = markerPlacement ? '' : resolvedTargetKey(document, frame, studioObject.target, placements);
-      if (boundTargetKey) object.dataset.traceBindingTarget = boundTargetKey;
+      // Canonical pointers already distinguish matrix row/column anchors
+      // from cells. Generic target resolution may collapse row 0 into #0,
+      // which has no cell SVG and must not overwrite that canonical key.
+      if (boundTargetKey && !(studioObject.pointerId && studioObject.targetKey)) {
+        object.dataset.traceBindingTarget = boundTargetKey;
+      }
       if (markerPlacement) {
         object.dataset.traceMarkerUnresolved = '1';
       }
@@ -7201,9 +7206,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-284';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-285';
   window.ASMTraceRenderers = {
-    build: 'trace-284', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-285', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
