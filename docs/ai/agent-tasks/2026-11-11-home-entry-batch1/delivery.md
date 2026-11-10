@@ -105,6 +105,26 @@
   - 測試：`home-navigation`（新增：點目前模式不重新載入、範例欄位為捲動容器且在登入框左側、無側欄、資料夾按鈕無可見文字但有名稱、程式碼頁點「程式碼」不重新載入）、`auth-center`、`library-folders`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`deck-file-drop` 共 8 項通過；`entrypoints.test.js` 本次相關 19 條斷言單獨執行通過（整檔仍因基準既有的過期斷言失敗）。
   - `auth-center` 測試修改：原本以 `minHeight: 5000px` 撐高範例欄位並捲動視窗；新設計中範例欄位是捲動容器，改為在欄位內加入 5000px 內容並捲動欄位，並新增「欄位確實捲動」的檢查。登入框位置（top 52、bottom 1000、置中）的判準不變。
 
+## 追加：首頁與程式碼頁共用同一條頂部列（2026-11-11，使用者指示）
+
+使用者要求「最上面那欄每個頁面使用同一個，才不會跳來跳去」，並要求新增資料夾按鈕不要外框。
+
+- 程式修正 commit：f49ce2deff1e4225d74f53052e007ba63fdafd2e
+- 修改前量測（1440px）：首頁頂部列 52px、內距 20px、有底線；程式碼頁 50px、內距 12px、無底線、陰影不同；「投影片」在首頁 x=223、程式碼頁 x=201；登入按鈕字級、底色、圓角皆不同。700／390px 時程式碼頁 44px 高且模式導覽被推到右側（x=480／170），首頁則緊貼品牌。
+- 修改：
+  - `public/brand.css`：新增 `.site-header` 統一整條頂部列（52px、內距 20px、底線、陰影、sticky），以及 `.site-github-link`、`.site-account`、`.site-account-signed-in`、`.site-account-btn`、`.site-account-name`，與一組共用窄螢幕斷點（≤760px 或觸控 ≤900px：內距 12px、模式導覽緊貼品牌、收起 GitHub 與名稱、帳號靠右；≤420px 品牌只留圖示）。
+  - `public/index.html`、`public/algorithm.html`：兩頁頂部列套用 `.site-header` 與相同的子元件 class；首頁登入按鈕與已登入群組放進同一個 `.site-account`。
+  - `public/home.css`：移除首頁專屬的 `.app-header`、`.header-github-link`、`.account-area`、`.account-name`、`.header-login-btn` 與對應窄螢幕規則。
+  - `public/style.css`：`--header-height` 改為 52px；`#top-bar` 只保留 `user-select`；移除 `.menu-brand` 間距、`.top-account*`、`.top-github-link` 規則。
+  - `public/mobile-ui.css`：程式碼頁的頂部列不再覆寫內距與品牌間距，非嵌入時 `--asm-mobile-header-h` 設為 52px。
+  - 新增資料夾按鈕移除 `quiet-btn`，只有圖示、無外框，滑過時淡色底。
+  - 版本：`brand.css`、`style.css`、`home.css`、`mobile-ui.css`（程式碼頁）皆為 `?v=site-header-1`。
+- 驗證：
+  - 量測：1440、700、390px 下兩頁頂部列高度、內距、底線、陰影、品牌位置與字級、兩個模式連結位置、登入按鈕位置與外觀完全相同；首頁捲動後頂部列仍在 0；程式碼頁主區塊從 52px 起剛好填滿視窗；`?asmEmbed=editor` 下模式導覽與帳號區隱藏。
+  - 截圖確認兩頁桌面與手機頂部列一致、程式碼頁功能選單接在分隔線後、資料夾按鈕無外框。
+  - 測試：`home-navigation`、`auth-center`、`library-folders`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`deck-file-drop`、`mobile-ui`、`algorithm-editor-history` 共 13 項通過；`entrypoints.test.js` 新增兩頁共用 `.site-header` 的斷點，本次相關 21 條斷言單獨執行通過。
+- 注意：投影片編輯頁（`slides.html`）有自己的編輯器工具列，未套用這條頂部列；投影片的動畫編輯視窗內嵌 `algorithm.html?asmEmbed=editor`，其頂部列高度由 50px 變為 52px（模式導覽與帳號區在嵌入時隱藏）。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
