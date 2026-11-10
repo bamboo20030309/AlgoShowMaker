@@ -1516,6 +1516,21 @@
       "file": "heap-sort-02-56383ceb19adff5827478a89cf786f0f660603bcdb5e6bcdd9b011ae9423a02a.json",
       "deck": "heap-sort-210c5cb9be4f6661cab554e075f250659d4e71336e500215398cfbdac85924a6.asmdeck",
       "slideId": "heap-teaching-25"
+    },
+    "045a816beaaa59d27085b950e8e12bcbc02d2a8a5a21dfc9eebd02b19e4a5ad2": {
+      "file": "heap-teaching-01-045a816beaaa59d27085b950e8e12bcbc02d2a8a5a21dfc9eebd02b19e4a5ad2.json",
+      "deck": "heap-teaching-bc654cf966c856bb1ac4170fb7aa36b9dda176c8ea9c340c45f37861e2bfcc28.asmdeck",
+      "slideId": "d8cb5a69-8eba-4da8-9208-2190bbb79f28"
+    },
+    "91c45508fe32b35cbea8de6dbc945bb3bcdccb728eeef5de6f28b40b26776981": {
+      "file": "heap-teaching-02-91c45508fe32b35cbea8de6dbc945bb3bcdccb728eeef5de6f28b40b26776981.json",
+      "deck": "heap-teaching-bc654cf966c856bb1ac4170fb7aa36b9dda176c8ea9c340c45f37861e2bfcc28.asmdeck",
+      "slideId": "5a0e4f26-556b-4d36-876f-e493beba18cb"
+    },
+    "4d0774d3ca2204c6cc8ebd3558d33174854fc6e6247e7fc65360a28c1938848d": {
+      "file": "heap-teaching-03-4d0774d3ca2204c6cc8ebd3558d33174854fc6e6247e7fc65360a28c1938848d.json",
+      "deck": "heap-teaching-bc654cf966c856bb1ac4170fb7aa36b9dda176c8ea9c340c45f37861e2bfcc28.asmdeck",
+      "slideId": "22eff962-012c-4a73-b762-2a0c7a947bb8"
     }
   }
 }

@@ -136,7 +136,12 @@ test('Trace Studio edits automatic code snippets one line at a time', { timeout:
     assert.equal(await page.evaluate(() => Number(localStorage.getItem('asm_trace_studio_inspector_width_v1')) > 0), true,
       'the resized inspector width should be saved locally');
 
-    await page.getByRole('button', { name: '專注檢視' }).click();
+    const zoomButton = page.getByRole('button', { name: '放大', exact: true });
+    assert.equal(await zoomButton.locator('svg').count(), 1);
+    assert.equal(await zoomButton.evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
+    assert.equal(await page.getByRole('button', { name: '恢復自動篩選', exact: true }).locator('svg').count(), 1);
+    await zoomButton.click();
+    assert.equal(await page.getByRole('button', { name: '縮小', exact: true }).count(), 1);
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('asm-trace-snippet-focus')), true);
     assert.ok((await inspector.boundingBox()).width > 900, 'focus view should expand the snippet editor');
     await page.keyboard.press('Escape');

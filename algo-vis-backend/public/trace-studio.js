@@ -191,12 +191,27 @@
     window.addEventListener('pointercancel', finish);
   }
 
+  function snippetActionIcon(kind) {
+    const icon = traceSvg('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+      'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' });
+    if (kind === 'reset') {
+      icon.append(traceSvg('path', { d: 'M20 7v5h-5 M19.2 12a7.2 7.2 0 1 0-1.7 4.7' }));
+    } else {
+      icon.append(traceSvg('circle', { cx: 10, cy: 10, r: 6.5 }),
+        traceSvg('path', { d: 'm15 15 5 5 M7 10h6' }));
+      if (kind === 'zoom-in') icon.append(traceSvg('path', { d: 'M10 7v6' }));
+    }
+    return icon;
+  }
+
   function setSnippetFocus(active) {
     document.body.classList.toggle('asm-trace-snippet-focus', Boolean(active));
     if (!snippetFocusButton) return;
     snippetFocusButton.setAttribute('aria-pressed', String(Boolean(active)));
-    snippetFocusButton.textContent = active ? '縮回' : '專注檢視';
-    snippetFocusButton.title = active ? '退出程式碼片段專注檢視' : '放大程式碼片段編輯區';
+    const label = active ? '縮小' : '放大';
+    snippetFocusButton.replaceChildren(snippetActionIcon(active ? 'zoom-out' : 'zoom-in'));
+    snippetFocusButton.setAttribute('aria-label', label);
+    snippetFocusButton.title = label;
   }
 
   function colorControl(value, title) {
@@ -3194,13 +3209,15 @@
     frameCodeSnippetEditor.classList.add('trace-studio-code-snippet-section');
     const snippetHeader = el('div', 'trace-studio-snippet-head');
     frameCodeSnippetMeta = el('span', 'trace-studio-snippet-meta', '');
-    resetCodeSnippetButton = el('button', 'trace-studio-snippet-reset', '恢復自動篩選');
+    resetCodeSnippetButton = el('button', 'trace-studio-snippet-reset');
     resetCodeSnippetButton.type = 'button';
+    resetCodeSnippetButton.title = '恢復自動篩選';
+    resetCodeSnippetButton.setAttribute('aria-label', '恢復自動篩選');
+    resetCodeSnippetButton.append(snippetActionIcon('reset'));
     resetCodeSnippetButton.addEventListener('click', resetCurrentCodeSnippet);
-    snippetFocusButton = el('button', 'trace-studio-snippet-focus', '專注檢視');
+    snippetFocusButton = el('button', 'trace-studio-snippet-focus');
     snippetFocusButton.type = 'button';
-    snippetFocusButton.setAttribute('aria-pressed', 'false');
-    snippetFocusButton.title = '放大程式碼片段編輯區';
+    setSnippetFocus(false);
     snippetFocusButton.addEventListener('click', () => setSnippetFocus(
       !document.body.classList.contains('asm-trace-snippet-focus')
     ));
