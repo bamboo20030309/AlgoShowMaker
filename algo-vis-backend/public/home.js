@@ -49,13 +49,6 @@
   const deckCount = document.getElementById('deckCount');
   const emptyState = document.getElementById('emptyState');
   const libraryMessage = document.getElementById('libraryMessage');
-  const deckDialog = document.getElementById('deckDialog');
-  const deckDialogForm = document.getElementById('deckDialogForm');
-  const deckTitleInput = document.getElementById('deckTitleInput');
-  const deckDialogMessage = document.getElementById('deckDialogMessage');
-  const closeDeckDialogBtn = document.getElementById('closeDeckDialogBtn');
-  const cancelDeckDialogBtn = document.getElementById('cancelDeckDialogBtn');
-  const deleteDeckBtn = document.getElementById('deleteDeckBtn');
   const deleteDeckDialog = document.getElementById('deleteDeckDialog');
   const deleteDeckForm = document.getElementById('deleteDeckForm');
   const deleteDeckName = document.getElementById('deleteDeckName');
@@ -66,7 +59,8 @@
   const organizer = window.ASMLibraryOrganizer({
     container: deckGrid, nav: document.getElementById('libraryFolderNav'),
     createButton: document.getElementById('createFolderBtn'),
-    message: document.getElementById('libraryLayoutMessage'), api, createCard: createDeckCard
+    message: document.getElementById('libraryLayoutMessage'), api, createCard: createDeckCard,
+    onDelete: deck => openDeleteDeckDialog(deck)
   });
 
   // -----------------------------------------------------------------------------
@@ -116,7 +110,6 @@
     const examples = tab === 'examples';
     workspaceMinePanel.hidden = examples;
     workspaceExamplesPanel.hidden = !examples;
-    createDeckBtn.hidden = examples;
     workspaceTabControls.forEach(control => {
       const active = control.dataset.workspaceTab === tab;
       control.classList.toggle('is-active', active);
@@ -424,27 +417,22 @@
       info.className = 'deck-info';
       const copy = document.createElement('div');
       copy.className = 'deck-copy';
-      const title = document.createElement('button');
-      title.className = 'deck-title deck-title-button';
-      title.type = 'button';
+      // 雙擊標題直接在卡片上改名（鍵盤：聚焦後按 F2 或 Enter）。
+      const title = document.createElement('span');
+      title.className = 'deck-title deck-title-editable';
+      title.tabIndex = 0;
       title.textContent = deck.title;
-      title.title = 'Rename presentation';
-      title.setAttribute('aria-label', `Rename ${deck.title}`);
-      title.addEventListener('click', () => openDeckDialog(deck));
+      title.title = '雙擊以重新命名';
+      title.addEventListener('dblclick', event => { event.preventDefault(); startRename(deck, title); });
+      title.addEventListener('keydown', event => {
+        if (event.key === 'F2' || event.key === 'Enter') { event.preventDefault(); startRename(deck, title); }
+      });
       const meta = document.createElement('span');
       meta.className = 'deck-meta';
       meta.textContent = `更新於 ${formatUpdatedAt(deck.updated_at)}`;
       copy.append(title, meta);
 
-      const settings = document.createElement('button');
-      settings.className = 'deck-settings';
-      settings.type = 'button';
-      settings.textContent = '⋯';
-      settings.title = '投影片設定';
-      settings.setAttribute('aria-label', `${deck.title} 設定`);
-      settings.addEventListener('click', () => openDeckDialog(deck));
-
-      info.append(copy, settings);
+      info.append(copy);
       card.append(openButton, info);
       return card;
   }
@@ -515,8 +503,9 @@
 
   window.ASMDeckFileDrop.bind({
     previewOnly: true,
-    selector: '#createDeckBtn, #emptyCreateBtn',
-    allowed: () => !dashboardView.hidden && Boolean(state.user),
+    // 把投影片檔拖到「我的投影片」頁面任何地方就直接新增，不必對準按鈕。
+    selector: '#dashboardView',
+    allowed: () => !dashboardView.hidden && !workspaceMinePanel.hidden && Boolean(state.user),
     onFile: createDeckFromFile,
     onError: error => setMessage(libraryMessage, `匯入失敗：${error.message}`)
   });
@@ -527,29 +516,63 @@
     location.href = `/slides.html?deck=${encodeURIComponent(deckUid)}`;
   }
 
-  function openDeckDialog(deck) {
-    state.activeDeckUid = deck.deck_uid;
-    deckTitleInput.value = deck.title;
-    setMessage(deckDialogMessage);
-    deckDialog.showModal();
-    requestAnimationFrame(() => {
-      deckTitleInput.focus();
-      deckTitleInput.select();
+  // -----------------------------------------------------------------------------
+  // 卡片上直接改名
+  // 雙擊標題就在卡片下方改成輸入框；離開輸入框或按 Enter 自動儲存，Esc 放棄修改。
+  // 空白或未改動的名稱不送出；儲存失敗時恢復原名並顯示訊息。
+  // -----------------------------------------------------------------------------
+  function startRename(deck, titleElement) {
+    if (titleElement.dataset.editing === 'true') return;
+    titleElement.dataset.editing = 'true';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'deck-title-input';
+    input.value = deck.title;
+    input.maxLength = 120;
+    input.setAttribute('aria-label', `重新命名 ${deck.title}`);
+    titleElement.replaceWith(input);
+    input.focus();
+    input.select();
+    let finished = false;
+    const restore = () => { if (input.isConnected) input.replaceWith(titleElement); delete titleElement.dataset.editing; };
+    async function finish(save) {
+      if (finished) return;
+      finished = true;
+      const title = input.value.trim();
+      if (!save || !title || title === deck.title) { restore(); return; }
+      input.disabled = true;
+      try {
+        const data = await api(`/api/slides/${encodeURIComponent(deck.deck_uid)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ title })
+        });
+        const index = state.decks.findIndex(item => item.deck_uid === deck.deck_uid);
+        if (index >= 0) state.decks[index] = { ...state.decks[index], ...data.slide };
+        setMessage(libraryMessage);
+        renderDecks();
+      } catch (error) {
+        restore();
+        setMessage(libraryMessage, `重新命名失敗：${error.message}`);
+      }
+    }
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
     });
-  }
-
-  function closeDeckDialog() {
-    state.activeDeckUid = null;
-    deckDialog.close();
+    input.addEventListener('blur', () => finish(true));
+    // Clicking inside the input must not start a card drag or open the deck.
+    input.addEventListener('pointerdown', event => event.stopPropagation());
+    input.addEventListener('click', event => event.stopPropagation());
   }
 
   function closeDeleteDeckDialog() {
     if (deleteDeckDialog.open) deleteDeckDialog.close();
+    state.activeDeckUid = null;
   }
 
-  function openDeleteDeckDialog() {
-    const deck = state.decks.find(item => item.deck_uid === state.activeDeckUid);
+  function openDeleteDeckDialog(deck) {
     if (!deck) return;
+    state.activeDeckUid = deck.deck_uid;
     deleteDeckName.textContent = deck.title;
     setMessage(deleteDeckMessage);
     deleteDeckDialog.showModal();
@@ -559,31 +582,8 @@
   createDeckBtn.addEventListener('click', createDeck);
   emptyCreateBtn.addEventListener('click', createDeck);
   searchInput.addEventListener('input', renderDecks);
-  closeDeckDialogBtn.addEventListener('click', closeDeckDialog);
-  cancelDeckDialogBtn.addEventListener('click', closeDeckDialog);
   closeDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
   cancelDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
-
-  deckDialogForm.addEventListener('submit', async event => {
-    event.preventDefault();
-    const title = deckTitleInput.value.trim();
-    if (!title || !state.activeDeckUid) return;
-
-    try {
-      const data = await api(`/api/slides/${encodeURIComponent(state.activeDeckUid)}`, {
-        method: 'PUT',
-        body: JSON.stringify({ title })
-      });
-      const index = state.decks.findIndex(deck => deck.deck_uid === state.activeDeckUid);
-      if (index >= 0) state.decks[index] = { ...state.decks[index], ...data.slide };
-      renderDecks();
-      closeDeckDialog();
-    } catch (error) {
-      setMessage(deckDialogMessage, error.message);
-    }
-  });
-
-  deleteDeckBtn.addEventListener('click', openDeleteDeckDialog);
 
   deleteDeckForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -597,7 +597,6 @@
       state.decks = state.decks.filter(item => item.deck_uid !== deck.deck_uid);
       renderDecks();
       closeDeleteDeckDialog();
-      closeDeckDialog();
     } catch (error) {
       setMessage(deleteDeckMessage, error.message);
     } finally {

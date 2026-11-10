@@ -135,6 +135,38 @@ test('home offers two modes and signed-in users switch between their decks and e
       assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'workspaceExamplesTab');
 
+      // A deck file dragged anywhere over "my decks" shows the drop hint (not only over a button).
+      await mineTab.click();
+      const dropHint = await page.evaluate(() => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(['{}'], 'deck.json', { type: 'application/json' }));
+        document.querySelector('.library-toolbar').dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        const view = document.getElementById('dashboardView');
+        const active = view.classList.contains('deck-file-drop-active');
+        document.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+        return active;
+      });
+      assert.equal(dropHint, true);
+
+      // The shared top bar is drawn with the right sign-in state before first paint (no pop-in).
+      const firstPaint = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await firstPaint.addInitScript(() => {
+        localStorage.setItem('algo_jwt_token', 'fixture-token');
+        localStorage.setItem('algo_username', 'fixture@example.test');
+        document.addEventListener('DOMContentLoaded', () => {
+          window.__headerAtParse = {
+            login: document.getElementById('topLoginLink')?.hidden,
+            name: document.getElementById('topAccountName')?.textContent,
+            logout: document.getElementById('topLogoutBtn')?.hidden
+          };
+        });
+      });
+      await firstPaint.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture@example.test' } } }));
+      await firstPaint.goto(`${base}/algorithm.html`);
+      assert.deepEqual(await firstPaint.evaluate(() => window.__headerAtParse),
+        { login: true, name: 'fixture@example.test', logout: false });
+      assert.equal(await firstPaint.evaluate(() => getComputedStyle(document.querySelector('.site-header')).viewTransitionName), 'site-header');
+
       // On the code page, clicking 程式碼 keeps the page (and any unsaved code) instead of reloading.
       const code = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       await code.goto(`${base}/algorithm.html`);

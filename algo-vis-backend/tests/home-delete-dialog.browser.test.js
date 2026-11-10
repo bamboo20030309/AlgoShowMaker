@@ -58,8 +58,8 @@ test('homepage asks for deck deletion in an in-page dialog', { timeout: 60000 },
     await page.route('**/api/slide-library', route => route.fulfill({ json: { layout: { folders: [], unfiled: ['deck-1'] } } }));
 
     await page.goto(base);
-    await page.getByRole('button', { name: '快速排序 設定' }).click();
-    await page.locator('#deleteDeckBtn').click();
+    // 2026-11-11：刪除改由卡片底列最左邊的垃圾桶觸發（原本在投影片設定對話框內）。
+    await page.getByRole('button', { name: '刪除 快速排序' }).click();
 
     assert.equal(await page.locator('#deleteDeckDialog').evaluate(dialog => dialog.open), true);
     assert.equal(await page.locator('#deleteDeckName').textContent(), '快速排序');
@@ -80,13 +80,14 @@ test('homepage asks for deck deletion in an in-page dialog', { timeout: 60000 },
 
     await page.locator('#cancelDeleteDeckBtn').click();
     assert.equal(deleteRequests, 0);
-    assert.equal(await page.locator('#deckDialog').evaluate(dialog => dialog.open), true);
+    assert.equal(await page.locator('#deleteDeckDialog').evaluate(dialog => dialog.open), false);
+    assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').count(), 1);
 
-    await page.locator('#deleteDeckBtn').click();
+    await page.getByRole('button', { name: '刪除 快速排序' }).click();
     await page.locator('#confirmDeleteDeckBtn').click();
     await page.waitForFunction(() => !document.querySelector('#deleteDeckDialog').open);
     assert.equal(deleteRequests, 1);
-    assert.equal(await page.locator('#deckGrid .deck-card').count(), 0);
+    assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').count(), 0);
     assert.deepEqual(nativeDialogs, []);
   } finally {
     if (browser) await browser.close();

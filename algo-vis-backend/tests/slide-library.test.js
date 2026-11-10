@@ -23,12 +23,27 @@ test('library reconciles deleted/new decks and preserves user ordering', () => {
   assert.deepEqual(source.folders[0].deckIds, ['b', 'gone']);
   assert.throws(() => Layout.validate({ folders: [{ id: 'f', title: 'F', deckIds: ['a'] }], unfiled: ['a'] }));
   assert.throws(() => Layout.validate({ folders: [{ id: '../bad', title: 'F', deckIds: [] }], unfiled: [] }));
-  const multiple = Layout.assign({ folders: [{ id: 'x', title: 'X', deckIds: ['b', 'a'] }, { id: 'y', title: 'Y', deckIds: ['b'] }], unfiled: [] }, 'a', ['x', 'y']);
-  assert.deepEqual(multiple.folders.map(folder => folder.deckIds), [['b', 'a'], ['b', 'a']]);
-  assert.deepEqual(Layout.move(multiple, 'a', 'x', 'b', 'x').folders.map(folder => folder.deckIds), [['a', 'b'], ['b', 'a']]);
-  assert.deepEqual(Layout.move(multiple, 'a', 'y', 'a', 'x').folders.map(folder => folder.deckIds), [['b'], ['b', 'a']]);
-  assert.deepEqual(Layout.removeFolder(multiple, 'x'), { folders: [{ id: 'y', title: 'Y', deckIds: ['b', 'a'] }], unfiled: [] });
   assert.throws(() => Layout.validate({ folders: [{ id: 'x', title: 'X', deckIds: ['a', 'a'] }], unfiled: [] }));
+  assert.equal(Layout.assign, undefined, 'decks have a single category; there is no multi-folder assign');
+});
+
+// 2026-11-11：每份投影片只屬於一個分類。舊資料可能把同一份投影片放在多個資料夾。
+test('a deck belongs to one folder: old multi-folder data keeps the first folder', () => {
+  const legacy = { folders: [{ id: 'x', title: 'X', deckIds: ['b', 'a'] }, { id: 'y', title: 'Y', deckIds: ['b', 'c'] }], unfiled: [] };
+  const single = Layout.reconcile(legacy, ['a', 'b', 'c']);
+  assert.deepEqual(single.folders.map(folder => folder.deckIds), [['b', 'a'], ['c']]);
+  assert.deepEqual(single.unfiled, []);
+  // Moving into another folder removes it from every other folder.
+  assert.deepEqual(Layout.move(single, 'a', 'y', 'c').folders.map(folder => folder.deckIds), [['b'], ['a', 'c']]);
+  // Moving to 未分類 removes it from all folders.
+  const unfiled = Layout.move(single, 'b', '');
+  assert.deepEqual(unfiled.folders.map(folder => folder.deckIds), [['a'], ['c']]);
+  assert.deepEqual(unfiled.unfiled, ['b']);
+  // Reordering inside a folder and dropping a deck onto itself.
+  assert.deepEqual(Layout.move(single, 'a', 'x', 'b').folders[0].deckIds, ['a', 'b']);
+  assert.deepEqual(Layout.move(single, 'a', 'x', 'a'), single);
+  // Removing a folder sends its decks to 未分類.
+  assert.deepEqual(Layout.removeFolder(single, 'x'), { folders: [{ id: 'y', title: 'Y', deckIds: ['c'] }], unfiled: ['b', 'a'] });
 });
 
 test('library API persists only the signed-in account setting and rejects foreign decks', async () => {
@@ -55,9 +70,11 @@ test('library API persists only the signed-in account setting and rejects foreig
     const layout = { folders: [{ id: 'math', title: '數學', deckIds: ['b', 'a'] }], unfiled: [] };
     assert.equal((await request('owner', layout)).status, 200);
     assert.deepEqual((await request('owner')).body.layout, layout);
+    // Decks have a single category (2026-11-11): a deck listed in two folders keeps the first one.
     const multi = { folders: [...layout.folders, { id: 'graph', title: '圖論', deckIds: ['a'] }], unfiled: [] };
     assert.equal((await request('owner', multi)).status, 200);
-    assert.deepEqual((await request('owner')).body.layout, multi);
+    assert.deepEqual((await request('owner')).body.layout,
+      { folders: [...layout.folders, { id: 'graph', title: '圖論', deckIds: [] }], unfiled: [] });
     assert.equal((await request('owner', layout)).status, 200);
     assert.deepEqual(users.owner.preferences.eventSettings, { speed: 2 });
     assert.deepEqual((await request('other')).body.layout.unfiled, ['foreign']);

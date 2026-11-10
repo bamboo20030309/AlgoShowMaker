@@ -644,50 +644,10 @@ input:focus-visible {
   font-weight: 650;
 }
 
-.deck-title-button {
-  width: 100%;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-  text-align: left;
-  cursor: text;
-}
-
-.deck-title-button:hover,
-.deck-title-button:focus-visible {
-  background: transparent;
-  color: #83d2bd;
-  outline: none;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .deck-meta {
   margin-top: 4px;
   color: var(--text-muted);
   font-size: 12px;
-}
-
-.deck-settings {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.deck-settings:hover {
-  border-color: var(--border);
-  background: var(--bg-hover);
-  color: #fff;
 }
 
 .empty-state {
@@ -932,18 +892,11 @@ body.examples-view .gallery-workspace-link { display: inline-flex; align-items: 
 .library-folder-tools .icon-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .library-folder-tools .icon-btn:hover { color: var(--text-bright); }
 .library-card-controls { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; }
-.library-categories-button { flex: 1; min-width: 0; }
 .category-help { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
-#categoryChoices { border: 0; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
-#categoryChoices .category-choice { display: flex; align-items: center; gap: 12px; padding: 12px 0; margin: 0; overflow-wrap: anywhere; }
-#categoryChoices input { width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; flex-shrink: 0; accent-color: var(--blue); }
-.library-card-controls select { flex: 1; min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-panel); color: var(--text-bright); }
-.library-drag-handle, .library-order-button { border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-bright); border-radius: 4px; min-width: 30px; min-height: 32px; cursor: pointer; }
-.library-drag-handle { touch-action: none; cursor: grab; font-size: 22px; }
-.library-drag-handle:active { cursor: grabbing; }
 .library-folder .deck-card { user-select: none; }
-.library-folder .deck-card, .library-folder .deck-open, .library-folder .deck-title-button { cursor: grab; }
-.library-drag-source { opacity: .55; cursor: grabbing; }
+.library-folder .deck-card, .library-folder .deck-open { cursor: grab; }
+/* 拖曳中：原位置留下半透明殘影，完整卡片的複本跟著指標移動。 */
+.library-drag-source { opacity: .35; cursor: grabbing; }
 .library-card-controls button:disabled { opacity: .4; cursor: default; }
 .library-drop-target { outline: 3px solid var(--blue); outline-offset: 3px; }
 .library-folder.library-drop-target { outline: none; border-top: 3px solid var(--blue); }
@@ -1152,4 +1105,106 @@ html::-webkit-scrollbar-thumb:hover,
   .library-toolbar .icon-action-btn {
     align-self: flex-end;
   }
+}
+
+/* --------------------------------------------------------------------------
+ * 投影片卡片：雙擊標題改名、底列圖示（刪除｜往前、往後）、整張卡片拖曳
+ * -------------------------------------------------------------------------- */
+.deck-title-editable {
+  border-radius: 3px;
+  cursor: text;
+}
+
+.deck-title-editable:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+.deck-title-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 26px;
+  margin: -3px 0 -1px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 0 6px;
+  background: var(--bg-main);
+  color: #fff;
+  font: 650 14px Arial, "Noto Sans TC", sans-serif;
+}
+
+.deck-title-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.35);
+}
+
+.library-card-controls {
+  gap: 2px;
+}
+
+.library-card-spacer {
+  flex: 1;
+}
+
+.library-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.library-card-icon:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-bright);
+}
+
+.library-delete-button:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.library-card-icon:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 1px;
+}
+
+.library-drag-clone {
+  position: fixed;
+  z-index: 3000;
+  margin: 0;
+  pointer-events: none;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  opacity: 0.96;
+  cursor: grabbing;
+  will-change: transform;
+}
+
+/* 把投影片檔拖到「我的投影片」頁面任何地方：整頁提示放開即可新增。 */
+#dashboardView.deck-file-drop-active {
+  position: relative;
+  outline: none;
+  background: inherit !important;
+}
+
+#dashboardView.deck-file-drop-active::after {
+  content: "放開以新增投影片";
+  position: fixed;
+  inset: calc(var(--header-h) + 12px) 12px 12px;
+  z-index: 2500;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #55b9f3;
+  border-radius: 12px;
+  background: rgba(16, 40, 56, 0.55);
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 700;
+  pointer-events: none;
 }

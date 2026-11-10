@@ -262,3 +262,34 @@ body[class*="asm-embed-"] .site-account {
 .site-header .site-account-signed-in[hidden] {
   display: none;
 }
+
+/* --------------------------------------------------------------------------
+ * 換頁時頂部列不動
+ * 首頁與程式碼頁都是同源頁面，開啟跨文件 View Transition：同名的 .site-header
+ * 在新舊頁面之間原地接續（兩頁內容相同，看起來不會重新載入），只有下方內容淡入淡出。
+ * 不支援的瀏覽器照常換頁；偏好減少動態效果時不啟用。
+ * -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+
+.site-header {
+  view-transition-name: site-header;
+}
+
+::view-transition-group(site-header),
+::view-transition-old(site-header),
+::view-transition-new(site-header) {
+  animation-duration: 0s;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 160ms;
+}
+
+body[class*="asm-embed-"] .site-header {
+  view-transition-name: none;
+}
