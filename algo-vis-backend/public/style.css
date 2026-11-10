@@ -119,9 +119,65 @@ body[class*="asm-embed-"] .top-bar-separator {
   display: none;
 }
 
-/* 與 mobile-ui.css 相同斷點：功能選單收起時不留分隔線。 */
+/* 帳號區：登入連到首頁登入框；已登入顯示名稱與登出（top-account.js）。 */
+.top-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 10px;
+}
+
+.top-account [hidden] {
+  display: none;
+}
+
+.top-account-name {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--text-main);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-account-button {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border: 1px solid var(--border-color, #454545);
+  border-radius: 6px;
+  padding: 0 14px;
+  background: transparent;
+  color: var(--text-bright, #ffffff);
+  font: 14px Arial, "Noto Sans TC", sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.top-account-button:hover {
+  background: var(--bg-hover, #3d3d3f);
+}
+
+.top-account-button:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+body[class*="asm-embed-"] .top-account {
+  display: none;
+}
+
+/* 與 mobile-ui.css 相同斷點：功能選單收起時不留分隔線，帳號名稱收起只留按鈕。 */
 @media (max-width: 760px), (pointer: coarse) and (max-width: 900px) {
-  .top-bar-separator {
+  .top-bar-separator,
+  .top-account-name {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  #top-bar .menu-brand > span {
     display: none;
   }
 }

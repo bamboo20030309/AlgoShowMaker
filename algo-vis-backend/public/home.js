@@ -157,9 +157,17 @@
     else guestView.insertBefore(galleryPanel, authPanel);
   }
 
+  // 只接受站內路徑。瀏覽器把 "/\host" 當成 "//host"，控制字元也可能被剝除後變成外部網址，
+  // 因此排除第二個字元是 / 或 \ 的值，並以 URL 解析確認仍在同一個 origin。
   function safeNextPath() {
     const next = new URLSearchParams(location.search).get('next');
-    return next && next.startsWith('/') && !next.startsWith('//') ? next : '';
+    if (!next || !next.startsWith('/') || /^\/[\/\\]/.test(next) || /[\u0000-\u001f\\]/.test(next)) return '';
+    try {
+      const target = new URL(next, location.origin);
+      return target.origin === location.origin ? `${target.pathname}${target.search}${target.hash}` : '';
+    } catch {
+      return '';
+    }
   }
 
   function showGuest() {
@@ -609,6 +617,12 @@
 
     try {
       const data = await api('/api/auth/me');
+      // 已登入卻帶著 ?next=（例如其他分頁登入後，程式碼頁仍顯示「登入」）：直接回原頁。
+      const next = safeNextPath();
+      if (next) {
+        location.replace(next);
+        return;
+      }
       await showDashboard(data.user);
     } catch {
       clearSession();
