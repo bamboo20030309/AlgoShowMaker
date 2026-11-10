@@ -125,6 +125,31 @@
   - 測試：`home-navigation`、`auth-center`、`library-folders`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`deck-file-drop`、`mobile-ui`、`algorithm-editor-history` 共 13 項通過；`entrypoints.test.js` 新增兩頁共用 `.site-header` 的斷點，本次相關 21 條斷言單獨執行通過。
 - 注意：投影片編輯頁（`slides.html`）有自己的編輯器工具列，未套用這條頂部列；投影片的動畫編輯視窗內嵌 `algorithm.html?asmEmbed=editor`，其頂部列高度由 50px 變為 52px（模式導覽與帳號區在嵌入時隱藏）。
 
+## 追加：投影片卡片重整與換頁時頂部列不重新載入（2026-11-11，使用者指示）
+
+- 程式修正 commit：f80c4a1a0d245e06499d475feca08373fee8167d
+- 使用者需求與對應修改：
+  1. **頂部列的登入狀態與 GitHub 圖示換頁時看起來重新載入**：兩頁本來就是獨立頁面。
+     - 新檔 `public/site-header.js`：緊接在頂部列之後同步載入，第一次繪製前就依 localStorage 的登入狀態顯示「登入」或「名稱＋登出」，不再先空白再出現。
+     - `brand.css`：首頁與程式碼頁之間啟用跨文件 View Transition，`.site-header` 設 `view-transition-name`，換頁時頂部列原地接續，只有下方內容淡入淡出（160ms）。偏好減少動態效果時不啟用。前往其他頁（例如投影片編輯頁，未啟用過場）時在 `pageswap` 略過過場並吞掉瀏覽器的 rejected promise，避免主控台錯誤。
+     - 限制：仍是兩個獨立頁面（不是單頁應用），不支援 View Transition 的瀏覽器照常整頁換頁。
+  2. **新增投影片改成「＋」圖示、放在新增資料夾旁、無外框**：`#createDeckBtn` 移到工具列，與資料夾圖示並排。
+  3. **刪除「選擇分類」，改為唯一分類**：
+     - `library-layout.js`：`move()` 把投影片從所有其他容器移除後再放入目的地；`reconcile()` 對同一份投影片出現在多個資料夾的舊資料只保留第一個資料夾。伺服器的 GET／PUT 也使用 `reconcile()`，因此舊資料在下一次儲存時寫回為單一分類。移除 `assign()`。
+     - `library-organizer.js`：移除分類對話框程式；`index.html` 移除 `#categoryDialog`。
+     - **資料相容性**：這是有意的資料變更。舊的「一份投影片放多個資料夾」會變成只在第一個資料夾，其他資料夾的這筆會在下次儲存時移除。投影片本身與其他設定不受影響。已以 `slide-library.test.js`（純函式與 API）和 `library-folders` 瀏覽器測試（載入→使用→儲存→重開）驗證。
+  4. **上下箭頭改左右箭頭**：「往前／往後」改為 ← → 圖示按鈕。
+  5. **最左邊新增刪除按鈕（沿用垃圾桶圖示）**：與資料夾的刪除圖示共用同一組 SVG，點擊開啟既有的刪除確認對話框。
+  6. **雙擊標題直接在卡片上改名，離開後自動儲存**：標題改為可聚焦的文字（單擊不做事）；雙擊或 F2／Enter 進入編輯；離開輸入框或 Enter 儲存，Esc 放棄；空白或未改動不送出；失敗時恢復原名並顯示訊息。原「投影片設定」對話框（`#deckDialog`）移除。
+  7. **移除右邊「投影片設定」與左下角六個點**：`.deck-settings` 與 `.library-drag-handle` 移除。
+  8. **拖曳整張卡片**：指標拖曳時建立整張卡片的浮動複本跟著指標（含縮圖與底列），原位置透明度 0.35 作為殘影；放開後移除複本。移除原生 HTML5 卡片拖曳（只保留指標拖曳）。卡片上的按鈕與改名輸入框不會啟動拖曳。
+  9. **把投影片檔拖到頁面任何地方就新增**：`ASMDeckFileDrop.bind` 的目標由兩個按鈕改為整個 `#dashboardView`（只在「我的投影片」分頁），拖入時顯示全頁「放開以新增投影片」提示。
+  - 版本：`brand.css?v=site-header-2`、`home.css?v=cards-1`、`home.js?v=cards-1`、`library-layout.js?v=3`、`library-organizer.js?v=9`、`site-header.js?v=2`。
+- 驗證：
+  - 互動探針（所有 API 以 route 模擬）：舊資料中同時在兩個資料夾的投影片只顯示在第一個；卡片底列為「刪除｜←→」且無把手、分類按鈕、設定按鈕；雙擊改名後點別處即儲存、Esc 保留原名；→ 排序；整張卡片拖進資料夾後儲存的版面為單一分類，拖曳中有完整複本且原卡片為殘影，放開後複本移除；垃圾桶開啟確認後刪除；把 JSON 投影片檔拖到資料夾區域顯示全頁提示，放開後導向新投影片。無 page error。
+  - 測試：`home-navigation`（新增：全頁拖入提示、第一次繪製即正確登入狀態、頂部列 `view-transition-name`）、`library-folders`（依新規格重寫）、`home-delete-dialog`（改用垃圾桶）、`slide-library`（單一分類與舊資料）、`home-thumbnail-api`、`deck-file-drop`、`auth-center`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`mobile-ui`、`algorithm-editor-history`，共 19 項通過；`entrypoints.test.js` 本次相關 23 條斷言單獨執行通過。
+  - 未驗證：未以真實帳號與資料庫驗證；View Transition 的視覺效果無法在無頭瀏覽器截圖確認（以 computed style 核對設定）。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
