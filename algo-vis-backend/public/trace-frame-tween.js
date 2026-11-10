@@ -5623,6 +5623,8 @@
         key: entry.key,
         element: entry.element,
         outgoing: entry.outgoing === true,
+        exitStart: Number.isFinite(Number(entry.exitStart ?? entry.scopeExitSlot?.start))
+          ? Number(entry.exitStart ?? entry.scopeExitSlot?.start) : Infinity,
         arrowAnchorMode: entry.element.dataset.tracePointerArrowAnchorMode || 'target',
         renderedTarget: entry.element.hasAttribute('data-trace-marker-target-x')
           && entry.element.hasAttribute('data-trace-marker-target-y') ? {
@@ -5957,7 +5959,7 @@
       });
     };
     metadata.forEach((item,key) => {
-      if (item.outgoing) addStep(key,0,0,initialPositions.get(key),initialPositions.get(key),
+      if (item.outgoing || Number.isFinite(item.exitStart)) addStep(key,0,0,initialPositions.get(key),initialPositions.get(key),
         initialState.get(key),initialState.get(key),true,true);
     });
 
@@ -6160,15 +6162,18 @@
         // zero adjustment here used to cancel both same-cell make-room
         // motion and the entering marker's vertical entrance offset.
         if (!track.length) return;
+        // Once this pointer starts leaving, its whole label/arrow follows its
+        // own vertical exit. A parallel peer exit must not recenter it midway.
+        const motionTime = Math.min(elapsed, item.exitStart);
         let point = initialPositions.get(key) || item?.finalBase;
         for (const step of track) {
-          if (elapsed < step.start) break;
+          if (motionTime < step.start) break;
           if (step.instant) {
             point = step.to;
             continue;
           }
-          if (elapsed < step.end) {
-            const progress = easeOutCubic(clamp01((elapsed - step.start) / (step.end - step.start)));
+          if (motionTime < step.end) {
+            const progress = easeOutCubic(clamp01((motionTime - step.start) / (step.end - step.start)));
             const x = step.from.x + (step.to.x - step.from.x) * progress;
             const y = step.from.y + (step.to.y - step.from.y) * progress;
             const changingTarget = step.fromTarget && step.toTarget
@@ -10023,6 +10028,7 @@
             +(item.backgroundHandoff?HEAP_SEGMENT_BACKGROUND_HANDOFF_DURATION:0),Number(item.comparisonRemovalStart)||0);
           return {key:item.comparisonKey,element:item.markerVisual,previousVisual:item.markerVisual,
             markerPointPath:item.markerPointPath,markerLabelBox:item.markerLabelBox,outgoing:true,
+            exitStart:item.scopeExitSlot ? Number(item.scopeExitSlot.start) : start,
             topologyExitSlot:item.scopeExitSlot?null:{event:{id:`pointer-view-exit:${item.comparisonKey}`,type:'visual-exit',presentationOnly:true,
               targets:markerSourceVariableIds(item.markerVisual).map(variableId=>({variableId,role:'target'}))},
               animation:'exit',start,visualStart:start,motionStart:start,end:start+APPEAR_TIMING.duration,exitDuration:APPEAR_TIMING.duration}};
@@ -10792,10 +10798,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-330';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-331';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-330', play, cancel, updateEventAvailability,
+    build: 'trace-331', play, cancel, updateEventAvailability,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
     isPaused() { return playbackPaused; },
