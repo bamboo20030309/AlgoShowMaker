@@ -6331,6 +6331,13 @@
   }
 
   function renderScene(rootSvg, parent, document, frame, previousFrame = null, options = {}) {
+    if (!options.snapshotOwner) {
+      const index = document.frames?.indexOf(frame) ?? -1;
+      const recovered = window.ASMTracePointerModel?.recoveredBindings?.(
+        document, frame, index > 0 ? document.frames[index - 1] : null
+      ) || [];
+      if (recovered.length) frame = { ...frame, bindings: [...(frame.bindings || []), ...recovered] };
+    }
     const idPrefix = options.idPrefix || 'trace';
     const rootAttributes = { transform: options.transform == null ? 'translate(90, 80)' : options.transform };
     if (options.rootId) rootAttributes.id = options.rootId;
@@ -7194,9 +7201,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-283';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-284';
   window.ASMTraceRenderers = {
-    build: 'trace-283', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-284', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

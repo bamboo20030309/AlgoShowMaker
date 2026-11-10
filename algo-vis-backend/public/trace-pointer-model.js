@@ -309,8 +309,57 @@
     return planned;
   }
 
+  // A removed tail may temporarily leave a live cursor without a cell. If a
+  // later write in the same frame returns it to the surviving sequence, keep
+  // that binding through the frame instead of treating the hole as an exit.
+  // Derive this from recorded event order, including stable jumps/reopening;
+  // never mutate authored bindings or depend on whichever SVG was last shown.
+  function recoveredBindings(document, frame, previousFrame) {
+    const resolve = window.ASMTraceRules?.resolveExpression;
+    if (!resolve || !previousFrame) return [];
+    const events = [...(frame.events || [])].sort((a,b) => Number(a.order)-Number(b.order));
+    return (previousFrame.bindings || []).filter(binding => {
+      if (binding.mode !== 'index' || binding.layoutTarget || binding.layoutChild || binding.pointerAxis) return false;
+      const ids = binding.sourceVariableIds || [binding.sourceVariableId];
+      if ((frame.bindings || []).some(current => ids.includes(current.sourceVariableId))) return false;
+      for (const id of [...ids,binding.targetVariableId]) {
+        const before = previousFrame.state?.[id], after = frame.state?.[id];
+        if (!before || !after || String(before.lifetime || before.identity || '') !== String(after.lifetime || after.identity || '')) return false;
+      }
+      if (events.some(event => ['declare','scope-exit','visual-exit'].includes(event.type)
+        && event.targets?.some(target => ids.includes(target.variableId)))) return false;
+      const locals = {};
+      Object.entries(previousFrame.state || {}).forEach(([id,entry]) => {
+        if (entry.data?.kind === 'scalar') locals[document.variables?.[id]?.name || entry.name || id] = entry.data.value;
+      });
+      const expression = binding.indexExpression || binding.sourceName;
+      const resolvedIndex = (context, values) => {
+        const value = resolve(document, context, expression, values);
+        return value == null || value === '' ? NaN : Number(value);
+      };
+      const index = () => resolvedIndex(previousFrame, locals);
+      let missing = false, recovered = false, size = null;
+      for (const event of events) {
+        const target = event.targets?.find(target => target.role === 'target') || event.targets?.[0];
+        if (event.type === 'sequence-operation' && target?.variableId === binding.targetVariableId) {
+          const before = Number(event.payload?.beforeSize), after = Number(event.payload?.afterSize), value = index();
+          if (Number.isInteger(value) && before > after && value >= 0 && value < before && value >= after) missing = true;
+          size = after;
+        }
+        if (['assign','write'].includes(event.type) && ids.includes(target?.variableId)) {
+          const value = event.payload?.after;
+          locals[document.variables?.[target.variableId]?.name || binding.sourceName] = value?.value ?? value;
+          const selected = index();
+          recovered = missing && Number.isInteger(selected) && selected >= 0 && selected < size;
+        }
+      }
+      const final = resolvedIndex(frame);
+      return recovered && final === index() && final >= 0 && final < size;
+    });
+  }
+
   window.ASMTracePointerModel = Object.freeze({
-    build: 'pointer-5',
+    build: 'pointer-6',
     transitions: TRANSITIONS,
     canonicalOnly: () => CANONICAL_ONLY,
     enabled: () => true,
@@ -321,6 +370,7 @@
     toRendererObject,
     diff,
     stateFromElement,
-    transitionPlan
+    transitionPlan,
+    recoveredBindings
   });
 })();
