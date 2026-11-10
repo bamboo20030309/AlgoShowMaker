@@ -92,7 +92,7 @@ void heap_pop() {
     // @text "移除已經換到最後一格的最大值 ${heap[heapSize]}" at heap.bottom
 
     heap.pop_back();
-    heapSize = heap.size() - 1;
+    heapSize--;
 
     // @frame heap render heap with range(1,heapSize), labels(value,index) at canvas.top offset(0,80)
     // @text "從根節點開始向下維護最大堆積" at heap.bottom when heapSize > 0
