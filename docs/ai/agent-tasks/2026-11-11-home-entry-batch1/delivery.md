@@ -150,6 +150,21 @@
   - 測試：`home-navigation`（新增：全頁拖入提示、第一次繪製即正確登入狀態、頂部列 `view-transition-name`）、`library-folders`（依新規格重寫）、`home-delete-dialog`（改用垃圾桶）、`slide-library`（單一分類與舊資料）、`home-thumbnail-api`、`deck-file-drop`、`auth-center`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`mobile-ui`、`algorithm-editor-history`，共 19 項通過；`entrypoints.test.js` 本次相關 23 條斷言單獨執行通過。
   - 未驗證：未以真實帳號與資料庫驗證；View Transition 的視覺效果無法在無頭瀏覽器截圖確認（以 computed style 核對設定）。
 
+## 追加：捲軸只在頂部列下方（2026-11-11，使用者指示）
+
+使用者指出「投影片右邊的滾輪應該在上方欄下面的空間，不應該跑到上方欄」。原因是整個頁面（html）在捲動，捲軸從視窗最上方開始、經過頂部列。
+
+- 程式修正 commit：d7ee749480834e910bb681a41ee6cd942f9d5fc7
+- 修改：
+  - `public/home.css`：`html`、`body` 固定為視窗高度且不捲動；`body` 改為上下排列，頂部列在上、`<main>` 佔滿其餘高度並成為唯一的捲動區（沿用細的深色捲軸）。`main` 內的黏性元素（範例分類列、資料夾導覽、登入框）改以 `main` 頂端為基準（`top: 0`），區段捲動定位改為 140px／170px。寬螢幕訪客首頁的範例欄仍是自己的捲動區，維持原規則。
+  - `public/library-organizer.js`：拖曳卡片接近上下邊緣時的自動捲動改為捲動 `main`（以 `main` 的可見範圍判斷邊緣），不再捲動視窗。
+  - 版本：`home.css?v=cards-2`、`library-organizer.js?v=10`。
+- 驗證：
+  - 量測（隔離服務）：登入工作區、工作區範例分頁、訪客範例全頁、寬螢幕訪客首頁、手機訪客與手機工作區，皆為整頁不捲動、`main` 從 52px（頂部列下緣）開始並可捲動、頂部列維持在 0；捲動後黏性分類列／資料夾導覽停在 52px。
+  - 3104 預覽（使用者已登入的帳號，僅捲動檢視後還原）：`main` 捲軸寬 10px、從 52px 開始，整頁不捲動。
+  - 測試：`home-navigation`（新增：只有頂部列以下的區域捲動）、`auth-center`、`library-folders`、`home-delete-dialog`、`deck-file-drop`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`mobile-ui` 共 13 項通過；`entrypoints.test.js` 相關 23 條斷言單獨執行通過。
+  - 注意：手機瀏覽器改為內層捲動後，網址列不會隨捲動自動收起。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
