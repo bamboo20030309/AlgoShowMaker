@@ -174,6 +174,23 @@
 - 驗證：同一探針在無延遲與 400ms 延遲下，兩頁第一個含頂部列的畫面都已顯示「登出」，空白帳號區的幀數為 0。`home-navigation` 的檢查改為延遲 `site-header.js` 400ms 並逐幀取樣，第一幀必須已顯示登入狀態；`entrypoints.test.js` 改為檢查 head 載入與頂部列後的內嵌呼叫（相關 24 條斷言單獨執行通過）。相關瀏覽器測試 11 項通過。
 - 未處理：靜態檔案的 `max-age=0` 快取策略屬於伺服器設定，本次未變更。
 
+## 追加：分類就地編輯與單一工具列（2026-11-12，使用者指示）
+
+- 程式修正 commit：32f9b55049504a120ef91e10592267ebfa7ec49d
+- 使用者需求與對應修改：
+  1. **新增資料夾不彈視窗**：按資料夾圖示後，清單最底部出現一列已聚焦的名稱輸入框；Enter 或離開輸入框即建立，Esc 或留空取消，儲存失敗時保留已輸入的名稱。移除 `#folderDialog` 標記與 `library-organizer.js` 的對話框程式。
+  2. **點分類名稱直接改名，移除重新命名按鈕**：點名稱（或聚焦後 Enter／F2）變成輸入框；Enter／離開儲存，Esc 取消；點名稱不會收合分類；儲存失敗時名稱維持原樣並顯示訊息。「未分類」不可改名。
+  3. **分類垃圾桶 hover 為紅色**：改用與卡片相同的 `library-card-icon library-delete-button` 樣式與圖示（`library-folder-delete`）。
+  4. **括號數字改成名稱右邊的「共 N 份」**：`.library-folder-name` 加 `.library-folder-count`，樣式比照工具列的份數。
+  5. **搜尋列與分類列合併**：`#workspaceMinePanel` 只剩一列 sticky 工具列。
+  6. **搜尋改成放大鏡圖示**：放在新增資料夾左邊，點開後輸入框在圖示左側向左展開到 180px（原欄寬 360px 的一半；手機 150px），圖示位置不動；輸入即篩選；Esc 清除並收起；留空離開時收起；有文字時維持展開。減少動態效果時不做動畫。
+  7. **分類捷徑全部放到工具列並靠左**：`#libraryFolderNav` 移入工具列最左側，右側依序為份數、搜尋、新增資料夾、新增投影片；手機上分類捷徑獨占第一行。
+  - 另外：沒有訊息時兩個訊息列不再佔空間，工具列下方直接接第一個分類。
+  - 版本：`home.css?v=cards-3`、`home.js?v=cards-2`、`library-organizer.js?v=11`。
+- 驗證：
+  - 互動探針（API 以 route 模擬）：工具列順序與位置（分類捷徑 x=68 靠左，份數、搜尋、資料夾、新增在右）；分類標題為名稱＋「共 1 份」且只有「移除資料夾」按鈕；搜尋收起寬 0、展開 180px 且取得焦點、圖示位置不變、輸入後篩選為 1 張、Esc 後清空收起並恢復 3 張；新增資料夾列在最底並聚焦、無對話框、Enter 建立、Esc 取消；點名稱改名時分類維持展開、Enter 儲存；分類與卡片垃圾桶 hover 顏色同為 rgb(227, 93, 106)；390px 無水平溢出。無 page error。
+  - 測試：`library-folders`（更新：就地新增資料夾的取消／空白／失敗保留文字、分類標題內容、就地改名含 Esc 與失敗、垃圾桶 hover 顏色、放大鏡搜尋向左展開與 Esc、手機新增列）通過；`home-navigation`、`auth-center`、`home-delete-dialog`、`deck-file-drop`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`mobile-ui`、`slide-library` 共 15 項通過；`entrypoints.test.js` 相關 24 條斷言單獨執行通過。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
