@@ -19,6 +19,7 @@
   let startedEventIds = new Set();
   let completedEventIds = new Set();
   let scheduledEventIds = new Set();
+  const framePlaybackStates = new WeakMap();
   let cppTokenizer = null;
   let syntaxSource = null;
   let syntaxByLine = new Map();
@@ -773,18 +774,26 @@
     // playback. Preserve the active compound event and its progress until
     // the scheduler announces its end; otherwise only the declaration name
     // survives and the initializer loses its yellow highlight mid-event.
-    const preservePlayback = options.stable !== true && currentDocument === trace
-      && currentFrame?.id === frame?.id;
+    if (currentDocument && currentFrame) {
+      let states = framePlaybackStates.get(currentDocument);
+      if (!states) { states = new Map(); framePlaybackStates.set(currentDocument, states); }
+      states.set(currentFrame.id, { started: new Set(startedEventIds), completed: new Set(completedEventIds),
+        scheduled: new Set(scheduledEventIds) });
+    }
+    const preservePlayback = currentDocument === trace && currentFrame?.id === frame?.id;
+    const restored = options.stable === true && !preservePlayback
+      ? framePlaybackStates.get(trace)?.get(frame?.id) : null;
     currentDocument = trace;
     applyStoredFontSize();
     if (!preservePlayback) {
       activeEventId = '';
       activeMemberIds = new Set();
-      startedEventIds = new Set();
-      completedEventIds = new Set();
+      startedEventIds = new Set(restored?.started || []);
+      completedEventIds = new Set(restored?.completed || []);
     }
     currentEvents = new Map((frame?.events || []).map(event => [String(event?.id || ''), event]));
-    if (playbackPlan || !preservePlayback) scheduledEventIds = playbackEventIds(playbackPlan);
+    if (playbackPlan) scheduledEventIds = playbackEventIds(playbackPlan);
+    else if (!preservePlayback) scheduledEventIds = new Set(restored?.scheduled || []);
     if (!scheduledEventIds.size) {
       currentEvents.forEach((event, id) => {
         if (id && event?.type === 'condition') completedEventIds.add(id);

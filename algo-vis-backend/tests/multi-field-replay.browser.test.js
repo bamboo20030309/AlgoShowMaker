@@ -31,7 +31,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
   t.after(() => browser.close()); const page = await browser.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/algorithm.html?asmEmbed=runtime'); await page.waitForFunction(() => window.ASMTracePlayer);
-  for (const [kind, source, from, index] of [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17], ['reset', reset, 0, 1], ['left', left, 0, 1]]) {
+  for (const [kind, source, from, index] of [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17],
+    ['fresh-set', trace, 59, 5], ['saved-set', savedTrace(body, animation), 59, 5], ['reset', reset, 0, 1], ['left', left, 0, 1]]) {
     for (const speed of [1, 4]) {
       const report = await page.evaluate(async ({ trace, from, index, speed }) => {
         const doc = ASMTracePlayer.apply(JSON.parse(JSON.stringify(trace)));
@@ -104,11 +105,22 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
       const expected = kind === 'reset'
         ? [{ tree: '2', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '+3' },
           { tree: '9', sets: '=7', lazy: '+3' }, { tree: '9', sets: '=7', lazy: '-2' },
-          { tree: '9', sets: '=7', lazy: '' }, { tree: '9', sets: '', lazy: '' }]
+          { tree: '9', sets: '', lazy: '' }]
+        : kind.endsWith('-set') ? [{ tree: '15', sets: '', lazy: '+3' }, { tree: '10', sets: '', lazy: '+3' },
+          { tree: '10', sets: '=5', lazy: '+3' }, { tree: '10', sets: '=5', lazy: '' }]
         : kind === 'left' ? [{ tree: '2', sets: '', lazy: '+3' }, { tree: '9', sets: '', lazy: '+3' }]
           : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
       assert.deepEqual(states, expected, 'every field must commit in runtime order without overwriting siblings');
       assert.deepEqual(report.final.values, expected.at(-1)); assert.deepEqual(report.reopened.values, expected.at(-1));
+      if (kind.endsWith('-set')) {
+        const hiddenWrite = source.frames[from + 1].events.find(event => event.expression === 'lazy[now] = 0');
+        const checkpoint = report.plan.forwardReplay.checkpoints.find(point => point.eventId === hiddenWrite.id);
+        assert.equal(checkpoint.mode, 'instant', 'hidden lazy=0 is a data commit, not a timed animation');
+        assert.ok(report.samples.every(sample => sample.eventId !== hiddenWrite.id), 'hidden reset cannot become an active animation');
+        for (const name of ['tree', 'sets']) assert.ok(Math.abs(report.final.positions[name].x - report.destination.positions[name].x) < .5,
+          'hidden lazy cannot reserve a trailing column after commit: ' + name);
+        assert.equal(report.final.text, '10,=5', 'exactly one separator remains between the two visible fields');
+      }
       assert.deepEqual(report.final.adornments, [], 'temporary punctuation must be removed at commit');
       assert.deepEqual(report.reopened.adornments, []);
       assert.ok(report.samples.every(sample => !sample.text.startsWith(',') && !sample.text.endsWith(',') && !sample.text.includes(',,')),

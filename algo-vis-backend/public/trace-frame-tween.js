@@ -4586,6 +4586,7 @@
       }
     } else {
       targetText = assignableTargetText(operand);
+      if (targetText?.matches?.('tspan[data-trace-field-variable]') && afterValue === '') return null;
       fieldLayout = createFieldAssignmentLayout(root, targetText, afterValue);
       operand.formatTransferValue = value => displayEventFieldValue(value, eventFrame, target.variableId);
       if (fieldLayout?.point) {
@@ -7546,6 +7547,11 @@
       if (!targetOperand) {
         return Boolean(assignmentTargetMarker(event, new Map(), eventFrame, previousObjects));
       }
+      // A retained tspan is a replay address, not proof that the field is
+      // visible. A hide(...) result must commit silently without a numeric
+      // transfer or an empty field-layout slot.
+      if (targetOperand.element.matches?.('tspan[data-trace-field-variable]')
+        && displayEventFieldValue(event?.payload?.after, eventFrame, target?.variableId) === '') return false;
       // An index marker assignment (for example largest = l) is fully
       // determined by the captured before/after/source values. The source
       // scalar does not need its own box or pointer on the canvas.
@@ -11244,10 +11250,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-344';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-345';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-344', play, cancel, updateEventAvailability,
+    build: 'trace-345', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
