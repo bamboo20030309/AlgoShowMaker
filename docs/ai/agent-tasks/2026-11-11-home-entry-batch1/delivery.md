@@ -216,6 +216,21 @@
   - 測試修改：`guest-gallery-hints` 先點 `#gallerySearchToggleBtn` 再輸入；`library-folders` 的 `.library-search` 限定在 `#workspaceMinePanel`（頁面上現在有兩個）；`entrypoints` 更新版本並檢查 `library-ui.js` 在 `guest-gallery.js` 之前。
   - `guest-gallery-hints`、`guest-gallery-contract`、`guest-card-cache`、`auth-center`、`home-navigation`、`library-folders`、`sample-view-actions`、`mobile-ui`、`deck-file-drop`、`home-delete-dialog`、`slide-library` 共 16 項通過。`entrypoints.test.js` 以逐條執行檢查：本分支相關斷言（91–97 行）全部通過；其餘失敗為基底既有的過期版本字串（slides runtime、trace、draw 等），與本次無關。
 
+## 追加：我的投影片分類沒有動畫、兩邊清單共用同一套程式（2026-11-12，使用者回報與指示）
+
+- 程式修正 commit：ad9bba519ce73f68770f5561aab686edbcf402fc
+- 原因：`library-organizer.js` 在分類標題（`<summary>`）加入之前就呼叫 `bindFolderAnimation`，函式找不到標題而直接返回，所以「我的投影片」的分類開合沒有動畫；範例清單是在標題加入後才綁定，所以正常。
+- 修改（使用者要求兩邊共用同一套邏輯與排版，改一邊另一邊同時生效）：
+  1. `library-ui.js` 新增 `createFolder({ title, count, open, emptyText, onToggle })`：建立分類區塊（`<details>`、名稱＋「共 N 份」、卡片格線、空白提示），組好後才綁定伸縮動畫。
+  2. 新增 `createFolderChip({ title, nav, getSection, beforeOpen, controls })`：工具列左側的分類捷徑（展開、標示選取 `aria-pressed`、捲動過去）。
+  3. `library-organizer.js` 與 `guest-gallery.js` 都改用這兩個函式；我的投影片只在回傳的標題上多加雙擊改名與垃圾桶，範例不加。兩邊的差異只剩內容（空白提示文字、範例捷徑會先清除搜尋）。我的投影片的分類捷徑因此也會標示目前選取。
+  - 版本：`library-ui.js?v=2`、`guest-gallery.js?v=8`、`library-organizer.js?v=14`。
+- 驗證：
+  - `library-folders` 新增檢查：我的投影片的自建分類、未分類，以及範例分類，點擊後都有進行中的動畫、收合後 `open=false` 且高度變小、再點一次回到原高度。（舊程式在我的投影片上不會有動畫，這項檢查會失敗。）
+  - `entrypoints` 新增 `library-ui.js` 在 `library-organizer.js` 之前載入的檢查；本分支相關斷言全部通過（其他失敗為基底既有的過期版本字串）。
+  - 相關測試 16 項通過（同上一節清單）。
+  - 3104 預覽（使用者帳號）只重新載入並收合／展開一次分類確認動畫：收合中途高度介於展開與收合之間，展開後回到原高度；未修改任何資料。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
