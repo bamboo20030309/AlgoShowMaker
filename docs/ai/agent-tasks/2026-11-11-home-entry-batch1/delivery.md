@@ -202,6 +202,20 @@
   - `library-folders`：改為以成功的版面儲存次數判斷完成（不再依賴提示文字），且每次成功後確認訊息列為空，包含「先失敗再成功」時錯誤訊息被清除；新增檢查 `#libraryLayoutMessage` 不存在、單擊分類名稱不進入編輯且分類維持展開、雙擊進入編輯；失敗情境改在 `#libraryMessage` 檢查。通過。
   - `home-navigation`、`auth-center`、`home-delete-dialog`、`deck-file-drop`、`sample-view-actions`、`mobile-ui`、`slide-library` 共 12 項通過；`entrypoints.test.js` 相關 24 條斷言單獨執行通過。
 
+## 追加：範例投影片與我的投影片同一套排版、分類伸縮動畫（2026-11-12，使用者指示）
+
+- 程式修正 commit：704d4142de773ad3e4f4befd5fc9dbcbc5dd45f0
+- 修改：
+  1. **範例清單改用同一條工具列**：`index.html` 的範例清單改為 `.library-toolbar`（左側分類捷徑、份數、放大鏡搜尋向左展開），只是沒有新增資料夾／新增投影片按鈕。因為範例清單是同一個元件，訪客首頁的範例欄也一起改成這條工具列（保留訪客標題與說明）。舊的分類列與搜尋列整列刪除；`#galleryMessage` 沒有訊息時不佔空間。
+  2. **範例分類標題與我的投影片相同**：名稱＋右側「共 N 份」；範例的分類名稱與卡片標題都不可編輯（沒有雙擊改名、沒有 `.is-editable` 樣式）。
+  3. **分類展開／收合伸縮動畫**：新增 `library-ui.js`，兩邊清單共用 `bindExpandingSearch`（放大鏡搜尋）與 `bindFolderAnimation`（`<details>` 高度動畫 220ms；動畫中再點一次會反向；偏好減少動態效果時直接切換）。`home.js` 改用共用搜尋。
+  4. CSS：工具列規則由 `#workspaceMinePanel` 擴大到 `.guest-gallery`，用兩個獨立選擇器（不用 `:is(#id, …)`，避免 ID 權重蓋掉訪客寬螢幕黏性工具列的 `top: -40px`）。
+  - 版本：`home.css?v=cards-4`、`home.js?v=cards-4`、`library-organizer.js?v=13`、`guest-gallery.js?v=7`、新增 `library-ui.js?v=1`（在 `guest-gallery.js` 之前載入）。
+- 驗證：
+  - 截圖探針（隔離伺服器、模擬登入）：範例分頁與我的投影片工具列同高同排；訪客寬螢幕捲動後工具列貼齊頂部列下緣；手機版分類換行、份數與搜尋在下一列；搜尋展開正常；範例分類名稱可編輯數為 0。分類動畫：收合中途高度介於展開與收合之間，結束後 `open=false`、`overflow` 復原；展開中途再點一次會回到收合。
+  - 測試修改：`guest-gallery-hints` 先點 `#gallerySearchToggleBtn` 再輸入；`library-folders` 的 `.library-search` 限定在 `#workspaceMinePanel`（頁面上現在有兩個）；`entrypoints` 更新版本並檢查 `library-ui.js` 在 `guest-gallery.js` 之前。
+  - `guest-gallery-hints`、`guest-gallery-contract`、`guest-card-cache`、`auth-center`、`home-navigation`、`library-folders`、`sample-view-actions`、`mobile-ui`、`deck-file-drop`、`home-delete-dialog`、`slide-library` 共 16 項通過。`entrypoints.test.js` 以逐條執行檢查：本分支相關斷言（91–97 行）全部通過；其餘失敗為基底既有的過期版本字串（slides runtime、trace、draw 等），與本次無關。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
