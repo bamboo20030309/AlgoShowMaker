@@ -65,7 +65,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           const flying = flightNodes.filter(node => {
             let opacity = 1; for (let parent = node; parent?.nodeType === 1; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
             return opacity > .01;
-          }).map(node => ({ ...metric(node), text: node.textContent }));
+          }).map(node => ({ ...metric(node), text: node.textContent,
+            aboveCell: Boolean(cell.querySelector('rect').compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) }));
           const adornments = [...cell.querySelectorAll('[data-trace-field-adornment]')]
             .filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent);
           return { values, positions, flying, travel: flightNodes.map(node => metric(node)), adornments, eventId: root.dataset.traceActiveEventId, text, center: metric(cell.querySelector('rect')).x,
@@ -111,6 +112,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
       assert.ok(report.samples.every(sample => !sample.text.startsWith(',') && !sample.text.endsWith(',') && !sample.text.includes(',,')),
         'hidden fields cannot leave dangling separators');
       assert.ok(report.samples.every(sample => sample.invalidFields === 0), 'field tspans must remain inside their text parent');
+      assert.ok(report.samples.every(sample => sample.flying.every(number => number.aboveCell)),
+        'falling field digits must remain above the opaque cell until the formal value takes over');
       if (kind === 'fresh' || kind === 'saved') {
         const writes = source.frames[from + 1].events.filter(event => event.type === 'write');
         for (const name of ['tree', 'lazy']) {

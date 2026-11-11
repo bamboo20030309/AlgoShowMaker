@@ -2865,6 +2865,13 @@
         [...promoted].forEach(([node, record]) => {
           if (!desired.has(node) || !node.isConnected) restore(node, record);
         });
+        // A cell can enter this layer after a transfer has already started.
+        // Keep transient digits above those later cell hosts on every sync;
+        // insertion order alone otherwise lets an opaque cell hide the digit
+        // before it reaches its destination.
+        promoted.forEach((record, node) => {
+          if (record.runtime && node.parentNode === layer) layer.append(node);
+        });
       },
       clear() {
         [...promoted].forEach(([node, record]) => restore(node, record));
@@ -11243,10 +11250,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-340';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-341';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-340', play, cancel, updateEventAvailability,
+    build: 'trace-341', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
