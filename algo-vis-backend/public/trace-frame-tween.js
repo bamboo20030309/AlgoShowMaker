@@ -4662,7 +4662,6 @@
         if (candidates.every(Boolean)) {
           transfers = candidates;
           literalCoversTarget = literalCount > 0 || candidates.some(item => item?.coversTarget === true);
-          if (literalCoversTarget && targetText && !fieldLayout) targetText.setAttribute('opacity', '0');
         }
         else candidates.filter(Boolean).forEach(item => item.remove());
       }
@@ -4715,11 +4714,8 @@
       update(elapsed) {
         const frameProgress = easeOutCubic(timedProgress(elapsed, ASSIGN_TIMING.frame));
         fieldLayout?.update(frameProgress, literalCoversTarget);
-        if (fieldLayout && literalCoversTarget && targetText && !landed) {
-          if (frameProgress >= 1) targetText.setAttribute('opacity', '0');
-          else if (originalOpacity == null) targetText.removeAttribute('opacity');
-          else targetText.setAttribute('opacity', originalOpacity);
-        }
+        // Preserve the previous value throughout flight. The destination is
+        // replaced only in landValue(), in the same tick that removes the copy.
         // The transfer must land at the same commit time used by replay and
         // conditional styles, including the initial frame phase for scalars.
         const dropStart = ASSIGN_TIMING.frame
@@ -11250,10 +11246,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-341';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-342';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-341', play, cancel, updateEventAvailability,
+    build: 'trace-342', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

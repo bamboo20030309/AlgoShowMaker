@@ -136,8 +136,12 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           assert.ok(Math.max(...descent.map(number => number.y)) - Math.min(...descent.map(number => number.y)) > 20,
             'constant or hidden-source digits must actually fall from above');
           assert.ok(Math.abs(descent.at(-1).y - target.digitY) < .5, 'falling number reaches the correct field baseline before commit');
-          if (name === 'tree') assert.ok(travelling.filter(sample => sample.flying.length).every(sample => !sample.positions.tree.visible),
-            'an in-place result cannot overlap the old tree value');
+          if (name === 'tree') {
+            const beforeCommit = report.samples.filter(sample => sample.eventId === event.id && sample.at * speed < commit);
+            assert.ok(beforeCommit.length > 1);
+            assert.ok(beforeCommit.every(sample => sample.positions.tree.visible && sample.values.tree === '2'),
+              'old value 2 must stay visible until falling 5 arrives and commits');
+          }
           if (name === 'lazy') {
             const active = report.samples.filter(sample => sample.eventId === event.id);
             assert.ok(active.some(sample => sample.adornments.includes(',') && sample.adornments.includes('+') && !sample.flying.length),

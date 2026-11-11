@@ -21,7 +21,8 @@ test('constant and invisible sources fall from above for assignment and compound
         const root = document.getElementById('asm-trace-root'), inverse = root.getScreenCTM().inverse();
         const target = root.querySelector(`[data-trace-object-key="${CSS.escape(id + '#0')}"] text[data-trace-content-role="value"]`);
         const bounds = target.getBoundingClientRect(), center = new DOMPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2).matrixTransform(inverse);
-        return { event: root.dataset.traceActiveEventId, value: target.textContent, targetX: center.x,
+        let opacity = 1; for (let node = target; node?.nodeType === 1; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+        return { event: root.dataset.traceActiveEventId, value: target.textContent, visible: opacity > .01, targetX: center.x,
           groups: [...root.querySelectorAll('.asm-trace-assign-literal-value')].map(group => {
             const text = group.querySelector('text'), box = text.getBoundingClientRect();
             const point = new DOMPoint(box.x + box.width / 2, box.y + box.height / 2).matrixTransform(inverse);
@@ -52,6 +53,8 @@ test('constant and invisible sources fall from above for assignment and compound
       const samples = report.samples.filter(sample => sample.event === event.id && sample.groups.length);
       assert.ok(samples.length > 3);
       assert.ok(samples.every(sample => sample.groups[0].text === ['3', '2', '7', '7'][index]), 'retain the actual constant/hidden operand');
+      assert.ok(samples.every(sample => sample.visible && sample.value === ['5', '3', '5', '7'][index]),
+        'the old destination value remains visible while its incoming operand is still in flight');
       const ys = samples.map(sample => sample.groups[0].y);
       assert.ok(Math.max(...ys) - Math.min(...ys) > 20, 'number must travel down rather than stay in place');
       assert.ok(ys.every((value, i) => !i || value >= ys[i - 1] - .01), 'descent is monotonic');
