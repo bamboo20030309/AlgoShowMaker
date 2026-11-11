@@ -23,6 +23,7 @@
   let syntaxSource = null;
   let syntaxByLine = new Map();
   let transitionTimers = [];
+  let transitionAnimations = [];
   let transitionFinalPage = null;
   let transitionPromise = Promise.resolve();
   let resolveTransition = null;
@@ -505,13 +506,31 @@
     return page;
   }
 
-  function scheduleTransition(callback, delay) {
-    transitionTimers.push(setTimeout(callback, delay));
+  function scheduleTransition(callback, delay, page) {
+    // Drive CSS transitions from logical playback time. Paused/hidden pages
+    // consume no time, and speed changes apply without restarting the scroll.
+    page?.getBoundingClientRect();
+    transitionAnimations = page?.getAnimations?.({ subtree: true }) || [];
+    transitionAnimations.forEach(animation => { animation.pause(); animation.currentTime = 0; });
+    let previous = performance.now(), elapsed = 0;
+    const tick = now => {
+      const delta = Math.max(0, now - previous); previous = now;
+      if (!document.hidden && !window.ASMTraceFrameTween?.isPaused?.()) {
+        const rate = Math.max(.05, Number(window.asmGetAnimationPlaybackRate?.()) || 1);
+        elapsed += delta * rate;
+        transitionAnimations.forEach(animation => { animation.currentTime = elapsed; });
+      }
+      if (elapsed >= delay) callback();
+      else transitionTimers = [requestAnimationFrame(tick)];
+    };
+    transitionTimers = [requestAnimationFrame(tick)];
   }
 
   function finishPageTransition() {
-    transitionTimers.forEach(timer => clearTimeout(timer));
+    transitionTimers.forEach(timer => cancelAnimationFrame(timer));
     transitionTimers = [];
+    transitionAnimations.forEach(animation => animation.cancel());
+    transitionAnimations = [];
     resolveTransition?.();
     resolveTransition = null;
     if (transitionFinalPage && body) body.replaceChildren(transitionFinalPage);
@@ -672,12 +691,13 @@
     if (Math.abs(targetOffset - initialOffset) >= 1) body.classList.add('is-code-scrolling');
     expandedPage.style.transform = `translateY(${initialOffset}px)`;
     requestAnimationFrame(() => {
+      if (transitionFinalPage !== nextPage) return;
       expandedPage.classList.remove('is-transition-preparing');
       expandedPage.classList.add('is-transition-scrolling');
       expandedPage.style.transform = `translateY(${targetOffset}px)`;
+      scheduleTransition(finishPageTransition, normalizeScrollMs(currentDocument?.studio?.codePanelScrollMs) + 40, expandedPage);
     });
     transitionPromise = new Promise(resolve => { resolveTransition = resolve; });
-    scheduleTransition(finishPageTransition, normalizeScrollMs(currentDocument?.studio?.codePanelScrollMs) + 40);
     return true;
   }
 

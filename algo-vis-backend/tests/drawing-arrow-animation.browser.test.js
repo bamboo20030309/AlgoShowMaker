@@ -20,8 +20,8 @@ test('loop arrows move, enter and exit independently of runtime event switches',
     const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+'/algorithm.html');await page.waitForFunction(()=>window.ace && window.ASMTracePlayer);
-    const code=fs.readFileSync(path.join(__dirname, 'fixtures/style-replay-sieve.cpp'),'utf8');
-    await page.evaluate(code=>{ace.edit('editor').setValue(code,-1);document.querySelector('#inputArea').value='30';},code);
+    const code=fs.readFileSync(path.join(__dirname, 'fixtures/style-replay-sieve.cpp'),'utf8').replace(/\r\n?/g,'\n');
+    await page.evaluate(code=>{window.ASMDefaultAlgorithm?.cancel?.('test-fixture');ace.edit('editor').setValue(code,-1);document.querySelector('#inputArea').value='30';},code);
     await page.click('#runBtn');await page.waitForFunction(code=>window.ASMTracePlayer.getDocument()?.sourceCode===code,code,{timeout:30000});
     const result=await page.evaluate(async()=>{
       const player=window.ASMTracePlayer,source=JSON.parse(JSON.stringify(player.getDocument()));

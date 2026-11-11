@@ -323,13 +323,14 @@
       const itemCount = Math.max(0, ...fieldSources.map(source => source.entry?.data?.items?.length || 0));
       fieldParts = Array.from({ length: itemCount }, (_, index) => fieldSources.flatMap(source => {
         const item = source.entry?.data?.items?.[index];
-        if (item == null || hiddenField(rendererOptions, source.name, item)) return [];
+        if (item == null) return [];
         return [{
           variableId: source.variableId,
+          hidden: hiddenField(rendererOptions, source.name, item),
           text: formattedItem(item, rendererOptions, source.name, source.variableId)
         }];
       }));
-      values = fieldParts.map(parts => parts.map(part => part.text).join(separator));
+      values = fieldParts.map(parts => parts.filter(part => !part.hidden).map(part => part.text).join(separator));
     } else {
       values = originalValues(
         entry, rendererOptions, context.variable?.name || '', context.variableId
@@ -480,13 +481,17 @@
           contentText.setAttribute('data-trace-content-role', indexMode === 2 ? 'index' : 'value');
           if (!rendererOptions.display && fieldParts[logicalIndex]?.length && indexMode !== 2) {
             contentText.textContent = '';
+            let hasVisibleField = false;
             fieldParts[logicalIndex].forEach((part, partIndex) => {
-              if (partIndex) contentText.append(svg('tspan', { 'data-trace-field-separator': '1' }, separator));
+              if (partIndex) contentText.append(svg('tspan', { 'data-trace-field-separator': '1',
+                display: !part.hidden && hasVisibleField ? 'inline' : 'none' }, separator));
               const fieldKey = `${objectKeyForVariable(context.frame, part.variableId)}#${logicalIndex}`;
               const fieldText = svg('tspan', {
                 'data-trace-field-variable': part.variableId,
+                display: part.hidden ? 'none' : 'inline',
                 'data-trace-index': logicalIndex
               }, part.text);
+              if (!part.hidden) hasVisibleField = true;
               if (part.variableId !== fieldSources[0]?.variableId) {
                 markSelectable(fieldText, fieldKey, context, context.variableId);
               }
@@ -2191,6 +2196,14 @@
           // locals reuse variable keys across activations, so looking up an
           // old live `part` key in the new scene can incorrectly return the
           // newly-created descendant and drag an ancestor edge with it.
+          const liveKey = tween.previous.dataset[`traceArrow${role}Key`];
+          const liveBox = tween.followLive && model.presentedBounds(elements.get(liveKey), root,
+            tween.previous.dataset[`traceArrow${role}Cell`] !== 'true');
+          if (liveBox) {
+            const point = anchorPoint(liveBox, tween.previous.dataset[`traceArrow${role}Anchor`]);
+            return { x: point.x + Number(tween.previous.dataset[`traceArrow${role}Dx`] || 0),
+              y: point.y + Number(tween.previous.dataset[`traceArrow${role}Dy`] || 0) };
+          }
           const x = Number(tween.previous.dataset[`traceArrow${role}X`]);
           const y = Number(tween.previous.dataset[`traceArrow${role}Y`]);
           if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
@@ -2784,9 +2797,14 @@
     content.querySelectorAll('[data-trace-object-key]').forEach(element => {
       const key = element.dataset.traceObjectKey;
       if (!key) return;
-      const box = measuredBox(element, null);
+      let measured = element;
+      let box = measuredBox(element, null);
+      if ((!box || box.width <= 0 || box.height <= 0) && element.matches?.('tspan[data-trace-field-variable]')) {
+        measured = element.closest('g[data-trace-index]');
+        box = measured && measuredBox(measured, null);
+      }
       if (!box) return;
-      const shift = translateWithin(element, content);
+      const shift = translateWithin(measured, content);
       placements.set(key, {
         x: baseX + box.x + shift.x,
         y: baseY + box.y + shift.y,
@@ -5939,9 +5957,9 @@
 
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
     const current = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
-    const trails = window.ASMTraceModel?.returnTrailArrows?.(document, frame) || [];
+    const trails = options.onlyCurrent ? [] : window.ASMTraceModel?.returnTrailArrows?.(document, frame) || [];
     const snapshotsById = new Map((document.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
-    const retained = (frame.snapshotIds || []).flatMap(id => snapshotsById.get(id)?.arrows || []);
+    const retained = options.onlyCurrent ? [] : (frame.snapshotIds || []).flatMap(id => snapshotsById.get(id)?.arrows || []);
     const arrows = [...new Map([...trails, ...retained, ...current]
       .map(arrow => {
         // The same directive runs once per recursive activation. Collapsing
@@ -5974,6 +5992,77 @@
     });
     renderArrowModels(rootSvg, root, document, frame, placements, elements,
       materialized.map(arrow => ({ ...arrow, source: 'directive' })), options, 'directive');
+  }
+
+  function createDirectivePresenter(document, frame, root, placements, elements, records) {
+    const owners = [];
+    for (const record of records.filter(item => item.kind !== 'styles')) {
+      const descriptor = record.descriptor, textKey = `text:${descriptor.id}`;
+      const activation = descriptor.trailActivationId || (descriptor.until === 'return' ? frame.source?.recursionActivationId : '');
+      const original = record.kind === 'texts' ? elements.get(textKey)
+        : elements.get(`arrow:directive:${descriptor.id}${activation ? '@' + activation : ''}`)
+        || [...root.querySelectorAll('.asm-trace-directive-arrows [data-trace-arrow-identity]')]
+          .find(arrow => arrow.dataset.traceArrow === descriptor.id || arrow.dataset.traceArrowId === descriptor.id || arrow.dataset.traceArrowIdentity === descriptor.id
+            || arrow.getAttribute('data-trace-object-key') === `arrow:directive:${descriptor.id}`);
+      const host = svg('g', { class: 'asm-trace-dependent-presentation', 'data-trace-follow-kind': record.kind,
+        'data-trace-source-variable-ids': JSON.stringify(record.ids),
+        'data-trace-source-lifetimes': JSON.stringify(record.ids.map(id => ({ id,
+          identity: frame.state[id]?.identity, lifetime: frame.state[id]?.lifetime }))) });
+      root.append(host);
+      const originalVisibility = original?.getAttribute('visibility');
+      original?.setAttribute('visibility', 'hidden');
+      const originalElements = new Map(), originalPlacements = new Map();
+      let signature = '', arrow = null, appearAt = null;
+      const draw = snapshot => {
+        host.replaceChildren();
+        const projected = { ...snapshot, texts: record.kind === 'texts' ? [descriptor] : [],
+          arrows: record.kind === 'arrows' ? [descriptor] : [], snapshotIds: [] };
+        const localElements = new Map(elements), localPlacements = new Map(placements);
+        if (record.kind === 'texts') {
+          renderFrameTexts(host, document, projected, Number(original?.dataset.tracePositionY) || 0,
+            localPlacements, localElements, { idPrefix: 'trace-follow', interactive: true });
+          applySemanticTextBindings(document, projected, localPlacements, localElements);
+          applyObjectColorStyles(document, projected, localElements);
+          applyVisibilityStates(document, projected, new Map([...localElements]
+            .filter(([key]) => key === textKey || key.startsWith(textKey + ':'))));
+          const object = host.querySelector('.asm-trace-text-object');
+          if (object) object.dataset.traceSourceVariableIds = JSON.stringify(record.ids);
+          for (const [key, element] of localElements) if (key === textKey || key.startsWith(textKey + ':')) {
+            if (!originalElements.has(key)) { originalElements.set(key, elements.get(key)); originalPlacements.set(key, placements.get(key)); }
+            elements.set(key, element); placements.set(key, localPlacements.get(key));
+          }
+        } else renderDirectiveArrows(root.ownerSVGElement, host, document, projected, localPlacements, localElements,
+          { idPrefix: 'trace-follow', interactive: true, onlyCurrent: true });
+        const arrow = host.querySelector('[data-trace-arrow-identity]');
+        if (arrow) arrow.dataset.traceSourceVariableIds = JSON.stringify(record.ids);
+        return arrow;
+      };
+      owners.push({ record, host, update(elapsed) {
+        const index = record.steps.findLastIndex(step => elapsed >= step.start), step = record.steps[index];
+        if (signature !== String(index)) {
+          signature = String(index);
+          const old = record.kind === 'arrows' && step ? draw(step.before)?.cloneNode(true) : null;
+          const hadText = Boolean(host.querySelector('.asm-trace-text-object'));
+          arrow = draw(step ? step.after : record.initial);
+          if (record.kind === 'texts' && !hadText && index >= 0) appearAt = step.start;
+          if (arrow && old && step.end > step.start) arrow._asmArrowTween = {
+            previous: old, targetColor: arrow.getAttribute('stroke'), targetWidth: Number(arrow.getAttribute('stroke-width')),
+            color: (a, b) => b, progress: 0, followLive: true };
+        }
+        if (arrow?._asmArrowTween) arrow._asmArrowTween.progress = Math.max(0, Math.min(1,
+          (elapsed - step.start) / Math.max(1, step.end - step.start)));
+        if (record.kind === 'texts') host.setAttribute('opacity', appearAt == null ? '1'
+          : String(Math.max(0, Math.min(1, (elapsed - appearAt) / 220))));
+      }, remove() {
+        host.remove();
+        if (original) {
+          if (originalVisibility == null) original.removeAttribute('visibility'); else original.setAttribute('visibility', originalVisibility);
+        }
+        originalElements.forEach((element, key) => { if (element) elements.set(key, element); else elements.delete(key); });
+        originalPlacements.forEach((placement, key) => { if (placement) placements.set(key, placement); else placements.delete(key); });
+      } });
+    }
+    return { update(elapsed) { owners.forEach(owner => owner.update(elapsed)); }, remove() { owners.forEach(owner => owner.remove()); } };
   }
 
   function renderDecorations(root, document, frame, startY, placements, elements, options = {}) {
@@ -7206,11 +7295,11 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-285';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-286';
   window.ASMTraceRenderers = {
-    build: 'trace-285', sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-286', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
-    displayValue, formatDisplayValue, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
+    displayValue, formatDisplayValue, hiddenField, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
     currentPlacement, currentAnchorForKey, currentObjectKeys, currentArrowTargets, cameraObjectKey, frameAnchorForKey, anchorPoint,
     refreshThumbnailCamera, showMainCameraFrameInThumbnail, keepUnionPlacement,

@@ -2127,8 +2127,11 @@
     }
     for (const options of Object.values(frame?.rendererOptions || {})) {
       const entry = options?.format?.entries?.find(item => item.variableId === variableId);
-      if (!entry) continue;
-      return window.ASMTraceRenderers.formatDisplayValue(value, options, entry.field, variableId);
+      const fieldIndex = options?.fields?.variableIds?.indexOf(variableId) ?? -1;
+      if (!entry && fieldIndex < 0) continue;
+      const name = entry?.field || options.fields.names?.[fieldIndex] || '';
+      if (window.ASMTraceRenderers.hiddenField?.(options, name, value)) return '';
+      return window.ASMTraceRenderers.formatDisplayValue(value, options, name, variableId);
     }
     return displayEventValue(value);
   }
@@ -2776,6 +2779,9 @@
     const directlyAnimatedVisual = element => {
       if (!element || infrastructure(element)) return null;
       if (element.closest?.('.asm-trace-pointer-layer')) return null;
+      // Field tspans must remain children of their <text>. Moving one into a
+      // g wrapper makes it invalid SVG and also removes it from its siblings.
+      if (element.matches?.('tspan[data-trace-field-variable]')) return element.closest('g[data-trace-index]');
       const cell = element.matches?.('[data-trace-index]')
         ? element : element.closest?.('[data-trace-index]');
       if (cell && root.contains(cell)) return cell;
@@ -3197,7 +3203,7 @@
   }
 
   function assignableValueText(element, variableId = '') {
-    const text = element?.matches?.('text')
+    const text = element?.matches?.('text, tspan[data-trace-field-variable]')
       ? element
       : element?.querySelector?.('text');
     if (!text || text.dataset?.traceContentRole === 'index'
@@ -3494,9 +3500,10 @@
       ))) return;
       const element = options.currentElements?.get?.(track.key);
       if (!element || element.dataset?.traceSourceVariableId) return;
-      const cell = element.closest?.('[data-trace-index]') || element;
+      const cell = element.matches?.('tspan[data-trace-field-variable]')
+        ? element.closest('g[data-trace-index]') : element.closest?.('[data-trace-index]') || element;
       const variableId = variableOwnerId(cell);
-      const targetText = assignableValueText(element, variableId);
+      const targetText = assignableValueText(element, track.target?.variableId || variableId);
       const fixedIndex = !targetText
         && Boolean(element.querySelector?.('text[data-trace-content-role="index"]'));
       if (!targetText && !fixedIndex) return;
@@ -3514,7 +3521,7 @@
         const local = Number(cell.getAttribute(attribute));
         if (Number.isFinite(local)) displayLocals[name] = local;
       }
-      const styleRect = conditionalStyleVariables.has(variableId)
+      const styleRect = fieldVariableId === variableId && conditionalStyleVariables.has(variableId)
         && Number.isInteger(index)
         ? cell.querySelector?.(':scope > rect') || null
         : null;
@@ -3821,10 +3828,28 @@
       track.applied = displayed;
       if (styleTargets.length || indexTracks.length) stylesDirty = true;
       if (track.targetCell) track.targetCell.dataset.traceDataValue = displayed;
-      else track.targetText.textContent = displayed;
+      else {
+        track.targetText.textContent = displayed;
+        if (track.targetText.matches?.('tspan[data-trace-field-variable]')) {
+          track.targetText.setAttribute('display', displayed === '' ? 'none' : 'inline');
+          let hasVisibleField = false;
+          const parent = track.targetText.parentElement;
+          for (const child of parent.children) {
+            if (child.hasAttribute('data-trace-field-separator')) {
+              const next = child.nextElementSibling;
+              child.setAttribute('display', hasVisibleField && next?.getAttribute('display') !== 'none' ? 'inline' : 'none');
+            } else if (child.hasAttribute('data-trace-field-variable') && child.getAttribute('display') !== 'none') hasVisibleField = true;
+          }
+        }
+      }
     };
     const update = elapsed => {
       styleElapsed = Number(elapsed) || 0;
+      const followedStyleFrame = options.directiveFollowPlan?.styleFrameAt(elapsed);
+      if (followedStyleFrame && followedStyleFrame !== styleFrame) {
+        styleFrame = followedStyleFrame;
+        stylesDirty = true;
+      }
       bitRows.forEach(entry => {
         let value = entry.track.initial;
         entry.track.steps.forEach(step => {
@@ -4486,6 +4511,9 @@
       originalOpacity = targetText?.getAttribute?.('opacity');
       const targetTemplate = operand.element.getAttribute?.('data-trace-display-template');
       const formatTargetValue = (value, fallback) => {
+        if (targetText?.matches?.('tspan[data-trace-field-variable]')) {
+          return displayEventFieldValue(value, eventFrame, targetText.dataset.traceFieldVariable);
+        }
         if (typeof targetTemplate !== 'string') return fallback;
         const locals = {};
         for (const name of ['index', 'row', 'column']) {
@@ -4791,7 +4819,8 @@
     operands.forEach(operand => {
       const element = operand?.element;
       const parent = element?.parentNode;
-      if (operand?.marker || !element || !parent || seen.has(element)) return;
+      if (operand?.marker || !element || !parent || seen.has(element)
+        || element.matches?.('tspan[data-trace-field-variable]')) return;
       seen.add(element);
       const placeholder = document.createComment('asm-trace-compare-order');
       parent.insertBefore(placeholder, element);
@@ -5005,6 +5034,118 @@
           bindings.get(target).push(key);
         });
         return bindings;
+      }
+    };
+  }
+
+  // Author expressions follow the same chronological checkpoints as values
+  // and pointers. Dependency discovery is shared by text, arrows and C2 styles;
+  // it is performed once per playback, never by polling final DOM values.
+  function createDirectiveFollowPlan(trace, frame, replay, timeline, direction = 1) {
+    const execution = createExecutionContext(trace, frame, replay);
+    const byEvent = new Map(timeline.flatMap(slot => [slot.event, ...(slot.replayMemberEvents || [])]
+      .filter(Boolean).map(event => [event, slot])));
+    const lets = new Map((frame.lets || []).map(binding => [binding.name, binding.expression]));
+    const variableId = name => Object.keys(frame.state || {}).find(id =>
+      trace.variables?.[id]?.name === name && trace.variables[id].functionName === frame.source?.function)
+      || Object.keys(frame.state || {}).find(id => (frame.state[id]?.name || trace.variables?.[id]?.name) === name);
+    const identifiers = (input, seen = new Set()) => {
+      const result = new Set();
+      const visit = value => {
+        if (typeof value === 'string') {
+          const source = value.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '');
+          for (const name of source.match(/[A-Za-z_]\w*/g) || []) {
+            if (lets.has(name) && !seen.has(name)) {
+              seen.add(name); identifiers(lets.get(name), seen).forEach(id => result.add(id));
+            }
+            const id = variableId(name); if (id) result.add(id);
+          }
+        } else if (Array.isArray(value)) value.forEach(visit);
+        else if (value && typeof value === 'object') Object.values(value).forEach(visit);
+      };
+      visit(input); return result;
+    };
+    const boundFrame = (snapshot, ids) => {
+      // Resolve same-named recursive/helper locals by their declaration ID.
+      const state = {};
+      ids.forEach(id => { if (snapshot.state[id]) state[id] = snapshot.state[id]; });
+      Object.entries(snapshot.state).forEach(([id, entry]) => { if (!state[id]) state[id] = entry; });
+      return { ...snapshot, state };
+    };
+    const records = [];
+    let warned = false;
+    for (const kind of ['texts', 'arrows', 'styles']) {
+      for (const descriptor of window.ASMTraceModel?.drawingDirectives?.(trace, frame, kind) || frame[kind] || []) {
+        const selector = descriptor.selector || descriptor.selection || {};
+        const expressions = kind === 'texts'
+          ? [(descriptor.segments || []).flatMap(segment => segment.kind === 'expression' ? [segment.expression]
+            : [...String(segment.text || '').matchAll(/\$\{([^{}]+)\}/g)].map(match => match[1])), descriptor.when,
+            descriptor.binding?.indexExpressions, descriptor.binding?.indexExpression, descriptor.binding?.selection]
+          : kind === 'arrows' ? [descriptor.from?.indexExpressions, descriptor.from?.indexExpression,
+            descriptor.from?.selection, descriptor.to?.indexExpressions, descriptor.to?.indexExpression,
+            descriptor.to?.selection, descriptor.when || descriptor.condition]
+            : selector;
+        const ids = identifiers(expressions);
+        Object.keys(descriptor.drawLocals || {}).forEach(name => { const id = variableId(name); if (id) ids.delete(id); });
+        // C2 follows indices/ranges only. Fixed selectors retain frame semantics.
+        if (!ids.size || Number(direction) < 0) continue;
+        const unknown = replay.checkpoints.some(checkpoint => ['assign', 'write', 'swap', 'sequence-operation'].includes(checkpoint.event.type)
+          && (checkpoint.event.targets || []).some(target => ids.has(target.variableId) && target.role !== 'source')
+          && (!checkpoint.mutations.length || ['assign', 'write'].includes(checkpoint.event.type)
+            && (!Object.hasOwn(checkpoint.event.payload || {}, 'before') || !Object.hasOwn(checkpoint.event.payload || {}, 'after'))));
+        if (unknown) {
+          if (!warned) window.ASMCompileWarnings?.report?.('繪圖事件跟隨', '舊動畫缺少完整事件前後值，依賴文字／箭頭／樣式暫用幀末畫面；請重新 RUN。');
+          warned = true; continue;
+        }
+        const changes = replay.checkpoints.filter(checkpoint => checkpoint.mode !== 'ignored'
+          && (checkpoint.event.targets || []).some(target => ids.has(target.variableId) && target.role !== 'source')
+          && checkpoint.mutations.some(mutation => mutation.kind === 'value' || mutation.kind === 'presence'));
+        if (!changes.length) continue;
+        const missing = changes.some(checkpoint => checkpoint.mutations.some(mutation => mutation.kind === 'value'
+          && (mutation.before === undefined || mutation.after === undefined)));
+        if (missing) {
+          window.ASMCompileWarnings?.report?.('繪圖事件跟隨', '繪圖依賴缺少事件前後值，暫用幀末畫面；請重新 RUN。');
+          continue;
+        }
+        const initial = boundFrame(execution.frame(changes[0].event, 'before'), ids);
+        const steps = changes.map(checkpoint => {
+          const slot = byEvent.get(checkpoint.event);
+          const animated = checkpoint.mode === 'animated';
+          const start = kind === 'arrows' && animated
+            ? Number(slot?.motionStart ?? slot?.start ?? checkpoint.commitMs) : Number(checkpoint.commitMs);
+          return { eventId: checkpoint.eventId, start, end: start + (kind === 'arrows' && animated ? MOTION_TIME.move : 0),
+            commit: Number(checkpoint.commitMs), before: boundFrame(execution.frame(checkpoint.event, 'before'), ids),
+            after: boundFrame(execution.frame(checkpoint.event, 'after'), ids) };
+        });
+        records.push({ kind, descriptor, ids: [...ids], initial, steps });
+      }
+    }
+    const styleRecords = new Map(records.filter(record => record.kind === 'styles').map(record => [record.descriptor.id, record]));
+    const at = (record, elapsed) => record.steps.filter(step => elapsed >= step.commit).at(-1)?.after || record.initial;
+    let lastSignature = '', styleFrame = frame;
+    return {
+      records,
+      styleFrameAt(elapsed) {
+        const signature = [...styleRecords.values()].map(record => record.steps.filter(step => elapsed >= step.commit).length).join(',');
+        if (!styleRecords.size || signature === lastSignature && styleFrame !== frame) return styleFrame;
+        lastSignature = signature;
+        styleFrame = { ...frame, styles: (window.ASMTraceModel?.drawingDirectives?.(trace, frame, 'styles') || frame.styles || []).map(style => {
+          const record = styleRecords.get(style.id); if (!record) return style;
+          const snapshot = at(record, elapsed);
+          const resolveSelector = value => {
+            if (Array.isArray(value)) return value.map(resolveSelector);
+            if (!value || typeof value !== 'object') return value;
+            return Object.fromEntries(Object.entries(value).map(([key, field]) => {
+              if (key.endsWith('Expression') && typeof field === 'string') {
+                const resolved = window.ASMTraceRules.resolveExpression(trace, snapshot, field, style.drawLocals);
+                return [key, resolved == null ? field : String(resolved)];
+              }
+              return [key, resolveSelector(field)];
+            }));
+          };
+          return { ...style, selector: resolveSelector(style.selector) };
+        }) };
+        return styleFrame;
       }
     };
   }
@@ -8952,12 +9093,14 @@
       }
     });
     let resolveRun = null;
+    let directivePresentation = null;
     const completion = new Promise(resolve => { resolveRun = resolve; });
     currentCompletion = completion;
     playbackPaused = false;
     const finishRun = () => {
       if (!resolveRun) return;
       animationEffectLayer.clear();
+      directivePresentation?.remove();
       [...cellTextScaleControllers].forEach(controller => controller.remove(runId !== activeRun));
       newArrows.forEach(({ element }) => {
         const tween = element._asmArrowTween;
@@ -10209,8 +10352,20 @@
         endMs
       );
     }
+    const directiveFollowPlan = createDirectiveFollowPlan(traceDocument, eventFrame,
+      forwardReplayPlan, playbackEventTimeline, options.direction);
+    directivePresentation = window.ASMTraceRenderers?.createDirectivePresenter?.(
+      traceDocument, frame, root, currentPlacements, currentElements, directiveFollowPlan.records);
+    directivePresentation?.update(0);
+    playbackPlan.directiveCheckpoints = directiveFollowPlan.records.map(record => ({
+      kind: record.kind, id: record.descriptor.id, variableIds: record.ids,
+      steps: record.steps.map(({ before, after, ...step }) => step)
+    }));
+    playbackPlan.totalDurationMs = Math.max(playbackPlan.totalDurationMs,
+      ...directiveFollowPlan.records.flatMap(record => record.steps.map(step => step.end)));
     const events = eventSequence({
       ...options,
+      directiveFollowPlan,
       outgoingPointerEntries: ghosts.filter(item => item.markerVisual && !item.retainedByEnteringKeep
         && !entries.some(entry=>entry.element?.dataset?.tracePointerInstanceId
           && entry.element.dataset.tracePointerInstanceId===item.markerVisual.dataset.tracePointerInstanceId))
@@ -10328,8 +10483,9 @@
       let wallDelta = Math.max(0, now - previousTick);
       previousTick = now;
       if (codeTransitionElapsed < initialDelay) {
-        const delayDelta = Math.min(wallDelta, initialDelay - codeTransitionElapsed);
-        codeTransitionElapsed += delayDelta;
+        const codeRate = animationPlaybackRate();
+        const delayDelta = Math.min(wallDelta, (initialDelay - codeTransitionElapsed) / codeRate);
+        codeTransitionElapsed += delayDelta * codeRate;
         wallDelta -= delayDelta;
       }
       // Sample speed only on entering the next event. Split a long rAF delta
@@ -10672,6 +10828,7 @@
         else element.removeAttribute('transform');
       });
       events?.syncPositions?.();
+      directivePresentation?.update(elapsed);
       const arrowProgress = easeOutCubic(clamp01((elapsed - initialDelay) / duration));
       newArrows.forEach(({ element }) => {
         const growthClock = !element._asmArrowTween && [element.dataset.traceArrowFromKey, element.dataset.traceArrowToKey]
@@ -10991,10 +11148,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-336';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-337';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-336', play, cancel, updateEventAvailability,
+    build: 'trace-337', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
@@ -11020,7 +11177,7 @@
     markerLifetimeActiveAtEvent, detachedMarkerPopupPoint,
     visualLifecycleKind, visualLifecycleOffsetY, composeLifecycleOpacity, removedVisualStartMs,
     relativeMotionDelta, shouldAnimateObjectEntrance, createAnimationEffectLayer,
-    createForwardReplayPlan, createExecutionContext, prepareForwardValues,
+    createForwardReplayPlan, createExecutionContext, createDirectiveFollowPlan, prepareForwardValues,
     assignmentTransferOperator, formatAssignmentTransferValue,
     bitShiftTargets, createBitShiftEffect, bitwisePlan, createBitwiseEffect
   };
