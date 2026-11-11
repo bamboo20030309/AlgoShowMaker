@@ -32,7 +32,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/algorithm.html?asmEmbed=runtime'); await page.waitForFunction(() => window.ASMTracePlayer);
   for (const [kind, source, from, index] of [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17],
-    ['fresh-set', trace, 59, 5], ['saved-set', savedTrace(body, animation), 59, 5], ['reset', reset, 0, 1], ['left', left, 0, 1]]) {
+    ['fresh-set', trace, 59, 5], ['saved-set', savedTrace(body, animation), 59, 5],
+    ['fresh-clear', trace, 63, 6], ['saved-clear', savedTrace(body, animation), 63, 6], ['reset', reset, 0, 1], ['left', left, 0, 1]]) {
     for (const speed of [1, 4]) {
       const report = await page.evaluate(async ({ trace, from, index, speed }) => {
         const doc = ASMTracePlayer.apply(JSON.parse(JSON.stringify(trace)));
@@ -105,13 +106,29 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
       const expected = kind === 'reset'
         ? [{ tree: '2', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '+3' },
           { tree: '9', sets: '=7', lazy: '+3' }, { tree: '9', sets: '=7', lazy: '-2' },
+          { tree: '9', sets: '=7', lazy: '0' },
           { tree: '9', sets: '', lazy: '' }]
         : kind.endsWith('-set') ? [{ tree: '15', sets: '', lazy: '+3' }, { tree: '10', sets: '', lazy: '+3' },
           { tree: '10', sets: '=5', lazy: '' }]
+        : kind.endsWith('-clear') ? [{ tree: '30', sets: '', lazy: '+3' }, { tree: '30', sets: '', lazy: '0' },
+          { tree: '30', sets: '', lazy: '' }]
         : kind === 'left' ? [{ tree: '2', sets: '', lazy: '+3' }, { tree: '9', sets: '', lazy: '+3' }]
           : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
       assert.deepEqual(states, expected, 'every field must commit in runtime order without overwriting siblings');
       assert.deepEqual(report.final.values, expected.at(-1)); assert.deepEqual(report.reopened.values, expected.at(-1));
+      if (kind.endsWith('-clear')) {
+        const resetEvent = source.frames[from + 1].events.find(event => event.expression === 'lazy[now] = 0');
+        const checkpoint = report.plan.forwardReplay.checkpoints.find(point => point.eventId === resetEvent.id);
+        assert.equal(checkpoint.mode, 'animated', 'a previously visible lazy field must play its clear assignment');
+        const active = report.samples.filter(sample => sample.eventId === resetEvent.id);
+        assert.ok(active.some(sample => sample.flying.some(number => number.text === '0')), 'zero actually falls into the visible lazy field');
+        assert.ok(active.filter(sample => sample.at * speed < checkpoint.commitMs).every(sample => sample.values.lazy === '+3'
+          && sample.positions.lazy.visible), 'the old +3 remains visible until zero arrives');
+        const zero = active.filter(sample => sample.values.lazy === '0' && sample.positions.lazy.visible);
+        assert.ok(zero.length > 1 && (zero.at(-1).at - zero[0].at) * speed >= 350,
+          'zero stays visible for the existing hold phase before fading out');
+        assert.equal(report.final.text, '30', 'clearing lazy removes its separator and occupied space');
+      }
       if (kind.endsWith('-set')) {
         const hiddenWrite = source.frames[from + 1].events.find(event => event.expression === 'lazy[now] = 0');
         const checkpoint = report.plan.forwardReplay.checkpoints.find(point => point.eventId === hiddenWrite.id);

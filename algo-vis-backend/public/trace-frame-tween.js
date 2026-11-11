@@ -2121,7 +2121,7 @@
       && Number.isFinite(Number(scalar)) ? Number(scalar) : scalar;
   }
 
-  function displayEventFieldValue(value, frame, variableId) {
+  function displayEventFieldValue(value, frame, variableId, includeHidden = false) {
     if (!variableId || typeof window.ASMTraceRenderers?.formatDisplayValue !== 'function') {
       return displayEventValue(value);
     }
@@ -2130,10 +2130,35 @@
       const fieldIndex = options?.fields?.variableIds?.indexOf(variableId) ?? -1;
       if (!entry && fieldIndex < 0) continue;
       const name = entry?.field || options.fields.names?.[fieldIndex] || '';
-      if (window.ASMTraceRenderers.hiddenField?.(options, name, value)) return '';
+      if (!includeHidden && window.ASMTraceRenderers.hiddenField?.(options, name, value)) return '';
       return window.ASMTraceRenderers.formatDisplayValue(value, options, name, variableId);
     }
     return displayEventValue(value);
+  }
+
+  function fieldCellKey(frame, target) {
+    const owner = Object.entries(frame?.rendererOptions || {}).find(([, options]) =>
+      options?.fields?.variableIds?.includes(target?.variableId));
+    const indices = target?.resolvedIndices || (Number.isInteger(target?.resolvedIndex) ? [target.resolvedIndex] : null);
+    return owner && indices ? `${owner[0]}#${indices.join(',')}` : '';
+  }
+
+  function fieldReplacementReset(frame, event) {
+    const target = (event?.targets || []).find(item => item.role === 'target');
+    const cell = fieldCellKey(frame, target);
+    if (!cell || displayEventFieldValue(event.payload?.before, frame, target.variableId) === ''
+      || displayEventFieldValue(event.payload?.after, frame, target.variableId) !== '') return false;
+    const events = orderedEvents(frame), index = events.findIndex(item => item.id === event.id);
+    for (let i = index - 1; i >= 0; i--) {
+      const previous = events[i];
+      if (['read', 'fixed', 'condition'].includes(previous.type)) continue;
+      const incoming = (previous.targets || []).find(item => item.role === 'target');
+      return ['assign', 'write'].includes(previous.type) && incoming?.variableId !== target.variableId
+        && fieldCellKey(frame, incoming) === cell
+        && displayEventFieldValue(previous.payload?.before, frame, incoming.variableId) === ''
+        && displayEventFieldValue(previous.payload?.after, frame, incoming.variableId) !== '';
+    }
+    return false;
   }
 
   function eventTargetKey(traceDocument, eventFrame, target) {
@@ -2353,24 +2378,18 @@
     // Adjacent writes may replace one visible field with another in the same
     // cell. The hidden reset has no animation of its own: let it commit with
     // the incoming field, while retaining the original logical event order.
-    const fieldCell = target => {
-      const owner = Object.entries(eventFrame?.rendererOptions || {}).find(([, options]) =>
-        options?.fields?.variableIds?.includes(target?.variableId));
-      const indices = target?.resolvedIndices || (Number.isInteger(target?.resolvedIndex) ? [target.resolvedIndex] : null);
-      return owner && indices ? `${owner[0]}#${indices.join(',')}` : '';
-    };
     descriptors.forEach((descriptor, index) => {
       const { event, slot } = descriptor;
       if (slot?.animation !== 'assign') return;
       const target = (event.targets || []).find(item => item.role === 'target');
-      const cell = fieldCell(target);
+      const cell = fieldCellKey(eventFrame, target);
       if (!cell || displayEventFieldValue(event.payload?.before, eventFrame, target.variableId) !== ''
         || displayEventFieldValue(event.payload?.after, eventFrame, target.variableId) === '') return;
       for (const following of descriptors.slice(index + 1)) {
         if (!following.mutations.length && ['read', 'fixed', 'condition'].includes(following.event.type)) continue;
         const reset = following.event, outgoing = (reset.targets || []).find(item => item.role === 'target');
         if (following.mode !== 'instant' || !['assign', 'write'].includes(reset.type)
-          || outgoing?.variableId === target.variableId || fieldCell(outgoing) !== cell
+          || outgoing?.variableId === target.variableId || fieldCellKey(eventFrame, outgoing) !== cell
           || displayEventFieldValue(reset.payload?.before, eventFrame, outgoing?.variableId) === ''
           || displayEventFieldValue(reset.payload?.after, eventFrame, outgoing?.variableId) !== '') break;
         following.commitMs = descriptor.commitMs;
@@ -4583,6 +4602,8 @@
     let originalOpacity = null;
     let fieldLayout = null;
     let literalCoversTarget = false;
+    let hiddenFieldExit = false;
+    let hiddenExitOpacity = 1;
     let landed = false;
     let popupScale = 1;
     const conditionHint = event.conditionalSelection ? createSvg('text', {
@@ -4621,9 +4642,11 @@
       }
     } else {
       targetText = assignableTargetText(operand);
-      if (targetText?.matches?.('tspan[data-trace-field-variable]') && afterValue === '') return null;
-      fieldLayout = createFieldAssignmentLayout(root, targetText, afterValue, fieldReplacements);
-      operand.formatTransferValue = value => displayEventFieldValue(value, eventFrame, target.variableId);
+      hiddenFieldExit = targetText?.matches?.('tspan[data-trace-field-variable]') && afterValue === '';
+      if (hiddenFieldExit && (beforeValue === '' || Number(displayEventValue(event.payload?.after)) !== 0)) return null;
+      fieldLayout = createFieldAssignmentLayout(root, targetText, hiddenFieldExit
+        ? displayEventFieldValue(event.payload?.after, eventFrame, target.variableId, true) : afterValue, fieldReplacements);
+      operand.formatTransferValue = value => displayEventFieldValue(value, eventFrame, target.variableId, hiddenFieldExit);
       if (fieldLayout?.point) {
         operand.point = fieldLayout.point;
         operand.fieldAssignmentPoint = fieldLayout.point;
@@ -4635,7 +4658,7 @@
       const targetTemplate = operand.element.getAttribute?.('data-trace-display-template');
       const formatTargetValue = (value, fallback) => {
         if (targetText?.matches?.('tspan[data-trace-field-variable]')) {
-          return displayEventFieldValue(value, eventFrame, targetText.dataset.traceFieldVariable);
+          return displayEventFieldValue(value, eventFrame, targetText.dataset.traceFieldVariable, hiddenFieldExit);
         }
         if (typeof targetTemplate !== 'string') return fallback;
         const locals = {};
@@ -4725,6 +4748,10 @@
       fieldLayout?.commit();
       if (targetText) {
         targetText.textContent = finalText;
+        if (hiddenFieldExit) {
+          targetText.setAttribute('display', 'inline');
+          refreshFieldSeparators(targetText.parentElement);
+        }
         if (literalCoversTarget) {
           if (originalOpacity == null) targetText.removeAttribute('opacity');
           else targetText.setAttribute('opacity', originalOpacity);
@@ -4737,6 +4764,16 @@
     }
 
     return {
+      get opacities() { return hiddenFieldExit ? new Map([[operand.visualKey, hiddenExitOpacity]]) : new Map(); },
+      afterReplay() {
+        // The logical zero is already committed and hide(...) removes its
+        // normal glyph. Keep this temporary result through hold/exit only.
+        if (hiddenFieldExit && landed) {
+          targetText.textContent = finalText;
+          targetText.setAttribute('display', 'inline');
+          refreshFieldSeparators(targetText.parentElement);
+        }
+      },
       syncPosition() {
         if (!popup || !liveMarker) return;
         const visibleBounds = elementBoundsInRoot(markerPopupAnchorElement(operand), root);
@@ -4788,6 +4825,10 @@
         transfers.forEach(item => item.update(dropProgress, fieldLayout && frameProgress < 1 ? 0 : 1 - exit));
         if (dropProgress >= 1) {
           landValue();
+          if (hiddenFieldExit) {
+            hiddenExitOpacity = 1 - exit;
+            targetText.setAttribute('opacity', String(hiddenExitOpacity));
+          }
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
           // duplicate numbers over the target during the generic hold phase.
@@ -4799,6 +4840,11 @@
       },
       remove() {
         landValue();
+        if (hiddenFieldExit) {
+          targetText.textContent = '';
+          targetText.setAttribute('display', 'none');
+          refreshFieldSeparators(targetText.parentElement);
+        }
         fieldLayout?.remove();
         if (targetText) {
           if (originalOpacity == null) targetText.removeAttribute('opacity');
@@ -7582,11 +7628,15 @@
       if (!targetOperand) {
         return Boolean(assignmentTargetMarker(event, new Map(), eventFrame, previousObjects));
       }
-      // A retained tspan is a replay address, not proof that the field is
-      // visible. A hide(...) result must commit silently without a numeric
-      // transfer or an empty field-layout slot.
+      // A retained tspan is a replay address, not proof of visibility. An
+      // already-hidden field stays silent; a visible zero-clear owns its
+      // transfer/hold/exit unless another field takes over that same slot.
       if (targetOperand.element.matches?.('tspan[data-trace-field-variable]')
-        && displayEventFieldValue(event?.payload?.after, eventFrame, target?.variableId) === '') return false;
+        && displayEventFieldValue(event?.payload?.after, eventFrame, target?.variableId) === '') {
+        return displayEventFieldValue(event?.payload?.before, eventFrame, target?.variableId) !== ''
+          && Number(displayEventValue(event?.payload?.after)) === 0
+          && !fieldReplacementReset(eventFrame, event);
+      }
       // An index marker assignment (for example largest = l) is fully
       // determined by the captured before/after/source values. The source
       // scalar does not need its own box or pointer on the canvas.
@@ -8398,6 +8448,16 @@
       options.document, eventFrame, eventTimeline, options.direction
     );
     const execution = createExecutionContext(options.document, eventFrame, replayPlan);
+    let presentationElapsed = 0;
+    const visibleFieldClears = eventTimeline.filter(slot => slot.animation === 'assign').flatMap(slot => {
+      const target = (slot.event.targets || []).find(item => item.role === 'target');
+      if (Number(displayEventValue(slot.event.payload?.after)) !== 0
+        || displayEventFieldValue(slot.event.payload?.after, eventFrame, target?.variableId) !== ''
+        || displayEventFieldValue(slot.event.payload?.before, eventFrame, target?.variableId) === '') return [];
+      const key = eventTargetKey(options.document, eventFrame, target);
+      const element = options.currentElements.get(key);
+      return element?.matches?.('tspan[data-trace-field-variable]') ? [{ key, slot }] : [];
+    });
     // A backward step uses the outgoing frame only to identify transition
     // events. Persistent styles belong to the destination frame; evaluating
     // them against the outgoing frame would recreate highlights that should
@@ -8738,6 +8798,9 @@
       get pointerMotionDuration() { return markerMotion.duration || 0; },
       get opacities() {
         const states = new Map(committedSequenceOpacities);
+        visibleFieldClears.forEach(({ key, slot }) => {
+          if (presentationElapsed < slot.end) states.set(key, 1);
+        });
         activeEffect?.opacities?.forEach((value, key) => states.set(key, value));
         return states;
       },
@@ -8746,6 +8809,7 @@
       syncPositions() { activeEffect?.syncPosition?.(); },
       update(elapsed) {
         if (finished) return;
+        presentationElapsed = elapsed;
         markerMotion.update(elapsed);
         if (!announcementsReady) {
           // Publish the initial event-state positions before any nonzero
@@ -8831,6 +8895,7 @@
         // are always committed by the forward checkpoint stream. A later
         // event can therefore never leak its final value into an earlier one.
         forwardValues.update(elapsed);
+        activeEffect?.afterReplay?.();
         combinedAdjustments.clear();
         markerMotion.adjustments.forEach((value, key) => combinedAdjustments.set(key, value));
         activeEffect?.adjustments?.forEach?.((value, key) => {
@@ -11285,10 +11350,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-346';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-347';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-346', play, cancel, updateEventAvailability,
+    build: 'trace-347', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
