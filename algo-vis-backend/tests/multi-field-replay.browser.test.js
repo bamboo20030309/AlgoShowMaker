@@ -42,21 +42,32 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           const cell = document.querySelector(`#asm-trace-root g[data-trace-object-key="${CSS.escape(tree.dataset.traceObjectKey + '#' + index)}"]`);
           const fields = [...cell.querySelectorAll('tspan[data-trace-field-variable]')];
           const root = document.getElementById('asm-trace-root'), inverse = root.getScreenCTM().inverse();
-          const metric = node => {
-            const bounds = node.getBoundingClientRect();
+          const metric = (node, bounds = node.getBoundingClientRect()) => {
             const point = new DOMPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2).matrixTransform(inverse);
             return { x: point.x, y: point.y, font: getComputedStyle(node).fontSize };
           };
           const values = {};
           const positions = {};
           for (const field of fields) values[doc.variables[field.dataset.traceFieldVariable].name] = field.getAttribute('display') === 'none' ? '' : field.textContent;
-          for (const field of fields) if (field.getAttribute('display') !== 'none') positions[doc.variables[field.dataset.traceFieldVariable].name] = metric(field);
+          for (const field of fields) if (field.getAttribute('display') !== 'none') {
+            const value = metric(field), text = field.firstChild;
+            if (text?.nodeType === Node.TEXT_NODE && /^[=+]/.test(field.textContent) && field.textContent.length > 1) {
+              const range = document.createRange(); range.setStart(text, 1); range.setEnd(text, text.length);
+              const digits = metric(field, range.getBoundingClientRect());
+              value.digitX = digits.x; value.digitY = digits.y;
+            } else { value.digitX = value.x; value.digitY = value.y; }
+            let opacity = 1; for (let node = field; node?.nodeType === 1; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+            value.visible = opacity > .01;
+            positions[doc.variables[field.dataset.traceFieldVariable].name] = value;
+          }
           const text = [...fields[0].parentElement.children].filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent).join('');
           const flying = [...root.querySelectorAll('.asm-trace-assign-falling-value, .asm-trace-assign-transfer text')].filter(node => {
             let opacity = 1; for (let parent = node; parent?.nodeType === 1; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
             return opacity > .01;
           }).map(node => ({ ...metric(node), text: node.textContent }));
-          return { values, positions, flying, text, center: metric(cell.querySelector('rect')).x,
+          const adornments = [...cell.querySelectorAll('[data-trace-field-adornment]')]
+            .filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent);
+          return { values, positions, flying, adornments, eventId: root.dataset.traceActiveEventId, text, center: metric(cell.querySelector('rect')).x,
             invalidFields: fields.filter(field => !field.parentElement.matches('text')).length };
         };
         await ASMTracePlayer.render(from + 1, { stable: true });
@@ -94,6 +105,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
       assert.deepEqual(states, expected, 'every field must commit in runtime order without overwriting siblings');
       assert.deepEqual(report.final.values, expected.at(-1)); assert.deepEqual(report.reopened.values, expected.at(-1));
+      assert.deepEqual(report.final.adornments, [], 'temporary punctuation must be removed at commit');
+      assert.deepEqual(report.reopened.adornments, []);
       assert.ok(report.samples.every(sample => !sample.text.startsWith(',') && !sample.text.endsWith(',') && !sample.text.includes(',,')),
         'hidden fields cannot leave dangling separators');
       assert.ok(report.samples.every(sample => sample.invalidFields === 0), 'field tspans must remain inside their text parent');
@@ -108,12 +121,21 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           assert.ok(travelling.some(sample => sample.flying.length), 'must observe the numeric effect in ' + name);
           for (const sample of travelling) {
             for (const number of sample.flying) {
-              assert.ok(Math.abs(number.x - target.x) < .5, 'numeric effect must align with its field, not the cell center: ' + JSON.stringify({ name, number, target }));
-              assert.ok(Math.abs(number.y - target.y) < .5, 'numeric effect must share the field baseline');
+              assert.ok(Math.abs(number.x - target.digitX) < .5, 'numeric effect must align with its field digits, not the cell center: ' + JSON.stringify({ name, number, target }));
+              assert.ok(Math.abs(number.y - target.digitY) < .5, 'numeric effect must share the field baseline');
               assert.equal(number.font, target.font, 'field effects must inherit the actual font');
             }
             const expectedTree = name === 'tree' ? report.before.positions.tree : report.destination.positions.tree;
             assert.ok(Math.abs(sample.positions.tree.x - expectedTree.x) < .5, 'surviving field cannot re-center during assignment');
+          }
+          if (name === 'tree') assert.ok(travelling.filter(sample => sample.flying.length).every(sample => !sample.positions.tree.visible),
+            'an in-place result cannot overlap the old tree value');
+          if (name === 'lazy') {
+            const active = report.samples.filter(sample => sample.eventId === event.id);
+            assert.ok(active.some(sample => sample.adornments.includes(',') && sample.adornments.includes('+') && !sample.flying.length),
+              'comma and plus sign appear before the new lazy digit');
+            assert.ok(active.filter(sample => sample.flying.length).every(sample => sample.adornments.includes(',') && sample.adornments.includes('+')),
+              'comma and plus remain visible while the lazy digit is presented');
           }
         }
       }
