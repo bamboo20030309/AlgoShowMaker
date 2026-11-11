@@ -107,7 +107,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           { tree: '9', sets: '=7', lazy: '+3' }, { tree: '9', sets: '=7', lazy: '-2' },
           { tree: '9', sets: '', lazy: '' }]
         : kind.endsWith('-set') ? [{ tree: '15', sets: '', lazy: '+3' }, { tree: '10', sets: '', lazy: '+3' },
-          { tree: '10', sets: '=5', lazy: '+3' }, { tree: '10', sets: '=5', lazy: '' }]
+          { tree: '10', sets: '=5', lazy: '' }]
         : kind === 'left' ? [{ tree: '2', sets: '', lazy: '+3' }, { tree: '9', sets: '', lazy: '+3' }]
           : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
       assert.deepEqual(states, expected, 'every field must commit in runtime order without overwriting siblings');
@@ -115,8 +115,21 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
       if (kind.endsWith('-set')) {
         const hiddenWrite = source.frames[from + 1].events.find(event => event.expression === 'lazy[now] = 0');
         const checkpoint = report.plan.forwardReplay.checkpoints.find(point => point.eventId === hiddenWrite.id);
+        const setWrite = source.frames[from + 1].events.find(event => event.expression === 'sets[now] = value');
+        const setCommit = report.plan.forwardReplay.checkpoints.find(point => point.eventId === setWrite.id).commitMs;
         assert.equal(checkpoint.mode, 'instant', 'hidden lazy=0 is a data commit, not a timed animation');
+        assert.equal(checkpoint.commitMs, setCommit, 'sets appears and lazy clears in one ordered presentation commit');
         assert.ok(report.samples.every(sample => sample.eventId !== hiddenWrite.id), 'hidden reset cannot become an active animation');
+        const incoming = report.samples.filter(sample => sample.eventId === setWrite.id && sample.flying.length);
+        assert.ok(incoming.length > 1);
+        assert.ok(incoming.every(sample => sample.flying.every(number => number.text === '=5'
+          && Math.abs(number.x - report.before.positions.lazy.x) < .5)), '=5 lands in the old +3 slot without creating a third column');
+        assert.ok(report.samples.filter(sample => sample.eventId === setWrite.id && sample.at * speed < setCommit)
+          .every(sample => sample.values.lazy === '+3' && sample.positions.lazy.visible && sample.values.sets === ''),
+        '+3 stays visible until =5 lands, then the two fields exchange visibility together');
+        assert.ok(report.samples.filter(sample => sample.eventId === setWrite.id).every(sample =>
+          (sample.text.match(/,/g) || []).length === 1 && sample.adornments.length === 0),
+        'the replacement reuses the original separator without adding another comma');
         for (const name of ['tree', 'sets']) assert.ok(Math.abs(report.final.positions[name].x - report.destination.positions[name].x) < .5,
           'hidden lazy cannot reserve a trailing column after commit: ' + name);
         assert.equal(report.final.text, '10,=5', 'exactly one separator remains between the two visible fields');

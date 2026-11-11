@@ -2350,6 +2350,35 @@
       return { event, slot, mode, commitMs, mutations };
     });
 
+    // Adjacent writes may replace one visible field with another in the same
+    // cell. The hidden reset has no animation of its own: let it commit with
+    // the incoming field, while retaining the original logical event order.
+    const fieldCell = target => {
+      const owner = Object.entries(eventFrame?.rendererOptions || {}).find(([, options]) =>
+        options?.fields?.variableIds?.includes(target?.variableId));
+      const indices = target?.resolvedIndices || (Number.isInteger(target?.resolvedIndex) ? [target.resolvedIndex] : null);
+      return owner && indices ? `${owner[0]}#${indices.join(',')}` : '';
+    };
+    descriptors.forEach((descriptor, index) => {
+      const { event, slot } = descriptor;
+      if (slot?.animation !== 'assign') return;
+      const target = (event.targets || []).find(item => item.role === 'target');
+      const cell = fieldCell(target);
+      if (!cell || displayEventFieldValue(event.payload?.before, eventFrame, target.variableId) !== ''
+        || displayEventFieldValue(event.payload?.after, eventFrame, target.variableId) === '') return;
+      for (const following of descriptors.slice(index + 1)) {
+        if (!following.mutations.length && ['read', 'fixed', 'condition'].includes(following.event.type)) continue;
+        const reset = following.event, outgoing = (reset.targets || []).find(item => item.role === 'target');
+        if (following.mode !== 'instant' || !['assign', 'write'].includes(reset.type)
+          || outgoing?.variableId === target.variableId || fieldCell(outgoing) !== cell
+          || displayEventFieldValue(reset.payload?.before, eventFrame, outgoing?.variableId) === ''
+          || displayEventFieldValue(reset.payload?.after, eventFrame, outgoing?.variableId) !== '') break;
+        following.commitMs = descriptor.commitMs;
+        following.mutations.forEach(mutation => { mutation.commitMs = descriptor.commitMs; });
+        (slot.fieldReplacements ||= []).push(outgoing.variableId);
+      }
+    });
+
     descriptors.forEach(({ mode, slot, mutations }) => {
       mutations.forEach(mutation => {
         const trackKey = `${mutation.kind}:${mutation.key}`;
@@ -4370,7 +4399,7 @@
     }
   }
 
-  function createFieldAssignmentLayout(root, target, afterValue) {
+  function createFieldAssignmentLayout(root, target, afterValue, replacementIds = []) {
     if (!target?.matches?.('tspan[data-trace-field-variable]')) return null;
     const parent = target.parentElement;
     const parts = [...parent.children].filter(node => node.matches('tspan'));
@@ -4381,12 +4410,14 @@
     };
     const original = parts.map(node => ({ node, x: node.getAttribute('x'), display: node.getAttribute('display'), before: box(node) }));
     const beforeText = target.textContent;
+    const replacements = parts.filter(node => replacementIds.includes(node.dataset.traceFieldVariable));
     // Measure the row after this operation, not after the entire frame. Each
     // tspan will own an anchored chunk, so changing its digits cannot re-center
     // all its siblings. The prepare phase makes room before the value travels.
     parts.forEach(node => node.removeAttribute('x'));
     target.textContent = afterValue;
     target.setAttribute('display', afterValue === '' ? 'none' : 'inline');
+    replacements.forEach(node => node.setAttribute('display', 'none'));
     refreshFieldSeparators(parent);
     // Format signs belong to the moving value. Measure the complete formatted
     // field so its prefix and digits arrive together at their final anchor.
@@ -4394,6 +4425,10 @@
     const planned = original.map(record => ({ ...record, after: box(record.node) }));
     const separator = target.previousElementSibling?.hasAttribute('data-trace-field-separator')
       ? planned.find(record => record.node === target.previousElementSibling) : null;
+    const reusedSeparator = replacements.length && separator?.after
+      ? planned.find(record => record.node.hasAttribute('data-trace-field-separator')
+        && record.display !== 'none' && replacements.includes(record.node.nextElementSibling)) : null;
+    if (reusedSeparator) reusedSeparator.after = separator.after;
     target.textContent = beforeText;
     original.forEach(({ node, x, display }) => {
       if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x);
@@ -4404,7 +4439,7 @@
       const node = createSvg('tspan', { x: center, display: 'none', 'data-trace-field-adornment': kind }, text);
       parent.append(node); adornments.push(node);
     };
-    if (separator?.after && separator.display === 'none') adorn(separator.node.textContent, separator.after.x, 'separator');
+    if (separator?.after && separator.display === 'none' && !reusedSeparator) adorn(separator.node.textContent, separator.after.x, 'separator');
     let committed = false;
     return {
       point: destination && destination.width > 0 ? { x: destination.x + destination.width / 2,
@@ -4428,7 +4463,7 @@
 
   function createAssignEffect(
     root, event, traceDocument, eventFrame, placements, elements,
-    rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements
+    rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements, fieldReplacements = []
   ) {
     const target = (event?.targets || []).find(item => item.role === 'target') || event?.targets?.[0];
     const availableSources = (event?.targets || []).filter(item => item.role === 'source'
@@ -4587,7 +4622,7 @@
     } else {
       targetText = assignableTargetText(operand);
       if (targetText?.matches?.('tspan[data-trace-field-variable]') && afterValue === '') return null;
-      fieldLayout = createFieldAssignmentLayout(root, targetText, afterValue);
+      fieldLayout = createFieldAssignmentLayout(root, targetText, afterValue, fieldReplacements);
       operand.formatTransferValue = value => displayEventFieldValue(value, eventFrame, target.variableId);
       if (fieldLayout?.point) {
         operand.point = fieldLayout.point;
@@ -8630,7 +8665,7 @@
           options.root, slot.event, options.document, eventFrame,
           assignmentPlacements, assignmentElements, options.rawDeltas,
           options.appearingKeys, options.previousObjects, visualKeyAtEvent,
-          options.currentElements
+          options.currentElements, slot.fieldReplacements || []
         );
         const shift = Number(options.direction) < 0 ? null : bitShiftEffects.get(slot) || createBitShiftEffect(
           slot.event, options.document, eventFrame, options.currentElements, options.previousObjects
@@ -11250,10 +11285,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-345';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-346';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-345', play, cancel, updateEventAvailability,
+    build: 'trace-346', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
