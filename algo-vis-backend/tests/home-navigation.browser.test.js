@@ -167,17 +167,26 @@ test('home offers two modes and signed-in users switch between their decks and e
       await firstPaint.addInitScript(() => {
         localStorage.setItem('algo_jwt_token', 'fixture-token');
         localStorage.setItem('algo_username', 'fixture@example.test');
-        document.addEventListener('DOMContentLoaded', () => {
-          window.__headerAtParse = {
+        // Sample every rendered frame; the first frame that contains the header must already
+        // show the signed-in account (no frame of an empty account area = no flash).
+        window.__headerFrames = [];
+        const sample = () => {
+          const header = document.querySelector('.site-header');
+          if (header) window.__headerFrames.push({
             login: document.getElementById('topLoginLink')?.hidden,
             name: document.getElementById('topAccountName')?.textContent,
             logout: document.getElementById('topLogoutBtn')?.hidden
-          };
-        });
+          });
+          if (window.__headerFrames.length < 4) requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
       });
       await firstPaint.route('**/api/auth/me', route => route.fulfill({ json: { user: { id: 'fixture', username: 'fixture@example.test' } } }));
+      // A slow revalidation of the header script (served with max-age=0) must not expose a bare header.
+      await firstPaint.route('**/site-header.js*', async route => { await new Promise(resolve => setTimeout(resolve, 400)); await route.continue(); });
       await firstPaint.goto(`${base}/algorithm.html`);
-      assert.deepEqual(await firstPaint.evaluate(() => window.__headerAtParse),
+      await firstPaint.waitForFunction(() => window.__headerFrames.length >= 4);
+      assert.deepEqual(await firstPaint.evaluate(() => window.__headerFrames[0]),
         { login: true, name: 'fixture@example.test', logout: false });
       assert.equal(await firstPaint.evaluate(() => getComputedStyle(document.querySelector('.site-header')).viewTransitionName), 'site-header');
 

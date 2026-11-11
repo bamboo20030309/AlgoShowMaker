@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="brand.css?v=site-header-2" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
+  <!-- 頂部列登入狀態：在 head 同步載入，頂部列之後以內嵌呼叫套用，第一次繪製就正確。 -->
+  <script src="site-header.js?v=3"></script>
 </head>
 
 <body>
@@ -45,7 +47,7 @@
       </span>
     </div>
   </header>
-  <script src="site-header.js?v=2"></script>
+  <script>ASMSiteHeader.apply()</script>
 
   <main>
 <!-- -----------------------------------------------------------------------

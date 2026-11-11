@@ -18,6 +18,8 @@
   <link rel="stylesheet" href="mobile-ui.css?v=site-header-1" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <!-- 頂部列登入狀態：在 head 同步載入，頂部列之後以內嵌呼叫套用，第一次繪製就正確。 -->
+  <script src="site-header.js?v=3"></script>
 </head>
 
 <body>
@@ -76,7 +78,7 @@
       <button id="topLogoutBtn" class="site-account-btn" type="button" hidden>登出</button>
     </div>
   </nav>
-  <script src="site-header.js?v=2"></script>
+  <script>ASMSiteHeader.apply()</script>
 <!-- -----------------------------------------------------------------------
   左右工作區
   codePanel 保存來源與游標，vizPanel 呈現衍生結果；divider 僅調整兩側比例。

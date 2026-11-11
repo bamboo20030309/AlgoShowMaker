@@ -108,8 +108,14 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(legacy, /<header class="app-header site-header">/);
   assert.match(html, /<nav id="top-bar" class="site-header">/);
   // The header's sign-in state is applied right after the header, before first paint, on both pages.
-  assert.match(legacy, /<\/header>\s*<script src="site-header\.js\?v=2"><\/script>/);
-  assert.match(html, /\n {2}<\/nav>\s*<script src="site-header\.js\?v=2"><\/script>/);
+  // site-header.js loads in <head> (render-blocking, so a slow revalidation cannot paint a header
+  // without its account area) and an inline call applies the state right after the header markup.
+  for (const page of [legacy, html]) {
+    const head = page.slice(0, page.indexOf('</head>'));
+    assert.match(head, /<script src="site-header\.js\?v=3"><\/script>/);
+  }
+  assert.match(legacy, /<\/header>\s*<script>ASMSiteHeader\.apply\(\)<\/script>/);
+  assert.match(html, /\n {2}<\/nav>\s*<script>ASMSiteHeader\.apply\(\)<\/script>/);
   assert.match(legacy, /id="createFolderBtn"[^>]+aria-label="新增資料夾"/);
   // The code page has no login form of its own; its login entry goes to the home login with ?next=.
   assert.match(html, /id="topLoginLink"[^>]+href="\/\?next=%2Falgorithm\.html"/);
