@@ -188,17 +188,16 @@
       const folders = [{ id: '', title: '未分類', deckIds: layout.unfiled }, ...layout.folders];
       for (const folder of folders) {
         const matches = folder.deckIds.map(id => byId.get(id)).filter(deck => deck.title.toLocaleLowerCase('zh-Hant').includes(query));
-        const section = document.createElement('details');
-        section.className = 'gallery-folder library-folder'; section.dataset.folderId = folder.id;
-        section.open = query ? true : expanded.get(folder.id) !== false;
+        // 分類區塊與「範例投影片」共用（library-ui.js）；這裡只多加改名與垃圾桶。
+        const { section, summary, heading, name, cards } = ASMLibraryUI.createFolder({
+          title: folder.title,
+          count: matches.length,
+          open: query ? true : expanded.get(folder.id) !== false,
+          emptyText: '將投影片拖到這裡。',
+          onToggle: open => { if (!query) expanded.set(folder.id, open); }
+        });
+        section.dataset.folderId = folder.id;
         section.hidden = Boolean(query) && matches.length === 0;
-        section.addEventListener('toggle', () => { if (!query && section.isConnected) expanded.set(folder.id, section.open); });
-        window.ASMLibraryUI?.bindFolderAnimation(section);
-        const summary = document.createElement('summary');
-        const heading = document.createElement('span'); heading.className = 'library-folder-title';
-        const name = document.createElement('span'); name.className = 'library-folder-name'; name.textContent = folder.title;
-        const count = document.createElement('span'); count.className = 'library-folder-count'; count.textContent = `共 ${matches.length} 份`;
-        heading.append(name, count); summary.append(heading);
         if (folder.id) {
           name.classList.add('is-editable'); name.title = '雙擊以重新命名'; name.tabIndex = 0;
           const edit = event => {
@@ -212,7 +211,6 @@
           name.addEventListener('dblclick', edit);
           name.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === 'F2') edit(event); });
         }
-        const cards = document.createElement('div'); cards.className = 'deck-grid gallery-folder-cards';
         if (folder.id) {
           const tools = document.createElement('span'); tools.className = 'library-folder-tools';
           const remove = document.createElement('button'); remove.type = 'button';
@@ -220,9 +218,8 @@
           remove.title = '移除資料夾'; remove.setAttribute('aria-label', '移除資料夾'); remove.innerHTML = TRASH_ICON;
           remove.disabled = !ready || saving;
           remove.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openDeleteFolder(folder); }); tools.append(remove);
-          summary.append(tools); section.append(summary, cards);
-        } else section.append(summary, cards);
-        if (!matches.length) { const empty = document.createElement('p'); empty.className = 'gallery-folder-empty'; empty.textContent = '將投影片拖到這裡。'; section.append(empty); }
+          summary.append(tools);
+        }
         for (const deck of matches) {
           const card = createCard(deck); card.dataset.deckId = deck.deck_uid; card.draggable = false;
           card.querySelectorAll('img').forEach(image => { image.draggable = false; });
@@ -243,8 +240,8 @@
           card.append(controls); cards.append(card);
         }
         container.append(section);
-        const link = document.createElement('button'); link.type = 'button'; link.className = 'gallery-category'; link.textContent = folder.title; link.hidden = section.hidden;
-        link.addEventListener('click', () => { section.open = true; expanded.set(folder.id, true); section.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }); }); nav.append(link);
+        const chip = ASMLibraryUI.createFolderChip({ title: folder.title, nav, getSection: () => section.isConnected ? section : null });
+        chip.hidden = section.hidden;
       }
       if (pendingFolder && !query) {
         const section = document.createElement('details');

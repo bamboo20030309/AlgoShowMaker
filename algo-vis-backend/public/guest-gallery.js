@@ -70,28 +70,15 @@
     for (const [category, label] of Object.entries(categories)) {
       const entries = visible.filter(entry => entryCategories(entry).includes(category));
       if (query && !entries.length) continue;
-      // 與「我的投影片」相同的分類外觀：名稱＋右側「共 N 份」；範例的名稱不可編輯。
-      const section = document.createElement('details');
-      section.className = 'gallery-folder library-folder';
+      // 分類區塊與「我的投影片」共用（library-ui.js）；範例的名稱不可編輯。
+      const { section, cards } = window.ASMLibraryUI.createFolder({
+        title: label,
+        count: entries.length,
+        open: query ? true : expanded.get(category) !== false,
+        emptyText: '尚未收錄投影片',
+        onToggle: open => expanded.set(category, open)
+      });
       section.id = `sample-category-${category}`;
-      section.open = query ? true : expanded.get(category) !== false;
-      const heading = document.createElement('summary');
-      const title = document.createElement('span'); title.className = 'library-folder-title';
-      const name = document.createElement('span'); name.className = 'library-folder-name'; name.textContent = label;
-      const total = document.createElement('span'); total.className = 'library-folder-count'; total.textContent = `共 ${entries.length} 份`;
-      title.append(name, total); heading.append(title);
-      section.append(heading);
-      section.addEventListener('toggle', () => expanded.set(category, section.open));
-      window.ASMLibraryUI?.bindFolderAnimation(section);
-      const cards = document.createElement('div');
-      cards.className = 'deck-grid gallery-folder-cards';
-      section.append(cards);
-      if (!entries.length) {
-        const empty = document.createElement('p');
-        empty.className = 'gallery-folder-empty';
-        empty.textContent = '尚未收錄投影片';
-        section.append(empty);
-      }
       grid.append(section);
       for (const entry of entries) {
         const card = document.createElement('article');
@@ -130,32 +117,22 @@
     }
   }
 
+  // 分類捷徑與放大鏡搜尋：與「我的投影片」共用（library-ui.js）。
   for (const [id, label] of Object.entries(categories)) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'gallery-category';
-    button.textContent = label;
-    button.setAttribute('aria-controls', `sample-category-${id}`);
-    button.addEventListener('click', () => {
-      if (search.value) { search.value = ''; render(); }
-      const section = document.getElementById(`sample-category-${id}`);
-      if (!section) return;
-      section.open = true;
-      expanded.set(id, true);
-      for (const item of nav.children) item.setAttribute('aria-pressed', String(item === button));
-      section.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+    window.ASMLibraryUI.createFolderChip({
+      title: label,
+      nav,
+      controls: `sample-category-${id}`,
+      beforeOpen: () => { if (search.value) { search.value = ''; render(); } },
+      getSection: () => document.getElementById(`sample-category-${id}`)
     });
-    nav.append(button);
   }
-  // 放大鏡搜尋：與「我的投影片」共用行為（library-ui.js）。
-  if (window.ASMLibraryUI) {
-    window.ASMLibraryUI.bindExpandingSearch({
-      box: search.closest('.library-search'),
-      input: search,
-      button: document.getElementById('gallerySearchToggleBtn'),
-      onChange: render
-    });
-  } else search.addEventListener('input', render);
+  window.ASMLibraryUI.bindExpandingSearch({
+    box: search.closest('.library-search'),
+    input: search,
+    button: document.getElementById('gallerySearchToggleBtn'),
+    onChange: render
+  });
   message.textContent = '正在載入公開投影片…';
   fetch('/guest-decks.json').then(async response => {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

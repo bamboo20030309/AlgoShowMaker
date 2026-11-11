@@ -114,6 +114,25 @@ test('workspace folders keep one category per deck, persist drag ordering and re
       buttons: [...el.querySelectorAll('button')].map(button => button.getAttribute('aria-label')) })),
       { name: '數學', count: '共 0 份', buttons: ['移除資料夾'] });
 
+    // Both lists build folders with the same shared code, so both animate open and closed.
+    const folderAnimates = selector => page.evaluate(async sel => {
+      const details = document.querySelector(sel); const summary = details.querySelector(':scope > summary');
+      const full = details.getBoundingClientRect().height;
+      summary.querySelector('.library-folder-count').click();
+      const running = details.getAnimations().length > 0;
+      await new Promise(resolve => setTimeout(resolve, ASMLibraryUI.FOLDER_ANIMATION_MS + 120));
+      const closed = { open: details.open, height: details.getBoundingClientRect().height };
+      summary.querySelector('.library-folder-count').click();
+      await new Promise(resolve => setTimeout(resolve, ASMLibraryUI.FOLDER_ANIMATION_MS + 120));
+      return { running, closedOpen: closed.open, shrank: closed.height < full, reopened: details.open && details.getBoundingClientRect().height === full };
+    }, selector);
+    const expectAnimation = { running: true, closedOpen: false, shrank: true, reopened: true };
+    assert.deepEqual(await folderAnimates(`#workspaceMinePanel .library-folder[data-folder-id="${folder}"]`), expectAnimation, 'my decks folder animates');
+    assert.deepEqual(await folderAnimates('#workspaceMinePanel .library-folder[data-folder-id=""]'), expectAnimation, 'unfiled folder animates');
+    await page.locator('#workspaceExamplesTab').click(); await page.locator('.guest-gallery .library-folder').first().waitFor();
+    assert.deepEqual(await folderAnimates('.guest-gallery .library-folder'), expectAnimation, 'example folder animates');
+    await page.locator('#workspaceMineTab').click();
+
     // Whole-card drag reorders from any part of the card; the origin stays as a ghost and a full copy follows.
     let dragState;
     await pointerDrop('c', '[data-deck-id="a"] .deck-preview', '.deck-preview', { during: async () => {

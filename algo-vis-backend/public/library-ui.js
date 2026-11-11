@@ -73,5 +73,45 @@
     });
   }
 
-  window.ASMLibraryUI = { bindExpandingSearch, bindFolderAnimation, FOLDER_ANIMATION_MS };
+  // 一個分類（資料夾）區塊：<details> > <summary>（名稱＋「共 N 份」）＋卡片格線＋空白提示。
+  // 兩邊清單都從這裡建立，伸縮動畫在標題放好後才綁定；額外的按鈕（改名、垃圾桶）由呼叫端加到 summary。
+  function createFolder({ title, count, open = true, emptyText = '', onToggle }) {
+    const section = document.createElement('details');
+    section.className = 'gallery-folder library-folder';
+    section.open = open;
+    const summary = document.createElement('summary');
+    const heading = document.createElement('span'); heading.className = 'library-folder-title';
+    const name = document.createElement('span'); name.className = 'library-folder-name'; name.textContent = title;
+    const total = document.createElement('span'); total.className = 'library-folder-count'; total.textContent = `共 ${count} 份`;
+    heading.append(name, total); summary.append(heading);
+    const cards = document.createElement('div'); cards.className = 'deck-grid gallery-folder-cards';
+    section.append(summary, cards);
+    if (!count && emptyText) {
+      const empty = document.createElement('p'); empty.className = 'gallery-folder-empty'; empty.textContent = emptyText;
+      section.append(empty);
+    }
+    if (onToggle) section.addEventListener('toggle', () => { if (section.isConnected) onToggle(section.open); });
+    bindFolderAnimation(section);
+    return { section, summary, heading, name, cards };
+  }
+
+  // 工具列左側的分類捷徑：展開該分類、標示目前選取並捲動過去。
+  // getSection 每次點擊時重新查找（清單可能已重繪）；beforeOpen 可先清除搜尋等。
+  function createFolderChip({ title, nav, getSection, beforeOpen, controls }) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'gallery-category'; button.textContent = title;
+    if (controls) button.setAttribute('aria-controls', controls);
+    button.addEventListener('click', () => {
+      beforeOpen?.();
+      const section = getSection();
+      if (!section) return;
+      section.open = true;
+      for (const item of nav.children) item.setAttribute('aria-pressed', String(item === button));
+      section.scrollIntoView({ behavior: reducedMotion() ? 'instant' : 'smooth', block: 'start' });
+    });
+    nav.append(button);
+    return button;
+  }
+
+  window.ASMLibraryUI = { bindExpandingSearch, bindFolderAnimation, createFolder, createFolderChip, FOLDER_ANIMATION_MS };
 })();
