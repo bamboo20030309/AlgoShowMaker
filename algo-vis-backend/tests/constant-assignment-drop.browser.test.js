@@ -52,7 +52,8 @@ test('constant and invisible sources fall from above for assignment and compound
     for (const [index, event] of events.entries()) {
       const samples = report.samples.filter(sample => sample.event === event.id && sample.groups.length);
       assert.ok(samples.length > 3);
-      assert.ok(samples.every(sample => sample.groups[0].text === ['3', '2', '7', '7'][index]), 'retain the actual constant/hidden operand');
+      assert.ok(samples.every(sample => sample.groups[0].text === ['3', '+2', '7', '+7'][index]),
+        '= transfers the value; += transfers the signed increment');
       assert.ok(samples.every(sample => sample.visible && sample.value === ['5', '3', '5', '7'][index]),
         'the old destination value remains visible while its incoming operand is still in flight');
       const ys = samples.map(sample => sample.groups[0].y);

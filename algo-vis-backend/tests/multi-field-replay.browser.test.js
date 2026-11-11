@@ -139,6 +139,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
             'constant or hidden-source digits must actually fall from above');
           assert.ok(Math.abs(descent.at(-1).y - target.digitY) < .5, 'falling number reaches the correct field baseline before commit');
           if (name === 'tree') {
+            assert.ok(travelling.flatMap(sample => sample.flying).every(number => number.text === '+3'),
+              'tree += computed hidden RHS transfers +3, not the final result +5');
             const beforeCommit = report.samples.filter(sample => sample.eventId === event.id && sample.at * speed < commit);
             assert.ok(beforeCommit.length > 1);
             assert.ok(beforeCommit.every(sample => sample.positions.tree.visible && sample.values.tree === '2'),

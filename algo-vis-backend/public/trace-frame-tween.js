@@ -4617,9 +4617,9 @@
         const literalCount = sources.filter(item => item?.literal === true).length;
         let literalIndex = 0;
         const candidates = sources.map((sourceItem, index) => {
-          // Numbers travel directly to the destination; no temporary formula
-          // panel or operator-prefixed duplicate of the source value.
-          const operatorPrefix = '';
+          // += presents the incoming increment, whereas = presents its source
+          // value. Format signs are retained without duplicating an existing +.
+          const operatorPrefix = event.compound === true && transferOperator === '+' ? '+' : '';
           if (sourceItem?.literal === true) {
             const transfer = createLiteralAssignmentTransfer(
               root, sourceItem, operand, literalIndex, literalCount, operatorPrefix
@@ -4634,8 +4634,13 @@
               ?? (sourceItem.role === 'source-right' ? event.payload?.right
                 : sourceItem.role === 'source-left' ? event.payload?.left
                   : sources.length === 1 ? event.payload?.source : index === 0 ? event.payload?.left : event.payload?.right);
+            const before = markerExpressionValue(event.payload?.before);
+            const after = markerExpressionValue(event.payload?.after);
+            const increment = event.compound === true && transferOperator === '+' && sources.length === 1
+              && typeof before === 'number' && typeof after === 'number'
+              && Number.isFinite(before) && Number.isFinite(after) ? after - before : null;
             return createLiteralAssignmentTransfer(root, { ...sourceItem,
-              literalValue: raw?.value ?? raw ?? event.payload?.source ?? event.payload?.after }, operand,
+              literalValue: raw?.value ?? raw ?? event.payload?.source ?? increment ?? event.payload?.after }, operand,
               literalIndex++, Math.max(1, sources.length), operatorPrefix);
           }
           return createAssignmentTransfer(
@@ -11239,10 +11244,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-343';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-344';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-343', play, cancel, updateEventAvailability,
+    build: 'trace-344', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

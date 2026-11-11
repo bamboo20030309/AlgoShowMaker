@@ -379,7 +379,7 @@ int main() {
     }
   });
 
-test('binary and compound arithmetic transfer operand numbers directly without operator-prefixed values', { timeout: 45000 }, async () => {
+test('binary arithmetic transfers operand values and compound addition carries its plus sign', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -461,7 +461,7 @@ int main() {
     ]);
     for (const [expression,values] of Object.entries({
       'result=a+b':['12','3'],'result=a-b':['12','3'],'result=a*b':['12','3'],'result=a/b':['12','3'],
-      'result+=b':['3'],'result-=b':['3'],'result*=b':['3'],'result/=b':['3'],
+      'result+=b':['+3'],'result-=b':['3'],'result*=b':['3'],'result/=b':['3'],
       'result=a+b-c+d':['12','3','4','5'],'result=a*b/c*d':['12','3','4','5']
     })) {
       assert.ok(result.samples[expression]?.includes(JSON.stringify([...values].sort())), JSON.stringify(result));

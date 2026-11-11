@@ -11,7 +11,7 @@ test('all field formats travel with their value rather than appearing as station
     process.env.ASM_TEST_BASE_URL = base;
     ({ trace } = await compile('#include <vector>\nusing namespace std;\nint main(){int n=1;\n'
       + 'vector<double>base={0,1},delta={0,0},assigned={0,0},bits={0,0},hexes={0,0},flags={0,0},decimals={0,0},ratios={0,0};\n'
-      + view + 'delta[1]=3;assigned[1]=7;bits[1]=5;hexes[1]=10;flags[1]=1;decimals[1]=1.25;ratios[1]=0.25;delta[1]=-2;\n'
+      + view + 'delta[1]+=3;assigned[1]=7;bits[1]=5;hexes[1]=10;flags[1]=1;decimals[1]=1.25;ratios[1]=0.25;delta[1]=-2;\n'
       + view + view + '}'));
   } finally { if (previous === undefined) delete process.env.ASM_TEST_BASE_URL; else process.env.ASM_TEST_BASE_URL = previous; }
   const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
@@ -48,5 +48,6 @@ test('all field formats travel with their value rather than appearing as station
       assert.ok(report.moving.includes(value), 'moving text must include complete format ' + value + ': ' + report.moving.join(', '));
     }
     assert.equal(report.detachedPrefix, false, 'no stationary format prefix is created');
+    assert.ok(report.moving.every(value => !value.startsWith('++')), 'signed format and += cannot create duplicate plus signs');
   }
 });
