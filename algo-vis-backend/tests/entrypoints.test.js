@@ -88,12 +88,12 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   }
   assert.ok(slides.indexOf('trace-provenance.js?') < slides.indexOf('asmdeck.js?'));
   assert.ok(slides.indexOf('asmdeck.js?') < slides.indexOf('slides.js?'));
-  assert.ok(legacy.includes('home.css?v=cards-1'));
+  assert.ok(legacy.includes('home.css?v=cards-2'));
   assert.ok(legacy.includes('brand.css?v=site-header-2'));
   assert.ok(legacy.includes('guest-gallery.js?v=6'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
-  assert.ok(legacy.indexOf('library-layout.js?v=3') < legacy.indexOf('library-organizer.js?v=9'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=9') < legacy.indexOf('home.js?v=cards-1'));
+  assert.ok(legacy.indexOf('library-layout.js?v=3') < legacy.indexOf('library-organizer.js?v=10'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=10') < legacy.indexOf('home.js?v=cards-1'));
   // Two entry modes share one navigation: slides (home) and code (algorithm page).
   const modeNav = page => page.match(/<nav class="mode-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] || '';
   assert.match(modeNav(legacy), /class="nav-link is-active" href="\/" aria-current="page">投影片<\/a>/);

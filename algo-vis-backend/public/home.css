@@ -1208,3 +1208,79 @@ html::-webkit-scrollbar-thumb:hover,
   font-weight: 700;
   pointer-events: none;
 }
+
+/* --------------------------------------------------------------------------
+ * 捲軸只在頂部列下方
+ * 整頁不再捲動：頂部列固定在上，下方的 <main> 是唯一的捲動區，捲軸從頂部列下緣開始。
+ * 因此 main 內的黏性元素以 main 頂端為基準（top: 0），不再加頁首高度。
+ * -------------------------------------------------------------------------- */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+body > .site-header {
+  flex: 0 0 auto;
+}
+
+body > main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+body > main::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body > main::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+body > main::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+
+body > main::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) padding-box;
+}
+
+.auth-panel,
+.gallery-categories,
+.library-folder-nav {
+  top: 0;
+}
+
+.gallery-folder {
+  scroll-margin-top: 140px;
+}
+
+@media (max-width: 620px) {
+  .gallery-folder {
+    scroll-margin-top: 170px;
+  }
+}
+
+/* 寬螢幕訪客首頁的範例欄仍是自己的捲動區，分類列抵銷欄位上內距（見上方規則）。 */
+@media (min-width: 901px) {
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-categories {
+    top: -40px;
+  }
+
+  body:not(.examples-view) .guest-view > .guest-gallery .gallery-folder {
+    scroll-margin-top: 90px;
+  }
+}

@@ -135,6 +135,20 @@ test('home offers two modes and signed-in users switch between their decks and e
       assert.equal(await examplesTab.getAttribute('aria-selected'), 'true');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'workspaceExamplesTab');
 
+      // Only the area below the top bar scrolls, so the scrollbar never reaches into the top bar.
+      const scrollArea = await page.evaluate(() => {
+        const main = document.querySelector('body > main');
+        const filler = document.createElement('div'); filler.style.height = '3000px';
+        document.getElementById('workspaceMinePanel').append(filler);
+        main.scrollTop = 500;
+        const result = { overflowY: getComputedStyle(main).overflowY, mainTop: main.getBoundingClientRect().top,
+          headerBottom: document.querySelector('.site-header').getBoundingClientRect().bottom,
+          mainScrolled: main.scrollTop, pageScrolls: document.scrollingElement.scrollHeight > innerHeight };
+        main.scrollTop = 0; filler.remove();
+        return result;
+      });
+      assert.deepEqual(scrollArea, { overflowY: 'auto', mainTop: 52, headerBottom: 52, mainScrolled: 500, pageScrolls: false });
+
       // A deck file dragged anywhere over "my decks" shows the drop hint (not only over a button).
       await mineTab.click();
       const dropHint = await page.evaluate(() => {

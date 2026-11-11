@@ -98,8 +98,12 @@
       event.preventDefault();
       moveDragClone(event.clientX - pointer.x, event.clientY - pointer.y);
       highlight(targetAt(document.elementFromPoint(event.clientX, event.clientY)));
-      if (event.clientY < 80) window.scrollBy(0, -18);
-      else if (event.clientY > innerHeight - 80) window.scrollBy(0, 18);
+      // Auto-scroll the area that actually scrolls (the page's <main> below the top bar).
+      const scroller = container.closest('main') || document.scrollingElement;
+      const bounds = scroller.getBoundingClientRect();
+      const top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom);
+      if (event.clientY < top + 80) scroller.scrollBy(0, -18);
+      else if (event.clientY > bottom - 80) scroller.scrollBy(0, 18);
     });
     container.addEventListener('pointerup', event => {
       if (!pointer || event.pointerId !== pointer.pointerId) return;
