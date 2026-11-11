@@ -14,7 +14,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
     ({ trace: reset } = await compile('#include <vector>\n#include <climits>\nusing namespace std;\n'
       + 'int main(){int n=1;vector<int>tree={0,2},sets={INT_MAX,INT_MAX},lazy={0,0};\n'
       + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
-      + 'tree[1]=9;lazy[1]=3;sets[1]=7;lazy[1]=0;sets[1]=INT_MAX;\n'
+      + 'tree[1]=9;lazy[1]=3;sets[1]=7;lazy[1]=-2;lazy[1]=0;sets[1]=INT_MAX;\n'
       + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
       + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n}'));
     ({ trace: left } = await compile('#include <vector>\n#include <climits>\nusing namespace std;\n'
@@ -60,7 +60,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
             value.visible = opacity > .01;
             positions[doc.variables[field.dataset.traceFieldVariable].name] = value;
           }
-          const text = [...fields[0].parentElement.children].filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent).join('');
+          const text = [...fields[0].parentElement.children].filter(node => node.getAttribute('display') !== 'none'
+            && !node.hasAttribute('data-trace-field-adornment')).map(node => node.textContent).join('');
           const flightNodes = [...root.querySelectorAll('.asm-trace-assign-falling-value, .asm-trace-assign-transfer text')];
           const flying = flightNodes.filter(node => {
             let opacity = 1; for (let parent = node; parent?.nodeType === 1; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
@@ -102,7 +103,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
         || JSON.stringify(sample.values) !== JSON.stringify(samples[index - 1].values)).map(sample => sample.values);
       const expected = kind === 'reset'
         ? [{ tree: '2', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '+3' },
-          { tree: '9', sets: '=7', lazy: '+3' }, { tree: '9', sets: '=7', lazy: '' }, { tree: '9', sets: '', lazy: '' }]
+          { tree: '9', sets: '=7', lazy: '+3' }, { tree: '9', sets: '=7', lazy: '-2' },
+          { tree: '9', sets: '=7', lazy: '' }, { tree: '9', sets: '', lazy: '' }]
         : kind === 'left' ? [{ tree: '2', sets: '', lazy: '+3' }, { tree: '9', sets: '', lazy: '+3' }]
           : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
       assert.deepEqual(states, expected, 'every field must commit in runtime order without overwriting siblings');
@@ -125,7 +127,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           assert.ok(travelling.some(sample => sample.flying.length), 'must observe the numeric effect in ' + name);
           for (const sample of travelling) {
             for (const number of sample.flying) {
-              assert.ok(Math.abs(number.x - target.digitX) < .5, 'numeric effect must align with its field digits, not the cell center: ' + JSON.stringify({ name, number, target }));
+              assert.ok(Math.abs(number.x - target.x) < .5, 'formatted effect must align with its entire field, not the cell center: ' + JSON.stringify({ name, number, target }));
               assert.ok(number.y <= target.digitY + .5 && number.y >= target.digitY - 24.5, 'numeric effect descends toward the field baseline without overshooting');
               assert.equal(number.font, target.font, 'field effects must inherit the actual font');
             }
@@ -144,12 +146,19 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           }
           if (name === 'lazy') {
             const active = report.samples.filter(sample => sample.eventId === event.id);
-            assert.ok(active.some(sample => sample.adornments.includes(',') && sample.adornments.includes('+') && !sample.flying.length),
-              'comma and plus sign appear before the new lazy digit');
-            assert.ok(active.filter(sample => sample.flying.length).every(sample => sample.adornments.includes(',') && sample.adornments.includes('+')),
-              'comma and plus remain visible while the lazy digit is presented');
+            assert.ok(active.some(sample => sample.adornments.includes(',') && !sample.flying.length),
+              'the field separator appears while preparing space');
+            assert.ok(active.filter(sample => sample.flying.length).every(sample => sample.adornments.includes(',')
+              && !sample.adornments.includes('+') && sample.flying.every(number => number.text === '+3')),
+              'the plus sign descends with the digit, never as a stationary adornment');
           }
         }
+      }
+      if (kind === 'reset') {
+        const moving = report.samples.flatMap(sample => sample.flying.map(number => number.text));
+        for (const value of ['+3', '=7', '-2']) assert.ok(moving.includes(value), 'complete format travels together: ' + value);
+        assert.ok(report.samples.every(sample => sample.adornments.every(text => text === ',')),
+          'format prefixes must never be detached from their moving numbers');
       }
       if (kind === 'left') {
         assert.ok(report.before.positions.tree.x < report.before.center - 5, 'the assigned field is visibly left of cell center');

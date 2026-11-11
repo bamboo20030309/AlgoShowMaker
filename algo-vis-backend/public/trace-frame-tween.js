@@ -3421,7 +3421,8 @@
       -maximumLaneOffset,
       Math.min(maximumLaneOffset, desiredLaneOffset)
     );
-    const value = displayEventValue(source?.literalValue ?? source?.expression ?? '');
+    const rawValue = source?.literalValue ?? source?.expression ?? '';
+    const value = targetOperand.formatTransferValue?.(rawValue) || displayEventValue(rawValue);
     const displayed = formatAssignmentTransferValue(value, operatorPrefix);
     if (!displayed) return null;
     const group = createSvg('g', {
@@ -4369,7 +4370,7 @@
     }
   }
 
-  function createFieldAssignmentLayout(root, target, afterValue, rawAfter = afterValue) {
+  function createFieldAssignmentLayout(root, target, afterValue) {
     if (!target?.matches?.('tspan[data-trace-field-variable]')) return null;
     const parent = target.parentElement;
     const parts = [...parent.children].filter(node => node.matches('tspan'));
@@ -4387,16 +4388,9 @@
     target.textContent = afterValue;
     target.setAttribute('display', afterValue === '' ? 'none' : 'inline');
     refreshFieldSeparators(parent);
-    const prefix = rawAfter && afterValue.endsWith(rawAfter) ? afterValue.slice(0, -rawAfter.length) : '';
-    let prefixBox = null;
-    let destination = elementBoundsInRoot(target, root);
-    if (prefix) {
-      const prefixText = createSvg('tspan', {}, prefix), digits = createSvg('tspan', {}, rawAfter);
-      target.replaceChildren(prefixText, digits);
-      prefixBox = prefixText.getBBox();
-      destination = elementBoundsInRoot(digits, root);
-      target.textContent = afterValue;
-    }
+    // Format signs belong to the moving value. Measure the complete formatted
+    // field so its prefix and digits arrive together at their final anchor.
+    const destination = elementBoundsInRoot(target, root);
     const planned = original.map(record => ({ ...record, after: box(record.node) }));
     const separator = target.previousElementSibling?.hasAttribute('data-trace-field-separator')
       ? planned.find(record => record.node === target.previousElementSibling) : null;
@@ -4411,10 +4405,8 @@
       parent.append(node); adornments.push(node);
     };
     if (separator?.after && separator.display === 'none') adorn(separator.node.textContent, separator.after.x, 'separator');
-    if (prefixBox) adorn(prefix, prefixBox.x + prefixBox.width / 2, 'prefix');
     let committed = false;
     return {
-      hasPrefix: Boolean(prefix),
       point: destination && destination.width > 0 ? { x: destination.x + destination.width / 2,
         y: destination.y, width: destination.width, height: destination.height } : null,
       update(progress, covering = false) {
@@ -4594,7 +4586,8 @@
       }
     } else {
       targetText = assignableTargetText(operand);
-      fieldLayout = createFieldAssignmentLayout(root, targetText, afterValue, displayEventValue(event?.payload?.after));
+      fieldLayout = createFieldAssignmentLayout(root, targetText, afterValue);
+      operand.formatTransferValue = value => displayEventFieldValue(value, eventFrame, target.variableId);
       if (fieldLayout?.point) {
         operand.point = fieldLayout.point;
         operand.fieldAssignmentPoint = fieldLayout.point;
@@ -4649,7 +4642,7 @@
             root,
             item,
             operand,
-            fieldLayout?.hasPrefix && sourceValue != null ? displayEventValue(sourceValue) : formattedSourceValue,
+            formattedSourceValue,
             item ? previousVisualElement(previousObjects, item.visualKey) : null,
             {
               valueOnly: valueOnlyTransfer,
@@ -11246,10 +11239,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-342';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-343';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-342', play, cancel, updateEventAvailability,
+    build: 'trace-343', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
