@@ -61,13 +61,14 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
             positions[doc.variables[field.dataset.traceFieldVariable].name] = value;
           }
           const text = [...fields[0].parentElement.children].filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent).join('');
-          const flying = [...root.querySelectorAll('.asm-trace-assign-falling-value, .asm-trace-assign-transfer text')].filter(node => {
+          const flightNodes = [...root.querySelectorAll('.asm-trace-assign-falling-value, .asm-trace-assign-transfer text')];
+          const flying = flightNodes.filter(node => {
             let opacity = 1; for (let parent = node; parent?.nodeType === 1; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
             return opacity > .01;
           }).map(node => ({ ...metric(node), text: node.textContent }));
           const adornments = [...cell.querySelectorAll('[data-trace-field-adornment]')]
             .filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent);
-          return { values, positions, flying, adornments, eventId: root.dataset.traceActiveEventId, text, center: metric(cell.querySelector('rect')).x,
+          return { values, positions, flying, travel: flightNodes.map(node => metric(node)), adornments, eventId: root.dataset.traceActiveEventId, text, center: metric(cell.querySelector('rect')).x,
             invalidFields: fields.filter(field => !field.parentElement.matches('text')).length };
         };
         await ASMTracePlayer.render(from + 1, { stable: true });
@@ -122,12 +123,16 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           for (const sample of travelling) {
             for (const number of sample.flying) {
               assert.ok(Math.abs(number.x - target.digitX) < .5, 'numeric effect must align with its field digits, not the cell center: ' + JSON.stringify({ name, number, target }));
-              assert.ok(Math.abs(number.y - target.digitY) < .5, 'numeric effect must share the field baseline');
+              assert.ok(number.y <= target.digitY + .5 && number.y >= target.digitY - 24.5, 'numeric effect descends toward the field baseline without overshooting');
               assert.equal(number.font, target.font, 'field effects must inherit the actual font');
             }
             const expectedTree = name === 'tree' ? report.before.positions.tree : report.destination.positions.tree;
             assert.ok(Math.abs(sample.positions.tree.x - expectedTree.x) < .5, 'surviving field cannot re-center during assignment');
           }
+          const descent = report.samples.filter(sample => sample.eventId === event.id).flatMap(sample => sample.travel);
+          assert.ok(Math.max(...descent.map(number => number.y)) - Math.min(...descent.map(number => number.y)) > 20,
+            'constant or hidden-source digits must actually fall from above');
+          assert.ok(Math.abs(descent.at(-1).y - target.digitY) < .5, 'falling number reaches the correct field baseline before commit');
           if (name === 'tree') assert.ok(travelling.filter(sample => sample.flying.length).every(sample => !sample.positions.tree.visible),
             'an in-place result cannot overlap the old tree value');
           if (name === 'lazy') {

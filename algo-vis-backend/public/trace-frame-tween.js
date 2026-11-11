@@ -3435,11 +3435,16 @@
     }, displayed);
     group.append(text);
     appendBelowTextLayer(root, group);
+    const dropDistance = Math.max(24, Number(targetOperand.point?.height || targetBounds.height) * .8);
+    group.setAttribute('transform', `translate(0, ${-dropDistance})`);
+    group.setAttribute('opacity', '0');
     return {
       group,
       coversTarget: true,
-      update(_progress, opacity = 1) {
-        group.setAttribute('opacity', String(opacity));
+      update(progress, opacity = 1) {
+        const position = clamp01(progress);
+        group.setAttribute('transform', `translate(0, ${-dropDistance * (1 - position)})`);
+        group.setAttribute('opacity', String(opacity * clamp01(position * 4)));
       },
       remove() {
         group.remove();
@@ -11238,10 +11243,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-339';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-340';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-339', play, cancel, updateEventAvailability,
+    build: 'trace-340', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
