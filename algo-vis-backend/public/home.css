@@ -1287,9 +1287,10 @@ body > main::-webkit-scrollbar-thumb:hover {
 
 /* --------------------------------------------------------------------------
  * 「我的投影片」單一工具列：左側分類捷徑靠左，右側份數、搜尋（向左展開）、新增資料夾、新增投影片。
- * 訪客範例清單的 .library-toolbar 不受影響（以 #workspaceMinePanel 限定）。
+ * 範例清單（訪客首頁與「範例投影片」分頁）共用同一套工具列，只是沒有新增按鈕。
  * -------------------------------------------------------------------------- */
-#workspaceMinePanel .library-toolbar {
+#workspaceMinePanel .library-toolbar,
+.guest-gallery .library-toolbar {
   position: sticky;
   top: 0;
   z-index: 3;
@@ -1302,7 +1303,9 @@ body > main::-webkit-scrollbar-thumb:hover {
   background: var(--bg-main);
 }
 
-#workspaceMinePanel .library-toolbar .library-folder-nav {
+#workspaceMinePanel .library-toolbar .library-folder-nav,
+
+.guest-gallery .library-toolbar .library-folder-nav {
   position: static;
   flex: 1 1 auto;
   min-width: 0;
@@ -1312,7 +1315,9 @@ body > main::-webkit-scrollbar-thumb:hover {
   background: transparent;
 }
 
-#workspaceMinePanel .deck-count {
+#workspaceMinePanel .deck-count,
+
+.guest-gallery .deck-count {
   margin: 0 6px 0 10px;
   white-space: nowrap;
 }
@@ -1410,15 +1415,20 @@ body > main::-webkit-scrollbar-thumb:hover {
 }
 
 @media (max-width: 620px) {
-  #workspaceMinePanel .library-toolbar {
+  #workspaceMinePanel .library-toolbar,
+  .guest-gallery .library-toolbar {
     flex-wrap: wrap;
   }
 
-  #workspaceMinePanel .library-toolbar .library-folder-nav {
+  #workspaceMinePanel .library-toolbar .library-folder-nav,
+
+  .guest-gallery .library-toolbar .library-folder-nav {
     flex-basis: 100%;
   }
 
-  #workspaceMinePanel .deck-count {
+  #workspaceMinePanel .deck-count,
+
+  .guest-gallery .deck-count {
     margin-left: auto;
   }
 
@@ -1428,11 +1438,19 @@ body > main::-webkit-scrollbar-thumb:hover {
 }
 
 /* 沒有訊息時不佔空間，工具列下方直接接第一個分類。 */
-#workspaceMinePanel .library-message:empty {
+#workspaceMinePanel .library-message:empty,
+.guest-gallery .library-message:empty {
   display: none;
 }
 
 /* 收起的搜尋框完全不佔寬（連邊框都收掉）。 */
 .library-search[data-open="false"] input {
   border-width: 0;
+}
+
+/* 寬螢幕訪客首頁：範例欄是自己的捲動區，黏性工具列抵銷欄位上內距（40px）。 */
+@media (min-width: 901px) {
+  body:not(.examples-view) .guest-view > .guest-gallery .library-toolbar {
+    top: -40px;
+  }
 }

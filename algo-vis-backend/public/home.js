@@ -584,34 +584,12 @@
 
   createDeckBtn.addEventListener('click', createDeck);
   emptyCreateBtn.addEventListener('click', createDeck);
-  searchInput.addEventListener('input', renderDecks);
-
-  // 搜尋平時只顯示放大鏡；點開後輸入框向左展開並取得焦點。
-  // 留空時離開輸入框或再按放大鏡就收起；Esc 清除搜尋並收起。有搜尋文字時維持展開。
-  const searchBox = document.querySelector('.library-search');
-  const searchToggleBtn = document.getElementById('searchToggleBtn');
-  function setSearchOpen(open, { focus = false } = {}) {
-    searchBox.dataset.open = String(open);
-    searchToggleBtn.setAttribute('aria-expanded', String(open));
-    searchInput.tabIndex = open ? 0 : -1;
-    if (open && focus) searchInput.focus();
-  }
-  searchToggleBtn.addEventListener('click', () => {
-    const open = searchBox.dataset.open === 'true';
-    if (open && !searchInput.value.trim()) setSearchOpen(false);
-    else setSearchOpen(true, { focus: true });
-  });
-  searchInput.addEventListener('keydown', event => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    searchInput.value = '';
-    renderDecks();
-    setSearchOpen(false);
-    searchToggleBtn.focus();
-  });
-  searchInput.addEventListener('blur', event => {
-    if (event.relatedTarget === searchToggleBtn) return;
-    if (!searchInput.value.trim()) setSearchOpen(false);
+  // 搜尋：放大鏡點開後輸入框向左展開（與範例投影片共用 library-ui.js 的行為）。
+  window.ASMLibraryUI.bindExpandingSearch({
+    box: document.querySelector('#workspaceMinePanel .library-search'),
+    input: searchInput,
+    button: document.getElementById('searchToggleBtn'),
+    onChange: renderDecks
   });
   closeDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);
   cancelDeleteDeckBtn.addEventListener('click', closeDeleteDeckDialog);

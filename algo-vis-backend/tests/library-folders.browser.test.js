@@ -157,7 +157,7 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     await page.keyboard.type('Alpha'); assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').count(), 1);
     assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').getAttribute('data-deck-id'), 'a');
     await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#searchInput').inputValue(), ''); assert.equal(await page.locator('.library-search').getAttribute('data-open'), 'false');
+    assert.equal(await page.locator('#searchInput').inputValue(), ''); assert.equal(await page.locator('#workspaceMinePanel .library-search').getAttribute('data-open'), 'false');
 
     // Left/right arrows reorder; a failed save restores the previous order.
     await page.locator('button[aria-label="Alpha 往前"]').click(); await saved(); assert.deepEqual(await order(folder), ['a', 'b']);

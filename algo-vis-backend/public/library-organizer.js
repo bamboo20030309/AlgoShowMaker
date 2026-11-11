@@ -193,6 +193,7 @@
         section.open = query ? true : expanded.get(folder.id) !== false;
         section.hidden = Boolean(query) && matches.length === 0;
         section.addEventListener('toggle', () => { if (!query && section.isConnected) expanded.set(folder.id, section.open); });
+        window.ASMLibraryUI?.bindFolderAnimation(section);
         const summary = document.createElement('summary');
         const heading = document.createElement('span'); heading.className = 'library-folder-title';
         const name = document.createElement('span'); name.className = 'library-folder-name'; name.textContent = folder.title;

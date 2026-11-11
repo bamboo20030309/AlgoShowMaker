@@ -11,7 +11,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=cards-3" />
+  <link rel="stylesheet" href="home.css?v=cards-4" />
   <link rel="stylesheet" href="brand.css?v=site-header-2" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
@@ -63,13 +63,18 @@
         </a>
         <h1 id="galleryTitle">演算法投影片</h1>
         <p class="gallery-intro">從分類挑選演算法，點開投影片即可觀賞，不需登入。</p>
-        <nav id="galleryCategories" class="gallery-categories" aria-label="演算法分類"></nav>
+        <!-- 與「我的投影片」相同的單一工具列：分類捷徑靠左，右側為份數與放大鏡搜尋（不含新增按鈕）。 -->
         <div class="library-toolbar">
-          <label class="search-field" for="gallerySearch">
-            <span aria-hidden="true">⌕</span>
-            <input id="gallerySearch" type="search" placeholder="搜尋演算法投影片" autocomplete="off" />
-          </label>
+          <nav id="galleryCategories" class="library-folder-nav" aria-label="演算法分類"></nav>
           <span id="galleryCount" class="deck-count"></span>
+          <div class="library-search" data-open="false">
+            <input id="gallerySearch" type="search" placeholder="搜尋演算法投影片" autocomplete="off" tabindex="-1" aria-label="搜尋演算法投影片" />
+            <button id="gallerySearchToggleBtn" class="icon-action-btn" type="button" aria-label="搜尋演算法投影片" title="搜尋演算法投影片"
+              aria-controls="gallerySearch" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9"
+                stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
+            </button>
+          </div>
         </div>
         <p id="galleryMessage" class="library-message" role="status" aria-live="polite"></p>
         <div id="galleryGrid" class="gallery-folders"></div>
@@ -237,12 +242,13 @@
   <script src="trace-provenance.js?v=generation-2"></script>
   <script src="compile-session.js?v=2"></script>
   <script src="asmdeck.js?v=14"></script>
-  <script src="guest-gallery.js?v=6"></script>
+  <script src="library-ui.js?v=1"></script>
+  <script src="guest-gallery.js?v=7"></script>
   <script src="deck-file-drop.js?v=2"></script>
   <script src="library-layout.js?v=3"></script>
-  <script src="library-organizer.js?v=12"></script>
+  <script src="library-organizer.js?v=13"></script>
   <script src="home-thumbnail-cache.js?v=1"></script>
-  <script src="home.js?v=cards-3"></script>
+  <script src="home.js?v=cards-4"></script>
 </body>
 
 </html>

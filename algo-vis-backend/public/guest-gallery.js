@@ -70,14 +70,19 @@
     for (const [category, label] of Object.entries(categories)) {
       const entries = visible.filter(entry => entryCategories(entry).includes(category));
       if (query && !entries.length) continue;
+      // 與「我的投影片」相同的分類外觀：名稱＋右側「共 N 份」；範例的名稱不可編輯。
       const section = document.createElement('details');
-      section.className = 'gallery-folder';
+      section.className = 'gallery-folder library-folder';
       section.id = `sample-category-${category}`;
       section.open = query ? true : expanded.get(category) !== false;
       const heading = document.createElement('summary');
-      heading.textContent = `${label}（${entries.length}）`;
+      const title = document.createElement('span'); title.className = 'library-folder-title';
+      const name = document.createElement('span'); name.className = 'library-folder-name'; name.textContent = label;
+      const total = document.createElement('span'); total.className = 'library-folder-count'; total.textContent = `共 ${entries.length} 份`;
+      title.append(name, total); heading.append(title);
       section.append(heading);
       section.addEventListener('toggle', () => expanded.set(category, section.open));
+      window.ASMLibraryUI?.bindFolderAnimation(section);
       const cards = document.createElement('div');
       cards.className = 'deck-grid gallery-folder-cards';
       section.append(cards);
@@ -142,7 +147,15 @@
     });
     nav.append(button);
   }
-  search.addEventListener('input', render);
+  // 放大鏡搜尋：與「我的投影片」共用行為（library-ui.js）。
+  if (window.ASMLibraryUI) {
+    window.ASMLibraryUI.bindExpandingSearch({
+      box: search.closest('.library-search'),
+      input: search,
+      button: document.getElementById('gallerySearchToggleBtn'),
+      onChange: render
+    });
+  } else search.addEventListener('input', render);
   message.textContent = '正在載入公開投影片…';
   fetch('/guest-decks.json').then(async response => {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

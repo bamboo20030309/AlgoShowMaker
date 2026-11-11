@@ -58,6 +58,7 @@ test('sample cards show category and algorithm purpose hints', { timeout: 90000 
     assert.deepEqual(await labels('#sample-category-Data_Structure .deck-card'), ['資料結構', '區間修改', '區間和']);
     assert.equal(await page.locator('.deck-meta').getByText('免登入觀賞', { exact: true }).count(), 0);
 
+    await page.locator('#gallerySearchToggleBtn').click();
     await page.locator('#gallerySearch').fill('區間修改');
     assert.equal(await page.locator('#sample-category-Data_Structure .deck-card').count(), 1);
     assert.equal(await page.locator('#sample-category-Math').count(), 0);
