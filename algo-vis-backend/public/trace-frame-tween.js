@@ -4604,6 +4604,8 @@
     let literalCoversTarget = false;
     let hiddenFieldExit = false;
     let hiddenExitOpacity = 1;
+    let exitSeparator = null;
+    let separatorOpacity = null;
     let landed = false;
     let popupScale = 1;
     const conditionHint = event.conditionalSelection ? createSvg('text', {
@@ -4644,6 +4646,11 @@
       targetText = assignableTargetText(operand);
       hiddenFieldExit = targetText?.matches?.('tspan[data-trace-field-variable]') && afterValue === '';
       if (hiddenFieldExit && (beforeValue === '' || Number(displayEventValue(event.payload?.after)) !== 0)) return null;
+      if (hiddenFieldExit) {
+        exitSeparator = [targetText.previousElementSibling, targetText.nextElementSibling].find(node =>
+          node?.hasAttribute('data-trace-field-separator') && node.getAttribute('display') !== 'none') || null;
+        separatorOpacity = exitSeparator?.getAttribute('opacity');
+      }
       fieldLayout = createFieldAssignmentLayout(root, targetText, hiddenFieldExit
         ? displayEventFieldValue(event.payload?.after, eventFrame, target.variableId, true) : afterValue, fieldReplacements);
       operand.formatTransferValue = value => displayEventFieldValue(value, eventFrame, target.variableId, hiddenFieldExit);
@@ -4751,6 +4758,7 @@
         if (hiddenFieldExit) {
           targetText.setAttribute('display', 'inline');
           refreshFieldSeparators(targetText.parentElement);
+          exitSeparator?.setAttribute('opacity', String(hiddenExitOpacity));
         }
         if (literalCoversTarget) {
           if (originalOpacity == null) targetText.removeAttribute('opacity');
@@ -4772,6 +4780,7 @@
           targetText.textContent = finalText;
           targetText.setAttribute('display', 'inline');
           refreshFieldSeparators(targetText.parentElement);
+          exitSeparator?.setAttribute('opacity', String(hiddenExitOpacity));
         }
       },
       syncPosition() {
@@ -4844,6 +4853,10 @@
           targetText.textContent = '';
           targetText.setAttribute('display', 'none');
           refreshFieldSeparators(targetText.parentElement);
+          if (exitSeparator) {
+            if (separatorOpacity == null) exitSeparator.removeAttribute('opacity');
+            else exitSeparator.setAttribute('opacity', separatorOpacity);
+          }
         }
         fieldLayout?.remove();
         if (targetText) {
@@ -11350,10 +11363,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-347';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-348';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-347', play, cancel, updateEventAvailability,
+    build: 'trace-348', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

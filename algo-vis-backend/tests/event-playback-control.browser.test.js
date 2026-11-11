@@ -3,6 +3,53 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { startIsolatedServer } = require('./helpers/isolated-server');
+const { compile } = require('./helpers/compile');
+
+test('returning from canvas tabs or a hidden page resumes the same event and preserves manual pause', { timeout: 60000 }, async t => {
+  const { base } = await startIsolatedServer(t), previous = process.env.ASM_TEST_BASE_URL;
+  let trace;
+  try {
+    process.env.ASM_TEST_BASE_URL = base;
+    ({ trace } = await compile('#include <vector>\nusing namespace std;\nint main(){vector<int>a={2,7};\n// @frame a\na[0]=a[1];\n// @frame a\n}'));
+  } finally { if (previous === undefined) delete process.env.ASM_TEST_BASE_URL; else process.env.ASM_TEST_BASE_URL = previous; }
+  const browser = await chromium.launch({ headless: true, ...(process.platform === 'win32' ? { channel: 'msedge' } : {}) });
+  t.after(() => browser.close()); const page = await browser.newPage();
+  await page.goto(base + '/algorithm.html'); await page.waitForFunction(() => window.ASMPlaybackNavigation);
+  for (const mode of ['canvas', 'document', 'manual-pause', 'autoplay']) {
+    await page.evaluate(async ({ trace, mode }) => {
+      ASMTracePlayer.apply(JSON.parse(JSON.stringify(trace))); window.asmGetAnimationPlaybackRate = () => 1;
+      await ASMTracePlayer.render(0, { stable: true });
+      if (mode === 'autoplay') ASMPlaybackNavigation.play();
+      else window.fixtureTransition = ASMTracePlayer.render(1, { fromIndex: 0, forceTransition: true });
+    }, { trace, mode });
+    await page.waitForFunction(() => Number(document.querySelector('.asm-trace-assign-transfer')?.getAttribute('opacity')) > .1);
+    if (mode === 'manual-pause') await page.evaluate(() => ASMPlaybackNavigation.pause());
+    const plan = await page.evaluate(() => ASMTracePlayer.getActivePlaybackPlan().id);
+    if (mode === 'document') await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.fixtureHidden });
+      window.fixtureHidden = true; document.dispatchEvent(new Event('visibilitychange'));
+    });
+    else await page.locator('[data-tab="tab-input"]').click();
+    const frozen = await page.locator('.asm-trace-assign-transfer').first().getAttribute('transform');
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('.asm-trace-assign-transfer').first().getAttribute('transform'), frozen, mode + ' freezes in place');
+    assert.equal(await page.evaluate(() => ASMTracePlayer.getActivePlaybackPlan()?.id), plan, 'hide must not replace the original plan');
+    if (mode === 'document') await page.evaluate(() => {
+      window.fixtureHidden = false; document.dispatchEvent(new Event('visibilitychange')); delete document.hidden;
+    });
+    else await page.locator('[data-tab="tab-canvas"]').click();
+    if (mode === 'manual-pause') {
+      assert.equal(await page.evaluate(() => ASMTraceFrameTween.isPaused()), true, 'a user-paused event does not auto-resume');
+      await page.locator('#playToggleBtn').click();
+    }
+    await page.waitForFunction(() => !ASMTracePlayer.getActivePlaybackPlan());
+    const value = await page.evaluate(() => {
+      const doc = ASMTracePlayer.getDocument(), id = Object.keys(doc.variables).find(id => doc.variables[id].name === 'a');
+      return document.querySelector(`[data-trace-object-key="${CSS.escape(id + '#0')}"] text[data-trace-content-role="value"]`)?.textContent;
+    });
+    assert.equal(value, '7', mode + ' resumes and commits the original assignment');
+  }
+});
 
 // Fixed answer: the destination starts at 2 and receives 7. Pausing an active
 // transfer must keep its exact SVG transform, not finish the assignment early.

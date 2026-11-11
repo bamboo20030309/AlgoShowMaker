@@ -60,6 +60,13 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
             } else { value.digitX = value.x; value.digitY = value.y; }
             let opacity = 1; for (let node = field; node?.nodeType === 1; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
             value.visible = opacity > .01;
+            value.opacity = opacity;
+            const separator = field.previousElementSibling;
+            if (separator?.hasAttribute('data-trace-field-separator') && separator.getAttribute('display') !== 'none') {
+              let separatorOpacity = 1;
+              for (let node = separator; node?.nodeType === 1; node = node.parentElement) separatorOpacity *= Number(getComputedStyle(node).opacity);
+              value.separatorOpacity = separatorOpacity;
+            }
             positions[doc.variables[field.dataset.traceFieldVariable].name] = value;
           }
           const text = [...fields[0].parentElement.children].filter(node => node.getAttribute('display') !== 'none'
@@ -127,6 +134,9 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
         const zero = active.filter(sample => sample.values.lazy === '0' && sample.positions.lazy.visible);
         assert.ok(zero.length > 1 && (zero.at(-1).at - zero[0].at) * speed >= 350,
           'zero stays visible for the existing hold phase before fading out');
+        assert.ok(active.filter(sample => sample.values.lazy === '0').every(sample =>
+          Math.abs(sample.positions.lazy.opacity - sample.positions.lazy.separatorOpacity) < .001),
+        'the lazy comma fades with zero, rather than staying visible until cleanup');
         assert.equal(report.final.text, '30', 'clearing lazy removes its separator and occupied space');
       }
       if (kind.endsWith('-set')) {

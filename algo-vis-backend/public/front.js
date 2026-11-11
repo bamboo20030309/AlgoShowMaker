@@ -703,6 +703,7 @@ function activateTab(btn) {
   const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
   const nextTab = btn?.dataset.tab;
   if (activeTab === 'tab-canvas' && nextTab !== 'tab-canvas') {
+    window.ASMTracePlayer?.setPresentationVisible?.(false, 'canvas');
     const camera = window.getCameraViewport?.();
     if (camera) preservedCanvasCamera = camera;
   }
@@ -711,6 +712,7 @@ function activateTab(btn) {
   btn.classList.add('active');
   document.getElementById(nextTab).classList.add('active');
   if (nextTab === 'tab-canvas') {
+    window.ASMTracePlayer?.setPresentationVisible?.(true, 'canvas');
     // Delayed viewport rebases must preserve the view restored by this tab.
     window.ASMTracePlayer?.preserveViewportCamera?.(preservedCanvasCamera);
     requestAnimationFrame(() => {
@@ -2005,6 +2007,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }, +1);
 
   window.ASMPlaybackNavigation = {
+    play,
+    isPlaying: () => isPlaying,
     pause: () => { stopStepAuto(); pause(); },
     fastStepWindowMs: FAST_STEP_WINDOW_MS,
     fastStepThreshold: FAST_STEP_THRESHOLD,

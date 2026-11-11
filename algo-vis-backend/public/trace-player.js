@@ -19,6 +19,8 @@
   let activePlaybackPlan = null;
   let lastPlaybackPlan = null;
   let viewportRebasePendingAfterPlayback = false;
+  const hiddenPresentationReasons = new Set();
+  let suspendedPlayback = null;
 
   // ---------------------------------------------------------------------------
   // 區段：frame 與鏡頭狀態
@@ -247,6 +249,7 @@
   // 區段：文件載入與公開 API
   // ---------------------------------------------------------------------------
   function apply(source) {
+    suspendedPlayback = null;
     window.resetArrows?.();
     if (!window.__asmApplyingBuiltinDefault) {
       window.ASMDefaultAlgorithm?.cancel?.('external-trace');
@@ -270,6 +273,7 @@
   // A normal run has no replacement animation. Release the old document and
   // stop its timers as well as its SVG, so navigation cannot revive that run.
   function clear() {
+    suspendedPlayback = null;
     window.ASMPlaybackNavigation?.pause?.();
     window.ASMTraceFrameTween?.cancel?.();
     clearTimeout(cameraTimer);
@@ -292,22 +296,31 @@
     window.syncCurrentFrameFromCodeScript?.();
   }
 
-  function abandonHiddenPlayback() {
-    if (!window.document.hidden || !document?.frames?.length) return;
-    clearTimeout(cameraTimer);
-    window.ASMPlaybackNavigation?.pause?.();
-    // A hidden page must not keep a paused half-completed scene alive. Render
-    // its destination directly; returning to the page never resumes that run.
-    renderStable(currentFrame, { pageLeave: true });
+  function setPresentationVisible(visible, reason = 'canvas') {
+    if (!visible) {
+      if (!hiddenPresentationReasons.size && document?.frames?.length) {
+        suspendedPlayback = { document, frame: currentFrame, plan: activePlaybackPlan,
+          paused: Boolean(window.ASMTraceFrameTween?.isPaused?.()),
+          playing: Boolean(window.ASMPlaybackNavigation?.isPlaying?.()) };
+        clearTimeout(cameraTimer);
+        window.ASMPlaybackNavigation?.pause?.();
+        window.ASMTraceFrameTween?.pause?.();
+      }
+      hiddenPresentationReasons.add(reason);
+      return;
+    }
+    hiddenPresentationReasons.delete(reason);
+    if (hiddenPresentationReasons.size || !suspendedPlayback) return;
+    const previous = suspendedPlayback; suspendedPlayback = null;
+    if (previous.document !== document || previous.frame !== currentFrame
+      || (previous.plan && previous.plan !== activePlaybackPlan) || previous.paused) return;
+    if (previous.playing) window.ASMPlaybackNavigation?.play?.();
+    else window.ASMTraceFrameTween?.resume?.();
   }
 
-  window.document.addEventListener?.('visibilitychange', abandonHiddenPlayback);
-  window.addEventListener?.('pagehide', () => {
-    if (!document?.frames?.length) return;
-    clearTimeout(cameraTimer);
-    window.ASMPlaybackNavigation?.pause?.();
-    renderStable(currentFrame, { pageLeave: true });
-  });
+  window.document.addEventListener?.('visibilitychange', () => setPresentationVisible(!window.document.hidden, 'document'));
+  window.addEventListener?.('pagehide', () => setPresentationVisible(false, 'page'));
+  window.addEventListener?.('pageshow', () => setPresentationVisible(true, 'page'));
 
   function setRules(rules) {
     if (!document) return;
@@ -334,6 +347,7 @@
 
   window.asmApplyTraceDocument = apply;
   window.ASMTracePlayer = {
+    setPresentationVisible,
     apply,
     clear,
     render,
