@@ -6,7 +6,7 @@ const { readPackage, savedTrace } = require('./helpers/deck-package');
 
 test('segment tree frame 24 to 25 commits each displayed field independently', { timeout: 120000 }, async t => {
   const { base } = await startIsolatedServer(t), previous = process.env.ASM_TEST_BASE_URL;
-  let trace, reset;
+  let trace, reset, left;
   try {
     process.env.ASM_TEST_BASE_URL = base;
     ({ trace } = await compile(fs.readFileSync('tests/fixtures/segment-recursive-parameter-pointer.cpp', 'utf8'),
@@ -17,6 +17,12 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
       + 'tree[1]=9;lazy[1]=3;sets[1]=7;lazy[1]=0;sets[1]=INT_MAX;\n'
       + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
       + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n}'));
+    ({ trace: left } = await compile('#include <vector>\n#include <climits>\nusing namespace std;\n'
+      + 'int main(){int n=1;vector<int>tree={0,2},sets={INT_MAX,INT_MAX},lazy={0,3};\n'
+      + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
+      + 'tree[1]=9;\n'
+      + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
+      + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n}'));
   } finally { if (previous === undefined) delete process.env.ASM_TEST_BASE_URL; else process.env.ASM_TEST_BASE_URL = previous; }
   const body = readPackage(fs.readFileSync('public/guest-decks/segment-tree-teaching.asmdeck')).body;
   const animation = body.deck.groups.flatMap(group => group.slides).find(slide =>
@@ -25,7 +31,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
   t.after(() => browser.close()); const page = await browser.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/algorithm.html?asmEmbed=runtime'); await page.waitForFunction(() => window.ASMTracePlayer);
-  for (const [kind, source, from, index] of [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17], ['reset', reset, 0, 1]]) {
+  for (const [kind, source, from, index] of [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17], ['reset', reset, 0, 1], ['left', left, 0, 1]]) {
     for (const speed of [1, 4]) {
       const report = await page.evaluate(async ({ trace, from, index, speed }) => {
         const doc = ASMTracePlayer.apply(JSON.parse(JSON.stringify(trace)));
@@ -35,11 +41,27 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           const tree = [...document.querySelectorAll('#asm-trace-root [data-trace-variable]')].find(node => doc.variables[node.dataset.traceVariable]?.name === 'tree');
           const cell = document.querySelector(`#asm-trace-root g[data-trace-object-key="${CSS.escape(tree.dataset.traceObjectKey + '#' + index)}"]`);
           const fields = [...cell.querySelectorAll('tspan[data-trace-field-variable]')];
+          const root = document.getElementById('asm-trace-root'), inverse = root.getScreenCTM().inverse();
+          const metric = node => {
+            const bounds = node.getBoundingClientRect();
+            const point = new DOMPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2).matrixTransform(inverse);
+            return { x: point.x, y: point.y, font: getComputedStyle(node).fontSize };
+          };
           const values = {};
+          const positions = {};
           for (const field of fields) values[doc.variables[field.dataset.traceFieldVariable].name] = field.getAttribute('display') === 'none' ? '' : field.textContent;
+          for (const field of fields) if (field.getAttribute('display') !== 'none') positions[doc.variables[field.dataset.traceFieldVariable].name] = metric(field);
           const text = [...fields[0].parentElement.children].filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent).join('');
-          return { values, text, invalidFields: fields.filter(field => !field.parentElement.matches('text')).length };
+          const flying = [...root.querySelectorAll('.asm-trace-assign-falling-value, .asm-trace-assign-transfer text')].filter(node => {
+            let opacity = 1; for (let parent = node; parent?.nodeType === 1; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
+            return opacity > .01;
+          }).map(node => ({ ...metric(node), text: node.textContent }));
+          return { values, positions, flying, text, center: metric(cell.querySelector('rect')).x,
+            invalidFields: fields.filter(field => !field.parentElement.matches('text')).length };
         };
+        await ASMTracePlayer.render(from + 1, { stable: true });
+        const destination = read();
+        await ASMTracePlayer.render(from, { stable: true });
         const before = read(), native = { raf: requestAnimationFrame, cancel: cancelAnimationFrame, now: Object.getOwnPropertyDescriptor(performance, 'now') };
         let clock = performance.now(), elapsed = 0, id = 0;
         const callbacks = new Map(), samples = [];
@@ -58,7 +80,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           restore(); await pending;
           const final = read(), saved = JSON.parse(JSON.stringify(ASMTracePlayer.getDocument()));
           ASMTracePlayer.apply(saved); await ASMTracePlayer.render(from + 1, { stable: true });
-          return { before, samples, final, reopened: read(), plan };
+          return { before, destination, samples, final, reopened: read(), plan };
         } finally { restore(); ASMTraceFrameTween.cancel(); }
       }, { trace: source, from, index, speed });
       fs.mkdirSync('test-results/multi-field-replay', { recursive: true });
@@ -68,12 +90,42 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
       const expected = kind === 'reset'
         ? [{ tree: '2', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '+3' },
           { tree: '9', sets: '=7', lazy: '+3' }, { tree: '9', sets: '=7', lazy: '' }, { tree: '9', sets: '', lazy: '' }]
-        : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
+        : kind === 'left' ? [{ tree: '2', sets: '', lazy: '+3' }, { tree: '9', sets: '', lazy: '+3' }]
+          : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
       assert.deepEqual(states, expected, 'every field must commit in runtime order without overwriting siblings');
       assert.deepEqual(report.final.values, expected.at(-1)); assert.deepEqual(report.reopened.values, expected.at(-1));
       assert.ok(report.samples.every(sample => !sample.text.startsWith(',') && !sample.text.endsWith(',') && !sample.text.includes(',,')),
         'hidden fields cannot leave dangling separators');
       assert.ok(report.samples.every(sample => sample.invalidFields === 0), 'field tspans must remain inside their text parent');
+      if (kind === 'fresh' || kind === 'saved') {
+        const writes = source.frames[from + 1].events.filter(event => event.type === 'write');
+        for (const name of ['tree', 'lazy']) {
+          const event = writes.find(event => event.targets?.some(target => target.role === 'target' && source.variables[target.variableId]?.name === name));
+          const commit = report.plan.forwardReplay.checkpoints.find(checkpoint => checkpoint.eventId === event.id).commitMs;
+          const travelling = report.samples.filter(sample => sample.at * speed > commit - 300 && sample.at * speed < commit - 40);
+          const target = name === 'tree' ? report.before.positions.tree : report.destination.positions.lazy;
+          assert.ok(travelling.length > 1);
+          assert.ok(travelling.some(sample => sample.flying.length), 'must observe the numeric effect in ' + name);
+          for (const sample of travelling) {
+            for (const number of sample.flying) {
+              assert.ok(Math.abs(number.x - target.x) < .5, 'numeric effect must align with its field, not the cell center: ' + JSON.stringify({ name, number, target }));
+              assert.ok(Math.abs(number.y - target.y) < .5, 'numeric effect must share the field baseline');
+              assert.equal(number.font, target.font, 'field effects must inherit the actual font');
+            }
+            const expectedTree = name === 'tree' ? report.before.positions.tree : report.destination.positions.tree;
+            assert.ok(Math.abs(sample.positions.tree.x - expectedTree.x) < .5, 'surviving field cannot re-center during assignment');
+          }
+        }
+      }
+      if (kind === 'left') {
+        assert.ok(report.before.positions.tree.x < report.before.center - 5, 'the assigned field is visibly left of cell center');
+        assert.ok(report.samples.every(sample => Math.abs(sample.positions.tree.x - report.before.positions.tree.x) < .5),
+          'existing comma-separated fields must never jump back to the cell center');
+        const visibleNumbers = report.samples.flatMap(sample => sample.flying);
+        assert.ok(visibleNumbers.length > 2);
+        assert.ok(visibleNumbers.every(number => Math.abs(number.x - report.before.positions.tree.x) < .5),
+          'assignment lands on the left field rather than the cell center');
+      }
     }
   }
   assert.deepEqual(errors, []);

@@ -3309,7 +3309,10 @@
     }
 
     const sourceBounds = valueOnly ? elementBoundsInRoot(sourceElement, root) : null;
-    const targetBounds = valueOnly ? elementBoundsInRoot(targetElement, root) : null;
+    const fieldPoint = targetOperand.fieldAssignmentPoint;
+    const targetBounds = valueOnly ? fieldPoint ? { x: fieldPoint.x - fieldPoint.width / 2,
+      y: fieldPoint.y, width: fieldPoint.width, height: fieldPoint.height }
+      : elementBoundsInRoot(targetElement, root) : null;
     if (valueOnly && (!sourceBounds || !targetBounds)) return null;
     const extraClass = String(options.className || '').trim();
     const group = createSvg('g', {
@@ -3399,7 +3402,9 @@
       x: targetBounds.x + targetBounds.width / 2,
       y: targetBounds.y + targetBounds.height / 2
     };
-    const fontSize = Math.max(10, Number(targetElement.getAttribute?.('font-size')) || 14);
+    const field = targetElement.matches?.('tspan[data-trace-field-variable]');
+    const computed = field ? getComputedStyle(targetElement) : null;
+    const fontSize = Math.max(10, parseFloat(computed?.fontSize) || Number(targetElement.getAttribute?.('font-size')) || 14);
     const laneGap = Math.max(18, fontSize * 1.4);
     const desiredLaneOffset = (literalIndex - (literalCount - 1) / 2) * laneGap;
     const targetWidth = Math.max(targetBounds.width, Number(targetOperand?.point?.width) || 0);
@@ -3420,10 +3425,10 @@
       x: targetAnchor.x + laneOffset,
       y: targetAnchor.y,
       'text-anchor': 'middle',
-      'dominant-baseline': 'middle',
-      'font-family': targetElement.getAttribute?.('font-family') || 'Arial',
+      'dominant-baseline': field ? computed.dominantBaseline || 'auto' : 'middle',
+      'font-family': computed?.fontFamily || targetElement.getAttribute?.('font-family') || 'Arial',
       'font-size': fontSize,
-      'font-weight': targetElement.getAttribute?.('font-weight') || 'normal',
+      'font-weight': computed?.fontWeight || targetElement.getAttribute?.('font-weight') || 'normal',
       fill: targetElement.getAttribute?.('fill') || '#1f282d',
       'pointer-events': 'none'
     }, displayed);
@@ -3832,14 +3837,7 @@
         track.targetText.textContent = displayed;
         if (track.targetText.matches?.('tspan[data-trace-field-variable]')) {
           track.targetText.setAttribute('display', displayed === '' ? 'none' : 'inline');
-          let hasVisibleField = false;
-          const parent = track.targetText.parentElement;
-          for (const child of parent.children) {
-            if (child.hasAttribute('data-trace-field-separator')) {
-              const next = child.nextElementSibling;
-              child.setAttribute('display', hasVisibleField && next?.getAttribute('display') !== 'none' ? 'inline' : 'none');
-            } else if (child.hasAttribute('data-trace-field-variable') && child.getAttribute('display') !== 'none') hasVisibleField = true;
-          }
+          refreshFieldSeparators(track.targetText.parentElement);
         }
       }
     };
@@ -4348,6 +4346,55 @@
     };
   }
 
+  function refreshFieldSeparators(parent) {
+    let visible = false;
+    for (const child of parent.children) {
+      if (child.hasAttribute('data-trace-field-separator')) {
+        child.setAttribute('display', visible && child.nextElementSibling?.getAttribute('display') !== 'none' ? 'inline' : 'none');
+      } else if (child.hasAttribute('data-trace-field-variable') && child.getAttribute('display') !== 'none') visible = true;
+    }
+  }
+
+  function createFieldAssignmentLayout(root, target, afterValue) {
+    if (!target?.matches?.('tspan[data-trace-field-variable]')) return null;
+    const parent = target.parentElement;
+    const parts = [...parent.children].filter(node => node.matches('tspan'));
+    const box = node => {
+      if (node.getAttribute('display') === 'none') return null;
+      const bounds = node.getBBox();
+      return bounds.width > 0 ? { x: bounds.x + bounds.width / 2, width: bounds.width } : null;
+    };
+    const original = parts.map(node => ({ node, x: node.getAttribute('x'), display: node.getAttribute('display'), before: box(node) }));
+    const beforeText = target.textContent;
+    // Measure the row after this operation, not after the entire frame. Each
+    // tspan will own an anchored chunk, so changing its digits cannot re-center
+    // all its siblings. The prepare phase makes room before the value travels.
+    parts.forEach(node => node.removeAttribute('x'));
+    target.textContent = afterValue;
+    target.setAttribute('display', afterValue === '' ? 'none' : 'inline');
+    refreshFieldSeparators(parent);
+    const destination = elementBoundsInRoot(target, root);
+    const planned = original.map(record => ({ ...record, after: box(record.node) }));
+    target.textContent = beforeText;
+    original.forEach(({ node, x, display }) => {
+      if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x);
+      if (display == null) node.removeAttribute('display'); else node.setAttribute('display', display);
+    });
+    return {
+      point: destination && destination.width > 0 ? { x: destination.x + destination.width / 2,
+        y: destination.y, width: destination.width, height: destination.height } : null,
+      update(progress) {
+        planned.forEach(({ node, before, after }) => {
+          const from = before || after, to = after || before;
+          if (from && to) node.setAttribute('x', String(from.x + (to.x - from.x) * progress));
+        });
+      },
+      remove() {
+        original.forEach(({ node, x }) => { if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x); });
+      }
+    };
+  }
+
   function createAssignEffect(
     root, event, traceDocument, eventFrame, placements, elements,
     rawDeltas, appearingKeys, previousObjects, visualKeyForSource, liveElements = elements
@@ -4468,6 +4515,7 @@
     let targetText = null;
     let finalText = '';
     let originalOpacity = null;
+    let fieldLayout = null;
     let literalCoversTarget = false;
     let landed = false;
     let popupScale = 1;
@@ -4507,6 +4555,13 @@
       }
     } else {
       targetText = assignableTargetText(operand);
+      fieldLayout = createFieldAssignmentLayout(root, targetText, afterValue);
+      if (fieldLayout?.point) {
+        operand.point = fieldLayout.point;
+        operand.fieldAssignmentPoint = fieldLayout.point;
+        x = operand.point.x; y = operand.point.y;
+      }
+      fieldLayout?.update(0);
       finalText = afterValue;
       originalOpacity = targetText?.getAttribute?.('opacity');
       const targetTemplate = operand.element.getAttribute?.('data-trace-display-template');
@@ -4580,8 +4635,8 @@
           y: targetY - Math.max(24, operand.point.height * 0.8),
           'text-anchor': 'middle',
           'dominant-baseline': 'middle',
-          'font-family': targetText?.getAttribute?.('font-family') || 'Arial',
-          'font-size': targetText?.getAttribute?.('font-size') || Math.max(12, operand.point.height * 0.48),
+          'font-family': targetText ? getComputedStyle(targetText).fontFamily : 'Arial',
+          'font-size': targetText ? getComputedStyle(targetText).fontSize : Math.max(12, operand.point.height * 0.48),
           'font-weight': targetText?.getAttribute?.('font-weight') || 'normal',
           fill: targetText?.getAttribute?.('fill') || '#1f282d',
           opacity: 0,
@@ -4619,6 +4674,7 @@
       },
       update(elapsed) {
         const frameProgress = easeOutCubic(timedProgress(elapsed, ASSIGN_TIMING.frame));
+        fieldLayout?.update(frameProgress);
         // The transfer must land at the same commit time used by replay and
         // conditional styles, including the initial frame phase for scalars.
         const dropStart = ASSIGN_TIMING.frame
@@ -4654,7 +4710,7 @@
           fallingText.setAttribute('y', String(startY + (targetY - startY) * dropProgress));
           fallingText.setAttribute('opacity', String(dropProgress < 1 ? clamp01(dropProgress * 4) : 0));
         }
-        transfers.forEach(item => item.update(dropProgress, 1 - exit));
+        transfers.forEach(item => item.update(dropProgress, fieldLayout && frameProgress < 1 ? 0 : 1 - exit));
         if (dropProgress >= 1) {
           landValue();
           // Value-only transfers are absorbed by the destination. Remove them
@@ -4668,6 +4724,7 @@
       },
       remove() {
         landValue();
+        fieldLayout?.remove();
         if (targetText) {
           if (originalOpacity == null) targetText.removeAttribute('opacity');
           else targetText.setAttribute('opacity', originalOpacity);
@@ -11148,10 +11205,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-337';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-338';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-337', play, cancel, updateEventAvailability,
+    build: 'trace-338', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
