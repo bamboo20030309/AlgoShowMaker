@@ -191,6 +191,17 @@
   - 互動探針（API 以 route 模擬）：工具列順序與位置（分類捷徑 x=68 靠左，份數、搜尋、資料夾、新增在右）；分類標題為名稱＋「共 1 份」且只有「移除資料夾」按鈕；搜尋收起寬 0、展開 180px 且取得焦點、圖示位置不變、輸入後篩選為 1 張、Esc 後清空收起並恢復 3 張；新增資料夾列在最底並聚焦、無對話框、Enter 建立、Esc 取消；點名稱改名時分類維持展開、Enter 儲存；分類與卡片垃圾桶 hover 顏色同為 rgb(227, 93, 106)；390px 無水平溢出。無 page error。
   - 測試：`library-folders`（更新：就地新增資料夾的取消／空白／失敗保留文字、分類標題內容、就地改名含 Esc 與失敗、垃圾桶 hover 顏色、放大鏡搜尋向左展開與 Esc、手機新增列）通過；`home-navigation`、`auth-center`、`home-delete-dialog`、`deck-file-drop`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`mobile-ui`、`slide-library` 共 15 項通過；`entrypoints.test.js` 相關 24 條斷言單獨執行通過。
 
+## 追加：分類名稱雙擊改名、移除「已儲存」提示列（2026-11-12，使用者指示）
+
+- 程式修正 commit：57095357aa2452b4b8ed80c7cc99d614c6b4f3b8
+- 修改：
+  1. **分類名稱改為雙擊才進入編輯**（與卡片標題一致）：單擊名稱不改名、也不收合分類（避免雙擊時連續開關兩次）；鍵盤 Enter／F2 不變。
+  2. **移除「資料夾與排序已儲存」提示與整列**：刪除 `#libraryLayoutMessage`；`library-organizer.js` 的 `status()` 不再顯示進度與成功訊息（正在儲存、已儲存、正在讀取資料夾）。失敗訊息（儲存失敗並恢復原排序、無法讀取資料夾、資料夾上限）改顯示在既有的投影片訊息列 `#libraryMessage`，下一次成功儲存時清除。`home.js` 的 `renderDecks()` 改為只清除自己寫入的「找不到符合名稱的投影片」「正在讀取投影片...」，不會把資料夾錯誤一起清掉。
+  - 版本：`home.js?v=cards-3`、`library-organizer.js?v=12`。
+- 驗證：
+  - `library-folders`：改為以成功的版面儲存次數判斷完成（不再依賴提示文字），且每次成功後確認訊息列為空，包含「先失敗再成功」時錯誤訊息被清除；新增檢查 `#libraryLayoutMessage` 不存在、單擊分類名稱不進入編輯且分類維持展開、雙擊進入編輯；失敗情境改在 `#libraryMessage` 檢查。通過。
+  - `home-navigation`、`auth-center`、`home-delete-dialog`、`deck-file-drop`、`sample-view-actions`、`mobile-ui`、`slide-library` 共 12 項通過；`entrypoints.test.js` 相關 24 條斷言單獨執行通過。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
