@@ -59,7 +59,8 @@
   const organizer = window.ASMLibraryOrganizer({
     container: deckGrid, nav: document.getElementById('libraryFolderNav'),
     createButton: document.getElementById('createFolderBtn'),
-    message: document.getElementById('libraryLayoutMessage'), api, createCard: createDeckCard,
+    // 資料夾與排序只在失敗時顯示訊息，共用投影片清單的訊息列（不另設一列）。
+    message: libraryMessage, api, createCard: createDeckCard,
     onDelete: deck => openDeleteDeckDialog(deck)
   });
 
@@ -380,9 +381,11 @@
       : `共 ${state.decks.length} 份`;
     emptyState.hidden = state.decks.length !== 0 || Boolean(query);
 
+    // 這一列也顯示資料夾儲存／讀取失敗等錯誤，因此只清除本函式與載入時自己寫入的提示。
+    const ownMessages = ['找不到符合名稱的投影片', '正在讀取投影片...'];
     if (query && decks.length === 0) {
-      setMessage(libraryMessage, '找不到符合名稱的投影片');
-    } else {
+      setMessage(libraryMessage, ownMessages[0]);
+    } else if (ownMessages.includes(libraryMessage.textContent)) {
       setMessage(libraryMessage);
     }
 

@@ -42,7 +42,12 @@
       deleteForm.querySelectorAll('button').forEach(button => { button.disabled = false; }); deleteSubmit.textContent = '移除資料夾';
       if (success) deleteDialog.close(); else deleteMessage.textContent = message.textContent;
     });
-    function status(text, error = false) { message.textContent = text; message.classList.toggle('is-success', !error); }
+    // 不顯示「正在儲存／已儲存」等進度與成功提示；只有失敗才顯示訊息，下一次成功時清掉先前的失敗訊息。
+    let showingError = false;
+    function status(text, error = false) {
+      if (error) { message.textContent = text; message.classList.remove('is-success'); showingError = true; return; }
+      if (showingError) { message.textContent = ''; showingError = false; }
+    }
     // -----------------------------------------------------------------------------
     // 版面提交交易
     // 先正規化下一版 layout，儲存成功後才取代本機狀態並重繪；失敗時維持原排序。
@@ -194,14 +199,16 @@
         const count = document.createElement('span'); count.className = 'library-folder-count'; count.textContent = `共 ${matches.length} 份`;
         heading.append(name, count); summary.append(heading);
         if (folder.id) {
-          name.classList.add('is-editable'); name.title = '點一下重新命名'; name.tabIndex = 0;
+          name.classList.add('is-editable'); name.title = '雙擊以重新命名'; name.tabIndex = 0;
           const edit = event => {
             event.preventDefault(); event.stopPropagation();
             if (!ready || saving) return;
             name.replaceWith(nameInput(folder.title, `重新命名 ${folder.title}`, title => renameFolder(folder, title), () => render()));
             const input = heading.querySelector('.library-folder-name-input'); input.focus(); input.select();
           };
-          name.addEventListener('click', edit);
+          // 與卡片標題一致：雙擊名稱才改名；單擊名稱不改名也不收合分類（避免雙擊時連續開關兩次）。
+          name.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
+          name.addEventListener('dblclick', edit);
           name.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === 'F2') edit(event); });
         }
         const cards = document.createElement('div'); cards.className = 'deck-grid gallery-folder-cards';

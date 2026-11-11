@@ -31,6 +31,8 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     let decks = ['a', 'b', 'c'].map((id, i) => ({ deck_uid: id, title: ['Alpha', 'Beta', 'Gamma'][i], cover_thumbnail: pixel, updated_at: '2026-09-18', slide_count: 1 }));
     decks[2].cover_thumbnail = null;
     let layout = { folders: [], unfiled: ['a', 'b', 'c'] }, failSave = false;
+    // There is no "saved" status text any more (2026-11-12); count successful layout saves instead.
+    let savesDone = 0, savesWaited = 0;
     const renames = [];
     const page = await browser.newPage({ viewport: { width: 1440, height: 1600 } });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -49,12 +51,20 @@ test('workspace folders keep one category per deck, persist drag ordering and re
       if (route.request().method() === 'PUT') {
         if (failSave) return route.fulfill({ status: 500, json: { error: 'fixture save failure' } });
         layout = Layout.validate(route.request().postDataJSON().layout);
+        savesDone += 1;
       }
       return route.fulfill({ json: { layout } });
     });
     const cards = folder => page.locator(`.library-folder[data-folder-id="${folder}"] .deck-card[data-deck-id]`);
     const order = folder => cards(folder).evaluateAll(items => items.map(item => item.dataset.deckId));
-    const saved = () => page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent === '資料夾與排序已儲存' && !document.querySelector('#createFolderBtn').disabled);
+    const saved = async () => {
+      savesWaited += 1;
+      for (let i = 0; i < 300 && savesDone < savesWaited; i++) await new Promise(resolve => setTimeout(resolve, 20));
+      assert.ok(savesDone >= savesWaited, 'expected a successful layout save');
+      await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
+      // Success is silent: no status text and no extra status row.
+      assert.equal(await page.locator('#libraryMessage').textContent(), '');
+    };
     // Drag a whole card (from any area) and drop it on a selector.
     async function pointerDrop(id, targetSelector, area = '.deck-preview', { expectSave = true, during } = {}) {
       const source = await page.locator(`[data-deck-id="${id}"] ${area}`.trim()).boundingBox();
@@ -92,7 +102,7 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     await page.locator('#createFolderBtn').click(); await newFolderInput.fill('   '); await page.keyboard.press('Enter');
     assert.equal(await newFolderInput.count(), 0); assert.equal(layout.folders.length, 0);
     await page.locator('#createFolderBtn').click(); await newFolderInput.fill('數學'); failSave = true; await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('儲存失敗'));
+    await page.waitForFunction(() => document.querySelector('#libraryMessage').textContent.includes('儲存失敗'));
     assert.equal(layout.folders.length, 0); assert.equal(await newFolderInput.inputValue(), '數學', 'the typed name survives a failed save');
     failSave = false;
     await newFolderInput.focus(); await page.keyboard.press('Enter'); await saved();
@@ -154,7 +164,7 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     assert.equal(await page.locator('button[aria-label="Alpha 往前"]').isDisabled(), true);
     failSave = true;
     await page.locator('button[aria-label="Alpha 往後"]').click();
-    await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('已恢復原排序'));
+    await page.waitForFunction(() => document.querySelector('#libraryMessage').textContent.includes('已恢復原排序'));
     assert.deepEqual(await order(folder), ['a', 'b']); failSave = false;
 
     // A deck dragged into a second folder leaves the first one.
@@ -175,20 +185,24 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     await page.locator('button[aria-label="Beta 往前"]').click(); await saved();
     assert.deepEqual(layout.folders.map(item => item.deckIds), [['b', 'a'], []]);
 
-    // Folder rename: click the name to edit in place (no rename button, no dialog). Clicking the
-    // name does not collapse the folder; Escape keeps the old name; a failed save keeps the old name.
+    // Folder rename: double-click the name to edit in place (no rename button, no dialog). A single
+    // click neither edits nor collapses the folder; Escape keeps the old name; a failed save keeps it too.
+    assert.equal(await page.locator('#libraryLayoutMessage').count(), 0, 'the layout status row is removed');
     assert.equal(await page.locator('.library-folder').getByRole('button', { name: '重新命名', exact: true }).count(), 0);
     const folderName = () => page.locator(`.library-folder[data-folder-id="${folder}"] .library-folder-name`);
     const folderNameInput = page.locator(`.library-folder[data-folder-id="${folder}"] .library-folder-name-input`);
     await folderName().click();
+    assert.equal(await folderNameInput.count(), 0, 'a single click does not edit');
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), true);
+    await folderName().dblclick();
     assert.equal(await folderNameInput.inputValue(), '數學');
     assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), true);
     await folderNameInput.fill('不要'); await page.keyboard.press('Escape');
     assert.equal(await folderName().textContent(), '數學'); assert.equal(layout.folders[0].title, '數學');
-    await folderName().click(); await folderNameInput.fill('演算法'); failSave = true; await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('儲存失敗'));
+    await folderName().dblclick(); await folderNameInput.fill('演算法'); failSave = true; await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('#libraryMessage').textContent.includes('儲存失敗'));
     assert.equal(layout.folders[0].title, '數學'); assert.equal(await folderName().textContent(), '數學'); failSave = false;
-    await folderName().click(); await folderNameInput.fill('演算法'); await page.keyboard.press('Enter'); await saved();
+    await folderName().dblclick(); await folderNameInput.fill('演算法'); await page.keyboard.press('Enter'); await saved();
     assert.equal(layout.folders[0].title, '演算法');
     // The folder trash turns red on hover, like the card trash.
     const folderTrash = page.locator(`.library-folder[data-folder-id="${folder}"] .library-folder-delete`);
