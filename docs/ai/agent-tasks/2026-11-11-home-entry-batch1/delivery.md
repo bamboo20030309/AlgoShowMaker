@@ -165,6 +165,15 @@
   - 測試：`home-navigation`（新增：只有頂部列以下的區域捲動）、`auth-center`、`library-folders`、`home-delete-dialog`、`deck-file-drop`、`sample-view-actions`、`guest-gallery-contract`、`guest-card-cache`、`guest-gallery-hints`、`mobile-ui` 共 13 項通過；`entrypoints.test.js` 相關 23 條斷言單獨執行通過。
   - 注意：手機瀏覽器改為內層捲動後，網址列不會隨捲動自動收起。
 
+## 追加：切換頁面時登入／登出按鈕偶爾閃一下（2026-11-11，使用者回報）
+
+- 程式修正 commit：f439f69e2c2277442787a3bc915e26278d20c31b
+- 根因：`site-header.js` 放在頂部列之後，是外部檔案且伺服器回應 `Cache-Control: public, max-age=0`，每次換頁都要向伺服器確認。等待期間瀏覽器可以先繪製已解析的頂部列，此時帳號區仍為隱藏；腳本執行後才出現，造成閃一下。等待時間不固定，所以「有時候」才看得到。
+- 重現（隔離服務，逐幀取樣 `requestAnimationFrame`，已登入狀態）：程式碼頁在無延遲時有 1 幀、`site-header.js` 延遲 400ms 時連續 8 幀出現「有頂部列但沒有登入／登出」；首頁未出現。
+- 修改：`site-header.js` 改為在 `<head>` 同步載入（head 內腳本未完成前不會繪製），只提供 `ASMSiteHeader.apply()` 與換頁過場的 `pageswap` 處理；兩頁在頂部列結束標籤後以內嵌 `<script>ASMSiteHeader.apply()</script>` 套用登入狀態（不需網路）。版本 `site-header.js?v=3`。
+- 驗證：同一探針在無延遲與 400ms 延遲下，兩頁第一個含頂部列的畫面都已顯示「登出」，空白帳號區的幀數為 0。`home-navigation` 的檢查改為延遲 `site-header.js` 400ms 並逐幀取樣，第一幀必須已顯示登入狀態；`entrypoints.test.js` 改為檢查 head 載入與頂部列後的內嵌呼叫（相關 24 條斷言單獨執行通過）。相關瀏覽器測試 11 項通過。
+- 未處理：靜態檔案的 `max-age=0` 快取策略屬於伺服器設定，本次未變更。
+
 ## 主代理核實與整合（由主代理填寫）
 - 狀態：尚未核實
 - 核實的程式 commit 與 diff 範圍：
