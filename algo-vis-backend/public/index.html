@@ -11,7 +11,7 @@
   <meta name="description" content="免登入瀏覽演算法投影片，或登入個人投影片工作區" />
   <title>AlgoShowMaker</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="home.css?v=cards-2" />
+  <link rel="stylesheet" href="home.css?v=cards-3" />
   <link rel="stylesheet" href="brand.css?v=site-header-2" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <script src="ui-motion.js?v=1" defer></script>
@@ -130,12 +130,19 @@
         </div>
 
         <div id="workspaceMinePanel" role="tabpanel" aria-labelledby="workspaceMineTab">
+        <!-- 單一工具列：左側為分類（資料夾）捷徑，右側依序為份數、搜尋、新增資料夾、新增投影片。
+             搜尋平時只顯示放大鏡；點開後輸入框向左展開。 -->
         <div class="library-toolbar">
-          <label class="search-field" for="searchInput">
-            <span aria-hidden="true">⌕</span>
-            <input id="searchInput" type="search" placeholder="搜尋投影片" autocomplete="off" />
-          </label>
+          <nav id="libraryFolderNav" class="library-folder-nav" aria-label="投影片資料夾"></nav>
           <span id="deckCount" class="deck-count"></span>
+          <div class="library-search" data-open="false">
+            <input id="searchInput" type="search" placeholder="搜尋投影片" autocomplete="off" tabindex="-1" aria-label="搜尋投影片" />
+            <button id="searchToggleBtn" class="icon-action-btn" type="button" aria-label="搜尋投影片" title="搜尋投影片"
+              aria-controls="searchInput" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9"
+                stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
+            </button>
+          </div>
           <button id="createFolderBtn" class="icon-action-btn" type="button" disabled
             aria-label="新增資料夾" title="新增資料夾">
             <!-- 資料夾，右上角加號 -->
@@ -155,7 +162,6 @@
 
         <div id="libraryMessage" class="library-message" role="status" aria-live="polite"></div>
         <div id="libraryLayoutMessage" class="library-message" role="status" aria-live="polite"></div>
-        <nav id="libraryFolderNav" class="library-folder-nav" aria-label="投影片資料夾"></nav>
         <div id="deckGrid" class="gallery-folders"></div>
 
         <div id="emptyState" class="empty-state" hidden>
@@ -190,26 +196,6 @@
       <div class="dialog-actions">
         <button id="confirmDeleteDeckBtn" class="danger-btn" type="submit">刪除投影片</button>
         <button id="cancelDeleteDeckBtn" class="quiet-btn" type="button">取消</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="folderDialog" class="deck-dialog t-modal" aria-labelledby="folderDialogTitle">
-    <form id="folderDialogForm">
-      <div class="dialog-heading">
-        <div>
-          <span class="eyebrow">投影片整理</span>
-          <h2 id="folderDialogTitle">新增資料夾</h2>
-        </div>
-        <button id="closeFolderDialogBtn" class="icon-btn" type="button" aria-label="關閉" title="關閉">×</button>
-      </div>
-      <label for="folderTitleInput">資料夾名稱</label>
-      <input id="folderTitleInput" type="text" maxlength="80" required placeholder="例如：排序演算法" />
-      <div id="folderDialogMessage" class="form-message" role="status" aria-live="polite"></div>
-      <div class="dialog-actions">
-        <span class="dialog-spacer"></span>
-        <button id="cancelFolderDialogBtn" class="quiet-btn" type="button">取消</button>
-        <button id="submitFolderBtn" class="primary-btn" type="submit">建立資料夾</button>
       </div>
     </form>
   </dialog>
@@ -255,9 +241,9 @@
   <script src="guest-gallery.js?v=6"></script>
   <script src="deck-file-drop.js?v=2"></script>
   <script src="library-layout.js?v=3"></script>
-  <script src="library-organizer.js?v=10"></script>
+  <script src="library-organizer.js?v=11"></script>
   <script src="home-thumbnail-cache.js?v=1"></script>
-  <script src="home.js?v=cards-1"></script>
+  <script src="home.js?v=cards-2"></script>
 </body>
 
 </html>

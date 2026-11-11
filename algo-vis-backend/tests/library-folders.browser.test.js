@@ -81,22 +81,28 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     const borders = () => page.locator('.gallery-folder:visible').first().evaluate(el => { const style = getComputedStyle(el); return [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth, style.borderRadius]; });
     assert.deepEqual(await borders(), ['1px', '0px', '0px', '0px', '0px']);
 
-    // Folder dialog: focus, cancel, Escape, validation, failed save keeps the dialog.
+    // New folder (2026-11-12): no dialog. A focused name row appears at the bottom of the list;
+    // Enter or leaving the field creates it, Escape or an empty name cancels, a failed save keeps the text.
+    const newFolderInput = page.locator('.library-folder-new .library-folder-name-input');
+    assert.equal(await page.locator('#folderDialog').count(), 0);
     await page.locator('#createFolderBtn').click();
-    assert.equal(await page.locator('#folderTitleInput').evaluate(el => el === document.activeElement), true);
-    await page.locator('#cancelFolderDialogBtn').click(); assert.equal(layout.folders.length, 0);
-    await page.locator('#createFolderBtn').click(); await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
-    await page.locator('#createFolderBtn').click(); await page.locator('#folderTitleInput').fill('   '); await page.locator('#submitFolderBtn').click();
-    assert.equal(layout.folders.length, 0); assert.equal(await page.locator('#folderTitleInput').evaluate(el => el.validity.valid), false);
-    await page.locator('#folderTitleInput').fill('數學'); failSave = true; await page.locator('#submitFolderBtn').click();
-    await page.waitForFunction(() => document.querySelector('#folderDialogMessage').textContent.includes('儲存失敗'));
-    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), true); assert.equal(await page.locator('#folderTitleInput').inputValue(), '數學');
+    assert.equal(await newFolderInput.evaluate(el => el === document.activeElement), true);
+    assert.equal(await page.locator('#deckGrid .library-folder').last().evaluate(el => el.classList.contains('library-folder-new')), true);
+    await page.keyboard.press('Escape'); assert.equal(await newFolderInput.count(), 0); assert.equal(layout.folders.length, 0);
+    await page.locator('#createFolderBtn').click(); await newFolderInput.fill('   '); await page.keyboard.press('Enter');
+    assert.equal(await newFolderInput.count(), 0); assert.equal(layout.folders.length, 0);
+    await page.locator('#createFolderBtn').click(); await newFolderInput.fill('數學'); failSave = true; await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('儲存失敗'));
+    assert.equal(layout.folders.length, 0); assert.equal(await newFolderInput.inputValue(), '數學', 'the typed name survives a failed save');
     failSave = false;
-    await page.locator('#folderTitleInput').fill('數學'); await page.keyboard.press('Enter'); await saved();
-    assert.equal(await page.locator('#folderDialog').evaluate(el => el.open), false);
+    await newFolderInput.focus(); await page.keyboard.press('Enter'); await saved();
+    assert.equal(await newFolderInput.count(), 0);
     const folder = layout.folders[0].id;
-    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"] summary .icon-btn svg`).count(), 2);
+    // Folder header: name, "共 N 份" beside it, and only a trash button.
+    assert.deepEqual(await page.locator(`.library-folder[data-folder-id="${folder}"] summary`).evaluate(el => ({
+      name: el.querySelector('.library-folder-name').textContent, count: el.querySelector('.library-folder-count').textContent,
+      buttons: [...el.querySelectorAll('button')].map(button => button.getAttribute('aria-label')) })),
+      { name: '數學', count: '共 0 份', buttons: ['移除資料夾'] });
 
     // Whole-card drag reorders from any part of the card; the origin stays as a ghost and a full copy follows.
     let dragState;
@@ -130,8 +136,18 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     assert.deepEqual(await order(folder), ['b', 'a']); assert.deepEqual(await order(''), ['c']);
     await page.reload(); await page.waitForFunction(() => !document.querySelector('#createFolderBtn').disabled);
     assert.deepEqual(await order(folder), ['b', 'a']);
-    await page.locator('#searchInput').fill('Alpha'); assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').count(), 1);
-    assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').getAttribute('data-deck-id'), 'a'); await page.locator('#searchInput').fill('');
+    // Search is a magnifier icon; the field opens to its left and filters as you type.
+    assert.equal(await page.locator('#searchInput').evaluate(el => el.getBoundingClientRect().width), 0);
+    const searchIcon = await page.locator('#searchToggleBtn').boundingBox();
+    await page.locator('#searchToggleBtn').click();
+    await page.waitForFunction(() => document.getElementById('searchInput').getBoundingClientRect().width >= 179);
+    const field = await page.locator('#searchInput').boundingBox();
+    assert.ok(field.x + field.width <= searchIcon.x + 1, 'the field opens to the left of the icon');
+    assert.equal(Math.round((await page.locator('#searchToggleBtn').boundingBox()).x), Math.round(searchIcon.x), 'the icon stays put');
+    await page.keyboard.type('Alpha'); assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').count(), 1);
+    assert.equal(await page.locator('#deckGrid .deck-card[data-deck-id]').getAttribute('data-deck-id'), 'a');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#searchInput').inputValue(), ''); assert.equal(await page.locator('.library-search').getAttribute('data-open'), 'false');
 
     // Left/right arrows reorder; a failed save restores the previous order.
     await page.locator('button[aria-label="Alpha 往前"]').click(); await saved(); assert.deepEqual(await order(folder), ['a', 'b']);
@@ -143,7 +159,7 @@ test('workspace folders keep one category per deck, persist drag ordering and re
 
     // A deck dragged into a second folder leaves the first one.
     async function createCategory(title) {
-      await page.locator('#createFolderBtn').click(); await page.locator('#folderTitleInput').fill(title); await page.locator('#submitFolderBtn').click(); await saved();
+      await page.locator('#createFolderBtn').click(); await newFolderInput.fill(title); await page.keyboard.press('Enter'); await saved();
       return layout.folders.find(item => item.title === title).id;
     }
     const second = await createCategory('圖論');
@@ -159,14 +175,27 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     await page.locator('button[aria-label="Beta 往前"]').click(); await saved();
     assert.deepEqual(layout.folders.map(item => item.deckIds), [['b', 'a'], []]);
 
-    // Folder rename and removal; removed folders send their decks to 未分類.
-    const rename = () => page.locator(`.library-folder[data-folder-id="${folder}"]`).getByRole('button', { name: '重新命名', exact: true }).click();
-    await rename(); assert.equal(await page.locator('#folderTitleInput').inputValue(), '數學');
-    await page.locator('#cancelFolderDialogBtn').click(); assert.equal(layout.folders[0].title, '數學');
-    await rename(); await page.locator('#folderTitleInput').fill('演算法'); failSave = true;
-    await page.locator('#submitFolderBtn').click(); await page.waitForFunction(() => document.querySelector('#folderDialogMessage').textContent.includes('儲存失敗'));
-    assert.equal(layout.folders[0].title, '數學'); failSave = false; await page.keyboard.press('Enter'); await saved();
+    // Folder rename: click the name to edit in place (no rename button, no dialog). Clicking the
+    // name does not collapse the folder; Escape keeps the old name; a failed save keeps the old name.
+    assert.equal(await page.locator('.library-folder').getByRole('button', { name: '重新命名', exact: true }).count(), 0);
+    const folderName = () => page.locator(`.library-folder[data-folder-id="${folder}"] .library-folder-name`);
+    const folderNameInput = page.locator(`.library-folder[data-folder-id="${folder}"] .library-folder-name-input`);
+    await folderName().click();
+    assert.equal(await folderNameInput.inputValue(), '數學');
+    assert.equal(await page.locator(`.library-folder[data-folder-id="${folder}"]`).evaluate(el => el.open), true);
+    await folderNameInput.fill('不要'); await page.keyboard.press('Escape');
+    assert.equal(await folderName().textContent(), '數學'); assert.equal(layout.folders[0].title, '數學');
+    await folderName().click(); await folderNameInput.fill('演算法'); failSave = true; await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('#libraryLayoutMessage').textContent.includes('儲存失敗'));
+    assert.equal(layout.folders[0].title, '數學'); assert.equal(await folderName().textContent(), '數學'); failSave = false;
+    await folderName().click(); await folderNameInput.fill('演算法'); await page.keyboard.press('Enter'); await saved();
     assert.equal(layout.folders[0].title, '演算法');
+    // The folder trash turns red on hover, like the card trash.
+    const folderTrash = page.locator(`.library-folder[data-folder-id="${folder}"] .library-folder-delete`);
+    await folderTrash.hover(); const folderTrashColor = await folderTrash.evaluate(el => getComputedStyle(el).color);
+    const cardTrash = page.locator('[data-deck-id="c"] .library-delete-button');
+    await cardTrash.hover(); assert.equal(folderTrashColor, await cardTrash.evaluate(el => getComputedStyle(el).color));
+    // Removal; removed folders send their decks to 未分類.
     const removeFolder = id => page.locator(`.library-folder[data-folder-id="${id}"]`).getByRole('button', { name: '移除資料夾', exact: true }).click();
     await removeFolder(second); assert.ok((await page.locator('#deleteFolderName').textContent()).includes('圖論'));
     assert.equal(await page.locator('#cancelDeleteFolderBtn').evaluate(el => el === document.activeElement), true);
@@ -191,7 +220,7 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     await page.locator('[data-deck-id="a"] .deck-title').dblclick();
     const input = page.locator('[data-deck-id="a"] .deck-title-input');
     assert.equal(await input.evaluate(el => el === document.activeElement), true);
-    await input.fill('Renamed'); await page.locator('#searchInput').click();
+    await input.fill('Renamed'); await page.locator('#workspaceMinePanel .library-toolbar').click({ position: { x: 5, y: 5 } });
     await page.waitForFunction(() => document.querySelector('[data-deck-id="a"] .deck-title')?.textContent === 'Renamed');
     assert.deepEqual(renames, ['Renamed']);
     await page.locator('[data-deck-id="b"] .deck-title').dblclick();
@@ -202,13 +231,13 @@ test('workspace folders keep one category per deck, persist drag ordering and re
     await page.waitForFunction(() => document.querySelector('[data-deck-id="c"] .deck-title')?.textContent === 'Gamma 2');
     assert.deepEqual(renames, ['Renamed', 'Gamma 2']);
 
-    // Mobile: no horizontal overflow and the folder dialog fits.
+    // Mobile: no horizontal overflow; the inline new-folder row fits.
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.locator('#createFolderBtn').click();
-    const modalBounds = await page.locator('#folderDialog').boundingBox();
-    assert.ok(modalBounds.x >= 0 && modalBounds.x + modalBounds.width <= 390);
-    await page.locator('#cancelFolderDialogBtn').click();
+    const rowBounds = await newFolderInput.boundingBox();
+    assert.ok(rowBounds.x >= 0 && rowBounds.x + rowBounds.width <= 390);
+    await page.keyboard.press('Escape');
     const imageDir = path.join(root, 'test-results'); fs.mkdirSync(imageDir, { recursive: true });
     await page.screenshot({ path: path.join(imageDir, 'library-folders-mobile.png'), fullPage: true });
 

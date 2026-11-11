@@ -14,14 +14,10 @@
     // Cards are dragged with pointer events only (whole-card copy follows the pointer).
     let pointer = null, highlighted = null, dragClone = null;
     let suppressClickUntil = 0;
-    const folderDialog = document.getElementById('folderDialog');
-    const folderForm = document.getElementById('folderDialogForm');
-    const folderInput = document.getElementById('folderTitleInput');
-    const folderMessage = document.getElementById('folderDialogMessage');
-    const folderSubmit = document.getElementById('submitFolderBtn');
-    const folderClose = document.getElementById('closeFolderDialogBtn');
-    const folderCancel = document.getElementById('cancelFolderDialogBtn');
-    let editingFolderId = null, deletingFolderId = null;
+    let deletingFolderId = null;
+    // 新增資料夾不開對話框：在清單底部加一列可直接輸入名稱的資料夾（pendingFolder），
+    // 名稱 Enter／離開即建立，Esc 或留空則取消；儲存失敗時保留已輸入的名稱。
+    let pendingFolder = null;
     const deleteDialog = document.getElementById('deleteFolderDialog');
     const deleteForm = document.getElementById('deleteFolderForm');
     const deleteMessage = document.getElementById('deleteFolderMessage');
@@ -134,41 +130,48 @@
     container.addEventListener('click', event => {
       if (event.detail && performance.now() < suppressClickUntil) { suppressClickUntil = 0; event.preventDefault(); event.stopImmediatePropagation(); }
     }, true);
-    function openFolderDialog(folder = null) {
-      if (!ready || saving) return;
-      editingFolderId = folder?.id || null;
-      folderForm.reset(); folderInput.setCustomValidity(''); folderMessage.textContent = '';
-      folderInput.value = folder?.title || '';
-      document.getElementById('folderDialogTitle').textContent = folder ? '重新命名資料夾' : '新增資料夾';
-      folderSubmit.textContent = folder ? '儲存名稱' : '建立資料夾';
-      folderDialog.showModal(); folderInput.focus();
-      if (folder) folderInput.select();
+    function newFolderId() {
+      return 'folder-' + Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2, '0')).join('');
     }
-    createButton.addEventListener('click', () => openFolderDialog());
-    folderInput.addEventListener('input', () => { folderInput.setCustomValidity(''); folderMessage.textContent = ''; });
-    folderClose.addEventListener('click', () => { if (!saving) folderDialog.close(); });
-    folderCancel.addEventListener('click', () => { if (!saving) folderDialog.close(); });
-    folderDialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
-    folderForm.addEventListener('submit', async event => {
-      event.preventDefault();
+    function startNewFolder() {
       if (!ready || saving) return;
-      const title = folderInput.value.trim();
-      if (!title || title.length > 80) {
-        folderInput.setCustomValidity('請輸入 1 至 80 個字的資料夾名稱。'); folderInput.reportValidity(); return;
-      }
-      if (!editingFolderId && layout.folders.length >= 200) { folderMessage.textContent = '最多建立 200 個資料夾。'; return; }
-      const id = editingFolderId || 'folder-' + Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2, '0')).join('');
-      const next = editingFolderId
-        ? { ...layout, folders: layout.folders.map(folder => folder.id === editingFolderId ? { ...folder, title } : folder) }
-        : { ...layout, folders: [...layout.folders, { id, title, deckIds: [] }] };
-      for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = true;
-      folderSubmit.textContent = '正在儲存…'; folderMessage.textContent = '';
-      const success = await change(next);
-      for (const control of [folderInput, folderSubmit, folderClose, folderCancel]) control.disabled = false;
-      folderSubmit.textContent = editingFolderId ? '儲存名稱' : '建立資料夾';
-      if (success) folderDialog.close();
-      else { folderMessage.textContent = message.textContent; folderInput.focus(); }
-    });
+      if (layout.folders.length >= 200) { status('最多建立 200 個資料夾。', true); return; }
+      if (!pendingFolder) pendingFolder = { title: '' };
+      render();
+    }
+    createButton.addEventListener('click', startNewFolder);
+    // Inline name editor used for both a new folder and renaming an existing one.
+    function nameInput(initial, label, commit, cancel) {
+      const input = document.createElement('input');
+      input.type = 'text'; input.className = 'library-folder-name-input'; input.maxLength = 80;
+      input.value = initial; input.placeholder = '資料夾名稱'; input.setAttribute('aria-label', label);
+      let done = false;
+      const finish = save => {
+        if (done) return; done = true;
+        const title = input.value.trim();
+        if (save && title) commit(title); else cancel(input.value);
+      };
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+        else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+        event.stopPropagation();
+      });
+      input.addEventListener('blur', () => finish(true));
+      // Typing in the name must not toggle the folder or start a card drag.
+      for (const type of ['click', 'pointerdown', 'keyup']) input.addEventListener(type, event => { event.stopPropagation(); if (type === 'click') event.preventDefault(); });
+      return input;
+    }
+    async function commitNewFolder(title) {
+      const draft = { title };
+      pendingFolder = null;
+      const success = await change({ ...layout, folders: [...layout.folders, { id: newFolderId(), title, deckIds: [] }] });
+      if (!success) { pendingFolder = draft; render(); }
+    }
+    function cancelNewFolder() { pendingFolder = null; render(); }
+    function renameFolder(folder, title) {
+      if (title === folder.title) { render(); return; }
+      change({ ...layout, folders: layout.folders.map(item => item.id === folder.id ? { ...item, title } : item) });
+    }
     // -----------------------------------------------------------------------------
     // 清單渲染與事件接線
     // 每次依 layout 重建資料夾與未分類區，卡片事件只傳 deck id，不保存失效的 DOM 參照。
@@ -186,19 +189,29 @@
         section.hidden = Boolean(query) && matches.length === 0;
         section.addEventListener('toggle', () => { if (!query && section.isConnected) expanded.set(folder.id, section.open); });
         const summary = document.createElement('summary');
-        const heading = document.createElement('span'); heading.className = 'library-folder-title'; heading.textContent = `${folder.title}（${matches.length}）`; summary.append(heading);
+        const heading = document.createElement('span'); heading.className = 'library-folder-title';
+        const name = document.createElement('span'); name.className = 'library-folder-name'; name.textContent = folder.title;
+        const count = document.createElement('span'); count.className = 'library-folder-count'; count.textContent = `共 ${matches.length} 份`;
+        heading.append(name, count); summary.append(heading);
+        if (folder.id) {
+          name.classList.add('is-editable'); name.title = '點一下重新命名'; name.tabIndex = 0;
+          const edit = event => {
+            event.preventDefault(); event.stopPropagation();
+            if (!ready || saving) return;
+            name.replaceWith(nameInput(folder.title, `重新命名 ${folder.title}`, title => renameFolder(folder, title), () => render()));
+            const input = heading.querySelector('.library-folder-name-input'); input.focus(); input.select();
+          };
+          name.addEventListener('click', edit);
+          name.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === 'F2') edit(event); });
+        }
         const cards = document.createElement('div'); cards.className = 'deck-grid gallery-folder-cards';
         if (folder.id) {
           const tools = document.createElement('span'); tools.className = 'library-folder-tools';
-          for (const [label, action] of [
-            ['重新命名', () => openFolderDialog(folder)],
-            ['移除資料夾', () => openDeleteFolder(folder)]
-          ]) {
-            const button = document.createElement('button'); button.type = 'button'; button.className = 'icon-btn'; button.title = label; button.setAttribute('aria-label', label);
-            button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${label === '重新命名' ? '<path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/>' : TRASH_PATHS}</svg>`;
-            button.disabled = !ready || saving;
-            button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); action(); }); tools.append(button);
-          }
+          const remove = document.createElement('button'); remove.type = 'button';
+          remove.className = 'library-card-icon library-delete-button library-folder-delete';
+          remove.title = '移除資料夾'; remove.setAttribute('aria-label', '移除資料夾'); remove.innerHTML = TRASH_ICON;
+          remove.disabled = !ready || saving;
+          remove.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openDeleteFolder(folder); }); tools.append(remove);
           summary.append(tools); section.append(summary, cards);
         } else section.append(summary, cards);
         if (!matches.length) { const empty = document.createElement('p'); empty.className = 'gallery-folder-empty'; empty.textContent = '將投影片拖到這裡。'; section.append(empty); }
@@ -224,6 +237,18 @@
         container.append(section);
         const link = document.createElement('button'); link.type = 'button'; link.className = 'gallery-category'; link.textContent = folder.title; link.hidden = section.hidden;
         link.addEventListener('click', () => { section.open = true; expanded.set(folder.id, true); section.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' }); }); nav.append(link);
+      }
+      if (pendingFolder && !query) {
+        const section = document.createElement('details');
+        section.className = 'gallery-folder library-folder library-folder-new'; section.open = true;
+        const summary = document.createElement('summary');
+        const heading = document.createElement('span'); heading.className = 'library-folder-title';
+        const input = nameInput(pendingFolder.title, '新資料夾名稱', commitNewFolder, cancelNewFolder);
+        input.addEventListener('input', () => { if (pendingFolder) pendingFolder.title = input.value; });
+        heading.append(input); summary.append(heading); section.append(summary);
+        container.append(section);
+        input.focus(); input.select();
+        section.scrollIntoView({ block: 'nearest' });
       }
     }
     return {

@@ -1284,3 +1284,155 @@ body > main::-webkit-scrollbar-thumb:hover {
     scroll-margin-top: 90px;
   }
 }
+
+/* --------------------------------------------------------------------------
+ * 「我的投影片」單一工具列：左側分類捷徑靠左，右側份數、搜尋（向左展開）、新增資料夾、新增投影片。
+ * 訪客範例清單的 .library-toolbar 不受影響（以 #workspaceMinePanel 限定）。
+ * -------------------------------------------------------------------------- */
+#workspaceMinePanel .library-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+  padding: 10px 0;
+  background: var(--bg-main);
+}
+
+#workspaceMinePanel .library-toolbar .library-folder-nav {
+  position: static;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+#workspaceMinePanel .deck-count {
+  margin: 0 6px 0 10px;
+  white-space: nowrap;
+}
+
+.library-search {
+  display: flex;
+  align-items: center;
+}
+
+.library-search input {
+  box-sizing: border-box;
+  width: 0;
+  min-width: 0;
+  height: 34px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0;
+  background: #181818;
+  color: #fff;
+  font: 14px Arial, "Noto Sans TC", sans-serif;
+  opacity: 0;
+  outline: none;
+  transition: width 180ms ease, padding 180ms ease, margin 180ms ease, opacity 120ms ease, border-color 120ms ease;
+}
+
+.library-search[data-open="true"] input {
+  width: 180px;
+  margin-right: 4px;
+  border-color: var(--border-strong);
+  padding: 0 10px;
+  opacity: 1;
+}
+
+.library-search[data-open="true"] input:focus {
+  border-color: var(--blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-search input {
+    transition: none;
+  }
+}
+
+/* 分類標題：名稱（點一下改名）＋右側「共 N 份」；右端只有垃圾桶，hover 為紅色（與卡片相同）。 */
+.library-folder-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.library-folder-name {
+  color: var(--text-bright);
+  font-weight: 700;
+}
+
+.library-folder-name.is-editable {
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 -3px;
+  cursor: text;
+}
+
+.library-folder-name.is-editable:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.library-folder-name.is-editable:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+.library-folder-count {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.library-folder-name-input {
+  box-sizing: border-box;
+  width: min(280px, 100%);
+  height: 30px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  padding: 0 8px;
+  background: var(--bg-main);
+  color: #fff;
+  font: 700 15px Arial, "Noto Sans TC", sans-serif;
+}
+
+.library-folder-name-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.35);
+}
+
+@media (max-width: 620px) {
+  #workspaceMinePanel .library-toolbar {
+    flex-wrap: wrap;
+  }
+
+  #workspaceMinePanel .library-toolbar .library-folder-nav {
+    flex-basis: 100%;
+  }
+
+  #workspaceMinePanel .deck-count {
+    margin-left: auto;
+  }
+
+  .library-search[data-open="true"] input {
+    width: 150px;
+  }
+}
+
+/* 沒有訊息時不佔空間，工具列下方直接接第一個分類。 */
+#workspaceMinePanel .library-message:empty {
+  display: none;
+}
+
+/* 收起的搜尋框完全不佔寬（連邊框都收掉）。 */
+.library-search[data-open="false"] input {
+  border-width: 0;
+}
