@@ -249,7 +249,7 @@
     // Keep execution spans intact in Trace; project only the code highlight.
     // Older saved traces also contain these AST declarator/type ranges.
     if (candidate.ranges?.some(range => range.role === 'declarator')) {
-      if (event.type === 'assign') {
+      if (['assign', 'input-assign'].includes(event.type)) {
         candidate.ranges = candidate.ranges.filter(range => range.role !== 'type');
       } else if (event.type === 'declare') {
         const name = String(event.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

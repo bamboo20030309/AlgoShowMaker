@@ -26,6 +26,7 @@
     { type: 'read', label: '讀取', color: 'red', internal: true, enabledByDefault: false, timelineByDefault: false },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
+    { type: 'input-assign', label: '輸入賦值事件', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'swap', label: '交換', color: '#1d8f83', enabledByDefault: true, timelineByDefault: true },
     { type: 'sequence-operation', label: '陣列操作', color: '#286bb0', enabledByDefault: true, timelineByDefault: true },
     { type: 'output', label: '輸出', color: '#2f7d72', enabledByDefault: true, timelineByDefault: false },
@@ -75,6 +76,7 @@
     'object-exit': 'exit',
     read: 'none',
     assignment: 'assign',
+    'input-assign': 'assign',
     'sequence-operation': 'sequence',
     compare: 'compare',
     condition: 'none',
@@ -178,7 +180,7 @@
   function presentationOrdered(events, document = null) {
     const runtime = orderedEntries(events).map(entry => entry.event);
     const runtimeIndex = new Map(runtime.map((event, index) => [event, index]));
-    const closingTypes = new Set(['assign', 'write', 'sequence-operation', 'swap', 'compare',
+    const closingTypes = new Set(['assign', 'input-assign', 'write', 'sequence-operation', 'swap', 'compare',
       'declare', 'condition', 'output', 'return-complete', 'call-return']);
     const anchors = new Map();
     const isPostfix = event => event?.type === 'write' && event.update === true
@@ -311,7 +313,7 @@
         break;
       }
       entries.slice(previousConditionIndex + 1, terminalIndex).forEach(({ event }) => {
-        if (!['assign', 'write'].includes(event?.type)) return;
+        if (!['assign', 'input-assign', 'write'].includes(event?.type)) return;
         if (eventForContextKey(event) !== contextKey) return;
         const from = Number(event.source?.from);
         const to = Number(event.source?.to);
@@ -492,7 +494,7 @@
   }
 
   const FIXED_KINDS = new Set(['sequence', 'stack', 'queue', 'set']);
-  const FIXED_ACCESS_TYPES = new Set(['read', 'write', 'assign', 'swap']);
+  const FIXED_ACCESS_TYPES = new Set(['read', 'write', 'assign', 'input-assign', 'swap']);
 
   function targetIndex(document, frame, target = {}) {
     if (target.resolvedIndex != null
@@ -946,7 +948,7 @@
   }
 
   function isForHeaderEvent(event = {}) {
-    if (!['declare', 'assign', 'compare'].includes(event.type)) return false;
+    if (!['declare', 'assign', 'input-assign', 'compare'].includes(event.type)) return false;
     const source = event.source;
     if (!Number.isFinite(Number(source?.from)) || !Number.isFinite(Number(source?.to))) return false;
     return (source.contexts || []).some(context => (

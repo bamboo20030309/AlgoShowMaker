@@ -40,7 +40,7 @@ test('legacy visibility entrances share declaration switches while explicit cano
 test('initial event animation and timeline defaults match the Event Settings panel', () => {
   const api = eventApi();
   const enabled = new Set([
-    'declare', 'visual-enter', 'object-exit', 'assignment', 'sequence-operation', 'compare', 'swap'
+    'declare', 'visual-enter', 'object-exit', 'assignment', 'input-assign', 'sequence-operation', 'compare', 'swap'
   ]);
   const animationEnabled = new Set([...enabled, 'output', 'control-flow']);
   const document = { studio: { eventSettings: { defaultEnabled: {}, timelineTypes: {} } } };
@@ -66,7 +66,7 @@ test('event settings follow the teaching-oriented display order', () => {
     .filter(definition => definition.category !== 'state' && definition.internal !== true)
     .map(definition => definition.label);
   assert.deepEqual(Array.from(visibleLabels), [
-    '宣告／物件入場', '物件入場', '物件退場／手動退場', '比較', '賦值', '交換',
+    '宣告／物件入場', '物件入場', '物件退場／手動退場', '比較', '賦值', '輸入賦值事件', '交換',
     '陣列操作', '輸出', '流程跳轉', '呼叫函式', '進入函式', '離開函式'
   ]);
   assert.equal(api.definition('read').internal, true);

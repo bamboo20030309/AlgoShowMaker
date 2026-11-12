@@ -42,6 +42,10 @@
 
 固定答案入口：`directive-follow.browser.test.js`、`multi-field-replay.browser.test.js`。
 
+## 輸入賦值
+
+成功輸入以`input-assign`獨立記錄與控制，沿用賦值動畫、落定提交及資料重播，不重新實作另一套動作。支援cin、scanf系列、getline及cin.get的接收形式；部分成功只記錄成功目標，EOF不產生成功賦值，副作用索引單次求值。使用方式與邊界見[輸入賦值事件](../guides/input-assignment-events.md)。固定答案入口為`input-assignment.integration.test.js`與`input-assignment.browser.test.js`。
+
 ## 一倍速共用時間
 
 | 動作 | 毫秒 | 先後或同步 |

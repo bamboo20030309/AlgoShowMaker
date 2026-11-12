@@ -218,7 +218,7 @@
         const group = activeEventGroups.get(activeKey);
         if (!group?.eventOnly) return;
         group.last = frameIndex;
-        if (['assign','write'].includes(event.type) && event.payload?.after) {
+        if (['assign', 'input-assign','write'].includes(event.type) && event.payload?.after) {
           const value = scalarValue(event.loopBoundary ? event.payload.before : event.payload.after);
           if (value != null && typeof value !== 'object') group.lastValue = value;
         }
@@ -289,7 +289,7 @@
       const events = [...(frame.events || [])].sort((a, b) => Number(a.order) - Number(b.order));
       for (const event of events) {
         const sources = sourcesOf(event);
-        const assignment = ['assign', 'write'].includes(event.type);
+        const assignment = ['assign', 'input-assign', 'write'].includes(event.type);
         const explicitKind = event.source?.operationKind || event.semantics?.kind;
         let kind = explicitKind || event.type;
         if (assignment && !explicitKind) {

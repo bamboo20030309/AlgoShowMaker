@@ -204,12 +204,14 @@ function syntaxNodeEventType(node, source) {
   if (/^(?:AssignmentExpression|UpdateExpression|UpdateOp)$/.test(name)) return 'write';
   if (name === 'CallExpression') {
     const expression = compactExpression(source.slice(node.from, node.to));
+    if (/^(?:(?:std::)?(?:scanf|fscanf|sscanf|getline)|(?:std::)?cin\.(?:get|getline))\(/.test(expression)) return 'input-assign';
     if (isPrintfCallee(expression.slice(0, expression.indexOf('(')))) return 'output';
     return /(?:^|::)swap\s*\(/.test(expression) ? 'swap' : 'call';
   }
   if (name === 'BinaryExpression' && isOutputStreamStatement(source.slice(node.from, node.to))) {
     return 'output';
   }
+  if (name === 'BinaryExpression' && /^(?:std::)?cin\s*>>/.test(source.slice(node.from, node.to).trim())) return 'input-assign';
   if (/^(?:Identifier|FieldIdentifier|Number|String|Char|Bool|Null|This)$/.test(name)) return 'read';
   if (name === 'Program' || name === 'CompoundStatement') return 'call';
   return 'fixed';
@@ -3148,7 +3150,7 @@ function attachArrowDirectives(source, analysis, frameDirectives) {
 }
 
 const EVENT_CONTROL_TYPES = new Set(['declare', 'visual-enter', 'scope-exit', 'visual-exit', 'read', 'write',
-  'assign', 'assignment', 'object-exit', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'control-flow',
+  'assign', 'assignment', 'input-assign', 'object-exit', 'sequence-operation', 'compare', 'swap', 'fixed', 'call', 'control-flow',
   'return', 'break', 'continue',
   'function-enter', 'function-exit']);
 
@@ -5245,6 +5247,13 @@ function instrumentSource(source, watchIds = []) {
         const selection = selectionCallSources(bitwiseOperand(initializer));
         const conditional = conditionalSources(initializer);
         const assignment = `${variable.name} = ${compactExpression(source.slice(initializer.from, initializer.to))}`;
+        if (/^(?:std::)?cin\s*\.\s*get\s*\(\s*\)$/.test(source.slice(initializer.from, initializer.to).trim())) {
+          events[1] = `::asm_trace::event_declare_uninitialized(${variable.line}, ${cppString(declareSignature)}, ${cppString(variable.id)}, ${cppString(variable.name)}, ${cppString(variable.kind)}, (${variable.name}));`;
+          const inputSignature = `input-assign:${variable.functionName}:${variable.line}:${assignment}`;
+          recordEventSource(inputSignature, declarator, variable.nameFrom, initializer.to, true);
+          events.push(`if(static_cast<bool>(std::cin)){ auto __asm_input_init_${variable.nameFrom}=::asm_trace::capture_input(${variable.line}, ${cppString(inputSignature)}, "cin.get", ${cppString(variable.id)}, ::asm_trace::source_target_json("target", ${cppString(variable.id)}, ${cppString(variable.name)}, "", false, 0LL), ${variable.name}, "null"); __asm_input_init_${variable.nameFrom}(); } else { ::asm_trace::mark_initialized(${cppString(variable.id)}, ${variable.name}); }`);
+          return events;
+        }
         const assignSignature = `assign:${variable.functionName}:${variable.line}:${assignment}`;
         recordEventSource(
           assignSignature,
@@ -5292,20 +5301,53 @@ function instrumentSource(source, watchIds = []) {
       .join('\n');
   }
 
-  function inputInitializationMarks(node) {
-    const text = source.slice(node.from, node.to);
-    if (!/(?:^|\W)(?:std\s*::\s*)?cin\s*>>/.test(text)) return '';
-    const calls = [];
-    const seen = new Set();
-    for (const match of text.matchAll(/>>\s*([A-Za-z_]\w*)/g)) {
-      const name = match[1];
-      const relative = Number(match.index) + match[0].lastIndexOf(name);
-      const watch = watchAt(name, node.from + Math.max(0, relative));
-      if (!watch || seen.has(watch.id)) continue;
-      seen.add(watch.id);
-      calls.push(`::asm_trace::mark_initialized(${cppString(watch.id)}, (${name}));`);
+  function inputBinding(targetNode, root, context, prefix, ordinal, kind) {
+    const target = targetDescriptor(targetNode);
+    if (!target.variableId) return null;
+    const name = `${prefix}_target_${ordinal}`, indices = `${prefix}_indices_${ordinal}`;
+    const access = rebuild(targetNode, { ...context, suppressRead: true,
+      captureSubscriptIndices: new Map([[`${targetNode.from}:${targetNode.to}`, indices]]) });
+    const sig = `${signature('input-assign', root)}:${ordinal}`;
+    recordEventSource(sig, root, root.from, root.to, true);
+    const descriptor = `::asm_trace::source_target_json("target", ${targetArgs(target)}, !${indices}.empty(), (${indices}.size()==2 ? static_cast<long long>((static_cast<unsigned long long>(static_cast<unsigned int>(${indices}[0]))<<32)|static_cast<unsigned int>(${indices}[1])) : ${indices}.empty()?0LL:${indices}[0]))`;
+    return { name, setup: `std::vector<long long> ${indices}; auto&& ${name}=(${access});`,
+      capture: `auto ${prefix}_emit_${ordinal}=::asm_trace::capture_input(${analysis.lineAt(root.from)}, ${cppString(sig)}, ${cppString(kind)}, ${cppString(target.variableId)}, ${descriptor}, ${name});`,
+      emit: `${prefix}_emit_${ordinal}()` };
+  }
+
+  function renderInput(root, context, kind, args, callee, streamLeft = null) {
+    let prefix = `__asm_input_${root.from}`; while (source.includes(prefix)) prefix += '_';
+    if (streamLeft) {
+      const binding = inputBinding(args[0], root, context, prefix, 0, kind);
+      if (!binding) return null;
+      return `([&]()->decltype(auto){ auto&& ${prefix}_stream=(${rebuild(streamLeft, context)}); ${binding.setup} ${binding.capture} ${prefix}_stream >> ${binding.name}; if(static_cast<bool>(${prefix}_stream)) ${binding.emit}; return (${prefix}_stream); }())`;
     }
-    return calls.join('\n');
+    const scan = /(?:^|::)(?:scanf|fscanf|sscanf)$/.test(callee);
+    const formatIndex = /(?:^|::)scanf$/.test(callee) ? 0 : 1;
+    const destinationIndex = scan ? formatIndex + 1 : /(?:^|::)getline$/.test(callee) ? 1 : 0;
+    const setup = [], captures = [], emits = [], actual = [];
+    for (let i = 0; i < args.length; i++) {
+      let destination = args[i], address = false;
+      if (scan && i >= destinationIndex && destination.name === 'PointerExpression'
+        && source.slice(destination.from, destination.to).trim().startsWith('&')) {
+        destination = childrenOf(destination).find(child => !['&', '*'].includes(child.name)); address = true;
+      }
+      const descriptor = targetDescriptor(destination);
+      const variable = analysis.variables.find(item => item.id === descriptor.variableId);
+      const recognizedDestination = !scan || address || (variable?.kind === 'sequence' && /^(?:unsigned\s+|signed\s+)?char$/.test(variable.type));
+      const binding = recognizedDestination && (scan ? i >= destinationIndex : i === destinationIndex)
+        ? inputBinding(destination, root, context, prefix, i, kind) : null;
+      if (binding) {
+        setup.push(binding.setup); captures.push(binding.capture); actual.push((address ? '&' : '') + binding.name);
+        emits.push(scan ? `if(${prefix}_result >= ::asm_trace::input_scanf_rank(${actual[formatIndex]},${i - destinationIndex}) && ::asm_trace::input_scanf_rank(${actual[formatIndex]},${i - destinationIndex})>0) ${binding.emit};` : `${binding.emit};`);
+      } else {
+        const name = `${prefix}_arg_${i}`; setup.push(`auto&& ${name}=(${rebuild(args[i], { ...context, suppressRead: true })});`); actual.push(name);
+      }
+    }
+    if (!captures.length) return null;
+    const call = `${callee}(${actual.join(',')})`;
+    const stream = /(?:^|::)getline$/.test(callee) ? actual[0] : callee.replace(/\.(?:get|getline)$/, '');
+    return `([&]()->decltype(auto){ ${setup.join(' ')} ${captures.join(' ')} ${scan ? 'auto' : 'auto&&'} ${prefix}_result=(${call}); ${scan ? emits.join(' ') : `if(static_cast<bool>(${stream})) { ${emits.join(' ')} }`} return ${scan ? prefix + '_result' : '(' + prefix + '_result)' }; }())`;
   }
 
   function controlFlowTarget(node, type) {
@@ -5406,6 +5448,19 @@ return ::asm_trace::event_nested_mutation(${analysis.lineAt(node.from)}, ${cppSt
       }
       : context);
     let rendered;
+    if (!suppressEvents && node.name === 'AssignmentExpression' && children.length >= 2
+      && source.slice(children[0].to, children.at(-1).from).trim() === '='
+      && /^(?:std::)?cin\s*\.\s*get\s*\(\s*\)$/.test(source.slice(children.at(-1).from, children.at(-1).to).trim())) {
+      const prefix = `__asm_input_get_${node.from}`;
+      const binding = inputBinding(children[0], node, nestedContext, prefix, 0, 'cin.get');
+      if (binding) return `([&]()->decltype(auto){ auto ${prefix}_value=std::cin.get(); ${binding.setup} ${binding.capture} ${binding.name}=${prefix}_value; ::asm_trace::mark_initialized(${cppString(targetDescriptor(children[0]).variableId)}, ${binding.name}); if(static_cast<bool>(std::cin)) ${binding.emit}; return (${binding.name}); }())`;
+    }
+    if (!suppressEvents && node.name === 'BinaryExpression' && children.length >= 3
+      && source.slice(children[0].to, children.at(-1).from).trim() === '>>'
+      && /^(?:(?:std\s*::\s*)?cin)\b/.test(source.slice(children[0].from, children[0].to).trim())) {
+      const input = renderInput(node, nestedContext, 'cin', [children.at(-1)], '', children[0]);
+      if (input) return input;
+    }
     if (context.recordSelections && conditionalSources(node)) {
       const choice = conditionalSources(node);
       const expression = compactExpression(source.slice(node.from, node.to));
@@ -5545,20 +5600,9 @@ ${loop}
         const evaluatedExpression = truthySignature && !suppressEvents
           ? `::asm_trace::event_truthy_compare(${analysis.lineAt(expressionNode.from)}, ${cppString(truthySignature)}, ${indexedTargetArgs(truthyTarget)}, [&]()->decltype(auto){ return (${expression}); })`
           : expression;
-        const conditionText = source.slice(expressionNode.from, expressionNode.to).trim();
-        const conditionInputInitializations = /^(?:std\s*::\s*)?cin\s*>>/.test(conditionText)
-          ? inputInitializationMarks(expressionNode)
-          : '';
-        // Stream extraction normally gets its initialization checkpoint from
-        // the surrounding ExpressionStatement. A direct condition such as
-        // `while (cin >> L >> R)` has no such statement, so record successful
-        // extractions before the loop body can capture its first manual frame.
-        const initializedExpression = conditionInputInitializations && !suppressEvents
-          ? `([&](){ const bool __asm_input_condition_${node.from} = static_cast<bool>(${evaluatedExpression}); if (static_cast<bool>(std::cin)) { ${conditionInputInitializations} } return __asm_input_condition_${node.from}; }())`
-          : evaluatedExpression;
         rendered = suppressEvents
           ? `${source.slice(node.from, expressionNode.from)}${expression}${source.slice(expressionNode.to, node.to)}`
-          : `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(conditionKind)}, [&](){ return static_cast<bool>(${initializedExpression}); }))`;
+          : `(::asm_trace::event_condition(${analysis.lineAt(node.from)}, ${cppString(eventSignature)}, ${cppString(conditionKind)}, [&](){ return static_cast<bool>(${evaluatedExpression}); }))`;
       }
     } else if (node.name === 'InitDeclarator' && !suppressEvents
       && (binaryOperationSources(bitwiseOperand(children.at(-1))) || multiOperationSources(bitwiseOperand(children.at(-1))) || selectionCallSources(bitwiseOperand(children.at(-1)))
@@ -5738,6 +5782,11 @@ ${loop}
       ));
       if (suppressEvents || isTypeConstructionCallee(calleeNode, callee)) {
         rendered = expression;
+      } else if (/(?:^|::)(?:scanf|fscanf|sscanf|getline)$/.test(callee)
+        || /^(?:std::)?cin\.(?:get|getline)$/.test(callee) && args.length) {
+        rendered = renderInput(node, nestedContext, callee, args, callee) || expression;
+      } else if (/^(?:std::)?cin\.get$/.test(callee) && !args.length) {
+        rendered = expression;
       } else if (isPrintfCallee(callee)) {
         rendered = `::asm_trace::event_output_invoke(${analysis.lineAt(node.from)}, ${cppString(signature('output', node))}, "printf", ${cppString(compactExpression(source.slice(node.from, node.to)))}, [&]()->decltype(auto){ return (${expression}); })`;
       } else if (/(?:^|::)swap$/.test(callee) && args.length >= 2) {
@@ -5880,11 +5929,8 @@ ${loop}
     } else if (!suppressEvents && CHECKPOINT_NODES.has(node.name)
       && node.parent?.name === 'CompoundStatement') {
       const declarations = node.name === 'Declaration' ? declarationEvents(node) : '';
-      const inputInitializations = node.name === 'ExpressionStatement'
-        ? inputInitializationMarks(node)
-        : '';
       const checkpoint = manualFrames ? '' : captureCall(node);
-      rendered = `${rendered}\n${inputInitializations ? `${inputInitializations}\n` : ''}${declarations ? `${declarations}\n` : ''}${checkpoint}`;
+      rendered = `${rendered}\n${declarations ? `${declarations}\n` : ''}${checkpoint}`;
     }
 
     const bodyLoop = trackedLoops.find(loop => loop.bodyFrom === node.from && loop.bodyTo === node.to);

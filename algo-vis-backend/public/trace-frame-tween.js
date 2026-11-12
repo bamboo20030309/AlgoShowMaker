@@ -159,10 +159,10 @@
     else if (event?.type === 'compare') {
       compareStages('');
     } else if (event?.type === 'swap') add('swap', motionMs, ['move']);
-    else if (['assign', 'write'].includes(event?.type) && fieldExitKind === 'remove') {
+    else if (['assign', 'input-assign', 'write'].includes(event?.type) && fieldExitKind === 'remove') {
       add('cleanup', ASSIGN_TIMING.exit, ['exit']);
       add('close-field-gap', ASSIGN_TIMING.frame, ['move']);
-    } else if (['assign', 'write'].includes(event?.type)) {
+    } else if (['assign', 'input-assign', 'write'].includes(event?.type)) {
       for (let i = 0; i < selectionDuration(event) / COMPARE_DURATION; i++) {
         compareStages('select-');
       }
@@ -237,7 +237,7 @@
         || before.items.length === after.items.length) continue;
       // An authored event, including an explicitly disabled one, owns this
       // change. The visual fallback must never re-enable it.
-      if (events.some(event => ['declare', 'assign', 'write', 'swap', 'sequence-operation', 'visual-exit'].includes(event.type)
+      if (events.some(event => ['declare', 'assign', 'input-assign', 'write', 'swap', 'sequence-operation', 'visual-exit'].includes(event.type)
         && (event.targets || []).some(target => target.variableId === id && !/^source/.test(target.role || '')))) continue;
       const count = Math.min(before.items.length, after.items.length);
       if (!before.items.slice(0, count).every((item, index) => same(item, after.items[index]))) continue;
@@ -271,7 +271,7 @@
     const index = frames.findIndex(f=>f.id===frame?.id);
     const before = frames[index-1]?.state?.[target?.variableId]?.data;
     const after = frame.state?.[target?.variableId]?.data;
-    const mutations = orderedEvents(frame).filter(candidate=>['assign','write','swap','sequence-operation'].includes(candidate.type)
+    const mutations = orderedEvents(frame).filter(candidate=>['assign', 'input-assign','write','swap','sequence-operation'].includes(candidate.type)
       && (candidate.targets || []).some(t=>t.variableId===target?.variableId && !String(t.role||'').startsWith('source')));
     // An old capture with exactly one mutation has unambiguous saved states.
     // Multiple mutations cannot be reconstructed from the final array alone.
@@ -447,7 +447,7 @@
   function captureAssignmentSourceGeometry(traceDocument, eventFrame, root, previousObjects) {
     const capturedKeys = new Set();
     for (const event of orderedEvents(eventFrame)) {
-      if (!['assign', 'write'].includes(event?.type)) continue;
+      if (!['assign', 'input-assign', 'write'].includes(event?.type)) continue;
       for (const target of event.targets || []) {
         if (!String(target.role || '').startsWith('source')) continue;
         const key = eventTargetKey(traceDocument, eventFrame, target);
@@ -2158,7 +2158,7 @@
       const previous = events[i];
       if (['read', 'fixed', 'condition'].includes(previous.type)) continue;
       const incoming = (previous.targets || []).find(item => item.role === 'target');
-      return ['assign', 'write'].includes(previous.type) && incoming?.variableId !== target.variableId
+      return ['assign', 'input-assign', 'write'].includes(previous.type) && incoming?.variableId !== target.variableId
         && fieldCellKey(frame, incoming) === cell
         && displayEventFieldValue(previous.payload?.before, frame, incoming.variableId) === ''
         && displayEventFieldValue(previous.payload?.after, frame, incoming.variableId) !== '';
@@ -2238,7 +2238,7 @@
       before,
       after
     });
-    if ((event?.type === 'assign'
+    if ((['assign', 'input-assign'].includes(event?.type)
       || (event?.type === 'write' && (event?.update === true || event?.compound === true)))
       && Object.prototype.hasOwnProperty.call(event?.payload || {}, 'after')) {
       const target = targets.find(item => item?.role === 'target') || targets[0];
@@ -2400,7 +2400,7 @@
       for (const following of descriptors.slice(index + 1)) {
         if (!following.mutations.length && ['read', 'fixed', 'condition'].includes(following.event.type)) continue;
         const reset = following.event, outgoing = (reset.targets || []).find(item => item.role === 'target');
-        if (following.mode !== 'instant' || !['assign', 'write'].includes(reset.type)
+        if (following.mode !== 'instant' || !['assign', 'input-assign', 'write'].includes(reset.type)
           || outgoing?.variableId === target.variableId || fieldCellKey(eventFrame, outgoing) !== cell
           || displayEventFieldValue(reset.payload?.before, eventFrame, outgoing?.variableId) === ''
           || displayEventFieldValue(reset.payload?.after, eventFrame, outgoing?.variableId) !== '') break;
@@ -3807,7 +3807,7 @@
         .map(item => item.visualKey || item.key);
       if (event?.type === 'swap' || event?.bitwise || event?.bitShift) {
         keys.forEach(key => excludedPaintKeys.add(key));
-      } else if (['assign', 'write'].includes(event?.type)) {
+      } else if (['assign', 'input-assign', 'write'].includes(event?.type)) {
         const target = event.targets?.find(item => item.role === 'target') || event.targets?.[0];
         if (Number.isInteger(target?.resolvedIndex)) keys.forEach(key => assignmentPaintKeys.add(key));
       }
@@ -5353,9 +5353,9 @@
         Object.keys(descriptor.drawLocals || {}).forEach(name => { const id = variableId(name); if (id) ids.delete(id); });
         // C2 follows indices/ranges only. Fixed selectors retain frame semantics.
         if (!ids.size || Number(direction) < 0) continue;
-        const unknown = replay.checkpoints.some(checkpoint => ['assign', 'write', 'swap', 'sequence-operation'].includes(checkpoint.event.type)
+        const unknown = replay.checkpoints.some(checkpoint => ['assign', 'input-assign', 'write', 'swap', 'sequence-operation'].includes(checkpoint.event.type)
           && (checkpoint.event.targets || []).some(target => ids.has(target.variableId) && target.role !== 'source')
-          && (!checkpoint.mutations.length || ['assign', 'write'].includes(checkpoint.event.type)
+          && (!checkpoint.mutations.length || ['assign', 'input-assign', 'write'].includes(checkpoint.event.type)
             && (!Object.hasOwn(checkpoint.event.payload || {}, 'before') || !Object.hasOwn(checkpoint.event.payload || {}, 'after'))));
         if (unknown) {
           if (!warned) window.ASMCompileWarnings?.report?.('繪圖事件跟隨', '舊動畫缺少完整事件前後值，依賴文字／箭頭／樣式暫用幀末畫面；請重新 RUN。');
@@ -5901,7 +5901,7 @@
   }
 
   function assignmentTargetMarker(event, elements, eventFrame = null, previousObjects = null) {
-    if (event?.type !== 'assign') return null;
+    if (!['assign', 'input-assign'].includes(event?.type)) return null;
     const target = (event.targets || []).find(item => item.role === 'target') || event.targets?.[0];
     if (!target?.variableId) return null;
     const domains = previousObjects ? [elements, previousObjects] : [elements];
@@ -5915,9 +5915,9 @@
   }
 
   function eventMutatesVariable(event, variableId) {
-    if (!variableId || !['assign', 'write'].includes(event?.type)) return false;
+    if (!variableId || !['assign', 'input-assign', 'write'].includes(event?.type)) return false;
     const targets = event?.targets || [];
-    if (event.type === 'assign') {
+    if (['assign', 'input-assign'].includes(event.type)) {
       const target = targets.find(item => item.role === 'target') || targets[0];
       return target?.variableId === variableId;
     }
@@ -6091,7 +6091,7 @@
   }
 
   function markersForLogicalEvent(event, elements, eventFrame = null) {
-    if (!['assign', 'write'].includes(event?.type)) return [];
+    if (!['assign', 'input-assign', 'write'].includes(event?.type)) return [];
     const targets = event?.targets || [];
     const markers = [];
     for (const [key, element] of markerCandidates(elements)) {
@@ -6110,7 +6110,7 @@
     const owned = new Set();
     for (const event of events) {
       const lifecycle = ['declare', 'visual-enter', 'scope-exit', 'visual-exit'].includes(event?.type);
-      if (!lifecycle && !['assign', 'write'].includes(event?.type)) continue;
+      if (!lifecycle && !['assign', 'input-assign', 'write'].includes(event?.type)) continue;
       const affected = new Set();
       entries.forEach(item => {
         if (!(event.targets || []).some(target => target.role !== 'source'
@@ -7759,7 +7759,7 @@
   }
 
   function eventAnimationIsRenderable(animation) {
-    return ['declare', 'exit', 'position', 'assign', 'compare', 'swap', 'fixed', 'sequence'].includes(animation)
+    return ['declare', 'exit', 'position', 'assign', 'input-assign', 'compare', 'swap', 'fixed', 'sequence'].includes(animation)
       || Boolean(GENERIC_EVENT_DURATION[animation]);
   }
 
@@ -7773,7 +7773,7 @@
       return Number.isFinite(Number(event?.source?.from))
         && Number.isFinite(Number(event?.source?.to));
     }
-    if (!['assign', 'compare'].includes(event?.type)) return false;
+    if (!['assign', 'input-assign', 'compare'].includes(event?.type)) return false;
     const source = event?.source;
     if (!Number.isFinite(Number(source?.from)) || !Number.isFinite(Number(source?.to))) return false;
     return (source?.contexts || []).some(context => {
@@ -8586,7 +8586,7 @@
         // Do not reveal the destination bits while the code highlight plays.
         // If an earlier write owns this variable, wait for that write instead.
         if (logicalEvents.some(event => logicalRank.get(event) < logicalRank.get(slot.event)
-          && ['assign', 'write', 'swap', 'sequence', 'declare'].includes(event.type)
+          && ['assign', 'input-assign', 'write', 'swap', 'sequence', 'declare'].includes(event.type)
           && event.targets?.some(target => target.role === 'target' && target.variableId === id))) continue;
         const effect = slot.event.bitwise
           ? createBitwiseEffect(slot.event, options.document, execution.frame(slot.event), options.currentElements)
@@ -11439,10 +11439,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-350';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-351';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-350', play, cancel, updateEventAvailability,
+    build: 'trace-351', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

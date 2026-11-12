@@ -1440,6 +1440,41 @@ void event_shift_assign(int line, const char* signature,
   });
 }
 
+// Capture an input destination once. Do not read an uninitialized scalar just
+// to make an animation snapshot; failed reads never emit a successful write.
+template <typename T>
+std::function<void()> capture_input(int line, const char* signature, const char* kind,
+    const char* variable_id, const std::string& target, T& value, const std::string& before_override = "") {
+  const bool uninitialized = uninitialized_variable_keys().count(lifetime_key(variable_id, value)) != 0;
+  const std::string before = !before_override.empty() ? before_override : uninitialized ? "null" : encode_value(value);
+  const std::string id = variable_id ? variable_id : "", sig = signature ? signature : "", input_kind = kind ? kind : "";
+  return [line, before, id, sig, input_kind, target, &value]() {
+    mark_initialized(id.c_str(), value);
+    recorder().add_event_lazy("input-assign", line, sig, [&]() {
+      return std::string("\"operation\":\"=\",\"inputKind\":") + quoted(input_kind)
+        + ",\"payload\":{\"before\":" + before + ",\"after\":" + encode_value(value)
+        + ",\"source\":" + encode_value(value) + "},\"targets\":[" + target
+        + ",{\"role\":\"source\",\"literal\":true,\"literalValue\":" + encode_value(value) + "}]";
+    });
+  };
+}
+
+inline int input_scanf_rank(const char* format, int argument) {
+  if (format && std::string(format).find('$') != std::string::npos) return -1;
+  int index = 0, rank = 0;
+  for (const char* p = format; p && *p; ++p) {
+    if (*p != '%') continue;
+    if (*++p == '%') continue;
+    bool suppressed = *p == '*'; if (suppressed) ++p;
+    while (*p && ((*p >= '0' && *p <= '9') || std::string("hljztL").find(*p) != std::string::npos)) ++p;
+    if (!*p) break;
+    const bool counted = *p != 'n';
+    if (!suppressed) { if (counted) ++rank; if (index++ == argument) return counted ? rank : -1; }
+    if (*p == '[') { ++p; if (*p == '^') ++p; if (*p == ']') ++p; while (*p && *p != ']') ++p; if (!*p) break; }
+  }
+  return -1;
+}
+
 template <typename BeforeFactory, typename F, typename AfterFactory>
 void event_assign(int line, const char* signature,
                    const char* target_id, const char* target_expression, const char* target_index,

@@ -1616,7 +1616,7 @@
       return `${expression(targets[0])} ${event.operation || '?'} ${expression(targets[1])}`.trim();
     }
     if (event?.type === 'swap') return `${expression(targets[0])} ↔ ${expression(targets[1])}`.trim();
-    if (event?.type === 'assign') {
+    if (['assign', 'input-assign'].includes(event?.type)) {
       if (event.expression) return String(event.expression).trim();
       return `${expression(targets.find(target => target.role === 'target') || targets[0])} = ${expression(targets.find(target => target.role === 'source') || targets[1])}`.trim();
     }
