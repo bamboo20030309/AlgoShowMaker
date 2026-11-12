@@ -2978,6 +2978,38 @@
     }
   }
 
+  // Every detached assignment glyph keeps the live value's text baseline.
+  // A tspan inherits these settings; reading only parent attributes loses
+  // inherited/default baselines and makes computed operands land too low.
+  function assignmentTextTypography(element) {
+    const style = getComputedStyle(element);
+    return {
+      'dominant-baseline': style.dominantBaseline,
+      'alignment-baseline': style.alignmentBaseline,
+      'baseline-shift': style.baselineShift,
+      'font-family': style.fontFamily,
+      'font-size': style.fontSize,
+      'font-weight': style.fontWeight,
+      'font-style': style.fontStyle,
+      'letter-spacing': style.letterSpacing,
+      fill: style.fill
+    };
+  }
+
+  function assignmentValueTextInRoot(root, element, value, anchorX = null) {
+    const anchor = elementTextAnchorInRoot(element, root);
+    if (!anchor) return null;
+    const owner = element.matches('tspan') ? element.parentElement : element;
+    const matrix = root.getScreenCTM().inverse().multiply(owner.getScreenCTM());
+    const local = new DOMPoint(anchorX ?? anchor.x, anchor.y).matrixTransform(matrix.inverse());
+    return createSvg('text', {
+      ...assignmentTextTypography(element),
+      x: local.x, y: local.y,
+      transform: `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`,
+      'text-anchor': 'middle', 'pointer-events': 'none'
+    }, value);
+  }
+
   function markerCellElement(operand) {
     if (!operand?.marker) return null;
     return operand.element.querySelector?.('[data-trace-index="0"] rect')
@@ -3331,20 +3363,17 @@
 
     const sourceIsField = sourceElement.matches?.('tspan[data-trace-field-variable]');
     const sourceText = sourceIsField ? sourceElement.parentElement : null;
-    const computedSource = sourceIsField ? window.getComputedStyle(sourceElement) : null;
     const clone = sourceIsField
       ? createSvg('text', {
         x: box.x + box.width / 2,
         y: sourceText?.getAttribute?.('y') ?? box.y + box.height / 2,
         'text-anchor': 'middle',
-        'dominant-baseline': sourceText?.getAttribute?.('dominant-baseline') || 'middle',
-        'font-family': sourceText?.getAttribute?.('font-family') || computedSource?.fontFamily || 'Arial',
-        'font-size': sourceText?.getAttribute?.('font-size') || computedSource?.fontSize || 14,
-        'font-weight': sourceText?.getAttribute?.('font-weight') || computedSource?.fontWeight || 'normal',
-        fill: sourceElement.getAttribute('fill') || sourceText?.getAttribute?.('fill')
-          || computedSource?.fill || '#1f282d'
+        ...assignmentTextTypography(sourceElement)
       }, sourceElement.textContent)
       : cloneWithoutCellTextScale(sourceElement);
+    if (valueOnly && clone.matches('text')) {
+      Object.entries(assignmentTextTypography(sourceElement)).forEach(([key, value]) => clone.setAttribute(key, value));
+    }
     if (!valueOnly) window.ASMTraceRenderers?.copyCellStyles?.(sourceElement, clone);
     [clone, ...clone.querySelectorAll('[id], [data-trace-object-key]')].forEach(node => {
       node.removeAttribute?.('id');
@@ -3489,29 +3518,8 @@
       opacity: 1,
       'pointer-events': 'none'
     });
-    // Keep the destination's SVG text coordinate system and typography. Its y
-    // is a baseline, not a glyph/cell center; forcing `middle` at that same y
-    // shifts ordinary tree labels downward. Project the complete text matrix
-    // so nested scales also apply identically to the moving and settled value.
-    const anchorElement = targetElement.matches('tspan') ? targetElement.parentElement : targetElement;
-    const matrix = root.getScreenCTM().inverse().multiply(anchorElement.getScreenCTM());
-    const localAnchor = new DOMPoint(targetAnchor.x + laneOffset, targetAnchor.y).matrixTransform(matrix.inverse());
-    const text = createSvg('text', {
-      x: localAnchor.x,
-      y: localAnchor.y,
-      transform: `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`,
-      'text-anchor': 'middle',
-      'dominant-baseline': computed.dominantBaseline,
-      'alignment-baseline': computed.alignmentBaseline,
-      'baseline-shift': computed.baselineShift,
-      'font-family': computed.fontFamily,
-      'font-size': computed.fontSize,
-      'font-weight': computed.fontWeight,
-      'font-style': computed.fontStyle,
-      'letter-spacing': computed.letterSpacing,
-      fill: computed.fill,
-      'pointer-events': 'none'
-    }, displayed);
+    const text = assignmentValueTextInRoot(root, targetElement, displayed, targetAnchor.x + laneOffset);
+    if (!text) return null;
     group.append(text);
     appendBelowTextLayer(root, group);
     const dropDistance = Math.max(24, Number(targetOperand.point?.height || targetBounds.height) * .8);
@@ -4810,19 +4818,23 @@
       }
       if (!transfers.length) {
         const targetY = y + operand.point.height / 2;
-        fallingText = createSvg('text', {
-          class: 'asm-trace-assign-falling-value',
-          x,
-          y: targetY - Math.max(24, operand.point.height * 0.8),
-          'text-anchor': 'middle',
-          'dominant-baseline': 'middle',
-          'font-family': targetText ? getComputedStyle(targetText).fontFamily : 'Arial',
-          'font-size': targetText ? getComputedStyle(targetText).fontSize : Math.max(12, operand.point.height * 0.48),
-          'font-weight': targetText?.getAttribute?.('font-weight') || 'normal',
-          fill: targetText?.getAttribute?.('fill') || '#1f282d',
-          opacity: 0,
-          'pointer-events': 'none'
-        }, afterValue);
+        fallingText = targetText && assignmentValueTextInRoot(root, targetText, afterValue,
+          operand.fieldAssignmentPoint?.x ?? null);
+        if (fallingText) {
+          fallingText.classList.add('asm-trace-assign-falling-value');
+          fallingText.setAttribute('opacity', '0');
+          fallingText.dataset.baselineTransform = fallingText.getAttribute('transform');
+        } else {
+          // With no measurable text there is no baseline to copy. Keep the
+          // geometry-only fallback for old/LOD views instead of throwing.
+          fallingText = createSvg('text', {
+            class: 'asm-trace-assign-falling-value', x,
+            y: targetY - Math.max(24, operand.point.height * 0.8),
+            'text-anchor': 'middle', 'dominant-baseline': 'middle',
+            'font-family': 'Arial', 'font-size': Math.max(12, operand.point.height * 0.48),
+            fill: '#1f282d', opacity: 0, 'pointer-events': 'none'
+          }, afterValue);
+        }
         fallingText.dataset.targetY = String(targetY);
         appendBelowTextLayer(root, fallingText);
       }
@@ -4908,7 +4920,11 @@
         if (fallingText) {
           const targetY = Number(fallingText.dataset.targetY) || y;
           const startY = targetY - Math.max(24, operand.point.height * 0.8);
-          fallingText.setAttribute('y', String(startY + (targetY - startY) * dropProgress));
+          if (fallingText.dataset.baselineTransform) {
+            fallingText.setAttribute('transform', `translate(0,${-(targetY - startY) * (1 - dropProgress)}) ${fallingText.dataset.baselineTransform}`);
+          } else {
+            fallingText.setAttribute('y', String(startY + (targetY - startY) * dropProgress));
+          }
           fallingText.setAttribute('opacity', String(dropProgress < 1 ? clamp01(dropProgress * 4) : 0));
         }
         transfers.forEach(item => item.update(dropProgress, fieldLayout && frameProgress < 1 ? 0 : 1 - exit));
@@ -11450,10 +11466,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-352';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-353';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-352', play, cancel, updateEventAvailability,
+    build: 'trace-353', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
