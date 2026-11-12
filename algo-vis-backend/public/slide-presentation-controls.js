@@ -41,9 +41,10 @@
       if (!available() || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
         || !event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       if (frame ? !activeFrame(frame) : !event.target.closest?.('body > .reveal')) return;
-      // 動畫畫布擁有自己的鏡頭縮放；不攔截、不累積成稍後的切頁。
+      // 動畫畫布實際拖曳選取後才擁有滾輪縮放；未選取時沿用投影片切頁。
       // iframe 內的播放列等其他區域仍沿用投影片切頁操作。
-      if (frame && event.target.closest?.('#canvasWrapper, #arraySvg')) {
+      if (frame && event.target.closest?.('#canvasWrapper, #arraySvg')
+        && frame.contentWindow.isCanvasWheelZoomSelected?.()) {
         accumulated = 0;
         return;
       }
@@ -94,7 +95,10 @@
     }, true);
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    ['slidechanged', 'overviewshown', 'overviewhidden', 'paused', 'resumed'].forEach(name => reveal.on(name, sync));
+    ['slidechanged', 'overviewshown', 'overviewhidden', 'paused', 'resumed'].forEach(name => reveal.on(name, () => {
+      frames.forEach(frame => { if (!activeFrame(frame)) frame.contentWindow?.resetCanvasWheelSelection?.(); });
+      sync();
+    }));
     installed.set(reveal, { sync });
     sync();
     return installed.get(reveal);

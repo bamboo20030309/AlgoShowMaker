@@ -68,7 +68,7 @@ test('wheel visits vertical slides before horizontal groups; laser works in slid
   await frame.locator('#stage').evaluate(stage=>{
     const canvas=document.createElement('div');canvas.id='canvasWrapper';
     canvas.style.cssText='position:absolute;inset:0;background:white;cursor:grab';
-    stage.append(canvas);window.cameraZoom=1;
+    stage.append(canvas);window.cameraZoom=1;window.isCanvasWheelZoomSelected=()=>true;
     canvas.addEventListener('wheel',event=>{event.preventDefault();window.cameraZoom*=event.deltaY>0?.9:1.1;},{passive:false});
   });
   for(const editing of [false,true]) {

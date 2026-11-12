@@ -1701,6 +1701,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // === 所有控制鍵：基礎 bind（給 restart / finish 用） ===
+  const playbackButtonActions = new Map();
   function bindAction(btn, fn) {
     if (!btn) return;
     btn.onclick = () => {
@@ -1708,6 +1709,7 @@ document.addEventListener('DOMContentLoaded', () => {
       fn();      // 執行對應動作
       syncCurrentFrameFromCodeScript();
     };
+    playbackButtonActions.set(btn.id, btn.onclick);
   }
 
   // === 跳到「下一個停靠幀」，沒有就跳到最後 ===
@@ -1919,6 +1921,8 @@ document.addEventListener('DOMContentLoaded', () => {
       syncCurrentFrameFromCodeScript();
     };
 
+    playbackButtonActions.set(btn.id, doSingleStep);
+
     const onPressStart = (e) => {
       e.preventDefault();
       longPressFired = false;
@@ -2007,6 +2011,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }, +1);
 
   window.ASMPlaybackNavigation = {
+    invokeButton(id) {
+      if (id === 'playToggleBtn') return togglePlay();
+      return playbackButtonActions.get(id)?.();
+    },
     play,
     isPlaying: () => isPlaying,
     pause: () => { stopStepAuto(); pause(); },

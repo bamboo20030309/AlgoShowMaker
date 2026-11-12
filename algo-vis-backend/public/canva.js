@@ -17,6 +17,9 @@
   let presentationCameraEnabled = true;
   let cameraSurface = 'algorithm';
   let cameraStudio = false;
+  let wheelZoomSelected = false;
+  window.isCanvasWheelZoomSelected = () => wheelZoomSelected;
+  window.resetCanvasWheelSelection = () => { wheelZoomSelected = false; };
   const cameraScope = () => cameraSurface + (cameraStudio ? ':studio' : ':playback');
   let manualCameraSaveTimer = null;
   const GRID_SPACING  = 50;      // 格線間距
@@ -95,7 +98,31 @@
   function bindInteractions() {
     let dragging = false;
     let dragButton = -1;
-    let startX = 0, startY = 0;
+    let startX = 0, startY = 0, originX = 0, originY = 0, moved = false;
+    const pendingClicks = new Map();
+    const shortcutsEnabled = () => document.documentElement.classList.contains('asm-slide-laser-frame')
+      && !window.isDrawingMode && !document.body.classList.contains('asm-trace-studio-open');
+    const clearClicks = () => { pendingClicks.forEach(click => clearTimeout(click.timer)); pendingClicks.clear(); };
+    const shortcut = e => {
+      if (!shortcutsEnabled()) return;
+      const invoke = id => window.ASMPlaybackNavigation?.invokeButton?.(id);
+      if (e.button === 1) { invoke('playToggleBtn'); return; }
+      const previous = pendingClicks.get(e.button);
+      if (previous && performance.now() - previous.time <= 320
+        && Math.hypot(e.clientX - previous.x, e.clientY - previous.y) <= 6) {
+        clearTimeout(previous.timer); pendingClicks.delete(e.button);
+        invoke(e.button === 0 ? 'restartBtn' : 'finishBtn');
+      } else {
+        if (previous) { clearTimeout(previous.timer); pendingClicks.delete(e.button); previous.run(); }
+        const run = () => { if (shortcutsEnabled()) invoke(e.button === 0 ? 'prevBtn' : 'nextBtn'); };
+        const click = { time: performance.now(), x: e.clientX, y: e.clientY, run };
+        click.timer = setTimeout(() => { pendingClicks.delete(e.button); run(); }, 320);
+        pendingClicks.set(e.button, click);
+      }
+    };
+    window.resetCanvasWheelSelection = () => { wheelZoomSelected = false; clearClicks(); };
+    window.addEventListener('blur', clearClicks);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) clearClicks(); });
 
     const beginDrag = e => {
       e.preventDefault();
@@ -104,11 +131,12 @@
       dragButton = e.button;
       startX = e.clientX;
       startY = e.clientY;
+      originX = startX; originY = startY; moved = false;
     };
 
     // 物件本身可能攔截 mousedown，因此右鍵要在捕獲階段先交給畫布。
     svg.addEventListener('mousedown', e => {
-      if (e.button === 2) beginDrag(e);
+      if (e.button === 2 || (e.button === 1 && shortcutsEnabled())) beginDrag(e);
     }, true);
 
     svg.addEventListener('mousedown', e => {
@@ -121,12 +149,15 @@
       beginDrag(e);
     });
 
-    // 右鍵只用於平移畫布，不開啟瀏覽器或物件選單。
+    // 右鍵拖曳平移；展示模式的單／雙擊交給播放快捷鍵，不開啟選單。
     svg.addEventListener('contextmenu', e => {
       e.preventDefault();
     });
     const moveDrag = e => {
       if (!dragging) return;
+      if (!moved && Math.hypot(e.clientX - originX, e.clientY - originY) < 4) return;
+      moved = true; clearClicks();
+      wheelZoomSelected = true;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       startX = e.clientX;
@@ -136,26 +167,30 @@
       updateTransform();
     };
     svg.addEventListener('mousemove', e => {
+      if (dragButton === 1 && Math.hypot(e.clientX - originX, e.clientY - originY) >= 4) moved = true;
       if (dragButton === 2) moveDrag(e);
     }, true);
     svg.addEventListener('mousemove', e => {
       if (dragButton === 0) moveDrag(e);
     });
-    const finishDrag = () => {
+    const finishDrag = e => {
       if (!dragging) return;
       dragging = false;
       dragButton = -1;
-      notifyManualCameraChange();
+      if (moved) notifyManualCameraChange();
+      else if (e?.type === 'mouseup') shortcut(e);
     };
     svg.addEventListener('mouseup', e => {
-      if (dragButton === 2) finishDrag();
+      if (dragButton === 2 || dragButton === 1) finishDrag(e);
     }, true);
     svg.addEventListener('mouseup', e => {
-      if (dragButton === 0) finishDrag();
+      if (dragButton === 0) finishDrag(e);
     });
     svg.addEventListener('mouseleave', finishDrag);
 
+    svg.addEventListener('auxclick', e => e.preventDefault());
     svg.addEventListener('wheel', e => {
+      if (document.body.classList.contains('asm-embed-runtime') && !wheelZoomSelected) return;
       e.preventDefault();
       stopAnimation(); // 手動操作時停止動畫
       const rect = svg.getBoundingClientRect();
@@ -683,6 +718,7 @@
   window.setLocalCameraSurface = function (surface) {
     if (cameraSurface === surface) return;
     if (manualCameraSaveTimer) window.ASMLocalCamera?.write(cameraScope(), capturePresentationCamera());
+    window.resetCanvasWheelSelection();
     cameraSurface = String(surface);
     restoreLocalCamera();
   };
