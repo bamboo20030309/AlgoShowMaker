@@ -9,3 +9,27 @@ html.asm-slide-laser-frame,
 html.asm-slide-laser-frame * {
   cursor: var(--asm-slide-laser-cursor) !important;
 }
+
+/* Mode menu: transitions-dev dropdown tokens, with reduced-motion support. */
+.asm-presentation-menu {
+  position: fixed; z-index: 2147483647; min-width: 160px; padding: 5px;
+  border: 1px solid #526064; border-radius: 8px; background: #20282b; color: #fff;
+  box-shadow: 0 8px 24px #0005; transform-origin: top left;
+  opacity: 0; transform: scale(.97); pointer-events: none;
+  transition: transform 250ms cubic-bezier(.22,1,.36,1), opacity 250ms cubic-bezier(.22,1,.36,1);
+}
+.asm-presentation-menu.is-open { opacity: 1; transform: scale(1); pointer-events: auto; }
+.asm-presentation-menu.is-closing { opacity: 0; transform: scale(.99); transition-duration: 150ms; }
+.asm-presentation-menu button { display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; font: 14px Arial, sans-serif; }
+.asm-presentation-menu button:hover, .asm-presentation-menu button:focus-visible { background: #ffffff20; outline: none; }
+.asm-presentation-menu button[aria-checked="true"]::before { content: '✓ '; }
+body.asm-slide-view-mode:not(.asm-slide-laser-mode) .reveal { cursor: default; }
+.asm-presentation-text-layer { position: absolute; inset: 0; z-index: 1; overflow: visible; pointer-events: none; }
+.asm-presentation-text-layer text, .asm-presentation-text-layer tspan {
+  fill: transparent !important; stroke: none !important; pointer-events: auto; user-select: text !important; cursor: text;
+}
+.asm-presentation-text-layer text::selection, .asm-presentation-text-layer tspan::selection { fill: white !important; background: #3178c6; }
+body.asm-edit-mode .asm-presentation-text-layer, body.asm-slide-laser-mode .asm-presentation-text-layer, .reveal.overview .asm-presentation-text-layer { display: none; }
+body.asm-slide-view-mode:not(.asm-slide-laser-mode) .widget-content,
+body.asm-slide-view-mode:not(.asm-slide-laser-mode) .widget-content * { user-select: text; }
+@media (prefers-reduced-motion: reduce) { .asm-presentation-menu { transition: none !important; } }

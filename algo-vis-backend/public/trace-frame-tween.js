@@ -1560,6 +1560,7 @@
           beforeFontSize + (afterFontSize - beforeFontSize) * t
         ));
       }
+      window.fitSvgCellValueText?.(text);
     });
   }
 
@@ -2055,6 +2056,7 @@
               const localWidth = desiredWidth / Math.max(0.001, scaleX);
               visual.rect.setAttribute('x', String(ownCenterX - localWidth / 2));
               visual.rect.setAttribute('width', String(localWidth));
+              cell.querySelectorAll('text[data-trace-content-role="value"]').forEach(text => window.fitSvgCellValueText?.(text));
             }
           });
           const heapScale = Math.abs(scaleX - 1) > 0.001 ? `scale(${scaleX}, 1)` : '';
@@ -3423,6 +3425,7 @@
     group.dataset.traceTransferSourceSnapshot = sourceOperand.element.closest?.('[data-trace-snapshot]')?.dataset.traceSnapshot || '';
     group.append(clone);
     appendBelowTextLayer(root, group);
+    if (!valueOnly && cloneText) window.fitSvgCellValueText?.(cloneText);
     const sourceCenter = valueOnly ? {
       x: sourceBounds.x + sourceBounds.width / 2,
       y: sourceBounds.y + sourceBounds.height / 2
@@ -3690,7 +3693,7 @@
               column: indices.at(-1), index: indices.at(-1) }, fallback)
           : fallback;
         const text = cell.querySelector(':scope > text');
-        if (text) text.textContent = display;
+        if (text) { text.textContent = display; window.fitSvgCellValueText?.(text); }
         const lod = cell.closest('[data-asm-lod]')?._asmLod;
         const record = lod?.records.find(item => item.cell === cell);
         if (record) record.value = display;
@@ -3932,7 +3935,7 @@
         if (track.targetText.matches?.('tspan[data-trace-field-variable]')) {
           track.targetText.setAttribute('display', displayed === '' ? 'none' : 'inline');
           refreshFieldSeparators(track.targetText.parentElement);
-        }
+        } else window.fitSvgCellValueText?.(track.targetText);
       }
     };
     const update = elapsed => {
@@ -4447,6 +4450,7 @@
         child.setAttribute('display', visible && child.nextElementSibling?.getAttribute('display') !== 'none' ? 'inline' : 'none');
       } else if (child.hasAttribute('data-trace-field-variable') && child.getAttribute('display') !== 'none') visible = true;
     }
+    window.fitSvgCellValueText?.(parent);
   }
 
   function createFieldAssignmentLayout(root, target, afterValue, replacementIds = []) {
@@ -4465,9 +4469,34 @@
       const actual = box(node);
       if (actual && Math.abs(actual.x - center) > .001) node.setAttribute('x', String(center + center - actual.x));
     };
-    const original = parts.map(node => ({ node, x: node.getAttribute('x'), display: node.getAttribute('display'), before: box(node) }));
+    // Fit the complete upcoming row before measuring transfer anchors, but
+    // retain each old center. Shrinking typography must not make siblings
+    // move before the incoming number lands. The cap lasts for this effect.
+    const initialCenters = new Map(parts.map(node => [node, box(node)]));
+    const previousCap = parent.dataset.asmReplayFontCap;
+    const savedParts = parts.map(node => ({ node, value: node.textContent, display: node.getAttribute('display') }));
+    target.textContent = afterValue;
+    target.setAttribute('display', afterValue === '' ? 'none' : 'inline');
+    parts.filter(node => replacementIds.includes(node.dataset.traceFieldVariable)).forEach(node => node.setAttribute('display', 'none'));
+    refreshFieldSeparators(parent);
+    const plannedFont = Number(parent.getAttribute('font-size')) || 16;
+    savedParts.forEach(({node,value,display}) => { node.textContent = value; if (display == null) node.removeAttribute('display'); else node.setAttribute('display',display); });
+    refreshFieldSeparators(parent);
+    parent.dataset.asmReplayFontCap = String(Math.min(plannedFont, Number(parent.getAttribute('font-size')) || plannedFont));
+    window.fitSvgCellValueText?.(parent);
+    const original = parts.map(node => {
+      const before = box(node), initial = initialCenters.get(node);
+      return { node, x: node.getAttribute('x'), display: node.getAttribute('display'),
+        before: before && initial ? { ...before, x: initial.x } : before };
+    });
     const beforeText = target.textContent;
     const previousBounds = elementBoundsInRoot(target, root);
+    const initialTarget = initialCenters.get(target);
+    if (previousBounds && initialTarget) {
+      const local = target.getBBox();
+      const center = new DOMPoint(initialTarget.x, local.y).matrixTransform(root.getScreenCTM().inverse().multiply(parent.getScreenCTM()));
+      previousBounds.x = center.x - previousBounds.width / 2;
+    }
     const replacements = parts.filter(node => replacementIds.includes(node.dataset.traceFieldVariable));
     // Measure the row after this operation, not after the entire frame. Each
     // tspan will own an anchored chunk, so changing its digits cannot re-center
@@ -4536,6 +4565,8 @@
       remove() {
         adornments.forEach(node => node.remove());
         original.forEach(({ node, x }) => { if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x); });
+        if (previousCap == null) delete parent.dataset.asmReplayFontCap; else parent.dataset.asmReplayFontCap = previousCap;
+        window.fitSvgCellValueText?.(parent);
       }
     };
   }
@@ -4846,6 +4877,7 @@
       fieldLayout?.commit();
       if (targetText) {
         targetText.textContent = finalText;
+        window.fitSvgCellValueText?.(targetText.matches('tspan') ? targetText.parentElement : targetText);
         if (hiddenFieldExit) {
           targetText.setAttribute('display', 'inline');
           refreshFieldSeparators(targetText.parentElement);
@@ -11466,10 +11498,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-353';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-354';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-353', play, cancel, updateEventAvailability,
+    build: 'trace-354', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

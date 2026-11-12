@@ -2012,6 +2012,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.ASMPlaybackNavigation = {
     invokeButton(id) {
+      const button = document.getElementById(id);
+      if (button) {
+        clearTimeout(button.__asmShortcutFeedback);
+        button.classList.add('asm-shortcut-pressed');
+        button.__asmShortcutFeedback = setTimeout(() => button.classList.remove('asm-shortcut-pressed'), 160);
+      }
       if (id === 'playToggleBtn') return togglePlay();
       return playbackButtonActions.get(id)?.();
     },

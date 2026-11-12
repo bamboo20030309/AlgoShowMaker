@@ -6,12 +6,54 @@
   function install({ reveal, groupSizes, overviewOpen = () => false }) {
     if (installed.has(reveal)) return installed.get(reveal);
     const frames = new Set(), documents = new WeakSet();
-    const frameStyles = new URL('slide-presentation-controls.css?v=2', document.baseURI).href;
+    const frameStyles = new URL('slide-presentation-controls.css?v=3', document.baseURI).href;
+    let presentationMode = false;
     let accumulated = 0, previousDirection = 0, lastWheel = 0, lockedUntil = 0;
     const modalOpen = () => !!document.querySelector('dialog[open], #algorithmEditorModal:not([hidden]), #codeEditorModal:not([hidden])');
     const available = () => reveal.isReady() && !overviewOpen() && !reveal.isOverview() && !reveal.isPaused() && !modalOpen();
     const presenting = () => available() && !document.body.classList.contains('asm-edit-mode');
     const activeFrame = frame => frame.isConnected && frame.closest('section.asm-slide') === reveal.getCurrentSlide();
+
+    const menu = document.createElement('div');
+    menu.className = 'asm-presentation-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true;
+    const menuButtons = [false, true].map(laser => {
+      const button = document.createElement('button'); button.type = 'button';
+      button.setAttribute('role', 'menuitemradio'); button.textContent = laser ? '簡報模式' : '一般游標';
+      button.addEventListener('click', () => { presentationMode = laser; closeMenu(); sync(); });
+      menu.append(button); return button;
+    });
+    document.body.append(menu);
+    let menuTimer;
+    function closeMenu() {
+      if (menu.hidden) return;
+      menu.classList.remove('is-open'); menu.classList.add('is-closing');
+      clearTimeout(menuTimer); menuTimer = setTimeout(() => { menu.hidden = true; menu.classList.remove('is-closing'); }, 150);
+    }
+    function contextMenu(event, frame = null) {
+      if (!presenting() || (frame ? !activeFrame(frame) : !event.target.closest?.('body > .reveal'))) return;
+      // In an animation the laser-mode right click remains the next-step
+      // shortcut; the slide background still offers the mode menu to exit it.
+      if (frame && event.target.closest?.('#arraySvg')
+        && (presentationMode || frame.contentWindow.isCanvasGestureDragged?.())) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      clearTimeout(menuTimer); menu.hidden = false; menu.classList.remove('is-closing');
+      menuButtons.forEach((button, i) => button.setAttribute('aria-checked', String(presentationMode === Boolean(i))));
+      const rect = frame?.getBoundingClientRect();
+      const x = frame ? rect.left + event.clientX * rect.width / frame.clientWidth : event.clientX;
+      const y = frame ? rect.top + event.clientY * rect.height / frame.clientHeight : event.clientY;
+      menu.style.left = Math.max(4, Math.min(x, innerWidth - menu.offsetWidth - 4)) + 'px';
+      menu.style.top = Math.max(4, Math.min(y, innerHeight - menu.offsetHeight - 4)) + 'px';
+      menu.classList.add('is-open'); menuButtons[Number(presentationMode)].focus({ preventScroll: true });
+    }
+    window.addEventListener('contextmenu', event => contextMenu(event), true);
+    document.addEventListener('pointerdown', event => { if (!menu.contains(event.target)) closeMenu(); }, true);
+    window.addEventListener('keydown', event => {
+      if (menu.hidden) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeMenu(); }
+      if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+        event.preventDefault(); event.stopImmediatePropagation(); menuButtons[document.activeElement === menuButtons[0] ? 1 : 0].focus();
+      }
+    }, true);
 
     function scrollable(target) {
       for (let node = target; node?.nodeType === 1; node = node.parentElement) {
@@ -76,13 +118,18 @@
         const link = child.createElement('link');
         link.rel = 'stylesheet'; link.href = frameStyles;
         (child.head || child.documentElement).appendChild(link);
+        child.defaultView.addEventListener('contextmenu', event => contextMenu(event, frame), true);
+        child.defaultView.addEventListener('pointerdown', closeMenu, true);
         child.defaultView.addEventListener('wheel', event => wheel(event, frame), { passive: false, capture: true });
       }
-      child.documentElement.classList.toggle('asm-slide-laser-frame', presenting() && activeFrame(frame));
+      child.documentElement.classList.toggle('asm-slide-laser-frame', presenting() && presentationMode && activeFrame(frame));
     }
 
     function sync() {
-      const laser = presenting();
+      if (document.body.classList.contains('asm-edit-mode')) presentationMode = false;
+      if (!presenting()) closeMenu();
+      const laser = presenting() && presentationMode;
+      document.body.classList.toggle('asm-slide-view-mode', presenting());
       if (document.body.classList.contains('asm-slide-laser-mode') !== laser) document.body.classList.toggle('asm-slide-laser-mode', laser);
       document.querySelectorAll('iframe.algorithm-slide-frame').forEach(attach);
       frames.forEach(frame => { if (!frame.isConnected) frames.delete(frame); });

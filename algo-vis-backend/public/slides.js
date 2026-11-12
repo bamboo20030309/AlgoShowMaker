@@ -4208,6 +4208,7 @@
       showFabricObjectEditor(canvas.getActiveObject());
     });
     canvas.on('after:render', () => {
+      syncPresentationTextLayer(canvas);
       drawEditingTextControls(canvas);
       if (canvas === currentFabricCanvas()) updateGroupSelectionOverlay();
     });
@@ -7949,6 +7950,7 @@
     };
     window.addEventListener('pointerdown', event => {
       if (customOverviewOpen || !surface?.contains(event.target) || isSlideZoomTypingTarget(event.target)) return;
+      if (event.button === 2 && !document.body.classList.contains('asm-edit-mode')) return;
       if (event.button !== 1 && event.button !== 2 && !(event.button === 0 && slideViewportSpace)) return;
       const frame = currentSlideViewportFrame();
       if (!frame) return;
@@ -7982,7 +7984,7 @@
     }, true);
     surface?.addEventListener('pointerleave', () => { if (!slideViewportDrag) slideViewportMouse = null; });
     window.addEventListener('contextmenu', event => {
-      if (!customOverviewOpen && surface?.contains(event.target)) {
+      if (!customOverviewOpen && document.body.classList.contains('asm-edit-mode') && surface?.contains(event.target)) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
@@ -8024,6 +8026,41 @@
     } else if (key === '-' || key === '_') {
       event.preventDefault();
       adjustSlideViewportZoom(-SLIDE_ZOOM_STEP);
+    }
+  }
+
+  // Canvas text has no native selection. Reuse Fabric's own SVG export as
+  // an invisible, read-only text surface rather than recomputing glyph boxes.
+  // This DOM layer never enters canvas serialization, undo or deck storage.
+  function syncPresentationTextLayer(canvas) {
+    const wrapper = canvas.wrapperEl;
+    if (!wrapper) return;
+    let layer = wrapper.querySelector('.asm-presentation-text-layer');
+    if (document.body.classList.contains('asm-edit-mode')) { layer?.remove(); return; }
+    const chunks = [];
+    const visit = obj => {
+      if (obj.visible === false || obj.opacity === 0) return;
+      if (typeof obj.text === 'string' && obj.text) {
+        const parent = obj.group?.calcTransformMatrix?.() || [1,0,0,1,0,0];
+        const matrix = f().util.multiplyTransformMatrices(canvas.viewportTransform, parent);
+        chunks.push(`<g transform="matrix(${matrix.join(' ')})">${obj.toSVG()}</g>`);
+      } else obj.getObjects?.().forEach(visit);
+    };
+    canvas.getObjects().forEach(visit);
+    const markup = chunks.join('');
+    if (!layer) {
+      layer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      layer.classList.add('asm-presentation-text-layer');
+      layer.addEventListener('selectstart', event => event.stopPropagation());
+      layer.style.userSelect = 'text';
+      layer.setAttribute('aria-label', '投影片文字');
+      layer.setAttribute('width', canvas.width); layer.setAttribute('height', canvas.height);
+      layer.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`);
+      wrapper.append(layer);
+    }
+    if (layer.__asmTextMarkup !== markup) {
+      layer.innerHTML = markup; layer.__asmTextMarkup = markup;
+      layer.querySelectorAll('rect, image, path').forEach(node => { if (!node.closest('defs')) node.remove(); });
     }
   }
 
@@ -10235,7 +10272,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-110';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-111';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10275,7 +10312,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-110';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-111';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10374,7 +10411,7 @@
     if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
       sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
     } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-110' + (isLocalCopy() ? '&localOnly=1' : '');
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-111' + (isLocalCopy() ? '&localOnly=1' : '');
     }
   }
 

@@ -1971,6 +1971,7 @@
   }
 
   function fitObjectNames(group) {
+    group?.querySelectorAll?.('[data-trace-index] > text[data-trace-content-role="value"]').forEach(text => window.fitSvgCellValueText?.(text));
     group?.querySelectorAll?.('.outerframe-label').forEach(label => {
       const owner = label.parentElement;
       const box = owner.querySelector(':scope > .outerframe-nb');
@@ -7295,9 +7296,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-286';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-287';
   window.ASMTraceRenderers = {
-    build: 'trace-286', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-287', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, hiddenField, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

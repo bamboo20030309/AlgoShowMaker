@@ -15,6 +15,7 @@ test('wheel visits vertical slides before horizontal groups; laser works in slid
   });
   await page.goto(base+'/slides.html');
   await page.waitForFunction(()=>window.Reveal?.isReady()&&document.body.dataset.slideCount==='6');
+  const enableLaser=async()=>{await page.evaluate(()=>Reveal.getCurrentSlide().dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:200,clientY:150})));await page.getByRole('menuitemradio',{name:'簡報模式'}).click();};
   const indices=()=>page.evaluate(()=>{const {h,v}=Reveal.getIndices();return[h,v||0];});
   const expectAt=async(h,v)=>{await page.waitForFunction(([h,v])=>Reveal.getIndices().h===h&&(Reveal.getIndices().v||0)===v,[h,v]);assert.deepEqual(await indices(),[h,v]);};
   const center=async()=>{const box=await page.locator('section.asm-slide.present .asm-slide-frame-content').boundingBox();await page.mouse.move(box.x+box.width*.5,box.y+box.height*.5);};
@@ -48,6 +49,7 @@ test('wheel visits vertical slides before horizontal groups; laser works in slid
   await expectAt(0,2);await page.evaluate(()=>document.querySelector('#test-dialog').remove());
   // Presentation pointer changes only the cursor, not persisted object style.
   if(await page.evaluate(()=>document.body.classList.contains('asm-edit-mode')))await page.locator('#modeToggleBtn').click();
+  if(!await page.evaluate(()=>document.body.classList.contains('asm-slide-laser-mode')))await enableLaser();
   await page.waitForFunction(()=>document.body.classList.contains('asm-slide-laser-mode'));
   const cursor=await page.locator('section.asm-slide.present canvas').first().evaluate(e=>getComputedStyle(e).cursor);
   assert.match(cursor,/data:image\/svg\+xml/);assert.match(cursor,/%23ff2020/);
@@ -55,6 +57,7 @@ test('wheel visits vertical slides before horizontal groups; laser works in slid
   await page.waitForFunction(()=>!document.body.classList.contains('asm-slide-laser-mode'));
   await page.evaluate(()=>document.querySelector('body > .reveal').dispatchEvent(new WheelEvent('wheel',{deltaY:100,bubbles:true,cancelable:true})));
   await expectAt(0,2);await page.evaluate(()=>Reveal.toggleOverview(false));
+  if(!await page.evaluate(()=>document.body.classList.contains('asm-slide-laser-mode')))await enableLaser();
   await page.waitForFunction(()=>document.body.classList.contains('asm-slide-laser-mode'));
   const laser=await page.evaluate(async cursor=>{const url=cursor.match(/url\(["']?(.*?)["']?\)/)[1];const image=new Image();image.src=url;await image.decode();return[image.naturalWidth,image.naturalHeight];},cursor);
   assert.deepEqual(laser,[32,32]);
@@ -85,6 +88,7 @@ test('wheel visits vertical slides before horizontal groups; laser works in slid
     await frame.locator('#canvasWrapper').evaluate(()=>{window.cameraZoom=1;});
   }
   await page.locator('#modeToggleBtn').click();
+  if(!await page.evaluate(()=>document.body.classList.contains('asm-slide-laser-mode')))await enableLaser();
   await page.waitForFunction(()=>document.body.classList.contains('asm-slide-laser-mode'));
   await frame.locator('#canvasWrapper').evaluate(e=>{e.remove();window.wheels=0;});
   await frame.locator('#stage').hover();await page.mouse.wheel(0,100);await expectAt(1,1);
