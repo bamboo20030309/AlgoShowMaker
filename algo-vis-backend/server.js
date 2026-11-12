@@ -873,9 +873,17 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// 重設密碼後要回到的站內頁面（例如從程式碼頁出發）。只接受本站相對路徑，與首頁 safeNextPath 規則相同。
+function safeReturnPath(next) {
+  if (typeof next !== 'string' || next.length > 500) return '';
+  if (!next.startsWith('/') || /^\/[\/\\]/.test(next) || /[\u0000-\u001f\\]/.test(next)) return '';
+  return next;
+}
+
 // 忘記密碼 (寄送重置信)
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { username } = req.body;
+  const returnPath = safeReturnPath(req.body?.next);
 
   try {
     const user = await User.findOne({ username });
@@ -893,7 +901,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     // 使用者點這個連結會帶上 ?reset_token=xxxxx
     // 優先讀取環境變數，如果沒設定就預設用 localhost
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
-    const resetLink = `${baseUrl}/?reset_token=${token}`;
+    const resetLink = `${baseUrl}/?reset_token=${token}${returnPath ? `&next=${encodeURIComponent(returnPath)}` : ''}`;
 
     // 3. 寄信
     const mailOptions = {

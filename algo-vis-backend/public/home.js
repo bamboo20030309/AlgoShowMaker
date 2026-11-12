@@ -33,6 +33,7 @@
   const registerTab = document.getElementById('registerTab');
   const authForm = document.getElementById('authForm');
   const emailInput = document.getElementById('emailInput');
+  const emailLabel = document.querySelector('label[for="emailInput"]');
   const passwordInput = document.getElementById('passwordInput');
   const passwordField = document.getElementById('passwordField');
   const confirmPasswordField = document.getElementById('confirmPasswordField');
@@ -224,6 +225,12 @@
 
     authTabs.hidden = isForgot || isReset;
     passwordField.hidden = isForgot;
+    // 忘記密碼只填 Email：隱藏的密碼欄若仍是 required，瀏覽器會擋下送出且不顯示任何提示。
+    passwordInput.required = !isForgot;
+    // 重設密碼由連結裡的 token 認帳號，不需要 Email；顯示了也用不到，還會被 required 擋下。
+    emailInput.hidden = isReset;
+    if (emailLabel) emailLabel.hidden = isReset;
+    emailInput.required = !isReset;
     confirmPasswordField.hidden = !isRegister;
     confirmPasswordInput.required = isRegister;
     forgotPasswordBtn.hidden = !isLogin;
@@ -269,7 +276,8 @@
       if (state.authMode === 'forgot') {
         const data = await api('/api/auth/forgot-password', {
           method: 'POST',
-          body: JSON.stringify({ username })
+          // 帶上 next：信裡的重設連結會保留它，重設並登入後回到原本的頁面（例如程式碼頁）。
+          body: JSON.stringify({ username, next: safeNextPath() || undefined })
         });
         setMessage(authMessage, data.message || '重設連結已寄出，請檢查信箱。', true);
         return;
@@ -281,7 +289,8 @@
           method: 'POST',
           body: JSON.stringify({ token: resetToken, newPassword: password })
         });
-        history.replaceState({}, document.title, '/');
+        const next = safeNextPath();
+        history.replaceState({}, document.title, next ? `/?next=${encodeURIComponent(next)}` : '/');
         setAuthMode('login');
         setMessage(authMessage, data.message || '密碼已更新，請重新登入。', true);
         passwordInput.value = '';

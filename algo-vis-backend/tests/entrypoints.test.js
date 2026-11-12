@@ -59,7 +59,11 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('compile.js?v=syntax-13'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=site-header-1'));
+  assert.ok(html.includes('style.css?v=my-codes-1'));
+  // 我的程式碼側欄：在 front.js（aceEditor、asmReplaceEditorCode）之後載入。
+  assert.ok(html.includes('my-codes.js?v=1'));
+  assert.ok(html.indexOf('front.js?') < html.indexOf('my-codes.js?'));
+  assert.ok(!read('front.js').includes('loginTriggerBtn'), 'the code page has no login window of its own');
   assert.ok(html.includes('brand.css?v=site-header-2'));
   assert.match(html, /<a class="brand menu-brand" href="\/" aria-label="AlgoShowMaker 首頁">[\s\S]*?<img class="brand-mark" src="favicon\.svg"[\s\S]*?<span>AlgoShowMaker<\/span>[\s\S]*?<\/a>/);
   const slides = read('slides.html');
@@ -94,7 +98,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(legacy.indexOf('library-ui.js?v=2') < legacy.indexOf('guest-gallery.js?v=8'));
   assert.ok(!read('guest-gallery.js').includes('免登入觀賞'));
   assert.ok(legacy.indexOf('library-layout.js?v=3') < legacy.indexOf('library-organizer.js?v=14'));
-  assert.ok(legacy.indexOf('library-organizer.js?v=14') < legacy.indexOf('home.js?v=cards-4'));
+  assert.ok(legacy.indexOf('library-organizer.js?v=14') < legacy.indexOf('home.js?v=login-next-1'));
   assert.ok(legacy.indexOf('library-ui.js?v=2') < legacy.indexOf('library-organizer.js?v=14'));
   // Two entry modes share one navigation: slides (home) and code (algorithm page).
   const modeNav = page => page.match(/<nav class="mode-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] || '';

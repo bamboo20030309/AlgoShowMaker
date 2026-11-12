@@ -1332,11 +1332,12 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
  * 演算法清單側欄
  * 側欄以 transform 開關，載入期間仍保留原工作區尺寸，避免 Ace 反覆重排。
  * -------------------------------------------------------------------------- */
-#algoSidePanel {
+#algoSidePanel,
+#myCodesPanel {
   position: fixed;
   /* 固定在視窗上 */
-  top: 50px;
-  /* 避開上方導覽列 (假設 Nav 高度約 50px) */
+  top: var(--header-height, 52px);
+  /* 從共用頂部列下緣開始 */
   left: 0;
   bottom: 0;
   /* 延伸到底部 */
@@ -1360,7 +1361,8 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 }
 
 /* 當加上 open class 時，滑出來 */
-#algoSidePanel.open {
+#algoSidePanel.open,
+#myCodesPanel.open {
   transform: translateX(0);
 }
 
@@ -2277,4 +2279,176 @@ pre#debugArea::-webkit-scrollbar-thumb:hover {
 .controls button:active, .controls button.asm-shortcut-pressed {
   background: #dbeafe; border-color: var(--primary-blue); color: var(--primary-blue);
   transform: translateY(1px) scale(.96); box-shadow: inset 0 1px 3px #0002;
+}
+
+/* --------------------------------------------------------------------------
+ * 我的程式碼側欄（my-codes.js）
+ * 外框與開關沿用 #algoSidePanel；這裡只定義內容：登入提示、儲存表單、清單與刪除確認。
+ * -------------------------------------------------------------------------- */
+#myCodesBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 20px;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.my-codes-signed-out {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.my-codes-hint {
+  margin: 0;
+  color: var(--text-bright);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.my-codes-subtle {
+  margin: 0;
+  color: #9a9a9a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.my-codes-primary,
+.my-codes-secondary,
+.my-codes-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0 14px;
+  font: 600 13px Arial, "Noto Sans TC", sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.my-codes-primary { background: #007acc; color: #fff; }
+.my-codes-primary:hover:not(:disabled) { background: #1b8ee0; }
+.my-codes-secondary { border-color: var(--border-color); background: transparent; color: var(--text-main); }
+.my-codes-secondary:hover { color: var(--text-bright); border-color: #6a6a6a; }
+.my-codes-danger { background: #c94b4b; color: #fff; }
+.my-codes-danger:hover:not(:disabled) { background: #dc5a5a; }
+.my-codes-primary:disabled,
+.my-codes-danger:disabled { opacity: .6; cursor: default; }
+.my-codes-signed-out .my-codes-primary { margin-top: 4px; }
+.my-codes-add { align-self: stretch; }
+
+.my-codes-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.my-codes-form input[type="text"],
+.my-codes-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 7px 9px;
+  background: #1e1e1e;
+  color: var(--text-bright);
+  font: 14px Arial, "Noto Sans TC", sans-serif;
+  resize: vertical;
+}
+
+.my-codes-form input[type="text"]:focus,
+.my-codes-form textarea:focus {
+  border-color: #007acc;
+  outline: none;
+}
+
+.my-codes-check { display: flex; align-items: center; gap: 6px; color: var(--text-main); font-size: 13px; cursor: pointer; }
+.my-codes-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.my-codes-message { margin: 0; color: #9a9a9a; font-size: 13px; }
+.my-codes-message.is-error { color: #ff7b72; }
+
+.my-codes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-codes-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-radius: 4px;
+}
+
+.my-codes-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+.my-codes-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 8px 8px 8px 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.my-codes-title { overflow: hidden; color: var(--text-bright); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.my-codes-meta { color: #8a8a8a; font-size: 12px; white-space: nowrap; }
+.my-codes-desc { grid-column: 1 / -1; overflow: hidden; color: #9a9a9a; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
+.my-codes-delete {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin: 5px 4px 0 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #8a8a8a;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.my-codes-item:hover .my-codes-delete,
+.my-codes-delete:focus-visible { opacity: 1; }
+.my-codes-delete:hover { color: #ff6b6b; background: rgba(255, 107, 107, 0.1); }
+
+.my-codes-item.is-confirming {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(201, 75, 75, 0.12);
+}
+
+.my-codes-confirm { margin: 0; color: var(--text-bright); font-size: 13px; line-height: 1.5; }
+
+.my-codes-open:focus-visible,
+.my-codes-primary:focus-visible,
+.my-codes-secondary:focus-visible,
+.my-codes-danger:focus-visible,
+.my-codes-delete:focus-visible,
+#myCodesBtn:focus-visible {
+  outline: 2px solid #55b9f3;
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  .my-codes-delete { opacity: 1; }
 }

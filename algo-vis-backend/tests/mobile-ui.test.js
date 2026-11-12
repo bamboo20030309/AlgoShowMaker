@@ -56,7 +56,8 @@ test('algorithm mobile dock switches between canvas and collapsible code', () =>
   assert.ok(!document.getElementById('codePanel').classList.contains('collapsed'));
   document.querySelector('[data-mobile-action="canvas"]').click();
   assert.ok(!document.body.classList.contains('asm-mobile-code-open'));
-  assert.equal(document.querySelectorAll('.asm-mobile-extra-tab').length, 3);
+  // 更多：範例、我的程式碼、編輯動畫、事件設定。
+  assert.deepEqual([...document.querySelectorAll('.asm-mobile-extra-tab')].map(tab => tab.textContent), ['範例', '我的程式碼', '編輯動畫', '事件設定']);
 });
 
 test('mobile algorithm editor enables native long-press clipboard handling', () => {

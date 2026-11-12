@@ -250,7 +250,8 @@
     display: block;
   }
 
-  body:has(#arraySvg) #algoSidePanel {
+  body:has(#arraySvg) #algoSidePanel,
+  body:has(#arraySvg) #myCodesPanel {
     top: var(--asm-mobile-header-h);
     bottom: calc(var(--asm-mobile-dock-h) + env(safe-area-inset-bottom));
     width: min(88vw, 340px);

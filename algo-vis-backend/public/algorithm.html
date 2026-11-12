@@ -9,13 +9,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>AlgoShowMaker</title>
-  <link rel="stylesheet" href="style.css?v=site-header-2" />
+  <link rel="stylesheet" href="style.css?v=my-codes-1" />
   <link rel="stylesheet" href="brand.css?v=site-header-2" />
-  <link rel="stylesheet" href="slides-embed.css?v=random-id-12" />
+  <link rel="stylesheet" href="slides-embed.css?v=random-id-13" />
   <link rel="stylesheet" href="trace.css?v=trace-39" />
   <link rel="stylesheet" href="trace-directive-assist.css?v=directive-5" />
   <link rel="stylesheet" href="trace-studio.css?v=trace-64" />
-  <link rel="stylesheet" href="mobile-ui.css?v=site-header-1" />
+  <link rel="stylesheet" href="mobile-ui.css?v=my-codes-1" />
   <link rel="stylesheet" href="ui-motion.css?v=1" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <!-- 頂部列登入狀態：在 head 同步載入，頂部列之後以內嵌呼叫套用，第一次繪製就正確。 -->
@@ -41,6 +41,10 @@
 
     <div class="menu-item" id="algoSamplesBtn">
       <span class="menu-label">演算法範例集</span>
+    </div>
+
+    <div class="menu-item" id="myCodesBtn" role="button" tabindex="0" aria-controls="myCodesPanel" aria-expanded="false">
+      <span class="menu-label">我的程式碼</span>
     </div>
 
     <div class="menu-item">
@@ -349,6 +353,14 @@
     </div>
   </div>
 
+  <!-- 我的程式碼：內容由 my-codes.js 依登入狀態建立（未登入顯示登入提示）。 -->
+  <aside id="myCodesPanel" aria-label="我的程式碼">
+    <div class="panel-header">
+      <h3>我的程式碼</h3>
+    </div>
+    <div id="myCodesBody"></div>
+  </aside>
+
   <div id="algoSidePanel">
     <div class="panel-header">
       <h3>📚 演算法範例</h3>
@@ -407,6 +419,7 @@
   <script src="resolve_pos.js"></script>
   <script src="animation.js?v=trace-5"></script>
   <script src="front.js?v=frame-endpoints-64"></script>
+  <script src="my-codes.js?v=1"></script>
   <script src="trace-directive-assist.js?v=directive-41"></script>
   <script src="draw/draw_array_outerframe.js?v=outerframe-1"></script>
   <script src="draw/draw_array_hintWidget.js?v=trace-4"></script>
@@ -432,7 +445,7 @@
   <script src="gui_editor.js?v=trace-9"></script>
   <script src="trace-studio.js?v=trace-142"></script>
   <script src="slides-embed.js?v=trace-16"></script>
-  <script src="mobile-ui.js?v=mobile-5"></script>
+  <script src="mobile-ui.js?v=mobile-6"></script>
   <script src="top-account.js?v=2"></script>
 </body>
 

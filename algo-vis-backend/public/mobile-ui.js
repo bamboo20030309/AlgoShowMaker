@@ -137,6 +137,7 @@
     const tabs = document.getElementById('subTabs');
     const extraActions = [
       ['範例', 'algoSamplesBtn'],
+      ['我的程式碼', 'myCodesBtn'],
       ['編輯動畫', 'editAnimationBtn'],
       ['事件設定', 'eventSettingsBtn']
     ];
