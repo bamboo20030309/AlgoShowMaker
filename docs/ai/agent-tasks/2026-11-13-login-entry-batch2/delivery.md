@@ -3,9 +3,9 @@
 ## 交付資訊
 - 狀態：待主代理核實
 - 分支：claude/2026-11-13-login-entry-batch2
-- 共同基準 commit：e99e23e（交付時 intergration 已前進到 b0d99e0，尚未試合併）
-- 程式修正 commit：683d612ba6465853ee4cd92cba8243f7a46358c1
-- 驗證時的 HEAD 與未提交修改：683d612；工作目錄另有未追蹤的介面入口報告草稿（`2026-11-10-ui-entry-plan.md`）與 `.claude/`，不屬本次交付。原本未追蹤的 `2026-11-10-event-follow-audit.md` 草稿已由 intergration 的 `2824911` 提交（內容不同），本機草稿移到代理暫存區備份，未覆蓋。
+- 共同基準 commit：b0d99e0（intergration：feat: refine presentation controls and refit changing cell values）。原本從 e99e23e 開出，交付前 rebase 到 b0d99e0。
+- 程式修正 commit：ea3a380（rebase 前為 683d612）
+- 驗證時的 HEAD 與未提交修改：ea3a380；工作目錄另有未追蹤的介面入口報告草稿（`2026-11-10-ui-entry-plan.md`）與 `.claude/`，不屬本次交付。原本未追蹤的 `2026-11-10-event-follow-audit.md` 草稿已由 intergration 的 `2824911` 提交（內容不同），本機草稿移到代理暫存區備份，未覆蓋。
 - 驗證日期：2026-11-13
 
 ## 根因與修改
@@ -50,7 +50,8 @@ node --test tests/my-codes.browser.test.js tests/login-next.browser.test.js test
 - `entrypoints.test.js`：更新 `style.css`、`home.js` 版本；新增 `my-codes.js` 載入順序與無舊登入程式的斷言。
 
 ## 剩餘事項與合併注意
-- intergration 已前進到 `b0d99e0`，合併前請先試 cherry-pick（`git cherry-pick e99e23e..<本分支 HEAD>`）。`front.js`、`algorithm.html`、`style.css` 是常被其他代理修改的檔案，可能需要處理衝突。
+- 已 rebase 到 `b0d99e0` 並解衝突：`algorithm.html` 的 `style.css` 版本改用本分支 `my-codes-1`（內容已含 intergration 的修改）；`slides.html` 採 intergration 的 `slide-presentation-controls.js?v=4`、`slides.js?v=slides-356`，`mobile-ui.js` 用本分支 `mobile-6`；`style.css` 兩邊新增的區塊都保留（補回 intergration 區塊的結尾大括號，括號平衡已檢查）。rebase 後相關測試重跑同樣 13 通過。
+- 合併：在 intergration worktree 執行 `git cherry-pick b0d99e0..claude/2026-11-13-login-entry-batch2`。
 - 未做：`style.css` 中舊登入視窗與舊清單的殘留樣式（`.modal-footer`、`.code-item`、`.btn-delete-code` 等）未清理，需另確認其他頁是否使用。
 - 伺服器 `forgot-password` 查無帳號時回 404「找不到此帳號」，可被用來確認 Email 是否註冊（帳號列舉）；屬既有行為，本次未改。
 - 未以真實帳號實際收發重設信驗證（需寄信設定與資料庫）；流程以模擬 API 驗證。
