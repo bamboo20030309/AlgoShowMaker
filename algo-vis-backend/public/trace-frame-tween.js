@@ -3470,9 +3470,8 @@
       y: targetBounds.y + targetBounds.height / 2
     };
     if (targetOperand.fieldAssignmentPoint) targetAnchor.x = targetOperand.fieldAssignmentPoint.x;
-    const field = targetElement.matches?.('tspan[data-trace-field-variable]');
-    const computed = field ? getComputedStyle(targetElement) : null;
-    const fontSize = Math.max(10, parseFloat(computed?.fontSize) || Number(targetElement.getAttribute?.('font-size')) || 14);
+    const computed = getComputedStyle(targetElement);
+    const fontSize = Math.max(10, parseFloat(computed.fontSize) || 14);
     const laneGap = Math.max(18, fontSize * 1.4);
     const desiredLaneOffset = (literalIndex - (literalCount - 1) / 2) * laneGap;
     const targetWidth = Math.max(targetBounds.width, Number(targetOperand?.point?.width) || 0);
@@ -3490,15 +3489,27 @@
       opacity: 1,
       'pointer-events': 'none'
     });
+    // Keep the destination's SVG text coordinate system and typography. Its y
+    // is a baseline, not a glyph/cell center; forcing `middle` at that same y
+    // shifts ordinary tree labels downward. Project the complete text matrix
+    // so nested scales also apply identically to the moving and settled value.
+    const anchorElement = targetElement.matches('tspan') ? targetElement.parentElement : targetElement;
+    const matrix = root.getScreenCTM().inverse().multiply(anchorElement.getScreenCTM());
+    const localAnchor = new DOMPoint(targetAnchor.x + laneOffset, targetAnchor.y).matrixTransform(matrix.inverse());
     const text = createSvg('text', {
-      x: targetAnchor.x + laneOffset,
-      y: targetAnchor.y,
+      x: localAnchor.x,
+      y: localAnchor.y,
+      transform: `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`,
       'text-anchor': 'middle',
-      'dominant-baseline': field ? computed.dominantBaseline || 'auto' : 'middle',
-      'font-family': computed?.fontFamily || targetElement.getAttribute?.('font-family') || 'Arial',
-      'font-size': fontSize,
-      'font-weight': computed?.fontWeight || targetElement.getAttribute?.('font-weight') || 'normal',
-      fill: targetElement.getAttribute?.('fill') || '#1f282d',
+      'dominant-baseline': computed.dominantBaseline,
+      'alignment-baseline': computed.alignmentBaseline,
+      'baseline-shift': computed.baselineShift,
+      'font-family': computed.fontFamily,
+      'font-size': computed.fontSize,
+      'font-weight': computed.fontWeight,
+      'font-style': computed.fontStyle,
+      'letter-spacing': computed.letterSpacing,
+      fill: computed.fill,
       'pointer-events': 'none'
     }, displayed);
     group.append(text);
@@ -11439,10 +11450,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-351';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-352';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-351', play, cancel, updateEventAvailability,
+    build: 'trace-352', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
