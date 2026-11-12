@@ -4439,8 +4439,16 @@
       const bounds = node.getBBox();
       return bounds.width > 0 ? { x: bounds.x + bounds.width / 2, width: bounds.width } : null;
     };
+    const placeCenter = (node, center) => {
+      node.setAttribute('x', String(center));
+      // SVG anchors use advance widths, while getBBox measures glyph ink.
+      // Preserve the measured center when splitting a row into text chunks.
+      const actual = box(node);
+      if (actual && Math.abs(actual.x - center) > .001) node.setAttribute('x', String(center + center - actual.x));
+    };
     const original = parts.map(node => ({ node, x: node.getAttribute('x'), display: node.getAttribute('display'), before: box(node) }));
     const beforeText = target.textContent;
+    const previousBounds = elementBoundsInRoot(target, root);
     const replacements = parts.filter(node => replacementIds.includes(node.dataset.traceFieldVariable));
     // Measure the row after this operation, not after the entire frame. Each
     // tspan will own an anchored chunk, so changing its digits cannot re-center
@@ -4454,6 +4462,9 @@
     // field so its prefix and digits arrive together at their final anchor.
     const destination = elementBoundsInRoot(target, root);
     const planned = original.map(record => ({ ...record, after: box(record.node) }));
+    const targetPlan = planned.find(record => record.node === target);
+    const deferReflow = Boolean(targetPlan?.before && targetPlan.after && !replacementIds.length
+      && Math.abs(targetPlan.before.width - targetPlan.after.width) > .1);
     const separator = target.previousElementSibling?.hasAttribute('data-trace-field-separator')
       ? planned.find(record => record.node === target.previousElementSibling) : null;
     const reusedSeparator = replacements.length && separator?.after
@@ -4473,13 +4484,15 @@
     if (separator?.after && separator.display === 'none' && !reusedSeparator) adorn(separator.node.textContent, separator.after.x, 'separator');
     let committed = false, closing = null;
     return {
-      point: destination && destination.width > 0 ? { x: destination.x + destination.width / 2,
+      point: destination && destination.width > 0 ? { x: deferReflow && previousBounds
+        ? previousBounds.x + previousBounds.width / 2 : destination.x + destination.width / 2,
         y: destination.y, width: destination.width, height: destination.height } : null,
-      update(progress, covering = false, separatorProgress = progress) {
+      update(progress, covering = false, separatorProgress = progress, postLandProgress = 0) {
         if (closing) return;
+        const reflowProgress = deferReflow ? postLandProgress : progress;
         planned.forEach(({ node, before, after }) => {
           const from = before || after, to = after || before;
-          if (from && to) node.setAttribute('x', String(from.x + (to.x - from.x) * progress));
+          if (from && to) placeCenter(node, from.x + (to.x - from.x) * reflowProgress);
         });
         const empty = target.getAttribute('display') === 'none' || beforeText === '';
         adornments.forEach(node => {
@@ -4497,7 +4510,7 @@
           closing.forEach(({ node, x }) => { if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x); });
         }
         closing.forEach(({ node, from, to }) => {
-          if (from && to) node.setAttribute('x', String(from.x + (to.x - from.x) * easeOutCubic(clamp01(progress))));
+          if (from && to) placeCenter(node, from.x + (to.x - from.x) * easeOutCubic(clamp01(progress)));
         });
       },
       commit() { committed = true; adornments.forEach(node => node.remove()); },
@@ -4848,7 +4861,6 @@
       },
       update(elapsed) {
         const frameProgress = easeOutCubic(timedProgress(elapsed, ASSIGN_TIMING.frame));
-        fieldLayout?.update(frameProgress, literalCoversTarget, clamp01((elapsed - 60) / 100));
         // Preserve the previous value throughout flight. The destination is
         // replaced only in landValue(), in the same tick that removes the copy.
         // The transfer must land at the same commit time used by replay and
@@ -4856,6 +4868,8 @@
         const dropStart = ASSIGN_TIMING.frame
           + (operand.marker ? ASSIGN_TIMING.valueHold : 0);
         const dropProgress = easeOutCubic(clamp01((elapsed - dropStart) / ASSIGN_TIMING.drop));
+        fieldLayout?.update(frameProgress, literalCoversTarget, clamp01((elapsed - 60) / 100),
+          easeOutCubic(clamp01((elapsed - dropStart - ASSIGN_TIMING.drop) / ASSIGN_TIMING.frame)));
         const exitStart = ASSIGN_TIMING.frame
           + (operand.marker ? ASSIGN_TIMING.valueHold : 0)
           + ASSIGN_TIMING.drop + ASSIGN_TIMING.hold;
@@ -11425,10 +11439,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-349';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-350';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-349', play, cancel, updateEventAvailability,
+    build: 'trace-350', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

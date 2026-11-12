@@ -6,7 +6,7 @@ const { readPackage, savedTrace } = require('./helpers/deck-package');
 
 test('segment tree frame 24 to 25 commits each displayed field independently', { timeout: 120000 }, async t => {
   const { base } = await startIsolatedServer(t), previous = process.env.ASM_TEST_BASE_URL;
-  let trace, reset, left;
+  let trace, reset, left, width;
   try {
     process.env.ASM_TEST_BASE_URL = base;
     ({ trace } = await compile(fs.readFileSync('tests/fixtures/segment-recursive-parameter-pointer.cpp', 'utf8'),
@@ -23,6 +23,12 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
       + 'tree[1]=9;\n'
       + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
       + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n}'));
+    ({ trace: width } = await compile('#include <vector>\n#include <climits>\nusing namespace std;\n'
+      + 'int main(){int n=1;vector<int>tree={0,2},sets={INT_MAX,INT_MAX},lazy={0,3};\n'
+      + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
+      + 'tree[1]=123;tree[1]=7;\n'
+      + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n'
+      + '// @frame tree render segment_tree with range(1,n), fields(tree,sets,lazy), hide(sets=LM,lazy=0), format(sets=assign,lazy=signed)\n}'));
   } finally { if (previous === undefined) delete process.env.ASM_TEST_BASE_URL; else process.env.ASM_TEST_BASE_URL = previous; }
   const body = readPackage(fs.readFileSync('public/guest-decks/segment-tree-teaching.asmdeck')).body;
   const animation = body.deck.groups.flatMap(group => group.slides).find(slide =>
@@ -33,7 +39,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
   await page.goto(base + '/algorithm.html?asmEmbed=runtime'); await page.waitForFunction(() => window.ASMTracePlayer);
   for (const [kind, source, from, index] of [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17],
     ['fresh-set', trace, 59, 5], ['saved-set', savedTrace(body, animation), 59, 5],
-    ['fresh-clear', trace, 63, 6], ['saved-clear', savedTrace(body, animation), 63, 6], ['reset', reset, 0, 1], ['left', left, 0, 1]]) {
+    ['fresh-clear', trace, 63, 6], ['saved-clear', savedTrace(body, animation), 63, 6], ['reset', reset, 0, 1], ['left', left, 0, 1], ['width', width, 0, 1]]) {
     for (const speed of [1, 4]) {
       const report = await page.evaluate(async ({ trace, from, index, speed }) => {
         const doc = ASMTracePlayer.apply(JSON.parse(JSON.stringify(trace)));
@@ -122,10 +128,30 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           { tree: '10', sets: '=5', lazy: '' }]
         : kind.endsWith('-clear') ? [{ tree: '30', sets: '', lazy: '+3' }, { tree: '30', sets: '', lazy: '0' },
           { tree: '30', sets: '', lazy: '' }]
+        : kind === 'width' ? [{ tree: '2', sets: '', lazy: '+3' }, { tree: '123', sets: '', lazy: '+3' }, { tree: '7', sets: '', lazy: '+3' }]
         : kind === 'left' ? [{ tree: '2', sets: '', lazy: '+3' }, { tree: '9', sets: '', lazy: '+3' }]
           : [{ tree: '2', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '' }, { tree: '5', sets: '', lazy: '+3' }];
       assert.deepEqual(states, expected, 'every field must commit in runtime order without overwriting siblings');
       assert.deepEqual(report.final.values, expected.at(-1)); assert.deepEqual(report.reopened.values, expected.at(-1));
+      if (kind === 'width') {
+        for (const event of source.frames[1].events.filter(event => event.type === 'assign')) {
+          const checkpoint = report.plan.forwardReplay.checkpoints.find(point => point.eventId === event.id);
+          const active = report.samples.filter(sample => sample.eventId === event.id);
+          const before = active.filter(sample => sample.at * speed < checkpoint.commitMs);
+          assert.ok(before.length > 1);
+          assert.ok(before.every(sample => Math.abs(sample.positions.lazy.x - before[0].positions.lazy.x) < .2),
+            'following field cannot make room until the incoming number lands');
+          assert.ok(before.flatMap(sample => sample.flying).every(number => Math.abs(number.x - before[0].positions.tree.x) < .5),
+            'the incoming number lands at the current field position');
+          const after = active.filter(sample => sample.at * speed >= checkpoint.commitMs
+            && sample.at * speed < checkpoint.commitMs + 180);
+          assert.ok(after.length > 1 && Math.abs(after.at(-1).positions.lazy.x - before[0].positions.lazy.x) > 1,
+            'the following number smoothly moves after commit, for both widening and narrowing');
+          const xs = after.map(sample => sample.positions.lazy.x), direction = Math.sign(xs.at(-1) - xs[0]);
+          assert.ok(xs.every((x, i) => !i || (x - xs[i - 1]) * direction >= -.01), 'post-landing reflow must be monotonic');
+        }
+        assert.ok(Math.abs(report.final.positions.lazy.x - report.destination.positions.lazy.x) < .5);
+      }
       if (kind.endsWith('-clear')) {
         const resetEvent = source.frames[from + 1].events.find(event => event.expression === 'lazy[now] = 0');
         const checkpoint = report.plan.forwardReplay.checkpoints.find(point => point.eventId === resetEvent.id);
