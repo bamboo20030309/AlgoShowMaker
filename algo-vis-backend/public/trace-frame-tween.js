@@ -140,7 +140,7 @@
 
   // Public, inspectable action DAG. An edge is a dependency; actions sharing
   // a stage have identical start/end and may execute in parallel.
-  function eventActionPlan(event, { marker = false, motionMs = MOTION_TIME.move } = {}) {
+  function eventActionPlan(event, { marker = false, motionMs = MOTION_TIME.move, fieldExitKind = '' } = {}) {
     const kind = operationKind(event);
     const stages = [];
     const add = (id, duration, actions) => {
@@ -159,7 +159,10 @@
     else if (event?.type === 'compare') {
       compareStages('');
     } else if (event?.type === 'swap') add('swap', motionMs, ['move']);
-    else if (['assign', 'write'].includes(event?.type)) {
+    else if (['assign', 'write'].includes(event?.type) && fieldExitKind === 'remove') {
+      add('cleanup', ASSIGN_TIMING.exit, ['exit']);
+      add('close-field-gap', ASSIGN_TIMING.frame, ['move']);
+    } else if (['assign', 'write'].includes(event?.type)) {
       for (let i = 0; i < selectionDuration(event) / COMPARE_DURATION; i++) {
         compareStages('select-');
       }
@@ -168,6 +171,7 @@
       add('transfer', ASSIGN_TIMING.drop, kind === 'literal' ? ['hint', 'move'] : ['copy', 'move']);
       add('result-hold', ASSIGN_TIMING.hold, ['hint']);
       add('cleanup', ASSIGN_TIMING.exit, ['exit']);
+      if (fieldExitKind) add('close-field-gap', ASSIGN_TIMING.frame, ['move']);
       if (marker) add('pointer-motion', motionMs, ['move']);
     } else if (event?.type === 'sequence-operation') {
       const inserting = Number(event.payload?.afterSize) > Number(event.payload?.beforeSize);
@@ -176,7 +180,8 @@
     } else add('code', event?.type === 'return' ? 260 : GENERIC_EVENT_DURATION.code, ['hint']);
     const transfer = stages.find(s => s.id === 'transfer');
     return { version: 1, kind, primitives: ['enter', 'exit', 'copy', 'move', 'emphasize', 'hint', 'camera'],
-      stages, readHighlight: 'owner', commitMs: transfer?.endMs ?? stages.at(-1)?.endMs ?? 0,
+      stages, readHighlight: 'owner', commitMs: transfer?.endMs
+        ?? (fieldExitKind === 'remove' ? stages.find(stage => stage.id === 'cleanup').endMs : stages.at(-1)?.endMs) ?? 0,
       durationMs: stages.at(-1)?.endMs || 0 };
   }
 
@@ -2159,6 +2164,13 @@
         && displayEventFieldValue(previous.payload?.after, frame, incoming.variableId) !== '';
     }
     return false;
+  }
+
+  function fieldExitKindFor(frame, event) {
+    const target = (event.targets || []).find(item => item.role === 'target');
+    if (!fieldCellKey(frame, target) || displayEventFieldValue(event.payload?.before, frame, target.variableId) === ''
+      || displayEventFieldValue(event.payload?.after, frame, target.variableId) !== '' || fieldReplacementReset(frame, event)) return '';
+    return Number(displayEventValue(event.payload?.after)) === 0 ? 'zero' : 'remove';
   }
 
   function eventTargetKey(traceDocument, eventFrame, target) {
@@ -4459,23 +4471,64 @@
       parent.append(node); adornments.push(node);
     };
     if (separator?.after && separator.display === 'none' && !reusedSeparator) adorn(separator.node.textContent, separator.after.x, 'separator');
-    let committed = false;
+    let committed = false, closing = null;
     return {
       point: destination && destination.width > 0 ? { x: destination.x + destination.width / 2,
         y: destination.y, width: destination.width, height: destination.height } : null,
-      update(progress, covering = false) {
+      update(progress, covering = false, separatorProgress = progress) {
+        if (closing) return;
         planned.forEach(({ node, before, after }) => {
           const from = before || after, to = after || before;
           if (from && to) node.setAttribute('x', String(from.x + (to.x - from.x) * progress));
         });
         const empty = target.getAttribute('display') === 'none' || beforeText === '';
-        adornments.forEach(node => node.setAttribute('display', !committed
-          && (empty ? progress >= .5 : covering && progress >= 1) ? 'inline' : 'none'));
+        adornments.forEach(node => {
+          node.setAttribute('display', !committed && (empty ? separatorProgress > 0 : covering && progress >= 1) ? 'inline' : 'none');
+          node.setAttribute('opacity', String(easeOutCubic(clamp01(separatorProgress))));
+        });
+      },
+      closeGap(progress) {
+        if (!closing) {
+          adornments.forEach(node => node.remove());
+          target.textContent = ''; target.setAttribute('display', 'none'); refreshFieldSeparators(parent);
+          closing = parts.map(node => ({ node, from: box(node), x: node.getAttribute('x') }));
+          parts.forEach(node => node.removeAttribute('x'));
+          closing.forEach(record => { record.to = box(record.node); });
+          closing.forEach(({ node, x }) => { if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x); });
+        }
+        closing.forEach(({ node, from, to }) => {
+          if (from && to) node.setAttribute('x', String(from.x + (to.x - from.x) * easeOutCubic(clamp01(progress))));
+        });
       },
       commit() { committed = true; adornments.forEach(node => node.remove()); },
       remove() {
         adornments.forEach(node => node.remove());
         original.forEach(({ node, x }) => { if (x == null) node.removeAttribute('x'); else node.setAttribute('x', x); });
+      }
+    };
+  }
+
+  function createFieldRemovalEffect(root, operand, beforeValue) {
+    const target = assignableTargetText(operand), originalOpacity = target.getAttribute('opacity');
+    const layout = createFieldAssignmentLayout(root, target, beforeValue);
+    const separator = [target.previousElementSibling, target.nextElementSibling].find(node =>
+      node?.hasAttribute('data-trace-field-separator') && node.getAttribute('display') !== 'none');
+    const originalSeparatorOpacity = separator?.getAttribute('opacity');
+    let opacity = 1;
+    return {
+      get opacities() { return new Map([[operand.visualKey, opacity]]); },
+      update(elapsed) {
+        layout.update(0);
+        opacity = 1 - easeOutCubic(clamp01(elapsed / ASSIGN_TIMING.exit));
+        separator?.setAttribute('opacity', String(opacity));
+        if (elapsed >= ASSIGN_TIMING.exit) layout.closeGap((elapsed - ASSIGN_TIMING.exit) / ASSIGN_TIMING.frame);
+      },
+      remove() {
+        layout.closeGap(1); layout.remove();
+        if (originalOpacity == null) target.removeAttribute('opacity'); else target.setAttribute('opacity', originalOpacity);
+        if (separator) {
+          if (originalSeparatorOpacity == null) separator.removeAttribute('opacity'); else separator.setAttribute('opacity', originalSeparatorOpacity);
+        }
       }
     };
   }
@@ -4606,6 +4659,7 @@
     let hiddenExitOpacity = 1;
     let exitSeparator = null;
     let separatorOpacity = null;
+    let closingField = false;
     let landed = false;
     let popupScale = 1;
     const conditionHint = event.conditionalSelection ? createSvg('text', {
@@ -4645,7 +4699,8 @@
     } else {
       targetText = assignableTargetText(operand);
       hiddenFieldExit = targetText?.matches?.('tspan[data-trace-field-variable]') && afterValue === '';
-      if (hiddenFieldExit && (beforeValue === '' || Number(displayEventValue(event.payload?.after)) !== 0)) return null;
+      if (hiddenFieldExit && beforeValue === '') return null;
+      if (hiddenFieldExit && Number(displayEventValue(event.payload?.after)) !== 0) return createFieldRemovalEffect(root, operand, beforeValue);
       if (hiddenFieldExit) {
         exitSeparator = [targetText.previousElementSibling, targetText.nextElementSibling].find(node =>
           node?.hasAttribute('data-trace-field-separator') && node.getAttribute('display') !== 'none') || null;
@@ -4776,7 +4831,7 @@
       afterReplay() {
         // The logical zero is already committed and hide(...) removes its
         // normal glyph. Keep this temporary result through hold/exit only.
-        if (hiddenFieldExit && landed) {
+        if (hiddenFieldExit && landed && !closingField) {
           targetText.textContent = finalText;
           targetText.setAttribute('display', 'inline');
           refreshFieldSeparators(targetText.parentElement);
@@ -4793,7 +4848,7 @@
       },
       update(elapsed) {
         const frameProgress = easeOutCubic(timedProgress(elapsed, ASSIGN_TIMING.frame));
-        fieldLayout?.update(frameProgress, literalCoversTarget);
+        fieldLayout?.update(frameProgress, literalCoversTarget, clamp01((elapsed - 60) / 100));
         // Preserve the previous value throughout flight. The destination is
         // replaced only in landValue(), in the same tick that removes the copy.
         // The transfer must land at the same commit time used by replay and
@@ -4837,6 +4892,10 @@
           if (hiddenFieldExit) {
             hiddenExitOpacity = 1 - exit;
             targetText.setAttribute('opacity', String(hiddenExitOpacity));
+            if (elapsed >= exitStart + ASSIGN_TIMING.exit) {
+              closingField = true;
+              fieldLayout.closeGap((elapsed - exitStart - ASSIGN_TIMING.exit) / ASSIGN_TIMING.frame);
+            }
           }
           // Value-only transfers are absorbed by the destination. Remove them
           // in the same update that commits the result instead of leaving
@@ -7646,9 +7705,7 @@
       // transfer/hold/exit unless another field takes over that same slot.
       if (targetOperand.element.matches?.('tspan[data-trace-field-variable]')
         && displayEventFieldValue(event?.payload?.after, eventFrame, target?.variableId) === '') {
-        return displayEventFieldValue(event?.payload?.before, eventFrame, target?.variableId) !== ''
-          && Number(displayEventValue(event?.payload?.after)) === 0
-          && !fieldReplacementReset(eventFrame, event);
+        return Boolean(fieldExitKindFor(eventFrame, event));
       }
       // An index marker assignment (for example largest = l) is fully
       // determined by the captured before/after/source values. The source
@@ -7898,6 +7955,7 @@
       // invisible movement after the pointer has already arrived.
       if (positionOnly) duration = swapDuration;
       let declarationEntranceDelay = 0;
+      let fieldExitKind = '';
       if (animation === 'declare') {
         if (initializerEvent) {
           declarationInitializerMarker = Boolean(assignmentTargetMarker(
@@ -7987,6 +8045,11 @@
         ));
         if (markerAssignment) seenMarkerAssignments.add(markerAssignment.key);
         effectDuration = selectionDuration(event) + assignmentEffectDuration(Boolean(markerAssignment));
+        if (operand?.element.matches?.('tspan[data-trace-field-variable]')) {
+          fieldExitKind = fieldExitKindFor(eventFrame, event);
+          if (fieldExitKind) effectDuration = fieldExitKind === 'remove'
+            ? ASSIGN_TIMING.exit + ASSIGN_TIMING.frame : effectDuration + ASSIGN_TIMING.frame;
+        }
         const bitwise = bitwisePlan(traceDocument, eventFrame, event, elements);
         bitwiseAnimation = Boolean(bitwise);
         if (bitwise) {
@@ -7995,7 +8058,7 @@
           effectDuration = Math.max(effectDuration, BIT_SHIFT_DURATION);
         }
         duration = effectDuration
-          + (!bitwise && !standaloneUpdate && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
+          + (!bitwise && !standaloneUpdate && !fieldExitKind && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
       if (event.type === 'compare' && animation === 'compare') {
         duration = COMPARE_DURATION;
@@ -8066,7 +8129,7 @@
         : visualStart + (animation === 'assign' ? effectDuration : 0);
       let actionPlan = positionOnly
         ? { ...eventActionPlan(event), commitMs: 0 }
-        : eventActionPlan(event, { marker: Boolean(markerAssignment),
+        : eventActionPlan(event, { marker: Boolean(markerAssignment), fieldExitKind,
           motionMs: markerAssignment ? Math.max(0, duration - effectDuration)
             : event.type === 'swap' ? duration : swapDuration });
       if (declarationInitializerTransfer) {
@@ -8086,7 +8149,7 @@
           commitMs: duration, durationMs: duration };
       }
       slots.push({
-        event, type: event.type, animation,
+        event, type: event.type, animation, fieldExitKind,
         actionPlan,
         initializerEvent,
         memberEvents: initializerEvent ? [initializerEvent] : [],
@@ -8464,8 +8527,7 @@
     let presentationElapsed = 0;
     const visibleFieldClears = eventTimeline.filter(slot => slot.animation === 'assign').flatMap(slot => {
       const target = (slot.event.targets || []).find(item => item.role === 'target');
-      if (Number(displayEventValue(slot.event.payload?.after)) !== 0
-        || displayEventFieldValue(slot.event.payload?.after, eventFrame, target?.variableId) !== ''
+      if (displayEventFieldValue(slot.event.payload?.after, eventFrame, target?.variableId) !== ''
         || displayEventFieldValue(slot.event.payload?.before, eventFrame, target?.variableId) === '') return [];
       const key = eventTargetKey(options.document, eventFrame, target);
       const element = options.currentElements.get(key);
@@ -11363,10 +11425,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-348';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-349';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-348', play, cancel, updateEventAvailability,
+    build: 'trace-349', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

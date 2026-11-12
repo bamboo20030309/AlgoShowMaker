@@ -79,7 +79,9 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
             aboveCell: Boolean(cell.querySelector('rect').compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) }));
           const adornments = [...cell.querySelectorAll('[data-trace-field-adornment]')]
             .filter(node => node.getAttribute('display') !== 'none').map(node => node.textContent);
-          return { values, positions, flying, travel: flightNodes.map(node => metric(node)), adornments, eventId: root.dataset.traceActiveEventId, text, center: metric(cell.querySelector('rect')).x,
+          const adornmentOpacities = [...cell.querySelectorAll('[data-trace-field-adornment]')]
+            .filter(node => node.getAttribute('display') !== 'none').map(node => Number(node.getAttribute('opacity') || 1));
+          return { values, positions, flying, travel: flightNodes.map(node => metric(node)), adornments, adornmentOpacities, eventId: root.dataset.traceActiveEventId, text, center: metric(cell.querySelector('rect')).x,
             invalidFields: fields.filter(field => !field.parentElement.matches('text')).length };
         };
         await ASMTracePlayer.render(from + 1, { stable: true });
@@ -114,6 +116,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
         ? [{ tree: '2', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '' }, { tree: '9', sets: '', lazy: '+3' },
           { tree: '9', sets: '=7', lazy: '+3' }, { tree: '9', sets: '=7', lazy: '-2' },
           { tree: '9', sets: '=7', lazy: '0' },
+          { tree: '9', sets: '=7', lazy: '' },
           { tree: '9', sets: '', lazy: '' }]
         : kind.endsWith('-set') ? [{ tree: '15', sets: '', lazy: '+3' }, { tree: '10', sets: '', lazy: '+3' },
           { tree: '10', sets: '=5', lazy: '' }]
@@ -138,6 +141,15 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
           Math.abs(sample.positions.lazy.opacity - sample.positions.lazy.separatorOpacity) < .001),
         'the lazy comma fades with zero, rather than staying visible until cleanup');
         assert.equal(report.final.text, '30', 'clearing lazy removes its separator and occupied space');
+        const step = report.plan.phases.flatMap(phase => phase.steps || []).find(step => step.eventId === resetEvent.id);
+        const closeEnd = step.visualStartMs + step.visualDurationMs, closeStart = closeEnd - 160;
+        const closing = active.filter(sample => sample.at * speed >= closeStart && sample.at * speed < closeEnd);
+        assert.ok(closing.length >= 2 && closing.every(sample => sample.values.lazy === ''),
+          'close-gap owns 160ms after the field and separator have disappeared');
+        const distances = closing.map(sample => Math.abs(sample.positions.tree.x - report.destination.positions.tree.x));
+        assert.ok(distances[0] > distances.at(-1) + .5, 'remaining number visibly moves toward its final center');
+        assert.ok(distances.every((distance, i) => !i || distance <= distances[i - 1] + .01), 'close-gap motion cannot reverse or jump away');
+        assert.ok(distances.at(-1) < .5, 'the final layout cleanup cannot cause a positioning jump');
       }
       if (kind.endsWith('-set')) {
         const hiddenWrite = source.frames[from + 1].events.find(event => event.expression === 'lazy[now] = 0');
@@ -205,6 +217,8 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
             assert.ok(active.filter(sample => sample.flying.length).every(sample => sample.adornments.includes(',')
               && !sample.adornments.includes('+') && sample.flying.every(number => number.text === '+3')),
               'the plus sign descends with the digit, never as a stationary adornment');
+            assert.ok(active.some(sample => sample.adornmentOpacities.some(opacity => opacity > 0 && opacity < 1)),
+              'the new separator fades into the prepared space rather than popping in');
           }
         }
       }
