@@ -22,3 +22,9 @@
 ## 交付
 
 intergration 提交並推送，重啟與核對 3100；main／3000 與 Release 不變。
+
+## LCS 程式箭頭整理
+
+- 依使用者要求，修改其提供的程式版本：字元相同時移除分支內額外畫的對角箭頭，保留 preset 統一建立的一支；所有 @arrow 的明確顏色改為 black，包含回溯分支。格子背景等其他 style 不變。
+- 完整版本保存在 tests/fixtures/lcs-axis-events.cpp，另提供可下載 lcs-black-arrows.cpp。此次交付為使用者貼上程式的修訂版，未自行替換公開 LCS 投影片。
+- 擴充同一個局部 browser 案例：第 5 幀第一次字元相同，實際 SVG 僅一支 #0,4→#1,5 黑色箭頭；原指定的兩段 j++ 與 1x／4x 驗證仍通過。

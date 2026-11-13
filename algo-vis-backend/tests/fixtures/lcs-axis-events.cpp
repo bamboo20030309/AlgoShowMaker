@@ -16,7 +16,7 @@ set<string> ans;
 // @object LCS render matrix with labels(value), row-labels("",S), column-labels("",T)
 // @for rr in [1:rows]
 // @for cc in [1:columns]
-// @arrow from LCS[rr-1][cc-1] to LCS[rr][cc] color AV_blue
+// @arrow from LCS[rr-1][cc-1] to LCS[rr][cc] color black
 //   when S[rr-1] == T[cc-1] && LCS[rr][cc] == LCS[rr-1][cc-1] + 1
 // @endfor
 // @endfor
@@ -66,7 +66,7 @@ void dfs(int x,int y,string now) {
         // @frame use lcs_view, lcs_answers, lcs_dfs_cursor when 0
         // @style LCS[x][y] highlight
         // @style LCS[x-1][y-1] background AV_green
-        // @arrow from LCS[x][y] to LCS[x-1][y-1] color AV_green! width 3 until return
+        // @arrow from LCS[x][y] to LCS[x-1][y-1] color black width 3 until return
         // @text [
         //   {"text": "字元相同，往左上走並收下 ${S[x-1]}；目前累積字串：「"},
         //   {"text": "${S[x-1]}", "background": "AV_green"},
@@ -80,7 +80,7 @@ void dfs(int x,int y,string now) {
         // @style LCS[x][y] highlight
         // @style LCS[x-1][y] background AV_green
         // @style LCS[x][y-1] background AV_blue
-        // @arrow from LCS[x][y] to LCS[x-1][y] color AV_green! width 3 until return
+        // @arrow from LCS[x][y] to LCS[x-1][y] color black width 3 until return
         // @text [
         //   {"text": "字元不同，而且上方與左方一樣大；DFS 分叉，先往上走。目前累積字串：「"},
         //   {"text": "${now}", "background": "AV_blue"},
@@ -93,7 +93,7 @@ void dfs(int x,int y,string now) {
         // @style LCS[x][y] highlight
         // @style LCS[x][y-1] background AV_green
         // @style LCS[x-1][y] background AV_blue
-        // @arrow from LCS[x][y] to LCS[x][y-1] color AV_green! width 3 until return
+        // @arrow from LCS[x][y] to LCS[x][y-1] color black width 3 until return
         // @text [
         //   {"text": "回到剛才的分叉，這次往左走。目前累積字串：「"},
         //   {"text": "${now}", "background": "AV_blue"},
@@ -105,7 +105,7 @@ void dfs(int x,int y,string now) {
         // @frame use lcs_view, lcs_answers, lcs_dfs_cursor when 0
         // @style LCS[x][y] highlight
         // @style LCS[x-1][y] background AV_green
-        // @arrow from LCS[x][y] to LCS[x-1][y] color AV_green! width 3 until return
+        // @arrow from LCS[x][y] to LCS[x-1][y] color black width 3 until return
         // @text [
         //   {"text": "字元不同，挑較大的值；這裡往上走。目前累積字串：「"},
         //   {"text": "${now}", "background": "AV_blue"},
@@ -117,7 +117,7 @@ void dfs(int x,int y,string now) {
         // @frame use lcs_view, lcs_answers, lcs_dfs_cursor when 0
         // @style LCS[x][y] highlight
         // @style LCS[x][y-1] background AV_green
-        // @arrow from LCS[x][y] to LCS[x][y-1] color AV_green! width 3 until return
+        // @arrow from LCS[x][y] to LCS[x][y-1] color black width 3 until return
         // @text [
         //   {"text": "字元不同，挑較大的值；這裡往左走。目前累積字串：「"},
         //   {"text": "${now}", "background": "AV_blue"},
@@ -140,7 +140,7 @@ int main() {
                     // @frame use lcs_view, lcs_build_cursor
                     // @style LCS[i][j] highlight
                     // @style LCS[i-1][j-1] background AV_green
-                    // @arrow from LCS[i-1][j-1] to LCS[i][j] color AV_green width 3
+
                     // @text "字元相同，從左上取值加一" at LCS.top offset(0,-24)
                 } else {
                     LCS[i][j] = max(LCS[i][j - 1], LCS[i - 1][j]);
@@ -149,8 +149,8 @@ int main() {
                     // @style LCS[i][j] highlight
                     // @style LCS[i-1][j] background AV_blue
                     // @style LCS[i][j-1] background AV_orange
-                    // @arrow from LCS[i-1][j] to LCS[i][j] color AV_blue width 3 when LCS[i-1][j] >= LCS[i][j-1]
-                    // @arrow from LCS[i][j-1] to LCS[i][j] color AV_orange width 3 when LCS[i][j-1] >= LCS[i-1][j]
+                    // @arrow from LCS[i-1][j] to LCS[i][j] color black width 3 when LCS[i-1][j] >= LCS[i][j-1]
+                    // @arrow from LCS[i][j-1] to LCS[i][j] color black width 3 when LCS[i][j-1] >= LCS[i-1][j]
                     // @text "字元不相同，從左或上拿最大的過來" at LCS.top offset(0,-24)
                 }
             }

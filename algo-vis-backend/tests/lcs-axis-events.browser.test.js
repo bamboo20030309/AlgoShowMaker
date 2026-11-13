@@ -28,5 +28,14 @@ test('LCS j increments follow column anchors when presets contain string size al
   assert.ok(Math.abs(report.after.x-target)<.5,'completed position agrees with the next frame');
   if(from===0)assert.ok(report.winners.some(h=>h.stroke==='#333333'&&h.width==='5'),'records the existing max winner outline');
  }
+ const arrows=await page.evaluate(async()=>{
+  await ASMTracePlayer.render(4,{stable:true});
+  return [...document.querySelectorAll('#asm-trace-root [data-trace-arrow-source="directive"]')]
+    .map(node=>({from:node.dataset.traceArrowFromKey,to:node.dataset.traceArrowToKey,
+      strokes:[node,...node.querySelectorAll('line,path,polyline')].map(part=>getComputedStyle(part).stroke).filter(stroke=>stroke!=='none')}));
+ });
+ assert.equal(arrows.length,1,'the first matching character has one diagonal arrow, not a preset plus a local duplicate');
+ assert.ok(arrows[0].from.endsWith('#0,4')&&arrows[0].to.endsWith('#1,5'));
+ assert.ok(arrows[0].strokes.length>0&&arrows[0].strokes.every(stroke=>stroke==='rgb(0, 0, 0)'),'the diagonal arrow is black');
  assert.deepEqual(errors,[]);
 });
