@@ -217,23 +217,9 @@
     });
     return result.trace;
   }, async animation => {
-    const sourceRevision = JSON.stringify(animation);
     setCloudStatus('loading', '動畫需要更新，正在取得新版結果…');
     try {
-      const rebuilt = await window.ASMDeck.rebuildMissingAnimation(animation);
-      if (window.ASMTraceProvenance.status(rebuilt.traceDocument, rebuilt.code, rebuilt.input).kind !== 'current') {
-        throw new Error('更新結果版本仍不相符，請重新整理後重試');
-      }
-      const current = orderedDeckSlides().filter(entry => entry.slide.animation === animation);
-      if (!current.length || JSON.stringify(animation) !== sourceRevision) return rebuilt; // Never overwrite a newer edit/import.
-      const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation: rebuilt }] }] },
-        { upload: canSaveRemoteDeck() });
-      // Keep the same object identity so waiting iframe messages remain valid.
-      for (const key of Object.keys(animation)) delete animation[key];
-      Object.assign(animation, detached.groups[0].slides[0].animation);
-      delete animation.cacheKind;
-      await saveDeck({ history: false });
-      return rebuilt;
+      return await rebuildSlideAnimation(animation);
     } catch (error) {
       setCloudStatus('error', `動畫自動重建失敗：${error.message}`);
       throw new Error(`Trace 自動更新失敗：${error.message}；請按重試，或在編輯器 RUN`);
@@ -249,6 +235,25 @@
       renderCloudStatus();
     }
   });
+  // 用投影片保存的程式與輸入重新產生動畫：成功才換掉結果並存檔（公開範例只寫本機副本），
+  // 失敗時拋出錯誤、原動畫原封不動。過期自動更新與畫布 RUN 共用此流程。
+  async function rebuildSlideAnimation(animation) {
+    const sourceRevision = JSON.stringify(animation);
+    const rebuilt = await window.ASMDeck.rebuildMissingAnimation(animation);
+    if (window.ASMTraceProvenance.status(rebuilt.traceDocument, rebuilt.code, rebuilt.input).kind !== 'current') {
+      throw new Error('更新結果版本仍不相符，請重新整理後重試');
+    }
+    const current = orderedDeckSlides().filter(entry => entry.slide.animation === animation);
+    if (!current.length || JSON.stringify(animation) !== sourceRevision) return rebuilt; // Never overwrite a newer edit/import.
+    const detached = await traceStore.detachDeck({ groups: [{ slides: [{ animation: rebuilt }] }] },
+      { upload: canSaveRemoteDeck() });
+    // Keep the same object identity so waiting iframe messages remain valid.
+    for (const key of Object.keys(animation)) delete animation[key];
+    Object.assign(animation, detached.groups[0].slides[0].animation);
+    delete animation.cacheKind;
+    await saveDeck({ history: false });
+    return rebuilt;
+  }
   let deck = normalizeDeck(clone(defaultDeck));
   let lastSavedDeckJson = null;
   let archiveCover = {};
@@ -10330,6 +10335,28 @@
   // 演算法 iframe 通訊
   // 以 slideId 與 frame 來源核對訊息，把編輯結果與可見性送到正確的嵌入頁，避免背景 iframe 搶走狀態。
   // -----------------------------------------------------------------------------
+  // 畫布 RUN：重新產生這張投影片的動畫。成功後換上新動畫（從第 0 幀開始），
+  // 失敗時保留原動畫，並把錯誤摘要交給 iframe 顯示在畫布上方。
+  const runningSlideAnimations = new Set();
+  async function runSlideAnimation(frame, slide) {
+    if (runningSlideAnimations.has(slide.id)) return;
+    const post = (state, message = '') => frame.contentWindow?.postMessage(
+      { type: 'asm-runtime-run-state', state, message }, window.location.origin);
+    runningSlideAnimations.add(slide.id);
+    post('running');
+    try {
+      await rebuildSlideAnimation(slide.animation);
+      if (getSlideById(slide.id) !== slide || !frame.isConnected) return;
+      await sendAlgorithmAnimationToFrame(frame, slide);
+      sendAlgorithmFrameVisibility(frame);
+      post('done');
+    } catch (error) {
+      post('error', error?.message || String(error));
+    } finally {
+      runningSlideAnimations.delete(slide.id);
+    }
+  }
+
   async function handleAlgorithmEmbedMessage(event) {
     if (event.origin !== window.location.origin || !event.data) return;
     if (event.data.type === 'asm-export-animation-snapshot'
@@ -10374,6 +10401,16 @@
         sendAlgorithmAnimationToFrame(runtimeFrame, getSlideById(runtimeFrame.dataset.slideId));
         sendAlgorithmFrameVisibility(runtimeFrame);
       }
+      return;
+    }
+    if (event.data.type === 'asm-runtime-run' || event.data.type === 'asm-runtime-open-editor') {
+      const runtimeFrame = Array.from(document.querySelectorAll('.algorithm-slide-frame'))
+        .find(frame => frame.contentWindow === event.source);
+      const slide = runtimeFrame ? getSlideById(runtimeFrame.dataset.slideId) : null;
+      // RUN 與開啟編輯器只屬於投影片編輯畫面；放映與唯讀檢視不提供。
+      if (!slide || slide.kind !== 'algorithm-animation' || !document.body.classList.contains('asm-edit-mode')) return;
+      if (event.data.type === 'asm-runtime-open-editor') openAlgorithmEditor(slide.id);
+      else runSlideAnimation(runtimeFrame, slide);
       return;
     }
     if (!['asm-animation-compiled', 'asm-save-animation'].includes(event.data.type)

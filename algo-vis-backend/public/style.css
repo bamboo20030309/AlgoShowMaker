@@ -604,6 +604,11 @@ button.auto-stepping:hover {
   transition: all 0.2s;
 }
 
+/* 依動畫類型隱藏的按鈕（例如上一大步／下一大步）：hidden 要勝過上方的 display:flex。 */
+.controls button[hidden] {
+  display: none;
+}
+
 .step-icon {
   width: 18px;
   height: 18px;

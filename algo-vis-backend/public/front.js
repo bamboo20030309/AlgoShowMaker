@@ -1063,9 +1063,13 @@ function syncCurrentFrameFromCodeScript() {
   window.refreshPlaybackTimeDisplay?.();
   if (typeof clearDrawingCanvas === 'function') clearDrawingCanvas();
 
-  // 更新關鍵影格按鈕狀態 (disabled/enabled)
+  // 上一大步／下一大步只屬於舊版 AV.hpp／//draw{} 腳本動畫；trace 動畫與投影片嵌入一律不顯示。
   const nkBtn = document.getElementById('nextKeyFrameBtn');
   const pkBtn = document.getElementById('prevKeyFrameBtn');
+  const legacyScript = typeof CodeScript !== 'undefined' && !CodeScript.isTracePlayer
+    && !document.body.classList.contains('asm-embed-runtime');
+  if (nkBtn) nkBtn.hidden = !legacyScript;
+  if (pkBtn) pkBtn.hidden = !legacyScript;
   if (nkBtn && typeof CodeScript !== 'undefined') {
     nkBtn.disabled = (typeof CodeScript.has_next_key === 'function') ? !CodeScript.has_next_key() : false;
     nkBtn.style.opacity = nkBtn.disabled ? '0.5' : '1';

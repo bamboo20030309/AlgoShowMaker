@@ -123,6 +123,8 @@
         child.defaultView.addEventListener('wheel', event => wheel(event, frame), { passive: false, capture: true });
       }
       child.documentElement.classList.toggle('asm-slide-laser-frame', presenting() && presentationMode && activeFrame(frame));
+      // 投影片編輯畫面才顯示完整工具列與 RUN；放映只留播放鍵與進度條（見 slides-embed.css）。
+      child.documentElement.classList.toggle('asm-slide-editing', document.body.classList.contains('asm-edit-mode'));
     }
 
     function sync() {
