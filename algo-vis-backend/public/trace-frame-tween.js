@@ -9123,7 +9123,12 @@
         forwardValues.update(elapsed);
         activeEffect?.afterReplay?.();
         combinedAdjustments.clear();
-        selectionScales.forEach((record, key) => combinedAdjustments.set(key, { x: 0, y: 0, scale: record.scale }));
+        const restore = options.selectionRestore;
+        const restoreProgress = restore
+          ? easeOutCubic(clamp01((elapsed - restore.start) / restore.duration)) : 0;
+        selectionScales.forEach((record, key) => combinedAdjustments.set(key, {
+          x: 0, y: 0, scale: record.scale + (1 - record.scale) * restoreProgress
+        }));
         markerMotion.adjustments.forEach((value, key) => combinedAdjustments.set(key, value));
         activeEffect?.adjustments?.forEach?.((value, key) => {
           const existing = combinedAdjustments.get(key);
@@ -10830,8 +10835,10 @@
     }));
     playbackPlan.totalDurationMs = Math.max(playbackPlan.totalDurationMs,
       ...directiveFollowPlan.records.flatMap(record => record.steps.map(step => step.end)));
+    const selectionRestore = { start: Infinity, duration: COMPARE_TIMING.reset };
     const events = eventSequence({
       ...options,
+      selectionRestore,
       directiveFollowPlan,
       outgoingPointerEntries: ghosts.filter(item => item.markerVisual && !item.retainedByEnteringKeep
         && !entries.some(entry=>entry.element?.dataset?.tracePointerInstanceId
@@ -10925,7 +10932,7 @@
         }] });
       playbackPlan.totalDurationMs = pointerMotionEnd;
     }
-    const totalDuration = Math.max(
+    const frameSettlementEnd = Math.max(
       pointerMotionEnd,
       outboundMarkerExitEnd,
       eventTimelineDuration,
@@ -10933,6 +10940,21 @@
       backgroundHandoffDuration,
       playbackPlan.totalDurationMs
     );
+    // Selection emphasis belongs to the frame, including a blocking smooth
+    // restoration after its final operation and any other visual settlement.
+    const restoresSelection = playbackEventTimeline.some(slot =>
+      slot.animation === 'assign' && selectionDuration(slot.event) > 0);
+    selectionRestore.start = restoresSelection ? frameSettlementEnd : Infinity;
+    const totalDuration = frameSettlementEnd + (restoresSelection ? selectionRestore.duration : 0);
+    if (restoresSelection) {
+      playbackPlan.phases.push({ id: 'selection-scale-restore', mode: 'parallel',
+        startMs: frameSettlementEnd, endMs: totalDuration, durationMs: selectionRestore.duration,
+        steps: [{ id: 'selection-scale-restore', kind: 'selection-scale-restore',
+          startMs: frameSettlementEnd, endMs: totalDuration, durationMs: selectionRestore.duration,
+          blocking: true, enabled: true }] });
+      playbackPlan.totalDurationMs = totalDuration;
+    }
+    const eventPresentationEnd = restoresSelection ? totalDuration : styleTimelineDuration;
     let previousTick = performance.now();
     let elapsed = 0;
     let codeTransitionElapsed = 0;
@@ -10977,13 +10999,13 @@
       const progress = Math.max(0, Math.min(1, elapsed / duration));
       const eased = easeOutCubic(progress);
 
-      if (elapsed < styleTimelineDuration) {
+      if (elapsed < eventPresentationEnd) {
         events?.update(elapsed);
       } else {
         // rAF can land on or skip past the last event's exact end. Publish
         // its committed cell visibility before removing the travelling clone;
         // the post-event gap must not retain the previous hidden state.
-        events?.update(styleTimelineDuration);
+        events?.update(eventPresentationEnd);
         events?.finish();
       }
       heapResizeStages.update(elapsed, events?.adjustments);
@@ -11615,10 +11637,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-356';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-357';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-356', play, cancel, updateEventAvailability,
+    build: 'trace-357', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

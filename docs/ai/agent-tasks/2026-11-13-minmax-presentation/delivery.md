@@ -15,3 +15,9 @@
 - tests/assignment-baseline.browser.test.js：線段樹輸入、運算及不可見來源的賦值落位基線通過。
 - tests/retained-compare.browser.test.js：核對既有保存節點比較、指標跟隨及明確關閉設定，驗證通過。
 - node --check 與 git diff --check；不執行完整 regression，不提交 test-results。
+
+## 幀尾還原補充
+
+使用者要求結束時也有動畫。所有事件及既有畫面整理完成後，增加 260ms 的 `selection-scale-restore` 平行階段，所有被選格子一起以 easeOutCubic 回到 1 倍。該階段會延長播放計畫及實際幀完成 Promise；指標間距與保存節點也讀取同一還原比例，完成後才清理。取消仍立即清理。沒有啟用 min/max 選值的幀不增加此階段。
+
+驗證更新：1x/4x 取樣核對固定 260ms、還原起點仍保留強調、存在中間尺寸、單調回到 1 倍、清理前尺寸已還原。另核對常數賦值幀不增加還原階段。前端更新 trace-357、iframe trace-runtime-115。

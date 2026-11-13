@@ -23,7 +23,7 @@ result=2-shown;result=24/shown;result=1+2;result=shown+2-3+4;
    const samples={};const native={raf:requestAnimationFrame,cancel:cancelAnimationFrame,now:Object.getOwnPropertyDescriptor(performance,'now')};let clock=performance.now(),elapsed=0,id=0;const callbacks=new Map();requestAnimationFrame=cb=>{callbacks.set(++id,cb);return id;};cancelAnimationFrame=id=>callbacks.delete(id);Object.defineProperty(performance,'now',{configurable:true,value:()=>clock});
    const restore=()=>{requestAnimationFrame=native.raf;cancelAnimationFrame=native.cancel;if(native.now)Object.defineProperty(performance,'now',native.now);else delete performance.now;};
    try{const pending=ASMTracePlayer.render(1,{fromIndex:0,forceTransition:true}),plan=ASMTracePlayer.getLastPlaybackPlan();while(elapsed<plan.totalDurationMs/speed+100){elapsed+=8;clock+=8;const batch=[...callbacks.values()];callbacks.clear();batch.forEach(cb=>cb(clock));for(let i=0;i<12;i++)await Promise.resolve();const root=document.getElementById('asm-trace-root'),expression=events[root.dataset.traceActiveEventId];if(!expression)continue;const list=samples[expression]||=[];for(const group of root.querySelectorAll('.asm-trace-assign-literal-value')){if(Number(group.getAttribute('opacity'))<.2)continue;const text=group.querySelector('text'),b=text.getBBox(),m=root.getScreenCTM().inverse().multiply(text.getScreenCTM()),point=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(m);list.push({text:text.textContent,y:point.y,x:point.x,width:b.width*Math.hypot(m.a,m.b),motion:group.dataset.traceLiteralMotion});}}
-    restore();await pending;return{samples,events:doc.frames[1].events.filter(e=>['assign','write'].includes(e.type)),leftovers:document.querySelectorAll('.asm-trace-assign-literal-value').length};
+    restore();await pending;return{samples,restorePhase:plan.phases.find(p=>p.id==='selection-scale-restore'),events:doc.frames[1].events.filter(e=>['assign','write'].includes(e.type)),leftovers:document.querySelectorAll('.asm-trace-assign-literal-value').length};
    }finally{restore();ASMTraceFrameTween.cancel();}
   },{trace,speed});
   fs.mkdirSync('test-results/constant-assignment-presentation',{recursive:true});fs.writeFileSync(`test-results/constant-assignment-presentation/${speed}.json`,JSON.stringify(report));
@@ -35,6 +35,7 @@ result=2-shown;result=24/shown;result=1+2;result=shown+2-3+4;
   }
   const row=['+2','-3','+4'].map(label=>report.samples['result=shown+2-3+4'].find(s=>s.text===label));
   for(let i=1;i<row.length;i++)assert.ok(row[i-1].x+row[i-1].width/2<row[i].x-row[i].width/2,'multiple constant hints must not overlap');
+  assert.equal(report.restorePhase,undefined,'frames without min/max must not add a restoration delay');
   assert.equal(report.leftovers,0);
  }
  assert.deepEqual(errors,[]);

@@ -10,7 +10,7 @@ test('min/max lift both cells, scale only runtime winner, retain scale until fra
    const doc=ASMTracePlayer.apply(JSON.parse(JSON.stringify(trace)));window.asmGetAnimationPlaybackRate=()=>speed;await ASMTracePlayer.render(0,{stable:true});const id=Object.keys(doc.variables).find(id=>doc.variables[id].name==='v');
    const read=()=>{const root=document.getElementById('asm-trace-root'),matrix=root.getScreenCTM().inverse(),cells=[];for(let i=0;i<8;i++){const cell=root.querySelector(`[data-trace-object-key="${CSS.escape(id+'#'+i)}"] > rect`);const b=cell.getBBox(),m=matrix.multiply(cell.getScreenCTM()),p=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(m);cells.push({x:p.x,y:p.y,width:b.width*Math.hypot(m.a,m.b),font:cell.parentElement.querySelector('text')?.getAttribute('font-size')});}return{event:root.dataset.traceActiveEventId,cells,outline:!!root.querySelector('.asm-trace-selection-winner, rect[stroke-width="5"]')};};
    const before=read(),samples=[],native={raf:requestAnimationFrame,cancel:cancelAnimationFrame,now:Object.getOwnPropertyDescriptor(performance,'now')};let clock=performance.now(),elapsed=0,idn=0;const callbacks=new Map();requestAnimationFrame=cb=>{callbacks.set(++idn,cb);return idn;};cancelAnimationFrame=id=>callbacks.delete(id);Object.defineProperty(performance,'now',{configurable:true,value:()=>clock});const restore=()=>{requestAnimationFrame=native.raf;cancelAnimationFrame=native.cancel;if(native.now)Object.defineProperty(performance,'now',native.now);else delete performance.now;};
-   try{const pending=ASMTracePlayer.render(1,{fromIndex:0,forceTransition:true});const plan=ASMTracePlayer.getLastPlaybackPlan();while(elapsed<plan.totalDurationMs/speed+100){elapsed+=8;clock+=8;const batch=[...callbacks.values()];callbacks.clear();batch.forEach(cb=>cb(clock));for(let i=0;i<12;i++)await Promise.resolve();samples.push({at:elapsed,...read()});}restore();await pending;return{before,samples,after:read(),events:trace.frames[1].events.filter(e=>e.selectionOperation).map(e=>({id:e.id,role:e.selectedSourceRole,op:e.selectionOperation})),follow:trace.frames[1].events.find(e=>e.type==='assign'&&e.targets.some(t=>doc.variables[t.variableId]?.name==='after'))?.id};}finally{restore();ASMTraceFrameTween.cancel();}
+   try{const pending=ASMTracePlayer.render(1,{fromIndex:0,forceTransition:true});const plan=ASMTracePlayer.getLastPlaybackPlan();while(elapsed<plan.totalDurationMs/speed+100){elapsed+=8;clock+=8;const batch=[...callbacks.values()];callbacks.clear();batch.forEach(cb=>cb(clock));for(let i=0;i<12;i++)await Promise.resolve();samples.push({at:elapsed,...read()});}restore();await pending;return{before,samples,after:read(),restorePhase:plan.phases.find(p=>p.id==='selection-scale-restore'),events:trace.frames[1].events.filter(e=>e.selectionOperation).map(e=>({id:e.id,role:e.selectedSourceRole,op:e.selectionOperation})),follow:trace.frames[1].events.find(e=>e.type==='assign'&&e.targets.some(t=>doc.variables[t.variableId]?.name==='after'))?.id};}finally{restore();ASMTraceFrameTween.cancel();}
   },{trace,speed});
   fs.mkdirSync('test-results/minmax-presentation',{recursive:true});fs.writeFileSync(`test-results/minmax-presentation/${speed}.json`,JSON.stringify(r));
   assert.equal(r.samples.some(s=>s.outline),false,'no deep gray winner outline');assert.deepEqual(r.events.map(e=>e.role),['source-right','source-right','source-left','source-left']);
@@ -20,6 +20,16 @@ test('min/max lift both cells, scale only runtime winner, retain scale until fra
    assert.ok(active.every(s=>Math.abs(ratio(s,loser)-1)<.02),'non-selected candidate must not scale');
    assert.ok(active.some(s=>Math.abs(ratio(s,winner)-scale)<.02&&Math.abs(s.cells[left].y-r.before.cells[left].y)<.5&&Math.abs(s.cells[right].y-r.before.cells[right].y)<.5),'both lower together while winner retains its scale');
    const follow=r.samples.filter(s=>s.event===r.follow);assert.ok(follow.length>3);assert.ok(follow.every(s=>Math.abs(ratio(s,winner)-scale)<.02),'winner remains scaled during a later event in the same frame');
+  }
+  assert.equal(r.restorePhase?.durationMs,260,'frame owns a blocking 260ms restoration');
+  const restoring=r.samples.filter(s=>s.at*speed>=r.restorePhase.startMs&&s.at*speed<r.restorePhase.endMs);
+  assert.ok(restoring.length>=5,'restoration has observable intermediate samples');
+  for(const winner of [1,3,4,6]){
+   const distance=s=>Math.abs(s.cells[winner].width/r.before.cells[winner].width-1);
+   assert.ok(distance(restoring[0])>.1,'winner remains emphasized until restoration starts');
+   assert.ok(restoring.some(s=>distance(s)>.03&&distance(s)<.15),'size returns through intermediate values');
+   assert.ok(restoring.every((s,i)=>!i||distance(s)<=distance(restoring[i-1])+.001),'restoration is monotonic');
+   assert.ok(distance(restoring.at(-1))<.01,'restoration reaches normal size before cleanup');
   }
   assert.ok(r.after.cells.every((c,i)=>Math.abs(c.width/r.before.cells[i].width-1)<.02),'frame completion restores presentation scale');
  }
