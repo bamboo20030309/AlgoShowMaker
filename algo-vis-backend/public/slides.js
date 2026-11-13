@@ -499,8 +499,6 @@
   const videoTitleInput = document.getElementById('videoTitleInput');
   const videoAutoplayInput = document.getElementById('videoAutoplayInput');
   const videoMutedInput = document.getElementById('videoMutedInput');
-  const videoPreviewBtn = document.getElementById('videoPreviewBtn');
-  const videoOpenLink = document.getElementById('videoOpenLink');
   const videoInsertDialog = document.getElementById('videoInsertDialog');
   const videoInsertUrl = document.getElementById('videoInsertUrl');
   const videoInsertPoster = document.getElementById('videoInsertPoster');
@@ -10848,6 +10846,36 @@
     activateVideoWidget(el, { autoplay: true });
   }
 
+  // 編輯時按影片中間的播放鍵（沒有拖曳）就直接播放，與放映相同；拖曳仍只移動影片。
+  // 選取框（Fabric）與物件拖曳都會攔下按下事件，所以在 window 捕捉階段依座標判斷是否按在播放鍵上。
+  let videoEditPlayPress = null;
+  function videoPlayButtonAt(event) {
+    const current = reveal?.getCurrentSlide?.();
+    if (!current) return null;
+    return [...current.querySelectorAll('.slide-widget.video-widget:not(.is-video-active) .video-play-button')].find(button => {
+      const rect = button.getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    }) || null;
+  }
+  function handleVideoEditPlayDown(event) {
+    videoEditPlayPress = null;
+    if (!document.body.classList.contains('asm-edit-mode') || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) return;
+    const button = videoPlayButtonAt(event);
+    if (button) videoEditPlayPress = { el: button.closest('.slide-widget'), x: event.clientX, y: event.clientY };
+  }
+  function handleVideoEditPlayUp(event) {
+    const press = videoEditPlayPress;
+    videoEditPlayPress = null;
+    if (!press || !document.body.classList.contains('asm-edit-mode')) return;
+    if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > window.ASMFabricSelection.DRAG_DISTANCE) return;
+    // 等選取流程結束（播放中的影片需在選取狀態才會保留）再建立播放器。
+    setTimeout(() => {
+      if (!press.el.isConnected || !document.body.classList.contains('asm-edit-mode')) return;
+      if (!selectedWidgetKeys.has(press.el.dataset.widgetId)) selectWidget(press.el.dataset.widgetId);
+      activateVideoWidget(press.el, { autoplay: true, preview: true });
+    }, 0);
+  }
+
   function populateVideoEditor(widget) {
     const video = window.ASMSlideVideo;
     const valid = video.isVideoId(widget.videoId);
@@ -10859,12 +10887,6 @@
     if (document.activeElement !== videoTitleInput) videoTitleInput.value = widget.title || '';
     videoAutoplayInput.checked = widget.autoplay === true;
     videoMutedInput.checked = widget.muted === true;
-    const href = video.watchUrl(widget);
-    videoOpenLink.href = href || '#';
-    videoOpenLink.toggleAttribute('aria-disabled', !href);
-    const previewing = videoFrames().some(frame => frame.dataset.widgetId === widget.id && frame.dataset.videoPreview === 'true');
-    videoPreviewBtn.textContent = previewing ? '停止預覽' : '預覽播放';
-    videoPreviewBtn.disabled = !href;
   }
 
   function updateSelectedVideo(patch) {
@@ -10913,17 +10935,6 @@
     videoUrlStatus.textContent = '';
     videoUrlStatus.classList.remove('is-error');
     updateSelectedVideo({ [key]: seconds });
-  }
-
-  function toggleVideoPreview() {
-    const el = selectedWidgetId && document.querySelector(`.slide-widget[data-widget-id="${CSS.escape(selectedWidgetId)}"]`);
-    if (!el) return;
-    const frame = el.querySelector('iframe.slide-video-frame');
-    if (frame) deactivateVideoFrame(frame);
-    else activateVideoWidget(el, { autoplay: true, preview: true });
-    const widget = getWidget(selectedWidgetId).widget;
-    if (widget) populateVideoEditor(widget);
-    updateVideoDiagnostics();
   }
 
   function openVideoInsertDialog() {
@@ -10997,7 +11008,8 @@
     videoTitleInput?.addEventListener('change', () => updateSelectedVideo({ title: videoTitleInput.value }));
     videoAutoplayInput?.addEventListener('change', () => updateSelectedVideo({ autoplay: videoAutoplayInput.checked }));
     videoMutedInput?.addEventListener('change', () => updateSelectedVideo({ muted: videoMutedInput.checked }));
-    videoPreviewBtn?.addEventListener('click', toggleVideoPreview);
+    window.addEventListener('pointerdown', handleVideoEditPlayDown, true);
+    window.addEventListener('pointerup', handleVideoEditPlayUp, true);
     window.addEventListener('message', handleVideoMessage);
     window.addEventListener('blur', returnFocusFromVideoFrame);
     document.addEventListener('click', handleVideoFacadeClick, true);

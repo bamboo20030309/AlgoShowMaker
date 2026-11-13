@@ -3845,8 +3845,7 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--control
   pointer-events: auto;
 }
 
-/* 編輯時影片框只是可拖曳的物件；預覽中的 iframe 例外。 */
-body.asm-edit-mode .video-widget .video-play-button,
+/* 編輯時影片框是可拖曳的物件；中間的播放鍵與播放中的 iframe 例外（按播放鍵直接播放，與放映相同）。 */
 body.asm-edit-mode .video-widget .video-fallback,
 body.asm-edit-mode .video-widget .video-fallback a {
   pointer-events: none;
@@ -3905,18 +3904,6 @@ body.asm-slide-laser-mode .video-widget .video-play-button {
 .video-field-status.is-error,
 .video-insert-dialog .share-dialog-status.is-error {
   color: #ff9c9c;
-}
-
-.video-panel-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.video-panel-actions a {
-  color: #8fe0d4;
-  font-size: 12px;
 }
 
 .video-insert-url {

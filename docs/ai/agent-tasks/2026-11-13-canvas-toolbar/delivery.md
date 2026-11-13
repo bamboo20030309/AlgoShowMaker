@@ -15,6 +15,12 @@
   - `handleAlgorithmEmbedMessage` 處理 `asm-runtime-run`、`asm-runtime-open-editor`，只在編輯畫面接受。
 - 測試：新增 `tests/slide-canvas-toolbar.browser.test.js`（程式碼頁圖示與大步按鈕顯示規則；投影片編輯工具列，以及放映＝編輯工具列去掉 RUN；RUN 成功會實際編譯一次並回到第 0 幀；RUN 失敗保留同一份動畫、顯示錯誤、放映時錯誤列隱藏、「開啟編輯器」開啟動畫編輯器）。`entrypoints.test.js` 更新 `style.css` 版本。
 
+- 影片（2026-11-13 使用者要求）：cherry-pick `claude/2026-11-12-slide-video-embed` 的 `b3db977`、`e770151`（本分支 `6905167`、`666314d`），只有 `slides.html` 版本號衝突。之後依使用者要求：
+  - 刪除影片側欄的「預覽播放」與「在 YouTube 開啟」（`slides.html`、`slides.css` 的 `.video-panel-actions`、`slides.js` 的 `toggleVideoPreview` 與相關參照）。影片載入失敗時影片框內的「在 YouTube 開啟」連結保留。
+  - 編輯模式按影片中間的播放鍵直接播放（與放映相同，建立 `data-video-preview` 播放器；取消選取仍停止）。選取框與物件拖曳都會攔截按下事件，所以在 window 捕捉階段依播放鍵座標判斷；移動超過 `DRAG_DISTANCE` 視為拖曳、不播放。播放鍵在編輯模式不再設 `pointer-events: none`。
+  - 版本：`slides.css?v=video-embed-2`、`slides.js?v=slides-363`；`docs/guides/slide-video.md` 同步。
+  - 測試：`slide-video-widget.browser.test.js` 改為驗證側欄沒有這兩個按鈕、從播放鍵拖曳不播放、按播放鍵播放並維持選取；`slide-video.test.js` 6／6、`slide-video-widget` 2／2 通過。未在 3104 用使用者的投影片實測（避免改動使用者資料）。
+
 ## 驗證
 - `slide-canvas-toolbar.browser.test.js` 通過（實際編譯）。
 - `slides-embed-tabs`、`slide-presentation-controls`、`mobile-ui` 通過。

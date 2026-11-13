@@ -375,10 +375,19 @@ test('presentation playback loads players on demand, pauses on navigation and pa
     await setEditMode(page, true);
     await page.waitForFunction(() => document.body.dataset.videoFrames === '0');
 
-    // 編輯模式的預覽播放只在選取期間存在。
-    await page.locator('[data-widget-id="v1"]').click();
-    await page.locator('#videoPreviewBtn').click();
+    // 編輯模式：側欄沒有預覽按鈕；與放映相同，直接按影片中間的播放鍵播放，取消選取就停止。
+    assert.equal(await page.locator('#videoPreviewBtn, #videoOpenLink').count(), 0);
+    // 拖曳影片（從播放鍵按下也一樣）只移動，不會播放。
+    const playBox = await page.locator('[data-widget-id="v1"] .video-play-button').boundingBox();
+    await page.mouse.move(playBox.x + playBox.width / 2, playBox.y + playBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(playBox.x + playBox.width / 2 + 40, playBox.y + playBox.height / 2 + 20, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => document.body.dataset.videoFrames), '0', 'dragging does not play');
+    await page.locator('[data-widget-id="v1"] .video-play-button').click();
     await page.locator('[data-widget-id="v1"] iframe[data-video-preview="true"]').waitFor();
+    assert.equal(await page.locator('.slide-widget[data-widget-id="v1"]').evaluate(el => el.classList.contains('is-selected')), true);
     await page.locator('#exitVideoEditorBtn').click();
     await page.waitForFunction(() => document.body.dataset.videoFrames === '0');
     assert.deepEqual(errors, []);
