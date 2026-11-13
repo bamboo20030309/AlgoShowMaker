@@ -1464,7 +1464,7 @@
     },
     "f37247d4d4b3b36f286209faabf1f0deb74aec9c035a5311672732c68f4944cb": {
       "file": "eight-queens-teaching-03-f37247d4d4b3b36f286209faabf1f0deb74aec9c035a5311672732c68f4944cb.json",
-      "deck": "eight-queens-teaching-35664c30d3fe31ec0bd524add113e050b30548e1e0eccf942abe873fa802e50d.asmdeck",
+      "deck": "eight-queens-teaching-b1ea61453ba6277a6cd63f4f3f81ad1776a3268987dc8607bd5a0c73190e89f3.asmdeck",
       "slideId": "c5bc5221-8cab-42a9-b995-19a33b331492"
     },
     "de42ac8fdb133ed98aafb1a61649e36066f057d3419d285b124dec71099f5d03": {
@@ -1569,8 +1569,13 @@
     },
     "fe42fd72461c87f3ae7baa534230d469f23dafdb969fa2aee8b8d45fb9d6338d": {
       "file": "eight-queens-teaching-01-fe42fd72461c87f3ae7baa534230d469f23dafdb969fa2aee8b8d45fb9d6338d.json",
-      "deck": "eight-queens-teaching-35664c30d3fe31ec0bd524add113e050b30548e1e0eccf942abe873fa802e50d.asmdeck",
+      "deck": "eight-queens-teaching-b1ea61453ba6277a6cd63f4f3f81ad1776a3268987dc8607bd5a0c73190e89f3.asmdeck",
       "slideId": "01b3a3d6-557b-442d-99d5-18c5293d2c3c"
+    },
+    "0f93ded56bf19342c7a9bdb1aad19289cff9b74b17558d3018a29735b0978c5a": {
+      "file": "eight-queens-teaching-02-0f93ded56bf19342c7a9bdb1aad19289cff9b74b17558d3018a29735b0978c5a.json",
+      "deck": "eight-queens-teaching-b1ea61453ba6277a6cd63f4f3f81ad1776a3268987dc8607bd5a0c73190e89f3.asmdeck",
+      "slideId": "76a59dd3-b8e5-4a55-9671-b2c9f90e9096"
     }
   }
 }
