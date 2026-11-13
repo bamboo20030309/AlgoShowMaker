@@ -26,7 +26,7 @@ test('LCS j increments follow column anchors when presets contain string size al
   assert.ok(active.every(s=>s.marker.x>=start-.5&&s.marker.x<=target+.5),'j must remain between old and next column, never travel toward an unresolved parking slot');
   assert.ok(Math.abs(active.at(-1).marker.x-target)<.5,'j reaches the next column before later events');
   assert.ok(Math.abs(report.after.x-target)<.5,'completed position agrees with the next frame');
-  if(from===0)assert.ok(report.winners.some(h=>h.stroke==='#333333'&&h.width==='5'),'records the existing max winner outline');
+  assert.deepEqual(report.winners,[],'max uses selected-cell scaling without deep gray winner outlines');
  }
  const arrows=await page.evaluate(async()=>{
   await ASMTracePlayer.render(4,{stable:true});

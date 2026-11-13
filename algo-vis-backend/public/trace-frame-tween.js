@@ -5498,9 +5498,14 @@
       return { ...operand, point };
     });
     const equalValues = compareValuesEqual(operands);
-    const equalityComparison = ['==', '!='].includes(String(event?.operation || ''));
+    const selection = event.selectionPresentation;
+    const equalityComparison = !selection && ['==', '!='].includes(String(event?.operation || ''));
     let contactTargets = equalityComparison ? compareContactTargets(operands, equalValues) : [];
-    const scaleTargets = equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
+    const selectedKey = selection && operands.find(operand => operand.target?.role === selection.selectedSourceRole)?.visualKey;
+    const baseScales = operands.map(operand => selection?.baseScale?.(operand.visualKey) || 1);
+    const scaleTargets = selection
+      ? operands.map((operand, index) => operand.visualKey === selectedKey ? selection.operation === 'min' ? .8 : 1.25 : baseScales[index])
+      : equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
     const selfCompare = operands.length >= 2 && operands[0].visualKey === operands[1].visualKey;
     const selfSplitDistance = selfCompare
       ? Math.max(8, operands[0].point.width / 2)
@@ -5563,7 +5568,7 @@
       operand.element.setAttribute('transform', `matrix(${local.a} ${local.b} ${local.c} ${local.d} ${local.e} ${local.f})`);
       record.textSize?.update(adjustment.scale);
     };
-    const selfSplit = selfCompare && !operands[0].marker
+    const selfSplit = !selection && selfCompare && !operands[0].marker
       ? createSelfCompareSplit(operands[0], selfSplitDistance, equalValues ? 0 : 5)
       : null;
     let expression = null;
@@ -5713,7 +5718,7 @@
           ? 0
           : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
         ensurePopups();
-        if (elapsed >= waitEnd) {
+        if (!selection && elapsed >= waitEnd) {
           showResult();
           setResultOpacity(size * (1 - reset));
         }
@@ -5730,7 +5735,8 @@
               : (-15 * lift) * stay),
             scale: operand.marker
               ? 1
-              : 1 + ((scaleTargets[index] || 1) - 1) * size * stay
+              : selection ? baseScales[index] + ((scaleTargets[index] || 1) - baseScales[index]) * size
+                : 1 + ((scaleTargets[index] || 1) - 1) * size * stay
           };
           this.adjustments.set(operand.visualKey, adjustment);
           this.logicalAdjustments.set(operand.logicalKey, adjustment);
@@ -5743,7 +5749,9 @@
             const contactY = equalityComparison
               ? (contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
               : 0;
-            const compareScale = 1 + ((scaleTargets[index] || 1) - 1) * size * stay;
+            const compareScale = selection
+              ? baseScales[index] + ((scaleTargets[index] || 1) - baseScales[index]) * size
+              : 1 + ((scaleTargets[index] || 1) - 1) * size * stay;
             popup.group.setAttribute('opacity', String(popupOpacity));
             popup.group.setAttribute(
               'transform',
@@ -5767,7 +5775,7 @@
             x: target.x, y: labelY, targetX: target.x, targetY: target.y
           });
         });
-        if (elapsed >= resetEnd) this.remove();
+        if (elapsed >= resetEnd && !selection) this.remove();
       },
       remove() {
         highlights.forEach(highlight => highlight.remove());
@@ -8634,6 +8642,8 @@
       }
     );
     const combinedAdjustments = new Map();
+    const selectionScales = new Map();
+    const selectionMarkerOffsets = new Map();
     const bitShiftEffects = new Map();
     const stagedShiftVariables = new Set();
     if (Number(options.direction) >= 0) {
@@ -8780,17 +8790,54 @@
             comparisonPlacements.set(key,{x:x-10,y,width:20,height:20});valueHints.push({group,key,x,y});
             return displayTarget;
           }) }));
-        const comparisons = displaySelections.map(selection => createCompareEffect(options.root, { ...event, type: 'compare',
-          operation: selection.operation === 'min' ? '<=' : '>=', result: true,
-          targets: selection.targets, payload: { left: selection.left, right: selection.right } },
-          options.document, eventFrame, comparisonPlacements, comparisonElements, visualKeyAtEvent,
-          markerPositionAtEvent, element => execution.pointerTarget(element, slot.event),
-          key => execution.cellIdentity(key, slot.event)));
+        const comparisons = [];
+        const completedSelections = new Set();
+        const comparisonAt = index => {
+          if (comparisons[index]) return comparisons[index];
+          const selection = displaySelections[index];
+          return comparisons[index] = createCompareEffect(options.root, { ...event, type: 'compare',
+            operation: selection.operation === 'min' ? '<=' : '>=', result: true,
+            selectionPresentation: { operation: selection.operation,
+              selectedSourceRole: selection.selectedSourceRole || event.selectedSourceRole,
+              baseScale: key => selectionScales.get(key)?.scale || 1 },
+            targets: selection.targets, payload: { left: selection.left, right: selection.right } },
+            options.document, eventFrame, comparisonPlacements, comparisonElements, visualKeyAtEvent,
+            markerPositionAtEvent, element => execution.pointerTarget(element, slot.event),
+            key => execution.cellIdentity(key, slot.event));
+        };
+        const completeSelection = index => {
+          if (completedSelections.has(index)) return;
+          const comparison = comparisonAt(index);
+          comparison?.update(COMPARE_DURATION);
+          for (const target of displaySelections[index].targets || []) {
+            const operand = eventOperand(options.document, eventFrame, target, null,
+              comparisonPlacements, comparisonElements, visualKeyAtEvent, event);
+            if (!operand || operand.marker) continue;
+            const adjustment = comparison?.adjustments.get(operand.visualKey);
+            if (adjustment && Math.abs(adjustment.scale - 1) > .001) {
+              selectionScales.set(operand.visualKey, { scale: adjustment.scale, element: operand.element,
+                logicalKey: operand.logicalKey, height: operand.point.height, point: operand.point,
+                direct: selectionScales.get(operand.visualKey)?.direct });
+            }
+          }
+          comparison?.remove();
+          // Retained layout cells have no ordinary tween entry. Keep their
+          // selection presentation under the same frame-owned lifetime.
+          for (const record of selectionScales.values()) {
+            if (record.direct || !retainedSnapshotVisual(record.element)) continue;
+            const element = record.element;
+            const matrix = element.transform?.baseVal?.consolidate?.()?.matrix;
+            record.direct = { transform: element.getAttribute('transform'),
+              base: matrix ? new DOMMatrix([matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f]) : new DOMMatrix(),
+              center: { x: record.point.x, y: record.point.y + record.point.height / 2 },
+              textSize: preserveCellTextSize(element, true) };
+          }
+          completedSelections.add(index);
+        };
         const hint = createSvg('text', { class: 'asm-trace-selection-label', x: 20, y: 24,
           'font-size': 16, 'font-weight': 'bold', fill: '#333333', 'pointer-events': 'none' }, selections[0].operation);
         options.root.append(hint);
         let assignment = null;
-        const winnerHighlights = [];
         return {
           get adjustments() { return assignment?.adjustments || comparisons.find(c=>c?.adjustments?.size)?.adjustments || new Map(); },
           get markerArrowOffsets() { return comparisons.find(c=>c?.markerArrowOffsets?.size)?.markerArrowOffsets || new Map(); },
@@ -8799,22 +8846,14 @@
             const selectionMs = selectionDuration(event);
             if (elapsed < selectionMs) {
               const index = Math.min(selections.length - 1, Math.floor(elapsed / COMPARE_DURATION));
-              comparisons.forEach((comparison, i) => { if (i < index) comparison?.remove(); });
+              for (let i = 0; i < index; i++) completeSelection(i);
               hint.textContent = selections[index].operation;
-              comparisons[index]?.update(elapsed - index * COMPARE_DURATION);
+              comparisonAt(index)?.update(elapsed - index * COMPARE_DURATION);
               valueHints.forEach(({group,key,x,y})=>{const delta=comparisons[index]?.adjustments?.get(key);group.setAttribute('transform',`translate(${x+(delta?.x||0)},${y+(delta?.y||0)})`);});
-              if (elapsed - index * COMPARE_DURATION >= COMPARE_TIMING.popup + COMPARE_TIMING.wait + COMPARE_TIMING.size && !winnerHighlights[index]) {
-                const selection = selections[index];
-                const role = selection.selectedSourceRole || event.selectedSourceRole;
-                const target = (selection.targets || []).find(target => target.role === role);
-                const operand = target && eventOperand(options.document, eventFrame, target,
-                  selection.source || event.payload?.source, options.currentPlacements, options.currentElements, visualKeyAtEvent, event);
-                const highlight = operand && addHighlight(operand.element, '#333333');
-                if (highlight) { highlight.classList.add('asm-trace-selection-winner'); highlight.setAttribute('stroke-width','5'); winnerHighlights[index]=highlight; }
-              }
             }
             else {
-              comparisons.forEach(c=>c?.remove()); hint.remove();
+              for (let i = 0; i < selections.length; i++) completeSelection(i);
+              hint.remove();
               valueHints.forEach(v=>v.group.remove());
               if (!assignment) {
                 const selected = (event.targets || []).find(t => t.role === event.selectedSourceRole);
@@ -8828,7 +8867,7 @@
               assignment?.update(elapsed - selectionMs);
             }
           },
-          remove() { comparisons.forEach(c=>c?.remove()); assignment?.remove(); winnerHighlights.forEach(h=>h?.remove()); valueHints.forEach(v=>v.group.remove()); hint.remove(); }
+          remove() { comparisons.forEach(c=>c?.remove()); assignment?.remove(); valueHints.forEach(v=>v.group.remove()); hint.remove(); }
         };
       }
       if (slot.type === 'compare') {
@@ -8927,10 +8966,15 @@
     return {
       get adjustments() { return combinedAdjustments; },
       get animatedElements() { return activeAnimatedElements; },
-      get markerArrowOffsets() { return activeEffect?.markerArrowOffsets || new Map(); },
+      get markerArrowOffsets() {
+        const offsets = new Map(activeEffect?.markerArrowOffsets || []);
+        selectionMarkerOffsets.forEach((extra,key)=>{ const previous=offsets.get(key)||{x:0,y:0,targetX:0,targetY:0};
+          offsets.set(key,{...previous,y:previous.y+extra.y}); });
+        return offsets;
+      },
       get markerArrowStates() {
         const states = new Map(markerMotion.arrowStates);
-        activeEffect?.markerArrowOffsets?.forEach((offset, key) => {
+        this.markerArrowOffsets.forEach((offset, key) => {
           const state = states.get(key);
           if (!state) return;
           states.set(key, { ...state,
@@ -8958,6 +9002,14 @@
       update(elapsed) {
         if (finished) return;
         presentationElapsed = elapsed;
+        // Resolve each new operation against untransformed snapshot geometry;
+        // apply the composed presentation once, after all event adjustments.
+        selectionScales.forEach(record => {
+          if (!record.direct) return;
+          if (record.direct.transform == null) record.element.removeAttribute('transform');
+          else record.element.setAttribute('transform', record.direct.transform);
+          record.direct.textSize?.update(1);
+        });
         markerMotion.update(elapsed);
         if (!announcementsReady) {
           // Publish the initial event-state positions before any nonzero
@@ -9045,6 +9097,7 @@
         forwardValues.update(elapsed);
         activeEffect?.afterReplay?.();
         combinedAdjustments.clear();
+        selectionScales.forEach((record, key) => combinedAdjustments.set(key, { x: 0, y: 0, scale: record.scale }));
         markerMotion.adjustments.forEach((value, key) => combinedAdjustments.set(key, value));
         activeEffect?.adjustments?.forEach?.((value, key) => {
           const existing = combinedAdjustments.get(key);
@@ -9052,10 +9105,40 @@
             ? {
               x: (Number(existing.x) || 0) + (Number(value.x) || 0),
               y: (Number(existing.y) || 0) + (Number(value.y) || 0),
-              scale: Number(value.scale) || Number(existing.scale) || 1,
+              scale: activeSlot?.event?.selectionOperation ? Number(value.scale) || Number(existing.scale) || 1
+                : (Number(value.scale) || 1) * (Number(existing.scale) || 1),
               absolute: existing.absolute === true
             }
             : value);
+        });
+        selectionScales.forEach((record, key) => {
+          if (!record.direct || !record.element.isConnected) return;
+          const rootMatrix = options.root.getScreenCTM();
+          const parentMatrix = record.element.parentElement?.getScreenCTM();
+          if (!rootMatrix || !parentMatrix) return;
+          const asMatrix = matrix => new DOMMatrix([matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f]);
+          const parentToRoot = asMatrix(rootMatrix).inverse().multiply(asMatrix(parentMatrix));
+          const adjustment = combinedAdjustments.get(key) || { x: 0, y: 0, scale: record.scale };
+          const center = record.direct.center;
+          const motion = new DOMMatrix().translate(center.x + adjustment.x, center.y + adjustment.y)
+            .scale(adjustment.scale).translate(-center.x, -center.y);
+          const local = parentToRoot.inverse().multiply(motion).multiply(parentToRoot).multiply(record.direct.base);
+          record.element.setAttribute('transform', `matrix(${local.a} ${local.b} ${local.c} ${local.d} ${local.e} ${local.f})`);
+          record.direct.textSize?.update(adjustment.scale);
+        });
+        selectionMarkerOffsets.clear();
+        options.currentElements?.forEach((element,key)=>{
+          if (!element.dataset?.traceSourceVariableId) return;
+          const target = markerMotion.committedTargets.get(key) || element.dataset.traceBindingTarget;
+          const recordEntry = [...selectionScales].find(([visual,record])=>visual===target || record.logicalKey===target);
+          if (!recordEntry) return;
+          const [cellKey,record] = recordEntry;
+          const combined = combinedAdjustments.get(cellKey)?.scale || record.scale;
+          const active = activeEffect?.adjustments?.get(cellKey)?.scale || 1;
+          const y = record.height * (active-combined)/2;
+          const previous = combinedAdjustments.get(key)||{x:0,y:0,scale:1};
+          combinedAdjustments.set(key,{...previous,y:previous.y+y});
+          selectionMarkerOffsets.set(key,{y});
         });
       },
       finish() {
@@ -9068,6 +9151,14 @@
         if (announcementsReady) announceCompletion();
         else queueMicrotask(announceCompletion);
         activeEffect?.remove?.();
+        selectionScales.forEach(record => {
+          if (!record.direct) return;
+          if (record.direct.transform == null) record.element.removeAttribute('transform');
+          else record.element.setAttribute('transform', record.direct.transform);
+          record.direct.textSize?.remove();
+        });
+        selectionScales.clear();
+        selectionMarkerOffsets.clear();
         activeReadEmphasis?.remove(); activeReadEmphasis = null;
         sequenceEffects.forEach(effect => effect.remove());
         pendingSequenceRemovals.forEach(item => item.wrapper.remove());
@@ -11498,10 +11589,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-354';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-355';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-354', play, cancel, updateEventAvailability,
+    build: 'trace-355', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

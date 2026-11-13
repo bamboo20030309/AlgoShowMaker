@@ -62,3 +62,7 @@ node --test --test-concurrency=1 tests/insertion-relative-index.browser.test.js 
 T21「索引取值與指標分離」：引擎 14 的 `@frame arr[i]`／`@object arr[i]` 只顯示指定元素，保留來源索引身分，不自動產生指標；`arr[i,j]` 明確報錯。整陣列游標使用獨立 `@pointer`，不得覆寫矩陣既有設定。核對一維、二維、字串與 IndexedDB 保存重開；入口：`indexed-value.browser.test.js`、`indexed-pointer-migration.test.js`。公開範例的程式碼、Trace 指紋與引用須同步更新，由 `guest-gallery-assets.test.js` 核對。
 
 T22「事件擁有指標重排」：同格指標的讓位／補位必須由當下入場、移動或退場觸發，不能先採用目的幀的最終成員。快速排序一般例第 18→19 幀，j 尚未淡出時 i 不得移動；j 淡出時 i 才補位。新指標若等待舊指標退場，等待期間不得占位；純顯示增減及矩陣列／欄指標也使用共同狀態。入口：`pointer-event-reflow.browser.test.js`；核對真實標籤位置及從標籤到祖先的有效透明度，不能只看外層容器的 opacity。
+
+## max/min 選值呈現（2026-11-13）
+
+兩個候選來源一起抬起；只對 runtime 選中的格子縮放：max 放大到 1.25 倍，min 縮小到 0.8 倍，再一起放下。相等時依程式實際選中來源，不以畫面數值另作猜測。選中格子的縮放持續到同一幀全部事件完成；不新增深灰粗框、不保存成作者樣式。標準答案入口為 `algo-vis-backend/tests/minmax-presentation.browser.test.js`，逐時核對實際 SVG 位置與尺寸，不只核對播放計畫。
