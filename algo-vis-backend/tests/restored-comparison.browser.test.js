@@ -69,6 +69,10 @@ result=a[i]==a[i];
  const near=(a,b,label)=>assert.ok(Math.abs(a-b)<0.01,label+': '+JSON.stringify({a,b}));
  for(const r of reports){const label=r.mode+' '+r.operation+' '+r.rate+'x',mid=r.samples[730],peak=r.samples[1000];
   assert.equal(r.samples[579].expression,'',label+' wait before comparing');
+  if(r.operation!=='self'){
+   near(r.samples[180].left.y,r.baseline.left.y-15,label+' left lifts during preparation');
+   near(r.samples[180].right.y,r.baseline.right.y-15,label+' right lifts during preparation');
+  }
   assert.equal(r.samples[580].resultOpacity,0,label+' result starts hidden');
   assert.ok(r.samples[581].resultOpacity>0&&r.samples[581].resultOpacity<1,label+' old gradual result reveal starts with scaling');
   near(r.samples[880].resultOpacity,1,label+' result fully shown at 880ms');
@@ -85,7 +89,7 @@ result=a[i]==a[i];
    near(mid.left.x,r.baseline.left.x,label+' first half aligns before moving left source');near(mid.right.x,r.baseline.right.x,label+' first half aligns before moving right source');
    assert.ok(peak.left.x>mid.left.x&&peak.right.x<mid.right.x,label+' second half brings sources together');
    const split=r.operation==='!='?5:0;
-   near(peak.left.y,r.baseline.left.y-split,label+' original vertical split left');near(peak.right.y,r.baseline.right.y+split,label+' original vertical split right');
+   near(peak.left.y,r.baseline.left.y-15-split,label+' equality comparison lifts before vertical split left');near(peak.right.y,r.baseline.right.y-15+split,label+' equality comparison lifts before vertical split right');
    assert.match(peak.expression,r.operation==='!='?/≠/:/=/,label+' equality symbol');
   }
   near(r.final.left.x,r.baseline.left.x,label+' restored x');near(r.final.left.y,r.baseline.left.y,label+' restored y');

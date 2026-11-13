@@ -5802,7 +5802,7 @@
           const adjustment = {
             x: operand.marker ? 0 : contact.x * contactProgress * stay,
             y: operand.marker || labelComparison ? 0 : (equalityComparison
-              ? (contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
+              ? (-15 * lift + contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
               : (-15 * lift) * stay),
             scale: operand.marker
               ? 1
@@ -11689,10 +11689,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-362';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-363';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-362', play, cancel, updateEventAvailability,
+    build: 'trace-363', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
