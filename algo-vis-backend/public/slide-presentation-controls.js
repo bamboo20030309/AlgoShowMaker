@@ -6,7 +6,7 @@
   function install({ reveal, groupSizes, overviewOpen = () => false }) {
     if (installed.has(reveal)) return installed.get(reveal);
     const frames = new Set(), documents = new WeakSet();
-    const frameStyles = new URL('slide-presentation-controls.css?v=5', document.baseURI).href;
+    const frameStyles = new URL('slide-presentation-controls.css?v=6', document.baseURI).href;
     let presentationMode = false;
     let accumulated = 0, previousDirection = 0, lastWheel = 0, lockedUntil = 0;
     const modalOpen = () => !!document.querySelector('dialog[open], #algorithmEditorModal:not([hidden]), #codeEditorModal:not([hidden])');
@@ -20,7 +20,7 @@
     const MODE_ICONS = {
       normal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 11.2-5.8.5 3.3 7.3-2.2 1-3.2-7.4L6 19.5z" fill="currentColor"/></svg>',
       // 與放映時的雷射筆游標（CSS --asm-slide-laser-cursor）是同一個圖案。
-      laser: '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="#ff2020" fill-opacity=".24"/><circle cx="16" cy="16" r="6" fill="#ff2020" stroke="#202020" stroke-width="3"/><circle cx="16" cy="16" r="5" fill="#ff2020" stroke="white" stroke-width="1.5"/></svg>'
+      laser: '<svg class="asm-laser-icon" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="#ff2020" fill-opacity=".24"/><circle cx="16" cy="16" r="6" fill="#ff2020" stroke="#202020" stroke-width="3"/><circle cx="16" cy="16" r="5" fill="#ff2020" stroke="white" stroke-width="1.5"/></svg>'
     };
     const menuButtons = [false, true].map(laser => {
       const button = document.createElement('button'); button.type = 'button';

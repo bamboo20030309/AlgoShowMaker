@@ -24,6 +24,8 @@ html.asm-slide-laser-frame * {
 /* 圖示按鈕：目前模式以底色與外框標示；名稱只在滑鼠停留或鍵盤聚焦時以提示文字出現。 */
 .asm-presentation-menu button { position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
 .asm-presentation-menu button svg { width: 20px; height: 20px; display: block; }
+/* 雷射筆圖示的外圈是半透明光暈，實際紅點較小，放大才和箭頭一樣醒目。 */
+.asm-presentation-menu button svg.asm-laser-icon { width: 30px; height: 30px; }
 .asm-presentation-menu button:hover, .asm-presentation-menu button:focus-visible { background: #ffffff20; outline: none; }
 .asm-presentation-menu button[aria-checked="true"] { background: #ffffff2e; border-color: #ffffff59; }
 .asm-presentation-menu button::after {
