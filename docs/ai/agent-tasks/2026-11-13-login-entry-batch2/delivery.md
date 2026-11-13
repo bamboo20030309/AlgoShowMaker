@@ -52,8 +52,11 @@ node --test tests/my-codes.browser.test.js tests/login-next.browser.test.js test
 ## 剩餘事項與合併注意
 - 已 rebase 到 `b0d99e0` 並解衝突：`algorithm.html` 的 `style.css` 版本改用本分支 `my-codes-1`（內容已含 intergration 的修改）；`slides.html` 採 intergration 的 `slide-presentation-controls.js?v=4`、`slides.js?v=slides-356`，`mobile-ui.js` 用本分支 `mobile-6`；`style.css` 兩邊新增的區塊都保留（補回 intergration 區塊的結尾大括號，括號平衡已檢查）。rebase 後相關測試重跑同樣 13 通過。
 - 合併：在 intergration worktree 執行 `git cherry-pick b0d99e0..claude/2026-11-13-login-entry-batch2`。
-- 未做：`style.css` 中舊登入視窗與舊清單的殘留樣式（`.modal-footer`、`.code-item`、`.btn-delete-code` 等）未清理，需另確認其他頁是否使用。
-- 伺服器 `forgot-password` 查無帳號時回 404「找不到此帳號」，可被用來確認 Email 是否註冊（帳號列舉）；屬既有行為，本次未改。
+- 追加（使用者要求一併處理）：
+  - `style.css` 刪除舊登入視窗與舊「我的程式碼」殘留樣式共 653 行：`.btn-login`（含 `.logged-in`）、`.modal`／`.modal-content`／`.close-modal`／`#modalTitle`／`.form-group`／`.btn-submit`／`.modal-footer`／`@keyframes slideIn`、`#authMessage`、`.code-item`／`.code-info`／`.code-meta`／`.btn-small`／`.btn-icon-refresh`、`#saveLangSelect`／`.select-wrapper`、`#saveCodeForm`／`#saveInputCheckbox`／`.checkbox-group`／`#saveMessage`／`@keyframes fadeIn`、`.sidebar-panel`／`.sidebar-header`／`.btn-icon-close`／`.sidebar-toolbar`／`.sidebar-hint`／`.sidebar-content`、`.btn-delete-code`、`.btn-save-code`。`style.css` 只有 `algorithm.html` 載入，以上選擇器在該頁與其腳本中皆無引用（首頁 `#authMessage`、投影片頁 `.sidebar-panel` 用的是各自的 CSS）。保留 `#toast-container`／`.toast-msg`（`my-codes.js` 使用）與 `fadeInDown`（`.input-item` 使用）。版本改為 `style.css?v=old-auth-css-1`，括號平衡已檢查。
+  - `server.js` `forgot-password`：查無帳號不再回 404「找不到此帳號」，與有帳號時回同一句 200 `FORGOT_PASSWORD_REPLY`，無法再用來試出 Email 是否註冊；`username` 只接受非空字串，否則 400（原本空值或 `{"$ne": null}` 會讓 `findOne` 比對到任意帳號並寄信）。寄信失敗仍回 500（只會發生在帳號存在時，屬伺服器故障，未改）。
+  - `login-next.browser.test.js`：模擬訊息改為新文字；新增測試確認路由無 404／「找不到此帳號」、兩個成功分支共用同一回覆，並以真實請求確認空值、空白、物件、陣列皆回 400。相關測試 8／8 通過。
+- 尚未處理：`/api/auth/login` 同樣未檢查 `username` 型別（bcrypt 比對會擋下登入，風險較低），本次未改。
 - 未以真實帳號實際收發重設信驗證（需寄信設定與資料庫）；流程以模擬 API 驗證。
 
 ## 主代理核實與整合（由主代理填寫）

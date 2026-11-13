@@ -881,14 +881,18 @@ function safeReturnPath(next) {
 }
 
 // 忘記密碼 (寄送重置信)
+// 不論帳號是否存在都回同一句話，避免別人用這個表單試出某個 Email 有沒有註冊。
+const FORGOT_PASSWORD_REPLY = '如果這個 Email 已註冊，重設密碼的連結會寄到信箱，請檢查收件匣（也看看垃圾郵件）。';
 app.post('/api/auth/forgot-password', async (req, res) => {
-  const { username } = req.body;
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
   const returnPath = safeReturnPath(req.body?.next);
+  // 只接受字串：空值或物件（例如 {"$ne": null}）會讓 findOne 比對到任意帳號。
+  if (!username) return res.status(400).json({ error: '請輸入 Email' });
 
   try {
     const user = await User.findOne({ username });
     if (!user) {
-      return res.status(404).json({ error: '找不到此帳號 (Email)' });
+      return res.json({ success: true, message: FORGOT_PASSWORD_REPLY });
     }
 
     // 1. 產生 Token (有效期限 1 小時)
@@ -913,7 +917,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
     await transporter.sendMail(mailOptions);
 
-    res.json({ success: true, message: '重置信已寄出，請檢查您的信箱！' });
+    res.json({ success: true, message: FORGOT_PASSWORD_REPLY });
 
   } catch (err) {
     console.error('寄信失敗:', err);

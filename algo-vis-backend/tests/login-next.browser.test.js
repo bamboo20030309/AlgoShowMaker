@@ -49,7 +49,7 @@ async function newPage(browser, requests) {
     if (name === 'me') return route.fulfill({ json: { user: { id: USER.user_uid, username: USER.username } } });
     if (name === 'login') return route.fulfill({ json: { token: 'fixture-token', ...USER } });
     if (name === 'register') return route.fulfill({ json: { success: true } });
-    if (name === 'forgot-password') return route.fulfill({ json: { message: '重置信已寄出，請檢查您的信箱！' } });
+    if (name === 'forgot-password') return route.fulfill({ json: { message: '如果這個 Email 已註冊，重設密碼的連結會寄到信箱' } });
     if (name === 'reset-password') return route.fulfill({ json: { message: '密碼已更新，請重新登入。' } });
     return route.fulfill({ status: 404, json: {} });
   });
@@ -106,7 +106,7 @@ test('login, register and password reset started from the code page all return t
       // The password field is hidden here; it must not block the form (it used to stay required).
       assert.equal(await page.locator('#passwordInput').isVisible(), false);
       await fillAndSubmit(page, { password: null });
-      await page.locator('#authMessage', { hasText: '重置信已寄出' }).waitFor();
+      await page.locator('#authMessage', { hasText: '重設密碼的連結會寄到信箱' }).waitFor();
       assert.deepEqual(requests.find(r => r.name === 'forgot-password').body, { username: USER.username, next: codePage });
       await page.close();
     }
@@ -167,4 +167,26 @@ test('forgot-password keeps only a same-site next in the reset link', async () =
     assert.equal(safeReturnPath(bad), '', String(bad));
   }
   assert.match(source, /const resetLink = `\$\{baseUrl\}\/\?reset_token=\$\{token\}\$\{returnPath \? `&next=\$\{encodeURIComponent\(returnPath\)\}` : ''\}`;/);
+});
+
+test('forgot-password does not reveal whether an Email is registered', { timeout: 60000 }, async () => {
+  const fs = require('node:fs');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const route = source.slice(source.indexOf("app.post('/api/auth/forgot-password'"), source.indexOf("app.post('/api/auth/reset-password'"));
+  // Unknown and known accounts get the same 200 reply; the old 404「找不到此帳號」is gone.
+  assert.doesNotMatch(route, /404|找不到此帳號/);
+  assert.equal(route.match(/res\.json\(\{ success: true, message: FORGOT_PASSWORD_REPLY \}\)/g)?.length, 2);
+
+  // Non-string usernames are refused before any lookup ({"$ne": null} would match any account).
+  const { server, base } = await startServer();
+  try {
+    for (const username of [undefined, '', '   ', { $ne: null }, ['a@example.test']]) {
+      const response = await fetch(`${base}/api/auth/forgot-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username })
+      });
+      assert.equal(response.status, 400, JSON.stringify(username));
+    }
+  } finally {
+    server.kill();
+  }
 });

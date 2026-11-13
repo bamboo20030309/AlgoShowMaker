@@ -59,7 +59,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.ok(html.includes('compile.js?v=syntax-13'));
   assert.match(read('compile.js'), /sourceCode:\s*typeof data\.traceDocument\.sourceCode[\s\S]*?: sourceCode/,
     'RUN must retain editor source when an older backend omits trace source metadata');
-  assert.ok(html.includes('style.css?v=my-codes-1'));
+  assert.ok(html.includes('style.css?v=old-auth-css-1'));
   // 我的程式碼側欄：在 front.js（aceEditor、asmReplaceEditorCode）之後載入。
   assert.ok(html.includes('my-codes.js?v=1'));
   assert.ok(html.indexOf('front.js?') < html.indexOf('my-codes.js?'));
