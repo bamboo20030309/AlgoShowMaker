@@ -6025,7 +6025,8 @@
     renderSnapGuides(result.guides, canvas);
   }
 
-  function applyFabricResizeSnap(event, canvas) {
+  // candidates／guideCanvas 供選取框（另一張 Fabric 畫布）共用：貼齊目標與導線都以投影片主畫布為準。
+  function applyFabricResizeSnap(event, canvas, { candidates: givenCandidates = null, guideCanvas = canvas } = {}) {
     const target = event?.target;
     const corner = event?.transform?.corner;
     if (!target || !corner || snapBypassRequested(event?.e)) {
@@ -6046,7 +6047,7 @@
       target.setCoords();
       target.dirty = true;
       canvas.requestRenderAll();
-      renderSnapGuides(locked.guides, canvas);
+      renderSnapGuides(locked.guides, guideCanvas);
       return;
     }
     delete event.transform.__asmUniformResizeSnap;
@@ -6059,7 +6060,7 @@
     }
     const activeObjects = new Set(canvas.getActiveObjects());
     const current = snapBounds(target.getBoundingRect(true, true));
-    const candidates = snapCandidateBounds(canvas, activeObjects, new Set());
+    const candidates = givenCandidates || snapCandidateBounds(canvas, activeObjects, new Set());
     const result = calculateResizeSnap(current, candidates, resizeEdge);
     if (!Number.isFinite(result.distanceX) && !Number.isFinite(result.distanceY)) {
       clearSnapGuides();
@@ -6097,7 +6098,7 @@
     const guides = uniform ? (useX ? result.xGuides : result.yGuides) : result.guides;
     if (uniform) {
       const pointerKey = useX ? 'clientX' : 'clientY';
-      const rect = fabricSlideRect(canvas);
+      const rect = fabricSlideRect(guideCanvas);
       event.transform.__asmUniformResizeSnap = {
         pointerKey, pointer: event.e?.[pointerKey],
         threshold: SNAP_THRESHOLD * (rect ? (useX ? rect.width / SLIDE_W : rect.height / SLIDE_H) : 1),
@@ -6105,7 +6106,7 @@
         guides
       };
     }
-    renderSnapGuides(guides, canvas);
+    renderSnapGuides(guides, guideCanvas);
   }
 
   function applyWidgetResizeSnap(widget, drag) {
@@ -8653,6 +8654,13 @@
   let nativeSelectionControls = null;
   let nativeSelectionMain = null;
   let nativeSelectionSnapshots = [], nativeSelectionChanged = false;
+  // 選取框拖曳／縮放時的貼齊目標：排除目前選取的物件本身。
+  function nativeSelectionSnapCandidates(canvas) {
+    const items = selectedAlignmentItems().items;
+    return snapCandidateBounds(canvas,
+      new Set(items.filter(item => item.kind === 'fabric').map(item => item.object)),
+      new Set(items.filter(item => item.kind === 'widget').map(item => item.widget.id)));
+  }
   function syncNativeSelectionControls(canvas, items) {
     if (!canvas) { nativeSelectionControls?.dispose(); nativeSelectionControls=null; nativeSelectionMain=null; return; }
     if (nativeSelectionMain !== canvas) {
@@ -8682,17 +8690,16 @@
         // 已選取（含 HTML 物件）的拖曳走這套選取框；與一般拖曳相同，貼齊其他物件與投影片邊界。
         snapMove: (active, event) => {
           if (snapBypassRequested(event)) { clearSnapGuides(); return; }
-          const items = selectedAlignmentItems().items;
-          const candidates = snapCandidateBounds(canvas,
-            new Set(items.filter(item => item.kind === 'fabric').map(item => item.object)),
-            new Set(items.filter(item => item.kind === 'widget').map(item => item.widget.id)));
-          const result = calculateObjectSnap(active.getBoundingRect(true, true), candidates);
+          const result = calculateObjectSnap(active.getBoundingRect(true, true), nativeSelectionSnapCandidates(canvas));
           if (result.dx || result.dy) {
             active.set({ left: active.left + result.dx, top: active.top + result.dy });
             active.setCoords();
           }
           renderSnapGuides(result.guides, canvas);
         },
+        // 縮放與一般物件相同：拉動的邊或角貼齊其他物件與投影片邊界，等比縮放時沿導線鎖住。
+        snapResize: (event, selectionCanvas) => applyFabricResizeSnap(event, selectionCanvas,
+          { candidates: nativeSelectionSnapCandidates(canvas), guideCanvas: canvas }),
         end: () => { clearSnapGuides(); if(nativeSelectionChanged) syncCurrentSlideCanvas(); updateAlignmentToolbar(); }
       }, FABRIC_BLEED);
       canvas.__asmSelectionControls = nativeSelectionControls.canvas;

@@ -22,9 +22,10 @@
   - 測試：`slide-video-widget.browser.test.js` 改為驗證側欄沒有這兩個按鈕、從播放鍵拖曳不播放、按播放鍵播放並維持選取；`slide-video.test.js` 6／6、`slide-video-widget` 2／2 通過。未在 3104 用使用者的投影片實測（避免改動使用者資料）。
 - 貼齊投影片邊界（2026-11-13 使用者要求「圖、影片等其他物件都應該自動貼齊投影片的邊界」）：
   - `slides.js` `snapCandidateBounds()` 加入投影片本身（0,0,1280,720）作為貼齊目標：所有物件拖曳／縮放都會貼齊四邊與中線。`calculateObjectSnap()` 的等距計算排除投影片外框，避免把整頁當成一個物件。
-  - 已選取且含 HTML 物件（影片、程式碼、結構等）的拖曳走 `slide-fabric-selection.js` 的選取框，原本完全沒有貼齊（既有缺口）。選取框的 `changed()` 在拖曳移動時呼叫新的 `adapter.snapMove`，與一般拖曳共用同一套貼齊（其他物件、投影片邊界與中線，Alt／Ctrl／⌘ 略過）；結束時清除導線。選取框的縮放仍沒有貼齊（未改）。
-  - 版本：`slide-fabric-selection.js?v=7`、`slides.js?v=slides-364`。
-  - 測試：新增 `slide-edge-snap.browser.test.js`（圖片貼齊左邊並顯示導線、影片貼齊右下角、已選取的影片中心貼齊中線、Alt 拖曳不貼齊）。`proportional-resize-snap`、`slide-click-drag`、`selection-pointer-lifecycle`、`widget-marquee-selection`、`code-boundary-resize`、`slide-video-widget` 通過；`relative-placement-drag` 需要 `ASM_TEST_BASE_URL`，此環境未跑。
+  - 已選取且含 HTML 物件（影片、程式碼、結構等）的拖曳走 `slide-fabric-selection.js` 的選取框，原本完全沒有貼齊（既有缺口）。選取框的 `changed()` 在拖曳移動時呼叫新的 `adapter.snapMove`，與一般拖曳共用同一套貼齊（其他物件、投影片邊界與中線，Alt／Ctrl／⌘ 略過）；結束時清除導線。
+  - 選取框縮放（使用者 2026-11-14 要求一併處理）：`changed()` 在縮放時呼叫 `adapter.snapResize`，重用 `applyFabricResizeSnap()`（新增選用參數 `candidates`、`guideCanvas`：貼齊目標與導線以投影片主畫布為準，邊角與等比鎖定邏輯共用）。貼齊目標由 `nativeSelectionSnapCandidates()` 產生（排除選取中的物件），拖曳與縮放共用。
+  - 版本：`slide-fabric-selection.js?v=8`、`slides.js?v=slides-365`。
+  - 測試：新增 `slide-edge-snap.browser.test.js`（圖片貼齊左邊並顯示導線、影片貼齊右下角、已選取的影片中心貼齊中線、已選取影片以選取框縮放貼齊右邊並顯示導線、Alt 拖曳不貼齊）。`proportional-resize-snap`、`slide-click-drag`、`selection-pointer-lifecycle`、`widget-marquee-selection`、`code-boundary-resize`、`text-resize-room`、`slide-video-widget` 通過；`relative-placement-drag` 需要 `ASM_TEST_BASE_URL`，此環境未跑。
 
 ## 驗證
 - `slide-canvas-toolbar.browser.test.js` 通過（實際編譯）。

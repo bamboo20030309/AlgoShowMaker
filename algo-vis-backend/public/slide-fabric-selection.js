@@ -102,6 +102,7 @@
       const active = canvas.getActiveObject();
       // 拖曳移動時交給投影片頁做貼齊（物件、投影片邊界與中線），再把位移套回內容。
       if (event?.transform?.action === 'drag') adapter.snapMove?.(active, event.e);
+      else if (/scale/.test(event?.transform?.action || '')) adapter.snapResize?.(event, canvas);
       const matrix = fabric.util.multiplyTransformMatrices(active.calcTransformMatrix(), fabric.util.invertTransform(initialMatrix));
       adapter.transform(matrix); canvas.renderAll();
     }

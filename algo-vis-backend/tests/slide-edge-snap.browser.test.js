@@ -95,6 +95,24 @@ test('images, videos and other objects snap to the slide edges and center lines'
   const centered = await video();
   near((centered.left + centered.right) / 2, 640, 'video centers on the slide center line');
 
+  // 已選取影片的選取框縮放：把右側控制點拉到靠近右邊（1274），右邊貼齊 1280。
+  const handle = await page.evaluate(() => {
+    const sc = fixtureCanvas.__asmSelectionControls, active = sc.getActiveObject();
+    const key = active.isControlVisible('mr') ? 'mr' : 'tr';
+    active.setCoords();
+    const p = active.oCoords[key], rect = sc.upperCanvasEl.getBoundingClientRect();
+    return { key, x: rect.x + p.x * rect.width / sc.width, y: rect.y + p.y * rect.height / sc.height };
+  });
+  const target = await screen(1274, 0);
+  await page.mouse.move(handle.x, handle.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, handle.y, { steps: 12 });
+  const resizeGuide = await guideShown();
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  assert.equal(resizeGuide, true, `resize via ${handle.key} shows a guide`);
+  near((await video()).right, 1280, `selected video resized with ${handle.key} snaps to the right edge`);
+
   // Alt 拖曳略過貼齊：圖片停在 5，不會被拉到 0。
   const img = await image();
   await drag(img.left + 80, img.top + 60, 200, 0);
