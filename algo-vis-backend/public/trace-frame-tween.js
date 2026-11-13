@@ -4852,9 +4852,9 @@
           String(item.literalValue ?? item.expression ?? '').length + 2));
         let literalIndex = 0;
         const candidates = sources.map((sourceItem, index) => {
-          // += presents the incoming increment, whereas = presents its source
-          // value. Format signs are retained without duplicating an existing +.
-          const operatorPrefix = event.compound === true && transferOperator === '+' ? '+' : '';
+          // Compound assignment carries its operation with the incoming value;
+          // a plain copy keeps the original value without an added operator.
+          const operatorPrefix = event.compound === true ? transferOperator : '';
           if (assignmentSourceIsLiteral(sourceItem)) {
             const transfer = createLiteralAssignmentTransfer(
               root, { ...sourceItem, literalValue: sourceItem.value?.value ?? sourceItem.literalValue
@@ -11704,10 +11704,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-365';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-366';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-365', play, cancel, updateEventAvailability,
+    build: 'trace-366', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
