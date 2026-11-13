@@ -5723,7 +5723,8 @@
   // 把 Fabric 與 HTML widget 轉成同一套邊界資料；拖曳只顯示暫時導線，落點後才寫回 deck。
   // -----------------------------------------------------------------------------
   function snapCandidateBounds(canvas, excludedFabric = new Set(), excludedWidgetIds = new Set()) {
-    const candidates = [];
+    // 投影片本身也是貼齊目標：所有物件（文字、圖片、圖形、影片、程式碼…）都會貼齊四邊與中線。
+    const candidates = [snapBounds({ kind: 'slide', id: 'slide', left: 0, top: 0, width: SLIDE_W, height: SLIDE_H })];
     canvas?.getObjects().forEach(object => {
       if (!object.visible || excludedFabric.has(object)) return;
       const bounds = object.getBoundingRect(true, true);
@@ -5840,7 +5841,9 @@
       }
     });
 
-    const byX = [...candidates].sort((a, b) => a.left - b.left);
+    // 等距只比較物件之間的間隔，不把投影片外框當成一個物件。
+    const objects = candidates.filter(candidate => candidate.kind !== 'slide');
+    const byX = [...objects].sort((a, b) => a.left - b.left);
     if (allowX) {
       for (let index = 0; index < byX.length - 1; index += 1) {
         const first = byX[index];
@@ -5873,7 +5876,7 @@
       }
     }
 
-    const byY = [...candidates].sort((a, b) => a.top - b.top);
+    const byY = [...objects].sort((a, b) => a.top - b.top);
     if (allowY) {
       for (let index = 0; index < byY.length - 1; index += 1) {
         const first = byY[index];
@@ -8676,7 +8679,21 @@
           clearStructureCellSelection();
         },
         transform: matrix => applyNativeSelectionTransform(canvas, nativeSelectionSnapshots, matrix),
-        end: () => { if(nativeSelectionChanged) syncCurrentSlideCanvas(); updateAlignmentToolbar(); }
+        // 已選取（含 HTML 物件）的拖曳走這套選取框；與一般拖曳相同，貼齊其他物件與投影片邊界。
+        snapMove: (active, event) => {
+          if (snapBypassRequested(event)) { clearSnapGuides(); return; }
+          const items = selectedAlignmentItems().items;
+          const candidates = snapCandidateBounds(canvas,
+            new Set(items.filter(item => item.kind === 'fabric').map(item => item.object)),
+            new Set(items.filter(item => item.kind === 'widget').map(item => item.widget.id)));
+          const result = calculateObjectSnap(active.getBoundingRect(true, true), candidates);
+          if (result.dx || result.dy) {
+            active.set({ left: active.left + result.dx, top: active.top + result.dy });
+            active.setCoords();
+          }
+          renderSnapGuides(result.guides, canvas);
+        },
+        end: () => { clearSnapGuides(); if(nativeSelectionChanged) syncCurrentSlideCanvas(); updateAlignmentToolbar(); }
       }, FABRIC_BLEED);
       canvas.__asmSelectionControls = nativeSelectionControls.canvas;
     }

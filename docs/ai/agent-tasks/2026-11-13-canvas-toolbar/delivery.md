@@ -20,6 +20,11 @@
   - 編輯模式按影片中間的播放鍵直接播放（與放映相同，建立 `data-video-preview` 播放器；取消選取仍停止）。選取框與物件拖曳都會攔截按下事件，所以在 window 捕捉階段依播放鍵座標判斷；移動超過 `DRAG_DISTANCE` 視為拖曳、不播放。播放鍵在編輯模式不再設 `pointer-events: none`。
   - 版本：`slides.css?v=video-embed-2`、`slides.js?v=slides-363`；`docs/guides/slide-video.md` 同步。
   - 測試：`slide-video-widget.browser.test.js` 改為驗證側欄沒有這兩個按鈕、從播放鍵拖曳不播放、按播放鍵播放並維持選取；`slide-video.test.js` 6／6、`slide-video-widget` 2／2 通過。未在 3104 用使用者的投影片實測（避免改動使用者資料）。
+- 貼齊投影片邊界（2026-11-13 使用者要求「圖、影片等其他物件都應該自動貼齊投影片的邊界」）：
+  - `slides.js` `snapCandidateBounds()` 加入投影片本身（0,0,1280,720）作為貼齊目標：所有物件拖曳／縮放都會貼齊四邊與中線。`calculateObjectSnap()` 的等距計算排除投影片外框，避免把整頁當成一個物件。
+  - 已選取且含 HTML 物件（影片、程式碼、結構等）的拖曳走 `slide-fabric-selection.js` 的選取框，原本完全沒有貼齊（既有缺口）。選取框的 `changed()` 在拖曳移動時呼叫新的 `adapter.snapMove`，與一般拖曳共用同一套貼齊（其他物件、投影片邊界與中線，Alt／Ctrl／⌘ 略過）；結束時清除導線。選取框的縮放仍沒有貼齊（未改）。
+  - 版本：`slide-fabric-selection.js?v=7`、`slides.js?v=slides-364`。
+  - 測試：新增 `slide-edge-snap.browser.test.js`（圖片貼齊左邊並顯示導線、影片貼齊右下角、已選取的影片中心貼齊中線、Alt 拖曳不貼齊）。`proportional-resize-snap`、`slide-click-drag`、`selection-pointer-lifecycle`、`widget-marquee-selection`、`code-boundary-resize`、`slide-video-widget` 通過；`relative-placement-drag` 需要 `ASM_TEST_BASE_URL`，此環境未跑。
 
 ## 驗證
 - `slide-canvas-toolbar.browser.test.js` 通過（實際編譯）。

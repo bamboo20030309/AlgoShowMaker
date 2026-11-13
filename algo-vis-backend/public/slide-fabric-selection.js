@@ -98,8 +98,10 @@
       if (!editing) return;
       canvas._onMouseMove(e); stop(e);
     }
-    function changed() {
+    function changed(event) {
       const active = canvas.getActiveObject();
+      // 拖曳移動時交給投影片頁做貼齊（物件、投影片邊界與中線），再把位移套回內容。
+      if (event?.transform?.action === 'drag') adapter.snapMove?.(active, event.e);
       const matrix = fabric.util.multiplyTransformMatrices(active.calcTransformMatrix(), fabric.util.invertTransform(initialMatrix));
       adapter.transform(matrix); canvas.renderAll();
     }
