@@ -2356,26 +2356,7 @@ function resolveFrameRendererOptions(frame, directive) {
     if (Array.isArray(data?.items)) return data.items.map(materializeTraceValue);
     return traceScalarValue(data);
   };
-  const resolveLabelSource = spec => {
-    if (!spec) return null;
-    if (spec.mode !== 'custom') return { mode: spec.mode, values: [] };
-    const values = [];
-    (spec.parts || []).forEach(part => {
-      if (part.type === 'blank') {
-        values.push(...Array.from({ length: Math.max(0, Number(part.count) || 0) }, () => ''));
-      } else if (part.type === 'literal') {
-        values.push(part.value);
-      } else if (part.type === 'variable') {
-        const entry = frame.state?.[part.variableId]
-          || Object.values(frame.state || {}).find(item => item?.name === part.name);
-        const value = materializeTraceValue(entry?.data);
-        if (Array.isArray(value)) values.push(...value);
-        else if (typeof value === 'string') values.push(...value);
-        else if (value !== undefined) values.push(value);
-      }
-    });
-    return { mode: 'custom', values };
-  };
+  const resolveLabelSource = spec => require('./public/trace-label-sources').resolve(spec, frame.state);
   ['indexLabels', 'rowLabels', 'columnLabels', 'innerLabels'].forEach(name => {
     if (source[name]) options[name] = resolveLabelSource(source[name]);
   });

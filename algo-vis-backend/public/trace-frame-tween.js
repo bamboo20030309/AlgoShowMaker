@@ -2627,6 +2627,27 @@
   // ---------------------------------------------------------------------------
   // 區段：比較與賦值操作數定位
   // ---------------------------------------------------------------------------
+  const matrixLabelOperandIndexes = new WeakMap();
+  function matrixLabelOperand(elements, logicalKey, target, document) {
+    if(!elements)return null;
+    if(target && !target.indexExpression && !Number.isInteger(target.resolvedIndex)
+      && !Array.isArray(target.resolvedIndices)
+      && ['string','sequence','matrix','set'].includes(document?.variables?.[target.variableId]?.kind))return null;
+    let cached=matrixLabelOperandIndexes.get(elements);
+    if(!cached||cached.size!==elements.size){
+      const index=new Map();
+      elements.forEach((element,key)=>{
+        const source=element?.dataset?.traceLabelSourceKey;if(!source)return;
+        if(!index.has(source))index.set(source,[]);
+        index.get(source).push({element,key});
+      });
+      cached={size:elements.size,index};matrixLabelOperandIndexes.set(elements,cached);
+    }
+    return cached.index.get(logicalKey)?.find(({element})=>
+      !retainedSnapshotVisual(element)&&element.dataset.traceAxisTarget!=='1'
+      &&!element.closest?.('[data-trace-visibility="hidden"]'))||null;
+  }
+
   function eventOperand(
     traceDocument, eventFrame, target, value, placements, elements, visualKeyForSource,
     event = null
@@ -2652,6 +2673,10 @@
         retainedPoint = retained.point;
       }
     }
+    if(!element){
+      const label=matrixLabelOperand(elements,logicalKey,target,traceDocument);
+      if(label){element=label.element;visualKey=label.key;}
+    }
     const point = retainedPoint || comparisonPoint(placements, visualKey) || comparisonPoint(placements, logicalKey);
     if (!element || !point) return null;
     const marker = Boolean(element.dataset?.traceSourceVariableId);
@@ -2666,7 +2691,9 @@
         ? { ...point, x: markerX, y: markerY }
         : point,
       value: displayEventValue(value),
-      numericValue: Number(displayEventValue(value)),
+      numericValue: Number.isFinite(Number(displayEventValue(value))) ? Number(displayEventValue(value))
+        : element.dataset?.traceLabelSourceVariable && String(displayEventValue(value)).length === 1
+          ? String(displayEventValue(value)).charCodeAt(0) : Number(displayEventValue(value)),
       marker
     };
   }
@@ -3205,6 +3232,9 @@
 
   function sourcePresentationWasHidden(traceDocument, frame, target, operand, event = null) {
     if (retainedSnapshotVisual(operand?.element)) return false;
+    // A capture-only variable can still have an explicitly visible label
+    // projection. Its authored source identity, not its text, proves visibility.
+    if (operand?.element?.dataset?.traceLabelSourceVariable === target?.variableId) return false;
     if (sourceDeclaredBeforeEvent(frame, event, target)) return false;
     const index = (traceDocument?.frames || []).findIndex(item => item.id === frame?.id);
     const before = traceDocument?.frames?.[index - 1];
@@ -3616,7 +3646,8 @@
         typeof value === 'object'
         && !Object.prototype.hasOwnProperty.call(value, 'value')
       ))) return;
-      const element = options.currentElements?.get?.(track.key);
+      const element = options.currentElements?.get?.(track.key)
+        || matrixLabelOperand(options.currentElements,track.key,track.target,options.document)?.element;
       if (!element || element.dataset?.traceSourceVariableId) return;
       const cell = element.matches?.('tspan[data-trace-field-variable]')
         ? element.closest('g[data-trace-index]') : element.closest?.('[data-trace-index]') || element;
@@ -11653,10 +11684,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-359';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-360';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-359', play, cancel, updateEventAvailability,
+    build: 'trace-360', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

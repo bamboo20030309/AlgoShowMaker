@@ -359,6 +359,32 @@
   // ---------------------------------------------------------------------------
   // 區段：文件入口正規化
   // ---------------------------------------------------------------------------
+  function restoreMatrixLabelSources(document) {
+    const resolver=window.ASMTraceLabelSources?.resolve;
+    if(!resolver)return;
+    const directives=document.frameDirectives||[];
+    for(const frame of [...document.frames,...document.snapshots.map(s=>s.frame).filter(Boolean)]) {
+      const source=frame.source||{};
+      const directive=directives.find(d=>source.directiveKey && (d.sourceKey===source.directiveKey
+        || (d.sourceKeyAliases||[]).includes(source.directiveKey))
+        || source.logicalDirectiveKey && d.logicalSourceKey===source.logicalDirectiveKey
+        || d.line===source.line && d.functionName===source.function);
+      if(!directive)continue;
+      for(const [id,options] of Object.entries(frame.rendererOptions||{}))for(const name of ['rowLabels','columnLabels']) {
+        const spec=options[name];
+        // Preserve explicit source mappings and deliberately hidden/static labels.
+        if(!spec||spec.mode!=='custom'||Array.isArray(spec.sources))continue;
+        const object=(directive.objects||[]).find(o=>o.primaryVariableId===id);
+        const raw=object?.rendererOptions?.[name]||directive.rendererOptions?.[name];
+        if(!raw?.parts?.some(p=>p.type==='variable'))continue;
+        const {values,sources}=resolver(raw,frame.state);
+        // Validate the authored projection as a whole; never infer identity
+        // from equal characters or override a saved custom label list.
+        if(JSON.stringify(values)===JSON.stringify(spec.values))spec.sources=sources;
+      }
+    }
+  }
+
   function normalizeTraceDocument(source = {}) {
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
@@ -468,6 +494,7 @@
     normalized.skins = normalizeSkins(normalized.variables, normalized.skins);
     normalized.viewSettingsApplied = Boolean(source.viewSettingsApplied
       || (normalized.asmView && window.ASMTraceViewSource?.applyToTrace));
+    restoreMatrixLabelSources(normalized);
     applyFrameConditions(normalized);
     window.ASMTraceEvents?.rebuildVisualLifecycleEvents?.(normalized);
     window.ASMTraceEvents?.rebuildAutoFixedEvents?.(normalized);

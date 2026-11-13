@@ -691,6 +691,15 @@
 
 
 
+  function bindMatrixLabelSource(node, spec, index, context) {
+    const origin=spec?.sources?.[index];
+    if(!node||!origin?.variableId||!Number.isInteger(origin.index))return;
+    node.dataset.traceLabelSourceVariable=origin.variableId;
+    node.dataset.traceLabelSourceIndex=String(origin.index);
+    node.dataset.traceLabelSourceKey=`${objectKeyForVariable(context.frame,origin.variableId)}#${origin.index}`;
+    node.querySelector(':scope > text')?.setAttribute('data-trace-content-role','value');
+  }
+
   function renderMatrix(group, entry, context) {
     const rows = Array.isArray(entry.data?.items) ? entry.data.items : [];
     let height = 0;
@@ -843,6 +852,7 @@
       });
       const rowLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-${rowIndex}-index`)}`);
       if (rowLabel) {
+        bindMatrixLabelSource(rowLabel,rowSpec,rowIndex,context);
         rowLabel.setAttribute('data-trace-label-role', 'row');
         rowLabel.setAttribute('data-trace-style-key', `$row-label:${rowIndex}`);
         markSelectable(rowLabel, `${objectKey}:row-label:${rowIndex}`, context, context.variableId);
@@ -856,6 +866,7 @@
     for (let columnIndex = 0; columnIndex < maxColumns; columnIndex += 1) {
       const columnLabel = group.querySelector(`#${CSS.escape(`block-${drawId}-index-${columnIndex}`)}`);
       if (columnLabel) {
+        bindMatrixLabelSource(columnLabel,columnSpec,columnIndex,context);
         columnLabel.setAttribute('data-trace-label-role', 'column');
         columnLabel.setAttribute('data-trace-style-key', `$column-label:${columnIndex}`);
         markSelectable(columnLabel,
@@ -885,7 +896,7 @@
     const rowIndices=S.indices(dimensions[0],rows.length);
     const columnIndices=S.indices(dimensions[1] || {type:'range',startExpression:'0',endExpression:''},Math.max(0,...rows.map(row=>row.items?.length||0)));
     const options={...context.skin.options};delete options.selection;
-    const labels=(spec,indices)=>spec?.mode==='none'?spec:{mode:'custom',values:indices.map(index=>spec?.mode==='custom'?spec.values?.[index]??'':index)};
+    const labels=(spec,indices)=>spec?.mode==='none'?spec:{mode:'custom',values:indices.map(index=>spec?.mode==='custom'?spec.values?.[index]??'':index),sources:indices.map(index=>spec?.sources?.[index]??null)};
     options.rowLabels=labels(options.rowLabels,rowIndices);options.columnLabels=labels(options.columnLabels,columnIndices);
     if(options.innerLabels && options.innerLabels.mode!=='none') options.innerLabels={mode:'custom',values:rowIndices.map(row=>columnIndices.map(column=>options.innerLabels.mode==='index'?column:options.innerLabels.values?.[row]?.[column]??''))};
     const highlights={$object:context.highlights?.$object};
@@ -1001,6 +1012,7 @@
         const label = labelGroup(`${objectKey}:column-label:${column}`,
           originX + column * cellSize, 0, cellSize, axisSize,
           labelValue(columnSpec, column), 'column');
+        bindMatrixLabelSource(label,columnSpec,column,context);
         applyHighlight(label.querySelector('rect'), context.highlights?.[`$column-label:${column}`] || {});
         group.append(label);
       }
@@ -1016,6 +1028,7 @@
       if (showRows) {
         const label = labelGroup(`${objectKey}:row-label:${rowIndex}`,
           0, y, axisSize, cellSize, labelValue(rowSpec, rowIndex), 'row');
+        bindMatrixLabelSource(label,rowSpec,rowIndex,context);
         applyHighlight(label.querySelector('rect'), context.highlights?.[`$row-label:${rowIndex}`] || {});
         group.append(label);
       } else {
@@ -7296,9 +7309,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-287';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-288';
   window.ASMTraceRenderers = {
-    build: 'trace-287', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-288', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, hiddenField, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,

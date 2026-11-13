@@ -30,7 +30,7 @@ async function compile(code, input = '') {
   const result = await post('/compile', { code, input, trace: { enabled: true, watches, sliceMode: 'manual' } });
   const c = vm.createContext({ queueMicrotask() {} });
   c.window = c;
-  for (const name of ['trace-view-source.js', 'trace-model.js', 'trace-rules.js', 'trace-events.js', 'trace-frame-tween.js']) load(c, name);
+  for (const name of ['trace-view-source.js', 'trace-label-sources.js', 'trace-model.js', 'trace-rules.js', 'trace-events.js', 'trace-frame-tween.js']) load(c, name);
   const trace = c.ASMTraceModel.normalizeTraceDocument(result.traceDocument || result.trace);
   for (const frame of trace.frames) {
     const orders = Array.from(frame.events, event => event.order);
