@@ -37,9 +37,12 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
   t.after(() => browser.close()); const page = await browser.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/algorithm.html?asmEmbed=runtime'); await page.waitForFunction(() => window.ASMTracePlayer);
-  for (const [kind, source, from, index] of [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17],
+  const variants = [['fresh', trace, 23, 17], ['saved', savedTrace(body, animation), 23, 17],
     ['fresh-set', trace, 59, 5], ['saved-set', savedTrace(body, animation), 59, 5],
-    ['fresh-clear', trace, 63, 6], ['saved-clear', savedTrace(body, animation), 63, 6], ['reset', reset, 0, 1], ['left', left, 0, 1], ['width', width, 0, 1]]) {
+    ['fresh-clear', trace, 63, 6], ['saved-clear', savedTrace(body, animation), 63, 6], ['reset', reset, 0, 1], ['left', left, 0, 1], ['width', width, 0, 1]];
+  const requested = process.env.ASM_TEST_MULTI_FIELD_KINDS?.split(',');
+  if (requested) assert.ok(requested.every(kind => variants.some(item => item[0] === kind)), 'unknown multi-field variant');
+  for (const [kind, source, from, index] of variants.filter(item => !requested || requested.includes(item[0]))) {
     for (const speed of [1, 4]) {
       const report = await page.evaluate(async ({ trace, from, index, speed }) => {
         const doc = ASMTracePlayer.apply(JSON.parse(JSON.stringify(trace)));
@@ -157,7 +160,7 @@ test('segment tree frame 24 to 25 commits each displayed field independently', {
         const checkpoint = report.plan.forwardReplay.checkpoints.find(point => point.eventId === resetEvent.id);
         assert.equal(checkpoint.mode, 'animated', 'a previously visible lazy field must play its clear assignment');
         const active = report.samples.filter(sample => sample.eventId === resetEvent.id);
-        assert.ok(active.some(sample => sample.flying.some(number => number.text === '0')), 'zero actually falls into the visible lazy field');
+        assert.ok(active.some(sample => sample.flying.some(number => number.text === '+0')), 'the constant +0 actually falls into the visible lazy field before committing formatted zero');
         assert.ok(active.filter(sample => sample.at * speed < checkpoint.commitMs).every(sample => sample.values.lazy === '+3'
           && sample.positions.lazy.visible), 'the old +3 remains visible until zero arrives');
         const zero = active.filter(sample => sample.values.lazy === '0' && sample.positions.lazy.visible);

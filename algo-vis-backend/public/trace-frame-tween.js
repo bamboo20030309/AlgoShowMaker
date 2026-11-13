@@ -3491,8 +3491,15 @@
     };
   }
 
+  function assignmentSourceIsLiteral(source) {
+    // Saved scalar events predate literal=true; identify their numeric token
+    // without treating hidden variables or arbitrary expressions as constants.
+    return source?.literal === true || (!source?.variableId
+      && /^[+-]?(?:0[xX][\da-fA-F]+|0[bB][01]+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)[uUlLfF]*$/.test(String(source?.expression || '').trim()));
+  }
+
   function createLiteralAssignmentTransfer(
-    root, source, targetOperand, literalIndex, literalCount, operatorPrefix = ''
+    root, source, targetOperand, literalIndex, literalCount, operatorPrefix = '', presentation = {}
   ) {
     const targetElement = assignableTargetText(targetOperand);
     const targetBounds = elementBoundsInRoot(targetElement, root);
@@ -3504,21 +3511,26 @@
     if (targetOperand.fieldAssignmentPoint) targetAnchor.x = targetOperand.fieldAssignmentPoint.x;
     const computed = getComputedStyle(targetElement);
     const fontSize = Math.max(10, parseFloat(computed.fontSize) || 14);
-    const laneGap = Math.max(18, fontSize * 1.4);
+    const laneGap = Math.max(18, fontSize * (presentation.stationary
+      ? Math.max(1.4, (presentation.laneCharacters || 0) * .65 + .4) : 1.4));
     const desiredLaneOffset = (literalIndex - (literalCount - 1) / 2) * laneGap;
     const targetWidth = Math.max(targetBounds.width, Number(targetOperand?.point?.width) || 0);
     const maximumLaneOffset = Math.max(0, targetWidth / 2 - fontSize * 0.55);
-    const laneOffset = Math.max(
+    const laneOffset = presentation.stationary ? desiredLaneOffset : Math.max(
       -maximumLaneOffset,
       Math.min(maximumLaneOffset, desiredLaneOffset)
     );
     const rawValue = source?.literalValue ?? source?.expression ?? '';
     const value = targetOperand.formatTransferValue?.(rawValue) || displayEventValue(rawValue);
-    const displayed = formatAssignmentTransferValue(value, operatorPrefix);
+    const prefix = presentation.defaultSign && /^[=+-]/.test(String(value)) ? '' : operatorPrefix;
+    const displayed = presentation.operatorSuffix
+      ? `${value} ${presentation.operatorSuffix}`
+      : formatAssignmentTransferValue(value, prefix);
     if (!displayed) return null;
     const group = createSvg('g', {
       class: 'asm-trace-assign-transfer asm-trace-assign-transfer-value asm-trace-assign-literal-value',
       opacity: 1,
+      'data-trace-literal-motion': presentation.stationary ? 'stationary' : 'drop',
       'pointer-events': 'none'
     });
     const text = assignmentValueTextInRoot(root, targetElement, displayed, targetAnchor.x + laneOffset);
@@ -3526,14 +3538,16 @@
     group.append(text);
     appendBelowTextLayer(root, group);
     const dropDistance = Math.max(24, Number(targetOperand.point?.height || targetBounds.height) * .8);
-    group.setAttribute('transform', `translate(0, ${-dropDistance})`);
+    const cellBounds = elementBoundsInRoot(targetOperand.element, root) || targetBounds;
+    const stationaryOffset = cellBounds.y - fontSize * .75 - targetAnchor.y;
+    group.setAttribute('transform', `translate(0, ${presentation.stationary ? stationaryOffset : -dropDistance})`);
     group.setAttribute('opacity', '0');
     return {
       group,
-      coversTarget: true,
+      coversTarget: !presentation.stationary,
       update(progress, opacity = 1) {
         const position = clamp01(progress);
-        group.setAttribute('transform', `translate(0, ${-dropDistance * (1 - position)})`);
+        group.setAttribute('transform', `translate(0, ${presentation.stationary ? stationaryOffset : -dropDistance * (1 - position)})`);
         group.setAttribute('opacity', String(opacity * clamp01(position * 4)));
       },
       remove() {
@@ -4798,15 +4812,27 @@
       finalText = formatTargetValue(event?.payload?.after, afterValue);
       if (targetText) targetText.textContent = formatTargetValue(event?.payload?.before, beforeValue);
       {
-        const literalCount = sources.filter(item => item?.literal === true).length;
+        const literalSources = sources.filter(assignmentSourceIsLiteral);
+        const literalCount = literalSources.length;
+        const laneCharacters = Math.max(0, ...literalSources.map(item =>
+          String(item.literalValue ?? item.expression ?? '').length + 2));
         let literalIndex = 0;
         const candidates = sources.map((sourceItem, index) => {
           // += presents the incoming increment, whereas = presents its source
           // value. Format signs are retained without duplicating an existing +.
           const operatorPrefix = event.compound === true && transferOperator === '+' ? '+' : '';
-          if (sourceItem?.literal === true) {
+          if (assignmentSourceIsLiteral(sourceItem)) {
             const transfer = createLiteralAssignmentTransfer(
-              root, sourceItem, operand, literalIndex, literalCount, operatorPrefix
+              root, { ...sourceItem, literalValue: sourceItem.literalValue
+                ?? (sources.length === 1 ? event.payload?.source?.value ?? event.payload?.source : undefined) },
+              operand, literalIndex, literalCount,
+              // Keep operand order for noncommutative expressions such as 2-b.
+              index === 0 && binaryOperation && ['-', '/'].includes(transferOperator)
+                ? '' : sourceItem.arithmeticOperator || transferOperator || (event.type === 'input-assign' ? '' : '+'),
+              { stationary: sources.length > 1, laneCharacters,
+                defaultSign: !sourceItem.arithmeticOperator && !transferOperator,
+                operatorSuffix: index === 0 && binaryOperation && ['-', '/'].includes(transferOperator)
+                  ? transferOperator : '' }
             );
             literalIndex += 1;
             return transfer;
@@ -4843,7 +4869,7 @@
         });
         if (candidates.every(Boolean)) {
           transfers = candidates;
-          literalCoversTarget = literalCount > 0 || candidates.some(item => item?.coversTarget === true);
+          literalCoversTarget = candidates.some(item => item?.coversTarget === true);
         }
         else candidates.filter(Boolean).forEach(item => item.remove());
       }
@@ -11589,10 +11615,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-355';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-356';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-355', play, cancel, updateEventAvailability,
+    build: 'trace-356', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

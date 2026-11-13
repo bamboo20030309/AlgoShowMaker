@@ -472,7 +472,7 @@ int main() {
   }
 });
 
-test('literal and hidden operands retain their actual numbers and fall in from above', { timeout: 45000 }, async () => {
+test('mixed constants retain operand numbers and their operators above the destination', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
@@ -554,11 +554,11 @@ int main() {
     const hidden = result.events.find(event => event.sources[0].expression === 'hidden');
     assert.equal(visible.sources[1].literal, true);
     assert.equal(visible.sources[1].literalValue, '1');
-    assert.ok(result.samples[visible.expression].transfers.includes(JSON.stringify(['1', '4'])),
+    assert.ok(result.samples[visible.expression].transfers.includes(JSON.stringify(['+1', '4'])),
       JSON.stringify(result));
-    assert.ok(result.samples[constants.expression].transfers.includes(JSON.stringify(['1', '2'])),
+    assert.ok(result.samples[constants.expression].transfers.includes(JSON.stringify(['+1', '+2'])),
       JSON.stringify(result));
-    assert.ok(result.samples[hidden.expression].transfers.includes(JSON.stringify(['2','7'])),
+    assert.ok(result.samples[hidden.expression].transfers.includes(JSON.stringify(['+2','7'])),
       'hidden 7 is retained as a source value rather than suppressing the event or replacing both operands with 9');
     assert.equal(result.finalValue, '9');
     assert.deepEqual(errors, []);
