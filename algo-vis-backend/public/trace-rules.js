@@ -307,10 +307,14 @@
         position += 1;
         return knownValue(temporalValue(document, frame, token.value, argument, locals));
       }
-      if (Object.prototype.hasOwnProperty.call(locals, token.value)) return knownValue(locals[token.value]);
-      const found = variableEntry(document, frame, token.value);
-      if (!found) return invalid;
-      let data = found.entry?.data;
+      const local = Object.prototype.hasOwnProperty.call(locals, token.value);
+      // Event snapshots pass scalar/string locals to preserve exact execution
+      // state. They need the same indexing and size()/length postfix handling
+      // as frame variables; returning early breaks unrelated @let bindings.
+      if (local && !peek('[') && !peek('.')) return knownValue(locals[token.value]);
+      const found = local ? null : variableEntry(document, frame, token.value);
+      if (!local && !found) return invalid;
+      let data = local ? locals[token.value] : found.entry?.data;
       while (peek('[')) {
         consume('[');
         const index = allowTextSlices && peek(':') ? 0 : parseBitwiseOr();
