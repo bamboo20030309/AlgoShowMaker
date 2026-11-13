@@ -34,15 +34,15 @@ test('LCS sample uses current matrix directives without the legacy introduction'
   assert.match(code, /@let rows = S\.size\(\)/);
   assert.match(code, /@let columns = T\.size\(\)/);
   assert.match(code, /@object LCS render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
-  assert.match(code, /@object LCS\[i\]\[j\] render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
-  assert.match(code, /@object LCS\[x\]\[y\] render matrix with labels\(value\), row-labels\("",S\), column-labels\("",T\)/);
+  assert.match(code, /@pointer i at LCS\.row[\s\S]*?@pointer j at LCS\.column/);
+  assert.match(code, /@pointer x at LCS\.row[\s\S]*?@pointer y at LCS\.column/);
   assert.match(code, /@object ans with labels\(value\)/);
   assert.doesNotMatch(code.match(/@preset lcs_view[\s\S]*?@endpreset/)[0], /@object ans/);
   assert.match(code, /@preset lcs_answers[\s\S]*?@object ans with labels\(value\)/);
   assert.match(code, /@style LCS\[x\]\[y\] highlight/);
   assert.match(code, /@arrow from LCS\[rr-1\]\[cc-1\] to LCS\[rr\]\[cc\]/);
   assert.doesNotMatch(code, /@arrow from LCS\[rr-1\]\[cc-1\] to LCS\[rr\]\[cc\] as\s+/);
-  assert.equal((code.match(/color AV_green! width 3 until return/g) || []).length, 5);
+  assert.equal((code.match(/color black width 3 until return/g) || []).length, 5);
   assert.match(code, /@style LCS\.row-label\[i\] background AV_green! when S\[i-1\] == T\[j-1\]/);
   assert.match(code, /@style LCS\.column-label\[j\] background AV_red! when S\[i-1\] != T\[j-1\]/);
   assert.match(code, /@for rr in \[1:rows\][\s\S]*@for cc in \[1:columns\]/);
@@ -55,7 +55,8 @@ test('LCS sample uses current matrix directives without the legacy introduction'
 });
 
 test('LCS sample builds its matrix and lists the sample answers', async () => {
-  const code = fs.readFileSync(codePath, 'utf8');
+  // Enable the user-disabled DFS frames only inside this algorithm regression.
+  const code = fs.readFileSync(codePath, 'utf8').replace(/(\/\/ @frame[^\r\n]*?) when 0/g, '$1');
   const input = fs.readFileSync(inputPath, 'utf8');
   const { trace, window } = await compile(code, input);
   const byName = Object.fromEntries(Object.entries(trace.variables)
@@ -135,7 +136,8 @@ test('LCS sample builds its matrix and lists the sample answers', async () => {
 });
 
 test('LCS backtracking prepends matched characters to preserve subsequence order', async () => {
-  const code = fs.readFileSync(codePath, 'utf8');
+  // Test the dormant backtracking view without changing the published source.
+  const code = fs.readFileSync(codePath, 'utf8').replace(/(\/\/ @frame[^\r\n]*?) when 0/g, '$1');
   const { trace } = await compile(code, 'abcde\nace\n');
   const ansId = Object.keys(trace.variables).find(id => trace.variables[id].name === 'ans');
   const answers = trace.frames.at(-1).state[ansId].data.items.map(item => item.value);

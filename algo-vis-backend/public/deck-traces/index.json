@@ -1546,6 +1546,16 @@
       "file": "heap-teaching-03-1f8029fd9be1464ca933fe5206f58d5477948a96290c0242cd15d7d24ad9c782.json",
       "deck": "heap-teaching-014695b477c84dc1caf97044a06f80ebf5a8aff657f98774fe1b0836e3c04a0c.asmdeck",
       "slideId": "22eff962-012c-4a73-b762-2a0c7a947bb8"
+    },
+    "c7109c34c6c649f70d4b47492675634e8d8c32e8c8d99baec830b8cc7c511f78": {
+      "file": "lcs-teaching-01-c7109c34c6c649f70d4b47492675634e8d8c32e8c8d99baec830b8cc7c511f78.json",
+      "deck": "lcs-teaching-0e5b98e839181aefb1ec676f0a6851647ff6f3ce3bc1edd6d2a17eb72735972a.asmdeck",
+      "slideId": "lcs-slide-09"
+    },
+    "f847d6b1d861e073566712cbd59f327188855fbf18938c55e2e50d5f69125e8d": {
+      "file": "lcs-teaching-02-f847d6b1d861e073566712cbd59f327188855fbf18938c55e2e50d5f69125e8d.json",
+      "deck": "lcs-teaching-0e5b98e839181aefb1ec676f0a6851647ff6f3ce3bc1edd6d2a17eb72735972a.asmdeck",
+      "slideId": "lcs-slide-12"
     }
   }
 }

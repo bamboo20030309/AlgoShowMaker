@@ -149,8 +149,8 @@ int main() {
                     // @style LCS[i][j] highlight
                     // @style LCS[i-1][j] background AV_blue
                     // @style LCS[i][j-1] background AV_orange
-                    // @arrow from LCS[i-1][j] to LCS[i][j] color black width 3 when LCS[i-1][j] >= LCS[i][j-1]
-                    // @arrow from LCS[i][j-1] to LCS[i][j] color black width 3 when LCS[i][j-1] >= LCS[i-1][j]
+                    // @arrow from LCS[i-1][j] to LCS[i][j] color black when LCS[i-1][j] >= LCS[i][j-1]
+                    // @arrow from LCS[i][j-1] to LCS[i][j] color black when LCS[i][j-1] >= LCS[i-1][j]
                     // @text "字元不相同，從左或上拿最大的過來" at LCS.top offset(0,-24)
                 }
             }
