@@ -78,3 +78,5 @@ row-labels("",S)、column-labels("",T) 的每一個字元格保留來源變數�
 來源為真實變數的矩陣列／欄標籤，保留矩陣表頭原本的外觀與顏色，作者的自訂樣式保留。比較事件沿用共用排程、位移與縮放機制，但比較呈現固定為兩格原地不位移，兩個值相同則一起放大至 1.25 倍，不同則一起縮小至 0.8 倍，再於事件結束前平滑還原；不向中間靠攏、不按比較運算子的真假決定放大縮小，也不額外產生結果框或符號。一般格子比較與 min/max 取值規則不改。核對 `matrix-label-events.browser.test.js` 與 `restored-comparison.browser.test.js`。
 
 一般資料格的所有比較（包含 ==／!=）均保留共同向上 15px 的準備動作，==／!= 再沿用對齊靠攏及不同值時各 5px 的上下錯開；結束平滑還原。原地不位移的例外僅為二維陣列來源標籤。`restored-comparison.browser.test.js` 核對準備階段及比較定點的實際座標，`matrix-label-events.browser.test.js` 核對標籤中心不動。
+
+遞迴容器的移動身分必須涵蓋外框、名稱、格子與索引：同一遞迴函式祖先／子呼叫的已關閉參數宣告，可延續其可見呈現角色，不能只讓同索引格子沿用舊位置而讓外框跳到終點。snapshot 與明確 visual-exit 不跨域接續。核對 queens-recursive-container.browser.test.js 的前進、返回與存檔重開。

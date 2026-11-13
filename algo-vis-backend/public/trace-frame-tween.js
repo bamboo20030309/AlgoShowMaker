@@ -7122,6 +7122,13 @@
       return false;
     };
     if (!ancestor(beforeId, afterId) && !ancestor(afterId, beforeId)) return matches;
+    // A muted by-value parameter declaration keeps its authored visual role
+    // across recursive scenes. The runtime lifetime is new, but its complete
+    // container (not only same-index children) owns the frame relocation.
+    const mutedParameters = new Set((traceDocument.frames || []).flatMap(item => item.events || [])
+      .filter(event => event.parameterDeclaration === true && event.enabled === false
+        && event.recursionActivationId === afterId)
+      .flatMap(event => (event.targets || []).map(target => target.variableId)));
     elements?.forEach?.((element, key) => {
       if (retainedSnapshotVisual(element)) return;
       const variableId = String(element.dataset?.traceSourceVariableId
@@ -7153,7 +7160,11 @@
       } else {
         const previous = previousVisualElement(previousObjects, key);
         if (previous?.dataset?.traceVariable === variableId
-          && sameSceneGeneration(element, previous)) match = { key, element: previous };
+          && !retainedVisualOwner(previous)
+          && (sameSceneGeneration(element, previous)
+            || (element.matches?.('.asm-trace-object') && mutedParameters.has(variableId)))) {
+          match = { key, element: previous };
+        }
       }
       if (!match || match.element.getAttribute?.('opacity') === '0'
         || match.element.getAttribute?.('display') === 'none') return;
@@ -10220,6 +10231,9 @@
         && !retainedSnapshot
         && !objectLabelOwnerContinues
         && !runtimeOwnerContinues
+        // Semantic continuation owns the whole hierarchy, including its
+        // frame/name/index; do not preserve only the inner cell positions.
+        && !continuingKeys.has(key)
         && !sameDataCellContinuity(element, candidatePreviousVisual)
         && !sameSceneGeneration(element, candidatePreviousVisual);
       const sceneActivationChanged = key === topKey
@@ -11689,10 +11703,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-363';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-364';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-363', play, cancel, updateEventAvailability,
+    build: 'trace-364', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },
