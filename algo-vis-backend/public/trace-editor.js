@@ -480,7 +480,8 @@
       sliceMode,
       watches: watches.map(variable => variable.id),
       skins,
-      rules: window.ASMTraceViewSource?.parse?.(code)?.rules || []
+      // 跨幀規則已不再使用（動畫完全由指令驅動）。
+      rules: []
     };
   }
 

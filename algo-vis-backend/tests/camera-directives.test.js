@@ -85,7 +85,8 @@ int main() {
   assert.equal(frames[1].camera.zoom, 0.8);
 });
 
-test('camera priority is Studio frame override, directive, Studio global, automatic', () => {
+test('camera priority is the frame @camera directive, then automatic; Studio rules are ignored', () => {
+  // 鏡頭完全由指令決定（2026-11-14）：舊文件殘留的 Studio cameraRules 不影響結果。
   const source = fs.readFileSync(path.join(__dirname, '../public/trace-camera.js'), 'utf8');
   const window = {
     ASMTraceRules: { conditionMatches: () => true },
@@ -93,15 +94,13 @@ test('camera priority is Studio frame override, directive, Studio global, automa
   };
   vm.runInNewContext(source, { window, getComputedStyle: () => ({ getPropertyValue: () => '' }) });
   const frame = { id: 'frame-1', camera: { source: 'directive', zoom: 1.6 } };
-  const trace = { studio: { cameraRules: [{ id: 'global', allFrames: true, zoom: 0.7 }] } };
+  const trace = { studio: { cameraRules: [
+    { id: 'global', allFrames: true, zoom: 0.7 },
+    { id: 'frame', frameIds: ['frame-1'], zoom: 2 }
+  ] } };
   assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame).source, 'directive');
-  trace.studio.cameraRules.push({ id: 'frame', frameIds: ['frame-1'], zoom: 2 });
-  assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame).id, 'frame');
   delete frame.camera;
-  trace.studio.cameraRules.pop();
-  assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame).id, 'global');
-  trace.studio.cameraRules = [];
-  assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame), null);
+  assert.equal(window.ASMTraceCamera.ruleForFrame(trace, frame), null, 'without @camera the camera is automatic');
 });
 
 test('camera expression conditions decide whether a focus directive applies', () => {

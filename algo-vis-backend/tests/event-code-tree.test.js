@@ -279,7 +279,7 @@ test('a declaration is available when its object appears in a later frame', () =
 
 test('Studio preflights the selected frame before building its event inspector', () => {
   const studio = fs.readFileSync(path.join(publicDir, 'trace-studio.js'), 'utf8');
-  const openBody = studio.match(/function open\(source\) \{[\s\S]*?function installDragHook/)?.[0] || '';
+  const openBody = studio.replace(/\r\n/g, '\n').match(/function open\(source\) \{[\s\S]*?\n  \}\n/)?.[0] || '';
   const currentIndexAt = openBody.indexOf('currentIndex = Math.max');
   const preflightAt = openBody.indexOf('preflightEventAvailability');
   const buildUiAt = openBody.indexOf('buildUi()');

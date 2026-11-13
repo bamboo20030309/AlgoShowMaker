@@ -18,26 +18,6 @@ const publicPath = name => path.join(__dirname, '../public', name);
 // -----------------------------------------------------------------------------
 // 測試案例：下列具名案例各自描述一項可觀察契約。
 // -----------------------------------------------------------------------------
-test('same-frame font previews retain whole text and segment selections', () => {
-  const source = fs.readFileSync(publicPath('trace-studio.js'), 'utf8')
-    .replace('window.ASMTraceStudio = {', `window.ASMTraceStudio = {
-      textSelectionExists,
-      setTestFrame(frame) { trace = { frames: [frame] }; currentIndex = 0; },`);
-  const dom = new JSDOM('<!doctype html>', { runScripts: 'outside-only' });
-  vm.runInContext(source, vm.createContext({
-    window: dom.window, document: dom.window.document
-  }));
-  const studio = dom.window.ASMTraceStudio;
-  studio.setTestFrame({ texts: [{ id: 'line-6', segments: [{ segmentId: 's0' }] }] });
-  assert.equal(studio.textSelectionExists('text:line-6'), true);
-  assert.equal(studio.textSelectionExists('text:line-6:segment:s0'), true);
-  assert.equal(studio.textSelectionExists('text:line-6:segment:s0:range:0-2'), true);
-  assert.equal(studio.textSelectionExists('text:line-6:segment:missing'), false);
-  studio.setTestFrame({ texts: [] });
-  assert.equal(studio.textSelectionExists('text:line-6'), false,
-    'a genuinely absent bubble on another frame must still clear selection');
-});
-
 test('renderer applies a selected object font size to all text inside that object', () => {
   const source = fs.readFileSync(publicPath('trace-renderer.js'), 'utf8')
     .replace('window.ASMTraceRenderers = {',
@@ -120,20 +100,4 @@ test('text object font size scales its complete bubble geometry proportionally',
   context.window.ASMTraceRenderers.applyObjectColorStyles(trace, frame, elements);
   assert.equal(text.getAttribute('font-size'), '20',
     'the post-layout style pass must not resize only the glyphs');
-});
-
-test('Trace Studio exposes object font size and keeps code settings selection-specific', () => {
-  const studio = fs.readFileSync(publicPath('trace-studio.js'), 'utf8');
-  const css = fs.readFileSync(publicPath('trace-studio.css'), 'utf8');
-
-  assert.match(studio, /setAttribute\('aria-label', '物件文字大小'\)/);
-  assert.match(studio, /fontSize:\s*Math\.max|next\.fontSize\s*=/);
-  assert.match(studio, /codePanel\.dataset\.traceCodeControls\s*=\s*'1'/);
-  assert.match(studio, /styleEditor\.dataset\.traceObjectControls\s*=\s*'1'/);
-  assert.match(css,
-    /:not\(\.is-code-panel-selection\)\s*>\s*\[data-trace-code-controls\]/,
-    'code-panel controls must be hidden while another canvas object is selected');
-  assert.match(css,
-    /\.is-code-panel-selection\s*>\s*\.trace-studio-section:not\(\[data-trace-code-controls\]\)/,
-    'ordinary object controls must be hidden while the code panel is selected');
 });

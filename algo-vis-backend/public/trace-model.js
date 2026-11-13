@@ -385,6 +385,39 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 動畫完全由指令驅動（2026-11-14）
+  // Trace Studio 的手動調整（拖曳位置、位置綁定、自訂物件、手動箭頭、物件樣式、逐幀顯示、
+  // 鏡頭、幀間動畫）一律不再套用，舊資料載入時直接捨棄；事件、程式碼片段與其他設定照常保留。
+  // 只列出要捨棄的欄位，之後新增的設定不會被意外丟掉。
+  // ---------------------------------------------------------------------------
+  const MANUAL_STUDIO_KEYS = new Set([
+    'positions', 'bindings', 'objects', 'arrows', 'objectStyles', 'visibility',
+    'cameraRules', 'transitions', 'transitionDefaults'
+  ]);
+  function directiveStudio(studio) {
+    if (!studio || typeof studio !== 'object' || Array.isArray(studio)) return {};
+    const kept = {};
+    Object.entries(studio).forEach(([key, value]) => {
+      if (!MANUAL_STUDIO_KEYS.has(key) && key !== 'frameMaps') kept[key] = clone(value);
+    });
+    // @asm-view 的壓縮格式把逐幀設定放在 frameMaps；手動調整那幾類一併捨棄。
+    if (studio.frameMaps && typeof studio.frameMaps === 'object') {
+      const frameMaps = Object.fromEntries(Object.entries(studio.frameMaps)
+        .filter(([key]) => !MANUAL_STUDIO_KEYS.has(key)).map(([key, value]) => [key, clone(value)]));
+      if (Object.keys(frameMaps).length) kept.frameMaps = frameMaps;
+    }
+    return kept;
+  }
+
+  // 只處理原本就有的欄位：沒有 studio 的 asmView 不能補上空的 studio，否則會蓋掉已存的事件設定。
+  function directiveAsmView(asmView) {
+    const view = clone(asmView);
+    if (Array.isArray(view.rules)) view.rules = [];
+    if (view.studio && typeof view.studio === 'object') view.studio = directiveStudio(view.studio);
+    return view;
+  }
+
   function normalizeTraceDocument(source = {}) {
     const variables = source.variables && typeof source.variables === 'object' ? clone(source.variables) : {};
     const frames = Array.isArray(source.frames) ? source.frames.map((frame, index) => ({
@@ -440,10 +473,11 @@
       })) : [],
       layouts: Array.isArray(source.layouts) ? clone(source.layouts) : [],
       skins: source.skins && typeof source.skins === 'object' ? clone(source.skins) : {},
-      rules: Array.isArray(source.rules) ? clone(source.rules) : [],
+      // 跨幀規則只來自 Trace Studio 的手動設定（指令不經這裡），一律不套用。
+      rules: [],
       frameDirectives: Array.isArray(source.frameDirectives) ? clone(source.frameDirectives) : [],
-      studio: source.studio && typeof source.studio === 'object' ? clone(source.studio) : {},
-      asmView: source.asmView && typeof source.asmView === 'object' ? clone(source.asmView) : null
+      studio: directiveStudio(source.studio),
+      asmView: source.asmView && typeof source.asmView === 'object' ? directiveAsmView(source.asmView) : null
     };
     const calls = new Map();
     const callLifecycles = [];
@@ -713,6 +747,8 @@
     applyFrameConditions,
     buildIterationSummaries,
     normalizeTraceDocument,
+    directiveStudio,
+    MANUAL_STUDIO_KEYS,
     scalarValue,
     diffFrame
   };

@@ -118,15 +118,10 @@
     root.ASMTraceViewSource.applyToTrace(probe, view);
     const studio = trace.studio || {};
     const restored = probe.studio || {};
-    for (const key of ['objects', 'arrows', 'transitions']) {
-      const expected = new Set((studio[key] || []).map(item => item?.id).filter(Boolean));
-      const actual = new Set((restored[key] || []).map(item => item?.id).filter(Boolean));
-      for (const id of expected) if (!actual.has(id)) {
-        throw new Error(`Trace Studio 的 ${key} 物件 ${id} 無法還原，請先重新 RUN 並儲存。`);
-      }
-    }
+    // 動畫完全由指令驅動（2026-11-14）：手動調整（物件、箭頭、位置、綁定、顯示、樣式、幀間動畫）
+    // 一律捨棄，不再核對；只確認逐幀事件設定能還原。
     const frameIds = new Set((trace.frames || []).map(frame => frame.id));
-    for (const key of ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates']) {
+    for (const key of ['eventStates']) {
       for (const [frameId, saved] of Object.entries(studio[key] || {})) {
         if (!frameIds.has(frameId) || !saved || !Object.keys(saved).length) continue;
         if (!restored[key]?.[frameId] || !Object.keys(restored[key][frameId]).length) {
@@ -136,7 +131,7 @@
     }
     // fromTrace deliberately omits these global settings; keep them separate.
     const globals = {};
-    for (const key of ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings']) {
+    for (const key of ['eventColors', 'eventSignatureColors', 'eventAnimations', 'eventSettings']) {
       if (Object.prototype.hasOwnProperty.call(studio, key)) globals[key] = clone(studio[key]);
     }
     return { view, globals };

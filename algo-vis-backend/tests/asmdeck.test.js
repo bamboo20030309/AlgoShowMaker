@@ -115,9 +115,10 @@ test('asmdeck projection is detached, strips trace results, and retains playback
   });
   assert.equal(Object.keys(projected.assets).length, 1);
   assert.equal(projected.cacheSeeds[0].trace.frames.length, 1);
-  assert.equal(slide.animation.rebuild.view.studio.cameraRules[0].id, 'camera-main');
+  // 動畫完全由指令驅動（2026-11-14）：Studio 手動鏡頭與拖曳位置不進封存，事件設定照常保留。
+  assert.equal(slide.animation.rebuild.view.studio.cameraRules, undefined, 'manual camera rules are dropped');
   assert.equal(slide.animation.presentationCamera, undefined, 'temporary camera must not enter an archive');
-  assert.ok(slide.animation.rebuild.view.studio.frameMaps.positions);
+  assert.equal(slide.animation.rebuild.view.studio.frameMaps?.positions, undefined, 'manual positions are dropped');
   assert.match(slide.canvas.objects[0].src, /^asm-asset:/);
   assert.equal(slide.canvas.objects[0].src, slide.canvas.objects[1].src);
 });
@@ -254,7 +255,7 @@ test('editor draft only replaces the export snapshot', async () => {
   assert.equal(slide.animation.traceDocument.studio.eventSettings.gapMs, 720);
 });
 
-test('cache miss analyzes once, RUNs once and reapplies camera, event and gap settings', async () => {
+test('cache miss analyzes once, RUNs once and reapplies event and gap settings without manual adjustments', async () => {
   const projected = await archive.project(fixture());
   const compact = (await archive.decode(await archive.encode(projected))).deck;
   const rawTrace = JSON.parse(JSON.stringify(fixture().groups[0].slides[0].animation.traceDocument));
@@ -277,8 +278,8 @@ test('cache miss analyzes once, RUNs once and reapplies camera, event and gap se
     assert.deepEqual(requests.map(request => request.url), ['/trace/analyze', '/compile']);
     assert.deepEqual(requests[1].body.trace.watches, ['arr']);
     assert.equal(trace.studio.eventSettings.gapMs, 720);
-    assert.equal(trace.studio.cameraRules[0].id, 'camera-main');
-    assert.deepEqual(trace.studio.positions['new-f0'].arr, { x: 120, y: 80 });
+    assert.equal(trace.studio.cameraRules, undefined, 'manual camera rules are not reapplied');
+    assert.equal(trace.studio.positions, undefined, 'manual positions are not reapplied');
     assert.equal(trace.studio.eventInstructionStates['assign:main:i++'], true);
     assert.equal(trace.frames[0].id, 'new-f0');
   } finally { global.fetch = priorFetch; console.warn = priorWarn; }

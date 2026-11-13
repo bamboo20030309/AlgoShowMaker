@@ -32,8 +32,9 @@
     return { ...DEFAULTS };
   }
 
-  function rules(document) {
-    return Array.isArray(document?.studio?.transitions) ? document.studio.transitions : [];
+  // 幀間動畫不再有手動規則（2026-11-14）：同一 ID 自動補間，studio.transitions 已在載入時捨棄。
+  function rules() {
+    return [];
   }
 
   function frameMatches(rule, fromFrame, toFrame) {

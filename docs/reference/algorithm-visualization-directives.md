@@ -162,7 +162,7 @@ arr[i] = key;
 | 修飾詞 | 作用 | 範例 |
 | --- | --- | --- |
 | `as` | 指定穩定物件 ID 或規則 ID | `as heap_view` |
-| `at` | 將物件相對定位到變數、格子、keep、Studio 物件或畫布 | `at init.bottom` |
+| `at` | 將物件相對定位到變數、格子、keep 或畫布 | `at init.bottom` |
 | `offset(x,y)` | 在 `at` 結果上增加像素位移 | `offset(0,40)` |
 | `when` | 條件為真時才產生或顯示 | `when i < n && changed(arr[i])` |
 | `render` | 選擇資料結構畫法 | `render heap` |
@@ -342,8 +342,8 @@ dfs(0, 0, 0, 0);
 
 每幀在當前作用域重新解析變數與運算式；遞迴參數 `arr` 會指向該次呼叫的陣列，
 不在定義 defaults 時凍結資料。找不到鏡頭目標時改用自動捕捉。
-優先順序為：Studio 單幀覆寫 → 當幀直接指令 → `use` 的 preset（後者優先）→ defaults → 系統預設。
-Studio 全域鏡頭規則仍是未指定幀鏡頭時的備援。
+優先順序為：當幀直接指令 → `use` 的 preset（後者優先）→ defaults → 系統預設。
+自 2026-11-14 起動畫完全由指令驅動，Trace Studio 不再提供鏡頭或位置的手動覆寫。
 
 ```cpp
 // @frame arr
@@ -435,7 +435,7 @@ for (int i=2; i<=n; i++) {
 - `zoom(...)`：設定倍率，範圍 `0.05`～`4`。
 - `offset(x,y)`：在鏡頭中心加入像素位移。
 - `when`：條件成立時才採用這條鏡頭設定。
-- 優先序為「Trace Studio 的幀覆寫 → 本幀／preset 的 `@camera` → Studio 全域鏡頭 → 自動鏡頭」。
+- 優先序為「本幀／preset／defaults 的 `@camera` → 自動鏡頭」。Trace Studio 已不提供手動鏡頭（2026-11-14）；舊動畫保存的 Studio 鏡頭在載入時捨棄。
 
 ## `@let`：幀內唯讀運算別名
 
@@ -555,15 +555,14 @@ for (int i = 0; i < n - 1; i++) {
 // @keep last as "round" offset(0,-36)
 ```
 
-若 `@keep` 沒有寫 `at`，它會保留來源畫面的排版：包含 `@frame` 的相對定位、
-Trace Studio 拖曳後的 X/Y 位置，以及 Studio 建立的位置綁定。`@keep last` 也會保留
+若 `@keep` 沒有寫 `at`，它會保留來源畫面的排版：包含 `@frame` 的相對定位與
+`@place` 位置綁定。`@keep last` 也會保留
 原畫面所在的自動排版高度，不會因為包成快照而重算到另一列。對完全沒有手動位置、
 `at` 或 `offset` 的 keep 物件會沿用自動排列。每個未手動定位的 keep 列，預設垂直間距為
 50px；任何明確位置設定都優先。
 
 只寫 `offset(x,y)` 時，位移會加在保留下來的原位置上；`y` 為正會向下，為負會向上。
-因此 `offset(0,-36)` 代表維持原本水平位置並向上移 36px。若之後在 Trace Studio
-直接拖曳 keep 快照，手動位置優先，既有 offset 不會再重複套用。
+因此 `offset(0,-36)` 代表維持原本水平位置並向上移 36px。
 
 若 `@keep` 自己寫了 `at`，則改以 `@keep` 的目標錨點定位，`offset` 作用於該錨點。
 例如重複執行的冒泡排序可寫：
@@ -684,10 +683,9 @@ return value;
 排版會在 SVG 物件完成量測後、文字／箭頭／鏡頭與縮圖定位前執行，因此不同高度的 array、heap
 或其他 draw type 會使用真實外框。位置優先順序為：
 
-1. Trace Studio 對該快照的逐幀手動位置。
-2. 該條 `@keep` 自己的 `at` 定位。
-3. 所屬 `@layout recursion`。
-4. 一般 keep 自動排列。
+1. 該條 `@keep` 自己的 `at` 定位。
+2. 所屬 `@layout recursion`。
+3. 一般 keep 自動排列。
 
 `@keep ... in quick_tree offset(x,y)` 可在自動樹位置上微調單一節點。若同時寫 `at`，則該節點
 退出自動樹定位、改用自己的明確位置，但仍保留在同一排版的父子關係與連線中。
@@ -754,7 +752,7 @@ return value;
 // @text "比較中" as compare_note at arr[j].top offset(0,-12)
 ```
 
-命名後可在 Trace Studio 中穩定識別和綁定該文字物件。
+命名後可在 `@place`、`@arrow` 與其他指令的 `at` 中穩定引用該文字物件。
 
 ### 條件文字
 
@@ -1134,7 +1132,7 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 
 ### 端點與錨點
 
-`from` 和 `to` 都必須指定。每個端點依序解析 C++ 變數、`@keep as` 物件 ID、Trace Studio 自訂物件 ID，最後也可使用 `canvas`。省略錨點時預設為 `center`；也可明寫 `top`、`bottom`、`left`、`right` 等錨點，以及個別 `offset(x,y)`：
+`from` 和 `to` 都必須指定。每個端點依序解析 C++ 變數、`@keep as` 物件 ID，最後也可使用 `canvas`。省略錨點時預設為 `center`；也可明寫 `top`、`bottom`、`left`、`right` 等錨點，以及個別 `offset(x,y)`：
 
 ```cpp
 // @arrow from arr[i].bottom offset(0,8) to saved_heap.top offset(0,-8)
@@ -1225,11 +1223,10 @@ for(int j=0;j<prime.size();j++){ /* 原本的演算法 */ }
 // @place SOURCE[.ANCHOR] at TARGET.ANCHOR [offset(X,Y)] [when CONDITION]
 ```
 
-- `SOURCE` 必須是前一個 `@frame` 已顯示的 C++ 物件，或可解析的 keep／Trace Studio 物件 ID。
-- `TARGET` 依序解析 C++ 變數、keep ID、Trace Studio ID 與 `canvas`；亦可定位到 `arr[i].right` 之類的格子錨點。
+- `SOURCE` 必須是前一個 `@frame` 已顯示的 C++ 物件，或可解析的 keep 物件 ID。
+- `TARGET` 依序解析 C++ 變數、keep ID 與 `canvas`；亦可定位到 `arr[i].right` 之類的格子錨點。
 - `ANCHOR` 支援 `top-left`、`top`、`top-right`、`left`、`center`、`right`、`bottom-left`、`bottom`、`bottom-right`。
 - `when` 為假時只略過該位置綁定，不會隱藏來源物件。
-- Trace Studio 的明確位置／綁定仍具有較高優先權。
 
 多物件的 `@frame arr,pivot ... in quick_tree` 只以第一個主要物件 `arr` 代表遞迴節點；使用 `@pointer i at arr` 加上游標，`pivot` 是可由 `@place` 獨立安排的次要物件。`@frame arr[i]` 是單一元素取值，不能用來建立整個陣列的遞迴節點。
 
@@ -1542,8 +1539,7 @@ bottom-left  bottom  bottom-right
 
 1. 目前作用域中的 C++ 變數。
 2. `@keep ... as` 建立的物件 ID。
-3. Trace Studio 自訂物件 ID。
-4. 特殊目標 `canvas`。
+3. 特殊目標 `canvas`。
 
 此外還有特殊虛擬目標 `keep`，代表所有可見 keep 物件的聯集。
 
@@ -1555,7 +1551,7 @@ bottom-left  bottom  bottom-right
 // @frame arr at keep.bottom offset(0,40)
 ```
 
-若 keep 與 Studio 物件使用同名 ID，keep 優先。若 C++ 變數也同名，C++ 變數優先。
+若 C++ 變數與 keep 同名，C++ 變數優先。
 
 ### 定位到索引格子
 
@@ -1591,7 +1587,7 @@ arrow 省略錨點時預設為 center；其他指令按各自的語法要求指�
 // @frame arr at canvas.top offset(0,120)
 ```
 
-若主物件沒有 `at`、Trace Studio 自訂位置／綁定或具名 layout，系統預設將它視為：
+若主物件沒有 `at`、`@place` 或具名 layout，系統預設將它視為：
 
 ```cpp
 // @frame arr at canvas.top offset(0,80)
@@ -1835,6 +1831,8 @@ vector<vector<int>> grid(rows, vector<int>(cols));
 ```
 
 ## 事件動畫與 Trace Studio
+
+> 自 2026-11-14 起，動畫完全由指令驅動：物件的位置、綁定、樣式、顯示、箭頭、鏡頭與幀間動畫都只能用指令設定（`at`／`offset`／`@place`、`@style`、`@exit`／`when`、`@arrow`、`@camera`、`as`）。Trace Studio 只保留「事件」與「程式碼」兩頁：事件程式碼按鈕、事件全域設定（間隔、自動固定、迴圈邊界）、畫布程式碼框外觀與程式碼行收錄。舊動畫保存的 Studio 手動調整與跨幀規則在載入時一律捨棄。
 
 ### `@events`：每幀事件動畫控制
 
@@ -2169,6 +2167,7 @@ Markdown 的 ```cpp 或 ```python 只影響文件顯示，不可貼進 C++ 編�
 
 | 日期 | 基準 | 內容 |
 | --- | --- | --- |
+| 2026/11/14 | 工作樹 | 動畫改為完全由指令驅動：移除 Trace Studio 的物件、樣式、鏡頭、幀間動畫、位置綁定、跨幀規則與作用時間線等手動調整，畫布上的動畫物件不再能拖曳；只保留事件與程式碼設定。舊動畫的手動調整在載入、套用 `@asm-view`、寫回與存檔時一律捨棄（不相容變更，公開範例未使用）。 |
 | 2026/10/01 | 工作樹 | 裸 `@frame` 可作為不新增 live 物件的場景檢查點，保留已累積的 keep snapshots，並可附加 camera、text 與其他場景指令。 |
 | 2026/09/24 | 工作樹 | 同一 recursion activation 的後續 `@keep` 會原地替換既有節點；補充 `@keep` 置於 `@frame` 前方可在同一幀更新回傳值，且不重複繪製 live 物件。 |
 | 2026/09/16 | `AV_V4.7` | 整理多行物件、preset、camera、arrow、iteration 摘要與 `.asmdeck` 使用說明；補充文字物件大小與片段格式的分工，以及同幀預覽保留選取的操作規則。 |

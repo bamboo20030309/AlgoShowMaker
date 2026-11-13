@@ -126,21 +126,12 @@ body.asm-trace-inspector-resizing {
   cursor: pointer;
 }
 
-.trace-studio-rail-head button,
-.trace-studio-camera button {
+.trace-studio-rail-head button {
   min-height: 28px;
   border: 1px solid #59676e;
   border-radius: 4px;
   background: #30393e;
   color: #e7edef;
-}
-
-.trace-studio-camera {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
-  padding: 7px 8px;
-  border-bottom: 1px solid #3a4348;
 }
 
 /* --------------------------------------------------------------------------
@@ -186,7 +177,6 @@ body.asm-trace-inspector-resizing {
 }
 
 .trace-studio-frame-head,
-.trace-studio-mini-row,
 .trace-studio-event-dots {
   display: flex;
   align-items: center;
@@ -219,24 +209,6 @@ body.asm-trace-inspector-resizing {
   transition: none !important;
 }
 
-.trace-studio-tracking-drag {
-  cursor: grab !important;
-  user-select: none;
-  touch-action: none;
-}
-
-.trace-studio-tracking-drag.is-dragging {
-  cursor: grabbing !important;
-  border-color: #58b6aa;
-  background: #1d8f83;
-}
-
-.trace-studio-camera-frame-button.is-active {
-  border-color: #73d0c4;
-  background: #1d8f83;
-  color: #ffffff;
-}
-
 body.asm-trace-camera-framing #arraySvg {
   cursor: crosshair;
 }
@@ -244,43 +216,6 @@ body.asm-trace-camera-framing #arraySvg {
 /* --------------------------------------------------------------------------
  * 區段：畫布快顯選單
  * -------------------------------------------------------------------------- */
-
-.trace-studio-canvas-menu {
-  position: fixed;
-  z-index: 10020;
-  width: 174px;
-  display: grid;
-  gap: 4px;
-  padding: 7px;
-  border: 1px solid #59676e;
-  border-radius: 4px;
-  background: #20262a;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
-  color: #edf1f2;
-  font: 12px Arial, sans-serif;
-}
-
-.trace-studio-canvas-menu strong {
-  padding: 4px 6px 6px;
-  color: #aeb9be;
-}
-
-.trace-studio-canvas-menu button {
-  min-height: 30px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: #edf1f2;
-  font: 12px Arial, sans-serif;
-  text-align: left;
-  cursor: pointer;
-}
-
-.trace-studio-canvas-menu button:hover,
-.trace-studio-canvas-menu button.is-active {
-  background: #354247;
-  color: #73d0c4;
-}
 
 .trace-studio-hidden-object {
   opacity: 0.28 !important;
@@ -290,105 +225,10 @@ body.asm-trace-camera-framing #arraySvg {
  * 區段：物件狀態與轉場
  * -------------------------------------------------------------------------- */
 
-.trace-studio-object-state-card {
-  display: grid;
-  gap: 8px;
-  padding: 9px;
-  border: 1px solid #465158;
-  border-radius: 4px;
-  background: #2d3438;
-}
-
-.trace-studio-object-state-name {
-  overflow: hidden;
-  color: #73d0c4;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.trace-studio-object-state-empty {
-  color: #8f9ca2;
-  font-size: 12px;
-}
-
-.trace-studio-transition-card {
-  display: grid;
-  gap: 8px;
-  padding: 9px;
-  border: 1px solid #536068;
-  border-radius: 4px;
-  background: #1f2529;
-}
-
-.trace-studio-transition-card[hidden],
-.trace-studio-transition-empty[hidden] {
-  display: none;
-}
-
-.trace-studio-transition-empty {
-  color: #8f9ca2;
-  font-size: 12px;
-}
-
-.trace-studio-transition-relation {
-  overflow: hidden;
-  color: #73d0c4;
-  font: 700 13px Arial, sans-serif;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.trace-studio-transition-hint {
-  color: #aeb9be;
-  font: 12px/1.45 Arial, "Noto Sans TC", sans-serif;
-}
-
-.trace-studio-transition-advanced {
-  border-top: 1px solid #465158;
-  padding-top: 7px;
-}
-
-.trace-studio-transition-advanced summary {
-  color: #d6dfe2;
-  font: 600 12px/22px Arial, "Noto Sans TC", sans-serif;
-  cursor: pointer;
-  user-select: none;
-}
-
-.trace-studio-transition-advanced[open] {
-  display: grid;
-  gap: 8px;
-}
-
-.trace-studio-transition-duration-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
-  align-items: center;
-  gap: 6px;
-}
-
-.trace-studio-transition-duration-value {
-  color: #aeb9be;
-  font: 11px Arial, sans-serif;
-  text-align: right;
-}
-
 .trace-studio-transition-badge {
   color: #73d0c4;
   font: 700 15px Arial, sans-serif;
   font-style: normal;
-}
-
-.trace-studio-object-menu-label {
-  padding: 1px 6px 3px;
-  color: #8f9ca2;
-  font-size: 11px;
-}
-
-.trace-studio-object-state-menu .trace-studio-object-menu-name {
-  color: #73d0c4;
 }
 
 .trace-studio-event-dots {
@@ -762,17 +602,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   background: #1f2529;
 }
 
-.trace-studio-frame-event-order {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #536068;
-  border-radius: 2px;
-  color: #b8c2c6;
-  font: 700 10px/1 Arial, sans-serif;
-}
-
 .trace-studio-frame-event.is-disabled {
   opacity: 0.58;
 }
@@ -787,12 +616,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
 
 .trace-studio-frame-event.is-unrenderable .trace-studio-frame-event-copy strong {
   color: #ff6b6b;
-}
-
-.trace-studio-frame-event-swatch {
-  width: 4px;
-  align-self: stretch;
-  border-radius: 1px;
 }
 
 .trace-studio-frame-event-copy {
@@ -903,55 +726,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
 .trace-studio-event-switch input:focus-visible + span {
   outline: 2px solid #73d0c4;
   outline-offset: 2px;
-}
-
-.trace-studio-event-animations {
-  display: grid;
-  gap: 5px;
-}
-
-.trace-studio-event-animation-row {
-  display: grid;
-  grid-template-columns: minmax(72px, 1fr) minmax(112px, 1.35fr);
-  align-items: center;
-  gap: 8px;
-  color: #dce3e5;
-  font-size: 12px;
-}
-
-.trace-studio-event-animation-row select {
-  min-width: 0;
-}
-
-.trace-studio-style-choices {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
-}
-
-.trace-studio-style-choice {
-  min-width: 0;
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 7px;
-  border: 1px solid #59676e;
-  border-radius: 4px;
-  background: #30393e;
-  color: #dce3e5;
-  font-size: 11px;
-  text-align: left;
-}
-
-.trace-studio-style-choice.is-active {
-  border-color: #58b6aa;
-  box-shadow: inset 3px 0 #1d8f83;
-  background: #354247;
-}
-
-.trace-studio-style-choice .style-icon {
-  flex: 0 0 auto;
 }
 
 .trace-studio-inspector {
@@ -1070,14 +844,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   display: none;
 }
 
-.trace-studio-inspector-panel.is-code-panel-selection > .trace-studio-section:not([data-trace-code-controls]) {
-  display: none !important;
-}
-
-.trace-studio-inspector-panel:not(.is-code-panel-selection) > [data-trace-code-controls] {
-  display: none !important;
-}
-
 .trace-studio-section {
   display: flex;
   flex-direction: column;
@@ -1098,99 +864,9 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   font-size: 13px;
 }
 
-.trace-studio-binding-empty {
-  padding: 9px;
-  border: 1px dashed #536068;
-  border-radius: 4px;
-  color: #9facb2;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
 /* --------------------------------------------------------------------------
  * 區段：物件綁定編輯
  * -------------------------------------------------------------------------- */
-
-.trace-studio-binding-card {
-  display: grid;
-  gap: 7px;
-  padding: 9px;
-  border: 1px solid #536068;
-  border-radius: 4px;
-  background: #1f2529;
-}
-
-.trace-studio-binding-card[hidden],
-.trace-studio-binding-empty[hidden] {
-  display: none;
-}
-
-.trace-studio-binding-relation {
-  overflow: hidden;
-  color: #73d0c4;
-  font: 700 14px Arial, sans-serif;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.trace-studio-binding-target {
-  padding-bottom: 6px;
-  border-bottom: 1px solid #3a4348;
-  color: #b8c2c6;
-  font-size: 11px;
-}
-
-.trace-studio-binding-choice {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: start;
-  gap: 7px;
-  padding: 5px 6px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  color: #e5ebed;
-  font-size: 11px;
-  line-height: 1.4;
-  cursor: pointer;
-}
-
-.trace-studio-binding-choice:hover {
-  border-color: #536068;
-  background: #30393e;
-}
-
-.trace-studio-binding-choice input[type="radio"] {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  accent-color: #1d8f83;
-}
-
-.trace-studio-binding-choice:has(input:disabled) {
-  color: #718087;
-  cursor: default;
-}
-
-.trace-studio-binding-expression {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-  color: #cbd4d7;
-  font-size: 11px;
-}
-
-.trace-studio-binding-expression input {
-  min-width: 0;
-  height: 28px;
-  padding: 4px 7px;
-  border: 1px solid #536068;
-  border-radius: 3px;
-  background: #151a1d;
-  color: #f1f5f6;
-  font: 12px Arial, sans-serif;
-}
 
 .trace-studio-field {
   min-width: 0;
@@ -1211,132 +887,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   padding: 0;
 }
 
-.trace-studio-variable-style-fields,
-.trace-studio-object-color-fields,
-/* --------------------------------------------------------------------------
- * 區段：文字區段樣式
- * -------------------------------------------------------------------------- */
-
-.trace-studio-text-style-fields {
-  display: grid;
-  gap: 8px;
-}
-
-.trace-studio-variable-style-fields[hidden],
-.trace-studio-object-color-fields[hidden],
-.trace-studio-text-style-fields[hidden] {
-  display: none;
-}
-
-.trace-studio-text-format-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.trace-studio-text-icon-button {
-  position: relative;
-  width: 31px;
-  min-width: 31px;
-  height: 31px;
-  display: grid;
-  place-items: center;
-  box-sizing: border-box;
-  padding: 0;
-  border: 1px solid #536068;
-  border-radius: 3px;
-  background: #1f2529;
-  color: #dfe5e7;
-  font: 700 13px Arial, sans-serif;
-  cursor: pointer;
-}
-
-.trace-studio-text-icon-button:hover,
-.trace-studio-text-icon-button.is-active {
-  border-color: #58b6aa;
-  background: #354447;
-  color: #73d0c4;
-}
-
-.trace-studio-text-icon-button.is-italic {
-  font-style: italic;
-}
-
-.trace-studio-text-icon-button.is-underline {
-  text-decoration: underline;
-}
-
-.trace-studio-text-icon-button.is-strike {
-  text-decoration: line-through;
-}
-
-.trace-studio-text-icon-button.trace-color-control {
-  width: 31px;
-  min-width: 31px;
-  padding: 0;
-  grid-template-columns: 1fr;
-  gap: 0;
-  text-align: center;
-}
-
-.trace-studio-text-icon-button .trace-color-value {
-  display: none;
-}
-
-.trace-studio-text-icon-button .trace-color-swatch {
-  position: absolute;
-  left: 5px;
-  right: 5px;
-  bottom: 3px;
-  width: auto;
-  height: 3px;
-  border: 0;
-  border-radius: 0;
-}
-
-.trace-studio-text-color-glyph {
-  line-height: 1;
-}
-
-.trace-studio-text-background-glyph {
-  position: relative;
-  width: 19px;
-  height: 19px;
-  display: grid;
-  place-items: center;
-  box-sizing: border-box;
-  border: 1px solid currentColor;
-  color: currentColor;
-  font-size: 0;
-  line-height: 1;
-  isolation: isolate;
-}
-
-.trace-studio-text-background-glyph::before {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  background: repeating-linear-gradient(
-    135deg,
-    transparent 0,
-    transparent 3px,
-    currentColor 3px,
-    currentColor 4px
-  );
-  opacity: 0.65;
-}
-
-.trace-studio-text-background-glyph::after {
-  content: "A";
-  position: relative;
-  z-index: 1;
-  font-size: 13px;
-}
-
-.trace-studio-text-icon-button.is-background-color .trace-color-swatch {
-  display: none;
-}
-
 .trace-studio-event-gap-control {
   min-width: 0;
   display: grid;
@@ -1350,35 +900,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   font: 11px Arial, sans-serif;
   text-align: right;
   white-space: nowrap;
-}
-
-.trace-studio-font-size-control {
-  position: relative;
-}
-
-.trace-studio-font-size-popover {
-  position: absolute;
-  z-index: 80;
-  top: 36px;
-  right: 0;
-  width: 170px;
-  box-sizing: border-box;
-  padding: 10px;
-  border: 1px solid #59676e;
-  border-radius: 3px;
-  background: #20262a;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
-}
-
-.trace-studio-font-size-popover[hidden] {
-  display: none;
-}
-
-.trace-studio-font-size-popover input[type="range"] {
-  width: 100%;
-  height: 18px;
-  margin: 0;
-  accent-color: #1d8f83;
 }
 
 .asm-trace-text-character-selection {
@@ -1483,12 +1004,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   padding: 2px;
 }
 
-.trace-studio-color-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
 .trace-studio-range-row {
   min-width: 0;
   display: grid;
@@ -1506,81 +1021,6 @@ body.asm-trace-snippet-focus .trace-studio-inspector {
   color: #dce5e7;
   font: 12px Arial, sans-serif;
   text-align: right;
-}
-
-.trace-studio-color-row .trace-studio-field {
-  grid-template-columns: 38px minmax(0, 1fr);
-}
-
-.trace-studio-event-definitions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 8px;
-}
-
-.trace-studio-event-definition {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 5px;
-  color: #d8e0e3;
-  font-size: 11px;
-}
-
-.trace-studio-event-definition code {
-  color: #8f9ca2;
-  font: 10px Arial, sans-serif;
-}
-
-.trace-studio-event-swatch {
-  width: 9px;
-  height: 9px;
-  border-radius: 1px;
-}
-
-.trace-studio-primary,
-.trace-studio-secondary {
-  min-height: 32px;
-  border-radius: 4px;
-}
-
-.trace-studio-primary {
-  border: 1px solid #4aa99d;
-  background: #1d8f83;
-  color: #fff;
-}
-
-.trace-studio-secondary {
-  border: 1px solid #59676e;
-  background: #30393e;
-  color: #edf1f2;
-}
-
-.trace-studio-effects {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.trace-studio-effect-row {
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  border-bottom: 1px solid #3a4348;
-  color: #cbd3d6;
-  font-size: 12px;
-}
-
-.trace-studio-effect-row button {
-  width: 26px;
-  height: 26px;
-  border: 0;
-  background: transparent;
-  color: #ff9890;
-  font-size: 18px;
 }
 
 .trace-studio-empty {

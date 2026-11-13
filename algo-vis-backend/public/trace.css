@@ -26,8 +26,7 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
 }
 
 .trace-mode-button,
-.trace-variables-button,
-.trace-studio-open-button {
+.trace-variables-button {
   height: 30px;
   border: 0;
   border-right: 1px solid rgba(255, 255, 255, 0.16);
@@ -46,16 +45,6 @@ body:not([class*="asm-embed-"]) .trace-mode-controls {
 
 .trace-variables-button {
   border-right: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-.trace-studio-open-button {
-  border-right: 0;
-}
-
-.trace-studio-open-button:disabled {
-  color: #7f8a8f;
-  cursor: default;
-  opacity: 0.62;
 }
 
 .top-action-button {

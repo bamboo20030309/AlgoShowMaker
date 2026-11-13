@@ -2525,6 +2525,15 @@ function appendFixedEvents(frames, variables = []) {
   return frames;
 }
 
+// 動畫完全由指令驅動（2026-11-14）：回傳的 asmView 去掉 Studio 手動調整與跨幀規則。
+// 只處理原本就有的欄位；沒有 @asm-view 時不能憑空加上空的 studio，否則載入時會蓋掉已存的事件設定。
+function directiveAsmView(asmView) {
+  const view = { ...asmView };
+  if (Array.isArray(view.rules)) view.rules = [];
+  if (view.studio && typeof view.studio === 'object') view.studio = TraceViewSource.directiveStudio(view.studio);
+  return view;
+}
+
 async function readTraceDocument(tracePath, variables, traceRequest = {}) {
   const loaded = await TraceChunkStore.read(tracePath);
   if (!loaded) return null;
@@ -2724,11 +2733,10 @@ async function readTraceDocument(tracePath, variables, traceRequest = {}) {
     frames: keepSnapshots.frames,
     snapshots: keepSnapshots.snapshots,
     skins,
-    rules: Array.isArray(asmView.rules)
-      ? asmView.rules
-      : Array.isArray(traceRequest.rules) ? traceRequest.rules : [],
-    studio: asmView.studio && typeof asmView.studio === 'object' ? asmView.studio : {},
-    asmView,
+    // 動畫完全由指令驅動：Studio 手動調整與跨幀規則不寫進新產生的 trace，只留事件與程式碼片段設定。
+    rules: [],
+    studio: TraceViewSource.directiveStudio(asmView.studio),
+    asmView: directiveAsmView(asmView),
     frameDirectives,
     layouts: Array.isArray(traceRequest.layoutDirectives)
       ? JSON.parse(JSON.stringify(traceRequest.layoutDirectives))

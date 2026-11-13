@@ -43,11 +43,11 @@ function savedTrace() {
     frames: [{ id: 'frame-0', state: {}, events: [{ id: 'event-1', signature: 'j++', type: 'write', update: true, order: 1 }] }],
     skins: { arr: { renderer: 'original-stack' } }, rules: [{ id: 'new-rule' }],
     studio: { positions: { 'frame-0': { arr: { x: 80, y: 120 } } },
-      cameraRules: [{ id: 'new-camera', zoom: 2 }], eventInstructionStates: { 'j++': true },
+      cameraRules: [{ id: 'new-camera', zoom: 2 }], codePanelFontSize: 26, eventInstructionStates: { 'j++': true },
       eventSettings: { gapMs: 740, autoLoopBoundaryEnabled: true,
         defaultEnabled: { write: true }, timelineTypes: { write: true } } },
     asmView: { version: 1, rules: [], skins: { arr: { renderer: 'original-array' } },
-      studio: { cameraRules: [{ id: 'old-camera', zoom: 0.5 }], eventInstructionStates: { 'j++': false } } }
+      studio: { cameraRules: [{ id: 'old-camera', zoom: 0.5 }], codePanelFontSize: 12, eventInstructionStates: { 'j++': false } } }
   };
 }
 
@@ -59,7 +59,7 @@ for (const changedView of [false, true]) {
     c.aceEditor.value = 'int main() {}' + block;
     const pending = { mode: 'trace', code: c.aceEditor.value, input: '6', rebuildError: 'bad directive',
       rebuild: { view: { version: 1, rules: [], skins: {}, studio: {
-        cameraRules: [{ id: 'pending-camera', allFrames: true, zoom: 1.4 }]
+        codePanelFontSize: 31
       } }, globals: { eventSettings: { gapMs: 720, autoFixedEnabled: false } } } };
     c.ASMTraceEditor.loadAnimation(pending);
     assert.deepEqual(plain(c.ASMTraceEditor.snapshot().rebuild), pending.rebuild);
@@ -70,8 +70,9 @@ for (const changedView of [false, true]) {
     assert.equal(snapshot.rebuild, undefined);
     assert.equal(snapshot.rebuildError, undefined);
     assert.equal(snapshot.traceDocument.studio.eventSettings.gapMs, 720);
-    assert.equal(snapshot.traceDocument.studio.cameraRules.some(rule => rule.id === 'pending-camera'), !changedView,
+    assert.equal(snapshot.traceDocument.studio.codePanelFontSize === 31, !changedView,
       'deleting/editing source view must not restore deleted imported presentation');
+    assert.equal(snapshot.traceDocument.studio.cameraRules, undefined, 'manual camera rules are never restored');
   });
 }
 
@@ -81,12 +82,13 @@ for (const changedView of [false, true]) {
 test('normalization applies source view once, preserving later Studio edits and event settings', () => {
   const { c } = context();
   const first = c.ASMTraceModel.normalizeTraceDocument(savedTrace());
-  assert.equal(first.studio.cameraRules[0].id, 'old-camera', 'fresh compile imports source view');
-  first.studio.cameraRules[0].id = 'edited-camera';
+  assert.equal(first.studio.codePanelFontSize, 12, 'fresh compile imports source view');
+  assert.equal(first.studio.cameraRules, undefined, 'manual camera rules are dropped');
+  first.studio.codePanelFontSize = 30;
   first.studio.eventInstructionStates['j++'] = true;
   first.studio.eventSettings = { gapMs: 740, autoLoopBoundaryEnabled: true };
   const reloaded = c.ASMTraceModel.normalizeTraceDocument(first);
-  assert.equal(reloaded.studio.cameraRules[0].id, 'edited-camera');
+  assert.equal(reloaded.studio.codePanelFontSize, 30);
   assert.equal(reloaded.studio.eventSettings.gapMs, 740);
   assert.equal(reloaded.studio.eventSettings.autoLoopBoundaryEnabled, true);
   assert.equal(reloaded.frames[0].events[0].enabled, true);
@@ -101,9 +103,10 @@ test('old saved trace wins over its original asm-view and stale top-level copies
     return plain(c.ASMTraceEditor.snapshot().traceDocument);
   });
   assert.deepEqual(results[0], results[1]);
-  assert.equal(results[0].studio.cameraRules[0].id, 'new-camera');
+  assert.equal(results[0].studio.codePanelFontSize, 26);
+  assert.equal(results[0].studio.cameraRules, undefined, 'manual camera rules are dropped');
   assert.equal(results[0].skins.arr.renderer, 'original-stack');
-  assert.equal(results[0].rules[0].id, 'new-rule');
+  assert.deepEqual(results[0].rules, [], 'Studio rules are dropped');
   assert.equal(results[0].studio.eventSettings.gapMs, 740);
   assert.equal(results[0].studio.eventSettings.autoLoopBoundaryEnabled, true);
   assert.equal(results[0].frames[0].events[0].enabled, true);
@@ -195,12 +198,12 @@ test('a saved slide keeps Studio edits when its newer view block agrees with the
   c.aceEditor.value = code;
   c.ASMTraceEditor.loadAnimation({ mode: 'trace', code, traceDocument: old });
   const saved = plain(c.ASMTraceEditor.snapshot().traceDocument);
-  assert.equal(saved.studio.cameraRules[0].id, 'new-camera');
+  assert.equal(saved.studio.codePanelFontSize, 26);
   assert.equal(saved.studio.eventSettings.gapMs, 740);
-  assert.equal(saved.rules[0].id, 'new-rule');
+  assert.deepEqual(saved.rules, []);
 });
 
-test('the next compile config takes rules only from the current source view', async () => {
+test('the compile config never sends Studio rules, even from an old source view', async () => {
   const { c } = context();
   c.fetch = async () => ({ ok: true, json: async () => ({ variables: [], frameDirectives: [] }) });
   c.load('trace-editor.js');
@@ -210,7 +213,7 @@ test('the next compile config takes rules only from the current source view', as
   const bare = await c.ASMTraceEditor.getCompileConfig('int main() {}');
   assert.deepEqual(plain(bare.rules), []);
   const withRule = await c.ASMTraceEditor.getCompileConfig('int main() {}\n/* @asm-view\n{"rules":[{"id":"current"}]}\n@asm-view */');
-  assert.deepEqual(plain(withRule.rules), [{ id: 'current' }]);
+  assert.deepEqual(plain(withRule.rules), [], 'cross-frame rules are no longer applied (directive-only animation)');
 });
 
 test('editor and slide runtime recover the generation source for the shared code presenter', () => {

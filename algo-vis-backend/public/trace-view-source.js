@@ -24,6 +24,26 @@
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
   }
 
+  // 動畫完全由指令驅動（2026-11-14）：Studio 的手動調整一律捨棄，其他設定（事件、程式碼片段…）照常保留。
+  // 清單須與 trace-model.js 的 MANUAL_STUDIO_KEYS 相同（tests/directive-only-studio.test.js 檢查）。
+  const MANUAL_STUDIO_KEYS = new Set([
+    'positions', 'bindings', 'objects', 'arrows', 'objectStyles', 'visibility',
+    'cameraRules', 'transitions', 'transitionDefaults'
+  ]);
+  function directiveStudio(studio) {
+    if (!isObject(studio)) return {};
+    const kept = {};
+    Object.entries(studio).forEach(([key, value]) => {
+      if (!MANUAL_STUDIO_KEYS.has(key) && key !== 'frameMaps') kept[key] = clone(value);
+    });
+    if (isObject(studio.frameMaps)) {
+      const frameMaps = Object.fromEntries(Object.entries(studio.frameMaps)
+        .filter(([key]) => !MANUAL_STUDIO_KEYS.has(key)).map(([key, value]) => [key, clone(value)]));
+      if (Object.keys(frameMaps).length) kept.frameMaps = frameMaps;
+    }
+    return kept;
+  }
+
   function defaultRenderer(variable = {}) {
     if (variable.kind === 'matrix') return 'original-matrix';
     if (variable.kind === 'stack') return 'original-stack';
@@ -89,24 +109,6 @@
       if (canonical) result[canonical] = value !== false;
     });
     return result;
-  }
-
-  function dedupeById(items) {
-    const list = Array.isArray(items) ? items.filter(isObject) : [];
-    const lastIndex = new Map();
-    list.forEach((item, index) => {
-      if (item.id) lastIndex.set(item.id, index);
-    });
-    return list.filter((item, index) => !item.id || lastIndex.get(item.id) === index);
-  }
-
-  function compactBinding(binding) {
-    if (!isObject(binding)) return binding;
-    const next = clone(binding);
-    if (next.targetAnchor === 'center') delete next.targetAnchor;
-    if (Number(next.dx) === 0) delete next.dx;
-    if (Number(next.dy) === 0) delete next.dy;
-    return Object.keys(next).length ? next : null;
   }
 
   function variableReference(variable) {
@@ -192,28 +194,6 @@
   // ---------------------------------------------------------------------------
   // 區段：鏡頭規則壓縮與還原
   // ---------------------------------------------------------------------------
-  function cameraRuleForSource(rule, trace) {
-    const next = clone(rule);
-    const binding = next?.binding;
-    if (binding?.targetKey) {
-      const reference = variableReference(trace?.variables?.[binding.targetKey])
-        || legacyVariableReference(binding.targetKey);
-      if (reference) {
-        binding.targetVariable = reference;
-        delete binding.targetKey;
-      }
-    }
-    if (next?.target?.variableId) {
-      const reference = variableReference(trace?.variables?.[next.target.variableId])
-        || legacyVariableReference(next.target.variableId);
-      if (reference) {
-        next.target.variable = reference;
-        delete next.target.variableId;
-      }
-    }
-    return next;
-  }
-
   function resolveVariableReference(reference, variables, frames, frameIds) {
     if (!reference?.name) return null;
     const candidates = Object.values(variables || {}).filter(variable => (
@@ -231,65 +211,11 @@
       .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.variable || null;
   }
 
-  function resolveCameraRule(rule, trace) {
-    const next = clone(rule);
-    const binding = next?.binding;
-    if (binding) {
-      const existing = trace?.variables?.[binding.targetKey];
-      const reference = binding.targetVariable
-        || variableReference(existing)
-        || legacyVariableReference(binding.targetKey);
-      const variable = resolveVariableReference(reference, trace?.variables, trace?.frames, next.frameIds);
-      if (variable?.id) binding.targetKey = variable.id;
-      if (variable) delete binding.targetVariable;
-    }
-    if (next?.target) {
-      const existing = trace?.variables?.[next.target.variableId];
-      const reference = next.target.variable
-        || variableReference(existing)
-        || legacyVariableReference(next.target.variableId);
-      const variable = resolveVariableReference(reference, trace?.variables, trace?.frames, next.frameIds);
-      if (variable?.id) next.target.variableId = variable.id;
-      if (variable) delete next.target.variable;
-    }
-    return next;
-  }
-
-  function compactCameraRule(rule) {
-    const next = clone(rule);
-    if (next.condition == null || next.condition === '') delete next.condition;
-    if (Number(next.offsetX) === 0) delete next.offsetX;
-    if (Number(next.offsetY) === 0) delete next.offsetY;
-    if (next.target == null || next.target === '') delete next.target;
-    if (next.autoCapture === true) delete next.autoCapture;
-    if (next.manualFrame === false) delete next.manualFrame;
-    if (next.allFrames === false) delete next.allFrames;
-    if (next.binding) {
-      next.binding = compactBinding(next.binding);
-      if (!next.binding) delete next.binding;
-    }
-    ['directiveNames', 'frameSelectors', 'sourceSelectors', 'sourceFrameSelectors', 'frameIds'].forEach(key => {
-      if (!Array.isArray(next[key])) return;
-      next[key] = [...new Map(next[key].map(item => [JSON.stringify(item), item])).values()];
-      if (!next[key].length) delete next[key];
-    });
-    return next;
-  }
-
-  function compactTransition(rule) {
-    const next = clone(rule);
-    if (next.mode === 'auto') delete next.mode;
-    delete next.duration;
-    delete next.easing;
-    return next;
-  }
-
   function removeEmptyStudioCollections(studio) {
-    ['objects', 'arrows', 'cameraRules', 'transitions', 'codeSnippetSourceOverrides'].forEach(key => {
+    ['codeSnippetSourceOverrides'].forEach(key => {
       if (Array.isArray(studio[key]) && !studio[key].length) delete studio[key];
     });
-    ['eventInstructionStates', 'frameMaps', 'positions', 'bindings', 'visibility',
-      'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
+    ['eventInstructionStates', 'frameMaps', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (isObject(studio[key]) && !Object.keys(studio[key]).length) delete studio[key];
     });
     return studio;
@@ -555,54 +481,20 @@
     return result;
   }
 
-  function sanitizeTransitions(transitions) {
-    return (Array.isArray(transitions) ? transitions : []).map(rule => {
-      const next = { ...rule, mode: rule?.mode === 'instant' ? 'instant' : 'auto' };
-      delete next.duration;
-      delete next.easing;
-      return next;
-    });
-  }
-
-  function dedupeCameraRulesByScope(rules) {
-    const list = Array.isArray(rules) ? rules : [];
-    const lastIndex = new Map();
-    list.forEach((rule, index) => {
-      if (rule?.condition != null && rule.condition !== '') return;
-      const frameIds = [...new Set(Array.isArray(rule?.frameIds) ? rule.frameIds : [])].sort();
-      if (!frameIds.length && rule?.allFrames !== true) return;
-      const scope = rule?.allFrames === true ? 'all' : frameIds.join('\u0000');
-      lastIndex.set(scope, index);
-    });
-    return list.filter((rule, index) => {
-      if (rule?.condition != null && rule.condition !== '') return true;
-      const frameIds = [...new Set(Array.isArray(rule?.frameIds) ? rule.frameIds : [])].sort();
-      if (!frameIds.length && rule?.allFrames !== true) return true;
-      const scope = rule?.allFrames === true ? 'all' : frameIds.join('\u0000');
-      return lastIndex.get(scope) === index;
-    });
-  }
-
   // ---------------------------------------------------------------------------
   // 區段：由 trace 產生設定
   // ---------------------------------------------------------------------------
   function fromTrace(trace) {
     const frames = trace?.frames || [];
-    const studio = clone(trace?.studio || {});
+    const studio = directiveStudio(trace?.studio);
     const savedEventSettings = documentEventSettings(studio.eventSettings);
     ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings'].forEach(key => {
       delete studio[key];
     });
     if (savedEventSettings) studio.eventSettings = savedEventSettings;
-    studio.transitions = sanitizeTransitions(studio.transitions);
     studio.eventInstructionStates = compactInstructionStates(studio.eventInstructionStates);
-    studio.objects = dedupeById(studio.objects);
-    studio.arrows = dedupeById(studio.arrows);
-    studio.cameraRules = dedupeById(studio.cameraRules)
-      .map(rule => compactCameraRule(cameraRuleForSource(rule, trace)));
-    studio.transitions = dedupeById(studio.transitions).map(compactTransition);
     const frameMaps = {};
-    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
+    ['eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (studio[key] && Object.keys(studio[key]).length) frameMaps[key] = encodeFrameMap(studio[key], frames);
       delete studio[key];
     });
@@ -610,7 +502,7 @@
     removeEmptyStudioCollections(studio);
     const settings = {
       version: 1,
-      rules: encodeScopes(clone(trace?.rules || []), frames),
+      rules: [],
       skins: compactSkins(trace),
       studio: encodeScopes(studio, frames)
     };
@@ -624,18 +516,15 @@
     const next = clone(trace);
     const validFrameIds = new Set((next.frames || []).map(frame => frame.id));
     next.skins = compactSkins(trace);
-    next.studio = isObject(next.studio) ? next.studio : {};
+    next.rules = [];
+    next.studio = directiveStudio(next.studio);
     next.studio.eventInstructionStates = compactInstructionStates(next.studio.eventInstructionStates);
-    ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
+    ['eventStates', 'codeSnippetOverrides'].forEach(key => {
       if (!isObject(next.studio[key])) return;
       next.studio[key] = Object.fromEntries(Object.entries(next.studio[key])
         .filter(([frameId, value]) => validFrameIds.has(frameId)
           && (!isObject(value) || Object.keys(value).length)));
     });
-    next.studio.objects = dedupeById(next.studio.objects);
-    next.studio.arrows = dedupeById(next.studio.arrows);
-    next.studio.cameraRules = dedupeById(next.studio.cameraRules).map(compactCameraRule);
-    next.studio.transitions = dedupeById(next.studio.transitions).map(compactTransition);
     removeEmptyStudioCollections(next.studio);
     delete next.asmView;
     next.viewSettingsApplied = true;
@@ -651,26 +540,23 @@
     settings = remapVariableReferences(clone(settings), replacements);
     delete settings.variableReferences;
     const frames = trace.frames || [];
-    if (Array.isArray(settings.rules)) trace.rules = decodeScopes(clone(settings.rules), frames);
+    // 跨幀規則只來自 Studio 手動設定，不再套用。
+    trace.rules = [];
     if (settings.skins && typeof settings.skins === 'object') {
       trace.skins = { ...(trace.skins || {}), ...clone(settings.skins) };
     }
     if (settings.studio && typeof settings.studio === 'object') {
-      const studio = decodeScopes(clone(settings.studio), frames);
+      const studio = decodeScopes(directiveStudio(settings.studio), frames);
       const savedEventSettings = documentEventSettings(studio.eventSettings);
       ['eventColors', 'eventSignatureColors', 'eventAnimations', 'transitionDefaults', 'eventSettings'].forEach(key => {
         delete studio[key];
       });
       if (savedEventSettings) studio.eventSettings = savedEventSettings;
-      studio.transitions = sanitizeTransitions(studio.transitions);
       const frameMaps = studio.frameMaps || {};
       delete studio.frameMaps;
-      ['positions', 'bindings', 'visibility', 'objectStyles', 'eventStates', 'codeSnippetOverrides'].forEach(key => {
+      ['eventStates', 'codeSnippetOverrides'].forEach(key => {
         if (frameMaps[key]) studio[key] = decodeFrameMap(frameMaps[key], frames);
       });
-      studio.cameraRules = (Array.isArray(studio.cameraRules) ? studio.cameraRules : [])
-        .map(rule => resolveCameraRule(rule, trace));
-      studio.cameraRules = dedupeCameraRulesByScope(studio.cameraRules);
       trace.studio = studio;
     }
     return trace;
@@ -688,6 +574,8 @@
     frameIdsForDescriptor,
     fromTrace,
     compactTraceForSave,
-    applyToTrace
+    applyToTrace,
+    directiveStudio,
+    MANUAL_STUDIO_KEYS
   };
 });

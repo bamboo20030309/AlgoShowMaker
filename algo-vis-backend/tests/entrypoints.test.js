@@ -184,7 +184,7 @@ test('all algorithm surfaces load the same shared modules in dependency order', 
   assert.match(read('interaction.js'), /selectExternal\(element\)/);
   assert.match(read('interaction.js'), /clearExternalSelection\(element = null\)/);
   assert.match(read('trace.css'), /\.asm-trace-code-panel\.selected \.asm-trace-code-body/);
-  assert.ok(html.includes('interaction.js?v=trace-41'));
+  assert.ok(html.includes('interaction.js?v=trace-42'));
   assert.match(read('trace-code-presenter.js'), /currentPlan\.layoutKey === nextPlan\.layoutKey/);
   assert.match(read('trace-code-presenter.js'), /is-transition-preparing/);
   assert.match(read('trace-code-presenter.js'), /playbackEventIds/);
