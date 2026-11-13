@@ -10272,7 +10272,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-116';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-117';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10312,7 +10312,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-116';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-117';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10411,7 +10411,7 @@
     if (algorithmEditorFrame.getAttribute('src')?.includes('asmEmbed=editor')) {
       sendAlgorithmAnimationToFrame(algorithmEditorFrame, slide);
     } else {
-      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-116' + (isLocalCopy() ? '&localOnly=1' : '');
+      algorithmEditorFrame.src = 'algorithm.html?asmEmbed=editor&v=trace-runtime-117' + (isLocalCopy() ? '&localOnly=1' : '');
     }
   }
 

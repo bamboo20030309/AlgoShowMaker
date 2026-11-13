@@ -74,12 +74,13 @@ int main(){
     assert.equal(event.semantics.reads[0].variableId, event.targets.find(target => target.role === role).variableId);
   }
   for (const [index, operation, role] of [[5,'min','source-left'],[6,'max','source-right']]) {
-    const event = assignment(trace.frames[index]);
-    assert.equal(event.semantics.kind, 'select');
-    assert.equal(event.selectionOperation, operation);
-    assert.equal(event.selectedSourceRole, role);
-    assert.deepEqual(Object.fromEntries(Object.entries(event.payload).map(([key, value]) => [key, scalar(value)])),
-      {before:index===5?8:3,after:index===5?3:8,source:index===5?3:8,left:3,right:8});
+    const frame=trace.frames[index],event=frame.events.find(e=>e.type===`select-${operation}`),consumer=assignment(frame);
+    assert.equal(event.semantics.kind,'select');
+    assert.equal(event.selectionOperation,operation);assert.equal(event.selectedSourceRole,role);
+    assert.deepEqual(Object.fromEntries(Object.entries(event.payload).map(([key,value])=>[key,scalar(value)])),{left:3,right:8,source:index===5?3:8});
+    assert.equal(consumer.semantics.kind,'copy');assert.equal(consumer.selectionEventsRecorded,true);
+    assert.ok(event.order<consumer.order);assert.equal(scalar(consumer.payload.after),index===5?3:8);
+
   }
   assert.equal(trace.frames[7].events.find(event => event.compound).semantics.kind, 'compute');
   assert.equal(scalar(trace.frames[7].events.find(event => event.compound).payload.source), 3);
@@ -95,8 +96,9 @@ int main(){
   assert.equal(scalar(nested.selectionSteps[0].right), 8);
   assert.equal(trace.variables[nested.targets.find(target => target.role === 'source-left').variableId].name, 'b');
   const pick = assignment(trace.frames[11]);
-  assert.equal(pick.selectionOperation, 'max');
-  assert.equal(pick.selectedSourceRole, 'source-right');
+  assert.equal(pick.selectionOperation, undefined);
+  assert.equal(pick.selectionEventsRecorded,true);
+  assert.equal(trace.frames[11].events.find(e=>e.type==='select-max').selectedSourceRole,'source-right');
   assert.equal(scalar(pick.payload.left), 3);
   assert.equal(scalar(pick.payload.right), 8);
   const flag = assignment(trace.frames[12]);

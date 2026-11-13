@@ -134,7 +134,7 @@ function observeCase({ trace, item, manifest, compileOutput }) {
   } else if (!record) {
     addUnsupported('event', 'No event with the requested type at the CASE source line.');
   } else {
-    const target = targetOf(event);
+    const target = event.type.startsWith('select-') ? null : targetOf(event);
     const p = event.payload || {};
     if (target) {
       actual.target = event.type === 'swap' ? variableName(target.variableId) : expression(target);
@@ -167,7 +167,7 @@ function observeCase({ trace, item, manifest, compileOutput }) {
     // the top-level arithmetic operands. Expand the selected operand at its
     // actual position, preserving other repeated operands instead of globally
     // deduplicating b in expressions such as min(b,c)+b.
-    if (event.selectionSteps?.length && (event.binaryOperation || event.multiSourceArithmetic)) {
+    if (!event.selectionEventsRecorded && event.selectionSteps?.length && (event.binaryOperation || event.multiSourceArithmetic)) {
       const steps = event.selectionSteps;
       const selection = steps[steps.length - 1];
       actual.selectionOperation = selection.operation;

@@ -89,7 +89,7 @@ test('LCS sample builds its matrix and lists the sample answers', async () => {
   assert.ok(maxAssignments.every(event => ['source-left', 'source-right']
     .includes(event.selectedSourceRole)));
   assert.ok(maxAssignments.every(event => (
-    Number(event.payload.source.value) === Number(event.payload.after.value)
+    Number(event.payload.source.value) === Math.max(Number(event.payload.left.value), Number(event.payload.right.value))
   )));
   const [iBinding, jBinding] = buildFrame.bindings;
   const iValue = Number(buildFrame.state[iBinding.sourceVariableId].data.value);

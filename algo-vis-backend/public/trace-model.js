@@ -291,7 +291,10 @@
         const sources = sourcesOf(event);
         const assignment = ['assign', 'input-assign', 'write'].includes(event.type);
         const explicitKind = event.source?.operationKind || event.semantics?.kind;
-        let kind = explicitKind || event.type;
+        let kind = ['select-max', 'select-min'].includes(event.type) ? 'select' : explicitKind || event.type;
+        if (assignment && event.selectionEventsRecorded && !event.binaryOperation && !event.multiSourceArithmetic && !event.compound) {
+          kind = sources.length === 1 && sources[0].literal ? 'literal' : 'copy';
+        }
         if (assignment && !explicitKind) {
           kind = event.selectionOperation ? 'select'
             : event.conditionalSelection ? 'conditional'
@@ -299,12 +302,12 @@
             : sources.length === 1 && sources[0].literal ? 'literal'
             : sources.length === 1 && sources[0].variableId ? 'copy' : 'unknown';
         }
-        const sourceReads = event.conditionalSelection
+        const sourceReads = event.selectionEventsRecorded ? sources : event.conditionalSelection
           ? sources.filter(target => target.role === event.selectedSourceRole)
           : sources.some(target => target.variableId) ? sources : event.source?.readSources || [];
-        let reads = assignment || event.type === 'sequence-operation' ? sourceReads : ['compare', 'swap', 'output', 'return', 'call'].includes(event.type)
+        let reads = assignment || event.type === 'sequence-operation' ? sourceReads : ['compare', 'select-max', 'select-min', 'swap', 'output', 'return', 'call'].includes(event.type)
           ? event.targets || [] : [];
-        if (event.selectionSteps?.length) reads = [...reads, ...event.selectionSteps.flatMap(step =>
+        if (!event.selectionEventsRecorded && event.selectionSteps?.length) reads = [...reads, ...event.selectionSteps.flatMap(step =>
           (step.targets || []).filter(target => step.operation !== 'conditional' || target.role === step.selectedSourceRole))];
         if (event.compound || event.update) reads = [...reads, ...(event.targets || []).filter(target => target.role === 'target')];
         event.semantics = { ...(event.semantics || {}), version: 1, kind, reads: unique(reads) };

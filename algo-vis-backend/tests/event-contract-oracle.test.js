@@ -3,7 +3,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const {loadManifest,locateCase,verifyEvent}=require('./helpers/event-contract-oracle');
 const {observeCase}=require('./helpers/event-contract-observe');
 test('every contract has an independent answer and a real CASE source location',()=>{
- const m=loadManifest();assert.equal(m.cases.length,67);assert.equal(m.fixtures.length,7);
+ const m=loadManifest();assert.equal(m.cases.length,71);assert.equal(m.fixtures.length,7);
  for(const item of m.cases){
   assert.ok(locateCase(m,item).sourceLine>0,item.id);
   assert.ok(item.assertionKind==='control'?item.controlSpec&&item.eventSpec:item.expected,item.id);

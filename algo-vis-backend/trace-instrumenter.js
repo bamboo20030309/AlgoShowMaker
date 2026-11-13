@@ -5022,9 +5022,13 @@ function instrumentSource(source, watchIds = []) {
       if (['Identifier', 'SubscriptExpression'].includes(candidate?.name)) {
         return targetDescriptor(candidate);
       }
+      if (selectionCallSources(candidate) || ['BinaryExpression', 'UpdateExpression', 'AssignmentExpression'].includes(candidate?.name)) return {
+        variableId: '', expression: compactExpression(source.slice(candidate.from, candidate.to)),
+        indexExpression: '', selection: true
+      };
       return numericLiteralTarget(candidate);
     };
-    const safe = target => target?.literal === true || (
+    const safe = target => target?.literal === true || target?.selection === true || (
       Boolean(target?.variableId)
       && (!target.indexExpression || canCaptureIndexExpression(target.indexExpression))
     );
@@ -5466,11 +5470,13 @@ return ::asm_trace::event_nested_mutation(${analysis.lineAt(node.from)}, ${cppSt
       const expression = compactExpression(source.slice(node.from, node.to));
       return `::asm_trace::capture_conditional_value(${cppString(expression)}, ::asm_trace::source_target_json("source-left", ${indexedTargetArgs(choice.left)}), ::asm_trace::source_target_json("source-right", ${indexedTargetArgs(choice.right)}), [&](){ return static_cast<bool>(${rebuild(choice.condition, nestedContext)}); }, [&]()->decltype(auto){ return (${rebuild(choice.leftNode, nestedContext)}); }, [&]()->decltype(auto){ return (${rebuild(choice.rightNode, nestedContext)}); })`;
     }
-    if (context.recordSelections && selectionCallSources(node)) {
+    if (!suppressEvents && selectionCallSources(node)) {
       const selection = selectionCallSources(node);
       const expression = compactExpression(source.slice(node.from, node.to));
       const left = rebuild(selection.leftNode, nestedContext), right = rebuild(selection.rightNode, nestedContext);
-      let selected = `::asm_trace::capture_selected_value(${cppString(expression)}, ${cppString(selection.operation)}, ::asm_trace::source_target_json("source-left", ${indexedTargetArgs(selection.left)}), ::asm_trace::source_target_json("source-right", ${indexedTargetArgs(selection.right)}), [&]()->decltype(auto){ return (${left}); }, [&]()->decltype(auto){ return (${right}); })`;
+      const selectionSignature = signature(`select-${selection.operation}`, node);
+      recordEventSource(selectionSignature, node, node.from, node.to, true);
+      let selected = `::asm_trace::capture_selected_value(${analysis.lineAt(node.from)}, ${cppString(selectionSignature)}, ${cppString(expression)}, ${cppString(selection.operation)}, ::asm_trace::source_target_json("source-left", ${indexedTargetArgs(selection.left)}), ::asm_trace::source_target_json("source-right", ${indexedTargetArgs(selection.right)}), [&]()->decltype(auto){ return (${left}); }, [&]()->decltype(auto){ return (${right}); })`;
       const position = `${node.from}:${node.to}`;
       if (context.arithmeticCapturePositions?.has(position)) selected = `::asm_trace::capture_operand(${context.arithmeticCapturePositions.get(position)}, (${selected}))`;
       return selected;
@@ -5659,12 +5665,13 @@ ${loop}
       const sideEffectingTarget = target.indexExpression && /(?:\+\+|--|[^=!<>]=|\w\s*\()/.test(target.indexExpression);
       const containsMutation = current => current && (['AssignmentExpression', 'UpdateExpression'].includes(current.name)
         || childrenOf(current).some(containsMutation));
-      if (!suppressEvents && target.variableId && (!standalone || sideEffectingTarget || (containsMutation(sourceNode) && !conditional && sourceNode?.name !== 'AssignmentExpression'))) {
+      if (!suppressEvents && target.variableId && (!standalone || sideEffectingTarget || (containsMutation(sourceNode) && !conditional && !selectionSources && sourceNode?.name !== 'AssignmentExpression'))) {
         const nested = renderNestedMutation(node, targetNode, sourceNode, nestedContext);
         if (nested) return nested;
       }
       const capturedOperands = multiSources ? multiSources.map(item => item.node)
         : binarySources ? [binarySources.leftNode, binarySources.rightNode]
+        : selectionSources ? [sourceNode]
         : sourceNode && (['Identifier', 'SubscriptExpression'].includes(sourceNode.name) || numericLiteralTarget(sourceNode)) ? [sourceNode] : [];
       const capturePositions = new Map(capturedOperands.map((operand, index) => [`${operand.from}:${operand.to}`, index]));
       const parts = [];
@@ -5703,7 +5710,8 @@ ${loop}
           } else if (bitwiseAssignment && !chainedAssignment) {
             rendered = `::asm_trace::event_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(sourceTarget)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, false, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else if (selectionSources && !chainedAssignment) {
-            rendered = `::asm_trace::event_select_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${indexedTargetArgs(selectionSources.left)}, ${indexedTargetArgs(selectionSources.right)}, ${cppString(selectionSources.operation)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${selectionSources.leftExpression}); }, [&]()->decltype(auto){ return (${selectionSources.rightExpression}); }, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
+            const selectedResult = { variableId: '', expression: compactExpression(source.slice(sourceNode.from, sourceNode.to)), indexExpression: '' };
+            rendered = `::asm_trace::event_multi_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, std::vector<std::string>{::asm_trace::source_target_json("source", ${indexedTargetArgs(selectedResult)})}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else if (multiSources && !chainedAssignment) {
             rendered = `::asm_trace::event_multi_assign(${analysis.lineAt(node.from)}, ${cppString(signature('assign', node))}, ${indexedTargetArgs(target)}, ${multiSourceArgs(multiSources)}, ${cppString(sourceExpression)}, [&]()->decltype(auto){ return (${targetAccess}); }, ${action}, [&]()->decltype(auto){ return (${targetAccess}); }, true, ${forInitializerAssignment ? 'true' : 'false'})`;
           } else if (binarySources && !chainedAssignment) {

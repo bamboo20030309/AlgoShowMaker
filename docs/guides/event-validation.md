@@ -128,9 +128,9 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 
 ## 本次覆蓋與邊界（2026-11-02）
 
-目前共有 67 條手寫答案，分成 7 份 C++ 測資。每條包含資料檢查及實際 SVG 或播放控制檢查。E02、E03、E04、E05、E06、E07、E08、E09、E17、E19 另以固定時鐘在 1 倍、2 倍速檢查提交前一毫秒與提交時刻；不是每一條案例都具有完整逐毫秒檢查。E09 即使新舊值相同，也核實一般複製賦值的 1260 ms 時序、660 ms 提交與實際複本。
+目前共有 71 條手寫答案，分成 7 份 C++ 測資。每條包含資料檢查及實際 SVG 或播放控制檢查。E02、E03、E04、E05、E06、E07、E08、E09、E17、E19 另以固定時鐘在 1 倍、2 倍速檢查提交前一毫秒與提交時刻；不是每一條案例都具有完整逐毫秒檢查。E09 即使新舊值相同，也核實一般複製賦值的 1260 ms 時序、660 ms 提交與實際複本。
 
-單一操作的時鐘測試只保留該操作的事件，避免把同幀其他物件退場算進該操作。真實幀若有鏡頭或排版移動，會另外安排時間。畫面採樣會檢查案例指定的項目；這 67 條並不等於涵蓋所有 C++ 語法、所有 style 組合與全部演算法。
+單一操作的時鐘測試只保留該操作的事件，避免把同幀其他物件退場算進該操作。真實幀若有鏡頭或排版移動，會另外安排時間。畫面採樣會檢查案例指定的項目；這 71 條並不等於涵蓋所有 C++ 語法、所有 style 組合與全部演算法。
 
 報告位於 algo-vis-backend/test-results/event-contracts/summary.json；逐條預期值、實際值、畫面與時鐘證據在同目錄 records.json。pass 表示本案例要求的已實作檢查通過，clock.applicable=false 明確表示該案例沒有精確時鐘探針，不能據此宣稱時間全面通過。
 
@@ -138,7 +138,7 @@ node scripts/validation/event-contracts.js --case E03 --fresh
 
 ## 外框擴縮階段
 
-在 algo-vis-backend 執行 `node --test tests/sequence-outerframe-phases.browser.test.js`。測試自行啟動隔離服務與瀏覽器，檢查 normal 的 insert、erase、push_back、pop_back，在 1／2 倍速依固定時間核對真實外框尺寸。這是 67 個事件案例以外新增的專項，不代表其他 render 的全組合均已驗證。
+在 algo-vis-backend 執行 `node --test tests/sequence-outerframe-phases.browser.test.js`。測試自行啟動隔離服務與瀏覽器，檢查 normal 的 insert、erase、push_back、pop_back，在 1／2 倍速依固定時間核對真實外框尺寸。這是 71 個事件案例以外新增的專項，不代表其他 render 的全組合均已驗證。
 
 外框專項現擴充為 6 個情境 × 1／2 倍速，共 12 組：insert、erase、常數 push_back、pop_back、可見來源 push_back、隱藏來源 push_back。入場階段除了外框尺寸，另檢查提交前的數字、格子、字形尺寸及所有祖先的有效透明度，完成後不得殘留入場複本。
 

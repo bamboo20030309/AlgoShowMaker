@@ -132,6 +132,7 @@
   }
 
   function selectionDuration(event) {
+    if (event?.selectionEventsRecorded === true) return 0;
     if (event?.selectionSteps?.length) return event.selectionSteps.length * COMPARE_DURATION;
     // Older results saved only the winner. Do not fabricate the other value
     // or compare two undefined operands as zero; their selected copy is valid.
@@ -156,7 +157,7 @@
     };
     if (event?.type === 'declare' || event?.type === 'visual-enter') add('enter', MOTION_TIME.enter, ['enter']);
     else if (['scope-exit', 'visual-exit'].includes(event?.type)) add('exit', MOTION_TIME.exit, ['exit']);
-    else if (event?.type === 'compare') {
+    else if (event?.type === 'compare' || ['select-max', 'select-min'].includes(event?.type)) {
       compareStages('');
     } else if (event?.type === 'swap') add('swap', motionMs, ['move']);
     else if (['assign', 'input-assign', 'write'].includes(event?.type) && fieldExitKind === 'remove') {
@@ -4825,7 +4826,7 @@
           const operatorPrefix = event.compound === true && transferOperator === '+' ? '+' : '';
           if (assignmentSourceIsLiteral(sourceItem)) {
             const transfer = createLiteralAssignmentTransfer(
-              root, { ...sourceItem, literalValue: sourceItem.literalValue
+              root, { ...sourceItem, literalValue: sourceItem.value?.value ?? sourceItem.literalValue
                 ?? (sources.length === 1 ? event.payload?.source?.value ?? event.payload?.source : undefined) },
               operand, literalIndex, literalCount,
               // Keep operand order for noncommutative expressions such as 2-b.
@@ -7832,6 +7833,7 @@
       // above the destination. Only the destination must be drawable.
       return true;
     }
+    if (animation === 'select') return targets.length >= 2 && event.payload?.left != null && event.payload?.right != null;
     if (animation === 'compare' && event?.comparisonKind === 'truthy') {
       return targets.length === 1 && visible(targets[0]);
     }
@@ -7860,7 +7862,7 @@
   }
 
   function eventAnimationIsRenderable(animation) {
-    return ['declare', 'exit', 'position', 'assign', 'input-assign', 'compare', 'swap', 'fixed', 'sequence'].includes(animation)
+    return ['declare', 'exit', 'position', 'assign', 'input-assign', 'select', 'compare', 'swap', 'fixed', 'sequence'].includes(animation)
       || Boolean(GENERIC_EVENT_DURATION[animation]);
   }
 
@@ -7900,6 +7902,7 @@
       const target = targets.find(item => item?.role === 'target') || targets[0];
       return Boolean(target?.variableId);
     }
+    if (animation === 'select') return targets.length >= 2 && event.payload?.left != null && event.payload?.right != null;
     if (animation === 'compare' && event?.comparisonKind === 'truthy') {
       return targets.length === 1 && Boolean(targets[0]?.variableId);
     }
@@ -8175,7 +8178,7 @@
         duration = effectDuration
           + (!bitwise && !standaloneUpdate && !fieldExitKind && (targetMoves || markerMovesWithinFrame) ? swapDuration : 0);
       }
-      if (event.type === 'compare' && animation === 'compare') {
+      if (animation === 'select' || event.type === 'compare' && animation === 'compare') {
         duration = COMPARE_DURATION;
       }
       if (event.type === 'swap' && animation === 'swap') {
@@ -8800,7 +8803,7 @@
         const movedEarlier = variableChangedBeforeEvent(eventFrame, slot.event, variableId, options.document);
         return movedEarlier ? null : options.rawDeltas?.get?.(operand.visualKey);
       };
-      if (slot.animation === 'assign' && selectionDuration(slot.event)) {
+      if (['assign', 'select'].includes(slot.animation) && selectionDuration(slot.event)) {
         const event = slot.event;
         const selections = event.selectionSteps?.length ? event.selectionSteps : [{
           operation: event.selectionOperation, left: event.payload?.left, right: event.payload?.right,
@@ -8809,7 +8812,8 @@
         const valueHints = [];
         const destination = (event.targets || []).find(t=>t.role==='target');
         const destinationPoint = destination && eventOperand(options.document,eventFrame,destination,event.payload?.after,
-          options.currentPlacements,options.currentElements,visualKeyAtEvent,event)?.point;
+          options.currentPlacements,options.currentElements,visualKeyAtEvent,event)?.point
+          || { x: 160, y: 100, width: 40, height: 40 };
         const displaySelections = selections.map((selection,step)=>({ ...selection,
           targets: (selection.targets || []).map((target,side)=>{
             const value = side===0 ? selection.left : selection.right;
@@ -8889,6 +8893,7 @@
               for (let i = 0; i < selections.length; i++) completeSelection(i);
               hint.remove();
               valueHints.forEach(v=>v.group.remove());
+              if (slot.animation === 'select') return;
               if (!assignment) {
                 const selected = (event.targets || []).find(t => t.role === event.selectedSourceRole);
                 const computing = Boolean(event.selectionSteps?.length);
@@ -8901,7 +8906,10 @@
               assignment?.update(elapsed - selectionMs);
             }
           },
-          remove() { comparisons.forEach(c=>c?.remove()); assignment?.remove(); valueHints.forEach(v=>v.group.remove()); hint.remove(); }
+          remove() {
+            if (slot.animation === 'select') for (let i=0;i<selections.length;i++) completeSelection(i);
+            comparisons.forEach(c=>c?.remove()); assignment?.remove(); valueHints.forEach(v=>v.group.remove()); hint.remove();
+          }
         };
       }
       if (slot.type === 'compare') {
@@ -10951,7 +10959,7 @@
     // Selection emphasis belongs to the frame, including a blocking smooth
     // restoration after its final operation and any other visual settlement.
     const restoresSelection = playbackEventTimeline.some(slot =>
-      slot.animation === 'assign' && selectionDuration(slot.event) > 0);
+      ['assign', 'select'].includes(slot.animation) && selectionDuration(slot.event) > 0);
     selectionRestore.start = restoresSelection ? frameSettlementEnd : Infinity;
     const totalDuration = frameSettlementEnd + (restoresSelection ? selectionRestore.duration : 0);
     if (restoresSelection) {
@@ -11645,10 +11653,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-358';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-359';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-358', play, cancel, updateEventAvailability,
+    build: 'trace-359', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

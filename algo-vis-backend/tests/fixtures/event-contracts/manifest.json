@@ -680,16 +680,10 @@
         "target": "a",
         "before": 0,
         "after": 3,
-        "selectionOperation": "min",
-        "selectedSource": "b",
         "sources": [
           {
             "expression": "b",
             "value": 3
-          },
-          {
-            "expression": "c",
-            "value": 8
           }
         ]
       },
@@ -699,23 +693,20 @@
         "targetStylePreserved": true,
         "temporaryCopiesAfter": 0,
         "stages": [
-          "compare",
-          "select",
           "copy",
           "transfer",
           "commit",
           "cleanup"
         ],
         "readHighlight": [
-          "b",
-          "c"
+          "b"
         ]
       },
       "timing": {
-        "compareMs": 1560,
         "transferMs": 500,
-        "durationMs": 2820,
-        "commitMs": 2220
+        "durationMs": 1260,
+        "commitMs": 660,
+        "codePromptMs": 200
       },
       "assertionKind": "event"
     },
@@ -731,13 +722,7 @@
         "target": "a",
         "before": 3,
         "after": 8,
-        "selectionOperation": "max",
-        "selectedSource": "c",
         "sources": [
-          {
-            "expression": "b",
-            "value": 3
-          },
           {
             "expression": "c",
             "value": 8
@@ -750,8 +735,6 @@
         "targetStylePreserved": true,
         "temporaryCopiesAfter": 0,
         "stages": [
-          "compare",
-          "select",
           "copy",
           "transfer",
           "commit",
@@ -759,10 +742,10 @@
         ]
       },
       "timing": {
-        "compareMs": 1560,
         "transferMs": 500,
-        "durationMs": 2820,
-        "commitMs": 2220
+        "durationMs": 1260,
+        "commitMs": 660,
+        "codePromptMs": 200
       },
       "assertionKind": "event"
     },
@@ -821,16 +804,10 @@
         "target": "a",
         "before": 3,
         "after": 5,
-        "selectionOperation": "min",
-        "selectedSource": "b",
         "sources": [
           {
             "expression": "b",
             "value": 3
-          },
-          {
-            "expression": "c",
-            "value": 8
           },
           {
             "expression": "d",
@@ -843,9 +820,8 @@
         "targetStylePreserved": true,
         "temporaryCopiesAfter": 0,
         "stages": [
-          "compare",
-          "select",
-          "parallel-value-transfer",
+          "copy",
+          "transfer",
           "commit",
           "cleanup"
         ],
@@ -853,10 +829,10 @@
         "commitCount": 1
       },
       "timing": {
-        "compareMs": 1560,
         "transferMs": 500,
-        "durationMs": 2820,
-        "commitMs": 2220
+        "durationMs": 1260,
+        "commitMs": 660,
+        "codePromptMs": 200
       },
       "assertionKind": "event"
     },
@@ -950,13 +926,7 @@
         "target": "a",
         "before": 5,
         "after": 3,
-        "selectionOperation": "min",
-        "selectedSourceRole": "source-left",
         "sources": [
-          {
-            "expression": "b",
-            "value": 3
-          },
           {
             "expression": "b",
             "value": 3
@@ -968,14 +938,19 @@
         "sourceRetained": true,
         "targetStylePreserved": true,
         "temporaryCopiesAfter": 0,
-        "tieWinner": "first",
-        "readHighlightCount": 1
+        "readHighlightCount": 1,
+        "stages": [
+          "copy",
+          "transfer",
+          "commit",
+          "cleanup"
+        ]
       },
       "timing": {
-        "compareMs": 1560,
         "transferMs": 500,
-        "durationMs": 2820,
-        "commitMs": 2220
+        "durationMs": 1260,
+        "commitMs": 660,
+        "codePromptMs": 200
       },
       "assertionKind": "event"
     },
@@ -2193,6 +2168,150 @@
         "before": 3,
         "after": 11
       }
+    },
+    {
+      "id": "E17_SELECT",
+      "fixture": "selection",
+      "marker": "E17",
+      "eventTypes": [
+        "select-min"
+      ],
+      "expression": "a = min(b, c);",
+      "expected": {
+        "selectionOperation": "min",
+        "selectedSource": "b",
+        "selectedSourceRole": "source-left",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "none",
+        "stages": [
+          "compare",
+          "select"
+        ],
+        "temporaryCopiesAfter": 0
+      },
+      "timing": {
+        "durationMs": 1560
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E17_MAX_SELECT",
+      "fixture": "selection",
+      "marker": "E17_MAX",
+      "eventTypes": [
+        "select-max"
+      ],
+      "expression": "a = max(b, c);",
+      "expected": {
+        "selectionOperation": "max",
+        "selectedSource": "c",
+        "selectedSourceRole": "source-right",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "none",
+        "stages": [
+          "compare",
+          "select"
+        ],
+        "temporaryCopiesAfter": 0
+      },
+      "timing": {
+        "durationMs": 1560
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E19_SELECT",
+      "fixture": "selection",
+      "marker": "E19",
+      "eventTypes": [
+        "select-min"
+      ],
+      "expression": "a = min(b, c) + d;",
+      "expected": {
+        "selectionOperation": "min",
+        "selectedSource": "b",
+        "selectedSourceRole": "source-left",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "c",
+            "value": 8
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "none",
+        "stages": [
+          "compare",
+          "select"
+        ],
+        "temporaryCopiesAfter": 0
+      },
+      "timing": {
+        "durationMs": 1560
+      },
+      "assertionKind": "event"
+    },
+    {
+      "id": "E17_TIE_SELECT",
+      "fixture": "selection",
+      "marker": "E17_TIE",
+      "eventTypes": [
+        "select-min"
+      ],
+      "expression": "a = min(b, b);",
+      "expected": {
+        "selectionOperation": "min",
+        "selectedSource": "b",
+        "selectedSourceRole": "source-left",
+        "sources": [
+          {
+            "expression": "b",
+            "value": 3
+          },
+          {
+            "expression": "b",
+            "value": 3
+          }
+        ]
+      },
+      "visual": {
+        "transfer": "none",
+        "stages": [
+          "compare",
+          "select"
+        ],
+        "temporaryCopiesAfter": 0
+      },
+      "timing": {
+        "durationMs": 1560
+      },
+      "assertionKind": "event"
     }
   ]
 }

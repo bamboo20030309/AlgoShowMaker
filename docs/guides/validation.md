@@ -26,7 +26,7 @@ npm run test:inventory
 ### 事件系統的逐例標準答案
 
 共用事件規則、讀取 highlight、動作時序與播放控制使用新的 [事件驗證手冊](event-validation.md)。
-`npm run test:events -- --list` 只列 67 個案例；`--case E03` 驗一項；`--failed` 續跑失敗或依賴改變的案例。
+`npm run test:events -- --list` 只列 71 個案例；`--case E03` 驗一項；`--failed` 續跑失敗或依賴改變的案例。
 每項都有 C++、手寫答案及資料／SVG觀測，10 個核心賦值案例另外以 1x／2x 可控制時鐘核對提交前 1ms 與抵達時刻。
 這份驗證不取代下面的歷史 bug、位元、樹結構等專項，也不代表任意 C++ 語法已窮舉。
 

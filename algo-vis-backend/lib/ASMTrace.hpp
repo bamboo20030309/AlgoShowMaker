@@ -1036,7 +1036,7 @@ void event_declare_uninitialized(int line, const char* signature, const char* va
 }
 
 struct SelectionCapture {
-  std::string expression, operation, left, right, source, selected_role, selected_target, json;
+  std::string expression, operation, left, right, source, selected_role, selected_target, json, event_id;
   bool condition = false;
 };
 struct ArithmeticCapture {
@@ -1072,6 +1072,18 @@ inline std::string selection_steps_json(const ArithmeticCapture& capture) {
   for (const auto& selection : capture.selections) { if (json.size() > 1) json += ','; json += selection.json; }
   return json + ']';
 }
+inline std::string selection_dependencies_json(const ArithmeticCapture& capture) {
+  std::string json="[";
+  for(const auto& selection:capture.selections) if(!selection.event_id.empty()) {
+    if(json.size()>1) json+=','; json+=::asm_trace::quoted(selection.event_id);
+  }
+  return json+']';
+}
+inline bool has_independent_selections(const ArithmeticCapture& capture) {
+  for (const auto& selection : capture.selections)
+    if (selection.operation == "max" || selection.operation == "min") return true;
+  return false;
+}
 inline std::string resolve_captured_target(std::string target, const ArithmeticCapture& capture) {
   for (const auto& selection : capture.selections) {
     if (target.find("\"expression\":" + ::asm_trace::quoted(selection.expression)) == std::string::npos) continue;
@@ -1087,28 +1099,51 @@ inline std::string resolve_captured_target(std::string target, const ArithmeticC
   }
   return target;
 }
+// Each selection records after its operands, before its consuming operation.
+// Operand capture scopes isolate nested calls and resolve the chosen leaf.
 template <typename LeftFactory, typename RightFactory>
-auto capture_selected_value(const char* expression, const char* operation,
+auto capture_selected_value(int line, const char* signature, const char* expression, const char* operation,
     const std::string& left_target, const std::string& right_target,
-    LeftFactory left_factory, RightFactory right_factory) {
-  const auto left_value = left_factory();
-  const auto right_value = right_factory();
+    LeftFactory left_factory, RightFactory right_factory)
+    -> typename std::conditional<
+      std::is_lvalue_reference<decltype(left_factory())>::value && std::is_lvalue_reference<decltype(right_factory())>::value,
+      const typename std::decay<decltype(left_factory())>::type&,
+      typename std::decay<decltype(left_factory())>::type>::type {
+  static_assert(std::is_same<typename std::decay<decltype(left_factory())>::type,
+    typename std::decay<decltype(right_factory())>::type>::value, "min/max operands must have the same type");
+  ArithmeticCapture left_capture, right_capture;
+  decltype(auto) left_value = [&]()->decltype(auto){ ArithmeticCaptureScope scope; decltype(auto) value=left_factory(); left_capture=scope.capture; return value; }();
+  decltype(auto) right_value = [&]()->decltype(auto){ ArithmeticCaptureScope scope; decltype(auto) value=right_factory(); right_capture=scope.capture; return value; }();
+  SelectionCapture selection;
   const bool left = std::string(operation) == "max" ? !(left_value < right_value) : !(right_value < left_value);
-  if (!arithmetic_capture_stack().empty()) {
-    SelectionCapture selection;
-    selection.expression = expression; selection.operation = operation;
-    selection.left = encode_value(left_value); selection.right = encode_value(right_value);
-    selection.source = left ? selection.left : selection.right;
-    selection.selected_role = left ? "source-left" : "source-right";
-    selection.selected_target = left ? left_target : right_target;
-    selection.json = "{\"operation\":" + ::asm_trace::quoted(operation) + ",\"expression\":" + ::asm_trace::quoted(expression)
-      + ",\"left\":" + selection.left + ",\"right\":" + selection.right
-      + ",\"source\":" + selection.source + ",\"selectedSourceRole\":" + ::asm_trace::quoted(selection.selected_role)
-      + ",\"targets\":[" + left_target + ',' + right_target + "]}";
-    arithmetic_capture_stack().back()->selections.push_back(selection);
-  }
+  selection.expression=expression; selection.operation=operation;
+  selection.left=encode_value(left_value); selection.right=encode_value(right_value);
+  selection.source=left ? selection.left : selection.right;
+  selection.selected_role=left ? "source-left" : "source-right";
+  std::string resolved_left=resolve_captured_target(left_target,left_capture);
+  std::string resolved_right=resolve_captured_target(right_target,right_capture);
+  resolved_left.insert(resolved_left.size()-1, ",\"value\":"+selection.left);
+  resolved_right.insert(resolved_right.size()-1, ",\"value\":"+selection.right);
+  selection.selected_target=left ? resolved_left : resolved_right;
+  selection.json="{\"operation\":"+::asm_trace::quoted(operation)+",\"expression\":"+::asm_trace::quoted(expression)
+    +",\"left\":"+selection.left+",\"right\":"+selection.right+",\"source\":"+selection.source
+    +",\"selectedSourceRole\":"+::asm_trace::quoted(selection.selected_role)
+    +",\"targets\":["+resolved_left+','+resolved_right+"]}";
+  ArithmeticCapture dependencies=left_capture;
+  dependencies.selections.insert(dependencies.selections.end(),right_capture.selections.begin(),right_capture.selections.end());
+  selection.event_id=recorder().add_event_lazy(std::string("select-")+operation,line,signature ? signature : "",[&](){
+    return std::string("\"selectionOperation\":")+::asm_trace::quoted(operation)
+      +",\"selectedSourceRole\":"+::asm_trace::quoted(selection.selected_role)
+      +",\"expression\":"+::asm_trace::quoted(expression)
+      +",\"dependencyEventIds\":"+selection_dependencies_json(dependencies)
+      +",\"payload\":{\"left\":"+selection.left+",\"right\":"+selection.right+",\"source\":"+selection.source+"}"
+      +",\"targets\":["+resolved_left+','+resolved_right+"]";
+  });
+  selection.json.insert(selection.json.size()-1,",\"eventId\":"+::asm_trace::quoted(selection.event_id));
+  if (!arithmetic_capture_stack().empty()) arithmetic_capture_stack().back()->selections.push_back(selection);
   return left ? left_value : right_value;
 }
+
 template <typename ConditionFactory, typename LeftFactory, typename RightFactory>
 auto capture_conditional_value(const char* expression,
     const std::string& left_target, const std::string& right_target,
@@ -1172,6 +1207,11 @@ void event_initialized_assign(int line, const char* signature,
     source.insert(source.size() - 1, ",\"value\":" + captured_value(operands, index));
     sources += ',' + source;
   }
+  if (!operands.selections.empty() && std::string(selection_operation) != "conditional" && !std::string(selection_operation).empty()) {
+    std::string selected=operands.selections.back().selected_target;
+    const auto role=selected.find("\"role\":\""); const auto end=selected.find('"',role+8);
+    selected.replace(role+8,end-role-8,"source"); sources=','+selected;
+  }
   if (sources.empty()) sources = ',' + target_json("source", source_id, source_expression, source_index,
     source_has_resolved_index, source_resolved_index);
   target.insert(target.size() - 1, std::string(",\"lifetimeIdentity\":") + ::asm_trace::quoted(lifetime));
@@ -1180,9 +1220,10 @@ void event_initialized_assign(int line, const char* signature,
       + ",\"declarationInitializer\":true"
       + (std::string(selection_operation).empty() || operands.selections.empty() ? ""
         : (std::string(selection_operation) == "conditional" ? ",\"conditionalSelection\":true,\"conditionResult\":" + std::string(operands.selections.back().condition ? "true" : "false")
-          : ",\"selectionOperation\":" + ::asm_trace::quoted(selection_operation))
+          : "")
           + ",\"selectedSourceRole\":" + ::asm_trace::quoted(operands.selections.back().selected_role))
-      + (operands.selections.empty() ? "" : ",\"selectionSteps\":" + selection_steps_json(operands))
+      + (operands.selections.empty() ? "" : (std::string(has_independent_selections(operands) ? ",\"selectionEventsRecorded\":true" : "")) + ",\"selectionSteps\":" + selection_steps_json(operands)
+        + ",\"dependencyEventIds\":" + selection_dependencies_json(operands))
       + (std::string(computation_operator).empty() ? "" : ",\"binaryOperation\":" + quoted(computation_operator))
       + (source_targets.size() > 2 ? ",\"multiSourceArithmetic\":true" : "")
       + ",\"bitwiseCommit\":" + (bitwise_commit ? "true" : "false")
@@ -1549,7 +1590,8 @@ void event_binary_assign(
   const std::string after = encode_value(after_value);
   recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
       + ",\"binaryOperation\":" + quoted(operation ? operation : "")
-      + (operands.capture.selections.empty() ? "" : ",\"selectionSteps\":" + selection_steps_json(operands.capture))
+      + (operands.capture.selections.empty() ? "" : (std::string(has_independent_selections(operands.capture) ? ",\"selectionEventsRecorded\":true" : "")) + ",\"selectionSteps\":" + selection_steps_json(operands.capture)
+        + ",\"dependencyEventIds\":" + selection_dependencies_json(operands.capture))
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
@@ -1675,12 +1717,14 @@ void event_multi_assign(
     targets += ',' + source_target;
   }
   recorder().add_event_lazy("assign", line, signature ? signature : "", [&]() { return std::string("\"operation\":\"=\"")
-      + ",\"multiSourceArithmetic\":true"
-      + (operands.capture.selections.empty() ? "" : ",\"selectionSteps\":" + selection_steps_json(operands.capture))
+      + (source_targets.size() > 1 ? ",\"multiSourceArithmetic\":true" : "")
+      + (operands.capture.selections.empty() ? "" : (std::string(has_independent_selections(operands.capture) ? ",\"selectionEventsRecorded\":true" : "")) + ",\"selectionSteps\":" + selection_steps_json(operands.capture)
+        + ",\"dependencyEventIds\":" + selection_dependencies_json(operands.capture))
       + ",\"animate\":" + (animate ? "true" : "false")
       + ",\"forInitializer\":" + (for_initializer ? "true" : "false")
       + ",\"expression\":" + quoted(expression ? expression : "")
-      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after + "}"
+      + ",\"payload\":{\"before\":" + before + ",\"after\":" + after
+      + (source_targets.size()==1 ? ",\"source\":"+captured_value(operands.capture,0) : "") + "}"
       + ",\"targets\":[" + targets + ']'; });
 }
 

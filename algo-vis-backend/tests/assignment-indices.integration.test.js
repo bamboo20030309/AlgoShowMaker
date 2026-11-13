@@ -233,7 +233,7 @@ int main() {
   assert.equal(signed.targets[2].literalValue, '(-3)');
 });
 
-test('max and min assignments record only the selected source role', async () => {
+test('max and min emit independent selections and assignments consume the selected source', async () => {
   const { trace } = await compile(`#include <bits/stdc++.h>
 using namespace std;
 int main() {
@@ -246,21 +246,24 @@ int main() {
   literal = min(values[1], 5);
   // @frame values,maximum,minimum,tied,literal
 }`);
-  const events = trace.frames.at(-1).events.filter(event => event.selectionOperation);
-  const byTarget = Object.fromEntries(events.map(event => [event.targets[0].expression, event]));
-  assert.equal(events.length, 4);
-  assert.equal(byTarget.maximum.selectionOperation, 'max');
-  assert.equal(byTarget.maximum.selectedSourceRole, 'source-right');
-  assert.equal(byTarget.maximum.targets[2].resolvedIndex, 1);
-  assert.equal(Number(byTarget.maximum.payload.source.value), 8);
-  assert.equal(byTarget.minimum.selectionOperation, 'min');
-  assert.equal(byTarget.minimum.selectedSourceRole, 'source-left');
-  assert.equal(byTarget.minimum.targets[1].resolvedIndex, 0);
-  assert.equal(Number(byTarget.minimum.payload.source.value), 3);
-  assert.equal(byTarget.tied.selectedSourceRole, 'source-left');
-  assert.equal(byTarget.literal.selectedSourceRole, 'source-right');
-  assert.equal(byTarget.literal.targets[2].literal, true);
-  assert.equal(byTarget.literal.targets[2].literalValue, '5');
+  const frame=trace.frames.at(-1);
+  const events=frame.events.filter(event=>event.type.startsWith('select-'));
+  assert.equal(events.length,4);
+  const byTarget=Object.fromEntries(frame.events.filter(event=>event.type==='assign').map(event=>[
+    event.targets[0].expression,events.filter(choice=>choice.order<event.order).at(-1)]));
+  assert.equal(byTarget.maximum.type,'select-max');
+  assert.equal(byTarget.maximum.selectedSourceRole,'source-right');
+  assert.equal(byTarget.maximum.targets[1].resolvedIndex,1);
+  assert.equal(Number(byTarget.maximum.payload.source.value),8);
+  assert.equal(byTarget.minimum.type,'select-min');
+  assert.equal(byTarget.minimum.selectedSourceRole,'source-left');
+  assert.equal(byTarget.minimum.targets[0].resolvedIndex,0);
+  assert.equal(Number(byTarget.minimum.payload.source.value),3);
+  assert.equal(byTarget.tied.selectedSourceRole,'source-left');
+  assert.equal(byTarget.literal.selectedSourceRole,'source-right');
+  assert.equal(byTarget.literal.targets[1].literal,true);
+  assert.equal(byTarget.literal.targets[1].literalValue,'5');
+
 });
 
 test('capturing initializer metadata does not evaluate an index function again', async () => {

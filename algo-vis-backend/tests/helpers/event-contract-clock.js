@@ -8,7 +8,8 @@ const supported = new Set(['E02', 'E03', 'E04', 'E05', 'E06', 'E07', 'E08', 'E09
 async function runClockProbe({ page, trace, item, observation }) {
   if (!supported.has(item.id)) return { applicable: false, pass: null, observed: {}, failures: [],
     reason: 'This probe covers scalar/cell copy, arithmetic, initialization and min/max assignment commit clocks.' };
-  const commitMs = item.timing?.assignmentCommitMs ?? item.timing?.commitMs ?? item.timing?.durationMs;
+  const commitMs = (item.timing?.assignmentCommitMs ?? item.timing?.commitMs ?? item.timing?.durationMs)
+    + (item.timing?.codePromptMs || 0);
   if (!(commitMs > 0) || !Number.isInteger(observation?.frameIndex) || observation.frameIndex < 1) {
     return { applicable: true, pass: false, observed: {}, failures: [{ path: 'precondition',
       expected: 'handwritten positive commit time and a preceding frame', actual: { commitMs, frameIndex: observation?.frameIndex } }] };

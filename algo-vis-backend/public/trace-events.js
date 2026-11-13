@@ -24,6 +24,8 @@
     // Reads remain internal access metadata for automatic fixed markers. They
     // are not a user-facing event, animation, timeline entry or Studio item.
     { type: 'read', label: '讀取', color: 'red', internal: true, enabledByDefault: false, timelineByDefault: false },
+    { type: 'select-max', label: '取大', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
+    { type: 'select-min', label: '取小', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     { type: 'compare', label: '比較', color: '#c38a16', enabledByDefault: true, timelineByDefault: true },
     { type: 'assignment', label: '賦值', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
     { type: 'input-assign', label: '輸入賦值事件', color: '#c8483f', enabledByDefault: true, timelineByDefault: true },
@@ -79,6 +81,8 @@
     'input-assign': 'assign',
     'sequence-operation': 'sequence',
     compare: 'compare',
+    'select-max': 'select',
+    'select-min': 'select',
     condition: 'none',
     swap: 'swap',
     fixed: 'none',
@@ -207,6 +211,9 @@
           return closingTypes.has(candidate.type) && target
             && (!source.functionName || target.functionName === source.functionName)
             && Number(target.from) <= Number(source.from) && Number(target.to) >= Number(source.to)
+            // Two occurrences of the same postfix instruction are peers, not
+            // consumers of one another, even when their saved source key is shared.
+            && (Number(target.from) < Number(source.from) || Number(target.to) > Number(source.to))
             && Number(target.from) >= Number(range.from) && Number(target.to) <= Number(range.to);
         }).sort((a, b) => (Number(a.source.to) - Number(a.source.from)) - (Number(b.source.to) - Number(b.source.from))
           || (a.type === 'declare' ? 1 : 0) - (b.type === 'declare' ? 1 : 0)
@@ -220,7 +227,11 @@
     for (const [event, anchor] of proposed) {
       const ids = new Set((event.targets || []).filter(target => target.role !== 'source').map(target => target.variableId));
       const between = runtime.slice(runtimeIndex.get(event) + 1, runtimeIndex.get(anchor));
-      if (between.some(candidate => candidate.type === 'function-enter'
+      // A selection consumes fully evaluated call arguments. Do not move a
+      // postfix update beyond that boundary using the outer assignment range.
+      if (between.some(candidate => ['select-max', 'select-min'].includes(candidate.type))
+        || ['select-max', 'select-min'].includes(anchor.type)
+        || between.some(candidate => candidate.type === 'function-enter'
         || (candidate.afterEventId !== event.id && (candidate.targets || []).some(target => ids.has(target.variableId))
           && !(isPostfix(candidate) && proposed.get(candidate) === anchor)))) anchors.delete(event);
     }
