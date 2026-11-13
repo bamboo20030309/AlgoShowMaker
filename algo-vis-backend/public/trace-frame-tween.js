@@ -3538,13 +3538,14 @@
     group.append(text);
     appendBelowTextLayer(root, group);
     const dropDistance = Math.max(24, Number(targetOperand.point?.height || targetBounds.height) * .8);
-    const cellBounds = elementBoundsInRoot(targetOperand.element, root) || targetBounds;
-    const stationaryOffset = cellBounds.y - fontSize * .75 - targetAnchor.y;
+    // Stationary operands occupy the destination value's actual text anchor,
+    // including formatted fields; they are not captions above the cell.
+    const stationaryOffset = 0;
     group.setAttribute('transform', `translate(0, ${presentation.stationary ? stationaryOffset : -dropDistance})`);
     group.setAttribute('opacity', '0');
     return {
       group,
-      coversTarget: !presentation.stationary,
+      coversTarget: true,
       update(progress, opacity = 1) {
         const position = clamp01(progress);
         group.setAttribute('transform', `translate(0, ${presentation.stationary ? stationaryOffset : -dropDistance * (1 - position)})`);
@@ -4732,6 +4733,7 @@
     let originalOpacity = null;
     let fieldLayout = null;
     let literalCoversTarget = false;
+    let stationaryCoversTarget = false;
     let hiddenFieldExit = false;
     let hiddenExitOpacity = 1;
     let exitSeparator = null;
@@ -4870,6 +4872,7 @@
         if (candidates.every(Boolean)) {
           transfers = candidates;
           literalCoversTarget = candidates.some(item => item?.coversTarget === true);
+          stationaryCoversTarget = candidates.some(item => item?.group?.dataset.traceLiteralMotion === 'stationary');
         }
         else candidates.filter(Boolean).forEach(item => item.remove());
       }
@@ -4923,6 +4926,11 @@
     return {
       get opacities() { return hiddenFieldExit ? new Map([[operand.visualKey, hiddenExitOpacity]]) : new Map(); },
       afterReplay() {
+        if (stationaryCoversTarget && !landed
+          && transfers.some(item => item.group?.dataset.traceLiteralMotion === 'stationary'
+            && Number(item.group.getAttribute('opacity')) > .01)) {
+          targetText?.setAttribute('opacity', '0');
+        }
         // The logical zero is already committed and hide(...) removes its
         // normal glyph. Keep this temporary result through hold/exit only.
         if (hiddenFieldExit && landed && !closingField) {
@@ -11637,10 +11645,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-357';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-358';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-357', play, cancel, updateEventAvailability,
+    build: 'trace-358', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

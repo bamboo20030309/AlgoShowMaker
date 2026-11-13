@@ -472,7 +472,7 @@ int main() {
   }
 });
 
-test('mixed constants retain operand numbers and their operators above the destination', { timeout: 45000 }, async () => {
+test('mixed constants retain operand numbers and their operators over the destination value', { timeout: 45000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const browser = await chromium.launch({
