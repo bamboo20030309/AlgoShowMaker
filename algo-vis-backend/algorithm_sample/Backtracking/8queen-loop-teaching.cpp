@@ -11,15 +11,17 @@ int main() {
     // @preset board_view
     // @object board render matrix with labels(none), display("${value ? '♕' : '　'}")
     // @object pos
+    // @pointer r,c at pos
     // @place pos.top-left at board.top-right offset(60,0)
     // @style board background grey when value == 1
     // @endpreset
     while(more) {
         ++attempt;
         bool valid=true;
-        for(int row=0;row<N && valid;row++) {
-            for(int prev=0;prev<row;prev++) {
-                if(pos[prev]==pos[row] || abs(pos[prev]-pos[row])==row-prev) {
+        int r=0,c=0;
+        for(r=0;r<N && valid;r++) {
+            for(c=0;c<r;c++) {
+                if(pos[c]==pos[r] || abs(pos[c]-pos[r])==r-c) {
                     valid=false;
                     break;
                 }
@@ -42,7 +44,10 @@ int main() {
         }
         more=row>=0;
     }
-    // @frame use board_view
+    // @frame
+    // @object board render matrix with labels(none), display("${value ? '♕' : '　'}")
+    // @object pos
+    // @place pos.top-left at board.top-right offset(60,0)
     // @text "全部 ${attempt} 組配置檢查完成，共 ${ans} 組解" at board.top
     cout<<"Total Solutions: "<<ans<<endl;
     return 0;
@@ -55,17 +60,16 @@ int main() {
   "rules": [],
   "skins": {},
   "studio": {
+    "eventInstructionStates": {
+      "assign:main:c=0": true,
+      "assign:main:r=0": false,
+      "compare:main:c < r": false
+    },
     "eventSettings": {
       "autoFixedEnabled": false,
       "autoLoopBoundaryEnabled": false,
-      "defaultEnabled": {
-        "declare": false,
-        "object-exit": false,
-        "compare": false,
-        "assignment": false,
-        "sequence-operation": false,
-        "control-flow": false
-      }
+      "readHighlightEnabled": false,
+      "readHighlightColor": "red"
     }
   }
 }

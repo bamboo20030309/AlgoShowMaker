@@ -1459,12 +1459,12 @@
     },
     "a9d29de3012108441b1ce1dbcbb3731e9590b41a39ee0b6663b5a667f7ba2e4e": {
       "file": "eight-queens-teaching-02-a9d29de3012108441b1ce1dbcbb3731e9590b41a39ee0b6663b5a667f7ba2e4e.json",
-      "deck": "eight-queens-teaching-1138b6021da2812fdde0c189a1ed34df3373ad9095b7720bf92a19d0643a98a4.asmdeck",
+      "deck": "eight-queens-teaching-35664c30d3fe31ec0bd524add113e050b30548e1e0eccf942abe873fa802e50d.asmdeck",
       "slideId": "76a59dd3-b8e5-4a55-9671-b2c9f90e9096"
     },
     "f37247d4d4b3b36f286209faabf1f0deb74aec9c035a5311672732c68f4944cb": {
       "file": "eight-queens-teaching-03-f37247d4d4b3b36f286209faabf1f0deb74aec9c035a5311672732c68f4944cb.json",
-      "deck": "eight-queens-teaching-1138b6021da2812fdde0c189a1ed34df3373ad9095b7720bf92a19d0643a98a4.asmdeck",
+      "deck": "eight-queens-teaching-35664c30d3fe31ec0bd524add113e050b30548e1e0eccf942abe873fa802e50d.asmdeck",
       "slideId": "c5bc5221-8cab-42a9-b995-19a33b331492"
     },
     "de42ac8fdb133ed98aafb1a61649e36066f057d3419d285b124dec71099f5d03": {
@@ -1566,6 +1566,11 @@
       "file": "lcs-teaching-02-73fb1ebc3f2c3be2ce5285aa941d99202ca86efe8b129be3569907bca91ac432.json",
       "deck": "lcs-teaching-d6686b84b9ad9a76038e616d052e9a250069afc58d41a2720b8f3b0f354a4d59.asmdeck",
       "slideId": "lcs-slide-12"
+    },
+    "fe42fd72461c87f3ae7baa534230d469f23dafdb969fa2aee8b8d45fb9d6338d": {
+      "file": "eight-queens-teaching-01-fe42fd72461c87f3ae7baa534230d469f23dafdb969fa2aee8b8d45fb9d6338d.json",
+      "deck": "eight-queens-teaching-35664c30d3fe31ec0bd524add113e050b30548e1e0eccf942abe873fa802e50d.asmdeck",
+      "slideId": "01b3a3d6-557b-442d-99d5-18c5293d2c3c"
     }
   }
 }
