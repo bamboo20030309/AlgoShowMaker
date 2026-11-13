@@ -58,8 +58,9 @@ result=a[i]==a[i];
    const advance=async target=>{while(elapsed<target){const delta=Math.min(10,target-elapsed);elapsed+=delta;time+=delta;const pending=[...callbacks.values()];callbacks.clear();pending.forEach(cb=>cb(time));for(let i=0;i<8;i++)await Promise.resolve();}};
    try{
     const pending=CodeScript.next();const samples={};
-    for(const at of [180,579,580,581,730,879,880,1000,1560]){await advance(at/rate);samples[at]=read();}
-    await advance(1800/rate);await pending;
+    // The visual comparison starts after the separately scheduled 200ms code prompt.
+    for(const at of [180,579,580,581,730,879,880,1000,1560]){await advance((200+at)/rate);samples[at]=read();}
+    await advance(2000/rate);await pending;
     reports.push({mode,rate,operation,baseline,samples,final:read(),remaining:document.querySelectorAll('.asm-trace-compare-operator,.asm-trace-compare-highlight,.asm-trace-compare-self-clone').length});
    }finally{ASMTraceFrameTween.cancel();callbacks.clear();window.requestAnimationFrame=native.raf;window.cancelAnimationFrame=native.cancel;if(native.now)Object.defineProperty(performance,'now',native.now);else delete performance.now;window.asmGetAnimationPlaybackRate=native.rate;}
   }

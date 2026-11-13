@@ -5565,13 +5565,18 @@
     });
     const equalValues = compareValuesEqual(operands);
     const selection = event.selectionPresentation;
-    const equalityComparison = !selection && ['==', '!='].includes(String(event?.operation || ''));
+    // Source-backed matrix headers share the cell effect lifecycle, but keep
+    // their axis positions: compare by lifting/enlarging instead of contact.
+    const labelComparison = !selection && operands.some(operand =>
+      operand.element?.dataset?.traceLabelSourceVariable);
+    const equalityComparison = !selection && !labelComparison && ['==', '!='].includes(String(event?.operation || ''));
     let contactTargets = equalityComparison ? compareContactTargets(operands, equalValues) : [];
     const selectedKey = selection && operands.find(operand => operand.target?.role === selection.selectedSourceRole)?.visualKey;
     const baseScales = operands.map(operand => selection?.baseScale?.(operand.visualKey) || 1);
     const scaleTargets = selection
       ? operands.map((operand, index) => operand.visualKey === selectedKey ? selection.operation === 'min' ? .8 : 1.25 : baseScales[index])
-      : equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
+      : labelComparison ? operands.map(() => 1.25)
+        : equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
     const selfCompare = operands.length >= 2 && operands[0].visualKey === operands[1].visualKey;
     const selfSplitDistance = selfCompare
       ? Math.max(8, operands[0].point.width / 2)
@@ -5634,7 +5639,7 @@
       operand.element.setAttribute('transform', `matrix(${local.a} ${local.b} ${local.c} ${local.d} ${local.e} ${local.f})`);
       record.textSize?.update(adjustment.scale);
     };
-    const selfSplit = !selection && selfCompare && !operands[0].marker
+    const selfSplit = !selection && !labelComparison && selfCompare && !operands[0].marker
       ? createSelfCompareSplit(operands[0], selfSplitDistance, equalValues ? 0 : 5)
       : null;
     let expression = null;
@@ -5784,7 +5789,7 @@
           ? 0
           : easeOutCubic(clamp01((elapsed - resultEnd) / COMPARE_TIMING.reset));
         ensurePopups();
-        if (!selection && elapsed >= waitEnd) {
+        if (!selection && !labelComparison && elapsed >= waitEnd) {
           showResult();
           setResultOpacity(size * (1 - reset));
         }
@@ -11684,10 +11689,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-360';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-361';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-360', play, cancel, updateEventAvailability,
+    build: 'trace-361', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

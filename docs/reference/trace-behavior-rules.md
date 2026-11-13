@@ -74,3 +74,5 @@ T22「事件擁有指標重排」：同格指標的讓位／補位必須由當�
 ## 二維陣列的來源標籤（2026-11-14）
 
 row-labels("",S)、column-labels("",T) 的每一個字元格保留來源變數與索引，S[0] 對應標籤索引 1。比較、讀取強調及賦值來源可以使用這些可見格子；重複字元不得靠值猜對應。新格式保存 sources，舊格式按該幀原指令還原；靜態 literal、自訂標籤與明確關閉不自動綁定。驗證入口：matrix-label-events.browser.test.js、matrix-label-sources.test.js。
+
+來源為真實變數的矩陣列／欄標籤，採用資料格的預設外觀，作者的自訂樣式保留。比較事件沿用共用排程、位移與縮放機制，但比較呈現固定為兩格原地上抬 15px、放大至 1.25 倍，再於事件結束前平滑還原；不向中間靠攏、不因大小結果縮小其中一格，也不額外產生結果框或符號。一般格子比較與 min/max 取值規則不改。核對 `matrix-label-events.browser.test.js` 與 `restored-comparison.browser.test.js`。

@@ -697,7 +697,17 @@
     node.dataset.traceLabelSourceVariable=origin.variableId;
     node.dataset.traceLabelSourceIndex=String(origin.index);
     node.dataset.traceLabelSourceKey=`${objectKeyForVariable(context.frame,origin.variableId)}#${origin.index}`;
-    node.querySelector(':scope > text')?.setAttribute('data-trace-content-role','value');
+    // A variable-backed header is a data cell projected onto a matrix axis.
+    // Apply the shared cell defaults before the caller applies authored styles.
+    const rect=node.querySelector(':scope > rect'),text=node.querySelector(':scope > text');
+    rect?.setAttribute('fill','#fff');
+    rect?.setAttribute('stroke','#333');
+    if(text){
+      text.setAttribute('data-trace-content-role','value');
+      text.setAttribute('fill','#000');
+      if(rect&&typeof window.fitSvgText==='function')text.setAttribute('font-size',
+        window.fitSvgText(node,String(text.textContent),Number(rect.getAttribute('width')),Number(rect.getAttribute('height'))));
+    }
   }
 
   function renderMatrix(group, entry, context) {
@@ -7309,9 +7319,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-288';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-289';
   window.ASMTraceRenderers = {
-    build: 'trace-288', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-289', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, hiddenField, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
