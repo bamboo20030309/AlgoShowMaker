@@ -3,7 +3,7 @@
  *
  * 驗證重點：投影片動畫畫布工具列（介面改版階段 1）。
  *   - 上一步／下一步只留圖示；上一大步／下一大步只在舊版腳本動畫顯示，trace 與投影片一律不顯示。
- *   - 放映（非編輯畫面）只留 ⏮ ◀ ⏯ ▶ ⏭ 與進度條；編輯畫面顯示完整工具列與 RUN。
+ *   - 編輯畫面顯示完整工具列與 RUN；放映（非編輯畫面）與編輯畫面完全相同，只少了 RUN。
  *   - RUN 成功：換上新動畫並從第 0 幀開始（公開範例只換本次開啟的副本，不回寫官方教材）。
  *   - RUN 失敗：保留原動畫，畫布上方顯示錯誤與「開啟編輯器」。
  * 執行環境：隔離服務＋無頭瀏覽器；公開範例以 route 提供，不碰任何帳號或雲端資料。
@@ -70,16 +70,17 @@ test('slide canvas toolbar: play-only when presenting, RUN while editing, failed
     await player.waitForFunction(on => document.documentElement.classList.contains('asm-slide-editing') === on, on);
   };
 
-  // Presenting / viewing: only the five play buttons and the progress bar.
-  await editing(false);
-  assert.deepEqual(await visible(), PLAY_ONLY);
-
   // Editing: RUN first, full toolbar, never the big steps.
   await editing(true);
   const shown = await visible();
   assert.equal(shown[0], 'slideRunBtn');
-  for (const id of [...PLAY_ONLY, 'traceFreshnessNotice', 'speedValue']) assert.ok(shown.includes(id), id);
+  for (const id of [...PLAY_ONLY, 'ttsAvBtn', 'traceFreshnessNotice', 'playbackTime', 'frameInfo', 'speedValue']) assert.ok(shown.includes(id), id);
   assert.ok(!shown.includes('prevKeyFrameBtn') && !shown.includes('nextKeyFrameBtn'));
+
+  // Presenting / viewing: exactly the editing toolbar (same items, same order) without RUN.
+  await editing(false);
+  assert.deepEqual(await visible(), shown.slice(1));
+  await editing(true);
 
   // RUN success: regenerated, back to frame 0, saved locally.
   const run = player.locator('#slideRunBtn');

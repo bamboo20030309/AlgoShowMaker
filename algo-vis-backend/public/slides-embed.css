@@ -101,23 +101,17 @@ body.asm-embed-runtime #viewport .draggable-object {
 /* --------------------------------------------------------------------------
  * 投影片畫布工具列
  * 父頁在投影片編輯畫面替 <html> 加 asm-slide-editing：完整工具列＋RUN。
- * 放映（或唯讀檢視）只留 ⏮ ◀ ⏯ ▶ ⏭ 與進度條；上一大步／下一大步在投影片中一律不顯示。
+ * 放映（或唯讀檢視）與編輯畫面的工具列完全相同，只少了 RUN 與 RUN 錯誤列；
+ * 上一大步／下一大步在投影片中一律不顯示。
  * -------------------------------------------------------------------------- */
 body.asm-embed-runtime .controls #prevKeyFrameBtn,
 body.asm-embed-runtime .controls #nextKeyFrameBtn {
   display: none !important;
 }
 
-html:not(.asm-slide-editing) body.asm-embed-runtime .controls > :not(#restartBtn, #prevBtn, #playToggleBtn, #nextBtn, #finishBtn, #frameTimeline),
+html:not(.asm-slide-editing) body.asm-embed-runtime .controls #slideRunBtn,
 html:not(.asm-slide-editing) body.asm-embed-runtime #slideRunError {
   display: none !important;
-}
-
-/* 放映時其他元件都收起，進度條補滿剩下的寬度。 */
-html:not(.asm-slide-editing) body.asm-embed-runtime #frameTimeline {
-  flex: 1 1 auto;
-  max-width: none;
-  margin-left: 8px;
 }
 
 body.asm-embed-runtime .controls .slide-run-btn {
