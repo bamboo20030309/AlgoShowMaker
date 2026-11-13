@@ -5566,7 +5566,7 @@
     const equalValues = compareValuesEqual(operands);
     const selection = event.selectionPresentation;
     // Source-backed matrix headers share the cell effect lifecycle, but keep
-    // their axis positions: compare by lifting/enlarging instead of contact.
+    // their axis positions: matching values grow together, different values shrink.
     const labelComparison = !selection && operands.some(operand =>
       operand.element?.dataset?.traceLabelSourceVariable);
     const equalityComparison = !selection && !labelComparison && ['==', '!='].includes(String(event?.operation || ''));
@@ -5575,7 +5575,7 @@
     const baseScales = operands.map(operand => selection?.baseScale?.(operand.visualKey) || 1);
     const scaleTargets = selection
       ? operands.map((operand, index) => operand.visualKey === selectedKey ? selection.operation === 'min' ? .8 : 1.25 : baseScales[index])
-      : labelComparison ? operands.map(() => 1.25)
+      : labelComparison ? operands.map(() => equalValues ? 1.25 : .8)
         : equalityComparison ? operands.map(() => 1) : compareScaleTargets(operands);
     const selfCompare = operands.length >= 2 && operands[0].visualKey === operands[1].visualKey;
     const selfSplitDistance = selfCompare
@@ -5801,7 +5801,7 @@
           const contact = contactTargets[index] || { x: 0, alignY: 0, splitY: 0 };
           const adjustment = {
             x: operand.marker ? 0 : contact.x * contactProgress * stay,
-            y: operand.marker ? 0 : (equalityComparison
+            y: operand.marker || labelComparison ? 0 : (equalityComparison
               ? (contact.alignY * alignProgress + contact.splitY * contactProgress) * stay
               : (-15 * lift) * stay),
             scale: operand.marker
@@ -11689,10 +11689,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-361';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-362';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-361', play, cancel, updateEventAvailability,
+    build: 'trace-362', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

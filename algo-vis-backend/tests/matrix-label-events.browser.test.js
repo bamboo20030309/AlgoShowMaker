@@ -5,7 +5,7 @@ test('matrix row and column label cells preserve their variable/index provenance
  try{process.env.ASM_TEST_BASE_URL=base;({trace}=await compile(`#include <bits/stdc++.h>
 using namespace std;int main(){string S="aba",T="aca";vector<vector<int>> dp(4,vector<int>(4));char copied='?';
 // @frame dp,copied with row-labels("",S),column-labels("",T)
-bool equal=S[0]==T[0];bool different=S[1]!=T[1];bool less=S[1]<T[1];copied=S[2];S[1]='x';copied=S[1];T[1]='y';
+bool equal=S[0]==T[0];bool different=S[1]!=T[1];bool less=S[1]<T[1];bool equalButFalse=S[0]!=T[0];copied=S[2];S[1]='x';copied=S[1];T[1]='y';
 // @frame dp,copied with row-labels("",S),column-labels("",T)
 }`));}finally{if(old===undefined)delete process.env.ASM_TEST_BASE_URL;else process.env.ASM_TEST_BASE_URL=old;}
  const dp=Object.keys(trace.variables).find(id=>trace.variables[id].name==='dp'),S=Object.keys(trace.variables).find(id=>trace.variables[id].name==='S');
@@ -24,18 +24,20 @@ bool equal=S[0]==T[0];bool different=S[1]!=T[1];bool less=S[1]<T[1];copied=S[2];
   try{const pending=ASMTracePlayer.render(1,{fromIndex:0,forceTransition:true}),plan=ASMTracePlayer.getLastPlaybackPlan();while(elapsed<plan.totalDurationMs/speed+100){elapsed+=8;clock+=8;const batch=[...callbacks.values()];callbacks.clear();batch.forEach(cb=>cb(clock));for(let i=0;i<12;i++)await Promise.resolve();samples.push(read());}restore();await pending;return{before,samples,after:read(),events:doc.frames[1].events.filter(e=>['compare','assign'].includes(e.type)).map(e=>({id:e.id,type:e.type,expression:e.expression,disabled:e.autoAnimationDisabled})),dp};}finally{restore();ASMTraceFrameTween.cancel();}
  },{trace,mode,speed});
  fs.mkdirSync('test-results/matrix-label-events',{recursive:true});fs.writeFileSync(`test-results/matrix-label-events/${mode}-${speed}.json`,JSON.stringify(report));
- const compares=report.events.filter(e=>e.type==='compare');assert.equal(compares.length,3);assert.ok(compares.every(e=>!e.disabled),'S/T comparisons can play through label cells');
+ const compares=report.events.filter(e=>e.type==='compare');assert.equal(compares.length,4);assert.ok(compares.every(e=>!e.disabled),'S/T comparisons can play through label cells');
  if(mode==='read-off')assert.ok(report.samples.every(s=>s.reads.length===0),'read highlight stays explicitly off');
  else assert.ok(report.samples.some(s=>s.reads.includes(S+'#0')),'read emphasis uses the original string identity through its label');
  assert.equal(report.before.labels.length,6,'blank prefix is not a source cell');
  assert.ok(report.before.labels.every(n=>n.fill===(mode==='custom'&&n.key===report.dp+':row-label:1'?'#123456':'rgba(111, 161, 255, 0.7)')),'source labels retain original header color and authored fill');
- for(const [event,row,column] of [[compares[0],1,1],[compares[1],2,2],[compares[2],2,2]]){
+ for(const [event,row,column] of [[compares[0],1,1],[compares[1],2,2],[compares[2],2,2],[compares[3],1,1]]){
   const keys=[report.dp+':row-label:'+row,report.dp+':column-label:'+column];
   const active=report.samples.filter(s=>s.event===event.id);assert.ok(active.length>3);
   for(const key of keys){
    const baseline=report.before.labels.find(n=>n.key===key),positions=active.map(s=>s.labels.find(n=>n.key===key));
    assert.ok(positions.every(n=>Math.abs(n.x-baseline.x)<.1),'label never converges horizontally');
-   assert.ok(positions.some(n=>n.y<baseline.y-10&&n.width>baseline.width*1.2),'each label lifts and enlarges regardless of comparison result');
+   assert.ok(positions.every(n=>Math.abs(n.y-baseline.y)<.1),'label never lifts vertically');
+   const same=row===1;
+   assert.ok(positions.some(n=>same?n.width>baseline.width*1.2:n.width<baseline.width*.85),'matching characters grow together, differing characters shrink together, independent of operator truth');
    const last=positions.at(-1);assert.ok(Math.abs(last.y-baseline.y)<.1&&Math.abs(last.width-baseline.width)<.1,'label restores before the next event');
   }
  }
