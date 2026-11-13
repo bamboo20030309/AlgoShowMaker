@@ -1,10 +1,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
-const { TWEEN_BUILD, RENDERER_BUILD } = require('./helpers/builds');
+const { TWEEN_BUILD } = require('./helpers/builds');
 const { compile } = require('./helpers/compile');
 
-test('function calls turn grey while output statements receive active code highlights', { timeout: 60000 }, async () => {
+test('code-only calls and output highlight yellow while active, then grey after completion', { timeout: 60000 }, async () => {
   const base = process.env.ASM_TEST_BASE_URL;
   assert.ok(base, 'set ASM_TEST_BASE_URL to an isolated server');
   const { trace } = await compile(`#include <bits/stdc++.h>
@@ -25,31 +25,25 @@ int main() {
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${base}/algorithm.html`);
+    await page.waitForFunction(() => window.ASMTracePlayer);
     const result = await page.evaluate(async sourceTrace => {
-      // This renderer fixture does not load through Player.apply, so explicitly
-      // cancel the asynchronous built-in sample before painting its own scene.
+      // Stop the built-in sample before applying this isolated trace.
       window.ASMDefaultAlgorithm?.cancel?.('renderer-fixture');
       sourceTrace.studio ||= {};
       sourceTrace.studio.eventSettings ||= {};
       sourceTrace.studio.eventSettings.defaultEnabled = { call: true, output: true };
-      const document = window.ASMTraceModel.normalizeTraceDocument(sourceTrace);
+      window.asmGetAnimationPlaybackRate = () => 4;
+      const document = window.ASMTracePlayer.apply(sourceTrace);
       const frameIndex = document.frames.findIndex(frame => (
         frame.events.some(event => event.type === 'output')
       ));
       const frame = document.frames[frameIndex];
-      const previous = document.frames[Math.max(0, frameIndex - 1)];
       frame.events.forEach(event => {
         event.enabled = ['call', 'output'].includes(event.type);
       });
-      await window.ASMTraceRenderers.renderFrame(document, previous, null, {
-        animatePositions: false,
-        animateEvents: false
-      });
-      window.ASMTraceCodePresenter.renderFrame(document, frame, null, false);
-      const transition = window.ASMTraceRenderers.renderFrame(document, frame, previous, {
-        animatePositions: true,
-        animateEvents: true
-      });
+      const fromIndex=Math.max(0,frameIndex-1);
+      await window.ASMTracePlayer.render(fromIndex,{stable:true});
+      const transition=window.ASMTracePlayer.render(frameIndex,{fromIndex,forceTransition:true});
       const samples = [];
       let settled = false;
       transition.finally(() => { settled = true; });
@@ -69,6 +63,7 @@ int main() {
       await transition;
       return {
         samples,
+        completed: [...window.document.querySelectorAll('.asm-trace-code-event-span.is-complete')].map(n=>n.textContent).join(''),
         build: window.ASMTraceFrameTween?.build || '',
         remainingActive: window.document.querySelectorAll(
           '.asm-trace-code-event-span.is-active'
@@ -77,15 +72,16 @@ int main() {
     }, trace);
     assert.equal(result.build, TWEEN_BUILD);
     assert.ok(result.samples.some(sample => (
-      sample.type === 'call' && !sample.active
-        && /visit\s*\(\s*n\s*\)/.test(sample.complete)
-    )), `function call never received a completed grey highlight: ${JSON.stringify(result)}`);
+      sample.type === 'call' && /visit\s*\(\s*n\s*\)/.test(sample.active)
+        && !/visit\s*\(\s*n\s*\)/.test(sample.complete)
+    )), `function call must be yellow, not completed grey, while active: ${JSON.stringify(result)}`);
     assert.ok(result.samples.some(sample => (
       sample.type === 'output' && /cout\s*<</.test(sample.active)
     )), `cout never received an active highlight: ${JSON.stringify(result.samples)}`);
     assert.ok(result.samples.some(sample => (
       sample.type === 'output' && /printf\s*\(/.test(sample.active)
     )), `printf never received an active highlight: ${JSON.stringify(result.samples)}`);
+    assert.match(result.completed,/visit\s*\(\s*n\s*\)/,'call turns grey after completion');
     assert.equal(result.remainingActive, 0, 'active highlight clears after playback');
   } finally {
     await browser.close();

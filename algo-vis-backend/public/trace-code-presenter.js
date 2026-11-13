@@ -389,7 +389,6 @@
     const active = Boolean(activeId) && (linkedIds.has(String(activeId))
       || (activeId === activeEventId && [...activeMemberIds].some(id => linkedIds.has(id))))
       && !suppressWholeConditionPulse;
-    const activeCall = active && activeEvent?.type === 'call';
     // A split condition can contain unchecked slices. Those slices must not
     // prevent a checked, completed comparison from retaining its own result.
     // Restrict the fallback to one source range so it cannot paint a union of
@@ -407,11 +406,11 @@
     const conditionResult = condition?.result
       ?? (!pendingComparison ? completedComparison?.result : undefined);
     return {
-      active: active && !activeCall,
+      active,
       pending: pendingComparison,
-      complete: activeCall || (conditionResult == null && !pendingComparison
-        && [...linkedIds].some(id => completed.has(id))),
-      conditionResult: activeCall ? undefined : conditionResult
+      complete: !active && conditionResult == null && !pendingComparison
+        && [...linkedIds].some(id => completed.has(id)),
+      conditionResult
     };
   }
 

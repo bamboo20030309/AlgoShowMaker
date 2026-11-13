@@ -59,3 +59,20 @@ test('completed code marks survive canvas tab switching and stable browser redra
   await page.evaluate(() => ASMTracePlayer.render(1, { stable: true }));
   assert.equal(await page.locator(selector).count(), completed, 'returning to canvas restores completed marks');
 });
+
+test('code-only event states prioritize active yellow over an old completion mark',()=>{
+ const vm=require('node:vm');const window={addEventListener(){}};window.window=window;
+ vm.createContext(window);vm.runInContext(fs.readFileSync('public/trace-code-presenter.js','utf8'),window);
+ const presenter=window.ASMTraceCodePresenter;
+ for(const type of ['call','output','function-enter','return']){
+  const event={id:type,type,enabled:true},events=new Map([[type,event]]),ids=[type],seen=new Set(ids);
+  const active=presenter.visualStateForIds(ids,events,seen,seen,type);
+  assert.equal(active.active,true,type+' is yellow during execution');
+  assert.equal(active.complete,false,type+' must not be grey while active');
+  const finished=presenter.visualStateForIds(ids,events,seen,seen,'');
+  assert.equal(finished.active,false);assert.equal(finished.complete,true,type+' is grey after completion');
+ }
+ const disabled={id:'disabled',type:'call',enabled:false};
+ const state=presenter.visualStateForIds(['disabled'],new Map([['disabled',disabled]]),new Set(),new Set(),'disabled');
+ assert.equal(state.active,false,'an explicitly disabled call stays unhighlighted');
+});
