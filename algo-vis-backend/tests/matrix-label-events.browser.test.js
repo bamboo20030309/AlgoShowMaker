@@ -28,7 +28,7 @@ bool equal=S[0]==T[0];bool different=S[1]!=T[1];bool less=S[1]<T[1];copied=S[2];
  if(mode==='read-off')assert.ok(report.samples.every(s=>s.reads.length===0),'read highlight stays explicitly off');
  else assert.ok(report.samples.some(s=>s.reads.includes(S+'#0')),'read emphasis uses the original string identity through its label');
  assert.equal(report.before.labels.length,6,'blank prefix is not a source cell');
- assert.ok(report.before.labels.every(n=>n.fill===(mode==='custom'&&n.key===report.dp+':row-label:1'?'#123456':'#fff')),'source labels use data-cell defaults and preserve authored fill');
+ assert.ok(report.before.labels.every(n=>n.fill===(mode==='custom'&&n.key===report.dp+':row-label:1'?'#123456':'rgba(111, 161, 255, 0.7)')),'source labels retain original header color and authored fill');
  for(const [event,row,column] of [[compares[0],1,1],[compares[1],2,2],[compares[2],2,2]]){
   const keys=[report.dp+':row-label:'+row,report.dp+':column-label:'+column];
   const active=report.samples.filter(s=>s.event===event.id);assert.ok(active.length>3);
