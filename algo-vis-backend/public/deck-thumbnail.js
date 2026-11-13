@@ -101,8 +101,69 @@
       else if (widget?.type === 'latex') drawLatexWidget(context, widget);
       else if (widget?.type === 'structure' && window.AlgoStructureRenderer) {
         await window.AlgoStructureRenderer.drawCanvas(context, widget, SCALE);
-      }
+      } else if (widget?.type === 'video') await drawVideoWidget(context, widget);
+      else if (widget?.type && !['latex', 'code', 'structure', 'table'].includes(widget.type)) drawUnsupportedWidget(context, widget);
     }
+  }
+
+  // CORS 模式載入海報：伺服器未允許時只會載入失敗，不會汙染畫布而讓 toDataURL 拋錯。
+  function loadPoster(videoId) {
+    if (!/^[A-Za-z0-9_-]{11}$/.test(String(videoId || ''))) return Promise.resolve(null);
+    return new Promise(resolve => {
+      const image = new Image();
+      const timer = setTimeout(() => resolve(null), 2500);
+      image.crossOrigin = 'anonymous';
+      image.onload = () => { clearTimeout(timer); resolve(image); };
+      image.onerror = () => { clearTimeout(timer); resolve(null); };
+      image.src = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    });
+  }
+
+  async function drawVideoWidget(context, widget) {
+    const x = Number(widget.x || 0) * SCALE;
+    const y = Number(widget.y || 0) * SCALE;
+    const width = Math.max(1, Number(widget.w || 0) * SCALE);
+    const height = Math.max(1, Number(widget.h || 0) * SCALE);
+    context.save();
+    context.fillStyle = '#111518';
+    context.fillRect(x, y, width, height);
+    const poster = await loadPoster(widget.videoId);
+    if (poster) {
+      // hqdefault 為 4:3 並含黑邊；以 cover 填滿影片框。
+      const ratio = Math.max(width / poster.width, height / poster.height);
+      const drawWidth = poster.width * ratio, drawHeight = poster.height * ratio;
+      context.beginPath();
+      context.rect(x, y, width, height);
+      context.clip();
+      try { context.drawImage(poster, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight); } catch {}
+    }
+    const radius = Math.max(6, Math.min(width, height) * 0.12);
+    context.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    context.beginPath();
+    context.arc(x + width / 2, y + height / 2, radius, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#ffffff';
+    context.beginPath();
+    context.moveTo(x + width / 2 - radius * 0.35, y + height / 2 - radius * 0.5);
+    context.lineTo(x + width / 2 + radius * 0.55, y + height / 2);
+    context.lineTo(x + width / 2 - radius * 0.35, y + height / 2 + radius * 0.5);
+    context.closePath();
+    context.fill();
+    context.restore();
+  }
+
+  function drawUnsupportedWidget(context, widget) {
+    const x = Number(widget.x || 0) * SCALE;
+    const y = Number(widget.y || 0) * SCALE;
+    const width = Math.max(1, Number(widget.w || 0) * SCALE);
+    const height = Math.max(1, Number(widget.h || 0) * SCALE);
+    context.save();
+    context.fillStyle = '#eef1f2';
+    context.strokeStyle = '#9aa5a9';
+    context.setLineDash([4, 3]);
+    context.fillRect(x, y, width, height);
+    context.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+    context.restore();
   }
 
   // -----------------------------------------------------------------------------

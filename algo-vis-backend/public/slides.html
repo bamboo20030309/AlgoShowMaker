@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=color-swatches-125" />
+  <link rel="stylesheet" href="slides.css?v=video-embed-1" />
   <link rel="stylesheet" href="slide-presentation-controls.css?v=6" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-5" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
@@ -153,6 +153,11 @@
       <span>Table</span>
     </button>
 
+    <button type="button" class="palette-item tool-video" draggable="true" data-tool="video" title="YouTube 影片" aria-label="YouTube 影片">
+      <svg class="structure-palette-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="3"></rect><path d="M10 9.2v5.6l4.8-2.8z"></path></svg>
+      <span>Video</span>
+    </button>
+
     <div class="shape-tool">
       <button id="shapeMenuBtn" type="button" class="palette-item tool-shape" title="Shapes">
         <span class="shape-stack" aria-hidden="true">
@@ -253,6 +258,38 @@
         <button type="button" data-insert="\geq">≥</button>
         <button type="button" data-insert="\neq">≠</button>
         <button type="button" data-insert="\rightarrow">→</button>
+      </div>
+    </div>
+
+    <div id="videoEditorPanel" class="sidebar-panel widget-editor-panel video-editor-panel" hidden>
+      <div class="panel-title">
+        <strong>影片</strong>
+        <button id="exitVideoEditorBtn" type="button" title="退出">×</button>
+      </div>
+      <label class="field-label" for="videoUrlInput">YouTube 網址</label>
+      <input id="videoUrlInput" type="text" spellcheck="false" autocomplete="off" placeholder="https://youtu.be/…" />
+      <div id="videoUrlStatus" class="video-field-status" role="status" aria-live="polite"></div>
+      <div class="video-time-row">
+        <label class="field-label" for="videoStartInput">開始
+          <input id="videoStartInput" type="text" inputmode="numeric" placeholder="0:00" />
+        </label>
+        <label class="field-label" for="videoEndInput">結束
+          <input id="videoEndInput" type="text" inputmode="numeric" placeholder="到結尾" />
+        </label>
+      </div>
+      <label class="field-label" for="videoTitleInput">標題（選填）</label>
+      <input id="videoTitleInput" type="text" maxlength="120" />
+      <label class="check-field" for="videoAutoplayInput">
+        <input id="videoAutoplayInput" type="checkbox" />
+        <span>進入此頁時自動播放</span>
+      </label>
+      <label class="check-field" for="videoMutedInput">
+        <input id="videoMutedInput" type="checkbox" />
+        <span>靜音（自動播放較不會被瀏覽器阻擋）</span>
+      </label>
+      <div class="video-panel-actions">
+        <button id="videoPreviewBtn" type="button">預覽播放</button>
+        <a id="videoOpenLink" href="#" target="_blank" rel="noopener noreferrer">在 YouTube 開啟</a>
       </div>
     </div>
 
@@ -531,6 +568,28 @@
     </div>
   </div>
 
+  <dialog id="videoInsertDialog" class="share-dialog t-modal video-insert-dialog" aria-labelledby="videoInsertTitle">
+    <form id="videoInsertForm" method="dialog">
+      <div class="share-dialog-header">
+        <div>
+          <span class="share-eyebrow">插入影片</span>
+          <h2 id="videoInsertTitle">貼上 YouTube 網址</h2>
+        </div>
+        <button id="closeVideoInsertBtn" class="share-close-btn" type="button" aria-label="關閉" title="關閉">×</button>
+      </div>
+      <input id="videoInsertUrl" class="video-insert-url" type="text" spellcheck="false" autocomplete="off"
+        placeholder="https://www.youtube.com/watch?v=… 或 https://youtu.be/…" />
+      <div class="video-insert-preview">
+        <img id="videoInsertPoster" alt="" hidden />
+        <span id="videoInsertStatus" class="share-dialog-status" role="status" aria-live="polite">支援 watch、youtu.be、shorts、embed 連結，網址中的開始時間會一併帶入。</span>
+      </div>
+      <div class="share-dialog-actions">
+        <button id="cancelVideoInsertBtn" type="button">取消</button>
+        <button id="confirmVideoInsertBtn" class="share-save-btn" type="submit" disabled>插入</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="shareDialog" class="share-dialog t-modal">
     <form id="shareForm">
       <div class="share-dialog-header">
@@ -779,7 +838,8 @@
   <script src="draw/draw_array_stack.js?v=gap-1"></script>
   <script src="draw/draw_array_queue.js?v=gap-1"></script>
   <script src="slide-structures.js?v=geometry-8"></script>
-  <script src="deck-thumbnail.js?v=4"></script>
+  <script src="deck-thumbnail.js?v=5"></script>
+  <script src="slide-video.js?v=1"></script>
   <script src="slides-storage.js?v=9"></script>
   <script src="slide-trace-store.js?v=4"></script>
   <script src="sample-trace-assets.js?v=2"></script>

@@ -3717,3 +3717,241 @@ body.shared-view-only:not(.asm-edit-mode) > .reveal { inset: 0 0 0 var(--control
   color: #d7e1df;
   font-size: 12px;
 }
+
+/* -------------------------------------------------------------------------
+   YouTube 影片 widget：編輯時只有海報，播放時才放入 iframe。
+   ------------------------------------------------------------------------- */
+.video-widget {
+  background: #111518;
+}
+
+.video-widget .video-content {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #111518;
+}
+
+.video-widget .video-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.video-widget .video-play-button {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(36px, 18%, 84px);
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.video-widget .video-play-button svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.video-widget .video-play-button circle {
+  fill: rgba(0, 0, 0, 0.62);
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 1.5;
+}
+
+.video-widget .video-play-button path {
+  fill: #ffffff;
+}
+
+.video-widget .video-play-button:hover circle {
+  fill: rgba(0, 0, 0, 0.78);
+}
+
+.video-widget .video-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.video-widget .video-caption[hidden],
+.video-widget .video-fallback[hidden] {
+  display: none;
+}
+
+.video-widget .slide-video-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000000;
+}
+
+.video-widget.is-video-active .video-play-button,
+.video-widget.is-video-active .video-caption {
+  display: none;
+}
+
+.video-widget .video-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(17, 21, 24, 0.92);
+  color: #f4f7f8;
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.video-widget .video-fallback.is-notice {
+  inset: auto 0 0 0;
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  background: rgba(17, 21, 24, 0.82);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.video-widget .video-fallback a {
+  color: #8fe0d4;
+  font-weight: 700;
+  pointer-events: auto;
+}
+
+/* 編輯時影片框只是可拖曳的物件；預覽中的 iframe 例外。 */
+body.asm-edit-mode .video-widget .video-play-button,
+body.asm-edit-mode .video-widget .video-fallback,
+body.asm-edit-mode .video-widget .video-fallback a {
+  pointer-events: none;
+}
+
+body.asm-edit-mode .video-widget .slide-video-frame:not([data-video-preview="true"]) {
+  pointer-events: none;
+}
+
+/* 雷射筆開啟時讓游標事件留在投影片，避免游標停在跨來源影片的邊緣。 */
+body.asm-slide-laser-mode .video-widget .slide-video-frame,
+body.asm-slide-laser-mode .video-widget .video-play-button {
+  pointer-events: none;
+}
+
+.unsupported-widget {
+  border: 1px dashed #9aa5a9;
+  background: #eef1f2;
+}
+
+.unsupported-widget .unsupported-content {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  background: transparent;
+  color: #52605f;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.video-editor-panel .check-field input {
+  height: 16px;
+}
+
+.video-time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.video-time-row .field-label {
+  display: grid;
+  gap: 4px;
+}
+
+.video-field-status {
+  min-height: 16px;
+  color: #aeb8bc;
+  font-size: 12px;
+}
+
+.video-field-status.is-error,
+.video-insert-dialog .share-dialog-status.is-error {
+  color: #ff9c9c;
+}
+
+.video-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.video-panel-actions a {
+  color: #8fe0d4;
+  font-size: 12px;
+}
+
+.video-insert-url {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  margin-top: 16px;
+  padding: 0 10px;
+  border: 1px solid #4c575b;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #11191c;
+}
+
+.video-insert-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin-top: 10px;
+}
+
+.video-insert-preview img {
+  flex: 0 0 auto;
+  width: 120px;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #111518;
+}
+
+.video-insert-preview img[hidden] {
+  display: none;
+}
+
+.video-insert-preview .share-dialog-status {
+  margin-top: 0;
+}

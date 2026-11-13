@@ -71,6 +71,8 @@
     return isCellGridType(widget?.type);
   }
 
+  const KNOWN_WIDGET_TYPES = new Set(['latex', 'code', 'structure', 'table', 'video']);
+
   const TABLE_UNSUPPORTED_STRUCTURE_STYLE_FIELDS = [
     'highlightColor', 'focusColor', 'pointColor', 'markColor', 'backgroundColor',
     'highlightIndices', 'focusIndices', 'pointIndices', 'markIndices', 'backgroundIndices',
@@ -489,6 +491,21 @@
   const overviewSidebarPanel = document.getElementById('overviewSidebarPanel');
   const overviewDeleteSlideBtn = document.getElementById('overviewDeleteSlideBtn');
   const latexEditorPanel = document.getElementById('latexEditorPanel');
+  const videoEditorPanel = document.getElementById('videoEditorPanel');
+  const videoUrlInput = document.getElementById('videoUrlInput');
+  const videoUrlStatus = document.getElementById('videoUrlStatus');
+  const videoStartInput = document.getElementById('videoStartInput');
+  const videoEndInput = document.getElementById('videoEndInput');
+  const videoTitleInput = document.getElementById('videoTitleInput');
+  const videoAutoplayInput = document.getElementById('videoAutoplayInput');
+  const videoMutedInput = document.getElementById('videoMutedInput');
+  const videoPreviewBtn = document.getElementById('videoPreviewBtn');
+  const videoOpenLink = document.getElementById('videoOpenLink');
+  const videoInsertDialog = document.getElementById('videoInsertDialog');
+  const videoInsertUrl = document.getElementById('videoInsertUrl');
+  const videoInsertPoster = document.getElementById('videoInsertPoster');
+  const videoInsertStatus = document.getElementById('videoInsertStatus');
+  const confirmVideoInsertBtn = document.getElementById('confirmVideoInsertBtn');
   const codeEditorPanel = document.getElementById('codeEditorPanel');
   const structureEditorPanel = document.getElementById('structureEditorPanel');
   const tableEditorPanel = document.getElementById('tableEditorPanel');
@@ -1965,6 +1982,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
@@ -2941,17 +2959,44 @@
     return treeData.nodes.map(node => node.value).join(', ');
   }
 
+  // Widgets written by a newer version must survive this version untouched:
+  // keep every field, show an inert placeholder, and only normalize geometry.
+  function normalizeUnsupportedWidget(widget, index) {
+    return {
+      ...widget,
+      id: widget.id || randomId(),
+      x: Number.isFinite(widget.x) ? widget.x : 160,
+      y: Number.isFinite(widget.y) ? widget.y : 160,
+      w: Number.isFinite(widget.w) ? widget.w : 320,
+      h: Number.isFinite(widget.h) ? widget.h : 180,
+      angle: Number.isFinite(widget.angle) ? widget.angle : 0,
+      skewX: Number.isFinite(widget.skewX) ? widget.skewX : 0,
+      layerIndex: Number.isFinite(Number(widget.layerIndex)) ? Number(widget.layerIndex) : WIDGET_LAYER_ABOVE_BASE + index,
+      ...normalizeAnimationSettings(widget)
+    };
+  }
+
+  function isUnsupportedWidget(widget) {
+    return !!widget && typeof widget.type === 'string' && !!widget.type && !KNOWN_WIDGET_TYPES.has(widget.type);
+  }
+
   function normalizeWidgets(widgets) {
     return Array.isArray(widgets) ? widgets.map((widget, index) => {
+      if (isUnsupportedWidget(widget)) return normalizeUnsupportedWidget(widget, index);
       const legacyTable = widget.type === 'table'
         || (widget.type === 'structure' && widget.structureMode === 'table');
       const type = legacyTable
         ? 'table'
         : widget.type === 'code'
         ? 'code'
+        : widget.type === 'video'
+        ? 'video'
         : (widget.type === 'structure' ? 'structure' : 'latex');
-      const defaultWidth = type === 'code' ? 560 : (isCellGridType(type) ? 640 : 320);
-      const defaultHeight = type === 'code' ? 220 : (isCellGridType(type) ? 300 : 96);
+      const videoAspect = type === 'video' && widget.aspect === '9:16' ? '9:16' : '16:9';
+      const defaultWidth = type === 'code' ? 560 : (isCellGridType(type) ? 640
+        : (type === 'video' ? window.ASMSlideVideo.DEFAULT_SIZE[videoAspect].w : 320));
+      const defaultHeight = type === 'code' ? 220 : (isCellGridType(type) ? 300
+        : (type === 'video' ? window.ASMSlideVideo.DEFAULT_SIZE[videoAspect].h : 96));
       const defaultFontSize = type === 'code' ? 21 : (isCellGridType(type) ? 18 : 34);
       const normalized = {
         id: widget.id || randomId(),
@@ -2976,6 +3021,11 @@
       if (type === 'latex') {
         normalized.cropX = Number.isFinite(widget.cropX) ? widget.cropX : 0;
         normalized.cropY = Number.isFinite(widget.cropY) ? widget.cropY : 0;
+      }
+      if (type === 'video') {
+        // content is regenerated as the readable fallback older builds show.
+        Object.assign(normalized, window.ASMSlideVideo.normalizeFields(widget));
+        normalized.manualSize = true;
       }
       if (isCellGridType(type)) {
         Object.assign(normalized, {
@@ -3213,6 +3263,10 @@
       highlightCodeWidget(el);
     } else if (isCellGridWidget(widget)) {
       paintStructureWidget(el, widget);
+    } else if (widget.type === 'video') {
+      paintVideoWidgetIfChanged(el, widget);
+    } else if (isUnsupportedWidget(widget)) {
+      paintWidgetElement(el, widget);
     } else {
       // In-place import/history restore must refresh the source before rendering.
       paintWidgetElement(el, widget);
@@ -3615,6 +3669,8 @@
     el.classList.toggle('structure-widget', isCellGridWidget(widget));
     el.classList.toggle('code-widget', widget.type === 'code');
     el.classList.toggle('latex-widget', widget.type === 'latex');
+    el.classList.toggle('video-widget', widget.type === 'video');
+    el.classList.toggle('unsupported-widget', isUnsupportedWidget(widget));
     el.dataset.manualSize = widget.manualSize ? 'true' : 'false';
     el.style.left = `${widget.x}px`;
     el.style.top = `${widget.y}px`;
@@ -3624,7 +3680,8 @@
     el.style.zIndex = String(Math.round(Number(widget.layerIndex) || WIDGET_LAYER_ABOVE_BASE));
     applyAnimationAttributes(el, widget);
     const contentChanged = !previousWidget || [
-      'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY'
+      'type', 'content', 'language', 'focusLines', 'showLineNumbers', 'fontSize', 'scale', 'cropX', 'cropY',
+      'videoId', 'startSeconds', 'endSeconds', 'muted', 'title'
     ].some(key => previousWidget[key] !== widget[key]);
     const structureChanged = isCellGridWidget(widget) && (!previousWidget || [
       'structureMode', 'structureName', 'indexMode', 'indexBase', 'segmentDomainLength', 'itemsPerRow', 'gap', 'cellSize',
@@ -3684,6 +3741,13 @@
       content.className = 'widget-content structure-content';
       el.appendChild(content);
       window.AlgoStructureRenderer?.render(content, widget);
+    } else if (widget.type === 'video') {
+      paintVideoFacade(el, widget);
+    } else if (isUnsupportedWidget(widget)) {
+      const content = document.createElement('div');
+      content.className = 'widget-content unsupported-content';
+      content.textContent = `此版本不支援的元件（${String(widget.type).slice(0, 40)}），內容會原樣保留`;
+      el.appendChild(content);
     } else {
       const content = document.createElement('div');
       content.className = 'widget-content latex-content';
@@ -5313,6 +5377,10 @@
   // 工具列動作建立具預設樣式的 Fabric 或 widget 物件，完成後統一選取、存檔並刷新編輯面板。
   // -----------------------------------------------------------------------------
   function addObject(kind, point, text = 'New text', richText = null) {
+    if (kind === 'video') {
+      openVideoInsertDialog();
+      return;
+    }
     if (kind === 'latex' || kind === 'code' || kind === 'table') {
       addWidget(kind, point);
       return;
@@ -6540,12 +6608,14 @@
     defaultToolPanel.hidden = false;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
     setStructureEditorActive(false);
     hideAnimationEditor();
     updateAlgorithmEditButton();
+    syncVideoPlayback();
   }
 
   function applyCodeFocusLines(code, focusLines, showLineNumbers) {
@@ -6559,6 +6629,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = false;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
@@ -7403,6 +7474,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = found.widget.type !== 'latex';
+    if (videoEditorPanel) videoEditorPanel.hidden = found.widget.type !== 'video';
     codeEditorPanel.hidden = found.widget.type !== 'code';
     if (structureEditorPanel) structureEditorPanel.hidden = found.widget.type !== 'structure';
     if (tableEditorPanel) tableEditorPanel.hidden = found.widget.type !== 'table';
@@ -7422,7 +7494,10 @@
     } else if (found.widget.type === 'table') {
       populateTableEditor(found.widget);
       if (editorChrome) editorChrome.scrollTop = 0;
+    } else if (found.widget.type === 'video') {
+      populateVideoEditor(found.widget);
     }
+    syncVideoPlayback();
     showAnimationEditor(found.widget);
   }
 
@@ -7435,6 +7510,7 @@
     defaultToolPanel.hidden = true;
     if (overviewSidebarPanel) overviewSidebarPanel.hidden = true;
     latexEditorPanel.hidden = true;
+    if (videoEditorPanel) videoEditorPanel.hidden = true;
     codeEditorPanel.hidden = true;
     if (structureEditorPanel) structureEditorPanel.hidden = true;
     if (tableEditorPanel) tableEditorPanel.hidden = true;
@@ -7802,6 +7878,11 @@
         return;
       }
       window.AlgoStructureRenderer?.render(content, widget);
+    } else if (widget.type === 'video') {
+      paintVideoWidgetIfChanged(el, widget);
+    } else if (isUnsupportedWidget(widget)) {
+      paintWidgetElement(el, widget);
+      return;
     } else {
       let content = el.querySelector('.latex-content');
       if (!content) {
@@ -8104,6 +8185,8 @@
     }
     applyEditMode(enabled);
     syncAlgorithmFrameVisibility();
+    if (!enabled) nextVideoVisit();
+    syncVideoPlayback();
     if (!enabled) clearSnapGuides();
     updateAlignmentToolbar();
     if (reveal) setTimeout(() => reveal.layout(), 20);
@@ -9150,6 +9233,12 @@
       const items = Array.from(event.clipboardData && event.clipboardData.items || []);
       const imageItem = items.find(item => item.type && item.type.startsWith('image/'));
       if (!imageItem) {
+        if (text && window.ASMSlideVideo.looksLikeYouTubeUrl(text) && getSlide()?.kind !== 'algorithm-animation') {
+          event.preventDefault();
+          exitWidgetEditorIfNeeded();
+          addVideoWidget(text.trim());
+          return;
+        }
         if (text) {
           event.preventDefault();
           exitWidgetEditorIfNeeded();
@@ -10469,6 +10558,452 @@
   }
 
   // -----------------------------------------------------------------------------
+  // YouTube 影片 widget
+  // 編輯模式只顯示海報；播放時才建立 youtube-nocookie iframe，換頁／總覽暫停或卸載，
+  // 播放開始時暫停 TTS，並把焦點拉回投影片讓方向鍵持續可用。
+  // -----------------------------------------------------------------------------
+  const VIDEO_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox';
+  const VIDEO_ALLOW = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  const VIDEO_READY_TIMEOUT_MS = 8000;
+  const VIDEO_ERROR_MESSAGES = {
+    invalid: '影片資料無效，請重新貼上 YouTube 網址',
+    offline: '無法載入影片（離線或 YouTube 被封鎖）',
+    timeout: '仍在連線 YouTube，若無法播放可改在 YouTube 開啟',
+    'error-2': '影片參數無效',
+    'error-5': '瀏覽器無法播放此影片',
+    'error-100': '找不到影片，可能已移除或設為私人',
+    'error-101': '影片擁有者不允許嵌入播放',
+    'error-150': '影片擁有者不允許嵌入播放',
+    'error-153': 'YouTube 播放器設定錯誤，請改在 YouTube 開啟'
+  };
+  let videoVisitToken = 0;
+
+  function videoPaintKey(widget) {
+    return JSON.stringify([widget.videoId, widget.startSeconds, widget.endSeconds, widget.muted, widget.title]);
+  }
+
+  // Generic widget refreshes (layout, LaTeX autosize, history restore) must not
+  // tear down a playing iframe; repaint only when what the facade shows changed.
+  function paintVideoWidgetIfChanged(el, widget) {
+    const content = el.querySelector('.video-content');
+    if (content && content.dataset.paintKey === videoPaintKey(widget)) {
+      positionWidgetContent(el, widget);
+      return;
+    }
+    const frame = el.querySelector('iframe.slide-video-frame');
+    if (frame) deactivateVideoFrame(frame);
+    paintWidgetElement(el, widget);
+    updateVideoDiagnostics();
+  }
+
+  function paintVideoFacade(el, widget) {
+    const video = window.ASMSlideVideo;
+    const content = document.createElement('div');
+    content.className = 'widget-content video-content';
+    content.dataset.videoId = widget.videoId || '';
+    content.dataset.paintKey = videoPaintKey(widget);
+    const poster = document.createElement('img');
+    poster.className = 'video-poster';
+    poster.alt = '';
+    poster.draggable = false;
+    poster.decoding = 'async';
+    const play = document.createElement('button');
+    play.type = 'button';
+    play.className = 'video-play-button';
+    play.tabIndex = -1;
+    play.setAttribute('aria-label', `播放影片${widget.title ? `：${widget.title}` : ''}`);
+    play.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="23"></circle><path d="M19 14.5v19L34 24z"></path></svg>';
+    const caption = document.createElement('div');
+    caption.className = 'video-caption';
+    const start = video.formatTime(widget.startSeconds);
+    caption.textContent = [widget.title, start ? `從 ${start} 開始` : ''].filter(Boolean).join(' · ');
+    caption.hidden = !caption.textContent;
+    const fallback = document.createElement('div');
+    fallback.className = 'video-fallback';
+    fallback.hidden = true;
+    content.append(poster, play, caption, fallback);
+    el.appendChild(content);
+    if (!video.isVideoId(widget.videoId)) {
+      showVideoFallback(el, 'invalid');
+      return;
+    }
+    poster.addEventListener('error', () => showVideoFallback(el, 'offline'), { once: true });
+    poster.src = video.posterUrl(widget.videoId);
+  }
+
+  function showVideoFallback(el, reason) {
+    const fallback = el?.querySelector('.video-fallback');
+    if (!fallback) return;
+    const widget = getWidget(el.dataset.widgetId).widget;
+    fallback.replaceChildren();
+    const message = document.createElement('span');
+    message.textContent = VIDEO_ERROR_MESSAGES[reason] || VIDEO_ERROR_MESSAGES.offline;
+    fallback.appendChild(message);
+    const href = widget && window.ASMSlideVideo.watchUrl(widget);
+    if (href) {
+      const link = document.createElement('a');
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = '在 YouTube 開啟';
+      fallback.appendChild(link);
+    }
+    fallback.dataset.reason = reason;
+    fallback.classList.toggle('is-notice', reason === 'timeout');
+    fallback.hidden = false;
+    el.dataset.videoFallback = reason;
+  }
+
+  function hideVideoFallback(el) {
+    const fallback = el?.querySelector('.video-fallback');
+    if (fallback) fallback.hidden = true;
+    if (el) delete el.dataset.videoFallback;
+  }
+
+  function videoFrames() {
+    return Array.from(document.querySelectorAll('iframe.slide-video-frame'));
+  }
+
+  function sendVideoCommand(frame, func, args = []) {
+    try {
+      frame?.contentWindow?.postMessage(JSON.stringify({
+        event: 'command', func, args, id: frame.dataset.widgetId, channel: 'widget'
+      }), window.ASMSlideVideo.EMBED_ORIGIN);
+    } catch (error) {
+      console.warn('Failed to control YouTube player', error);
+    }
+  }
+
+  function startVideoHandshake(frame) {
+    clearInterval(frame.__asmVideoHandshake);
+    // The YouTube player only reports events after the parent says it listens.
+    const listen = () => {
+      if (!frame.isConnected || frame.dataset.videoReady === 'true') {
+        clearInterval(frame.__asmVideoHandshake);
+        return;
+      }
+      try {
+        frame.contentWindow?.postMessage(JSON.stringify({
+          event: 'listening', id: frame.dataset.widgetId, channel: 'widget'
+        }), window.ASMSlideVideo.EMBED_ORIGIN);
+      } catch {}
+    };
+    listen();
+    frame.__asmVideoHandshake = setInterval(listen, 250);
+    setTimeout(() => clearInterval(frame.__asmVideoHandshake), VIDEO_READY_TIMEOUT_MS);
+  }
+
+  function activateVideoWidget(el, { autoplay = false, preview = false } = {}) {
+    const widgetId = el?.dataset.widgetId;
+    const widget = widgetId && getWidget(widgetId).widget;
+    const content = el?.querySelector('.video-content');
+    if (!widget || widget.type !== 'video' || !content || !window.ASMSlideVideo.isVideoId(widget.videoId)) return null;
+    let frame = content.querySelector('iframe.slide-video-frame');
+    if (frame) {
+      frame.dataset.lastActivated = String(performance.now());
+      if (autoplay) sendVideoCommand(frame, 'playVideo');
+      return frame;
+    }
+    frame = document.createElement('iframe');
+    frame.className = 'slide-video-frame';
+    frame.title = widget.title || 'YouTube 影片';
+    frame.setAttribute('sandbox', VIDEO_SANDBOX);
+    frame.setAttribute('allow', VIDEO_ALLOW);
+    frame.setAttribute('allowfullscreen', '');
+    frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    frame.dataset.widgetId = widgetId;
+    frame.dataset.lastActivated = String(performance.now());
+    if (preview) frame.dataset.videoPreview = 'true';
+    frame.addEventListener('load', () => startVideoHandshake(frame));
+    frame.src = window.ASMSlideVideo.buildEmbedUrl(widget, { autoplay, origin: window.location.origin });
+    hideVideoFallback(el);
+    content.appendChild(frame);
+    el.classList.add('is-video-active');
+    frame.__asmVideoReadyTimer = setTimeout(() => {
+      if (frame.isConnected && frame.dataset.videoReady !== 'true') showVideoFallback(el, 'timeout');
+    }, VIDEO_READY_TIMEOUT_MS);
+    updateVideoDiagnostics();
+    return frame;
+  }
+
+  function deactivateVideoFrame(frame) {
+    if (!frame) return;
+    clearInterval(frame.__asmVideoHandshake);
+    clearTimeout(frame.__asmVideoReadyTimer);
+    const el = frame.closest('.slide-widget');
+    el?.classList.remove('is-video-active');
+    if (el?.dataset.videoFallback === 'timeout') hideVideoFallback(el);
+    frame.remove();
+    updateVideoDiagnostics();
+  }
+
+  function videoWidgetIsShown(el) {
+    return !el.classList.contains('fragment') || el.classList.contains('visible');
+  }
+
+  function syncVideoPlayback() {
+    const editing = document.body.classList.contains('asm-edit-mode');
+    const overview = customOverviewOpen || !!reveal?.isOverview?.();
+    const current = revealReady ? reveal?.getCurrentSlide?.() : null;
+    const others = [];
+    videoFrames().forEach(frame => {
+      const el = frame.closest('.slide-widget');
+      const onCurrent = !!current && frame.closest('section.asm-slide') === current;
+      const preview = frame.dataset.videoPreview === 'true';
+      if (!el || overview || (editing && !(preview && onCurrent && selectedWidgetKeys.has(el.dataset.widgetId)))
+        || (!editing && preview)) {
+        deactivateVideoFrame(frame);
+        return;
+      }
+      if (!onCurrent || !videoWidgetIsShown(el)) {
+        sendVideoCommand(frame, 'pauseVideo');
+        if (!onCurrent) others.push(frame);
+      }
+    });
+    // Like algorithm runtimes, keep one recently left player so returning resumes.
+    others.sort((a, b) => Number(b.dataset.lastActivated || 0) - Number(a.dataset.lastActivated || 0))
+      .slice(1).forEach(deactivateVideoFrame);
+    if (!editing && !overview && current) {
+      current.querySelectorAll('.slide-widget.video-widget').forEach(el => {
+        const widget = getWidget(el.dataset.widgetId).widget;
+        if (!widget?.autoplay || !videoWidgetIsShown(el) || el.dataset.videoAutoplayVisit === String(videoVisitToken)) return;
+        el.dataset.videoAutoplayVisit = String(videoVisitToken);
+        activateVideoWidget(el, { autoplay: true });
+      });
+    }
+    updateVideoDiagnostics();
+  }
+
+  function nextVideoVisit() {
+    videoVisitToken += 1;
+  }
+
+  function updateVideoDiagnostics() {
+    document.body.dataset.videoFrames = String(videoFrames().length);
+  }
+
+  function handleVideoStartedPlaying(frame) {
+    if (ttsPlayback.active && !ttsPlayback.paused) {
+      toggleTtsPause();
+      document.body.dataset.videoPausedTts = 'true';
+    }
+    videoFrames().forEach(other => {
+      if (other !== frame && other.dataset.playerState === '1') sendVideoCommand(other, 'pauseVideo');
+    });
+  }
+
+  function handleVideoMessage(event) {
+    if (event.origin !== window.ASMSlideVideo.EMBED_ORIGIN) return;
+    const frame = videoFrames().find(item => item.contentWindow === event.source);
+    if (!frame) return;
+    let data = event.data;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch { return; }
+    }
+    if (!data || typeof data !== 'object') return;
+    const el = frame.closest('.slide-widget');
+    if ((data.event === 'onReady' || data.event === 'initialDelivery') && frame.dataset.videoReady !== 'true') {
+      frame.dataset.videoReady = 'true';
+      clearInterval(frame.__asmVideoHandshake);
+      clearTimeout(frame.__asmVideoReadyTimer);
+      if (el?.dataset.videoFallback === 'timeout') hideVideoFallback(el);
+      sendVideoCommand(frame, 'addEventListener', ['onStateChange']);
+      sendVideoCommand(frame, 'addEventListener', ['onError']);
+    }
+    let state = null;
+    if (data.event === 'onStateChange') state = Number(data.info);
+    else if (data.event === 'infoDelivery' && data.info && data.info.playerState !== undefined) state = Number(data.info.playerState);
+    if (Number.isFinite(state)) {
+      const previous = frame.dataset.playerState;
+      frame.dataset.playerState = String(state);
+      if (state === 1 && previous !== '1') handleVideoStartedPlaying(frame);
+    }
+    if (data.event === 'onError' && el) {
+      const code = Number(data.info);
+      deactivateVideoFrame(frame);
+      showVideoFallback(el, VIDEO_ERROR_MESSAGES[`error-${code}`] ? `error-${code}` : 'offline');
+    }
+  }
+
+  // A click inside the cross-origin player moves focus into it, and Reveal
+  // stops seeing arrow keys. The click has already reached YouTube by now.
+  function returnFocusFromVideoFrame() {
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (!active?.matches?.('iframe.slide-video-frame') || document.body.classList.contains('asm-edit-mode')) return;
+      active.blur();
+      window.focus();
+      document.body.dataset.videoFocusReturned = String((Number(document.body.dataset.videoFocusReturned) || 0) + 1);
+    }, 0);
+  }
+
+  function handleVideoFacadeClick(event) {
+    const el = event.target.closest?.('.slide-widget.video-widget');
+    if (!el || document.body.classList.contains('asm-edit-mode') || event.target.closest('.video-fallback a')) return;
+    if (el.querySelector('iframe.slide-video-frame')) return;
+    const section = el.closest('section.asm-slide');
+    if (!section || section !== reveal?.getCurrentSlide?.() || !videoWidgetIsShown(el)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    activateVideoWidget(el, { autoplay: true });
+  }
+
+  function populateVideoEditor(widget) {
+    const video = window.ASMSlideVideo;
+    const valid = video.isVideoId(widget.videoId);
+    if (document.activeElement !== videoUrlInput) videoUrlInput.value = video.shareUrl(widget);
+    videoUrlStatus.textContent = valid ? '' : '影片資料無效，請重新貼上網址';
+    videoUrlStatus.classList.toggle('is-error', !valid);
+    if (document.activeElement !== videoStartInput) videoStartInput.value = video.formatTime(widget.startSeconds);
+    if (document.activeElement !== videoEndInput) videoEndInput.value = widget.endSeconds ? video.formatTime(widget.endSeconds) : '';
+    if (document.activeElement !== videoTitleInput) videoTitleInput.value = widget.title || '';
+    videoAutoplayInput.checked = widget.autoplay === true;
+    videoMutedInput.checked = widget.muted === true;
+    const href = video.watchUrl(widget);
+    videoOpenLink.href = href || '#';
+    videoOpenLink.toggleAttribute('aria-disabled', !href);
+    const previewing = videoFrames().some(frame => frame.dataset.widgetId === widget.id && frame.dataset.videoPreview === 'true');
+    videoPreviewBtn.textContent = previewing ? '停止預覽' : '預覽播放';
+    videoPreviewBtn.disabled = !href;
+  }
+
+  function updateSelectedVideo(patch) {
+    const found = selectedWidgetId && getWidget(selectedWidgetId);
+    if (!found?.widget || found.widget.type !== 'video') return;
+    const next = { ...found.widget, ...patch };
+    updateSelectedWidget({ ...patch, ...window.ASMSlideVideo.normalizeFields(next) });
+    const updated = getWidget(selectedWidgetId).widget;
+    if (updated) populateVideoEditor(updated);
+  }
+
+  function applyVideoUrlInput() {
+    const parsed = window.ASMSlideVideo.parseYouTubeInput(videoUrlInput.value);
+    if (parsed.error) {
+      videoUrlStatus.textContent = parsed.error;
+      videoUrlStatus.classList.add('is-error');
+      return;
+    }
+    const found = getWidget(selectedWidgetId);
+    if (!found.widget) return;
+    const patch = { videoId: parsed.videoId };
+    // A URL carrying its own time overrides; a bare link keeps the chosen range.
+    if (/[?&#](?:t|start)=/.test(videoUrlInput.value)) patch.startSeconds = parsed.startSeconds;
+    if (parsed.endSeconds !== null) patch.endSeconds = parsed.endSeconds;
+    if (parsed.videoId !== found.widget.videoId && parsed.aspect !== found.widget.aspect) {
+      const size = window.ASMSlideVideo.DEFAULT_SIZE[parsed.aspect];
+      Object.assign(patch, {
+        aspect: parsed.aspect,
+        x: found.widget.x + (found.widget.w - size.w) / 2,
+        y: found.widget.y + (found.widget.h - size.h) / 2,
+        w: size.w,
+        h: size.h
+      });
+    }
+    updateSelectedVideo(patch);
+  }
+
+  function applyVideoTimeInput(input, key) {
+    const raw = input.value.trim();
+    const seconds = raw ? window.ASMSlideVideo.parseTime(raw) : (key === 'startSeconds' ? 0 : null);
+    if (raw && seconds === null) {
+      videoUrlStatus.textContent = '時間格式例如 90、1:30 或 1m30s';
+      videoUrlStatus.classList.add('is-error');
+      return;
+    }
+    videoUrlStatus.textContent = '';
+    videoUrlStatus.classList.remove('is-error');
+    updateSelectedVideo({ [key]: seconds });
+  }
+
+  function toggleVideoPreview() {
+    const el = selectedWidgetId && document.querySelector(`.slide-widget[data-widget-id="${CSS.escape(selectedWidgetId)}"]`);
+    if (!el) return;
+    const frame = el.querySelector('iframe.slide-video-frame');
+    if (frame) deactivateVideoFrame(frame);
+    else activateVideoWidget(el, { autoplay: true, preview: true });
+    const widget = getWidget(selectedWidgetId).widget;
+    if (widget) populateVideoEditor(widget);
+    updateVideoDiagnostics();
+  }
+
+  function openVideoInsertDialog() {
+    if (!videoInsertDialog) return;
+    videoInsertUrl.value = '';
+    refreshVideoInsertPreview();
+    if (!videoInsertDialog.open) videoInsertDialog.showModal();
+    videoInsertUrl.focus();
+  }
+
+  function refreshVideoInsertPreview() {
+    const text = videoInsertUrl.value.trim();
+    const parsed = text ? window.ASMSlideVideo.parseYouTubeInput(text) : null;
+    const valid = !!parsed && !parsed.error;
+    confirmVideoInsertBtn.disabled = !valid;
+    videoInsertStatus.classList.toggle('is-error', !!parsed?.error);
+    videoInsertStatus.textContent = !parsed
+      ? '支援 watch、youtu.be、shorts、embed 連結，網址中的開始時間會一併帶入。'
+      : parsed.error || `影片 ID ${parsed.videoId}${parsed.startSeconds ? `，從 ${window.ASMSlideVideo.formatTime(parsed.startSeconds)} 開始` : ''}${parsed.aspect === '9:16' ? '（直式 Shorts）' : ''}`;
+    videoInsertPoster.hidden = !valid;
+    if (valid) videoInsertPoster.src = window.ASMSlideVideo.posterUrl(parsed.videoId);
+    else videoInsertPoster.removeAttribute('src');
+  }
+
+  function addVideoWidget(input, point = { x: SLIDE_W / 2, y: SLIDE_H / 2 }) {
+    const parsed = window.ASMSlideVideo.parseYouTubeInput(input);
+    const slide = getSlide();
+    if (parsed.error || !slide || slide.kind === 'algorithm-animation') return false;
+    slide.widgets = normalizeWidgets(slide.widgets);
+    const size = window.ASMSlideVideo.DEFAULT_SIZE[parsed.aspect];
+    const widget = normalizeWidgets([{
+      id: randomId(),
+      type: 'video',
+      x: Math.max(24, Math.min(point.x - size.w / 2, SLIDE_W - size.w - 24)),
+      y: Math.max(24, Math.min(point.y - size.h / 2, SLIDE_H - size.h - 24)),
+      w: size.w,
+      h: size.h,
+      layerIndex: nextUnifiedLayerIndex(slide, currentFabricCanvas()),
+      videoId: parsed.videoId,
+      startSeconds: parsed.startSeconds,
+      endSeconds: parsed.endSeconds,
+      aspect: parsed.aspect,
+      autoplay: false,
+      muted: false
+    }])[0];
+    slide.widgets.push(widget);
+    saveDeck();
+    pendingTool = null;
+    updateArmedTool();
+    document.body.dataset.lastToolStatus = 'added:video';
+    appendWidgetsToCurrentSlide([widget]);
+    syncUnifiedLayerStyles(slide, currentFabricCanvas());
+    selectWidget(widget.id);
+    return true;
+  }
+
+  function bindVideoControls() {
+    videoInsertUrl?.addEventListener('input', refreshVideoInsertPreview);
+    videoInsertDialog?.addEventListener('submit', event => {
+      event.preventDefault();
+      if (addVideoWidget(videoInsertUrl.value)) videoInsertDialog.close();
+    });
+    videoInsertDialog?.addEventListener('keydown', event => event.stopPropagation());
+    document.getElementById('cancelVideoInsertBtn')?.addEventListener('click', () => videoInsertDialog.close());
+    document.getElementById('closeVideoInsertBtn')?.addEventListener('click', () => videoInsertDialog.close());
+    document.getElementById('exitVideoEditorBtn')?.addEventListener('click', clearWidgetSelection);
+    videoUrlInput?.addEventListener('change', applyVideoUrlInput);
+    videoUrlInput?.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); applyVideoUrlInput(); } });
+    videoStartInput?.addEventListener('change', () => applyVideoTimeInput(videoStartInput, 'startSeconds'));
+    videoEndInput?.addEventListener('change', () => applyVideoTimeInput(videoEndInput, 'endSeconds'));
+    videoTitleInput?.addEventListener('change', () => updateSelectedVideo({ title: videoTitleInput.value }));
+    videoAutoplayInput?.addEventListener('change', () => updateSelectedVideo({ autoplay: videoAutoplayInput.checked }));
+    videoMutedInput?.addEventListener('change', () => updateSelectedVideo({ muted: videoMutedInput.checked }));
+    videoPreviewBtn?.addEventListener('click', toggleVideoPreview);
+    window.addEventListener('message', handleVideoMessage);
+    window.addEventListener('blur', returnFocusFromVideoFrame);
+    document.addEventListener('click', handleVideoFacadeClick, true);
+  }
+
+  // -----------------------------------------------------------------------------
   // 投影片新增、刪除與搬移
   // 所有排序操作直接改 deck 的群組結構，之後重建位置索引並保持使用者焦點在受影響頁面。
   // -----------------------------------------------------------------------------
@@ -10789,6 +11324,7 @@
     if (!customOverview || customOverviewOpen || !document.body.classList.contains('asm-edit-mode')) return;
     if (reveal && reveal.isOverview && reveal.isOverview()) reveal.toggleOverview();
     customOverviewOpen = true;
+    syncVideoPlayback();
     syncSlideOrderToggle();
     overviewSelectedSlideId = getSlide()?.id || overviewSelectedSlideId;
     overviewSelectedSlideIds = new Set([overviewSelectedSlideId].filter(Boolean));
@@ -12293,8 +12829,11 @@
         refreshFabricFragmentVisibility();
         handleTtsSlideChanged();
         syncAlgorithmFrameVisibility();
+        nextVideoVisit();
+        syncVideoPlayback();
         scheduleVisibleLatexAutoSize(event.currentSlide);
       });
+      ['overviewshown', 'overviewhidden', 'fragmentshown', 'fragmenthidden'].forEach(name => reveal.on(name, syncVideoPlayback));
       reveal.on('autoanimate', animateSlideAutoTransition);
       reveal.on('overviewhidden', scheduleFabricResolution);
       reveal.on('slidetransitionend', scheduleCurrentSlideCodeFocus);
@@ -12334,6 +12873,7 @@
     }
 
     bindChrome();
+    bindVideoControls();
     bindSlideDrop();
     window.ASMDeckFileDrop.bind({
       selector: '#importDeckBtn, #addSlideBtn, #overviewAddSlideBtn, .slide-edge-add',
