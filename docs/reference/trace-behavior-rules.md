@@ -80,3 +80,5 @@ row-labels("",S)、column-labels("",T) 的每一個字元格保留來源變數�
 一般資料格的所有比較（包含 ==／!=）均保留共同向上 15px 的準備動作，==／!= 再沿用對齊靠攏及不同值時各 5px 的上下錯開；結束平滑還原。原地不位移的例外僅為二維陣列來源標籤。`restored-comparison.browser.test.js` 核對準備階段及比較定點的實際座標，`matrix-label-events.browser.test.js` 核對標籤中心不動。
 
 遞迴容器的移動身分必須涵蓋外框、名稱、格子與索引：同一遞迴函式祖先／子呼叫的已關閉參數宣告，可延續其可見呈現角色，不能只讓同索引格子沿用舊位置而讓外框跳到終點。snapshot 與明確 visual-exit 不跨域接續。核對 queens-recursive-container.browser.test.js 的前進、返回與存檔重開。
+
+指令箭頭若經事件狀態重畫，可見投影須承接跨幀箭頭的進度與透明度，不能只有隱藏來源淡入／位移。零時長事件不得讓投影直接跳到跨幀終點。核對 sieve-arrow-lifecycle.browser.test.js：線篩第3→4淡入、第6→7端點移動、第4→5淡出，明確關閉 runtime 動畫仍保留繪圖箭頭生命週期。

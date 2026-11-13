@@ -11400,6 +11400,7 @@
         if (draws) element.setAttribute('stroke-dashoffset', String(1 - drawProgress));
         element.setAttribute('opacity', element._asmArrowTween ? '1' : String(drawProgress));
       });
+      directivePresentation?.syncLifecycle?.();
       // Endpoints use the SVG positions produced by this tick, not a second
       // independent tween. The new recursion edge therefore ends at the
       // moving keep node on every tick and extends with that node.
@@ -11703,10 +11704,10 @@
   }
 
   if (typeof document !== 'undefined') {
-  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-364';
+  document.documentElement.dataset.asmTraceFrameTweenBuild = 'trace-365';
   }
   window.ASMTraceFrameTween = {
-    build: 'trace-364', play, cancel, updateEventAvailability,
+    build: 'trace-365', play, cancel, updateEventAvailability,
     preserveCellTextSize, cloneWithoutCellTextScale,
     pause() { if (currentCompletion) playbackPaused = true; },
     resume() { playbackPaused = false; },

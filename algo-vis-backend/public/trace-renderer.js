@@ -6063,11 +6063,25 @@
           if (arrow && old && step.end > step.start) arrow._asmArrowTween = {
             previous: old, targetColor: arrow.getAttribute('stroke'), targetWidth: Number(arrow.getAttribute('stroke-width')),
             color: (a, b) => b, progress: 0, followLive: true };
+          else if (arrow && original?._asmArrowTween) {
+            // The projection is the visible arrow; share the frame handoff
+            // clock instead of leaving motion on its hidden source node.
+            arrow._asmArrowTween = original._asmArrowTween;
+          }
         }
-        if (arrow?._asmArrowTween) arrow._asmArrowTween.progress = Math.max(0, Math.min(1,
+        if (step && arrow?._asmArrowTween && arrow._asmArrowTween !== original?._asmArrowTween) arrow._asmArrowTween.progress = Math.max(0, Math.min(1,
           (elapsed - step.start) / Math.max(1, step.end - step.start)));
         if (record.kind === 'texts') host.setAttribute('opacity', appearAt == null ? '1'
           : String(Math.max(0, Math.min(1, (elapsed - appearAt) / 220))));
+      }, syncLifecycle() {
+        if (!arrow || !original) return;
+        const opacity=original.getAttribute('opacity');
+        if(opacity==null)arrow.removeAttribute('opacity');else arrow.setAttribute('opacity',opacity);
+        // Explicit draw-in uses the same progress as the authored source.
+        for(const name of ['pathLength','stroke-dasharray','stroke-dashoffset']) {
+          const value=original.getAttribute(name);
+          if(value==null)arrow.removeAttribute(name);else arrow.setAttribute(name,value);
+        }
       }, remove() {
         host.remove();
         if (original) {
@@ -6077,7 +6091,7 @@
         originalPlacements.forEach((placement, key) => { if (placement) placements.set(key, placement); else placements.delete(key); });
       } });
     }
-    return { update(elapsed) { owners.forEach(owner => owner.update(elapsed)); }, remove() { owners.forEach(owner => owner.remove()); } };
+    return { update(elapsed) { owners.forEach(owner => owner.update(elapsed)); }, syncLifecycle() { owners.forEach(owner => owner.syncLifecycle()); }, remove() { owners.forEach(owner => owner.remove()); } };
   }
 
   function renderDecorations(root, document, frame, startY, placements, elements, options = {}) {
@@ -7310,9 +7324,9 @@
     return String(key || '').split('#')[0].replace(/:(?:label|index)$/, '');
   }
 
-  document.documentElement.dataset.asmTraceRendererBuild = 'trace-290';
+  document.documentElement.dataset.asmTraceRendererBuild = 'trace-291';
   window.ASMTraceRenderers = {
-    build: 'trace-290', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
+    build: 'trace-291', createDirectivePresenter, sameArrowEndpointBinding, updatePresentedHints, evaluateFrameHighlights, applyFixedEventStyles,
     canReuseStudioScene, register, renderFrame, createThumbnail, preflightEventAvailability, fitThumbnail, fitThumbnails,
     displayValue, formatDisplayValue, hiddenField, renderDisplayTemplate, settlePointerLayer, fitObjectNames,
     resolveAnchor, currentAnchor, currentCameraAnchor, currentBounds, fitCurrentObjectsCamera,
