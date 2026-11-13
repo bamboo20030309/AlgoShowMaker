@@ -42,9 +42,25 @@
 - 最終結果（修正後重跑）：單元 `directive-only-studio` 7／7、`view-source-compaction` 10／10、`asmdeck` 16／16、`camera-directives` 5／5、`event-code-tree` 6／6、`object-inspector-font-size` 2／2、`slide-animation-parity` 16／17（失敗者屬既有）；瀏覽器 `code-panel-settings` 2／2、`studio-availability-preflight`、`linear-keep-frozen` 2／2、`keep-camera-focus`、`studio-virtual-rail`、`trace-code-snippet`、`canvas-mouse-shortcuts` 2／2、`source-newlines`、`directive-only-studio` 皆通過。
 - 未執行完整 regression 與動畫驗證集：依專案規範由主代理依影響範圍執行。
 
+## 第二批：渲染端清理（使用者 2026-11-14「剩下順便改一改」）
+- `public/trace-renderer.js`（7342 → 約 7030 行，`build: 'trace-291'`）：拆除所有讀取 Studio 手動欄位的分支。
+  - 刪除函式：`studioPosition`、`styledTextPieces`（文字區段樣式）、`applyStoredPartPositions`、`applyVisibilityStates`、`applyObjectColorStyles`、`renderStudioArrows`、`renderDecorations`（只服務 Studio 跨幀規則 `repeat-cells`，rules 已一律為空）。
+  - `snapshotStudioPosition` → `snapshotPlacementOffset(snapshot)`：只回傳自動排版記下的位移；`snapshotAutomaticBinding(snapshot)` 只用快照自己的指令綁定。
+  - `applyBindings` 只用指令綁定；`applyDefaultLiveObjectPlacement`、遞迴排版只把指令綁定視為「明確定位」；`keepUnionPlacement`／`keepAnchorPlacement`、快照、即時變數、相鄰幀重用與縮圖重用都不再看逐幀隱藏。
+  - `@text` 樣式只來自指令段落（顏色、背景、字級、粗體）；物件字級覆寫與斜體／底線／刪除線（只有 Studio 能設）移除，`data-trace-text-base-key／source-start／source-end` 屬性一併移除。
+  - 保留 renderScene 最後一次 `applyBindings`：它讓指令綁定在文字與標記排版後維持最終位置。
+  - 自動標記（`renderStudioObjects`）仍使用，只是不再讀 `studio.objects`。
+- `public/trace-studio.css`：刪除 `.trace-studio-hidden-object` 與 `body.asm-trace-camera-framing`（已無使用者）。
+- 版本：`trace-renderer.js?v=trace-291`、`trace-studio.css?v=trace-66`、`slides.js?v=slides-371`（iframe `trace-runtime-126`）。
+- 測試：`keep-directives`（改測 `snapshotPlacementOffset`／指令綁定）、`text-object-bindings`（keep 聯集不再有隱藏快照；預設位置改以指令綁定判斷）、`scene-load-performance`（刪除逐幀隱藏段落）；刪除 `object-inspector-font-size.test.js`（剩下的 2 項都只測 Studio 字級覆寫）。
+- 驗證：與 `adcb77c`（暫時 worktree）逐一比對 —— 單元 `keep-directives`、`text-object-bindings`、`entrypoints`、`arrow-directives`、`layout-directives`、`place-directives`、`matrix-renderer`、`unresolved-markers`、`keep-arrow-layer` 的失敗項目與基準完全相同（皆為既有，多數需編譯器或釘死舊版本號）；`directive-only-studio` 7／7。瀏覽器 16 個相關測試（隔離服務）：scene-load-performance、directive-only-studio、linear-keep-frozen、keep-camera-focus、source-newlines、layout-targets、nested-pointer、matrix-renderer、retained-hint-owner 通過；name-fit、alias-display-name、initializer-visibility、directive-follow（1 項）、restored-comparison、pointer-model（2 項）、eight-queens-loop-playback 在 `adcb77c` 上同樣失敗，屬既有。scene-load-performance 在基準上失敗的就是已刪除的逐幀隱藏段落，現在通過。
+
+## 示意圖
+- 展開式編輯器示意圖 https://claude.ai/artifact/3V4741nMm3dQa1b8qBvYc7：右側屬性改為「事件」「程式碼」兩頁（拿掉「顯示」「旁白」），並註明位置、樣式與鏡頭改用指令。
+
 ## 剩餘事項與合併注意
-- `trace-renderer.js` 仍有約 30 處讀取 `studio.positions／bindings／objectStyles／visibility／objects／arrows` 的分支。資料在所有載入入口已被捨棄，這些分支不會再生效；拆除屬核心渲染修改，需主代理跑動畫驗證集，留作後續。
-- 展開式編輯器示意圖（介面改版階段 4）的右側「顯示」頁需改成只有事件與程式碼。
+- `trace-rules.js` 的 `decorations()` 已無呼叫者（rules 一律為空）；留著不影響行為，可之後一起清。
+- 完整 regression 與動畫驗證集由主代理執行。
 - 合併：在 intergration worktree 執行 `git cherry-pick 5a8a7d9..claude/2026-11-14-directive-only-editor`。
 
 ## 主代理核實與整合（由主代理填寫）

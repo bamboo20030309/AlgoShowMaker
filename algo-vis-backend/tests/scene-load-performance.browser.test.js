@@ -175,22 +175,6 @@ test('RUN stays on canvas; stable Studio entry and thumbnail reuse geometry; tex
   assert.equal(preservedHint.rectSuppressed,false);
   assert.equal(preservedHint.batch,false);
   assert.equal(preservedHint.color,'red');
-  // Hidden objects require a fresh editing scene, and thumbnails retain the
-  // existing renderer fallback and its editing ghost visibility.
-  await page.evaluate(()=>{
-    const doc=ASMTracePlayer.getDocument();const frame=doc.frames[0];
-    const key=document.querySelector('#asm-trace-root .asm-trace-object').dataset.traceObjectKey;
-    doc.studio.visibility={[frame.id]:{[key]:'hidden'}};
-    window.__hiddenKey=key;
-    return ASMTracePlayer.renderStable(0);
-  });
-  await page.evaluate(()=>ASMTraceStudio.open());
-  assert.equal(await page.locator('#asm-trace-root .trace-studio-hidden-object').count()>0,true);
-  const hiddenThumb=await page.evaluate(()=>{
-    const doc=ASMTracePlayer.getDocument();const thumb=ASMTraceRenderers.createThumbnail(doc,doc.frames[0]);
-    return {reused:thumb.dataset.traceSceneReused||'',hidden:!!thumb.querySelector('[data-trace-object-key="'+window.__hiddenKey+'"].trace-studio-hidden-object')};
-  });
-  assert.deepEqual(hiddenThumb,{reused:'',hidden:true});
   const typography=await page.evaluate(()=>{
     const svg=document.getElementById('arraySvg'),g=document.createElementNS(svg.namespaceURI,'g');svg.append(g);
     const proto=SVGTextContentElement.prototype,original=proto.getComputedTextLength;let count=0;

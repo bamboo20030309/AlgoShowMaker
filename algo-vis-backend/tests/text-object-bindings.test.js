@@ -84,7 +84,7 @@ test('renderer resolves keep IDs before equally named Studio IDs', () => {
   assert.equal(resolvedTargetKey({}, {}, { objectKey: 'note' }, placements), 'studio:note');
 });
 
-test('keep is the union of visible retained objects and excludes arrows and hidden snapshots', () => {
+test('keep is the union of retained objects and excludes arrows', () => {
   const rendererSource = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8')
     .replace('window.ASMTraceRenderers = {',
       'window.ASMTraceRenderers = { targetPlacement, resolvedTargetKey, keepUnionPlacement,');
@@ -94,16 +94,13 @@ test('keep is the union of visible retained objects and excludes arrows and hidd
   const document = {
     snapshots: [
       { id: 'snapshot-1', objectId: 'init' },
-      { id: 'snapshot-2', objectId: 'tree_intro' },
-      { id: 'snapshot-3', objectId: 'hidden_keep' }
-    ],
-    studio: { visibility: { 'frame-1': { hidden_keep: 'hidden' } } }
+      { id: 'snapshot-2', objectId: 'tree_intro' }
+    ]
   };
-  const frame = { id: 'frame-1', snapshotIds: ['snapshot-1', 'snapshot-2', 'snapshot-3'] };
+  const frame = { id: 'frame-1', snapshotIds: ['snapshot-1', 'snapshot-2'] };
   const placements = new Map([
     ['init', { x: 100, y: 20, width: 200, height: 80 }],
     ['tree_intro', { x: 150, y: 140, width: 100, height: 160 }],
-    ['hidden_keep', { x: -500, y: 400, width: 900, height: 300 }],
     ['keep-arrow:init:tree_intro', { x: 0, y: 0, width: 1000, height: 1000 }]
   ]);
   const renderer = context.window.ASMTraceRenderers;
@@ -170,7 +167,7 @@ test('relative targets settle before text, segment, marker and arrow layout', ()
   assert.ok(firstBinding >= 0 && firstBinding < segments,
     'frame and keep offsets must update placements before dependent objects render');
   assert.ok(segments < semanticText && semanticText < finalBinding,
-    'semantic text uses settled targets while the final pass keeps Studio bindings authoritative');
+    'semantic text uses settled targets while the final pass keeps directive bindings authoritative');
 });
 
 test('the unpositioned primary object defaults to canvas.top offset(0,80)', () => {
@@ -189,7 +186,7 @@ test('the unpositioned primary object defaults to canvas.top offset(0,80)', () =
 test('keep rows retain vertical stacking, horizontal centering and explicit placement', () => {
   const source = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8');
   const start = source.indexOf('  function defaultLiveObjectPlacementDelta(');
-  const end = source.indexOf('  function applyStoredPartPositions(', start);
+  const end = source.indexOf('  function applyBindings(', start);
   const context = vm.createContext({
     DEFAULT_LIVE_OBJECT_BINDING: { offsetY: 80 },
     objectKeyForVariable: (_frame, id) => id,
@@ -197,11 +194,11 @@ test('keep rows retain vertical stacking, horizontal centering and explicit plac
     shiftPlacementTree: () => {}
   });
   vm.runInContext(source.slice(start, end), context);
-  const run = (snapshotIds, initialY = 0, positions = {}) => {
-    const frame = { id: 'f', snapshotIds, source: { primaryVariableId: 'arr' } };
+  const run = (snapshotIds, initialY = 0, objectBindings = []) => {
+    const frame = { id: 'f', snapshotIds, objectBindings, source: { primaryVariableId: 'arr' } };
     const element = { dataset: { traceVariable: 'arr' } };
     context.applyDefaultLiveObjectPlacement(
-      { studio: { positions: { f: positions } } }, frame,
+      {}, frame,
       new Map([['arr', { x: 100, y: 146, width: 200, height: 80 }]]),
       new Map([['arr', element]]), ['arr'], initialY
     );
@@ -209,5 +206,6 @@ test('keep rows retain vertical stacking, horizontal centering and explicit plac
   };
   assert.deepEqual(JSON.parse(JSON.stringify(run(['keep-1']).delta)), { x: 350, y: 0 });
   assert.deepEqual(JSON.parse(JSON.stringify(run([], 126).delta)), { x: 350, y: -28 });
-  assert.equal(run(['keep-1'], 0, { arr: { x: 10, y: 20 } }).delta, undefined);
+  assert.equal(run(['keep-1'], 0, [{ sourceVariableId: 'arr', anchor: 'bottom' }]).delta, undefined,
+    'a directive binding keeps the default canvas placement from moving the object');
 });

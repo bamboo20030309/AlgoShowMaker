@@ -1175,15 +1175,6 @@
     if (typeof name === 'string' && typeof renderer === 'function') renderers.set(name, renderer);
   }
 
-  function studioPosition(document, frame, key) {
-    const position = document.studio?.positions?.[frame.id]?.[key];
-    return {
-      x: Number(position?.x) || 0,
-      y: Number(position?.y) || 0,
-      absolute: position?.absolute === true
-    };
-  }
-
   function snapshotObjectKey(snapshot) {
     return String(snapshot?.objectId || snapshot?.id || '');
   }
@@ -1210,17 +1201,9 @@
   }
 
   function keepUnionPlacement(document, frame, placements, sourceObjectKey = '') {
-    const snapshotsById = new Map((document?.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
-    const visibilityStates = document?.studio?.visibility?.[frame?.id] || {};
-    const snapshotIdsByObjectKey = new Map((frame?.snapshotIds || []).map(snapshotId => {
-      const objectKey = snapshotObjectKey(snapshotsById.get(snapshotId));
-      return [objectKey, snapshotId];
-    }));
-    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => {
-      const snapshotId = snapshotIdsByObjectKey.get(objectKey);
-      if (!objectKey || (visibilityStates[objectKey] || visibilityStates[snapshotId]) === 'hidden') return null;
-      return placements.get(objectKey) || null;
-    }).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
+    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => (
+      objectKey ? placements.get(objectKey) || null : null
+    )).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
     if (!boxes.length) return null;
     const left = Math.min(...boxes.map(box => box.x));
     const top = Math.min(...boxes.map(box => box.y));
@@ -1229,36 +1212,12 @@
     return { x: left, y: top, width: right - left, height: bottom - top };
   }
 
-  function snapshotStudioPosition(document, frame, snapshot) {
-    const positions = document.studio?.positions?.[frame.id] || {};
-    const objectKey = snapshotObjectKey(snapshot);
-    const hasObjectPosition = Object.prototype.hasOwnProperty.call(positions, objectKey);
-    const hasSnapshotPosition = Object.prototype.hasOwnProperty.call(positions, snapshot.id);
-    if (hasObjectPosition || hasSnapshotPosition) {
-      return {
-        ...studioPosition(document, frame, hasObjectPosition ? objectKey : snapshot.id),
-        explicit: true
-      };
-    }
-
-    const offsetX = Number(snapshot?.placementOffset?.x) || 0;
-    const offsetY = Number(snapshot?.placementOffset?.y) || 0;
-    if (snapshot?.kind !== 'frame' && snapshot?.sourceFrameId && snapshot?.sourceVariableId) {
-      const sourceFrame = document.frames?.find(item => item.id === snapshot.sourceFrameId);
-      const sourceKey = objectKeyForVariable(sourceFrame, snapshot.sourceVariableId);
-      const sourcePositions = document.studio?.positions?.[sourceFrame?.id] || {};
-      const inheritedKey = Object.prototype.hasOwnProperty.call(sourcePositions, sourceKey)
-        ? sourceKey
-        : snapshot.sourceVariableId;
-      const inherited = studioPosition(document, sourceFrame || {}, inheritedKey);
-      return {
-        x: inherited.x + offsetX,
-        y: inherited.y + offsetY,
-        absolute: inherited.absolute,
-        explicit: false
-      };
-    }
-    return { x: offsetX, y: offsetY, absolute: false, explicit: false };
+  // 位置完全由指令與自動排版決定（2026-11-14）：快照只保留自動排版記下的位移。
+  function snapshotPlacementOffset(snapshot) {
+    return {
+      x: Number(snapshot?.placementOffset?.x) || 0,
+      y: Number(snapshot?.placementOffset?.y) || 0
+    };
   }
 
   function objectKeyForVariable(frame, variableId) {
@@ -1269,16 +1228,8 @@
     return variableId;
   }
 
-  function snapshotAutomaticBinding(document, snapshot) {
-    if (!snapshot) return null;
-    if (snapshot.kind !== 'frame' && snapshot.sourceFrameId && snapshot.sourceVariableId) {
-      const sourceFrame = document.frames?.find(item => item.id === snapshot.sourceFrameId);
-      const sourceKey = objectKeyForVariable(sourceFrame, snapshot.sourceVariableId);
-      const inherited = document.studio?.bindings?.[sourceFrame?.id]?.[sourceKey]
-        || document.studio?.bindings?.[sourceFrame?.id]?.[snapshot.sourceVariableId];
-      if (inherited) return { ...inherited };
-    }
-    return snapshot.binding ? { ...snapshot.binding } : null;
+  function snapshotAutomaticBinding(snapshot) {
+    return snapshot?.binding ? { ...snapshot.binding } : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -1770,17 +1721,9 @@
   }
 
   function keepAnchorPlacement(document, frame, placements, elements, sourceObjectKey = '') {
-    const snapshotsById = new Map((document?.snapshots || []).map(snapshot => [snapshot.id, snapshot]));
-    const visibilityStates = document?.studio?.visibility?.[frame?.id] || {};
-    const snapshotIdsByObjectKey = new Map((frame?.snapshotIds || []).map(snapshotId => {
-      const objectKey = snapshotObjectKey(snapshotsById.get(snapshotId));
-      return [objectKey, snapshotId];
-    }));
-    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => {
-      const snapshotId = snapshotIdsByObjectKey.get(objectKey);
-      if (!objectKey || (visibilityStates[objectKey] || visibilityStates[snapshotId]) === 'hidden') return null;
-      return semanticTargetPlacement(objectKey, placements, elements);
-    }).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
+    const boxes = keepSnapshotObjectKeys(document, frame, sourceObjectKey).map(objectKey => (
+      objectKey ? semanticTargetPlacement(objectKey, placements, elements) : null
+    )).filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
     if (!boxes.length) return null;
     const left = Math.min(...boxes.map(box => box.x));
     const top = Math.min(...boxes.map(box => box.y));
@@ -3217,16 +3160,12 @@
     if (!keys.length || frame?.source?.layoutId) return null;
     const preferredKey = objectKeyForVariable(frame, frame?.source?.primaryVariableId || '');
     const primaryKey = keys.includes(preferredKey) ? preferredKey : keys[0];
-    const framePositions = document?.studio?.positions?.[frame?.id] || {};
     const frameBindings = frame?.objectBindings || [];
-    const studioBindings = document?.studio?.bindings?.[frame?.id] || {};
-    const explicitlyPositioned = Object.prototype.hasOwnProperty.call(framePositions, primaryKey)
-      || Object.prototype.hasOwnProperty.call(framePositions, frame?.source?.primaryVariableId || '');
     const explicitlyBound = frameBindings.some(binding => (
       binding?.sourceObjectKey === primaryKey
       || binding?.sourceVariableId === frame?.source?.primaryVariableId
-    )) || Object.prototype.hasOwnProperty.call(studioBindings, primaryKey);
-    if (explicitlyPositioned || explicitlyBound) return null;
+    ));
+    if (explicitlyBound) return null;
 
     const delta = defaultLiveObjectPlacementDelta(placements.get(primaryKey));
     // Keep the horizontal default, but never reset an automatically stacked
@@ -3237,98 +3176,15 @@
     keys.forEach(key => {
       const element = elements.get(key);
       if (!element) return;
-      const hasOwnPosition = Object.prototype.hasOwnProperty.call(framePositions, key);
       const hasOwnBinding = frameBindings.some(binding => (
         binding?.sourceObjectKey === key || binding?.sourceVariableId === element.dataset.traceVariable
-      )) || Object.prototype.hasOwnProperty.call(studioBindings, key);
-      if (hasOwnPosition || hasOwnBinding) return;
+      ));
+      if (hasOwnBinding) return;
       translatedTransform(element, delta.x, delta.y);
       shiftPlacementTree(element, delta.x, delta.y, placements, elements);
       element.dataset.traceDefaultBinding = 'canvas.top offset(0,80)';
     });
     return delta;
-  }
-
-  function applyStoredPartPositions(document, frame, placements, elements) {
-    const positions = document.studio?.positions?.[frame.id] || {};
-    Object.entries(positions).forEach(([key, position]) => {
-      const element = elements.get(key);
-      const placement = placements.get(key);
-      if (!element || !placement || element.dataset.tracePositionApplied === '1') return;
-      const dx = position?.absolute === true ? (Number(position.x) || 0) - placement.x : Number(position?.x) || 0;
-      const dy = position?.absolute === true ? (Number(position.y) || 0) - placement.y : Number(position?.y) || 0;
-      if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
-        translatedTransform(element, dx, dy);
-        shiftPlacementTree(element, dx, dy, placements, elements);
-      }
-      const current = placements.get(key) || placement;
-      element.dataset.tracePositionSpace = 'bounds';
-      element.dataset.tracePositionX = String(current.x);
-      element.dataset.tracePositionY = String(current.y);
-    });
-  }
-
-  function applyVisibilityStates(document, frame, elements) {
-    const states = document.studio?.visibility?.[frame.id] || {};
-    const editing = window.document.body.classList.contains('asm-trace-studio-open');
-    const hiddenElements = Object.entries(states)
-      .filter(([, state]) => state === 'hidden')
-      .map(([key]) => elements.get(key))
-      .filter(Boolean);
-    hiddenElements.forEach(element => {
-      element.dataset.traceVisibility = 'hidden';
-    });
-    hiddenElements.forEach(element => {
-      if (!editing) {
-        element.setAttribute('display', 'none');
-        return;
-      }
-      if (!element.parentElement?.closest('[data-trace-visibility="hidden"]')) {
-        element.classList.add('trace-studio-hidden-object');
-      }
-    });
-  }
-
-  function applyObjectColorStyles(document, frame, elements) {
-    const styles = document.studio?.objectStyles?.[frame.id] || {};
-    Object.entries(styles).forEach(([key, style]) => {
-      const element = elements.get(key);
-      if (!element || !style) return;
-      const fillTargets = element.matches?.('text, rect, circle, ellipse, polygon')
-        ? [element]
-        : [...element.querySelectorAll(':scope > rect, :scope > circle, :scope > ellipse, :scope > polygon, :scope > .asm-trace-motion > rect, :scope > .asm-trace-motion > circle, :scope > .asm-trace-motion > ellipse, :scope > .asm-trace-motion > polygon, :scope > .asm-trace-motion > g > rect, :scope > .asm-trace-motion > g > circle, :scope > .asm-trace-motion > g > polygon')];
-      if (!fillTargets.length) fillTargets.push(...element.querySelectorAll('text'));
-      const strokeTargets = element.matches?.('path, line, polyline, rect, circle, ellipse, polygon')
-        ? [element]
-        : [...element.querySelectorAll('path, line, polyline, rect, circle, ellipse, polygon')];
-      if (style.fill) {
-        fillTargets.forEach(target => {
-          if (target.getAttribute('fill') !== 'none') target.setAttribute('fill', style.fill);
-        });
-        if (!fillTargets.length && element.matches?.('path, line, polyline')) {
-          element.setAttribute('stroke', style.fill);
-        }
-      }
-      if (style.stroke) {
-        strokeTargets.forEach(target => {
-          if (target.getAttribute('stroke') !== 'none') target.setAttribute('stroke', style.stroke);
-        });
-      }
-      const fontSize = Number(style.fontSize);
-      if (Number.isFinite(fontSize) && fontSize > 0) {
-        // @text objects consume their object-level font size while calculating
-        // layout, so the bubble, padding and pointer scale with the glyphs.
-        // Rewriting only their <text> nodes here would distort that geometry.
-        if (element.matches?.('.asm-trace-text-object')) return;
-        const textTargets = element.matches?.('text')
-          ? [element]
-          : [...element.querySelectorAll('text')];
-        textTargets.forEach(target => {
-          target.setAttribute('font-size', String(fontSize));
-          if (target.classList.contains('outerframe-label')) target.dataset.traceNameFontLimit = String(fontSize);
-        });
-      }
-    });
   }
 
   function applyBindings(document, frame, placements, elements) {
@@ -3341,7 +3197,7 @@
       ...(frame.objectBindings || []),
       ...(frame.snapshotIds || []).map(id => {
         const snapshot = snapshotsById.get(id);
-        const binding = snapshotAutomaticBinding(document, snapshot);
+        const binding = snapshotAutomaticBinding(snapshot);
         return binding
           ? { ...binding, sourceObjectKey: snapshotObjectKey(snapshot) }
           : null;
@@ -3378,10 +3234,7 @@
         targetExpression: binding.targetExpression || ''
       };
     });
-    const bindings = {
-      ...directiveBindings,
-      ...(document.studio?.bindings?.[frame.id] || {})
-    };
+    const bindings = directiveBindings;
     const applied = new Set();
     const applying = new Set();
 
@@ -4108,7 +3961,6 @@
           }
         });
       }
-      const positions = document.studio?.positions?.[frame.id] || {};
       sourceNodes.forEach(node => {
         const snapshot = snapshotsById.get(node.id);
         const destination = coordinates.get(node.id);
@@ -4117,9 +3969,7 @@
         // wrapper by the delta needed to put that exact box in the layout
         // slot; this keeps @frame ... in and @keep ... in pixel-aligned.
         const current = node.box;
-        const explicitlyPlaced = Object.prototype.hasOwnProperty.call(positions, node.objectKey)
-          || Object.prototype.hasOwnProperty.call(positions, node.id)
-          || Boolean(snapshot?.binding)
+        const explicitlyPlaced = Boolean(snapshot?.binding)
           || Boolean(node.live && (frame.objectBindings || []).some(binding => (
             binding?.sourceVariableId === frame.source?.primaryVariableId
           )));
@@ -4827,44 +4677,6 @@
     return window.parseTTSMarkup?.(value) || { display: String(value ?? ''), speech: String(value ?? '') };
   }
 
-  function styledTextPieces(document, frame, objectKey, segment, segmentIndex, resolvedText) {
-    const baseKey = `${objectKey}:segment:${segment?.segmentId || segmentIndex}`;
-    const styles = document.studio?.objectStyles?.[frame.id] || {};
-    const baseStyle = styles[baseKey] || {};
-    if (segment?.kind === 'expression' || /[{}]/.test(resolvedText)) {
-      return [{ text: resolvedText, segmentKey: baseKey, baseKey, sourceStart: 0, sourceEnd: resolvedText.length, storedStyle: baseStyle }];
-    }
-    const escaped = baseKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`^${escaped}:range:(\\d+)-(\\d+)$`);
-    const ranges = Object.entries(styles).map(([key, style]) => {
-      const match = key.match(pattern);
-      if (!match) return null;
-      return {
-        key,
-        start: Math.max(0, Math.min(resolvedText.length, Number(match[1]) || 0)),
-        end: Math.max(0, Math.min(resolvedText.length, Number(match[2]) || 0)),
-        style
-      };
-    }).filter(range => range && range.end > range.start);
-    if (!ranges.length) {
-      return [{ text: resolvedText, segmentKey: baseKey, baseKey, sourceStart: 0, sourceEnd: resolvedText.length, storedStyle: baseStyle }];
-    }
-    const boundaries = [...new Set([0, resolvedText.length, ...ranges.flatMap(range => [range.start, range.end])])]
-      .sort((left, right) => left - right);
-    return boundaries.slice(0, -1).map((start, index) => {
-      const end = boundaries[index + 1];
-      const covering = ranges.filter(range => range.start <= start && end <= range.end).at(-1);
-      return {
-        text: resolvedText.slice(start, end),
-        segmentKey: covering?.key || baseKey,
-        baseKey,
-        sourceStart: start,
-        sourceEnd: end,
-        storedStyle: { ...baseStyle, ...(covering?.style || {}) }
-      };
-    });
-  }
-
   function renderFrameTexts(root, document, frame, startY, placements, elements, options = {}) {
     let y = startY;
     const textLayer = svg('g', { class: 'asm-trace-text-layer' });
@@ -4886,45 +4698,32 @@
             })
             : segment?.text;
         const resolvedText = expressionValue == null ? '' : String(expressionValue);
-        styledTextPieces(document, frame, key, segment, segmentIndex, resolvedText).forEach((piece, pieceIndex) => {
-          piece.text.split('\n').forEach((part, partIndex, parts) => {
+        const segmentKey = `${key}:segment:${segment?.segmentId || segmentIndex}`;
+        resolvedText.split('\n').forEach((part, partIndex, parts) => {
             const parsed = traceTextMarkup(part);
-            const storedStyle = piece.storedStyle;
             lines.at(-1).push({
               ...segment,
-              ...piece,
+              text: resolvedText,
+              segmentKey,
               segmentIndex,
               display: parsed.display,
               speech: explicitSpeech
-                ? (Object.hasOwn(segment || {}, 'speech') && pieceIndex === 0 && partIndex === 0
+                ? (Object.hasOwn(segment || {}, 'speech') && partIndex === 0
                   ? String(segment.speech ?? '') : '')
                 : parsed.speech,
-              textColor: storedStyle.textColor || traceTextColor(segment?.color, '#111827'),
-              background: Object.hasOwn(storedStyle, 'background')
-                ? storedStyle.background
-                : traceTextColor(segment?.background, 'none'),
-              fontSize: Math.max(8, Number(storedStyle.fontSize) || Number(segment?.fontSize) || 14),
-              bold: Object.hasOwn(storedStyle, 'bold') ? storedStyle.bold === true : segment?.bold === true
+              textColor: traceTextColor(segment?.color, '#111827'),
+              background: traceTextColor(segment?.background, 'none'),
+              fontSize: Math.max(8, Number(segment?.fontSize) || 14),
+              bold: segment?.bold === true
             });
             if (partIndex < parts.length - 1) lines.push([]);
-          });
         });
       });
-      const objectTextStyle = document.studio?.objectStyles?.[frame.id]?.[key] || {};
       const renderedBaseFontSize = Math.max(
         authoredBaseFontSize,
         ...lines.flat().map(segment => Number(segment.fontSize) || 0)
       );
-      const requestedFontSize = Number(objectTextStyle.fontSize);
-      const hasObjectFontSize = Number.isFinite(requestedFontSize) && requestedFontSize > 0;
-      const targetBaseFontSize = hasObjectFontSize ? requestedFontSize : renderedBaseFontSize;
-      const glyphScale = hasObjectFontSize ? requestedFontSize / renderedBaseFontSize : 1;
-      const objectScale = targetBaseFontSize / authoredBaseFontSize;
-      if (Math.abs(glyphScale - 1) > 0.0001) {
-        lines.forEach(line => line.forEach(segment => {
-          segment.fontSize *= glyphScale;
-        }));
-      }
+      const objectScale = renderedBaseFontSize / authoredBaseFontSize;
       const lineHeight = lines.map(line => Math.max(
         12 * objectScale,
         ...line.map(segment => segment.fontSize * 1.25)
@@ -4949,9 +4748,8 @@
       const boxWidth = Math.max(28 * objectScale, ...widths) + padX * 2;
       const boxHeight = lineHeight.reduce((sum, height) => sum + height, 0)
         + Math.max(0, lines.length - 1) * lineGap + padY * 2;
-      const position = studioPosition(document, frame, key);
-      const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
+      const baseX = 0;
+      const baseY = y;
       const object = markSelectable(svg('g', {
         id: `msg-${options.idPrefix || 'trace'}-text-${String(descriptor.id || descriptorIndex).replace(/[^A-Za-z0-9_-]/g, '-')}`,
         class: 'asm-trace-object draggable-object asm-trace-text-object',
@@ -5024,9 +4822,6 @@
             'data-trace-text-segment': segment.kind || 'literal',
             'data-trace-text-expression': segment.kind === 'expression' ? segment.source || `\${${segment.expression}}` : '',
             'data-trace-text-segment-id': segment.segmentId || String(segment.segmentIndex),
-            'data-trace-text-base-key': segment.baseKey || segment.segmentKey,
-            'data-trace-text-source-start': segment.sourceStart ?? 0,
-            'data-trace-text-source-end': segment.sourceEnd ?? segment.display.length,
             'data-trace-text-background': segment.background || 'none'
           });
           segmentGroup.append(svg('rect', {
@@ -5046,11 +4841,6 @@
             y: lineHeight[lineIndex] * 0.78,
             'font-size': segment.fontSize,
             'font-weight': segment.bold ? 'bold' : 'normal',
-            'font-style': segment.storedStyle?.italic === true ? 'italic' : 'normal',
-            'text-decoration': [
-              segment.storedStyle?.underline === true ? 'underline' : '',
-              segment.storedStyle?.strike === true ? 'line-through' : ''
-            ].filter(Boolean).join(' ') || 'none',
             'font-family': 'Arial',
             fill: segment.textColor,
             'xml:space': 'preserve',
@@ -5130,7 +4920,7 @@
   }
 
   function renderStudioObjects(root, document, frame, placements, elements, options = {}, sourceObjects = null) {
-    const objects = (sourceObjects || document.studio?.objects || []).filter(object => studioObjectVisible(object, frame));
+    const objects = (sourceObjects || []).filter(object => studioObjectVisible(object, frame));
     objects.forEach(studioObject => {
       // Auto bindings may supply a transient placement without inventing a
       // real array index. It is not persisted in the Trace Studio document.
@@ -5143,9 +4933,8 @@
         ? resolveAnchor(document, frame, studioObject.pointerTarget, placements, elements)
         : target;
       const key = `studio:${studioObject.id}`;
-      const position = studioPosition(document, frame, key);
-      const offsetX = (Number(studioObject.offsetX) || 0) + position.x;
-      const offsetY = (Number(studioObject.offsetY) || 0) + position.y;
+      const offsetX = Number(studioObject.offsetX) || 0;
+      const offsetY = Number(studioObject.offsetY) || 0;
       const baseX = target.x + offsetX;
       const baseY = target.y + offsetY;
       const object = markSelectable(svg('g', {
@@ -5153,7 +4942,6 @@
         class: 'asm-trace-object asm-trace-bound-object',
         transform: `translate(${baseX}, ${baseY})`,
         'data-base-offset': `${baseX},${baseY}`,
-        'data-studio-offset': `${position.x},${position.y}`,
         'data-trace-bound': '1',
         'data-translate': '0,0',
         'data-trace-object-key': key
@@ -5943,33 +5731,6 @@
     });
   }
 
-  function renderStudioArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
-    const arrows = Array.isArray(document.studio?.arrows) ? document.studio.arrows : [];
-    if (!arrows.length) return;
-    const models = arrows.map(arrow => {
-      const fromTarget = arrow.from || { variableId: arrow.fromVariableId, anchor: 'right' };
-      const toTarget = arrow.to || { variableId: arrow.toVariableId, anchor: 'left' };
-      const withinSameObject = fromTarget.variableId === toTarget.variableId
-        && fromTarget.indexExpression && toTarget.indexExpression;
-      return {
-        ...arrow,
-        source: 'studio',
-        from: fromTarget,
-        to: toTarget,
-        style: {
-          ...(arrow.style || {}),
-          color: arrow.style?.color || arrow.color || '#e53935',
-          width: arrow.style?.width || arrow.width || 3,
-          line: arrow.style?.line || arrow.line || (withinSameObject ? 'curve' : 'straight'),
-          head: arrow.style?.head || arrow.head || 'end',
-          dash: arrow.style?.dash || arrow.dash || ''
-        }
-      };
-    });
-    renderArrowModels(rootSvg, root, document, frame, placements, elements,
-      models, options, 'studio');
-  }
-
   function renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options = {}) {
     const current = window.ASMTraceModel?.drawingDirectives?.(document, frame, 'arrows') || frame.arrows || [];
     const trails = options.onlyCurrent ? [] : window.ASMTraceModel?.returnTrailArrows?.(document, frame) || [];
@@ -6037,9 +5798,6 @@
           renderFrameTexts(host, document, projected, Number(original?.dataset.tracePositionY) || 0,
             localPlacements, localElements, { idPrefix: 'trace-follow', interactive: true });
           applySemanticTextBindings(document, projected, localPlacements, localElements);
-          applyObjectColorStyles(document, projected, localElements);
-          applyVisibilityStates(document, projected, new Map([...localElements]
-            .filter(([key]) => key === textKey || key.startsWith(textKey + ':'))));
           const object = host.querySelector('.asm-trace-text-object');
           if (object) object.dataset.traceSourceVariableIds = JSON.stringify(record.ids);
           for (const [key, element] of localElements) if (key === textKey || key.startsWith(textKey + ':')) {
@@ -6094,52 +5852,6 @@
     return { update(elapsed) { owners.forEach(owner => owner.update(elapsed)); }, syncLifecycle() { owners.forEach(owner => owner.syncLifecycle()); }, remove() { owners.forEach(owner => owner.remove()); } };
   }
 
-  function renderDecorations(root, document, frame, startY, placements, elements, options = {}) {
-    let y = startY;
-    for (const decoration of window.ASMTraceRules.decorations(document, frame)) {
-      if (decoration.count <= 0) continue;
-      const key = `rule:${decoration.ruleId}`;
-      const position = studioPosition(document, frame, key);
-      const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
-      const object = markSelectable(svg('g', {
-        id: `${options.idPrefix || 'trace'}-decoration-${String(decoration.ruleId).replace(/[^A-Za-z0-9_-]/g, '-')}`,
-        class: 'asm-trace-object asm-trace-decoration',
-        transform: `translate(${baseX}, ${baseY})`,
-        'data-base-offset': `${baseX},${baseY}`,
-        'data-translate': '0,0',
-        'data-trace-object-key': key
-      }), key, { ...options, movable: true });
-      object.dataset.tracePositionApplied = '1';
-      object.dataset.tracePositionSpace = 'origin';
-      object.dataset.tracePositionX = String(baseX);
-      object.dataset.tracePositionY = String(baseY);
-      const motion = svg('g', { class: 'asm-trace-motion' });
-      const content = svg('g');
-      motion.append(content);
-      object.append(motion);
-      const items = Array.from({ length: decoration.count }, () => ({ kind: 'scalar', value: '' }));
-      const decorationHighlights = Object.fromEntries(items.map((item, index) => [String(index), {
-        fill: decoration.color || '#dcecff',
-        stroke: decoration.stroke || '#3976b8'
-      }]));
-      const height = renderOriginal(content, { data: { kind: 'sequence', items } }, {
-        variable: { kind: 'sequence', name: decoration.label || '條件產生物件' }, variableId: key,
-        skin: { options: { showIndex: false, gap: Number(decoration.gap) || 0 } },
-        rendererName: 'original-array', highlights: decorationHighlights, diff: [],
-        idPrefix: `${options.idPrefix || 'trace'}-original`, interactive: options.interactive
-      });
-      root.append(object);
-      animateObjectPosition(motion, options, key, { x: baseX, y: baseY });
-      const box = measuredBox(content, { x: 0, y: 0, width: Math.max(40, decoration.count * 40), height });
-      placements.set(key, { x: baseX + box.x, y: baseY + box.y, width: box.width, height: box.height });
-      elements.set(key, object);
-      collectElementPlacements(content, baseX, baseY, placements, elements);
-      y += Math.max(76, Number(height) || 76) + 28;
-    }
-    return y;
-  }
-
   function snapshotRuntimeIdentity(document, snapshot) {
     if (snapshot.sourceIdentity) return snapshot.sourceIdentity;
     const frames = document.frames || [];
@@ -6166,10 +5878,6 @@
       snapshot, document.variables?.[snapshot.sourceVariableId],
       document.skins?.[snapshot.sourceVariableId],
       sourceFrame?.state, sourceFrame?.styles,
-      related(document.studio?.objectStyles?.[frame.id]),
-      related(document.studio?.visibility?.[frame.id]),
-      related(document.studio?.positions?.[frame.id]),
-      related(document.studio?.bindings?.[frame.id]),
       (document.layouts || []).find(layout => layout.id === snapshot.layoutId)
     ]);
   }
@@ -6180,8 +5888,6 @@
     const usesAutomaticKeepArrows = snapshot => (
       !snapshot.layoutId || ['linear', 'line', 'group'].includes(layoutTypes.get(snapshot.layoutId))
     );
-    const visibilityStates = document.studio?.visibility?.[frame.id] || {};
-    const editingVisibility = window.document.body.classList.contains('asm-trace-studio-open');
     // Registration is frame-local even when the painted DOM is cached. Both
     // paths must contribute the same descendants, geometry and keep endpoints.
     const registerObjectSnapshot = (snapshot, object, motion, box, contentBox, baseX, baseY) => {
@@ -6204,16 +5910,15 @@
     (frame.snapshotIds || []).forEach(snapshotId => {
       const snapshot = snapshotsById.get(snapshotId);
       const objectKey = snapshotObjectKey(snapshot);
-      const visibility = visibilityStates[objectKey] || visibilityStates[snapshotId];
-      if (!snapshot || !objectKey || (!editingVisibility && visibility === 'hidden')) return;
+      if (!snapshot || !objectKey) return;
       const signature = snapshot.kind === 'frame' ? '' : snapshotAppearanceSignature(document, frame, snapshot);
       const candidate = options.reusableSnapshots?.get?.(snapshotId) || null;
       const reusable = candidate?._asmSnapshotAppearance === signature && candidate?._asmSnapshotGeometry
         ? candidate : null;
       if (reusable) {
-        const position = snapshotStudioPosition(document, frame, snapshot);
+        const position = snapshotPlacementOffset(snapshot);
         const baseX = position.x;
-        const baseY = position.absolute ? position.y : y + position.y;
+        const baseY = y + position.y;
         reusable.setAttribute('transform', `translate(${baseX}, ${baseY})`);
         reusable.setAttribute('data-base-offset', `${baseX},${baseY}`);
         reusable.dataset.tracePositionApplied = '1';
@@ -6229,12 +5934,11 @@
         return;
       }
       if (snapshot.kind === 'frame' && snapshot.frame) {
-        const position = snapshotStudioPosition(document, frame, snapshot);
+        const position = snapshotPlacementOffset(snapshot);
         const baseX = position.x;
         // Keep the live portion of the source frame in the same layout row it
-        // occupied before @keep. An explicitly dragged snapshot remains a
-        // standalone group and therefore keeps the legacy absolute behavior.
-        const sourceLayoutY = position.explicit ? 0 : y;
+        // occupied before @keep.
+        const sourceLayoutY = y;
         const baseY = position.y;
         const object = markSelectable(svg('g', {
           id: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`,
@@ -6379,9 +6083,9 @@
         snapshotHighlights.$object = { styleTypes: { background: layoutBackground } };
       }
       const snapshotRenderFrame = snapshotStyleFrame || snapshotSourceFrame || frame;
-      const position = snapshotStudioPosition(document, frame, snapshot);
+      const position = snapshotPlacementOffset(snapshot);
       const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
+      const baseY = y + position.y;
       const object = markSelectable(svg('g', {
         id: `${options.idPrefix || 'trace'}-${safeKey(objectKey)}`,
         class: 'asm-trace-object asm-trace-snapshot',
@@ -6471,11 +6175,7 @@
     const placements = new Map();
     const elements = new Map();
     const liveObjectKeys = [];
-    const editingVisibility = window.document.body.classList.contains('asm-trace-studio-open');
-    const visibilityStates = document.studio?.visibility?.[frame.id] || {};
-    const hiddenVariables = new Set((document.studio?.objects || [])
-      .filter(object => object.hideSource && object.sourceVariableId && studioObjectVisible(object, frame))
-      .map(object => object.sourceVariableId));
+    const hiddenVariables = new Set();
     (frame.captureOnlyVariableIds || []).forEach(variableId => hiddenVariables.add(variableId));
     // A system branch preview materializes the selected recursive call through
     // previewSnapshotId.  Its authored frame still supplies values for text,
@@ -6520,8 +6220,7 @@
     Object.entries(document.variables || {}).forEach(([variableId, variable]) => {
       const entry = frame.state?.[variableId];
       const objectKey = objectKeyForVariable(frame, variableId);
-      if (!entry || hiddenVariables.has(variableId)
-        || (!editingVisibility && visibilityStates[objectKey] === 'hidden')) return;
+      if (!entry || hiddenVariables.has(variableId)) return;
       const displayName = frame.source?.objectIds?.[variableId]
         || (frame.source?.primaryVariableId === variableId ? frame.source?.objectId : '')
         || variable.name;
@@ -6537,9 +6236,8 @@
       const lifecycleKind = ['sequence', 'matrix', 'stack', 'queue'].includes(
         String(variable.kind || entry.data?.kind || '')
       ) ? 'array' : 'object';
-      const position = studioPosition(document, frame, objectKey);
-      const baseX = position.x;
-      const baseY = position.absolute ? position.y : y + position.y;
+      const baseX = 0;
+      const baseY = y;
       const object = markSelectable(svg('g', {
         id: `${idPrefix}-${objectKey.replace(/[^A-Za-z0-9_-]/g, '-')}`,
         class: 'asm-trace-object',
@@ -6569,8 +6267,7 @@
       const canLod = window.ASMStructureLOD && (!previousFrame || options.interactive === false)
         && options.animateEvents === false
         && supportsCellLevelLod(rendererName)
-        && !skin.options.display && !skin.options.fields && !skin.options.indexLabels
-        && !Object.keys(document.studio?.objectStyles?.[frame.id] || {}).length;
+        && !skin.options.display && !skin.options.fields && !skin.options.indexLabels;
       window.ASMStructureLOD?.begin(content, lodScale, canLod);
       let height = (window.withSvgTextFitStyle || ((group, callback) => callback()))(content, () => renderer(content, entry, {
         variable, variableId: objectKey, displayName, skin, rendererName,
@@ -6645,15 +6342,12 @@
     applyBindings(document, frame, placements, elements);
     renderFrameSegments(root, document, frame, placements, elements, options);
     y = renderFrameTexts(root, document, frame, y, placements, elements, options);
-    y = renderDecorations(root, document, frame, y, placements, elements, options);
-    renderStudioObjects(root, document, frame, placements, elements, options);
     applySemanticTextBindings(document, frame, placements, elements);
     renderFrameBindings(root, document, frame, placements, elements, options);
-    renderStudioArrows(rootSvg, root, document, frame, placements, elements, options);
     renderDirectiveArrows(rootSvg, root, document, frame, placements, elements, options);
-    applyStoredPartPositions(document, frame, placements, elements);
+    // Final pass: directive bindings stay authoritative after text and marker layout.
     applyBindings(document, frame, placements, elements);
-    // Studio positions and semantic bindings may move recursion nodes after
+    // Semantic bindings may move recursion nodes after
     // their automatic layout. Resolve the parent/child edges only now so the
     // arrowhead lands on the child's final outerframe top/side anchor.
     renderRecursionLayoutEdges(rootSvg, root, document, frame, placements, elements, options);
@@ -6669,9 +6363,7 @@
       if (retained && !options.snapshotOwner) return;
       element.dataset.traceSceneGeneration = sceneGeneration;
     });
-    applyObjectColorStyles(document, frame, elements);
     fitObjectNames(root);
-    applyVisibilityStates(document, frame, elements);
     if (options.interactive !== false || options.evaluateAvailability === true) {
       window.ASMTraceFrameTween?.updateEventAvailability?.(
         document, frame, placements, elements, options.availabilityPreviousObjects ?? null
@@ -6733,8 +6425,6 @@
         )) || '';
       };
       const excluded = new Set([activeId(previousFrame), activeId(frame)].filter(Boolean));
-      const previousVisibility = document.studio?.visibility?.[previousFrame.id] || {};
-      const currentVisibility = document.studio?.visibility?.[frame.id] || {};
       previousRoot.querySelectorAll(':scope > [data-trace-snapshot]').forEach(element => {
         const snapshotId = String(element.dataset.traceSnapshot || '');
         const snapshot = snapshotsById.get(snapshotId);
@@ -6745,8 +6435,7 @@
         // frame contents from the frozen model; stable snapshot keys still
         // preserve transition identity. Simple object snapshots remain reusable.
         if (!snapshot || snapshot.kind === 'frame' || !currentIds.has(snapshotId)
-          || !previousIds.has(snapshotId) || excluded.has(snapshotId)
-          || previousVisibility[objectKey] === 'hidden' || currentVisibility[objectKey] === 'hidden') return;
+          || !previousIds.has(snapshotId) || excluded.has(snapshotId)) return;
         element.remove();
         reusableSnapshots.set(snapshotId, element);
       });
@@ -6987,8 +6676,7 @@
 
   function canReuseStudioScene(document, frame) {
     return currentScene?.document === document && currentScene?.frame === frame
-      && currentScene.root.isConnected && currentScene.settled
-      && !Object.values(document.studio?.visibility?.[frame.id] || {}).includes('hidden');
+      && currentScene.root.isConnected && currentScene.settled;
   }
 
   function cloneThumbnailScene(document, frame, prefix) {

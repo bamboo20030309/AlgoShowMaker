@@ -205,13 +205,13 @@ int main() {
   assert.deepEqual(JSON.parse(JSON.stringify(snapshot.placementOffset)), { x: 0, y: -36 });
 });
 
-test('keep snapshots inherit source Studio placement until edited directly', () => {
+test('keep snapshots use only their automatic layout offset and directive binding', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const vm = require('node:vm');
   const rendererSource = fs.readFileSync(path.join(__dirname, '../public/trace-renderer.js'), 'utf8')
     .replace('window.ASMTraceRenderers = {',
-      'window.ASMTraceRenderers = { snapshotStudioPosition, snapshotAutomaticBinding, objectMotionPositions, shiftPlacementTree,');
+      'window.ASMTraceRenderers = { snapshotPlacementOffset, snapshotAutomaticBinding, objectMotionPositions, shiftPlacementTree,');
   const context = vm.createContext({ window: {}, document: { documentElement: { dataset: {} } } });
   vm.runInContext(rendererSource, context);
   const renderer = context.window.ASMTraceRenderers;
@@ -223,11 +223,10 @@ test('keep snapshots inherit source Studio placement until edited directly', () 
   assert.ok(!renderer.runtimeIdentityToken(recursiveIdentity, 'heapify:arr').includes(recursiveIdentity),
     'recursive array identity is opaque instead of embedding its values');
   assert.deepEqual(
-    JSON.parse(JSON.stringify(renderer.snapshotStudioPosition(
-      { studio: { positions: {} } }, { id: 'current' },
+    JSON.parse(JSON.stringify(renderer.snapshotPlacementOffset(
       { id: 'snapshot:frame:1', objectId: 'round', kind: 'frame' }
     ))),
-    { x: 0, y: 0, absolute: false, explicit: false },
+    { x: 0, y: 0 },
     '@keep last keeps its source offset while the stack owns the extra spacing'
   );
   assert.ok(rendererSource.includes('const KEEP_SNAPSHOT_GAP = 50;'),
@@ -260,36 +259,25 @@ test('keep snapshots inherit source Studio placement until edited directly', () 
   assert.equal(child.dataset.tracePositionX, '133');
   assert.equal(child.dataset.tracePositionY, '128',
     'post-measurement parent bindings update child tween coordinates too');
-  const document = {
-    frames: [{ id: 'source', source: {}, state: { arr: {} } }, { id: 'current', state: {} }],
-    studio: {
-      positions: { source: { arr: { x: 32, y: 148, absolute: true } } },
-      bindings: { source: { arr: { targetKey: '$canvas', targetAnchor: 'top', dy: 24 } } }
-    }
-  };
+  // 動畫完全由指令驅動（2026-11-14）：舊 Studio 位置／綁定不再影響保留快照。
   const snapshot = {
     id: 'snapshot:arr:1',
     objectId: 'saved',
     sourceFrameId: 'source',
     sourceVariableId: 'arr',
-    placementOffset: { x: 4, y: -20 }
+    placementOffset: { x: 4, y: -20 },
+    binding: { anchor: 'bottom', target: { objectKey: 'arr' } }
   };
 
   assert.deepEqual(
-    JSON.parse(JSON.stringify(renderer.snapshotStudioPosition(document, document.frames[1], snapshot))),
-    { x: 36, y: 128, absolute: true, explicit: false }
+    JSON.parse(JSON.stringify(renderer.snapshotPlacementOffset(snapshot))),
+    { x: 4, y: -20 }
   );
   assert.deepEqual(
-    JSON.parse(JSON.stringify(renderer.snapshotAutomaticBinding(document, snapshot))),
-    { targetKey: '$canvas', targetAnchor: 'top', dy: 24 }
+    JSON.parse(JSON.stringify(renderer.snapshotAutomaticBinding(snapshot))),
+    { anchor: 'bottom', target: { objectKey: 'arr' } }
   );
-
-  document.studio.positions.current = { saved: { x: 90, y: 210, absolute: true } };
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(renderer.snapshotStudioPosition(document, document.frames[1], snapshot))),
-    { x: 90, y: 210, absolute: true, explicit: true },
-    'a directly edited keep position remains authoritative and does not reapply the directive offset'
-  );
+  assert.equal(renderer.snapshotAutomaticBinding({ id: 'plain' }), null);
 });
 
 test('@keep last retains an uninitialized declaration as an empty cell', async () => {
