@@ -12,7 +12,7 @@ html.asm-slide-laser-frame * {
 
 /* Mode menu: transitions-dev dropdown tokens, with reduced-motion support. */
 .asm-presentation-menu {
-  position: fixed; z-index: 2147483647; min-width: 160px; padding: 5px;
+  position: fixed; z-index: 2147483647; display: flex; gap: 4px; padding: 5px;
   border: 1px solid #526064; border-radius: 8px; background: #20282b; color: #fff;
   box-shadow: 0 8px 24px #0005; transform-origin: top left;
   opacity: 0; transform: scale(.97); pointer-events: none;
@@ -20,9 +20,20 @@ html.asm-slide-laser-frame * {
 }
 .asm-presentation-menu.is-open { opacity: 1; transform: scale(1); pointer-events: auto; }
 .asm-presentation-menu.is-closing { opacity: 0; transform: scale(.99); transition-duration: 150ms; }
-.asm-presentation-menu button { display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; font: 14px Arial, sans-serif; }
+.asm-presentation-menu[hidden] { display: none; }
+/* 圖示按鈕：目前模式以底色與外框標示；名稱只在滑鼠停留或鍵盤聚焦時以提示文字出現。 */
+.asm-presentation-menu button { position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.asm-presentation-menu button svg { width: 20px; height: 20px; display: block; }
 .asm-presentation-menu button:hover, .asm-presentation-menu button:focus-visible { background: #ffffff20; outline: none; }
-.asm-presentation-menu button[aria-checked="true"]::before { content: '✓ '; }
+.asm-presentation-menu button[aria-checked="true"] { background: #ffffff2e; border-color: #ffffff59; }
+.asm-presentation-menu button::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 7px); left: 50%; z-index: 1;
+  padding: 4px 8px; border-radius: 4px; background: #111a1d; color: #fff; font: 12px/1.3 Arial, sans-serif; white-space: nowrap;
+  box-shadow: 0 2px 8px #0006; opacity: 0; transform: translate(-50%, -2px); pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+/* 開選單時預設按鈕會取得焦點，不能因此就顯示提示；只有滑鼠停留，或用方向鍵移動後才顯示。 */
+.asm-presentation-menu button:hover::after, .asm-presentation-menu.is-keyboard button:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 250ms; }
 body.asm-slide-view-mode:not(.asm-slide-laser-mode) .reveal { cursor: default; }
 .asm-presentation-text-layer { position: absolute; inset: 0; z-index: 1; overflow: visible; pointer-events: none; }
 .asm-presentation-text-layer text, .asm-presentation-text-layer tspan {
@@ -32,4 +43,4 @@ body.asm-slide-view-mode:not(.asm-slide-laser-mode) .reveal { cursor: default; }
 body.asm-edit-mode .asm-presentation-text-layer, body.asm-slide-laser-mode .asm-presentation-text-layer, .reveal.overview .asm-presentation-text-layer { display: none; }
 body.asm-slide-view-mode:not(.asm-slide-laser-mode) .widget-content,
 body.asm-slide-view-mode:not(.asm-slide-laser-mode) .widget-content * { user-select: text; }
-@media (prefers-reduced-motion: reduce) { .asm-presentation-menu { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .asm-presentation-menu, .asm-presentation-menu button::after { transition: none !important; } }

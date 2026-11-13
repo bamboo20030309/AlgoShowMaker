@@ -15,7 +15,7 @@ test('wheel visits vertical slides before horizontal groups; laser works in slid
   });
   await page.goto(base+'/slides.html');
   await page.waitForFunction(()=>window.Reveal?.isReady()&&document.body.dataset.slideCount==='6');
-  const enableLaser=async()=>{await page.evaluate(()=>Reveal.getCurrentSlide().dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:200,clientY:150})));await page.getByRole('menuitemradio',{name:'簡報模式'}).click();};
+  const enableLaser=async()=>{await page.evaluate(()=>Reveal.getCurrentSlide().dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:200,clientY:150})));await page.getByRole('menuitemradio',{name:'雷射筆游標'}).click();};
   const indices=()=>page.evaluate(()=>{const {h,v}=Reveal.getIndices();return[h,v||0];});
   const expectAt=async(h,v)=>{await page.waitForFunction(([h,v])=>Reveal.getIndices().h===h&&(Reveal.getIndices().v||0)===v,[h,v]);assert.deepEqual(await indices(),[h,v]);};
   const center=async()=>{const box=await page.locator('section.asm-slide.present .asm-slide-frame-content').boundingBox();await page.mouse.move(box.x+box.width*.5,box.y+box.height*.5);};

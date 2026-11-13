@@ -14,7 +14,7 @@ test('canvas drag selects wheel zoom and mouse clicks reuse playback button comm
   await page.goto(base + '/slides.html'); await page.waitForFunction(() => Reveal?.isReady() && document.body.dataset.slideCount === '2');
   if(await page.evaluate(()=>document.body.classList.contains('asm-edit-mode')))await page.locator('#modeToggleBtn').click();
   await page.evaluate(()=>Reveal.getCurrentSlide().dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:200,clientY:150})));
-  await page.getByRole('menuitemradio',{name:'簡報模式'}).click();
+  await page.getByRole('menuitemradio',{name:'雷射筆游標'}).click();
   await page.evaluate(base => {
     Reveal.slide(0,0); const frame = document.createElement('iframe'); frame.id = 'gesture-frame'; frame.className = 'algorithm-slide-frame';
     frame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;z-index:200000';
@@ -68,7 +68,7 @@ test('canvas drag selects wheel zoom and mouse clicks reuse playback button comm
   await page.waitForTimeout(380); assert.deepEqual(await child.evaluate(() => commands), []);
   await page.locator('#modeToggleBtn').click();
   await page.evaluate(()=>Reveal.getCurrentSlide().dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:200,clientY:150})));
-  await page.getByRole('menuitemradio',{name:'簡報模式'}).click();
+  await page.getByRole('menuitemradio',{name:'雷射筆游標'}).click();
   await child.waitForFunction(() => document.documentElement.classList.contains('asm-slide-laser-frame'));
   // Studio object editing does not trigger playback shortcuts.
   await child.evaluate(() => { document.body.classList.add('asm-trace-studio-open'); commands.length=0; });

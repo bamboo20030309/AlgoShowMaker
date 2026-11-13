@@ -6,7 +6,7 @@
   function install({ reveal, groupSizes, overviewOpen = () => false }) {
     if (installed.has(reveal)) return installed.get(reveal);
     const frames = new Set(), documents = new WeakSet();
-    const frameStyles = new URL('slide-presentation-controls.css?v=3', document.baseURI).href;
+    const frameStyles = new URL('slide-presentation-controls.css?v=5', document.baseURI).href;
     let presentationMode = false;
     let accumulated = 0, previousDirection = 0, lastWheel = 0, lockedUntil = 0;
     const modalOpen = () => !!document.querySelector('dialog[open], #algorithmEditorModal:not([hidden]), #codeEditorModal:not([hidden])');
@@ -16,9 +16,17 @@
 
     const menu = document.createElement('div');
     menu.className = 'asm-presentation-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true;
+    // 選單只放圖示；名稱放在 aria-label，滑鼠停留或鍵盤聚焦時才以提示文字顯示（見 CSS 的 data-tip）。
+    const MODE_ICONS = {
+      normal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 11.2-5.8.5 3.3 7.3-2.2 1-3.2-7.4L6 19.5z" fill="currentColor"/></svg>',
+      // 與放映時的雷射筆游標（CSS --asm-slide-laser-cursor）是同一個圖案。
+      laser: '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="#ff2020" fill-opacity=".24"/><circle cx="16" cy="16" r="6" fill="#ff2020" stroke="#202020" stroke-width="3"/><circle cx="16" cy="16" r="5" fill="#ff2020" stroke="white" stroke-width="1.5"/></svg>'
+    };
     const menuButtons = [false, true].map(laser => {
       const button = document.createElement('button'); button.type = 'button';
-      button.setAttribute('role', 'menuitemradio'); button.textContent = laser ? '簡報模式' : '一般游標';
+      const label = laser ? '雷射筆游標' : '一般游標';
+      button.setAttribute('role', 'menuitemradio'); button.setAttribute('aria-label', label);
+      button.dataset.tip = label; button.innerHTML = MODE_ICONS[laser ? 'laser' : 'normal'];
       button.addEventListener('click', () => { presentationMode = laser; closeMenu(); sync(); });
       menu.append(button); return button;
     });
@@ -26,7 +34,7 @@
     let menuTimer;
     function closeMenu() {
       if (menu.hidden) return;
-      menu.classList.remove('is-open'); menu.classList.add('is-closing');
+      menu.classList.remove('is-open', 'is-keyboard'); menu.classList.add('is-closing');
       clearTimeout(menuTimer); menuTimer = setTimeout(() => { menu.hidden = true; menu.classList.remove('is-closing'); }, 150);
     }
     function contextMenu(event, frame = null) {
@@ -50,8 +58,12 @@
     window.addEventListener('keydown', event => {
       if (menu.hidden) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeMenu(); }
+      if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(event.key)) menu.classList.add('is-keyboard');
       if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
         event.preventDefault(); event.stopImmediatePropagation(); menuButtons[document.activeElement === menuButtons[0] ? 1 : 0].focus();
+      }
+      if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        event.preventDefault(); event.stopImmediatePropagation(); menuButtons[event.key === 'ArrowRight' ? 1 : 0].focus();
       }
     }, true);
 

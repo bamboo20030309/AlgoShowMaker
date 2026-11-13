@@ -18,9 +18,20 @@ test('presentation defaults to native selection and mode menu toggles laser with
  const selected=await page.evaluate(()=>getSelection().toString());
  assert.match(selected,/Selectable lesson/,'native selection spans the rendered text');
  fs.mkdirSync('test-results/presentation-modes',{recursive:true});await page.screenshot({path:'test-results/presentation-modes/text-selection.png'});
- const menu=async()=>{await page.mouse.click(b.x+b.width+40,b.y+20,{button:'right'});await page.getByRole('menuitemradio',{name:'簡報模式'}).waitFor({state:'visible'});};
+ const menu=async()=>{await page.mouse.click(b.x+b.width+40,b.y+20,{button:'right'});await page.getByRole('menuitemradio',{name:'雷射筆游標'}).waitFor({state:'visible'});};
+ await menu();
+ // 選單只有圖示；提示文字在滑鼠停留後才出現。
+ const laserItem=page.getByRole('menuitemradio',{name:'雷射筆游標'}),normalItem=page.getByRole('menuitemradio',{name:'一般游標'});
+ assert.equal((await laserItem.textContent()).trim(),'');assert.equal((await normalItem.textContent()).trim(),'');
+ assert.equal(await normalItem.getAttribute('aria-checked'),'true');
+ const tip=item=>item.evaluate(e=>({text:getComputedStyle(e,'::after').content,opacity:getComputedStyle(e,'::after').opacity}));
+ await page.mouse.move(5,5);await page.waitForTimeout(450);
+ assert.equal((await tip(laserItem)).opacity,'0','tip hidden until hover');
+ assert.equal((await tip(normalItem)).opacity,'0','the focused current mode shows no tip just because the menu opened');
+ await laserItem.hover();await page.waitForTimeout(450);
+ assert.deepEqual(await tip(laserItem),{text:'"雷射筆游標"',opacity:'1'});
  await menu();await page.keyboard.press('Escape');await page.waitForTimeout(180);assert.equal(await page.locator('.asm-presentation-menu').isHidden(),true);
- await menu();await page.getByRole('menuitemradio',{name:'簡報模式'}).click();await page.waitForFunction(()=>document.body.classList.contains('asm-slide-laser-mode'));
+ await menu();await page.getByRole('menuitemradio',{name:'雷射筆游標'}).click();await page.waitForFunction(()=>document.body.classList.contains('asm-slide-laser-mode'));
  assert.equal(await text.isVisible(),false,'laser mode removes the selection hit surface');
  await menu();await page.getByRole('menuitemradio',{name:'一般游標'}).click();await page.waitForFunction(()=>!document.body.classList.contains('asm-slide-laser-mode'));
  await text.waitFor({state:'visible'});
@@ -28,7 +39,7 @@ test('presentation defaults to native selection and mode menu toggles laser with
  // same parent menu, rather than the browser's menu or a playback step.
  await page.evaluate(base=>{const f=document.createElement('iframe');f.id='mode-frame';f.className='algorithm-slide-frame';f.src=base+'/algorithm.html?asmEmbed=runtime';f.style.cssText='position:absolute;inset:0;width:100%;height:100%;z-index:99999';Reveal.getCurrentSlide().querySelector('.asm-slide-frame-content').append(f);},base);
  const child=page.frameLocator('#mode-frame');await child.locator('#arraySvg').waitFor();await child.locator('#arraySvg').click({button:'right',position:{x:400,y:150}});
- await page.getByRole('menuitemradio',{name:'簡報模式'}).click();await page.waitForFunction(()=>document.querySelector('#mode-frame').contentDocument.documentElement.classList.contains('asm-slide-laser-frame'));
+ await page.getByRole('menuitemradio',{name:'雷射筆游標'}).click();await page.waitForFunction(()=>document.querySelector('#mode-frame').contentDocument.documentElement.classList.contains('asm-slide-laser-frame'));
  await page.locator('#modeToggleBtn').click();await page.waitForFunction(()=>!document.body.classList.contains('asm-slide-laser-mode'));
  assert.equal(await page.locator('.asm-presentation-text-layer').count(),0,'edit mode keeps Fabric editing only');
  await page.waitForFunction(()=>document.body.dataset.localDeckSave==='saved');await page.reload();await page.waitForFunction(()=>Reveal?.isReady());
