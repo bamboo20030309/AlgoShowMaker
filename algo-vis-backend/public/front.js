@@ -2588,7 +2588,7 @@ document.addEventListener('DOMContentLoaded', function () {
       folderDiv.className = 'algo-item algo-folder';
 
       const textSpan = document.createElement('span');
-      textSpan.textContent = item.name;
+      textSpan.textContent = item.displayName || item.name;
       folderDiv.appendChild(textSpan);
 
       const subMenuDiv = document.createElement('div');
@@ -2615,7 +2615,7 @@ document.addEventListener('DOMContentLoaded', function () {
       // A. 程式檔本體
       const fileDiv = document.createElement('div');
       fileDiv.className = 'algo-item algo-file code-file';
-      fileDiv.textContent = item.name;
+      fileDiv.textContent = item.displayName || item.name;
       fileDiv.title = item.path;
 
       fileDiv.addEventListener('click', async (e) => {
@@ -2646,8 +2646,8 @@ document.addEventListener('DOMContentLoaded', function () {
         inputContainer.className = 'input-list-container';
 
         relatedInputs.forEach(inputFile => {
-          let displayName = inputFile.name;
-          if (displayName.startsWith(baseName)) {
+          let displayName = inputFile.displayName || inputFile.name;
+          if (!inputFile.displayName && displayName.startsWith(baseName)) {
             displayName = displayName.substring(baseName.length);
           }
           displayName = displayName.replace(/^[_.-]+/, '');
@@ -2680,7 +2680,7 @@ document.addEventListener('DOMContentLoaded', function () {
     otherFiles.forEach(item => {
       const fileDiv = document.createElement('div');
       fileDiv.className = 'algo-item algo-file';
-      fileDiv.textContent = item.name;
+      fileDiv.textContent = item.displayName || item.name;
       fileDiv.addEventListener('click', async (e) => {
         e.stopPropagation();
         await loadSampleData(item.path, null);

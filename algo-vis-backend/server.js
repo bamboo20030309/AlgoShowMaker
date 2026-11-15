@@ -3493,10 +3493,10 @@ setInterval(() => {
 
 
 
-const SAMPLES_DIR = path.join(__dirname, '../../algorithm_sample');
+const SAMPLES_DIR = path.join(__dirname, 'algorithm_sample');
 
 // 遞迴讀取目錄結構
-function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
+function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR, labels = {}) {
   const stats = fs.statSync(dirPath);
   if (!stats.isDirectory()) return [];
 
@@ -3514,13 +3514,15 @@ function getDirectoryTree(dirPath, rootPath = SAMPLES_DIR) {
     if (itemStats.isDirectory()) {
       return {
         name: item,
+        ...(labels[relativePath] ? { displayName: labels[relativePath] } : {}),
         type: 'folder',
         path: relativePath, // 加入路徑
-        children: getDirectoryTree(fullPath, rootPath) // 遞迴
+        children: getDirectoryTree(fullPath, rootPath, labels) // 遞迴
       };
     } else {
       return {
         name: item,
+        ...(labels[relativePath] ? { displayName: labels[relativePath] } : {}),
         type: 'file',
         path: relativePath  // 加入路徑
       };
@@ -3643,10 +3645,11 @@ app.get('/api/samples', (req, res) => {
   if (requestedFilename) {
     // [安全防護] 防止 Directory Traversal 攻擊 (例如傳 ../../etc/passwd)
     // 1. 組合完整路徑
-    const safePath = path.join(SAMPLES_DIR, requestedFilename);
+    if (typeof requestedFilename !== 'string') return res.status(400).send('Invalid filename.');
+    const safePath = path.resolve(SAMPLES_DIR, requestedFilename);
 
     // 2. 確保解析後的路徑，真的還在 SAMPLES_DIR 裡面
-    if (!safePath.startsWith(SAMPLES_DIR)) {
+    if (!safePath.startsWith(SAMPLES_DIR + path.sep)) {
       return res.status(403).send("Access Denied: Invalid file path.");
     }
 
@@ -3675,7 +3678,12 @@ app.get('/api/samples', (req, res) => {
         return res.json([]);
       }
 
-      const tree = getDirectoryTree(SAMPLES_DIR);
+      // Optional names are presentation metadata; paths remain English and
+      // continue to match the code/input pairing contract.
+      const manifestFile = path.join(SAMPLES_DIR, 'Slide_Examples', '.manifest.json');
+      const labels = fs.existsSync(manifestFile)
+        ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')).labels || {} : {};
+      const tree = getDirectoryTree(SAMPLES_DIR, SAMPLES_DIR, labels);
       res.json(tree);
     } catch (err) {
       console.error("Error scanning directory:", err);
