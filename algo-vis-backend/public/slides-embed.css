@@ -86,3 +86,24 @@ body.asm-embed-runtime .controls #prevKeyFrameBtn,
 body.asm-embed-runtime .controls #nextKeyFrameBtn {
   display: none !important;
 }
+
+/* 組裝式過場（編輯動畫展開／收回）：頁面背景透明，只看得到正在移動的畫布、
+   從左側展開的編輯區與從上方落下的分頁；移動中的元素不被父層裁切。 */
+html.asm-embed-assembling,
+html.asm-embed-assembling body,
+html.asm-embed-assembling #main,
+html.asm-embed-assembling #vizPanel {
+  background: transparent !important;
+  overflow: visible !important;
+}
+
+html.asm-embed-assembling #tab-canvas {
+  position: relative;
+  z-index: 3;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
+}
+
+/* 收到展開指令到過場第一幀之間不畫任何東西，避免先閃出完整版面。 */
+html.asm-embed-assembly-pending body {
+  visibility: hidden;
+}

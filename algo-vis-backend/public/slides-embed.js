@@ -137,8 +137,55 @@
     return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
   }
 
-  function setEmbedMode(next, cameraSurface = null) {
+  // 組裝式過場：左側編輯區從左邊展開、畫布從投影片上的位置移到右側、右側分頁從上方落下。
+  // from 是投影片上的畫布在這個 iframe 座標中的位置；過場中頁面背景透明，看得到後面的投影片。
+  const ASSEMBLE_MS = 460;
+  const ASSEMBLE_EASING = 'cubic-bezier(.22, 1, .36, 1)';
+  let assemblyAnimations = [];
+
+  function cancelAssembly() {
+    assemblyAnimations.forEach(animation => animation.cancel());
+    assemblyAnimations = [];
+    document.documentElement.classList.remove('asm-embed-assembling');
+  }
+
+  function playAssembly(from, direction) {
+    cancelAssembly();
+    const canvas = document.getElementById('tab-canvas');
+    const target = canvas?.getBoundingClientRect();
+    if (!from || !target?.width || typeof canvas.animate !== 'function') {
+      document.documentElement.classList.remove('asm-embed-assembly-pending');
+      return Promise.resolve();
+    }
+    document.documentElement.classList.add('asm-embed-assembling');
+    document.documentElement.classList.remove('asm-embed-assembly-pending');
+    const scale = from.width / target.width;
+    const visibleHeight = Math.min(target.height, from.height / scale);
+    const placed = {
+      transform: `translate(${from.left - target.left}px, ${from.top - target.top}px) scale(${scale})`,
+      clipPath: `inset(0px 0px ${Math.max(0, target.height - visibleHeight)}px 0px)`
+    };
+    const settled = { transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px)' };
+    const opening = direction === 'open';
+    const options = { duration: ASSEMBLE_MS, easing: ASSEMBLE_EASING, fill: 'both' };
+    const pair = (start, end) => opening ? [start, end] : [end, start];
+    const parts = [
+      [canvas, pair(placed, settled)],
+      [document.getElementById('codePanel'), pair({ transform: 'translateX(-100%)' }, { transform: 'translateX(0)' })],
+      [document.getElementById('divider'), pair({ opacity: 0 }, { opacity: 1 })],
+      [document.getElementById('subTabs'), pair({ transform: 'translateY(-100%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 })]
+    ].filter(([element]) => element);
+    canvas.style.transformOrigin = '0 0';
+    assemblyAnimations = parts.map(([element, frames]) => element.animate(frames, options));
+    return Promise.all(assemblyAnimations.map(animation => animation.finished.catch(() => {}))).then(() => {
+      if (opening) cancelAssembly();
+    });
+  }
+
+  function setEmbedMode(next, cameraSurface = null, assembleFrom = null) {
     if (!['runtime', 'editor'].includes(next)) return;
+    if (next === 'editor' && assembleFrom) document.documentElement.classList.add('asm-embed-assembly-pending');
+    if (next === 'runtime') cancelAssembly();
     if (next !== mode) {
       if (mode === 'editor') window.ASMTraceStudio?.flushSourceSettings?.();
       document.body.classList.remove(`asm-embed-${mode}`);
@@ -160,8 +207,42 @@
       window.parent.postMessage({ type: 'asm-embed-mode-changed', mode, canvasRect: canvasRect() },
         window.location.origin);
     };
-    if (typeof window.requestAnimationFrame !== 'function') setTimeout(report, 0);
-    else window.requestAnimationFrame(() => window.requestAnimationFrame(report));
+    const settled = () => {
+      if (mode === 'editor' && assembleFrom) playAssembly(assembleFrom, 'open').then(report);
+      else report();
+    };
+    if (typeof window.requestAnimationFrame !== 'function') setTimeout(settled, 0);
+    else window.requestAnimationFrame(() => window.requestAnimationFrame(settled));
+  }
+
+  // RUN 同步：編輯頁的 RUN 開始／結束時告訴父頁（投影片編輯欄的 RUN 與狀態跟著變）；
+  // 編輯欄的 RUN 執行中時，父頁送 asm-runtime-run-state，這裡的 RUN 也顯示執行中。
+  let externalRunState = '';
+  const runButton = document.getElementById('runBtn');
+  function editorRunResult() {
+    const trace = window.ASMTraceEditor?.getTraceDocument?.();
+    const code = typeof aceEditor !== 'undefined' ? aceEditor.getValue() : '';
+    const input = document.getElementById('inputArea')?.value || '';
+    const fresh = Boolean(trace) && window.ASMTraceProvenance?.status?.(trace, code, input)?.kind === 'current';
+    const message = fresh ? '' : (document.getElementById('outputArea')?.textContent || '執行失敗').trim();
+    return { ok: fresh, message };
+  }
+  if (runButton && typeof MutationObserver === 'function') {
+    let wasLoading = runButton.classList.contains('loading');
+    new MutationObserver(() => {
+      const loading = runButton.classList.contains('loading');
+      if (loading === wasLoading) return;
+      wasLoading = loading;
+      if (externalRunState || window.parent === window) return;
+      const result = loading ? { state: 'running' } : { state: 'done', ...editorRunResult() };
+      window.parent.postMessage({ type: 'asm-embed-run-state', ...result }, window.location.origin);
+    }).observe(runButton, { attributes: true, attributeFilter: ['class'] });
+  }
+  function setExternalRunState(state) {
+    if (!runButton) return;
+    externalRunState = state === 'running' ? 'running' : '';
+    runButton.classList.toggle('loading', state === 'running');
+    runButton.disabled = state === 'running';
   }
 
   // 編輯頁裡改了輸入：讓投影片編輯欄的輸入框保持同一份。
@@ -186,7 +267,19 @@
       return;
     }
     if (event.data.type === 'asm-embed-set-mode') {
-      setEmbedMode(event.data.mode, event.data.cameraSurface || null);
+      setEmbedMode(event.data.mode, event.data.cameraSurface || null, event.data.assembleFrom || null);
+      return;
+    }
+    if (event.data.type === 'asm-embed-disassemble') {
+      playAssembly(event.data.to || null, 'close').then(() => {
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'asm-embed-disassembled' }, window.location.origin);
+        }
+      });
+      return;
+    }
+    if (event.data.type === 'asm-runtime-run-state') {
+      setExternalRunState(event.data.state);
       return;
     }
     if (event.data.type === 'asm-runtime-set-input') {

@@ -282,6 +282,32 @@ button.auto-stepping:hover {
   border: none;
 }
 
+/* 程式碼編輯器的捲軸：配合深色程式碼面板，細、深灰、透明軌道。 */
+#editor .ace_scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #4a5459 transparent;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar-track,
+#editor .ace_scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid #1e1e1e;
+  border-radius: 6px;
+  background: #4a5459;
+}
+
+#editor .ace_scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #66737a;
+}
+
 /* 左側三個標籤（原始碼／程式碼框／事件動畫）：與右側分頁同樣的圓角與藍色底線，配色跟著深色程式碼面板。 */
 #codePanel > header {
   gap: 8px;

@@ -7472,7 +7472,8 @@
     algorithmSidebarBlock.dataset.runState = state;
     if (algorithmSlideRunBtn) {
       algorithmSlideRunBtn.disabled = state === 'running' || !runnable;
-      algorithmSlideRunBtn.querySelector('span').textContent = state === 'running' ? '執行中…' : 'RUN';
+      algorithmSlideRunBtn.classList.toggle('loading', state === 'running');
+      algorithmSlideRunBtn.setAttribute('aria-busy', String(state === 'running'));
       algorithmSlideRunBtn.title = runnable
         ? '用這張投影片的程式與輸入重新執行'
         : '這張投影片還沒有可執行的程式；請先到「編輯動畫」撰寫';
@@ -10498,7 +10499,7 @@
         }
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
           frame.classList.add('is-loading');
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-130';
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-131';
         }
         if (placeholder) placeholder.hidden = true;
       }
@@ -10540,7 +10541,7 @@
 
     frame.classList.add('is-loading');
     if (!algorithmFrameIsCurrent(frame)) return;
-    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-130';
+    const runtimeUrl = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-131';
     if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
       frame.src = runtimeUrl;
       return;
@@ -10566,6 +10567,8 @@
     const ranInput = slide.animation?.input;
     runningSlideAnimations.add(slide.id);
     setSlideRunState(slide, 'running');
+    const runFrame = frame?.isConnected ? frame : algorithmFrameForSlide(slide) || editingAlgorithmFrame;
+    runFrame?.contentWindow?.postMessage({ type: 'asm-runtime-run-state', state: 'running' }, window.location.origin);
     try {
       await rebuildSlideAnimation(slide.animation);
       if (getSlideById(slide.id) !== slide) return;
@@ -10589,6 +10592,7 @@
     } finally {
       runningSlideAnimations.delete(slide.id);
       renderAlgorithmRunState(slide);
+      runFrame?.contentWindow?.postMessage({ type: 'asm-runtime-run-state', state: 'done' }, window.location.origin);
     }
   }
 
@@ -10635,6 +10639,21 @@
     if (!slide || slide.kind !== 'algorithm-animation') return;
     if (event.data.type === 'asm-animation-compiled') {
       setAlgorithmEditorStatus('動畫已更新');
+      return;
+    }
+    if (event.data.type === 'asm-embed-run-state') {
+      if (event.data.state === 'running') {
+        slideRunStates.set(slide.id, { state: 'running' });
+        setAlgorithmEditorStatus('執行中…');
+      } else if (event.data.ok) {
+        slideRunStates.delete(slide.id);
+        if (slide.animation) delete slide.animation.rebuildError;
+        setAlgorithmEditorStatus('動畫已更新');
+      } else {
+        slideRunStates.set(slide.id, { state: 'error', message: event.data.message || '執行失敗' });
+        setAlgorithmEditorStatus('執行失敗，詳見「輸出」與「除錯記錄」');
+      }
+      renderAlgorithmRunState(slide);
       return;
     }
     if (event.data.type === 'asm-embed-input-changed') {
@@ -10697,36 +10716,25 @@
     return reply;
   }
 
-  // 投影片上的畫布（slideRect）與展開後 iframe 內的畫布區（canvasRect）之間的對應。
-  function collapsedFrameKeyframe(slideRect, canvasRect) {
-    const stage = algorithmEditorStage.getBoundingClientRect();
-    const scale = slideRect.width / Math.max(1, canvasRect.width);
-    const translateX = slideRect.left - stage.left - canvasRect.left * scale;
-    const translateY = slideRect.top - stage.top - canvasRect.top * scale;
-    const visibleHeight = Math.min(canvasRect.height, slideRect.height / scale);
-    const right = Math.max(0, stage.width - canvasRect.left - canvasRect.width);
-    const bottom = Math.max(0, stage.height - canvasRect.top - visibleHeight);
-    return {
-      transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`,
-      clipPath: `inset(${canvasRect.top}px ${right}px ${bottom}px ${canvasRect.left}px)`
-    };
-  }
-
-  function playAlgorithmEditorTransition(frame, slideRect, canvasRect, direction) {
-    const collapsed = collapsedFrameKeyframe(slideRect, canvasRect);
-    const expanded = { transform: 'translate(0px, 0px) scale(1)', clipPath: 'inset(0px 0px 0px 0px)' };
+  // 父頁只負責背景淡入與標題列滑入；畫布移動、左側展開、分頁落下在 iframe 內播放（組裝式過場）。
+  function playAlgorithmEditorChrome(direction) {
     const opening = direction === 'open';
     const options = { duration: ALGORITHM_EDITOR_TRANSITION_MS, easing: ALGORITHM_EDITOR_EASING, fill: 'both' };
     const backdrop = algorithmEditorPage.querySelector('.algorithm-editor-backdrop');
     const bar = algorithmEditorPage.querySelector('.algorithm-editor-bar');
     const animations = [
-      frame.animate(opening ? [collapsed, expanded] : [expanded, collapsed], options),
       backdrop.animate(opening ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }], options),
       bar.animate(opening
         ? [{ transform: 'translateY(-100%)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }]
         : [{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-100%)', opacity: 0 }], options)
     ];
-    return Promise.all(animations.map(animation => animation.finished.catch(() => {}))).then(() => animations);
+    return { animations, finished: Promise.all(animations.map(animation => animation.finished.catch(() => {}))) };
+  }
+
+  // 投影片上的畫布位置，換算成全螢幕頁面中 iframe 的座標。
+  function rectInEditorStage(rect) {
+    const stage = algorithmEditorStage.getBoundingClientRect();
+    return { left: rect.left - stage.left, top: rect.top - stage.top, width: rect.width, height: rect.height };
   }
 
   function algorithmSlideLabel(slideId) {
@@ -10748,37 +10756,35 @@
       const loaded = frame.getAttribute('src')?.includes('asmEmbed=runtime') && !frame.hidden
         && !frame.classList.contains('is-loading');
       const slideRect = frame.getBoundingClientRect();
-      const animate = loaded && slideRect.width > 40 && !prefersReducedMotion()
-        && typeof algorithmEditorStage.moveBefore === 'function';
+      const animate = loaded && slideRect.width > 40 && !prefersReducedMotion();
       editingAlgorithmFrameHome = { parent: frame.parentNode, next: frame.nextSibling, hidden: frame.hidden };
       editingAlgorithmSlideId = slideId;
       editingAlgorithmFrame = frame;
       if (algorithmEditorTitle) algorithmEditorTitle.textContent = algorithmSlideLabel(slideId);
       setAlgorithmEditorStatus(loaded ? '' : '正在準備編輯器…');
-      window.ASMSlideVideo?.pauseAll?.();
       algorithmEditorPage.hidden = false;
       document.body.classList.add('asm-algorithm-editor-open');
-      if (animate) {
-        // 第一幀以投影片上的位置呈現，避免搬移後到過場開始前閃一下完整版面。
-        frame.style.visibility = 'hidden';
-      }
       frame.hidden = false;
       const kept = moveFramePreservingState(algorithmEditorStage, frame, null);
       if (!loaded || !kept) {
         // 尚未載入（或瀏覽器不支援 moveBefore 而重新載入）：等嵌入頁就緒，再送入動畫。
         const ready = waitForFrameMessage(frame, 'asm-embed-ready', 20000);
         if (!frame.getAttribute('src')?.includes('asmEmbed=runtime')) {
-          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-130' + (isLocalCopy() ? '&localOnly=1' : '');
+          frame.src = 'algorithm.html?asmEmbed=runtime&v=trace-runtime-131' + (isLocalCopy() ? '&localOnly=1' : '');
         }
         await ready;
         await sendAlgorithmAnimationToFrame(frame, slide);
       }
       frame.classList.remove('is-loading');
-      const changed = await setFrameEmbedMode(frame, 'editor', slideId);
-      frame.style.visibility = '';
-      if (animate && changed?.canvasRect) {
-        const animations = await playAlgorithmEditorTransition(frame, slideRect, changed.canvasRect, 'open');
-        animations.forEach(animation => animation.cancel());
+      const assembleFrom = animate && kept ? rectInEditorStage(slideRect) : null;
+      const chrome = assembleFrom ? playAlgorithmEditorChrome('open') : null;
+      const reply = waitForFrameMessage(frame, 'asm-embed-mode-changed', 3000);
+      frame.contentWindow?.postMessage({ type: 'asm-embed-set-mode', mode: 'editor',
+        cameraSurface: algorithmCameraSurface(frame, slideId), assembleFrom }, window.location.origin);
+      await reply;
+      if (chrome) {
+        await chrome.finished;
+        chrome.animations.forEach(animation => animation.cancel());
       }
       setAlgorithmEditorStatus(slideRunState(slide).state === 'stale' ? '尚未更新：輸入已修改' : '');
       algorithmEditorBackBtn?.focus({ preventScroll: true });
@@ -10832,28 +10838,34 @@
       const home = editingAlgorithmFrameHome;
       const homeRect = home?.parent?.isConnected ? home.parent.getBoundingClientRect() : null;
       const animate = Boolean(homeRect && homeRect.width > 40) && !prefersReducedMotion();
-      let animations = [];
+      let chrome = null;
       if (animate) {
-        const measured = await setFrameEmbedMode(frame, 'editor', slide?.id);
-        if (measured?.canvasRect) {
-          animations = await playAlgorithmEditorTransition(frame, homeRect, measured.canvasRect, 'close');
-        }
+        // 反向組裝：左側收回左邊、分頁往上收、畫布縮回投影片上原本的位置與大小。
+        chrome = playAlgorithmEditorChrome('close');
+        const done = waitForFrameMessage(frame, 'asm-embed-disassembled', 3000);
+        frame.contentWindow?.postMessage({ type: 'asm-embed-disassemble', to: rectInEditorStage(homeRect) },
+          window.location.origin);
+        await Promise.all([done, chrome.finished]);
       }
-      await setFrameEmbedMode(frame, 'runtime', slide?.id);
+      // 搬回投影片後才切回 runtime，讓畫布在投影片的實際大小重新取景（不會沿用展開時的縮放）。
+      frame.style.opacity = '0';
       if (home?.parent?.isConnected) {
         moveFramePreservingState(home.parent, frame, home.next?.parentNode === home.parent ? home.next : null);
       } else {
         frame.remove();
       }
-      animations.forEach(animation => animation.cancel());
-      frame.style.visibility = '';
       algorithmEditorPage.hidden = true;
+      chrome?.animations.forEach(animation => animation.cancel());
       document.body.classList.remove('asm-algorithm-editor-open');
       editingAlgorithmFrame = null;
       editingAlgorithmFrameHome = null;
       editingAlgorithmSlideId = null;
       setAlgorithmEditorStatus('');
-      if (frame.isConnected) sendAlgorithmFrameVisibility(frame);
+      if (frame.isConnected) {
+        await setFrameEmbedMode(frame, 'runtime', slide?.id);
+        sendAlgorithmFrameVisibility(frame);
+      }
+      frame.style.opacity = '';
       updateAlgorithmEditButton();
       if (slide && rerun) {
         setSlideRunState(slide, 'stale');
