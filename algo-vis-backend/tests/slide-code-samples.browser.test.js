@@ -7,6 +7,7 @@ test('slide code samples expose named programs and matching inputs without compi
  const response=await fetch(base+'/api/samples');assert.equal(response.status,200);const tree=await response.json();
  const flatten=items=>items.flatMap(item=>[item,...flatten(item.children||[])]),items=flatten(tree),byPath=new Map(items.map(item=>[item.path,item]));
  assert.ok(!byPath.has('Slide_Examples'));assert.ok(!items.some(item=>item.name.startsWith('.')));for(const item of items.filter(i=>i.type==='file')){assert.match(item.name,/^[A-Za-z0-9_.-]+$/);assert.equal(item.displayName,undefined);}
+ const retired=['Backtracking/eight_queens_array_recursion.cpp','Backtracking/eight_queens_loop.cpp','Backtracking/hanoi_recursion.cpp','DP/lcs_table.cpp'];for(const name of retired){assert.ok(!byPath.has(name));assert.ok(!byPath.has(name.replace(/\.cpp$/,'-sample_input.txt')));}for(const name of ['Backtracking/8queen_array_teaching.cpp','Backtracking/8queen_loop_teaching.cpp','Backtracking/hanoi.cpp','DP/LCS.cpp'])assert.ok(byPath.has(name));assert.equal(items.filter(i=>i.name?.endsWith('.cpp')).length,53);
  const decks=new Map(require('../public/guest-decks.json').decks.map(entry=>[entry.id,readPackage(fs.readFileSync('public'+entry.archive)).body.deck]));
  let animations=0,inputs=0;
  for(const entry of manifest.entries){

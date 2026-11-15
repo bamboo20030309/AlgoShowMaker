@@ -36,14 +36,14 @@
 | 線段樹－迭代建樹 | `Data_Structure/segment_tree_iterative_build.cpp` | 1 |
 | 線段樹－迭代區間操作 | `Data_Structure/segment_tree_iterative_lazy.cpp` | 1 |
 | 河內塔 | `Backtracking/hanoi.cpp` | 1 |
-| 八皇后－一般迴圈 | `Backtracking/eight_queens_loop.cpp` | 1 |
-| 八皇后－陣列遞迴 | `Backtracking/eight_queens_array_recursion.cpp` | 1 |
+| 八皇后－一般迴圈 | `Backtracking/8queen_loop_teaching.cpp` | 1 |
+| 八皇后－陣列遞迴 | `Backtracking/8queen_array_teaching.cpp` | 1 |
 | 八皇后－位元運算 | `Backtracking/8queen.cpp` | 1 |
 | 費式數列－遞迴 | `Backtracking/fibonacci_recursive.cpp` | 1 |
 | 費式數列－陣列 | `Backtracking/fibonacci_array.cpp` | 1 |
 | 一維前綴和 | `Math/prefix_sum_1d.cpp` | 1 |
 | 二維前綴和 | `Math/prefix_sum_2d.cpp` | 1 |
-| LCS－建表 | `DP/lcs_table.cpp` | 1 |
+| LCS－建表 | `DP/LCS.cpp` | 1 |
 | LCS－回溯 | `DP/lcs_backtracking.cpp` | 1 |
 
 ## 更新來源

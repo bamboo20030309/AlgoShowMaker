@@ -468,7 +468,7 @@
       ]
     },
     {
-      "path": "Backtracking/eight_queens_loop.cpp",
+      "path": "Backtracking/8queen_loop_teaching.cpp",
       "title": "八皇后－一般迴圈",
       "sourceDeckId": "eight-queens-teaching",
       "sourceDeckTitle": "八皇后問題 (8queen)",
@@ -477,18 +477,18 @@
         {
           "slideId": "01b3a3d6-557b-442d-99d5-18c5293d2c3c",
           "page": 9,
-          "inputPath": "Backtracking/eight_queens_loop-sample_input.txt"
+          "inputPath": "Backtracking/8queen_loop_teaching-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Backtracking/eight_queens_loop-sample_input.txt",
+          "path": "Backtracking/8queen_loop_teaching-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
     },
     {
-      "path": "Backtracking/eight_queens_array_recursion.cpp",
+      "path": "Backtracking/8queen_array_teaching.cpp",
       "title": "八皇后－陣列遞迴",
       "sourceDeckId": "eight-queens-teaching",
       "sourceDeckTitle": "八皇后問題 (8queen)",
@@ -497,12 +497,12 @@
         {
           "slideId": "76a59dd3-b8e5-4a55-9671-b2c9f90e9096",
           "page": 15,
-          "inputPath": "Backtracking/eight_queens_array_recursion-sample_input.txt"
+          "inputPath": "Backtracking/8queen_array_teaching-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "Backtracking/eight_queens_array_recursion-sample_input.txt",
+          "path": "Backtracking/8queen_array_teaching-sample_input.txt",
           "sha256": "7de1555df0c2700329e815b93b32c571c3ea54dc967b89e81ab73b9972b72d1d"
         }
       ]
@@ -608,7 +608,7 @@
       ]
     },
     {
-      "path": "DP/lcs_table.cpp",
+      "path": "DP/LCS.cpp",
       "title": "LCS－建表",
       "sourceDeckId": "lcs-teaching",
       "sourceDeckTitle": "最長共同子序列 (LCS)",
@@ -617,12 +617,12 @@
         {
           "slideId": "lcs-slide-09",
           "page": 9,
-          "inputPath": "DP/lcs_table-sample_input.txt"
+          "inputPath": "DP/LCS-sample_input.txt"
         }
       ],
       "inputs": [
         {
-          "path": "DP/lcs_table-sample_input.txt",
+          "path": "DP/LCS-sample_input.txt",
           "sha256": "c6be5197ef7dd61aa669e4d06aea6d35d39eec818d3dde15595f3bf5611153ba"
         }
       ]
@@ -690,6 +690,22 @@
     {
       "from": "Backtracking/8queen_tree.cpp",
       "to": "Backtracking/8queen.cpp"
+    },
+    {
+      "from": "Backtracking/eight_queens_array_recursion.cpp",
+      "to": "Backtracking/8queen_array_teaching.cpp"
+    },
+    {
+      "from": "Backtracking/eight_queens_loop.cpp",
+      "to": "Backtracking/8queen_loop_teaching.cpp"
+    },
+    {
+      "from": "Backtracking/hanoi_recursion.cpp",
+      "to": "Backtracking/hanoi.cpp"
+    },
+    {
+      "from": "DP/lcs_table.cpp",
+      "to": "DP/LCS.cpp"
     }
   ]
 }

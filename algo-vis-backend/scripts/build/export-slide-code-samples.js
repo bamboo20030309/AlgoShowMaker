@@ -17,7 +17,7 @@ const definitions={
  'prefix-sum':[['prefix-sum-1d','一維前綴和'],['prefix-sum-2d','二維前綴和']],
  'lcs-teaching':[['lcs-table','LCS－建表'],['lcs-backtracking','LCS－回溯']]
 };
-const preferredPaths={"quick-sort":"Sorting/quick_sort.cpp","merge-sort-recursive":"Sorting/merge_sort.cpp","bubble-sort":"Sorting/bubble_sort.cpp","selection-sort":"Sorting/selection_sort.cpp","insertion-sort":"Sorting/insertion_sort.cpp","heap-sort":"Sorting/heap_sort.cpp","hanoi":"Backtracking/hanoi.cpp","eight-queens-bitmask":"Backtracking/8queen.cpp","linear-sieve-detailed":"Math/euler_sieve.cpp"};
+const preferredPaths={"quick-sort":"Sorting/quick_sort.cpp","merge-sort-recursive":"Sorting/merge_sort.cpp","bubble-sort":"Sorting/bubble_sort.cpp","selection-sort":"Sorting/selection_sort.cpp","insertion-sort":"Sorting/insertion_sort.cpp","heap-sort":"Sorting/heap_sort.cpp","hanoi":"Backtracking/hanoi.cpp","eight-queens-bitmask":"Backtracking/8queen.cpp","linear-sieve-detailed":"Math/euler_sieve.cpp","eight-queens-array-recursion":"Backtracking/8queen_array_teaching.cpp","eight-queens-loop":"Backtracking/8queen_loop_teaching.cpp","lcs-table":"DP/LCS.cpp"};
 const canonical=text=>String(text||'').replace(/\r\n?/g,'\n');
 const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
 async function exportSlideSamples({root=backend}={}){

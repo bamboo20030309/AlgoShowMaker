@@ -42,7 +42,7 @@ int main() {
 
 ## 河內塔
 
-repo 的現代註解範例是 `algo-vis-backend/algorithm_sample/Backtracking/hanoi_recursion.cpp`；`hanoi.cpp` 是舊 AV.hpp 版本，不能混用。先展示 N=3 的合法盤子移動，再解釋「移 n−1 個 → 移最大盤 → 移 n−1 個」；遞迴樹與三柱畫面用穩定 ID 對照。若只有本 skill 沒有範例來源，先交付分鏡，不臆造遞迴 layout 語法。
+repo 的現代註解範例是 `algo-vis-backend/algorithm_sample/Backtracking/hanoi.cpp`；舊 AV.hpp 版本僅保留於 `algo-vis-backend/tests/fixtures/legacy_hanoi.cpp` 作相容性驗證，不能混用。先展示 N=3 的合法盤子移動，再解釋「移 n−1 個 → 移最大盤 → 移 n−1 個」；遞迴樹與三柱畫面用穩定 ID 對照。若只有本 skill 沒有範例來源，先交付分鏡，不臆造遞迴 layout 語法。
 
 ## KMP：最大相等真前後綴
 

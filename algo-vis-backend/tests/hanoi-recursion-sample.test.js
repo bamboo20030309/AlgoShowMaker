@@ -4,8 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { compile } = require('./helpers/compile');
 
-const samplePath = path.join(__dirname, '../algorithm_sample/Backtracking/hanoi_recursion.cpp');
-const inputPath = path.join(__dirname, '../algorithm_sample/Backtracking/hanoi_recursion-sample_input.txt');
+const samplePath = path.join(__dirname, '../algorithm_sample/Backtracking/hanoi.cpp');
+const inputPath = path.join(__dirname, '../algorithm_sample/Backtracking/hanoi-sample_input.txt');
 
 test('Hanoi sample preserves the original algorithm and renders three disk pegs beside its recursion tree', async () => {
   assert.ok(process.env.ASM_TEST_BASE_URL, 'set ASM_TEST_BASE_URL to an isolated server');
