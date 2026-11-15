@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/vendor/reveal/reveal.css" />
   <link rel="stylesheet" href="/vendor/reveal/theme/white.css" />
   <link rel="stylesheet" href="/vendor/reveal/plugin/highlight/monokai.css" />
-  <link rel="stylesheet" href="slides.css?v=animation-sidebar-1" />
+  <link rel="stylesheet" href="slides.css?v=animation-sidebar-2" />
   <link rel="stylesheet" href="slide-presentation-controls.css?v=6" />
   <link rel="stylesheet" href="mobile-ui.css?v=viewer-sidebar-7" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.16.22" />
@@ -555,17 +555,20 @@
     </div>
   </div>
 
-  <div id="algorithmEditorModal" class="algorithm-editor-modal" hidden>
-    <div class="algorithm-editor-dialog">
-      <div class="algorithm-editor-header">
-        <div>
-          <strong>演算法動畫投影片</strong>
-          <span id="algorithmEditorStatus">編譯成功後，動畫腳本會儲存在這張投影片中。</span>
-        </div>
-        <button id="saveAlgorithmEditorBtn" type="button" title="將目前腳本儲存到投影片">儲存</button>
-      </div>
-      <iframe id="algorithmEditorFrame" title="演算法動畫編輯器" src="about:blank"></iframe>
-    </div>
+  <!-- 編輯動畫：投影片上的同一個動畫 iframe 以 moveBefore 搬進這裡並展開成完整頁面（不重新載入）。
+       返回時自動存回投影片；程式或輸入改過但沒 RUN，回到投影片後在背景重新執行。 -->
+  <div id="algorithmEditorPage" class="algorithm-editor-page" role="dialog" aria-modal="true"
+    aria-labelledby="algorithmEditorTitle" hidden>
+    <div class="algorithm-editor-backdrop" aria-hidden="true"></div>
+    <header class="algorithm-editor-bar">
+      <button id="algorithmEditorBackBtn" type="button" class="algorithm-editor-back" title="返回投影片（Esc）">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/><path d="M8 12h12"/></svg>
+        <span>返回投影片</span>
+      </button>
+      <strong id="algorithmEditorTitle" class="algorithm-editor-title">編輯動畫</strong>
+      <span id="algorithmEditorStatus" class="algorithm-editor-status" role="status" aria-live="polite"></span>
+    </header>
+    <div id="algorithmEditorStage" class="algorithm-editor-stage"></div>
   </div>
 
   <div id="codeEditorModal" class="code-editor-modal" hidden>
@@ -880,7 +883,7 @@
   <script src="slide-fabric-selection.js?v=8"></script>
   <script src="color-picker-policy.js?v=4"></script>
   <script src="slide-presentation-controls.js?v=9"></script>
-  <script src="slides.js?v=slides-375"></script>
+  <script src="slides.js?v=slides-376"></script>
   <script src="mobile-ui.js?v=mobile-7"></script>
 </body>
 

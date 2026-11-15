@@ -3,7 +3,9 @@
 // 在 iframe 模式接收父頁命令、回報就緒與播放狀態，並限制嵌入時不需要的編輯介面。
 // -----------------------------------------------------------------------------
 (function () {
-  const mode = new URLSearchParams(window.location.search).get('asmEmbed');
+  // 投影片上的動畫（runtime）與編輯動畫（editor）是同一個 iframe：父頁以 asm-embed-set-mode 切換，
+  // 不重新載入，畫面與目前幀都保留。
+  let mode = new URLSearchParams(window.location.search).get('asmEmbed');
   if (!mode) return;
 
   document.body.classList.add(`asm-embed-${mode}`);
@@ -126,6 +128,50 @@
   }
 
   // -----------------------------------------------------------------------------
+  // 模式切換（同一個 iframe）
+  // 進入編輯時顯示左側編輯區並接上設定標籤；回到投影片時先把設定寫回 @asm-view。
+  // 版面穩定後回報畫布位置，父頁用它把展開過場的第一幀對齊投影片上的畫布。
+  // -----------------------------------------------------------------------------
+  function canvasRect() {
+    const rect = document.getElementById('tab-canvas')?.getBoundingClientRect();
+    return rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null;
+  }
+
+  function setEmbedMode(next, cameraSurface = null) {
+    if (!['runtime', 'editor'].includes(next)) return;
+    if (next !== mode) {
+      if (mode === 'editor') window.ASMTraceStudio?.flushSourceSettings?.();
+      document.body.classList.remove(`asm-embed-${mode}`);
+      mode = next;
+      document.body.classList.add(`asm-embed-${mode}`);
+    }
+    if (mode === 'editor') {
+      runtimeVisible = true;
+      runtimeGeometryRequest += 1;
+      const trace = window.ASMTraceEditor?.getTraceDocument?.();
+      if (trace) window.ASMTraceStudio?.attach?.(trace);
+      document.querySelector('.tab-btn[data-tab="tab-canvas"]')?.click();
+    }
+    if (cameraSurface) window.setLocalCameraSurface?.(`slides:${mode}:${cameraSurface}`);
+    if (typeof aceEditor !== 'undefined') aceEditor.resize?.();
+    window.dispatchEvent(new Event('resize'));
+    const report = () => {
+      if (window.parent === window) return;
+      window.parent.postMessage({ type: 'asm-embed-mode-changed', mode, canvasRect: canvasRect() },
+        window.location.origin);
+    };
+    if (typeof window.requestAnimationFrame !== 'function') setTimeout(report, 0);
+    else window.requestAnimationFrame(() => window.requestAnimationFrame(report));
+  }
+
+  // 編輯頁裡改了輸入：讓投影片編輯欄的輸入框保持同一份。
+  document.getElementById('inputArea')?.addEventListener('input', event => {
+    if (mode !== 'editor' || window.parent === window || !event.isTrusted) return;
+    window.parent.postMessage({ type: 'asm-embed-input-changed', input: event.target.value },
+      window.location.origin);
+  });
+
+  // -----------------------------------------------------------------------------
   // postMessage 協定
   // 只接受父視窗的已知命令；runtime 可見性與 editor 儲存請求分開處理並回傳對應 requestId。
   // -----------------------------------------------------------------------------
@@ -137,6 +183,10 @@
         ? refresh.finally(notifyAnimationApplied)
         : (notifyAnimationApplied(), Promise.resolve());
       if (mode === 'runtime' && runtimeVisible) Promise.resolve(applied).then(prepareRuntimeGeometry);
+      return;
+    }
+    if (event.data.type === 'asm-embed-set-mode') {
+      setEmbedMode(event.data.mode, event.data.cameraSurface || null);
       return;
     }
     if (event.data.type === 'asm-runtime-set-input') {

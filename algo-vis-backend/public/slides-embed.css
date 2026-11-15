@@ -12,6 +12,20 @@ body.asm-embed-runtime .gui-prop-panel {
   display: none !important;
 }
 
+/* 編輯動畫（同一個 iframe 展開成完整頁面）：標題列與返回由投影片頁提供，
+   不顯示程式碼頁的網站頂部列、我的程式碼、範例側欄與手繪工具列。 */
+body.asm-embed-editor #top-bar,
+body.asm-embed-editor #drawingToolbar,
+body.asm-embed-editor #algoSidePanel,
+body.asm-embed-editor #myCodesPanel,
+body.asm-embed-editor .asm-mobile-dock {
+  display: none !important;
+}
+
+body.asm-embed-editor #main {
+  height: 100%;
+}
+
 body.asm-embed-runtime #main {
   height: 100%;
   background: #fbfcfa;

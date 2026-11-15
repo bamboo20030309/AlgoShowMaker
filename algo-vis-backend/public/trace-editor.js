@@ -25,7 +25,10 @@
   let sourceViewBaseline = null;
   let pendingAnimation = null;
   let pendingViewBaseline = null;
-  const embedMode = new URLSearchParams(window.location.search).get('asmEmbed');
+  // 投影片的同一個 iframe 會在 runtime 與 editor 之間切換，模式每次都從 body class 讀取。
+  const embedMode = () => document.body.classList.contains('asm-embed-runtime') ? 'runtime'
+    : document.body.classList.contains('asm-embed-editor') ? 'editor'
+      : new URLSearchParams(window.location.search).get('asmEmbed');
 
   const EVENT_SETTING_TYPES = [
     'declare', 'object-exit', 'assignment', 'input-assign', 'compare', 'swap',
@@ -189,7 +192,7 @@
 
   function scheduleAccountEventSettingsSave() {
     // A sample copy must not write the signed-in user's account preferences.
-    if (embedMode === 'runtime' || new URLSearchParams(location.search).get('localOnly') === '1') return;
+    if (embedMode() === 'runtime' || new URLSearchParams(location.search).get('localOnly') === '1') return;
     const token = localStorage.getItem('algo_jwt_token') || '';
     if (!token || !currentTrace) return;
     accountEventSettings = cleanEventSettings(currentTrace.studio?.eventSettings || { gapMs: DEFAULT_EVENT_GAP_MS });
@@ -541,7 +544,7 @@
     updateStudioButton();
     loadAccountEventSettings();
     // 左側「程式碼框」「事件動畫」標籤跟著目前動畫；投影片放映的 runtime 不需要。
-    if (embedMode !== 'runtime') window.ASMTraceStudio?.attach?.(currentTrace);
+    if (embedMode() !== 'runtime') window.ASMTraceStudio?.attach?.(currentTrace);
     return currentTrace;
   }
 

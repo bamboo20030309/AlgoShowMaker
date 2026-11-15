@@ -3096,93 +3096,105 @@ body.slide-viewport-panning * {
   pointer-events: none;
 }
 
-.algorithm-editor-modal {
+/* 編輯動畫：同一個動畫 iframe 從投影片搬到這裡並展開成完整頁面。
+   過場只改 iframe 的 transform／clip-path（slides.js），版面在最終尺寸下排一次。 */
+.algorithm-editor-page {
   position: fixed;
   inset: 0;
-  z-index: 160;
-  display: grid;
-  place-items: center;
-  padding: 8px;
-  background: rgba(9, 14, 16, 0.72);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
 }
 
-.algorithm-editor-modal[hidden] {
+.algorithm-editor-page[hidden] {
   display: none;
 }
 
-.algorithm-editor-dialog {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: min(1840px, 99vw);
-  height: min(1120px, 98vh);
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: 0 22px 72px rgba(0, 0, 0, 0.34);
+.algorithm-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--chrome-bg);
 }
 
-.algorithm-editor-header {
+.algorithm-editor-bar {
+  position: relative;
+  z-index: 2;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   min-height: 52px;
-  padding: 8px 12px 8px 16px;
+  padding: 0 16px 0 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
   background: var(--chrome-bg);
   color: var(--chrome-text);
 }
 
-.algorithm-editor-header strong,
-.algorithm-editor-header span {
-  display: block;
+.algorithm-editor-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 8px;
+  background: #0d1316;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.algorithm-editor-header span {
-  margin-top: 3px;
+.algorithm-editor-back svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.algorithm-editor-back:hover,
+.algorithm-editor-back:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent);
+  outline: none;
+}
+
+.algorithm-editor-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.algorithm-editor-status {
+  margin-left: auto;
   color: rgba(243, 248, 246, 0.74);
-  font-size: 12px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
-.algorithm-editor-header button {
-  min-width: 74px;
-  height: 34px;
-  padding: 0 16px;
-  border-color: rgba(246, 156, 54, 0.88);
-  background: rgba(246, 156, 54, 0.22);
-  color: #fff2dc;
-  font-size: 14px;
-  font-weight: 700;
+.algorithm-editor-stage {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-.algorithm-editor-header button:hover {
-  border-color: #ffc36f;
-  background: #d97819;
-}
-
-#algorithmEditorFrame {
-  flex: 1;
-  width: 100%;
-  border: 0;
-  background: #ffffff;
-}
-
-.algorithm-editor-modal.is-loading #algorithmEditorFrame {
-  visibility: hidden;
-}
-
-.algorithm-editor-modal.is-loading .algorithm-editor-dialog::after {
-  content: "正在載入動畫…";
+.algorithm-editor-stage > .algorithm-slide-frame {
   position: absolute;
-  inset: 52px 0 0;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  background: #fbfcfa;
-  color: #4e716d;
-  font-size: 18px;
-  font-weight: 700;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  transform-origin: 0 0;
+}
+
+body.asm-algorithm-editor-open {
+  overflow: hidden;
 }
 
 .code-editor-modal {
